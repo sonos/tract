@@ -137,6 +137,151 @@ static __device__ inline void st_global_half2_pred(half2* addr, half2 val, bool 
 #endif
 }
 
+template<
+  int BLOCK_Q, int BLOCK_KV, int DIM, int NUM_WARPS,
+  bool is_causal, bool use_mask, bool full_q_tile, bool Tail
+>
+static __device__ __forceinline__ void kv_iter_body(
+    const int kv_tile_base,
+    const int len_q, const int len_kv, const int past,
+    const int q_block_base, const int warp_id, const int lane_id,
+    float scale, const half* __restrict__ MaskBase,
+    float S_rmem[ (BLOCK_Q/NUM_WARPS) / 16 ][ BLOCK_KV / 8 ][4],
+    // accumulators / packs passed by reference
+    uint32_t (&P_rmem)[ (BLOCK_Q/NUM_WARPS) / 16 ][ BLOCK_KV / 16 ][4],
+    float (&O_rmem)[ (BLOCK_Q/NUM_WARPS) / 16 ][ DIM / 8 ][4],
+    float (&rowmax)[ (BLOCK_Q/NUM_WARPS) / 16 ][2],
+    float (&rowsumexp)[ (BLOCK_Q/NUM_WARPS) / 16 ][2]
+) {
+  constexpr int WARP_Q = BLOCK_Q / NUM_WARPS;
+  constexpr int MMA_M = 16, MMA_N = 8;
+
+  const int lane_row0 = (lane_id / 4);
+  const int lane_row1 = lane_row0 + 8;
+  const int j_pair0   = 2 * (lane_id % 4);
+
+  // Per 16x* slice (qi)
+#pragma unroll
+  for (int qi = 0; qi < WARP_Q / MMA_M; ++qi) {
+#pragma unroll
+    for (int kvt = 0; kvt < BLOCK_KV / MMA_N; ++kvt) {
+      float* r = S_rmem[qi][kvt];
+      r[0] *= scale; r[1] *= scale; r[2] *= scale; r[3] *= scale;
+
+      // indices for this fragment
+      const int base_i_block  = warp_id * (BLOCK_Q / NUM_WARPS) + qi * MMA_M; // 16 rows
+      const int col_base_tile = kv_tile_base + kvt * MMA_N;                   // 8 cols
+
+      const int i0 = base_i_block + lane_row0;
+      const int i1 = base_i_block + lane_row1;
+      const int j0 = col_base_tile + j_pair0 + 0;
+      const int j1 = col_base_tile + j_pair0 + 1;
+
+      const int i0_global = q_block_base + i0;
+      const int i1_global = q_block_base + i1;
+
+      if constexpr(Tail) {
+        const bool i0_valid = full_q_tile ? true  : (i0_global < len_q);
+        const bool i1_valid = full_q_tile ? true  : (i1_global < len_q);
+        const bool j0_valid = (j0 < len_kv);
+        const bool j1_valid = (j1 < len_kv);
+
+        bool c00 = j0_valid & i0_valid;
+        bool c01 = j1_valid & i0_valid;
+        bool c10 = j0_valid & i1_valid;
+        bool c11 = j1_valid & i1_valid;
+
+        if constexpr (is_causal) {
+          const int jlim0 = past + i0_global;
+          const int jlim1 = past + i1_global;
+          c00 &= (j0 <= jlim0);
+          c01 &= (j1 <= jlim0);
+          c10 &= (j0 <= jlim1);
+          c11 &= (j1 <= jlim1);
+        } else if constexpr (use_mask) {
+          if (MaskBase) {
+            if (i0_valid && j0_valid) r[0] += (float)MaskBase[(size_t)i0 * len_kv + j0];
+            if (i0_valid && j1_valid) r[1] += (float)MaskBase[(size_t)i0 * len_kv + j1];
+            if (i1_valid && j0_valid) r[2] += (float)MaskBase[(size_t)i1 * len_kv + j0];
+            if (i1_valid && j1_valid) r[3] += (float)MaskBase[(size_t)i1 * len_kv + j1];
+          }
+        }
+
+        r[0] = fsel_neg_inf(c00, r[0]);
+        r[1] = fsel_neg_inf(c01, r[1]);
+        r[2] = fsel_neg_inf(c10, r[2]);
+        r[3] = fsel_neg_inf(c11, r[3]);
+      } else {
+        if constexpr (is_causal) {
+          const int jlim0 = past + i0_global;
+          const int jlim1 = past + i1_global;
+          if (j0 > jlim0) r[0] = -CUDART_INF_F;
+          if (j1 > jlim0) r[1] = -CUDART_INF_F;
+          if (j0 > jlim1) r[2] = -CUDART_INF_F;
+          if (j1 > jlim1) r[3] = -CUDART_INF_F;
+        } else if constexpr (use_mask) {
+          if (MaskBase) {
+            r[0] += (float)MaskBase[(size_t)i0 * len_kv + j0];
+            r[1] += (float)MaskBase[(size_t)i0 * len_kv + j1];
+            r[2] += (float)MaskBase[(size_t)i1 * len_kv + j0];
+            r[3] += (float)MaskBase[(size_t)i1 * len_kv + j1];
+          }
+        }
+      }
+    }
+
+    // rowmax reduce
+    float this_rowmax[2];
+#pragma unroll
+    for (int kvt = 0; kvt < BLOCK_KV / MMA_N; ++kvt) {
+      float* r = S_rmem[qi][kvt];
+      if (kvt == 0) { this_rowmax[0] = fmaxf(r[0], r[1]); this_rowmax[1] = fmaxf(r[2], r[3]); }
+      else          { this_rowmax[0] = fmaxf(this_rowmax[0], fmaxf(r[0], r[1]));
+                      this_rowmax[1] = fmaxf(this_rowmax[1], fmaxf(r[2], r[3])); }
+    }
+    this_rowmax[0] = fmaxf(this_rowmax[0], __shfl_xor_sync(0xFFFFFFFF, this_rowmax[0], 1));
+    this_rowmax[0] = fmaxf(this_rowmax[0], __shfl_xor_sync(0xFFFFFFFF, this_rowmax[0], 2));
+    this_rowmax[1] = fmaxf(this_rowmax[1], __shfl_xor_sync(0xFFFFFFFF, this_rowmax[1], 1));
+    this_rowmax[1] = fmaxf(this_rowmax[1], __shfl_xor_sync(0xFFFFFFFF, this_rowmax[1], 2));
+
+    this_rowmax[0] = fmaxf(this_rowmax[0], rowmax[qi][0]);
+    this_rowmax[1] = fmaxf(this_rowmax[1], rowmax[qi][1]);
+
+    const float rescale0 = __expf(rowmax[qi][0] - this_rowmax[0]);
+    const float rescale1 = __expf(rowmax[qi][1] - this_rowmax[1]);
+#pragma unroll
+    for (int d = 0; d < DIM / MMA_N; ++d) {
+      O_rmem[qi][d][0] *= rescale0; O_rmem[qi][d][1] *= rescale0;
+      O_rmem[qi][d][2] *= rescale1; O_rmem[qi][d][3] *= rescale1;
+    }
+    rowmax[qi][0] = this_rowmax[0];
+    rowmax[qi][1] = this_rowmax[1];
+
+    float this_rowsumexp0 = 0.f, this_rowsumexp1 = 0.f;
+#pragma unroll
+    for (int kvt = 0; kvt < BLOCK_KV / MMA_N; ++kvt) {
+      float* r = S_rmem[qi][kvt];
+      r[0] = __expf(r[0] - rowmax[qi][0]);
+      r[1] = __expf(r[1] - rowmax[qi][0]);
+      r[2] = __expf(r[2] - rowmax[qi][1]);
+      r[3] = __expf(r[3] - rowmax[qi][1]);
+      this_rowsumexp0 += (r[0] + r[1]);
+      this_rowsumexp1 += (r[2] + r[3]);
+
+      half2* Ppack = reinterpret_cast<half2*>(P_rmem[qi][kvt / 2]);
+      Ppack[(kvt % 2) * 2    ] = __float22half2_rn({r[0], r[1]});
+      Ppack[(kvt % 2) * 2 + 1] = __float22half2_rn({r[2], r[3]});
+    }
+    this_rowsumexp0 += __shfl_xor_sync(0xFFFFFFFF, this_rowsumexp0, 1);
+    this_rowsumexp0 += __shfl_xor_sync(0xFFFFFFFF, this_rowsumexp0, 2);
+    this_rowsumexp1 += __shfl_xor_sync(0xFFFFFFFF, this_rowsumexp1, 1);
+    this_rowsumexp1 += __shfl_xor_sync(0xFFFFFFFF, this_rowsumexp1, 2);
+    rowsumexp[qi][0] = rowsumexp[qi][0] * rescale0 + this_rowsumexp0;
+    rowsumexp[qi][1] = rowsumexp[qi][1] * rescale1 + this_rowsumexp1;
+  }
+}
+
+
 // ============================================================================
 // Kernel
 // ============================================================================
@@ -295,95 +440,10 @@ __global__ void attention_v5_kernel(
       asm volatile("cp.async.commit_group;");
     }
 
-    // Scale + causal/mask (NO tail bounds in full loop)
-    const int lane_row0 = (lane_id / 4);     // 0..7
-    const int lane_row1 = lane_row0 + 8;     // 8..15
-    const int j_pair0   = 2 * (lane_id % 4); // {0,2,4,6}
-
-#pragma unroll
-    for (int qi = 0; qi < WARP_Q / MMA_M; ++qi) {
-#pragma unroll
-      for (int kvt = 0; kvt < BLOCK_KV / MMA_N; ++kvt) {
-        float* regs = S_rmem[qi][kvt];
-        regs[0] *= scale; regs[1] *= scale;
-        regs[2] *= scale; regs[3] *= scale;
-
-        const int base_i_block  = warp_id * (BLOCK_Q / NUM_WARPS) + qi * MMA_M;
-        const int col_base_tile = kv_tile_base + kvt * MMA_N;
-        const int i0 = base_i_block + lane_row0;
-        const int i1 = base_i_block + lane_row1;
-        const int j0 = col_base_tile + j_pair0 + 0;
-        const int j1 = col_base_tile + j_pair0 + 1;
-
-        const int i0_global = q_block_base + i0;
-        const int i1_global = q_block_base + i1;
-
-        if constexpr (is_causal) {
-          const int jlim0 = past + i0_global;
-          const int jlim1 = past + i1_global;
-          if (j0 > jlim0) regs[0] = -CUDART_INF_F;
-          if (j1 > jlim0) regs[1] = -CUDART_INF_F;
-          if (j0 > jlim1) regs[2] = -CUDART_INF_F;
-          if (j1 > jlim1) regs[3] = -CUDART_INF_F;
-        } else if constexpr (use_mask) {
-          if (MaskBase) {
-            regs[0] += (float)MaskBase[(size_t)i0 * len_kv + j0];
-            regs[1] += (float)MaskBase[(size_t)i0 * len_kv + j1];
-            regs[2] += (float)MaskBase[(size_t)i1 * len_kv + j0];
-            regs[3] += (float)MaskBase[(size_t)i1 * len_kv + j1];
-          }
-        }
-      }
-
-      // rowmax reduce
-      float this_rowmax[2];
-#pragma unroll
-      for (int kvt = 0; kvt < BLOCK_KV / MMA_N; ++kvt) {
-        float* r = S_rmem[qi][kvt];
-        if (kvt == 0) { this_rowmax[0] = fmaxf(r[0], r[1]); this_rowmax[1] = fmaxf(r[2], r[3]); }
-        else          { this_rowmax[0] = fmaxf(this_rowmax[0], fmaxf(r[0], r[1]));
-                        this_rowmax[1] = fmaxf(this_rowmax[1], fmaxf(r[2], r[3])); }
-      }
-      this_rowmax[0] = fmaxf(this_rowmax[0], __shfl_xor_sync(0xFFFFFFFF, this_rowmax[0], 1));
-      this_rowmax[0] = fmaxf(this_rowmax[0], __shfl_xor_sync(0xFFFFFFFF, this_rowmax[0], 2));
-      this_rowmax[1] = fmaxf(this_rowmax[1], __shfl_xor_sync(0xFFFFFFFF, this_rowmax[1], 1));
-      this_rowmax[1] = fmaxf(this_rowmax[1], __shfl_xor_sync(0xFFFFFFFF, this_rowmax[1], 2));
-
-      this_rowmax[0] = fmaxf(this_rowmax[0], rowmax[qi][0]);
-      this_rowmax[1] = fmaxf(this_rowmax[1], rowmax[qi][1]);
-
-      const float rescale0 = __expf(rowmax[qi][0] - this_rowmax[0]);
-      const float rescale1 = __expf(rowmax[qi][1] - this_rowmax[1]);
-#pragma unroll
-      for (int d = 0; d < DIM / MMA_N; ++d) {
-        O_rmem[qi][d][0] *= rescale0; O_rmem[qi][d][1] *= rescale0;
-        O_rmem[qi][d][2] *= rescale1; O_rmem[qi][d][3] *= rescale1;
-      }
-      rowmax[qi][0] = this_rowmax[0];
-      rowmax[qi][1] = this_rowmax[1];
-
-      float this_rowsumexp0 = 0.f, this_rowsumexp1 = 0.f;
-#pragma unroll
-      for (int kvt = 0; kvt < BLOCK_KV / MMA_N; ++kvt) {
-        float* r = S_rmem[qi][kvt];
-        r[0] = __expf(r[0] - rowmax[qi][0]);
-        r[1] = __expf(r[1] - rowmax[qi][0]);
-        r[2] = __expf(r[2] - rowmax[qi][1]);
-        r[3] = __expf(r[3] - rowmax[qi][1]);
-        this_rowsumexp0 += (r[0] + r[1]);
-        this_rowsumexp1 += (r[2] + r[3]);
-
-        half2* Ppack = reinterpret_cast<half2*>(P_rmem[qi][kvt / 2]);
-        Ppack[(kvt % 2) * 2    ] = __float22half2_rn({r[0], r[1]});
-        Ppack[(kvt % 2) * 2 + 1] = __float22half2_rn({r[2], r[3]});
-      }
-      this_rowsumexp0 += __shfl_xor_sync(0xFFFFFFFF, this_rowsumexp0, 1);
-      this_rowsumexp0 += __shfl_xor_sync(0xFFFFFFFF, this_rowsumexp0, 2);
-      this_rowsumexp1 += __shfl_xor_sync(0xFFFFFFFF, this_rowsumexp1, 1);
-      this_rowsumexp1 += __shfl_xor_sync(0xFFFFFFFF, this_rowsumexp1, 2);
-      rowsumexp[qi][0] = rowsumexp[qi][0] * rescale0 + this_rowsumexp0;
-      rowsumexp[qi][1] = rowsumexp[qi][1] * rescale1 + this_rowsumexp1;
-    }
+    kv_iter_body<BLOCK_Q, BLOCK_KV, DIM, NUM_WARPS, is_causal, use_mask, full_q_tile, false>(
+      kv_tile_base, len_q, len_kv, past, q_block_base, warp_id, lane_id, scale,
+      MaskBase, S_rmem, P_rmem, O_rmem, rowmax, rowsumexp
+    );
 
     // Wait V, load V and do O += P@V
     asm volatile("cp.async.wait_group 1;");
@@ -405,9 +465,7 @@ __global__ void attention_v5_kernel(
         for (int kvt = 0; kvt < BLOCK_KV / MMA_K; ++kvt) {
           mma_m16n8k16(P_rmem[qi][kvt], V_rmem[kvt][d], O_rmem[qi][d]);
         }
-
-    // NOTE: For full brevity, use your existing P_rmem packing + reuse it here like in your previous kernel.
-  } // end FULL loop
+  }
 
   // ----------------------------- KV TAIL (optional) --------------------------
   if (kv_rem) {
@@ -448,111 +506,10 @@ __global__ void attention_v5_kernel(
         for (int dk = 0; dk < DIM / MMA_K; ++dk)
           mma_m16n8k16(Q_rmem[qi][dk], K_rmem[kvt][dk], S_rmem[qi][kvt]);
 
-    // Tail-only validity + causal/mask via branch-free selects
-    const int lane_row0 = (lane_id / 4);
-    const int lane_row1 = lane_row0 + 8;
-    const int j_pair0   = 2 * (lane_id % 4);
-
-#pragma unroll
-    for (int qi = 0; qi < WARP_Q / MMA_M; ++qi) {
-#pragma unroll
-      for (int kvt = 0; kvt < BLOCK_KV / MMA_N; ++kvt) {
-        float* regs = S_rmem[qi][kvt];
-        regs[0] *= scale; regs[1] *= scale;
-        regs[2] *= scale; regs[3] *= scale;
-
-        const int base_i_block  = warp_id * (BLOCK_Q / NUM_WARPS) + qi * MMA_M;
-        const int col_base_tile = kv_tile_base + kvt * MMA_N;
-        const int i0 = base_i_block + lane_row0;
-        const int i1 = base_i_block + lane_row1;
-        const int j0 = col_base_tile + j_pair0 + 0;
-        const int j1 = col_base_tile + j_pair0 + 1;
-
-        const int i0_global = q_block_base + i0;
-        const int i1_global = q_block_base + i1;
-
-        const bool i0_valid = full_q_tile ? true  : (i0_global < len_q);
-        const bool i1_valid = full_q_tile ? true  : (i1_global < len_q);
-        const bool j0_valid = (j0 < len_kv);
-        const bool j1_valid = (j1 < len_kv);
-
-        bool c00 = j0_valid & i0_valid;
-        bool c01 = j1_valid & i0_valid;
-        bool c10 = j0_valid & i1_valid;
-        bool c11 = j1_valid & i1_valid;
-
-        if constexpr (is_causal) {
-          const int jlim0 = past + i0_global;
-          const int jlim1 = past + i1_global;
-          c00 &= (j0 <= jlim0);
-          c01 &= (j1 <= jlim0);
-          c10 &= (j0 <= jlim1);
-          c11 &= (j1 <= jlim1);
-        } else if constexpr (use_mask) {
-          if (MaskBase) {
-            if (i0_valid && j0_valid) regs[0] += (float)MaskBase[(size_t)i0 * len_kv + j0];
-            if (i0_valid && j1_valid) regs[1] += (float)MaskBase[(size_t)i0 * len_kv + j1];
-            if (i1_valid && j0_valid) regs[2] += (float)MaskBase[(size_t)i1 * len_kv + j0];
-            if (i1_valid && j1_valid) regs[3] += (float)MaskBase[(size_t)i1 * len_kv + j1];
-          }
-        }
-
-        regs[0] = fsel_neg_inf(c00, regs[0]);
-        regs[1] = fsel_neg_inf(c01, regs[1]);
-        regs[2] = fsel_neg_inf(c10, regs[2]);
-        regs[3] = fsel_neg_inf(c11, regs[3]);
-      }
-
-      // rowmax/rowsumexp like before
-      float this_rowmax[2];
-#pragma unroll
-      for (int kvt = 0; kvt < BLOCK_KV / MMA_N; ++kvt) {
-        float* r = S_rmem[qi][kvt];
-        if (kvt == 0) { this_rowmax[0] = fmaxf(r[0], r[1]); this_rowmax[1] = fmaxf(r[2], r[3]); }
-        else          { this_rowmax[0] = fmaxf(this_rowmax[0], fmaxf(r[0], r[1]));
-                        this_rowmax[1] = fmaxf(this_rowmax[1], fmaxf(r[2], r[3])); }
-      }
-      this_rowmax[0] = fmaxf(this_rowmax[0], __shfl_xor_sync(0xFFFFFFFF, this_rowmax[0], 1));
-      this_rowmax[0] = fmaxf(this_rowmax[0], __shfl_xor_sync(0xFFFFFFFF, this_rowmax[0], 2));
-      this_rowmax[1] = fmaxf(this_rowmax[1], __shfl_xor_sync(0xFFFFFFFF, this_rowmax[1], 1));
-      this_rowmax[1] = fmaxf(this_rowmax[1], __shfl_xor_sync(0xFFFFFFFF, this_rowmax[1], 2));
-
-      this_rowmax[0] = fmaxf(this_rowmax[0], rowmax[qi][0]);
-      this_rowmax[1] = fmaxf(this_rowmax[1], rowmax[qi][1]);
-
-      const float rescale0 = __expf(rowmax[qi][0] - this_rowmax[0]);
-      const float rescale1 = __expf(rowmax[qi][1] - this_rowmax[1]);
-#pragma unroll
-      for (int d = 0; d < DIM / MMA_N; ++d) {
-        O_rmem[qi][d][0] *= rescale0; O_rmem[qi][d][1] *= rescale0;
-        O_rmem[qi][d][2] *= rescale1; O_rmem[qi][d][3] *= rescale1;
-      }
-      rowmax[qi][0] = this_rowmax[0];
-      rowmax[qi][1] = this_rowmax[1];
-
-      float this_rowsumexp0 = 0.f, this_rowsumexp1 = 0.f;
-#pragma unroll
-      for (int kvt = 0; kvt < BLOCK_KV / MMA_N; ++kvt) {
-        float* r = S_rmem[qi][kvt];
-        r[0] = __expf(r[0] - rowmax[qi][0]);
-        r[1] = __expf(r[1] - rowmax[qi][0]);
-        r[2] = __expf(r[2] - rowmax[qi][1]);
-        r[3] = __expf(r[3] - rowmax[qi][1]);
-        this_rowsumexp0 += (r[0] + r[1]);
-        this_rowsumexp1 += (r[2] + r[3]);
-
-        // pack P (m16n8 -> m16k16)
-        half2 *Ppack = reinterpret_cast<half2 *>(P_rmem[qi][kvt / 2]);
-        Ppack[(kvt % 2) * 2]     = __float22half2_rn({r[0], r[1]});
-        Ppack[(kvt % 2) * 2 + 1] = __float22half2_rn({r[2], r[3]});
-      }
-      this_rowsumexp0 += __shfl_xor_sync(0xFFFFFFFF, this_rowsumexp0, 1);
-      this_rowsumexp0 += __shfl_xor_sync(0xFFFFFFFF, this_rowsumexp0, 2);
-      this_rowsumexp1 += __shfl_xor_sync(0xFFFFFFFF, this_rowsumexp1, 1);
-      this_rowsumexp1 += __shfl_xor_sync(0xFFFFFFFF, this_rowsumexp1, 2);
-      rowsumexp[qi][0] = rowsumexp[qi][0] * rescale0 + this_rowsumexp0;
-      rowsumexp[qi][1] = rowsumexp[qi][1] * rescale1 + this_rowsumexp1;
-    }
+    kv_iter_body<BLOCK_Q, BLOCK_KV, DIM, NUM_WARPS, is_causal, use_mask, full_q_tile, true>(
+      kv_tile_base, len_q, len_kv, past, q_block_base, warp_id, lane_id, scale,
+      MaskBase, S_rmem, P_rmem, O_rmem, rowmax, rowsumexp
+    );
 
     // Wait V and finish O += P@V (tail)
     asm volatile("cp.async.wait_group 1;");
