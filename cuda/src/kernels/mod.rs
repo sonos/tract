@@ -3,9 +3,9 @@
 pub mod array;
 mod binary;
 pub mod flash_attn;
-pub mod minimal_flash_attn;
 mod launch_args;
 pub mod matmul;
+pub mod minimal_flash_attn;
 pub mod nn;
 mod unary;
 mod utils;

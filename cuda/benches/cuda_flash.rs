@@ -2,9 +2,9 @@ use criterion::measurement::WallTime;
 use criterion::*;
 
 use tract_core::internal::*;
+use tract_cuda::CUDA_STREAM;
 use tract_cuda::kernels::flash_attn::GgmlFlashAttn;
 use tract_cuda::kernels::minimal_flash_attn::MinimalFlashAttn;
-use tract_cuda::CUDA_STREAM;
 use tract_gpu::tensor::IntoDevice;
 
 pub fn cuda_ggml_flash(
@@ -75,8 +75,8 @@ pub fn cuda_minimal_flash(
 
         crit.bench_function(&format!("tract_cuda_minimal_flash"), |be| {
             be.iter(|| {
-                let _ = MinimalFlashAttn { is_causal: false }
-                    .eval(stream, &cuda_q, &cuda_k, &cuda_v, Some(&cuda_mask), 1.0)
+                let _ = MinimalFlashAttn
+                    .eval(stream, &cuda_q, &cuda_k, &cuda_v, Some(&cuda_mask), 1.0, false)
                     .unwrap();
             });
         });
@@ -93,7 +93,8 @@ fn flash_attn(
     out_dim: usize,
 ) {
     let mut c = c.benchmark_group(format!(
-        "Batch: {b}. Q_head: {qh} KV_head: {kh} P: {p} S {s} d: {out_dim}"));
+        "Batch: {b}. Q_head: {qh} KV_head: {kh} P: {p} S {s} d: {out_dim}"
+    ));
     c.throughput(Throughput::Elements((4 * b * qh * s * (s + p) * out_dim) as _));
 
     cuda_ggml_flash(&mut c, b, qh, kh, p, s, out_dim);
@@ -115,8 +116,8 @@ fn small(c: &mut Criterion) {
         //(1, 1, 1, 4096, 4096, 64),
         //(1, 4, 4, 256, 2048, 64),
         //(1, 32, 32, 512, 1024, 128),
-        //(1, 1, 1, 0, 64, 128), 
-        //(1, 8, 8, 0, 64, 128), 
+        //(1, 1, 1, 0, 64, 128),
+        //(1, 8, 8, 0, 64, 128),
         (1, 1, 1, 0, 128, 128),
         (1, 1, 1, 64, 64, 128),
         (1, 1, 1, 32, 128, 128),
@@ -160,7 +161,6 @@ fn benched_models_pp(c: &mut Criterion) {
         (1, 16, 8, 0, 2048, 128),
         (1, 16, 8, 0, 1, 128),
         (1, 16, 8, 127, 1, 128),
-
     ];
     for (b, qh, kh, p, s, out_dim) in shapes {
         flash_attn(c, b, qh, kh, p, s, out_dim);

@@ -291,7 +291,7 @@ __global__ void attention_v5_kernel(
   const half* __restrict__ Q,  // [bs, len_q, DIM]
   const half* __restrict__ K,  // [bs, len_kv, DIM]
   const half* __restrict__ V,  // [bs, len_kv, DIM]
-  const half* __restrict__ M,  // [bs, len_q, len_kv] if use_mask (0 or -INF)
+  const half* __restrict__ M,  // [bs, len_q, len_kv]
   half* __restrict__ O,        // [bs, len_q, DIM]
   int bs, int qh, int head_ratio, int len_q, int len_kv, float scale)
 {

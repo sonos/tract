@@ -2,8 +2,8 @@ use cudarc::driver::{CudaStream, LaunchConfig, PushKernelArg};
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
 
-use crate::context::{cuda_context, TractCudaStream};
-use crate::kernels::{get_cuda_view, LibraryName};
+use crate::context::{TractCudaStream, cuda_context};
+use crate::kernels::{LibraryName, get_cuda_view};
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct LeakyRelu {

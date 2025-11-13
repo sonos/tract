@@ -6,6 +6,6 @@ mod tensor;
 mod transform;
 pub mod utils;
 
+pub use context::CUDA_STREAM;
 pub use transform::CudaTransform;
-pub use context::{CUDA_STREAM};
 const Q40_ROW_PADDING: usize = 512;
