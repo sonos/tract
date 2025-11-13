@@ -550,7 +550,13 @@ fn convert_sdpa_to_cuda_flash_attn(
         )?;
     }
 
-    mut_cast(target, &node.name, &mut out[0], q_dt, DatumType::F16, ".cast_out")?;
+    if q_dt != DatumType::F16 {
+        out = target.wire_node(
+            name(&node.name, ".cast_out"),
+            ops::CudaCast::new(q_dt).unwrap(),
+            &out,
+        )?;
+    }
 
     Ok(out)
 }
