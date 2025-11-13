@@ -65,6 +65,7 @@ impl MinimalFlashAttn {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn eval(
         &self,
         stream: &TractCudaStream,
