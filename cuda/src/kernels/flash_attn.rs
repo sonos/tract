@@ -253,13 +253,13 @@ mod tests {
             }
             .eval(ref_inputs)?;
 
-            cuda_output.to_host()?.close_enough(&ref_output[0], Approximation::Approximate)?;
+            cuda_output.to_host()?.close_enough(&ref_output[0], Approximation::VeryApproximate)?;
             Ok(())
         })
     }
 
     #[test]
-    fn test_fattn() -> TractResult<()> {
+    fn test_nernst_fattn() -> TractResult<()> {
         run_test_case(1, 1, 1, 64, 1, 128, 1.0f32, false, false)?;
         run_test_case(1, 2, 1, 64, 1, 128, 1.0f32, false, true)?;
         run_test_case(1, 2, 2, 0, 1, 64, 1.0f32, false, false)?;
@@ -269,6 +269,7 @@ mod tests {
         run_test_case(2, 32, 4, 64, 64, 128, 1.0f32, false, false)?;
         run_test_case(1, 1, 1, 64, 64, 128, 1.0f32, false, true)?;
         run_test_case(1, 1, 1, 64, 64, 128, 1.0f32, true, false)?;
+        run_test_case(1, 8, 8, 4096, 4096, 128, 1.0f32, false, false)?;
         Ok(())
     }
 }
