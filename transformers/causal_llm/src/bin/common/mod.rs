@@ -5,6 +5,7 @@ pub struct OpenAICompletionQuery {
     pub prompt: String,
     pub model: String,
     pub max_tokens: usize,
+    pub temperature: Option<f32>,
     pub stop: Vec<String>,
 }
 
