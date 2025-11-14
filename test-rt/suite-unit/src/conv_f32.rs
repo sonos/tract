@@ -689,6 +689,21 @@ pub fn suite() -> TractResult<TestSuite> {
     );
 
     suite.add(
+        "bias_2",
+        ConvProblem {
+            shape_in: DataFormat::NCHW.from_n_c_hw(1, 1, [1, 2])?,
+            kernel_format: KernelFormat::OIHW,
+            group: 1,
+            kernel: ArrayD::<f32>::zeros(vec![1, 1, 1, 2]),
+            data: ArrayD::<f32>::zeros(vec![1, 1, 1, 2]),
+            bias: Some(arr1(&[1.0]).into_dyn()),
+            pad: PaddingSpec::Valid,
+            strides: tvec!(1, 1),
+            dilations: tvec!(1, 1),
+        },
+    );
+
+    suite.add(
         "bias_chw_0",
         ConvProblem {
             shape_in: DataFormat::CHW.from_n_c_hw(1, 1, [3])?,
