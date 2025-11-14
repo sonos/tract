@@ -4,6 +4,7 @@ mod broadcast;
 mod cast;
 mod change_axes;
 mod concat;
+pub(crate) mod conv;
 mod dyn_kv_cache;
 mod flash_attn;
 mod fused_axis_op;
