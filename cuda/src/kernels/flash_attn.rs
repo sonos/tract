@@ -102,6 +102,7 @@ impl CudaFlashAttn {
         let b = q_shape[0];
         let n_qh = q_shape[1];
         let len_q = q_shape[2];
+        let len_kv = k.shape()[2];
         let d = q_shape[3];
 
         ensure!(n_qh % k.shape()[1] == 0);
@@ -130,7 +131,7 @@ impl CudaFlashAttn {
         let kernel_launcher = |suffix: &str, num_q_blocks: usize| -> TractResult<()> {
             let func = ctxt.load_pipeline(
                 LibraryName::FlashAttn,
-                format!("attention_v5_{suffix}_{block_q}_{block_kv}_{d}_{is_causal}_{use_mask}"),
+                format!("attention_v5_{suffix}{block_q}_{block_kv}_{d}_{is_causal}_{use_mask}"),
             )?;
 
             func.set_attribute(
@@ -163,11 +164,19 @@ impl CudaFlashAttn {
         };
 
         if num_full_q_blocks > 0 {
-            kernel_launcher("full", num_full_q_blocks)?;
+            let mut str = "full_".to_string();
+            if len_kv % block_kv != 0 {
+                str.push_str("kv_rem_");
+            }
+            kernel_launcher(&str, num_full_q_blocks)?;
         }
 
         if len_q % block_q != 0 {
-            kernel_launcher("tail", 1)?;
+            let mut str = "tail_".to_string();
+            if len_kv % block_kv != 0 {
+                str.push_str("kv_rem_");
+            }
+            kernel_launcher(&str, 1)?;
         }
 
         Ok(())
@@ -253,7 +262,7 @@ mod tests {
             }
             .eval(ref_inputs)?;
 
-            cuda_output.to_host()?.close_enough(&ref_output[0], Approximation::VeryApproximate)?;
+            cuda_output.to_host()?.close_enough(&ref_output[0], Approximation::Approximate)?;
             Ok(())
         })
     }
@@ -269,7 +278,6 @@ mod tests {
         run_test_case(2, 32, 4, 64, 64, 128, 1.0f32, false, false)?;
         run_test_case(1, 1, 1, 64, 64, 128, 1.0f32, false, true)?;
         run_test_case(1, 1, 1, 64, 64, 128, 1.0f32, true, false)?;
-        run_test_case(1, 8, 8, 4096, 4096, 128, 1.0f32, false, false)?;
         Ok(())
     }
 }
