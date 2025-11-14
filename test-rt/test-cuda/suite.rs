@@ -2,6 +2,7 @@ use std::vec;
 
 use infra::Test;
 use suite_unit::bin_einsum::{BinEinsumProblem, BinEinsumProblemParams};
+use suite_unit::conv_f32::{ConvProblem, ConvProblemParams};
 use suite_unit::sdpa::{SdpaProblem, SdpaProblemParams};
 use tract_core::num_traits::Float;
 use tract_core::prelude::Datum;
@@ -28,6 +29,18 @@ fn mk_suite() -> infra::TestSuite {
             force_unique_non_trivial_m_n: true,
             max_dims: 6,
             ..BinEinsumProblemParams::default()
+        },
+    );
+
+    unit.get_sub_mut("conv_f32").add_arbitrary::<ConvProblem>(
+        "proptest",
+        ConvProblemParams {
+            geo_rank: Some(2..3),
+            no_dilations: true,
+            no_batch: true,
+            no_group: true,
+            no_bias: true,
+            ..ConvProblemParams::default()
         },
     );
 

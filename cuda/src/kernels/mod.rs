@@ -2,6 +2,7 @@
 
 pub mod array;
 mod binary;
+pub mod conv;
 pub mod flash_attn;
 pub mod ggml_flash_attn;
 mod launch_args;
@@ -48,6 +49,7 @@ const UNARY_OPS: &str = include_str!("cu/unary.cu");
 const BINARY_OPS: &str = include_str!("cu/binary.cu");
 const ARRAY_OPS: &str = include_str!("cu/array.cu");
 const NN_OPS: &str = include_str!("cu/nn.cu");
+const CNN_OPS: &str = include_str!("cu/cnn.cu");
 const GGML_MM_MV: &str = include_str!("cu/mm_mv.cu");
 const GGML_MM_MV_Q: &str = include_str!("cu/mm_mv_q.cu");
 const GGML_QUANTIZE: &str = include_str!("cu/quantize.cu");
@@ -61,6 +63,7 @@ pub enum LibraryName {
     Binary,
     Array,
     NN,
+    CNN,
     Ggml,
     GgmlQ,
     Quant,
@@ -81,13 +84,14 @@ fn fnv1a64(text: &str) -> u64 {
 }
 
 impl LibraryName {
-    pub const ALL: [LibraryName; 9] = [
+    pub const ALL: [LibraryName; 10] = [
         Self::FlashAttn,
         Self::GgmlFlashAttn,
         Self::Unary,
         Self::Binary,
         Self::Array,
         Self::NN,
+        Self::CNN,
         Self::Ggml,
         Self::GgmlQ,
         Self::Quant,
@@ -99,6 +103,7 @@ impl LibraryName {
             Self::Binary => BINARY_OPS,
             Self::Array => ARRAY_OPS,
             Self::NN => NN_OPS,
+            Self::CNN => CNN_OPS,
             Self::Ggml => GGML_MM_MV,
             Self::GgmlQ => GGML_MM_MV_Q,
             Self::Quant => GGML_QUANTIZE,
@@ -113,6 +118,7 @@ impl LibraryName {
             Self::Binary => "binary",
             Self::Array => "array",
             Self::NN => "nn",
+            Self::CNN => "cnn",
             Self::Ggml => "mm_mv",
             Self::GgmlQ => "mm_mv_q",
             Self::Quant => "quantize",
