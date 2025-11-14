@@ -149,7 +149,6 @@ impl ConvKernel for Generic {
         unsafe {
             launcher.launch(cfg);
         }
-        dbg!("launched!");
         Ok(())
     }
 }
