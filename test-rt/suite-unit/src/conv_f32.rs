@@ -8,10 +8,12 @@ use tract_itertools::izip;
 #[derive(Debug, Clone, Default)]
 pub struct ConvProblemParams {
     pub no_group: bool,
+    pub no_stride: bool,
     pub no_arbitrary_grouping: bool,
     pub geo_rank: Option<Range<usize>>,
     pub no_batch: bool,
     pub no_dilations: bool,
+    pub no_bias: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -266,11 +268,16 @@ impl Arbitrary for ConvProblem {
                         }
                     };
                     let hw_rank = shape_in.hw_rank();
-                    let strides = vec(1usize..=3, hw_rank..=hw_rank);
+                    let max_stride = if params.no_stride { 1 } else { 3 };
+                    let strides = vec(1usize..=max_stride, hw_rank..=hw_rank);
                     let max_dil = if params.no_dilations { 1 } else { 3 };
                     let dilations = vec(1usize..=max_dil, hw_rank..=hw_rank);
                     let kernel = tensor(&ker_shape);
-                    let bias = proptest::option::of(tensor(&[co0 * group]));
+                    let bias = if params.no_bias {
+                        Just(None).boxed()
+                    } else {
+                        proptest::option::of(tensor(&[co0 * group])).boxed()
+                    };
                     (Just((kf, pad, shape_in, group)), data_in, kernel, bias, strides, dilations)
                 },
             )
@@ -398,6 +405,21 @@ pub fn suite() -> TractResult<TestSuite> {
             pad: PaddingSpec::Valid,
             strides: tvec!(1),
             dilations: tvec!(1),
+        },
+    );
+
+    suite.add(
+        "nchw_2d_0",
+        ConvProblem {
+            shape_in: DataFormat::NCHW.from_n_c_hw(1, 1, [1, 2])?,
+            kernel_format: KernelFormat::OIHW,
+            group: 1,
+            data: arr4(&[[[[0.0f32, 1.0]]]]).into_dyn(),
+            kernel: arr4(&[[[[0.0f32, 1.0]]]]).into_dyn(),
+            bias: None,
+            pad: PaddingSpec::Valid,
+            strides: tvec!(1, 1),
+            dilations: tvec!(1, 1),
         },
     );
 

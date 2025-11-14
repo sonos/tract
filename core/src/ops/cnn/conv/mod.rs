@@ -66,6 +66,14 @@ impl KernelFormat {
         }
     }
 
+    pub fn i_axis<D>(&self, full_shape: &[D]) -> usize {
+        match self {
+            KernelFormat::OIHW => 1,
+            KernelFormat::OHWI => full_shape.len() - 1,
+            KernelFormat::HWIO => full_shape.len() - 2,
+        }
+    }
+
     pub fn o<'a, D>(&self, full_shape: &'a [D]) -> &'a D {
         &full_shape[self.o_axis(full_shape)]
     }

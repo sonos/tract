@@ -4,6 +4,7 @@ mod broadcast;
 mod cast;
 mod change_axes;
 mod concat;
+pub(crate) mod conv;
 mod dyn_kv_cache;
 //mod ggml_flash_attn;
 mod flash_attn;
