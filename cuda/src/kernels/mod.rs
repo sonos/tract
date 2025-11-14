@@ -3,6 +3,7 @@
 pub mod array;
 mod binary;
 pub mod flash_attn;
+pub mod ggml_flash_attn;
 mod launch_args;
 pub mod matmul;
 pub mod nn;
@@ -50,7 +51,8 @@ const NN_OPS: &str = include_str!("cu/nn.cu");
 const GGML_MM_MV: &str = include_str!("cu/mm_mv.cu");
 const GGML_MM_MV_Q: &str = include_str!("cu/mm_mv_q.cu");
 const GGML_QUANTIZE: &str = include_str!("cu/quantize.cu");
-const GGML_FLASH_ATTN: &str = include_str!("cu/flash_attn.cu");
+const GGML_FLASH_ATTN: &str = include_str!("cu/ggml_flash_attn.cu");
+const FLASH_ATTN: &str = include_str!("cu/flash_attn.cu");
 pub const COMMON_H: &str = include_str!("cu/common.cuh");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -62,6 +64,7 @@ pub enum LibraryName {
     Ggml,
     GgmlQ,
     Quant,
+    GgmlFlashAttn,
     FlashAttn,
 }
 
@@ -78,8 +81,9 @@ fn fnv1a64(text: &str) -> u64 {
 }
 
 impl LibraryName {
-    pub const ALL: [LibraryName; 8] = [
+    pub const ALL: [LibraryName; 9] = [
         Self::FlashAttn,
+        Self::GgmlFlashAttn,
         Self::Unary,
         Self::Binary,
         Self::Array,
@@ -98,7 +102,8 @@ impl LibraryName {
             Self::Ggml => GGML_MM_MV,
             Self::GgmlQ => GGML_MM_MV_Q,
             Self::Quant => GGML_QUANTIZE,
-            Self::FlashAttn => GGML_FLASH_ATTN,
+            Self::GgmlFlashAttn => GGML_FLASH_ATTN,
+            Self::FlashAttn => FLASH_ATTN,
         }
     }
 
@@ -111,7 +116,8 @@ impl LibraryName {
             Self::Ggml => "mm_mv",
             Self::GgmlQ => "mm_mv_q",
             Self::Quant => "quantize",
-            Self::FlashAttn => "flash_attn",
+            Self::GgmlFlashAttn => "flash_attn",
+            Self::FlashAttn => "minimal_flash_attn",
         };
         let hash = fnv1a64(self.content());
         cubin_dir().join(format!("{}_{}.cubin", basename, hash))

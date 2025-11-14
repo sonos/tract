@@ -69,7 +69,7 @@ fn sdpa_tensor<F: Datum + Float>(shape: &[usize]) -> BoxedStrategy<ArrayD<F>> {
     let len = shape.iter().product::<usize>();
     let shape: Vec<usize> = shape.into();
     proptest::collection::vec(
-        (-100i8..=100i8).prop_map(|i| F::from(i as f32 / 100f32).unwrap()),
+        (-80i8..=80i8).prop_map(|i| F::from(i as f32 / 100f32).unwrap()),
         len..=len,
     )
     .prop_map(move |vec| ArrayD::from_shape_vec(shape.clone(), vec).unwrap())

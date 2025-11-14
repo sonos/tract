@@ -5,6 +5,8 @@
 #define CUDA_CC_TURING 750
 #define CUDA_CC_AMPERE 800
 
+#define FLT_MAX 3.40282347e+38F
+
 #define MAX_THREADS 1024
 #define WARP_SIZE 32
 
