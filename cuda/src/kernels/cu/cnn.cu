@@ -46,7 +46,7 @@ extern "C" __global__ void conv2d_f32_generic(
 
   float sum = 0;
   if(bias) {
-    *(float*) ((char*) bias + co * bias_stride);
+    sum = *(float*) ((char*) bias + co * bias_stride);
   }
 
   for(int ci = 0; ci < ker_i; ci++ ) {
