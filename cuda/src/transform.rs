@@ -5,6 +5,7 @@ use tract_core::model::translator::Translate;
 use tract_core::ops::array::{MultiBroadcastTo, PadMode, Slice, TypedConcat};
 use tract_core::ops::binary::TypedBinOp;
 use tract_core::ops::cast::Cast;
+use tract_core::ops::cnn::Conv;
 use tract_core::ops::einsum::prefix_matmul::{rewrite_einsum_to_prefix_matmul, PrefixMatMul};
 use tract_core::ops::element_wise::ElementWiseOp;
 use tract_core::ops::konst::Const;
@@ -247,7 +248,11 @@ fn can_translate_to_cuda_op(source: &TypedModel, node: &TypedNode) -> TractResul
                             input_facts[1].clone(),
                             input_facts[0].clone(),
                         ]))
-            })))
+            })
+            || node
+                .op_as::<Conv>()
+                .and_then(|op| ops::conv::cuda_conv(source, node, op))
+                .is_some()))
 }
 
 fn convert_const(op: &Const) -> TractResult<Const> {
@@ -662,6 +667,8 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
                     Box::new(ops::CudaRmsNorm::new(op.axis, op.eps.clone()))
                 } else if let Some(op) = node.op_as::<GeluApproximate>() {
                     Box::new(ops::CudaGeluApproximate { fast_impl: op.fast_impl })
+                } else if let Some(op) = node.op_as::<Conv>() {
+                    Box::new(ops::conv::cuda_conv(source, node, op).unwrap())
                 } else {
                     bail!("Failed to translate a supported CUDA Op")
                 };
