@@ -39,7 +39,6 @@ fn mk_suite() -> infra::TestSuite {
             no_dilations: true,
             no_batch: true,
             no_group: true,
-            no_bias: true,
             ..ConvProblemParams::default()
         },
     );

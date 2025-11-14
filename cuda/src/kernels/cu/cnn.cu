@@ -2,6 +2,10 @@
 #include <math_constants.h>
 #include "common.cuh"
 
+// extern "C" __global__ void foo(int a, int b, int* c) {
+//   *c = a + b
+// }
+
 extern "C" __global__ void conv2d_f32_generic(
     const float *input,
     size_t in_n, size_t in_c, size_t in_y, size_t in_x,
@@ -33,6 +37,10 @@ extern "C" __global__ void conv2d_f32_generic(
   
   size_t n = blockIdx.z;
   size_t co = blockIdx.y;
+  // printf("in_n:%d in_n_stride:%d\n", in_n, in_n_stride);
+
+  // printf("co=%d ker_o:%d ker_o_stride:%d bias_stride:%d out_c_stride:%d\n",
+  //        co, ker_o, ker_o_stride, bias_stride, out_c_stride);
   size_t xy = blockIdx.x * blockDim.x + threadIdx.x;
   size_t oy = xy / out_x;
   size_t ox = xy % out_x;
@@ -41,12 +49,16 @@ extern "C" __global__ void conv2d_f32_generic(
     return;
   }
 
-  char *pci = (char*) input + n * in_n_stride;
-  char *pck = (char*)  kernel + co * ker_o_stride;
+  // printf("SIZEOF SIZE_T: %d\n", sizeof(size_t));
+  // printf("SIZEOF INT: %d\n", sizeof(int));
+
+  char *pci = ((char*) input) + n * in_n_stride;
+  char *pck = ((char*) kernel) + co * ker_o_stride; 
 
   float sum = 0;
   if(bias) {
-    sum = *(float*) ((char*) bias + co * bias_stride);
+    // printf("HAVE BIAS\n");
+    sum = *(float*) (((char*) bias) + co * bias_stride);
   }
 
   for(int ci = 0; ci < ker_i; ci++ ) {
@@ -68,8 +80,7 @@ extern "C" __global__ void conv2d_f32_generic(
   }
 
   size_t poffset = n * out_n_stride + co * out_c_stride + oy * out_y_stride + ox * out_x_stride;
-
-  float *store = (float*) ((char*) output + poffset);
+  float *store = (float*) (((char*) output) + poffset);
   *store = sum;
   
 }
