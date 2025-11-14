@@ -200,13 +200,12 @@ void kv_iter_body(
           c00 &= (j0 <= jlim0); c01 &= (j1 <= jlim0);
           c10 &= (j0 <= jlim1); c11 &= (j1 <= jlim1);
         } else if constexpr (use_mask) {
-          if (MaskBase) {
-            if (i0_valid && j0_valid) r[0] += (float)MaskBase[(size_t)i0 * len_kv + j0];
-            if (i0_valid && j1_valid) r[1] += (float)MaskBase[(size_t)i0 * len_kv + j1];
-            if (i1_valid && j0_valid) r[2] += (float)MaskBase[(size_t)i1 * len_kv + j0];
-            if (i1_valid && j1_valid) r[3] += (float)MaskBase[(size_t)i1 * len_kv + j1];
-          }
+          if (i0_valid && j0_valid) r[0] += (float)MaskBase[(size_t)i0 * len_kv + j0];
+          if (i0_valid && j1_valid) r[1] += (float)MaskBase[(size_t)i0 * len_kv + j1];
+          if (i1_valid && j0_valid) r[2] += (float)MaskBase[(size_t)i1 * len_kv + j0];
+          if (i1_valid && j1_valid) r[3] += (float)MaskBase[(size_t)i1 * len_kv + j1];
         }
+
         r[0] = fsel_neg_inf(c00, r[0]);
         r[1] = fsel_neg_inf(c01, r[1]);
         r[2] = fsel_neg_inf(c10, r[2]);
@@ -219,12 +218,10 @@ void kv_iter_body(
           if (j0 > jlim1) r[2] = -CUDART_INF_F;
           if (j1 > jlim1) r[3] = -CUDART_INF_F;
         } else if constexpr (use_mask) {
-          if (MaskBase) {
             r[0] += (float)MaskBase[(size_t)i0 * len_kv + j0];
             r[1] += (float)MaskBase[(size_t)i0 * len_kv + j1];
             r[2] += (float)MaskBase[(size_t)i1 * len_kv + j0];
             r[3] += (float)MaskBase[(size_t)i1 * len_kv + j1];
-          }
         }
       }
 
