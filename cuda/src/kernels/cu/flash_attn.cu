@@ -104,7 +104,7 @@ void mma_m16n8k16(uint32_t A[4], uint32_t B[2], float D[4]) {
 }
 
 // ============================================================================
-// Branch-free selects and predicated global store
+// Select and predicated global store
 // ============================================================================
 static __device__ __forceinline__ float fsel_neg_inf(bool keep, float x) {
   float out;
@@ -137,7 +137,7 @@ static __device__ __forceinline__ void st_global_half2_pred(half2* addr, half2 v
 // ======= kv_iter_body (invariants hoisted, tight scopes) =====================
 template<
   int BLOCK_Q, int BLOCK_KV, int DIM, int NUM_WARPS,
-  bool is_causal, bool use_mask, bool full_q_tile, bool Tail
+  bool is_causal, bool use_mask, bool full_q_tile, bool kv_tail
 >
 static __device__ __forceinline__
 void kv_iter_body(
@@ -185,7 +185,7 @@ void kv_iter_body(
       const int j0 = col_base_tile + j_pair0 + 0;
       const int j1 = col_base_tile + j_pair0 + 1;
 
-      if constexpr (Tail) {
+      if constexpr (kv_tail) {
         // tail validity
         const bool i0_valid = full_q_tile ? true : (i0g < len_q);
         const bool i1_valid = full_q_tile ? true : (i1g < len_q);
@@ -603,19 +603,17 @@ extern "C" {  \
 #define INSTANTIATE_FLASH_ATTN_FOR_BLOCK_KV(block_q, block_kv) \
   INSTANTIATE_FLASH_ATTN_FOR_D(block_q, block_kv, 64) \
   INSTANTIATE_FLASH_ATTN_FOR_D(block_q, block_kv, 128) \
+  INSTANTIATE_FLASH_ATTN_FOR_D(block_q, block_kv, 80) \
+  // Other supported D value. 
+  //Never encountered in practice so commented to keep compilation fast
+  //INSTANTIATE_FLASH_ATTN_FOR_D(block_q, block_kv, 96) \
+  //INSTANTIATE_FLASH_ATTN_FOR_D(block_q, block_kv, 112) \
+  //INSTANTIATE_FLASH_ATTN_FOR_D(block_q, block_kv, 256) \
 
 #define INSTANTIATE_FLASH_ATTN_FOR_BLOCK_Q(block_q) \
-  INSTANTIATE_FLASH_ATTN_FOR_BLOCK_KV(block_q, 32) \
-  //INSTANTIATE_FLASH_ATTN_FOR_BLOCK_KV(block_q, 48) \
-  //INSTANTIATE_FLASH_ATTN_FOR_BLOCK_KV(block_q, 64) \
-  //INSTANTIATE_FLASH_ATTN_FOR_BLOCK_KV(block_q, 80) \
-  //INSTANTIATE_FLASH_ATTN_FOR_BLOCK_KV(block_q, 96) \
-  //INSTANTIATE_FLASH_ATTN_FOR_BLOCK_KV(block_q, 112) \
-  //INSTANTIATE_FLASH_ATTN_FOR_BLOCK_KV(block_q, 128) \
-  //INSTANTIATE_FLASH_ATTN_FOR_BLOCK_KV(block_q, 16) \
+  INSTANTIATE_FLASH_ATTN_FOR_BLOCK_KV(block_q, 32)
 
 #define INSTANTIATE_FLASH_ATTN() \
-  INSTANTIATE_FLASH_ATTN_FOR_BLOCK_Q(64) \
-  //INSTANTIATE_FLASH_ATTN_FOR_BLOCK_Q(128)
+  INSTANTIATE_FLASH_ATTN_FOR_BLOCK_Q(64)
 
 INSTANTIATE_FLASH_ATTN()
