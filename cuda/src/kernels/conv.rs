@@ -1,6 +1,6 @@
 use crate::context::{cuda_context, TractCudaStream};
 use crate::kernels::get_cuda_view;
-use cudarc::driver::{LaunchConfig, PushKernelArg};
+use cudarc::driver::{LaunchArgs, LaunchConfig, PushKernelArg};
 use std::fmt::Debug;
 use tract_core::dyn_clone::{self, DynClone};
 use tract_core::internal::*;
@@ -43,10 +43,11 @@ impl ConvKernel for Generic {
             ctx.load_pipeline(crate::kernels::LibraryName::CNN, "conv2d_f32_generic".into())?;
 
         let mut launcher = stream.launch_builder(&func);
-        let size_of = f32::datum_type().size_of();
+        let size_of: usize = f32::datum_type().size_of();
 
         let input_shape = op.pool_spec.data_format.shape(input.shape())?;
         let input = get_cuda_view(input);
+
         launcher.arg(&input);
         launcher.arg(input_shape.n().unwrap_or(&1));
         launcher.arg(input_shape.c());
@@ -91,11 +92,11 @@ impl ConvKernel for Generic {
 
         let bias_view = get_cuda_view(bias);
         launcher.arg(&bias_view);
-        if bias.rank() == 0 {
-            launcher.arg(&0); // scalar bias: stride = 0 is broadcasting
+        launcher.arg(if bias.rank() == 0 {
+            &0usize // scalar bias: stride = 0 is broadcasting
         } else {
-            launcher.arg(&size_of);
-        }
+            &size_of
+        });
 
         let ci_per_group = op.pool_spec.input_channels / op.group;
         let co_per_group = op.pool_spec.output_channels / op.group;
