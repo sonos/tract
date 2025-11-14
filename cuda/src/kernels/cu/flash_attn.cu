@@ -283,7 +283,7 @@ void kv_iter_body(
 // ============================================================================
 // Kernel. Adapted from: https://github.com/gau-nernst/learn-cuda/blob/main/07_attention/attention_v5.cu
 // ============================================================================
-template<int BLOCK_Q, int BLOCK_KV, int DIM, int NUM_WARPS, bool is_causal, bool use_mask, bool full_q_tile>
+template<int BLOCK_Q, int BLOCK_KV, int DIM, int NUM_WARPS, bool is_causal, bool use_mask, bool full_q_tile, bool kv_rem>
 static __device__ void attention_v5_kernel(
   const half* __restrict__ Q,  // [bs, len_q, DIM]
   const half* __restrict__ K,  // [bs, len_kv, DIM]
@@ -388,7 +388,6 @@ static __device__ void attention_v5_kernel(
 
   // ------------------ KV split: full tiles then optional tail ----------------
   const int kv_full_iters = len_kv / BLOCK_KV;      // exact full tiles
-  const int kv_rem        = len_kv % BLOCK_KV;      // tail rows
 
   // ---- Prefetch K0 for FULL loop (unguarded) ----
   const half* Kcur = Kptr;
@@ -472,18 +471,18 @@ static __device__ void attention_v5_kernel(
   }
 
   // ----------------------------- KV TAIL (optional) --------------------------
-  if (kv_rem) {
+  if constexpr(kv_rem) {
     const int kv_tile_base = kv_full_iters * BLOCK_KV;
 
     // Prefetch tail K (predicated)
     const uint32_t Kdst = K_smem + (kv_full_iters % 2) * (BLOCK_KV * DIM * sizeof(half));
-    global_to_shared_swizzle_pred<BLOCK_KV, DIM, TB_SIZE>(Kdst, Kcur, DIM, tid, kv_rem);
+    global_to_shared_swizzle_pred<BLOCK_KV, DIM, TB_SIZE>(Kdst, Kcur, DIM, tid, len_kv % BLOCK_KV);
     Kcur += (size_t)BLOCK_KV * DIM;
     asm volatile("cp.async.commit_group;");
 
     __syncthreads();
     // Prefetch tail V (predicated)
-    global_to_shared_swizzle_pred<BLOCK_KV, DIM, TB_SIZE>(V_smem, Vcur, DIM, tid, kv_rem);
+    global_to_shared_swizzle_pred<BLOCK_KV, DIM, TB_SIZE>(V_smem, Vcur, DIM, tid, len_kv % BLOCK_KV);
     Vcur += (size_t)BLOCK_KV * DIM;
     asm volatile("cp.async.commit_group;");
 
@@ -578,7 +577,7 @@ extern "C" {  \
     const half* __restrict__ Q, const half* __restrict__ K, \
     const half* __restrict__ V, const half* __restrict__ M, half* __restrict__ O, \
     int bs, int qh, int head_ratio, int len_q, int len_kv, float scale) { \
-      attention_v5_kernel<BLOCK_Q, BLOCK_KV, D, 4, is_causal, use_mask, true>( \
+      attention_v5_kernel<BLOCK_Q, BLOCK_KV, D, 4, is_causal, use_mask, true, false>( \
         Q, K, V, M, O, bs, qh, head_ratio, len_q, len_kv, scale); \
   } \
 \
@@ -587,7 +586,25 @@ extern "C" {  \
     const half* __restrict__ Q, const half* __restrict__ K, \
     const half* __restrict__ V, const half* __restrict__ M, half* __restrict__ O, \
     int bs, int qh, int head_ratio, int len_q, int len_kv, float scale) { \
-      attention_v5_kernel<BLOCK_Q, BLOCK_KV, D, 4, is_causal, use_mask, false>( \
+      attention_v5_kernel<BLOCK_Q, BLOCK_KV, D, 4, is_causal, use_mask, false, false>( \
+        Q, K, V, M, O, bs, qh, head_ratio, len_q, len_kv, scale); \
+  } \
+\
+    __launch_bounds__(4 * WARP_SIZE) \
+    __global__ void attention_v5_full_kv_rem_##BLOCK_Q##_##BLOCK_KV##_##D##_##is_causal##_##use_mask ( \
+    const half* __restrict__ Q, const half* __restrict__ K, \
+    const half* __restrict__ V, const half* __restrict__ M, half* __restrict__ O, \
+    int bs, int qh, int head_ratio, int len_q, int len_kv, float scale) { \
+      attention_v5_kernel<BLOCK_Q, BLOCK_KV, D, 4, is_causal, use_mask, true, true>( \
+        Q, K, V, M, O, bs, qh, head_ratio, len_q, len_kv, scale); \
+  } \
+\
+    __launch_bounds__(4 * WARP_SIZE) \
+    __global__ void attention_v5_tail_kv_rem_##BLOCK_Q##_##BLOCK_KV##_##D##_##is_causal##_##use_mask ( \
+    const half* __restrict__ Q, const half* __restrict__ K, \
+    const half* __restrict__ V, const half* __restrict__ M, half* __restrict__ O, \
+    int bs, int qh, int head_ratio, int len_q, int len_kv, float scale) { \
+      attention_v5_kernel<BLOCK_Q, BLOCK_KV, D, 4, is_causal, use_mask, false, true>( \
         Q, K, V, M, O, bs, qh, head_ratio, len_q, len_kv, scale); \
   } \
 }
