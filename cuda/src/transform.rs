@@ -249,7 +249,7 @@ fn can_translate_to_cuda_op(source: &TypedModel, node: &TypedNode) -> TractResul
             })
             || node
                 .op_as::<Conv>()
-                .and_then(|op| ops::conv::cuda_conv(source, node, op))
+                .and_then(|op| ops::conv::cuda_conv(source, node, op).unwrap())
                 .is_some()))
 }
 
@@ -627,7 +627,7 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
                 } else if let Some(op) = node.op_as::<GeluApproximate>() {
                     Box::new(ops::CudaGeluApproximate { fast_impl: op.fast_impl })
                 } else if let Some(op) = node.op_as::<Conv>() {
-                    Box::new(ops::conv::cuda_conv(source, node, op).unwrap())
+                    Box::new(ops::conv::cuda_conv(source, node, op).unwrap().unwrap())
                 } else {
                     bail!("Failed to translate a supported CUDA Op")
                 };
