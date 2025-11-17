@@ -9,6 +9,7 @@ pub fn cuda_conv(model: &TypedModel, node: &TypedNode, op: &Conv) -> TractResult
     if op.pool_spec.data_format.has_n()
         && op.pool_spec.kernel_shape.len() == 2
         && facts.iter().all(|f| f.datum_type.is::<f32>())
+        && op.group == 1
     {
         Ok(Some(CudaConv { op: op.clone(), kernel: Box::new(Generic) }))
     } else {
@@ -58,7 +59,7 @@ impl EvalOp for CudaConv {
         )?;
 
         CUDA_STREAM.with(|stream| {
-            self.kernel.dispatch(&self.op, stream, &inputs[0], &inputs[1], &inputs[2], &output)
+            self.kernel.dispatch(&self.op, stream, inputs[0], inputs[1], inputs[2], &output)
         })?;
         Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
     }
