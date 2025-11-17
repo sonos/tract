@@ -40,10 +40,9 @@ impl ConvKernel for Generic {
     ) -> TractResult<()> {
         let ctx = cuda_context();
         let func =
-            ctx.load_pipeline(crate::kernels::LibraryName::CNN, "conv2d_f32_generic".into())?;
+            ctx.load_pipeline(crate::kernels::LibraryName::Cnn, "conv2d_f32_generic".into())?;
 
         let mut launcher = stream.launch_builder(&func);
-        let size_of: usize = f32::datum_type().size_of();
 
         let input_shape = op.pool_spec.data_format.shape(input.shape())?;
         let input = get_cuda_view(input);
@@ -54,19 +53,10 @@ impl ConvKernel for Generic {
         launcher.arg(&input_shape.hw_dims()[0]);
         launcher.arg(&input_shape.hw_dims()[1]);
 
-        let input_strides: TVec<_> = [
-            input_shape.n_stride().unwrap_or(&0),
-            input_shape.c_stride(),
-            &input_shape.hw_strides()[0],
-            &input_shape.hw_strides()[1],
-        ]
-        .into_iter()
-        .map(|s| *s as usize * size_of)
-        .collect();
-
-        for stride in &input_strides {
-            launcher.arg(stride);
-        }
+        launcher.arg(input_shape.n_stride().unwrap_or(&0));
+        launcher.arg(input_shape.c_stride());
+        launcher.arg(&input_shape.hw_strides()[0]);
+        launcher.arg(&input_shape.hw_strides()[1]);
 
         let kfmt = op.kernel_fmt;
         let weights_view = get_cuda_view(weights);
@@ -83,7 +73,7 @@ impl ConvKernel for Generic {
             kfmt.h_axis() + 1,
         ]
         .iter()
-        .map(|axis| weights.strides()[*axis] as usize * size_of)
+        .map(|axis| weights.strides()[*axis])
         .collect();
 
         for stride in &ker_strides {
@@ -95,7 +85,7 @@ impl ConvKernel for Generic {
         launcher.arg(if bias.rank() == 0 {
             &0usize // scalar bias: stride = 0 is broadcasting
         } else {
-            &size_of
+            &1usize
         });
 
         let ci_per_group = op.pool_spec.input_channels / op.group;
@@ -103,7 +93,7 @@ impl ConvKernel for Generic {
         launcher.arg(&ci_per_group);
         launcher.arg(&co_per_group);
 
-        let padding = op.pool_spec.computed_padding(&input_shape.hw_dims());
+        let padding = op.pool_spec.computed_padding(input_shape.hw_dims());
         launcher.arg(&padding[0].pad_before);
         launcher.arg(&padding[1].pad_before);
 
@@ -123,19 +113,10 @@ impl ConvKernel for Generic {
         launcher.arg(&output_shape.hw_dims()[0]);
         launcher.arg(&output_shape.hw_dims()[1]);
 
-        let output_strides: TVec<_> = [
-            output_shape.n_stride().unwrap_or(&0),
-            output_shape.c_stride(),
-            &output_shape.hw_strides()[0],
-            &output_shape.hw_strides()[1],
-        ]
-        .into_iter()
-        .map(|s| *s as usize * size_of)
-        .collect();
-
-        for stride in &output_strides {
-            launcher.arg(stride);
-        }
+        launcher.arg(output_shape.n_stride().unwrap_or(&0));
+        launcher.arg(output_shape.c_stride());
+        launcher.arg(&output_shape.hw_strides()[0]);
+        launcher.arg(&output_shape.hw_strides()[1]);
 
         let cfg = LaunchConfig {
             grid_dim: (

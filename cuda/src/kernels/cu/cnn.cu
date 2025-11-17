@@ -52,13 +52,13 @@ extern "C" __global__ void conv2d_f32_generic(
   // printf("SIZEOF SIZE_T: %d\n", sizeof(size_t));
   // printf("SIZEOF INT: %d\n", sizeof(int));
 
-  char *pci = ((char*) input) + n * in_n_stride;
-  char *pck = ((char*) kernel) + co * ker_o_stride; 
+  const float *pfi = input + n * in_n_stride;
+  const float *pfk = kernel + co * ker_o_stride; 
 
   float sum = 0;
   if(bias) {
     // printf("HAVE BIAS\n");
-    sum = *(float*) (((char*) bias) + co * bias_stride);
+    sum = *(bias + co * bias_stride);
   }
 
   for(int ci = 0; ci < ker_i; ci++ ) {
@@ -72,15 +72,14 @@ extern "C" __global__ void conv2d_f32_generic(
         if(x < 0 || x >= in_x) {
           continue;
         }
-        float i = *(float*) (pci + ci * in_c_stride + x * in_x_stride + y * in_y_stride);
-        float k = *(float*) (pck + ci * ker_i_stride + kx * ker_x_stride + ky * ker_y_stride);
+        float i = *(pfi + ci * in_c_stride + x * in_x_stride + y * in_y_stride);
+        float k = *(pfk + ci * ker_i_stride + kx * ker_x_stride + ky * ker_y_stride);
         sum += i*k;
       }
     }
   }
 
   size_t poffset = n * out_n_stride + co * out_c_stride + oy * out_y_stride + ox * out_x_stride;
-  float *store = (float*) (((char*) output) + poffset);
-  *store = sum;
+  *(output + poffset) = sum;
   
 }
