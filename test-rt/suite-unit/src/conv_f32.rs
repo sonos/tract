@@ -252,7 +252,6 @@ impl Arbitrary for ConvProblem {
                         ci0 = 1;
                     }
                     let shape_in = df.from_n_c_hw(batch, ci0 * group, data_shape).unwrap();
-                    let data_in = tensor(&*shape_in.shape);
                     match kf {
                         KernelFormat::HWIO => {
                             ker_shape.push(ci0 * group);
@@ -272,13 +271,33 @@ impl Arbitrary for ConvProblem {
                     let strides = vec(1usize..=max_stride, hw_rank..=hw_rank);
                     let max_dil = if params.no_dilations { 1 } else { 3 };
                     let dilations = vec(1usize..=max_dil, hw_rank..=hw_rank);
+                    (
+                        Just((kf, pad, shape_in, group)),
+                        Just(ker_shape),
+                        Just(co0),
+                        strides,
+                        dilations,
+                    )
+                },
+            )
+            .prop_flat_map(
+                move |((kf, pad, shape_in, group), ker_shape, co0, strides, dilations)| {
                     let kernel = tensor(&ker_shape);
+                    let data = tensor(&*shape_in.shape);
                     let bias = if params.no_bias {
                         Just(None).boxed()
                     } else {
                         proptest::option::of(tensor(&[co0 * group])).boxed()
                     };
-                    (Just((kf, pad, shape_in, group)), data_in, kernel, bias, strides, dilations)
+
+                    (
+                        Just((kf, pad, shape_in, group)),
+                        data,
+                        kernel,
+                        bias,
+                        Just(strides),
+                        Just(dilations),
+                    )
                 },
             )
             .prop_map(
@@ -1460,6 +1479,21 @@ pub fn suite() -> TractResult<TestSuite> {
             pad: PaddingSpec::Valid,
             strides: tvec!(1),
             dilations: tvec!(2),
+        },
+    );
+
+    suite.add(
+        "dil_6",
+        ConvProblem {
+            shape_in: DataFormat::CHW.from_n_c_hw(1, 1, [1, 2]).unwrap(),
+            kernel_format: KernelFormat::OIHW,
+            group: 1,
+            data: arr3(&[[[8.0, 3.0]]]).into_dyn(),
+            kernel: arr4(&[[[[1.0]]]]).into_dyn(),
+            bias: None,
+            pad: PaddingSpec::Valid,
+            strides: tvec!(1, 1),
+            dilations: tvec!(1, 2),
         },
     );
 

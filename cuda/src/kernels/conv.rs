@@ -38,46 +38,42 @@ impl ConvKernel for Generic {
         bias: &DeviceTensor,
         output: &DeviceTensor,
     ) -> TractResult<()> {
+        let input_shape = op.pool_spec.data_format.shape(input.shape())?;
+
         let ctx = cuda_context();
-        let func =
-            ctx.load_pipeline(crate::kernels::LibraryName::Cnn, "conv2d_f32_generic".into())?;
+        let func_name = format!("conv{}d_f32_generic", input_shape.hw_rank());
+        let func = ctx.load_pipeline(crate::kernels::LibraryName::Cnn, func_name)?;
 
         let mut launcher = stream.launch_builder(&func);
 
-        let input_shape = op.pool_spec.data_format.shape(input.shape())?;
         let input = get_cuda_view(input);
 
         launcher.arg(&input);
         launcher.arg(input_shape.n().unwrap_or(&1));
         launcher.arg(input_shape.c());
-        launcher.arg(&input_shape.hw_dims()[0]);
-        launcher.arg(&input_shape.hw_dims()[1]);
+        for d in 0..input_shape.hw_rank() {
+            launcher.arg(&input_shape.hw_dims()[d]);
+        }
 
         launcher.arg(input_shape.n_stride().unwrap_or(&0));
         launcher.arg(input_shape.c_stride());
-        launcher.arg(&input_shape.hw_strides()[0]);
-        launcher.arg(&input_shape.hw_strides()[1]);
+        for d in 0..input_shape.hw_rank() {
+            launcher.arg(&input_shape.hw_strides()[d]);
+        }
 
         let kfmt = op.kernel_fmt;
         let weights_view = get_cuda_view(weights);
         launcher.arg(&weights_view);
         launcher.arg(kfmt.o(weights.shape()));
         launcher.arg(kfmt.i(weights.shape()));
-        launcher.arg(&kfmt.hw(weights.shape())[0]);
-        launcher.arg(&kfmt.hw(weights.shape())[1]);
+        for d in 0..input_shape.hw_rank() {
+            launcher.arg(&kfmt.hw(weights.shape())[d]);
+        }
 
-        let ker_strides: TVec<_> = [
-            kfmt.o_axis(weights.shape()),
-            kfmt.i_axis(weights.shape()),
-            kfmt.h_axis(),
-            kfmt.h_axis() + 1,
-        ]
-        .iter()
-        .map(|axis| weights.strides()[*axis])
-        .collect();
-
-        for stride in &ker_strides {
-            launcher.arg(stride);
+        launcher.arg(&weights.strides()[kfmt.o_axis(weights.shape())]);
+        launcher.arg(&weights.strides()[kfmt.i_axis(weights.shape())]);
+        for d in 0..input_shape.hw_rank() {
+            launcher.arg(&weights.strides()[kfmt.h_axis() + d]);
         }
 
         let bias_view = get_cuda_view(bias);
@@ -94,29 +90,35 @@ impl ConvKernel for Generic {
         launcher.arg(&co_per_group);
 
         let padding = op.pool_spec.computed_padding(input_shape.hw_dims());
-        launcher.arg(&padding[0].pad_before);
-        launcher.arg(&padding[1].pad_before);
+        for d in 0..input_shape.hw_rank() {
+            launcher.arg(&padding[d].pad_before);
+        }
 
         let strides = op.pool_spec.strides();
-        launcher.arg(&strides[0]);
-        launcher.arg(&strides[1]);
+        for d in 0..input_shape.hw_rank() {
+            launcher.arg(&strides[d]);
+        }
 
         let dilations = op.pool_spec.dilations();
-        launcher.arg(&dilations[0]);
-        launcher.arg(&dilations[1]);
+        for d in 0..input_shape.hw_rank() {
+            launcher.arg(&dilations[d]);
+        }
 
         let output_shape = op.pool_spec.data_format.shape(output.shape())?;
+        dbg!(&output_shape);
         let output = get_cuda_view(output);
         launcher.arg(&output);
         launcher.arg(output_shape.n().unwrap_or(&1));
         launcher.arg(output_shape.c());
-        launcher.arg(&output_shape.hw_dims()[0]);
-        launcher.arg(&output_shape.hw_dims()[1]);
+        for d in 0..input_shape.hw_rank() {
+            launcher.arg(dbg!(&output_shape.hw_dims()[d]));
+        }
 
         launcher.arg(output_shape.n_stride().unwrap_or(&0));
         launcher.arg(output_shape.c_stride());
-        launcher.arg(&output_shape.hw_strides()[0]);
-        launcher.arg(&output_shape.hw_strides()[1]);
+        for d in 0..input_shape.hw_rank() {
+            launcher.arg(&output_shape.hw_strides()[d]);
+        }
 
         let cfg = LaunchConfig {
             grid_dim: (

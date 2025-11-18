@@ -34,13 +34,7 @@ fn mk_suite() -> infra::TestSuite {
 
     unit.get_sub_mut("conv_f32").add_arbitrary::<ConvProblem>(
         "proptest",
-        ConvProblemParams {
-            geo_rank: Some(2..3),
-            no_dilations: true,
-            no_batch: true,
-            no_group: true,
-            ..ConvProblemParams::default()
-        },
+        ConvProblemParams { no_group: true, ..ConvProblemParams::default() },
     );
 
     unit.get_sub_mut("sdpa").add_arbitrary::<SdpaProblem<half::f16>>(
