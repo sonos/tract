@@ -12,16 +12,14 @@ extern "C" __global__ void conv{{georank}}d_f32_generic(
     {% for i in (1..georank) %} size_t in_{{i}}_stride, {% endfor %}
 
     const float *kernel,
-    size_t ker_o, size_t ker_i,
+    size_t groups, size_t co_per_group, size_t ci_per_group,
     {% for i in (1..georank) %} size_t ker_{{i}}, {% endfor %}
-    size_t ker_o_stride, size_t ker_i_stride,
+    size_t ker_g_stride, size_t ker_o_stride, size_t ker_i_stride,
     {% for i in (1..georank) %} size_t ker_{{i}}_stride, {% endfor %}
 
     const float *bias,
     size_t bias_stride,
-
-    size_t ci_per_group, size_t co_per_group,
-    
+  
     {% for i in (1..georank) %} size_t pad_{{i}}, {% endfor %}
     {% for i in (1..georank) %} size_t stride_{{i}}, {% endfor %}
     {% for i in (1..georank) %} size_t dil_{{i}}, {% endfor %}
@@ -36,11 +34,11 @@ extern "C" __global__ void conv{{georank}}d_f32_generic(
   assert(out_n == gridDim.z);
   assert(blockDim.z == 1);
 
-  assert(ker_o == gridDim.y);
   assert(blockDim.y == 1);
   
   size_t n = blockIdx.z;
   size_t co = blockIdx.y;
+  size_t group = co / co_per_group;
   size_t xyz = blockIdx.x * blockDim.x + threadIdx.x;
   {% capture georank_minus_1 %}{{georank|minus:1}}{%endcapture%}
   {% for i in (1..georank_minus_1) reversed %}
@@ -56,7 +54,9 @@ extern "C" __global__ void conv{{georank}}d_f32_generic(
      }
   {% endfor %}
 
-  const float *pfi = input + n * in_n_stride;
+  // printf("co={} group={} groups={} co_per_group={}\n", co, group, co_per_group);
+
+  const float *pfi = input + n * in_n_stride + ci_per_group * group * in_c_stride;
   const float *pfk = kernel + co * ker_o_stride; 
 
   float sum = 0;
@@ -64,7 +64,7 @@ extern "C" __global__ void conv{{georank}}d_f32_generic(
     sum = *(bias + co * bias_stride);
   }
 
-  for(int ci = 0; ci < ker_i; ci++ ) {
+  for(int ci = 0; ci < ci_per_group; ci++ ) {
   {% for i in (1..georank) %}
     for(int k_{{i}} = 0; k_{{i}} < ker_{{i}}; k_{{i}}++) {
       int x_{{i}} = ox_{{i}} * stride_{{i}} + k_{{i}} * dil_{{i}} - pad_{{i}};
