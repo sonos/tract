@@ -2,6 +2,7 @@ use crate::ast::*;
 use crate::internal::*;
 use tract_core::ndarray::ArrayViewD;
 use tract_core::ndarray::Axis;
+use tract_core::ops::cnn::conv::{rewrite_kernel_conv_in_oihw, rewrite_kernel_deconv_in_oihw};
 use tract_itertools::Itertools;
 use tract_linalg::block_quant::BlockQuantValue;
 
@@ -22,14 +23,8 @@ pub fn rewrite_model(model: &mut TypedModel) -> TractResult<()> {
             "rewrite_deconv_with_n_axis",
             tract_core::ops::cnn::rewrite_deconv_with_n_axis,
         )
-        .with_rule_for(
-            "rewrite_kernel_conv_in_oihw",
-            crate::ops::nnef::ser::rewrite_kernel_conv_in_oihw,
-        )
-        .with_rule_for(
-            "rewrite_kernel_deconv_in_oihw",
-            crate::ops::nnef::ser::rewrite_kernel_deconv_in_oihw,
-        )
+        .with_rule_for("rewrite_kernel_conv_in_oihw", rewrite_kernel_conv_in_oihw)
+        .with_rule_for("rewrite_kernel_deconv_in_oihw", rewrite_kernel_deconv_in_oihw)
         .with_rule_for(
             "rewrite_consistent_quantized_conv",
             crate::ops::nnef::ser::rewrite_consistent_quantized_conv,
