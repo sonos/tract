@@ -6,7 +6,7 @@ use tract_gpu::tensor::DeviceTensorExt;
 
 pub fn cuda_conv(model: &TypedModel, node: &TypedNode, op: &Conv) -> TractResult<Option<CudaConv>> {
     let facts = model.node_input_facts(node.id)?;
-    if facts.iter().all(|f| f.datum_type.is::<f32>()) && op.group == 1 && facts[1].rank() <= 6 {
+    if facts.iter().all(|f| f.datum_type.is::<f32>()) && facts[1].rank() <= 6 {
         Ok(Some(CudaConv { op: op.clone(), kernel: Box::new(Generic) }))
     } else {
         Ok(None)

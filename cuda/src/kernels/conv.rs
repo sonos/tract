@@ -62,16 +62,22 @@ impl ConvKernel for Generic {
         }
 
         let kfmt = op.kernel_fmt;
+        let co_per_group = op.pool_spec.output_channels / op.group;
+        let ci_per_group = op.pool_spec.input_channels / op.group;
+
         let weights_view = get_cuda_view(weights);
         launcher.arg(&weights_view);
-        launcher.arg(kfmt.o(weights.shape()));
-        launcher.arg(kfmt.i(weights.shape()));
+        launcher.arg(&op.group);
+        launcher.arg(&co_per_group);
+        launcher.arg(&ci_per_group);
         for d in 0..input_shape.hw_rank() {
             launcher.arg(&kfmt.hw(weights.shape())[d]);
         }
 
-        launcher.arg(&weights.strides()[kfmt.o_axis(weights.shape())]);
-        launcher.arg(&weights.strides()[kfmt.i_axis(weights.shape())]);
+        let group_stride = weights.strides()[0] as usize * co_per_group;
+        launcher.arg(&group_stride);
+        launcher.arg(&weights.strides()[0]);
+        launcher.arg(&weights.strides()[1]);
         for d in 0..input_shape.hw_rank() {
             launcher.arg(&weights.strides()[kfmt.h_axis() + d]);
         }
@@ -83,11 +89,6 @@ impl ConvKernel for Generic {
         } else {
             &1usize
         });
-
-        let ci_per_group = op.pool_spec.input_channels / op.group;
-        let co_per_group = op.pool_spec.output_channels / op.group;
-        launcher.arg(&ci_per_group);
-        launcher.arg(&co_per_group);
 
         let padding = op.pool_spec.computed_padding(input_shape.hw_dims());
         for d in 0..input_shape.hw_rank() {
@@ -105,13 +106,12 @@ impl ConvKernel for Generic {
         }
 
         let output_shape = op.pool_spec.data_format.shape(output.shape())?;
-        dbg!(&output_shape);
         let output = get_cuda_view(output);
         launcher.arg(&output);
         launcher.arg(output_shape.n().unwrap_or(&1));
         launcher.arg(output_shape.c());
         for d in 0..input_shape.hw_rank() {
-            launcher.arg(dbg!(&output_shape.hw_dims()[d]));
+            launcher.arg(&output_shape.hw_dims()[d]);
         }
 
         launcher.arg(output_shape.n_stride().unwrap_or(&0));
