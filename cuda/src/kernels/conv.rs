@@ -56,7 +56,7 @@ impl ConvKernel for Generic {
 
         launcher.arg(input_shape.n_stride().unwrap_or(&0));
         launcher.arg(input_shape.c_stride());
-        launcher.set_slice(&input_shape.hw_strides());
+        launcher.set_slice(input_shape.hw_strides());
 
         let kfmt = op.kernel_fmt;
         let co_per_group = op.pool_spec.output_channels / op.group;
@@ -71,7 +71,7 @@ impl ConvKernel for Generic {
 
         let group_stride = weights.strides()[0] as usize * co_per_group;
         launcher.arg(&group_stride);
-        launcher.set_slice(&weights.strides());
+        launcher.set_slice(weights.strides());
 
         let bias_view = get_cuda_view(bias);
         launcher.arg(&bias_view);
@@ -97,11 +97,11 @@ impl ConvKernel for Generic {
         launcher.arg(&output);
         launcher.arg(output_shape.n().unwrap_or(&1));
         launcher.arg(output_shape.c());
-        launcher.set_slice(&output_shape.hw_dims());
+        launcher.set_slice(output_shape.hw_dims());
 
         launcher.arg(output_shape.n_stride().unwrap_or(&0));
         launcher.arg(output_shape.c_stride());
-        launcher.set_slice(&output_shape.hw_strides());
+        launcher.set_slice(output_shape.hw_strides());
 
         let cfg = LaunchConfig {
             grid_dim: (
