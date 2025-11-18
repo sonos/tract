@@ -2,31 +2,35 @@
 #include <math_constants.h>
 #include "common.cuh"
 
-// extern "C" __global__ void foo(int a, int b, int* c) {
-//   *c = a + b
-// }
+{% for georank in (1..4) %}
 
-extern "C" __global__ void conv2d_f32_generic(
+extern "C" __global__ void conv{{georank}}d_f32_generic(
     const float *input,
-    size_t in_n, size_t in_c, size_t in_y, size_t in_x,
-    size_t in_n_stride, size_t in_c_stride, size_t in_y_stride, size_t in_x_stride,
+    size_t in_n, size_t in_c,
+    {% for i in (1..georank) %} size_t in_{{i}}, {% endfor %}
+    size_t in_n_stride, size_t in_c_stride,
+    {% for i in (1..georank) %} size_t in_{{i}}_stride, {% endfor %}
 
     const float *kernel,
-    size_t ker_o, size_t ker_i, size_t ker_y, size_t ker_x,
-    size_t ker_o_stride, size_t ker_i_stride, size_t ker_y_stride, size_t ker_x_stride,
+    size_t ker_o, size_t ker_i,
+    {% for i in (1..georank) %} size_t ker_{{i}}, {% endfor %}
+    size_t ker_o_stride, size_t ker_i_stride,
+    {% for i in (1..georank) %} size_t ker_{{i}}_stride, {% endfor %}
 
     const float *bias,
     size_t bias_stride,
 
     size_t ci_per_group, size_t co_per_group,
     
-    size_t pad_y, size_t pad_x,
-    size_t stride_y, size_t stride_x,
-    size_t dil_y, size_t dil_x,
+    {% for i in (1..georank) %} size_t pad_{{i}}, {% endfor %}
+    {% for i in (1..georank) %} size_t stride_{{i}}, {% endfor %}
+    {% for i in (1..georank) %} size_t dil_{{i}}, {% endfor %}
     
     float *output,
-    size_t out_n, size_t out_c, size_t out_y, size_t out_x,
-    size_t out_n_stride, size_t out_c_stride, size_t out_y_stride, size_t out_x_stride
+    size_t out_n, size_t out_c,
+    {% for i in (1..georank) %} size_t out_{{i}}, {% endfor %}
+    size_t out_n_stride, size_t out_c_stride
+    {% for i in (1..georank) %}, size_t out_{{i}}_stride {% endfor %}
 ) {
   assert(in_n == gridDim.z);
   assert(out_n == gridDim.z);
@@ -37,49 +41,50 @@ extern "C" __global__ void conv2d_f32_generic(
   
   size_t n = blockIdx.z;
   size_t co = blockIdx.y;
-  // printf("in_n:%d in_n_stride:%d\n", in_n, in_n_stride);
+  size_t xyz = blockIdx.x * blockDim.x + threadIdx.x;
+  {% capture georank_minus_1 %}{{georank|minus:1}}{%endcapture%}
+  {% for i in (1..georank_minus_1) reversed %}
+     size_t ox_{{i}} = xyz % out_{{i}};
+     xyz = xyz / out_{{i}};
+  {% endfor %}
+  size_t ox_{{georank}} = xyz;
 
-  // printf("co=%d ker_o:%d ker_o_stride:%d bias_stride:%d out_c_stride:%d\n",
-  //        co, ker_o, ker_o_stride, bias_stride, out_c_stride);
-  size_t xy = blockIdx.x * blockDim.x + threadIdx.x;
-  size_t oy = xy / out_x;
-  size_t ox = xy % out_x;
 
-  if (ox >= out_x || oy >= out_y) {
-    return;
-  }
-
-  // printf("SIZEOF SIZE_T: %d\n", sizeof(size_t));
-  // printf("SIZEOF INT: %d\n", sizeof(int));
+  {% for i in (1..georank) %}
+     if (ox_{{i}} >= out_{{i}}) {
+        return;
+     }
+  {% endfor %}
 
   const float *pfi = input + n * in_n_stride;
   const float *pfk = kernel + co * ker_o_stride; 
 
   float sum = 0;
   if(bias) {
-    // printf("HAVE BIAS\n");
     sum = *(bias + co * bias_stride);
   }
 
   for(int ci = 0; ci < ker_i; ci++ ) {
-    for(int ky = 0; ky < ker_y; ky++) {
-      int y = oy * stride_y + ky * dil_y - pad_y;
-      if(y < 0 || y >= in_y) {
+  {% for i in (1..georank) %}
+    for(int k_{{i}} = 0; k_{{i}} < ker_{{i}}; k_{{i}}++) {
+      int x_{{i}} = ox_{{i}} * stride_{{i}} + k_{{i}} * dil_{{i}} - pad_{{i}};
+      if (x_{{i}} < 0 || x_{{i}} >= in_{{i}}) {
         continue;
       }
-      for(int kx = 0; kx < ker_x; kx++) {
-        int x = ox * stride_x + kx * dil_x - pad_x;
-        if(x < 0 || x >= in_x) {
-          continue;
-        }
-        float i = *(pfi + ci * in_c_stride + x * in_x_stride + y * in_y_stride);
-        float k = *(pfk + ci * ker_i_stride + kx * ker_x_stride + ky * ker_y_stride);
-        sum += i*k;
-      }
-    }
-  }
+  {% endfor %}
 
-  size_t poffset = n * out_n_stride + co * out_c_stride + oy * out_y_stride + ox * out_x_stride;
+        float i = *(pfi + ci * in_c_stride
+        {% for i in (1..georank) %} + x_{{i}} * in_{{i}}_stride {%endfor%});
+        float k = *(pfk + ci * ker_i_stride +
+        {% for i in (1..georank) %} + k_{{i}} * ker_{{i}}_stride {%endfor%});
+        sum += i*k;
+    {% for i in (1..georank) %} } {%endfor%} // nested georank loops
+  } // ci loop
+
+  size_t poffset = n * out_n_stride + co * out_c_stride
+      {% for i in (1..georank) %} + ox_{{i}} * out_{{i}}_stride {%endfor%};
   *(output + poffset) = sum;
   
 }
+
+{% endfor %}

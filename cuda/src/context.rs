@@ -13,14 +13,14 @@ use tract_core::internal::*;
 
 use cudarc::driver::{CudaContext, CudaFunction, CudaModule, CudaStream};
 
-use crate::kernels::{COMMON_H, LibraryName, cubin_dir};
+use crate::kernels::{cubin_dir, LibraryName, COMMON_H};
 use crate::tensor::CudaTensor;
 
 use cudarc::nvrtc::result::{compile_program, destroy_program, get_program_log};
 use cudarc::nvrtc::sys::{
     nvrtcCreateProgram, nvrtcGetCUBIN, nvrtcGetCUBINSize, nvrtcProgram, nvrtcResult,
 };
-use std::ffi::{CStr, CString, c_char};
+use std::ffi::{c_char, CStr, CString};
 use std::path::{Path, PathBuf};
 
 thread_local! {
@@ -95,8 +95,15 @@ impl TractCudaContext {
 
             log::info!("Compiling {:?} to {}…", lib, out_path.display());
 
+            let parser = liquid::ParserBuilder::with_stdlib().build()?;
+            let tmpl = parser.parse(lib.content())?;
+            let globals = liquid::object!({});
+            let preprocessed = tmpl.render(&globals)?;
+
+            // println!("{preprocessed}");
+
             let c_src =
-                CString::new(lib.content()).context("Failed to make CString from CUDA source")?;
+                CString::new(preprocessed).context("Failed to make CString from CUDA source")?;
             let prog = unsafe {
                 let mut prog = MaybeUninit::uninit();
                 nvrtcCreateProgram(
