@@ -36,7 +36,7 @@ static __device__ inline void cp_async_cg_16B_pred(uint32_t dst, const void* src
     asm volatile("cp.async.cg.shared.global [%0], [%1], 16;" :: "r"(dst), "l"(src));
   } else {
     int z = 0;
-    asm volatile("st.shared.v4.b32 [%0], {%1,%1,%1,%1};" :: "r"(dst), "r"(z));
+    asm volatile("st.shared.v4.b32 [%0], { %1,%1,%1,%1};" :: "r"(dst), "r"(z));
   }
 #endif
 }
@@ -82,21 +82,21 @@ void global_to_shared_swizzle_pred(uint32_t dst, const half* __restrict__ src, i
 // ============================================================================
 static __device__ __forceinline__
 void ldmatrix_x4(uint32_t regs[4], uint32_t addr) {
-  asm volatile("ldmatrix.sync.aligned.m8n8.x4.shared.b16 {%0, %1, %2, %3}, [%4];"
+  asm volatile("ldmatrix.sync.aligned.m8n8.x4.shared.b16 { %0, %1, %2, %3}, [%4];"
               : "=r"(regs[0]), "=r"(regs[1]), "=r"(regs[2]), "=r"(regs[3]) : "r"(addr));
 }
 static __device__ __forceinline__
 void ldmatrix_x4_trans(uint32_t regs[4], uint32_t addr) {
-  asm volatile("ldmatrix.sync.aligned.m8n8.x4.trans.shared.b16 {%0, %1, %2, %3}, [%4];"
+  asm volatile("ldmatrix.sync.aligned.m8n8.x4.trans.shared.b16 { %0, %1, %2, %3}, [%4];"
               : "=r"(regs[0]), "=r"(regs[1]), "=r"(regs[2]), "=r"(regs[3]) : "r"(addr));
 }
 static __device__ __forceinline__
 void mma_m16n8k16(uint32_t A[4], uint32_t B[2], float D[4]) {
   asm volatile("mma.sync.aligned.m16n8k16.row.col.f32.f16.f16.f32 "
-              "{%0, %1, %2, %3}, "
-              "{%4, %5, %6, %7}, "
-              "{%8, %9}, "
-              "{%10, %11, %12, %13};"
+              "{ %0, %1, %2, %3}, "
+              "{ %4, %5, %6, %7}, "
+              "{ %8, %9}, "
+              "{ %10, %11, %12, %13};"
               : "=f"(D[0]), "=f"(D[1]), "=f"(D[2]), "=f"(D[3])
               : "r"(A[0]), "r"(A[1]), "r"(A[2]), "r"(A[3]),
                 "r"(B[0]), "r"(B[1]),

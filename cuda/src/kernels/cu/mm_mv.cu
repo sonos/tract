@@ -48,7 +48,7 @@ mul_mat_vec(const T *__restrict__ x, const T *__restrict__ y,
   } else if constexpr (cuda::std::is_same_v<T, half>) {
     const half2 *x2 = (const half2 *)x;
     const half2 *y2 = (const half2 *)y;
-    half2 sumh2[ncols_dst] = {{0.0f, 0.0f}};
+    half2 sumh2[ncols_dst] = { {0.0f, 0.0f}};
 
     for (int col2 = tid; col2 < ncols2; col2 += block_size) {
       const half2 tmpx = x2[col2];

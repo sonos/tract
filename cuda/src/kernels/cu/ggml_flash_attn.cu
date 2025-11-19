@@ -301,7 +301,7 @@ static __device__ void flash_attn_ext_vec(
     constexpr int ne_KQ      = ncols*D;
     constexpr int ne_combine = nwarps*V_cols_per_iter*D;
 
-    half2            VKQ[ncols][(D/2)/nthreads_V] = {{{0.0f, 0.0f}}};
+    half2            VKQ[ncols][(D/2)/nthreads_V] = { { {0.0f, 0.0f}}};
     __shared__ half   KQ[ne_KQ > ne_combine ? ne_KQ : ne_combine];
 
     float KQ_max[ncols];
@@ -380,7 +380,7 @@ static __device__ void flash_attn_ext_vec(
             for (int i0 = 0; i0 < D/2; i0 += nthreads_KQ*cpy_ne) {
                 const int i = i0 + (nthreads_KQ == WARP_SIZE ? threadIdx.x : threadIdx.x % nthreads_KQ)*cpy_ne;
 
-                float2 tmp[cpy_ne] = {{0.0f, 0.0f}};
+                float2 tmp[cpy_ne] = { {0.0f, 0.0f}};
                 if (ncols == 1 || ic0 + j < ne01) {
                     cuda_memcpy_1<cpy_nb>(tmp,            &Q_j[i]);
                     cuda_memcpy_1<cpy_nb>(tmp + cpy_ne/2, &Q_j[i + cpy_ne/2]);

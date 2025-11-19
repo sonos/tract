@@ -651,7 +651,7 @@ mul_mat_vec_q(const void *__restrict__ vx, const void *__restrict__ vy,
   const int channel_y = channel_dst;
 
   // partial sum for each thread
-  float tmp[ncols_dst][rows_per_cuda_block] = {{0.0f}};
+  float tmp[ncols_dst][rows_per_cuda_block] = { {0.0f}};
 
   const block_q8_1 *y = ((const block_q8_1 *)vy) + channel_y * stride_channel_y;
   const int kbx_offset = channel_x * stride_channel_x;
