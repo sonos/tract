@@ -5,7 +5,7 @@ use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
 
 use crate::context::{TractCudaStream, cuda_context};
-use crate::kernels::{LibraryName, get_cuda_view, get_sliced_cuda_view};
+use crate::kernels::{LibraryName, get_cuda_view, get_cuda_view_mut, get_sliced_cuda_view};
 
 #[derive(Debug, Clone, new, PartialEq, Eq, Hash)]
 pub struct Memcpy;
@@ -34,12 +34,6 @@ impl Memcpy {
         )
     }
 
-    pub fn kernel_name(&self, dt: DatumType) -> TractResult<String> {
-        ensure!(Self::is_supported_dt(dt), "Unsupported dt {:?} for cuda copyop", dt);
-        let tname = DeviceTensor::tname(dt)?;
-        Ok(format!("copy_unicast_{tname}"))
-    }
-
     pub fn dispatch_eval(
         &self,
         stream: &TractCudaStream,
@@ -49,26 +43,21 @@ impl Memcpy {
     ) -> TractResult<()> {
         ensure!(input_offset % input.datum_type().size_of() == 0);
         ensure!(output.len() <= input.len() - (input_offset / input.datum_type().size_of()));
-
-        let kernel_name = self.kernel_name(input.datum_type())?;
-
-        let func = cuda_context().load_pipeline(LibraryName::Array, kernel_name)?;
+        ensure!(
+            Self::is_supported_dt(input.datum_type()),
+            "Unsupported dt {:?} for cuda memcpy",
+            input.datum_type()
+        );
 
         let i_view = get_sliced_cuda_view(
             input,
             input_offset,
             input.len() * input.datum_type().size_of() - input_offset,
         )?;
-        let o_view = get_cuda_view(output);
+        let mut o_view = get_cuda_view_mut(output);
         let len = output.len();
+        stream.memcpy_dtod(&i_view, &mut o_view);
 
-        let mut launch_args = stream.launch_builder(&func);
-        launch_args.arg(&i_view);
-        launch_args.arg(&o_view);
-        launch_args.arg(&len);
-
-        let cfg = LaunchConfig::for_num_elems(len as _);
-        unsafe { launch_args.launch(cfg) };
         Ok(())
     }
 
