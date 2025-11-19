@@ -18,13 +18,14 @@ pub enum DeviceTensorOrigin {
 pub struct DeviceFact {
     pub origin: DeviceTensorOrigin,
     pub fact: TypedFact,
+    pub state_owned: bool,
 }
 
 impl DeviceFact {
     pub fn new(origin: DeviceTensorOrigin, fact: TypedFact) -> TractResult<Self> {
         ensure!(fact.as_device_fact().is_none());
         let new_fact = fact.without_value();
-        Ok(Self { origin, fact: new_fact })
+        Ok(Self { origin, fact: new_fact, state_owned: false })
     }
 
     pub fn from_host(fact: TypedFact) -> TractResult<Self> {
@@ -33,6 +34,10 @@ impl DeviceFact {
 
     pub fn is_from_device(&self) -> bool {
         matches!(self.origin, DeviceTensorOrigin::FromDevice)
+    }
+
+    pub fn is_state_owned(&self) -> bool {
+        self.state_owned
     }
 
     pub fn is_from_host(&self) -> bool {
@@ -84,6 +89,7 @@ impl fmt::Debug for DeviceFact {
 pub trait DeviceTypedFactExt {
     fn to_device_fact(&self) -> TractResult<&DeviceFact>;
     fn as_device_fact(&self) -> Option<&DeviceFact>;
+    fn as_device_fact_mut(&mut self) -> Option<&mut DeviceFact>;
 }
 
 impl DeviceTypedFactExt for TypedFact {
@@ -99,6 +105,9 @@ impl DeviceTypedFactExt for TypedFact {
     }
     fn as_device_fact(&self) -> Option<&DeviceFact> {
         self.opaque_fact.as_ref().and_then(|m| m.downcast_ref::<DeviceFact>())
+    }
+    fn as_device_fact_mut(&mut self) -> Option<&mut DeviceFact> {
+        self.opaque_fact.as_mut().and_then(|m| m.downcast_mut::<DeviceFact>())
     }
 }
 
