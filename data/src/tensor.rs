@@ -652,25 +652,6 @@ impl Tensor {
         }
     }
 
-    fn clip_range_bounds(
-        &self,
-        axis: usize,
-        range: impl std::ops::RangeBounds<usize>,
-    ) -> Range<usize> {
-        use std::ops::Bound;
-        let start = match range.start_bound() {
-            Bound::Included(ix) => *ix,
-            Bound::Excluded(ix) => ix + 1,
-            Bound::Unbounded => 0,
-        };
-        let end = match range.end_bound() {
-            Bound::Included(ix) => *ix + 1,
-            Bound::Excluded(ix) => *ix,
-            Bound::Unbounded => self.shape()[axis],
-        };
-        start..end
-    }
-
     pub fn assign_slice(
         &mut self,
         range: impl std::ops::RangeBounds<usize>,
@@ -678,8 +659,10 @@ impl Tensor {
         src_range: impl std::ops::RangeBounds<usize>,
         axis: usize,
     ) -> TractResult<()> {
-        let range = self.clip_range_bounds(axis, range);
-        let src_range = src.clip_range_bounds(axis, src_range);
+        ensure!(self.rank() == src.rank());
+        ensure!(axis < self.rank());
+        let range = clip_range_bounds(self.shape[axis], range);
+        let src_range = clip_range_bounds(src.shape[axis], src_range);
         ensure!(
             src.datum_type() == self.datum_type(),
             "Attempt to assign into {:?} from {:?}, datum type mismatch",
@@ -693,9 +676,8 @@ impl Tensor {
             src_range,
         );
         ensure!(
-            self.rank() == src.rank()
-                && itertools::izip!(0.., self.shape(), src.shape())
-                    .all(|(ix, dst, src)| ix == axis || src == dst),
+            itertools::izip!(0.., self.shape(), src.shape())
+                .all(|(ix, dst, src)| ix == axis || src == dst),
             "Attempt to assign a {}-axis range of {:?} from a range of {:?}",
             axis,
             self,
@@ -726,8 +708,8 @@ impl Tensor {
         src_range: impl std::ops::RangeBounds<usize>,
         axis: usize,
     ) {
-        let range = self.clip_range_bounds(axis, range);
-        let src_range = src.clip_range_bounds(axis, src_range);
+        let range = clip_range_bounds(self.shape[axis], range);
+        let src_range = clip_range_bounds(src.shape[axis], src_range);
         unsafe { self.assign_slice_from_resolved(range, src, src_range, axis) };
     }
 
@@ -1647,6 +1629,21 @@ pub fn reinterpret_complex_as_inner_dim(mut t: Tensor) -> TractResult<Tensor> {
         t.update_strides_and_len();
         Ok(t)
     }
+}
+
+pub fn clip_range_bounds(len: usize, range: impl std::ops::RangeBounds<usize>) -> Range<usize> {
+    use std::ops::Bound;
+    let start = match range.start_bound() {
+        Bound::Included(ix) => *ix,
+        Bound::Excluded(ix) => ix + 1,
+        Bound::Unbounded => 0,
+    };
+    let end = match range.end_bound() {
+        Bound::Included(ix) => *ix + 1,
+        Bound::Excluded(ix) => *ix,
+        Bound::Unbounded => len,
+    };
+    start..end
 }
 
 pub fn natural_strides(shape: &[usize]) -> TVec<isize> {
