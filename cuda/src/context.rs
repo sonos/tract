@@ -95,15 +95,15 @@ impl TractCudaContext {
 
             log::info!("Compiling {:?} to {}…", lib, out_path.display());
 
-            let parser = liquid::ParserBuilder::with_stdlib().build()?;
-            let tmpl = parser.parse(lib.content())?;
-            let globals = liquid::object!({});
-            let preprocessed = tmpl.render(&globals)?;
+            let mut input = lib.content().to_string();
+            if input.contains("// liquid:true") {
+                let parser = liquid::ParserBuilder::with_stdlib().build()?;
+                let tmpl = parser.parse(lib.content())?;
+                let globals = liquid::object!({});
+                input = tmpl.render(&globals)?;
+            }
 
-            // println!("{preprocessed}");
-
-            let c_src =
-                CString::new(preprocessed).context("Failed to make CString from CUDA source")?;
+            let c_src = CString::new(input).context("Failed to make CString from CUDA source")?;
             let prog = unsafe {
                 let mut prog = MaybeUninit::uninit();
                 nvrtcCreateProgram(
