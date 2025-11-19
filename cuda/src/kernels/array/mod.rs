@@ -28,12 +28,6 @@ pub fn all_functions() -> Vec<String> {
     functions.extend(
         tract_gpu::tensor::DeviceTensor::SUPPORTED_DT
             .into_iter()
-            .flat_map(|dt| Memcpy.kernel_name(dt).into_iter()),
-    );
-
-    functions.extend(
-        tract_gpu::tensor::DeviceTensor::SUPPORTED_DT
-            .into_iter()
             .flat_map(|dt1| {
                 tract_gpu::tensor::DeviceTensor::SUPPORTED_DT.into_iter().map(move |dt2| (dt1, dt2))
             })
