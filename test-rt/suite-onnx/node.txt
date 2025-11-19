@@ -134,9 +134,7 @@ test_cumsum_2d_negative_axis input:x since:13
 test_cumsum_2d not-nnef input:x since:13
 test_depthtospace.*
 test_dequantizelinear                                                               input:x not-nnef
-# test_dft
-# test_dft_axis
-# test_dft_inverse
+test_dft.* input:x
 test_div.*
 test_dropout_default
 test_dropout_default_old
