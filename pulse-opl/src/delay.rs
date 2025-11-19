@@ -1,5 +1,6 @@
 use tract_nnef::internal::*;
 use tract_nnef::tract_core::ops::OpStateFreeze;
+use tract_nnef::tract_num_traits::One;
 
 pub fn register(registry: &mut Registry) {
     registry.register_primitive(
@@ -49,18 +50,17 @@ impl DelayState {
             let input_pulse = input.shape()[op.axis];
             let output_pulse = input_pulse + op.overlap;
             let buffer = self.buffer.as_mut().unwrap();
-            if op.delay < input_pulse {
-                let from_input = input_pulse - op.delay;
-                let from_buffer = output_pulse - from_input;
-                output.assign_slice_unchecked(..from_buffer, buffer, ..from_buffer, op.axis);
-                output.assign_slice_unchecked(from_buffer.., input, ..from_input, op.axis);
-            } else {
-                output.assign_slice_unchecked(.., buffer, ..output_pulse, op.axis);
-            };
+
+            let from_input = input_pulse.saturating_sub(op.delay);
+            let from_buffer = output_pulse.saturating_sub(from_input);
+            output.assign_slice_unchecked(..from_buffer, buffer, ..from_buffer, op.axis);
+            output.assign_slice_unchecked(from_buffer.., input, ..from_input, op.axis);
+
             // maintain buffer
             if buffered < input_pulse {
                 buffer.assign_slice_unchecked(.., input, (input_pulse - buffered).., op.axis);
             } else {
+                assert!(input.shape()[0..op.axis].iter().all(|d| d.is_one()));
                 let stride = buffer.shape().iter().skip(op.axis + 1).product::<usize>()
                     * input.datum_type().size_of()
                     * input_pulse;
