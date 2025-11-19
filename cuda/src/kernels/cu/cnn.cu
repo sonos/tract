@@ -2,6 +2,8 @@
 #include <math_constants.h>
 #include "common.cuh"
 
+// liquid:true
+
 {% for georank in (1..4) %}
 
 extern "C" __global__ void conv{{georank}}d_f32_generic(
