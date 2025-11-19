@@ -6,9 +6,7 @@ use crate::context::{TractCudaStream, cuda_context};
 use crate::kernels::{LibraryName, get_cuda_view};
 
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct LeakyRelu {
-    pub alpha: f32,
-}
+pub struct LeakyRelu;
 
 impl LeakyRelu {
     pub fn is_supported_dt(dt: DatumType) -> bool {
@@ -25,9 +23,10 @@ impl LeakyRelu {
         &self,
         stream: &TractCudaStream,
         input: &DeviceTensor,
+        alpha: f32
     ) -> TractResult<DeviceTensor> {
         let output = unsafe { DeviceTensor::uninitialized_dt(input.datum_type(), input.shape())? };
-        self.dispatch_eval(stream, input, &output)?;
+        self.dispatch_eval(stream, input, alpha, &output)?;
         stream.synchronize()?;
         Ok(output)
     }
@@ -36,6 +35,7 @@ impl LeakyRelu {
         &self,
         stream: &TractCudaStream,
         input: &DeviceTensor,
+        alpha: f32,
         output: &DeviceTensor,
     ) -> TractResult<()> {
         ensure!(output.shape() == input.shape());
@@ -52,7 +52,7 @@ impl LeakyRelu {
         launch_args.arg(&i_view);
         launch_args.arg(&o_view);
         launch_args.arg(&len);
-        launch_args.arg(&self.alpha);
+        launch_args.arg(&alpha);
 
         let cfg = LaunchConfig::for_num_elems(input.len() as _);
         unsafe {
