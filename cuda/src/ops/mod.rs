@@ -35,6 +35,7 @@ pub use flash_attn::CudaFlashAttention;
 pub use fused_axis_op::CudaFusedAxisOp;
 pub use gelu_approximate::CudaGeluApproximate;
 pub use gemm::CudaGgmlGemm;
+pub use leaky_relu::CudaLeakyRelu;
 //pub use ggml_flash_attn::CudaFlashAttention;
 pub use pad::CudaPad;
 pub use pulse::{CudaDelay, CudaPulsePad};

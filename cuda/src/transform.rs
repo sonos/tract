@@ -32,6 +32,7 @@ use DatumType::{F16, F32};
 
 use crate::context::cuda_context;
 use crate::ops::{CudaDelay, CudaPulsePad};
+use crate::ops::CudaLeakyRelu;
 use crate::{kernels, ops, rewrite_rules};
 
 #[derive(Debug, Default)]
@@ -595,7 +596,7 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
                     Box::new(convert_const(op)?)
                 } else if let Some(op) = node.op_as::<ElementWiseOp>() {
                     if let Some(leaky) = op.0.downcast_ref::<LeakyRelu>() {
-                        Box::new(kernels::nn::LeakyRelu { alpha: leaky.alpha })
+                        Box::new(CudaLeakyRelu { alpha: leaky.alpha })
                     } else {
                         Box::new(map_element_wise_ops_to_cuda(op).unwrap())
                     }

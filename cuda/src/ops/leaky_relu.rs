@@ -4,7 +4,12 @@ use tract_gpu::tensor::DeviceTensorExt;
 use crate::context::CUDA_STREAM;
 use crate::kernels::nn::LeakyRelu;
 
-impl Op for LeakyRelu {
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct CudaLeakyRelu {
+    pub alpha: f32,
+}
+
+impl Op for CudaLeakyRelu {
     fn name(&self) -> StaticName {
         "CudaLeakyRelu".into()
     }
@@ -12,7 +17,7 @@ impl Op for LeakyRelu {
     op_as_typed_op!();
 }
 
-impl EvalOp for LeakyRelu {
+impl EvalOp for CudaLeakyRelu {
     fn is_stateless(&self) -> bool {
         true
     }
@@ -32,13 +37,13 @@ impl EvalOp for LeakyRelu {
                 input_cuda.datum_type(),
                 input_cuda.shape(),
             )?;
-            self.dispatch_eval(stream, input_cuda, &output)?;
+            LeakyRelu.dispatch_eval(stream, input_cuda, self.alpha, &output)?;
             Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
         })
     }
 }
 
-impl TypedOp for LeakyRelu {
+impl TypedOp for CudaLeakyRelu {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         tract_gpu::utils::facts_to_device_facts(inputs, |facts| {
             let dt = facts[0].datum_type;
