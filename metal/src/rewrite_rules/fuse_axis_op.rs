@@ -1,4 +1,3 @@
-use crate::kernels::matmul::{GgmlGemm, MfaGemm, MlxGemm};
 use crate::ops::{MetalAxisOp, MetalFusedAxisOp};
 use tract_core::internal::*;
 use tract_core::tract_data::itertools::Itertools;
@@ -47,17 +46,6 @@ pub fn collect_chain_of_axis_ops<'a>(
     })
 }
 
-#[macro_export]
-macro_rules! dispatch_metal_op {
-    ($node: expr, $body:expr, $($op:path),+,) => {
-        $(
-            if let Some(op) = $node.op_as::<$op>() {
-                return $body(op.clone());
-            }
-        )*
-    };
-}
-
 pub fn fuse_axis_op(
     _ctx: &(),
     model: &TypedModel,
@@ -68,6 +56,8 @@ pub fn fuse_axis_op(
     rule_ensure!(is_supported_axis_op(axis_op) || matches!(axis_op.0, AxisOp::Move(..)));
 
     let Some(node) = model.single_succ(axis_node.id)? else { return Ok(None) };
+    rule_ensure!(!(node.op_is::<MetalFusedAxisOp>()));
+
     let node_name = &node.name;
     let Some(in_nodes) = model.all_prec(node.id)? else { return Ok(None) };
 
@@ -89,38 +79,6 @@ pub fn fuse_axis_op(
         }
     }
 
-    // Handle all compatible ops.
-    dispatch_metal_op!(
-        node,
-        |op| {
-            let out = patch.wire_node(
-                format!("{node_name}.fused_axis_op"),
-                MetalFusedAxisOp { grouped_axis_ops, op },
-                &tap_inputs,
-            )?;
-            patch.shunt_outside(model, node.id.into(), out[0])?;
-            Ok(Some(patch))
-        },
-        crate::ops::MetalBinOp,
-        crate::ops::MetalGemm<MlxGemm>,
-        crate::ops::MetalGemm<MfaGemm>,
-        crate::ops::MetalGemm<GgmlGemm>,
-        crate::ops::MetalMultiBroadcastTo,
-        crate::ops::MetalElementWiseOp,
-        crate::ops::MetalRmsNorm,
-        crate::ops::MetalSilu,
-        crate::ops::MetalGeluApproximate,
-        crate::ops::MetalSoftmax,
-        crate::ops::MetalRotateHalf,
-        crate::ops::MetalApplyRope,
-        crate::ops::MetalReduce,
-        crate::ops::MetalSlice,
-        crate::ops::MetalConcat,
-        crate::ops::MetalCast,
-        crate::ops::MetalScaledMaskedSoftmax,
-        crate::ops::MetalDynKVCache,
-    );
-
     // Handle AxisOp::Move operator.
     if let Some(op) = node.op_as::<crate::ops::MetalAxisOp>() {
         // Early quit if MoveAxis will be fused in next calls to rule
@@ -129,14 +87,21 @@ pub fn fuse_axis_op(
         {
             let out = patch.wire_node(
                 format!("{node_name}.fused_axis_op"),
-                MetalFusedAxisOp { grouped_axis_ops, op: op.clone() },
+                MetalFusedAxisOp { grouped_axis_ops, op: Box::new(op.clone()) },
                 &tap_inputs,
             )?;
             patch.shunt_outside(model, node.id.into(), out[0])?;
             return Ok(Some(patch));
         }
     }
-    Ok(None)
+
+    let out = patch.wire_node(
+        format!("{node_name}.fused_axis_op"),
+        MetalFusedAxisOp { grouped_axis_ops, op: node.op.clone() },
+        &tap_inputs,
+    )?;
+    patch.shunt_outside(model, node.id.into(), out[0])?;
+    Ok(Some(patch))
 }
 
 pub fn fuse_move_axis(
