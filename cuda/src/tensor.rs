@@ -224,7 +224,7 @@ pub fn device_tensor_assign_slice(
     ensure!(src.rank() == dst.rank() && axis < src.rank());
     let src_range = clip_range_bounds(src.shape()[axis], src_range);
     let dst_range = clip_range_bounds(dst.shape()[axis], dst_range);
-    if src_range.len() == 0 {
+    if src_range.is_empty() {
         return Ok(());
     }
     ensure!(dst_range.len() == src_range.len());
