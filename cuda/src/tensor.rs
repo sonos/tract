@@ -224,6 +224,9 @@ pub fn device_tensor_assign_slice(
     ensure!(src.rank() == dst.rank() && axis < src.rank());
     let src_range = clip_range_bounds(src.shape()[axis], src_range);
     let dst_range = clip_range_bounds(dst.shape()[axis], dst_range);
+    if src_range.len() == 0 {
+        return Ok(());
+    }
     ensure!(dst_range.len() == src_range.len());
     ensure!(
         tract_itertools::izip!(dst.shape(), src.shape(), 0..).all(|(d, s, a)| a == axis || s == d)
@@ -261,7 +264,6 @@ pub fn device_tensor_assign_slice(
     launch_args.set_slice(dst.strides());
 
     let cfg = cuda_launch_cfg_for_cpy(&shape);
-
     unsafe { launch_args.launch(cfg)? };
 
     Ok(())
