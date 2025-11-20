@@ -19,6 +19,7 @@ fn can_fuse_move(model: &TypedModel, axis_node: &TypedNode) -> bool {
             || node.op_is::<crate::ops::CudaDynKVCache>()
             || node.op_is::<crate::ops::CudaGgmlQuantQ81>()
             || node.op_is::<crate::ops::CudaPad>()
+            || node.op_is::<crate::ops::CudaDelay>()
     })
 }
 
@@ -121,6 +122,8 @@ pub fn fuse_axis_op(
         crate::ops::CudaGgmlQuantQ81,
         crate::ops::CudaPad,
         crate::ops::CudaFlashAttention,
+        crate::ops::CudaConv,
+        crate::ops::CudaDelay,
     );
 
     // Handle AxisOp::Move operator.
