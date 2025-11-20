@@ -1,6 +1,6 @@
-use std::ops::{Deref, DerefMut};
+use std::ops::{Deref, DerefMut, RangeBounds};
 
-use cudarc::driver::{CudaSlice, DevicePtr};
+use cudarc::driver::{CudaSlice, DevicePtr, PushKernelArg};
 use tract_core::internal::tract_smallvec::ToSmallVec;
 use tract_core::internal::*;
 use tract_core::prelude::{DatumType, TVec};
@@ -9,7 +9,10 @@ use tract_gpu::device::DeviceBuffer;
 use tract_gpu::tensor::{DeviceTensor, OwnedDeviceTensor};
 use tract_gpu::utils::{as_q40_tensor, check_strides_validity};
 
-use crate::context::CUDA_STREAM;
+use crate::context::{cuda_context, TractCudaStream, CUDA_STREAM};
+use crate::kernels::launch_args::LaunchArgsExt;
+use crate::kernels::utils::cuda_launch_cfg_for_cpy;
+use crate::kernels::{get_sliced_cuda_view, BroadcastKind, LibraryName};
 use crate::ops::GgmlQuantQ81Fact;
 
 #[derive(Debug, Clone)]
@@ -206,4 +209,60 @@ impl OwnedDeviceTensor for CudaTensor {
     fn view(&self) -> TensorView<'_> {
         todo!()
     }
+}
+
+pub fn device_tensor_assign_slice(
+    stream: &TractCudaStream,
+    dst: &DeviceTensor,
+    dst_range: impl RangeBounds<usize>,
+    src: &DeviceTensor,
+    src_range: impl RangeBounds<usize>,
+    axis: usize,
+) -> TractResult<()> {
+    ensure!(src.datum_type() == dst.datum_type());
+    ensure!(src.datum_type().is_copy() && src.datum_type().is_number());
+    ensure!(src.rank() == dst.rank() && axis < src.rank());
+    let src_range = clip_range_bounds(src.shape()[axis], src_range);
+    let dst_range = clip_range_bounds(dst.shape()[axis], dst_range);
+    ensure!(dst_range.len() == src_range.len());
+    ensure!(
+        tract_itertools::izip!(dst.shape(), src.shape(), 0..).all(|(d, s, a)| a == axis || s == d)
+    );
+
+    let broadcast_kind = BroadcastKind::from_rank(dst.rank()).with_context(|| {
+        format!(
+            "Unsupported broadcast for assign slice: (in: {:?}, out: {:?})",
+            src.shape(),
+            dst.shape()
+        )
+    })?;
+
+    let tname = DeviceTensor::tname(src.datum_type())?;
+    let broadcast_name = broadcast_kind.name();
+    let kernel_name = format!("copy_{broadcast_name}_{tname}");
+    let func = cuda_context().load_pipeline(LibraryName::Array, kernel_name)?;
+
+    let mut shape = src.shape().to_vec();
+    shape[axis] = src_range.len();
+
+    let src_offset = src.strides()[axis] as usize * src_range.start * src.datum_type().size_of();
+    let src_bytes = src.len() * src.datum_type().size_of();
+    let src_view = get_sliced_cuda_view(src, src_offset, src_bytes - src_offset)?;
+
+    let dst_offset = dst.strides()[axis] as usize * dst_range.start * dst.datum_type().size_of();
+    let dst_bytes = dst.len() * dst.datum_type().size_of();
+    let dst_view = get_sliced_cuda_view(dst, dst_offset, dst_bytes - dst_offset)?;
+
+    let mut launch_args = stream.launch_builder(&func);
+    launch_args.arg(&src_view);
+    launch_args.arg(&dst_view);
+    launch_args.set_slice(src.strides());
+    launch_args.set_slice(&shape);
+    launch_args.set_slice(dst.strides());
+
+    let cfg = cuda_launch_cfg_for_cpy(&shape);
+
+    unsafe { launch_args.launch(cfg)? };
+
+    Ok(())
 }
