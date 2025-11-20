@@ -1,6 +1,7 @@
 use crate::context::{cuda_context, TractCudaStream};
 use crate::kernels::launch_args::LaunchArgsExt;
 use crate::kernels::{get_cuda_view, get_sliced_cuda_view, utils, BroadcastKind, LibraryName};
+use crate::tensor::device_tensor_assign_slice;
 use anyhow::ensure;
 use cudarc::driver::{CudaStream, PushKernelArg};
 use std::fmt;
@@ -84,62 +85,6 @@ impl Concat {
 
         Ok(())
     }
-}
-
-fn device_tensor_assign_slice(
-    stream: &TractCudaStream,
-    dst: &DeviceTensor,
-    dst_range: impl RangeBounds<usize>,
-    src: &DeviceTensor,
-    src_range: impl RangeBounds<usize>,
-    axis: usize,
-) -> TractResult<()> {
-    ensure!(src.datum_type() == dst.datum_type());
-    ensure!(src.datum_type().is_copy() && src.datum_type().is_number());
-    ensure!(src.rank() == dst.rank() && axis < src.rank());
-    let src_range = clip_range_bounds(src.shape()[axis], src_range);
-    let dst_range = clip_range_bounds(dst.shape()[axis], dst_range);
-    ensure!(dst_range.len() == src_range.len());
-    ensure!(
-        tract_itertools::izip!(dst.shape(), src.shape(), 0..).all(|(d, s, a)| a == axis || s == d)
-    );
-
-    let broadcast_kind = BroadcastKind::from_rank(dst.rank()).with_context(|| {
-        format!(
-            "Unsupported broadcast for assign slice: (in: {:?}, out: {:?})",
-            src.shape(),
-            dst.shape()
-        )
-    })?;
-
-    let tname = DeviceTensor::tname(src.datum_type())?;
-    let broadcast_name = broadcast_kind.name();
-    let kernel_name = format!("copy_{broadcast_name}_{tname}");
-    let func = cuda_context().load_pipeline(LibraryName::Array, kernel_name)?;
-
-    let mut shape = src.shape().to_vec();
-    shape[axis] = src_range.len();
-
-    let src_offset = src.strides()[axis] as usize * src_range.start * src.datum_type().size_of();
-    let src_bytes = src.len() * src.datum_type().size_of();
-    let src_view = get_sliced_cuda_view(src, src_offset, src_bytes - src_offset)?;
-
-    let dst_offset = dst.strides()[axis] as usize * dst_range.start * dst.datum_type().size_of();
-    let dst_bytes = dst.len() * dst.datum_type().size_of();
-    let dst_view = get_sliced_cuda_view(dst, dst_offset, dst_bytes - dst_offset)?;
-
-    let mut launch_args = stream.launch_builder(&func);
-    launch_args.arg(&src_view);
-    launch_args.arg(&dst_view);
-    launch_args.set_slice(src.strides());
-    launch_args.set_slice(&shape);
-    launch_args.set_slice(dst.strides());
-
-    let cfg = utils::cuda_launch_cfg_for_cpy(&shape);
-
-    unsafe { launch_args.launch(cfg) };
-
-    Ok(())
 }
 
 #[cfg(test)]

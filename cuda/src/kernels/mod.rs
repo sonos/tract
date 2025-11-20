@@ -5,11 +5,11 @@ mod binary;
 pub mod conv;
 pub mod flash_attn;
 pub mod ggml_flash_attn;
-mod launch_args;
+pub(crate) mod launch_args;
 pub mod matmul;
 pub mod nn;
 mod unary;
-mod utils;
+pub(crate) mod utils;
 
 use std::env;
 use std::path::{Path, PathBuf};

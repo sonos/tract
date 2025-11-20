@@ -5,6 +5,7 @@ mod cast;
 mod change_axes;
 mod concat;
 pub(crate) mod conv;
+pub(crate) mod delay;
 mod dyn_kv_cache;
 //mod ggml_flash_attn;
 mod flash_attn;
