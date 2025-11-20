@@ -1,5 +1,4 @@
 use derive_new::new;
-use num_traits::One;
 use tract_core::{internal::*, trivial_op_state_freeeze};
 use tract_gpu::session_handler::make_tensor_for_node;
 use tract_gpu::tensor::{DeviceTensor, DeviceTensorExt};
@@ -100,19 +99,17 @@ impl CudaDelayState {
                     op.axis,
                 )?;
             } else {
-                assert!(input.shape()[0..op.axis].iter().all(|d| d.is_one()));
                 let dt = input.datum_type();
-                let frame_len = buffer.shape().iter().skip(op.axis + 1).product::<usize>();
-                let offset = frame_len * input_pulse * dt.size_of();
-                let to_shift = (buffered - input_pulse) * frame_len * dt.size_of();
-                let scratch = DeviceTensor::uninitialized_dt(u8::datum_type(), &[to_shift])?;
+                let offset = buffer.strides()[op.axis] as usize * dt.size_of() * input_pulse;
+                let moved = buffer.len() * dt.size_of() - offset;
+                let scratch = DeviceTensor::uninitialized_dt(u8::datum_type(), &[moved])?;
                 stream.memcpy_dtod(
-                    &get_sliced_cuda_view(buffer, offset, to_shift)?,
+                    &get_sliced_cuda_view(buffer, offset, moved)?,
                     &mut get_cuda_view_mut(&scratch),
                 )?;
                 stream.memcpy_dtod(
                     &get_cuda_view(&scratch),
-                    &mut get_sliced_cuda_view_mut(buffer, 0, to_shift)?,
+                    &mut get_sliced_cuda_view_mut(buffer, 0, moved)?,
                 )?;
                 device_tensor_assign_slice(
                     stream,
@@ -138,11 +135,11 @@ impl OpState for CudaDelayState {
         let input = args_1!(inputs);
         let op = &op.downcast_ref::<CudaDelay>().ok_or_else(|| format_err!("Wrong Op type"))?.0;
         let buffered = op.delay + op.overlap;
-        let input_pulse = input.shape()[op.axis];
-        let output_pulse = input_pulse + op.overlap;
-        let mut output_shape: TVec<usize> = input.shape().into();
-        output_shape[op.axis] = output_pulse;
         let device_input = input.as_device_tensor().context("Expected a cuda tensor")?;
+        let input_pulse = device_input.shape()[op.axis];
+        let output_pulse = input_pulse + op.overlap;
+        let mut output_shape: TVec<usize> = device_input.shape().into();
+        output_shape[op.axis] = output_pulse;
         let dt = device_input.datum_type();
         // build output
         unsafe {

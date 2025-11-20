@@ -1,6 +1,5 @@
 use tract_nnef::internal::*;
 use tract_nnef::tract_core::ops::OpStateFreeze;
-use tract_nnef::tract_num_traits::One;
 
 pub fn register(registry: &mut Registry) {
     registry.register_primitive(
@@ -60,10 +59,8 @@ impl DelayState {
             if buffered < input_pulse {
                 buffer.assign_slice_unchecked(.., input, (input_pulse - buffered).., op.axis);
             } else {
-                assert!(input.shape()[0..op.axis].iter().all(|d| d.is_one()));
-                let stride = buffer.shape().iter().skip(op.axis + 1).product::<usize>()
-                    * input.datum_type().size_of()
-                    * input_pulse;
+                let stride =
+                    buffer.strides()[op.axis] as usize * input.datum_type().size_of() * input_pulse;
                 std::slice::from_raw_parts_mut(
                     buffer.as_ptr_mut_unchecked::<u8>(),
                     buffer.len() * input.datum_type().size_of(),
