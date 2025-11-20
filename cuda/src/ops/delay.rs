@@ -150,7 +150,7 @@ impl OpState for CudaDelayState {
                     Some(DeviceTensor::uninitialized_dt(device_input.datum_type(), &shape)?);
             };
             let mut output = make_tensor_for_node(state, self.node_id, dt, &output_shape)?;
-            self.apply_delay_unchecked(op, &device_input, &mut output)?;
+            self.apply_delay_unchecked(op, device_input, &mut output)?;
             Ok(tvec!(output.into_opaque_tensor().into()))
         }
     }
