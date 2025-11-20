@@ -31,7 +31,7 @@ use tract_transformers::ops::silu::Silu;
 use DatumType::{F16, F32};
 
 use crate::context::cuda_context;
-use crate::ops::delay::CudaDelay;
+use crate::ops::CudaDelay;
 use crate::{kernels, ops, rewrite_rules};
 
 #[derive(Debug, Default)]
@@ -254,7 +254,7 @@ fn can_translate_to_cuda_op(source: &TypedModel, node: &TypedNode) -> TractResul
             })
             || node
                 .op_as::<Conv>()
-                .and_then(|op| ops::conv::cuda_conv(source, node, op).unwrap())
+                .and_then(|op| ops::cuda_conv(source, node, op).unwrap())
                 .is_some()))
 }
 
@@ -632,7 +632,7 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
                 } else if let Some(op) = node.op_as::<GeluApproximate>() {
                     Box::new(ops::CudaGeluApproximate { fast_impl: op.fast_impl })
                 } else if let Some(op) = node.op_as::<Conv>() {
-                    Box::new(ops::conv::cuda_conv(source, node, op).unwrap().unwrap())
+                    Box::new(ops::cuda_conv(source, node, op).unwrap().unwrap())
                 } else if let Some(op) = node.op_as::<Delay>() {
                     Box::new(CudaDelay::new(op.clone()))
                 } else {
