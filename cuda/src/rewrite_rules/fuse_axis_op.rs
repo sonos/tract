@@ -3,6 +3,7 @@ use tract_core::internal::*;
 use tract_core::tract_data::itertools::Itertools;
 use tract_gpu::fact::DeviceTypedFactExt;
 use tract_gpu::rule_ensure;
+use tract_gpu::sync::DeviceSync;
 
 fn is_supported_axis_op(op: &CudaAxisOp) -> bool {
     matches!(op.0, AxisOp::Add(_) | AxisOp::Rm(_) | AxisOp::Reshape(..))
@@ -62,7 +63,8 @@ pub fn fuse_axis_op(
     rule_ensure!(is_supported_axis_op(axis_op) || matches!(axis_op.0, AxisOp::Move(..)));
 
     let Some(node) = model.single_succ(axis_node.id)? else { return Ok(None) };
-    rule_ensure!(!node.op.is::<CudaFusedAxisOp>());
+    rule_ensure!(!(node.op.is::<CudaFusedAxisOp>()
+                || node.op.is::<DeviceSync>()));
 
     let node_name = &node.name;
     let Some(in_nodes) = model.all_prec(node.id)? else { return Ok(None) };
@@ -85,12 +87,6 @@ pub fn fuse_axis_op(
         }
     }
 
-    let out = patch.wire_node(
-        format!("{node_name}.fused_axis_op"),
-        CudaFusedAxisOp { grouped_axis_ops: grouped_axis_ops.clone(), op: node.op.clone() },
-        &tap_inputs,
-    )?;
-    patch.shunt_outside(model, node.id.into(), out[0])?;
 
     // Handle AxisOp::Move operator.
     if let Some(op) = node.op_as::<crate::ops::CudaAxisOp>() {
@@ -107,7 +103,14 @@ pub fn fuse_axis_op(
             return Ok(Some(patch));
         }
     }
-    Ok(None)
+    let out = patch.wire_node(
+        format!("{node_name}.fused_axis_op"),
+        CudaFusedAxisOp { grouped_axis_ops: grouped_axis_ops.clone(), op: node.op.clone() },
+        &tap_inputs,
+    )?;
+    patch.shunt_outside(model, node.id.into(), out[0])?;
+
+    Ok(Some(patch))
 }
 
 pub fn fuse_move_axis(
