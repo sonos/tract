@@ -5,18 +5,17 @@ use tract_core::internal::*;
 use tract_core::ops::OpStateFreeze;
 use tract_gpu::tensor::{DeviceTensor, DeviceTensorExt};
 
-#[derive(Clone, Debug, new, Hash)]
-pub struct CudaFusedAxisOp<O: TypedOp> {
+#[derive(Clone, Debug, new)]
+pub struct CudaFusedAxisOp {
     /// List of axis ops to apply for each op inputs
     /// Length of the list is equal to number of inputs
     pub grouped_axis_ops: TVec<TVec<CudaAxisOp>>,
-    pub op: O,
+    pub op: Box<dyn TypedOp>,
 }
 
 #[derive(Debug, Clone, new)]
-pub struct CudaFusedAxisOpState<O: TypedOp> {
+pub struct CudaFusedAxisOpState {
     pub op_state: Box<dyn OpState>,
-    _phantom: PhantomData<O>,
 }
 
 fn compute_reshaped_inputs(
@@ -70,7 +69,7 @@ fn compute_reshaped_inputs(
         .collect::<TractResult<TVec<_>>>()
 }
 
-impl<O: TypedOp + Clone> OpState for CudaFusedAxisOpState<O> {
+impl OpState for CudaFusedAxisOpState {
     fn init_tensor_fact(&self) -> Option<(String, TypedFact)> {
         self.op_state.init_tensor_fact()
     }
@@ -97,38 +96,31 @@ impl<O: TypedOp + Clone> OpState for CudaFusedAxisOpState<O> {
         op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        let fused_axis_op = op.downcast_ref::<CudaFusedAxisOp<O>>().unwrap();
+        let fused_axis_op = op.downcast_ref::<CudaFusedAxisOp>().unwrap();
         let inputs = compute_reshaped_inputs(inputs, &fused_axis_op.grouped_axis_ops, session)?;
         // Runner inner op
-        self.op_state.eval(session, &fused_axis_op.op, inputs)
+        self.op_state.eval(session, fused_axis_op.op.as_op(), inputs)
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct FrozenCudaFusedAxisOpState<O: TypedOp> {
+pub struct FrozenCudaFusedAxisOpState {
     pub op_state: Box<dyn FrozenOpState>,
-    _phantom: PhantomData<O>,
 }
 
-impl<O: TypedOp + Clone> OpStateFreeze for CudaFusedAxisOpState<O> {
+impl OpStateFreeze for CudaFusedAxisOpState {
     fn freeze(&self) -> Box<dyn FrozenOpState + 'static> {
-        Box::new(FrozenCudaFusedAxisOpState {
-            op_state: self.op_state.freeze(),
-            _phantom: PhantomData::<O>,
-        })
+        Box::new(FrozenCudaFusedAxisOpState { op_state: self.op_state.freeze() })
     }
 }
 
-impl<O: TypedOp + Clone> FrozenOpState for FrozenCudaFusedAxisOpState<O> {
+impl FrozenOpState for FrozenCudaFusedAxisOpState {
     fn unfreeze(&self) -> Box<dyn OpState> {
-        Box::new(CudaFusedAxisOpState {
-            op_state: self.op_state.unfreeze(),
-            _phantom: PhantomData::<O>,
-        })
+        Box::new(CudaFusedAxisOpState { op_state: self.op_state.unfreeze() })
     }
 }
 
-impl<O: TypedOp + Clone> Op for CudaFusedAxisOp<O> {
+impl Op for CudaFusedAxisOp {
     fn name(&self) -> StaticName {
         self.op.name()
     }
@@ -155,14 +147,14 @@ impl<O: TypedOp + Clone> Op for CudaFusedAxisOp<O> {
     }
 
     fn same_as(&self, other: &dyn Op) -> bool {
-        let Some(other) = other.downcast_ref::<CudaFusedAxisOp<O>>() else { return false };
-        self.op.same_as(&other.op) && self.grouped_axis_ops == other.grouped_axis_ops
+        let Some(other) = other.downcast_ref::<CudaFusedAxisOp>() else { return false };
+        self.op.same_as(other.op.as_op()) && self.grouped_axis_ops == other.grouped_axis_ops
     }
 
     op_as_typed_op!();
 }
 
-impl<O: TypedOp + Clone> EvalOp for CudaFusedAxisOp<O> {
+impl EvalOp for CudaFusedAxisOp {
     fn is_stateless(&self) -> bool {
         self.op.is_stateless()
     }
@@ -173,7 +165,7 @@ impl<O: TypedOp + Clone> EvalOp for CudaFusedAxisOp<O> {
         node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
         if let Some(state) = self.op.state(session, node_id)? {
-            Ok(Some(Box::new(CudaFusedAxisOpState { op_state: state, _phantom: PhantomData::<O> })))
+            Ok(Some(Box::new(CudaFusedAxisOpState { op_state: state })))
         } else {
             Ok(None)
         }
@@ -191,7 +183,7 @@ impl<O: TypedOp + Clone> EvalOp for CudaFusedAxisOp<O> {
     }
 }
 
-impl<O: TypedOp + Clone> TypedOp for CudaFusedAxisOp<O> {
+impl TypedOp for CudaFusedAxisOp {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         ensure!(
             inputs.len() == self.grouped_axis_ops.len(),

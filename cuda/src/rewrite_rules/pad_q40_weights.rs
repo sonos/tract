@@ -14,7 +14,9 @@ use crate::utils::pad_q40;
 fn is_mm_weights(model: &TypedModel, node: &TypedNode) -> TractResult<bool> {
     let mut cursor = node;
     while let Some(succ) = model.single_succ(cursor.id)? {
-        if succ.op_is::<CudaGgmlGemm>() || succ.op_is::<CudaFusedAxisOp<CudaGgmlGemm>>() {
+        if succ.op_is::<CudaGgmlGemm>()
+            || (succ.op_as::<CudaFusedAxisOp>().is_some_and(|fao| fao.op.is::<CudaGgmlGemm>()))
+        {
             return Ok(true);
         }
 

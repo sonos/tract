@@ -23,7 +23,7 @@ impl LeakyRelu {
         &self,
         stream: &TractCudaStream,
         input: &DeviceTensor,
-        alpha: f32
+        alpha: f32,
     ) -> TractResult<DeviceTensor> {
         let output = unsafe { DeviceTensor::uninitialized_dt(input.datum_type(), input.shape())? };
         self.dispatch_eval(stream, input, alpha, &output)?;
