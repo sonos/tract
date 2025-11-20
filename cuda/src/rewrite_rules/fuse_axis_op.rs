@@ -9,6 +9,7 @@ fn is_supported_axis_op(op: &CudaAxisOp) -> bool {
 }
 
 fn can_fuse_move(model: &TypedModel, axis_node: &TypedNode) -> bool {
+    // List of operators that supports non-contiguous inputs
     model.single_succ(axis_node.id).unwrap().is_some_and(|node| {
         node.op_is::<crate::ops::CudaConcat>()
             || node.op_is::<crate::ops::CudaApplyRope>()
@@ -48,17 +49,6 @@ pub fn collect_chain_of_axis_ops<'a>(
     })
 }
 
-#[macro_export]
-macro_rules! dispatch_cuda_op {
-    ($node: expr, $body:expr, $($op:path),+,) => {
-        $(
-            if let Some(op) = $node.op_as::<$op>() {
-                return $body(op.clone());
-            }
-        )*
-    };
-}
-
 pub fn fuse_axis_op(
     _ctx: &(),
     model: &TypedModel,
@@ -69,6 +59,8 @@ pub fn fuse_axis_op(
     rule_ensure!(is_supported_axis_op(axis_op) || matches!(axis_op.0, AxisOp::Move(..)));
 
     let Some(node) = model.single_succ(axis_node.id)? else { return Ok(None) };
+    rule_ensure!(!node.op.is::<CudaFusedAxisOp>());
+
     let node_name = &node.name;
     let Some(in_nodes) = model.all_prec(node.id)? else { return Ok(None) };
 
@@ -90,37 +82,12 @@ pub fn fuse_axis_op(
         }
     }
 
-    // Handle all compatible ops.
-    dispatch_cuda_op!(
-        node,
-        |op| {
-            let out = patch.wire_node(
-                format!("{node_name}.fused_axis_op"),
-                CudaFusedAxisOp { grouped_axis_ops, op },
-                &tap_inputs,
-            )?;
-            patch.shunt_outside(model, node.id.into(), out[0])?;
-            Ok(Some(patch))
-        },
-        crate::ops::CudaBinOp,
-        crate::ops::CudaMultiBroadcastTo,
-        crate::ops::CudaUnaryOp,
-        crate::ops::CudaRmsNorm,
-        crate::ops::CudaGeluApproximate,
-        crate::ops::CudaSoftmax,
-        crate::ops::CudaRotateHalf,
-        crate::ops::CudaApplyRope,
-        crate::ops::CudaReduce,
-        crate::ops::CudaSlice,
-        crate::ops::CudaConcat,
-        crate::ops::CudaCast,
-        crate::ops::CudaScaledMaskedSoftmax,
-        crate::ops::CudaGgmlGemm,
-        crate::ops::CudaDynKVCache,
-        crate::ops::CudaGgmlQuantQ81,
-        crate::ops::CudaPad,
-        crate::ops::CudaFlashAttention,
-    );
+    let out = patch.wire_node(
+        format!("{node_name}.fused_axis_op"),
+        CudaFusedAxisOp { grouped_axis_ops: grouped_axis_ops.clone(), op: node.op.clone() },
+        &tap_inputs,
+    )?;
+    patch.shunt_outside(model, node.id.into(), out[0])?;
 
     // Handle AxisOp::Move operator.
     if let Some(op) = node.op_as::<crate::ops::CudaAxisOp>() {
@@ -130,7 +97,7 @@ pub fn fuse_axis_op(
         {
             let out = patch.wire_node(
                 format!("{node_name}.fused_axis_op"),
-                CudaFusedAxisOp { grouped_axis_ops, op: op.clone() },
+                CudaFusedAxisOp { grouped_axis_ops, op: Box::new(op.clone()) },
                 &tap_inputs,
             )?;
             patch.shunt_outside(model, node.id.into(), out[0])?;
