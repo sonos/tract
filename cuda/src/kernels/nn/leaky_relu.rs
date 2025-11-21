@@ -48,11 +48,11 @@ impl LeakyRelu {
         let len = output.len();
 
         let func = cuda_context().load_pipeline(LibraryName::NN, kernel_name)?;
-        let mut launch_args = stream.launch_builder(&func);
-        launch_args.arg(&i_view);
-        launch_args.arg(&o_view);
-        launch_args.arg(&len);
-        launch_args.arg(&alpha);
+        let mut launch_args = stream.tract_launch_builder(&func);
+        launch_args.set_view(&i_view);
+        launch_args.set_view(&o_view);
+        launch_args.set_el::<i64>(len);
+        launch_args.set_el::<f32>(alpha);
 
         let cfg = LaunchConfig::for_num_elems(input.len() as _);
         unsafe {

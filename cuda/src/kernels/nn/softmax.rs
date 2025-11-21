@@ -1,5 +1,4 @@
 use crate::context::{TractCudaStream, cuda_context};
-use crate::kernels::launch_args::LaunchArgsExt;
 use crate::kernels::{LibraryName, MAX_THREADS, get_cuda_view, launch_args, utils};
 use cudarc::driver::{CudaStream, LaunchConfig, PushKernelArg};
 use tract_core::internal::*;
@@ -53,11 +52,11 @@ impl Softmax {
 
         let func = cuda_context()
             .load_pipeline(LibraryName::NN, self.kernel_name(input.datum_type(), shape_nd3[1])?)?;
-        let mut launch_args = stream.launch_builder(&func);
-        launch_args.arg(&i_view);
-        launch_args.arg(&o_view);
-        launch_args.set_slice(&shape_nd3);
-        launch_args.set_slice(&strides_nd3);
+        let mut launch_args = stream.tract_launch_builder(&func);
+        launch_args.set_view(&i_view);
+        launch_args.set_view(&o_view);
+        launch_args.set_slice::<i64>(&shape_nd3);
+        launch_args.set_slice::<i64>(&strides_nd3);
 
         let cfg = LaunchConfig {
             grid_dim: ((shape_nd3[0] * shape_nd3[2]) as _, 1, 1),
@@ -69,8 +68,7 @@ impl Softmax {
             shared_mem_bytes: 0,
         };
 
-        unsafe { launch_args.launch(cfg) };
-        Ok(())
+        launch_args.launch(cfg)
     }
 }
 
