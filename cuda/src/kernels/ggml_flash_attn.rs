@@ -33,15 +33,13 @@ enum FlashAttnImpl {
 
 #[inline]
 fn cc() -> i32 {
-    let ctxt = cuda_context();
-    let p = ctxt.properties();
+    let p = cuda_context().properties();
     p.major * 100 + p.minor * 10
 }
 
 #[inline]
 fn newer_than_lovelace() -> bool {
-    let ctxt = cuda_context();
-    let p = ctxt.properties();
+    let p = cuda_context().properties();
     p.major > 8 || (p.major == 8 && p.minor >= 9)
 }
 
@@ -396,8 +394,7 @@ impl GgmlFlashAttn {
         };
 
         // occupancy & parallel layout
-        let ctxt = cuda_context();
-        let props = ctxt.properties();
+        let props = cuda_context().properties();
         let nsm = props.multiProcessorCount as usize;
         let block_dim = (WARP_SIZE as u32, params.nwarps as u32, 1);
 
