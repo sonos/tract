@@ -264,14 +264,11 @@ pub fn device_tensor_launch_copy(
 ) -> TractResult<()> {
     ensure!(src.datum_type() == dst.datum_type());
     ensure!(src.datum_type().is_copy() && src.datum_type().is_number());
-    ensure!(
-        zone_shape.len() == dst.rank()
-            && zone_shape.len() == src.rank()
-            && zone_shape.len() == dst_origin.len()
-            && zone_shape.len() == dst_strides.len()
-            && zone_shape.len() == src_origin.len()
-            && zone_shape.len() == src_strides.len()
-    );
+    ensure!(zone_shape.len() == dst.rank());
+    ensure!(zone_shape.len() == dst_origin.len());
+    ensure!(zone_shape.len() == dst_strides.len());
+    ensure!(zone_shape.len() == src_origin.len());
+    ensure!(zone_shape.len() == src_strides.len());
     let broadcast_kind = BroadcastKind::from_rank(dst.rank()).with_context(|| {
         format!(
             "Unsupported broadcast for assign slice: (in: {:?}, out: {:?})",
@@ -279,6 +276,7 @@ pub fn device_tensor_launch_copy(
             dst.shape()
         )
     })?;
+    ensure!(src.len() > 0);
 
     let tname = DeviceTensor::tname(src.datum_type())?;
     let broadcast_name = broadcast_kind.name();
@@ -298,9 +296,9 @@ pub fn device_tensor_launch_copy(
     let mut launch_args = stream.launch_builder(&func);
     launch_args.arg(&src_view);
     launch_args.arg(&dst_view);
-    launch_args.set_slice(src.strides());
+    launch_args.set_slice(&src_strides);
     launch_args.set_slice(&zone_shape);
-    launch_args.set_slice(dst.strides());
+    launch_args.set_slice(&dst_strides);
 
     let cfg = cuda_launch_cfg_for_cpy(&zone_shape);
     unsafe { launch_args.launch(cfg)? };
