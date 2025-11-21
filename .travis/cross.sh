@@ -225,6 +225,6 @@ then
     echo bench task: $TASK_NAME 
     if [ -n "$AWS_ACCESS_KEY_ID" ]
     then
-        aws s3 cp $TASK_NAME.tgz s3://tract-ci-builds/tasks/$PLATFORM/$TASK_NAME.tgz
+        AWS_MAX_ATTEMPTS=5 aws s3 cp --debug $TASK_NAME.tgz s3://tract-ci-builds/tasks/$PLATFORM/$TASK_NAME.tgz
     fi
 fi
