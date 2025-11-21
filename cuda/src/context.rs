@@ -11,7 +11,9 @@ use std::sync::{OnceLock, RwLock};
 
 use tract_core::internal::*;
 
-use cudarc::driver::{CudaContext, CudaFunction, CudaModule, CudaStream};
+use cudarc::driver::{
+    CudaContext, CudaFunction, CudaModule, CudaSlice, CudaStream, CudaView, CudaViewMut, DevicePtr,
+};
 
 use crate::kernels::launch_args::LaunchArgsOwned;
 use crate::kernels::{COMMON_H, LibraryName, cubin_dir};
@@ -307,15 +309,43 @@ impl TractCudaStream {
         &self.cublas
     }
 
-    pub fn tract_launch_builder<'a>(&'a self, func: &'a CudaFunction) -> LaunchArgsOwned<'a> {
+    pub fn launch_builder<'a>(&'a self, func: &'a CudaFunction) -> LaunchArgsOwned<'a> {
         LaunchArgsOwned::from(self.inner.launch_builder(func))
     }
-}
 
-impl Deref for TractCudaStream {
-    type Target = Arc<CudaStream>;
+    pub fn alloc(&self, len: usize) -> TractResult<CudaSlice<u8>> {
+        unsafe {
+            let buffer = self.inner.alloc::<u8>(len)?;
+            Ok(buffer)
+        }
+    }
 
-    fn deref(&self) -> &Self::Target {
-        &self.inner
+    pub fn synchronize(&self) -> TractResult<()> {
+        self.inner.synchronize()?;
+        Ok(())
+    }
+
+    pub fn memcpy_stod(&self, data: &[u8]) -> TractResult<CudaSlice<u8>> {
+        let buffer = self.inner.memcpy_stod(data)?;
+        Ok(buffer)
+    }
+
+    pub fn memcpy_dtoh(&self, src: &CudaSlice<u8>, dst: &mut [u8]) -> TractResult<()> {
+        self.inner.memcpy_dtoh(src, dst)?;
+        Ok(())
+    }
+
+    pub fn memcpy_dtod(&self, src: &CudaView<u8>, dst: &mut CudaViewMut<u8>) -> TractResult<()> {
+        self.inner.memcpy_dtod(src, dst)?;
+        Ok(())
+    }
+
+    pub fn null_ptr(&self) -> TractResult<CudaSlice<u8>> {
+        let buffer = self.inner.null::<u8>()?;
+        Ok(buffer)
+    }
+
+    pub fn device_ptr(&self, buffer: &CudaSlice<u8>) -> cudarc::driver::sys::CUdeviceptr {
+        buffer.device_ptr(&self.inner).0
     }
 }

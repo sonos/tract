@@ -213,7 +213,7 @@ fn dispatch_ggml_matvec(
 
     let kernel_name = kernel_name_mat_vec(params.dts[0], params.m, block_size)?;
     let mut func = cuda_context().load_pipeline(LibraryName::Ggml, kernel_name)?;
-    let mut launch_args = stream.tract_launch_builder(&func);
+    let mut launch_args = stream.launch_builder(&func);
     launch_args.set_view(&w_view);
     launch_args.set_view(&act_view);
     launch_args.set_view(&output_view);
@@ -348,7 +348,7 @@ fn launch_matmul_q40(
         CUfunction_attribute::CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
         nbytes_shared as i32,
     )?;
-    let mut launch_args = stream.tract_launch_builder(&func);
+    let mut launch_args = stream.launch_builder(&func);
     launch_args.set_view(weights);
     launch_args.set_view(quant_activ);
     launch_args.set_view(output);
@@ -389,7 +389,7 @@ fn launch_fixup_q40(
     let context = cuda_context();
     let props = context.properties();
     let func = context.load_pipeline(LibraryName::GgmlQ, kernel_name)?;
-    let mut launch_args = stream.tract_launch_builder(&func);
+    let mut launch_args = stream.launch_builder(&func);
     launch_args.set_view(output);
     launch_args.set_view(fixup_tens);
     launch_args.set_el::<i64>(params.k);
@@ -423,7 +423,7 @@ fn dispatch_ggml_matmul_q40(
     let context = cuda_context();
     let props = context.properties();
 
-    let null_ptr = stream.null::<u8>()?;
+    let null_ptr = stream.null_ptr()?;
 
     let padded_k = params.k.next_multiple_of(Q40_ROW_PADDING);
     let n_blocks = padded_k / Q4_0.block_len(); // padded Q40 weights
@@ -483,7 +483,7 @@ fn dispatch_ggml_matvec_q40(
     ensure!(params.act_batch % params.w_batch == 0);
 
     let context = cuda_context();
-    let null_ptr = stream.null::<u8>()?;
+    let null_ptr = stream.null_ptr()?;
 
     let padded_k = params.k.next_multiple_of(Q40_ROW_PADDING);
 
@@ -497,7 +497,7 @@ fn dispatch_ggml_matvec_q40(
     let batch_ratio = params.act_batch / params.w_batch;
 
     let func = context.load_pipeline(LibraryName::GgmlQ, format!("mul_vec_q40_m_{}", params.m))?;
-    let mut launch_args = stream.tract_launch_builder(&func);
+    let mut launch_args = stream.launch_builder(&func);
     launch_args.set_view(weights);
     launch_args.set_view(activs);
     launch_args.set_view(output);

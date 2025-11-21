@@ -68,7 +68,7 @@ impl GgmlQuantQ81 {
                 LibraryName::Quant,
                 format!("quantize_mmq_q8_1_{fast_path_str}nd{}", input.rank()),
             )?;
-            let mut launch_args = stream.tract_launch_builder(&func);
+            let mut launch_args = stream.launch_builder(&func);
             launch_args.set_view(&i_view);
             launch_args.set_view(&o_view);
             launch_args.set_el::<u64>(k);
@@ -88,7 +88,7 @@ impl GgmlQuantQ81 {
         } else {
             let func = context
                 .load_pipeline(LibraryName::Quant, format!("quantize_q8_1_nd{}", input.rank()))?;
-            let mut launch_args = stream.tract_launch_builder(&func);
+            let mut launch_args = stream.launch_builder(&func);
             launch_args.set_view(&i_view);
             launch_args.set_view(&o_view);
             launch_args.set_el::<u64>(k);

@@ -67,7 +67,7 @@ impl ScaledMaskedSoftmax {
         let func = cuda_context()
             .load_pipeline(LibraryName::NN, self.kernel_name(input.datum_type(), block_size)?)?;
 
-        let mut launch_args = stream.tract_launch_builder(&func);
+        let mut launch_args = stream.launch_builder(&func);
         launch_args.set_view(&i_view);
         launch_args.set_view(&mask_view);
 

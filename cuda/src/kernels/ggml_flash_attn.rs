@@ -375,7 +375,7 @@ impl GgmlFlashAttn {
                 format!("flash_attn_mask_to_KV_max_{}", params.ncols1),
             )?;
 
-            let mut la = stream.tract_launch_builder(&func);
+            let mut la = stream.launch_builder(&func);
             la.set_view(&mv);
             la.set_view(&kv_max_v);
             la.set_el::<i64>(iter_k);
@@ -476,14 +476,14 @@ impl GgmlFlashAttn {
         let v_strides_b = strides_to_bytes_i32::<f16>(v.strides());
         let mask_strides_b = strides_to_bytes_i32::<f16>(mask.strides());
 
-        let null_ptr = stream.null::<u8>()?;
+        let null_ptr = stream.null_ptr()?;
         let kv_max_v = kv_max.as_ref().map(get_cuda_view).unwrap_or_else(|| null_ptr.as_view());
         let dst_tmp_v = dst_tmp.as_ref().map(get_cuda_view).unwrap_or_else(|| null_ptr.as_view());
         let dst_tmp_meta_v =
             dst_tmp_meta.as_ref().map(get_cuda_view).unwrap_or_else(|| null_ptr.as_view());
 
         // main kernel
-        let mut la = stream.tract_launch_builder(&params.kernel);
+        let mut la = stream.launch_builder(&params.kernel);
         la.set_view(&qv);
         la.set_view(&kv);
         la.set_view(&vv);
@@ -515,7 +515,7 @@ impl GgmlFlashAttn {
                     LibraryName::GgmlFlashAttn,
                     format!("flash_attn_stream_k_fixup_{}_{}_{}", params.d, ncols, params.ncols2),
                 )?;
-                let mut la = stream.tract_launch_builder(&f);
+                let mut la = stream.launch_builder(&f);
                 la.set_view(&ov);
                 la.set_view(&dst_tmp_meta_v);
                 la.set_slice::<i32>(&q_shape_i32[..3]);
@@ -532,7 +532,7 @@ impl GgmlFlashAttn {
                 LibraryName::GgmlFlashAttn,
                 format!("flash_attn_combine_results_{}", params.d),
             )?;
-            let mut la = stream.tract_launch_builder(&f);
+            let mut la = stream.launch_builder(&f);
             la.set_view(&dst_tmp_v);
             la.set_view(&dst_tmp_meta_v);
             la.set_view(&ov);
