@@ -13,6 +13,7 @@ use tract_core::internal::*;
 
 use cudarc::driver::{CudaContext, CudaFunction, CudaModule, CudaStream};
 
+use crate::kernels::launch_args::LaunchArgsOwned;
 use crate::kernels::{COMMON_H, LibraryName, cubin_dir};
 use crate::tensor::CudaTensor;
 
@@ -304,6 +305,10 @@ impl TractCudaStream {
 
     pub fn cublas(&self) -> &CudaBlas {
         &self.cublas
+    }
+
+    pub fn tract_launch_builder<'a>(&'a self, func: &'a CudaFunction) -> LaunchArgsOwned<'a> {
+        LaunchArgsOwned::from(self.inner.launch_builder(func))
     }
 }
 

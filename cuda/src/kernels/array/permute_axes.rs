@@ -1,5 +1,4 @@
 use crate::context::{TractCudaStream, cuda_context};
-use crate::kernels::launch_args::LaunchArgsExt;
 use crate::kernels::{BroadcastKind, LibraryName, get_cuda_view, utils};
 use cudarc::driver::{CudaStream, LaunchArgs, LaunchConfig, PushKernelArg};
 use std::fmt;
@@ -110,17 +109,16 @@ impl PermuteAxes {
 
         let out_shape = output.shape();
         let func = cuda_context().load_pipeline(LibraryName::Array, kernel_name)?;
-        let mut launch_args = stream.launch_builder(&func);
-        launch_args.arg(&i_view);
-        launch_args.arg(&o_view);
-        launch_args.set_slice(&new_strides);
-        launch_args.set_slice(out_shape);
-        launch_args.set_slice(output.strides());
+        let mut launch_args = stream.tract_launch_builder(&func);
+        launch_args.set_view(&i_view);
+        launch_args.set_view(&o_view);
+        launch_args.set_slice::<i64>(&new_strides);
+        launch_args.set_slice::<i64>(out_shape);
+        launch_args.set_slice::<i64>(output.strides());
 
         let cfg = utils::cuda_launch_cfg_for_cpy(out_shape);
 
-        unsafe { launch_args.launch(cfg) };
-        Ok(())
+        launch_args.launch(cfg)
     }
 }
 

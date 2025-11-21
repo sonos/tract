@@ -1,5 +1,4 @@
 use crate::context::{TractCudaStream, cuda_context};
-use crate::kernels::launch_args::LaunchArgsExt;
 use crate::kernels::utils::compute_broadcast_strides;
 use crate::kernels::{BroadcastKind, LibraryName, get_cuda_view, utils};
 use anyhow::ensure;
@@ -91,15 +90,15 @@ impl ApplyRope {
         let o_view = get_cuda_view(output);
 
         let func = cuda_context().load_pipeline(LibraryName::NN, kernel_name)?;
-        let mut launch_args = stream.launch_builder(&func);
-        launch_args.arg(&i_view);
-        launch_args.arg(&cos_view);
-        launch_args.arg(&sin_view);
-        launch_args.arg(&o_view);
-        launch_args.set_slice(input.shape());
-        launch_args.set_slice(input.strides());
-        launch_args.set_slice(&cos_sin_strides);
-        launch_args.set_slice(output.strides());
+        let mut launch_args = stream.tract_launch_builder(&func);
+        launch_args.set_view(&i_view);
+        launch_args.set_view(&cos_view);
+        launch_args.set_view(&sin_view);
+        launch_args.set_view(&o_view);
+        launch_args.set_slice::<i64>(input.shape());
+        launch_args.set_slice::<i64>(input.strides());
+        launch_args.set_slice::<i64>(&cos_sin_strides);
+        launch_args.set_slice::<i64>(output.strides());
 
         let shape = input.shape();
 
@@ -126,9 +125,7 @@ impl ApplyRope {
             shared_mem_bytes: 0,
         };
 
-        unsafe { launch_args.launch(cfg) };
-
-        Ok(())
+        launch_args.launch(cfg)
     }
 }
 

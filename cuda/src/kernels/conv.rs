@@ -1,7 +1,6 @@
 use crate::context::{TractCudaStream, cuda_context};
 use crate::kernels::get_cuda_view;
-use crate::kernels::launch_args::LaunchArgsExt;
-use cudarc::driver::{LaunchArgs, LaunchConfig, PushKernelArg};
+use cudarc::driver::LaunchConfig;
 use std::fmt::Debug;
 use tract_core::dyn_clone::{self, DynClone};
 use tract_core::internal::*;
@@ -45,63 +44,63 @@ impl ConvKernel for Generic {
         let func_name = format!("conv{}d_f32_generic", input_shape.hw_rank());
         let func = ctx.load_pipeline(crate::kernels::LibraryName::Cnn, func_name)?;
 
-        let mut launcher = stream.launch_builder(&func);
+        let mut launcher = stream.tract_launch_builder(&func);
 
         let input = get_cuda_view(input);
 
-        launcher.arg(&input);
-        launcher.arg(input_shape.n().unwrap_or(&1));
-        launcher.arg(input_shape.c());
-        launcher.set_slice(input_shape.hw_dims());
+        launcher.set_view(&input);
+        launcher.set_el::<i64>(*input_shape.n().unwrap_or(&1));
+        launcher.set_el::<i64>(*input_shape.c());
+        launcher.set_slice::<i64>(input_shape.hw_dims());
 
-        launcher.arg(input_shape.n_stride().unwrap_or(&0));
-        launcher.arg(input_shape.c_stride());
-        launcher.set_slice(input_shape.hw_strides());
+        launcher.set_el::<i64>(*input_shape.n_stride().unwrap_or(&0));
+        launcher.set_el::<i64>(*input_shape.c_stride());
+        launcher.set_slice::<i64>(input_shape.hw_strides());
 
         let kfmt = op.kernel_fmt;
         let co_per_group = op.pool_spec.output_channels / op.group;
         let ci_per_group = op.pool_spec.input_channels / op.group;
 
         let weights_view = get_cuda_view(weights);
-        launcher.arg(&weights_view);
+        launcher.set_view(&weights_view);
         // split go_i_h_w in g_o_i_h_w
-        launcher.arg(&op.group);
-        launcher.arg(&co_per_group);
-        launcher.set_slice(&weights.shape()[1..]);
+        launcher.set_el::<i64>(op.group);
+        launcher.set_el::<i64>(co_per_group);
+        launcher.set_slice::<i64>(&weights.shape()[1..]);
 
         let group_stride = weights.strides()[0] as usize * co_per_group;
-        launcher.arg(&group_stride);
-        launcher.set_slice(weights.strides());
+        launcher.set_el::<i64>(group_stride);
+        launcher.set_slice::<i64>(weights.strides());
 
         let bias_view = get_cuda_view(bias);
-        launcher.arg(&bias_view);
-        launcher.arg(if bias.rank() == 0 {
-            &0usize // scalar bias: stride = 0 is broadcasting
+        launcher.set_view(&bias_view);
+        launcher.set_el::<i64>(if bias.rank() == 0 {
+            0usize // scalar bias: stride = 0 is broadcasting
         } else {
-            &1usize
+            1usize
         });
 
         let padding = op.pool_spec.computed_padding(input_shape.hw_dims());
         for d in 0..input_shape.hw_rank() {
-            launcher.arg(&padding[d].pad_before);
+            launcher.set_el::<i64>(padding[d].pad_before);
         }
 
         let strides = op.pool_spec.strides();
-        launcher.set_slice(&strides);
+        launcher.set_slice::<i64>(&strides);
 
         let dilations = op.pool_spec.dilations();
-        launcher.set_slice(&dilations);
+        launcher.set_slice::<i64>(&dilations);
 
         let output_shape = op.pool_spec.data_format.shape(output.shape())?;
         let output = get_cuda_view(output);
-        launcher.arg(&output);
-        launcher.arg(output_shape.n().unwrap_or(&1));
-        launcher.arg(output_shape.c());
-        launcher.set_slice(output_shape.hw_dims());
+        launcher.set_view(&output);
+        launcher.set_el::<i64>(*output_shape.n().unwrap_or(&1));
+        launcher.set_el::<i64>(*output_shape.c());
+        launcher.set_slice::<i64>(output_shape.hw_dims());
 
-        launcher.arg(output_shape.n_stride().unwrap_or(&0));
-        launcher.arg(output_shape.c_stride());
-        launcher.set_slice(output_shape.hw_strides());
+        launcher.set_el::<i64>(*output_shape.n_stride().unwrap_or(&0));
+        launcher.set_el::<i64>(*output_shape.c_stride());
+        launcher.set_slice::<i64>(output_shape.hw_strides());
 
         let cfg = LaunchConfig {
             grid_dim: (
@@ -113,9 +112,6 @@ impl ConvKernel for Generic {
             shared_mem_bytes: 0,
         };
 
-        unsafe {
-            launcher.launch(cfg);
-        }
-        Ok(())
+        launcher.launch(cfg)
     }
 }

@@ -1,5 +1,4 @@
 use crate::context::{TractCudaStream, cuda_context};
-use crate::kernels::launch_args::LaunchArgsExt;
 use crate::kernels::utils::compute_broadcast_strides;
 use crate::kernels::{LibraryName, MAX_THREADS, get_cuda_view, launch_args};
 use cudarc::driver::{CudaStream, LaunchConfig, PushKernelArg};
@@ -68,20 +67,20 @@ impl ScaledMaskedSoftmax {
         let func = cuda_context()
             .load_pipeline(LibraryName::NN, self.kernel_name(input.datum_type(), block_size)?)?;
 
-        let mut launch_args = stream.launch_builder(&func);
-        launch_args.arg(&i_view);
-        launch_args.arg(&mask_view);
+        let mut launch_args = stream.tract_launch_builder(&func);
+        launch_args.set_view(&i_view);
+        launch_args.set_view(&mask_view);
 
         if input.datum_type() == DatumType::F32 {
-            launch_args.arg(scale.to_scalar::<f32>()?)
+            launch_args.set_el::<f32>(*scale.to_scalar::<f32>()?)
         } else {
-            launch_args.arg(scale.to_scalar::<f16>()?)
+            launch_args.set_el::<f16>(*scale.to_scalar::<f16>()?)
         };
-        launch_args.arg(&o_view);
-        launch_args.set_slice(shape);
-        launch_args.set_slice(strides);
-        launch_args.set_slice(&mask_strides_nd3);
-        launch_args.set_slice(output.strides());
+        launch_args.set_view(&o_view);
+        launch_args.set_slice::<i64>(shape);
+        launch_args.set_slice::<i64>(strides);
+        launch_args.set_slice::<i64>(&mask_strides_nd3);
+        launch_args.set_slice::<i64>(output.strides());
 
         let cfg = LaunchConfig {
             grid_dim: (1, shape[1] as _, shape[0] as _),
@@ -89,8 +88,7 @@ impl ScaledMaskedSoftmax {
             shared_mem_bytes: ((shape[2].next_power_of_two() + 32) * size_of::<f32>()) as u32,
         };
 
-        unsafe { launch_args.launch(cfg) };
-        Ok(())
+        launch_args.launch(cfg)
     }
 }
 

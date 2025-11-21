@@ -213,19 +213,19 @@ fn dispatch_ggml_matvec(
 
     let kernel_name = kernel_name_mat_vec(params.dts[0], params.m, block_size)?;
     let mut func = cuda_context().load_pipeline(LibraryName::Ggml, kernel_name)?;
-    let mut launch_args = stream.launch_builder(&func);
-    launch_args.arg(&w_view);
-    launch_args.arg(&act_view);
-    launch_args.arg(&output_view);
-    launch_args.arg(&k_div_2);
-    launch_args.arg(&params.act_batch);
-    launch_args.arg(&params.w_strides[1]);
-    launch_args.arg(&ncols_act_div_2);
-    launch_args.arg(&params.out_strides[1]);
-    launch_args.arg(&batch_ratio);
-    launch_args.arg(&params.w_strides[0]);
-    launch_args.arg(&params.act_strides[0]);
-    launch_args.arg(&params.out_strides[0]);
+    let mut launch_args = stream.tract_launch_builder(&func);
+    launch_args.set_view(&w_view);
+    launch_args.set_view(&act_view);
+    launch_args.set_view(&output_view);
+    launch_args.set_el::<i64>(k_div_2);
+    launch_args.set_el::<i64>(params.act_batch);
+    launch_args.set_el::<i64>(params.w_strides[1]);
+    launch_args.set_el::<i64>(ncols_act_div_2);
+    launch_args.set_el::<i64>(params.out_strides[1]);
+    launch_args.set_el::<i64>(batch_ratio);
+    launch_args.set_el::<i64>(params.w_strides[0]);
+    launch_args.set_el::<i64>(params.act_strides[0]);
+    launch_args.set_el::<i64>(params.out_strides[0]);
 
     let cfg = LaunchConfig {
         grid_dim: (params.n as _, params.act_batch as _, 1),
@@ -348,22 +348,22 @@ fn launch_matmul_q40(
         CUfunction_attribute::CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
         nbytes_shared as i32,
     )?;
-    let mut launch_args = stream.launch_builder(&func);
-    launch_args.arg(weights);
-    launch_args.arg(quant_activ);
-    launch_args.arg(output);
-    launch_args.arg(fixup_tens);
-    launch_args.arg(&params.k);
-    launch_args.arg(&params.n);
-    launch_args.arg(&params.m);
-    launch_args.arg(&n_blocks);
-    launch_args.arg(&params.m);
-    launch_args.arg(&params.n);
-    launch_args.arg(&batch_ratio);
-    launch_args.arg(&params.act_batch);
-    launch_args.arg(&w_batch_stride);
-    launch_args.arg(&act_batch_stride);
-    launch_args.arg(&params.out_strides[0]);
+    let mut launch_args = stream.tract_launch_builder(&func);
+    launch_args.set_view(weights);
+    launch_args.set_view(quant_activ);
+    launch_args.set_view(output);
+    launch_args.set_view(fixup_tens);
+    launch_args.set_el::<i64>(params.k);
+    launch_args.set_el::<i64>(params.n);
+    launch_args.set_el::<i64>(params.m);
+    launch_args.set_el::<i64>(n_blocks);
+    launch_args.set_el::<i64>(params.m);
+    launch_args.set_el::<i64>(params.n);
+    launch_args.set_el::<i64>(batch_ratio);
+    launch_args.set_el::<i64>(params.act_batch);
+    launch_args.set_el::<i64>(w_batch_stride);
+    launch_args.set_el::<i64>(act_batch_stride);
+    launch_args.set_el::<i64>(params.out_strides[0]);
 
     let cfg = LaunchConfig {
         grid_dim: (props.multiProcessorCount as usize as _, 1, 1),
@@ -389,15 +389,15 @@ fn launch_fixup_q40(
     let context = cuda_context();
     let props = context.properties();
     let func = context.load_pipeline(LibraryName::GgmlQ, kernel_name)?;
-    let mut launch_args = stream.launch_builder(&func);
-    launch_args.arg(output);
-    launch_args.arg(fixup_tens);
-    launch_args.arg(&params.k);
-    launch_args.arg(&params.n);
-    launch_args.arg(&params.m);
-    launch_args.arg(&params.n);
-    launch_args.arg(&params.act_batch);
-    launch_args.arg(&params.out_strides[0]);
+    let mut launch_args = stream.tract_launch_builder(&func);
+    launch_args.set_view(output);
+    launch_args.set_view(fixup_tens);
+    launch_args.set_el::<i64>(params.k);
+    launch_args.set_el::<i64>(params.n);
+    launch_args.set_el::<i64>(params.m);
+    launch_args.set_el::<i64>(params.n);
+    launch_args.set_el::<i64>(params.act_batch);
+    launch_args.set_el::<i64>(params.out_strides[0]);
 
     let cfg = LaunchConfig {
         grid_dim: (props.multiProcessorCount as usize as _, 1, 1),
@@ -497,19 +497,19 @@ fn dispatch_ggml_matvec_q40(
     let batch_ratio = params.act_batch / params.w_batch;
 
     let func = context.load_pipeline(LibraryName::GgmlQ, format!("mul_vec_q40_m_{}", params.m))?;
-    let mut launch_args = stream.launch_builder(&func);
-    launch_args.arg(weights);
-    launch_args.arg(activs);
-    launch_args.arg(output);
-    launch_args.arg(&params.k);
-    launch_args.arg(&params.act_batch);
-    launch_args.arg(&n_blocks);
-    launch_args.arg(&stride_col_act);
-    launch_args.arg(&stride_col_out);
-    launch_args.arg(&batch_ratio);
-    launch_args.arg(&stride_channel_w);
-    launch_args.arg(&stride_channel_act);
-    launch_args.arg(&stride_channel_out);
+    let mut launch_args = stream.tract_launch_builder(&func);
+    launch_args.set_view(weights);
+    launch_args.set_view(activs);
+    launch_args.set_view(output);
+    launch_args.set_el::<i64>(params.k);
+    launch_args.set_el::<i64>(params.act_batch);
+    launch_args.set_el::<i64>(n_blocks);
+    launch_args.set_el::<i64>(stride_col_act);
+    launch_args.set_el::<i64>(stride_col_out);
+    launch_args.set_el::<i64>(batch_ratio);
+    launch_args.set_el::<i64>(stride_channel_w);
+    launch_args.set_el::<i64>(stride_channel_act);
+    launch_args.set_el::<i64>(stride_channel_out);
 
     let rows_per_block = if params.m == 1 { 1 } else { 2 };
     let n_warps = if params.m <= 4 { 4 } else { 2 };
@@ -519,8 +519,7 @@ fn dispatch_ggml_matvec_q40(
         shared_mem_bytes: 0,
     };
 
-    unsafe { launch_args.launch(cfg) };
-    Ok(())
+    launch_args.launch(cfg)
 }
 
 impl GgmlGemm {
