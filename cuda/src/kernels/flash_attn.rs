@@ -119,7 +119,7 @@ impl CudaFlashAttn {
 
         let use_mask = mask.is_some();
 
-        let null_ptr = stream.null::<u8>()?;
+        let null_ptr = stream.null_ptr()?;
 
         let q_view = get_cuda_view(q);
         let k_view = get_cuda_view(k);
@@ -138,7 +138,7 @@ impl CudaFlashAttn {
                 smem_size as _,
             )?;
 
-            let mut launch_args = stream.tract_launch_builder(&func);
+            let mut launch_args = stream.launch_builder(&func);
             launch_args.set_view(&q_view);
             launch_args.set_view(&k_view);
             launch_args.set_view(&v_view);

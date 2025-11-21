@@ -44,7 +44,7 @@ impl ConvKernel for Generic {
         let func_name = format!("conv{}d_f32_generic", input_shape.hw_rank());
         let func = ctx.load_pipeline(crate::kernels::LibraryName::Cnn, func_name)?;
 
-        let mut launcher = stream.tract_launch_builder(&func);
+        let mut launcher = stream.launch_builder(&func);
 
         let input = get_cuda_view(input);
 
@@ -91,7 +91,10 @@ impl ConvKernel for Generic {
         let dilations = op.pool_spec.dilations();
         launcher.set_slice::<i64>(&dilations);
 
+        dbg!(output.shape());
+
         let output_shape = op.pool_spec.data_format.shape(output.shape())?;
+        dbg!(&output_shape);
         let output = get_cuda_view(output);
         launcher.set_view(&output);
         launcher.set_el::<i64>(*output_shape.n().unwrap_or(&1));
@@ -111,7 +114,7 @@ impl ConvKernel for Generic {
             block_dim: (32, 1, 1),
             shared_mem_bytes: 0,
         };
-
+        dbg!(cfg);
         launcher.launch(cfg)
     }
 }

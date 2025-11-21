@@ -1,6 +1,6 @@
 use std::ops::{Deref, DerefMut, RangeBounds};
 
-use cudarc::driver::{CudaSlice, DevicePtr, PushKernelArg};
+use cudarc::driver::CudaSlice;
 use tract_core::internal::tract_smallvec::ToSmallVec;
 use tract_core::internal::*;
 use tract_core::prelude::{DatumType, TVec};
@@ -10,8 +10,7 @@ use tract_gpu::device::DeviceBuffer;
 use tract_gpu::tensor::{DeviceTensor, OwnedDeviceTensor};
 use tract_gpu::utils::{as_q40_tensor, check_strides_validity};
 
-use crate::context::{CUDA_STREAM, TractCudaStream, cuda_context};
-use crate::kernels::launch_args::LaunchArgsExt;
+use crate::context::{cuda_context, TractCudaStream, CUDA_STREAM};
 use crate::kernels::utils::cuda_launch_cfg_for_cpy;
 use crate::kernels::{BroadcastKind, LibraryName, get_sliced_cuda_view};
 use crate::ops::GgmlQuantQ81Fact;
@@ -23,7 +22,7 @@ pub struct CudaBuffer {
 
 impl DeviceBuffer for CudaBuffer {
     fn ptr(&self) -> *const std::ffi::c_void {
-        CUDA_STREAM.with(|stream| self.inner.device_ptr(stream).0 as _)
+        CUDA_STREAM.with(|stream| stream.device_ptr(&self.inner) as _)
     }
 }
 impl Deref for CudaBuffer {
@@ -70,7 +69,7 @@ impl CudaTensor {
     }
 
     pub fn uninitialized_dt(shape: &[usize], dt: DatumType) -> TractResult<Self> {
-        CUDA_STREAM.with(|stream| unsafe {
+        CUDA_STREAM.with(|stream| {
             let device_data = stream.alloc(shape.iter().product::<usize>() * dt.size_of()).unwrap();
             let buffer = Arc::new(CudaBuffer { inner: device_data });
             Ok(CudaTensor {
@@ -89,7 +88,7 @@ impl CudaTensor {
             let format = bqf.format.clone();
             let len = shape.iter().product::<usize>();
             ensure!(len % format.block_len() == 0);
-            CUDA_STREAM.with(|stream| unsafe {
+            CUDA_STREAM.with(|stream| {
                 let device_data = stream.alloc(len * format.block_bytes() / format.block_len())?;
                 let buffer = Arc::new(CudaBuffer { inner: device_data });
                 Ok(CudaTensor {
@@ -103,7 +102,7 @@ impl CudaTensor {
         } else if let Some(ggml_q81_fact) = opaque_fact.downcast_ref::<GgmlQuantQ81Fact>() {
             let mem_size = ggml_q81_fact.mem_size().as_i64().unwrap() as usize;
 
-            CUDA_STREAM.with(|stream| unsafe {
+            CUDA_STREAM.with(|stream| {
                 let device_data = stream.alloc(mem_size)?;
                 let buffer = Arc::new(CudaBuffer { inner: device_data });
                 Ok(CudaTensor {

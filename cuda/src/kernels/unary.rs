@@ -163,7 +163,7 @@ impl UnaryOps {
         let o_view = get_cuda_view(output);
 
         let cfg = LaunchConfig::for_num_elems(len as _);
-        let mut launch_args = stream.tract_launch_builder(&func);
+        let mut launch_args = stream.launch_builder(&func);
         launch_args.set_view(&i_view);
         launch_args.set_view(&o_view);
         launch_args.set_el::<i64>(len);
