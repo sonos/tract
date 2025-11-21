@@ -8,6 +8,7 @@ fn is_supported_axis_op(op: &CudaAxisOp) -> bool {
     matches!(op.0, AxisOp::Add(_) | AxisOp::Rm(_) | AxisOp::Reshape(..))
 }
 
+// these are operators that can handle arbitrarty strides
 fn can_fuse_move(model: &TypedModel, axis_node: &TypedNode) -> bool {
     model.single_succ(axis_node.id).unwrap().is_some_and(|node| {
         node.op_is::<crate::ops::CudaConcat>()
@@ -18,6 +19,8 @@ fn can_fuse_move(model: &TypedModel, axis_node: &TypedNode) -> bool {
             || node.op_is::<crate::ops::CudaDynKVCache>()
             || node.op_is::<crate::ops::CudaGgmlQuantQ81>()
             || node.op_is::<crate::ops::CudaPad>()
+            || node.op_is::<crate::ops::CudaDelay>()
+            || node.op_is::<crate::ops::CudaPulsePad>()
     })
 }
 
@@ -120,6 +123,9 @@ pub fn fuse_axis_op(
         crate::ops::CudaGgmlQuantQ81,
         crate::ops::CudaPad,
         crate::ops::CudaFlashAttention,
+        crate::ops::CudaConv,
+        crate::ops::CudaDelay,
+        crate::ops::CudaPulsePad,
     );
 
     // Handle AxisOp::Move operator.

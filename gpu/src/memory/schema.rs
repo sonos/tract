@@ -68,10 +68,11 @@ pub fn eval_device_mem_req_for_nodes(
         });
 
         !cpu_sync_in_next_nodes
-            && node.op.is_stateless()
-            && facts
-                .iter()
-                .any(|it| it.as_device_fact().map(|it| it.is_from_device()).unwrap_or(false))
+            && facts.iter().any(|it| {
+                it.as_device_fact()
+                    .map(|it| it.is_from_device() && !it.is_state_owned())
+                    .unwrap_or(false)
+            })
     });
     let mut scoped_nodes = tvec![];
 

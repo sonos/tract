@@ -5,8 +5,8 @@ use tract_hir::internal::*;
 use tract_libcli::capture_gpu_trace;
 use tract_libcli::model::Model;
 use tract_libcli::profile::BenchLimits;
-use tract_libcli::tensor::RunTensors;
 use tract_libcli::tensor::get_or_make_inputs;
+use tract_libcli::tensor::RunTensors;
 use tract_libcli::terminal;
 
 fn profile_single_turn<'m>(
@@ -66,12 +66,13 @@ pub(crate) fn make_state<'m>(
         plan_options.skip_order_opt_ram = true;
         let mut plan = SimplePlan::new_with_options(model, &plan_options)?;
         let mut symbol_values = SymbolValues::default();
-        let sequence_length = model.symbols.get("S").context("Could not find symbol S in model")?;
-        let past_sequence_length =
-            model.symbols.get("P").context("Could not find symbol P in model")?;
+        if let Some(s) = model.symbols.get("S") {
+            symbol_values.set(&s, 1024);
+        }
+        if let Some(p) = model.symbols.get("P") {
+            symbol_values.set(&p, 0);
+        }
 
-        symbol_values.set(&sequence_length, 1024);
-        symbol_values.set(&past_sequence_length, 0);
         let session_handler =
             tract_gpu::session_handler::DeviceSessionHandler::from_plan(&plan, &symbol_values)?;
 

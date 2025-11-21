@@ -20,6 +20,7 @@ use tract_gpu::rewrite_rules::rms_norm::remove_rms_norm_cast;
 use tract_gpu::sync::{DeviceSync, DeviceSyncKind};
 use tract_gpu::tensor::{DeviceTensor, DeviceTensorExt, IntoDevice};
 use tract_gpu::utils::as_quant_fact;
+use tract_pulse_opl::ops::{Delay, PulsePad};
 use tract_transformers::ops::apply_rope::{ApplyRope, RotateHalf};
 use tract_transformers::ops::dyn_kv_cache::DynKeyValueCache;
 use tract_transformers::ops::gelu_approximate::GeluApproximate;
@@ -30,6 +31,7 @@ use tract_transformers::ops::silu::Silu;
 use DatumType::{F16, F32};
 
 use crate::context::cuda_context;
+use crate::ops::{CudaDelay, CudaPulsePad};
 use crate::{kernels, ops, rewrite_rules};
 
 #[derive(Debug, Default)]
@@ -214,6 +216,8 @@ fn can_translate_to_cuda_op(source: &TypedModel, node: &TypedNode) -> TractResul
             || node.op_is::<MultiBroadcastTo>()
             || node.op_is::<AxisOp>()
             || node.op_is::<Slice>()
+            || node.op_is::<Delay>()
+            || node.op_is::<PulsePad>()
             || node.op_is::<TypedConcat>()
             || node.op_is::<DynKeyValueCache>()
             || node.op_as::<Reduce>().is_some_and(|op| {
@@ -251,7 +255,7 @@ fn can_translate_to_cuda_op(source: &TypedModel, node: &TypedNode) -> TractResul
             })
             || node
                 .op_as::<Conv>()
-                .and_then(|op| ops::conv::cuda_conv(source, node, op).unwrap())
+                .and_then(|op| ops::cuda_conv(source, node, op).unwrap())
                 .is_some()))
 }
 
@@ -629,7 +633,11 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
                 } else if let Some(op) = node.op_as::<GeluApproximate>() {
                     Box::new(ops::CudaGeluApproximate { fast_impl: op.fast_impl })
                 } else if let Some(op) = node.op_as::<Conv>() {
-                    Box::new(ops::conv::cuda_conv(source, node, op).unwrap().unwrap())
+                    Box::new(ops::cuda_conv(source, node, op).unwrap().unwrap())
+                } else if let Some(op) = node.op_as::<Delay>() {
+                    Box::new(CudaDelay::new(op.clone()))
+                } else if let Some(op) = node.op_as::<PulsePad>() {
+                    Box::new(CudaPulsePad::new(op)?)
                 } else {
                     bail!("Failed to translate a supported CUDA Op")
                 };

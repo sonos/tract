@@ -1,9 +1,12 @@
-use crate::context::{TractCudaStream, cuda_context};
+use crate::context::{cuda_context, TractCudaStream};
 use crate::kernels::launch_args::LaunchArgsExt;
-use crate::kernels::{BroadcastKind, LibraryName, get_cuda_view, get_sliced_cuda_view, utils};
+use crate::kernels::{get_cuda_view, get_sliced_cuda_view, utils, BroadcastKind, LibraryName};
+use crate::tensor::device_tensor_assign_slice;
 use anyhow::ensure;
 use cudarc::driver::{CudaStream, PushKernelArg};
 use std::fmt;
+use std::ops::Range;
+use std::ops::RangeBounds;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
 
@@ -65,55 +68,19 @@ impl Concat {
         output: &DeviceTensor,
     ) -> TractResult<()> {
         ensure!(!inputs.is_empty());
-
-        let output_shape = output.shape();
-        let output_strides = output.strides();
-
-        let mut offsets = tvec![0; inputs.len()];
         let mut cursor = 0;
-
         for (i_idx, input) in inputs.iter().enumerate() {
-            let i_shape = input.shape();
-            ensure!(i_shape[..self.axis] == output_shape[..self.axis]);
-            ensure!(i_shape[self.axis + 1..] == output_shape[self.axis + 1..]);
-            offsets[i_idx] =
-                cursor * (output_strides[self.axis] as usize) * output.datum_type().size_of();
-            cursor += i_shape[self.axis];
-        }
+            let slice_len = input.shape()[self.axis];
 
-        let broadcast_kind = BroadcastKind::from_rank(output.rank()).with_context(|| {
-            format!(
-                "Unsupported broadcast for broadcast op: (in: {:?}, out: {:?})",
-                inputs[0].shape(),
-                output_shape
-            )
-        })?;
-
-        let kernel_name = self.kernel_name(output.datum_type(), broadcast_kind)?;
-        let func = cuda_context().load_pipeline(LibraryName::Array, kernel_name)?;
-
-        for (input, offset) in inputs.iter().zip(offsets.into_iter()) {
-            if input.len() == 0 {
-                continue;
-            }
-
-            let i_strides = input.strides();
-            let i_shape = input.shape();
-
-            let i_view = get_cuda_view(input);
-            let o_view =
-                get_sliced_cuda_view(output, offset, input.len() * input.datum_type().size_of())?;
-
-            let mut launch_args = stream.launch_builder(&func);
-            launch_args.arg(&i_view);
-            launch_args.arg(&o_view);
-            launch_args.set_slice(i_strides);
-            launch_args.set_slice(i_shape);
-            launch_args.set_slice(output_strides);
-
-            let cfg = utils::cuda_launch_cfg_for_cpy(i_shape);
-
-            unsafe { launch_args.launch(cfg) };
+            device_tensor_assign_slice(
+                stream,
+                output,
+                cursor..cursor + slice_len,
+                input,
+                ..,
+                self.axis,
+            )?;
+            cursor += slice_len;
         }
 
         Ok(())
@@ -135,9 +102,9 @@ mod tests {
     fn run_test_case(shapes: &[&[usize]], axis: usize) -> TractResult<()> {
         CUDA_STREAM.with(|stream| {
             let mut inputs = tvec![];
-            for shape in shapes {
+            for (ix, shape) in shapes.iter().enumerate() {
                 let len = shape.iter().product::<usize>();
-                let data = (0..len).map(|f| f as f32).collect::<Vec<_>>();
+                let data = (0..len).map(|f| (100 * ix + f) as f32).collect::<Vec<_>>();
                 inputs.push(Tensor::from_shape(shape, &data)?.into_device()?);
             }
 
@@ -146,7 +113,16 @@ mod tests {
                 axis,
                 &inputs.iter().map(|it| it.to_host()).collect::<TractResult<Vec<_>>>()?,
             )?;
-            assert_eq!(output.to_host()?.into_tensor(), ref_output);
+            let output = output.to_host()?.into_tensor();
+            if output != ref_output {
+                eprintln!("AXIS: {axis}");
+                for (ix, input) in inputs.iter().enumerate() {
+                    eprintln!("INPUT {ix}:\n{}", input.to_host().unwrap().to_array_view::<f32>()?);
+                }
+                eprintln!("FOUND:\n{}", output.to_array_view::<f32>()?);
+                eprintln!("EXPECTED:\n{}", ref_output.to_array_view::<f32>()?);
+                panic!("Test failed");
+            }
             Ok(())
         })
     }
