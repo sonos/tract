@@ -102,9 +102,9 @@ mod tests {
     fn run_test_case(shapes: &[&[usize]], axis: usize) -> TractResult<()> {
         CUDA_STREAM.with(|stream| {
             let mut inputs = tvec![];
-            for shape in shapes {
+            for (ix, shape) in shapes.iter().enumerate() {
                 let len = shape.iter().product::<usize>();
-                let data = (0..len).map(|f| f as f32).collect::<Vec<_>>();
+                let data = (0..len).map(|f| (100 * ix + f) as f32).collect::<Vec<_>>();
                 inputs.push(Tensor::from_shape(shape, &data)?.into_device()?);
             }
 
@@ -113,7 +113,16 @@ mod tests {
                 axis,
                 &inputs.iter().map(|it| it.to_host()).collect::<TractResult<Vec<_>>>()?,
             )?;
-            assert_eq!(output.to_host()?.into_tensor(), ref_output);
+            let output = output.to_host()?.into_tensor();
+            if output != ref_output {
+                eprintln!("AXIS: {axis}");
+                for (ix, input) in inputs.iter().enumerate() {
+                    eprintln!("INPUT {ix}:\n{}", input.to_host().unwrap().to_array_view::<f32>()?);
+                }
+                eprintln!("FOUND:\n{}", output.to_array_view::<f32>()?);
+                eprintln!("EXPECTED:\n{}", ref_output.to_array_view::<f32>()?);
+                panic!("Test failed");
+            }
             Ok(())
         })
     }
