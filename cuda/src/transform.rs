@@ -1,12 +1,13 @@
+use DatumType::{F16, F32};
 use tract_core::dyn_clone::clone_box;
 use tract_core::internal::*;
 use tract_core::model::translator::Translate;
 use tract_core::ops::array::{MultiBroadcastTo, Slice, TypedConcat};
 use tract_core::ops::binary::TypedBinOp;
 use tract_core::ops::cast::Cast;
-use tract_core::ops::cnn::conv::rewrite_kernel_conv_in_oihw;
 use tract_core::ops::cnn::Conv;
-use tract_core::ops::einsum::prefix_matmul::{rewrite_einsum_to_prefix_matmul, PrefixMatMul};
+use tract_core::ops::cnn::conv::rewrite_kernel_conv_in_oihw;
+use tract_core::ops::einsum::prefix_matmul::{PrefixMatMul, rewrite_einsum_to_prefix_matmul};
 use tract_core::ops::element_wise::ElementWiseOp;
 use tract_core::ops::konst::Const;
 use tract_core::ops::logic::Comp;
@@ -27,9 +28,9 @@ use tract_transformers::ops::rms_norm::RmsNorm;
 use tract_transformers::ops::scaled_masked_softmax::ScaledMaskedSoftmax;
 use tract_transformers::ops::sdpa::Sdpa;
 use tract_transformers::ops::silu::Silu;
-use DatumType::{F16, F32};
 
 use crate::context::cuda_context;
+use crate::ops::CudaLeakyRelu;
 use crate::{kernels, ops, rewrite_rules};
 
 #[derive(Debug, Default)]
@@ -591,7 +592,7 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
                     Box::new(convert_const(op)?)
                 } else if let Some(op) = node.op_as::<ElementWiseOp>() {
                     if let Some(leaky) = op.0.downcast_ref::<LeakyRelu>() {
-                        Box::new(kernels::nn::LeakyRelu { alpha: leaky.alpha })
+                        Box::new(CudaLeakyRelu { alpha: leaky.alpha })
                     } else {
                         Box::new(map_element_wise_ops_to_cuda(op).unwrap())
                     }

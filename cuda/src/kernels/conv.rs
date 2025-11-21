@@ -1,4 +1,4 @@
-use crate::context::{cuda_context, TractCudaStream};
+use crate::context::{TractCudaStream, cuda_context};
 use crate::kernels::get_cuda_view;
 use crate::kernels::launch_args::LaunchArgsExt;
 use cudarc::driver::{LaunchArgs, LaunchConfig, PushKernelArg};

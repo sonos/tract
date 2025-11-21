@@ -81,7 +81,7 @@ pub fn all_functions() -> Vec<String> {
     functions.extend(
         tract_gpu::tensor::DeviceTensor::SUPPORTED_DT
             .into_iter()
-            .flat_map(|dt| LeakyRelu { alpha: 0.0 }.kernel_name(dt).into_iter()),
+            .flat_map(|dt| LeakyRelu.kernel_name(dt).into_iter()),
     );
 
     functions.into_iter().collect()
