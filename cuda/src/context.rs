@@ -13,30 +13,27 @@ use tract_core::internal::*;
 
 use cudarc::driver::{CudaContext, CudaFunction, CudaModule, CudaStream};
 
-use crate::kernels::{cubin_dir, LibraryName, COMMON_H};
+use crate::kernels::{COMMON_H, LibraryName, cubin_dir};
 use crate::tensor::CudaTensor;
 
 use cudarc::nvrtc::result::{compile_program, destroy_program, get_program_log};
 use cudarc::nvrtc::sys::{
     nvrtcCreateProgram, nvrtcGetCUBIN, nvrtcGetCUBINSize, nvrtcProgram, nvrtcResult,
 };
-use std::ffi::{c_char, CStr, CString};
+use std::ffi::{CStr, CString, c_char};
 use std::path::{Path, PathBuf};
 
 thread_local! {
     pub static CUDA_STREAM: TractCudaStream = TractCudaStream::new().expect("Could not create Cuda Stream");
 }
 
-pub fn cuda_context() -> TractCudaContext {
+pub fn cuda_context() -> &'static TractCudaContext {
     static INSTANCE: OnceLock<TractCudaContext> = OnceLock::new();
-    INSTANCE
-        .get_or_init(|| {
-            let ctxt = TractCudaContext::new().expect("Could not create CUDA context");
-            tract_gpu::device::set_context(Box::new(ctxt.clone()))
-                .expect("Could not set CUDA context");
-            ctxt
-        })
-        .clone()
+    INSTANCE.get_or_init(|| {
+        let ctxt = TractCudaContext::new().expect("Could not create CUDA context");
+        tract_gpu::device::set_context(Box::new(ctxt.clone())).expect("Could not set CUDA context");
+        ctxt
+    })
 }
 
 #[derive(Debug, Clone)]

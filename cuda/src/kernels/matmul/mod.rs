@@ -483,7 +483,6 @@ fn dispatch_ggml_matvec_q40(
     ensure!(params.act_batch % params.w_batch == 0);
 
     let context = cuda_context();
-    let props = context.properties();
     let null_ptr = stream.null::<u8>()?;
 
     let padded_k = params.k.next_multiple_of(Q40_ROW_PADDING);
