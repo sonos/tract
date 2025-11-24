@@ -4,12 +4,12 @@ template <typename T>
 static __device__ void pad_constant(
     const T* __restrict__ in_ptr,
     T* __restrict__ out_ptr,
-    int in_shape0,  int in_shape1,  int in_shape2,  int in_shape3,  int in_shape4,
-    int out_shape0, int out_shape1, int out_shape2, int out_shape3, int out_shape4,
-    int in_stride0, int in_stride1, int in_stride2, int in_stride3, int in_stride4,
-    int pad_before0, int pad_before1, int pad_before2, int pad_before3, int pad_before4,
+    int64_t in_shape0,  int64_t in_shape1,  int64_t in_shape2,  int64_t in_shape3,  int64_t in_shape4,
+    int64_t out_shape0, int64_t out_shape1, int64_t out_shape2, int64_t out_shape3, int64_t out_shape4,
+    int64_t in_stride0, int64_t in_stride1, int64_t in_stride2, int64_t in_stride3, int64_t in_stride4,
+    int64_t pad_before0, int64_t pad_before1, int64_t pad_before2, int64_t pad_before3, int64_t pad_before4,
     T fill,
-    int total_out_elems
+    int64_t total_out_elems
 ) {
     int o = blockIdx.x * blockDim.x + threadIdx.x;
     if (o >= total_out_elems) return;
@@ -52,12 +52,12 @@ static __device__ void pad_constant(
    extern "C" __global__ void pad_constant_##name(                                     \
         const T* __restrict__ in_ptr, \
         T* __restrict__ out_ptr, \
-        int in_shape0, int in_shape1, int in_shape2, int in_shape3, int in_shape4, \
-        int out_shape0, int out_shape1, int out_shape2, int out_shape3, int out_shape4, \
-        int in_stride0, int in_stride1, int in_stride2, int in_stride3, int in_stride4, \
-        int pad_before0, int pad_before1, int pad_before2, int pad_before3, int pad_before4, \
+        int64_t in_shape0, int64_t in_shape1, int64_t in_shape2, int64_t in_shape3, int64_t in_shape4, \
+        int64_t out_shape0, int64_t out_shape1, int64_t out_shape2, int64_t out_shape3, int64_t out_shape4, \
+        int64_t in_stride0, int64_t in_stride1, int64_t in_stride2, int64_t in_stride3, int64_t in_stride4, \
+        int64_t pad_before0, int64_t pad_before1, int64_t pad_before2, int64_t pad_before3, int64_t pad_before4, \
         T fill,                                                                              \
-        int total_out_elems) {                                    \
+        int64_t total_out_elems) {                                    \
       pad_constant<T>(in_ptr, out_ptr, in_shape0, in_shape1, in_shape2, in_shape3, in_shape4, \
         out_shape0, out_shape1, out_shape2, out_shape3, out_shape4, \
         in_stride0, in_stride1, in_stride2, in_stride3, in_stride4, \
@@ -67,8 +67,8 @@ static __device__ void pad_constant(
 
 #define INSTANTIATE_ROTATE_HALF(name, T)                                       \
   extern "C" __global__ void rotate_half_nd2_##name(                           \
-      const T *input, T *output, int shape_0, int shape_1, int strides_0,      \
-      int strides_1) {                                                         \
+      const T *input, T *output, int64_t shape_0, int64_t shape_1, int64_t strides_0,      \
+      int64_t strides_1) {                                                         \
     int thread_idx_x = blockIdx.x * blockDim.x + threadIdx.x;                  \
     int thread_idx_y = blockIdx.y * blockDim.y + threadIdx.y;                  \
                                                                                \
@@ -82,7 +82,7 @@ static __device__ void pad_constant(
 
 #define INSTANTIATE_CAST_OP(name, T_in, T_out)                                 \
   extern "C" __global__ void cast_##name(const T_in *input, T_out *output,     \
-                                         int len) {                            \
+                                         int64_t len) {                            \
     int idx = blockIdx.x * blockDim.x + threadIdx.x;                           \
     if (idx < len) {                                                           \
       output[idx] = (T_out)input[idx];                                         \
@@ -91,17 +91,17 @@ static __device__ void pad_constant(
 
 #define INSTANTIATE_COPY(name, T)                                              \
   extern "C" __global__ void copy_nd1_##name(                                  \
-      const T *input, T *output, int in_strides_0, int out_shape_0,            \
-      int out_strides_0) {                                                     \
+      const T *input, T *output, int64_t in_strides_0, int64_t out_shape_0,            \
+      int64_t out_strides_0) {                                                     \
     for (int i = threadIdx.x; i < out_shape_0; i += MAX_THREADS) {  \
       output[i * out_strides_0] = input[i * in_strides_0];                     \
     }                                                                          \
   }                                                                            \
                                                                                \
   extern "C" __global__ void copy_nd2_##name(                                  \
-      const T *input, T *output, int in_strides_0, int in_strides_1,           \
-      int out_shape_0, int out_shape_1, int out_strides_0,                     \
-      int out_strides_1) {                                                     \
+      const T *input, T *output, int64_t in_strides_0, int64_t in_strides_1,           \
+      int64_t out_shape_0, int64_t out_shape_1, int64_t out_strides_0,                     \
+      int64_t out_strides_1) {                                                     \
     int in_offset = blockIdx.x * in_strides_0;                                 \
     int out_offset = blockIdx.x * out_strides_0;                               \
     for (int i = threadIdx.x; i < out_shape_1; i += MAX_THREADS) {  \
@@ -111,9 +111,9 @@ static __device__ void pad_constant(
   }                                                                            \
                                                                                \
   extern "C" __global__ void copy_nd3_##name(                                  \
-      const T *input, T *output, int in_strides_0, int in_strides_1,           \
-      int in_strides_2, int out_shape_0, int out_shape_1, int out_shape_2,     \
-      int out_strides_0, int out_strides_1, int out_strides_2) {               \
+      const T *input, T *output, int64_t in_strides_0, int64_t in_strides_1,           \
+      int64_t in_strides_2, int64_t out_shape_0, int64_t out_shape_1, int64_t out_shape_2,     \
+      int64_t out_strides_0, int64_t out_strides_1, int64_t out_strides_2) {               \
     int in_offset = blockIdx.x * in_strides_1 + blockIdx.y * in_strides_0;     \
     int out_offset = blockIdx.x * out_strides_1 + blockIdx.y * out_strides_0;  \
     for (int i = threadIdx.x; i < out_shape_2; i += MAX_THREADS) {  \
@@ -123,10 +123,10 @@ static __device__ void pad_constant(
   }                                                                            \
                                                                                \
   extern "C" __global__ void copy_nd4_##name(                                  \
-      const T *input, T *output, int in_strides_0, int in_strides_1,           \
-      int in_strides_2, int in_strides_3, int out_shape_0, int out_shape_1,    \
-      int out_shape_2, int out_shape_3, int out_strides_0, int out_strides_1,  \
-      int out_strides_2, int out_strides_3) {                                  \
+      const T *input, T *output, int64_t in_strides_0, int64_t in_strides_1,           \
+      int64_t in_strides_2, int64_t in_strides_3, int64_t out_shape_0, int64_t out_shape_1,    \
+      int64_t out_shape_2, int64_t out_shape_3, int64_t out_strides_0, int64_t out_strides_1,  \
+      int64_t out_strides_2, int64_t out_strides_3) {                                  \
     int in_offset = blockIdx.x * in_strides_2 + blockIdx.y * in_strides_1 +    \
                     blockIdx.z * in_strides_0;                                 \
     int out_offset = blockIdx.x * out_strides_2 + blockIdx.y * out_strides_1 + \
@@ -138,11 +138,11 @@ static __device__ void pad_constant(
   }                                                                            \
                                                                                \
   extern "C" __global__ void copy_nd5_##name(                                  \
-      const T *input, T *output, int in_strides_0, int in_strides_1,           \
-      int in_strides_2, int in_strides_3, int in_strides_4, int out_shape_0,   \
-      int out_shape_1, int out_shape_2, int out_shape_3, int out_shape_4,      \
-      int out_strides_0, int out_strides_1, int out_strides_2,                 \
-      int out_strides_3, int out_strides_4) {                                  \
+      const T *input, T *output, int64_t in_strides_0, int64_t in_strides_1,           \
+      int64_t in_strides_2, int64_t in_strides_3, int64_t in_strides_4, int64_t out_shape_0,   \
+      int64_t out_shape_1, int64_t out_shape_2, int64_t out_shape_3, int64_t out_shape_4,      \
+      int64_t out_strides_0, int64_t out_strides_1, int64_t out_strides_2,                 \
+      int64_t out_strides_3, int64_t out_strides_4) {                                  \
     int in_offset = blockIdx.x * in_strides_3 + blockIdx.y * in_strides_2;     \
     int out_offset = blockIdx.x * out_strides_3 + blockIdx.y * out_strides_2;  \
     int block_idx_z = blockIdx.z;                                              \
@@ -159,12 +159,12 @@ static __device__ void pad_constant(
   }                                                                            \
                                                                                \
   extern "C" __global__ void copy_nd6_##name(                                  \
-      const T *input, T *output, int in_strides_0, int in_strides_1,           \
-      int in_strides_2, int in_strides_3, int in_strides_4, int in_strides_5,  \
-      int out_shape_0, int out_shape_1, int out_shape_2, int out_shape_3,      \
-      int out_shape_4, int out_shape_5, int out_strides_0, int out_strides_1,  \
-      int out_strides_2, int out_strides_3, int out_strides_4,                 \
-      int out_strides_5) {                                                     \
+      const T *input, T *output, int64_t in_strides_0, int64_t in_strides_1,           \
+      int64_t in_strides_2, int64_t in_strides_3, int64_t in_strides_4, int64_t in_strides_5,  \
+      int64_t out_shape_0, int64_t out_shape_1, int64_t out_shape_2, int64_t out_shape_3,      \
+      int64_t out_shape_4, int64_t out_shape_5, int64_t out_strides_0, int64_t out_strides_1,  \
+      int64_t out_strides_2, int64_t out_strides_3, int64_t out_strides_4,                 \
+      int64_t out_strides_5) {                                                     \
     int in_offset = blockIdx.x * in_strides_4 + blockIdx.y * in_strides_3;     \
     int out_offset = blockIdx.x * out_strides_4 + blockIdx.y * out_strides_3;  \
     int block_idx_z = blockIdx.z;                                              \

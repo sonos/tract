@@ -65,12 +65,12 @@ static __device__ __forceinline__ bool op_or(const bool a, const bool b) {
 
 #define DEFINE_BINARY_KERNEL(name, tname, T_in, T_out, OP)                     \
   extern "C" __global__ void name##_##tname(                                   \
-      const T_in *a, const T_in *b, T_out *out, int b_shape_0, int b_shape_1,  \
-      int b_shape_2, int b_shape_3, int out_shape_0, int out_shape_1,          \
-      int out_shape_2, int out_shape_3, int a_strides_0, int a_strides_1,      \
-      int a_strides_2, int a_strides_3, int b_strides_0, int b_strides_1,      \
-      int b_strides_2, int b_strides_3, int o_strides_0, int o_strides_1,      \
-      int o_strides_2, int out_strides_3) {                                    \
+      const T_in *a, const T_in *b, T_out *out, int64_t b_shape_0, int64_t b_shape_1,  \
+      int64_t b_shape_2, int64_t b_shape_3, int64_t out_shape_0, int64_t out_shape_1,          \
+      int64_t out_shape_2, int64_t out_shape_3, int64_t a_strides_0, int64_t a_strides_1,      \
+      int64_t a_strides_2, int64_t a_strides_3, int64_t b_strides_0, int64_t b_strides_1,      \
+      int64_t b_strides_2, int64_t b_strides_3, int64_t o_strides_0, int64_t o_strides_1,      \
+      int64_t o_strides_2, int64_t out_strides_3) {                                    \
     const int thread_ix_x = blockDim.x * blockIdx.x + threadIdx.x;             \
     const int thread_ix_y = (blockDim.y * blockIdx.y + threadIdx.y);           \
     const int thread_ix_z =                                                    \

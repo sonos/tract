@@ -493,13 +493,13 @@ impl GgmlFlashAttn {
         la.set_view(if matches!(params.imp, FlashAttnImpl::Vec) { &dst_tmp_v } else { &ov });
         la.set_view(&dst_tmp_meta_v);
         la.set_el::<f32>(scale);
-        la.set_slice::<i64>(&q_shape_i32);
-        la.set_slice::<i64>(&q_strides_b[..3]);
-        la.set_slice::<i64>(&k_shape_i32);
-        la.set_slice::<i64>(&k_strides_b[..3]);
-        la.set_slice::<i64>(&v_strides_b[..3]);
-        la.set_slice::<i64>(&mask_shape_i32[..3]);
-        la.set_slice::<i64>(&mask_strides_b[..3]);
+        la.set_slice::<i32>(&q_shape_i32);
+        la.set_slice::<i32>(&q_strides_b[..3]);
+        la.set_slice::<i32>(&k_shape_i32);
+        la.set_slice::<i32>(&k_strides_b[..3]);
+        la.set_slice::<i32>(&v_strides_b[..3]);
+        la.set_slice::<i32>(&mask_shape_i32[..3]);
+        la.set_slice::<i32>(&mask_strides_b[..3]);
 
         let cfg = LaunchConfig {
             grid_dim: blocks_num,
@@ -537,7 +537,7 @@ impl GgmlFlashAttn {
             la.set_view(&dst_tmp_v);
             la.set_view(&dst_tmp_meta_v);
             la.set_view(&ov);
-            la.set_el::<i64>(parallel_blocks);
+            la.set_el::<i32>(parallel_blocks);
             let cfg = LaunchConfig {
                 grid_dim: (q_shape_i32[2] as _, q_shape_i32[1] as _, q_shape_i32[0] as _),
                 block_dim: (params.d as _, 1, 1),

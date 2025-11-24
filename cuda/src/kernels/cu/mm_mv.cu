@@ -5,11 +5,11 @@
 template <typename T, int ncols_dst, int block_size>
 static __device__ void
 mul_mat_vec(const T *__restrict__ x, const T *__restrict__ y,
-            T *__restrict__ dst, const int ncols2, const int nchannels_y,
-            const int stride_row, const int stride_col_y2,
-            const int stride_col_dst, const int channel_ratio,
-            const int stride_channel_x, const int stride_channel_y,
-            const int stride_channel_dst) {
+            T *__restrict__ dst, const int64_t ncols2, const int64_t nchannels_y,
+            const int64_t stride_row, const int64_t stride_col_y2,
+            const int64_t stride_col_dst, const int64_t channel_ratio,
+            const int64_t stride_channel_x, const int64_t stride_channel_y,
+            const int64_t stride_channel_dst) {
   const int row = blockIdx.x;
   const int channel_dst = blockIdx.y;
   const int channel_x = channel_dst / channel_ratio;
@@ -96,11 +96,11 @@ mul_mat_vec(const T *__restrict__ x, const T *__restrict__ y,
   extern "C" __global__ void                                                   \
       ggml_matvec_##type_name##_ncols_##ncols_dst##_bs_##block_size(           \
           const T *__restrict__ x, const T *__restrict__ y,                    \
-          T *__restrict__ dst, const int ncols2, const int nchannels_y,        \
-          const int stride_row, const int stride_col_y2,                       \
-          const int stride_col_dst, const int channel_ratio,                   \
-          const int stride_channel_x, const int stride_channel_y,              \
-          const int stride_channel_dst) {                                      \
+          T *__restrict__ dst, const int64_t ncols2, const int64_t nchannels_y,        \
+          const int64_t stride_row, const int64_t stride_col_y2,                       \
+          const int64_t stride_col_dst, const int64_t channel_ratio,                   \
+          const int64_t stride_channel_x, const int64_t stride_channel_y,              \
+          const int64_t stride_channel_dst) {                                      \
     mul_mat_vec<T, ncols_dst, block_size>(                                     \
         x, y, dst, ncols2, nchannels_y, stride_row, stride_col_y2,             \
         stride_col_dst, channel_ratio, stride_channel_x, stride_channel_y,     \
