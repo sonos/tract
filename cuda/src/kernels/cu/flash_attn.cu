@@ -290,7 +290,7 @@ static __device__ void attention_v5_kernel(
   const half* __restrict__ V,  // [bs, len_kv, DIM]
   const half* __restrict__ M,  // [bs, len_q, len_kv]
   half* __restrict__ O,        // [bs, len_q, DIM]
-  int bs, int qh, int head_ratio, int len_q, int len_kv, float scale)
+  int64_t bs, int64_t qh, int64_t head_ratio, int64_t len_q, int64_t len_kv, float scale)
 {
   constexpr int TB_SIZE = NUM_WARPS * WARP_SIZE;
   constexpr int WARP_Q  = BLOCK_Q / NUM_WARPS;
@@ -309,7 +309,7 @@ static __device__ void attention_v5_kernel(
     q_block_id_offset = (len_q / BLOCK_Q);
   }
   const int q_block_base = (q_block_id + q_block_id_offset) * BLOCK_Q;
-  const int q_valid = max(0, min(BLOCK_Q, len_q - q_block_base));
+  const int q_valid = max(0, min(BLOCK_Q, (int)len_q - q_block_base));
   const int past = len_kv - len_q; // causal base
 
   const int q_heads   = qh;
@@ -576,7 +576,7 @@ extern "C" {  \
     __global__ void attention_v5_full_##BLOCK_Q##_##BLOCK_KV##_##D##_##is_causal##_##use_mask ( \
     const half* __restrict__ Q, const half* __restrict__ K, \
     const half* __restrict__ V, const half* __restrict__ M, half* __restrict__ O, \
-    int bs, int qh, int head_ratio, int len_q, int len_kv, float scale) { \
+    int64_t bs, int64_t qh, int64_t head_ratio, int64_t len_q, int64_t len_kv, float scale) { \
       attention_v5_kernel<BLOCK_Q, BLOCK_KV, D, 4, is_causal, use_mask, true, false>( \
         Q, K, V, M, O, bs, qh, head_ratio, len_q, len_kv, scale); \
   } \
@@ -585,7 +585,7 @@ extern "C" {  \
     __global__ void attention_v5_tail_##BLOCK_Q##_##BLOCK_KV##_##D##_##is_causal##_##use_mask ( \
     const half* __restrict__ Q, const half* __restrict__ K, \
     const half* __restrict__ V, const half* __restrict__ M, half* __restrict__ O, \
-    int bs, int qh, int head_ratio, int len_q, int len_kv, float scale) { \
+    int64_t bs, int64_t qh, int64_t head_ratio, int64_t len_q, int64_t len_kv, float scale) { \
       attention_v5_kernel<BLOCK_Q, BLOCK_KV, D, 4, is_causal, use_mask, false, false>( \
         Q, K, V, M, O, bs, qh, head_ratio, len_q, len_kv, scale); \
   } \
@@ -594,7 +594,7 @@ extern "C" {  \
     __global__ void attention_v5_full_kv_rem_##BLOCK_Q##_##BLOCK_KV##_##D##_##is_causal##_##use_mask ( \
     const half* __restrict__ Q, const half* __restrict__ K, \
     const half* __restrict__ V, const half* __restrict__ M, half* __restrict__ O, \
-    int bs, int qh, int head_ratio, int len_q, int len_kv, float scale) { \
+    int64_t bs, int64_t qh, int64_t head_ratio, int64_t len_q, int64_t len_kv, float scale) { \
       attention_v5_kernel<BLOCK_Q, BLOCK_KV, D, 4, is_causal, use_mask, true, true>( \
         Q, K, V, M, O, bs, qh, head_ratio, len_q, len_kv, scale); \
   } \
@@ -603,7 +603,7 @@ extern "C" {  \
     __global__ void attention_v5_tail_kv_rem_##BLOCK_Q##_##BLOCK_KV##_##D##_##is_causal##_##use_mask ( \
     const half* __restrict__ Q, const half* __restrict__ K, \
     const half* __restrict__ V, const half* __restrict__ M, half* __restrict__ O, \
-    int bs, int qh, int head_ratio, int len_q, int len_kv, float scale) { \
+    int64_t bs, int64_t qh, int64_t head_ratio, int64_t len_q, int64_t len_kv, float scale) { \
       attention_v5_kernel<BLOCK_Q, BLOCK_KV, D, 4, is_causal, use_mask, false, true>( \
         Q, K, V, M, O, bs, qh, head_ratio, len_q, len_kv, scale); \
   } \

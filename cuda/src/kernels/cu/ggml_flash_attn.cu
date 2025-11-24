@@ -573,7 +573,7 @@ static __device__ void flash_attn_combine_results(
         const float  * __restrict__ VKQ_parts,
         const float2 * __restrict__ VKQ_meta,
         float * __restrict__ dst,
-        const int parallel_blocks) {
+        const int32_t parallel_blocks) {
     // Dimension 0: threadIdx.x
     // Dimension 1: blockIdx.x
     // Dimension 2: blockIdx.y
@@ -2095,7 +2095,7 @@ INSTANTIATE_FLASH_ATTN_MMA_F16()
 /*----------------------------------------------------------------------------------------------------------------------*/
 template <int ncols1>
 static __device__ void flash_attn_mask_to_KV_max(
-        const half2 * __restrict__ mask, int * __restrict__ KV_max, const int ne30, const int s31, const int s33) {
+        const half2 * __restrict__ mask, int * __restrict__ KV_max, const int64_t ne30, const int64_t s31, const int64_t s33) {
     const int ne31     = gridDim.x;
     const int tid      = threadIdx.x;
     const int sequence = blockIdx.y;
