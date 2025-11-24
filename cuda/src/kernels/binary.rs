@@ -4,6 +4,7 @@ use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
 
 use crate::context::{TractCudaStream, cuda_context};
+use crate::kernels::launch_args::LaunchArgsOwned;
 use crate::kernels::utils::compute_broadcast_strides;
 use crate::kernels::{LibraryName, MAX_THREADS, get_cuda_view};
 
@@ -269,7 +270,7 @@ impl BinOps {
         let rhs_view = get_cuda_view(rhs);
         let o_view = get_cuda_view(output);
 
-        let mut launch_args = stream.launch_builder(&func);
+        let mut launch_args = LaunchArgsOwned::new(stream, &func);
         launch_args.set_view(&lhs_view);
         launch_args.set_view(&rhs_view);
         launch_args.set_view(&o_view);

@@ -1,5 +1,6 @@
 use crate::context::{TractCudaStream, cuda_context};
 use crate::kernels::get_cuda_view;
+use crate::kernels::launch_args::LaunchArgsOwned;
 use cudarc::driver::LaunchConfig;
 use std::fmt::Debug;
 use tract_core::dyn_clone::{self, DynClone};
@@ -44,7 +45,7 @@ impl ConvKernel for Generic {
         let func_name = format!("conv{}d_f32_generic", input_shape.hw_rank());
         let func = ctx.load_pipeline(crate::kernels::LibraryName::Cnn, func_name)?;
 
-        let mut launcher = stream.launch_builder(&func);
+        let mut launcher = LaunchArgsOwned::new(stream, &func);
 
         let input = get_cuda_view(input);
 

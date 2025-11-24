@@ -5,6 +5,7 @@ use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
 
 use crate::context::{TractCudaStream, cuda_context};
+use crate::kernels::launch_args::LaunchArgsOwned;
 use crate::kernels::*;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
@@ -163,7 +164,7 @@ impl UnaryOps {
         let o_view = get_cuda_view(output);
 
         let cfg = LaunchConfig::for_num_elems(len as _);
-        let mut launch_args = stream.launch_builder(&func);
+        let mut launch_args = LaunchArgsOwned::new(stream, &func);
         launch_args.set_view(&i_view);
         launch_args.set_view(&o_view);
         launch_args.set_el::<i64>(len);

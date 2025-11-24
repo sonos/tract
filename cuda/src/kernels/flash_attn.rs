@@ -7,6 +7,7 @@ use tract_core::tract_data::itertools::Itertools;
 use tract_gpu::tensor::{DeviceTensor, IntoDevice};
 
 use crate::context::{TractCudaStream, cuda_context};
+use crate::kernels::launch_args::LaunchArgsOwned;
 use crate::kernels::{LibraryName, WARP_SIZE, get_cuda_view, launch_args};
 
 #[derive(Debug, Clone)]
@@ -119,7 +120,7 @@ impl CudaFlashAttn {
 
         let use_mask = mask.is_some();
 
-        let null_ptr = stream.null_ptr()?;
+        let null_ptr = stream.null()?;
 
         let q_view = get_cuda_view(q);
         let k_view = get_cuda_view(k);
@@ -138,7 +139,7 @@ impl CudaFlashAttn {
                 smem_size as _,
             )?;
 
-            let mut launch_args = stream.launch_builder(&func);
+            let mut launch_args = LaunchArgsOwned::new(stream, &func);
             launch_args.set_view(&q_view);
             launch_args.set_view(&k_view);
             launch_args.set_view(&v_view);

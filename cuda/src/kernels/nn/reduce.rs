@@ -1,4 +1,5 @@
 use crate::context::{TractCudaStream, cuda_context};
+use crate::kernels::launch_args::LaunchArgsOwned;
 use crate::kernels::{LibraryName, MAX_THREADS, get_cuda_view, launch_args, utils};
 use cudarc::driver::{CudaStream, LaunchConfig, PushKernelArg};
 use tract_core::internal::*;
@@ -74,7 +75,7 @@ impl Reducer {
             LibraryName::NN,
             self.kernel_name(input.datum_type(), input_shape_nd3[1])?,
         )?;
-        let mut launch_args = stream.launch_builder(&func);
+        let mut launch_args = LaunchArgsOwned::new(stream, &func);
         launch_args.set_view(&i_view);
         launch_args.set_view(&o_view);
         launch_args.set_slice::<i64>(&input_shape_nd3);
