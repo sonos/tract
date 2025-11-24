@@ -13,7 +13,7 @@ use tract_gpu::utils::{as_quant_fact, get_quant_fact};
 
 use crate::Q40_ROW_PADDING;
 use crate::context::{TractCudaStream, cuda_context};
-use crate::kernels::launch_args::LaunchArgsOwned;
+use crate::kernels::launch_args::TractLaunchArgs;
 use crate::kernels::matmul::quant_act_q81::{QUANTIZE_BLOCK_SIZE, QUANTIZE_BLOCK_SIZE_MMQ};
 use crate::kernels::{
     LibraryName, get_cuda_view, get_cuda_view_mut, get_sliced_cuda_view, get_sliced_cuda_view_mut,
@@ -214,7 +214,7 @@ fn dispatch_ggml_matvec(
 
     let kernel_name = kernel_name_mat_vec(params.dts[0], params.m, block_size)?;
     let mut func = cuda_context().load_pipeline(LibraryName::Ggml, kernel_name)?;
-    let mut launch_args = LaunchArgsOwned::new(stream, &func);
+    let mut launch_args = TractLaunchArgs::new(stream, &func);
     launch_args.set_view(&w_view);
     launch_args.set_view(&act_view);
     launch_args.set_view(&output_view);
@@ -349,7 +349,7 @@ fn launch_matmul_q40(
         CUfunction_attribute::CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
         nbytes_shared as i32,
     )?;
-    let mut launch_args = LaunchArgsOwned::new(stream, &func);
+    let mut launch_args = TractLaunchArgs::new(stream, &func);
     launch_args.set_view(weights);
     launch_args.set_view(quant_activ);
     launch_args.set_view(output);
@@ -390,7 +390,7 @@ fn launch_fixup_q40(
     let context = cuda_context();
     let props = context.properties();
     let func = context.load_pipeline(LibraryName::GgmlQ, kernel_name)?;
-    let mut launch_args = LaunchArgsOwned::new(stream, &func);
+    let mut launch_args = TractLaunchArgs::new(stream, &func);
     launch_args.set_view(output);
     launch_args.set_view(fixup_tens);
     launch_args.set_el::<i64>(params.k);
@@ -498,7 +498,7 @@ fn dispatch_ggml_matvec_q40(
     let batch_ratio = params.act_batch / params.w_batch;
 
     let func = context.load_pipeline(LibraryName::GgmlQ, format!("mul_vec_q40_m_{}", params.m))?;
-    let mut launch_args = LaunchArgsOwned::new(stream, &func);
+    let mut launch_args = TractLaunchArgs::new(stream, &func);
     launch_args.set_view(weights);
     launch_args.set_view(activs);
     launch_args.set_view(output);

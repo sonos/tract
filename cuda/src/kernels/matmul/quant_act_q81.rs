@@ -7,7 +7,7 @@ use tract_gpu::tensor::DeviceTensor;
 
 use crate::Q40_ROW_PADDING;
 use crate::context::{TractCudaStream, cuda_context};
-use crate::kernels::launch_args::LaunchArgsOwned;
+use crate::kernels::launch_args::TractLaunchArgs;
 use crate::kernels::matmul::{MMQ_X_MAX, squeeze_batch_axes};
 use crate::kernels::{LibraryName, get_cuda_view};
 use crate::ops::GgmlQuantQ81Fact;
@@ -69,7 +69,7 @@ impl GgmlQuantQ81 {
                 LibraryName::Quant,
                 format!("quantize_mmq_q8_1_{fast_path_str}nd{}", input.rank()),
             )?;
-            let mut launch_args = LaunchArgsOwned::new(stream, &func);
+            let mut launch_args = TractLaunchArgs::new(stream, &func);
             launch_args.set_view(&i_view);
             launch_args.set_view(&o_view);
             launch_args.set_el::<u64>(k);
@@ -89,7 +89,7 @@ impl GgmlQuantQ81 {
         } else {
             let func = context
                 .load_pipeline(LibraryName::Quant, format!("quantize_q8_1_nd{}", input.rank()))?;
-            let mut launch_args = LaunchArgsOwned::new(stream, &func);
+            let mut launch_args = TractLaunchArgs::new(stream, &func);
             launch_args.set_view(&i_view);
             launch_args.set_view(&o_view);
             launch_args.set_el::<u64>(k);

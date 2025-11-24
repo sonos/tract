@@ -1,5 +1,5 @@
 use crate::context::{TractCudaStream, cuda_context};
-use crate::kernels::launch_args::LaunchArgsOwned;
+use crate::kernels::launch_args::TractLaunchArgs;
 use crate::kernels::{LibraryName, get_cuda_view, utils};
 use anyhow::ensure;
 use cudarc::driver::{CudaStream, LaunchConfig, PushKernelArg};
@@ -67,7 +67,7 @@ impl RotateHalf {
         let i_view = get_cuda_view(input);
         let o_view = get_cuda_view(output);
 
-        let mut launch_args = LaunchArgsOwned::new(stream, &func);
+        let mut launch_args = TractLaunchArgs::new(stream, &func);
         launch_args.set_view(&i_view);
         launch_args.set_view(&o_view);
         launch_args.set_slice::<i64>(&shape_nd2);
