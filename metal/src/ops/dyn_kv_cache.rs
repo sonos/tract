@@ -3,6 +3,7 @@ use crate::ops::MetalConcat;
 use derive_new::new;
 use tract_core::internal::*;
 use tract_core::ops::OpStateFreeze;
+use tract_gpu::fact::DeviceTypedFactExt;
 use tract_gpu::tensor::{DeviceTensor, DeviceTensorExt, IntoDevice};
 use tract_transformers::ops::dyn_kv_cache::{DynKeyValueCache, DynKeyValueCacheState};
 
@@ -181,7 +182,7 @@ impl TypedOp for MetalDynKVCache {
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         ensure!(inputs.len() == 1);
-        tract_gpu::utils::facts_to_device_facts(inputs, |facts| {
+        let mut facts = tract_gpu::utils::facts_to_device_facts(inputs, |facts| {
             let mut fact = facts[0].without_value();
             fact.shape.set(
                 self.axis(),
@@ -190,14 +191,16 @@ impl TypedOp for MetalDynKVCache {
             );
             Ok(tvec!(fact))
         })
-        .with_context(|| format!("Error while computing facts for {:?}", self.name()))
+        .with_context(|| format!("Error while computing facts for {:?}", self.name()))?;
+        facts[0].as_device_fact_mut().unwrap().state_owned = true;
+        Ok(facts)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::MetalTransform;
     use crate::utils::with_borrowed_metal_stream;
+    use crate::MetalTransform;
 
     use super::*;
     use tract_core::ops::array::TypedConcat;
@@ -223,7 +226,11 @@ mod tests {
                         .iter()
                         .enumerate()
                         .map(|(i, &dim)| {
-                            if i == axis { TDim::Sym(model.sym(sym)) } else { TDim::Val(dim as _) }
+                            if i == axis {
+                                TDim::Sym(model.sym(sym))
+                            } else {
+                                TDim::Val(dim as _)
+                            }
                         })
                         .collect::<TVec<TDim>>()
                 };
