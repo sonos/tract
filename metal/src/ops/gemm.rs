@@ -5,7 +5,7 @@ use anyhow::{bail, ensure};
 use tract_core::internal::*;
 use tract_core::tract_linalg::block_quant::Q4_0;
 use tract_gpu::tensor::DeviceTensorExt;
-use tract_gpu::utils::{as_q40_tensor, as_quant_fact};
+use tract_gpu::utils::{as_quant_fact, get_quant_fact};
 
 #[derive(Debug, Default, Clone)]
 pub struct MetalGemm<K: GemmKernel> {
@@ -90,8 +90,8 @@ impl<K: GemmKernel + 'static> EvalOp for MetalGemm<K> {
             .to_device_tensor()
             .with_context(|| format!("B tensor is not a metal tensor {:?}", b_opaque))?;
 
-        let b_shape = as_q40_tensor(b.view().tensor)
-            .map(|bqv| b.shape().iter().cloned().chain(bqv.fact.shape().iter().copied()).collect())
+        let b_shape = get_quant_fact(b, &Q4_0)
+            .map(|bqf| b.shape().iter().cloned().chain(bqf.shape().iter().copied()).collect())
             .unwrap_or(b.shape().to_vec());
 
         let c_dt = self.kernel.matmul.output_dt(a.datum_type(), b.datum_type())?;

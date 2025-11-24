@@ -177,9 +177,11 @@ impl DeviceContext for MetalContext {
             "Tensor of {:?} is not copied. No device buffer can be allocated for it.",
             view.datum_type(),
         );
-        let data_bytes = as_q40_tensor(view.tensor)
-            .map(|bqv| bqv.value.as_bytes())
-            .unwrap_or(view.tensor.as_bytes());
+        let bqv = as_q40_tensor(view.tensor);
+
+        let (data_bytes, bqf) = bqv
+            .map(|bqv| (bqv.value.as_bytes(), Some(bqv.fact.clone().into())))
+            .unwrap_or((view.tensor.as_bytes(), None));
 
         // Handle empty data
         static ZERO: [u8; 1] = [0];
@@ -194,9 +196,11 @@ impl DeviceContext for MetalContext {
                 None,
             ),
         };
+
         Ok(Box::new(MetalTensor {
             inner: MValue::Natural(tensor.into_arc_tensor()),
             device_buffer,
+            opaque_fact: bqf,
         }))
     }
 

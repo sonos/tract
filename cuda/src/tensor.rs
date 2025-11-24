@@ -118,10 +118,6 @@ impl CudaTensor {
             bail!("Unsupported opaque type")
         }
     }
-
-    pub fn opaque_fact(&self) -> Option<&dyn OpaqueFact> {
-        self.opaque_fact.as_deref()
-    }
 }
 
 impl std::fmt::Debug for CudaTensor {
@@ -207,8 +203,8 @@ impl OwnedDeviceTensor for CudaTensor {
         })
     }
 
-    fn view(&self) -> TensorView<'_> {
-        todo!()
+    fn opaque_fact(&self) -> Option<&dyn OpaqueFact> {
+        self.opaque_fact.as_deref()
     }
 }
 

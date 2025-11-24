@@ -147,15 +147,6 @@ impl DeviceTensor {
         }
     }
 
-    /// Get underlying inner tensor view.
-    #[inline]
-    pub fn view(&self) -> TensorView<'_> {
-        match self {
-            Self::Owned(t) => t.view(),
-            Self::ArenaView(t) => t.view(),
-        }
-    }
-
     /// Returns short description of the inner tensor.
     pub fn description(&self) -> String {
         format!("|{},{:?}|", self.shape().iter().join(","), self.datum_type(),)
