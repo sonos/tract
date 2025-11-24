@@ -252,6 +252,7 @@ pub fn device_tensor_assign_slice(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn device_tensor_launch_copy(
     stream: &TractCudaStream,
     zone_shape: &[usize],
@@ -286,21 +287,21 @@ pub fn device_tensor_launch_copy(
     let dst_offset = izip!(dst_origin, dst_strides).map(|(a, b)| a * *b as usize).sum::<usize>()
         * dst.datum_type().size_of();
     let dst_len = dst.len() * dst.datum_type().size_of();
-    let dst_view = get_sliced_cuda_view(&dst, dst_offset, dst_len - dst_offset)?;
+    let dst_view = get_sliced_cuda_view(dst, dst_offset, dst_len - dst_offset)?;
 
     let src_offset = izip!(src_origin, src_strides).map(|(a, b)| a * *b as usize).sum::<usize>()
         * src.datum_type().size_of();
     let src_len = src.len() * src.datum_type().size_of();
-    let src_view = get_sliced_cuda_view(&src, src_offset, src_len - src_offset)?;
+    let src_view = get_sliced_cuda_view(src, src_offset, src_len - src_offset)?;
 
     let mut launch_args = stream.launch_builder(&func);
     launch_args.arg(&src_view);
     launch_args.arg(&dst_view);
-    launch_args.set_slice(&src_strides);
-    launch_args.set_slice(&zone_shape);
-    launch_args.set_slice(&dst_strides);
+    launch_args.set_slice(src_strides);
+    launch_args.set_slice(zone_shape);
+    launch_args.set_slice(dst_strides);
 
-    let cfg = cuda_launch_cfg_for_cpy(&zone_shape);
+    let cfg = cuda_launch_cfg_for_cpy(zone_shape);
     unsafe { launch_args.launch(cfg)? };
     Ok(())
 }
