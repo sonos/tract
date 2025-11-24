@@ -238,7 +238,7 @@ impl OpState for CudaPulsePadOpState {
         let input = args_1!(inputs).into_tensor();
         let op = op.downcast_ref::<CudaPulsePad>().ok_or_else(|| format_err!("Wrong Op type"))?;
         let input = input.to_device_tensor()?;
-        let tensor = self.pad(session, op, &input)?;
+        let tensor = self.pad(session, op, input)?;
         Ok(tvec!(tensor.into_opaque_tensor().into()))
     }
 }
@@ -259,8 +259,8 @@ fn fill_slice_constant(
             &zone_shape,
             dst,
             &dst_origin,
-            &dst.strides(),
-            &cst,
+            dst.strides(),
+            cst,
             &tvec!(0; dst.rank()),
             &tvec!(0; dst.rank()),
         )
@@ -288,8 +288,8 @@ fn fill_slice_repeating_one_frame(
             &zone_shape,
             dst,
             &dst_origin,
-            &dst.strides(),
-            &src,
+            dst.strides(),
+            src,
             &src_origin,
             &src_strides,
         )
@@ -333,14 +333,14 @@ impl CudaPulsePadOpState {
         if let PadMode::Edge = op.mode {
             if after != 0 && pulse_begin < end_input {
                 let latest_valid_frame = (end_input - pulse_begin).min(pulse) - 1;
-                Self::save_frame(self, op, &input, latest_valid_frame)?;
+                Self::save_frame(self, op, input, latest_valid_frame)?;
             }
         }
 
         let mut output =
-            make_tensor_for_node(session, self.node_id, input.datum_type(), &input.shape())?;
+            make_tensor_for_node(session, self.node_id, input.datum_type(), input.shape())?;
         CUDA_STREAM.with(|stream| {
-            stream.memcpy_dtod(&get_cuda_view(input), &mut get_cuda_view_mut(&mut output))
+            stream.memcpy_dtod(&get_cuda_view(input), &mut get_cuda_view_mut(&output))
         })?;
 
         // pulse is entirely in either valid input or invalid input
@@ -362,7 +362,7 @@ impl CudaPulsePadOpState {
                 )?,
                 PadMode::Edge => fill_slice_repeating_one_frame(
                     &mut output,
-                    &input,
+                    input,
                     op.axis,
                     0..fill_up_to,
                     fill_up_to,
