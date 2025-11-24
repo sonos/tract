@@ -3,7 +3,6 @@ use tract_core::internal::*;
 use tract_core::tract_data::itertools::Itertools;
 use tract_gpu::fact::DeviceTypedFactExt;
 use tract_gpu::rule_ensure;
-use tract_gpu::sync::DeviceSync;
 
 fn is_supported_axis_op(op: &CudaAxisOp) -> bool {
     matches!(op.0, AxisOp::Add(_) | AxisOp::Rm(_) | AxisOp::Reshape(..))
@@ -69,8 +68,7 @@ pub fn fuse_axis_op(
 
     // Disallow fusing when the successor is already an axis/fused op or a sync,
     // *unless* it's a Move AxisOp (we allow that via the early-quit branch).
-    let is_axis_like =
-        node.op_is::<CudaAxisOp>() || node.op_is::<CudaFusedAxisOp>() || node.op.is::<DeviceSync>();
+    let is_axis_like = node.op_is::<CudaAxisOp>() || node.op_is::<CudaFusedAxisOp>();
     let is_allowed_move =
         node.op_as::<CudaAxisOp>().is_some_and(|op| matches!(op.0, AxisOp::Move(..)));
 

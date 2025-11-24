@@ -167,11 +167,6 @@ impl OwnedDeviceTensor for CudaTensor {
         }
     }
 
-    fn as_arc_tensor(&self) -> Option<&Arc<Tensor>> {
-        log::warn!("As arc tensor called on Cuda Tensor!");
-        None
-    }
-
     fn device_buffer(&self) -> &dyn tract_gpu::device::DeviceBuffer {
         self.buffer.as_ref()
     }
@@ -205,6 +200,11 @@ impl OwnedDeviceTensor for CudaTensor {
 
     fn opaque_fact(&self) -> Option<&dyn OpaqueFact> {
         self.opaque_fact.as_deref()
+    }
+
+    fn get_bytes_slice(&self, offset: usize, len: usize) -> Vec<u8> {
+        CUDA_STREAM
+            .with(|stream| stream.memcpy_dtov(&self.buffer.slice(offset..offset + len)).unwrap())
     }
 }
 

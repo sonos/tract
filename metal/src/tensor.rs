@@ -181,10 +181,6 @@ impl OwnedDeviceTensor for MetalTensor {
         })))
     }
 
-    fn as_arc_tensor(&self) -> Option<&Arc<Tensor>> {
-        self.inner.as_arc_tensor()
-    }
-
     fn to_host(&self) -> TractResult<Arc<Tensor>> {
         Ok(self
             .inner
@@ -195,6 +191,10 @@ impl OwnedDeviceTensor for MetalTensor {
 
     fn opaque_fact(&self) -> Option<&dyn OpaqueFact> {
         self.opaque_fact.as_deref()
+    }
+
+    fn get_bytes_slice(&self, offset: usize, len: usize) -> Vec<u8> {
+        self.inner.as_arc_tensor().unwrap().as_bytes()[offset..offset + len].to_vec()
     }
 }
 
