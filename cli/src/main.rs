@@ -546,6 +546,13 @@ fn run_options(command: clap::Command) -> clap::Command {
                 .long("cuda-gpu-trace")
                 .help("Capture CUDA GPU trace. Must be used with nsys profile -c cudaProfilerApi before cargo command")
         )
+        .arg(
+            Arg::new("prompt-chunk-size")
+                .long("prompt-chunk-size")
+                .takes_value(true)
+                .number_of_values(1)
+                .help("Set prompt chunk size. Help splitting too big prompts")
+        )
 }
 
 fn output_options(command: clap::Command) -> clap::Command {

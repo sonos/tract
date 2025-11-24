@@ -72,5 +72,6 @@ pub fn run_params_from_subcommand(
         }
     }
 
-    Ok(RunParams { tensors_values: tv, allow_random_input, allow_float_casts, symbols })
+    let prompt_chunk_size = sub_matches.value_of("prompt-chunk-size").and_then(|chunk_size| chunk_size.parse().ok());
+    Ok(RunParams { tensors_values: tv, allow_random_input, allow_float_casts, symbols, prompt_chunk_size })
 }

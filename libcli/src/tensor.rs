@@ -292,11 +292,64 @@ pub struct RunParams {
     pub allow_random_input: bool,
     pub allow_float_casts: bool,
     pub symbols: SymbolValues,
+    pub prompt_chunk_size: Option<usize>
 }
 
 pub struct RunTensors {
     pub sources: Vec<TVec<TValue>>,
     pub state_initializers: Vec<TValue>,
+}
+
+fn chunk_fact(
+    fact: &TypedFact,
+    params: &RunParams,
+    model: &dyn Model,
+) -> TractResult<Vec<TypedFact>> {
+    // If we don't have a chunk size or symbol "S", return the original as-is.
+    let Some(chunk_size) = params.prompt_chunk_size else {
+        return Ok(vec![fact.clone()]);
+    };
+    let Some(s) = model.symbols().get("S") else {
+        return Ok(vec![fact.clone()]);
+    };
+
+    // Find the *index* of the dim tied to "S" and resolve its runtime value.
+    let dims = fact.shape.dims();
+    let Some(sym_idx) = dims.iter().position(|d| *d == TDim::Sym(s.clone())) else {
+        return Ok(vec![fact.clone()]);
+    };
+
+    // Resolve the symbolic dim to a concrete value and decide whether to chunk.
+    let resolved_sym = dims[sym_idx].eval_to_i64(&params.symbols)? as usize;
+    if resolved_sym <= chunk_size {
+        return Ok(vec![fact.clone()]);
+    }
+
+    // Build chunked facts by splitting only the target dim.
+    let num_chunks = resolved_sym.div_ceil(chunk_size);
+    let mut out = Vec::with_capacity(num_chunks);
+
+    for start in (0..resolved_sym).step_by(chunk_size) {
+        let this = chunk_size.min(resolved_sym - start) as i64;
+
+        let mut new_fact = fact.clone();
+        new_fact.shape = new_fact
+            .shape
+            .iter()
+            .enumerate()
+            .map(|(i, d)| {
+                if i == sym_idx {
+                    TDim::Val(this)
+                } else {
+                    d.eval(&params.symbols)
+                }
+            })
+            .collect();
+
+        out.push(new_fact);
+    }
+
+    Ok(out)
 }
 
 fn get_or_make_tensors(
@@ -396,9 +449,15 @@ fn get_or_make_tensors(
             .tensors_values
             .by_name(name)
             .or_else(|| params.tensors_values.by_input_ix(input_idx));
-        let mut fact = fact.clone();
-        fact.shape = fact.shape.iter().map(|dim| dim.eval(&params.symbols)).collect();
-        target.push(vec![tensor_for_fact(&fact, None, tv)?.into()]);
+        
+        let mut chunked_facts = chunk_fact(&fact, params, model)?;
+
+        let mut chunked_tensors = Vec::with_capacity(chunked_facts.len());
+        for fact in &mut chunked_facts {
+            fact.shape = fact.shape.iter().map(|dim| dim.eval(&params.symbols)).collect();
+            chunked_tensors.push(tensor_for_fact(&fact, None, tv)?.into());
+        }
+        target.push(chunked_tensors);
     } else {
         bail!(
             "Unmatched tensor {}. Fix the input or use \"--allow-random-input\" if this was intended",
