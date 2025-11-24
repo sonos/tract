@@ -1,8 +1,10 @@
 use core::{mem::size_of, ptr};
-use cudarc::driver::{CudaView, DeviceRepr, LaunchArgs, LaunchConfig, PushKernelArg};
+use cudarc::driver::{CudaFunction, CudaView, DeviceRepr, LaunchArgs, LaunchConfig, PushKernelArg};
 use num_traits::AsPrimitive;
 use std::ops::Deref;
 use tract_core::prelude::TractResult;
+
+use crate::context::TractCudaStream;
 
 /// A LaunchArgs that can take by-value params by stashing owned bytes
 /// and handing `&'a T` refs to `inner.arg(...)`.
@@ -11,13 +13,11 @@ pub struct LaunchArgsOwned<'a> {
     keepalive: Vec<Box<[u8]>>,
 }
 
-impl<'a> From<LaunchArgs<'a>> for LaunchArgsOwned<'a> {
-    fn from(inner: LaunchArgs<'a>) -> Self {
-        Self { inner, keepalive: Vec::new() }
-    }
-}
-
 impl<'a> LaunchArgsOwned<'a> {
+    pub fn new(stream: &'a TractCudaStream, func: &'a CudaFunction) -> Self {
+        Self { inner: stream.launch_builder(func), keepalive: Vec::new() }
+    }
+
     pub fn arg_val<T: DeviceRepr + Copy + 'a>(&mut self, v: T) {
         let mut buf = vec![0u8; size_of::<T>()].into_boxed_slice();
         unsafe {

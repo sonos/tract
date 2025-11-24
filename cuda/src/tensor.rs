@@ -1,6 +1,6 @@
 use std::ops::{Deref, DerefMut, RangeBounds};
 
-use cudarc::driver::CudaSlice;
+use cudarc::driver::{CudaSlice, DevicePtr};
 use tract_core::internal::tract_smallvec::ToSmallVec;
 use tract_core::internal::*;
 use tract_core::prelude::{DatumType, TVec};
@@ -11,6 +11,7 @@ use tract_gpu::tensor::{DeviceTensor, OwnedDeviceTensor};
 use tract_gpu::utils::{as_q40_tensor, check_strides_validity};
 
 use crate::context::{cuda_context, TractCudaStream, CUDA_STREAM};
+use crate::kernels::launch_args::LaunchArgsOwned;
 use crate::kernels::utils::cuda_launch_cfg_for_cpy;
 use crate::kernels::{BroadcastKind, LibraryName, get_sliced_cuda_view};
 use crate::ops::GgmlQuantQ81Fact;
@@ -22,7 +23,7 @@ pub struct CudaBuffer {
 
 impl DeviceBuffer for CudaBuffer {
     fn ptr(&self) -> *const std::ffi::c_void {
-        CUDA_STREAM.with(|stream| stream.device_ptr(&self.inner) as _)
+        CUDA_STREAM.with(|stream| self.inner.device_ptr(stream).0 as _)
     }
 }
 impl Deref for CudaBuffer {
@@ -69,7 +70,7 @@ impl CudaTensor {
     }
 
     pub fn uninitialized_dt(shape: &[usize], dt: DatumType) -> TractResult<Self> {
-        CUDA_STREAM.with(|stream| {
+        CUDA_STREAM.with(|stream| unsafe {
             let device_data = stream.alloc(shape.iter().product::<usize>() * dt.size_of()).unwrap();
             let buffer = Arc::new(CudaBuffer { inner: device_data });
             Ok(CudaTensor {
@@ -88,7 +89,7 @@ impl CudaTensor {
             let format = bqf.format.clone();
             let len = shape.iter().product::<usize>();
             ensure!(len % format.block_len() == 0);
-            CUDA_STREAM.with(|stream| {
+            CUDA_STREAM.with(|stream| unsafe {
                 let device_data = stream.alloc(len * format.block_bytes() / format.block_len())?;
                 let buffer = Arc::new(CudaBuffer { inner: device_data });
                 Ok(CudaTensor {
@@ -102,7 +103,7 @@ impl CudaTensor {
         } else if let Some(ggml_q81_fact) = opaque_fact.downcast_ref::<GgmlQuantQ81Fact>() {
             let mem_size = ggml_q81_fact.mem_size().as_i64().unwrap() as usize;
 
-            CUDA_STREAM.with(|stream| {
+            CUDA_STREAM.with(|stream| unsafe {
                 let device_data = stream.alloc(mem_size)?;
                 let buffer = Arc::new(CudaBuffer { inner: device_data });
                 Ok(CudaTensor {
@@ -289,14 +290,13 @@ pub fn device_tensor_launch_copy(
     let src_len = src.len() * src.datum_type().size_of();
     let src_view = get_sliced_cuda_view(src, src_offset, src_len - src_offset)?;
 
-    let mut launch_args = stream.launch_builder(&func);
-    launch_args.arg(&src_view);
-    launch_args.arg(&dst_view);
-    launch_args.set_slice(src_strides);
-    launch_args.set_slice(zone_shape);
-    launch_args.set_slice(dst_strides);
+    let mut launch_args = LaunchArgsOwned::new(stream, &func);
+    launch_args.set_view(&src_view);
+    launch_args.set_view(&dst_view);
+    launch_args.set_slice::<i64>(src_strides);
+    launch_args.set_slice::<i64>(zone_shape);
+    launch_args.set_slice::<i64>(dst_strides);
 
     let cfg = cuda_launch_cfg_for_cpy(zone_shape);
-    unsafe { launch_args.launch(cfg)? };
-    Ok(())
+    launch_args.launch(cfg)
 }

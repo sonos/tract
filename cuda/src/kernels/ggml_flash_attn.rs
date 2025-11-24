@@ -7,6 +7,7 @@ use tract_core::tract_data::itertools::Itertools;
 use tract_gpu::tensor::DeviceTensor;
 
 use crate::context::{TractCudaStream, cuda_context};
+use crate::kernels::launch_args::LaunchArgsOwned;
 use crate::kernels::{LibraryName, WARP_SIZE, get_cuda_view, launch_args};
 
 const CUDA_CC_TURING: i32 = 750;
@@ -375,7 +376,7 @@ impl GgmlFlashAttn {
                 format!("flash_attn_mask_to_KV_max_{}", params.ncols1),
             )?;
 
-            let mut la = stream.launch_builder(&func);
+            let mut la = LaunchArgsOwned::new(stream, &func);
             la.set_view(&mv);
             la.set_view(&kv_max_v);
             la.set_el::<i64>(iter_k);
@@ -476,14 +477,14 @@ impl GgmlFlashAttn {
         let v_strides_b = strides_to_bytes_i32::<f16>(v.strides());
         let mask_strides_b = strides_to_bytes_i32::<f16>(mask.strides());
 
-        let null_ptr = stream.null_ptr()?;
+        let null_ptr = stream.null()?;
         let kv_max_v = kv_max.as_ref().map(get_cuda_view).unwrap_or_else(|| null_ptr.as_view());
         let dst_tmp_v = dst_tmp.as_ref().map(get_cuda_view).unwrap_or_else(|| null_ptr.as_view());
         let dst_tmp_meta_v =
             dst_tmp_meta.as_ref().map(get_cuda_view).unwrap_or_else(|| null_ptr.as_view());
 
         // main kernel
-        let mut la = stream.launch_builder(&params.kernel);
+        let mut la = LaunchArgsOwned::new(stream, &params.kernel);
         la.set_view(&qv);
         la.set_view(&kv);
         la.set_view(&vv);
@@ -515,7 +516,7 @@ impl GgmlFlashAttn {
                     LibraryName::GgmlFlashAttn,
                     format!("flash_attn_stream_k_fixup_{}_{}_{}", params.d, ncols, params.ncols2),
                 )?;
-                let mut la = stream.launch_builder(&f);
+                let mut la = LaunchArgsOwned::new(stream, &f);
                 la.set_view(&ov);
                 la.set_view(&dst_tmp_meta_v);
                 la.set_slice::<i32>(&q_shape_i32[..3]);
@@ -532,7 +533,7 @@ impl GgmlFlashAttn {
                 LibraryName::GgmlFlashAttn,
                 format!("flash_attn_combine_results_{}", params.d),
             )?;
-            let mut la = stream.launch_builder(&f);
+            let mut la = LaunchArgsOwned::new(stream, &f);
             la.set_view(&dst_tmp_v);
             la.set_view(&dst_tmp_meta_v);
             la.set_view(&ov);

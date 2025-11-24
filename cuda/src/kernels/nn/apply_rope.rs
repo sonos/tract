@@ -1,4 +1,5 @@
 use crate::context::{TractCudaStream, cuda_context};
+use crate::kernels::launch_args::LaunchArgsOwned;
 use crate::kernels::utils::compute_broadcast_strides;
 use crate::kernels::{BroadcastKind, LibraryName, get_cuda_view, utils};
 use anyhow::ensure;
@@ -90,7 +91,7 @@ impl ApplyRope {
         let o_view = get_cuda_view(output);
 
         let func = cuda_context().load_pipeline(LibraryName::NN, kernel_name)?;
-        let mut launch_args = stream.launch_builder(&func);
+        let mut launch_args = LaunchArgsOwned::new(stream, &func);
         launch_args.set_view(&i_view);
         launch_args.set_view(&cos_view);
         launch_args.set_view(&sin_view);
