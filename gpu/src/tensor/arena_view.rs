@@ -64,21 +64,8 @@ impl DeviceArenaView {
         self.len
     }
 
-    pub fn as_bytes(&self) -> &[u8] {
-        &self.arena.as_arc_tensor().unwrap().as_bytes()
-            [self.offset_bytes..self.offset_bytes + self.len() * self.dt.size_of()]
-    }
-
-    #[inline]
-    pub fn view(&self) -> TensorView<'_> {
-        unsafe {
-            TensorView::from_bytes(
-                self.arena.as_arc_tensor().unwrap(),
-                self.offset_bytes as _,
-                self.shape.as_slice(),
-                self.strides.as_slice(),
-            )
-        }
+    pub fn as_bytes(&self) -> Vec<u8> {
+        self.arena.get_bytes_slice(self.offset_bytes, self.len() * self.dt.size_of())
     }
 
     /// Reshaped tensor with given shape.
@@ -135,7 +122,7 @@ impl Display for DeviceArenaView {
 impl IntoTensor for DeviceArenaView {
     fn into_tensor(self) -> Tensor {
         unsafe {
-            Tensor::from_raw_dt(self.dt, &self.shape, self.as_bytes())
+            Tensor::from_raw_dt(self.dt, &self.shape, &self.as_bytes())
                 .expect("Could not transform a DeviceArenaView to tensor")
         }
     }

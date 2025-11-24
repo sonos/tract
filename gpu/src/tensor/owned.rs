@@ -25,7 +25,7 @@ pub trait OwnedDeviceTensor: Downcast + DynClone + Send + Sync + Debug {
     fn restrided(&self, shape: TVec<isize>) -> TractResult<DeviceTensor>;
 
     fn opaque_fact(&self) -> Option<&dyn OpaqueFact>;
-    fn as_arc_tensor(&self) -> Option<&Arc<Tensor>>;
+    fn get_bytes_slice(&self, offset: usize, len: usize) -> Vec<u8>;
     fn device_buffer(&self) -> &dyn DeviceBuffer;
     fn to_host(&self) -> TractResult<Arc<Tensor>>;
 }
