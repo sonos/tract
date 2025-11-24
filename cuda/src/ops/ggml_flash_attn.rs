@@ -69,6 +69,9 @@ impl TypedOp for CudaFlashAttention {
 
 // Transform code copied here to keep transform.rs clean
 
+//.with_rule_for("causal_mask_as_extern", causal_mask_as_extern)
+//.with_rule_for("full_attn_mask_as_neutral", neutral_mask_for_full_attn)
+
 //fn convert_sdpa_to_cuda_flash_attn(
 //    model: &TypedModel,
 //    node: &TypedNode,

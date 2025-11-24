@@ -65,8 +65,6 @@ impl CudaTransform {
         Rewriter::default()
             .with_rule_for("untranspose_matmul_output", rewrite_rules::untranspose_matmul_output)
             .with_rule_for("add_broadcast_pre_matmul", rewrite_rules::add_broadcast_pre_matmul)
-            //.with_rule_for("causal_mask_as_extern", causal_mask_as_extern)
-            //.with_rule_for("full_attn_mask_as_neutral", neutral_mask_for_full_attn)
             .with_rule_for("rewrite_kernel_conv_in_oihw", rewrite_kernel_conv_in_oihw)
             .rewrite(&(), model)?;
 
