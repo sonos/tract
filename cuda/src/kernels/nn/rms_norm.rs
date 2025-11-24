@@ -1,5 +1,5 @@
 use crate::context::{TractCudaStream, cuda_context};
-use crate::kernels::launch_args::LaunchArgsOwned;
+use crate::kernels::launch_args::TractLaunchArgs;
 use crate::kernels::{LibraryName, MAX_THREADS, WARP_SIZE, get_cuda_view, utils};
 use cudarc::driver::{CudaStream, LaunchConfig, PushKernelArg};
 use tract_core::internal::*;
@@ -56,7 +56,7 @@ impl RmsNorm {
         let o_view = get_cuda_view(output);
 
         let func = cuda_context().load_pipeline(LibraryName::NN, kernel_name)?;
-        let mut launch_args = LaunchArgsOwned::new(stream, &func);
+        let mut launch_args = TractLaunchArgs::new(stream, &func);
         launch_args.set_view(&i_view);
         launch_args.set_view(&o_view);
         launch_args.set_slice::<i64>(&shape_nd3);

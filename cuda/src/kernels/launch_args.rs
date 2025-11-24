@@ -8,12 +8,12 @@ use crate::context::TractCudaStream;
 
 /// A LaunchArgs that can take by-value params by stashing owned bytes
 /// and handing `&'a T` refs to `inner.arg(...)`.
-pub struct LaunchArgsOwned<'a> {
+pub struct TractLaunchArgs<'a> {
     inner: LaunchArgs<'a>,
     keepalive: Vec<Box<[u8]>>,
 }
 
-impl<'a> LaunchArgsOwned<'a> {
+impl<'a> TractLaunchArgs<'a> {
     pub fn new(stream: &'a TractCudaStream, func: &'a CudaFunction) -> Self {
         Self { inner: stream.launch_builder(func), keepalive: Vec::new() }
     }
