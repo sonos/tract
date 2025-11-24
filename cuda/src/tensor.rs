@@ -11,7 +11,7 @@ use tract_gpu::tensor::{DeviceTensor, OwnedDeviceTensor};
 use tract_gpu::utils::{as_q40_tensor, check_strides_validity};
 
 use crate::context::{cuda_context, TractCudaStream, CUDA_STREAM};
-use crate::kernels::launch_args::LaunchArgsOwned;
+use crate::kernels::launch_args::TractLaunchArgs;
 use crate::kernels::utils::cuda_launch_cfg_for_cpy;
 use crate::kernels::{BroadcastKind, LibraryName, get_sliced_cuda_view};
 use crate::ops::GgmlQuantQ81Fact;
@@ -290,7 +290,7 @@ pub fn device_tensor_launch_copy(
     let src_len = src.len() * src.datum_type().size_of();
     let src_view = get_sliced_cuda_view(src, src_offset, src_len - src_offset)?;
 
-    let mut launch_args = LaunchArgsOwned::new(stream, &func);
+    let mut launch_args = TractLaunchArgs::new(stream, &func);
     launch_args.set_view(&src_view);
     launch_args.set_view(&dst_view);
     launch_args.set_slice::<i64>(src_strides);
