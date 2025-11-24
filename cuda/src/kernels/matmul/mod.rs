@@ -9,7 +9,7 @@ use num_traits::{Float, One};
 use std::fmt;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
-use tract_gpu::utils::as_quant_fact;
+use tract_gpu::utils::{as_quant_fact, get_quant_fact};
 
 use crate::Q40_ROW_PADDING;
 use crate::context::{TractCudaStream, cuda_context};
@@ -17,7 +17,7 @@ use crate::kernels::matmul::quant_act_q81::{QUANTIZE_BLOCK_SIZE, QUANTIZE_BLOCK_
 use crate::kernels::{
     LibraryName, get_cuda_view, get_cuda_view_mut, get_sliced_cuda_view, get_sliced_cuda_view_mut,
 };
-use crate::utils::{get_ggml_q81_fact, get_quant_fact};
+use crate::utils::get_ggml_q81_fact;
 
 use DatumType::{F16, F32};
 

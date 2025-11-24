@@ -24,10 +24,10 @@ pub trait OwnedDeviceTensor: Downcast + DynClone + Send + Sync + Debug {
     fn reshaped(&self, shape: TVec<usize>) -> TractResult<DeviceTensor>;
     fn restrided(&self, shape: TVec<isize>) -> TractResult<DeviceTensor>;
 
+    fn opaque_fact(&self) -> Option<&dyn OpaqueFact>;
     fn as_arc_tensor(&self) -> Option<&Arc<Tensor>>;
     fn device_buffer(&self) -> &dyn DeviceBuffer;
     fn to_host(&self) -> TractResult<Arc<Tensor>>;
-    fn view(&self) -> TensorView<'_>;
 }
 
 impl_downcast!(OwnedDeviceTensor);

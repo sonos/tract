@@ -2,7 +2,6 @@ use tract_core::internal::*;
 use tract_core::ops::cast::Cast;
 use tract_transformers::ops::rms_norm::RmsNorm;
 
-
 /// Search pattern => A = CAST(RMS_NORM(CAST(A, F32)), F16)
 pub fn remove_rms_norm_cast(
     _ctx: &(),
@@ -35,11 +34,7 @@ pub fn remove_rms_norm_cast(
 
     let mut patch = TypedModelPatch::default();
     let rsm_input = patch.taps(model, &cast_in_node.inputs)?;
-    let out = patch.wire_node(
-        format!("{node_name}.without-cast"),
-        op.clone(),
-        &rsm_input,
-    )?;
+    let out = patch.wire_node(format!("{node_name}.without-cast"), op.clone(), &rsm_input)?;
     patch.shunt_outside(model, cast_out_node.id.into(), out[0])?;
     Ok(Some(patch))
 }

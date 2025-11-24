@@ -16,7 +16,7 @@ use num_traits::One;
 use std::fmt;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
-use tract_gpu::utils::as_q40_tensor;
+use tract_gpu::utils::{as_q40_tensor, get_quant_fact};
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum MetalGemmImplKind {
@@ -279,8 +279,8 @@ impl<M: GemmKernel> GemmImpl<M> {
         a: &DeviceTensor,
         b: &DeviceTensor,
     ) -> TractResult<DeviceTensor> {
-        let b_shape = as_q40_tensor(b.view().tensor)
-            .map(|bqv| b.shape().iter().cloned().chain(bqv.fact.shape().iter().copied()).collect())
+        let b_shape = get_quant_fact(b, &Q4_0)
+            .map(|bqf| b.shape().iter().cloned().chain(bqf.shape().iter().copied()).collect())
             .unwrap_or(b.shape().to_vec());
 
         let c_dt = self.matmul.output_dt(a.datum_type(), b.datum_type())?;
@@ -303,9 +303,10 @@ impl<M: GemmKernel> GemmImpl<M> {
         stream.retain_tensor(b);
         stream.retain_tensor(c);
 
-        let q40_b = as_q40_tensor(b.view().tensor);
+        let q40_b = get_quant_fact(b, &Q4_0);
         let b_shape = q40_b
-            .map(|bqv| b.shape().iter().cloned().chain(bqv.fact.shape().iter().copied()).collect())
+            .clone()
+            .map(|bqf| b.shape().iter().cloned().chain(bqf.shape().iter().copied()).collect())
             .unwrap_or(b.shape().to_vec());
 
         ensure!(c.shape() == self.output_shape(a.shape(), &b_shape).as_slice());

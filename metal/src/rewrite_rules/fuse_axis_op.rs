@@ -62,8 +62,7 @@ pub fn fuse_axis_op(
 
     // Disallow fusing when the successor is already an axis/fused op or a sync,
     // *unless* it's a Move AxisOp (we allow that via the early-quit branch).
-    let is_axis_like =
-        node.op_is::<MetalAxisOp>() || node.op_is::<MetalFusedAxisOp>();
+    let is_axis_like = node.op_is::<MetalAxisOp>() || node.op_is::<MetalFusedAxisOp>();
     let is_allowed_move =
         node.op_as::<MetalAxisOp>().is_some_and(|op| matches!(op.0, AxisOp::Move(..)));
 

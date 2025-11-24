@@ -3,6 +3,7 @@ use tract_core::tract_linalg::block_quant::BlockQuant;
 use tract_linalg::block_quant::{BlockQuantFact, BlockQuantValue, Q4_0};
 
 use crate::fact::*;
+use crate::tensor::DeviceTensor;
 
 pub fn facts_to_device_facts(
     facts: &[&TypedFact],
@@ -82,6 +83,17 @@ pub fn as_q40_tensor(a: &Tensor) -> Option<&BlockQuantValue> {
         od.downcast_ref::<BlockQuantValue>()
             .and_then(|bqv| if bqv.fact.format.same_as(&Q4_0) { Some(bqv) } else { None })
     })
+}
+
+pub fn get_quant_fact(t: &DeviceTensor, format: &dyn BlockQuant) -> Option<BlockQuantFact> {
+    if let DeviceTensor::Owned(t) = t {
+        t.opaque_fact()
+            .and_then(|of| of.downcast_ref::<BlockQuantFact>())
+            .cloned()
+            .filter(|bqf| bqf.format.same_as(format))
+    } else {
+        None
+    }
 }
 
 pub fn check_strides_validity(shape: TVec<usize>, strides: TVec<isize>) -> TractResult<()> {

@@ -7,7 +7,6 @@ use tract_gpu::tensor::DeviceTensor;
 
 use crate::Q40_ROW_PADDING;
 use crate::ops::GgmlQuantQ81Fact;
-use crate::tensor::CudaTensor;
 
 static CULIBS_PRESENT: OnceLock<bool> = OnceLock::new();
 
@@ -80,26 +79,9 @@ fn check_culibs() -> bool {
     driver_ok && runtime_ok && nvrtc_ok && cublas_ok
 }
 
-pub fn get_quant_fact(t: &DeviceTensor, format: &dyn BlockQuant) -> Option<BlockQuantFact> {
-    if let DeviceTensor::Owned(t) = t {
-        t.downcast_ref::<CudaTensor>()
-            .expect("Non Cuda Tensor in Cuda context")
-            .opaque_fact()
-            .and_then(|of| of.downcast_ref::<BlockQuantFact>())
-            .cloned()
-            .filter(|bqf| bqf.format.same_as(format))
-    } else {
-        None
-    }
-}
-
 pub fn get_ggml_q81_fact(t: &DeviceTensor) -> Option<GgmlQuantQ81Fact> {
     if let DeviceTensor::Owned(t) = t {
-        t.downcast_ref::<CudaTensor>()
-            .expect("Non Cuda Tensor in Cuda context")
-            .opaque_fact()
-            .and_then(|of| of.downcast_ref::<GgmlQuantQ81Fact>())
-            .cloned()
+        t.opaque_fact().and_then(|of| of.downcast_ref::<GgmlQuantQ81Fact>()).cloned()
     } else if let DeviceTensor::ArenaView(t) = t {
         t.opaque_fact().and_then(|of| of.downcast_ref::<GgmlQuantQ81Fact>()).cloned()
     } else {
