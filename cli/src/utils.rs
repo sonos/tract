@@ -32,8 +32,11 @@ pub fn check_outputs(got: &[Vec<TValue>], params: &Parameters) -> TractResult<()
             format!("Output {lookup_names:?}: found reference info without value: {exp:?}")
         })?[0]
             .clone();
-        let got: TValue = if got[ix].len() > 1 {
-            let props = params.tract_model.properties();
+
+        let props = params.tract_model.properties();
+
+        let got: TValue = if got[ix].len() > 1 &&  props.get("pulse.output_axes").is_some() 
+        {
             let axis = props
                 .get("pulse.output_axes")
                 .context("multiple turn without pulse.output_axes property")?
@@ -45,7 +48,8 @@ pub fn check_outputs(got: &[Vec<TValue>], params: &Parameters) -> TractResult<()
             let stacked = Tensor::stack_tensors(axis, &got[ix])?;
             stacked.slice(axis, delay, delay + exp.shape()[axis])?.into()
         } else {
-            got[ix][0].clone()
+            let rank = got[ix].len();
+            got[ix][rank - 1].clone()
         };
         if (params.allow_float_casts
             && exp.datum_type() == f32::datum_type()

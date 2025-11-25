@@ -3,6 +3,7 @@ use std::io::{Read, Seek};
 use std::ops::Range;
 use std::str::FromStr;
 use std::sync::Mutex;
+use std::usize;
 
 use crate::model::Model;
 use tract_hir::internal::*;
@@ -305,7 +306,6 @@ fn chunk_fact(
     params: &RunParams,
     model: &dyn Model,
 ) -> TractResult<Vec<TypedFact>> {
-    // If we don't have a chunk size or symbol "S", return the original as-is.
     let Some(chunk_size) = params.prompt_chunk_size else {
         return Ok(vec![fact.clone()]);
     };
@@ -313,19 +313,16 @@ fn chunk_fact(
         return Ok(vec![fact.clone()]);
     };
 
-    // Find the *index* of the dim tied to "S" and resolve its runtime value.
     let dims = fact.shape.dims();
     let Some(sym_idx) = dims.iter().position(|d| *d == TDim::Sym(s.clone())) else {
         return Ok(vec![fact.clone()]);
     };
 
-    // Resolve the symbolic dim to a concrete value and decide whether to chunk.
     let resolved_sym = dims[sym_idx].eval_to_i64(&params.symbols)? as usize;
     if resolved_sym <= chunk_size {
         return Ok(vec![fact.clone()]);
     }
 
-    // Build chunked facts by splitting only the target dim.
     let num_chunks = resolved_sym.div_ceil(chunk_size);
     let mut out = Vec::with_capacity(num_chunks);
 
@@ -347,6 +344,40 @@ fn chunk_fact(
             .collect();
 
         out.push(new_fact);
+    }
+
+    Ok(out)
+}
+
+fn chunk_tensor(
+    tensor: Tensor,
+    fact: &TypedFact,
+    params: &RunParams,
+    model: &dyn Model,
+) -> TractResult<Vec<TValue>> {
+    let Some(chunk_size) = params.prompt_chunk_size else {
+        return Ok(vec![tensor.into_tvalue()]);
+    };
+    let Some(s) = model.symbols().get("S") else {
+        return Ok(vec![tensor.into_tvalue()]);
+    };
+
+    let dims = fact.shape.dims();
+    let Some(symb_axis) = dims.iter().position(|d| *d == TDim::Sym(s.clone())) else {
+        return Ok(vec![tensor.into_tvalue()]);
+    };
+
+    let resolved_sym = tensor.shape()[symb_axis];
+    if resolved_sym <= chunk_size {
+        return Ok(vec![tensor.into_tvalue()]);
+    }
+
+    let num_chunks = resolved_sym.div_ceil(chunk_size);
+    let mut out = Vec::with_capacity(num_chunks);
+
+    for start in (0..resolved_sym).step_by(chunk_size) {
+        let this = chunk_size.min(resolved_sym - start) as usize;
+        out.push(tensor.slice(symb_axis, start, start + this)?.into_tvalue());
     }
 
     Ok(out)
@@ -379,18 +410,25 @@ fn get_or_make_tensors(
                 })
                 .collect();
         }
-        if TypedFact::shape_and_dt_of(&value[0]).compatible_with(&fact) {
-            info!("Using fixed input for input called {} ({} turn(s))", name, value.len());
-            target.push(value.iter().map(|t| t.clone().into_tensor().into()).collect());
-        } else if fact.datum_type == f16::datum_type()
-            && value[0].datum_type() == f32::datum_type()
-            && params.allow_float_casts
-        {
-            info!("Casting input to F16 for input called {} ({} turn(s))", name, value.len());
-            target.push(
-                value.iter().map(|t| t.cast_to::<f16>().unwrap().into_owned().into()).collect(),
-            );
-        } else if value.len() == 1 && model.properties().contains_key("pulse.delay") {
+        let mut chunked_tensors: Vec<TValue> = vec![];
+        for t in &value {
+            if TypedFact::shape_and_dt_of(&value[0]).compatible_with(&fact) {
+                info_once(format!("Using fixed input for input called {} ({} turn(s))", name, value.len()));
+                chunked_tensors.extend(chunk_tensor(t.clone().into_tensor(), &fact, params, model)?);
+            }  else if fact.datum_type == f16::datum_type()
+                        && value[0].datum_type() == f32::datum_type()
+                        && params.allow_float_casts
+            {
+                info_once(format!("Casting input to F16 for input called {} ({} turn(s))", name, value.len()));
+                chunked_tensors.extend(chunk_tensor(t.cast_to::<f16>()?.into_owned(), &fact, params, model)?);
+            }
+        }
+        if !chunked_tensors.is_empty() {
+            target.push(chunked_tensors);
+            return Ok(())
+        }
+ 
+        if value.len() == 1 && model.properties().contains_key("pulse.delay") {
             let value = &value[0];
             let input_pulse_axis = model
                 .properties()
