@@ -293,7 +293,7 @@ pub struct RunParams {
     pub allow_random_input: bool,
     pub allow_float_casts: bool,
     pub symbols: SymbolValues,
-    pub prompt_chunk_size: Option<usize>
+    pub prompt_chunk_size: Option<usize>,
 }
 
 pub struct RunTensors {
@@ -334,13 +334,7 @@ fn chunk_fact(
             .shape
             .iter()
             .enumerate()
-            .map(|(i, d)| {
-                if i == sym_idx {
-                    TDim::Val(this)
-                } else {
-                    d.eval(&params.symbols)
-                }
-            })
+            .map(|(i, d)| if i == sym_idx { TDim::Val(this) } else { d.eval(&params.symbols) })
             .collect();
 
         out.push(new_fact);
@@ -413,21 +407,39 @@ fn get_or_make_tensors(
         let mut chunked_tensors: Vec<TValue> = vec![];
         for t in &value {
             if TypedFact::shape_and_dt_of(&value[0]).compatible_with(&fact) {
-                info_once(format!("Using fixed input for input called {} ({} turn(s))", name, value.len()));
-                chunked_tensors.extend(chunk_tensor(t.clone().into_tensor(), &fact, params, model)?);
-            }  else if fact.datum_type == f16::datum_type()
-                        && value[0].datum_type() == f32::datum_type()
-                        && params.allow_float_casts
+                info_once(format!(
+                    "Using fixed input for input called {} ({} turn(s))",
+                    name,
+                    value.len()
+                ));
+                chunked_tensors.extend(chunk_tensor(
+                    t.clone().into_tensor(),
+                    &fact,
+                    params,
+                    model,
+                )?);
+            } else if fact.datum_type == f16::datum_type()
+                && value[0].datum_type() == f32::datum_type()
+                && params.allow_float_casts
             {
-                info_once(format!("Casting input to F16 for input called {} ({} turn(s))", name, value.len()));
-                chunked_tensors.extend(chunk_tensor(t.cast_to::<f16>()?.into_owned(), &fact, params, model)?);
+                info_once(format!(
+                    "Casting input to F16 for input called {} ({} turn(s))",
+                    name,
+                    value.len()
+                ));
+                chunked_tensors.extend(chunk_tensor(
+                    t.cast_to::<f16>()?.into_owned(),
+                    &fact,
+                    params,
+                    model,
+                )?);
             }
         }
         if !chunked_tensors.is_empty() {
             target.push(chunked_tensors);
-            return Ok(())
+            return Ok(());
         }
- 
+
         if value.len() == 1 && model.properties().contains_key("pulse.delay") {
             let value = &value[0];
             let input_pulse_axis = model
@@ -487,7 +499,7 @@ fn get_or_make_tensors(
             .tensors_values
             .by_name(name)
             .or_else(|| params.tensors_values.by_input_ix(input_idx));
-        
+
         let mut chunked_facts = chunk_fact(&fact, params, model)?;
 
         let mut chunked_tensors = Vec::with_capacity(chunked_facts.len());
