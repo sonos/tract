@@ -406,18 +406,13 @@ fn get_or_make_tensors(
         }
         let mut chunked_tensors: Vec<TValue> = vec![];
         for t in &value {
-            if TypedFact::shape_and_dt_of(&value[0]).compatible_with(&fact) {
+            let tensor = if TypedFact::shape_and_dt_of(&value[0]).compatible_with(&fact) {
                 info_once(format!(
                     "Using fixed input for input called {} ({} turn(s))",
                     name,
                     value.len()
                 ));
-                chunked_tensors.extend(chunk_tensor(
-                    t.clone().into_tensor(),
-                    &fact,
-                    params,
-                    model,
-                )?);
+                t.clone().into_tensor()
             } else if fact.datum_type == f16::datum_type()
                 && value[0].datum_type() == f32::datum_type()
                 && params.allow_float_casts
@@ -427,13 +422,12 @@ fn get_or_make_tensors(
                     name,
                     value.len()
                 ));
-                chunked_tensors.extend(chunk_tensor(
-                    t.cast_to::<f16>()?.into_owned(),
-                    &fact,
-                    params,
-                    model,
-                )?);
-            }
+                t.cast_to::<f16>()?.into_owned()
+            } else {
+                break;
+            };
+
+            chunked_tensors.extend(chunk_tensor(tensor, &fact, params, model)?);
         }
         if !chunked_tensors.is_empty() {
             target.push(chunked_tensors);
