@@ -2,50 +2,12 @@ use crate::Parameters;
 use crate::bench::{bench, make_state};
 use float_ord::FloatOrd;
 use readings_probe::Probe;
-use std::collections::HashSet;
 use std::time::{Duration, Instant};
 use tract_core::num_traits::Zero;
 use tract_core::tract_data::itertools::Itertools;
 use tract_hir::internal::*;
 use tract_libcli::profile::BenchLimits;
-use tract_libcli::tensor::get_or_make_inputs;
-
-pub fn figure_out_b_s_p(model: &TypedModel) -> TractResult<(Option<Symbol>, Symbol, Symbol)> {
-    // expectations:
-    // - one input is for tokens, so integer dt (i64 ?) and typically of shape S or 1,S, or B,S
-    // - other inputs are kv cache, some kind of float. shape features both S and P, and B if B is present in tokens
-    let token_input = model
-        .inputs
-        .iter()
-        .position(|i| model.outlet_fact(*i).unwrap().datum_type.is_integer())
-        .context("No token input found")?;
-    let tokens_symbols = model.input_fact(token_input)?.shape.volume().symbols();
-    let kv_symbols = if let Some(kv_input) =
-        model.inputs.iter().position(|i| model.outlet_fact(*i).unwrap().datum_type.is_float())
-    {
-        model.input_fact(kv_input)?.shape.volume().symbols()
-    } else {
-        // Look for KVCache Op
-        let mut dummy_session_state = SessionState::default();
-        let mut symbols = HashSet::new();
-        for node in &model.nodes {
-            if let Some((_, fact)) = node
-                .op
-                .state(&mut dummy_session_state, 0)?
-                .and_then(|state| state.init_tensor_fact())
-            {
-                symbols = fact.shape.volume().symbols();
-                break;
-            }
-        }
-        symbols
-    };
-
-    let b = tokens_symbols.intersection(&kv_symbols).cloned().collect::<HashSet<_>>();
-    let s = tokens_symbols.difference(&b).cloned().collect::<HashSet<_>>();
-    let p = kv_symbols.difference(&b).cloned().collect::<HashSet<_>>();
-    Ok((b.into_iter().next(), s.into_iter().next().unwrap(), p.into_iter().next().unwrap()))
-}
+use tract_libcli::tensor::{figure_out_b_s_p, get_or_make_inputs};
 
 pub fn handle(
     params: &Parameters,
@@ -79,9 +41,10 @@ pub fn bench_pp(
         run_params.symbols.set(&b, 1);
     }
 
+    ensure!(s.is_some() && p.is_some(), "Could not find LLM symbols in model");
     // Warmup
-    run_params.symbols.set(&p, 0);
-    run_params.symbols.set(&s, pp as i64);
+    run_params.symbols.set(&p.unwrap(), 0);
+    run_params.symbols.set(&s.unwrap(), pp as i64);
     let inputs = get_or_make_inputs(model, &run_params)?;
     limits.warmup(model, &inputs)?;
 
@@ -113,7 +76,10 @@ pub fn bench_tg(
         run_params.symbols.set(&b, 1);
     }
 
-    run_params.symbols.set(&s, 1);
+    ensure!(s.is_some() && p.is_some(), "Could not find LLM symbols in model");
+    run_params.symbols.set(&s.unwrap(), 1);
+
+    let p = p.unwrap();
     // Warmup
     if !limits.warmup_loops.is_zero() || !limits.warmup_time.is_zero() {
         let mut iters = 0;

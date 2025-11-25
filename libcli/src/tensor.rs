@@ -301,6 +301,43 @@ pub struct RunTensors {
     pub state_initializers: Vec<TValue>,
 }
 
+pub fn figure_out_b_s_p(model: &TypedModel) -> TractResult<(Option<Symbol>, Option<Symbol>, Option<Symbol>)> {
+    // expectations:
+    // - one input is for tokens, so integer dt (i64 ?) and typically of shape S or 1,S, or B,S
+    // - other inputs are kv cache, some kind of float. shape features both S and P, and B if B is present in tokens
+    let token_input = model
+        .inputs
+        .iter()
+        .position(|i| model.outlet_fact(*i).unwrap().datum_type.is_integer())
+        .context("No token input found")?;
+    let tokens_symbols = model.input_fact(token_input)?.shape.volume().symbols();
+    let kv_symbols = if let Some(kv_input) =
+        model.inputs.iter().position(|i| model.outlet_fact(*i).unwrap().datum_type.is_float())
+    {
+        model.input_fact(kv_input)?.shape.volume().symbols()
+    } else {
+        // Look for KVCache Op
+        let mut dummy_session_state = SessionState::default();
+        let mut symbols = HashSet::new();
+        for node in &model.nodes {
+            if let Some((_, fact)) = node
+                .op
+                .state(&mut dummy_session_state, 0)?
+                .and_then(|state| state.init_tensor_fact())
+            {
+                symbols = fact.shape.volume().symbols();
+                break;
+            }
+        }
+        symbols
+    };
+
+    let b = tokens_symbols.intersection(&kv_symbols).cloned().collect::<HashSet<_>>();
+    let s = tokens_symbols.difference(&b).cloned().collect::<HashSet<_>>();
+    let p = kv_symbols.difference(&b).cloned().collect::<HashSet<_>>();
+    Ok((b.into_iter().next(), s.into_iter().next(), p.into_iter().next()))
+}
+
 fn chunk_fact(
     fact: &TypedFact,
     params: &RunParams,
@@ -309,7 +346,11 @@ fn chunk_fact(
     let Some(chunk_size) = params.prompt_chunk_size else {
         return Ok(vec![fact.clone()]);
     };
-    let Some(s) = model.symbols().get("S") else {
+    let Some(model) = model.downcast_ref::<TypedModel>() else {
+        return Ok(vec![fact.clone()]);
+    };
+    let (_, s, _) = figure_out_b_s_p(model)?;
+    let Some(s) = s else {
         return Ok(vec![fact.clone()]);
     };
 
@@ -352,7 +393,12 @@ fn chunk_tensor(
     let Some(chunk_size) = params.prompt_chunk_size else {
         return Ok(vec![tensor.into_tvalue()]);
     };
-    let Some(s) = model.symbols().get("S") else {
+
+    let Some(model) = model.downcast_ref::<TypedModel>() else {
+        return Ok(vec![tensor.into_tvalue()]);
+    };
+    let (_, s, _) = figure_out_b_s_p(model)?;
+    let Some(s) = s else {
         return Ok(vec![tensor.into_tvalue()]);
     };
 

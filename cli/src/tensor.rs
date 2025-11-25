@@ -37,12 +37,14 @@ pub fn run_params_from_subcommand(
         let Some(typed_model) = params.tract_model.downcast_ref::<TypedModel>() else {
             bail!("PP mode can only be used with a TypedModel");
         };
-        let (b, s, p) = crate::llm::figure_out_b_s_p(typed_model)?;
+        let (b, s, p) = tract_libcli::tensor::figure_out_b_s_p(typed_model)?;
         if let Some(b) = b {
             symbols.set(&b, 1);
         }
-        symbols.set(&p, 0);
-        symbols.set(&s, value);
+
+        ensure!(s.is_some() && p.is_some(), "Could not find LLM symbols in model");
+        symbols.set(&p.unwrap(), 0);
+        symbols.set(&s.unwrap(), value);
         allow_random_input = true
     }
 
@@ -52,12 +54,14 @@ pub fn run_params_from_subcommand(
         let Some(typed_model) = params.tract_model.downcast_ref::<TypedModel>() else {
             bail!("TG mode can only be used with a TypedModel");
         };
-        let (b, s, p) = crate::llm::figure_out_b_s_p(typed_model)?;
+        let (b, s, p) = tract_libcli::tensor::figure_out_b_s_p(typed_model)?;
         if let Some(b) = b {
             symbols.set(&b, 1);
         }
-        symbols.set(&p, value - 1);
-        symbols.set(&s, 1);
+
+        ensure!(s.is_some() && p.is_some(), "Could not find LLM symbols in model");
+        symbols.set(&p.unwrap(), value - 1);
+        symbols.set(&s.unwrap(), 1);
         allow_random_input = true
     }
 
