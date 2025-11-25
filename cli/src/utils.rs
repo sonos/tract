@@ -39,17 +39,17 @@ pub fn check_outputs(got: &[Vec<TValue>], params: &Parameters) -> TractResult<()
         {
             let axis = props
                 .get("pulse.output_axes")
-                .context("multiple turn without pulse.output_axes property")?
+                .unwrap()
                 .as_slice::<i64>()?[ix] as usize;
             let delay = props
                 .get("pulse.delay")
-                .context("multiple turn without pulse.delay properties")?
+                .unwrap()
                 .as_slice::<i64>()?[ix] as usize;
             let stacked = Tensor::stack_tensors(axis, &got[ix])?;
             stacked.slice(axis, delay, delay + exp.shape()[axis])?.into()
         } else {
-            let rank = got[ix].len();
-            got[ix][rank - 1].clone()
+            // This handles LLM prompt-chunking output
+            got[ix].last().unwrap().clone()
         };
         if (params.allow_float_casts
             && exp.datum_type() == f32::datum_type()
