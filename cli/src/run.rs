@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 use crate::TractResult;
+use crate::bench::make_state;
 use crate::{Model, Parameters};
 use fs_err as fs;
 use ndarray_npy::NpzWriter;
@@ -11,7 +12,7 @@ use tract_core::ops::cnn::conv::Im2Col;
 use tract_core::ops::matmul::pack::OptMatMulPack;
 use tract_core::tract_data::itertools::izip;
 use tract_hir::internal::*;
-use tract_libcli::tensor::{get_or_make_inputs, RunParams};
+use tract_libcli::tensor::get_or_make_inputs;
 use tract_nnef::tensors::write_tensor;
 #[cfg(feature = "pulse")]
 use tract_pulse::internal::*;
@@ -45,15 +46,9 @@ pub fn handle(
     matches: &clap::ArgMatches,
     sub_matches: &clap::ArgMatches,
 ) -> TractResult<()> {
-    let run_params = crate::tensor::run_params_from_subcommand(params, sub_matches)?;
-
     let dump = sub_matches.is_present("dump");
-    let outputs = dispatch_model!(&*params.tract_model, |m| run_regular(
-        m,
-        &run_params,
-        matches,
-        sub_matches
-    ))?;
+    let outputs =
+        dispatch_model!(&*params.tract_model, |m| run_regular(m, &params, matches, sub_matches))?;
 
     if dump {
         for (ix, output) in outputs.iter().enumerate() {
@@ -141,11 +136,12 @@ pub fn handle(
 
 fn run_regular(
     tract: &dyn Model,
-    run_params: &RunParams,
-    _matches: &clap::ArgMatches,
+    params: &Parameters,
+    matches: &clap::ArgMatches,
     sub_matches: &clap::ArgMatches,
 ) -> TractResult<TVec<Vec<TValue>>> {
-    let plan_options = crate::plan_options::plan_options_from_subcommand(sub_matches)?;
+    let run_params = crate::tensor::run_params_from_subcommand(params, sub_matches)?;
+
     let steps = sub_matches.is_present("steps");
     let check_f16_overflow = sub_matches.is_present("check-f16-overflow");
     let assert_sane_floats = sub_matches.is_present("assert-sane-floats");
@@ -155,11 +151,10 @@ fn run_regular(
     } else {
         None
     };
-    dispatch_model!(tract, |m| {
-        let mut inputs = get_or_make_inputs(tract, run_params)?;
+    dispatch_model!(tract, |_| {
+        let mut inputs = get_or_make_inputs(tract, &run_params)?;
 
-        let plan = SimplePlan::new_with_options(m, &plan_options)?;
-        let mut state = SimpleState::new(plan)?;
+        let mut state = make_state(params, matches, sub_matches)?;
         state.init_states(&mut inputs.state_initializers)?;
 
         let mut results = tvec!(vec!(); state.model().outputs.len());
