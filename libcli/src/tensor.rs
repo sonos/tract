@@ -3,7 +3,6 @@ use std::io::{Read, Seek};
 use std::ops::Range;
 use std::str::FromStr;
 use std::sync::Mutex;
-use std::usize;
 
 use crate::model::Model;
 use tract_hir::internal::*;
@@ -416,7 +415,7 @@ fn chunk_tensor(
     let mut out = Vec::with_capacity(num_chunks);
 
     for start in (0..resolved_sym).step_by(chunk_size) {
-        let this = chunk_size.min(resolved_sym - start) as usize;
+        let this = chunk_size.min(resolved_sym - start);
         out.push(tensor.slice(symb_axis, start, start + this)?.into_tvalue());
     }
 
@@ -545,7 +544,7 @@ fn get_or_make_tensors(
         let mut chunked_tensors = Vec::with_capacity(chunked_facts.len());
         for fact in &mut chunked_facts {
             fact.shape = fact.shape.iter().map(|dim| dim.eval(&params.symbols)).collect();
-            chunked_tensors.push(tensor_for_fact(&fact, None, tv)?.into());
+            chunked_tensors.push(tensor_for_fact(fact, None, tv)?.into());
         }
         target.push(chunked_tensors);
     } else {
