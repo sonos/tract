@@ -59,8 +59,8 @@ impl RmsNorm {
         let mut launch_args = TractLaunchArgs::new(stream, &func);
         launch_args.set_view(&i_view);
         launch_args.set_view(&o_view);
-        launch_args.set_slice::<i64>(&shape_nd3);
-        launch_args.set_slice::<i64>(&strides_nd3);
+        launch_args.set_slice::<i32>(&shape_nd3);
+        launch_args.set_slice::<i32>(&strides_nd3);
         launch_args.set_el::<f32>(*eps.to_scalar::<f32>()?);
 
         let cfg = LaunchConfig {

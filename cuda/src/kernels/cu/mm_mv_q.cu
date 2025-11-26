@@ -293,15 +293,15 @@ static __device__ __forceinline__ void mul_mat_q_process_tile(
 // The mul_mat_q kernel implements "stream-k" work partitioning as described in
 // https://arxiv.org/abs/2301.03598
 
-template <int64_t mmq_x, int64_t nwarps, bool need_check>
+template <int mmq_x, int nwarps, bool need_check>
 static __device__ __forceinline__ void
 mul_mat_q(const char *__restrict__ x, const int *__restrict__ y,
           float *__restrict__ dst, float *__restrict__ tmp_fixup,
-          const int64_t ncols_x, const int64_t nrows_x, const int64_t ncols_dst,
-          const int64_t stride_row_x, const int64_t ncols_y, const int64_t stride_col_dst,
-          const int64_t channel_ratio, const int64_t nchannels_y,
-          const int64_t stride_channel_x, const int64_t stride_channel_y,
-          const int64_t stride_channel_dst) {
+          const int32_t ncols_x, const int32_t nrows_x, const int32_t ncols_dst,
+          const int32_t stride_row_x, const int32_t ncols_y, const int32_t stride_col_dst,
+          const int32_t channel_ratio, const int32_t nchannels_y,
+          const int32_t stride_channel_x, const int32_t stride_channel_y,
+          const int32_t stride_channel_dst) {
   constexpr int qk = QK4_0;
 
   const int ntx = (ncols_dst + mmq_x - 1) / mmq_x; // Number of tiles x
@@ -411,9 +411,9 @@ template <int mmq_x, int nwarps, bool need_check>
 static __device__ __forceinline__ void
 mul_mat_q_stream_k_fixup(float *__restrict__ dst,
                          const float *__restrict__ tmp_last_tile,
-                         const int64_t ncols_x, const int64_t nrows_x,
-                         const int64_t ncols_dst, const int64_t stride_col_dst,
-                         const int64_t nchannels_y, const int64_t stride_channel_dst) {
+                         const int32_t ncols_x, const int32_t nrows_x,
+                         const int32_t ncols_dst, const int32_t stride_col_dst,
+                         const int32_t nchannels_y, const int32_t stride_channel_dst) {
   constexpr int qk = QK4_0;
   constexpr int blocks_per_iter = MMQ_ITER_K / qk;
   const int64_t blocks_per_ne00 = ncols_x / qk;
@@ -527,11 +527,11 @@ mul_mat_q_stream_k_fixup(float *__restrict__ dst,
       ##mmq_x##_##nwarps##_                                                    \
       ##need_check(const char *__restrict__ x, const int *__restrict__ y,      \
                    float *__restrict__ dst, float *__restrict__ tmp_fixup,     \
-                   const int64_t ncols_x, const int64_t nrows_x, const int64_t ncols_dst,  \
-                   const int64_t stride_row_x, const int64_t ncols_y,                  \
-                   const int64_t stride_col_dst, const int64_t channel_ratio,          \
-                   const int64_t nchannels_y, const int64_t stride_channel_x,          \
-                   const int64_t stride_channel_y, const int64_t stride_channel_dst) { \
+                   const int32_t ncols_x, const int32_t nrows_x, const int32_t ncols_dst,  \
+                   const int32_t stride_row_x, const int32_t ncols_y,                  \
+                   const int32_t stride_col_dst, const int32_t channel_ratio,          \
+                   const int32_t nchannels_y, const int32_t stride_channel_x,          \
+                   const int32_t stride_channel_y, const int32_t stride_channel_dst) { \
     mul_mat_q<mmq_x, nwarps, need_check>(                                      \
         x, y, dst, tmp_fixup, ncols_x, nrows_x, ncols_dst, stride_row_x,       \
         ncols_y, stride_col_dst, channel_ratio, nchannels_y, stride_channel_x, \
@@ -541,9 +541,9 @@ mul_mat_q_stream_k_fixup(float *__restrict__ dst,
   __global__ void                                                              \
       mul_mat_q40_stream_k_fixup##_##mmq_x##_##nwarps##_##need_check(          \
           float *__restrict__ dst, const float *__restrict__ tmp_last_tile,    \
-          const int64_t ncols_x, const int64_t nrows_x, const int64_t ncols_dst,           \
-          const int64_t stride_col_dst, const int64_t nchannels_y,                     \
-          const int64_t stride_channel_dst) {                                      \
+          const int32_t ncols_x, const int32_t nrows_x, const int32_t ncols_dst,           \
+          const int32_t stride_col_dst, const int32_t nchannels_y,                     \
+          const int32_t stride_channel_dst) {                                      \
     mul_mat_q_stream_k_fixup<mmq_x, nwarps, need_check>(                       \
         dst, tmp_last_tile, ncols_x, nrows_x, ncols_dst, stride_col_dst,       \
         nchannels_y, stride_channel_dst);                                      \
@@ -721,11 +721,11 @@ mul_mat_vec_q(const void *__restrict__ vx, const void *__restrict__ vy,
   __launch_bounds__(calc_nwarps(ncols_dst) * WARP_SIZE, 1) __global__          \
       void mul_vec_q40_m_                                                      \
       ##ncols_dst(const void *__restrict__ vx, const void *__restrict__ vy,    \
-                  float *__restrict__ dst, const int64_t ncols_x,                  \
-                  const int64_t nchannels_y, const int64_t stride_row_x,               \
-                  const int64_t stride_col_y, const int64_t stride_col_dst,            \
-                  const int64_t channel_ratio, const int64_t stride_channel_x,         \
-                  const int64_t stride_channel_y, const int64_t stride_channel_dst) {  \
+                  float *__restrict__ dst, const int32_t ncols_x,                  \
+                  const int32_t nchannels_y, const int32_t stride_row_x,               \
+                  const int32_t stride_col_y, const int32_t stride_col_dst,            \
+                  const int32_t channel_ratio, const int32_t stride_channel_x,         \
+                  const int32_t stride_channel_y, const int32_t stride_channel_dst) {  \
     mul_mat_vec_q<ncols_dst>(vx, vy, dst, ncols_x, nchannels_y, stride_row_x,  \
                              stride_col_y, stride_col_dst, channel_ratio,      \
                              stride_channel_x, stride_channel_y,               \

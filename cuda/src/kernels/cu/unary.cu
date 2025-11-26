@@ -129,7 +129,7 @@ static __device__ __forceinline__ __half op_silu(__half x) {
 }
 
 #define DEFINE_UNARY_KERNEL(name, tname, T, OP)                                \
-  extern "C" __global__ void name##_##tname(const T *x, T *dst, int64_t k) {       \
+  extern "C" __global__ void name##_##tname(const T *x, T *dst, int32_t k) {       \
     int i = blockIdx.x * blockDim.x + threadIdx.x;                             \
     if (i < k) {                                                               \
       dst[i] = OP(x[i]);                                                       \

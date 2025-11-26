@@ -78,10 +78,10 @@ impl ScaledMaskedSoftmax {
             launch_args.set_el::<f16>(*scale.to_scalar::<f16>()?)
         };
         launch_args.set_view(&o_view);
-        launch_args.set_slice::<i64>(shape);
-        launch_args.set_slice::<i64>(strides);
-        launch_args.set_slice::<i64>(&mask_strides_nd3);
-        launch_args.set_slice::<i64>(output.strides());
+        launch_args.set_slice::<i32>(shape);
+        launch_args.set_slice::<i32>(strides);
+        launch_args.set_slice::<i32>(&mask_strides_nd3);
+        launch_args.set_slice::<i32>(output.strides());
 
         let cfg = LaunchConfig {
             grid_dim: (1, shape[1] as _, shape[0] as _),

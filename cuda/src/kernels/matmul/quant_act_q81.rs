@@ -73,8 +73,8 @@ impl GgmlQuantQ81 {
             launch_args.set_view(&i_view);
             launch_args.set_view(&o_view);
             launch_args.set_el::<u64>(k);
-            launch_args.set_slice::<i64>(in_strides);
-            launch_args.set_slice::<i64>(&out_shape[1..]);
+            launch_args.set_slice::<i32>(in_strides);
+            launch_args.set_slice::<i32>(&out_shape[1..]);
 
             let cfg = LaunchConfig {
                 grid_dim: (
@@ -93,8 +93,8 @@ impl GgmlQuantQ81 {
             launch_args.set_view(&i_view);
             launch_args.set_view(&o_view);
             launch_args.set_el::<u64>(k);
-            launch_args.set_slice::<i64>(input.strides());
-            launch_args.set_slice::<i64>(&out_shape[1..]);
+            launch_args.set_slice::<i32>(input.strides());
+            launch_args.set_slice::<i32>(&out_shape[1..]);
 
             let cfg = LaunchConfig {
                 grid_dim: (padded_k.div_ceil(QUANTIZE_BLOCK_SIZE) as _, m as _, a_batch as _),

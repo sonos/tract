@@ -8,29 +8,29 @@
 
 extern "C" __global__ void conv{{georank}}d_f32_generic(
     const float *input,
-    int64_t in_n, int64_t in_c,
-    {% for i in (1..georank) %} int64_t in_{{i}}, {% endfor %}
-    int64_t in_n_stride, int64_t in_c_stride,
-    {% for i in (1..georank) %} int64_t in_{{i}}_stride, {% endfor %}
+    int32_t in_n, int32_t in_c,
+    {% for i in (1..georank) %} int32_t in_{{i}}, {% endfor %}
+    int32_t in_n_stride, int32_t in_c_stride,
+    {% for i in (1..georank) %} int32_t in_{{i}}_stride, {% endfor %}
 
     const float *kernel,
-    int64_t groups, int64_t co_per_group, int64_t ci_per_group,
-    {% for i in (1..georank) %} int64_t ker_{{i}}, {% endfor %}
-    int64_t ker_g_stride, int64_t ker_o_stride, int64_t ker_i_stride,
-    {% for i in (1..georank) %} int64_t ker_{{i}}_stride, {% endfor %}
+    int32_t groups, int32_t co_per_group, int32_t ci_per_group,
+    {% for i in (1..georank) %} int32_t ker_{{i}}, {% endfor %}
+    int32_t ker_g_stride, int32_t ker_o_stride, int32_t ker_i_stride,
+    {% for i in (1..georank) %} int32_t ker_{{i}}_stride, {% endfor %}
 
     const float *bias,
-    int64_t bias_stride,
+    int32_t bias_stride,
   
-    {% for i in (1..georank) %} int64_t pad_{{i}}, {% endfor %}
-    {% for i in (1..georank) %} int64_t stride_{{i}}, {% endfor %}
-    {% for i in (1..georank) %} int64_t dil_{{i}}, {% endfor %}
+    {% for i in (1..georank) %} int32_t pad_{{i}}, {% endfor %}
+    {% for i in (1..georank) %} int32_t stride_{{i}}, {% endfor %}
+    {% for i in (1..georank) %} int32_t dil_{{i}}, {% endfor %}
     
     float *output,
-    int64_t out_n, int64_t out_c,
-    {% for i in (1..georank) %} int64_t out_{{i}}, {% endfor %}
-    int64_t out_n_stride, int64_t out_c_stride
-    {% for i in (1..georank) %}, int64_t out_{{i}}_stride {% endfor %}
+    int32_t out_n, int32_t out_c,
+    {% for i in (1..georank) %} int32_t out_{{i}}, {% endfor %}
+    int32_t out_n_stride, int32_t out_c_stride
+    {% for i in (1..georank) %}, int32_t out_{{i}}_stride {% endfor %}
 ) {
   assert(in_n == gridDim.z);
   assert(out_n == gridDim.z);
