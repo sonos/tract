@@ -7,10 +7,10 @@
 
 #define INSTANTIATE_REDUCE(name, T, bname, block_size)                         \
   extern "C" __global__ void reduce_max_##bname##name(                         \
-      const T *input, T *output, const int64_t shape_0, const int64_t shape_1,         \
-      const int64_t shape_2, const int64_t in_stride_0, const int64_t in_stride_1,         \
-      const int64_t in_stride_2, const int64_t out_stride_0, const int64_t out_stride_1,   \
-      const int64_t out_stride_2) {                                                \
+      const T *input, T *output, const int32_t shape_0, const int32_t shape_1,         \
+      const int32_t shape_2, const int32_t in_stride_0, const int32_t in_stride_1,         \
+      const int32_t in_stride_2, const int32_t out_stride_0, const int32_t out_stride_1,   \
+      const int32_t out_stride_2) {                                                \
     input += blockIdx.z * in_stride_0 + blockIdx.x * in_stride_2;              \
     output += blockIdx.z * out_stride_0 + blockIdx.x * out_stride_2;           \
                                                                                \
@@ -46,10 +46,10 @@
   }                                                                            \
                                                                                \
   extern "C" __global__ void reduce_min_##bname##name(                         \
-      const T *input, T *output, const int64_t shape_0, const int64_t shape_1,         \
-      const int64_t shape_2, const int64_t in_stride_0, const int64_t in_stride_1,         \
-      const int64_t in_stride_2, const int64_t out_stride_0, const int64_t out_stride_1,   \
-      const int64_t out_stride_2) {                                                \
+      const T *input, T *output, const int32_t shape_0, const int32_t shape_1,         \
+      const int32_t shape_2, const int32_t in_stride_0, const int32_t in_stride_1,         \
+      const int32_t in_stride_2, const int32_t out_stride_0, const int32_t out_stride_1,   \
+      const int32_t out_stride_2) {                                                \
     input += blockIdx.z * in_stride_0 + blockIdx.x * in_stride_2;              \
     output += blockIdx.z * out_stride_0 + blockIdx.x * out_stride_2;           \
                                                                                \
@@ -85,10 +85,10 @@
   }                                                                            \
                                                                                \
   extern "C" __global__ void reduce_sum_##bname##name(                         \
-      const T *input, T *output, const int64_t shape_0, const int64_t shape_1,         \
-      const int64_t shape_2, const int64_t in_stride_0, const int64_t in_stride_1,         \
-      const int64_t in_stride_2, const int64_t out_stride_0, const int64_t out_stride_1,   \
-      const int64_t out_stride_2) {                                                \
+      const T *input, T *output, const int32_t shape_0, const int32_t shape_1,         \
+      const int32_t shape_2, const int32_t in_stride_0, const int32_t in_stride_1,         \
+      const int32_t in_stride_2, const int32_t out_stride_0, const int32_t out_stride_1,   \
+      const int32_t out_stride_2) {                                                \
     input += blockIdx.z * in_stride_0 + blockIdx.x * in_stride_2;              \
     output += blockIdx.z * out_stride_0 + blockIdx.x * out_stride_2;           \
                                                                                \
@@ -124,10 +124,10 @@
   }                                                                            \
                                                                                \
   extern "C" __global__ void reduce_prod_##bname##name(                        \
-      const T *input, T *output, const int64_t shape_0, const int64_t shape_1,         \
-      const int64_t shape_2, const int64_t in_stride_0, const int64_t in_stride_1,         \
-      const int64_t in_stride_2, const int64_t out_stride_0, const int64_t out_stride_1,   \
-      const int64_t out_stride_2) {                                                \
+      const T *input, T *output, const int32_t shape_0, const int32_t shape_1,         \
+      const int32_t shape_2, const int32_t in_stride_0, const int32_t in_stride_1,         \
+      const int32_t in_stride_2, const int32_t out_stride_0, const int32_t out_stride_1,   \
+      const int32_t out_stride_2) {                                                \
     input += blockIdx.z * in_stride_0 + blockIdx.x * in_stride_2;              \
     output += blockIdx.z * out_stride_0 + blockIdx.x * out_stride_2;           \
                                                                                \
@@ -163,10 +163,10 @@
   }                                                                            \
                                                                                \
   extern "C" __global__ void reduce_mean_of_squares_##bname##name(             \
-      const T *input, T *output, const int64_t shape_0, const int64_t shape_1,         \
-      const int64_t shape_2, const int64_t in_stride_0, const int64_t in_stride_1,         \
-      const int64_t in_stride_2, const int64_t out_stride_0, const int64_t out_stride_1,   \
-      const int64_t out_stride_2) {                                                \
+      const T *input, T *output, const int32_t shape_0, const int32_t shape_1,         \
+      const int32_t shape_2, const int32_t in_stride_0, const int32_t in_stride_1,         \
+      const int32_t in_stride_2, const int32_t out_stride_0, const int32_t out_stride_1,   \
+      const int32_t out_stride_2) {                                                \
     input += blockIdx.z * in_stride_0 + blockIdx.x * in_stride_2;              \
     output += blockIdx.z * out_stride_0 + blockIdx.x * out_stride_2;           \
                                                                                \
@@ -202,7 +202,7 @@
   }
 
 extern "C" __global__ void gelu_approx_f32(const float *input, float *output,
-                                           int64_t len) {
+                                           int32_t len) {
   int i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i < len) {
     float x = input[i];
@@ -214,7 +214,7 @@ extern "C" __global__ void gelu_approx_f32(const float *input, float *output,
 }
 
 extern "C" __global__ void gelu_approx_f16(const __half *input, __half *output,
-                                           int64_t len) {
+                                           int32_t len) {
   int i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i < len) {
     float x = (float)input[i];
@@ -226,7 +226,7 @@ extern "C" __global__ void gelu_approx_f16(const __half *input, __half *output,
 }
 
 extern "C" __global__ void gelu_approx_fast_f32(const float *input,
-                                                float *output, int64_t len) {
+                                                float *output, int32_t len) {
   int i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i < len) {
     float x = input[i];
@@ -238,7 +238,7 @@ extern "C" __global__ void gelu_approx_fast_f32(const float *input,
 }
 
 extern "C" __global__ void gelu_approx_fast_f16(const __half *input,
-                                                __half *output, int64_t len) {
+                                                __half *output, int32_t len) {
   int i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i < len) {
     float x = (float)input[i];
@@ -250,7 +250,7 @@ extern "C" __global__ void gelu_approx_fast_f16(const __half *input,
 }
 
 extern "C" __global__ void leaky_relu_f32(const float *input,
-                                                float *output, int64_t len,
+                                                float *output, int32_t len,
                                                 float alpha) {
   int i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i < len) {
@@ -260,7 +260,7 @@ extern "C" __global__ void leaky_relu_f32(const float *input,
 }
 
 extern "C" __global__ void leaky_relu_f16(const __half *input,
-                                                __half *output, int64_t len,
+                                                __half *output, int32_t len,
                                                 float alpha) {
   int i = blockIdx.x * blockDim.x + threadIdx.x;
   __half alpha_f16 = (__half) alpha;
@@ -295,10 +295,10 @@ indices_to_idx_4(int x, int y, int z, int x_shape, int y_shape, int z_shape,
 
 #define INSTANTIATE_APPLY_ROPE(name, T)                                        \
   extern "C" __global__ void apply_rope_nd2_##name(                            \
-      const T *input, const T *cos, const T *sin, T *output, int64_t in_shape_0,   \
-      int64_t in_shape_1, int64_t in_strides_0, int64_t in_strides_1,                      \
-      int64_t cos_sin_strides_0, int64_t cos_sin_strides_1, int64_t out_strides_0,         \
-      int64_t out_strides_1) {                                                     \
+      const T *input, const T *cos, const T *sin, T *output, int32_t in_shape_0,   \
+      int32_t in_shape_1, int32_t in_strides_0, int32_t in_strides_1,                      \
+      int32_t cos_sin_strides_0, int32_t cos_sin_strides_1, int32_t out_strides_0,         \
+      int32_t out_strides_1) {                                                     \
     int thread_idx_x = blockIdx.x * blockDim.x + threadIdx.x;                  \
     int thread_idx_y = blockIdx.y * blockDim.y + threadIdx.y;                  \
     if (thread_idx_x >= in_shape_1 / 2 || thread_idx_y >= in_shape_0) {        \
@@ -327,11 +327,11 @@ indices_to_idx_4(int x, int y, int z, int x_shape, int y_shape, int z_shape,
   }                                                                            \
                                                                                \
   extern "C" __global__ void apply_rope_nd3_##name(                            \
-      const T *input, const T *cos, const T *sin, T *output, int64_t in_shape_0,   \
-      int64_t in_shape_1, int64_t in_shape_2, int64_t in_strides_0, int64_t in_strides_1,      \
-      int64_t in_strides_2, int64_t cos_sin_strides_0, int64_t cos_sin_strides_1,          \
-      int64_t cos_sin_strides_2, int64_t out_strides_0, int64_t out_strides_1,             \
-      int64_t out_strides_2) {                                                     \
+      const T *input, const T *cos, const T *sin, T *output, int32_t in_shape_0,   \
+      int32_t in_shape_1, int32_t in_shape_2, int32_t in_strides_0, int32_t in_strides_1,      \
+      int32_t in_strides_2, int32_t cos_sin_strides_0, int32_t cos_sin_strides_1,          \
+      int32_t cos_sin_strides_2, int32_t out_strides_0, int32_t out_strides_1,             \
+      int32_t out_strides_2) {                                                     \
     int thread_idx_x = blockIdx.x * blockDim.x + threadIdx.x;                  \
     int thread_idx_y = blockIdx.y * blockDim.y + threadIdx.y;                  \
     int thread_idx_z = blockIdx.z * blockDim.z + threadIdx.z;                  \
@@ -366,12 +366,12 @@ indices_to_idx_4(int x, int y, int z, int x_shape, int y_shape, int z_shape,
   }                                                                            \
                                                                                \
   extern "C" __global__ void apply_rope_nd4_##name(                            \
-      const T *input, const T *cos, const T *sin, T *output, int64_t in_shape_0,   \
-      int64_t in_shape_1, int64_t in_shape_2, int64_t in_shape_3, int64_t in_strides_0,        \
-      int64_t in_strides_1, int64_t in_strides_2, int64_t in_strides_3,                    \
-      int64_t cos_sin_strides_0, int64_t cos_sin_strides_1, int64_t cos_sin_strides_2,     \
-      int64_t cos_sin_strides_3, int64_t out_strides_0, int64_t out_strides_1,             \
-      int64_t out_strides_2, int64_t out_strides_3) {                                  \
+      const T *input, const T *cos, const T *sin, T *output, int32_t in_shape_0,   \
+      int32_t in_shape_1, int32_t in_shape_2, int32_t in_shape_3, int32_t in_strides_0,        \
+      int32_t in_strides_1, int32_t in_strides_2, int32_t in_strides_3,                    \
+      int32_t cos_sin_strides_0, int32_t cos_sin_strides_1, int32_t cos_sin_strides_2,     \
+      int32_t cos_sin_strides_3, int32_t out_strides_0, int32_t out_strides_1,             \
+      int32_t out_strides_2, int32_t out_strides_3) {                                  \
     int thread_idx_x = blockIdx.x * blockDim.x + threadIdx.x;                  \
     int thread_idx_y = blockIdx.y * blockDim.y + threadIdx.y;                  \
     int thread_idx_z = blockIdx.z * blockDim.z + threadIdx.z;                  \
@@ -415,9 +415,9 @@ indices_to_idx_4(int x, int y, int z, int x_shape, int y_shape, int z_shape,
 
 #define INSTANTIATE_SOFTMAX(name, T, bname, block_size)                        \
   extern "C" __global__ void softmax_##bname##name(                            \
-      const T *x, T *dst, const int64_t shape_0, const int64_t shape_1,                \
-      const int64_t shape_2, const int64_t stride_0, const int64_t stride_1,               \
-      const int64_t stride_2) {                                                    \
+      const T *x, T *dst, const int32_t shape_0, const int32_t shape_1,                \
+      const int32_t shape_2, const int32_t stride_0, const int32_t stride_1,               \
+      const int32_t stride_2) {                                                    \
     int offset =                                                               \
         (blockIdx.x % shape_2) * stride_2 + (blockIdx.x / shape_2) * stride_0; \
     x += offset;                                                               \
@@ -483,12 +483,12 @@ indices_to_idx_4(int x, int y, int z, int x_shape, int y_shape, int z_shape,
 
 #define INSTANTIATE_SCALED_MASKED_SOFTMAX(name, T, bname, block_size_template) \
   extern "C" __global__ void scaled_masked_softmax_##bname##name(              \
-      const T *x, const T *mask, const T scale, T *dst, const int64_t shape_0,     \
-      const int64_t shape_1, const int64_t shape_2, const int64_t stride_0,                \
-      const int64_t stride_1, const int64_t stride_2, const int64_t mask_stride_0,         \
-      const int64_t mask_stride_1, const int64_t mask_stride_2,                        \
-      const int64_t out_stride_0, const int64_t out_stride_1,                          \
-      const int64_t out_stride_2) {                                                \
+      const T *x, const T *mask, const T scale, T *dst, const int32_t shape_0,     \
+      const int32_t shape_1, const int32_t shape_2, const int32_t stride_0,                \
+      const int32_t stride_1, const int32_t stride_2, const int32_t mask_stride_0,         \
+      const int32_t mask_stride_1, const int32_t mask_stride_2,                        \
+      const int32_t out_stride_0, const int32_t out_stride_1,                          \
+      const int32_t out_stride_2) {                                                \
     x += blockIdx.y * stride_1 + blockIdx.z * stride_0;                        \
     mask +=                                                                    \
         mask ? blockIdx.y * mask_stride_1 + blockIdx.z * mask_stride_0 : 0;    \
@@ -574,9 +574,9 @@ indices_to_idx_4(int x, int y, int z, int x_shape, int y_shape, int z_shape,
 
 #define INSTANTIATE_RMS_NORM(name, T, bname, block_size)                       \
   extern "C" __global__ void rms_norm_##bname##name(                           \
-      const T *x, T *dst, const int64_t shape_0, const int64_t shape_1,                \
-      const int64_t shape_2, const int64_t strides_0, const int64_t strides_1,             \
-      const int64_t strides_2, const float eps) {                                      \
+      const T *x, T *dst, const int32_t shape_0, const int32_t shape_1,                \
+      const int32_t shape_2, const int32_t strides_0, const int32_t strides_1,             \
+      const int32_t strides_2, const float eps) {                                      \
     int base_idx = (blockIdx.x % shape_2) * strides_2 +                        \
                    (blockIdx.x / shape_2) * strides_0;                         \
                                                                                \

@@ -379,9 +379,9 @@ impl GgmlFlashAttn {
             let mut la = TractLaunchArgs::new(stream, &func);
             la.set_view(&mv);
             la.set_view(&kv_max_v);
-            la.set_el::<i64>(iter_k);
-            la.set_el::<i64>(mask_s2_div2);
-            la.set_el::<i64>(mask_s0_div2);
+            la.set_el::<i32>(iter_k);
+            la.set_el::<i32>(mask_s2_div2);
+            la.set_el::<i32>(mask_s0_div2);
             let cfg =
                 LaunchConfig { grid_dim: blocks_num, block_dim: blocks_dim, shared_mem_bytes: 0 };
 

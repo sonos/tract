@@ -78,9 +78,9 @@ impl Reducer {
         let mut launch_args = TractLaunchArgs::new(stream, &func);
         launch_args.set_view(&i_view);
         launch_args.set_view(&o_view);
-        launch_args.set_slice::<i64>(&input_shape_nd3);
-        launch_args.set_slice::<i64>(&input_strides_nd3);
-        launch_args.set_slice::<i64>(&output_strides_nd3);
+        launch_args.set_slice::<i32>(&input_shape_nd3);
+        launch_args.set_slice::<i32>(&input_strides_nd3);
+        launch_args.set_slice::<i32>(&output_strides_nd3);
 
         let cfg = LaunchConfig {
             grid_dim: (input_shape_nd3[2] as _, 1 as _, input_shape_nd3[0] as _),

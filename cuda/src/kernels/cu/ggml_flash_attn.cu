@@ -2095,7 +2095,7 @@ INSTANTIATE_FLASH_ATTN_MMA_F16()
 /*----------------------------------------------------------------------------------------------------------------------*/
 template <int ncols1>
 static __device__ void flash_attn_mask_to_KV_max(
-        const half2 * __restrict__ mask, int * __restrict__ KV_max, const int64_t ne30, const int64_t s31, const int64_t s33) {
+        const half2 * __restrict__ mask, int * __restrict__ KV_max, const int32_t ne30, const int32_t s31, const int32_t s33) {
     const int ne31     = gridDim.x;
     const int tid      = threadIdx.x;
     const int sequence = blockIdx.y;

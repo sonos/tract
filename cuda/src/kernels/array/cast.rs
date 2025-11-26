@@ -82,7 +82,7 @@ impl Cast {
         let mut launch_args = TractLaunchArgs::new(stream, &func);
         launch_args.set_view(&i_view);
         launch_args.set_view(&o_view);
-        launch_args.set_el::<i64>(len);
+        launch_args.set_el::<i32>(len);
         let cfg = LaunchConfig::for_num_elems(len as _);
 
         launch_args.launch(cfg)

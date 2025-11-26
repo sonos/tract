@@ -274,11 +274,11 @@ impl BinOps {
         launch_args.set_view(&lhs_view);
         launch_args.set_view(&rhs_view);
         launch_args.set_view(&o_view);
-        launch_args.set_slice::<i64>(&rhs_shape);
-        launch_args.set_slice::<i64>(&out_shape);
-        launch_args.set_slice::<i64>(&lhs_strides);
-        launch_args.set_slice::<i64>(&rhs_strides);
-        launch_args.set_slice::<i64>(&out_strides);
+        launch_args.set_slice::<i32>(&rhs_shape);
+        launch_args.set_slice::<i32>(&out_shape);
+        launch_args.set_slice::<i32>(&lhs_strides);
+        launch_args.set_slice::<i32>(&rhs_strides);
+        launch_args.set_slice::<i32>(&out_strides);
 
         launch_args.launch(cfg)?;
 

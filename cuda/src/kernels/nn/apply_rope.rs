@@ -96,10 +96,10 @@ impl ApplyRope {
         launch_args.set_view(&cos_view);
         launch_args.set_view(&sin_view);
         launch_args.set_view(&o_view);
-        launch_args.set_slice::<i64>(input.shape());
-        launch_args.set_slice::<i64>(input.strides());
-        launch_args.set_slice::<i64>(&cos_sin_strides);
-        launch_args.set_slice::<i64>(output.strides());
+        launch_args.set_slice::<i32>(input.shape());
+        launch_args.set_slice::<i32>(input.strides());
+        launch_args.set_slice::<i32>(&cos_sin_strides);
+        launch_args.set_slice::<i32>(output.strides());
 
         let shape = input.shape();
 
