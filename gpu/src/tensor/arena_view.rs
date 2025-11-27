@@ -126,9 +126,19 @@ impl Display for DeviceArenaView {
 
 impl IntoTensor for DeviceArenaView {
     fn into_tensor(self) -> Tensor {
+        let content = self.as_bytes();
         unsafe {
-            Tensor::from_raw_dt(self.dt, &self.shape, &self.as_bytes())
+            if self.dt == DatumType::Opaque {
+               assert!(self.opaque_fact.is_some(), "Opaque Tensor without Opaque Fact");
+               assert!(self.len == 1, "Expected scalar Opaque");
+               tensor0(Opaque(Arc::new(BlobWithFact {
+                fact: self.opaque_fact.unwrap(),
+                value: Arc::new(Blob::from_bytes(&content).unwrap())
+               })))
+            } else {
+                Tensor::from_raw_dt(self.dt, &self.shape, &content)
                 .expect("Could not transform a DeviceArenaView to tensor")
+            }
         }
     }
 }
