@@ -52,7 +52,7 @@ pub struct CudaTensor {
 impl CudaTensor {
     pub fn from_tensor(tensor: &Tensor) -> TractResult<Self> {
         let (data, bqf) = as_q40_tensor(tensor)
-            .map(|bqv| (bqv.value.as_bytes(), Some(bqv.fact.clone().into())))
+            .map(|bqv| (bqv.value.as_bytes(), Some(bqv.fact.clone())))
             .unwrap_or((tensor.as_bytes(), None));
         CUDA_STREAM.with(|stream| {
             let device_data = stream

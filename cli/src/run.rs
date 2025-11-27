@@ -48,7 +48,7 @@ pub fn handle(
 ) -> TractResult<()> {
     let dump = sub_matches.is_present("dump");
     let outputs =
-        dispatch_model!(&*params.tract_model, |m| run_regular(m, &params, matches, sub_matches))?;
+        dispatch_model!(&*params.tract_model, |m| run_regular(m, params, matches, sub_matches))?;
 
     if dump {
         for (ix, output) in outputs.iter().enumerate() {
