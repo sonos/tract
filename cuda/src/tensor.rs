@@ -10,10 +10,10 @@ use tract_gpu::device::DeviceBuffer;
 use tract_gpu::tensor::{DeviceTensor, OwnedDeviceTensor};
 use tract_gpu::utils::{as_q40_tensor, check_strides_validity};
 
-use crate::context::{cuda_context, TractCudaStream, CUDA_STREAM};
+use crate::context::{CUDA_STREAM, TractCudaStream, cuda_context};
 use crate::kernels::launch_args::LaunchArgsExt;
 use crate::kernels::utils::cuda_launch_cfg_for_cpy;
-use crate::kernels::{get_sliced_cuda_view, BroadcastKind, LibraryName};
+use crate::kernels::{BroadcastKind, LibraryName, get_sliced_cuda_view};
 use crate::ops::GgmlQuantQ81Fact;
 
 #[derive(Debug, Clone)]

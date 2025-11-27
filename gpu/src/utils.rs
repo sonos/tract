@@ -80,8 +80,17 @@ pub fn as_quant_fact<'a>(
 
 pub fn as_q40_tensor(a: &Tensor) -> Option<&BlobWithFact> {
     a.to_scalar::<Opaque>().ok().and_then(|od| {
-        od.downcast_ref::<BlobWithFact>()
-            .and_then(|bwf| if bwf.fact.downcast_ref::<BlockQuantFact>().is_some_and(|bqf| bqf.format.same_as(&Q4_0)) { Some(bwf) } else { None })
+        od.downcast_ref::<BlobWithFact>().and_then(|bwf| {
+            if bwf
+                .fact
+                .downcast_ref::<BlockQuantFact>()
+                .is_some_and(|bqf| bqf.format.same_as(&Q4_0))
+            {
+                Some(bwf)
+            } else {
+                None
+            }
+        })
     })
 }
 
