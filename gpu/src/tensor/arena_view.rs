@@ -65,7 +65,12 @@ impl DeviceArenaView {
     }
 
     pub fn as_bytes(&self) -> Vec<u8> {
-        self.arena.get_bytes_slice(self.offset_bytes, self.len() * self.dt.size_of())
+        let len = if let Some(of) = &self.opaque_fact {
+            of.mem_size().as_i64().unwrap() as usize
+        } else {
+            self.len() * self.dt.size_of()  
+        };
+        self.arena.get_bytes_slice(self.offset_bytes, len)
     }
 
     /// Reshaped tensor with given shape.
