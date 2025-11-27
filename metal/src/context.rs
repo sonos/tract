@@ -4,7 +4,7 @@ use crate::kernels::{LibraryContent, LibraryName};
 use crate::tensor::{MValue, MetalTensor};
 
 use metal::NSUInteger;
-use tract_core::tract_linalg::block_quant::{BlockQuantFact, BlobWithFact};
+use tract_core::tract_linalg::block_quant::BlockQuantFact;
 use tract_gpu::device::{DeviceBuffer, DeviceContext};
 use tract_gpu::tensor::{DeviceTensor, OwnedDeviceTensor};
 use tract_gpu::utils::as_q40_tensor;
