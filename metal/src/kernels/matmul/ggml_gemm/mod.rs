@@ -330,7 +330,7 @@ mod tests {
     use tract_core::ops::array::MultiBroadcastTo;
     use tract_core::ops::cast::Cast;
     use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
-    use tract_linalg::block_quant::{BlockQuant, BlockQuantFact, BlobWithFact, Q4_0};
+    use tract_linalg::block_quant::{BlockQuant, BlockQuantFact, Q4_0};
 
     use super::*;
     use crate::kernels::matmul::GemmImpl;
