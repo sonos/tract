@@ -90,7 +90,8 @@ pub fn get_ggml_q81_fact(t: &DeviceTensor) -> Option<GgmlQuantQ81Fact> {
 }
 
 pub fn pad_q40(q40_bqv: &BlobWithFact) -> TractResult<BlobWithFact> {
-    let q40_bqf = q40_bqv.fact.downcast_ref::<BlockQuantFact>().context("Expected BlockQuantFact")?;
+    let q40_bqf =
+        q40_bqv.fact.downcast_ref::<BlockQuantFact>().context("Expected BlockQuantFact")?;
     let shape = q40_bqf.shape();
     ensure!(shape.len() >= 2);
 

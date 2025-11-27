@@ -68,7 +68,7 @@ impl DeviceArenaView {
         let len = if let Some(of) = &self.opaque_fact {
             of.mem_size().as_i64().unwrap() as usize
         } else {
-            self.len() * self.dt.size_of()  
+            self.len() * self.dt.size_of()
         };
         self.arena.get_bytes_slice(self.offset_bytes, len)
     }
@@ -120,14 +120,12 @@ impl DeviceArenaView {
         let content = self.as_bytes();
         unsafe {
             if self.dt == DatumType::Opaque {
-               ensure!(self.opaque_fact.is_some(), "Opaque Tensor without Opaque Fact");
-               ensure!(self.len == 1, "Expected scalar Opaque");
-               Ok(
-                tensor0(Opaque(Arc::new(BlobWithFact {
-                fact: self.opaque_fact.unwrap(),
-                value: Arc::new(Blob::from_bytes(&content).unwrap())
-                })))
-                )
+                ensure!(self.opaque_fact.is_some(), "Opaque Tensor without Opaque Fact");
+                ensure!(self.len == 1, "Expected scalar Opaque");
+                Ok(tensor0(Opaque(Arc::new(BlobWithFact {
+                    fact: self.opaque_fact.unwrap(),
+                    value: Arc::new(Blob::from_bytes(&content).unwrap()),
+                }))))
             } else {
                 Tensor::from_raw_dt(self.dt, &self.shape, &content)
             }
@@ -137,8 +135,12 @@ impl DeviceArenaView {
 
 impl Display for DeviceArenaView {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let content =
-            self.clone().into_tensor().unwrap().dump(false).unwrap_or_else(|e| format!("Error : {e:?}"));
+        let content = self
+            .clone()
+            .into_tensor()
+            .unwrap()
+            .dump(false)
+            .unwrap_or_else(|e| format!("Error : {e:?}"));
         write!(f, "DeviceArenaView: {{ {content} }}")
     }
 }

@@ -31,8 +31,8 @@ use tract_transformers::ops::sdpa::Sdpa;
 use tract_transformers::ops::silu::Silu;
 
 use crate::context::cuda_context;
-use crate::ops::{CudaDelay, CudaPulsePad};
 use crate::ops::CudaLeakyRelu;
+use crate::ops::{CudaDelay, CudaPulsePad};
 use crate::{kernels, ops, rewrite_rules};
 
 #[derive(Debug, Default)]

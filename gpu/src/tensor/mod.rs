@@ -191,7 +191,8 @@ impl Display for DeviceTensor {
             Self::ArenaView(v) => {
                 let content = v
                     .clone()
-                    .into_tensor().unwrap()
+                    .into_tensor()
+                    .unwrap()
                     .dump(false)
                     .unwrap_or_else(|e| format!("Error : {e:?}"));
                 write!(f, "ArenaView: {{ {content} }}")

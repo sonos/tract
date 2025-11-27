@@ -7,11 +7,11 @@ use tract_gpu::session_handler::make_tensor_for_node;
 use tract_gpu::tensor::{DeviceTensor, DeviceTensorExt, IntoDevice};
 use tract_pulse_opl::ops::{Delay, PulsePad};
 
+use crate::CUDA_STREAM;
 use crate::kernels::{
     get_cuda_view, get_cuda_view_mut, get_sliced_cuda_view, get_sliced_cuda_view_mut,
 };
 use crate::tensor::{device_tensor_assign_slice, device_tensor_launch_copy};
-use crate::CUDA_STREAM;
 
 #[derive(Debug, new, Clone)]
 pub struct CudaDelay(Delay);
