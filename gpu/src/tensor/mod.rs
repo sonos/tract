@@ -179,7 +179,7 @@ impl DeviceTensor {
 
         Ok(match self {
             Self::Owned(o) => o.to_host()?,
-            Self::ArenaView(v) => v.clone().into_tensor().into(),
+            Self::ArenaView(v) => v.clone().into_tensor()?.into(),
         })
     }
 }
@@ -191,7 +191,7 @@ impl Display for DeviceTensor {
             Self::ArenaView(v) => {
                 let content = v
                     .clone()
-                    .into_tensor()
+                    .into_tensor().unwrap()
                     .dump(false)
                     .unwrap_or_else(|e| format!("Error : {e:?}"));
                 write!(f, "ArenaView: {{ {content} }}")

@@ -3,7 +3,7 @@ use std::ffi::c_void;
 use std::fmt::Display;
 use tract_core::internal::*;
 
-use crate::device::DeviceBuffer;
+use crate::device::{DeviceBuffer, get_context};
 use crate::utils::check_strides_validity;
 
 use super::OwnedDeviceTensor;
@@ -114,31 +114,31 @@ impl DeviceArenaView {
             Ok(self.clone())
         }
     }
+
+    pub fn into_tensor(self) -> TractResult<Tensor> {
+        get_context()?.synchronize()?;
+        let content = self.as_bytes();
+        unsafe {
+            if self.dt == DatumType::Opaque {
+               ensure!(self.opaque_fact.is_some(), "Opaque Tensor without Opaque Fact");
+               ensure!(self.len == 1, "Expected scalar Opaque");
+               Ok(
+                tensor0(Opaque(Arc::new(BlobWithFact {
+                fact: self.opaque_fact.unwrap(),
+                value: Arc::new(Blob::from_bytes(&content).unwrap())
+                })))
+                )
+            } else {
+                Tensor::from_raw_dt(self.dt, &self.shape, &content)
+            }
+        }
+    }
 }
 
 impl Display for DeviceArenaView {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let content =
-            self.clone().into_tensor().dump(false).unwrap_or_else(|e| format!("Error : {e:?}"));
+            self.clone().into_tensor().unwrap().dump(false).unwrap_or_else(|e| format!("Error : {e:?}"));
         write!(f, "DeviceArenaView: {{ {content} }}")
-    }
-}
-
-impl IntoTensor for DeviceArenaView {
-    fn into_tensor(self) -> Tensor {
-        let content = self.as_bytes();
-        unsafe {
-            if self.dt == DatumType::Opaque {
-               assert!(self.opaque_fact.is_some(), "Opaque Tensor without Opaque Fact");
-               assert!(self.len == 1, "Expected scalar Opaque");
-               tensor0(Opaque(Arc::new(BlobWithFact {
-                fact: self.opaque_fact.unwrap(),
-                value: Arc::new(Blob::from_bytes(&content).unwrap())
-               })))
-            } else {
-                Tensor::from_raw_dt(self.dt, &self.shape, &content)
-                .expect("Could not transform a DeviceArenaView to tensor")
-            }
-        }
     }
 }
