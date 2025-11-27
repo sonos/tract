@@ -1,7 +1,7 @@
 use crate::axes::Axis;
 use crate::internal::*;
 use ndarray::*;
-use tract_linalg::block_quant::{BlockQuantValue, PackedBlockQuantFact, PackedBlockQuantFormat};
+use tract_linalg::block_quant::{BlockQuantFact, PackedBlockQuantFact, PackedBlockQuantFormat};
 use tract_linalg::mmm::MMMInputValue;
 use tract_linalg::pack::PackedFormat;
 
@@ -180,9 +180,10 @@ impl EvalOp for OptSimpleMatMulPack {
                 .as_slice::<Opaque>()?
                 .iter()
                 .map(|i| {
-                    let i = i.downcast_ref::<BlockQuantValue>().unwrap();
+                    let i = i.downcast_ref::<BlobWithFact>().context("Expected BlockWithFact")?;
+                    let i_bqf = i.fact.downcast_ref::<BlockQuantFact>().context("Expected BlockQuantFact")?;
                     let iv: Box<dyn MMMInputValue> =
-                        Box::new(self.packed_format.pack(&i.value, i.fact.k())?);
+                        Box::new(self.packed_format.pack(&i.value, i_bqf.k())?);
                     Ok(Opaque(Arc::new(iv)))
                 })
                 .collect::<TractResult<Vec<_>>>()?,

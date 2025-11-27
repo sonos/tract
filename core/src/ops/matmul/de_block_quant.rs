@@ -1,4 +1,4 @@
-use tract_linalg::block_quant::{BlockQuant, BlockQuantFact, BlockQuantValue, Q4_0};
+use tract_linalg::block_quant::{BlockQuant, BlockQuantFact, Q4_0};
 
 use crate::internal::*;
 use crate::ops::einsum::einsum_matmul::EinSumMatMul;
@@ -66,7 +66,7 @@ fn block_quant_einsum_weights(
         };
         let name = &model.node(node.inputs[0].node).name;
         let fact = BlockQuantFact::new(Box::new(format), a.shape().into());
-        let value = BlockQuantValue { fact: fact.clone(), value: Arc::new(weights) };
+        let value = BlobWithFact { fact: Box::new(fact.clone()), value: Arc::new(weights) };
         let weights = patch.wire_node(
             format!("{name}.bq"),
             Const::new_with_opaque_fact(rctensor0(Opaque(Arc::new(value))), Box::new(fact))?,

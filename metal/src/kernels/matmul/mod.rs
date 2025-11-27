@@ -381,7 +381,7 @@ mod tests {
     use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
     use tract_core::tract_data::itertools::Itertools;
     use tract_core::tract_linalg::block_quant::{
-        BlockQuant, BlockQuantFact, BlockQuantValue, Q4_0,
+        BlockQuant, BlockQuantFact, BlobWithFact, Q4_0,
     };
     use tract_gpu::tensor::IntoDevice;
 
@@ -913,11 +913,11 @@ mod tests {
                                 .collect_vec(),
                         )?;
 
-                        tensor0(Opaque(Arc::new(BlockQuantValue {
-                            fact: BlockQuantFact::new(
+                        tensor0(Opaque(Arc::new(BlobWithFact {
+                            fact: Box::new(BlockQuantFact::new(
                                 Box::new(Q4_0),
                                 tvec![self.b, self.n, self.k],
-                            ),
+                            )),
                             value: Arc::new(b_quant),
                         })))
                     }

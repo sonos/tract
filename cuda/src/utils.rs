@@ -89,8 +89,9 @@ pub fn get_ggml_q81_fact(t: &DeviceTensor) -> Option<GgmlQuantQ81Fact> {
     }
 }
 
-pub fn pad_q40(q40_bqv: &BlockQuantValue) -> TractResult<BlockQuantValue> {
-    let shape = q40_bqv.fact.shape();
+pub fn pad_q40(q40_bqv: &BlobWithFact) -> TractResult<BlobWithFact> {
+    let q40_bqf = q40_bqv.fact.downcast_ref::<BlockQuantFact>().context("Expected BlockQuantFact")?;
+    let shape = q40_bqf.shape();
     ensure!(shape.len() >= 2);
 
     let k = *shape.last().unwrap();
@@ -118,8 +119,8 @@ pub fn pad_q40(q40_bqv: &BlockQuantValue) -> TractResult<BlockQuantValue> {
     let mut new_shape = shape.to_smallvec();
     *new_shape.last_mut().unwrap() += to_pad;
 
-    Ok(BlockQuantValue {
-        fact: BlockQuantFact::new(q40_bqv.fact.format.clone(), new_shape),
+    Ok(BlobWithFact {
+        fact: Box::new(BlockQuantFact::new(q40_bqf.format.clone(), new_shape)),
         value: Arc::new(Blob::from_bytes(&new_data)?),
     })
 }

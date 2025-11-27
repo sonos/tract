@@ -4,7 +4,6 @@ use crate::tensor::DeviceTensorExt;
 use tract_core::internal::*;
 use tract_core::ops::konst::Const;
 use tract_core::tract_data::itertools::Itertools;
-use tract_core::tract_linalg::block_quant::BlockQuantValue;
 
 pub fn rewire_syncs(model: &mut TypedModel) -> TractResult<()> {
     Rewriter::default()
@@ -71,10 +70,10 @@ pub fn rewire_sync_after_const(
     if let Some(of) = host_const
         .to_scalar::<Opaque>()
         .ok()
-        .and_then(|od| od.downcast_ref::<BlockQuantValue>())
-        .map(|bqv| bqv.fact.clone())
+        .and_then(|od| od.downcast_ref::<BlobWithFact>())
+        .map(|bwf| bwf.fact.clone())
     {
-        opaque_fact = Some(Box::new(of));
+        opaque_fact = Some(of);
     }
 
     let mut patch = TypedModelPatch::default();

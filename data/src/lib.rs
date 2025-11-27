@@ -40,7 +40,7 @@ pub mod prelude {
 pub mod internal {
     pub use crate::datum::ClampCast;
     pub use crate::dim::{parse_tdim, solve_for, DimLike};
-    pub use crate::opaque::{OpaqueFact, OpaquePayload};
+    pub use crate::opaque::{OpaqueFact, OpaquePayload, BlobWithFact};
     pub use crate::prelude::*;
     pub use crate::tensor::view::TensorView;
     pub use crate::tensor::Approximation;
