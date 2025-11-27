@@ -115,7 +115,7 @@ impl DeviceArenaView {
         }
     }
 
-    pub fn to_host_tensor(&self) -> TractResult<Tensor> {
+    pub fn to_host(&self) -> TractResult<Tensor> {
         get_context()?.synchronize()?;
         let content = self.as_bytes();
         unsafe {
@@ -136,7 +136,7 @@ impl Display for DeviceArenaView {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let content = self
             .clone()
-            .to_host_tensor()
+            .to_host()
             .unwrap()
             .dump(false)
             .unwrap_or_else(|e| format!("Error : {e:?}"));
