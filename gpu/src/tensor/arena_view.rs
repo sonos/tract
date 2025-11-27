@@ -115,16 +115,15 @@ impl DeviceArenaView {
         }
     }
 
-    pub fn into_tensor(self) -> TractResult<Tensor> {
+    pub fn to_host_tensor(&self) -> TractResult<Tensor> {
         get_context()?.synchronize()?;
         let content = self.as_bytes();
         unsafe {
             if self.dt == DatumType::Opaque {
-                ensure!(self.opaque_fact.is_some(), "Opaque Tensor without Opaque Fact");
                 ensure!(self.len == 1, "Expected scalar Opaque");
                 Ok(tensor0(Opaque(Arc::new(BlobWithFact {
-                    fact: self.opaque_fact.unwrap(),
-                    value: Arc::new(Blob::from_bytes(&content).unwrap()),
+                    fact: self.opaque_fact.clone().context("Expected Opaque Fact for Opaque ArenaView")?,
+                    value: Arc::new(Blob::from_bytes(&content)?),
                 }))))
             } else {
                 Tensor::from_raw_dt(self.dt, &self.shape, &content)
@@ -137,7 +136,7 @@ impl Display for DeviceArenaView {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let content = self
             .clone()
-            .into_tensor()
+            .to_host_tensor()
             .unwrap()
             .dump(false)
             .unwrap_or_else(|e| format!("Error : {e:?}"));
