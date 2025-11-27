@@ -7,7 +7,7 @@ use tract_core::internal::*;
 use tract_core::ndarray::Ix2;
 use tract_core::ops::array::{Pad, PadMode};
 use tract_core::ops::konst::Const;
-use tract_core::tract_linalg::block_quant::{BlockQuant, BlockQuantFact, BlockQuantValue, Q4_0};
+use tract_core::tract_linalg::block_quant::{BlockQuant, BlockQuantFact, Q4_0};
 use tract_ndarray::{ArrayD, Axis};
 
 use tract_core::ops::einsum::EinSum;
@@ -77,9 +77,9 @@ impl MatmulQ40Problem {
         let quant_a = Q4_0.quant_f32(padded_a.as_slice::<f32>()?)?;
 
         let bqf = BlockQuantFact::new(Box::new(Q4_0), padded_a.shape().into());
-        let bqv = BlockQuantValue { value: Arc::new(quant_a), fact: bqf.clone() };
+        let bwf = BlobWithFact { value: Arc::new(quant_a), fact: Box::new(bqf.clone()) };
 
-        let opaque_a = tensor0(Opaque(Arc::new(bqv))).into_arc_tensor();
+        let opaque_a = tensor0(Opaque(Arc::new(bwf))).into_arc_tensor();
 
         let a =
             model.wire_node("a", Const::new_with_opaque_fact(opaque_a, Box::new(bqf))?, &[])?[0];

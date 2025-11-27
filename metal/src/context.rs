@@ -4,7 +4,7 @@ use crate::kernels::{LibraryContent, LibraryName};
 use crate::tensor::{MValue, MetalTensor};
 
 use metal::NSUInteger;
-use tract_core::tract_linalg::block_quant::{BlockQuantFact, BlockQuantValue};
+use tract_core::tract_linalg::block_quant::{BlockQuantFact, BlobWithFact};
 use tract_gpu::device::{DeviceBuffer, DeviceContext};
 use tract_gpu::tensor::{DeviceTensor, OwnedDeviceTensor};
 use tract_gpu::utils::as_q40_tensor;
@@ -229,7 +229,7 @@ impl DeviceContext for MetalContext {
                         .unwrap(),
                 )
             };
-            let value = BlockQuantValue { fact: bqf.clone(), value: Arc::new(blob) };
+            let value = BlobWithFact { fact: Box::new(bqf.clone()), value: Arc::new(blob) };
             let tensor = tensor0(Opaque(Arc::new(value)));
             self.tensor_to_device(tensor.into())
         } else {

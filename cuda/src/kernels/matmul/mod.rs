@@ -635,7 +635,7 @@ mod tests {
     use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
     use tract_core::tract_data::itertools::Itertools;
     use tract_core::tract_linalg::block_quant::{
-        BlockQuant, BlockQuantFact, BlockQuantValue, Q4_0,
+        BlockQuant, BlockQuantFact, Q4_0,
     };
     use tract_gpu::tensor::IntoDevice;
 
@@ -928,11 +928,11 @@ mod tests {
                                 .map(|x| x.to_f32().unwrap())
                                 .collect_vec(),
                         )?;
-                        let bqv = BlockQuantValue {
-                            fact: BlockQuantFact::new(
+                        let bqv = BlobWithFact {
+                            fact: Box::new(BlockQuantFact::new(
                                 Box::new(Q4_0),
                                 tvec![self.b, self.n, self.k],
-                            ),
+                            )),
                             value: Arc::new(w_quant),
                         };
                         let padded_q40 = pad_q40(&bqv)?;

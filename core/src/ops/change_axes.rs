@@ -6,7 +6,7 @@ use crate::model::{TypedModel, TypedNode};
 use crate::ops::identity::Identity;
 use num_traits::One;
 use tract_itertools::Itertools;
-use tract_linalg::block_quant::{BlockQuantFact, BlockQuantValue};
+use tract_linalg::block_quant::BlockQuantFact;
 use tract_ndarray::{ArrayViewD, ArrayViewMutD};
 use AxisOp::*;
 
@@ -381,12 +381,13 @@ impl AxisOp {
         if self.required_rank() > tensor.rank() && tensor.datum_type().is_opaque() {
             let inner_change = self.trim_left(tensor.rank())?;
             for opaque in tensor.as_slice_mut::<Opaque>()? {
-                if let Some(bqv) = opaque.downcast_ref::<BlockQuantValue>() {
-                    let mut new_shape: TVec<usize> = bqv.fact.shape().into();
+                if let Some(bwf) = opaque.downcast_ref::<BlobWithFact>() {
+                    let bqf = bwf.fact.downcast_ref::<BlockQuantFact>().context("Expected BlockQuantFact")?;
+                    let mut new_shape: TVec<usize> = bqf.shape().into();
                     inner_change.change_shape_array(&mut new_shape, false)?;
-                    let new_bqv = BlockQuantValue {
-                        value: Arc::clone(&bqv.value),
-                        fact: BlockQuantFact::new(bqv.fact.format.clone(), new_shape),
+                    let new_bqv = BlobWithFact {
+                        value: Arc::clone(&bwf.value),
+                        fact: Box::new(BlockQuantFact::new(bqf.format.clone(), new_shape)),
                     };
                     *opaque = Opaque(Arc::new(new_bqv));
                 } else {

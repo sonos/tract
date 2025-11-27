@@ -5,7 +5,7 @@ use tract_core::internal::tract_smallvec::ToSmallVec;
 use tract_core::internal::*;
 use tract_core::prelude::{DatumType, TVec};
 use tract_core::tract_data::itertools::izip;
-use tract_core::tract_linalg::block_quant::{BlockQuantFact, BlockQuantValue, Q8_1};
+use tract_core::tract_linalg::block_quant::{BlockQuantFact, Q8_1};
 use tract_gpu::device::DeviceBuffer;
 use tract_gpu::tensor::{DeviceTensor, OwnedDeviceTensor};
 use tract_gpu::utils::{as_q40_tensor, check_strides_validity};
@@ -186,7 +186,7 @@ impl OwnedDeviceTensor for CudaTensor {
                 } else {
                     bail!("Unknown Opaque Fact")
                 };
-                let bqv = BlockQuantValue { fact: bqf, value: Arc::new(blob) };
+                let bqv = BlobWithFact { fact: Box::new(bqf), value: Arc::new(blob) };
                 Opaque(Arc::new(bqv)).into()
             } else {
                 let mut tensor = unsafe { Tensor::uninitialized_dt(self.datum_type, &self.shape)? };

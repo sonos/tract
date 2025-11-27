@@ -3,8 +3,8 @@ use crate::internal::*;
 use tract_core::ndarray::ArrayViewD;
 use tract_core::ndarray::Axis;
 use tract_core::ops::cnn::conv::{rewrite_kernel_conv_in_oihw, rewrite_kernel_deconv_in_oihw};
+use tract_core::tract_linalg::block_quant::BlockQuantFact;
 use tract_itertools::Itertools;
-use tract_linalg::block_quant::BlockQuantValue;
 
 pub fn rewrite_model(model: &mut TypedModel) -> TractResult<()> {
     model.prop_consts()?;
@@ -397,8 +397,9 @@ impl<'a> IntoAst<'a> {
         self.tensors.insert(name.clone(), tensor.clone());
         let id = self.scoped_id(&name);
         let shape = if tensor.datum_type().is_opaque() {
-            if let Some(bqv) = tensor.to_scalar::<Opaque>()?.downcast_ref::<BlockQuantValue>() {
-                bqv.fact.shape()
+            if let Some(bwf) = tensor.to_scalar::<Opaque>()?.downcast_ref::<BlobWithFact>() {
+                let bqf = bwf.fact.downcast_ref::<BlockQuantFact>().context("Expected BlockQuantFacr")?;
+                bqf.shape()
             } else {
                 bail!("Unexpected opaque tensor in serialization {tensor:?}");
             }

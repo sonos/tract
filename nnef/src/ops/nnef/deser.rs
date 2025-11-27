@@ -19,7 +19,6 @@ use tract_core::ops::nn::{DataFormat, Softmax, SoftmaxKind};
 use tract_itertools::Itertools;
 
 use tract_core::ops;
-use tract_linalg::block_quant::BlockQuantValue;
 
 use crate::deser::{ModelBuilder, ResolvedInvocation};
 
@@ -103,10 +102,10 @@ pub fn variable(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> 
             tensor = tensor.cast_to_dt(*dt)?.into_owned().into_arc_tensor()
         }
     }
-    if let Some(bqv) =
-        tensor.to_scalar::<Opaque>().ok().and_then(|o| o.downcast_ref::<BlockQuantValue>())
+    if let Some(bwf) =
+        tensor.to_scalar::<Opaque>().ok().and_then(|o| o.downcast_ref::<BlobWithFact>())
     {
-        let fact = Box::new(bqv.fact.clone());
+        let fact = bwf.fact.clone();
         builder.wire(Const::new_with_opaque_fact(tensor, fact)?, &[])
     } else {
         ensure!(

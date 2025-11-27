@@ -6,7 +6,6 @@ use crate::optim::OptimizerSession;
 use crate::plan::{FrozenSimpleState, SimplePlan, SimpleState};
 use crate::transform::ModelTransform;
 use tract_data::TooEarly;
-use tract_linalg::block_quant::BlockQuantValue;
 use tract_num_traits::Zero;
 
 /// A model with completely determined types and shapes.
@@ -149,8 +148,8 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
         let name = name.into();
         // this feel incredibly hackish and dirty...
         if v.datum_type().is_opaque() && v.volume() == 1 {
-            if let Some(bqv) = v.as_slice::<Opaque>()?[0].downcast_ref::<BlockQuantValue>() {
-                let opaque = Box::new(bqv.fact.clone());
+            if let Some(bwf) = v.as_slice::<Opaque>()?[0].downcast_ref::<BlobWithFact>() {
+                let opaque = bwf.fact.clone();
                 fact.opaque_fact = Some(opaque.clone());
                 return self
                     .add_node(
