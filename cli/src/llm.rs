@@ -71,7 +71,7 @@ pub fn bench_pp(
     run_params.allow_random_input = true;
     let model =
         params.tract_model.downcast_ref::<TypedModel>().context("Can only bench TypedModel")?;
-    let mut state = make_state(params, matches, sub_matches)?;
+    let mut state = make_state(model, matches, sub_matches)?;
 
     let (b, s, p) =
         figure_out_b_s_p(model).context("Could not find out LLM symbolic parameters")?;
@@ -105,7 +105,7 @@ pub fn bench_tg(
     run_params.allow_random_input = true;
     let model =
         params.tract_model.downcast_ref::<TypedModel>().context("Can only bench TypedModel")?;
-    let mut state = make_state(params, matches, sub_matches)?;
+    let mut state = make_state(model, matches, sub_matches)?;
 
     let (b, s, p) =
         figure_out_b_s_p(model).context("Could not find out LLM symbolic parameters")?;
