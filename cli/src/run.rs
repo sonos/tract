@@ -1,4 +1,6 @@
 use fs::File;
+use std::borrow::Borrow;
+use std::fmt::{Debug, Display};
 use std::path::PathBuf;
 use std::str::FromStr;
 
@@ -12,7 +14,7 @@ use tract_core::ops::cnn::conv::Im2Col;
 use tract_core::ops::matmul::pack::OptMatMulPack;
 use tract_core::tract_data::itertools::izip;
 use tract_hir::internal::*;
-use tract_libcli::tensor::get_or_make_inputs;
+use tract_libcli::tensor::{RunTensors, get_or_make_inputs};
 use tract_nnef::tensors::write_tensor;
 #[cfg(feature = "pulse")]
 use tract_pulse::internal::*;
@@ -134,6 +136,97 @@ pub fn handle(
     Ok(())
 }
 
+fn run_regular_t<'m, F, O, M, P>(
+    state: &mut SimpleState<F, O, M, P>,
+    inputs: RunTensors,
+    steps: bool,
+    check_f16_overflow: bool,
+    assert_sane_floats: bool,
+    mut npz: Option<NpzWriter<File>>
+) -> TractResult<TVec<Vec<TValue>>>
+    where
+        F: Fact + Clone + 'static,
+        O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+        M: Borrow<Graph<F, O>>,
+        P: Borrow<SimplePlan<F, O, M>> + Clone
+    {
+    let mut results = tvec!(vec!(); state.model().outputs.len());
+    let multiturn = inputs.sources.len() > 1;
+    for (turn, inputs) in inputs.sources.into_iter().enumerate() {
+        let turn_results =
+            state.run_plan_with_eval(inputs, |session_state, state, node, input| {
+                if steps {
+                    for (ix, i) in input.iter().enumerate() {
+                        eprintln!(
+                            "{} {}{}{:?}",
+                            White.bold().paint(node.to_string()),
+                            ix,
+                            Blue.bold().paint("<< "),
+                            i
+                        );
+                    }
+                }
+                let r = tract_core::plan::eval(session_state, state, node, input)?;
+                let clarified_r = crate::utils::clarify_tvalues(&r)?;
+
+                if steps {
+                    for (ix, o) in clarified_r.iter().enumerate() {
+                        eprintln!(
+                            "{} {}{}{:?}",
+                            White.bold().paint(node.to_string()),
+                            ix,
+                            Yellow.bold().paint(">> "),
+                            o
+                        );
+                    }
+                }
+                if let Some(npz) = npz.as_mut() {
+                    for (ix, t) in clarified_r.iter().enumerate() {
+                        let mut name = if ix == 0 {
+                            node.name.to_string()
+                        } else {
+                            format!("{}:{}", node.name, ix)
+                        };
+                        if multiturn {
+                            name = format!("turn_{turn}/{name}");
+                        }
+                        npz_add_tensor(npz, name, t)?;
+                    }
+                }
+                if check_f16_overflow {
+                    for (ix, o) in clarified_r.iter().enumerate() {
+                        if let Ok(f32s) = o.as_slice::<f32>() {
+                            if f32s.iter().any(|f| f.abs() > f16::MAX.to_f32()) {
+                                warn!("{node}, output {ix} overflows f16");
+                            }
+                        }
+                    }
+                }
+                if assert_sane_floats {
+                    for (ix, o) in clarified_r.iter().enumerate() {
+                        if node.op_is::<Im2Col>() || node.op_is::<OptMatMulPack>() {
+                            continue;
+                        }
+                        if let Ok(floats) = o.as_slice::<f32>() {
+                            if let Some(pos) = floats.iter().position(|f| !f.is_finite()) {
+                                eprintln!("{floats:?}");
+                                bail!("Found {} in output {} of {}", floats[pos], ix, node);
+                            }
+                        } else if let Ok(floats) = o.as_slice::<f16>() {
+                            if let Some(pos) = floats.iter().position(|f| !f.is_finite()) {
+                                eprintln!("{floats:?}");
+                                bail!("Found {} in output {} of {}", floats[pos], ix, node);
+                            }
+                        }
+                    }
+                }
+                Ok(r)
+            })?;
+        izip!(&mut results, turn_results).for_each(|(r, tr)| r.push(tr));
+    }
+    Ok(results)
+}
+
 fn run_regular(
     tract: &dyn Model,
     params: &Parameters,
@@ -145,94 +238,30 @@ fn run_regular(
     let steps = sub_matches.is_present("steps");
     let check_f16_overflow = sub_matches.is_present("check-f16-overflow");
     let assert_sane_floats = sub_matches.is_present("assert-sane-floats");
-    let mut npz = if let Some(npz) = sub_matches.value_of("save-steps") {
+    let npz = if let Some(npz) = sub_matches.value_of("save-steps") {
         let npz = fs::File::create(npz).with_context(|| format!("Creating {npz}"))?;
         Some(ndarray_npy::NpzWriter::new_compressed(npz))
     } else {
         None
     };
-    dispatch_model!(tract, |_| {
-        let mut inputs = get_or_make_inputs(tract, &run_params)?;
 
-        let mut state = make_state(params, matches, sub_matches)?;
+    let mut inputs = get_or_make_inputs(tract, &run_params)?;
+    if let Some(m) = tract.downcast_ref::<TypedModel>() {
+        let mut state = make_state(m, matches, sub_matches)?;
         state.init_states(&mut inputs.state_initializers)?;
 
-        let mut results = tvec!(vec!(); state.model().outputs.len());
-        let multiturn = inputs.sources.len() > 1;
-        for (turn, inputs) in inputs.sources.into_iter().enumerate() {
-            let turn_results =
-                state.run_plan_with_eval(inputs, |session_state, state, node, input| {
-                    if steps {
-                        for (ix, i) in input.iter().enumerate() {
-                            eprintln!(
-                                "{} {}{}{:?}",
-                                White.bold().paint(node.to_string()),
-                                ix,
-                                Blue.bold().paint("<< "),
-                                i
-                            );
-                        }
-                    }
-                    let r = tract_core::plan::eval(session_state, state, node, input)?;
-                    let clarified_r = crate::utils::clarify_tvalues(&r)?;
-
-                    if steps {
-                        for (ix, o) in clarified_r.iter().enumerate() {
-                            eprintln!(
-                                "{} {}{}{:?}",
-                                White.bold().paint(node.to_string()),
-                                ix,
-                                Yellow.bold().paint(">> "),
-                                o
-                            );
-                        }
-                    }
-                    if let Some(npz) = npz.as_mut() {
-                        for (ix, t) in clarified_r.iter().enumerate() {
-                            let mut name = if ix == 0 {
-                                node.name.to_string()
-                            } else {
-                                format!("{}:{}", node.name, ix)
-                            };
-                            if multiturn {
-                                name = format!("turn_{turn}/{name}");
-                            }
-                            npz_add_tensor(npz, name, t)?;
-                        }
-                    }
-                    if check_f16_overflow {
-                        for (ix, o) in clarified_r.iter().enumerate() {
-                            if let Ok(f32s) = o.as_slice::<f32>() {
-                                if f32s.iter().any(|f| f.abs() > f16::MAX.to_f32()) {
-                                    warn!("{node}, output {ix} overflows f16");
-                                }
-                            }
-                        }
-                    }
-                    if assert_sane_floats {
-                        for (ix, o) in clarified_r.iter().enumerate() {
-                            if node.op_is::<Im2Col>() || node.op_is::<OptMatMulPack>() {
-                                continue;
-                            }
-                            if let Ok(floats) = o.as_slice::<f32>() {
-                                if let Some(pos) = floats.iter().position(|f| !f.is_finite()) {
-                                    eprintln!("{floats:?}");
-                                    bail!("Found {} in output {} of {}", floats[pos], ix, node);
-                                }
-                            } else if let Ok(floats) = o.as_slice::<f16>() {
-                                if let Some(pos) = floats.iter().position(|f| !f.is_finite()) {
-                                    eprintln!("{floats:?}");
-                                    bail!("Found {} in output {} of {}", floats[pos], ix, node);
-                                }
-                            }
-                        }
-                    }
-                    Ok(r)
-                })?;
-            izip!(&mut results, turn_results).for_each(|(r, tr)| r.push(tr));
-        }
+        let results = run_regular_t(&mut state, inputs, steps, check_f16_overflow, assert_sane_floats, npz)?;
         Ok(results)
-    })
+    } else {
+        dispatch_model!(tract, |m| {
+            let plan_options = crate::plan_options::plan_options_from_subcommand(sub_matches)?;
+            let plan = SimplePlan::new_with_options(m, &plan_options)?;
+            let mut state = SimpleState::new(Arc::new(plan))?;
+
+            let results = run_regular_t(&mut state, inputs, steps, check_f16_overflow, assert_sane_floats, npz)?;
+            Ok(results)
+        })
+    }
 }
 
 /*

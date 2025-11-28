@@ -34,7 +34,7 @@ pub fn criterion(
 ) -> TractResult<()> {
     let model =
         params.tract_model.downcast_ref::<TypedModel>().context("Can only bench TypedModel")?;
-    let mut state = make_state(params, matches, sub_matches)?;
+    let mut state = make_state(model, matches, sub_matches)?;
 
     let mut crit = criterion::Criterion::default();
     let mut group = crit.benchmark_group("net");
@@ -47,14 +47,12 @@ pub fn criterion(
 }
 
 pub(crate) fn make_state<'m>(
-    params: &'m Parameters,
+    model: &'m TypedModel,
     matches: &clap::ArgMatches,
     sub_matches: &clap::ArgMatches,
 ) -> TractResult<TypedSimpleState<&'m TypedModel, Arc<TypedRunnableModel<&'m TypedModel>>>> {
     #[allow(unused_mut)]
     let mut plan_options = crate::plan_options::plan_options_from_subcommand(sub_matches)?;
-    let model =
-        params.tract_model.downcast_ref::<TypedModel>().context("Can only bench TypedModel")?;
     if matches.is_present("metal") || matches.is_present("cuda") {
         #[cfg(not(any(target_os = "macos", target_os = "ios")))]
         {
@@ -121,7 +119,9 @@ pub fn handle(
     probe: Option<&Probe>,
 ) -> TractResult<()> {
     let run_params = crate::tensor::run_params_from_subcommand(params, sub_matches)?;
-    let mut state = make_state(params, matches, sub_matches)?;
+    let model =
+        params.tract_model.downcast_ref::<TypedModel>().context("Can only bench TypedModel")?;
+    let mut state = make_state(model, matches, sub_matches)?;
 
     let inputs = get_or_make_inputs(state.model(), &run_params)?;
 
