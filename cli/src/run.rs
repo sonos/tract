@@ -136,7 +136,7 @@ pub fn handle(
     Ok(())
 }
 
-fn run_regular_t<'m, F, O, M, P>(
+fn run_regular_t<F, O, M, P>(
     state: &mut SimpleState<F, O, M, P>,
     inputs: RunTensors,
     steps: bool,
