@@ -81,16 +81,18 @@ pub fn profile(
             state.init_states(&mut inputs.state_initializers.clone())?;
         }
         let start = Instant::now();
-        rec_profiler(
-            &mut state,
-            dg,
-            &inputs.sources[0],
-            custom_profiler.as_ref(),
-            &prefix,
-            None,
-            &mut time_accounted_by_inner_nodes,
-            folded,
-        )?;
+        for source in &inputs.sources {
+            rec_profiler(
+                &mut state,
+                dg,
+                source,
+                custom_profiler.as_ref(),
+                &prefix,
+                None,
+                &mut time_accounted_by_inner_nodes,
+                folded,
+            )?;
+        }
         dur += start.elapsed();
         if !state.model().properties().contains_key("pulse.delay") {
             state.reset_op_states()?;
@@ -154,7 +156,9 @@ pub fn profile_gpu(
                 state.init_states(&mut inputs.state_initializers.clone())?;
             }
             let start = Instant::now();
-            rec_profiler_gpu(&mut state, dg, &inputs.sources[0], &prefix)?;
+            for source in &inputs.sources {
+                rec_profiler_gpu(&mut state, dg, source, &prefix)?;
+            }
             dur += start.elapsed();
             if !state.model().properties().contains_key("pulse.delay") {
                 state.reset_op_states()?;
