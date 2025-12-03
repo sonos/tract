@@ -92,10 +92,7 @@ impl ConvKernel for Generic {
         let dilations = op.pool_spec.dilations();
         launcher.set_slice::<i32>(&dilations);
 
-        dbg!(output.shape());
-
         let output_shape = op.pool_spec.data_format.shape(output.shape())?;
-        dbg!(&output_shape);
         let output = get_cuda_view(output);
         launcher.set_view(&output);
         launcher.set_el::<i32>(*output_shape.n().unwrap_or(&1));
@@ -115,7 +112,7 @@ impl ConvKernel for Generic {
             block_dim: (32, 1, 1),
             shared_mem_bytes: 0,
         };
-        dbg!(cfg);
+
         launcher.launch(cfg)
     }
 }
