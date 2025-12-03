@@ -37,12 +37,14 @@ pub fn run_params_from_subcommand(
         let Some(typed_model) = params.tract_model.downcast_ref::<TypedModel>() else {
             bail!("PP mode can only be used with a TypedModel");
         };
-        let (b, s, p) = crate::llm::figure_out_b_s_p(typed_model)?;
+        let (b, s, p) = tract_libcli::tensor::figure_out_b_s_p(typed_model)?;
         if let Some(b) = b {
             symbols.set(&b, 1);
         }
-        symbols.set(&p, 0);
-        symbols.set(&s, value);
+
+        ensure!(s.is_some() && p.is_some(), "Could not find LLM symbols in model");
+        symbols.set(&p.unwrap(), 0);
+        symbols.set(&s.unwrap(), value);
         allow_random_input = true
     }
 
@@ -52,12 +54,14 @@ pub fn run_params_from_subcommand(
         let Some(typed_model) = params.tract_model.downcast_ref::<TypedModel>() else {
             bail!("TG mode can only be used with a TypedModel");
         };
-        let (b, s, p) = crate::llm::figure_out_b_s_p(typed_model)?;
+        let (b, s, p) = tract_libcli::tensor::figure_out_b_s_p(typed_model)?;
         if let Some(b) = b {
             symbols.set(&b, 1);
         }
-        symbols.set(&p, value - 1);
-        symbols.set(&s, 1);
+
+        ensure!(s.is_some() && p.is_some(), "Could not find LLM symbols in model");
+        symbols.set(&p.unwrap(), value - 1);
+        symbols.set(&s.unwrap(), 1);
         allow_random_input = true
     }
 
@@ -72,5 +76,13 @@ pub fn run_params_from_subcommand(
         }
     }
 
-    Ok(RunParams { tensors_values: tv, allow_random_input, allow_float_casts, symbols })
+    let prompt_chunk_size =
+        sub_matches.value_of("prompt-chunk-size").and_then(|chunk_size| chunk_size.parse().ok());
+    Ok(RunParams {
+        tensors_values: tv,
+        allow_random_input,
+        allow_float_casts,
+        symbols,
+        prompt_chunk_size,
+    })
 }

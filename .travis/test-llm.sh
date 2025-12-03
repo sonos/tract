@@ -177,6 +177,7 @@ do
             --input-from-npz $MODELS/$npz \
             --assert-output-bundle $MODELS/$npz \
             --assert-llm-lev20 999999999 \
+            --prompt-chunk-size 60 \
             $approx --allow-float-casts 2>&1 | tee output.txt
         found=$(cat output.txt | grep lev20 | cut -d '=' -f 2)
         ( ( grep -v $key $expectations || true) ; echo $key $found) | sort > $expectations.tmp
@@ -189,6 +190,7 @@ do
             --input-from-npz $MODELS/$npz \
             --assert-output-bundle $MODELS/$npz \
             --assert-llm-lev20 999999999 \
+            --prompt-chunk-size 60 \
             $approx --allow-float-casts 2>&1 | tee output.txt
         found=$(cat output.txt | grep lev20 | cut -d '=' -f 2)
         if [ "$found" -lt "$prior" ]
@@ -202,6 +204,7 @@ do
         $TRACT_RUN -v --nnef-tract-core --nnef-tract-transformers $MODELS/$nnef $TRACT_EXTRA_ARGS \
             -t transformers-detect-all -O $DEVICE run \
             --input-from-npz $MODELS/$npz \
+            --prompt-chunk-size 60 \
             --assert-output-bundle $MODELS/$npz \
             --assert-llm-lev20 $expectation \
             $approx --allow-float-casts

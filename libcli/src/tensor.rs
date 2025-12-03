@@ -292,11 +292,134 @@ pub struct RunParams {
     pub allow_random_input: bool,
     pub allow_float_casts: bool,
     pub symbols: SymbolValues,
+    pub prompt_chunk_size: Option<usize>,
 }
 
 pub struct RunTensors {
     pub sources: Vec<TVec<TValue>>,
     pub state_initializers: Vec<TValue>,
+}
+
+pub fn figure_out_b_s_p(model: &TypedModel) -> TractResult<(Option<Symbol>, Option<Symbol>, Option<Symbol>)> {
+    // expectations:
+    // - one input is for tokens, so integer dt (i64 ?) and typically of shape S or 1,S, or B,S
+    // - other inputs are kv cache, some kind of float. shape features both S and P, and B if B is present in tokens
+    let token_input = model
+        .inputs
+        .iter()
+        .position(|i| model.outlet_fact(*i).unwrap().datum_type.is_integer())
+        .context("No token input found")?;
+    let tokens_symbols = model.input_fact(token_input)?.shape.volume().symbols();
+    let kv_symbols = if let Some(kv_input) =
+        model.inputs.iter().position(|i| model.outlet_fact(*i).unwrap().datum_type.is_float())
+    {
+        model.input_fact(kv_input)?.shape.volume().symbols()
+    } else {
+        // Look for KVCache Op
+        let mut dummy_session_state = SessionState::default();
+        let mut symbols = HashSet::new();
+        for node in &model.nodes {
+            if let Some((_, fact)) = node
+                .op
+                .state(&mut dummy_session_state, 0)?
+                .and_then(|state| state.init_tensor_fact())
+            {
+                symbols = fact.shape.volume().symbols();
+                break;
+            }
+        }
+        symbols
+    };
+
+    let b = tokens_symbols.intersection(&kv_symbols).cloned().collect::<HashSet<_>>();
+    let s = tokens_symbols.difference(&b).cloned().collect::<HashSet<_>>();
+    let p = kv_symbols.difference(&b).cloned().collect::<HashSet<_>>();
+    Ok((b.into_iter().next(), s.into_iter().next(), p.into_iter().next()))
+}
+
+fn chunk_fact(
+    fact: &TypedFact,
+    params: &RunParams,
+    model: &dyn Model,
+) -> TractResult<Vec<TypedFact>> {
+    let Some(chunk_size) = params.prompt_chunk_size else {
+        return Ok(vec![fact.clone()]);
+    };
+    let Some(model) = model.downcast_ref::<TypedModel>() else {
+        return Ok(vec![fact.clone()]);
+    };
+    let (_, s, _) = figure_out_b_s_p(model)?;
+    let Some(s) = s else {
+        return Ok(vec![fact.clone()]);
+    };
+
+    let dims = fact.shape.dims();
+    let Some(sym_idx) = dims.iter().position(|d| *d == TDim::Sym(s.clone())) else {
+        return Ok(vec![fact.clone()]);
+    };
+
+    let resolved_sym = dims[sym_idx].eval_to_i64(&params.symbols)? as usize;
+    if resolved_sym <= chunk_size {
+        return Ok(vec![fact.clone()]);
+    }
+
+    let num_chunks = resolved_sym.div_ceil(chunk_size);
+    let mut out = Vec::with_capacity(num_chunks);
+
+    for start in (0..resolved_sym).step_by(chunk_size) {
+        let this = chunk_size.min(resolved_sym - start) as i64;
+
+        let mut new_fact = fact.clone();
+        new_fact.shape = new_fact
+            .shape
+            .iter()
+            .enumerate()
+            .map(|(i, d)| if i == sym_idx { TDim::Val(this) } else { d.eval(&params.symbols) })
+            .collect();
+
+        out.push(new_fact);
+    }
+
+    Ok(out)
+}
+
+fn chunk_tensor(
+    tensor: Tensor,
+    fact: &TypedFact,
+    params: &RunParams,
+    model: &dyn Model,
+) -> TractResult<Vec<TValue>> {
+    let Some(chunk_size) = params.prompt_chunk_size else {
+        return Ok(vec![tensor.into_tvalue()]);
+    };
+
+    let Some(model) = model.downcast_ref::<TypedModel>() else {
+        return Ok(vec![tensor.into_tvalue()]);
+    };
+    let (_, s, _) = figure_out_b_s_p(model)?;
+    let Some(s) = s else {
+        return Ok(vec![tensor.into_tvalue()]);
+    };
+
+    let dims = fact.shape.dims();
+    let Some(symb_axis) = dims.iter().position(|d| *d == TDim::Sym(s.clone())) else {
+        return Ok(vec![tensor.into_tvalue()]);
+    };
+
+    let resolved_sym = tensor.shape()[symb_axis];
+    if resolved_sym <= chunk_size {
+        return Ok(vec![tensor.into_tvalue()]);
+    }
+
+    let num_chunks = resolved_sym.div_ceil(chunk_size);
+    let mut out = Vec::with_capacity(num_chunks);
+
+    for start in (0..resolved_sym).step_by(chunk_size) {
+        let this = chunk_size.min(resolved_sym - start);
+        out.push(tensor.slice(symb_axis, start, start + this)?.into_tvalue());
+    }
+
+    Ok(out)
 }
 
 fn get_or_make_tensors(
@@ -326,18 +449,37 @@ fn get_or_make_tensors(
                 })
                 .collect();
         }
-        if TypedFact::shape_and_dt_of(&value[0]).compatible_with(&fact) {
-            info!("Using fixed input for input called {} ({} turn(s))", name, value.len());
-            target.push(value.iter().map(|t| t.clone().into_tensor().into()).collect());
-        } else if fact.datum_type == f16::datum_type()
-            && value[0].datum_type() == f32::datum_type()
-            && params.allow_float_casts
-        {
-            info!("Casting input to F16 for input called {} ({} turn(s))", name, value.len());
-            target.push(
-                value.iter().map(|t| t.cast_to::<f16>().unwrap().into_owned().into()).collect(),
-            );
-        } else if value.len() == 1 && model.properties().contains_key("pulse.delay") {
+        let mut chunked_tensors: Vec<TValue> = vec![];
+        for t in &value {
+            let tensor = if TypedFact::shape_and_dt_of(&value[0]).compatible_with(&fact) {
+                info_once(format!(
+                    "Using fixed input for input called {} ({} turn(s))",
+                    name,
+                    value.len()
+                ));
+                t.clone().into_tensor()
+            } else if fact.datum_type == f16::datum_type()
+                && value[0].datum_type() == f32::datum_type()
+                && params.allow_float_casts
+            {
+                info_once(format!(
+                    "Casting input to F16 for input called {} ({} turn(s))",
+                    name,
+                    value.len()
+                ));
+                t.cast_to::<f16>()?.into_owned()
+            } else {
+                break;
+            };
+
+            chunked_tensors.extend(chunk_tensor(tensor, &fact, params, model)?);
+        }
+        if !chunked_tensors.is_empty() {
+            target.push(chunked_tensors);
+            return Ok(());
+        }
+
+        if value.len() == 1 && model.properties().contains_key("pulse.delay") {
             let value = &value[0];
             let input_pulse_axis = model
                 .properties()
@@ -396,9 +538,15 @@ fn get_or_make_tensors(
             .tensors_values
             .by_name(name)
             .or_else(|| params.tensors_values.by_input_ix(input_idx));
-        let mut fact = fact.clone();
-        fact.shape = fact.shape.iter().map(|dim| dim.eval(&params.symbols)).collect();
-        target.push(vec![tensor_for_fact(&fact, None, tv)?.into()]);
+
+        let mut chunked_facts = chunk_fact(&fact, params, model)?;
+
+        let mut chunked_tensors = Vec::with_capacity(chunked_facts.len());
+        for fact in &mut chunked_facts {
+            fact.shape = fact.shape.iter().map(|dim| dim.eval(&params.symbols)).collect();
+            chunked_tensors.push(tensor_for_fact(fact, None, tv)?.into());
+        }
+        target.push(chunked_tensors);
     } else {
         bail!(
             "Unmatched tensor {}. Fix the input or use \"--allow-random-input\" if this was intended",

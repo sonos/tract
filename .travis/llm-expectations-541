@@ -1,5 +1,5 @@
 apple--OpenELM-270M-f16f16.p0s100.arm64.cpu 4
-apple--OpenELM-270M-f16f16.p0s100.arm64.metal 4
+apple--OpenELM-270M-f16f16.p0s100.arm64.metal 5
 apple--OpenELM-270M-f16f16.p0s100.x86_64.cpu 0
 apple--OpenELM-270M-f16f16.p0s100.x86_64.cuda 0
 apple--OpenELM-270M-f16f16.p50s50.arm64.cpu 12

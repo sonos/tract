@@ -9,18 +9,22 @@ use tract_libcli::tensor::get_or_make_inputs;
 use tract_libcli::tensor::RunTensors;
 use tract_libcli::terminal;
 
-fn profile_single_turn<'m>(
+fn profile<'m>(
     state: &mut TypedSimpleState<&'m TypedModel, Arc<TypedRunnableModel<&'m TypedModel>>>,
     inputs: &RunTensors,
 ) -> TractResult<Duration> {
     if state.model().properties().contains_key("pulse.delay") {
         let start = Instant::now();
-        state.run(inputs.sources[0].clone())?;
+        for source in &inputs.sources {
+            state.run(source.clone())?;
+        }
         Ok(start.elapsed())
     } else {
         state.init_states(&mut inputs.state_initializers.clone())?;
         let start = Instant::now();
-        state.run(inputs.sources[0].clone())?;
+        for source in &inputs.sources {
+            state.run(source.clone())?;
+        }
         let elapsed = start.elapsed();
         state.reset_op_states()?;
         Ok(elapsed)
@@ -42,7 +46,7 @@ pub fn criterion(
     let run_params = crate::tensor::run_params_from_subcommand(params, sub_matches)?;
     let inputs = get_or_make_inputs(model, &run_params)?;
 
-    group.bench_function("run", move |b| b.iter(|| profile_single_turn(&mut state, &inputs)));
+    group.bench_function("run", move |b| b.iter(|| profile(&mut state, &inputs)));
     Ok(())
 }
 
@@ -102,7 +106,7 @@ pub(crate) fn bench<'m>(
                 p.store(iters as _, std::sync::atomic::Ordering::Relaxed);
             }
 
-            dur += profile_single_turn(state, &inputs)?;
+            dur += profile(state, &inputs)?;
 
             iters += 1;
         }

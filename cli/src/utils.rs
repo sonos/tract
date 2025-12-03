@@ -32,20 +32,17 @@ pub fn check_outputs(got: &[Vec<TValue>], params: &Parameters) -> TractResult<()
             format!("Output {lookup_names:?}: found reference info without value: {exp:?}")
         })?[0]
             .clone();
-        let got: TValue = if got[ix].len() > 1 {
-            let props = params.tract_model.properties();
-            let axis = props
-                .get("pulse.output_axes")
-                .context("multiple turn without pulse.output_axes property")?
-                .as_slice::<i64>()?[ix] as usize;
-            let delay = props
-                .get("pulse.delay")
-                .context("multiple turn without pulse.delay properties")?
-                .as_slice::<i64>()?[ix] as usize;
+
+        let props = params.tract_model.properties();
+
+        let got: TValue = if got[ix].len() > 1 && props.get("pulse.output_axes").is_some() {
+            let axis = props.get("pulse.output_axes").unwrap().as_slice::<i64>()?[ix] as usize;
+            let delay = props.get("pulse.delay").unwrap().as_slice::<i64>()?[ix] as usize;
             let stacked = Tensor::stack_tensors(axis, &got[ix])?;
             stacked.slice(axis, delay, delay + exp.shape()[axis])?.into()
         } else {
-            got[ix][0].clone()
+            // This handles LLM prompt-chunking output
+            got[ix].last().unwrap().clone()
         };
         if (params.allow_float_casts
             && exp.datum_type() == f32::datum_type()
@@ -78,11 +75,7 @@ pub fn check_outputs(got: &[Vec<TValue>], params: &Parameters) -> TractResult<()
         }
     }
 
-    if let Some(e) = error {
-        Err(e)
-    } else {
-        Ok(())
-    }
+    if let Some(e) = error { Err(e) } else { Ok(()) }
 }
 
 /// Compares the outputs of a node in tract and tensorflow.
