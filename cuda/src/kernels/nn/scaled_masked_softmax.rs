@@ -69,19 +69,19 @@ impl ScaledMaskedSoftmax {
             .load_pipeline(LibraryName::NN, self.kernel_name(input.datum_type(), block_size)?)?;
 
         let mut launch_args = TractLaunchArgs::new(stream, &func);
-        launch_args.set_view(&i_view);
-        launch_args.set_view(&mask_view);
+        launch_args.push_view(&i_view);
+        launch_args.push_view(&mask_view);
 
         if input.datum_type() == DatumType::F32 {
-            launch_args.set_el::<f32>(*scale.to_scalar::<f32>()?)
+            launch_args.push::<f32>(*scale.to_scalar::<f32>()?)
         } else {
-            launch_args.set_el::<f16>(*scale.to_scalar::<f16>()?)
+            launch_args.push::<f16>(*scale.to_scalar::<f16>()?)
         };
-        launch_args.set_view(&o_view);
-        launch_args.set_slice::<i32>(shape);
-        launch_args.set_slice::<i32>(strides);
-        launch_args.set_slice::<i32>(&mask_strides_nd3);
-        launch_args.set_slice::<i32>(output.strides());
+        launch_args.push_view(&o_view);
+        launch_args.push_slice::<i32>(shape);
+        launch_args.push_slice::<i32>(strides);
+        launch_args.push_slice::<i32>(&mask_strides_nd3);
+        launch_args.push_slice::<i32>(output.strides());
 
         let cfg = LaunchConfig {
             grid_dim: (1, shape[1] as _, shape[0] as _),

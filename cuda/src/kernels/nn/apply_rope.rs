@@ -92,14 +92,14 @@ impl ApplyRope {
 
         let func = cuda_context().load_pipeline(LibraryName::NN, kernel_name)?;
         let mut launch_args = TractLaunchArgs::new(stream, &func);
-        launch_args.set_view(&i_view);
-        launch_args.set_view(&cos_view);
-        launch_args.set_view(&sin_view);
-        launch_args.set_view(&o_view);
-        launch_args.set_slice::<i32>(input.shape());
-        launch_args.set_slice::<i32>(input.strides());
-        launch_args.set_slice::<i32>(&cos_sin_strides);
-        launch_args.set_slice::<i32>(output.strides());
+        launch_args.push_view(&i_view);
+        launch_args.push_view(&cos_view);
+        launch_args.push_view(&sin_view);
+        launch_args.push_view(&o_view);
+        launch_args.push_slice::<i32>(input.shape());
+        launch_args.push_slice::<i32>(input.strides());
+        launch_args.push_slice::<i32>(&cos_sin_strides);
+        launch_args.push_slice::<i32>(output.strides());
 
         let shape = input.shape();
 

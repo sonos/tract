@@ -111,11 +111,11 @@ impl MultiBroadcast {
         let o_view = get_cuda_view(output);
         let mut launch_args = TractLaunchArgs::new(stream, &func);
 
-        launch_args.set_view(&i_view);
-        launch_args.set_view(&o_view);
-        launch_args.set_slice::<i32>(&input_broadcast_strides);
-        launch_args.set_slice::<i32>(out_shape);
-        launch_args.set_slice::<i32>(output.strides());
+        launch_args.push_view(&i_view);
+        launch_args.push_view(&o_view);
+        launch_args.push_slice::<i32>(&input_broadcast_strides);
+        launch_args.push_slice::<i32>(out_shape);
+        launch_args.push_slice::<i32>(output.strides());
 
         let cfg = utils::cuda_launch_cfg_for_cpy(out_shape);
 

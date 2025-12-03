@@ -271,14 +271,14 @@ impl BinOps {
         let o_view = get_cuda_view(output);
 
         let mut launch_args = TractLaunchArgs::new(stream, &func);
-        launch_args.set_view(&lhs_view);
-        launch_args.set_view(&rhs_view);
-        launch_args.set_view(&o_view);
-        launch_args.set_slice::<i32>(&rhs_shape);
-        launch_args.set_slice::<i32>(&out_shape);
-        launch_args.set_slice::<i32>(&lhs_strides);
-        launch_args.set_slice::<i32>(&rhs_strides);
-        launch_args.set_slice::<i32>(&out_strides);
+        launch_args.push_view(&lhs_view);
+        launch_args.push_view(&rhs_view);
+        launch_args.push_view(&o_view);
+        launch_args.push_slice::<i32>(&rhs_shape);
+        launch_args.push_slice::<i32>(&out_shape);
+        launch_args.push_slice::<i32>(&lhs_strides);
+        launch_args.push_slice::<i32>(&rhs_strides);
+        launch_args.push_slice::<i32>(&out_strides);
 
         launch_args.launch(cfg)?;
 

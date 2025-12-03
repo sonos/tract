@@ -18,7 +18,7 @@ impl<'a> TractLaunchArgs<'a> {
         Self { inner: stream.launch_builder(func), keepalive: Vec::new() }
     }
 
-    pub fn arg_val<T: DeviceRepr + Copy + 'a>(&mut self, v: T) {
+    fn arg_typed<T: DeviceRepr + Copy + 'a>(&mut self, v: T) {
         let mut buf = vec![0u8; size_of::<T>()].into_boxed_slice();
         unsafe {
             ptr::copy_nonoverlapping(&v as *const T as *const u8, buf.as_mut_ptr(), size_of::<T>());
@@ -30,23 +30,23 @@ impl<'a> TractLaunchArgs<'a> {
         self.keepalive.push(buf);
     }
 
-    pub fn set_slice<U>(&mut self, slice: &[impl AsPrimitive<U>])
+    pub fn push_slice<U>(&mut self, slice: &[impl AsPrimitive<U>])
     where
         U: DeviceRepr + Copy + 'static,
     {
         for s in slice.iter().copied() {
-            self.arg_val::<U>(s.as_());
+            self.arg_typed::<U>(s.as_());
         }
     }
 
-    pub fn set_el<U>(&mut self, x: impl AsPrimitive<U>)
+    pub fn push<U>(&mut self, x: impl AsPrimitive<U>)
     where
         U: DeviceRepr + Copy + 'static,
     {
-        self.arg_val::<U>(x.as_());
+        self.arg_typed::<U>(x.as_());
     }
 
-    pub fn set_view<T>(&mut self, x: &'a CudaView<'_, T>) {
+    pub fn push_view<T>(&mut self, x: &'a CudaView<'_, T>) {
         self.inner.arg(x);
     }
 

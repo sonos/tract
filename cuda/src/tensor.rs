@@ -291,11 +291,11 @@ pub fn device_tensor_launch_copy(
     let src_view = get_sliced_cuda_view(src, src_offset, src_len - src_offset)?;
 
     let mut launch_args = TractLaunchArgs::new(stream, &func);
-    launch_args.set_view(&src_view);
-    launch_args.set_view(&dst_view);
-    launch_args.set_slice::<i64>(src_strides);
-    launch_args.set_slice::<i64>(zone_shape);
-    launch_args.set_slice::<i64>(dst_strides);
+    launch_args.push_view(&src_view);
+    launch_args.push_view(&dst_view);
+    launch_args.push_slice::<i64>(src_strides);
+    launch_args.push_slice::<i64>(zone_shape);
+    launch_args.push_slice::<i64>(dst_strides);
 
     let cfg = cuda_launch_cfg_for_cpy(zone_shape);
     launch_args.launch(cfg)
