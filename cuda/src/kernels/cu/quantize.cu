@@ -46,9 +46,9 @@ compute_mmq_q81_block(float4 xi, int64_t ib, int64_t iqs, block_q8_1_mmq *y) {
 }
 
 extern "C" __global__ void quantize_mmq_q8_1_fast_nd2(
-    const float *__restrict__ x, void *__restrict__ vy, const int64_t k,
-    const int64_t in_strides_0, const int64_t in_strides_1,
-    const int64_t padded_k) {
+    const float *__restrict__ x, void *__restrict__ vy, const int32_t k,
+    const int32_t in_strides_0, const int32_t in_strides_1,
+    const int32_t padded_k) {
 
   const int64_t i0 = ((int64_t)blockDim.x * blockIdx.y + threadIdx.x) * 4;
 
@@ -78,10 +78,10 @@ extern "C" __global__ void quantize_mmq_q8_1_fast_nd2(
 }
 
 extern "C" __global__ void quantize_mmq_q8_1_fast_nd3(
-    const float *__restrict__ x, void *__restrict__ vy, const int64_t k,
-    const int64_t in_strides_0, const int64_t in_strides_1,
-    const int64_t in_strides_2,
-    const int out_shape_1, const int64_t padded_k) {
+    const float *__restrict__ x, void *__restrict__ vy, const int32_t k,
+    const int32_t in_strides_0, const int32_t in_strides_1,
+    const int32_t in_strides_2,
+    const int32_t out_shape_1, const int32_t padded_k) {
 
   const int64_t i0 = ((int64_t)blockDim.x * blockIdx.y + threadIdx.x) * 4;
 
@@ -115,10 +115,10 @@ extern "C" __global__ void quantize_mmq_q8_1_fast_nd3(
 }
 
 extern "C" __global__ void quantize_mmq_q8_1_fast_nd4(
-    const float *__restrict__ x, void *__restrict__ vy, const int64_t k,
-    const int64_t in_strides_0, const int64_t in_strides_1,
-    const int64_t in_strides_2, const int64_t in_strides_3,
-    const int out_shape_1, const int out_shape_2, const int64_t padded_k) {
+    const float *__restrict__ x, void *__restrict__ vy, const int32_t k,
+    const int32_t in_strides_0, const int32_t in_strides_1,
+    const int32_t in_strides_2, const int32_t in_strides_3,
+    const int32_t out_shape_1, const int32_t out_shape_2, const int32_t padded_k) {
 
   const int64_t i0 = ((int64_t)blockDim.x * blockIdx.y + threadIdx.x) * 4;
 
@@ -154,10 +154,10 @@ extern "C" __global__ void quantize_mmq_q8_1_fast_nd4(
 }
 
 extern "C" __global__ void quantize_mmq_q8_1_fast_nd5(
-    const float *__restrict__ x, void *__restrict__ vy, const int64_t k,
-    const int64_t in_strides_0, const int64_t in_strides_1,
-    const int64_t in_strides_2, const int64_t in_strides_3, const int64_t in_strides_4,
-    const int out_shape_1, const int out_shape_2, const int out_shape_3, const int64_t padded_k) {
+    const float *__restrict__ x, void *__restrict__ vy, const int32_t k,
+    const int32_t in_strides_0, const int32_t in_strides_1,
+    const int32_t in_strides_2, const int32_t in_strides_3, const int32_t in_strides_4,
+    const int32_t out_shape_1, const int32_t out_shape_2, const int32_t out_shape_3, const int32_t padded_k) {
 
   const int64_t i0 = ((int64_t)blockDim.x * blockIdx.y + threadIdx.x) * 4;
 
@@ -227,9 +227,9 @@ quantize_mmq_q8_1_nd2(const float *__restrict__ x, void *__restrict__ vy,
 
 extern "C" __global__ void
 quantize_mmq_q8_1_nd3(const float *__restrict__ x, void *__restrict__ vy,
-                      const int64_t k, const int64_t in_strides_0,
-                      const int64_t in_strides_1, const int64_t in_strides_2,
-                      const int out_shape_1, const int64_t padded_k) {
+                      const int32_t k, const int32_t in_strides_0,
+                      const int32_t in_strides_1, const int32_t in_strides_2,
+                      const int32_t out_shape_1, const int32_t padded_k) {
 
   const int64_t i0 = ((int64_t)blockDim.x * blockIdx.y + threadIdx.x) * 4;
 
@@ -261,10 +261,10 @@ quantize_mmq_q8_1_nd3(const float *__restrict__ x, void *__restrict__ vy,
 
 extern "C" __global__ void
 quantize_mmq_q8_1_nd4(const float *__restrict__ x, void *__restrict__ vy,
-                      const int64_t k, const int64_t in_strides_0,
-                      const int64_t in_strides_1, const int64_t in_strides_2,
-                      const int64_t in_strides_3, const int out_shape_1,
-                      const int out_shape_2, const int64_t padded_k) {
+                      const int32_t k, const int32_t in_strides_0,
+                      const int32_t in_strides_1, const int32_t in_strides_2,
+                      const int32_t in_strides_3, const int32_t out_shape_1,
+                      const int32_t out_shape_2, const int32_t padded_k) {
 
   const int64_t i0 = ((int64_t)blockDim.x * blockIdx.y + threadIdx.x) * 4;
 
@@ -297,11 +297,11 @@ quantize_mmq_q8_1_nd4(const float *__restrict__ x, void *__restrict__ vy,
 
 extern "C" __global__ void
 quantize_mmq_q8_1_nd5(const float *__restrict__ x, void *__restrict__ vy,
-                      const int64_t k, const int64_t in_strides_0,
-                      const int64_t in_strides_1, const int64_t in_strides_2,
-                      const int64_t in_strides_3, const int64_t in_strides_4,
-                      const int out_shape_1, const int out_shape_2,
-                      const int out_shape_3, const int64_t padded_k) {
+                      const int32_t k, const int32_t in_strides_0,
+                      const int32_t in_strides_1, const int32_t in_strides_2,
+                      const int32_t in_strides_3, const int32_t in_strides_4,
+                      const int32_t out_shape_1, const int32_t out_shape_2,
+                      const int32_t out_shape_3, const int32_t padded_k) {
 
   const int64_t i0 = ((int64_t)blockDim.x * blockIdx.y + threadIdx.x) * 4;
 
@@ -360,8 +360,8 @@ compute_q81_block(float xi, int64_t i_cont, block_q8_1 **y_ptr) {
 
 extern "C" __global__ void
 quantize_q8_1_nd2(const float *__restrict__ x, void *__restrict__ vy,
-                  const int64_t k, const int64_t in_strides_0,
-                  const int64_t in_strides_1, const int64_t padded_k) {
+                  const int32_t k, const int32_t in_strides_0,
+                  const int32_t in_strides_1, const int32_t padded_k) {
   const int64_t i0 = (int64_t)blockDim.x * blockIdx.x + threadIdx.x;
 
   if (i0 >= padded_k) {
@@ -382,9 +382,9 @@ quantize_q8_1_nd2(const float *__restrict__ x, void *__restrict__ vy,
 
 extern "C" __global__ void
 quantize_q8_1_nd3(const float *__restrict__ x, void *__restrict__ vy,
-                  const int64_t k, const int64_t in_strides_0,
-                  const int64_t in_strides_1, const int64_t in_strides_2,
-                  const int64_t out_shape_1, const int64_t padded_k) {
+                  const int32_t k, const int32_t in_strides_0,
+                  const int32_t in_strides_1, const int32_t in_strides_2,
+                  const int32_t out_shape_1, const int32_t padded_k) {
   const int64_t i0 = (int64_t)blockDim.x * blockIdx.x + threadIdx.x;
 
   if (i0 >= padded_k) {
@@ -409,10 +409,10 @@ quantize_q8_1_nd3(const float *__restrict__ x, void *__restrict__ vy,
 
 extern "C" __global__ void
 quantize_q8_1_nd4(const float *__restrict__ x, void *__restrict__ vy,
-                  const int64_t k, const int64_t in_strides_0,
-                  const int64_t in_strides_1, const int64_t in_strides_2,
-                  const int64_t in_strides_3, const int64_t out_shape_1,
-                  const int64_t out_shape_2, const int64_t padded_k) {
+                  const int32_t k, const int32_t in_strides_0,
+                  const int32_t in_strides_1, const int32_t in_strides_2,
+                  const int32_t in_strides_3, const int32_t out_shape_1,
+                  const int32_t out_shape_2, const int32_t padded_k) {
   const int64_t i0 = (int64_t)blockDim.x * blockIdx.x + threadIdx.x;
 
   if (i0 >= padded_k) {
@@ -440,11 +440,11 @@ quantize_q8_1_nd4(const float *__restrict__ x, void *__restrict__ vy,
 
 extern "C" __global__ void
 quantize_q8_1_nd5(const float *__restrict__ x, void *__restrict__ vy,
-                  const int64_t k, const int64_t in_strides_4,
-                  const int64_t in_strides_3, const int64_t in_strides_2,
-                  const int64_t in_strides_1, const int64_t in_strides_0,
-                  const int64_t out_shape_1, const int64_t out_shape_2,
-                  const int64_t out_shape_3, const int64_t padded_k) {
+                  const int32_t k, const int32_t in_strides_4,
+                  const int32_t in_strides_3, const int32_t in_strides_2,
+                  const int32_t in_strides_1, const int32_t in_strides_0,
+                  const int32_t out_shape_1, const int32_t out_shape_2,
+                  const int32_t out_shape_3, const int32_t padded_k) {
   const int64_t i0 = (int64_t)blockDim.x * blockIdx.x + threadIdx.x;
 
   if (i0 >= padded_k) {

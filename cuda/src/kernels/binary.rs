@@ -4,7 +4,7 @@ use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
 
 use crate::context::{TractCudaStream, cuda_context};
-use crate::kernels::launch_args::LaunchArgsExt;
+use crate::kernels::launch_args::TractLaunchArgs;
 use crate::kernels::utils::compute_broadcast_strides;
 use crate::kernels::{LibraryName, MAX_THREADS, get_cuda_view};
 
@@ -270,17 +270,17 @@ impl BinOps {
         let rhs_view = get_cuda_view(rhs);
         let o_view = get_cuda_view(output);
 
-        let mut launch_args = stream.launch_builder(&func);
-        launch_args.arg(&lhs_view);
-        launch_args.arg(&rhs_view);
-        launch_args.arg(&o_view);
-        launch_args.set_slice(&rhs_shape);
-        launch_args.set_slice(&out_shape);
-        launch_args.set_slice(&lhs_strides);
-        launch_args.set_slice(&rhs_strides);
-        launch_args.set_slice(&out_strides);
+        let mut launch_args = TractLaunchArgs::new(stream, &func);
+        launch_args.push_view(&lhs_view);
+        launch_args.push_view(&rhs_view);
+        launch_args.push_view(&o_view);
+        launch_args.push_slice_i32(&rhs_shape);
+        launch_args.push_slice_i32(&out_shape);
+        launch_args.push_slice_i32(&lhs_strides);
+        launch_args.push_slice_i32(&rhs_strides);
+        launch_args.push_slice_i32(&out_strides);
 
-        unsafe { launch_args.launch(cfg) }?;
+        launch_args.launch(cfg)?;
 
         Ok(())
     }

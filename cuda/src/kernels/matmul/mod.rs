@@ -13,6 +13,7 @@ use tract_gpu::utils::{as_quant_fact, get_quant_fact};
 
 use crate::Q40_ROW_PADDING;
 use crate::context::{TractCudaStream, cuda_context};
+use crate::kernels::launch_args::TractLaunchArgs;
 use crate::kernels::matmul::quant_act_q81::{QUANTIZE_BLOCK_SIZE, QUANTIZE_BLOCK_SIZE_MMQ};
 use crate::kernels::{
     LibraryName, get_cuda_view, get_cuda_view_mut, get_sliced_cuda_view, get_sliced_cuda_view_mut,
@@ -213,19 +214,19 @@ fn dispatch_ggml_matvec(
 
     let kernel_name = kernel_name_mat_vec(params.dts[0], params.m, block_size)?;
     let mut func = cuda_context().load_pipeline(LibraryName::Ggml, kernel_name)?;
-    let mut launch_args = stream.launch_builder(&func);
-    launch_args.arg(&w_view);
-    launch_args.arg(&act_view);
-    launch_args.arg(&output_view);
-    launch_args.arg(&k_div_2);
-    launch_args.arg(&params.act_batch);
-    launch_args.arg(&params.w_strides[1]);
-    launch_args.arg(&ncols_act_div_2);
-    launch_args.arg(&params.out_strides[1]);
-    launch_args.arg(&batch_ratio);
-    launch_args.arg(&params.w_strides[0]);
-    launch_args.arg(&params.act_strides[0]);
-    launch_args.arg(&params.out_strides[0]);
+    let mut launch_args = TractLaunchArgs::new(stream, &func);
+    launch_args.push_view(&w_view);
+    launch_args.push_view(&act_view);
+    launch_args.push_view(&output_view);
+    launch_args.push_i32(k_div_2);
+    launch_args.push_i32(params.act_batch);
+    launch_args.push_i32(params.w_strides[1]);
+    launch_args.push_i32(ncols_act_div_2);
+    launch_args.push_i32(params.out_strides[1]);
+    launch_args.push_i32(batch_ratio);
+    launch_args.push_i32(params.w_strides[0]);
+    launch_args.push_i32(params.act_strides[0]);
+    launch_args.push_i32(params.out_strides[0]);
 
     let cfg = LaunchConfig {
         grid_dim: (params.n as _, params.act_batch as _, 1),
@@ -348,22 +349,22 @@ fn launch_matmul_q40(
         CUfunction_attribute::CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
         nbytes_shared as i32,
     )?;
-    let mut launch_args = stream.launch_builder(&func);
-    launch_args.arg(weights);
-    launch_args.arg(quant_activ);
-    launch_args.arg(output);
-    launch_args.arg(fixup_tens);
-    launch_args.arg(&params.k);
-    launch_args.arg(&params.n);
-    launch_args.arg(&params.m);
-    launch_args.arg(&n_blocks);
-    launch_args.arg(&params.m);
-    launch_args.arg(&params.n);
-    launch_args.arg(&batch_ratio);
-    launch_args.arg(&params.act_batch);
-    launch_args.arg(&w_batch_stride);
-    launch_args.arg(&act_batch_stride);
-    launch_args.arg(&params.out_strides[0]);
+    let mut launch_args = TractLaunchArgs::new(stream, &func);
+    launch_args.push_view(weights);
+    launch_args.push_view(quant_activ);
+    launch_args.push_view(output);
+    launch_args.push_view(fixup_tens);
+    launch_args.push_i32(params.k);
+    launch_args.push_i32(params.n);
+    launch_args.push_i32(params.m);
+    launch_args.push_i32(n_blocks);
+    launch_args.push_i32(params.m);
+    launch_args.push_i32(params.n);
+    launch_args.push_i32(batch_ratio);
+    launch_args.push_i32(params.act_batch);
+    launch_args.push_i32(w_batch_stride);
+    launch_args.push_i32(act_batch_stride);
+    launch_args.push_i32(params.out_strides[0]);
 
     let cfg = LaunchConfig {
         grid_dim: (props.multiProcessorCount as usize as _, 1, 1),
@@ -389,15 +390,15 @@ fn launch_fixup_q40(
     let context = cuda_context();
     let props = context.properties();
     let func = context.load_pipeline(LibraryName::GgmlQ, kernel_name)?;
-    let mut launch_args = stream.launch_builder(&func);
-    launch_args.arg(output);
-    launch_args.arg(fixup_tens);
-    launch_args.arg(&params.k);
-    launch_args.arg(&params.n);
-    launch_args.arg(&params.m);
-    launch_args.arg(&params.n);
-    launch_args.arg(&params.act_batch);
-    launch_args.arg(&params.out_strides[0]);
+    let mut launch_args = TractLaunchArgs::new(stream, &func);
+    launch_args.push_view(output);
+    launch_args.push_view(fixup_tens);
+    launch_args.push_i32(params.k);
+    launch_args.push_i32(params.n);
+    launch_args.push_i32(params.m);
+    launch_args.push_i32(params.n);
+    launch_args.push_i32(params.act_batch);
+    launch_args.push_i32(params.out_strides[0]);
 
     let cfg = LaunchConfig {
         grid_dim: (props.multiProcessorCount as usize as _, 1, 1),
@@ -423,7 +424,7 @@ fn dispatch_ggml_matmul_q40(
     let context = cuda_context();
     let props = context.properties();
 
-    let null_ptr = stream.null::<u8>()?;
+    let null_ptr = stream.null()?;
 
     let padded_k = params.k.next_multiple_of(Q40_ROW_PADDING);
     let n_blocks = padded_k / Q4_0.block_len(); // padded Q40 weights
@@ -497,19 +498,19 @@ fn dispatch_ggml_matvec_q40(
     let batch_ratio = params.act_batch / params.w_batch;
 
     let func = context.load_pipeline(LibraryName::GgmlQ, format!("mul_vec_q40_m_{}", params.m))?;
-    let mut launch_args = stream.launch_builder(&func);
-    launch_args.arg(weights);
-    launch_args.arg(activs);
-    launch_args.arg(output);
-    launch_args.arg(&params.k);
-    launch_args.arg(&params.act_batch);
-    launch_args.arg(&n_blocks);
-    launch_args.arg(&stride_col_act);
-    launch_args.arg(&stride_col_out);
-    launch_args.arg(&batch_ratio);
-    launch_args.arg(&stride_channel_w);
-    launch_args.arg(&stride_channel_act);
-    launch_args.arg(&stride_channel_out);
+    let mut launch_args = TractLaunchArgs::new(stream, &func);
+    launch_args.push_view(weights);
+    launch_args.push_view(activs);
+    launch_args.push_view(output);
+    launch_args.push_i32(params.k);
+    launch_args.push_i32(params.act_batch);
+    launch_args.push_i32(n_blocks);
+    launch_args.push_i32(stride_col_act);
+    launch_args.push_i32(stride_col_out);
+    launch_args.push_i32(batch_ratio);
+    launch_args.push_i32(stride_channel_w);
+    launch_args.push_i32(stride_channel_act);
+    launch_args.push_i32(stride_channel_out);
 
     let rows_per_block = if params.m == 1 { 1 } else { 2 };
     let n_warps = if params.m <= 4 { 4 } else { 2 };
@@ -519,8 +520,7 @@ fn dispatch_ggml_matvec_q40(
         shared_mem_bytes: 0,
     };
 
-    unsafe { launch_args.launch(cfg) };
-    Ok(())
+    launch_args.launch(cfg)
 }
 
 impl GgmlGemm {

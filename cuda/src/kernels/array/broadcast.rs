@@ -1,5 +1,5 @@
 use crate::context::{TractCudaStream, cuda_context};
-use crate::kernels::launch_args::LaunchArgsExt;
+use crate::kernels::launch_args::TractLaunchArgs;
 use crate::kernels::{BroadcastKind, LibraryName, get_cuda_view, get_sliced_cuda_view, utils};
 
 use crate::kernels::utils::compute_broadcast_strides;
@@ -109,18 +109,17 @@ impl MultiBroadcast {
             input.len() * input.datum_type().size_of() - input_offset,
         )?;
         let o_view = get_cuda_view(output);
-        let mut launch_args = stream.launch_builder(&func);
+        let mut launch_args = TractLaunchArgs::new(stream, &func);
 
-        launch_args.arg(&i_view);
-        launch_args.arg(&o_view);
-        launch_args.set_slice(&input_broadcast_strides);
-        launch_args.set_slice(out_shape);
-        launch_args.set_slice(output.strides());
+        launch_args.push_view(&i_view);
+        launch_args.push_view(&o_view);
+        launch_args.push_slice_i32(&input_broadcast_strides);
+        launch_args.push_slice_i32(out_shape);
+        launch_args.push_slice_i32(output.strides());
 
         let cfg = utils::cuda_launch_cfg_for_cpy(out_shape);
 
-        unsafe { launch_args.launch(cfg) }?;
-        Ok(())
+        launch_args.launch(cfg)
     }
 }
 

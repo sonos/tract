@@ -7,7 +7,7 @@ use tract_core::tract_data::itertools::Itertools;
 use tract_gpu::tensor::DeviceTensor;
 
 use crate::context::{TractCudaStream, cuda_context};
-use crate::kernels::launch_args::LaunchArgsExt;
+use crate::kernels::launch_args::TractLaunchArgs;
 use crate::kernels::{LibraryName, WARP_SIZE, get_cuda_view, launch_args};
 
 const CUDA_CC_TURING: i32 = 750;
@@ -376,12 +376,12 @@ impl GgmlFlashAttn {
                 format!("flash_attn_mask_to_KV_max_{}", params.ncols1),
             )?;
 
-            let mut la = stream.launch_builder(&func);
-            la.arg(&mv);
-            la.arg(&kv_max_v);
-            la.arg(&iter_k);
-            la.arg(&mask_s2_div2);
-            la.arg(&mask_s0_div2);
+            let mut la = TractLaunchArgs::new(stream, &func);
+            la.push_view(&mv);
+            la.push_view(&kv_max_v);
+            la.push_i32(iter_k);
+            la.push_i32(mask_s2_div2);
+            la.push_i32(mask_s0_div2);
             let cfg =
                 LaunchConfig { grid_dim: blocks_num, block_dim: blocks_dim, shared_mem_bytes: 0 };
 
@@ -477,29 +477,29 @@ impl GgmlFlashAttn {
         let v_strides_b = strides_to_bytes_i32::<f16>(v.strides());
         let mask_strides_b = strides_to_bytes_i32::<f16>(mask.strides());
 
-        let null_ptr = stream.null::<u8>()?;
+        let null_ptr = stream.null()?;
         let kv_max_v = kv_max.as_ref().map(get_cuda_view).unwrap_or_else(|| null_ptr.as_view());
         let dst_tmp_v = dst_tmp.as_ref().map(get_cuda_view).unwrap_or_else(|| null_ptr.as_view());
         let dst_tmp_meta_v =
             dst_tmp_meta.as_ref().map(get_cuda_view).unwrap_or_else(|| null_ptr.as_view());
 
         // main kernel
-        let mut la = stream.launch_builder(&params.kernel);
-        la.arg(&qv);
-        la.arg(&kv);
-        la.arg(&vv);
-        la.arg(&mv);
-        la.arg(&kv_max_v);
-        la.arg(if matches!(params.imp, FlashAttnImpl::Vec) { &dst_tmp_v } else { &ov });
-        la.arg(&dst_tmp_meta_v);
-        la.arg(&scale);
-        la.set_slice(&q_shape_i32);
-        la.set_slice(&q_strides_b[..3]);
-        la.set_slice(&k_shape_i32);
-        la.set_slice(&k_strides_b[..3]);
-        la.set_slice(&v_strides_b[..3]);
-        la.set_slice(&mask_shape_i32[..3]);
-        la.set_slice(&mask_strides_b[..3]);
+        let mut la = TractLaunchArgs::new(stream, &params.kernel);
+        la.push_view(&qv);
+        la.push_view(&kv);
+        la.push_view(&vv);
+        la.push_view(&mv);
+        la.push_view(&kv_max_v);
+        la.push_view(if matches!(params.imp, FlashAttnImpl::Vec) { &dst_tmp_v } else { &ov });
+        la.push_view(&dst_tmp_meta_v);
+        la.push::<f32>(scale);
+        la.push_slice_i32(&q_shape_i32);
+        la.push_slice_i32(&q_strides_b[..3]);
+        la.push_slice_i32(&k_shape_i32);
+        la.push_slice_i32(&k_strides_b[..3]);
+        la.push_slice_i32(&v_strides_b[..3]);
+        la.push_slice_i32(&mask_shape_i32[..3]);
+        la.push_slice_i32(&mask_strides_b[..3]);
 
         let cfg = LaunchConfig {
             grid_dim: blocks_num,
@@ -507,9 +507,7 @@ impl GgmlFlashAttn {
             shared_mem_bytes: params.shm_bytes as u32,
         };
 
-        unsafe {
-            la.launch(cfg);
-        }
+        la.launch(cfg)?;
 
         // fixups
         if matches!(params.imp, FlashAttnImpl::MmaF16) {
@@ -518,38 +516,35 @@ impl GgmlFlashAttn {
                     LibraryName::GgmlFlashAttn,
                     format!("flash_attn_stream_k_fixup_{}_{}_{}", params.d, ncols, params.ncols2),
                 )?;
-                let mut la = stream.launch_builder(&f);
-                la.arg(&ov);
-                la.arg(&dst_tmp_meta_v);
-                la.set_slice(&q_shape_i32[..3]);
-                la.arg(&k_shape_i32[2]);
+                let mut la = TractLaunchArgs::new(stream, &f);
+                la.push_view(&ov);
+                la.push_view(&dst_tmp_meta_v);
+                la.push_slice_i32(&q_shape_i32[..3]);
+                la.push_i32(k_shape_i32[2]);
                 let cfg = LaunchConfig {
                     grid_dim: (cfg.grid_dim.0, params.ncols1 as _, params.ncols2 as _),
                     block_dim: (params.d as _, 1, 1),
                     shared_mem_bytes: 0,
                 };
-                unsafe {
-                    la.launch(cfg);
-                }
+                la.launch(cfg)?;
             }
         } else {
             let f = cuda_context().load_pipeline(
                 LibraryName::GgmlFlashAttn,
                 format!("flash_attn_combine_results_{}", params.d),
             )?;
-            let mut la = stream.launch_builder(&f);
-            la.arg(&dst_tmp_v);
-            la.arg(&dst_tmp_meta_v);
-            la.arg(&ov);
-            la.arg(&parallel_blocks);
+            let mut la = TractLaunchArgs::new(stream, &f);
+            la.push_view(&dst_tmp_v);
+            la.push_view(&dst_tmp_meta_v);
+            la.push_view(&ov);
+            la.push_i32(parallel_blocks);
             let cfg = LaunchConfig {
                 grid_dim: (q_shape_i32[2] as _, q_shape_i32[1] as _, q_shape_i32[0] as _),
                 block_dim: (params.d as _, 1, 1),
                 shared_mem_bytes: (parallel_blocks * 2 * bytes_of::<f32>()) as u32,
             };
-            unsafe {
-                la.launch(cfg);
-            }
+
+            la.launch(cfg);
         }
 
         Ok(())

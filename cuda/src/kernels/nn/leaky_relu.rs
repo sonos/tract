@@ -3,6 +3,7 @@ use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
 
 use crate::context::{TractCudaStream, cuda_context};
+use crate::kernels::launch_args::TractLaunchArgs;
 use crate::kernels::{LibraryName, get_cuda_view};
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -48,11 +49,11 @@ impl LeakyRelu {
         let len = output.len();
 
         let func = cuda_context().load_pipeline(LibraryName::NN, kernel_name)?;
-        let mut launch_args = stream.launch_builder(&func);
-        launch_args.arg(&i_view);
-        launch_args.arg(&o_view);
-        launch_args.arg(&len);
-        launch_args.arg(&alpha);
+        let mut launch_args = TractLaunchArgs::new(stream, &func);
+        launch_args.push_view(&i_view);
+        launch_args.push_view(&o_view);
+        launch_args.push_i32(len);
+        launch_args.push::<f32>(alpha);
 
         let cfg = LaunchConfig::for_num_elems(input.len() as _);
         unsafe {

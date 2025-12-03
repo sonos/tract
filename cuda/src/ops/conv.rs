@@ -54,9 +54,11 @@ impl EvalOp for CudaConv {
             &output_shape.shape,
         )?;
 
-        CUDA_STREAM.with(|stream| {
-            self.kernel.dispatch(&self.op, stream, inputs[0], inputs[1], inputs[2], &output)
-        })?;
+        if output.len() != 0 {
+            CUDA_STREAM.with(|stream| {
+                self.kernel.dispatch(&self.op, stream, inputs[0], inputs[1], inputs[2], &output)
+            })?;
+        }
         Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
     }
 }

@@ -1,5 +1,5 @@
 use crate::context::{TractCudaStream, cuda_context};
-use crate::kernels::launch_args::LaunchArgsExt;
+use crate::kernels::launch_args::TractLaunchArgs;
 use crate::kernels::{LibraryName, MAX_THREADS, WARP_SIZE, get_cuda_view, utils};
 use cudarc::driver::{CudaStream, LaunchConfig, PushKernelArg};
 use tract_core::internal::*;
@@ -56,12 +56,12 @@ impl RmsNorm {
         let o_view = get_cuda_view(output);
 
         let func = cuda_context().load_pipeline(LibraryName::NN, kernel_name)?;
-        let mut launch_args = stream.launch_builder(&func);
-        launch_args.arg(&i_view);
-        launch_args.arg(&o_view);
-        launch_args.set_slice(&shape_nd3);
-        launch_args.set_slice(&strides_nd3);
-        launch_args.arg(eps.to_scalar::<f32>()?);
+        let mut launch_args = TractLaunchArgs::new(stream, &func);
+        launch_args.push_view(&i_view);
+        launch_args.push_view(&o_view);
+        launch_args.push_slice_i32(&shape_nd3);
+        launch_args.push_slice_i32(&strides_nd3);
+        launch_args.push::<f32>(*eps.to_scalar::<f32>()?);
 
         let cfg = LaunchConfig {
             grid_dim: ((shape_nd3[2] * shape_nd3[0]) as _, 1, 1),
@@ -73,9 +73,7 @@ impl RmsNorm {
             shared_mem_bytes: 0,
         };
 
-        unsafe { launch_args.launch(cfg) };
-
-        Ok(())
+        launch_args.launch(cfg)
     }
 }
 

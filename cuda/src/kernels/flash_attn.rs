@@ -7,7 +7,7 @@ use tract_core::tract_data::itertools::Itertools;
 use tract_gpu::tensor::{DeviceTensor, IntoDevice};
 
 use crate::context::{TractCudaStream, cuda_context};
-use crate::kernels::launch_args::LaunchArgsExt;
+use crate::kernels::launch_args::TractLaunchArgs;
 use crate::kernels::{LibraryName, WARP_SIZE, get_cuda_view, launch_args};
 
 #[derive(Debug, Clone)]
@@ -120,7 +120,7 @@ impl CudaFlashAttn {
 
         let use_mask = mask.is_some();
 
-        let null_ptr = stream.null::<u8>()?;
+        let null_ptr = stream.null()?;
 
         let q_view = get_cuda_view(q);
         let k_view = get_cuda_view(k);
@@ -139,28 +139,26 @@ impl CudaFlashAttn {
                 smem_size as _,
             )?;
 
-            let mut launch_args = stream.launch_builder(&func);
-            launch_args.arg(&q_view);
-            launch_args.arg(&k_view);
-            launch_args.arg(&v_view);
-            launch_args.arg(&m_view);
-            launch_args.arg(&o_view);
-            launch_args.arg(&b);
-            launch_args.arg(&n_qh);
-            launch_args.arg(&head_ratio);
-            launch_args.arg(&len_q);
-            launch_args.arg(&k.shape()[2]);
-            launch_args.arg(&scale);
+            let mut launch_args = TractLaunchArgs::new(stream, &func);
+            launch_args.push_view(&q_view);
+            launch_args.push_view(&k_view);
+            launch_args.push_view(&v_view);
+            launch_args.push_view(&m_view);
+            launch_args.push_view(&o_view);
+            launch_args.push_i32(b);
+            launch_args.push_i32(n_qh);
+            launch_args.push_i32(head_ratio);
+            launch_args.push_i32(len_q);
+            launch_args.push_i32(k.shape()[2]);
+            launch_args.push::<f32>(scale);
 
             let cfg = LaunchConfig {
                 grid_dim: (num_q_blocks as _, n_qh as _, b as _),
                 block_dim: (tb_size as _, 1, 1),
                 shared_mem_bytes: smem_size as _,
             };
-            unsafe {
-                launch_args.launch(cfg);
-            }
-            Ok(())
+
+            launch_args.launch(cfg)
         };
 
         if num_full_q_blocks > 0 {

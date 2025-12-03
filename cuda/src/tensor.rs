@@ -1,6 +1,6 @@
 use std::ops::{Deref, DerefMut, RangeBounds};
 
-use cudarc::driver::{CudaSlice, DevicePtr, PushKernelArg};
+use cudarc::driver::{CudaSlice, DevicePtr};
 use tract_core::internal::tract_smallvec::ToSmallVec;
 use tract_core::internal::*;
 use tract_core::prelude::{DatumType, TVec};
@@ -11,7 +11,7 @@ use tract_gpu::tensor::{DeviceTensor, OwnedDeviceTensor};
 use tract_gpu::utils::{as_q40_tensor, check_strides_validity};
 
 use crate::context::{CUDA_STREAM, TractCudaStream, cuda_context};
-use crate::kernels::launch_args::LaunchArgsExt;
+use crate::kernels::launch_args::TractLaunchArgs;
 use crate::kernels::utils::cuda_launch_cfg_for_cpy;
 use crate::kernels::{BroadcastKind, LibraryName, get_sliced_cuda_view};
 use crate::ops::GgmlQuantQ81Fact;
@@ -290,14 +290,13 @@ pub fn device_tensor_launch_copy(
     let src_len = src.len() * src.datum_type().size_of();
     let src_view = get_sliced_cuda_view(src, src_offset, src_len - src_offset)?;
 
-    let mut launch_args = stream.launch_builder(&func);
-    launch_args.arg(&src_view);
-    launch_args.arg(&dst_view);
-    launch_args.set_slice(src_strides);
-    launch_args.set_slice(zone_shape);
-    launch_args.set_slice(dst_strides);
+    let mut launch_args = TractLaunchArgs::new(stream, &func);
+    launch_args.push_view(&src_view);
+    launch_args.push_view(&dst_view);
+    launch_args.push_slice_i32(src_strides);
+    launch_args.push_slice_i32(zone_shape);
+    launch_args.push_slice_i32(dst_strides);
 
     let cfg = cuda_launch_cfg_for_cpy(zone_shape);
-    unsafe { launch_args.launch(cfg)? };
-    Ok(())
+    launch_args.launch(cfg)
 }

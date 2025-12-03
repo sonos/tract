@@ -1,5 +1,6 @@
 use cudarc::driver::{CudaStream, DeviceRepr, LaunchConfig, PushKernelArg};
 use derive_new::new;
+use num_traits::AsPrimitive;
 use std::fmt;
 use tract_core::internal::*;
 use tract_core::ops::array::PadMode;
@@ -7,7 +8,7 @@ use tract_core::tract_data::itertools::Itertools;
 use tract_gpu::tensor::DeviceTensor;
 
 use crate::context::{TractCudaStream, cuda_context};
-use crate::kernels::launch_args::LaunchArgsExt;
+use crate::kernels::launch_args::TractLaunchArgs;
 use crate::kernels::{LibraryName, get_cuda_view, get_sliced_cuda_view, launch_args};
 
 static PAD_MAX_RANK: usize = 5;
@@ -55,7 +56,7 @@ impl Pad {
         Ok(format!("pad_constant_{tname}"))
     }
 
-    fn dispatch_eval_constant_t<T: Datum + DeviceRepr>(
+    fn dispatch_eval_constant_t<T: Datum + DeviceRepr + Copy + AsPrimitive<T>>(
         stream: &TractCudaStream,
         input: &DeviceTensor,
         output: &DeviceTensor,
@@ -85,20 +86,18 @@ impl Pad {
 
         let len = output.len();
         let func = cuda_context().load_pipeline(LibraryName::Array, kernel_name)?;
-        let mut launch_args = stream.launch_builder(&func);
-        launch_args.arg(&i_view);
-        launch_args.arg(&o_view);
-        launch_args.set_slice(&in_shape);
-        launch_args.set_slice(&out_shape);
-        launch_args.set_slice(&in_strides);
-        launch_args.set_slice(&pad_before);
-        launch_args.arg(fill_value);
-        launch_args.arg(&len);
+        let mut launch_args = TractLaunchArgs::new(stream, &func);
+        launch_args.push_view(&i_view);
+        launch_args.push_view(&o_view);
+        launch_args.push_slice_i32(&in_shape);
+        launch_args.push_slice_i32(&out_shape);
+        launch_args.push_slice_i32(&in_strides);
+        launch_args.push_slice_i32(&pad_before);
+        launch_args.push::<T>(*fill_value);
+        launch_args.push_i32(len);
 
         let cfg = LaunchConfig::for_num_elems(len as _);
-        unsafe { launch_args.launch(cfg) };
-
-        Ok(())
+        launch_args.launch(cfg)
     }
 
     pub fn dispatch_eval(
