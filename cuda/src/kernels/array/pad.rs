@@ -89,12 +89,12 @@ impl Pad {
         let mut launch_args = TractLaunchArgs::new(stream, &func);
         launch_args.push_view(&i_view);
         launch_args.push_view(&o_view);
-        launch_args.push_slice::<i32>(&in_shape);
-        launch_args.push_slice::<i32>(&out_shape);
-        launch_args.push_slice::<i32>(&in_strides);
-        launch_args.push_slice::<i32>(&pad_before);
+        launch_args.push_slice_i32(&in_shape);
+        launch_args.push_slice_i32(&out_shape);
+        launch_args.push_slice_i32(&in_strides);
+        launch_args.push_slice_i32(&pad_before);
         launch_args.push::<T>(*fill_value);
-        launch_args.push::<i32>(len);
+        launch_args.push_i32(len);
 
         let cfg = LaunchConfig::for_num_elems(len as _);
         launch_args.launch(cfg)

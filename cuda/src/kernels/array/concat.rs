@@ -1,5 +1,5 @@
-use crate::context::{cuda_context, TractCudaStream};
-use crate::kernels::{get_cuda_view, get_sliced_cuda_view, utils, BroadcastKind, LibraryName};
+use crate::context::{TractCudaStream, cuda_context};
+use crate::kernels::{BroadcastKind, LibraryName, get_cuda_view, get_sliced_cuda_view, utils};
 use crate::tensor::device_tensor_assign_slice;
 use anyhow::ensure;
 use cudarc::driver::{CudaStream, PushKernelArg};

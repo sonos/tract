@@ -10,7 +10,7 @@ use tract_gpu::device::DeviceBuffer;
 use tract_gpu::tensor::{DeviceTensor, OwnedDeviceTensor};
 use tract_gpu::utils::{as_q40_tensor, check_strides_validity};
 
-use crate::context::{cuda_context, TractCudaStream, CUDA_STREAM};
+use crate::context::{CUDA_STREAM, TractCudaStream, cuda_context};
 use crate::kernels::launch_args::TractLaunchArgs;
 use crate::kernels::utils::cuda_launch_cfg_for_cpy;
 use crate::kernels::{BroadcastKind, LibraryName, get_sliced_cuda_view};
@@ -293,9 +293,9 @@ pub fn device_tensor_launch_copy(
     let mut launch_args = TractLaunchArgs::new(stream, &func);
     launch_args.push_view(&src_view);
     launch_args.push_view(&dst_view);
-    launch_args.push_slice::<i64>(src_strides);
-    launch_args.push_slice::<i64>(zone_shape);
-    launch_args.push_slice::<i64>(dst_strides);
+    launch_args.push_slice_i32(src_strides);
+    launch_args.push_slice_i32(zone_shape);
+    launch_args.push_slice_i32(dst_strides);
 
     let cfg = cuda_launch_cfg_for_cpy(zone_shape);
     launch_args.launch(cfg)

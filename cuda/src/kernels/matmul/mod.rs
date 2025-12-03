@@ -218,15 +218,15 @@ fn dispatch_ggml_matvec(
     launch_args.push_view(&w_view);
     launch_args.push_view(&act_view);
     launch_args.push_view(&output_view);
-    launch_args.push::<i32>(k_div_2);
-    launch_args.push::<i32>(params.act_batch);
-    launch_args.push::<i32>(params.w_strides[1]);
-    launch_args.push::<i32>(ncols_act_div_2);
-    launch_args.push::<i32>(params.out_strides[1]);
-    launch_args.push::<i32>(batch_ratio);
-    launch_args.push::<i32>(params.w_strides[0]);
-    launch_args.push::<i32>(params.act_strides[0]);
-    launch_args.push::<i32>(params.out_strides[0]);
+    launch_args.push_i32(k_div_2);
+    launch_args.push_i32(params.act_batch);
+    launch_args.push_i32(params.w_strides[1]);
+    launch_args.push_i32(ncols_act_div_2);
+    launch_args.push_i32(params.out_strides[1]);
+    launch_args.push_i32(batch_ratio);
+    launch_args.push_i32(params.w_strides[0]);
+    launch_args.push_i32(params.act_strides[0]);
+    launch_args.push_i32(params.out_strides[0]);
 
     let cfg = LaunchConfig {
         grid_dim: (params.n as _, params.act_batch as _, 1),
@@ -354,17 +354,17 @@ fn launch_matmul_q40(
     launch_args.push_view(quant_activ);
     launch_args.push_view(output);
     launch_args.push_view(fixup_tens);
-    launch_args.push::<i32>(params.k);
-    launch_args.push::<i32>(params.n);
-    launch_args.push::<i32>(params.m);
-    launch_args.push::<i32>(n_blocks);
-    launch_args.push::<i32>(params.m);
-    launch_args.push::<i32>(params.n);
-    launch_args.push::<i32>(batch_ratio);
-    launch_args.push::<i32>(params.act_batch);
-    launch_args.push::<i32>(w_batch_stride);
-    launch_args.push::<i32>(act_batch_stride);
-    launch_args.push::<i32>(params.out_strides[0]);
+    launch_args.push_i32(params.k);
+    launch_args.push_i32(params.n);
+    launch_args.push_i32(params.m);
+    launch_args.push_i32(n_blocks);
+    launch_args.push_i32(params.m);
+    launch_args.push_i32(params.n);
+    launch_args.push_i32(batch_ratio);
+    launch_args.push_i32(params.act_batch);
+    launch_args.push_i32(w_batch_stride);
+    launch_args.push_i32(act_batch_stride);
+    launch_args.push_i32(params.out_strides[0]);
 
     let cfg = LaunchConfig {
         grid_dim: (props.multiProcessorCount as usize as _, 1, 1),
@@ -393,12 +393,12 @@ fn launch_fixup_q40(
     let mut launch_args = TractLaunchArgs::new(stream, &func);
     launch_args.push_view(output);
     launch_args.push_view(fixup_tens);
-    launch_args.push::<i32>(params.k);
-    launch_args.push::<i32>(params.n);
-    launch_args.push::<i32>(params.m);
-    launch_args.push::<i32>(params.n);
-    launch_args.push::<i32>(params.act_batch);
-    launch_args.push::<i32>(params.out_strides[0]);
+    launch_args.push_i32(params.k);
+    launch_args.push_i32(params.n);
+    launch_args.push_i32(params.m);
+    launch_args.push_i32(params.n);
+    launch_args.push_i32(params.act_batch);
+    launch_args.push_i32(params.out_strides[0]);
 
     let cfg = LaunchConfig {
         grid_dim: (props.multiProcessorCount as usize as _, 1, 1),
@@ -502,15 +502,15 @@ fn dispatch_ggml_matvec_q40(
     launch_args.push_view(weights);
     launch_args.push_view(activs);
     launch_args.push_view(output);
-    launch_args.push::<i32>(params.k);
-    launch_args.push::<i32>(params.act_batch);
-    launch_args.push::<i32>(n_blocks);
-    launch_args.push::<i32>(stride_col_act);
-    launch_args.push::<i32>(stride_col_out);
-    launch_args.push::<i32>(batch_ratio);
-    launch_args.push::<i32>(stride_channel_w);
-    launch_args.push::<i32>(stride_channel_act);
-    launch_args.push::<i32>(stride_channel_out);
+    launch_args.push_i32(params.k);
+    launch_args.push_i32(params.act_batch);
+    launch_args.push_i32(n_blocks);
+    launch_args.push_i32(stride_col_act);
+    launch_args.push_i32(stride_col_out);
+    launch_args.push_i32(batch_ratio);
+    launch_args.push_i32(stride_channel_w);
+    launch_args.push_i32(stride_channel_act);
+    launch_args.push_i32(stride_channel_out);
 
     let rows_per_block = if params.m == 1 { 1 } else { 2 };
     let n_warps = if params.m <= 4 { 4 } else { 2 };
