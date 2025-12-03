@@ -167,7 +167,7 @@ impl UnaryOps {
         let mut launch_args = TractLaunchArgs::new(stream, &func);
         launch_args.push_view(&i_view);
         launch_args.push_view(&o_view);
-        launch_args.push::<i32>(len);
+        launch_args.push_i32(len);
 
         launch_args.launch(cfg)
     }

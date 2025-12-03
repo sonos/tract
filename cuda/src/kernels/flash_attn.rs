@@ -145,11 +145,11 @@ impl CudaFlashAttn {
             launch_args.push_view(&v_view);
             launch_args.push_view(&m_view);
             launch_args.push_view(&o_view);
-            launch_args.push::<i32>(b);
-            launch_args.push::<i32>(n_qh);
-            launch_args.push::<i32>(head_ratio);
-            launch_args.push::<i32>(len_q);
-            launch_args.push::<i32>(k.shape()[2]);
+            launch_args.push_i32(b);
+            launch_args.push_i32(n_qh);
+            launch_args.push_i32(head_ratio);
+            launch_args.push_i32(len_q);
+            launch_args.push_i32(k.shape()[2]);
             launch_args.push::<f32>(scale);
 
             let cfg = LaunchConfig {

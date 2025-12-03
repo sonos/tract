@@ -50,13 +50,13 @@ impl ConvKernel for Generic {
         let input = get_cuda_view(input);
 
         launcher.push_view(&input);
-        launcher.push::<i32>(*input_shape.n().unwrap_or(&1));
-        launcher.push::<i32>(*input_shape.c());
-        launcher.push_slice::<i32>(input_shape.hw_dims());
+        launcher.push_i32(*input_shape.n().unwrap_or(&1));
+        launcher.push_i32(*input_shape.c());
+        launcher.push_slice_i32(input_shape.hw_dims());
 
-        launcher.push::<i32>(*input_shape.n_stride().unwrap_or(&0));
-        launcher.push::<i32>(*input_shape.c_stride());
-        launcher.push_slice::<i32>(input_shape.hw_strides());
+        launcher.push_i32(*input_shape.n_stride().unwrap_or(&0));
+        launcher.push_i32(*input_shape.c_stride());
+        launcher.push_slice_i32(input_shape.hw_strides());
 
         let kfmt = op.kernel_fmt;
         let co_per_group = op.pool_spec.output_channels / op.group;
@@ -65,17 +65,17 @@ impl ConvKernel for Generic {
         let weights_view = get_cuda_view(weights);
         launcher.push_view(&weights_view);
         // split go_i_h_w in g_o_i_h_w
-        launcher.push::<i32>(op.group);
-        launcher.push::<i32>(co_per_group);
-        launcher.push_slice::<i32>(&weights.shape()[1..]);
+        launcher.push_i32(op.group);
+        launcher.push_i32(co_per_group);
+        launcher.push_slice_i32(&weights.shape()[1..]);
 
         let group_stride = weights.strides()[0] as usize * co_per_group;
-        launcher.push::<i32>(group_stride);
-        launcher.push_slice::<i32>(weights.strides());
+        launcher.push_i32(group_stride);
+        launcher.push_slice_i32(weights.strides());
 
         let bias_view = get_cuda_view(bias);
         launcher.push_view(&bias_view);
-        launcher.push::<i32>(if bias.rank() == 0 {
+        launcher.push_i32(if bias.rank() == 0 {
             0usize // scalar bias: stride = 0 is broadcasting
         } else {
             1usize
@@ -83,25 +83,25 @@ impl ConvKernel for Generic {
 
         let padding = op.pool_spec.computed_padding(input_shape.hw_dims());
         for d in 0..input_shape.hw_rank() {
-            launcher.push::<i32>(padding[d].pad_before);
+            launcher.push_i32(padding[d].pad_before);
         }
 
         let strides = op.pool_spec.strides();
-        launcher.push_slice::<i32>(&strides);
+        launcher.push_slice_i32(&strides);
 
         let dilations = op.pool_spec.dilations();
-        launcher.push_slice::<i32>(&dilations);
+        launcher.push_slice_i32(&dilations);
 
         let output_shape = op.pool_spec.data_format.shape(output.shape())?;
         let output = get_cuda_view(output);
         launcher.push_view(&output);
-        launcher.push::<i32>(*output_shape.n().unwrap_or(&1));
-        launcher.push::<i32>(*output_shape.c());
-        launcher.push_slice::<i32>(output_shape.hw_dims());
+        launcher.push_i32(*output_shape.n().unwrap_or(&1));
+        launcher.push_i32(*output_shape.c());
+        launcher.push_slice_i32(output_shape.hw_dims());
 
-        launcher.push::<i32>(*output_shape.n_stride().unwrap_or(&0));
-        launcher.push::<i32>(*output_shape.c_stride());
-        launcher.push_slice::<i32>(output_shape.hw_strides());
+        launcher.push_i32(*output_shape.n_stride().unwrap_or(&0));
+        launcher.push_i32(*output_shape.c_stride());
+        launcher.push_slice_i32(output_shape.hw_strides());
 
         let cfg = LaunchConfig {
             grid_dim: (

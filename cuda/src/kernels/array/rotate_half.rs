@@ -70,8 +70,8 @@ impl RotateHalf {
         let mut launch_args = TractLaunchArgs::new(stream, &func);
         launch_args.push_view(&i_view);
         launch_args.push_view(&o_view);
-        launch_args.push_slice::<i32>(&shape_nd2);
-        launch_args.push_slice::<i32>(&strides_nd2);
+        launch_args.push_slice_i32(&shape_nd2);
+        launch_args.push_slice_i32(&strides_nd2);
 
         let cfg = LaunchConfig {
             grid_dim: ((shape_nd2[1] / 2) as _, shape_nd2[0] as _, 1),

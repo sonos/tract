@@ -39,11 +39,21 @@ impl<'a> TractLaunchArgs<'a> {
         }
     }
 
+    pub fn push_slice_i32(&mut self, slice: &[impl AsPrimitive<i32>]) {
+        for s in slice.iter().copied() {
+            self.arg_typed::<i32>(s.as_());
+        }
+    }
+
     pub fn push<U>(&mut self, x: impl AsPrimitive<U>)
     where
         U: DeviceRepr + Copy + 'static,
     {
         self.arg_typed::<U>(x.as_());
+    }
+
+    pub fn push_i32(&mut self, x: impl AsPrimitive<i32>) {
+        self.arg_typed::<i32>(x.as_());
     }
 
     pub fn push_view<T>(&mut self, x: &'a CudaView<'_, T>) {
