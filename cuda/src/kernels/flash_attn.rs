@@ -140,17 +140,17 @@ impl CudaFlashAttn {
             )?;
 
             let mut launch_args = TractLaunchArgs::new(stream, &func);
-            launch_args.set_view(&q_view);
-            launch_args.set_view(&k_view);
-            launch_args.set_view(&v_view);
-            launch_args.set_view(&m_view);
-            launch_args.set_view(&o_view);
-            launch_args.set_el::<i32>(b);
-            launch_args.set_el::<i32>(n_qh);
-            launch_args.set_el::<i32>(head_ratio);
-            launch_args.set_el::<i32>(len_q);
-            launch_args.set_el::<i32>(k.shape()[2]);
-            launch_args.set_el::<f32>(scale);
+            launch_args.push_view(&q_view);
+            launch_args.push_view(&k_view);
+            launch_args.push_view(&v_view);
+            launch_args.push_view(&m_view);
+            launch_args.push_view(&o_view);
+            launch_args.push::<i32>(b);
+            launch_args.push::<i32>(n_qh);
+            launch_args.push::<i32>(head_ratio);
+            launch_args.push::<i32>(len_q);
+            launch_args.push::<i32>(k.shape()[2]);
+            launch_args.push::<f32>(scale);
 
             let cfg = LaunchConfig {
                 grid_dim: (num_q_blocks as _, n_qh as _, b as _),

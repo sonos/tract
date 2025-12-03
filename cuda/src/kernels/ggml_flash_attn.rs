@@ -377,11 +377,11 @@ impl GgmlFlashAttn {
             )?;
 
             let mut la = TractLaunchArgs::new(stream, &func);
-            la.set_view(&mv);
-            la.set_view(&kv_max_v);
-            la.set_el::<i32>(iter_k);
-            la.set_el::<i32>(mask_s2_div2);
-            la.set_el::<i32>(mask_s0_div2);
+            la.push_view(&mv);
+            la.push_view(&kv_max_v);
+            la.push::<i32>(iter_k);
+            la.push::<i32>(mask_s2_div2);
+            la.push::<i32>(mask_s0_div2);
             let cfg =
                 LaunchConfig { grid_dim: blocks_num, block_dim: blocks_dim, shared_mem_bytes: 0 };
 
@@ -485,21 +485,21 @@ impl GgmlFlashAttn {
 
         // main kernel
         let mut la = TractLaunchArgs::new(stream, &params.kernel);
-        la.set_view(&qv);
-        la.set_view(&kv);
-        la.set_view(&vv);
-        la.set_view(&mv);
-        la.set_view(&kv_max_v);
-        la.set_view(if matches!(params.imp, FlashAttnImpl::Vec) { &dst_tmp_v } else { &ov });
-        la.set_view(&dst_tmp_meta_v);
-        la.set_el::<f32>(scale);
-        la.set_slice::<i32>(&q_shape_i32);
-        la.set_slice::<i32>(&q_strides_b[..3]);
-        la.set_slice::<i32>(&k_shape_i32);
-        la.set_slice::<i32>(&k_strides_b[..3]);
-        la.set_slice::<i32>(&v_strides_b[..3]);
-        la.set_slice::<i32>(&mask_shape_i32[..3]);
-        la.set_slice::<i32>(&mask_strides_b[..3]);
+        la.push_view(&qv);
+        la.push_view(&kv);
+        la.push_view(&vv);
+        la.push_view(&mv);
+        la.push_view(&kv_max_v);
+        la.push_view(if matches!(params.imp, FlashAttnImpl::Vec) { &dst_tmp_v } else { &ov });
+        la.push_view(&dst_tmp_meta_v);
+        la.push::<f32>(scale);
+        la.push_slice::<i32>(&q_shape_i32);
+        la.push_slice::<i32>(&q_strides_b[..3]);
+        la.push_slice::<i32>(&k_shape_i32);
+        la.push_slice::<i32>(&k_strides_b[..3]);
+        la.push_slice::<i32>(&v_strides_b[..3]);
+        la.push_slice::<i32>(&mask_shape_i32[..3]);
+        la.push_slice::<i32>(&mask_strides_b[..3]);
 
         let cfg = LaunchConfig {
             grid_dim: blocks_num,
@@ -517,10 +517,10 @@ impl GgmlFlashAttn {
                     format!("flash_attn_stream_k_fixup_{}_{}_{}", params.d, ncols, params.ncols2),
                 )?;
                 let mut la = TractLaunchArgs::new(stream, &f);
-                la.set_view(&ov);
-                la.set_view(&dst_tmp_meta_v);
-                la.set_slice::<i32>(&q_shape_i32[..3]);
-                la.set_el::<i32>(k_shape_i32[2]);
+                la.push_view(&ov);
+                la.push_view(&dst_tmp_meta_v);
+                la.push_slice::<i32>(&q_shape_i32[..3]);
+                la.push::<i32>(k_shape_i32[2]);
                 let cfg = LaunchConfig {
                     grid_dim: (cfg.grid_dim.0, params.ncols1 as _, params.ncols2 as _),
                     block_dim: (params.d as _, 1, 1),
@@ -534,10 +534,10 @@ impl GgmlFlashAttn {
                 format!("flash_attn_combine_results_{}", params.d),
             )?;
             let mut la = TractLaunchArgs::new(stream, &f);
-            la.set_view(&dst_tmp_v);
-            la.set_view(&dst_tmp_meta_v);
-            la.set_view(&ov);
-            la.set_el::<i32>(parallel_blocks);
+            la.push_view(&dst_tmp_v);
+            la.push_view(&dst_tmp_meta_v);
+            la.push_view(&ov);
+            la.push::<i32>(parallel_blocks);
             let cfg = LaunchConfig {
                 grid_dim: (q_shape_i32[2] as _, q_shape_i32[1] as _, q_shape_i32[0] as _),
                 block_dim: (params.d as _, 1, 1),
