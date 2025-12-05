@@ -52,15 +52,29 @@ fn split_succs(
     axis_node_name: &str,
     axis_op: &MetalAxisOp,
 ) -> TractResult<Option<TypedModelPatch>> {
+    let succs = model.all_succ(axis_node.id)?.context("Expected node with successors")?;
+
     let mut patch = TypedModelPatch::default();
     let input = patch.tap_model(model, axis_node.inputs[0])?;
 
-    for (i, node) in model.all_succ(axis_node.id)?.unwrap().iter().enumerate() {
-        let axis_out =
-            patch.wire_node(format!("{axis_node_name}.{i}"), axis_op.clone(), &[input])?[0];
-        let op_outs = patch.wire_node(node.name.to_string(), node.op.clone(), &[axis_out])?;
+    for (i, succ) in succs.iter().enumerate() {
+        let axis_out = patch
+            .wire_node(format!("{axis_node_name}.{i}"), axis_op.clone(), &[input])?[0];
+
+        let mut op_ins = patch.taps(model, &succ.inputs)?;
+
+        let (idx, _) = succ
+            .inputs
+            .iter()
+            .enumerate()
+            .find(|(_, inlet)| inlet.node == axis_node.id)
+            .context("Axis node not found in its successor inputs")?;
+
+        op_ins[idx] = axis_out;
+
+        let op_outs = patch.wire_node(succ.name.clone(), succ.op.clone(), &op_ins)?;
         for out in op_outs {
-            patch.shunt_outside(model, node.id.into(), out)?;
+            patch.shunt_outside(model, succ.id.into(), out)?;
         }
     }
 
