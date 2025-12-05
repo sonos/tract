@@ -64,8 +64,8 @@ fn split_succs(
     let input = patch.tap_model(model, axis_node.inputs[0])?;
 
     for (i, succ) in succs.iter().enumerate() {
-        let axis_out = patch
-            .wire_node(format!("{axis_node_name}.{i}"), axis_op.clone(), &[input])?[0];
+        let axis_out =
+            patch.wire_node(format!("{axis_node_name}.{i}"), axis_op.clone(), &[input])?[0];
 
         let mut op_ins = patch.taps(model, &succ.inputs)?;
 
