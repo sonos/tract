@@ -10,73 +10,13 @@ use crate::ops::GgmlQuantQ81Fact;
 
 static CULIBS_PRESENT: OnceLock<bool> = OnceLock::new();
 
-pub fn is_culib_present() -> bool {
-    *CULIBS_PRESENT.get_or_init(check_culibs)
-}
-
-// Code copied from Cudarc for checking Cuda presence
-fn get_lib_name_candidates(lib_name: &str) -> Vec<String> {
-    use std::env::consts::{DLL_PREFIX, DLL_SUFFIX};
-
-    let pointer_width = if cfg!(target_pointer_width = "32") {
-        "32"
-    } else if cfg!(target_pointer_width = "64") {
-        "64"
-    } else {
-        panic!("Unsupported target pointer width")
-    };
-
-    let major = "12";
-    let minor = "6";
-
-    [
-        std::format!("{DLL_PREFIX}{lib_name}{DLL_SUFFIX}"),
-        std::format!("{DLL_PREFIX}{lib_name}{pointer_width}{DLL_SUFFIX}"),
-        std::format!("{DLL_PREFIX}{lib_name}{pointer_width}_{major}{DLL_SUFFIX}"),
-        std::format!("{DLL_PREFIX}{lib_name}{pointer_width}_{major}{minor}{DLL_SUFFIX}"),
-        std::format!("{DLL_PREFIX}{lib_name}{pointer_width}_{major}{minor}_0{DLL_SUFFIX}"),
-        std::format!("{DLL_PREFIX}{lib_name}{pointer_width}_{major}0_{minor}{DLL_SUFFIX}"),
-        // See issue #242
-        std::format!("{DLL_PREFIX}{lib_name}{pointer_width}_10{DLL_SUFFIX}"),
-        // See issue #246
-        std::format!("{DLL_PREFIX}{lib_name}{pointer_width}_{major}0_0{DLL_SUFFIX}"),
-        // See issue #260
-        std::format!("{DLL_PREFIX}{lib_name}{pointer_width}_9{DLL_SUFFIX}"),
-        // See issue #274
-        std::format!("{DLL_PREFIX}{lib_name}{DLL_SUFFIX}.{major}"),
-        std::format!("{DLL_PREFIX}{lib_name}{DLL_SUFFIX}.11"),
-        std::format!("{DLL_PREFIX}{lib_name}{DLL_SUFFIX}.10"),
-        // See issue #296
-        std::format!("{DLL_PREFIX}{lib_name}{DLL_SUFFIX}.1"),
-    ]
-    .into()
-}
-
-fn group_present_with<F>(bases: &[&str], mut load: F) -> bool
-where
-    F: FnMut(&str) -> bool,
-{
-    bases.iter().flat_map(|b| get_lib_name_candidates(b)).any(|cand| load(&cand))
-}
-
-fn check_culibs() -> bool {
-    let driver_ok = group_present_with(&["cuda", "nvcuda"], |name| unsafe {
-        cudarc::driver::sys::Lib::new(name).is_ok()
-    });
-
-    let runtime_ok = group_present_with(&["cudart"], |name| unsafe {
-        cudarc::runtime::sys::Lib::new(name).is_ok()
-    });
-
-    let nvrtc_ok = group_present_with(&["nvrtc"], |name| unsafe {
-        cudarc::nvrtc::sys::Lib::new(name).is_ok()
-    });
-
-    let cublas_ok = group_present_with(&["cublas"], |name| unsafe {
-        cudarc::cublas::sys::Lib::new(name).is_ok()
-    });
-
-    driver_ok && runtime_ok && nvrtc_ok && cublas_ok
+pub fn are_culibs_present() -> bool {
+    *CULIBS_PRESENT.get_or_init(|| unsafe {
+        cudarc::driver::sys::is_culib_present()
+            && cudarc::runtime::sys::is_culib_present()
+            && cudarc::nvrtc::sys::is_culib_present()
+            && cudarc::cublas::sys::is_culib_present()
+    })
 }
 
 pub fn get_ggml_q81_fact(t: &DeviceTensor) -> Option<GgmlQuantQ81Fact> {
