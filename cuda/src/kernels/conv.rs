@@ -1,7 +1,7 @@
-use crate::context::{TractCudaStream, cuda_context};
-use crate::kernels::get_cuda_view;
+use crate::context::{cuda_context, TractCudaStream};
 use crate::kernels::launch_args::TractLaunchArgs;
-use cudarc::driver::LaunchConfig;
+use crate::kernels::{get_cuda_view, WARP_SIZE};
+use cudarc::driver::{LaunchArgs, LaunchConfig, PushKernelArg};
 use std::fmt::Debug;
 use tract_core::dyn_clone::{self, DynClone};
 use tract_core::internal::*;
@@ -105,11 +105,11 @@ impl ConvKernel for Generic {
 
         let cfg = LaunchConfig {
             grid_dim: (
-                output_shape.hw_dims().iter().product::<usize>() as u32,
+                output_shape.hw_dims().iter().product::<usize>().div_ceil(WARP_SIZE) as u32,
                 *output_shape.c() as u32,
                 input_shape.n().copied().unwrap_or(1) as u32,
             ),
-            block_dim: (32, 1, 1),
+            block_dim: (WARP_SIZE as u32, 1, 1),
             shared_mem_bytes: 0,
         };
 
