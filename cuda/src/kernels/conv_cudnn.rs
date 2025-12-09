@@ -1,18 +1,12 @@
 use crate::context::{cuda_context, TractCudaStream};
 use crate::kernels::conv::ConvKernel;
 use crate::kernels::{get_cuda_view, get_cuda_view_mut, WARP_SIZE};
-use cudarc::cudnn::result::{
-    create_convolution_descriptor, create_filter_descriptor, create_tensor_descriptor,
-    get_convolution_backward_data_algorithm, set_convolution2d_descriptor, set_filter4d_descriptor,
-    set_tensor4d_descriptor,
-};
-use cudarc::cudnn::sys::cudnnGetConvolution2dForwardOutputDim;
 use cudarc::cudnn::ConvForward;
 use cudarc::driver::{LaunchArgs, LaunchConfig, PushKernelArg};
 use std::fmt::Debug;
 use tract_core::dyn_clone::{self, DynClone};
 use tract_core::internal::*;
-use tract_core::ops::cnn::Conv;
+use tract_core::ops::cnn::{Conv, KernelFormat};
 use tract_core::tract_data::itertools::Itertools;
 use tract_gpu::tensor::DeviceTensor;
 
@@ -33,9 +27,8 @@ impl ConvKernel for ConvCudnn {
         bias: Option<&DeviceTensor>,
         output: &DeviceTensor,
     ) -> TractResult<()> {
-        // TODO: conditions to ensure properly
-        // * bias MUST be all zero, but difficult to check efficienly from here.
-        // * OIHW
+        ensure!(bias.is_none());
+        ensure!(op.kernel_fmt == KernelFormat::OIHW);
         let input_shape = op.pool_spec.data_format.shape(input.shape())?;
         let ctx = cuda_context();
         ensure!(input_shape.hw_rank() == 2);
@@ -58,7 +51,10 @@ impl ConvKernel for ConvCudnn {
             )
             .context("in create_conv2d")?;
         conv_descriptor.set_group_count(op.group as i32);
-        let input_dims = input.shape().iter().map(|d| *d as i32).collect_vec();
+        let mut input_dims = input.shape().iter().map(|d| *d as i32).collect_vec();
+        if !input_shape.fmt.has_n() {
+            input_dims.insert(0, 1);
+        }
 
         let input_descriptor = cudnn
             .create_4d_tensor::<f32>(
@@ -73,7 +69,10 @@ impl ConvKernel for ConvCudnn {
                 [filter_dims[0], filter_dims[1], filter_dims[2], filter_dims[3]],
             )
             .context("in created_4d_tensor for filter")?;
-        let output_dims = output.shape().iter().map(|d| *d as i32).collect_vec();
+        let mut output_dims = output.shape().iter().map(|d| *d as i32).collect_vec();
+        if !input_shape.fmt.has_n() {
+            output_dims.insert(0, 1);
+        }
 
         let output_descriptor = cudnn
             .create_4d_tensor::<f32>(
