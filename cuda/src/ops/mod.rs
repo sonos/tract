@@ -29,7 +29,7 @@ pub use broadcast::CudaMultiBroadcastTo;
 pub use cast::CudaCast;
 pub use change_axes::CudaAxisOp;
 pub use concat::CudaConcat;
-pub use conv::{CudaConv, cuda_conv};
+pub use conv::{wire_cuda_conv, CudaConv};
 pub use dyn_kv_cache::{CudaDynKVCache, CudaDynKVCacheState};
 pub use flash_attn::CudaFlashAttention;
 pub use fused_axis_op::CudaFusedAxisOp;
