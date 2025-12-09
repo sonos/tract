@@ -1,13 +1,32 @@
 use crate::context::CUDA_STREAM;
-use crate::kernels::conv::{ConvKernel, Generic};
+use crate::kernels::conv::{ConvGeneric, ConvKernel};
+use crate::kernels::conv_cudnn::ConvCudnn;
+use num_traits::One;
 use tract_core::internal::*;
 use tract_core::ops::cnn::Conv;
+use tract_core::ops::nn::DataFormat;
 use tract_gpu::tensor::DeviceTensorExt;
 
 pub fn cuda_conv(model: &TypedModel, node: &TypedNode, op: &Conv) -> TractResult<Option<CudaConv>> {
     let facts = model.node_input_facts(node.id)?;
     if facts.iter().all(|f| f.datum_type.is::<f32>()) && facts[1].rank() <= 6 {
-        Ok(Some(CudaConv { op: op.clone(), kernel: Box::new(Generic) }))
+        let bias = &facts[2];
+        if facts[0].rank() == 4
+            && facts[1].rank() == 4
+            && op.pool_spec.data_format == DataFormat::NCHW
+            && bias.konst.is_some()
+            && bias.konst.as_ref().unwrap().is_all_zero()?
+            && op.pool_spec.dilations().iter().all(|d| d.is_one())
+            && op
+                .pool_spec
+                .computed_padding(op.pool_spec.data_format.shape(&facts[0].shape)?.hw_dims())
+                .iter()
+                .all(|paddings| paddings.pad_before == paddings.pad_after)
+        {
+            Ok(Some(CudaConv { op: op.clone(), kernel: Box::new(ConvCudnn) }))
+        } else {
+            Ok(Some(CudaConv { op: op.clone(), kernel: Box::new(ConvGeneric) }))
+        }
     } else {
         Ok(None)
     }
@@ -54,9 +73,16 @@ impl EvalOp for CudaConv {
             &output_shape.shape,
         )?;
 
-        if output.len() != 0 {
+        if output.len() > 0 {
             CUDA_STREAM.with(|stream| {
-                self.kernel.dispatch(&self.op, stream, inputs[0], inputs[1], inputs[2], &output)
+                self.kernel.dispatch(
+                    &self.op,
+                    stream,
+                    inputs[0],
+                    inputs[1],
+                    Some(inputs[2]),
+                    &output,
+                )
             })?;
         }
         Ok(tvec!(output.into_opaque_tensor().into_tvalue()))

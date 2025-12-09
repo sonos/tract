@@ -3,6 +3,7 @@
 pub mod array;
 mod binary;
 pub mod conv;
+pub mod conv_cudnn;
 pub mod flash_attn;
 pub mod ggml_flash_attn;
 pub(crate) mod launch_args;

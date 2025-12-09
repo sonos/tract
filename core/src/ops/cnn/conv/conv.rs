@@ -678,7 +678,8 @@ impl Conv {
             let downsample_factor = self.pool_spec.stride(axis);
             let mut new_op = self.clone();
             if new_op.pool_spec.dilation(axis) > 1 {
-                new_op.pool_spec.dilations.as_mut().unwrap()[axis] /= downsample_factor;
+                new_op.pool_spec.dilations.as_mut().unwrap()[axis] =
+                    new_op.pool_spec.dilations.as_mut().unwrap()[axis].divceil(downsample_factor);
             }
             new_op.pool_spec.strides.as_mut().unwrap()[axis] /= downsample_factor;
             let mut patch = TypedModelPatch::default();
