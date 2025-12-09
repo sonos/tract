@@ -5,7 +5,7 @@ use tract_core::ops::array::{MultiBroadcastTo, Slice, TypedConcat};
 use tract_core::ops::binary::TypedBinOp;
 use tract_core::ops::cast::Cast;
 use tract_core::ops::cnn::conv::rewrite_kernel_conv_in_oihw;
-use tract_core::ops::cnn::Conv;
+use tract_core::ops::cnn::{rewrite_conv_with_n_axis, Conv};
 use tract_core::ops::einsum::prefix_matmul::{rewrite_einsum_to_prefix_matmul, PrefixMatMul};
 use tract_core::ops::element_wise::ElementWiseOp;
 use tract_core::ops::konst::Const;
@@ -66,6 +66,7 @@ impl CudaTransform {
             .with_rule_for("untranspose_matmul_output", rewrite_rules::untranspose_matmul_output)
             .with_rule_for("add_broadcast_pre_matmul", rewrite_rules::add_broadcast_pre_matmul)
             .with_rule_for("rewrite_kernel_conv_in_oihw", rewrite_kernel_conv_in_oihw)
+            .with_rule_for("rewrite_conv_with_n_axis", rewrite_conv_with_n_axis)
             .rewrite(&(), model)?;
 
         Rewriter::default()
