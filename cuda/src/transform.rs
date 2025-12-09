@@ -253,7 +253,7 @@ fn can_translate_to_cuda_op(source: &TypedModel, node: &TypedNode) -> TractResul
                             input_facts[0].clone(),
                         ]))
             })
-            || node.op_is::<Conv>()))
+            || (node.op_is::<Conv>() && input_facts[0].datum_type.is::<f32>())))
 }
 
 fn convert_const(op: &Const) -> TractResult<Const> {
