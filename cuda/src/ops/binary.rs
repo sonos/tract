@@ -57,11 +57,13 @@ impl EvalOp for CudaBinOp {
         let output =
             tract_gpu::session_handler::make_tensor_for_node(session, node_id, out_dt, &out_shape)?;
 
-        CUDA_STREAM.with(|stream| {
-            self.0
-                .dispatch_eval(stream, a, b, &output)
-                .with_context(|| "Error while dispatching eval for Cuda Bin Op")
-        })?;
+        if a.len() > 0 && b.len() > 0 {
+            CUDA_STREAM.with(|stream| {
+                self.0
+                    .dispatch_eval(stream, a, b, &output)
+                    .with_context(|| "Error while dispatching eval for Cuda Bin Op")
+            })?;
+        }
         Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
     }
 }
