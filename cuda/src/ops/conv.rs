@@ -2,7 +2,6 @@ use crate::context::CUDA_STREAM;
 use crate::kernels::conv::{ConvGeneric, ConvKernel};
 use crate::kernels::conv_cudnn::ConvCudnn;
 use crate::ops::{CudaAxisOp, CudaBinOp};
-use num_traits::One;
 use tract_core::internal::*;
 use tract_core::ops::cnn::Conv;
 use tract_gpu::tensor::DeviceTensorExt;
@@ -19,7 +18,6 @@ pub fn wire_cuda_conv(
     if facts.iter().all(|f| f.datum_type.is::<f32>())
         && data_shape.hw_rank() == 2
         && !op.pool_spec.data_format.c_is_last()
-        && op.pool_spec.dilations().iter().all(|d| d.is_one())
         && op
             .pool_spec
             .computed_padding(data_shape.hw_dims())
