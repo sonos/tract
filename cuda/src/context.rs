@@ -1,4 +1,5 @@
 use cudarc::cublas::CudaBlas;
+use cudarc::cudnn::Cudnn;
 use cudarc::nvrtc::Ptx;
 use cudarc::runtime::result::device::get_device_prop;
 use cudarc::runtime::sys::cudaDeviceProp;
@@ -13,14 +14,14 @@ use tract_core::internal::*;
 
 use cudarc::driver::{CudaContext, CudaFunction, CudaModule, CudaStream};
 
-use crate::kernels::{COMMON_H, LibraryName, cubin_dir};
+use crate::kernels::{cubin_dir, LibraryName, COMMON_H};
 use crate::tensor::CudaTensor;
 
 use cudarc::nvrtc::result::{compile_program, destroy_program, get_program_log};
 use cudarc::nvrtc::sys::{
     nvrtcCreateProgram, nvrtcGetCUBIN, nvrtcGetCUBINSize, nvrtcProgram, nvrtcResult,
 };
-use std::ffi::{CStr, CString, c_char};
+use std::ffi::{c_char, CStr, CString};
 use std::path::{Path, PathBuf};
 
 thread_local! {
@@ -293,17 +294,23 @@ impl DeviceContext for TractCudaContext {
 pub struct TractCudaStream {
     inner: Arc<CudaStream>,
     cublas: CudaBlas,
+    cudnn: Arc<Cudnn>,
 }
 
 impl TractCudaStream {
     fn new() -> TractResult<TractCudaStream> {
         let stream = cuda_context().default_stream();
         let cublas = CudaBlas::new(stream.clone())?;
-        Ok(TractCudaStream { inner: stream, cublas })
+        let cudnn = Cudnn::new(stream.clone())?;
+        Ok(TractCudaStream { inner: stream, cublas, cudnn })
     }
 
     pub fn cublas(&self) -> &CudaBlas {
         &self.cublas
+    }
+
+    pub fn cudnn(&self) -> &Arc<Cudnn> {
+        &self.cudnn
     }
 }
 

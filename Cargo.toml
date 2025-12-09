@@ -138,7 +138,7 @@ clap = { version = "~3.1", features = [ "cargo" ] }
 colorous = "1.0.5"
 core_affinity = "0.8.0"
 criterion = "0.6"
-cudarc = { version = "0.17", features = ["dynamic-loading", "cuda-12060", "f16"] }
+cudarc = { version = "0.17", features = ["dynamic-loading", "cuda-12060", "f16", "cudnn"] }
 derive-new = "0.5.9"
 dinghy-test = "0.6"
 dirs = "6.0.0"
