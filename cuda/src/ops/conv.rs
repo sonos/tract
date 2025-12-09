@@ -5,7 +5,6 @@ use crate::ops::{CudaAxisOp, CudaBinOp};
 use num_traits::One;
 use tract_core::internal::*;
 use tract_core::ops::cnn::Conv;
-use tract_core::ops::nn::DataFormat;
 use tract_gpu::tensor::DeviceTensorExt;
 
 pub fn wire_cuda_conv(
@@ -18,10 +17,8 @@ pub fn wire_cuda_conv(
     let facts = source.node_input_facts(node.id)?;
     let data_shape = op.pool_spec.data_format.shape(&facts[0].shape)?;
     if facts.iter().all(|f| f.datum_type.is::<f32>())
-        && facts[1].rank() <= 6
-        && facts[0].rank() == 4
-        && facts[1].rank() == 4
-        && op.pool_spec.data_format == DataFormat::NCHW
+        && data_shape.hw_rank() == 2
+        && !op.pool_spec.data_format.c_is_last()
         && op.pool_spec.dilations().iter().all(|d| d.is_one())
         && op
             .pool_spec
@@ -41,7 +38,6 @@ pub fn wire_cuda_conv(
         if need_bias {
             let mut needed_shape = tvec![1.to_dim(); node.outputs[0].fact.rank()];
             needed_shape[data_shape.c_axis()] = op.pool_spec.output_channels.to_dim();
-            dbg!(bias, &needed_shape);
             let reshaped = target.wire_node(
                 format!("{prefix}.bias_reshaped"),
                 CudaAxisOp(AxisOp::Reshape(0, bias.shape.to_tvec(), needed_shape)),
