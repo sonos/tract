@@ -16,16 +16,16 @@ pub trait ConvKernel: 'static + Send + Sync + Debug + DynClone {
         stream: &TractCudaStream,
         input: &DeviceTensor,
         weights: &DeviceTensor,
-        bias: &DeviceTensor,
+        bias: Option<&DeviceTensor>,
         output: &DeviceTensor,
     ) -> TractResult<()>;
 }
 dyn_clone::clone_trait_object!(ConvKernel);
 
 #[derive(Hash, Clone, Debug)]
-pub struct Generic;
+pub struct ConvGeneric;
 
-impl ConvKernel for Generic {
+impl ConvKernel for ConvGeneric {
     fn name(&self) -> StaticName {
         "Generic".into()
     }
@@ -36,7 +36,7 @@ impl ConvKernel for Generic {
         stream: &TractCudaStream,
         input: &DeviceTensor,
         weights: &DeviceTensor,
-        bias: &DeviceTensor,
+        bias: Option<&DeviceTensor>,
         output: &DeviceTensor,
     ) -> TractResult<()> {
         let input_shape = op.pool_spec.data_format.shape(input.shape())?;
@@ -44,6 +44,8 @@ impl ConvKernel for Generic {
         let ctx = cuda_context();
         let func_name = format!("conv{}d_f32_generic", input_shape.hw_rank());
         let func = ctx.load_pipeline(crate::kernels::LibraryName::Cnn, func_name)?;
+        let null = stream.null::<u8>()?;
+        let null_view = null.as_view();
 
         let mut launcher = TractLaunchArgs::new(stream, &func);
 
@@ -73,13 +75,19 @@ impl ConvKernel for Generic {
         launcher.push_i32(group_stride);
         launcher.push_slice_i32(weights.strides());
 
-        let bias_view = get_cuda_view(bias);
-        launcher.push_view(&bias_view);
-        launcher.push_i32(if bias.rank() == 0 {
-            0usize // scalar bias: stride = 0 is broadcasting
+        let mut bias_view = None;
+        if let Some(bias) = &bias {
+            bias_view = Some(get_cuda_view(bias));
+            launcher.push_view(bias_view.as_ref().unwrap());
+            launcher.push_i32(if bias.rank() == 0 {
+                0 // scalar bias: stride = 0 is broadcasting
+            } else {
+                1
+            });
         } else {
-            1usize
-        });
+            launcher.push_view(&null_view);
+            launcher.push_i32(0);
+        }
 
         let padding = op.pool_spec.computed_padding(input_shape.hw_dims());
         for d in 0..input_shape.hw_rank() {
