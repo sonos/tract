@@ -28,6 +28,7 @@ impl ConvKernel for ConvCudnn {
         output: &DeviceTensor,
     ) -> TractResult<()> {
         ensure!(bias.is_none());
+        ensure!(op.pool_spec.data_format.has_n());
         ensure!(op.kernel_fmt == KernelFormat::OIHW);
         let input_shape = op.pool_spec.data_format.shape(input.shape())?;
         let ctx = cuda_context();
@@ -51,10 +52,7 @@ impl ConvKernel for ConvCudnn {
             )
             .context("in create_conv2d")?;
         conv_descriptor.set_group_count(op.group as i32);
-        let mut input_dims = input.shape().iter().map(|d| *d as i32).collect_vec();
-        if !input_shape.fmt.has_n() {
-            input_dims.insert(0, 1);
-        }
+        let input_dims = input.shape().iter().map(|d| *d as i32).collect_vec();
 
         let input_descriptor = cudnn
             .create_4d_tensor::<f32>(
@@ -69,10 +67,7 @@ impl ConvKernel for ConvCudnn {
                 [filter_dims[0], filter_dims[1], filter_dims[2], filter_dims[3]],
             )
             .context("in created_4d_tensor for filter")?;
-        let mut output_dims = output.shape().iter().map(|d| *d as i32).collect_vec();
-        if !input_shape.fmt.has_n() {
-            output_dims.insert(0, 1);
-        }
+        let output_dims = output.shape().iter().map(|d| *d as i32).collect_vec();
 
         let output_descriptor = cudnn
             .create_4d_tensor::<f32>(
