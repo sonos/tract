@@ -31,6 +31,7 @@ impl ConvKernel for ConvCudnn {
         ensure!(op.pool_spec.data_format.has_n());
         ensure!(op.kernel_fmt == KernelFormat::OIHW);
         let input_shape = op.pool_spec.data_format.shape(input.shape())?;
+        let output_shape = op.pool_spec.data_format.shape(output.shape())?;
         let ctx = cuda_context();
         ensure!(input_shape.hw_rank() == 2);
 
@@ -52,26 +53,36 @@ impl ConvKernel for ConvCudnn {
             )
             .context("in create_conv2d")?;
         conv_descriptor.set_group_count(op.group as i32);
-        let input_dims = input.shape().iter().map(|d| *d as i32).collect_vec();
+        let mut input_dims = input_shape.hw_dims().iter().map(|d| *d as i32).collect_vec();
+        input_dims.insert(0, *input_shape.n().unwrap() as i32);
+        input_dims.insert(1, *input_shape.c() as i32);
+
+        let fmt = if op.pool_spec.data_format.c_is_last() {
+            cudarc::cudnn::sys::cudnnTensorFormat_t::CUDNN_TENSOR_NHWC
+        } else {
+            cudarc::cudnn::sys::cudnnTensorFormat_t::CUDNN_TENSOR_NCHW
+        };
 
         let input_descriptor = cudnn
             .create_4d_tensor::<f32>(
-                cudarc::cudnn::sys::cudnnTensorFormat_t::CUDNN_TENSOR_NCHW,
+                fmt,
                 [input_dims[0], input_dims[1], input_dims[2], input_dims[3]],
             )
             .context("in created_4d_tensor for input")?;
         let filter_dims = weights.shape().iter().map(|d| *d as i32).collect_vec();
         let filter_descriptor = cudnn
-            .create_4d_filter(
+            .create_4d_filter::<f32>(
                 cudarc::cudnn::sys::cudnnTensorFormat_t::CUDNN_TENSOR_NCHW,
                 [filter_dims[0], filter_dims[1], filter_dims[2], filter_dims[3]],
             )
             .context("in created_4d_tensor for filter")?;
-        let output_dims = output.shape().iter().map(|d| *d as i32).collect_vec();
 
+        let mut output_dims = output_shape.hw_dims().iter().map(|d| *d as i32).collect_vec();
+        output_dims.insert(0, *output_shape.n().unwrap() as i32);
+        output_dims.insert(1, *output_shape.c() as i32);
         let output_descriptor = cudnn
             .create_4d_tensor::<f32>(
-                cudarc::cudnn::sys::cudnnTensorFormat_t::CUDNN_TENSOR_NCHW,
+                fmt,
                 [output_dims[0], output_dims[1], output_dims[2], output_dims[3]],
             )
             .context("in created_4d_tensor for output")?;
@@ -87,15 +98,12 @@ impl ConvKernel for ConvCudnn {
         let weights = get_cuda_view(weights);
         let mut output = get_cuda_view_mut(output);
 
-        let algo = conv_2d.pick_algorithm()?;
+        let algo = conv_2d.pick_algorithm().context("in pick_algorightm")?;
         let workspace_size = conv_2d.get_workspace_size(algo).context("in get_workspace_size()")?;
 
         unsafe {
-            let mut workspace = if workspace_size > 0 {
-                Some(stream.alloc::<u8>(workspace_size.max(1))?)
-            } else {
-                None
-            };
+            let mut workspace =
+                if workspace_size > 0 { Some(stream.alloc::<u8>(workspace_size)?) } else { None };
             let input_transmuted = input.transmute::<f32>(input.len() / size_of::<f32>()).unwrap();
             let weights_transmuted =
                 weights.transmute::<f32>(weights.len() / size_of::<f32>()).unwrap();
