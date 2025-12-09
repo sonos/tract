@@ -33,17 +33,22 @@ impl ConvKernel for ConvCudnn {
         let input_shape = op.pool_spec.data_format.shape(input.shape())?;
         let output_shape = op.pool_spec.data_format.shape(output.shape())?;
         let ctx = cuda_context();
-        ensure!(input_shape.hw_rank() >= 2);
+        ensure!(input_shape.hw_rank() <= 6);
 
         let cudnn = stream.cudnn();
-        let pads = op
+        let mut pads = op
             .pool_spec
             .computed_padding(input_shape.hw_dims())
             .iter()
             .map(|p| p.pad_before as i32)
             .collect_vec();
-        let strides = op.pool_spec.strides().iter().map(|s| *s as i32).collect_vec();
-        let dilations = op.pool_spec.dilations().iter().map(|d| *d as i32).collect_vec();
+        let mut strides = op.pool_spec.strides().iter().map(|s| *s as i32).collect_vec();
+        let mut dilations = op.pool_spec.dilations().iter().map(|d| *d as i32).collect_vec();
+        if input_shape.hw_rank() == 1 {
+            strides.push(1);
+            dilations.push(1);
+            pads.push(0);
+        }
         let mut conv_descriptor = cudnn
             .create_convnd::<f32>(
                 &pads,
@@ -54,10 +59,16 @@ impl ConvKernel for ConvCudnn {
             .context("in create_conv2d")?;
         conv_descriptor.set_group_count(op.group as i32);
         let mut input_dims = input_shape.hw_dims().iter().map(|d| *d as i32).collect_vec();
+        if input_dims.len() == 1 {
+            input_dims.push(1);
+        }
         input_dims.insert(0, *input_shape.n().unwrap() as i32);
         input_dims.insert(1, *input_shape.c() as i32);
 
         let mut input_strides = input_shape.hw_strides().iter().map(|s| *s as i32).collect_vec();
+        if input_strides.len() == 1 {
+            input_strides.push(*input_shape.w_stride() as i32);
+        }
         input_strides.insert(0, *input_shape.n_stride().unwrap() as i32);
         input_strides.insert(1, *input_shape.c_stride() as i32);
 
@@ -70,7 +81,10 @@ impl ConvKernel for ConvCudnn {
         let input_descriptor = cudnn
             .create_nd_tensor::<f32>(&input_dims, &input_strides)
             .context("in created_4d_tensor for input")?;
-        let filter_dims = weights.shape().iter().map(|d| *d as i32).collect_vec();
+        let mut filter_dims = weights.shape().iter().map(|d| *d as i32).collect_vec();
+        if filter_dims.len() == 3 {
+            filter_dims.push(1);
+        }
         let filter_descriptor = cudnn
             .create_nd_filter::<f32>(
                 cudarc::cudnn::sys::cudnnTensorFormat_t::CUDNN_TENSOR_NCHW,
@@ -79,10 +93,16 @@ impl ConvKernel for ConvCudnn {
             .context("in created_4d_tensor for filter")?;
 
         let mut output_dims = output_shape.hw_dims().iter().map(|d| *d as i32).collect_vec();
+        if output_dims.len() == 1 {
+            output_dims.push(1);
+        }
         output_dims.insert(0, *output_shape.n().unwrap() as i32);
         output_dims.insert(1, *output_shape.c() as i32);
 
         let mut output_strides = output_shape.hw_strides().iter().map(|s| *s as i32).collect_vec();
+        if output_strides.len() == 1 {
+            output_strides.push(*output_shape.w_stride() as i32);
+        }
         output_strides.insert(0, *output_shape.n_stride().unwrap() as i32);
         output_strides.insert(1, *output_shape.c_stride() as i32);
 
