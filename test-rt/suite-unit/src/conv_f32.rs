@@ -737,6 +737,21 @@ pub fn suite() -> TractResult<TestSuite> {
     );
 
     suite.add(
+        "bias_dil_0",
+        ConvProblem {
+            shape_in: DataFormat::NCHW.from_n_c_hw(1, 1, [4, 2])?,
+            kernel_format: KernelFormat::OIHW,
+            group: 1,
+            kernel: ArrayD::<f32>::zeros(vec![1, 1, 4, 1]),
+            data: ArrayD::<f32>::zeros(vec![1, 1, 4, 2]),
+            bias: Some(arr1(&[1.0]).into_dyn()),
+            pad: PaddingSpec::Valid,
+            strides: tvec!(1, 1),
+            dilations: tvec!(2, 1),
+        },
+    );
+
+    suite.add(
         "bias_chw_0",
         ConvProblem {
             shape_in: DataFormat::CHW.from_n_c_hw(1, 1, [3])?,
@@ -1583,6 +1598,21 @@ pub fn suite() -> TractResult<TestSuite> {
             pad: PaddingSpec::Valid,
             strides: tvec!(1),
             dilations: tvec!(1),
+        },
+    );
+
+    suite.add(
+        "bug_cuda_0",
+        ConvProblem {
+            shape_in: DataFormat::NCHW.from_n_c_hw(1, 1, [3, 2])?,
+            kernel_format: KernelFormat::OIHW,
+            group: 1,
+            kernel: ArrayD::<f32>::zeros(vec![1, 1, 3, 1]),
+            data: ArrayD::<f32>::zeros(vec![1, 1, 3, 2]),
+            bias: Some(arr1(&[1.0]).into_dyn()),
+            pad: PaddingSpec::Valid,
+            strides: tvec!(3, 1),
+            dilations: tvec!(3, 1),
         },
     );
 
