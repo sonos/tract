@@ -17,7 +17,6 @@ pub fn wire_cuda_conv(
     let data_shape = op.pool_spec.data_format.shape(&facts[0].shape)?;
     if facts.iter().all(|f| f.datum_type.is::<f32>())
         && data_shape.hw_rank() == 2
-        && !op.pool_spec.data_format.c_is_last()
         && op
             .pool_spec
             .computed_padding(data_shape.hw_dims())
