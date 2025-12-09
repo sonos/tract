@@ -33,7 +33,7 @@ impl ConvKernel for ConvCudnn {
         let input_shape = op.pool_spec.data_format.shape(input.shape())?;
         let output_shape = op.pool_spec.data_format.shape(output.shape())?;
         let ctx = cuda_context();
-        ensure!(input_shape.hw_rank() == 2);
+        ensure!(input_shape.hw_rank() >= 2);
 
         let cudnn = stream.cudnn();
         let pads = op
@@ -45,10 +45,10 @@ impl ConvKernel for ConvCudnn {
         let strides = op.pool_spec.strides().iter().map(|s| *s as i32).collect_vec();
         let dilations = op.pool_spec.dilations().iter().map(|d| *d as i32).collect_vec();
         let mut conv_descriptor = cudnn
-            .create_conv2d::<f32>(
-                [pads[0], pads[1]],
-                [strides[0], strides[1]],
-                [dilations[0], dilations[1]],
+            .create_convnd::<f32>(
+                &pads,
+                &strides,
+                &dilations,
                 cudarc::cudnn::sys::cudnnConvolutionMode_t::CUDNN_CROSS_CORRELATION,
             )
             .context("in create_conv2d")?;
@@ -57,34 +57,37 @@ impl ConvKernel for ConvCudnn {
         input_dims.insert(0, *input_shape.n().unwrap() as i32);
         input_dims.insert(1, *input_shape.c() as i32);
 
-        let fmt = if op.pool_spec.data_format.c_is_last() {
-            cudarc::cudnn::sys::cudnnTensorFormat_t::CUDNN_TENSOR_NHWC
-        } else {
-            cudarc::cudnn::sys::cudnnTensorFormat_t::CUDNN_TENSOR_NCHW
-        };
+        let mut input_strides = input_shape.hw_strides().iter().map(|s| *s as i32).collect_vec();
+        input_strides.insert(0, *input_shape.n_stride().unwrap() as i32);
+        input_strides.insert(1, *input_shape.c_stride() as i32);
+
+        // let fmt = if op.pool_spec.data_format.c_is_last() {
+        //     cudarc::cudnn::sys::cudnnTensorFormat_t::CUDNN_TENSOR_NHWC
+        // } else {
+        //     cudarc::cudnn::sys::cudnnTensorFormat_t::CUDNN_TENSOR_NCHW
+        // };
 
         let input_descriptor = cudnn
-            .create_4d_tensor::<f32>(
-                fmt,
-                [input_dims[0], input_dims[1], input_dims[2], input_dims[3]],
-            )
+            .create_nd_tensor::<f32>(&input_dims, &input_strides)
             .context("in created_4d_tensor for input")?;
         let filter_dims = weights.shape().iter().map(|d| *d as i32).collect_vec();
         let filter_descriptor = cudnn
-            .create_4d_filter::<f32>(
+            .create_nd_filter::<f32>(
                 cudarc::cudnn::sys::cudnnTensorFormat_t::CUDNN_TENSOR_NCHW,
-                [filter_dims[0], filter_dims[1], filter_dims[2], filter_dims[3]],
+                &filter_dims,
             )
             .context("in created_4d_tensor for filter")?;
 
         let mut output_dims = output_shape.hw_dims().iter().map(|d| *d as i32).collect_vec();
         output_dims.insert(0, *output_shape.n().unwrap() as i32);
         output_dims.insert(1, *output_shape.c() as i32);
+
+        let mut output_strides = output_shape.hw_strides().iter().map(|s| *s as i32).collect_vec();
+        output_strides.insert(0, *output_shape.n_stride().unwrap() as i32);
+        output_strides.insert(1, *output_shape.c_stride() as i32);
+
         let output_descriptor = cudnn
-            .create_4d_tensor::<f32>(
-                fmt,
-                [output_dims[0], output_dims[1], output_dims[2], output_dims[3]],
-            )
+            .create_nd_tensor::<f32>(&output_dims, &output_strides)
             .context("in created_4d_tensor for output")?;
 
         let conv_2d = ConvForward {
