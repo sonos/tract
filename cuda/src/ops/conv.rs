@@ -1,34 +1,65 @@
 use crate::context::CUDA_STREAM;
 use crate::kernels::conv::{ConvGeneric, ConvKernel};
 use crate::kernels::conv_cudnn::ConvCudnn;
+use crate::ops::{CudaAxisOp, CudaBinOp};
 use num_traits::One;
 use tract_core::internal::*;
 use tract_core::ops::cnn::Conv;
 use tract_core::ops::nn::DataFormat;
 use tract_gpu::tensor::DeviceTensorExt;
 
-pub fn cuda_conv(model: &TypedModel, node: &TypedNode, op: &Conv) -> TractResult<Option<CudaConv>> {
-    let facts = model.node_input_facts(node.id)?;
-    if facts.iter().all(|f| f.datum_type.is::<f32>()) && facts[1].rank() <= 6 {
+pub fn wire_cuda_conv(
+    source: &TypedModel,
+    node: &TypedNode,
+    target: &mut TypedModel,
+    inputs: &[OutletId],
+    op: &Conv,
+) -> TractResult<TVec<OutletId>> {
+    let facts = source.node_input_facts(node.id)?;
+    let data_shape = op.pool_spec.data_format.shape(&facts[0].shape)?;
+    if facts.iter().all(|f| f.datum_type.is::<f32>())
+        && facts[1].rank() <= 6
+        && facts[0].rank() == 4
+        && facts[1].rank() == 4
+        && op.pool_spec.data_format == DataFormat::NCHW
+        && op.pool_spec.dilations().iter().all(|d| d.is_one())
+        && op
+            .pool_spec
+            .computed_padding(data_shape.hw_dims())
+            .iter()
+            .all(|paddings| paddings.pad_before == paddings.pad_after)
+    {
+        let prefix = &node.name;
         let bias = &facts[2];
-        if facts[0].rank() == 4
-            && facts[1].rank() == 4
-            && op.pool_spec.data_format == DataFormat::NCHW
-            && bias.konst.is_some()
-            && bias.konst.as_ref().unwrap().is_all_zero()?
-            && op.pool_spec.dilations().iter().all(|d| d.is_one())
-            && op
-                .pool_spec
-                .computed_padding(op.pool_spec.data_format.shape(&facts[0].shape)?.hw_dims())
-                .iter()
-                .all(|paddings| paddings.pad_before == paddings.pad_after)
-        {
-            Ok(Some(CudaConv { op: op.clone(), kernel: Box::new(ConvCudnn) }))
-        } else {
-            Ok(Some(CudaConv { op: op.clone(), kernel: Box::new(ConvGeneric) }))
+        let need_bias = !(bias.konst.is_some() && bias.konst.as_ref().unwrap().is_all_zero()?);
+        let conv_name = format!("{prefix}.conv");
+        let mut conv_wire = target.wire_node(
+            if need_bias { &conv_name } else { &node.name },
+            CudaConv { op: op.clone(), kernel: Box::new(ConvCudnn) },
+            &inputs[0..2],
+        )?[0];
+        if need_bias {
+            let mut needed_shape = tvec![1.to_dim(); node.outputs[0].fact.rank()];
+            needed_shape[data_shape.c_axis()] = op.pool_spec.output_channels.to_dim();
+            dbg!(bias, &needed_shape);
+            let reshaped = target.wire_node(
+                format!("{prefix}.bias_reshaped"),
+                CudaAxisOp(AxisOp::Reshape(0, bias.shape.to_tvec(), needed_shape)),
+                &[inputs[2]],
+            )?[0];
+            conv_wire = target.wire_node(
+                prefix,
+                CudaBinOp(crate::kernels::BinOps::Add),
+                &[conv_wire, reshaped],
+            )?[0];
         }
+        Ok(tvec!(conv_wire))
     } else {
-        Ok(None)
+        target.wire_node(
+            &node.name,
+            CudaConv { op: op.clone(), kernel: Box::new(ConvGeneric) },
+            &inputs,
+        )
     }
 }
 
@@ -80,7 +111,7 @@ impl EvalOp for CudaConv {
                     stream,
                     inputs[0],
                     inputs[1],
-                    Some(inputs[2]),
+                    inputs.get(2).cloned(),
                     &output,
                 )
             })?;
@@ -93,9 +124,14 @@ impl TypedOp for CudaConv {
     as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        tract_gpu::utils::facts_to_device_facts(inputs, |facts| self.op.output_facts(facts))
-            .with_context(|| {
-                format!("Error while computing facts for Conv/{:?}", self.kernel.name())
-            })
+        tract_gpu::utils::facts_to_device_facts(inputs, |facts| {
+            let zero = facts[0].datum_type.scalar_fact();
+            let mut facts: TVec<&TypedFact> = facts.into();
+            if facts.len() == 2 {
+                facts.push(&zero);
+            }
+            self.op.output_facts(&*facts)
+        })
+        .with_context(|| format!("Error while computing facts for Conv/{:?}", self.kernel.name()))
     }
 }
