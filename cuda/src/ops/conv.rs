@@ -30,7 +30,7 @@ pub fn wire_cuda_conv(
         let conv_name = format!("{prefix}.conv");
         let mut conv_wire = target.wire_node(
             if need_bias { &conv_name } else { &node.name },
-            CudaConv { op: op.clone(), kernel: Box::new(ConvCudnn) },
+            CudaConv { op: op.clone(), kernel: Box::new(ConvCudnn::new()) },
             &inputs[0..2],
         )?[0];
         if need_bias {
@@ -101,6 +101,7 @@ impl EvalOp for CudaConv {
         if output.len() > 0 {
             CUDA_STREAM.with(|stream| {
                 self.kernel.dispatch(
+                    node_id,
                     &self.op,
                     stream,
                     inputs[0],

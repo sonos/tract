@@ -12,6 +12,7 @@ pub trait ConvKernel: 'static + Send + Sync + Debug + DynClone {
     fn name(&self) -> StaticName;
     fn dispatch(
         &self,
+        node_id: usize,
         op: &Conv,
         stream: &TractCudaStream,
         input: &DeviceTensor,
@@ -32,6 +33,7 @@ impl ConvKernel for ConvGeneric {
 
     fn dispatch(
         &self,
+        _node_id: usize,
         op: &Conv,
         stream: &TractCudaStream,
         input: &DeviceTensor,

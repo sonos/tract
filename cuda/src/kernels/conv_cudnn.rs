@@ -1,37 +1,43 @@
 use crate::context::{cuda_context, TractCudaStream};
 use crate::kernels::conv::ConvKernel;
 use crate::kernels::{get_cuda_view, get_cuda_view_mut, WARP_SIZE};
-use cudarc::cudnn::ConvForward;
-use cudarc::driver::{LaunchArgs, LaunchConfig, PushKernelArg};
+use cudarc::cudnn::{ConvDescriptor, ConvForward, FilterDescriptor, TensorDescriptor};
+use cudarc::driver::{CudaStream, LaunchArgs, LaunchConfig, PushKernelArg};
 use std::fmt::Debug;
+use std::sync::Weak;
+use std::thread::LocalKey;
+use thread_local::ThreadLocal;
 use tract_core::dyn_clone::{self, DynClone};
 use tract_core::internal::*;
 use tract_core::ops::cnn::{Conv, KernelFormat};
 use tract_core::tract_data::itertools::Itertools;
 use tract_gpu::tensor::DeviceTensor;
 
-#[derive(Hash, Clone, Debug)]
-pub struct ConvCudnn;
+#[derive(Debug)]
+struct CudnnConvDescriptors {
+    stream: Weak<CudaStream>,
+    conv: ConvDescriptor<f32>,
+    x: TensorDescriptor<f32>,
+    w: FilterDescriptor<f32>,
+    y: TensorDescriptor<f32>,
+    algo: cudarc::cudnn::sys::cudnnConvolutionFwdAlgo_t,
+    workspace_size: usize,
+}
 
-impl ConvKernel for ConvCudnn {
-    fn name(&self) -> StaticName {
-        "ConvCudnn".into()
-    }
+unsafe impl Send for CudnnConvDescriptors {}
 
-    fn dispatch(
-        &self,
-        op: &Conv,
+impl CudnnConvDescriptors {
+    fn new(
         stream: &TractCudaStream,
-        input: &DeviceTensor,
-        weights: &DeviceTensor,
-        bias: Option<&DeviceTensor>,
-        output: &DeviceTensor,
-    ) -> TractResult<()> {
-        ensure!(bias.is_none());
+        op: &Conv,
+        input_shape_array: &[usize],
+        weight_shape_array: &[usize],
+        output_shape_array: &[usize],
+    ) -> TractResult<CudnnConvDescriptors> {
         ensure!(op.pool_spec.data_format.has_n());
         ensure!(op.kernel_fmt == KernelFormat::OIHW);
-        let input_shape = op.pool_spec.data_format.shape(input.shape())?;
-        let output_shape = op.pool_spec.data_format.shape(output.shape())?;
+        let input_shape = op.pool_spec.data_format.shape(input_shape_array)?;
+        let output_shape = op.pool_spec.data_format.shape(output_shape_array)?;
         let ctx = cuda_context();
         ensure!(input_shape.hw_rank() <= 6);
 
@@ -81,7 +87,7 @@ impl ConvKernel for ConvCudnn {
         let input_descriptor = cudnn
             .create_nd_tensor::<f32>(&input_dims, &input_strides)
             .context("in created_4d_tensor for input")?;
-        let mut filter_dims = weights.shape().iter().map(|d| *d as i32).collect_vec();
+        let mut filter_dims = weight_shape_array.iter().map(|d| *d as i32).collect_vec();
         if filter_dims.len() == 3 {
             filter_dims.push(1);
         }
@@ -110,31 +116,86 @@ impl ConvKernel for ConvCudnn {
             .create_nd_tensor::<f32>(&output_dims, &output_strides)
             .context("in created_4d_tensor for output")?;
 
-        let conv_2d = ConvForward {
+        let conv = ConvForward {
             conv: &conv_descriptor,
             x: &input_descriptor,
             w: &filter_descriptor,
             y: &output_descriptor,
         };
 
+        let algo = cudarc::cudnn::sys::cudnnConvolutionFwdAlgo_t::CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM;
+        let workspace_size = conv.get_workspace_size(algo).context("in get_workspace_size()")?;
+
+        Ok(CudnnConvDescriptors {
+            stream: Arc::downgrade(stream),
+            x: input_descriptor,
+            w: filter_descriptor,
+            y: output_descriptor,
+            conv: conv_descriptor,
+            algo,
+            workspace_size,
+        })
+    }
+}
+
+#[derive(Debug)]
+pub struct ConvCudnn {
+    cache: ThreadLocal<CudnnConvDescriptors>,
+}
+
+impl Clone for ConvCudnn {
+    fn clone(&self) -> Self {
+        ConvCudnn::new()
+    }
+}
+
+impl ConvCudnn {
+    pub fn new() -> ConvCudnn {
+        ConvCudnn { cache: ThreadLocal::new() }
+    }
+}
+
+impl ConvKernel for ConvCudnn {
+    fn name(&self) -> StaticName {
+        "ConvCudnn".into()
+    }
+
+    fn dispatch(
+        &self,
+        node_id: usize,
+        op: &Conv,
+        stream: &TractCudaStream,
+        input: &DeviceTensor,
+        weights: &DeviceTensor,
+        bias: Option<&DeviceTensor>,
+        output: &DeviceTensor,
+    ) -> TractResult<()> {
+        ensure!(bias.is_none());
+
+        let conv = self.cache.get_or_try(|| {
+            CudnnConvDescriptors::new(stream, op, input.shape(), weights.shape(), output.shape())
+        })?;
+
         let input = get_cuda_view(input);
         let weights = get_cuda_view(weights);
         let mut output = get_cuda_view_mut(output);
 
-        let algo = conv_2d.pick_algorithm().context("in pick_algorightm")?;
-        let workspace_size = conv_2d.get_workspace_size(algo).context("in get_workspace_size()")?;
+        let conv_forward = ConvForward { conv: &conv.conv, x: &conv.x, w: &conv.w, y: &conv.y };
 
         unsafe {
-            let mut workspace =
-                if workspace_size > 0 { Some(stream.alloc::<u8>(workspace_size)?) } else { None };
+            let mut workspace = if conv.workspace_size > 0 {
+                Some(stream.alloc::<u8>(conv.workspace_size)?)
+            } else {
+                None
+            };
             let input_transmuted = input.transmute::<f32>(input.len() / size_of::<f32>()).unwrap();
             let weights_transmuted =
                 weights.transmute::<f32>(weights.len() / size_of::<f32>()).unwrap();
             let mut output_transmuted =
                 output.transmute_mut::<f32>(output.len() / size_of::<f32>()).unwrap();
-            conv_2d
+            conv_forward
                 .launch(
-                    algo,
+                    conv.algo,
                     workspace.as_mut().map(|w| w.as_view_mut()).as_mut(),
                     (1.0, 0.0),
                     &input_transmuted,
