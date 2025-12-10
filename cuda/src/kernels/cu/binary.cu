@@ -64,42 +64,61 @@ static __device__ __forceinline__ bool op_or(const bool a, const bool b) {
 }
 
 #define DEFINE_BINARY_KERNEL(name, tname, T_in, T_out, OP)                     \
-  extern "C" __global__ void name##_##tname(                                   \
-      const T_in *a, const T_in *b, T_out *out, int32_t b_shape_0, int32_t b_shape_1,  \
-      int32_t b_shape_2, int32_t b_shape_3, int32_t out_shape_0, int32_t out_shape_1,          \
-      int32_t out_shape_2, int32_t out_shape_3, int32_t a_strides_0, int32_t a_strides_1,      \
-      int32_t a_strides_2, int32_t a_strides_3, int32_t b_strides_0, int32_t b_strides_1,      \
-      int32_t b_strides_2, int32_t b_strides_3, int32_t o_strides_0, int32_t o_strides_1,      \
-      int32_t o_strides_2, int32_t out_strides_3) {                                    \
-    const int thread_ix_x = blockDim.x * blockIdx.x + threadIdx.x;             \
-    const int thread_ix_y = (blockDim.y * blockIdx.y + threadIdx.y);           \
-    const int thread_ix_z =                                                    \
-        (blockDim.z * blockIdx.z + threadIdx.z) / out_shape_0;                 \
-    const int thread_ix_b =                                                    \
-        (blockDim.z * blockIdx.z + threadIdx.z) % out_shape_0;                 \
-                                                                               \
-    if (thread_ix_x >= out_shape_3 || thread_ix_y >= out_shape_2 ||            \
-        thread_ix_z >= out_shape_1 || thread_ix_b >= out_shape_0) {            \
-      return;                                                                  \
-    }                                                                          \
-                                                                               \
-    const size_t i_a = thread_ix_b * a_strides_0 + thread_ix_z * a_strides_1 + \
-                       thread_ix_y * a_strides_2;                              \
-    const size_t i_b = thread_ix_b * b_strides_0 + thread_ix_z * b_strides_1 + \
-                       thread_ix_y * b_strides_2;                              \
-    const size_t i_out = thread_ix_b * o_strides_0 +                           \
-                         thread_ix_z * o_strides_1 +                           \
-                         thread_ix_y * o_strides_2;                            \
-                                                                               \
-    const T_in *a_row = a + i_a;                                               \
-    const T_in *b_row = b + i_b;                                               \
-    T_out *out_row = out + i_out;                                              \
-                                                                               \
-    for (int i0 = thread_ix_x; i0 < out_shape_3;                               \
-         i0 += blockDim.x * gridDim.x) {                                       \
-      out_row[i0] = OP(a_row[i0 * a_strides_3], b_row[i0 * b_strides_3]);      \
-    }                                                                          \
-  }
+  extern "C" __global__ \
+  void name##_##tname( \
+      const T_in* __restrict__ a, \
+      const T_in* __restrict__ b, \
+      T_out* __restrict__ out, \
+      int32_t b_shape_0, int32_t b_shape_1, \
+      int32_t b_shape_2, int32_t b_shape_3, \
+      int32_t out_shape_0, int32_t out_shape_1, \
+      int32_t out_shape_2, int32_t out_shape_3, \
+      int32_t a_strides_0, int32_t a_strides_1, \
+      int32_t a_strides_2, int32_t a_strides_3, \
+      int32_t b_strides_0, int32_t b_strides_1, \
+      int32_t b_strides_2, int32_t b_strides_3, \
+      int32_t o_strides_0, int32_t o_strides_1, \
+      int32_t o_strides_2, int32_t o_strides_3) { \
+ \
+    const int32_t n0 = out_shape_0; \
+    const int32_t n1 = out_shape_1; \
+    const int32_t n2 = out_shape_2; \
+    const int32_t n3 = out_shape_3; \
+ \
+    const int32_t total = n0 * n1 * n2 * n3; \
+ \
+    for (int32_t linear_idx = blockIdx.x * blockDim.x + threadIdx.x; \
+        linear_idx < total; \
+        linear_idx += (int32_t)blockDim.x * gridDim.x) { \
+ \
+      int32_t tmp = linear_idx; \
+ \
+      const int32_t i3 = tmp % n3; tmp /= n3; \
+      const int32_t i2 = tmp % n2; tmp /= n2; \
+      const int32_t i1 = tmp % n1; tmp /= n1; \
+      const int32_t i0 = tmp; \
+ \
+      const int32_t ia = \
+          i0 * a_strides_0 + \
+          i1 * a_strides_1 + \
+          i2 * a_strides_2 + \
+          i3 * a_strides_3; \
+ \
+      const int32_t ib = \
+          i0 * b_strides_0 + \
+          i1 * b_strides_1 + \
+          i2 * b_strides_2 + \
+          i3 * b_strides_3; \
+ \
+      const int32_t io = \
+          i0 * o_strides_0 + \
+          i1 * o_strides_1 + \
+          i2 * o_strides_2 + \
+          i3 * o_strides_3; \
+ \
+      out[io] = OP(a[ia], b[ib]); \
+    } \
+  } \
 
 #define DEFINE_ARITHMETIC_OP(name, OP)                                         \
   DEFINE_BINARY_KERNEL(name, f32, float, float, OP)                            \
