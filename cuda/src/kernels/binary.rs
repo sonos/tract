@@ -8,6 +8,8 @@ use crate::kernels::launch_args::TractLaunchArgs;
 use crate::kernels::utils::compute_broadcast_strides;
 use crate::kernels::{LibraryName, MAX_THREADS, get_cuda_view};
 
+static BINARY_MAX_RANK: usize = 5;
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum BinOps {
     Mul,
@@ -234,23 +236,28 @@ impl BinOps {
         rhs: &DeviceTensor,
         output: &DeviceTensor,
     ) -> TractResult<()> {
-        ensure!(lhs.rank() == rhs.rank());
+        let rank = lhs.rank();
+        ensure!(rank == rhs.rank());
+        ensure!(rank <= BINARY_MAX_RANK);
 
         let kernel_name = self.kernel_name(lhs.datum_type())?;
 
-        let (lhs_shape, rhs_shape, out_shape) =
-            Self::reshape_to_rank_4_with_broadcast(lhs.shape(), rhs.shape(), output.shape())?;
-
-        let lhs_strides =
-            compute_broadcast_strides::<usize>(&lhs_shape, &natural_strides(&lhs_shape))?;
-        let rhs_strides =
-            compute_broadcast_strides::<usize>(&rhs_shape, &natural_strides(&rhs_shape))?;
-        let out_strides =
-            compute_broadcast_strides::<usize>(&out_shape, &natural_strides(&out_shape))?;
-
         let func = cuda_context().load_pipeline(LibraryName::Binary, kernel_name)?;
 
-        let out_shape = out_shape; // [n0, n1, n2, n3]
+        let mut lhs_shape = [1usize; BINARY_MAX_RANK];
+        let mut rhs_shape = [1usize; BINARY_MAX_RANK];
+        let mut out_shape = [1usize; BINARY_MAX_RANK];
+        let mut lhs_strides = [0isize; BINARY_MAX_RANK];
+        let mut rhs_strides = [0isize; BINARY_MAX_RANK];
+        let mut out_strides = [0isize; BINARY_MAX_RANK];
+    
+        lhs_shape[..rank].copy_from_slice(lhs.shape());
+        rhs_shape[..rank].copy_from_slice(rhs.shape());
+        out_shape[..rank].copy_from_slice(output.shape());
+        lhs_strides[..rank].copy_from_slice(lhs.strides());
+        rhs_strides[..rank].copy_from_slice(rhs.strides());
+        out_strides[..rank].copy_from_slice(output.strides());
+
         let total_elems: usize = out_shape.iter().product();
 
         let block_dim_x = 256;
