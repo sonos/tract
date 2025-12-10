@@ -250,19 +250,15 @@ impl BinOps {
 
         let func = cuda_context().load_pipeline(LibraryName::Binary, kernel_name)?;
 
-        let half_inner_ax = (out_shape[3] / 2).max(1);
-        let block_dim_x = half_inner_ax.min(MAX_THREADS);
-        let block_dim_y = out_shape[2].min(MAX_THREADS / block_dim_x);
-        let block_dim_z =
-            (out_shape[1] * out_shape[0]).min(MAX_THREADS / (block_dim_x * block_dim_y)).min(64);
+        let out_shape = out_shape; // [n0, n1, n2, n3]
+        let total_elems: usize = out_shape.iter().product();
+
+        let block_dim_x: u32 = 256;
+        let grid_dim_x: u32 = ((total_elems + block_dim_x as usize - 1) / block_dim_x as usize) as u32;
 
         let cfg = LaunchConfig {
-            grid_dim: (
-                half_inner_ax.div_ceil(block_dim_x) as _,
-                out_shape[2].div_ceil(block_dim_y) as _,
-                (out_shape[0] * out_shape[1]).div_ceil(block_dim_z) as _,
-            ),
-            block_dim: (block_dim_x as _, block_dim_y as _, block_dim_z as _),
+            grid_dim: (grid_dim_x, 1, 1),
+            block_dim: (block_dim_x, 1, 1),
             shared_mem_bytes: 0,
         };
 
