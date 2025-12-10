@@ -253,12 +253,12 @@ impl BinOps {
         let out_shape = out_shape; // [n0, n1, n2, n3]
         let total_elems: usize = out_shape.iter().product();
 
-        let block_dim_x: u32 = 256;
-        let grid_dim_x: u32 = ((total_elems + block_dim_x as usize - 1) / block_dim_x as usize) as u32;
+        let block_dim_x = 256;
+        let grid_dim_x = total_elems.div_ceil(block_dim_x) as u32;
 
         let cfg = LaunchConfig {
             grid_dim: (grid_dim_x, 1, 1),
-            block_dim: (block_dim_x, 1, 1),
+            block_dim: (block_dim_x as _, 1, 1),
             shared_mem_bytes: 0,
         };
 
