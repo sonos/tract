@@ -250,12 +250,21 @@ impl BinOps {
         let mut lhs_strides = [0isize; BINARY_MAX_RANK];
         let mut rhs_strides = [0isize; BINARY_MAX_RANK];
         let mut out_strides = [0isize; BINARY_MAX_RANK];
-    
+
         lhs_shape[..rank].copy_from_slice(lhs.shape());
         rhs_shape[..rank].copy_from_slice(rhs.shape());
         out_shape[..rank].copy_from_slice(output.shape());
-        lhs_strides[..rank].copy_from_slice(lhs.strides());
-        rhs_strides[..rank].copy_from_slice(rhs.strides());
+
+        let base_l_strides = lhs.strides();
+        let base_r_strides = rhs.strides();
+        let base_o_strides = output.strides();
+        for i in 0..rank {
+            lhs_strides[i] =
+                if lhs_shape[i] == 1 && rhs_shape[i] != 1 { 0 } else { base_l_strides[i] };
+
+            rhs_strides[i] =
+                if rhs_shape[i] == 1 && lhs_shape[i] != 1 { 0 } else { base_r_strides[i] };
+        }
         out_strides[..rank].copy_from_slice(output.strides());
 
         let total_elems: usize = out_shape.iter().product();
