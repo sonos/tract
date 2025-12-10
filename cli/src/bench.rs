@@ -129,7 +129,7 @@ pub fn handle(
 
     let inputs = get_or_make_inputs(state.model(), &run_params)?;
 
-    limits.warmup(state.model(), &inputs)?;
+    limits.warmup(state.plan(), &inputs)?;
     let (iters, dur) = bench(&mut state, sub_matches, inputs, limits, probe)?;
 
     if params.machine_friendly {

@@ -1,5 +1,5 @@
-use crate::Parameters;
 use crate::bench::{bench, make_state};
+use crate::Parameters;
 use float_ord::FloatOrd;
 use readings_probe::Probe;
 use std::time::{Duration, Instant};
@@ -46,7 +46,7 @@ pub fn bench_pp(
     run_params.symbols.set(&p.unwrap(), 0);
     run_params.symbols.set(&s.unwrap(), pp as i64);
     let inputs = get_or_make_inputs(model, &run_params)?;
-    limits.warmup(model, &inputs)?;
+    limits.warmup(state.plan(), &inputs)?;
 
     let inputs = get_or_make_inputs(model, &run_params)?;
 
@@ -83,7 +83,8 @@ pub fn bench_tg(
     // Warmup
     if !limits.warmup_loops.is_zero() || !limits.warmup_time.is_zero() {
         let mut iters = 0;
-        let max_loops = if limits.warmup_loops.is_zero() { usize::MAX } else { limits.warmup_loops };
+        let max_loops =
+            if limits.warmup_loops.is_zero() { usize::MAX } else { limits.warmup_loops };
         let max_time =
             if limits.warmup_time.is_zero() { Duration::MAX } else { limits.warmup_time };
         let start_warmup = Instant::now();
