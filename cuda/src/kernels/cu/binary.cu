@@ -70,22 +70,23 @@ static __device__ __forceinline__ bool op_or(const bool a, const bool b) {
       const T_in* __restrict__ b, \
       T_out* __restrict__ out, \
       int32_t b_shape_0, int32_t b_shape_1, \
-      int32_t b_shape_2, int32_t b_shape_3, \
+      int32_t b_shape_2, int32_t b_shape_3, int32_t b_shape_4, \
       int32_t out_shape_0, int32_t out_shape_1, \
-      int32_t out_shape_2, int32_t out_shape_3, \
+      int32_t out_shape_2, int32_t out_shape_3, int32_t out_shape_4, \
       int32_t a_strides_0, int32_t a_strides_1, \
-      int32_t a_strides_2, int32_t a_strides_3, \
+      int32_t a_strides_2, int32_t a_strides_3, int32_t a_strides_4, \
       int32_t b_strides_0, int32_t b_strides_1, \
-      int32_t b_strides_2, int32_t b_strides_3, \
+      int32_t b_strides_2, int32_t b_strides_3, int32_t b_strides_4, \
       int32_t o_strides_0, int32_t o_strides_1, \
-      int32_t o_strides_2, int32_t o_strides_3) { \
+      int32_t o_strides_2, int32_t o_strides_3, int32_t o_strides_4) { \
  \
     const int32_t n0 = out_shape_0; \
     const int32_t n1 = out_shape_1; \
     const int32_t n2 = out_shape_2; \
     const int32_t n3 = out_shape_3; \
+    const int32_t n4 = out_shape_4; \
  \
-    const int32_t total = n0 * n1 * n2 * n3; \
+    const int32_t total = n0 * n1 * n2 * n3 * n4; \
  \
     for (int32_t linear_idx = blockIdx.x * blockDim.x + threadIdx.x; \
         linear_idx < total; \
@@ -93,6 +94,7 @@ static __device__ __forceinline__ bool op_or(const bool a, const bool b) {
  \
       int32_t tmp = linear_idx; \
  \
+      const int32_t i4 = tmp % n4; tmp /= n4; \
       const int32_t i3 = tmp % n3; tmp /= n3; \
       const int32_t i2 = tmp % n2; tmp /= n2; \
       const int32_t i1 = tmp % n1; tmp /= n1; \
@@ -102,19 +104,22 @@ static __device__ __forceinline__ bool op_or(const bool a, const bool b) {
           i0 * a_strides_0 + \
           i1 * a_strides_1 + \
           i2 * a_strides_2 + \
-          i3 * a_strides_3; \
+          i3 * a_strides_3 + \
+          i4 * a_strides_4; \
  \
       const int32_t ib = \
           i0 * b_strides_0 + \
           i1 * b_strides_1 + \
           i2 * b_strides_2 + \
-          i3 * b_strides_3; \
+          i3 * b_strides_3 + \
+          i4 * b_strides_4; \
  \
       const int32_t io = \
           i0 * o_strides_0 + \
           i1 * o_strides_1 + \
           i2 * o_strides_2 + \
-          i3 * o_strides_3; \
+          i3 * o_strides_3 + \
+          i4 * o_strides_4; \
  \
       out[io] = OP(a[ia], b[ib]); \
     } \
