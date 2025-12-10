@@ -23,10 +23,19 @@ ndarray-npy.workspace = true
 tokio-scoped = "0.2.0"
 rand.workspace = true
 aws-sdk-bedrockruntime = "=1.95.0"
-aws-config = "=1.8.1"
-aws-sdk-sso = "=1.74.0"
-aws-sdk-ssooidc = "=1.75.0"
-aws-sdk-sts = "=1.76.0"
+aws-config = "=1.8.8"
+aws-credential-types = "=1.2.8"
+aws-sdk-sso = "=1.86.0"
+aws-sdk-ssooidc = "=1.88.0"
+aws-sdk-sts = "=1.88.0"
+aws-smithy-async = "=1.2.6"
+aws-smithy-http = "=0.62.4"
+aws-smithy-json = "=0.60.6"
+aws-smithy-query = "=0.60.8"
+aws-smithy-types = "=1.3.4"
+aws-smithy-eventstream = "=0.60.13"
+aws-smithy-xml = "=0.60.12"
+
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
 tract-metal.workspace = true
