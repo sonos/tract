@@ -68,7 +68,10 @@ impl BinOps {
         Self::ALL
             .into_iter()
             .flat_map(|op| DeviceTensor::SUPPORTED_DT.into_iter().map(move |dt| (op, dt)))
-            .flat_map(|(op, dt)| op.kernel_name(dt).into_iter())
+            .flat_map(|(op, dt)| {
+                ["large", "generic"].into_iter().map(move |variant| (op, dt, variant))
+            })
+            .flat_map(|(op, dt, variant)| op.kernel_name(dt, variant).into_iter())
             .collect()
     }
 
@@ -189,7 +192,7 @@ impl BinOps {
         Ok((lhs4, rhs4, out4))
     }
 
-    pub fn kernel_name(&self, dt: DatumType) -> TractResult<String> {
+    pub fn kernel_name(&self, dt: DatumType, variant: &str) -> TractResult<String> {
         ensure!(self.is_supported_dt(dt), "Unsupported dt {:?} for Cuda binary ops: {self}", dt);
 
         let tname = DeviceTensor::tname(dt)?;
@@ -210,7 +213,7 @@ impl BinOps {
             Self::Or => "or",
         };
 
-        Ok(format!("binary_{kname}_{tname}"))
+        Ok(format!("binary_{kname}_{variant}_{tname}"))
     }
 
     pub fn eval(
@@ -240,10 +243,6 @@ impl BinOps {
         ensure!(rank == rhs.rank());
         ensure!(rank <= BINARY_MAX_RANK);
 
-        let kernel_name = self.kernel_name(lhs.datum_type())?;
-
-        let func = cuda_context().load_pipeline(LibraryName::Binary, kernel_name)?;
-
         let rank_offset = BINARY_MAX_RANK - rank;
         let mut lhs_shape = [1usize; BINARY_MAX_RANK];
         let mut rhs_shape = [1usize; BINARY_MAX_RANK];
@@ -251,7 +250,7 @@ impl BinOps {
         let mut lhs_strides = [0isize; BINARY_MAX_RANK];
         let mut rhs_strides = [0isize; BINARY_MAX_RANK];
         let mut out_strides = [0isize; BINARY_MAX_RANK];
-        
+
         let base_l_shape = lhs.shape();
         let base_r_shape = rhs.shape();
         let base_o_shape = output.shape();
@@ -266,22 +265,32 @@ impl BinOps {
             lhs_strides[dst] =
                 if base_l_shape[i] == 1 && base_r_shape[i] != 1 { 0 } else { base_l_strides[i] };
 
-            rhs_strides[i] =
+            rhs_strides[dst] =
                 if base_r_shape[i] == 1 && base_l_shape[i] != 1 { 0 } else { base_r_strides[i] };
-            
+
             out_strides[dst] = base_o_strides[i];
         }
 
         let total_elems: usize = out_shape.iter().product();
+        let block_dim = (128 as u32, 1, 1);
+        let (grid_dim, variant) =
+            if out_shape[BINARY_MAX_RANK - 1] >= 256 && out_shape[BINARY_MAX_RANK - 2] >= 8 {
+                (
+                    (
+                        out_shape[BINARY_MAX_RANK - 2] as u32,
+                        out_shape[BINARY_MAX_RANK - 3] as u32,
+                        out_shape[..BINARY_MAX_RANK - 3].iter().product::<usize>() as u32,
+                    ),
+                    "large",
+                )
+            } else {
+                ((total_elems.div_ceil(block_dim.0 as usize) as u32, 1, 1), "generic")
+            };
 
-        let block_dim_x = 256;
-        let grid_dim_x = total_elems.div_ceil(block_dim_x) as u32;
+        let kernel_name = self.kernel_name(lhs.datum_type(), variant)?;
+        let func = cuda_context().load_pipeline(LibraryName::Binary, kernel_name)?;
 
-        let cfg = LaunchConfig {
-            grid_dim: (grid_dim_x, 1, 1),
-            block_dim: (block_dim_x as _, 1, 1),
-            shared_mem_bytes: 0,
-        };
+        let cfg = LaunchConfig { grid_dim, block_dim, shared_mem_bytes: 0 };
 
         let lhs_view = get_cuda_view(lhs);
         let rhs_view = get_cuda_view(rhs);
