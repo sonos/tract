@@ -251,21 +251,22 @@ impl BinOps {
         let mut rhs_strides = [0isize; BINARY_MAX_RANK];
         let mut out_strides = [0isize; BINARY_MAX_RANK];
 
-        lhs_shape[..rank].copy_from_slice(lhs.shape());
-        rhs_shape[..rank].copy_from_slice(rhs.shape());
-        out_shape[..rank].copy_from_slice(output.shape());
+        let rank_offset = BINARY_MAX_RANK - rank;
+        lhs_shape[rank_offset..].copy_from_slice(lhs.shape());
+        rhs_shape[rank_offset..].copy_from_slice(rhs.shape());
+        out_shape[rank_offset..].copy_from_slice(output.shape());
 
         let base_l_strides = lhs.strides();
         let base_r_strides = rhs.strides();
         let base_o_strides = output.strides();
-        for i in 0..rank {
+        for i in rank_offset..BINARY_MAX_RANK {
             lhs_strides[i] =
-                if lhs_shape[i] == 1 && rhs_shape[i] != 1 { 0 } else { base_l_strides[i] };
+                if lhs_shape[i] == 1 && rhs_shape[i] != 1 { 0 } else { base_l_strides[i - rank_offset] };
 
             rhs_strides[i] =
-                if rhs_shape[i] == 1 && lhs_shape[i] != 1 { 0 } else { base_r_strides[i] };
+                if rhs_shape[i] == 1 && lhs_shape[i] != 1 { 0 } else { base_r_strides[i - rank_offset] };
         }
-        out_strides[..rank].copy_from_slice(output.strides());
+        out_strides[rank_offset..].copy_from_slice(output.strides());
 
         let total_elems: usize = out_shape.iter().product();
 
