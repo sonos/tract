@@ -244,29 +244,33 @@ impl BinOps {
 
         let func = cuda_context().load_pipeline(LibraryName::Binary, kernel_name)?;
 
+        let rank_offset = BINARY_MAX_RANK - rank;
         let mut lhs_shape = [1usize; BINARY_MAX_RANK];
         let mut rhs_shape = [1usize; BINARY_MAX_RANK];
         let mut out_shape = [1usize; BINARY_MAX_RANK];
         let mut lhs_strides = [0isize; BINARY_MAX_RANK];
         let mut rhs_strides = [0isize; BINARY_MAX_RANK];
         let mut out_strides = [0isize; BINARY_MAX_RANK];
-
-        let rank_offset = BINARY_MAX_RANK - rank;
-        lhs_shape[rank_offset..].copy_from_slice(lhs.shape());
-        rhs_shape[rank_offset..].copy_from_slice(rhs.shape());
-        out_shape[rank_offset..].copy_from_slice(output.shape());
-
+        
+        let base_l_shape = lhs.shape();
+        let base_r_shape = rhs.shape();
+        let base_o_shape = output.shape();
         let base_l_strides = lhs.strides();
         let base_r_strides = rhs.strides();
         let base_o_strides = output.strides();
-        for i in rank_offset..BINARY_MAX_RANK {
-            lhs_strides[i] =
-                if lhs_shape[i] == 1 && rhs_shape[i] != 1 { 0 } else { base_l_strides[i - rank_offset] };
+        for i in 0..rank {
+            let dst = rank_offset + i;
+            lhs_shape[dst] = base_l_shape[i];
+            rhs_shape[dst] = base_r_shape[i];
+            out_shape[dst] = base_o_shape[i];
+            lhs_strides[dst] =
+                if base_l_shape[i] == 1 && base_r_shape[i] != 1 { 0 } else { base_l_strides[i] };
 
             rhs_strides[i] =
-                if rhs_shape[i] == 1 && lhs_shape[i] != 1 { 0 } else { base_r_strides[i - rank_offset] };
+                if base_r_shape[i] == 1 && base_l_shape[i] != 1 { 0 } else { base_r_strides[i] };
+            
+            out_strides[dst] = base_o_strides[i];
         }
-        out_strides[rank_offset..].copy_from_slice(output.strides());
 
         let total_elems: usize = out_shape.iter().product();
 
