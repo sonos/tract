@@ -274,7 +274,7 @@ impl BinOps {
         let total_elems: usize = out_shape.iter().product();
         let block_dim = (128_u32, 1, 1);
         let (grid_dim, variant) =
-            if out_shape[BINARY_MAX_RANK - 1] >= 256 && out_shape[..BINARY_MAX_RANK - 1].iter().product::<usize>() >= 8 {
+            if out_shape[BINARY_MAX_RANK - 1] >= 256 && total_elems > 8192 {
                 (
                     (
                         out_shape[BINARY_MAX_RANK - 2] as u32,
@@ -371,6 +371,40 @@ mod tests {
     fn test_logic() -> TractResult<()> {
         run_test_case_logic(BinOps::And, &[2, 4], &[2, 4], |c, a, b| *c = *a && *b)?;
         run_test_case_logic(BinOps::Or, &[2, 4], &[2, 4], |c, a, b| *c = *a || *b)?;
+        Ok(())
+    }
+
+    fn run_binary_bench(
+        op: BinOps,
+        a_shape: &[usize],
+        b_shape: &[usize],
+        cab: impl Fn(&mut f32, &f32, &f32),
+    ) -> TractResult<()> {
+        CUDA_STREAM.with(|stream| {
+            let a_len = a_shape.iter().product::<usize>();
+            let b_len = b_shape.iter().product::<usize>();
+
+            let a =
+                Tensor::from_shape(a_shape, &(0..a_len).map(|f| f as f32).collect::<Vec<_>>())?
+                    .into_device()?;
+            let b =
+                Tensor::from_shape(b_shape, &(0..b_len).map(|f| f as f32).collect::<Vec<_>>())?
+                    .into_device()?;
+            let output = op.eval(stream, &a, &b)?;
+            let ref_output = reference::<f32, f32>(
+                &a.to_host()?.into_tensor(),
+                &b.to_host()?.into_tensor(),
+                cab,
+            )?;
+
+            assert_eq!(output.to_host()?.into_tensor(), ref_output);
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn binary_bench() -> TractResult<()> {
+        run_binary_bench(BinOps::Mul, &[8, 512], &[8, 512], |c, a, b| *c = *a * *b)?;
         Ok(())
     }
 
