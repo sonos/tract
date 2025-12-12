@@ -8,6 +8,8 @@ use crate::kernels::launch_args::TractLaunchArgs;
 use crate::kernels::utils::compute_broadcast_strides;
 use crate::kernels::{LibraryName, MAX_THREADS, get_cuda_view};
 
+static BINARY_MAX_RANK: usize = 5;
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum BinOps {
     Mul,
@@ -66,7 +68,10 @@ impl BinOps {
         Self::ALL
             .into_iter()
             .flat_map(|op| DeviceTensor::SUPPORTED_DT.into_iter().map(move |dt| (op, dt)))
-            .flat_map(|(op, dt)| op.kernel_name(dt).into_iter())
+            .flat_map(|(op, dt)| {
+                ["large", "generic"].into_iter().map(move |variant| (op, dt, variant))
+            })
+            .flat_map(|(op, dt, variant)| op.kernel_name(dt, variant).into_iter())
             .collect()
     }
 
@@ -187,7 +192,7 @@ impl BinOps {
         Ok((lhs4, rhs4, out4))
     }
 
-    pub fn kernel_name(&self, dt: DatumType) -> TractResult<String> {
+    pub fn kernel_name(&self, dt: DatumType, variant: &str) -> TractResult<String> {
         ensure!(self.is_supported_dt(dt), "Unsupported dt {:?} for Cuda binary ops: {self}", dt);
 
         let tname = DeviceTensor::tname(dt)?;
@@ -208,7 +213,7 @@ impl BinOps {
             Self::Or => "or",
         };
 
-        Ok(format!("binary_{kname}_{tname}"))
+        Ok(format!("binary_{kname}_{variant}_{tname}"))
     }
 
     pub fn eval(
@@ -234,37 +239,58 @@ impl BinOps {
         rhs: &DeviceTensor,
         output: &DeviceTensor,
     ) -> TractResult<()> {
-        ensure!(lhs.rank() == rhs.rank());
+        let rank = lhs.rank();
+        ensure!(rank == rhs.rank());
+        ensure!(rank <= BINARY_MAX_RANK);
 
-        let kernel_name = self.kernel_name(lhs.datum_type())?;
+        let rank_offset = BINARY_MAX_RANK - rank;
+        let mut lhs_shape = [1usize; BINARY_MAX_RANK];
+        let mut rhs_shape = [1usize; BINARY_MAX_RANK];
+        let mut out_shape = [1usize; BINARY_MAX_RANK];
+        let mut lhs_strides = [0isize; BINARY_MAX_RANK];
+        let mut rhs_strides = [0isize; BINARY_MAX_RANK];
+        let mut out_strides = [0isize; BINARY_MAX_RANK];
 
-        let (lhs_shape, rhs_shape, out_shape) =
-            Self::reshape_to_rank_4_with_broadcast(lhs.shape(), rhs.shape(), output.shape())?;
+        let base_l_shape = lhs.shape();
+        let base_r_shape = rhs.shape();
+        let base_o_shape = output.shape();
+        let base_l_strides = lhs.strides();
+        let base_r_strides = rhs.strides();
+        let base_o_strides = output.strides();
+        for i in 0..rank {
+            let dst = rank_offset + i;
+            lhs_shape[dst] = base_l_shape[i];
+            rhs_shape[dst] = base_r_shape[i];
+            out_shape[dst] = base_o_shape[i];
+            lhs_strides[dst] =
+                if base_l_shape[i] == 1 && base_r_shape[i] != 1 { 0 } else { base_l_strides[i] };
 
-        let lhs_strides =
-            compute_broadcast_strides::<usize>(&lhs_shape, &natural_strides(&lhs_shape))?;
-        let rhs_strides =
-            compute_broadcast_strides::<usize>(&rhs_shape, &natural_strides(&rhs_shape))?;
-        let out_strides =
-            compute_broadcast_strides::<usize>(&out_shape, &natural_strides(&out_shape))?;
+            rhs_strides[dst] =
+                if base_r_shape[i] == 1 && base_l_shape[i] != 1 { 0 } else { base_r_strides[i] };
 
+            out_strides[dst] = base_o_strides[i];
+        }
+
+        let total_elems: usize = out_shape.iter().product();
+        let block_dim = (128_u32, 1, 1);
+        let (grid_dim, variant) =
+            if out_shape[BINARY_MAX_RANK - 1] >= 256 && total_elems >= 4096 {
+                (
+                    (
+                        out_shape[BINARY_MAX_RANK - 2] as u32,
+                        out_shape[BINARY_MAX_RANK - 3] as u32,
+                        out_shape[..BINARY_MAX_RANK - 3].iter().product::<usize>() as u32,
+                    ),
+                    "large",
+                )
+            } else {
+                ((total_elems.div_ceil(block_dim.0 as usize) as u32, 1, 1), "generic")
+            };
+
+        let kernel_name = self.kernel_name(lhs.datum_type(), variant)?;
         let func = cuda_context().load_pipeline(LibraryName::Binary, kernel_name)?;
 
-        let half_inner_ax = (out_shape[3] / 2).max(1);
-        let block_dim_x = half_inner_ax.min(MAX_THREADS);
-        let block_dim_y = out_shape[2].min(MAX_THREADS / block_dim_x);
-        let block_dim_z =
-            (out_shape[1] * out_shape[0]).min(MAX_THREADS / (block_dim_x * block_dim_y)).min(64);
-
-        let cfg = LaunchConfig {
-            grid_dim: (
-                half_inner_ax.div_ceil(block_dim_x) as _,
-                out_shape[2].div_ceil(block_dim_y) as _,
-                (out_shape[0] * out_shape[1]).div_ceil(block_dim_z) as _,
-            ),
-            block_dim: (block_dim_x as _, block_dim_y as _, block_dim_z as _),
-            shared_mem_bytes: 0,
-        };
+        let cfg = LaunchConfig { grid_dim, block_dim, shared_mem_bytes: 0 };
 
         let lhs_view = get_cuda_view(lhs);
         let rhs_view = get_cuda_view(rhs);
@@ -345,6 +371,40 @@ mod tests {
     fn test_logic() -> TractResult<()> {
         run_test_case_logic(BinOps::And, &[2, 4], &[2, 4], |c, a, b| *c = *a && *b)?;
         run_test_case_logic(BinOps::Or, &[2, 4], &[2, 4], |c, a, b| *c = *a || *b)?;
+        Ok(())
+    }
+
+    fn run_binary_bench(
+        op: BinOps,
+        a_shape: &[usize],
+        b_shape: &[usize],
+        cab: impl Fn(&mut f32, &f32, &f32),
+    ) -> TractResult<()> {
+        CUDA_STREAM.with(|stream| {
+            let a_len = a_shape.iter().product::<usize>();
+            let b_len = b_shape.iter().product::<usize>();
+
+            let a =
+                Tensor::from_shape(a_shape, &(0..a_len).map(|f| f as f32).collect::<Vec<_>>())?
+                    .into_device()?;
+            let b =
+                Tensor::from_shape(b_shape, &(0..b_len).map(|f| f as f32).collect::<Vec<_>>())?
+                    .into_device()?;
+            let output = op.eval(stream, &a, &b)?;
+            let ref_output = reference::<f32, f32>(
+                &a.to_host()?.into_tensor(),
+                &b.to_host()?.into_tensor(),
+                cab,
+            )?;
+
+            assert_eq!(output.to_host()?.into_tensor(), ref_output);
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn binary_bench() -> TractResult<()> {
+        run_binary_bench(BinOps::Mul, &[8, 512], &[8, 512], |c, a, b| *c = *a * *b)?;
         Ok(())
     }
 

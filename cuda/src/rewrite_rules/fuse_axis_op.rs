@@ -21,6 +21,7 @@ fn can_fuse_move(model: &TypedModel, axis_node: &TypedNode) -> bool {
             || node.op_is::<crate::ops::CudaPad>()
             || node.op_is::<crate::ops::CudaDelay>()
             || node.op_is::<crate::ops::CudaPulsePad>()
+            || node.op_is::<crate::ops::CudaBinOp>()
     })
 }
 
