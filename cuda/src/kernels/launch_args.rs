@@ -29,9 +29,9 @@ impl<'a> TractLaunchArgs<'a> {
         unsafe {
             let slice = std::slice::from_raw_parts((&v) as *const T as *const u8, size_of::<T>());
             if self.keepalive.len() + slice.len() < VEC_CAPACITY {
-                let arg = self.keepalive.as_ptr().add(self.keepalive.len());
+                let arg: *const T = self.keepalive.as_ptr().add(self.keepalive.len()) as *const T;
                 self.keepalive.extend(slice);
-                self.inner.arg(&(*(arg as *const T)));
+                self.inner.arg(arg.as_ref().unwrap());
             } else {
                 let mut buf = slice.to_vec().into_boxed_slice();
 
