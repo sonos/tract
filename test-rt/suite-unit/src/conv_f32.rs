@@ -413,6 +413,21 @@ pub fn suite() -> TractResult<TestSuite> {
     );
 
     suite.add(
+        "ker_3x1",
+        ConvProblem {
+            shape_in: DataFormat::NCHW.from_n_c_hw(1, 1, [3, 3])?,
+            kernel_format: KernelFormat::OIHW,
+            group: 1,
+            data: ArrayD::zeros(vec![1, 1, 3, 3]),
+            kernel: ArrayD::zeros(vec![1, 1, 1, 3]),
+            bias: None,
+            pad: PaddingSpec::Valid,
+            strides: tvec!(1, 1),
+            dilations: tvec!(1, 1),
+        },
+    );
+
+    suite.add(
         "nchw_0",
         ConvProblem {
             shape_in: DataFormat::NCHW.from_n_c_hw(1, 1, [2])?,
@@ -723,6 +738,21 @@ pub fn suite() -> TractResult<TestSuite> {
     );
 
     suite.add(
+        "bias_dil_0",
+        ConvProblem {
+            shape_in: DataFormat::NCHW.from_n_c_hw(1, 1, [4, 2])?,
+            kernel_format: KernelFormat::OIHW,
+            group: 1,
+            kernel: ArrayD::<f32>::zeros(vec![1, 1, 4, 1]),
+            data: ArrayD::<f32>::zeros(vec![1, 1, 4, 2]),
+            bias: Some(arr1(&[1.0]).into_dyn()),
+            pad: PaddingSpec::Valid,
+            strides: tvec!(1, 1),
+            dilations: tvec!(2, 1),
+        },
+    );
+
+    suite.add(
         "bias_chw_0",
         ConvProblem {
             shape_in: DataFormat::CHW.from_n_c_hw(1, 1, [3])?,
@@ -918,6 +948,21 @@ pub fn suite() -> TractResult<TestSuite> {
     );
 
     suite.add(
+        "same_2d_4",
+        ConvProblem {
+            shape_in: DataFormat::NCHW.from_n_c_hw(1, 1, [1, 2])?,
+            kernel_format: KernelFormat::OIHW,
+            group: 1,
+            data: arr4(&[[[[0.0, 0.0]]]]).into_dyn(),
+            kernel: arr4(&[[[[0.0, 0.0]]]]).into_dyn(),
+            bias: None,
+            pad: PaddingSpec::SameUpper,
+            strides: tvec!(1, 1),
+            dilations: tvec!(1, 1),
+        },
+    );
+
+    suite.add(
         "strides_0",
         ConvProblem {
             shape_in: DataFormat::HWC.from_n_c_hw(1, 1, [2])?,
@@ -1063,6 +1108,21 @@ pub fn suite() -> TractResult<TestSuite> {
             bias: None,
             pad: PaddingSpec::SameUpper,
             strides: tvec!(1, 2),
+            dilations: tvec!(1, 1),
+        },
+    );
+
+    suite.add(
+        "strides_2d_same_3",
+        ConvProblem {
+            shape_in: DataFormat::NCHW.from_n_c_hw(1, 1, [1, 1])?,
+            kernel_format: KernelFormat::OIHW,
+            group: 1,
+            data: arr4(&[[[[0.0]]]]).into_dyn(),
+            kernel: arr4(&[[[[0.0]]]]).into_dyn(),
+            bias: None,
+            pad: PaddingSpec::Valid,
+            strides: tvec!(1, 1),
             dilations: tvec!(1, 1),
         },
     );
@@ -1498,6 +1558,36 @@ pub fn suite() -> TractResult<TestSuite> {
     );
 
     suite.add(
+        "dil_7",
+        ConvProblem {
+            shape_in: DataFormat::NCHW.from_n_c_hw(1, 1, [1, 1]).unwrap(),
+            kernel_format: KernelFormat::OIHW,
+            group: 1,
+            data: arr4(&[[[[0f32]]]]).into_dyn(),
+            kernel: arr4(&[[[[0.0]]]]).into_dyn(),
+            bias: None,
+            pad: PaddingSpec::Valid,
+            strides: tvec!(1, 1),
+            dilations: tvec!(2, 2),
+        },
+    );
+
+    suite.add(
+        "dil_and_stride_2d",
+        ConvProblem {
+            shape_in: DataFormat::NCHW.from_n_c_hw(1, 1, [1, 1]).unwrap(),
+            kernel_format: KernelFormat::OIHW,
+            group: 1,
+            data: arr4(&[[[[0f32]]]]).into_dyn(),
+            kernel: arr4(&[[[[1.0]]]]).into_dyn(),
+            bias: None,
+            pad: PaddingSpec::Valid,
+            strides: tvec!(3, 3),
+            dilations: tvec!(2, 2),
+        },
+    );
+
+    suite.add(
         "bug_metal_0",
         ConvProblem {
             shape_in: DataFormat::NHWC.from_n_c_hw(2, 1, [4]).unwrap(),
@@ -1509,6 +1599,21 @@ pub fn suite() -> TractResult<TestSuite> {
             pad: PaddingSpec::Valid,
             strides: tvec!(1),
             dilations: tvec!(1),
+        },
+    );
+
+    suite.add(
+        "bug_cuda_0",
+        ConvProblem {
+            shape_in: DataFormat::NCHW.from_n_c_hw(1, 1, [3, 2])?,
+            kernel_format: KernelFormat::OIHW,
+            group: 1,
+            kernel: ArrayD::<f32>::zeros(vec![1, 1, 3, 1]),
+            data: ArrayD::<f32>::zeros(vec![1, 1, 3, 2]),
+            bias: Some(arr1(&[1.0]).into_dyn()),
+            pad: PaddingSpec::Valid,
+            strides: tvec!(3, 1),
+            dilations: tvec!(3, 1),
         },
     );
 
