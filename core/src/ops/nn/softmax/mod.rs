@@ -668,7 +668,7 @@ mod test {
         prob.check()?;
         Ok(())
     }
-    
+
     #[test]
     fn test_inner_softmax_1() -> Result<()> {
         let in_qp = ZpScale { zero_point: 0, scale: 0.03125 };

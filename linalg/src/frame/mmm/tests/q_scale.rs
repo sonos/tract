@@ -1,8 +1,8 @@
-use crate::frame::mmm::fuse::RoundingPolicy;
+use crate::Scaler;
 use crate::frame::mmm::MatMatMulKer;
+use crate::frame::mmm::fuse::RoundingPolicy;
 use crate::generic::rounding::ScaleShiftAndRound;
 use crate::mmm::{FusedKerSpec, FusedSpec};
-use crate::Scaler;
 use proptest::prelude::*;
 
 use super::fuse::fused_ops;

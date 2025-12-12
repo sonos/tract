@@ -11,11 +11,13 @@ impl OpState for SourceState {
         _op: &dyn Op,
         _inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        Ok(tvec!(session
-            .inputs
-            .get(&self.0)
-            .with_context(|| format!("Input for node {} is missing", self.0))?
-            .clone()))
+        Ok(tvec!(
+            session
+                .inputs
+                .get(&self.0)
+                .with_context(|| format!("Input for node {} is missing", self.0))?
+                .clone()
+        ))
     }
 }
 
@@ -23,8 +25,6 @@ impl OpState for SourceState {
 pub struct TypedSource {
     pub fact: TypedFact,
 }
-
-
 
 impl Op for TypedSource {
     fn name(&self) -> StaticName {

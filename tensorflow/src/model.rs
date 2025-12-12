@@ -129,7 +129,7 @@ impl Tensorflow {
     pub fn parse_graph_with_template(
         &self,
         graph: &GraphDef,
-        mut model: InferenceModel
+        mut model: InferenceModel,
     ) -> TractResult<TfModelAndExtensions> {
         use crate::ops::control_flow as cf;
 
@@ -261,10 +261,10 @@ impl Framework<GraphDef, InferenceModel> for Tensorflow {
     }
 
     fn model_for_proto_model_with_model_template(
-            &self,
-            proto: &GraphDef,
-            template: InferenceModel,
-        ) -> TractResult<InferenceModel> {
+        &self,
+        proto: &GraphDef,
+        template: InferenceModel,
+    ) -> TractResult<InferenceModel> {
         Ok(self.parse_graph_with_template(proto, template)?.0)
     }
 }

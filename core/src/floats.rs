@@ -4,7 +4,7 @@ use crate::internal::translator::Translate;
 use crate::internal::*;
 use crate::ops::array::{Pad, PadMode};
 use crate::ops::binary::TypedBinOp;
-use crate::ops::cast::{cast, Cast};
+use crate::ops::cast::{Cast, cast};
 use crate::ops::einsum::EinSum;
 use crate::ops::element_wise::ElementWiseOp;
 use crate::ops::konst::Const;
@@ -185,11 +185,7 @@ impl<T1: Datum + Float, T2: Datum + Float>
 }
 
 fn dt_float_precision_conversion<T1: Datum + Float, T2: Datum + Float>(dt: DatumType) -> DatumType {
-    if dt == T1::datum_type() {
-        T2::datum_type()
-    } else {
-        dt
-    }
+    if dt == T1::datum_type() { T2::datum_type() } else { dt }
 }
 
 fn fact_float_precision_conversion<T1: Datum + Float, T2: Datum + Float>(
@@ -254,9 +250,11 @@ mod test {
             .unwrap()
             .transform_into(model.clone())?
             .into_runnable()?;
-        assert!(runnable_model.run(tvec![tensor1(&[f16::from_f32(5.0)]).into()])?[0]
-            .to_scalar::<f16>()?
-            .is_nan());
+        assert!(
+            runnable_model.run(tvec![tensor1(&[f16::from_f32(5.0)]).into()])?[0]
+                .to_scalar::<f16>()?
+                .is_nan()
+        );
 
         // Execution in F16 with filter that returns the good output.
         let runnable_model = &crate::transform::get_transform("f32-to-f16!=layer.1")
@@ -273,9 +271,11 @@ mod test {
             .unwrap()
             .transform_into(model)?
             .into_runnable()?;
-        assert!(runnable_model.run(tvec![tensor1(&[f16::from_f32(5.0)]).into()])?[0]
-            .to_scalar::<f16>()?
-            .is_nan());
+        assert!(
+            runnable_model.run(tvec![tensor1(&[f16::from_f32(5.0)]).into()])?[0]
+                .to_scalar::<f16>()?
+                .is_nan()
+        );
 
         Ok(())
     }
@@ -296,9 +296,11 @@ mod test {
         let mut model_f16 = model.clone();
         model_f16.transform(&FloatPrecisionTranslator::<f32, f16>::default())?;
         let runnable_model_f16 = model_f16.clone().into_runnable()?;
-        assert!(runnable_model_f16.run(tvec![tensor1(&[f16::from_f32(5.0)]).into()])?[0]
-            .to_scalar::<f16>()?
-            .is_nan());
+        assert!(
+            runnable_model_f16.run(tvec![tensor1(&[f16::from_f32(5.0)]).into()])?[0]
+                .to_scalar::<f16>()?
+                .is_nan()
+        );
 
         // Execution in F16 with filter that returns the good output.
         let mut model_f16_with_filter = model.clone();
@@ -315,9 +317,11 @@ mod test {
             |node| !node.name.contains("layer.0"),
         ))?;
         let runnable_model_f16 = model_f16_with_filter.clone().into_runnable()?;
-        assert!(runnable_model_f16.run(tvec![tensor1(&[f16::from_f32(5.0)]).into()])?[0]
-            .to_scalar::<f16>()?
-            .is_nan());
+        assert!(
+            runnable_model_f16.run(tvec![tensor1(&[f16::from_f32(5.0)]).into()])?[0]
+                .to_scalar::<f16>()?
+                .is_nan()
+        );
         Ok(())
     }
 }

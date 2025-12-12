@@ -6,11 +6,7 @@ pub mod quant;
 use crate::internal::*;
 
 pub fn output_type(input: DatumType) -> DatumType {
-    if input.is_float() {
-        input
-    } else {
-        i32::datum_type()
-    }
+    if input.is_float() { input } else { i32::datum_type() }
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]

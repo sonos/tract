@@ -13,33 +13,32 @@ fn pulsify(
     symbol: &Symbol,
     pulse: &TDim,
 ) -> TractResult<Option<TVec<OutletId>>> {
+    /*
 
-
-/*
-
-    dbg!(source.node_axes_mapping(node.id)?.to_string());
-    for input_id in &node.inputs {
-        dbg!(target.outlet_fact(mapping[input_id]))?;
-    }
-    for input_id in 0..node.inputs.len() {
-        let input = mapping[&node.inputs[input_id]];
-        let input_fact = target.outlet_fact(input)?;
-        if let Some(info) = op.input_mapping[input_id].as_scan() {
-            if info.chunk < 0 {
-                bail!("Can not pulsify a backward scan.")
-            }
-            if input_fact.stream.as_ref().context("scan on non-streamed input")?.axis != info.axis {
-                bail!("Scan pulsification limited to scanning axis");
+        dbg!(source.node_axes_mapping(node.id)?.to_string());
+        for input_id in &node.inputs {
+            dbg!(target.outlet_fact(mapping[input_id]))?;
+        }
+        for input_id in 0..node.inputs.len() {
+            let input = mapping[&node.inputs[input_id]];
+            let input_fact = target.outlet_fact(input)?;
+            if let Some(info) = op.input_mapping[input_id].as_scan() {
+                if info.chunk < 0 {
+                    bail!("Can not pulsify a backward scan.")
+                }
+                if input_fact.stream.as_ref().context("scan on non-streamed input")?.axis != info.axis {
+                    bail!("Scan pulsification limited to scanning axis");
+                }
             }
         }
-    }
-*/
+    */
 
     let pulse_inputs = node.inputs.iter().map(|i| mapping[i]).collect::<TVec<_>>();
 
     let axes_mapping = source.node_axes_mapping(node.id)?;
     let first_scan_slot = op.input_mapping.iter().position(InputMapping::is_scan).unwrap();
-    let first_scan_axis = target.outlet_fact(pulse_inputs[first_scan_slot])?.stream.as_ref().unwrap().axis;
+    let first_scan_axis =
+        target.outlet_fact(pulse_inputs[first_scan_slot])?.stream.as_ref().unwrap().axis;
     let scan_axis = axes_mapping.axis((InOut::In(first_scan_slot), first_scan_axis))?;
     if first_scan_axis == op.input_mapping[first_scan_slot].as_scan().unwrap().axis {
         let mut op = op.clone();

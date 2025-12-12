@@ -2,7 +2,7 @@
 
 use anyhow::{Context, Result};
 use std::cell::RefCell;
-use std::ffi::{c_char, c_void, CStr, CString};
+use std::ffi::{CStr, CString, c_char, c_void};
 use tract_api::{
     AsFact, DatumType, InferenceModelInterface, ModelInterface, NnefInterface, OnnxInterface,
     RunnableInterface, StateInterface, ValueInterface,
@@ -760,12 +760,14 @@ pub unsafe extern "C" fn tract_model_profile_json(
 
         let state_initializers: Option<Vec<Value>> = if !states.is_null() {
             anyhow::ensure!(n_states != 0);
-            let hashmap = std::slice::from_raw_parts(states, n_states).iter()
-                    .map(|tv| {
-                        (**tv).0.clone()
-                    }).collect();
+            let hashmap = std::slice::from_raw_parts(states, n_states)
+                .iter()
+                .map(|tv| (**tv).0.clone())
+                .collect();
             Some(hashmap)
-        } else { None };
+        } else {
+            None
+        };
 
         let profile = (*model).0.profile_json(input, state_initializers)?;
         *json = CString::new(profile)?.into_raw() as _;
@@ -1074,7 +1076,7 @@ pub unsafe extern "C" fn tract_state_get_states_facts(
     wrap(|| unsafe {
         check_not_null!(state, states);
         let state = &(*state).0;
-    
+
         let state_vec = state.get_states_facts()?;
         for (ix, f) in state_vec.into_iter().enumerate() {
             *states.add(ix) = Box::into_raw(Box::new(TractFact(f)));
@@ -1094,11 +1096,10 @@ pub unsafe extern "C" fn tract_state_set_states(
         let state = &mut (*state).0;
 
         let n_states = state.initializable_states_count()?;
-        let state_initializers: Vec<Value> =
-        std::slice::from_raw_parts(states, n_states).iter()
-                    .map(|tv| {
-                        (**tv).0.clone()
-                    }).collect();
+        let state_initializers: Vec<Value> = std::slice::from_raw_parts(states, n_states)
+            .iter()
+            .map(|tv| (**tv).0.clone())
+            .collect();
         state.set_states(state_initializers)?;
         Ok(())
     })
@@ -1108,11 +1109,11 @@ pub unsafe extern "C" fn tract_state_set_states(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_state_get_states(
     state: *const TractState,
-    states: *mut *mut TractValue
+    states: *mut *mut TractValue,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
         let state = &(*state).0;
-    
+
         let state_vec = state.get_states()?;
         for (ix, s) in state_vec.into_iter().enumerate() {
             *states.add(ix) = Box::into_raw(Box::new(TractValue(s)));

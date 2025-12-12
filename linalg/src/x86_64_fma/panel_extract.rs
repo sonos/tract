@@ -1,6 +1,6 @@
 use super::*;
-use crate::pack::{PackedFormat, Packing};
 use crate::Ops;
+use crate::pack::{PackedFormat, Packing};
 use tract_data::internal::*;
 
 pub fn plug(ops: &mut Ops) {

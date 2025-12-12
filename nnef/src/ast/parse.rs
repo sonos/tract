@@ -1,10 +1,10 @@
-use nom_language::error::{convert_error, VerboseError};
+use nom_language::error::{VerboseError, convert_error};
 use tract_core::internal::*;
 
 use nom::branch::alt;
 use nom::combinator::map;
-use nom::{bytes::complete::*, character::complete::*, combinator::*, multi::*, sequence::*};
 use nom::{Finish, IResult, Parser};
+use nom::{bytes::complete::*, character::complete::*, combinator::*, multi::*, sequence::*};
 
 use crate::ast::*;
 
@@ -249,11 +249,7 @@ fn lvalue(i: &str) -> R<'_, LValue> {
     }
 
     map(separated_list0(stag(","), inner_lvalue), |mut iv| {
-        if iv.len() == 1 {
-            iv.remove(0)
-        } else {
-            LValue::Tuple(iv)
-        }
+        if iv.len() == 1 { iv.remove(0) } else { LValue::Tuple(iv) }
     })
     .parse(i)
 }
@@ -295,11 +291,7 @@ fn rvalue(i: &str) -> R<'_, RValue> {
                 RValue::Unary(op.into(), Box::new(rv))
             }),
             map(delimited(tag("("), separated_list0(stag(","), rvalue), tag(")")), |mut rvs| {
-                if rvs.len() == 1 {
-                    rvs.remove(0)
-                } else {
-                    RValue::Tuple(rvs)
-                }
+                if rvs.len() == 1 { rvs.remove(0) } else { RValue::Tuple(rvs) }
             }),
             map(comprehension_expr, |c| RValue::Comprehension(Box::new(c))),
             map(delimited(tag("["), separated_list0(stag(","), rvalue), tag("]")), |rvs| {
@@ -539,9 +531,10 @@ mod test {
 
     #[test]
     fn test_fragment_decl_logarithmic_quantize() {
-        let parsed = p(fragment_decl,
-                           "fragment logarithmic_quantize(x: tensor<scalar>, max: tensor<scalar>, bits: integer ) -> ( y: tensor<scalar> )"
-                          );
+        let parsed = p(
+            fragment_decl,
+            "fragment logarithmic_quantize(x: tensor<scalar>, max: tensor<scalar>, bits: integer ) -> ( y: tensor<scalar> )",
+        );
         assert_eq!(
             parsed,
             FragmentDecl {
@@ -567,7 +560,10 @@ mod test {
 
     #[test]
     fn test_fragment_reshape() {
-        p(fragments, "fragment reshape<?>( input: tensor<?>, shape: integer[], axis_start: integer = 0, axis_count: integer = -1 ) -> ( output: tensor<?> );");
+        p(
+            fragments,
+            "fragment reshape<?>( input: tensor<?>, shape: integer[], axis_start: integer = 0, axis_count: integer = -1 ) -> ( output: tensor<?> );",
+        );
     }
 
     #[test]
@@ -761,7 +757,10 @@ mod test {
             "size = [for i in range_of(output_size) yield output_size[i] * sampling_rate[i]];",
         );
         p(assignment, "r = scalar(2 ^ bits - 1 - integer(signed && symmetric));");
-        p(assignment, "output, index = max_pool_with_index(input, size = size, border = border, padding = padding, stride = stride, dilation = dilation);");
+        p(
+            assignment,
+            "output, index = max_pool_with_index(input, size = size, border = border, padding = padding, stride = stride, dilation = dilation);",
+        );
     }
 
     #[test]

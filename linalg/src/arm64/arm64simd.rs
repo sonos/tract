@@ -13,27 +13,19 @@ pub use softmax::arm64simd_softmax2_fastcompact_f32_16n;
 pub use sum::arm64simd_sum_f32_16n;
 pub use unicast::*;
 
+use crate::Ops;
 use crate::block_quant::{PackedBlockQuantFormat, Q4_0};
 use crate::frame::mmm::ImplementationQuality::ManuallyOptimized;
 use crate::pack::PackedFormat;
-use crate::Ops;
 
 use super::Kind;
 
 fn a55() -> isize {
-    if *super::KIND == Kind::CortexA55 {
-        1
-    } else {
-        -1
-    }
+    if *super::KIND == Kind::CortexA55 { 1 } else { -1 }
 }
 
 fn a53() -> isize {
-    if *super::KIND == Kind::CortexA53 {
-        1
-    } else {
-        -1
-    }
+    if *super::KIND == Kind::CortexA53 { 1 } else { -1 }
 }
 
 MMMExternKernel!(arm64simd_mmm_f32_8x8_a55 <f32>(8,  8)@(16, 16) quality(ManuallyOptimized) boost(a55));

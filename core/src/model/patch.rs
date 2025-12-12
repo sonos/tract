@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::fmt::{Debug, Display};
 use std::ops::{Deref, DerefMut};
 
-use tract_data::itertools::{izip, Itertools};
+use tract_data::itertools::{Itertools, izip};
 
 use crate::internal::*;
 use crate::model::*;

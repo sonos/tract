@@ -1,8 +1,8 @@
 use std::fmt::Debug;
 use std::marker::PhantomData;
 
-use tract_data::internal::TensorView;
 use tract_data::TractResult;
+use tract_data::internal::TensorView;
 
 use crate::frame::element_wise_helper::TempBuffer;
 use crate::{LADatum, LinalgFn};

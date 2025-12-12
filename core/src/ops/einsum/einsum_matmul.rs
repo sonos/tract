@@ -8,6 +8,7 @@ use tract_linalg::pack::PackedFormat;
 use super::*;
 use crate::ops::cast::cast;
 use crate::ops::math::add;
+use crate::ops::matmul::ModePicker;
 use crate::ops::matmul::optimized::{
     AddMatMulGeometry, MapOutputAxisToInput, OptMatMul, ProtoFusedSpec,
 };
@@ -15,7 +16,6 @@ use crate::ops::matmul::pack::{OptMatMulPack, OptSimpleMatMulPack};
 use crate::ops::matmul::quant::{
     combine_scales, compensate_zero_points, requant, wire_ensure_q8_flavour,
 };
-use crate::ops::matmul::ModePicker;
 use crate::ops::nn::{Reduce, Reducer};
 
 pub fn detect_all(model: &mut TypedModel) -> TractResult<()> {

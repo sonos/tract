@@ -28,19 +28,13 @@ pub struct RandomUniform {
     seed2: u64,
 }
 
-
-
 impl Op for RandomUniform {
     fn name(&self) -> StaticName {
         "RandomUniform".into()
     }
 
     fn validation(&self) -> Validation {
-        if self.seed1 == 0 && self.seed2 == 0 {
-            Validation::Random
-        } else {
-            Validation::Accurate
-        }
+        if self.seed1 == 0 && self.seed2 == 0 { Validation::Random } else { Validation::Accurate }
     }
 
     not_a_typed_op!();
@@ -112,19 +106,13 @@ pub struct TypedRandomUniform {
     shape: TVec<TDim>,
 }
 
-
-
 impl Op for TypedRandomUniform {
     fn name(&self) -> StaticName {
         "TypedRandomUniform".into()
     }
 
     fn validation(&self) -> Validation {
-        if self.seed1 == 0 && self.seed2 == 0 {
-            Validation::Random
-        } else {
-            Validation::Accurate
-        }
+        if self.seed1 == 0 && self.seed2 == 0 { Validation::Random } else { Validation::Accurate }
     }
 
     op_as_typed_op!();
@@ -173,8 +161,6 @@ pub struct RandomUniformInt {
     seed2: u64,
 }
 
-
-
 impl RandomUniformInt {
     pub fn make_i32(&self, shape: &[usize], lo: i32, hi: i32) -> TractResult<TValue> {
         let mut rng = Philox4x32x10::weird_tf_constructor(self.seed1, self.seed2).u32_iter();
@@ -197,11 +183,7 @@ impl Op for RandomUniformInt {
     }
 
     fn validation(&self) -> Validation {
-        if self.seed1 == 0 && self.seed2 == 0 {
-            Validation::Random
-        } else {
-            Validation::Accurate
-        }
+        if self.seed1 == 0 && self.seed2 == 0 { Validation::Random } else { Validation::Accurate }
     }
 
     not_a_typed_op!();

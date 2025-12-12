@@ -39,16 +39,12 @@ impl PulsedModelExt for PulsedModel {
 
     fn into_typed(self) -> TractResult<TypedModel> {
         let mut typed = tract_core::model::translator::IntoTranslator.translate_model(&self)?;
-        ensure!(self.input_outlets()?.iter().all(|o| self
-            .outlet_fact(*o)
-            .unwrap()
-            .stream
-            .is_some()));
-        ensure!(self.output_outlets()?.iter().all(|o| self
-            .outlet_fact(*o)
-            .unwrap()
-            .stream
-            .is_some()));
+        ensure!(
+            self.input_outlets()?.iter().all(|o| self.outlet_fact(*o).unwrap().stream.is_some())
+        );
+        ensure!(
+            self.output_outlets()?.iter().all(|o| self.outlet_fact(*o).unwrap().stream.is_some())
+        );
         let delays = tensor1(
             &self
                 .output_outlets()?

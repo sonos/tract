@@ -189,11 +189,8 @@ impl Display for DeviceTensor {
         match self {
             Self::Owned(o) => o.fmt(f),
             Self::ArenaView(v) => {
-                let content = v
-                    .to_host()
-                    .unwrap()
-                    .dump(false)
-                    .unwrap_or_else(|e| format!("Error : {e:?}"));
+                let content =
+                    v.to_host().unwrap().dump(false).unwrap_or_else(|e| format!("Error : {e:?}"));
                 write!(f, "ArenaView: {{ {content} }}")
             }
         }

@@ -12,8 +12,6 @@ pub struct Reduce {
     reducer: nn::Reducer,
 }
 
-
-
 pub fn max(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     reduce(pb, nn::Reducer::Max)
 }

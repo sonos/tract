@@ -27,8 +27,8 @@ impl Reducer {
         target: &mut TypedModel,
         mut wire: OutletId,
     ) -> TractResult<OutletId> {
-        use tract_core::ops::math;
         use Reducer::*;
+        use tract_core::ops::math;
         match self {
             ArgMax(last) => {
                 wire =
@@ -114,8 +114,6 @@ pub struct Reduce {
     pub reducer: Reducer,
 }
 
-
-
 impl Reduce {
     pub fn must_reduce(&self, ax: usize, rank: usize) -> bool {
         let resolved_axes: Option<Vec<usize>> = match &self.axes {
@@ -138,11 +136,7 @@ impl Reduce {
             .enumerate()
             .filter_map(|(ix, d)| {
                 if self.must_reduce(ix, shape.len()) {
-                    if self.keep_dims {
-                        Some(1.to_dim())
-                    } else {
-                        None
-                    }
+                    if self.keep_dims { Some(1.to_dim()) } else { None }
                 } else {
                     Some(d.clone())
                 }

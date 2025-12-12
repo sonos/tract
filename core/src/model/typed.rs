@@ -85,7 +85,9 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
                     })
                     .collect::<Option<TVec<_>>>()
                 {
-                    if let Ok(outputs) = op.eval_with_session(usize::MAX, &SessionState::default(), tensors) {
+                    if let Ok(outputs) =
+                        op.eval_with_session(usize::MAX, &SessionState::default(), tensors)
+                    {
                         return outputs
                             .into_iter()
                             .enumerate()
@@ -203,7 +205,12 @@ impl TypedModel {
             {
                 bail!(
                     "Inconsistent model, output types mismatch. Op says: {:?}, node says: {:?}. {} with inputs {:?}. {}",
-                    output_facts, node.outputs.iter().map(|o| &o.fact).collect::<Vec<_>>(), node, input_facts, node)
+                    output_facts,
+                    node.outputs.iter().map(|o| &o.fact).collect::<Vec<_>>(),
+                    node,
+                    input_facts,
+                    node
+                )
             }
             /* this is not true for regularly packed values
             if let Some(k) = node.op_as::<Const>() {

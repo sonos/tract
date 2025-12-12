@@ -15,10 +15,10 @@ macro_rules! mmm_kernel_fuse_tests {
             #[allow(unused_imports)]
             use tract_data::prelude::f16;
             use tract_data::prelude::tensor0;
+            use $crate::frame::mmm::MatMatMulKer;
             use $crate::frame::mmm::tests::fuse as test;
             #[allow(unused_imports)]
             use $crate::frame::mmm::tests::fuse::*;
-            use $crate::frame::mmm::MatMatMulKer;
 
             #[test]
             fn return_zeros() {
@@ -37,19 +37,11 @@ macro_rules! mmm_kernel_fuse_tests {
             }
 
             fn fmin<T: PartialOrd>(a: T, b: T) -> T {
-                if a < b {
-                    a
-                } else {
-                    b
-                }
+                if a < b { a } else { b }
             }
 
             fn fmax<T: PartialOrd>(a: T, b: T) -> T {
-                if a > b {
-                    a
-                } else {
-                    b
-                }
+                if a > b { a } else { b }
             }
 
             macro_rules! bin {

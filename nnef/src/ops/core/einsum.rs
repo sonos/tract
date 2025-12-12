@@ -45,11 +45,7 @@ pub fn parameters_q() -> Vec<Parameter> {
 }
 
 pub fn ser(ast: &mut IntoAst, node: &TypedNode, op: &EinSum) -> TractResult<Option<Arc<RValue>>> {
-    if op.q_params.is_some() {
-        ser_einsum_q(ast, node)
-    } else {
-        ser_einsum(ast, node)
-    }
+    if op.q_params.is_some() { ser_einsum_q(ast, node) } else { ser_einsum(ast, node) }
 }
 
 pub fn ser_einsum(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {

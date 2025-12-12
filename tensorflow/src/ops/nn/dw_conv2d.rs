@@ -23,13 +23,10 @@ pub struct DepthwiseConv2d {
     dilations: TVec<usize>,
 }
 
-
-
 impl Expansion for DepthwiseConv2d {
     fn name(&self) -> StaticName {
         "DepthwiseConv2dNative".into()
     }
-
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,

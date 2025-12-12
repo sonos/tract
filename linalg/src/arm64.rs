@@ -79,7 +79,7 @@ lazy_static::lazy_static! {
 
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 fn apple_get_syscall(key: &str) -> String {
-    use std::ffi::{c_char, c_void, CStr, CString};
+    use std::ffi::{CStr, CString, c_char, c_void};
     use std::ptr::null_mut;
 
     unsafe extern "C" {

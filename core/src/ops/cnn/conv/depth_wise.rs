@@ -1,6 +1,6 @@
 use crate::internal::*;
-use crate::ops::cnn::patches::{Zone, ZoneScanner};
 use crate::ops::cnn::Patch;
+use crate::ops::cnn::patches::{Zone, ZoneScanner};
 use crate::ops::nn::DataShape;
 use num_traits::Zero;
 

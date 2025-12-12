@@ -13,7 +13,8 @@ fn main() -> TractResult<()> {
         let mean = [0.485, 0.456, 0.406][c];
         let std = [0.229, 0.224, 0.225][c];
         (resized[(x as _, y as _)][c] as f32 / 255.0 - mean) / std
-    }).into_tensor();
+    })
+    .into_tensor();
 
     // run the model on the input
     let result = model.run(tvec!(image.into()))?;

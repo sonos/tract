@@ -9,7 +9,7 @@ use downcast_rs::Downcast;
 use dyn_clone::DynClone;
 use itertools::Itertools;
 use lazy_static::lazy_static;
-use proptest::prelude::{any_with, Arbitrary};
+use proptest::prelude::{Arbitrary, any_with};
 use proptest::strategy::Strategy;
 use proptest::test_runner::{Config, FileFailurePersistence, TestRunner};
 use tract_core::internal::Approximation;

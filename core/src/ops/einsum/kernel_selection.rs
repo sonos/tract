@@ -2,9 +2,9 @@
 
 use dyn_clone::clone_box;
 use tract_itertools::Itertools;
+use tract_linalg::WeightType;
 use tract_linalg::block_quant::BlockQuantFact;
 use tract_linalg::mmm::{ImplementationQuality, MMMInputFormat, MatMatMul, PanelExtractor};
-use tract_linalg::WeightType;
 
 use crate::internal::*;
 use crate::ops::matmul::ModePicker;

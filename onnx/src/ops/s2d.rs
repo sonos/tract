@@ -52,13 +52,10 @@ impl SpaceToDepth {
     }
 }
 
-
-
 impl Expansion for SpaceToDepth {
     fn name(&self) -> StaticName {
         "SpaceToDepth".into()
     }
-
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,

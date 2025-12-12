@@ -19,8 +19,6 @@ pub fn unsqueeze(
 #[derive(Debug, Clone, Hash)]
 struct Unsqueeze13;
 
-
-
 impl Expansion for Unsqueeze13 {
     fn name(&self) -> StaticName {
         "Unsqueeze13".into()
@@ -59,5 +57,4 @@ impl Expansion for Unsqueeze13 {
             bail!("Need axes to be a constant")
         }
     }
-
 }

@@ -125,7 +125,12 @@ impl InferenceRulesOp for Box<dyn Expansion> {
             let expected = &node.outputs[ix].fact;
             let got = target.outlet_fact(*o)?;
             if expected.clone().unify_with(&InferenceFact::from(got)).is_err() {
-                bail!("Output mismatch after rewiring expansion for output #{}: expected {:?} got {:?}", ix, expected, got);
+                bail!(
+                    "Output mismatch after rewiring expansion for output #{}: expected {:?} got {:?}",
+                    ix,
+                    expected,
+                    got
+                );
             }
         }
         Ok(outputs)

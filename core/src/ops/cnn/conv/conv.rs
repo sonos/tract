@@ -1,6 +1,6 @@
 use tract_data::itertools::izip;
-use tract_linalg::block_quant::{BlockQuantFact, PackedBlockQuantFormat};
 use tract_linalg::WeightType;
+use tract_linalg::block_quant::{BlockQuantFact, PackedBlockQuantFormat};
 use tract_num_traits::Zero;
 
 use crate::internal::*;
@@ -10,24 +10,24 @@ use crate::ops::array::Pad;
 use crate::ops::array::PadMode;
 use crate::ops::binary::TypedBinOp;
 use crate::ops::cast::cast;
+use crate::ops::cnn::PaddingSpec::*;
 use crate::ops::cnn::conv::block_quant::{BlockQuantIntoShape, SplitGroupBlockQuant};
 use crate::ops::cnn::conv::lazy_im2col::LazyIm2Col;
 use crate::ops::cnn::conv::lazy_im2col::LazyIm2colParams;
 use crate::ops::cnn::wire_reshape_bias_for_bin;
-use crate::ops::cnn::PaddingSpec::*;
 use crate::ops::einsum::EinSum;
-use crate::ops::math::{add, div, mul, sub};
 use crate::ops::math::{Add, Div, Mul, Sub};
+use crate::ops::math::{add, div, mul, sub};
+use crate::ops::matmul::ModePicker;
 use crate::ops::matmul::optimized::AddMatMulGeometry;
 use crate::ops::matmul::optimized::MapOutputAxisToInput;
 use crate::ops::matmul::pack::{OptMatMulPack, OptSimpleMatMulPack};
 use crate::ops::matmul::quant::wire_ensure_q8_flavour;
-use crate::ops::matmul::ModePicker;
 use crate::ops::nn::Reduce;
 
 use super::depth_wise::DepthWise;
 use super::im2col::Im2Col;
-use crate::ops::cnn::conv::{block_quant_aware_weight_shape, KernelFormat};
+use crate::ops::cnn::conv::{KernelFormat, block_quant_aware_weight_shape};
 use crate::ops::cnn::pools::{ConcretePoolGeometry, PoolGeometry, PoolSpec};
 use crate::ops::matmul::optimized::{OptMatMul, ProtoFusedSpec};
 use crate::ops::nn::{BaseDataShape, DataFormat, DataShape};
@@ -967,11 +967,11 @@ impl TypedOp for Conv {
             != &self.input_channels().to_dim()
         {
             bail!(
-                    "Inconsistent convolution: input is {:?}, but kernel expects {} input channels.\n{:?}",
-                    inputs[0],
-                    self.input_channels(),
-                    self
-                    );
+                "Inconsistent convolution: input is {:?}, but kernel expects {} input channels.\n{:?}",
+                inputs[0],
+                self.input_channels(),
+                self
+            );
         }
         if let ExplicitOnnxPool(bef, after, _) | Explicit(bef, after) = &self.pool_spec.padding {
             anyhow::ensure!(bef.len() == self.pool_spec.rank());
@@ -979,12 +979,12 @@ impl TypedOp for Conv {
         }
         ensure!(
             inputs[2].rank() == 0
-            || (inputs[2].rank() == 1
-                && inputs[2].shape.volume() == self.output_channels().to_dim()),
-                "Bias should be scalar or a vector with one value per output channel. Output channels is {}, bias is {:?}",
-                self.output_channels(),
-                inputs[2]
-               );
+                || (inputs[2].rank() == 1
+                    && inputs[2].shape.volume() == self.output_channels().to_dim()),
+            "Bias should be scalar or a vector with one value per output channel. Output channels is {}, bias is {:?}",
+            self.output_channels(),
+            inputs[2]
+        );
         let mut fact = self.pool_spec.output_facts(inputs)?.remove(0);
         if let Some(dt) = self.q_params {
             fact.datum_type = dt;

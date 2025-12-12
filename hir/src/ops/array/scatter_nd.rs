@@ -1,4 +1,3 @@
-
 use crate::infer::*;
 use crate::internal::*;
 
@@ -17,7 +16,7 @@ impl InferenceRulesOp for ScatterNd {
         s.equals(&inputs[2].datum_type, &inputs[0].datum_type)?;
         s.equals(&outputs[0].shape, &inputs[0].shape)?;
 
-        s.given_2(&inputs[0].rank, &inputs[1].rank, move |s, p ,q| {
+        s.given_2(&inputs[0].rank, &inputs[1].rank, move |s, p, q| {
             s.given(&inputs[1].shape[q as usize - 1], move |s, r| {
                 if let Ok(r) = r.to_i64() {
                     s.equals(&inputs[2].rank, p + q - r - 1)?;

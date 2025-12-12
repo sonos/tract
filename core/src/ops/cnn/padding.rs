@@ -308,7 +308,9 @@ impl PaddingSpec {
         upper: bool,
     ) -> TractResult<ComputedPaddedDim<D>> {
         if (kernel - 1) * dilation < stride {
-            bail!("Invalid axis geometry for SAME padding: expect (kernel_len - 1) * dilation > stride - 1");
+            bail!(
+                "Invalid axis geometry for SAME padding: expect (kernel_len - 1) * dilation > stride - 1"
+            );
         }
         let kernel_field = (kernel - 1) * dilation + 1;
         let crop = kernel_field + adjustment - stride;

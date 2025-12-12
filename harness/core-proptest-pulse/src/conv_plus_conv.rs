@@ -95,8 +95,7 @@ impl ConvPlusConvProblem {
             .map(|n| &n.outputs[0].fact.shape[2])
             .collect();
         for s in 0usize.. {
-            let symbols =
-                SymbolValues::default().with(&model.symbols.get("S").unwrap(), s as _);
+            let symbols = SymbolValues::default().with(&model.symbols.get("S").unwrap(), s as _);
             if dims.iter().all(|d| d.eval(&symbols).to_isize().unwrap() > 0) {
                 return s;
             }

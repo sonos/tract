@@ -1,12 +1,12 @@
 //! `Tensor`, tract main data object of interest.
+use crate::TVec;
 use crate::blob::Blob;
-use crate::datum::{round_ties_to_even, scale_by, ClampCast, Datum, DatumType, QParams};
+use crate::datum::{ClampCast, Datum, DatumType, QParams, round_ties_to_even, scale_by};
 use crate::dim::TDim;
 use crate::internal::*;
 use crate::opaque::Opaque;
-use crate::TVec;
 use half::f16;
-use itertools::{izip, Itertools};
+use itertools::{Itertools, izip};
 use ndarray::prelude::*;
 #[cfg(feature = "complex")]
 use num_complex::Complex;
@@ -47,11 +47,7 @@ impl Eq for Approximation {}
 
 impl From<bool> for Approximation {
     fn from(b: bool) -> Self {
-        if b {
-            Self::Approximate
-        } else {
-            Self::Exact
-        }
+        if b { Self::Approximate } else { Self::Exact }
     }
 }
 

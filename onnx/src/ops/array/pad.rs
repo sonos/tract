@@ -1,4 +1,4 @@
-use crate::model::{optional_inputs, ParsingContext};
+use crate::model::{ParsingContext, optional_inputs};
 use crate::pb::*;
 use tract_hir::internal::*;
 use tract_hir::ops::array;

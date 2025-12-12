@@ -285,7 +285,10 @@ impl<'a> IntoAst<'a> {
                 required_registries[0].0
             );
         } else {
-            bail!("One of the following registries is required: {:?}, consider allowing one on the NNEF framework.", required_registries);
+            bail!(
+                "One of the following registries is required: {:?}, consider allowing one on the NNEF framework.",
+                required_registries
+            );
         }
     }
 
@@ -398,7 +401,8 @@ impl<'a> IntoAst<'a> {
         let id = self.scoped_id(&name);
         let shape = if tensor.datum_type().is_opaque() {
             if let Some(bwf) = tensor.to_scalar::<Opaque>()?.downcast_ref::<BlobWithFact>() {
-                let bqf = bwf.fact.downcast_ref::<BlockQuantFact>().context("Expected BlockQuantFacr")?;
+                let bqf =
+                    bwf.fact.downcast_ref::<BlockQuantFact>().context("Expected BlockQuantFacr")?;
                 bqf.shape()
             } else {
                 bail!("Unexpected opaque tensor in serialization {tensor:?}");

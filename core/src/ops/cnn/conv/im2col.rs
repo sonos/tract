@@ -210,8 +210,10 @@ impl TypedOp for Im2Col {
             k: self.geometry.k(),
             mn,
         };
-        Ok(tvec!(Opaque::fact(&[input_shape.n().cloned().unwrap_or(1.into()), self.group.into()])
-            .with_opaque_fact(pof)))
+        Ok(tvec!(
+            Opaque::fact(&[input_shape.n().cloned().unwrap_or(1.into()), self.group.into()])
+                .with_opaque_fact(pof)
+        ))
     }
 
     fn declutter(

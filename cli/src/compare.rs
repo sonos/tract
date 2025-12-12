@@ -11,7 +11,7 @@ use tract_core::internal::*;
 use crate::dump::annotate_with_graph_def;
 use crate::*;
 use tract_libcli::display_params::DisplayParams;
-use tract_libcli::tensor::{get_or_make_inputs, RunParams};
+use tract_libcli::tensor::{RunParams, get_or_make_inputs};
 
 pub fn handle(
     params: &mut Parameters,
@@ -100,10 +100,11 @@ pub fn handle_tensorflow(
         for name in wanted_outputs {
             all_values.insert(
                 name.to_string(),
-                vec![tf
-                    .run(pairs.clone(), &name)
-                    .map(|t| Arc::new(t[0].clone().into()))
-                    .map_err(|e| e.into())],
+                vec![
+                    tf.run(pairs.clone(), &name)
+                        .map(|t| Arc::new(t[0].clone().into()))
+                        .map_err(|e| e.into()),
+                ],
             );
         }
     } else {

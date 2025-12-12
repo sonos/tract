@@ -3,8 +3,8 @@
 use proptest::prelude::*;
 
 use tract_hir::internal::*;
-use tract_ndarray::prelude::*;
 use tract_ndarray::Order;
+use tract_ndarray::prelude::*;
 use tract_onnx::prelude::*;
 use tract_onnx::tract_hir;
 
@@ -40,8 +40,10 @@ impl LstmProblem {
                 .slice_axis_mut(Axis(0), (s * icfo..s * (icfo + 1)).into())
                 .assign(&self.b_icfo.slice_axis(Axis(0), (s * iofc..s * (iofc + 1)).into()));
         }
-        let w_iofc = w_iofc.t().into_shape_with_order(((1, 4 * s, s), Order::ColumnMajor))?.to_owned();
-        let r_iofc = r_iofc.t().into_shape_with_order(((1, 4 * s, s), Order::ColumnMajor))?.to_owned();
+        let w_iofc =
+            w_iofc.t().into_shape_with_order(((1, 4 * s, s), Order::ColumnMajor))?.to_owned();
+        let r_iofc =
+            r_iofc.t().into_shape_with_order(((1, 4 * s, s), Order::ColumnMajor))?.to_owned();
         let b_iofc = b_iofc.into_shape_with_order(((1, 8 * s), Order::ColumnMajor))?;
 
         let x = model.add_source("x", self.x.datum_type().fact(self.x.shape()).into())?;

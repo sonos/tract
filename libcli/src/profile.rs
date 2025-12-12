@@ -1,6 +1,6 @@
 use crate::model::Model;
-use crate::tensor::make_inputs_for_model;
 use crate::tensor::RunTensors;
+use crate::tensor::make_inputs_for_model;
 use crate::{annotations::*, capture_gpu_trace};
 use std::any::TypeId;
 use std::borrow::Borrow;

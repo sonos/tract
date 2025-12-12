@@ -1,5 +1,5 @@
-use tract_core::internal::*;
 use crate::infer::*;
+use tract_core::internal::*;
 
 use tract_core::ops::cast::Cast;
 pub use tract_core::ops::cast::cast;

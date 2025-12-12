@@ -1,6 +1,6 @@
+use crate::Ops;
 use crate::frame::mmm::ImplementationQuality::ManuallyOptimized;
 use crate::frame::mmm::*;
-use crate::Ops;
 
 MMMExternKernel!(armvfpv2_mmm_f32_4x4<f32>(4, 4)@(4, 4) quality(ManuallyOptimized));
 

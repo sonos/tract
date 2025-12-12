@@ -4,8 +4,8 @@ use std::fmt;
 mod decluttered;
 mod optimized;
 
-pub use optimized::{OptScan, State};
 pub use decluttered::Scan;
+pub use optimized::{OptScan, State};
 
 #[derive(Clone, new, Hash, Eq, PartialEq, Copy, Debug)]
 pub struct ScanInfo {

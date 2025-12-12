@@ -6,8 +6,6 @@ use tract_core::ops::source::{SourceState, TypedSource};
 #[derive(Debug, Clone, new, Hash)]
 pub struct Source;
 
-
-
 impl Op for Source {
     fn name(&self) -> StaticName {
         "Source".into()
@@ -54,7 +52,9 @@ impl InferenceRulesOp for Source {
         if let Ok(fact) = TypedFact::try_from(&node.outputs[0].fact) {
             target.wire_node(&*node.name, TypedSource::new(fact), &[])
         } else {
-            bail!("Source node without a determined fact. Help: provide explicit input facts to your model.")
+            bail!(
+                "Source node without a determined fact. Help: provide explicit input facts to your model."
+            )
         }
     }
 }

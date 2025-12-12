@@ -2,8 +2,8 @@ use crate::internal::*;
 use std::ops::Deref;
 use std::rc::Rc;
 
-use tract_ndarray::Array;
 use TValue::*;
+use tract_ndarray::Array;
 
 #[derive(Clone, Eq)]
 pub enum TValue {

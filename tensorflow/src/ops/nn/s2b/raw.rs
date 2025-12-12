@@ -6,8 +6,6 @@ pub struct SpaceToBatch {
     datum_type: DatumType,
 }
 
-
-
 impl Op for SpaceToBatch {
     fn name(&self) -> StaticName {
         "SpaceToBatch".into()
@@ -99,8 +97,6 @@ impl InferenceRulesOp for SpaceToBatch {
 pub struct BatchToSpace {
     datum_type: DatumType,
 }
-
-
 
 impl Op for BatchToSpace {
     fn name(&self) -> StaticName {

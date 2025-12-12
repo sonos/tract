@@ -83,7 +83,7 @@ by_scalar_impl_wrap!(
 pub mod mul_by_scalar_f32 {
     use super::*;
     by_scalar_frame_tests!(true, f32, SMulByScalar4, |a, b| a * b);
-    by_scalar_frame_tests!(true, f32, SAddByScalar4, |a, b| a + b );
+    by_scalar_frame_tests!(true, f32, SAddByScalar4, |a, b| a + b);
     by_scalar_frame_tests!(true, f32, SSubByScalar4, |a, b| a - b);
     by_scalar_frame_tests!(true, f32, SSubFByScalar4, |a, b| b - a);
     by_scalar_frame_tests!(true, f32, SMinByScalar4, |a, b| a.min(b));

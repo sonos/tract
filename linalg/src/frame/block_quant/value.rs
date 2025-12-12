@@ -36,10 +36,13 @@ impl OpaqueFact for BlockQuantFact {
     fn same_as(&self, other: &dyn OpaqueFact) -> bool {
         other.downcast_ref::<Self>().is_some_and(|o| o == self)
     }
-    
+
     fn buffer_sizes(&self) -> TVec<TDim> {
-        tvec!((self.shape.iter().product::<usize>() / self.format.block_len() * self.format.block_bytes())
-            .to_dim())
+        tvec!(
+            (self.shape.iter().product::<usize>() / self.format.block_len()
+                * self.format.block_bytes())
+            .to_dim()
+        )
     }
 }
 
@@ -65,10 +68,12 @@ impl OpaqueFact for PackedBlockQuantFact {
     fn same_as(&self, other: &dyn OpaqueFact) -> bool {
         other.downcast_ref::<Self>().is_some_and(|o| o == self)
     }
-    
+
     fn buffer_sizes(&self) -> TVec<TDim> {
-        tvec!((self.shape.iter().product::<usize>() / self.format.bq.block_len()
-            * self.format.bq.block_bytes())
-        .to_dim())
+        tvec!(
+            (self.shape.iter().product::<usize>() / self.format.bq.block_len()
+                * self.format.bq.block_bytes())
+            .to_dim()
+        )
     }
 }

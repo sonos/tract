@@ -41,7 +41,8 @@ fn pulsify_along_concat_axis(
     let axis = op.axis;
     let source_facts: TVec<TypedFact> =
         node.inputs.iter().map(|i| source.outlet_fact(*i).unwrap().clone()).collect();
-    ensure!(source_facts.iter().filter(|fact| fact.shape[axis].symbols().contains(symbol)).count() == 1,
+    ensure!(
+        source_facts.iter().filter(|fact| fact.shape[axis].symbols().contains(symbol)).count() == 1,
         "Concat over pulse axis (#{axis}, {symbol:?}) expcts one single streaming input. Got: {source_facts:?}"
     );
     let pulsed_inputs: TVec<OutletId> = node.inputs.iter().map(|i| mapping[i]).collect();

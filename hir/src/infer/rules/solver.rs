@@ -5,9 +5,9 @@ use tract_num_traits::Zero;
 
 use crate::infer::*;
 
-use self::super::expr::{Exp, IntoExp, Output, TExp};
-use self::super::path::{get_path, set_path, Path};
 use self::super::InferenceResult;
+use self::super::expr::{Exp, IntoExp, Output, TExp};
+use self::super::path::{Path, get_path, set_path};
 
 /// A structure that holds the current sets of InferenceFacts.
 ///
@@ -362,9 +362,8 @@ impl<'rules> Solver<'rules> {
                 }
 
                 trace!("  Applying rule {rule:?}");
-                let (step_used, mut step_added) = rule
-                    .apply(&mut context)
-                    .with_context(|| format!("Applying rule {rule:?}"))?;
+                let (step_used, mut step_added) =
+                    rule.apply(&mut context).with_context(|| format!("Applying rule {rule:?}"))?;
                 *used |= step_used;
 
                 // There is a change if the rule was used, or if it added new rules.

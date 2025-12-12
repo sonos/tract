@@ -1,16 +1,16 @@
 use std::str::FromStr;
 
+use nom::Parser;
 use nom::branch::permutation;
 use nom::character::complete::digit1;
 use nom::combinator::{map_res, recognize};
 use nom::sequence::{delimited, pair};
-use nom::Parser;
 use nom_language::error::VerboseError;
 use tract_core::internal::*;
 
 use nom::branch::alt;
+use nom::{IResult, combinator::all_consuming};
 use nom::{bytes::complete::*, multi::*};
-use nom::{combinator::all_consuming, IResult};
 use nom::{combinator::opt, number::complete::float};
 
 use crate::ast::*;
@@ -92,12 +92,16 @@ pub(crate) fn write_quant_format(
 ) -> TractResult<()> {
     write_identifier(w, name, allow_extended_identifier_syntax, true)?;
     match format {
-        QuantFormat::Linear {
-            params: QParams::ZpScale {zero_point, scale}, bits, signed
-        } => writeln!(w, ": zero_point_linear_quantize(zero_point = {zero_point}, scale = {scale:.9}, bits = {bits}, signed = {signed}, symmetric = {});", zero_point == 0)?,
-        QuantFormat::Linear {
-            params: QParams::MinMax {min, max}, bits, signed: _
-        } => writeln!(w, ": linear_quantize(max = {max:.9}, min = {min:.9}, bits = {bits});")?,
+        QuantFormat::Linear { params: QParams::ZpScale { zero_point, scale }, bits, signed } => {
+            writeln!(
+                w,
+                ": zero_point_linear_quantize(zero_point = {zero_point}, scale = {scale:.9}, bits = {bits}, signed = {signed}, symmetric = {});",
+                zero_point == 0
+            )?
+        }
+        QuantFormat::Linear { params: QParams::MinMax { min, max }, bits, signed: _ } => {
+            writeln!(w, ": linear_quantize(max = {max:.9}, min = {min:.9}, bits = {bits});")?
+        }
     }
     Ok(())
 }

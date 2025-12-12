@@ -54,11 +54,7 @@ impl Location {
     }
 
     fn is_dir(&self) -> bool {
-        if let &Location::Fs(p) = &self {
-            p.is_dir()
-        } else {
-            false
-        }
+        if let &Location::Fs(p) = &self { p.is_dir() } else { false }
     }
 
     fn read(&self) -> TractResult<Box<dyn Read>> {

@@ -56,12 +56,10 @@ fn rule(
     let a_order_es: String = op.axes.axes(InOut::In(0)).map(|a| a.repr).collect();
     let a_order_mm = format!("{prefix}{m}{k}");
     let a_order_mm_t = format!("{prefix}{k}{m}");
-    let a_transform = format!("{a_order_es}->{a_order_mm}")
-        .parse::<AxesMapping>()?
-        .translate_to_axis_ops()?;
-    let a_transform_t = format!("{a_order_es}->{a_order_mm_t}")
-        .parse::<AxesMapping>()?
-        .translate_to_axis_ops()?;
+    let a_transform =
+        format!("{a_order_es}->{a_order_mm}").parse::<AxesMapping>()?.translate_to_axis_ops()?;
+    let a_transform_t =
+        format!("{a_order_es}->{a_order_mm_t}").parse::<AxesMapping>()?.translate_to_axis_ops()?;
     let transpose_a = a_transform.len() > a_transform_t.len();
     let a_transform = if transpose_a { a_transform_t } else { a_transform };
     let name = format!("{node_name}.fix_a");
@@ -85,12 +83,10 @@ fn rule(
     let b_order_es: String = op.axes.axes(InOut::In(1)).map(|a| a.repr).collect();
     let b_order_mm = format!("{prefix}{k}{n}");
     let b_order_mm_t = format!("{prefix}{n}{k}");
-    let b_transform = format!("{b_order_es}->{b_order_mm}")
-        .parse::<AxesMapping>()?
-        .translate_to_axis_ops()?;
-    let b_transform_t = format!("{b_order_es}->{b_order_mm_t}")
-        .parse::<AxesMapping>()?
-        .translate_to_axis_ops()?;
+    let b_transform =
+        format!("{b_order_es}->{b_order_mm}").parse::<AxesMapping>()?.translate_to_axis_ops()?;
+    let b_transform_t =
+        format!("{b_order_es}->{b_order_mm_t}").parse::<AxesMapping>()?.translate_to_axis_ops()?;
     let transpose_b = b_transform.len() > b_transform_t.len();
     let b_transform = if transpose_b { b_transform_t } else { b_transform };
     let name = format!("{node_name}.fix_b");
@@ -101,12 +97,10 @@ fn rule(
     let c_order_es: String = op.axes.axes(InOut::Out(0)).map(|a| a.repr).collect();
     let c_order_mm = format!("{prefix}{m}{n}");
     let c_order_mm_t = format!("{prefix}{n}{m}");
-    let c_transform = format!("{c_order_mm}->{c_order_es}")
-        .parse::<AxesMapping>()?
-        .translate_to_axis_ops()?;
-    let c_transform_t = format!("{c_order_mm_t}->{c_order_es}")
-        .parse::<AxesMapping>()?
-        .translate_to_axis_ops()?;
+    let c_transform =
+        format!("{c_order_mm}->{c_order_es}").parse::<AxesMapping>()?.translate_to_axis_ops()?;
+    let c_transform_t =
+        format!("{c_order_mm_t}->{c_order_es}").parse::<AxesMapping>()?.translate_to_axis_ops()?;
     let transpose_c = c_transform.len() > c_transform_t.len();
     let c_transform = if transpose_c { c_transform_t } else { c_transform };
     let quantize_output = if let Some(qp) = op.q_params {
@@ -221,11 +215,7 @@ impl PrefixMatMul {
             let mut c = c.into_dimensionality::<Ix2>().unwrap();
             let a = if self.transpose_a { a.t() } else { a };
             let b = if self.transpose_b { b.t() } else { b };
-            if self.transpose_c {
-                c.assign(&b.t().dot(&a.t()))
-            } else {
-                c.assign(&a.dot(&b))
-            }
+            if self.transpose_c { c.assign(&b.t().dot(&a.t())) } else { c.assign(&a.dot(&b)) }
         }
         Ok(())
     }
@@ -297,7 +287,8 @@ impl TypedOp for PrefixMatMul {
         };
         let a_shape = block_quant_aware_input_shape(a)?;
         let b_shape = block_quant_aware_input_shape(b)?;
-        let dt = self.quantize_output
+        let dt = self
+            .quantize_output
             .or(self.operating_dt)
             .unwrap_or(matmul_semantic_output_dt(&a.datum_type, &b.datum_type));
         Ok(tvec!(dt.fact(self.output_shape(&a_shape, &b_shape))))

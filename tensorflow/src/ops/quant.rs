@@ -25,8 +25,6 @@ struct FakeQuantWithMinMaxVars {
     num_bits: usize,
 }
 
-
-
 impl FakeQuantWithMinMaxVars {
     fn step(&self, min: &Tensor, max: &Tensor) -> TractResult<f32> {
         let min = min.to_scalar::<f32>()?;
@@ -100,21 +98,15 @@ impl Expansion for FakeQuantWithMinMaxVars {
                 ops::math::sub(),
                 &[wire, min_adj],
             )?[0];
-            let wire = target.wire_node(
-                format!("{prefix}.div-step"),
-                ops::math::div(),
-                &[wire, step],
-            )?[0];
+            let wire =
+                target.wire_node(format!("{prefix}.div-step"), ops::math::div(), &[wire, step])?[0];
             let wire = target.wire_node(
                 format!("{prefix}.round"),
                 ops::math::round_half_to_even(),
                 &[wire],
             )?[0];
-            let wire = target.wire_node(
-                format!("{prefix}.mul-step"),
-                ops::math::mul(),
-                &[wire, step],
-            )?[0];
+            let wire =
+                target.wire_node(format!("{prefix}.mul-step"), ops::math::mul(), &[wire, step])?[0];
             target.wire_node(format!("{prefix}.add-min"), ops::math::add(), &[wire, min_adj])
         } else {
             bail!("Operator can not be made a TypedOp.")

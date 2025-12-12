@@ -77,11 +77,7 @@ fn linearops_quantization_suport(
             rctensor0(k_qp.scale().unwrap().get(0))
         };
         let k_zp = k_qp.zero_point().unwrap().iter().map(|i| i as i32).collect_vec();
-        let k_zp = if k_zp.iter().all_equal() {
-            tensor0(k_zp[0])
-        } else {
-            tensor1(&k_zp)
-        };
+        let k_zp = if k_zp.iter().all_equal() { tensor0(k_zp[0]) } else { tensor1(&k_zp) };
         inputs.push(op.ctx.target.add_const(format!("{p}.i0"), rctensor0(iqp.zp_scale().0))?);
         inputs.push(op.ctx.target.add_const(format!("{p}.iscale"), rctensor0(iqp.zp_scale().1))?);
         inputs.push(op.ctx.target.add_const(format!("{p}.k0"), k_zp.into_arc_tensor())?);

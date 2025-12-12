@@ -2,9 +2,9 @@ use crate::internal::*;
 use crate::ops::matmul::pack::DynPackedOpaqueFact;
 use std::fmt::{Debug, Display};
 use std::ops::Range;
+use tract_linalg::WeightType;
 use tract_linalg::mmm::{MMMInputFormat, MMMInputValue};
 use tract_linalg::pack::{PackedFormat, PackingWriter};
-use tract_linalg::WeightType;
 
 #[derive(Clone, Debug, Hash, PartialEq)]
 pub struct LazyIm2colParams {
@@ -75,7 +75,7 @@ impl OpaqueFact for LazyIm2colParams {
     fn same_as(&self, _other: &dyn OpaqueFact) -> bool {
         _other.downcast_ref::<Self>().is_some_and(|o| o == self)
     }
-    
+
     fn buffer_sizes(&self) -> TVec<TDim> {
         tvec!(MMMInputFormat::mem_size(
             self,

@@ -6,10 +6,10 @@ use std::fmt;
 
 pub trait Translate<TI1, O1, TI2, O2>: fmt::Debug
 where
-    TI1: Fact  + Clone + 'static,
-    TI2: Fact  + Clone + 'static,
-    O1: fmt::Display + fmt::Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static ,
-    O2: fmt::Display + fmt::Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static ,
+    TI1: Fact + Clone + 'static,
+    TI2: Fact + Clone + 'static,
+    O1: fmt::Display + fmt::Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+    O2: fmt::Display + fmt::Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
     fn translate_node(
         &self,
@@ -27,10 +27,7 @@ where
         &self,
         source: &Graph<TI1, O1>,
     ) -> TractResult<(Graph<TI2, O2>, HashMap<OutletId, OutletId>)> {
-        let mut target = Graph {
-            symbols: source.symbols.clone(),
-            .. Graph::default()
-        };
+        let mut target = Graph { symbols: source.symbols.clone(), ..Graph::default() };
         let mut mapping = HashMap::new();
         for old_id in source.eval_order()? {
             let node = source.node(old_id);
@@ -68,16 +65,15 @@ pub struct IntoTranslator;
 impl<TI1, O1, TI2, O2, EO, ETI> Translate<TI1, O1, TI2, O2> for IntoTranslator
 where
     TractError: From<EO> + From<ETI>,
-    TI1: Fact  + Clone + 'static,
-    TI2: Fact  + for<'a> TryFrom<&'a TI1, Error = EO> + Clone + 'static,
-    O1: fmt::Display + fmt::Debug + Clone + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static ,
+    TI1: Fact + Clone + 'static,
+    TI2: Fact + for<'a> TryFrom<&'a TI1, Error = EO> + Clone + 'static,
+    O1: fmt::Display + fmt::Debug + Clone + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
     O2: fmt::Display
         + for<'a> TryFrom<&'a O1, Error = ETI>
         + fmt::Debug
         + AsRef<dyn Op>
         + AsMut<dyn Op>
         + Clone
-        
         + 'static,
     Graph<TI2, O2>: SpecialOps<TI2, O2>,
 {

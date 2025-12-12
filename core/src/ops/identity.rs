@@ -82,11 +82,11 @@ impl EvalOp for PinConst {
 
 impl OpState for PinConst {
     fn eval(
-            &mut self,
-            _session: &mut SessionState,
-            _op: &dyn Op,
-            inputs: TVec<TValue>,
-        ) -> TractResult<TVec<TValue>> {
+        &mut self,
+        _session: &mut SessionState,
+        _op: &dyn Op,
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
         Ok(inputs)
     }
 }

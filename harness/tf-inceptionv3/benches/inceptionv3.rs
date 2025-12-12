@@ -42,9 +42,7 @@ fn tract(bencher: &mut Criterion) {
     let tfd = tfd.into_optimized().unwrap();
     let input = tf_inceptionv3::load_image(hopper());
     let plan = SimplePlan::new(tfd).unwrap();
-    bencher.bench_function("tract", move |b| {
-        b.iter(|| plan.run(tvec![input.clone()]).unwrap())
-    });
+    bencher.bench_function("tract", move |b| b.iter(|| plan.run(tvec![input.clone()]).unwrap()));
 }
 
 pub fn benches() {

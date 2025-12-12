@@ -12,8 +12,8 @@ pub enum Comp {
     LTE,
 }
 
-use tract_data::TooEarly;
 use Comp::*;
+use tract_data::TooEarly;
 
 impl Op for Comp {
     fn name(&self) -> StaticName {

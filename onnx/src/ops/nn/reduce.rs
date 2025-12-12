@@ -33,8 +33,6 @@ struct ReduceSum13 {
     pub reducer: tract_hir::ops::nn::Reducer,
 }
 
-
-
 impl Expansion for ReduceSum13 {
     fn name(&self) -> StaticName {
         "Reduce13".into()

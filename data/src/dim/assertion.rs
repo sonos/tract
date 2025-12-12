@@ -185,7 +185,9 @@ mod tests {
         assert_eq!(symbols.guess_scenario(&SymbolValues::default())?, None);
         assert_eq!(symbols.guess_scenario(&SymbolValues::default().with(&s, 50))?, Some(1));
         assert_eq!(symbols.guess_scenario(&SymbolValues::default().with(&p, 50))?, Some(0));
-        assert!(symbols.guess_scenario(&SymbolValues::default().with(&p, 50).with(&s, 50)).is_err());
+        assert!(
+            symbols.guess_scenario(&SymbolValues::default().with(&p, 50).with(&s, 50)).is_err()
+        );
         Ok(())
     }
 

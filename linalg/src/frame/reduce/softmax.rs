@@ -1,8 +1,8 @@
 #[cfg(test)]
 #[macro_use]
 pub mod test {
-    use crate::frame::reduce::MapReduceKer;
     use crate::LADatum;
+    use crate::frame::reduce::MapReduceKer;
     use num_traits::{AsPrimitive, Float};
     use proptest::test_runner::TestCaseResult;
 
@@ -62,9 +62,7 @@ pub mod test {
         };
     }
 
-    pub fn test_softmax_l2<K: MapReduceKer<T, T>, T>(
-        values: &[f32],
-    ) -> TestCaseResult
+    pub fn test_softmax_l2<K: MapReduceKer<T, T>, T>(values: &[f32]) -> TestCaseResult
     where
         T: LADatum + Float + AsPrimitive<f32>,
         f32: AsPrimitive<T>,

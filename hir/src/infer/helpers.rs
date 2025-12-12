@@ -62,10 +62,14 @@ pub fn infer_shape_broadcasting(shapes: &[&ShapeFactoid]) -> TractResult<Option<
         }
 
         if unknown > 1 {
-            debug!("Can't infer shape (broadcasting): there are multiple unknown values at same index.");
+            debug!(
+                "Can't infer shape (broadcasting): there are multiple unknown values at same index."
+            );
             return Ok(None);
         } else if unknown == 1 && previous.is_some() {
-            debug!("Can't infer shape (broadcasting): there are both unknown and known values at same index.");
+            debug!(
+                "Can't infer shape (broadcasting): there are both unknown and known values at same index."
+            );
             return Ok(None);
         } else if unknown == 1 && previous.is_none() {
             output_shape.push(GenericFactoid::Any);

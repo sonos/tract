@@ -1,4 +1,4 @@
-use crate::model::{optional_outputs, ParsingContext};
+use crate::model::{ParsingContext, optional_outputs};
 use crate::pb::NodeProto;
 use tract_core::ops::cast::cast;
 use tract_core::ops::math::{add, div, mul, rsqrt, square, sub};
