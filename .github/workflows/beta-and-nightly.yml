@@ -95,6 +95,8 @@ jobs:
       RUSTUP_TOOLCHAIN: 1.85.0
     steps:
     - uses: actions/checkout@v4
+    - name: Rustup update
+      run: rustup component add rustfmt
     - run: cargo fmt --check
 
   cargo-clippy:
