@@ -18,8 +18,6 @@ pub struct Pack {
     axis: usize,
 }
 
-
-
 impl Expansion for Pack {
     fn name(&self) -> StaticName {
         "Pack".into()

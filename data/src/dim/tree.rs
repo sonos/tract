@@ -1,7 +1,7 @@
 use crate::dim::Assertion;
 use crate::internal::*;
 
-use super::{sym::*, DimLike};
+use super::{DimLike, sym::*};
 use itertools::Itertools;
 use num_integer::Integer;
 use num_traits::{AsPrimitive, PrimInt, Zero};
@@ -112,11 +112,7 @@ impl TDim {
 
     #[inline]
     pub fn as_i64(&self) -> Option<i64> {
-        if let Val(v) = self {
-            Some(*v)
-        } else {
-            None
-        }
+        if let Val(v) = self { Some(*v) } else { None }
     }
 
     pub fn eval_to_i64(&self, values: &SymbolValues) -> TractResult<i64> {
@@ -408,7 +404,7 @@ impl TDim {
             MulInt(coef, expr) => {
                 match *expr {
                     MulInt(c2, inner) => {
-                        return MulInt(coef * c2, inner).simplify_rec(scope, scenario)
+                        return MulInt(coef * c2, inner).simplify_rec(scope, scenario);
                     }
                     Val(v) => return Val(coef * v),
                     _ => {}
@@ -439,13 +435,10 @@ impl TDim {
                 } else if let MulInt(-1, a) = a {
                     MulInt(-1, b!(Div(a, q)))
                 } else if let Add(mut terms) = a {
-                    if terms.iter().any(|t| {
-                        if let MulInt(-1, s) = t {
-                            matches!(&**s, Sym(_))
-                        } else {
-                            false
-                        }
-                    }) {
+                    if terms
+                        .iter()
+                        .any(|t| if let MulInt(-1, s) = t { matches!(&**s, Sym(_)) } else { false })
+                    {
                         MulInt(
                             -1,
                             b!(Div(
@@ -831,11 +824,7 @@ pub(super) fn reduce_ratio(mut p: i64, mut q: i64) -> (i64, u64) {
         p /= gcd;
         q /= gcd;
     }
-    if q < 0 {
-        (-p, (-q) as u64)
-    } else {
-        (p, q as u64)
-    }
+    if q < 0 { (-p, (-q) as u64) } else { (p, q as u64) }
 }
 
 impl Zero for TDim {
@@ -929,11 +918,7 @@ impl<'a> From<&'a Symbol> for TDim {
 impl ops::Neg for TDim {
     type Output = Self;
     fn neg(self) -> Self {
-        if let Val(v) = self {
-            Val(-v)
-        } else {
-            TDim::MulInt(-1, Box::new(self)).reduce()
-        }
+        if let Val(v) = self { Val(-v) } else { TDim::MulInt(-1, Box::new(self)).reduce() }
     }
 }
 

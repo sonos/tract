@@ -1,8 +1,8 @@
+use crate::LADatum;
 use crate::frame::mmm::fuse::FusedKerSpec;
 use crate::frame::mmm::storage::*;
 use crate::frame::mmm::tests::display_error;
 use crate::frame::mmm::*;
-use crate::LADatum;
 use num_traits::Bounded;
 use tract_data::internal::*;
 use tract_itertools::Itertools;

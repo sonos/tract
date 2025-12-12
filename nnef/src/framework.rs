@@ -422,7 +422,9 @@ fn proto_model_from_resources(
             bail!("Error while downcasting quantization format resource")
         };
         let Ok(q_r) = Arc::try_unwrap(q_r) else {
-            bail!("Error while extracting quantization format resource from shared reference. Only one reference to it is expected")
+            bail!(
+                "Error while extracting quantization format resource from shared reference. Only one reference to it is expected"
+            )
         };
         Some(q_r.into_iter().map(|(k, v)| (Identifier(k), v)).collect())
     } else {

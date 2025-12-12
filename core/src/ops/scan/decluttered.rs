@@ -571,11 +571,7 @@ impl Scan {
     fn body_locked_outlets(&self, node_input_facts: &[&TypedFact]) -> TractResult<TVec<OutletId>> {
         let input_outlets =
             self.body.input_outlets()?.iter().enumerate().filter_map(|(slot, o)| {
-                if node_input_facts[slot].konst.is_none() {
-                    Some(o)
-                } else {
-                    None
-                }
+                if node_input_facts[slot].konst.is_none() { Some(o) } else { None }
             });
         let output_outlets = self
             .output_mapping
@@ -716,7 +712,8 @@ impl TypedOp for Scan {
             let ofact = self.body.outlet_fact(self.body.outputs[o])?;
             anyhow::ensure!(
                 ifact == ofact,
-                "inconsistent fact: body input {i} is {ifact:?} and body output {o} is {ofact:?}\n{}",self.body
+                "inconsistent fact: body input {i} is {ifact:?} and body output {o} is {ofact:?}\n{}",
+                self.body
             )
         }
         let mut outputs = tvec!();

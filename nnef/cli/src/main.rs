@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use std::path::PathBuf;
 use structopt::StructOpt;
 use tract_nnef::internal::DocDumper;

@@ -1,5 +1,5 @@
 use crate::internal::*;
-use crate::ops::cast::{cast, Cast};
+use crate::ops::cast::{Cast, cast};
 use crate::ops::change_axes::wire_with_rank_broadcast;
 use crate::ops::nn::LeakyRelu;
 use ndarray::*;
@@ -654,11 +654,7 @@ impl OptMatMul {
             .iter()
             .find_map(
                 |o| {
-                    if let ProtoFusedSpec::AddMatMul { geo, .. } = o {
-                        Some(geo)
-                    } else {
-                        None
-                    }
+                    if let ProtoFusedSpec::AddMatMul { geo, .. } = o { Some(geo) } else { None }
                 },
             )
             .map(|geo| geo.k.clone())

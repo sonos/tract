@@ -1,5 +1,5 @@
-use crate::bench::{bench, make_state};
 use crate::Parameters;
+use crate::bench::{bench, make_state};
 use float_ord::FloatOrd;
 use readings_probe::Probe;
 use std::time::{Duration, Instant};

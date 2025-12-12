@@ -12,15 +12,14 @@ pub fn pulsify(
     stream_symbol: &Symbol,
     pulse: &TDim,
 ) -> TractResult<Option<TVec<OutletId>>> {
-    let pulsed_fact = PulsedFact::from_tensor_fact_pulse(&node.outputs[0].fact, stream_symbol, pulse)?;
+    let pulsed_fact =
+        PulsedFact::from_tensor_fact_pulse(&node.outputs[0].fact, stream_symbol, pulse)?;
     let id = target.add_source(node.name.clone(), pulsed_fact)?;
     Ok(Some(tvec!(id)))
 }
 
 #[derive(Debug, Clone, Hash)]
 pub struct PulsedSource(pub PulsedFact);
-
-
 
 impl Op for PulsedSource {
     fn name(&self) -> StaticName {

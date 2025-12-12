@@ -16,13 +16,10 @@ struct OneHot {
     axis: i64,
 }
 
-
-
 impl Expansion for OneHot {
     fn name(&self) -> StaticName {
         "OneHot".into()
     }
-
 
     fn wire(
         &self,

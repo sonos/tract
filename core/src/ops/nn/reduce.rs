@@ -4,7 +4,7 @@ use crate::ops::binary::TypedBinOp;
 use crate::ops::cast::cast;
 use crate::ops::change_axes::wire_with_rank_broadcast;
 use crate::ops::element_wise::ElementWiseOp;
-use crate::ops::math::{div, square, Mul, Square};
+use crate::ops::math::{Mul, Square, div, square};
 use std::convert::TryFrom;
 use std::iter::Sum;
 use std::mem::transmute;
@@ -263,11 +263,7 @@ where
         .fold(
             (0usize, T::min_value()),
             |acc, v| {
-                if v.1 > acc.1 || (last && acc.1 == v.1) {
-                    v
-                } else {
-                    acc
-                }
+                if v.1 > acc.1 || (last && acc.1 == v.1) { v } else { acc }
             },
         )
         .0 as i64
@@ -283,11 +279,7 @@ where
         .fold(
             (0usize, T::max_value()),
             |acc, v| {
-                if v.1 < acc.1 || (last && acc.1 == v.1) {
-                    v
-                } else {
-                    acc
-                }
+                if v.1 < acc.1 || (last && acc.1 == v.1) { v } else { acc }
             },
         )
         .0 as i64
@@ -417,9 +409,11 @@ impl TypedOp for Reduce {
                             .output(0, ix),
                     )
                 } else {
-                    tvec!(Axis::new(letters.next().unwrap(), inputs.len(), outputs.len())
-                        .input(0, ix)
-                        .output(0, ix))
+                    tvec!(
+                        Axis::new(letters.next().unwrap(), inputs.len(), outputs.len())
+                            .input(0, ix)
+                            .output(0, ix)
+                    )
                 }
                 .into_iter()
             })

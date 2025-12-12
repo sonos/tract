@@ -182,14 +182,17 @@ impl TypedOp for Gather {
         ensure!(inputs[1].datum_type == i64::datum_type());
         if inputs[0].datum_type.is_opaque() {
             let data_shape = block_quant_aware_input_shape(inputs[0])?;
-            Ok(tvec!(self
-                .output_type
-                .unwrap()
-                .fact(&*self.compute_output_shape(&data_shape, &inputs[1].shape)?)))
+            Ok(tvec!(
+                self.output_type
+                    .unwrap()
+                    .fact(&*self.compute_output_shape(&data_shape, &inputs[1].shape)?)
+            ))
         } else {
-            Ok(tvec!(inputs[0]
-                .datum_type
-                .fact(&*self.compute_output_shape(&inputs[0].shape, &inputs[1].shape)?)))
+            Ok(tvec!(
+                inputs[0]
+                    .datum_type
+                    .fact(&*self.compute_output_shape(&inputs[0].shape, &inputs[1].shape)?)
+            ))
         }
     }
 

@@ -1,12 +1,12 @@
 use infra::{Test, TestSuite};
 use proptest::{
-    prelude::{any, Arbitrary, BoxedStrategy, Just, Strategy},
+    prelude::{Arbitrary, BoxedStrategy, Just, Strategy, any},
     prop_oneof,
 };
 use tract_core::internal::*;
-use tract_core::ndarray::{arr2, arr3, ArrayD, ArrayView4};
+use tract_core::ndarray::{ArrayD, ArrayView4, arr2, arr3};
 use tract_core::num_traits::Float;
-use tract_ndarray::{s, Array2, Array4, ArrayView2, Axis, Ix3, Ix4, IxDyn};
+use tract_ndarray::{Array2, Array4, ArrayView2, Axis, Ix3, Ix4, IxDyn, s};
 use tract_transformers::ops::sdpa::Sdpa;
 
 use crate::tensor;

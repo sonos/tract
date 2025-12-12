@@ -15,9 +15,9 @@ use tract_nnef::prelude::{
 };
 use tract_onnx::prelude::InferenceModelExt;
 use tract_onnx_opl::WithOnnx;
+use tract_pulse::WithPulse;
 use tract_pulse::internal::PlanOptions;
 use tract_pulse::model::{PulsedModel, PulsedModelExt};
-use tract_pulse::WithPulse;
 use tract_transformers::WithTractTransformers;
 
 use tract_api::*;
@@ -533,8 +533,8 @@ anyhow::bail!("Unsupported type {}", std::any::type_name::<T>())
 */
 
 fn to_internal_dt(it: DatumType) -> tract_nnef::prelude::DatumType {
-    use tract_nnef::prelude::DatumType::*;
     use DatumType::*;
+    use tract_nnef::prelude::DatumType::*;
     match it {
         TRACT_DATUM_TYPE_BOOL => Bool,
         TRACT_DATUM_TYPE_U8 => U8,
@@ -564,8 +564,8 @@ fn to_internal_dt(it: DatumType) -> tract_nnef::prelude::DatumType {
 }
 
 fn from_internal_dt(it: tract_nnef::prelude::DatumType) -> Result<DatumType> {
-    use tract_nnef::prelude::DatumType::*;
     use DatumType::*;
+    use tract_nnef::prelude::DatumType::*;
     Ok(match it {
         Bool => TRACT_DATUM_TYPE_BOOL,
         U8 => TRACT_DATUM_TYPE_U8,

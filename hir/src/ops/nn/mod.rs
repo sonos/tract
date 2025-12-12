@@ -8,4 +8,4 @@ pub use layer_max::*;
 pub use reduce::{Reduce, Reducer};
 pub use softmax::Softmax;
 
-pub use tract_core::ops::nn::{hard_swish, sigmoid, DataFormat};
+pub use tract_core::ops::nn::{DataFormat, hard_swish, sigmoid};

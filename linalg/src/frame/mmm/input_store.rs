@@ -1,4 +1,4 @@
-use downcast_rs::{impl_downcast, Downcast};
+use downcast_rs::{Downcast, impl_downcast};
 use dyn_clone::DynClone;
 use dyn_hash::DynHash;
 use std::alloc::Layout;
@@ -25,11 +25,7 @@ pub trait MMMInputFormat: Downcast + Debug + DynHash + DynClone + Send + Sync + 
         &'a self,
         other: &'b dyn MMMInputFormat,
     ) -> Option<&'o dyn MMMInputFormat> {
-        if self.same_as(other) {
-            Some(other)
-        } else {
-            None
-        }
+        if self.same_as(other) { Some(other) } else { None }
     }
     fn mem_size(&self, k: TDim, mn: TDim) -> TDim;
     fn extract_at_mn_f16(
@@ -108,7 +104,7 @@ impl OpaqueFact for PackedOpaqueFact {
     fn same_as(&self, other: &dyn OpaqueFact) -> bool {
         other.downcast_ref::<Self>().is_some_and(|o| o == self)
     }
-    
+
     fn buffer_sizes(&self) -> TVec<TDim> {
         tvec!(self.format.mem_size(self.k.to_dim(), self.mn.clone()))
     }

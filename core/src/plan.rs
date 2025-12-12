@@ -8,8 +8,8 @@ use tract_data::itertools::Itertools;
 
 use crate::internal::*;
 use crate::model::{Fact, Graph, OutletId};
-use crate::ops::konst::Const;
 use crate::ops::FrozenOpState;
+use crate::ops::konst::Const;
 
 use self::order::{build_flush_list, eval_order_for_nodes, eval_order_opt_ram_for_nodes};
 
@@ -467,7 +467,9 @@ where
         let expected = expression.eval(&state.resolved_symbols);
         if let Ok(x) = expected.to_i64() {
             if x != provided {
-                bail!("Clashing resolution for expression. {expression}={x} != {provided}. ({state:?})")
+                bail!(
+                    "Clashing resolution for expression. {expression}={x} != {provided}. ({state:?})"
+                )
             }
         }
         if expected.symbols().len() == 1 {
@@ -500,9 +502,9 @@ where
         let fact = self.plan.borrow().model().outlet_fact(outlet)?;
         ensure!(
             fact.matches(&t, Some(&self.session_state.resolved_symbols))
-            .with_context(|| format!("Setting input {input}"))?,
+                .with_context(|| format!("Setting input {input}"))?,
             "Input at index {input} has incorrect dtype or shape (got {t:?}, expected to match fact {fact:?})",
-            );
+        );
         self.session_state.inputs.insert(outlet.node, t);
         Ok(())
     }

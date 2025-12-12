@@ -52,9 +52,11 @@ impl TypedOp for OptMatMulPack {
         let k = inputs[0].shape[self.k_axis].clone();
         let mn = inputs[0].shape[self.mn_axis].clone();
         let opaque_fact = DynPackedOpaqueFact { k, mn, packers: self.packers.clone() };
-        Ok(tvec!(Opaque::datum_type()
-            .fact(self.output_shape(&inputs[0].shape))
-            .with_opaque_fact(opaque_fact)))
+        Ok(tvec!(
+            Opaque::datum_type()
+                .fact(self.output_shape(&inputs[0].shape))
+                .with_opaque_fact(opaque_fact)
+        ))
     }
 
     fn axes_mapping(
@@ -139,7 +141,7 @@ impl OpaqueFact for DynPackedOpaqueFact {
     fn same_as(&self, other: &dyn OpaqueFact) -> bool {
         other.downcast_ref::<Self>().is_some_and(|o| o == self)
     }
-    
+
     fn buffer_sizes(&self) -> TVec<TDim> {
         tvec!(self.k.clone() * &self.mn * self.packers[0].dt.size_of())
     }
@@ -181,7 +183,10 @@ impl EvalOp for OptSimpleMatMulPack {
                 .iter()
                 .map(|i| {
                     let i = i.downcast_ref::<BlobWithFact>().context("Expected BlockWithFact")?;
-                    let i_bqf = i.fact.downcast_ref::<BlockQuantFact>().context("Expected BlockQuantFact")?;
+                    let i_bqf = i
+                        .fact
+                        .downcast_ref::<BlockQuantFact>()
+                        .context("Expected BlockQuantFact")?;
                     let iv: Box<dyn MMMInputValue> =
                         Box::new(self.packed_format.pack(&i.value, i_bqf.k())?);
                     Ok(Opaque(Arc::new(iv)))

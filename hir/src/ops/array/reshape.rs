@@ -36,7 +36,8 @@ impl Expansion for Reshape {
             let shape = shape.cast_to::<TDim>()?;
             let shape = shape.as_slice::<TDim>()?;
             let mut wire = tvec!(inputs[0]);
-            for (ix, op) in to_axis_ops_with_tf_rules(&input_shape, shape)?.into_iter().enumerate() {
+            for (ix, op) in to_axis_ops_with_tf_rules(&input_shape, shape)?.into_iter().enumerate()
+            {
                 wire = model.wire_node(format!("{prefix}.{ix}"), op, &wire)?;
             }
             return Ok(wire);

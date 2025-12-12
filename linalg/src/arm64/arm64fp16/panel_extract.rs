@@ -1,7 +1,7 @@
 use super::FP16;
+use crate::Ops;
 use crate::block_quant::{PackedBlockQuantFormat, Q4_0};
 use crate::pack::Packing;
-use crate::Ops;
 use tract_data::internal::*;
 
 pub fn plug(ops: &mut Ops) {

@@ -56,8 +56,8 @@ macro_rules! by_scalar_impl_wrap {
 #[cfg(test)]
 #[macro_use]
 pub mod test {
-    use crate::frame::element_wise::ElementWiseKer;
     use crate::LADatum;
+    use crate::frame::element_wise::ElementWiseKer;
     use num_traits::{AsPrimitive, Float};
     use proptest::test_runner::TestCaseResult;
 

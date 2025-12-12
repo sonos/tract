@@ -1,8 +1,8 @@
 use std::fmt::Debug;
 use std::ops::Deref;
 
-use crate::pack::PackedFormat;
 use crate::BinOp;
+use crate::pack::PackedFormat;
 
 use super::{MMMInputValue, OutputStore, OutputStoreKer};
 use tract_data::internal::*;
@@ -55,11 +55,7 @@ impl FusedSpec<'_> {
         if let FusedSpec::AddMatMul { a, b, .. } = self {
             let a_is_eager = a.format().is::<PackedFormat>();
             let b_is_eager = b.format().is::<PackedFormat>();
-            if a_is_eager == b_is_eager {
-                None
-            } else {
-                Some(a_is_eager)
-            }
+            if a_is_eager == b_is_eager { None } else { Some(a_is_eager) }
         } else {
             None
         }

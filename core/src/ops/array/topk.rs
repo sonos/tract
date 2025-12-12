@@ -73,11 +73,7 @@ impl Topk {
             .enumerate()
             .sorted_by(|a, b| {
                 let ord = { a.1.partial_cmp(&b.1).unwrap_or(Ordering::Less) };
-                if self.largest {
-                    ord.reverse()
-                } else {
-                    ord
-                }
+                if self.largest { ord.reverse() } else { ord }
             })
             .take(k)
             .enumerate()

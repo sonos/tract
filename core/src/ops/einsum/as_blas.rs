@@ -4,7 +4,7 @@ use crate::transform::ModelTransform;
 use crate::{broadcast, internal::*};
 use std::fmt::Debug;
 
-use super::prefix_matmul::{rewrite_einsum_to_prefix_matmul, PrefixMatMul};
+use super::prefix_matmul::{PrefixMatMul, rewrite_einsum_to_prefix_matmul};
 
 #[derive(Debug, Default)]
 pub struct AsBlas;

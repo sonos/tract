@@ -43,8 +43,6 @@ struct DepthToSpace {
     mode: DepthToSpaceMode,
 }
 
-
-
 impl DepthToSpace {
     pub fn compute_shape(&self, shape: &[TDim]) -> TVec<TDim> {
         tvec!(
@@ -93,7 +91,6 @@ impl Expansion for DepthToSpace {
     fn name(&self) -> StaticName {
         "DepthToSpace".into()
     }
-
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,

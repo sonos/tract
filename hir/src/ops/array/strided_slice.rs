@@ -296,9 +296,11 @@ mod tests {
         );
         assert_eq!(
             output_facts,
-            tvec![InferenceFact::default()
-                .with_datum_type(DatumType::F32)
-                .with_shape(shapefactoid![..]),]
+            tvec![
+                InferenceFact::default()
+                    .with_datum_type(DatumType::F32)
+                    .with_shape(shapefactoid![..]),
+            ]
         );
     }
 
@@ -326,9 +328,11 @@ mod tests {
         );
         assert_eq!(
             output_facts,
-            tvec![InferenceFact::default()
-                .with_datum_type(DatumType::F32)
-                .with_shape(shapefactoid![..]),]
+            tvec![
+                InferenceFact::default()
+                    .with_datum_type(DatumType::F32)
+                    .with_shape(shapefactoid![..]),
+            ]
         );
     }
 
@@ -353,14 +357,8 @@ mod tests {
     fn prep_1() {
         let op = strided_slice(0, 0, 0);
         assert_eq!(
-            op.prepare_one_dim(
-                0,
-                &4.to_dim(),
-                &tensor1(&[-1i64]),
-                &tensor1(&[i64::MIN]),
-                &[-1]
-            )
-            .unwrap(),
+            op.prepare_one_dim(0, &4.to_dim(), &tensor1(&[-1i64]), &tensor1(&[i64::MIN]), &[-1])
+                .unwrap(),
             Dim { begin: 3.to_dim(), end: (-1).to_dim(), stride: -1, shrink: false }
         );
     }

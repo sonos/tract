@@ -41,7 +41,9 @@ impl Optimizer {
     pub fn add_pass(&mut self, idx: usize, pass: Box<dyn TypedPass>) {
         let num_pass = self.passes.len();
         if idx > num_pass {
-            log::warn!("Cannot add new pass {pass:?} at index {idx}. Optimizer currently as {num_pass} passes, pass will be added as the last pass.");
+            log::warn!(
+                "Cannot add new pass {pass:?} at index {idx}. Optimizer currently as {num_pass} passes, pass will be added as the last pass."
+            );
             self.passes.push(pass);
         } else {
             self.passes.insert(idx, pass);

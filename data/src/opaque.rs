@@ -8,7 +8,7 @@ use std::hash::Hash;
 use std::ops::Deref;
 use std::sync::Arc;
 
-use downcast_rs::{impl_downcast, Downcast};
+use downcast_rs::{Downcast, impl_downcast};
 use dyn_hash::DynHash;
 
 pub trait OpaquePayload: DynHash + Send + Sync + Debug + Display + Downcast {
@@ -64,7 +64,7 @@ impl OpaqueFact for TVec<Box<dyn OpaqueFact>> {
     fn same_as(&self, other: &dyn OpaqueFact) -> bool {
         other.downcast_ref::<Self>().is_some_and(|o| self == o)
     }
-    
+
     fn buffer_sizes(&self) -> TVec<TDim> {
         self.iter().flat_map(|it| it.buffer_sizes()).collect()
     }
@@ -73,7 +73,7 @@ impl OpaqueFact for TVec<Option<Box<dyn OpaqueFact>>> {
     fn same_as(&self, other: &dyn OpaqueFact) -> bool {
         other.downcast_ref::<Self>().is_some_and(|o| self == o)
     }
-    
+
     fn buffer_sizes(&self) -> TVec<TDim> {
         self.iter().flatten().flat_map(|it| it.buffer_sizes()).collect()
     }
@@ -140,7 +140,9 @@ pub struct BlobWithFact {
 
 impl OpaquePayload for BlobWithFact {
     fn same_as(&self, other: &dyn OpaquePayload) -> bool {
-        other.downcast_ref::<Self>().is_some_and(|o| o.fact == self.fact.clone() && o.value == self.value)
+        other
+            .downcast_ref::<Self>()
+            .is_some_and(|o| o.fact == self.fact.clone() && o.value == self.value)
     }
 }
 

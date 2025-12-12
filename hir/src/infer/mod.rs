@@ -16,12 +16,12 @@ pub use self::fact::InferenceFact;
 pub use self::factoid::*;
 pub use self::model::InferenceModelExt;
 pub use self::ops::InferenceOp;
-pub use self::rules::expr::IntoExp;
-pub use self::rules::expr::ToDimExp;
 pub use self::rules::InferenceResult;
 pub use self::rules::InferenceRulesOp;
 pub use self::rules::Solver;
 pub use self::rules::TensorProxy;
+pub use self::rules::expr::IntoExp;
+pub use self::rules::expr::ToDimExp;
 pub use wrap;
 
 pub fn check_input_arity(inputs: &[TensorProxy], expected: usize) -> TractResult<()> {

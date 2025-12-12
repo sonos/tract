@@ -4,9 +4,9 @@ use crate::internal::*;
 use crate::ops::element_wise::ElementWiseOp;
 use crate::ops::math::QScale;
 use num_traits::AsPrimitive;
+use tract_linalg::Scaler;
 use tract_linalg::lut::Lut;
 use tract_linalg::mmm::RoundingPolicy;
-use tract_linalg::Scaler;
 
 use super::binary::TypedBinOp;
 use super::math::round_ties_to_even;

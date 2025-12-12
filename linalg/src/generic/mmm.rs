@@ -7,7 +7,7 @@ use tract_data::prelude::*;
 use super::*;
 use crate::frame::block_quant::{BlockQuant, NibbleReader, PackedBlockQuantFormat, Q4_0};
 use crate::frame::mmm::*;
-use crate::{has_fp16, LADatum, Ops};
+use crate::{LADatum, Ops, has_fp16};
 
 macro_rules! scalar {
     ($ab: expr, $m: expr, $f: expr) => {

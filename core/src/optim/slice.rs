@@ -195,11 +195,7 @@ fn should_slice_output(
     boundaries.push(end);
     boundaries.sort();
     boundaries.dedup();
-    if boundaries.len() == 2 {
-        Ok(None)
-    } else {
-        Ok(Some(boundaries))
-    }
+    if boundaries.len() == 2 { Ok(None) } else { Ok(Some(boundaries)) }
 }
 
 pub fn rewire_sliced_outputs(

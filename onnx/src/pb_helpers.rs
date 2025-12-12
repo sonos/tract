@@ -296,19 +296,11 @@ impl NodeProto {
     }
 
     pub fn expect<R: Reason>(&self, cond: bool, what: R) -> TractResult<()> {
-        if !cond {
-            self.bail(&format!("expected {}", what.reason()))
-        } else {
-            Ok(())
-        }
+        if !cond { self.bail(&format!("expected {}", what.reason())) } else { Ok(()) }
     }
 
     pub fn expect_attr<R: Reason>(&self, attr: &str, cond: bool, what: R) -> TractResult<()> {
-        if !cond {
-            self.bail_attr(attr, &format!("expected {}", what.reason()))
-        } else {
-            Ok(())
-        }
+        if !cond { self.bail_attr(attr, &format!("expected {}", what.reason())) } else { Ok(()) }
     }
 
     pub fn expect_ok_or_else<T, R: Reason>(&self, result: Option<T>, what: R) -> TractResult<T> {

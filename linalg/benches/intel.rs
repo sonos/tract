@@ -4,7 +4,6 @@ use std::time::Instant;
 use tract_data::prelude::*;
 use tract_linalg::frame::mmm::*;
 
-
 fn ruin_cache() {
     // return;
     let _a = (0..1000000).collect::<Vec<i32>>();
@@ -86,8 +85,8 @@ fn bench_to_nanos<
     values[loops / 2].as_nanos() as f64
 }
 
-fn model<T: Datum + Copy + num_traits::Zero + tract_linalg::LADatum, K: MatMatMulKer<T>>(
-) -> (f64, f64) {
+fn model<T: Datum + Copy + num_traits::Zero + tract_linalg::LADatum, K: MatMatMulKer<T>>()
+-> (f64, f64) {
     let x = 1000;
     let zp = bench_to_nanos::<T, K>(1000, K::mr() * 4, K::nr() * 4, 0);
     let y = bench_to_nanos::<T, K>(1000, K::mr() * 4, K::nr() * 4, x);
@@ -101,7 +100,6 @@ fn as_match_line<T: Datum + Copy + num_traits::Zero + tract_linalg::LADatum, K: 
 }
 
 fn main() {
-    
     let core_id = core_affinity::get_core_ids().unwrap()[0];
     core_affinity::set_for_current(core_id);
     // as_match_line::<f32, fma_mmm_f32_64x1>();

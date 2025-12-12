@@ -1,9 +1,9 @@
 mod arc_face;
 mod yolo_face;
 use anyhow::{Error, Result};
-use arc_face::{cosine_similarity, load_arcface_model, ArcFace};
+use arc_face::{ArcFace, cosine_similarity, load_arcface_model};
 use clap::Parser;
-use yolo_face::{load_yolo_model, sort_conf_bbox, YoloFace};
+use yolo_face::{YoloFace, load_yolo_model, sort_conf_bbox};
 
 #[derive(Parser)]
 struct CliArgs {

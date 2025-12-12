@@ -1,5 +1,5 @@
 use tract_nnef::internal::*;
-use tract_nnef::tract_ndarray::{s, Array4, ArrayView1, ArrayView2, ArrayView4, Ix4};
+use tract_nnef::tract_ndarray::{Array4, ArrayView1, ArrayView2, ArrayView4, Ix4, s};
 
 /// Tract operator wrapper.
 #[derive(Clone, Debug, PartialEq)]

@@ -1,6 +1,6 @@
+use crate::Ops;
 use crate::frame::mmm::ImplementationQuality::ManuallyOptimized;
 use crate::pack::PackedFormat;
-use crate::Ops;
 
 const NEON: fn() -> bool = || crate::arm32::has_neon();
 

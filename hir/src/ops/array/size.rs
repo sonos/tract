@@ -6,12 +6,10 @@ pub struct Size {
     pub dt: DatumType,
 }
 
-
 impl Expansion for Size {
     fn name(&self) -> StaticName {
         "Size".into()
     }
-
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,

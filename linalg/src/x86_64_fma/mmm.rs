@@ -1,7 +1,7 @@
+use crate::Ops;
 use crate::block_quant::*;
 use crate::mmm::ImplementationQuality::ManuallyOptimized;
 use crate::pack::PackedFormat;
-use crate::Ops;
 
 use super::*;
 
@@ -125,13 +125,11 @@ pub fn plug_fma(ops: &mut Ops) {
             compute_efficiency(n, 2, kernel_normalized_perf[5]),
         ];
 
-        let best_idx = efficiencies.iter().copied().enumerate().fold((0, 0.0), |max, val| {
-            if val.1 > max.1 {
-                val
-            } else {
-                max
-            }
-        });
+        let best_idx = efficiencies
+            .iter()
+            .copied()
+            .enumerate()
+            .fold((0, 0.0), |max, val| if val.1 > max.1 { val } else { max });
 
         match best_idx.0 {
             0 => fma_mmm_f32_8x8.mmm(),
