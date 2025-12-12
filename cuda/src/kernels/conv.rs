@@ -10,6 +10,7 @@ use tract_gpu::tensor::DeviceTensor;
 
 pub trait ConvKernel: 'static + Send + Sync + Debug + DynClone {
     fn name(&self) -> StaticName;
+    #[allow(clippy::too_many_arguments)]
     fn dispatch(
         &self,
         node_id: usize,
