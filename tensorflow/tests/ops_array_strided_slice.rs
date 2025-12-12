@@ -16,8 +16,8 @@ use tract_tensorflow::prelude::*;
 use tract_tensorflow::tfpb;
 use tract_tensorflow::tfpb::tensorflow::DataType::DtInt32;
 
-fn strided_slice_strat(
-) -> BoxedStrategy<(Tensor, Tensor, Tensor, Tensor, (i32, i32, i32, i32, i32))> {
+fn strided_slice_strat()
+-> BoxedStrategy<(Tensor, Tensor, Tensor, Tensor, (i32, i32, i32, i32, i32))> {
     ::proptest::collection::vec(
         (1..5).prop_flat_map(|n| {
             // each dim max

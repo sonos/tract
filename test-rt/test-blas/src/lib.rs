@@ -3,7 +3,7 @@ use std::fmt::Debug;
 
 use tract_core::internal::*;
 
-#[path="../suite.rs"]
+#[path = "../suite.rs"]
 mod suite;
 
 mod as_blas {
@@ -28,4 +28,3 @@ mod as_blas {
 
     include!(concat!(env!("OUT_DIR"), "/tests/as_blas.rs"));
 }
-

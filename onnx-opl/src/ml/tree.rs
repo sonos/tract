@@ -200,11 +200,7 @@ impl BranchNode {
     pub fn get_child_id(&self, feature: f32) -> usize {
         let condition =
             if feature.is_nan() { self.nan_is_true } else { self.cmp.compare(feature, self.value) };
-        if condition {
-            self.true_id as usize
-        } else {
-            self.false_id as usize
-        }
+        if condition { self.true_id as usize } else { self.false_id as usize }
     }
 }
 

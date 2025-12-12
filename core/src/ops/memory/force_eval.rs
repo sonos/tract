@@ -39,7 +39,14 @@ impl EvalOp for ForceEval {
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let max_slot_idx = self.slots.iter().copied().max().unwrap_or(0);
-        ensure!(inputs.len() > max_slot_idx, format!("Expected at least {} inputs given the slot indexes that needs to be forced eval: {:?}", max_slot_idx + 1, self.slots));
+        ensure!(
+            inputs.len() > max_slot_idx,
+            format!(
+                "Expected at least {} inputs given the slot indexes that needs to be forced eval: {:?}",
+                max_slot_idx + 1,
+                self.slots
+            )
+        );
         let outputs = inputs
             .into_iter()
             .enumerate()
@@ -58,11 +65,7 @@ impl TypedOp for ForceEval {
             .enumerate()
             .filter_map(
                 |(idx, fact)| {
-                    if !self.slots.contains(&idx) {
-                        Some((*fact).clone())
-                    } else {
-                        None
-                    }
+                    if !self.slots.contains(&idx) { Some((*fact).clone()) } else { None }
                 },
             )
             .collect::<TVec<_>>();

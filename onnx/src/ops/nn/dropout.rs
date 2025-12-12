@@ -14,8 +14,6 @@ pub struct Dropout {
     output_mask: bool,
 }
 
-
-
 impl Op for Dropout {
     fn name(&self) -> StaticName {
         "Dropout".into()

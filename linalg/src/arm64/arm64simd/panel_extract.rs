@@ -1,5 +1,5 @@
-use crate::pack::Packing;
 use crate::Ops;
+use crate::pack::Packing;
 
 pub fn plug(ops: &mut Ops) {
     ops.panel_extractors.push(packed_32_q40_to_f32.clone());

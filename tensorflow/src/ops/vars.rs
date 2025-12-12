@@ -62,8 +62,6 @@ pub struct VariableV2 {
     pub initializer: Option<Arc<Tensor>>,
 }
 
-
-
 impl Op for VariableV2 {
     fn name(&self) -> StaticName {
         "VariableV2".into()
@@ -136,8 +134,6 @@ trivial_op_state_freeeze!(AssignState);
 pub struct Assign {
     pub var_id: Option<String>,
 }
-
-
 
 impl Op for Assign {
     fn name(&self) -> StaticName {

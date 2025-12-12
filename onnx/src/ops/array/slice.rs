@@ -7,11 +7,7 @@ pub fn slice(
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let v = ctx.onnx_operator_set_version;
-    if (1..10).contains(&v) {
-        slice1(ctx, node)
-    } else {
-        slice10(ctx, node)
-    }
+    if (1..10).contains(&v) { slice1(ctx, node) } else { slice10(ctx, node) }
 }
 
 fn slice1(
@@ -31,13 +27,10 @@ pub struct Slice1 {
     ends: Vec<i64>,
 }
 
-
-
 impl Expansion for Slice1 {
     fn name(&self) -> StaticName {
         "Slice1".into()
     }
-
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,

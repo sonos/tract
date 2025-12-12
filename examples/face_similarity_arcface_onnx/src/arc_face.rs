@@ -1,5 +1,5 @@
 use anyhow::{Error, Result};
-use image::{imageops, DynamicImage};
+use image::{DynamicImage, imageops};
 use tract_core::plan::SimplePlan;
 use tract_ndarray::{Array1, Array3};
 use tract_ndarray::{ArrayBase, OwnedRepr};

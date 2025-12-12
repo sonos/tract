@@ -29,7 +29,6 @@ impl Expansion for Multinomial {
         "Multinomial".into()
     }
 
-
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,

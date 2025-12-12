@@ -3,7 +3,7 @@ use std::cmp::Ordering;
 use rustfft::num_traits::Float;
 use tract_nnef::{
     internal::*,
-    tract_ndarray::{s, ArrayView1},
+    tract_ndarray::{ArrayView1, s},
 };
 
 pub fn register(registry: &mut Registry) {
@@ -25,11 +25,7 @@ pub enum BoxRepr {
 }
 
 fn get_min_max<T: Float>(lhs: T, rhs: T) -> (T, T) {
-    if lhs >= rhs {
-        (rhs, lhs)
-    } else {
-        (lhs, rhs)
-    }
+    if lhs >= rhs { (rhs, lhs) } else { (lhs, rhs) }
 }
 
 impl BoxRepr {

@@ -28,11 +28,7 @@ impl PatchAxis {
         }
         let min = self.pad_before.divceil(self.stride);
         let max = (self.input_dim + self.pad_before).saturating_sub(field) / self.stride;
-        if max >= min {
-            Some(min..(max + 1))
-        } else {
-            None
-        }
+        if max >= min { Some(min..(max + 1)) } else { None }
     }
 
     fn invalid_at_left(&self, pos: usize) -> usize {

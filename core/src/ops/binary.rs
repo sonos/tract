@@ -111,11 +111,7 @@ impl Op for TypedBinOp {
 
 impl TypedBinOp {
     fn output_datum_type(&self, a_dt: DatumType, b_dt: DatumType) -> TractResult<DatumType> {
-        if let Some(dt) = self.1 {
-            Ok(dt)
-        } else {
-            self.0.result_datum_type(a_dt, b_dt)
-        }
+        if let Some(dt) = self.1 { Ok(dt) } else { self.0.result_datum_type(a_dt, b_dt) }
     }
 }
 

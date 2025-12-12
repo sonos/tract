@@ -40,7 +40,7 @@ pub fn solve_for(sym: &Symbol, left: &TDim, right: &TDim) -> Option<TDim> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use super::{parse_tdim, SymbolScope};
+    use super::{SymbolScope, parse_tdim};
 
     lazy_static::lazy_static!(
         static ref TABLE:SymbolScope = SymbolScope::default();

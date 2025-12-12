@@ -17,11 +17,7 @@ pub struct Wire {
 impl fmt::Debug for Wire {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         let s = format!("{:?} {:?}", self.outlet, self.successors);
-        if let Some(c) = self.color {
-            write!(fmt, "{}", c.paint(s))
-        } else {
-            write!(fmt, "{s}")
-        }
+        if let Some(c) = self.color { write!(fmt, "{}", c.paint(s)) } else { write!(fmt, "{s}") }
     }
 }
 

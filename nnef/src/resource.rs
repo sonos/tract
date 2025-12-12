@@ -3,7 +3,7 @@ use std::path::Path;
 use crate::ast::QuantFormat;
 use crate::internal::*;
 use safetensors::SafeTensors;
-use tract_core::downcast_rs::{impl_downcast, DowncastSync};
+use tract_core::downcast_rs::{DowncastSync, impl_downcast};
 use tract_core::tract_data::itertools::Itertools;
 
 pub const GRAPH_NNEF_FILENAME: &str = "graph.nnef";

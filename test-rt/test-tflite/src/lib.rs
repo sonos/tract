@@ -1,7 +1,7 @@
 #![cfg(test)]
 use log::*;
-use tract_tflite::internal::*;
 use tract_tflite::Tflite;
+use tract_tflite::internal::*;
 
 #[path = "../suite.rs"]
 mod suite;

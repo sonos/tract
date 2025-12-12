@@ -1,6 +1,6 @@
+use crate::Ops;
 use crate::frame::mmm::ImplementationQuality::ManuallyOptimized;
 use crate::mmm::*;
-use crate::Ops;
 use tract_data::prelude::*;
 
 use super::has_amx;

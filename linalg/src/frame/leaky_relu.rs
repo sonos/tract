@@ -15,7 +15,7 @@ macro_rules! leaky_relu_impl {
 #[cfg(test)]
 #[macro_use]
 pub mod test {
-    use crate::{frame::element_wise::*, LADatum};
+    use crate::{LADatum, frame::element_wise::*};
     use num_traits::{AsPrimitive, Float};
     use proptest::test_runner::TestCaseResult;
 
@@ -53,11 +53,7 @@ pub mod test {
         crate::frame::element_wise::test::test_element_wise_params::<K, T, _, T>(
             data,
             |x: T| {
-                if x > T::zero() {
-                    x
-                } else {
-                    alpha * x
-                }
+                if x > T::zero() { x } else { alpha * x }
             },
             alpha,
         )

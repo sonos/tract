@@ -300,7 +300,9 @@ pub struct RunTensors {
     pub state_initializers: Vec<TValue>,
 }
 
-pub fn figure_out_b_s_p(model: &TypedModel) -> TractResult<(Option<Symbol>, Option<Symbol>, Option<Symbol>)> {
+pub fn figure_out_b_s_p(
+    model: &TypedModel,
+) -> TractResult<(Option<Symbol>, Option<Symbol>, Option<Symbol>)> {
     // expectations:
     // - one input is for tokens, so integer dt (i64 ?) and typically of shape S or 1,S, or B,S
     // - other inputs are kv cache, some kind of float. shape features both S and P, and B if B is present in tokens

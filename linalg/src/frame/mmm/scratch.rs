@@ -1,6 +1,6 @@
 use super::{FusedKerSpec, FusedSpec, MatMatMulKer, OutputStoreKer};
 use crate::{BinOp, LADatum};
-use downcast_rs::{impl_downcast, Downcast};
+use downcast_rs::{Downcast, impl_downcast};
 use std::cell::RefCell;
 use std::fmt::Debug;
 use std::sync::atomic::AtomicUsize;

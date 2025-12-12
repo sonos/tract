@@ -227,19 +227,11 @@ pub fn rounding_half_sum(a: i32, b: i32) -> i32 {
 }
 
 pub fn mask_if_non_zero(x: i32) -> i32 {
-    if x != 0 {
-        !0
-    } else {
-        0
-    }
+    if x != 0 { !0 } else { 0 }
 }
 
 pub fn mask_if_zero(x: i32) -> i32 {
-    if x == 0 {
-        !0
-    } else {
-        0
-    }
+    if x == 0 { !0 } else { 0 }
 }
 
 pub fn select_using_mask(mask: i32, a: i32, b: i32) -> i32 {
@@ -253,11 +245,7 @@ pub fn saturating_rounding_doubling_high_mul(a: i32, b: i32) -> i32 {
     let nudge = if product >= 0 { 1 << 30 } else { 1 - (1 << 30) };
     let product_x2_high32 = ((product + nudge) / (1_i64 << 31)) as i32;
 
-    if overflow {
-        i32::MAX
-    } else {
-        product_x2_high32
-    }
+    if overflow { i32::MAX } else { product_x2_high32 }
 }
 
 pub fn is_signed<T: PrimInt>() -> bool {

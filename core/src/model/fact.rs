@@ -290,8 +290,17 @@ impl TypedFact {
             {
                 for o in k.as_slice::<Opaque>().unwrap() {
                     ensure!(o.is::<BlobWithFact>());
-                    ensure!(o.downcast_ref::<BlobWithFact>().and_then(|bwf| bwf.fact.downcast_ref::<BlockQuantFact>()).is_some());
-                    ensure!(o.downcast_ref::<BlobWithFact>().and_then(|bwf| bwf.fact.downcast_ref::<BlockQuantFact>()).unwrap() == bqf);
+                    ensure!(
+                        o.downcast_ref::<BlobWithFact>()
+                            .and_then(|bwf| bwf.fact.downcast_ref::<BlockQuantFact>())
+                            .is_some()
+                    );
+                    ensure!(
+                        o.downcast_ref::<BlobWithFact>()
+                            .and_then(|bwf| bwf.fact.downcast_ref::<BlockQuantFact>())
+                            .unwrap()
+                            == bqf
+                    );
                 }
             }
         }

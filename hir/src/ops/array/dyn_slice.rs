@@ -1,13 +1,13 @@
-use tract_core::ops::array::DynSlice;
 use crate::internal::*;
+use tract_core::ops::array::DynSlice;
 
 impl InferenceRulesOp for DynSlice {
     fn rules<'r, 'p: 'r, 's: 'r>(
-            &'s self,
-            s: &mut crate::infer::Solver<'r>,
-            inputs: &'p [crate::infer::TensorProxy],
-            outputs: &'p [crate::infer::TensorProxy],
-        ) -> InferenceResult {
+        &'s self,
+        s: &mut crate::infer::Solver<'r>,
+        inputs: &'p [crate::infer::TensorProxy],
+        outputs: &'p [crate::infer::TensorProxy],
+    ) -> InferenceResult {
         check_input_arity(inputs, 3)?;
         check_output_arity(outputs, 1)?;
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;

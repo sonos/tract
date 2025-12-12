@@ -1,8 +1,8 @@
 #[cfg(test)]
 #[macro_use]
 pub mod test {
-    use crate::frame::reduce::ReduceKer;
     use crate::LADatum;
+    use crate::frame::reduce::ReduceKer;
     use num_traits::{AsPrimitive, Float, Zero};
     use proptest::test_runner::TestCaseResult;
 

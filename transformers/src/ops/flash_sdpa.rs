@@ -1,6 +1,6 @@
 use tract_nnef::internal::*;
 use tract_nnef::prelude::tract_itertools::Itertools;
-use tract_nnef::tract_ndarray::{s, Array2, Array4, ArrayView2, ArrayView4, ArrayViewMut2, Ix4};
+use tract_nnef::tract_ndarray::{Array2, Array4, ArrayView2, ArrayView4, ArrayViewMut2, Ix4, s};
 
 /// Tract operator wrapper.
 #[derive(Clone, Debug, PartialEq)]

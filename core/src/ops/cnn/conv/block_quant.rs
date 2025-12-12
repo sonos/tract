@@ -32,9 +32,9 @@ impl EvalOp for BlockQuantIntoShape {
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let mut input = args_1!(inputs).into_tensor();
         for o in input.as_slice_mut::<Opaque>()? {
-            let old =
-                o.0.downcast_ref::<BlobWithFact>().context("Expects only BlobWithFact")?;
-            let bqf = old.fact.downcast_ref::<BlockQuantFact>().context("Expects only BlockQuantFact")?;
+            let old = o.0.downcast_ref::<BlobWithFact>().context("Expects only BlobWithFact")?;
+            let bqf =
+                old.fact.downcast_ref::<BlockQuantFact>().context("Expects only BlockQuantFact")?;
             let new = BlobWithFact {
                 value: old.value.clone(),
                 fact: Box::new(BlockQuantFact::new(bqf.format.clone(), self.shape.clone())),
@@ -74,10 +74,8 @@ impl Op for SplitGroupBlockQuant {
 }
 
 fn split_rows(bqf: &BlockQuantFact, blob: &Blob, range: Range<usize>) -> TractResult<BlobWithFact> {
-    let row_bytes =
-        bqf.k() / bqf.format.block_len() * bqf.format.block_bytes();
-    let mut value =
-        unsafe { Blob::new_for_size_and_align(range.len() * row_bytes, vector_size()) };
+    let row_bytes = bqf.k() / bqf.format.block_len() * bqf.format.block_bytes();
+    let mut value = unsafe { Blob::new_for_size_and_align(range.len() * row_bytes, vector_size()) };
     value.copy_from_slice(&blob[range.start * row_bytes..][..range.len() * row_bytes]);
     let mut shape: TVec<usize> = bqf.shape().into();
     shape[0] = range.len();
@@ -110,7 +108,11 @@ impl EvalOp for SplitGroupBlockQuant {
         let rows_per_group = bqf.m() / self.group;
         let splits = (0..self.group)
             .map(|g| {
-                Ok(Opaque(Arc::new(split_rows(bqf, &bwf.value, g * rows_per_group..(g + 1) * rows_per_group)?)))
+                Ok(Opaque(Arc::new(split_rows(
+                    bqf,
+                    &bwf.value,
+                    g * rows_per_group..(g + 1) * rows_per_group,
+                )?)))
             })
             .collect::<TractResult<Vec<_>>>()?;
         let output = tensor1(&splits);

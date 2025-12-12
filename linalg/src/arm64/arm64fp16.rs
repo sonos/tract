@@ -12,10 +12,10 @@ pub use max::*;
 pub use sum::*;
 pub use unicast::*;
 
+use crate::Ops;
 use crate::block_quant::PackedBlockQuantFormat;
 use crate::block_quant::Q4_0;
 use crate::frame::mmm::ImplementationQuality::ManuallyOptimized;
-use crate::Ops;
 
 const FP16: fn() -> bool = crate::arm64::has_fp16;
 

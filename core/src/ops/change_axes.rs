@@ -4,11 +4,11 @@ use std::fmt::Debug;
 use crate::internal::*;
 use crate::model::{TypedModel, TypedNode};
 use crate::ops::identity::Identity;
+use AxisOp::*;
 use num_traits::One;
 use tract_itertools::Itertools;
 use tract_linalg::block_quant::BlockQuantFact;
 use tract_ndarray::{ArrayViewD, ArrayViewMutD};
-use AxisOp::*;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum InOut {
@@ -382,7 +382,10 @@ impl AxisOp {
             let inner_change = self.trim_left(tensor.rank())?;
             for opaque in tensor.as_slice_mut::<Opaque>()? {
                 if let Some(bwf) = opaque.downcast_ref::<BlobWithFact>() {
-                    let bqf = bwf.fact.downcast_ref::<BlockQuantFact>().context("Expected BlockQuantFact")?;
+                    let bqf = bwf
+                        .fact
+                        .downcast_ref::<BlockQuantFact>()
+                        .context("Expected BlockQuantFact")?;
                     let mut new_shape: TVec<usize> = bqf.shape().into();
                     inner_change.change_shape_array(&mut new_shape, false)?;
                     let new_bqv = BlobWithFact {

@@ -131,5 +131,4 @@ mod tests {
     fn crop_then_down_5() {
         crop_then_down(16, 0, 1, 2, 1).unwrap()
     }
-
 }
