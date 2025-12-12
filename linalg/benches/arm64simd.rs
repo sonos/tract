@@ -2,7 +2,7 @@
 
 use std::arch::asm;
 
-mod nano;
+// mod nano;
 
 #[repr(C, align(8))]
 struct Floats([f32; 4096]);
@@ -821,13 +821,13 @@ pub unsafe fn asimdhp(filter: Option<&str>) {
 macro_rules! ksimd {
     ($filter: expr, $vector_size: expr, $geo: literal, $n: expr, $path: literal) => {
         kloop!($filter, $vector_size, $geo, $n, "arm64simd", $path)
-    }
+    };
 }
 
 macro_rules! kfp16 {
     ($filter: expr, $vector_size: expr, $geo: literal, $n: expr, $path: literal) => {
         kloop!($filter, $vector_size, $geo, $n, "arm64fp16", $path)
-    }
+    };
 }
 
 macro_rules! kloop {
@@ -863,9 +863,21 @@ macro_rules! kloop {
 unsafe fn f32_8x8(f: Option<&str>) {
     ksimd!(f, 4, "8x8x1xf32", 64, "arm64simd_mmm_f32_8x8/packed_packed_loop1/naive.tmpli");
     ksimd!(f, 4, "8x8x1xf32", 64, "arm64simd_mmm_f32_8x8/packed_packed_loop1/broken_chains.tmpli");
-    ksimd!(f, 4, "8x8x1xf32", 64, "arm64simd_mmm_f32_8x8/packed_packed_loop1/ldr_x_no_preload.tmpli");
+    ksimd!(
+        f,
+        4,
+        "8x8x1xf32",
+        64,
+        "arm64simd_mmm_f32_8x8/packed_packed_loop1/ldr_x_no_preload.tmpli"
+    );
     ksimd!(f, 4, "8x8x1xf32", 64, "arm64simd_mmm_f32_8x8/packed_packed_loop1/ldr_x_preload.tmpli");
-    ksimd!(f, 4, "8x8x1xf32", 64, "arm64simd_mmm_f32_8x8/packed_packed_loop1/ldr_w_no_preload.tmpli");
+    ksimd!(
+        f,
+        4,
+        "8x8x1xf32",
+        64,
+        "arm64simd_mmm_f32_8x8/packed_packed_loop1/ldr_w_no_preload.tmpli"
+    );
     ksimd!(f, 4, "8x8x1xf32", 64, "arm64simd_mmm_f32_8x8/packed_packed_loop1/ldr_w_preload.tmpli");
     ksimd!(f, 4, "8x8x2xf32", 128, "arm64simd_mmm_f32_8x8/packed_packed_loop2/broken_chains.tmpli");
     ksimd!(f, 4, "8x8x2xf32", 128, "arm64simd_mmm_f32_8x8/packed_packed_loop2/cortex_a55.tmpli");
@@ -873,9 +885,27 @@ unsafe fn f32_8x8(f: Option<&str>) {
 
 unsafe fn f32_12x8(f: Option<&str>) {
     ksimd!(f, 4, "12x8x1xf32", 96, "arm64simd_mmm_f32_12x8/packed_packed_loop1/naive.tmpli");
-    ksimd!(f, 4, "12x8x1xf32", 96, "arm64simd_mmm_f32_12x8/packed_packed_loop1/ldr_w_no_preload.tmpli");
-    ksimd!(f, 4, "12x8x1xf32", 96, "arm64simd_mmm_f32_12x8/packed_packed_loop1/ldr_w_preload.tmpli");
-    ksimd!(f, 4, "12x8x1xf32", 96, "arm64simd_mmm_f32_12x8/packed_packed_loop1/ldr_x_preload.tmpli");
+    ksimd!(
+        f,
+        4,
+        "12x8x1xf32",
+        96,
+        "arm64simd_mmm_f32_12x8/packed_packed_loop1/ldr_w_no_preload.tmpli"
+    );
+    ksimd!(
+        f,
+        4,
+        "12x8x1xf32",
+        96,
+        "arm64simd_mmm_f32_12x8/packed_packed_loop1/ldr_w_preload.tmpli"
+    );
+    ksimd!(
+        f,
+        4,
+        "12x8x1xf32",
+        96,
+        "arm64simd_mmm_f32_12x8/packed_packed_loop1/ldr_x_preload.tmpli"
+    );
     ksimd!(f, 4, "12x8x2xf32", 192, "arm64simd_mmm_f32_12x8/packed_packed_loop2/cortex_a55.tmpli");
 }
 
