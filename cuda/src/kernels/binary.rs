@@ -272,9 +272,9 @@ impl BinOps {
         }
 
         let total_elems: usize = out_shape.iter().product();
-        let block_dim = (128 as u32, 1, 1);
+        let block_dim = (128_u32, 1, 1);
         let (grid_dim, variant) =
-            if out_shape[BINARY_MAX_RANK - 1] >= 256 && out_shape[BINARY_MAX_RANK - 2] >= 8 {
+            if out_shape[BINARY_MAX_RANK - 1] >= 256 && out_shape[..BINARY_MAX_RANK - 1].iter().product::<usize>() >= 8 {
                 (
                     (
                         out_shape[BINARY_MAX_RANK - 2] as u32,
