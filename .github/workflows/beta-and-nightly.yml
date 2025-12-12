@@ -89,6 +89,14 @@ jobs:
       if: runner.os == 'Linux'
       run: cargo check -p test-tflite
 
+  rustfmt:
+    runs-on: ubuntu-latest
+    env:
+      RUSTUP_TOOLCHAIN: 1.85.0
+    steps:
+    - uses: actions/checkout@v4
+    - name: cargo fmt --check
+
   cargo-clippy:
     needs: what-to-run
     strategy:
