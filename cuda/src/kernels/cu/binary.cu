@@ -95,41 +95,36 @@ __device__ __forceinline__ void bin_op_generic(
 
       const int32_t total = n0 * n1 * n2 * n3 * n4;
 
-      for (int32_t linear_idx = blockIdx.x * blockDim.x + threadIdx.x;
-           linear_idx < total;
-           linear_idx += (int32_t)blockDim.x * gridDim.x) {
+      int32_t tmp = blockIdx.x * blockDim.x + threadIdx.x;
 
-        int32_t tmp = linear_idx;
+      const int32_t i4 = tmp % n4; tmp /= n4;
+      const int32_t i3 = tmp % n3; tmp /= n3;
+      const int32_t i2 = tmp % n2; tmp /= n2;
+      const int32_t i1 = tmp % n1; tmp /= n1;
+      const int32_t i0 = tmp;
 
-        const int32_t i4 = tmp % n4; tmp /= n4;
-        const int32_t i3 = tmp % n3; tmp /= n3;
-        const int32_t i2 = tmp % n2; tmp /= n2;
-        const int32_t i1 = tmp % n1; tmp /= n1;
-        const int32_t i0 = tmp;
+      const int32_t ia =
+          i0 * a_strides_0 +
+          i1 * a_strides_1 +
+          i2 * a_strides_2 +
+          i3 * a_strides_3 +
+          i4 * a_strides_4;
 
-        const int32_t ia =
-            i0 * a_strides_0 +
-            i1 * a_strides_1 +
-            i2 * a_strides_2 +
-            i3 * a_strides_3 +
-            i4 * a_strides_4;
+      const int32_t ib =
+          i0 * b_strides_0 +
+          i1 * b_strides_1 +
+          i2 * b_strides_2 +
+          i3 * b_strides_3 +
+          i4 * b_strides_4;
 
-        const int32_t ib =
-            i0 * b_strides_0 +
-            i1 * b_strides_1 +
-            i2 * b_strides_2 +
-            i3 * b_strides_3 +
-            i4 * b_strides_4;
+      const int32_t io =
+          i0 * o_strides_0 +
+          i1 * o_strides_1 +
+          i2 * o_strides_2 +
+          i3 * o_strides_3 +
+          i4 * o_strides_4;
 
-        const int32_t io =
-            i0 * o_strides_0 +
-            i1 * o_strides_1 +
-            i2 * o_strides_2 +
-            i3 * o_strides_3 +
-            i4 * o_strides_4;
-
-        out[io] = op(a[ia], b[ib]);
-      }
+      out[io] = op(a[ia], b[ib]);
 }
 
 template <typename T_in, typename T_out, typename Op>
