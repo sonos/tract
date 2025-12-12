@@ -138,20 +138,14 @@ impl CudnnConvDescriptors {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct ConvCudnn {
     cache: ThreadLocal<CudnnConvDescriptors>,
 }
 
 impl Clone for ConvCudnn {
     fn clone(&self) -> Self {
-        ConvCudnn::new()
-    }
-}
-
-impl ConvCudnn {
-    pub fn new() -> ConvCudnn {
-        ConvCudnn { cache: ThreadLocal::new() }
+        ConvCudnn::default()
     }
 }
 

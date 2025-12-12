@@ -588,7 +588,7 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
             } else if let Some(op) = node.op_as::<Sdpa>() {
                 convert_sdpa_to_cuda_flash_attn(source, node, target, &mut device_inputs, op)?
             } else if let Some(conv) = node.op_as::<Conv>() {
-                wire_cuda_conv(source, node, target, &mut device_inputs, conv)?
+                wire_cuda_conv(source, node, target, &device_inputs, conv)?
             } else {
                 let op: Box<dyn TypedOp> = if let Some(op) = node.op_as::<Const>() {
                     Box::new(convert_const(op)?)
