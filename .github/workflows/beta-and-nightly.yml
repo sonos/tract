@@ -95,7 +95,7 @@ jobs:
       RUSTUP_TOOLCHAIN: 1.85.0
     steps:
     - uses: actions/checkout@v4
-    - name: cargo fmt --check
+    - run: cargo fmt --check
 
   cargo-clippy:
     needs: what-to-run
