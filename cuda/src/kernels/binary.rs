@@ -273,19 +273,18 @@ impl BinOps {
 
         let total_elems: usize = out_shape.iter().product();
         let block_dim = (128_u32, 1, 1);
-        let (grid_dim, variant) =
-            if out_shape[BINARY_MAX_RANK - 1] >= 256 && total_elems >= 4096 {
+        let (grid_dim, variant) = if out_shape[BINARY_MAX_RANK - 1] >= 256 && total_elems >= 4096 {
+            (
                 (
-                    (
-                        out_shape[BINARY_MAX_RANK - 2] as u32,
-                        out_shape[BINARY_MAX_RANK - 3] as u32,
-                        out_shape[..BINARY_MAX_RANK - 3].iter().product::<usize>() as u32,
-                    ),
-                    "large",
-                )
-            } else {
-                ((total_elems.div_ceil(block_dim.0 as usize) as u32, 1, 1), "generic")
-            };
+                    out_shape[BINARY_MAX_RANK - 2] as u32,
+                    out_shape[BINARY_MAX_RANK - 3] as u32,
+                    out_shape[..BINARY_MAX_RANK - 3].iter().product::<usize>() as u32,
+                ),
+                "large",
+            )
+        } else {
+            ((total_elems.div_ceil(block_dim.0 as usize) as u32, 1, 1), "generic")
+        };
 
         let kernel_name = self.kernel_name(lhs.datum_type(), variant)?;
         let func = cuda_context().load_pipeline(LibraryName::Binary, kernel_name)?;
@@ -384,12 +383,10 @@ mod tests {
             let a_len = a_shape.iter().product::<usize>();
             let b_len = b_shape.iter().product::<usize>();
 
-            let a =
-                Tensor::from_shape(a_shape, &(0..a_len).map(|f| f as f32).collect::<Vec<_>>())?
-                    .into_device()?;
-            let b =
-                Tensor::from_shape(b_shape, &(0..b_len).map(|f| f as f32).collect::<Vec<_>>())?
-                    .into_device()?;
+            let a = Tensor::from_shape(a_shape, &(0..a_len).map(|f| f as f32).collect::<Vec<_>>())?
+                .into_device()?;
+            let b = Tensor::from_shape(b_shape, &(0..b_len).map(|f| f as f32).collect::<Vec<_>>())?
+                .into_device()?;
             let output = op.eval(stream, &a, &b)?;
             let ref_output = reference::<f32, f32>(
                 &a.to_host()?.into_tensor(),
