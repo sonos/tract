@@ -201,7 +201,6 @@ impl TestSuite {
     #[allow(clippy::too_many_arguments)]
     fn dump(
         &self,
-        test_suite_name: &str,
         test_suite: &str,
         runtime: &str,
         prefix: &str,
@@ -217,7 +216,7 @@ impl TestSuite {
                     writeln!(rs, "#[allow(unused_imports)] use super::*;").unwrap();
                 }
                 for (id, test) in h.iter().sorted_by_key(|(k, _)| k.to_owned()) {
-                    test.dump(test_suite_name, test_suite, runtime, &full_id, id, rs, approx)?;
+                    test.dump(test_suite, runtime, &full_id, id, rs, approx)?;
                 }
                 if id.len() > 0 {
                     writeln!(rs, "}}").unwrap();
@@ -251,7 +250,7 @@ impl TestSuite {
         std::fs::create_dir_all(&test_dir).unwrap();
         let test_file = test_dir.join(name).with_extension("rs");
         let mut rs = std::fs::File::create(test_file).unwrap();
-        self.dump(name, test_suite, runtime, "", "", &mut rs, approx).unwrap();
+        self.dump(test_suite, runtime, "", "", &mut rs, approx).unwrap();
     }
 }
 
