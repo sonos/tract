@@ -282,16 +282,11 @@ where
         runtime: &dyn Runtime,
         approx: Approximation,
     ) -> TestResult {
-        lazy_static! {
-            static ref TEST_NAMES: Mutex<Vec<String>> = Mutex::new(vec!());
-        }
         let crate_name = std::env::var("CARGO_PKG_NAME").unwrap_or("".to_string());
         let name = format!("{crate_name}::{suite}::{id}");
-        let test_name: &'static str = unsafe { std::mem::transmute(name.as_str()) };
-        TEST_NAMES.lock().unwrap().push(name);
         let mut runner = TestRunner::new(Config {
             failure_persistence: Some(Box::new(FileFailurePersistence::Off)),
-            test_name: Some(test_name),
+            test_name: Some(Box::leak(name.into_boxed_str())),
             ..Config::default()
         });
         runner.run(
