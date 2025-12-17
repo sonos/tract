@@ -1,8 +1,9 @@
 use crate::context::CUDA_STREAM;
-use crate::kernels::conv::{ConvGeneric, ConvKernel};
+use crate::kernels::conv::{ConvGeneric, ConvKernel, ConvKernelScratch};
 use crate::kernels::conv_cudnn::ConvCudnn;
 use crate::ops::{CudaAxisOp, CudaBinOp};
 use tract_core::internal::*;
+use tract_core::ops::OpStateFreeze;
 use tract_core::ops::cnn::Conv;
 use tract_gpu::tensor::DeviceTensorExt;
 
@@ -79,39 +80,15 @@ impl Op for CudaConv {
 
 impl EvalOp for CudaConv {
     fn is_stateless(&self) -> bool {
-        true
+        false
     }
 
-    fn eval_with_session(
+    fn state(
         &self,
+        _session: &mut SessionState,
         node_id: usize,
-        session: &SessionState,
-        inputs: TVec<TValue>,
-    ) -> TractResult<TVec<TValue>> {
-        let inputs =
-            inputs.iter().map(|it| it.to_device_tensor()).collect::<TractResult<TVec<_>>>()?;
-        let output_shape = self.op.pool_spec.output_shape(inputs[0].shape())?;
-        let output = tract_gpu::session_handler::make_tensor_for_node(
-            session,
-            node_id,
-            inputs[0].datum_type(),
-            &output_shape.shape,
-        )?;
-
-        if output.len() > 0 {
-            CUDA_STREAM.with(|stream| {
-                self.kernel.dispatch(
-                    node_id,
-                    &self.op,
-                    stream,
-                    inputs[0],
-                    inputs[1],
-                    inputs.get(2).cloned(),
-                    &output,
-                )
-            })?;
-        }
-        Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
+    ) -> TractResult<Option<Box<dyn OpState>>> {
+        Ok(Some(Box::new(CudaConvState(node_id, None))))
     }
 }
 
@@ -128,5 +105,69 @@ impl TypedOp for CudaConv {
             self.op.output_facts(&facts)
         })
         .with_context(|| format!("Error while computing facts for Conv/{:?}", self.kernel.name()))
+    }
+}
+
+#[derive(Debug)]
+struct CudaConvState(usize, Option<Box<dyn ConvKernelScratch>>);
+
+impl Clone for CudaConvState {
+    fn clone(&self) -> Self {
+        CudaConvState(self.0, None)
+    }
+}
+
+impl OpState for CudaConvState {
+    fn eval(
+        &mut self,
+        session: &mut SessionState,
+        op: &dyn Op,
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
+        let op: &CudaConv = op.downcast_ref().context("Wrong op")?;
+        let inputs =
+            inputs.iter().map(|it| it.to_device_tensor()).collect::<TractResult<TVec<_>>>()?;
+        let output_shape = op.op.pool_spec.output_shape(inputs[0].shape())?;
+        let output = tract_gpu::session_handler::make_tensor_for_node(
+            session,
+            self.0,
+            inputs[0].datum_type(),
+            &output_shape.shape,
+        )?;
+
+        if self.1.is_none() {
+            self.1 = Some(op.kernel.state());
+        }
+
+        if output.len() > 0 {
+            CUDA_STREAM.with(|stream| {
+                op.kernel.dispatch(
+                    &mut **self.1.as_mut().unwrap(),
+                    self.0,
+                    &op.op,
+                    stream,
+                    inputs[0],
+                    inputs[1],
+                    inputs.get(2).cloned(),
+                    &output,
+                )
+            })?;
+        }
+        Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
+    }
+}
+
+#[derive(Debug, Clone)]
+struct FrozenCudaConvState(usize);
+
+impl OpStateFreeze for CudaConvState {
+    fn freeze(&self) -> Box<dyn FrozenOpState> {
+        Box::new(FrozenCudaConvState(self.0))
+    }
+}
+
+impl FrozenOpState for FrozenCudaConvState {
+    fn unfreeze(&self) -> Box<dyn OpState> {
+        Box::new(CudaConvState(self.0, None))
     }
 }

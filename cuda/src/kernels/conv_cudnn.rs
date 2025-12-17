@@ -1,9 +1,12 @@
-use crate::context::{cuda_context, TractCudaStream};
-use crate::kernels::conv::ConvKernel;
-use crate::kernels::{get_cuda_view, get_cuda_view_mut, WARP_SIZE};
+use crate::context::{TractCudaStream, cuda_context};
+use crate::kernels::conv::{ConvKernel, ConvKernelScratch};
+use crate::kernels::{WARP_SIZE, get_cuda_view, get_cuda_view_mut};
 use cudarc::cudnn::{ConvDescriptor, ConvForward, FilterDescriptor, TensorDescriptor};
 use cudarc::driver::{CudaStream, LaunchArgs, LaunchConfig, PushKernelArg};
+use std::any::Any;
+use std::cell::RefCell;
 use std::fmt::Debug;
+use std::ops::Deref;
 use std::sync::Weak;
 use std::thread::LocalKey;
 use thread_local::ThreadLocal;
@@ -15,7 +18,7 @@ use tract_gpu::tensor::DeviceTensor;
 
 #[derive(Debug)]
 struct CudnnConvDescriptors {
-    stream: Weak<CudaStream>,
+    input_shape: TVec<usize>,
     conv: ConvDescriptor<f32>,
     x: TensorDescriptor<f32>,
     w: FilterDescriptor<f32>,
@@ -78,12 +81,6 @@ impl CudnnConvDescriptors {
         input_strides.insert(0, *input_shape.n_stride().unwrap() as i32);
         input_strides.insert(1, *input_shape.c_stride() as i32);
 
-        // let fmt = if op.pool_spec.data_format.c_is_last() {
-        //     cudarc::cudnn::sys::cudnnTensorFormat_t::CUDNN_TENSOR_NHWC
-        // } else {
-        //     cudarc::cudnn::sys::cudnnTensorFormat_t::CUDNN_TENSOR_NCHW
-        // };
-
         let input_descriptor = cudnn
             .create_nd_tensor::<f32>(&input_dims, &input_strides)
             .context("in created_4d_tensor for input")?;
@@ -127,7 +124,7 @@ impl CudnnConvDescriptors {
         let workspace_size = conv.get_workspace_size(algo).context("in get_workspace_size()")?;
 
         Ok(CudnnConvDescriptors {
-            stream: Arc::downgrade(stream),
+            input_shape: input_shape_array.into(),
             x: input_descriptor,
             w: filter_descriptor,
             y: output_descriptor,
@@ -138,24 +135,23 @@ impl CudnnConvDescriptors {
     }
 }
 
-#[derive(Debug, Default)]
-pub struct ConvCudnn {
-    cache: ThreadLocal<CudnnConvDescriptors>,
-}
+impl ConvKernelScratch for Option<CudnnConvDescriptors> {}
 
-impl Clone for ConvCudnn {
-    fn clone(&self) -> Self {
-        ConvCudnn::default()
-    }
-}
+#[derive(Debug, Default, Clone)]
+pub struct ConvCudnn;
 
 impl ConvKernel for ConvCudnn {
     fn name(&self) -> StaticName {
         "ConvCudnn".into()
     }
 
+    fn state(&self) -> Box<dyn ConvKernelScratch> {
+        Box::<Option<CudnnConvDescriptors>>::default()
+    }
+
     fn dispatch(
         &self,
+        state: &mut dyn ConvKernelScratch,
         node_id: usize,
         op: &Conv,
         stream: &TractCudaStream,
@@ -166,9 +162,20 @@ impl ConvKernel for ConvCudnn {
     ) -> TractResult<()> {
         ensure!(bias.is_none());
 
-        let conv = self.cache.get_or_try(|| {
-            CudnnConvDescriptors::new(stream, op, input.shape(), weights.shape(), output.shape())
-        })?;
+        let state: &mut Option<CudnnConvDescriptors> =
+            state.downcast_mut().context("Wrong state")?;
+
+        if state.as_ref().is_none_or(|desc| &*desc.input_shape != input.shape()) {
+            *state = Some(CudnnConvDescriptors::new(
+                stream,
+                op,
+                input.shape(),
+                weights.shape(),
+                output.shape(),
+            )?)
+        }
+
+        let conv = state.as_ref().unwrap();
 
         let input = get_cuda_view(input);
         let weights = get_cuda_view(weights);

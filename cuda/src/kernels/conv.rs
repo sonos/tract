@@ -2,17 +2,24 @@ use crate::context::{cuda_context, TractCudaStream};
 use crate::kernels::launch_args::TractLaunchArgs;
 use crate::kernels::{get_cuda_view, WARP_SIZE};
 use cudarc::driver::{LaunchArgs, LaunchConfig, PushKernelArg};
+use downcast_rs::{Downcast, impl_downcast};
+use std::any::Any;
 use std::fmt::Debug;
 use tract_core::dyn_clone::{self, DynClone};
 use tract_core::internal::*;
 use tract_core::ops::cnn::Conv;
 use tract_gpu::tensor::DeviceTensor;
 
+pub trait ConvKernelScratch: Debug + Downcast {}
+impl_downcast!(ConvKernelScratch);
+
 pub trait ConvKernel: 'static + Send + Sync + Debug + DynClone {
     fn name(&self) -> StaticName;
     #[allow(clippy::too_many_arguments)]
+    fn state(&self) -> Box<dyn ConvKernelScratch>;
     fn dispatch(
         &self,
+        state: &mut dyn ConvKernelScratch,
         node_id: usize,
         op: &Conv,
         stream: &TractCudaStream,
@@ -24,6 +31,8 @@ pub trait ConvKernel: 'static + Send + Sync + Debug + DynClone {
 }
 dyn_clone::clone_trait_object!(ConvKernel);
 
+impl ConvKernelScratch for () {}
+
 #[derive(Hash, Clone, Debug)]
 pub struct ConvGeneric;
 
@@ -32,8 +41,13 @@ impl ConvKernel for ConvGeneric {
         "Generic".into()
     }
 
+    fn state(&self) -> Box<dyn ConvKernelScratch> {
+        Box::new(())
+    }
+
     fn dispatch(
         &self,
+        _state: &mut dyn ConvKernelScratch,
         _node_id: usize,
         op: &Conv,
         stream: &TractCudaStream,
