@@ -31,7 +31,7 @@ pub fn wire_cuda_conv(
         let conv_name = format!("{prefix}.conv");
         let mut conv_wire = target.wire_node(
             if need_bias { &conv_name } else { &node.name },
-            CudaConv { op: op.clone(), kernel: Box::new(ConvCudnn::default()) },
+            CudaConv { op: op.clone(), kernel: Box::new(ConvCudnn) },
             &inputs[0..2],
         )?[0];
         if need_bias {

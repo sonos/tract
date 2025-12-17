@@ -17,6 +17,7 @@ pub trait ConvKernel: 'static + Send + Sync + Debug + DynClone {
     fn name(&self) -> StaticName;
     #[allow(clippy::too_many_arguments)]
     fn state(&self) -> Box<dyn ConvKernelScratch>;
+    #[allow(clippy::too_many_arguments)]
     fn dispatch(
         &self,
         state: &mut dyn ConvKernelScratch,
