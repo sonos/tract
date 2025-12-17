@@ -37,7 +37,6 @@ impl Arbitrary for SliceProblem {
 impl Test for SliceProblem {
     fn run_with_approx(
         &self,
-        _suite: &str,
         id: &str,
         runtime: &dyn Runtime,
         approx: Approximation,
