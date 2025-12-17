@@ -1,3 +1,4 @@
+use DatumType::{F16, F32};
 use tract_core::dyn_clone::clone_box;
 use tract_core::internal::*;
 use tract_core::model::translator::Translate;
@@ -5,8 +6,8 @@ use tract_core::ops::array::{MultiBroadcastTo, Slice, TypedConcat};
 use tract_core::ops::binary::TypedBinOp;
 use tract_core::ops::cast::Cast;
 use tract_core::ops::cnn::conv::rewrite_kernel_conv_in_oihw;
-use tract_core::ops::cnn::{rewrite_conv_with_n_axis, Conv};
-use tract_core::ops::einsum::prefix_matmul::{rewrite_einsum_to_prefix_matmul, PrefixMatMul};
+use tract_core::ops::cnn::{Conv, rewrite_conv_with_n_axis};
+use tract_core::ops::einsum::prefix_matmul::{PrefixMatMul, rewrite_einsum_to_prefix_matmul};
 use tract_core::ops::element_wise::ElementWiseOp;
 use tract_core::ops::konst::Const;
 use tract_core::ops::logic::Comp;
@@ -28,11 +29,10 @@ use tract_transformers::ops::rms_norm::RmsNorm;
 use tract_transformers::ops::scaled_masked_softmax::ScaledMaskedSoftmax;
 use tract_transformers::ops::sdpa::Sdpa;
 use tract_transformers::ops::silu::Silu;
-use DatumType::{F16, F32};
 
 use crate::context::cuda_context;
-use crate::ops::{wire_cuda_conv, CudaLeakyRelu};
 use crate::ops::{CudaDelay, CudaPulsePad};
+use crate::ops::{CudaLeakyRelu, wire_cuda_conv};
 use crate::{kernels, ops, rewrite_rules};
 
 #[derive(Debug, Default)]
