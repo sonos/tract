@@ -50,7 +50,6 @@ impl DownsampleProblem {
 impl Test for DownsampleProblem {
     fn run_with_approx(
         &self,
-        _suite: &str,
         id: &str,
         runtime: &dyn Runtime,
         approx: Approximation,

@@ -270,7 +270,6 @@ where
 {
     fn run_with_approx(
         &self,
-        _suite: &str,
         id: &str,
         runtime: &dyn tract_core::runtime::Runtime,
         approx: Approximation,

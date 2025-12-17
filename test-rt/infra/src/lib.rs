@@ -3,12 +3,10 @@ use core::fmt;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::io::Write;
-use std::sync::Mutex;
 
 use downcast_rs::Downcast;
 use dyn_clone::DynClone;
 use itertools::Itertools;
-use lazy_static::lazy_static;
 use proptest::prelude::{Arbitrary, any_with};
 use proptest::strategy::Strategy;
 use proptest::test_runner::{Config, FileFailurePersistence, TestRunner};
@@ -23,13 +21,12 @@ pub fn setup_test_logger() {
 pub type TestResult = anyhow::Result<()>;
 
 pub trait Test: Downcast + 'static + Send + Sync + DynClone {
-    fn run(&self, suite: &str, id: &str, runtime: &dyn Runtime) -> TestResult {
-        self.run_with_approx(suite, id, runtime, Approximation::Close)
+    fn run(&self, id: &'static str, runtime: &dyn Runtime) -> TestResult {
+        self.run_with_approx(id, runtime, Approximation::Close)
     }
     fn run_with_approx(
         &self,
-        suite: &str,
-        id: &str,
+        id: &'static str,
         runtime: &dyn Runtime,
         approx: Approximation,
     ) -> TestResult;
@@ -234,9 +231,10 @@ impl TestSuite {
                         writeln!(rs, "#[ignore]").unwrap();
                     }
                     writeln!(rs, "fn {id}() -> TractResult<()> {{",).unwrap();
+                    writeln!(rs, "   let id = concat!(module_path!(), \"::{id}\");").unwrap();
                     writeln!(
                         rs,
-                        "    {test_suite}.get({full_id:?}).run_with_approx({test_suite_name:?}, {full_id:?}, {runtime}, {approx})",
+                        "    {test_suite}.get({full_id:?}).run_with_approx(id, {runtime}, {approx})",
                         )
                         .unwrap();
                     writeln!(rs, "}}").unwrap();
@@ -277,22 +275,21 @@ where
 {
     fn run_with_approx(
         &self,
-        suite: &str,
-        id: &str,
+        id: &'static str,
         runtime: &dyn Runtime,
         approx: Approximation,
     ) -> TestResult {
-        let crate_name = std::env::var("CARGO_PKG_NAME").unwrap_or("".to_string());
-        let name = format!("{crate_name}::{suite}::{id}");
+        // let crate_name = std::env::var("CARGO_PKG_NAME").unwrap_or("".to_string());
+        // let name = format!("{crate_name}::{suite}::{id}");
         let mut runner = TestRunner::new(Config {
             failure_persistence: Some(Box::new(FileFailurePersistence::Off)),
-            test_name: Some(Box::leak(name.into_boxed_str())),
+            test_name: Some(id),
             ..Config::default()
         });
         runner.run(
             &any_with::<A>(self.0.clone()).prop_filter("Test case filter", |a| self.1(a)),
             |v| {
-                v.run_with_approx(suite, id, runtime, approx).map_err(|e| {
+                v.run_with_approx(id, runtime, approx).map_err(|e| {
                     proptest::test_runner::TestCaseError::Fail(format!("{e:?}").into())
                 })
             },

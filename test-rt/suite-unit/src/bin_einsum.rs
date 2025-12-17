@@ -295,7 +295,6 @@ impl BinEinsumProblem {
 impl Test for BinEinsumProblem {
     fn run_with_approx(
         &self,
-        _suite: &str,
         id: &str,
         runtime: &dyn Runtime,
         approx: Approximation,
