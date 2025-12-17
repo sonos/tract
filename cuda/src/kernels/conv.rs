@@ -1,6 +1,6 @@
-use crate::context::{cuda_context, TractCudaStream};
+use crate::context::{TractCudaStream, cuda_context};
 use crate::kernels::launch_args::TractLaunchArgs;
-use crate::kernels::{get_cuda_view, WARP_SIZE};
+use crate::kernels::{WARP_SIZE, get_cuda_view};
 use cudarc::driver::{LaunchArgs, LaunchConfig, PushKernelArg};
 use downcast_rs::{Downcast, impl_downcast};
 use std::any::Any;

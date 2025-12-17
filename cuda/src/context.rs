@@ -14,14 +14,14 @@ use tract_core::internal::*;
 
 use cudarc::driver::{CudaContext, CudaFunction, CudaModule, CudaStream};
 
-use crate::kernels::{cubin_dir, LibraryName, COMMON_H};
+use crate::kernels::{COMMON_H, LibraryName, cubin_dir};
 use crate::tensor::CudaTensor;
 
 use cudarc::nvrtc::result::{compile_program, destroy_program, get_program_log};
 use cudarc::nvrtc::sys::{
     nvrtcCreateProgram, nvrtcGetCUBIN, nvrtcGetCUBINSize, nvrtcProgram, nvrtcResult,
 };
-use std::ffi::{c_char, CStr, CString};
+use std::ffi::{CStr, CString, c_char};
 use std::path::{Path, PathBuf};
 
 thread_local! {
