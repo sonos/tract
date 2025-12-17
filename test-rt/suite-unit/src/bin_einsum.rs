@@ -406,6 +406,18 @@ pub fn suite() -> TractResult<TestSuite> {
         },
     );
 
+    suite.add(
+        "cuda_binary_bug_with_bias",
+        BinEinsumProblem {
+            expr: "mewk,owkn->wnemo".parse()?,
+            a: Tensor::zero::<f32>(&[1, 3, 1, 2])?,
+            b: Tensor::zero::<f32>(&[1, 1, 2, 1])?,
+            a_constant: false,
+            b_constant: false,
+            unicast_add_constant: Some(tensor1(&[0f32, 0f32, 1f32]).into_shape(&[1, 1, 3, 1, 1])?),
+        },
+    );
+
     // TODO: fix ensure_mkn() to handle multiple n axes
     //suite.add(
     //    "multiple_n_axes",

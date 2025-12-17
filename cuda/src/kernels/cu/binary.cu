@@ -96,6 +96,9 @@ __device__ __forceinline__ void bin_op_generic(
       const int32_t total = n0 * n1 * n2 * n3 * n4;
 
       int32_t tmp = blockIdx.x * blockDim.x + threadIdx.x;
+      if(tmp >= total) {
+           return;
+      }
 
       const int32_t i4 = tmp % n4; tmp /= n4;
       const int32_t i3 = tmp % n3; tmp /= n3;
