@@ -9,7 +9,6 @@ use std::fmt::Debug;
 use std::ops::Deref;
 use std::sync::Weak;
 use std::thread::LocalKey;
-use thread_local::ThreadLocal;
 use tract_core::dyn_clone::{self, DynClone};
 use tract_core::internal::*;
 use tract_core::ops::cnn::{Conv, KernelFormat};
