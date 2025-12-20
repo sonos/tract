@@ -10,6 +10,33 @@ use tract_data::TractResult;
 use crate::floats::FloatPrecisionTranslator;
 use crate::ops::nn::{Softmax, SoftmaxExp, SoftmaxKind, TypedModel};
 
+#[macro_export]
+macro_rules! rule_if {
+    ($cond:expr) => {
+        if !$cond {
+            return Ok(None);
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! rule_if_let {
+    ($pat:pat = $expr:expr) => {
+        let $pat = $expr else {
+            return Ok(None);
+        };
+    };
+}
+
+#[macro_export]
+macro_rules! rule_if_some {
+    ($pat:pat = $expr:expr) => {
+        let Some($pat) = $expr else {
+            return Ok(None);
+        };
+    };
+}
+
 pub fn get_transform(name: &str) -> Option<Box<dyn ModelTransform>> {
     match name {
         #[cfg(feature = "blas")]

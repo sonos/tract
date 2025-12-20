@@ -23,15 +23,6 @@ pub use silu::silu_rule;
 use tract_core::ops::binary::TypedBinOp;
 use tract_core::ops::math::{Add, Mul};
 
-#[macro_export]
-macro_rules! rule_ensure {
-    ($cond:expr) => {
-        if !$cond {
-            return Ok(None);
-        }
-    };
-}
-
 fn next_node<'a>(model: &'a TypedModel, node: &TypedNode) -> Option<&'a TypedNode> {
     if node.outputs.iter().map(|of| of.successors.len()).sum::<usize>() != 1 {
         return None;
