@@ -4,8 +4,6 @@ use tract_nnef::tract_core::ops::element_wise::ElementWiseOp;
 use tract_nnef::tract_core::ops::math::{Add, Mul, Rsqrt};
 use tract_nnef::tract_core::ops::nn::{Reduce, Reducer};
 
-use crate::rule_ensure;
-
 use super::{collect_node_const_inputs, next_node};
 
 pub fn register(registry: &mut Registry) {
@@ -93,50 +91,38 @@ pub fn rms_norm_rule(
     node_name: &str,
     op: &Reduce,
 ) -> TractResult<Option<TypedModelPatch>> {
-    rule_ensure!(op.reducer == Reducer::MeanOfSquares);
-    rule_ensure!(op.axes.len() == 1);
+    rule_if!(op.reducer == Reducer::MeanOfSquares);
+    rule_if!(op.axes.len() == 1);
     let axis = op.axes[0];
 
     let in_fact = model.node_input_facts(node.id)?[0];
     let dt = in_fact.datum_type;
 
     // Only F16 and F32 is supported.
-    rule_ensure!(matches!(dt, DatumType::F32 | DatumType::F16));
+    rule_if!(matches!(dt, DatumType::F32 | DatumType::F16));
 
     // Identify Add operator
-    let Some(add_succ) = next_node(model, node) else {
-        return Ok(None);
-    };
-    let Some(add_succ_op) = add_succ.op_as::<TypedBinOp>() else {
-        return Ok(None);
-    };
-    rule_ensure!(add_succ_op.0.is::<Add>());
+    rule_if_some!(add_succ = next_node(model, node));
+    rule_if_some!(add_succ_op = add_succ.op_as::<TypedBinOp>());
+    rule_if!(add_succ_op.0.is::<Add>());
 
     // Retrieve epsilon
     let add_consts = collect_node_const_inputs(model, add_succ);
-    rule_ensure!(add_consts.len() == 1);
+    rule_if!(add_consts.len() == 1);
     let eps = add_consts[0].val().clone();
-    rule_ensure!(eps.len() == 1);
-    rule_ensure!(eps.datum_type() == dt);
+    rule_if!(eps.len() == 1);
+    rule_if!(eps.datum_type() == dt);
 
     // Identify Rsqrt
-    let Some(rsqrt_succ) = next_node(model, add_succ) else {
-        return Ok(None);
-    };
-    let Some(rsqrt_succ_op) = rsqrt_succ.op_as::<ElementWiseOp>() else {
-        return Ok(None);
-    };
-    rule_ensure!(rsqrt_succ_op.0.is::<Rsqrt>());
+    rule_if_some!(rsqrt_succ = next_node(model, add_succ));
+    rule_if_some!(rsqrt_succ_op = rsqrt_succ.op_as::<ElementWiseOp>());
+    rule_if!(rsqrt_succ_op.0.is::<Rsqrt>());
 
     // Identify Mul
-    let Some(mul_succ) = next_node(model, rsqrt_succ) else {
-        return Ok(None);
-    };
-    let Some(mul_succ_op) = mul_succ.op_as::<TypedBinOp>() else {
-        return Ok(None);
-    };
-    rule_ensure!(mul_succ_op.0.is::<Mul>());
-    rule_ensure!(mul_succ.inputs.contains(&node.inputs[0]));
+    rule_if_some!(mul_succ = next_node(model, rsqrt_succ));
+    rule_if_some!(mul_succ_op = mul_succ.op_as::<TypedBinOp>());
+    rule_if!(mul_succ_op.0.is::<Mul>());
+    rule_if!(mul_succ.inputs.contains(&node.inputs[0]));
 
     let mut patch = TypedModelPatch::default();
     let rsm_input = patch.taps(model, &node.inputs)?;

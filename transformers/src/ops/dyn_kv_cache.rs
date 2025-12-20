@@ -4,8 +4,6 @@ use tract_nnef::tract_core::ops::OpStateFreeze;
 use tract_nnef::tract_core::ops::array::TypedConcat;
 use tract_nnef::tract_core::ops::source::TypedSource;
 
-use crate::rule_ensure;
-
 use super::next_node;
 
 #[derive(Debug, Clone)]
@@ -207,14 +205,10 @@ impl FrozenOpState for FrozenDynKeyValueCacheState {
 pub fn replace_kv_cache(target: &mut TypedModel, source_node_id: usize) -> TractResult<Option<()>> {
     assert!(target.node(source_node_id).op_is::<TypedSource>());
     let (concat_node_id, non_source_input_id, axis, input_facts) = {
-        let concat_node = if let Some(n_node) = next_node(target, target.node(source_node_id)) {
-            n_node
-        } else {
-            return Ok(None);
-        };
+        rule_if_some!(concat_node = next_node(target, target.node(source_node_id)));
 
         // Check KV Cache Pattern
-        rule_ensure!(
+        rule_if!(
             concat_node.op_is::<TypedConcat>()
                 && concat_node.inputs.len() == 2
                 && concat_node.outputs.len() == 1
@@ -232,7 +226,7 @@ pub fn replace_kv_cache(target: &mut TypedModel, source_node_id: usize) -> Tract
         ensure!(axes.len() == 1);
 
         let axis = axes[0];
-        rule_ensure!(
+        rule_if!(
             matches!(concat_in_shapes[0][axis], TDim::Sym(_))
                 && matches!(concat_in_shapes[1][axis], TDim::Sym(_))
         );

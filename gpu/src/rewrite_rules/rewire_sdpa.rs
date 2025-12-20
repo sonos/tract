@@ -4,7 +4,6 @@ use tract_core::ops::binary::TypedBinOp;
 use tract_core::ops::cast::Cast;
 use tract_core::ops::logic::Comp;
 use tract_transformers::ops::sdpa::Sdpa;
-use tract_transformers::rule_ensure;
 
 pub fn rewire_sdpa(model: &mut TypedModel) -> TractResult<()> {
     Rewriter::default().with_rule_for("flatten-sdpa", rewire_sdpa_op).rewrite(&(), model)
@@ -103,7 +102,7 @@ pub fn neutral_mask_for_full_attn(
     node_name: &str,
     op: &Sdpa,
 ) -> TractResult<Option<TypedModelPatch>> {
-    rule_ensure!(!op.is_causal && node.inputs.len() == 3);
+    rule_if!(!op.is_causal && node.inputs.len() == 3);
     create_sdpa_mask_graph(model, node, node_name, op, op.acc_datum_type, SdpaMaskMode::Neutral)
 }
 
@@ -114,6 +113,6 @@ pub fn causal_mask_as_extern(
     node_name: &str,
     op: &Sdpa,
 ) -> TractResult<Option<TypedModelPatch>> {
-    rule_ensure!(op.is_causal);
+    rule_if!(op.is_causal);
     create_sdpa_mask_graph(model, node, node_name, op, op.acc_datum_type, SdpaMaskMode::Causal)
 }
