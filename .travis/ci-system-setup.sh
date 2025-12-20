@@ -28,14 +28,23 @@ then
                 SUDO=sudo
             fi
             $SUDO apt-get update
-            $SUDO apt-get install -y llvm python3 python3-numpy jshon wget curl build-essential sudo jshon clang
-            aws --version || $SUDO apt-get install -y awscli
+            $SUDO apt-get upgrade -y
+            $SUDO apt-get install -y llvm python3 python3-numpy jshon wget curl build-essential sudo jshon clang 
+            if ! which aws
+            then
+                curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o awscliv2.zip
+                $SUDO apt-get install -y unzip
+                unzip -q awscliv2.zip
+                $SUDO ./aws/install
+                aws --version
+            fi
         fi
     fi
 
     which rustup || curl https://sh.rustup.rs -sSf | sh -s -- -y
     rustup update
     rustup toolchain add $RUSTUP_TOOLCHAIN
+    [ -n $GITHUB_PATH ] && echo $HOME/.cargo/bin >> $GITHUB_PATH
 
     touch /tmp/ci-setup-done
 fi
