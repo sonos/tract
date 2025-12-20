@@ -143,9 +143,7 @@ impl AxisTracking {
             }
             for (outlet, axis) in new_outlets {
                 if let Some(prev) = mapped_outlets.get(&outlet) {
-                    if *prev != axis {
-                        return Ok(None);
-                    }
+                    rule_if!(*prev == axis);
                 } else {
                     mapped_outlets.insert(outlet, axis);
                     todo.insert(outlet, ());

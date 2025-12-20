@@ -776,22 +776,18 @@ impl Conv {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        if matches!(self.pool_spec.padding, ExplicitOnnxPool(_, _, _) | SameLower | SameUpper) {
-            return Ok(None);
-        }
+        rule_if!(!matches!(
+            self.pool_spec.padding,
+            ExplicitOnnxPool(_, _, _) | SameLower | SameUpper
+        ));
         let prec = model.node(node.inputs[0].node);
         let pad = if let Some(pad) = prec.op_as::<Pad>() { pad } else { return Ok(None) };
-        let value = if let PadMode::Constant(c) = &pad.mode {
-            c
-        } else {
-            return Ok(None);
-        };
+        rule_if_let!(PadMode::Constant(value) = &pad.mode);
         let shape = self.pool_spec.data_format.shape(&model.outlet_fact(node.inputs[0])?.shape)?;
-        if !value.is_zero()?
-            || (self.pool_spec.data_format.has_n() && pad.pads[0] != (0, 0))
-            || pad.pads[shape.c_axis()] != (0, 0)
-        {
-            return Ok(None);
+        rule_if!(value.is_zero()?);
+        rule_if!(pad.pads[shape.c_axis()] == (0, 0));
+        if self.pool_spec.data_format.has_n() {
+            rule_if!(pad.pads[0] == (0, 0));
         }
         let mut before: TVec<usize> = pad.pads[shape.hw_axes()].iter().map(|pair| pair.0).collect();
         let mut after: TVec<usize> = pad.pads[shape.hw_axes()].iter().map(|pair| pair.1).collect();
