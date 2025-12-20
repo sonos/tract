@@ -44,7 +44,7 @@ then
     which rustup || curl https://sh.rustup.rs -sSf | sh -s -- -y
     rustup update
     rustup toolchain add $RUSTUP_TOOLCHAIN
-    [ -n $GITHUB_PATH ] && echo $HOME/.cargo/bin >> $GITHUB_PATH
+    [ -n "$GITHUB_PATH" ] && echo $HOME/.cargo/bin >> $GITHUB_PATH
 
     touch /tmp/ci-setup-done
 fi
