@@ -345,11 +345,10 @@ impl TypedOp for EinSum {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        if (self.q_params.is_none() && node.inputs.len() != 2)
-            || (self.q_params.is_some() && node.inputs.len() != 9)
-        {
-            return Ok(None);
-        }
+        rule_if!(
+            (self.q_params.is_none() && node.inputs.len() == 2)
+                || (self.q_params.is_some() && node.inputs.len() == 9)
+        );
         einsum_matmul::detect_rule(&(), model, node, &node.name, self)
     }
 
