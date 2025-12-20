@@ -135,10 +135,12 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: Rustup update
-      run: rustup update
+      run:  ROOT=. .travis/ci-system-setup.sh
     - name: Install cargo-deny
       run: |
-        curl -L https://github.com/EmbarkStudios/cargo-deny/releases/download/0.18.3/cargo-deny-0.18.3-x86_64-unknown-linux-musl.tar.gz \
-            | tar -zx --strip-components=1 "cargo-deny-0.18.3-x86_64-unknown-linux-musl/cargo-deny"
+        curl -L https://github.com/EmbarkStudios/cargo-deny/releases/download/$VERSION/cargo-deny-$VERSION-x86_64-unknown-linux-musl.tar.gz \
+            | tar -zx --strip-components=1 "cargo-deny-$VERSION-x86_64-unknown-linux-musl/cargo-deny"
+      env:
+          VERSION: 0.18.9
     - name: Run cargo-deny
       run: .travis/cargo-deny-check.sh
