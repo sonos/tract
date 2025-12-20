@@ -467,16 +467,11 @@ impl Reduce {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        let Some(prec) = model.linear_prec(node.id)? else {
-            return Ok(None);
-        };
-        let Some(prec_reduce) = prec.op_as::<Self>() else {
-            return Ok(None);
-        };
         use Reducer::*;
-        if prec_reduce.reducer != self.reducer || ![Sum, Prod, Min, Max].contains(&self.reducer) {
-            return Ok(None);
-        }
+        rule_if_some!(prec = model.linear_prec(node.id)?);
+        rule_if_some!(prec_reduce = prec.op_as::<Self>());
+        rule_if!(prec_reduce.reducer == self.reducer);
+        rule_if!([Sum, Prod, Min, Max].contains(&self.reducer));
         let mut patch = TypedModelPatch::default();
         let wire = patch.tap_model(model, prec.inputs[0])?;
         let wire = patch.wire_node(
@@ -504,22 +499,15 @@ impl Reduce {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         if self.reducer == Reducer::Sum {
-            let Some(prec) = model.linear_prec(node.id)? else {
-                return Ok(None);
-            };
-            let Some(prec_bin) = prec.op_as::<TypedBinOp>() else {
-                return Ok(None);
-            };
-            if !prec_bin.0.is::<Mul>() {
-                return Ok(None);
-            }
+            rule_if_some!(prec = model.linear_prec(node.id)?);
+            rule_if_some!(prec_bin = prec.op_as::<TypedBinOp>());
+            rule_if!(prec_bin.0.is::<Mul>());
             let mul_input_fact = model.node_input_facts(prec.id)?;
-            let Some(scalar_slot) = mul_input_fact
-                .iter()
-                .position(|f| f.konst.as_ref().is_some_and(|k| k.volume() == 1))
-            else {
-                return Ok(None);
-            };
+            rule_if_some!(
+                scalar_slot = mul_input_fact
+                    .iter()
+                    .position(|f| f.konst.as_ref().is_some_and(|k| k.volume() == 1))
+            );
             let mut patch = TypedModelPatch::default();
             let scalar = patch.tap_model(model, prec.inputs[scalar_slot])?;
             let wire = patch.tap_model(model, prec.inputs[1 - scalar_slot])?;
@@ -537,37 +525,20 @@ impl Reduce {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         if self.reducer == Reducer::Sum {
-            let Some(prec) = model.linear_prec(node.id)? else {
-                return Ok(None);
-            };
-            let Some(prec_ew) = prec.op_as::<ElementWiseOp>() else {
-                return Ok(None);
-            };
-            if !prec_ew.0.is::<Square>() {
-                return Ok(None);
-            }
-            if node.outputs.len() != 1 || node.outputs[0].successors.len() != 1 {
-                return Ok(None);
-            }
+            rule_if_some!(prec = model.linear_prec(node.id)?);
+            rule_if_some!(prec_ew = prec.op_as::<ElementWiseOp>());
+            rule_if!(prec_ew.0.is::<Square>());
+            rule_if!(node.outputs.len() == 1);
+            rule_if!(node.outputs[0].successors.len() == 1);
             let our_inlet = node.outputs[0].successors[0];
             let succ = model.node(our_inlet.node);
-            let Some(succ_bin) = succ.op_as::<TypedBinOp>() else {
-                return Ok(None);
-            };
-            if !succ_bin.0.is::<Mul>() {
-                return Ok(None);
-            }
+            rule_if_some!(succ_bin = succ.op_as::<TypedBinOp>());
+            rule_if!(succ_bin.0.is::<Mul>());
             let other = succ.inputs[1 - our_inlet.slot];
-            let Some(other_konst) = model.outlet_fact(other)?.uniform.as_ref() else {
-                return Ok(None);
-            };
+            rule_if_some!(other_konst = model.outlet_fact(other)?.uniform.as_ref());
             let norm: TDim = self.axes.iter().map(|&ax| &prec.outputs[0].fact.shape[ax]).product();
-            let Some(norm) = norm.as_i64() else {
-                return Ok(None);
-            };
-            if norm == 0 {
-                return Ok(None);
-            }
+            rule_if_some!(norm = norm.as_i64());
+            rule_if!(norm > 0);
             let norm = tensor0((norm as f32).recip());
             if other_konst.close_enough(&norm, Approximation::Close).is_ok() {
                 let mut patch = TypedModelPatch::default();
@@ -592,43 +563,35 @@ pub fn expand_mean_of_squares(
     name: &str,
     op: &Reduce,
 ) -> TractResult<Option<TypedModelPatch>> {
-    if op.reducer == Reducer::MeanOfSquares {
-        let mut patch = TypedModelPatch::default();
-        let mut wire = tvec!(patch.tap_model(model, node.inputs[0])?);
-        let input_fact = model.outlet_fact(node.inputs[0])?;
-        let dt = input_fact.datum_type;
-        if dt != f32::datum_type() {
-            wire = patch.wire_node(format!("{name}.to_f32"), cast(f32::datum_type()), &wire)?;
-        }
-        wire = patch.wire_node(format!("{name}.sqr"), square(), &wire)?;
-        wire = patch.wire_node(
-            format!("{name}.sum"),
-            Reduce::new(op.axes.clone(), Reducer::Sum),
-            &wire,
-        )?;
-        let card = input_fact
-            .shape
-            .iter()
-            .enumerate()
-            .filter(|(ix, _dim)| op.axes.contains(ix))
-            .map(|(_ix, dim)| dim)
-            .product::<TDim>();
-        let card = patch.add_const(format!("{name}.card"), tensor0(card))?;
-        let card =
-            patch.wire_node(format!("{name}.card_to_f32"), cast(f32::datum_type()), &[card])?;
-
-        wire = wire_with_rank_broadcast(
-            format!("{name}.norm"),
-            &mut patch,
-            div(),
-            &[wire[0], card[0]],
-        )?;
-        if dt != f32::datum_type() {
-            wire = patch.wire_node(format!("{name}.from_f32"), cast(dt), &wire)?;
-        }
-        patch.shunt_outside(model, node.id.into(), wire[0])?;
-        Ok(Some(patch))
-    } else {
-        Ok(None)
+    rule_if!(op.reducer == Reducer::MeanOfSquares);
+    let mut patch = TypedModelPatch::default();
+    let mut wire = tvec!(patch.tap_model(model, node.inputs[0])?);
+    let input_fact = model.outlet_fact(node.inputs[0])?;
+    let dt = input_fact.datum_type;
+    if dt != f32::datum_type() {
+        wire = patch.wire_node(format!("{name}.to_f32"), cast(f32::datum_type()), &wire)?;
     }
+    wire = patch.wire_node(format!("{name}.sqr"), square(), &wire)?;
+    wire = patch.wire_node(
+        format!("{name}.sum"),
+        Reduce::new(op.axes.clone(), Reducer::Sum),
+        &wire,
+    )?;
+    let card = input_fact
+        .shape
+        .iter()
+        .enumerate()
+        .filter(|(ix, _dim)| op.axes.contains(ix))
+        .map(|(_ix, dim)| dim)
+        .product::<TDim>();
+    let card = patch.add_const(format!("{name}.card"), tensor0(card))?;
+    let card = patch.wire_node(format!("{name}.card_to_f32"), cast(f32::datum_type()), &[card])?;
+
+    wire =
+        wire_with_rank_broadcast(format!("{name}.norm"), &mut patch, div(), &[wire[0], card[0]])?;
+    if dt != f32::datum_type() {
+        wire = patch.wire_node(format!("{name}.from_f32"), cast(dt), &wire)?;
+    }
+    patch.shunt_outside(model, node.id.into(), wire[0])?;
+    Ok(Some(patch))
 }

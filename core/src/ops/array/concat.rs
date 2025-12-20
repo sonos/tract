@@ -80,8 +80,7 @@ impl TypedOp for TypedConcat {
         _io: InOut,
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
-        let axis =
-            if let Some(axis) = change.transform_axis(self.axis) { axis } else { return Ok(None) };
+        rule_if_some!(axis = change.transform_axis(self.axis));
         let op = TypedConcat { axis };
         Ok(Some(AxisChangeConsequence::new(model, node, Some(Box::new(op)), change)))
     }

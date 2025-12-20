@@ -23,11 +23,8 @@ impl super::TypedPass for ConcatThenEinsum {
     ) -> TractResult<Option<TypedModelPatch>> {
         'outer: loop {
             self.0 = if let Some(previous) = self.0 {
-                if let Some(next) = next_inlet(model, &previous) {
-                    Some(next)
-                } else {
-                    return Ok(None);
-                }
+                rule_if_some!(next = next_inlet(model, &previous));
+                Some(next)
             } else if let Some(first) =
                 model.nodes.iter().find(|n| n.inputs.len() > 0).map(|n| InletId::new(n.id, 0))
             {

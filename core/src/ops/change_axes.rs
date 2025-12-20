@@ -756,13 +756,7 @@ impl TypedOp for AxisOp {
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
         let op = if let InOut::Out(0) = io {
-            let more = if let Some(more) =
-                self.recip().change_axes(_model, _node, InOut::In(0), change)?
-            {
-                more
-            } else {
-                return Ok(None);
-            };
+            rule_if_some!(more = self.recip().change_axes(_model, _node, InOut::In(0), change)?);
             AxisChangeConsequence {
                 substitute_op: more.substitute_op.map(|op| {
                     if let Some(op) = op.as_op().downcast_ref::<AxisOp>() {
@@ -782,11 +776,7 @@ impl TypedOp for AxisOp {
         } else if change == self {
             AxisChangeConsequence { substitute_op: Some(Box::new(Identity)), wire_changes: tvec!() }
         } else {
-            let (new_op, new_change) = if let Some(pair) = self.merge_incoming_change(change) {
-                pair
-            } else {
-                return Ok(None);
-            };
+            rule_if_some!((new_op, new_change) = self.merge_incoming_change(change));
             trace!("  Change:{change:?} self:{self:?} -> change:{new_change:?} op:{new_op:?}");
             let substitute_op: Box<dyn TypedOp> =
                 if let Some(o) = new_op { Box::new(o) as _ } else { Box::new(Identity) };
