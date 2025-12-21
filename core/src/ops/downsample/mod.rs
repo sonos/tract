@@ -141,9 +141,7 @@ fn pull_downsample_up(
         } else if let Some(other_op) = prec.op_as::<ops::scan::Scan>() {
             return scan::pull_downsample_over_scan(model, prec, other_op, down_node, down_op);
         }
-        if prec.outputs.len() > 1 || prec.inputs.len() == 0 {
-            return Ok(None);
-        }
+        rule_if!(prec.outputs.len() <= 1 && prec.inputs.len() > 0);
         let axis_info = axes_mapping.axis((InOut::Out(0), down_op.axis))?;
         let mut patch = TypedModelPatch::default();
         let mut inputs = vec![];

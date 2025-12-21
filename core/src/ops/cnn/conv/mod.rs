@@ -231,9 +231,7 @@ fn rewrite_kernel_in_oihw(
     group: usize,
     new: Box<dyn TypedOp>,
 ) -> TractResult<Option<TypedModelPatch>> {
-    if fmt == KernelFormat::OIHW {
-        return Ok(None);
-    }
+    rule_if!(fmt != KernelFormat::OIHW);
     let mut patch = TypedModelPatch::default();
     let mut wire = patch.taps(model, &node.inputs)?;
     let prefix = format!("{name}.kernel_reorg");

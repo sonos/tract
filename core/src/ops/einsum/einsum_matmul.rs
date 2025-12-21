@@ -189,9 +189,7 @@ pub(crate) fn detect_rule(
     _name: &str,
     op: &EinSum,
 ) -> TractResult<Option<TypedModelPatch>> {
-    if node.inputs.len() != (2 + op.q_params.is_some() as usize * 7) {
-        return Ok(None);
-    }
+    rule_if!(node.inputs.len() == (2 + op.q_params.is_some() as usize * 7));
     let input_facts = model.node_input_facts(node.id)?;
     let input_shapes = op.actual_input_shapes_from_facts(&input_facts)?;
     let output_shape = super::eval::output_shape(&op.axes, &input_shapes)?;

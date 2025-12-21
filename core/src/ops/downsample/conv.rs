@@ -10,18 +10,12 @@ pub fn fuse_downsample_into_conv(
     down_node: &TypedNode,
     down_op: &Downsample,
 ) -> TractResult<Option<TypedModelPatch>> {
-    if down_op.stride < 0 {
-        return Ok(None);
-    }
+    rule_if!(down_op.stride >= 0);
     let input_fact = model.outlet_fact(conv_node.inputs[0])?;
     let input_shape = conv_op.pool_spec.data_format.shape(input_fact.shape.to_tvec())?;
-    if down_op.axis < input_shape.h_axis() {
-        return Ok(None);
-    }
+    rule_if!(down_op.axis >= input_shape.h_axis());
     let geo_axis = down_op.axis - input_shape.h_axis();
-    if geo_axis >= input_shape.rank() {
-        return Ok(None);
-    }
+    rule_if!(geo_axis < input_shape.rank());
     let mut new_conv = conv_op.clone();
     if new_conv.pool_spec.strides.is_none() {
         new_conv.pool_spec.strides = Some(tvec!(1; input_shape.hw_rank()));

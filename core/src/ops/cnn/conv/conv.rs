@@ -776,22 +776,18 @@ impl Conv {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        if matches!(self.pool_spec.padding, ExplicitOnnxPool(_, _, _) | SameLower | SameUpper) {
-            return Ok(None);
-        }
+        rule_if!(!matches!(
+            self.pool_spec.padding,
+            ExplicitOnnxPool(_, _, _) | SameLower | SameUpper
+        ));
         let prec = model.node(node.inputs[0].node);
-        let pad = if let Some(pad) = prec.op_as::<Pad>() { pad } else { return Ok(None) };
-        let value = if let PadMode::Constant(c) = &pad.mode {
-            c
-        } else {
-            return Ok(None);
-        };
+        rule_if_some!(pad = prec.op_as::<Pad>());
+        rule_if_let!(PadMode::Constant(value) = &pad.mode);
         let shape = self.pool_spec.data_format.shape(&model.outlet_fact(node.inputs[0])?.shape)?;
-        if !value.is_zero()?
-            || (self.pool_spec.data_format.has_n() && pad.pads[0] != (0, 0))
-            || pad.pads[shape.c_axis()] != (0, 0)
-        {
-            return Ok(None);
+        rule_if!(value.is_zero()?);
+        rule_if!(pad.pads[shape.c_axis()] == (0, 0));
+        if self.pool_spec.data_format.has_n() {
+            rule_if!(pad.pads[0] == (0, 0));
         }
         let mut before: TVec<usize> = pad.pads[shape.hw_axes()].iter().map(|pair| pair.0).collect();
         let mut after: TVec<usize> = pad.pads[shape.hw_axes()].iter().map(|pair| pair.1).collect();
@@ -815,29 +811,25 @@ impl Conv {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        if self.q_params.is_some() || self.group != 1 {
-            return Ok(None);
-        }
-        let &[succ_outlet] = &*node.outputs[0].successors else { return Ok(None) };
+        rule_if!(self.q_params.is_none());
+        rule_if!(self.group == 1);
+        rule_if_let!(&[succ_outlet] = &*node.outputs[0].successors);
         let succ = model.node(succ_outlet.node);
-        let Some(bin) = succ.op_as::<TypedBinOp>() else { return Ok(None) };
+        rule_if_some!(bin = succ.op_as::<TypedBinOp>());
         let other_input = succ.inputs[1 - succ_outlet.slot];
         let axes_mapping = model.node_axes_mapping(succ.id)?;
         let input_shape =
             self.pool_spec.data_format.shape(&model.outlet_fact(node.inputs[0])?.shape)?;
         let conv_c_axis = input_shape.c_axis();
-        if axes_mapping.axis((InOut::In(succ_outlet.slot), conv_c_axis))?.inputs
-            [1 - succ_outlet.slot]
-            .len()
-            != 1
-        {
-            return Ok(None);
-        };
+        rule_if!(
+            axes_mapping.axis((InOut::In(succ_outlet.slot), conv_c_axis))?.inputs
+                [1 - succ_outlet.slot]
+                .len()
+                == 1
+        );
         let mut other_expected_shape = tvec!(1.to_dim(); input_shape.rank());
         other_expected_shape[conv_c_axis] = self.output_channels().to_dim();
-        if *other_expected_shape != *model.outlet_fact(other_input)?.shape {
-            return Ok(None);
-        }
+        rule_if!(*other_expected_shape == *model.outlet_fact(other_input)?.shape);
 
         let mut patch = TypedModelPatch::default();
         let [input, mut kernel, mut bias] = *patch.taps(model, &node.inputs)? else {

@@ -105,9 +105,7 @@ pub fn change_axes(
     let mut changed_ops: HashMap<usize, Box<dyn TypedOp>> = HashMap::new();
     let mut rewired_scalar_input: HashMap<InletId, (OutletId, AxisOp)> = Default::default();
     while let Some((change, emitter)) = todo_changes.pop() {
-        if !explored.insert(change.clone()) {
-            return Ok(None);
-        }
+        rule_if!(explored.insert(change.clone()));
         let outlet_group = bound_outlets(change.outlet);
         for &outlet in &outlet_group {
             if locked.contains(&outlet) {

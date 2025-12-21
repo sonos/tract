@@ -12,7 +12,6 @@ use tract_nnef::tract_core::ops::nn::{Softmax, SoftmaxExp, SoftmaxKind};
 
 use crate::ops::dyn_kv_cache::DynKeyValueCache;
 use crate::ops::flash_sdpa::FlashSdpaOp;
-use crate::rule_ensure;
 
 use super::previous_node;
 use super::scaled_masked_softmax::ScaledMaskedSoftmax;
@@ -431,7 +430,7 @@ pub fn match_broadcast_kv_cache_pattern(
 ) -> TractResult<Option<OutletId>> {
     // Find Reshape node
     let reshape_node = model.node(start_outlet.node);
-    rule_ensure!(
+    rule_if!(
         reshape_node.op_is::<change_axes::AxisOp>()
             && matches!(
                 reshape_node.op_as::<change_axes::AxisOp>().unwrap(),
@@ -440,12 +439,12 @@ pub fn match_broadcast_kv_cache_pattern(
     );
 
     // Find broadcast node
-    let Some(broadcast_node) = previous_node(model, reshape_node) else { return Ok(None) };
-    rule_ensure!(broadcast_node.op_is::<MultiBroadcastTo>());
+    rule_if_some!(broadcast_node = previous_node(model, reshape_node));
+    rule_if!(broadcast_node.op_is::<MultiBroadcastTo>());
 
     // Find add axis node
-    let Some(unsqueeze_node) = previous_node(model, broadcast_node) else { return Ok(None) };
-    rule_ensure!(
+    rule_if_some!(unsqueeze_node = previous_node(model, broadcast_node));
+    rule_if!(
         unsqueeze_node.op_is::<change_axes::AxisOp>()
             && matches!(
                 unsqueeze_node.op_as::<change_axes::AxisOp>().unwrap(),
@@ -465,8 +464,8 @@ pub fn match_broadcast_kv_cache_pattern(
     }
 
     // Find concat or dyn kvcache node
-    let Some(node) = previous_node(model, unsqueeze_node) else { return Ok(None) };
-    rule_ensure!(is_concat(model, node) || is_dynkv(node));
+    rule_if_some!(node = previous_node(model, unsqueeze_node));
+    rule_if!(is_concat(model, node) || is_dynkv(node));
 
     let kv_outlet = unsqueeze_node.inputs[0];
     if is_dynkv(node) {
@@ -490,13 +489,9 @@ pub fn fuse_kv_cache_broadcast_rule(
     node_name: &str,
     op: &Sdpa,
 ) -> TractResult<Option<TypedModelPatch>> {
-    let matched_src_k_outlet = match_broadcast_kv_cache_pattern(model, node.inputs[1])?;
-    let matched_src_v_outlet = match_broadcast_kv_cache_pattern(model, node.inputs[2])?;
+    rule_if_some!(new_k_outlet = match_broadcast_kv_cache_pattern(model, node.inputs[1])?);
+    rule_if_some!(new_v_outlet = match_broadcast_kv_cache_pattern(model, node.inputs[2])?);
 
-    let (new_k_outlet, new_v_outlet) = match (matched_src_k_outlet, matched_src_v_outlet) {
-        (Some(k_outlet), Some(v_outlet)) => (k_outlet, v_outlet),
-        _ => return Ok(None),
-    };
     let mut patch = TypedModelPatch::default();
     let mut new_sdpa_inputs = node.inputs.clone();
     new_sdpa_inputs[1] = new_k_outlet;

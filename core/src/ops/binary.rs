@@ -153,12 +153,9 @@ impl TypedOp for TypedBinOp {
     ) -> TractResult<Option<AxisChangeConsequence>> {
         if let AxisOp::Rm(rm) = change {
             let (inputs, outputs) = model.node_facts(node.id)?;
-            if !inputs[0].shape[*rm].is_one()
-                || !inputs[1].shape[*rm].is_one()
-                || !outputs[0].shape[*rm].is_one()
-            {
-                return Ok(None);
-            }
+            rule_if!(inputs[0].shape[*rm].is_one());
+            rule_if!(inputs[1].shape[*rm].is_one());
+            rule_if!(outputs[0].shape[*rm].is_one());
         }
         Ok(Some(AxisChangeConsequence::new(model, node, None, change)))
     }
@@ -267,9 +264,7 @@ impl TypedOp for TypedBinOp {
 
             let dt = model.node_input_facts(node.id)?[0].datum_type;
             if by_scalar_should_be_efficient & can_eval_in_a & !op_is_quant {
-                let Some(func) = tract_linalg::bin_by_scalar(dt, actual_linalg_op) else {
-                    return Ok(None);
-                };
+                rule_if_some!(func = tract_linalg::bin_by_scalar(dt, actual_linalg_op));
                 let eval_fn = Arc::from(func);
                 return Ok(Some(
                     TypedModelPatch::replace_single_op(
@@ -283,9 +278,7 @@ impl TypedOp for TypedBinOp {
             }
 
             if unicast_should_be_efficient & can_eval_in_a & !op_is_quant {
-                let Some(func) = tract_linalg::bin_unicast(dt, actual_linalg_op) else {
-                    return Ok(None);
-                };
+                rule_if_some!(func = tract_linalg::bin_unicast(dt, actual_linalg_op));
                 let eval_fn = Arc::from(func);
                 return Ok(Some(
                     TypedModelPatch::replace_single_op(

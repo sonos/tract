@@ -153,12 +153,9 @@ impl TypedOp for Comp {
     ) -> TractResult<Option<AxisChangeConsequence>> {
         if let AxisOp::Rm(rm) = change {
             let (inputs, outputs) = model.node_facts(node.id)?;
-            if !inputs[0].shape[*rm].is_one()
-                || !inputs[0].shape[*rm].is_one()
-                || !outputs[0].shape[*rm].is_one()
-            {
-                return Ok(None);
-            }
+            rule_if!(inputs[0].shape[*rm].is_one());
+            rule_if!(inputs[1].shape[*rm].is_one());
+            rule_if!(outputs[0].shape[*rm].is_one());
         }
         Ok(Some(AxisChangeConsequence::new(model, node, None, change)))
     }
