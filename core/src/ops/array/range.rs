@@ -112,7 +112,7 @@ impl TypedOp for Range {
         }
         let wire = patch.wire_node(&node.name, AxisOp::Add(0), &[wire])?;
         patch.shunt_outside(model, succ.id.into(), wire[0])?;
-        return Ok(Some(patch));
+        Ok(Some(patch))
     }
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
