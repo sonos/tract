@@ -430,11 +430,8 @@ impl TypedOp for Reduce {
     ) -> TractResult<Option<AxisChangeConsequence>> {
         let mut axes = tvec!();
         for reduced in &self.axes {
-            if let Some(axis) = change.transform_axis(*reduced) {
-                axes.push(axis);
-            } else {
-                return Ok(None);
-            }
+            rule_if_some!(axis = change.transform_axis(*reduced));
+            axes.push(axis);
         }
         axes.sort();
         let op = Some(Box::new(Self { axes, ..self.clone() }) as _);
@@ -452,9 +449,7 @@ impl TypedOp for Reduce {
         _start: &TDim,
         _end: &TDim,
     ) -> TractResult<Option<TVec<OutletId>>> {
-        if self.axes.contains(&output_axis) {
-            return Ok(None);
-        }
+        rule_if!(!self.axes.contains(&output_axis));
         patch.wire_node(&node.name, &node.op, inputs).map(Some)
     }
 

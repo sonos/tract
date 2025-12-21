@@ -34,14 +34,11 @@ fn rule(
     // Q: 9 inputs
     let is_fp_mm = op.q_params.is_none() && node.inputs.len() == 2;
     let is_q_mm = op.q_params.is_some() && node.inputs.len() == 9;
-    if !(is_fp_mm || is_q_mm) {
-        return Ok(None);
-    }
-    if op.q_params.is_some()
-        && model.node_input_facts(node.id)?.iter().skip(3).any(|i| i.konst.is_none())
-    {
-        return Ok(None);
-    }
+    rule_if!(is_fp_mm || is_q_mm);
+    rule_if!(
+        op.q_params.is_none()
+            || model.node_input_facts(node.id)?.iter().skip(3).all(|i| i.konst.is_some())
+    );
     let prefix: String = op
         .axes
         .iter_all_axes()

@@ -397,33 +397,19 @@ fn declutter_mul_const_mul_const(
     node: &TypedNode,
 ) -> TractResult<Option<TypedModelPatch>> {
     let input_facts = model.node_input_facts(node.id)?;
-    let Some(const_slot) = input_facts.iter().position(|f| f.konst.is_some()) else {
-        return Ok(None);
-    };
+    rule_if_some!(const_slot = input_facts.iter().position(|f| f.konst.is_some()));
     let prec = model.node(node.inputs[1 - const_slot].node);
-    let Some(prec_mul) = prec.op_as::<TypedBinOp>() else {
-        return Ok(None);
-    };
-    if prec.outputs[0].successors.len() > 1 {
-        return Ok(None);
-    };
-    if !prec_mul.0.is::<Mul>() {
-        return Ok(None);
-    }
+    rule_if_some!(prec_mul = prec.op_as::<TypedBinOp>());
+    rule_if!(prec.outputs[0].successors.len() <= 1);
+    rule_if!(prec_mul.0.is::<Mul>());
     let prec_input_facts = model.node_input_facts(prec.id)?;
-    let Some(prec_const_slot) = prec_input_facts.iter().position(|f| f.konst.is_some()) else {
-        return Ok(None);
-    };
+    rule_if_some!(prec_const_slot = prec_input_facts.iter().position(|f| f.konst.is_some()));
 
     let const_fact = model.outlet_fact(node.inputs[const_slot])?;
     let prec_const_fact = model.outlet_fact(prec.inputs[prec_const_slot])?;
     // todo: extend to anything broadcast compatible
-    if !const_fact.shape.volume().is_one() && !prec_const_fact.shape.volume().is_one() {
-        return Ok(None);
-    }
-    if !const_fact.datum_type.is_float() {
-        return Ok(None);
-    }
+    rule_if!(const_fact.shape.volume().is_one() || prec_const_fact.shape.volume().is_one());
+    rule_if!(const_fact.datum_type.is_float());
     let result = mul()
         .eval(tvec!(
             const_fact.konst.clone().unwrap().into_tvalue(),

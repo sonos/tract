@@ -30,9 +30,7 @@ fn block_quant_einsum_weights(
     prefix: &str,
     op: &EinSumMatMul,
 ) -> TractResult<Option<TypedModelPatch>> {
-    if node.inputs.len() != 2 {
-        return Ok(None);
-    }
+    rule_if!(node.inputs.len() == 2);
     for (slot, fact) in model.node_input_facts(node.id)?.iter().enumerate() {
         let Some(a) = fact.konst.as_ref() else { continue };
         if a.rank() != 2 {
