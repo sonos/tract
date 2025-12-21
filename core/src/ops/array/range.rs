@@ -96,23 +96,23 @@ impl TypedOp for Range {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        let Some(succ) = model.single_succ(node.id)? else { return Ok(None) };
-        let Some(slice) = succ.op_as::<Slice>() else { return Ok(None) };
-        if slice.start.is_zero() && slice.end.is_one() {
-            let mut patch = TypedModelPatch::default();
-            let mut wire = patch.tap_model(model, node.inputs[0])?;
-            if model.outlet_fact(node.inputs[0])?.datum_type.is_tdim() {
-                wire = patch.wire_node(
-                    format!("{}.cast-tdim", node.name),
-                    Cast { to: DatumType::I64 },
-                    &[wire],
-                )?[0];
-            }
-            let wire = patch.wire_node(&node.name, AxisOp::Add(0), &[wire])?;
-            patch.shunt_outside(model, succ.id.into(), wire[0])?;
-            return Ok(Some(patch));
+        rule_if_some!(succ = model.single_succ(node.id)?);
+        rule_if_some!(slice = succ.op_as::<Slice>());
+        rule_if!(slice.start.is_zero());
+        rule_if!(slice.end.is_zero());
+
+        let mut patch = TypedModelPatch::default();
+        let mut wire = patch.tap_model(model, node.inputs[0])?;
+        if model.outlet_fact(node.inputs[0])?.datum_type.is_tdim() {
+            wire = patch.wire_node(
+                format!("{}.cast-tdim", node.name),
+                Cast { to: DatumType::I64 },
+                &[wire],
+            )?[0];
         }
-        Ok(None)
+        let wire = patch.wire_node(&node.name, AxisOp::Add(0), &[wire])?;
+        patch.shunt_outside(model, succ.id.into(), wire[0])?;
+        return Ok(Some(patch));
     }
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
