@@ -49,7 +49,7 @@ fn convert_to_shape_input(
             .collect::<TractResult<TVec<OutletId>>>()?;
         return builder.wire(TypedConcat::new(0), &concat_input);
     }
-    todo!();
+    bail!("Argument '{}' only support tensor or list of integers", name);
 }
 
 // fragment external<? = scalar>( shape: integer[] ) -> ( output: tensor<?> );
