@@ -391,6 +391,19 @@ impl TDim {
                 }
                 terms.retain(|t| !t.is_one() && t != &Val(-1));
                 terms.sort_by(tdim_lexi_order);
+
+                // in case a term is a multiplication itself, flatten it
+                // e.g., (a*b)*c => a*b*c
+                let mut flattened_terms = vec![];
+                for t in terms {
+                    if let Mul(inner_terms) = t {
+                        flattened_terms.extend(inner_terms);
+                    } else {
+                        flattened_terms.push(t);
+                    }
+                }
+                terms = flattened_terms;
+
                 match (gcd, terms.len()) {
                     (_, 0) => Val(gcd), // Case #1: If 0 variables, return product
                     (0, _) => Val(0),   // Case #2: Result is 0 if coef is 0 (actually
@@ -1411,6 +1424,32 @@ mod tests {
         assert_eq!(
             symbols.parse_tdim("min(S+3, S+2)").unwrap().simplify(),
             symbols.parse_tdim("S+2").unwrap(),
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn commutative_mul_parens() -> TractResult<()> {
+        let symbols = SymbolScope::default();
+        assert_eq!(
+            symbols.parse_tdim("A*(B*C)").unwrap().simplify(),
+            symbols.parse_tdim("(B*A)*C").unwrap().simplify(),
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn commutative_in_nemo_parakeet_model() -> TractResult<()> {
+        let symbols = SymbolScope::default();
+        assert_eq!(
+            symbols
+                .parse_tdim("8*(1+-1*max(0,5000+-1*(S+7)/8)+max(0,4999+(S+7)/8))*((B)*((S+7)/8))")
+                .unwrap()
+                .simplify(),
+            symbols
+                .parse_tdim("8*((B)*(1+-1*max(0,5000+-1*(S+7)/8)+max(0,4999+(S+7)/8)))*((S+7)/8)")
+                .unwrap()
+                .simplify(),
         );
         Ok(())
     }
