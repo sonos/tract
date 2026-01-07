@@ -371,11 +371,23 @@ impl TDim {
                 }
             }
             Mul(terms) => {
+                // in case a term is a multiplication itself, flatten it
+                // e.g., (a*b)*c => a*b*c
+                let mut flattened_terms = vec![];
+                for t in terms {
+                    if let Mul(inner_terms) = t {
+                        flattened_terms.extend(inner_terms);
+                    } else {
+                        flattened_terms.push(t);
+                    }
+                }
+                let mut terms = flattened_terms;
+
                 let mut gcd = Mul(terms.clone()).gcd() as i64;
                 if gcd == 0 {
                     return Val(0);
                 }
-                let mut terms = if gcd != 1 {
+                terms = if gcd != 1 {
                     terms
                         .into_iter()
                         .map(|t| {
@@ -391,18 +403,6 @@ impl TDim {
                 }
                 terms.retain(|t| !t.is_one() && t != &Val(-1));
                 terms.sort_by(tdim_lexi_order);
-
-                // in case a term is a multiplication itself, flatten it
-                // e.g., (a*b)*c => a*b*c
-                let mut flattened_terms = vec![];
-                for t in terms {
-                    if let Mul(inner_terms) = t {
-                        flattened_terms.extend(inner_terms);
-                    } else {
-                        flattened_terms.push(t);
-                    }
-                }
-                terms = flattened_terms;
 
                 match (gcd, terms.len()) {
                     (_, 0) => Val(gcd), // Case #1: If 0 variables, return product
