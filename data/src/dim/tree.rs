@@ -375,7 +375,7 @@ impl TDim {
                 // e.g., (a*b)*c => a*b*c
                 let mut flattened_terms = vec![];
                 for t in terms {
-                    if let Mul(inner_terms) = t {
+                    if let Mul(inner_terms) = t.clone().reduce() {
                         flattened_terms.extend(inner_terms);
                     } else {
                         flattened_terms.push(t);
@@ -1111,6 +1111,9 @@ mod tests {
         static ref table: SymbolScope = SymbolScope::default();
         static ref A: Symbol = table.sym("a");
         static ref B: Symbol = table.sym("b");
+        static ref C: Symbol = table.sym("c");
+        static ref D: Symbol = table.sym("d");
+        static ref E: Symbol = table.sym("e");
     }
 
     fn neg(a: &TDim) -> TDim {
@@ -1451,6 +1454,18 @@ mod tests {
                 .unwrap()
                 .simplify(),
         );
+        Ok(())
+    }
+
+    #[test]
+    fn commutative_mul_parens_deep() -> TractResult<()> {
+        let symbols = SymbolScope::default();
+        let deep_tdim = Mul(vec![
+            Mul(vec![Mul(vec![Mul(vec![A.to_dim(), B.to_dim()]), C.to_dim()]), D.to_dim()]),
+            E.to_dim(),
+        ])
+        .simplify();
+        assert_eq!(deep_tdim, symbols.parse_tdim("a*b*c*d*e").unwrap().simplify());
         Ok(())
     }
 }
