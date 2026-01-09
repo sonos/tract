@@ -14,7 +14,7 @@ tract_core::element_wise_oop!(is_inf, IsInf { detect_positive: bool, detect_nega
         );
         Ok(())
     };
-    prefix: "onnx."
+    prefix: "extra."
 );
 
 pub fn parameters() -> Vec<Parameter> {
@@ -29,7 +29,7 @@ pub fn dump(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValu
     let op = node.op_as::<ElementWiseOp>().unwrap().0.downcast_ref::<IsInf>().unwrap();
     let input = ast.mapping[&node.inputs[0]].clone();
     Ok(Some(invocation(
-        "tract_onnx_isinf",
+        "tract_extra_is_inf",
         &[input],
         &[
             ("detect_negative", logical(op.detect_negative)),

@@ -1,6 +1,8 @@
 use tract_nnef::internal::*;
 
 mod exp_unit_norm;
+pub mod is_inf;
+pub mod is_nan;
 
 pub trait WithTractExtra {
     fn enable_tract_extra(&mut self);
@@ -22,6 +24,14 @@ impl WithTractExtra for tract_nnef::framework::Nnef {
 pub fn tract_extra_registry() -> Registry {
     let mut reg = Registry::new("tract_extra");
     exp_unit_norm::register(&mut reg);
+    is_nan::register(&mut reg);
+    reg.register_element_wise(
+        "tract_extra_is_inf",
+        TypeId::of::<is_inf::IsInf>(),
+        Box::new(is_inf::dump),
+        is_inf::parameters(),
+        is_inf::load,
+    );
     reg
 }
 

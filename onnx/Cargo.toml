@@ -28,6 +28,7 @@ smallvec.workspace = true
 tract-nnef.workspace = true
 tract-hir.workspace = true
 tract-onnx-opl.workspace = true
+tract-extra.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true
