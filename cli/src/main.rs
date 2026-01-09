@@ -144,6 +144,7 @@ fn main() -> TractResult<()> {
         .arg(arg!(--"metal").long_help("Convert supported operators to Metal GPU equivalent. Only available on MacOS and iOS"))
         .arg(Arg::new("force-metal-backend").long("force-metal-backend").takes_value(true).long_help("Force specific implementations for MM kernels. Possible values: mlx, ggml, mfa. Backend is dynamically selected if option is not present"))
         .arg(arg!(--"cuda").long_help("Convert supported operators to CUDA equivalent"))
+        .arg(arg!(-r --runtime [runtime] "Run on alternative runtime (cuda, metal, ...)"))
         .arg(Arg::new("transform").short('t').long("transform").multiple_occurrences(true).takes_value(true).help("Apply a built-in transformation to the model"))
         .arg(Arg::new("set").long("set").multiple_occurrences(true).takes_value(true)
              .long_help("Set a symbol to a concrete value after decluttering"))
@@ -171,6 +172,7 @@ fn main() -> TractResult<()> {
         .arg(arg!(--"machine-friendly" "Machine friendly output"))
 
         .subcommand(Command::new("list-ops").about("List ops in TF/ONNX frameworks"))
+        .subcommand(Command::new("list-runtimes").about("List runtimes"))
         .subcommand(Command::new("kernels").about("Print kernels for the current plaform"))
         .subcommand(Command::new("hwbench").about("Print current hardware key metrics"));
 
@@ -601,6 +603,12 @@ fn output_options(command: clap::Command) -> clap::Command {
 /// Handles the command-line input.
 fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
     match matches.subcommand() {
+        Some(("list-runtimes", _)) => {
+            tract_core::runtime::runtimes().for_each(|ir| {
+                println!(" * {}", ir.name());
+            });
+            return Ok(());
+        }
         Some(("list-ops", _)) => {
             #[cfg(feature = "onnx")]
             {

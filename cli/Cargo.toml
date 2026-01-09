@@ -28,6 +28,7 @@ icu_normalizer_data.workspace = true
 icu_properties.workspace = true
 icu_properties_data.workspace = true
 idna_adapter.workspace = true
+inventory.workspace = true
 lazy_static.workspace = true
 litemap.workspace = true
 log.workspace = true
