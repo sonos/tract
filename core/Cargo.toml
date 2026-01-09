@@ -37,6 +37,7 @@ rustfft.workspace = true
 smallvec.workspace = true
 tract-linalg.workspace = true
 tract-data.workspace = true
+inventory.workspace = true
 
 [features]
 default = [ ]
