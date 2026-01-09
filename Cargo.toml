@@ -116,8 +116,6 @@ default-members = [
 
 [workspace.dependencies]
 accelerate-src = "0.3"
-adapter = "0.3.0"
-ansi_term = "0.12.1"
 anstyle = "1.0.2"
 anstyle-parse = "0.2.1"
 anstyle-query = "1.0.0"
@@ -126,13 +124,10 @@ anymap3 = "1.0"
 approx = "0.5"
 atty = "0.2.14"
 bit-set= "0.5.2"
-blis-src = { version = "0.2", features = ["static", "pthreads"] }
-block = "0.1.6"
 boow = "0.1.3"
 box_drawing = "0.1.2"
 byteorder = "1.4.3"
 bytes = "1.0.1"
-cblas = "0.5"
 cc = "1.0.69"
 clap = { version = "~3.1", features = [ "cargo" ] }
 colorous = "1.0.5"
@@ -149,19 +144,18 @@ env_logger = "0.10"
 flatbuffers = "23.1.21"
 flate2 = "1.0.20"
 float-ord = "0.3.2"
-foreign-types = "0.5"
 fs-err = "2"
 fs2 = "0.4.3"
 getrandom = "0.2"
 half = { version=">=2.4,<3.0", features = [ "std", "num-traits" ] }
 home = "=0.5.11"
-icu_collections = "1.5.1"
 icu_normalizer = "1.5.0"
 icu_normalizer_data = "1.5.1"
 icu_properties = "1.5.1"
 icu_properties_data = "1.5.1"
 idna_adapter = "1.2.0"
 image = "0.24.1"
+inventory = "0.3.21"
 itertools = "0.12.1"
 lazy_static = "1.5.0"
 levenshtein-diff = "0.2.4"
@@ -170,7 +164,6 @@ libm = "0.2.11"
 liquid = "0.26.8"
 liquid-core = "0.26.8"
 liquid-derive = "0.26.8"
-liquid-json = "0.6"
 litemap = "0.7.4"
 log = "0.4.14"
 maplit = "1.0.2"
@@ -187,7 +180,6 @@ num-traits = "0.2.14"
 num_cpus = "1"
 openblas-src = { version = "0.10", features = ["static"] }
 pastey = "0.1"
-potential_utf = "0.1.0"
 proptest = "1.0.0"
 prost = "0.11.0"
 prost-types = "0.11.0"
@@ -199,7 +191,6 @@ readings-probe = "0.1.8"
 regex = "1.5.4"
 reqwest = { version = "0.12", features = [ "blocking", "rustls-tls" ], default-features = false }
 rustfft = { version = "6.1", features = [ "neon" ] }
-rustix = "0.38.4"
 rustls = "0.20.4"
 safetensors = "0.6"
 scan_fmt = "0.2.6"
@@ -214,14 +205,10 @@ tempfile = "3.8"
 tensorflow = "0.17.0"
 tflitec = { git = "https://github.com/kali/tflitec-rs.git", rev="9ceb838" }
 time = "0.3.23"
-time-macros = "0.2.10"
-tinystr = "0.8.0"
 tokenizers = "0.21"
 unicode-normalization = "0.1.19"
 walkdir = "2.3.2"
-writeable = "0.6.0"
 zerofrom = "0.1.5"
-zerotrie = "0.2.1"
 tract-api = { version = "0.22.1-pre", path = 'api' }
 tract-core = { version = "0.22.1-pre", path = 'core' }
 tract-cuda = { version = "0.22.1-pre", path = 'cuda' }
@@ -242,10 +229,7 @@ tract-tensorflow = { version = "0.22.1-pre", path = 'tensorflow' }
 tract-tflite = { version = "0.22.1-pre", path = 'tflite' }
 tract-transformers = { version = "0.22.1-pre", path = 'transformers' }
 tract-rs = { version = "0.22.1-pre", path = 'api/rs' }
-tract-proxy = { version = "0.22.1-pre", path = 'api/proxy' }
 tract-proxy-sys = { version = "0.22.1-pre", path = 'api/proxy/sys' }
-tract-ffi = { version = "0.22.1-pre" }
-tract = { version = "0.22.1-pre" }
 
 
 [profile.opt-no-lto]
@@ -261,9 +245,6 @@ debug = true
 
 [profile.dev.package."*"]
 opt-level = 2
-
-[profile.dev.package.darling_macro]
-opt-level = 0 # work around never ending build on wondows
 
 [profile.dev.build-override]
 debug = false

@@ -86,6 +86,7 @@ pub mod framework;
 pub mod model;
 pub mod optim;
 pub mod plan;
+#[macro_use]
 pub mod runtime;
 #[macro_use]
 pub mod transform;
@@ -124,6 +125,7 @@ pub mod internal {
     pub use crate::runtime::{DefaultRuntime, Runnable, Runtime, State};
     pub use dims;
     pub use downcast_rs as tract_downcast_rs;
+    pub use register_runtime;
     pub use std::borrow::Cow;
     pub use std::collections::HashMap;
     pub use std::hash::Hash;
