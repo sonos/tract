@@ -2,7 +2,7 @@ use std::fmt::Debug;
 
 use crate::internal::*;
 
-pub trait Runtime: Debug {
+pub trait Runtime: Debug + Send + Sync + 'static {
     fn name(&self) -> StaticName;
     fn prepare(&self, model: TypedModel) -> TractResult<Box<dyn Runnable>>;
 }
@@ -42,3 +42,37 @@ impl State for TypedSimpleState {
         self.run(inputs)
     }
 }
+
+pub struct InventorizedRuntime(pub &'static dyn Runtime);
+
+impl Runtime for InventorizedRuntime {
+    fn name(&self) -> StaticName {
+        self.0.name()
+    }
+
+    fn prepare(&self, model: TypedModel) -> TractResult<Box<dyn Runnable>> {
+        self.0.prepare(model)
+    }
+}
+
+impl Debug for InventorizedRuntime {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+inventory::collect!(InventorizedRuntime);
+
+pub fn runtimes() -> impl Iterator<Item = &'static dyn Runtime> {
+    inventory::iter::<InventorizedRuntime>().map(|ir| ir.0)
+}
+
+#[macro_export]
+macro_rules! register_runtime {
+    ($type: ty= $val:expr) => {
+        static D: $type = $val;
+        inventory::submit! { $crate::runtime::InventorizedRuntime(&D) }
+    };
+}
+
+register_runtime!(DefaultRuntime = DefaultRuntime);

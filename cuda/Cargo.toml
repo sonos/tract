@@ -31,6 +31,7 @@ tract-transformers.workspace = true
 tract-gpu.workspace = true
 log.workspace = true
 cudarc.workspace = true
+inventory.workspace = true
 
 
 [dev-dependencies]

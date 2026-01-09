@@ -738,33 +738,29 @@ impl Parameters {
             }
         }
 
-        {
-            if matches.is_present("metal") {
-                #[cfg(any(target_os = "macos", target_os = "ios"))]
-                {
-                    stage!("metal", typed_model -> typed_model, |m:TypedModel| {
-                        tract_metal::MetalTransform::from_str(matches.value_of("force-metal-backend").unwrap_or(""))?
-                            .transform_into(m)
-                    });
-                }
-                #[cfg(not(any(target_os = "macos", target_os = "ios")))]
-                {
-                    bail!("`--metal` present but it is only available on MacOS and iOS")
-                }
-            }
-        }
+        // if matches.is_present("metal") {
+        //     #[cfg(any(target_os = "macos", target_os = "ios"))]
+        //     {
+        //         stage!("metal", typed_model -> typed_model, |m:TypedModel| {
+        //             tract_metal::MetalTransform::from_str(matches.value_of("force-metal-backend").unwrap_or(""))?
+        //                 .transform_into(m)
+        //         });
+        //     }
+        //     #[cfg(not(any(target_os = "macos", target_os = "ios")))]
+        //     {
+        //         bail!("`--metal` present but it is only available on MacOS and iOS")
+        //     }
+        // }
 
-        {
-            if matches.is_present("cuda") {
-                if are_culibs_present() {
-                    stage!("cuda", typed_model -> typed_model, |m:TypedModel| {
-                        tract_cuda::CudaTransform.transform_into(m)
-                    });
-                } else {
-                    bail!("`--cuda` present but could not find any cuda lib")
-                }
-            }
-        }
+        // if matches.is_present("cuda") {
+        //     if are_culibs_present() {
+        //         stage!("cuda", typed_model -> typed_model, |m:TypedModel| {
+        //             tract_cuda::CudaTransform.transform_into(m)
+        //         });
+        //     } else {
+        //         bail!("`--cuda` present but could not find any cuda lib")
+        //     }
+        // }
 
         if let Some(set) = matches.values_of("set") {
             let mut values = SymbolValues::default();
@@ -843,6 +839,16 @@ impl Parameters {
             });
         }
         stage!("before-optimize", typed_model -> typed_model, Ok);
+        let runtime = if matches.is_present("cuda") {
+            Some("cuda")
+        } else if matches.is_present("metal") {
+            Some("metal")
+        } else {
+            matches.value_of("runtime")
+        };
+        if let Some(runtime) = runtime {
+            panic!("runtime {runtime}");
+        }
         stage!("optimize", typed_model -> typed_model, |mut m:TypedModel| {
             let mut opt = tract_core::optim::Optimizer::codegen();
             if let Some(steps) = matches.value_of("optimize-step") {
