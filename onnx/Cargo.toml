@@ -30,11 +30,22 @@ tract-hir.workspace = true
 tract-onnx-opl.workspace = true
 
 [dev-dependencies]
+criterion.workspace = true
 env_logger.workspace = true
+rand.workspace = true
+rayon.workspace = true
 
 # [build-dependencies]
 # protobuf-src = "1.0.5+3.19.3"
 # prost-build = "0.11.1"
+
+[[bench]]
+name = "linear_classifier"
+harness = false
+
+[[bench]]
+name = "linear_regressor"
+harness = false
 
 [features]
 default = []
