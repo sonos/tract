@@ -24,7 +24,13 @@ impl WithTractExtra for tract_nnef::framework::Nnef {
 pub fn tract_extra_registry() -> Registry {
     let mut reg = Registry::new("tract_extra");
     exp_unit_norm::register(&mut reg);
-    is_nan::register(&mut reg);
+    register_shared_with_onnx_operators(&mut reg);
+    reg
+}
+
+/// Register operators that are shared between `tract_extra` and `tract_onnx`.
+pub fn register_shared_with_onnx_operators(reg: &mut Registry) {
+    is_nan::register(reg);
     reg.register_element_wise(
         "tract_extra_is_inf",
         TypeId::of::<is_inf::IsInf>(),
@@ -32,7 +38,6 @@ pub fn tract_extra_registry() -> Registry {
         is_inf::parameters(),
         is_inf::load,
     );
-    reg
 }
 
 pub fn register_pulsifiers() {
