@@ -5,8 +5,8 @@ authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 license = "MIT OR Apache-2.0"
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
 repository = "https://github.com/snipsco/tract"
-keywords = [ "TensorFlow", "NeuralNetworks", "ONNX" ]
-categories = [ "science" ]
+keywords = ["TensorFlow", "NeuralNetworks", "ONNX"]
+categories = ["science"]
 autobenches = false
 edition = "2024"
 
@@ -20,6 +20,7 @@ rand.workspace = true
 rand_distr.workspace = true
 rustfft.workspace = true
 tract-nnef.workspace = true
+tract-extra.workspace = true
 
 [dev-dependencies]
 env_logger.workspace = true
