@@ -82,17 +82,15 @@ impl State for TypedSimpleState {
             .collect()
     }
 
-    fn init_state(&mut self, mut states: &[TValue]) -> TractResult<()> {
-        self.init_states(&mut states)
+    fn init_state(&mut self, states: &[TValue]) -> TractResult<()> {
+        self.init_states(states)
     }
 
     fn get_states(&self) -> TractResult<Vec<TValue>> {
         let mut states = vec![];
-        for op_state in &self.states {
-            if let Some(op_state) = op_state {
-                if op_state.init_tensor_fact().is_some() {
-                    op_state.save_to(&mut states)?;
-                }
+        for op_state in self.states.iter().flatten() {
+            if op_state.init_tensor_fact().is_some() {
+                op_state.save_to(&mut states)?;
             }
         }
         Ok(states)

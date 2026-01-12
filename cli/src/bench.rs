@@ -17,7 +17,7 @@ fn profile(state: &mut TypedSimpleState, inputs: &RunTensors) -> TractResult<Dur
         }
         Ok(start.elapsed())
     } else {
-        state.init_states(&mut inputs.state_initializers.clone())?;
+        state.init_states(&inputs.state_initializers.clone())?;
         let start = Instant::now();
         for source in &inputs.sources {
             state.run(source.clone())?;

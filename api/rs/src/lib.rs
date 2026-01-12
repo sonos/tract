@@ -407,7 +407,7 @@ impl StateInterface for State {
     }
 
     fn get_states_facts(&self) -> Result<Vec<Fact>> {
-        Ok(self.0.get_states_facts().into_iter().map(|f| Fact(f)).collect())
+        Ok(self.0.get_states_facts().into_iter().map(Fact).collect())
     }
 
     fn set_states<I, V, E>(&mut self, state_initializers: I) -> Result<()>
@@ -429,7 +429,7 @@ impl StateInterface for State {
     }
 
     fn get_states(&self) -> Result<Vec<Self::Value>> {
-        Ok(self.0.get_states()?.into_iter().map(|tv| Value(tv)).collect())
+        Ok(self.0.get_states()?.into_iter().map(Value).collect())
     }
 }
 
