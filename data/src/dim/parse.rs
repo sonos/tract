@@ -102,7 +102,10 @@ fn func<'i>(symbol_table: &SymbolScope, name: &'static str, i: &'i str) -> R<'i,
 
 fn identifier<'i>(symbol_table: &SymbolScope, i: &'i str) -> R<'i, Symbol> {
     map(
-        recognize(pair(alt((alpha1, tag("_"))), many0(alt((alphanumeric1, tag("_"), tag(".")))))),
+        recognize(pair(
+            alt((alpha1, tag("_"))),
+            many0(alt((alphanumeric1, tag("_"), tag("."), recognize(pair(tag("/"), alpha1))))),
+        )),
         |s| symbol_table.sym(s),
     )
     .parse(i)
