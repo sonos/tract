@@ -250,10 +250,10 @@ fn run_regular(
         None
     };
 
-    let mut inputs = get_or_make_inputs(tract, &run_params)?;
+    let inputs = get_or_make_inputs(tract, &run_params)?;
     if let Ok(m) = Arc::downcast::<TypedModel>(tract.clone()) {
         let mut state = make_state(&m, matches, sub_matches)?;
-        state.init_states(&mut inputs.state_initializers)?;
+        state.init_states(&inputs.state_initializers)?;
 
         let results =
             run_regular_t(&mut state, inputs, steps, check_f16_overflow, assert_sane_floats, npz)?;
