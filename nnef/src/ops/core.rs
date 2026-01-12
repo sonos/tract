@@ -11,6 +11,7 @@ mod einsum;
 mod fft;
 mod force_eval;
 mod gather;
+mod is_inf;
 mod load;
 mod matmul;
 mod one_hot;
@@ -41,6 +42,8 @@ pub fn register(registry: &mut Registry) {
     registry.register_binary("tract_core_bitxor", &ops::logic::BitXor {});
     registry.register_unit_element_wise("tract_core_bitnot", &ops::logic::BitNot {});
 
+    registry.register_unit_element_wise("tract_core_is_nan", &ops::math::IsNan {});
+
     registry.register_binary("tract_shl", &ops::math::ShiftLeft);
     registry.register_binary("tract_shr", &ops::math::ShiftRight);
     broadcast::register(registry);
@@ -69,4 +72,5 @@ pub fn register(registry: &mut Registry) {
     range::register(registry);
     topk::register(registry);
     trilu::register(registry);
+    is_inf::register(registry);
 }

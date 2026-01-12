@@ -55,7 +55,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Sqrt", |_, _| Ok((ops::math::sqrt().into_hir(), vec![])));
     reg.insert("Rsqrt", |_, _| Ok((ops::math::rsqrt().into_hir(), vec![])));
 
-    reg.insert("IsNaN", |_, _| Ok((tract_extra::is_nan::is_nan().into_hir(), vec![])));
+    reg.insert("IsNaN", |_, _| Ok((tract_core::ops::math::is_nan().into_hir(), vec![])));
     reg.insert("IsInf", isinf);
     reg.insert("Neg", |_, _| Ok((ops::math::neg().into_hir(), vec![])));
     reg.insert("Sign", |_, _| Ok((ops::math::sign().into_hir(), vec![])));
@@ -75,7 +75,7 @@ fn isinf(
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let detect_positive = node.get_attr_opt("detect_positive")?.unwrap_or(1) != 0;
     let detect_negative = node.get_attr_opt("detect_negative")?.unwrap_or(1) != 0;
-    Ok((tract_extra::is_inf::is_inf(detect_positive, detect_negative).into_hir(), vec![]))
+    Ok((tract_core::ops::math::is_inf(detect_positive, detect_negative).into_hir(), vec![]))
 }
 
 fn bitshift(
