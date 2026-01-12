@@ -186,6 +186,7 @@ num-integer = "0.1.44"
 num-traits = "0.2.14"
 num_cpus = "1"
 openblas-src = { version = "0.10", features = ["static"] }
+parking_lot = "0.12.3"
 pastey = "0.1"
 potential_utf = "0.1.0"
 proptest = "1.0.0"
@@ -198,6 +199,7 @@ rayon = "1.10"
 readings-probe = "0.1.8"
 regex = "1.5.4"
 reqwest = { version = "0.12", features = [ "blocking", "rustls-tls" ], default-features = false }
+rustc-hash = "2.1.1"
 rustfft = { version = "6.1", features = [ "neon" ] }
 rustix = "0.38.4"
 rustls = "0.20.4"
