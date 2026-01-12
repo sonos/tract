@@ -34,7 +34,7 @@ impl Runtime for CudaRuntime {
             &arena_hints.unwrap_or_default(),
         )?;
 
-        let runnable = Arc::new(runnable.with_session_handler(session_handler));
+        let runnable = runnable.with_session_handler(session_handler);
         Ok(Box::new(runnable))
     }
 }
