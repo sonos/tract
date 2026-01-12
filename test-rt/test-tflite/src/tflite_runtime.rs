@@ -23,16 +23,24 @@ impl Runtime for TfliteRuntime {
         let mut buffer = vec![];
         self.0.write(&model, &mut buffer).context("Translating model to tflite")?;
         // std::fs::write("foo.tflite", &buffer)?;
-        Ok(Box::new(TfliteRunnable(buffer)))
+        Ok(Box::new(TfliteRunnable(buffer, Arc::new(model))))
     }
 }
 
 #[derive(Clone)]
-struct TfliteRunnable(Vec<u8>);
+struct TfliteRunnable(Vec<u8>, Arc<TypedModel>);
 
 impl Runnable for TfliteRunnable {
     fn spawn(&self) -> TractResult<Box<dyn State>> {
         Ok(Box::new(TfliteState(self.clone())))
+    }
+
+    fn input_count(&self) -> usize {
+        self.1.inputs.len()
+    }
+
+    fn output_count(&self) -> usize {
+        self.1.outputs.len()
     }
 }
 
@@ -91,6 +99,30 @@ impl State for TfliteState {
             outputs.push(tensor.into_tvalue());
         }
         Ok(outputs)
+    }
+
+    fn input_count(&self) -> usize {
+        self.0.input_count()
+    }
+
+    fn output_count(&self) -> usize {
+        self.0.input_count()
+    }
+
+    fn initializable_states_count(&self) -> usize {
+        todo!()
+    }
+
+    fn get_states_facts(&self) -> Vec<TypedFact> {
+        todo!()
+    }
+
+    fn init_state(&mut self, _states: &[TValue]) -> TractResult<()> {
+        todo!()
+    }
+
+    fn get_states(&self) -> TractResult<Vec<TValue>> {
+        todo!()
     }
 }
 
