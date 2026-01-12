@@ -12,10 +12,19 @@ pub trait Runnable: Debug {
         self.spawn()?.run(inputs)
     }
     fn spawn(&self) -> TractResult<Box<dyn State>>;
+    fn input_count(&self) -> usize;
+    fn output_count(&self) -> usize;
 }
 
 pub trait State {
     fn run(&mut self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>>;
+
+    fn input_count(&self) -> usize;
+    fn output_count(&self) -> usize;
+    fn initializable_states_count(&self) -> usize;
+    fn get_states_facts(&self) -> Vec<TypedFact>;
+    fn init_state(&mut self, states: &[TValue]) -> TractResult<()>;
+    fn get_states(&self) -> TractResult<Vec<TValue>>;
 }
 
 #[derive(Debug)]
@@ -35,11 +44,58 @@ impl Runnable for Arc<TypedRunnableModel> {
     fn spawn(&self) -> TractResult<Box<dyn State>> {
         Ok(Box::new(self.spawn()?))
     }
+
+    fn input_count(&self) -> usize {
+        self.model().inputs.len()
+    }
+
+    fn output_count(&self) -> usize {
+        self.model().outputs.len()
+    }
 }
 
 impl State for TypedSimpleState {
     fn run(&mut self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         self.run(inputs)
+    }
+
+    fn input_count(&self) -> usize {
+        self.model().inputs.len()
+    }
+
+    fn output_count(&self) -> usize {
+        self.model().outputs.len()
+    }
+
+    fn initializable_states_count(&self) -> usize {
+        self.states
+            .iter()
+            .filter_map(Option::as_ref)
+            .filter(|s| s.init_tensor_fact().is_some())
+            .count()
+    }
+
+    fn get_states_facts(&self) -> Vec<TypedFact> {
+        self.states
+            .iter()
+            .filter_map(|s| s.as_ref().and_then(|s| s.init_tensor_fact().map(|(_, fact)| fact)))
+            .collect()
+    }
+
+    fn init_state(&mut self, mut states: &[TValue]) -> TractResult<()> {
+        self.init_states(&mut states)
+    }
+
+    fn get_states(&self) -> TractResult<Vec<TValue>> {
+        let mut states = vec![];
+        for op_state in &self.states {
+            if let Some(op_state) = op_state {
+                if op_state.init_tensor_fact().is_some() {
+                    op_state.save_to(&mut states)?;
+                }
+            }
+        }
+        Ok(states)
     }
 }
 

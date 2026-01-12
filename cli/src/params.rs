@@ -26,7 +26,6 @@ use tract_tflite::internal::TfliteProtoModel;
 use tract_nnef::ast::dump::Dumper;
 
 use crate::TractResult;
-use tract_cuda::utils::are_culibs_present;
 use tract_libcli::display_params;
 use tract_libcli::display_params::DisplayParams;
 use tract_libcli::model::Model;

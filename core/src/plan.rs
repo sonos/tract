@@ -262,7 +262,7 @@ where
         Ok(())
     }
 
-    pub fn init_states(&mut self, state_init_tensors: &mut Vec<TValue>) -> TractResult<()> {
+    pub fn init_states(&mut self, state_init_tensors: &[TValue]) -> TractResult<()> {
         let states_to_init = self
             .states
             .iter_mut()

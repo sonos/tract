@@ -32,6 +32,14 @@ mod run_as_f16 {
         fn spawn(&self) -> TractResult<Box<dyn State>> {
             Ok(Box::new(StateAsF16(self.0.spawn()?, self.1.clone())))
         }
+
+        fn input_count(&self) -> usize {
+            self.0.input_count()
+        }
+
+        fn output_count(&self) -> usize {
+            self.0.output_count()
+        }
     }
 
     #[derive(Debug)]
@@ -59,6 +67,30 @@ mod run_as_f16 {
                 .zip(self.1.iter())
                 .map(|(t, dt)| t.into_tensor().cast_to_dt(*dt).unwrap().into_owned().into_tvalue())
                 .collect())
+        }
+
+        fn initializable_states_count(&self) -> usize {
+            self.0.initializable_states_count()
+        }
+
+        fn get_states_facts(&self) -> Vec<TypedFact> {
+            self.0.get_states_facts()
+        }
+
+        fn init_state(&mut self, states: &[TValue]) -> TractResult<()> {
+            self.0.init_state(states)
+        }
+
+        fn get_states(&self) -> TractResult<Vec<TValue>> {
+            self.0.get_states()
+        }
+
+        fn input_count(&self) -> usize {
+            self.0.input_count()
+        }
+
+        fn output_count(&self) -> usize {
+            self.0.output_count()
         }
     }
 

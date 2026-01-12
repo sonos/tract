@@ -60,11 +60,11 @@ impl DynKeyValueCacheState {
 }
 
 impl OpState for DynKeyValueCacheState {
-    fn load_from(&mut self, state: &mut SessionState, states: &mut Vec<TValue>) -> TractResult<()> {
-        let kv_cache_init = states.remove(0);
+    fn load_from(&mut self, state: &mut SessionState, states: &[TValue]) -> TractResult<()> {
         // KV Cache fact is always at index 0
+        let kv_cache_init = &states[0];
         Self::resolve_symbols(state, self.past_sequence_fact.clone(), Some(kv_cache_init.shape()))?;
-        self.kv_cache = Some(kv_cache_init);
+        self.kv_cache = Some(kv_cache_init.clone());
 
         Ok(())
     }

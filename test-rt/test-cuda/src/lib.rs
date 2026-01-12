@@ -56,6 +56,30 @@ impl State for CudaTestTransformState {
             state.run(inputs)
         }
     }
+
+    fn initializable_states_count(&self) -> usize {
+        self.state.initializable_states_count()
+    }
+
+    fn get_states_facts(&self) -> Vec<TypedFact> {
+        self.state.get_states_facts()
+    }
+
+    fn init_state(&mut self, states: &[TValue]) -> TractResult<()> {
+        self.state.init_states(states)
+    }
+
+    fn get_states(&self) -> TractResult<Vec<TValue>> {
+        self.state.get_states()
+    }
+
+    fn input_count(&self) -> usize {
+        self.state.input_count()
+    }
+
+    fn output_count(&self) -> usize {
+        self.state.output_count()
+    }
 }
 
 #[derive(Debug)]
@@ -72,6 +96,14 @@ impl Runnable for CudaTestTransformRunnable {
             transpose_inputs: self.transpose_inputs,
             use_arena: self.use_arena,
         }))
+    }
+
+    fn input_count(&self) -> usize {
+        self.runnable.input_count()
+    }
+
+    fn output_count(&self) -> usize {
+        self.runnable.output_count()
     }
 }
 

@@ -8,10 +8,9 @@ use tract_extra::WithTractExtra;
 use tract_libcli::annotations::Annotations;
 use tract_libcli::profile::BenchLimits;
 use tract_libcli::tensor::RunTensors;
-use tract_nnef::internal::parse_tdim;
+use tract_nnef::internal::{Runtime as _, parse_tdim};
 use tract_nnef::prelude::{
-    Framework, IntoRunnable, IntoTValue, SymbolValues, TValue, TVec, Tensor, TractResult,
-    TypedFact, TypedModel, TypedRunnableModel, TypedSimpleState,
+    Framework, IntoTValue, SymbolValues, TValue, TVec, Tensor, TractResult, TypedFact, TypedModel,
 };
 use tract_onnx::prelude::InferenceModelExt;
 use tract_onnx_opl::WithOnnx;
@@ -238,7 +237,8 @@ impl ModelInterface for Model {
     }
 
     fn into_runnable(self) -> Result<Runnable> {
-        Ok(Runnable(self.0.into_runnable()?))
+        let runnable = tract_nnef::internal::DefaultRuntime.prepare(self.0)?;
+        Ok(Runnable(runnable.into()))
     }
 
     fn concretize_symbols(
@@ -327,7 +327,25 @@ impl ModelInterface for Model {
 }
 
 // RUNNABLE
-pub struct Runnable(Arc<TypedRunnableModel>);
+pub struct Runtime(Arc<dyn tract_nnef::internal::Runtime>);
+
+impl RuntimeInterface for Runtime {
+    type Runnable = Runnable;
+
+    type Model = Model;
+
+    fn name(&self) -> Result<String> {
+        Ok(self.0.name().into_owned())
+    }
+
+    fn prepare(&self, model: Self::Model) -> Result<Self::Runnable> {
+        let runnable = self.0.prepare(model.0)?;
+        Ok(Runnable(runnable.into()))
+    }
+}
+
+// RUNNABLE
+pub struct Runnable(Arc<dyn tract_nnef::internal::Runnable>);
 
 impl RunnableInterface for Runnable {
     type Value = Value;
@@ -342,33 +360,32 @@ impl RunnableInterface for Runnable {
         self.spawn_state()?.run(inputs)
     }
 
+    fn spawn_state(&self) -> Result<State> {
+        Ok(State(self.0.spawn()?))
+    }
+
     fn input_count(&self) -> Result<usize> {
-        Ok(self.0.model().inputs.len())
+        Ok(self.0.input_count())
     }
 
     fn output_count(&self) -> Result<usize> {
-        Ok(self.0.model().outputs.len())
-    }
-
-    fn spawn_state(&self) -> Result<State> {
-        let state = self.0.spawn()?;
-        Ok(State(state))
+        Ok(self.0.output_count())
     }
 }
 
 // STATE
-pub struct State(TypedSimpleState);
+pub struct State(Box<dyn tract_nnef::internal::State>);
 
 impl StateInterface for State {
     type Fact = Fact;
     type Value = Value;
 
     fn input_count(&self) -> Result<usize> {
-        Ok(self.0.model().inputs.len())
+        Ok(self.0.input_count())
     }
 
     fn output_count(&self) -> Result<usize> {
-        Ok(self.0.model().outputs.len())
+        Ok(self.0.output_count())
     }
 
     fn run<I, V, E>(&mut self, inputs: I) -> Result<Vec<Value>>
@@ -386,23 +403,11 @@ impl StateInterface for State {
     }
 
     fn initializable_states_count(&self) -> Result<usize> {
-        Ok(self
-            .0
-            .states
-            .iter()
-            .filter_map(Option::as_ref)
-            .filter(|s| s.init_tensor_fact().is_some())
-            .count())
+        Ok(self.0.initializable_states_count())
     }
 
     fn get_states_facts(&self) -> Result<Vec<Fact>> {
-        Ok(self
-            .0
-            .states
-            .iter()
-            .filter_map(Option::as_ref)
-            .filter_map(|s| s.init_tensor_fact().map(|(_, fact)| Fact(fact)))
-            .collect::<Vec<Fact>>())
+        Ok(self.0.get_states_facts().into_iter().map(|f| Fact(f)).collect())
     }
 
     fn set_states<I, V, E>(&mut self, state_initializers: I) -> Result<()>
@@ -411,32 +416,20 @@ impl StateInterface for State {
         V: TryInto<Self::Value, Error = E>,
         E: Into<anyhow::Error> + Debug,
     {
-        let mut states = vec![];
-        state_initializers.into_iter().for_each(|s| {
-            states.push(s.try_into().unwrap().0);
-        });
-
-        self.0.init_states(&mut states)?;
+        let states: Vec<TValue> = state_initializers
+            .into_iter()
+            .map(|si| -> TractResult<TValue> {
+                let v: Value =
+                    si.try_into().map_err(|e| anyhow::anyhow!("Failed conversion:  {e:?}"))?;
+                Ok(v.0)
+            })
+            .collect::<Result<Vec<TValue>>>()?;
+        self.0.init_state(&states)?;
         Ok(())
     }
 
     fn get_states(&self) -> Result<Vec<Self::Value>> {
-        let mut states = vec![];
-        for state in self
-            .0
-            .states
-            .iter()
-            .filter_map(Option::as_ref)
-            .filter(|s| s.init_tensor_fact().is_some())
-        {
-            state.save_to(&mut states)?;
-        }
-
-        let mut res = vec![];
-        for state in states {
-            res.push(Value(state));
-        }
-        Ok(res)
+        Ok(self.0.get_states()?.into_iter().map(|tv| Value(tv)).collect())
     }
 }
 
@@ -457,17 +450,6 @@ impl ValueInterface for Value {
         let dt = from_internal_dt(self.0.datum_type())?;
         Ok((dt, self.0.shape(), unsafe { self.0.as_slice_unchecked::<u8>() }))
     }
-
-    /*
-    fn as_parts<T: 'static>(&self) -> Result<(&[usize], &[T])> {
-        let _dt = to_datum_type::<T>()?;
-        let shape = self.0.shape();
-        let data = unsafe {
-            std::slice::from_raw_parts(self.0.as_ptr_unchecked::<u8>() as *const T, self.0.len())
-        };
-        Ok((shape, data))
-    }
-    */
 }
 
 #[derive(Clone, Debug)]

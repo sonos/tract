@@ -17,9 +17,9 @@ pub struct CudaDynKVCacheState {
 }
 
 impl OpState for CudaDynKVCacheState {
-    fn load_from(&mut self, state: &mut SessionState, states: &mut Vec<TValue>) -> TractResult<()> {
-        let kv_cache = states.remove(0);
+    fn load_from(&mut self, state: &mut SessionState, states: &[TValue]) -> TractResult<()> {
         // KV Cache fact is always at index 0
+        let kv_cache = states[0].clone();
         DynKeyValueCacheState::resolve_symbols(
             state,
             self.past_sequence_fact.clone(),
