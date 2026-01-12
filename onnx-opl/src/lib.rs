@@ -42,7 +42,5 @@ pub fn onnx_opl_registry() -> Registry {
         &[("output", TypeName::Scalar.tensor())],
         lrn::load,
     );
-    tract_extra::register_shared_with_onnx_operators(&mut registry);
-
     registry
 }

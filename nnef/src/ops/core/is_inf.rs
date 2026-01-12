@@ -1,21 +1,7 @@
+use crate::internal::*;
+use crate::ser::*;
 use tract_core::ops::element_wise::ElementWiseOp;
-use tract_nnef::internal::*;
-
-tract_core::element_wise_oop!(is_inf, IsInf { detect_positive: bool, detect_negative: bool },
-    [f32] => bool |op, xs, ys| {
-        xs.iter().zip(ys.iter_mut()).for_each(|(x,y)|
-            *y = (op.detect_positive && *x == f32::INFINITY) || (op.detect_negative && *x == f32::NEG_INFINITY)
-        );
-        Ok(())
-    },
-    [f16] => bool |op, xs, ys| {
-        xs.iter().zip(ys.iter_mut()).for_each(|(x,y)|
-            *y = (op.detect_positive && *x == f16::INFINITY) || (op.detect_negative && *x == f16::NEG_INFINITY)
-        );
-        Ok(())
-    };
-    prefix: "extra."
-);
+use tract_core::ops::math::IsInf;
 
 pub fn parameters() -> Vec<Parameter> {
     vec![
@@ -29,7 +15,7 @@ pub fn dump(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValu
     let op = node.op_as::<ElementWiseOp>().unwrap().0.downcast_ref::<IsInf>().unwrap();
     let input = ast.mapping[&node.inputs[0]].clone();
     Ok(Some(invocation(
-        "tract_extra_is_inf",
+        "tract_core_is_inf",
         &[input],
         &[
             ("detect_negative", logical(op.detect_negative)),
@@ -44,4 +30,14 @@ pub fn load(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Trac
     let detect_negative = invocation.named_arg_as(builder, "detect_negative")?;
     let op = IsInf { detect_negative, detect_positive };
     builder.wire(ElementWiseOp(Box::new(op), None), &[input])
+}
+
+pub fn register(registry: &mut Registry) {
+    registry.register_element_wise(
+        "tract_core_is_inf",
+        TypeId::of::<IsInf>(),
+        Box::new(dump),
+        parameters(),
+        load,
+    );
 }
