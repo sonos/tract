@@ -131,9 +131,6 @@ type PulsedModel = ();
 pub struct Parameters {
     pub graph: SomeGraphDef,
 
-    #[allow(dead_code)]
-    pub pulsed_model: Option<Arc<PulsedModel>>,
-
     pub tract_model: Arc<dyn Model>,
     pub reference_model: Option<Arc<dyn Model>>,
 
@@ -589,7 +586,7 @@ impl Parameters {
         tf_model_extensions: Option<TfExt>,
         reference_stage: Option<&str>,
         keep_last: bool,
-    ) -> TractResult<(Arc<dyn Model>, Option<Arc<PulsedModel>>, Option<Arc<dyn Model>>)> {
+    ) -> TractResult<(Arc<dyn Model>, Option<Arc<dyn Model>>)> {
         let stop_at = matches.value_of("pass").unwrap_or(if matches.is_present("optimize") {
             "optimize"
         } else {
@@ -599,7 +596,7 @@ impl Parameters {
         info!("Will stop at {stop_at}");
 
         if stop_at == "load" {
-            return Ok((raw_model.into(), None, None));
+            return Ok((raw_model.into(), None));
         }
 
         let mut inference_model: Option<Arc<InferenceModel>> = None;
@@ -644,7 +641,6 @@ impl Parameters {
                     if stop_at == $name {
                         return Ok((
                                 $to.take().expect("returnable model"),
-                                pulsed_model,
                                 reference_model,
                                 ));
                     }
@@ -868,7 +864,7 @@ impl Parameters {
             }
             Ok(m)
         });
-        Ok((typed_model.clone().unwrap(), pulsed_model, reference_model))
+        Ok((typed_model.clone().unwrap(), reference_model))
     }
 
     #[allow(unused_variables)]
@@ -1030,29 +1026,26 @@ impl Parameters {
         };
 
         let keep_last = matches.is_present("keep-last");
-        Self::pipeline(
+        let (tract_model, reference_model) = Self::pipeline(
             matches,
             probe,
             raw_model,
             tf_model_extensions,
             need_reference_model,
             keep_last,
-        )
-        .map(|(tract_model, pulsed_model, reference_model)| {
-            info!("Model ready");
-            info_usage("model ready", probe);
-            Parameters {
-                graph,
-                pulsed_model,
-                tract_model,
-                reference_model,
-                tf_model,
-                tensors_values,
-                assertions,
-                machine_friendly: matches.is_present("machine-friendly"),
-                allow_random_input,
-                allow_float_casts,
-            }
+        )?;
+        info!("Model ready");
+        info_usage("model ready", probe);
+        Ok(Parameters {
+            graph,
+            tract_model,
+            reference_model,
+            tf_model,
+            tensors_values,
+            assertions,
+            machine_friendly: matches.is_present("machine-friendly"),
+            allow_random_input,
+            allow_float_casts,
         })
     }
 
