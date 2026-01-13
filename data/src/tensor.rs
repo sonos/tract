@@ -144,10 +144,8 @@ impl Drop for Tensor {
             ($t: ty) => {
                 if self.dt == <$t>::datum_type() {
                     unsafe {
-                        self.as_slice_mut::<$t>()
-                            .unwrap()
-                            .iter_mut()
-                            .for_each(|s| std::ptr::drop_in_place(s as *mut $t));
+                      let slice = self.as_slice_mut::<$t>().unwrap();
+                      std::ptr::drop_in_place(slice as *mut [$t]);
                     }
                 }
             };
