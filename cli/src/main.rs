@@ -32,8 +32,8 @@ mod memory_arena;
 mod params;
 mod plan_options;
 mod run;
-#[cfg(feature = "pulse")]
-mod stream_check;
+// #[cfg(feature = "pulse")]
+// mod stream_check;
 mod tensor;
 mod utils;
 
@@ -275,9 +275,9 @@ fn main() -> TractResult<()> {
     let llm_bench = bench_options(llm_bench);
     app = app.subcommand(llm_bench);
 
-    let stream_check = clap::Command::new("stream-check")
-        .long_about("Compare output of streamed and regular exec");
-    app = app.subcommand(output_options(stream_check));
+    // let stream_check = clap::Command::new("stream-check")
+    //     .long_about("Compare output of streamed and regular exec");
+    // app = app.subcommand(output_options(stream_check));
 
     let matches = app.get_matches();
 
@@ -765,11 +765,10 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
 
         Some(("run", m)) => run::handle(&params, &matches, m),
 
-        #[cfg(feature = "pulse")]
-        Some(("stream-check", m)) => {
-            stream_check::handle(&params, &display_params_from_clap(&matches, m)?)
-        }
-
+        // #[cfg(feature = "pulse")]
+        // Some(("stream-check", m)) => {
+        //     stream_check::handle(&params, &display_params_from_clap(&matches, m)?)
+        // }
         None => dump::handle(
             &params,
             &DisplayParams::default(),
