@@ -342,7 +342,7 @@ impl EvalOp for Sdpa {
             inputs.iter().map(|tv| TypedFact::from(tv.clone().into_arc_tensor())).collect();
         let input_fact_refs: TVec<&TypedFact> = input_facts.iter().collect();
         let body = self.build_sdpa_graph(input_fact_refs)?;
-        let plan = TypedSimplePlan::new(&body)?;
+        let plan = TypedSimplePlan::new(body)?;
         plan.run(inputs)
     }
 }

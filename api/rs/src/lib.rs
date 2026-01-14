@@ -10,8 +10,8 @@ use tract_libcli::profile::BenchLimits;
 use tract_libcli::tensor::RunTensors;
 use tract_nnef::internal::parse_tdim;
 use tract_nnef::prelude::{
-    Framework, IntoTValue, SymbolValues, TValue, TVec, Tensor, TractResult, TypedFact, TypedModel,
-    TypedRunnableModel, TypedSimplePlan, TypedSimpleState,
+    Framework, IntoRunnable, IntoTValue, SymbolValues, TValue, TVec, Tensor, TractResult,
+    TypedFact, TypedModel, TypedRunnableModel, TypedSimpleState,
 };
 use tract_onnx::prelude::InferenceModelExt;
 use tract_onnx_opl::WithOnnx;
@@ -238,7 +238,7 @@ impl ModelInterface for Model {
     }
 
     fn into_runnable(self) -> Result<Runnable> {
-        Ok(Runnable(Arc::new(self.0.into_runnable()?)))
+        Ok(Runnable(self.0.into_runnable()?))
     }
 
     fn concretize_symbols(
@@ -327,7 +327,7 @@ impl ModelInterface for Model {
 }
 
 // RUNNABLE
-pub struct Runnable(Arc<TypedRunnableModel<TypedModel>>);
+pub struct Runnable(Arc<TypedRunnableModel>);
 
 impl RunnableInterface for Runnable {
     type Value = Value;
@@ -351,13 +351,13 @@ impl RunnableInterface for Runnable {
     }
 
     fn spawn_state(&self) -> Result<State> {
-        let state = TypedSimpleState::new(self.0.clone())?;
+        let state = self.0.spawn()?;
         Ok(State(state))
     }
 }
 
 // STATE
-pub struct State(TypedSimpleState<TypedModel, Arc<TypedSimplePlan<TypedModel>>>);
+pub struct State(TypedSimpleState);
 
 impl StateInterface for State {
     type Fact = Fact;

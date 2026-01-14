@@ -1,5 +1,4 @@
 use fs::File;
-use std::borrow::Borrow;
 use std::fmt::{Debug, Display};
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -49,8 +48,13 @@ pub fn handle(
     sub_matches: &clap::ArgMatches,
 ) -> TractResult<()> {
     let dump = sub_matches.is_present("dump");
-    let outputs =
-        dispatch_model!(&*params.tract_model, |m| run_regular(m, params, matches, sub_matches))?;
+    // let outputs = dispatch_model!(&(Arc::clone(params.tract_model) as _), |m| run_regular(
+    //     m,
+    //     params,
+    //     matches,
+    //     sub_matches
+    // ))?;
+    let outputs = run_regular(&params.tract_model, params, matches, sub_matches)?;
 
     if dump {
         for (ix, output) in outputs.iter().enumerate() {
@@ -136,8 +140,8 @@ pub fn handle(
     Ok(())
 }
 
-fn run_regular_t<F, O, M, P>(
-    state: &mut SimpleState<F, O, M, P>,
+fn run_regular_t<F, O>(
+    state: &mut SimpleState<F, O>,
     inputs: RunTensors,
     steps: bool,
     check_f16_overflow: bool,
@@ -147,8 +151,6 @@ fn run_regular_t<F, O, M, P>(
 where
     F: Fact + Clone + 'static,
     O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
-    M: Borrow<Graph<F, O>>,
-    P: Borrow<SimplePlan<F, O, M>> + Clone,
 {
     let mut results = tvec!(vec!(); state.model().outputs.len());
     let multiturn = inputs.sources.len() > 1;
@@ -231,7 +233,7 @@ where
 }
 
 fn run_regular(
-    tract: &dyn Model,
+    tract: &Arc<dyn Model>,
     params: &Parameters,
     matches: &clap::ArgMatches,
     sub_matches: &clap::ArgMatches,
@@ -249,8 +251,8 @@ fn run_regular(
     };
 
     let mut inputs = get_or_make_inputs(tract, &run_params)?;
-    if let Some(m) = tract.downcast_ref::<TypedModel>() {
-        let mut state = make_state(m, matches, sub_matches)?;
+    if let Ok(m) = Arc::downcast::<TypedModel>(tract.clone()) {
+        let mut state = make_state(&m, matches, sub_matches)?;
         state.init_states(&mut inputs.state_initializers)?;
 
         let results =
@@ -260,7 +262,7 @@ fn run_regular(
         dispatch_model!(tract, |m| {
             let plan_options = crate::plan_options::plan_options_from_subcommand(sub_matches)?;
             let plan = SimplePlan::new_with_options(m, &plan_options)?;
-            let mut state = SimpleState::new(Arc::new(plan))?;
+            let mut state = plan.spawn()?;
 
             let results = run_regular_t(
                 &mut state,

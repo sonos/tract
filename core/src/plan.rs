@@ -1,7 +1,6 @@
 use std::borrow::Borrow;
 use std::cell::RefCell;
 use std::fmt::{Debug, Display};
-use std::marker::PhantomData;
 
 use multithread::Executor;
 use tract_data::itertools::Itertools;
@@ -69,156 +68,166 @@ impl Debug for SessionState {
 }
 
 #[derive(Debug, Clone)]
-pub struct SimplePlan<F, O, M>
+pub struct SimplePlan<F, O>
 where
     F: Fact + Clone + 'static,
     O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
-    M: Borrow<Graph<F, O>>,
 {
-    model: M,
+    model: Arc<Graph<F, O>>,
     outputs: Vec<OutletId>,
     order: Vec<usize>,
     flush_lists: Vec<TVec<usize>>,
     has_unresolved_symbols: bool,
     executor: Option<Executor>,
     session_handler: Option<Arc<dyn SessionStateHandler + 'static>>,
-    _casper: PhantomData<(F, O)>,
 }
 
-impl<F, O, M> SimplePlan<F, O, M>
+impl<F, O> SimplePlan<F, O>
 where
     F: Fact + Clone + 'static,
     O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
-    M: Borrow<Graph<F, O>>,
 {
     /// This contructor returns a plan that will compute all the model default outputs in one pass.
-    pub fn new(model: M) -> TractResult<SimplePlan<F, O, M>> {
-        let outputs = model.borrow().output_outlets()?.to_vec();
+    pub fn new(model: impl Into<Arc<Graph<F, O>>>) -> TractResult<Arc<SimplePlan<F, O>>> {
+        let model = model.into();
+        let outputs = model.output_outlets()?.to_vec();
         Self::build(model, &outputs, &[], &PlanOptions::default())
     }
 
     /// This contructor returns a plan that will compute all the model default outputs in one pass.
-    pub fn new_with_options(model: M, options: &PlanOptions) -> TractResult<SimplePlan<F, O, M>> {
-        let outputs = model.borrow().output_outlets()?.to_vec();
+    pub fn new_with_options(
+        model: impl Into<Arc<Graph<F, O>>>,
+        options: &PlanOptions,
+    ) -> TractResult<Arc<SimplePlan<F, O>>> {
+        let model = model.into();
+        let outputs = model.output_outlets()?.to_vec();
         Self::build(model, &outputs, &[], options)
     }
 
     /// This contructor returns a plan that will compute the specified output.
     #[deprecated]
-    pub fn new_for_output(model: M, output: OutletId) -> TractResult<SimplePlan<F, O, M>> {
+    pub fn new_for_output(
+        model: Graph<F, O>,
+        output: OutletId,
+    ) -> TractResult<Arc<SimplePlan<F, O>>> {
         Self::build(model, &[output], &[], &PlanOptions::default())
     }
 
     /// This contructor returns a plan that will compute all specified outputs in one pass.
     #[deprecated]
-    pub fn new_for_outputs(model: M, outputs: &[OutletId]) -> TractResult<SimplePlan<F, O, M>> {
+    pub fn new_for_outputs(
+        model: impl Into<Arc<Graph<F, O>>>,
+        outputs: &[OutletId],
+    ) -> TractResult<Arc<SimplePlan<F, O>>> {
         Self::build(model, outputs, &[], &PlanOptions::default())
     }
 
     pub fn with_session_handler<H: SessionStateHandler + 'static>(
-        mut self,
+        self: Arc<Self>,
         session_handler: H,
-    ) -> Self {
-        self.session_handler = Some(Arc::new(session_handler));
-        self
+    ) -> Arc<Self> {
+        let mut plan = Arc::unwrap_or_clone(self);
+        plan.session_handler = Some(Arc::new(session_handler));
+        Arc::new(plan)
     }
 
     #[deprecated]
     pub fn new_for_outputs_and_deps(
-        model: M,
+        model: impl Into<Arc<Graph<F, O>>>,
         outputs: &[OutletId],
         deps: &[(usize, usize)],
-    ) -> TractResult<SimplePlan<F, O, M>> {
+    ) -> TractResult<Arc<SimplePlan<F, O>>> {
         Self::build(model, outputs, deps, &PlanOptions::default())
     }
 
     pub fn build(
-        model: M,
+        model: impl Into<Arc<Graph<F, O>>>,
         outputs: &[OutletId],
         deps: &[(usize, usize)],
         options: &PlanOptions,
-    ) -> TractResult<SimplePlan<F, O, M>> {
-        let inputs = model.borrow().input_outlets()?.iter().map(|n| n.node).collect::<Vec<usize>>();
+    ) -> TractResult<Arc<SimplePlan<F, O>>> {
+        let model = model.into();
+        let inputs = model.input_outlets()?.iter().map(|n| n.node).collect::<Vec<usize>>();
         let outputs_nodes = outputs.iter().map(|n| n.node).collect::<Vec<usize>>();
         let mut order = if options.skip_order_opt_ram {
-            eval_order_for_nodes(model.borrow().nodes(), &inputs, &outputs_nodes, deps)?
+            eval_order_for_nodes(model.nodes(), &inputs, &outputs_nodes, deps)?
         } else {
-            eval_order_opt_ram_for_nodes(model.borrow().nodes(), &inputs, &outputs_nodes, deps)?
+            eval_order_opt_ram_for_nodes(model.nodes(), &inputs, &outputs_nodes, deps)?
         };
-        order.retain(|node| !model.borrow().node(*node).op_is::<Const>());
-        let flush_lists =
-            build_flush_list(model.borrow(), &order, outputs, |n| !n.op_is::<Const>());
+        order.retain(|node| !model.node(*node).op_is::<Const>());
+        let flush_lists = build_flush_list(&*model, &order, outputs, |n| !n.op_is::<Const>());
 
         #[allow(clippy::mutable_key_type)]
         let mut symbols: std::collections::HashSet<Symbol> = Default::default();
-        for node in &model.borrow().nodes {
+        for node in &model.nodes {
             for output in &node.outputs {
                 if let Ok(fact) = output.fact.to_typed_fact() {
                     symbols.extend(fact.shape.iter().flat_map(|d| d.symbols()))
                 }
             }
         }
-        Ok(SimplePlan {
+        Ok(Arc::new(SimplePlan {
             model,
             order,
             flush_lists,
             outputs: outputs.to_vec(),
             has_unresolved_symbols: !symbols.is_empty(),
-            _casper: PhantomData,
             executor: options.executor.clone(),
             session_handler: None,
-        })
+        }))
     }
 
     pub fn order_without_consts(&self) -> &[usize] {
         &self.order
     }
 
-    pub fn run(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        let mut state = SimpleState::new(self)?;
+    pub fn run(self: &Arc<Self>, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+        let mut state = self.spawn()?;
         state.run(inputs)
     }
 
     pub fn model(&self) -> &Graph<F, O> {
         self.model.borrow()
     }
+
+    pub fn spawn(self: &Arc<Self>) -> TractResult<SimpleState<F, O>> {
+        SimpleState::new(self)
+    }
 }
 
 #[derive(Clone, Debug)]
-pub struct SimpleState<F, O, M, P>
+pub struct SimpleState<F, O>
 where
     F: Fact + Clone + 'static,
     O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
-    M: Borrow<Graph<F, O>>,
-    P: Borrow<SimplePlan<F, O, M>>,
 {
-    plan: P,
+    plan: Arc<SimplePlan<F, O>>,
     pub states: Vec<Option<Box<dyn OpState>>>,
     pub session_state: SessionState,
     pub values: Vec<Option<TVec<TValue>>>,
-    _phantom: PhantomData<(M, F, O)>,
 }
 
-impl<F, O, M, P> SimpleState<F, O, M, P>
+impl<F, O> SimpleState<F, O>
 where
     F: Fact + Clone + 'static,
     O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
-    M: Borrow<Graph<F, O>>,
-    P: Borrow<SimplePlan<F, O, M>> + Clone,
 {
-    pub fn new(plan: P) -> TractResult<SimpleState<F, O, M, P>> {
-        let values = vec![None; plan.borrow().model.borrow().nodes().len()];
+    pub fn new(plan: &Arc<SimplePlan<F, O>>) -> TractResult<SimpleState<F, O>> {
+        let plan = Arc::clone(plan);
+        let values = vec![None; plan.model.nodes().len()];
         let session = SessionState::default();
-        let model = plan.borrow().model();
+        let model = plan.model();
         let states: Vec<Option<Box<dyn OpState>>> = vec![None; model.nodes.len()];
-        let mut state =
-            SimpleState { plan, states, session_state: session, values, _phantom: PhantomData };
+        let mut state = SimpleState { plan, states, session_state: session, values };
         state.populate_consts();
         state.reset_op_states()?;
         Ok(state)
     }
 
-    pub fn new_from_inputs(plan: P, inputs: TVec<TValue>) -> TractResult<SimpleState<F, O, M, P>> {
+    pub fn new_from_inputs(
+        plan: &Arc<SimplePlan<F, O>>,
+        inputs: TVec<TValue>,
+    ) -> TractResult<SimpleState<F, O>> {
         let mut state = SimpleState::new(plan)?;
         state.set_inputs(inputs)?;
         state.resolve_symbols_with_states()?;
@@ -227,7 +236,7 @@ where
     }
 
     fn populate_consts(&mut self) {
-        for node in &self.plan.borrow().model().nodes {
+        for node in &self.plan.model.nodes {
             if let Some(k) = node.op_as::<Const>() {
                 self.values[node.id] = Some(tvec!(k.val().clone().into_tvalue()));
             }
@@ -236,7 +245,7 @@ where
 
     /// Reset wires state.
     pub fn reset_turn(&mut self) -> TractResult<()> {
-        for node in &self.plan.borrow().order {
+        for node in &self.plan.order {
             self.values[*node] = None;
         }
         self.session_state.resolved_symbols = SymbolValues::default();
@@ -246,7 +255,7 @@ where
     /// Reset op inner state.
     pub fn reset_op_states(&mut self) -> TractResult<()> {
         let &mut SimpleState { ref plan, ref mut session_state, ref mut states, .. } = self;
-        for (ix, n) in plan.borrow().model().nodes().iter().enumerate() {
+        for (ix, n) in plan.model.nodes.iter().enumerate() {
             states[ix] =
                 if n.op().is_stateless() { None } else { n.op().state(session_state, ix)? };
         }
@@ -344,8 +353,8 @@ where
         E: Into<anyhow::Error> + Send + Sync + 'static,
     {
         {
-            let plan = self.plan.borrow();
-            let model = plan.model.borrow();
+            let plan = &self.plan;
+            let model = &plan.model;
             plan.session_handler
                 .as_ref()
                 .map(|it| it.before_plan_eval(&mut self.session_state))
@@ -494,12 +503,12 @@ where
             .input_outlets()?
             .get(input)
             .with_context(|| format!("Invalid input id for model ({input})."))?;
-        if let Ok(fact) = self.plan.borrow().model().outlet_fact(outlet)?.to_typed_fact() {
+        if let Ok(fact) = self.plan.model.outlet_fact(outlet)?.to_typed_fact() {
             for (expected, provided) in fact.shape.iter().zip(t.shape()) {
                 Self::resolve(&mut self.session_state, expected, *provided as i64)?;
             }
         }
-        let fact = self.plan.borrow().model().outlet_fact(outlet)?;
+        let fact = self.plan.model.outlet_fact(outlet)?;
         ensure!(
             fact.matches(&t, Some(&self.session_state.resolved_symbols))
                 .with_context(|| format!("Setting input {input}"))?,
@@ -531,12 +540,9 @@ where
     pub fn outputs(&mut self) -> TractResult<TVec<TValue>> {
         let &mut SimpleState { ref plan, ref mut values, .. } = self;
         let mut v = tvec![];
-        for o in plan.borrow().outputs.iter() {
+        for o in plan.outputs.iter() {
             let vs = values[o.node].as_mut().ok_or_else(|| {
-                format_err!(
-                    "Outputs of {:?} are not computed",
-                    &plan.borrow().model().nodes()[o.node]
-                )
+                format_err!("Outputs of {:?} are not computed", &plan.model.nodes()[o.node])
             })?;
             v.push(vs[o.slot].clone())
         }
@@ -554,8 +560,7 @@ where
 
     pub fn prepare_inputs(&self, node: usize) -> TractResult<TVec<TValue>> {
         let SimpleState { plan, values, .. } = self;
-        let plan = plan.borrow();
-        let nodes = plan.model().nodes();
+        let nodes = plan.model.nodes();
         let node = &nodes[node];
         let mut inputs: TVec<TValue> = tvec![];
         for i in &node.inputs {
@@ -585,8 +590,7 @@ where
             ref mut states,
             ..
         } = self;
-        let plan = plan.borrow();
-        let nodes = plan.model().nodes();
+        let nodes = plan.model.nodes();
         let node = &nodes[node];
         let vs = eval(session_state, states[node.id].as_deref_mut(), node, inputs)?;
         values[node.id] = Some(vs);
@@ -611,12 +615,7 @@ where
                 }
             }
             let &mut Self { ref mut states, ref mut session_state, ref plan, .. } = self;
-            eval(
-                session_state,
-                states[node].as_deref_mut(),
-                &plan.borrow().model().nodes[node],
-                inputs,
-            )?
+            eval(session_state, states[node].as_deref_mut(), &plan.model().nodes[node], inputs)?
         };
         self.values[node] = Some(values);
         Ok(self.values[node].as_ref().unwrap())
@@ -636,15 +635,15 @@ where
             .collect())
     }
 
-    pub fn plan(&self) -> &SimplePlan<F, O, M> {
-        self.plan.borrow()
+    pub fn plan(&self) -> &Arc<SimplePlan<F, O>> {
+        &self.plan
     }
 
     pub fn model(&self) -> &Graph<F, O> {
-        self.plan().model()
+        &self.plan.model
     }
 
-    pub fn freeze(&self) -> FrozenSimpleState<F, O, M, P> {
+    pub fn freeze(&self) -> FrozenSimpleState<F, O> {
         FrozenSimpleState {
             plan: self.plan.clone(),
             inputs: self
@@ -669,7 +668,6 @@ where
                     }
                 })
                 .collect(),
-            _phantom: PhantomData,
         }
     }
 }
@@ -696,31 +694,26 @@ where
 }
 
 #[derive(Clone, Debug)]
-pub struct FrozenSimpleState<F, O, M, P>
+pub struct FrozenSimpleState<F, O>
 where
     F: Fact + Clone + 'static,
     O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
-    M: Borrow<Graph<F, O>>,
-    P: Borrow<SimplePlan<F, O, M>> + Clone,
 {
-    plan: P,
+    plan: Arc<SimplePlan<F, O>>,
     pub inputs: HashMap<usize, Tensor>,
     pub resolved_symbols: SymbolValues,
     pub scenario: Option<usize>,
     pub tensors: HashMap<String, Tensor>,
     pub states: Vec<Option<Box<dyn FrozenOpState>>>,
     pub values: Vec<Option<TVec<Tensor>>>,
-    _phantom: PhantomData<(M, F, O)>,
 }
 
-impl<F, O, M, P> FrozenSimpleState<F, O, M, P>
+impl<F, O> FrozenSimpleState<F, O>
 where
     F: Fact + Clone + 'static,
     O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
-    M: Borrow<Graph<F, O>>,
-    P: Borrow<SimplePlan<F, O, M>> + Clone,
 {
-    pub fn unfreeze(&self) -> SimpleState<F, O, M, P> {
+    pub fn unfreeze(&self) -> SimpleState<F, O> {
         let mut state = SimpleState {
             plan: self.plan.clone(),
             session_state: SessionState {
@@ -737,7 +730,6 @@ where
                 .iter()
                 .map(|t| t.as_ref().map(|t| t.iter().map(|t| t.clone().into_tvalue()).collect()))
                 .collect(),
-            _phantom: PhantomData,
         };
         state.populate_consts();
         state
@@ -762,16 +754,16 @@ mod test {
 
     #[test]
     fn type_plan_is_send() {
-        is_send::<TypedSimplePlan<TypedModel>>();
+        is_send::<TypedSimplePlan>();
     }
 
     #[test]
     fn type_plan_is_sync() {
-        is_sync::<TypedSimplePlan<TypedModel>>();
+        is_sync::<TypedSimplePlan>();
     }
 
     #[test]
     fn frozen_type_state_is_send() {
-        is_send::<TypedFrozenSimpleState<TypedModel, TypedSimplePlan<TypedModel>>>();
+        is_send::<TypedFrozenSimpleState>();
     }
 }

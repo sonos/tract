@@ -34,12 +34,12 @@ impl TfModelExtensions {
             let as_outlets =
                 self.initializing_nodes.iter().map(|n| OutletId::new(*n, 0)).collect::<Vec<_>>();
             let plan = SimplePlan::build(
-                &original,
+                original.clone(),
                 &as_outlets,
                 &self.control_inputs,
                 &PlanOptions::default(),
             )?;
-            let mut state = SimpleState::new(plan)?;
+            let mut state = SimpleState::new(&plan)?;
             state.exec()?;
             let tensors = state.session_state.tensors;
             for node in &mut original.nodes {

@@ -342,7 +342,7 @@ pub fn figure_out_b_s_p(
 fn chunk_fact(
     fact: &TypedFact,
     params: &RunParams,
-    model: &dyn Model,
+    model: &Arc<dyn Model>,
 ) -> TractResult<Vec<TypedFact>> {
     let Some(chunk_size) = params.prompt_chunk_size else {
         return Ok(vec![fact.clone()]);
@@ -389,7 +389,7 @@ fn chunk_tensor(
     tensor: Tensor,
     fact: &TypedFact,
     params: &RunParams,
-    model: &dyn Model,
+    model: &Arc<dyn Model>,
 ) -> TractResult<Vec<TValue>> {
     let Some(chunk_size) = params.prompt_chunk_size else {
         return Ok(vec![tensor.into_tvalue()]);
@@ -425,7 +425,7 @@ fn chunk_tensor(
 }
 
 fn get_or_make_tensors(
-    model: &dyn Model,
+    model: &Arc<dyn Model>,
     params: &RunParams,
     fact: TypedFact,
     name: &str,
@@ -558,7 +558,7 @@ fn get_or_make_tensors(
     Ok(())
 }
 
-pub fn get_or_make_inputs(tract: &dyn Model, params: &RunParams) -> TractResult<RunTensors> {
+pub fn get_or_make_inputs(tract: &Arc<dyn Model>, params: &RunParams) -> TractResult<RunTensors> {
     // Resolve source inputs
     let mut tmp_inputs = tvec![];
     for (ix, input) in tract.input_outlets().iter().enumerate() {

@@ -91,7 +91,8 @@ mod tests {
         trace!("{model:#?}");
         prop_assert!(model.node(model.output_outlets().unwrap()[0].node).op_is::<Downsample>());
         let input = tensor1(&(0i32..len as _).collect::<Vec<_>>());
-        let expected = SimplePlan::new(&model).unwrap().run(tvec!(input.clone().into())).unwrap();
+        let expected =
+            SimplePlan::new(model.clone()).unwrap().run(tvec!(input.clone().into())).unwrap();
 
         info!("Decluttering");
         model.declutter().unwrap();
@@ -101,7 +102,7 @@ mod tests {
             model.node(order[1]).op_is::<Downsample>()
                 || !model.nodes().iter().any(|n| n.op_is::<Downsample>())
         );
-        let found = SimplePlan::new(&model).unwrap().run(tvec!(input.into())).unwrap();
+        let found = SimplePlan::new(model).unwrap().run(tvec!(input.into())).unwrap();
         prop_assert_eq!(found, expected);
         Ok(())
     }

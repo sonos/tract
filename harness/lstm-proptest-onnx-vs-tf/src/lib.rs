@@ -190,8 +190,8 @@ impl LstmProblem {
 
     pub fn onnx_run(&self) -> TractResult<TValue> {
         let model = self.onnx_model()?;
-        let plan = SimplePlan::new(model)?;
-        let mut state = SimpleState::new(plan)?;
+        let plan = model.into_runnable()?;
+        let mut state = plan.spawn()?;
         let y = state.run(tvec!(self.x.clone()))?.remove(0).into_tensor().into_array::<f32>()?;
         let y = y.into_shape_with_order((self.length, self.batch_size, self.cell_size)).unwrap();
         Ok(y.into_tvalue())
@@ -202,12 +202,12 @@ impl LstmProblem {
         let lstm_id = model.node_by_name("lstm")?.id;
         let memo_id = model.node_by_name("memo")?.id;
         let plan_run = SimplePlan::build(
-            &model,
+            model,
             &[OutletId::new(lstm_id, 6), OutletId::new(memo_id, 0)],
             &[],
             &PlanOptions::default(),
         )?;
-        let mut state = SimpleState::new(plan_run)?;
+        let mut state = plan_run.spawn()?;
         let y = state.run(tvec!(self.x.clone()))?.remove(0);
         Ok(y)
     }

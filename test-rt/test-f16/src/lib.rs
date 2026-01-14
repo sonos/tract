@@ -21,27 +21,21 @@ mod run_as_f16 {
                 model.outputs.iter().map(|o| model.outlet_fact(*o).unwrap().datum_type).collect();
             let tr = tract_core::floats::FloatPrecisionTranslator::<f32, f16>::default();
             let model = tr.translate_model(&model)?;
-            Ok(Box::new(RunnableAsF16(
-                Arc::new(model.into_optimized()?.into_runnable()?),
-                outputs_dt,
-            )))
+            Ok(Box::new(RunnableAsF16(model.into_optimized()?.into_runnable()?, outputs_dt)))
         }
     }
 
     #[derive(Debug)]
-    pub struct RunnableAsF16(pub Arc<TypedRunnableModel<TypedModel>>, pub TVec<DatumType>);
+    pub struct RunnableAsF16(pub Arc<TypedRunnableModel>, pub TVec<DatumType>);
 
     impl Runnable for RunnableAsF16 {
         fn spawn(&self) -> TractResult<Box<dyn State>> {
-            Ok(Box::new(StateAsF16(SimpleState::new(self.0.clone())?, self.1.clone())))
+            Ok(Box::new(StateAsF16(self.0.spawn()?, self.1.clone())))
         }
     }
 
     #[derive(Debug)]
-    struct StateAsF16(
-        TypedSimpleState<TypedModel, Arc<TypedRunnableModel<TypedModel>>>,
-        TVec<DatumType>,
-    );
+    struct StateAsF16(TypedSimpleState, TVec<DatumType>);
 
     impl State for StateAsF16 {
         fn run(&mut self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
@@ -108,10 +102,7 @@ mod nnef_f16 {
             let mut buf = vec![];
             self.0.write_to_tar(&model, &mut buf)?;
             let reloaded = self.0.model_for_read(&mut &*buf)?;
-            Ok(Box::new(RunnableAsF16(
-                Arc::new(reloaded.into_optimized()?.into_runnable()?),
-                outputs_dt,
-            )))
+            Ok(Box::new(RunnableAsF16(reloaded.into_optimized()?.into_runnable()?, outputs_dt)))
         }
     }
 

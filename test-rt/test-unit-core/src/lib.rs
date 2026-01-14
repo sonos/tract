@@ -16,7 +16,7 @@ mod raw {
             Cow::Borrowed("raw")
         }
         fn prepare(&self, model: TypedModel) -> TractResult<Box<dyn Runnable>> {
-            Ok(Box::new(Arc::new(model.into_runnable()?)))
+            Ok(Box::new(model.into_runnable()?))
         }
     }
 
@@ -38,7 +38,7 @@ mod decluttered {
             Cow::Borrowed("decluttered")
         }
         fn prepare(&self, model: TypedModel) -> TractResult<Box<dyn Runnable>> {
-            Ok(Box::new(Arc::new(model.into_decluttered()?.into_runnable()?)))
+            Ok(Box::new(model.into_decluttered()?.into_runnable()?))
         }
     }
 

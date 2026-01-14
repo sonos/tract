@@ -30,7 +30,7 @@ impl Scan {
         Ok(OptScan::new(Arc::new(ScanOpParams::new(
             self.skip,
             self.reset_every_turn,
-            Arc::new(plan),
+            plan,
             self.input_mapping.clone(),
             self.output_mapping.clone(),
         ))))

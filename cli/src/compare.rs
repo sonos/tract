@@ -157,9 +157,9 @@ pub fn handle_npz(
             }
         }
     }
-    dispatch_model_no_pulse!(params.tract_model, |m| compare(
+    dispatch_model_no_pulse!(&params.tract_model, |m| compare(
         cumulative,
-        m,
+        &m,
         &values,
         params,
         output_params,
@@ -200,7 +200,7 @@ pub fn handle_pbdir(
     }
     dispatch_model_no_pulse!(params.tract_model, |m| compare(
         cumulative,
-        m,
+        &m,
         &values,
         params,
         output_params,
@@ -214,9 +214,10 @@ pub fn handle_twice(
     output_params: &DisplayParams,
     run_params: &RunParams,
 ) -> TractResult<()> {
-    let reference_model =
-        params.tract_model.downcast_ref::<TypedModel>().context("Only work with a typed model")?;
-    handle_with_model(cumulative, params, output_params, reference_model, run_params)
+    let reference_model = &params.tract_model;
+    let reference_model: Arc<TypedModel> = Arc::downcast::<TypedModel>(reference_model.clone())
+        .map_err(|_| anyhow!("Only works with a typed reference model"))?;
+    handle_with_model(cumulative, params, output_params, &reference_model, run_params)
 }
 
 pub fn handle_reference_stage(
@@ -226,26 +227,25 @@ pub fn handle_reference_stage(
     run_params: &RunParams,
 ) -> TractResult<()> {
     info!("Computing results for reference stage");
-    let reference_model =
-        params.reference_model.as_ref().context("No reference model. need --with ?")?;
-    let reference_model = reference_model
-        .downcast_ref::<TypedModel>()
-        .context("Only work with a typed reference model")?;
-    handle_with_model(cumulative, params, output_params, reference_model, run_params)
+    let reference_model: &Arc<dyn Model> =
+        params.reference_model.as_ref().context("Missing reference model")?;
+    let reference_model = Arc::downcast::<TypedModel>(reference_model.clone())
+        .map_err(|_| anyhow!("Only works with a typed reference model"))?;
+    handle_with_model(cumulative, params, output_params, &reference_model, run_params)
 }
 
 pub fn handle_with_model(
     cumulative: bool,
     params: &Parameters,
     output_params: &DisplayParams,
-    reference_model: &TypedModel,
+    reference_model: &Arc<TypedModel>,
     run_params: &RunParams,
 ) -> TractResult<()> {
     let mut values: HashMap<String, Vec<TractResult<TValue>>> = HashMap::new();
 
-    let plan = SimplePlan::new(reference_model)?;
-    let mut state = SimpleState::new(plan)?;
-    let mut inputs = get_or_make_inputs(reference_model, run_params)?;
+    let plan = SimplePlan::new(reference_model.clone())?;
+    let mut state = plan.spawn()?;
+    let mut inputs = get_or_make_inputs(&(reference_model.clone() as _), run_params)?;
     state.init_states(&mut inputs.state_initializers)?;
     for input in inputs.sources {
         state.run_plan_with_eval(input, |session, state, node, input| -> TractResult<_> {
@@ -266,7 +266,7 @@ pub fn handle_with_model(
     state.reset_op_states()?;
     dispatch_model_no_pulse!(params.tract_model, |m| compare(
         cumulative,
-        m,
+        &m,
         &values,
         params,
         output_params,
@@ -276,7 +276,7 @@ pub fn handle_with_model(
 
 pub fn compare<F, O>(
     cumulative: bool,
-    tract: &Graph<F, O>,
+    tract: &Arc<Graph<F, O>>,
     all_values: &HashMap<String, Vec<TractResult<TValue>>>,
     params: &Parameters,
     output_params: &DisplayParams,
@@ -289,11 +289,11 @@ where
 {
     info!("Obtained reference data, starting test run");
     // Execute the model step-by-step on tract.
-    let plan = SimplePlan::new(tract)?;
-    let mut state = SimpleState::new(plan)?;
+    let plan = Arc::clone(tract).into_runnable()?;
+    let mut state = plan.spawn()?;
 
-    let mut annotations = Annotations::from_model(tract as &dyn Model)?;
-    annotate_with_graph_def(&mut annotations, tract, &params.graph)?;
+    let mut annotations = Annotations::from_model(tract.as_ref() as &dyn Model)?;
+    annotate_with_graph_def(&mut annotations, tract.as_ref(), &params.graph)?;
 
     let mut failing = std::collections::HashSet::new();
     let mut unchecked = std::collections::HashSet::new();
@@ -303,7 +303,7 @@ where
     }
     let all_values: HashMap<String, &Vec<TractResult<TValue>>> =
         all_values.iter().map(|(k, v)| (canonic(k), v)).collect();
-    let mut inputs = get_or_make_inputs(tract, run_params)?;
+    let mut inputs = get_or_make_inputs(&(tract.clone() as _), run_params)?;
     state.init_states(&mut inputs.state_initializers)?;
     for (turn, inputs) in inputs.sources.into_iter().enumerate() {
         state.run_plan_with_eval(
@@ -410,10 +410,10 @@ where
     }
 
     if log_enabled!(Info) {
-        tract_libcli::terminal::render(tract, &annotations, output_params)?;
+        tract_libcli::terminal::render(tract.as_ref(), &annotations, output_params)?;
     } else {
         for f in failing.iter().sorted() {
-            tract_libcli::terminal::render_node(tract, *f, &annotations, output_params)?;
+            tract_libcli::terminal::render_node(tract.as_ref(), *f, &annotations, output_params)?;
         }
     }
 

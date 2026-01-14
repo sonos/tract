@@ -60,7 +60,7 @@ mod tests {
         cachedir().join("mobilenet_v2_1.4_224_frozen.pb")
     }
 
-    fn run<F, O>(runnable: SimplePlan<F, O, Graph<F, O>>) -> TractResult<()>
+    fn run<F, O>(runnable: Arc<SimplePlan<F, O>>) -> TractResult<()>
     where
         F: Fact + Hash + Clone + 'static,
         O: std::fmt::Debug + std::fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,

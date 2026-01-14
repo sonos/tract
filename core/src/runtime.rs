@@ -27,17 +27,17 @@ impl Runtime for DefaultRuntime {
     }
 
     fn prepare(&self, model: TypedModel) -> TractResult<Box<dyn Runnable>> {
-        Ok(Box::new(Arc::new(model.into_optimized()?.into_runnable()?)))
+        Ok(Box::new(model.into_optimized()?.into_runnable()?))
     }
 }
 
-impl Runnable for Arc<TypedRunnableModel<TypedModel>> {
+impl Runnable for Arc<TypedRunnableModel> {
     fn spawn(&self) -> TractResult<Box<dyn State>> {
-        Ok(Box::new(SimpleState::new(self.clone())?))
+        Ok(Box::new(self.spawn()?))
     }
 }
 
-impl State for TypedSimpleState<TypedModel, Arc<TypedRunnableModel<TypedModel>>> {
+impl State for TypedSimpleState {
     fn run(&mut self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         self.run(inputs)
     }

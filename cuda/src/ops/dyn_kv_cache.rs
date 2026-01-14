@@ -256,7 +256,8 @@ mod tests {
             model.auto_outputs()?;
 
             let cuda_model = CudaTransform::default().transform_into(model)?;
-            let mut state = TypedSimpleState::new(cuda_model.into_runnable()?)?;
+            let plan = cuda_model.into_runnable()?;
+            let mut state = plan.spawn()?;
 
             let first_shape = &input_shapes[0];
             ensure!(input_shapes.iter().all(|shape| (shape.len() == first_shape.len())

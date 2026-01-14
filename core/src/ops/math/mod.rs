@@ -760,11 +760,12 @@ mod tests {
         let a = model.add_const("a", tensor0(4i32).broadcast_into_rank(2)?.into_arc_tensor())?;
         let y = model.wire_node("y", mul(), &[x, a])?[0];
         model.set_output_outlets(&[y])?;
-        let result = SimplePlan::new(&model)?.run(tvec!(tensor2(&[[1, 2], [3, 4]]).into()))?;
+        let result =
+            SimplePlan::new(model.clone())?.run(tvec!(tensor2(&[[1, 2], [3, 4]]).into()))?;
         assert_eq!(*result[0], tensor2(&[[4, 8], [12, 16]]));
         let decluttered = model.into_decluttered()?;
         let result =
-            SimplePlan::new(&decluttered)?.run(tvec!(tensor2(&[[1, 2], [3, 4]]).into()))?;
+            SimplePlan::new(decluttered.clone())?.run(tvec!(tensor2(&[[1, 2], [3, 4]]).into()))?;
         assert_eq!(*result[0], tensor2(&[[4, 8], [12, 16]]));
         let op = decluttered
             .node(decluttered.output_outlets()?[0].node)
@@ -782,11 +783,12 @@ mod tests {
         let s = model.add_const("shift", tensor2(&[[4]]))?;
         let y = model.wire_node("c", div(), [x, s].as_ref())?[0];
         model.set_output_outlets(&[y])?;
-        let result = SimplePlan::new(&model)?.run(tvec!(tensor2(&[[16, 32], [64, 68]]).into()))?;
+        let result =
+            SimplePlan::new(model.clone())?.run(tvec!(tensor2(&[[16, 32], [64, 68]]).into()))?;
         assert_eq!(*result[0], tensor2(&[[4, 8], [16, 17]]));
         let decluttered = model.into_decluttered()?;
-        let result =
-            SimplePlan::new(&decluttered)?.run(tvec!(tensor2(&[[16, 32], [64, 68]]).into()))?;
+        let result = SimplePlan::new(decluttered.clone())?
+            .run(tvec!(tensor2(&[[16, 32], [64, 68]]).into()))?;
         assert_eq!(*result[0], tensor2(&[[4, 8], [16, 17]]));
         let op = decluttered
             .node(decluttered.output_outlets()?[0].node)

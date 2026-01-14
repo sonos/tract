@@ -1,13 +1,12 @@
 use anyhow::{Error, Result};
 use image::{DynamicImage, imageops};
-use tract_core::plan::SimplePlan;
 use tract_ndarray::{Array1, Array3};
 use tract_ndarray::{ArrayBase, OwnedRepr};
 use tract_onnx::prelude::*;
 
 #[allow(clippy::type_complexity)]
 pub struct ArcFace {
-    model: SimplePlan<TypedFact, Box<dyn TypedOp>, Graph<TypedFact, Box<dyn TypedOp>>>,
+    model: Arc<TypedRunnableModel>,
 }
 
 impl ArcFace {
