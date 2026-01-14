@@ -17,7 +17,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, OnceLock, RwLock};
 
-use anyhow::{Context, anyhow};
+use anyhow::{anyhow, Context};
 use metal::{
     Buffer, CommandQueue, CompileOptions, ComputePipelineState, Device, Function,
     FunctionConstantValues, Library, MTLResourceOptions,
@@ -180,7 +180,7 @@ impl DeviceContext for MetalContext {
         let bqv = as_q40_tensor(view.tensor);
 
         let (data_bytes, bqf) = bqv
-            .map(|bqv| (bqv.value.as_bytes(), Some(bqv.fact.clone().into())))
+            .map(|bqv| (bqv.value.as_bytes(), Some(bqv.fact.clone())))
             .unwrap_or((view.tensor.as_bytes(), None));
 
         // Handle empty data
