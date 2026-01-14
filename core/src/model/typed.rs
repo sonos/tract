@@ -15,16 +15,16 @@ pub type TypedNode = Node<TypedFact, Box<dyn TypedOp>>;
 /// A ModelPatch for TypedModel.
 pub type TypedModelPatch = ModelPatch<TypedFact, Box<dyn TypedOp>>;
 /// An execution plan for TypedModel.
-pub type TypedSimplePlan<M> = SimplePlan<TypedFact, Box<dyn TypedOp>, M>;
+pub type TypedSimplePlan = SimplePlan<TypedFact, Box<dyn TypedOp>>;
 /// A runnable TypedModel (new name for SimplePlan).
-pub type TypedRunnableModel<M> = RunnableModel<TypedFact, Box<dyn TypedOp>, M>;
+pub type TypedRunnableModel = RunnableModel<TypedFact, Box<dyn TypedOp>>;
 /// An execution state for TypedModel.
-pub type TypedSimpleState<M, P> = SimpleState<TypedFact, Box<dyn TypedOp>, M, P>;
+pub type TypedSimpleState = SimpleState<TypedFact, Box<dyn TypedOp>>;
 /// An execution state for TypedModel, frozen (and Send).
-pub type TypedFrozenSimpleState<M, P> = FrozenSimpleState<TypedFact, Box<dyn TypedOp>, M, P>;
+pub type TypedFrozenSimpleState = FrozenSimpleState<TypedFact, Box<dyn TypedOp>>;
 
 /// A runnable model with fixed inputs and outputs.
-pub type RunnableModel<F, O, M> = SimplePlan<F, O, M>;
+pub type RunnableModel<F, O> = SimplePlan<F, O>;
 
 impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
     fn is_source(op: &Box<dyn TypedOp>) -> bool {

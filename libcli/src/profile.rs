@@ -3,7 +3,6 @@ use crate::tensor::RunTensors;
 use crate::tensor::make_inputs_for_model;
 use crate::{annotations::*, capture_gpu_trace};
 use std::any::TypeId;
-use std::borrow::Borrow;
 use std::time::{Duration, Instant};
 use tract_core::internal::*;
 use tract_core::num_traits::Zero;
@@ -29,15 +28,15 @@ impl Default for BenchLimits {
 }
 
 impl BenchLimits {
-    pub fn warmup<M: Borrow<TypedModel>>(
+    pub fn warmup(
         &self,
-        runnable: &TypedRunnableModel<M>,
+        runnable: &Arc<TypedRunnableModel>,
         inputs: &RunTensors,
     ) -> TractResult<()> {
         if self.warmup_time.is_zero() && self.warmup_loops.is_zero() {
             return Ok(());
         }
-        let mut state = TypedSimpleState::new(runnable)?;
+        let mut state = runnable.spawn()?;
         let mut iters = 0;
         let max_loops = if self.warmup_loops.is_zero() { usize::MAX } else { self.warmup_loops };
         let max_time = if self.warmup_time.is_zero() { Duration::MAX } else { self.warmup_time };
@@ -76,7 +75,7 @@ pub fn profile(
     let plan = TypedSimplePlan::new_with_options(model.clone(), plan_options)?;
     bench_limits.warmup(&plan, inputs)?;
 
-    let mut state = TypedSimpleState::new(Arc::new(plan))?;
+    let mut state = plan.spawn()?;
 
     let mut dur = Duration::default();
     let mut time_accounted_by_inner_nodes = Duration::default();
@@ -151,7 +150,7 @@ pub fn profile_gpu(
 
     plan = plan.with_session_handler(session_handler);
 
-    let mut state = TypedSimpleState::new(Arc::new(plan))?;
+    let mut state = plan.spawn()?;
     let mut dur = Duration::default();
 
     capture_gpu_trace(sub_matches, || -> TractResult<()> {
@@ -194,7 +193,7 @@ pub fn profile_gpu(
 }
 
 pub fn rec_profiler_gpu(
-    state: &mut TypedSimpleState<TypedModel, Arc<TypedSimplePlan<TypedModel>>>,
+    state: &mut TypedSimpleState,
     dg: &mut Annotations,
     inputs: &TVec<TValue>,
     prefix: &[(usize, String)],
@@ -223,7 +222,7 @@ pub fn rec_profiler_gpu(
 
 #[allow(clippy::too_many_arguments)]
 pub fn rec_profiler(
-    state: &mut TypedSimpleState<TypedModel, Arc<TypedSimplePlan<TypedModel>>>,
+    state: &mut TypedSimpleState,
     dg: &mut Annotations,
     inputs: &TVec<TValue>,
     profilers: Option<&HashMap<TypeId, Profiler>>,

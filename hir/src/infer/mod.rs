@@ -48,9 +48,9 @@ pub type InferenceNode = Node<InferenceFact, Box<dyn InferenceOp>>;
 /// A ModelPatch for InferenceModel.
 pub type InferenceModelPatch = ModelPatch<InferenceFact, Box<dyn InferenceOp>>;
 /// An execution plan for InferenceModel.
-pub type InferenceSimplePlan<M> = SimplePlan<InferenceFact, Box<dyn InferenceOp>, M>;
+pub type InferenceSimplePlan = SimplePlan<InferenceFact, Box<dyn InferenceOp>>;
 /// An execution state for InferenceModel.
-pub type InferenceSimpleState<M, P> = SimpleState<InferenceFact, Box<dyn InferenceOp>, M, P>;
+pub type InferenceSimpleState = SimpleState<InferenceFact, Box<dyn InferenceOp>>;
 
 impl<'a> From<&'a Box<dyn InferenceOp>> for Box<dyn InferenceOp> {
     fn from(it: &'a Box<dyn InferenceOp>) -> Box<dyn InferenceOp> {

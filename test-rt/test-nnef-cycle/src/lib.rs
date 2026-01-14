@@ -28,7 +28,7 @@ mod nnef_predump {
         fn prepare(&self, model: TypedModel) -> TractResult<Box<dyn Runnable>> {
             let mut model = model.clone();
             tract_nnef::ser::rewrite_model(&mut model)?;
-            Ok(Box::new(Arc::new(model.into_optimized()?.into_runnable()?)))
+            Ok(Box::new(model.into_optimized()?.into_runnable()?))
         }
     }
 
@@ -71,7 +71,7 @@ mod nnef_cycle {
             let reloaded = self.0.model_for_read(&mut &*buffer)?;
             // eprintln!("RELOADED:\n{}", reloaded.clone().into_decluttered().unwrap());
             // dbg!(reloaded.clone().into_decluttered());
-            Ok(Box::new(Arc::new(reloaded.into_optimized()?.into_runnable()?)))
+            Ok(Box::new(reloaded.into_optimized()?.into_runnable()?))
         }
     }
 

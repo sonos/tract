@@ -56,8 +56,8 @@ mod test {
             .unwrap();
         model.auto_outputs().unwrap();
 
-        let plan = SimplePlan::new(model).unwrap();
-        let mut state = tract_core::plan::SimpleState::new(plan).unwrap();
+        let plan = model.into_runnable().unwrap();
+        let mut state = plan.spawn().unwrap();
 
         for i in 0..5 {
             let input: Vec<u8> = (pulse * i..(pulse * (i + 1))).map(|a| a as u8).collect();
@@ -115,8 +115,8 @@ mod test {
             .unwrap();
         model.set_output_outlets(&delay_2).unwrap();
 
-        let plan = SimplePlan::new(model).unwrap();
-        let mut state = tract_core::plan::SimpleState::new(plan).unwrap();
+        let plan = model.into_runnable().unwrap();
+        let mut state = plan.spawn().unwrap();
 
         for i in 0..5 {
             let input: Vec<u8> = (pulse * i..(pulse * (i + 1))).map(|a| a as u8).collect();

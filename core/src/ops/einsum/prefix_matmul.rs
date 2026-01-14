@@ -391,26 +391,22 @@ mod test {
     impl EinSumProblem {
         fn check(&self) -> TractResult<()> {
             let mut model = TypedModel::default();
-            let sa = model.add_source("a", f32::fact(self.a.shape())).unwrap();
-            let sb = model.add_source("b", f32::fact(self.b.shape())).unwrap();
-            let einsum = model
-                .wire_node(
-                    "einsum",
-                    EinSum::new(self.expr.parse().unwrap(), f32::datum_type()),
-                    &[sa, sb],
-                )
-                .unwrap();
-            model.set_output_outlets(&einsum).unwrap();
+            let sa = model.add_source("a", f32::fact(self.a.shape()))?;
+            let sb = model.add_source("b", f32::fact(self.b.shape()))?;
+            let einsum = model.wire_node(
+                "einsum",
+                EinSum::new(self.expr.parse().unwrap(), f32::datum_type()),
+                &[sa, sb],
+            )?;
+            model.set_output_outlets(&einsum)?;
             let a = self.a.clone().into_tvalue();
             let b = self.b.clone().into_tvalue();
             let inputs = tvec!(a, b);
-            let reference =
-                TypedRunnableModel::new(&model).unwrap().run(inputs.clone()).unwrap().remove(0);
+            let reference = TypedRunnableModel::new(model.clone())?.run(inputs.clone())?.remove(0);
             rewrite_einsum_to_prefix_matmul(&mut model, true)?;
             assert!(model.nodes.iter().all(|n| !n.op_is::<EinSum>()));
-            let test = TypedRunnableModel::new(&model).unwrap().run(inputs).unwrap().remove(0);
-            reference.close_enough(&test, true).unwrap();
-            Ok(())
+            let test = TypedRunnableModel::new(model)?.run(inputs)?.remove(0);
+            reference.close_enough(&test, true)
         }
     }
 

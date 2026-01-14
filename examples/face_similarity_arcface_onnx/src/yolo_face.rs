@@ -2,13 +2,12 @@ use anyhow::{Error, Result};
 use image::DynamicImage;
 use std::cmp::Ordering;
 use std::cmp::PartialOrd;
-use tract_core::plan::SimplePlan;
 use tract_ndarray::s;
 use tract_onnx::prelude::*;
 
 #[allow(clippy::type_complexity)]
 pub struct YoloFace {
-    model: SimplePlan<TypedFact, Box<dyn TypedOp>, Graph<TypedFact, Box<dyn TypedOp>>>,
+    model: Arc<TypedRunnableModel>,
     width: i32,
     height: i32,
 }

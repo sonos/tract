@@ -31,12 +31,11 @@ pub fn bench_pp(
 ) -> TractResult<()> {
     let mut run_params = crate::tensor::run_params_from_subcommand(params, sub_matches)?;
     run_params.allow_random_input = true;
-    let model =
-        params.tract_model.downcast_ref::<TypedModel>().context("Can only bench TypedModel")?;
-    let mut state = make_state(model, matches, sub_matches)?;
+    let model = params.req_typed_model();
+    let mut state = make_state(&model, matches, sub_matches)?;
 
     let (b, s, p) =
-        figure_out_b_s_p(model).context("Could not find out LLM symbolic parameters")?;
+        figure_out_b_s_p(&*model).context("Could not find out LLM symbolic parameters")?;
     if let Some(b) = b {
         run_params.symbols.set(&b, 1);
     }
@@ -45,10 +44,10 @@ pub fn bench_pp(
     // Warmup
     run_params.symbols.set(&p.unwrap(), 0);
     run_params.symbols.set(&s.unwrap(), pp as i64);
-    let inputs = get_or_make_inputs(model, &run_params)?;
+    let inputs = get_or_make_inputs(&params.tract_model, &run_params)?;
     limits.warmup(state.plan(), &inputs)?;
 
-    let inputs = get_or_make_inputs(model, &run_params)?;
+    let inputs = get_or_make_inputs(&params.tract_model, &run_params)?;
 
     let (_, dur) = bench(&mut state, sub_matches, inputs, limits, probe)?;
     let tokens = pp as f64 / dur.as_secs_f64();
@@ -66,12 +65,11 @@ pub fn bench_tg(
 ) -> TractResult<()> {
     let mut run_params = crate::tensor::run_params_from_subcommand(params, sub_matches)?;
     run_params.allow_random_input = true;
-    let model =
-        params.tract_model.downcast_ref::<TypedModel>().context("Can only bench TypedModel")?;
-    let mut state = make_state(model, matches, sub_matches)?;
+    let model = params.req_typed_model();
+    let mut state = make_state(&model, matches, sub_matches)?;
 
     let (b, s, p) =
-        figure_out_b_s_p(model).context("Could not find out LLM symbolic parameters")?;
+        figure_out_b_s_p(&model).context("Could not find out LLM symbolic parameters")?;
     if let Some(b) = b {
         run_params.symbols.set(&b, 1);
     }
@@ -92,7 +90,7 @@ pub fn bench_tg(
         while iters < max_loops && start_warmup.elapsed() < max_time {
             for t in 0..tg {
                 run_params.symbols.set(&p, t as i64);
-                let mut inputs = get_or_make_inputs(model, &run_params)?;
+                let mut inputs = get_or_make_inputs(&params.tract_model, &run_params)?;
 
                 state.run(inputs.sources.remove(0))?;
             }
@@ -110,7 +108,7 @@ pub fn bench_tg(
         }
 
         run_params.symbols.set(&p, t as i64);
-        let mut inputs = get_or_make_inputs(model, &run_params)?;
+        let mut inputs = get_or_make_inputs(&params.tract_model, &run_params)?;
 
         let start = Instant::now();
         state.run(inputs.sources.remove(0))?;

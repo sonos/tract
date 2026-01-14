@@ -1083,6 +1083,14 @@ impl Parameters {
             }
         })
     }
+
+    pub(crate) fn typed_model(&self) -> Option<Arc<TypedModel>> {
+        Arc::downcast(self.tract_model.clone()).ok()
+    }
+
+    pub(crate) fn req_typed_model(&self) -> Arc<TypedModel> {
+        self.typed_model().expect("Not a TypedModel")
+    }
 }
 
 pub fn bench_limits_from_clap(matches: &clap::ArgMatches) -> TractResult<BenchLimits> {

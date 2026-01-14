@@ -135,8 +135,8 @@ impl InnerModel for TypedModel {
         session: &mut SessionState,
         node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
-        let plan = SimplePlan::new(self.clone())?;
-        let state = SimpleState::new(Arc::new(plan))?;
+        let plan = self.clone().into_runnable()?;
+        let state = plan.spawn()?;
         Ok(Some(Box::new(state)))
     }
 
@@ -154,7 +154,7 @@ impl InnerModel for TypedModel {
     }
 }
 
-pub type TypedModelOpState = TypedSimpleState<TypedModel, Arc<TypedSimplePlan<TypedModel>>>;
+pub type TypedModelOpState = TypedSimpleState;
 
 impl OpState for TypedModelOpState {
     fn eval(
@@ -168,8 +168,7 @@ impl OpState for TypedModelOpState {
     }
 }
 
-pub type FrozenSubmodelOpState =
-    TypedFrozenSimpleState<TypedModel, Arc<TypedSimplePlan<TypedModel>>>;
+pub type FrozenSubmodelOpState = TypedFrozenSimpleState;
 
 impl FrozenOpState for FrozenSubmodelOpState {
     fn unfreeze(&self) -> Box<dyn OpState> {

@@ -116,21 +116,20 @@ pub fn handle(
     bench_limits: &BenchLimits,
     _inner: Vec<String>,
 ) -> TractResult<()> {
-    let model = &*params.tract_model;
-    let mut annotations = Annotations::from_model(model)?;
-    annotate_with_graph_def(&mut annotations, model, &params.graph)?;
+    let mut annotations = Annotations::from_model(&*params.tract_model)?;
+    annotate_with_graph_def(&mut annotations, &*params.tract_model, &params.graph)?;
     let run_params = run_params_from_subcommand(params, sub_matches)?;
     if options.cost {
-        tract_libcli::profile::extract_costs(&mut annotations, model, &run_params.symbols)?;
+        tract_libcli::profile::extract_costs(
+            &mut annotations,
+            &*params.tract_model,
+            &run_params.symbols,
+        )?;
     }
     if options.profile {
         let run_params = run_params_from_subcommand(params, sub_matches)?;
         let plan_options = plan_options_from_subcommand(sub_matches)?;
-        let model = params
-            .tract_model
-            .downcast_ref::<TypedModel>()
-            .context("Can only profile typed models")?;
-        let inputs = get_or_make_inputs(model, &run_params)?;
+        let inputs = get_or_make_inputs(&params.tract_model, &run_params)?;
 
         if matches.is_present("metal") || matches.is_present("cuda") {
             #[cfg(not(any(target_os = "macos", target_os = "ios")))]
@@ -141,7 +140,7 @@ pub fn handle(
             }
 
             tract_libcli::profile::profile_gpu(
-                model,
+                &params.req_typed_model(),
                 bench_limits,
                 sub_matches,
                 &mut annotations,
@@ -150,7 +149,7 @@ pub fn handle(
             )?;
         } else {
             tract_libcli::profile::profile(
-                model,
+                &params.req_typed_model(),
                 bench_limits,
                 &mut annotations,
                 &plan_options,
@@ -163,18 +162,18 @@ pub fn handle(
 
     if sub_matches.is_present("axes") || sub_matches.is_present("axes-names") {
         let mut hints = HashMap::default();
-        if let Some(params) = sub_matches.values_of("axes-names") {
-            for param in params {
+        if let Some(names) = sub_matches.values_of("axes-names") {
+            for param in names {
                 let (node, names) = if let Some((node, axes)) = param.split_once('=') {
-                    (model.node_id_by_name(node)?, axes)
+                    (params.tract_model.node_id_by_name(node)?, axes)
                 } else {
-                    (model.input_outlets()[0].node, param)
+                    (params.tract_model.input_outlets()[0].node, param)
                 };
                 let names: TVec<String> = names.split(',').map(|s| s.to_string()).collect();
                 hints.insert(OutletId::new(node, 0), names);
             }
         }
-        annotations.track_axes(model, &hints)?;
+        annotations.track_axes(&*params.tract_model, &hints)?;
     }
 
     if sub_matches.is_present("memory-arena") {
@@ -185,10 +184,7 @@ pub fn handle(
             }
         }
         crate::memory_arena::dump_metrics(
-            params
-                .tract_model
-                .downcast_ref::<TypedModel>()
-                .context("Check memory arena requires a typed model")?,
+            &params.req_typed_model(),
             &plan_options_from_subcommand(sub_matches)?,
             std::path::Path::new(
                 sub_matches
@@ -201,23 +197,24 @@ pub fn handle(
     if sub_matches.is_present("tmp_mem_usage") {
         let plan_options = plan_options_from_subcommand(sub_matches)?;
         annotations.track_tmp_memory_usage(
-            model,
+            &*params.tract_model,
             |n| !(n.op_is::<tract_core::ops::konst::Const>()),
             plan_options.skip_order_opt_ram,
         )?;
     }
 
     if let Some(asserts) = &params.assertions.assert_output_facts {
-        let outputs_facts: Vec<InferenceFact> = model
+        let outputs_facts: Vec<InferenceFact> = params
+            .tract_model
             .output_outlets()
             .iter()
-            .map(|o| Ok(InferenceFact::from(&model.outlet_typedfact(*o)?)))
+            .map(|o| Ok(InferenceFact::from(params.tract_model.outlet_typedfact(*o)?)))
             .collect::<TractResult<Vec<InferenceFact>>>()?;
         crate::utils::check_inferred(&outputs_facts, asserts)?;
     }
     if let Some(asserts) = &params.assertions.assert_op_count {
         for (name, expected) in asserts {
-            let count = crate::utils::count_op(model, name)?;
+            let count = crate::utils::count_op(&*params.tract_model, name)?;
             if count != *expected {
                 bail!("Wrong number of {} operators: expected {}, got {}", name, expected, count);
             }
@@ -228,7 +225,8 @@ pub fn handle(
     let deterministic = sub_matches.is_present("nnef-deterministic");
     if let Some(path) = sub_matches.value_of("nnef") {
         let nnef = super::nnef(matches);
-        if let Some(mut typed) = model.downcast_ref::<TypedModel>().cloned() {
+        if let Some(typed) = params.typed_model().to_owned() {
+            let mut typed = Arc::unwrap_or_clone(typed);
             rename_outputs(&mut typed, sub_matches)?;
             let file = fs::File::create(path)?;
             let encoder = flate2::write::GzEncoder::new(file, flate2::Compression::default());
@@ -241,7 +239,8 @@ pub fn handle(
 
     if let Some(path) = sub_matches.value_of("nnef-tar") {
         let nnef = super::nnef(matches);
-        if let Some(mut typed) = model.downcast_ref::<TypedModel>().cloned() {
+        if let Some(typed) = params.typed_model().to_owned() {
+            let mut typed = Arc::unwrap_or_clone(typed);
             rename_outputs(&mut typed, sub_matches)?;
             let file = fs::File::create(path)?;
             nnef.write_to_tar_with_config(&typed, file, compress_submodels, deterministic)
@@ -253,7 +252,8 @@ pub fn handle(
 
     if let Some(path) = sub_matches.value_of("nnef-dir") {
         let nnef = super::nnef(matches);
-        if let Some(mut typed) = model.downcast_ref::<TypedModel>().cloned() {
+        if let Some(typed) = params.typed_model().to_owned() {
+            let mut typed = Arc::unwrap_or_clone(typed);
             rename_outputs(&mut typed, sub_matches)?;
             if let Some(renamed) = sub_matches.values_of("nnef-override-output-name") {
                 for (ix, name) in renamed.into_iter().enumerate() {
@@ -273,7 +273,8 @@ pub fn handle(
 
     if let Some(path) = sub_matches.value_of("nnef-graph") {
         let nnef = super::nnef(matches);
-        if let Some(mut typed) = model.downcast_ref::<TypedModel>().cloned() {
+        if let Some(typed) = params.typed_model().to_owned() {
+            let mut typed = Arc::unwrap_or_clone(typed);
             rename_outputs(&mut typed, sub_matches)?;
             let proto = tract_nnef::ser::to_proto_model(&nnef, &typed)?;
             if path == "-" {
@@ -291,7 +292,8 @@ pub fn handle(
     #[cfg(feature = "tflite")]
     if let Some(path) = sub_matches.value_of("tflite") {
         let tflite = tract_tflite::tflite();
-        if let Some(mut typed) = model.downcast_ref::<TypedModel>().cloned() {
+        if let Some(typed) = params.typed_model().to_owned() {
+            let mut typed = Arc::unwrap_or_clone(typed);
             rename_outputs(&mut typed, sub_matches)?;
             let file = fs::File::create(path)?;
             tflite.write(&typed, file).context("Writing model to tflite")?;
@@ -319,14 +321,15 @@ pub fn handle(
         }
     }
 
-    if model
+    if params
+        .tract_model
         .properties()
         .get("tract_stage")
         .and_then(|t| t.to_scalar::<String>().ok())
         .is_some_and(|s| s == "optimized")
     {
-        for n in 0..model.nodes_len() {
-            if model.node_op_name(n) == "EinSum" {
+        for n in 0..params.tract_model.nodes_len() {
+            if params.tract_model.node_op_name(n) == "EinSum" {
                 let tags = annotations.tags.entry(NodeQId(tvec!(), n)).or_default();
                 tags.style = Some(Red.bold());
                 tags.labels.push("⚠️⚠️⚠️ EinSum in optimised model".to_string());
@@ -335,11 +338,11 @@ pub fn handle(
     }
 
     if options.json {
-        let export = tract_libcli::export::GraphPerfInfo::from(model, &annotations);
+        let export = tract_libcli::export::GraphPerfInfo::from(&*params.tract_model, &annotations);
         serde_json::to_writer(std::io::stdout(), &export)?;
     } else {
-        terminal::render(model, &annotations, options)?;
-        terminal::render_summaries(model, &annotations, options)?;
+        terminal::render(&*params.tract_model, &annotations, options)?;
+        terminal::render_summaries(&*params.tract_model, &annotations, options)?;
     }
 
     if options.mm {

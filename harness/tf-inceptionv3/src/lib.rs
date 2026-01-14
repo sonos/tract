@@ -79,7 +79,7 @@ mod tests {
         // setup_test_logger();
         println!("{:?}", inception_v3_2016_08_28_frozen());
         let tfd = tensorflow().model_for_path(inception_v3_2016_08_28_frozen()).unwrap();
-        let plan = SimplePlan::new(&tfd).unwrap();
+        let plan = SimplePlan::new(tfd).unwrap();
         let input = load_image(hopper());
         let outputs = plan.run(tvec![input]).unwrap();
         let labels = load_labels();

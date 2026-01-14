@@ -79,7 +79,7 @@ impl MemArenaMetrics {
 }
 
 pub fn dump_metrics(
-    model: &TypedModel,
+    model: &Arc<TypedModel>,
     options: &PlanOptions,
     path: impl AsRef<std::path::Path>,
 ) -> TractResult<()> {
@@ -87,7 +87,7 @@ pub fn dump_metrics(
     const SCHEMA_HINT_S: i64 = 1024;
     const SCHEMA_HINT_P: i64 = 0;
 
-    let plan = SimplePlan::new_with_options(model, options)?;
+    let plan = SimplePlan::new_with_options(model.clone(), options)?;
     let order = plan.order_without_consts();
     let mut symbol_values = SymbolValues::default();
     let sequence_length = model.symbols.get("S").context("Could not find symbol S in model")?;

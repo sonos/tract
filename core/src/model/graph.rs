@@ -510,16 +510,16 @@ where
     }
 
     /// Converts the model into a `RunnableModel` to actually process user data.
-    pub fn into_runnable(self) -> TractResult<RunnableModel<F, O, Self>> {
-        crate::plan::SimplePlan::new_with_options(self, &PlanOptions::default())
-    }
+    // pub fn into_runnable(self) -> TractResult<Arc<RunnableModel<F, O>>> {
+    //     crate::plan::SimplePlan::new_with_options(self, &PlanOptions::default())
+    // }
 
     /// Converts the model into a `RunnableModel` to actually process user data. This variant
     /// accepts options.
     pub fn into_runnable_with_options(
         self,
         options: &PlanOptions,
-    ) -> TractResult<RunnableModel<F, O, Self>> {
+    ) -> TractResult<Arc<RunnableModel<F, O>>> {
         crate::plan::SimplePlan::new_with_options(self, options)
     }
 
@@ -815,5 +815,24 @@ where
     pub fn into_compact(mut self) -> TractResult<Self> {
         self.compact()?;
         Ok(self)
+    }
+}
+
+pub trait IntoRunnable<F, O>
+where
+    F: Fact + Clone + 'static,
+    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+{
+    fn into_runnable(self) -> TractResult<Arc<RunnableModel<F, O>>>;
+}
+
+impl<G, F, O> IntoRunnable<F, O> for G
+where
+    F: Fact + Clone + 'static,
+    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+    G: Into<Arc<Graph<F, O>>>,
+{
+    fn into_runnable(self) -> TractResult<Arc<RunnableModel<F, O>>> {
+        SimplePlan::new(self)
     }
 }

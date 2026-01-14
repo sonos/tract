@@ -87,7 +87,7 @@ fn deepspeech_raw() -> TractResult<()> {
         &PlanOptions::default(),
     )?;
 
-    let mut state = SimpleState::new(plan)?;
+    let mut state = plan.spawn()?;
 
     let mut inputs = tvec!(tensor0(0).into_tvalue(), tensor0(1).into());
     let mut h = None;
@@ -146,7 +146,7 @@ fn deepspeech_run(opt: bool) -> TractResult<()> {
         model.optimize()?;
     }
     let plan = SimplePlan::new(model)?;
-    let mut state = SimpleState::new(plan)?;
+    let mut state = plan.spawn()?;
 
     let mut inputs = tvec!(tensor0(0).into(), tensor0(1).into());
     let mut logits = None;

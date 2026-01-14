@@ -9,10 +9,7 @@ use tract_libcli::tensor::RunTensors;
 use tract_libcli::tensor::get_or_make_inputs;
 use tract_libcli::terminal;
 
-fn profile<'m>(
-    state: &mut TypedSimpleState<&'m TypedModel, Arc<TypedRunnableModel<&'m TypedModel>>>,
-    inputs: &RunTensors,
-) -> TractResult<Duration> {
+fn profile<'m>(state: &mut TypedSimpleState, inputs: &RunTensors) -> TractResult<Duration> {
     if state.model().properties().contains_key("pulse.delay") {
         let start = Instant::now();
         for source in &inputs.sources {
@@ -36,25 +33,24 @@ pub fn criterion(
     matches: &clap::ArgMatches,
     sub_matches: &clap::ArgMatches,
 ) -> TractResult<()> {
-    let model =
-        params.tract_model.downcast_ref::<TypedModel>().context("Can only bench TypedModel")?;
-    let mut state = make_state(model, matches, sub_matches)?;
+    let model = params.req_typed_model();
+    let mut state = make_state(&model, matches, sub_matches)?;
 
     let mut crit = criterion::Criterion::default();
     let mut group = crit.benchmark_group("net");
 
     let run_params = crate::tensor::run_params_from_subcommand(params, sub_matches)?;
-    let inputs = get_or_make_inputs(model, &run_params)?;
+    let inputs = get_or_make_inputs(&params.tract_model, &run_params)?;
 
     group.bench_function("run", move |b| b.iter(|| profile(&mut state, &inputs)));
     Ok(())
 }
 
-pub(crate) fn make_state<'m>(
-    model: &'m TypedModel,
+pub(crate) fn make_state(
+    model: &Arc<TypedModel>,
     matches: &clap::ArgMatches,
     sub_matches: &clap::ArgMatches,
-) -> TractResult<TypedSimpleState<&'m TypedModel, Arc<TypedRunnableModel<&'m TypedModel>>>> {
+) -> TractResult<TypedSimpleState> {
     #[allow(unused_mut)]
     let mut plan_options = crate::plan_options::plan_options_from_subcommand(sub_matches)?;
     if matches.is_present("metal") || matches.is_present("cuda") {
@@ -66,7 +62,7 @@ pub(crate) fn make_state<'m>(
             }
         }
         plan_options.skip_order_opt_ram = true;
-        let mut plan = SimplePlan::new_with_options(model, &plan_options)?;
+        let mut plan = SimplePlan::new_with_options(model.clone(), &plan_options)?;
         let mut symbol_values = SymbolValues::default();
         if let Some(s) = model.symbols.get("S") {
             symbol_values.set(&s, 1024);
@@ -79,15 +75,15 @@ pub(crate) fn make_state<'m>(
             tract_gpu::session_handler::DeviceSessionHandler::from_plan(&plan, &symbol_values)?;
 
         plan = plan.with_session_handler(session_handler);
-        Ok(SimpleState::new(Arc::new(plan))?)
+        plan.spawn()
     } else {
-        let plan = SimplePlan::new_with_options(model, &plan_options)?;
-        Ok(SimpleState::new(Arc::new(plan))?)
+        let plan = SimplePlan::new_with_options(model.clone(), &plan_options)?;
+        plan.spawn()
     }
 }
 
-pub(crate) fn bench<'m>(
-    state: &mut TypedSimpleState<&'m TypedModel, Arc<TypedRunnableModel<&'m TypedModel>>>,
+pub(crate) fn bench(
+    state: &mut TypedSimpleState,
     sub_matches: &clap::ArgMatches,
     inputs: RunTensors,
     limits: &BenchLimits,
@@ -123,11 +119,10 @@ pub fn handle(
     probe: Option<&Probe>,
 ) -> TractResult<()> {
     let run_params = crate::tensor::run_params_from_subcommand(params, sub_matches)?;
-    let model =
-        params.tract_model.downcast_ref::<TypedModel>().context("Can only bench TypedModel")?;
-    let mut state = make_state(model, matches, sub_matches)?;
+    let model = params.req_typed_model();
+    let mut state = make_state(&model, matches, sub_matches)?;
 
-    let inputs = get_or_make_inputs(state.model(), &run_params)?;
+    let inputs = get_or_make_inputs(&params.tract_model, &run_params)?;
 
     limits.warmup(state.plan(), &inputs)?;
     let (iters, dur) = bench(&mut state, sub_matches, inputs, limits, probe)?;

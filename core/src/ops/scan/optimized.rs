@@ -7,7 +7,7 @@ use tract_data::internal::*;
 pub struct ScanOpParams {
     pub skip: usize,
     pub reset_every_turn: bool,
-    pub plan: Arc<TypedSimplePlan<TypedModel>>,
+    pub plan: Arc<TypedSimplePlan>,
     pub input_mapping: Vec<InputMapping>,
     pub output_mapping: Vec<OutputMapping<TDim>>,
 }
@@ -60,7 +60,7 @@ impl EvalOp for OptScan {
         Ok(Some(Box::new(State {
             position: 0,
             hidden_state: tvec!(),
-            model_state: TypedSimpleState::new(Arc::clone(&self.plan))?,
+            model_state: self.plan.spawn()?,
             op: Arc::clone(&self.0),
         })))
     }
@@ -71,7 +71,7 @@ pub struct State {
     op: Arc<ScanOpParams>,
     position: usize,
     hidden_state: TVec<TValue>,
-    pub model_state: TypedSimpleState<TypedModel, Arc<TypedSimplePlan<TypedModel>>>,
+    pub model_state: TypedSimpleState,
 }
 
 #[derive(Debug, Clone)]
@@ -79,7 +79,7 @@ struct FrozenState {
     op: Arc<ScanOpParams>,
     position: usize,
     hidden_state: TVec<Tensor>,
-    model_state: TypedFrozenSimpleState<TypedModel, Arc<TypedSimplePlan<TypedModel>>>,
+    model_state: TypedFrozenSimpleState,
 }
 
 impl OpStateFreeze for State {
