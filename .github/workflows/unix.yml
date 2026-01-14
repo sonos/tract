@@ -35,7 +35,7 @@ jobs:
     strategy:
       matrix:
         os: ${{fromJson(needs.what-to-run.outputs.os)}}
-        rust: [ 1.85.0 ]
+        rust: [ 1.86.0 ]
       fail-fast: false
 
     runs-on: ${{matrix.os}}
