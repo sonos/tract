@@ -15,7 +15,7 @@ mod suite;
 
 #[derive(Debug)]
 struct MetalTestTransformState {
-    state: TypedSimpleState<TypedModel, Arc<TypedRunnableModel<TypedModel>>>,
+    state: TypedSimpleState,
     transpose_inputs: bool,
     use_arena: bool,
 }
@@ -29,7 +29,7 @@ impl State for MetalTestTransformState {
             )?;
 
             let plan = self.state.plan().clone().with_session_handler(session_handler);
-            TypedSimpleState::new(Arc::new(plan))?
+            TypedSimpleState::new(&plan)?
         } else {
             self.state.clone()
         };
@@ -63,7 +63,7 @@ impl State for MetalTestTransformState {
 
 #[derive(Debug)]
 struct MetalTestTransformRunnable {
-    runnable: Arc<TypedRunnableModel<TypedModel>>,
+    runnable: Arc<TypedRunnableModel>,
     transpose_inputs: bool,
     use_arena: bool,
 }
@@ -71,7 +71,7 @@ struct MetalTestTransformRunnable {
 impl Runnable for MetalTestTransformRunnable {
     fn spawn(&self) -> TractResult<Box<dyn State>> {
         Ok(Box::new(MetalTestTransformState {
-            state: TypedSimpleState::new(self.runnable.clone())?,
+            state: self.runnable.spawn()?,
             transpose_inputs: self.transpose_inputs,
             use_arena: self.use_arena,
         }))
@@ -142,7 +142,7 @@ impl Runtime for MetalTestRuntime {
             model = model.into_optimized()?;
         }
         let runnable = MetalTestTransformRunnable {
-            runnable: Arc::new(model.into_runnable()?),
+            runnable: model.into_runnable()?,
             transpose_inputs: self.transpose_inputs,
             use_arena: self.use_arena,
         };
