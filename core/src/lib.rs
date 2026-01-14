@@ -27,7 +27,7 @@
 //!
 //! // We build an execution plan. Default inputs and outputs are inferred from
 //! // the model graph.
-//! let plan = SimplePlan::new(&model).unwrap();
+//! let plan = model.into_runnable().unwrap();
 //!
 //! // run the computation.
 //! let input = tensor1(&[1.0f32, 2.5, 5.0]);
