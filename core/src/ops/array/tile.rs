@@ -9,7 +9,7 @@ pub struct Tile {
 }
 
 impl Op for Tile {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Tile".into()
     }
 
@@ -27,6 +27,7 @@ impl EvalOp for Tile {
 
     fn eval_with_session(
         &self,
+        _node_id: usize,
         session: &SessionState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
@@ -106,7 +107,7 @@ impl DynTile {
 }
 
 impl Op for DynTile {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "DynTile".into()
     }
 
@@ -120,6 +121,7 @@ impl EvalOp for DynTile {
 
     fn eval_with_session(
         &self,
+        _node_id: usize,
         session: &SessionState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {

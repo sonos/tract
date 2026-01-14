@@ -1,7 +1,7 @@
 import numpy
 from ctypes import *
 from typing import Dict, List, Union
-from .bindings import check, lib
+from .bindings import TractError, check, lib
 from .fact import Fact
 from .value import Value
 from .runnable import Runnable
@@ -177,7 +177,7 @@ class Model:
 
     def into_decluttered(self) -> "Model":
         """Convenience method performing `declutter()` and returning the model"""
-        self.declutter();
+        self.declutter()
         return self
 
     def into_optimized(self) -> "Model":
@@ -213,7 +213,7 @@ class Model:
         check(lib.tract_model_property(self.ptr, str(name).encode("utf-8"), byref(value)))
         return Value(value)
 
-    def profile_json(self, inputs: Union[None, List[Union[Value, numpy.ndarray]]]) -> str:
+    def profile_json(self, inputs: Union[None, List[Union[Value, numpy.ndarray]]], state_initializers: Union[None, List[Union[Value, numpy.ndarray]]]) -> str:
         """Profile the model. Also compute the static costs of operators.
 
         Returns is a json buffer.
@@ -233,7 +233,25 @@ class Model:
             input_ptrs = (c_void_p * len(inputs))()
             for ix, v in enumerate(input_values):
                 input_ptrs[ix] = v.ptr
-        check(lib.tract_model_profile_json(self.ptr, input_ptrs, byref(cstring)))
+
+        state_values = []
+        state_ptrs = None
+        n_states = 0
+        if state_initializers != None:
+            n_states = len(state_initializers)
+            state_ptrs = (c_void_p * n_states)()
+
+            for ix, v in enumerate(state_initializers):
+                if isinstance(v, Value):
+                    state_values.append(v)
+                elif isinstance(v, numpy.ndarray):
+                    state_values.append(Value.from_numpy(v))
+                else:
+                    raise TractError(f"State values must be of type tract.Value or numpy.Array, got {v}")
+
+                state_ptrs[ix] = state_values[ix].ptr
+
+        check(lib.tract_model_profile_json(self.ptr, input_ptrs, state_ptrs, n_states, byref(cstring)))
         result = str(cstring.value, "utf-8")
         lib.tract_free_cstring(cstring)
         return result

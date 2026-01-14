@@ -1,5 +1,5 @@
-use downcast_rs::{impl_downcast, Downcast};
-use dyn_clone::{clone_box, DynClone};
+use downcast_rs::{Downcast, impl_downcast};
+use dyn_clone::{DynClone, clone_box};
 use dyn_hash::DynHash;
 use num_traits::Zero;
 use tract_data::internal::*;
@@ -13,11 +13,13 @@ use std::sync::Arc;
 
 mod helpers;
 mod q4_0;
+mod q8_1;
 mod value;
 
 pub use helpers::{NibbleReader, NibbleWriter};
 pub use q4_0::Q4_0;
-pub use value::{BlockQuantFact, BlockQuantValue, PackedBlockQuantFact};
+pub use q8_1::Q8_1;
+pub use value::{BlockQuantFact, PackedBlockQuantFact};
 
 use crate::mmm::{EagerPackedInput, MMMInputFormat};
 use crate::pack::PackedFormat;
@@ -242,8 +244,9 @@ impl MMMInputFormat for PackedBlockQuantFormat {
             .as_slice::<Opaque>()?
             .iter()
             .map(|o| {
-                let bqv = o.downcast_ref::<BlockQuantValue>().unwrap();
-                let packed = self.pack(&bqv.value, bqv.fact.k())?;
+                let bwf = o.downcast_ref::<BlobWithFact>().unwrap();
+                let bqf = bwf.fact.downcast_ref::<BlockQuantFact>().unwrap();
+                let packed = self.pack(&bwf.value, bqf.k())?;
                 Ok(Opaque(Arc::new(Box::new(packed) as Box<dyn MMMInputValue>)))
             })
             .collect::<TractResult<Vec<Opaque>>>()?;
@@ -273,17 +276,18 @@ impl MMMInputFormat for PackedBlockQuantFormat {
             } else {
                 todo!()
             };
-            Cow::Owned(tensor0(Opaque(Arc::new(BlockQuantValue {
+            Cow::Owned(tensor0(Opaque(Arc::new(BlobWithFact {
                 value: Arc::new(quant),
-                fact: BlockQuantFact::new(self.bq.clone(), tvec!(m, k)),
+                fact: Box::new(BlockQuantFact::new(self.bq.clone(), tvec!(m, k))),
             }))))
         } else {
             Cow::Borrowed(t)
         };
         ensure!(mn_axis == 0);
         ensure!(k_axis == 1);
-        let bqv = t.to_scalar::<Opaque>()?.downcast_ref::<BlockQuantValue>().unwrap();
-        let packed = self.pack(&bqv.value, bqv.fact.k())?;
+        let bwf = t.to_scalar::<Opaque>()?.downcast_ref::<BlobWithFact>().unwrap();
+        let bqf = bwf.fact.downcast_ref::<BlockQuantFact>().unwrap();
+        let packed = self.pack(&bwf.value, bqf.k())?;
         Ok(Box::new(packed))
     }
 

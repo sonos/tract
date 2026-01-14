@@ -1,6 +1,6 @@
 [package]
 name = "tract"
-version = "0.21.13"
+version = "0.22.1-pre"
 authors = [ "Romain Liautaud <romain.liautaud@snips.ai>", "Mathieu Poumeyrol <kali@zoy.org>"]
 license = "MIT OR Apache-2.0"
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
@@ -8,13 +8,14 @@ repository = "https://github.com/snipsco/tract"
 keywords = [ "TensorFlow", "NeuralNetworks" ]
 categories = [ "science" ]
 autobenches = false
-edition = "2021"
+edition = "2024"
 include = [ "Cargo.toml", "src/**/*.rs", "LICENSE*" ]
 
 [badges]
 maintenance = { status = "actively-developed" }
 
 [dependencies]
+atty.workspace = true
 box_drawing.workspace = true
 clap.workspace = true
 criterion.workspace = true
@@ -41,11 +42,14 @@ rustls.workspace = true
 scan_fmt.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-tract-linalg.workspace = true
+tract-linalg = { workspace = true, features = ["hwbench"] }
 tract-core.workspace = true
 tract-hir.workspace = true
 tract-nnef.workspace = true
+tract-nnef-resources.workspace = true
 tract-libcli.workspace = true
+tract-gpu.workspace = true
+tract-cuda.workspace = true
 tract-extra = { workspace = true, optional = true }
 tract-pulse = { workspace = true, optional = true }
 tract-pulse-opl = { workspace = true, optional = true }
@@ -54,11 +58,11 @@ tract-tensorflow = { workspace = true, optional = true }
 tract-tflite = { workspace = true, optional = true }
 tract-transformers = { workspace = true, optional = true }
 zerofrom.workspace = true
+float-ord.workspace = true
+levenshtein-diff.workspace = true
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
 tract-metal.workspace = true
-tract-gpu.workspace = true
-
 
 [features]
 default = ["onnx", "tf", "pulse", "pulse-opl", "tflite", "transformers", "extra"]

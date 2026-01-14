@@ -3,22 +3,23 @@ use nom::branch::alt;
 use nom::character::complete::{char, digit1};
 use nom::combinator::{all_consuming, opt};
 use nom::combinator::{map, map_res};
-use nom::error::{ErrorKind, ParseError};
+use nom::error::ErrorKind;
 use nom::multi::separated_list1;
 use nom::sequence::delimited;
-use nom::sequence::tuple;
-use nom::AsChar;
-use nom::IResult;
-use nom::InputTakeAtPosition;
+use nom::{AsChar, Parser};
+use nom::{IResult, Input};
+use nom_language::error::VerboseError;
 use std::path::Path;
 use tract_nnef::internal::*;
+
+type R<'i, O> = IResult<&'i str, O, VerboseError<&'i str>>;
 
 /// Loader for JSON resources inside a NNEF archive
 #[derive(Debug, Clone, PartialEq)]
 pub struct JsonLoader;
 
 impl ResourceLoader for JsonLoader {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "JsonLoader".into()
     }
 
@@ -52,12 +53,37 @@ impl Resource for JsonResource {
             .search(&self.0)
             .with_context(|| anyhow!("Error while acessing JSON using given path: {:?}", key))?;
 
-        convert_value(value)
+        json_to_tract(value)
             .with_context(|| anyhow!("Error while converting JSON value to NNEF value"))
+    }
+
+    fn to_liquid_value(&self) -> Option<liquid_core::model::Value> {
+        Some(json_to_liquid(&self.0))
     }
 }
 
-pub fn convert_value(value: &serde_json::Value) -> TractResult<Value> {
+fn json_to_liquid(json: &serde_json::Value) -> liquid_core::model::Value {
+    use liquid_core::model::Value as L;
+    use serde_json::Value as J;
+    match json {
+        J::Number(n) => {
+            if let Some(n) = n.as_i64() {
+                L::Scalar(n.into())
+            } else {
+                L::Scalar(n.as_f64().unwrap().into())
+            }
+        }
+        J::Null => L::Nil,
+        J::Bool(b) => L::Scalar((*b).into()),
+        J::String(s) => L::Scalar(s.clone().into()),
+        J::Array(values) => L::Array(values.iter().map(json_to_liquid).collect()),
+        J::Object(map) => {
+            L::Object(map.iter().map(|(k, v)| (k.into(), json_to_liquid(v))).collect())
+        }
+    }
+}
+
+pub fn json_to_tract(value: &serde_json::Value) -> TractResult<Value> {
     match value {
         serde_json::Value::Bool(b) => Ok(Value::Bool(*b)),
         serde_json::Value::Number(v) => {
@@ -74,7 +100,7 @@ pub fn convert_value(value: &serde_json::Value) -> TractResult<Value> {
         serde_json::Value::Null => bail!("JSON null value cannot be converted to NNEF value"),
         serde_json::Value::Object(_) => bail!("JSON object cannot be converted to NNEF value"),
         serde_json::Value::Array(values) => {
-            let t_values = values.iter().map(convert_value).collect::<Result<Vec<Value>>>()?;
+            let t_values = values.iter().map(json_to_tract).collect::<Result<Vec<Value>>>()?;
             Ok(Value::Array(t_values))
         }
     }
@@ -98,7 +124,8 @@ impl JsonPath {
     }
 
     pub fn parse(s: &str) -> Result<Self> {
-        let (_, components) = all_consuming(parse_components)(s)
+        let (_, components) = all_consuming(parse_components)
+            .parse(s)
             .map_err(|e| anyhow!("Error while parsing JSON path: {:?}", e))?;
 
         ensure!(
@@ -128,11 +155,7 @@ impl JsonPath {
     }
 }
 
-pub fn json_key<T, E: ParseError<T>>(input: T) -> IResult<T, T, E>
-where
-    T: InputTakeAtPosition,
-    <T as InputTakeAtPosition>::Item: AsChar,
-{
+pub fn json_key(input: &str) -> R<'_, &str> {
     input.split_at_position1_complete(
         |item| {
             let c = item.as_char();
@@ -142,12 +165,12 @@ where
     )
 }
 
-fn parse_components(i: &str) -> IResult<&str, Vec<JsonComponent>> {
+fn parse_components(i: &str) -> R<'_, Vec<JsonComponent>> {
     map(
         separated_list1(
             char('.'),
             map(
-                tuple((
+                (
                     alt((
                         map(char('$'), |_| JsonComponent::Root),
                         map(json_key, |f: &str| JsonComponent::Field(f.to_string())),
@@ -155,12 +178,13 @@ fn parse_components(i: &str) -> IResult<&str, Vec<JsonComponent>> {
                     opt(map_res(delimited(char('['), digit1, char(']')), |s: &str| {
                         s.parse().map(JsonComponent::Index)
                     })),
-                )),
+                ),
                 |(c, idx)| vec![Some(c), idx].into_iter().flatten().collect::<Vec<_>>(),
             ),
         ),
         |components| components.into_iter().flatten().collect::<Vec<_>>(),
-    )(i)
+    )
+    .parse(i)
 }
 
 #[cfg(test)]

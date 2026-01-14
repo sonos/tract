@@ -1,12 +1,13 @@
 [package]
 name = "tract-ci-minion"
 version = "0.20.7-pre"
-edition = "2021"
+edition = "2024"
 
 [workspace]
 members = []
 
 [dependencies]
+clap = { version="4", features = ["derive"]}
 dirs = "3"
 fs2 = "0"
 rust-s3 = { version = "0.26.4", default-features = false, features = [ "rustls-tls" ] }

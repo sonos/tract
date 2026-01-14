@@ -1,11 +1,11 @@
 use crate::kernels::matmul::{GemmImpl, GemmKernel};
-use crate::ops::MetalEvalOp;
+use crate::utils::with_borrowed_metal_stream;
 
-use crate::MetalStream;
 use anyhow::{bail, ensure};
 use tract_core::internal::*;
+use tract_core::tract_linalg::block_quant::Q4_0;
 use tract_gpu::tensor::DeviceTensorExt;
-use tract_gpu::utils::{as_q40_fact, as_q40_tensor};
+use tract_gpu::utils::{as_quant_fact, get_quant_fact};
 
 #[derive(Debug, Default, Clone)]
 pub struct MetalGemm<K: GemmKernel> {
@@ -19,7 +19,7 @@ impl<K: GemmKernel> MetalGemm<K> {
 }
 
 impl<K: GemmKernel + 'static> Op for MetalGemm<K> {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         format!("Metal{}", self.kernel).into()
     }
 
@@ -55,13 +55,13 @@ impl<K: GemmKernel> MetalGemm<K> {
             );
             let out_shape = self.kernel.output_shape(&a.shape, &b.shape);
             Ok(self.kernel.output_facts(&out_shape, a.datum_type, b.datum_type)?)
-        } else if let Some(opf) = as_q40_fact(inputs[0]) {
+        } else if let Some(opf) = as_quant_fact(inputs[0], &Q4_0) {
             let a_shape: ShapeFact =
                 a.shape.iter().cloned().chain(opf.shape().iter().map(|d| d.to_dim())).collect();
 
             let out_shape = self.kernel.output_shape(&a_shape, &b.shape);
             Ok(self.kernel.output_facts(&out_shape, a.datum_type, b.datum_type)?)
-        } else if let Some(opf) = as_q40_fact(inputs[1]) {
+        } else if let Some(opf) = as_quant_fact(inputs[1], &Q4_0) {
             let b_shape: ShapeFact =
                 b.shape.iter().cloned().chain(opf.shape().iter().map(|d| d.to_dim())).collect();
             let out_shape = self.kernel.output_shape(&a.shape, &b_shape);
@@ -71,12 +71,15 @@ impl<K: GemmKernel> MetalGemm<K> {
         }
     }
 }
-impl<K: GemmKernel + 'static> MetalEvalOp for MetalGemm<K> {
-    fn metal_eval(
+impl<K: GemmKernel + 'static> EvalOp for MetalGemm<K> {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
+    fn eval_with_session(
         &self,
-        stream: &MetalStream,
         node_id: usize,
-        session: &mut SessionState,
+        session: &SessionState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let (a_opaque, b_opaque) = args_2!(inputs);
@@ -87,30 +90,17 @@ impl<K: GemmKernel + 'static> MetalEvalOp for MetalGemm<K> {
             .to_device_tensor()
             .with_context(|| format!("B tensor is not a metal tensor {:?}", b_opaque))?;
 
-        let b_shape = as_q40_tensor(b.view().tensor)
-            .map(|bqv| b.shape().iter().cloned().chain(bqv.fact.shape().iter().copied()).collect())
+        let b_shape = get_quant_fact(b, &Q4_0)
+            .map(|bqf| b.shape().iter().cloned().chain(bqf.shape().iter().copied()).collect())
             .unwrap_or(b.shape().to_vec());
 
         let c_dt = self.kernel.matmul.output_dt(a.datum_type(), b.datum_type())?;
         let c_shape = self.kernel.output_shape(a.shape(), &b_shape);
-        let c = crate::ops::make_tensor_for_node(session, node_id, c_dt, &c_shape)?;
-        self.kernel.dispatch_eval(stream, a, b, &c)?;
+        let c = tract_gpu::session_handler::make_tensor_for_node(session, node_id, c_dt, &c_shape)?;
+
+        with_borrowed_metal_stream(|stream| self.kernel.dispatch_eval(stream, a, b, &c))?;
+
         Ok(tvec![c.into_opaque_tensor().into_tvalue()])
-    }
-}
-
-impl<K: GemmKernel + 'static> EvalOp for MetalGemm<K> {
-    fn is_stateless(&self) -> bool {
-        false
-    }
-
-    #[allow(unused_variables)]
-    fn state(
-        &self,
-        session: &mut tract_core::internal::SessionState,
-        node_id: usize,
-    ) -> TractResult<Option<Box<dyn OpState>>> {
-        Ok(Some(Box::new(crate::ops::MetalOpState::new(node_id, self.clone()))))
     }
 }
 
@@ -124,11 +114,7 @@ impl<K: GemmKernel + 'static> TypedOp for MetalGemm<K> {
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
         tract_gpu::utils::get_device_facts(inputs, |input_facts| {
-            let fma = self
-                .kernel
-                .output_shape(&input_facts[0].shape, &input_facts[1].shape)
-                .iter()
-                .product::<TDim>()
+            let fma = self.resolve_output_facts(input_facts)?[0].shape.iter().product::<TDim>()
                 * input_facts[0].shape.last().unwrap();
             if input_facts[0].datum_type == f16::datum_type() {
                 Ok(tvec!((Cost::FMA(f16::datum_type()), fma)))

@@ -3,10 +3,13 @@ set -e
 
 [ -d $ROOT/.travis ] || exit 1 "\$ROOT not set correctly '$ROOT'"
 
-if [ `whoami` != "root" ]
+if [ -z "$RUSTUP_TOOLCHAIN" ]
 then
-    SUDO=sudo
+    export RUSTUP_TOOLCHAIN=1.85.0
 fi
+
+export RUSTUP_TOOLCHAIN
+PATH=$PATH:$HOME/.cargo/bin
 
 if [ -n "$CI" -a ! -e /tmp/ci-setup-done ]
 then
@@ -18,30 +21,37 @@ then
         PATH="/opt/homebrew/opt/coreutils/libexec/gnubin:$PATH"
         export PYTHON_BIN_PATH=python3
     else
-        $SUDO apt-get update
-        $SUDO apt-get install -y llvm python3 python3-numpy jshon wget curl build-essential sudo jshon
-        aws --version || $SUDO apt-get install -y awscli
-    fi
-
-    if [ -z "$RUST_VERSION" ]
-    then
-        export RUST_VERSION=1.75.0
+        if [ "$RUNNER_ENVIRONMENT" != "self-hosted" ]
+        then
+            if [ `whoami` != "root" ]
+            then
+                SUDO=sudo
+            fi
+            $SUDO apt-get update
+            $SUDO apt-get upgrade -y
+            $SUDO apt-get install -y llvm python3 python3-numpy jshon wget curl build-essential sudo jshon clang 
+            if ! which aws
+            then
+                curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o awscliv2.zip
+                $SUDO apt-get install -y unzip
+                unzip -q awscliv2.zip
+                $SUDO ./aws/install
+                aws --version
+            fi
+        fi
     fi
 
     which rustup || curl https://sh.rustup.rs -sSf | sh -s -- -y
-    PATH=$PATH:$HOME/.cargo/bin
     rustup update
-    : "${RUST_VERSION:=stable}"
-    rustup toolchain add $RUST_VERSION
-    rustup default $RUST_VERSION
-    export RUSTUP_TOOLCHAIN=$RUST_VERSION
+    rustup toolchain add $RUSTUP_TOOLCHAIN
+    [ -n "$GITHUB_PATH" ] && echo $HOME/.cargo/bin >> $GITHUB_PATH
 
     touch /tmp/ci-setup-done
 fi
 
 S3=https://s3.amazonaws.com/tract-ci-builds/tests
 
-if  [ "$GITHUB_WORKFLOW" = "Metal tests" ]
+if  [ "$GITHUB_WORKFLOW" = "Metal tests" -o "$GITHUB_WORKFLOW" = "CUDA tests" ] 
 then
     export CACHE_FILE=$ROOT/.travis/cache_file.sh
     export MODELS=$HOME/.cache/models

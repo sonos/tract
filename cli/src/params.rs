@@ -26,6 +26,7 @@ use tract_tflite::internal::TfliteProtoModel;
 use tract_nnef::ast::dump::Dumper;
 
 use crate::TractResult;
+use tract_cuda::utils::are_culibs_present;
 use tract_libcli::display_params;
 use tract_libcli::display_params::DisplayParams;
 use tract_libcli::model::Model;
@@ -45,7 +46,7 @@ enum Location {
 }
 
 impl Location {
-    fn path(&self) -> Cow<std::path::Path> {
+    fn path(&self) -> Cow<'_, std::path::Path> {
         match self {
             Location::Fs(p) => p.into(),
             Location::Http(u) => std::path::Path::new(u.path()).into(),
@@ -53,11 +54,7 @@ impl Location {
     }
 
     fn is_dir(&self) -> bool {
-        if let &Location::Fs(p) = &self {
-            p.is_dir()
-        } else {
-            false
-        }
+        if let &Location::Fs(p) = &self { p.is_dir() } else { false }
     }
 
     fn read(&self) -> TractResult<Box<dyn Read>> {
@@ -227,7 +224,7 @@ impl Parameters {
                     #[allow(unused_imports)]
                     use tract_nnef::ast::{LValue, RValue};
                     if let Some(over) = tensors_values
-                        .by_name(&name.0)
+                        .input_by_name(&name.0)
                         .or_else(|| tensors_values.by_input_ix(ix))
                         .and_then(|tv| tv.fact.as_ref())
                     {
@@ -245,7 +242,11 @@ impl Parameters {
                         } else {
                             unreachable!();
                         };
-                        assert!(inv.id.0 == "external" || inv.id.0 == "tract_core_external", "invalid id: expected 'external' or 'tract_core_external' but found {:?}", inv.id);
+                        assert!(
+                            inv.id.0 == "external" || inv.id.0 == "tract_core_external",
+                            "invalid id: expected 'external' or 'tract_core_external' but found {:?}",
+                            inv.id
+                        );
                         assert!(
                             inv.arguments.len() <= 2,
                             "expected 1 argument but found {:?} for inv.arguments={:?}",
@@ -296,13 +297,10 @@ impl Parameters {
             }
             #[cfg(feature = "onnx")]
             "onnx" => {
-                let mut onnx = tract_onnx::onnx();
-                if matches.is_present("onnx-ignore-output-shapes") {
-                    onnx = onnx.with_ignore_output_shapes(true);
-                }
-                if matches.is_present("onnx-ignore-output-types") {
-                    onnx = onnx.with_ignore_output_types(true);
-                }
+                let onnx = tract_onnx::onnx()
+                    .with_ignore_output_shapes(matches.is_present("onnx-ignore-output-shapes"))
+                    .with_ignore_output_types(matches.is_present("onnx-ignore-output-types"))
+                    .with_ignore_value_info(matches.is_present("onnx-ignore-value-info"));
                 info_usage("loaded framework (onnx)", probe);
                 let graph = onnx.proto_model_for_read(&mut *location.read()?)?;
                 info_usage("proto model loaded", probe);
@@ -419,6 +417,8 @@ impl Parameters {
                     values: tensor.value.concretize().map(|t| vec![t.into_tensor().into()]),
                     fact: Some(tensor.without_value()),
                     random_range: None,
+                    only_input: is_input,
+                    only_output: is_output,
                 })
             }
         }
@@ -438,8 +438,6 @@ impl Parameters {
                 .map(|(_, _, tensor)| tensor.into_tvalue())
                 .collect();
             result.push(TensorValues {
-                input_index: None,
-                output_index: None,
                 name: Some(name),
                 fact: if get_facts {
                     Some(vals[0].datum_type().fact(vals[0].shape()).into())
@@ -447,7 +445,7 @@ impl Parameters {
                     None
                 },
                 values: if get_values { Some(vals) } else { None },
-                random_range: None,
+                ..TensorValues::default()
             })
         }
         result
@@ -513,17 +511,19 @@ impl Parameters {
                 let input_index = if name.is_some() { None } else { Some(ix) };
                 result.add(TensorValues {
                     input_index,
-                    output_index: None,
                     name,
                     values: fact.value.concretize().map(|t| vec![t.into_tensor().into()]),
                     fact: Some(fact.without_value()),
-                    random_range: None,
+                    only_input: true,
+                    ..TensorValues::default()
                 });
             }
         }
 
         if let Some(bundle) = matches.values_of("input-bundle") {
-            warn!("Argument --input-bundle is deprecated and may be removed in a future release. Use --input-facts-from-bundle and/or --input-from-bundle instead.");
+            warn!(
+                "Argument --input-bundle is deprecated and may be removed in a future release. Use --input-facts-from-bundle and/or --input-from-bundle instead."
+            );
             for input in bundle {
                 for tv in Self::parse_npz(input, true, true)? {
                     result.add(tv);
@@ -550,19 +550,20 @@ impl Parameters {
                         fact
                     );
                     result.add(TensorValues {
-                        input_index: None,
                         output_index: Some(ix),
                         name,
                         values: fact.value.concretize().map(|t| vec![t.into_tensor().into()]),
                         fact: Some(fact.without_value()),
-                        random_range: None,
+                        only_output: true,
+                        ..TensorValues::default()
                     });
                 }
             }
 
             if let Some(bundles) = sub.values_of("assert-output-bundle") {
                 for bundle in bundles {
-                    for tv in Self::parse_npz(bundle, true, false)? {
+                    for mut tv in Self::parse_npz(bundle, true, false)? {
+                        tv.only_output = true;
                         result.add(tv);
                     }
                 }
@@ -752,7 +753,9 @@ impl Parameters {
 
         if let Some(transform) = matches.values_of("transform") {
             for spec in transform {
-                let transform = super::nnef(matches).get_transform(spec)?.with_context(|| format!("Could not find transform named {spec}"))?;
+                let transform = super::nnef(matches)
+                    .get_transform(spec)?
+                    .with_context(|| format!("Could not find transform named {spec}"))?;
                 stage!(&transform.name(), typed_model -> typed_model, |m:TypedModel| {
                     transform.transform_into(m)
                 });
@@ -772,6 +775,18 @@ impl Parameters {
                 #[cfg(not(any(target_os = "macos", target_os = "ios")))]
                 {
                     bail!("`--metal` present but it is only available on MacOS and iOS")
+                }
+            }
+        }
+
+        {
+            if matches.is_present("cuda") {
+                if are_culibs_present() {
+                    stage!("cuda", typed_model -> typed_model, |m:TypedModel| {
+                        tract_cuda::CudaTransform.transform_into(m)
+                    });
+                } else {
+                    bail!("`--cuda` present but could not find any cuda lib")
                 }
             }
         }
@@ -1004,7 +1019,7 @@ impl Parameters {
             .collect();
 
         let assertions = match matches.subcommand() {
-            Some(("dump" | "run", sm)) => Assertions::from_clap(sm, &symbols)?,
+            Some(("dump" | "run" | "compare", sm)) => Assertions::from_clap(sm, &symbols)?,
             _ => Assertions::default(),
         };
 
@@ -1019,7 +1034,7 @@ impl Parameters {
         if let Some(infer) = raw_model.downcast_mut::<InferenceModel>() {
             for (ix, node_id) in infer.inputs.iter().enumerate() {
                 let tv = tensors_values
-                    .by_name(&infer.node(node_id.node).name)
+                    .input_by_name(&infer.node(node_id.node).name)
                     .or_else(|| tensors_values.by_input_ix(ix));
                 if let Some(tv) = tv {
                     if let Some(fact) = &tv.fact {
@@ -1037,14 +1052,10 @@ impl Parameters {
             }
         }
 
-        let allow_random_input: bool = matches.is_present("allow-random-input");
-        if allow_random_input {
-            warn!("Argument --allow-random-input as global argument is deprecated and may be removed in a future release. Please move this argument to the right of the subcommand.");
-        }
-        let allow_float_casts = matches.is_present("allow-float-casts");
-        if allow_float_casts {
-            warn!("Argument --allow-float-casts as global argument is deprecated and may be removed in a future release. Please move this argument to the right of the subcommand.");
-        }
+        let (allow_random_input, allow_float_casts) = match matches.subcommand() {
+            None => (false, false),
+            Some((_, m)) => (m.is_present("allow-random-input"), m.is_present("allow-float-casts")),
+        };
 
         let keep_last = matches.is_present("keep-last");
         Self::pipeline(
@@ -1139,6 +1150,7 @@ pub struct Assertions {
     pub assert_op_count: Option<Vec<(String, usize)>>,
     pub approximation: Approximation,
     pub allow_missing_outputs: bool,
+    pub assert_llm_lev20: Option<usize>,
 }
 
 impl Assertions {
@@ -1165,19 +1177,21 @@ impl Assertions {
             match sub.value_of("approx").unwrap() {
                 "exact" => Approximation::Exact,
                 "close" => Approximation::Close,
-                "approximate" => Approximation::Approximate,
+                "approx" | "approximate" => Approximation::Approximate,
                 "very" => Approximation::VeryApproximate,
                 "super" => Approximation::SuperApproximate,
                 "ultra" => Approximation::UltraApproximate,
                 _ => panic!(),
             }
         };
+        let assert_llm_lev20 = sub.value_of("assert-llm-lev20").map(|v| v.parse()).transpose()?;
         Ok(Assertions {
             assert_outputs,
             assert_output_facts,
             assert_op_count,
             approximation,
             allow_missing_outputs,
+            assert_llm_lev20,
         })
     }
 }

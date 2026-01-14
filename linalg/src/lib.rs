@@ -3,6 +3,7 @@
 #![allow(clippy::len_zero)]
 #![allow(clippy::excessive_precision)]
 #![allow(clippy::approx_constant)]
+#![allow(clippy::manual_is_multiple_of)]
 #![allow(unexpected_cfgs)]
 #![allow(unused_macros)]
 #[macro_use]
@@ -11,7 +12,7 @@ extern crate lazy_static;
 extern crate log;
 extern crate num_traits;
 #[macro_use]
-extern crate paste;
+extern crate pastey;
 #[cfg(test)]
 extern crate proptest;
 
@@ -28,6 +29,8 @@ use mmm::{MMMInputFormat, MatMatMul, PanelExtractor};
 use tract_data::internal::TensorView;
 #[cfg(target_arch = "x86_64")]
 pub mod x86_64_fma;
+
+pub mod hwbench;
 
 #[cfg(target_arch = "aarch64")]
 pub mod arm64;

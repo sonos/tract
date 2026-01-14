@@ -1,4 +1,6 @@
-use tract_linalg::block_quant::{BlockQuantFact, BlockQuantValue};
+use std::ops::Range;
+
+use tract_linalg::block_quant::BlockQuantFact;
 
 use crate::internal::*;
 
@@ -8,7 +10,7 @@ pub struct BlockQuantIntoShape {
 }
 
 impl Op for BlockQuantIntoShape {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "BlockQuantIntoShape".into()
     }
     op_as_typed_op!();
@@ -30,11 +32,12 @@ impl EvalOp for BlockQuantIntoShape {
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let mut input = args_1!(inputs).into_tensor();
         for o in input.as_slice_mut::<Opaque>()? {
-            let old =
-                o.0.downcast_ref::<BlockQuantValue>().context("Expects only BlockQuantValues")?;
-            let new = BlockQuantValue {
+            let old = o.0.downcast_ref::<BlobWithFact>().context("Expects only BlobWithFact")?;
+            let bqf =
+                old.fact.downcast_ref::<BlockQuantFact>().context("Expects only BlockQuantFact")?;
+            let new = BlobWithFact {
                 value: old.value.clone(),
-                fact: BlockQuantFact::new(old.fact.format.clone(), self.shape.clone()),
+                fact: Box::new(BlockQuantFact::new(bqf.format.clone(), self.shape.clone())),
             };
             *o = Opaque(Arc::new(new))
         }
@@ -63,11 +66,23 @@ pub struct SplitGroupBlockQuant {
 }
 
 impl Op for SplitGroupBlockQuant {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "SplitGroupBlockQuant".into()
     }
 
     op_as_typed_op!();
+}
+
+fn split_rows(bqf: &BlockQuantFact, blob: &Blob, range: Range<usize>) -> TractResult<BlobWithFact> {
+    let row_bytes = bqf.k() / bqf.format.block_len() * bqf.format.block_bytes();
+    let mut value = unsafe { Blob::new_for_size_and_align(range.len() * row_bytes, vector_size()) };
+    value.copy_from_slice(&blob[range.start * row_bytes..][..range.len() * row_bytes]);
+    let mut shape: TVec<usize> = bqf.shape().into();
+    shape[0] = range.len();
+    Ok(BlobWithFact {
+        fact: Box::new(BlockQuantFact::new(bqf.format.clone(), shape)),
+        value: Arc::new(value),
+    })
 }
 
 impl EvalOp for SplitGroupBlockQuant {
@@ -85,14 +100,19 @@ impl EvalOp for SplitGroupBlockQuant {
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
-        let bqv = input
+        let bwf = input
             .to_scalar::<Opaque>()?
-            .downcast_ref::<BlockQuantValue>()
-            .context("Expect BlockQuantValue")?;
-        let rows_per_group = bqv.fact.m() / self.group;
+            .downcast_ref::<BlobWithFact>()
+            .context("Expect BlobWithFact")?;
+        let bqf = bwf.fact.downcast_ref::<BlockQuantFact>().context("Expect BlockQuantFact")?;
+        let rows_per_group = bqf.m() / self.group;
         let splits = (0..self.group)
             .map(|g| {
-                Ok(Opaque(Arc::new(bqv.split_rows(g * rows_per_group..(g + 1) * rows_per_group)?)))
+                Ok(Opaque(Arc::new(split_rows(
+                    bqf,
+                    &bwf.value,
+                    g * rows_per_group..(g + 1) * rows_per_group,
+                )?)))
             })
             .collect::<TractResult<Vec<_>>>()?;
         let output = tensor1(&splits);

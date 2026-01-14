@@ -15,7 +15,7 @@ pub trait Expansion:
     + tract_core::downcast_rs::Downcast
     + Any
 {
-    fn name(&self) -> Cow<str>;
+    fn name(&self) -> StaticName;
     fn validation(&self) -> Validation {
         Validation::Accurate
     }
@@ -62,7 +62,7 @@ pub trait Expansion:
 tract_core::dyn_clone::clone_trait_object!(Expansion);
 
 impl Op for Box<dyn Expansion> {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         self.as_ref().name()
     }
 
@@ -125,7 +125,12 @@ impl InferenceRulesOp for Box<dyn Expansion> {
             let expected = &node.outputs[ix].fact;
             let got = target.outlet_fact(*o)?;
             if expected.clone().unify_with(&InferenceFact::from(got)).is_err() {
-                bail!("Output mismatch after rewiring expansion for output #{}: expected {:?} got {:?}", ix, expected, got);
+                bail!(
+                    "Output mismatch after rewiring expansion for output #{}: expected {:?} got {:?}",
+                    ix,
+                    expected,
+                    got
+                );
             }
         }
         Ok(outputs)
@@ -178,7 +183,7 @@ impl std::fmt::Debug for InferenceWrapper {
 }
 
 impl Expansion for InferenceWrapper {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         self.typed_op.name()
     }
 

@@ -19,28 +19,19 @@ struct Shape {
     end: Option<i64>,
 }
 
-
-
 impl Shape {
     fn resolve(&self, rank: i64) -> Range<usize> {
         let start =
             if self.start >= 0 { self.start } else { (rank + self.start).clamp(0, rank) } as usize;
-        let end = if let Some(end) = self.end {
-            if end >= 0 {
-                end
-            } else {
-                end + rank
-            }
-        } else {
-            rank
-        }
-        .clamp(0, rank) as usize;
+        let end =
+            if let Some(end) = self.end { if end >= 0 { end } else { end + rank } } else { rank }
+                .clamp(0, rank) as usize;
         start..end
     }
 }
 
 impl Expansion for Shape {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Shape".into()
     }
 

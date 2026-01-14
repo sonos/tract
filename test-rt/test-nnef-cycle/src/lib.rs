@@ -21,7 +21,7 @@ mod nnef_predump {
     }
 
     impl Runtime for NnefPredumpRuntime {
-        fn name(&self) -> Cow<str> {
+        fn name(&self) -> StaticName {
             "nnef_predump".into()
         }
 
@@ -56,18 +56,21 @@ mod nnef_cycle {
     }
 
     impl Runtime for NnefCyclingRuntime {
-        fn name(&self) -> Cow<str> {
+        fn name(&self) -> StaticName {
             "nnef_cycle".into()
         }
 
         fn prepare(&self, model: TypedModel) -> TractResult<Box<dyn Runnable>> {
             info!("Store to NNEF");
             let mut buffer = vec![];
-            eprintln!("{model}");
+            // eprintln!("BEFORE NNEF:\n{model}");
+            // dbg!(&model);
             self.0.write_to_tar(&model, &mut buffer)?;
+            // self.0.write_to_dir(&model, "foo")?;
             info!("Reload from NNEF");
             let reloaded = self.0.model_for_read(&mut &*buffer)?;
-            // eprintln!("{}", reloaded.clone().into_decluttered().unwrap());
+            // eprintln!("RELOADED:\n{}", reloaded.clone().into_decluttered().unwrap());
+            // dbg!(reloaded.clone().into_decluttered());
             Ok(Box::new(Arc::new(reloaded.into_optimized()?.into_runnable()?)))
         }
     }

@@ -1,6 +1,4 @@
-use std::borrow::Cow;
-
-use tract_nnef::prelude::{Rewriter, TractResult, TypedModel};
+use tract_nnef::internal::*;
 use tract_nnef::tract_core::transform::ModelTransform;
 
 use crate::ops;
@@ -9,15 +7,12 @@ use crate::ops;
 pub struct RmsNormTransform;
 
 impl ModelTransform for RmsNormTransform {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "rms-norm-transform".into()
     }
 
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
-        Rewriter::default()
-            .with_rule_for("detect-rms-norm", ops::as_rms_norm_rule)
-            .with_rule_for("remove_rms_norm_cast", ops::remove_rms_norm_cast)
-            .rewrite(&(), model)
+        Rewriter::default().with_rule_for("detect-rms-norm", ops::rms_norm_rule).rewrite(&(), model)
     }
 }
 
@@ -25,14 +20,14 @@ impl ModelTransform for RmsNormTransform {
 pub struct ApplyRopeTransform;
 
 impl ModelTransform for ApplyRopeTransform {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "apply-rope-transform".into()
     }
 
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
         Rewriter::default()
-            .with_rule_for("detect-rotate-half", ops::as_rotate_half_rule)
-            .with_rule_for("detect-apply-rope", ops::as_apply_rope_rule)
+            .with_rule_for("detect-rotate-half", ops::rotate_half_rule)
+            .with_rule_for("detect-apply-rope", ops::apply_rope_rule)
             .rewrite(&(), model)
     }
 }
@@ -41,12 +36,12 @@ impl ModelTransform for ApplyRopeTransform {
 pub struct SiluTransform;
 
 impl ModelTransform for SiluTransform {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "silu-transform".into()
     }
 
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
-        Rewriter::default().with_rule_for("detect-silu", ops::as_silu_rule).rewrite(&(), model)
+        Rewriter::default().with_rule_for("detect-silu", ops::silu_rule).rewrite(&(), model)
     }
 }
 
@@ -54,13 +49,13 @@ impl ModelTransform for SiluTransform {
 pub struct ScaledMaskedSoftmaxTransform;
 
 impl ModelTransform for ScaledMaskedSoftmaxTransform {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "scaled-masked-softmax-transform".into()
     }
 
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
         Rewriter::default()
-            .with_rule_for("detect-scaled-masked-softmax", ops::as_scaled_masked_softmax_rule)
+            .with_rule_for("detect-scaled-masked-softmax", ops::scaled_masked_softmax_rule)
             .rewrite(&(), model)
     }
 }
@@ -69,13 +64,46 @@ impl ModelTransform for ScaledMaskedSoftmaxTransform {
 pub struct GeluTransform;
 
 impl ModelTransform for GeluTransform {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "gelu-fast-approx-transform".into()
     }
 
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
         Rewriter::default()
-            .with_rule_for("detect-gelu-approx", ops::as_gelu_approx_rule)
+            .with_rule_for("detect-gelu-approx", ops::gelu_approx_rule)
+            .rewrite(&(), model)
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct KeyValueCacheTransform;
+
+impl ModelTransform for KeyValueCacheTransform {
+    fn name(&self) -> StaticName {
+        "dynamic-kv-cache-transform".into()
+    }
+
+    fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
+        let inputs = model.inputs.clone();
+
+        for input in inputs {
+            ops::replace_kv_cache(model, input.node)?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct SdpaFuseKvCacheBroadcastTransform;
+
+impl ModelTransform for SdpaFuseKvCacheBroadcastTransform {
+    fn name(&self) -> StaticName {
+        "sdpa-fuse-kv-cache-broadcast-transform".into()
+    }
+
+    fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
+        Rewriter::default()
+            .with_rule_for("detect-sdpa-kv-cache-broadcast", ops::fuse_kv_cache_broadcast_rule)
             .rewrite(&(), model)
     }
 }
@@ -85,19 +113,21 @@ impl ModelTransform for GeluTransform {
 pub struct TransformersTransform;
 
 impl ModelTransform for TransformersTransform {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "transformers-transform".into()
     }
 
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
+        KeyValueCacheTransform.transform(model)?;
+
         Rewriter::default()
-            .with_rule_for("detect-rms-norm", ops::as_rms_norm_rule)
-            .with_rule_for("remove_rms_norm_cast", ops::remove_rms_norm_cast)
-            .with_rule_for("detect-rotate-half", ops::as_rotate_half_rule)
-            .with_rule_for("detect-apply-rope", ops::as_apply_rope_rule)
-            .with_rule_for("detect-scaled-masked-softmax", ops::as_scaled_masked_softmax_rule)
-            .with_rule_for("detect-silu", ops::as_silu_rule)
-            .with_rule_for("detect-gelu-approx", ops::as_gelu_approx_rule)
+            .with_rule_for("detect-rms-norm", ops::rms_norm_rule)
+            .with_rule_for("detect-rotate-half", ops::rotate_half_rule)
+            .with_rule_for("detect-apply-rope", ops::apply_rope_rule)
+            .with_rule_for("detect-scaled-masked-softmax", ops::scaled_masked_softmax_rule)
+            .with_rule_for("detect-silu", ops::silu_rule)
+            .with_rule_for("detect-gelu-approx", ops::gelu_approx_rule)
+            .with_rule_for("detect-sdpa-kv-cache-broadcast", ops::fuse_kv_cache_broadcast_rule)
             .rewrite(&(), model)
     }
 }

@@ -32,20 +32,17 @@ pub fn check_outputs(got: &[Vec<TValue>], params: &Parameters) -> TractResult<()
             format!("Output {lookup_names:?}: found reference info without value: {exp:?}")
         })?[0]
             .clone();
-        let got: TValue = if got[ix].len() > 1 {
-            let props = params.tract_model.properties();
-            let axis = props
-                .get("pulse.output_axes")
-                .context("multiple turn without pulse.output_axes property")?
-                .as_slice::<i64>()?[ix] as usize;
-            let delay = props
-                .get("pulse.delay")
-                .context("multiple turn without pulse.delay properties")?
-                .as_slice::<i64>()?[ix] as usize;
+
+        let props = params.tract_model.properties();
+
+        let got: TValue = if got[ix].len() > 1 && props.get("pulse.output_axes").is_some() {
+            let axis = props.get("pulse.output_axes").unwrap().as_slice::<i64>()?[ix] as usize;
+            let delay = props.get("pulse.delay").unwrap().as_slice::<i64>()?[ix] as usize;
             let stacked = Tensor::stack_tensors(axis, &got[ix])?;
             stacked.slice(axis, delay, delay + exp.shape()[axis])?.into()
         } else {
-            got[ix][0].clone()
+            // This handles LLM prompt-chunking output
+            got[ix].last().unwrap().clone()
         };
         if (params.allow_float_casts
             && exp.datum_type() == f32::datum_type()
@@ -54,10 +51,20 @@ pub fn check_outputs(got: &[Vec<TValue>], params: &Parameters) -> TractResult<()
         {
             exp = exp.cast_to_dt(got.datum_type())?.into_owned().into_tvalue();
         }
-        if let Err(e) = exp
-            .close_enough(&got, params.assertions.approximation)
-            .context(format!("Checking output {ix}"))
-        {
+        let result: TractResult<()> = if let Some(limit) = params.assertions.assert_llm_lev20 {
+            let lev = crate::llm::top_logits_levenshtein(&exp, &got, 20)?;
+            info!("Levenshtein distance on first 20 logits: lev20={lev}");
+            if lev <= limit {
+                Ok(())
+            } else {
+                TractResult::Err(anyhow!(
+                    "Levenshtein criteria on first 20 not met found lev20={lev}, expected {limit}"
+                ))
+            }
+        } else {
+            exp.close_enough(&got, params.assertions.approximation)
+        };
+        if let Err(e) = result.context(format!("Checking output {ix}")) {
             if error.is_some() {
                 error!("{e:?}");
             } else {
@@ -68,11 +75,7 @@ pub fn check_outputs(got: &[Vec<TValue>], params: &Parameters) -> TractResult<()
         }
     }
 
-    if let Some(e) = error {
-        Err(e)
-    } else {
-        Ok(())
-    }
+    if let Some(e) = error { Err(e) } else { Ok(()) }
 }
 
 /// Compares the outputs of a node in tract and tensorflow.
@@ -93,18 +96,17 @@ pub fn check_inferred(got: &[InferenceFact], expected: &[InferenceFact]) -> Trac
     Ok(())
 }
 
+pub fn clarify_tvalue(t: &TValue) -> TractResult<TValue> {
+    if t.datum_type().is_opaque() && t.volume() == 1 {
+        if let Some(clarified) = t.to_scalar::<Opaque>()?.clarify_to_tensor()? {
+            return Ok(clarified.into_tvalue());
+        }
+    }
+    Ok((*t).clone())
+}
+
 pub fn clarify_tvalues(values: &TVec<TValue>) -> TractResult<TVec<TValue>> {
-    values
-        .iter()
-        .map(|t| {
-            if t.datum_type().is_opaque() && t.volume() == 1 {
-                if let Some(clarified) = t.to_scalar::<Opaque>()?.clarify_to_tensor()? {
-                    return Ok(clarified.into_tvalue());
-                }
-            }
-            Ok(t.clone())
-        })
-        .collect()
+    values.iter().map(clarify_tvalue).collect()
 }
 
 pub fn clarify_typed_fact<'a>(fact: impl Into<Cow<'a, TypedFact>>) -> Cow<'a, TypedFact> {

@@ -180,3 +180,19 @@ wasmtime --dir . ../../target/wasm32-wasi/debug/example-onnx-mobilenet-v2.wasm
 ```
 
 You should see the same result as the native one.
+
+# Dynamic shape example
+
+A [second example](src/bin/dyn-shape.rs) shows how to use dynamic shapes and symbols. Right after loading the model, it creates a symbol in the model scope, and use it to override
+the input shape before analysing and optimizing the model as in the regular example.
+
+At runtime, our example simulates batches of different number (N=1, 3, then 5) of images by duplicating the grace_hopper input image N times. tract lazily discovers the batch size
+at each turn without requiring model re-optimization.
+
+The example can be run by
+
+```sh
+cargo run --bin dyn-shape
+```
+
+It should display three batches of different size (1, 3 then 5), with the same results of the normal test (as we are just duplicating the same input image).

@@ -3,7 +3,7 @@ name = "keras-tract-tf2"
 version = "0.20.7-pre"
 authors = ["Matthew Alhonte <mattalhonte@gmail.com>"]
 license = "MIT OR Apache-2.0"
-edition = "2021"
+edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

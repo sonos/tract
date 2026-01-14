@@ -33,7 +33,7 @@ struct NonMaxSuppression {
 }
 
 impl Expansion for NonMaxSuppression {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "NonMaxSuppression".into()
     }
 

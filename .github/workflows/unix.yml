@@ -35,7 +35,7 @@ jobs:
     strategy:
       matrix:
         os: ${{fromJson(needs.what-to-run.outputs.os)}}
-        rust: [ 1.75.0 ]
+        rust: [ 1.85.0 ]
       fail-fast: false
 
     runs-on: ${{matrix.os}}
@@ -43,7 +43,7 @@ jobs:
       id-token: write
       contents: read
     env:
-      RUST_VERSION: ${{matrix.rust}}
+      RUSTUP_TOOLCHAIN: ${{matrix.rust}}
       RUST_BACKTRACE: full
 
     steps:

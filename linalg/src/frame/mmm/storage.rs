@@ -25,9 +25,9 @@ unsafe impl Sync for OutputStore {}
 impl OutputStoreSpec {
     #[inline]
     pub unsafe fn wrap(&self, tensor: &TensorView) -> OutputStore {
-        let (mr, nr, row_byte_stride, col_byte_stride) = self.compute_strides(tensor);
+        let (mr, nr, row_byte_stride, col_byte_stride) = unsafe { self.compute_strides(tensor) };
         OutputStore {
-            ptr: tensor.as_ptr_unchecked::<u8>() as _,
+            ptr: unsafe { tensor.as_ptr_unchecked::<u8>() } as _,
             row_byte_stride,
             col_byte_stride,
             panel_row_byte_stride: row_byte_stride * mr as isize,
@@ -45,9 +45,9 @@ impl OutputStoreSpec {
             OutputStoreSpec::View { m_axis, n_axis, mr, nr, .. } => {
                 let tensor_strides = tensor.strides();
                 let row_item_stride =
-                    m_axis.map(|ax| *tensor_strides.get_unchecked(ax)).unwrap_or(0);
+                    m_axis.map(|ax| *unsafe { tensor_strides.get_unchecked(ax) }).unwrap_or(0);
                 let col_item_stride =
-                    n_axis.map(|ax| *tensor_strides.get_unchecked(ax)).unwrap_or(0);
+                    n_axis.map(|ax| *unsafe { tensor_strides.get_unchecked(ax) }).unwrap_or(0);
                 let row_byte_stride = row_item_stride * size_of;
                 let col_byte_stride = col_item_stride * size_of;
                 (*mr, *nr, row_byte_stride, col_byte_stride)
@@ -62,15 +62,17 @@ impl OutputStoreSpec {
 impl OutputStore {
     #[inline]
     pub(super) unsafe fn tile_c(&self, down: usize, right: usize) -> OutputStoreKer {
-        let (down, right) = (down as isize, right as isize);
-        OutputStoreKer {
-            ptr: self
-                .ptr
-                .offset(self.panel_row_byte_stride * down + self.panel_col_byte_stride * right)
-                as *mut _,
-            row_byte_stride: self.row_byte_stride,
-            col_byte_stride: self.col_byte_stride,
-            item_size: self.item_size,
+        unsafe {
+            let (down, right) = (down as isize, right as isize);
+            OutputStoreKer {
+                ptr: self
+                    .ptr
+                    .offset(self.panel_row_byte_stride * down + self.panel_col_byte_stride * right)
+                    as *mut _,
+                row_byte_stride: self.row_byte_stride,
+                col_byte_stride: self.col_byte_stride,
+                item_size: self.item_size,
+            }
         }
     }
 
@@ -88,14 +90,16 @@ impl OutputStore {
         width: usize,
         tile: &OutputStoreKer,
     ) {
-        if self.item_size() == 1 {
-            self.set_from_tile_t::<i8>(down, right, height, width, tile)
-        } else if self.item_size() == 2 {
-            self.set_from_tile_t::<i16>(down, right, height, width, tile)
-        } else if self.item_size() == 4 {
-            self.set_from_tile_t::<i32>(down, right, height, width, tile)
-        } else {
-            self.set_from_tile_t::<i64>(down, right, height, width, tile)
+        unsafe {
+            if self.item_size() == 1 {
+                self.set_from_tile_t::<i8>(down, right, height, width, tile)
+            } else if self.item_size() == 2 {
+                self.set_from_tile_t::<i16>(down, right, height, width, tile)
+            } else if self.item_size() == 4 {
+                self.set_from_tile_t::<i32>(down, right, height, width, tile)
+            } else {
+                self.set_from_tile_t::<i64>(down, right, height, width, tile)
+            }
         }
     }
 
@@ -108,16 +112,18 @@ impl OutputStore {
         width: usize,
         tile: &OutputStoreKer,
     ) {
-        let tile = tile.ptr as *mut T;
-        let dst = self.ptr.add(
-            self.panel_row_byte_stride as usize * down
-                + self.panel_col_byte_stride as usize * right,
-        );
-        for y in 0..height as isize {
-            for x in 0..width as isize {
-                let value = tile.offset(y + x * self.mr as isize);
-                let dst = dst.offset(y * self.row_byte_stride + x * self.col_byte_stride);
-                *(dst as *mut T) = *value;
+        unsafe {
+            let tile = tile.ptr as *mut T;
+            let dst = self.ptr.add(
+                self.panel_row_byte_stride as usize * down
+                    + self.panel_col_byte_stride as usize * right,
+            );
+            for y in 0..height as isize {
+                for x in 0..width as isize {
+                    let value = tile.offset(y + x * self.mr as isize);
+                    let dst = dst.offset(y * self.row_byte_stride + x * self.col_byte_stride);
+                    *(dst as *mut T) = *value;
+                }
             }
         }
     }

@@ -4,11 +4,12 @@ use std::fmt::{Debug, Display};
 use std::marker::PhantomData;
 
 use multithread::Executor;
+use tract_data::itertools::Itertools;
 
 use crate::internal::*;
 use crate::model::{Fact, Graph, OutletId};
-use crate::ops::konst::Const;
 use crate::ops::FrozenOpState;
+use crate::ops::konst::Const;
 
 use self::order::{build_flush_list, eval_order_for_nodes, eval_order_opt_ram_for_nodes};
 
@@ -220,6 +221,7 @@ where
     pub fn new_from_inputs(plan: P, inputs: TVec<TValue>) -> TractResult<SimpleState<F, O, M, P>> {
         let mut state = SimpleState::new(plan)?;
         state.set_inputs(inputs)?;
+        state.resolve_symbols_with_states()?;
 
         Ok(state)
     }
@@ -251,6 +253,37 @@ where
         Ok(())
     }
 
+    pub fn init_states(&mut self, state_init_tensors: &mut Vec<TValue>) -> TractResult<()> {
+        let states_to_init = self
+            .states
+            .iter_mut()
+            .filter_map(Option::as_mut)
+            .filter(|s| s.init_tensor_fact().is_some())
+            .collect_vec();
+        ensure!(
+            states_to_init.len() == state_init_tensors.len(),
+            "There are {} op to init but got {} tensors",
+            states_to_init.len(),
+            state_init_tensors.len()
+        );
+        for state in states_to_init {
+            state.load_from(&mut self.session_state, state_init_tensors)?;
+        }
+        Ok(())
+    }
+
+    fn resolve_symbols_with_states(&mut self) -> TractResult<()> {
+        for state in self
+            .states
+            .iter_mut()
+            .filter_map(Option::as_mut)
+            .filter(|s| s.init_tensor_fact().is_some())
+        {
+            state.resolve_symbols(&mut self.session_state)?;
+        }
+        Ok(())
+    }
+
     pub fn run(&mut self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         self.run_plan_with_eval(inputs, self::eval)
     }
@@ -274,6 +307,7 @@ where
         E: Into<anyhow::Error> + Send + Sync + 'static,
     {
         self.set_inputs(inputs)?;
+        self.resolve_symbols_with_states()?;
         self.exec_plan_with_eval(eval)?;
         let outputs = self.outputs()?;
         self.reset_turn()?;
@@ -422,6 +456,7 @@ where
             self.model().inputs.len(),
             inputs.len()
         );
+
         for (ix, t) in inputs.into_iter().enumerate() {
             self.set_input(ix, t)?
         }
@@ -432,7 +467,9 @@ where
         let expected = expression.eval(&state.resolved_symbols);
         if let Ok(x) = expected.to_i64() {
             if x != provided {
-                bail!("Clashing resolution for expression. {expression}={x} != {provided}. ({state:?})")
+                bail!(
+                    "Clashing resolution for expression. {expression}={x} != {provided}. ({state:?})"
+                )
             }
         }
         if expected.symbols().len() == 1 {
@@ -442,7 +479,10 @@ where
                 state.resolved_symbols.set(&sym, v.to_i64().unwrap());
             }
             if state.scenario.is_none() {
-                state.scenario = sym.scope().unwrap().guess_scenario(&state.resolved_symbols)?;
+                let scope = sym
+                    .scope()
+                    .with_context(|| format!("Symbol {sym:?} points to an invalid (dead ?) SymbolScope. Make sure to create symbols using the model-managed SymbolScope."))?;
+                state.scenario = scope.guess_scenario(&state.resolved_symbols)?;
             }
         }
         Ok(())
@@ -462,9 +502,9 @@ where
         let fact = self.plan.borrow().model().outlet_fact(outlet)?;
         ensure!(
             fact.matches(&t, Some(&self.session_state.resolved_symbols))
-            .with_context(|| format!("Setting input {input}"))?,
+                .with_context(|| format!("Setting input {input}"))?,
             "Input at index {input} has incorrect dtype or shape (got {t:?}, expected to match fact {fact:?})",
-            );
+        );
         self.session_state.inputs.insert(outlet.node, t);
         Ok(())
     }
@@ -489,7 +529,7 @@ where
     }
 
     pub fn outputs(&mut self) -> TractResult<TVec<TValue>> {
-        let SimpleState { ref plan, ref mut values, .. } = self;
+        let &mut SimpleState { ref plan, ref mut values, .. } = self;
         let mut v = tvec![];
         for o in plan.borrow().outputs.iter() {
             let vs = values[o.node].as_mut().ok_or_else(|| {
@@ -513,7 +553,7 @@ where
     }
 
     pub fn prepare_inputs(&self, node: usize) -> TractResult<TVec<TValue>> {
-        let SimpleState { ref plan, ref values, .. } = self;
+        let SimpleState { plan, values, .. } = self;
         let plan = plan.borrow();
         let nodes = plan.model().nodes();
         let node = &nodes[node];
@@ -538,8 +578,13 @@ where
         node: usize,
         inputs: TVec<TValue>,
     ) -> TractResult<()> {
-        let SimpleState { ref plan, ref mut session_state, ref mut values, ref mut states, .. } =
-            self;
+        let &mut SimpleState {
+            ref plan,
+            ref mut session_state,
+            ref mut values,
+            ref mut states,
+            ..
+        } = self;
         let plan = plan.borrow();
         let nodes = plan.model().nodes();
         let node = &nodes[node];
@@ -565,7 +610,7 @@ where
                     inputs.push(self.values[i.node].as_ref().unwrap()[i.slot].clone())
                 }
             }
-            let Self { ref mut states, ref mut session_state, ref plan, .. } = self;
+            let &mut Self { ref mut states, ref mut session_state, ref plan, .. } = self;
             eval(
                 session_state,
                 states[node].as_deref_mut(),
@@ -640,9 +685,10 @@ where
     O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
     // eprint!("{node} {input:?}");
+    #[allow(clippy::let_and_return)]
     let r = match state {
         Some(ref mut state) => state.eval(session_state, node.op(), input),
-        None => node.op().eval_with_session(session_state, input),
+        None => node.op().eval_with_session(node.id, session_state, input),
     }
     .with_context(|| format!("Evaluating {node}"));
     // eprintln!(" ==> {}", r.as_ref().unwrap()[0].dump(true)?);

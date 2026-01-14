@@ -85,7 +85,7 @@ impl Pad {
 }
 
 impl Op for Pad {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Pad".into()
     }
 

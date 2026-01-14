@@ -30,7 +30,7 @@ impl RotateHalf {
     }
 
     pub fn kernel_name(&self, dt: DatumType) -> TractResult<String> {
-        ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for metal rotate half  op", dt);
+        ensure!(Self::is_supported_dt(dt), "Unsupported dt {:?} for metal rotate halfop", dt);
         let tname = DeviceTensor::tname(dt)?;
         Ok(format!("array_ops::rotate_half_nd2_{tname}"))
     }

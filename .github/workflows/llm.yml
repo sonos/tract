@@ -19,7 +19,7 @@ jobs:
         os: [ macos, ubuntu ]
     steps:
       - uses: actions/checkout@v4
-      - run: cargo build -p tract --release --no-default-features
+      - run: cargo build -p tract --release --no-default-features --features transformers
       - uses: actions/upload-artifact@v4
         with:
           name: tract-cli-${{matrix.os}}
@@ -32,8 +32,8 @@ jobs:
     strategy:
       matrix:
         os: [ macos, ubuntu ]
-        model: [ OpenELM-270M, OpenELM-1_1B, TinyLlama_v1.1, llama-3.2 ]
-        q: [ f16f16, f32f32, q40f16, q40f32, q40ef16, q40ef32 ]
+        model: [ openelm-270M, llama-3.2-1B-instruct, llama-3.2-3B-instruct, llama-3.1-8B-instruct, qwen2.5-7B-instruct, qwen3-1.7B, qwen3-8B ]
+        q: [ f16f16, f32f32, q40ef16]
       fail-fast: false
     permissions:
       id-token: write
@@ -62,3 +62,22 @@ jobs:
         chmod +x tract-cli-${{matrix.os}}/tract
         export TRACT_RUN=$GITHUB_WORKSPACE/tract-cli-${{matrix.os}}/tract
         .travis/test-llm.sh ${{matrix.model}} ${{matrix.q}}
+
+  trigger-minion:
+    name: trigger bench minion
+    runs-on: ${{ matrix.os }}-latest
+    needs: [ cli ] 
+    strategy:
+      matrix:
+        os: [ macos, ubuntu ]
+    steps:
+    - name: Run minion if found
+      run: |
+        if [ -d $HOME/tract-minion ]
+        then
+          echo "Running minion"
+          cd $HOME/tract-minion
+          ./tract-ci-minion --once
+        else
+          echo "Not running minion"
+        fi

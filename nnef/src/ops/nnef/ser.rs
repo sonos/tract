@@ -6,15 +6,13 @@ use tract_core::num_traits::Zero;
 use tract_core::ops;
 use tract_core::ops::cast::cast;
 use tract_core::ops::cnn::Conv;
-use tract_core::ops::cnn::Deconv;
-use tract_core::ops::cnn::KernelFormat;
 use tract_core::ops::cnn::PoolSpec;
 use tract_core::ops::einsum::block_quant_aware_input_shape;
 use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
 use tract_core::ops::identity::PinConst;
 use tract_core::ops::konst::Const;
 use tract_core::ops::nn::DataFormat;
-use tract_core::ops::nn::SoftmaxExp;
+use tract_core::ops::nn::SoftmaxKind;
 use tract_core::tract_data::itertools::Itertools;
 use tract_linalg::block_quant::BlockQuantFact;
 
@@ -115,7 +113,7 @@ pub fn slice(
         &[wire],
         &[
             ("axes", ints(&[op.axis])),
-            ("begin", tdims(&[op.start.clone()])),
+            ("begin", tdims(std::slice::from_ref(&op.start))),
             ("end", tdims(&[end])),
         ],
     )))
@@ -240,7 +238,7 @@ pub fn make_conv_named_args<'a>(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn conv_or_deconv(
+pub fn conv_like(
     ast: &mut IntoAst,
     node: &TypedNode,
     pool_spec: &PoolSpec,
@@ -286,7 +284,7 @@ pub fn conv(
     node: &TypedNode,
     op: &ops::cnn::conv::Conv,
 ) -> TractResult<Option<Arc<RValue>>> {
-    conv_or_deconv(ast, node, &op.pool_spec, op.group, false, None)
+    conv_like(ast, node, &op.pool_spec, op.group, false, None)
 }
 
 pub fn deconv(
@@ -294,7 +292,7 @@ pub fn deconv(
     node: &TypedNode,
     op: &ops::cnn::deconv::Deconv,
 ) -> TractResult<Option<Arc<RValue>>> {
-    conv_or_deconv(ast, node, &op.pool_spec, op.group, true, Some(&op.adjustments))
+    conv_like(ast, node, &op.pool_spec, op.group, true, Some(&op.adjustments))
 }
 
 fn cnn_pool_fragment(
@@ -490,7 +488,7 @@ pub fn softmax(
     node: &TypedNode,
     op: &ops::nn::Softmax,
 ) -> TractResult<Option<Arc<RValue>>> {
-    if op.exp != SoftmaxExp::default() {
+    if op.kind != SoftmaxKind::default() {
         return Ok(None);
     }
     let litteral_axes: Vec<_> = op.axes.iter().map(|&it| (it as i64).into()).collect();
@@ -594,66 +592,4 @@ pub fn rewrite_consistent_quantized_conv(
         }
     }
     Ok(None)
-}
-
-pub fn rewrite_kernel_conv_in_oihw(
-    _ctx: &(),
-    model: &TypedModel,
-    node: &TypedNode,
-    name: &str,
-    conv: &Conv,
-) -> TractResult<Option<TypedModelPatch>> {
-    rewrite_kernel_in_oihw(
-        model,
-        node,
-        name,
-        conv.kernel_fmt,
-        conv.group,
-        Box::new(Conv { kernel_fmt: KernelFormat::OIHW, ..conv.clone() }),
-    )
-}
-
-pub fn rewrite_kernel_deconv_in_oihw(
-    _ctx: &(),
-    model: &TypedModel,
-    node: &TypedNode,
-    name: &str,
-    conv: &Deconv,
-) -> TractResult<Option<TypedModelPatch>> {
-    rewrite_kernel_in_oihw(
-        model,
-        node,
-        name,
-        conv.kernel_format,
-        conv.group,
-        Box::new(Deconv { kernel_format: KernelFormat::OIHW, ..conv.clone() }),
-    )
-}
-
-fn rewrite_kernel_in_oihw(
-    model: &TypedModel,
-    node: &TypedNode,
-    name: &str,
-    fmt: KernelFormat,
-    group: usize,
-    new: Box<dyn TypedOp>,
-) -> TractResult<Option<TypedModelPatch>> {
-    if fmt == KernelFormat::OIHW {
-        return Ok(None);
-    }
-    let mut patch = TypedModelPatch::default();
-    let mut wire = patch.taps(model, &node.inputs)?;
-    let prefix = format!("{name}.kernel_reorg");
-    for (ix, op) in fmt
-        .kernel_as_group_o_i_h_w_ops(&patch.outlet_fact(wire[1])?.shape, group)
-        .into_iter()
-        .enumerate()
-    {
-        wire[1] = patch.wire_node(format!("{prefix}.{ix}"), op, &[wire[1]])?[0];
-    }
-    wire[1] =
-        AxisOp::wire_collapse_axis(&mut patch, format!("{name}.kernel_reorg_go"), wire[1], 0)?[0];
-    wire = patch.wire_node(name, new, &wire)?;
-    patch.shunt_outside(model, node.id.into(), wire[0])?;
-    Ok(Some(patch))
 }

@@ -1,6 +1,4 @@
-use crate::kernels::matmul::{GgmlGemm, MfaGemm, MlxGemm};
 use crate::ops::{MetalAxisOp, MetalFusedAxisOp};
-use crate::rewrite_rules::{next_node, previous_node, previous_nodes};
 use tract_core::internal::*;
 use tract_core::tract_data::itertools::Itertools;
 use tract_gpu::fact::DeviceTypedFactExt;
@@ -11,12 +9,13 @@ fn is_supported_axis_op(op: &MetalAxisOp) -> bool {
 }
 
 fn can_fuse_move(model: &TypedModel, axis_node: &TypedNode) -> bool {
-    next_node(model, axis_node).is_some_and(|node| {
+    model.single_succ(axis_node.id).unwrap().is_some_and(|node| {
         node.op_is::<crate::ops::MetalConcat>()
             || node.op_is::<crate::ops::MetalApplyRope>()
             || node.op_is::<crate::ops::MetalScaledMaskedSoftmax>()
             || node.op_is::<crate::ops::MetalSlice>()
             || node.op_is::<crate::ops::MetalMultiBroadcastTo>()
+            || node.op_is::<crate::ops::MetalDynKVCache>()
     })
 }
 
@@ -33,7 +32,7 @@ pub fn collect_chain_of_axis_ops<'a>(
         acc_axis_ops.push(axis_op.clone());
         head_of_chain = cursor;
 
-        if let Some(prev) = previous_node(model, cursor) {
+        if let Some(prev) = model.single_prec(cursor.id)? {
             cursor = prev;
         } else {
             break;
@@ -47,33 +46,71 @@ pub fn collect_chain_of_axis_ops<'a>(
     })
 }
 
-#[macro_export]
-macro_rules! dispatch_metal_op {
-    ($node: expr, $body:expr, $($op:path),+,) => {
-        $(
-            if let Some(op) = $node.op_as::<$op>() {
-                return $body(op.clone());
-            }
-        )*
-    };
+fn split_succs(
+    model: &TypedModel,
+    axis_node: &TypedNode,
+    axis_node_name: &str,
+    axis_op: &MetalAxisOp,
+) -> TractResult<Option<TypedModelPatch>> {
+    let succs = model.all_succ(axis_node.id)?.context("Expected node with successors")?;
+
+    let mut patch = TypedModelPatch::default();
+    let input = patch.tap_model(model, axis_node.inputs[0])?;
+
+    for (i, succ) in succs.iter().enumerate() {
+        let axis_out =
+            patch.wire_node(format!("{axis_node_name}.{i}"), axis_op.clone(), &[input])?[0];
+
+        let mut op_ins = patch.taps(model, &succ.inputs)?;
+
+        let (idx, _) = succ
+            .inputs
+            .iter()
+            .enumerate()
+            .find(|(_, inlet)| inlet.node == axis_node.id)
+            .context("Axis node not found in its successor inputs")?;
+
+        op_ins[idx] = axis_out;
+
+        let op_outs = patch.wire_node(succ.name.clone(), succ.op.clone(), &op_ins)?;
+        for out in op_outs {
+            patch.shunt_outside(model, succ.id.into(), out)?;
+        }
+    }
+
+    Ok(Some(patch))
 }
 
 pub fn fuse_axis_op(
     _ctx: &(),
     model: &TypedModel,
     axis_node: &TypedNode,
-    _axis_node_name: &str,
+    axis_node_name: &str,
     axis_op: &MetalAxisOp,
 ) -> TractResult<Option<TypedModelPatch>> {
+    // Only support certain axis ops (or a Move, which is handled specially below)
     rule_ensure!(is_supported_axis_op(axis_op) || matches!(axis_op.0, AxisOp::Move(..)));
 
-    let Some(node) = next_node(model, axis_node) else { return Ok(None) };
+    let Some(node) = model.single_succ(axis_node.id)? else {
+        return split_succs(model, axis_node, axis_node_name, axis_op);
+    };
+
+    // Disallow fusing when the successor is already an axis/fused op or a sync,
+    // *unless* it's a Move AxisOp (we allow that via the early-quit branch).
+    let is_axis_like = node.op_is::<MetalAxisOp>() || node.op_is::<MetalFusedAxisOp>();
+    let is_allowed_move =
+        node.op_as::<MetalAxisOp>().is_some_and(|op| matches!(op.0, AxisOp::Move(..)));
+
+    rule_ensure!(!is_axis_like || is_allowed_move);
+
     let node_name = &node.name;
-    let in_nodes = previous_nodes(model, node);
 
-    let mut grouped_axis_ops = tvec![];
+    let Some(in_nodes) = model.all_prec(node.id)? else {
+        return Ok(None);
+    };
+
+    let mut grouped_axis_ops: TVec<TVec<MetalAxisOp>> = tvec![];
     let mut tap_inputs = tvec![];
-
     let mut patch = TypedModelPatch::default();
 
     for (in_idx, in_node) in in_nodes.into_iter().enumerate() {
@@ -89,53 +126,33 @@ pub fn fuse_axis_op(
         }
     }
 
-    // Handle all compatible ops.
-    dispatch_metal_op!(
-        node,
-        |op| {
-            let out = patch.wire_node(
-                format!("{node_name}.fused_axis_op"),
-                MetalFusedAxisOp { grouped_axis_ops, op },
-                &tap_inputs,
-            )?;
-            patch.shunt_outside(model, node.id.into(), out[0])?;
-            Ok(Some(patch))
-        },
-        crate::ops::MetalBinOp,
-        crate::ops::MetalGemm<MlxGemm>,
-        crate::ops::MetalGemm<MfaGemm>,
-        crate::ops::MetalGemm<GgmlGemm>,
-        crate::ops::MetalMultiBroadcastTo,
-        crate::ops::MetalElementWiseOp,
-        crate::ops::MetalRmsNorm,
-        crate::ops::MetalSilu,
-        crate::ops::MetalGeluApproximate,
-        crate::ops::MetalSoftmax,
-        crate::ops::MetalRotateHalf,
-        crate::ops::MetalApplyRope,
-        crate::ops::MetalReduce,
-        crate::ops::MetalSlice,
-        crate::ops::MetalConcat,
-        crate::ops::MetalCast,
-        crate::ops::MetalScaledMaskedSoftmax,
-    );
-
-    // Handle AxisOp::Move operator.
+    // If the successor is a Move, we may fuse it now or defer.
     if let Some(op) = node.op_as::<crate::ops::MetalAxisOp>() {
-        // Early quit if MoveAxis will be fused in next calls to rule
-        if matches!(op.0, AxisOp::Move(..))
-            && (!grouped_axis_ops[0].is_empty() && !can_fuse_move(model, node))
-        {
-            let out = patch.wire_node(
-                format!("{node_name}.fused_axis_op"),
-                MetalFusedAxisOp { grouped_axis_ops, op: op.clone() },
-                &tap_inputs,
-            )?;
-            patch.shunt_outside(model, node.id.into(), out[0])?;
-            return Ok(Some(patch));
+        if matches!(op.0, AxisOp::Move(..)) {
+            let should_defer_move = !grouped_axis_ops[0].is_empty() && !can_fuse_move(model, node);
+            if should_defer_move {
+                let out = patch.wire_node(
+                    format!("{node_name}.fused_axis_op"),
+                    MetalFusedAxisOp { grouped_axis_ops, op: Box::new(op.clone()) },
+                    &tap_inputs,
+                )?;
+                patch.shunt_outside(model, node.id.into(), out[0])?;
+                return Ok(Some(patch));
+            } else {
+                // Nothing to do right now; we’ll fuse on a later pass.
+                return Ok(None);
+            }
         }
     }
-    Ok(None)
+
+    // General case: fuse using the successor's op.
+    let out = patch.wire_node(
+        format!("{node_name}.fused_axis_op"),
+        MetalFusedAxisOp { grouped_axis_ops, op: node.op.clone() },
+        &tap_inputs,
+    )?;
+    patch.shunt_outside(model, node.id.into(), out[0])?;
+    Ok(Some(patch))
 }
 
 pub fn fuse_move_axis(
@@ -181,7 +198,7 @@ pub fn fuse_move_axis(
     }
 
     // Fuse consecutive MoveAxis if possible
-    let Some(cursor) = next_node(model, axis_node) else { return Ok(None) };
+    let Some(cursor) = model.single_succ(axis_node.id)? else { return Ok(None) };
     if let (AxisOp::Move(from_1, to_1), AxisOp::Move(from_2, to_2)) = (
         axis_op.0.clone(),
         cursor.op_as::<MetalAxisOp>().map(|ax_op| ax_op.0.clone()).unwrap_or(AxisOp::Add(0)),
@@ -206,7 +223,7 @@ pub fn fuse_move_axis(
     }
 
     // Add(x) -> Move(x, y)
-    let Some(cursor) = previous_node(model, axis_node) else { return Ok(None) };
+    let Some(cursor) = model.single_prec(axis_node.id)? else { return Ok(None) };
     if let (AxisOp::Move(from_1, to_1), AxisOp::Add(ax)) = (
         axis_op.0.clone(),
         cursor.op_as::<MetalAxisOp>().map(|ax_op| ax_op.0.clone()).unwrap_or(AxisOp::Rm(0)),

@@ -34,7 +34,7 @@ struct ConcreteGeometry {
     pub ci_per_group: usize,
     patcher: Patcher,
     input_shape_with_n: DataShape,
-    packed_shape: TVec<usize>, // always Batch,Group,Packed
+    packed_shape: TVec<usize>, // always Batch,Group
 }
 
 impl GeometryBound<SymbolicGeometry, ConcreteGeometry> {
@@ -130,7 +130,7 @@ impl Im2Col {
 }
 
 impl Op for Im2Col {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Im2col".into()
     }
 
@@ -210,8 +210,10 @@ impl TypedOp for Im2Col {
             k: self.geometry.k(),
             mn,
         };
-        Ok(tvec!(Opaque::fact(&[input_shape.n().cloned().unwrap_or(1.into()), self.group.into()])
-            .with_opaque_fact(pof)))
+        Ok(tvec!(
+            Opaque::fact(&[input_shape.n().cloned().unwrap_or(1.into()), self.group.into()])
+                .with_opaque_fact(pof)
+        ))
     }
 
     fn declutter(
@@ -365,8 +367,9 @@ impl Patcher {
                         *geometry.pool.patch.data_field.as_ptr().offset(1 + kitem as isize * 2);
                     let valid_x_start =
                         Integer::div_ceil(&-dx, &x_stride).max(0).min(output_width as _);
-                    let valid_x_end =
-                        Integer::div_ceil(&(input_width - dx), &x_stride).min(output_width as _);
+                    let valid_x_end = Integer::div_ceil(&(input_width - dx), &x_stride)
+                        .max(0)
+                        .min(output_width as _);
 
                     let iptr = iptr.offset(
                         *geometry.pool.patch.standard_layout_data_field.get_unchecked(kitem),
@@ -422,7 +425,7 @@ impl Patcher {
         writer: &mut tract_linalg::pack::KOutWriter<T>,
     ) {
         for x in x_min..x_max {
-            writer.write(*iptr.offset(x * x_stride_ptr));
+            writer.write(unsafe { *iptr.offset(x * x_stride_ptr) });
         }
     }
 

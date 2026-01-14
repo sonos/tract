@@ -61,6 +61,7 @@ macro_rules! b4096 { ($($stat:stmt)*) => { nano::run_bench(|| { r4096!($($stat)*
 #[macro_export]
 macro_rules! b8192 { ($($stat:stmt)*) => { nano::run_bench(|| { r8192!($($stat)*); }) / 8192.0 } }
 
+#[inline]
 fn black_box<T>(dummy: T) -> T {
     unsafe {
         let ret = std::ptr::read_volatile(&dummy);
@@ -69,39 +70,52 @@ fn black_box<T>(dummy: T) -> T {
     }
 }
 
-pub fn run_bench<T, F: FnMut() -> T>(mut f: F) -> f64 {
+pub fn run_bench<T, F: FnMut(usize) -> T + Copy>(f: F) -> f64 {
     let start = Instant::now();
-    black_box(f());
+    let mut f = black_box(f);
+    black_box(f(1));
     let once = start.elapsed();
     let evaled = if once < Duration::from_millis(1) {
         let start = Instant::now();
-        for _ in 0..1000 {
-            black_box(f());
-        }
+        black_box(f)(1000);
         start.elapsed().as_secs_f64() / 1000.
     } else {
         once.as_secs_f64()
     };
-    let warmup = (0.3 / evaled) as usize;
-    let iters = (0.3 / evaled) as usize;
-    let chunks = 1000;
-    let chunk = (iters / chunks).max(50);
-    let chunks = (iters / chunk).max(50);
-    let mut measures = vec![0.0; chunks];
-    for _ in 0..warmup {
-        black_box(f());
+    // raw evaluation is over a second. stop right there
+    if evaled > 1.0 {
+        return evaled;
     }
+
+    // we want each individual sample to run for no less than
+    let minimum_sampling_time_s = 0.01;
+    let minimum_samples = 25;
+    let desired_bench_time = 1.0;
+
+    let inner_loops = (minimum_sampling_time_s / evaled).max(1.0) as usize;
+
+    let samples =
+        ((desired_bench_time / (inner_loops as f64 * evaled)) as usize).max(minimum_samples);
+    let warmup = (1.0 / evaled) as usize;
+
+    // println!(
+    //     "evaled: {:?} samples:{samples} inner_loops:{inner_loops} time:{}",
+    //     Duration::from_secs_f64(evaled),
+    //     (samples * inner_loops) as f64 * evaled
+    // );
+    let mut measures = vec![0.0; samples];
+
+    black_box(f(warmup));
     for m in &mut measures {
         let start = Instant::now();
-        for _ in 0..chunk {
-            black_box(f());
-        }
-        *m = start.elapsed().as_secs_f64() / chunk as f64
+        black_box(black_box(f))(inner_loops);
+        let time = start.elapsed().as_secs_f64();
+        *m = time / inner_loops as f64
     }
     measures
         .sort_by(|a, b| if a < b { std::cmp::Ordering::Less } else { std::cmp::Ordering::Greater });
-    let q1 = measures[chunks / 4];
-    let q3 = measures[chunks - chunks / 4];
+    let q1 = measures[samples / 4];
+    let q3 = measures[samples - samples / 4];
     let iq = q3 - q1;
     measures.retain(|&x| x >= q1 - 3. * iq && x <= q3 + 3. * iq);
     measures.iter().copied().sum::<f64>() / measures.len() as f64

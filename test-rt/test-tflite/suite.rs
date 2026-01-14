@@ -20,8 +20,12 @@ fn mk_suite() -> infra::TestSuite {
 
     let mut unit = suite_unit::suite().unwrap().clone();
     unit.ignore_case(&ignore_unit);
-    let cv =
-        ConvProblemParams { no_group: true, geo_rank: Some(1..3), ..ConvProblemParams::default() };
+    let cv = ConvProblemParams {
+        no_group: true,
+        no_dilations: true,
+        geo_rank: Some(1..3),
+        ..ConvProblemParams::default()
+    };
     unit.get_sub_mut("conv_f32").add_arbitrary::<ConvProblem>("proptest", cv.clone());
     unit.get_sub_mut("conv_q").add_arbitrary_with_filter::<QConvProblem>(
         "proptest",
@@ -143,11 +147,13 @@ fn skip_onnx(t: &[String]) -> bool {
 }
 
 fn ignore_unit(t: &[String], case: &dyn Test) -> bool {
+    #[allow(clippy::collapsible_if)]
     if let Some(cp) = case.downcast_ref::<ConvProblem>() {
         if !compatible_conv_f32(cp) {
             return true;
         }
     }
+    #[allow(clippy::collapsible_if)]
     if let Some(qcp) = case.downcast_ref::<QConvProblem>() {
         if !compatible_conv_q(qcp) {
             return true;
@@ -161,7 +167,9 @@ fn ignore_unit(t: &[String], case: &dyn Test) -> bool {
     let [section, _unit] = t else { return false };
     [
         "apply_rope",
+        "binary",
         "deconv",
+        "elmwise",
         "gelu_approximate",
         "q_flavours",
         "q_binary",
@@ -169,13 +177,16 @@ fn ignore_unit(t: &[String], case: &dyn Test) -> bool {
         "matmul_q40",
         "rms_norm",
         "scaled_masked_softmax",
+        "sdpa",
         "silu",
     ]
     .contains(&&**section)
 }
 
 fn compatible_conv_f32(qcp: &ConvProblem) -> bool {
-    qcp.group == 1 && (qcp.kernel.ndim() == 4 || qcp.kernel.ndim() == 3)
+    qcp.group == 1
+        && (qcp.kernel.ndim() == 4 || qcp.kernel.ndim() == 3)
+        && qcp.dilations.iter().all(|d| *d == 1)
 }
 
 fn compatible_conv_q(qcp: &QConvProblem) -> bool {

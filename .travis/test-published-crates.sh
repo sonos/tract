@@ -40,6 +40,14 @@ then
     cargo -q test $CARGO_EXTRA -q -p tract-metal
 fi
 
+if command -v nvcc >/dev/null 2>&1 && [ -z "$CI" ]
+then
+    echo
+    echo "$WHITE ### cuda ### $NC"
+    echo
+    cargo -q test -q -p tract-cuda
+fi
+
 $ROOT/api/proxy/ci.sh
 
 # doc test are not finding libtensorflow.so

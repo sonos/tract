@@ -7,8 +7,6 @@ use crate::tfpb::tensorflow::NodeDef;
 #[derive(Debug, Clone, Default, new, Hash)]
 pub struct Pad;
 
-
-
 pub fn pad(_ctx: &ParsingContext, _pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     Ok(Box::<Pad>::default())
 }
@@ -50,7 +48,7 @@ impl Pad {
 }
 
 impl Op for Pad {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Pad".into()
     }
 
@@ -112,13 +110,15 @@ mod tests {
         let inputs =
             tvec![tensor2(&[[1, 2, 3], [4, 5, 6]]).into(), tensor2(&[[1, 1], [2, 2]]).into(),];
 
-        let expected: TVec<_> = tvec!(tensor2(&[
-            [0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 1, 2, 3, 0, 0],
-            [0, 0, 4, 5, 6, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0],
-        ])
-        .into());
+        let expected: TVec<_> = tvec!(
+            tensor2(&[
+                [0, 0, 0, 0, 0, 0, 0],
+                [0, 0, 1, 2, 3, 0, 0],
+                [0, 0, 4, 5, 6, 0, 0],
+                [0, 0, 0, 0, 0, 0, 0],
+            ])
+            .into()
+        );
 
         assert_eq!(Pad::new().eval(inputs).unwrap(), expected);
     }

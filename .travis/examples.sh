@@ -5,14 +5,8 @@ NC='\033[0m' # No Color
 
 set -e
 
-which rustup || curl https://sh.rustup.rs -sSf | sh -s -- -y
-rustup update
-
-PATH=$PATH:$HOME/.cargo/bin
-
-: "${RUST_VERSION:=stable}"
-rustup toolchain add $RUST_VERSION
-rustup default $RUST_VERSION
+ROOT=$(dirname $(dirname $(realpath $0)))
+. $ROOT/.travis/ci-system-setup.sh
 
 for t in `find examples -name ci.sh`
 do
@@ -21,6 +15,10 @@ do
     echo ::group:: $ex
     echo $WHITE $ex $NC
     ( cd $ex ; sh ./ci.sh )
+    if [ -n "$CI" ]
+    then
+        cargo clean
+    fi
     echo ::endgroup::
 done
 

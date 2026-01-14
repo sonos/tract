@@ -47,7 +47,7 @@ impl Fft {
 }
 
 impl Op for Fft {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Fft".into()
     }
 
@@ -154,9 +154,15 @@ impl Stft {
                 );
                 if let Some(win) = &self.window {
                     let win = win.as_slice::<T>()?;
-                    v.iter_mut()
-                        .zip(win.iter())
-                        .for_each(|(v, w)| *v = *v * Complex::new(*w, T::zero()));
+                    // symmetric padding in case window is smaller than frames (aka n fft)
+                    let pad_left = (self.frame - win.len()) / 2;
+                    v.iter_mut().enumerate().for_each(|(ix, v)| {
+                        *v = if ix < pad_left || ix >= pad_left + win.len() {
+                            Complex::new(T::zero(), T::zero())
+                        } else {
+                            *v * Complex::new(win[ix - pad_left], T::zero())
+                        }
+                    });
                 }
                 fft.process(&mut v);
                 oslice
@@ -171,7 +177,7 @@ impl Stft {
 }
 
 impl Op for Stft {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "STFT".into()
     }
 

@@ -10,7 +10,7 @@ use string_interner::Symbol as _;
 use crate::TractResult;
 
 use super::parse::parse_assertion;
-use super::{parse_tdim, Assertion, TDim};
+use super::{Assertion, TDim, parse_tdim};
 
 #[derive(Clone, Default)]
 pub struct SymbolScope(pub Arc<ReentrantMutex<RefCell<SymbolScopeData>>>);
@@ -234,6 +234,10 @@ impl SymbolScopeData {
         }
         false
     }
+
+    pub(crate) fn prove_strict_positive(&self, b: &TDim) -> bool {
+        self.prove_positive_or_zero(&(b.clone() - 1))
+    }
 }
 
 impl fmt::Debug for SymbolScope {
@@ -277,7 +281,7 @@ impl Symbol {
 
 impl PartialOrd for Symbol {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.1.cmp(&other.1))
+        Some(self.cmp(other))
     }
 }
 

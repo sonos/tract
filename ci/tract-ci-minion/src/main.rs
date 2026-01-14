@@ -1,5 +1,5 @@
-use anyhow::Context;
-use anyhow::Result;
+use anyhow::{bail, Context, Result};
+use clap::Parser;
 use flate2::read::GzEncoder;
 use fs2::FileExt;
 use s3::creds::Credentials;
@@ -11,7 +11,6 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
 use std::net::TcpStream;
-use std::os::unix::prelude::CommandExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicI32;
 use std::time::Duration;
@@ -132,7 +131,7 @@ fn dl_task(task_name: &str) -> Result<()> {
         .join(&config.platform)
         .join(task_name)
         .with_extension("tgz");
-    log::info!("Retrieving task {}", task_name);
+    log::info!("Downloading task {}", task_name);
     let task_dir = config.workdir.join("current");
     if task_dir.exists() {
         std::fs::remove_dir_all(&task_dir)?;
@@ -146,17 +145,17 @@ fn dl_task(task_name: &str) -> Result<()> {
     });
     let uncompressed = flate2::read::GzDecoder::new(reader);
     tar::Archive::new(uncompressed).unpack(task_dir_2)?;
+    log::info!("Download {} ok", task_name);
     Ok(())
 }
 
 fn vars(task_name: &str) -> Result<HashMap<String, String>> {
     let config = config()?;
-    log::info!("Running task {}", task_name);
     let task_dir = config.workdir.join("current");
     let vars_file = task_dir.join(task_name).join("vars");
     let mut vars: HashMap<String, String> = config.env.clone();
     if vars_file.exists() {
-        log::info!("Reading vars...");
+        log::debug!("Reading vars...");
         for line in std::fs::read_to_string(vars_file)?.lines() {
             if line.starts_with("export ") {
                 let mut pair = line.split_whitespace().nth(1).unwrap().split("=");
@@ -169,7 +168,7 @@ fn vars(task_name: &str) -> Result<HashMap<String, String>> {
     Ok(vars)
 }
 
-fn run_task(task_name: &str) -> Result<()> {
+fn run_task(task_name: &str, timeout: Duration) -> Result<()> {
     let config = config()?;
     let bucket = bucket(&config)?;
     log::info!("Running task {}", task_name);
@@ -177,12 +176,22 @@ fn run_task(task_name: &str) -> Result<()> {
     let vars: HashMap<String, String> = vars(task_name)?;
     let mut cmd = std::process::Command::new("sh");
     cmd.current_dir(task_dir.join(task_name))
-        .envs(&vars)
         .arg("-c")
         .arg("./entrypoint.sh 2> stderr.log > stdout.log");
     log::info!("Running {:?}", cmd);
-    let status = cmd.spawn()?.wait_timeout(Duration::from_secs(config.timeout_runtime_secs as _));
-    log::info!("Script ran: {:?}", status);
+    cmd.envs(&vars); // do not log env as it may contain sensitive vars
+    let mut child = cmd.spawn()?;
+    let result = child.wait_timeout(timeout)?;
+    let Some(status) = result else {
+        let _ = child.kill();
+        log::info!("Script timeout, sending a kill, waiting...");
+        child.wait()?;
+        bail!("entrypoint.sh script timeout")
+    };
+    if !status.success() {
+        bail!("entrypoint.sh script failed: {status:?}")
+    }
+    log::info!("entrypoint.sh ran successfully");
     for log in &["stderr.log", "stdout.log"] {
         let local_path = task_dir.join(task_name).join(log);
         if local_path.exists() {
@@ -249,40 +258,7 @@ impl std::error::Error for Timeout {}
 
 impl std::fmt::Display for Timeout {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Timeout")
-    }
-}
-
-fn subcommand(command: &str, task_name: &str, timeout: Duration) -> Result<()> {
-    let mut process = unsafe {
-        std::process::Command::new(std::env::args().next().unwrap())
-            .arg(command)
-            .arg(&task_name)
-            .pre_exec(|| {
-                if libc::setpgid(0 as i32, 0 as i32) < 0 {
-                    libc::perror(std::ptr::null());
-                }
-                Ok(())
-            })
-            .spawn()?
-    };
-    CHILD.store(process.id() as i32, std::sync::atomic::Ordering::SeqCst);
-    match process.wait_timeout(timeout)? {
-        Some(status) => {
-            log::info!("dl-task {} return status {}", task_name, status);
-            if status.success() {
-                Ok(())
-            } else {
-                anyhow::bail!("running {} {}, got {:?}", command, task_name, status)
-            }
-        }
-        None => {
-            log::warn!("{} {} timeout after {:?}", command, task_name, timeout,);
-            unsafe { libc::kill(-(process.id() as i32), libc::SIGTERM) };
-            process.wait()?;
-            CHILD.store(0, std::sync::atomic::Ordering::SeqCst);
-            Err(Timeout).with_context(|| format!("running {} {}", command, task_name))
-        }
+        write!(f, "Task imeout!")
     }
 }
 
@@ -299,17 +275,22 @@ fn consider_task(config: &Config, task: &Object) -> Result<bool> {
         return Ok(false);
     }
     for attempt in 0.. {
-        match subcommand("dl-task", &task_name, Duration::from_secs(60)) {
+        // match subcommand("download-task", &task_name, Duration::from_secs(60)) {
+        match dl_task(&task_name) {
             Err(e) if e.root_cause().is::<Timeout>() && attempt < 5 => continue,
             Err(e) => Err(e)?,
             Ok(()) => break,
         }
     }
+
     let vars = vars(&task_name)?;
-    let timeout = vars.get("TIMEOUT").map(|s| &**s).unwrap_or("1800").parse()?;
-    let _ = subcommand("run-task", &task_name, Duration::from_secs(timeout));
+    let timeout =
+        vars.get("TIMEOUT").map(|s| s.parse()).transpose()?.unwrap_or(config.timeout_runtime_secs)
+            as u64;
+    // let result = subcommand("run-task", &task_name, Duration::from_secs(timeout));
+    let result = run_task(&task_name, Duration::from_secs(timeout));
     std::fs::File::create(&done_file)?;
-    Ok(true)
+    result.map(|_| true)
 }
 
 fn run(config: &Config) -> Result<bool> {
@@ -329,7 +310,7 @@ fn run(config: &Config) -> Result<bool> {
 
 fn config() -> Result<Config> {
     let cf_path = config_path();
-    log::info!("Reading config from {:?}", cf_path);
+    log::debug!("Reading config from {:?}", cf_path);
     let config = read_config(cf_path)?;
     log::debug!("{:?}", config);
     Ok(config)
@@ -348,7 +329,18 @@ fn bucket(config: &Config) -> Result<Bucket> {
     Ok(bucket)
 }
 
-fn main_loop() -> Result<()> {
+#[derive(Debug, Clone, Parser)]
+struct Args {
+    /// Run in background
+    #[arg(short, long)]
+    daemonize: bool,
+
+    /// Run once, stop when all tasks are done
+    #[arg(short, long)]
+    once: bool,
+}
+
+fn main_loop(args: &Args) -> Result<()> {
     let config = config()?;
     let lock = config.workdir.join("lock");
     log::info!("Locking {:?}", lock);
@@ -358,17 +350,25 @@ fn main_loop() -> Result<()> {
         std::fs::File::create(&lock).with_context(|| format!("Creating lock file {:?}", lock))?;
     loop {
         if let Ok(_) = lock.try_lock_exclusive() {
-            log::info!("Lock taken, fetching task list");
+            log::info!("Acquired lock, fetching task list");
             match run(&config) {
                 Ok(done_something) => {
                     if !done_something {
-                        let dur = Duration::from_secs(config.idle_sleep_secs as _);
-                        log::info!("No task left, sleeping for {:?}", dur);
-                        std::thread::sleep(dur);
+                        if args.once {
+                            log::info!("No more work, stopping");
+                            return Ok(());
+                        } else {
+                            let dur = Duration::from_secs(config.idle_sleep_secs as _);
+                            log::info!("No task left, sleeping for {:?}", dur);
+                            std::thread::sleep(dur);
+                        }
                     }
                 }
                 Err(e) => {
-                    eprintln!("{:?}", e);
+                    if args.once {
+                        return Err(e);
+                    }
+                    log::error!("{e:?}");
                 }
             }
         } else {
@@ -389,6 +389,25 @@ extern "C" fn signal_handler(sig: libc::size_t) -> libc::size_t {
     std::process::exit(1);
 }
 
+fn do_main() -> anyhow::Result<()> {
+    let args = Args::parse();
+    if args.daemonize {
+        let _config = config()?;
+
+        log::info!("Deamonizing");
+        let stdout = File::create("tract-ci-minion.out")?;
+        let stderr = File::create("tract-ci-minion.err")?;
+
+        let daemonize = daemonize::Daemonize::new()
+            .working_directory(std::env::current_dir()?)
+            .pid_file("tract-ci-minion.pid")
+            .stdout(stdout)
+            .stderr(stderr);
+        daemonize.start()?;
+    }
+    main_loop(&args)
+}
+
 fn main() {
     env_logger::Builder::new()
         .filter_level(log::LevelFilter::Info)
@@ -399,42 +418,8 @@ fn main() {
         libc::signal(libc::SIGINT, signal_handler as libc::sighandler_t);
     }
 
-    let args: Vec<String> = std::env::args().collect();
-    if args.get(1).map(|s| &**s) == Some("dl-task") {
-        let task_id = &args[2];
-        log::info!("Worker starting on dl-task {}", task_id);
-        if let Err(e) = dl_task(task_id) {
-            eprintln!("{:?}", e);
-            std::process::exit(1);
-        }
-    } else if args.get(1).map(|s| &**s) == Some("run-task") {
-        let task_id = &args[2];
-        log::info!("Worker starting on run-task {}", task_id);
-        if let Err(e) = run_task(task_id) {
-            eprintln!("{:?}", e);
-            std::process::exit(1);
-        }
-    } else if args.get(1).map(|s| &**s) == Some("-d") {
-        let _config = config().unwrap();
-
-        log::info!("Deamonizing");
-        let stdout = File::create("tract-ci-minion.out").unwrap();
-        let stderr = File::create("tract-ci-minion.err").unwrap();
-
-        let daemonize = daemonize::Daemonize::new()
-            .working_directory(std::env::current_dir().unwrap())
-            .pid_file("tract-ci-minion.pid")
-            .stdout(stdout)
-            .stderr(stderr);
-        daemonize.start().unwrap();
-        if let Err(e) = main_loop() {
-            eprintln!("{:?}", e);
-            std::process::exit(1);
-        }
-    } else {
-        if let Err(e) = main_loop() {
-            eprintln!("{:?}", e);
-            std::process::exit(1);
-        }
+    if let Err(e) = do_main() {
+        log::error!("{e:?}");
+        std::process::exit(1);
     }
 }

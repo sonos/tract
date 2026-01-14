@@ -12,7 +12,7 @@ pub struct SumPool {
 }
 
 impl Op for SumPool {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "SumPool".into()
     }
 
@@ -83,7 +83,7 @@ pub struct OptSumPool {
 }
 
 impl Op for OptSumPool {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "OptSumPool".into()
     }
 

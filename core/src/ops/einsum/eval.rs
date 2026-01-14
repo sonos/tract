@@ -2,7 +2,7 @@ use super::AxesMapping;
 use crate::internal::*;
 use ndarray::{ArrayViewD, Zip};
 use tract_data::itertools::Itertools;
-use tract_linalg::block_quant::BlockQuantValue;
+use tract_linalg::block_quant::BlockQuantFact;
 use tract_ndarray::{Axis, Dimension};
 use tract_num_traits::{One, Zero};
 
@@ -29,17 +29,18 @@ pub fn output_shape<D: DimLike>(
 
 pub fn dequant_inputs(acc: DatumType, input: TVec<TValue>) -> TractResult<TVec<TValue>> {
     input.into_iter().map(|i| if i.datum_type().is_number() { Ok(i) } else {
-        let bqvs = i.as_slice::<Opaque>()?.iter().map(|o| o.downcast_ref::<BlockQuantValue>()).collect::<Option<Vec<&BlockQuantValue>>>().context("Numbers and BlockQuantValues are the only supported input for unoptimized einsum")?;
+        let bwfs = i.as_slice::<Opaque>()?.iter().map(|o| o.downcast_ref::<BlobWithFact>()).collect::<Option<Vec<&BlobWithFact>>>().context("Numbers and BlobWithFact are the only supported input for unoptimized einsum")?;
+        let bqfs = bwfs.iter().map(|bwf| bwf.fact.downcast_ref::<BlockQuantFact>()).collect::<Option<Vec<&BlockQuantFact>>>().context("BlobWithFact are not all BlockQuantFacts")?;
         let mut unpacked:Vec<Tensor> = if acc.is::<f16>() {
-             bqvs.iter().map(|bqv| bqv.fact.format.dequant_f16(&bqv.value)).collect::<TractResult<_>>()?
+             bwfs.iter().zip(&bqfs).map(|(bwf, bqf)| bqf.format.dequant_f16(&bwf.value)).collect::<TractResult<_>>()?
          } else if acc.is::<f32>() {
-             bqvs.iter().map(|bqv| bqv.fact.format.dequant_f32(&bqv.value)).collect::<TractResult<_>>()?
+             bwfs.iter().zip(&bqfs).map(|(bwf, bqf)| bqf.format.dequant_f32(&bwf.value)).collect::<TractResult<_>>()?
          } else {
              bail!("Only f32 and f16 accumulators are compatible with BlockQuantValue inputs");
          }    ;
          unpacked.iter_mut().try_for_each(|t| t.insert_axis(0))?;
          let stacked = Tensor::stack_tensors(0, &unpacked)?;
-         let shape = i.shape().iter().chain(bqvs[0].fact.shape()).copied().collect_vec();
+         let shape = i.shape().iter().chain(bqfs[0].shape()).copied().collect_vec();
          Ok(stacked.into_shape(&shape)?.into_tvalue())
     } ).collect::<TractResult<TVec<TValue>>>()
 }

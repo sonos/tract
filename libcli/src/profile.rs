@@ -1,13 +1,14 @@
+use crate::model::Model;
+use crate::tensor::RunTensors;
+use crate::tensor::make_inputs_for_model;
+use crate::{annotations::*, capture_gpu_trace};
+use std::any::TypeId;
+use std::borrow::Borrow;
+use std::time::{Duration, Instant};
 use tract_core::internal::*;
 use tract_core::num_traits::Zero;
 use tract_core::ops::scan::State;
 use tract_core::ops::submodel::TypedModelOpState;
-
-use crate::annotations::*;
-use crate::model::Model;
-use crate::tensor::make_inputs_for_model;
-use std::any::TypeId;
-use std::time::Duration;
 
 pub struct BenchLimits {
     pub warmup_loops: usize,
@@ -28,23 +29,33 @@ impl Default for BenchLimits {
 }
 
 impl BenchLimits {
-    pub fn warmup(&self, model: &TypedModel, inputs: &TVec<TValue>) -> TractResult<()> {
+    pub fn warmup<M: Borrow<TypedModel>>(
+        &self,
+        runnable: &TypedRunnableModel<M>,
+        inputs: &RunTensors,
+    ) -> TractResult<()> {
         if self.warmup_time.is_zero() && self.warmup_loops.is_zero() {
             return Ok(());
         }
-        let plan = TypedSimplePlan::new(model.clone())?;
-        let mut state = TypedSimpleState::new(Arc::new(plan))?;
+        let mut state = TypedSimpleState::new(runnable)?;
         let mut iters = 0;
         let max_loops = if self.warmup_loops.is_zero() { usize::MAX } else { self.warmup_loops };
         let max_time = if self.warmup_time.is_zero() { Duration::MAX } else { self.warmup_time };
 
-        let start_warmup = crate::time::now();
-        debug!("Warming up before profiling...");
+        let start_warmup = Instant::now();
+        info!("Warming up before profiling...");
         while iters < max_loops && start_warmup.elapsed() < max_time {
-            state.run(inputs.clone())?;
+            if state.model().properties().contains_key("pulse.delay") {
+                state.run(inputs.sources[0].clone())?;
+            } else {
+                state.init_states(&mut inputs.state_initializers.clone())?;
+                state.run(inputs.sources[0].clone())?;
+                state.reset_op_states()?
+            }
             iters += 1;
         }
-        debug!("Done warming up.");
+        info!("Done warming up.");
+
         Ok(())
     }
 }
@@ -54,7 +65,7 @@ pub fn profile(
     bench_limits: &BenchLimits,
     dg: &mut Annotations,
     plan_options: &PlanOptions,
-    inputs: &TVec<TValue>,
+    inputs: &RunTensors,
     custom_profiler: Option<HashMap<TypeId, Profiler>>,
     folded: bool,
 ) -> TractResult<()> {
@@ -62,35 +73,44 @@ pub fn profile(
     let mut iters = 0usize;
     let prefix = tvec!();
 
-    bench_limits.warmup(model, inputs)?;
-
     let plan = TypedSimplePlan::new_with_options(model.clone(), plan_options)?;
+    bench_limits.warmup(&plan, inputs)?;
+
     let mut state = TypedSimpleState::new(Arc::new(plan))?;
 
-    let start = crate::time::now();
+    let mut dur = Duration::default();
     let mut time_accounted_by_inner_nodes = Duration::default();
-    while iters < bench_limits.max_loops && start.elapsed() < bench_limits.max_time {
-        rec_profiler(
-            &mut state,
-            dg,
-            inputs,
-            custom_profiler.as_ref(),
-            &prefix,
-            None,
-            &mut time_accounted_by_inner_nodes,
-            folded,
-        )?;
-
+    while iters < bench_limits.max_loops && dur < bench_limits.max_time {
+        if !state.model().properties().contains_key("pulse.delay") {
+            state.init_states(&mut inputs.state_initializers.clone())?;
+        }
+        let start = Instant::now();
+        for source in &inputs.sources {
+            rec_profiler(
+                &mut state,
+                dg,
+                source,
+                custom_profiler.as_ref(),
+                &prefix,
+                None,
+                &mut time_accounted_by_inner_nodes,
+                folded,
+            )?;
+        }
+        dur += start.elapsed();
+        if !state.model().properties().contains_key("pulse.delay") {
+            state.reset_op_states()?;
+        }
         iters += 1;
     }
 
-    let entire = start.elapsed() - time_accounted_by_inner_nodes;
+    dur -= time_accounted_by_inner_nodes;
 
     info!("Running {} iterations max. for each node.", bench_limits.max_loops);
     info!("Running for {} ms max. for each node.", bench_limits.max_time.as_millis());
 
     let denum = (iters as f32).recip();
-    let entire = entire.mul_f32(denum);
+    let entire = dur.mul_f32(denum);
     for d in dg.tags.values_mut() {
         if let Some(d) = d.profile.as_mut() {
             *d = d.mul_f32(denum);
@@ -107,42 +127,56 @@ pub fn profile(
     Ok(())
 }
 
-#[cfg(any(target_os = "macos", target_os = "ios"))]
-pub fn profile_metal(
+pub fn profile_gpu(
     model: &TypedModel,
     bench_limits: &BenchLimits,
+    sub_matches: &clap::ArgMatches,
     dg: &mut Annotations,
     plan_options: &PlanOptions,
-    inputs: &TVec<TValue>,
+    inputs: &RunTensors,
 ) -> TractResult<()> {
     info!("Running entire network");
     let mut iters = 0usize;
     let prefix = tvec!();
 
-    bench_limits.warmup(model, inputs)?;
-
     let mut plan = TypedSimplePlan::new_with_options(model.clone(), plan_options)?;
-    let state = TypedSimpleState::new_from_inputs(&plan, inputs.clone())?;
+    bench_limits.warmup(&plan, inputs)?;
 
-    let session_handler =
-        tract_gpu::session_handler::DeviceSessionHandler::from_plan(&plan, &state.session_state.resolved_symbols)?;
+    let state = TypedSimpleState::new_from_inputs(&plan, inputs.sources[0].clone())?;
+
+    let session_handler = tract_gpu::session_handler::DeviceSessionHandler::from_plan(
+        &plan,
+        &state.session_state.resolved_symbols,
+    )?;
 
     plan = plan.with_session_handler(session_handler);
 
     let mut state = TypedSimpleState::new(Arc::new(plan))?;
+    let mut dur = Duration::default();
 
-    let mut entire = Duration::default();
-    while iters < bench_limits.max_loops && entire < bench_limits.max_time {
-        entire += rec_profiler_metal(&mut state, dg, inputs, &prefix)?.1;
-
-        iters += 1;
-    }
+    capture_gpu_trace(sub_matches, || -> TractResult<()> {
+        while iters < bench_limits.max_loops && dur < bench_limits.max_time {
+            if !state.model().properties().contains_key("pulse.delay") {
+                state.init_states(&mut inputs.state_initializers.clone())?;
+            }
+            let start = Instant::now();
+            for source in &inputs.sources {
+                rec_profiler_gpu(&mut state, dg, source, &prefix)?;
+            }
+            dur += start.elapsed();
+            if !state.model().properties().contains_key("pulse.delay") {
+                state.reset_op_states()?;
+            }
+            iters += 1;
+        }
+        Ok(())
+    })?;
 
     info!("Running {} iterations max. for each node.", bench_limits.max_loops);
     info!("Running for {} ms max. for each node.", bench_limits.max_time.as_millis());
 
     let denum = (iters as f32).recip();
-    let entire = entire.mul_f32(denum);
+    let entire = dur.mul_f32(denum);
     for d in dg.tags.values_mut() {
         if let Some(d) = d.profile.as_mut() {
             *d = d.mul_f32(denum);
@@ -159,14 +193,12 @@ pub fn profile_metal(
     Ok(())
 }
 
-#[cfg(any(target_os = "macos", target_os = "ios"))]
-pub fn rec_profiler_metal(
+pub fn rec_profiler_gpu(
     state: &mut TypedSimpleState<TypedModel, Arc<TypedSimplePlan<TypedModel>>>,
     dg: &mut Annotations,
     inputs: &TVec<TValue>,
     prefix: &[(usize, String)],
-) -> TractResult<(TVec<TValue>, Duration)> {
-    let profile_start = crate::time::now();
+) -> TractResult<TVec<TValue>> {
     let r = state.run_plan_with_eval(
         inputs.clone(),
         |session_state, mut node_state, node, input| {
@@ -186,7 +218,7 @@ pub fn rec_profiler_metal(
         },
     )?;
 
-    Ok((r, profile_start.elapsed()))
+    Ok(r)
 }
 
 #[allow(clippy::too_many_arguments)]

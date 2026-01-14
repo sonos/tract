@@ -58,7 +58,7 @@ net_bench() {
     shift 2
 
     $TRACT "$@" --machine-friendly -O bench --allow-random-input $BENCH_OPTS > tract.out
-    v=`cat tract.out | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
+    v=`cat tract.out | grep -a real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
     echo net.$net.evaltime.$pb $v >> metrics
 
     $TRACT "$@" --readings --readings-heartbeat 1000 --machine-friendly -O bench --allow-random-input $BENCH_OPTS > tract.out
@@ -66,12 +66,12 @@ net_bench() {
     for stage in model_ready before_optimize
     do
         pattern=$(echo $stage | sed 's/[_-]/./g')
-        v=$(grep $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 1 -d ' ')
+        v=$(grep -a $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 1 -d ' ')
         echo net.$net.time_to_$stage.$pb $v >> metrics
-        v=$(grep $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 4 -d ' ')
+        v=$(grep -a $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 4 -d ' ')
         echo net.$net.rsz_at_$stage.$pb $v >> metrics
-        f=$(grep $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 11 -d ' ')
-        a=$(grep $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 10 -d ' ')
+        f=$(grep -a $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 11 -d ' ')
+        a=$(grep -a $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 10 -d ' ')
         echo net.$net.active_at_$stage.$pb $(($a-$f)) >> metrics
     done
 }
@@ -81,24 +81,30 @@ llm_bench() {
     pb=$2
     shift 2
 
-    $TRACT "$@" --nnef-tract-core --machine-friendly -O llm-bench $BENCH_OPTS > tract.out
-    cat tract.out
-    echo llm.$net.pp512.$pb $(cat tract.out | grep PP512 | cut -f 2 -d ' ') >> metrics
-    echo llm.$net.tg128.$pb $(cat tract.out | grep TG128 | cut -f 2 -d ' ') >> metrics
+    if  $TRACT "$@" --nnef-tract-core --nnef-tract-transformers -t transformers-detect-all --machine-friendly -O llm-bench $BENCH_OPTS > tract.out
+    then
+        cat tract.out
+        echo llm.$net.pp512.$pb $(cat tract.out | grep -a PP512 | cut -f 2 -d ' ') >> metrics
+        echo llm.$net.tg128.$pb $(cat tract.out | grep -a TG128 | cut -f 2 -d ' ') >> metrics
+    fi 
 
-    $TRACT "$@" --readings --readings-heartbeat 1000 --nnef-tract-core --machine-friendly -O llm-bench $BENCH_OPTS > /dev/null
-
-  for stage in model_ready before_optimize
-  do
-      pattern=$(echo $stage | sed 's/[_-]/./g')
-      v=$(grep $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 1 -d ' ')
-      echo llm.$net.time_to_$stage.$pb $v >> metrics
-      v=$(grep $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 4 -d ' ')
-      echo llm.$net.rsz_at_$stage.$pb $v >> metrics
-      f=$(grep $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 11 -d ' ')
-      a=$(grep $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 10 -d ' ')
-      echo llm.$net.active_at_$stage.$pb $(($a-$f)) >> metrics
-  done
+    if $TRACT "$@" --readings --readings-heartbeat 1000 --nnef-tract-core --nnef-tract-transformers -t transformers-detect-all --machine-friendly -O llm-bench $BENCH_OPTS > /dev/null
+    then
+        for stage in model_ready before_optimize
+        do
+            pattern=$(echo $stage | sed 's/[_-]/./g')
+            v=$(grep -a $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 1 -d ' ')
+            echo llm.$net.time_to_$stage.$pb $v >> metrics
+            v=$(grep -a $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 4 -d ' ')
+            echo llm.$net.rsz_at_$stage.$pb $v >> metrics
+            f=$(grep -a $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 11 -d ' ')
+            a=$(grep -a $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 10 -d ' ')
+            if [ -n "$a" -a -n "$f" ]
+            then
+                 echo llm.$net.active_at_$stage.$pb $(($a-$f)) >> metrics
+            fi
+        done
+    fi
 }
 
 net_bench arm_ml_kws_cnn_m pass $CACHEDIR/ARM-ML-KWS-CNN-M.pb -i 49,10,f32 --partial --input-node Mfcc
@@ -146,15 +152,39 @@ net_bench trunet pulse1_f16 $CACHEDIR/trunet_dummy.nnef.tgz --nnef-tract-core --
 
 if [ $(uname) = "Darwin" ]
 then
-    for backend in cpu metal
+    LLM_BACKENDS="cpu metal"
+fi
+
+if which nvidia-smi 
+then 
+    LLM_BACKENDS="cpu cuda"
+fi
+
+if [ -n "$LLM_BACKENDS" ]
+then
+    for backend in $LLM_BACKENDS
     do
         case $backend in
             cpu) extra="";;
-            metal) extra="--metal";;
+            metal) extra="--metal"
+                   BENCH_OPTS="--warmup-loops 1"
+                   ;;
+            cuda) extra="--cuda"
+                  BENCH_OPTS="--warmup-loops 1"
+                  ;;
         esac
-        llm_bench llama-3_2-3B-q40ef32-516 $backend $CACHEDIR/Llama-3.2-3B-q40ef32.516.nnef.tgz $extra
         llm_bench llama-3_2-1B-q40ef32-516 $backend $CACHEDIR/Llama-3.2-1B-q40ef32.516.nnef.tgz $extra
         llm_bench openelm-270M-q40ef16-516 $backend $CACHEDIR/OpenELM-270M-q40ef16.516.nnef.tgz $extra
+        llm_bench llama-3_2-1B-instruct-q40ef16-541 $backend $CACHEDIR/Llama-3.2-1B-Instruct-q40ef16.541.nnef.tgz $extra
+        llm_bench openelm-270M-q40ef16-541 $backend $CACHEDIR/OpenELM-270M-q40ef16.541.nnef.tgz $extra
+
+        if [ "$backend" != "cpu" ]
+        then
+            llm_bench llama-3_2-3B-q40ef32-516 $backend $CACHEDIR/Llama-3.2-3B-q40ef32.516.nnef.tgz $extra
+            llm_bench llama-3_1-8B-instruct-q40ef16-541 $backend $CACHEDIR/Llama-3.1-8B-Instruct-q40ef16.541.nnef.tgz $extra
+            llm_bench llama-3_2-3B-instruct-q40ef16-541 $backend $CACHEDIR/Llama-3.2-3B-Instruct-q40ef16.541.nnef.tgz $extra
+            llm_bench qwen3-1_7B-q40ef16-541 $backend $CACHEDIR/Qwen3-1.7B-q40ef16.541.nnef.tgz $extra
+        fi
     done
 fi
 

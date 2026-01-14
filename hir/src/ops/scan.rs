@@ -15,7 +15,7 @@ pub struct InferenceScan {
 }
 
 impl Op for InferenceScan {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Scan".into()
     }
 

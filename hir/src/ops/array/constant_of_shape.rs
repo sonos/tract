@@ -6,13 +6,10 @@ pub struct ConstantOfShape {
     scalar: Arc<Tensor>,
 }
 
-
-
 impl Expansion for ConstantOfShape {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "ConstantOfShape".into()
     }
-
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,

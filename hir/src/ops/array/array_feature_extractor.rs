@@ -7,7 +7,7 @@ use crate::internal::*;
 pub struct ArrayFeatureExtractor;
 
 impl Expansion for ArrayFeatureExtractor {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "ArrayFeatureExtractor".into()
     }
 

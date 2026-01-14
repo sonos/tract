@@ -33,9 +33,8 @@ deny = [
 # Skip some multiple-versions checks, until they can be fixed.
 skip = [
     { name = "itertools", version="<=0.12.1" },
-    { name = "regex-syntax", version="<8" },
-    { name = "syn", version="<2" },
-    { name = "windows-sys", version="<0.59" },
+    { name = "windows-sys", version="<0.62" },
+    { name = "syn", version="<2" }
 ]
 
 [sources]

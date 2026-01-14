@@ -12,7 +12,7 @@ pub struct LayerHardmax {
 }
 
 impl Expansion for LayerHardmax {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "LayerHardmax".into()
     }
 
@@ -84,7 +84,7 @@ pub struct LayerLogSoftmax {
 }
 
 impl Expansion for LayerLogSoftmax {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "LayerLogSoftmax".into()
     }
 
@@ -116,7 +116,7 @@ pub struct LayerSoftmax {
 }
 
 impl Expansion for LayerSoftmax {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "LayerSoftmax".into()
     }
 

@@ -119,7 +119,11 @@ where
         } else if inlet.slot < succ.inputs.len() {
             succ.inputs[inlet.slot] = outlet;
         } else {
-            bail!("Edges must be added in order and consecutive. Trying to connect input {:?} of node {:?} ", inlet.slot, succ)
+            bail!(
+                "Edges must be added in order and consecutive. Trying to connect input {:?} of node {:?} ",
+                inlet.slot,
+                succ
+            )
         }
         Ok(())
     }
@@ -233,8 +237,8 @@ where
         &mut self,
         outputs: impl IntoIterator<Item = impl AsRef<str>>,
     ) -> TractResult<()> {
-        let mut labels: HashMap<Cow<str>, OutletId> =
-            self.outlet_labels.iter().map(|(o, s)| (Cow::Borrowed(&**s), *o)).collect();
+        let mut labels: HashMap<StaticName, OutletId> =
+            self.outlet_labels.iter().map(|(o, s)| (Cow::Owned((*s).to_string()), *o)).collect();
         for n in self.nodes() {
             for ix in 0..n.outputs.len() {
                 labels.insert(Cow::Owned(format!("{}:{}", &n.name, ix)), OutletId::new(n.id, ix));
@@ -519,22 +523,31 @@ where
         crate::plan::SimplePlan::new_with_options(self, options)
     }
 
+    pub fn linear_prec(&self, id: usize) -> TractResult<Option<&Node<F, O>>> {
+        let node = &self.nodes()[id];
+        rule_if!(node.inputs.len() == 1);
+        let prec = &self.nodes()[node.inputs[0].node];
+        rule_if!(prec.outputs.iter().map(|of| of.successors.len()).sum::<usize>() == 1);
+        Ok(Some(prec))
+    }
+
     pub fn single_prec(&self, id: usize) -> TractResult<Option<&Node<F, O>>> {
         let node = &self.nodes()[id];
-        if node.inputs.len() != 1 {
-            return Ok(None);
-        }
+        rule_if!(node.inputs.len() == 1);
         let prec = &self.nodes()[node.inputs[0].node];
-        if prec.outputs.iter().map(|of| of.successors.len()).sum::<usize>() != 1 {
-            return Ok(None);
-        }
         Ok(Some(prec))
+    }
+
+    pub fn all_prec(&self, id: usize) -> TractResult<Option<TVec<&Node<F, O>>>> {
+        let node = &self.nodes()[id];
+        rule_if!(node.inputs.len() > 0);
+        Ok(Some(node.inputs.iter().map(|n| &self.nodes()[n.node]).collect()))
     }
 
     pub fn single_prec_at(&self, id: usize, count: usize) -> TractResult<Option<&Node<F, O>>> {
         let mut node = self.node(id);
         for _ in 0..count {
-            if let Some(next) = self.single_prec(node.id)? {
+            if let Some(next) = self.linear_prec(node.id)? {
                 node = next
             } else {
                 return Ok(None);
@@ -546,7 +559,7 @@ where
     pub fn single_succ_at(&self, id: usize, count: usize) -> TractResult<Option<&Node<F, O>>> {
         let mut node = self.node(id);
         for _ in 0..count {
-            if let Some(next) = self.single_succ(node.id)? {
+            if let Some(next) = self.linear_succ(node.id)? {
                 node = next
             } else {
                 return Ok(None);
@@ -555,20 +568,40 @@ where
         Ok(Some(node))
     }
 
-    /// single_succ is only intended for optimisation of simple operators
+    /// linear_succ is only intended for optimisation of simple operators
     /// with 1 output, and only 1 output successors (successor with only 1 input)
+    pub fn linear_succ(&self, id: usize) -> TractResult<Option<&Node<F, O>>> {
+        let node = &self.nodes()[id];
+
+        rule_if!(node.outputs.len() == 1);
+        rule_if!(node.outputs[0].successors.len() == 1);
+        let succ = node.outputs[0].successors[0];
+        let succ = &self.nodes()[succ.node];
+        rule_if!(succ.inputs.len() == 1);
+        Ok(Some(succ))
+    }
+
     pub fn single_succ(&self, id: usize) -> TractResult<Option<&Node<F, O>>> {
         let node = &self.nodes()[id];
 
-        if node.outputs.len() != 1 || node.outputs[0].successors.len() != 1 {
-            return Ok(None);
-        }
+        rule_if!(node.outputs.len() == 1);
+        rule_if!(node.outputs[0].successors.len() == 1);
         let succ = node.outputs[0].successors[0];
-        let succ = &self.nodes()[succ.node];
-        if succ.inputs.len() != 1 {
-            return Ok(None);
-        }
-        Ok(Some(succ))
+        Ok(Some(&self.nodes()[succ.node]))
+    }
+
+    pub fn all_succ(&self, id: usize) -> TractResult<Option<TVec<&Node<F, O>>>> {
+        let node = &self.nodes()[id];
+        rule_if!(!node.outputs.is_empty());
+
+        Ok(Some(
+            node.outputs
+                .iter()
+                .flat_map(|o| {
+                    o.successors.iter().map(|succ| &self.nodes()[succ.node]).collect::<Vec<_>>()
+                })
+                .collect(),
+        ))
     }
 
     pub fn outlet_successors(&self, outlet: OutletId) -> &[InletId] {
@@ -648,15 +681,15 @@ where
                 for o in 0..self.nodes[i].outputs.len() {
                     if self.outlet_successors((i, o).into()).len() > 0 {
                         writeln!(
-                                    fmt,
-                                    "                                               |   * output #{}: {} {}",
-                                    o,
-                                    self.outlet_label((i, o).into()).unwrap_or(""),
-                                    self.outlet_successors((i, o).into())
-                                    .iter()
-                                    .map(|s| format!("{s:?}"))
-                                    .join(", "),
-                                    )?;
+                            fmt,
+                            "                                               |   * output #{}: {} {}",
+                            o,
+                            self.outlet_label((i, o).into()).unwrap_or(""),
+                            self.outlet_successors((i, o).into())
+                                .iter()
+                                .map(|s| format!("{s:?}"))
+                                .join(", "),
+                        )?;
                     }
                 }
             }
@@ -707,7 +740,7 @@ where
                 bail!("Invalid node id: position is {}, node is {}", ix, n);
             }
             if seen.contains(&n.name) {
-                bail!("duplicate name {}", n.name);
+                bail!("duplicate name for node {n}");
             }
             seen.insert(&n.name);
         }

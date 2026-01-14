@@ -12,8 +12,6 @@ pub struct Reduce {
     reducer: nn::Reducer,
 }
 
-
-
 pub fn max(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     reduce(pb, nn::Reducer::Max)
 }
@@ -42,7 +40,7 @@ pub fn reduce(pb: &NodeDef, op: nn::Reducer) -> TractResult<Box<dyn InferenceOp>
 }
 
 impl Op for Reduce {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         format!("{:?}", self.reducer).into()
     }
 

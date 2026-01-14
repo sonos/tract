@@ -20,7 +20,7 @@ use num_traits::One;
 use tract_linalg::block_quant::{BlockQuantFact, PackedBlockQuantFact};
 use tract_linalg::mmm::PackedOpaqueFact;
 
-pub fn block_quant_aware_input_shape(fact: &TypedFact) -> TractResult<Cow<[TDim]>> {
+pub fn block_quant_aware_input_shape(fact: &TypedFact) -> TractResult<Cow<'_, [TDim]>> {
     if !fact.datum_type.is_opaque() {
         return Ok(Cow::Borrowed(&*fact.shape));
     }
@@ -71,10 +71,9 @@ impl EinSum {
             .iter()
             .map(|t| block_quant_aware_input_shape(t.borrow()))
             .collect::<TractResult<_>>()?;
-        ensure!(shapes
-            .iter()
-            .enumerate()
-            .all(|(ix, fact)| fact.len() == self.axes.rank(InOut::In(ix))));
+        ensure!(
+            shapes.iter().enumerate().all(|(ix, fact)| fact.len() == self.axes.rank(InOut::In(ix)))
+        );
         Ok(shapes)
     }
 
@@ -148,7 +147,7 @@ impl Debug for EinSum {
 }
 
 impl Op for EinSum {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "EinSum".into()
     }
 
@@ -169,6 +168,22 @@ impl EvalOp for EinSum {
     }
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+        if inputs.iter().all(|i| i.datum_type().is_number()) {
+            let mut adhoc_model = TypedModel::default();
+            let mut wires = tvec!();
+            for (ix, input) in inputs.iter().enumerate() {
+                let fact = TypedFact::shape_and_dt_of(input);
+                let wire = adhoc_model.add_source(format!("input.{ix}"), fact)?;
+                wires.push(wire);
+            }
+            let output = adhoc_model.wire_node("einsum", self.clone(), &wires)?;
+            adhoc_model.set_output_outlets(&output)?;
+            let opti = adhoc_model.into_optimized()?;
+            if opti.nodes.iter().all(|node| !node.op_is::<Self>()) {
+                return opti.into_runnable()?.run(inputs);
+            }
+        }
+
         let output = if let Some(qp) = self.q_params {
             eval::eval_q(&self.axes, qp, inputs)
         } else {
@@ -185,12 +200,14 @@ impl TypedOp for EinSum {
             ensure!(shapes[i].len() == self.axes.rank(InOut::In(i)));
         }
         for axis in self.axes.iter_all_axes() {
-            assert!(shapes
-                .iter()
-                .enumerate()
-                .flat_map(|(slot, shape)| axis.inputs[slot].iter().map(|a| &shape[*a]))
-                .try_fold(TDim::one(), |a, b| TDim::broadcast(a, b.clone()))
-                .is_ok());
+            assert!(
+                shapes
+                    .iter()
+                    .enumerate()
+                    .flat_map(|(slot, shape)| axis.inputs[slot].iter().map(|a| &shape[*a]))
+                    .try_fold(TDim::one(), |a, b| TDim::broadcast(a, b.clone()))
+                    .is_ok()
+            );
         }
         if let Some(qp) = self.q_params {
             ensure!(inputs.len() == 9);
@@ -328,11 +345,10 @@ impl TypedOp for EinSum {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        if (self.q_params.is_none() && node.inputs.len() != 2)
-            || (self.q_params.is_some() && node.inputs.len() != 9)
-        {
-            return Ok(None);
-        }
+        rule_if!(
+            (self.q_params.is_none() && node.inputs.len() == 2)
+                || (self.q_params.is_some() && node.inputs.len() == 9)
+        );
         einsum_matmul::detect_rule(&(), model, node, &node.name, self)
     }
 
@@ -346,7 +362,7 @@ fn declutter_reshape_folding_input_axis(
     node: &TypedNode,
 ) -> TractResult<Option<TypedModelPatch>> {
     for (slot, prec) in node.inputs.iter().map(|n| model.node(n.node)).enumerate() {
-        let Some(AxisOp::Reshape(at, ref from, ref to)) = prec.op_as() else { continue };
+        let Some(&AxisOp::Reshape(at, ref from, ref to)) = prec.op_as() else { continue };
         if to.len() > 1 {
             continue;
         }
@@ -358,7 +374,7 @@ fn declutter_reshape_folding_input_axis(
         for label in &extra_labels {
             axes = axes.with_extra_axis(*label, InOut::In(extra_input), 0)?;
         }
-        let folded_axis = op.axes.axis((InOut::In(slot), *at))?;
+        let folded_axis = op.axes.axis((InOut::In(slot), at))?;
         if folded_axis.outputs[0].len() > 1 {
             return Ok(None);
         };

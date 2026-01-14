@@ -12,7 +12,7 @@ mod run_as_f16 {
     struct RunAsF16;
 
     impl Runtime for RunAsF16 {
-        fn name(&self) -> Cow<str> {
+        fn name(&self) -> StaticName {
             "run_as_f16".into()
         }
 
@@ -96,7 +96,7 @@ mod nnef_f16 {
     }
 
     impl Runtime for NnefF16 {
-        fn name(&self) -> Cow<str> {
+        fn name(&self) -> StaticName {
             "nnef_f16".into()
         }
 

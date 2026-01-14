@@ -1,24 +1,26 @@
 [package]
 name = "tract-libcli"
-version = "0.21.13"
+version = "0.22.1-pre"
 license = "MIT OR Apache-2.0"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
 repository = "https://github.com/snipsco/tract"
 keywords = [ "TensorFlow", "NeuralNetworks" ]
 categories = [ "science" ]
-edition = "2021"
+edition = "2024"
 
 [badges]
 maintenance = { status = "actively-developed" }
 
 [dependencies]
 box_drawing.workspace = true
+clap.workspace = true
 colorous.workspace = true
 lazy_static.workspace = true
 log.workspace = true
 ndarray-npy.workspace = true
 nu-ansi-term.workspace = true
+cudarc.workspace = true
 py_literal.workspace = true
 rand.workspace = true
 serde.workspace = true
@@ -27,14 +29,15 @@ tract-core.workspace = true
 tract-hir.workspace = true
 tract-onnx = { workspace = true, optional = true }
 tract-tflite.workspace = true
+tract-cuda.workspace = true
+tract-gpu.workspace = true
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
-tract-gpu = { workspace = true}
 tract-metal = { workspace = true }
+
 
 [features]
 # hir = ["tract-hir"]
 hir = []
 onnx = [ "tract-onnx" ]
 complex = [ "tract-core/complex" ]
-

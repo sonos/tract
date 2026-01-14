@@ -8,7 +8,7 @@ pub struct ConstantLike {
 }
 
 impl Op for ConstantLike {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "ConstantLike".into()
     }
 
@@ -87,7 +87,7 @@ impl EyeLike {
 }
 
 impl Op for EyeLike {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "EyeLike".into()
     }
 

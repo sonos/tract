@@ -1,9 +1,10 @@
 use crate::internal::*;
+use crate::ops::matmul::pack::DynPackedOpaqueFact;
 use std::fmt::{Debug, Display};
 use std::ops::Range;
+use tract_linalg::WeightType;
 use tract_linalg::mmm::{MMMInputFormat, MMMInputValue};
 use tract_linalg::pack::{PackedFormat, PackingWriter};
-use tract_linalg::WeightType;
 
 #[derive(Clone, Debug, Hash, PartialEq)]
 pub struct LazyIm2colParams {
@@ -71,16 +72,16 @@ impl Display for LazyIm2colParams {
 }
 
 impl OpaqueFact for LazyIm2colParams {
-    fn mem_size(&self) -> TDim {
-        MMMInputFormat::mem_size(
+    fn same_as(&self, _other: &dyn OpaqueFact) -> bool {
+        _other.downcast_ref::<Self>().is_some_and(|o| o == self)
+    }
+
+    fn buffer_sizes(&self) -> TVec<TDim> {
+        tvec!(MMMInputFormat::mem_size(
             self,
             self.k_byte_offsets.len().to_dim(),
             self.n_byte_offsets.len().to_dim(),
-        )
-    }
-
-    fn same_as(&self, _other: &dyn OpaqueFact) -> bool {
-        _other.downcast_ref::<Self>().is_some_and(|o| o == self)
+        ))
     }
 }
 
@@ -90,7 +91,7 @@ pub struct LazyIm2Col {
 }
 
 impl Op for LazyIm2Col {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "LazyIm2col".into()
     }
 
@@ -114,7 +115,12 @@ impl EvalOp for LazyIm2Col {
 
 impl TypedOp for LazyIm2Col {
     fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(Opaque::fact([1, 1])))
+        let opaque_fact = DynPackedOpaqueFact {
+            k: self.params.k_byte_offsets.len().to_dim(),
+            mn: self.params.n_byte_offsets.len().to_dim(),
+            packers: vec![self.params.packer.clone()],
+        };
+        Ok(tvec!(Opaque::fact([1, 1]).with_opaque_fact(opaque_fact)))
     }
 
     as_op!();

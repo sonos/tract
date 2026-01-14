@@ -12,10 +12,10 @@ fragment tract_core_properties(
 
 graph network(input_node) -> (i"wavenet_2/post_proc_2-1x1_conv-conv1d/convolution/Conv2D") {
   input_node = external(shape = [8, 20]);
-  i"wavenet_2/input_batch_normalisation/batchnorm/mul.fix-rank-1-2" = variable<scalar>(label = "wavenet_2/input_batch_normalisation/batchnorm/mul.fix-rank-1-2", shape = [1, 20]);
-  i"wavenet_2/input_batch_normalisation/batchnorm/mul" = mul(input_node, i"wavenet_2/input_batch_normalisation/batchnorm/mul.fix-rank-1-2");
-  i"wavenet_2/input_batch_normalisation/batchnorm/add_1.fix-rank-1-2" = variable<scalar>(label = "wavenet_2/input_batch_normalisation/batchnorm/add_1.fix-rank-1-2", shape = [1, 20]);
-  i"wavenet_2/input_batch_normalisation/batchnorm/add_1" = add(i"wavenet_2/input_batch_normalisation/batchnorm/mul", i"wavenet_2/input_batch_normalisation/batchnorm/add_1.fix-rank-1-2");
+  i"wavenet_2/input_batch_normalisation/batchnorm/mul.fix-rank.1" = variable<scalar>(label = "wavenet_2/input_batch_normalisation/batchnorm/mul.fix-rank.1", shape = [1, 20]);
+  i"wavenet_2/input_batch_normalisation/batchnorm/mul" = mul(input_node, i"wavenet_2/input_batch_normalisation/batchnorm/mul.fix-rank.1");
+  i"wavenet_2/input_batch_normalisation/batchnorm/add_1.fix-rank.1" = variable<scalar>(label = "wavenet_2/input_batch_normalisation/batchnorm/add_1.fix-rank.1", shape = [1, 20]);
+  i"wavenet_2/input_batch_normalisation/batchnorm/add_1" = add(i"wavenet_2/input_batch_normalisation/batchnorm/mul", i"wavenet_2/input_batch_normalisation/batchnorm/add_1.fix-rank.1");
   i"wavenet_2/pre_conv-conv1d/convolution/Conv2D.delay" = tract_pulse_delay(i"wavenet_2/input_batch_normalisation/batchnorm/add_1", axis = 0, delay = 0, overlap = 2);
   i"wavenet_2/pre_conv-conv1d/convolution/Conv2D.add_n" = unsqueeze(i"wavenet_2/pre_conv-conv1d/convolution/Conv2D.delay", axes = [0]);
   i"wavenet_2/pre_conv-conv1d/convolution/Conv2D.kernel_reorg_go" = variable<scalar>(label = "wavenet_2/pre_conv-conv1d/convolution/Conv2D.kernel_reorg_go", shape = [16, 20, 3]);

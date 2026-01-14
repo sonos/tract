@@ -25,7 +25,7 @@ pub type Q1_30 = FixedPoint<i32, 1>;
 pub type Q2_29 = FixedPoint<i32, 2>;
 pub type Q5_26 = FixedPoint<i32, 5>;
 
-#[derive(PartialEq, Eq,PartialOrd, Copy, Clone)]
+#[derive(PartialEq, Eq, PartialOrd, Copy, Clone)]
 pub struct FixedPoint<T: PrimInt, const INTEGER_BITS: usize>(T);
 
 impl<T, const INTEGER_BITS: usize> FixedPoint<T, INTEGER_BITS>

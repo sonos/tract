@@ -2,7 +2,7 @@ use crate::broadcast::multi_broadcast;
 use crate::internal::*;
 use crate::ndarray::Zip;
 
-#[derive(Clone, Copy, Debug, Hash)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq)]
 pub enum Comp {
     Eq,
     NE,
@@ -12,11 +12,11 @@ pub enum Comp {
     LTE,
 }
 
-use tract_data::TooEarly;
 use Comp::*;
+use tract_data::TooEarly;
 
 impl Op for Comp {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         match *self {
             Eq => "==",
             NE => "!=",
@@ -58,6 +58,7 @@ impl EvalOp for Comp {
 
     fn eval_with_session(
         &self,
+        _node_id: usize,
         session: &SessionState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
@@ -125,6 +126,9 @@ impl EvalOp for Comp {
                 };
             }
             Ok(tvec!(c.into_tvalue()))
+        } else if inputs[0].datum_type().is::<String>() {
+            let t = self.eval::<String>(&inputs[0], &inputs[1])?;
+            Ok(tvec!(t.into_tvalue()))
         } else {
             let t = dispatch_numbers!(Self::eval(inputs[0].datum_type())(
                 self, &inputs[0], &inputs[1]
@@ -149,12 +153,9 @@ impl TypedOp for Comp {
     ) -> TractResult<Option<AxisChangeConsequence>> {
         if let AxisOp::Rm(rm) = change {
             let (inputs, outputs) = model.node_facts(node.id)?;
-            if !inputs[0].shape[*rm].is_one()
-                || !inputs[0].shape[*rm].is_one()
-                || !outputs[0].shape[*rm].is_one()
-            {
-                return Ok(None);
-            }
+            rule_if!(inputs[0].shape[*rm].is_one());
+            rule_if!(inputs[1].shape[*rm].is_one());
+            rule_if!(outputs[0].shape[*rm].is_one());
         }
         Ok(Some(AxisChangeConsequence::new(model, node, None, change)))
     }

@@ -8,6 +8,7 @@ on:
 env:
   CARGO_INCREMENTAL: false
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE20: true
+  RUSTUP_TOOLCHAIN: 1.85.0
 
 jobs:
   examples:
@@ -44,6 +45,7 @@ jobs:
     - name: example tests
       env:
         AWS_EC2_METADATA_DISABLED: true
+      timeout-minutes: 20
       run: |
         cd examples/${{matrix.ex}}
         ./ci.sh

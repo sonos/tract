@@ -1,0 +1,78 @@
+name: CUDA tests
+
+on:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron:  '0 3 * * *'
+
+
+env:
+  CARGO_INCREMENTAL: false
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE20: true
+  RUSTUP_TOOLCHAIN: "1.85.0"
+  ROOT: ${{ github.workspace }}
+
+jobs:
+  unit:
+    runs-on: [ self-hosted, cuda-lovelace ]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - run: |
+         . .travis/ci-system-setup.sh
+         echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+      env:
+         RUNNER_ENVIRONMENT: ${{ runner.environment }}
+        
+    - run: cargo check --workspace --exclude test-blas --exclude tract-metal --exclude test-metal
+    - run: cargo test -q -p tract-linalg
+    - run: cargo test -q -p tract-core
+    - run: cargo test -q -p tract-nnef
+    - run: cargo test -q -p tract-onnx
+    - run: cargo test -q -p tract-onnx-opl
+    - run: cargo test -q -p tract-cuda
+    - run: cargo test -q -p test-onnx-core
+    - run: cargo test -q -p test-unit-core
+    - run: cargo test -q -p test-cuda
+
+  build-cli: 
+    name: Build tract on Cuda
+    runs-on: [ self-hosted, cuda-lovelace ]
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+           . .travis/ci-system-setup.sh
+           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+        env:
+           RUNNER_ENVIRONMENT: ${{ runner.environment }}
+        
+      - run: cargo build -p tract --release --no-default-features --features transformers
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tract-cli-cuda
+          path: ./target/release/tract
+
+  example:
+    name: cuda / ${{ matrix.model }} / ${{ matrix.q }}
+    needs: [ build-cli ]
+    runs-on: [ self-hosted, cuda-lovelace ]
+    strategy:
+      matrix:
+        model: [ openelm-270M, llama-3.2-1B-instruct, llama-3.2-3B-instruct, llama-3.1-8B-instruct, qwen2.5-7B-instruct, qwen3-1.7B, qwen3-8B ]
+        q: [ f16f16, f32f32, q40ef16]
+      fail-fast: false
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - uses: actions/download-artifact@v4.1.7
+      with:
+        pattern: tract-cli-cuda
+
+    - name: Download and run
+      run: |
+        chmod +x tract-cli-cuda/tract
+        export TRACT_RUN="$GITHUB_WORKSPACE/tract-cli-cuda/tract"
+        .travis/test-llm.sh ${{matrix.model}} ${{matrix.q}} cuda

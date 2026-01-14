@@ -13,13 +13,13 @@ use std::fmt::Display;
 use tract_core::internal::*;
 use tract_data::itertools::Itertools;
 
-use crate::device::{get_context, DeviceBuffer};
+use crate::device::{DeviceBuffer, get_context};
 
 /// This struct represents a GPU tensor that can be either a owned tensor
 /// or an arena view.
 #[derive(Debug, Clone, Hash)]
 pub enum DeviceTensor {
-    Owned(OwnedDeviceTensor),
+    Owned(Box<dyn OwnedDeviceTensor>),
     ArenaView(DeviceArenaView),
 }
 
@@ -53,19 +53,22 @@ impl DeviceTensor {
             DatumType::I64 => "i64",
             DatumType::Bool => "bool",
             DatumType::Opaque => "opaque",
-            _ => bail!("Unsupport dt {:?} for GPU Tensor", dt),
+            _ => bail!("Unsupported dt {:?} for GPU Tensor", dt),
         })
     }
 
     /// Create an uninitialized DeviceTensor
-    pub unsafe fn uninitialized_dt(dt: DatumType, shape: &[usize]) -> TractResult<DeviceTensor> {
-        Tensor::uninitialized_dt(dt, shape)?.into_device()
+    pub fn uninitialized_dt(dt: DatumType, shape: &[usize]) -> TractResult<DeviceTensor> {
+        Ok(DeviceTensor::Owned(get_context()?.uninitialized_device_tensor(shape, dt)?))
     }
 
-    pub unsafe fn uninitialized<T: Datum>(shape: &[usize]) -> TractResult<DeviceTensor> {
+    pub fn uninitialized<T: Datum>(shape: &[usize]) -> TractResult<DeviceTensor> {
         Self::uninitialized_dt(T::datum_type(), shape)
     }
 
+    pub fn uninitialized_opaque(opaque_fact: Box<dyn OpaqueFact>) -> TractResult<DeviceTensor> {
+        Ok(DeviceTensor::Owned(get_context()?.uninitialized_device_opaque_tensor(opaque_fact)?))
+    }
     // Create a device tensor with a given shape and a slice of elements. The data is copied and aligned to size of T.
     pub fn from_shape<T: Copy + Datum>(shape: &[usize], data: &[T]) -> TractResult<DeviceTensor> {
         Tensor::from_shape(shape, data)?.into_device()
@@ -79,7 +82,7 @@ impl DeviceTensor {
     #[inline]
     pub fn datum_type(&self) -> DatumType {
         match self {
-            Self::Owned(OwnedDeviceTensor { inner, .. }) => inner.datum_type(),
+            Self::Owned(owned) => owned.datum_type(),
             Self::ArenaView(view) => view.datum_type(),
         }
     }
@@ -132,24 +135,15 @@ impl DeviceTensor {
         usize: AsPrimitive<I>,
     {
         match self {
-            Self::Owned(t) => t.buffer_offset(),
+            Self::Owned(_) => 0.as_(),
             Self::ArenaView(t) => t.buffer_offset(),
         }
     }
 
     pub fn device_buffer_ptr(&self) -> *const c_void {
         match self {
-            Self::Owned(t) => t.device_buffer_ptr(),
-            Self::ArenaView(t) => t.device_buffer_ptr(),
-        }
-    }
-
-    /// Get underlying inner tensor view.
-    #[inline]
-    pub fn view(&self) -> TensorView {
-        match self {
-            Self::Owned(t) => t.view(),
-            Self::ArenaView(t) => t.view(),
+            Self::Owned(t) => t.device_buffer().ptr(),
+            Self::ArenaView(t) => t.device_buffer().ptr(),
         }
     }
 
@@ -159,16 +153,16 @@ impl DeviceTensor {
     }
 
     /// Reshaped tensor with given shape.
-    pub fn reshaped(&self, shape: impl Into<TVec<usize>>) -> TractResult<Self> {
+    pub fn reshaped(&self, shape: TVec<usize>) -> TractResult<Self> {
         match self {
-            Self::Owned(t) => Ok(Self::Owned(t.reshaped(shape)?)),
+            Self::Owned(t) => Ok(t.reshaped(shape)?),
             Self::ArenaView(t) => Ok(Self::ArenaView(t.reshaped(shape)?)),
         }
     }
 
-    pub fn restrided(&self, strides: impl Into<TVec<isize>>) -> TractResult<Self> {
+    pub fn restrided(&self, strides: TVec<isize>) -> TractResult<Self> {
         match self {
-            Self::Owned(t) => Ok(Self::Owned(t.restrided(strides)?)),
+            Self::Owned(t) => Ok(t.restrided(strides)?),
             Self::ArenaView(t) => Ok(Self::ArenaView(t.restrided(strides)?)),
         }
     }
@@ -184,12 +178,8 @@ impl DeviceTensor {
         get_context()?.synchronize()?;
 
         Ok(match self {
-            Self::Owned(o) => o
-                .inner
-                .as_arc_tensor()
-                .cloned()
-                .unwrap_or_else(|| o.inner.clone().into_tensor().into_arc_tensor()),
-            Self::ArenaView(v) => v.clone().into_tensor().into(),
+            Self::Owned(o) => o.to_host()?,
+            Self::ArenaView(v) => v.to_host()?.into(),
         })
     }
 }
@@ -197,22 +187,10 @@ impl DeviceTensor {
 impl Display for DeviceTensor {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Owned(o) => match &o.inner {
-                DValue::Natural(t) => {
-                    let content = t.dump(false).unwrap_or_else(|e| format!("Error : {e:?}"));
-                    write!(f, "Owned: {{ {content} }}")
-                }
-                DValue::Reshaped { t, shape, .. } => {
-                    let content = t.dump(false).unwrap_or_else(|e| format!("Error : {e:?}"));
-                    write!(f, "Owned,Reshaped: {:?} - {{ {content} }}", shape)
-                }
-            },
+            Self::Owned(o) => o.fmt(f),
             Self::ArenaView(v) => {
-                let content = v
-                    .clone()
-                    .into_tensor()
-                    .dump(false)
-                    .unwrap_or_else(|e| format!("Error : {e:?}"));
+                let content =
+                    v.to_host().unwrap().dump(false).unwrap_or_else(|e| format!("Error : {e:?}"));
                 write!(f, "ArenaView: {{ {content} }}")
             }
         }
@@ -225,13 +203,13 @@ pub trait IntoDevice<T> {
 
 impl IntoDevice<DeviceTensor> for Tensor {
     fn into_device(self) -> TractResult<DeviceTensor> {
-        Ok(DeviceTensor::Owned(OwnedDeviceTensor::from_tensor(self)?))
+        Ok(DeviceTensor::Owned(get_context()?.tensor_to_device(self.into_tvalue())?))
     }
 }
 
 impl IntoDevice<DeviceTensor> for Arc<Tensor> {
     fn into_device(self) -> TractResult<DeviceTensor> {
-        Ok(DeviceTensor::Owned(OwnedDeviceTensor::from_tensor(self)?))
+        Ok(DeviceTensor::Owned(get_context()?.tensor_to_device(self.into_tvalue())?))
     }
 }
 

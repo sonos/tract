@@ -1,4 +1,3 @@
-
 unicast_impl_wrap!(
     f32,
     arm64simd_unicast_mul_f32_16n,
@@ -10,10 +9,11 @@ unicast_impl_wrap!(
         assert!(a.len() % 16 == 0);
         assert!(a.len() > 0);
         unsafe fn run(a: &mut [f32], b: &[f32]) {
-            let len = a.len();
-            let a_ptr = a.as_ptr();
-            let b_ptr = b.as_ptr();
-            std::arch::asm!("
+            unsafe {
+                let len = a.len();
+                let a_ptr = a.as_ptr();
+                let b_ptr = b.as_ptr();
+                std::arch::asm!("
                 2:
                     ld1 {{v0.4s, v1.4s, v2.4s, v3.4s}}, [{a_ptr}]
                     ld1 {{v4.4s, v5.4s, v6.4s, v7.4s}}, [{b_ptr}], 64
@@ -29,6 +29,7 @@ unicast_impl_wrap!(
             a_ptr = inout(reg) a_ptr => _,
             b_ptr = inout(reg) b_ptr => _,
             out("v0") _, out("v1") _, out("v2") _, out("v3") _,);
+            }
         }
         unsafe { run(a, b) }
     }
@@ -45,10 +46,11 @@ unicast_impl_wrap!(
         assert!(a.len() % 16 == 0);
         assert!(a.len() > 0);
         unsafe fn run(a: &mut [f32], b: &[f32]) {
-            let len = a.len();
-            let a_ptr = a.as_ptr();
-            let b_ptr = b.as_ptr();
-            std::arch::asm!("
+            unsafe {
+                let len = a.len();
+                let a_ptr = a.as_ptr();
+                let b_ptr = b.as_ptr();
+                std::arch::asm!("
                 2:
                     ld1 {{v0.4s, v1.4s, v2.4s, v3.4s}}, [{a_ptr}]
                     ld1 {{v4.4s, v5.4s, v6.4s, v7.4s}}, [{b_ptr}], 64
@@ -64,11 +66,11 @@ unicast_impl_wrap!(
             a_ptr = inout(reg) a_ptr => _,
             b_ptr = inout(reg) b_ptr => _,
             out("v0") _, out("v1") _, out("v2") _, out("v3") _,);
+            }
         }
         unsafe { run(a, b) }
     }
 );
-
 
 unicast_impl_wrap!(
     f32,
@@ -81,10 +83,11 @@ unicast_impl_wrap!(
         assert!(a.len() % 16 == 0);
         assert!(a.len() > 0);
         unsafe fn run(a: &mut [f32], b: &[f32]) {
-            let len = a.len();
-            let a_ptr = a.as_ptr();
-            let b_ptr = b.as_ptr();
-            std::arch::asm!("
+            unsafe {
+                let len = a.len();
+                let a_ptr = a.as_ptr();
+                let b_ptr = b.as_ptr();
+                std::arch::asm!("
                 2:
                     ld1 {{v0.4s, v1.4s, v2.4s, v3.4s}}, [{a_ptr}]
                     ld1 {{v4.4s, v5.4s, v6.4s, v7.4s}}, [{b_ptr}], 64
@@ -100,6 +103,7 @@ unicast_impl_wrap!(
             a_ptr = inout(reg) a_ptr => _,
             b_ptr = inout(reg) b_ptr => _,
             out("v0") _, out("v1") _, out("v2") _, out("v3") _,);
+            }
         }
         unsafe { run(a, b) }
     }
@@ -116,10 +120,11 @@ unicast_impl_wrap!(
         assert!(a.len() % 16 == 0);
         assert!(a.len() > 0);
         unsafe fn run(a: &mut [f32], b: &[f32]) {
-            let len = a.len();
-            let a_ptr = a.as_ptr();
-            let b_ptr = b.as_ptr();
-            std::arch::asm!("
+            unsafe {
+                let len = a.len();
+                let a_ptr = a.as_ptr();
+                let b_ptr = b.as_ptr();
+                std::arch::asm!("
                 2:
                     ld1 {{v0.4s, v1.4s, v2.4s, v3.4s}}, [{a_ptr}]
                     ld1 {{v4.4s, v5.4s, v6.4s, v7.4s}}, [{b_ptr}], 64
@@ -135,6 +140,7 @@ unicast_impl_wrap!(
             a_ptr = inout(reg) a_ptr => _,
             b_ptr = inout(reg) b_ptr => _,
             out("v0") _, out("v1") _, out("v2") _, out("v3") _,);
+            }
         }
         unsafe { run(a, b) }
     }
@@ -151,10 +157,11 @@ unicast_impl_wrap!(
         assert!(a.len() % 16 == 0);
         assert!(a.len() > 0);
         unsafe fn run(a: &mut [f32], b: &[f32]) {
-            let len = a.len();
-            let a_ptr = a.as_ptr();
-            let b_ptr = b.as_ptr();
-            std::arch::asm!("
+            unsafe {
+                let len = a.len();
+                let a_ptr = a.as_ptr();
+                let b_ptr = b.as_ptr();
+                std::arch::asm!("
                 2:
                     ld1 {{v0.4s, v1.4s, v2.4s, v3.4s}}, [{a_ptr}]
                     ld1 {{v4.4s, v5.4s, v6.4s, v7.4s}}, [{b_ptr}], 64
@@ -170,6 +177,7 @@ unicast_impl_wrap!(
             a_ptr = inout(reg) a_ptr => _,
             b_ptr = inout(reg) b_ptr => _,
             out("v0") _, out("v1") _, out("v2") _, out("v3") _,);
+            }
         }
         unsafe { run(a, b) }
     }
@@ -186,10 +194,11 @@ unicast_impl_wrap!(
         assert!(a.len() % 16 == 0);
         assert!(a.len() > 0);
         unsafe fn run(a: &mut [f32], b: &[f32]) {
-            let len = a.len();
-            let a_ptr = a.as_ptr();
-            let b_ptr = b.as_ptr();
-            std::arch::asm!("
+            unsafe {
+                let len = a.len();
+                let a_ptr = a.as_ptr();
+                let b_ptr = b.as_ptr();
+                std::arch::asm!("
                 2:
                     ld1 {{v0.4s, v1.4s, v2.4s, v3.4s}}, [{a_ptr}]
                     ld1 {{v4.4s, v5.4s, v6.4s, v7.4s}}, [{b_ptr}], 64
@@ -205,6 +214,7 @@ unicast_impl_wrap!(
             a_ptr = inout(reg) a_ptr => _,
             b_ptr = inout(reg) b_ptr => _,
             out("v0") _, out("v1") _, out("v2") _, out("v3") _,);
+            }
         }
         unsafe { run(a, b) }
     }

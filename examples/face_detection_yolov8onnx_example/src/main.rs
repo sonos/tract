@@ -1,17 +1,16 @@
-use tract_onnx::prelude::*;
-use tract_ndarray::s;
-use clap::Parser;
 use anyhow::{Error, Result};
+use clap::Parser;
 use image::DynamicImage;
 use std::cmp::Ordering;
-use std::cmp::{PartialOrd};
-
+use std::cmp::PartialOrd;
+use tract_ndarray::s;
+use tract_onnx::prelude::*;
 
 #[derive(Parser)]
 struct CliArgs {
     #[arg(long)]
     input_image: String,
-    
+
     #[arg(long)]
     weights: String,
 }
@@ -27,13 +26,7 @@ pub struct Bbox {
 
 impl Bbox {
     pub fn new(x1: f32, y1: f32, x2: f32, y2: f32, confidence: f32) -> Bbox {
-        Bbox {
-            x1,
-            y1,
-            x2,
-            y2,
-            confidence,
-        }
+        Bbox { x1, y1, x2, y2, confidence }
     }
     pub fn apply_image_scale(
         &mut self,
@@ -51,13 +44,7 @@ impl Bbox {
         let cart_y1 = original_image.height() as f32 * normalized_y1;
         let cart_y2 = original_image.height() as f32 * normalized_y2;
 
-        Bbox {
-            x1: cart_x1,
-            y1: cart_y1,
-            x2: cart_x2,
-            y2: cart_y2,
-            confidence: self.confidence,
-        }
+        Bbox { x1: cart_x1, y1: cart_y1, x2: cart_x2, y2: cart_y2, confidence: self.confidence }
     }
     pub fn crop_bbox(&self, original_image: &DynamicImage) -> Result<DynamicImage, Error> {
         let bbox_width = (self.x2 - self.x1) as u32;
@@ -71,13 +58,8 @@ impl Bbox {
     }
 }
 
-
 pub fn non_maximum_suppression(mut boxes: Vec<Bbox>, iou_threshold: f32) -> Vec<Bbox> {
-    boxes.sort_by(|a, b| {
-        a.confidence
-            .partial_cmp(&b.confidence)
-            .unwrap_or(Ordering::Equal)
-    });
+    boxes.sort_by(|a, b| a.confidence.partial_cmp(&b.confidence).unwrap_or(Ordering::Equal));
     let mut keep = Vec::new();
     while !boxes.is_empty() {
         let current = boxes.remove(0);
@@ -101,31 +83,38 @@ fn calculate_iou(box1: &Bbox, box2: &Bbox) -> f32 {
     intersection / union
 }
 
-
-
 fn main() -> Result<(), Error> {
     let args = CliArgs::parse();
     let model = tract_onnx::onnx()
         .model_for_path(args.weights)?
-        .with_input_fact(0, f32::fact([1,3,640,640]).into())?
+        .with_input_fact(0, f32::fact([1, 3, 640, 640]).into())?
         .into_optimized()?
         .into_runnable()?;
     let raw_image = image::open(args.input_image)?;
-    
+
     // scale the image with black padding
     let width = raw_image.width();
     let height = raw_image.height();
     let scale = 640.0 / width.max(height) as f32;
     let new_width = (width as f32 * scale) as u32;
     let new_height = (height as f32 * scale) as u32;
-    let resized = image::imageops::resize(&raw_image.to_rgb8(), new_width, new_height, image::imageops::FilterType::Triangle);
+    let resized = image::imageops::resize(
+        &raw_image.to_rgb8(),
+        new_width,
+        new_height,
+        image::imageops::FilterType::Triangle,
+    );
     let mut padded = image::RgbImage::new(640, 640);
-    image::imageops::replace(&mut padded, &resized, (640 - new_width as i64) / 2, (640 - new_height as i64) / 2);
+    image::imageops::replace(
+        &mut padded,
+        &resized,
+        (640 - new_width as i64) / 2,
+        (640 - new_height as i64) / 2,
+    );
     let image: Tensor = tract_ndarray::Array4::from_shape_fn((1, 3, 640, 640), |(_, c, y, x)| {
         padded.get_pixel(x as u32, y as u32)[c] as f32 / 255.0
     })
-    .into();   
-    
+    .into();
 
     //run model
     //
@@ -145,20 +134,15 @@ fn main() -> Result<(), Error> {
             let y1 = y - h / 2.0;
             let x2 = x + w / 2.0;
             let y2 = y + h / 2.0;
-            let bbox = Bbox::new(x1, y1, x2, y2, confidence).apply_image_scale(
-                &raw_image,
-                640.0,
-                640.0,
-            );
+            let bbox =
+                Bbox::new(x1, y1, x2, y2, confidence).apply_image_scale(&raw_image, 640.0, 640.0);
             bbox_vec.push(bbox);
-        
         }
-    }    
+    }
     // uncomment below to save preview face
     // let test_save = bbox_vec[0].crop_bbox(&raw_image)?.save("test_crop.png");
-    
+
     println!("bboxes: {bbox_vec:?}");
-    
+
     Ok(())
 }
-

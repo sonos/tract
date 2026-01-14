@@ -1,6 +1,6 @@
 use pbr::ProgressBar;
 use tract_data::internal::*;
-use tract_linalg::{frame::MatMatMul, mmm::FusedSpec};
+use tract_linalg::mmm::*;
 
 use rand::prelude::*;
 use std::io::Write;
@@ -129,25 +129,29 @@ fn measure_add_mat_mul(bencher: &Bencher, mm: &dyn MatMatMul, m: usize, k: usize
                 let inputs = (10_000_000 / pb_size).max(1);
                 (0..inputs)
                     .map(|_| {
-                        let (packed_a, packed_b) = mm.packings()[0];
-                        let pa = packed_a.prepare_tensor(&a, 1, 0).unwrap();
-                        let pb = packed_b.prepare_tensor(&b, 0, 1).unwrap();
+                        let (packed_a, packed_b) = &mm.packings()[0];
+                        let pa = packed_a.prepare_one(&a, 1, 0).unwrap();
+                        let pb = packed_b.prepare_one(&b, 0, 1).unwrap();
                         let c = Tensor::zero_dt(dt, &[m, n]).unwrap();
-                        let pc = mm.c_view(0, 1).wrap(&c.view());
+                        let pc = mm.c_view(Some(0), Some(1)).wrap(&c.view());
                         let scratch = mm.allocate_scratch_space();
                         (scratch, c, pa, pb, pc)
                     })
                     .collect()
             },
             #[allow(unused_mut)] // not sure why the warning pops
-            |(scratch, _c, pa, pb, mut pc)| {
+            |(scratch, _c, pa, pb, pc)| {
                 mm.run_with_scratch_space(
                     m,
                     n,
                     scratch.as_mut(),
                     &[
-                        FusedSpec::AddMatMul { a: &**pa, b: &**pb, packing: 0 },
-                        FusedSpec::Store(pc),
+                        FusedSpec::AddMatMul {
+                            a: AsInputValue::Borrowed(&**pa),
+                            b: AsInputValue::Borrowed(&**pb),
+                            packing: 0,
+                        },
+                        FusedSpec::Store(*pc),
                     ],
                 )
                 .unwrap();
@@ -220,7 +224,7 @@ impl Dataset {
                 for &n in &ns {
                     for k in ks {
                         inputs.push(Sample {
-                            kernel: mm.kernel_name().to_string(),
+                            kernel: mm.name().to_string(),
                             mr: mm.mr(),
                             nr: mm.nr(),
                             m,
@@ -255,7 +259,7 @@ impl Dataset {
                                 continue;
                             }
                             inputs.push(Sample {
-                                kernel: mm.kernel_name().to_string(),
+                                kernel: mm.name().to_string(),
                                 mr: mm.mr(),
                                 nr: mm.nr(),
                                 m,
@@ -281,7 +285,7 @@ impl Dataset {
         let mut progress_bar = ProgressBar::new(inputs.len() as _);
         let mut samples = vec![];
         for s in inputs {
-            let mm = mmm.iter().find(|mm| mm.kernel_name() == s.kernel).unwrap();
+            let mm = mmm.iter().find(|mm| mm.name() == s.kernel).unwrap();
             let y = measure_add_mat_mul(&bencher, *mm, s.m, s.k, s.n);
             samples.push((s.clone(), y));
             progress_bar.inc();
@@ -439,13 +443,13 @@ fn main() {
     match matches.subcommand() {
         Some(("list-models", _sub)) => {
             for mmm in mmms {
-                println!("{}", mmm.kernel_name());
+                println!("{}", mmm.name());
             }
         }
         Some(("ds", sub)) => {
             let mut mmms = mmms.clone();
             if let Some(mm) = sub.value_of("mm") {
-                mmms.retain(|m| m.kernel_name().contains(mm));
+                mmms.retain(|m| m.name().contains(mm));
             }
             let inputs = match sub.value_of("strat").unwrap() {
                 "smart" => Dataset::smart_sample(&*mmms),
@@ -464,7 +468,7 @@ fn main() {
         Some(("time", sub)) => {
             let mut mmms = impls.clone();
             if let Some(mm) = sub.value_of("mm") {
-                mmms.retain(|m| m.kernel_name().contains(mm));
+                mmms.retain(|m| m.name().contains(mm));
             }
             let m: usize = sub.value_of("m").unwrap().parse().unwrap();
             let k: usize = sub.value_of("k").unwrap().parse().unwrap();
@@ -472,7 +476,7 @@ fn main() {
             let mut alts = vec![];
             for mm in &mmms {
                 let y = measure_add_mat_mul(&bencher, &***mm, m, k, n);
-                alts.push((mm.kernel_name(), y));
+                alts.push((mm.name(), y));
             }
             display_comparison(m, k, n, &*alts, None);
         }

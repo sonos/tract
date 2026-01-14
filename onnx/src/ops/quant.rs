@@ -39,10 +39,8 @@ pub struct QuantizeLinear {
     optional_zero_point_input: Option<usize>,
 }
 
-
-
 impl Expansion for QuantizeLinear {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "QuantizeLinear".into()
     }
 
@@ -104,10 +102,8 @@ pub struct DequantizeLinear {
     optional_zero_point_input: Option<usize>,
 }
 
-
-
 impl Expansion for DequantizeLinear {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "DequantizeLinear".into()
     }
 
@@ -166,10 +162,8 @@ impl Expansion for DequantizeLinear {
 #[derive(Debug, Clone, new, Default, Hash)]
 pub struct DynamicQuantizeLinear {}
 
-
-
 impl Expansion for DynamicQuantizeLinear {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "DynamicQuantizeLinear".into()
     }
 
@@ -208,8 +202,7 @@ impl Expansion for DynamicQuantizeLinear {
 }
 
 fn dynamic_quantize_linear_f32_u8(x: f32, scale: f32, zero_point: u8) -> u8 {
-    (((x / scale).round() as i32) + zero_point as i32)
-        .clamp(u8::MIN as i32, u8::MAX as i32) as u8
+    (((x / scale).round() as i32) + zero_point as i32).clamp(u8::MIN as i32, u8::MAX as i32) as u8
 }
 
 fn dynamic_quantize_linear_u8(scale: f32, zero_point: u8, xs: &[f32], ys: &mut [u8]) {
@@ -252,7 +245,7 @@ fn scale_and_zero_point(v: ArrayViewD<f32>) -> (f32, u8) {
 pub struct DynamicQuantizeLinearU8;
 
 impl Op for DynamicQuantizeLinearU8 {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "DynamicQuantizeLinearU8".into()
     }
 
@@ -266,8 +259,6 @@ impl Op for DynamicQuantizeLinearU8 {
 
     op_as_typed_op!();
 }
-
-
 
 impl EvalOp for DynamicQuantizeLinearU8 {
     fn is_stateless(&self) -> bool {

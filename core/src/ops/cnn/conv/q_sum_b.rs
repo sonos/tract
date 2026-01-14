@@ -11,7 +11,7 @@ pub struct QSumB {
 }
 
 impl Op for QSumB {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "QSumB".into()
     }
 
@@ -30,6 +30,7 @@ impl EvalOp for QSumB {
 
     fn eval_with_session(
         &self,
+        _node_id: usize,
         session: &SessionState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {

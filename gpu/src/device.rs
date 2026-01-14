@@ -1,33 +1,38 @@
-use core::fmt;
 use std::ffi::c_void;
 use std::sync::Mutex;
 
 use anyhow::{anyhow, bail};
-use downcast_rs::{impl_downcast, Downcast};
+use downcast_rs::{Downcast, impl_downcast};
 use tract_core::dyn_clone;
-use tract_core::prelude::TractResult;
+use tract_core::internal::OpaqueFact;
+use tract_core::prelude::{DatumType, TractResult};
+use tract_core::value::TValue;
+
+use crate::tensor::OwnedDeviceTensor;
 
 pub trait DeviceContext: Downcast + dyn_clone::DynClone + Send + Sync {
-    fn buffer_from_slice(&self, tensor: &[u8]) -> Box<dyn DeviceBuffer>;
+    fn tensor_to_device(&self, tensor: TValue) -> TractResult<Box<dyn OwnedDeviceTensor>>;
+    fn uninitialized_device_tensor(
+        &self,
+        shape: &[usize],
+        dt: DatumType,
+    ) -> TractResult<Box<dyn OwnedDeviceTensor>>;
+    fn uninitialized_device_opaque_tensor(
+        &self,
+        opaque_fact: Box<dyn OpaqueFact>,
+    ) -> TractResult<Box<dyn OwnedDeviceTensor>>;
     fn synchronize(&self) -> TractResult<()>;
 }
 
 impl_downcast!(DeviceContext);
 dyn_clone::clone_trait_object!(DeviceContext);
 
-pub trait DeviceBuffer: Downcast + dyn_clone::DynClone + Send + Sync {
-    fn info(&self) -> String;
+pub trait DeviceBuffer: Downcast + dyn_clone::DynClone + Send + Sync + std::fmt::Debug {
     fn ptr(&self) -> *const c_void;
 }
 
 impl_downcast!(DeviceBuffer);
 dyn_clone::clone_trait_object!(DeviceBuffer);
-
-impl fmt::Debug for dyn DeviceBuffer {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "DeviceBuffer: {:?}", self.info())
-    }
-}
 
 pub static DEVICE_CONTEXT: Mutex<Option<Box<dyn DeviceContext>>> = Mutex::new(None);
 

@@ -5,8 +5,8 @@ use crate::model::*;
 use crate::ops::dummy::Dummy;
 use crate::ops::einsum::EinSum;
 use crate::ops::konst::Const;
-use std::collections::hash_map::Entry;
 use std::collections::HashSet;
+use std::collections::hash_map::Entry;
 use std::fmt::Debug;
 
 use crate::ops::change_axes::*;
@@ -43,9 +43,8 @@ impl TypedPass for ChangeAxes {
                 let change = AxisChange { outlet, op: suggestion.1 };
                 if self.0.insert(change.clone()) {
                     if let Some((patch, _)) =
-                        change_axes(model, &change, &interfaces, &[], &mut explored).with_context(
-                            || format!("Making patch for {change:?} from {node}"),
-                        )?
+                        change_axes(model, &change, &interfaces, &[], &mut explored)
+                            .with_context(|| format!("Making patch for {change:?} from {node}"))?
                     {
                         self.1 = node.id;
                         return Ok(Some(patch));
@@ -106,9 +105,7 @@ pub fn change_axes(
     let mut changed_ops: HashMap<usize, Box<dyn TypedOp>> = HashMap::new();
     let mut rewired_scalar_input: HashMap<InletId, (OutletId, AxisOp)> = Default::default();
     while let Some((change, emitter)) = todo_changes.pop() {
-        if !explored.insert(change.clone()) {
-            return Ok(None);
-        }
+        rule_if!(explored.insert(change.clone()));
         let outlet_group = bound_outlets(change.outlet);
         for &outlet in &outlet_group {
             if locked.contains(&outlet) {
@@ -168,9 +165,7 @@ pub fn change_axes(
                     let outlet_group = bound_outlets(wire.as_outlet(node));
                     match changed_wires.entry(outlet_group.clone()) {
                         Entry::Vacant(entry) => {
-                            trace!(
-                                "         {wire:?} {op:?} change on {outlet_group:?} is new"
-                            );
+                            trace!("         {wire:?} {op:?} change on {outlet_group:?} is new");
                             entry.insert(op.clone());
                             todo_changes
                                 .push((AxisChange { outlet: outlet_group[0], op }, Some(node_id)));
@@ -183,7 +178,7 @@ pub fn change_axes(
                             } else {
                                 debug!(
                                     "         {wire:?} {op:?} change on {outlet_group:?} conflicting with {previous:?}. Blocked."
-                                    );
+                                );
                                 return Ok(None);
                             }
                         }

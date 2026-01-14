@@ -49,6 +49,7 @@ test_dropout_random
 test_dynamicquantizelinear
 test_dynamicquantizelinear_max_adjusted
 test_dynamicquantizelinear_min_adjusted
+test_if
 test_gemm_broadcast
 test_gemm_nobroadcast
 test_maxpool_2d_ceil

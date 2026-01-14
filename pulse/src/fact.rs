@@ -18,11 +18,7 @@ impl StreamFact for ShapeFact {
             .enumerate()
             .filter(|(_ix, d)| d.symbols().contains(stream_sym))
             .collect();
-        if streaming_dims.len() != 1 {
-            None
-        } else {
-            Some(streaming_dims[0])
-        }
+        if streaming_dims.len() != 1 { None } else { Some(streaming_dims[0]) }
     }
 }
 
@@ -54,11 +50,7 @@ impl PulsedFact {
     }
 
     pub fn pulse(&self) -> Option<&TDim> {
-        if let Some(stream) = &self.stream {
-            Some(&self.shape[stream.axis])
-        } else {
-            None
-        }
+        if let Some(stream) = &self.stream { Some(&self.shape[stream.axis]) } else { None }
     }
 
     pub fn to_pulse_fact(&self) -> TypedFact {
@@ -104,16 +96,12 @@ impl fmt::Debug for PulsedFact {
 }
 
 impl Fact for PulsedFact {
-    fn to_typed_fact(&self) -> TractResult<Cow<TypedFact>> {
+    fn to_typed_fact(&self) -> TractResult<Cow<'_, TypedFact>> {
         Ok(Cow::Owned(self.into()))
     }
 
     fn same_as(&self, other: &dyn Fact) -> bool {
-        if let Some(other) = other.downcast_ref::<PulsedFact>() {
-            other == self
-        } else {
-            false
-        }
+        if let Some(other) = other.downcast_ref::<PulsedFact>() { other == self } else { false }
     }
 
     fn compatible_with(&self, other: &dyn Fact) -> bool {

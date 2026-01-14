@@ -30,7 +30,7 @@ pub struct DeconvSum {
 }
 
 impl Op for DeconvSum {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "DeconvSum".into()
     }
 
@@ -44,6 +44,7 @@ impl EvalOp for DeconvSum {
 
     fn eval_with_session(
         &self,
+        _node_id: usize,
         session: &SessionState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
@@ -159,7 +160,7 @@ fn eval(
 
 macro_rules! impl_eval {
         ($(#[$meta: meta])* $suffix: ident) => {
-            paste::paste! {
+            pastey::paste! {
                 $(#[$meta])*
                     unsafe fn [<eval_t_ $suffix>]<T: Datum + Float + Copy + AddAssign<T>>(
                         op: &DeconvSum,
@@ -332,7 +333,7 @@ macro_rules! impl_eval {
                     output: *mut T,
                     output_c_stride: isize,
                     add: impl Fn(T, T) -> T + Copy + 'static,
-                    ) {
+                    ) { unsafe {
                     let mut c = 0;
                     let mut right = temp;
                     let mut left = output;
@@ -378,7 +379,7 @@ macro_rules! impl_eval {
                         let ptr = output.offset(c as isize * output_c_stride);
                         *ptr = add(*ptr, value);
                     }
-                }
+                }}
 
                 pub fn [<main_loop_3d_ $suffix>]<T: Datum + Float>(
                     op: &DeconvSum,

@@ -36,7 +36,7 @@ impl Downsample {
 }
 
 impl Op for Downsample {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Downsample".into()
     }
 
@@ -67,14 +67,16 @@ impl EvalOp for Downsample {
                     axis: usize,
                     slice: ndarray::Slice,
                 ) -> Tensor {
-                    let dt = t.datum_type();
-                    let mut t2 = t
-                        .to_array_view_unchecked::<T>()
-                        .slice_axis(Axis(axis), slice)
-                        .into_owned()
-                        .into_tensor();
-                    t2.set_datum_type(dt);
-                    t2
+                    unsafe {
+                        let dt = t.datum_type();
+                        let mut t2 = t
+                            .to_array_view_unchecked::<T>()
+                            .slice_axis(Axis(axis), slice)
+                            .into_owned()
+                            .into_tensor();
+                        t2.set_datum_type(dt);
+                        t2
+                    }
                 }
                 dispatch_datum_by_size!(do_slice(input.datum_type())(&*input, self.axis, slice))
             };
@@ -122,7 +124,7 @@ fn pull_downsample_up(
 ) -> TractResult<Option<TypedModelPatch>> {
     model.check_consistency()?;
     let down_op = down_node.op_as::<Downsample>().unwrap();
-    if let Some(prec) = model.single_prec(down_node.id)? {
+    if let Some(prec) = model.linear_prec(down_node.id)? {
         let (input_facts, output_facts) = model.node_facts(prec.id)?;
         let axes_mapping = prec.op.axes_mapping(&input_facts, &output_facts)?;
         debug!("Consider pull {down_op:?} over {prec:?} (invariants: {axes_mapping:?})");
@@ -139,9 +141,7 @@ fn pull_downsample_up(
         } else if let Some(other_op) = prec.op_as::<ops::scan::Scan>() {
             return scan::pull_downsample_over_scan(model, prec, other_op, down_node, down_op);
         }
-        if prec.outputs.len() > 1 || prec.inputs.len() == 0 {
-            return Ok(None);
-        }
+        rule_if!(prec.outputs.len() <= 1 && prec.inputs.len() > 0);
         let axis_info = axes_mapping.axis((InOut::Out(0), down_op.axis))?;
         let mut patch = TypedModelPatch::default();
         let mut inputs = vec![];

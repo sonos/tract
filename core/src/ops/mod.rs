@@ -50,12 +50,13 @@ pub enum Validation {
     Accurate,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd)]
+#[derive(Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub enum Cost {
     Div(DatumType),
     FMA(DatumType),
     Buffer(DatumType),
     Params(DatumType),
+    Custom(bool, String),
 }
 
 impl Cost {
@@ -64,6 +65,20 @@ impl Cost {
         match self {
             FMA(_) | Div(_) => true,
             Buffer(_) | Params(_) => false,
+            Custom(compute, _) => *compute,
+        }
+    }
+}
+
+impl std::fmt::Debug for Cost {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use Cost::*;
+        match self {
+            Div(dt) => write!(f, "Div({dt:?})"),
+            FMA(dt) => write!(f, "FMA({dt:?})"),
+            Buffer(dt) => write!(f, "Buffer({dt:?})"),
+            Params(dt) => write!(f, "Params({dt:?})"),
+            Custom(_, name) => write!(f, "{name}"),
         }
     }
 }
@@ -79,6 +94,22 @@ pub trait OpStateFreeze {
 dyn_clone::clone_trait_object!(FrozenOpState);
 
 pub trait OpState: fmt::Debug + dyn_clone::DynClone + OpStateFreeze + Downcast {
+    fn load_from(&mut self, _: &mut SessionState, _: &mut Vec<TValue>) -> TractResult<()> {
+        Ok(())
+    }
+
+    fn save_to(&self, _: &mut Vec<TValue>) -> TractResult<()> {
+        Ok(())
+    }
+
+    fn init_tensor_fact(&self) -> Option<(String, TypedFact)> {
+        None
+    }
+
+    fn resolve_symbols(&mut self, _: &mut SessionState) -> TractResult<()> {
+        Ok(())
+    }
+
     fn eval(
         &mut self,
         session: &mut SessionState,
@@ -98,6 +129,7 @@ pub trait EvalOp {
     #[allow(unused_variables)]
     fn eval_with_session(
         &self,
+        node_id: usize,
         session: &SessionState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
@@ -118,7 +150,7 @@ pub trait EvalOp {
 
 /// A base operation
 pub trait Op: fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast + EvalOp {
-    fn name(&self) -> Cow<str>;
+    fn name(&self) -> StaticName;
 
     /// The kind of accuracy check that should be performed on operation when
     /// testing them.
@@ -271,7 +303,7 @@ pub trait TypedOp:
 
     /// Nested model multipliers, with label (for profiling).
     #[allow(unused_variables)]
-    fn nested_model_multipliers(&self, inputs: &[&TypedFact]) -> Vec<(Cow<str>, TDim)> {
+    fn nested_model_multipliers(&self, inputs: &[&TypedFact]) -> Vec<(StaticName, TDim)> {
         vec![]
     }
 }

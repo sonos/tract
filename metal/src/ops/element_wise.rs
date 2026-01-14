@@ -1,6 +1,5 @@
 pub use crate::kernels::ElementWiseOps;
-use crate::ops::MetalEvalOp;
-use crate::MetalStream;
+use crate::utils::with_borrowed_metal_stream;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensorExt;
 
@@ -8,7 +7,7 @@ use tract_gpu::tensor::DeviceTensorExt;
 pub struct MetalElementWiseOp(pub ElementWiseOps);
 
 impl Op for MetalElementWiseOp {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         format!("Metal{}", self.0.name()).into()
     }
 
@@ -24,21 +23,29 @@ impl Op for MetalElementWiseOp {
     op_as_typed_op!();
 }
 
-crate::impl_eval_op_for_metal_op!(MetalElementWiseOp);
+impl EvalOp for MetalElementWiseOp {
+    fn is_stateless(&self) -> bool {
+        true
+    }
 
-impl MetalEvalOp for MetalElementWiseOp {
-    fn metal_eval(
+    fn eval_with_session(
         &self,
-        stream: &MetalStream,
         node_id: usize,
-        session: &mut SessionState,
+        session: &SessionState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        let opaque_a = args_1!(inputs);
-        let a = opaque_a.to_device_tensor()?;
-        let output = crate::ops::make_tensor_for_node(session, node_id, a.datum_type(), a.shape())?;
-        self.0.dispatch_eval(stream, a, &output)?;
-        Ok(tvec![output.into_opaque_tensor().into_tvalue()])
+        with_borrowed_metal_stream(|stream| {
+            let opaque_a = args_1!(inputs);
+            let a = opaque_a.to_device_tensor()?;
+            let output = tract_gpu::session_handler::make_tensor_for_node(
+                session,
+                node_id,
+                a.datum_type(),
+                a.shape(),
+            )?;
+            self.0.dispatch_eval(stream, a, &output)?;
+            Ok(tvec![output.into_opaque_tensor().into_tvalue()])
+        })
     }
 }
 

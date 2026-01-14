@@ -14,7 +14,7 @@ impl RmsNorm {
     }
 
     pub fn kernel_name(&self, dt: DatumType, is_l4: bool) -> TractResult<String> {
-        ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for metal rms  op", dt);
+        ensure!(Self::is_supported_dt(dt), "Unsupported dt {:?} for metal rmsop", dt);
         let tname = DeviceTensor::tname(dt)?;
         if !is_l4 {
             Ok(format!("nn_ops::rms_norm_nd3_{tname}"))
@@ -164,7 +164,7 @@ mod tests {
             )?
             .into_device()?;
 
-            let eps = Arc::new(tensor0(0.0001f32.as_()));
+            let eps = Arc::new(tensor0(0.0001f32));
             let cpu_rms = rms_norm::RmsNorm { axis, eps: Arc::clone(&eps) };
 
             let cpu_output =
@@ -256,7 +256,7 @@ mod tests {
                     let input = (0..shape.iter().product::<usize>())
                         .map(|f| f.as_() / 1000.as_())
                         .collect::<Vec<_>>();
-                    Self { shape, axis, input, eps: Arc::new(tensor0(0.0001f32.as_())) }
+                    Self { shape, axis, input, eps: Arc::new(tensor0(0.0001f32)) }
                 })
                 .boxed()
         }

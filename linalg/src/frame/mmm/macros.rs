@@ -6,6 +6,7 @@ macro_rules! MMMExternKernel {
             $(can_fuse($can_fuse:expr))?
             $(packing[$pnum:literal] = $pid:ident => $packing:expr;)*
             $(quality($quality:expr))?
+            $(boost($boost:expr))?
             $(store($($store:ty),*))?
      ) => {
         paste! {
@@ -18,7 +19,7 @@ macro_rules! MMMExternKernel {
 
                 #[inline]
                 pub unsafe fn rusty(op: &[FusedKerSpec<$ti>]) -> isize {
-                    $func(op.as_ptr())
+                    unsafe { $func(op.as_ptr()) }
                 }
             }
 
@@ -28,6 +29,7 @@ macro_rules! MMMExternKernel {
                 $(can_fuse($can_fuse))?
                 $(packing[$pnum] = $pid => $packing;)*
                 $(quality($quality))?
+                $(boost($boost))?
                 $(store($($store),*))?
             );
         }
@@ -50,7 +52,7 @@ macro_rules! MMMRustKernel {
                 use super::*;
                 #[inline]
                 pub unsafe fn rusty(op: &[FusedKerSpec<$ti>]) -> isize {
-                    $func(op.as_ptr())
+                    unsafe { $func(op.as_ptr()) }
                 }
             }
             MMMKernel!([<sys_$id>]::rusty as $id<$ti>($mr, $nr)
@@ -76,6 +78,7 @@ macro_rules! MMMKernel {
             $(can_fuse($can_fuse:expr))?
             $(packing[$pnum:literal] = $pid:ident => $packing:expr;)*
             $(quality($quality:expr))?
+            $(boost($boost:expr))?
             $(store($($store:ty),*))?
      ) => {
         paste! {
@@ -104,6 +107,7 @@ macro_rules! MMMKernel {
                     )*)?
                     $(k.can_fuse = $can_fuse;)?
                     $(k.quality = $quality;)?
+                    $(k = k.with_boost($boost);)?
                     k
                 };
             }

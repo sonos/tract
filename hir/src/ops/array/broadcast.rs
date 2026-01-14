@@ -22,7 +22,7 @@ impl MultiBroadcastTo {
 }
 
 impl Expansion for MultiBroadcastTo {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "MultiBroadcastTo".into()
     }
 

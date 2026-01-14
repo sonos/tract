@@ -1,7 +1,7 @@
 from ctypes import *
 from pathlib import Path
 from typing import Dict, List, Union
-from .bindings import check, lib
+from .bindings import TractError, check, lib
 from .model import Model
 
 class Nnef:

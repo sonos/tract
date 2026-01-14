@@ -7,10 +7,8 @@ pub struct PulsedAxisSlice {
     pub take: TDim,
 }
 
-
-
 impl Op for PulsedAxisSlice {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "PulsedAxisSlice".into()
     }
 

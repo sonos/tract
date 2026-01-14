@@ -8,7 +8,7 @@ use super::PatchAxis;
 use std::fmt::Debug;
 use std::ops::Range;
 
-use tract_itertools::{izip, Itertools};
+use tract_itertools::{Itertools, izip};
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct PatchSpec {
@@ -203,7 +203,7 @@ impl PatchSpec {
         }
 
         let op_strides_times_input_storage_strides =
-            izip!(&self.strides, &input_storage_strides).map(|(a, b)| (*a as isize * b)).collect();
+            izip!(&self.strides, &input_storage_strides).map(|(a, b)| *a as isize * b).collect();
 
         Patch {
             spec: self,
@@ -259,18 +259,20 @@ impl Patch {
     }
 
     unsafe fn is_valid(&self, coords: &[usize]) -> bool {
-        for ix in 0..self.rank() {
-            let c = *coords.get_unchecked(ix) as isize;
-            let strides = *self.spec.strides.get_unchecked(ix) as isize;
-            let pos = c * strides;
-            let min_max = self.data_field_min_max.get_unchecked(ix);
-            if pos + min_max.0 < 0
-                || pos + min_max.1 >= *self.spec.input_shape.get_unchecked(ix) as isize
-            {
-                return false;
+        unsafe {
+            for ix in 0..self.rank() {
+                let c = *coords.get_unchecked(ix) as isize;
+                let strides = *self.spec.strides.get_unchecked(ix) as isize;
+                let pos = c * strides;
+                let min_max = self.data_field_min_max.get_unchecked(ix);
+                if pos + min_max.0 < 0
+                    || pos + min_max.1 >= *self.spec.input_shape.get_unchecked(ix) as isize
+                {
+                    return false;
+                }
             }
+            true
         }
-        true
     }
 
     pub fn valid_zone(&self) -> Option<&Zone> {
@@ -415,34 +417,38 @@ impl<'p> ZoneScanner<'p> {
     }
 
     pub unsafe fn next_non_inner_axis(&mut self) {
-        let rank = self.patch.rank();
-        let inner_loop_axis = self.inner_loop_axis;
-        for axis in (0..rank).rev() {
-            if axis == inner_loop_axis {
-                continue;
+        unsafe {
+            let rank = self.patch.rank();
+            let inner_loop_axis = self.inner_loop_axis;
+            for axis in (0..rank).rev() {
+                if axis == inner_loop_axis {
+                    continue;
+                }
+                *self.output_coords.get_unchecked_mut(axis) += 1;
+                if *self.output_coords.get_unchecked_mut(axis)
+                    < self.zone.output_ranges.get_unchecked(axis).end
+                {
+                    self.refresh_dependent();
+                    return;
+                }
+                *self.output_coords.get_unchecked_mut(axis) =
+                    self.zone.output_ranges.get_unchecked(axis).start;
             }
-            *self.output_coords.get_unchecked_mut(axis) += 1;
-            if *self.output_coords.get_unchecked_mut(axis)
-                < self.zone.output_ranges.get_unchecked(axis).end
-            {
-                self.refresh_dependent();
-                return;
-            }
-            *self.output_coords.get_unchecked_mut(axis) =
-                self.zone.output_ranges.get_unchecked(axis).start;
+            self.done = true;
         }
-        self.done = true;
     }
 
     pub unsafe fn reset(&mut self) {
-        self.output_offset = 0;
-        self.input_center_offset = 0;
-        for ix in 0..self.output_coords.len() {
-            *self.output_coords.get_unchecked_mut(ix) =
-                self.zone.output_ranges.get_unchecked(ix).start;
+        unsafe {
+            self.output_offset = 0;
+            self.input_center_offset = 0;
+            for ix in 0..self.output_coords.len() {
+                *self.output_coords.get_unchecked_mut(ix) =
+                    self.zone.output_ranges.get_unchecked(ix).start;
+            }
+            self.done = false;
+            self.refresh_dependent()
         }
-        self.done = false;
-        self.refresh_dependent()
     }
 
     #[inline(never)]
@@ -604,8 +610,8 @@ impl Iterator for PatchIterator<'_> {
     #[inline(always)]
     fn next(&mut self) -> Option<Option<isize>> {
         match self {
-            PatchIterator::Fast(ref mut it) => it.next(),
-            PatchIterator::Safe(ref mut it) => it.next(),
+            PatchIterator::Fast(it) => it.next(),
+            PatchIterator::Safe(it) => it.next(),
         }
     }
 }

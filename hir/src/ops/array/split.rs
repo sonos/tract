@@ -8,8 +8,6 @@ pub struct Split {
     split: Option<Vec<usize>>,
 }
 
-
-
 impl Split {
     fn split_dims<D: DimLike>(&self, input: &D) -> TractResult<TVec<D>> {
         if let Some(split) = self.split.as_ref() {
@@ -25,7 +23,7 @@ impl Split {
 }
 
 impl Expansion for Split {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Split".into()
     }
 

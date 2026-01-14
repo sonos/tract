@@ -4,7 +4,7 @@ set -ex
 
 if [ -z "$RUSTUP_TOOLCHAIN" ]
 then
-    export RUSTUP_TOOLCHAIN=1.75.0
+    export RUSTUP_TOOLCHAIN=1.85.0
 fi
 
 rustup update
@@ -25,12 +25,6 @@ if [ `uname` = "Linux" ]
 then
     ./.travis/tflite.sh
 fi
-
-if [ `uname` = "Darwin" ]
-then
-    cargo test -p test-metal
-fi
-
 
 if [ -n "$CI" ]
 then

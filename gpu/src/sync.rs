@@ -12,7 +12,7 @@ pub enum DeviceSyncKind {
 
 impl fmt::Display for DeviceSyncKind {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "{self:?}")
     }
 }
 
@@ -22,7 +22,7 @@ pub struct DeviceSync {
 }
 
 impl Op for DeviceSync {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         format!("DeviceSync{}", self.kind).into()
     }
 
@@ -66,13 +66,19 @@ impl TypedOp for DeviceSync {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let input = inputs[0];
         match self.kind {
-            DeviceSyncKind::ToHost => Ok(tvec![input
-                .to_device_fact()
-                .with_context(|| {
-                    "Cannot sync to Host a tensor without DeviceFact as metadata in its TypedFact"
-                })?
-                .clone()
-                .into_typed_fact()]),
+            DeviceSyncKind::ToHost => {
+                let mut typed_fact = input
+                    .to_device_fact()
+                    .with_context(|| {
+                        "Cannot sync to Host a tensor without DeviceFact as metadata in its TypedFact"
+                    })?
+                    .clone()
+                    .into_typed_fact();
+                if let Some(konst) = input.konst.clone() {
+                    typed_fact.konst = Some(konst.to_device_tensor()?.to_host()?);
+                }
+                Ok(tvec!(typed_fact))
+            }
             DeviceSyncKind::ToDevice => {
                 ensure!(
                     input.datum_type != DatumType::Opaque,

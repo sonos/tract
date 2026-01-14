@@ -1,8 +1,8 @@
 use std::fmt::Debug;
 use std::marker::PhantomData;
 
-use tract_data::internal::TensorView;
 use tract_data::TractResult;
+use tract_data::internal::TensorView;
 
 use crate::frame::element_wise_helper::TempBuffer;
 use crate::{LADatum, LinalgFn};
@@ -209,7 +209,7 @@ pub mod test {
     #[macro_export]
     macro_rules! unicast_frame_tests {
         ($cond:expr, $t: ty, $ker:ty, $func:expr) => {
-            paste::paste! {
+            pastey::paste! {
                 proptest::proptest! {
                     #[test]
                     fn [<prop_ $ker:snake>](

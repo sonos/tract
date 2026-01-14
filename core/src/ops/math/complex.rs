@@ -6,7 +6,7 @@ use crate::internal::*;
 pub struct InnerDimToComplex;
 
 impl Op for InnerDimToComplex {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "InnerDimToComplex".into()
     }
 
@@ -42,7 +42,7 @@ impl TypedOp for InnerDimToComplex {
 pub struct ComplexToInnerDim;
 
 impl Op for ComplexToInnerDim {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "ComplexToInnerDim".into()
     }
 

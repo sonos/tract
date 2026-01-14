@@ -3,8 +3,6 @@ use tract_core::ops::element_wise::ElementWiseOp;
 use tract_core::ops::math::{Mul, Pow, Tanh};
 use tract_nnef::internal::*;
 
-use crate::rule_ensure;
-
 use super::{
     find_succ_add_with, find_succ_add_with_const, find_succ_mul_with_const,
     matches_single_input_const, next_node,
@@ -49,7 +47,7 @@ pub struct GeluApproximate {
 }
 
 impl Op for GeluApproximate {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         if self.fast_impl {
             "GeluApproximateFast".to_string().into()
         } else {
@@ -72,13 +70,12 @@ impl EvalOp for GeluApproximate {
 
         let sqrt_2_over_pi = (2.0 / std::f32::consts::PI).sqrt();
 
-        let pow = if self.fast_impl { 2 } else { 3 }; 
-        let gelu_approx_f32_data =
-            a_f32
-                .as_slice::<f32>()?
-                .iter()
-                .map(|x| 0.5 * x * (1.0 + f32::tanh(sqrt_2_over_pi * (x + 0.044715 * x.powi(pow)))))
-                .collect::<Vec<_>>();
+        let pow = if self.fast_impl { 2 } else { 3 };
+        let gelu_approx_f32_data = a_f32
+            .as_slice::<f32>()?
+            .iter()
+            .map(|x| 0.5 * x * (1.0 + f32::tanh(sqrt_2_over_pi * (x + 0.044715 * x.powi(pow)))))
+            .collect::<Vec<_>>();
 
         let gelu_approx_f32 = Tensor::from_shape(input.shape(), &gelu_approx_f32_data)?;
         Ok(tvec![gelu_approx_f32.cast_to_dt(dt)?.into_owned().into_tvalue()])
@@ -96,14 +93,14 @@ impl TypedOp for GeluApproximate {
 }
 
 /// Search pattern => NEW_GELU(x) = 0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^N))); N ϵ {2, 3}
-pub fn as_gelu_approx_rule(
+pub fn gelu_approx_rule(
     _ctx: &(),
     model: &TypedModel,
     node: &TypedNode,
     node_name: &str,
     op: &TypedBinOp,
 ) -> TractResult<Option<TypedModelPatch>> {
-    rule_ensure!(op.0.is::<Pow>());
+    rule_if!(op.0.is::<Pow>());
 
     let pow_node = node;
 
@@ -111,76 +108,65 @@ pub fn as_gelu_approx_rule(
     let dt = in_fact.datum_type;
 
     // Only F16 and F32 is supported.
-    rule_ensure!(matches!(dt, DatumType::F32 | DatumType::F16));
+    rule_if!(matches!(dt, DatumType::F32 | DatumType::F16));
 
     let mut patch = TypedModelPatch::default();
     let gelu_approx_input = patch.taps(model, &pow_node.inputs)?;
 
-    rule_ensure!(
+    rule_if!(
         matches_single_input_const(model, pow_node, 3.0)
             || matches_single_input_const(model, pow_node, 2.0)
     );
     let fast_impl = matches_single_input_const(model, pow_node, 2.0);
 
     // 0.044715 * x^N
-    let Some(mul_coef_a) = find_succ_mul_with_const(model, pow_node, 0.044715) else {
-        return Ok(None);
-    };
+    rule_if_some!(mul_coef_a = find_succ_mul_with_const(model, pow_node, 0.044715));
 
     // x + 0.044715 * x^N
-    let Some(x_plus_mul_coef_a) = find_succ_add_with(model, mul_coef_a, &pow_node.inputs[0]) else {
-        return Ok(None);
-    };
+    rule_if_some!(x_plus_mul_coef_a = find_succ_add_with(model, mul_coef_a, &pow_node.inputs[0]));
 
     // sqrt(2/pi) * (x + 0.044715 * x^N)
     let sqrt_2_over_pi = (2.0 / std::f32::consts::PI).sqrt();
-    let Some(mul_sqrt_2_over_pi) =
-        find_succ_mul_with_const(model, x_plus_mul_coef_a, sqrt_2_over_pi)
-    else {
-        return Ok(None);
-    };
+    rule_if_some!(
+        mul_sqrt_2_over_pi = find_succ_mul_with_const(model, x_plus_mul_coef_a, sqrt_2_over_pi)
+    );
 
     // tanh(sqrt(2/pi) * (x + 0.044715 * x^N))
-    let Some(tanh_succ) = next_node(model, mul_sqrt_2_over_pi) else { return Ok(None) };
-    let Some(tanh_succ_op) = tanh_succ.op_as::<ElementWiseOp>() else { return Ok(None) };
-    rule_ensure!(tanh_succ_op.0.is::<Tanh>());
+    rule_if_some!(tanh_succ = next_node(model, mul_sqrt_2_over_pi));
+    rule_if_some!(tanh_succ_op = tanh_succ.op_as::<ElementWiseOp>());
+    rule_if!(tanh_succ_op.0.is::<Tanh>());
 
     // 1.0 + tanh(sqrt(2/pi) * (x + 0.044715 * x^N)) N ϵ {2, 3}
-    let Some(tanh_plus_1) = find_succ_add_with_const(model, tanh_succ, 1.0) else {
-        return Ok(None);
-    };
+    rule_if_some!(tanh_plus_1 = find_succ_add_with_const(model, tanh_succ, 1.0));
 
     // Identify Mul
-    let Some(mul_succ) = next_node(model, tanh_plus_1) else { return Ok(None) };
-    let Some(mul_succ_op) = mul_succ.op_as::<TypedBinOp>() else { return Ok(None) };
-    rule_ensure!(mul_succ_op.0.is::<Mul>());
+    rule_if_some!(mul_succ = next_node(model, tanh_plus_1));
+    rule_if_some!(mul_succ_op = mul_succ.op_as::<TypedBinOp>());
+    rule_if!(mul_succ_op.0.is::<Mul>());
 
     // Search first
     // tmp = x * (1.0 + tanh(sqrt(2/pi) * (x + 0.044715 * x^N)))
     // out = 0.5 * tmp
     let last_node_id = if mul_succ.inputs.contains(&pow_node.inputs[0]) {
         // 0.5 * x * (1.0 + tanh(sqrt(2/pi) * (x + 0.044715 * x^N)))
-        let Some(last_mul_with_0_5) = find_succ_mul_with_const(model, mul_succ, 0.5) else {
-            return Ok(None);
-        };
+        rule_if_some!(last_mul_with_0_5 = find_succ_mul_with_const(model, mul_succ, 0.5));
         last_mul_with_0_5.id
     } else {
         // tmp = 0.5 * x
         // out = tmp * (1.0 + tanh(sqrt(2/pi) * (x + 0.044715 * x^N))) N ϵ {2, 3}
-        let Some(x_mul_0_5) = mul_succ
-            .inputs
-            .iter()
-            .filter_map(|i| {
-                let n = &model.nodes()[i.node];
-                let op = n.op_as::<TypedBinOp>()?;
-                op.0.is::<Mul>().then_some(n)
-            })
-            .next()
-        else {
-            return Ok(None);
-        };
-        rule_ensure!(matches_single_input_const(model, x_mul_0_5, 0.5));
-        rule_ensure!(x_mul_0_5.inputs.contains(&pow_node.inputs[0]));
+        rule_if_some!(
+            x_mul_0_5 = mul_succ
+                .inputs
+                .iter()
+                .filter_map(|i| {
+                    let n = &model.nodes()[i.node];
+                    let op = n.op_as::<TypedBinOp>()?;
+                    op.0.is::<Mul>().then_some(n)
+                })
+                .next()
+        );
+        rule_if!(matches_single_input_const(model, x_mul_0_5, 0.5));
+        rule_if!(x_mul_0_5.inputs.contains(&pow_node.inputs[0]));
         mul_succ.id
     };
 

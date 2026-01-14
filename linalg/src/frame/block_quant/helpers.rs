@@ -1,4 +1,4 @@
-use byteorder::{ReadBytesExt, WriteBytesExt, LE};
+use byteorder::{LE, ReadBytesExt, WriteBytesExt};
 use std::io::{Cursor, Read, Write};
 use tract_data::internal::*;
 
@@ -32,6 +32,10 @@ impl<R: Read> NibbleReader<R> {
             (byte & 0x0F) as i8
         }
     }
+
+    pub fn read_i8(&mut self) -> i8 {
+        self.reader.read_i8().unwrap()
+    }
 }
 
 pub struct NibbleWriter<W> {
@@ -61,5 +65,9 @@ impl<W: Write> NibbleWriter<W> {
         } else {
             self.first_half = Some(q);
         }
+    }
+
+    pub fn write_i8(&mut self, q: i8) {
+        self.writer.write_i8(q).unwrap()
     }
 }

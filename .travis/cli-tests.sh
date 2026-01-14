@@ -66,7 +66,7 @@ $TRACT_RUN $MODELS/mobilenet_v1_1.0_224_frozen.pb \
     --allow-random-input \
     --assert-output-fact 1,1001,f32
 
-$CACHE_FILE $MODELS/mobilenet_v2_1.4_224_frozen.pb
+$CACHE_FILE mobilenet_v2_1.4_224_frozen.pb
 $TRACT_RUN $MODELS/mobilenet_v2_1.4_224_frozen.pb \
     -O -i 1,224,224,3,f32 \
     run -q \
@@ -91,13 +91,13 @@ $TRACT_RUN $MODELS/ARM-ML-KWS-CNN-M.pb \
     run -q \
     --allow-random-input
 
-$CACHE_FILE $MODELS/GRU128KeywordSpotter-v2-10epochs.onnx
+$CACHE_FILE GRU128KeywordSpotter-v2-10epochs.onnx
 $TRACT_RUN $MODELS/GRU128KeywordSpotter-v2-10epochs.onnx \
     -O run -q \
     --allow-random-input \
     --assert-output-fact 1,3,f32
 
-$CACHE_FILE en_libri_real/model.onnx
+$CACHE_FILE en_libri_real/model.onnx en_libri_real/io.npz
 $TRACT_RUN $MODELS/en_libri_real/model.onnx \
     --output-node output \
     --edge-left-context 5 --edge-right-context 15 \

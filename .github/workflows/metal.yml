@@ -10,6 +10,7 @@ on:
 env:
   CARGO_INCREMENTAL: false
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE20: true
+  RUSTUP_TOOLCHAIN: "1.85.0"
 
 jobs:
   unit:
@@ -17,6 +18,13 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+
+    - run: |
+         . .travis/ci-system-setup.sh
+         echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+      env:
+       RUNNER_ENVIRONMENT: ${{ runner.environment }}
+
     - run: cargo check --workspace --exclude test-blas
     - run: cargo test -q -p tract-linalg
     - run: cargo test -q -p tract-core
@@ -33,7 +41,7 @@ jobs:
     runs-on: macOS
     steps:
       - uses: actions/checkout@v4
-      - run: cargo build -p tract --release --no-default-features
+      - run: cargo build -p tract --release --no-default-features --features transformers
       - uses: actions/upload-artifact@v4
         with:
           name: tract-cli-macOS-metal
@@ -45,8 +53,8 @@ jobs:
     runs-on: macOS
     strategy:
       matrix:
-        model: [ OpenELM-270M, OpenELM-1_1B, TinyLlama_v1.1, llama-3.2 ]
-        q: [ f16f16, f32f32, q40f16, q40f32, q40ef16, q40ef32 ]
+        model: [ openelm-270M, llama-3.2-1B-instruct, llama-3.2-3B-instruct, llama-3.1-8B-instruct, qwen2.5-7B-instruct, qwen3-1.7B, qwen3-8B ]
+        q: [ f16f16, f32f32, q40ef16]
       fail-fast: false
 
     steps:
@@ -59,5 +67,5 @@ jobs:
     - name: Download and run
       run: |
         chmod +x tract-cli-macOS-metal/tract
-        export TRACT_RUN="$GITHUB_WORKSPACE/tract-cli-macOS-metal/tract --metal"
-        .travis/test-llm.sh ${{matrix.model}} ${{matrix.q}}
+        export TRACT_RUN="$GITHUB_WORKSPACE/tract-cli-macOS-metal/tract"
+        .travis/test-llm.sh ${{matrix.model}} ${{matrix.q}} metal

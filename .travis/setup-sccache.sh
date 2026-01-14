@@ -14,7 +14,7 @@ then
 fi
 
 LINK=https://github.com/mozilla/sccache/releases/download
-SCCACHE_VERSION=v0.5.4
+SCCACHE_VERSION=v0.10.0
 
 echo $HOME
 if [ `uname` = "Linux" ]
@@ -26,7 +26,11 @@ fi
 
 mkdir -p $SCCACHE_DIR
 mkdir -p $HOME/.local/bin
-curl -L "$LINK/$SCCACHE_VERSION/$SCCACHE_FILE.tar.gz" | tar xz
+for i in 1 2 3 4 5
+do
+    curl -L "$LINK/$SCCACHE_VERSION/$SCCACHE_FILE.tar.gz" | tar xz && break
+    sleep 15
+done
 mv -f $SCCACHE_FILE/sccache $HOME/.local/bin/sccache
 chmod +x $HOME/.local/bin/sccache
 

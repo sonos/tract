@@ -18,8 +18,8 @@ pub mod pb {
     include!("prost/onnx.rs");
 }
 
-pub mod pb_helpers;
 pub mod data_resolver;
+pub mod pb_helpers;
 pub mod tensor;
 
 pub use model::Onnx;

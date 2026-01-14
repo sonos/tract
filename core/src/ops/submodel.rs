@@ -31,7 +31,7 @@ impl SubmodelOp {
 }
 
 impl Op for SubmodelOp {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "SubmodelOp".into()
     }
 

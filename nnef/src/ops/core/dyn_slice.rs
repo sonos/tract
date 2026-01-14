@@ -25,7 +25,7 @@ pub fn ser(ast: &mut IntoAst, node: &TypedNode, op: &DynSlice) -> TractResult<Op
     let start = ast.mapping[&node.inputs[1]].clone();
     let end = ast.mapping[&node.inputs[2]].clone();
     Ok(Some(invocation(
-        concat!("tract_core_dyn_slice"),
+        "tract_core_dyn_slice",
         &[input, start, end],
         &[("axis", numeric(op.axis)), ("len", tdim(&op.len))],
     )))

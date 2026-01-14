@@ -1,3 +1,4 @@
+#![allow(clippy::collapsible_if)]
 use std::sync::RwLock;
 
 use crate::fact::StreamInfo;
@@ -38,16 +39,12 @@ impl PulsedModelExt for PulsedModel {
 
     fn into_typed(self) -> TractResult<TypedModel> {
         let mut typed = tract_core::model::translator::IntoTranslator.translate_model(&self)?;
-        ensure!(self.input_outlets()?.iter().all(|o| self
-            .outlet_fact(*o)
-            .unwrap()
-            .stream
-            .is_some()));
-        ensure!(self.output_outlets()?.iter().all(|o| self
-            .outlet_fact(*o)
-            .unwrap()
-            .stream
-            .is_some()));
+        ensure!(
+            self.input_outlets()?.iter().all(|o| self.outlet_fact(*o).unwrap().stream.is_some())
+        );
+        ensure!(
+            self.output_outlets()?.iter().all(|o| self.outlet_fact(*o).unwrap().stream.is_some())
+        );
         let delays = tensor1(
             &self
                 .output_outlets()?
@@ -214,7 +211,7 @@ impl
 pub(crate) struct PulseWrappingOp(pub Box<dyn TypedOp>);
 
 impl Op for PulseWrappingOp {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         format!("PulseWrapping({}", self.0.name()).into()
     }
 
@@ -290,7 +287,7 @@ impl PulsedOp for PulseWrappingOp {
 pub(crate) struct NonPulsingWrappingOp(pub Box<dyn TypedOp>);
 
 impl Op for NonPulsingWrappingOp {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         format!("NonePulsingWrapping({}", self.0.name()).into()
     }
 

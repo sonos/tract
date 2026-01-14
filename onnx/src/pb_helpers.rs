@@ -4,7 +4,6 @@ use tract_hir::internal::*;
 
 use tract_num_traits::{AsPrimitive, Bounded};
 
-use std::borrow::Cow;
 use std::fmt::{self, Debug, Display};
 use std::str;
 
@@ -23,11 +22,11 @@ pub trait TryCollect<T, E>: Iterator<Item = Result<T, E>> + Sized {
 impl<T, E, I> TryCollect<T, E> for I where I: Iterator<Item = Result<T, E>> + Sized {}
 
 pub trait Reason {
-    fn reason(&self) -> Cow<str>;
+    fn reason(&self) -> StaticName;
 }
 
-impl Reason for &str {
-    fn reason(&self) -> Cow<str> {
+impl Reason for &'static str {
+    fn reason(&self) -> StaticName {
         (*self).into()
     }
 }
@@ -36,7 +35,7 @@ impl<F> Reason for F
 where
     F: Fn() -> String,
 {
-    fn reason(&self) -> Cow<str> {
+    fn reason(&self) -> StaticName {
         self().into()
     }
 }
@@ -297,19 +296,11 @@ impl NodeProto {
     }
 
     pub fn expect<R: Reason>(&self, cond: bool, what: R) -> TractResult<()> {
-        if !cond {
-            self.bail(&format!("expected {}", what.reason()))
-        } else {
-            Ok(())
-        }
+        if !cond { self.bail(&format!("expected {}", what.reason())) } else { Ok(()) }
     }
 
     pub fn expect_attr<R: Reason>(&self, attr: &str, cond: bool, what: R) -> TractResult<()> {
-        if !cond {
-            self.bail_attr(attr, &format!("expected {}", what.reason()))
-        } else {
-            Ok(())
-        }
+        if !cond { self.bail_attr(attr, &format!("expected {}", what.reason())) } else { Ok(()) }
     }
 
     pub fn expect_ok_or_else<T, R: Reason>(&self, result: Option<T>, what: R) -> TractResult<T> {

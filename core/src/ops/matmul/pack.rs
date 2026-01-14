@@ -1,7 +1,7 @@
 use crate::axes::Axis;
 use crate::internal::*;
 use ndarray::*;
-use tract_linalg::block_quant::{BlockQuantValue, PackedBlockQuantFact, PackedBlockQuantFormat};
+use tract_linalg::block_quant::{BlockQuantFact, PackedBlockQuantFact, PackedBlockQuantFormat};
 use tract_linalg::mmm::MMMInputValue;
 use tract_linalg::pack::PackedFormat;
 
@@ -16,7 +16,7 @@ pub struct OptMatMulPack {
 }
 
 impl Op for OptMatMulPack {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "OptMatMulPack".into()
     }
 
@@ -35,6 +35,7 @@ impl EvalOp for OptMatMulPack {
 
     fn eval_with_session(
         &self,
+        _node_id: usize,
         session: &SessionState,
         mut inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
@@ -51,9 +52,11 @@ impl TypedOp for OptMatMulPack {
         let k = inputs[0].shape[self.k_axis].clone();
         let mn = inputs[0].shape[self.mn_axis].clone();
         let opaque_fact = DynPackedOpaqueFact { k, mn, packers: self.packers.clone() };
-        Ok(tvec!(Opaque::datum_type()
-            .fact(self.output_shape(&inputs[0].shape))
-            .with_opaque_fact(opaque_fact)))
+        Ok(tvec!(
+            Opaque::datum_type()
+                .fact(self.output_shape(&inputs[0].shape))
+                .with_opaque_fact(opaque_fact)
+        ))
     }
 
     fn axes_mapping(
@@ -135,12 +138,12 @@ pub struct DynPackedOpaqueFact {
 }
 
 impl OpaqueFact for DynPackedOpaqueFact {
-    fn mem_size(&self) -> TDim {
-        self.k.clone() * &self.mn * self.packers[0].dt.size_of()
-    }
-
     fn same_as(&self, other: &dyn OpaqueFact) -> bool {
         other.downcast_ref::<Self>().is_some_and(|o| o == self)
+    }
+
+    fn buffer_sizes(&self) -> TVec<TDim> {
+        tvec!(self.k.clone() * &self.mn * self.packers[0].dt.size_of())
     }
 }
 
@@ -152,7 +155,7 @@ pub struct OptSimpleMatMulPack {
 }
 
 impl Op for OptSimpleMatMulPack {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "OptSimpleMatMulPack".into()
     }
     op_as_typed_op!();
@@ -179,9 +182,13 @@ impl EvalOp for OptSimpleMatMulPack {
                 .as_slice::<Opaque>()?
                 .iter()
                 .map(|i| {
-                    let i = i.downcast_ref::<BlockQuantValue>().unwrap();
+                    let i = i.downcast_ref::<BlobWithFact>().context("Expected BlockWithFact")?;
+                    let i_bqf = i
+                        .fact
+                        .downcast_ref::<BlockQuantFact>()
+                        .context("Expected BlockQuantFact")?;
                     let iv: Box<dyn MMMInputValue> =
-                        Box::new(self.packed_format.pack(&i.value, i.fact.k())?);
+                        Box::new(self.packed_format.pack(&i.value, i_bqf.k())?);
                     Ok(Opaque(Arc::new(iv)))
                 })
                 .collect::<TractResult<Vec<_>>>()?,

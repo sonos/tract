@@ -11,19 +11,15 @@ pub const Q4_0: BaseQ4_0 = BaseQ4_0::<32>;
 
 impl<const QK: usize> Debug for BaseQ4_0<QK> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if QK == 32 {
-            write!(f, "Q4_0")
-        } else {
-            write!(f, "BaseQ4_0<{QK}>")
-        }
+        if QK == 32 { write!(f, "Q4_0") } else { write!(f, "BaseQ4_0<{QK}>") }
     }
 }
 
 impl<const QK: usize> BaseQ4_0<QK> {
     fn quant_block<T>(&self, block: &[T], quant: &mut [u8])
     where
-        f32: AsPrimitive<T>,
-        T: Debug + Float + AsPrimitive<f16> + AsPrimitive<i8> + 'static,
+        f32: AsPrimitive<i8> + From<T>,
+        T: Debug + Float,
     {
         assert!(quant.len() == self.block_bytes());
         assert!(block.len() == self.block_len());
@@ -36,14 +32,14 @@ impl<const QK: usize> BaseQ4_0<QK> {
                 max = *v;
             }
         }
-        let scale: T = max / (-8f32).as_();
-        let r_scale = if scale.is_zero() { T::zero() } else { scale.recip() };
-        writer.write_f16(scale.as_());
+        let scale = f32::from(max) / -8f32;
+        let r_scale = if scale.is_zero() { 0f32 } else { scale.recip() };
+        writer.write_f16(f16::from_f32(scale));
 
         for idx in 0..block.len() {
             // Quant block in GGML nibble order
             let ggml_idx = (block.len() / 2) * (idx % 2) + (idx / 2);
-            let i: i8 = (block[ggml_idx] * r_scale + (8.5f32).as_()).as_();
+            let i: i8 = (f32::from(block[ggml_idx]) * r_scale + 8.5f32).as_();
             writer.write_i4(i.min(15));
         }
     }
@@ -81,7 +77,8 @@ impl<const QK: usize> BaseQ4_0<QK> {
         ensure!(pbqf.r == target.r);
         ensure!(value.fact.k % self.block_len() == 0);
         ensure!(pbqf.bq.same_as(self));
-        let scratch = std::slice::from_raw_parts_mut(scratch as *mut T, value.fact.k * target.r);
+        let scratch =
+            unsafe { std::slice::from_raw_parts_mut(scratch as *mut T, value.fact.k * target.r) };
         let blocks_for_k = value.fact.k / self.block_len();
         let row_bytes = blocks_for_k * self.block_bytes();
         let input = &value.packed[panel * target.r * row_bytes..];
@@ -211,8 +208,8 @@ impl<const QK: usize> BlockQuant for BaseQ4_0<QK> {
     //
     //  becomes (with r=4)
     //
-    //  s0_0 S1_0 S2_0 s3_0  n0_0 n1_0 n2_0 n3_0  n0_1 n1_1 n2_1 n3_1 ... n0_33 n1_33 n2_33 n3_33
-    //  s0_32 S1_32 S2_32 s3_32  n0_0 n1_0 n2_0 n3_0  n0_1 n1_1 n2_1 n3_1 ... n0_33 n1_33 n2_33 n3_33
+    //  s0_0  s1_0  s2_0  s3_0  n0_0 n1_0 n2_0 n3_0  n0_1 n1_1 n2_1 n3_1 ... n0_33 n1_33 n2_33 n3_33
+    //  s0_32 s1_32 s2_32 s3_32 n0_0 n1_0 n2_0 n3_0  n0_1 n1_1 n2_1 n3_1 ... n0_33 n1_33 n2_33 n3_33
     //  ...
     fn pack(
         &self,
@@ -295,7 +292,11 @@ impl<const QK: usize> BlockQuant for BaseQ4_0<QK> {
         panel: usize,
         scratch: *mut u8,
     ) -> TractResult<()> {
-        dispatch_floatlike!(Self::extract_panel_t(target.dt)(self, value, target, panel, scratch))
+        unsafe {
+            dispatch_floatlike!(Self::extract_panel_t(target.dt)(
+                self, value, target, panel, scratch
+            ))
+        }
     }
 
     fn extract_at_mn_f16(
@@ -370,14 +371,14 @@ mod tests {
     }
 
     #[test]
-    fn loop_q4f16_beg() {
+    fn loop_q4f16_neg() {
         test_loop_f16(Q4_0, &[-1.0, -2.0, -3.0, -4.0]);
     }
 
     #[test]
     fn loop_q4_big_pos() {
         test_loop_f32(Q4_0, &[1234.0]);
-        test_loop_f16(Q4_0, &[-1.0, -2.0, -3.0, -4.0]);
+        test_loop_f16(Q4_0, &[1234.0]);
     }
 
     #[test]

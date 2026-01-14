@@ -1,7 +1,7 @@
 [package]
 name = "suite-onnx"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -14,6 +14,7 @@ itertools.workspace = true
 lazy_static.workspace = true
 log.workspace = true
 prost.workspace = true
+regex.workspace = true 
 infra = { path = "../infra" }
 tract-core.workspace = true
 tract-onnx.workspace = true
@@ -30,4 +31,10 @@ onnx_1_10_2 = []
 onnx_1_11_0 = []
 onnx_1_12_0 = []
 onnx_1_13_0 = []
+onnx_1_14_1 = []
+onnx_1_15_0 = []
+onnx_1_16_2 = []
+onnx_1_17_0 = []
+onnx_1_18_0 = []
+onnx_1_19_1 = []
 default = [ "onnx_1_13_0" ]

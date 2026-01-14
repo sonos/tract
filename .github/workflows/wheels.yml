@@ -19,7 +19,7 @@ env:
   PYPI_VERSION_OVERRIDE: ${{ inputs.pypi_version_override }}
   CIBW_ENVIRONMENT_PASS_LINUX: "PYPI_VERSION_OVERRIDE"
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE20: true
-  MACOSX_DEPLOYMENT_TARGET: 10.12
+  MACOSX_DEPLOYMENT_TARGET: 10.13
 
 jobs:
   build_wheels:
@@ -28,7 +28,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, windows-2019, macos-14]
+        os: [ubuntu-22.04, windows-2022, macos-14]
 
     steps:
       - uses: actions/checkout@v4
@@ -50,7 +50,7 @@ jobs:
       - name: Build wheels
         uses: nick-fields/retry@v2
         with:
-          max_attempts: 2
+          max_attempts: 1
           timeout_seconds: 54000 # 15 hours :/
           command: python -m cibuildwheel --output-dir wheelhouse api/py
 
@@ -85,7 +85,7 @@ jobs:
         merge-multiple: true
         path: dist
 
-    - uses: pypa/gh-action-pypi-publish@v1.5.1
+    - uses: pypa/gh-action-pypi-publish@v1.13.0
       with:
         user: __token__
         password: ${{ secrets.PYPI }}

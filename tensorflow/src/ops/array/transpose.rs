@@ -9,8 +9,6 @@ pub struct Transpose {
     t_perm: DatumType,
 }
 
-
-
 pub fn transpose(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     let t = pb.get_attr_datum_type("T")?;
     let t_perm = pb.get_attr_datum_type("Tperm")?;
@@ -28,10 +26,9 @@ impl Transpose {
 }
 
 impl Expansion for Transpose {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Transpose".into()
     }
-
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,

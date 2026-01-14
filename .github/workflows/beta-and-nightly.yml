@@ -64,7 +64,7 @@ jobs:
       run: rustup update
     - name: Native script
       env:
-        RUST_VERSION: ${{matrix.rust}}
+        RUSTUP_TOOLCHAIN: ${{matrix.rust}}
       run: .travis/regular-tests.sh
 
         #     - name: Stop sccache server
@@ -73,13 +73,13 @@ jobs:
   warnings:
     strategy:
       matrix:
-        rust: [ 1.75.0, beta ]
+        rust: [ 1.85.0, beta ]
         os: [ ubuntu-latest, macOS-latest ]
       fail-fast: false
     runs-on: ${{ matrix.os }}
     env:
       RUSTFLAGS: "-D warnings"
-      RUST_VERSION: ${{matrix.rust}}
+      RUSTUP_TOOLCHAIN: ${{matrix.rust}}
     steps:
     - uses: actions/checkout@v4
     - name: Rustup update
@@ -88,6 +88,16 @@ jobs:
     - name: cargo check, -D warnings
       if: runner.os == 'Linux'
       run: cargo check -p test-tflite
+
+  rustfmt:
+    runs-on: ubuntu-latest
+    env:
+      RUSTUP_TOOLCHAIN: 1.85.0
+    steps:
+    - uses: actions/checkout@v4
+    - name: Rustup setup rustfmt
+      run: rustup component add rustfmt
+    - run: cargo fmt --check
 
   cargo-clippy:
     needs: what-to-run
@@ -98,7 +108,7 @@ jobs:
       fail-fast: false
     runs-on: ${{ matrix.os }}
     env:
-      RUST_VERSION: ${{matrix.rust}}
+      RUSTUP_TOOLCHAIN: ${{matrix.rust}}
       RUSTFLAGS: "-D warnings --force-warn unknown_lints"
       ROOT: .
     steps:
@@ -108,9 +118,11 @@ jobs:
         .travis/ci-system-setup.sh
         rustup +${{matrix.rust}} component add clippy
     - name: Run cargo-clippy
+      run: cargo clippy
+    - name: Run cargo-clippy (tflite)
       if: runner.os == 'Linux'
       run: cargo clippy -p test-tflite
-    - name: Run cargo-clippy
+    - name: Run cargo-clippy (metal)
       if: runner.os == 'macos'
       run: cargo clippy -p test-metal -p tract-metal
 
@@ -123,10 +135,12 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: Rustup update
-      run: rustup update
+      run:  ROOT=. .travis/ci-system-setup.sh
     - name: Install cargo-deny
       run: |
-        curl -L https://github.com/EmbarkStudios/cargo-deny/releases/download/0.14.24/cargo-deny-0.14.24-x86_64-unknown-linux-musl.tar.gz \
-            | tar -zx --strip-components=1 "cargo-deny-0.14.24-x86_64-unknown-linux-musl/cargo-deny"
+        curl -L https://github.com/EmbarkStudios/cargo-deny/releases/download/$VERSION/cargo-deny-$VERSION-x86_64-unknown-linux-musl.tar.gz \
+            | tar -zx --strip-components=1 "cargo-deny-$VERSION-x86_64-unknown-linux-musl/cargo-deny"
+      env:
+          VERSION: 0.18.9
     - name: Run cargo-deny
       run: .travis/cargo-deny-check.sh

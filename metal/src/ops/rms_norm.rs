@@ -1,6 +1,5 @@
 use crate::kernels::nn::RmsNorm;
-use crate::ops::MetalEvalOp;
-use crate::MetalStream;
+use crate::utils::with_borrowed_metal_stream;
 use derive_new::new;
 use std::sync::Arc;
 use tract_core::internal::*;
@@ -13,7 +12,7 @@ pub struct MetalRmsNorm {
 }
 
 impl Op for MetalRmsNorm {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "MetalRmsNorm".into()
     }
     fn info(&self) -> TractResult<Vec<String>> {
@@ -22,22 +21,29 @@ impl Op for MetalRmsNorm {
     op_as_typed_op!();
 }
 
-crate::impl_eval_op_for_metal_op!(MetalRmsNorm);
+impl EvalOp for MetalRmsNorm {
+    fn is_stateless(&self) -> bool {
+        true
+    }
 
-impl MetalEvalOp for MetalRmsNorm {
-    fn metal_eval(
+    fn eval_with_session(
         &self,
-        stream: &MetalStream,
         node_id: usize,
-        session: &mut SessionState,
+        session: &SessionState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        let opaque = args_1!(inputs);
-        let input = opaque.to_device_tensor()?;
-        let output =
-            crate::ops::make_tensor_for_node(session, node_id, input.datum_type(), input.shape())?;
-        RmsNorm.dispatch_eval(stream, input, self.axis, &self.eps, &output)?;
-        Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
+        with_borrowed_metal_stream(|stream| {
+            let opaque = args_1!(inputs);
+            let input = opaque.to_device_tensor()?;
+            let output = tract_gpu::session_handler::make_tensor_for_node(
+                session,
+                node_id,
+                input.datum_type(),
+                input.shape(),
+            )?;
+            RmsNorm.dispatch_eval(stream, input, self.axis, &self.eps, &output)?;
+            Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
+        })
     }
 }
 

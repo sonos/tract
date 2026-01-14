@@ -1,6 +1,6 @@
 use tract_data::itertools::izip;
-use tract_linalg::block_quant::{BlockQuantFact, PackedBlockQuantFormat};
 use tract_linalg::WeightType;
+use tract_linalg::block_quant::{BlockQuantFact, PackedBlockQuantFormat};
 use tract_num_traits::Zero;
 
 use crate::internal::*;
@@ -10,24 +10,24 @@ use crate::ops::array::Pad;
 use crate::ops::array::PadMode;
 use crate::ops::binary::TypedBinOp;
 use crate::ops::cast::cast;
+use crate::ops::cnn::PaddingSpec::*;
 use crate::ops::cnn::conv::block_quant::{BlockQuantIntoShape, SplitGroupBlockQuant};
 use crate::ops::cnn::conv::lazy_im2col::LazyIm2Col;
 use crate::ops::cnn::conv::lazy_im2col::LazyIm2colParams;
 use crate::ops::cnn::wire_reshape_bias_for_bin;
-use crate::ops::cnn::PaddingSpec::*;
 use crate::ops::einsum::EinSum;
-use crate::ops::math::{add, div, mul, sub};
 use crate::ops::math::{Add, Div, Mul, Sub};
+use crate::ops::math::{add, div, mul, sub};
+use crate::ops::matmul::ModePicker;
 use crate::ops::matmul::optimized::AddMatMulGeometry;
 use crate::ops::matmul::optimized::MapOutputAxisToInput;
 use crate::ops::matmul::pack::{OptMatMulPack, OptSimpleMatMulPack};
 use crate::ops::matmul::quant::wire_ensure_q8_flavour;
-use crate::ops::matmul::ModePicker;
 use crate::ops::nn::Reduce;
 
 use super::depth_wise::DepthWise;
 use super::im2col::Im2Col;
-use crate::ops::cnn::conv::{block_quant_aware_weight_shape, KernelFormat};
+use crate::ops::cnn::conv::{KernelFormat, block_quant_aware_weight_shape};
 use crate::ops::cnn::pools::{ConcretePoolGeometry, PoolGeometry, PoolSpec};
 use crate::ops::matmul::optimized::{OptMatMul, ProtoFusedSpec};
 use crate::ops::nn::{BaseDataShape, DataFormat, DataShape};
@@ -678,7 +678,8 @@ impl Conv {
             let downsample_factor = self.pool_spec.stride(axis);
             let mut new_op = self.clone();
             if new_op.pool_spec.dilation(axis) > 1 {
-                new_op.pool_spec.dilations.as_mut().unwrap()[axis] /= downsample_factor;
+                new_op.pool_spec.dilations.as_mut().unwrap()[axis] =
+                    new_op.pool_spec.dilations.as_mut().unwrap()[axis].divceil(downsample_factor);
             }
             new_op.pool_spec.strides.as_mut().unwrap()[axis] /= downsample_factor;
             let mut patch = TypedModelPatch::default();
@@ -775,22 +776,18 @@ impl Conv {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        if matches!(self.pool_spec.padding, ExplicitOnnxPool(_, _, _) | SameLower | SameUpper) {
-            return Ok(None);
-        }
+        rule_if!(!matches!(
+            self.pool_spec.padding,
+            ExplicitOnnxPool(_, _, _) | SameLower | SameUpper
+        ));
         let prec = model.node(node.inputs[0].node);
-        let pad = if let Some(pad) = prec.op_as::<Pad>() { pad } else { return Ok(None) };
-        let value = if let PadMode::Constant(c) = &pad.mode {
-            c
-        } else {
-            return Ok(None);
-        };
+        rule_if_some!(pad = prec.op_as::<Pad>());
+        rule_if_let!(PadMode::Constant(value) = &pad.mode);
         let shape = self.pool_spec.data_format.shape(&model.outlet_fact(node.inputs[0])?.shape)?;
-        if !value.is_zero()?
-            || (self.pool_spec.data_format.has_n() && pad.pads[0] != (0, 0))
-            || pad.pads[shape.c_axis()] != (0, 0)
-        {
-            return Ok(None);
+        rule_if!(value.is_zero()?);
+        rule_if!(pad.pads[shape.c_axis()] == (0, 0));
+        if self.pool_spec.data_format.has_n() {
+            rule_if!(pad.pads[0] == (0, 0));
         }
         let mut before: TVec<usize> = pad.pads[shape.hw_axes()].iter().map(|pair| pair.0).collect();
         let mut after: TVec<usize> = pad.pads[shape.hw_axes()].iter().map(|pair| pair.1).collect();
@@ -814,32 +811,28 @@ impl Conv {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        if self.q_params.is_some() || self.group != 1 {
-            return Ok(None);
-        }
-        let &[succ_outlet] = &*node.outputs[0].successors else { return Ok(None) };
+        rule_if!(self.q_params.is_none());
+        rule_if!(self.group == 1);
+        rule_if_let!(&[succ_outlet] = &*node.outputs[0].successors);
         let succ = model.node(succ_outlet.node);
-        let Some(bin) = succ.op_as::<TypedBinOp>() else { return Ok(None) };
+        rule_if_some!(bin = succ.op_as::<TypedBinOp>());
         let other_input = succ.inputs[1 - succ_outlet.slot];
         let axes_mapping = model.node_axes_mapping(succ.id)?;
         let input_shape =
             self.pool_spec.data_format.shape(&model.outlet_fact(node.inputs[0])?.shape)?;
         let conv_c_axis = input_shape.c_axis();
-        if axes_mapping.axis((InOut::In(succ_outlet.slot), conv_c_axis))?.inputs
-            [1 - succ_outlet.slot]
-            .len()
-            != 1
-        {
-            return Ok(None);
-        };
+        rule_if!(
+            axes_mapping.axis((InOut::In(succ_outlet.slot), conv_c_axis))?.inputs
+                [1 - succ_outlet.slot]
+                .len()
+                == 1
+        );
         let mut other_expected_shape = tvec!(1.to_dim(); input_shape.rank());
         other_expected_shape[conv_c_axis] = self.output_channels().to_dim();
-        if *other_expected_shape != *model.outlet_fact(other_input)?.shape {
-            return Ok(None);
-        }
+        rule_if!(*other_expected_shape == *model.outlet_fact(other_input)?.shape);
 
         let mut patch = TypedModelPatch::default();
-        let [input, mut kernel, mut bias] = &*patch.taps(model, &node.inputs)? else {
+        let [input, mut kernel, mut bias] = *patch.taps(model, &node.inputs)? else {
             panic!("Expect three inputs");
         };
         let name = &node.name;
@@ -896,14 +889,14 @@ impl Conv {
         } else {
             return Ok(None);
         };
-        let wire = patch.wire_node(&node.name, self.clone(), &[*input, kernel, bias])?[0];
+        let wire = patch.wire_node(&node.name, self.clone(), &[input, kernel, bias])?[0];
         patch.shunt_outside(model, succ_outlet.node.into(), wire)?;
         Ok(Some(patch))
     }
 }
 
 impl Op for Conv {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Conv".into()
     }
 
@@ -967,11 +960,11 @@ impl TypedOp for Conv {
             != &self.input_channels().to_dim()
         {
             bail!(
-                    "Inconsistent convolution: input is {:?}, but kernel expects {} input channels.\n{:?}",
-                    inputs[0],
-                    self.input_channels(),
-                    self
-                    );
+                "Inconsistent convolution: input is {:?}, but kernel expects {} input channels.\n{:?}",
+                inputs[0],
+                self.input_channels(),
+                self
+            );
         }
         if let ExplicitOnnxPool(bef, after, _) | Explicit(bef, after) = &self.pool_spec.padding {
             anyhow::ensure!(bef.len() == self.pool_spec.rank());
@@ -979,12 +972,12 @@ impl TypedOp for Conv {
         }
         ensure!(
             inputs[2].rank() == 0
-            || (inputs[2].rank() == 1
-                && inputs[2].shape.volume() == self.output_channels().to_dim()),
-                "Bias should be scalar or a vector with one value per output channel. Output channels is {}, bias is {:?}",
-                self.output_channels(),
-                inputs[2]
-               );
+                || (inputs[2].rank() == 1
+                    && inputs[2].shape.volume() == self.output_channels().to_dim()),
+            "Bias should be scalar or a vector with one value per output channel. Output channels is {}, bias is {:?}",
+            self.output_channels(),
+            inputs[2]
+        );
         let mut fact = self.pool_spec.output_facts(inputs)?.remove(0);
         if let Some(dt) = self.q_params {
             fact.datum_type = dt;
@@ -1197,14 +1190,14 @@ impl TypedOp for Conv {
         let input_fact = model.outlet_fact(node.inputs[0])?;
         unsafe {
             if self.q_params.is_some() {
-                let mut patch = TypedModelPatch::default();
+                let mut patch = TypedModelPatch::new("quantized-codegen");
                 let inputs = patch.taps(model, &node.inputs)?;
                 let wire = self
                     .wire_as_quant_im2col(&mut patch, &node.name, &inputs)
                     .context("in wire_as_quant_im2col")?;
                 patch.shunt_outside(model, node.id.into(), wire[0])?;
                 patch.obliterate(node.id)?;
-                Ok(Some(patch.with_context("quantized-codegen")))
+                Ok(Some(patch))
             } else if input_fact
                 .shape
                 .as_concrete()
@@ -1217,7 +1210,7 @@ impl TypedOp for Conv {
                 })
                 .unwrap_or(false)
             {
-                let mut patch = TypedModelPatch::new("wire_as_lazy_im2col");
+                let mut patch = TypedModelPatch::new("lazy-im2col");
                 let inputs = patch.taps(model, &node.inputs)?;
                 let wire = self
                     .wire_as_lazy_im2col(&mut patch, &node.name, &inputs)
@@ -1230,7 +1223,7 @@ impl TypedOp for Conv {
                 && self.group == self.input_channels()
                 && input_fact.shape.as_concrete().is_some()
             {
-                let mut patch = TypedModelPatch::default();
+                let mut patch = TypedModelPatch::new("depth_wise");
                 let inputs = patch.taps(model, &node.inputs)?;
                 let wire = self
                     .wire_as_depth_wise(&mut patch, &node.name, &inputs)
@@ -1239,7 +1232,7 @@ impl TypedOp for Conv {
                 patch.obliterate(node.id)?;
                 Ok(Some(patch))
             } else {
-                let mut patch = TypedModelPatch::default();
+                let mut patch = TypedModelPatch::new("im2col");
                 let inputs = patch.taps(model, &node.inputs)?;
                 let wire = self
                     .wire_as_im2col_pair(&mut patch, &node.name, &inputs)

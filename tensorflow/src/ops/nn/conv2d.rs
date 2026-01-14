@@ -144,8 +144,7 @@ mod tests {
     fn test_conv_2() {
         let conv = make_conv(1, 1, PaddingSpec::SameUpper);
         let data = tensor4(&[[[[142.3088f32], [48.891083]], [[208.3187], [-11.274994]]]]);
-        let filter =
-            tensor4(&[[[[160.72833f32]], [[107.84076]]], [[[247.50552]], [[-38.738464]]]]);
+        let filter = tensor4(&[[[[160.72833f32]], [[107.84076]]], [[[247.50552]], [[-38.738464]]]]);
         let exp = tensor4(&[[[[80142.31f32], [5067.5586]], [[32266.81], [-1812.2109]]]]);
         let got = &conv.eval(tvec![data.into(), filter.into()]).unwrap()[0];
         //println!("{:?}", got);

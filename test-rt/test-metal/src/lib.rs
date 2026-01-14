@@ -1,10 +1,9 @@
 #![cfg(all(test, any(target_os = "macos", target_os = "ios")))]
 
-use std::borrow::Cow;
 use std::sync::Arc;
 use tract_core::internal::*;
 
-use paste::paste;
+use pastey::paste;
 use tract_core::runtime::Runtime;
 use tract_core::tract_data::itertools::Itertools;
 use tract_metal::MetalGemmImplKind;
@@ -90,7 +89,7 @@ struct MetalTestRuntime {
 }
 
 impl Runtime for MetalTestRuntime {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         self.name.into()
     }
 

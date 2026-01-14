@@ -1,8 +1,8 @@
 use tract_nnef::internal::*;
 use tract_nnef::tract_core::trivial_op_state_freeeze;
+use tract_pulse::PulsedOp;
 use tract_pulse::model::PulsedModel;
 use tract_pulse::ops::OpPulsifier;
-use tract_pulse::PulsedOp;
 use tract_pulse::{internal::*, pulsed_op_to_typed_op};
 
 pub fn register(registry: &mut Registry) {
@@ -99,7 +99,7 @@ pub struct ExpUnitNormState {
 trivial_op_state_freeeze!(ExpUnitNormState);
 
 impl Op for ExpUnitNorm {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "ExpUnitNorm".into()
     }
 

@@ -146,7 +146,7 @@ impl NodeDef {
 
     pub fn get_attr_opt_shape(&self, name: &str) -> TractResult<Option<TVec<isize>>> {
         if let Some(a) = self.attr.get(name) {
-            if let Value::Shape(ref shape) = a.value.as_ref().unwrap() {
+            if let Value::Shape(shape) = a.value.as_ref().unwrap() {
                 return Ok(Some(shape.try_into()?));
             }
         };
@@ -161,7 +161,7 @@ impl NodeDef {
 
     pub fn get_attr_opt_tensor(&self, name: &str) -> TractResult<Option<Tensor>> {
         if let Some(a) = self.attr.get(name) {
-            if let Value::Tensor(ref t) = a.value.as_ref().unwrap() {
+            if let Value::Tensor(t) = a.value.as_ref().unwrap() {
                 return Ok(Some(t.try_into()?));
             }
         };

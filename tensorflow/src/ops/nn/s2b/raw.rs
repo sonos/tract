@@ -6,10 +6,8 @@ pub struct SpaceToBatch {
     datum_type: DatumType,
 }
 
-
-
 impl Op for SpaceToBatch {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "SpaceToBatch".into()
     }
 
@@ -100,10 +98,8 @@ pub struct BatchToSpace {
     datum_type: DatumType,
 }
 
-
-
 impl Op for BatchToSpace {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "BatchToSpace".into()
     }
 

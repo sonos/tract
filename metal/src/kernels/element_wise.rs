@@ -72,7 +72,7 @@ impl ElementWiseOps {
         Self::Neg,
     ];
 
-    pub fn name(&self) -> Cow<str> {
+    pub fn name(&self) -> StaticName {
         format!("{}", self).into()
     }
 
@@ -112,6 +112,8 @@ impl ElementWiseOps {
                 | Self::Tanh
                 | Self::Erf
                 | Self::Neg
+                | Self::Abs
+                | Self::RoundHalfToEven
         )
     }
 
@@ -133,10 +135,10 @@ impl ElementWiseOps {
 
     pub fn kernel_name(&self, dt: DatumType, in_place: bool) -> TractResult<String> {
         if self.float_only() && !matches!(dt, DatumType::F32 | DatumType::F16) {
-            bail!("Unsupport dt for metal element wise ops: {:?}", self);
+            bail!("Unsupported dt for metal element wise ops: {:?}", self);
         }
 
-        ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for metal element wise ops", dt);
+        ensure!(Self::is_supported_dt(dt), "Unsupported dt {:?} for metal element wise ops", dt);
 
         let tname = DeviceTensor::tname(dt)?;
 
@@ -208,62 +210,5 @@ impl ElementWiseOps {
         self.dispatch_eval(stream, a, &output)?;
         stream.wait_until_completed()?;
         Ok(output)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::utils::with_borrowed_metal_stream;
-
-    use super::*;
-    use num_traits::Zero;
-    use rand::Rng;
-    use tract_gpu::tensor::IntoDevice;
-
-    fn reference<F: Datum>(a: &Tensor, ca: impl Fn(&mut F, &F)) -> TractResult<Tensor> {
-        let mut out = unsafe { Tensor::uninitialized_dt(a.datum_type(), a.shape())? };
-        let a_view = a.to_array_view::<F>()?;
-        let mut c = out.to_array_view_mut::<F>()?;
-        tract_core::ndarray::Zip::from(&mut c).and_broadcast(a_view).for_each(ca);
-        Ok(out)
-    }
-
-    fn run_test_case<F: Datum + Zero>(
-        op: ElementWiseOps,
-        a_shape: &[usize],
-        neg: bool,
-        ca: impl Fn(&mut F, &F),
-    ) -> TractResult<()> {
-        with_borrowed_metal_stream(|stream| {
-            let a_len = a_shape.iter().product::<usize>();
-            let mut rng = rand::thread_rng();
-            let a = Tensor::from_shape(
-                a_shape,
-                &(0..a_len)
-                    .map(|_f| {
-                        if neg {
-                            rng.gen_range(-10.0f32..10.0)
-                        } else {
-                            rng.gen_range(0.0f32..10.0)
-                        }
-                    })
-                    .collect::<Vec<_>>(),
-            )?
-            .into_device()?;
-            let output = op.eval(stream, &a)?;
-            let ref_output = reference::<F>(&a.to_host()?.into_tensor(), ca)?;
-            assert!(ref_output
-                .close_enough(&output.to_host()?.into_tensor(), Approximation::Close)
-                .is_ok());
-            Ok(())
-        })
-    }
-
-    #[test]
-    fn test_element_wise() -> TractResult<()> {
-        run_test_case::<f32>(ElementWiseOps::Abs, &[4, 4], true, |c, a| *c = a.abs())?;
-        run_test_case::<f32>(ElementWiseOps::Ln, &[4, 4], false, |c, a| *c = a.ln())?;
-
-        Ok(())
     }
 }

@@ -1,6 +1,6 @@
 [package]
 name = "tract-linalg"
-version = "0.21.13"
+version = "0.22.1-pre"
 license = "MIT OR Apache-2.0"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
@@ -8,7 +8,7 @@ repository = "https://github.com/snipsco/tract"
 keywords = ["TensorFlow", "NeuralNetworks"]
 categories = ["science"]
 autobenches = false
-edition = "2021"
+edition = "2024"
 
 [badges]
 maintenance = { status = "actively-developed" }
@@ -22,7 +22,7 @@ dyn-hash.workspace = true
 lazy_static.workspace = true
 log.workspace = true
 num-traits.workspace = true
-paste.workspace = true
+pastey.workspace = true
 rayon = { workspace = true, optional = true }
 scan_fmt.workspace = true
 tract-data.workspace = true
@@ -50,7 +50,7 @@ proptest.workspace = true
 
 [target.'cfg(target_family = "wasm")'.dev-dependencies]
 # Wasm doesn't support the `rayon` feature of criterion
-criterion = { version = "0.5", default-features = false, features = ["plotters", "cargo_bench_support"] }
+criterion = { version = "0.6", default-features = false, features = ["plotters", "cargo_bench_support"] }
 # Wasm doesn't support the `fork` feature of proptest.
 proptest = { version = "1.0.0", default-features = false, features = ["std", "bit-set"] }
 
@@ -64,6 +64,7 @@ apple-amx-ios = []
 default = [ ]
 multithread-mm = [ "rayon" ]
 complex = [ "tract-data/complex" ]
+hwbench = [ "rayon" ]
 
 [[bench]]
 bench = false

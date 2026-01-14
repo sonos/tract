@@ -1,14 +1,16 @@
 use std::str::FromStr;
 
+use nom::Parser;
 use nom::branch::permutation;
 use nom::character::complete::digit1;
 use nom::combinator::{map_res, recognize};
 use nom::sequence::{delimited, pair};
+use nom_language::error::VerboseError;
 use tract_core::internal::*;
 
 use nom::branch::alt;
+use nom::{IResult, combinator::all_consuming};
 use nom::{bytes::complete::*, multi::*};
-use nom::{combinator::all_consuming, IResult};
 use nom::{combinator::opt, number::complete::float};
 
 use crate::ast::*;
@@ -16,36 +18,38 @@ use crate::ast::*;
 use super::dump::write_identifier;
 use super::parse::{direct_identifier, escaped_identifier, logical_literal, stag, translate_error};
 
+type R<'i, O> = IResult<&'i str, O, VerboseError<&'i str>>;
+
 #[inline(never)]
 pub fn parse_quantization(doc: &str) -> TractResult<Vec<(Identifier, QuantFormat)>> {
-    all_consuming(many0(quantization))(doc).map(|pair| pair.1).map_err(translate_error)
+    all_consuming(many0(quantization)).parse(doc).map(|pair| pair.1).map_err(translate_error)
 }
 
 // <quantization> ::= "<identifier>": <qparam>
-fn quantization(i: &str) -> IResult<&str, (Identifier, QuantFormat)> {
-    let (i, _) = stag("")(i)?;
-    let (i, id) = alt((delimited(tag("\""), direct_identifier, tag("\"")), escaped_identifier))(i)?;
-    let (i, _) = stag(":")(i)?;
+fn quantization(i: &str) -> R<'_, (Identifier, QuantFormat)> {
+    let (i, _) = stag("").parse(i)?;
+    let (i, id) =
+        alt((delimited(tag("\""), direct_identifier, tag("\"")), escaped_identifier)).parse(i)?;
+    let (i, _) = stag(":").parse(i)?;
     let (i, qp) = qparam(i)?;
-    let (i, _) = stag(";")(i)?;
+    let (i, _) = stag(";").parse(i)?;
     Ok((i, (id, qp)))
 }
 
-fn integer_numeric<T: FromStr>(i: &str) -> IResult<&str, T> {
-    map_res(recognize(pair(opt(tag("-")), digit1)), |s: &str| s.parse::<T>())(i)
+fn integer_numeric<T: FromStr>(i: &str) -> R<'_, T> {
+    map_res(recognize(pair(opt(tag("-")), digit1)), |s: &str| s.parse::<T>()).parse(i)
 }
 
 // <qparam> ::= "<identifier>": <qparam>
-fn qparam(i: &str) -> IResult<&str, QuantFormat> {
+fn qparam(i: &str) -> R<'_, QuantFormat> {
     let (i, id) =
-        nom::branch::alt((stag("linear_quantize"), stag("zero_point_linear_quantize")))(i)?;
-    let (i, _) = stag("(")(i)?;
+        nom::branch::alt((stag("linear_quantize"), stag("zero_point_linear_quantize"))).parse(i)?;
+    let (i, _) = stag("(").parse(i)?;
     let (i, params, bits, signed) = match id {
         "linear_quantize" => {
             let (i, (bits, max, min)) =
-                permutation((arg("bits", integer_numeric), arg("max", float), arg("min", float)))(
-                    i,
-                )?;
+                permutation((arg("bits", integer_numeric), arg("max", float), arg("min", float)))
+                    .parse(i)?;
 
             (i, QParams::MinMax { min, max }, bits, true)
         }
@@ -56,25 +60,26 @@ fn qparam(i: &str) -> IResult<&str, QuantFormat> {
                 arg("bits", integer_numeric),
                 arg("signed", logical_literal),
                 opt(arg("symmetric", logical_literal)),
-            ))(i)?;
+            ))
+            .parse(i)?;
             (i, QParams::ZpScale { zero_point, scale }, bits, signed)
         }
         _ => unreachable!(),
     };
 
-    let (i, _) = stag(")")(i)?;
+    let (i, _) = stag(")").parse(i)?;
     Ok((i, QuantFormat::Linear { params, bits, signed }))
 }
 // <arg>(<id>, <f>) ::= <id> "=" <f> ","
-fn arg<'s, T, F>(name: &'static str, f: F) -> impl Fn(&'s str) -> IResult<&'s str, T>
+fn arg<'s, T, F>(name: &'static str, f: F) -> impl Fn(&'s str) -> R<'s, T>
 where
-    F: Fn(&'s str) -> IResult<&'s str, T>,
+    F: Fn(&'s str) -> R<'s, T>,
 {
     move |i: &str| {
-        let (i, _) = stag(name)(i)?;
-        let (i, _) = stag("=")(i)?;
+        let (i, _) = stag(name).parse(i)?;
+        let (i, _) = stag("=").parse(i)?;
         let (i, num) = f(i)?;
-        let (i, _) = opt(stag(","))(i)?;
+        let (i, _) = opt(stag(",")).parse(i)?;
         Ok((i, num))
     }
 }
@@ -87,12 +92,16 @@ pub(crate) fn write_quant_format(
 ) -> TractResult<()> {
     write_identifier(w, name, allow_extended_identifier_syntax, true)?;
     match format {
-        QuantFormat::Linear {
-            params: QParams::ZpScale {zero_point, scale}, bits, signed
-        } => writeln!(w, ": zero_point_linear_quantize(zero_point = {zero_point}, scale = {scale:.9}, bits = {bits}, signed = {signed}, symmetric = {});", zero_point == 0)?,
-        QuantFormat::Linear {
-            params: QParams::MinMax {min, max}, bits, signed: _
-        } => writeln!(w, ": linear_quantize(max = {max:.9}, min = {min:.9}, bits = {bits});")?,
+        QuantFormat::Linear { params: QParams::ZpScale { zero_point, scale }, bits, signed } => {
+            writeln!(
+                w,
+                ": zero_point_linear_quantize(zero_point = {zero_point}, scale = {scale:.9}, bits = {bits}, signed = {signed}, symmetric = {});",
+                zero_point == 0
+            )?
+        }
+        QuantFormat::Linear { params: QParams::MinMax { min, max }, bits, signed: _ } => {
+            writeln!(w, ": linear_quantize(max = {max:.9}, min = {min:.9}, bits = {bits});")?
+        }
     }
     Ok(())
 }
@@ -102,13 +111,12 @@ mod test {
     use super::*;
     use nom::combinator::all_consuming;
 
-    fn p<'s, P, O, E>(parser: P, i: &'s str) -> O
+    fn p<'s, P, O>(parser: P, i: &'s str) -> O
     where
         O: std::fmt::Debug,
-        P: FnMut(&'s str) -> IResult<&'s str, O, E>,
-        E: nom::error::ParseError<&'s str> + std::fmt::Debug,
+        P: Parser<&'s str, Output = O, Error = VerboseError<&'s str>>,
     {
-        let res = all_consuming(parser)(i).unwrap();
+        let res = all_consuming(parser).parse(i).unwrap();
         res.1
     }
 

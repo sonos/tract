@@ -169,7 +169,7 @@ struct Resize {
 }
 
 impl Op for Resize {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Resize".into()
     }
 
@@ -194,7 +194,9 @@ impl Resize {
                     } else if let Ok(i) = i.to_usize() {
                         shape.push(((i as f32 * s) as usize).into());
                     } else {
-                        bail!("Can not compute output shape. inputs are {input_shape:?} and scale {scale:?}")
+                        bail!(
+                            "Can not compute output shape. inputs are {input_shape:?} and scale {scale:?}"
+                        )
                     }
                 }
                 return Ok(shape);

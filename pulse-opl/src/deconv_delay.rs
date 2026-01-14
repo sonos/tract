@@ -16,10 +16,8 @@ pub struct DeconvDelay {
     pub deconv_output_dim: TDim,
 }
 
-
-
 impl Op for DeconvDelay {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "DeconvDelay".into()
     }
 

@@ -5,8 +5,8 @@ use std::convert::TryFrom;
 use std::time::Duration;
 use tract_core::internal::*;
 use tract_core::ops::scan::Scan;
-use tract_itertools::izip;
 use tract_itertools::Itertools;
+use tract_itertools::izip;
 
 use crate::model::Model;
 
@@ -61,13 +61,15 @@ impl<'a> std::ops::Add<&'a NodeTags> for &'a NodeTags {
             .sorted_by_key(|(a, _)| a)
             .group_by(|(a, _)| a)
             .into_iter()
-            .map(|(cost, dims)| (*cost, dims.into_iter().fold(0.to_dim(), |acc, d| acc + &d.1)))
+            .map(|(cost, dims)| {
+                (cost.clone(), dims.into_iter().fold(0.to_dim(), |acc, d| acc + &d.1))
+            })
             .collect::<Vec<(Cost, TDim)>>();
 
         let tmp_mem_usage = match (self.tmp_mem_usage.clone(), other.tmp_mem_usage.clone()) {
             (Some(self_mem), Some(other_mem)) => Some(self_mem + other_mem),
             (_, Some(mem)) | (Some(mem), _) => Some(mem),
-            (None, None) => None
+            (None, None) => None,
         };
 
         let profile = self.profile.unwrap_or_default() + other.profile.unwrap_or_default();
@@ -142,16 +144,15 @@ impl Annotations {
         self.tags.entry(qid).or_default()
     }
 
-
     pub fn track_tmp_memory_usage<Flushable>(
         &mut self,
         model: &dyn Model,
         flushable: Flushable,
         skip_order_opt_ram: bool,
-    ) -> TractResult<()> 
+    ) -> TractResult<()>
     where
-        Flushable: Fn(&TypedNode) -> bool {
-
+        Flushable: Fn(&TypedNode) -> bool,
+    {
         let Some(model) = model.downcast_ref::<TypedModel>() else { return Ok(()) };
         let order = if skip_order_opt_ram {
             tract_core::model::order::eval_order(model)?
@@ -161,18 +162,17 @@ impl Annotations {
 
         let tmp_mem_usage = model.eval_tmp_memory_usage(&order, &flushable)?;
 
-        let peak_tmp_mem_usage = tmp_mem_usage.iter()
+        let peak_tmp_mem_usage = tmp_mem_usage
+            .iter()
             .map(|(n, mem)| mem.to_usize().map(|m| (*n, m)))
             .collect::<TractResult<TVec<_>>>()
             .ok()
             .and_then(|mems| {
-                mems.into_iter()
-                    .map(|(n, mem)| (NodeQId(tvec![], n), mem))
-                    .max_by_key(|it| it.1)
+                mems.into_iter().map(|(n, mem)| (NodeQId(tvec![], n), mem)).max_by_key(|it| it.1)
             });
 
-        self.memory_summary = peak_tmp_mem_usage
-            .map(|(n, mem)| MemorySummary { max: mem, max_reached_by_node: n });
+        self.memory_summary =
+            peak_tmp_mem_usage.map(|(n, mem)| MemorySummary { max: mem, max_reached_by_node: n });
 
         for (n, mem_size) in tmp_mem_usage.into_iter() {
             let qid = NodeQId(tvec![], n);

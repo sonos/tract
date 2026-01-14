@@ -7,8 +7,6 @@ pub struct UnimplementedOp {
     message: String,
 }
 
-
-
 impl UnimplementedOp {
     pub fn new(outputs: usize, name: impl AsRef<str>, message: impl AsRef<str>) -> UnimplementedOp {
         UnimplementedOp {
@@ -20,7 +18,7 @@ impl UnimplementedOp {
 }
 
 impl Op for UnimplementedOp {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         format!("Unimplemented({})", self.name).into()
     }
 

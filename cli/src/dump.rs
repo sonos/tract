@@ -1,7 +1,7 @@
+use crate::Parameters;
 use crate::params::SomeGraphDef;
 use crate::plan_options::plan_options_from_subcommand;
 use crate::tensor::run_params_from_subcommand;
-use crate::Parameters;
 use fs_err as fs;
 use nu_ansi_term::Color::*;
 #[allow(unused_imports)]
@@ -10,14 +10,17 @@ use tract_core::ops::einsum::EinSum;
 use tract_core::ops::matmul::optimized::{OptMatMul, ProtoFusedSpec};
 use tract_core::ops::matmul::pack::DynPackedOpaqueFact;
 use tract_core::ops::scan::OptScan;
+#[allow(unused_imports)]
+use tract_cuda::utils::are_culibs_present;
 use tract_hir::internal::*;
 use tract_itertools::Itertools;
 use tract_libcli::annotations::*;
 use tract_libcli::display_params::*;
 use tract_libcli::model::Model;
 use tract_libcli::profile::BenchLimits;
-use tract_libcli::tensor::retrieve_or_make_inputs;
+use tract_libcli::tensor::get_or_make_inputs;
 use tract_libcli::terminal;
+use tract_linalg::block_quant::PackedBlockQuantFact;
 use tract_linalg::mmm::PackedOpaqueFact;
 
 #[allow(unused_variables)]
@@ -127,30 +130,31 @@ pub fn handle(
             .tract_model
             .downcast_ref::<TypedModel>()
             .context("Can only profile typed models")?;
-        let inputs = retrieve_or_make_inputs(model, &run_params)?;
+        let inputs = get_or_make_inputs(model, &run_params)?;
 
-        if matches.is_present("metal") {
-            #[cfg(any(target_os = "macos", target_os = "ios"))]
-            {
-                tract_libcli::profile::profile_metal(
-                    model,
-                    bench_limits,
-                    &mut annotations,
-                    &plan_options,
-                    &inputs[0],
-                )?;
-            }
+        if matches.is_present("metal") || matches.is_present("cuda") {
             #[cfg(not(any(target_os = "macos", target_os = "ios")))]
             {
-                bail!("Metal profiling called on non-Metal device");
+                if !are_culibs_present() {
+                    bail!("GPU profiling called on non-GPU device");
+                }
             }
+
+            tract_libcli::profile::profile_gpu(
+                model,
+                bench_limits,
+                sub_matches,
+                &mut annotations,
+                &plan_options,
+                &inputs,
+            )?;
         } else {
             tract_libcli::profile::profile(
                 model,
                 bench_limits,
                 &mut annotations,
                 &plan_options,
-                &inputs[0],
+                &inputs,
                 None,
                 options.folded,
             )?;
@@ -174,25 +178,24 @@ pub fn handle(
     }
 
     if sub_matches.is_present("memory-arena") {
-        #[cfg(any(target_os = "macos", target_os = "ios"))]
-        {
-            crate::memory_arena::dump_metrics(
-                params
-                    .tract_model
-                    .downcast_ref::<TypedModel>()
-                    .context("Check memory arena requires a typed model")?,
-                &plan_options_from_subcommand(sub_matches)?,
-                std::path::Path::new(
-                    sub_matches
-                        .value_of("memory-arena")
-                        .ok_or(anyhow!("Path to JSON file required"))?,
-                ),
-            )?;
-        }
         #[cfg(not(any(target_os = "macos", target_os = "ios")))]
         {
-            bail!("Memory arena is only enabled for MacOS / iOS devices");
+            if !are_culibs_present() {
+                bail!("Memory arena is only enabled for MacOS / iOS devices or CUDA devices");
+            }
         }
+        crate::memory_arena::dump_metrics(
+            params
+                .tract_model
+                .downcast_ref::<TypedModel>()
+                .context("Check memory arena requires a typed model")?,
+            &plan_options_from_subcommand(sub_matches)?,
+            std::path::Path::new(
+                sub_matches
+                    .value_of("memory-arena")
+                    .ok_or(anyhow!("Path to JSON file required"))?,
+            ),
+        )?;
     }
 
     if sub_matches.is_present("tmp_mem_usage") {
@@ -308,7 +311,7 @@ pub fn handle(
             sub_matches.value_of("assert-cost").map(crate::cost::parse_costs).transpose()?;
         if let Some(assert) = assert {
             let assert: HashMap<Cost, TDim> =
-                assert.iter().map(|(c, n)| (*c, n.to_dim())).collect();
+                assert.iter().map(|(c, n)| (c.clone(), n.to_dim())).collect();
             let total = total.cost.iter().cloned().collect::<HashMap<_, _>>();
             if assert != total {
                 bail!("Cost assertion not met: expected {:?} got {:?}", assert, total);
@@ -435,8 +438,13 @@ pub fn mm_report(
                                     of.downcast_ref::<PackedOpaqueFact>()
                                         .map(|pof| format!("{}", pof.format))
                                 })
+                                .or_else(|| {
+                                    of.downcast_ref::<PackedBlockQuantFact>()
+                                        .map(|pof| format!("{}", pof.format))
+                                })
                         })
-                        .unwrap_or_default()
+                        .unwrap_or_else(|| format!("{fact:?}"))
+                    //                        .unwrap_or_default()
                 })
                 .collect_tuple()
                 .unwrap();
@@ -497,7 +505,7 @@ pub fn mm_report(
     if einsums.len() > 0 {
         println!("{}", Red.bold().paint("# 💩💩💩 Unoptimized Einsums 💩💩💩"));
         for ((axes, ifacts, ofacts), count) in
-            einsums.iter().sorted_by_key(|(_conf, count)| (-count.as_i64().unwrap_or_default()))
+            einsums.iter().sorted_by_key(|(_conf, count)| -count.as_i64().unwrap_or_default())
         {
             println!(
                 "{}",

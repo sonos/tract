@@ -37,7 +37,7 @@ impl BatchNorm {
 }
 
 impl Expansion for BatchNorm {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "BatchNorm".into()
     }
 

@@ -1,9 +1,9 @@
+use rand::SeedableRng;
 use rand::distributions::uniform::SampleUniform;
 use rand::prelude::Distribution;
 use rand::rngs::SmallRng;
-use rand::SeedableRng;
-use rand_distr::num_traits::Float;
 use rand_distr::StandardNormal;
+use rand_distr::num_traits::Float;
 use tract_nnef::internal::*;
 use tract_nnef::ser::{array, tdims};
 use tract_nnef::tract_core::trivial_op_state_freeeze;
@@ -88,7 +88,7 @@ pub struct Random {
 }
 
 impl Op for Random {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Random".into()
     }
 

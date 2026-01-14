@@ -5,9 +5,9 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use ndarray::{Data, Dimension, RawData};
 use tract_extra::WithTractExtra;
-use tract_transformers::WithTractTransformers;
 use tract_libcli::annotations::Annotations;
 use tract_libcli::profile::BenchLimits;
+use tract_libcli::tensor::RunTensors;
 use tract_nnef::internal::parse_tdim;
 use tract_nnef::prelude::{
     Framework, IntoTValue, SymbolValues, TValue, TVec, Tensor, TractResult, TypedFact, TypedModel,
@@ -15,9 +15,10 @@ use tract_nnef::prelude::{
 };
 use tract_onnx::prelude::InferenceModelExt;
 use tract_onnx_opl::WithOnnx;
-use tract_pulse::model::{PulsedModel, PulsedModelExt};
-use tract_pulse::internal::PlanOptions;
 use tract_pulse::WithPulse;
+use tract_pulse::internal::PlanOptions;
+use tract_pulse::model::{PulsedModel, PulsedModelExt};
+use tract_transformers::WithTractTransformers;
 
 use tract_api::*;
 
@@ -267,14 +268,22 @@ impl ModelInterface for Model {
 
     fn cost_json(&self) -> Result<String> {
         let input: Option<Vec<Value>> = None;
-        self.profile_json(input)
+        let states: Option<Vec<Value>> = None;
+        self.profile_json(input, states)
     }
 
-    fn profile_json<I, V, E>(&self, inputs: Option<I>) -> Result<String>
+    fn profile_json<I, IV, IE, S, SV, SE>(
+        &self,
+        inputs: Option<I>,
+        state_initializers: Option<S>,
+    ) -> Result<String>
     where
-        I: IntoIterator<Item = V>,
-        V: TryInto<Self::Value, Error = E>,
-        E: Into<anyhow::Error> + Debug,
+        I: IntoIterator<Item = IV>,
+        IV: TryInto<Self::Value, Error = IE>,
+        IE: Into<anyhow::Error> + Debug,
+        S: IntoIterator<Item = SV>,
+        SV: TryInto<Self::Value, Error = SE>,
+        SE: Into<anyhow::Error> + Debug,
     {
         let mut annotations = Annotations::from_model(&self.0)?;
         tract_libcli::profile::extract_costs(&mut annotations, &self.0, &SymbolValues::default())?;
@@ -283,14 +292,20 @@ impl ModelInterface for Model {
                 .into_iter()
                 .map(|v| Ok(v.try_into().unwrap().0))
                 .collect::<TractResult<TVec<_>>>()?;
+
+            let mut state_inits: Vec<TValue> = vec![];
+
+            if let Some(states) = state_initializers {
+                states.into_iter().for_each(|s| state_inits.push(s.try_into().unwrap().0));
+            }
             tract_libcli::profile::profile(
                 &self.0,
                 &BenchLimits::default(),
                 &mut annotations,
                 &PlanOptions::default(),
-                &inputs,
+                &RunTensors { sources: vec![inputs], state_initializers: state_inits },
                 None,
-                true
+                true,
             )?;
         };
         let export = tract_libcli::export::GraphPerfInfo::from(&self.0, &annotations);
@@ -345,6 +360,7 @@ impl RunnableInterface for Runnable {
 pub struct State(TypedSimpleState<TypedModel, Arc<TypedSimplePlan<TypedModel>>>);
 
 impl StateInterface for State {
+    type Fact = Fact;
     type Value = Value;
 
     fn input_count(&self) -> Result<usize> {
@@ -367,6 +383,60 @@ impl StateInterface for State {
             .collect::<Result<_>>()?;
         let outputs = self.0.run(inputs)?;
         Ok(outputs.into_iter().map(Value).collect())
+    }
+
+    fn initializable_states_count(&self) -> Result<usize> {
+        Ok(self
+            .0
+            .states
+            .iter()
+            .filter_map(Option::as_ref)
+            .filter(|s| s.init_tensor_fact().is_some())
+            .count())
+    }
+
+    fn get_states_facts(&self) -> Result<Vec<Fact>> {
+        Ok(self
+            .0
+            .states
+            .iter()
+            .filter_map(Option::as_ref)
+            .filter_map(|s| s.init_tensor_fact().map(|(_, fact)| Fact(fact)))
+            .collect::<Vec<Fact>>())
+    }
+
+    fn set_states<I, V, E>(&mut self, state_initializers: I) -> Result<()>
+    where
+        I: IntoIterator<Item = V>,
+        V: TryInto<Self::Value, Error = E>,
+        E: Into<anyhow::Error> + Debug,
+    {
+        let mut states = vec![];
+        state_initializers.into_iter().for_each(|s| {
+            states.push(s.try_into().unwrap().0);
+        });
+
+        self.0.init_states(&mut states)?;
+        Ok(())
+    }
+
+    fn get_states(&self) -> Result<Vec<Self::Value>> {
+        let mut states = vec![];
+        for state in self
+            .0
+            .states
+            .iter()
+            .filter_map(Option::as_ref)
+            .filter(|s| s.init_tensor_fact().is_some())
+        {
+            state.save_to(&mut states)?;
+        }
+
+        let mut res = vec![];
+        for state in states {
+            res.push(Value(state));
+        }
+        Ok(res)
     }
 }
 
@@ -463,8 +533,8 @@ anyhow::bail!("Unsupported type {}", std::any::type_name::<T>())
 */
 
 fn to_internal_dt(it: DatumType) -> tract_nnef::prelude::DatumType {
-    use tract_nnef::prelude::DatumType::*;
     use DatumType::*;
+    use tract_nnef::prelude::DatumType::*;
     match it {
         TRACT_DATUM_TYPE_BOOL => Bool,
         TRACT_DATUM_TYPE_U8 => U8,
@@ -494,8 +564,8 @@ fn to_internal_dt(it: DatumType) -> tract_nnef::prelude::DatumType {
 }
 
 fn from_internal_dt(it: tract_nnef::prelude::DatumType) -> Result<DatumType> {
-    use tract_nnef::prelude::DatumType::*;
     use DatumType::*;
+    use tract_nnef::prelude::DatumType::*;
     Ok(match it {
         Bool => TRACT_DATUM_TYPE_BOOL,
         U8 => TRACT_DATUM_TYPE_U8,

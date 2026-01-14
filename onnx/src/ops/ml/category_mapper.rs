@@ -14,10 +14,8 @@ struct CategoryMapper {
     pub fallback: Arc<Tensor>,
 }
 
-
-
 impl Expansion for CategoryMapper {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "CategoryMapper".into()
     }
 

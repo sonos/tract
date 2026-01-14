@@ -6,7 +6,7 @@ pub struct MultiBroadcastTo {
 }
 
 impl Op for MultiBroadcastTo {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "MultiBroadcastTo".into()
     }
 
@@ -20,6 +20,7 @@ impl EvalOp for MultiBroadcastTo {
 
     fn eval_with_session(
         &self,
+        _node_id: usize,
         session: &SessionState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {

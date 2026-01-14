@@ -1,19 +1,11 @@
+# test_.*_expanded
 test_abs
 test_acos
 test_acos_example
 test_acosh
 test_acosh_example
-test_add
-test_add_bcast
-test_add_uint8
-test_and2d
-test_and3d
-test_and4d
-test_and_bcast3v1d
-test_and_bcast3v2d
-test_and_bcast4v2d
-test_and_bcast4v3d
-test_and_bcast4v4d
+test_add.*
+test_and.*
 test_argmax_default_axis_example
 test_argmax_default_axis_example_select_last_index
 test_argmax_default_axis_random
@@ -72,29 +64,8 @@ test_basic_conv_without_padding input:x
 test_basic_conv_with_padding input:x
 test_batchnorm_epsilon input:x
 test_batchnorm_example input:x
-test_bitshift_left_uint16
-test_bitshift_left_uint32
-test_bitshift_left_uint64
-test_bitshift_left_uint8
-test_bitshift_right_uint16
-test_bitshift_right_uint32
-test_bitshift_right_uint64
-test_bitshift_right_uint8
-test_bitwise_and_i16_3d
-test_bitwise_and_i32_2d
-test_bitwise_and_ui64_bcast_3v1d
-test_bitwise_and_ui8_bcast_4v3d
-test_bitwise_not_2d
-test_bitwise_not_3d
-test_bitwise_not_4d
-test_bitwise_or_i16_4d
-test_bitwise_or_i32_2d
-test_bitwise_or_ui64_bcast_3v1d
-test_bitwise_or_ui8_bcast_4v3d
-test_bitwise_xor_i16_3d
-test_bitwise_xor_i32_2d
-test_bitwise_xor_ui64_bcast_3v1d
-test_bitwise_xor_ui8_bcast_4v3d
+test_bitshift.*
+test_bitwise.*
 test_blackmanwindow_expanded input:
 test_blackmanwindow input:
 test_blackmanwindow_symmetric_expanded input:
@@ -128,45 +99,14 @@ test_ceil
 test_ceil_example
 test_celu
 test_celu_expanded
-test_clip
-test_clip_default_inbounds
-test_clip_default_inbounds_expanded
-test_clip_default_int8_inbounds
-test_clip_default_int8_inbounds_expanded
-test_clip_default_int8_max
-test_clip_default_int8_max_expanded
-test_clip_default_int8_min
-test_clip_default_int8_min_expanded
-test_clip_default_max
-test_clip_default_max_expanded
-test_clip_default_min
-test_clip_default_min_expanded
-test_clip_example
-test_clip_example_expanded
-test_clip_expanded
-test_clip_inbounds
-test_clip_inbounds_expanded
-test_clip_outbounds
-test_clip_outbounds_expanded
-test_clip_splitbounds
-test_clip_splitbounds_expanded
-test_concat_1d_axis_0
-test_concat_1d_axis_negative_1
-test_concat_2d_axis_0
-test_concat_2d_axis_1
-test_concat_2d_axis_negative_1
-test_concat_2d_axis_negative_2
-test_concat_3d_axis_0
-test_concat_3d_axis_1
-test_concat_3d_axis_2
-test_concat_3d_axis_negative_1
-test_concat_3d_axis_negative_2
-test_concat_3d_axis_negative_3
+test_clip.*
+test_concat.*
 test_constant
+test_constant_pad input:x
+test_constant_pad_axes input:x
 test_constantlike_ones_with_input not-nnef
 test_constantlike_threes_with_shape_and_dtype not-nnef
 test_constantlike_zeros_without_input_dtype not-nnef
-test_constant_pad input:x
 test_convinteger_with_padding                                                       input:x 
 test_convtranspose_1d input:X
 test_convtranspose_3d input:X
@@ -192,18 +132,12 @@ test_cumsum_2d_axis_0 input:x since:13
 test_cumsum_2d_axis_1 input:x since:13
 test_cumsum_2d_negative_axis input:x since:13
 test_cumsum_2d not-nnef input:x since:13
-test_depthtospace_crd_mode
-test_depthtospace_crd_mode_example
-test_depthtospace_dcr_mode
-test_depthtospace_example
+test_depthtospace.*
 test_dequantizelinear                                                               input:x not-nnef
-test_dft
-test_dft_axis
-test_dft_inverse
-test_div
-test_div_bcast
-test_div_example
-test_div_uint8
+# test_dft
+# test_dft_axis
+# test_dft_inverse
+test_div.*
 test_dropout_default
 test_dropout_default_old
 test_dropout_random not-nnef
@@ -212,19 +146,14 @@ test_dynamicquantizelinear_max_adjusted  not-nnef
 test_dynamicquantizelinear_min_adjusted  not-nnef
 test_dynamicquantizelinear  not-nnef
 test_edge_pad input:x
-test_einsum_batch_diagonal
-test_einsum_batch_matmul
-test_einsum_inner_prod
-test_einsum_sum
-test_einsum_transpose
+test_einsum.*
 test_elu
 test_elu_default
 test_elu_default_expanded_ver18
 test_elu_example
 test_elu_example_expanded_ver18
 test_elu_expanded_ver18
-test_equal
-test_equal_bcast
+test_equal.*
 test_erf
 test_exp
 test_expand_dim_changed input:data
@@ -254,33 +183,17 @@ test_gathernd_example_float32
 test_gathernd_example_int32
 test_gathernd_example_int32_batch_dim1
 test_gather_negative_indices
-test_gemm_all_attributes
-test_gemm_alpha
-test_gemm_beta
-test_gemm_broadcast not-nnef
-test_gemm_default_matrix_bias
-test_gemm_default_no_bias
-test_gemm_default_scalar_bias
-test_gemm_default_single_elem_vector_bias
-test_gemm_default_vector_bias
-test_gemm_default_zero_bias
-test_gemm_nobroadcast not-nnef
-test_gemm_transposeA
-test_gemm_transposeB
+test_gemm_.*
 test_globalaveragepool
 test_globalaveragepool_precomputed
 test_globalmaxpool
 test_globalmaxpool_precomputed
-test_greater
-test_greater_bcast
-test_greater_equal
-test_greater_equal_bcast
-test_greater_equal_bcast_expanded
-test_greater_equal_expanded
+test_greater.*
 test_gru_batchwise
 test_gru_defaults
 test_gru_seq_length
 test_gru_with_initial_bias
+test_if
 test_hammingwindow_expanded input:
 test_hammingwindow input:
 test_hammingwindow_symmetric_expanded input:
@@ -306,121 +219,19 @@ test_hardswish
 test_hardswish_expanded
 test_identity
 test_instancenorm_example
-test_isinf
-test_isinf_negative
-test_isinf_positive
+test_isinf.*
 test_isnan
-test_layer_normalization_2d_axis0
-test_layer_normalization_2d_axis0_expanded
-test_layer_normalization_2d_axis0_expanded_ver18
-test_layer_normalization_2d_axis0_ver18
-test_layer_normalization_2d_axis1
-test_layer_normalization_2d_axis1_expanded
-test_layer_normalization_2d_axis1_expanded_ver18
-test_layer_normalization_2d_axis1_ver18
-test_layer_normalization_2d_axis_negative_1
-test_layer_normalization_2d_axis_negative_1_expanded
-test_layer_normalization_2d_axis_negative_1_expanded_ver18
-test_layer_normalization_2d_axis_negative_1_ver18
-test_layer_normalization_2d_axis_negative_2
-test_layer_normalization_2d_axis_negative_2_expanded
-test_layer_normalization_2d_axis_negative_2_expanded_ver18
-test_layer_normalization_2d_axis_negative_2_ver18
-test_layer_normalization_3d_axis0_epsilon
-test_layer_normalization_3d_axis0_epsilon_expanded
-test_layer_normalization_3d_axis0_epsilon_expanded_ver18
-test_layer_normalization_3d_axis0_epsilon_ver18
-test_layer_normalization_3d_axis1_epsilon
-test_layer_normalization_3d_axis1_epsilon_expanded
-test_layer_normalization_3d_axis1_epsilon_expanded_ver18
-test_layer_normalization_3d_axis1_epsilon_ver18
-test_layer_normalization_3d_axis2_epsilon
-test_layer_normalization_3d_axis2_epsilon_expanded
-test_layer_normalization_3d_axis2_epsilon_expanded_ver18
-test_layer_normalization_3d_axis2_epsilon_ver18
-test_layer_normalization_3d_axis_negative_1_epsilon
-test_layer_normalization_3d_axis_negative_1_epsilon_expanded
-test_layer_normalization_3d_axis_negative_1_epsilon_expanded_ver18
-test_layer_normalization_3d_axis_negative_1_epsilon_ver18
-test_layer_normalization_3d_axis_negative_2_epsilon
-test_layer_normalization_3d_axis_negative_2_epsilon_expanded
-test_layer_normalization_3d_axis_negative_2_epsilon_expanded_ver18
-test_layer_normalization_3d_axis_negative_2_epsilon_ver18
-test_layer_normalization_3d_axis_negative_3_epsilon
-test_layer_normalization_3d_axis_negative_3_epsilon_expanded
-test_layer_normalization_3d_axis_negative_3_epsilon_expanded_ver18
-test_layer_normalization_3d_axis_negative_3_epsilon_ver18
-test_layer_normalization_4d_axis0
-test_layer_normalization_4d_axis0_expanded
-test_layer_normalization_4d_axis0_expanded_ver18
-test_layer_normalization_4d_axis0_ver18
-test_layer_normalization_4d_axis1
-test_layer_normalization_4d_axis1_expanded
-test_layer_normalization_4d_axis1_expanded_ver18
-test_layer_normalization_4d_axis1_ver18
-test_layer_normalization_4d_axis2
-test_layer_normalization_4d_axis2_expanded
-test_layer_normalization_4d_axis2_expanded_ver18
-test_layer_normalization_4d_axis2_ver18
-test_layer_normalization_4d_axis3
-test_layer_normalization_4d_axis3_expanded
-test_layer_normalization_4d_axis3_expanded_ver18
-test_layer_normalization_4d_axis3_ver18
-test_layer_normalization_4d_axis_negative_1
-test_layer_normalization_4d_axis_negative_1_expanded
-test_layer_normalization_4d_axis_negative_1_expanded_ver18
-test_layer_normalization_4d_axis_negative_1_ver18
-test_layer_normalization_4d_axis_negative_2
-test_layer_normalization_4d_axis_negative_2_expanded
-test_layer_normalization_4d_axis_negative_2_expanded_ver18
-test_layer_normalization_4d_axis_negative_2_ver18
-test_layer_normalization_4d_axis_negative_3
-test_layer_normalization_4d_axis_negative_3_expanded
-test_layer_normalization_4d_axis_negative_3_expanded_ver18
-test_layer_normalization_4d_axis_negative_3_ver18
-test_layer_normalization_4d_axis_negative_4
-test_layer_normalization_4d_axis_negative_4_expanded
-test_layer_normalization_4d_axis_negative_4_expanded_ver18
-test_layer_normalization_4d_axis_negative_4_ver18
-test_layer_normalization_default_axis
-test_layer_normalization_default_axis_expanded
-test_layer_normalization_default_axis_expanded_ver18
-test_layer_normalization_default_axis_ver18
+test_layer_normalization.*
 test_leakyrelu
 test_leakyrelu_default
 test_leakyrelu_default_expanded
 test_leakyrelu_example
 test_leakyrelu_example_expanded
 test_leakyrelu_expanded
-test_less
-test_less_bcast
-test_less_equal
-test_less_equal_bcast
-test_less_equal_bcast_expanded
-test_less_equal_expanded
+test_less.*
 test_log
 test_log_example
-test_logsoftmax_axis_0
-test_logsoftmax_axis_0_expanded
-test_logsoftmax_axis_0_expanded_ver18
-test_logsoftmax_axis_1
-test_logsoftmax_axis_1_expanded
-test_logsoftmax_axis_1_expanded_ver18
-test_logsoftmax_axis_2
-test_logsoftmax_axis_2_expanded
-test_logsoftmax_axis_2_expanded_ver18
-test_logsoftmax_default_axis
-test_logsoftmax_default_axis_expanded
-test_logsoftmax_default_axis_expanded_ver18
-test_logsoftmax_example_1
-test_logsoftmax_example_1_expanded
-test_logsoftmax_example_1_expanded_ver18
-test_logsoftmax_large_number
-test_logsoftmax_large_number_expanded
-test_logsoftmax_large_number_expanded_ver18
-test_logsoftmax_negative_axis
-test_logsoftmax_negative_axis_expanded
-test_logsoftmax_negative_axis_expanded_ver18
+test_logsoftmax.*
 test_lrn
 test_lrn_default
 test_lstm_batchwise
@@ -431,15 +242,7 @@ test_matmul_2d
 test_matmul_3d
 test_matmul_4d
 test_matmulinteger                                                               
-test_max_example
-test_max_float16
-test_max_float32
-test_max_float64
-test_max_int16
-test_max_int32
-test_max_int64
-test_max_int8
-test_max_one_input
+test_max_.*
 test_maxpool_1d_default
 test_maxpool_2d_ceil not-nnef
 test_maxpool_2d_default
@@ -453,29 +256,11 @@ test_maxpool_2d_strides
 test_maxpool_2d_uint8
 test_maxpool_3d_default
 test_maxpool_with_argmax_2d_precomputed_pads not-nnef
-test_max_two_inputs
-test_max_uint16
-test_max_uint32
-test_max_uint64
-test_max_uint8
 test_mean_example
 test_mean_one_input
 test_mean_two_inputs
 test_melweightmatrix input:
-test_min_example
-test_min_float16
-test_min_float32
-test_min_float64
-test_min_int16
-test_min_int32
-test_min_int64
-test_min_int8
-test_min_one_input
-test_min_two_inputs
-test_min_uint16
-test_min_uint32
-test_min_uint64
-test_min_uint8
+test_min.*
 test_mish_expanded
 test_mod_broadcast not-nnef
 test_mod_int64_fmod not-nnef
@@ -490,10 +275,7 @@ test_mod_uint16 not-nnef
 test_mod_uint32 not-nnef
 test_mod_uint64 not-nnef
 test_mod_uint8 not-nnef
-test_mul
-test_mul_bcast
-test_mul_example
-test_mul_uint8 since:17
+test_mul.*
 test_mvn_expanded
 test_neg
 test_negative_log_likelihood_loss_input_shape_is_NCd1d2d3d4d5_none_no_weight_expanded
@@ -774,10 +556,7 @@ test_softmax_large_number_expanded_ver18
 test_softmax_negative_axis
 test_softmax_negative_axis_expanded
 test_softmax_negative_axis_expanded_ver18
-test_softplus
-test_softplus_example
-test_softplus_example_expanded
-test_softplus_expanded
+test_softplus.*
 test_softsign
 test_softsign_example
 test_softsign_example_expanded_ver18
@@ -810,13 +589,8 @@ test_squeeze input:x
 test_squeeze_negative_axes input:x
 test_stft input:signal
 test_stft_with_window input:signal
-test_sub
-test_sub_bcast
-test_sub_example
-test_sub_uint8
-test_sum_example
-test_sum_one_input
-test_sum_two_inputs
+test_sub.*
+test_sum.*
 test_tan
 test_tan_example
 test_tanh

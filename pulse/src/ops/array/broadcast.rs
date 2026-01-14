@@ -17,13 +17,15 @@ fn pulsify(
         let full_dim = op.shape[axis].clone();
         let fact = PulsedFact {
             datum_type: _source.outlet_fact(node.inputs[0])?.datum_type,
-            shape: op.shape.iter().map(|dim| dim.substitute(symbol, pulse)).collect::<TractResult<_>>()?,
+            shape: op
+                .shape
+                .iter()
+                .map(|dim| dim.substitute(symbol, pulse))
+                .collect::<TractResult<_>>()?,
             stream: Some(StreamInfo { axis, dim: full_dim, delay: 0 }),
         };
         let new_op = PulsedMultibroadcastTo { fact };
-        target
-            .wire_node(&node.name, new_op, &[mapping[&node.inputs[0]]])
-            .map(Some)
+        target.wire_node(&node.name, new_op, &[mapping[&node.inputs[0]]]).map(Some)
     } else {
         Ok(None)
     }
@@ -36,7 +38,7 @@ struct PulsedMultibroadcastTo {
 }
 
 impl Op for PulsedMultibroadcastTo {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "PulsedMultibroadcastTo".into()
     }
 

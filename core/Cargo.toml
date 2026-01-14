@@ -1,6 +1,6 @@
 [package]
 name = "tract-core"
-version = "0.21.13"
+version = "0.22.1-pre"
 license = "MIT OR Apache-2.0"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
@@ -8,8 +8,8 @@ repository = "https://github.com/snipsco/tract"
 keywords = [ "TensorFlow", "NeuralNetworks" ]
 categories = [ "science" ]
 autobenches = false
-edition = "2021"
-rust-version = "1.75"
+edition = "2024"
+rust-version = "1.85"
 
 [badges]
 maintenance = { status = "actively-developed" }
@@ -20,7 +20,7 @@ anyhow.workspace = true
 anymap3.workspace = true
 bit-set.workspace = true
 blis-src = { version = "0.2", features = ["static", "pthreads"], optional = true }
-cblas = { version = "0.4", optional = true }
+cblas = { version = "0.5", optional = true }
 derive-new.workspace = true
 downcast-rs.workspace = true
 dyn-clone.workspace = true
@@ -32,7 +32,7 @@ num-integer.workspace = true
 num-traits.workspace = true
 num-complex.workspace = true
 openblas-src = { workspace=true, optional = true }
-paste.workspace = true
+pastey.workspace = true
 rustfft.workspace = true
 smallvec.workspace = true
 tract-linalg.workspace = true
@@ -58,6 +58,6 @@ proptest.workspace = true
 
 [target.'cfg(target_family = "wasm")'.dev-dependencies]
 # Wasm doesn't support the `rayon` feature of criterion
-criterion = { version = "0.5", default-features = false, features = ["plotters", "cargo_bench_support"] }
+criterion = { version = "0.6", default-features = false, features = ["plotters", "cargo_bench_support"] }
 # Wasm doesn't support the `fork` feature of proptest.
 proptest = { version = "1.0.0", default-features = false, features = ["std", "bit-set"] }

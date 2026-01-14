@@ -1,13 +1,13 @@
 use crate::kernels::matmul::{GemmDispatchParams, GemmKernel};
 use crate::{LibraryName, MetalStream};
+use DatumType::{F16, F32};
 use anyhow::ensure;
 use metal::{Buffer, MTLSize, NSUInteger};
 use std::fmt;
 use tract_core::internal::*;
 use tract_core::tract_linalg::block_quant::{BlockQuant, Q4_0};
 use tract_gpu::tensor::DeviceTensor;
-use tract_gpu::utils::as_q40_fact;
-use DatumType::{F16, F32};
+use tract_gpu::utils::as_quant_fact;
 
 #[derive(Debug)]
 #[repr(C)]
@@ -142,11 +142,12 @@ impl GemmKernel for GgmlGemm {
 
         let regular_types_support = matches!(
             (facts[0].datum_type, facts[1].datum_type),
-            (F32, F32) | (F16, F16) | (F16, F32)
+            (F32, F32) | (F16, F16) | (F32, F16)
         );
 
         regular_types_support
-            || (as_q40_fact(&facts[1]).is_some() && matches!(facts[0].datum_type, F16 | F32))
+            || (as_quant_fact(&facts[1], &Q4_0).is_some()
+                && matches!(facts[0].datum_type, F16 | F32))
     }
 
     fn output_dt(&self, _a_dt: DatumType, _b_dt: DatumType) -> TractResult<DatumType> {
@@ -329,11 +330,11 @@ mod tests {
     use tract_core::ops::array::MultiBroadcastTo;
     use tract_core::ops::cast::Cast;
     use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
-    use tract_linalg::block_quant::{BlockQuant, BlockQuantFact, BlockQuantValue, Q4_0};
+    use tract_linalg::block_quant::{BlockQuant, BlockQuantFact, Q4_0};
 
     use super::*;
-    use crate::kernels::matmul::tests::run_mmm_test_case;
     use crate::kernels::matmul::GemmImpl;
+    use crate::kernels::matmul::tests::run_mmm_test_case;
     use tract_gpu::tensor::IntoDevice;
 
     #[test]
@@ -388,6 +389,7 @@ mod tests {
             transpose_b: true,
             transpose_c: false,
             quantize_output: None,
+            operating_dt: Some(DatumType::F32),
         };
 
         let mut model = TypedModel::default();
@@ -459,8 +461,8 @@ mod tests {
                     Q4_0.simulate_precision_loss(Tensor::from_shape(&b_shape, &b_data)?, 2)?;
 
                 ensure!(k % 32 == 0);
-                let b_q4_0_tensor = tensor0(Opaque(Arc::new(BlockQuantValue {
-                    fact: BlockQuantFact::new(Box::new(Q4_0), tvec![batch, n, k]),
+                let b_q4_0_tensor = tensor0(Opaque(Arc::new(BlobWithFact {
+                    fact: Box::new(BlockQuantFact::new(Box::new(Q4_0), tvec![batch, n, k])),
                     value: Arc::new(Q4_0.quant_f32(&b_data)?),
                 })));
                 (b_tensor, b_q4_0_tensor)

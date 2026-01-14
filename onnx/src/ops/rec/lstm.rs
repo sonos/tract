@@ -60,6 +60,7 @@ impl WireBody for LSTM {
         let peepholes: Option<OutletId> = body.node_by_name("peepholes").ok().map(|n| n.id.into());
 
         let h_size = body.outlet_fact(R)?.shape[1].clone();
+        let dt = body.outlet_fact(R)?.datum_type;
 
         wire!(Wi = array::Slice::new(0, 0.to_dim() * &h_size, 1.to_dim() * &h_size), W);
         wire!(Wo = array::Slice::new(0, 1.to_dim() * &h_size, 2.to_dim() * &h_size), W);
@@ -101,7 +102,7 @@ impl WireBody for LSTM {
             None
         };
 
-        let matmul_t = EinSum::new("mk,nk->mn".parse()?, f32::datum_type());
+        let matmul_t = EinSum::new("mk,nk->mn".parse()?, dt);
 
         // it = f(Xt*(Wi^T) + Ht-1*(Ri^T) + Pi (.) Ct-1 + Wbi + Rbi)
         wire!(Xt_WiT = matmul_t.clone(), Xt, Wi);

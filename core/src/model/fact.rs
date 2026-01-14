@@ -2,7 +2,7 @@
 use crate::internal::*;
 use downcast_rs::Downcast;
 use std::fmt;
-use tract_linalg::block_quant::{BlockQuantFact, BlockQuantValue};
+use tract_linalg::block_quant::BlockQuantFact;
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct ShapeFact {
@@ -47,7 +47,7 @@ impl ShapeFact {
     }
 
     #[inline]
-    pub fn eval(&self, values: &SymbolValues) -> TractResult<Cow<ShapeFact>> {
+    pub fn eval(&self, values: &SymbolValues) -> TractResult<Cow<'_, ShapeFact>> {
         if self.is_concrete() {
             Ok(Cow::Borrowed(self))
         } else {
@@ -56,7 +56,7 @@ impl ShapeFact {
     }
 
     #[inline]
-    pub fn eval_to_usize(&self, values: &SymbolValues) -> TractResult<Cow<TVec<usize>>> {
+    pub fn eval_to_usize(&self, values: &SymbolValues) -> TractResult<Cow<'_, TVec<usize>>> {
         if let Some(c) = &self.concrete {
             Ok(Cow::Borrowed(c))
         } else {
@@ -69,7 +69,7 @@ impl ShapeFact {
     }
 
     #[inline]
-    pub fn eval_to_isize(&self, values: &SymbolValues) -> TractResult<Cow<TVec<isize>>> {
+    pub fn eval_to_isize(&self, values: &SymbolValues) -> TractResult<Cow<'_, TVec<isize>>> {
         if let Some(c) = &self.concrete {
             #[allow(unknown_lints, clippy::missing_transmute_annotations)]
             // TVec<usize> -> TVec<isize>
@@ -158,7 +158,7 @@ impl<D: ToDim, T: IntoIterator<Item = D>> From<T> for ShapeFact {
 /// Type information about a tensor: shape, and element type, in various state
 /// of determination.
 pub trait Fact: std::fmt::Debug + Downcast + dyn_clone::DynClone + Send + Sync + 'static {
-    fn to_typed_fact(&self) -> TractResult<Cow<TypedFact>>;
+    fn to_typed_fact(&self) -> TractResult<Cow<'_, TypedFact>>;
 
     fn matches(&self, t: &Tensor, symbols: Option<&SymbolValues>) -> TractResult<bool> {
         self.to_typed_fact()?.matches(t, symbols)
@@ -237,7 +237,7 @@ impl TypedFact {
 
     pub fn mem_size(&self) -> TDim {
         self.shape.volume() * self.datum_type.size_of()
-            + self.opaque_fact().map(|it| it.mem_size()).unwrap_or(0.into())
+            + self.opaque_fact().iter().flat_map(|it| it.buffer_sizes()).sum::<TDim>()
     }
 
     pub fn dt_scalar(datum_type: DatumType) -> TypedFact {
@@ -289,8 +289,18 @@ impl TypedFact {
             if let Some(bqf) = self.opaque_fact().and_then(|of| of.downcast_ref::<BlockQuantFact>())
             {
                 for o in k.as_slice::<Opaque>().unwrap() {
-                    ensure!(o.is::<BlockQuantValue>());
-                    ensure!(o.downcast_ref::<BlockQuantValue>().unwrap().fact == *bqf);
+                    ensure!(o.is::<BlobWithFact>());
+                    ensure!(
+                        o.downcast_ref::<BlobWithFact>()
+                            .and_then(|bwf| bwf.fact.downcast_ref::<BlockQuantFact>())
+                            .is_some()
+                    );
+                    ensure!(
+                        o.downcast_ref::<BlobWithFact>()
+                            .and_then(|bwf| bwf.fact.downcast_ref::<BlockQuantFact>())
+                            .unwrap()
+                            == bqf
+                    );
                 }
             }
         }
@@ -302,7 +312,9 @@ impl TypedFact {
         if let (Some(u), Some(k)) = (self.uniform.as_deref(), self.konst.as_deref()) {
             if let Some(k) = k.as_uniform() {
                 if &k != u {
-                    bail!("Uniform value and uniform constant mismatch: {:?}, {:?}", u, k);
+                    bail!(
+                        "Uniform value and uniform constant mismatch: value:{u:?}, uniform:{k:?}",
+                    );
                 }
             } else {
                 bail!("Fact said to be uniform ({:?}) and equal to {:?} which is not.", u, k);
@@ -329,7 +341,7 @@ impl TypedFact {
 }
 
 impl Fact for TypedFact {
-    fn to_typed_fact(&self) -> TractResult<Cow<TypedFact>> {
+    fn to_typed_fact(&self) -> TractResult<Cow<'_, TypedFact>> {
         if cfg!(debug_assertions) {
             self.consistent()?
         }

@@ -1,4 +1,5 @@
 #![allow(clippy::len_zero)]
+#![allow(clippy::collapsible_if)]
 #[macro_use]
 extern crate derive_new;
 #[macro_use]
@@ -30,7 +31,7 @@ pub mod internal {
     pub use crate::infer::*;
     pub use crate::ops::binary::BinIntoHir;
     pub use crate::ops::element_wise::ElementWiseIntoHir;
-    pub use crate::ops::expandable::{expand, inference_wrap, Expansion};
+    pub use crate::ops::expandable::{Expansion, expand, inference_wrap};
     pub use tract_core;
     pub use tract_core::internal::*;
     pub use {shapefactoid, to_typed};

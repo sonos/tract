@@ -4,7 +4,7 @@ use crate::ops::binary::TypedBinOp;
 use crate::ops::cast::cast;
 use crate::ops::change_axes::wire_with_rank_broadcast;
 use crate::ops::element_wise::ElementWiseOp;
-use crate::ops::math::{div, square, Mul, Square};
+use crate::ops::math::{Mul, Square, div, square};
 use std::convert::TryFrom;
 use std::iter::Sum;
 use std::mem::transmute;
@@ -123,7 +123,7 @@ impl Reducer {
         A: Copy,
     {
         use ndarray::*;
-        let input = input_tensor.to_array_view_unchecked::<T>();
+        let input = unsafe { input_tensor.to_array_view_unchecked::<T>() };
         let result = Array::from_shape_fn(output_shape, |coords| {
             let slice_spec: Vec<SliceInfoElem> = coords
                 .slice()
@@ -167,11 +167,13 @@ impl Reducer {
                     operative_shape.push(*dim);
                 }
             }
-            let mut output = input
-                .to_array_view_unchecked::<T>()
-                .into_shape_with_order(operative_shape)
-                .unwrap()
-                .sum_axis(Axis(*operative_axes.iter().max().unwrap()));
+            let mut output = unsafe {
+                input
+                    .to_array_view_unchecked::<T>()
+                    .into_shape_with_order(operative_shape)
+                    .unwrap()
+                    .sum_axis(Axis(*operative_axes.iter().max().unwrap()))
+            };
 
             for axis in operative_axes.iter().rev().skip(1) {
                 output = output.sum_axis(Axis(*axis));
@@ -190,7 +192,7 @@ impl Reducer {
                 let input_view = output
                     .as_ref()
                     .map(|o| o.view())
-                    .unwrap_or_else(|| input.to_array_view_unchecked::<T>());
+                    .unwrap_or_else(|| unsafe { input.to_array_view_unchecked::<T>() });
 
                 // Create array that will contain intermidiate result
                 let reduced_dim = input_view.shape()[axis];
@@ -230,7 +232,7 @@ impl Reducer {
                         let first: *const T = &input_view[coords];
                         let mut sum = T::zero();
                         for i in 0..reduced_dim {
-                            sum = sum + *(first.add(i * input_stride));
+                            sum = sum + unsafe { *(first.add(i * input_stride)) };
                         }
                         sum
                     }
@@ -261,11 +263,7 @@ where
         .fold(
             (0usize, T::min_value()),
             |acc, v| {
-                if v.1 > acc.1 || (last && acc.1 == v.1) {
-                    v
-                } else {
-                    acc
-                }
+                if v.1 > acc.1 || (last && acc.1 == v.1) { v } else { acc }
             },
         )
         .0 as i64
@@ -281,11 +279,7 @@ where
         .fold(
             (0usize, T::max_value()),
             |acc, v| {
-                if v.1 < acc.1 || (last && acc.1 == v.1) {
-                    v
-                } else {
-                    acc
-                }
+                if v.1 < acc.1 || (last && acc.1 == v.1) { v } else { acc }
             },
         )
         .0 as i64
@@ -345,7 +339,7 @@ pub struct Reduce {
 }
 
 impl Op for Reduce {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         format!("Reduce<{:?}>", self.reducer).into()
     }
     fn info(&self) -> TractResult<Vec<String>> {
@@ -415,9 +409,11 @@ impl TypedOp for Reduce {
                             .output(0, ix),
                     )
                 } else {
-                    tvec!(Axis::new(letters.next().unwrap(), inputs.len(), outputs.len())
-                        .input(0, ix)
-                        .output(0, ix))
+                    tvec!(
+                        Axis::new(letters.next().unwrap(), inputs.len(), outputs.len())
+                            .input(0, ix)
+                            .output(0, ix)
+                    )
                 }
                 .into_iter()
             })
@@ -434,11 +430,8 @@ impl TypedOp for Reduce {
     ) -> TractResult<Option<AxisChangeConsequence>> {
         let mut axes = tvec!();
         for reduced in &self.axes {
-            if let Some(axis) = change.transform_axis(*reduced) {
-                axes.push(axis);
-            } else {
-                return Ok(None);
-            }
+            rule_if_some!(axis = change.transform_axis(*reduced));
+            axes.push(axis);
         }
         axes.sort();
         let op = Some(Box::new(Self { axes, ..self.clone() }) as _);
@@ -456,9 +449,7 @@ impl TypedOp for Reduce {
         _start: &TDim,
         _end: &TDim,
     ) -> TractResult<Option<TVec<OutletId>>> {
-        if self.axes.contains(&output_axis) {
-            return Ok(None);
-        }
+        rule_if!(!self.axes.contains(&output_axis));
         patch.wire_node(&node.name, &node.op, inputs).map(Some)
     }
 
@@ -471,16 +462,11 @@ impl Reduce {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        let Some(prec) = model.single_prec(node.id)? else {
-            return Ok(None);
-        };
-        let Some(prec_reduce) = prec.op_as::<Self>() else {
-            return Ok(None);
-        };
         use Reducer::*;
-        if prec_reduce.reducer != self.reducer || ![Sum, Prod, Min, Max].contains(&self.reducer) {
-            return Ok(None);
-        }
+        rule_if_some!(prec = model.linear_prec(node.id)?);
+        rule_if_some!(prec_reduce = prec.op_as::<Self>());
+        rule_if!(prec_reduce.reducer == self.reducer);
+        rule_if!([Sum, Prod, Min, Max].contains(&self.reducer));
         let mut patch = TypedModelPatch::default();
         let wire = patch.tap_model(model, prec.inputs[0])?;
         let wire = patch.wire_node(
@@ -508,22 +494,15 @@ impl Reduce {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         if self.reducer == Reducer::Sum {
-            let Some(prec) = model.single_prec(node.id)? else {
-                return Ok(None);
-            };
-            let Some(prec_bin) = prec.op_as::<TypedBinOp>() else {
-                return Ok(None);
-            };
-            if !prec_bin.0.is::<Mul>() {
-                return Ok(None);
-            }
+            rule_if_some!(prec = model.linear_prec(node.id)?);
+            rule_if_some!(prec_bin = prec.op_as::<TypedBinOp>());
+            rule_if!(prec_bin.0.is::<Mul>());
             let mul_input_fact = model.node_input_facts(prec.id)?;
-            let Some(scalar_slot) = mul_input_fact
-                .iter()
-                .position(|f| f.konst.as_ref().is_some_and(|k| k.volume() == 1))
-            else {
-                return Ok(None);
-            };
+            rule_if_some!(
+                scalar_slot = mul_input_fact
+                    .iter()
+                    .position(|f| f.konst.as_ref().is_some_and(|k| k.volume() == 1))
+            );
             let mut patch = TypedModelPatch::default();
             let scalar = patch.tap_model(model, prec.inputs[scalar_slot])?;
             let wire = patch.tap_model(model, prec.inputs[1 - scalar_slot])?;
@@ -541,37 +520,20 @@ impl Reduce {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         if self.reducer == Reducer::Sum {
-            let Some(prec) = model.single_prec(node.id)? else {
-                return Ok(None);
-            };
-            let Some(prec_ew) = prec.op_as::<ElementWiseOp>() else {
-                return Ok(None);
-            };
-            if !prec_ew.0.is::<Square>() {
-                return Ok(None);
-            }
-            if node.outputs.len() != 1 || node.outputs[0].successors.len() != 1 {
-                return Ok(None);
-            }
+            rule_if_some!(prec = model.linear_prec(node.id)?);
+            rule_if_some!(prec_ew = prec.op_as::<ElementWiseOp>());
+            rule_if!(prec_ew.0.is::<Square>());
+            rule_if!(node.outputs.len() == 1);
+            rule_if!(node.outputs[0].successors.len() == 1);
             let our_inlet = node.outputs[0].successors[0];
             let succ = model.node(our_inlet.node);
-            let Some(succ_bin) = succ.op_as::<TypedBinOp>() else {
-                return Ok(None);
-            };
-            if !succ_bin.0.is::<Mul>() {
-                return Ok(None);
-            }
+            rule_if_some!(succ_bin = succ.op_as::<TypedBinOp>());
+            rule_if!(succ_bin.0.is::<Mul>());
             let other = succ.inputs[1 - our_inlet.slot];
-            let Some(other_konst) = model.outlet_fact(other)?.uniform.as_ref() else {
-                return Ok(None);
-            };
+            rule_if_some!(other_konst = model.outlet_fact(other)?.uniform.as_ref());
             let norm: TDim = self.axes.iter().map(|&ax| &prec.outputs[0].fact.shape[ax]).product();
-            let Some(norm) = norm.as_i64() else {
-                return Ok(None);
-            };
-            if norm == 0 {
-                return Ok(None);
-            }
+            rule_if_some!(norm = norm.as_i64());
+            rule_if!(norm > 0);
             let norm = tensor0((norm as f32).recip());
             if other_konst.close_enough(&norm, Approximation::Close).is_ok() {
                 let mut patch = TypedModelPatch::default();
@@ -596,43 +558,35 @@ pub fn expand_mean_of_squares(
     name: &str,
     op: &Reduce,
 ) -> TractResult<Option<TypedModelPatch>> {
-    if op.reducer == Reducer::MeanOfSquares {
-        let mut patch = TypedModelPatch::default();
-        let mut wire = tvec!(patch.tap_model(model, node.inputs[0])?);
-        let input_fact = model.outlet_fact(node.inputs[0])?;
-        let dt = input_fact.datum_type;
-        if dt != f32::datum_type() {
-            wire = patch.wire_node(format!("{name}.to_f32"), cast(f32::datum_type()), &wire)?;
-        }
-        wire = patch.wire_node(format!("{name}.sqr"), square(), &wire)?;
-        wire = patch.wire_node(
-            format!("{name}.sum"),
-            Reduce::new(op.axes.clone(), Reducer::Sum),
-            &wire,
-        )?;
-        let card = input_fact
-            .shape
-            .iter()
-            .enumerate()
-            .filter(|(ix, _dim)| op.axes.contains(ix))
-            .map(|(_ix, dim)| dim)
-            .product::<TDim>();
-        let card = patch.add_const(format!("{name}.card"), tensor0(card))?;
-        let card =
-            patch.wire_node(format!("{name}.card_to_f32"), cast(f32::datum_type()), &[card])?;
-
-        wire = wire_with_rank_broadcast(
-            format!("{name}.norm"),
-            &mut patch,
-            div(),
-            &[wire[0], card[0]],
-        )?;
-        if dt != f32::datum_type() {
-            wire = patch.wire_node(format!("{name}.from_f32"), cast(dt), &wire)?;
-        }
-        patch.shunt_outside(model, node.id.into(), wire[0])?;
-        Ok(Some(patch))
-    } else {
-        Ok(None)
+    rule_if!(op.reducer == Reducer::MeanOfSquares);
+    let mut patch = TypedModelPatch::default();
+    let mut wire = tvec!(patch.tap_model(model, node.inputs[0])?);
+    let input_fact = model.outlet_fact(node.inputs[0])?;
+    let dt = input_fact.datum_type;
+    if dt != f32::datum_type() {
+        wire = patch.wire_node(format!("{name}.to_f32"), cast(f32::datum_type()), &wire)?;
     }
+    wire = patch.wire_node(format!("{name}.sqr"), square(), &wire)?;
+    wire = patch.wire_node(
+        format!("{name}.sum"),
+        Reduce::new(op.axes.clone(), Reducer::Sum),
+        &wire,
+    )?;
+    let card = input_fact
+        .shape
+        .iter()
+        .enumerate()
+        .filter(|(ix, _dim)| op.axes.contains(ix))
+        .map(|(_ix, dim)| dim)
+        .product::<TDim>();
+    let card = patch.add_const(format!("{name}.card"), tensor0(card))?;
+    let card = patch.wire_node(format!("{name}.card_to_f32"), cast(f32::datum_type()), &[card])?;
+
+    wire =
+        wire_with_rank_broadcast(format!("{name}.norm"), &mut patch, div(), &[wire[0], card[0]])?;
+    if dt != f32::datum_type() {
+        wire = patch.wire_node(format!("{name}.from_f32"), cast(dt), &wire)?;
+    }
+    patch.shunt_outside(model, node.id.into(), wire[0])?;
+    Ok(Some(patch))
 }

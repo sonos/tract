@@ -1,6 +1,6 @@
 [package]
 name = "tract-gpu"
-version = "0.21.13"
+version = "0.22.1-pre"
 license = "MIT OR Apache-2.0"
 authors = [
 	"Hubert de La Jonquiere <hubert.delajonquiere@sonos.com>",
@@ -12,8 +12,8 @@ repository = "https://github.com/snipsco/tract"
 keywords = [ "TensorFlow", "NeuralNetworks", "GPU" ]
 categories = [ "science" ]
 autobenches = false
-edition = "2021"
-rust-version = "1.75"
+edition = "2024"
+rust-version = "1.85"
 
 [badges]
 maintenance = { status = "actively-developed" }
@@ -24,3 +24,5 @@ derive-new.workspace = true
 downcast-rs.workspace = true
 num-traits.workspace = true
 tract-core.workspace = true
+tract-transformers.workspace = true
+dyn-hash.workspace = true

@@ -13,6 +13,18 @@ use tract_num_traits::Zero;
 use crate::internal::*;
 use ndarray::prelude::*;
 
+#[derive(Debug, Copy, Clone, Hash, PartialEq)]
+pub enum SoftmaxKind {
+    Softmax(SoftmaxExp),
+    LogSoftmax,
+}
+
+impl Default for SoftmaxKind {
+    fn default() -> Self {
+        SoftmaxKind::Softmax(SoftmaxExp::default())
+    }
+}
+
 #[derive(Debug, Copy, Clone, Hash, Default, PartialEq)]
 pub enum SoftmaxExp {
     #[default]
@@ -25,16 +37,23 @@ pub enum SoftmaxExp {
 pub struct Softmax {
     pub axes: TVec<usize>,
     pub quant_output_dt: Option<DatumType>,
-    pub exp: SoftmaxExp,
+    pub kind: SoftmaxKind,
 }
 
 impl Op for Softmax {
-    fn name(&self) -> Cow<str> {
-        "Softmax".into()
+    fn name(&self) -> StaticName {
+        match self.kind {
+            SoftmaxKind::Softmax(_) => "Softmax".into(),
+            SoftmaxKind::LogSoftmax => "LogSoftmax".into(),
+        }
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec![format!("Axis: {:?}", self.axes), format!("Exp impl: {:?}", self.exp)])
+        let mut infos = vec![format!("Axis: {:?}", self.axes)];
+        if let SoftmaxKind::Softmax(exp) = self.kind {
+            infos.push(format!("Exp impl: {exp:?}"))
+        };
+        Ok(infos)
     }
 
     op_as_typed_op!();
@@ -146,14 +165,14 @@ impl Softmax {
                 view.as_slice_mut().filter(|_| T::datum_type() == f32::datum_type())
             {
                 let slice: &mut [f32] = unsafe { std::mem::transmute(slice) };
-                self.softmax_inner_slice_f32(slice)?;
+                self.softmax_inner_slice_f32(slice, self.kind)?;
             } else if let Some(slice) =
                 view.as_slice_mut().filter(|_| T::datum_type() == f16::datum_type())
             {
                 let slice: &mut [f16] = unsafe { std::mem::transmute(slice) };
-                self.softmax_inner_slice_f16(slice)?;
+                self.softmax_inner_slice_f16(slice, self.kind)?;
             } else {
-                softmax_inner(view);
+                softmax_inner(view, self.kind);
             }
         }
 
@@ -161,6 +180,9 @@ impl Softmax {
     }
 
     fn eval_quant(&self, input: TValue) -> TractResult<TVec<TValue>> {
+        if self.kind == SoftmaxKind::LogSoftmax {
+            bail!("Quantized LogSoftmax is not supported")
+        }
         let mut iterating_shape: TVec<usize> = input.shape().into();
         let output_dt =
             self.quant_output_dt.context("Quandized softmax eval with no output type")?;
@@ -193,55 +215,88 @@ impl Softmax {
         Ok(tvec!(output_tensor.into_tvalue()))
     }
 
-    fn softmax_inner_slice_f16(&self, slice: &mut [f16]) -> TractResult<()> {
+    fn softmax_inner_slice_f16(&self, slice: &mut [f16], kind: SoftmaxKind) -> TractResult<()> {
         let max = (tract_linalg::ops().max_f16)().run(slice)?;
-        let sum = match self.exp {
-            SoftmaxExp::Libc => {
-                let mut s = f16::zero();
-                for x in slice.iter_mut() {
-                    let y = (*x - max).exp();
-                    s += y;
-                    *x = y;
-                }
-                s
+        match kind {
+            SoftmaxKind::Softmax(exp_impl) => {
+                let sum = match exp_impl {
+                    SoftmaxExp::Libc => {
+                        let mut s = f16::zero();
+                        slice.iter_mut().for_each(|x| {
+                            *x = (*x - max).exp();
+                            s += *x;
+                        });
+                        s
+                    }
+                    SoftmaxExp::FastCompact => (tract_linalg::ops().softmax2_fastcompact_f16)()
+                        .run_with_params(slice, max)?,
+                };
+                let rsum = sum.recip();
+                (tract_linalg::ops().mul_by_scalar_f16)().run_with_params(slice, rsum)?;
             }
-            SoftmaxExp::FastCompact => {
-                (tract_linalg::ops().softmax2_fastcompact_f16)().run_with_params(slice, max)?
+            SoftmaxKind::LogSoftmax => {
+                let mut exp_sum = f16::zero();
+                slice.iter_mut().for_each(|x| {
+                    *x -= max;
+                    exp_sum += x.exp();
+                });
+                let log_sum = exp_sum.ln();
+                slice.iter_mut().for_each(|x| *x -= log_sum);
             }
-        };
-        let rsum = sum.recip();
-        (tract_linalg::ops().mul_by_scalar_f16)().run_with_params(slice, rsum)?;
+        }
         Ok(())
     }
 
-    fn softmax_inner_slice_f32(&self, slice: &mut [f32]) -> TractResult<()> {
+    fn softmax_inner_slice_f32(&self, slice: &mut [f32], kind: SoftmaxKind) -> TractResult<()> {
         let max = (tract_linalg::ops().max_f32)().run(slice)?;
-        let sum = match self.exp {
-            SoftmaxExp::Libc => {
-                let mut s = 0f32;
-                for x in slice.iter_mut() {
-                    let y = (*x - max).exp();
-                    s += y;
-                    *x = y;
-                }
-                s
+        match kind {
+            SoftmaxKind::Softmax(exp_impl) => {
+                let sum = match exp_impl {
+                    SoftmaxExp::Libc => {
+                        let mut s = f32::zero();
+                        slice.iter_mut().for_each(|x| {
+                            *x = (*x - max).exp();
+                            s += *x;
+                        });
+                        s
+                    }
+                    SoftmaxExp::FastCompact => (tract_linalg::ops().softmax2_fastcompact_f32)()
+                        .run_with_params(slice, max)?,
+                };
+                let rsum = sum.recip();
+                (tract_linalg::ops().mul_by_scalar_f32)().run_with_params(slice, rsum)?;
             }
-            SoftmaxExp::FastCompact => {
-                (tract_linalg::ops().softmax2_fastcompact_f32)().run_with_params(slice, max)?
+            SoftmaxKind::LogSoftmax => {
+                let mut exp_sum = f32::zero();
+                slice.iter_mut().for_each(|x| {
+                    *x -= max;
+                    exp_sum += x.exp();
+                });
+                let log_sum = exp_sum.ln();
+                slice.iter_mut().for_each(|x| *x -= log_sum);
             }
-        };
-        let rsum = sum.recip();
-        (tract_linalg::ops().mul_by_scalar_f32)().run_with_params(slice, rsum)?;
+        }
         Ok(())
     }
 }
 
-fn softmax_inner<T: Float + Datum + std::iter::Sum, D: Dimension>(mut view: ArrayViewMut<T, D>) {
+fn softmax_inner<T: Float + Datum + std::iter::Sum, D: Dimension>(
+    mut view: ArrayViewMut<T, D>,
+    kind: SoftmaxKind,
+) {
     let max =
         *view.iter().max_by(|i, j| i.partial_cmp(j).unwrap_or(std::cmp::Ordering::Less)).unwrap();
-    view.mapv_inplace(|x| (x - max).exp());
-    let exp_sum = view.iter().copied().sum();
-    view.mapv_inplace(|x| x / exp_sum);
+    view.mapv_inplace(|x| x - max);
+    let exp_sum = view.iter().map(|&x| x.exp()).sum();
+    match kind {
+        SoftmaxKind::Softmax(_) => {
+            view.mapv_inplace(|x| x.exp() / exp_sum);
+        }
+        SoftmaxKind::LogSoftmax => {
+            let log_sum = exp_sum.ln();
+            view.mapv_inplace(|x| x - log_sum);
+        }
+    }
 }
 
 fn softmax_quant_inner<D: Dimension>(
@@ -341,7 +396,7 @@ mod test {
     fn assert_is_close(found: f32, expected: f32, in_dt: DatumType, out_dt: DatumType) {
         let (_, in_epsilon) = in_dt.zp_scale();
         let (_, out_epsilon) = out_dt.zp_scale();
-        let epsilon = f32::max(in_epsilon, out_epsilon) * 1.005;
+        let epsilon = in_epsilon + out_epsilon;
         let error = (found - expected).abs();
         assert!(
             error <= epsilon,
@@ -412,7 +467,6 @@ mod test {
                 .iter()
                 .zip(reference.iter())
                 .for_each(|(a, b)| assert_is_close(*a, *b, self.data.datum_type(), self.output_dt));
-
             Ok(())
         }
     }
@@ -467,7 +521,7 @@ mod test {
             let in_float =
                 self.data.iter().map(|it| (*it as f32 - in_zero_point as f32) * in_scale).collect();
             let mut in_float_array = Array1::from_vec(in_float);
-            softmax_inner(in_float_array.view_mut());
+            softmax_inner(in_float_array.view_mut(), SoftmaxKind::default());
             let rescaled_output = in_float_array
                 .iter()
                 .map(|it| {

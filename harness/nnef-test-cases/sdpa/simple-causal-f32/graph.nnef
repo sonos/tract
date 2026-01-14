@@ -1,0 +1,34 @@
+version 1.0;
+
+extension tract_registry tract_transformers;
+extension tract_registry tract_core;
+
+fragment tract_core_properties(
+) -> (properties: (string, tensor<scalar>)[])
+{
+  properties = [
+    ("tract_target_version", "0.21.14"),
+    ("torch_to_nnef_version", "0.19.1"),
+    ("torch_version", "2.6.0"),
+    ("transformers_version", "4.49.0"),
+    ("os", "Darwin SNS008481 24.6.0 Darwin Kernel Version 24.6.0: Mon Jul 14 11:28:30 PDT 2025; root:xnu-11417.140.69~1/RELEASE_ARM64_T6030 arm64"),
+    ("hostname", "SNS008481"),
+    ("user", "emrick.sinitambirivo"),
+    ("py_version", "3.13.1 (main, Dec  3 2024, 17:59:52) [Clang 16.0.0 (clang-1600.0.26.4)] (64-bit runtime)"),
+    ("export_date", "2025-08-21 16:13:54.598072"),
+    ("exported_py_class", "FScaledDotProdAttn"),
+    ("export_cmd", "/Users/emrick.sinitambirivo/Documents/projects/svc-library-torch-to-nnef/.venv/bin/pytest tests/test_multi_head_att.py -rA")
+  ];
+}
+
+
+
+
+
+
+
+graph network(input_0) -> (output_0)
+{
+    input_0 = tract_core_external(shape = [1, 2, 3], datum_type = 'f32');
+    output_0 = tract_transformers_sdpa(input_0, input_0, input_0, datum_type = 'f32', acc_datum_type = 'f32', is_causal = true);
+}

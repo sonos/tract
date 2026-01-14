@@ -62,10 +62,8 @@ pub struct VariableV2 {
     pub initializer: Option<Arc<Tensor>>,
 }
 
-
-
 impl Op for VariableV2 {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "VariableV2".into()
     }
 
@@ -137,10 +135,8 @@ pub struct Assign {
     pub var_id: Option<String>,
 }
 
-
-
 impl Op for Assign {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Assign".into()
     }
 

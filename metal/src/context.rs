@@ -1,11 +1,15 @@
 use crate::command_buffer::TCommandBuffer;
 use crate::func_constants::ConstantValues;
 use crate::kernels::{LibraryContent, LibraryName};
+use crate::tensor::{MValue, MetalTensor};
 
 use metal::NSUInteger;
+use tract_core::tract_linalg::block_quant::BlockQuantFact;
 use tract_gpu::device::{DeviceBuffer, DeviceContext};
-use tract_gpu::tensor::DeviceTensor;
+use tract_gpu::tensor::{DeviceTensor, OwnedDeviceTensor};
+use tract_gpu::utils::as_q40_tensor;
 
+use std::alloc::Layout;
 use std::cell::RefCell;
 use std::ffi::c_void;
 use std::ops::{Deref, DerefMut};
@@ -13,7 +17,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, OnceLock, RwLock};
 
-use anyhow::{anyhow, Context};
+use anyhow::{Context, anyhow};
 use metal::{
     Buffer, CommandQueue, CompileOptions, ComputePipelineState, Device, Function,
     FunctionConstantValues, Library, MTLResourceOptions,
@@ -162,24 +166,75 @@ impl MetalContext {
 }
 
 impl DeviceContext for MetalContext {
-    fn buffer_from_slice(&self, data: &[u8]) -> Box<dyn tract_gpu::device::DeviceBuffer> {
-        static ZERO: [u8; 1] = [0];
+    fn synchronize(&self) -> TractResult<()> {
+        METAL_STREAM.with_borrow(|stream| stream.wait_until_completed())
+    }
+
+    fn tensor_to_device(&self, tensor: TValue) -> TractResult<Box<dyn OwnedDeviceTensor>> {
+        let view = tensor.view();
+        ensure!(
+            DeviceTensor::is_supported_dt(view.datum_type()),
+            "Tensor of {:?} is not copied. No device buffer can be allocated for it.",
+            view.datum_type(),
+        );
+        let bqv = as_q40_tensor(view.tensor);
+
+        let (data_bytes, bqf) = bqv
+            .map(|bqv| (bqv.value.as_bytes(), Some(bqv.fact.clone().into())))
+            .unwrap_or((view.tensor.as_bytes(), None));
+
         // Handle empty data
-        let data = if data.is_empty() { &ZERO } else { data };
+        static ZERO: [u8; 1] = [0];
+        let data = if data_bytes.is_empty() { &ZERO } else { data_bytes };
 
         let size = core::mem::size_of_val(data) as NSUInteger;
-        Box::new(MetalBuffer {
+        let device_buffer = MetalBuffer {
             inner: self.device.new_buffer_with_bytes_no_copy(
                 data.as_ptr() as *const core::ffi::c_void,
                 size,
                 MTLResourceOptions::StorageModeShared,
                 None,
             ),
-        })
+        };
+
+        Ok(Box::new(MetalTensor {
+            inner: MValue::Natural(tensor.into_arc_tensor()),
+            device_buffer,
+            opaque_fact: bqf,
+        }))
     }
 
-    fn synchronize(&self) -> TractResult<()> {
-        METAL_STREAM.with_borrow(|stream| stream.wait_until_completed())
+    fn uninitialized_device_tensor(
+        &self,
+        shape: &[usize],
+        dt: DatumType,
+    ) -> TractResult<Box<dyn OwnedDeviceTensor>> {
+        let tensor = unsafe {
+            Tensor::uninitialized_dt(dt, shape).with_context(|| {
+                format!("Error while allocating a {dt:?} tensor of shape {shape:?}")
+            })?
+        };
+        self.tensor_to_device(tensor.into())
+    }
+
+    fn uninitialized_device_opaque_tensor(
+        &self,
+        opaque_fact: Box<dyn OpaqueFact>,
+    ) -> TractResult<Box<dyn OwnedDeviceTensor>> {
+        if let Some(bqf) = opaque_fact.downcast_ref::<BlockQuantFact>() {
+            let blocks = bqf.shape().iter().product::<usize>() / bqf.format.block_len();
+            let blob = unsafe {
+                Blob::for_layout(
+                    Layout::from_size_align(blocks * bqf.format.block_bytes(), vector_size())
+                        .unwrap(),
+                )
+            };
+            let value = BlobWithFact { fact: Box::new(bqf.clone()), value: Arc::new(blob) };
+            let tensor = tensor0(Opaque(Arc::new(value)));
+            self.tensor_to_device(tensor.into())
+        } else {
+            bail!("Only BlockQuant Tensor allocation supported for now")
+        }
     }
 }
 
@@ -237,16 +292,12 @@ impl MetalStream {
     }
 
     pub fn command_buffer(&self) -> TCommandBuffer {
-        let command_buffer = self
-            .command_buffer
+        self.command_buffer
             .borrow_mut()
             .get_or_insert_with(|| {
-                let command_buffer =
-                    TCommandBuffer::new(self.command_queue.new_command_buffer().to_owned());
-                command_buffer
+                TCommandBuffer::new(self.command_queue.new_command_buffer().to_owned())
             })
-            .to_owned();
-        command_buffer
+            .to_owned()
     }
 
     pub fn wait_until_completed(&self) -> TractResult<()> {
@@ -319,7 +370,7 @@ impl Drop for MetalStream {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct MetalBuffer {
     pub inner: Buffer,
 }
@@ -338,10 +389,6 @@ impl DerefMut for MetalBuffer {
     }
 }
 impl DeviceBuffer for MetalBuffer {
-    fn info(&self) -> String {
-        format!("{:?}", self.inner)
-    }
-
     fn ptr(&self) -> *const c_void {
         self.inner.gpu_address() as *const c_void
     }

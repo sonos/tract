@@ -21,11 +21,7 @@ impl<'a> TensorView<'a> {
         shape: &'a [usize],
         strides: &'a [isize],
     ) -> TensorView<'a> {
-        TensorView {
-            tensor,
-            offset_bytes,
-            indexing: Indexing::Custom { shape, strides },
-        }
+        TensorView { tensor, offset_bytes, indexing: Indexing::Custom { shape, strides } }
     }
 
     pub fn offsetting(tensor: &'a Tensor, coords: &[usize]) -> TractResult<TensorView<'a>> {
@@ -45,10 +41,7 @@ impl<'a> TensorView<'a> {
         TensorView {
             tensor,
             offset_bytes,
-            indexing: Indexing::Custom {
-                shape: &tensor.shape,
-                strides: &tensor.strides,
-            },
+            indexing: Indexing::Custom { shape: &tensor.shape, strides: &tensor.strides },
         }
     }
 
@@ -149,13 +142,13 @@ impl<'a> TensorView<'a> {
     /// Access the data as a pointer.
     #[inline]
     pub unsafe fn as_ptr_unchecked<D: Datum>(&self) -> *const D {
-        self.tensor.as_ptr_unchecked::<u8>().offset(self.offset_bytes) as *const D
+        unsafe { self.tensor.as_ptr_unchecked::<u8>().offset(self.offset_bytes) as *const D }
     }
 
     /// Access the data as a pointer.
     #[inline]
     pub unsafe fn as_ptr_mut_unchecked<D: Datum>(&mut self) -> *mut D {
-        self.as_ptr_unchecked::<D>() as *mut D
+        unsafe { self.as_ptr_unchecked::<D>() as *mut D }
     }
 
     /// Access the data as a mutable pointer.
@@ -167,7 +160,7 @@ impl<'a> TensorView<'a> {
     /// Access the data as a slice.
     #[inline]
     pub unsafe fn as_slice_unchecked<D: Datum>(&self) -> &'a [D] {
-        std::slice::from_raw_parts::<D>(self.as_ptr_unchecked(), self.len())
+        unsafe { std::slice::from_raw_parts::<D>(self.as_ptr_unchecked(), self.len()) }
     }
 
     /// Access the data as a slice.
@@ -180,7 +173,7 @@ impl<'a> TensorView<'a> {
     /// Access the data as a mutable slice.
     #[inline]
     pub unsafe fn as_slice_mut_unchecked<D: Datum>(&mut self) -> &mut [D] {
-        std::slice::from_raw_parts_mut::<D>(self.as_ptr_mut_unchecked(), self.len())
+        unsafe { std::slice::from_raw_parts_mut::<D>(self.as_ptr_mut_unchecked(), self.len()) }
     }
 
     /// Access the data as a mutable slice.
@@ -198,13 +191,13 @@ impl<'a> TensorView<'a> {
     #[inline]
     pub unsafe fn offset_axis_unchecked(&mut self, axis: usize, pos: isize) {
         let stride = self.strides()[axis] * self.datum_type().size_of() as isize;
-        self.offset_bytes(stride * pos)
+        unsafe { self.offset_bytes(stride * pos) }
     }
 
     #[inline]
     pub unsafe fn offset_axis(&mut self, axis: usize, pos: isize) {
         let stride = self.strides()[axis] * self.datum_type().size_of() as isize;
-        self.offset_bytes(stride * pos)
+        unsafe { self.offset_bytes(stride * pos) }
     }
 
     #[inline]
@@ -214,18 +207,22 @@ impl<'a> TensorView<'a> {
 
     #[inline]
     pub unsafe fn at_unchecked<T: Datum>(&self, coords: impl AsRef<[usize]>) -> &T {
-        self.as_ptr_unchecked::<T>()
-            .offset(self.offset_for_coords(coords.as_ref()))
-            .as_ref()
-            .unwrap()
+        unsafe {
+            self.as_ptr_unchecked::<T>()
+                .offset(self.offset_for_coords(coords.as_ref()))
+                .as_ref()
+                .unwrap()
+        }
     }
 
     #[inline]
     pub unsafe fn at_mut_unchecked<T: Datum>(&mut self, coords: impl AsRef<[usize]>) -> &mut T {
-        self.as_ptr_mut_unchecked::<T>()
-            .offset(self.offset_for_coords(coords.as_ref()))
-            .as_mut()
-            .unwrap()
+        unsafe {
+            self.as_ptr_mut_unchecked::<T>()
+                .offset(self.offset_for_coords(coords.as_ref()))
+                .as_mut()
+                .unwrap()
+        }
     }
 
     #[inline]
@@ -264,8 +261,8 @@ impl<'a> TensorView<'a> {
 
 #[cfg(test)]
 mod test {
-    use crate::prelude::Tensor;
     use super::TensorView;
+    use crate::prelude::Tensor;
 
     #[test]
     fn test_at_prefix() {
@@ -273,7 +270,5 @@ mod test {
         let a_view = TensorView::at_prefix(&a, &[1]).unwrap();
         assert_eq!(a_view.shape(), &[2]);
         assert_eq!(a_view.as_slice::<i32>().unwrap(), &[3, 4]);
-
-
     }
 }

@@ -33,7 +33,7 @@ impl Const {
 }
 
 impl Op for Const {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Const".into()
     }
 

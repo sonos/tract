@@ -1,6 +1,6 @@
 [package]
 name = "tract-onnx"
-version = "0.21.13"
+version = "0.22.1-pre"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 license = "MIT OR Apache-2.0"
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
@@ -8,10 +8,10 @@ repository = "https://github.com/snipsco/tract"
 keywords = [ "TensorFlow", "NeuralNetworks", "ONNX" ]
 categories = [ "science" ]
 autobenches = false
-edition = "2021"
+edition = "2024"
 exclude = [ "test_cases" ]
 # build = "build-proto-rs"
-rust-version = "1.75"
+rust-version = "1.85"
 
 
 [badges]
@@ -28,13 +28,25 @@ smallvec.workspace = true
 tract-nnef.workspace = true
 tract-hir.workspace = true
 tract-onnx-opl.workspace = true
+tract-extra.workspace = true
 
 [dev-dependencies]
+criterion.workspace = true
 env_logger.workspace = true
+rand.workspace = true
+rayon.workspace = true
 
 # [build-dependencies]
 # protobuf-src = "1.0.5+3.19.3"
 # prost-build = "0.11.1"
+
+[[bench]]
+name = "linear_classifier"
+harness = false
+
+[[bench]]
+name = "linear_regressor"
+harness = false
 
 [features]
 default = []

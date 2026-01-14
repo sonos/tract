@@ -1,11 +1,11 @@
 #[cfg(test)]
 mod tests {
-    use crate::utils::with_borrowed_metal_stream;
     use crate::MetalTransform;
+    use crate::utils::with_borrowed_metal_stream;
     use tract_core::internal::*;
     use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
     use tract_core::ops::math::{add, mul};
-    use tract_core::ops::nn::{Softmax, SoftmaxExp};
+    use tract_core::ops::nn::{Softmax, SoftmaxExp, SoftmaxKind};
     use tract_core::transform::ModelTransform;
     use tract_gpu::memory::DeviceMemSchema;
     use tract_gpu::tensor::IntoDevice;
@@ -71,6 +71,7 @@ mod tests {
                 transpose_b: true,
                 transpose_c: false,
                 quantize_output: None,
+                operating_dt: Some(DatumType::F32),
             },
             &[q_reshaped, k_reshaped],
         )?[0];
@@ -106,7 +107,7 @@ mod tests {
         // Apply softmax
         let attention = model.wire_node(
             format!("attention_weights_{}", name),
-            Softmax::new(tvec![2], None, SoftmaxExp::Libc),
+            Softmax::new(tvec![2], None, SoftmaxKind::Softmax(SoftmaxExp::Libc)),
             &[qk_scaled_masked],
         )?[0];
 
@@ -129,6 +130,7 @@ mod tests {
                 transpose_b: false,
                 transpose_c: false,
                 quantize_output: None,
+                operating_dt: Some(DatumType::F32),
             },
             &[attention, v_reshaped],
         )?[0];
@@ -216,7 +218,8 @@ mod tests {
                     assert!(this.lifetime.start < this.lifetime.end);
 
                     // No other node in the partition should be alive at this step
-                    for other in partition.nodes.iter().filter(|it| it.node != this.node) {
+                    for other in partition.nodes.iter().filter(|it| it.outlet_id != this.outlet_id)
+                    {
                         assert!(
                             !other.lifetime.is_alive_at_step(step)
                                 && other.lifetime.is_disjoint(&this.lifetime),
@@ -230,7 +233,7 @@ mod tests {
                     // This node should not be alive in another partition at the same step
                     for p in schema.by_partition.iter().filter(|it| it != &partition) {
                         if let Some(other) = p.find_node_alive_at_step(step) {
-                            assert!(other.node != this.node);
+                            assert!(other.outlet_id != this.outlet_id);
                         }
                     }
                 }

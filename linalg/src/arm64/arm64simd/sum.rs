@@ -12,10 +12,11 @@ reduce_impl_wrap!(
         assert!(buf.len() % 16 == 0);
         assert!(buf.len() > 0);
         unsafe fn run(buf: &[f32]) -> f32 {
-            let len = buf.len();
-            let ptr = buf.as_ptr();
-            let mut out: u32;
-            std::arch::asm!("
+            unsafe {
+                let len = buf.len();
+                let ptr = buf.as_ptr();
+                let mut out: u32;
+                std::arch::asm!("
                 movi v0.4s, #0
                 movi v1.4s, #0
                 movi v2.4s, #0
@@ -40,7 +41,8 @@ reduce_impl_wrap!(
                 len = inout(reg) len => _,
                 out("s0") out, out("v1") _, out("v2") _, out("v3") _,
                 out("v4") _, out("v5") _, out("v6") _, out("v7") _,);
-            f32::from_bits(out)
+                f32::from_bits(out)
+            }
         }
         unsafe { run(buf) }
     },

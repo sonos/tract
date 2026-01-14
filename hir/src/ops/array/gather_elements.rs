@@ -6,12 +6,10 @@ pub struct GatherElements {
     axis: i64,
 }
 
-
 impl Expansion for GatherElements {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "GatherElements".into()
     }
-
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,

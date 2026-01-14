@@ -43,7 +43,7 @@ impl Slice {
 }
 
 impl Op for Slice {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Slice".into()
     }
 
@@ -54,11 +54,7 @@ impl Op for Slice {
     op_as_typed_op!();
 
     fn same_as(&self, other: &dyn Op) -> bool {
-        if let Some(other) = other.downcast_ref::<Self>() {
-            other == self
-        } else {
-            false
-        }
+        if let Some(other) = other.downcast_ref::<Self>() { other == self } else { false }
     }
 }
 
@@ -69,6 +65,7 @@ impl EvalOp for Slice {
 
     fn eval_with_session(
         &self,
+        _node_id: usize,
         session: &SessionState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {

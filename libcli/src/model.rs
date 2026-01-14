@@ -18,7 +18,7 @@ pub trait Model:
     fn node_const(&self, id: usize) -> bool;
 
     /// Node op by id
-    fn node_op_name(&self, id: usize) -> Cow<str>;
+    fn node_op_name(&self, id: usize) -> StaticName;
 
     /// Node inputs by id
     fn node_inputs(&self, id: usize) -> &[OutletId];
@@ -144,7 +144,7 @@ where
         &self.nodes[id].name
     }
 
-    fn node_op_name(&self, id: usize) -> Cow<str> {
+    fn node_op_name(&self, id: usize) -> StaticName {
         self.node(id).op().name()
     }
 

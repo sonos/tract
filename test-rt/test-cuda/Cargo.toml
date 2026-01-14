@@ -1,0 +1,34 @@
+[package]
+name = "test-cuda"
+version = "0.1.0"
+edition = "2024"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+
+[build-dependencies]
+home.workspace = true
+lazy_static.workspace = true
+regex.workspace = true
+infra = { path = "../infra" }
+tract-core.workspace = true
+suite-onnx = { path = "../suite-onnx" }
+suite-unit = { path = "../suite-unit" }
+tract-gpu.workspace = true
+tract-onnx-opl.workspace = true
+pastey.workspace = true
+
+[dev-dependencies]
+home.workspace = true
+regex.workspace = true
+lazy_static.workspace = true
+log.workspace = true
+tract-core.workspace = true
+tract-onnx-opl.workspace = true
+infra = { path = "../infra" }
+tract-cuda.workspace = true
+tract-gpu.workspace = true
+suite-onnx = { path = "../suite-onnx" }
+suite-unit = { path = "../suite-unit" }
+pastey.workspace = true

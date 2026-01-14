@@ -40,7 +40,7 @@ fn pulsify(
                     "Edge padding mode needs pulse strictly bigger than left padding (pulse={} padding={})",
                     pulse,
                     before
-                    )
+                )
             }
         }
         PadMode::Reflect => bail!("Reflect padding mode pulsing is not supported"),

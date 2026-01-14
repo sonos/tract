@@ -6,8 +6,6 @@ pub struct PermuteAxes {
     pub axes: Option<TVec<usize>>,
 }
 
-
-
 impl PermuteAxes {
     fn compute_shape<D: DimLike>(&self, input: &[D]) -> TractResult<TVec<D>> {
         if let Some(ref axes) = self.axes {
@@ -32,10 +30,9 @@ impl PermuteAxes {
 }
 
 impl Expansion for PermuteAxes {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "PermuteAxes".into()
     }
-
 
     fn info(&self) -> TractResult<Vec<String>> {
         Ok(vec![format!("{:?}", self.axes)])

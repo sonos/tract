@@ -1,6 +1,6 @@
 use crate::encoder::EncoderExt;
 use crate::kernels::utils::compute_broadcast_strides;
-use crate::kernels::{utils, BroadcastKind};
+use crate::kernels::{BroadcastKind, utils};
 use crate::{LibraryName, MetalStream};
 use anyhow::ensure;
 use std::fmt;
@@ -21,8 +21,17 @@ impl ApplyRope {
         matches!(dt, DatumType::F32 | DatumType::F16)
     }
 
+    pub fn is_supported_broadcast(broadcast_kind: BroadcastKind) -> bool {
+        matches!(broadcast_kind, BroadcastKind::Nd2 | BroadcastKind::Nd3 | BroadcastKind::Nd4)
+    }
+
     pub fn kernel_name(&self, dt: DatumType, broadcast_kind: BroadcastKind) -> TractResult<String> {
-        ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for metal apply rope", dt);
+        ensure!(Self::is_supported_dt(dt), "Unsupported dt {:?} for metal apply rope", dt);
+        ensure!(
+            Self::is_supported_broadcast(broadcast_kind),
+            "Unsupported broadcast kind {:?} for metal apply rope",
+            broadcast_kind
+        );
         let tname = DeviceTensor::tname(dt)?;
         let broadcast_name = broadcast_kind.name();
         Ok(format!("nn_ops::apply_rope_{broadcast_name}_{tname}"))
@@ -64,7 +73,7 @@ impl ApplyRope {
 
         let padded_shape = [&tvec![1; input.rank() - cos.rank()], cos.shape()].concat();
         let (padded_cos, padded_sin) =
-            (cos.reshaped(padded_shape.clone())?, sin.reshaped(padded_shape)?);
+            (cos.reshaped(padded_shape.clone().into())?, sin.reshaped(padded_shape.into())?);
 
         ensure!(
             input.shape()[input.rank() - 1] % 2 == 0,

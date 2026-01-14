@@ -1,9 +1,7 @@
 use tract_nnef::internal::*;
 use tract_nnef::tract_core::ops::binary::{BinMiniOp, TypedBinOp};
 use tract_nnef::tract_core::ops::math::{Add, Mul};
-use tract_nnef::tract_core::ops::nn::{Softmax, SoftmaxExp};
-
-use crate::rule_ensure;
+use tract_nnef::tract_core::ops::nn::{Softmax, SoftmaxExp, SoftmaxKind};
 
 use super::{collect_node_const_inputs, previous_node, previous_nodes};
 
@@ -11,9 +9,11 @@ pub fn register(registry: &mut Registry) {
     registry.register_dumper(ser_scaled_masked_softmax);
     registry.register_primitive(
         "tract_transformers_scaled_masked_softmax",
-        &[TypeName::Scalar.tensor().named("input"),
-                  TypeName::Scalar.tensor().named("mask"),
-                  TypeName::Scalar.named("scale")],
+        &[
+            TypeName::Scalar.tensor().named("input"),
+            TypeName::Scalar.tensor().named("mask"),
+            TypeName::Scalar.named("scale"),
+        ],
         &[("output", TypeName::Scalar.tensor())],
         de_scaled_masked_softmax,
     );
@@ -51,7 +51,7 @@ pub struct ScaledMaskedSoftmax {
 }
 
 impl Op for ScaledMaskedSoftmax {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "ScaledMaskedSoftmax".to_string().into()
     }
     fn info(&self) -> TractResult<Vec<String>> {
@@ -71,7 +71,7 @@ impl EvalOp for ScaledMaskedSoftmax {
         let scale = self.scale.cast_to_dt(dt)?.into_owned();
         let scaled_input = Mul.eval(input, scale.into_tvalue(), dt)?;
         let masked_input = Add.eval(scaled_input.into(), mask, dt)?;
-        let softmax = Softmax::new(tvec![2], None, SoftmaxExp::Libc)
+        let softmax = Softmax::new(tvec![2], None, SoftmaxKind::Softmax(SoftmaxExp::Libc))
             .eval(tvec![masked_input.into()])?[0]
             .clone();
         Ok(tvec![softmax])
@@ -93,31 +93,27 @@ impl TypedOp for ScaledMaskedSoftmax {
 }
 
 /// Search pattern => A = SOFTMAX(A * SCALE + MASK, AXIS=2)
-pub fn as_scaled_masked_softmax_rule(
+pub fn scaled_masked_softmax_rule(
     _ctx: &(),
     model: &TypedModel,
     node: &TypedNode,
     node_name: &str,
     op: &Softmax,
 ) -> TractResult<Option<TypedModelPatch>> {
-    rule_ensure!(op.axes.as_slice() == [2]);
+    rule_if!(op.axes.as_slice() == [2]);
 
     let in_fact = model.node_input_facts(node.id)?[0];
     let dt = in_fact.datum_type;
     // Only F16 and F32 is supported.
-    rule_ensure!(matches!(dt, DatumType::F32 | DatumType::F16));
+    rule_if!(matches!(dt, DatumType::F32 | DatumType::F16));
 
     // Identify Add operator (Mask)
-    let Some(add_prev) = previous_node(model, node) else {
-        return Ok(None);
-    };
-    let Some(add_prev_op) = add_prev.op_as::<TypedBinOp>() else {
-        return Ok(None);
-    };
-    rule_ensure!(add_prev_op.0.is::<Add>());
+    rule_if_some!(add_prev = previous_node(model, node));
+    rule_if_some!(add_prev_op = add_prev.op_as::<TypedBinOp>());
+    rule_if!(add_prev_op.0.is::<Add>());
 
     let mut in_add = previous_nodes(model, add_prev);
-    rule_ensure!(in_add.len() == 2);
+    rule_if!(in_add.len() == 2);
 
     in_add.reverse();
     let (left, right) = (in_add.pop().unwrap(), in_add.pop().unwrap());
@@ -128,22 +124,20 @@ pub fn as_scaled_masked_softmax_rule(
         (right, add_prev.inputs[0])
     };
 
-    let Some(scale_op) = scale_node.op_as::<TypedBinOp>() else {
-        return Ok(None);
-    };
-    rule_ensure!(scale_op.0.is::<Mul>());
+    rule_if_some!(scale_op = scale_node.op_as::<TypedBinOp>());
+    rule_if!(scale_op.0.is::<Mul>());
 
     // Retrieve Scale
     let mul_consts = collect_node_const_inputs(model, scale_node);
-    rule_ensure!(mul_consts.len() == 1);
+    rule_if!(mul_consts.len() == 1);
     let scale = mul_consts[0].val().clone();
 
-    rule_ensure!(scale.len() == 1);
-    rule_ensure!(scale.datum_type() == dt);
+    rule_if!(scale.len() == 1);
+    rule_if!(scale.datum_type() == dt);
 
     // Ensure input and mask have the same rank
-    rule_ensure!(model.outlet_fact(scale_node.inputs[0])?.shape.rank() == 3);
-    rule_ensure!(model.outlet_fact(mask_outlet)?.shape.rank() == 3);
+    rule_if!(model.outlet_fact(scale_node.inputs[0])?.shape.rank() == 3);
+    rule_if!(model.outlet_fact(mask_outlet)?.shape.rank() == 3);
 
     let mut patch = TypedModelPatch::default();
     let input = patch.taps(model, &scale_node.inputs)?[0];

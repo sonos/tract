@@ -111,22 +111,21 @@ fn op_slices_to_slice_op(
             }
             wires.push(wire);
         }
-        let Some(wire) = node
-            .op
-            .slice(
-                &mut patch,
-                model,
-                node,
-                &format!("{}.split-over-{}.{}..{}", &node.name, axis, start, end),
-                &wires,
-                axis,
-                start,
-                end,
-            )
-            .with_context(|| format!("Calling slice on {node}"))?
-        else {
-            return Ok(None);
-        };
+        rule_if_some!(
+            wire = node
+                .op
+                .slice(
+                    &mut patch,
+                    model,
+                    node,
+                    &format!("{}.split-over-{}.{}..{}", &node.name, axis, start, end),
+                    &wires,
+                    axis,
+                    start,
+                    end,
+                )
+                .with_context(|| format!("Calling slice on {node}"))?
+        );
         splits.push(wire[0]);
     }
     Ok(Some((patch, splits)))
@@ -138,12 +137,8 @@ fn should_slice_output(
     axis: usize,
     eval_order: &[usize],
 ) -> TractResult<Option<TVec<usize>>> {
-    if node.outputs[0].successors.len() == 0 {
-        return Ok(None);
-    }
-    if node.op_is::<Slice>() {
-        return Ok(None);
-    }
+    rule_if!(node.outputs[0].successors.len() > 0);
+    rule_if!(!node.op_is::<Slice>());
     let slicers: TVec<usize> = node.outputs[0]
         .successors
         .iter()
@@ -161,14 +156,10 @@ fn should_slice_output(
     };
     */
     /* non-aggressive: we need all consumers to be slice */
-    if slicers.len() < node.outputs[0].successors.len() {
-        return Ok(None);
-    }
+    rule_if!(slicers.len() >= node.outputs[0].successors.len());
     let slice = node.outputs[0].successors[0].node;
 
-    if !eval_order.contains(&slice) {
-        return Ok(None);
-    }
+    rule_if!(eval_order.contains(&slice));
     let slice_op = model.node(slice).op_as::<Slice>().unwrap();
     let axis = slice_op.axis;
     let mut boundaries = tvec!();
@@ -180,26 +171,14 @@ fn should_slice_output(
             }
         }
     }
-    let mut boundaries: TVec<usize> = if let Ok(boundaries) =
-        boundaries.iter().map(|x| x.to_usize()).collect::<TractResult<TVec<_>>>()
-    {
-        boundaries
-    } else {
-        return Ok(None);
-    };
-    let end = if let Ok(x) = node.outputs[0].fact.shape[axis].to_usize() {
-        x
-    } else {
-        return Ok(None);
-    };
+    rule_if_let!(Ok(mut boundaries) =
+        boundaries.iter().map(|x| x.to_usize()).collect::<TractResult<TVec<usize>>>());
+    rule_if_let!(Ok(end) = node.outputs[0].fact.shape[axis].to_usize());
     boundaries.push(end);
     boundaries.sort();
     boundaries.dedup();
-    if boundaries.len() == 2 {
-        Ok(None)
-    } else {
-        Ok(Some(boundaries))
-    }
+    rule_if!(boundaries.len() != 2);
+    Ok(Some(boundaries))
 }
 
 pub fn rewire_sliced_outputs(

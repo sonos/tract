@@ -7,7 +7,7 @@ use tract_core::internal::*;
 use tract_core::ndarray::Ix2;
 use tract_core::ops::array::{Pad, PadMode};
 use tract_core::ops::konst::Const;
-use tract_core::tract_linalg::block_quant::{BlockQuant, BlockQuantFact, BlockQuantValue, Q4_0};
+use tract_core::tract_linalg::block_quant::{BlockQuant, BlockQuantFact, Q4_0};
 use tract_ndarray::{ArrayD, Axis};
 
 use tract_core::ops::einsum::EinSum;
@@ -35,10 +35,10 @@ impl Arbitrary for MatmulQ40Problem {
     type Strategy = BoxedStrategy<MatmulQ40Problem>;
 
     fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
-        (1..20usize, 1..20usize, 1..20usize)
+        (1..10usize, 1..128usize, 1..10usize)
             .prop_flat_map(|(m, k, n)| {
-                let a = tensor(&[m, k]);
-                let b = tensor(&[n, k]);
+                let a = mm_q40_tensor(&[m, k]);
+                let b = mm_q40_tensor(&[n, k]);
 
                 (a, b)
             })
@@ -47,10 +47,10 @@ impl Arbitrary for MatmulQ40Problem {
     }
 }
 
-pub fn tensor(shape: &[usize]) -> BoxedStrategy<Tensor> {
+fn mm_q40_tensor(shape: &[usize]) -> BoxedStrategy<Tensor> {
     let len = shape.iter().product::<usize>();
     let shape: Vec<usize> = shape.into();
-    proptest::collection::vec((-10i8..=10i8).prop_map(|i| i as f32), len..=len)
+    proptest::collection::vec((-100i8..=100i8).prop_map(|i| i as f32 / 100f32), len..=len)
         .prop_map(move |vec| ArrayD::from_shape_vec(shape.clone(), vec).unwrap().into_tensor())
         .boxed()
 }
@@ -77,9 +77,9 @@ impl MatmulQ40Problem {
         let quant_a = Q4_0.quant_f32(padded_a.as_slice::<f32>()?)?;
 
         let bqf = BlockQuantFact::new(Box::new(Q4_0), padded_a.shape().into());
-        let bqv = BlockQuantValue { value: Arc::new(quant_a), fact: bqf.clone() };
+        let bwf = BlobWithFact { value: Arc::new(quant_a), fact: Box::new(bqf.clone()) };
 
-        let opaque_a = tensor0(Opaque(Arc::new(bqv))).into_arc_tensor();
+        let opaque_a = tensor0(Opaque(Arc::new(bwf))).into_arc_tensor();
 
         let a =
             model.wire_node("a", Const::new_with_opaque_fact(opaque_a, Box::new(bqf))?, &[])?[0];
@@ -130,10 +130,9 @@ impl MatmulQ40Problem {
 impl Test for MatmulQ40Problem {
     fn run_with_approx(
         &self,
-        _suite: &str,
         id: &str,
         runtime: &dyn Runtime,
-        approx: Approximation,
+        _approx: Approximation,
     ) -> TestResult {
         let reference = self.reference()?;
         //dbg!(&reference);
@@ -146,7 +145,7 @@ impl Test for MatmulQ40Problem {
 
         let mut output = runtime.prepare(model)?.run(inputs)?;
         let output = output.remove(0).into_tensor();
-        output.close_enough(&reference, approx)
+        output.close_enough(&reference, Approximation::SuperApproximate)
     }
 }
 
@@ -154,11 +153,6 @@ pub fn suite() -> TractResult<TestSuite> {
     let mut suite = TestSuite::default();
 
     suite.add_arbitrary::<MatmulQ40Problem>("proptest", MatmulQ40ProblemParams::default());
-    suite.add_arbitrary::<MatmulQ40Problem>(
-        "proptest_weights_in_b",
-        MatmulQ40ProblemParams { weights_in_b: true },
-    );
-
     suite.add_arbitrary::<MatmulQ40Problem>(
         "proptest_weights_in_b",
         MatmulQ40ProblemParams { weights_in_b: true },

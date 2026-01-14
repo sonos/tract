@@ -9,6 +9,7 @@ use nu_ansi_term::Color::*;
 #[allow(unused_imports)]
 use std::convert::TryFrom;
 use tract_core::internal::*;
+use tract_core::num_traits::AsPrimitive;
 use tract_itertools::Itertools;
 
 pub fn render(
@@ -83,6 +84,35 @@ fn render_prefixed(
     Ok(())
 }
 
+pub fn si_prefix(v: impl AsPrimitive<f64>, unit: &str) -> String {
+    radical_prefix(v, unit, 1000, "")
+}
+
+pub fn pow2_prefix(v: impl AsPrimitive<f64>, unit: &str) -> String {
+    radical_prefix(v, unit, 1024, "i")
+}
+
+pub fn radical_prefix(
+    v: impl AsPrimitive<f64>,
+    unit: &str,
+    radical: usize,
+    radical_prefix: &str,
+) -> String {
+    let v: f64 = v.as_();
+    let radical = radical as f64;
+    let radical3 = radical.powi(3);
+    let radical2 = radical.powi(2);
+    if v > radical3 {
+        format!("{:7.3} G{}{}", v / radical3, radical_prefix, unit)
+    } else if v > 1e6 {
+        format!("{:7.3} M{}{}", v / radical2, radical_prefix, unit)
+    } else if v > 1e3 {
+        format!("{:7.3} k{}{}", v / radical, radical_prefix, unit)
+    } else {
+        format!("{v:7.3}  {unit}")
+    }
+}
+
 fn render_node_prefixed(
     model: &dyn Model,
     prefix: &str,
@@ -104,9 +134,11 @@ fn render_node_prefixed(
         format!("{:>1$}", "", options.tmp_mem_usage as usize * mem_padding);
     let flops_column_pad = format!("{:>1$}", "", (options.profile && options.cost) as usize * 20);
 
-    if let Some(ref mut ds) = &mut drawing_state {
+    if let Some(ds) = &mut drawing_state {
         for l in ds.draw_node_vprefix(model, node_id, options)? {
-            println!("{cost_column_pad}{profile_column_pad}{flops_column_pad}{tmp_mem_usage_column_pad}{prefix}{l} ");
+            println!(
+                "{cost_column_pad}{profile_column_pad}{flops_column_pad}{tmp_mem_usage_column_pad}{prefix}{l} "
+            );
         }
     }
 
@@ -128,7 +160,6 @@ fn render_node_prefixed(
     });
 
     // cost column
-    #[allow(clippy::manual_repeat_n)]
     let mut cost_column = if options.cost {
         Some(
             tags.cost
@@ -138,7 +169,7 @@ fn render_node_prefixed(
                     let value = render_tdim(&c.1);
                     let value_visible_len = c.1.to_string().len();
                     let padding = 24usize.saturating_sub(value_visible_len + key.len());
-                    key + &*std::iter::repeat(' ').take(padding).join("") + &value.to_string() + " "
+                    key + &*std::iter::repeat_n(' ', padding).join("") + &value.to_string() + " "
                 })
                 .peekable(),
         )
@@ -153,15 +184,7 @@ fn render_node_prefixed(
         let it = tags.cost.iter().map(move |c| {
             if c.0.is_compute() {
                 let flops = c.1.to_usize().unwrap_or(0) as f64 / timing;
-                let unpadded = if flops > 1e9 {
-                    format!("{:.3} GF/s", flops / 1e9)
-                } else if flops > 1e6 {
-                    format!("{:.3} MF/s", flops / 1e6)
-                } else if flops > 1e3 {
-                    format!("{:.3} kF/s", flops / 1e3)
-                } else {
-                    format!("{flops:.3}  F/s")
-                };
+                let unpadded = si_prefix(flops, "F/s");
                 format!("{:>1$} ", unpadded, 19)
             } else {
                 flops_column_pad.clone()
@@ -176,7 +199,7 @@ fn render_node_prefixed(
     let mut tmp_mem_usage_column = if options.tmp_mem_usage {
         let it = tags.tmp_mem_usage.iter().map(move |mem| {
             let unpadded = if let Ok(mem_size) = mem.to_usize() {
-                render_memory(mem_size)
+                pow2_prefix(mem_size, "B")
             } else {
                 format!("{mem:.3} B")
             };
@@ -384,7 +407,7 @@ pub fn render_summaries(
     if options.tmp_mem_usage {
         if let Some(summary) = &annotations.memory_summary {
             println!("{}", White.bold().paint("Memory summary"));
-            println!(" * Peak flushable memory: {}", render_memory(summary.max));
+            println!(" * Peak flushable memory: {}", pow2_prefix(summary.max, "B"));
         }
     }
     if options.cost {
@@ -397,7 +420,8 @@ pub fn render_summaries(
     if options.profile {
         let summary = annotations.profile_summary.as_ref().unwrap();
 
-        let have_accel_profiling = annotations.tags.iter().any(|(_, tag)| tag.accelerator_profile.is_some());
+        let have_accel_profiling =
+            annotations.tags.iter().any(|(_, tag)| tag.accelerator_profile.is_some());
         println!(
             "{}{}{}",
             White.bold().paint(format!("{:<43}", "Most time consuming operations")),
@@ -422,7 +446,7 @@ pub fn render_summaries(
                     a,
                     group.into_iter().fold(
                         (Duration::default(), Duration::default(), 0),
-                        |(accu, accel_accu, n), d| (accu + d.1 .0, accel_accu + d.1 .1, n + 1),
+                        |(accu, accel_accu, n), d| (accu + d.1.0, accel_accu + d.1.1, n + 1),
                     ),
                 )
             })
@@ -512,28 +536,8 @@ pub fn dur_avg_ratio(measure: Duration, global: Duration) -> String {
     )
 }
 
-fn render_memory(mem_size: usize) -> String {
-    let kb = 1024.0;
-    let mb = kb * 1024.0;
-    let gb = mb * 1024.0;
-    let mem_size = mem_size as f32;
-    if mem_size > gb {
-        format!("{:.3} GB", mem_size / gb)
-    } else if mem_size > mb {
-        format!("{:.3} MB", mem_size / mb)
-    } else if mem_size > kb {
-        format!("{:.3} KB", mem_size / kb)
-    } else {
-        format!("{mem_size:.3} B")
-    }
-}
-
 fn render_tdim(d: &TDim) -> AnsiString<'static> {
-    if let Ok(i) = d.to_i64() {
-        render_big_integer(i)
-    } else {
-        d.to_string().into()
-    }
+    if let Ok(i) = d.to_i64() { render_big_integer(i) } else { d.to_string().into() }
 }
 
 fn render_big_integer(i: i64) -> nu_ansi_term::AnsiString<'static> {

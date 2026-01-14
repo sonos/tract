@@ -14,7 +14,7 @@ macro_rules! sigmoid_impl {
 #[cfg(test)]
 #[macro_use]
 pub mod test {
-    use crate::{frame::element_wise::*, LADatum};
+    use crate::{LADatum, frame::element_wise::*};
     use num_traits::{AsPrimitive, Float};
     use proptest::test_runner::TestCaseResult;
 

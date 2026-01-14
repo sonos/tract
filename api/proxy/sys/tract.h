@@ -92,7 +92,7 @@ enum TRACT_RESULT tract_nnef_create(struct TractNnef **nnef);
 
 enum TRACT_RESULT tract_nnef_transform_model(const struct TractNnef *nnef,
                                              struct TractModel *model,
-                                             const char *transform_spec);
+                                             const int8_t *transform_spec);
 
 enum TRACT_RESULT tract_nnef_enable_tract_core(struct TractNnef *nnef);
 
@@ -375,6 +375,8 @@ enum TRACT_RESULT tract_model_optimize(struct TractModel *model);
  */
 enum TRACT_RESULT tract_model_profile_json(struct TractModel *model,
                                            struct TractValue **inputs,
+                                           const struct TractValue *const *states,
+                                           uintptr_t n_states,
                                            int8_t **json);
 
 /**
@@ -509,6 +511,30 @@ enum TRACT_RESULT tract_state_input_count(const struct TractState *state, uintpt
 enum TRACT_RESULT tract_state_output_count(const struct TractState *state, uintptr_t *outputs);
 
 enum TRACT_RESULT tract_state_destroy(struct TractState **state);
+
+/**
+ * Get number of initializable stateful op
+ */
+enum TRACT_RESULT tract_state_initializable_states_count(const struct TractState *state,
+                                                         uintptr_t *n_states);
+
+/**
+ * Get Stateful Ops's state facts
+ */
+enum TRACT_RESULT tract_state_get_states_facts(const struct TractState *state,
+                                               struct TractFact **states);
+
+/**
+ * Initialize Stateful Ops with specified values
+ */
+enum TRACT_RESULT tract_state_set_states(struct TractState *state,
+                                         const struct TractValue *const *states);
+
+/**
+ * Get Stateful Ops's current states.
+ */
+enum TRACT_RESULT tract_state_get_states(const struct TractState *state,
+                                         struct TractValue **states);
 
 /**
  * Parse a fact specification string into an Fact.

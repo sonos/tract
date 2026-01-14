@@ -38,13 +38,10 @@ pub struct Clip11 {
     input_max: Option<usize>,
 }
 
-
-
 impl Expansion for Clip11 {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Clip".into()
     }
-
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,

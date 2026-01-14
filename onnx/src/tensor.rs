@@ -143,7 +143,9 @@ pub fn load_tensor(
             let external_data = get_external_resources(provider, t, model_path)?;
             create_tensor(shape, dt, &external_data)
         } else {
-            bail!("no model path was specified in the parsing context, yet external data was detected. aborting");
+            bail!(
+                "no model path was specified in the parsing context, yet external data was detected. aborting"
+            );
         }
     } else {
         use tract_ndarray::Array;

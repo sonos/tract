@@ -143,7 +143,7 @@ fn parse_nodes_data(node: &NodeProto, is_classifier: bool) -> TractResult<TreeEn
     let false_ids = get_vec_attr::<usize>(node, "nodes_falsenodeids", n_nodes)?;
     let node_values = get_vec_attr::<f32>(node, "nodes_values", n_nodes)?;
     let nan_is_true = get_vec_attr_opt::<bool>(node, "nodes_missing_value_tracks_true", n_nodes)?
-        .unwrap_or_else(|| iter::repeat(false).take(n_nodes).collect());
+        .unwrap_or_else(|| iter::repeat_n(false, n_nodes).collect());
     let node_modes: Vec<Option<Cmp>> = get_vec_attr::<&str>(node, "nodes_modes", n_nodes)?
         .iter()
         .map(|s| parse_node_mode(s))
@@ -244,10 +244,8 @@ pub struct TreeEnsembleClassifier {
     pub binary_result_layout: bool,
 }
 
-
-
 impl Expansion for TreeEnsembleClassifier {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "TreeEnsembleClassifier".into()
     }
 

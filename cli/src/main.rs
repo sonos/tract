@@ -1,5 +1,6 @@
 #![allow(clippy::len_zero)]
 #![allow(clippy::redundant_closure_call)]
+#![allow(clippy::collapsible_if)]
 #[macro_use]
 extern crate log;
 
@@ -25,8 +26,8 @@ mod bench;
 mod compare;
 mod cost;
 mod dump;
+mod hwbench;
 mod llm;
-#[cfg(any(target_os = "macos", target_os = "ios"))]
 mod memory_arena;
 mod params;
 mod plan_options;
@@ -37,8 +38,9 @@ mod tensor;
 mod utils;
 
 use params::*;
-use tract_linalg::block_quant::Q4_0;
 use tract_linalg::WeightType;
+use tract_linalg::block_quant::Q4_0;
+use tract_linalg::mmm::MatMatMul;
 
 readings_probe::instrumented_allocator!();
 
@@ -117,6 +119,7 @@ fn main() -> TractResult<()> {
         .arg(arg!(--"onnx-test-data-set" [data_set] "Use onnx-test data-set as input (expect test_data_set_N dir with input_X.pb, etc. inside)"))
         .arg(arg!(--"onnx-ignore-output-shapes" "Ignore output shapes from model (workaround for pytorch export bug with mask axes)"))
         .arg(arg!(--"onnx-ignore-output-types" "Ignore output shapes from types (workaround for tdim conflicting with integer types)"))
+        .arg(arg!(--"onnx-ignore-value-info" "Ignore value info from ONNX file while loading network"))
 
         .arg(arg!(--"input-node" [node] ... "Override input nodes names (auto-detects otherwise)."))
         .arg(Arg::new("output-node").long("output-node").multiple_occurrences(true).takes_value(true).long_help(
@@ -143,7 +146,7 @@ fn main() -> TractResult<()> {
         .arg(arg!(--"f16-to-f32" "Convert the decluttered network from f16 to f32"))
         .arg(arg!(--"metal").long_help("Convert supported operators to Metal GPU equivalent. Only available on MacOS and iOS"))
         .arg(Arg::new("force-metal-backend").long("force-metal-backend").takes_value(true).long_help("Force specific implementations for MM kernels. Possible values: mlx, ggml, mfa. Backend is dynamically selected if option is not present"))
-        .arg(Arg::new("metal-gpu-trace").long("metal-gpu-trace").takes_value(true).help("Capture Metal GPU trace at given path. Only available on MacOS and iOS"))
+        .arg(arg!(--"cuda").long_help("Convert supported operators to CUDA equivalent"))
         .arg(Arg::new("transform").short('t').long("transform").multiple_occurrences(true).takes_value(true).help("Apply a built-in transformation to the model"))
         .arg(Arg::new("set").long("set").multiple_occurrences(true).takes_value(true)
              .long_help("Set a symbol to a concrete value after decluttering"))
@@ -155,6 +158,7 @@ fn main() -> TractResult<()> {
         .arg(arg!(--"tflite-cycle" "Perform TFLITE dump and reload before optimizing"))
 
         .arg(arg!(--"nnef-tract-core" "Allow usage of tract-core extension in NNEF dump and load"))
+        .arg(arg!(--"nnef-tract-resource" "Allow usage of tract-resource extension in NNEF dump and load"))
         .arg(arg!(--"nnef-tract-onnx" "Allow usage of tract-onnx extension in NNEF dump and load"))
         .arg(arg!(--"nnef-tract-pulse" "Allow usage of tract-pulse extension in NNEF dump and load"))
         .arg(arg!(--"nnef-tract-extra" "Allow usage of tract-extra extension in NNEF dump and load"))
@@ -170,7 +174,8 @@ fn main() -> TractResult<()> {
         .arg(arg!(--"machine-friendly" "Machine friendly output"))
 
         .subcommand(Command::new("list-ops").about("List ops in TF/ONNX frameworks"))
-        .subcommand(Command::new("kernels").about("Print kernels for the current plaform"));
+        .subcommand(Command::new("kernels").about("Print kernels for the current plaform"))
+        .subcommand(Command::new("hwbench").about("Print current hardware key metrics"));
 
     let compare = clap::Command::new("compare")
         .long_about("Compares the output of tract and tensorflow on randomly generated input.")
@@ -268,6 +273,7 @@ fn main() -> TractResult<()> {
         clap::Command::new("llm-bench").long_about("llamas.cpp-style bench (tg128 and pp512)");
     let llm_bench = assertions_options(llm_bench);
     let llm_bench = run_options(llm_bench);
+    let llm_bench = bench_options(llm_bench);
     app = app.subcommand(llm_bench);
 
     let stream_check = clap::Command::new("stream-check")
@@ -294,7 +300,9 @@ fn main() -> TractResult<()> {
             2 => "cli=debug,tract=debug",
             _ => "cli=trace,tract=trace",
         };
-        ::std::env::set_var("TRACT_LOG", level);
+        unsafe {
+            std::env::set_var("TRACT_LOG", level);
+        }
     }
 
     let env = env_logger::Env::default().filter_or("TRACT_LOG", "warn");
@@ -302,31 +310,7 @@ fn main() -> TractResult<()> {
     env_logger::Builder::from_env(env).format_timestamp_nanos().init();
     info_usage("init", probe.as_ref());
 
-    let res = if matches.is_present("metal-gpu-trace") {
-        #[cfg(any(target_os = "macos", target_os = "ios"))]
-        {
-            let gpu_trace_path =
-                std::path::Path::new(matches.value_of("metal-gpu-trace").unwrap()).to_path_buf();
-            ensure!(gpu_trace_path.is_absolute(), "Metal GPU trace file has to be absolute");
-            ensure!(
-                !gpu_trace_path.exists(),
-                format!("Given Metal GPU trace file {:?} already exists.", gpu_trace_path)
-            );
-            log::info!("Capturing Metal GPU trace at : {:?}", gpu_trace_path);
-            std::env::set_var("METAL_CAPTURE_ENABLED", "1");
-            std::env::set_var("METAL_DEVICE_WRAPPER_TYPE", "1");
-            let probe_ref = probe.as_ref();
-            tract_metal::METAL_STREAM.with_borrow(move |stream| {
-                stream.capture_trace(gpu_trace_path, move |_stream| handle(matches, probe_ref))
-            })
-        }
-        #[cfg(not(any(target_os = "macos", target_os = "ios")))]
-        {
-            bail!("`--metal-gpu-trace` present but it is only available on MacOS and iOS")
-        }
-    } else {
-        handle(matches, probe.as_ref())
-    };
+    let res = handle(matches, probe.as_ref());
 
     if let Err(e) = res {
         error!("{e:?}");
@@ -478,6 +462,12 @@ fn assertions_options(command: clap::Command) -> clap::Command {
             .help("Allow missing output in checks")
             )
         .arg(
+            Arg::new("assert-llm-lev20")
+            .takes_value(true)
+            .long("assert-llm-lev20")
+            .help("Use a LLM-aware application distance on logit output")
+            )
+        .arg(
             Arg::new("assert-op-count")
             .takes_value(true)
             .forbid_empty_values(true)
@@ -545,6 +535,24 @@ fn run_options(command: clap::Command) -> clap::Command {
             .long("allow-float-casts")
             .help("Allow casting between f16, f32 and f64 around model"),
             )
+        .arg(
+            Arg::new("metal-gpu-trace")
+                .long("metal-gpu-trace")
+                .takes_value(true)
+                .help("Capture Metal GPU trace and save it at given path. Only available on MacOS and iOS")
+        )
+        .arg(
+            Arg::new("cuda-gpu-trace")
+                .long("cuda-gpu-trace")
+                .help("Capture CUDA GPU trace. Must be used with nsys profile -c cudaProfilerApi before cargo command")
+        )
+        .arg(
+            Arg::new("prompt-chunk-size")
+                .long("prompt-chunk-size")
+                .takes_value(true)
+                .number_of_values(1)
+                .help("Set prompt chunk size. Help splitting too big prompts")
+        )
 }
 
 fn output_options(command: clap::Command) -> clap::Command {
@@ -615,16 +623,24 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
             }
             return Ok(());
         }
+        Some(("hwbench", _)) => return hwbench::handle(),
         Some(("kernels", _)) => {
             println!();
+            fn colored_name(m: &dyn MatMatMul) -> String {
+                format!(
+                    "{} {}",
+                    QUALITY_COLORS[m.quality().cost()].paint(m.name()),
+                    match m.dynamic_boost().signum() {
+                        1 => Green.paint("●"),
+                        -1 => Red.paint("●"),
+                        _ => "-".to_string().into(),
+                    }
+                )
+            }
             println!("{}", White.bold().paint("# By implementation"));
             println!();
             for m in tract_linalg::ops().mmm_impls() {
-                println!(
-                    "{} -> {:?}",
-                    QUALITY_COLORS[m.quality().cost()].paint(m.name()),
-                    m.stores()
-                );
+                println!("{} -> {:?}", colored_name(&**m), m.stores());
                 for packings in m.packings() {
                     println!("   - {:?} • {:?}", packings.0, packings.1);
                 }
@@ -651,7 +667,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
                             if p.0.same_as(packing) {
                                 println!(
                                     "    - {} ({ix}) {:?} {:?}",
-                                    QUALITY_COLORS[mmm.quality().cost()].paint(mmm.name()),
+                                    colored_name(&**mmm),
                                     p.0,
                                     p.1
                                 );
@@ -662,7 +678,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
                             {
                                 println!(
                                     "    - {} ({ix}) {:?} {:?} using {}",
-                                    QUALITY_COLORS[mmm.quality().cost()].paint(mmm.name()),
+                                    colored_name(&**mmm),
                                     p.0,
                                     p.1,
                                     pe.name
@@ -674,6 +690,15 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
             }
             return Ok(());
         }
+        Some(("dump", m)) => {
+            if m.is_present("metal-gpu-trace") {
+                // Set env variable before loading metal lib
+                unsafe {
+                    std::env::set_var("METAL_CAPTURE_ENABLED", "1");
+                    std::env::set_var("METAL_DEVICE_WRAPPER_TYPE", "1");
+                }
+            }
+        }
         _ => (),
     }
 
@@ -682,7 +707,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
     let mut params = match builder_result {
         Ok(params) => params,
         Err(e) => {
-            if let Some(params::ModelBuildingError(ref broken_model, _)) = e.downcast_ref() {
+            if let Some(params::ModelBuildingError(broken_model, _)) = e.downcast_ref() {
                 let mut broken_model: Box<dyn Model> =
                     tract_hir::tract_core::dyn_clone::clone(broken_model);
                 let annotations = Annotations::from_model(broken_model.as_ref())?;
@@ -833,6 +858,10 @@ fn nnef(matches: &clap::ArgMatches) -> tract_nnef::internal::Nnef {
     }
     if matches.is_present("nnef-tract-core") {
         fw = fw.with_tract_core();
+    }
+    if matches.is_present("nnef-tract-resource") {
+        use tract_nnef_resources::internal::JsonLoader;
+        fw = fw.with_tract_resource().with_resource_loader(JsonLoader);
     }
     if matches.is_present("nnef-extended-identifier") {
         fw.allow_extended_identifier_syntax(true);

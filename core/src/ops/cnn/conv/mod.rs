@@ -9,12 +9,13 @@ mod q_sum_b;
 use tract_linalg::block_quant::BlockQuantFact;
 
 use crate::internal::*;
+use crate::ops::cnn::Deconv;
 
 pub use self::conv::Conv;
 pub use self::im2col::Im2Col;
 pub(crate) use self::q_sum_b::QSumB;
 
-fn block_quant_aware_weight_shape(weights: &TypedFact) -> TractResult<Cow<ShapeFact>> {
+fn block_quant_aware_weight_shape(weights: &TypedFact) -> TractResult<Cow<'_, ShapeFact>> {
     if weights.datum_type.is_number() {
         Ok(Cow::Borrowed(&weights.shape))
     } else if let Some(bqf) =
@@ -63,6 +64,14 @@ impl KernelFormat {
         match self {
             KernelFormat::OIHW | KernelFormat::OHWI => 0,
             KernelFormat::HWIO => full_shape.len() - 1,
+        }
+    }
+
+    pub fn i_axis<D>(&self, full_shape: &[D]) -> usize {
+        match self {
+            KernelFormat::OIHW => 1,
+            KernelFormat::OHWI => full_shape.len() - 1,
+            KernelFormat::HWIO => full_shape.len() - 2,
         }
     }
 
@@ -178,4 +187,64 @@ impl KernelFormat {
         let group_o_i_hw = self.kernel_as_group_o_i_hw(kernel, group)?;
         Ok(group_o_i_hw.collapse_axis_with_next(2))
     }
+}
+
+pub fn rewrite_kernel_conv_in_oihw(
+    _ctx: &(),
+    model: &TypedModel,
+    node: &TypedNode,
+    name: &str,
+    conv: &Conv,
+) -> TractResult<Option<TypedModelPatch>> {
+    rewrite_kernel_in_oihw(
+        model,
+        node,
+        name,
+        conv.kernel_fmt,
+        conv.group,
+        Box::new(Conv { kernel_fmt: KernelFormat::OIHW, ..conv.clone() }),
+    )
+}
+
+pub fn rewrite_kernel_deconv_in_oihw(
+    _ctx: &(),
+    model: &TypedModel,
+    node: &TypedNode,
+    name: &str,
+    conv: &Deconv,
+) -> TractResult<Option<TypedModelPatch>> {
+    rewrite_kernel_in_oihw(
+        model,
+        node,
+        name,
+        conv.kernel_format,
+        conv.group,
+        Box::new(Deconv { kernel_format: KernelFormat::OIHW, ..conv.clone() }),
+    )
+}
+
+fn rewrite_kernel_in_oihw(
+    model: &TypedModel,
+    node: &TypedNode,
+    name: &str,
+    fmt: KernelFormat,
+    group: usize,
+    new: Box<dyn TypedOp>,
+) -> TractResult<Option<TypedModelPatch>> {
+    rule_if!(fmt != KernelFormat::OIHW);
+    let mut patch = TypedModelPatch::default();
+    let mut wire = patch.taps(model, &node.inputs)?;
+    let prefix = format!("{name}.kernel_reorg");
+    for (ix, op) in fmt
+        .kernel_as_group_o_i_h_w_ops(&patch.outlet_fact(wire[1])?.shape, group)
+        .into_iter()
+        .enumerate()
+    {
+        wire[1] = patch.wire_node(format!("{prefix}.{ix}"), op, &[wire[1]])?[0];
+    }
+    wire[1] =
+        AxisOp::wire_collapse_axis(&mut patch, format!("{name}.kernel_reorg_go"), wire[1], 0)?[0];
+    wire = patch.wire_node(name, new, &wire)?;
+    patch.shunt_outside(model, node.id.into(), wire[0])?;
+    Ok(Some(patch))
 }

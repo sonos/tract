@@ -2,7 +2,7 @@ use crate::internal::*;
 use crate::ops::einsum::block_quant_aware_input_shape;
 use crate::ops::matmul::pack::OptSimpleMatMulPack;
 use ndarray::*;
-use tract_linalg::block_quant::BlockQuantValue;
+use tract_linalg::block_quant::BlockQuantFact;
 use tract_linalg::mmm::MMMInputValue;
 
 #[derive(Debug, Clone, Hash, PartialEq)]
@@ -12,7 +12,7 @@ pub struct Gather {
 }
 
 impl Op for Gather {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Gather".into()
     }
 
@@ -38,37 +38,72 @@ impl Gather {
     }
 
     fn eval_t<T: Datum>(&self, data: TValue, indices: &TValue) -> TractResult<Tensor> {
-        let data_view = unsafe { data.to_array_view_unchecked::<T>() }; // copy only
+        let data_view = unsafe { data.to_array_view_unchecked::<T>() };
         let indices = indices.to_array_view::<i64>()?;
         let output_shape = &*self.compute_output_shape(data.shape(), indices.shape())?;
         let mut output = unsafe { Tensor::uninitialized::<T>(output_shape)? };
         let mut output_view = output.to_array_view_mut::<T>()?;
-        for coords in tract_ndarray::indices(output_shape) {
-            let ocoords = coords.as_array_view();
-            let ocoords = ocoords.as_slice().unwrap();
-            let mut icoords: TVec<usize> = ocoords[0..self.axis].into();
-            let kcoords = &ocoords[self.axis..][..indices.ndim()];
-            let k = indices[kcoords];
-            let k = if k < 0 { k + data_view.shape()[self.axis] as i64 } else { k } as usize;
-            icoords.push(k);
-            icoords.extend(ocoords[self.axis + indices.ndim()..].iter().copied());
-            output_view[ocoords] = data_view.get(&*icoords).context("Invalid gather")?.clone();
+
+        let data_shape = data.shape();
+        let data_axis = self.axis;
+
+        let block_len = data_shape[data_axis + 1..].iter().product::<usize>();
+
+        let can_block_copy = data_shape[..data_axis].iter().all(|&d| d == 1)
+            && output_shape[..data_axis].iter().all(|&d| d == 1)
+            && data_view.is_standard_layout()
+            && output_view.is_standard_layout();
+
+        if can_block_copy {
+            let mut out_offset = 0;
+            let input_slice = data_view.as_slice().unwrap();
+            let output_slice = &mut output_view.as_slice_mut().unwrap();
+            for idx_coords in indices.indexed_iter() {
+                let index = *idx_coords.1;
+                let axis_len = data_shape[data_axis] as i64;
+                let resolved_index = if index < 0 { index + axis_len } else { index };
+                let resolved_index = resolved_index as usize;
+
+                let input_offset = resolved_index * block_len;
+
+                output_slice[out_offset..out_offset + block_len]
+                    .clone_from_slice(&input_slice[input_offset..input_offset + block_len]);
+                out_offset += block_len;
+            }
+        } else {
+            let ic_len = self.axis + 1 + output_shape.len() - (self.axis + indices.ndim());
+            let mut icoords = vec![0; ic_len];
+            let axis = self.axis;
+            for coords in tract_ndarray::indices(output_shape) {
+                let ocoords = coords.as_array_view();
+                let ocoords = ocoords.as_slice().unwrap();
+
+                let kcoords = &ocoords[self.axis..][..indices.ndim()];
+                let k = indices[kcoords];
+                let k = if k < 0 { k + data_view.shape()[self.axis] as i64 } else { k } as usize;
+                icoords[0..axis].copy_from_slice(&ocoords[..self.axis]);
+                icoords[self.axis] = k;
+                icoords[self.axis + 1..].clone_from_slice(&ocoords[self.axis + indices.ndim()..]);
+                output_view[ocoords] =
+                    data_view.get(&*icoords).cloned().context("Invalid gather")?;
+            }
+            unsafe { output.set_datum_type(data.datum_type()) };
         }
-        unsafe { output.set_datum_type(data.datum_type()) };
         Ok(output)
     }
 
-    fn eval_bq<F: Datum>(&self, data: &BlockQuantValue, indices: &TValue) -> TractResult<Tensor> {
+    fn eval_bq<F: Datum>(&self, data: &BlobWithFact, indices: &TValue) -> TractResult<Tensor> {
+        let bqf = data.fact.downcast_ref::<BlockQuantFact>().context("Expected BlockQuantFact")?;
         ensure!(self.axis == 0);
-        ensure!(data.fact.shape().len() == 2);
-        let data_shape = &data.fact.shape();
+        ensure!(bqf.shape().len() == 2);
+        let data_shape = &bqf.shape();
         let output_shape = &*self.compute_output_shape(data_shape, indices.shape())?;
         let mut output = unsafe { Tensor::uninitialized::<F>(output_shape)? };
         let indices_slice = indices.as_slice::<i64>()?;
         let vector_len = data_shape[1];
 
-        let block_len = data.fact.format.block_len();
-        let block_bytes = data.fact.format.block_bytes();
+        let block_len = bqf.format.block_len();
+        let block_bytes = bqf.format.block_bytes();
         if F::datum_type() == f16::datum_type() {
             let output_slice = output.as_slice_mut::<f16>()?;
             for (pos, ix) in indices_slice.iter().enumerate() {
@@ -76,7 +111,7 @@ impl Gather {
                 for i in (0..vector_len).step_by(block_len) {
                     let offset = data_shape[1] * *ix as usize + i;
                     let block_id = offset / block_len;
-                    data.fact.format.dequant_block_f16(
+                    bqf.format.dequant_block_f16(
                         &data.value[block_id * block_bytes..][..block_bytes],
                         &mut slice[i..i + block_len],
                     );
@@ -89,7 +124,7 @@ impl Gather {
                 for i in (0..vector_len).step_by(block_len) {
                     let offset = data_shape[1] * *ix as usize + i;
                     let block_id = offset / block_len;
-                    data.fact.format.dequant_block_f32(
+                    bqf.format.dequant_block_f32(
                         &data.value[block_id * block_bytes..][..block_bytes],
                         &mut slice[i..i + block_len],
                     );
@@ -139,20 +174,25 @@ impl TypedOp for Gather {
                 inputs[0].datum_type
             );
         } else {
-            ensure!(!inputs[0].datum_type.is_opaque(),
-                "Gather applied to compressed data requires an explicit datum_type attribute for its output");
+            ensure!(
+                !inputs[0].datum_type.is_opaque(),
+                "Gather applied to compressed data requires an explicit datum_type attribute for its output"
+            );
         }
         ensure!(inputs[1].datum_type == i64::datum_type());
         if inputs[0].datum_type.is_opaque() {
             let data_shape = block_quant_aware_input_shape(inputs[0])?;
-            Ok(tvec!(self
-                .output_type
-                .unwrap()
-                .fact(&*self.compute_output_shape(&data_shape, &inputs[1].shape)?)))
+            Ok(tvec!(
+                self.output_type
+                    .unwrap()
+                    .fact(&*self.compute_output_shape(&data_shape, &inputs[1].shape)?)
+            ))
         } else {
-            Ok(tvec!(inputs[0]
-                .datum_type
-                .fact(&*self.compute_output_shape(&inputs[0].shape, &inputs[1].shape)?)))
+            Ok(tvec!(
+                inputs[0]
+                    .datum_type
+                    .fact(&*self.compute_output_shape(&inputs[0].shape, &inputs[1].shape)?)
+            ))
         }
     }
 
@@ -214,7 +254,7 @@ impl EvalOp for Gather {
         let (data, indices) = args_2!(inputs);
         let result = if let Ok(opaque) = data.to_scalar::<Opaque>() {
             let dt = self.output_type.unwrap();
-            if let Some(data) = opaque.downcast_ref::<BlockQuantValue>() {
+            if let Some(data) = opaque.downcast_ref::<BlobWithFact>() {
                 dispatch_floatlike!(Self::eval_bq(dt)(self, data, &indices))?
             } else if let Some(data) = opaque.downcast_ref::<Box<dyn MMMInputValue>>() {
                 dispatch_floatlike!(Self::eval_input_store(dt)(self, &**data, &indices))?
@@ -222,7 +262,7 @@ impl EvalOp for Gather {
                 bail!("Can't use Gather on {:?} input", data);
             }
         } else {
-            dispatch_datum_by_size!(Self::eval_t(data.datum_type())(self, data, &indices))?
+            dispatch_datum!(Self::eval_t(data.datum_type())(self, data, &indices))?
         };
         Ok(tvec!(result.into_tvalue()))
     }

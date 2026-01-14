@@ -1,4 +1,4 @@
-use crate::model::{optional_outputs, ParsingContext};
+use crate::model::{ParsingContext, optional_outputs};
 use crate::pb::NodeProto;
 use tract_core::ops::cast::cast;
 use tract_core::ops::math::{add, div, mul, rsqrt, square, sub};
@@ -34,7 +34,7 @@ pub struct LayerNorm {
 }
 
 impl Expansion for LayerNorm {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "LayerNorm".into()
     }
 

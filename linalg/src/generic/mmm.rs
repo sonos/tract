@@ -7,7 +7,7 @@ use tract_data::prelude::*;
 use super::*;
 use crate::frame::block_quant::{BlockQuant, NibbleReader, PackedBlockQuantFormat, Q4_0};
 use crate::frame::mmm::*;
-use crate::{has_fp16, LADatum, Ops};
+use crate::{LADatum, Ops, has_fp16};
 
 macro_rules! scalar {
     ($ab: expr, $m: expr, $f: expr) => {
@@ -49,14 +49,16 @@ unsafe fn add_mat_mul<const MR: usize, const NR: usize, TI, TA, TB>(
     TB: LADatum + AsPrimitive<TI>,
     TI: LADatum,
 {
-    let a = pa as *const TA;
-    let b = pb as *const TB;
-    for ik in 0..k {
-        let a = std::slice::from_raw_parts(a.add(MR * ik), MR);
-        let b = std::slice::from_raw_parts(b.add(NR * ik), NR);
-        for i in 0..MR {
-            for j in 0..NR {
-                ab[i][j] += a[i].as_() * b[j].as_();
+    unsafe {
+        let a = pa as *const TA;
+        let b = pb as *const TB;
+        for ik in 0..k {
+            let a = std::slice::from_raw_parts(a.add(MR * ik), MR);
+            let b = std::slice::from_raw_parts(b.add(NR * ik), NR);
+            for i in 0..MR {
+                for j in 0..NR {
+                    ab[i][j] += a[i].as_() * b[j].as_();
+                }
             }
         }
     }
@@ -73,20 +75,22 @@ unsafe fn add_mat_mul_pq40<const MR: usize, const NR: usize, TB, TI>(
     TB: AsPrimitive<TI>,
     i8: AsPrimitive<TI>,
 {
-    assert!(k % Q4_0.block_len() == 0);
-    let len = (k * MR) / Q4_0.block_len() * Q4_0.block_bytes();
-    let mut pa = NibbleReader::for_slice(std::slice::from_raw_parts(pa, len));
-    let b = pb as *const TB;
-    for bk in 0..k / 32 {
-        let mut scales: [TI; MR] = [TI::zero(); MR];
-        scales.iter_mut().for_each(|x| *x = pa.read_f16().as_());
-        for ik in 0..32 {
-            let mut a: [TI; MR] = [TI::zero(); MR];
-            a.iter_mut().zip(&scales).for_each(|(x, s)| *x = *s * (pa.read_i4() - 8).as_());
-            let b = std::slice::from_raw_parts(b.add(NR * (ik + 32 * bk)), NR);
-            for i in 0..MR {
-                for j in 0..NR {
-                    ab[i][j] += a[i] * b[j].as_();
+    unsafe {
+        assert!(k % Q4_0.block_len() == 0);
+        let len = (k * MR) / Q4_0.block_len() * Q4_0.block_bytes();
+        let mut pa = NibbleReader::for_slice(std::slice::from_raw_parts(pa, len));
+        let b = pb as *const TB;
+        for bk in 0..k / 32 {
+            let mut scales: [TI; MR] = [TI::zero(); MR];
+            scales.iter_mut().for_each(|x| *x = pa.read_f16().as_());
+            for ik in 0..32 {
+                let mut a: [TI; MR] = [TI::zero(); MR];
+                a.iter_mut().zip(&scales).for_each(|(x, s)| *x = *s * (pa.read_i4() - 8).as_());
+                let b = std::slice::from_raw_parts(b.add(NR * (ik + 32 * bk)), NR);
+                for i in 0..MR {
+                    for j in 0..NR {
+                        ab[i][j] += a[i] * b[j].as_();
+                    }
                 }
             }
         }
@@ -104,26 +108,28 @@ unsafe fn add_mat_mul_pq40_scales_at_end<const MR: usize, const NR: usize, TB, T
     TB: AsPrimitive<TI>,
     i8: AsPrimitive<TI>,
 {
-    assert!(k % Q4_0.block_len() == 0);
-    let len = (k * MR) / Q4_0.block_len() * Q4_0.block_bytes();
-    let mut pa = NibbleReader::for_slice(std::slice::from_raw_parts(pa, len));
-    let b = pb as *const TB;
-    for bk in 0..k / 32 {
-        let mut temp = [[TI::zero(); NR]; MR];
-        for ik in 0..32 {
-            let mut a: [TI; MR] = [TI::zero(); MR];
-            a.iter_mut().for_each(|x| *x = (pa.read_i4() - 8).as_());
-            let b = std::slice::from_raw_parts(b.add(NR * (ik + 32 * bk)), NR);
-            for i in 0..MR {
-                for j in 0..NR {
-                    temp[i][j] += a[i] * b[j].as_();
+    unsafe {
+        assert!(k % Q4_0.block_len() == 0);
+        let len = (k * MR) / Q4_0.block_len() * Q4_0.block_bytes();
+        let mut pa = NibbleReader::for_slice(std::slice::from_raw_parts(pa, len));
+        let b = pb as *const TB;
+        for bk in 0..k / 32 {
+            let mut temp = [[TI::zero(); NR]; MR];
+            for ik in 0..32 {
+                let mut a: [TI; MR] = [TI::zero(); MR];
+                a.iter_mut().for_each(|x| *x = (pa.read_i4() - 8).as_());
+                let b = std::slice::from_raw_parts(b.add(NR * (ik + 32 * bk)), NR);
+                for i in 0..MR {
+                    for j in 0..NR {
+                        temp[i][j] += a[i] * b[j].as_();
+                    }
                 }
             }
-        }
-        for i in 0..MR {
-            let scale = pa.read_f16().as_();
-            for j in 0..NR {
-                ab[i][j] += temp[i][j] * scale;
+            for i in 0..MR {
+                let scale = pa.read_f16().as_();
+                for j in 0..NR {
+                    ab[i][j] += temp[i][j] * scale;
+                }
             }
         }
     }
@@ -136,13 +142,15 @@ unsafe fn add_unicast<const MR: usize, const NR: usize, TI, TO>(
     TI: LADatum,
     TO: LADatum + AsPrimitive<TI>,
 {
-    for i in 0usize..MR {
-        for j in 0usize..NR {
-            let value: *const TO = other
-                .ptr
-                .offset(other.row_byte_stride * i as isize + other.col_byte_stride * j as isize)
-                as _;
-            ab[i].as_mut()[j] += (*value).as_();
+    unsafe {
+        for i in 0usize..MR {
+            for j in 0usize..NR {
+                let value: *const TO = other
+                    .ptr
+                    .offset(other.row_byte_stride * i as isize + other.col_byte_stride * j as isize)
+                    as _;
+                ab[i].as_mut()[j] += (*value).as_();
+            }
         }
     }
 }
@@ -153,14 +161,16 @@ unsafe fn store_t<const MR: usize, const NR: usize, TC, TI>(
 ) where
     TC: Copy,
 {
-    for i in 0usize..MR {
-        for j in 0usize..NR {
-            let loc: *mut TC = tile
-                .ptr
-                .offset(tile.row_byte_stride * i as isize + tile.col_byte_stride * j as isize)
-                as _;
-            let val: *const TC = (&ab[i].as_ref()[j]) as *const TI as _;
-            *loc = *val
+    unsafe {
+        for i in 0usize..MR {
+            for j in 0usize..NR {
+                let loc: *mut TC = tile
+                    .ptr
+                    .offset(tile.row_byte_stride * i as isize + tile.col_byte_stride * j as isize)
+                    as _;
+                let val: *const TC = (&ab[i].as_ref()[j]) as *const TI as _;
+                *loc = *val
+            }
         }
     }
 }
@@ -172,14 +182,16 @@ unsafe fn store_float_t<const MR: usize, const NR: usize, TC, TI>(
     TC: Copy + 'static,
     TI: Copy + 'static + AsPrimitive<TC>,
 {
-    for i in 0usize..MR {
-        for j in 0usize..NR {
-            let loc: *mut TC = tile
-                .ptr
-                .offset(tile.row_byte_stride * i as isize + tile.col_byte_stride * j as isize)
-                as _;
-            let val = ab[i].as_ref()[j].as_();
-            *loc = val
+    unsafe {
+        for i in 0usize..MR {
+            for j in 0usize..NR {
+                let loc: *mut TC = tile
+                    .ptr
+                    .offset(tile.row_byte_stride * i as isize + tile.col_byte_stride * j as isize)
+                    as _;
+                let val = ab[i].as_ref()[j].as_();
+                *loc = val
+            }
         }
     }
 }

@@ -56,15 +56,15 @@ macro_rules! by_scalar_impl_wrap {
 #[cfg(test)]
 #[macro_use]
 pub mod test {
-    use crate::frame::element_wise::ElementWiseKer;
     use crate::LADatum;
+    use crate::frame::element_wise::ElementWiseKer;
     use num_traits::{AsPrimitive, Float};
     use proptest::test_runner::TestCaseResult;
 
     #[macro_export]
     macro_rules! by_scalar_frame_tests {
         ($cond:expr, $t: ty, $ker:ty, $func:expr) => {
-            paste::paste! {
+            pastey::paste! {
                 proptest::proptest! {
                     #[test]
                     fn [<prop_ $ker:snake>](xs in proptest::collection::vec(-25f32..25.0, 0..100), scalar in -25f32..25f32) {

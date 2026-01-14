@@ -20,7 +20,7 @@ This trait contains the minimal metadata that all ops will share.
 pub trait Op:
     fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast + EvalOp + DynHash
 {
-    fn name(&self) -> Cow<str>;
+    fn name(&self) -> StaticName;
 
     fn validation(&self) -> Validation {
         Validation::Accurate

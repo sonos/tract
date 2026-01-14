@@ -1,7 +1,7 @@
 [package]
 name = "test-metal"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -17,7 +17,7 @@ suite-onnx = { path = "../suite-onnx" }
 suite-unit = { path = "../suite-unit" }
 tract-onnx-opl.workspace = true
 tract-metal.workspace = true
-paste.workspace = true
+pastey.workspace = true
 
 [dev-dependencies]
 home.workspace = true
@@ -31,4 +31,4 @@ tract-onnx-opl.workspace = true
 infra = { path = "../infra" }
 suite-onnx = { path = "../suite-onnx" }
 suite-unit = { path = "../suite-unit" }
-paste.workspace = true
+pastey.workspace = true

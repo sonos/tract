@@ -8,6 +8,7 @@ use tract_linalg::pack::PackedFormat;
 use super::*;
 use crate::ops::cast::cast;
 use crate::ops::math::add;
+use crate::ops::matmul::ModePicker;
 use crate::ops::matmul::optimized::{
     AddMatMulGeometry, MapOutputAxisToInput, OptMatMul, ProtoFusedSpec,
 };
@@ -15,7 +16,6 @@ use crate::ops::matmul::pack::{OptMatMulPack, OptSimpleMatMulPack};
 use crate::ops::matmul::quant::{
     combine_scales, compensate_zero_points, requant, wire_ensure_q8_flavour,
 };
-use crate::ops::matmul::ModePicker;
 use crate::ops::nn::{Reduce, Reducer};
 
 pub fn detect_all(model: &mut TypedModel) -> TractResult<()> {
@@ -104,7 +104,7 @@ impl Deref for EinSumMatMul {
 }
 
 impl Op for EinSumMatMul {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "EinSumMatMul".into()
     }
 
@@ -118,10 +118,11 @@ impl EvalOp for EinSumMatMul {
     }
     fn eval_with_session(
         &self,
+        node_id: usize,
         session: &SessionState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        self.op.eval_with_session(session, inputs)
+        self.op.eval_with_session(node_id, session, inputs)
     }
 }
 
@@ -149,11 +150,13 @@ impl TypedOp for EinSumMatMul {
         } else if let Some(of) = b.opaque_fact() {
             ensure!(of.is::<BlockQuantFact>());
             true
+        } else if self.m == self.n {
+            false
         } else {
             match (self.m.as_i64(), self.n.as_i64()) {
                 (Some(m), Some(n)) => m < n,
                 (None, Some(n)) => n >= 8,
-                _ => false,
+                _ => (self.n.clone() - &self.m).prove_positive_or_zero(),
             }
         };
         if must_transpose {
@@ -186,9 +189,7 @@ pub(crate) fn detect_rule(
     _name: &str,
     op: &EinSum,
 ) -> TractResult<Option<TypedModelPatch>> {
-    if node.inputs.len() != (2 + op.q_params.is_some() as usize * 7) {
-        return Ok(None);
-    }
+    rule_if!(node.inputs.len() == (2 + op.q_params.is_some() as usize * 7));
     let input_facts = model.node_input_facts(node.id)?;
     let input_shapes = op.actual_input_shapes_from_facts(&input_facts)?;
     let output_shape = super::eval::output_shape(&op.axes, &input_shapes)?;
@@ -501,7 +502,7 @@ fn optimized_mat_mul(
     node: &TypedNode,
     op: &EinSumMatMul,
 ) -> TractResult<Option<TypedModelPatch>> {
-    let (mode_picker, impls) = kernel_selection::strategize(model, node, op)?;
+    let (mode_picker, left_pack, impls) = kernel_selection::strategize(model, node, op)?;
     let input_facts = model.node_input_facts(node.id)?;
     let input_shapes = op.actual_input_shapes_from_facts(&input_facts)?;
     let prefix = &node.name;
@@ -510,11 +511,8 @@ fn optimized_mat_mul(
     let taps = patch.taps(model, &node.inputs)?;
     let name = &node.name;
 
-    // Strategy is either one impl, or two impl with the same packing for A
-    let (mmm, pack, pe) = &impls[0];
-    let a_static_pack = if let Some(pe) = pe { &pe.from } else { &mmm.packings()[*pack].0 };
     let pack_a: Box<dyn TypedOp> = if input_facts[0].konst.is_some() {
-        if let Some(pf) = a_static_pack.downcast_ref::<PackedFormat>() {
+        if let Some(pf) = left_pack.downcast_ref::<PackedFormat>() {
             Box::new(OptMatMulPack {
                 packers: vec![pf.clone()],
                 mode_picker: ModePicker::Single,
@@ -522,7 +520,7 @@ fn optimized_mat_mul(
                 mn_axis: op.a_m(),
             })
         } else if let Some(packed_format) =
-            a_static_pack.downcast_ref::<PackedBlockQuantFormat>().cloned()
+            left_pack.downcast_ref::<PackedBlockQuantFormat>().cloned()
         {
             Box::new(OptSimpleMatMulPack {
                 packed_format,
@@ -530,7 +528,7 @@ fn optimized_mat_mul(
                 m: input_shapes[0][op.a_m()].to_usize().unwrap(),
             })
         } else {
-            bail!("Unexpected static input format {a_static_pack:?}");
+            bail!("Unexpected static input format {left_pack:?}");
         }
     } else {
         Box::new(OptMatMulPack {

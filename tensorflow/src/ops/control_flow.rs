@@ -20,10 +20,8 @@ pub enum LoopGateRole {
 #[derive(Debug, Clone, Hash)]
 pub struct LoopGate(LoopGateRole);
 
-
-
 impl Op for LoopGate {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         format!("{:?}", self.0).into()
     }
 
@@ -69,10 +67,8 @@ pub struct NextIteration {
     role: NextIterationRole,
 }
 
-
-
 impl Op for NextIteration {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         format!("{:?}({})", self.role, self.name).into()
     }
 

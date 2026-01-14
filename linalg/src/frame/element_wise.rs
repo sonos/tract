@@ -124,7 +124,7 @@ where
 
 #[cfg(test)]
 pub mod test {
-    use crate::{frame::element_wise::*, LADatum};
+    use crate::{LADatum, frame::element_wise::*};
     use proptest::test_runner::{TestCaseError, TestCaseResult};
     use tract_data::internal::*;
 

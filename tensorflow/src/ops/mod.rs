@@ -51,7 +51,7 @@ fn konst(_ctx: &ParsingContext, node: &NodeDef) -> TractResult<Box<dyn Inference
 pub struct Noop;
 
 impl Op for Noop {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Noop".into()
     }
 

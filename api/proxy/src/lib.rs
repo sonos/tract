@@ -361,14 +361,22 @@ impl ModelInterface for Model {
 
     fn cost_json(&self) -> Result<String> {
         let input: Option<Vec<Value>> = None;
-        self.profile_json(input)
+        let states: Option<Vec<Value>> = None;
+        self.profile_json(input, states)
     }
 
-    fn profile_json<I, V, E>(&self, inputs: Option<I>) -> Result<String>
+    fn profile_json<I, IV, IE, S, SV, SE>(
+        &self,
+        inputs: Option<I>,
+        state_initializers: Option<S>,
+    ) -> Result<String>
     where
-        I: IntoIterator<Item = V>,
-        V: TryInto<Value, Error = E>,
-        E: Into<anyhow::Error>,
+        I: IntoIterator<Item = IV>,
+        IV: TryInto<Self::Value, Error = IE>,
+        IE: Into<anyhow::Error>,
+        S: IntoIterator<Item = SV>,
+        SV: TryInto<Self::Value, Error = SE>,
+        SE: Into<anyhow::Error>,
     {
         let inputs = if let Some(inputs) = inputs {
             let inputs = inputs
@@ -384,7 +392,22 @@ impl ModelInterface for Model {
             inputs.as_ref().map(|is| is.iter().map(|v| v.0).collect());
         let mut json: *mut i8 = null_mut();
         let values = iptrs.as_mut().map(|it| it.as_mut_ptr()).unwrap_or(null_mut());
-        check!(sys::tract_model_profile_json(self.0, values, &mut json))?;
+
+        let (state_inits, n_states) = if let Some(state_vec) = state_initializers {
+            let mut states: Vec<*const _> = vec![];
+
+            for v in state_vec {
+                let val: Value = v.try_into().map_err(|e| e.into())?;
+                states.push(val.0);
+            }
+            let len = states.len();
+            (Some(states), len)
+        } else {
+            (None, 0)
+        };
+
+        let states = state_inits.map(|is| is.as_ptr()).unwrap_or(null());
+        check!(sys::tract_model_profile_json(self.0, values, states, n_states, &mut json))?;
         anyhow::ensure!(!json.is_null());
         unsafe {
             let s = CStr::from_ptr(json).to_owned();
@@ -457,6 +480,8 @@ wrapper!(State, TractState, tract_state_destroy);
 
 impl StateInterface for State {
     type Value = Value;
+    type Fact = Fact;
+
     fn run<I, V, E>(&mut self, inputs: I) -> Result<Vec<Value>>
     where
         I: IntoIterator<Item = V>,
@@ -484,6 +509,63 @@ impl StateInterface for State {
         let mut count = 0;
         check!(sys::tract_state_output_count(self.0, &mut count))?;
         Ok(count)
+    }
+
+    fn initializable_states_count(&self) -> Result<usize> {
+        let mut n_states = 0;
+        check!(sys::tract_state_initializable_states_count(self.0, &mut n_states))?;
+        Ok(n_states)
+    }
+
+    fn get_states_facts(&self) -> Result<Vec<Fact>> {
+        let n_states = self.initializable_states_count()?;
+        let mut fptrs = vec![null_mut(); n_states];
+
+        check!(sys::tract_state_get_states_facts(self.0, fptrs.as_mut_ptr()))?;
+
+        let res = fptrs.into_iter().map(|value| Ok(Fact(value))).collect::<Result<Vec<Fact>>>();
+
+        res
+    }
+
+    fn set_states<I, V, E>(&mut self, state_initializers: I) -> Result<()>
+    where
+        I: IntoIterator<Item = V>,
+        V: TryInto<Self::Value, Error = E>,
+        E: Into<anyhow::Error>,
+    {
+        let sptrs = {
+            let mut states: Vec<*const _> = vec![];
+
+            for s in state_initializers {
+                let val: Value = s.try_into().map_err(|e| e.into())?;
+                states.push(val.0);
+            }
+
+            let len = states.len();
+            anyhow::ensure!(
+                len == self.initializable_states_count()?,
+                "Expected {} states, got {len}",
+                self.initializable_states_count()?
+            );
+            Some(states)
+        };
+
+        let sptrs = sptrs.map(|it| it.as_ptr()).unwrap_or(null());
+        check!(sys::tract_state_set_states(self.0, sptrs))?;
+
+        Ok(())
+    }
+
+    fn get_states(&self) -> Result<Vec<Self::Value>> {
+        let n_states = self.initializable_states_count()?;
+
+        let mut sptrs = vec![null_mut(); n_states];
+        check!(sys::tract_state_get_states(self.0, sptrs.as_mut_ptr()))?;
+
+        let res = sptrs.into_iter().map(|value| Ok(Value(value))).collect::<Result<Vec<Value>>>();
+
+        res
     }
 }
 

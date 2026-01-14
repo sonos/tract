@@ -1,8 +1,8 @@
-use std::collections::HashMap;
-use serde::Serialize;
-use tract_core::internal::*;
 use crate::annotations::Annotations;
 use crate::model::Model;
+use serde::Serialize;
+use std::collections::HashMap;
+use tract_core::internal::*;
 
 #[derive(Clone, Debug, Default, Serialize)]
 pub struct GraphPerfInfo {
@@ -39,11 +39,7 @@ impl GraphPerfInfo {
             .iter()
             .map(|(id, node)| Node {
                 qualified_id: NodeQIdSer(id.0.iter().cloned().collect(), id.1),
-                cost: node
-                    .cost
-                    .iter()
-                    .map(|(k, v)| (format!("{k:?}"), format!("{v}")))
-                    .collect(),
+                cost: node.cost.iter().map(|(k, v)| (format!("{k:?}"), format!("{v}"))).collect(),
                 node_name: id.model(model).unwrap().node_name(id.1).to_string(),
                 op_name: id.model(model).unwrap().node_op_name(id.1).to_string(),
                 secs_per_iter: node.profile.map(|s| s.as_secs_f64()),

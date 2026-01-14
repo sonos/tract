@@ -16,16 +16,12 @@ impl<Ctx> Rewriter<Ctx> {
         mut self,
         name: impl Into<Cow<'static, str>>,
         rule: impl Fn(&Ctx, &TypedModel, &TypedNode, &str, &O) -> TractResult<Option<TypedModelPatch>>
-            + 'static,
+        + 'static,
     ) -> Self {
         self.rules.entry(TypeId::of::<O>()).or_default().push((
             name.into(),
             Box::new(move |c: &Ctx, m: &TypedModel, n: &TypedNode| {
-                if let Some(o) = n.op_as::<O>() {
-                    rule(c, m, n, &n.name, o)
-                } else {
-                    Ok(None)
-                }
+                if let Some(o) = n.op_as::<O>() { rule(c, m, n, &n.name, o) } else { Ok(None) }
             }),
         ));
         self
@@ -37,11 +33,19 @@ impl<Ctx> Rewriter<Ctx> {
             for n in model.eval_order()? {
                 if let Some(rules) = self.rules.get(&(*model.node(n).op).type_id()) {
                     for (name, rule) in rules {
-                        if let Some(patch) = (rule)(ctx, model, model.node(n))
-                            .with_context(|| format!("Evaluating rewriting rule \"{name}\" on node {}", model.node(n)))?
+                        if let Some(patch) =
+                            (rule)(ctx, model, model.node(n)).with_context(|| {
+                                format!(
+                                    "Evaluating rewriting rule \"{name}\" on node {}",
+                                    model.node(n)
+                                )
+                            })?
                         {
                             patch.apply(model).with_context(|| {
-                                format!("Applying patch for rewriting rule \"{name}\" on node {}", model.node(n))
+                                format!(
+                                    "Applying patch for rewriting rule \"{name}\" on node {}",
+                                    model.node(n)
+                                )
                             })?;
                             done_anything = true;
                         }

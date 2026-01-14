@@ -9,13 +9,22 @@ use crate::internal::*;
 use crate::ops::einsum::block_quant_aware_input_shape;
 use crate::ops::konst::Const;
 
-pub fn rewrite_einsum_to_prefix_matmul(model: &mut TypedModel) -> TractResult<()> {
+#[derive(Debug, Default)]
+pub struct EinSumToPrefixMatmulCtx {
+    pub ensure_strict_matmul_semantic: bool,
+}
+
+pub fn rewrite_einsum_to_prefix_matmul(
+    model: &mut TypedModel,
+    ensure_strict_matmul_semantic: bool,
+) -> TractResult<()> {
     super::einsum_matmul::detect_all(model)?;
-    Rewriter::default().with_rule_for("einsum-to-prefix-matmul", rule).rewrite(&(), model)
+    let ctx = EinSumToPrefixMatmulCtx { ensure_strict_matmul_semantic };
+    Rewriter::default().with_rule_for("einsum-to-prefix-matmul", rule).rewrite(&ctx, model)
 }
 
 fn rule(
-    _ctx: &(),
+    ctx: &EinSumToPrefixMatmulCtx,
     model: &TypedModel,
     node: &TypedNode,
     node_name: &str,
@@ -23,16 +32,13 @@ fn rule(
 ) -> TractResult<Option<TypedModelPatch>> {
     // F: 2 inputs
     // Q: 9 inputs
-    if !((op.q_params.is_none() && node.inputs.len() == 2)
-        || (op.q_params.is_some() && node.inputs.len() == 9))
-    {
-        return Ok(None);
-    }
-    if op.q_params.is_some()
-        && model.node_input_facts(node.id)?.iter().skip(3).any(|i| i.konst.is_none())
-    {
-        return Ok(None);
-    }
+    let is_fp_mm = op.q_params.is_none() && node.inputs.len() == 2;
+    let is_q_mm = op.q_params.is_some() && node.inputs.len() == 9;
+    rule_if!(is_fp_mm || is_q_mm);
+    rule_if!(
+        op.q_params.is_none()
+            || model.node_input_facts(node.id)?.iter().skip(3).all(|i| i.konst.is_some())
+    );
     let prefix: String = op
         .axes
         .iter_all_axes()
@@ -47,12 +53,10 @@ fn rule(
     let a_order_es: String = op.axes.axes(InOut::In(0)).map(|a| a.repr).collect();
     let a_order_mm = format!("{prefix}{m}{k}");
     let a_order_mm_t = format!("{prefix}{k}{m}");
-    let a_transform = format!("{a_order_es}->{a_order_mm}")
-        .parse::<AxesMapping>()?
-        .translate_to_axis_ops()?;
-    let a_transform_t = format!("{a_order_es}->{a_order_mm_t}")
-        .parse::<AxesMapping>()?
-        .translate_to_axis_ops()?;
+    let a_transform =
+        format!("{a_order_es}->{a_order_mm}").parse::<AxesMapping>()?.translate_to_axis_ops()?;
+    let a_transform_t =
+        format!("{a_order_es}->{a_order_mm_t}").parse::<AxesMapping>()?.translate_to_axis_ops()?;
     let transpose_a = a_transform.len() > a_transform_t.len();
     let a_transform = if transpose_a { a_transform_t } else { a_transform };
     let name = format!("{node_name}.fix_a");
@@ -76,12 +80,10 @@ fn rule(
     let b_order_es: String = op.axes.axes(InOut::In(1)).map(|a| a.repr).collect();
     let b_order_mm = format!("{prefix}{k}{n}");
     let b_order_mm_t = format!("{prefix}{n}{k}");
-    let b_transform = format!("{b_order_es}->{b_order_mm}")
-        .parse::<AxesMapping>()?
-        .translate_to_axis_ops()?;
-    let b_transform_t = format!("{b_order_es}->{b_order_mm_t}")
-        .parse::<AxesMapping>()?
-        .translate_to_axis_ops()?;
+    let b_transform =
+        format!("{b_order_es}->{b_order_mm}").parse::<AxesMapping>()?.translate_to_axis_ops()?;
+    let b_transform_t =
+        format!("{b_order_es}->{b_order_mm_t}").parse::<AxesMapping>()?.translate_to_axis_ops()?;
     let transpose_b = b_transform.len() > b_transform_t.len();
     let b_transform = if transpose_b { b_transform_t } else { b_transform };
     let name = format!("{node_name}.fix_b");
@@ -92,12 +94,10 @@ fn rule(
     let c_order_es: String = op.axes.axes(InOut::Out(0)).map(|a| a.repr).collect();
     let c_order_mm = format!("{prefix}{m}{n}");
     let c_order_mm_t = format!("{prefix}{n}{m}");
-    let c_transform = format!("{c_order_mm}->{c_order_es}")
-        .parse::<AxesMapping>()?
-        .translate_to_axis_ops()?;
-    let c_transform_t = format!("{c_order_mm_t}->{c_order_es}")
-        .parse::<AxesMapping>()?
-        .translate_to_axis_ops()?;
+    let c_transform =
+        format!("{c_order_mm}->{c_order_es}").parse::<AxesMapping>()?.translate_to_axis_ops()?;
+    let c_transform_t =
+        format!("{c_order_mm_t}->{c_order_es}").parse::<AxesMapping>()?.translate_to_axis_ops()?;
     let transpose_c = c_transform.len() > c_transform_t.len();
     let c_transform = if transpose_c { c_transform_t } else { c_transform };
     let quantize_output = if let Some(qp) = op.q_params {
@@ -118,9 +118,31 @@ fn rule(
     } else {
         None
     };
+
+    let operating_dt = if ctx.ensure_strict_matmul_semantic {
+        let input_facts = model.node_input_facts(node.id)?;
+        let a_dt = input_facts[0].datum_type;
+        let b_dt = input_facts[1].datum_type;
+        let operating_dt = quantize_output.unwrap_or(op.operating_dt);
+        let allowed_dt = matmul_semantic_output_dt(&a_dt, &b_dt);
+
+        ensure!(
+            operating_dt == allowed_dt,
+            format!(
+                "Strict matmul semantic require operating_dt to be {allowed_dt:?} \
+                for (a: {a_dt:?}, b:{b_dt:?}) but got {:?}.",
+                op.operating_dt
+            )
+        );
+
+        None
+    } else {
+        Some(op.operating_dt)
+    };
+
     wire = patch.wire_node(
         node_name,
-        PrefixMatMul { transpose_a, transpose_b, transpose_c, quantize_output },
+        PrefixMatMul { transpose_a, transpose_b, transpose_c, quantize_output, operating_dt },
         &wire,
     )?;
 
@@ -131,12 +153,23 @@ fn rule(
     Ok(Some(patch))
 }
 
-#[derive(Clone, Debug, Copy, Default)]
+fn matmul_semantic_output_dt(a_dt: &DatumType, b_dt: &DatumType) -> DatumType {
+    if a_dt.is_number() {
+        *a_dt
+    } else if b_dt.is_number() {
+        *b_dt
+    } else {
+        f32::datum_type()
+    }
+}
+
+#[derive(Clone, Debug, Copy)]
 pub struct PrefixMatMul {
     pub transpose_a: bool,
     pub transpose_b: bool,
     pub transpose_c: bool,
     pub quantize_output: Option<DatumType>,
+    pub operating_dt: Option<DatumType>,
 }
 
 impl PrefixMatMul {
@@ -160,8 +193,10 @@ impl PrefixMatMul {
         b: &Tensor,
     ) -> TractResult<()> {
         use crate::ndarray::Dimension;
-        let a = a.to_array_view::<Acc>()?;
-        let b = b.to_array_view::<Acc>()?;
+        let casted_a = a.cast_to::<Acc>()?;
+        let a = casted_a.to_array_view::<Acc>()?;
+        let casted_b = b.cast_to::<Acc>()?;
+        let b = casted_b.to_array_view::<Acc>()?;
         let mut c = acc.to_array_view_mut::<Acc>()?;
         for prefix in tract_ndarray::indices(&c.shape()[..c.ndim() - 2]) {
             let mut a = a.view();
@@ -177,18 +212,14 @@ impl PrefixMatMul {
             let mut c = c.into_dimensionality::<Ix2>().unwrap();
             let a = if self.transpose_a { a.t() } else { a };
             let b = if self.transpose_b { b.t() } else { b };
-            if self.transpose_c {
-                c.assign(&b.t().dot(&a.t()))
-            } else {
-                c.assign(&a.dot(&b))
-            }
+            if self.transpose_c { c.assign(&b.t().dot(&a.t())) } else { c.assign(&a.dot(&b)) }
         }
         Ok(())
     }
 }
 
 impl Op for PrefixMatMul {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "PrefixMatMul".into()
     }
 
@@ -208,13 +239,12 @@ impl EvalOp for PrefixMatMul {
     }
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        let c_dt = if inputs[0].datum_type().is_number() {
-            inputs[0].datum_type()
-        } else if inputs[1].datum_type().is_number() {
-            inputs[1].datum_type()
-        } else {
-            f32::datum_type()
-        };
+        let c_dt = self.operating_dt.unwrap_or_else(|| {
+            let a_dt = inputs[0].datum_type();
+            let b_dt = inputs[1].datum_type();
+            matmul_semantic_output_dt(&a_dt, &b_dt)
+        });
+
         let inputs = dequant_inputs(c_dt, inputs)?;
 
         let output_shape = self.output_shape(inputs[0].shape(), inputs[1].shape());
@@ -252,13 +282,12 @@ impl TypedOp for PrefixMatMul {
         let [a, b] = inputs else {
             bail!("Expects 2 inputs");
         };
-        let a_shape = block_quant_aware_input_shape(inputs[0])?;
-        let b_shape = block_quant_aware_input_shape(inputs[1])?;
-        let dt = self.quantize_output.unwrap_or(if a.datum_type.is_number() {
-            a.datum_type
-        } else {
-            b.datum_type
-        });
+        let a_shape = block_quant_aware_input_shape(a)?;
+        let b_shape = block_quant_aware_input_shape(b)?;
+        let dt = self
+            .quantize_output
+            .or(self.operating_dt)
+            .unwrap_or(matmul_semantic_output_dt(&a.datum_type, &b.datum_type));
         Ok(tvec!(dt.fact(self.output_shape(&a_shape, &b_shape))))
     }
 
@@ -377,7 +406,7 @@ mod test {
             let inputs = tvec!(a, b);
             let reference =
                 TypedRunnableModel::new(&model).unwrap().run(inputs.clone()).unwrap().remove(0);
-            rewrite_einsum_to_prefix_matmul(&mut model)?;
+            rewrite_einsum_to_prefix_matmul(&mut model, true)?;
             assert!(model.nodes.iter().all(|n| !n.op_is::<EinSum>()));
             let test = TypedRunnableModel::new(&model).unwrap().run(inputs).unwrap().remove(0);
             reference.close_enough(&test, true).unwrap();
@@ -509,7 +538,7 @@ mod test {
         ];
         let wire = model.wire_node("einsum", op.clone(), &inputs)?;
         model.set_output_outlets(&wire)?;
-        rewrite_einsum_to_prefix_matmul(&mut model)?;
+        rewrite_einsum_to_prefix_matmul(&mut model, true)?;
         assert!(model.nodes.iter().all(|n| !n.op_is::<EinSum>()));
         Ok(())
     }

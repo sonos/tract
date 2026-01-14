@@ -5,26 +5,29 @@ set -ex
 ROOT=$(dirname $(dirname $(realpath $0)))
 . $ROOT/.travis/ci-system-setup.sh
 
-which rustup || curl https://sh.rustup.rs -sSf | sh -s -- -y
 which cargo-dinghy || ( mkdir -p /tmp/cargo-dinghy
-
-if [ `arch` = x86_64 -o `arch` = i386 -o `arch` = arm64 ]
-then
-     cd /tmp/cargo-dinghy
-     if [ `uname` = "Darwin" ]
-     then
-         NAME=macos
-     else
-         NAME=linux
-     fi
-     VERSION=0.8.0
-     wget -q https://github.com/snipsco/dinghy/releases/download/$VERSION/cargo-dinghy-$NAME-$VERSION.tgz -O cargo-dinghy.tgz
-     tar vzxf cargo-dinghy.tgz --strip-components 1
-     mv cargo-dinghy $HOME/.cargo/bin
-else
-    cargo install cargo-dinghy
-fi
+    if [ `arch` = x86_64 -o `arch` = i386 -o `arch` = arm64 ]
+    then
+         cd /tmp/cargo-dinghy
+         if [ `uname` = "Darwin" ]
+         then
+             NAME=macos
+         else
+             NAME=linux
+         fi
+         VERSION=0.8.0
+         wget -q https://github.com/snipsco/dinghy/releases/download/$VERSION/cargo-dinghy-$NAME-$VERSION.tgz -O cargo-dinghy.tgz
+         tar vzxf cargo-dinghy.tgz --strip-components 1
+         mv cargo-dinghy $HOME/.cargo/bin
+    else
+        cargo install cargo-dinghy
+    fi
 )
+
+if [ -z "$PLATFORM" -a -n "$1" ]
+then
+    PLATFORM=$1
+fi
 
 case "$PLATFORM" in
     "raspbian")
@@ -75,17 +78,17 @@ case "$PLATFORM" in
         cargo dinghy --platform auto-ios-aarch64 build -p tract-linalg -p tract-ffi
         ;;
 
-    "aarch64-apple-darwin")
-        RUSTC_TRIPLE=aarch64-apple-darwin
-        rustup target add aarch64-apple-darwin
-        cargo build --target aarch64-apple-darwin -p tract --release
+    "aarch64-apple-darwin" | "x86_64-unknown-linux-gnu")
+        RUSTC_TRIPLE=$PLATFORM
+        rustup target add $RUSTC_TRIPLE
+        cargo build --target $RUSTC_TRIPLE -p tract --release
         ;;
 
-    "aarch64-unknown-linux-gnu-stretch" | "armv7-unknown-linux-gnueabihf-stretch" )
+    "aarch64-unknown-linux-gnu-stretch" | "armv7-unknown-linux-gnueabihf-stretch" | "x86_64-unknown-linux-gnu-stretch")
         INNER_PLATFORM=${PLATFORM%-stretch}
         (cd .travis/docker-debian-stretch; docker build --tag debian-stretch .)
         docker run -v `pwd`:/tract -w /tract \
-            -e CI=$CI \
+            -e CI=true \
             -e SKIP_QEMU_TEST=skip \
             -e PLATFORM=$INNER_PLATFORM debian-stretch \
             ./.travis/cross.sh
@@ -197,13 +200,13 @@ case "$PLATFORM" in
         ;;
 
     wasm32-wasi)
+        PLATFORM=wasm32-wasip1
+        wasmtime --version
+
         rustup target add $PLATFORM
         cargo check --target $PLATFORM --features getrandom-js -p tract-onnx -p tract-tensorflow
-        WASMTIME=$HOME/.wasmtime/bin/wasmtime
-        [ -e $WASMTIME ] || curl https://wasmtime.dev/install.sh -sSf | bash
-        $WASMTIME --version
-        RUSTFLAGS='-C target-feature=+simd128' CARGO_TARGET_WASM32_WASI_RUNNER=$WASMTIME \
-            cargo test --target=wasm32-wasi -p tract-linalg -p tract-core -p test-unit-core
+        RUSTFLAGS='-C target-feature=+simd128' CARGO_TARGET_WASM32_WASIP1_RUNNER=wasmtime \
+            cargo test --target=$PLATFORM -p tract-linalg -p tract-core -p test-unit-core
         ;;
     wasm32-*)
         rustup target add $PLATFORM

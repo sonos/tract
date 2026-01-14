@@ -16,7 +16,7 @@ impl ScaledMaskedSoftmax {
     pub fn kernel_name(&self, dt: DatumType) -> TractResult<String> {
         ensure!(
             Self::is_supported_dt(dt),
-            "Unsupport dt {:?} for metal scaled masked softmax  op",
+            "Unsupported dt {:?} for metal scaled masked softmaxop",
             dt
         );
         let tname = DeviceTensor::tname(dt)?;

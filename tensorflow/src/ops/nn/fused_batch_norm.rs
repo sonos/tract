@@ -15,14 +15,13 @@ struct FusedBatchNorm {
 }
 
 impl Expansion for FusedBatchNorm {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "FusedBatchNorm".into()
     }
 
     fn validation(&self) -> Validation {
         Validation::Rounding
     }
-
 
     /// Registers the inference rules of the operator.
     fn rules<'r, 'p: 'r, 's: 'r>(

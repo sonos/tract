@@ -34,7 +34,7 @@ impl Memcpy {
     }
 
     pub fn kernel_name(&self, dt: DatumType) -> TractResult<String> {
-        ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for metal copy  op", dt);
+        ensure!(Self::is_supported_dt(dt), "Unsupported dt {:?} for metal copyop", dt);
         let tname = DeviceTensor::tname(dt)?;
         Ok(format!("array_ops::copy_unicast_{tname}"))
     }
@@ -47,7 +47,7 @@ impl Memcpy {
         output: &DeviceTensor,
     ) -> TractResult<()> {
         ensure!(input_offset % input.datum_type().size_of() == 0);
-        ensure!(output.len() <= input.len() - input_offset);
+        ensure!(output.len() <= input.len() - (input_offset / input.datum_type().size_of()));
 
         stream.retain_tensor(input);
         stream.retain_tensor(output);

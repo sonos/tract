@@ -74,10 +74,8 @@ struct Dft {
     has_length_input: bool,
 }
 
-
-
 impl Expansion for Dft {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "DFT".into()
     }
 
@@ -164,10 +162,8 @@ struct Stft {
     optional_frame_length_input: Option<usize>,
 }
 
-
-
 impl Expansion for Stft {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "STFT".into()
     }
 
@@ -288,10 +284,8 @@ pub struct MelWeightMatrix {
     datum_type: DatumType,
 }
 
-
-
 impl Expansion for MelWeightMatrix {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "MelWeightMatrix".into()
     }
 
@@ -329,15 +323,16 @@ impl Expansion for MelWeightMatrix {
             Some(sample_rate),
             Some(lower_edge_hertz),
             Some(upper_edge_hertz),
-            ) = (
-                model.outlet_fact(inputs[0])?.konst.as_ref(),
-                model.outlet_fact(inputs[1])?.konst.as_ref(),
-                model.outlet_fact(inputs[2])?.konst.as_ref(),
-                model.outlet_fact(inputs[3])?.konst.as_ref(),
-                model.outlet_fact(inputs[4])?.konst.as_ref(),
-                ) else {
-                bail!("Expect all inputs to be constants")
-            };
+        ) = (
+            model.outlet_fact(inputs[0])?.konst.as_ref(),
+            model.outlet_fact(inputs[1])?.konst.as_ref(),
+            model.outlet_fact(inputs[2])?.konst.as_ref(),
+            model.outlet_fact(inputs[3])?.konst.as_ref(),
+            model.outlet_fact(inputs[4])?.konst.as_ref(),
+        )
+        else {
+            bail!("Expect all inputs to be constants")
+        };
         let num_mel_bins = num_mel_bins.cast_to_scalar::<i64>()? as usize;
         let dft_length = dft_length.cast_to_scalar::<i64>()? as usize;
         let sample_rate = sample_rate.cast_to_scalar::<i64>()? as usize;
@@ -423,10 +418,8 @@ pub struct StftWindow {
     window: StftWindowType,
 }
 
-
-
 impl Expansion for StftWindow {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         format!("StftWindow<{:?}>", self.window).into()
     }
 

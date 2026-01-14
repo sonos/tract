@@ -1,0 +1,28 @@
+name: Bench with tract-ci-minion
+
+on:
+  schedule:
+    - cron:  '1 * * * *' # every hour at minute 1
+  workflow_dispatch:
+
+jobs:
+  minion:
+    strategy:
+      matrix:
+        os:
+          - macOS
+          - cuda-lovelace
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    - name: Run minion if found
+      run: |
+        if [ -d $HOME/tract-minion ]
+        then
+          echo "Running minion"
+          cd $HOME/tract-minion
+          ./tract-ci-minion --once
+        else
+          echo "Not running minion"
+        fi

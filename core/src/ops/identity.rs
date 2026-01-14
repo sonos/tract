@@ -4,7 +4,7 @@ use crate::internal::*;
 pub struct Identity;
 
 impl Op for Identity {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Identity".into()
     }
 
@@ -54,7 +54,7 @@ impl TypedOp for Identity {
 pub struct PinConst;
 
 impl Op for PinConst {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "PinConst".into()
     }
 
@@ -82,11 +82,11 @@ impl EvalOp for PinConst {
 
 impl OpState for PinConst {
     fn eval(
-            &mut self,
-            _session: &mut SessionState,
-            _op: &dyn Op,
-            inputs: TVec<TValue>,
-        ) -> TractResult<TVec<TValue>> {
+        &mut self,
+        _session: &mut SessionState,
+        _op: &dyn Op,
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
         Ok(inputs)
     }
 }

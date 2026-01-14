@@ -1,6 +1,6 @@
 [package]
 name = "tract-metal"
-version = "0.21.13"
+version = "0.22.1-pre"
 license = "MIT OR Apache-2.0"
 authors = [
 	"Hubert de La Jonquière <hubert.delajonquiere@sonos.com>",
@@ -11,8 +11,8 @@ repository = "https://github.com/snipsco/tract"
 keywords = [ "TensorFlow", "NeuralNetworks", "Metal" ]
 categories = [ "science" ]
 autobenches = false
-edition = "2021"
-rust-version = "1.75"
+edition = "2024"
+rust-version = "1.85"
 
 [badges]
 maintenance = { status = "actively-developed" }

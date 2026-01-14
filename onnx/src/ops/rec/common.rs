@@ -2,7 +2,7 @@ use std::fmt::Debug;
 
 use crate::pb::*;
 use tract_hir::internal::*;
-use tract_hir::tract_core::dyn_clone::{clone_trait_object, DynClone};
+use tract_hir::tract_core::dyn_clone::{DynClone, clone_trait_object};
 use tract_hir::tract_core::ops::scan::ScanInfo;
 
 pub trait WireBody: Debug + DynClone + Send + Sync {
@@ -286,7 +286,7 @@ impl CommonRec {
 }
 
 impl Expansion for CommonRec {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         self.body.name().into()
     }
 

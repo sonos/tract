@@ -13,7 +13,7 @@ pub struct Topk {
 }
 
 impl Op for Topk {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Topk".into()
     }
 
@@ -73,11 +73,7 @@ impl Topk {
             .enumerate()
             .sorted_by(|a, b| {
                 let ord = { a.1.partial_cmp(&b.1).unwrap_or(Ordering::Less) };
-                if self.largest {
-                    ord.reverse()
-                } else {
-                    ord
-                }
+                if self.largest { ord.reverse() } else { ord }
             })
             .take(k)
             .enumerate()
@@ -95,7 +91,7 @@ impl TypedOp for Topk {
         let mut fact_values = inputs[0].without_value();
         let mut fact_indices = inputs[0].without_value();
         let k: TDim = if let Some(k) = &inputs[1].konst {
-            k.cast_to_scalar::<i64>()?.into()
+            k.cast_to::<TDim>()?.to_scalar::<TDim>()?.clone()
         } else {
             self.fallback_k.clone()
         };

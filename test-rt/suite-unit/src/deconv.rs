@@ -1,3 +1,5 @@
+use DataFormat::*;
+use KernelFormat::*;
 use infra::Test;
 use infra::TestResult;
 use infra::TestSuite;
@@ -8,8 +10,6 @@ use tract_core::ops::cnn::*;
 use tract_core::ops::nn::*;
 use tract_ndarray as ndarray;
 use tract_ndarray::{prelude::*, *};
-use DataFormat::*;
-use KernelFormat::*;
 
 use crate::data_format;
 use crate::kernel_format;
@@ -268,7 +268,6 @@ impl DeconvProblem {
 impl Test for DeconvProblem {
     fn run_with_approx(
         &self,
-        _suite: &str,
         id: &str,
         runtime: &dyn Runtime,
         approx: Approximation,

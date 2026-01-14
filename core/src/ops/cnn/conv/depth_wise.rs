@@ -1,6 +1,6 @@
 use crate::internal::*;
-use crate::ops::cnn::patches::{Zone, ZoneScanner};
 use crate::ops::cnn::Patch;
+use crate::ops::cnn::patches::{Zone, ZoneScanner};
 use crate::ops::nn::DataShape;
 use num_traits::Zero;
 
@@ -12,7 +12,7 @@ pub struct DepthWise {
 }
 
 impl Op for DepthWise {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "DepthWiseConv".into()
     }
 
@@ -90,7 +90,7 @@ impl TypedOp for DepthWise {
 
 macro_rules! impl_eval {
     ($(#[$meta: meta])* $suffix: ident ) => {
-        paste::paste! {
+        pastey::paste! {
             $(#[$meta])*
             unsafe fn [<eval_t_ $suffix>]<T: Datum + Copy + num_traits::Zero + ndarray::LinalgScalar>(
                 dw: &DepthWise,
@@ -140,7 +140,7 @@ macro_rules! impl_eval {
                 optr: *mut T,
                 add: impl Fn(T, T) -> T + Copy + 'static,
                 mul: impl Fn(T, T) -> T + Copy + 'static,
-                ) {
+                ) { unsafe {
                 /*
                    if zone.values_offsets.len() == 2 {
                    self.process_zone_n::<T, 2, 4>(
@@ -175,7 +175,7 @@ macro_rules! impl_eval {
                         }
                     })
                 }
-            }
+            }}
 
             #[inline(never)]
             #[allow(clippy::too_many_arguments)]
@@ -192,7 +192,7 @@ macro_rules! impl_eval {
                 optr: *mut T,
                 add: impl Fn(T, T) -> T,
                 mul: impl Fn(T, T) -> T,
-                ) {
+                ) { unsafe {
                 let mut visitor = ZoneScanner::new(zone, &dw.patch);
                 let mut ioffset = [0isize; N];
                 for i in 0..N {
@@ -264,7 +264,7 @@ macro_rules! impl_eval {
                         visitor.next_non_inner_axis()
                     }
                 }
-            }
+            }}
 
             #[inline(never)]
             #[allow(clippy::too_many_arguments)]
@@ -278,7 +278,7 @@ macro_rules! impl_eval {
                 visitor: &ZoneScanner,
                 add: impl Fn(T, T) -> T,
                 mul: impl Fn(T, T) -> T,
-                ) {
+                ) { unsafe {
                 let mut sum = *bias.offset(c);
                 let mut iter = visitor.valid_offsets_ker_in();
                 if iter.size_hint() == (3, Some(3)) {
@@ -301,7 +301,7 @@ macro_rules! impl_eval {
                 }
                 let optr = optr.offset(visitor.output_offset);
                 *optr = sum;
-            }
+            }}
         }
     }
 }

@@ -8,7 +8,7 @@ pub struct DocDumper<'a> {
 }
 
 impl DocDumper<'_> {
-    pub fn new(w: &mut dyn std::io::Write) -> DocDumper {
+    pub fn new(w: &mut dyn std::io::Write) -> DocDumper<'_> {
         DocDumper { w }
     }
 
@@ -25,7 +25,7 @@ impl DocDumper<'_> {
             writeln!(
                 self.w,
                 "fragment {}( x: tensor<scalar> ) -> (y: tensor<scalar>);",
-                &unit_el_wise_op.0 .0
+                &unit_el_wise_op.0.0
             )?;
         }
         writeln!(self.w)?;

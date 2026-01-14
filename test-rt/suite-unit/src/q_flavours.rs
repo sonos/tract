@@ -35,7 +35,6 @@ impl Arbitrary for QFlavoursProblem {
 impl Test for QFlavoursProblem {
     fn run_with_approx(
         &self,
-        _suite: &str,
         id: &str,
         runtime: &dyn Runtime,
         approx: Approximation,
@@ -54,7 +53,7 @@ impl Test for QFlavoursProblem {
             .run(tvec![self.input.clone().into_tvalue()])?
             .remove(0)
             .into_tensor();
-        dbg!(&output);
+        //dbg!(&output);
         let reference = self.input.cast_to::<f32>()?;
         let comparison = output.cast_to::<f32>()?;
         comparison.close_enough(&reference, approx)

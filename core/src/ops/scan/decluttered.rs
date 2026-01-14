@@ -65,16 +65,13 @@ impl Scan {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        if !self.decluttered {
-            let mut new = self.clone();
-            let mut body = self.body.clone();
-            session.optimize(&mut body)?;
-            new.body = body;
-            new.decluttered = true;
-            Ok(Some(TypedModelPatch::replace_single_op(model, node, &node.inputs, new)?))
-        } else {
-            Ok(None)
-        }
+        rule_if!(!self.decluttered);
+        let mut new = self.clone();
+        let mut body = self.body.clone();
+        session.optimize(&mut body)?;
+        new.body = body;
+        new.decluttered = true;
+        Ok(Some(TypedModelPatch::replace_single_op(model, node, &node.inputs, new)?))
     }
 
     fn declutter_body_axes(
@@ -477,9 +474,7 @@ impl Scan {
                 };
                 let axis_tracking =
                     invariants.axis((InOut::Out(emitter_outlet.slot), scan_info.axis))?;
-                if axis_tracking.outputs.iter().any(|o| o.len() > 1) {
-                    return Ok(None);
-                }
+                rule_if!(axis_tracking.outputs.iter().all(|o| o.len() == 1));
                 let mut new_output_mapping = self.output_mapping.clone();
                 let mut new_scan_outputs = node.outputs.len();
                 let mut outer_slots = vec![];
@@ -571,11 +566,7 @@ impl Scan {
     fn body_locked_outlets(&self, node_input_facts: &[&TypedFact]) -> TractResult<TVec<OutletId>> {
         let input_outlets =
             self.body.input_outlets()?.iter().enumerate().filter_map(|(slot, o)| {
-                if node_input_facts[slot].konst.is_none() {
-                    Some(o)
-                } else {
-                    None
-                }
+                if node_input_facts[slot].konst.is_none() { Some(o) } else { None }
             });
         let output_outlets = self
             .output_mapping
@@ -595,18 +586,15 @@ impl Scan {
         self.body.check_consistency()?;
         let locked_outlets = self.body_locked_outlets(node_input_facts)?;
         let mut explored: HashSet<AxisChange> = Default::default();
-        let (body_patch, body_changed_wires) = if let Some(changes) =
-            crate::optim::change_axes::change_axes(
+        rule_if_some!(
+            (body_patch, body_changed_wires) = crate::optim::change_axes::change_axes(
                 &self.body,
                 &change,
                 if locked_interface { &locked_outlets } else { &[] },
                 &self.body_bounds()?,
                 &mut explored,
-            )? {
-            changes
-        } else {
-            return Ok(None);
-        };
+            )?
+        );
         let mut body = self.body.clone();
         body_patch.apply(&mut body)?;
         body.compact()?;
@@ -620,11 +608,8 @@ impl Scan {
             {
                 wire_changes.push((InOut::In(slot), change.clone()));
                 if let InputMapping::Scan(info) = m {
-                    if let Some(axis) = change.transform_axis(info.axis) {
-                        info.axis = axis;
-                    } else {
-                        return Ok(None);
-                    };
+                    rule_if_some!(axis = change.transform_axis(info.axis));
+                    info.axis = axis;
                 };
             }
         }
@@ -636,11 +621,8 @@ impl Scan {
                 .map(|pair| pair.1.clone())
             {
                 if let Some((slot, info)) = m.scan.as_mut() {
-                    if let Some(new_axis) = change.transform_axis(info.axis) {
-                        info.axis = new_axis;
-                    } else {
-                        return Ok(None);
-                    }
+                    rule_if_some!(new_axis = change.transform_axis(info.axis));
+                    info.axis = new_axis;
                     wire_changes.push((InOut::Out(*slot), change.clone()));
                 }
                 if let Some(slot) = m.last_value_slot {
@@ -661,7 +643,7 @@ impl Scan {
 }
 
 impl Op for Scan {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Scan".into()
     }
 
@@ -714,8 +696,10 @@ impl TypedOp for Scan {
         {
             let ifact = self.body.outlet_fact(self.body.inputs[i])?;
             let ofact = self.body.outlet_fact(self.body.outputs[o])?;
-            anyhow::ensure!(ifact == ofact,
-                "inconsistent state shape: body input {i} is {ifact:?} and body output {o} is {ofact:?}",
+            anyhow::ensure!(
+                ifact == ofact,
+                "inconsistent fact: body input {i} is {ifact:?} and body output {o} is {ofact:?}\n{}",
+                self.body
             )
         }
         let mut outputs = tvec!();

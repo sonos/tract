@@ -1,7 +1,7 @@
 use crate::dim::Assertion;
 use crate::internal::*;
 
-use super::{sym::*, DimLike};
+use super::{DimLike, sym::*};
 use itertools::Itertools;
 use num_integer::Integer;
 use num_traits::{AsPrimitive, PrimInt, Zero};
@@ -112,11 +112,7 @@ impl TDim {
 
     #[inline]
     pub fn as_i64(&self) -> Option<i64> {
-        if let Val(v) = self {
-            Some(*v)
-        } else {
-            None
-        }
+        if let Val(v) = self { Some(*v) } else { None }
     }
 
     pub fn eval_to_i64(&self, values: &SymbolValues) -> TractResult<i64> {
@@ -375,11 +371,23 @@ impl TDim {
                 }
             }
             Mul(terms) => {
+                // in case a term is a multiplication itself, flatten it
+                // e.g., (a*b)*c => a*b*c
+                let mut flattened_terms = vec![];
+                for t in terms {
+                    if let Mul(inner_terms) = t.clone().reduce() {
+                        flattened_terms.extend(inner_terms);
+                    } else {
+                        flattened_terms.push(t);
+                    }
+                }
+                let mut terms = flattened_terms;
+
                 let mut gcd = Mul(terms.clone()).gcd() as i64;
                 if gcd == 0 {
                     return Val(0);
                 }
-                let mut terms = if gcd != 1 {
+                terms = if gcd != 1 {
                     terms
                         .into_iter()
                         .map(|t| {
@@ -395,6 +403,7 @@ impl TDim {
                 }
                 terms.retain(|t| !t.is_one() && t != &Val(-1));
                 terms.sort_by(tdim_lexi_order);
+
                 match (gcd, terms.len()) {
                     (_, 0) => Val(gcd), // Case #1: If 0 variables, return product
                     (0, _) => Val(0),   // Case #2: Result is 0 if coef is 0 (actually
@@ -408,7 +417,7 @@ impl TDim {
             MulInt(coef, expr) => {
                 match *expr {
                     MulInt(c2, inner) => {
-                        return MulInt(coef * c2, inner).simplify_rec(scope, scenario)
+                        return MulInt(coef * c2, inner).simplify_rec(scope, scenario);
                     }
                     Val(v) => return Val(coef * v),
                     _ => {}
@@ -439,13 +448,10 @@ impl TDim {
                 } else if let MulInt(-1, a) = a {
                     MulInt(-1, b!(Div(a, q)))
                 } else if let Add(mut terms) = a {
-                    if terms.iter().any(|t| {
-                        if let MulInt(-1, s) = t {
-                            matches!(&**s, Sym(_))
-                        } else {
-                            false
-                        }
-                    }) {
+                    if terms
+                        .iter()
+                        .any(|t| if let MulInt(-1, s) = t { matches!(&**s, Sym(_)) } else { false })
+                    {
                         MulInt(
                             -1,
                             b!(Div(
@@ -505,12 +511,16 @@ impl TDim {
                     .sorted_by(tdim_lexi_order)
                     .dedup()
                     .collect_vec();
-                if terms.len() == 0 {
-                    Val(1)
-                } else if terms.len() == 1 {
-                    terms.remove(0)
-                } else {
-                    Broadcast(terms)
+                // a#min(a,b) if a>0 && b>0 => a
+                match &*terms {
+                    [] => Val(1),
+                    [_] => terms.remove(0),
+                    [a, Min(m)] | [Min(m), a]
+                        if m.contains(a) && m.iter().all(|t| scope.prove_strict_positive(t)) =>
+                    {
+                        a.clone()
+                    }
+                    _ => Broadcast(terms),
                 }
             }
 
@@ -827,11 +837,7 @@ pub(super) fn reduce_ratio(mut p: i64, mut q: i64) -> (i64, u64) {
         p /= gcd;
         q /= gcd;
     }
-    if q < 0 {
-        (-p, (-q) as u64)
-    } else {
-        (p, q as u64)
-    }
+    if q < 0 { (-p, (-q) as u64) } else { (p, q as u64) }
 }
 
 impl Zero for TDim {
@@ -925,11 +931,7 @@ impl<'a> From<&'a Symbol> for TDim {
 impl ops::Neg for TDim {
     type Output = Self;
     fn neg(self) -> Self {
-        if let Val(v) = self {
-            Val(-v)
-        } else {
-            TDim::MulInt(-1, Box::new(self)).reduce()
-        }
+        if let Val(v) = self { Val(-v) } else { TDim::MulInt(-1, Box::new(self)).reduce() }
     }
 }
 
@@ -1109,6 +1111,9 @@ mod tests {
         static ref table: SymbolScope = SymbolScope::default();
         static ref A: Symbol = table.sym("a");
         static ref B: Symbol = table.sym("b");
+        static ref C: Symbol = table.sym("c");
+        static ref D: Symbol = table.sym("d");
+        static ref E: Symbol = table.sym("e");
     }
 
     fn neg(a: &TDim) -> TDim {
@@ -1337,6 +1342,24 @@ mod tests {
     }
 
     #[test]
+    fn broadcast_over_min() {
+        // assuming a>0, b>0 then a#min(a,b) can be replaced by a
+        // proof:
+        //    if b == 1 => min(a,b)=1 => a#1=a => ok
+        //    if a <= b => min(a,b)=a => ok
+        //    if 1 < B < A => expression was invalid, we're generalizing over the non-domain and ignoring the constraint
+        for a in 1..5 {
+            for b in 1..5 {
+                if b > 1 && a > b {
+                    assert!(a.broadcast(a.min(b)).is_err());
+                } else {
+                    assert_eq!(a.broadcast(a.min(b)).unwrap(), a);
+                }
+            }
+        }
+    }
+
+    #[test]
     fn min_ints_1() {
         assert_eq!(2.to_dim().mini(1.to_dim()), 1.to_dim());
     }
@@ -1405,6 +1428,44 @@ mod tests {
             symbols.parse_tdim("min(S+3, S+2)").unwrap().simplify(),
             symbols.parse_tdim("S+2").unwrap(),
         );
+        Ok(())
+    }
+
+    #[test]
+    fn commutative_mul_parens() -> TractResult<()> {
+        let symbols = SymbolScope::default();
+        assert_eq!(
+            symbols.parse_tdim("A*(B*C)").unwrap().simplify(),
+            symbols.parse_tdim("(B*A)*C").unwrap().simplify(),
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn commutative_in_nemo_parakeet_model() -> TractResult<()> {
+        let symbols = SymbolScope::default();
+        assert_eq!(
+            symbols
+                .parse_tdim("8*(1+-1*max(0,5000+-1*(S+7)/8)+max(0,4999+(S+7)/8))*((B)*((S+7)/8))")
+                .unwrap()
+                .simplify(),
+            symbols
+                .parse_tdim("8*((B)*(1+-1*max(0,5000+-1*(S+7)/8)+max(0,4999+(S+7)/8)))*((S+7)/8)")
+                .unwrap()
+                .simplify(),
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn commutative_mul_parens_deep() -> TractResult<()> {
+        let symbols = SymbolScope::default();
+        let deep_tdim = Mul(vec![
+            Mul(vec![Mul(vec![Mul(vec![A.to_dim(), B.to_dim()]), C.to_dim()]), D.to_dim()]),
+            E.to_dim(),
+        ])
+        .simplify();
+        assert_eq!(deep_tdim, symbols.parse_tdim("a*b*c*d*e").unwrap().simplify());
         Ok(())
     }
 }

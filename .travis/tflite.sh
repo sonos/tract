@@ -2,15 +2,8 @@
 
 set -ex
 
-which rustup || curl https://sh.rustup.rs -sSf | sh -s -- -y
-
-PATH=$PATH:$HOME/.cargo/bin
-
-: "${RUST_VERSION:=stable}"
-rustup toolchain add $RUST_VERSION
-rustup default $RUST_VERSION
-
-rustc --version
+ROOT=$(dirname $(dirname $(realpath $0)))
+. $ROOT/.travis/ci-system-setup.sh
 
 if [ `uname` = "Darwin" ]
 then

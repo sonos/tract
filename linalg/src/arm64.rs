@@ -30,6 +30,18 @@ const PART_A72: &str = "0xd08";
 const PART_A73: &str = "0xd09";
 #[allow(dead_code)]
 const PART_A75: &str = "0xd0a";
+#[allow(dead_code)]
+const PART_NEOVERSE_N1: &str = "0xd0c";
+#[allow(dead_code)]
+const PART_NEOVERSE_N2: &str = "0xd49";
+#[allow(dead_code)]
+const PART_NEOVERSE_N3: &str = "0xd8e";
+#[allow(dead_code)]
+const PART_NEOVERSE_V1: &str = "0xd40";
+#[allow(dead_code)]
+const PART_NEOVERSE_V2: &str = "0xd4f";
+#[allow(dead_code)]
+const PART_NEOVERSE_V3: &str = "0xd83";
 
 fn max_cpuid() -> std::io::Result<String> {
     let cpu_info = std::fs::read_to_string("/proc/cpuinfo")?;
@@ -67,10 +79,10 @@ lazy_static::lazy_static! {
 
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 fn apple_get_syscall(key: &str) -> String {
-    use std::ffi::{c_char, c_void, CStr, CString};
+    use std::ffi::{CStr, CString, c_char, c_void};
     use std::ptr::null_mut;
 
-    extern "C" {
+    unsafe extern "C" {
         fn sysctlbyname(
             name: *const c_char,
             oldp: *mut c_void,
@@ -130,33 +142,38 @@ pub fn has_fp16() -> bool {
 #[target_feature(enable = "fp16")]
 #[inline]
 pub unsafe fn add_f16(a: f16, b: f16) -> f16 {
-    let result: u16;
-    std::arch::asm!(
+    unsafe {
+        let result: u16;
+        std::arch::asm!(
         "fadd {0:h}, {1:h}, {2:h}",
         lateout(vreg) result,
         in(vreg) a.to_bits(),
         in(vreg) b.to_bits(),
         options(pure, nomem, nostack, preserves_flags));
-    f16::from_bits(result)
+        f16::from_bits(result)
+    }
 }
 
 #[target_feature(enable = "fp16")]
 #[inline]
 pub unsafe fn mul_f16(a: f16, b: f16) -> f16 {
-    let result: u16;
-    std::arch::asm!(
+    unsafe {
+        let result: u16;
+        std::arch::asm!(
         "fmul {0:h}, {1:h}, {2:h}",
         lateout(vreg) result,
         in(vreg) a.to_bits(),
         in(vreg) b.to_bits(),
         options(pure, nomem, nostack, preserves_flags));
-    f16::from_bits(result)
+        f16::from_bits(result)
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
-enum Kind {
+pub enum Kind {
     Generic,
     AppleM,
+    Neoverse,
     CortexA53,
     CortexA55,
     CortexA72,
@@ -165,7 +182,7 @@ enum Kind {
 }
 
 impl Kind {
-    fn choose() -> Kind {
+    pub fn choose() -> Kind {
         #[cfg(test)]
         crate::setup_test_logger();
         let kind = if let Ok(kind) = std::env::var("TRACT_CPU_AARCH64_KIND") {
@@ -181,6 +198,8 @@ impl Kind {
                 Kind::CortexA73
             } else if kind.contains("a75") {
                 Kind::CortexA75
+            } else if kind.contains("neoverse") {
+                Kind::Neoverse
             } else if kind.contains("applem") {
                 Kind::AppleM
             } else {
@@ -206,6 +225,8 @@ impl Kind {
                 PART_A72 => Kind::CortexA72,
                 PART_A73 => Kind::CortexA73,
                 PART_A75 => Kind::CortexA75,
+                PART_NEOVERSE_N1 | PART_NEOVERSE_N2 | PART_NEOVERSE_N3 | PART_NEOVERSE_V1
+                | PART_NEOVERSE_V2 | PART_NEOVERSE_V3 => Kind::Neoverse,
                 _ => Kind::Generic,
             }
         };
@@ -277,15 +298,6 @@ pub fn plug(ops: &mut Ops) {
 
     #[cfg(not(feature = "no_fp16"))]
     if has_fp16() {
-        ops.mmm_impls.push(arm64fp16_mmm_f16_16x8_a55.mmm());
-        ops.mmm_impls.push(arm64fp16_mmm_f16_16x8_gen.mmm());
-        ops.mmm_impls.push(arm64fp16_mmm_f16_32x4_a55.mmm());
-        ops.mmm_impls.push(arm64fp16_mmm_f16_32x4_gen.mmm());
-        ops.mmm_impls.push(arm64fp16_mmm_f16_32x6_gen.mmm());
-        ops.mmm_impls.push(arm64fp16_mmm_f16_128x1_a55.mmm());
-        ops.mmm_impls.push(arm64fp16_mmm_f16_128x1_gen.mmm());
-        ops.mmm_impls.push(arm64fp16_mmm_f16_64x1_gen.mmm());
-        ops.mmm_impls.push(arm64fp16_mmm_f16_64x3_gen.mmm());
         arm64fp16::plug(ops);
     }
 

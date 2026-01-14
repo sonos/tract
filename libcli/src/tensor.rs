@@ -56,6 +56,13 @@ impl TensorsValues {
             self.0.push(other.clone());
         };
     }
+
+    pub fn input_by_name(&self, name: &str) -> Option<&TensorValues> {
+        self.0
+            .iter()
+            .filter(|tv| tv.output_index.is_none() && !tv.only_output)
+            .find(|t| t.name.as_deref() == Some(name))
+    }
 }
 
 #[derive(Debug, PartialEq, Clone, Default)]
@@ -66,6 +73,8 @@ pub struct TensorValues {
     pub fact: Option<InferenceFact>,
     pub values: Option<Vec<TValue>>,
     pub random_range: Option<Range<f32>>,
+    pub only_input: bool,
+    pub only_output: bool,
 }
 
 fn parse_dt(dt: &str) -> TractResult<DatumType> {
@@ -85,7 +94,7 @@ fn parse_dt(dt: &str) -> TractResult<DatumType> {
         "tdim" => DatumType::TDim,
         _ => bail!(
             "Type of the input should be f16, f32, f64, i8, i16, i16, i32, u8, u16, u32, u64, TDim."
-            ),
+        ),
     })
 }
 
@@ -283,108 +292,305 @@ pub struct RunParams {
     pub allow_random_input: bool,
     pub allow_float_casts: bool,
     pub symbols: SymbolValues,
+    pub prompt_chunk_size: Option<usize>,
 }
 
-pub fn retrieve_or_make_inputs(
-    tract: &dyn Model,
-    params: &RunParams,
-) -> TractResult<Vec<TVec<TValue>>> {
-    let mut tmp: TVec<Vec<TValue>> = tvec![];
-    for (ix, input) in tract.input_outlets().iter().enumerate() {
-        let name = tract.node_name(input.node);
-        let fact = tract.outlet_typedfact(*input)?;
-        if let Some(mut value) = params
-            .tensors_values
-            .by_name(name)
-            .or_else(|| params.tensors_values.by_input_ix(ix))
-            .and_then(|t| t.values.clone())
-        {
-            if !value[0].datum_type().is_quantized()
-                && fact.datum_type.is_quantized()
-                && value[0].datum_type() == fact.datum_type.unquantized()
+pub struct RunTensors {
+    pub sources: Vec<TVec<TValue>>,
+    pub state_initializers: Vec<TValue>,
+}
+
+pub fn figure_out_b_s_p(
+    model: &TypedModel,
+) -> TractResult<(Option<Symbol>, Option<Symbol>, Option<Symbol>)> {
+    // expectations:
+    // - one input is for tokens, so integer dt (i64 ?) and typically of shape S or 1,S, or B,S
+    // - other inputs are kv cache, some kind of float. shape features both S and P, and B if B is present in tokens
+    let token_input = model
+        .inputs
+        .iter()
+        .position(|i| model.outlet_fact(*i).unwrap().datum_type.is_integer())
+        .context("No token input found")?;
+    let tokens_symbols = model.input_fact(token_input)?.shape.volume().symbols();
+    let kv_symbols = if let Some(kv_input) =
+        model.inputs.iter().position(|i| model.outlet_fact(*i).unwrap().datum_type.is_float())
+    {
+        model.input_fact(kv_input)?.shape.volume().symbols()
+    } else {
+        // Look for KVCache Op
+        let mut dummy_session_state = SessionState::default();
+        let mut symbols = HashSet::new();
+        for node in &model.nodes {
+            if let Some((_, fact)) = node
+                .op
+                .state(&mut dummy_session_state, 0)?
+                .and_then(|state| state.init_tensor_fact())
             {
-                value = value
-                    .iter()
-                    .map(|v| {
-                        let mut v = v.clone().into_tensor();
-                        unsafe { v.set_datum_type(fact.datum_type) };
-                        v.into()
-                    })
-                    .collect();
+                symbols = fact.shape.volume().symbols();
+                break;
             }
-            if TypedFact::shape_and_dt_of(&value[0]).compatible_with(&fact) {
-                info!("Using fixed input for input called {} ({} turn(s))", name, value.len());
-                tmp.push(value.iter().map(|t| t.clone().into_tensor().into()).collect())
+        }
+        symbols
+    };
+
+    let b = tokens_symbols.intersection(&kv_symbols).cloned().collect::<HashSet<_>>();
+    let s = tokens_symbols.difference(&b).cloned().collect::<HashSet<_>>();
+    let p = kv_symbols.difference(&b).cloned().collect::<HashSet<_>>();
+    Ok((b.into_iter().next(), s.into_iter().next(), p.into_iter().next()))
+}
+
+fn chunk_fact(
+    fact: &TypedFact,
+    params: &RunParams,
+    model: &dyn Model,
+) -> TractResult<Vec<TypedFact>> {
+    let Some(chunk_size) = params.prompt_chunk_size else {
+        return Ok(vec![fact.clone()]);
+    };
+    let Some(model) = model.downcast_ref::<TypedModel>() else {
+        return Ok(vec![fact.clone()]);
+    };
+    let (_, s, _) = figure_out_b_s_p(model)?;
+    let Some(s) = s else {
+        return Ok(vec![fact.clone()]);
+    };
+
+    let dims = fact.shape.dims();
+    let Some(sym_idx) = dims.iter().position(|d| *d == TDim::Sym(s.clone())) else {
+        return Ok(vec![fact.clone()]);
+    };
+
+    let resolved_sym = dims[sym_idx].eval_to_i64(&params.symbols)? as usize;
+    if resolved_sym <= chunk_size {
+        return Ok(vec![fact.clone()]);
+    }
+
+    let num_chunks = resolved_sym.div_ceil(chunk_size);
+    let mut out = Vec::with_capacity(num_chunks);
+
+    for start in (0..resolved_sym).step_by(chunk_size) {
+        let this = chunk_size.min(resolved_sym - start) as i64;
+
+        let mut new_fact = fact.clone();
+        new_fact.shape = new_fact
+            .shape
+            .iter()
+            .enumerate()
+            .map(|(i, d)| if i == sym_idx { TDim::Val(this) } else { d.eval(&params.symbols) })
+            .collect();
+
+        out.push(new_fact);
+    }
+
+    Ok(out)
+}
+
+fn chunk_tensor(
+    tensor: Tensor,
+    fact: &TypedFact,
+    params: &RunParams,
+    model: &dyn Model,
+) -> TractResult<Vec<TValue>> {
+    let Some(chunk_size) = params.prompt_chunk_size else {
+        return Ok(vec![tensor.into_tvalue()]);
+    };
+
+    let Some(model) = model.downcast_ref::<TypedModel>() else {
+        return Ok(vec![tensor.into_tvalue()]);
+    };
+    let (_, s, _) = figure_out_b_s_p(model)?;
+    let Some(s) = s else {
+        return Ok(vec![tensor.into_tvalue()]);
+    };
+
+    let dims = fact.shape.dims();
+    let Some(symb_axis) = dims.iter().position(|d| *d == TDim::Sym(s.clone())) else {
+        return Ok(vec![tensor.into_tvalue()]);
+    };
+
+    let resolved_sym = tensor.shape()[symb_axis];
+    if resolved_sym <= chunk_size {
+        return Ok(vec![tensor.into_tvalue()]);
+    }
+
+    let num_chunks = resolved_sym.div_ceil(chunk_size);
+    let mut out = Vec::with_capacity(num_chunks);
+
+    for start in (0..resolved_sym).step_by(chunk_size) {
+        let this = chunk_size.min(resolved_sym - start);
+        out.push(tensor.slice(symb_axis, start, start + this)?.into_tvalue());
+    }
+
+    Ok(out)
+}
+
+fn get_or_make_tensors(
+    model: &dyn Model,
+    params: &RunParams,
+    fact: TypedFact,
+    name: &str,
+    input_idx: usize,
+    target: &mut TVec<Vec<TValue>>,
+) -> TractResult<()> {
+    if let Some(mut value) = params
+        .tensors_values
+        .by_name(name)
+        .or_else(|| params.tensors_values.by_input_ix(input_idx))
+        .and_then(|t| t.values.clone())
+    {
+        if !value[0].datum_type().is_quantized()
+            && fact.datum_type.is_quantized()
+            && value[0].datum_type() == fact.datum_type.unquantized()
+        {
+            value = value
+                .iter()
+                .map(|v| {
+                    let mut v = v.clone().into_tensor();
+                    unsafe { v.set_datum_type(fact.datum_type) };
+                    v.into()
+                })
+                .collect();
+        }
+        let mut chunked_tensors: Vec<TValue> = vec![];
+        for t in &value {
+            let tensor = if TypedFact::shape_and_dt_of(&value[0]).compatible_with(&fact) {
+                info_once(format!(
+                    "Using fixed input for input called {} ({} turn(s))",
+                    name,
+                    value.len()
+                ));
+                t.clone().into_tensor()
             } else if fact.datum_type == f16::datum_type()
                 && value[0].datum_type() == f32::datum_type()
                 && params.allow_float_casts
             {
-                tmp.push(
-                    value.iter().map(|t| t.cast_to::<f16>().unwrap().into_owned().into()).collect(),
-                )
-            } else if value.len() == 1 && tract.properties().contains_key("pulse.delay") {
-                let value = &value[0];
-                let input_pulse_axis = tract
-                    .properties()
-                    .get("pulse.input_axes")
-                    .context("Expect pulse.input_axes property")?
-                    .cast_to::<i64>()?
-                    .as_slice::<i64>()?[ix] as usize;
-                let input_pulse = fact.shape.get(input_pulse_axis).unwrap().to_usize().unwrap();
-                let input_len = value.shape()[input_pulse_axis];
-
-                // how many pulses do we need to push full result out ?
-                // guess by looking at len and delay of the first output
-                let output_pulse_axis = tract
-                    .properties()
-                    .get("pulse.output_axes")
-                    .context("Expect pulse.output_axes property")?
-                    .cast_to::<i64>()?
-                    .as_slice::<i64>()?[0] as usize;
-                let output_fact = tract.outlet_typedfact(tract.output_outlets()[0])?;
-                let output_pulse =
-                    output_fact.shape.get(output_pulse_axis).unwrap().to_usize().unwrap();
-                let output_len = input_len * output_pulse / input_pulse;
-                let output_delay = tract.properties()["pulse.delay"].as_slice::<i64>()?[0] as usize;
-                let last_frame = output_len + output_delay;
-                let needed_pulses = last_frame.divceil(output_pulse);
-                let mut values = vec![];
-                for ix in 0..needed_pulses {
-                    let mut t =
-                        Tensor::zero_dt(fact.datum_type, fact.shape.as_concrete().unwrap())?;
-                    let start = ix * input_pulse;
-                    let end = (start + input_pulse).min(input_len);
-                    if end > start {
-                        t.assign_slice(0..end - start, value, start..end, input_pulse_axis)?;
-                    }
-                    values.push(t.into());
-                }
-                info!(
-                    "Generated {} pulses of shape {:?} for input {}.",
-                    needed_pulses, fact.shape, ix
-                );
-                tmp.push(values);
+                info_once(format!(
+                    "Casting input to F16 for input called {} ({} turn(s))",
+                    name,
+                    value.len()
+                ));
+                t.cast_to::<f16>()?.into_owned()
             } else {
-                bail!("For input {}, can not reconcile model input fact {:?} with provided input {:?}", name, fact, value[0]);
+                break;
             };
-        } else if fact.shape.is_concrete() && fact.shape.volume() == TDim::zero() {
-            let shape = fact.shape.as_concrete().unwrap();
-            let tensor = Tensor::zero_dt(fact.datum_type, shape)?;
-            tmp.push(vec![tensor.into()]);
-        } else if params.allow_random_input {
-            let mut fact: TypedFact = tract.outlet_typedfact(*input)?.clone();
-            info_once(format!("Using random input for input called {name:?}: {fact:?}"));
-            let tv = params
-                .tensors_values
-                .by_name(name)
-                .or_else(|| params.tensors_values.by_input_ix(ix));
-            fact.shape = fact.shape.iter().map(|dim| dim.eval(&params.symbols)).collect();
-            tmp.push(vec![crate::tensor::tensor_for_fact(&fact, None, tv)?.into()]);
-        } else {
-            bail!("Unmatched tensor {}. Fix the input or use \"--allow-random-input\" if this was intended", name);
+
+            chunked_tensors.extend(chunk_tensor(tensor, &fact, params, model)?);
         }
+        if !chunked_tensors.is_empty() {
+            target.push(chunked_tensors);
+            return Ok(());
+        }
+
+        if value.len() == 1 && model.properties().contains_key("pulse.delay") {
+            let value = &value[0];
+            let input_pulse_axis = model
+                .properties()
+                .get("pulse.input_axes")
+                .context("Expect pulse.input_axes property")?
+                .cast_to::<i64>()?
+                .as_slice::<i64>()?[input_idx] as usize;
+            let input_pulse = fact.shape.get(input_pulse_axis).unwrap().to_usize().unwrap();
+            let input_len = value.shape()[input_pulse_axis];
+
+            // how many pulses do we need to push full result out ?
+            // guess by looking at len and delay of the first output
+            let output_pulse_axis = model
+                .properties()
+                .get("pulse.output_axes")
+                .context("Expect pulse.output_axes property")?
+                .cast_to::<i64>()?
+                .as_slice::<i64>()?[0] as usize;
+            let output_fact = model.outlet_typedfact(model.output_outlets()[0])?;
+            let output_pulse =
+                output_fact.shape.get(output_pulse_axis).unwrap().to_usize().unwrap();
+            let output_len = input_len * output_pulse / input_pulse;
+            let output_delay = model.properties()["pulse.delay"].as_slice::<i64>()?[0] as usize;
+            let last_frame = output_len + output_delay;
+            let needed_pulses = last_frame.divceil(output_pulse);
+            let mut values = vec![];
+            for ix in 0..needed_pulses {
+                let mut t = Tensor::zero_dt(fact.datum_type, fact.shape.as_concrete().unwrap())?;
+                let start = ix * input_pulse;
+                let end = (start + input_pulse).min(input_len);
+                if end > start {
+                    t.assign_slice(0..end - start, value, start..end, input_pulse_axis)?;
+                }
+                values.push(t.into());
+            }
+            info!(
+                "Generated {} pulses of shape {:?} for input {}.",
+                needed_pulses, fact.shape, input_idx
+            );
+            target.push(values);
+        } else {
+            bail!(
+                "For input {}, can not reconcile model input fact {:?} with provided input {:?}",
+                name,
+                fact,
+                value[0]
+            );
+        };
+    } else if fact.shape.is_concrete() && fact.shape.volume() == TDim::zero() {
+        let shape = fact.shape.as_concrete().unwrap();
+        let tensor = Tensor::zero_dt(fact.datum_type, shape)?;
+        target.push(vec![tensor.into()]);
+    } else if params.allow_random_input {
+        info_once(format!("Using random input for input called {name:?}: {fact:?}"));
+        let tv = params
+            .tensors_values
+            .by_name(name)
+            .or_else(|| params.tensors_values.by_input_ix(input_idx));
+
+        let mut chunked_facts = chunk_fact(&fact, params, model)?;
+
+        let mut chunked_tensors = Vec::with_capacity(chunked_facts.len());
+        for fact in &mut chunked_facts {
+            fact.shape = fact.shape.iter().map(|dim| dim.eval(&params.symbols)).collect();
+            chunked_tensors.push(tensor_for_fact(fact, None, tv)?.into());
+        }
+        target.push(chunked_tensors);
+    } else {
+        bail!(
+            "Unmatched tensor {}. Fix the input or use \"--allow-random-input\" if this was intended",
+            name
+        );
     }
-    Ok((0..tmp[0].len()).map(|turn| tmp.iter().map(|t| t[turn].clone()).collect()).collect())
+    Ok(())
+}
+
+pub fn get_or_make_inputs(tract: &dyn Model, params: &RunParams) -> TractResult<RunTensors> {
+    // Resolve source inputs
+    let mut tmp_inputs = tvec![];
+    for (ix, input) in tract.input_outlets().iter().enumerate() {
+        let fact = tract.outlet_typedfact(*input)?;
+        let name = tract.node_name(input.node);
+        get_or_make_tensors(tract, params, fact, name, ix, &mut tmp_inputs)?;
+    }
+
+    let n_turns = tmp_inputs.first().map_or(0, |t| t.len());
+    let sources = (0..n_turns)
+        .map(|i| tmp_inputs.iter().map(|t| t[i].clone()).collect::<TVec<_>>())
+        .collect::<Vec<_>>();
+
+    // Resolve state initializers (KV Cache, etc.)
+    let mut dummy_session_state = SessionState::default();
+    let state_initializers = (0..tract.nodes_len())
+        .filter_map(|id| {
+            tract
+                .node_op(id)
+                .state(&mut dummy_session_state, id)
+                .ok()
+                .flatten()
+                .and_then(|state| state.init_tensor_fact())
+                .map(|(name, fact)| {
+                    let mut tmp = tvec![];
+                    get_or_make_tensors(tract, params, fact, &name, usize::MAX, &mut tmp)?;
+                    Ok(tmp.remove(0).remove(0))
+                })
+        })
+        .collect::<TractResult<Vec<_>>>()?;
+
+    Ok(RunTensors { sources, state_initializers })
 }
 
 fn make_inputs(values: &[impl std::borrow::Borrow<TypedFact>]) -> TractResult<TVec<TValue>> {
@@ -428,7 +634,7 @@ pub fn random(sizes: &[usize], datum_type: DatumType, tv: Option<&TensorValues>)
     if let Some(range) = tv.and_then(|tv| tv.random_range.as_ref()) {
         slice.iter_mut().for_each(|x| *x = rng.gen_range(range.clone()))
     } else {
-        slice.iter_mut().for_each(|x| *x = rng.gen())
+        slice.iter_mut().for_each(|x| *x = rng.r#gen())
     };
     tensor.cast_to_dt(datum_type).unwrap().into_owned()
 }

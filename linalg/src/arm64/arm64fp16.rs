@@ -12,10 +12,10 @@ pub use max::*;
 pub use sum::*;
 pub use unicast::*;
 
+use crate::Ops;
 use crate::block_quant::PackedBlockQuantFormat;
 use crate::block_quant::Q4_0;
 use crate::frame::mmm::ImplementationQuality::ManuallyOptimized;
-use crate::Ops;
 
 const FP16: fn() -> bool = crate::arm64::has_fp16;
 
@@ -41,10 +41,10 @@ pub fn plug(ops: &mut Ops) {
         arm64fp16_mmm_f16_16x8_a55.mmm(),
         arm64fp16_mmm_f16_16x8_gen.mmm(),
         arm64fp16_mmm_f16_32x4_a55.mmm(),
-        arm64fp16_mmm_f16_16x8_gen.mmm(),
+        arm64fp16_mmm_f16_32x4_gen.mmm(),
         arm64fp16_mmm_f16_128x1_a55.mmm(),
         arm64fp16_mmm_f16_128x1_gen.mmm(),
-        arm64fp16_mmm_f16_64x1_gen.mmm(),
+        arm64fp16_mmm_f16_64x3_gen.mmm(),
         arm64fp16_mmm_f16_32x6_gen.mmm(),
         arm64fp16_mmm_f16_64x1_gen.mmm(),
     ]);

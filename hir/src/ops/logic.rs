@@ -7,7 +7,7 @@ pub use tract_core::ops::change_axes::wire_with_rank_broadcast;
 pub use tract_core::ops::logic::*;
 
 impl Expansion for Comp {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         <Comp as Op>::name(self)
     }
 
@@ -42,7 +42,7 @@ impl Expansion for Comp {
 pub struct Iff;
 
 impl Expansion for Iff {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Iff".into()
     }
 

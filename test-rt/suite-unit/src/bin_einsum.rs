@@ -127,7 +127,7 @@ impl Arbitrary for BinEinsumProblem {
                 let b: String = b.into_iter().collect();
                 let c: String = c.into_iter().collect();
                 let expr: AxesMapping = format!("{a},{b}->{c}").parse().unwrap();
-                eprintln!("{expr}");
+                //eprintln!("{expr}");
                 expr
             })
             .prop_flat_map(|expr| {
@@ -295,7 +295,6 @@ impl BinEinsumProblem {
 impl Test for BinEinsumProblem {
     fn run_with_approx(
         &self,
-        _suite: &str,
         id: &str,
         runtime: &dyn Runtime,
         approx: Approximation,
@@ -404,6 +403,18 @@ pub fn suite() -> TractResult<TestSuite> {
             a_constant: false,
             b_constant: false,
             unicast_add_constant: None,
+        },
+    );
+
+    suite.add(
+        "cuda_binary_bug_with_bias",
+        BinEinsumProblem {
+            expr: "mewk,owkn->wnemo".parse()?,
+            a: Tensor::zero::<f32>(&[1, 3, 1, 2])?,
+            b: Tensor::zero::<f32>(&[1, 1, 2, 1])?,
+            a_constant: false,
+            b_constant: false,
+            unicast_add_constant: Some(tensor1(&[0f32, 0f32, 1f32]).into_shape(&[1, 1, 3, 1, 1])?),
         },
     );
 

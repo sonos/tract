@@ -23,7 +23,7 @@ impl TypedConcat {
 }
 
 impl Op for TypedConcat {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Concat".into()
     }
 
@@ -38,6 +38,7 @@ impl TypedOp for TypedConcat {
     as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        ensure!(inputs.len() > 0);
         let mut fact = inputs[0].without_value();
         for input in inputs {
             if input.rank() != fact.rank()
@@ -79,8 +80,7 @@ impl TypedOp for TypedConcat {
         _io: InOut,
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
-        let axis =
-            if let Some(axis) = change.transform_axis(self.axis) { axis } else { return Ok(None) };
+        rule_if_some!(axis = change.transform_axis(self.axis));
         let op = TypedConcat { axis };
         Ok(Some(AxisChangeConsequence::new(model, node, Some(Box::new(op)), change)))
     }

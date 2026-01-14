@@ -1,0 +1,10 @@
+version 1.0;
+
+fragment weights(input: tensor<scalar>) -> (weights: tensor<scalar>) {
+  weights = external(label =  weights, shape = [1,2,3]);
+}
+
+graph network( input ) -> ( output ) {
+  input = external(shape = [1, 2, 3]);
+  output = weights(input);
+}

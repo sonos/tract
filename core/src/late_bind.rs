@@ -27,7 +27,7 @@ impl<S: ResolveTo<C>, C: Clone> GeometryBound<S, C> {
         }
     }
 
-    pub fn to_concrete(&self, param: &S::Param) -> TractResult<Cow<C>> {
+    pub fn to_concrete(&self, param: &S::Param) -> TractResult<Cow<'_, C>> {
         match self {
             Self::Symbolic(sym) => Ok(Cow::Owned(sym.resolve(param)?)),
             Self::Concrete(conc) => Ok(Cow::Borrowed(conc)),
@@ -35,19 +35,11 @@ impl<S: ResolveTo<C>, C: Clone> GeometryBound<S, C> {
     }
 
     pub fn as_concrete(&self) -> Option<&C> {
-        if let Self::Concrete(conc) = self {
-            Some(conc)
-        } else {
-            None
-        }
+        if let Self::Concrete(conc) = self { Some(conc) } else { None }
     }
 
     pub fn optimize_if(self, param: Option<&S::Param>) -> TractResult<Self> {
-        if let Some(param) = param {
-            self.into_concrete(param)
-        } else {
-            Ok(self)
-        }
+        if let Some(param) = param { self.into_concrete(param) } else { Ok(self) }
     }
 }
 

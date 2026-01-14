@@ -175,11 +175,7 @@ impl ShapeFactoid {
     }
 
     pub fn rank(&self) -> IntFactoid {
-        if self.open {
-            GenericFactoid::Any
-        } else {
-            GenericFactoid::Only(self.dims.len() as i64)
-        }
+        if self.open { GenericFactoid::Any } else { GenericFactoid::Only(self.dims.len() as i64) }
     }
 
     pub fn ensure_rank_at_least(&mut self, n: usize) -> bool {
@@ -247,11 +243,7 @@ impl Factoid for ShapeFactoid {
 
         let dims: TVec<_> = self.dims().filter_map(|d| d.concretize()).collect();
 
-        if dims.len() < self.dims.len() {
-            None
-        } else {
-            Some(dims)
-        }
+        if dims.len() < self.dims.len() { None } else { Some(dims) }
     }
 
     /// Tries to unify the fact with another fact of the same type.

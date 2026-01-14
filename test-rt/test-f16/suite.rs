@@ -29,6 +29,7 @@ fn mk_suite() -> infra::TestSuite {
 }
 
 fn ignore_unit(t: &[String], case: &dyn Test) -> bool {
+    #[allow(clippy::collapsible_if)]
     if let Some(qcp) = case.downcast_ref::<QConvProblem>() {
         if !compatible_conv_q(qcp) {
             return true;
@@ -60,6 +61,7 @@ test_dynamicquantizelinear_max_adjusted
 test_dynamicquantizelinear_min_adjusted
 test_gemm_broadcast
 test_gemm_nobroadcast
+test_if
 test_maxpool_2d_ceil
 test_maxpool_2d_same_lower
 test_maxpool_with_argmax_2d_precomputed_pads

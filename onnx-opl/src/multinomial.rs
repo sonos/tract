@@ -9,10 +9,10 @@ use tract_nnef::tract_num_traits::{AsPrimitive, Float, Zero};
 
 pub fn register(registry: &mut Registry) {
     registry.register_primitive(
-        "tract_onnx_multinomial", 
+        "tract_onnx_multinomial",
         &parameters(),
-        &[("output", TypeName::Scalar.tensor())], 
-        load
+        &[("output", TypeName::Scalar.tensor())],
+        load,
     );
     registry.register_dumper(dump);
 }
@@ -66,7 +66,7 @@ impl Multinomial {
         let output = tract_ndarray::ArrayD::from_shape_fn(out_shape, |co_o| -> T2 {
             let batch = co_o[0];
 
-            let mut rand = rng.gen::<T1>() * maximums[batch];
+            let mut rand = rng.r#gen::<T1>() * maximums[batch];
             let mut ret: T2 = usize::as_(class_size - 1);
 
             for (i, prob) in input.slice(s![batch, ..]).iter().enumerate() {
@@ -86,7 +86,7 @@ impl Multinomial {
 }
 
 impl Op for Multinomial {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Multinomial".into()
     }
 
@@ -166,10 +166,7 @@ fn dump(ast: &mut IntoAst, node: &TypedNode, op: &Multinomial) -> TractResult<Op
     Ok(Some(inv))
 }
 
-fn load(
-    builder: &mut ModelBuilder,
-    invocation: &ResolvedInvocation,
-) -> TractResult<Value> {
+fn load(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
     let input = invocation.named_arg_as(builder, "input")?;
     let dtype = match invocation.named_arg_as::<i64>(builder, "dtype")? {
         6 => DatumType::I32,

@@ -1,6 +1,5 @@
 pub use crate::kernels::BinOps;
-use crate::ops::MetalEvalOp;
-use crate::MetalStream;
+use crate::utils::with_borrowed_metal_stream;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensorExt;
 
@@ -26,7 +25,7 @@ impl MetalBinOp {
 }
 
 impl Op for MetalBinOp {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         format!("Metal{}", self.0.name()).into()
     }
 
@@ -42,14 +41,15 @@ impl Op for MetalBinOp {
     op_as_typed_op!();
 }
 
-crate::impl_eval_op_for_metal_op!(MetalBinOp);
+impl EvalOp for MetalBinOp {
+    fn is_stateless(&self) -> bool {
+        true
+    }
 
-impl MetalEvalOp for MetalBinOp {
-    fn metal_eval(
+    fn eval_with_session(
         &self,
-        stream: &MetalStream,
         node_id: usize,
-        session: &mut SessionState,
+        session: &SessionState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let (opaque_a, opaque_b) = args_2!(inputs);
@@ -57,11 +57,13 @@ impl MetalEvalOp for MetalBinOp {
         let b = opaque_b.to_device_tensor()?;
         let out_shape = self.0.output_shape(a.shape(), b.shape())?;
         let out_dt = self.0.output_datum_type(a.datum_type(), b.datum_type())?;
-        let output = crate::ops::make_tensor_for_node(session, node_id, out_dt, &out_shape)?;
-        self.0
-            .dispatch_eval(stream, a, b, &output)
-            .with_context(|| "Error while dispatching eval for Metal Bin Op")?;
-
+        let output =
+            tract_gpu::session_handler::make_tensor_for_node(session, node_id, out_dt, &out_shape)?;
+        with_borrowed_metal_stream(|stream| {
+            self.0
+                .dispatch_eval(stream, a, b, &output)
+                .with_context(|| "Error while dispatching eval for Metal Bin Op")
+        })?;
         Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
     }
 }

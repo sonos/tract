@@ -4,14 +4,12 @@ use crate::internal::*;
 pub struct Dummy;
 
 impl Op for Dummy {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Dummy".into()
     }
 
     op_as_typed_op!();
 }
-
-
 
 impl EvalOp for Dummy {
     fn is_stateless(&self) -> bool {

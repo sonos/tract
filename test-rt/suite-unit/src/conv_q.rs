@@ -261,7 +261,6 @@ impl QConvProblem {
 impl Test for QConvProblem {
     fn run_with_approx(
         &self,
-        _suite: &str,
         id: &str,
         runtime: &dyn Runtime,
         approx: Approximation,
@@ -276,7 +275,7 @@ impl Test for QConvProblem {
         });
         let data = self.data.clone().into_tensor().cast_to_dt(idt)?.into_owned().into_tvalue();
         let output = model.run(tvec!(data))?.remove(0);
-        eprintln!("reference: {reference:?}\noutput   : {output:?}");
+        //eprintln!("reference: {reference:?}\noutput   : {output:?}");
         output.close_enough(&reference, approx)
     }
 }
@@ -530,6 +529,23 @@ pub fn suite() -> TractResult<TestSuite> {
             group: 1,
             data: tensor2(&[[1i8]]),
             kernel: tensor3(&[[[0i8]]]),
+            bias: None,
+            qp,
+            raw_output_dt: DatumType::I8,
+        },
+    );
+
+    let mut qp = qp_noop_i8();
+    qp[4] = tensor0(-1i32);
+    suite.add(
+        "c_zp_0",
+        QConvProblem {
+            shape_in: CHW.from_n_c_hw(1, 1, [2]).unwrap(),
+            kernel_format: OIHW,
+            co: 1,
+            group: 1,
+            data: tensor2(&[[0i8, 0]]),
+            kernel: tensor3(&[[[0i8, 0]]]),
             bias: None,
             qp,
             raw_output_dt: DatumType::I8,

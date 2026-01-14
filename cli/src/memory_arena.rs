@@ -1,8 +1,7 @@
-
-use tract_hir::internal::*;
-use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use tract_gpu::memory::DeviceMemSchema;
+use tract_hir::internal::*;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 struct MemArenaUsage {
@@ -42,24 +41,20 @@ impl MemArenaMetrics {
 
         const STEP_TOKENS: i64 = 16;
         let memory_size: String = schema.memory_size().to_string();
-        let size_by_partition: Vec<String> = schema
-            .size_by_partition()
-            .iter()
-            .map(|it| it.to_string())
-            .collect();
+        let size_by_partition: Vec<String> =
+            schema.size_by_partition().iter().map(|it| it.to_string()).collect();
         let symbol_scope = SymbolScope::default();
-        let sequence_length =  symbol_scope.sym("S");
+        let sequence_length = symbol_scope.sym("S");
         let past_sequence_length = symbol_scope.sym("P");
 
         let mut pp = BTreeMap::new();
         let mut max_memory_size: i64 = 0;
         let mut sum_size: i64 = 0;
         let mut sum_used: i64 = 0;
-        for s in (STEP_TOKENS..MAX_PROMPT_TOKENS+1).step_by(STEP_TOKENS as usize) {
-            log::info!("Prompt processing: P: 0, S: {}", s);
-            let symbol_values = SymbolValues::default()
-                .with(&sequence_length, s)
-                .with(&past_sequence_length, 0);
+        for s in (STEP_TOKENS..MAX_PROMPT_TOKENS + 1).step_by(STEP_TOKENS as usize) {
+            log::info!("Prompt processing: P: 0, S: {s}");
+            let symbol_values =
+                SymbolValues::default().with(&sequence_length, s).with(&past_sequence_length, 0);
             let usage = MemArenaUsage::eval_from_schema(schema, &symbol_values)?;
             max_memory_size = max_memory_size.max(usage.arena_memory_size);
             sum_size += usage.arena_memory_size;
@@ -67,11 +62,10 @@ impl MemArenaMetrics {
             pp.insert(s, usage);
         }
         let mut tg = BTreeMap::new();
-        for p in (0..MAX_GEN_TOKENS+1).step_by(STEP_TOKENS as usize) {
-            log::info!("Token generation: P: {}, S: 1", p);
-            let symbol_values = SymbolValues::default()
-                .with(&sequence_length, 1)
-                .with(&past_sequence_length, p);
+        for p in (0..MAX_GEN_TOKENS + 1).step_by(STEP_TOKENS as usize) {
+            log::info!("Token generation: P: {p}, S: 1");
+            let symbol_values =
+                SymbolValues::default().with(&sequence_length, 1).with(&past_sequence_length, p);
             let usage = MemArenaUsage::eval_from_schema(schema, &symbol_values)?;
             max_memory_size = max_memory_size.max(usage.arena_memory_size);
             sum_size += usage.arena_memory_size;
@@ -87,7 +81,7 @@ impl MemArenaMetrics {
 pub fn dump_metrics(
     model: &TypedModel,
     options: &PlanOptions,
-    path: impl AsRef<std::path::Path>
+    path: impl AsRef<std::path::Path>,
 ) -> TractResult<()> {
     log::info!("Analyzing Metal memory schema utilization...");
     const SCHEMA_HINT_S: i64 = 1024;
@@ -96,14 +90,9 @@ pub fn dump_metrics(
     let plan = SimplePlan::new_with_options(model, options)?;
     let order = plan.order_without_consts();
     let mut symbol_values = SymbolValues::default();
-    let sequence_length = model
-        .symbols
-        .get("S")
-        .context("Could not find symbol S in model")?;
-    let past_sequence_length = model
-        .symbols
-        .get("P")
-        .context("Could not find symbol P in model")?;
+    let sequence_length = model.symbols.get("S").context("Could not find symbol S in model")?;
+    let past_sequence_length =
+        model.symbols.get("P").context("Could not find symbol P in model")?;
 
     symbol_values.set(&sequence_length, SCHEMA_HINT_S);
     symbol_values.set(&past_sequence_length, SCHEMA_HINT_P);

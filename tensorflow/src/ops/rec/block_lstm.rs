@@ -26,7 +26,7 @@ pub struct BlockLSTM {
 }
 
 impl Expansion for BlockLSTM {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "BlockLSTM".into()
     }
 
@@ -165,11 +165,11 @@ impl Expansion for BlockLSTM {
         }
 
         let Some(seqlen) = &model.outlet_fact(inputs[0])?.konst else {
-                bail!("Non constant seq_len is not supported");
-            };
+            bail!("Non constant seq_len is not supported");
+        };
         let Some(seqlen) = seqlen.as_uniform() else {
-                bail!("Non uniform seq_len is not supported");
-            };
+            bail!("Non uniform seq_len is not supported");
+        };
         let seqlen = seqlen.cast_to::<TDim>()?;
         if seqlen.to_scalar::<TDim>()? != &model.outlet_fact(inputs[1])?.shape[0] {
             bail!("seq_len only supported for trivial noop case");

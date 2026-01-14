@@ -1,8 +1,8 @@
 use crate::internal::*;
 use crate::ops::array::MultiBroadcastTo;
-use crate::ops::cnn::wire_reshape_bias_for_bin;
 use crate::ops::cnn::KernelFormat;
 use crate::ops::cnn::PoolSpec;
+use crate::ops::cnn::wire_reshape_bias_for_bin;
 use crate::ops::einsum::EinSum;
 
 #[derive(Clone, Debug, new, Hash)]
@@ -124,7 +124,7 @@ impl Deconv {
 }
 
 impl Op for Deconv {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Deconv".into()
     }
 

@@ -12,7 +12,9 @@ fn leaky_relu_f16(c: &mut Criterion) {
     group.bench_function("rust", |b| b.iter(|| rust_fp16(input, alpha)));
     group.bench_function("rust_with_f16", |b| b.iter(|| unsafe { rust_with_fp16(input, alpha) }));
     group.bench_function("linalg", |b| b.iter(|| linalg16(input, alpha)));
-    group.bench_function("linalg-asm", |b| b.iter(|| tract_linalg::arm64::arm64fp16_leaky_relu_f16_16n::run(input, alpha)));
+    group.bench_function("linalg-asm", |b| {
+        b.iter(|| tract_linalg::arm64::arm64fp16_leaky_relu_f16_16n::run(input, alpha))
+    });
 }
 
 #[inline(never)]
@@ -43,7 +45,9 @@ fn leaky_relu_f32(c: &mut Criterion) {
     let alpha = 0.1f32;
     group.bench_function("rust", |b| b.iter(|| rust_fp32(input, alpha)));
     group.bench_function("linalg", |b| b.iter(|| linalg32(input, alpha)));
-    group.bench_function("linalg-asm", |b| b.iter(|| tract_linalg::arm64::arm64simd_leaky_relu_f32_8n::run(input, alpha)));
+    group.bench_function("linalg-asm", |b| {
+        b.iter(|| tract_linalg::arm64::arm64simd_leaky_relu_f32_8n::run(input, alpha))
+    });
 }
 
 #[inline(never)]
@@ -57,7 +61,6 @@ fn rust_fp32(input: &mut [f32], alpha: f32) {
 fn linalg32(input: &mut [f32], alpha: f32) {
     (tract_linalg::ops().leaky_relu_f32)().run_with_params(input, alpha).unwrap();
 }
-
 
 criterion_group!(benches, leaky_relu_f32, leaky_relu_f16);
 criterion_main!(benches);

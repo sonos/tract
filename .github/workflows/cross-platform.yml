@@ -9,6 +9,7 @@ on:
 env:
   CARGO_INCREMENTAL: false
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE20: true
+  RUSTUP_TOOLCHAIN: 1.85.0
 
 jobs:
   linux:
@@ -29,6 +30,7 @@ jobs:
           - armv7-linux-androideabi
           - i686-linux-android
           - x86_64-linux-android
+          - x86_64-unknown-linux-gnu-stretch
           - wasm32-unknown-unknown
           - wasm32-wasi
 
@@ -61,6 +63,10 @@ jobs:
           .cached
           target
         key: ${{ runner.os }}-${{matrix.platform}}-${{steps.date.outputs.date}}
+
+    - name: Setup wasmtime
+      if: ${{ matrix.platform }} == "wasm32-wasi"
+      uses: bytecodealliance/actions/wasmtime/setup@v1
 
     - name: Cross script
       env:

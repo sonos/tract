@@ -4,11 +4,11 @@ use std::fmt::Debug;
 use crate::internal::*;
 use crate::model::{TypedModel, TypedNode};
 use crate::ops::identity::Identity;
+use AxisOp::*;
 use num_traits::One;
 use tract_itertools::Itertools;
-use tract_linalg::block_quant::{BlockQuantFact, BlockQuantValue};
+use tract_linalg::block_quant::BlockQuantFact;
 use tract_ndarray::{ArrayViewD, ArrayViewMutD};
-use AxisOp::*;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum InOut {
@@ -84,19 +84,27 @@ impl PartialEq for AxisOp {
 }
 
 impl AxisOp {
-    pub fn canonical(&self) -> Cow<AxisOp> {
+    pub fn canonical(&self) -> Cow<'_, AxisOp> {
         match self {
             Move(from, to) if *from == to + 1 => Cow::Owned(Move(*to, *from)),
-            Reshape(at, from, to) if from.len() == 1 && to.len() == 2 && from[0] == to[0] => {
+            Reshape(at, from, to)
+                if from.len() == 1 && to.len() == 2 && from[0] == to[0] && to[1].is_one() =>
+            {
                 Cow::Owned(Add(*at + 1))
             }
-            Reshape(at, from, to) if from.len() == 1 && to.len() == 2 && from[0] == to[1] => {
+            Reshape(at, from, to)
+                if from.len() == 1 && to.len() == 2 && from[0] == to[1] && to[0].is_one() =>
+            {
                 Cow::Owned(Add(*at))
             }
-            Reshape(at, from, to) if from.len() == 2 && to.len() == 1 && from[0] == to[0] => {
+            Reshape(at, from, to)
+                if from.len() == 2 && to.len() == 1 && from[0] == to[0] && from[1].is_one() =>
+            {
                 Cow::Owned(Rm(*at + 1))
             }
-            Reshape(at, from, to) if from.len() == 2 && to.len() == 1 && from[1] == to[0] => {
+            Reshape(at, from, to)
+                if from.len() == 2 && to.len() == 1 && from[1] == to[0] && from[0].is_one() =>
+            {
                 Cow::Owned(Rm(*at))
             }
             other => Cow::Borrowed(other),
@@ -373,12 +381,16 @@ impl AxisOp {
         if self.required_rank() > tensor.rank() && tensor.datum_type().is_opaque() {
             let inner_change = self.trim_left(tensor.rank())?;
             for opaque in tensor.as_slice_mut::<Opaque>()? {
-                if let Some(bqv) = opaque.downcast_ref::<BlockQuantValue>() {
-                    let mut new_shape: TVec<usize> = bqv.fact.shape().into();
+                if let Some(bwf) = opaque.downcast_ref::<BlobWithFact>() {
+                    let bqf = bwf
+                        .fact
+                        .downcast_ref::<BlockQuantFact>()
+                        .context("Expected BlockQuantFact")?;
+                    let mut new_shape: TVec<usize> = bqf.shape().into();
                     inner_change.change_shape_array(&mut new_shape, false)?;
-                    let new_bqv = BlockQuantValue {
-                        value: Arc::clone(&bqv.value),
-                        fact: BlockQuantFact::new(bqv.fact.format.clone(), new_shape),
+                    let new_bqv = BlobWithFact {
+                        value: Arc::clone(&bwf.value),
+                        fact: Box::new(BlockQuantFact::new(bqf.format.clone(), new_shape)),
                     };
                     *opaque = Opaque(Arc::new(new_bqv));
                 } else {
@@ -398,7 +410,7 @@ impl AxisOp {
             }
             Reshape(at, from, to) => {
                 let mut shape: TVec<usize> = tensor.shape().into();
-                self.change_shape_array(&mut shape, false)?;
+                self.change_shape_array(&mut shape, true)?;
                 if tensor.set_shape(&shape).is_ok() {
                     Ok(())
                 } else if broadcasting
@@ -555,12 +567,11 @@ pub fn wire_rank_broadcast(
         inputs.iter().map(|o| target.outlet_fact(*o).cloned()).collect::<TractResult<TVec<_>>>()?;
     let max_rank = facts.iter().map(|f| f.rank()).max().unwrap();
     let mut wires = tvec!();
-    let prefix = prefix.as_ref();
     for i in 0..inputs.len() {
         let mut wire = inputs[i];
-        for j in facts[i].rank()..max_rank {
-            wire =
-                target.wire_node(format!("{prefix}.fix-rank-{i}-{j}"), AxisOp::Add(0), &[wire])?[0];
+        for _ in facts[i].rank()..max_rank {
+            let name = target.unique_name(prefix.as_ref().to_string() + ".fix-rank");
+            wire = target.wire_node(name, AxisOp::Add(0), &[wire])?[0];
         }
         wires.push(wire);
     }
@@ -609,7 +620,7 @@ impl AxisChangeConsequence {
 }
 
 impl Op for AxisOp {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         match self {
             Add(_) => "AddAxis".into(),
             Rm(_) => "RmAxis".into(),
@@ -641,6 +652,7 @@ impl EvalOp for AxisOp {
 
     fn eval_with_session(
         &self,
+        _node_id: usize,
         session: &SessionState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
@@ -744,13 +756,7 @@ impl TypedOp for AxisOp {
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
         let op = if let InOut::Out(0) = io {
-            let more = if let Some(more) =
-                self.recip().change_axes(_model, _node, InOut::In(0), change)?
-            {
-                more
-            } else {
-                return Ok(None);
-            };
+            rule_if_some!(more = self.recip().change_axes(_model, _node, InOut::In(0), change)?);
             AxisChangeConsequence {
                 substitute_op: more.substitute_op.map(|op| {
                     if let Some(op) = op.as_op().downcast_ref::<AxisOp>() {
@@ -770,14 +776,8 @@ impl TypedOp for AxisOp {
         } else if change == self {
             AxisChangeConsequence { substitute_op: Some(Box::new(Identity)), wire_changes: tvec!() }
         } else {
-            let (new_op, new_change) = if let Some(pair) = self.merge_incoming_change(change) {
-                pair
-            } else {
-                return Ok(None);
-            };
-            trace!(
-                "  Change:{change:?} self:{self:?} -> change:{new_change:?} op:{new_op:?}"
-            );
+            rule_if_some!((new_op, new_change) = self.merge_incoming_change(change));
+            trace!("  Change:{change:?} self:{self:?} -> change:{new_change:?} op:{new_op:?}");
             let substitute_op: Box<dyn TypedOp> =
                 if let Some(o) = new_op { Box::new(o) as _ } else { Box::new(Identity) };
             let mut wire_changes = tvec!();
@@ -1028,7 +1028,7 @@ pub struct IntoShape {
 }
 
 impl Op for IntoShape {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "IntoShape".into()
     }
 

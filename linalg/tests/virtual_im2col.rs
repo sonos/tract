@@ -1,15 +1,15 @@
 use std::alloc::Layout;
 use std::fmt::Display;
 
+use DatumType::F32;
 use proptest::arbitrary::Arbitrary;
 use proptest::prelude::*;
 use proptest::strategy::{BoxedStrategy, Strategy};
 use tract_data::internal::*;
+use tract_linalg::WeightType;
 use tract_linalg::mmm::FusedSpec;
 use tract_linalg::mmm::{AsInputValue, EagerPackedInput, MMMInputFormat, MMMInputValue};
 use tract_linalg::pack::{PackedFormat, PackingWriter};
-use tract_linalg::WeightType;
-use DatumType::F32;
 
 proptest::proptest! {
     #[test]
@@ -393,9 +393,7 @@ impl LazyIm2colSpec {
             })
             .collect();
         let n_offsets = (0..h as isize)
-            .flat_map(|h| {
-                (0..w as isize).map(move |w| (h * input_strides[1] + w * input_strides[2]))
-            })
+            .flat_map(|h| (0..w as isize).map(move |w| h * input_strides[1] + w * input_strides[2]))
             .collect();
         unsafe {
             Box::new(LazyIm2col {

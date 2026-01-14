@@ -1,5 +1,5 @@
-use super::utils::build_metal_grid_and_groups_for_el_wise_op;
 use super::BroadcastKind;
+use super::utils::build_metal_grid_and_groups_for_el_wise_op;
 use crate::encoder::EncoderExt;
 use crate::kernels::utils::compute_broadcast_strides;
 use crate::{LibraryName, MetalStream};
@@ -51,7 +51,7 @@ impl BinOps {
         Self::Or,
     ];
 
-    pub fn name(&self) -> Cow<str> {
+    pub fn name(&self) -> StaticName {
         format!("{}", self).into()
     }
 
@@ -61,11 +61,7 @@ impl BinOps {
 
     pub fn output_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType> {
         ensure!(a == b);
-        if self.is_logic() {
-            Ok(DatumType::Bool)
-        } else {
-            Ok(a)
-        }
+        if self.is_logic() { Ok(DatumType::Bool) } else { Ok(a) }
     }
 
     pub fn output_shape<D: DimLike>(&self, a: &[D], b: &[D]) -> TractResult<TVec<D>> {
@@ -136,8 +132,7 @@ impl BinOps {
             Ok((shape.clone().into(), shape.clone().into(), shape.into()))
         } else {
             let broadcast_axes: Vec<usize> = (0..lhs.rank())
-                .into_iter()
-                .filter(|ix| lhs.shape()[*ix] != rhs.shape()[*ix])
+                .filter(|ix| lhs.shape()[*ix] != rhs.shape()[*ix] || lhs.shape()[*ix] == 1)
                 .collect();
 
             let mut segments = vec![];
@@ -160,7 +155,8 @@ impl BinOps {
             let mut group_idx = 0;
             for (_, segment) in segments {
                 reshaped_groups[group_idx].extend(segment);
-                group_idx = (group_idx + 1).min(3); // stay at 3 after last group
+                group_idx += 1;
+                ensure!(group_idx < 4, "Cannot reshape to rank 4");
             }
 
             fn compute_shape(shape: &[usize], groups: &[Vec<usize>]) -> TVec<usize> {
@@ -181,9 +177,11 @@ impl BinOps {
 
     fn can_use_row_kernel(&self, lhs: &DeviceTensor, rhs: &DeviceTensor) -> bool {
         let compatible_op = matches!(self, Self::Mul | Self::Add | Self::Div | Self::Sub);
+        let compatible_type = matches!(lhs.datum_type(), DatumType::F16 | DatumType::F32);
         let rank = lhs.rank();
 
         compatible_op
+            && compatible_type
             && (rank > 0)
             && ((rhs.len() == rhs.shape()[rank - 1])
                 || ((lhs.len() == lhs.shape()[rank - 1]) && matches!(self, Self::Mul | Self::Add)))
@@ -192,7 +190,7 @@ impl BinOps {
     }
 
     pub fn kernel_name(&self, dt: DatumType, use_row_kernel: bool) -> TractResult<String> {
-        ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for metal binary ops", dt);
+        ensure!(Self::is_supported_dt(dt), "Unsupported dt {:?} for metal binary ops", dt);
 
         let tname = DeviceTensor::tname(dt)?;
 
@@ -316,12 +314,9 @@ mod tests {
     use crate::utils::with_borrowed_metal_stream;
 
     use super::*;
-    use derive_new::new;
-    use num_traits::AsPrimitive;
-    use num_traits::Zero;
-    use proptest::collection::vec;
-    use proptest::prelude::*;
     use tract_gpu::tensor::IntoDevice;
+
+    /* Except for And and Or, Binops are proptest for almost all types  */
 
     fn reference<FI: Datum, FO: Datum>(
         a: &Tensor,
@@ -340,185 +335,38 @@ mod tests {
         Ok(out)
     }
 
-    fn run_test_case_logic<F: Datum + Zero>(
+    fn run_test_case_logic(
         op: BinOps,
         a_shape: &[usize],
         b_shape: &[usize],
-        cab: impl Fn(&mut bool, &F, &F),
+        cab: impl Fn(&mut bool, &bool, &bool),
     ) -> TractResult<()> {
         with_borrowed_metal_stream(|stream| {
             let a_len = a_shape.iter().product::<usize>();
             let b_len = b_shape.iter().product::<usize>();
 
-            let a = Tensor::from_shape(a_shape, &(0..a_len).map(|f| f as f32).collect::<Vec<_>>())?
-                .into_device()?;
-            let b = Tensor::from_shape(
-                b_shape,
-                &(0..b_len).rev().map(|f| f as f32).collect::<Vec<_>>(),
-            )?
-            .into_device()?;
+            let a =
+                Tensor::from_shape(a_shape, &(0..a_len).map(|f| f % 2 == 0).collect::<Vec<_>>())?
+                    .into_device()?;
+            let b =
+                Tensor::from_shape(b_shape, &(0..b_len).map(|f| f % 4 == 0).collect::<Vec<_>>())?
+                    .into_device()?;
             let output = op.eval(stream, &a, &b)?;
-            let ref_output = reference::<F, bool>(
+            let ref_output = reference::<bool, bool>(
                 &a.to_host()?.into_tensor(),
                 &b.to_host()?.into_tensor(),
                 cab,
             )?;
-            assert_eq!(output.to_host()?.into_tensor(), ref_output);
-            Ok(())
-        })
-    }
 
-    fn run_test_case<F: Datum + Zero>(
-        op: BinOps,
-        a_shape: &[usize],
-        b_shape: &[usize],
-        cab: impl Fn(&mut F, &F, &F),
-    ) -> TractResult<()> {
-        with_borrowed_metal_stream(|stream| {
-            let a_len = a_shape.iter().product::<usize>();
-            let b_len = b_shape.iter().product::<usize>();
-
-            let a = Tensor::from_shape(a_shape, &(0..a_len).map(|f| f as f32).collect::<Vec<_>>())?
-                .into_device()?;
-            let b = Tensor::from_shape(
-                b_shape,
-                &(0..b_len).rev().map(|f| f as f32).collect::<Vec<_>>(),
-            )?
-            .into_device()?;
-            let output = op.eval(stream, &a, &b)?;
-
-            let ref_output =
-                reference::<F, F>(&a.to_host()?.into_tensor(), &b.to_host()?.into_tensor(), cab)?;
             assert_eq!(output.to_host()?.into_tensor(), ref_output);
             Ok(())
         })
     }
 
     #[test]
-    fn test_bin_ops_unicast() -> TractResult<()> {
-        run_test_case::<f32>(BinOps::Mul, &[4, 4], &[4, 4], |c, a, b| *c = *a * *b)?;
-        run_test_case::<f32>(BinOps::Mul, &[2, 16], &[2, 16], |c, a, b| *c = *a * *b)?;
+    fn test_logic() -> TractResult<()> {
+        run_test_case_logic(BinOps::And, &[2, 4], &[2, 4], |c, a, b| *c = *a && *b)?;
+        run_test_case_logic(BinOps::Or, &[2, 4], &[2, 4], |c, a, b| *c = *a || *b)?;
         Ok(())
-    }
-
-    #[test]
-    fn test_bin_ops_with_broadcast_nd2() -> TractResult<()> {
-        run_test_case::<f32>(BinOps::Mul, &[4, 1], &[1, 20], |c, a, b| *c = *a * *b)?;
-        run_test_case::<f32>(BinOps::Mul, &[1, 20], &[10, 20], |c, a, b| *c = *a * *b)?;
-        run_test_case::<f32>(BinOps::Add, &[4, 1], &[4, 20], |c, a, b| *c = *a + *b)?;
-        run_test_case::<f32>(BinOps::Sub, &[1, 20], &[10, 20], |c, a, b| *c = *a - *b)?;
-        run_test_case_logic::<f32>(BinOps::Less, &[1, 20], &[10, 20], |c, a, b| *c = *a < *b)?;
-        run_test_case_logic::<f32>(BinOps::Greater, &[1, 20], &[10, 20], |c, a, b| *c = *a > *b)?;
-        run_test_case_logic::<f32>(BinOps::Equals, &[1, 20], &[10, 20], |c, a, b| *c = *a == *b)?;
-        Ok(())
-    }
-
-    #[test]
-    fn test_bin_ops_with_broadcast_nd3() -> TractResult<()> {
-        run_test_case::<f32>(BinOps::Mul, &[4, 1, 10], &[1, 20, 1], |c, a, b| *c = *a * *b)?;
-        run_test_case::<f32>(BinOps::Mul, &[1, 20, 1], &[10, 20, 10], |c, a, b| *c = *a * *b)?;
-        run_test_case::<f32>(BinOps::Add, &[4, 1, 10], &[1, 20, 1], |c, a, b| *c = *a + *b)?;
-        run_test_case::<f32>(BinOps::Sub, &[1, 20, 1], &[10, 20, 10], |c, a, b| *c = *a - *b)?;
-        Ok(())
-    }
-
-    #[test]
-    fn test_bin_ops_with_broadcast_nd4() -> TractResult<()> {
-        run_test_case::<f32>(BinOps::Mul, &[4, 1, 10, 1], &[1, 20, 1, 5], |c, a, b| *c = *a * *b)?;
-        run_test_case::<f32>(BinOps::Mul, &[1, 20, 1, 5], &[5, 20, 10, 5], |c, a, b| *c = *a * *b)?;
-        run_test_case::<f32>(BinOps::Add, &[4, 1, 10, 1], &[1, 20, 1, 5], |c, a, b| *c = *a + *b)?;
-        run_test_case::<f32>(BinOps::Sub, &[1, 20, 1, 5], &[5, 20, 10, 5], |c, a, b| *c = *a - *b)?;
-        Ok(())
-    }
-
-    #[test]
-    fn test_bin_ops_mul_by_scalar() -> TractResult<()> {
-        run_test_case::<f32>(BinOps::Add, &[4, 4], &[1, 1], |c, a, b| *c = *a + *b)?;
-        run_test_case::<f32>(BinOps::Mul, &[4, 4], &[1, 1], |c, a, b| *c = *a * *b)?;
-        Ok(())
-    }
-
-    proptest::proptest! {
-        #[test]
-        fn bin_ops_prop_f32(pb in any::<BinaryOpProblem<f32>>()) {
-            prop_assert_eq!(pb.run().unwrap(), pb.reference().unwrap())
-        }
-
-        #[test]
-        fn bin_ops_prop_f16(pb in any::<BinaryOpProblem<f16>>()) {
-            prop_assert_eq!(pb.run().unwrap(), pb.reference().unwrap())
-        }
-    }
-
-    #[derive(Debug, new)]
-    pub struct BinaryOpProblem<F: Datum>
-    where
-        F: Datum + Copy,
-        usize: AsPrimitive<F>,
-    {
-        pub lhs: Tensor,
-        pub rhs: Tensor,
-        _phantom: std::marker::PhantomData<F>,
-    }
-
-    impl<F> Arbitrary for BinaryOpProblem<F>
-    where
-        F: Datum + Copy,
-        usize: AsPrimitive<F>,
-    {
-        type Parameters = ();
-        type Strategy = BoxedStrategy<Self>;
-
-        fn arbitrary_with(_: ()) -> Self::Strategy {
-            (1usize..2, 1usize..20, 1usize..20)
-                .prop_flat_map(|(b, m, n)| {
-                    let lhs_len = b * m * n;
-                    let rhs_len = b * m * n;
-                    let lhs = (0usize..10).prop_map(|x| x.as_());
-                    let rhs = (0usize..10).prop_map(|x| x.as_());
-                    (
-                        Just(b),
-                        Just(m),
-                        Just(n),
-                        vec(lhs, lhs_len..=lhs_len),
-                        vec(rhs, rhs_len..=rhs_len),
-                    )
-                })
-                .prop_map(|(b, m, n, lhs, rhs)| Self {
-                    lhs: Tensor::from_shape(&[b, m, n], &lhs).unwrap(),
-                    rhs: Tensor::from_shape(&[b, m, n], &rhs).unwrap(),
-                    _phantom: std::marker::PhantomData,
-                })
-                .boxed()
-        }
-    }
-
-    impl<F> BinaryOpProblem<F>
-    where
-        F: Datum + Zero + Copy + std::ops::AddAssign + std::ops::Mul<Output = F>,
-        usize: AsPrimitive<F>,
-    {
-        pub fn reference(&self) -> TractResult<Tensor> {
-            let out_shape =
-                tract_core::broadcast::multi_broadcast(&[self.lhs.shape(), self.rhs.shape()])?;
-            let mut out = Tensor::zero_dt(F::datum_type(), &out_shape)?;
-            let a = self.lhs.to_array_view::<F>()?;
-            let b = self.rhs.to_array_view::<F>()?;
-            let mut c = out.to_array_view_mut::<F>()?;
-            tract_core::ndarray::Zip::from(&mut c)
-                .and_broadcast(a)
-                .and_broadcast(b)
-                .for_each(|c, a, b| *c = *a * *b);
-            Ok(out)
-        }
-
-        pub fn run(&self) -> TractResult<Tensor> {
-            with_borrowed_metal_stream(|stream| {
-                let lhs = self.lhs.clone().into_device()?;
-                let rhs = self.rhs.clone().into_device()?;
-                let c = BinOps::Mul.eval(stream, &lhs, &rhs)?;
-                Ok(c.to_host()?.into_tensor())
-            })
-        }
     }
 }

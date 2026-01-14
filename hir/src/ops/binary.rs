@@ -3,15 +3,15 @@ use crate::internal::*;
 
 use tract_core::broadcast::multi_broadcast;
 use tract_core::ops as mir;
+use tract_core::ops::binary::BinMiniOp;
 pub use tract_core::ops::cast::wire_cast;
 pub use tract_core::ops::change_axes::wire_rank_broadcast;
-use tract_core::ops::binary::BinMiniOp;
 
 #[derive(Debug, Clone)]
 pub struct InferenceBinOp(pub Box<dyn BinMiniOp>);
 
 impl Expansion for InferenceBinOp {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         self.0.name().into()
     }
 
@@ -109,7 +109,7 @@ impl Nary {
 }
 
 impl Op for Nary {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         format!("{}Nary", self.0.name()).into()
     }
 

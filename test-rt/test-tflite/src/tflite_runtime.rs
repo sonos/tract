@@ -15,7 +15,7 @@ impl Debug for TfliteRuntime {
 }
 
 impl Runtime for TfliteRuntime {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "tflite".into()
     }
 
@@ -46,7 +46,7 @@ struct TfliteState(TfliteRunnable);
 
 impl State for TfliteState {
     fn run(&mut self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        let model = Model::from_bytes(&self.0 .0)?;
+        let model = Model::from_bytes(&self.0.0)?;
         let interpreter = Interpreter::new(&model, None)?;
         interpreter.allocate_tensors()?;
         ensure!(inputs.len() == interpreter.input_tensor_count());

@@ -174,7 +174,7 @@ template<typename F>
         shmem_f32[tiisg] = 0.0f;
     }
     device const F* input = (device const F*) input_b;
-    F eps = ((constant F *)eps_b)[0];
+    float eps = ((constant float *)eps_b)[0];
     device F * output = (device F*) output_b;
 
     size_t dim = shape[1];
@@ -201,7 +201,7 @@ template<typename F>
 
     float mean_of_squares = partial_acc / dim;
 
-    F norm = static_cast<F>(metal::rsqrt(mean_of_squares + static_cast<float>(eps)));
+    float norm = metal::rsqrt(mean_of_squares + eps);
 
     for (size_t i = tpitg; i < dim; i += ntg) {
         auto idx = base_idx + i * strides[1];
@@ -228,7 +228,7 @@ template<typename F, typename F4>
     }
 
     device const F4 * x = (device const F4 *) (input_b + tgpig*outer_stride);
-    F eps = ((constant F *)eps_b)[0];
+    float eps = ((constant float *)eps_b)[0];
     float sumf = 0.0f;
 
     // parallel sum

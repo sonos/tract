@@ -1,6 +1,6 @@
 from ctypes import *
 from typing import Dict, List, Union
-from .bindings import check, lib
+from .bindings import TractError, check, lib
 from .fact import InferenceFact
 from .model import Model
 

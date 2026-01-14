@@ -9,12 +9,8 @@ pub fn pull_downsample_over_slice(
     down_node: &TypedNode,
     down_op: &Downsample,
 ) -> TractResult<Option<TypedModelPatch>> {
-    if down_op.axis != slice_op.axis {
-        return Ok(None);
-    }
-    if down_op.stride < 0 {
-        return Ok(None);
-    }
+    rule_if!(down_op.axis == slice_op.axis);
+    rule_if!(down_op.stride >= 0);
     let modulo = (down_op.modulo + slice_op.start.to_usize()?) % down_op.stride as usize;
     let left = (down_op.modulo + slice_op.start.to_usize()?) / down_op.stride as usize;
     let mut patch = TypedModelPatch::default();
@@ -131,5 +127,4 @@ mod tests {
     fn crop_then_down_5() {
         crop_then_down(16, 0, 1, 2, 1).unwrap()
     }
-
 }

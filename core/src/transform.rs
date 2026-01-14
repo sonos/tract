@@ -3,13 +3,39 @@ use crate::internal::*;
 use crate::ops::einsum::as_blas::AsBlas;
 use crate::ops::matmul::de_block_quant::BlockQuantTransform;
 use num_traits::Float;
-use std::borrow::Cow;
 use std::fmt::Debug;
 
 use tract_data::TractResult;
 
 use crate::floats::FloatPrecisionTranslator;
-use crate::ops::nn::{Softmax, SoftmaxExp, TypedModel};
+use crate::ops::nn::{Softmax, SoftmaxExp, SoftmaxKind, TypedModel};
+
+#[macro_export]
+macro_rules! rule_if {
+    ($cond:expr) => {
+        if !$cond {
+            return Ok(None);
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! rule_if_let {
+    ($pat:pat = $expr:expr) => {
+        let $pat = $expr else {
+            return Ok(None);
+        };
+    };
+}
+
+#[macro_export]
+macro_rules! rule_if_some {
+    ($pat:pat = $expr:expr) => {
+        let Some($pat) = $expr else {
+            return Ok(None);
+        };
+    };
+}
 
 pub fn get_transform(name: &str) -> Option<Box<dyn ModelTransform>> {
     match name {
@@ -58,7 +84,7 @@ pub fn build_float_translator<T1: Datum + Float, T2: Datum + Float>(
 }
 
 pub trait ModelTransform: Debug {
-    fn name(&self) -> Cow<str>;
+    fn name(&self) -> StaticName;
     fn transform(&self, model: &mut TypedModel) -> TractResult<()>;
     fn transform_into(&self, mut model: TypedModel) -> TractResult<TypedModel> {
         self.transform(&mut model)?;
@@ -70,14 +96,16 @@ pub trait ModelTransform: Debug {
 struct SoftmaxFastCompact;
 
 impl ModelTransform for SoftmaxFastCompact {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "softmax-fast-compact".into()
     }
 
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
         for node in &mut model.nodes {
             if let Some(softmax) = node.op_as_mut::<Softmax>() {
-                softmax.exp = SoftmaxExp::FastCompact;
+                if let SoftmaxKind::Softmax(kind) = &mut softmax.kind {
+                    *kind = SoftmaxExp::FastCompact
+                }
             }
         }
         Ok(())

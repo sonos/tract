@@ -10,13 +10,10 @@ pub fn build(_ctx: &ParsingContext, _pb: &NodeDef) -> TractResult<Box<dyn Infere
 #[derive(Debug, Clone, Hash)]
 pub struct ExpandDims;
 
-
-
 impl Expansion for ExpandDims {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "ExpandDims".into()
     }
-
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,

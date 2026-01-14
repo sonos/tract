@@ -2,61 +2,84 @@ use crate::Parameters;
 use readings_probe::Probe;
 use std::time::{Duration, Instant};
 use tract_hir::internal::*;
+use tract_libcli::capture_gpu_trace;
+use tract_libcli::model::Model;
 use tract_libcli::profile::BenchLimits;
+use tract_libcli::tensor::RunTensors;
+use tract_libcli::tensor::get_or_make_inputs;
 use tract_libcli::terminal;
+
+fn profile<'m>(
+    state: &mut TypedSimpleState<&'m TypedModel, Arc<TypedRunnableModel<&'m TypedModel>>>,
+    inputs: &RunTensors,
+) -> TractResult<Duration> {
+    if state.model().properties().contains_key("pulse.delay") {
+        let start = Instant::now();
+        for source in &inputs.sources {
+            state.run(source.clone())?;
+        }
+        Ok(start.elapsed())
+    } else {
+        state.init_states(&mut inputs.state_initializers.clone())?;
+        let start = Instant::now();
+        for source in &inputs.sources {
+            state.run(source.clone())?;
+        }
+        let elapsed = start.elapsed();
+        state.reset_op_states()?;
+        Ok(elapsed)
+    }
+}
 
 pub fn criterion(
     params: &Parameters,
-    _matches: &clap::ArgMatches,
+    matches: &clap::ArgMatches,
     sub_matches: &clap::ArgMatches,
 ) -> TractResult<()> {
-    let plan_options = crate::plan_options::plan_options_from_subcommand(sub_matches)?;
-    let run_params = crate::tensor::run_params_from_subcommand(params, sub_matches)?;
-
     let model =
         params.tract_model.downcast_ref::<TypedModel>().context("Can only bench TypedModel")?;
-    let plan = SimplePlan::new_with_options(model, &plan_options)?;
-    let mut state = SimpleState::new(plan)?;
+    let mut state = make_state(model, matches, sub_matches)?;
 
     let mut crit = criterion::Criterion::default();
     let mut group = crit.benchmark_group("net");
-    let inputs = tract_libcli::tensor::retrieve_or_make_inputs(model, &run_params)?.remove(0);
-    group.bench_function("run", move |b| b.iter(|| state.run(inputs.clone())));
+
+    let run_params = crate::tensor::run_params_from_subcommand(params, sub_matches)?;
+    let inputs = get_or_make_inputs(model, &run_params)?;
+
+    group.bench_function("run", move |b| b.iter(|| profile(&mut state, &inputs)));
     Ok(())
 }
 
 pub(crate) fn make_state<'m>(
-    params: &'m Parameters,
+    model: &'m TypedModel,
     matches: &clap::ArgMatches,
     sub_matches: &clap::ArgMatches,
 ) -> TractResult<TypedSimpleState<&'m TypedModel, Arc<TypedRunnableModel<&'m TypedModel>>>> {
     #[allow(unused_mut)]
     let mut plan_options = crate::plan_options::plan_options_from_subcommand(sub_matches)?;
-    let model =
-        params.tract_model.downcast_ref::<TypedModel>().context("Can only bench TypedModel")?;
-    if matches.is_present("metal") {
-        #[cfg(any(target_os = "macos", target_os = "ios"))]
-        {
-            plan_options.skip_order_opt_ram = true;
-            let mut plan = SimplePlan::new_with_options(model, &plan_options)?;
-            let mut symbol_values = SymbolValues::default();
-            let sequence_length =
-                model.symbols.get("S").context("Could not find symbol S in model")?;
-            let past_sequence_length =
-                model.symbols.get("P").context("Could not find symbol P in model")?;
-
-            symbol_values.set(&sequence_length, 1024);
-            symbol_values.set(&past_sequence_length, 0);
-            let session_handler =
-                tract_gpu::session_handler::DeviceSessionHandler::from_plan(&plan, &symbol_values)?;
-
-            plan = plan.with_session_handler(session_handler);
-            Ok(SimpleState::new(Arc::new(plan))?)
-        }
+    if matches.is_present("metal") || matches.is_present("cuda") {
         #[cfg(not(any(target_os = "macos", target_os = "ios")))]
         {
-            bail!("Metal bench called on non-Metal model");
+            use tract_cuda::utils::are_culibs_present;
+            if !are_culibs_present() {
+                bail!("GPU bench called on non-GPU model");
+            }
         }
+        plan_options.skip_order_opt_ram = true;
+        let mut plan = SimplePlan::new_with_options(model, &plan_options)?;
+        let mut symbol_values = SymbolValues::default();
+        if let Some(s) = model.symbols.get("S") {
+            symbol_values.set(&s, 1024);
+        }
+        if let Some(p) = model.symbols.get("P") {
+            symbol_values.set(&p, 0);
+        }
+
+        let session_handler =
+            tract_gpu::session_handler::DeviceSessionHandler::from_plan(&plan, &symbol_values)?;
+
+        plan = plan.with_session_handler(session_handler);
+        Ok(SimpleState::new(Arc::new(plan))?)
     } else {
         let plan = SimplePlan::new_with_options(model, &plan_options)?;
         Ok(SimpleState::new(Arc::new(plan))?)
@@ -65,25 +88,30 @@ pub(crate) fn make_state<'m>(
 
 pub(crate) fn bench<'m>(
     state: &mut TypedSimpleState<&'m TypedModel, Arc<TypedRunnableModel<&'m TypedModel>>>,
-    inputs: TVec<TValue>,
+    sub_matches: &clap::ArgMatches,
+    inputs: RunTensors,
     limits: &BenchLimits,
     probe: Option<&Probe>,
 ) -> TractResult<(usize, Duration)> {
     let mut iters = 0;
     let progress = probe.and_then(|m| m.get_i64("progress"));
     info!("Starting bench itself");
-    let start = Instant::now();
-    while iters < limits.max_loops && start.elapsed() < limits.max_time {
-        if let Some(mon) = probe {
-            let _ = mon.log_event(&format!("loop_{iters}"));
+    let mut dur = Duration::default();
+    capture_gpu_trace(sub_matches, || -> TractResult<()> {
+        while iters < limits.max_loops && dur < limits.max_time {
+            if let Some(mon) = probe {
+                let _ = mon.log_event(&format!("loop_{iters}"));
+            }
+            if let Some(p) = &progress {
+                p.store(iters as _, std::sync::atomic::Ordering::Relaxed);
+            }
+
+            dur += profile(state, &inputs)?;
+
+            iters += 1;
         }
-        if let Some(p) = &progress {
-            p.store(iters as _, std::sync::atomic::Ordering::Relaxed);
-        }
-        state.run(inputs.clone())?;
-        iters += 1;
-    }
-    let dur = start.elapsed();
+        Ok(())
+    })?;
     Ok((iters, Duration::from_secs_f64(dur.as_secs_f64() / iters as f64)))
 }
 
@@ -95,12 +123,14 @@ pub fn handle(
     probe: Option<&Probe>,
 ) -> TractResult<()> {
     let run_params = crate::tensor::run_params_from_subcommand(params, sub_matches)?;
-    let mut state = make_state(params, matches, sub_matches)?;
-    let inputs =
-        tract_libcli::tensor::retrieve_or_make_inputs(state.model(), &run_params)?.remove(0);
+    let model =
+        params.tract_model.downcast_ref::<TypedModel>().context("Can only bench TypedModel")?;
+    let mut state = make_state(model, matches, sub_matches)?;
 
-    limits.warmup(state.model(), &inputs)?;
-    let (iters, dur) = bench(&mut state, inputs, limits, probe)?;
+    let inputs = get_or_make_inputs(state.model(), &run_params)?;
+
+    limits.warmup(state.plan(), &inputs)?;
+    let (iters, dur) = bench(&mut state, sub_matches, inputs, limits, probe)?;
 
     if params.machine_friendly {
         println!("real: {}", dur.as_secs_f64());

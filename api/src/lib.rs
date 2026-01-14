@@ -1,4 +1,4 @@
-use anyhow::{ensure, Result};
+use anyhow::{Result, ensure};
 use boow::Bow;
 use std::fmt::{Debug, Display};
 use std::path::Path;
@@ -173,11 +173,18 @@ pub trait ModelInterface: Sized {
 
     fn cost_json(&self) -> Result<String>;
 
-    fn profile_json<I, V, E>(&self, inputs: Option<I>) -> Result<String>
+    fn profile_json<I, IV, IE, S, SV, SE>(
+        &self,
+        inputs: Option<I>,
+        state_initializers: Option<S>,
+    ) -> Result<String>
     where
-        I: IntoIterator<Item = V>,
-        V: TryInto<Self::Value, Error = E>,
-        E: Into<anyhow::Error> + Debug;
+        I: IntoIterator<Item = IV>,
+        IV: TryInto<Self::Value, Error = IE>,
+        IE: Into<anyhow::Error> + Debug,
+        S: IntoIterator<Item = SV>,
+        SV: TryInto<Self::Value, Error = SE>,
+        SE: Into<anyhow::Error> + Debug;
 
     fn property_keys(&self) -> Result<Vec<String>>;
 
@@ -203,6 +210,7 @@ pub trait RunnableInterface {
 }
 
 pub trait StateInterface {
+    type Fact: FactInterface;
     type Value: ValueInterface;
 
     fn input_count(&self) -> Result<usize>;
@@ -213,6 +221,18 @@ pub trait StateInterface {
         I: IntoIterator<Item = V>,
         V: TryInto<Self::Value, Error = E>,
         E: Into<anyhow::Error>;
+
+    fn initializable_states_count(&self) -> Result<usize>;
+
+    fn get_states_facts(&self) -> Result<Vec<Self::Fact>>;
+
+    fn set_states<I, V, E>(&mut self, state_initializers: I) -> Result<()>
+    where
+        I: IntoIterator<Item = V>,
+        V: TryInto<Self::Value, Error = E>,
+        E: Into<anyhow::Error> + Debug;
+
+    fn get_states(&self) -> Result<Vec<Self::Value>>;
 }
 
 pub trait ValueInterface: Sized + Clone {
@@ -238,7 +258,7 @@ pub trait ValueInterface: Sized + Clone {
         Ok((shape, data))
     }
 
-    fn view<T: Datum>(&self) -> Result<ndarray::ArrayViewD<T>> {
+    fn view<T: Datum>(&self) -> Result<ndarray::ArrayViewD<'_, T>> {
         let (shape, data) = self.as_slice()?;
         Ok(unsafe { ndarray::ArrayViewD::from_shape_ptr(shape, data.as_ptr()) })
     }
@@ -250,7 +270,7 @@ pub trait InferenceFactInterface: Debug + Display + Default + Clone {
 }
 
 pub trait AsFact<M, F> {
-    fn as_fact(&self, model: &mut M) -> Result<Bow<F>>;
+    fn as_fact(&self, model: &mut M) -> Result<Bow<'_, F>>;
 }
 
 #[repr(C)]

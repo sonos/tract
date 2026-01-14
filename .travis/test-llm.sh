@@ -8,33 +8,113 @@ ROOT=$(dirname $(dirname $(realpath $0)))
 
 if [ -z "$TRACT_RUN" ]
 then
-    TRACT_RUN=$(cargo build --message-format json -p tract $CARGO_EXTRA --profile opt-no-lto --no-default-features | jq -r 'select(.target.name == "tract" and .executable).executable')
+    TRACT_RUN=$(cargo build --message-format json -p tract $CARGO_EXTRA --profile opt-no-lto --no-default-features --features transformers | jq -r 'select(.target.name == "tract" and .executable).executable')
     export TRACT_RUN
 fi
 
 echo TRACT_RUN=$TRACT_RUN
 model=$1
 q=$2
-generation=516
+device=$3
+if [ -z "$device" ]
+then
+    device=cpu
+fi
+generation=541
 
-case $model in
-    OpenELM-270M) id=apple--OpenELM-270M-$q;;
-    OpenELM-1_1B) id=apple--OpenELM-1_1B-$q;;
-    TinyLlama_v1.1) id=TinyLlama--TinyLlama_v1.1-$q;;
-    llama-3.2) id=meta-llama--Llama-3.2-3B-$q;;
-    *)
-        echo "Unknown model"
-        exit 2
-        ;;
-esac
+if [ "$model" = "all" ]
+then
+    for m in \
+        openelm-270M \
+	llama-3.2-1B-instruct \
+	llama-3.2-3B-instruct \
+	llama-3.1-8B-instruct \
+	qwen2.5-7B-instruct \
+	qwen3-1.7B \
+	qwen3-8B
+    do
+        $0 $m $2 $device
+    done
+    exit 0
+fi
+
+model=$(echo $model | tr 'A-Z' 'a-z' | tr -d "_.-")
+
+for m in \
+    apple--OpenELM-270M \
+    meta-llama--Llama-3.2-1B-Instruct \
+    meta-llama--Llama-3.2-3B-Instruct \
+    meta-llama--Llama-3.1-8B-Instruct \
+    Qwen--Qwen2.5-7B-Instruct \
+    Qwen--Qwen3-1.7B \
+    Qwen--Qwen3-8B
+do
+    norm=$(echo $m | tr "A-Z" "a-z" | tr -d "_.-")
+    if [[ "$norm" == *"$model"* ]];
+    then
+        model_id=$m
+    fi
+done
+
+if [ -z "$model_id" ]
+then
+    echo "No model matched"
+fi
+
+if [ "$q" = "all" ]
+then
+    for q in q40ef16 f16f16 f32f32
+    do
+        $0 $1 $q $device
+    done
+    exit 0
+fi
+
+# Skipping f32f32 models except LLama 1B
+MODELS_F32_ALLOWED="llama-3.2-1B-instruct"
+if [ "$q" = "f32f32" ] && ! echo "$MODELS_F32_ALLOWED" | grep -q -w "$1"
+then
+    echo "INFO: Skipping f32f32 for model $1."
+    exit 0
+fi
+
+id=$model_id-$q
+
+# Skipping too big models for CI workers
+TOO_BIG_MODELS=(
+    "meta-llama--Llama-3.1-8B-Instruct-f32f32:cuda"
+    "meta-llama--Llama-3.1-8B-Instruct-f16f16:cuda"
+    "Qwen--Qwen2.5-7B-Instruct-f32f32:cuda"
+    "Qwen--Qwen2.5-7B-Instruct-f16f16:cuda"
+    "Qwen--Qwen3-8B-f32f32:cuda"
+    "Qwen--Qwen3-8B-f16f16:cuda"
+)
+
+for big_id in "${TOO_BIG_MODELS[@]}"
+do
+    if [ "$big_id" = "$id:$device" ]
+    then
+        echo "INFO: Skipping model $id because it is too big for $device CI worker."
+        exit 0
+    fi
+done
 
 if [ -n "$GITHUB_ACTIONS" ]
 then
-    if [ "$id" =  meta-llama--Llama-3.2-3B-f32f32 ]
-    then
-        echo "::warning title=Untestable model::$id is too big for GHA..."
-        exit 0
-    fi
+    for m in \
+        meta-llama--Llama-3.1-8B-Instruct-f32f32 \
+        meta-llama--Llama-3.1-8B-Instruct-f16f16 \
+        Qwen--Qwen2.5-7B-Instruct-f32f32 \
+        Qwen--Qwen2.5-7B-Instruct-f16f16 \
+        Qwen--Qwen3-8B-f32f32 \
+        Qwen--Qwen3-8B-f16f16
+    do
+        if [[ "$m" = "$id" ]]
+	then
+            echo "::warning title=Untestable model::$id is too big for GHA..."
+            exit 0
+	fi
+    done
 fi
 
 if which gstat > /dev/null
@@ -50,7 +130,7 @@ nnef=llm/$generation/$id/$id.nnef.tgz
 
 $CACHE_FILE $nnef
 
-$TRACT_RUN -v --nnef-tract-core $MODELS/$nnef -O --readings  --assert-maximal-mm-quality-cost 0 $TRACT_EXTRA_ARGS dump -q
+$TRACT_RUN -v --nnef-tract-transformers $MODELS/$nnef -O --readings  --assert-maximal-mm-quality-cost 0 $TRACT_EXTRA_ARGS dump -q
 if [ -e $MODELS/$nnef ]
 then
     size=$($STAT -c %s $MODELS/$nnef)
@@ -80,54 +160,54 @@ do
     npz=llm/$generation/$id/$id.$t.io.npz
     $CACHE_FILE $npz
 
-    case $q in
-        q40f16) approx="--approx ultra";;
-        q40ef16) approx="--approx ultra";;
-        f16f16) approx="--approx ultra";;
-        q40f32) approx="--approx very";;
-        q40ef32) approx="--approx very";;
-        f32f32) approx="--approx very";;
+    key=$id.$t.$(arch).$device
+    expectations="$ROOT/.travis/llm-expectations-541"
+
+    case $device in 
+        cuda)
+            DEVICE="--cuda"
+        ;;
+        metal) DEVICE="--metal";;
     esac
 
-    case "$id.$t" in
-        # very terrible conditioning on this one
-        apple--OpenELM-270M-f16f16.p50s50) approx="--approx-custom 0.2,0.25,0.01";;
+    if [ -n "$RESET" ]
+    then
+        $TRACT_RUN -v --nnef-tract-core --nnef-tract-transformers $MODELS/$nnef $TRACT_EXTRA_ARGS \
+            -t transformers-detect-all -O $DEVICE run \
+            --input-from-npz $MODELS/$npz \
+            --assert-output-bundle $MODELS/$npz \
+            --assert-llm-lev20 999999999 \
+            --prompt-chunk-size 60 \
+            $approx --allow-float-casts 2>&1 | tee output.txt
+        found=$(cat output.txt | grep lev20 | cut -d '=' -f 2)
+        ( ( grep -v $key $expectations || true) ; echo $key $found) | sort > $expectations.tmp
+        mv $expectations.tmp $expectations
+    elif [ -n "$RELAX" ]
+    then
+        prior=$(grep $key $expectations | cut -f 2 -d ' ')
+        $TRACT_RUN -v --nnef-tract-core --nnef-tract-transformers $MODELS/$nnef $TRACT_EXTRA_ARGS \
+            -t transformers-detect-all -O $DEVICE run \
+            --input-from-npz $MODELS/$npz \
+            --assert-output-bundle $MODELS/$npz \
+            --assert-llm-lev20 999999999 \
+            --prompt-chunk-size 60 \
+            $approx --allow-float-casts 2>&1 | tee output.txt
+        found=$(cat output.txt | grep lev20 | cut -d '=' -f 2)
+        if [ "$found" -lt "$prior" ]
+        then
+            found=$prior
+        fi
+        ( ( grep -v $key $expectations || true) ; echo $key $found) | sort > $expectations.tmp
+        mv $expectations.tmp $expectations
+    else # test !
+        expectation=$(grep $key $expectations | cut -f 2 -d ' ')
+        $TRACT_RUN -v --nnef-tract-core --nnef-tract-transformers $MODELS/$nnef $TRACT_EXTRA_ARGS \
+            -t transformers-detect-all -O $DEVICE run \
+            --input-from-npz $MODELS/$npz \
+            --prompt-chunk-size 60 \
+            --assert-output-bundle $MODELS/$npz \
+            --assert-llm-lev20 $expectation \
+            $approx --allow-float-casts
+    fi
 
-        TinyLlama--TinyLlama_v1.1-f32f32.p50s50) approx="--approx-custom 0.2,0.1,0.001";;
-        TinyLlama--TinyLlama_v1.1-f16f16.p0s100) approx="--approx-custom 0.2,0.1,0.002";;
-        TinyLlama--TinyLlama_v1.1-f16f16.p50s50) approx="--approx-custom 0.2,0.1,0.007";;
-        TinyLlama--TinyLlama_v1.1-f16f16.p99s1) approx="--approx-custom 0.2,0.1,0.004";;
-        TinyLlama--TinyLlama_v1.1-q40f16.p0s100) approx="--approx-custom 0.2,0.1,0.004";;
-        TinyLlama--TinyLlama_v1.1-q40f16.p99s1) approx="--approx-custom 0.2,0.1,0.002";;
-        TinyLlama--TinyLlama_v1.1-q40f16.p50s50) approx="--approx-custom 0.2,0.2,0.006";;
-        TinyLlama--TinyLlama_v1.1-q40ef16.p0s100) approx="--approx-custom 0.2,0.1,0.002";;
-        TinyLlama--TinyLlama_v1.1-q40ef16.p50s50) approx="--approx-custom 0.2,0.1,0.002";;
-
-        meta-llama--Llama-3.2-3B-f16f16.p0s100 |\
-        meta-llama--Llama-3.2-3B-q40f16.p0s100 |\
-        meta-llama--Llama-3.2-3B-q40ef16.p0s100) 
-            if [ `arch` = "arm64" ]
-            then
-                approx="--approx-custom 0.25,0.25,0.01"
-            else
-                approx="--approx-custom 0.2,0.1,0.004"
-            fi
-        ;;
-        meta-llama--Llama-3.2-3B-f16f16.p50s50 |\
-        meta-llama--Llama-3.2-3B-q40f16.p50s50 |\
-        meta-llama--Llama-3.2-3B-q40ef16.p50s50) 
-            if [ `arch` = "arm64" ]
-            then
-                approx="--approx-custom 0.25,0.25,0.016"
-            else
-                approx="--approx-custom 0.2,0.1,0.004"
-            fi
-        ;;
-    esac
-
-
-    $TRACT_RUN -v --nnef-tract-core $MODELS/$nnef $TRACT_EXTRA_ARGS -O run \
-        --input-from-npz $MODELS/$npz \
-        --assert-output-bundle $MODELS/$npz \
-        $approx --allow-float-casts
 done

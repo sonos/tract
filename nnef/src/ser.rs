@@ -2,12 +2,13 @@ use crate::ast::*;
 use crate::internal::*;
 use tract_core::ndarray::ArrayViewD;
 use tract_core::ndarray::Axis;
+use tract_core::ops::cnn::conv::{rewrite_kernel_conv_in_oihw, rewrite_kernel_deconv_in_oihw};
+use tract_core::tract_linalg::block_quant::BlockQuantFact;
 use tract_itertools::Itertools;
-use tract_linalg::block_quant::BlockQuantValue;
 
 pub fn rewrite_model(model: &mut TypedModel) -> TractResult<()> {
     model.prop_consts()?;
-    tract_core::ops::einsum::prefix_matmul::rewrite_einsum_to_prefix_matmul(model)?;
+    tract_core::ops::einsum::prefix_matmul::rewrite_einsum_to_prefix_matmul(model, true)?;
     Rewriter::default()
         .with_rule_for(
             "rewrite_block_quant_const_to_scalar",
@@ -22,14 +23,8 @@ pub fn rewrite_model(model: &mut TypedModel) -> TractResult<()> {
             "rewrite_deconv_with_n_axis",
             tract_core::ops::cnn::rewrite_deconv_with_n_axis,
         )
-        .with_rule_for(
-            "rewrite_kernel_conv_in_oihw",
-            crate::ops::nnef::ser::rewrite_kernel_conv_in_oihw,
-        )
-        .with_rule_for(
-            "rewrite_kernel_deconv_in_oihw",
-            crate::ops::nnef::ser::rewrite_kernel_deconv_in_oihw,
-        )
+        .with_rule_for("rewrite_kernel_conv_in_oihw", rewrite_kernel_conv_in_oihw)
+        .with_rule_for("rewrite_kernel_deconv_in_oihw", rewrite_kernel_deconv_in_oihw)
         .with_rule_for(
             "rewrite_consistent_quantized_conv",
             crate::ops::nnef::ser::rewrite_consistent_quantized_conv,
@@ -290,7 +285,10 @@ impl<'a> IntoAst<'a> {
                 required_registries[0].0
             );
         } else {
-            bail!("One of the following registries is required: {:?}, consider allowing one on the NNEF framework.", required_registries);
+            bail!(
+                "One of the following registries is required: {:?}, consider allowing one on the NNEF framework.",
+                required_registries
+            );
         }
     }
 
@@ -366,7 +364,7 @@ impl<'a> IntoAst<'a> {
         if tensor.datum_type() == TDim::datum_type() {
             return Ok(Self::dump_rec_tensor(&tensor.to_array_view::<TDim>()?, tdim).into());
         }
-        if !force_variable && tensor.len() <= 8 {
+        if !force_variable && tensor.len() <= 8 && tensor.len() > 0 {
             if tensor.datum_type() == String::datum_type() {
                 return Ok(Self::dump_rec_tensor(&tensor.to_array_view::<String>()?, |f| {
                     string(f)
@@ -402,8 +400,10 @@ impl<'a> IntoAst<'a> {
         self.tensors.insert(name.clone(), tensor.clone());
         let id = self.scoped_id(&name);
         let shape = if tensor.datum_type().is_opaque() {
-            if let Some(bqv) = tensor.to_scalar::<Opaque>()?.downcast_ref::<BlockQuantValue>() {
-                bqv.fact.shape()
+            if let Some(bwf) = tensor.to_scalar::<Opaque>()?.downcast_ref::<BlobWithFact>() {
+                let bqf =
+                    bwf.fact.downcast_ref::<BlockQuantFact>().context("Expected BlockQuantFacr")?;
+                bqf.shape()
             } else {
                 bail!("Unexpected opaque tensor in serialization {tensor:?}");
             }
