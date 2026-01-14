@@ -198,7 +198,7 @@ pub fn handle_pbdir(
         let value: Tensor = load_tensor(&FopenDataResolver, &tensor, None)?;
         values.insert(name, vec![Ok(value.into_tvalue())]);
     }
-    dispatch_model_no_pulse!(params.tract_model, |m| compare(
+    dispatch_model_no_pulse!(&params.tract_model, |m| compare(
         cumulative,
         &m,
         &values,
@@ -264,7 +264,7 @@ pub fn handle_with_model(
         })?;
     }
     state.reset_op_states()?;
-    dispatch_model_no_pulse!(params.tract_model, |m| compare(
+    dispatch_model_no_pulse!(&params.tract_model, |m| compare(
         cumulative,
         &m,
         &values,
