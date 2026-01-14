@@ -22,7 +22,7 @@ mod tflite_predump {
         fn prepare(&self, model: TypedModel) -> TractResult<Box<dyn Runnable>> {
             let mut model = model.clone();
             tract_tflite::rewriter::rewrite_for_tflite(&mut model).context("Preparing model")?;
-            Ok(Box::new(Arc::new(model.into_runnable()?)))
+            Ok(Box::new(model.into_runnable()?))
         }
     }
 
@@ -83,12 +83,12 @@ mod tflite_cycle {
                     reloaded.nodes[old_source_outlet.node].op = Box::new(Dummy);
                 }
             }
-            Ok(Box::new(Arc::new(
+            Ok(Box::new(
                 reloaded
                     .into_optimized()
                     .context("Optimising post-cycle model")?
                     .into_runnable()?,
-            )))
+            ))
         }
     }
 
