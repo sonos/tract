@@ -20,11 +20,11 @@ pub struct CausalLlmModelConfig {
 #[derive(Clone, Debug)]
 pub struct CausalLlmModel {
     pub tokenizer: Tokenizer,
-    pub nn: Arc<TypedRunnableModel<TypedModel>>,
+    pub nn: Arc<TypedRunnableModel>,
     pub conf: CausalLlmModelConfig,
 }
 
-fn plan_with_session_handler(model: TypedModel) -> TractResult<TypedSimplePlan<TypedModel>> {
+fn plan_with_session_handler(model: TypedModel) -> TractResult<Arc<TypedRunnableModel>> {
     if model.properties.contains_key("GPU") {
         let plan_options = PlanOptions { skip_order_opt_ram: true, ..Default::default() };
         let plan = model.into_runnable_with_options(&plan_options)?;
@@ -76,7 +76,7 @@ impl CausalLlmModel {
         }
         nn.optimize()?;
         let nn = plan_with_session_handler(nn)?;
-        Ok(Arc::new(CausalLlmModel { tokenizer, nn: Arc::new(nn), conf }))
+        Ok(Arc::new(CausalLlmModel { tokenizer, nn, conf }))
     }
 
     pub fn from_paths_and_conf(
@@ -117,7 +117,7 @@ impl CausalLlmModel {
     }
 
     pub fn spawn(self: &Arc<Self>) -> TractResult<CausalLlmState> {
-        let nn_state = SimpleState::new(self.nn.clone())?;
+        let nn_state = self.nn.spawn()?;
         Ok(CausalLlmState {
             model: self.clone(),
             nn_state,
@@ -131,7 +131,7 @@ impl CausalLlmModel {
         self: &Arc<Self>,
         config: CausalLlmStateConfig,
     ) -> TractResult<CausalLlmState> {
-        let nn_state = SimpleState::new(self.nn.clone())?;
+        let nn_state = self.nn.spawn()?;
         Ok(CausalLlmState {
             model: self.clone(),
             nn_state,
@@ -185,7 +185,7 @@ impl CausalLlmStateConfig {
 #[derive(Debug, Clone)]
 pub struct CausalLlmState {
     pub model: Arc<CausalLlmModel>,
-    pub nn_state: TypedSimpleState<TypedModel, Arc<TypedRunnableModel<TypedModel>>>,
+    pub nn_state: TypedSimpleState,
     pub seq: Vec<u32>,
     pub processed_tokens: usize,
     pub config: CausalLlmStateConfig,
@@ -295,7 +295,7 @@ impl CausalLlmState {
 #[derive(Clone, Debug)]
 pub struct FrozenCausalLlmState {
     pub model: Arc<CausalLlmModel>,
-    pub nn_state: TypedFrozenSimpleState<TypedModel, Arc<TypedRunnableModel<TypedModel>>>,
+    pub nn_state: TypedFrozenSimpleState,
     pub seq: Vec<u32>,
     pub config: CausalLlmStateConfig,
 }

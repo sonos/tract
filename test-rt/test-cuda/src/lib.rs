@@ -12,7 +12,7 @@ mod suite;
 
 #[derive(Debug)]
 struct CudaTestTransformState {
-    state: TypedSimpleState<TypedModel, Arc<TypedRunnableModel<TypedModel>>>,
+    state: TypedSimpleState,
     transpose_inputs: bool,
     use_arena: bool,
 }
@@ -26,7 +26,7 @@ impl State for CudaTestTransformState {
             )?;
 
             let plan = self.state.plan().clone().with_session_handler(session_handler);
-            TypedSimpleState::new(Arc::new(plan))?
+            plan.spawn()?
         } else {
             self.state.clone()
         };
@@ -60,7 +60,7 @@ impl State for CudaTestTransformState {
 
 #[derive(Debug)]
 struct CudaTestTransformRunnable {
-    runnable: Arc<TypedRunnableModel<TypedModel>>,
+    runnable: Arc<TypedRunnableModel>,
     transpose_inputs: bool,
     use_arena: bool,
 }
@@ -68,7 +68,7 @@ struct CudaTestTransformRunnable {
 impl Runnable for CudaTestTransformRunnable {
     fn spawn(&self) -> TractResult<Box<dyn State>> {
         Ok(Box::new(CudaTestTransformState {
-            state: TypedSimpleState::new(self.runnable.clone())?,
+            state: self.runnable.spawn()?,
             transpose_inputs: self.transpose_inputs,
             use_arena: self.use_arena,
         }))
@@ -138,7 +138,7 @@ impl Runtime for CudaTestRuntime {
         }
 
         let runnable = CudaTestTransformRunnable {
-            runnable: Arc::new(model.into_runnable()?),
+            runnable: model.into_runnable()?,
             transpose_inputs: self.transpose_inputs,
             use_arena: self.use_arena,
         };

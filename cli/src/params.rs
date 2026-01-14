@@ -360,31 +360,6 @@ impl Parameters {
         Ok(triplet)
     }
 
-    fn edge_context<F, O>(raw_model: &mut Graph<F, O>, left: usize, right: usize) -> TractResult<()>
-    where
-        F: std::fmt::Debug + Clone + Fact,
-        O: std::fmt::Debug + std::fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone,
-        Graph<F, O>: SpecialOps<F, O>,
-        tract_hir::ops::array::Pad: Into<O>,
-    {
-        let op = tract_core::ops::array::Pad::new(
-            vec![(left, right), (0, 0)],
-            tract_core::ops::array::PadMode::Edge,
-        );
-        let mut patch = ModelPatch::default();
-        for input in raw_model.input_outlets()? {
-            let tap = patch.tap_model(raw_model, *input)?;
-            let pad = patch.wire_node(
-                format!("{}-pad", raw_model.node(input.node).name),
-                op.clone(),
-                &[tap],
-            )?[0];
-            patch.shunt_outside(raw_model, *input, pad)?;
-        }
-        patch.apply(raw_model)?;
-        Ok(())
-    }
-
     fn use_onnx_test_case_data_set(
         symbol_table: &SymbolScope,
         inputs_dir: &std::path::Path,
@@ -1022,14 +997,6 @@ impl Parameters {
             Some(("dump" | "run" | "compare", sm)) => Assertions::from_clap(sm, &symbols)?,
             _ => Assertions::default(),
         };
-
-        if matches.value_of("edge-left-context").is_some()
-            || matches.value_of("edge-right-context").is_some()
-        {
-            let left = matches.value_of("edge-left-context").unwrap_or("0").parse()?;
-            let right = matches.value_of("edge-right-context").unwrap_or("0").parse()?;
-            dispatch_model_mut_no_pulse!(raw_model, |m| Self::edge_context(m, left, right))?;
-        }
 
         if let Some(infer) = raw_model.downcast_mut::<InferenceModel>() {
             for (ix, node_id) in infer.inputs.iter().enumerate() {
