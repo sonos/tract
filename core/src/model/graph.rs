@@ -509,7 +509,7 @@ where
         Ok(())
     }
 
-    /// Converts the model into a `RunnableModel` to actually process user data.
+    // Converts the model into a `RunnableModel` to actually process user data.
     // pub fn into_runnable(self) -> TractResult<Arc<RunnableModel<F, O>>> {
     //     crate::plan::SimplePlan::new_with_options(self, &PlanOptions::default())
     // }

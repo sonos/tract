@@ -9,7 +9,7 @@ use tract_libcli::tensor::RunTensors;
 use tract_libcli::tensor::get_or_make_inputs;
 use tract_libcli::terminal;
 
-fn profile<'m>(state: &mut TypedSimpleState, inputs: &RunTensors) -> TractResult<Duration> {
+fn profile(state: &mut TypedSimpleState, inputs: &RunTensors) -> TractResult<Duration> {
     if state.model().properties().contains_key("pulse.delay") {
         let start = Instant::now();
         for source in &inputs.sources {

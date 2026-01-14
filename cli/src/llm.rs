@@ -35,7 +35,7 @@ pub fn bench_pp(
     let mut state = make_state(&model, matches, sub_matches)?;
 
     let (b, s, p) =
-        figure_out_b_s_p(&*model).context("Could not find out LLM symbolic parameters")?;
+        figure_out_b_s_p(&model).context("Could not find out LLM symbolic parameters")?;
     if let Some(b) = b {
         run_params.symbols.set(&b, 1);
     }
