@@ -199,8 +199,8 @@ impl TypedOp for MetalDynKVCache {
 
 #[cfg(test)]
 mod tests {
-    use crate::MetalTransform;
     use crate::utils::with_borrowed_metal_stream;
+    use crate::MetalTransform;
 
     use super::*;
     use tract_core::ops::array::TypedConcat;
@@ -226,7 +226,11 @@ mod tests {
                         .iter()
                         .enumerate()
                         .map(|(i, &dim)| {
-                            if i == axis { TDim::Sym(model.sym(sym)) } else { TDim::Val(dim as _) }
+                            if i == axis {
+                                TDim::Sym(model.sym(sym))
+                            } else {
+                                TDim::Val(dim as _)
+                            }
                         })
                         .collect::<TVec<TDim>>()
                 };
@@ -255,7 +259,7 @@ mod tests {
             model.auto_outputs()?;
 
             let metal_model = MetalTransform::default().transform_into(model)?;
-            let mut state = TypedSimpleState::new(metal_model.into_runnable()?)?;
+            let mut state = metal_model.into_runnable()?.spawn()?;
 
             let first_shape = &input_shapes[0];
             ensure!(input_shapes.iter().all(|shape| (shape.len() == first_shape.len())
