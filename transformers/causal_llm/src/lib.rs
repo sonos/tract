@@ -26,9 +26,6 @@ pub struct CausalLlmModel {
 
 fn plan_with_session_handler(model: TypedModel) -> TractResult<Arc<TypedRunnableModel>> {
     if model.properties.contains_key("GPU") {
-        let plan_options = PlanOptions { skip_order_opt_ram: true, ..Default::default() };
-        let plan = model.into_runnable_with_options(&plan_options)?;
-        let model = plan.model();
         let mut symbol_values = SymbolValues::default();
         let sequence_length = model.symbols.get("S").context("Could not find symbol S in model")?;
         let past_sequence_length =
@@ -36,9 +33,13 @@ fn plan_with_session_handler(model: TypedModel) -> TractResult<Arc<TypedRunnable
 
         symbol_values.set(&sequence_length, 1024);
         symbol_values.set(&past_sequence_length, 0);
-        let session_handler =
-            tract_gpu::session_handler::DeviceSessionHandler::from_plan(&plan, &symbol_values)?;
-        Ok(plan.with_session_handler(session_handler))
+
+        let plan_options = PlanOptions {
+            skip_order_opt_ram: true,
+            memory_sizing_hints: symbol_values,
+            ..Default::default()
+        };
+        model.into_runnable_with_options(&plan_options)
     } else {
         model.into_runnable()
     }

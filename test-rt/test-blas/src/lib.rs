@@ -20,9 +20,13 @@ mod as_blas {
         fn name(&self) -> StaticName {
             Cow::Borrowed("as_blas")
         }
-        fn prepare(&self, mut model: TypedModel) -> TractResult<Box<dyn Runnable>> {
+        fn prepare_with_options(
+            &self,
+            mut model: TypedModel,
+            options: &PlanOptions,
+        ) -> TractResult<Box<dyn Runnable>> {
             tract_core::transform::get_transform("as-blas").unwrap().transform(&mut model)?;
-            Ok(Box::new(model.into_runnable()?))
+            Ok(Box::new(model.into_runnable_with_options(options)?))
         }
     }
 

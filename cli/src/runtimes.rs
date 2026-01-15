@@ -10,7 +10,11 @@ impl Runtime for UnoptimizedRuntime {
         Cow::Borrowed("unoptimized")
     }
 
-    fn prepare(&self, model: TypedModel) -> TractResult<Box<dyn Runnable>> {
-        Ok(Box::new(SimplePlan::new(model)?))
+    fn prepare_with_options(
+        &self,
+        model: TypedModel,
+        options: &PlanOptions,
+    ) -> TractResult<Box<dyn Runnable>> {
+        Ok(Box::new(SimplePlan::new_with_options(model, options)?))
     }
 }

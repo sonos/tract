@@ -25,7 +25,9 @@ impl State for CudaTestTransformState {
                 &self.state.session_state.resolved_symbols,
             )?;
 
-            let plan = self.state.plan().clone().with_session_handler(session_handler);
+            let plan = Arc::unwrap_or_clone(self.state.plan().clone())
+                .with_session_handler(session_handler);
+            let plan = Arc::new(plan);
             plan.spawn()?
         } else {
             self.state.clone()
@@ -105,6 +107,10 @@ impl Runnable for CudaTestTransformRunnable {
     fn output_count(&self) -> usize {
         self.runnable.output_count()
     }
+
+    fn typed_model(&self) -> Option<&Arc<TypedModel>> {
+        self.runnable.typed_model()
+    }
 }
 
 #[derive(Debug)]
@@ -121,7 +127,11 @@ impl Runtime for CudaTestRuntime {
         self.name.into()
     }
 
-    fn prepare(&self, mut model: TypedModel) -> TractResult<Box<dyn Runnable>> {
+    fn prepare_with_options(
+        &self,
+        mut model: TypedModel,
+        options: &PlanOptions,
+    ) -> TractResult<Box<dyn Runnable>> {
         if self.transpose_inputs {
             for ix in 0..model.inputs.len() {
                 let input = model.input_outlets()?[ix];
@@ -170,7 +180,7 @@ impl Runtime for CudaTestRuntime {
         }
 
         let runnable = CudaTestTransformRunnable {
-            runnable: model.into_runnable()?,
+            runnable: model.into_runnable_with_options(&options)?,
             transpose_inputs: self.transpose_inputs,
             use_arena: self.use_arena,
         };

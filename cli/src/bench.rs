@@ -53,33 +53,33 @@ pub(crate) fn make_state(
 ) -> TractResult<TypedSimpleState> {
     #[allow(unused_mut)]
     let mut plan_options = crate::plan_options::plan_options_from_subcommand(sub_matches)?;
-    if matches.is_present("metal") || matches.is_present("cuda") {
-        #[cfg(not(any(target_os = "macos", target_os = "ios")))]
-        {
-            use tract_cuda::utils::are_culibs_present;
-            if !are_culibs_present() {
-                bail!("GPU bench called on non-GPU model");
-            }
-        }
-        plan_options.skip_order_opt_ram = true;
-        let mut plan = SimplePlan::new_with_options(model.clone(), &plan_options)?;
-        let mut symbol_values = SymbolValues::default();
-        if let Some(s) = model.symbols.get("S") {
-            symbol_values.set(&s, 1024);
-        }
-        if let Some(p) = model.symbols.get("P") {
-            symbol_values.set(&p, 0);
-        }
+    // if matches.is_present("metal") || matches.is_present("cuda") {
+    //     #[cfg(not(any(target_os = "macos", target_os = "ios")))]
+    //     {
+    //         use tract_cuda::utils::are_culibs_present;
+    //         if !are_culibs_present() {
+    //             bail!("GPU bench called on non-GPU model");
+    //         }
+    //     }
+    //     plan_options.skip_order_opt_ram = true;
+    //     let mut plan = SimplePlan::new_with_options(model.clone(), &plan_options)?;
+    //     let mut symbol_values = SymbolValues::default();
+    //     if let Some(s) = model.symbols.get("S") {
+    //         symbol_values.set(&s, 1024);
+    //     }
+    //     if let Some(p) = model.symbols.get("P") {
+    //         symbol_values.set(&p, 0);
+    //     }
 
-        let session_handler =
-            tract_gpu::session_handler::DeviceSessionHandler::from_plan(&plan, &symbol_values)?;
+    //     let session_handler =
+    //         tract_gpu::session_handler::DeviceSessionHandler::from_plan(&plan, &symbol_values)?;
 
-        plan = plan.with_session_handler(session_handler);
-        plan.spawn()
-    } else {
-        let plan = SimplePlan::new_with_options(model.clone(), &plan_options)?;
-        plan.spawn()
-    }
+    //     plan = plan.with_session_handler(session_handler);
+    //     plan.spawn()
+    // } else {
+    let plan = SimplePlan::new_with_options(model.clone(), &plan_options)?;
+    plan.spawn()
+    // }
 }
 
 pub(crate) fn bench(

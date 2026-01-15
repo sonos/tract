@@ -19,10 +19,13 @@ mod tflite_predump {
             "tflite-predump".into()
         }
 
-        fn prepare(&self, model: TypedModel) -> TractResult<Box<dyn Runnable>> {
-            let mut model = model.clone();
+        fn prepare_with_options(
+            &self,
+            mut model: TypedModel,
+            options: &PlanOptions,
+        ) -> TractResult<Box<dyn Runnable>> {
             tract_tflite::rewriter::rewrite_for_tflite(&mut model).context("Preparing model")?;
-            Ok(Box::new(model.into_runnable()?))
+            Ok(Box::new(model.into_runnable_with_options(&options)?))
         }
     }
 
@@ -48,7 +51,11 @@ mod tflite_cycle {
             "tflite-cycle".into()
         }
 
-        fn prepare(&self, model: TypedModel) -> TractResult<Box<dyn Runnable>> {
+        fn prepare_with_options(
+            &self,
+            model: TypedModel,
+            options: &PlanOptions,
+        ) -> TractResult<Box<dyn Runnable>> {
             info!("Store to Tflite");
             let mut buffer = vec![];
             self.0.write(&model, &mut buffer).context("Translating model to tflite")?;
@@ -87,7 +94,7 @@ mod tflite_cycle {
                 reloaded
                     .into_optimized()
                     .context("Optimising post-cycle model")?
-                    .into_runnable()?,
+                    .into_runnable_with_options(options)?,
             ))
         }
     }
