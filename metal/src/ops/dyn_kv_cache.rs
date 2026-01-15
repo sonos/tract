@@ -16,8 +16,8 @@ pub struct MetalDynKVCacheState {
     kv_cache: Option<TValue>,
 }
 impl OpState for MetalDynKVCacheState {
-    fn load_from(&mut self, state: &mut SessionState, states: &mut Vec<TValue>) -> TractResult<()> {
-        let kv_cache = states.remove(0);
+    fn load_from(&mut self, state: &mut SessionState, states: &[TValue]) -> TractResult<()> {
+        let kv_cache = states[0].clone();
         // KV Cache fact is always at index 0
         DynKeyValueCacheState::resolve_symbols(
             state,
@@ -199,8 +199,8 @@ impl TypedOp for MetalDynKVCache {
 
 #[cfg(test)]
 mod tests {
-    use crate::MetalTransform;
     use crate::utils::with_borrowed_metal_stream;
+    use crate::MetalTransform;
 
     use super::*;
     use tract_core::ops::array::TypedConcat;
@@ -226,7 +226,11 @@ mod tests {
                         .iter()
                         .enumerate()
                         .map(|(i, &dim)| {
-                            if i == axis { TDim::Sym(model.sym(sym)) } else { TDim::Val(dim as _) }
+                            if i == axis {
+                                TDim::Sym(model.sym(sym))
+                            } else {
+                                TDim::Val(dim as _)
+                            }
                         })
                         .collect::<TVec<TDim>>()
                 };

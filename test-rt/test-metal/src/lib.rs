@@ -59,6 +59,30 @@ impl State for MetalTestTransformState {
             state.run(inputs)
         }
     }
+
+    fn input_count(&self) -> usize {
+        self.state.input_count()
+    }
+
+    fn output_count(&self) -> usize {
+        self.state.output_count()
+    }
+
+    fn initializable_states_count(&self) -> usize {
+        self.state.initializable_states_count()
+    }
+
+    fn get_states_facts(&self) -> Vec<TypedFact> {
+        self.state.get_states_facts()
+    }
+
+    fn init_state(&mut self, states: &[TValue]) -> TractResult<()> {
+        self.state.init_state(states)
+    }
+
+    fn get_states(&self) -> TractResult<Vec<TValue>> {
+        self.state.get_states()
+    }
 }
 
 #[derive(Debug)]
@@ -75,6 +99,14 @@ impl Runnable for MetalTestTransformRunnable {
             transpose_inputs: self.transpose_inputs,
             use_arena: self.use_arena,
         }))
+    }
+
+    fn input_count(&self) -> usize {
+        self.runnable.input_count()
+    }
+
+    fn output_count(&self) -> usize {
+        self.runnable.output_count()
     }
 }
 

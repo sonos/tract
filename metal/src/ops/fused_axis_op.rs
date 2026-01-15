@@ -74,11 +74,7 @@ impl OpState for MetalFusedAxisOpState {
         self.op_state.init_tensor_fact()
     }
 
-    fn load_from(
-        &mut self,
-        session: &mut SessionState,
-        states: &mut Vec<TValue>,
-    ) -> TractResult<()> {
+    fn load_from(&mut self, session: &mut SessionState, states: &[TValue]) -> TractResult<()> {
         self.op_state.load_from(session, states)
     }
 
