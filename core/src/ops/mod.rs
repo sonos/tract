@@ -94,7 +94,11 @@ pub trait OpStateFreeze {
 dyn_clone::clone_trait_object!(FrozenOpState);
 
 pub trait OpState: fmt::Debug + dyn_clone::DynClone + OpStateFreeze + Downcast {
-    fn load_from(&mut self, _: &mut SessionState, _: &[TValue]) -> TractResult<()> {
+    fn load_from(
+        &mut self,
+        _: &mut SessionState,
+        _: &mut dyn Iterator<Item = TValue>,
+    ) -> TractResult<()> {
         Ok(())
     }
 
