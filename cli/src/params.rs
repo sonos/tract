@@ -1,7 +1,6 @@
 use fs_err as fs;
 use reqwest::Url;
 use scan_fmt::scan_fmt;
-use std::any::Any;
 use std::io::Cursor;
 use std::io::Read;
 use std::path::PathBuf;
@@ -1030,7 +1029,7 @@ impl Parameters {
         };
 
         let keep_last = matches.is_present("keep-last");
-        let (mut tract_model, reference_model) = Self::load_and_declutter(
+        let (tract_model, reference_model) = Self::load_and_declutter(
             matches,
             probe,
             raw_model,
@@ -1053,16 +1052,17 @@ impl Parameters {
         } else {
             "unoptimized"
         };
+
+        // we assume the runnable will be a typed_model() (it is the case for all current runtimes)
+        // so we consume tract_model knowning the runnable will give us a new one later.
+        // we should hold on the old model in the general case, but this leads to dup models weights in memory
         let runtime =
             runtime_for_name(runtime).with_context(|| format!("Runtime `{runtime}' not found"))?;
-
-        let typed_model = Arc::downcast::<TypedModel>(tract_model.clone())
-            .map_err(|_| anyhow!("Need a typed model"))?;
-        let typed_model = Arc::unwrap_or_clone(typed_model);
-        let runnable: Option<Arc<dyn Runnable>> = Some(runtime.prepare(typed_model)?.into());
-        if let Some(typed_model) = runnable.as_ref().and_then(|r| r.typed_model().cloned()) {
-            tract_model = typed_model.clone();
-        }
+        let typed_model =
+            Arc::downcast::<TypedModel>(tract_model).map_err(|_| anyhow!("Need a typed model"))?;
+        let typed_model = Arc::try_unwrap(typed_model).ok().context("Can not unwrap")?;
+        let runnable = runtime.prepare(typed_model)?;
+        let tract_model = runnable.typed_model().unwrap().clone();
 
         // stage!("optimize", typed_model -> typed_model, |mut m:TypedModel| {
         //     let mut opt = tract_core::optim::Optimizer::codegen();
@@ -1089,7 +1089,7 @@ impl Parameters {
         info_usage("model ready", probe);
         Ok(Parameters {
             graph,
-            runnable,
+            runnable: Some(runnable.into()),
             tract_model,
             reference_model,
             tf_model,

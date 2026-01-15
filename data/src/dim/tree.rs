@@ -13,7 +13,7 @@ use std::{fmt, ops};
 
 #[derive(Debug)]
 pub enum TooEarly {
-    UndeterminedSymbol(TDim),
+    UndeterminedSymbol(String),
     Other(String),
 }
 
@@ -106,7 +106,7 @@ impl TDim {
         if let Val(v) = self {
             Ok(*v)
         } else {
-            Err(TooEarly::UndeterminedSymbol(self.clone()).into())
+            Err(TooEarly::UndeterminedSymbol(self.to_string()))?
         }
     }
 
@@ -119,7 +119,7 @@ impl TDim {
         match self {
             Sym(sym) => {
                 let Some(v) = values.get(sym) else {
-                    bail!(TooEarly::UndeterminedSymbol(self.clone()))
+                    Err(TooEarly::UndeterminedSymbol(self.to_string()))?
                 };
                 Ok(v)
             }
