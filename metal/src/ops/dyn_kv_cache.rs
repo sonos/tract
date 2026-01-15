@@ -16,8 +16,12 @@ pub struct MetalDynKVCacheState {
     kv_cache: Option<TValue>,
 }
 impl OpState for MetalDynKVCacheState {
-    fn load_from(&mut self, state: &mut SessionState, states: &[TValue]) -> TractResult<()> {
-        let kv_cache = states[0].clone();
+    fn load_from(
+        &mut self,
+        state: &mut SessionState,
+        states: &mut dyn Iterator<Item = tract_core::value::TValue>,
+    ) -> TractResult<()> {
+        let kv_cache = states.next().context("Not enough state initializers")?;
         // KV Cache fact is always at index 0
         DynKeyValueCacheState::resolve_symbols(
             state,
