@@ -275,7 +275,7 @@ where
             states_to_init.len(),
             state_init_tensors.len()
         );
-        let mut iterator = state_init_tensors.into_iter().cloned();
+        let mut iterator = state_init_tensors.iter().cloned();
         for state in states_to_init {
             state.load_from(&mut self.session_state, &mut iterator)?;
         }
