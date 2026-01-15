@@ -201,12 +201,14 @@ impl LstmProblem {
         let model = self.tf_model()?;
         let lstm_id = model.node_by_name("lstm")?.id;
         let memo_id = model.node_by_name("memo")?.id;
-        let plan_run = SimplePlan::build(
+        #[allow(deprecated)]
+        let plan_run = SimplePlan::build_with_outputs_and_deps(
             model,
             &[OutletId::new(lstm_id, 6), OutletId::new(memo_id, 0)],
             &[],
             &PlanOptions::default(),
         )?;
+        let plan_run = Arc::new(plan_run);
         let mut state = plan_run.spawn()?;
         let y = state.run(tvec!(self.x.clone()))?.remove(0);
         Ok(y)

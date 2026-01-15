@@ -23,8 +23,12 @@ mod unoptimized {
         fn name(&self) -> StaticName {
             Cow::Borrowed("unoptimized")
         }
-        fn prepare(&self, model: TypedModel) -> TractResult<Box<dyn Runnable>> {
-            Ok(Box::new(model.into_runnable()?))
+        fn prepare_with_options(
+            &self,
+            model: TypedModel,
+            options: &PlanOptions,
+        ) -> TractResult<Box<dyn Runnable>> {
+            Ok(Box::new(model.into_runnable_with_options(options)?))
         }
     }
 

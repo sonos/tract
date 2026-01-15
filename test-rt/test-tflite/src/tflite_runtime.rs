@@ -19,7 +19,11 @@ impl Runtime for TfliteRuntime {
         "tflite".into()
     }
 
-    fn prepare(&self, model: TypedModel) -> TractResult<Box<dyn Runnable>> {
+    fn prepare_with_options(
+        &self,
+        model: TypedModel,
+        _options: &PlanOptions,
+    ) -> TractResult<Box<dyn Runnable>> {
         let mut buffer = vec![];
         self.0.write(&model, &mut buffer).context("Translating model to tflite")?;
         // std::fs::write("foo.tflite", &buffer)?;
@@ -41,6 +45,10 @@ impl Runnable for TfliteRunnable {
 
     fn output_count(&self) -> usize {
         self.1.outputs.len()
+    }
+
+    fn typed_model(&self) -> Option<&Arc<TypedModel>> {
+        Some(&self.1)
     }
 }
 

@@ -138,7 +138,7 @@ pub fn profile_gpu(
     let mut iters = 0usize;
     let prefix = tvec!();
 
-    let mut plan = TypedSimplePlan::new_with_options(model.clone(), plan_options)?;
+    let plan = TypedSimplePlan::new_with_options(model.clone(), plan_options)?;
     bench_limits.warmup(&plan, inputs)?;
 
     let state = TypedSimpleState::new_from_inputs(&plan, inputs.sources[0].clone())?;
@@ -148,7 +148,9 @@ pub fn profile_gpu(
         &state.session_state.resolved_symbols,
     )?;
 
+    let mut plan = TypedSimplePlan::build(model.clone(), plan_options)?;
     plan = plan.with_session_handler(session_handler);
+    let plan = Arc::new(plan);
 
     let mut state = plan.spawn()?;
     let mut dur = Duration::default();

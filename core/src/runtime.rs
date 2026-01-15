@@ -4,7 +4,14 @@ use crate::internal::*;
 
 pub trait Runtime: Debug + Send + Sync + 'static {
     fn name(&self) -> StaticName;
-    fn prepare(&self, model: TypedModel) -> TractResult<Box<dyn Runnable>>;
+    fn prepare(&self, model: TypedModel) -> TractResult<Box<dyn Runnable>> {
+        self.prepare_with_options(model, &Default::default())
+    }
+    fn prepare_with_options(
+        &self,
+        model: TypedModel,
+        options: &PlanOptions,
+    ) -> TractResult<Box<dyn Runnable>>;
 }
 
 pub trait Runnable: Debug {
@@ -20,7 +27,9 @@ pub trait Runnable: Debug {
 pub trait State {
     fn run(&mut self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>>;
 
-    fn runnable(&self) -> &dyn Runnable;
+    fn runnable(&self) -> &dyn Runnable {
+        panic!();
+    }
 
     fn initializable_states_count(&self) -> usize;
     fn get_states_facts(&self) -> Vec<TypedFact>;
@@ -43,8 +52,13 @@ impl Runtime for DefaultRuntime {
         Cow::Borrowed("default")
     }
 
-    fn prepare(&self, model: TypedModel) -> TractResult<Box<dyn Runnable>> {
-        Ok(Box::new(model.into_optimized()?.into_runnable()?))
+    fn prepare_with_options(
+        &self,
+        model: TypedModel,
+        options: &PlanOptions,
+    ) -> TractResult<Box<dyn Runnable>> {
+        let model = model.into_optimized()?;
+        Ok(Box::new(TypedSimplePlan::new_with_options(model, options)?))
     }
 }
 
@@ -112,8 +126,12 @@ impl Runtime for InventorizedRuntime {
         self.0.name()
     }
 
-    fn prepare(&self, model: TypedModel) -> TractResult<Box<dyn Runnable>> {
-        self.0.prepare(model)
+    fn prepare_with_options(
+        &self,
+        model: TypedModel,
+        options: &PlanOptions,
+    ) -> TractResult<Box<dyn Runnable>> {
+        self.0.prepare_with_options(model, options)
     }
 }
 
