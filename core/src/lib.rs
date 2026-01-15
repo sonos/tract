@@ -122,7 +122,9 @@ pub mod internal {
     pub use crate::ops::{Cost, EvalOp, FrozenOpState, Op, OpState, Validation};
     pub use crate::plan::{SessionState, SessionStateHandler};
     pub use crate::prelude::*;
-    pub use crate::runtime::{DefaultRuntime, Runnable, Runtime, State};
+    pub use crate::runtime::{
+        DefaultRuntime, Runnable, Runtime, State, runtime_for_name, runtimes,
+    };
     pub use dims;
     pub use downcast_rs as tract_downcast_rs;
     pub use register_runtime;

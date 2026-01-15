@@ -73,7 +73,7 @@ where
     F: Fact + Clone + 'static,
     O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
-    model: Arc<Graph<F, O>>,
+    pub(crate) model: Arc<Graph<F, O>>,
     outputs: Vec<OutletId>,
     order: Vec<usize>,
     flush_lists: Vec<TVec<usize>>,
@@ -201,7 +201,7 @@ where
     F: Fact + Clone + 'static,
     O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
-    plan: Arc<SimplePlan<F, O>>,
+    pub(crate) plan: Arc<SimplePlan<F, O>>,
     pub states: Vec<Option<Box<dyn OpState>>>,
     pub session_state: SessionState,
     pub values: Vec<Option<TVec<TValue>>>,

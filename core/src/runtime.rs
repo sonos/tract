@@ -11,6 +11,7 @@ pub trait Runnable: Debug {
     fn run(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         self.spawn()?.run(inputs)
     }
+    fn typed_model(&self) -> Option<&Arc<TypedModel>>;
     fn spawn(&self) -> TractResult<Box<dyn State>>;
     fn input_count(&self) -> usize;
     fn output_count(&self) -> usize;
@@ -19,12 +20,19 @@ pub trait Runnable: Debug {
 pub trait State {
     fn run(&mut self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>>;
 
-    fn input_count(&self) -> usize;
-    fn output_count(&self) -> usize;
+    fn runnable(&self) -> &dyn Runnable;
+
     fn initializable_states_count(&self) -> usize;
     fn get_states_facts(&self) -> Vec<TypedFact>;
     fn init_state(&mut self, states: &[TValue]) -> TractResult<()>;
     fn get_states(&self) -> TractResult<Vec<TValue>>;
+    fn input_count(&self) -> usize {
+        self.runnable().input_count()
+    }
+
+    fn output_count(&self) -> usize {
+        self.runnable().input_count()
+    }
 }
 
 #[derive(Debug)]
@@ -45,12 +53,16 @@ impl Runnable for Arc<TypedRunnableModel> {
         Ok(Box::new(self.spawn()?))
     }
 
+    fn typed_model(&self) -> Option<&Arc<TypedModel>> {
+        Some(&self.model)
+    }
+
     fn input_count(&self) -> usize {
-        self.model().inputs.len()
+        self.model.inputs.len()
     }
 
     fn output_count(&self) -> usize {
-        self.model().outputs.len()
+        self.model.outputs.len()
     }
 }
 
@@ -59,12 +71,8 @@ impl State for TypedSimpleState {
         self.run(inputs)
     }
 
-    fn input_count(&self) -> usize {
-        self.model().inputs.len()
-    }
-
-    fn output_count(&self) -> usize {
-        self.model().outputs.len()
+    fn runnable(&self) -> &dyn Runnable {
+        &self.plan
     }
 
     fn initializable_states_count(&self) -> usize {
@@ -119,6 +127,10 @@ inventory::collect!(InventorizedRuntime);
 
 pub fn runtimes() -> impl Iterator<Item = &'static dyn Runtime> {
     inventory::iter::<InventorizedRuntime>().map(|ir| ir.0)
+}
+
+pub fn runtime_for_name(s: &str) -> Option<&'static dyn Runtime> {
+    runtimes().find(|rt| rt.name() == s)
 }
 
 #[macro_export]
