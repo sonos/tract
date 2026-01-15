@@ -1,6 +1,7 @@
 use fs_err as fs;
 use reqwest::Url;
 use scan_fmt::scan_fmt;
+use std::any::Any;
 use std::io::Cursor;
 use std::io::Read;
 use std::path::PathBuf;
@@ -8,7 +9,6 @@ use std::str::FromStr;
 use tract_core::internal::*;
 use tract_core::model::TypedModel;
 use tract_core::ops::konst::Const;
-use tract_core::ops::matmul::optimized::OptMatMul;
 #[allow(unused_imports)]
 use tract_core::transform::ModelTransform;
 use tract_hir::internal::*;
@@ -131,6 +131,7 @@ type PulsedModel = ();
 pub struct Parameters {
     pub graph: SomeGraphDef,
 
+    pub runnable: Option<Arc<dyn Runnable>>,
     pub tract_model: Arc<dyn Model>,
     pub reference_model: Option<Arc<dyn Model>>,
 
@@ -579,7 +580,7 @@ impl Parameters {
 
     #[allow(unused_variables)]
     #[allow(clippy::type_complexity)]
-    fn pipeline(
+    fn load_and_declutter(
         matches: &clap::ArgMatches,
         probe: Option<&readings_probe::Probe>,
         raw_model: Box<dyn Model>,
@@ -834,36 +835,39 @@ impl Parameters {
             });
         }
         stage!("before-optimize", typed_model -> typed_model, Ok);
-        let runtime = if matches.is_present("cuda") {
-            Some("cuda")
-        } else if matches.is_present("metal") {
-            Some("metal")
-        } else {
-            matches.value_of("runtime")
-        };
-        if let Some(runtime) = runtime {
-            panic!("runtime {runtime}");
-        }
-        stage!("optimize", typed_model -> typed_model, |mut m:TypedModel| {
-            let mut opt = tract_core::optim::Optimizer::codegen();
-            if let Some(steps) = matches.value_of("optimize-step") {
-                opt = opt.stopping_at(steps.parse()?);
-            }
-            opt.optimize(&mut m)?;
-            m.properties.insert("tract_stage".to_string(), rctensor0("optimized".to_string()));
-            if let Ok(max) = matches.value_of_t("assert-maximal-mm-quality-cost") {
-                for node in &m.nodes {
-                    if let Some(op) = node.op_as::<OptMatMul>() {
-                        for imp in op.mmm.iter() {
-                            if imp.quality().cost() > max {
-                                bail!("Node {node} uses {imp:?} of quality {:?}.", imp.quality())
-                            }
-                        }
-                    }
-                }
-            }
-            Ok(m)
-        });
+        // let runtime = if matches.is_present("cuda") {
+        //     Some("cuda")
+        // } else if matches.is_present("metal") {
+        //     Some("metal")
+        // } else {
+        //     matches.value_of("runtime")
+        // };
+        // if let Some(runtime) = runtime {
+        //     let runtime = runtime_for_name(runtime)
+        //         .with_context(|| format!("Runtime `{runtime}' not found"))?;
+        //     panic!("runtime {runtime:?}");
+        // }
+
+        // stage!("optimize", typed_model -> typed_model, |mut m:TypedModel| {
+        //     let mut opt = tract_core::optim::Optimizer::codegen();
+        //     if let Some(steps) = matches.value_of("optimize-step") {
+        //         opt = opt.stopping_at(steps.parse()?);
+        //     }
+        //     opt.optimize(&mut m)?;
+        //     m.properties.insert("tract_stage".to_string(), rctensor0("optimized".to_string()));
+        //     if let Ok(max) = matches.value_of_t("assert-maximal-mm-quality-cost") {
+        //         for node in &m.nodes {
+        //             if let Some(op) = node.op_as::<OptMatMul>() {
+        //                 for imp in op.mmm.iter() {
+        //                     if imp.quality().cost() > max {
+        //                         bail!("Node {node} uses {imp:?} of quality {:?}.", imp.quality())
+        //                     }
+        //                 }
+        //             }
+        //         }
+        //     }
+        //     Ok(m)
+        // });
         Ok((typed_model.clone().unwrap(), reference_model))
     }
 
@@ -1026,7 +1030,7 @@ impl Parameters {
         };
 
         let keep_last = matches.is_present("keep-last");
-        let (tract_model, reference_model) = Self::pipeline(
+        let (mut tract_model, reference_model) = Self::load_and_declutter(
             matches,
             probe,
             raw_model,
@@ -1034,10 +1038,58 @@ impl Parameters {
             need_reference_model,
             keep_last,
         )?;
+
+        info!("Model fully loaded");
+        info_usage("model fully loaded", probe);
+
+        let runtime = if let Some(rt) = matches.value_of("runtime") {
+            rt
+        } else if matches.is_present("cuda") {
+            "cuda"
+        } else if matches.is_present("metal") {
+            "metal"
+        } else if matches.is_present("optimize") {
+            "default"
+        } else {
+            "unoptimized"
+        };
+        let runtime =
+            runtime_for_name(runtime).with_context(|| format!("Runtime `{runtime}' not found"))?;
+
+        let typed_model = Arc::downcast::<TypedModel>(tract_model.clone())
+            .map_err(|_| anyhow!("Need a typed model"))?;
+        let typed_model = Arc::unwrap_or_clone(typed_model);
+        let runnable: Option<Arc<dyn Runnable>> = Some(runtime.prepare(typed_model)?.into());
+        if let Some(typed_model) = runnable.as_ref().and_then(|r| r.typed_model().cloned()) {
+            tract_model = typed_model.clone();
+        }
+
+        // stage!("optimize", typed_model -> typed_model, |mut m:TypedModel| {
+        //     let mut opt = tract_core::optim::Optimizer::codegen();
+        //     if let Some(steps) = matches.value_of("optimize-step") {
+        //         opt = opt.stopping_at(steps.parse()?);
+        //     }
+        //     opt.optimize(&mut m)?;
+        //     m.properties.insert("tract_stage".to_string(), rctensor0("optimized".to_string()));
+        //     if let Ok(max) = matches.value_of_t("assert-maximal-mm-quality-cost") {
+        //         for node in &m.nodes {
+        //             if let Some(op) = node.op_as::<OptMatMul>() {
+        //                 for imp in op.mmm.iter() {
+        //                     if imp.quality().cost() > max {
+        //                         bail!("Node {node} uses {imp:?} of quality {:?}.", imp.quality())
+        //                     }
+        //                 }
+        //             }
+        //         }
+        //     }
+        //     Ok(m)
+        // });
+
         info!("Model ready");
         info_usage("model ready", probe);
         Ok(Parameters {
             graph,
+            runnable,
             tract_model,
             reference_model,
             tf_model,
@@ -1050,7 +1102,10 @@ impl Parameters {
     }
 
     pub(crate) fn typed_model(&self) -> Option<Arc<TypedModel>> {
-        Arc::downcast(self.tract_model.clone()).ok()
+        self.runnable
+            .clone()
+            .and_then(|runnable| runnable.typed_model().cloned())
+            .or_else(|| Arc::downcast(self.tract_model.clone()).ok())
     }
 
     pub(crate) fn req_typed_model(&self) -> Arc<TypedModel> {

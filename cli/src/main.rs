@@ -6,6 +6,7 @@ extern crate log;
 
 #[macro_use]
 mod macros;
+pub(crate) mod runtimes;
 
 #[allow(unused_imports)]
 use tract_itertools::Itertools;
