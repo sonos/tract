@@ -17,9 +17,12 @@ pub struct CudaDynKVCacheState {
 }
 
 impl OpState for CudaDynKVCacheState {
-    fn load_from(&mut self, state: &mut SessionState, states: &[TValue]) -> TractResult<()> {
-        // KV Cache fact is always at index 0
-        let kv_cache = states[0].clone();
+    fn load_from(
+        &mut self,
+        state: &mut SessionState,
+        states: &mut dyn Iterator<Item = TValue>,
+    ) -> TractResult<()> {
+        let kv_cache = states.next().context("Not enough state initializers")?;
         DynKeyValueCacheState::resolve_symbols(
             state,
             self.past_sequence_fact.clone(),
