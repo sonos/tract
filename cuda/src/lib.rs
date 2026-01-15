@@ -7,6 +7,7 @@ mod transform;
 pub mod utils;
 
 pub use context::CUDA_STREAM;
+use log::warn;
 use tract_core::internal::*;
 use tract_core::transform::ModelTransform;
 pub use transform::CudaTransform;
@@ -28,13 +29,16 @@ impl Runtime for CudaRuntime {
         model = model.into_optimized()?;
         let arena_hints = Option::<SymbolValues>::None;
 
-        let runnable = model.into_runnable()?;
-        let session_handler = tract_gpu::session_handler::DeviceSessionHandler::from_plan(
+        let mut runnable = TypedSimplePlan::new(model)?;
+        if let Ok(session_handler) = tract_gpu::session_handler::DeviceSessionHandler::from_plan(
             &runnable,
             &arena_hints.unwrap_or_default(),
-        )?;
+        ) {
+            runnable = runnable.with_session_handler(session_handler);
+        } else {
+            warn!("Unable to compute session handler in cuda runtime");
+        }
 
-        let runnable = runnable.with_session_handler(session_handler);
         Ok(Box::new(runnable))
     }
 }

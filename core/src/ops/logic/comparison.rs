@@ -93,7 +93,7 @@ impl EvalOp for Comp {
                         } else if diff.prove_strict_negative() {
                             false
                         } else {
-                            bail!(TooEarly::UndeterminedSymbol(diff));
+                            bail!(TooEarly::UndeterminedSymbol(diff.to_string()));
                         }
                     }
                     GT => {
@@ -102,7 +102,7 @@ impl EvalOp for Comp {
                         } else if diff.prove_negative_or_zero() {
                             false
                         } else {
-                            bail!(TooEarly::UndeterminedSymbol(diff));
+                            bail!(TooEarly::UndeterminedSymbol(diff.to_string()));
                         }
                     }
                     LTE => {
@@ -111,7 +111,7 @@ impl EvalOp for Comp {
                         } else if diff.prove_strict_positive() {
                             false
                         } else {
-                            bail!(TooEarly::UndeterminedSymbol(diff));
+                            bail!(TooEarly::UndeterminedSymbol(diff.to_string()));
                         }
                     }
                     LT => {
@@ -120,7 +120,7 @@ impl EvalOp for Comp {
                         } else if diff.prove_negative_or_zero() {
                             false
                         } else {
-                            bail!(TooEarly::UndeterminedSymbol(diff));
+                            bail!(TooEarly::UndeterminedSymbol(diff.to_string()));
                         }
                     }
                 };
