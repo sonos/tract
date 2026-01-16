@@ -13,7 +13,7 @@ impl Runtime for UnoptimizedRuntime {
     fn prepare_with_options(
         &self,
         model: TypedModel,
-        options: &PlanOptions,
+        options: &RunOptions,
     ) -> TractResult<Box<dyn Runnable>> {
         Ok(Box::new(SimplePlan::new_with_options(model, options)?))
     }

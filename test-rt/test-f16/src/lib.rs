@@ -19,7 +19,7 @@ mod run_as_f16 {
         fn prepare_with_options(
             &self,
             model: TypedModel,
-            options: &PlanOptions,
+            options: &RunOptions,
         ) -> TractResult<Box<dyn Runnable>> {
             let outputs_dt =
                 model.outputs.iter().map(|o| model.outlet_fact(*o).unwrap().datum_type).collect();
@@ -144,7 +144,7 @@ mod nnef_f16 {
         fn prepare_with_options(
             &self,
             model: TypedModel,
-            options: &PlanOptions,
+            options: &RunOptions,
         ) -> TractResult<Box<dyn Runnable>> {
             let outputs_dt =
                 model.outputs.iter().map(|o| model.outlet_fact(*o).unwrap().datum_type).collect();

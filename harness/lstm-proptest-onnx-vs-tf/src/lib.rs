@@ -206,7 +206,7 @@ impl LstmProblem {
             model,
             &[OutletId::new(lstm_id, 6), OutletId::new(memo_id, 0)],
             &[],
-            &PlanOptions::default(),
+            &RunOptions::default(),
         )?;
         let plan_run = Arc::new(plan_run);
         let mut state = plan_run.spawn()?;

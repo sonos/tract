@@ -1,7 +1,21 @@
 use std::any::Any;
 use std::fmt::Debug;
 
+use tract_linalg::multithread::Executor;
+
 use crate::internal::*;
+
+#[derive(Clone, Debug, Default)]
+pub struct RunOptions {
+    /// Use the simple ordering instead of the newer memory friendly one
+    pub skip_order_opt_ram: bool,
+
+    /// Override default global executor
+    pub executor: Option<Executor>,
+
+    /// Memory arena hint value
+    pub memory_sizing_hints: SymbolValues,
+}
 
 pub trait Runtime: Debug + Send + Sync + 'static {
     fn name(&self) -> StaticName;
@@ -11,7 +25,7 @@ pub trait Runtime: Debug + Send + Sync + 'static {
     fn prepare_with_options(
         &self,
         model: TypedModel,
-        options: &PlanOptions,
+        options: &RunOptions,
     ) -> TractResult<Box<dyn Runnable>>;
 }
 
@@ -58,7 +72,7 @@ impl Runtime for DefaultRuntime {
     fn prepare_with_options(
         &self,
         model: TypedModel,
-        options: &PlanOptions,
+        options: &RunOptions,
     ) -> TractResult<Box<dyn Runnable>> {
         let model = model.into_optimized()?;
         Ok(Box::new(TypedSimplePlan::new_with_options(model, options)?))
@@ -136,7 +150,7 @@ impl Runtime for InventorizedRuntime {
     fn prepare_with_options(
         &self,
         model: TypedModel,
-        options: &PlanOptions,
+        options: &RunOptions,
     ) -> TractResult<Box<dyn Runnable>> {
         self.0.prepare_with_options(model, options)
     }

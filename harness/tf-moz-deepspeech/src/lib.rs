@@ -85,7 +85,7 @@ fn deepspeech_raw() -> TractResult<()> {
         model,
         &[logits.into(), (lstm, 1).into(), (lstm, 6).into(), assign_2.into(), assign_3.into()],
         &[],
-        &PlanOptions::default(),
+        &RunOptions::default(),
     )?;
     let plan = Arc::new(plan);
 

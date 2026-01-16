@@ -34,7 +34,7 @@ fn plan_with_session_handler(model: TypedModel) -> TractResult<Arc<TypedRunnable
         symbol_values.set(&sequence_length, 1024);
         symbol_values.set(&past_sequence_length, 0);
 
-        let plan_options = PlanOptions {
+        let plan_options = RunOptions {
             skip_order_opt_ram: true,
             memory_sizing_hints: symbol_values,
             ..Default::default()

@@ -134,7 +134,7 @@ impl Runtime for CudaTestRuntime {
     fn prepare_with_options(
         &self,
         mut model: TypedModel,
-        options: &PlanOptions,
+        options: &RunOptions,
     ) -> TractResult<Box<dyn Runnable>> {
         if self.transpose_inputs {
             for ix in 0..model.inputs.len() {

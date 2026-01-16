@@ -1085,7 +1085,7 @@ impl Parameters {
             Default::default()
         };
 
-        let options = PlanOptions { memory_sizing_hints: hints, ..Default::default() };
+        let options = RunOptions { memory_sizing_hints: hints, ..Default::default() };
         let runnable = runtime.prepare_with_options(typed_model, &options)?;
         let tract_model = runnable.typed_model().unwrap().clone();
 

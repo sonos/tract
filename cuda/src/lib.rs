@@ -25,13 +25,13 @@ impl Runtime for CudaRuntime {
     fn prepare_with_options(
         &self,
         mut model: TypedModel,
-        options: &PlanOptions,
+        options: &RunOptions,
     ) -> TractResult<Box<dyn Runnable>> {
         ensure!(are_culibs_present());
         CudaTransform.transform(&mut model)?;
         model = model.into_optimized()?;
 
-        let options = PlanOptions { skip_order_opt_ram: true, ..options.clone() };
+        let options = RunOptions { skip_order_opt_ram: true, ..options.clone() };
         let mut runnable = TypedSimplePlan::build(model, &options)?;
         let session_handler = tract_gpu::session_handler::DeviceSessionHandler::from_plan(
             &runnable,

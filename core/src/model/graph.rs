@@ -1,8 +1,8 @@
 use super::*;
 use crate::internal::*;
 use crate::ops::Op;
-use crate::plan::PlanOptions;
 use crate::prelude::*;
+use crate::runtime::RunOptions;
 
 use std::fmt;
 use tract_data::internal::*;
@@ -518,7 +518,7 @@ where
     /// accepts options.
     pub fn into_runnable_with_options(
         self,
-        options: &PlanOptions,
+        options: &RunOptions,
     ) -> TractResult<Arc<RunnableModel<F, O>>> {
         crate::plan::SimplePlan::new_with_options(self, options)
     }

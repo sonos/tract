@@ -22,7 +22,7 @@ mod tflite_predump {
         fn prepare_with_options(
             &self,
             mut model: TypedModel,
-            options: &PlanOptions,
+            options: &RunOptions,
         ) -> TractResult<Box<dyn Runnable>> {
             tract_tflite::rewriter::rewrite_for_tflite(&mut model).context("Preparing model")?;
             Ok(Box::new(model.into_runnable_with_options(&options)?))
@@ -54,7 +54,7 @@ mod tflite_cycle {
         fn prepare_with_options(
             &self,
             model: TypedModel,
-            options: &PlanOptions,
+            options: &RunOptions,
         ) -> TractResult<Box<dyn Runnable>> {
             info!("Store to Tflite");
             let mut buffer = vec![];
