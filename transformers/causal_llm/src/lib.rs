@@ -3,7 +3,7 @@ use std::time::Instant;
 
 use anyhow::ensure;
 use float_ord::FloatOrd;
-use log::trace;
+use log::{info, trace};
 use tokenizers::Tokenizer;
 use tract_nnef::internal::{TractErrorContext, anyhow};
 use tract_nnef::prelude::tract_itertools::Itertools;
@@ -20,29 +20,8 @@ pub struct CausalLlmModelConfig {
 #[derive(Clone, Debug)]
 pub struct CausalLlmModel {
     pub tokenizer: Tokenizer,
-    pub nn: Arc<TypedRunnableModel>,
+    pub nn: Arc<dyn Runnable>,
     pub conf: CausalLlmModelConfig,
-}
-
-fn plan_with_session_handler(model: TypedModel) -> TractResult<Arc<TypedRunnableModel>> {
-    if model.properties.contains_key("GPU") {
-        let mut symbol_values = SymbolValues::default();
-        let sequence_length = model.symbols.get("S").context("Could not find symbol S in model")?;
-        let past_sequence_length =
-            model.symbols.get("P").context("Could not find symbol P in model")?;
-
-        symbol_values.set(&sequence_length, 1024);
-        symbol_values.set(&past_sequence_length, 0);
-
-        let plan_options = RunOptions {
-            skip_order_opt_ram: true,
-            memory_sizing_hints: symbol_values,
-            ..Default::default()
-        };
-        model.into_runnable_with_options(&plan_options)
-    } else {
-        model.into_runnable()
-    }
 }
 
 impl CausalLlmModel {
@@ -58,25 +37,28 @@ impl CausalLlmModel {
             .context("transformers-detect-all not found")?;
         let mut nn = nn.into_decluttered()?;
         nn.transform(&*transform)?;
-        if !conf.force_cpu {
-            #[cfg(any(target_os = "macos", target_os = "ios"))]
-            {
-                use crate::tract_core::transform::ModelTransform;
-                use std::str::FromStr;
-                nn.properties.insert("GPU".into(), rctensor0(true));
-                tract_metal::MetalTransform::from_str("")?.transform(&mut nn)?;
-            }
-            #[cfg(not(any(target_os = "macos", target_os = "ios")))]
-            {
-                use tract_core::transform::ModelTransform;
-                if tract_cuda::utils::are_culibs_present() {
-                    nn.properties.insert("GPU".into(), rctensor0(true));
-                    tract_cuda::CudaTransform.transform(&mut nn)?;
+
+        let options = RunOptions {
+            memory_sizing_hints: tract_transformers::memory_arena_hints_for_causal_llm(&nn)?,
+            ..Default::default()
+        };
+
+        let runtimes =
+            if conf.force_cpu { vec!["default"] } else { vec!["cuda", "metal", "default"] };
+        let mut runnable = None;
+        for rt in runtimes {
+            if let Some(rt) = runtime_for_name(rt) {
+                match rt.prepare_with_options(nn.clone(), &options) {
+                    Ok(it) => {
+                        info!("Using runtime {rt:?}");
+                        runnable = Some(it);
+                        break;
+                    }
+                    Err(e) => info!("{rt:?} {e:?}"),
                 }
             }
         }
-        nn.optimize()?;
-        let nn = plan_with_session_handler(nn)?;
+        let nn = runnable.context("No suitable runtime")?.into();
         Ok(Arc::new(CausalLlmModel { tokenizer, nn, conf }))
     }
 
@@ -183,10 +165,10 @@ impl CausalLlmStateConfig {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct CausalLlmState {
     pub model: Arc<CausalLlmModel>,
-    pub nn_state: TypedSimpleState,
+    pub nn_state: Box<dyn State>,
     pub seq: Vec<u32>,
     pub processed_tokens: usize,
     pub config: CausalLlmStateConfig,
@@ -270,9 +252,12 @@ impl CausalLlmState {
 
     pub fn truncate(&mut self, len: usize) -> TractResult<()> {
         self.seq.truncate(len);
-        for s in &mut self.nn_state.states {
+        let state: &mut TypedSimpleState = (&mut self.nn_state)
+            .downcast_mut::<TypedSimpleState>()
+            .context("Can only truncate state in TypedSimple* form. (TODO ?)")?;
+        for s in &mut state.states {
             let Some(s) = s else { continue };
-            if let Some(s) = s.downcast_mut::<DynKeyValueCacheState>() {
+            if let Some(s) = (**s).downcast_mut::<DynKeyValueCacheState>() {
                 s.truncate(len)?;
                 continue;
             } else if s.is::<SourceState>() {
@@ -296,7 +281,7 @@ impl CausalLlmState {
 #[derive(Clone, Debug)]
 pub struct FrozenCausalLlmState {
     pub model: Arc<CausalLlmModel>,
-    pub nn_state: TypedFrozenSimpleState,
+    pub nn_state: Box<dyn FrozenState>,
     pub seq: Vec<u32>,
     pub config: CausalLlmStateConfig,
 }

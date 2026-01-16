@@ -100,7 +100,9 @@ mod late_bind;
 pub mod prelude {
     pub use crate::framework::Framework;
     pub use crate::model::*;
-    pub use crate::runtime::{RunOptions, Runnable, Runtime, State, runtime_for_name, runtimes};
+    pub use crate::runtime::{
+        FrozenState, RunOptions, Runnable, Runtime, State, runtime_for_name, runtimes,
+    };
     pub use crate::value::{IntoTValue, TValue};
     pub use std::sync::Arc;
     pub use tract_data::prelude::*;
