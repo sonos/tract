@@ -250,16 +250,22 @@ fn run_regular(
     };
 
     let inputs = get_or_make_inputs(tract, &run_params)?;
-    if let Some(plan) = params
-        .req_runnable()
-        .ok()
-        .and_then(|runnable| Arc::downcast::<TypedSimplePlan>(runnable).ok())
-    {
-        let mut state = plan.spawn()?;
-        state.init_states(&inputs.state_initializers)?;
-        let results =
-            run_regular_t(&mut state, inputs, steps, check_f16_overflow, assert_sane_floats, npz)?;
-        Ok(results)
+    if let Some(runnable) = &params.runnable {
+        if let Some(plan) = runnable.typed_plan() {
+            let mut state = plan.spawn()?;
+            state.init_states(&inputs.state_initializers)?;
+            let results = run_regular_t(
+                &mut state,
+                inputs,
+                steps,
+                check_f16_overflow,
+                assert_sane_floats,
+                npz,
+            )?;
+            Ok(results)
+        } else {
+            todo!("Run handler for abstract runtime/runnable");
+        }
     } else {
         dispatch_model!(tract, |m| {
             let plan_options = crate::plan_options::plan_options_from_subcommand(sub_matches)?;
