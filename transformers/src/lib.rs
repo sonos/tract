@@ -101,8 +101,8 @@ pub fn figure_out_causal_llm_b_s_p(
 pub fn memory_arena_hints_for_causal_llm(model: &TypedModel) -> TractResult<SymbolValues> {
     let (b, s, p) = figure_out_causal_llm_b_s_p(model)?;
     let mut values = SymbolValues::default()
-        .with(&s.context("Could not determine sequence_len (S)")?, 1)
-        .with(&p.context("Could not determine past_sequence_len (P)")?, 1024);
+        .with(&s.context("Could not determine sequence_len (S)")?, 1024)
+        .with(&p.context("Could not determine past_sequence_len (P)")?, 0);
     if let Some(b) = b {
         values = values.with(&b, 1);
     }

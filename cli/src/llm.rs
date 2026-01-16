@@ -67,7 +67,8 @@ pub fn bench_tg(
     let mut run_params = crate::tensor::run_params_from_subcommand(params, sub_matches)?;
     run_params.allow_random_input = true;
     let model = params.req_typed_model();
-    let mut state = make_state(&model, matches, sub_matches)?;
+    let state = params.req_runnable()?.spawn()?;
+    let mut state: Box<TypedSimpleState> = state.downcast().unwrap();
 
     let (b, s, p) = figure_out_causal_llm_b_s_p(&model)
         .context("Could not find out LLM symbolic parameters")?;

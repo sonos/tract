@@ -29,9 +29,10 @@ impl Runtime for CudaRuntime {
     ) -> TractResult<Box<dyn Runnable>> {
         ensure!(are_culibs_present());
         CudaTransform.transform(&mut model)?;
-        model = model.into_optimized()?;
+        model.optimize()?;
 
         let options = RunOptions { skip_order_opt_ram: true, ..options.clone() };
+
         let mut runnable = TypedSimplePlan::build(model, &options)?;
         let session_handler = tract_gpu::session_handler::DeviceSessionHandler::from_plan(
             &runnable,
