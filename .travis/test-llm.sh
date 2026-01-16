@@ -172,8 +172,8 @@ do
 
     if [ -n "$RESET" ]
     then
-        $TRACT_RUN -v --nnef-tract-core --nnef-tract-transformers $MODELS/$nnef $TRACT_EXTRA_ARGS \
-            -t transformers-detect-all -O $DEVICE run \
+        $TRACT_RUN -v $MODELS/$nnef $TRACT_EXTRA_ARGS \
+            --llm -O $DEVICE run \
             --input-from-npz $MODELS/$npz \
             --assert-output-bundle $MODELS/$npz \
             --assert-llm-lev20 999999999 \
@@ -185,8 +185,8 @@ do
     elif [ -n "$RELAX" ]
     then
         prior=$(grep $key $expectations | cut -f 2 -d ' ')
-        $TRACT_RUN -v --nnef-tract-core --nnef-tract-transformers $MODELS/$nnef $TRACT_EXTRA_ARGS \
-            -t transformers-detect-all -O $DEVICE run \
+        $TRACT_RUN -v $MODELS/$nnef $TRACT_EXTRA_ARGS \
+            --llm -O $DEVICE run \
             --input-from-npz $MODELS/$npz \
             --assert-output-bundle $MODELS/$npz \
             --assert-llm-lev20 999999999 \
@@ -201,8 +201,8 @@ do
         mv $expectations.tmp $expectations
     else # test !
         expectation=$(grep $key $expectations | cut -f 2 -d ' ')
-        $TRACT_RUN -v --nnef-tract-core --nnef-tract-transformers $MODELS/$nnef $TRACT_EXTRA_ARGS \
-            -t transformers-detect-all -O $DEVICE run \
+        $TRACT_RUN -v $MODELS/$nnef $TRACT_EXTRA_ARGS \
+            --llm -O $DEVICE run \
             --input-from-npz $MODELS/$npz \
             --prompt-chunk-size 60 \
             --assert-output-bundle $MODELS/$npz \

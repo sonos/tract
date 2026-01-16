@@ -36,7 +36,8 @@ impl Runtime for CudaRuntime {
         let session_handler = tract_gpu::session_handler::DeviceSessionHandler::from_plan(
             &runnable,
             &options.memory_sizing_hints,
-        )?;
+        )
+        .context("While sizing memory arena. Missing hint ?")?;
         runnable = runnable.with_session_handler(session_handler);
 
         Ok(Box::new(Arc::new(runnable)))

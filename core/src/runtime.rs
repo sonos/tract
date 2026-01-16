@@ -1,3 +1,4 @@
+use std::any::Any;
 use std::fmt::Debug;
 
 use crate::internal::*;
@@ -14,7 +15,7 @@ pub trait Runtime: Debug + Send + Sync + 'static {
     ) -> TractResult<Box<dyn Runnable>>;
 }
 
-pub trait Runnable: Debug {
+pub trait Runnable: Any + Debug + Send + Sync + 'static {
     fn run(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         self.spawn()?.run(inputs)
     }
