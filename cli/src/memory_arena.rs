@@ -80,7 +80,7 @@ impl MemArenaMetrics {
 
 pub fn dump_metrics(
     model: &Arc<TypedModel>,
-    options: &PlanOptions,
+    options: &RunOptions,
     path: impl AsRef<std::path::Path>,
 ) -> TractResult<()> {
     log::info!("Analyzing Metal memory schema utilization...");

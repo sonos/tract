@@ -9,20 +9,9 @@ use crate::internal::*;
 use crate::model::{Fact, Graph, OutletId};
 use crate::ops::FrozenOpState;
 use crate::ops::konst::Const;
+use crate::runtime::RunOptions;
 
 use self::order::{build_flush_list, eval_order_for_nodes, eval_order_opt_ram_for_nodes};
-
-#[derive(Clone, Debug, Default)]
-pub struct PlanOptions {
-    /// Use the simple ordering instead of the newer memory friendly one
-    pub skip_order_opt_ram: bool,
-
-    /// Override default global executor
-    pub executor: Option<Executor>,
-
-    /// Memory arena hint value
-    pub memory_sizing_hints: SymbolValues,
-}
 
 pub struct SessionState {
     pub inputs: HashMap<usize, TValue>,
@@ -93,13 +82,13 @@ where
     /// This contructor returns a plan that will compute all the model default outputs in one pass.
     pub fn new(model: impl Into<Arc<Graph<F, O>>>) -> TractResult<Arc<SimplePlan<F, O>>> {
         let model = model.into();
-        Self::build(model, &PlanOptions::default()).map(Arc::new)
+        Self::build(model, &RunOptions::default()).map(Arc::new)
     }
 
     /// This contructor returns a plan that will compute all the model default outputs in one pass.
     pub fn new_with_options(
         model: impl Into<Arc<Graph<F, O>>>,
-        options: &PlanOptions,
+        options: &RunOptions,
     ) -> TractResult<Arc<SimplePlan<F, O>>> {
         let model = model.into();
         Self::build(model, options).map(Arc::new)
@@ -112,7 +101,7 @@ where
         output: OutletId,
     ) -> TractResult<Arc<SimplePlan<F, O>>> {
         #[allow(deprecated)]
-        Self::build_with_outputs_and_deps(model, &[output], &[], &PlanOptions::default())
+        Self::build_with_outputs_and_deps(model, &[output], &[], &RunOptions::default())
             .map(Arc::new)
     }
 
@@ -123,8 +112,7 @@ where
         outputs: &[OutletId],
     ) -> TractResult<Arc<SimplePlan<F, O>>> {
         #[allow(deprecated)]
-        Self::build_with_outputs_and_deps(model, outputs, &[], &PlanOptions::default())
-            .map(Arc::new)
+        Self::build_with_outputs_and_deps(model, outputs, &[], &RunOptions::default()).map(Arc::new)
     }
 
     pub fn with_session_handler<H: SessionStateHandler + 'static>(
@@ -142,13 +130,13 @@ where
         deps: &[(usize, usize)],
     ) -> TractResult<Arc<SimplePlan<F, O>>> {
         #[allow(deprecated)]
-        Self::build_with_outputs_and_deps(model, outputs, deps, &PlanOptions::default())
+        Self::build_with_outputs_and_deps(model, outputs, deps, &RunOptions::default())
             .map(Arc::new)
     }
 
     pub fn build(
         model: impl Into<Arc<Graph<F, O>>>,
-        options: &PlanOptions,
+        options: &RunOptions,
     ) -> TractResult<SimplePlan<F, O>> {
         let model = model.into();
         let outputs = model.outputs.clone();
@@ -161,7 +149,7 @@ where
         model: impl Into<Arc<Graph<F, O>>>,
         outputs: &[OutletId],
         deps: &[(usize, usize)],
-        options: &PlanOptions,
+        options: &RunOptions,
     ) -> TractResult<SimplePlan<F, O>> {
         let model = model.into();
         let inputs = model.input_outlets()?.iter().map(|n| n.node).collect::<Vec<usize>>();

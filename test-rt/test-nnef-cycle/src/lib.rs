@@ -28,7 +28,7 @@ mod nnef_predump {
         fn prepare_with_options(
             &self,
             mut model: TypedModel,
-            options: &PlanOptions,
+            options: &RunOptions,
         ) -> TractResult<Box<dyn Runnable>> {
             tract_nnef::ser::rewrite_model(&mut model)?;
             Ok(Box::new(model.into_optimized()?.into_runnable_with_options(&options)?))
@@ -66,7 +66,7 @@ mod nnef_cycle {
         fn prepare_with_options(
             &self,
             model: TypedModel,
-            options: &PlanOptions,
+            options: &RunOptions,
         ) -> TractResult<Box<dyn Runnable>> {
             info!("Store to NNEF");
             let mut buffer = vec![];

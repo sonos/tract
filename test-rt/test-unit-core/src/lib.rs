@@ -18,7 +18,7 @@ mod raw {
         fn prepare_with_options(
             &self,
             model: TypedModel,
-            options: &PlanOptions,
+            options: &RunOptions,
         ) -> TractResult<Box<dyn Runnable>> {
             Ok(Box::new(model.into_runnable_with_options(options)?))
         }
@@ -44,7 +44,7 @@ mod decluttered {
         fn prepare_with_options(
             &self,
             model: TypedModel,
-            options: &PlanOptions,
+            options: &RunOptions,
         ) -> TractResult<Box<dyn Runnable>> {
             Ok(Box::new(model.into_decluttered()?.into_runnable_with_options(options)?))
         }

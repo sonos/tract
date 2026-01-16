@@ -15,7 +15,7 @@ use tract_nnef::prelude::{
 use tract_onnx::prelude::InferenceModelExt;
 use tract_onnx_opl::WithOnnx;
 use tract_pulse::WithPulse;
-use tract_pulse::internal::PlanOptions;
+use tract_pulse::internal::RunOptions;
 use tract_pulse::model::{PulsedModel, PulsedModelExt};
 use tract_transformers::WithTractTransformers;
 
@@ -302,7 +302,7 @@ impl ModelInterface for Model {
                 &self.0,
                 &BenchLimits::default(),
                 &mut annotations,
-                &PlanOptions::default(),
+                &RunOptions::default(),
                 &RunTensors { sources: vec![inputs], state_initializers: state_inits },
                 None,
                 true,
@@ -326,7 +326,7 @@ impl ModelInterface for Model {
     }
 }
 
-// RUNNABLE
+// RUNTIME
 pub struct Runtime(Arc<dyn tract_nnef::internal::Runtime>);
 
 impl RuntimeInterface for Runtime {

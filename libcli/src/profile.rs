@@ -63,7 +63,7 @@ pub fn profile(
     model: &TypedModel,
     bench_limits: &BenchLimits,
     dg: &mut Annotations,
-    plan_options: &PlanOptions,
+    plan_options: &RunOptions,
     inputs: &RunTensors,
     custom_profiler: Option<HashMap<TypeId, Profiler>>,
     folded: bool,
@@ -131,7 +131,7 @@ pub fn profile_gpu(
     bench_limits: &BenchLimits,
     sub_matches: &clap::ArgMatches,
     dg: &mut Annotations,
-    plan_options: &PlanOptions,
+    plan_options: &RunOptions,
     inputs: &RunTensors,
 ) -> TractResult<()> {
     info!("Running entire network");

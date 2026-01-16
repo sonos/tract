@@ -22,7 +22,7 @@ impl Runtime for TfliteRuntime {
     fn prepare_with_options(
         &self,
         model: TypedModel,
-        _options: &PlanOptions,
+        _options: &RunOptions,
     ) -> TractResult<Box<dyn Runnable>> {
         let mut buffer = vec![];
         self.0.write(&model, &mut buffer).context("Translating model to tflite")?;
