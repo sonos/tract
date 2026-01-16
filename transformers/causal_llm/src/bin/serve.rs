@@ -96,8 +96,9 @@ async fn main() -> TractResult<()> {
     env_logger::Builder::from_env(env).format_timestamp_nanos().init();
 
     let conf = causal_llm::CausalLlmModelConfig { force_cpu: args.force_cpu };
+    info!("Loading model...");
     let llm = CausalLlmModel::from_paths_and_conf(&args.tokenizers, &args.model, conf)?;
-    info!("model loaded");
+    info!("Loaded model.");
 
     let context = Context { llm, args };
 
@@ -106,7 +107,9 @@ async fn main() -> TractResult<()> {
         .route("/v1/completions", post(completions))
         .with_state(Arc::new(context));
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+    let listen = "0.0.0.0:3000";
+    let listener = tokio::net::TcpListener::bind(&listen).await.unwrap();
+    info!("Serving on http://{listen}/v1/completions");
     axum::serve(listener, app).await?;
     Ok(())
 }

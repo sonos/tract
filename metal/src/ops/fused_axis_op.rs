@@ -77,7 +77,7 @@ impl OpState for MetalFusedAxisOpState {
     fn load_from(
         &mut self,
         session: &mut SessionState,
-        states: &mut Vec<TValue>,
+        states: &mut dyn Iterator<Item = tract_core::value::TValue>,
     ) -> TractResult<()> {
         self.op_state.load_from(session, states)
     }

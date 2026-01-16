@@ -191,6 +191,13 @@ pub trait ModelInterface: Sized {
     fn property(&self, name: impl AsRef<str>) -> Result<Self::Value>;
 }
 
+pub trait RuntimeInterface {
+    type Runnable: RunnableInterface;
+    type Model: ModelInterface;
+    fn name(&self) -> Result<String>;
+    fn prepare(&self, model: Self::Model) -> Result<Self::Runnable>;
+}
+
 pub trait RunnableInterface {
     type Value: ValueInterface;
     type State: StateInterface<Value = Self::Value>;

@@ -60,11 +60,15 @@ impl DynKeyValueCacheState {
 }
 
 impl OpState for DynKeyValueCacheState {
-    fn load_from(&mut self, state: &mut SessionState, states: &mut Vec<TValue>) -> TractResult<()> {
-        let kv_cache_init = states.remove(0);
+    fn load_from(
+        &mut self,
+        state: &mut SessionState,
+        states: &mut dyn Iterator<Item = tract_nnef::prelude::TValue>,
+    ) -> TractResult<()> {
         // KV Cache fact is always at index 0
+        let kv_cache_init = states.next().context("Not enough state initializers")?;
         Self::resolve_symbols(state, self.past_sequence_fact.clone(), Some(kv_cache_init.shape()))?;
-        self.kv_cache = Some(kv_cache_init);
+        self.kv_cache = Some(kv_cache_init.clone());
 
         Ok(())
     }
@@ -342,7 +346,7 @@ mod tests {
         let input = Tensor::from_shape(shape, &(0..len).map(|f| f.as_()).collect::<Vec<F>>())?;
         inputs.push(input.clone().into_tvalue());
 
-        let mut state_initializers = vec![input.into()];
+        let mut state_initializers = vec![input.into()].into_iter();
 
         state.load_from(&mut session_state, &mut state_initializers)?;
 

@@ -6,6 +6,7 @@ extern crate log;
 
 #[macro_use]
 mod macros;
+pub(crate) mod runtimes;
 
 #[allow(unused_imports)]
 use tract_itertools::Itertools;
@@ -32,8 +33,8 @@ mod memory_arena;
 mod params;
 mod plan_options;
 mod run;
-#[cfg(feature = "pulse")]
-mod stream_check;
+// #[cfg(feature = "pulse")]
+// mod stream_check;
 mod tensor;
 mod utils;
 
@@ -144,9 +145,14 @@ fn main() -> TractResult<()> {
         .arg(arg!(--"metal").long_help("Convert supported operators to Metal GPU equivalent. Only available on MacOS and iOS"))
         .arg(Arg::new("force-metal-backend").long("force-metal-backend").takes_value(true).long_help("Force specific implementations for MM kernels. Possible values: mlx, ggml, mfa. Backend is dynamically selected if option is not present"))
         .arg(arg!(--"cuda").long_help("Convert supported operators to CUDA equivalent"))
+        .arg(arg!(-r --runtime [runtime] "Run on alternative runtime (cuda, metal, ...)"))
         .arg(Arg::new("transform").short('t').long("transform").multiple_occurrences(true).takes_value(true).help("Apply a built-in transformation to the model"))
         .arg(Arg::new("set").long("set").multiple_occurrences(true).takes_value(true)
              .long_help("Set a symbol to a concrete value after decluttering"))
+        .arg(arg!(--hint [hint] "Provide a typical value to a symbol to be used during planning (--hint S=12)").multiple_occurrences(true).number_of_values(1))
+
+        .arg(arg!(--"causal-llm-hints" "Figures out P and S and gives them suitable hints"))
+        .arg(arg!(--llm "Shortcut setting --opl (aka all nnef extensions) --causal-llm-hints -t transorfmers-detect-all"))
 
         // deprecated
         .arg(arg!(--"allow-float-casts" "Allow casting between f16, f32 and f64 around model").hide(true))
@@ -154,13 +160,16 @@ fn main() -> TractResult<()> {
         .arg(arg!(--"nnef-cycle" "Perform NNEF dump and reload before optimizing"))
         .arg(arg!(--"tflite-cycle" "Perform TFLITE dump and reload before optimizing"))
 
-        .arg(arg!(--"nnef-tract-core" "Allow usage of tract-core extension in NNEF dump and load"))
+        .arg(arg!(--"no-nnef-tract-core" "Disable usage of tract-core extension in NNEF dump and load"))
+        .arg(arg!(--"nnef-tract-core" "Allow usage of tract-core extension in NNEF dump and load")).hide(true)
         .arg(arg!(--"nnef-tract-resource" "Allow usage of tract-resource extension in NNEF dump and load"))
         .arg(arg!(--"nnef-tract-onnx" "Allow usage of tract-onnx extension in NNEF dump and load"))
         .arg(arg!(--"nnef-tract-pulse" "Allow usage of tract-pulse extension in NNEF dump and load"))
         .arg(arg!(--"nnef-tract-extra" "Allow usage of tract-extra extension in NNEF dump and load"))
         .arg(arg!(--"nnef-tract-transformers" "Allow usage of tract-transformers extension in NNEF dump and load"))
         .arg(arg!(--"nnef-extended-identifier" "Allow usage of the i\"...\" syntax to escape identifier names"))
+        .arg(arg!(--opl "Activates all NNEF tract extensions (like --nnef-tract-*)"))
+
 
         .arg(arg!(--"threads" [THREADS] "Setup a thread pool for computing. 0 will guess the number of physical cores"))
 
@@ -171,6 +180,7 @@ fn main() -> TractResult<()> {
         .arg(arg!(--"machine-friendly" "Machine friendly output"))
 
         .subcommand(Command::new("list-ops").about("List ops in TF/ONNX frameworks"))
+        .subcommand(Command::new("list-runtimes").about("List runtimes"))
         .subcommand(Command::new("kernels").about("Print kernels for the current plaform"))
         .subcommand(Command::new("hwbench").about("Print current hardware key metrics"));
 
@@ -273,9 +283,9 @@ fn main() -> TractResult<()> {
     let llm_bench = bench_options(llm_bench);
     app = app.subcommand(llm_bench);
 
-    let stream_check = clap::Command::new("stream-check")
-        .long_about("Compare output of streamed and regular exec");
-    app = app.subcommand(output_options(stream_check));
+    // let stream_check = clap::Command::new("stream-check")
+    //     .long_about("Compare output of streamed and regular exec");
+    // app = app.subcommand(output_options(stream_check));
 
     let matches = app.get_matches();
 
@@ -601,6 +611,12 @@ fn output_options(command: clap::Command) -> clap::Command {
 /// Handles the command-line input.
 fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
     match matches.subcommand() {
+        Some(("list-runtimes", _)) => {
+            tract_core::runtime::runtimes().for_each(|ir| {
+                println!(" * {}", ir.name());
+            });
+            return Ok(());
+        }
         Some(("list-ops", _)) => {
             #[cfg(feature = "onnx")]
             {
@@ -757,11 +773,10 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
 
         Some(("run", m)) => run::handle(&params, &matches, m),
 
-        #[cfg(feature = "pulse")]
-        Some(("stream-check", m)) => {
-            stream_check::handle(&params, &display_params_from_clap(&matches, m)?)
-        }
-
+        // #[cfg(feature = "pulse")]
+        // Some(("stream-check", m)) => {
+        //     stream_check::handle(&params, &display_params_from_clap(&matches, m)?)
+        // }
         None => dump::handle(
             &params,
             &DisplayParams::default(),
@@ -809,7 +824,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
 
 fn nnef(matches: &clap::ArgMatches) -> tract_nnef::internal::Nnef {
     let mut fw = tract_nnef::nnef();
-    if matches.is_present("nnef-tract-onnx") {
+    if matches.is_present("nnef-tract-onnx") || matches.is_present("opl") {
         #[cfg(feature = "onnx")]
         {
             use tract_onnx::WithOnnx;
@@ -820,7 +835,7 @@ fn nnef(matches: &clap::ArgMatches) -> tract_nnef::internal::Nnef {
             panic!("tract is build without ONNX support")
         }
     }
-    if matches.is_present("nnef-tract-pulse") {
+    if matches.is_present("nnef-tract-pulse") || matches.is_present("opl") {
         #[cfg(feature = "pulse-opl")]
         {
             use tract_pulse::WithPulse;
@@ -831,7 +846,7 @@ fn nnef(matches: &clap::ArgMatches) -> tract_nnef::internal::Nnef {
             panic!("tract is build without pulse-opl support")
         }
     }
-    if matches.is_present("nnef-tract-extra") {
+    if matches.is_present("nnef-tract-extra") || matches.is_present("opl") {
         #[cfg(feature = "extra")]
         {
             use tract_extra::WithTractExtra;
@@ -842,7 +857,10 @@ fn nnef(matches: &clap::ArgMatches) -> tract_nnef::internal::Nnef {
             panic!("tract is build without tract-extra support")
         }
     }
-    if matches.is_present("nnef-tract-transformers") {
+    if matches.is_present("nnef-tract-transformers")
+        || matches.is_present("llm")
+        || matches.is_present("opl")
+    {
         #[cfg(feature = "transformers")]
         {
             use tract_transformers::WithTractTransformers;
@@ -853,14 +871,14 @@ fn nnef(matches: &clap::ArgMatches) -> tract_nnef::internal::Nnef {
             panic!("tract is build without tract-transformers support")
         }
     }
-    if matches.is_present("nnef-tract-core") {
+    if !matches.is_present("no-nnef-tract-core") {
         fw = fw.with_tract_core();
     }
-    if matches.is_present("nnef-tract-resource") {
+    if matches.is_present("nnef-tract-resource") || matches.is_present("opl") {
         use tract_nnef_resources::internal::JsonLoader;
         fw = fw.with_tract_resource().with_resource_loader(JsonLoader);
     }
-    if matches.is_present("nnef-extended-identifier") {
+    if matches.is_present("nnef-extended-identifier") || matches.is_present("opl") {
         fw.allow_extended_identifier_syntax(true);
     }
     fw

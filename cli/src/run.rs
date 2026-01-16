@@ -4,7 +4,6 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 use crate::TractResult;
-use crate::bench::make_state;
 use crate::{Model, Parameters};
 use fs_err as fs;
 use ndarray_npy::NpzWriter;
@@ -235,7 +234,7 @@ where
 fn run_regular(
     tract: &Arc<dyn Model>,
     params: &Parameters,
-    matches: &clap::ArgMatches,
+    _matches: &clap::ArgMatches,
     sub_matches: &clap::ArgMatches,
 ) -> TractResult<TVec<Vec<TValue>>> {
     let run_params = crate::tensor::run_params_from_subcommand(params, sub_matches)?;
@@ -250,14 +249,23 @@ fn run_regular(
         None
     };
 
-    let mut inputs = get_or_make_inputs(tract, &run_params)?;
-    if let Ok(m) = Arc::downcast::<TypedModel>(tract.clone()) {
-        let mut state = make_state(&m, matches, sub_matches)?;
-        state.init_states(&mut inputs.state_initializers)?;
-
-        let results =
-            run_regular_t(&mut state, inputs, steps, check_f16_overflow, assert_sane_floats, npz)?;
-        Ok(results)
+    let inputs = get_or_make_inputs(tract, &run_params)?;
+    if let Some(runnable) = &params.runnable {
+        if let Some(plan) = runnable.typed_plan() {
+            let mut state = plan.spawn()?;
+            state.init_states(&inputs.state_initializers)?;
+            let results = run_regular_t(
+                &mut state,
+                inputs,
+                steps,
+                check_f16_overflow,
+                assert_sane_floats,
+                npz,
+            )?;
+            Ok(results)
+        } else {
+            todo!("Run handler for abstract runtime/runnable");
+        }
     } else {
         dispatch_model!(tract, |m| {
             let plan_options = crate::plan_options::plan_options_from_subcommand(sub_matches)?;

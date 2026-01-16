@@ -7,7 +7,8 @@ use tract_core::num_traits::Zero;
 use tract_core::tract_data::itertools::Itertools;
 use tract_hir::internal::*;
 use tract_libcli::profile::BenchLimits;
-use tract_libcli::tensor::{figure_out_b_s_p, get_or_make_inputs};
+use tract_libcli::tensor::get_or_make_inputs;
+use tract_transformers::figure_out_causal_llm_b_s_p;
 
 pub fn handle(
     params: &Parameters,
@@ -34,8 +35,8 @@ pub fn bench_pp(
     let model = params.req_typed_model();
     let mut state = make_state(&model, matches, sub_matches)?;
 
-    let (b, s, p) =
-        figure_out_b_s_p(&model).context("Could not find out LLM symbolic parameters")?;
+    let (b, s, p) = figure_out_causal_llm_b_s_p(&model)
+        .context("Could not find out LLM symbolic parameters")?;
     if let Some(b) = b {
         run_params.symbols.set(&b, 1);
     }
@@ -66,10 +67,11 @@ pub fn bench_tg(
     let mut run_params = crate::tensor::run_params_from_subcommand(params, sub_matches)?;
     run_params.allow_random_input = true;
     let model = params.req_typed_model();
-    let mut state = make_state(&model, matches, sub_matches)?;
+    let state = params.req_runnable()?.spawn()?;
+    let mut state: Box<TypedSimpleState> = state.downcast().unwrap();
 
-    let (b, s, p) =
-        figure_out_b_s_p(&model).context("Could not find out LLM symbolic parameters")?;
+    let (b, s, p) = figure_out_causal_llm_b_s_p(&model)
+        .context("Could not find out LLM symbolic parameters")?;
     if let Some(b) = b {
         run_params.symbols.set(&b, 1);
     }

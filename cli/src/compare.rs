@@ -242,11 +242,10 @@ pub fn handle_with_model(
     run_params: &RunParams,
 ) -> TractResult<()> {
     let mut values: HashMap<String, Vec<TractResult<TValue>>> = HashMap::new();
-
-    let plan = SimplePlan::new(reference_model.clone())?;
+    let plan = reference_model.clone().into_runnable()?;
     let mut state = plan.spawn()?;
-    let mut inputs = get_or_make_inputs(&(reference_model.clone() as _), run_params)?;
-    state.init_states(&mut inputs.state_initializers)?;
+    let inputs = get_or_make_inputs(&(reference_model.clone() as _), run_params)?;
+    state.init_states(&inputs.state_initializers)?;
     for input in inputs.sources {
         state.run_plan_with_eval(input, |session, state, node, input| -> TractResult<_> {
             let result = tract_core::plan::eval(session, state, node, input)?;
@@ -303,8 +302,8 @@ where
     }
     let all_values: HashMap<String, &Vec<TractResult<TValue>>> =
         all_values.iter().map(|(k, v)| (canonic(k), v)).collect();
-    let mut inputs = get_or_make_inputs(&(tract.clone() as _), run_params)?;
-    state.init_states(&mut inputs.state_initializers)?;
+    let inputs = get_or_make_inputs(&(tract.clone() as _), run_params)?;
+    state.init_states(&inputs.state_initializers)?;
     for (turn, inputs) in inputs.sources.into_iter().enumerate() {
         state.run_plan_with_eval(
             inputs,

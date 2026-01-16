@@ -117,6 +117,7 @@ $TRACT_RUN --nnef-tract-core $MODELS/trunet_dummy.nnef.tgz dump -q
 
 echo $WHITE     LLM $NC
 
+set -ex
 TEMP_ELM=$(mktemp -d)
 $CACHE_FILE 2024_06_25_elm_micro_export_with_kv_cache.nnef.tgz
 $TRACT_RUN $MODELS/2024_06_25_elm_micro_export_with_kv_cache.nnef.tgz \

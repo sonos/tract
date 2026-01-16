@@ -9,7 +9,7 @@ pub struct DeviceSessionHandler {
 }
 
 impl DeviceSessionHandler {
-    pub fn from_plan(plan: &Arc<TypedSimplePlan>, memory_hint: &SymbolValues) -> TractResult<Self> {
+    pub fn from_plan(plan: &TypedSimplePlan, memory_hint: &SymbolValues) -> TractResult<Self> {
         let mem_schema =
             DeviceMemSchema::build(plan.model(), plan.order_without_consts(), memory_hint)?;
         Ok(Self { mem_schema })

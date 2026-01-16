@@ -16,12 +16,19 @@ mod run_as_f16 {
             "run_as_f16".into()
         }
 
-        fn prepare(&self, model: TypedModel) -> TractResult<Box<dyn Runnable>> {
+        fn prepare_with_options(
+            &self,
+            model: TypedModel,
+            options: &RunOptions,
+        ) -> TractResult<Box<dyn Runnable>> {
             let outputs_dt =
                 model.outputs.iter().map(|o| model.outlet_fact(*o).unwrap().datum_type).collect();
             let tr = tract_core::floats::FloatPrecisionTranslator::<f32, f16>::default();
             let model = tr.translate_model(&model)?;
-            Ok(Box::new(RunnableAsF16(model.into_optimized()?.into_runnable()?, outputs_dt)))
+            Ok(Box::new(RunnableAsF16(
+                model.into_optimized()?.into_runnable_with_options(options)?,
+                outputs_dt,
+            )))
         }
     }
 
@@ -31,6 +38,22 @@ mod run_as_f16 {
     impl Runnable for RunnableAsF16 {
         fn spawn(&self) -> TractResult<Box<dyn State>> {
             Ok(Box::new(StateAsF16(self.0.spawn()?, self.1.clone())))
+        }
+
+        fn input_count(&self) -> usize {
+            self.0.input_count()
+        }
+
+        fn output_count(&self) -> usize {
+            self.0.output_count()
+        }
+
+        fn typed_model(&self) -> Option<&Arc<TypedModel>> {
+            self.0.typed_model()
+        }
+
+        fn typed_plan(&self) -> Option<&Arc<TypedSimplePlan>> {
+            self.0.typed_plan()
         }
     }
 
@@ -59,6 +82,30 @@ mod run_as_f16 {
                 .zip(self.1.iter())
                 .map(|(t, dt)| t.into_tensor().cast_to_dt(*dt).unwrap().into_owned().into_tvalue())
                 .collect())
+        }
+
+        fn initializable_states_count(&self) -> usize {
+            self.0.initializable_states_count()
+        }
+
+        fn get_states_facts(&self) -> Vec<TypedFact> {
+            self.0.get_states_facts()
+        }
+
+        fn init_state(&mut self, states: &[TValue]) -> TractResult<()> {
+            self.0.init_state(states)
+        }
+
+        fn get_states(&self) -> TractResult<Vec<TValue>> {
+            self.0.get_states()
+        }
+
+        fn input_count(&self) -> usize {
+            self.0.input_count()
+        }
+
+        fn output_count(&self) -> usize {
+            self.0.output_count()
         }
     }
 
@@ -94,7 +141,11 @@ mod nnef_f16 {
             "nnef_f16".into()
         }
 
-        fn prepare(&self, model: TypedModel) -> TractResult<Box<dyn Runnable>> {
+        fn prepare_with_options(
+            &self,
+            model: TypedModel,
+            options: &RunOptions,
+        ) -> TractResult<Box<dyn Runnable>> {
             let outputs_dt =
                 model.outputs.iter().map(|o| model.outlet_fact(*o).unwrap().datum_type).collect();
             let tr = tract_core::floats::FloatPrecisionTranslator::<f32, f16>::default();
@@ -102,7 +153,10 @@ mod nnef_f16 {
             let mut buf = vec![];
             self.0.write_to_tar(&model, &mut buf)?;
             let reloaded = self.0.model_for_read(&mut &*buf)?;
-            Ok(Box::new(RunnableAsF16(reloaded.into_optimized()?.into_runnable()?, outputs_dt)))
+            Ok(Box::new(RunnableAsF16(
+                reloaded.into_optimized()?.into_runnable_with_options(&options)?,
+                outputs_dt,
+            )))
         }
     }
 

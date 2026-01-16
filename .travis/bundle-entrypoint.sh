@@ -81,14 +81,14 @@ llm_bench() {
     pb=$2
     shift 2
 
-    if  $TRACT "$@" --nnef-tract-core --nnef-tract-transformers -t transformers-detect-all --machine-friendly -O llm-bench $BENCH_OPTS > tract.out
+    if  $TRACT "$@"  --llm --machine-friendly -O llm-bench $BENCH_OPTS > tract.out
     then
         cat tract.out
         echo llm.$net.pp512.$pb $(cat tract.out | grep -a PP512 | cut -f 2 -d ' ') >> metrics
         echo llm.$net.tg128.$pb $(cat tract.out | grep -a TG128 | cut -f 2 -d ' ') >> metrics
     fi 
 
-    if $TRACT "$@" --readings --readings-heartbeat 1000 --nnef-tract-core --nnef-tract-transformers -t transformers-detect-all --machine-friendly -O llm-bench $BENCH_OPTS > /dev/null
+    if $TRACT "$@" --readings --readings-heartbeat 1000 --llm --machine-friendly -O llm-bench $BENCH_OPTS > /dev/null
     then
         for stage in model_ready before_optimize
         do

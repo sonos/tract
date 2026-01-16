@@ -1,3 +1,4 @@
+use clap::Values;
 use fs_err as fs;
 use reqwest::Url;
 use scan_fmt::scan_fmt;
@@ -8,7 +9,6 @@ use std::str::FromStr;
 use tract_core::internal::*;
 use tract_core::model::TypedModel;
 use tract_core::ops::konst::Const;
-use tract_core::ops::matmul::optimized::OptMatMul;
 #[allow(unused_imports)]
 use tract_core::transform::ModelTransform;
 use tract_hir::internal::*;
@@ -26,7 +26,6 @@ use tract_tflite::internal::TfliteProtoModel;
 use tract_nnef::ast::dump::Dumper;
 
 use crate::TractResult;
-use tract_cuda::utils::are_culibs_present;
 use tract_libcli::display_params;
 use tract_libcli::display_params::DisplayParams;
 use tract_libcli::model::Model;
@@ -132,9 +131,7 @@ type PulsedModel = ();
 pub struct Parameters {
     pub graph: SomeGraphDef,
 
-    #[allow(dead_code)]
-    pub pulsed_model: Option<Arc<PulsedModel>>,
-
+    pub runnable: Option<Arc<dyn Runnable>>,
     pub tract_model: Arc<dyn Model>,
     pub reference_model: Option<Arc<dyn Model>>,
 
@@ -450,6 +447,24 @@ impl Parameters {
         Ok(Self::tensor_values_from_iter(vector.into_iter(), get_values, get_facts))
     }
 
+    pub fn parse_set_and_hint<'c>(
+        typed_model: &TypedModel,
+        set: Values<'c>,
+    ) -> TractResult<SymbolValues> {
+        let mut values = SymbolValues::default();
+        for set in set {
+            let (key, value) = set.split_once('=').with_context(|| {
+                format!("--set and --hint must be in the X=value form, got {set}")
+            })?;
+            let value: i64 = value
+                .parse()
+                .with_context(|| format!("value expected to be an integer, got {value}"))?;
+            let key = typed_model.get_or_intern_symbol(key);
+            values.set(&key, value);
+        }
+        Ok(values)
+    }
+
     pub fn parse_npz(
         input: &str,
         get_values: bool,
@@ -583,14 +598,14 @@ impl Parameters {
 
     #[allow(unused_variables)]
     #[allow(clippy::type_complexity)]
-    fn pipeline(
+    fn load_and_declutter(
         matches: &clap::ArgMatches,
         probe: Option<&readings_probe::Probe>,
         raw_model: Box<dyn Model>,
         tf_model_extensions: Option<TfExt>,
         reference_stage: Option<&str>,
         keep_last: bool,
-    ) -> TractResult<(Arc<dyn Model>, Option<Arc<PulsedModel>>, Option<Arc<dyn Model>>)> {
+    ) -> TractResult<(Arc<dyn Model>, Option<Arc<dyn Model>>)> {
         let stop_at = matches.value_of("pass").unwrap_or(if matches.is_present("optimize") {
             "optimize"
         } else {
@@ -600,7 +615,7 @@ impl Parameters {
         info!("Will stop at {stop_at}");
 
         if stop_at == "load" {
-            return Ok((raw_model.into(), None, None));
+            return Ok((raw_model.into(), None));
         }
 
         let mut inference_model: Option<Arc<InferenceModel>> = None;
@@ -645,7 +660,6 @@ impl Parameters {
                     if stop_at == $name {
                         return Ok((
                                 $to.take().expect("returnable model"),
-                                pulsed_model,
                                 reference_model,
                                 ));
                     }
@@ -726,8 +740,15 @@ impl Parameters {
             });
         }
 
-        if let Some(transform) = matches.values_of("transform") {
-            for spec in transform {
+        let mut transforms: Vec<&str> = matches
+            .values_of("transform")
+            .map(|values| values.into_iter().collect())
+            .unwrap_or_default();
+        if matches.is_present("llm") {
+            transforms.push("transformers-detect-all");
+        }
+        if transforms.len() > 0 {
+            for spec in transforms {
                 let transform = super::nnef(matches)
                     .get_transform(spec)?
                     .with_context(|| format!("Could not find transform named {spec}"))?;
@@ -738,46 +759,32 @@ impl Parameters {
             }
         }
 
-        {
-            if matches.is_present("metal") {
-                #[cfg(any(target_os = "macos", target_os = "ios"))]
-                {
-                    stage!("metal", typed_model -> typed_model, |m:TypedModel| {
-                        tract_metal::MetalTransform::from_str(matches.value_of("force-metal-backend").unwrap_or(""))?
-                            .transform_into(m)
-                    });
-                }
-                #[cfg(not(any(target_os = "macos", target_os = "ios")))]
-                {
-                    bail!("`--metal` present but it is only available on MacOS and iOS")
-                }
-            }
-        }
+        // if matches.is_present("metal") {
+        //     #[cfg(any(target_os = "macos", target_os = "ios"))]
+        //     {
+        //         stage!("metal", typed_model -> typed_model, |m:TypedModel| {
+        //             tract_metal::MetalTransform::from_str(matches.value_of("force-metal-backend").unwrap_or(""))?
+        //                 .transform_into(m)
+        //         });
+        //     }
+        //     #[cfg(not(any(target_os = "macos", target_os = "ios")))]
+        //     {
+        //         bail!("`--metal` present but it is only available on MacOS and iOS")
+        //     }
+        // }
 
-        {
-            if matches.is_present("cuda") {
-                if are_culibs_present() {
-                    stage!("cuda", typed_model -> typed_model, |m:TypedModel| {
-                        tract_cuda::CudaTransform.transform_into(m)
-                    });
-                } else {
-                    bail!("`--cuda` present but could not find any cuda lib")
-                }
-            }
-        }
+        // if matches.is_present("cuda") {
+        //     if are_culibs_present() {
+        //         stage!("cuda", typed_model -> typed_model, |m:TypedModel| {
+        //             tract_cuda::CudaTransform.transform_into(m)
+        //         });
+        //     } else {
+        //         bail!("`--cuda` present but could not find any cuda lib")
+        //     }
+        // }
 
         if let Some(set) = matches.values_of("set") {
-            let mut values = SymbolValues::default();
-            for set in set {
-                let (key, value) = set
-                    .split_once('=')
-                    .with_context(|| format!("--set must be in the X=value form, got {set}"))?;
-                let value: i64 = value
-                    .parse()
-                    .with_context(|| format!("value expected to be an integer, got {value}"))?;
-                let key = typed_model.as_ref().unwrap().get_or_intern_symbol(key);
-                values.set(&key, value);
-            }
+            let values = Self::parse_set_and_hint(typed_model.as_ref().unwrap(), set)?;
             stage!("set", typed_model -> typed_model, |mut m: TypedModel| {
                 for node in m.eval_order()? {
                     let node = m.node_mut(node);
@@ -843,27 +850,40 @@ impl Parameters {
             });
         }
         stage!("before-optimize", typed_model -> typed_model, Ok);
-        stage!("optimize", typed_model -> typed_model, |mut m:TypedModel| {
-            let mut opt = tract_core::optim::Optimizer::codegen();
-            if let Some(steps) = matches.value_of("optimize-step") {
-                opt = opt.stopping_at(steps.parse()?);
-            }
-            opt.optimize(&mut m)?;
-            m.properties.insert("tract_stage".to_string(), rctensor0("optimized".to_string()));
-            if let Ok(max) = matches.value_of_t("assert-maximal-mm-quality-cost") {
-                for node in &m.nodes {
-                    if let Some(op) = node.op_as::<OptMatMul>() {
-                        for imp in op.mmm.iter() {
-                            if imp.quality().cost() > max {
-                                bail!("Node {node} uses {imp:?} of quality {:?}.", imp.quality())
-                            }
-                        }
-                    }
-                }
-            }
-            Ok(m)
-        });
-        Ok((typed_model.clone().unwrap(), pulsed_model, reference_model))
+        // let runtime = if matches.is_present("cuda") {
+        //     Some("cuda")
+        // } else if matches.is_present("metal") {
+        //     Some("metal")
+        // } else {
+        //     matches.value_of("runtime")
+        // };
+        // if let Some(runtime) = runtime {
+        //     let runtime = runtime_for_name(runtime)
+        //         .with_context(|| format!("Runtime `{runtime}' not found"))?;
+        //     panic!("runtime {runtime:?}");
+        // }
+
+        // stage!("optimize", typed_model -> typed_model, |mut m:TypedModel| {
+        //     let mut opt = tract_core::optim::Optimizer::codegen();
+        //     if let Some(steps) = matches.value_of("optimize-step") {
+        //         opt = opt.stopping_at(steps.parse()?);
+        //     }
+        //     opt.optimize(&mut m)?;
+        //     m.properties.insert("tract_stage".to_string(), rctensor0("optimized".to_string()));
+        //     if let Ok(max) = matches.value_of_t("assert-maximal-mm-quality-cost") {
+        //         for node in &m.nodes {
+        //             if let Some(op) = node.op_as::<OptMatMul>() {
+        //                 for imp in op.mmm.iter() {
+        //                     if imp.quality().cost() > max {
+        //                         bail!("Node {node} uses {imp:?} of quality {:?}.", imp.quality())
+        //                     }
+        //                 }
+        //             }
+        //         }
+        //     }
+        //     Ok(m)
+        // });
+        Ok((typed_model.clone().unwrap(), reference_model))
     }
 
     #[allow(unused_variables)]
@@ -1025,39 +1045,108 @@ impl Parameters {
         };
 
         let keep_last = matches.is_present("keep-last");
-        Self::pipeline(
+        let (tract_model, reference_model) = Self::load_and_declutter(
             matches,
             probe,
             raw_model,
             tf_model_extensions,
             need_reference_model,
             keep_last,
-        )
-        .map(|(tract_model, pulsed_model, reference_model)| {
-            info!("Model ready");
-            info_usage("model ready", probe);
-            Parameters {
-                graph,
-                pulsed_model,
-                tract_model,
-                reference_model,
-                tf_model,
-                tensors_values,
-                assertions,
-                machine_friendly: matches.is_present("machine-friendly"),
-                allow_random_input,
-                allow_float_casts,
-            }
+        )?;
+
+        info!("Model fully loaded");
+        info_usage("model fully loaded", probe);
+
+        let runtime = if let Some(rt) = matches.value_of("runtime") {
+            rt
+        } else if matches.is_present("cuda") {
+            "cuda"
+        } else if matches.is_present("metal") {
+            "metal"
+        } else if matches.is_present("optimize") {
+            "default"
+        } else {
+            "unoptimized"
+        };
+
+        // we assume the runnable will be a typed_model() (it is the case for all current runtimes)
+        // so we consume tract_model knowning the runnable will give us a new one later.
+        // we should hold on the old model in the general case, but this leads to dup models weights in memory
+        let runtime =
+            runtime_for_name(runtime).with_context(|| format!("Runtime `{runtime}' not found"))?;
+        let typed_model =
+            Arc::downcast::<TypedModel>(tract_model).map_err(|_| anyhow!("Need a typed model"))?;
+        let typed_model = Arc::try_unwrap(typed_model).ok().context("Can not unwrap")?;
+        let hints = if let Some(hints) = matches.values_of("hint") {
+            Self::parse_set_and_hint(&typed_model, hints)?
+        } else if matches.is_present("llm") || matches.is_present("causal-llm-hints") {
+            tract_transformers::memory_arena_hints_for_causal_llm(&typed_model)?
+        } else {
+            Default::default()
+        };
+
+        let options = RunOptions { memory_sizing_hints: hints, ..Default::default() };
+        let runnable = runtime.prepare_with_options(typed_model, &options)?;
+        let tract_model = runnable.typed_model().unwrap().clone();
+
+        // stage!("optimize", typed_model -> typed_model, |mut m:TypedModel| {
+        //     let mut opt = tract_core::optim::Optimizer::codegen();
+        //     if let Some(steps) = matches.value_of("optimize-step") {
+        //         opt = opt.stopping_at(steps.parse()?);
+        //     }
+        //     opt.optimize(&mut m)?;
+        //     m.properties.insert("tract_stage".to_string(), rctensor0("optimized".to_string()));
+        //     if let Ok(max) = matches.value_of_t("assert-maximal-mm-quality-cost") {
+        //         for node in &m.nodes {
+        //             if let Some(op) = node.op_as::<OptMatMul>() {
+        //                 for imp in op.mmm.iter() {
+        //                     if imp.quality().cost() > max {
+        //                         bail!("Node {node} uses {imp:?} of quality {:?}.", imp.quality())
+        //                     }
+        //                 }
+        //             }
+        //         }
+        //     }
+        //     Ok(m)
+        // });
+
+        info!("Model ready");
+        info_usage("model ready", probe);
+        Ok(Parameters {
+            graph,
+            runnable: Some(runnable.into()),
+            tract_model,
+            reference_model,
+            tf_model,
+            tensors_values,
+            assertions,
+            machine_friendly: matches.is_present("machine-friendly"),
+            allow_random_input,
+            allow_float_casts,
         })
     }
 
     pub(crate) fn typed_model(&self) -> Option<Arc<TypedModel>> {
-        Arc::downcast(self.tract_model.clone()).ok()
+        self.runnable
+            .clone()
+            .and_then(|runnable| runnable.typed_model().cloned())
+            .or_else(|| Arc::downcast(self.tract_model.clone()).ok())
     }
 
     pub(crate) fn req_typed_model(&self) -> Arc<TypedModel> {
         self.typed_model().expect("Not a TypedModel")
     }
+
+    pub(crate) fn req_runnable(&self) -> TractResult<Arc<dyn Runnable>> {
+        self.runnable.clone().context("Requires a runnable")
+    }
+
+    // pub(crate) fn req_runnable_as_plan(&self) -> TractResult<Arc<TypedSimplePlan>> {
+    //     let runnable = self.req_runnable()?;
+    //     let plan: Arc<TypedSimplePlan> =
+    //         Arc::downcast(runnable).ok().context("Need a TypedSiplePlan")?;
+    //     Ok(plan)
+    // }
 }
 
 pub fn bench_limits_from_clap(matches: &clap::ArgMatches) -> TractResult<BenchLimits> {

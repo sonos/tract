@@ -86,6 +86,7 @@ pub mod framework;
 pub mod model;
 pub mod optim;
 pub mod plan;
+#[macro_use]
 pub mod runtime;
 #[macro_use]
 pub mod transform;
@@ -99,7 +100,9 @@ mod late_bind;
 pub mod prelude {
     pub use crate::framework::Framework;
     pub use crate::model::*;
-    pub use crate::plan::{PlanOptions, SimplePlan, SimpleState};
+    pub use crate::runtime::{
+        FrozenState, RunOptions, Runnable, Runtime, State, runtime_for_name, runtimes,
+    };
     pub use crate::value::{IntoTValue, TValue};
     pub use std::sync::Arc;
     pub use tract_data::prelude::*;
@@ -119,11 +122,14 @@ pub mod internal {
     pub use crate::ops::change_axes::*;
     pub use crate::ops::element_wise::ElementWiseMiniOp;
     pub use crate::ops::{Cost, EvalOp, FrozenOpState, Op, OpState, Validation};
-    pub use crate::plan::{SessionState, SessionStateHandler};
+    pub use crate::plan::{SessionState, SessionStateHandler, SimplePlan, SimpleState};
     pub use crate::prelude::*;
-    pub use crate::runtime::{DefaultRuntime, Runnable, Runtime, State};
+    pub use crate::runtime::{
+        DefaultRuntime, Runnable, Runtime, State, runtime_for_name, runtimes,
+    };
     pub use dims;
     pub use downcast_rs as tract_downcast_rs;
+    pub use register_runtime;
     pub use std::borrow::Cow;
     pub use std::collections::HashMap;
     pub use std::hash::Hash;

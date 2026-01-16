@@ -47,7 +47,7 @@ impl BenchLimits {
             if state.model().properties().contains_key("pulse.delay") {
                 state.run(inputs.sources[0].clone())?;
             } else {
-                state.init_states(&mut inputs.state_initializers.clone())?;
+                state.init_states(&inputs.state_initializers)?;
                 state.run(inputs.sources[0].clone())?;
                 state.reset_op_states()?
             }
@@ -63,7 +63,7 @@ pub fn profile(
     model: &TypedModel,
     bench_limits: &BenchLimits,
     dg: &mut Annotations,
-    plan_options: &PlanOptions,
+    plan_options: &RunOptions,
     inputs: &RunTensors,
     custom_profiler: Option<HashMap<TypeId, Profiler>>,
     folded: bool,
@@ -81,7 +81,7 @@ pub fn profile(
     let mut time_accounted_by_inner_nodes = Duration::default();
     while iters < bench_limits.max_loops && dur < bench_limits.max_time {
         if !state.model().properties().contains_key("pulse.delay") {
-            state.init_states(&mut inputs.state_initializers.clone())?;
+            state.init_states(&inputs.state_initializers.clone())?;
         }
         let start = Instant::now();
         for source in &inputs.sources {
@@ -131,14 +131,14 @@ pub fn profile_gpu(
     bench_limits: &BenchLimits,
     sub_matches: &clap::ArgMatches,
     dg: &mut Annotations,
-    plan_options: &PlanOptions,
+    plan_options: &RunOptions,
     inputs: &RunTensors,
 ) -> TractResult<()> {
     info!("Running entire network");
     let mut iters = 0usize;
     let prefix = tvec!();
 
-    let mut plan = TypedSimplePlan::new_with_options(model.clone(), plan_options)?;
+    let plan = TypedSimplePlan::new_with_options(model.clone(), plan_options)?;
     bench_limits.warmup(&plan, inputs)?;
 
     let state = TypedSimpleState::new_from_inputs(&plan, inputs.sources[0].clone())?;
@@ -148,7 +148,9 @@ pub fn profile_gpu(
         &state.session_state.resolved_symbols,
     )?;
 
+    let mut plan = TypedSimplePlan::build(model.clone(), plan_options)?;
     plan = plan.with_session_handler(session_handler);
+    let plan = Arc::new(plan);
 
     let mut state = plan.spawn()?;
     let mut dur = Duration::default();
@@ -156,7 +158,7 @@ pub fn profile_gpu(
     capture_gpu_trace(sub_matches, || -> TractResult<()> {
         while iters < bench_limits.max_loops && dur < bench_limits.max_time {
             if !state.model().properties().contains_key("pulse.delay") {
-                state.init_states(&mut inputs.state_initializers.clone())?;
+                state.init_states(&inputs.state_initializers.clone())?;
             }
             let start = Instant::now();
             for source in &inputs.sources {

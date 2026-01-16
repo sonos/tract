@@ -9,17 +9,9 @@ use crate::internal::*;
 use crate::model::{Fact, Graph, OutletId};
 use crate::ops::FrozenOpState;
 use crate::ops::konst::Const;
+use crate::runtime::RunOptions;
 
 use self::order::{build_flush_list, eval_order_for_nodes, eval_order_opt_ram_for_nodes};
-
-#[derive(Clone, Debug, Default)]
-pub struct PlanOptions {
-    /// Use the simple ordering instead of the newer memory friendly one
-    pub skip_order_opt_ram: bool,
-
-    /// Override default global executor
-    pub executor: Option<Executor>,
-}
 
 pub struct SessionState {
     pub inputs: HashMap<usize, TValue>,
@@ -73,7 +65,7 @@ where
     F: Fact + Clone + 'static,
     O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
-    model: Arc<Graph<F, O>>,
+    pub(crate) model: Arc<Graph<F, O>>,
     outputs: Vec<OutletId>,
     order: Vec<usize>,
     flush_lists: Vec<TVec<usize>>,
@@ -90,18 +82,16 @@ where
     /// This contructor returns a plan that will compute all the model default outputs in one pass.
     pub fn new(model: impl Into<Arc<Graph<F, O>>>) -> TractResult<Arc<SimplePlan<F, O>>> {
         let model = model.into();
-        let outputs = model.output_outlets()?.to_vec();
-        Self::build(model, &outputs, &[], &PlanOptions::default())
+        Self::build(model, &RunOptions::default()).map(Arc::new)
     }
 
     /// This contructor returns a plan that will compute all the model default outputs in one pass.
     pub fn new_with_options(
         model: impl Into<Arc<Graph<F, O>>>,
-        options: &PlanOptions,
+        options: &RunOptions,
     ) -> TractResult<Arc<SimplePlan<F, O>>> {
         let model = model.into();
-        let outputs = model.output_outlets()?.to_vec();
-        Self::build(model, &outputs, &[], options)
+        Self::build(model, options).map(Arc::new)
     }
 
     /// This contructor returns a plan that will compute the specified output.
@@ -110,7 +100,9 @@ where
         model: Graph<F, O>,
         output: OutletId,
     ) -> TractResult<Arc<SimplePlan<F, O>>> {
-        Self::build(model, &[output], &[], &PlanOptions::default())
+        #[allow(deprecated)]
+        Self::build_with_outputs_and_deps(model, &[output], &[], &RunOptions::default())
+            .map(Arc::new)
     }
 
     /// This contructor returns a plan that will compute all specified outputs in one pass.
@@ -119,16 +111,16 @@ where
         model: impl Into<Arc<Graph<F, O>>>,
         outputs: &[OutletId],
     ) -> TractResult<Arc<SimplePlan<F, O>>> {
-        Self::build(model, outputs, &[], &PlanOptions::default())
+        #[allow(deprecated)]
+        Self::build_with_outputs_and_deps(model, outputs, &[], &RunOptions::default()).map(Arc::new)
     }
 
     pub fn with_session_handler<H: SessionStateHandler + 'static>(
-        self: Arc<Self>,
+        mut self,
         session_handler: H,
-    ) -> Arc<Self> {
-        let mut plan = Arc::unwrap_or_clone(self);
-        plan.session_handler = Some(Arc::new(session_handler));
-        Arc::new(plan)
+    ) -> Self {
+        self.session_handler = Some(Arc::new(session_handler));
+        self
     }
 
     #[deprecated]
@@ -137,15 +129,28 @@ where
         outputs: &[OutletId],
         deps: &[(usize, usize)],
     ) -> TractResult<Arc<SimplePlan<F, O>>> {
-        Self::build(model, outputs, deps, &PlanOptions::default())
+        #[allow(deprecated)]
+        Self::build_with_outputs_and_deps(model, outputs, deps, &RunOptions::default())
+            .map(Arc::new)
     }
 
     pub fn build(
         model: impl Into<Arc<Graph<F, O>>>,
+        options: &RunOptions,
+    ) -> TractResult<SimplePlan<F, O>> {
+        let model = model.into();
+        let outputs = model.outputs.clone();
+        #[allow(deprecated)]
+        Self::build_with_outputs_and_deps(model, &outputs, &[], options)
+    }
+
+    #[deprecated]
+    pub fn build_with_outputs_and_deps(
+        model: impl Into<Arc<Graph<F, O>>>,
         outputs: &[OutletId],
         deps: &[(usize, usize)],
-        options: &PlanOptions,
-    ) -> TractResult<Arc<SimplePlan<F, O>>> {
+        options: &RunOptions,
+    ) -> TractResult<SimplePlan<F, O>> {
         let model = model.into();
         let inputs = model.input_outlets()?.iter().map(|n| n.node).collect::<Vec<usize>>();
         let outputs_nodes = outputs.iter().map(|n| n.node).collect::<Vec<usize>>();
@@ -166,7 +171,7 @@ where
                 }
             }
         }
-        Ok(Arc::new(SimplePlan {
+        Ok(SimplePlan {
             model,
             order,
             flush_lists,
@@ -174,7 +179,7 @@ where
             has_unresolved_symbols: !symbols.is_empty(),
             executor: options.executor.clone(),
             session_handler: None,
-        }))
+        })
     }
 
     pub fn order_without_consts(&self) -> &[usize] {
@@ -201,7 +206,7 @@ where
     F: Fact + Clone + 'static,
     O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
-    plan: Arc<SimplePlan<F, O>>,
+    pub(crate) plan: Arc<SimplePlan<F, O>>,
     pub states: Vec<Option<Box<dyn OpState>>>,
     pub session_state: SessionState,
     pub values: Vec<Option<TVec<TValue>>>,
@@ -262,7 +267,7 @@ where
         Ok(())
     }
 
-    pub fn init_states(&mut self, state_init_tensors: &mut Vec<TValue>) -> TractResult<()> {
+    pub fn init_states(&mut self, state_init_tensors: &[TValue]) -> TractResult<()> {
         let states_to_init = self
             .states
             .iter_mut()
@@ -275,8 +280,9 @@ where
             states_to_init.len(),
             state_init_tensors.len()
         );
+        let mut iterator = state_init_tensors.iter().cloned();
         for state in states_to_init {
-            state.load_from(&mut self.session_state, state_init_tensors)?;
+            state.load_from(&mut self.session_state, &mut iterator)?;
         }
         Ok(())
     }

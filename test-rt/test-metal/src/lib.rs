@@ -28,8 +28,9 @@ impl State for MetalTestTransformState {
                 &self.state.session_state.resolved_symbols,
             )?;
 
-            let plan = self.state.plan().clone().with_session_handler(session_handler);
-            TypedSimpleState::new(&plan)?
+            let plan = Arc::unwrap_or_clone(self.state.plan().clone())
+                .with_session_handler(session_handler);
+            Arc::new(plan).spawn()?
         } else {
             self.state.clone()
         };
@@ -59,6 +60,30 @@ impl State for MetalTestTransformState {
             state.run(inputs)
         }
     }
+
+    fn input_count(&self) -> usize {
+        self.state.input_count()
+    }
+
+    fn output_count(&self) -> usize {
+        self.state.output_count()
+    }
+
+    fn initializable_states_count(&self) -> usize {
+        self.state.initializable_states_count()
+    }
+
+    fn get_states_facts(&self) -> Vec<TypedFact> {
+        self.state.get_states_facts()
+    }
+
+    fn init_state(&mut self, states: &[TValue]) -> TractResult<()> {
+        self.state.init_state(states)
+    }
+
+    fn get_states(&self) -> TractResult<Vec<TValue>> {
+        self.state.get_states()
+    }
 }
 
 #[derive(Debug)]
@@ -75,6 +100,22 @@ impl Runnable for MetalTestTransformRunnable {
             transpose_inputs: self.transpose_inputs,
             use_arena: self.use_arena,
         }))
+    }
+
+    fn input_count(&self) -> usize {
+        self.runnable.input_count()
+    }
+
+    fn output_count(&self) -> usize {
+        self.runnable.output_count()
+    }
+
+    fn typed_plan(&self) -> Option<&Arc<TypedSimplePlan>> {
+        self.runnable.typed_plan()
+    }
+
+    fn typed_model(&self) -> Option<&Arc<TypedModel>> {
+        self.runnable.typed_model()
     }
 }
 
@@ -93,7 +134,11 @@ impl Runtime for MetalTestRuntime {
         self.name.into()
     }
 
-    fn prepare(&self, mut model: TypedModel) -> TractResult<Box<dyn Runnable>> {
+    fn prepare_with_options(
+        &self,
+        mut model: TypedModel,
+        _options: &PlanOptions,
+    ) -> TractResult<Box<dyn Runnable>> {
         if self.transpose_inputs {
             for ix in 0..model.inputs.len() {
                 let input = model.input_outlets()?[ix];

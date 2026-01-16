@@ -33,11 +33,11 @@ impl TfModelExtensions {
         if self.initializing_nodes.len() > 0 {
             let as_outlets =
                 self.initializing_nodes.iter().map(|n| OutletId::new(*n, 0)).collect::<Vec<_>>();
-            let plan = SimplePlan::build(
+            #[allow(deprecated)]
+            let plan = SimplePlan::new_for_outputs_and_deps(
                 original.clone(),
                 &as_outlets,
                 &self.control_inputs,
-                &PlanOptions::default(),
             )?;
             let mut state = SimpleState::new(&plan)?;
             state.exec()?;
