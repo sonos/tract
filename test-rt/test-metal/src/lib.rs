@@ -28,8 +28,9 @@ impl State for MetalTestTransformState {
                 &self.state.session_state.resolved_symbols,
             )?;
 
-            let plan = self.state.plan().clone().with_session_handler(session_handler);
-            TypedSimpleState::new(&plan)?
+            let plan = Arc::unwrap_or_clone(self.state.plan().clone())
+                .with_session_handler(session_handler);
+            Arc::new(plan).spawn()?
         } else {
             self.state.clone()
         };
@@ -108,6 +109,14 @@ impl Runnable for MetalTestTransformRunnable {
     fn output_count(&self) -> usize {
         self.runnable.output_count()
     }
+
+    fn typed_plan(&self) -> Option<&Arc<TypedSimplePlan>> {
+        self.runnable.typed_plan()
+    }
+
+    fn typed_model(&self) -> Option<&Arc<TypedModel>> {
+        self.runnable.typed_model()
+    }
 }
 
 #[derive(Debug)]
@@ -125,7 +134,11 @@ impl Runtime for MetalTestRuntime {
         self.name.into()
     }
 
-    fn prepare(&self, mut model: TypedModel) -> TractResult<Box<dyn Runnable>> {
+    fn prepare_with_options(
+        &self,
+        mut model: TypedModel,
+        _options: &PlanOptions,
+    ) -> TractResult<Box<dyn Runnable>> {
         if self.transpose_inputs {
             for ix in 0..model.inputs.len() {
                 let input = model.input_outlets()?[ix];
