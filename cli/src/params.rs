@@ -1,3 +1,4 @@
+use clap::Values;
 use fs_err as fs;
 use reqwest::Url;
 use scan_fmt::scan_fmt;
@@ -446,6 +447,24 @@ impl Parameters {
         Ok(Self::tensor_values_from_iter(vector.into_iter(), get_values, get_facts))
     }
 
+    pub fn parse_set_and_hint<'c>(
+        typed_model: &TypedModel,
+        set: Values<'c>,
+    ) -> TractResult<SymbolValues> {
+        let mut values = SymbolValues::default();
+        for set in set {
+            let (key, value) = set.split_once('=').with_context(|| {
+                format!("--set and --hint must be in the X=value form, got {set}")
+            })?;
+            let value: i64 = value
+                .parse()
+                .with_context(|| format!("value expected to be an integer, got {value}"))?;
+            let key = typed_model.get_or_intern_symbol(key);
+            values.set(&key, value);
+        }
+        Ok(values)
+    }
+
     pub fn parse_npz(
         input: &str,
         get_values: bool,
@@ -721,8 +740,15 @@ impl Parameters {
             });
         }
 
-        if let Some(transform) = matches.values_of("transform") {
-            for spec in transform {
+        let mut transforms: Vec<&str> = matches
+            .values_of("transform")
+            .map(|values| values.into_iter().collect())
+            .unwrap_or_default();
+        if matches.is_present("llm") {
+            transforms.push("transformers-detect-all");
+        }
+        if transforms.len() > 0 {
+            for spec in transforms {
                 let transform = super::nnef(matches)
                     .get_transform(spec)?
                     .with_context(|| format!("Could not find transform named {spec}"))?;
@@ -758,17 +784,7 @@ impl Parameters {
         // }
 
         if let Some(set) = matches.values_of("set") {
-            let mut values = SymbolValues::default();
-            for set in set {
-                let (key, value) = set
-                    .split_once('=')
-                    .with_context(|| format!("--set must be in the X=value form, got {set}"))?;
-                let value: i64 = value
-                    .parse()
-                    .with_context(|| format!("value expected to be an integer, got {value}"))?;
-                let key = typed_model.as_ref().unwrap().get_or_intern_symbol(key);
-                values.set(&key, value);
-            }
+            let values = Self::parse_set_and_hint(typed_model.as_ref().unwrap(), set)?;
             stage!("set", typed_model -> typed_model, |mut m: TypedModel| {
                 for node in m.eval_order()? {
                     let node = m.node_mut(node);
@@ -1061,7 +1077,16 @@ impl Parameters {
         let typed_model =
             Arc::downcast::<TypedModel>(tract_model).map_err(|_| anyhow!("Need a typed model"))?;
         let typed_model = Arc::try_unwrap(typed_model).ok().context("Can not unwrap")?;
-        let runnable = runtime.prepare(typed_model)?;
+        let hints = if let Some(hints) = matches.values_of("hint") {
+            Self::parse_set_and_hint(&typed_model, hints)?
+        } else if matches.is_present("llm") || matches.is_present("causal-llm-hints") {
+            tract_transformers::memory_arena_hints_for_causal_llm(&typed_model)?
+        } else {
+            Default::default()
+        };
+
+        let options = PlanOptions { memory_sizing_hints: hints, ..Default::default() };
+        let runnable = runtime.prepare_with_options(typed_model, &options)?;
         let tract_model = runnable.typed_model().unwrap().clone();
 
         // stage!("optimize", typed_model -> typed_model, |mut m:TypedModel| {
@@ -1111,6 +1136,16 @@ impl Parameters {
     pub(crate) fn req_typed_model(&self) -> Arc<TypedModel> {
         self.typed_model().expect("Not a TypedModel")
     }
+
+    pub(crate) fn req_runnable(&self) -> TractResult<Arc<dyn Runnable>> {
+        self.runnable.clone().context("Requires a runnable")
+    }
+
+    // pub(crate) fn req_runnable_as_plan(&self) -> TractResult<Arc<TypedSimplePlan>> {
+    //     let runnable = self.req_runnable()?;
+    //     let plan: Arc<TypedSimplePlan> = Arc::downcast(runnable).unwrap();
+    //     todo!();
+    // }
 }
 
 pub fn bench_limits_from_clap(matches: &clap::ArgMatches) -> TractResult<BenchLimits> {

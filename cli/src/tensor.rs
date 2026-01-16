@@ -1,5 +1,6 @@
 use tract_core::internal::*;
 use tract_libcli::tensor::RunParams;
+use tract_transformers::figure_out_causal_llm_b_s_p;
 
 use crate::params::Parameters;
 
@@ -37,7 +38,7 @@ pub fn run_params_from_subcommand(
         let Some(typed_model) = params.tract_model.downcast_ref::<TypedModel>() else {
             bail!("PP mode can only be used with a TypedModel");
         };
-        let (b, s, p) = tract_libcli::tensor::figure_out_b_s_p(typed_model)?;
+        let (b, s, p) = figure_out_causal_llm_b_s_p(typed_model)?;
         if let Some(b) = b {
             symbols.set(&b, 1);
         }
@@ -54,7 +55,7 @@ pub fn run_params_from_subcommand(
         let Some(typed_model) = params.tract_model.downcast_ref::<TypedModel>() else {
             bail!("TG mode can only be used with a TypedModel");
         };
-        let (b, s, p) = tract_libcli::tensor::figure_out_b_s_p(typed_model)?;
+        let (b, s, p) = figure_out_causal_llm_b_s_p(typed_model)?;
         if let Some(b) = b {
             symbols.set(&b, 1);
         }

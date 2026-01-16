@@ -1,5 +1,7 @@
 pub mod ops;
 mod rewriter;
+use std::collections::HashSet;
+
 use rewriter::*;
 use tract_nnef::internal::*;
 use tract_nnef::tract_core::transform::ModelTransform;
@@ -55,4 +57,54 @@ pub fn tract_transformers_registry() -> Registry {
 
     register(&mut reg);
     reg
+}
+
+pub fn figure_out_causal_llm_b_s_p(
+    model: &TypedModel,
+) -> TractResult<(Option<Symbol>, Option<Symbol>, Option<Symbol>)> {
+    // expectations:
+    // - one input is for tokens, so integer dt (i64 ?) and typically of shape S or 1,S, or B,S
+    // - other inputs are kv cache, some kind of float. shape features both S and P, and B if B is present in tokens
+    let token_input = model
+        .inputs
+        .iter()
+        .position(|i| model.outlet_fact(*i).unwrap().datum_type.is_integer())
+        .context("No token input found")?;
+    let tokens_symbols = model.input_fact(token_input)?.shape.volume().symbols();
+    let kv_symbols = if let Some(kv_input) =
+        model.inputs.iter().position(|i| model.outlet_fact(*i).unwrap().datum_type.is_float())
+    {
+        model.input_fact(kv_input)?.shape.volume().symbols()
+    } else {
+        // Look for KVCache Op
+        let mut dummy_session_state = SessionState::default();
+        let mut symbols = HashSet::new();
+        for node in &model.nodes {
+            if let Some((_, fact)) = node
+                .op
+                .state(&mut dummy_session_state, 0)?
+                .and_then(|state| state.init_tensor_fact())
+            {
+                symbols = fact.shape.volume().symbols();
+                break;
+            }
+        }
+        symbols
+    };
+
+    let b = tokens_symbols.intersection(&kv_symbols).cloned().collect::<HashSet<_>>();
+    let s = tokens_symbols.difference(&b).cloned().collect::<HashSet<_>>();
+    let p = kv_symbols.difference(&b).cloned().collect::<HashSet<_>>();
+    Ok((b.into_iter().next(), s.into_iter().next(), p.into_iter().next()))
+}
+
+pub fn memory_arena_hints_for_causal_llm(model: &TypedModel) -> TractResult<SymbolValues> {
+    let (b, s, p) = figure_out_causal_llm_b_s_p(model)?;
+    let mut values = SymbolValues::default()
+        .with(&s.context("Could not determine sequence_len (S)")?, 1)
+        .with(&p.context("Could not determine past_sequence_len (P)")?, 1024);
+    if let Some(b) = b {
+        values = values.with(&b, 1);
+    }
+    Ok(values)
 }

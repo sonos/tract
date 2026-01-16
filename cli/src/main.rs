@@ -149,6 +149,10 @@ fn main() -> TractResult<()> {
         .arg(Arg::new("transform").short('t').long("transform").multiple_occurrences(true).takes_value(true).help("Apply a built-in transformation to the model"))
         .arg(Arg::new("set").long("set").multiple_occurrences(true).takes_value(true)
              .long_help("Set a symbol to a concrete value after decluttering"))
+        .arg(arg!(--hint [hint] "Provide a typical value to a symbol to be used during planning (--hint S=12)").multiple_occurrences(true).number_of_values(1))
+
+        .arg(arg!(--"causal-llm-hints" "Figures out P and S and gives them suitable hints"))
+        .arg(arg!(--llm "Shortcut setting --opl (aka all nnef extensions) --causal-llm-hints -t transorfmers-detect-all"))
 
         // deprecated
         .arg(arg!(--"allow-float-casts" "Allow casting between f16, f32 and f64 around model").hide(true))
@@ -156,13 +160,16 @@ fn main() -> TractResult<()> {
         .arg(arg!(--"nnef-cycle" "Perform NNEF dump and reload before optimizing"))
         .arg(arg!(--"tflite-cycle" "Perform TFLITE dump and reload before optimizing"))
 
-        .arg(arg!(--"nnef-tract-core" "Allow usage of tract-core extension in NNEF dump and load"))
+        .arg(arg!(--"no-nnef-tract-core" "Disable usage of tract-core extension in NNEF dump and load"))
+        .arg(arg!(--"nnef-tract-core" "Allow usage of tract-core extension in NNEF dump and load")).hide(true)
         .arg(arg!(--"nnef-tract-resource" "Allow usage of tract-resource extension in NNEF dump and load"))
         .arg(arg!(--"nnef-tract-onnx" "Allow usage of tract-onnx extension in NNEF dump and load"))
         .arg(arg!(--"nnef-tract-pulse" "Allow usage of tract-pulse extension in NNEF dump and load"))
         .arg(arg!(--"nnef-tract-extra" "Allow usage of tract-extra extension in NNEF dump and load"))
         .arg(arg!(--"nnef-tract-transformers" "Allow usage of tract-transformers extension in NNEF dump and load"))
         .arg(arg!(--"nnef-extended-identifier" "Allow usage of the i\"...\" syntax to escape identifier names"))
+        .arg(arg!(--opl "Activates all NNEF tract extensions (like --nnef-tract-*)"))
+
 
         .arg(arg!(--"threads" [THREADS] "Setup a thread pool for computing. 0 will guess the number of physical cores"))
 
@@ -817,7 +824,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
 
 fn nnef(matches: &clap::ArgMatches) -> tract_nnef::internal::Nnef {
     let mut fw = tract_nnef::nnef();
-    if matches.is_present("nnef-tract-onnx") {
+    if matches.is_present("nnef-tract-onnx") || matches.is_present("opl") {
         #[cfg(feature = "onnx")]
         {
             use tract_onnx::WithOnnx;
@@ -828,7 +835,7 @@ fn nnef(matches: &clap::ArgMatches) -> tract_nnef::internal::Nnef {
             panic!("tract is build without ONNX support")
         }
     }
-    if matches.is_present("nnef-tract-pulse") {
+    if matches.is_present("nnef-tract-pulse") || matches.is_present("opl") {
         #[cfg(feature = "pulse-opl")]
         {
             use tract_pulse::WithPulse;
@@ -839,7 +846,7 @@ fn nnef(matches: &clap::ArgMatches) -> tract_nnef::internal::Nnef {
             panic!("tract is build without pulse-opl support")
         }
     }
-    if matches.is_present("nnef-tract-extra") {
+    if matches.is_present("nnef-tract-extra") || matches.is_present("opl") {
         #[cfg(feature = "extra")]
         {
             use tract_extra::WithTractExtra;
@@ -850,7 +857,10 @@ fn nnef(matches: &clap::ArgMatches) -> tract_nnef::internal::Nnef {
             panic!("tract is build without tract-extra support")
         }
     }
-    if matches.is_present("nnef-tract-transformers") {
+    if matches.is_present("nnef-tract-transformers")
+        || matches.is_present("llm")
+        || matches.is_present("opl")
+    {
         #[cfg(feature = "transformers")]
         {
             use tract_transformers::WithTractTransformers;
@@ -861,14 +871,14 @@ fn nnef(matches: &clap::ArgMatches) -> tract_nnef::internal::Nnef {
             panic!("tract is build without tract-transformers support")
         }
     }
-    if matches.is_present("nnef-tract-core") {
+    if !matches.is_present("no-nnef-tract-core") {
         fw = fw.with_tract_core();
     }
-    if matches.is_present("nnef-tract-resource") {
+    if matches.is_present("nnef-tract-resource") || matches.is_present("opl") {
         use tract_nnef_resources::internal::JsonLoader;
         fw = fw.with_tract_resource().with_resource_loader(JsonLoader);
     }
-    if matches.is_present("nnef-extended-identifier") {
+    if matches.is_present("nnef-extended-identifier") || matches.is_present("opl") {
         fw.allow_extended_identifier_syntax(true);
     }
     fw
