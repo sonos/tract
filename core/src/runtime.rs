@@ -1,6 +1,8 @@
 use std::any::Any;
 use std::fmt::Debug;
 
+use downcast_rs::Downcast;
+use dyn_clone::DynClone;
 use tract_linalg::multithread::Executor;
 
 use crate::internal::*;
@@ -29,7 +31,7 @@ pub trait Runtime: Debug + Send + Sync + 'static {
     ) -> TractResult<Box<dyn Runnable>>;
 }
 
-pub trait Runnable: Any + Debug + Send + Sync + 'static {
+pub trait Runnable: Any + Downcast + Debug + Send + Sync + 'static {
     fn run(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         self.spawn()?.run(inputs)
     }
@@ -40,13 +42,12 @@ pub trait Runnable: Any + Debug + Send + Sync + 'static {
     fn typed_plan(&self) -> Option<&Arc<TypedSimplePlan>>;
     fn typed_model(&self) -> Option<&Arc<TypedModel>>;
 }
+impl_downcast!(Runnable);
 
-pub trait State {
+pub trait State: Any + Downcast + Debug + 'static {
     fn run(&mut self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>>;
 
-    fn runnable(&self) -> &dyn Runnable {
-        panic!();
-    }
+    fn runnable(&self) -> &dyn Runnable;
 
     fn initializable_states_count(&self) -> usize;
     fn get_states_facts(&self) -> Vec<TypedFact>;
@@ -59,7 +60,15 @@ pub trait State {
     fn output_count(&self) -> usize {
         self.runnable().input_count()
     }
+
+    fn freeze(&self) -> Box<dyn FrozenState>;
 }
+impl_downcast!(State);
+
+pub trait FrozenState: Any + Debug + DynClone + Send {
+    fn unfreeze(&self) -> Box<dyn State>;
+}
+dyn_clone::clone_trait_object!(FrozenState);
 
 #[derive(Debug)]
 pub struct DefaultRuntime;
@@ -137,6 +146,16 @@ impl State for TypedSimpleState {
             }
         }
         Ok(states)
+    }
+
+    fn freeze(&self) -> Box<dyn FrozenState> {
+        Box::new(TypedSimpleState::freeze(self))
+    }
+}
+
+impl FrozenState for TypedFrozenSimpleState {
+    fn unfreeze(&self) -> Box<dyn State> {
+        Box::new(TypedFrozenSimpleState::unfreeze(&self))
     }
 }
 
