@@ -19,10 +19,12 @@ pub trait Runnable: Any + Debug + Send + Sync + 'static {
     fn run(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         self.spawn()?.run(inputs)
     }
-    fn typed_model(&self) -> Option<&Arc<TypedModel>>;
     fn spawn(&self) -> TractResult<Box<dyn State>>;
     fn input_count(&self) -> usize;
     fn output_count(&self) -> usize;
+
+    fn typed_plan(&self) -> Option<&Arc<TypedSimplePlan>>;
+    fn typed_model(&self) -> Option<&Arc<TypedModel>>;
 }
 
 pub trait State {
@@ -66,6 +68,10 @@ impl Runtime for DefaultRuntime {
 impl Runnable for Arc<TypedRunnableModel> {
     fn spawn(&self) -> TractResult<Box<dyn State>> {
         Ok(Box::new(self.spawn()?))
+    }
+
+    fn typed_plan(&self) -> Option<&Self> {
+        Some(self)
     }
 
     fn typed_model(&self) -> Option<&Arc<TypedModel>> {

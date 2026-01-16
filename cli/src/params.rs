@@ -1137,14 +1137,15 @@ impl Parameters {
         self.typed_model().expect("Not a TypedModel")
     }
 
-    pub(crate) fn req_runnable(&self) -> TractResult<Arc<dyn Runnable>> {
-        self.runnable.clone().context("Requires a runnable")
-    }
+    // pub(crate) fn req_runnable(&self) -> TractResult<Arc<dyn Runnable>> {
+    //     self.runnable.clone().context("Requires a runnable")
+    // }
 
     // pub(crate) fn req_runnable_as_plan(&self) -> TractResult<Arc<TypedSimplePlan>> {
     //     let runnable = self.req_runnable()?;
-    //     let plan: Arc<TypedSimplePlan> = Arc::downcast(runnable).unwrap();
-    //     todo!();
+    //     let plan: Arc<TypedSimplePlan> =
+    //         Arc::downcast(runnable).ok().context("Need a TypedSiplePlan")?;
+    //     Ok(plan)
     // }
 }
 

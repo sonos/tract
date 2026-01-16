@@ -51,6 +51,10 @@ mod run_as_f16 {
         fn typed_model(&self) -> Option<&Arc<TypedModel>> {
             self.0.typed_model()
         }
+
+        fn typed_plan(&self) -> Option<&Arc<TypedSimplePlan>> {
+            self.0.typed_plan()
+        }
     }
 
     #[derive(Debug)]

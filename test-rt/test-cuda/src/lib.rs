@@ -111,6 +111,10 @@ impl Runnable for CudaTestTransformRunnable {
     fn typed_model(&self) -> Option<&Arc<TypedModel>> {
         self.runnable.typed_model()
     }
+
+    fn typed_plan(&self) -> Option<&Arc<TypedSimplePlan>> {
+        self.runnable.typed_plan()
+    }
 }
 
 #[derive(Debug)]

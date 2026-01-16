@@ -50,6 +50,10 @@ impl Runnable for TfliteRunnable {
     fn typed_model(&self) -> Option<&Arc<TypedModel>> {
         Some(&self.1)
     }
+
+    fn typed_plan(&self) -> Option<&Arc<TypedSimplePlan>> {
+        None
+    }
 }
 
 impl Debug for TfliteRunnable {
