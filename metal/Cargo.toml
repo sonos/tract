@@ -21,6 +21,7 @@ maintenance = { status = "actively-developed" }
 anyhow.workspace = true
 derive-new.workspace = true
 downcast-rs.workspace = true
+inventory.workspace = true
 log.workspace = true
 metal.workspace = true
 objc = { version = "0.2.7" }

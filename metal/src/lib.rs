@@ -10,9 +10,43 @@ mod tests;
 mod transform;
 mod utils;
 
-use crate::func_constants::{ConstantValues, Value};
-use crate::kernels::LibraryName;
-pub use crate::kernels::matmul::MetalGemmImplKind;
+use tract_core::internal::*;
+use tract_core::transform::ModelTransform;
 
-pub use crate::context::{METAL_STREAM, MetalContext, MetalStream};
+use crate::func_constants::{ConstantValues, Value};
+pub use crate::kernels::matmul::MetalGemmImplKind;
+use crate::kernels::LibraryName;
+
+pub use crate::context::{MetalContext, MetalStream, METAL_STREAM};
 pub use crate::transform::MetalTransform;
+
+#[derive(Debug)]
+struct MetalRuntime;
+
+impl Runtime for MetalRuntime {
+    fn name(&self) -> StaticName {
+        "metal".into()
+    }
+
+    fn prepare_with_options(
+        &self,
+        mut model: TypedModel,
+        options: &PlanOptions,
+    ) -> TractResult<Box<dyn Runnable>> {
+        MetalTransform::default().transform(&mut model)?;
+        model = model.into_optimized()?;
+
+        let options = PlanOptions { skip_order_opt_ram: true, ..options.clone() };
+        let mut runnable = TypedSimplePlan::build(model, &options)?;
+        let session_handler = tract_gpu::session_handler::DeviceSessionHandler::from_plan(
+            &runnable,
+            &options.memory_sizing_hints,
+        )
+        .context("While sizing memory arena. Missing hint ?")?;
+        runnable = runnable.with_session_handler(session_handler);
+
+        Ok(Box::new(Arc::new(runnable)))
+    }
+}
+
+register_runtime!(MetalRuntime = MetalRuntime);
