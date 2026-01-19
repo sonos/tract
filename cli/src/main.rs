@@ -39,9 +39,9 @@ mod tensor;
 mod utils;
 
 use params::*;
-use tract_linalg::WeightType;
 use tract_linalg::block_quant::Q4_0;
 use tract_linalg::mmm::MatMatMul;
+use tract_linalg::WeightType;
 
 readings_probe::instrumented_allocator!();
 
@@ -149,7 +149,8 @@ fn main() -> TractResult<()> {
         .arg(Arg::new("transform").short('t').long("transform").multiple_occurrences(true).takes_value(true).help("Apply a built-in transformation to the model"))
         .arg(Arg::new("set").long("set").multiple_occurrences(true).takes_value(true)
              .long_help("Set a symbol to a concrete value after decluttering"))
-        .arg(arg!(--hint [hint] "Provide a typical value to a symbol to be used during planning (--hint S=12)").multiple_occurrences(true).number_of_values(1))
+        .arg(Arg::new("hint").long("hint").multiple_occurrences(true).takes_value(true)
+            .long_help("Provide a typical value to a symbol to be used during planning (--hint S=12)"))
 
         .arg(arg!(--"causal-llm-hints" "Figures out P and S and gives them suitable hints"))
         .arg(arg!(--llm "Shortcut setting --opl (aka all nnef extensions) --causal-llm-hints -t transorfmers-detect-all"))
