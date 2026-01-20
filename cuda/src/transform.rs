@@ -328,6 +328,8 @@ fn map_binary_op_to_cuda(op: &TypedBinOp) -> Option<ops::CudaBinOp> {
         (tract_core::ops::math::Add, Add),
         (tract_core::ops::math::Div, Div),
         (tract_core::ops::math::Sub, Sub),
+        (tract_core::ops::math::Min, Min),
+        (tract_core::ops::math::Max, Max),
         (tract_core::ops::math::Pow, Pow),
         (tract_core::ops::logic::And, And),
         (tract_core::ops::logic::Or, Or),

@@ -29,6 +29,21 @@ struct OpPow {
 };
 
 template <typename T>
+struct OpMin {
+  __device__ __forceinline__ T operator()(T a, T b) const {
+    return (T)fmin((float)a, (float)b);
+  }
+};
+
+template <typename T>
+struct OpMax {
+  __device__ __forceinline__ T operator()(T a, T b) const {
+    return (T)fmax((float)a, (float)b);
+  }
+};
+
+
+template <typename T>
 struct OpLess {
   __device__ __forceinline__ bool operator()(T a, T b) const { return a < b; }
 };
@@ -273,6 +288,8 @@ DEFINE_ARITHMETIC_OP(binary_sub, OpSub)
 DEFINE_ARITHMETIC_OP(binary_mul, OpMul)
 DEFINE_ARITHMETIC_OP(binary_div, OpDiv)
 DEFINE_ARITHMETIC_OP(binary_pow, OpPow)
+DEFINE_ARITHMETIC_OP(binary_min, OpMin)
+DEFINE_ARITHMETIC_OP(binary_max, OpMax)
 
 DEFINE_COMP_OP(binary_less, OpLess)
 DEFINE_COMP_OP(binary_less_equal, OpLessEqual)

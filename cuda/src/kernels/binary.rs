@@ -17,6 +17,8 @@ pub enum BinOps {
     Div,
     Sub,
     Pow,
+    Min,
+    Max,
     Less,
     LessEqual,
     Greater,
@@ -34,12 +36,14 @@ impl fmt::Display for BinOps {
 }
 
 impl BinOps {
-    pub const ALL: [BinOps; 13] = [
+    pub const ALL: [BinOps; 15] = [
         Self::Mul,
         Self::Add,
         Self::Div,
         Self::Sub,
         Self::Pow,
+        Self::Min,
+        Self::Max,
         Self::Less,
         Self::LessEqual,
         Self::Greater,
@@ -203,6 +207,8 @@ impl BinOps {
             Self::Div => "div",
             Self::Sub => "sub",
             Self::Pow => "pow",
+            Self::Min => "min",
+            Self::Max => "max",
             Self::Greater => "greater",
             Self::GreaterEqual => "greater_equal",
             Self::Equals => "equals",
