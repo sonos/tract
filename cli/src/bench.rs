@@ -5,8 +5,8 @@ use tract_hir::internal::*;
 use tract_libcli::capture_gpu_trace;
 use tract_libcli::model::Model;
 use tract_libcli::profile::BenchLimits;
-use tract_libcli::tensor::get_or_make_inputs;
 use tract_libcli::tensor::RunTensors;
+use tract_libcli::tensor::get_or_make_inputs;
 use tract_libcli::terminal;
 
 fn profile(state: &mut TypedSimpleState, inputs: &RunTensors) -> TractResult<Duration> {

@@ -39,9 +39,9 @@ mod tensor;
 mod utils;
 
 use params::*;
+use tract_linalg::WeightType;
 use tract_linalg::block_quant::Q4_0;
 use tract_linalg::mmm::MatMatMul;
-use tract_linalg::WeightType;
 
 readings_probe::instrumented_allocator!();
 
