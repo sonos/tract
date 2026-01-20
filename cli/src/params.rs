@@ -759,30 +759,6 @@ impl Parameters {
             }
         }
 
-        // if matches.is_present("metal") {
-        //     #[cfg(any(target_os = "macos", target_os = "ios"))]
-        //     {
-        //         stage!("metal", typed_model -> typed_model, |m:TypedModel| {
-        //             tract_metal::MetalTransform::from_str(matches.value_of("force-metal-backend").unwrap_or(""))?
-        //                 .transform_into(m)
-        //         });
-        //     }
-        //     #[cfg(not(any(target_os = "macos", target_os = "ios")))]
-        //     {
-        //         bail!("`--metal` present but it is only available on MacOS and iOS")
-        //     }
-        // }
-
-        // if matches.is_present("cuda") {
-        //     if are_culibs_present() {
-        //         stage!("cuda", typed_model -> typed_model, |m:TypedModel| {
-        //             tract_cuda::CudaTransform.transform_into(m)
-        //         });
-        //     } else {
-        //         bail!("`--cuda` present but could not find any cuda lib")
-        //     }
-        // }
-
         if let Some(set) = matches.values_of("set") {
             let values = Self::parse_set_and_hint(typed_model.as_ref().unwrap(), set)?;
             stage!("set", typed_model -> typed_model, |mut m: TypedModel| {
@@ -850,39 +826,6 @@ impl Parameters {
             });
         }
         stage!("before-optimize", typed_model -> typed_model, Ok);
-        // let runtime = if matches.is_present("cuda") {
-        //     Some("cuda")
-        // } else if matches.is_present("metal") {
-        //     Some("metal")
-        // } else {
-        //     matches.value_of("runtime")
-        // };
-        // if let Some(runtime) = runtime {
-        //     let runtime = runtime_for_name(runtime)
-        //         .with_context(|| format!("Runtime `{runtime}' not found"))?;
-        //     panic!("runtime {runtime:?}");
-        // }
-
-        // stage!("optimize", typed_model -> typed_model, |mut m:TypedModel| {
-        //     let mut opt = tract_core::optim::Optimizer::codegen();
-        //     if let Some(steps) = matches.value_of("optimize-step") {
-        //         opt = opt.stopping_at(steps.parse()?);
-        //     }
-        //     opt.optimize(&mut m)?;
-        //     m.properties.insert("tract_stage".to_string(), rctensor0("optimized".to_string()));
-        //     if let Ok(max) = matches.value_of_t("assert-maximal-mm-quality-cost") {
-        //         for node in &m.nodes {
-        //             if let Some(op) = node.op_as::<OptMatMul>() {
-        //                 for imp in op.mmm.iter() {
-        //                     if imp.quality().cost() > max {
-        //                         bail!("Node {node} uses {imp:?} of quality {:?}.", imp.quality())
-        //                     }
-        //                 }
-        //             }
-        //         }
-        //     }
-        //     Ok(m)
-        // });
         Ok((typed_model.clone().unwrap(), reference_model))
     }
 
@@ -1089,27 +1032,6 @@ impl Parameters {
         let runnable = runtime.prepare_with_options(typed_model, &options)?;
         let tract_model = runnable.typed_model().unwrap().clone();
 
-        // stage!("optimize", typed_model -> typed_model, |mut m:TypedModel| {
-        //     let mut opt = tract_core::optim::Optimizer::codegen();
-        //     if let Some(steps) = matches.value_of("optimize-step") {
-        //         opt = opt.stopping_at(steps.parse()?);
-        //     }
-        //     opt.optimize(&mut m)?;
-        //     m.properties.insert("tract_stage".to_string(), rctensor0("optimized".to_string()));
-        //     if let Ok(max) = matches.value_of_t("assert-maximal-mm-quality-cost") {
-        //         for node in &m.nodes {
-        //             if let Some(op) = node.op_as::<OptMatMul>() {
-        //                 for imp in op.mmm.iter() {
-        //                     if imp.quality().cost() > max {
-        //                         bail!("Node {node} uses {imp:?} of quality {:?}.", imp.quality())
-        //                     }
-        //                 }
-        //             }
-        //         }
-        //     }
-        //     Ok(m)
-        // });
-
         info!("Model ready");
         info_usage("model ready", probe);
         Ok(Parameters {
@@ -1140,13 +1062,6 @@ impl Parameters {
     pub(crate) fn req_runnable(&self) -> TractResult<Arc<dyn Runnable>> {
         self.runnable.clone().context("Requires a runnable")
     }
-
-    // pub(crate) fn req_runnable_as_plan(&self) -> TractResult<Arc<TypedSimplePlan>> {
-    //     let runnable = self.req_runnable()?;
-    //     let plan: Arc<TypedSimplePlan> =
-    //         Arc::downcast(runnable).ok().context("Need a TypedSiplePlan")?;
-    //     Ok(plan)
-    // }
 }
 
 pub fn bench_limits_from_clap(matches: &clap::ArgMatches) -> TractResult<BenchLimits> {
