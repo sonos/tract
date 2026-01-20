@@ -1,4 +1,4 @@
-use crate::bench::bench;;
+use crate::bench::bench;
 use crate::Parameters;
 use float_ord::FloatOrd;
 use readings_probe::Probe;
