@@ -155,7 +155,7 @@ impl State for TypedSimpleState {
 
 impl FrozenState for TypedFrozenSimpleState {
     fn unfreeze(&self) -> Box<dyn State> {
-        Box::new(TypedFrozenSimpleState::unfreeze(&self))
+        Box::new(TypedFrozenSimpleState::unfreeze(self))
     }
 }
 

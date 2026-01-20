@@ -9,8 +9,8 @@ pub use mfa::MfaGemm;
 pub use mlx_gemm::MlxGemm;
 use tract_core::tract_linalg::block_quant::{BlockQuant, Q4_0};
 
-use crate::MetalStream;
 use crate::utils::get_metal_buffer;
+use crate::MetalStream;
 use metal::Buffer;
 use num_traits::One;
 use std::fmt;
@@ -18,17 +18,12 @@ use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
 use tract_gpu::utils::{as_q40_tensor, get_quant_fact};
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy, Default)]
 pub enum MetalGemmImplKind {
     Mlx,
     Mfa,
+    #[default]
     Ggml,
-}
-
-impl Default for MetalGemmImplKind {
-    fn default() -> Self {
-        Self::Ggml
-    }
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
