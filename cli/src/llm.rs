@@ -1,5 +1,5 @@
+use crate::bench::bench;;
 use crate::Parameters;
-use crate::bench::{bench, make_state};
 use float_ord::FloatOrd;
 use readings_probe::Probe;
 use std::time::{Duration, Instant};
@@ -24,7 +24,7 @@ pub fn handle(
 
 pub fn bench_pp(
     params: &Parameters,
-    matches: &clap::ArgMatches,
+    _matches: &clap::ArgMatches,
     sub_matches: &clap::ArgMatches,
     limits: &BenchLimits,
     pp: usize,
@@ -33,7 +33,8 @@ pub fn bench_pp(
     let mut run_params = crate::tensor::run_params_from_subcommand(params, sub_matches)?;
     run_params.allow_random_input = true;
     let model = params.req_typed_model();
-    let mut state = make_state(&model, matches, sub_matches)?;
+    let state = params.req_runnable()?.spawn()?;
+    let mut state: Box<TypedSimpleState> = state.downcast().unwrap();
 
     let (b, s, p) = figure_out_causal_llm_b_s_p(&model)
         .context("Could not find out LLM symbolic parameters")?;
@@ -58,7 +59,7 @@ pub fn bench_pp(
 
 pub fn bench_tg(
     params: &Parameters,
-    matches: &clap::ArgMatches,
+    _matches: &clap::ArgMatches,
     sub_matches: &clap::ArgMatches,
     limits: &BenchLimits,
     tg: usize,
