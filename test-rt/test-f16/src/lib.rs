@@ -107,6 +107,14 @@ mod run_as_f16 {
         fn output_count(&self) -> usize {
             self.0.output_count()
         }
+
+        fn runnable(&self) -> &dyn Runnable {
+            self.0.runnable()
+        }
+
+        fn freeze(&self) -> Box<dyn FrozenState> {
+            Box::new(self.0.freeze())
+        }
     }
 
     fn runtime() -> &'static RunAsF16 {
