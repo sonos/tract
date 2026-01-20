@@ -82,6 +82,14 @@ impl State for CudaTestTransformState {
     fn output_count(&self) -> usize {
         self.state.output_count()
     }
+
+    fn runnable(&self) -> &dyn Runnable {
+        self.state.runnable()
+    }
+
+    fn freeze(&self) -> Box<dyn FrozenState> {
+        Box::new(self.state.freeze())
+    }
 }
 
 #[derive(Debug)]

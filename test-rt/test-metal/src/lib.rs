@@ -84,6 +84,14 @@ impl State for MetalTestTransformState {
     fn get_states(&self) -> TractResult<Vec<TValue>> {
         self.state.get_states()
     }
+
+    fn runnable(&self) -> &dyn Runnable {
+        self.state.runnable()
+    }
+
+    fn freeze(&self) -> Box<dyn FrozenState> {
+        Box::new(self.state.freeze())
+    }
 }
 
 #[derive(Debug)]
