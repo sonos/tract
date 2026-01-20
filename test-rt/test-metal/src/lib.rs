@@ -145,7 +145,7 @@ impl Runtime for MetalTestRuntime {
     fn prepare_with_options(
         &self,
         mut model: TypedModel,
-        _options: &PlanOptions,
+        _options: &RunOptions,
     ) -> TractResult<Box<dyn Runnable>> {
         if self.transpose_inputs {
             for ix in 0..model.inputs.len() {
