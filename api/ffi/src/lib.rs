@@ -196,7 +196,7 @@ pub unsafe extern "C" fn tract_nnef_destroy(nnef: *mut *mut TractNnef) -> TRACT_
 /// `path` is a null-terminated utf-8 string pointer. It can be an archive (tar or tar.gz file) or a
 /// directory.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn tract_nnef_model_for_path(
+pub unsafe extern "C" fn tract_nnef_load(
     nnef: *const TractNnef,
     path: *const c_char,
     model: *mut *mut TractModel,
@@ -206,7 +206,7 @@ pub unsafe extern "C" fn tract_nnef_model_for_path(
         *model = std::ptr::null_mut();
         let path = CStr::from_ptr(path).to_str()?;
         let m = Box::new(TractModel(
-            (*nnef).0.model_for_path(path).with_context(|| format!("opening file {path:?}"))?,
+            (*nnef).0.load(path).with_context(|| format!("opening file {path:?}"))?,
         ));
         *model = Box::into_raw(m);
         Ok(())
@@ -294,7 +294,7 @@ pub unsafe extern "C" fn tract_onnx_destroy(onnx: *mut *mut TractOnnx) -> TRACT_
 ///
 /// `path` is a null-terminated utf-8 string pointer. It must point to a `.onnx` model file.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn tract_onnx_model_for_path(
+pub unsafe extern "C" fn tract_onnx_load(
     onnx: *const TractOnnx,
     path: *const c_char,
     model: *mut *mut TractInferenceModel,
@@ -303,7 +303,7 @@ pub unsafe extern "C" fn tract_onnx_model_for_path(
         check_not_null!(onnx, path, model);
         *model = std::ptr::null_mut();
         let path = CStr::from_ptr(path).to_str()?;
-        let m = Box::new(TractInferenceModel((*onnx).0.model_for_path(path)?));
+        let m = Box::new(TractInferenceModel((*onnx).0.load(path)?));
         *model = Box::into_raw(m);
         Ok(())
     })
@@ -476,28 +476,6 @@ pub unsafe extern "C" fn tract_inference_model_analyse(
     })
 }
 
-/// Convenience function to obtain an optimized TypedModel from an InferenceModel.
-///
-/// This function takes ownership of the InferenceModel `model` whether it succeeds
-/// or not. `tract_inference_model_destroy` must not be used on `model`.
-///
-/// On the other hand, caller will be owning the newly created `optimized` model.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn tract_inference_model_into_optimized(
-    model: *mut *mut TractInferenceModel,
-    optimized: *mut *mut TractModel,
-) -> TRACT_RESULT {
-    wrap(|| unsafe {
-        check_not_null!(model, *model, optimized);
-        *optimized = std::ptr::null_mut();
-        let m = Box::from_raw(*model);
-        *model = std::ptr::null_mut();
-        let result = m.0.into_optimized()?;
-        *optimized = Box::into_raw(Box::new(TractModel(result))) as _;
-        Ok(())
-    })
-}
-
 /// Transform a fully analysed InferenceModel to a TypedModel.
 ///
 /// This function takes ownership of the InferenceModel `model` whether it succeeds
@@ -505,7 +483,7 @@ pub unsafe extern "C" fn tract_inference_model_into_optimized(
 ///
 /// On the other hand, caller will be owning the newly created `optimized` model.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn tract_inference_model_into_typed(
+pub unsafe extern "C" fn tract_inference_model_into_tract(
     model: *mut *mut TractInferenceModel,
     typed: *mut *mut TractModel,
 ) -> TRACT_RESULT {
@@ -514,7 +492,7 @@ pub unsafe extern "C" fn tract_inference_model_into_typed(
         *typed = std::ptr::null_mut();
         let m = Box::from_raw(*model);
         *model = std::ptr::null_mut();
-        let result = m.0.into_typed()?;
+        let result = m.0.into_tract()?;
         *typed = Box::into_raw(Box::new(TractModel(result))) as _;
         Ok(())
     })
@@ -716,28 +694,10 @@ pub unsafe extern "C" fn tract_model_transform(
     })
 }
 
-/// Declutter a TypedModel in-place.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn tract_model_declutter(model: *mut TractModel) -> TRACT_RESULT {
-    wrap(|| unsafe {
-        check_not_null!(model);
-        (*model).0.declutter()
-    })
-}
-
-/// Optimize a TypedModel in-place.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn tract_model_optimize(model: *mut TractModel) -> TRACT_RESULT {
-    wrap(|| unsafe {
-        check_not_null!(model);
-        (*model).0.optimize()
-    })
-}
-
 /// Perform a profile of the model using the provided inputs.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn tract_model_profile_json(
-    model: *mut TractModel,
+pub unsafe extern "C" fn tract_runnable_profile_json(
+    model: *mut TractRunnable,
     inputs: *mut *mut TractValue,
     states: *const *const TractValue,
     n_states: usize,

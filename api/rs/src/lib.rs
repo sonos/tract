@@ -11,6 +11,7 @@ use tract_libcli::tensor::RunTensors;
 use tract_nnef::internal::{Runtime as _, parse_tdim};
 use tract_nnef::prelude::{
     Framework, IntoTValue, SymbolValues, TValue, TVec, Tensor, TractResult, TypedFact, TypedModel,
+    TypedSimplePlan,
 };
 use tract_onnx::prelude::InferenceModelExt;
 use tract_onnx_opl::WithOnnx;
@@ -39,13 +40,15 @@ pub struct Nnef(tract_nnef::internal::Nnef);
 
 impl NnefInterface for Nnef {
     type Model = Model;
-    fn model_for_path(&self, path: impl AsRef<Path>) -> Result<Model> {
-        self.0.model_for_path(path).map(Model)
+    fn load(&self, path: impl AsRef<Path>) -> Result<Model> {
+        let m = self.0.model_for_path(path)?.into_decluttered()?;
+        Ok(Model(m))
     }
 
     fn transform_model(&self, model: &mut Self::Model, transform_spec: &str) -> Result<()> {
         if let Some(transform) = self.0.get_transform(transform_spec)? {
             transform.transform(&mut model.0)?;
+            model.0.declutter()?;
         }
         Ok(())
     }
@@ -101,7 +104,7 @@ impl NnefInterface for Nnef {
 pub struct Onnx(tract_onnx::Onnx);
 impl OnnxInterface for Onnx {
     type InferenceModel = InferenceModel;
-    fn model_for_path(&self, path: impl AsRef<Path>) -> Result<Self::InferenceModel> {
+    fn load(&self, path: impl AsRef<Path>) -> Result<Self::InferenceModel> {
         Ok(InferenceModel(self.0.model_for_path(path)?))
     }
 }
@@ -167,13 +170,8 @@ impl InferenceModelInterface for InferenceModel {
         Ok(())
     }
 
-    fn into_typed(self) -> Result<Self::Model> {
-        let typed = self.0.into_typed()?;
-        Ok(Model(typed))
-    }
-
-    fn into_optimized(self) -> Result<Self::Model> {
-        let typed = self.0.into_optimized()?;
+    fn into_tract(self) -> Result<Self::Model> {
+        let typed = self.0.into_typed()?.into_decluttered()?;
         Ok(Model(typed))
     }
 }
@@ -219,23 +217,6 @@ impl ModelInterface for Model {
         Ok(Fact(self.0.output_fact(id)?.clone()))
     }
 
-    fn declutter(&mut self) -> Result<()> {
-        self.0.declutter()
-    }
-
-    fn optimize(&mut self) -> Result<()> {
-        self.0.optimize()
-    }
-
-    fn into_decluttered(mut self) -> Result<Model> {
-        self.0.declutter()?;
-        Ok(self)
-    }
-
-    fn into_optimized(self) -> Result<Model> {
-        Ok(Model(self.0.into_optimized()?))
-    }
-
     fn into_runnable(self) -> Result<Runnable> {
         let runnable = tract_nnef::internal::DefaultRuntime.prepare(self.0)?;
         Ok(Runnable(runnable.into()))
@@ -264,52 +245,6 @@ impl ModelInterface for Model {
         let pulse_dim = parse_tdim(&self.0.symbols, value.as_ref())?;
         self.0 = PulsedModel::new(&self.0, stream_sym, &pulse_dim)?.into_typed()?;
         Ok(())
-    }
-
-    fn cost_json(&self) -> Result<String> {
-        let input: Option<Vec<Value>> = None;
-        let states: Option<Vec<Value>> = None;
-        self.profile_json(input, states)
-    }
-
-    fn profile_json<I, IV, IE, S, SV, SE>(
-        &self,
-        inputs: Option<I>,
-        state_initializers: Option<S>,
-    ) -> Result<String>
-    where
-        I: IntoIterator<Item = IV>,
-        IV: TryInto<Self::Value, Error = IE>,
-        IE: Into<anyhow::Error> + Debug,
-        S: IntoIterator<Item = SV>,
-        SV: TryInto<Self::Value, Error = SE>,
-        SE: Into<anyhow::Error> + Debug,
-    {
-        let mut annotations = Annotations::from_model(&self.0)?;
-        tract_libcli::profile::extract_costs(&mut annotations, &self.0, &SymbolValues::default())?;
-        if let Some(inputs) = inputs {
-            let inputs = inputs
-                .into_iter()
-                .map(|v| Ok(v.try_into().unwrap().0))
-                .collect::<TractResult<TVec<_>>>()?;
-
-            let mut state_inits: Vec<TValue> = vec![];
-
-            if let Some(states) = state_initializers {
-                states.into_iter().for_each(|s| state_inits.push(s.try_into().unwrap().0));
-            }
-            tract_libcli::profile::profile(
-                &self.0,
-                &BenchLimits::default(),
-                &mut annotations,
-                &RunOptions::default(),
-                &RunTensors { sources: vec![inputs], state_initializers: state_inits },
-                None,
-                true,
-            )?;
-        };
-        let export = tract_libcli::export::GraphPerfInfo::from(&self.0, &annotations);
-        Ok(serde_json::to_string(&export)?)
     }
 
     fn property_keys(&self) -> Result<Vec<String>> {
@@ -370,6 +305,57 @@ impl RunnableInterface for Runnable {
 
     fn output_count(&self) -> Result<usize> {
         Ok(self.0.output_count())
+    }
+
+    fn cost_json(&self) -> Result<String> {
+        let input: Option<Vec<Value>> = None;
+        let states: Option<Vec<Value>> = None;
+        self.profile_json(input, states)
+    }
+
+    fn profile_json<I, IV, IE, S, SV, SE>(
+        &self,
+        inputs: Option<I>,
+        state_initializers: Option<S>,
+    ) -> Result<String>
+    where
+        I: IntoIterator<Item = IV>,
+        IV: TryInto<Self::Value, Error = IE>,
+        IE: Into<anyhow::Error> + Debug,
+        S: IntoIterator<Item = SV>,
+        SV: TryInto<Self::Value, Error = SE>,
+        SE: Into<anyhow::Error> + Debug,
+    {
+        let model = self
+            .0
+            .downcast_ref::<Arc<TypedSimplePlan>>()
+            .context("Can only profile TypedModel-based runnables")?
+            .model();
+        let mut annotations = Annotations::from_model(model)?;
+        tract_libcli::profile::extract_costs(&mut annotations, model, &SymbolValues::default())?;
+        if let Some(inputs) = inputs {
+            let inputs = inputs
+                .into_iter()
+                .map(|v| Ok(v.try_into().unwrap().0))
+                .collect::<TractResult<TVec<_>>>()?;
+
+            let mut state_inits: Vec<TValue> = vec![];
+
+            if let Some(states) = state_initializers {
+                states.into_iter().for_each(|s| state_inits.push(s.try_into().unwrap().0));
+            }
+            tract_libcli::profile::profile(
+                model,
+                &BenchLimits::default(),
+                &mut annotations,
+                &RunOptions::default(),
+                &RunTensors { sources: vec![inputs], state_initializers: state_inits },
+                None,
+                true,
+            )?;
+        };
+        let export = tract_libcli::export::GraphPerfInfo::from(model, &annotations);
+        Ok(serde_json::to_string(&export)?)
     }
 }
 

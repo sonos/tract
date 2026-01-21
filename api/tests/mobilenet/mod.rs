@@ -32,7 +32,7 @@ fn ensure_models() -> anyhow::Result<()> {
 #[test]
 fn test_onnx() -> anyhow::Result<()> {
     ensure_models()?;
-    let model = onnx()?.model_for_path("mobilenetv2-7.onnx")?.into_optimized()?.into_runnable()?;
+    let model = onnx()?.load("mobilenetv2-7.onnx")?.into_tract()?.into_runnable()?;
     let hopper = grace_hopper();
     let result = model.run([hopper])?;
     let result = result[0].view::<f32>()?;
@@ -50,7 +50,7 @@ fn test_onnx() -> anyhow::Result<()> {
 #[test]
 fn test_state() -> anyhow::Result<()> {
     ensure_models()?;
-    let model = onnx()?.model_for_path("mobilenetv2-7.onnx")?.into_optimized()?.into_runnable()?;
+    let model = onnx()?.load("mobilenetv2-7.onnx")?.into_tract()?.into_runnable()?;
     let mut state = model.spawn_state()?;
     let hopper = grace_hopper();
     let result = state.run([hopper])?;
@@ -69,10 +69,7 @@ fn test_state() -> anyhow::Result<()> {
 #[test]
 fn test_nnef() -> anyhow::Result<()> {
     ensure_models()?;
-    let model = nnef()?
-        .model_for_path("mobilenet_v2_1.0.onnx.nnef.tgz")?
-        .into_optimized()?
-        .into_runnable()?;
+    let model = nnef()?.load("mobilenet_v2_1.0.onnx.nnef.tgz")?.into_runnable()?;
     let hopper = grace_hopper();
     let result = model.run([hopper])?;
     let result = result[0].view::<f32>()?;
@@ -90,14 +87,14 @@ fn test_nnef() -> anyhow::Result<()> {
 #[test]
 fn test_inference_model() -> anyhow::Result<()> {
     ensure_models()?;
-    let mut model = onnx()?.model_for_path("mobilenetv2-7.onnx")?;
+    let mut model = onnx()?.load("mobilenetv2-7.onnx")?;
     assert_eq!(model.input_count().unwrap(), 1);
     assert_eq!(model.output_count().unwrap(), 1);
     assert_eq!(model.input_name(0).unwrap(), "data");
     assert_eq!(model.output_name(0).unwrap(), "mobilenetv20_output_flatten0_reshape0");
     assert_eq!(model.input_fact(0).unwrap().to_string(), "1,3,224,224,F32");
     model.set_input_fact(0, "1,3,224,224,F32")?;
-    let model = model.into_optimized()?.into_runnable()?;
+    let model = model.into_tract()?.into_runnable()?;
     let hopper = grace_hopper();
     let result = model.run([hopper])?;
     let view = result[0].view::<f32>()?;
@@ -115,7 +112,7 @@ fn test_inference_model() -> anyhow::Result<()> {
 #[test]
 fn test_set_output_names_on_inference_model() -> anyhow::Result<()> {
     ensure_models()?;
-    let mut model = onnx()?.model_for_path("mobilenetv2-7.onnx")?;
+    let mut model = onnx()?.load("mobilenetv2-7.onnx")?;
     model.set_input_fact(0, "B,3,224,224,f32")?;
     model.set_output_fact(0, None)?;
     model.analyse()?;
@@ -127,33 +124,32 @@ fn test_set_output_names_on_inference_model() -> anyhow::Result<()> {
 #[test]
 fn test_typed_model() -> anyhow::Result<()> {
     ensure_models()?;
-    let mut model = nnef()?.model_for_path("mobilenet_v2_1.0.onnx.nnef.tgz")?;
+    let model = nnef()?.load("mobilenet_v2_1.0.onnx.nnef.tgz")?;
     assert_eq!(model.input_count()?, 1);
     assert_eq!(model.output_count()?, 1);
     assert_eq!(model.input_name(0)?, "data");
-    assert_eq!(model.output_name(0)?, "mobilenetv20_output_flatten0_reshape0");
+    assert_eq!(model.output_name(0)?, "conv_53");
     assert_eq!(model.input_fact(0)?.to_string(), "1,3,224,224,F32");
     assert_eq!(model.output_fact(0)?.to_string(), "1,1000,F32");
-    model.declutter()?;
     Ok(())
 }
 
 #[test]
 fn test_set_output_names() -> anyhow::Result<()> {
     ensure_models()?;
-    let mut model = nnef()?.model_for_path("mobilenet_v2_1.0.onnx.nnef.tgz")?;
-    model.set_output_names(["conv_53"])?;
-    assert_eq!(model.output_fact(0)?.to_string(), "1,1000,1,1,F32");
+    let mut model = nnef()?.load("mobilenet_v2_1.0.onnx.nnef.tgz")?;
+    model.set_output_names(["mean_reduce_mean_reduce_output"])?;
+    assert_eq!(model.output_fact(0)?.to_string(), "1280,1,1,F32");
     Ok(())
 }
 
 #[test]
 fn test_concretize() -> anyhow::Result<()> {
     ensure_models()?;
-    let mut model = onnx()?.model_for_path("mobilenetv2-7.onnx")?;
+    let mut model = onnx()?.load("mobilenetv2-7.onnx")?;
     model.set_input_fact(0, "B,3,224,224,f32")?;
     model.analyse()?;
-    let mut typed = model.into_typed()?.into_decluttered()?;
+    let mut typed = model.into_tract()?;
     assert_eq!(typed.input_fact(0)?.to_string(), "B,3,224,224,F32");
     assert_eq!(typed.output_fact(0)?.to_string(), "B,1000,F32");
     typed.concretize_symbols([("B", 1)])?;
@@ -165,10 +161,10 @@ fn test_concretize() -> anyhow::Result<()> {
 #[test]
 fn test_pulse() -> anyhow::Result<()> {
     ensure_models()?;
-    let mut model = onnx()?.model_for_path("mobilenetv2-7.onnx")?;
+    let mut model = onnx()?.load("mobilenetv2-7.onnx")?;
     model.set_input_fact(0, "B,3,224,224,f32")?;
     model.analyse()?;
-    let mut typed = model.into_typed()?.into_decluttered()?;
+    let mut typed = model.into_tract()?;
     assert_eq!(typed.input_fact(0)?.to_string(), "B,3,224,224,F32");
     assert_eq!(typed.output_fact(0)?.to_string(), "B,1000,F32");
     typed.pulse("B", "5")?;
@@ -184,10 +180,10 @@ fn test_pulse() -> anyhow::Result<()> {
 #[test]
 fn test_f32_to_f16() -> anyhow::Result<()> {
     ensure_models()?;
-    let mut model = onnx()?.model_for_path("mobilenetv2-7.onnx")?;
+    let mut model = onnx()?.load("mobilenetv2-7.onnx")?;
     model.set_input_fact(0, "B,3,224,224,f32")?;
     model.analyse()?;
-    let mut typed = model.into_typed()?.into_decluttered()?;
+    let mut typed = model.into_tract()?;
     typed.transform("f32-to-f16")?;
     assert_eq!(typed.input_fact(0)?.to_string(), "B,3,224,224,F16");
     assert_eq!(typed.output_fact(0)?.to_string(), "B,1000,F16");
@@ -197,10 +193,10 @@ fn test_f32_to_f16() -> anyhow::Result<()> {
 #[test]
 fn test_f16_to_f32() -> anyhow::Result<()> {
     ensure_models()?;
-    let mut model = onnx()?.model_for_path("mobilenetv2-7.onnx")?;
+    let mut model = onnx()?.load("mobilenetv2-7.onnx")?;
     model.set_input_fact(0, "B,3,224,224,f32")?;
     model.analyse()?;
-    let mut typed = model.into_typed()?.into_decluttered()?;
+    let mut typed = model.into_tract()?;
 
     // Convert model to half
     typed.transform("f32-to-f16")?;
@@ -217,28 +213,28 @@ fn test_f16_to_f32() -> anyhow::Result<()> {
 #[test]
 fn test_typed_model_to_nnef_and_back() -> anyhow::Result<()> {
     ensure_models()?;
-    let mut model = onnx()?.model_for_path("mobilenetv2-7.onnx")?;
+    let mut model = onnx()?.load("mobilenetv2-7.onnx")?;
     model.set_input_fact(0, "B,3,224,224,f32")?;
     model.analyse()?;
-    let typed = model.into_typed()?;
+    let typed = model.into_tract()?;
     let dir = tempfile::tempdir()?;
     let nnef = nnef()?.with_tract_core()?;
 
     let path = dir.path().join("nnef-dir");
     nnef.write_model_to_dir(&path, &typed)?;
-    let reloaded = nnef.model_for_path(path)?;
+    let reloaded = nnef.load(path)?;
     assert_eq!(reloaded.input_fact(0)?.to_string(), "B,3,224,224,F32");
     assert_eq!(reloaded.output_fact(0)?.to_string(), "B,1000,F32");
 
     let path = dir.path().join("nnef.tar");
     nnef.write_model_to_tar(&path, &typed)?;
-    let reloaded = nnef.model_for_path(path)?;
+    let reloaded = nnef.load(path)?;
     assert_eq!(reloaded.input_fact(0)?.to_string(), "B,3,224,224,F32");
     assert_eq!(reloaded.output_fact(0)?.to_string(), "B,1000,F32");
 
     let path = dir.path().join("nnef.tar.gz");
     nnef.write_model_to_tar_gz(&path, &typed)?;
-    let reloaded = nnef.model_for_path(path)?;
+    let reloaded = nnef.load(path)?;
     assert_eq!(reloaded.input_fact(0)?.to_string(), "B,3,224,224,F32");
     assert_eq!(reloaded.output_fact(0)?.to_string(), "B,1000,F32");
     Ok(())
@@ -247,9 +243,7 @@ fn test_typed_model_to_nnef_and_back() -> anyhow::Result<()> {
 #[test]
 fn test_cost() -> anyhow::Result<()> {
     ensure_models()?;
-    let mut model = nnef()?.model_for_path("mobilenet_v2_1.0.onnx.nnef.tgz")?;
-    model.declutter()?;
-    model.optimize()?;
+    let model = nnef()?.load("mobilenet_v2_1.0.onnx.nnef.tgz")?.into_runnable()?;
     let profile = model.cost_json()?;
     let json: serde_json::Value = serde_json::from_str(&profile)?;
     let nodes = json.get("nodes").unwrap().as_array().unwrap();
@@ -257,19 +251,19 @@ fn test_cost() -> anyhow::Result<()> {
     let node = nodes[0].as_object().unwrap();
     assert!(node["node_name"].as_str().unwrap() != "");
     assert!(node["op_name"].as_str().unwrap() != "");
-    assert!(nodes
-        .iter()
-        .find_map(|n| n.get("cost").and_then(|c| c.as_object().unwrap().get("FMA(F32)")))
-        .is_some());
+    assert!(
+        nodes
+            .iter()
+            .find_map(|n| n.get("cost").and_then(|c| c.as_object().unwrap().get("FMA(F32)")))
+            .is_some()
+    );
     Ok(())
 }
 
 #[test]
 fn test_profile() -> anyhow::Result<()> {
     ensure_models()?;
-    let mut model = nnef()?.model_for_path("mobilenet_v2_1.0.onnx.nnef.tgz")?;
-    model.declutter()?;
-    model.optimize()?;
+    let mut model = nnef()?.load("mobilenet_v2_1.0.onnx.nnef.tgz")?.into_runnable()?;
     let data = ndarray::ArrayD::<f32>::zeros(vec![1, 3, 224, 224]);
     let states: Option<Vec<Value>> = None;
     let profile = model.profile_json(Some([data]), states)?;
@@ -286,8 +280,7 @@ fn test_transform_registry() -> anyhow::Result<()> {
     ensure_models()?;
 
     let nnef = nnef()?.with_tract_core()?;
-    let mut model = nnef.model_for_path("mobilenet_v2_1.0.onnx.nnef.tgz")?;
-    model.declutter()?;
+    let mut model = nnef.load("mobilenet_v2_1.0.onnx.nnef.tgz")?;
 
     // Convert model to half
     nnef.transform_model(&mut model, "f32-to-f16")?;
@@ -301,19 +294,23 @@ fn test_transform_registry() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn state_init_from_facts(facts: Vec<Fact>, default_symbol_value: usize) -> Vec<ndarray::ArrayD::<f32>> {
+fn state_init_from_facts(
+    facts: Vec<Fact>,
+    default_symbol_value: usize,
+) -> Vec<ndarray::ArrayD<f32>> {
     let mut state_initializers = vec![];
     for fact in facts {
         let fact = fact.to_string();
         let mut parsed = fact.split(',').collect::<Vec<_>>();
 
         let dt = parsed.pop().unwrap();
-        let dims = parsed.iter()
-        .map(|p| {
-            //Set symbols to 4
-            p.parse::<usize>().unwrap_or(default_symbol_value)
-        })
-        .collect::<Vec<usize>>();
+        let dims = parsed
+            .iter()
+            .map(|p| {
+                //Set symbols to 4
+                p.parse::<usize>().unwrap_or(default_symbol_value)
+            })
+            .collect::<Vec<usize>>();
 
         assert_eq!(dt, "F32");
         let tensor = ndarray::ArrayD::<f32>::zeros(dims);
@@ -326,8 +323,7 @@ fn state_init_from_facts(facts: Vec<Fact>, default_symbol_value: usize) -> Vec<n
 #[ignore = "Model need to be downloaded locally (use .travis/test-llm.sh)"]
 fn test_state_init() -> anyhow::Result<()> {
     let nnef = nnef()?.with_tract_core()?.with_tract_transformers()?;
-    let mut model = nnef.model_for_path("TinyLlama--TinyLlama_v1.1-q40ef32.nnef.tgz")?;
-    model.declutter()?;
+    let mut model = nnef.load("TinyLlama--TinyLlama_v1.1-q40ef32.nnef.tgz")?;
 
     // Do KV Cache optim
     nnef.transform_model(&mut model, "detect-kv-cache")?;
@@ -350,12 +346,10 @@ fn test_state_init() -> anyhow::Result<()> {
 #[ignore = "Model need to be downloaded locally (use .travis/test-llm.sh)"]
 fn test_profile_with_state_init() -> anyhow::Result<()> {
     let nnef = nnef()?.with_tract_core()?.with_tract_transformers()?;
-    let mut model = nnef.model_for_path("TinyLlama--TinyLlama_v1.1-q40ef32.nnef.tgz")?;
-    model.declutter()?;
-    model.optimize()?;
+    let mut model = nnef.load("TinyLlama--TinyLlama_v1.1-q40ef32.nnef.tgz")?;
 
     let input = ndarray::ArrayD::<i64>::zeros(vec![1, 1]);
-    let state_initializers: Vec<ndarray::ArrayD::<f32>> = (1..model.input_count()?)
+    let state_initializers: Vec<ndarray::ArrayD<f32>> = (1..model.input_count()?)
         .map(|_| ndarray::ArrayD::<f32>::zeros(vec![1, 4, 4, 64]).into())
         .collect();
 
@@ -363,6 +357,7 @@ fn test_profile_with_state_init() -> anyhow::Result<()> {
     nnef.transform_model(&mut model, "detect-kv-cache")?;
     assert_eq!(model.input_count()?, 1);
 
+    let model = model.into_runnable()?;
     model.profile_json(Some([input]), Some(state_initializers))?;
 
     Ok(())

@@ -14,7 +14,7 @@ pub trait NnefInterface: Sized {
     /// Load a NNEF model from the path into a tract-core model.
     ///
     /// * `path` can point to a directory, a `tar` file or a `tar.gz` file.
-    fn model_for_path(&self, path: impl AsRef<Path>) -> Result<Self::Model>;
+    fn load(&self, path: impl AsRef<Path>) -> Result<Self::Model>;
 
     /// Transform model according to transform spec
     fn transform_model(&self, model: &mut Self::Model, transform_spec: &str) -> Result<()>;
@@ -93,7 +93,7 @@ pub trait NnefInterface: Sized {
 
 pub trait OnnxInterface {
     type InferenceModel: InferenceModelInterface;
-    fn model_for_path(&self, path: impl AsRef<Path>) -> Result<Self::InferenceModel>;
+    fn load(&self, path: impl AsRef<Path>) -> Result<Self::InferenceModel>;
 }
 
 pub trait InferenceModelInterface: Sized {
@@ -126,9 +126,7 @@ pub trait InferenceModelInterface: Sized {
 
     fn analyse(&mut self) -> Result<()>;
 
-    fn into_typed(self) -> Result<Self::Model>;
-
-    fn into_optimized(self) -> Result<Self::Model>;
+    fn into_tract(self) -> Result<Self::Model>;
 }
 
 pub trait ModelInterface: Sized {
@@ -152,14 +150,6 @@ pub trait ModelInterface: Sized {
 
     fn output_fact(&self, id: usize) -> Result<Self::Fact>;
 
-    fn declutter(&mut self) -> Result<()>;
-
-    fn optimize(&mut self) -> Result<()>;
-
-    fn into_decluttered(self) -> Result<Self>;
-
-    fn into_optimized(self) -> Result<Self>;
-
     fn into_runnable(self) -> Result<Self::Runnable>;
 
     fn concretize_symbols(
@@ -170,21 +160,6 @@ pub trait ModelInterface: Sized {
     fn transform(&mut self, transform: &str) -> Result<()>;
 
     fn pulse(&mut self, name: impl AsRef<str>, value: impl AsRef<str>) -> Result<()>;
-
-    fn cost_json(&self) -> Result<String>;
-
-    fn profile_json<I, IV, IE, S, SV, SE>(
-        &self,
-        inputs: Option<I>,
-        state_initializers: Option<S>,
-    ) -> Result<String>
-    where
-        I: IntoIterator<Item = IV>,
-        IV: TryInto<Self::Value, Error = IE>,
-        IE: Into<anyhow::Error> + Debug,
-        S: IntoIterator<Item = SV>,
-        SV: TryInto<Self::Value, Error = SE>,
-        SE: Into<anyhow::Error> + Debug;
 
     fn property_keys(&self) -> Result<Vec<String>>;
 
@@ -214,6 +189,21 @@ pub trait RunnableInterface {
     fn output_count(&self) -> Result<usize>;
 
     fn spawn_state(&self) -> Result<Self::State>;
+
+    fn cost_json(&self) -> Result<String>;
+
+    fn profile_json<I, IV, IE, S, SV, SE>(
+        &self,
+        inputs: Option<I>,
+        state_initializers: Option<S>,
+    ) -> Result<String>
+    where
+        I: IntoIterator<Item = IV>,
+        IV: TryInto<Self::Value, Error = IE>,
+        IE: Into<anyhow::Error> + Debug,
+        S: IntoIterator<Item = SV>,
+        SV: TryInto<Self::Value, Error = SE>,
+        SE: Into<anyhow::Error> + Debug;
 }
 
 pub trait StateInterface {
