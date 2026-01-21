@@ -39,7 +39,7 @@ impl CausalLlmModel {
         nn.transform(&*transform)?;
 
         let options = RunOptions {
-            memory_sizing_hints: tract_transformers::memory_arena_hints_for_causal_llm(&nn)?,
+            memory_sizing_hints: Some(tract_transformers::memory_arena_hints_for_causal_llm(&nn)?),
             ..Default::default()
         };
 
