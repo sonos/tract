@@ -1021,11 +1021,11 @@ impl Parameters {
             Arc::downcast::<TypedModel>(tract_model).map_err(|_| anyhow!("Need a typed model"))?;
         let typed_model = Arc::try_unwrap(typed_model).ok().context("Can not unwrap")?;
         let hints = if let Some(hints) = matches.values_of("hint") {
-            Self::parse_set_and_hint(&typed_model, hints)?
+            Some(Self::parse_set_and_hint(&typed_model, hints)?)
         } else if matches.is_present("llm") || matches.is_present("causal-llm-hints") {
-            tract_transformers::memory_arena_hints_for_causal_llm(&typed_model)?
+            Some(tract_transformers::memory_arena_hints_for_causal_llm(&typed_model)?)
         } else {
-            Default::default()
+            None
         };
 
         let options = RunOptions { memory_sizing_hints: hints, ..Default::default() };

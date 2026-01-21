@@ -15,8 +15,8 @@ pub struct RunOptions {
     /// Override default global executor
     pub executor: Option<Executor>,
 
-    /// Memory arena hint value
-    pub memory_sizing_hints: SymbolValues,
+    /// Memory sizing hints
+    pub memory_sizing_hints: Option<SymbolValues>,
 }
 
 pub trait Runtime: Debug + Send + Sync + 'static {
