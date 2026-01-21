@@ -55,13 +55,13 @@ pub fn version() -> &'static str {
 wrapper!(Nnef, TractNnef, tract_nnef_destroy);
 impl NnefInterface for Nnef {
     type Model = Model;
-    fn model_for_path(&self, path: impl AsRef<Path>) -> Result<Model> {
+    fn load(&self, path: impl AsRef<Path>) -> Result<Model> {
         let path = path.as_ref();
         let path = CString::new(
             path.to_str().with_context(|| format!("Failed to re-encode {path:?} to uff-8"))?,
         )?;
         let mut model = null_mut();
-        check!(sys::tract_nnef_model_for_path(self.0, path.as_ptr(), &mut model))?;
+        check!(sys::tract_nnef_load(self.0, path.as_ptr(), &mut model))?;
         Ok(Model(model))
     }
 
@@ -127,13 +127,13 @@ wrapper!(Onnx, TractOnnx, tract_onnx_destroy);
 
 impl OnnxInterface for Onnx {
     type InferenceModel = InferenceModel;
-    fn model_for_path(&self, path: impl AsRef<Path>) -> Result<InferenceModel> {
+    fn load(&self, path: impl AsRef<Path>) -> Result<InferenceModel> {
         let path = path.as_ref();
         let path = CString::new(
             path.to_str().with_context(|| format!("Failed to re-encode {path:?} to uff-8"))?,
         )?;
         let mut model = null_mut();
-        check!(sys::tract_onnx_model_for_path(self.0, path.as_ptr(), &mut model))?;
+        check!(sys::tract_onnx_load(self.0, path.as_ptr(), &mut model))?;
         Ok(InferenceModel(model))
     }
 }
@@ -227,15 +227,9 @@ impl InferenceModelInterface for InferenceModel {
         Ok(())
     }
 
-    fn into_typed(mut self) -> Result<Self::Model> {
+    fn into_tract(mut self) -> Result<Self::Model> {
         let mut ptr = null_mut();
-        check!(sys::tract_inference_model_into_typed(&mut self.0, &mut ptr))?;
-        Ok(Model(ptr))
-    }
-
-    fn into_optimized(mut self) -> Result<Self::Model> {
-        let mut ptr = null_mut();
-        check!(sys::tract_inference_model_into_optimized(&mut self.0, &mut ptr))?;
+        check!(sys::tract_inference_model_into_tract(&mut self.0, &mut ptr))?;
         Ok(Model(ptr))
     }
 }
@@ -302,26 +296,6 @@ impl ModelInterface for Model {
         Ok(Fact(ptr))
     }
 
-    fn declutter(&mut self) -> Result<()> {
-        check!(sys::tract_model_declutter(self.0))?;
-        Ok(())
-    }
-
-    fn optimize(&mut self) -> Result<()> {
-        check!(sys::tract_model_optimize(self.0))?;
-        Ok(())
-    }
-
-    fn into_decluttered(self) -> Result<Model> {
-        check!(sys::tract_model_declutter(self.0))?;
-        Ok(self)
-    }
-
-    fn into_optimized(self) -> Result<Model> {
-        check!(sys::tract_model_optimize(self.0))?;
-        Ok(self)
-    }
-
     fn into_runnable(self) -> Result<Runnable> {
         let mut model = self;
         let mut runnable = null_mut();
@@ -357,63 +331,6 @@ impl ModelInterface for Model {
         let value = CString::new(value.as_ref())?;
         check!(sys::tract_model_pulse_simple(&mut self.0, name.as_ptr(), value.as_ptr()))?;
         Ok(())
-    }
-
-    fn cost_json(&self) -> Result<String> {
-        let input: Option<Vec<Value>> = None;
-        let states: Option<Vec<Value>> = None;
-        self.profile_json(input, states)
-    }
-
-    fn profile_json<I, IV, IE, S, SV, SE>(
-        &self,
-        inputs: Option<I>,
-        state_initializers: Option<S>,
-    ) -> Result<String>
-    where
-        I: IntoIterator<Item = IV>,
-        IV: TryInto<Self::Value, Error = IE>,
-        IE: Into<anyhow::Error>,
-        S: IntoIterator<Item = SV>,
-        SV: TryInto<Self::Value, Error = SE>,
-        SE: Into<anyhow::Error>,
-    {
-        let inputs = if let Some(inputs) = inputs {
-            let inputs = inputs
-                .into_iter()
-                .map(|i| i.try_into().map_err(|e| e.into()))
-                .collect::<Result<Vec<Value>>>()?;
-            anyhow::ensure!(self.input_count()? == inputs.len());
-            Some(inputs)
-        } else {
-            None
-        };
-        let mut iptrs: Option<Vec<*mut sys::TractValue>> =
-            inputs.as_ref().map(|is| is.iter().map(|v| v.0).collect());
-        let mut json: *mut i8 = null_mut();
-        let values = iptrs.as_mut().map(|it| it.as_mut_ptr()).unwrap_or(null_mut());
-
-        let (state_inits, n_states) = if let Some(state_vec) = state_initializers {
-            let mut states: Vec<*const _> = vec![];
-
-            for v in state_vec {
-                let val: Value = v.try_into().map_err(|e| e.into())?;
-                states.push(val.0);
-            }
-            let len = states.len();
-            (Some(states), len)
-        } else {
-            (None, 0)
-        };
-
-        let states = state_inits.map(|is| is.as_ptr()).unwrap_or(null());
-        check!(sys::tract_model_profile_json(self.0, values, states, n_states, &mut json))?;
-        anyhow::ensure!(!json.is_null());
-        unsafe {
-            let s = CStr::from_ptr(json).to_owned();
-            sys::tract_free_cstring(json);
-            Ok(s.to_str()?.to_owned())
-        }
     }
 
     fn property_keys(&self) -> Result<Vec<String>> {
@@ -472,6 +389,63 @@ impl RunnableInterface for Runnable {
         let mut count = 0;
         check!(sys::tract_runnable_output_count(self.0, &mut count))?;
         Ok(count)
+    }
+
+    fn cost_json(&self) -> Result<String> {
+        let input: Option<Vec<Value>> = None;
+        let states: Option<Vec<Value>> = None;
+        self.profile_json(input, states)
+    }
+
+    fn profile_json<I, IV, IE, S, SV, SE>(
+        &self,
+        inputs: Option<I>,
+        state_initializers: Option<S>,
+    ) -> Result<String>
+    where
+        I: IntoIterator<Item = IV>,
+        IV: TryInto<Self::Value, Error = IE>,
+        IE: Into<anyhow::Error>,
+        S: IntoIterator<Item = SV>,
+        SV: TryInto<Self::Value, Error = SE>,
+        SE: Into<anyhow::Error>,
+    {
+        let inputs = if let Some(inputs) = inputs {
+            let inputs = inputs
+                .into_iter()
+                .map(|i| i.try_into().map_err(|e| e.into()))
+                .collect::<Result<Vec<Value>>>()?;
+            anyhow::ensure!(self.input_count()? == inputs.len());
+            Some(inputs)
+        } else {
+            None
+        };
+        let mut iptrs: Option<Vec<*mut sys::TractValue>> =
+            inputs.as_ref().map(|is| is.iter().map(|v| v.0).collect());
+        let mut json: *mut i8 = null_mut();
+        let values = iptrs.as_mut().map(|it| it.as_mut_ptr()).unwrap_or(null_mut());
+
+        let (state_inits, n_states) = if let Some(state_vec) = state_initializers {
+            let mut states: Vec<*const _> = vec![];
+
+            for v in state_vec {
+                let val: Value = v.try_into().map_err(|e| e.into())?;
+                states.push(val.0);
+            }
+            let len = states.len();
+            (Some(states), len)
+        } else {
+            (None, 0)
+        };
+
+        let states = state_inits.map(|is| is.as_ptr()).unwrap_or(null());
+        check!(sys::tract_runnable_profile_json(self.0, values, states, n_states, &mut json))?;
+        anyhow::ensure!(!json.is_null());
+        unsafe {
+            let s = CStr::from_ptr(json).to_owned();
+            sys::tract_free_cstring(json);
+            Ok(s.to_str()?.to_owned())
+        }
     }
 }
 

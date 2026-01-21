@@ -19,16 +19,13 @@ int main() {
 
     // Load the model
     TractModel *model = NULL;
-    check(tract_nnef_model_for_path(nnef, "mobilenet_v2_1.0.onnx.nnef.tgz", &model));
+    check(tract_nnef_load(nnef, "mobilenet_v2_1.0.onnx.nnef.tgz", &model));
     assert(model);
     assert(nnef);
 
     // once the model is build, the framework is not necessary anymore
     check(tract_nnef_destroy(&nnef));
     assert(!nnef);
-
-    // Optimize the model
-    check(tract_model_optimize(model));
 
     // Make the model runnable
     TractRunnable *runnable = NULL;

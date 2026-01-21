@@ -117,9 +117,9 @@ enum TRACT_RESULT tract_nnef_destroy(struct TractNnef **nnef);
  * `path` is a null-terminated utf-8 string pointer. It can be an archive (tar or tar.gz file) or a
  * directory.
  */
-enum TRACT_RESULT tract_nnef_model_for_path(const struct TractNnef *nnef,
-                                            const char *path,
-                                            struct TractModel **model);
+enum TRACT_RESULT tract_nnef_load(const struct TractNnef *nnef,
+                                  const char *path,
+                                  struct TractModel **model);
 
 /**
  * Dump a TypedModel as a NNEF tar file.
@@ -170,9 +170,9 @@ enum TRACT_RESULT tract_onnx_destroy(struct TractOnnx **onnx);
  *
  * `path` is a null-terminated utf-8 string pointer. It must point to a `.onnx` model file.
  */
-enum TRACT_RESULT tract_onnx_model_for_path(const struct TractOnnx *onnx,
-                                            const char *path,
-                                            struct TractInferenceModel **model);
+enum TRACT_RESULT tract_onnx_load(const struct TractOnnx *onnx,
+                                  const char *path,
+                                  struct TractInferenceModel **model);
 
 /**
  * Query an InferenceModel input counts.
@@ -252,17 +252,6 @@ enum TRACT_RESULT tract_inference_model_set_output_fact(struct TractInferenceMod
 enum TRACT_RESULT tract_inference_model_analyse(struct TractInferenceModel *model);
 
 /**
- * Convenience function to obtain an optimized TypedModel from an InferenceModel.
- *
- * This function takes ownership of the InferenceModel `model` whether it succeeds
- * or not. `tract_inference_model_destroy` must not be used on `model`.
- *
- * On the other hand, caller will be owning the newly created `optimized` model.
- */
-enum TRACT_RESULT tract_inference_model_into_optimized(struct TractInferenceModel **model,
-                                                       struct TractModel **optimized);
-
-/**
  * Transform a fully analysed InferenceModel to a TypedModel.
  *
  * This function takes ownership of the InferenceModel `model` whether it succeeds
@@ -270,7 +259,7 @@ enum TRACT_RESULT tract_inference_model_into_optimized(struct TractInferenceMode
  *
  * On the other hand, caller will be owning the newly created `optimized` model.
  */
-enum TRACT_RESULT tract_inference_model_into_typed(struct TractInferenceModel **model,
+enum TRACT_RESULT tract_inference_model_into_tract(struct TractInferenceModel **model,
                                                    struct TractModel **typed);
 
 /**
@@ -361,23 +350,13 @@ enum TRACT_RESULT tract_model_pulse_simple(struct TractModel **model,
 enum TRACT_RESULT tract_model_transform(struct TractModel *model, const int8_t *transform);
 
 /**
- * Declutter a TypedModel in-place.
- */
-enum TRACT_RESULT tract_model_declutter(struct TractModel *model);
-
-/**
- * Optimize a TypedModel in-place.
- */
-enum TRACT_RESULT tract_model_optimize(struct TractModel *model);
-
-/**
  * Perform a profile of the model using the provided inputs.
  */
-enum TRACT_RESULT tract_model_profile_json(struct TractModel *model,
-                                           struct TractValue **inputs,
-                                           const struct TractValue *const *states,
-                                           uintptr_t n_states,
-                                           int8_t **json);
+enum TRACT_RESULT tract_runnable_profile_json(struct TractRunnable *model,
+                                              struct TractValue **inputs,
+                                              const struct TractValue *const *states,
+                                              uintptr_t n_states,
+                                              int8_t **json);
 
 /**
  * Convert a TypedModel into a TypedRunnableModel.
