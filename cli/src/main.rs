@@ -28,6 +28,7 @@ mod compare;
 mod cost;
 mod dump;
 mod hwbench;
+#[cfg(feature = "transformers")]
 mod llm;
 mod memory_arena;
 mod params;
@@ -277,12 +278,15 @@ fn main() -> TractResult<()> {
     let run = assertions_options(run);
     app = app.subcommand(run);
 
-    let llm_bench =
-        clap::Command::new("llm-bench").long_about("llamas.cpp-style bench (tg128 and pp512)");
-    let llm_bench = assertions_options(llm_bench);
-    let llm_bench = run_options(llm_bench);
-    let llm_bench = bench_options(llm_bench);
-    app = app.subcommand(llm_bench);
+    #[cfg(feature = "transformers")]
+    {
+        let llm_bench =
+            clap::Command::new("llm-bench").long_about("llamas.cpp-style bench (tg128 and pp512)");
+        let llm_bench = assertions_options(llm_bench);
+        let llm_bench = run_options(llm_bench);
+        let llm_bench = bench_options(llm_bench);
+        app = app.subcommand(llm_bench);
+    }
 
     // let stream_check = clap::Command::new("stream-check")
     //     .long_about("Compare output of streamed and regular exec");
@@ -803,6 +807,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
             )
         }
 
+        #[cfg(feature = "transformers")]
         Some(("llm-bench", m)) => {
             need_optimisations = true;
             llm::handle(&params, &matches, m, &params::bench_limits_from_clap(m)?, probe)

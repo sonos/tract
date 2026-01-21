@@ -1,5 +1,6 @@
 use tract_core::internal::*;
 use tract_libcli::tensor::RunParams;
+#[cfg(feature = "transformers")]
 use tract_transformers::figure_out_causal_llm_b_s_p;
 
 use crate::params::Parameters;
@@ -25,6 +26,7 @@ pub fn run_params_from_subcommand(
     }
 
     // We also support the global arg variants for backward compatibility
+    #[allow(unused_mut)]
     let mut allow_random_input: bool =
         params.allow_random_input || sub_matches.is_present("allow-random-input");
     let allow_float_casts: bool =
@@ -32,6 +34,7 @@ pub fn run_params_from_subcommand(
 
     let mut symbols = SymbolValues::default();
 
+    #[cfg(feature = "transformers")]
     if let Some(pp) = sub_matches.value_of("pp") {
         let value: i64 =
             pp.parse().with_context(|| format!("Can not parse symbol value in --pp {pp}"))?;
@@ -49,6 +52,7 @@ pub fn run_params_from_subcommand(
         allow_random_input = true
     }
 
+    #[cfg(feature = "transformers")]
     if let Some(tg) = sub_matches.value_of("tg") {
         let value: i64 =
             tg.parse().with_context(|| format!("Can not parse symbol value in --tg {tg}"))?;

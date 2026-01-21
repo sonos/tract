@@ -62,6 +62,7 @@ impl Debug for TfliteRunnable {
     }
 }
 
+#[derive(Debug)]
 struct TfliteState(TfliteRunnable);
 
 impl State for TfliteState {
@@ -134,6 +135,14 @@ impl State for TfliteState {
     }
 
     fn get_states(&self) -> TractResult<Vec<TValue>> {
+        todo!()
+    }
+
+    fn runnable(&self) -> &dyn Runnable {
+        todo!()
+    }
+
+    fn freeze(&self) -> Box<dyn FrozenState> {
         todo!()
     }
 }

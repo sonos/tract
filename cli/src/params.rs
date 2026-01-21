@@ -1023,7 +1023,14 @@ impl Parameters {
         let hints = if let Some(hints) = matches.values_of("hint") {
             Some(Self::parse_set_and_hint(&typed_model, hints)?)
         } else if matches.is_present("llm") || matches.is_present("causal-llm-hints") {
-            Some(tract_transformers::memory_arena_hints_for_causal_llm(&typed_model)?)
+            #[cfg(feature = "transformers")]
+            {
+                Some(tract_transformers::memory_arena_hints_for_causal_llm(&typed_model)?)
+            }
+            #[cfg(not(feature = "transformers"))]
+            {
+                bail!("transformers feature is required for llms")
+            }
         } else {
             None
         };
@@ -1059,6 +1066,7 @@ impl Parameters {
         self.typed_model().expect("Not a TypedModel")
     }
 
+    #[allow(dead_code)]
     pub(crate) fn req_runnable(&self) -> TractResult<Arc<dyn Runnable>> {
         self.runnable.clone().context("Requires a runnable")
     }
