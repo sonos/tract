@@ -8,6 +8,7 @@ use tract_core::tract_data::itertools::Itertools;
 use tract_hir::internal::*;
 use tract_libcli::profile::BenchLimits;
 use tract_libcli::tensor::get_or_make_inputs;
+#[cfg(feature = "transformers")]
 use tract_transformers::figure_out_causal_llm_b_s_p;
 
 pub fn handle(
@@ -36,7 +37,7 @@ pub fn bench_pp(
     let state = params.req_runnable()?.spawn()?;
     let mut state: Box<TypedSimpleState> = state.downcast().unwrap();
 
-    let (b, s, p) = figure_out_causal_llm_b_s_p(&model)
+    let (b, s, p) = tract_transformers::figure_out_causal_llm_b_s_p(&model)
         .context("Could not find out LLM symbolic parameters")?;
     if let Some(b) = b {
         run_params.symbols.set(&b, 1);
