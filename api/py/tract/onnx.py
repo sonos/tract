@@ -17,7 +17,7 @@ class Onnx:
 
     ```python
     # load the model as an InferenceModel
-    model = tract.onnx().model_for_path("./mobilenetv2-7.onnx")
+    model = tract.onnx().load("./mobilenetv2-7.onnx")
 
     # set the shape and type of its first and only input
     model.set_input_fact(0, "1,3,224,224,f32")
@@ -35,7 +35,7 @@ class Onnx:
     def __del__(self):
         check(lib.tract_onnx_destroy(byref(self.ptr)))
 
-    def model_for_path(self, path: Union[str, Path]) -> InferenceModel:
+    def load(self, path: Union[str, Path]) -> InferenceModel:
         """
         Load an ONNX file as an InferenceModel
         """
