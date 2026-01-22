@@ -346,16 +346,21 @@ jobs:
           #    - name: "Setup sccache"
           #      run: .travis/setup-sccache.sh
 
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.13"
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v5
+
     - name: Pytest bindings
       timeout-minutes: 60
       run: |
-        sudo apt-get install -y python3-virtualenv
         cd api/py
-        virtualenv venv
-        . venv/bin/activate
-        pip install -r requirements.txt
-        python setup.py install
-        pip install pytest
+        uv venv --python 3.13
+        source .venv/bin/activate
+        uv pip install -e ".[dev]"
         pytest .
         #    - name: Stop sccache server
         #      run: sccache --stop-server || true
