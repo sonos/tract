@@ -110,7 +110,7 @@ impl EvalOp for Random {
 
     fn state(
         &self,
-        _session: &mut TurnState,
+        _session: &TurnState,
         _node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
         let rng = self.seed.map(SmallRng::seed_from_u64).unwrap_or_else(SmallRng::from_entropy);

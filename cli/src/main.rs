@@ -125,8 +125,6 @@ fn main() -> TractResult<()> {
                 "Override output nodes by name."))
         .arg(arg!(--"label-wires" "Propagate node labels to wires"))
 
-        .arg(arg!(--"tf-initializer-output-node" [node] "Set an initializer node"))
-
         .arg(arg!(--"override-fact" [fact] "Override a fact."))
 
         .arg(arg!(--"analyse-fail-fast" "Stop analyse at first error."))

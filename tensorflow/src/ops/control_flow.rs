@@ -80,11 +80,7 @@ impl EvalOp for NextIteration {
         false
     }
 
-    fn state(
-        &self,
-        _state: &mut TurnState,
-        _id: usize,
-    ) -> TractResult<Option<Box<dyn OpState>>> {
+    fn state(&self, _state: &TurnState, _id: usize) -> TractResult<Option<Box<dyn OpState>>> {
         unimplemented!();
     }
 }

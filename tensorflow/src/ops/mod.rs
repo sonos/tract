@@ -12,7 +12,7 @@ pub mod nn;
 pub mod quant;
 pub mod random;
 pub mod rec;
-pub mod vars;
+// pub mod vars;
 
 pub fn register_all_ops(reg: &mut TfOpRegister) {
     array::register_all_ops(reg);
@@ -23,7 +23,7 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
     quant::register_all_ops(reg);
     random::register_all_ops(reg);
     rec::register_all_ops(reg);
-    vars::register_all_ops(reg);
+    // vars::register_all_ops(reg);
     reg.insert("Cast", cast);
     reg.insert("Const", konst);
     reg.insert("Identity", |_, _| Ok(Box::new(tract_hir::ops::identity::Identity)));

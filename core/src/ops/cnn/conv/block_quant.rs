@@ -23,7 +23,7 @@ impl EvalOp for BlockQuantIntoShape {
 
     fn state(
         &self,
-        _session: &mut TurnState,
+        _session: &TurnState,
         _node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(None)
@@ -92,7 +92,7 @@ impl EvalOp for SplitGroupBlockQuant {
 
     fn state(
         &self,
-        _session: &mut TurnState,
+        _session: &TurnState,
         _node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(None)

@@ -25,31 +25,10 @@ pub struct Tensorflow {
 
 pub struct TfModelExtensions {
     pub control_inputs: Vec<(usize, usize)>,
-    pub initializing_nodes: Vec<usize>,
 }
 
 impl TfModelExtensions {
-    pub fn preproc(&self, mut original: InferenceModel) -> TractResult<InferenceModel> {
-        if self.initializing_nodes.len() > 0 {
-            let as_outlets =
-                self.initializing_nodes.iter().map(|n| OutletId::new(*n, 0)).collect::<Vec<_>>();
-            #[allow(deprecated)]
-            let plan = SimplePlan::new_for_outputs_and_deps(
-                original.clone(),
-                &as_outlets,
-                &self.control_inputs,
-            )?;
-            let mut state = SimpleState::new(&plan)?;
-            state.exec()?;
-            let tensors = state.turn_state.tensors;
-            for node in &mut original.nodes {
-                if let Some(var) = node.op_as_mut::<crate::ops::vars::VariableV2>() {
-                    if let Some(value) = tensors.get(&var.id) {
-                        var.initializer = Some(value.clone().into_arc_tensor());
-                    }
-                }
-            }
-        }
+    pub fn preproc(&self, original: InferenceModel) -> TractResult<InferenceModel> {
         Ok(original)
     }
 }
@@ -226,23 +205,26 @@ impl Tensorflow {
         //  * VariableV2 outputs a regular tensor stored in the session state
         //  * Assign has the same inputs, but do not uses the #0, udating the
         //      state session instead
-        for id in 0..model.nodes().len() {
-            use crate::ops::vars::*;
-            if model.node(id).op_is::<Assign>() {
-                let prec = model.node(id).inputs[0];
-                let var_id = model.node(prec.node).op_as::<VariableV2>().map(|v| v.id.clone());
-                if let (Some(var_id), Some(assign)) =
-                    (var_id, model.node_mut(id).op_as_mut::<Assign>())
-                {
-                    assign.var_id = Some(var_id);
-                } else {
-                    bail!("Model contains unlinked Assign/Variable2");
-                }
-            }
-        }
+        //
+        // 2026-01: remove vars support in tract core
+        //
+        // for id in 0..model.nodes().len() {
+        //     use crate::ops::vars::*;
+        //     if model.node(id).op_is::<Assign>() {
+        //         let prec = model.node(id).inputs[0];
+        //         let var_id = model.node(prec.node).op_as::<VariableV2>().map(|v| v.id.clone());
+        //         if let (Some(var_id), Some(assign)) =
+        //             (var_id, model.node_mut(id).op_as_mut::<Assign>())
+        //         {
+        //             assign.var_id = Some(var_id);
+        //         } else {
+        //             bail!("Model contains unlinked Assign/Variable2");
+        //         }
+        //     }
+        // }
         model.set_input_outlets(&inputs)?;
         model.auto_outputs()?;
-        let extensions = TfModelExtensions { control_inputs, initializing_nodes: vec![] };
+        let extensions = TfModelExtensions { control_inputs };
         Ok(TfModelAndExtensions(model, extensions))
     }
 }

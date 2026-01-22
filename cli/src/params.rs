@@ -333,16 +333,7 @@ impl Parameters {
                     tract_tensorflow::Tensorflow::determinize(&mut graph)?;
                 }
                 let template = InferenceModel { symbols, ..InferenceModel::default() };
-                let mut model_and_ext = tf.parse_graph_with_template(&graph, template)?;
-                model_and_ext.1.initializing_nodes = matches
-                    .values_of("tf-initializer-output-node")
-                    .map(|values| {
-                        values
-                            .map(|name| model_and_ext.0.node_id_by_name(name))
-                            .collect::<TractResult<Vec<usize>>>()
-                    })
-                    .transpose()?
-                    .unwrap_or_default();
+                let model_and_ext = tf.parse_graph_with_template(&graph, template)?;
                 if need_graph {
                     (SomeGraphDef::Tf(graph), Box::new(model_and_ext.0), Some(model_and_ext.1))
                 } else {
