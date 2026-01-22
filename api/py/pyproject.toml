@@ -7,6 +7,7 @@ requires = [
 ]
 
 [tool.cibuildwheel]
+build-frontend = "build[uv]"
 environment = "PATH=$PATH:$HOME/.cargo/bin"
 test-requires = "pytest"
 test-command = """pytest {project}"""
@@ -15,8 +16,8 @@ test-command = """pytest {project}"""
 skip = "*i686 cp36-* cp37-* cp38-* cp???t-*"
 before-build = """
 set -ex
-python -m ensurepip --upgrade
-pip install "numpy" --config-settings=setup-args="-Dallow-noblas=true" 
+curl -LsSf https://astral.sh/uv/install.sh | sh
+uv pip install --system "numpy>=2,<3" --config-settings=setup-args="-Dallow-noblas=true"
 cargo --version || (curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal
 . $HOME/.cargo/env
 rustup toolchain add stable
@@ -34,19 +35,14 @@ RUSTC_WRAPPER=sccache
 archs = "x86_64 universal2 arm64"
 skip = "pp* cp36-* cp37-* cp38-* cp???t-*"
 before-build = """
-python -m ensurepip --upgrade
-pip install "numpy<2" --config-settings=setup-args="-Dallow-noblas=true" 
+uv pip install --system "numpy>=2,<3" --config-settings=setup-args="-Dallow-noblas=true"
 rustup target add aarch64-apple-darwin
 [ -e $HOME/.local/bin/sccache ] || ./.travis/setup-sccache.sh ]
 """
 
 [tool.cibuildwheel.windows]
-# pip install numpy --config-settings=setup-args="-Dallow-noblas=true" 
 before-build = """
-python -m ensurepip --upgrade
 choco install mingw --version=8.1.0
-pip install "numpy==1.24.4"
-pip install "numpy==1.25.2"
+uv pip install --system "numpy==1.25.2"
 """
 skip = "*-win32 cp36-* cp37-* cp38-* pp* cp???t*"
-
