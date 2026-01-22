@@ -63,4 +63,4 @@ impl OpState for Store {
     }
 }
 
-trivial_op_state_freeeze!(Store);
+trivial_op_state_freeze!(Store);

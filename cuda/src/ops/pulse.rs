@@ -2,7 +2,7 @@ use std::ops::Range;
 
 use derive_new::new;
 use tract_core::ops::array::PadMode;
-use tract_core::{internal::*, trivial_op_state_freeeze};
+use tract_core::{internal::*, trivial_op_state_freeze};
 use tract_gpu::session_handler::make_tensor_for_node;
 use tract_gpu::tensor::{DeviceTensor, DeviceTensorExt, IntoDevice};
 use tract_pulse_opl::ops::{Delay, PulsePad};
@@ -164,7 +164,7 @@ impl OpState for CudaDelayState {
     }
 }
 
-trivial_op_state_freeeze!(CudaDelayState);
+trivial_op_state_freeze!(CudaDelayState);
 
 #[derive(Debug, Clone)]
 pub struct CudaPulsePad {
@@ -395,4 +395,4 @@ impl CudaPulsePadOpState {
     }
 }
 
-trivial_op_state_freeeze!(CudaPulsePadOpState);
+trivial_op_state_freeze!(CudaPulsePadOpState);

@@ -1,5 +1,5 @@
 use tract_nnef::internal::*;
-use tract_nnef::tract_core::trivial_op_state_freeeze;
+use tract_nnef::tract_core::trivial_op_state_freeze;
 use tract_pulse::PulsedOp;
 use tract_pulse::model::PulsedModel;
 use tract_pulse::ops::OpPulsifier;
@@ -96,7 +96,7 @@ pub struct ExpUnitNormState {
     hidden: Option<Tensor>,
     index: usize,
 }
-trivial_op_state_freeeze!(ExpUnitNormState);
+trivial_op_state_freeze!(ExpUnitNormState);
 
 impl Op for ExpUnitNorm {
     fn name(&self) -> StaticName {
