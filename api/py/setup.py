@@ -21,6 +21,8 @@ if version is None or version == "":
 with open('docs/index.md', 'r') as file:
     readme = file.read()
 
+build_requires = toml.load("pyproject.toml")["build-system"]["requires"]
+
 setup(
         name="tract",
         author="Mathieu Poumeyrol, Sonos, and tract contributors",
@@ -54,5 +56,8 @@ setup(
         zip_safe=False,
         python_requires=">=3.9",
         install_requires=[ "numpy" ],
-        extras_require={ "test": ["pytest"] },
+        extras_require={
+            "test": ["pytest"],
+            "dev": build_requires + ["pytest"],
+        },
 )
