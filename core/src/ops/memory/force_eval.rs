@@ -31,7 +31,7 @@ impl EvalOp for ForceEval {
 
     fn state(
         &self,
-        _session: &mut SessionState,
+        _session: &mut TurnState,
         _node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(None)

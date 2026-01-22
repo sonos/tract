@@ -31,7 +31,7 @@ impl EvalOp for Store {
 
     fn state(
         &self,
-        _session: &mut SessionState,
+        _session: &mut TurnState,
         _node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::new(self.clone())))
@@ -53,7 +53,7 @@ impl TypedOp for Store {
 impl OpState for Store {
     fn eval(
         &mut self,
-        session: &mut SessionState,
+        session: &mut TurnState,
         _op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {

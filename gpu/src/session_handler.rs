@@ -17,7 +17,7 @@ impl DeviceSessionHandler {
 }
 
 impl SessionStateHandler for DeviceSessionHandler {
-    fn before_plan_eval(&self, session_state: &mut SessionState) -> TractResult<()> {
+    fn before_plan_eval(&self, session_state: &mut TurnState) -> TractResult<()> {
         let resolved_mem_schema = self.mem_schema.resolve(&session_state.resolved_symbols)?;
         let memory_pool = DeviceMemoryPool::from_schema(resolved_mem_schema)?;
 
@@ -26,14 +26,14 @@ impl SessionStateHandler for DeviceSessionHandler {
         Ok(())
     }
 
-    fn after_plan_eval(&self, session_state: &mut SessionState) -> TractResult<()> {
+    fn after_plan_eval(&self, session_state: &mut TurnState) -> TractResult<()> {
         session_state.scratch_extensions.remove::<DeviceMemoryPool>();
         Ok(())
     }
 }
 
 pub fn make_tensor_for_node(
-    session: &SessionState,
+    session: &TurnState,
     node_id: usize,
     dt: DatumType,
     shape: &[usize],
@@ -46,7 +46,7 @@ pub fn make_tensor_for_node(
 }
 
 pub fn make_scalar_opaque_tensor_for_node(
-    session: &SessionState,
+    session: &TurnState,
     node_id: usize,
     opaque_fact: Box<dyn OpaqueFact>,
 ) -> TractResult<DeviceTensor> {

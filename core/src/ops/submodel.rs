@@ -45,7 +45,7 @@ impl EvalOp for SubmodelOp {
 
     fn state(
         &self,
-        session: &mut SessionState,
+        session: &mut TurnState,
         node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
         self.model.state(session, node_id)
@@ -99,7 +99,7 @@ pub trait InnerModel: Debug + dyn_clone::DynClone + Downcast + Sync + Send + 'st
     #[allow(unused_variables)]
     fn state(
         &self,
-        session: &mut SessionState,
+        session: &mut TurnState,
         node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(None)
@@ -132,7 +132,7 @@ impl InnerModel for TypedModel {
     #[allow(unused_variables)]
     fn state(
         &self,
-        session: &mut SessionState,
+        session: &mut TurnState,
         node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
         let plan = self.clone().into_runnable()?;
@@ -159,7 +159,7 @@ pub type TypedModelOpState = TypedSimpleState;
 impl OpState for TypedModelOpState {
     fn eval(
         &mut self,
-        _session: &mut SessionState,
+        _session: &mut TurnState,
         _op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {

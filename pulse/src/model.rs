@@ -231,7 +231,7 @@ impl EvalOp for PulseWrappingOp {
 
     fn state(
         &self,
-        session: &mut SessionState,
+        session: &mut TurnState,
         node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
         self.0.state(session, node_id)
@@ -307,7 +307,7 @@ impl EvalOp for NonPulsingWrappingOp {
 
     fn state(
         &self,
-        session: &mut SessionState,
+        session: &mut TurnState,
         node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
         self.0.state(session, node_id)

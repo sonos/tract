@@ -53,7 +53,7 @@ impl ElementWiseMiniOp for Cast {
             tract_hir::ops::cast::cast(self.to)
                 .eval_with_session(
                     usize::MAX,
-                    &SessionState::default(),
+                    &TurnState::default(),
                     tvec!(t.clone().into_tvalue()),
                 )
                 .map(|mut t| t.remove(0).into_tensor())

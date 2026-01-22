@@ -41,7 +41,7 @@ impl TfModelExtensions {
             )?;
             let mut state = SimpleState::new(&plan)?;
             state.exec()?;
-            let tensors = state.session_state.tensors;
+            let tensors = state.turn_state.tensors;
             for node in &mut original.nodes {
                 if let Some(var) = node.op_as_mut::<crate::ops::vars::VariableV2>() {
                     if let Some(value) = tensors.get(&var.id) {

@@ -35,7 +35,7 @@ impl EvalOp for CudaDelay {
 
     fn state(
         &self,
-        _session: &mut SessionState,
+        _session: &mut TurnState,
         node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::new(CudaDelayState { node_id, buffer: None })))
@@ -136,7 +136,7 @@ impl CudaDelayState {
 impl OpState for CudaDelayState {
     fn eval(
         &mut self,
-        state: &mut SessionState,
+        state: &mut TurnState,
         op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
@@ -199,7 +199,7 @@ impl EvalOp for CudaPulsePad {
 
     fn state(
         &self,
-        _session: &mut SessionState,
+        _session: &mut TurnState,
         node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::new(CudaPulsePadOpState { node_id, current_pos: 0, last_valid_frame: None })))
@@ -231,7 +231,7 @@ struct CudaPulsePadOpState {
 impl OpState for CudaPulsePadOpState {
     fn eval(
         &mut self,
-        session: &mut SessionState,
+        session: &mut TurnState,
         op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
@@ -317,7 +317,7 @@ impl CudaPulsePadOpState {
 
     fn pad(
         &mut self,
-        session: &SessionState,
+        session: &TurnState,
         cuda_op: &CudaPulsePad,
         input: &DeviceTensor,
     ) -> TractResult<DeviceTensor> {

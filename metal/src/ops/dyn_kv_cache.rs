@@ -18,7 +18,7 @@ pub struct MetalDynKVCacheState {
 impl OpState for MetalDynKVCacheState {
     fn load_from(
         &mut self,
-        state: &mut SessionState,
+        state: &mut TurnState,
         states: &mut dyn Iterator<Item = tract_core::value::TValue>,
     ) -> TractResult<()> {
         let kv_cache = states.next().context("Not enough state initializers")?;
@@ -46,7 +46,7 @@ impl OpState for MetalDynKVCacheState {
         Some((self.name.clone(), self.past_sequence_fact.clone()))
     }
 
-    fn resolve_symbols(&mut self, state: &mut SessionState) -> TractResult<()> {
+    fn resolve_symbols(&mut self, state: &mut TurnState) -> TractResult<()> {
         let shape = self
             .kv_cache
             .as_ref()
@@ -56,7 +56,7 @@ impl OpState for MetalDynKVCacheState {
 
     fn eval(
         &mut self,
-        session: &mut SessionState,
+        session: &mut TurnState,
         op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
@@ -168,7 +168,7 @@ impl EvalOp for MetalDynKVCache {
     #[allow(unused_variables)]
     fn state(
         &self,
-        session: &mut tract_core::internal::SessionState,
+        session: &mut tract_core::internal::TurnState,
         node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::new(MetalDynKVCacheState::new(
@@ -279,7 +279,7 @@ mod tests {
 
                 state.run(tvec!(input.clone().into()))?;
             }
-            let kv_cache_state = state.states[2].clone().unwrap();
+            let kv_cache_state = state.op_states[2].clone().unwrap();
 
             let mut curr_state = vec![];
             kv_cache_state.save_to(&mut curr_state)?;

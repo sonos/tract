@@ -37,7 +37,7 @@ impl EvalOp for MetalSlice {
     fn eval_with_session(
         &self,
         node_id: usize,
-        session: &SessionState,
+        session: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let opaque = args_1!(inputs);
@@ -126,13 +126,13 @@ mod tests {
 
             let cpu_output = slice.eval_with_session(
                 0,
-                &SessionState::default(),
+                &TurnState::default(),
                 tvec![a.clone().into_tvalue()],
             )?;
 
             let metal_slice = MetalSlice::from_tract_core(slice);
             let a_metal = a.clone().into_device()?.into_opaque_tensor().into_tvalue();
-            let mut session_state = SessionState::default();
+            let mut session_state = TurnState::default();
             let metal_output =
                 metal_slice.eval_with_session(0, &mut session_state, tvec![a_metal])?;
             stream.wait_until_completed()?;

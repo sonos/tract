@@ -54,7 +54,7 @@ impl EvalOp for OptScan {
 
     fn state(
         &self,
-        _session: &mut SessionState,
+        _session: &mut TurnState,
         _node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::new(State {
@@ -174,7 +174,7 @@ impl State {
 impl OpState for State {
     fn eval(
         &mut self,
-        session: &mut SessionState,
+        session: &mut TurnState,
         _op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {

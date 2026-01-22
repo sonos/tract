@@ -44,7 +44,7 @@ impl super::TypedPass for PropConst {
             {
                 let inputs =
                     inputs.iter().map(|f| f.konst.clone().unwrap().into_tvalue()).collect();
-                match node.op.eval_with_session(node.id, &SessionState::default(), inputs) {
+                match node.op.eval_with_session(node.id, &TurnState::default(), inputs) {
                     Ok(mut res) => {
                         self.0 = node.id;
                         let mut node = node;
@@ -57,7 +57,7 @@ impl super::TypedPass for PropConst {
                             }
                             let Ok(succ_res) = succ.op.eval_with_session(
                                 node.id,
-                                &SessionState::default(),
+                                &TurnState::default(),
                                 res.clone(),
                             ) else {
                                 break;

@@ -86,7 +86,7 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
                     .collect::<Option<TVec<_>>>()
                 {
                     if let Ok(outputs) =
-                        op.eval_with_session(usize::MAX, &SessionState::default(), tensors)
+                        op.eval_with_session(usize::MAX, &TurnState::default(), tensors)
                     {
                         return outputs
                             .into_iter()
@@ -286,7 +286,7 @@ impl TypedModel {
             {
                 let inputs_ref =
                     inputs.iter().map(|f| f.konst.clone().unwrap().into_tvalue()).collect();
-                match node.op.eval_with_session(node.id, &SessionState::default(), inputs_ref) {
+                match node.op.eval_with_session(node.id, &TurnState::default(), inputs_ref) {
                     Ok(res) => {
                         drop(inputs);
                         drop(outputs);

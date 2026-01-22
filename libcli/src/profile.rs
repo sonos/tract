@@ -145,7 +145,7 @@ pub fn profile_gpu(
 
     let session_handler = tract_gpu::session_handler::DeviceSessionHandler::from_plan(
         &plan,
-        &state.session_state.resolved_symbols,
+        &state.turn_state.resolved_symbols,
     )?;
 
     let mut plan = TypedSimplePlan::build(model.clone(), plan_options)?;

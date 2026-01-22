@@ -62,7 +62,7 @@ impl EvalOp for CudaPad {
     fn eval_with_session(
         &self,
         node_id: usize,
-        session: &SessionState,
+        session: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let opaque_input = args_1!(inputs);

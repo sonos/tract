@@ -120,7 +120,7 @@ impl State for TypedSimpleState {
     }
 
     fn initializable_states_count(&self) -> usize {
-        self.states
+        self.op_states
             .iter()
             .filter_map(Option::as_ref)
             .filter(|s| s.init_tensor_fact().is_some())
@@ -128,7 +128,7 @@ impl State for TypedSimpleState {
     }
 
     fn get_states_facts(&self) -> Vec<TypedFact> {
-        self.states
+        self.op_states
             .iter()
             .filter_map(|s| s.as_ref().and_then(|s| s.init_tensor_fact().map(|(_, fact)| fact)))
             .collect()
@@ -140,7 +140,7 @@ impl State for TypedSimpleState {
 
     fn get_states(&self) -> TractResult<Vec<TValue>> {
         let mut states = vec![];
-        for op_state in self.states.iter().flatten() {
+        for op_state in self.op_states.iter().flatten() {
             if op_state.init_tensor_fact().is_some() {
                 op_state.save_to(&mut states)?;
             }

@@ -25,7 +25,7 @@ impl EvalOp for PulsedSameAxisConcat {
 
     fn state(
         &self,
-        _session: &mut SessionState,
+        _session: &mut TurnState,
         _node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::<PulsedSameAxisConcatState>::default()))
@@ -49,7 +49,7 @@ trivial_op_state_freeze!(PulsedSameAxisConcatState);
 impl OpState for PulsedSameAxisConcatState {
     fn eval(
         &mut self,
-        session: &mut SessionState,
+        session: &mut TurnState,
         op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {

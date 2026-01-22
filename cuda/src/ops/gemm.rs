@@ -58,7 +58,7 @@ impl EvalOp for CudaGgmlGemm {
     fn eval_with_session(
         &self,
         node_id: usize,
-        session: &SessionState,
+        session: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let (act_opaque, weights_opaque) = args_2!(inputs);

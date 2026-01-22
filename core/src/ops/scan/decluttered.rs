@@ -701,7 +701,7 @@ impl EvalOp for Scan {
     }
     fn state(
         &self,
-        session: &mut SessionState,
+        session: &mut TurnState,
         node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
         self.to_codegen_op(false)?.state(session, node_id)

@@ -59,7 +59,7 @@ impl EvalOp for Comp {
     fn eval_with_session(
         &self,
         _node_id: usize,
-        session: &SessionState,
+        session: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         if inputs[0].datum_type() == TDim::datum_type() {

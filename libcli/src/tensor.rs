@@ -539,7 +539,7 @@ pub fn get_or_make_inputs(tract: &Arc<dyn Model>, params: &RunParams) -> TractRe
         .collect::<Vec<_>>();
 
     // Resolve state initializers (KV Cache, etc.)
-    let mut dummy_session_state = SessionState::default();
+    let mut dummy_session_state = TurnState::default();
     let state_initializers = (0..tract.nodes_len())
         .filter_map(|id| {
             tract

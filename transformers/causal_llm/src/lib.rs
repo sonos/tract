@@ -255,7 +255,7 @@ impl CausalLlmState {
         let state: &mut TypedSimpleState = (&mut self.nn_state)
             .downcast_mut::<TypedSimpleState>()
             .context("Can only truncate state in TypedSimple* form. (TODO ?)")?;
-        for s in &mut state.states {
+        for s in &mut state.op_states {
             let Some(s) = s else { continue };
             if let Some(s) = (**s).downcast_mut::<DynKeyValueCacheState>() {
                 s.truncate(len)?;
