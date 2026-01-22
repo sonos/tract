@@ -45,7 +45,7 @@ class Nnef:
         self._valid()
         model = c_void_p()
         path = str(path).encode("utf-8")
-        check(lib.tract_nnef_model_for_path(self.ptr, path, byref(model)))
+        check(lib.tract_nnef_load(self.ptr, path, byref(model)))
         return Model(model)
 
     def transform_model(self, model: Model, transform_spec: str) -> None:
