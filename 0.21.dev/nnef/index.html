@@ -363,10 +363,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#tract.nnef.Nnef.model_for_path" class="md-nav__link">
+  <a href="#tract.nnef.Nnef.load" class="md-nav__link">
     <span class="md-ellipsis">
       
-        model_for_path
+        load
       
     </span>
   </a>
@@ -681,10 +681,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#tract.nnef.Nnef.model_for_path" class="md-nav__link">
+  <a href="#tract.nnef.Nnef.load" class="md-nav__link">
     <span class="md-ellipsis">
       
-        model_for_path
+        load
       
     </span>
   </a>
@@ -1047,14 +1047,14 @@ serializeing most of the models tract can handle. These extension can be activat
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">ptr</span> <span class="o">==</span> <span class="kc">None</span><span class="p">:</span>
             <span class="k">raise</span> <span class="n">TractError</span><span class="p">(</span><span class="s2">&quot;invalid inference model (maybe already consumed ?)&quot;</span><span class="p">)</span>
 
-    <span class="k">def</span><span class="w"> </span><span class="nf">model_for_path</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Path</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Model</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">load</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Path</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Model</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Load an NNEF model from the file or folder at `path`</span>
 
 <span class="sd">        ```python</span>
 <span class="sd">        model = (</span>
 <span class="sd">            tract.nnef()</span>
-<span class="sd">            .model_for_path(&quot;mobilenet_v2_1.0.onnx.nnef.tgz&quot;)</span>
+<span class="sd">            .load(&quot;mobilenet_v2_1.0.onnx.nnef.tgz&quot;)</span>
 <span class="sd">            .into_optimized()</span>
 <span class="sd">            .into_runnable()</span>
 <span class="sd">        )</span>
@@ -1182,8 +1182,8 @@ serializeing most of the models tract can handle. These extension can be activat
 <div class="doc doc-object doc-function">
 
 
-<h3 id="tract.nnef.Nnef.model_for_path" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">model_for_path</span><span class="p">(</span><span class="n">path</span><span class="p">)</span></code>
+<h3 id="tract.nnef.Nnef.load" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">load</span><span class="p">(</span><span class="n">path</span><span class="p">)</span></code>
 
 </h3>
 
@@ -1193,7 +1193,7 @@ serializeing most of the models tract can handle. These extension can be activat
         <p>Load an NNEF model from the file or folder at <code>path</code></p>
 <pre><code class="language-python">model = (
     tract.nnef()
-    .model_for_path(&quot;mobilenet_v2_1.0.onnx.nnef.tgz&quot;)
+    .load(&quot;mobilenet_v2_1.0.onnx.nnef.tgz&quot;)
     .into_optimized()
     .into_runnable()
 )
@@ -1218,14 +1218,14 @@ serializeing most of the models tract can handle. These extension can be activat
 <span class="normal">46</span>
 <span class="normal">47</span>
 <span class="normal">48</span>
-<span class="normal">49</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">model_for_path</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Path</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Model</span><span class="p">:</span>
+<span class="normal">49</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">load</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Path</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Model</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Load an NNEF model from the file or folder at `path`</span>
 
 <span class="sd">    ```python</span>
 <span class="sd">    model = (</span>
 <span class="sd">        tract.nnef()</span>
-<span class="sd">        .model_for_path(&quot;mobilenet_v2_1.0.onnx.nnef.tgz&quot;)</span>
+<span class="sd">        .load(&quot;mobilenet_v2_1.0.onnx.nnef.tgz&quot;)</span>
 <span class="sd">        .into_optimized()</span>
 <span class="sd">        .into_runnable()</span>
 <span class="sd">    )</span>
