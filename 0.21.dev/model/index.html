@@ -621,17 +621,6 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#tract.model.Model.profile_json" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        profile_json
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
   <a href="#tract.model.Model.property" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1034,17 +1023,6 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#tract.model.Model.profile_json" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        profile_json
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
   <a href="#tract.model.Model.property" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1406,50 +1384,7 @@ a Model where all tensors shapes start with the <code>N</code> or <code>Batch</c
 <span class="normal">211</span>
 <span class="normal">212</span>
 <span class="normal">213</span>
-<span class="normal">214</span>
-<span class="normal">215</span>
-<span class="normal">216</span>
-<span class="normal">217</span>
-<span class="normal">218</span>
-<span class="normal">219</span>
-<span class="normal">220</span>
-<span class="normal">221</span>
-<span class="normal">222</span>
-<span class="normal">223</span>
-<span class="normal">224</span>
-<span class="normal">225</span>
-<span class="normal">226</span>
-<span class="normal">227</span>
-<span class="normal">228</span>
-<span class="normal">229</span>
-<span class="normal">230</span>
-<span class="normal">231</span>
-<span class="normal">232</span>
-<span class="normal">233</span>
-<span class="normal">234</span>
-<span class="normal">235</span>
-<span class="normal">236</span>
-<span class="normal">237</span>
-<span class="normal">238</span>
-<span class="normal">239</span>
-<span class="normal">240</span>
-<span class="normal">241</span>
-<span class="normal">242</span>
-<span class="normal">243</span>
-<span class="normal">244</span>
-<span class="normal">245</span>
-<span class="normal">246</span>
-<span class="normal">247</span>
-<span class="normal">248</span>
-<span class="normal">249</span>
-<span class="normal">250</span>
-<span class="normal">251</span>
-<span class="normal">252</span>
-<span class="normal">253</span>
-<span class="normal">254</span>
-<span class="normal">255</span>
-<span class="normal">256</span>
-<span class="normal">257</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">Model</span><span class="p">:</span>
+<span class="normal">214</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">Model</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    # Main model object</span>
 
@@ -1655,49 +1590,6 @@ a Model where all tensors shapes start with the <code>N</code> or <code>Batch</c
         <span class="n">value</span> <span class="o">=</span> <span class="n">c_void_p</span><span class="p">()</span>
         <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_model_property</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">name</span><span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">&quot;utf-8&quot;</span><span class="p">),</span> <span class="n">byref</span><span class="p">(</span><span class="n">value</span><span class="p">)))</span>
         <span class="k">return</span> <span class="n">Value</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
-
-    <span class="k">def</span><span class="w"> </span><span class="nf">profile_json</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">inputs</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="kc">None</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="n">Value</span><span class="p">,</span> <span class="n">numpy</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]]],</span> <span class="n">state_initializers</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="kc">None</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="n">Value</span><span class="p">,</span> <span class="n">numpy</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]]])</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Profile the model. Also compute the static costs of operators.</span>
-
-<span class="sd">        Returns is a json buffer.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
-        <span class="n">cstring</span> <span class="o">=</span> <span class="n">c_char_p</span><span class="p">()</span>
-        <span class="n">input_values</span> <span class="o">=</span> <span class="p">[]</span>
-        <span class="n">input_ptrs</span> <span class="o">=</span> <span class="kc">None</span>
-        <span class="k">if</span> <span class="n">inputs</span> <span class="o">!=</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">inputs</span><span class="p">:</span>
-                <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="n">Value</span><span class="p">):</span>
-                    <span class="n">input_values</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">v</span><span class="p">)</span>
-                <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="n">numpy</span><span class="o">.</span><span class="n">ndarray</span><span class="p">):</span>
-                    <span class="n">input_values</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">Value</span><span class="o">.</span><span class="n">from_numpy</span><span class="p">(</span><span class="n">v</span><span class="p">))</span>
-                <span class="k">else</span><span class="p">:</span>
-                    <span class="k">raise</span> <span class="n">TractError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Inputs must be of type tract.Value or numpy.Array, got </span><span class="si">{</span><span class="n">v</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-            <span class="n">input_ptrs</span> <span class="o">=</span> <span class="p">(</span><span class="n">c_void_p</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="n">inputs</span><span class="p">))()</span>
-            <span class="k">for</span> <span class="n">ix</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">input_values</span><span class="p">):</span>
-                <span class="n">input_ptrs</span><span class="p">[</span><span class="n">ix</span><span class="p">]</span> <span class="o">=</span> <span class="n">v</span><span class="o">.</span><span class="n">ptr</span>
-
-        <span class="n">state_values</span> <span class="o">=</span> <span class="p">[]</span>
-        <span class="n">state_ptrs</span> <span class="o">=</span> <span class="kc">None</span>
-        <span class="n">n_states</span> <span class="o">=</span> <span class="mi">0</span>
-        <span class="k">if</span> <span class="n">state_initializers</span> <span class="o">!=</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="n">n_states</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">state_initializers</span><span class="p">)</span>
-            <span class="n">state_ptrs</span> <span class="o">=</span> <span class="p">(</span><span class="n">c_void_p</span> <span class="o">*</span> <span class="n">n_states</span><span class="p">)()</span>
-
-            <span class="k">for</span> <span class="n">ix</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">state_initializers</span><span class="p">):</span>
-                <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="n">Value</span><span class="p">):</span>
-                    <span class="n">state_values</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">v</span><span class="p">)</span>
-                <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="n">numpy</span><span class="o">.</span><span class="n">ndarray</span><span class="p">):</span>
-                    <span class="n">state_values</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">Value</span><span class="o">.</span><span class="n">from_numpy</span><span class="p">(</span><span class="n">v</span><span class="p">))</span>
-                <span class="k">else</span><span class="p">:</span>
-                    <span class="k">raise</span> <span class="n">TractError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;State values must be of type tract.Value or numpy.Array, got </span><span class="si">{</span><span class="n">v</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-
-                <span class="n">state_ptrs</span><span class="p">[</span><span class="n">ix</span><span class="p">]</span> <span class="o">=</span> <span class="n">state_values</span><span class="p">[</span><span class="n">ix</span><span class="p">]</span><span class="o">.</span><span class="n">ptr</span>
-
-        <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_model_profile_json</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">input_ptrs</span><span class="p">,</span> <span class="n">state_ptrs</span><span class="p">,</span> <span class="n">n_states</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">cstring</span><span class="p">)))</span>
-        <span class="n">result</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">cstring</span><span class="o">.</span><span class="n">value</span><span class="p">,</span> <span class="s2">&quot;utf-8&quot;</span><span class="p">)</span>
-        <span class="n">lib</span><span class="o">.</span><span class="n">tract_free_cstring</span><span class="p">(</span><span class="n">cstring</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">result</span>
 </code></pre></div></td></tr></table></div>
               </details>
 
@@ -2183,111 +2075,6 @@ form to the best runtime for the current architecture.</p>
     <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
     <span class="n">cstring</span> <span class="o">=</span> <span class="n">c_char_p</span><span class="p">()</span>
     <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_model_output_name</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">output_id</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">cstring</span><span class="p">)))</span>
-    <span class="n">result</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">cstring</span><span class="o">.</span><span class="n">value</span><span class="p">,</span> <span class="s2">&quot;utf-8&quot;</span><span class="p">)</span>
-    <span class="n">lib</span><span class="o">.</span><span class="n">tract_free_cstring</span><span class="p">(</span><span class="n">cstring</span><span class="p">)</span>
-    <span class="k">return</span> <span class="n">result</span>
-</code></pre></div></td></tr></table></div>
-            </details>
-    </div>
-
-</div>
-
-<div class="doc doc-object doc-function">
-
-
-<h3 id="tract.model.Model.profile_json" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">profile_json</span><span class="p">(</span><span class="n">inputs</span><span class="p">,</span> <span class="n">state_initializers</span><span class="p">)</span></code>
-
-</h3>
-
-
-    <div class="doc doc-contents ">
-
-        <p>Profile the model. Also compute the static costs of operators.</p>
-<p>Returns is a json buffer.</p>
-
-            <details class="quote">
-              <summary>Source code in <code>tract/model.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">216</span>
-<span class="normal">217</span>
-<span class="normal">218</span>
-<span class="normal">219</span>
-<span class="normal">220</span>
-<span class="normal">221</span>
-<span class="normal">222</span>
-<span class="normal">223</span>
-<span class="normal">224</span>
-<span class="normal">225</span>
-<span class="normal">226</span>
-<span class="normal">227</span>
-<span class="normal">228</span>
-<span class="normal">229</span>
-<span class="normal">230</span>
-<span class="normal">231</span>
-<span class="normal">232</span>
-<span class="normal">233</span>
-<span class="normal">234</span>
-<span class="normal">235</span>
-<span class="normal">236</span>
-<span class="normal">237</span>
-<span class="normal">238</span>
-<span class="normal">239</span>
-<span class="normal">240</span>
-<span class="normal">241</span>
-<span class="normal">242</span>
-<span class="normal">243</span>
-<span class="normal">244</span>
-<span class="normal">245</span>
-<span class="normal">246</span>
-<span class="normal">247</span>
-<span class="normal">248</span>
-<span class="normal">249</span>
-<span class="normal">250</span>
-<span class="normal">251</span>
-<span class="normal">252</span>
-<span class="normal">253</span>
-<span class="normal">254</span>
-<span class="normal">255</span>
-<span class="normal">256</span>
-<span class="normal">257</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">profile_json</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">inputs</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="kc">None</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="n">Value</span><span class="p">,</span> <span class="n">numpy</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]]],</span> <span class="n">state_initializers</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="kc">None</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="n">Value</span><span class="p">,</span> <span class="n">numpy</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]]])</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Profile the model. Also compute the static costs of operators.</span>
-
-<span class="sd">    Returns is a json buffer.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
-    <span class="n">cstring</span> <span class="o">=</span> <span class="n">c_char_p</span><span class="p">()</span>
-    <span class="n">input_values</span> <span class="o">=</span> <span class="p">[]</span>
-    <span class="n">input_ptrs</span> <span class="o">=</span> <span class="kc">None</span>
-    <span class="k">if</span> <span class="n">inputs</span> <span class="o">!=</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">inputs</span><span class="p">:</span>
-            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="n">Value</span><span class="p">):</span>
-                <span class="n">input_values</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">v</span><span class="p">)</span>
-            <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="n">numpy</span><span class="o">.</span><span class="n">ndarray</span><span class="p">):</span>
-                <span class="n">input_values</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">Value</span><span class="o">.</span><span class="n">from_numpy</span><span class="p">(</span><span class="n">v</span><span class="p">))</span>
-            <span class="k">else</span><span class="p">:</span>
-                <span class="k">raise</span> <span class="n">TractError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Inputs must be of type tract.Value or numpy.Array, got </span><span class="si">{</span><span class="n">v</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-        <span class="n">input_ptrs</span> <span class="o">=</span> <span class="p">(</span><span class="n">c_void_p</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="n">inputs</span><span class="p">))()</span>
-        <span class="k">for</span> <span class="n">ix</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">input_values</span><span class="p">):</span>
-            <span class="n">input_ptrs</span><span class="p">[</span><span class="n">ix</span><span class="p">]</span> <span class="o">=</span> <span class="n">v</span><span class="o">.</span><span class="n">ptr</span>
-
-    <span class="n">state_values</span> <span class="o">=</span> <span class="p">[]</span>
-    <span class="n">state_ptrs</span> <span class="o">=</span> <span class="kc">None</span>
-    <span class="n">n_states</span> <span class="o">=</span> <span class="mi">0</span>
-    <span class="k">if</span> <span class="n">state_initializers</span> <span class="o">!=</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="n">n_states</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">state_initializers</span><span class="p">)</span>
-        <span class="n">state_ptrs</span> <span class="o">=</span> <span class="p">(</span><span class="n">c_void_p</span> <span class="o">*</span> <span class="n">n_states</span><span class="p">)()</span>
-
-        <span class="k">for</span> <span class="n">ix</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">state_initializers</span><span class="p">):</span>
-            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="n">Value</span><span class="p">):</span>
-                <span class="n">state_values</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">v</span><span class="p">)</span>
-            <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="n">numpy</span><span class="o">.</span><span class="n">ndarray</span><span class="p">):</span>
-                <span class="n">state_values</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">Value</span><span class="o">.</span><span class="n">from_numpy</span><span class="p">(</span><span class="n">v</span><span class="p">))</span>
-            <span class="k">else</span><span class="p">:</span>
-                <span class="k">raise</span> <span class="n">TractError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;State values must be of type tract.Value or numpy.Array, got </span><span class="si">{</span><span class="n">v</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-
-            <span class="n">state_ptrs</span><span class="p">[</span><span class="n">ix</span><span class="p">]</span> <span class="o">=</span> <span class="n">state_values</span><span class="p">[</span><span class="n">ix</span><span class="p">]</span><span class="o">.</span><span class="n">ptr</span>
-
-    <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_model_profile_json</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">input_ptrs</span><span class="p">,</span> <span class="n">state_ptrs</span><span class="p">,</span> <span class="n">n_states</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">cstring</span><span class="p">)))</span>
     <span class="n">result</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">cstring</span><span class="o">.</span><span class="n">value</span><span class="p">,</span> <span class="s2">&quot;utf-8&quot;</span><span class="p">)</span>
     <span class="n">lib</span><span class="o">.</span><span class="n">tract_free_cstring</span><span class="p">(</span><span class="n">cstring</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">result</span>
