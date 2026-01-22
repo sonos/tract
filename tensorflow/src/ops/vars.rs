@@ -38,7 +38,7 @@ trivial_op_state_freeze!(VariableV2State);
 impl OpState for VariableV2State {
     fn eval(
         &mut self,
-        session: &mut SessionState,
+        session: &mut TurnState,
         op: &dyn Op,
         _inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
@@ -85,7 +85,7 @@ impl EvalOp for VariableV2 {
 
     fn state(
         &self,
-        state: &mut SessionState,
+        state: &mut TurnState,
         _node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
         let tensor = if let Some(init) = &self.initializer {
@@ -146,7 +146,7 @@ impl Op for Assign {
 impl OpState for AssignState {
     fn eval(
         &mut self,
-        session: &mut SessionState,
+        session: &mut TurnState,
         op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
@@ -179,7 +179,7 @@ impl EvalOp for Assign {
 
     fn state(
         &self,
-        _state: &mut SessionState,
+        _state: &mut TurnState,
         _node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::new(AssignState)))

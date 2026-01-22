@@ -36,7 +36,7 @@ impl EvalOp for OptMatMulPack {
     fn eval_with_session(
         &self,
         _node_id: usize,
-        session: &SessionState,
+        session: &TurnState,
         mut inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         self.do_eval(session, inputs.remove(0))
@@ -80,7 +80,7 @@ impl TypedOp for OptMatMulPack {
 }
 
 impl OptMatMulPack {
-    fn do_eval(&self, _session: &SessionState, input: TValue) -> TractResult<TVec<TValue>> {
+    fn do_eval(&self, _session: &TurnState, input: TValue) -> TractResult<TVec<TValue>> {
         unsafe {
             let mode = self.mode_picker.pick(input.shape()[self.mn_axis])?;
             let packer = &self.packers[mode];
@@ -169,7 +169,7 @@ impl EvalOp for OptSimpleMatMulPack {
 
     fn state(
         &self,
-        _session: &mut SessionState,
+        _session: &mut TurnState,
         _node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(None)

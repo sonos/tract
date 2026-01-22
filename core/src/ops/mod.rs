@@ -96,7 +96,7 @@ dyn_clone::clone_trait_object!(FrozenOpState);
 pub trait OpState: fmt::Debug + dyn_clone::DynClone + OpStateFreeze + Downcast {
     fn load_from(
         &mut self,
-        _: &mut SessionState,
+        _: &mut TurnState,
         _: &mut dyn Iterator<Item = TValue>,
     ) -> TractResult<()> {
         Ok(())
@@ -110,13 +110,13 @@ pub trait OpState: fmt::Debug + dyn_clone::DynClone + OpStateFreeze + Downcast {
         None
     }
 
-    fn resolve_symbols(&mut self, _: &mut SessionState) -> TractResult<()> {
+    fn resolve_symbols(&mut self, _: &mut TurnState) -> TractResult<()> {
         Ok(())
     }
 
     fn eval(
         &mut self,
-        session: &mut SessionState,
+        session: &mut TurnState,
         op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>>;
@@ -134,7 +134,7 @@ pub trait EvalOp {
     fn eval_with_session(
         &self,
         node_id: usize,
-        session: &SessionState,
+        session: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         self.eval(inputs).context("Running legacy eval")
@@ -143,7 +143,7 @@ pub trait EvalOp {
     #[allow(unused_variables)]
     fn state(
         &self,
-        session: &mut SessionState,
+        session: &mut TurnState,
         node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(None)

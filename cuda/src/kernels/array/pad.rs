@@ -169,10 +169,10 @@ mod tests {
             )?;
 
             let cpu_output = Pad { pads: padding.clone(), mode: PadMode::Constant(val.clone()) }
-                .eval_with_session(0, &SessionState::default(), tvec![a.clone().into_tvalue()])?;
+                .eval_with_session(0, &TurnState::default(), tvec![a.clone().into_tvalue()])?;
 
             let a_cuda = a.clone().into_device()?;
-            let mut session_state = SessionState::default();
+            let mut session_state = TurnState::default();
             let cuda_output = Pad.eval(stream, &a_cuda, padding, PadMode::Constant(val))?;
 
             cuda_output

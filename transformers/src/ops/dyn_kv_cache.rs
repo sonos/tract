@@ -16,7 +16,7 @@ pub struct DynKeyValueCacheState {
 
 impl DynKeyValueCacheState {
     pub fn resolve_symbols(
-        state: &mut SessionState,
+        state: &mut TurnState,
         fact: TypedFact,
         concrete_shape: Option<&[usize]>,
     ) -> TractResult<()> {
@@ -62,7 +62,7 @@ impl DynKeyValueCacheState {
 impl OpState for DynKeyValueCacheState {
     fn load_from(
         &mut self,
-        state: &mut SessionState,
+        state: &mut TurnState,
         states: &mut dyn Iterator<Item = tract_nnef::prelude::TValue>,
     ) -> TractResult<()> {
         // KV Cache fact is always at index 0
@@ -86,14 +86,14 @@ impl OpState for DynKeyValueCacheState {
         Some((self.name.clone(), self.past_sequence_fact.clone()))
     }
 
-    fn resolve_symbols(&mut self, state: &mut SessionState) -> TractResult<()> {
+    fn resolve_symbols(&mut self, state: &mut TurnState) -> TractResult<()> {
         let shape = self.kv_cache.as_ref().map(|kv_cache| kv_cache.shape());
         Self::resolve_symbols(state, self.past_sequence_fact.clone(), shape)
     }
 
     fn eval(
         &mut self,
-        _state: &mut SessionState,
+        _state: &mut TurnState,
         _op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
@@ -133,7 +133,7 @@ impl EvalOp for DynKeyValueCache {
 
     fn state(
         &self,
-        _session: &mut SessionState,
+        _session: &mut TurnState,
         _node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::new(DynKeyValueCacheState {
@@ -335,7 +335,7 @@ mod tests {
             axis,
         };
 
-        let mut session_state = SessionState::default();
+        let mut session_state = TurnState::default();
         let mut state = op.state(&mut session_state, 0)?.unwrap();
 
         let mut inputs = tvec![];

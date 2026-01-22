@@ -99,7 +99,7 @@ struct PulsePadOpState {
 impl OpState for PulsePadOpState {
     fn eval(
         &mut self,
-        session: &mut SessionState,
+        session: &mut TurnState,
         op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
@@ -119,7 +119,7 @@ impl PulsePadOpState {
 
     fn pad(
         &mut self,
-        session: &SessionState,
+        session: &TurnState,
         op: &PulsePad,
         mut input: Tensor,
     ) -> TractResult<Tensor> {
@@ -243,7 +243,7 @@ impl EvalOp for PulsePad {
 
     fn state(
         &self,
-        _session: &mut SessionState,
+        _session: &mut TurnState,
         _node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::<PulsePadOpState>::default()))

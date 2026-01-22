@@ -7,7 +7,7 @@ trivial_op_state_freeze!(SourceState);
 impl OpState for SourceState {
     fn eval(
         &mut self,
-        session: &mut SessionState,
+        session: &mut TurnState,
         _op: &dyn Op,
         _inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
@@ -40,7 +40,7 @@ impl EvalOp for TypedSource {
 
     fn state(
         &self,
-        _session: &mut SessionState,
+        _session: &mut TurnState,
         node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::new(SourceState(node_id))))

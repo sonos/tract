@@ -79,7 +79,7 @@ impl<K: GemmKernel + 'static> EvalOp for MetalGemm<K> {
     fn eval_with_session(
         &self,
         node_id: usize,
-        session: &SessionState,
+        session: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let (a_opaque, b_opaque) = args_2!(inputs);

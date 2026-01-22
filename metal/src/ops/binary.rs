@@ -49,7 +49,7 @@ impl EvalOp for MetalBinOp {
     fn eval_with_session(
         &self,
         node_id: usize,
-        session: &SessionState,
+        session: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let (opaque_a, opaque_b) = args_2!(inputs);

@@ -47,7 +47,7 @@ struct PulseMaskOpState {
 impl OpState for PulseMaskOpState {
     fn eval(
         &mut self,
-        session: &mut SessionState,
+        session: &mut TurnState,
         op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
@@ -61,7 +61,7 @@ impl OpState for PulseMaskOpState {
 impl PulseMaskOpState {
     fn pad(
         &mut self,
-        session: &SessionState,
+        session: &TurnState,
         op: &PulseMask,
         mut input: Tensor,
     ) -> TractResult<Tensor> {
@@ -130,7 +130,7 @@ impl EvalOp for PulseMask {
 
     fn state(
         &self,
-        _session: &mut SessionState,
+        _session: &mut TurnState,
         _node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::<PulseMaskOpState>::default()))

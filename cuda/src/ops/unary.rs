@@ -21,7 +21,7 @@ impl EvalOp for CudaUnaryOp {
     fn eval_with_session(
         &self,
         node_id: usize,
-        session: &SessionState,
+        session: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         CUDA_STREAM.with(|stream| {

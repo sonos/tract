@@ -20,7 +20,7 @@ impl EvalOp for Source {
     }
     fn state(
         &self,
-        _session: &mut SessionState,
+        _session: &mut TurnState,
         node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::new(SourceState(node_id))))

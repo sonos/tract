@@ -21,7 +21,7 @@ pub struct CudaFusedAxisOpState {
 fn compute_reshaped_inputs(
     inputs: TVec<TValue>,
     grouped_axis_ops: &TVec<TVec<CudaAxisOp>>,
-    session: &SessionState,
+    session: &TurnState,
 ) -> TractResult<TVec<TValue>> {
     // Apply Axis Ops per input
 
@@ -76,7 +76,7 @@ impl OpState for CudaFusedAxisOpState {
 
     fn load_from(
         &mut self,
-        session: &mut SessionState,
+        session: &mut TurnState,
         states: &mut dyn Iterator<Item = tract_core::value::TValue>,
     ) -> TractResult<()> {
         self.op_state.load_from(session, states)
@@ -86,13 +86,13 @@ impl OpState for CudaFusedAxisOpState {
         self.op_state.save_to(states)
     }
 
-    fn resolve_symbols(&mut self, session: &mut SessionState) -> TractResult<()> {
+    fn resolve_symbols(&mut self, session: &mut TurnState) -> TractResult<()> {
         self.op_state.resolve_symbols(session)
     }
 
     fn eval(
         &mut self,
-        session: &mut SessionState,
+        session: &mut TurnState,
         op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
@@ -161,7 +161,7 @@ impl EvalOp for CudaFusedAxisOp {
 
     fn state(
         &self,
-        session: &mut SessionState,
+        session: &mut TurnState,
         node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
         if let Some(state) = self.op.state(session, node_id)? {
@@ -174,7 +174,7 @@ impl EvalOp for CudaFusedAxisOp {
     fn eval_with_session(
         &self,
         node_id: usize,
-        session: &SessionState,
+        session: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let inputs = compute_reshaped_inputs(inputs, &self.grouped_axis_ops, session)?;

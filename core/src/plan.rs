@@ -13,47 +13,50 @@ use crate::runtime::RunOptions;
 
 use self::order::{build_flush_list, eval_order_for_nodes, eval_order_opt_ram_for_nodes};
 
-pub struct SessionState {
+pub struct TurnState {
     pub inputs: HashMap<usize, TValue>,
     pub resolved_symbols: SymbolValues,
     pub scenario: Option<usize>,
     pub tensors: HashMap<String, Tensor>,
     pub cached_mmm_scratch_space: RefCell<Option<Box<dyn tract_linalg::mmm::ScratchSpace>>>,
     pub scratch_extensions: anymap3::Map,
+    pub values: Vec<Option<TVec<TValue>>>,
 }
 
-impl Default for SessionState {
+impl Default for TurnState {
     fn default() -> Self {
-        SessionState {
+        TurnState {
             inputs: HashMap::default(),
             resolved_symbols: SymbolValues::default(),
             tensors: HashMap::default(),
             scenario: None,
             cached_mmm_scratch_space: None.into(),
             scratch_extensions: anymap3::Map::new(),
+            values: vec![],
         }
     }
 }
 
-impl Clone for SessionState {
+impl Clone for TurnState {
     fn clone(&self) -> Self {
-        SessionState {
+        TurnState {
             inputs: self.inputs.clone(),
             resolved_symbols: self.resolved_symbols.clone(),
             tensors: self.tensors.clone(),
             scenario: self.scenario,
             cached_mmm_scratch_space: None.into(),
             scratch_extensions: anymap3::Map::new(),
+            values: vec![],
         }
     }
 }
 
 pub trait SessionStateHandler: Send + Sync + Debug {
-    fn before_plan_eval(&self, session_state: &mut SessionState) -> TractResult<()>;
-    fn after_plan_eval(&self, session_state: &mut SessionState) -> TractResult<()>;
+    fn before_plan_eval(&self, session_state: &mut TurnState) -> TractResult<()>;
+    fn after_plan_eval(&self, session_state: &mut TurnState) -> TractResult<()>;
 }
 
-impl Debug for SessionState {
+impl Debug for TurnState {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "SessionState({:?})", self.resolved_symbols)
     }
@@ -207,9 +210,8 @@ where
     O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
     pub(crate) plan: Arc<SimplePlan<F, O>>,
-    pub states: Vec<Option<Box<dyn OpState>>>,
-    pub session_state: SessionState,
-    pub values: Vec<Option<TVec<TValue>>>,
+    pub op_states: Vec<Option<Box<dyn OpState>>>,
+    pub turn_state: TurnState,
 }
 
 impl<F, O> SimpleState<F, O>
@@ -219,11 +221,11 @@ where
 {
     pub fn new(plan: &Arc<SimplePlan<F, O>>) -> TractResult<SimpleState<F, O>> {
         let plan = Arc::clone(plan);
-        let values = vec![None; plan.model.nodes().len()];
-        let session = SessionState::default();
+        let mut turn = TurnState::default();
+        turn.values = vec![None; plan.model.nodes().len()];
         let model = plan.model();
         let states: Vec<Option<Box<dyn OpState>>> = vec![None; model.nodes.len()];
-        let mut state = SimpleState { plan, states, session_state: session, values };
+        let mut state = SimpleState { plan, op_states: states, turn_state: turn };
         state.populate_consts();
         state.reset_op_states()?;
         Ok(state)
@@ -243,7 +245,7 @@ where
     fn populate_consts(&mut self) {
         for node in &self.plan.model.nodes {
             if let Some(k) = node.op_as::<Const>() {
-                self.values[node.id] = Some(tvec!(k.val().clone().into_tvalue()));
+                self.turn_state.values[node.id] = Some(tvec!(k.val().clone().into_tvalue()));
             }
         }
     }
@@ -251,25 +253,24 @@ where
     /// Reset wires state.
     pub fn reset_turn(&mut self) -> TractResult<()> {
         for node in &self.plan.order {
-            self.values[*node] = None;
+            self.turn_state.values[*node] = None;
         }
-        self.session_state.resolved_symbols = SymbolValues::default();
+        self.turn_state.resolved_symbols = SymbolValues::default();
         Ok(())
     }
 
     /// Reset op inner state.
     pub fn reset_op_states(&mut self) -> TractResult<()> {
-        let &mut SimpleState { ref plan, ref mut session_state, ref mut states, .. } = self;
+        let &mut SimpleState { ref plan, ref mut turn_state, op_states: ref mut states, .. } = self;
         for (ix, n) in plan.model.nodes.iter().enumerate() {
-            states[ix] =
-                if n.op().is_stateless() { None } else { n.op().state(session_state, ix)? };
+            states[ix] = if n.op().is_stateless() { None } else { n.op().state(turn_state, ix)? };
         }
         Ok(())
     }
 
     pub fn init_states(&mut self, state_init_tensors: &[TValue]) -> TractResult<()> {
         let states_to_init = self
-            .states
+            .op_states
             .iter_mut()
             .filter_map(Option::as_mut)
             .filter(|s| s.init_tensor_fact().is_some())
@@ -282,19 +283,19 @@ where
         );
         let mut iterator = state_init_tensors.iter().cloned();
         for state in states_to_init {
-            state.load_from(&mut self.session_state, &mut iterator)?;
+            state.load_from(&mut self.turn_state, &mut iterator)?;
         }
         Ok(())
     }
 
     fn resolve_symbols_with_states(&mut self) -> TractResult<()> {
         for state in self
-            .states
+            .op_states
             .iter_mut()
             .filter_map(Option::as_mut)
             .filter(|s| s.init_tensor_fact().is_some())
         {
-            state.resolve_symbols(&mut self.session_state)?;
+            state.resolve_symbols(&mut self.turn_state)?;
         }
         Ok(())
     }
@@ -314,7 +315,7 @@ where
     ) -> TractResult<TVec<TValue>>
     where
         Eval: for<'a, 'b, 'c> FnMut(
-            &'a mut SessionState,
+            &'a mut TurnState,
             Option<&'b mut (dyn OpState + 'static)>,
             &'c Node<F, O>,
             TVec<TValue>,
@@ -332,7 +333,7 @@ where
     pub fn exec_plan_with_eval<Eval, E>(&mut self, eval: Eval) -> TractResult<()>
     where
         Eval: for<'a, 'b, 'c> FnMut(
-            &'a mut SessionState,
+            &'a mut TurnState,
             Option<&'b mut (dyn OpState + 'static)>,
             &'c Node<F, O>,
             TVec<TValue>,
@@ -351,7 +352,7 @@ where
     fn do_exec_plan_with_eval<Eval, E>(&mut self, mut eval: Eval) -> TractResult<()>
     where
         Eval: for<'a, 'b, 'c> FnMut(
-            &'a mut SessionState,
+            &'a mut TurnState,
             Option<&'b mut (dyn OpState + 'static)>,
             &'c Node<F, O>,
             TVec<TValue>,
@@ -363,7 +364,7 @@ where
             let model = &plan.model;
             plan.session_handler
                 .as_ref()
-                .map(|it| it.before_plan_eval(&mut self.session_state))
+                .map(|it| it.before_plan_eval(&mut self.turn_state))
                 .transpose()?;
 
             for (step, n) in plan.order.iter().enumerate() {
@@ -373,7 +374,7 @@ where
                 for i in &node.inputs {
                     trace!("  use input {i:?}");
                     let prec_node = model.node(i.node);
-                    let prec = self.values[i.node].as_ref().ok_or_else(|| {
+                    let prec = self.turn_state.values[i.node].as_ref().ok_or_else(|| {
                         format_err!("Computing {}, precursor {} not done:", node, prec_node)
                     })?;
                     inputs.push(prec[i.slot].clone())
@@ -381,7 +382,7 @@ where
 
                 for flush in &plan.flush_lists[step] {
                     trace!("  Ran {} can now flush {}", node, model.node(*flush));
-                    self.values[*flush] = None;
+                    self.turn_state.values[*flush] = None;
                 }
 
                 if cfg!(debug_assertions) {
@@ -395,7 +396,7 @@ where
                         );
                     }
                     for (ix, (v, f)) in inputs.iter().zip(facts.iter()).enumerate() {
-                        if !f.matches(v, Some(&self.session_state.resolved_symbols))? {
+                        if !f.matches(v, Some(&self.turn_state.resolved_symbols))? {
                             bail!(
                                 "Evaluating {}: input {:?}, expected {:?}, got {:?}",
                                 node,
@@ -408,8 +409,8 @@ where
                 }
 
                 let vs = eval(
-                    &mut self.session_state,
-                    self.states[node.id].as_deref_mut(),
+                    &mut self.turn_state,
+                    self.op_states[node.id].as_deref_mut(),
                     node,
                     inputs,
                 )
@@ -420,7 +421,7 @@ where
                         if let Ok(f) = o.fact.to_typed_fact() {
                             for (dim_abstract, dim_concrete) in f.shape.iter().zip(v.shape()) {
                                 Self::resolve(
-                                    &mut self.session_state,
+                                    &mut self.turn_state,
                                     dim_abstract,
                                     *dim_concrete as i64,
                                 )?;
@@ -442,7 +443,7 @@ where
                         if node.outputs[ix].successors.len() == 0 {
                             continue;
                         }
-                        if !f.matches(v, Some(&self.session_state.resolved_symbols))? {
+                        if !f.matches(v, Some(&self.turn_state.resolved_symbols))? {
                             bail!(
                                 "Evaluating {}: output {:?}, expected {:?}, got {:?}",
                                 node,
@@ -454,11 +455,11 @@ where
                     }
                 }
 
-                self.values[node.id] = Some(vs);
+                self.turn_state.values[node.id] = Some(vs);
             }
             plan.session_handler
                 .as_ref()
-                .map(|it| it.after_plan_eval(&mut self.session_state))
+                .map(|it| it.after_plan_eval(&mut self.turn_state))
                 .transpose()?;
         }
         Ok(())
@@ -478,7 +479,7 @@ where
         Ok(())
     }
 
-    fn resolve(state: &mut SessionState, expression: &TDim, provided: i64) -> TractResult<()> {
+    fn resolve(state: &mut TurnState, expression: &TDim, provided: i64) -> TractResult<()> {
         let expected = expression.eval(&state.resolved_symbols);
         if let Ok(x) = expected.to_i64() {
             if x != provided {
@@ -511,16 +512,16 @@ where
             .with_context(|| format!("Invalid input id for model ({input})."))?;
         if let Ok(fact) = self.plan.model.outlet_fact(outlet)?.to_typed_fact() {
             for (expected, provided) in fact.shape.iter().zip(t.shape()) {
-                Self::resolve(&mut self.session_state, expected, *provided as i64)?;
+                Self::resolve(&mut self.turn_state, expected, *provided as i64)?;
             }
         }
         let fact = self.plan.model.outlet_fact(outlet)?;
         ensure!(
-            fact.matches(&t, Some(&self.session_state.resolved_symbols))
+            fact.matches(&t, Some(&self.turn_state.resolved_symbols))
                 .with_context(|| format!("Setting input {input}"))?,
             "Input at index {input} has incorrect dtype or shape (got {t:?}, expected to match fact {fact:?})",
         );
-        self.session_state.inputs.insert(outlet.node, t);
+        self.turn_state.inputs.insert(outlet.node, t);
         Ok(())
     }
 
@@ -533,6 +534,7 @@ where
             )
         })?;
         let value: &TValue = self
+            .turn_state
             .values
             .get(outlet.node)
             .context("node id for output beyond node values array")?
@@ -544,10 +546,10 @@ where
     }
 
     pub fn outputs(&mut self) -> TractResult<TVec<TValue>> {
-        let &mut SimpleState { ref plan, ref mut values, .. } = self;
+        let &mut SimpleState { ref plan, ref mut turn_state, .. } = self;
         let mut v = tvec![];
         for o in plan.outputs.iter() {
-            let vs = values[o.node].as_mut().ok_or_else(|| {
+            let vs = turn_state.values[o.node].as_mut().ok_or_else(|| {
                 format_err!("Outputs of {:?} are not computed", &plan.model.nodes()[o.node])
             })?;
             v.push(vs[o.slot].clone())
@@ -556,7 +558,7 @@ where
     }
 
     pub fn set_values(&mut self, id: usize, values: TVec<TValue>) -> TractResult<()> {
-        self.values[id] = Some(values);
+        self.turn_state.values[id] = Some(values);
         Ok(())
     }
 
@@ -565,13 +567,13 @@ where
     }
 
     pub fn prepare_inputs(&self, node: usize) -> TractResult<TVec<TValue>> {
-        let SimpleState { plan, values, .. } = self;
+        let SimpleState { plan, turn_state, .. } = self;
         let nodes = plan.model.nodes();
         let node = &nodes[node];
         let mut inputs: TVec<TValue> = tvec![];
         for i in &node.inputs {
             let prec_node = &nodes[i.node];
-            let prec = values[i.node].as_ref().ok_or_else(|| {
+            let prec = turn_state.values[i.node].as_ref().ok_or_else(|| {
                 format_err!("Computing {}, precursor {} not done.", node, prec_node)
             })?;
             inputs.push(prec[i.slot].clone())
@@ -589,17 +591,11 @@ where
         node: usize,
         inputs: TVec<TValue>,
     ) -> TractResult<()> {
-        let &mut SimpleState {
-            ref plan,
-            ref mut session_state,
-            ref mut values,
-            ref mut states,
-            ..
-        } = self;
+        let &mut SimpleState { ref plan, ref mut turn_state, op_states: ref mut states, .. } = self;
         let nodes = plan.model.nodes();
         let node = &nodes[node];
-        let vs = eval(session_state, states[node.id].as_deref_mut(), node, inputs)?;
-        values[node.id] = Some(vs);
+        let vs = eval(turn_state, states[node.id].as_deref_mut(), node, inputs)?;
+        turn_state.values[node.id] = Some(vs);
         Ok(())
     }
 
@@ -609,7 +605,7 @@ where
             let precs: Vec<usize> =
                 self.model().nodes()[node].inputs.iter().map(|i| i.node).collect();
             for i in precs.into_iter() {
-                if self.values[i].is_none() {
+                if self.turn_state.values[i].is_none() {
                     let _ = self.compute_recursively(i)?;
                 }
             }
@@ -617,14 +613,19 @@ where
             {
                 let node = &self.model().nodes()[node];
                 for i in &node.inputs {
-                    inputs.push(self.values[i.node].as_ref().unwrap()[i.slot].clone())
+                    inputs.push(self.turn_state.values[i.node].as_ref().unwrap()[i.slot].clone())
                 }
             }
-            let &mut Self { ref mut states, ref mut session_state, ref plan, .. } = self;
+            let &mut Self {
+                op_states: ref mut states,
+                turn_state: ref mut session_state,
+                ref plan,
+                ..
+            } = self;
             eval(session_state, states[node].as_deref_mut(), &plan.model().nodes[node], inputs)?
         };
-        self.values[node] = Some(values);
-        Ok(self.values[node].as_ref().unwrap())
+        self.turn_state.values[node] = Some(values);
+        Ok(self.turn_state.values[node].as_ref().unwrap())
     }
 
     pub fn take_by_name(&mut self, name: &str) -> TractResult<TVec<Tensor>> {
@@ -633,7 +634,7 @@ where
     }
 
     pub fn take(&mut self, id: usize) -> TractResult<TVec<Tensor>> {
-        Ok(self.values[id]
+        Ok(self.turn_state.values[id]
             .take()
             .ok_or_else(|| format_err!("Node is not computed"))?
             .into_iter()
@@ -653,16 +654,17 @@ where
         FrozenSimpleState {
             plan: self.plan.clone(),
             inputs: self
-                .session_state
+                .turn_state
                 .inputs
                 .iter()
                 .map(|(ix, t)| (*ix, t.clone().into_tensor()))
                 .collect(),
-            resolved_symbols: self.session_state.resolved_symbols.clone(),
-            scenario: self.session_state.scenario,
-            tensors: self.session_state.tensors.clone(),
-            states: self.states.iter().map(|s| s.as_ref().map(|s| s.freeze())).collect(),
+            resolved_symbols: self.turn_state.resolved_symbols.clone(),
+            scenario: self.turn_state.scenario,
+            tensors: self.turn_state.tensors.clone(),
+            states: self.op_states.iter().map(|s| s.as_ref().map(|s| s.freeze())).collect(),
             values: self
+                .turn_state
                 .values
                 .iter()
                 .enumerate()
@@ -679,7 +681,7 @@ where
 }
 
 pub fn eval<F, O>(
-    session_state: &mut SessionState,
+    session_state: &mut TurnState,
     mut state: Option<&mut (dyn OpState + 'static)>,
     node: &Node<F, O>,
     input: TVec<TValue>,
@@ -722,20 +724,22 @@ where
     pub fn unfreeze(&self) -> SimpleState<F, O> {
         let mut state = SimpleState {
             plan: self.plan.clone(),
-            session_state: SessionState {
+            turn_state: TurnState {
                 inputs: self.inputs.iter().map(|(ix, t)| (*ix, t.clone().into_tvalue())).collect(),
                 resolved_symbols: self.resolved_symbols.clone(),
                 scenario: self.scenario,
                 tensors: self.tensors.clone(),
                 cached_mmm_scratch_space: None.into(),
                 scratch_extensions: anymap3::Map::new(),
+                values: self
+                    .values
+                    .iter()
+                    .map(|t| {
+                        t.as_ref().map(|t| t.iter().map(|t| t.clone().into_tvalue()).collect())
+                    })
+                    .collect(),
             },
-            states: self.states.iter().map(|s| s.as_ref().map(|s| s.unfreeze())).collect(),
-            values: self
-                .values
-                .iter()
-                .map(|t| t.as_ref().map(|t| t.iter().map(|t| t.clone().into_tvalue()).collect()))
-                .collect(),
+            op_states: self.states.iter().map(|s| s.as_ref().map(|s| s.unfreeze())).collect(),
         };
         state.populate_consts();
         state

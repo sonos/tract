@@ -119,7 +119,7 @@ impl EvalOp for EinSumMatMul {
     fn eval_with_session(
         &self,
         node_id: usize,
-        session: &SessionState,
+        session: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         self.op.eval_with_session(node_id, session, inputs)

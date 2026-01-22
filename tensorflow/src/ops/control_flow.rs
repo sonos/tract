@@ -82,7 +82,7 @@ impl EvalOp for NextIteration {
 
     fn state(
         &self,
-        _state: &mut SessionState,
+        _state: &mut TurnState,
         _id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
         unimplemented!();
