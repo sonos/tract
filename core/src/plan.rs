@@ -14,7 +14,6 @@ use crate::runtime::RunOptions;
 use self::order::{build_flush_list, eval_order_for_nodes, eval_order_opt_ram_for_nodes};
 
 pub struct TurnState {
-    pub inputs: HashMap<usize, TValue>,
     pub resolved_symbols: SymbolValues,
     pub scenario: Option<usize>,
     pub tensors: HashMap<String, Tensor>,
@@ -26,7 +25,6 @@ pub struct TurnState {
 impl Default for TurnState {
     fn default() -> Self {
         TurnState {
-            inputs: HashMap::default(),
             resolved_symbols: SymbolValues::default(),
             tensors: HashMap::default(),
             scenario: None,
@@ -40,7 +38,6 @@ impl Default for TurnState {
 impl Clone for TurnState {
     fn clone(&self) -> Self {
         TurnState {
-            inputs: self.inputs.clone(),
             resolved_symbols: self.resolved_symbols.clone(),
             tensors: self.tensors.clone(),
             scenario: self.scenario,
@@ -522,7 +519,8 @@ where
                 .with_context(|| format!("Setting input {input}"))?,
             "Input at index {input} has incorrect dtype or shape (got {t:?}, expected to match fact {fact:?})",
         );
-        self.turn_state.inputs.insert(outlet.node, t);
+        self.ready_turn();
+        self.turn_state.values[outlet.node] = Some(tvec!(t));
         Ok(())
     }
 
@@ -654,12 +652,6 @@ where
     pub fn freeze(&self) -> FrozenSimpleState<F, O> {
         FrozenSimpleState {
             plan: self.plan.clone(),
-            inputs: self
-                .turn_state
-                .inputs
-                .iter()
-                .map(|(ix, t)| (*ix, t.clone().into_tensor()))
-                .collect(),
             resolved_symbols: self.turn_state.resolved_symbols.clone(),
             scenario: self.turn_state.scenario,
             tensors: self.turn_state.tensors.clone(),
@@ -709,7 +701,6 @@ where
     O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
     plan: Arc<SimplePlan<F, O>>,
-    pub inputs: HashMap<usize, Tensor>,
     pub resolved_symbols: SymbolValues,
     pub scenario: Option<usize>,
     pub tensors: HashMap<String, Tensor>,
@@ -726,7 +717,6 @@ where
         SimpleState {
             plan: self.plan.clone(),
             turn_state: TurnState {
-                inputs: self.inputs.iter().map(|(ix, t)| (*ix, t.clone().into_tvalue())).collect(),
                 resolved_symbols: self.resolved_symbols.clone(),
                 scenario: self.scenario,
                 tensors: self.tensors.clone(),
