@@ -38,11 +38,11 @@ setup(
         options={"bdist_wheel": {"universal": True}},
         classifiers=[
             "Programming Language :: Python :: 3",
-            "Programming Language :: Python :: 3.7",
-            "Programming Language :: Python :: 3.8",
             "Programming Language :: Python :: 3.9",
             "Programming Language :: Python :: 3.10",
             "Programming Language :: Python :: 3.11",
+            "Programming Language :: Python :: 3.12",
+            "Programming Language :: Python :: 3.13",
             "Programming Language :: Rust",
             "Topic :: Scientific/Engineering :: Mathematics",
             "Topic :: Scientific/Engineering :: Artificial Intelligence",
@@ -52,8 +52,7 @@ setup(
         rust_extensions=[RustExtension("tract.tract", binding=Binding.NoBinding, path="rust-workspace/api/ffi/Cargo.toml")],
         packages=["tract"],
         zip_safe=False,
-        python_requires=">=3.7",
+        python_requires=">=3.9",
         install_requires=[ "numpy" ],
         extras_require={ "test": ["pytest"] },
 )
-

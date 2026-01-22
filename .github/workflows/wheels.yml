@@ -38,21 +38,21 @@ jobs:
         with:
           rust-version: stable
 
-      - uses: actions/setup-python@v3
+      - uses: actions/setup-python@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
 
       - name: Install rust toolchains
         if: startsWith(matrix.os, 'macOS')
         run: rustup target install x86_64-apple-darwin aarch64-apple-darwin
-
-      - name: Install cibuildwheel
-        run: python -m pip install cibuildwheel
 
       - name: Build wheels
         uses: nick-fields/retry@v2
         with:
           max_attempts: 1
           timeout_seconds: 54000 # 15 hours :/
-          command: python -m cibuildwheel --output-dir wheelhouse api/py
+          command: uvx cibuildwheel --output-dir wheelhouse api/py
 
       - uses: actions/upload-artifact@v4
         with:
@@ -65,8 +65,11 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
+    - name: Install uv
+      uses: astral-sh/setup-uv@v5
+
     - name: Build SDist
-      run: cd api/py ; pipx run build --sdist
+      run: cd api/py && uv build --sdist
 
     - uses: actions/upload-artifact@v4
       with:
