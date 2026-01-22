@@ -99,4 +99,4 @@ impl TypedOp for PinConst {
     as_op!();
 }
 
-trivial_op_state_freeeze!(PinConst);
+trivial_op_state_freeze!(PinConst);

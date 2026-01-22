@@ -1,6 +1,6 @@
 use std::ops::Range;
 use tract_nnef::internal::*;
-use tract_nnef::tract_core::trivial_op_state_freeeze;
+use tract_nnef::tract_core::trivial_op_state_freeze;
 
 /// Concat with pulse along concat axis
 #[derive(Debug, Clone, Hash)]
@@ -44,7 +44,7 @@ impl TypedOp for PulsedSameAxisConcat {
 pub struct PulsedSameAxisConcatState {
     current_pos: usize,
 }
-trivial_op_state_freeeze!(PulsedSameAxisConcatState);
+trivial_op_state_freeze!(PulsedSameAxisConcatState);
 
 impl OpState for PulsedSameAxisConcatState {
     fn eval(

@@ -6,7 +6,7 @@ use rand_distr::StandardNormal;
 use rand_distr::num_traits::Float;
 use tract_nnef::internal::*;
 use tract_nnef::ser::{array, tdims};
-use tract_nnef::tract_core::trivial_op_state_freeeze;
+use tract_nnef::tract_core::trivial_op_state_freeze;
 
 pub fn register(registry: &mut Registry) {
     registry.register_primitive(
@@ -159,7 +159,7 @@ impl OpState for RandomState {
     }
 }
 
-trivial_op_state_freeeze!(RandomState);
+trivial_op_state_freeze!(RandomState);
 
 fn sample_uniform<T: Datum + SampleUniform + Copy>(
     t: &mut Tensor,

@@ -1,6 +1,6 @@
 use tract_nnef::internal::*;
 use tract_nnef::ser::tdim;
-use tract_nnef::tract_core::trivial_op_state_freeeze;
+use tract_nnef::tract_core::trivial_op_state_freeze;
 
 pub fn register(registry: &mut Registry) {
     registry.register_primitive(
@@ -145,4 +145,4 @@ impl TypedOp for PulseMask {
     as_op!();
 }
 
-trivial_op_state_freeeze!(PulseMaskOpState);
+trivial_op_state_freeze!(PulseMaskOpState);

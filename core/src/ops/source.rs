@@ -2,7 +2,7 @@ use crate::internal::*;
 
 #[derive(Debug, Clone, new)]
 pub struct SourceState(pub usize);
-trivial_op_state_freeeze!(SourceState);
+trivial_op_state_freeze!(SourceState);
 
 impl OpState for SourceState {
     fn eval(
