@@ -221,12 +221,10 @@ where
 {
     pub fn new(plan: &Arc<SimplePlan<F, O>>) -> TractResult<SimpleState<F, O>> {
         let plan = Arc::clone(plan);
-        let mut turn = TurnState::default();
-        turn.values = vec![None; plan.model.nodes().len()];
+        let turn = TurnState::default();
         let model = plan.model();
         let states: Vec<Option<Box<dyn OpState>>> = vec![None; model.nodes.len()];
         let mut state = SimpleState { plan, op_states: states, turn_state: turn };
-        state.populate_consts();
         state.reset_op_states()?;
         Ok(state)
     }
@@ -242,14 +240,16 @@ where
         Ok(state)
     }
 
-    fn populate_consts(&mut self) {
-        for node in &self.plan.model.nodes {
-            if let Some(k) = node.op_as::<Const>() {
-                self.turn_state.values[node.id] = Some(tvec!(k.val().clone().into_tvalue()));
+    fn ready_turn(&mut self) {
+        if self.turn_state.values.len() == 0 {
+            self.turn_state.values = vec![None; self.plan.model.nodes().len()];
+            for node in &self.plan.model.nodes {
+                if let Some(k) = node.op_as::<Const>() {
+                    self.turn_state.values[node.id] = Some(tvec!(k.val().clone().into_tvalue()));
+                }
             }
         }
     }
-
     /// Reset wires state.
     pub fn reset_turn(&mut self) -> TractResult<()> {
         for node in &self.plan.order {
@@ -360,33 +360,33 @@ where
         E: Into<anyhow::Error> + Send + Sync + 'static,
     {
         {
-            let plan = &self.plan;
-            let model = &plan.model;
-            plan.session_handler
+            self.ready_turn();
+            self.plan
+                .session_handler
                 .as_ref()
                 .map(|it| it.before_plan_eval(&mut self.turn_state))
                 .transpose()?;
 
-            for (step, n) in plan.order.iter().enumerate() {
-                let node = model.node(*n);
+            for (step, n) in self.plan.order.iter().enumerate() {
+                let node = self.plan.model.node(*n);
                 trace!("Running step {step}, node {node}");
                 let mut inputs: TVec<TValue> = tvec![];
                 for i in &node.inputs {
                     trace!("  use input {i:?}");
-                    let prec_node = model.node(i.node);
+                    let prec_node = self.plan.model.node(i.node);
                     let prec = self.turn_state.values[i.node].as_ref().ok_or_else(|| {
                         format_err!("Computing {}, precursor {} not done:", node, prec_node)
                     })?;
                     inputs.push(prec[i.slot].clone())
                 }
 
-                for flush in &plan.flush_lists[step] {
-                    trace!("  Ran {} can now flush {}", node, model.node(*flush));
+                for flush in &self.plan.flush_lists[step] {
+                    trace!("  Ran {} can now flush {}", node, self.plan.model.node(*flush));
                     self.turn_state.values[*flush] = None;
                 }
 
                 if cfg!(debug_assertions) {
-                    let facts = model.node_input_facts(node.id)?;
+                    let facts = self.plan.model.node_input_facts(node.id)?;
                     if facts.len() != inputs.len() {
                         bail!(
                             "Evaluating {}: expected {} inputs, got {}",
@@ -416,7 +416,7 @@ where
                 )
                 .map_err(|e| e.into())?;
 
-                if plan.has_unresolved_symbols {
+                if self.plan.has_unresolved_symbols {
                     for (o, v) in node.outputs.iter().zip(vs.iter()) {
                         if let Ok(f) = o.fact.to_typed_fact() {
                             for (dim_abstract, dim_concrete) in f.shape.iter().zip(v.shape()) {
@@ -430,7 +430,7 @@ where
                     }
                 }
                 if cfg!(debug_assertions) {
-                    let facts = model.node_output_facts(node.id)?;
+                    let facts = self.plan.model.node_output_facts(node.id)?;
                     if facts.len() != vs.len() {
                         bail!(
                             "Evaluating {}: expected {} outputs, got {}",
@@ -457,7 +457,8 @@ where
 
                 self.turn_state.values[node.id] = Some(vs);
             }
-            plan.session_handler
+            self.plan
+                .session_handler
                 .as_ref()
                 .map(|it| it.after_plan_eval(&mut self.turn_state))
                 .transpose()?;
@@ -722,7 +723,7 @@ where
     O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
     pub fn unfreeze(&self) -> SimpleState<F, O> {
-        let mut state = SimpleState {
+        SimpleState {
             plan: self.plan.clone(),
             turn_state: TurnState {
                 inputs: self.inputs.iter().map(|(ix, t)| (*ix, t.clone().into_tvalue())).collect(),
@@ -740,9 +741,7 @@ where
                     .collect(),
             },
             op_states: self.states.iter().map(|s| s.as_ref().map(|s| s.unfreeze())).collect(),
-        };
-        state.populate_consts();
-        state
+        }
     }
 }
 
