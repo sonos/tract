@@ -13,10 +13,11 @@ impl OpState for SourceState {
     ) -> TractResult<TVec<TValue>> {
         Ok(tvec!(
             session
-                .inputs
-                .get(&self.0)
+                .values
+                .get(self.0)
+                .and_then(|v| v.as_ref())
+                .and_then(|vs| vs.first().cloned())
                 .with_context(|| format!("Input for node {} is missing", self.0))?
-                .clone()
         ))
     }
 }
