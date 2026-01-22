@@ -41,5 +41,5 @@ class Onnx:
         """
         model = c_void_p()
         path = str(path).encode("utf-8")
-        check(lib.tract_onnx_model_for_path(self.ptr, path, byref(model)))
+        check(lib.tract_onnx_load(self.ptr, path, byref(model)))
         return InferenceModel(model)
