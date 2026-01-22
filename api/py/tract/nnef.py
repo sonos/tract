@@ -29,14 +29,14 @@ class Nnef:
         if self.ptr == None:
             raise TractError("invalid inference model (maybe already consumed ?)")
 
-    def model_for_path(self, path: Union[str, Path]) -> Model:
+    def load(self, path: Union[str, Path]) -> Model:
         """
         Load an NNEF model from the file or folder at `path`
 
         ```python
         model = (
             tract.nnef()
-            .model_for_path("mobilenet_v2_1.0.onnx.nnef.tgz")
+            .load("mobilenet_v2_1.0.onnx.nnef.tgz")
             .into_optimized()
             .into_runnable()
         )

@@ -44,3 +44,47 @@ class Runnable:
         state = c_void_p()
         check(lib.tract_runnable_spawn_state(self.ptr, byref(state)))
         return State(state)
+
+    def profile_json(self, inputs: Union[None, List[Union[Value, numpy.ndarray]]], state_initializers: Union[None, List[Union[Value, numpy.ndarray]]]) -> str:
+        """Profile the model. Also compute the static costs of operators.
+
+        Returns is a json buffer.
+        """
+        self._valid()
+        cstring = c_char_p()
+        input_values = []
+        input_ptrs = None
+        if inputs != None:
+            for v in inputs:
+                if isinstance(v, Value):
+                    input_values.append(v)
+                elif isinstance(v, numpy.ndarray):
+                    input_values.append(Value.from_numpy(v))
+                else:
+                    raise TractError(f"Inputs must be of type tract.Value or numpy.Array, got {v}")
+            input_ptrs = (c_void_p * len(inputs))()
+            for ix, v in enumerate(input_values):
+                input_ptrs[ix] = v.ptr
+
+        state_values = []
+        state_ptrs = None
+        n_states = 0
+        if state_initializers != None:
+            n_states = len(state_initializers)
+            state_ptrs = (c_void_p * n_states)()
+
+            for ix, v in enumerate(state_initializers):
+                if isinstance(v, Value):
+                    state_values.append(v)
+                elif isinstance(v, numpy.ndarray):
+                    state_values.append(Value.from_numpy(v))
+                else:
+                    raise TractError(f"State values must be of type tract.Value or numpy.Array, got {v}")
+
+                state_ptrs[ix] = state_values[ix].ptr
+
+        check(lib.tract_runnable_profile_json(self.ptr, input_ptrs, state_ptrs, n_states, byref(cstring)))
+        result = str(cstring.value, "utf-8")
+        lib.tract_free_cstring(cstring)
+        return result
+

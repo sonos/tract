@@ -14,7 +14,7 @@ import tract
 # load MobileNet version 2, an image categorization model
 model = (
     tract.onnx()
-    .model_for_path("./mobilenetv2-7.onnx")
+    .load("./mobilenetv2-7.onnx")
     .into_optimized()
     .into_runnable()
 )

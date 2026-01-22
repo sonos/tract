@@ -15,7 +15,7 @@ class InferenceModel:
 
     ```python
     # load the model as an InferenceModel
-    model = tract.onnx().model_for_path("./mobilenetv2-7.onnx")
+    model = tract.onnx().load("./mobilenetv2-7.onnx")
 
     # set the shape and type of its first and only input
     model.set_input_fact(0, "1,3,224,224,f32")
@@ -35,17 +35,7 @@ class InferenceModel:
         if self.ptr == None:
             raise TractError("invalid inference model (maybe already consumed ?)")
 
-    def into_optimized(self) -> Model:
-        """
-        Run the InferenceModel through the full tract optimisation pipeline to get an
-        optimised Model.
-        """
-        self._valid()
-        model = c_void_p()
-        check(lib.tract_inference_model_into_optimized(byref(self.ptr), byref(model)))
-        return Model(model)
-
-    def into_typed(self) -> Model:
+    def into_tract(self) -> Model:
         """
         Convert an InferenceModel to a regular typed `Model`.
 
@@ -54,7 +44,7 @@ class InferenceModel:
         """
         self._valid()
         model = c_void_p()
-        check(lib.tract_inference_model_into_typed(byref(self.ptr), byref(model)))
+        check(lib.tract_inference_model_into_tract(byref(self.ptr), byref(model)))
         return Model(model)
 
     def input_count(self) -> int:
