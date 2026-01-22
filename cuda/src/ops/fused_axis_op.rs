@@ -159,11 +159,7 @@ impl EvalOp for CudaFusedAxisOp {
         self.op.is_stateless()
     }
 
-    fn state(
-        &self,
-        session: &mut TurnState,
-        node_id: usize,
-    ) -> TractResult<Option<Box<dyn OpState>>> {
+    fn state(&self, session: &TurnState, node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
         if let Some(state) = self.op.state(session, node_id)? {
             Ok(Some(Box::new(CudaFusedAxisOpState { op_state: state })))
         } else {

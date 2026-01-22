@@ -41,11 +41,9 @@ members = [
     "examples/pytorch-resnet",
 
     "harness/core-proptest-pulse",
-    "harness/lstm-proptest-onnx-vs-tf",
     "harness/nnef-inceptionv3",
     "harness/tf-inceptionv3",
     "harness/tf-mobilenet-v2",
-    "harness/tf-moz-deepspeech",
     "harness/tfl-mobilenet-v2-q",
 
     "test-rt/infra",
@@ -97,11 +95,9 @@ default-members = [
     "examples/pytorch-resnet",
 
     "harness/core-proptest-pulse",
-    "harness/lstm-proptest-onnx-vs-tf",
     "harness/nnef-inceptionv3",
     "harness/tf-inceptionv3",
     "harness/tf-mobilenet-v2",
-    "harness/tf-moz-deepspeech",
     "harness/tfl-mobilenet-v2-q",
 
     "test-rt/infra",

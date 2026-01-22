@@ -168,7 +168,7 @@ impl EvalOp for CudaDynKVCache {
     #[allow(unused_variables)]
     fn state(
         &self,
-        session: &mut tract_core::internal::TurnState,
+        session: &tract_core::internal::TurnState,
         node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::new(CudaDynKVCacheState::new(

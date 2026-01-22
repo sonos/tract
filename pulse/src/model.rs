@@ -229,11 +229,7 @@ impl EvalOp for PulseWrappingOp {
         self.0.eval(inputs)
     }
 
-    fn state(
-        &self,
-        session: &mut TurnState,
-        node_id: usize,
-    ) -> TractResult<Option<Box<dyn OpState>>> {
+    fn state(&self, session: &TurnState, node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
         self.0.state(session, node_id)
     }
 }
@@ -305,11 +301,7 @@ impl EvalOp for NonPulsingWrappingOp {
         self.0.eval(inputs)
     }
 
-    fn state(
-        &self,
-        session: &mut TurnState,
-        node_id: usize,
-    ) -> TractResult<Option<Box<dyn OpState>>> {
+    fn state(&self, session: &TurnState, node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
         self.0.state(session, node_id)
     }
 }

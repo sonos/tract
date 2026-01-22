@@ -243,7 +243,7 @@ impl EvalOp for PulsePad {
 
     fn state(
         &self,
-        _session: &mut TurnState,
+        _session: &TurnState,
         _node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::<PulsePadOpState>::default()))

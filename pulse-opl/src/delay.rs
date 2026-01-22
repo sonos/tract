@@ -139,7 +139,7 @@ impl EvalOp for Delay {
 
     fn state(
         &self,
-        _session: &mut TurnState,
+        _session: &TurnState,
         _node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::new(DelayState { buffer: None })))

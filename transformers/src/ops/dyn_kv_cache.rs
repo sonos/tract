@@ -133,7 +133,7 @@ impl EvalOp for DynKeyValueCache {
 
     fn state(
         &self,
-        _session: &mut TurnState,
+        _session: &TurnState,
         _node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::new(DynKeyValueCacheState {

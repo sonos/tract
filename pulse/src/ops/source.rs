@@ -33,11 +33,7 @@ impl EvalOp for PulsedSource {
         false
     }
 
-    fn state(
-        &self,
-        _session: &mut TurnState,
-        node_id: usize,
-    ) -> TractResult<Option<Box<dyn OpState>>> {
+    fn state(&self, _session: &TurnState, node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::new(SourceState(node_id))))
     }
 }

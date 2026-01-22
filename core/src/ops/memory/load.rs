@@ -31,7 +31,7 @@ impl EvalOp for Load {
 
     fn state(
         &self,
-        _session: &mut TurnState,
+        _session: &TurnState,
         _node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::new(self.clone())))

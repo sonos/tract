@@ -38,11 +38,7 @@ impl EvalOp for InferenceScan {
         false
     }
 
-    fn state(
-        &self,
-        session: &mut TurnState,
-        node_id: usize,
-    ) -> TractResult<Option<Box<dyn OpState>>> {
+    fn state(&self, session: &TurnState, node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
         self.to_mir_scan()?.state(session, node_id)
     }
 }

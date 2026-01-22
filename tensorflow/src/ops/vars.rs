@@ -83,11 +83,7 @@ impl EvalOp for VariableV2 {
         false
     }
 
-    fn state(
-        &self,
-        state: &mut TurnState,
-        _node_id: usize,
-    ) -> TractResult<Option<Box<dyn OpState>>> {
+    fn state(&self, state: &TurnState, _node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
         let tensor = if let Some(init) = &self.initializer {
             init.clone().into_tensor()
         } else {

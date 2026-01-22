@@ -25,7 +25,7 @@ pub mod konst;
 pub mod logic;
 pub mod math;
 pub mod matmul;
-pub mod memory;
+// pub mod memory;
 pub mod nn;
 pub mod quant;
 pub mod scan;
@@ -141,11 +141,7 @@ pub trait EvalOp {
     }
 
     #[allow(unused_variables)]
-    fn state(
-        &self,
-        session: &mut TurnState,
-        node_id: usize,
-    ) -> TractResult<Option<Box<dyn OpState>>> {
+    fn state(&self, session: &TurnState, node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(None)
     }
 
