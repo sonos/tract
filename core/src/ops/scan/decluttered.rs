@@ -6,6 +6,7 @@ use crate::optim::OptimizerSession;
 
 use super::optimized::{OptScan, ScanOpParams};
 use tract_data::internal::*;
+use tract_data::itertools::izip;
 
 use super::*;
 
@@ -72,6 +73,34 @@ impl Scan {
         new.body = body;
         new.decluttered = true;
         Ok(Some(TypedModelPatch::replace_single_op(model, node, &node.inputs, new)?))
+    }
+
+    fn declutter_single_loop(
+        &self,
+        _session: &mut OptimizerSession,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        let inputs = model.node_input_facts(node.id)?;
+        let iters =
+            super::iteration_count(&self.input_mapping, &inputs).context("No scan input")?;
+        if !iters.is_one() {
+            return Ok(None);
+        }
+        let mut patch = TypedModelPatch::new("Inline single loop scan");
+        patch.model = self.body.clone();
+        for (outer_wire, inner_wire) in izip!(&node.inputs, &self.body.inputs) {
+            patch.taps.insert(*inner_wire, *outer_wire);
+        }
+        for (inner_wire, mapping) in izip!(&self.body.outputs, &self.output_mapping) {
+            if let Some((slot, _)) = mapping.scan {
+                patch.shunt_outside(model, (node.id, slot).into(), *inner_wire)?;
+            }
+            if let Some(slot) = mapping.last_value_slot {
+                patch.shunt_outside(model, (node.id, slot).into(), *inner_wire)?;
+            }
+        }
+        Ok(Some(patch))
     }
 
     fn declutter_body_axes(
@@ -824,6 +853,7 @@ impl TypedOp for Scan {
                 }
             };
         }
+        pass!(declutter_single_loop);
         pass!(declutter_const_input);
         pass!(declutter_discard_unused_input);
         pass!(declutter_discard_useless_outer_output);
