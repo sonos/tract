@@ -122,7 +122,7 @@ pub fn profile(
     let mut iters = 0usize;
     let prefix = tvec!();
 
-    bench_limits.warmup(&runnable, inputs)?;
+    bench_limits.warmup(runnable, inputs)?;
 
     let reuse = reusable_state(runnable);
     let mut state = plan.spawn()?;
@@ -190,7 +190,7 @@ pub fn profile_gpu(
     let mut iters = 0usize;
     let prefix = tvec!();
 
-    bench_limits.warmup(&runnable, inputs)?;
+    bench_limits.warmup(runnable, inputs)?;
 
     let reuse = reusable_state(runnable);
     let mut state = plan.spawn()?;

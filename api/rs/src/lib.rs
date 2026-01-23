@@ -16,7 +16,6 @@ use tract_nnef::prelude::{
 use tract_onnx::prelude::InferenceModelExt;
 use tract_onnx_opl::WithOnnx;
 use tract_pulse::WithPulse;
-use tract_pulse::internal::RunOptions;
 use tract_pulse::model::{PulsedModel, PulsedModelExt};
 use tract_transformers::WithTractTransformers;
 

@@ -31,7 +31,7 @@ pub fn handle(
     let inputs = get_or_make_inputs(&params.tract_model, &run_params)?;
 
     limits.warmup(&params.req_runnable()?, &inputs)?;
-    let (iters, dur) = limits.bench(&params.runnable.as_ref().unwrap(), &inputs)?;
+    let (iters, dur) = limits.bench(&params.req_runnable()?, &inputs)?;
 
     if params.machine_friendly {
         println!("real: {}", dur.as_secs_f64());
