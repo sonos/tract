@@ -1,0 +1,11 @@
+[package]
+name = "example-nnef-mobilenet-v2"
+version = "0.20.7-pre"
+authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
+license = "MIT OR Apache-2.0"
+edition = "2024"
+
+[dependencies]
+image.workspace = true
+
+tract-nnef.workspace = true
