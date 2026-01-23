@@ -345,10 +345,9 @@ impl RunnableInterface for Runnable {
                 states.into_iter().for_each(|s| state_inits.push(s.try_into().unwrap().0));
             }
             tract_libcli::profile::profile(
-                model,
+                &self.0,
                 &BenchLimits::default(),
                 &mut annotations,
-                &RunOptions::default(),
                 &RunTensors { sources: vec![inputs], state_initializers: state_inits },
                 None,
                 true,
