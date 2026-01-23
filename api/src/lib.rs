@@ -243,8 +243,8 @@ pub trait ValueInterface: Sized + Clone {
         Self::from_bytes(T::datum_type(), shape, data)
     }
 
-    fn as_slice<T: Datum>(&self) -> Result<(&[usize], &[T])> {
-        let (dt, shape, data) = self.as_bytes()?;
+    fn as_slice<T: Datum>(&self) -> Result<&[T]> {
+        let (dt, _shape, data) = self.as_bytes()?;
         ensure!(T::datum_type() == dt);
         let data = unsafe {
             std::slice::from_raw_parts(
@@ -252,11 +252,17 @@ pub trait ValueInterface: Sized + Clone {
                 data.len() / std::mem::size_of::<T>(),
             )
         };
+        Ok(data)
+    }
+
+    fn as_shape_and_slice<T: Datum>(&self) -> Result<(&[usize], &[T])> {
+        let (_, shape, _) = self.as_bytes()?;
+        let data = self.as_slice()?;
         Ok((shape, data))
     }
 
     fn view<T: Datum>(&self) -> Result<ndarray::ArrayViewD<'_, T>> {
-        let (shape, data) = self.as_slice()?;
+        let (shape, data) = self.as_shape_and_slice()?;
         Ok(unsafe { ndarray::ArrayViewD::from_shape_ptr(shape, data.as_ptr()) })
     }
 }

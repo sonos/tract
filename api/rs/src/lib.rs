@@ -21,6 +21,12 @@ use tract_transformers::WithTractTransformers;
 
 use tract_api::*;
 
+pub mod prelude {
+    pub use crate::{Model, Runnable, Runtime, Value, nnef, onnx};
+    pub use ndarray;
+    pub use tract_api::*;
+}
+
 /// Creates an instance of an NNEF framework and parser that can be used to load and dump NNEF models.
 pub fn nnef() -> Result<Nnef> {
     Ok(Nnef(tract_nnef::nnef()))
@@ -36,6 +42,12 @@ pub fn version() -> &'static str {
 }
 
 pub struct Nnef(tract_nnef::internal::Nnef);
+
+impl Debug for Nnef {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Nnef")
+    }
+}
 
 impl NnefInterface for Nnef {
     type Model = Model;
@@ -418,7 +430,7 @@ impl StateInterface for State {
 }
 
 // VALUE
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Value(TValue);
 
 impl ValueInterface for Value {
