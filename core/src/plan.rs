@@ -16,7 +16,6 @@ use self::order::{build_flush_list, eval_order_for_nodes, eval_order_opt_ram_for
 pub struct TurnState {
     pub resolved_symbols: SymbolValues,
     pub scenario: Option<usize>,
-    pub tensors: HashMap<String, Tensor>,
     pub cached_mmm_scratch_space: RefCell<Option<Box<dyn tract_linalg::mmm::ScratchSpace>>>,
     pub scratch_extensions: anymap3::Map,
     pub values: Vec<Option<TVec<TValue>>>,
@@ -26,7 +25,6 @@ impl Default for TurnState {
     fn default() -> Self {
         TurnState {
             resolved_symbols: SymbolValues::default(),
-            tensors: HashMap::default(),
             scenario: None,
             cached_mmm_scratch_space: None.into(),
             scratch_extensions: anymap3::Map::new(),
@@ -39,7 +37,6 @@ impl Clone for TurnState {
     fn clone(&self) -> Self {
         TurnState {
             resolved_symbols: self.resolved_symbols.clone(),
-            tensors: self.tensors.clone(),
             scenario: self.scenario,
             cached_mmm_scratch_space: None.into(),
             scratch_extensions: anymap3::Map::new(),
@@ -257,7 +254,7 @@ where
     }
 
     /// Reset op inner state.
-    pub fn reset_op_states(&mut self) -> TractResult<()> {
+    fn reset_op_states(&mut self) -> TractResult<()> {
         let &mut SimpleState { ref plan, ref mut turn_state, op_states: ref mut states, .. } = self;
         for (ix, n) in plan.model.nodes.iter().enumerate() {
             states[ix] = if n.op().is_stateless() { None } else { n.op().state(turn_state, ix)? };
@@ -654,7 +651,6 @@ where
             plan: self.plan.clone(),
             resolved_symbols: self.turn_state.resolved_symbols.clone(),
             scenario: self.turn_state.scenario,
-            tensors: self.turn_state.tensors.clone(),
             states: self.op_states.iter().map(|s| s.as_ref().map(|s| s.freeze())).collect(),
             values: self
                 .turn_state
@@ -703,7 +699,6 @@ where
     plan: Arc<SimplePlan<F, O>>,
     pub resolved_symbols: SymbolValues,
     pub scenario: Option<usize>,
-    pub tensors: HashMap<String, Tensor>,
     pub states: Vec<Option<Box<dyn FrozenOpState>>>,
     pub values: Vec<Option<TVec<Tensor>>>,
 }
@@ -719,7 +714,6 @@ where
             turn_state: TurnState {
                 resolved_symbols: self.resolved_symbols.clone(),
                 scenario: self.scenario,
-                tensors: self.tensors.clone(),
                 cached_mmm_scratch_space: None.into(),
                 scratch_extensions: anymap3::Map::new(),
                 values: self

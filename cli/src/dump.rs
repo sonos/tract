@@ -128,7 +128,6 @@ pub fn handle(
     }
     if options.profile {
         let run_params = run_params_from_subcommand(params, sub_matches)?;
-        let plan_options = plan_options_from_subcommand(sub_matches)?;
         let inputs = get_or_make_inputs(&params.tract_model, &run_params)?;
 
         if matches.is_present("metal") || matches.is_present("cuda") {
@@ -140,19 +139,17 @@ pub fn handle(
             }
 
             tract_libcli::profile::profile_gpu(
-                &params.req_typed_model(),
+                &params.req_runnable()?,
                 bench_limits,
                 sub_matches,
                 &mut annotations,
-                &plan_options,
                 &inputs,
             )?;
         } else {
             tract_libcli::profile::profile(
-                &params.req_typed_model(),
+                &params.req_runnable()?,
                 bench_limits,
                 &mut annotations,
-                &plan_options,
                 &inputs,
                 None,
                 options.folded,

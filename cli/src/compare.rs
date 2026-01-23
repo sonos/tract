@@ -262,7 +262,6 @@ pub fn handle_with_model(
             Ok(result)
         })?;
     }
-    state.reset_op_states()?;
     dispatch_model_no_pulse!(&params.tract_model, |m| compare(
         cumulative,
         &m,
@@ -396,7 +395,6 @@ where
             },
         )?;
     }
-    state.reset_op_states()?;
     for node in tract.nodes() {
         let color: nu_ansi_term::Style = if failing.contains(&node.id) {
             Red.into()
