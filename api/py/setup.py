@@ -34,7 +34,7 @@ setup(
             "Documentation": "https://sonos.github.io/tract",
             "Source": "https://github.com/sonos/tract",
         },
-        license="Apache License, Version 2.0 OR MIT",
+        license="(Apache-2.0 OR MIT)",
         long_description=readme,
         long_description_content_type="text/markdown",
         options={"bdist_wheel": {"universal": True}},
