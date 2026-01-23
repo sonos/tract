@@ -175,7 +175,7 @@ fn main() -> TractResult<()> {
 
         .arg(arg!(--"threads" [THREADS] "Setup a thread pool for computing. 0 will guess the number of physical cores"))
 
-        .arg(arg!(-O --optimize "Optimize before running"))
+        .arg(arg!(-O --optimize "Optimize before running").hide(true))
         .arg(arg!(--"assert-maximal-mm-quality-cost" [MAX] "Maximum value for quality category (0=assembly, 4=dreadful rust code)"))
         .arg(arg!(--pulse [PULSE] "Translate to pulse network"))
 
@@ -818,9 +818,6 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
 
     if need_optimisations {
         let style = nu_ansi_term::Style::new().fg(nu_ansi_term::Color::Red).bold();
-        if !matches.is_present("optimize") {
-            warn!("{}", style.paint("Profiling an un-optimized network. Consider adding -O."));
-        }
         if cfg!(debug_assertions) {
             warn!("{}", style.paint("Profiling a debug build of tract!"));
         }
