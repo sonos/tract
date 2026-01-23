@@ -16,7 +16,6 @@ test-command = """pytest {project}"""
 skip = "*i686 cp???t-*"
 before-build = """
 set -ex
-curl -LsSf https://astral.sh/uv/install.sh | sh
 uv pip install --system "numpy>=2,<3" --config-settings=setup-args="-Dallow-noblas=true"
 cargo --version || (curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal
 . $HOME/.cargo/env
