@@ -32,6 +32,7 @@ pub fn handle(
 
     limits.warmup(&params.req_runnable()?, &inputs)?;
     let (iters, dur) = limits.bench(&params.req_runnable()?, &inputs)?;
+    let dur = dur.div_f64(iters as _);
 
     if params.machine_friendly {
         println!("real: {}", dur.as_secs_f64());
