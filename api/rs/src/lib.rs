@@ -1,3 +1,8 @@
+#[cfg(target_vendor = "apple")]
+extern crate tract_metal;
+
+extern crate tract_cuda;
+
 use std::fmt::{Debug, Display};
 use std::path::Path;
 use std::sync::Arc;
@@ -34,6 +39,14 @@ pub fn nnef() -> Result<Nnef> {
 
 pub fn onnx() -> Result<Onnx> {
     Ok(Onnx(tract_onnx::onnx()))
+}
+
+pub fn runtime_for_name(name: &str) -> Result<Runtime> {
+    if let Some(rt) = tract_onnx::tract_core::runtime::runtime_for_name(name) {
+        Ok(Runtime(rt))
+    } else {
+        anyhow::bail!("Runtime {name} not available")
+    }
 }
 
 /// tract version tag
@@ -273,7 +286,7 @@ impl ModelInterface for Model {
 }
 
 // RUNTIME
-pub struct Runtime(Arc<dyn tract_nnef::internal::Runtime>);
+pub struct Runtime(&'static dyn tract_nnef::internal::Runtime);
 
 impl RuntimeInterface for Runtime {
     type Runnable = Runnable;
