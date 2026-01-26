@@ -261,13 +261,28 @@ pub trait ValueInterface: Sized + Clone {
         Ok((shape, data))
     }
 
+    fn shape(&self) -> Result<&[usize]> {
+        let (_, shape, _) = self.as_bytes()?;
+        Ok(shape)
+    }
+
     fn view<T: Datum>(&self) -> Result<ndarray::ArrayViewD<'_, T>> {
         let (shape, data) = self.as_shape_and_slice()?;
         Ok(unsafe { ndarray::ArrayViewD::from_shape_ptr(shape, data.as_ptr()) })
     }
 }
 
-pub trait FactInterface: Debug + Display + Clone {}
+pub trait FactInterface: Debug + Display + Clone {
+    type Dim: DimInterface;
+    fn rank(&self) -> Result<usize>;
+    fn dim(&self, axis: usize) -> Result<Self::Dim>;
+}
+
+pub trait DimInterface: Debug + Display + Clone {
+    fn eval(&self, values: impl IntoIterator<Item = (impl AsRef<str>, i64)>) -> Result<Self>;
+    fn to_int64(&self) -> Result<i64>;
+}
+
 pub trait InferenceFactInterface: Debug + Display + Default + Clone {
     fn empty() -> Result<Self>;
 }
