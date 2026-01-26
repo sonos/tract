@@ -15,8 +15,8 @@ use tract_libcli::profile::BenchLimits;
 use tract_libcli::tensor::RunTensors;
 use tract_nnef::internal::{Runtime as _, parse_tdim};
 use tract_nnef::prelude::{
-    Framework, IntoTValue, SymbolValues, TValue, TVec, Tensor, TractResult, TypedFact, TypedModel,
-    TypedSimplePlan,
+    Framework, IntoTValue, SymbolValues, TDim, TValue, TVec, Tensor, TractResult, TypedFact,
+    TypedModel, TypedSimplePlan,
 };
 use tract_onnx::prelude::InferenceModelExt;
 use tract_onnx_opl::WithOnnx;
@@ -27,8 +27,9 @@ use tract_transformers::WithTractTransformers;
 use tract_api::*;
 
 pub mod prelude {
-    pub use crate::{Model, Runnable, Runtime, Value, nnef, onnx};
-    pub use ndarray;
+    pub use crate::{Dim, Fact, Model, Runnable, Runtime, Value, nnef, onnx, runtime_for_name};
+    pub use DatumType;
+    pub use ndarray as tract_ndarray;
     pub use tract_api::*;
 }
 
@@ -201,6 +202,7 @@ impl InferenceModelInterface for InferenceModel {
 }
 
 // MODEL
+#[derive(Debug, Clone)]
 pub struct Model(TypedModel);
 
 impl ModelInterface for Model {
@@ -304,6 +306,7 @@ impl RuntimeInterface for Runtime {
 }
 
 // RUNNABLE
+#[derive(Debug, Clone)]
 pub struct Runnable(Arc<dyn tract_nnef::internal::Runnable>);
 
 impl RunnableInterface for Runnable {
@@ -464,7 +467,18 @@ impl ValueInterface for Value {
 #[derive(Clone, Debug)]
 pub struct Fact(TypedFact);
 
-impl FactInterface for Fact {}
+impl FactInterface for Fact {
+    type Dim = Dim;
+
+    fn rank(&self) -> Result<usize> {
+        Ok(self.0.rank())
+    }
+
+    fn dim(&self, axis: usize) -> Result<Self::Dim> {
+        anyhow::ensure!(axis < self.0.rank());
+        Ok(Dim(self.0.shape[axis].clone()))
+    }
+}
 
 impl Fact {
     fn new(model: &mut Model, spec: impl ToString) -> Result<Fact> {
@@ -513,6 +527,34 @@ impl Display for InferenceFact {
 value_from_to_ndarray!();
 as_inference_fact_impl!(InferenceModel, InferenceFact);
 as_fact_impl!(Model, Fact);
+
+#[derive(Clone, Debug)]
+pub struct Dim(TDim);
+
+impl DimInterface for Dim {
+    fn eval(&self, values: impl IntoIterator<Item = (impl AsRef<str>, i64)>) -> Result<Dim> {
+        if let Some(scope) = self.0.find_scope() {
+            let mut table = SymbolValues::default();
+            for (k, v) in values {
+                table = table.with(&scope.sym(k.as_ref()), v);
+            }
+            let result = self.0.eval(&table);
+            Ok(Dim(result))
+        } else {
+            Ok(self.clone())
+        }
+    }
+
+    fn to_int64(&self) -> Result<i64> {
+        self.0.to_i64().into()
+    }
+}
+
+impl Display for Dim {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0.to_string())
+    }
+}
 
 /*
 #[inline(always)]
