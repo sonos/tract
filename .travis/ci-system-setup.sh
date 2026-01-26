@@ -5,7 +5,7 @@ set -e
 
 if [ -z "$RUSTUP_TOOLCHAIN" ]
 then
-    export RUSTUP_TOOLCHAIN=1.86.0
+    export RUSTUP_TOOLCHAIN=1.89.0
 fi
 
 export RUSTUP_TOOLCHAIN
