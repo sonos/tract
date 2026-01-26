@@ -21,6 +21,7 @@ icu_normalizer.workspace = true
 icu_properties.workspace = true
 ndarray.workspace = true
 tract-api.workspace = true
+tract-cuda.workspace = true
 tract-nnef.workspace = true
 tract-onnx-opl.workspace = true
 tract-onnx.workspace = true
@@ -29,6 +30,9 @@ tract-pulse.workspace = true
 tract-libcli.workspace = true
 tract-transformers.workspace = true
 serde_json.workspace = true
+
+[target.'cfg(any(target_vendor = "apple"))'.dependencies]
+tract-metal.workspace = true
 
 [dev-dependencies]
 reqwest.workspace = true
