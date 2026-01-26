@@ -10,7 +10,7 @@ on:
 env:
   CARGO_INCREMENTAL: false
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE20: true
-  RUSTUP_TOOLCHAIN: "1.86.0"
+  RUSTUP_TOOLCHAIN: "1.89.0"
   ROOT: ${{ github.workspace }}
 
 jobs:
