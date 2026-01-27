@@ -1,6 +1,5 @@
 use tract_core::ndarray::{IxDyn, OwnedRepr};
 use tract_onnx::prelude::*;
-use tract_rs::*;
 
 fn main() -> TractResult<()> {
     let model = tract_onnx::onnx()

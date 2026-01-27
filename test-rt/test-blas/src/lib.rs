@@ -25,7 +25,7 @@ mod as_blas {
             mut model: TypedModel,
             options: &RunOptions,
         ) -> TractResult<Box<dyn Runnable>> {
-            tract_core::transform::get_transform("as-blas").unwrap().transform(&mut model)?;
+            tract_core::transform::get_transform("as-blas")?.unwrap().transform(&mut model)?;
             Ok(Box::new(model.into_runnable_with_options(options)?))
         }
     }

@@ -37,22 +37,6 @@ macro_rules! rule_if_some {
     };
 }
 
-pub fn get_transform(name: &str) -> Option<Box<dyn ModelTransform>> {
-    match name {
-        #[cfg(feature = "blas")]
-        "as-blas" => Some(Box::<AsBlas>::default()),
-        name if name.starts_with("f32-to-f16") => {
-            build_float_translator::<f32, f16>(name.strip_prefix("f32-to-f16"))
-        }
-        name if name.starts_with("f16-to-f32") => {
-            build_float_translator::<f16, f32>(name.strip_prefix("f16-to-f32"))
-        }
-        "softmax-fast-compact" => Some(Box::new(SoftmaxFastCompact)),
-        "block-quant" => Some(Box::new(BlockQuantTransform)),
-        _ => None,
-    }
-}
-
 /// Build Float precision translator given a filter_predicate. If the filter_predicate is none or empty, all nodes will
 /// be translated during the transformation.
 ///
@@ -109,5 +93,52 @@ impl ModelTransform for SoftmaxFastCompact {
             }
         }
         Ok(())
+    }
+}
+
+pub struct ModelTransformFactory {
+    pub name: &'static str,
+    pub builder: fn(spec: &str) -> TractResult<Option<Box<dyn ModelTransform>>>,
+}
+
+inventory::collect!(ModelTransformFactory);
+
+#[macro_export]
+macro_rules! register_simple_model_transform {
+    ($name: expr, $type: expr) => {
+        $crate::internal::inventory::submit! {
+            $crate::transform::ModelTransformFactory {
+                name: $name,
+                builder: |_| Ok(Some(Box::new($type)))
+            }
+        }
+    };
+}
+
+pub fn get_transform(spec: &str) -> TractResult<Option<Box<dyn ModelTransform>>> {
+    for factory in inventory::iter::<ModelTransformFactory>() {
+        if spec.starts_with(&factory.name) {
+            return (factory.builder)(spec);
+        }
+    }
+    Ok(None)
+}
+
+register_simple_model_transform!("softmax-fast-compact", SoftmaxFastCompact);
+#[cfg(feature = "blas")]
+register_simple_model_transform!("as-blas", AsBlas);
+register_simple_model_transform!("block-quant", BlockQuantTransform);
+
+inventory::submit! {
+    ModelTransformFactory {
+        name: "f32-to-f16",
+        builder: |spec| Ok(build_float_translator::<f32,f16>(spec.strip_prefix("f32-to-f16")))
+    }
+}
+
+inventory::submit! {
+    ModelTransformFactory {
+        name: "f16-to-f32",
+        builder: |spec| Ok(build_float_translator::<f16,f32>(spec.strip_prefix("f16-to-f32")))
     }
 }

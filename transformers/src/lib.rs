@@ -4,25 +4,20 @@ use std::collections::HashSet;
 
 use rewriter::*;
 use tract_nnef::internal::*;
-use tract_nnef::tract_core::transform::ModelTransform;
 
-pub fn get_transform(name: &str) -> Option<Box<dyn ModelTransform>> {
-    match name {
-        "detect-rms-norm" => Some(Box::new(RmsNormTransform)),
-        "detect-apply-rope" => Some(Box::new(ApplyRopeTransform)),
-        "detect-silu" => Some(Box::new(SiluTransform)),
-        "detect-scaled-masked-softmax" => Some(Box::new(ScaledMaskedSoftmaxTransform)),
-        "detect-gelu-approx" => Some(Box::new(GeluTransform)),
-        "detect-kv-cache" => Some(Box::new(KeyValueCacheTransform)),
-        "detect-sdpa-kv-cache-broadcast" => Some(Box::new(SdpaFuseKvCacheBroadcastTransform)),
-        "transformers-detect-all" => Some(Box::new(TransformersTransform)),
-        _ => None,
-    }
-}
+register_simple_model_transform!("detect-rms-norm", RmsNormTransform);
+register_simple_model_transform!("detect-apply-rope", ApplyRopeTransform);
+register_simple_model_transform!("detect-silu", SiluTransform);
+register_simple_model_transform!("detect-scaled-masked-softmax", ScaledMaskedSoftmaxTransform);
+register_simple_model_transform!("detect-gelu-approx", GeluTransform);
+register_simple_model_transform!("detect-kv-cache", KeyValueCacheTransform);
+register_simple_model_transform!(
+    "detect-sdpa-kv-cache-broadcast",
+    SdpaFuseKvCacheBroadcastTransform
+);
+register_simple_model_transform!("transformers-detect-all", TransformersTransform);
 
 pub fn register(registry: &mut Registry) {
-    registry.transforms = Box::new(|s| Ok(get_transform(s)));
-
     ops::rms_norm::register(registry);
     ops::silu::register(registry);
     ops::gelu_approximate::register(registry);

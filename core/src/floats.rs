@@ -246,7 +246,7 @@ mod test {
         );
 
         // Execution in F16 with returns NaN
-        let runnable_model = &crate::transform::get_transform("f32-to-f16")
+        let runnable_model = &crate::transform::get_transform("f32-to-f16")?
             .unwrap()
             .transform_into(model.clone())?
             .into_runnable()?;
@@ -257,7 +257,7 @@ mod test {
         );
 
         // Execution in F16 with filter that returns the good output.
-        let runnable_model = &crate::transform::get_transform("f32-to-f16!=layer.1")
+        let runnable_model = &crate::transform::get_transform("f32-to-f16!=layer.1")?
             .unwrap()
             .transform_into(model.clone())?
             .into_runnable()?;
@@ -267,7 +267,7 @@ mod test {
         );
 
         // Execution in F16 with returns NaN despite the filter.
-        let runnable_model = &crate::transform::get_transform("f32-to-f16!=layer.0")
+        let runnable_model = &crate::transform::get_transform("f32-to-f16!=layer.0")?
             .unwrap()
             .transform_into(model)?
             .into_runnable()?;
