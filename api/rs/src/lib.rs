@@ -2,6 +2,7 @@
 extern crate tract_metal;
 
 extern crate tract_cuda;
+extern crate tract_transformers;
 
 use std::fmt::{Debug, Display};
 use std::path::Path;
@@ -18,6 +19,7 @@ use tract_nnef::prelude::{
     Framework, IntoTValue, SymbolValues, TDim, TValue, TVec, Tensor, TractResult, TypedFact,
     TypedModel, TypedSimplePlan,
 };
+use tract_nnef::tract_core::transform::get_transform;
 use tract_onnx::prelude::InferenceModelExt;
 use tract_onnx_opl::WithOnnx;
 use tract_pulse::WithPulse;
@@ -71,7 +73,7 @@ impl NnefInterface for Nnef {
     }
 
     fn transform_model(&self, model: &mut Self::Model, transform_spec: &str) -> Result<()> {
-        if let Some(transform) = self.0.get_transform(transform_spec)? {
+        if let Some(transform) = get_transform(transform_spec)? {
             transform.transform(&mut model.0)?;
             model.0.declutter()?;
         }
@@ -261,7 +263,7 @@ impl ModelInterface for Model {
     }
 
     fn transform(&mut self, transform: &str) -> Result<()> {
-        let transform = tract_onnx::tract_core::transform::get_transform(transform)
+        let transform = tract_onnx::tract_core::transform::get_transform(transform)?
             .with_context(|| format!("transform `{transform}' could not be found"))?;
         transform.transform(&mut self.0)
     }

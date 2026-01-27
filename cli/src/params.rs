@@ -740,8 +740,7 @@ impl Parameters {
         }
         if transforms.len() > 0 {
             for spec in transforms {
-                let transform = super::nnef(matches)
-                    .get_transform(spec)?
+                let transform = tract_core::transform::get_transform(spec)?
                     .with_context(|| format!("Could not find transform named {spec}"))?;
                 stage!(&transform.name(), typed_model -> typed_model, |m:TypedModel| {
                     transform.transform_into(m)

@@ -27,8 +27,6 @@ mod topk;
 mod trilu;
 
 pub fn register(registry: &mut Registry) {
-    registry.transforms = Box::new(|s| Ok(tract_core::transform::get_transform(s)));
-
     registry.register_unit_element_wise("tract_core_round_even", &ops::math::RoundHalfToEven {});
     registry.register_unit_element_wise("tract_core_erf", &ops::math::Erf {});
     registry.register_unit_element_wise("tract_core_hard_swish", &ops::nn::HardSwish {});

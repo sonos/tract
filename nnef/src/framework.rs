@@ -1,6 +1,5 @@
 use tar::Builder;
 use tract_core::tract_data::itertools::Itertools;
-use tract_core::transform::ModelTransform;
 
 use crate::ast::quant::write_quant_format;
 use crate::ast::{Identifier, ProtoModel, QuantFormat};
@@ -67,15 +66,6 @@ impl Nnef {
     pub fn with_tract_resource(mut self) -> Self {
         self.registries.push(crate::ops::tract_resource());
         self
-    }
-
-    pub fn get_transform(&self, spec: &str) -> TractResult<Option<Box<dyn ModelTransform>>> {
-        for reg in &self.registries {
-            if let Some(transform) = (reg.transforms)(spec)? {
-                return Ok(Some(transform));
-            }
-        }
-        Ok(None)
     }
 
     pub fn allow_extended_identifier_syntax(&mut self, allow_extended_identifier_syntax: bool) {

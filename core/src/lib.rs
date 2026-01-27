@@ -116,6 +116,7 @@ pub mod prelude {
 
 /// This prelude is meant for code extending tract (like implementing new ops).
 pub mod internal {
+    pub extern crate inventory;
     pub use crate::axes::{AxesMapping, Axis};
     pub use crate::late_bind::*;
     pub use crate::model::*;
@@ -130,6 +131,7 @@ pub mod internal {
     pub use dims;
     pub use downcast_rs as tract_downcast_rs;
     pub use register_runtime;
+    pub use register_simple_model_transform;
     pub use std::borrow::Cow;
     pub use std::collections::HashMap;
     pub use std::hash::Hash;
