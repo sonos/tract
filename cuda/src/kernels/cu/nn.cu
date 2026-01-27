@@ -5,202 +5,131 @@
 #define GELU_COEF_A 0.044715f
 #define SQRT_2_OVER_PI 0.79788456080286535587989211986876f
 
-#define INSTANTIATE_REDUCE(name, T, bname, block_size)                         \
-  extern "C" __global__ void reduce_max_##bname##name(                         \
-      const T *input, T *output, const int32_t shape_0, const int32_t shape_1,         \
-      const int32_t shape_2, const int32_t in_stride_0, const int32_t in_stride_1,         \
-      const int32_t in_stride_2, const int32_t out_stride_0, const int32_t out_stride_1,   \
-      const int32_t out_stride_2) {                                                \
-    input += blockIdx.y * in_stride_0 + blockIdx.x * in_stride_2;              \
-    output += blockIdx.y * out_stride_0 + blockIdx.x * out_stride_2;           \
-                                                                               \
-    const int warp_id = threadIdx.x / WARP_SIZE;                               \
-    const int lane_id = threadIdx.x % WARP_SIZE;                               \
-                                                                               \
-    float max_val = -CUDART_INF_F;                                                 \
-    _Pragma("unroll") for (int i = threadIdx.x; i < shape_1;                   \
-                           i += blockDim.x) {                                  \
-      max_val = max(max_val, input[i * in_stride_1]);                          \
-    }                                                                          \
-                                                                               \
-    max_val = warp_reduce_max(max_val);                                        \
-    if (block_size > WARP_SIZE) {                                              \
-      __shared__ float s_max[32];                                              \
-      if (warp_id == 0) {                                                      \
-        s_max[lane_id] = -CUDART_INF_F;                                            \
-      }                                                                        \
-      __syncthreads();                                                         \
-                                                                               \
-      if (lane_id == 0) {                                                      \
-        s_max[warp_id] = max_val;                                              \
-      }                                                                        \
-      __syncthreads();                                                         \
-                                                                               \
-      max_val = s_max[lane_id];                                                \
-      max_val = warp_reduce_max(max_val);                                      \
-    }                                                                          \
-                                                                               \
-    if (threadIdx.x == 0) {                                                    \
-      *output = max_val;                                                       \
-    }                                                                          \
-  }                                                                            \
-                                                                               \
-  extern "C" __global__ void reduce_min_##bname##name(                         \
-      const T *input, T *output, const int32_t shape_0, const int32_t shape_1,         \
-      const int32_t shape_2, const int32_t in_stride_0, const int32_t in_stride_1,         \
-      const int32_t in_stride_2, const int32_t out_stride_0, const int32_t out_stride_1,   \
-      const int32_t out_stride_2) {                                                \
-    input += blockIdx.y * in_stride_0 + blockIdx.x * in_stride_2;              \
-    output += blockIdx.y * out_stride_0 + blockIdx.x * out_stride_2;           \
-                                                                               \
-    const int warp_id = threadIdx.x / WARP_SIZE;                               \
-    const int lane_id = threadIdx.x % WARP_SIZE;                               \
-                                                                               \
-    float min_val = CUDART_INF_F;                                                  \
-    _Pragma("unroll") for (int i = threadIdx.x; i < shape_1;                   \
-                           i += blockDim.x) {                                  \
-      min_val = min(min_val, input[i * in_stride_1]);                          \
-    }                                                                          \
-                                                                               \
-    min_val = warp_reduce_min(min_val);                                        \
-    if (block_size > WARP_SIZE) {                                              \
-      __shared__ float s_min[32];                                              \
-      if (warp_id == 0) {                                                      \
-        s_min[lane_id] = -CUDART_INF_F;                                            \
-      }                                                                        \
-      __syncthreads();                                                         \
-                                                                               \
-      if (lane_id == 0) {                                                      \
-        s_min[warp_id] = min_val;                                              \
-      }                                                                        \
-      __syncthreads();                                                         \
-                                                                               \
-      min_val = s_min[lane_id];                                                \
-      min_val = warp_reduce_min(min_val);                                      \
-    }                                                                          \
-                                                                               \
-    if (threadIdx.x == 0) {                                                    \
-      *output = min_val;                                                       \
-    }                                                                          \
-  }                                                                            \
-                                                                               \
-  extern "C" __global__ void reduce_sum_##bname##name(                         \
-      const T *input, T *output, const int32_t shape_0, const int32_t shape_1,         \
-      const int32_t shape_2, const int32_t in_stride_0, const int32_t in_stride_1,         \
-      const int32_t in_stride_2, const int32_t out_stride_0, const int32_t out_stride_1,   \
-      const int32_t out_stride_2) {                                                \
-    input += blockIdx.y * in_stride_0 + blockIdx.x * in_stride_2;              \
-    output += blockIdx.y * out_stride_0 + blockIdx.x * out_stride_2;           \
-                                                                               \
-    const int warp_id = threadIdx.x / WARP_SIZE;                               \
-    const int lane_id = threadIdx.x % WARP_SIZE;                               \
-                                                                               \
-    T sum_val = 0.0f;                                                          \
-    _Pragma("unroll") for (int i = threadIdx.x; i < shape_1;                   \
-                           i += blockDim.x) {                                  \
-      sum_val += input[i * in_stride_1];                                       \
-    }                                                                          \
-                                                                               \
-    sum_val = warp_reduce_sum(sum_val);                                        \
-    if (block_size > WARP_SIZE) {                                              \
-      __shared__ T s_sum[32];                                                  \
-      if (warp_id == 0) {                                                      \
-        s_sum[lane_id] = (T)0.0f;                                              \
-      }                                                                        \
-      __syncthreads();                                                         \
-                                                                               \
-      if (lane_id == 0) {                                                      \
-        s_sum[warp_id] = sum_val;                                              \
-      }                                                                        \
-      __syncthreads();                                                         \
-                                                                               \
-      sum_val = s_sum[lane_id];                                                \
-      sum_val = warp_reduce_sum(sum_val);                                      \
-    }                                                                          \
-                                                                               \
-    if (threadIdx.x == 0) {                                                    \
-      *output = sum_val;                                                       \
-    }                                                                          \
-  }                                                                            \
-                                                                               \
-  extern "C" __global__ void reduce_prod_##bname##name(                        \
-      const T *input, T *output, const int32_t shape_0, const int32_t shape_1,         \
-      const int32_t shape_2, const int32_t in_stride_0, const int32_t in_stride_1,         \
-      const int32_t in_stride_2, const int32_t out_stride_0, const int32_t out_stride_1,   \
-      const int32_t out_stride_2) {                                                \
-    input += blockIdx.y * in_stride_0 + blockIdx.x * in_stride_2;              \
-    output += blockIdx.y * out_stride_0 + blockIdx.x * out_stride_2;           \
-                                                                               \
-    const int warp_id = threadIdx.x / WARP_SIZE;                               \
-    const int lane_id = threadIdx.x % WARP_SIZE;                               \
-                                                                               \
-    T prod_val = (T)1.0f;                                                      \
-    _Pragma("unroll") for (int i = threadIdx.x; i < shape_1;                   \
-                           i += blockDim.x) {                                  \
-      prod_val *= input[i * in_stride_1];                                      \
-    }                                                                          \
-                                                                               \
-    prod_val = warp_reduce_prod(prod_val);                                     \
-    if (block_size > WARP_SIZE) {                                              \
-      __shared__ T s_prod[32];                                                 \
-      if (warp_id == 0) {                                                      \
-        s_prod[lane_id] = (T)0.0f;                                             \
-      }                                                                        \
-      __syncthreads();                                                         \
-                                                                               \
-      if (lane_id == 0) {                                                      \
-        s_prod[warp_id] = prod_val;                                            \
-      }                                                                        \
-      __syncthreads();                                                         \
-                                                                               \
-      prod_val = s_prod[lane_id];                                              \
-      prod_val = warp_reduce_prod(prod_val);                                   \
-    }                                                                          \
-                                                                               \
-    if (threadIdx.x == 0) {                                                    \
-      *output = prod_val;                                                      \
-    }                                                                          \
-  }                                                                            \
-                                                                               \
-  extern "C" __global__ void reduce_mean_of_squares_##bname##name(             \
-      const T *input, T *output, const int32_t shape_0, const int32_t shape_1,         \
-      const int32_t shape_2, const int32_t in_stride_0, const int32_t in_stride_1,         \
-      const int32_t in_stride_2, const int32_t out_stride_0, const int32_t out_stride_1,   \
-      const int32_t out_stride_2) {                                                \
-    input += blockIdx.y * in_stride_0 + blockIdx.x * in_stride_2;              \
-    output += blockIdx.y * out_stride_0 + blockIdx.x * out_stride_2;           \
-                                                                               \
-    const int warp_id = threadIdx.x / WARP_SIZE;                               \
-    const int lane_id = threadIdx.x % WARP_SIZE;                               \
-                                                                               \
-    T square_sum_val = (T)0.0f;                                                \
-    _Pragma("unroll") for (int i = threadIdx.x; i < shape_1;                   \
-                           i += blockDim.x) {                                  \
-      square_sum_val += input[i * in_stride_1] * input[i * in_stride_1];       \
-    }                                                                          \
-                                                                               \
-    square_sum_val = warp_reduce_sum(square_sum_val);                          \
-    if (block_size > WARP_SIZE) {                                              \
-      __shared__ T s_prod[32];                                                 \
-      if (warp_id == 0) {                                                      \
-        s_prod[lane_id] = (T)0.0f;                                             \
-      }                                                                        \
-      __syncthreads();                                                         \
-                                                                               \
-      if (lane_id == 0) {                                                      \
-        s_prod[warp_id] = square_sum_val;                                      \
-      }                                                                        \
-      __syncthreads();                                                         \
-                                                                               \
-      square_sum_val = s_prod[lane_id];                                        \
-      square_sum_val = warp_reduce_sum(square_sum_val);                        \
-    }                                                                          \
-                                                                               \
-    if (threadIdx.x == 0) {                                                    \
-      *output = square_sum_val / (T)shape_1;                                   \
-    }                                                                          \
+template <class Op, int width>
+__device__ __forceinline__ typename Op::acc_t warp_reduce(typename Op::acc_t v) {
+  #pragma unroll
+  for (int offset = WARP_SIZE / 2; offset > 0; offset >>= 1) {
+    auto other = __shfl_xor_sync(0xffffffff, v, offset, width);
+    v = Op::combine(v, other);
   }
+  return v;
+}
 
+template <typename Acc>
+struct MaxOp {
+  using acc_t = Acc;
+  __device__ __forceinline__ static acc_t identity() { return -CUDART_INF_F; }
+  __device__ __forceinline__ static acc_t pre(acc_t a) { return a; }
+  __device__ __forceinline__ static acc_t combine(acc_t a, acc_t b) { return a > b ? a : b; }
+  __device__ __forceinline__ static acc_t norm(acc_t a, int32_t size) { return a; }
+};
+
+
+template <typename Acc>
+struct MinOp {
+  using acc_t = Acc;
+  __device__ __forceinline__ static acc_t identity() { return CUDART_INF_F; }
+  __device__ __forceinline__ static acc_t pre(acc_t a) { return a; }
+  __device__ __forceinline__ static acc_t combine(acc_t a, acc_t b) { return a < b ? a : b; }
+  __device__ __forceinline__ static acc_t norm(acc_t a, int32_t size) { return a; }
+};
+
+template <typename Acc>
+struct AddOp {
+  using acc_t = Acc;
+  __device__ __forceinline__ static acc_t identity() { return acc_t(0); }
+  __device__ __forceinline__ static acc_t pre(acc_t a) { return a; }
+  __device__ __forceinline__ static acc_t combine(acc_t a, acc_t b) { return a + b; }
+  __device__ __forceinline__ static acc_t norm(acc_t a, int32_t size) { return a; }
+};
+
+template <typename Acc>
+struct MulOp {
+  using acc_t = Acc;
+  __device__ __forceinline__ static acc_t identity() { return acc_t(1); }
+  __device__ __forceinline__ static acc_t pre(acc_t a) { return a; }
+  __device__ __forceinline__ static acc_t combine(acc_t a, acc_t b) { return a * b; }
+  __device__ __forceinline__ static acc_t norm(acc_t a, int32_t size) { return a; }
+};
+
+template <typename Acc>
+struct MeanOfSquaresOp {
+  using acc_t = Acc;
+  __device__ __forceinline__ static acc_t identity() { return acc_t(0); }
+  __device__ __forceinline__ static acc_t pre(acc_t a) { return a * a; }
+  __device__ __forceinline__ static acc_t combine(acc_t a, acc_t b) { return a + b; }
+  __device__ __forceinline__ static acc_t norm(acc_t a, int32_t size) { return a / (acc_t) size; }
+};
+
+template<typename T, int block_size, class Op>
+__device__ void reduce(
+      const T *input, T *output,
+      const int32_t shape_0, const int32_t shape_1, const int32_t shape_2,
+      const int32_t in_stride_0, const int32_t in_stride_1, const int32_t in_stride_2,
+      const int32_t out_stride_0, const int32_t out_stride_1, const int32_t out_stride_2
+    ) {
+    using Acc = typename Op::acc_t;
+
+    input += blockIdx.z * in_stride_0 + blockIdx.x * in_stride_2;              
+    output += blockIdx.z * out_stride_0 + blockIdx.x * out_stride_2;           
+                                                                               
+    const int warp_id = threadIdx.x / WARP_SIZE;                               
+    const int lane_id = threadIdx.x % WARP_SIZE;                               
+                                                                               
+    Acc accu = Op::identity();
+    _Pragma("unroll")
+    for (int i = threadIdx.x; i < shape_1; i += blockDim.x) {                                  
+      accu = Op::combine(accu, Op::pre(input[i * in_stride_1]));
+    }                                                                          
+    accu = warp_reduce<Op, block_size>(accu);
+    if (block_size > WARP_SIZE) {                                              
+      __shared__ float shared[32];
+      if (warp_id == 0) {                                          
+        shared[lane_id] = Op::identity();                                            
+      }                                                                        
+      __syncthreads();                                                         
+                                                                               
+      if (lane_id == 0) {                                                      
+        shared[warp_id] = accu;
+      }                                                                        
+      __syncthreads();                                                         
+                                                                               
+      accu = shared[lane_id];                                                
+      accu = warp_reduce<Op, block_size>(accu);
+    }                                                                          
+                                                                               
+    if (threadIdx.x == 0) {
+       *output =  Op::norm(accu, shape_1);
+    }                                                                          
+}
+
+  
+#define INSTANTIATE_REDUCE_1(op_name, name, T, Op, bname, block_size)          \
+  extern "C" __global__ void CAT5(reduce_, op_name, _, bname, name)(           \
+      const T *input, T *output,                                               \
+      const int32_t shape_0, const int32_t shape_1, const int32_t shape_2,     \
+      const int32_t in_stride_0, const int32_t in_stride_1,                    \
+      const int32_t in_stride_2,                                               \
+      const int32_t out_stride_0, const int32_t out_stride_1,                  \
+      const int32_t out_stride_2                                               \
+      ) {                                                                      \
+    reduce<T, block_size, Op<T> >                                              \
+      (input, output,                                                          \
+      shape_0, shape_1, shape_2,                                               \
+      in_stride_0, in_stride_1, in_stride_2,                                   \
+      out_stride_0, out_stride_1, out_stride_2                                 \
+    );\
+    }\
+
+#define INSTANTIATE_REDUCE(name, T, bname, block_size)                         \
+  INSTANTIATE_REDUCE_1(max, name, T, MaxOp, bname, block_size)                 \
+  INSTANTIATE_REDUCE_1(min, name, T, MinOp, bname, block_size)                 \
+  INSTANTIATE_REDUCE_1(sum, name, T, AddOp, bname, block_size)                 \
+  INSTANTIATE_REDUCE_1(prod, name, T, MulOp, bname, block_size)                \
+  INSTANTIATE_REDUCE_1(mean_of_squares, name, T, MeanOfSquaresOp,              \
+              bname, block_size)                \
+
+                  
 extern "C" __global__ void gelu_approx_f32(const float *input, float *output,
                                            int32_t len) {
   int i = blockIdx.x * blockDim.x + threadIdx.x;
