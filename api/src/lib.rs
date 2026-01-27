@@ -16,8 +16,10 @@ pub trait NnefInterface: Sized {
     /// * `path` can point to a directory, a `tar` file or a `tar.gz` file.
     fn load(&self, path: impl AsRef<Path>) -> Result<Self::Model>;
 
-    /// Transform model according to transform spec
-    fn transform_model(&self, model: &mut Self::Model, transform_spec: &str) -> Result<()>;
+    /// Load a NNEF model from a buffer into a tract-core model.
+    ///
+    /// data is the content of a NNEF model, as a `tar` file or a `tar.gz` file.
+    fn load_buffer(&self, data: &[u8]) -> Result<Self::Model>;
 
     /// Allow the framework to use tract_core extensions instead of a stricter NNEF definition.
     fn enable_tract_core(&mut self) -> Result<()>;
@@ -94,6 +96,8 @@ pub trait NnefInterface: Sized {
 pub trait OnnxInterface {
     type InferenceModel: InferenceModelInterface;
     fn load(&self, path: impl AsRef<Path>) -> Result<Self::InferenceModel>;
+    /// Load a ONNX model from a buffer into an InferenceModel.
+    fn load_buffer(&self, data: &[u8]) -> Result<Self::InferenceModel>;
 }
 
 pub trait InferenceModelInterface: Sized {
