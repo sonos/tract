@@ -5,6 +5,7 @@ extern crate tract_cuda;
 extern crate tract_transformers;
 
 use std::fmt::{Debug, Display};
+use std::io::Cursor;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -19,7 +20,6 @@ use tract_nnef::prelude::{
     Framework, IntoTValue, SymbolValues, TDim, TValue, TVec, Tensor, TractResult, TypedFact,
     TypedModel, TypedSimplePlan,
 };
-use tract_nnef::tract_core::transform::get_transform;
 use tract_onnx::prelude::InferenceModelExt;
 use tract_onnx_opl::WithOnnx;
 use tract_pulse::WithPulse;
@@ -72,12 +72,9 @@ impl NnefInterface for Nnef {
         Ok(Model(m))
     }
 
-    fn transform_model(&self, model: &mut Self::Model, transform_spec: &str) -> Result<()> {
-        if let Some(transform) = get_transform(transform_spec)? {
-            transform.transform(&mut model.0)?;
-            model.0.declutter()?;
-        }
-        Ok(())
+    fn load_buffer(&self, data: &[u8]) -> Result<Self::Model> {
+        let m = self.0.model_for_read(&mut Cursor::new(data))?.into_decluttered()?;
+        Ok(Model(m))
     }
 
     fn enable_tract_core(&mut self) -> Result<()> {
@@ -133,6 +130,11 @@ impl OnnxInterface for Onnx {
     type InferenceModel = InferenceModel;
     fn load(&self, path: impl AsRef<Path>) -> Result<Self::InferenceModel> {
         Ok(InferenceModel(self.0.model_for_path(path)?))
+    }
+
+    fn load_buffer(&self, data: &[u8]) -> Result<Self::InferenceModel> {
+        let m = self.0.model_for_read(&mut Cursor::new(data))?;
+        Ok(InferenceModel(m))
     }
 }
 
@@ -265,7 +267,8 @@ impl ModelInterface for Model {
     fn transform(&mut self, transform: &str) -> Result<()> {
         let transform = tract_onnx::tract_core::transform::get_transform(transform)?
             .with_context(|| format!("transform `{transform}' could not be found"))?;
-        transform.transform(&mut self.0)
+        transform.transform(&mut self.0)?;
+        self.0.declutter()
     }
 
     fn pulse(&mut self, name: impl AsRef<str>, value: impl AsRef<str>) -> Result<()> {
