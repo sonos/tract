@@ -4,8 +4,8 @@ use anyhow::{Context, Result};
 use std::cell::RefCell;
 use std::ffi::{CStr, CString, c_char, c_void};
 use tract_api::{
-    AsFact, DatumType, InferenceModelInterface, ModelInterface, NnefInterface, OnnxInterface,
-    RunnableInterface, StateInterface, ValueInterface,
+    AsFact, DatumType, DimInterface, FactInterface, InferenceModelInterface, ModelInterface,
+    NnefInterface, OnnxInterface, RunnableInterface, StateInterface, ValueInterface,
 };
 use tract_rs::{State, Value};
 
@@ -117,23 +117,6 @@ pub unsafe extern "C" fn tract_nnef_create(nnef: *mut *mut TractNnef) -> TRACT_R
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn tract_nnef_transform_model(
-    nnef: *const TractNnef,
-    model: *mut TractModel,
-    transform_spec: *const i8,
-) -> TRACT_RESULT {
-    wrap(|| unsafe {
-        check_not_null!(nnef, model, transform_spec);
-        let transform_spec = CStr::from_ptr(transform_spec as _).to_str()?;
-        (*nnef)
-            .0
-            .transform_model(&mut (*model).0, transform_spec)
-            .with_context(|| format!("performing transform {transform_spec:?}"))?;
-        Ok(())
-    })
-}
-
-#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_nnef_enable_tract_core(nnef: *mut TractNnef) -> TRACT_RESULT {
     wrap(|| unsafe {
         check_not_null!(nnef);
@@ -208,6 +191,27 @@ pub unsafe extern "C" fn tract_nnef_load(
         let m = Box::new(TractModel(
             (*nnef).0.load(path).with_context(|| format!("opening file {path:?}"))?,
         ));
+        *model = Box::into_raw(m);
+        Ok(())
+    })
+}
+
+/// Parse and load an NNEF buffer as a tract TypedModel.
+///
+/// `data` is a buffer pointer
+/// `len` ise the buffer len
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tract_nnef_load_buffer(
+    nnef: *const TractNnef,
+    data: *const c_void,
+    len: usize,
+    model: *mut *mut TractModel,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(nnef, model, data);
+        *model = std::ptr::null_mut();
+        let slice = std::slice::from_raw_parts(data as *const u8, len);
+        let m = Box::new(TractModel((*nnef).0.load_buffer(slice)?));
         *model = Box::into_raw(m);
         Ok(())
     })
@@ -304,6 +308,27 @@ pub unsafe extern "C" fn tract_onnx_load(
         *model = std::ptr::null_mut();
         let path = CStr::from_ptr(path).to_str()?;
         let m = Box::new(TractInferenceModel((*onnx).0.load(path)?));
+        *model = Box::into_raw(m);
+        Ok(())
+    })
+}
+
+/// Parse and load an ONNX buffer as a tract InferenceModel.
+///
+/// `data` is a buffer pointer
+/// `len` ise the buffer len
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tract_onnx_load_buffer(
+    onnx: *const TractOnnx,
+    data: *const c_void,
+    len: usize,
+    model: *mut *mut TractInferenceModel,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(onnx, model, data);
+        *model = std::ptr::null_mut();
+        let slice = std::slice::from_raw_parts(data as *const u8, len);
+        let m = Box::new(TractInferenceModel((*onnx).0.load_buffer(slice)?));
         *model = Box::into_raw(m);
         Ok(())
     })
@@ -1103,6 +1128,31 @@ pub unsafe extern "C" fn tract_fact_parse(
     })
 }
 
+/// Gets the rank (aka number of axes/dimensions) of a fact.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tract_fact_rank(fact: *const TractFact, rank: *mut usize) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(fact, rank);
+        *rank = (*fact).0.rank()?;
+        Ok(())
+    })
+}
+
+/// Extract the dimension from one dimension of the fact.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tract_fact_dim(
+    fact: *const TractFact,
+    axis: usize,
+    dim: *mut *mut TractDim,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(fact, dim);
+        let d = (*fact).0.dim(axis)?;
+        *dim = Box::into_raw(Box::new(TractDim(d)));
+        Ok(())
+    })
+}
+
 /// Write a fact as its specification string.
 ///
 /// The returned string must be freed by the caller using tract_free_cstring.
@@ -1179,6 +1229,65 @@ pub unsafe extern "C" fn tract_inference_fact_destroy(
     fact: *mut *mut TractInferenceFact,
 ) -> TRACT_RESULT {
     release!(fact)
+}
+
+/// Dim
+pub struct TractDim(tract_rs::Dim);
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tract_dim_eval(
+    dim: *const TractDim,
+    nb_symbols: usize,
+    symbols: *const *const i8,
+    values: *const i64,
+    result: *mut *mut TractDim,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(dim, symbols, values, result);
+        let mut table = vec![];
+        for i in 0..nb_symbols {
+            let name = CStr::from_ptr(*symbols.add(i) as _)
+                .to_str()
+                .with_context(|| {
+                    format!("failed to parse symbol name for {i}th symbol (not utf8)")
+                })?
+                .to_owned();
+            table.push((name, *values.add(i)));
+        }
+        let r = (*dim).0.eval(table)?;
+        *result = Box::into_raw(Box::new(TractDim(r)));
+        Ok(())
+    })
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tract_dim_to_int64(fact: *const TractDim, i: *mut i64) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(fact, i);
+        *i = (*fact).0.to_int64()?;
+        Ok(())
+    })
+}
+
+/// Write a dim as its specification string.
+///
+/// The returned string must be freed by the caller using tract_free_cstring.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tract_dim_dump(
+    dim: *const TractDim,
+    spec: *mut *mut c_char,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(dim, spec);
+        *spec = CString::new((*dim).0.to_string())?.into_raw();
+        Ok(())
+    })
+}
+
+/// Destroy a dim.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tract_dim_destroy(dim: *mut *mut TractDim) -> TRACT_RESULT {
+    release!(dim)
 }
 
 // MISC

@@ -283,12 +283,12 @@ fn test_transform_registry() -> anyhow::Result<()> {
     let mut model = nnef.load("mobilenet_v2_1.0.onnx.nnef.tgz")?;
 
     // Convert model to half
-    nnef.transform_model(&mut model, "f32-to-f16")?;
+    model.transform("f32-to-f16")?;
     assert_eq!(model.input_fact(0)?.to_string(), "1,3,224,224,F16");
     assert_eq!(model.output_fact(0)?.to_string(), "1,1000,F16");
 
     // Convert back to f32
-    nnef.transform_model(&mut model, "f16-to-f32")?;
+    model.transform("f16-to-f32")?;
     assert_eq!(model.input_fact(0)?.to_string(), "1,3,224,224,F32");
     assert_eq!(model.output_fact(0)?.to_string(), "1,1000,F32");
     Ok(())
@@ -326,7 +326,7 @@ fn test_state_init() -> anyhow::Result<()> {
     let mut model = nnef.load("TinyLlama--TinyLlama_v1.1-q40ef32.nnef.tgz")?;
 
     // Do KV Cache optim
-    nnef.transform_model(&mut model, "detect-kv-cache")?;
+    model.transform("detect-kv-cache")?;
     assert_eq!(model.input_count()?, 1);
 
     let mut state = model.into_runnable()?.spawn_state()?;
@@ -354,7 +354,7 @@ fn test_profile_with_state_init() -> anyhow::Result<()> {
         .collect();
 
     // Do KV Cache optim
-    nnef.transform_model(&mut model, "detect-kv-cache")?;
+    model.transform("detect-kv-cache")?;
     assert_eq!(model.input_count()?, 1);
 
     let model = model.into_runnable()?;
