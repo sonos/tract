@@ -11,8 +11,8 @@
       const int32_t shape_2, const int32_t in_stride_0, const int32_t in_stride_1,         \
       const int32_t in_stride_2, const int32_t out_stride_0, const int32_t out_stride_1,   \
       const int32_t out_stride_2) {                                                \
-    input += blockIdx.z * in_stride_0 + blockIdx.x * in_stride_2;              \
-    output += blockIdx.z * out_stride_0 + blockIdx.x * out_stride_2;           \
+    input += blockIdx.y * in_stride_0 + blockIdx.x * in_stride_2;              \
+    output += blockIdx.y * out_stride_0 + blockIdx.x * out_stride_2;           \
                                                                                \
     const int warp_id = threadIdx.x / WARP_SIZE;                               \
     const int lane_id = threadIdx.x % WARP_SIZE;                               \
@@ -50,8 +50,8 @@
       const int32_t shape_2, const int32_t in_stride_0, const int32_t in_stride_1,         \
       const int32_t in_stride_2, const int32_t out_stride_0, const int32_t out_stride_1,   \
       const int32_t out_stride_2) {                                                \
-    input += blockIdx.z * in_stride_0 + blockIdx.x * in_stride_2;              \
-    output += blockIdx.z * out_stride_0 + blockIdx.x * out_stride_2;           \
+    input += blockIdx.y * in_stride_0 + blockIdx.x * in_stride_2;              \
+    output += blockIdx.y * out_stride_0 + blockIdx.x * out_stride_2;           \
                                                                                \
     const int warp_id = threadIdx.x / WARP_SIZE;                               \
     const int lane_id = threadIdx.x % WARP_SIZE;                               \
@@ -89,8 +89,8 @@
       const int32_t shape_2, const int32_t in_stride_0, const int32_t in_stride_1,         \
       const int32_t in_stride_2, const int32_t out_stride_0, const int32_t out_stride_1,   \
       const int32_t out_stride_2) {                                                \
-    input += blockIdx.z * in_stride_0 + blockIdx.x * in_stride_2;              \
-    output += blockIdx.z * out_stride_0 + blockIdx.x * out_stride_2;           \
+    input += blockIdx.y * in_stride_0 + blockIdx.x * in_stride_2;              \
+    output += blockIdx.y * out_stride_0 + blockIdx.x * out_stride_2;           \
                                                                                \
     const int warp_id = threadIdx.x / WARP_SIZE;                               \
     const int lane_id = threadIdx.x % WARP_SIZE;                               \
@@ -128,8 +128,8 @@
       const int32_t shape_2, const int32_t in_stride_0, const int32_t in_stride_1,         \
       const int32_t in_stride_2, const int32_t out_stride_0, const int32_t out_stride_1,   \
       const int32_t out_stride_2) {                                                \
-    input += blockIdx.z * in_stride_0 + blockIdx.x * in_stride_2;              \
-    output += blockIdx.z * out_stride_0 + blockIdx.x * out_stride_2;           \
+    input += blockIdx.y * in_stride_0 + blockIdx.x * in_stride_2;              \
+    output += blockIdx.y * out_stride_0 + blockIdx.x * out_stride_2;           \
                                                                                \
     const int warp_id = threadIdx.x / WARP_SIZE;                               \
     const int lane_id = threadIdx.x % WARP_SIZE;                               \
@@ -167,8 +167,8 @@
       const int32_t shape_2, const int32_t in_stride_0, const int32_t in_stride_1,         \
       const int32_t in_stride_2, const int32_t out_stride_0, const int32_t out_stride_1,   \
       const int32_t out_stride_2) {                                                \
-    input += blockIdx.z * in_stride_0 + blockIdx.x * in_stride_2;              \
-    output += blockIdx.z * out_stride_0 + blockIdx.x * out_stride_2;           \
+    input += blockIdx.y * in_stride_0 + blockIdx.x * in_stride_2;              \
+    output += blockIdx.y * out_stride_0 + blockIdx.x * out_stride_2;           \
                                                                                \
     const int warp_id = threadIdx.x / WARP_SIZE;                               \
     const int lane_id = threadIdx.x % WARP_SIZE;                               \

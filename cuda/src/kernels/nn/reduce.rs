@@ -83,7 +83,7 @@ impl Reducer {
         launch_args.push_slice_i32(&output_strides_nd3);
 
         let cfg = LaunchConfig {
-            grid_dim: (input_shape_nd3[2] as _, 1 as _, input_shape_nd3[0] as _),
+            grid_dim: (input_shape_nd3[2] as _, input_shape_nd3[0] as _, 1),
             block_dim: if input_shape_nd3[1] < MAX_THREADS {
                 (32, 1, 1)
             } else {
@@ -91,6 +91,7 @@ impl Reducer {
             },
             shared_mem_bytes: 0,
         };
+        dbg!(&cfg);
 
         launch_args.launch(cfg)
     }
