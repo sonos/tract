@@ -30,10 +30,7 @@ impl CausalLlmModel {
         nn: TypedModel,
         conf: CausalLlmModelConfig,
     ) -> TractResult<Arc<CausalLlmModel>> {
-        let nnef = tract_nnef::nnef().with_tract_transformers();
-
-        let transform = nnef
-            .get_transform("transformers-detect-all")?
+        let transform = tract_core::transform::get_transform("transformers-detect-all")?
             .context("transformers-detect-all not found")?;
         let mut nn = nn.into_decluttered()?;
         nn.transform(&*transform)?;

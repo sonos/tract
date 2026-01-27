@@ -65,9 +65,10 @@ impl NnefInterface for Nnef {
         Ok(Model(model))
     }
 
-    fn transform_model(&self, model: &mut Self::Model, transform_spec: &str) -> Result<()> {
-        let t = CString::new(transform_spec)?;
-        check!(sys::tract_nnef_transform_model(self.0, model.0, t.as_ptr()))
+    fn load_buffer(&self, data: &[u8]) -> Result<Model> {
+        let mut model = null_mut();
+        check!(sys::tract_nnef_load_buffer(self.0, data.as_ptr() as _, data.len(), &mut model))?;
+        Ok(Model(model))
     }
 
     fn enable_tract_core(&mut self) -> Result<()> {
@@ -134,6 +135,12 @@ impl OnnxInterface for Onnx {
         )?;
         let mut model = null_mut();
         check!(sys::tract_onnx_load(self.0, path.as_ptr(), &mut model))?;
+        Ok(InferenceModel(model))
+    }
+
+    fn load_buffer(&self, data: &[u8]) -> Result<InferenceModel> {
+        let mut model = null_mut();
+        check!(sys::tract_onnx_load_buffer(self.0, data.as_ptr() as _, data.len(), &mut model))?;
         Ok(InferenceModel(model))
     }
 }
@@ -600,7 +607,21 @@ impl Fact {
     }
 }
 
-impl FactInterface for Fact {}
+impl FactInterface for Fact {
+    type Dim = Dim;
+
+    fn rank(&self) -> Result<usize> {
+        let mut rank = 0;
+        check!(sys::tract_fact_rank(self.0, &mut rank))?;
+        Ok(rank)
+    }
+
+    fn dim(&self, axis: usize) -> Result<Self::Dim> {
+        let mut ptr = null_mut();
+        check!(sys::tract_fact_dim(self.0, axis, &mut ptr))?;
+        Ok(Dim(ptr))
+    }
+}
 
 impl std::fmt::Display for Fact {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -658,3 +679,45 @@ impl std::fmt::Display for InferenceFact {
 
 as_inference_fact_impl!(InferenceModel, InferenceFact);
 as_fact_impl!(Model, Fact);
+
+// Dim
+wrapper!(Dim, TractDim, tract_dim_destroy);
+
+impl Dim {
+    fn dump(&self) -> Result<String> {
+        let mut ptr = null_mut();
+        check!(sys::tract_dim_dump(self.0, &mut ptr))?;
+        unsafe {
+            let s = CStr::from_ptr(ptr).to_owned();
+            sys::tract_free_cstring(ptr);
+            Ok(s.to_str()?.to_owned())
+        }
+    }
+}
+
+impl DimInterface for Dim {
+    fn eval(&self, values: impl IntoIterator<Item = (impl AsRef<str>, i64)>) -> Result<Self> {
+        let (names, values): (Vec<_>, Vec<_>) = values.into_iter().unzip();
+        let c_strings: Vec<CString> =
+            names.into_iter().map(|a| Ok(CString::new(a.as_ref())?)).collect::<Result<_>>()?;
+        let ptrs: Vec<_> = c_strings.iter().map(|cs| cs.as_ptr()).collect();
+        let mut ptr = null_mut();
+        check!(sys::tract_dim_eval(self.0, ptrs.len(), ptrs.as_ptr(), values.as_ptr(), &mut ptr))?;
+        Ok(Dim(ptr))
+    }
+
+    fn to_int64(&self) -> Result<i64> {
+        let mut i = 0;
+        check!(sys::tract_dim_to_int64(self.0, &mut i))?;
+        Ok(i)
+    }
+}
+
+impl std::fmt::Display for Dim {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.dump() {
+            Ok(s) => f.write_str(&s),
+            Err(_) => Err(std::fmt::Error),
+        }
+    }
+}

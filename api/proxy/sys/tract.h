@@ -40,6 +40,11 @@ typedef enum TRACT_RESULT {
   TRACT_RESULT_KO = 1,
 } TRACT_RESULT;
 
+/**
+ * Dim
+ */
+typedef struct TractDim TractDim;
+
 typedef struct TractFact TractFact;
 
 typedef struct TractInferenceFact TractInferenceFact;
@@ -90,10 +95,6 @@ void tract_free_cstring(char *ptr);
  */
 enum TRACT_RESULT tract_nnef_create(struct TractNnef **nnef);
 
-enum TRACT_RESULT tract_nnef_transform_model(const struct TractNnef *nnef,
-                                             struct TractModel *model,
-                                             const int8_t *transform_spec);
-
 enum TRACT_RESULT tract_nnef_enable_tract_core(struct TractNnef *nnef);
 
 enum TRACT_RESULT tract_nnef_enable_tract_extra(struct TractNnef *nnef);
@@ -120,6 +121,17 @@ enum TRACT_RESULT tract_nnef_destroy(struct TractNnef **nnef);
 enum TRACT_RESULT tract_nnef_load(const struct TractNnef *nnef,
                                   const char *path,
                                   struct TractModel **model);
+
+/**
+ * Parse and load an NNEF buffer as a tract TypedModel.
+ *
+ * `data` is a buffer pointer
+ * `len` ise the buffer len
+ */
+enum TRACT_RESULT tract_nnef_load_buffer(const struct TractNnef *nnef,
+                                         const void *data,
+                                         uintptr_t len,
+                                         struct TractModel **model);
 
 /**
  * Dump a TypedModel as a NNEF tar file.
@@ -173,6 +185,17 @@ enum TRACT_RESULT tract_onnx_destroy(struct TractOnnx **onnx);
 enum TRACT_RESULT tract_onnx_load(const struct TractOnnx *onnx,
                                   const char *path,
                                   struct TractInferenceModel **model);
+
+/**
+ * Parse and load an ONNX buffer as a tract InferenceModel.
+ *
+ * `data` is a buffer pointer
+ * `len` ise the buffer len
+ */
+enum TRACT_RESULT tract_onnx_load_buffer(const struct TractOnnx *onnx,
+                                         const void *data,
+                                         uintptr_t len,
+                                         struct TractInferenceModel **model);
 
 /**
  * Query an InferenceModel input counts.
@@ -525,6 +548,18 @@ enum TRACT_RESULT tract_fact_parse(struct TractModel *model,
                                    struct TractFact **fact);
 
 /**
+ * Gets the rank (aka number of axes/dimensions) of a fact.
+ */
+enum TRACT_RESULT tract_fact_rank(const struct TractFact *fact, uintptr_t *rank);
+
+/**
+ * Extract the dimension from one dimension of the fact.
+ */
+enum TRACT_RESULT tract_fact_dim(const struct TractFact *fact,
+                                 uintptr_t axis,
+                                 struct TractDim **dim);
+
+/**
  * Write a fact as its specification string.
  *
  * The returned string must be freed by the caller using tract_free_cstring.
@@ -560,3 +595,23 @@ enum TRACT_RESULT tract_inference_fact_dump(const struct TractInferenceFact *fac
  * Destroy a fact.
  */
 enum TRACT_RESULT tract_inference_fact_destroy(struct TractInferenceFact **fact);
+
+enum TRACT_RESULT tract_dim_eval(const struct TractDim *dim,
+                                 uintptr_t nb_symbols,
+                                 const int8_t *const *symbols,
+                                 const int64_t *values,
+                                 struct TractDim **result);
+
+enum TRACT_RESULT tract_dim_to_int64(const struct TractDim *fact, int64_t *i);
+
+/**
+ * Write a dim as its specification string.
+ *
+ * The returned string must be freed by the caller using tract_free_cstring.
+ */
+enum TRACT_RESULT tract_dim_dump(const struct TractDim *dim, char **spec);
+
+/**
+ * Destroy a dim.
+ */
+enum TRACT_RESULT tract_dim_destroy(struct TractDim **dim);
