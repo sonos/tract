@@ -96,6 +96,7 @@ impl ModelTransform for SoftmaxFastCompact {
     }
 }
 
+#[allow(clippy::type_complexity)]
 pub struct ModelTransformFactory {
     pub name: &'static str,
     pub builder: fn(spec: &str) -> TractResult<Option<Box<dyn ModelTransform>>>,
@@ -117,7 +118,7 @@ macro_rules! register_simple_model_transform {
 
 pub fn get_transform(spec: &str) -> TractResult<Option<Box<dyn ModelTransform>>> {
     for factory in inventory::iter::<ModelTransformFactory>() {
-        if spec.starts_with(&factory.name) {
+        if spec.starts_with(factory.name) {
             return (factory.builder)(spec);
         }
     }
