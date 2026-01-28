@@ -98,6 +98,33 @@ struct Prod {
   }
 };
 
+template <typename U>
+struct All {
+  U simd_reduce(U val, size_t reduce_dim) {
+    return simd_all(val);
+  }
+
+  static constexpr constant U init = U(1);
+
+  // Operator
+  U operator()(U acc, U a) {
+    return acc && a;
+  }
+};
+
+template <typename U>
+struct Any {
+  U simd_reduce(U val, size_t reduce_dim) {
+    return simd_any(val);
+  }
+
+  static constexpr constant U init = U(0);
+
+  // Operator
+  U operator()(U acc, U a) {
+    return acc || a;
+  }
+};
 
 template<typename F, typename Op>  
 [[kernel]] void reduce_nd3(
@@ -153,7 +180,8 @@ INSTANTIATE_REDUCE(min, Min, f16, half)
 INSTANTIATE_REDUCE(max, Max, f32, float)
 INSTANTIATE_REDUCE(max, Max, f16, half)
 INSTANTIATE_REDUCE(prod, Prod, f32, float)
-INSTANTIATE_REDUCE(prod, Prod, f16, half)
+INSTANTIATE_REDUCE(all, All, bool, char)
+INSTANTIATE_REDUCE(any, Any, bool, char)
 
 
 template<typename F>  

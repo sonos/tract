@@ -12,18 +12,28 @@ pub enum Reducer {
     Prod,
     Min,
     Max,
+    All,
+    Any,
 }
 
 impl Reducer {
-    pub const ALL: [Reducer; 5] =
-        [Self::MeanOfSquares, Self::Sum, Self::Prod, Self::Min, Self::Max];
+    pub const ALL: [Reducer; 7] =
+        [Self::MeanOfSquares, Self::Sum, Self::Prod, Self::Min, Self::Max, Self::All, Self::Any];
 
-    pub fn is_supported_dt(dt: DatumType) -> bool {
-        matches!(dt, DatumType::F32 | DatumType::F16)
+    pub fn is_logic(&self) -> bool {
+        *self == Reducer::All || *self == Reducer::Any
+    }
+
+    pub fn is_supported_dt(&self, dt: DatumType) -> bool {
+        if self.is_logic() {
+            dt.is::<bool>()
+        } else {
+            dt.is::<f32>() || dt.is::<f16>()
+        }
     }
 
     pub fn kernel_name(&self, dt: DatumType) -> TractResult<String> {
-        ensure!(Self::is_supported_dt(dt), "Unsupported dt {:?} for metal reduceop", dt);
+        ensure!(self.is_supported_dt(dt), "Unsupported dt {dt:?} for metal reduceop {self:?}");
         let tname = DeviceTensor::tname(dt)?;
         let op = match self {
             Self::MeanOfSquares => "mean_of_squares",
@@ -31,6 +41,8 @@ impl Reducer {
             Self::Prod => "prod",
             Self::Min => "min",
             Self::Max => "max",
+            Self::All => "all",
+            Self::Any => "any",
         };
         Ok(format!("nn_ops::reduce_{op}_nd3_{tname}"))
     }
