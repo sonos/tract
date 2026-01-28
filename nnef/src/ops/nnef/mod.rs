@@ -119,6 +119,8 @@ pub fn tract_nnef() -> Registry {
     primitive(&mut registry, "sum_reduce", deser::reduce);
     primitive(&mut registry, "max_reduce", deser::reduce);
     primitive(&mut registry, "min_reduce", deser::reduce);
+    primitive(&mut registry, "all_reduce", deser::reduce);
+    primitive(&mut registry, "any_reduce", deser::reduce);
     primitive(&mut registry, "argmax_reduce", deser::reduce);
     primitive(&mut registry, "argmin_reduce", deser::reduce);
     registry.register_dumper(ser::reduce);

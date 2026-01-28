@@ -24,6 +24,8 @@ impl CudaReduce {
             core_ops_nn::Reducer::Prod => Reducer::Prod,
             core_ops_nn::Reducer::Min => Reducer::Min,
             core_ops_nn::Reducer::Max => Reducer::Max,
+            core_ops_nn::Reducer::All => Reducer::All,
+            core_ops_nn::Reducer::Any => Reducer::Any,
             _ => bail!("Unsupported reducer {:?} on cuda", core_reduce.reducer),
         };
         Self::new(core_reduce.axes.clone(), cuda_reducer)

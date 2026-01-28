@@ -61,6 +61,24 @@ struct MeanOfSquaresOp {
   __device__ __forceinline__ static acc_t norm(acc_t a, int32_t size) { return a / (acc_t) size; }
 };
 
+template <typename Acc>
+struct BoolOrOp {
+  using acc_t = Acc;
+  __device__ __forceinline__ static acc_t identity() { return acc_t(0); }
+  __device__ __forceinline__ static acc_t pre(acc_t a) { return a; }
+  __device__ __forceinline__ static acc_t combine(acc_t a, acc_t b) { return a || b; }
+  __device__ __forceinline__ static acc_t norm(acc_t a, int32_t size) { return a; }
+};
+
+template <typename Acc>
+struct BoolAndOp {
+  using acc_t = Acc;
+  __device__ __forceinline__ static acc_t identity() { return acc_t(1); }
+  __device__ __forceinline__ static acc_t pre(acc_t a) { return a; }
+  __device__ __forceinline__ static acc_t combine(acc_t a, acc_t b) { return a && b; }
+  __device__ __forceinline__ static acc_t norm(acc_t a, int32_t size) { return a; }
+};
+
 template<typename T, int block_size, class Op>
 __device__ void reduce(
       const T *input, T *output,
@@ -572,3 +590,7 @@ INSTANTIATE_REDUCE(f32, float, small_, 32)
 INSTANTIATE_REDUCE(f32, float, , 1024)
 INSTANTIATE_REDUCE(f16, __half, small_, 32)
 INSTANTIATE_REDUCE(f16, __half, , 1024)
+INSTANTIATE_REDUCE_1(any, bool, char, BoolOrOp, small_, 32)
+INSTANTIATE_REDUCE_1(any, bool, char, BoolOrOp, , 1024)
+INSTANTIATE_REDUCE_1(all, bool, char, BoolAndOp, small_, 32)
+INSTANTIATE_REDUCE_1(all, bool, char, BoolAndOp, , 1024)
