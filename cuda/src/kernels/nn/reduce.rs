@@ -1,6 +1,6 @@
-use crate::context::{TractCudaStream, cuda_context};
+use crate::context::{cuda_context, TractCudaStream};
 use crate::kernels::launch_args::TractLaunchArgs;
-use crate::kernels::{LibraryName, MAX_THREADS, get_cuda_view, launch_args, utils};
+use crate::kernels::{get_cuda_view, launch_args, utils, LibraryName, MAX_THREADS};
 use cudarc::driver::{CudaStream, LaunchConfig, PushKernelArg};
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
@@ -25,7 +25,11 @@ impl Reducer {
     }
 
     pub fn is_supported_dt(&self, dt: DatumType) -> bool {
-        if self.is_logic() { dt.is::<bool>() } else { dt.is::<f32>() || dt.is::<f16>() }
+        if self.is_logic() {
+            dt.is::<bool>()
+        } else {
+            dt.is::<f32>() || dt.is::<f16>()
+        }
     }
 
     pub fn kernel_name(&self, dt: DatumType, n_cols: usize) -> TractResult<String> {
