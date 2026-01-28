@@ -291,6 +291,7 @@ fn ser_reduce(
                 BuiltinOp::new(74, 1, BuiltinOperator::SUM, BuiltinOptions::ReducerOptions),
                 options.as_union_value(),
             ),
+            Reducer::All | Reducer::Any => todo!(),
             Reducer::ArgMin(_) | Reducer::ArgMax(_) | Reducer::MeanOfSquares => unreachable!(),
         }
     }

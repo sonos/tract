@@ -657,6 +657,8 @@ pub fn reduce(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tr
     let axes: TVec<usize> = invocation.named_arg_as(builder, "axes")?;
     let reducer_name = invocation.invocation.id.0.split('_').next().unwrap();
     let reducer = match reducer_name {
+        "all" => ops::nn::Reducer::All,
+        "any" => ops::nn::Reducer::Any,
         "sum" => ops::nn::Reducer::Sum,
         "min" => ops::nn::Reducer::Min,
         "max" => ops::nn::Reducer::Max,
