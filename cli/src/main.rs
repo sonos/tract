@@ -173,7 +173,7 @@ fn main() -> TractResult<()> {
 
         .arg(arg!(--"threads" [THREADS] "Setup a thread pool for computing. 0 will guess the number of physical cores"))
 
-        .arg(arg!(-O --optimize "Optimize before running").hide(true))
+        .arg(arg!(-O --optimize "Optimize before running"))
         .arg(arg!(--"assert-maximal-mm-quality-cost" [MAX] "Maximum value for quality category (0=assembly, 4=dreadful rust code)"))
         .arg(arg!(--pulse [PULSE] "Translate to pulse network"))
 
@@ -818,6 +818,9 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
         let style = nu_ansi_term::Style::new().fg(nu_ansi_term::Color::Red).bold();
         if cfg!(debug_assertions) {
             warn!("{}", style.paint("Profiling a debug build of tract!"));
+        }
+        if !["cuda", "metal", "optimize", "runtime"].iter().any(|a| matches.is_present(a)) {
+            warn!("{}", style.paint("Profiling a non-optimized model. Use -O or a runtime."));
         }
     }
     Ok(())
