@@ -33,8 +33,6 @@ impl State for CudaTestTransformState {
             self.state.clone()
         };
 
-        dbg!(&state.turn_state.values);
-
         if self.transpose_inputs {
             let inputs = inputs
                 .into_iter()

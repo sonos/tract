@@ -12,18 +12,24 @@ pub enum Reducer {
     Prod,
     Min,
     Max,
+    Any,
+    All,
 }
 
 impl Reducer {
-    pub const ALL: [Reducer; 5] =
-        [Self::MeanOfSquares, Self::Sum, Self::Prod, Self::Min, Self::Max];
+    pub const ALL: [Reducer; 7] =
+        [Self::MeanOfSquares, Self::Sum, Self::Prod, Self::Min, Self::Max, Self::Any, Self::All];
 
-    pub fn is_supported_dt(dt: DatumType) -> bool {
-        matches!(dt, DatumType::F32 | DatumType::F16)
+    pub fn is_logic(&self) -> bool {
+        *self == Reducer::All || *self == Reducer::Any
+    }
+
+    pub fn is_supported_dt(&self, dt: DatumType) -> bool {
+        if self.is_logic() { dt.is::<bool>() } else { dt.is::<f32>() || dt.is::<f16>() }
     }
 
     pub fn kernel_name(&self, dt: DatumType, n_cols: usize) -> TractResult<String> {
-        ensure!(Self::is_supported_dt(dt), "Unsupported dt {:?} for cuda reduceop", dt);
+        ensure!(self.is_supported_dt(dt), "Unsupported dt {dt:?} for cuda reduceop {self:?}");
         let tname = DeviceTensor::tname(dt)?;
         let op = match self {
             Self::MeanOfSquares => "mean_of_squares",
@@ -31,6 +37,8 @@ impl Reducer {
             Self::Prod => "prod",
             Self::Min => "min",
             Self::Max => "max",
+            Self::Any => "any",
+            Self::All => "all",
         };
         if n_cols < 1024 {
             Ok(format!("reduce_{op}_small_{tname}"))
@@ -91,7 +99,6 @@ impl Reducer {
             },
             shared_mem_bytes: 0,
         };
-        dbg!(&cfg);
 
         launch_args.launch(cfg)
     }
@@ -109,6 +116,7 @@ mod tests {
     use proptest::prelude::*;
     use tract_core::internal::Tensor;
     use tract_core::ops::nn::Reducer as TractReducer;
+    use tract_core::tract_data::itertools::Itertools;
     use tract_gpu::tensor::IntoDevice;
 
     fn test_case<F>(
@@ -331,13 +339,13 @@ mod tests {
         type Strategy = BoxedStrategy<Self>;
 
         fn arbitrary_with(_: ()) -> Self::Strategy {
-            (0..Reducer::ALL.len(), 0usize..3, 0usize..3)
-                .prop_flat_map(|(op_idx, left, right)| {
+            let reducers = Reducer::ALL.into_iter().filter(|r| !r.is_logic()).collect_vec();
+            (0..reducers.len(), 0usize..3, 0usize..3)
+                .prop_flat_map(move |(op_ix, left, right)| {
                     let axis = left;
                     let shape_len = usize::min(left + right + 1, 4);
                     let shape = 1usize..10;
-                    let op = Reducer::ALL[op_idx];
-                    (Just(op), vec(shape, shape_len..=shape_len), Just(axis))
+                    (Just(reducers[op_ix]), vec(shape, shape_len..=shape_len), Just(axis))
                 })
                 .prop_map(|(op, shape, axis)| {
                     let input = (0..shape.iter().product::<usize>())
@@ -362,6 +370,8 @@ mod tests {
                 Reducer::MeanOfSquares => TractReducer::MeanOfSquares.reduce(&[self.axis], &a)?,
                 Reducer::Min => TractReducer::Min.reduce(&[self.axis], &a)?,
                 Reducer::Max => TractReducer::Max.reduce(&[self.axis], &a)?,
+                Reducer::Any => TractReducer::Any.reduce(&[self.axis], &a)?,
+                Reducer::All => TractReducer::All.reduce(&[self.axis], &a)?,
             };
             Ok(cpu_output)
         }

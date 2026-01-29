@@ -2,6 +2,12 @@
 #include <cuda_fp16.h>
 #include <cuda/std/type_traits>
 
+#define CAT2(a,b) a##b
+#define CAT(a,b)  CAT2(a,b)
+#define CAT3(a,b,c) CAT(CAT(a,b),c)
+#define CAT4(a,b,c,d) CAT(CAT3(a,b,c),d)
+#define CAT5(a,b,c,d,e) CAT(CAT(CAT3(a,b,c),d),e)
+
 #define CUDA_CC_TURING 750
 #define CUDA_CC_AMPERE 800
 

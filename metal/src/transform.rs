@@ -240,8 +240,8 @@ fn can_translate_to_metal_op(source: &TypedModel, node: &TypedNode) -> TractResu
             || node.op_is::<TypedConcat>()
             || node.op_is::<DynKeyValueCache>()
             || node.op_as::<Reduce>().is_some_and(|op| {
-                kernels::nn::Reducer::is_supported_dt(input_dts[0])
-                    && ops::MetalReduce::from_tract_core(op).is_ok()
+                ops::MetalReduce::from_tract_core(op)
+                    .is_ok_and(|op| op.reducer.is_supported_dt(input_dts[0]))
             })
             || node.op_as::<CoreSoftmax>().is_some_and(|op| {
                 kernels::nn::Softmax::is_supported_dt(input_dts[0])

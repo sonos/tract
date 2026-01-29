@@ -57,6 +57,8 @@ pub enum Reducer {
     Prod,
     Sum,
     MeanOfSquares,
+    All,
+    Any,
 }
 
 impl Reducer {
@@ -98,6 +100,8 @@ impl Reducer {
                     }
                 }
                 MeanOfSquares => self.mean_of_squares(axes, input)?,
+                All => Self::reduce_t(self, axes, &output_shape, input, all_bool, ()),
+                Any => Self::reduce_t(self, axes, &output_shape, input, any_bool, ()),
             };
             if input.datum_type().is_quantized()
                 && input.datum_type().unquantized() == t.datum_type().unquantized()
@@ -330,6 +334,14 @@ where
 {
     let (zp, _) = zp_scale;
     (v.fold(0i32, |acc, &v| acc + v.as_()) - zp * (v.len() as i32 - 1)).clamp_cast()
+}
+
+fn all_bool(v: ArrayViewD<bool>, _: ()) -> bool {
+    v.iter().all(|v| *v)
+}
+
+fn any_bool(v: ArrayViewD<bool>, _: ()) -> bool {
+    v.iter().any(|v| *v)
 }
 
 #[derive(Clone, Debug, new, Hash)]
