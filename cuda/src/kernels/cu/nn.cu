@@ -88,8 +88,16 @@ __device__ void reduce(
     ) {
    
     using Acc = typename Op::acc_t;
-    input += blockIdx.y * in_stride_0 + blockIdx.x * in_stride_2;
-    output += blockIdx.y * out_stride_0 + blockIdx.x * out_stride_2;
+
+    int64_t linear = (int64_t)blockIdx.x + (int64_t)blockIdx.y * (int64_t)gridDim.x;
+    int64_t total  = (int64_t)shape_0 * (int64_t)shape_2;
+    if (linear >= total) return;
+
+    int32_t y = (int32_t)(linear / shape_2);
+    int32_t x = (int32_t)(linear - (int64_t)y * shape_2);
+
+    input  += (int64_t)y * in_stride_0  + (int64_t)x * in_stride_2;
+    output += (int64_t)y * out_stride_0 + (int64_t)x * out_stride_2;
 
     Acc accu = Op::identity();
     // each thread computes reduction over BLOCK_SIZE values
