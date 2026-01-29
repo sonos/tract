@@ -76,6 +76,8 @@ impl Reducer {
         let output_shape_nd3 = utils::reshape_to_rank_3(output.shape(), axis);
         let output_strides_nd3 = Tensor::natural_strides(&output_shape_nd3);
 
+        let total = (input_shape_nd3[0] as u64) * (input_shape_nd3[2] as u64);
+
         let i_view = get_cuda_view(input);
         let o_view = get_cuda_view(output);
 
@@ -91,7 +93,7 @@ impl Reducer {
         launch_args.push_slice_i32(&output_strides_nd3);
 
         let cfg = LaunchConfig {
-            grid_dim: (input_shape_nd3[2] as _, input_shape_nd3[0] as _, 1),
+            grid_dim: (total as u32, 1, 1),
             block_dim: if input_shape_nd3[1] < MAX_THREADS {
                 (32, 1, 1)
             } else {
