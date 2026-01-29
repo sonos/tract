@@ -117,6 +117,7 @@ mod tests {
     use proptest::prelude::*;
     use tract_core::internal::Tensor;
     use tract_core::ops::nn::Reducer as TractReducer;
+    use tract_core::tract_data::itertools::Itertools;
     use tract_gpu::tensor::IntoDevice;
 
     fn test_case<F>(
@@ -339,13 +340,13 @@ mod tests {
         type Strategy = BoxedStrategy<Self>;
 
         fn arbitrary_with(_: ()) -> Self::Strategy {
-            (0..Reducer::ALL.len(), 0usize..3, 0usize..3)
-                .prop_flat_map(|(op_idx, left, right)| {
+            let reducers = Reducer::ALL.into_iter().filter(|r| !r.is_logic()).collect_vec();
+            (0..reducers.len(), 0usize..3, 0usize..3)
+                .prop_flat_map(move |(op_ix, left, right)| {
                     let axis = left;
                     let shape_len = usize::min(left + right + 1, 4);
                     let shape = 1usize..10;
-                    let op = Reducer::ALL[op_idx];
-                    (Just(op), vec(shape, shape_len..=shape_len), Just(axis))
+                    (Just(reducers[op_ix]), vec(shape, shape_len..=shape_len), Just(axis))
                 })
                 .prop_map(|(op, shape, axis)| {
                     let input = (0..shape.iter().product::<usize>())
