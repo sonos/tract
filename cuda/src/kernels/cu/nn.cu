@@ -88,8 +88,8 @@ __device__ void reduce(
     ) {
     using Acc = typename Op::acc_t;
 
-    input += blockIdx.z * in_stride_0 + blockIdx.x * in_stride_2;              
-    output += blockIdx.z * out_stride_0 + blockIdx.x * out_stride_2;           
+    input += blockIdx.y * in_stride_0 + blockIdx.x * in_stride_2;              
+    output += blockIdx.y * out_stride_0 + blockIdx.x * out_stride_2;           
                                                                                
     const int warp_id = threadIdx.x / WARP_SIZE;                               
     const int lane_id = threadIdx.x % WARP_SIZE;                               

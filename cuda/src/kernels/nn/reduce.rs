@@ -99,7 +99,6 @@ impl Reducer {
             },
             shared_mem_bytes: 0,
         };
-        dbg!(&cfg);
 
         launch_args.launch(cfg)
     }
