@@ -25,7 +25,11 @@ impl Reducer {
     }
 
     pub fn is_supported_dt(&self, dt: DatumType) -> bool {
-        if self.is_logic() { dt.is::<bool>() } else { dt.is::<f32>() || dt.is::<f16>() }
+        if self.is_logic() {
+            dt.is::<bool>()
+        } else {
+            dt.is::<f32>() || dt.is::<f16>()
+        }
     }
 
     pub fn kernel_name(&self, dt: DatumType) -> TractResult<String> {
@@ -107,6 +111,7 @@ mod tests {
     use proptest::prelude::*;
     use tract_core::internal::Tensor;
     use tract_core::ops::nn::Reducer as TractReducer;
+    use tract_core::tract_data::itertools::Itertools;
     use tract_gpu::tensor::IntoDevice;
 
     fn test_case<F>(
@@ -329,12 +334,13 @@ mod tests {
         type Strategy = BoxedStrategy<Self>;
 
         fn arbitrary_with(_: ()) -> Self::Strategy {
-            (0..Reducer::ALL.len(), 0usize..3, 0usize..3)
-                .prop_flat_map(|(op_idx, left, right)| {
+            let reducers = Reducer::ALL.into_iter().filter(|r| !r.is_logic()).collect_vec();
+            (0..reducers.len(), 0usize..3, 0usize..3)
+                .prop_flat_map(move |(op_idx, left, right)| {
                     let axis = left;
                     let shape_len = usize::min(left + right + 1, 4);
                     let shape = 1usize..10;
-                    let op = Reducer::ALL[op_idx];
+                    let op = reducers[op_idx];
                     (Just(op), vec(shape, shape_len..=shape_len), Just(axis))
                 })
                 .prop_map(|(op, shape, axis)| {
@@ -360,6 +366,7 @@ mod tests {
                 Reducer::MeanOfSquares => TractReducer::MeanOfSquares.reduce(&[self.axis], &a)?,
                 Reducer::Min => TractReducer::Min.reduce(&[self.axis], &a)?,
                 Reducer::Max => TractReducer::Max.reduce(&[self.axis], &a)?,
+                _ => unreachable!(),
             };
             Ok(cpu_output)
         }

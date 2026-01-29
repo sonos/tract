@@ -180,6 +180,7 @@ INSTANTIATE_REDUCE(min, Min, f16, half)
 INSTANTIATE_REDUCE(max, Max, f32, float)
 INSTANTIATE_REDUCE(max, Max, f16, half)
 INSTANTIATE_REDUCE(prod, Prod, f32, float)
+INSTANTIATE_REDUCE(prod, Prod, f16, half)
 INSTANTIATE_REDUCE(all, All, bool, char)
 INSTANTIATE_REDUCE(any, Any, bool, char)
 
