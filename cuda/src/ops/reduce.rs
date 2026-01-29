@@ -56,7 +56,6 @@ impl EvalOp for CudaReduce {
         CUDA_STREAM.with(|stream| {
             let opaque = args_1!(inputs);
             let input = opaque.to_device_tensor()?;
-            dbg!(self, &input);
             let mut output_shape = input.shape().to_vec();
             output_shape[self.axes[0]] = 1;
             let output = tract_gpu::session_handler::make_tensor_for_node(
