@@ -5,16 +5,6 @@
 #define GELU_COEF_A 0.044715f
 #define SQRT_2_OVER_PI 0.79788456080286535587989211986876f
 
-template <class Op, int width>
-__device__ __forceinline__ typename Op::acc_t warp_reduce(typename Op::acc_t v) {
-  #pragma unroll
-  for (int offset = WARP_SIZE / 2; offset > 0; offset >>= 1) {
-    auto other = __shfl_xor_sync(0xffffffff, v, offset, width);
-    v = Op::combine(v, other);
-  }
-  return v;
-}
-
 template <typename Acc>
 struct MaxOp {
   using acc_t = Acc;
@@ -79,48 +69,64 @@ struct BoolAndOp {
   __device__ __forceinline__ static acc_t norm(acc_t a, int32_t size) { return a; }
 };
 
-template<typename T, int block_size, class Op>
+template <class Op>
+__device__ __forceinline__ typename Op::acc_t warp_reduce(typename Op::acc_t v) {
+  #pragma unroll
+  for (int offset = WARP_SIZE / 2; offset > 0; offset >>= 1) {
+    auto other = __shfl_xor_sync(0xffffffff, v, offset, WARP_SIZE);
+    v = Op::combine(v, other);
+  }
+  return v;
+}
+
+template<typename T, int BLOCK_THREADS, class Op>
 __device__ void reduce(
       const T *input, T *output,
       const int32_t shape_0, const int32_t shape_1, const int32_t shape_2,
       const int32_t in_stride_0, const int32_t in_stride_1, const int32_t in_stride_2,
       const int32_t out_stride_0, const int32_t out_stride_1, const int32_t out_stride_2
     ) {
+   
     using Acc = typename Op::acc_t;
+    input += blockIdx.y * in_stride_0 + blockIdx.x * in_stride_2;
+    output += blockIdx.y * out_stride_0 + blockIdx.x * out_stride_2;
 
-    input += blockIdx.y * in_stride_0 + blockIdx.x * in_stride_2;              
-    output += blockIdx.y * out_stride_0 + blockIdx.x * out_stride_2;           
-                                                                               
-    const int warp_id = threadIdx.x / WARP_SIZE;                               
-    const int lane_id = threadIdx.x % WARP_SIZE;                               
-                                                                               
     Acc accu = Op::identity();
+    // each thread computes reduction over BLOCK_SIZE values
     _Pragma("unroll")
-    for (int i = threadIdx.x; i < shape_1; i += blockDim.x) {                                  
+    for (int i = threadIdx.x; i < shape_1; i += BLOCK_THREADS) {
       accu = Op::combine(accu, Op::pre(input[i * in_stride_1]));
-    }                                                                          
-    accu = warp_reduce<Op, block_size>(accu);
-    if (block_size > WARP_SIZE) {                                              
-      __shared__ float shared[32];
-      if (warp_id == 0) {                                          
-        shared[lane_id] = Op::identity();                                            
-      }                                                                        
-      __syncthreads();                                                         
-                                                                               
-      if (lane_id == 0) {                                                      
-        shared[warp_id] = accu;
-      }                                                                        
-      __syncthreads();                                                         
-                                                                               
-      accu = shared[lane_id];                                                
-      accu = warp_reduce<Op, block_size>(accu);
-    }                                                                          
-                                                                               
-    if (threadIdx.x == 0) {
-       *output =  Op::norm(accu, shape_1);
-    }                                                                          
-}
+    }
 
+    // each warp reduce the values of its 32 threads
+    // (every wrap member converge to the value)
+    accu = warp_reduce<Op>(accu);
+
+    constexpr int NUM_WARPS = (BLOCK_THREADS + WARP_SIZE - 1) / WARP_SIZE;
+    if constexpr(NUM_WARPS == 1) {
+      if (threadIdx.x == 0) {
+         *output =  Op::norm(accu, shape_1);
+      }
+    } else {
+      const int warp_id = threadIdx.x / WARP_SIZE;
+      const int lane_id = threadIdx.x % WARP_SIZE;
+
+      __shared__ Acc shared[NUM_WARPS];
+
+      if (lane_id == 0) {
+        shared[warp_id] = accu;
+      }
+      __syncthreads();
+
+      if (warp_id == 0) {
+          accu = (lane_id < NUM_WARPS) ? shared[lane_id] : Op::identity();
+          accu = warp_reduce<Op>(accu);
+          if (lane_id == 0) {
+            *output = Op::norm(accu, shape_1);
+          }
+      }
+    }
+}
   
 #define INSTANTIATE_REDUCE_1(op_name, name, T, Op, bname, block_size)          \
   extern "C" __global__ void CAT5(reduce_, op_name, _, bname, name)(           \
