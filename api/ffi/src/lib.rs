@@ -844,7 +844,7 @@ pub unsafe extern "C" fn tract_model_parse_fact(
     wrap(|| unsafe {
         check_not_null!(model, spec, fact);
         let spec = CStr::from_ptr(spec).to_str()?;
-        let f: tract_rs::Fact = spec.as_fact(&mut (*model).0)?.as_ref().clone();
+        let f: tract_rs::Fact = spec.as_fact(&(*model).0)?.as_ref().clone();
         *fact = Box::into_raw(Box::new(TractFact(f)));
         Ok(())
     })
@@ -1248,7 +1248,7 @@ pub unsafe extern "C" fn tract_inference_fact_parse(
     wrap(|| unsafe {
         check_not_null!(model, spec, fact);
         let spec = CStr::from_ptr(spec).to_str()?;
-        let f: tract_rs::InferenceFact = spec.as_fact(&mut (*model).0)?.as_ref().clone();
+        let f: tract_rs::InferenceFact = spec.as_fact(&(*model).0)?.as_ref().clone();
         *fact = Box::into_raw(Box::new(TractInferenceFact(f)));
         Ok(())
     })
