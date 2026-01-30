@@ -21,7 +21,6 @@ def setup_module(module):
 def grace_hopper_1x3x224x244():
     return numpy.load(Path(__file__).parent.parent / "grace_hopper_1x3x224x244.npy")
 
-
 def test_version():
     tract.version()
 
@@ -89,6 +88,14 @@ def test_typed_model():
     assert model.output_name(0) == "conv_53"
     assert str(model.input_fact(0)) == "1,3,224,224,F32"
     assert str(model.output_fact(0)) == "1,1000,F32"
+
+def test_runtime():
+    model = tract.nnef().load("mobilenet_v2_1.0.onnx.nnef.tgz")
+    rt = tract.runtime_for_name("cuda")
+    runnable = rt.prepare(model)
+    result = runnable.run([grace_hopper_1x3x224x244()])
+    confidences = result[0].to_numpy()
+    assert numpy.argmax(confidences) == 652
 
 def test_set_output_names():
     model = tract.nnef().load("mobilenet_v2_1.0.onnx.nnef.tgz")
@@ -206,12 +213,12 @@ def test_transform_registry():
     model = nnef.load("mobilenet_v2_1.0.onnx.nnef.tgz")
 
     #Convert model to half
-    nnef.transform_model(model, "f32-to-f16")
+    model.transform("f32-to-f16")
     assert str(model.input_fact(0)) == "1,3,224,224,F16"
     assert str(model.output_fact(0)) == "1,1000,F16"
     
     # Convert back to f32 
-    nnef.transform_model(model, "f16-to-f32")
+    model.transform("f16-to-f32")
     assert str(model.input_fact(0)) == "1,3,224,224,F32"
     assert str(model.output_fact(0)) == "1,1000,F32"
 

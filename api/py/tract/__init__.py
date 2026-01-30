@@ -48,7 +48,7 @@ from .fact import Fact, InferenceFact
 from .model import Model
 from .inference_model import InferenceModel
 from .runnable import Runnable
-from .runtime import Runtime
+from .runtime import Runtime, runtime_for_name
 from .nnef import Nnef
 from .onnx import Onnx
 

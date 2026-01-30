@@ -370,7 +370,7 @@ wrapper!(Runtime, TractRuntime, tract_runtime_release);
 pub fn runtime_for_name(name: &str) -> Result<Runtime> {
     let mut rt = null_mut();
     let name = CString::new(name)?;
-    check!(sys::tract_runtime_for_name(&mut rt, name.as_ptr()))?;
+    check!(sys::tract_runtime_for_name(name.as_ptr(), &mut rt))?;
     Ok(Runtime(rt))
 }
 

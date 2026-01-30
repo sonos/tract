@@ -846,8 +846,8 @@ pub struct TractRuntime(tract_rs::Runtime);
 /// The returned object should be released with `tract_runtime_release`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_runtime_for_name(
+    name: *const c_char,
     nnef: *mut *mut TractRuntime,
-    name: *const i8,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
         check_not_null!(nnef);
