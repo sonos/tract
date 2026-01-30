@@ -425,7 +425,7 @@ enum TRACT_RESULT tract_model_destroy(struct TractModel **model);
  *
  * The returned object should be released with `tract_runtime_release`.
  */
-enum TRACT_RESULT tract_runtime_for_name(struct TractRuntime **nnef, const int8_t *name);
+enum TRACT_RESULT tract_runtime_for_name(const char *name, struct TractRuntime **nnef);
 
 /**
  * Convert a Model into a Runnable for this Runtime.
