@@ -31,6 +31,7 @@ impl MultiBroadcast {
                 | DatumType::I16
                 | DatumType::I32
                 | DatumType::I64
+                | DatumType::Bool
         )
     }
 
@@ -47,7 +48,7 @@ impl MultiBroadcast {
     }
 
     pub fn kernel_name(&self, dt: DatumType, broadcast_kind: BroadcastKind) -> TractResult<String> {
-        ensure!(Self::is_supported_dt(dt), "Unsupported dt {:?} for metam broadcast op", dt);
+        ensure!(Self::is_supported_dt(dt), "Unsupported dt {:?} for metal broadcast op", dt);
         ensure!(
             Self::is_supported_broadcast(broadcast_kind),
             "Unsupported broadcast kind {:?} for metal broadcast op",
