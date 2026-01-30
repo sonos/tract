@@ -402,6 +402,7 @@ pub unsafe extern "C" fn tract_inference_model_output_name(
     })
 }
 
+/// Query a model input fact.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_inference_model_input_fact(
     model: *const TractInferenceModel,
@@ -831,6 +832,24 @@ pub unsafe extern "C" fn tract_model_property(
     })
 }
 
+/// Parse a fact specification string into an Fact.
+///
+/// The returned fact must be free with `tract_fact_destroy`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tract_model_parse_fact(
+    model: *mut TractModel,
+    spec: *const c_char,
+    fact: *mut *mut TractFact,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(model, spec, fact);
+        let spec = CStr::from_ptr(spec).to_str()?;
+        let f: tract_rs::Fact = spec.as_fact(&mut (*model).0)?.as_ref().clone();
+        *fact = Box::into_raw(Box::new(TractFact(f)));
+        Ok(())
+    })
+}
+
 /// Destroy a TypedModel.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_model_destroy(model: *mut *mut TractModel) -> TRACT_RESULT {
@@ -1156,30 +1175,25 @@ pub unsafe extern "C" fn tract_state_get_states(
 // FACT
 pub struct TractFact(tract_rs::Fact);
 
-/// Parse a fact specification string into an Fact.
-///
-/// The returned fact must be free with `tract_fact_destroy`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn tract_fact_parse(
-    model: *mut TractModel,
-    spec: *const c_char,
-    fact: *mut *mut TractFact,
-) -> TRACT_RESULT {
-    wrap(|| unsafe {
-        check_not_null!(model, spec, fact);
-        let spec = CStr::from_ptr(spec).to_str()?;
-        let f: tract_rs::Fact = spec.as_fact(&mut (*model).0)?.as_ref().clone();
-        *fact = Box::into_raw(Box::new(TractFact(f)));
-        Ok(())
-    })
-}
-
 /// Gets the rank (aka number of axes/dimensions) of a fact.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_fact_rank(fact: *const TractFact, rank: *mut usize) -> TRACT_RESULT {
     wrap(|| unsafe {
         check_not_null!(fact, rank);
         *rank = (*fact).0.rank()?;
+        Ok(())
+    })
+}
+
+/// Extract the datum type of the fact.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tract_fact_datum_type(
+    fact: *const TractFact,
+    datum_type: *mut DatumType,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(fact, datum_type);
+        *datum_type = (*fact).0.datum_type()?;
         Ok(())
     })
 }
@@ -1280,6 +1294,7 @@ pub unsafe extern "C" fn tract_inference_fact_destroy(
 /// Dim
 pub struct TractDim(tract_rs::Dim);
 
+/// Substitute symbols by the provided values in the Dim, generating a new one.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_dim_eval(
     dim: *const TractDim,
@@ -1306,6 +1321,9 @@ pub unsafe extern "C" fn tract_dim_eval(
     })
 }
 
+/// Try converting a Dim into an actual integer
+///
+/// Will fail if the Dim contains symbols.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_dim_to_int64(fact: *const TractDim, i: *mut i64) -> TRACT_RESULT {
     wrap(|| unsafe {

@@ -278,6 +278,11 @@ impl ModelInterface for Model {
         Ok(())
     }
 
+    fn parse_fact(&self, spec: &str) -> Result<Fact> {
+        let f = spec.as_fact(self)?;
+        Ok(Fact(f.0.clone()))
+    }
+
     fn property_keys(&self) -> Result<Vec<String>> {
         Ok(self.0.properties.keys().cloned().collect())
     }
@@ -471,6 +476,24 @@ pub struct Fact(TypedFact);
 impl FactInterface for Fact {
     type Dim = Dim;
 
+    fn datum_type(&self) -> Result<DatumType> {
+        Ok(match self.0.datum_type {
+            tract_nnef::prelude::DatumType::Bool => DatumType::TRACT_DATUM_TYPE_BOOL,
+            tract_nnef::prelude::DatumType::U8 => DatumType::TRACT_DATUM_TYPE_U8,
+            tract_nnef::prelude::DatumType::U16 => DatumType::TRACT_DATUM_TYPE_U16,
+            tract_nnef::prelude::DatumType::U32 => DatumType::TRACT_DATUM_TYPE_U32,
+            tract_nnef::prelude::DatumType::U64 => DatumType::TRACT_DATUM_TYPE_U64,
+            tract_nnef::prelude::DatumType::I8 => DatumType::TRACT_DATUM_TYPE_I8,
+            tract_nnef::prelude::DatumType::I16 => DatumType::TRACT_DATUM_TYPE_I16,
+            tract_nnef::prelude::DatumType::I32 => DatumType::TRACT_DATUM_TYPE_I32,
+            tract_nnef::prelude::DatumType::I64 => DatumType::TRACT_DATUM_TYPE_I64,
+            tract_nnef::prelude::DatumType::F16 => DatumType::TRACT_DATUM_TYPE_F16,
+            tract_nnef::prelude::DatumType::F32 => DatumType::TRACT_DATUM_TYPE_F32,
+            tract_nnef::prelude::DatumType::F64 => DatumType::TRACT_DATUM_TYPE_F64,
+            dt => anyhow::bail!("Unsupported datum type {dt:?} in this API"),
+        })
+    }
+
     fn rank(&self) -> Result<usize> {
         Ok(self.0.rank())
     }
@@ -482,7 +505,7 @@ impl FactInterface for Fact {
 }
 
 impl Fact {
-    fn new(model: &mut Model, spec: impl ToString) -> Result<Fact> {
+    fn new(model: &Model, spec: impl ToString) -> Result<Fact> {
         let fact = tract_libcli::tensor::parse_spec(&model.0.symbols, &spec.to_string())?;
         let fact = tract_onnx::prelude::Fact::to_typed_fact(&fact)?.into_owned();
         Ok(Fact(fact))
@@ -509,7 +532,7 @@ impl InferenceFactInterface for InferenceFact {
 }
 
 impl InferenceFact {
-    fn new(model: &mut InferenceModel, spec: impl ToString) -> Result<InferenceFact> {
+    fn new(model: &InferenceModel, spec: impl ToString) -> Result<InferenceFact> {
         let fact = tract_libcli::tensor::parse_spec(&model.0.symbols, &spec.to_string())?;
         Ok(InferenceFact(fact))
     }

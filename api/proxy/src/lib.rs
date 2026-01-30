@@ -362,6 +362,13 @@ impl ModelInterface for Model {
         check!(sys::tract_model_property(self.0, name.as_ptr(), &mut v))?;
         Ok(Value(v))
     }
+
+    fn parse_fact(&self, spec: &str) -> Result<Self::Fact> {
+        let spec = CString::new(spec)?;
+        let mut ptr = null_mut();
+        check!(sys::tract_model_parse_fact(self.0, spec.as_ptr(), &mut ptr))?;
+        Ok(Fact(ptr))
+    }
 }
 
 // RUNTIME
@@ -612,10 +619,10 @@ value_from_to_ndarray!();
 wrapper!(Fact, TractFact, tract_fact_destroy);
 
 impl Fact {
-    fn new(model: &mut Model, spec: impl ToString) -> Result<Fact> {
+    fn new(model: &Model, spec: impl ToString) -> Result<Fact> {
         let cstr = CString::new(spec.to_string())?;
         let mut fact = null_mut();
-        check!(sys::tract_fact_parse(model.0, cstr.as_ptr(), &mut fact))?;
+        check!(sys::tract_model_parse_fact(model.0, cstr.as_ptr(), &mut fact))?;
         Ok(Fact(fact))
     }
 
@@ -632,6 +639,12 @@ impl Fact {
 
 impl FactInterface for Fact {
     type Dim = Dim;
+
+    fn datum_type(&self) -> Result<DatumType> {
+        let mut dt = 0u32;
+        check!(sys::tract_fact_datum_type(self.0, &mut dt))?;
+        Ok(unsafe { std::mem::transmute::<u32, DatumType>(dt) })
+    }
 
     fn rank(&self) -> Result<usize> {
         let mut rank = 0;
@@ -659,7 +672,7 @@ impl std::fmt::Display for Fact {
 wrapper!(InferenceFact, TractInferenceFact, tract_inference_fact_destroy);
 
 impl InferenceFact {
-    fn new(model: &mut InferenceModel, spec: impl ToString) -> Result<InferenceFact> {
+    fn new(model: &InferenceModel, spec: impl ToString) -> Result<InferenceFact> {
         let cstr = CString::new(spec.to_string())?;
         let mut fact = null_mut();
         check!(sys::tract_inference_fact_parse(model.0, cstr.as_ptr(), &mut fact))?;

@@ -192,6 +192,12 @@ class Model:
         check(lib.tract_model_into_runnable(byref(self.ptr), byref(runnable)))
         return Runnable(runnable)
 
+    def parse_fact(self, spec: str) -> Fact:
+        self._valid()
+        fact = c_void_p()
+        check(lib.tract_model_parse_fact(self.ptr, str(spec).encode("utf-8"), byref(fact)))
+        return Fact(fact)
+
     def property_keys(self) -> List[str]:
         """Query the list of properties names of the model."""
         self._valid()
