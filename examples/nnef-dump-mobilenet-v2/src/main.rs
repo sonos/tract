@@ -2,6 +2,7 @@ use tract_nnef::prelude::*;
 
 fn main() -> TractResult<()> {
     let model = tract_nnef::nnef()
+        .with_tract_core()
         .model_for_path("mobilenet.nnef.tgz")?
         // optimize the model
         .into_optimized()?
