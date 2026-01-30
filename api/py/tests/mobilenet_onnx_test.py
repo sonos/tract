@@ -92,7 +92,7 @@ def test_typed_model():
 
 def test_runtime():
     model = tract.nnef().load("mobilenet_v2_1.0.onnx.nnef.tgz")
-    rt = tract.runtime_for_name("cuda")
+    rt = tract.runtime_for_name("default")
     runnable = rt.prepare(model)
     result = runnable.run([grace_hopper_1x3x224x244()])
     confidences = result[0].to_numpy()

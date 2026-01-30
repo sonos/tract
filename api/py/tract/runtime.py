@@ -7,7 +7,7 @@ from .bindings import TractError, check, lib
 
 def runtime_for_name(name: str):
     runtime = c_void_p()
-    check(lib.tract_runtime_for_name(byref(runtime), str(name).encode("utf-8")))
+    check(lib.tract_runtime_for_name(str(name).encode("utf-8"), byref(runtime)))
     return Runtime(runtime)
 
 class Runtime:

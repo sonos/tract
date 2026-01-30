@@ -147,44 +147,6 @@ class Model:
         self._valid()
         check(lib.tract_model_transform(self.ptr, str(transform).encode("utf-8")))
 
-    def f32_to_f16(self) -> None:
-        """Convert the model from f32 to half precision
-        """
-        self.transform("f32-to-f16")
-    
-    def f16_to_f32(self) -> None:
-        """Convert the model from half to f32 precision
-        """
-        self.transform("f16-to-f32")
-
-    def declutter(self) -> None:
-        """Declutter a model.
-
-        Perform the first "half" of optimisation phases, consisting or removing training artefacts and converge
-        on tract-core canonical form.
-        """
-        self._valid()
-        check(lib.tract_model_declutter(self.ptr))
-
-    def optimize(self) -> None:
-        """Optimize a model.
-
-        Perform the second "half" of optimisation phases, consisting of translating the tract-core canonical
-        form to the best runtime for the current architecture.
-        """
-        self._valid()
-        check(lib.tract_model_optimize(self.ptr))
-
-    def into_decluttered(self) -> "Model":
-        """Convenience method performing `declutter()` and returning the model"""
-        self.declutter()
-        return self
-
-    def into_optimized(self) -> "Model":
-        """Convenience method performing `optimize()` and returning the model"""
-        self.optimize()
-        return self
-
     def into_runnable(self) -> Runnable:
         """Transform the model into a ready to be used Runnable model"""
         self._valid()
