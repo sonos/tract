@@ -59,6 +59,8 @@ typedef struct TractOnnx TractOnnx;
 
 typedef struct TractRunnable TractRunnable;
 
+typedef struct TractRuntime TractRuntime;
+
 typedef struct TractState TractState;
 
 typedef struct TractValue TractValue;
@@ -416,6 +418,27 @@ enum TRACT_RESULT tract_model_property(const struct TractModel *model,
  * Destroy a TypedModel.
  */
 enum TRACT_RESULT tract_model_destroy(struct TractModel **model);
+
+/**
+ * Creates an instance of a tract Runtime that can be used to run model on a specific
+ * hardware / software stack (like a GPU).
+ *
+ * The returned object should be released with `tract_runtime_release`.
+ */
+enum TRACT_RESULT tract_runtime_for_name(struct TractRuntime **nnef, const int8_t *name);
+
+/**
+ * Convert a Model into a Runnable for this Runtime.
+ *
+ * This function transfers ownership of the `model` argument to the newly-created `runnable` model.
+ *
+ * Runnable are reference counted. When done, it should be released with `tract_runnable_release`.
+ */
+enum TRACT_RESULT tract_runtime_prepare(const struct TractRuntime *runtime,
+                                        struct TractModel **model,
+                                        struct TractRunnable **runnable);
+
+enum TRACT_RESULT tract_runtime_release(struct TractRuntime **runtime);
 
 /**
  * Spawn a session state from a runnable model.

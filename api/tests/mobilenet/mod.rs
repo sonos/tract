@@ -135,6 +135,17 @@ fn test_typed_model() -> anyhow::Result<()> {
 }
 
 #[test]
+fn test_runtime() -> anyhow::Result<()> {
+    ensure_models()?;
+    let model = nnef()?.load("mobilenet_v2_1.0.onnx.nnef.tgz")?;
+    let rt = runtime_for_name("default")?;
+    let runnable = rt.prepare(model)?;
+    let hopper = grace_hopper();
+    let _result = runnable.run([hopper])?;
+    Ok(())
+}
+
+#[test]
 fn test_set_output_names() -> anyhow::Result<()> {
     ensure_models()?;
     let mut model = nnef()?.load("mobilenet_v2_1.0.onnx.nnef.tgz")?;

@@ -5,7 +5,8 @@ use std::cell::RefCell;
 use std::ffi::{CStr, CString, c_char, c_void};
 use tract_api::{
     AsFact, DatumType, DimInterface, FactInterface, InferenceModelInterface, ModelInterface,
-    NnefInterface, OnnxInterface, RunnableInterface, StateInterface, ValueInterface,
+    NnefInterface, OnnxInterface, RunnableInterface, RuntimeInterface, StateInterface,
+    ValueInterface,
 };
 use tract_rs::{State, Value};
 
@@ -834,6 +835,51 @@ pub unsafe extern "C" fn tract_model_property(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_model_destroy(model: *mut *mut TractModel) -> TRACT_RESULT {
     release!(model)
+}
+
+// RUNTIME MODEL
+pub struct TractRuntime(tract_rs::Runtime);
+
+/// Creates an instance of a tract Runtime that can be used to run model on a specific
+/// hardware / software stack (like a GPU).
+///
+/// The returned object should be released with `tract_runtime_release`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tract_runtime_for_name(
+    nnef: *mut *mut TractRuntime,
+    name: *const i8,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(nnef);
+        let name = CStr::from_ptr(name).to_str()?;
+        *nnef = Box::into_raw(Box::new(TractRuntime(tract_rs::runtime_for_name(&name)?)));
+        Ok(())
+    })
+}
+
+/// Convert a Model into a Runnable for this Runtime.
+///
+/// This function transfers ownership of the `model` argument to the newly-created `runnable` model.
+///
+/// Runnable are reference counted. When done, it should be released with `tract_runnable_release`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tract_runtime_prepare(
+    runtime: *const TractRuntime,
+    model: *mut *mut TractModel,
+    runnable: *mut *mut TractRunnable,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(runtime, model, runnable);
+        let m = Box::from_raw(*model).0;
+        *model = std::ptr::null_mut();
+        *runnable = Box::into_raw(Box::new(TractRunnable((*runtime).0.prepare(m)?))) as _;
+        Ok(())
+    })
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tract_runtime_release(runtime: *mut *mut TractRuntime) -> TRACT_RESULT {
+    release!(runtime)
 }
 
 // RUNNABLE MODEL
