@@ -229,6 +229,9 @@ enum TRACT_RESULT tract_inference_model_output_name(const struct TractInferenceM
                                                     uintptr_t output,
                                                     int8_t **name);
 
+/**
+ * Query a model input fact.
+ */
 enum TRACT_RESULT tract_inference_model_input_fact(const struct TractInferenceModel *model,
                                                    uintptr_t input_id,
                                                    struct TractInferenceFact **fact);
@@ -415,6 +418,15 @@ enum TRACT_RESULT tract_model_property(const struct TractModel *model,
                                        struct TractValue **value);
 
 /**
+ * Parse a fact specification string into an Fact.
+ *
+ * The returned fact must be free with `tract_fact_destroy`.
+ */
+enum TRACT_RESULT tract_model_parse_fact(struct TractModel *model,
+                                         const char *spec,
+                                         struct TractFact **fact);
+
+/**
  * Destroy a TypedModel.
  */
 enum TRACT_RESULT tract_model_destroy(struct TractModel **model);
@@ -562,18 +574,14 @@ enum TRACT_RESULT tract_state_get_states(const struct TractState *state,
                                          struct TractValue **states);
 
 /**
- * Parse a fact specification string into an Fact.
- *
- * The returned fact must be free with `tract_fact_destroy`.
- */
-enum TRACT_RESULT tract_fact_parse(struct TractModel *model,
-                                   const char *spec,
-                                   struct TractFact **fact);
-
-/**
  * Gets the rank (aka number of axes/dimensions) of a fact.
  */
 enum TRACT_RESULT tract_fact_rank(const struct TractFact *fact, uintptr_t *rank);
+
+/**
+ * Extract the datum type of the fact.
+ */
+enum TRACT_RESULT tract_fact_datum_type(const struct TractFact *fact, DatumType *datum_type);
 
 /**
  * Extract the dimension from one dimension of the fact.
@@ -619,12 +627,20 @@ enum TRACT_RESULT tract_inference_fact_dump(const struct TractInferenceFact *fac
  */
 enum TRACT_RESULT tract_inference_fact_destroy(struct TractInferenceFact **fact);
 
+/**
+ * Substitute symbols by the provided values in the Dim, generating a new one.
+ */
 enum TRACT_RESULT tract_dim_eval(const struct TractDim *dim,
                                  uintptr_t nb_symbols,
                                  const int8_t *const *symbols,
                                  const int64_t *values,
                                  struct TractDim **result);
 
+/**
+ * Try converting a Dim into an actual integer
+ *
+ * Will fail if the Dim contains symbols.
+ */
 enum TRACT_RESULT tract_dim_to_int64(const struct TractDim *fact, int64_t *i);
 
 /**

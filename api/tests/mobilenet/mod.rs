@@ -305,6 +305,23 @@ fn test_transform_registry() -> anyhow::Result<()> {
     Ok(())
 }
 
+#[test]
+fn test_fact_and_dims() -> anyhow::Result<()> {
+    ensure_models()?;
+    let nnef = nnef()?.with_tract_core()?;
+    let model = nnef.load("mobilenet_v2_1.0.onnx.nnef.tgz")?;
+    let fact = model.parse_fact("B,S+P,64,f32")?;
+    assert_eq!(fact.datum_type()?, f32::datum_type());
+    assert_eq!(fact.rank()?, 3);
+    assert_eq!(fact.dim(1)?.to_string(), "S+P");
+    let s_plus_p = fact.dim(1)?;
+    let s_plus_twelve = s_plus_p.eval([("P", 12)])?;
+    assert_eq!(s_plus_twelve.to_string(), "S+12");
+    let fourteen = s_plus_twelve.eval([("S", 2)])?;
+    assert_eq!(fourteen.to_int64()?, 14);
+    Ok(())
+}
+
 fn state_init_from_facts(
     facts: Vec<Fact>,
     default_symbol_value: usize,

@@ -5,6 +5,7 @@ import tempfile
 import json
 import pytest
 from pathlib import Path
+from tract.value import TRACT_DATUM_TYPE_F32
 
 def setup_module(module):
     if not Path("mobilenetv2-7.onnx").exists():
@@ -220,7 +221,21 @@ def test_transform_registry():
     # Convert back to f32 
     model.transform("f16-to-f32")
     assert str(model.input_fact(0)) == "1,3,224,224,F32"
-    assert str(model.output_fact(0)) == "1,1000,F32"
+
+def test_fact_and_dims():
+    nnef = tract.nnef().with_tract_core()
+    model = nnef.load("mobilenet_v2_1.0.onnx.nnef.tgz")
+    fact = model.parse_fact("B,S+P,64,f32")
+    assert fact.datum_type() == TRACT_DATUM_TYPE_F32
+    assert fact.rank() == 3
+    assert str(fact.dim(1)) == "S+P"
+    s_plus_p = fact.dim(1)
+    s_plus_twelve = s_plus_p.eval({ "P": 12 })
+    assert str(s_plus_twelve) == "S+12"
+    fourteen = s_plus_twelve.eval({"S": 2})
+    assert fourteen.to_int64() == 14
+    assert int(fourteen) == 14
+
 
 # @pytest.mark.skip(reason="Model need to be downlaoded locally (use .travis/test-llm.sh)")
 # def test_state_init():

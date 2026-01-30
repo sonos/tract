@@ -168,6 +168,8 @@ pub trait ModelInterface: Sized {
     fn property_keys(&self) -> Result<Vec<String>>;
 
     fn property(&self, name: impl AsRef<str>) -> Result<Self::Value>;
+
+    fn parse_fact(&self, spec: &str) -> Result<Self::Fact>;
 }
 
 pub trait RuntimeInterface {
@@ -277,6 +279,7 @@ pub trait ValueInterface: Sized + Clone {
 
 pub trait FactInterface: Debug + Display + Clone {
     type Dim: DimInterface;
+    fn datum_type(&self) -> Result<DatumType>;
     fn rank(&self) -> Result<usize>;
     fn dim(&self, axis: usize) -> Result<Self::Dim>;
 }
@@ -291,7 +294,7 @@ pub trait InferenceFactInterface: Debug + Display + Default + Clone {
 }
 
 pub trait AsFact<M, F> {
-    fn as_fact(&self, model: &mut M) -> Result<Bow<'_, F>>;
+    fn as_fact(&self, model: &M) -> Result<Bow<'_, F>>;
 }
 
 #[repr(C)]

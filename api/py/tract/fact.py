@@ -1,5 +1,6 @@
 from ctypes import *
 from tract.bindings import TractError, check, lib
+from .dim import Dim
 
 class InferenceFact:
     """
@@ -50,6 +51,24 @@ class Fact:
         if self.ptr == None:
             raise TractError("invalid fact (maybe already consumed ?)")
 
+    def datum_type(self) -> int:
+        self._valid()
+        dt = c_uint32()
+        check(lib.tract_fact_datum_type(self.ptr, byref(dt)))
+        return dt.value
+
+    def rank(self) -> int:
+        self._valid()
+        rank = c_size_t()
+        check(lib.tract_fact_rank(self.ptr, byref(rank)))
+        return rank.value
+
+    def dim(self, axis: int) -> Dim:
+        self._valid()
+        ptr = c_void_p();
+        check(lib.tract_fact_dim(self.ptr,  c_size_t(axis), byref(ptr)))
+        return Dim(ptr)
+
     def dump(self):
         self._valid()
         cstring = c_char_p();
@@ -57,4 +76,3 @@ class Fact:
         result = str(cstring.value, "utf-8")
         lib.tract_free_cstring(cstring)
         return result
-
