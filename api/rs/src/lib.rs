@@ -300,10 +300,6 @@ impl RuntimeInterface for Runtime {
 
     type Model = Model;
 
-    fn name(&self) -> Result<String> {
-        Ok(self.0.name().into_owned())
-    }
-
     fn prepare(&self, model: Self::Model) -> Result<Self::Runnable> {
         let runnable = self.0.prepare(model.0)?;
         Ok(Runnable(runnable.into()))

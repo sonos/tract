@@ -364,6 +364,29 @@ impl ModelInterface for Model {
     }
 }
 
+// RUNTIME
+wrapper!(Runtime, TractRuntime, tract_runtime_release);
+
+pub fn runtime_for_name(name: &str) -> Result<Runtime> {
+    let mut rt = null_mut();
+    let name = CString::new(name)?;
+    check!(sys::tract_runtime_for_name(&mut rt, name.as_ptr()))?;
+    Ok(Runtime(rt))
+}
+
+impl RuntimeInterface for Runtime {
+    type Runnable = Runnable;
+
+    type Model = Model;
+
+    fn prepare(&self, model: Self::Model) -> Result<Self::Runnable> {
+        let mut model = model;
+        let mut runnable = null_mut();
+        check!(sys::tract_runtime_prepare(self.0, &mut model.0, &mut runnable))?;
+        Ok(Runnable(runnable))
+    }
+}
+
 // RUNNABLE
 wrapper!(Runnable, TractRunnable, tract_runnable_release);
 
