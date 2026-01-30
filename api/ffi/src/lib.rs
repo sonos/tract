@@ -852,7 +852,7 @@ pub unsafe extern "C" fn tract_runtime_for_name(
     wrap(|| unsafe {
         check_not_null!(nnef);
         let name = CStr::from_ptr(name).to_str()?;
-        *nnef = Box::into_raw(Box::new(TractRuntime(tract_rs::runtime_for_name(&name)?)));
+        *nnef = Box::into_raw(Box::new(TractRuntime(tract_rs::runtime_for_name(name)?)));
         Ok(())
     })
 }
