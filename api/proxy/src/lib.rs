@@ -642,7 +642,7 @@ impl FactInterface for Fact {
 
     fn datum_type(&self) -> Result<DatumType> {
         let mut dt = 0u32;
-        check!(sys::tract_fact_datum_type(self.0, &mut dt))?;
+        check!(sys::tract_fact_datum_type(self.0, &mut dt as *const u32 as _))?;
         Ok(unsafe { std::mem::transmute::<u32, DatumType>(dt) })
     }
 
