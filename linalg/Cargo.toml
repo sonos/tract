@@ -27,6 +27,9 @@ rayon = { workspace = true, optional = true }
 scan_fmt.workspace = true
 tract-data.workspace = true
 
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+sysctl.workspace = true
+
 [build-dependencies]
 cc.workspace = true
 half.workspace = true
@@ -47,7 +50,6 @@ core_affinity.workspace = true
 [target.'cfg(not(target_family = "wasm"))'.dev-dependencies]
 criterion.workspace = true
 proptest.workspace = true
-sysctl.workspace = true
 
 [target.'cfg(target_family = "wasm")'.dev-dependencies]
 # Wasm doesn't support the `rayon` feature of criterion
