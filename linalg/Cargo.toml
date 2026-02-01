@@ -25,6 +25,7 @@ num-traits.workspace = true
 pastey.workspace = true
 rayon = { workspace = true, optional = true }
 scan_fmt.workspace = true
+sysctl.workspace = true
 tract-data.workspace = true
 
 [build-dependencies]

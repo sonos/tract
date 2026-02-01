@@ -209,6 +209,7 @@ simd-adler32 = { version = "0.3.7", features = ["std"] }
 smallvec = "1.6.1"
 string-interner = "0.15"
 structopt = { version = "0.3", default-features = false }
+sysctl = "0.7.1"
 tar = "0.4.37"
 tempfile = "3.8"
 tensorflow = "0.17.0"
