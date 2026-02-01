@@ -80,7 +80,7 @@ lazy_static::lazy_static! {
 
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 fn apple_get_syscall(key: &str) -> String {
-   sysctl::Ctl::new(key).unwrap().value_string().unwrap()
+    sysctl::Ctl::new(key).unwrap().value_string().unwrap()
 }
 
 #[cfg(target_os = "macos")]
