@@ -15,6 +15,7 @@ pub use arm64fp16::*;
 
 use crate::f16;
 use crate::{BinOp, DatumType, LinalgRegistry, Ops};
+use sysctl::Sysctl;
 
 use crate::frame::by_scalar::ByScalarKer;
 use crate::frame::element_wise::ElementWiseKer;
@@ -79,27 +80,7 @@ lazy_static::lazy_static! {
 
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 fn apple_get_syscall(key: &str) -> String {
-    use std::ffi::{CStr, CString, c_char, c_void};
-    use std::ptr::null_mut;
-
-    unsafe extern "C" {
-        fn sysctlbyname(
-            name: *const c_char,
-            oldp: *mut c_void,
-            oldlenp: *mut isize,
-            newp: *mut c_void,
-            newlen: isize,
-        );
-    }
-
-    unsafe {
-        let mut len: isize = 0;
-        let name = CString::new(key).unwrap();
-        sysctlbyname(name.as_ptr(), null_mut(), &mut len, null_mut(), 0);
-        let mut buf = vec![0u8; len as _];
-        sysctlbyname(name.as_ptr(), buf.as_mut_ptr() as _, &mut len, null_mut(), 0);
-        CStr::from_bytes_with_nul(&buf).unwrap().to_string_lossy().into_owned()
-    }
+   sysctl::Ctl::new(key).unwrap().value_string().unwrap()
 }
 
 #[cfg(target_os = "macos")]
