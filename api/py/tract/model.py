@@ -181,3 +181,9 @@ class Model:
         check(lib.tract_model_property(self.ptr, str(name).encode("utf-8"), byref(value)))
         return Value(value)
 
+
+    def input_facts(self) -> List[Fact]:
+        return [ self.input_fact(ix) for ix in range(self.input_count()) ]
+
+    def output_facts(self):
+        return [ self.output_fact(ix) for ix in range(self.output_count()) ]

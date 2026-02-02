@@ -76,3 +76,6 @@ class Fact:
         result = str(cstring.value, "utf-8")
         lib.tract_free_cstring(cstring)
         return result
+
+    def dims(self):
+        return [ self.dim(axis) for axis in range(self.rank()) ]
