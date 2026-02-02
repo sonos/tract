@@ -179,8 +179,8 @@ pub trait ModelInterface: Sized {
     }
 
     fn output_facts(&self) -> Result<impl Iterator<Item = Self::Fact>> {
-        Ok((0..self.input_count()?)
-            .map(|ix| self.input_fact(ix))
+        Ok((0..self.output_count()?)
+            .map(|ix| self.output_fact(ix))
             .collect::<Result<Vec<_>>>()?
             .into_iter())
     }
