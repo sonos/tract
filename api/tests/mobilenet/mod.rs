@@ -322,6 +322,22 @@ fn test_fact_and_dims() -> anyhow::Result<()> {
     Ok(())
 }
 
+#[test]
+fn test_fact_and_dims_iterators() -> anyhow::Result<()> {
+    ensure_models()?;
+    let nnef = nnef()?.with_tract_core()?;
+    let model = nnef.load("mobilenet_v2_1.0.onnx.nnef.tgz")?;
+    let fact = model.input_facts()?.collect::<Vec<_>>();
+    assert!(fact.len() == 1);
+    let dims = fact[0].dims()?.collect::<Vec<_>>();
+    assert_eq!(dims.len(), 4);
+    assert_eq!(dims[0].to_string(), "1");
+    assert_eq!(dims[1].to_string(), "3");
+    assert_eq!(dims[2].to_string(), "224");
+    assert_eq!(dims[3].to_string(), "224");
+    Ok(())
+}
+
 fn state_init_from_facts(
     facts: Vec<Fact>,
     default_symbol_value: usize,

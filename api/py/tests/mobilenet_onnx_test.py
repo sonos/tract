@@ -236,6 +236,17 @@ def test_fact_and_dims():
     assert fourteen.to_int64() == 14
     assert int(fourteen) == 14
 
+def test_fact_and_dims_iterators():
+    nnef = tract.nnef().with_tract_core()
+    model = nnef.load("mobilenet_v2_1.0.onnx.nnef.tgz")
+    facts = model.input_facts()
+    assert len(facts) == 1
+    dims = facts[0].dims()
+    assert len(dims) == 4
+    assert int(dims[0]) == 1
+    assert int(dims[1]) == 3
+    assert int(dims[2]) == 224
+    assert int(dims[3]) == 224
 
 # @pytest.mark.skip(reason="Model need to be downlaoded locally (use .travis/test-llm.sh)")
 # def test_state_init():
