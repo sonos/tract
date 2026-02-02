@@ -170,6 +170,20 @@ pub trait ModelInterface: Sized {
     fn property(&self, name: impl AsRef<str>) -> Result<Self::Value>;
 
     fn parse_fact(&self, spec: &str) -> Result<Self::Fact>;
+
+    fn input_facts(&self) -> Result<impl Iterator<Item = Self::Fact>> {
+        Ok((0..self.input_count()?)
+            .map(|ix| self.input_fact(ix))
+            .collect::<Result<Vec<_>>>()?
+            .into_iter())
+    }
+
+    fn output_facts(&self) -> Result<impl Iterator<Item = Self::Fact>> {
+        Ok((0..self.input_count()?)
+            .map(|ix| self.input_fact(ix))
+            .collect::<Result<Vec<_>>>()?
+            .into_iter())
+    }
 }
 
 pub trait RuntimeInterface {
@@ -282,6 +296,10 @@ pub trait FactInterface: Debug + Display + Clone {
     fn datum_type(&self) -> Result<DatumType>;
     fn rank(&self) -> Result<usize>;
     fn dim(&self, axis: usize) -> Result<Self::Dim>;
+
+    fn dims(&self) -> Result<impl Iterator<Item = Self::Dim>> {
+        Ok((0..self.rank()?).map(|axis| self.dim(axis)).collect::<Result<Vec<_>>>()?.into_iter())
+    }
 }
 
 pub trait DimInterface: Debug + Display + Clone {
