@@ -112,17 +112,17 @@ impl TypedOp for MultiBroadcastTo {
                 let output_fact = model.outlet_fact(succ.id.into())?;
                 if input_fact.rank() == other_fact.rank()
                     && multi_broadcast(&[&input_fact.shape, &other_fact.shape])
-                        .is_ok_and(|s| &*s == &*output_fact.shape)
+                        .is_ok_and(|s| *s == *output_fact.shape)
                 {
                     let mut operands = tvec!(node.inputs[0], other_operand);
                     if our_slot == 1 {
                         operands.swap(0, 1);
                     }
                     return TypedModelPatch::rewire(
-                        &model,
+                        model,
                         &operands,
                         &[succ.id.into()],
-                        &|p, inputs| p.wire_node(&succ.name, succ.op.clone(), &inputs),
+                        &|p, inputs| p.wire_node(&succ.name, succ.op.clone(), inputs),
                     )
                     .map(Some);
                 }
