@@ -37,10 +37,28 @@ pub trait Runnable: Any + Downcast + Debug + Send + Sync + 'static {
         self.spawn()?.run(inputs)
     }
     fn spawn(&self) -> TractResult<Box<dyn State>>;
-    fn input_count(&self) -> usize;
-    fn output_count(&self) -> usize;
-    fn input_fact(&self, ix: usize) -> TractResult<&TypedFact>;
-    fn output_fact(&self, ix: usize) -> TractResult<&TypedFact>;
+    fn input_count(&self) -> usize {
+        self.typed_model().context("Fallback implementation on typed_model()").unwrap().inputs.len()
+    }
+    fn output_count(&self) -> usize {
+        self.typed_model()
+            .context("Fallback implementation on typed_model()")
+            .unwrap()
+            .outputs
+            .len()
+    }
+    fn input_fact(&self, ix: usize) -> TractResult<&TypedFact> {
+        self.typed_model()
+            .context("Fallback implementation on typed_model()")
+            .unwrap()
+            .input_fact(ix)
+    }
+    fn output_fact(&self, ix: usize) -> TractResult<&TypedFact> {
+        self.typed_model()
+            .context("Fallback implementation on typed_model()")
+            .unwrap()
+            .output_fact(ix)
+    }
     fn properties(&self) -> &HashMap<String, Arc<Tensor>> {
         lazy_static! {
             static ref NO_PROPERTIES: HashMap<String, Arc<Tensor>> = Default::default();
