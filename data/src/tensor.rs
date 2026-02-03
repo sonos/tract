@@ -602,6 +602,7 @@ impl Tensor {
     }
 
     pub fn broadcast_to_shape(&self, shape: &[usize]) -> TractResult<Tensor> {
+        ensure!(shape.len() == self.rank());
         dispatch_datum!(Self::broadcast_to_shape_t(self.dt)(self, shape))
     }
 
