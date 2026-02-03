@@ -490,6 +490,28 @@ enum TRACT_RESULT tract_runnable_input_count(const struct TractRunnable *model, 
 enum TRACT_RESULT tract_runnable_output_count(const struct TractRunnable *model,
                                               uintptr_t *outputs);
 
+/**
+ * Query the number of properties in a runnable model.
+ */
+enum TRACT_RESULT tract_runnable_property_count(const struct TractRunnable *model,
+                                                uintptr_t *count);
+
+/**
+ * Query the properties names of a runnable model.
+ *
+ * The "names" array should be big enough to fit `tract_model_property_count` string pointers.
+ *
+ * Each name will have to be freed using `tract_free_cstring`.
+ */
+enum TRACT_RESULT tract_runnable_property_names(const struct TractRunnable *model, int8_t **names);
+
+/**
+ * Query a property value in a runnable model.
+ */
+enum TRACT_RESULT tract_runnable_property(const struct TractRunnable *model,
+                                          const int8_t *name,
+                                          struct TractValue **value);
+
 enum TRACT_RESULT tract_runnable_release(struct TractRunnable **runnable);
 
 /**

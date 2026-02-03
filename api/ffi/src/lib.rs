@@ -975,6 +975,57 @@ pub unsafe extern "C" fn tract_runnable_output_count(
     })
 }
 
+/// Query the number of properties in a runnable model.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tract_runnable_property_count(
+    model: *const TractRunnable,
+    count: *mut usize,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(model, count);
+        *count = (*model).0.property_keys()?.len();
+        Ok(())
+    })
+}
+
+/// Query the properties names of a runnable model.
+///
+/// The "names" array should be big enough to fit `tract_model_property_count` string pointers.
+///
+/// Each name will have to be freed using `tract_free_cstring`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tract_runnable_property_names(
+    model: *const TractRunnable,
+    names: *mut *mut i8,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(model, names);
+        for (ix, name) in (*model).0.property_keys()?.iter().enumerate() {
+            *names.add(ix) = CString::new(&**name)?.into_raw() as _;
+        }
+        Ok(())
+    })
+}
+
+/// Query a property value in a runnable model.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tract_runnable_property(
+    model: *const TractRunnable,
+    name: *const i8,
+    value: *mut *mut TractValue,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(model, name, value);
+        let name = CStr::from_ptr(name as _)
+            .to_str()
+            .context("failed to parse property name (not utf8)")?
+            .to_owned();
+        let v = (*model).0.property(name).context("Property not found")?;
+        *value = Box::into_raw(Box::new(TractValue(v)));
+        Ok(())
+    })
+}
+
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_runnable_release(runnable: *mut *mut TractRunnable) -> TRACT_RESULT {
     release!(runnable)

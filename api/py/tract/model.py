@@ -152,6 +152,7 @@ class Model:
         self._valid()
         runnable = c_void_p()
         check(lib.tract_model_into_runnable(byref(self.ptr), byref(runnable)))
+        self.ptr = None
         return Runnable(runnable)
 
     def parse_fact(self, spec: str) -> Fact:

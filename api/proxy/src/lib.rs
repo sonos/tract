@@ -428,6 +428,29 @@ impl RunnableInterface for Runnable {
         Ok(count)
     }
 
+    fn property_keys(&self) -> Result<Vec<String>> {
+        let mut len = 0;
+        check!(sys::tract_runnable_property_count(self.0, &mut len))?;
+        let mut keys = vec![null_mut(); len];
+        check!(sys::tract_runnable_property_names(self.0, keys.as_mut_ptr()))?;
+        unsafe {
+            keys.into_iter()
+                .map(|pc| {
+                    let s = CStr::from_ptr(pc).to_str()?.to_owned();
+                    sys::tract_free_cstring(pc);
+                    Ok(s)
+                })
+                .collect()
+        }
+    }
+
+    fn property(&self, name: impl AsRef<str>) -> Result<Value> {
+        let mut v = null_mut();
+        let name = CString::new(name.as_ref())?;
+        check!(sys::tract_runnable_property(self.0, name.as_ptr(), &mut v))?;
+        Ok(Value(v))
+    }
+
     fn cost_json(&self) -> Result<String> {
         let input: Option<Vec<Value>> = None;
         let states: Option<Vec<Value>> = None;
