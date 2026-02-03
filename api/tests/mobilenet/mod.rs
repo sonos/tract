@@ -189,6 +189,22 @@ fn test_pulse() -> anyhow::Result<()> {
 }
 
 #[test]
+fn test_runtime_properties() -> anyhow::Result<()> {
+    ensure_models()?;
+    let mut model = onnx()?.load("mobilenetv2-7.onnx")?;
+    model.set_input_fact(0, "B,3,224,224,f32")?;
+    model.analyse()?;
+    let mut typed = model.into_tract()?;
+    typed.pulse("B", "5")?;
+    let runnable = typed.into_runnable()?;
+    let mut properties = runnable.property_keys()?;
+    properties.sort();
+    assert_eq!(&properties, &["pulse.delay", "pulse.input_axes", "pulse.output_axes"]);
+    assert_eq!(runnable.property("pulse.delay")?.view::<i64>()?, ndarray::arr1(&[0i64]).into_dyn());
+    Ok(())
+}
+
+#[test]
 fn test_f32_to_f16() -> anyhow::Result<()> {
     ensure_models()?;
     let mut model = onnx()?.load("mobilenetv2-7.onnx")?;

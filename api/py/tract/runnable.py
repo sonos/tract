@@ -33,6 +33,27 @@ class Runnable:
         check(lib.tract_runnable_output_count(self.ptr, byref(i)))
         return i.value
 
+    def property_keys(self) -> List[str]:
+        """Query the list of properties names of the runnable model."""
+        self._valid()
+        count = c_size_t()
+        check(lib.tract_runnable_property_count(self.ptr, byref(count)))
+        count = count.value
+        cstrings = (POINTER(c_char) * count)()
+        check(lib.tract_runnable_property_names(self.ptr, cstrings))
+        names = []
+        for i in range(0, count):
+            names.append(str(cast(cstrings[i], c_char_p).value, "utf-8"))
+            lib.tract_free_cstring(cstrings[i])
+        return names
+
+    def property(self, name: str) -> Value:
+        """Query a property by name"""
+        self._valid()
+        value = c_void_p()
+        check(lib.tract_runnable_property(self.ptr, str(name).encode("utf-8"), byref(value)))
+        return Value(value)
+
     def run(self, inputs: List[Union[Value, numpy.ndarray]]) -> List[Value]:
         """
         Runs the model over the provided input list, and returns the model outputs.

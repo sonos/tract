@@ -3,6 +3,7 @@ use std::fmt::Debug;
 
 use downcast_rs::Downcast;
 use dyn_clone::DynClone;
+use lazy_static::lazy_static;
 use tract_linalg::multithread::Executor;
 
 use crate::internal::*;
@@ -38,6 +39,12 @@ pub trait Runnable: Any + Downcast + Debug + Send + Sync + 'static {
     fn spawn(&self) -> TractResult<Box<dyn State>>;
     fn input_count(&self) -> usize;
     fn output_count(&self) -> usize;
+    fn properties(&self) -> &HashMap<String, Arc<Tensor>> {
+        lazy_static! {
+            static ref NO_PROPERTIES: HashMap<String, Arc<Tensor>> = Default::default();
+        };
+        self.typed_model().map(|model| &model.properties).unwrap_or(&NO_PROPERTIES)
+    }
 
     fn typed_plan(&self) -> Option<&Arc<TypedSimplePlan>>;
     fn typed_model(&self) -> Option<&Arc<TypedModel>>;

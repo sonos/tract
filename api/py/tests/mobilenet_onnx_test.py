@@ -129,6 +129,18 @@ def test_pulse():
     assert properties == ["pulse.delay", "pulse.input_axes", "pulse.output_axes"]
     assert typed.property("pulse.delay").to_numpy() == [0]
 
+def test_runtime_properties():
+    model = tract.onnx().load("./mobilenetv2-7.onnx")
+    model.set_input_fact(0, "B,3,224,224,f32")
+    model.analyse()
+    typed = model.into_tract()
+    typed.pulse("B", "5")
+    runnable = typed.into_runnable()
+    properties = runnable.property_keys()
+    properties.sort()
+    assert properties == ["pulse.delay", "pulse.input_axes", "pulse.output_axes"]
+    assert runnable.property("pulse.delay").to_numpy() == [0]
+
 def test_f32_to_f16():
     model = tract.onnx().load("./mobilenetv2-7.onnx")
     model.set_input_fact(0, "1,3,224,224,f32")

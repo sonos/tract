@@ -340,6 +340,19 @@ impl RunnableInterface for Runnable {
         Ok(self.0.output_count())
     }
 
+    fn property_keys(&self) -> Result<Vec<String>> {
+        Ok(self.0.properties().keys().cloned().collect())
+    }
+
+    fn property(&self, name: impl AsRef<str>) -> Result<Value> {
+        let name = name.as_ref();
+        self.0
+            .properties()
+            .get(name)
+            .with_context(|| format!("no property for name {name}"))
+            .map(|t| Value(t.clone().into_tvalue()))
+    }
+
     fn cost_json(&self) -> Result<String> {
         let input: Option<Vec<Value>> = None;
         let states: Option<Vec<Value>> = None;

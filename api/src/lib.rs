@@ -206,6 +206,8 @@ pub trait RunnableInterface {
 
     fn input_count(&self) -> Result<usize>;
     fn output_count(&self) -> Result<usize>;
+    fn property_keys(&self) -> Result<Vec<String>>;
+    fn property(&self, name: impl AsRef<str>) -> Result<Self::Value>;
 
     fn spawn_state(&self) -> Result<Self::State>;
 
