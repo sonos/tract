@@ -89,7 +89,7 @@ fn apple_string_from_c_bytes(buf: &[u8]) -> String {
 
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 fn apple_get_syscall(key: &str) -> String {
-    use std::ffi::{c_char, c_int, c_void, CString};
+    use std::ffi::{CString, c_char, c_int, c_void};
     use std::ptr::null_mut;
 
     unsafe extern "C" {
