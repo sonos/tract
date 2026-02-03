@@ -107,11 +107,11 @@ class Model:
         lib.tract_free_cstring(cstring)
         return result
 
-    def output_fact(self, input_id: int) -> Fact:
+    def output_fact(self, output_id: int) -> Fact:
         """Return the fact of the output_id-th output"""
         self._valid()
         fact = c_void_p()
-        check(lib.tract_model_output_fact(self.ptr, input_id, byref(fact)))
+        check(lib.tract_model_output_fact(self.ptr, output_id, byref(fact)))
         return Fact(fact)
 
     def concretize_symbols(self, values: Dict[str, int]) -> None:
@@ -181,7 +181,6 @@ class Model:
         value = c_void_p()
         check(lib.tract_model_property(self.ptr, str(name).encode("utf-8"), byref(value)))
         return Value(value)
-
 
     def input_facts(self) -> List[Fact]:
         return [ self.input_fact(ix) for ix in range(self.input_count()) ]

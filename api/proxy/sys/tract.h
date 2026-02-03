@@ -491,6 +491,24 @@ enum TRACT_RESULT tract_runnable_output_count(const struct TractRunnable *model,
                                               uintptr_t *outputs);
 
 /**
+ * Query the input fact of a runnable model.
+ *
+ * Thre returned fact must be freed with tract_fact_destroy.
+ */
+enum TRACT_RESULT tract_runnable_input_fact(const struct TractRunnable *runnable,
+                                            uintptr_t input_id,
+                                            struct TractFact **fact);
+
+/**
+ * Query the output fact of a runnable model.
+ *
+ * Thre returned fact must be freed with tract_fact_destroy.
+ */
+enum TRACT_RESULT tract_runnable_output_fact(const struct TractRunnable *runnable,
+                                             uintptr_t output_id,
+                                             struct TractFact **fact);
+
+/**
  * Query the number of properties in a runnable model.
  */
 enum TRACT_RESULT tract_runnable_property_count(const struct TractRunnable *model,

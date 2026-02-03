@@ -39,6 +39,8 @@ pub trait Runnable: Any + Downcast + Debug + Send + Sync + 'static {
     fn spawn(&self) -> TractResult<Box<dyn State>>;
     fn input_count(&self) -> usize;
     fn output_count(&self) -> usize;
+    fn input_fact(&self, ix: usize) -> TractResult<&TypedFact>;
+    fn output_fact(&self, ix: usize) -> TractResult<&TypedFact>;
     fn properties(&self) -> &HashMap<String, Arc<Tensor>> {
         lazy_static! {
             static ref NO_PROPERTIES: HashMap<String, Arc<Tensor>> = Default::default();
@@ -114,6 +116,13 @@ impl Runnable for Arc<TypedRunnableModel> {
 
     fn output_count(&self) -> usize {
         self.model.outputs.len()
+    }
+
+    fn input_fact(&self, ix: usize) -> TractResult<&TypedFact> {
+        self.model.input_fact(ix)
+    }
+    fn output_fact(&self, ix: usize) -> TractResult<&TypedFact> {
+        self.model.output_fact(ix)
     }
 }
 

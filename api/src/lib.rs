@@ -194,6 +194,7 @@ pub trait RuntimeInterface {
 
 pub trait RunnableInterface {
     type Value: ValueInterface;
+    type Fact: FactInterface;
     type State: StateInterface<Value = Self::Value>;
     fn run<I, V, E>(&self, inputs: I) -> Result<Vec<Self::Value>>
     where
@@ -206,6 +207,24 @@ pub trait RunnableInterface {
 
     fn input_count(&self) -> Result<usize>;
     fn output_count(&self) -> Result<usize>;
+    fn input_fact(&self, id: usize) -> Result<Self::Fact>;
+
+    fn output_fact(&self, id: usize) -> Result<Self::Fact>;
+
+    fn input_facts(&self) -> Result<impl Iterator<Item = Self::Fact>> {
+        Ok((0..self.input_count()?)
+            .map(|ix| self.input_fact(ix))
+            .collect::<Result<Vec<_>>>()?
+            .into_iter())
+    }
+
+    fn output_facts(&self) -> Result<impl Iterator<Item = Self::Fact>> {
+        Ok((0..self.output_count()?)
+            .map(|ix| self.output_fact(ix))
+            .collect::<Result<Vec<_>>>()?
+            .into_iter())
+    }
+
     fn property_keys(&self) -> Result<Vec<String>>;
     fn property(&self, name: impl AsRef<str>) -> Result<Self::Value>;
 

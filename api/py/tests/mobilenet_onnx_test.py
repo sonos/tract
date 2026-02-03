@@ -129,6 +129,11 @@ def test_pulse():
     assert properties == ["pulse.delay", "pulse.input_axes", "pulse.output_axes"]
     assert typed.property("pulse.delay").to_numpy() == [0]
 
+def test_runtime_fact():
+    runnable = tract.nnef().load("mobilenet_v2_1.0.onnx.nnef.tgz").into_runnable()
+    assert str(runnable.input_fact(0)) ==  "1,3,224,224,F32"
+    assert str(runnable.output_fact(0)) == "1,1000,F32"
+
 def test_runtime_properties():
     model = tract.onnx().load("./mobilenetv2-7.onnx")
     model.set_input_fact(0, "B,3,224,224,f32")
@@ -259,6 +264,16 @@ def test_fact_and_dims_iterators():
     assert int(dims[1]) == 3
     assert int(dims[2]) == 224
     assert int(dims[3]) == 224
+
+def test_runtime_fact_iterator():
+    nnef = tract.nnef().with_tract_core()
+    runnable = nnef.load("mobilenet_v2_1.0.onnx.nnef.tgz").into_runnable()
+    inputs = runnable.input_facts();
+    assert len(inputs) == 1
+    assert str(inputs[0]) == "1,3,224,224,F32"
+    outputs = runnable.output_facts();
+    assert len(outputs) == 1
+    assert str(outputs[0]) == "1,1000,F32"
 
 # @pytest.mark.skip(reason="Model need to be downlaoded locally (use .travis/test-llm.sh)")
 # def test_state_init():

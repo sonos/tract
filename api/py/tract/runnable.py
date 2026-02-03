@@ -1,6 +1,7 @@
 from ctypes import *
 from typing import Dict, List, Union # after ctypes so that Union is overriden
 import numpy
+from .fact import Fact
 from .value import Value
 from .state import State
 from .bindings import TractError, check, lib
@@ -32,6 +33,20 @@ class Runnable:
         i = c_size_t()
         check(lib.tract_runnable_output_count(self.ptr, byref(i)))
         return i.value
+
+    def input_fact(self, input_id: int) -> Fact:
+        """Return the fact of the input_id-th input"""
+        self._valid()
+        fact = c_void_p()
+        check(lib.tract_runnable_input_fact(self.ptr, input_id, byref(fact)))
+        return Fact(fact)
+
+    def output_fact(self, output_id: int) -> Fact:
+        """Return the fact of the output_id-th output"""
+        self._valid()
+        fact = c_void_p()
+        check(lib.tract_runnable_output_fact(self.ptr, output_id, byref(fact)))
+        return Fact(fact)
 
     def property_keys(self) -> List[str]:
         """Query the list of properties names of the runnable model."""
@@ -109,3 +124,8 @@ class Runnable:
         lib.tract_free_cstring(cstring)
         return result
 
+    def input_facts(self) -> List[Fact]:
+        return [ self.input_fact(ix) for ix in range(self.input_count()) ]
+
+    def output_facts(self):
+        return [ self.output_fact(ix) for ix in range(self.output_count()) ]

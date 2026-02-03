@@ -189,6 +189,15 @@ fn test_pulse() -> anyhow::Result<()> {
 }
 
 #[test]
+fn test_runtime_fact() -> anyhow::Result<()> {
+    ensure_models()?;
+    let runnable = nnef()?.load("mobilenet_v2_1.0.onnx.nnef.tgz")?.into_runnable()?;
+    assert_eq!(runnable.input_fact(0)?.to_string(), "1,3,224,224,F32");
+    assert_eq!(runnable.output_fact(0)?.to_string(), "1,1000,F32");
+    Ok(())
+}
+
+#[test]
 fn test_runtime_properties() -> anyhow::Result<()> {
     ensure_models()?;
     let mut model = onnx()?.load("mobilenetv2-7.onnx")?;
@@ -351,6 +360,20 @@ fn test_fact_and_dims_iterators() -> anyhow::Result<()> {
     assert_eq!(dims[1].to_string(), "3");
     assert_eq!(dims[2].to_string(), "224");
     assert_eq!(dims[3].to_string(), "224");
+    Ok(())
+}
+
+#[test]
+fn test_runtime_fact_iterator() -> anyhow::Result<()> {
+    ensure_models()?;
+    let nnef = nnef()?.with_tract_core()?;
+    let runnable = nnef.load("mobilenet_v2_1.0.onnx.nnef.tgz")?.into_runnable()?;
+    let inputs = runnable.input_facts()?.collect::<Vec<_>>();
+    assert!(inputs.len() == 1);
+    assert_eq!(inputs[0].to_string(), "1,3,224,224,F32");
+    let outputs = runnable.output_facts()?.collect::<Vec<_>>();
+    assert!(outputs.len() == 1);
+    assert_eq!(outputs[0].to_string(), "1,1000,F32");
     Ok(())
 }
 
