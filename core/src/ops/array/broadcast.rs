@@ -110,8 +110,9 @@ impl TypedOp for MultiBroadcastTo {
                 let other_operand = succ.inputs[other_slot];
                 let other_fact = model.outlet_fact(other_operand)?;
                 let output_fact = model.outlet_fact(succ.id.into())?;
-                if multi_broadcast(&[&input_fact.shape, &other_fact.shape])
-                    .is_ok_and(|s| &*s == &*output_fact.shape)
+                if input_fact.rank() == other_fact.rank()
+                    && multi_broadcast(&[&input_fact.shape, &other_fact.shape])
+                        .is_ok_and(|s| &*s == &*output_fact.shape)
                 {
                     let mut operands = tvec!(node.inputs[0], other_operand);
                     if our_slot == 1 {
