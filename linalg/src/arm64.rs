@@ -15,7 +15,6 @@ pub use arm64fp16::*;
 
 use crate::f16;
 use crate::{BinOp, DatumType, LinalgRegistry, Ops};
-use sysctl::Sysctl;
 
 use crate::frame::by_scalar::ByScalarKer;
 use crate::frame::element_wise::ElementWiseKer;
@@ -79,8 +78,73 @@ lazy_static::lazy_static! {
 }
 
 #[cfg(any(target_os = "macos", target_os = "ios"))]
+fn apple_string_from_c_bytes(buf: &[u8]) -> String {
+    use std::ffi::CStr;
+
+    CStr::from_bytes_until_nul(buf)
+        .ok()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default()
+}
+
+#[cfg(any(target_os = "macos", target_os = "ios"))]
 fn apple_get_syscall(key: &str) -> String {
-    sysctl::Ctl::new(key).unwrap().value_string().unwrap()
+    use std::ffi::{c_char, c_int, c_void, CString};
+    use std::ptr::null_mut;
+
+    unsafe extern "C" {
+        fn sysctlbyname(
+            name: *const c_char,
+            oldp: *mut c_void,
+            oldlenp: *mut usize,
+            newp: *mut c_void,
+            newlen: usize,
+        ) -> c_int;
+    }
+
+    let Ok(name) = CString::new(key) else {
+        return String::new();
+    };
+
+    unsafe {
+        let mut len_needed: usize = 0;
+        if sysctlbyname(name.as_ptr(), null_mut(), &mut len_needed, null_mut(), 0) != 0 {
+            return String::new();
+        }
+
+        let mut buf = vec![0u8; len_needed.saturating_add(1)];
+        let mut len: usize = buf.len();
+        if sysctlbyname(name.as_ptr(), buf.as_mut_ptr() as _, &mut len, null_mut(), 0) != 0 {
+            return String::new();
+        }
+
+        buf.truncate(len.min(buf.len()));
+        if buf.last().copied() != Some(0) {
+            buf.push(0);
+        }
+
+        apple_string_from_c_bytes(&buf)
+    }
+}
+
+#[cfg(all(test, any(target_os = "macos", target_os = "ios")))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn apple_string_from_c_bytes_returns_empty_without_nul() {
+        assert_eq!(apple_string_from_c_bytes(b"hello"), "");
+    }
+
+    #[test]
+    fn apple_string_from_c_bytes_stops_at_first_nul() {
+        assert_eq!(apple_string_from_c_bytes(b"hello\0world\0"), "hello");
+    }
+
+    #[test]
+    fn apple_get_syscall_does_not_panic() {
+        let _ = apple_get_syscall("machdep.cpu.brand_string");
+    }
 }
 
 #[cfg(target_os = "macos")]

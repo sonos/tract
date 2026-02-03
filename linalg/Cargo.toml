@@ -27,9 +27,6 @@ rayon = { workspace = true, optional = true }
 scan_fmt.workspace = true
 tract-data.workspace = true
 
-[target.'cfg(not(target_family = "wasm"))'.dependencies]
-sysctl.workspace = true
-
 [build-dependencies]
 cc.workspace = true
 half.workspace = true
