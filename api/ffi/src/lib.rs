@@ -975,6 +975,42 @@ pub unsafe extern "C" fn tract_runnable_output_count(
     })
 }
 
+/// Query the input fact of a runnable model.
+///
+/// Thre returned fact must be freed with tract_fact_destroy.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tract_runnable_input_fact(
+    runnable: *const TractRunnable,
+    input_id: usize,
+    fact: *mut *mut TractFact,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(runnable, fact);
+        *fact = std::ptr::null_mut();
+        let f = (*runnable).0.input_fact(input_id)?;
+        *fact = Box::into_raw(Box::new(TractFact(f)));
+        Ok(())
+    })
+}
+
+/// Query the output fact of a runnable model.
+///
+/// Thre returned fact must be freed with tract_fact_destroy.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tract_runnable_output_fact(
+    runnable: *const TractRunnable,
+    output_id: usize,
+    fact: *mut *mut TractFact,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(runnable, fact);
+        *fact = std::ptr::null_mut();
+        let f = (*runnable).0.output_fact(output_id)?;
+        *fact = Box::into_raw(Box::new(TractFact(f)));
+        Ok(())
+    })
+}
+
 /// Query the number of properties in a runnable model.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_runnable_property_count(

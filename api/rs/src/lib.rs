@@ -318,6 +318,7 @@ pub struct Runnable(Arc<dyn tract_nnef::internal::Runnable>);
 impl RunnableInterface for Runnable {
     type Value = Value;
     type State = State;
+    type Fact = Fact;
 
     fn run<I, V, E>(&self, inputs: I) -> Result<Vec<Value>>
     where
@@ -338,6 +339,14 @@ impl RunnableInterface for Runnable {
 
     fn output_count(&self) -> Result<usize> {
         Ok(self.0.output_count())
+    }
+
+    fn input_fact(&self, id: usize) -> Result<Fact> {
+        Ok(Fact(self.0.input_fact(id)?.clone()))
+    }
+
+    fn output_fact(&self, id: usize) -> Result<Fact> {
+        Ok(Fact(self.0.output_fact(id)?.clone()))
     }
 
     fn property_keys(&self) -> Result<Vec<String>> {

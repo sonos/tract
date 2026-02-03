@@ -400,6 +400,7 @@ wrapper!(Runnable, TractRunnable, tract_runnable_release);
 impl RunnableInterface for Runnable {
     type Value = Value;
     type State = State;
+    type Fact = Fact;
 
     fn run<I, V, E>(&self, inputs: I) -> Result<Vec<Value>>
     where
@@ -426,6 +427,18 @@ impl RunnableInterface for Runnable {
         let mut count = 0;
         check!(sys::tract_runnable_output_count(self.0, &mut count))?;
         Ok(count)
+    }
+
+    fn input_fact(&self, id: usize) -> Result<Self::Fact> {
+        let mut ptr = null_mut();
+        check!(sys::tract_runnable_input_fact(self.0, id, &mut ptr))?;
+        Ok(Fact(ptr))
+    }
+
+    fn output_fact(&self, id: usize) -> Result<Self::Fact> {
+        let mut ptr = null_mut();
+        check!(sys::tract_runnable_output_fact(self.0, id, &mut ptr))?;
+        Ok(Fact(ptr))
     }
 
     fn property_keys(&self) -> Result<Vec<String>> {
