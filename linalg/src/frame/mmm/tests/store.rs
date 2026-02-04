@@ -87,7 +87,10 @@ where
         .into_owned()
         .into_shape(&[mr, nr])
         .unwrap();
+    let pattern_aligned = Blob::from_bytes_alignment(pattern.as_bytes(), 128).unwrap();
     let pattern_col_major = pattern.clone().permute_axes(&[1, 0]).unwrap();
+    let pattern_col_major_aligned =
+        Blob::from_bytes_alignment(pattern_col_major.as_bytes(), 128).unwrap();
     let size_of_tc = std::mem::size_of::<TC>();
     let (row_stride, col_stride, result_size) = match layout {
         StoreLayout::RowMajor => (nr, 1, mr * nr),
@@ -97,9 +100,10 @@ where
     };
     let mut result = tensor0(TC::max_value()).broadcast_to_shape(&[result_size]).unwrap();
     let non_linear = tvec![
-        unsafe {
-            FusedKerSpec::LoadTile(pattern_col_major.as_ptr_unchecked(), pattern.as_ptr_unchecked())
-        },
+        FusedKerSpec::LoadTile(
+            pattern_col_major_aligned.as_ptr() as *const TI,
+            pattern_aligned.as_ptr() as *const TI,
+        ),
         FusedKerSpec::Store(OutputStoreKer {
             ptr: result.as_bytes_mut().as_mut_ptr(),
             row_byte_stride: (size_of_tc * row_stride) as isize,
