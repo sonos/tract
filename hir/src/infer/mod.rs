@@ -22,7 +22,6 @@ pub use self::rules::Solver;
 pub use self::rules::TensorProxy;
 pub use self::rules::expr::IntoExp;
 pub use self::rules::expr::ToDimExp;
-pub use wrap;
 
 pub fn check_input_arity(inputs: &[TensorProxy], expected: usize) -> TractResult<()> {
     if inputs.len() != expected {
