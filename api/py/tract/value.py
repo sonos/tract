@@ -3,28 +3,31 @@ from ctypes import *
 from typing import Dict, List, Union
 from tract.bindings import TractError, check, lib
 
-TRACT_DATUM_TYPE_BOOL = 0x01
-TRACT_DATUM_TYPE_U8 = 0x11
-TRACT_DATUM_TYPE_U16 = 0x12
-TRACT_DATUM_TYPE_U32 = 0x14
-TRACT_DATUM_TYPE_U64 = 0x18
-TRACT_DATUM_TYPE_I8 = 0x21
-TRACT_DATUM_TYPE_I16 = 0x22
-TRACT_DATUM_TYPE_I32 = 0x24
-TRACT_DATUM_TYPE_I64 = 0x28
-TRACT_DATUM_TYPE_F16 = 0x32
-TRACT_DATUM_TYPE_F32 = 0x34
-TRACT_DATUM_TYPE_F64 = 0x38
-TRACT_DATUM_TYPE_COMPLEX_I16 = 0x42
-TRACT_DATUM_TYPE_COMPLEX_I32 = 0x44
-TRACT_DATUM_TYPE_COMPLEX_I64 = 0x48
-TRACT_DATUM_TYPE_COMPLEX_F16 = 0x52
-TRACT_DATUM_TYPE_COMPLEX_F32 = 0x54
-TRACT_DATUM_TYPE_COMPLEX_F64 = 0x58
+from enum import IntEnum
+
+class DatumType(IntEnum):
+    BOOL = 0x01
+    U8 = 0x11
+    U16 = 0x12
+    U32 = 0x14
+    U64 = 0x18
+    I8 = 0x21
+    I16 = 0x22
+    I32 = 0x24
+    I64 = 0x28
+    F16 = 0x32
+    F32 = 0x34
+    F64 = 0x38
+    COMPLEX_I16 = 0x42
+    COMPLEX_I32 = 0x44
+    COMPLEX_I64 = 0x48
+    COMPLEX_F16 = 0x52
+    COMPLEX_F32 = 0x54
+    COMPLEX_F64 = 0x58
 
 def dt_numpy_to_tract(dt):
     if dt.kind == 'b':
-        return TRACT_DATUM_TYPE_BOOL
+        return DatumType.BOOL
     if dt.kind == 'u':
         return 0x10 + dt.itemsize
     if dt.kind == 'i':
@@ -87,3 +90,8 @@ class Value:
         check(lib.tract_value_destroy(byref(self.ptr)))
         return result
 
+    def datum_type(self) -> int:
+        self._valid()
+        dt = 0
+        check(lib.tract_value_as_bytes(self.ptr, byref(dt), None, None, None))
+        return dt

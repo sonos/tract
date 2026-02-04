@@ -647,6 +647,21 @@ impl ValueInterface for Value {
             Ok((dt, shape, data))
         }
     }
+
+    fn datum_type(&self) -> Result<DatumType> {
+        let mut dt = sys::DatumType_TRACT_DATUM_TYPE_BOOL as _;
+        check!(sys::tract_value_as_bytes(
+            self.0,
+            &mut dt,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut()
+        ))?;
+        unsafe {
+            let dt: DatumType = std::mem::transmute(dt);
+            Ok(dt)
+        }
+    }
 }
 
 value_from_to_ndarray!();

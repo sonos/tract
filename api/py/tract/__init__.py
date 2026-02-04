@@ -43,7 +43,7 @@ from pathlib import Path
 from typing import Dict, List, Union
 
 from .bindings import check, lib, TractError
-from .value import Value
+from .value import Value, DatumType
 from .fact import Fact, InferenceFact
 from .model import Model
 from .inference_model import InferenceModel
