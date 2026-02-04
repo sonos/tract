@@ -1,3 +1,5 @@
+use tract_data::itertools::izip;
+
 use crate::broadcast::multi_broadcast;
 use crate::internal::*;
 use crate::ops::binary::TypedBinOp;
@@ -95,7 +97,11 @@ impl TypedOp for MultiBroadcastTo {
             let succ = model.node(succ.node);
             if let Some(op) = succ.op_as::<AxisOp>() {
                 let mut shape = self.shape.clone();
-                if op.change_shape(&mut shape, false).is_ok() {
+                if izip!(0.., &*input_fact.shape, &*self.shape)
+                    .filter(|(_, l, r)| l != r)
+                    .all(|(axis, _, _)| op.transform_axis(axis).is_some())
+                    && op.change_shape(&mut shape, false).is_ok()
+                {
                     let mut patch = TypedModelPatch::default();
                     let mut wire = patch.tap_model(model, node.inputs[0])?;
                     wire = patch.wire_node(&succ.name, op.clone(), &[wire])?[0];
