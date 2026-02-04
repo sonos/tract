@@ -5,7 +5,6 @@ import tempfile
 import json
 import pytest
 from pathlib import Path
-from tract.value import TRACT_DATUM_TYPE_F32
 
 def setup_module(module):
     if not Path("mobilenetv2-7.onnx").exists():
@@ -243,7 +242,7 @@ def test_fact_and_dims():
     nnef = tract.nnef().with_tract_core()
     model = nnef.load("mobilenet_v2_1.0.onnx.nnef.tgz")
     fact = model.parse_fact("B,S+P,64,f32")
-    assert fact.datum_type() == TRACT_DATUM_TYPE_F32
+    assert fact.datum_type() == tract.DatumType.F32
     assert fact.rank() == 3
     assert str(fact.dim(1)) == "S+P"
     s_plus_p = fact.dim(1)

@@ -273,6 +273,7 @@ pub trait StateInterface {
 }
 
 pub trait ValueInterface: Sized + Clone {
+    fn datum_type(&self) -> Result<DatumType>;
     fn from_bytes(dt: DatumType, shape: &[usize], data: &[u8]) -> Result<Self>;
     fn as_bytes(&self) -> Result<(DatumType, &[usize], &[u8])>;
 

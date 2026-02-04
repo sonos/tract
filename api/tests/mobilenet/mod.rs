@@ -72,6 +72,7 @@ fn test_nnef() -> anyhow::Result<()> {
     let model = nnef()?.load("mobilenet_v2_1.0.onnx.nnef.tgz")?.into_runnable()?;
     let hopper = grace_hopper();
     let result = model.run([hopper])?;
+    assert_eq!(result[0].datum_type()?, f32::datum_type());
     let result = result[0].view::<f32>()?;
     let best = result
         .as_slice()
