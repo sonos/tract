@@ -15,6 +15,14 @@ export RUSTUP_TOOLCHAIN=nightly
 export RUST_VERSION=nightly
 export CARGO_EXTRA="--target $TARGET"
 
+cargo -q test -q -p tract-linalg --features paranoid_assertions $CARGO_EXTRA
+
+# inventory, asan and macos liner are not playing nice, so we have to stop there 
+if [ $(uname -a) == "Darwin" ]
+then
+    exit 0
+fi
+
 cargo -q test -q -p tract-core --features paranoid_assertions $CARGO_EXTRA
 
 ./.travis/regular-tests.sh
