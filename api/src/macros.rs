@@ -59,7 +59,11 @@ macro_rules! value_from_to_ndarray {
         {
             type Error = anyhow::Error;
             fn try_from(view: ndarray::ArrayBase<S, D>) -> Result<Value> {
-                if let Some(slice) = view.as_slice_memory_order() {
+                if let Some(slice) = view.as_slice_memory_order()
+                    && (0..view.ndim()).all(|ix| {
+                        view.strides().get(ix + 1).is_none_or(|next| *next <= view.strides()[ix])
+                    })
+                {
                     Value::from_slice(view.shape(), slice)
                 } else {
                     let slice: Vec<_> = view.iter().cloned().collect();
