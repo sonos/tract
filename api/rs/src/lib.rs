@@ -496,6 +496,14 @@ impl ValueInterface for Value {
     }
 }
 
+impl PartialEq for Value {
+    fn eq(&self, other: &Self) -> bool {
+        let Ok((me_dt, me_shape, me_data)) = self.as_bytes() else { return false };
+        let Ok((other_dt, other_shape, other_data)) = other.as_bytes() else { return false };
+        me_dt == other_dt && me_shape == other_shape && me_data == other_data
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Fact(TypedFact);
 
