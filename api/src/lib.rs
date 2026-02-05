@@ -272,7 +272,7 @@ pub trait StateInterface {
     fn get_states(&self) -> Result<Vec<Self::Value>>;
 }
 
-pub trait ValueInterface: Sized + Clone {
+pub trait ValueInterface: Sized + Clone + PartialEq {
     fn datum_type(&self) -> Result<DatumType>;
     fn from_bytes(dt: DatumType, shape: &[usize], data: &[u8]) -> Result<Self>;
     fn as_bytes(&self) -> Result<(DatumType, &[usize], &[u8])>;
