@@ -282,6 +282,10 @@ def test_value_method():
     assert numpy.array_equal(ints.to_numpy(), [-1, 0, 0, 0, 0, 1])
     same = tract.Value.from_numpy(numpy.array([-1, -0.3, 0., 0.25, 0.75, 1.2], dtype=numpy.float32))
     assert floats == same
+    halves = ints.convert_to(tract.DatumType.F16)
+    print(halves)
+    print(halves.to_numpy())
+    assert numpy.array_equal(halves.to_numpy(), [-1, 0, 0, 0, 0, 1])
 
 # @pytest.mark.skip(reason="Model need to be downlaoded locally (use .travis/test-llm.sh)")
 # def test_state_init():

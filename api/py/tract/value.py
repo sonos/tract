@@ -49,7 +49,7 @@ class DatumType(IntEnum):
             return c_bool
         if self == self.U8:
             return c_uint8
-        if self == self.U16:
+        if self == self.U16 or self == self.F16:
             return c_uint16
         if self == self.U32:
             return c_uint32
@@ -144,6 +144,8 @@ class Value:
         (dt, shape, data) = self._parts()
         data = cast(data, POINTER(dt.ctype()))
         array = numpy.ctypeslib.as_array(data, shape).copy()
+        if dt == DatumType.F16:
+            array = array.view(numpy.float16)
         return array
 
     def into_numpy(self) -> numpy.array:
