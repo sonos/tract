@@ -1098,6 +1098,43 @@ pub unsafe extern "C" fn tract_value_from_bytes(
     })
 }
 
+/// Write a value as a debug string
+///
+/// The returned string must be freed by the caller using tract_free_cstring.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tract_value_dump(
+    value: *const TractValue,
+    spec: *mut *mut c_char,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(value, spec);
+        *spec = CString::new(format!("{:?}", (*value).0))?.into_raw();
+        Ok(())
+    })
+}
+
+/// Convert a value to a new datum type.
+///
+/// This function will perform a cheap shallow clone if the destination type is
+/// the same as the current type, otherwise it returns a newly allocated Value instead.
+///
+/// In both cases, the returned value must be destroyed by `tract_value_destroy`.
+/// The input value is not consumed, it still need to be destroyed.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tract_value_convert_to(
+    input: *const TractValue,
+    datum_type: DatumType,
+    output: *mut *mut TractValue,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(input, output);
+        *output = std::ptr::null_mut();
+        let new = (*input).0.convert_to(datum_type)?;
+        *output = Box::into_raw(Box::new(TractValue(new)));
+        Ok(())
+    })
+}
+
 /// Destroy a value.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_value_destroy(value: *mut *mut TractValue) -> TRACT_RESULT {

@@ -494,6 +494,15 @@ impl ValueInterface for Value {
         let dt = from_internal_dt(self.0.datum_type())?;
         Ok((dt, self.0.shape(), unsafe { self.0.as_slice_unchecked::<u8>() }))
     }
+
+    fn convert_to(&self, to: DatumType) -> Result<Self> {
+        let to = to_internal_dt(to);
+        if self.0.datum_type() == to {
+            Ok(self.clone())
+        } else {
+            Ok(Value(self.0.cast_to_dt(to)?.into_owned().into_tvalue()))
+        }
+    }
 }
 
 impl PartialEq for Value {

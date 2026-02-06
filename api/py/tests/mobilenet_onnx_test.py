@@ -274,6 +274,15 @@ def test_runtime_fact_iterator():
     assert len(outputs) == 1
     assert str(outputs[0]) == "1,1000,F32"
 
+def test_value_method():
+    floats = tract.Value.from_numpy(numpy.array([-1, -0.3, 0., 0.25, 0.75, 1.2], dtype=numpy.float32))
+    assert floats.datum_type().is_float()
+    ints = floats.convert_to(tract.DatumType.I8)
+    assert ints.datum_type().is_signed()
+    assert numpy.array_equal(ints.to_numpy(), [-1, 0, 0, 0, 0, 1])
+    same = tract.Value.from_numpy(numpy.array([-1, -0.3, 0., 0.25, 0.75, 1.2], dtype=numpy.float32))
+    assert floats == same
+
 # @pytest.mark.skip(reason="Model need to be downlaoded locally (use .travis/test-llm.sh)")
 # def test_state_init():
 #     nnef = tract.nnef().with_tract_core().with_tract_transformers()

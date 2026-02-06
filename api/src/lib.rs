@@ -272,7 +272,7 @@ pub trait StateInterface {
     fn get_states(&self) -> Result<Vec<Self::Value>>;
 }
 
-pub trait ValueInterface: Sized + Clone + PartialEq {
+pub trait ValueInterface: Debug + Sized + Clone + PartialEq {
     fn datum_type(&self) -> Result<DatumType>;
     fn from_bytes(dt: DatumType, shape: &[usize], data: &[u8]) -> Result<Self>;
     fn as_bytes(&self) -> Result<(DatumType, &[usize], &[u8])>;
@@ -311,6 +311,8 @@ pub trait ValueInterface: Sized + Clone + PartialEq {
         let (shape, data) = self.as_shape_and_slice()?;
         Ok(unsafe { ndarray::ArrayViewD::from_shape_ptr(shape, data.as_ptr()) })
     }
+
+    fn convert_to(&self, to: DatumType) -> Result<Self>;
 }
 
 pub trait FactInterface: Debug + Display + Clone {
@@ -382,6 +384,39 @@ impl DatumType {
             #[cfg(feature = "complex")]
             TRACT_DATUM_TYPE_COMPLEX_I64 | TRACT_DATUM_TYPE_F64 => 16,
         }
+    }
+
+    pub fn is_bool(&self) -> bool {
+        use DatumType::*;
+        *self == TRACT_DATUM_TYPE_BOOL
+    }
+
+    pub fn is_number(&self) -> bool {
+        use DatumType::*;
+        *self != TRACT_DATUM_TYPE_BOOL
+    }
+
+    pub fn is_unsigned(&self) -> bool {
+        use DatumType::*;
+        *self == TRACT_DATUM_TYPE_U8
+            || *self == TRACT_DATUM_TYPE_U16
+            || *self == TRACT_DATUM_TYPE_U32
+            || *self == TRACT_DATUM_TYPE_U64
+    }
+
+    pub fn is_signed(&self) -> bool {
+        use DatumType::*;
+        *self == TRACT_DATUM_TYPE_I8
+            || *self == TRACT_DATUM_TYPE_I16
+            || *self == TRACT_DATUM_TYPE_I32
+            || *self == TRACT_DATUM_TYPE_I64
+    }
+
+    pub fn is_float(&self) -> bool {
+        use DatumType::*;
+        *self == TRACT_DATUM_TYPE_F16
+            || *self == TRACT_DATUM_TYPE_F32
+            || *self == TRACT_DATUM_TYPE_F64
     }
 }
 
