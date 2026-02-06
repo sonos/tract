@@ -662,6 +662,12 @@ impl ValueInterface for Value {
             Ok(dt)
         }
     }
+
+    fn convert_to(&self, to: DatumType) -> Result<Self> {
+        let mut new = null_mut();
+        check!(sys::tract_value_convert_to(self.0, to as _, &mut new))?;
+        Ok(Value(new))
+    }
 }
 
 impl PartialEq for Value {

@@ -378,6 +378,18 @@ fn test_runtime_fact_iterator() -> anyhow::Result<()> {
     Ok(())
 }
 
+#[test]
+fn test_value_methods() -> anyhow::Result<()> {
+    let floats: Value = ndarray::prelude::arr1(&[-1f32, -0.3, 0., 0.25, 0.75, 1.2]).try_into()?;
+    assert_eq!(floats.datum_type().is_float());
+    let ints = floats.convert_to(i8::datum_type())?;
+    assert_eq!(ints.datum_type().is_signed());
+    assert_eq!(ints.view::<i8>()?.as_slice().unwrap(), &[-1, 0, 0, 0, 0, 1]);
+    let same: Value = ndarray::prelude::arr1(&[-1f32, -0.3, 0., 0.25, 0.75, 1.2]).try_into()?;
+    assert_eq!(floats, same);
+    Ok(())
+}
+
 fn state_init_from_facts(
     facts: Vec<Fact>,
     default_symbol_value: usize,

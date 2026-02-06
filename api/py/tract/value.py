@@ -1,4 +1,5 @@
 import numpy
+import math
 from ctypes import *
 from typing import Dict, List, Union
 from tract.bindings import TractError, check, lib
@@ -24,6 +25,49 @@ class DatumType(IntEnum):
     COMPLEX_F16 = 0x52
     COMPLEX_F32 = 0x54
     COMPLEX_F64 = 0x58
+
+    def __str__(self) -> str:
+        return self.name
+
+    def is_bool(self) -> bool:
+        return self == self.BOOL
+
+    def is_number(self) -> bool:
+        return self != self.BOOL
+        
+    def is_float(self) -> bool:
+        return self == self.F16 or self == self.F32 or self == self.F64
+
+    def is_signed(self) -> bool:
+        return self == self.I8 or self == self.I16 or self == self.I32 or self == self.I64
+
+    def is_unsigned(self) -> bool:
+        return self == self.U8 or self == self.U16 or self == self.U32 or self == self.U64
+
+    def ctype(self):
+        if self == self.BOOL:
+            return c_bool
+        if self == self.U8:
+            return c_uint8
+        if self == self.U16:
+            return c_uint16
+        if self == self.U32:
+            return c_uint32
+        if self == self.U64:
+            return c_uint64
+        if self == self.I8:
+            return c_int8
+        if self == self.I16:
+            return c_int16
+        if self == self.I32:
+            return c_int32
+        if self == self.I64:
+            return c_int64        
+        if self == self.F32:
+            return c_float
+        if self == self.F64:
+            return c_double
+        raise "invalid datum type"
 
 def dt_numpy_to_tract(dt):
     if dt.kind == 'b':
@@ -53,9 +97,33 @@ class Value:
         if self.ptr:
             check(lib.tract_value_destroy(byref(self.ptr)))
 
+    def __str__(self):
+        return self.dump()
+ 
     def _valid(self):
         if self.ptr == None:
             raise TractError("invalid value (maybe already consumed ?)")
+
+    def __eq__(self, other):
+        (self_dt, self_shape, self_ptr) = self._parts()
+        (other_dt, other_shape, other_ptr) = other._parts()
+        self_len = math.prod(self_shape) * sizeof(self_dt.ctype())
+        other_len = math.prod(self_shape) * sizeof(self_dt.ctype())
+        self_buf = string_at(self_ptr, self_len) 
+        other_buf = string_at(other_ptr, other_len)
+        return self_dt == other_dt and self_shape == other_shape and self_buf == other_buf
+        
+        
+    def _parts(self) -> (DatumType, [int], c_void_p):
+        self._valid()
+        rank = c_size_t();
+        shape = POINTER(c_size_t)()
+        data = c_void_p();
+        dt = c_uint32(0)
+        check(lib.tract_value_as_bytes(self.ptr, byref(dt), byref(rank), byref(shape), byref(data)))
+        rank = rank.value
+        shape = [ int(shape[ix]) for ix in range(0, rank) ]
+        return (DatumType(dt.value), shape, data)
 
     def from_numpy(array: numpy.ndarray) -> "Value":
         array = numpy.ascontiguousarray(array)
@@ -73,14 +141,8 @@ class Value:
 
     def to_numpy(self) -> numpy.array:
         """Builds a numpy array equivalent to the data in this value."""
-        self._valid()
-        rank = c_size_t();
-        shape = POINTER(c_size_t)()
-        dt = c_float
-        data = POINTER(dt)()
-        check(lib.tract_value_as_bytes(self.ptr, None, byref(rank), byref(shape), byref(data)))
-        rank = rank.value
-        shape = [ int(shape[ix]) for ix in range(0, rank) ]
+        (dt, shape, data) = self._parts()
+        data = cast(data, POINTER(dt.ctype()))
         array = numpy.ctypeslib.as_array(data, shape).copy()
         return array
 
@@ -90,8 +152,22 @@ class Value:
         check(lib.tract_value_destroy(byref(self.ptr)))
         return result
 
-    def datum_type(self) -> int:
+    def datum_type(self) -> DatumType:
         self._valid()
-        dt = 0
+        dt = c_uint32(0)
         check(lib.tract_value_as_bytes(self.ptr, byref(dt), None, None, None))
-        return dt
+        return DatumType(dt.value)
+
+    def convert_to(self, to: DatumType) -> "Value":
+        self._valid()
+        ptr = c_void_p()
+        check(lib.tract_value_convert_to(self.ptr, to, byref(ptr)))
+        return Value(ptr)
+        
+    def dump(self):
+        self._valid()
+        cstring = c_char_p();
+        check(lib.tract_value_dump(self.ptr, byref(cstring)))
+        result = str(cstring.value, "utf-8")
+        lib.tract_free_cstring(cstring)
+        return result

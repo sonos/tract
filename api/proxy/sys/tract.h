@@ -549,6 +549,26 @@ enum TRACT_RESULT tract_value_from_bytes(DatumType datum_type,
                                          struct TractValue **value);
 
 /**
+ * Write a value as a debug string
+ *
+ * The returned string must be freed by the caller using tract_free_cstring.
+ */
+enum TRACT_RESULT tract_value_dump(const struct TractValue *value, char **spec);
+
+/**
+ * Convert a value to a new datum type.
+ *
+ * This function will perform a cheap shallow clone if the destination type is
+ * the same as the current type, otherwise it returns a newly allocated Value instead.
+ *
+ * In both cases, the returned value must be destroyed by `tract_value_destroy`.
+ * The input value is not consumed, it still need to be destroyed.
+ */
+enum TRACT_RESULT tract_value_convert_to(const struct TractValue *input,
+                                         DatumType datum_type,
+                                         struct TractValue **output);
+
+/**
  * Destroy a value.
  */
 enum TRACT_RESULT tract_value_destroy(struct TractValue **value);
