@@ -396,6 +396,8 @@ impl RuntimeInterface for Runtime {
 
 // RUNNABLE
 wrapper!(Runnable, TractRunnable, tract_runnable_release);
+unsafe impl Send for Runnable {}
+unsafe impl Sync for Runnable {}
 
 impl RunnableInterface for Runnable {
     type Value = Value;

@@ -192,7 +192,7 @@ pub trait RuntimeInterface {
     fn prepare(&self, model: Self::Model) -> Result<Self::Runnable>;
 }
 
-pub trait RunnableInterface {
+pub trait RunnableInterface: Send + Sync {
     type Value: ValueInterface;
     type Fact: FactInterface;
     type State: StateInterface<Value = Self::Value>;
