@@ -17,8 +17,8 @@ use tract_libcli::profile::BenchLimits;
 use tract_libcli::tensor::RunTensors;
 use tract_nnef::internal::{Runtime as _, parse_tdim};
 use tract_nnef::prelude::{
-    Framework, IntoTValue, SymbolValues, TDim, TValue, TVec, Tensor, TractResult, TypedFact,
-    TypedModel, TypedSimplePlan,
+    Framework, IntoArcTensor, IntoTValue, SymbolValues, TDim, TValue, TVec, Tensor, TractResult,
+    TypedFact, TypedModel, TypedSimplePlan,
 };
 use tract_onnx::prelude::InferenceModelExt;
 use tract_onnx_opl::WithOnnx;
@@ -293,7 +293,7 @@ impl ModelInterface for Model {
             .properties
             .get(name)
             .with_context(|| format!("no property for name {name}"))
-            .map(|t| Value(t.clone().into_tvalue()))
+            .map(|t| Value(t.clone()))
     }
 }
 
@@ -359,7 +359,7 @@ impl RunnableInterface for Runnable {
             .properties()
             .get(name)
             .with_context(|| format!("no property for name {name}"))
-            .map(|t| Value(t.clone().into_tvalue()))
+            .map(|t| Value(t.clone()))
     }
 
     fn cost_json(&self) -> Result<String> {
@@ -391,13 +391,15 @@ impl RunnableInterface for Runnable {
         if let Some(inputs) = inputs {
             let inputs = inputs
                 .into_iter()
-                .map(|v| Ok(v.try_into().unwrap().0))
+                .map(|v| Ok(v.try_into().unwrap().0.into_tvalue()))
                 .collect::<TractResult<TVec<_>>>()?;
 
             let mut state_inits: Vec<TValue> = vec![];
 
             if let Some(states) = state_initializers {
-                states.into_iter().for_each(|s| state_inits.push(s.try_into().unwrap().0));
+                states
+                    .into_iter()
+                    .for_each(|s| state_inits.push(s.try_into().unwrap().0.into_tvalue()));
             }
             tract_libcli::profile::profile(
                 &self.0,
@@ -436,10 +438,10 @@ impl StateInterface for State {
     {
         let inputs: TVec<TValue> = inputs
             .into_iter()
-            .map(|i| i.try_into().map_err(|e| e.into()).map(|v| v.0))
+            .map(|i| i.try_into().map_err(|e| e.into()).map(|v| v.0.into_tvalue()))
             .collect::<Result<_>>()?;
         let outputs = self.0.run(inputs)?;
-        Ok(outputs.into_iter().map(Value).collect())
+        Ok(outputs.into_iter().map(|t| Value(t.into_arc_tensor())).collect())
     }
 
     fn initializable_states_count(&self) -> Result<usize> {
@@ -461,7 +463,7 @@ impl StateInterface for State {
             .map(|si| -> TractResult<TValue> {
                 let v: Value =
                     si.try_into().map_err(|e| anyhow::anyhow!("Failed conversion:  {e:?}"))?;
-                Ok(v.0)
+                Ok(v.0.into_tvalue())
             })
             .collect::<Result<Vec<TValue>>>()?;
         self.0.init_state(&states)?;
@@ -469,13 +471,13 @@ impl StateInterface for State {
     }
 
     fn get_states(&self) -> Result<Vec<Self::Value>> {
-        Ok(self.0.get_states()?.into_iter().map(Value).collect())
+        Ok(self.0.get_states()?.into_iter().map(|t| Value(t.into_arc_tensor())).collect())
     }
 }
 
 // VALUE
 #[derive(Clone, Debug)]
-pub struct Value(TValue);
+pub struct Value(Arc<Tensor>);
 
 impl ValueInterface for Value {
     fn datum_type(&self) -> Result<DatumType> {
@@ -487,7 +489,7 @@ impl ValueInterface for Value {
         let len = shape.iter().product::<usize>() * dt.size_of();
         anyhow::ensure!(len == data.len());
         let tensor = unsafe { Tensor::from_raw_dt(dt, shape, data)? };
-        Ok(Value(tensor.into_tvalue()))
+        Ok(Value(tensor.into_arc_tensor()))
     }
 
     fn as_bytes(&self) -> Result<(DatumType, &[usize], &[u8])> {
@@ -500,7 +502,7 @@ impl ValueInterface for Value {
         if self.0.datum_type() == to {
             Ok(self.clone())
         } else {
-            Ok(Value(self.0.cast_to_dt(to)?.into_owned().into_tvalue()))
+            Ok(Value(self.0.cast_to_dt(to)?.into_owned().into_arc_tensor()))
         }
     }
 }

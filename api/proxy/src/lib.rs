@@ -618,6 +618,8 @@ impl StateInterface for State {
 
 // VALUE
 wrapper!(Value, TractValue, tract_value_destroy);
+unsafe impl Send for Value {}
+unsafe impl Sync for Value {}
 
 impl ValueInterface for Value {
     fn from_bytes(dt: DatumType, shape: &[usize], data: &[u8]) -> Result<Self> {
