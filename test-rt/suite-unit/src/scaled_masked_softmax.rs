@@ -6,7 +6,7 @@ use infra::TestSuite;
 use proptest::collection::vec;
 use proptest::prelude::*;
 use tract_core::internal::*;
-use tract_core::ndarray::ArrayD;
+use tract_core::ndarray::Array4;
 use tract_core::num_traits::Float;
 use tract_transformers::ops::scaled_masked_softmax::ScaledMaskedSoftmax;
 
@@ -17,8 +17,8 @@ pub struct ScaledMaskedSoftmaxProblem<F>
 where
     F: Datum + Float,
 {
-    input: ArrayD<F>,
-    mask: ArrayD<F>,
+    input: Array4<F>,
+    mask: Array4<F>,
     scale: F,
 }
 
@@ -30,11 +30,17 @@ where
     type Strategy = BoxedStrategy<ScaledMaskedSoftmaxProblem<F>>;
 
     fn arbitrary_with(_params: Self::Parameters) -> Self::Strategy {
-        // ScaledMaskSoftmax assumes rank 3 for mask and input
-        let dim = 1usize..20;
-        vec(dim.clone(), 3..=3)
-            .prop_flat_map(|shape| {
-                (tensor::<F>(&shape), tensor::<f32>(&shape), -10..=10i32).prop_map(
+        // ScaledMaskSoftmax assumes rank 4 for mask and input
+        (vec(1usize..20, 4..=4), any::<bool>(), any::<bool>())
+            .prop_flat_map(|(q_shape, broadcast_batch, broadcast_head)| {
+                let mut m_shape = q_shape.clone();
+                if broadcast_batch {
+                    m_shape[0] = 1
+                };
+                if broadcast_head {
+                    m_shape[1] = 1
+                };
+                (tensor::<F>(&q_shape), tensor::<f32>(&m_shape), -10..=10i32).prop_map(
                     |(input, mask, scale)| {
                         let mask = mask.mapv(|x| {
                             if x >= 0. {
@@ -44,7 +50,11 @@ where
                             }
                         });
                         let scale = scale as f32 / 10.;
-                        Self { input, mask, scale: F::from(scale).unwrap() }
+                        Self {
+                            input: input.into_dimensionality().unwrap(),
+                            mask: mask.into_dimensionality().unwrap(),
+                            scale: F::from(scale).unwrap(),
+                        }
                     },
                 )
             })
@@ -76,7 +86,7 @@ where
         Ok(model)
     }
 
-    fn softmax(input: &ArrayD<F>, axis: usize) -> ArrayD<F> {
+    fn softmax(input: &Array4<F>, axis: usize) -> Array4<F> {
         let axis = tract_ndarray::Axis(axis);
 
         let max_per_axis = input.map_axis(axis, |lane| {
@@ -92,7 +102,7 @@ where
         &exp / &norm
     }
 
-    fn reference(&self) -> ArrayD<F> {
+    fn reference(&self) -> Array4<F> {
         let input = self.input.clone();
         let mask = self.mask.clone();
 
@@ -137,16 +147,20 @@ pub fn suite() -> TractResult<TestSuite> {
     suite.add(
         "trivial_f32_0",
         ScaledMaskedSoftmaxProblem {
-            input: tensor3(&[[[0f32]]]).into_array()?,
-            mask: tensor3(&[[[0f32]]]).into_array()?,
+            input: tensor4(&[[[[0f32]]]]).into_array()?.into_dimensionality()?,
+            mask: tensor4(&[[[[0f32]]]]).into_array()?.into_dimensionality()?,
             scale: 1f32,
         },
     );
     suite.add(
         "trivial_f32_1",
         ScaledMaskedSoftmaxProblem {
-            input: tensor3(&[[[0f32, 0f32], [0f32, 0f32]]]).into_array()?,
-            mask: tensor3(&[[[f32::NEG_INFINITY, 0f32], [0f32, 0f32]]]).into_array()?,
+            input: tensor4(&[[[[0f32, 0f32], [0f32, 0f32]]]])
+                .into_array()?
+                .into_dimensionality()?,
+            mask: tensor4(&[[[[f32::NEG_INFINITY, 0f32], [0f32, 0f32]]]])
+                .into_array()?
+                .into_dimensionality()?,
             scale: 0f32,
         },
     );

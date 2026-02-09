@@ -44,7 +44,7 @@ fn ser_scaled_masked_softmax(
 }
 
 /// A = SOFTMAX(INPUT * SCALE + MASK, AXIS=2)
-/// Only input of rank of 3 is supported.
+/// Both inputs must have rank 5 (batch, kv_heads, grouped, s, s+p) broadcast allowed to the left
 #[derive(Clone, Debug, Hash)]
 pub struct ScaledMaskedSoftmax {
     pub scale: Arc<Tensor>,
@@ -67,11 +67,12 @@ impl EvalOp for ScaledMaskedSoftmax {
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (input, mask) = args_2!(inputs);
+        let softmax_axis = tvec!(input.rank() - 1);
         let dt = input.datum_type();
         let scale = self.scale.cast_to_dt(dt)?.into_owned();
         let scaled_input = Mul.eval(input, scale.into_tvalue(), dt)?;
         let masked_input = Add.eval(scaled_input.into(), mask, dt)?;
-        let softmax = Softmax::new(tvec![2], None, SoftmaxKind::Softmax(SoftmaxExp::Libc))
+        let softmax = Softmax::new(softmax_axis, None, SoftmaxKind::Softmax(SoftmaxExp::Libc))
             .eval(tvec![masked_input.into()])?[0]
             .clone();
         Ok(tvec![softmax])
@@ -83,7 +84,7 @@ impl TypedOp for ScaledMaskedSoftmax {
         ensure!(inputs.len() == 2);
         let (input, mask) = (inputs[0], inputs[1]);
         ensure!(input.datum_type == mask.datum_type);
-        ensure!(input.rank() == 3 && mask.rank() == 3);
+        ensure!(input.rank() == mask.rank());
         let dt = input.datum_type;
         let fact = dt.fact(input.shape.clone());
         Ok(tvec!(fact))
@@ -100,7 +101,8 @@ pub fn scaled_masked_softmax_rule(
     node_name: &str,
     op: &Softmax,
 ) -> TractResult<Option<TypedModelPatch>> {
-    rule_if!(op.axes.as_slice() == [2]);
+    let rank = node.outputs[0].fact.rank();
+    rule_if!(op.axes.as_slice() == [rank - 2]);
 
     let in_fact = model.node_input_facts(node.id)?[0];
     let dt = in_fact.datum_type;

@@ -38,26 +38,25 @@ impl TypedOp for FlashSdpaOp {
         ensure!(k.datum_type.is_float(), "K must be floating point");
         ensure!(v.datum_type.is_float(), "V must be floating point");
         if let Some(m) = opt_m {
-            ensure!(m.datum_type.is_float(), "M must be floating point");
+            ensure!(m.datum_type.is_float(), "Mask must be floating point");
         }
 
         // rank checks
         ensure!(
-            q.rank() == k.rank() && q.rank() == v.rank(),
-            "Q, K and V must have the same rank, found {}, {}, {} resp.",
+            q.rank() == k.rank()
+                && q.rank() == v.rank()
+                && opt_m.as_ref().is_none_or(|m| m.rank() == q.rank()),
+            "Q, K, V, mask must have the same rank, found {}, {}, {}, {:?} resp.",
             q.rank(),
             k.rank(),
-            v.rank()
+            v.rank(),
+            opt_m.as_ref().map(|m| m.rank().to_string())
         );
         ensure!(
             q.rank() == 3 || q.rank() == 4,
             "Inputs must be of rank 3 or 4, found {}",
             q.rank()
         );
-
-        if let Some(m) = opt_m {
-            ensure!(m.rank() == 2, "Mask must be of rank 2, found mask {:?}", m,);
-        }
 
         let one = 1.to_dim();
 
@@ -139,16 +138,14 @@ impl EvalOp for FlashSdpaOp {
         let k4 = k.to_shape((batch_size, num_kv_heads, kv_len, head_dim))?;
         let v4 = v.to_shape((batch_size, num_kv_heads, kv_len, head_dim))?;
 
-        let m = if let Some(m) = inputs.get(3) {
-            Some(
-                m.cast_to::<f32>()?
-                    .into_owned()
-                    .into_array::<f32>()?
-                    .into_shape_with_order((query_len, kv_len))?,
-            )
-        } else {
-            None
-        };
+        let m =
+            if let Some(m) = inputs.get(3) {
+                Some(m.cast_to::<f32>()?.into_owned().into_array::<f32>()?.into_shape_with_order(
+                    (m.shape()[0], if m.rank() == 3 { 1 } else { m.shape()[1] }, query_len, kv_len),
+                )?)
+            } else {
+                None
+            };
 
         let mut out = self
             .flash_attention_gqa(q4.view(), k4.view(), v4.view(), m.as_ref().map(|m| m.view()))
@@ -177,7 +174,7 @@ impl FlashSdpaOp {
         q: ArrayView4<f32>,
         k: ArrayView4<f32>,
         v: ArrayView4<f32>,
-        mask: Option<ArrayView2<f32>>,
+        mask: Option<ArrayView4<f32>>,
     ) -> Array4<f32> {
         // Explicit dimensions
         let (batch_size, num_q_heads, q_len, head_dim) = q.dim();
@@ -191,9 +188,11 @@ impl FlashSdpaOp {
         let mut out = Array4::<f32>::zeros((batch_size, num_q_heads, q_len, head_dim));
 
         for b in 0..batch_size {
+            let mb = b.min(mask.as_ref().map(|m| m.shape()[0] - 1).unwrap_or(0));
             for kvh in 0..num_kv_heads {
                 for g in 0..group_size {
                     let qh = kvh * group_size + g;
+                    let mh = qh.min(mask.as_ref().map(|m| m.shape()[1] - 1).unwrap_or(0));
                     let mut l = vec![0f32; q_len];
                     let mut m = vec![f32::NEG_INFINITY; q_len];
                     for kbix in 0..kv_len.div_ceil(block_kv_len) {
@@ -204,7 +203,7 @@ impl FlashSdpaOp {
                                 (qbix * block_q_len)..((qbix + 1) * block_q_len).min(q_len);
                             if let Some(mask) = &mask {
                                 if mask
-                                    .slice(s!(q_range.clone(), kv_range.clone()))
+                                    .slice(s!(mb, mh, q_range.clone(), kv_range.clone()))
                                     .iter()
                                     .all(|x| *x < -65503.0)
                                 {
@@ -221,7 +220,7 @@ impl FlashSdpaOp {
                             // Sij <- QiKTj
                             let mut s = qblock.dot(&kblock.t()) * scale;
                             if let Some(mask) = &mask {
-                                s += &mask.slice(s!(q_range.clone(), kv_range.clone()));
+                                s += &mask.slice(s!(mb, mh, q_range.clone(), kv_range.clone()));
                             } else if self.causal {
                                 let mask = Array2::from_elem(
                                     (q_range.len(), kv_range.len()),
