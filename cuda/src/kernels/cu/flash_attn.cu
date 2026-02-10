@@ -183,7 +183,8 @@ kv_iter_body(const int kv_tile_base, const int len_q, const int len_kv,
             jlim1 = past + i1g;
         }
 
-        // ---- scale, (mask/causal), rowmax (tight scope for S_rmem live range)
+        // ----
+        // scale, (mask/causal), rowmax (tight scope for S_rmem live range)
         // ---
         float this_rowmax0 = -CUDART_INF_F;
         float this_rowmax1 = -CUDART_INF_F;

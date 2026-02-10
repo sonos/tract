@@ -46,7 +46,7 @@ impl ScaledMaskedSoftmax {
         output: &DeviceTensor,
     ) -> TractResult<()> {
         ensure!(output.shape() == input.shape());
-        ensure!(mask.rank() == 3 && input.rank() == 3);
+        ensure!(mask.rank() == 4 && input.rank() == 4);
         ensure!(output.datum_type() == input.datum_type());
 
         let shape = input.shape();
