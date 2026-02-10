@@ -83,10 +83,12 @@ impl ScaledMaskedSoftmax {
         launch_args.push_slice_i32(&mask_strides_nd3);
         launch_args.push_slice_i32(output.strides());
 
+        // input is [b, h, row, col]
+        // grid_dim= (row, h, b)
         let cfg = LaunchConfig {
-            grid_dim: (1, shape[1] as _, shape[0] as _),
+            grid_dim: (shape[2] as _, shape[1] as _, shape[0] as _),
             block_dim: (nth as _, 1, 1),
-            shared_mem_bytes: ((shape[2].next_power_of_two() + 32) * size_of::<f32>()) as u32,
+            shared_mem_bytes: ((shape[3].next_power_of_two() + 32) * size_of::<f32>()) as u32,
         };
 
         launch_args.launch(cfg)
@@ -115,10 +117,10 @@ mod tests {
             let m = 6;
             let n = 33;
             let scale: Arc<_> = tensor0(0.125f32).into();
-            let mask = Tensor::from_shape(&[1, m, n], &vec![-1000f32; m * n])?.into_device()?;
+            let mask = Tensor::from_shape(&[1, 1, m, n], &vec![-1000f32; m * n])?.into_device()?;
 
             let a = Tensor::from_shape(
-                &[4, m, n],
+                &[4, 1, m, n],
                 &(0..4 * m * n).map(|f| f as f32).collect::<Vec<_>>(),
             )?
             .into_device()?;
@@ -184,10 +186,11 @@ mod tests {
         type Strategy = BoxedStrategy<Self>;
 
         fn arbitrary_with(_: ()) -> Self::Strategy {
-            vec(1usize..10, 3..=3)
+            vec(1usize..10, 4..=4)
                 .prop_map(|shape| {
                     let mut mask_shape = shape.clone();
                     mask_shape[0] = 1;
+                    mask_shape[1] = 1;
 
                     let input = (0..shape.iter().product::<usize>())
                         .map(|f| f.as_() / 1000.as_())

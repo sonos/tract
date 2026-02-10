@@ -462,6 +462,13 @@ indices_to_idx_4(int x, int y, int z, int x_shape, int y_shape, int z_shape,
         }                                                                      \
     }
 
+/// basic 4D f32-masked softmax, doing softmax on last axis (*_3)
+// if input is [ b, h, rows, cols ], softmax is performed alongside the col
+// dimension
+// supports mask broadcast by mask_stride tuning
+// grid dim is (rows, h, b)
+// block_size is WARP_SIZE * 2^n
+// shared_mem: (32 + next_poswer_of_2(cols) * sizeof(T)
 template <typename T, int BLOCK_SIZE>
 __device__ void
 scaled_masked_softmax(const T *x, const T *mask, const T scale, T *dst,
@@ -473,9 +480,12 @@ scaled_masked_softmax(const T *x, const T *mask, const T scale, T *dst,
                       const int32_t mask_stride_2, const int32_t mask_stride_3,
                       const int32_t out_stride_0, const int32_t out_stride_1,
                       const int32_t out_stride_2, const int32_t out_stride_3) {
-    x += blockIdx.y * stride_1 + blockIdx.z * stride_0;
-    mask += mask ? blockIdx.y * mask_stride_1 + blockIdx.z * mask_stride_0 : 0;
-    dst += blockIdx.y * out_stride_1 + blockIdx.z * out_stride_0;
+    x += blockIdx.x * stride_2 + blockIdx.y * stride_1 + blockIdx.z * stride_0;
+    mask += mask ? blockIdx.x * mask_stride_2 + blockIdx.y * mask_stride_1 +
+                       blockIdx.z * mask_stride_0
+                 : 0;
+    dst += blockIdx.x * out_stride_2 + blockIdx.y * out_stride_1 +
+           blockIdx.z * out_stride_0;
 
     const int block_size = BLOCK_SIZE == 0 ? blockDim.x : BLOCK_SIZE;
 
@@ -487,13 +497,13 @@ scaled_masked_softmax(const T *x, const T *mask, const T scale, T *dst,
     float *vals = buf_iw + WARP_SIZE;
 
     float max_val = -CUDART_INF_F;
-    _Pragma("unroll") for (int col0 = 0; col0 < shape_2; col0 += block_size) {
+    _Pragma("unroll") for (int col0 = 0; col0 < shape_3; col0 += block_size) {
         const int col = col0 + threadIdx.x;
-        if (col >= shape_2) {
+        if (col >= shape_3) {
             break;
         }
 
-        const float val = x[col * stride_2] * scale + mask[col * mask_stride_2];
+        const float val = x[col * stride_3] * scale + mask[col * mask_stride_3];
         vals[col] = val;
         max_val = max(max_val, val);
     }
@@ -515,9 +525,9 @@ scaled_masked_softmax(const T *x, const T *mask, const T scale, T *dst,
     }
 
     float tmp = 0.0f;
-    _Pragma("unroll") for (int col0 = 0; col0 < shape_2; col0 += block_size) {
+    _Pragma("unroll") for (int col0 = 0; col0 < shape_3; col0 += block_size) {
         const int col = col0 + threadIdx.x;
-        if (col >= shape_2) {
+        if (col >= shape_3) {
             break;
         }
 
@@ -545,12 +555,12 @@ scaled_masked_softmax(const T *x, const T *mask, const T scale, T *dst,
 
     const float inv_sum = 1.0f / tmp;
 
-    _Pragma("unroll") for (int col0 = 0; col0 < shape_2; col0 += block_size) {
+    _Pragma("unroll") for (int col0 = 0; col0 < shape_3; col0 += block_size) {
         const int col = col0 + threadIdx.x;
-        if (col >= shape_2) {
+        if (col >= shape_3) {
             return;
         }
-        dst[col * out_stride_2] = vals[col] * inv_sum;
+        dst[col * out_stride_3] = vals[col] * inv_sum;
     }
 }
 
