@@ -5,4 +5,4 @@ UseTab: Never
 IndentPPDirectives: BeforeHash
 PPIndentWidth: 4
 
-OneLineFormatOffRegex: '^\s*#\s*pragma\s+unroll\b'
+# OneLineFormatOffRegex: '^\s*#\s*pragma\s+unroll\b'
