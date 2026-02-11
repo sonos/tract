@@ -168,6 +168,7 @@ fn main() -> TractResult<()> {
         .arg(arg!(--"nnef-tract-extra" "Allow usage of tract-extra extension in NNEF dump and load"))
         .arg(arg!(--"nnef-tract-transformers" "Allow usage of tract-transformers extension in NNEF dump and load"))
         .arg(arg!(--"nnef-extended-identifier" "Allow usage of the i\"...\" syntax to escape identifier names"))
+        .arg(arg!(--"nnef-extern-all-constants" "Do not inline small tensors"))
         .arg(arg!(--opl "Activates all NNEF tract extensions (like --nnef-tract-*)"))
 
 
@@ -884,6 +885,9 @@ fn nnef(matches: &clap::ArgMatches) -> tract_nnef::internal::Nnef {
     }
     if matches.is_present("nnef-extended-identifier") || matches.is_present("opl") {
         fw.allow_extended_identifier_syntax(true);
+    }
+    if matches.is_present("nnef-extern-all-constants") {
+        fw.extern_all_constants(true);
     }
     fw
 }

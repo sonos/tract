@@ -20,6 +20,7 @@ pub struct Nnef {
     pub registries: Vec<Registry>,
     pub resource_loaders: Vec<Box<dyn ResourceLoader + 'static>>,
     pub allow_extended_identifier_syntax: bool,
+    pub extern_all_constants: bool,
 }
 
 impl Default for Nnef {
@@ -35,6 +36,7 @@ impl Default for Nnef {
                 SafeTensorsLoader.into_boxed(),
             ],
             allow_extended_identifier_syntax: false,
+            extern_all_constants: false,
         }
     }
 }
@@ -70,6 +72,10 @@ impl Nnef {
 
     pub fn allow_extended_identifier_syntax(&mut self, allow_extended_identifier_syntax: bool) {
         self.allow_extended_identifier_syntax = allow_extended_identifier_syntax;
+    }
+
+    pub fn extern_all_constants(&mut self, value: bool) {
+        self.extern_all_constants = value;
     }
 
     #[allow(clippy::result_large_err)]
