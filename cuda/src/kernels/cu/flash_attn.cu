@@ -55,8 +55,7 @@ global_to_shared_swizzle(uint32_t dst, const half *__restrict__ src,
                          int src_stride, int tid) {
     constexpr int elems_per_copy = 16 / sizeof(half); // 8 f16
     constexpr int iters = HEIGHT * WIDTH / (TB_SIZE * elems_per_copy);
-    #pragma unroll
-    for (int it = 0; it < iters; ++it) {
+    _Pragma("unroll") for (int it = 0; it < iters; ++it) {
         const int idx = (it * TB_SIZE + tid) * elems_per_copy;
         const int row = idx / WIDTH;
         const int col = idx % WIDTH;
@@ -73,8 +72,7 @@ global_to_shared_swizzle_pred(uint32_t dst, const half *__restrict__ src,
                               int src_stride, int tid, int valid_rows) {
     constexpr int elems_per_copy = 16 / sizeof(half);
     constexpr int iters = HEIGHT * WIDTH / (TB_SIZE * elems_per_copy);
-    #pragma unroll
-    for (int it = 0; it < iters; ++it) {
+    _Pragma("unroll") for (int it = 0; it < iters; ++it) {
         const int idx = (it * TB_SIZE + tid) * elems_per_copy;
         const int row = idx / WIDTH;
         const int col = idx % WIDTH;
@@ -169,8 +167,7 @@ kv_iter_body(const int kv_tile_base, const int len_q, const int len_kv,
     const int j_pair0 = (lane_id & 3) << 1;
 
     // per-qi
-    #pragma unroll
-    for (int qi = 0; qi < WARP_Q / MMA_M; ++qi) {
+    _Pragma("unroll") for (int qi = 0; qi < WARP_Q / MMA_M; ++qi) {
         // hoisted per-qi invariants
         const int base_i_block = warp_id * (BLOCK_Q / NUM_WARPS) + qi * MMA_M;
         const int i0 = base_i_block + lane_row0;
@@ -189,8 +186,7 @@ kv_iter_body(const int kv_tile_base, const int len_q, const int len_kv,
         float this_rowmax0 = -CUDART_INF_F;
         float this_rowmax1 = -CUDART_INF_F;
 
-        #pragma unroll
-        for (int kvt = 0; kvt < BLOCK_KV / MMA_N; ++kvt) {
+        _Pragma("unroll") for (int kvt = 0; kvt < BLOCK_KV / MMA_N; ++kvt) {
             float *r = S_rmem[qi][kvt];
             // scale
             r[0] *= scale;
@@ -274,8 +270,7 @@ kv_iter_body(const int kv_tile_base, const int len_q, const int len_kv,
         const float rescale0 = __expf(rowmax[qi][0] - this_rowmax0);
         const float rescale1 = __expf(rowmax[qi][1] - this_rowmax1);
 
-        #pragma unroll
-        for (int d = 0; d < DIM / MMA_N; ++d) {
+        _Pragma("unroll") for (int d = 0; d < DIM / MMA_N; ++d) {
             O_rmem[qi][d][0] *= rescale0;
             O_rmem[qi][d][1] *= rescale0;
             O_rmem[qi][d][2] *= rescale1;
@@ -286,8 +281,7 @@ kv_iter_body(const int kv_tile_base, const int len_q, const int len_kv,
         float this_rowsumexp0 = 0.f, this_rowsumexp1 = 0.f;
 
         // exponentiate, pack directly into P_rmem (keep S_rmem live only here)
-        #pragma unroll
-        for (int kvt = 0; kvt < BLOCK_KV / MMA_N; ++kvt) {
+        _Pragma("unroll") for (int kvt = 0; kvt < BLOCK_KV / MMA_N; ++kvt) {
             float *r = S_rmem[qi][kvt];
             r[0] = __expf(r[0] - this_rowmax0);
             r[1] = __expf(r[1] - this_rowmax0);
@@ -326,7 +320,8 @@ attention_v5_kernel(const half *__restrict__ Q, // [bs, len_q, DIM]
                     const half *__restrict__ M, // [bs, len_q, len_kv]
                     half *__restrict__ O,       // [bs, len_q, DIM]
                     int32_t bs, int32_t qh, int32_t head_ratio, int32_t len_q,
-                    int32_t len_kv, float scale) {
+                    int32_t len_kv, int32_t mask_b_stride,
+                    int32_t mask_h_stride, float scale) {
     constexpr int TB_SIZE = NUM_WARPS * WARP_SIZE;
     constexpr int WARP_Q = BLOCK_Q / NUM_WARPS;
     constexpr int MMA_M = 16, MMA_N = 8, MMA_K = 16;
@@ -363,10 +358,11 @@ attention_v5_kernel(const half *__restrict__ Q, // [bs, len_q, DIM]
         O +
         (((size_t)bid * q_heads + hid) * (size_t)len_q + q_block_base) * DIM;
 
-    const half *__restrict__ MaskBase =
-        (use_mask ? (M ? (M + (size_t)q_block_base * len_kv) : nullptr)
-                  : nullptr);
-
+    const half *__restrict__ MaskBase = nullptr;
+    if (use_mask && M) {
+        MaskBase = M + (size_t)(q_block_base * len_kv + mask_b_stride * bid +
+                                mask_h_stride * hid);
+    }
     // Shared memory layout:
     // Q_smem (BLOCK_Q x DIM) overlaps K_smem (2 * BLOCK_KV x DIM), plus V_smem
     // (BLOCK_KV x DIM)
@@ -405,8 +401,7 @@ attention_v5_kernel(const half *__restrict__ Q, // [bs, len_q, DIM]
     float O_rmem[WARP_Q / MMA_M][DIM / MMA_N][4] = {};
     float rowmax[WARP_Q / MMA_M][2];
     float rowsumexp[WARP_Q / MMA_M][2] = {};
-    #pragma unroll
-    for (int qi = 0; qi < WARP_Q / MMA_M; ++qi) {
+    _Pragma("unroll") for (int qi = 0; qi < WARP_Q / MMA_M; ++qi) {
         rowmax[qi][0] = -FLT_MAX;
         rowmax[qi][1] = -FLT_MAX;
     }
@@ -424,14 +419,12 @@ attention_v5_kernel(const half *__restrict__ Q, // [bs, len_q, DIM]
     __syncthreads();
 
     // Q: shared -> regs
-    #pragma unroll
-    for (int qi = 0; qi < WARP_Q / MMA_M; ++qi)
-        #pragma unroll
-        for (int dk = 0; dk < DIM / MMA_K; ++dk) {
-            uint32_t addr = Q_smem_thread + qi * MMA_M * DIM * sizeof(half);
-            addr ^= dk * MMA_K * sizeof(half);
-            ldmatrix_x4(Q_rmem[qi][dk], addr);
-        }
+    _Pragma("unroll") for (int qi = 0; qi < WARP_Q / MMA_M; ++qi)
+        _Pragma("unroll") for (int dk = 0; dk < DIM / MMA_K; ++dk) {
+        uint32_t addr = Q_smem_thread + qi * MMA_M * DIM * sizeof(half);
+        addr ^= dk * MMA_K * sizeof(half);
+        ldmatrix_x4(Q_rmem[qi][dk], addr);
+    }
     __syncthreads();
 
     // ------------------ KV split: full tiles then optional tail
@@ -465,26 +458,22 @@ attention_v5_kernel(const half *__restrict__ Q, // [bs, len_q, DIM]
         // Wait K, load K into regs
         asm volatile("cp.async.wait_group 1;");
         __syncthreads();
-        #pragma unroll
-        for (int kvt = 0; kvt < BLOCK_KV / MMA_N; ++kvt)
-            #pragma unroll
-            for (int dk = 0; dk < DIM / MMA_K; dk += 2) {
-                uint32_t addr = K_smem_thread +
-                                (kv_id % 2) * (BLOCK_KV * DIM * sizeof(half));
-                addr += kvt * MMA_N * DIM * sizeof(half);
-                addr ^= dk * MMA_K * sizeof(half);
-                ldmatrix_x4(K_rmem[kvt][dk], addr);
-            }
+        _Pragma("unroll") for (int kvt = 0; kvt < BLOCK_KV / MMA_N; ++kvt)
+            _Pragma("unroll") for (int dk = 0; dk < DIM / MMA_K; dk += 2) {
+            uint32_t addr =
+                K_smem_thread + (kv_id % 2) * (BLOCK_KV * DIM * sizeof(half));
+            addr += kvt * MMA_N * DIM * sizeof(half);
+            addr ^= dk * MMA_K * sizeof(half);
+            ldmatrix_x4(K_rmem[kvt][dk], addr);
+        }
 
         {
             // S = Q @ K^T
             float S_rmem[WARP_Q / MMA_M][BLOCK_KV / MMA_N][4] = {};
-            #pragma unroll
-            for (int qi = 0; qi < WARP_Q / MMA_M; ++qi)
-                #pragma unroll
-                for (int kvt = 0; kvt < BLOCK_KV / MMA_N; ++kvt)
-                    #pragma unroll
-                    for (int dk = 0; dk < DIM / MMA_K; ++dk)
+            _Pragma("unroll") for (int qi = 0; qi < WARP_Q / MMA_M; ++qi)
+                _Pragma("unroll") for (int kvt = 0; kvt < BLOCK_KV / MMA_N;
+                                       ++kvt)
+                    _Pragma("unroll") for (int dk = 0; dk < DIM / MMA_K; ++dk)
                         mma_m16n8k16(Q_rmem[qi][dk], K_rmem[kvt][dk],
                                      S_rmem[qi][kvt]);
 
@@ -510,25 +499,18 @@ attention_v5_kernel(const half *__restrict__ Q, // [bs, len_q, DIM]
         asm volatile("cp.async.wait_group 1;");
         __syncthreads();
 
-        #pragma unroll
-        for (int kvt = 0; kvt < BLOCK_KV / MMA_K; ++kvt)
-            #pragma unroll
-            for (int d = 0; d < DIM / MMA_N; d += 2) {
-                uint32_t addr =
-                    V_smem_thread + kvt * MMA_K * DIM * sizeof(half);
-                addr ^= d * MMA_N * sizeof(half);
-                ldmatrix_x4_trans(V_rmem[kvt][d], addr);
-            }
+        _Pragma("unroll") for (int kvt = 0; kvt < BLOCK_KV / MMA_K; ++kvt)
+            _Pragma("unroll") for (int d = 0; d < DIM / MMA_N; d += 2) {
+            uint32_t addr = V_smem_thread + kvt * MMA_K * DIM * sizeof(half);
+            addr ^= d * MMA_N * sizeof(half);
+            ldmatrix_x4_trans(V_rmem[kvt][d], addr);
+        }
 
-        #pragma unroll
-        for (int qi = 0; qi < WARP_Q / MMA_M; ++qi)
-            #pragma unroll
-            for (int d = 0; d < DIM / MMA_N; ++d)
-                #pragma unroll
-                for (int kvt = 0; kvt < BLOCK_KV / MMA_K; ++kvt) {
-                    mma_m16n8k16(P_rmem[qi][kvt], V_rmem[kvt][d],
-                                 O_rmem[qi][d]);
-                }
+        _Pragma("unroll") for (int qi = 0; qi < WARP_Q / MMA_M; ++qi)
+            _Pragma("unroll") for (int d = 0; d < DIM / MMA_N; ++d) _Pragma(
+                "unroll") for (int kvt = 0; kvt < BLOCK_KV / MMA_K; ++kvt) {
+            mma_m16n8k16(P_rmem[qi][kvt], V_rmem[kvt][d], O_rmem[qi][d]);
+        }
     }
 
     // ----------------------------- KV TAIL (optional)
@@ -554,27 +536,22 @@ attention_v5_kernel(const half *__restrict__ Q, // [bs, len_q, DIM]
         // Wait K, load K regs
         asm volatile("cp.async.wait_group 1;");
         __syncthreads();
-        #pragma unroll
-        for (int kvt = 0; kvt < BLOCK_KV / MMA_N; ++kvt)
-            #pragma unroll
-            for (int dk = 0; dk < DIM / MMA_K; dk += 2) {
-                uint32_t addr =
-                    K_smem_thread +
-                    (kv_full_iters % 2) * (BLOCK_KV * DIM * sizeof(half));
-                addr += kvt * MMA_N * DIM * sizeof(half);
-                addr ^= dk * MMA_K * sizeof(half);
-                ldmatrix_x4(K_rmem[kvt][dk], addr);
-            }
+        _Pragma("unroll") for (int kvt = 0; kvt < BLOCK_KV / MMA_N; ++kvt)
+            _Pragma("unroll") for (int dk = 0; dk < DIM / MMA_K; dk += 2) {
+            uint32_t addr = K_smem_thread + (kv_full_iters % 2) *
+                                                (BLOCK_KV * DIM * sizeof(half));
+            addr += kvt * MMA_N * DIM * sizeof(half);
+            addr ^= dk * MMA_K * sizeof(half);
+            ldmatrix_x4(K_rmem[kvt][dk], addr);
+        }
 
         {
             // S = Q @ K^T
             float S_rmem[WARP_Q / MMA_M][BLOCK_KV / MMA_N][4] = {};
-            #pragma unroll
-            for (int qi = 0; qi < WARP_Q / MMA_M; ++qi)
-                #pragma unroll
-                for (int kvt = 0; kvt < BLOCK_KV / MMA_N; ++kvt)
-                #pragma unroll
-                    for (int dk = 0; dk < DIM / MMA_K; ++dk)
+            _Pragma("unroll") for (int qi = 0; qi < WARP_Q / MMA_M; ++qi)
+                _Pragma("unroll") for (int kvt = 0; kvt < BLOCK_KV / MMA_N;
+                                       ++kvt)
+                    _Pragma("unroll") for (int dk = 0; dk < DIM / MMA_K; ++dk)
                         mma_m16n8k16(Q_rmem[qi][dk], K_rmem[kvt][dk],
                                      S_rmem[qi][kvt]);
 
@@ -587,61 +564,50 @@ attention_v5_kernel(const half *__restrict__ Q, // [bs, len_q, DIM]
         // Wait V and finish O += P@V (tail)
         asm volatile("cp.async.wait_group 1;");
         __syncthreads();
-        #pragma unroll
-        for (int kvt = 0; kvt < BLOCK_KV / MMA_K; ++kvt)
-            #pragma unroll
-            for (int d = 0; d < DIM / MMA_N; d += 2) {
-                uint32_t addr =
-                    V_smem_thread + kvt * MMA_K * DIM * sizeof(half);
-                addr ^= d * MMA_N * sizeof(half);
-                ldmatrix_x4_trans(V_rmem[kvt][d], addr);
-            }
+        _Pragma("unroll") for (int kvt = 0; kvt < BLOCK_KV / MMA_K; ++kvt)
+            _Pragma("unroll") for (int d = 0; d < DIM / MMA_N; d += 2) {
+            uint32_t addr = V_smem_thread + kvt * MMA_K * DIM * sizeof(half);
+            addr ^= d * MMA_N * sizeof(half);
+            ldmatrix_x4_trans(V_rmem[kvt][d], addr);
+        }
 
         // O += P @ V
-        #pragma unroll
-        for (int qi = 0; qi < WARP_Q / MMA_M; ++qi)
-            #pragma unroll
-            for (int d = 0; d < DIM / MMA_N; ++d)
-                #pragma unroll
-                for (int kvt = 0; kvt < BLOCK_KV / MMA_K; ++kvt)
-                    mma_m16n8k16(P_rmem[qi][kvt], V_rmem[kvt][d],
-                                 O_rmem[qi][d]);
+        _Pragma("unroll") for (int qi = 0; qi < WARP_Q / MMA_M; ++qi)
+            _Pragma("unroll") for (int d = 0; d < DIM / MMA_N; ++d) _Pragma(
+                "unroll") for (int kvt = 0; kvt < BLOCK_KV / MMA_K; ++kvt)
+                mma_m16n8k16(P_rmem[qi][kvt], V_rmem[kvt][d], O_rmem[qi][d]);
     }
 
     // ----------------------------- Writeback (Q tail-safe)
     // ---------------------
-    #pragma unroll
-    for (int qi = 0; qi < WARP_Q / MMA_M; ++qi)
-        #pragma unroll
-        for (int d = 0; d < DIM / MMA_N; ++d) {
-            const int row0 = warp_id * WARP_Q + qi * MMA_M + (lane_id / 4);
-            const int col = d * MMA_N + (lane_id % 4) * 2;
+    _Pragma("unroll") for (int qi = 0; qi < WARP_Q / MMA_M; ++qi)
+        _Pragma("unroll") for (int d = 0; d < DIM / MMA_N; ++d) {
+        const int row0 = warp_id * WARP_Q + qi * MMA_M + (lane_id / 4);
+        const int col = d * MMA_N + (lane_id % 4) * 2;
 
-            float *regs = O_rmem[qi][d];
-            regs[0] /= rowsumexp[qi][0];
-            regs[1] /= rowsumexp[qi][0];
-            regs[2] /= rowsumexp[qi][1];
-            regs[3] /= rowsumexp[qi][1];
+        float *regs = O_rmem[qi][d];
+        regs[0] /= rowsumexp[qi][0];
+        regs[1] /= rowsumexp[qi][0];
+        regs[2] /= rowsumexp[qi][1];
+        regs[3] /= rowsumexp[qi][1];
 
-            half2 v0 = __float22half2_rn({regs[0], regs[1]});
-            half2 v1 = __float22half2_rn({regs[2], regs[3]});
+        half2 v0 = __float22half2_rn({regs[0], regs[1]});
+        half2 v1 = __float22half2_rn({regs[2], regs[3]});
 
-            half2 *p0 =
-                reinterpret_cast<half2 *>(Optr + (row0 + 0) * DIM + col);
-            half2 *p1 =
-                reinterpret_cast<half2 *>(Optr + (row0 + 8) * DIM + col);
+        half2 *p0 = reinterpret_cast<half2 *>(Optr + (row0 + 0) * DIM + col);
+        half2 *p1 = reinterpret_cast<half2 *>(Optr + (row0 + 8) * DIM + col);
 
-            if constexpr (full_q_tile) {
-                // No predicates in full Q tiles
-                *p0 = v0;
-                *p1 = v1;
-            } else {
-                const bool valid0 = (q_block_base + row0) < len_q;
-                const bool valid1 = (q_block_base + row0 + 8) < len_q;
-                st_global_half2_pred(p0, v0, valid0);
-                st_global_half2_pred(p1, v1, valid1);
-            }
+        if constexpr (full_q_tile) {
+            // No predicates in full Q tiles
+            *p0 = v0;
+            *p1 = v1;
+        } else {
+            const bool valid0 = (q_block_base + row0) < len_q;
+            const bool valid1 = (q_block_base + row0 + 8) < len_q;
+            st_global_half2_pred(p0, v0, valid0);
+            st_global_half2_pred(p1, v1, valid1);
         }
+    }
 }
 
 #define INSTANTIATE_FLASH_ATTN_FOR_MASK_STRATEGY(BLOCK_Q, BLOCK_KV, D,         \
@@ -653,10 +619,12 @@ attention_v5_kernel(const half *__restrict__ Q, // [bs, len_q, DIM]
                    const half *__restrict__ V, const half *__restrict__ M,     \
                    half *__restrict__ O, int32_t bs, int32_t qh,               \
                    int32_t head_ratio, int32_t len_q, int32_t len_kv,          \
+                   int32_t mask_b_stride, int32_t mask_h_stride,               \
                    float scale) {                                              \
         attention_v5_kernel<BLOCK_Q, BLOCK_KV, D, 4, is_causal, use_mask,      \
                             true, false>(Q, K, V, M, O, bs, qh, head_ratio,    \
-                                         len_q, len_kv, scale);                \
+                                         len_q, len_kv, mask_b_stride,         \
+                                         mask_h_stride, scale);                \
     }                                                                          \
                                                                                \
     __launch_bounds__(4 * WARP_SIZE) __global__ void attention_v5_tail_        \
@@ -665,10 +633,12 @@ attention_v5_kernel(const half *__restrict__ Q, // [bs, len_q, DIM]
                    const half *__restrict__ V, const half *__restrict__ M,     \
                    half *__restrict__ O, int32_t bs, int32_t qh,               \
                    int32_t head_ratio, int32_t len_q, int32_t len_kv,          \
+                   int32_t mask_b_stride, int32_t mask_h_stride,               \
                    float scale) {                                              \
         attention_v5_kernel<BLOCK_Q, BLOCK_KV, D, 4, is_causal, use_mask,      \
                             false, false>(Q, K, V, M, O, bs, qh, head_ratio,   \
-                                          len_q, len_kv, scale);               \
+                                          len_q, len_kv, mask_b_stride,        \
+                                          mask_h_stride, scale);               \
     }                                                                          \
                                                                                \
     __launch_bounds__(4 * WARP_SIZE) __global__ void attention_v5_full_kv_rem_ \
@@ -677,10 +647,12 @@ attention_v5_kernel(const half *__restrict__ Q, // [bs, len_q, DIM]
                    const half *__restrict__ V, const half *__restrict__ M,     \
                    half *__restrict__ O, int32_t bs, int32_t qh,               \
                    int32_t head_ratio, int32_t len_q, int32_t len_kv,          \
+                   int32_t mask_b_stride, int32_t mask_h_stride,               \
                    float scale) {                                              \
         attention_v5_kernel<BLOCK_Q, BLOCK_KV, D, 4, is_causal, use_mask,      \
                             true, true>(Q, K, V, M, O, bs, qh, head_ratio,     \
-                                        len_q, len_kv, scale);                 \
+                                        len_q, len_kv, mask_b_stride,          \
+                                        mask_h_stride, scale);                 \
     }                                                                          \
                                                                                \
     __launch_bounds__(4 * WARP_SIZE) __global__ void attention_v5_tail_kv_rem_ \
@@ -689,10 +661,12 @@ attention_v5_kernel(const half *__restrict__ Q, // [bs, len_q, DIM]
                    const half *__restrict__ V, const half *__restrict__ M,     \
                    half *__restrict__ O, int32_t bs, int32_t qh,               \
                    int32_t head_ratio, int32_t len_q, int32_t len_kv,          \
+                   int32_t mask_b_stride, int32_t mask_h_stride,               \
                    float scale) {                                              \
         attention_v5_kernel<BLOCK_Q, BLOCK_KV, D, 4, is_causal, use_mask,      \
                             false, true>(Q, K, V, M, O, bs, qh, head_ratio,    \
-                                         len_q, len_kv, scale);                \
+                                         len_q, len_kv, mask_b_stride,         \
+                                         mask_h_stride, scale);                \
     }                                                                          \
     }
 
@@ -709,7 +683,8 @@ attention_v5_kernel(const half *__restrict__ Q, // [bs, len_q, DIM]
     INSTANTIATE_FLASH_ATTN_FOR_D(block_q, block_kv, 80)                        \
     // Other supported D value.
     // Never encountered in practice so commented to keep compilation fast
-    //        INSTANTIATE_FLASH_ATTN_FOR_D(block_q, block_kv, 96) \
+    //                       INSTANTIATE_FLASH_ATTN_FOR_D(block_q, block_kv, 96)
+    //                                          \
   //INSTANTIATE_FLASH_ATTN_FOR_D(block_q, block_kv, 112) \
   //INSTANTIATE_FLASH_ATTN_FOR_D(block_q, block_kv, 256) \
 
