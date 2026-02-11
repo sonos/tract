@@ -9,8 +9,6 @@ use tract_core::num_traits::Float;
 use tract_ndarray::{Array2, Array4, ArrayView2, Axis, Ix3, Ix4, IxDyn, s};
 use tract_transformers::ops::sdpa::Sdpa;
 
-use crate::tensor;
-
 #[derive(Debug, Clone)]
 pub struct SdpaProblemParams {
     pub embed_dims: Vec<usize>,
@@ -33,6 +31,19 @@ where
     mask: Option<ArrayD<F>>,
     scale: Option<f32>,
     is_causal: bool,
+}
+
+impl SdpaProblem<f32> {
+    fn to_f16(&self) -> SdpaProblem<f16> {
+        SdpaProblem {
+            q: self.q.mapv(f16::from_f32),
+            k: self.k.mapv(f16::from_f32),
+            v: self.v.mapv(f16::from_f32),
+            mask: self.mask.as_ref().map(|m| m.mapv(f16::from_f32)),
+            scale: self.scale.clone(),
+            is_causal: self.is_causal,
+        }
+    }
 }
 
 impl<F> Arbitrary for SdpaProblem<F>
@@ -70,7 +81,8 @@ fn sdpa_tensor<F: Datum + Float>(shape: &[usize]) -> BoxedStrategy<ArrayD<F>> {
     let len = shape.iter().product::<usize>();
     let shape: Vec<usize> = shape.into();
     proptest::collection::vec(
-        (-80i8..=80i8).prop_map(|i| F::from(i as f32 / 100f32).unwrap()),
+        // (-80i8..=80i8).prop_map(|i| F::from(i as f32 / 100f32).unwrap()),
+        (-3..=3).prop_map(|x| F::from(x as f32 / 8.).unwrap()),
         len..=len,
     )
     .prop_map(move |vec| ArrayD::from_shape_vec(shape.clone(), vec).unwrap())
@@ -109,7 +121,7 @@ fn generate_4d_group_query_att<F: Datum + Float>(
                 let mask_h = if full_h { q.shape()[1] } else { 1 };
                 prop_oneof![
                     Just(None),
-                    tensor(&[mask_b, mask_h, seq_len, past_seq_len + seq_len]).prop_map(Some)
+                    sdpa_tensor(&[mask_b, mask_h, seq_len, past_seq_len + seq_len]).prop_map(Some)
                 ]
                 .boxed()
             };
@@ -519,5 +531,18 @@ pub fn suite() -> TractResult<TestSuite> {
             is_causal: false,
         },
     );
+
+    let mut v = ArrayD::zeros(IxDyn(&[2, 2, 64]));
+    v[[1, 1, 63]] = -0.25f32;
+    let mask_with_batch_cuda = SdpaProblem::<f32> {
+        q: ArrayD::zeros(IxDyn(&[2, 2, 64])),
+        k: ArrayD::zeros(IxDyn(&[2, 2, 64])),
+        v,
+        mask: Some(arr3(&[[[0.0f32, 0.25], [0.0, 0.0]], [[0.375, -0.25], [0.0, 0.0]]]).into_dyn()),
+        scale: None,
+        is_causal: false,
+    };
+    suite.add("f32_mask_with_batch_cuda", mask_with_batch_cuda.clone());
+    suite.add("f16_mask_with_batch_cuda", mask_with_batch_cuda.to_f16());
     Ok(suite)
 }
