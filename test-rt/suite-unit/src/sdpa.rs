@@ -40,7 +40,7 @@ impl SdpaProblem<f32> {
             k: self.k.mapv(f16::from_f32),
             v: self.v.mapv(f16::from_f32),
             mask: self.mask.as_ref().map(|m| m.mapv(f16::from_f32)),
-            scale: self.scale.clone(),
+            scale: self.scale,
             is_causal: self.is_causal,
         }
     }
@@ -71,7 +71,9 @@ fn generate_3d_single_head<F: Datum + Float>(
             gqa.q.index_axis_inplace(Axis(1), 0);
             gqa.k.index_axis_inplace(Axis(1), 0);
             gqa.v.index_axis_inplace(Axis(1), 0);
-            gqa.mask.as_mut().map(|m| m.index_axis_inplace(Axis(1), 0));
+            if let Some(m) = &mut gqa.mask {
+                m.index_axis_inplace(Axis(1), 0);
+            }
             gqa
         })
         .boxed()
