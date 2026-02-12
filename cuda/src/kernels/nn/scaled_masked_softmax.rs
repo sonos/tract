@@ -1,9 +1,13 @@
+use std::iter::repeat_n;
+
 use crate::context::{TractCudaStream, cuda_context};
 use crate::kernels::launch_args::TractLaunchArgs;
 use crate::kernels::utils::compute_broadcast_strides;
 use crate::kernels::{LibraryName, MAX_THREADS, get_cuda_view, launch_args};
 use cudarc::driver::{CudaStream, LaunchConfig, PushKernelArg};
+use num_traits::AsPrimitive;
 use tract_core::internal::*;
+use tract_core::tract_data::itertools::Itertools;
 use tract_gpu::tensor::DeviceTensor;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -46,24 +50,29 @@ impl ScaledMaskedSoftmax {
         output: &DeviceTensor,
     ) -> TractResult<()> {
         ensure!(output.shape() == input.shape());
-        ensure!(mask.rank() == 4 && input.rank() == 4);
+        ensure!(input.rank() >= 2 && input.rank() <= 5);
+        ensure!(mask.rank() == input.rank());
         ensure!(output.datum_type() == input.datum_type());
+        ensure!(mask.datum_type() == input.datum_type());
 
-        let shape = input.shape();
-        let strides = input.strides();
-        let mask_strides_nd4 = compute_broadcast_strides::<usize>(mask.shape(), mask.strides())?;
+        let shape = pad(input.shape(), 1);
+        let strides = pad(input.strides(), 0);
+        let mask_strides = pad(&compute_broadcast_strides::<i32>(mask.shape(), mask.strides())?, 0);
+        let output_strides = pad(output.strides(), 0);
+        let inner_len = shape[4];
 
         let i_view = get_cuda_view(input);
         let mask_view = get_cuda_view(mask);
         let o_view = get_cuda_view(output);
 
+        let inner_len = shape[4] as usize;
         let mut nth = 32;
-        while nth < shape[3] && nth < MAX_THREADS {
+        while nth < inner_len && nth < MAX_THREADS {
             nth *= 2;
         }
 
         let block_size =
-            if shape[3].is_power_of_two() && shape[3] > 32 { shape[3].min(1024) } else { 0 };
+            if inner_len.is_power_of_two() && inner_len > 32 { inner_len.min(1024) } else { 0 };
 
         let func = cuda_context()
             .load_pipeline(LibraryName::NN, self.kernel_name(input.datum_type(), block_size)?)?;
@@ -73,21 +82,29 @@ impl ScaledMaskedSoftmax {
         launch_args.push_view(&mask_view);
         launch_args.push::<f32>(scale.cast_to_scalar::<f32>()?);
         launch_args.push_view(&o_view);
-        launch_args.push_slice_i32(shape);
-        launch_args.push_slice_i32(strides);
-        launch_args.push_slice_i32(&mask_strides_nd4);
-        launch_args.push_slice_i32(output.strides());
+        launch_args.push_slice_i32(&shape);
+        launch_args.push_slice_i32(&strides);
+        launch_args.push_slice_i32(&mask_strides);
+        launch_args.push_slice_i32(&output_strides);
 
-        // input is [b, h, row, col]
-        // grid_dim= (row, h, b)
+        // input is [b, kh, gh, row, col]
+        // grid_dim= (row, gh, b*kh)
         let cfg = LaunchConfig {
-            grid_dim: (shape[2] as _, shape[1] as _, shape[0] as _),
+            grid_dim: (shape[3] as _, shape[2] as _, (shape[0] * shape[1]) as _),
             block_dim: (nth as _, 1, 1),
-            shared_mem_bytes: ((shape[3].next_power_of_two() + 32) * size_of::<f32>()) as u32,
+            shared_mem_bytes: ((inner_len.next_power_of_two() + 32) * size_of::<f32>()) as u32,
         };
 
         launch_args.launch(cfg)
     }
+}
+
+fn pad(vals: &[impl AsPrimitive<i32>], neutral: i32) -> [i32; 5] {
+    let mut it = [neutral; 5];
+    for (ix, val) in vals.iter().enumerate() {
+        it[ix + 5 - vals.len()] = val.as_();
+    }
+    it
 }
 
 #[cfg(test)]

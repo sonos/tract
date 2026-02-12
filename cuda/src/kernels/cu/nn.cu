@@ -470,22 +470,25 @@ indices_to_idx_4(int x, int y, int z, int x_shape, int y_shape, int z_shape,
 // block_size is WARP_SIZE * 2^n
 // shared_mem: (32 + next_poswer_of_2(cols) * sizeof(T)
 template <typename T, int BLOCK_SIZE>
-__device__ void
-scaled_masked_softmax(const T *x, const T *mask, const float scale, T *dst,
-                      const int32_t shape_0, const int32_t shape_1,
-                      const int32_t shape_2, const int32_t shape_3,
-                      const int32_t stride_0, const int32_t stride_1,
-                      const int32_t stride_2, const int32_t stride_3,
-                      const int32_t mask_stride_0, const int32_t mask_stride_1,
-                      const int32_t mask_stride_2, const int32_t mask_stride_3,
-                      const int32_t out_stride_0, const int32_t out_stride_1,
-                      const int32_t out_stride_2, const int32_t out_stride_3) {
-    x += blockIdx.x * stride_2 + blockIdx.y * stride_1 + blockIdx.z * stride_0;
-    mask += mask ? blockIdx.x * mask_stride_2 + blockIdx.y * mask_stride_1 +
-                       blockIdx.z * mask_stride_0
+__device__ void scaled_masked_softmax(
+    const T *x, const T *mask, const float scale, T *dst, const int32_t shape_0,
+    const int32_t shape_1, const int32_t shape_2, const int32_t shape_3,
+    const int32_t shape_4, const int32_t stride_0, const int32_t stride_1,
+    const int32_t stride_2, const int32_t stride_3, const int32_t stride_4,
+    const int32_t mask_stride_0, const int32_t mask_stride_1,
+    const int32_t mask_stride_2, const int32_t mask_stride_3,
+    const int32_t mask_stride_4, const int32_t out_stride_0,
+    const int32_t out_stride_1, const int32_t out_stride_2,
+    const int32_t out_stride_3, const int32_t out_stride_4) {
+    int32_t z0 = blockIdx.z / shape_1;
+    int32_t z1 = blockIdx.z % shape_1;
+    x += blockIdx.x * stride_3 + blockIdx.y * stride_2 + z1 * stride_1 +
+         z0 * stride_0;
+    mask += mask ? blockIdx.x * mask_stride_3 + blockIdx.y * mask_stride_2 +
+                       z1 * mask_stride_1 + z0 * mask_stride_0
                  : 0;
-    dst += blockIdx.x * out_stride_2 + blockIdx.y * out_stride_1 +
-           blockIdx.z * out_stride_0;
+    dst += blockIdx.x * out_stride_3 + blockIdx.y * out_stride_2 +
+           z1 * out_stride_1 + z0 * out_stride_0;
 
     const int block_size = BLOCK_SIZE == 0 ? blockDim.x : BLOCK_SIZE;
 
@@ -497,15 +500,15 @@ scaled_masked_softmax(const T *x, const T *mask, const float scale, T *dst,
     float *vals = buf_iw + WARP_SIZE;
 
     float max_val = -CUDART_INF_F;
-    _Pragma("unroll") for (int col0 = 0; col0 < shape_3; col0 += block_size) {
+    _Pragma("unroll") for (int col0 = 0; col0 < shape_4; col0 += block_size) {
         const int col = col0 + threadIdx.x;
-        if (col >= shape_3) {
+        if (col >= shape_4) {
             break;
         }
 
-        const float val = ((float)x[col * stride_3]) * scale +
-                          (float)mask[col * mask_stride_3];
-        vals[col] = val;
+        const float m = mask ? (float)mask[col * mask_stride_4] : 0.0f;
+        const float val = ((float)x[col * stride_4]) * scale + m;
+        vals[col] = val + m;
         max_val = max(max_val, val);
     }
 
@@ -526,9 +529,9 @@ scaled_masked_softmax(const T *x, const T *mask, const float scale, T *dst,
     }
 
     float tmp = 0.0f;
-    _Pragma("unroll") for (int col0 = 0; col0 < shape_3; col0 += block_size) {
+    _Pragma("unroll") for (int col0 = 0; col0 < shape_4; col0 += block_size) {
         const int col = col0 + threadIdx.x;
-        if (col >= shape_3) {
+        if (col >= shape_4) {
             break;
         }
 
@@ -556,12 +559,12 @@ scaled_masked_softmax(const T *x, const T *mask, const float scale, T *dst,
 
     const float inv_sum = 1.0f / tmp;
 
-    _Pragma("unroll") for (int col0 = 0; col0 < shape_3; col0 += block_size) {
+    _Pragma("unroll") for (int col0 = 0; col0 < shape_4; col0 += block_size) {
         const int col = col0 + threadIdx.x;
-        if (col >= shape_3) {
+        if (col >= shape_4) {
             return;
         }
-        dst[col * out_stride_3] = vals[col] * inv_sum;
+        dst[col * out_stride_4] = vals[col] * inv_sum;
     }
 }
 
@@ -569,17 +572,20 @@ scaled_masked_softmax(const T *x, const T *mask, const float scale, T *dst,
     extern "C" __global__ void scaled_masked_softmax_##bname##name(            \
         const T *x, const T *mask, const float scale, T *dst,                  \
         const int32_t shape_0, const int32_t shape_1, const int32_t shape_2,   \
-        const int32_t shape_3, const int32_t stride_0, const int32_t stride_1, \
-        const int32_t stride_2, const int32_t stride_3,                        \
+        const int32_t shape_3, const int32_t shape_4, const int32_t stride_0,  \
+        const int32_t stride_1, const int32_t stride_2,                        \
+        const int32_t stride_3, const int32_t stride_4,                        \
         const int32_t mask_stride_0, const int32_t mask_stride_1,              \
         const int32_t mask_stride_2, const int32_t mask_stride_3,              \
-        const int32_t out_stride_0, const int32_t out_stride_1,                \
-        const int32_t out_stride_2, const int32_t out_stride_3) {              \
+        const int32_t mask_stride_4, const int32_t out_stride_0,               \
+        const int32_t out_stride_1, const int32_t out_stride_2,                \
+        const int32_t out_stride_3, const int32_t out_stride_4) {              \
         scaled_masked_softmax<T, block_size_template>(                         \
-            x, mask, scale, dst, shape_0, shape_1, shape_2, shape_3, stride_0, \
-            stride_1, stride_2, stride_3, mask_stride_0, mask_stride_1,        \
-            mask_stride_2, mask_stride_3, out_stride_0, out_stride_1,          \
-            out_stride_2, out_stride_3);                                       \
+            x, mask, scale, dst, shape_0, shape_1, shape_2, shape_3, shape_4,  \
+            stride_0, stride_1, stride_2, stride_3, stride_4, mask_stride_0,   \
+            mask_stride_1, mask_stride_2, mask_stride_3, mask_stride_4,        \
+            out_stride_0, out_stride_1, out_stride_2, out_stride_3,            \
+            out_stride_4);                                                     \
     }
 
 #define INSTANTIATE_RMS_NORM(name, T, bname, block_size)                       \
