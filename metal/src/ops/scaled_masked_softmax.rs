@@ -31,6 +31,7 @@ impl EvalOp for MetalScaledMaskedSoftmax {
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         with_borrowed_metal_stream(|stream| {
+            dbg!(&self.scale);
             let (opaque_input, opaque_mask) = args_2!(inputs);
             let input = opaque_input.to_device_tensor()?;
             let mask = opaque_mask.to_device_tensor()?;
@@ -52,7 +53,7 @@ impl TypedOp for MetalScaledMaskedSoftmax {
             ensure!(facts.len() == 2);
             let dt = facts[0].datum_type;
             ensure!(dt == facts[1].datum_type);
-            ensure!(facts[0].rank() == 3 && facts[1].rank() == 3);
+            ensure!(facts[0].rank() == 4 && facts[1].rank() == 4);
             let fact = dt.fact(facts[0].shape.clone());
             Ok(tvec!(fact))
         })

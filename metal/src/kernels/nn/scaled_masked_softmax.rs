@@ -20,7 +20,7 @@ impl ScaledMaskedSoftmax {
             dt
         );
         let tname = DeviceTensor::tname(dt)?;
-        Ok(format!("nn_ops::scaled_masked_softmax_nd3_{tname}"))
+        Ok(format!("nn_ops::scaled_masked_softmax_nd4_{tname}"))
     }
 
     pub fn eval(
@@ -49,12 +49,16 @@ impl ScaledMaskedSoftmax {
         stream.retain_tensor(output);
 
         ensure!(output.shape() == input.shape());
-        ensure!(mask.rank() == 3 && input.rank() == 3);
+        ensure!(mask.rank() == 4);
+        ensure!(input.rank() == 4);
         ensure!(output.datum_type() == input.datum_type());
 
         let shape = input.shape();
         let strides = input.strides();
-        let mask_strides_nd3 = compute_broadcast_strides::<usize>(mask.shape(), mask.strides())?;
+        let mask_strides = compute_broadcast_strides::<usize>(mask.shape(), mask.strides())?;
+        dbg!(&input);
+        dbg!(&mask);
+        dbg!(&mask_strides);
 
         let pipeline =
             stream.load_pipeline(LibraryName::NNOps, &self.kernel_name(input.datum_type())?)?;
@@ -68,9 +72,10 @@ impl ScaledMaskedSoftmax {
             encoder.set_metal_tensor(3, output, metal::MTLResourceUsage::Write);
             encoder.set_slice(4, shape);
             encoder.set_slice(5, strides);
-            encoder.set_slice(6, &mask_strides_nd3);
+            encoder.set_slice(6, &mask_strides);
             encoder.set_slice(7, output.strides());
-            let grid_size = MTLSize { width: 1 as _, height: shape[1] as _, depth: shape[0] as _ };
+            let grid_size =
+                MTLSize { width: shape[2] as _, height: shape[1] as _, depth: shape[0] as _ };
             let group_size = MTLSize { width: usize::min(32, shape[2]) as _, height: 1, depth: 1 };
             encoder.dispatch_thread_groups(grid_size, group_size);
         });
@@ -99,7 +104,7 @@ mod tests {
             let m = 4;
             let n = 4;
             let scale: Arc<_> = tensor0(0.125f32).into();
-            let mask = Tensor::from_shape(&[1, m, n], &vec![-1000f32; m * n])?.into_device()?;
+            let mask = Tensor::from_shape(&[1, 1, m, n], &vec![-1000f32; m * n])?.into_device()?;
 
             let a =
                 Tensor::from_shape(&[1, m, n], &(0..m * n).map(|f| f as f32).collect::<Vec<_>>())?
@@ -124,11 +129,13 @@ mod tests {
             let m = 4;
             let n = 1024;
             let scale: Arc<_> = tensor0(0.125f32).into();
-            let mask = Tensor::from_shape(&[1, m, n], &vec![-1000f32; m * n])?.into_device()?;
+            let mask = Tensor::from_shape(&[1, 1, m, n], &vec![-1000f32; m * n])?.into_device()?;
 
-            let a =
-                Tensor::from_shape(&[1, m, n], &(0..m * n).map(|f| f as f32).collect::<Vec<_>>())?
-                    .into_device()?;
+            let a = Tensor::from_shape(
+                &[1, 1, m, n],
+                &(0..m * n).map(|f| f as f32).collect::<Vec<_>>(),
+            )?
+            .into_device()?;
 
             let cpu = scaled_masked_softmax::ScaledMaskedSoftmax { scale: scale.clone() };
 
@@ -191,10 +198,11 @@ mod tests {
         type Strategy = BoxedStrategy<Self>;
 
         fn arbitrary_with(_: ()) -> Self::Strategy {
-            vec(1usize..10, 3..=3)
+            vec(1usize..10, 4..=4)
                 .prop_map(|shape| {
                     let mut mask_shape = shape.clone();
                     mask_shape[0] = 1;
+                    mask_shape[1] = 1;
 
                     let input = (0..shape.iter().product::<usize>())
                         .map(|f| f.as_() / 1000.as_())
