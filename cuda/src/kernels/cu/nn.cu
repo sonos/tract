@@ -471,7 +471,7 @@ indices_to_idx_4(int x, int y, int z, int x_shape, int y_shape, int z_shape,
 // shared_mem: (32 + next_poswer_of_2(cols) * sizeof(T)
 template <typename T, int BLOCK_SIZE>
 __device__ void
-scaled_masked_softmax(const T *x, const T *mask, const T scale, T *dst,
+scaled_masked_softmax(const T *x, const T *mask, const float scale, T *dst,
                       const int32_t shape_0, const int32_t shape_1,
                       const int32_t shape_2, const int32_t shape_3,
                       const int32_t stride_0, const int32_t stride_1,
@@ -503,7 +503,8 @@ scaled_masked_softmax(const T *x, const T *mask, const T scale, T *dst,
             break;
         }
 
-        const float val = x[col * stride_3] * scale + mask[col * mask_stride_3];
+        const float val = ((float)x[col * stride_3]) * scale +
+                          (float)mask[col * mask_stride_3];
         vals[col] = val;
         max_val = max(max_val, val);
     }
@@ -566,7 +567,7 @@ scaled_masked_softmax(const T *x, const T *mask, const T scale, T *dst,
 
 #define INSTANTIATE_SCALED_MASKED_SOFTMAX(name, T, bname, block_size_template) \
     extern "C" __global__ void scaled_masked_softmax_##bname##name(            \
-        const T *x, const T *mask, const T scale, T *dst,                      \
+        const T *x, const T *mask, const float scale, T *dst,                  \
         const int32_t shape_0, const int32_t shape_1, const int32_t shape_2,   \
         const int32_t shape_3, const int32_t stride_0, const int32_t stride_1, \
         const int32_t stride_2, const int32_t stride_3,                        \

@@ -51,7 +51,7 @@ impl ScaledMaskedSoftmax {
 
         let shape = input.shape();
         let strides = input.strides();
-        let mask_strides_nd3 = compute_broadcast_strides::<usize>(mask.shape(), mask.strides())?;
+        let mask_strides_nd4 = compute_broadcast_strides::<usize>(mask.shape(), mask.strides())?;
 
         let i_view = get_cuda_view(input);
         let mask_view = get_cuda_view(mask);
@@ -71,16 +71,11 @@ impl ScaledMaskedSoftmax {
         let mut launch_args = TractLaunchArgs::new(stream, &func);
         launch_args.push_view(&i_view);
         launch_args.push_view(&mask_view);
-
-        if input.datum_type() == DatumType::F32 {
-            launch_args.push::<f32>(*scale.to_scalar::<f32>()?)
-        } else {
-            launch_args.push::<f16>(*scale.to_scalar::<f16>()?)
-        };
+        launch_args.push::<f32>(scale.cast_to_scalar::<f32>()?);
         launch_args.push_view(&o_view);
         launch_args.push_slice_i32(shape);
         launch_args.push_slice_i32(strides);
-        launch_args.push_slice_i32(&mask_strides_nd3);
+        launch_args.push_slice_i32(&mask_strides_nd4);
         launch_args.push_slice_i32(output.strides());
 
         // input is [b, h, row, col]
