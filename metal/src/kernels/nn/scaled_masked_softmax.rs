@@ -59,7 +59,13 @@ impl ScaledMaskedSoftmax {
         let strides = input.strides();
         let mask_strides = compute_broadcast_strides::<usize>(mask.shape(), mask.strides())?;
 
-        let cols = input.shape()[3] as usize;
+        let cols = shape[3] as usize;
+        let mut nth = 32usize;
+        while nth < cols && nth < 256 {
+            nth *= 2;
+        }
+        let group_size = MTLSize { width: nth as _, height: 1, depth: 1 };
+
         let tg_floats = 32 + cols;
         let tg_bytes = tg_floats * f32::datum_type().size_of();
 
@@ -80,7 +86,7 @@ impl ScaledMaskedSoftmax {
             encoder.set_threadgroup_memory_length(0, tg_bytes as _);
             let grid_size =
                 MTLSize { width: shape[2] as _, height: shape[1] as _, depth: shape[0] as _ };
-            let group_size = MTLSize { width: usize::min(32, shape[3]) as _, height: 1, depth: 1 };
+            let group_size = MTLSize { width: nth as _, height: 1, depth: 1 };
             encoder.dispatch_thread_groups(grid_size, group_size);
         });
         Ok(())
