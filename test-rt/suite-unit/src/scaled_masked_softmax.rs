@@ -6,7 +6,7 @@ use infra::TestSuite;
 use proptest::collection::vec;
 use proptest::prelude::*;
 use tract_core::internal::*;
-use tract_core::ndarray::Array4;
+use tract_core::ndarray::{Array5, ArrayD, Axis};
 use tract_core::num_traits::{Float, Zero};
 use tract_transformers::ops::scaled_masked_softmax::ScaledMaskedSoftmax;
 
@@ -17,8 +17,8 @@ pub struct ScaledMaskedSoftmaxProblem<F>
 where
     F: Datum + Float,
 {
-    input: Array4<F>,
-    mask: Array4<F>,
+    input: ArrayD<F>,
+    mask: ArrayD<F>,
     scale: F,
 }
 
@@ -30,8 +30,8 @@ where
     type Strategy = BoxedStrategy<ScaledMaskedSoftmaxProblem<F>>;
 
     fn arbitrary_with(_params: Self::Parameters) -> Self::Strategy {
-        // ScaledMaskSoftmax assumes rank 4 for mask and input
-        (vec(1usize..20, 4..=4), any::<bool>(), any::<bool>())
+        // ScaledMaskSoftmax accepts ranks 2 to 5
+        (vec(1usize..20, 2..=5), any::<bool>(), any::<bool>())
             .prop_flat_map(|(q_shape, broadcast_batch, broadcast_head)| {
                 let mut m_shape = q_shape.clone();
                 if broadcast_batch {
@@ -86,7 +86,7 @@ where
         Ok(model)
     }
 
-    fn softmax(input: &Array4<F>, axis: usize) -> Array4<F> {
+    fn softmax(input: &Array5<F>, axis: usize) -> TractResult<Array5<F>> {
         let axis = tract_ndarray::Axis(axis);
 
         let max_per_axis = input.map_axis(axis, |lane| {
@@ -99,17 +99,26 @@ where
 
         let norm = sum_exp.insert_axis(axis);
 
-        &exp / &norm
+        Ok(&exp / &norm)
     }
 
-    fn reference(&self) -> Array4<F> {
-        let input = self.input.clone();
-        let mask = self.mask.clone();
+    fn reference(&self) -> TractResult<ArrayD<F>> {
+        ensure!(self.input.ndim() == self.mask.ndim());
+        let mut input = self.input.view();
+        let mut mask = self.mask.clone();
+        while input.ndim() < 5 {
+            input.insert_axis_inplace(Axis(0));
+            mask.insert_axis_inplace(Axis(0));
+        }
 
         let scaled_input = input.mapv(|x| x * self.scale);
         let masked_input = scaled_input + mask;
 
-        Self::softmax(&masked_input, self.input.shape().len() - 1)
+        let mut output = Self::softmax(&masked_input.into_dimensionality()?, 4)?.into_dyn();
+        while output.ndim() > self.input.ndim() {
+            output.index_axis_inplace(Axis(0), 0);
+        }
+        Ok(output)
     }
 }
 
@@ -125,7 +134,7 @@ where
         approx: Approximation,
     ) -> TestResult {
         ensure!(!self.scale.is_zero());
-        let reference = self.reference().into_tensor();
+        let reference = self.reference()?.into_tensor();
         let mut model = self.tract()?;
 
         model.properties.insert("tract-rt-test.id".to_string(), rctensor0(id.to_string()));
