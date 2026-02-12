@@ -58,12 +58,12 @@ impl ScaledMaskedSoftmax {
         let o_view = get_cuda_view(output);
 
         let mut nth = 32;
-        while nth < shape[2] && nth < MAX_THREADS {
+        while nth < shape[3] && nth < MAX_THREADS {
             nth *= 2;
         }
 
         let block_size =
-            if shape[2].is_power_of_two() && shape[2] > 32 { shape[2].min(1024) } else { 0 };
+            if shape[3].is_power_of_two() && shape[3] > 32 { shape[3].min(1024) } else { 0 };
 
         let func = cuda_context()
             .load_pipeline(LibraryName::NN, self.kernel_name(input.datum_type(), block_size)?)?;

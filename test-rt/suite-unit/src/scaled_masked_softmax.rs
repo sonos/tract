@@ -7,7 +7,7 @@ use proptest::collection::vec;
 use proptest::prelude::*;
 use tract_core::internal::*;
 use tract_core::ndarray::Array4;
-use tract_core::num_traits::Float;
+use tract_core::num_traits::{Float, Zero};
 use tract_transformers::ops::scaled_masked_softmax::ScaledMaskedSoftmax;
 
 use crate::tensor;
@@ -49,7 +49,7 @@ where
                                 F::from(f32::NEG_INFINITY).unwrap()
                             }
                         });
-                        let scale = scale as f32 / 10.;
+                        let scale = if scale.is_zero() { 1.0 } else { scale as f32 / 10. };
                         Self {
                             input: input.into_dimensionality().unwrap(),
                             mask: mask.into_dimensionality().unwrap(),
@@ -124,6 +124,7 @@ where
         runtime: &dyn Runtime,
         approx: Approximation,
     ) -> TestResult {
+        ensure!(!self.scale.is_zero());
         let reference = self.reference().into_tensor();
         let mut model = self.tract()?;
 
@@ -133,7 +134,7 @@ where
             .prepare(model)?
             .run(tvec![self.input.clone().into_tvalue(), self.mask.clone().into_tvalue()])?;
         let output = output.remove(0).into_tensor();
-        //dbg!(&reference, &output);
+        // dbg!(&reference, &output);
         output.close_enough(&reference, approx)
     }
 }
@@ -152,6 +153,7 @@ pub fn suite() -> TractResult<TestSuite> {
             scale: 1f32,
         },
     );
+
     suite.add(
         "trivial_f32_1",
         ScaledMaskedSoftmaxProblem {
@@ -161,7 +163,25 @@ pub fn suite() -> TractResult<TestSuite> {
             mask: tensor4(&[[[[f32::NEG_INFINITY, 0f32], [0f32, 0f32]]]])
                 .into_array()?
                 .into_dimensionality()?,
-            scale: 0f32,
+            scale: 1f32,
+        },
+    );
+
+    suite.add(
+        "trivial_f32_2",
+        ScaledMaskedSoftmaxProblem {
+            input: arr4(&[[[[0f32, 0f32]]]]).into_dimensionality()?,
+            mask: arr4(&[[[[f32::NEG_INFINITY, 0f32]]]]).into_dimensionality()?,
+            scale: 1f32,
+        },
+    );
+
+    suite.add(
+        "trivial_f32_3",
+        ScaledMaskedSoftmaxProblem {
+            input: tensor4(&[[[[0f32, 0f32]]]]).into_array()?.into_dimensionality()?,
+            mask: tensor4(&[[[[0f32, 0f32]]]]).into_array()?.into_dimensionality()?,
+            scale: 1f32,
         },
     );
     Ok(suite)
