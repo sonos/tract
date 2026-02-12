@@ -354,61 +354,116 @@ template [[host_name(
 template <typename F>
 [[kernel]] void scaled_masked_softmax_nd4(
     device const void *input_b, device const void *mask_b,
-    constant void *scale_b, device void *output_b,
+    constant float *scale_b, device void *output_b,
     constant const size_t shape[4], constant const size_t strides[4],
     constant const size_t mask_strides[4], constant const size_t out_strides[4],
+
     uint3 tgpig [[threadgroup_position_in_grid]],
     uint tiisg [[thread_index_in_simdgroup]],
-    uint tpsg [[threads_per_simdgroup]]) {
+    uint tpsg [[threads_per_simdgroup]],
+    uint3 tptg [[thread_position_in_threadgroup]],
+    uint3 tptgN [[threads_per_threadgroup]],
 
-    device const F *input = (device const F *)input_b;
+    threadgroup float *tgmem [[threadgroup(0)]]) {
+
+    const uint tid = tptg.x;
+    const uint tg_sz = tptgN.x;
+    const uint sg_id = tid / tpsg;
+    const uint lane = tiisg;
+
+    // Grid is (rows, h, b) == (shape[2], shape[1], shape[0])
+    const size_t row = (size_t)tgpig.x;
+    const size_t h = (size_t)tgpig.y;
+    const size_t b = (size_t)tgpig.z;
+
+    device const F *x = (device const F *)input_b;
     device const F *mask = (device const F *)mask_b;
-    F scale = ((constant F *)scale_b)[0];
-    device F *output = (device F *)output_b;
+    device F *out = (device F *)output_b;
 
-    size_t reduce_dim = shape[3];
+    const float scale = *scale_b;
 
-    size_t base_idx =
-        tgpig.x * strides[2] + tgpig.y * strides[1] + tgpig.z * strides[0];
+    x += row * strides[2] + h * strides[1] + b * strides[0];
+    out += row * out_strides[2] + h * out_strides[1] + b * out_strides[0];
 
-    size_t mask_base_idx = tgpig.x * mask_strides[2] +
-                           tgpig.y * mask_strides[1] +
-                           tgpig.z * mask_strides[0];
-
-    size_t base_out_idx = tgpig.x * out_strides[2] + tgpig.y * out_strides[1] +
-                          tgpig.z * out_strides[0];
-
-    // Get max value on softmax reduce_dim after applying scale and mask
-    float partial_max = -INFINITY;
-    for (size_t i = tiisg; i < reduce_dim; i += tpsg) {
-        auto idx = base_idx + i * strides[3];
-        auto out_idx = base_out_idx + i * out_strides[3];
-        auto mask_idx = mask_base_idx + i * mask_strides[3];
-        //        output[out_idx] = input[idx] * scale + mask[mask_idx];
-        output[out_idx] = i;
-        float el = static_cast<float>(output[out_idx]);
-        partial_max = max(partial_max, el);
+    const bool has_mask = (mask_b != nullptr);
+    if (has_mask) {
+        mask +=
+            row * mask_strides[2] + h * mask_strides[1] + b * mask_strides[0];
     }
 
-    float axis_max = simd_max(partial_max);
+    // Threadgroup scratch layout:
+    // tgmem[0..31]                -> buf_iw (one float per simdgroup, up to 32
+    // simdgroups) tgmem[32..32+cols-1]        -> vals   (float[cols]) If you
+    // allocate nextPow2(cols) for vals, that's fine too.
+    threadgroup float *buf_iw = tgmem;
+    threadgroup float *vals = tgmem + 32;
 
-    // Compute Sum(exp(x - max))
-    float partial_norm = 0;
-    for (size_t i = tiisg; i < reduce_dim; i += tpsg) {
-        auto out_idx = base_out_idx + i * out_strides[3];
-        float el = static_cast<float>(output[out_idx]);
-        float exp_el = fast::exp(el - axis_max);
-        partial_norm += exp_el;
+    const uint simd_size = tpsg; // usually 32 on Apple GPUs
+    const uint num_sg = (tg_sz + simd_size - 1u) / simd_size;
+
+    const size_t cols = shape[3];
+
+    // 1) Load (x*scale + mask) and compute max in float
+    float max_val = -INFINITY;
+
+    for (size_t col = (size_t)tid; col < cols; col += (size_t)tg_sz) {
+        const float xv = (float)x[col * strides[3]] * scale;
+        const float mv = has_mask ? (float)mask[col * mask_strides[3]] : 0.0f;
+        const float v = xv + mv;
+
+        vals[col] = v;
+        max_val = metal::max(max_val, v);
     }
 
-    float axis_norm = simd_sum(partial_norm);
-    float inv_axis_norm = 1.0 / axis_norm;
+    // reduce max across simdgroup
+    float sg_max = simd_max(max_val);
 
-    for (size_t i = tiisg; i < reduce_dim; i += tpsg) {
-        auto out_idx = base_out_idx + i * out_strides[3];
-        float el = static_cast<float>(output[out_idx]);
-        float exp_el = fast::exp(el - axis_max);
-        output[out_idx] = static_cast<F>(exp_el * inv_axis_norm);
+    // write per-simdgroup max
+    if (lane == 0) {
+        buf_iw[sg_id] = sg_max;
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+
+    // reduce across simdgroups using first simdgroup
+    if (sg_id == 0) {
+        float x0 = (lane < num_sg) ? buf_iw[lane] : -INFINITY;
+        float block_max = simd_max(x0);
+        if (lane == 0)
+            buf_iw[0] = block_max;
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    max_val = buf_iw[0];
+
+    // 2) exp(vals - max) and sum
+    float sum = 0.0f;
+    for (size_t col = (size_t)tid; col < cols; col += (size_t)tg_sz) {
+        float e = exp(vals[col] - max_val);
+        vals[col] = e;
+        sum += e;
+    }
+
+    float sg_sum = simd_sum(sum);
+
+    if (lane == 0) {
+        buf_iw[sg_id] = sg_sum;
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+
+    if (sg_id == 0) {
+        float x0 = (lane < num_sg) ? buf_iw[lane] : 0.0f;
+        float block_sum = simd_sum(x0);
+        if (lane == 0)
+            buf_iw[0] = block_sum;
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    sum = buf_iw[0];
+
+    const float inv_sum = 1.0f / sum;
+
+    // 3) write output
+    for (size_t col = (size_t)tid; col < cols; col += (size_t)tg_sz) {
+        float y = vals[col] * inv_sum;
+        out[col * out_strides[3]] = (F)y;
     }
 }
 

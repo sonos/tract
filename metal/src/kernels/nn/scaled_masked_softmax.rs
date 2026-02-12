@@ -52,13 +52,16 @@ impl ScaledMaskedSoftmax {
         ensure!(mask.rank() == 4);
         ensure!(input.rank() == 4);
         ensure!(output.datum_type() == input.datum_type());
+        ensure!(mask.datum_type() == input.datum_type());
+        let scale = scale.cast_to::<f32>()?;
 
         let shape = input.shape();
         let strides = input.strides();
         let mask_strides = compute_broadcast_strides::<usize>(mask.shape(), mask.strides())?;
-        dbg!(&input);
-        dbg!(&mask);
-        dbg!(&mask_strides);
+
+        let cols = input.shape()[3] as usize;
+        let tg_floats = 32 + cols;
+        let tg_bytes = tg_floats * f32::datum_type().size_of();
 
         let pipeline =
             stream.load_pipeline(LibraryName::NNOps, &self.kernel_name(input.datum_type())?)?;
@@ -68,15 +71,16 @@ impl ScaledMaskedSoftmax {
             encoder.set_compute_pipeline_state(&pipeline);
             encoder.set_metal_tensor(0, input, metal::MTLResourceUsage::Read);
             encoder.set_metal_tensor(1, mask, metal::MTLResourceUsage::Read);
-            encoder.set_tensor(2, scale);
+            encoder.set_tensor(2, &scale);
             encoder.set_metal_tensor(3, output, metal::MTLResourceUsage::Write);
             encoder.set_slice(4, shape);
             encoder.set_slice(5, strides);
             encoder.set_slice(6, &mask_strides);
             encoder.set_slice(7, output.strides());
+            encoder.set_threadgroup_memory_length(0, tg_bytes as _);
             let grid_size =
                 MTLSize { width: shape[2] as _, height: shape[1] as _, depth: shape[0] as _ };
-            let group_size = MTLSize { width: usize::min(32, shape[2]) as _, height: 1, depth: 1 };
+            let group_size = MTLSize { width: usize::min(32, shape[3]) as _, height: 1, depth: 1 };
             encoder.dispatch_thread_groups(grid_size, group_size);
         });
         Ok(())

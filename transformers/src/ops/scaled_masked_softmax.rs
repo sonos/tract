@@ -81,6 +81,7 @@ impl EvalOp for ScaledMaskedSoftmax {
 
 impl TypedOp for ScaledMaskedSoftmax {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        ensure!(!self.scale.is_zero()?);
         ensure!(inputs.len() == 2);
         let (input, mask) = (inputs[0], inputs[1]);
         ensure!(input.datum_type == mask.datum_type);
