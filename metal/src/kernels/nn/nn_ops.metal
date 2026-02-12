@@ -352,11 +352,11 @@ template [[host_name(
     "nn_ops::softmax_nd3_f16")]] [[kernel]] softmax_nd3_t softmax_nd3<half>;
 
 template <typename F>
-[[kernel]] void scaled_masked_softmax_nd4(
+[[kernel]] void scaled_masked_softmax_nd5(
     device const void *input_b, device const void *mask_b,
     constant float *scale_b, device void *output_b,
-    constant const size_t shape[4], constant const size_t strides[4],
-    constant const size_t mask_strides[4], constant const size_t out_strides[4],
+    constant const size_t shape[5], constant const size_t strides[5],
+    constant const size_t mask_strides[5], constant const size_t out_strides[5],
 
     uint3 tgpig [[threadgroup_position_in_grid]],
     uint tiisg [[thread_index_in_simdgroup]],
@@ -371,10 +371,12 @@ template <typename F>
     const uint sg_id = tid / tpsg;
     const uint lane = tiisg;
 
-    // Grid is (rows, h, b) == (shape[2], shape[1], shape[0])
+    // Grid is (rows, g, b * kh) == (shape[3], shape[2], shape[0] * shape[1])
     const size_t row = (size_t)tgpig.x;
     const size_t h = (size_t)tgpig.y;
-    const size_t b = (size_t)tgpig.z;
+    const size_t z = (size_t)tgpig.z;
+    const size_t z0 = z / shape[1];
+    const size_t z1 = z % shape[1];
 
     device const F *x = (device const F *)input_b;
     device const F *mask = (device const F *)mask_b;
@@ -382,13 +384,14 @@ template <typename F>
 
     const float scale = *scale_b;
 
-    x += row * strides[2] + h * strides[1] + b * strides[0];
-    out += row * out_strides[2] + h * out_strides[1] + b * out_strides[0];
+    x += row * strides[3] + h * strides[2] + z1 * strides[1] + z0 * strides[0];
+    out += row * out_strides[3] + h * out_strides[2] + z1 * out_strides[1] +
+           z0 * out_strides[0];
 
     const bool has_mask = (mask_b != nullptr);
     if (has_mask) {
-        mask +=
-            row * mask_strides[2] + h * mask_strides[1] + b * mask_strides[0];
+        mask += row * mask_strides[3] + h * mask_strides[2] +
+                z1 * mask_strides[1] + z0 * mask_strides[0];
     }
 
     // Threadgroup scratch layout:
@@ -401,14 +404,14 @@ template <typename F>
     const uint simd_size = tpsg; // usually 32 on Apple GPUs
     const uint num_sg = (tg_sz + simd_size - 1u) / simd_size;
 
-    const size_t cols = shape[3];
+    const size_t cols = shape[4];
 
     // 1) Load (x*scale + mask) and compute max in float
     float max_val = -INFINITY;
 
     for (size_t col = (size_t)tid; col < cols; col += (size_t)tg_sz) {
-        const float xv = (float)x[col * strides[3]] * scale;
-        const float mv = has_mask ? (float)mask[col * mask_strides[3]] : 0.0f;
+        const float xv = (float)x[col * strides[4]] * scale;
+        const float mv = has_mask ? (float)mask[col * mask_strides[4]] : 0.0f;
         const float v = xv + mv;
 
         vals[col] = v;
@@ -463,18 +466,18 @@ template <typename F>
     // 3) write output
     for (size_t col = (size_t)tid; col < cols; col += (size_t)tg_sz) {
         float y = vals[col] * inv_sum;
-        out[col * out_strides[3]] = (F)y;
+        out[col * out_strides[4]] = (F)y;
     }
 }
 
-typedef decltype(scaled_masked_softmax_nd4<float>) scaled_masked_softmax_nd4_t;
+typedef decltype(scaled_masked_softmax_nd5<float>) scaled_masked_softmax_nd5_t;
 
-template [[host_name("nn_ops::scaled_masked_softmax_nd4_"
-                     "f32")]] [[kernel]] scaled_masked_softmax_nd4_t
-    scaled_masked_softmax_nd4<float>;
-template [[host_name("nn_ops::scaled_masked_softmax_nd4_"
-                     "f16")]] [[kernel]] scaled_masked_softmax_nd4_t
-    scaled_masked_softmax_nd4<half>;
+template [[host_name("nn_ops::scaled_masked_softmax_nd5_"
+                     "f32")]] [[kernel]] scaled_masked_softmax_nd5_t
+    scaled_masked_softmax_nd5<float>;
+template [[host_name("nn_ops::scaled_masked_softmax_nd5_"
+                     "f16")]] [[kernel]] scaled_masked_softmax_nd5_t
+    scaled_masked_softmax_nd5<half>;
 
 constant float GELU_COEF_A = 0.044715f;
 constant float SQRT_2_OVER_PI = 0.79788456080286535587989211986876f;

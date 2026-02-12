@@ -2,6 +2,7 @@ use crate::encoder::EncoderExt;
 use crate::kernels::utils::compute_broadcast_strides;
 use crate::{LibraryName, MetalStream};
 use metal::MTLSize;
+use num_traits::AsPrimitive;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
 
@@ -20,7 +21,7 @@ impl ScaledMaskedSoftmax {
             dt
         );
         let tname = DeviceTensor::tname(dt)?;
-        Ok(format!("nn_ops::scaled_masked_softmax_nd4_{tname}"))
+        Ok(format!("nn_ops::scaled_masked_softmax_nd5_{tname}"))
     }
 
     pub fn eval(
@@ -49,24 +50,26 @@ impl ScaledMaskedSoftmax {
         stream.retain_tensor(output);
 
         ensure!(output.shape() == input.shape());
-        ensure!(mask.rank() == 4);
-        ensure!(input.rank() == 4);
+        ensure!(input.rank() >= 2);
+        ensure!(input.rank() <= 5);
+        ensure!(mask.rank() == input.rank());
         ensure!(output.datum_type() == input.datum_type());
         ensure!(mask.datum_type() == input.datum_type());
         let scale = scale.cast_to::<f32>()?;
 
-        let shape = input.shape();
-        let strides = input.strides();
-        let mask_strides = compute_broadcast_strides::<usize>(mask.shape(), mask.strides())?;
+        let shape = pad(input.shape(), 1);
+        let strides = pad(input.strides(), 0);
+        let mask_strides =
+            pad(&compute_broadcast_strides::<usize>(mask.shape(), mask.strides())?, 0);
+        let out_strides = pad(output.strides(), 0);
 
-        let cols = shape[3] as usize;
+        let inner_len = shape[4] as usize;
         let mut nth = 32usize;
-        while nth < cols && nth < 256 {
+        while nth < inner_len && nth < 256 {
             nth *= 2;
         }
-        let group_size = MTLSize { width: nth as _, height: 1, depth: 1 };
 
-        let tg_floats = 32 + cols;
+        let tg_floats = 32 + inner_len;
         let tg_bytes = tg_floats * f32::datum_type().size_of();
 
         let pipeline =
@@ -79,18 +82,29 @@ impl ScaledMaskedSoftmax {
             encoder.set_metal_tensor(1, mask, metal::MTLResourceUsage::Read);
             encoder.set_tensor(2, &scale);
             encoder.set_metal_tensor(3, output, metal::MTLResourceUsage::Write);
-            encoder.set_slice(4, shape);
-            encoder.set_slice(5, strides);
+            encoder.set_slice(4, &shape);
+            encoder.set_slice(5, &strides);
             encoder.set_slice(6, &mask_strides);
-            encoder.set_slice(7, output.strides());
+            encoder.set_slice(7, &out_strides);
             encoder.set_threadgroup_memory_length(0, tg_bytes as _);
-            let grid_size =
-                MTLSize { width: shape[2] as _, height: shape[1] as _, depth: shape[0] as _ };
+            let grid_size = MTLSize {
+                width: shape[3] as _,
+                height: shape[2] as _,
+                depth: (shape[0] * shape[1]) as _,
+            };
             let group_size = MTLSize { width: nth as _, height: 1, depth: 1 };
             encoder.dispatch_thread_groups(grid_size, group_size);
         });
         Ok(())
     }
+}
+
+fn pad(vals: &[impl AsPrimitive<isize>], neutral: isize) -> [isize; 5] {
+    let mut it = [neutral; 5];
+    for (ix, val) in vals.iter().enumerate() {
+        it[ix + 5 - vals.len()] = val.as_();
+    }
+    it
 }
 
 #[cfg(test)]
