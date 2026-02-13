@@ -5,9 +5,9 @@ use tract_core::ops::cast::Cast;
 use tract_core::ops::einsum::EinSum;
 use tract_core::ops::source::TypedSource;
 use tract_core::ops::{change_axes, math};
-use tract_ndarray::Array2;
 use tract_nnef::internal::*;
 use tract_nnef::ser::datum_type;
+use tract_nnef::tract_core::ops::math::mul;
 use tract_nnef::tract_core::ops::nn::{Softmax, SoftmaxExp, SoftmaxKind};
 
 use crate::ops::dyn_kv_cache::DynKeyValueCache;
@@ -63,9 +63,12 @@ fn deser_spda(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tr
     let k = invocation.named_arg_as(builder, "k")?;
     let v = invocation.named_arg_as(builder, "v")?;
     let mut inputs = vec![q, k, v];
+    let q_rank = builder.model.outlet_fact(q)?.rank();
     if let Some(mut mask) = invocation.get_named_arg_as(builder, "mask")? {
-        for _ in 0..(builder.model.outlet_fact(mask)?.rank() - 2) {
-            mask = builder.wire_as_outlets(AxisOp::Rm(0), &[mask])?[0];
+        let mask_fact = builder.model.outlet_fact(mask)?;
+        ensure!(mask_fact.rank() <= q_rank);
+        for _ in mask_fact.rank()..q_rank {
+            mask = builder.wire_as_outlets(AxisOp::Add(0), &[mask])?[0];
         }
         inputs.push(mask);
     };
@@ -87,45 +90,6 @@ pub struct Sdpa {
 }
 
 impl Sdpa {
-    fn wire_const_causal_mask(
-        &self,
-        graph: &mut TypedModel,
-        past_seq_len: usize,
-        seq_len: usize,
-    ) -> TractResult<Option<OutletId>> {
-        let m_array = Array2::from_shape_fn([seq_len, past_seq_len + seq_len], |(r, c)| {
-            if c > past_seq_len + r { f32::NEG_INFINITY } else { 0.0f32 }
-        });
-        let causal_mask = graph.add_const(
-            "causal_mask",
-            m_array.into_tensor().cast_to_dt(self.acc_datum_type)?.into_owned(),
-        )?;
-        Ok(Some(causal_mask))
-    }
-
-    fn normalize_mask(
-        &self,
-        graph: &mut TypedModel,
-        mut mask: OutletId,
-        scores_fact: &TypedFact,
-    ) -> TractResult<OutletId> {
-        let mask_fact = graph.outlet_fact(mask)?.clone();
-        if mask_fact.datum_type != self.acc_datum_type {
-            mask = graph.wire_node("cast_mask", Cast::new(self.acc_datum_type), &[mask])?[0];
-        }
-
-        let mut mask_shape = graph.outlet_fact(mask)?.shape.to_tvec();
-        while mask_shape.len() < scores_fact.rank() {
-            mask = graph.wire_node(
-                format!("add_mask_axis_{}", mask_shape.len()),
-                change_axes::AxisOp::Add(0),
-                &[mask],
-            )?[0];
-            mask_shape = graph.outlet_fact(mask)?.shape.to_tvec();
-        }
-        Ok(mask)
-    }
-
     fn wire_softmax(
         &self,
         graph: &mut TypedModel,
@@ -135,40 +99,18 @@ impl Sdpa {
     ) -> TractResult<OutletId> {
         let scores_fact = graph.outlet_fact(scores)?.clone();
         let rank = scores_fact.rank();
+        ensure!(rank == 5);
+
         let scale = tensor0(scale).cast_to_dt(self.acc_datum_type)?.into_owned();
-
-        let att_weights = if let Some(m) = mask {
-            let scores_shape = scores_fact.shape.to_tvec();
-            let (outer, [qs, ks]) = scores_shape.split_at(rank - 2) else { unreachable!() };
-            let flat_dim = outer.iter().product::<TDim>();
-            let scores_shape_3d = tvec![flat_dim.clone(), qs.clone(), ks.clone()];
-            let reshaped_scores = graph.wire_node(
-                "reshape_scores_for_softmax",
-                change_axes::AxisOp::Reshape(0, scores_shape.clone(), scores_shape_3d.clone()),
-                &[scores],
-            )?[0];
-
-            let mask_shape = graph.outlet_fact(m)?.shape.to_tvec();
-            let (m_outer, [qs, ks]) = mask_shape.split_at(rank - 2) else { unreachable!() };
-            let m_flat_dim = m_outer.iter().product::<TDim>();
-            let mask_shape_3d = tvec![m_flat_dim, qs.clone(), ks.clone()];
-            let reshaped_mask = graph.wire_node(
-                "reshape_mask_for_softmax",
-                change_axes::AxisOp::Reshape(0, mask_shape.clone(), mask_shape_3d),
-                &[m],
-            )?[0];
-
-            let weights_3d = graph.wire_node(
-                "att_scaled_masked_softmax",
-                ScaledMaskedSoftmax { scale: scale.into() },
-                &[reshaped_scores, reshaped_mask],
-            )?[0];
-
-            graph.wire_node(
-                "reshape_post_scaled_masked_softmax",
-                change_axes::AxisOp::Reshape(0, scores_shape_3d, scores_shape),
-                &[weights_3d],
-            )?[0]
+        if let Some(mask) = mask {
+            ensure!(graph.outlet_fact(mask)?.rank() == 5);
+            graph
+                .wire_node(
+                    "att_scaled_masked_softmax",
+                    ScaledMaskedSoftmax { scale: scale.into() },
+                    &[scores, mask],
+                )
+                .map(|o| o[0])
         } else {
             let scale_const = graph.add_const("scale", scale)?;
             let scaled_scores = wire_with_rank_broadcast(
@@ -177,123 +119,109 @@ impl Sdpa {
                 math::mul(),
                 &[scores, scale_const],
             )?[0];
-            graph.wire_node(
-                "att_softmax",
-                Softmax::new(tvec![rank - 1], None, SoftmaxKind::Softmax(SoftmaxExp::Libc)),
-                &[scaled_scores],
-            )?[0]
-        };
-
-        Ok(att_weights)
+            graph
+                .wire_node(
+                    "att_softmax",
+                    Softmax::new(tvec![rank - 1], None, SoftmaxKind::Softmax(SoftmaxExp::Libc)),
+                    &[scaled_scores],
+                )
+                .map(|o| o[0])
+        }
     }
 
-    fn build_sdpa_graph(&self, mut input_facts: TVec<&TypedFact>) -> TractResult<TypedModel> {
+    fn build_sdpa_graph(&self, input_facts: TVec<&TypedFact>) -> TractResult<TypedModel> {
+        use change_axes::AxisOp::*;
         let mut graph = TypedModel::default();
-        let mut q_fact = input_facts.remove(0).clone();
-        let mut k_fact = input_facts.remove(0).clone();
-        let v_fact = input_facts.remove(0).clone();
-        let m_fact = input_facts.pop().cloned();
-        let mut q = graph.add_source("q", q_fact.clone())?;
-        let mut k = graph.add_source("k", k_fact.clone())?;
-        let mut v = graph.add_source("v", v_fact.clone())?;
-        let mut m = if let Some(m) = m_fact.as_ref() {
-            Some(graph.add_source("mask", m.clone())?)
-        } else {
-            None
-        };
+        let mut q = graph.add_source("q", input_facts[0].clone())?;
+        let mut k = graph.add_source("k", input_facts[1].clone())?;
+        let mut v = graph.add_source("v", input_facts[2].clone())?;
+        let mut mask =
+            input_facts.get(3).map(|m| graph.add_source("mask", (*m).clone())).transpose()?;
 
-        let mut rank = q_fact.rank();
-        let mut final_reshape = None;
-        if rank == 4 {
-            let qshape = q_fact.shape.to_tvec();
-            let kshape = k_fact.shape.to_tvec();
-            let [_, qh, sq, qd] = qshape.as_slice() else { unreachable!() };
-            let [b, kh, sk, kd] = kshape.as_slice() else { unreachable!() };
-
-            let num_q_heads = qh.to_usize()?;
-            let num_k_heads = kh.to_usize()?;
-            if num_q_heads > num_k_heads {
-                let g = num_q_heads / num_k_heads;
-
-                let new_qshape = tvec![b.clone(), kh.clone(), g.into(), sq.clone(), qd.clone()];
-                let new_kshape = tvec![b.clone(), kh.clone(), 1.into(), sk.clone(), kd.clone()];
-                q = graph.wire_node(
-                    "reshape_q",
-                    change_axes::AxisOp::Reshape(0, qshape.clone(), new_qshape.clone()),
-                    &[q],
-                )?[0];
-                k = graph.wire_node(
-                    "reshape_k",
-                    change_axes::AxisOp::Reshape(0, kshape.clone(), new_kshape.clone()),
-                    &[k],
-                )?[0];
-                v = graph.wire_node(
-                    "reshape_v",
-                    change_axes::AxisOp::Reshape(0, kshape.clone(), new_kshape.clone()),
-                    &[v],
-                )?[0];
-                let dt = q_fact.datum_type;
-                q_fact = TypedFact::dt_shape(dt, new_qshape);
-                k_fact = TypedFact::dt_shape(dt, new_kshape.clone());
-
-                final_reshape = Some((
-                    tvec![b.clone(), kh.clone(), g.into(), sq.clone(), kd.clone()],
-                    tvec![b.clone(), qh.clone(), sq.clone(), kd.clone()],
-                ));
-                rank += 1;
+        if input_facts[0].rank() == 3 {
+            q = graph.wire_node("reshape_q_heads", Add(1), &[q])?[0];
+            k = graph.wire_node("reshape_k_heads", Add(1), &[k])?[0];
+            v = graph.wire_node("reshape_v_heads", Add(1), &[v])?[0];
+            if let Some(m) = &mut mask {
+                *m = graph.wire_node("reshape_m_heads", Add(1), &[*m])?[0];
             }
         }
 
-        let custom_scale = self.scale.as_ref().map(|t| *t.to_scalar::<f32>().unwrap());
-        let d_k = k_fact.shape[rank - 1].to_i64()? as f32;
-        let default_scale = 1.0 / d_k.sqrt();
-        let scale = custom_scale.unwrap_or(default_scale);
+        let [_, qh, att_rows, _qd] = &*graph.outlet_fact(q)?.shape.clone() else { unreachable!() };
+        let [_b, kh, att_cols, kd] = &*graph.outlet_fact(k)?.shape.clone() else { unreachable!() };
+
+        let num_qh = qh.to_usize()?;
+        let num_kh = kh.to_usize()?;
+        let num_kd = kd.to_usize()?;
+
+        let g = num_qh / num_kh;
+
+        q = graph.wire_node(
+            "reshape_q_gha",
+            Reshape(1, tvec!(qh.clone()), tvec!(kh.clone(), g.to_dim())),
+            &[q],
+        )?[0];
+        k = graph.wire_node("reshape_k_gha", change_axes::AxisOp::Add(2), &[k])?[0];
+        v = graph.wire_node("reshape_v_gha", change_axes::AxisOp::Add(2), &[v])?[0];
+        if let Some(m) = &mut mask {
+            if graph.outlet_fact(*m)?.shape[1].is_one() {
+                *m = graph.wire_node("reshape_m_heads_groups", Add(2), &[*m])?[0];
+            } else {
+                *m = graph.wire_node(
+                    "reshape_m_head_groups",
+                    Reshape(1, tvec!(qh.clone()), tvec!(kh.clone(), g.to_dim())),
+                    &[*m],
+                )?[0];
+            }
+        }
+
+        let scale = self
+            .scale
+            .as_ref()
+            .map(|t| *t.to_scalar::<f32>().unwrap())
+            .unwrap_or_else(|| (num_kd as f32).sqrt().recip());
 
         if self.is_causal {
-            let q_seq_len = q_fact.shape[rank - 2].to_usize()?;
-            let k_seq_len = k_fact.shape[rank - 2].to_usize()?;
-            m = self.wire_const_causal_mask(&mut graph, k_seq_len - q_seq_len, q_seq_len)?;
+            mask = Some(
+                wire_attention_mask(
+                    &mut graph,
+                    "sdpa",
+                    self.acc_datum_type,
+                    SdpaMaskMode::Causal,
+                    5,
+                    att_rows,
+                    att_cols,
+                )
+                .context("Wiring causal mask")?,
+            );
         };
 
-        let axes = match rank {
-            3 => "amk,ank->amn".parse().unwrap(),
-            4 => "bhmk,bhnk->bhmn".parse().unwrap(),
-            5 => "bhgmk,bhgnk->bhgmn".parse().unwrap(),
-            _ => unreachable!(),
-        };
-
-        let scores_einsum = EinSum::new(axes, self.acc_datum_type);
+        let scores_einsum = EinSum::new("bhgmk,bhgnk->bhgmn".parse().unwrap(), self.acc_datum_type);
         let scores = graph.wire_node("scores", scores_einsum, &[q, k])?[0];
-        if m.is_some() {
-            let scores_fact = graph.outlet_fact(scores)?.clone();
-            m = Some(self.normalize_mask(&mut graph, m.unwrap(), &scores_fact)?);
+        if let Some(m) = &mut mask {
+            if graph.outlet_fact(*m)?.datum_type != self.acc_datum_type {
+                *m = graph.wire_node("cast_mask", Cast::new(self.acc_datum_type), &[*m])?[0];
+            }
         }
-        let attention_weights = self.wire_softmax(&mut graph, scores, m, scale)?;
-        let axes = match rank {
-            3 => "amk,akn->amn".parse().unwrap(),
-            4 => "bhmn,bhnv->bhmv".parse().unwrap(),
-            5 => "bhgmn,bhgnv->bhgmv".parse().unwrap(),
-            _ => unreachable!(),
-        };
+
+        let attention_weights =
+            self.wire_softmax(&mut graph, scores, mask, scale).context("In wire_softmax")?;
         let mut output = graph.wire_node(
             "att_out",
-            EinSum::new(axes, self.acc_datum_type),
+            EinSum::new("bhgmn,bhgnv->bhgmv".parse().unwrap(), self.acc_datum_type),
             &[attention_weights, v],
         )?[0];
-        if let Some((from, to)) = final_reshape {
-            output = graph.wire_node(
-                "final_reshape",
-                change_axes::AxisOp::Reshape(0, from, to),
-                &[output],
-            )?[0];
+        output = graph.wire_node(
+            "reshape_out_gha",
+            Reshape(1, tvec!(kh.clone(), g.to_dim()), tvec!(qh.clone())),
+            &[output],
+        )?[0];
+        if input_facts[0].rank() == 3 {
+            output = graph.wire_node("reshape_out_heads", Rm(1), &[output])?[0];
         }
-        let current_output_fact = graph.outlet_fact(output)?;
-        if current_output_fact.datum_type != q_fact.datum_type().unwrap() {
-            output = graph.wire_node(
-                "cast_output",
-                Cast::new(q_fact.datum_type().unwrap()),
-                &[output],
-            )?[0];
+        if graph.outlet_fact(output)?.datum_type != input_facts[0].datum_type {
+            output =
+                graph.wire_node("cast_output", Cast::new(input_facts[0].datum_type), &[output])?[0];
         }
         graph.set_output_outlets(&[output])?;
         Ok(graph)
@@ -341,7 +269,8 @@ impl EvalOp for Sdpa {
         let input_facts: TVec<TypedFact> =
             inputs.iter().map(|tv| TypedFact::from(tv.clone().into_arc_tensor())).collect();
         let input_fact_refs: TVec<&TypedFact> = input_facts.iter().collect();
-        let body = self.build_sdpa_graph(input_fact_refs)?;
+        let body =
+            self.build_sdpa_graph(input_fact_refs).context("Wiring adhoc fallback graph ")?;
         let plan = TypedSimplePlan::new(body)?;
         plan.run(inputs)
     }
@@ -359,13 +288,18 @@ impl TypedOp for Sdpa {
             "Q, K and V should have the same rank {}",
             rank
         );
-        if let Some(mask) = inputs.get(3) {
-            ensure!(mask.rank() == 2, "Mask must be of rank 2.");
-        }
+        let mask = inputs.get(3);
+        ensure!(mask.is_none_or(|m| m.rank() == rank));
 
         let q_shape = &inputs[0].shape.dims();
         let k_shape = &inputs[1].shape.dims();
         let v_shape = &inputs[2].shape.dims();
+
+        ensure!(
+            q_shape[0] == k_shape[0]
+                && q_shape[0] == v_shape[0]
+                && mask.as_ref().is_none_or(|m| m.shape[0].is_one() || m.shape[0] == q_shape[0])
+        );
 
         if rank == 4 {
             let q_heads = q_shape[1].to_i64()?;
@@ -377,6 +311,9 @@ impl TypedOp for Sdpa {
                 "Q heads ({}) must be a multiple of K/V heads ({})",
                 q_heads,
                 k_heads
+            );
+            ensure!(
+                mask.as_ref().is_none_or(|m| m.shape[1].is_one() || m.shape[1] == q_heads.into())
             );
         }
 
@@ -407,17 +344,12 @@ impl TypedOp for Sdpa {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        let input_facts = model.node_input_facts(node.id)?;
-        // optimized sdpa assume mask first dimensions (batch and optional head) are 1
-        if input_facts.len() == 3
-            || input_facts[3].shape.iter().rev().skip(2).all(|d| d.is_one())
-                && self.acc_datum_type.is::<f32>()
-        {
+        if self.acc_datum_type.is::<f32>() {
             let scale = self.scale.as_ref().map(|t| t.cast_to_scalar()).transpose()?;
             let op = FlashSdpaOp { causal: self.is_causal, scale };
             TypedModelPatch::replace_single_op(model, node, &node.inputs, op).map(Some)
         } else {
-            self.patch_sdpa(model, node)
+            self.patch_sdpa(model, node).context("Wiring fallback SDPA")
         }
     }
     as_op!();
@@ -508,4 +440,68 @@ pub fn fuse_kv_cache_broadcast_rule(
     patch.shunt_outside(model, node.id.into(), new_sdpa_node[0])?;
 
     Ok(Some(patch))
+}
+
+pub enum SdpaMaskMode {
+    Neutral,
+    Causal,
+}
+
+pub fn wire_attention_mask(
+    model: &mut TypedModel,
+    prefix: &str,
+    dt: DatumType,
+    mode: SdpaMaskMode,
+    rank: usize,
+    q_len: &TDim,
+    kv_len: &TDim,
+) -> TractResult<OutletId> {
+    let s_plus_p_outlet = model.add_const(prefix.to_string() + ".S_P", tensor0(kv_len.clone()))?;
+    let p_outlet = model.add_const("P", tensor0(kv_len.clone() - q_len.clone()))?;
+
+    let zero = model.add_const(prefix.to_string() + ".P", tensor0(TDim::Val(0)))?;
+    let range_increment = model.add_const(prefix.to_string() + ".mask_s", tensor0(TDim::Val(1)))?;
+    let s_range = model.wire_node(
+        prefix.to_string() + ".mask_s_range",
+        tract_core::ops::array::Range::new(q_len.clone()),
+        &[p_outlet, s_plus_p_outlet, range_increment],
+    )?;
+    let s_plus_p_range = model.wire_node(
+        prefix.to_string() + ".mask_s+p_range",
+        tract_core::ops::array::Range::new(kv_len.clone()),
+        &[zero, s_plus_p_outlet, range_increment],
+    )?;
+    let s_range_add_axis =
+        model.wire_node(prefix.to_string() + ".mask_s_range.add_axis", AxisOp::Add(1), &s_range)?
+            [0];
+    let s_plus_p_range_add_axis = model.wire_node(
+        prefix.to_string() + ".mask_s_plus_p_range.add_axis",
+        AxisOp::Add(0),
+        &s_plus_p_range,
+    )?[0];
+
+    let greater = model.wire_node(
+        prefix.to_string() + ".mask.greater",
+        tract_core::ops::logic::Comp::GT,
+        &[s_plus_p_range_add_axis, s_range_add_axis],
+    )?[0];
+    let cast_greater =
+        model.wire_node(prefix.to_string() + ".mask.greater.cast", Cast::new(dt), &[greater])?[0];
+
+    let multiplier = match mode {
+        SdpaMaskMode::Causal => model.add_const("P", dt.min_value())?,
+        SdpaMaskMode::Neutral => model.add_const("P", Tensor::zero_scalar_dt(dt)?)?,
+    };
+    let mask = wire_with_rank_broadcast(
+        prefix.to_string() + ".2d",
+        model,
+        mul(),
+        &[cast_greater, multiplier],
+    )?[0];
+    let reshaped_mask = model.wire_node(
+        prefix,
+        AxisOp::Reshape(0, tvec![], tvec![TDim::Val(1); rank - 2]),
+        &[mask],
+    )?[0];
+    Ok(reshaped_mask)
 }
