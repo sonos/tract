@@ -131,7 +131,7 @@ mod tests {
             let mask = Tensor::from_shape(&[1, 1, m, n], &vec![-1000f32; m * n])?.into_device()?;
 
             let a =
-                Tensor::from_shape(&[1, m, n], &(0..m * n).map(|f| f as f32).collect::<Vec<_>>())?
+                Tensor::from_shape(&[1, 1, m, n], &(0..m * n).map(|f| f as f32).collect::<Vec<_>>())?
                     .into_device()?;
 
             let cpu = scaled_masked_softmax::ScaledMaskedSoftmax { scale: scale.clone() };
