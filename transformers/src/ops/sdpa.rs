@@ -182,23 +182,18 @@ impl Sdpa {
             .unwrap_or_else(|| (num_kd as f32).sqrt().recip());
 
         if self.is_causal {
-            mask = Some(wire_attention_mask(
-                &mut graph,
-                "sdpa",
-                self.acc_datum_type,
-                SdpaMaskMode::Neutral,
-                5,
-                att_rows,
-                att_cols,
-            )?);
-            // let m_array =
-            //     Array5::from_shape_fn([1, 1, 1, num_att_rows, num_att_cols], |(_, _, _, r, c)| {
-            //         if c > (num_att_cols - num_att_rows) + r { f32::NEG_INFINITY } else { 0.0f32 }
-            //     });
-            // mask = Some(graph.add_const(
-            //     "causal_mask",
-            //     m_array.into_tensor().cast_to_dt(self.acc_datum_type)?.into_owned(),
-            // )?);
+            mask = Some(
+                wire_attention_mask(
+                    &mut graph,
+                    "sdpa",
+                    self.acc_datum_type,
+                    SdpaMaskMode::Causal,
+                    5,
+                    att_rows,
+                    att_cols,
+                )
+                .context("Wiring causal mask")?,
+            );
         };
 
         let scores_einsum = EinSum::new("bhgmk,bhgnk->bhgmn".parse().unwrap(), self.acc_datum_type);
@@ -497,9 +492,16 @@ pub fn wire_attention_mask(
         SdpaMaskMode::Causal => model.add_const("P", dt.min_value())?,
         SdpaMaskMode::Neutral => model.add_const("P", Tensor::zero_scalar_dt(dt)?)?,
     };
-    let mult_reshape_op = AxisOp::Reshape(0, tvec![], tvec![TDim::Val(1); rank - 2]);
-    let reshaped_mult = model.wire_node("mask.reshape", mult_reshape_op, &[multiplier])?[0];
-
-    let mask = model.wire_node("mask", mul(), &[cast_greater, reshaped_mult])?[0];
-    Ok(mask)
+    let mask = wire_with_rank_broadcast(
+        prefix.to_string() + ".2d",
+        model,
+        mul(),
+        &[cast_greater, multiplier],
+    )?[0];
+    let reshaped_mask = model.wire_node(
+        prefix,
+        AxisOp::Reshape(0, tvec![], tvec![TDim::Val(1); rank - 2]),
+        &[mask],
+    )?[0];
+    Ok(reshaped_mask)
 }
