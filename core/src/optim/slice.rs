@@ -31,10 +31,18 @@ impl super::TypedPass for PushSliceUp {
                         continue;
                     }
                     if let Some(me) = node.op_as::<Slice>() {
-                        let my_len = &node.outputs[0].fact.shape[me.axis];
-                        let slice_len = &succ.outputs[0].fact.shape[slice.axis];
-                        if !(my_len.clone() - slice_len).prove_strict_positive() {
-                            continue;
+                        if me.axis == slice.axis {
+                            let start = me.start.clone() + &slice.start;
+                            let len = slice.end.clone() - &slice.start;
+                            let end = start.clone() + len;
+                            let new = Slice { axis, start, end };
+                            return TypedModelPatch::fuse_with_next(model, node, new).map(Some);
+                        } else {
+                            let my_len = &node.outputs[0].fact.shape[me.axis];
+                            let slice_len = &succ.outputs[0].fact.shape[slice.axis];
+                            if !(my_len.clone() - slice_len).prove_strict_positive() {
+                                continue;
+                            }
                         }
                     }
                     let boundaries =
