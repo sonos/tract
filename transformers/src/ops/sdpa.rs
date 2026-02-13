@@ -7,8 +7,8 @@ use tract_core::ops::source::TypedSource;
 use tract_core::ops::{change_axes, math};
 use tract_nnef::internal::*;
 use tract_nnef::ser::datum_type;
+use tract_nnef::tract_core::ops::math::mul;
 use tract_nnef::tract_core::ops::nn::{Softmax, SoftmaxExp, SoftmaxKind};
-use tract_nnef::tract_ndarray::Array5;
 
 use crate::ops::dyn_kv_cache::DynKeyValueCache;
 use crate::ops::flash_sdpa::FlashSdpaOp;
@@ -153,8 +153,6 @@ impl Sdpa {
         let num_qh = qh.to_usize()?;
         let num_kh = kh.to_usize()?;
         let num_kd = kd.to_usize()?;
-        let num_att_rows = att_rows.to_usize()?;
-        let num_att_cols = att_cols.to_usize()?;
 
         let g = num_qh / num_kh;
 
@@ -184,14 +182,23 @@ impl Sdpa {
             .unwrap_or_else(|| (num_kd as f32).sqrt().recip());
 
         if self.is_causal {
-            let m_array =
-                Array5::from_shape_fn([1, 1, 1, num_att_rows, num_att_cols], |(_, _, _, r, c)| {
-                    if c > (num_att_cols - num_att_rows) + r { f32::NEG_INFINITY } else { 0.0f32 }
-                });
-            mask = Some(graph.add_const(
-                "causal_mask",
-                m_array.into_tensor().cast_to_dt(self.acc_datum_type)?.into_owned(),
+            mask = Some(wire_attention_mask(
+                &mut graph,
+                "sdpa",
+                self.acc_datum_type,
+                SdpaMaskMode::Neutral,
+                5,
+                att_rows,
+                att_cols,
             )?);
+            // let m_array =
+            //     Array5::from_shape_fn([1, 1, 1, num_att_rows, num_att_cols], |(_, _, _, r, c)| {
+            //         if c > (num_att_cols - num_att_rows) + r { f32::NEG_INFINITY } else { 0.0f32 }
+            //     });
+            // mask = Some(graph.add_const(
+            //     "causal_mask",
+            //     m_array.into_tensor().cast_to_dt(self.acc_datum_type)?.into_owned(),
+            // )?);
         };
 
         let scores_einsum = EinSum::new("bhgmk,bhgnk->bhgmn".parse().unwrap(), self.acc_datum_type);
@@ -347,8 +354,7 @@ impl TypedOp for Sdpa {
             let op = FlashSdpaOp { causal: self.is_causal, scale };
             TypedModelPatch::replace_single_op(model, node, &node.inputs, op).map(Some)
         } else {
-            todo!();
-            // self.patch_sdpa(model, node).context("Wiring fallback SDPA")?
+            self.patch_sdpa(model, node).context("Wiring fallback SDPA")
         }
     }
     as_op!();
@@ -439,4 +445,61 @@ pub fn fuse_kv_cache_broadcast_rule(
     patch.shunt_outside(model, node.id.into(), new_sdpa_node[0])?;
 
     Ok(Some(patch))
+}
+
+pub enum SdpaMaskMode {
+    Neutral,
+    Causal,
+}
+
+pub fn wire_attention_mask(
+    model: &mut TypedModel,
+    prefix: &str,
+    dt: DatumType,
+    mode: SdpaMaskMode,
+    rank: usize,
+    q_len: &TDim,
+    kv_len: &TDim,
+) -> TractResult<OutletId> {
+    let s_plus_p_outlet = model.add_const(prefix.to_string() + ".S_P", tensor0(kv_len.clone()))?;
+    let p_outlet = model.add_const("P", tensor0(kv_len.clone() - q_len.clone()))?;
+
+    let zero = model.add_const(prefix.to_string() + ".P", tensor0(TDim::Val(0)))?;
+    let range_increment = model.add_const(prefix.to_string() + ".mask_s", tensor0(TDim::Val(1)))?;
+    let s_range = model.wire_node(
+        prefix.to_string() + ".mask_s_range",
+        tract_core::ops::array::Range::new(q_len.clone()),
+        &[p_outlet, s_plus_p_outlet, range_increment],
+    )?;
+    let s_plus_p_range = model.wire_node(
+        prefix.to_string() + ".mask_s+p_range",
+        tract_core::ops::array::Range::new(kv_len.clone()),
+        &[zero, s_plus_p_outlet, range_increment],
+    )?;
+    let s_range_add_axis =
+        model.wire_node(prefix.to_string() + ".mask_s_range.add_axis", AxisOp::Add(1), &s_range)?
+            [0];
+    let s_plus_p_range_add_axis = model.wire_node(
+        prefix.to_string() + ".mask_s_plus_p_range.add_axis",
+        AxisOp::Add(0),
+        &s_plus_p_range,
+    )?[0];
+
+    let greater = model.wire_node(
+        prefix.to_string() + ".mask.greater",
+        tract_core::ops::logic::Comp::GT,
+        &[s_plus_p_range_add_axis, s_range_add_axis],
+    )?[0];
+    let cast_greater =
+        model.wire_node(prefix.to_string() + ".mask.greater.cast", Cast::new(dt), &[greater])?[0];
+
+    let multiplier = match mode {
+        SdpaMaskMode::Causal => model.add_const("P", dt.min_value())?,
+        SdpaMaskMode::Neutral => model.add_const("P", Tensor::zero_scalar_dt(dt)?)?,
+    };
+    let mult_reshape_op = AxisOp::Reshape(0, tvec![], tvec![TDim::Val(1); rank - 2]);
+    let reshaped_mult = model.wire_node("mask.reshape", mult_reshape_op, &[multiplier])?[0];
+
+    let mask = model.wire_node("mask", mul(), &[cast_greater, reshaped_mult])?[0];
+    Ok(mask)
 }
