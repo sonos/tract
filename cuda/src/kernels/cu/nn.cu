@@ -508,7 +508,7 @@ __device__ void scaled_masked_softmax(
 
         const float m = mask ? (float)mask[col * mask_stride_4] : 0.0f;
         const float val = ((float)x[col * stride_4]) * scale + m;
-        vals[col] = val + m;
+        vals[col] = val;
         max_val = max(max_val, val);
     }
 
