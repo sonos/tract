@@ -28,9 +28,10 @@ pub fn render(
         println!("* {}: {:?}", White.paint(k), v)
     }
     let symbols = model.symbols();
-    if !symbols.all_assertions().is_empty() {
+    let assertions = symbols.all_assertions();
+    if !assertions.is_empty() {
         println!("{}", White.bold().paint("# Assertions"));
-        for a in symbols.all_assertions() {
+        for a in assertions.iter() {
             println!(" * {a}");
         }
     }

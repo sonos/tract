@@ -1,11 +1,11 @@
 use itertools::Itertools;
-use parking_lot::ReentrantMutex;
-use std::cell::RefCell;
-use std::collections::HashMap;
+use parking_lot::RwLock;
+use rustc_hash::{FxHashMap, FxHashSet};
 use std::fmt::{self, Display};
 use std::sync::{Arc, Weak};
-use string_interner::DefaultStringInterner;
+use string_interner::StringInterner;
 use string_interner::Symbol as _;
+use string_interner::backend::StringBackend;
 
 use crate::TractResult;
 
@@ -13,7 +13,7 @@ use super::parse::parse_assertion;
 use super::{Assertion, TDim, parse_tdim};
 
 #[derive(Clone, Default)]
-pub struct SymbolScope(pub Arc<ReentrantMutex<RefCell<SymbolScopeData>>>);
+pub struct SymbolScope(pub Arc<RwLock<SymbolScopeData>>);
 
 impl PartialEq for SymbolScope {
     fn eq(&self, other: &Self) -> bool {
@@ -25,36 +25,37 @@ impl Eq for SymbolScope {}
 
 #[derive(Default)]
 pub struct SymbolScopeData {
-    table: DefaultStringInterner,
+    table: StringInterner<StringBackend>,
     assertions: Vec<Assertion>,
+    positives_cache: Vec<TDim>,
     scenarios: Vec<(String, Vec<Assertion>)>,
 }
 
 impl SymbolScope {
     pub fn get(&self, name: &str) -> Option<Symbol> {
-        let locked = self.0.lock();
-        let locked = locked.borrow();
+        let locked = self.0.read();
         locked.table.get(name).map(|sym| Symbol(Arc::downgrade(&self.0), sym))
     }
 
     pub fn sym(&self, name: &str) -> Symbol {
-        let locked = self.0.lock();
-        let mut locked = locked.borrow_mut();
+        let mut locked = self.0.write();
         let sym = locked.table.get_or_intern(name);
         Symbol(Arc::downgrade(&self.0), sym)
     }
 
     pub fn new_with_prefix(&self, prefix: &str) -> Symbol {
-        let locked = self.0.lock();
-        let mut locked = locked.borrow_mut();
+        let mut locked = self.0.write();
         let sym = if locked.table.get(prefix).is_none() {
             locked.table.get_or_intern(prefix)
         } else {
             let mut i = 0;
+            let mut buf = String::with_capacity(prefix.len() + 12);
             loop {
-                let s = format!("{prefix}_{i}");
-                if locked.table.get(&s).is_none() {
-                    break locked.table.get_or_intern(s);
+                buf.clear();
+                use std::fmt::Write;
+                let _ = write!(buf, "{prefix}_{i}");
+                if locked.table.get(&buf).is_none() {
+                    break locked.table.get_or_intern(&buf);
                 }
                 i += 1;
             }
@@ -68,10 +69,13 @@ impl SymbolScope {
 
     pub fn add_assertion(&self, assert: impl Into<String>) -> TractResult<()> {
         let assert = assert.into();
-        let assert = parse_assertion(self, &assert)?;
-        let locked = self.0.lock();
-        let mut locked = locked.borrow_mut();
-        locked.assertions.push(assert);
+        let assertion = parse_assertion(self, &assert)?;
+        let mut locked = self.0.write();
+
+        if let Some(positive) = assertion.as_known_positive() {
+            locked.positives_cache.push(positive);
+        }
+        locked.assertions.push(assertion);
         Ok(())
     }
 
@@ -80,21 +84,18 @@ impl SymbolScope {
         Ok(self)
     }
 
-    pub fn all_assertions(&self) -> Vec<Assertion> {
-        let locked = self.0.lock();
-        let locked = locked.borrow();
-        locked.assertions.clone()
+    pub fn all_assertions(&self) -> Arc<[Assertion]> {
+        let locked = self.0.read();
+        locked.assertions.iter().cloned().collect()
     }
 
     pub fn all_scenarios(&self) -> impl IntoIterator<Item = (String, Vec<Assertion>)> {
-        let locked = self.0.lock();
-        let locked = locked.borrow();
+        let locked = self.0.read();
         locked.scenarios.clone()
     }
 
     pub fn add_scenario(&self, scenario: impl Into<String>) -> TractResult<()> {
-        let locked = self.0.lock();
-        let mut locked = locked.borrow_mut();
+        let mut locked = self.0.write();
         let s = scenario.into();
         if !locked.scenarios.iter().any(|sc| sc.0 == s) {
             locked.scenarios.push((s, vec![]));
@@ -109,8 +110,7 @@ impl SymbolScope {
     ) -> TractResult<()> {
         let assert = parse_assertion(self, &assertion.into())?;
         let s = scenario.into();
-        let locked = self.0.lock();
-        let mut locked = locked.borrow_mut();
+        let mut locked = self.0.write();
         if let Some(s) = locked.scenarios.iter_mut().find(|sc| sc.0 == s) {
             s.1.push(assert);
         } else {
@@ -134,24 +134,17 @@ impl SymbolScope {
     }
 
     pub fn all_symbols(&self) -> Vec<Symbol> {
-        self.0
-            .lock()
-            .borrow()
-            .table
-            .into_iter()
-            .map(|is| Symbol(Arc::downgrade(&self.0), is.0))
-            .collect()
+        self.0.read().table.into_iter().map(|is| Symbol(Arc::downgrade(&self.0), is.0)).collect()
     }
 
     pub fn guess_scenario(&self, values: &SymbolValues) -> TractResult<Option<usize>> {
-        let locked = self.0.lock();
-        let locked = locked.borrow();
-        if locked.scenarios.len() == 0 {
+        let locked = self.0.read();
+        if locked.scenarios.is_empty() {
             return Ok(None);
         }
         let mut maybe = None;
         for (ix, (_name, assertions)) in locked.scenarios.iter().enumerate() {
-            if assertions.iter().any(|a| a.check(values) == Some(false)) {
+            if assertions.iter().find(|a| a.check(values) == Some(false)).is_some() {
                 continue;
             } else if assertions.iter().all(|a| a.check(values) == Some(true)) {
                 return Ok(Some(ix));
@@ -196,13 +189,18 @@ impl SymbolScopeData {
         self.table.resolve(sym.1).map(f)
     }
 
+    pub fn positives(&self) -> &[TDim] {
+        &self.positives_cache
+    }
+
     #[allow(clippy::mutable_key_type)]
     pub fn prove_positive_or_zero(&self, t: &TDim) -> bool {
         if let TDim::Val(v) = t {
             return *v >= 0;
         }
-        let positives = self.assertions.iter().filter_map(|i| i.as_known_positive()).collect_vec();
-        let mut visited = vec![];
+
+        let positives = &self.positives_cache;
+        let mut visited: FxHashSet<TDim> = FxHashSet::default();
         let mut todo = vec![t.clone()];
         while let Some(t) = todo.pop() {
             if t.to_i64().is_ok_and(|i| i >= 0) {
@@ -214,7 +212,7 @@ impl SymbolScopeData {
             let syms = t.symbols();
             for s in syms {
                 let me = t.guess_slope(&s);
-                for pos in &positives {
+                for pos in positives {
                     if pos.symbols().contains(&s) {
                         let other = pos.guess_slope(&s);
                         if me.0.signum() == other.0.signum() {
@@ -227,7 +225,7 @@ impl SymbolScopeData {
                     }
                 }
             }
-            visited.push(t);
+            visited.insert(t);
             if visited.len() > 10 {
                 break;
             }
@@ -242,8 +240,7 @@ impl SymbolScopeData {
 
 impl fmt::Debug for SymbolScope {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let locked = self.0.lock();
-        let locked = locked.borrow();
+        let locked = self.0.read();
         write!(
             f,
             "symbols: {}; assertions: {}; {}",
@@ -263,7 +260,7 @@ impl fmt::Debug for SymbolScope {
 }
 
 #[derive(Clone)]
-pub struct Symbol(Weak<ReentrantMutex<RefCell<SymbolScopeData>>>, string_interner::DefaultSymbol);
+pub struct Symbol(Weak<RwLock<SymbolScopeData>>, string_interner::symbol::SymbolU32);
 
 impl Eq for Symbol {}
 
@@ -300,8 +297,7 @@ impl std::hash::Hash for Symbol {
 impl std::fmt::Display for Symbol {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Some(scope) = self.scope() {
-            let lock = scope.0.lock();
-            let lock = lock.borrow();
+            let lock = scope.0.read();
             if let Some(s) = lock.table.resolve(self.1) {
                 return write!(f, "{s}");
             }
@@ -318,7 +314,7 @@ impl fmt::Debug for Symbol {
 
 #[derive(Clone, Debug, Default)]
 pub struct SymbolValues {
-    values: HashMap<Symbol, i64>,
+    values: FxHashMap<Symbol, i64>,
 }
 
 impl SymbolValues {
