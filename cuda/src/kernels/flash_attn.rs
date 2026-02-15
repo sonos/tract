@@ -118,7 +118,7 @@ impl CudaFlashAttn {
         let tb_size = n_warps * WARP_SIZE;
         let smem_size = block_q.max(block_kv * 3) * d * size_of::<f16>();
 
-        let use_mask = mask.is_some();
+        let mask_mode = if is_causal { "causal" } else if mask.is_some() { "mask" } else { "nomask" };
 
         let null_ptr = stream.null()?;
 
@@ -131,7 +131,7 @@ impl CudaFlashAttn {
         let kernel_launcher = |suffix: &str, num_q_blocks: usize| -> TractResult<()> {
             let func = ctxt.load_pipeline(
                 LibraryName::FlashAttn,
-                format!("attention_{suffix}{block_q}_{block_kv}_{d}_{is_causal}_{use_mask}"),
+                format!("attention_{suffix}{block_q}_{block_kv}_{d}_{mask_mode}"),
             )?;
 
             func.set_attribute(
