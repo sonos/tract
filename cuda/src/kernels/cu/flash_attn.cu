@@ -286,7 +286,7 @@ void kv_iter_body(
 // ============================================================================
 // Kernel. Adapted from: https://github.com/gau-nernst/learn-cuda/blob/main/07_attention/attention_v5.cu
 // ============================================================================
-template<int BLOCK_Q, int BLOCK_KV, int DIM, int NUM_WARPS, MaskMode MASK_MODE, QTileMode Q_TILE_MODE, bool kv_rem>
+template<int BLOCK_Q, int BLOCK_KV, int DIM, int NUM_WARPS, MaskMode MASK_MODE, QTileMode Q_TILE_MODE>
 static __device__ void attention_kernel(
   const half* __restrict__ Q,  // [bs, len_q, DIM]
   const half* __restrict__ K,  // [bs, len_kv, DIM]
@@ -474,7 +474,8 @@ static __device__ void attention_kernel(
   }
 
   // ----------------------------- KV TAIL (optional) --------------------------
-  if constexpr(kv_rem) {
+  const int kv_rem = len_kv % BLOCK_KV;
+  if (kv_rem > 0) {
     const int kv_tile_base = kv_full_iters * BLOCK_KV;
 
     // Prefetch tail K (predicated)
@@ -573,23 +574,21 @@ static __device__ void attention_kernel(
     }
 }
 
-#define DEFINE_ATTN_KERNEL(name, BLOCK_Q, BLOCK_KV, D, mask_mode, q_tile_mode, kv_rem) \
+#define DEFINE_ATTN_KERNEL(name, BLOCK_Q, BLOCK_KV, D, mask_mode, q_tile_mode) \
 extern "C" { \
     __launch_bounds__(4 * WARP_SIZE) \
     __global__ void name ( \
     const half* __restrict__ Q, const half* __restrict__ K, \
     const half* __restrict__ V, const half* __restrict__ M, half* __restrict__ O, \
     int32_t bs, int32_t qh, int32_t head_ratio, int32_t len_q, int32_t len_kv, float scale) { \
-      attention_kernel<BLOCK_Q, BLOCK_KV, D, 4, mask_mode, q_tile_mode, kv_rem>( \
+      attention_kernel<BLOCK_Q, BLOCK_KV, D, 4, mask_mode, q_tile_mode>( \
         Q, K, V, M, O, bs, qh, head_ratio, len_q, len_kv, scale); \
   } \
 }
 
 #define INSTANTIATE_FLASH_ATTN_FOR_MASK_STRATEGY(BQ, BKV, D, mask_mode) \
-  DEFINE_ATTN_KERNEL(attention_fullq_##BQ##_##BKV##_##D##_##mask_mode,        BQ, BKV, D, mask_mode, fullq,  false) \
-  DEFINE_ATTN_KERNEL(attention_tailq_##BQ##_##BKV##_##D##_##mask_mode,        BQ, BKV, D, mask_mode, tailq,  false) \
-  DEFINE_ATTN_KERNEL(attention_fullq_kv_rem_##BQ##_##BKV##_##D##_##mask_mode, BQ, BKV, D, mask_mode, fullq,  true)  \
-  DEFINE_ATTN_KERNEL(attention_tailq_kv_rem_##BQ##_##BKV##_##D##_##mask_mode, BQ, BKV, D, mask_mode, tailq,  true)
+  DEFINE_ATTN_KERNEL(attention_fullq_##BQ##_##BKV##_##D##_##mask_mode, BQ, BKV, D, mask_mode, fullq) \
+  DEFINE_ATTN_KERNEL(attention_tailq_##BQ##_##BKV##_##D##_##mask_mode, BQ, BKV, D, mask_mode, tailq)
 
 #define INSTANTIATE_FLASH_ATTN_FOR_D(block_q, block_kv, D) \
   INSTANTIATE_FLASH_ATTN_FOR_MASK_STRATEGY(block_q, block_kv, D, nomask) \
