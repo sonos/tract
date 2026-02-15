@@ -118,7 +118,13 @@ impl CudaFlashAttn {
         let tb_size = n_warps * WARP_SIZE;
         let smem_size = block_q.max(block_kv * 3) * d * size_of::<f16>();
 
-        let mask_mode = if is_causal { "causal" } else if mask.is_some() { "mask" } else { "nomask" };
+        let mask_mode = if is_causal {
+            "causal"
+        } else if mask.is_some() {
+            "mask"
+        } else {
+            "nomask"
+        };
 
         let null_ptr = stream.null()?;
 
