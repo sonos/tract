@@ -570,44 +570,23 @@ static __device__ void attention_v5_kernel(
     }
 }
 
-#define INSTANTIATE_FLASH_ATTN_FOR_MASK_STRATEGY(BLOCK_Q, BLOCK_KV, D, is_causal, use_mask) \
-extern "C" {  \
+#define DEFINE_ATTN_V5_KERNEL(name, BLOCK_Q, BLOCK_KV, D, is_causal, use_mask, full_q_tile, kv_rem) \
+extern "C" { \
     __launch_bounds__(4 * WARP_SIZE) \
-    __global__ void attention_v5_full_##BLOCK_Q##_##BLOCK_KV##_##D##_##is_causal##_##use_mask ( \
+    __global__ void name ( \
     const half* __restrict__ Q, const half* __restrict__ K, \
     const half* __restrict__ V, const half* __restrict__ M, half* __restrict__ O, \
     int32_t bs, int32_t qh, int32_t head_ratio, int32_t len_q, int32_t len_kv, float scale) { \
-      attention_v5_kernel<BLOCK_Q, BLOCK_KV, D, 4, is_causal, use_mask, true, false>( \
-        Q, K, V, M, O, bs, qh, head_ratio, len_q, len_kv, scale); \
-  } \
-\
-    __launch_bounds__(4 * WARP_SIZE) \
-    __global__ void attention_v5_tail_##BLOCK_Q##_##BLOCK_KV##_##D##_##is_causal##_##use_mask ( \
-    const half* __restrict__ Q, const half* __restrict__ K, \
-    const half* __restrict__ V, const half* __restrict__ M, half* __restrict__ O, \
-    int32_t bs, int32_t qh, int32_t head_ratio, int32_t len_q, int32_t len_kv, float scale) { \
-      attention_v5_kernel<BLOCK_Q, BLOCK_KV, D, 4, is_causal, use_mask, false, false>( \
-        Q, K, V, M, O, bs, qh, head_ratio, len_q, len_kv, scale); \
-  } \
-\
-    __launch_bounds__(4 * WARP_SIZE) \
-    __global__ void attention_v5_full_kv_rem_##BLOCK_Q##_##BLOCK_KV##_##D##_##is_causal##_##use_mask ( \
-    const half* __restrict__ Q, const half* __restrict__ K, \
-    const half* __restrict__ V, const half* __restrict__ M, half* __restrict__ O, \
-    int32_t bs, int32_t qh, int32_t head_ratio, int32_t len_q, int32_t len_kv, float scale) { \
-      attention_v5_kernel<BLOCK_Q, BLOCK_KV, D, 4, is_causal, use_mask, true, true>( \
-        Q, K, V, M, O, bs, qh, head_ratio, len_q, len_kv, scale); \
-  } \
-\
-    __launch_bounds__(4 * WARP_SIZE) \
-    __global__ void attention_v5_tail_kv_rem_##BLOCK_Q##_##BLOCK_KV##_##D##_##is_causal##_##use_mask ( \
-    const half* __restrict__ Q, const half* __restrict__ K, \
-    const half* __restrict__ V, const half* __restrict__ M, half* __restrict__ O, \
-    int32_t bs, int32_t qh, int32_t head_ratio, int32_t len_q, int32_t len_kv, float scale) { \
-      attention_v5_kernel<BLOCK_Q, BLOCK_KV, D, 4, is_causal, use_mask, false, true>( \
+      attention_v5_kernel<BLOCK_Q, BLOCK_KV, D, 4, is_causal, use_mask, full_q_tile, kv_rem>( \
         Q, K, V, M, O, bs, qh, head_ratio, len_q, len_kv, scale); \
   } \
 }
+
+#define INSTANTIATE_FLASH_ATTN_FOR_MASK_STRATEGY(BQ, BKV, D, causal, mask) \
+  DEFINE_ATTN_V5_KERNEL(attention_v5_full_##BQ##_##BKV##_##D##_##causal##_##mask,        BQ, BKV, D, causal, mask, true,  false) \
+  DEFINE_ATTN_V5_KERNEL(attention_v5_tail_##BQ##_##BKV##_##D##_##causal##_##mask,        BQ, BKV, D, causal, mask, false, false) \
+  DEFINE_ATTN_V5_KERNEL(attention_v5_full_kv_rem_##BQ##_##BKV##_##D##_##causal##_##mask, BQ, BKV, D, causal, mask, true,  true)  \
+  DEFINE_ATTN_V5_KERNEL(attention_v5_tail_kv_rem_##BQ##_##BKV##_##D##_##causal##_##mask, BQ, BKV, D, causal, mask, false, true)
 
 #define INSTANTIATE_FLASH_ATTN_FOR_D(block_q, block_kv, D) \
   INSTANTIATE_FLASH_ATTN_FOR_MASK_STRATEGY(block_q, block_kv, D, false, false) \
