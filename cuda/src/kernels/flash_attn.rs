@@ -162,7 +162,7 @@ impl CudaFlashAttn {
         };
 
         if num_full_q_blocks > 0 {
-            let mut str = "full_".to_string();
+            let mut str = "fullq_".to_string();
             if len_kv % block_kv != 0 {
                 str.push_str("kv_rem_");
             }
@@ -170,7 +170,7 @@ impl CudaFlashAttn {
         }
 
         if len_q % block_q != 0 {
-            let mut str = "tail_".to_string();
+            let mut str = "tailq_".to_string();
             if len_kv % block_kv != 0 {
                 str.push_str("kv_rem_");
             }
