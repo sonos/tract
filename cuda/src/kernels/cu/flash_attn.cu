@@ -1,6 +1,8 @@
 #include "common.cuh"
 #include <math_constants.h>
 
+#define EXPF __expf
+
 // NOTE: stride in bytes
 template <int STRIDE>
 static __device__ __forceinline__
@@ -242,8 +244,8 @@ void kv_iter_body(
     this_rowmax0 = fmaxf(this_rowmax0, rowmax[qi][0]);
     this_rowmax1 = fmaxf(this_rowmax1, rowmax[qi][1]);
     // rescale accumulators with EXACT same factor you’ll use for denominators
-    const float rescale0 = __expf(rowmax[qi][0] - this_rowmax0);
-    const float rescale1 = __expf(rowmax[qi][1] - this_rowmax1);
+    const float rescale0 = EXPF(rowmax[qi][0] - this_rowmax0);
+    const float rescale1 = EXPF(rowmax[qi][1] - this_rowmax1);
 
     #pragma unroll
     for (int d = 0; d < DIM / MMA_N; ++d) {
@@ -258,10 +260,10 @@ void kv_iter_body(
     #pragma unroll
     for (int kvt = 0; kvt < BLOCK_KV / MMA_N; ++kvt) {
       float* r = S_rmem[qi][kvt];
-      r[0] = __expf(r[0] - this_rowmax0);
-      r[1] = __expf(r[1] - this_rowmax0);
-      r[2] = __expf(r[2] - this_rowmax1);
-      r[3] = __expf(r[3] - this_rowmax1);
+      r[0] = EXPF(r[0] - this_rowmax0);
+      r[1] = EXPF(r[1] - this_rowmax0);
+      r[2] = EXPF(r[2] - this_rowmax1);
+      r[3] = EXPF(r[3] - this_rowmax1);
 
       this_rowsumexp0 += (r[0] + r[1]);
       this_rowsumexp1 += (r[2] + r[3]);
