@@ -162,19 +162,11 @@ impl CudaFlashAttn {
         };
 
         if num_full_q_blocks > 0 {
-            let mut str = "fullq_".to_string();
-            if len_kv % block_kv != 0 {
-                str.push_str("kv_rem_");
-            }
-            kernel_launcher(&str, num_full_q_blocks)?;
+            kernel_launcher("fullq_", num_full_q_blocks)?;
         }
 
         if len_q % block_q != 0 {
-            let mut str = "tailq_".to_string();
-            if len_kv % block_kv != 0 {
-                str.push_str("kv_rem_");
-            }
-            kernel_launcher(&str, 1)?;
+            kernel_launcher("tailq_", 1)?;
         }
 
         Ok(())
