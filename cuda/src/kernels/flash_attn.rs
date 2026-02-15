@@ -131,7 +131,7 @@ impl CudaFlashAttn {
         let kernel_launcher = |suffix: &str, num_q_blocks: usize| -> TractResult<()> {
             let func = ctxt.load_pipeline(
                 LibraryName::FlashAttn,
-                format!("attention_v5_{suffix}{block_q}_{block_kv}_{d}_{is_causal}_{use_mask}"),
+                format!("attention_{suffix}{block_q}_{block_kv}_{d}_{is_causal}_{use_mask}"),
             )?;
 
             func.set_attribute(
