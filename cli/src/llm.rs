@@ -50,7 +50,7 @@ pub fn bench_pp(
     let inputs = get_or_make_inputs(&params.tract_model, &run_params)?;
 
     let (iters, dur) = limits.bench(&params.req_runnable()?, &inputs)?;
-    let tokens = pp as f64 / dur.as_secs_f64() / iters as f64;
+    let tokens = pp as f64 / dur.as_secs_f64() * iters as f64;
     println!("PP{pp}: {tokens:.1} tokens/sec");
     Ok(())
 }
