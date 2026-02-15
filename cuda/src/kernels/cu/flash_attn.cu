@@ -135,11 +135,12 @@ static __device__ __forceinline__ void st_global_half2_pred(half2* addr, half2 v
 }
 
 enum MaskMode { nomask = 0, mask = 1, causal = 2 };
+enum QTileMode { fullq = 0, tailq = 1 };
 
 // ======= kv_iter_body (invariants hoisted, tight scopes) =====================
 template<
   int BLOCK_Q, int BLOCK_KV, int DIM, int NUM_WARPS,
-  MaskMode MASK_MODE, bool full_q_tile, bool kv_tail
+  MaskMode MASK_MODE, QTileMode Q_TILE_MODE, bool kv_tail
 >
 static __device__ __forceinline__
 void kv_iter_body(
@@ -189,8 +190,8 @@ void kv_iter_body(
 
       if constexpr (kv_tail) {
         // tail validity
-        const bool i0_valid = full_q_tile ? true : (i0g < len_q);
-        const bool i1_valid = full_q_tile ? true : (i1g < len_q);
+        const bool i0_valid = Q_TILE_MODE == fullq ? true : (i0g < len_q);
+        const bool i1_valid = Q_TILE_MODE == fullq ? true : (i1g < len_q);
         const bool j0_valid = (j0 < len_kv);
         const bool j1_valid = (j1 < len_kv);
         bool c00 = j0_valid & i0_valid;
@@ -285,7 +286,7 @@ void kv_iter_body(
 // ============================================================================
 // Kernel. Adapted from: https://github.com/gau-nernst/learn-cuda/blob/main/07_attention/attention_v5.cu
 // ============================================================================
-template<int BLOCK_Q, int BLOCK_KV, int DIM, int NUM_WARPS, MaskMode MASK_MODE, bool full_q_tile, bool kv_rem>
+template<int BLOCK_Q, int BLOCK_KV, int DIM, int NUM_WARPS, MaskMode MASK_MODE, QTileMode Q_TILE_MODE, bool kv_rem>
 static __device__ void attention_kernel(
   const half* __restrict__ Q,  // [bs, len_q, DIM]
   const half* __restrict__ K,  // [bs, len_kv, DIM]
@@ -307,7 +308,7 @@ static __device__ void attention_kernel(
   const int lane_id = tid % WARP_SIZE;
 
   int q_block_id_offset = 0;
-  if constexpr(!full_q_tile) {
+  if constexpr(Q_TILE_MODE == tailq) {
     q_block_id_offset = (len_q / BLOCK_Q);
   }
   const int q_block_base = (q_block_id + q_block_id_offset) * BLOCK_Q;
@@ -368,7 +369,7 @@ static __device__ void attention_kernel(
   }
 
   // ------------------ Load Q (tail-safe for last block only) -----------------
-  if constexpr (full_q_tile) {
+  if constexpr (Q_TILE_MODE == fullq) {
     global_to_shared_swizzle<BLOCK_Q, DIM, TB_SIZE>(Q_smem, Qptr, DIM, tid);
   } else {
     global_to_shared_swizzle_pred<BLOCK_Q, DIM, TB_SIZE>(Q_smem, Qptr, DIM, tid, q_valid);
@@ -443,7 +444,7 @@ static __device__ void attention_kernel(
         asm volatile("cp.async.commit_group;");
       }
 
-      kv_iter_body<BLOCK_Q, BLOCK_KV, DIM, NUM_WARPS, MASK_MODE, full_q_tile, false>(
+      kv_iter_body<BLOCK_Q, BLOCK_KV, DIM, NUM_WARPS, MASK_MODE, Q_TILE_MODE, false>(
         kv_tile_base, len_q, len_kv, past, q_block_base, warp_id, lane_id, scale,
         MaskBase, S_rmem, P_rmem, O_rmem, rowmax, rowsumexp
       );
@@ -512,7 +513,7 @@ static __device__ void attention_kernel(
           for (int dk = 0; dk < DIM / MMA_K; ++dk)
             mma_m16n8k16(Q_rmem[qi][dk], K_rmem[kvt][dk], S_rmem[qi][kvt]);
 
-      kv_iter_body<BLOCK_Q, BLOCK_KV, DIM, NUM_WARPS, MASK_MODE, full_q_tile, true>(
+      kv_iter_body<BLOCK_Q, BLOCK_KV, DIM, NUM_WARPS, MASK_MODE, Q_TILE_MODE, true>(
         kv_tile_base, len_q, len_kv, past, q_block_base, warp_id, lane_id, scale,
         MaskBase, S_rmem, P_rmem, O_rmem, rowmax, rowsumexp
       );
@@ -559,7 +560,7 @@ static __device__ void attention_kernel(
       half2* p0 = reinterpret_cast<half2 *>(Optr + (row0 + 0) * DIM + col);
       half2* p1 = reinterpret_cast<half2 *>(Optr + (row0 + 8) * DIM + col);
 
-      if constexpr (full_q_tile) {
+      if constexpr (Q_TILE_MODE == fullq) {
         // No predicates in full Q tiles
         *p0 = v0;
         *p1 = v1;
@@ -572,23 +573,23 @@ static __device__ void attention_kernel(
     }
 }
 
-#define DEFINE_ATTN_KERNEL(name, BLOCK_Q, BLOCK_KV, D, mask_mode, full_q_tile, kv_rem) \
+#define DEFINE_ATTN_KERNEL(name, BLOCK_Q, BLOCK_KV, D, mask_mode, q_tile_mode, kv_rem) \
 extern "C" { \
     __launch_bounds__(4 * WARP_SIZE) \
     __global__ void name ( \
     const half* __restrict__ Q, const half* __restrict__ K, \
     const half* __restrict__ V, const half* __restrict__ M, half* __restrict__ O, \
     int32_t bs, int32_t qh, int32_t head_ratio, int32_t len_q, int32_t len_kv, float scale) { \
-      attention_kernel<BLOCK_Q, BLOCK_KV, D, 4, mask_mode, full_q_tile, kv_rem>( \
+      attention_kernel<BLOCK_Q, BLOCK_KV, D, 4, mask_mode, q_tile_mode, kv_rem>( \
         Q, K, V, M, O, bs, qh, head_ratio, len_q, len_kv, scale); \
   } \
 }
 
 #define INSTANTIATE_FLASH_ATTN_FOR_MASK_STRATEGY(BQ, BKV, D, mask_mode) \
-  DEFINE_ATTN_KERNEL(attention_full_##BQ##_##BKV##_##D##_##mask_mode,        BQ, BKV, D, mask_mode, true,  false) \
-  DEFINE_ATTN_KERNEL(attention_tail_##BQ##_##BKV##_##D##_##mask_mode,        BQ, BKV, D, mask_mode, false, false) \
-  DEFINE_ATTN_KERNEL(attention_full_kv_rem_##BQ##_##BKV##_##D##_##mask_mode, BQ, BKV, D, mask_mode, true,  true)  \
-  DEFINE_ATTN_KERNEL(attention_tail_kv_rem_##BQ##_##BKV##_##D##_##mask_mode, BQ, BKV, D, mask_mode, false, true)
+  DEFINE_ATTN_KERNEL(attention_fullq_##BQ##_##BKV##_##D##_##mask_mode,        BQ, BKV, D, mask_mode, fullq,  false) \
+  DEFINE_ATTN_KERNEL(attention_tailq_##BQ##_##BKV##_##D##_##mask_mode,        BQ, BKV, D, mask_mode, tailq,  false) \
+  DEFINE_ATTN_KERNEL(attention_fullq_kv_rem_##BQ##_##BKV##_##D##_##mask_mode, BQ, BKV, D, mask_mode, fullq,  true)  \
+  DEFINE_ATTN_KERNEL(attention_tailq_kv_rem_##BQ##_##BKV##_##D##_##mask_mode, BQ, BKV, D, mask_mode, tailq,  true)
 
 #define INSTANTIATE_FLASH_ATTN_FOR_D(block_q, block_kv, D) \
   INSTANTIATE_FLASH_ATTN_FOR_MASK_STRATEGY(block_q, block_kv, D, nomask) \
