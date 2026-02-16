@@ -34,7 +34,7 @@ pub fn handle(
 
     let (iters, dur) = {
         let _profiler =
-            sub_matches.is_present("cuda-gpu-trace").then(|| cudarc::driver::safe::Profiler::new());
+            sub_matches.is_present("cuda-gpu-trace").then(cudarc::driver::safe::Profiler::new);
         limits.bench(&params.req_runnable()?, &inputs)?
     };
     let dur = dur.div_f64(iters as _);
