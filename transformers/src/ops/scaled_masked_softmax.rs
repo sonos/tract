@@ -103,7 +103,7 @@ pub fn scaled_masked_softmax_rule(
     op: &Softmax,
 ) -> TractResult<Option<TypedModelPatch>> {
     let rank = node.outputs[0].fact.rank();
-    rule_if!(op.axes.as_slice() == [rank - 2]);
+    rule_if!(op.axes.as_slice() == [rank - 1]);
 
     let in_fact = model.node_input_facts(node.id)?[0];
     let dt = in_fact.datum_type;
