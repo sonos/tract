@@ -174,8 +174,8 @@ pub fn handle(
     if sub_matches.is_present("memory-arena") {
         #[cfg(not(any(target_os = "macos", target_os = "ios")))]
         {
-            ensure_cuda_runtime_dependencies!(
-                "Memory arena is only enabled for MacOS / iOS devices or CUDA devices"
+            ensure_cuda_runtime_dependencies(
+                "Memory arena is only enabled for MacOS / iOS devices or CUDA devices",
             )?;
         }
         crate::memory_arena::dump_metrics(
