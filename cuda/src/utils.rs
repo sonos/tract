@@ -22,13 +22,33 @@ compile_error!(
         Enabled in Cargo features.",
 );
 
+extern "C" {
+    fn cuDriverGetVersion(version: *mut c_int) -> c_int;
+    fn cuInit(flags: u32) -> c_int;
+}
+
 pub fn ensure_cuda_driver_compatible() -> TractResult<()> {
     unsafe {
-        let mut version: c_int = 0;
-        let res = cudarc::driver::sys::cuDriverGetVersion(&mut version);
+        // Step 1: Initialize driver
+        let init_res = cuInit(0);
+        if init_res != 0 {
+            bail!(
+                "CUDA driver initialization failed (cuInit returned {}). \
+                 Is an NVIDIA driver installed and is a CUDA-capable GPU available?",
+                init_res
+            );
+        }
 
-        if res != cudarc::driver::sys::CUresult::CUDA_SUCCESS {
-            bail!("Failed to query CUDA driver version: {:?}", res);
+        // Step 2: Query version
+        let mut version: c_int = 0;
+        let res = cuDriverGetVersion(&mut version as *mut _);
+
+        if res != 0 {
+            bail!(
+                "cuDriverGetVersion failed with code {}. \
+                 The NVIDIA driver may be corrupted or improperly installed.",
+                res
+            );
         }
 
         if version < REQUIRED_CUDA_API {
@@ -61,6 +81,12 @@ pub fn are_culibs_present() -> bool {
             && cudarc::nvrtc::sys::is_culib_present()
             && cudarc::cublas::sys::is_culib_present()
     })
+}
+
+pub fn ensure_cuda_runtime_dependencies() -> TractResult<()> {
+    ensure_cuda_driver_compatible()?;
+    ensure!(are_culibs_present(), "One or more required CUDA libraries are missing or too old.");
+    Ok(())
 }
 
 pub fn get_ggml_q81_fact(t: &DeviceTensor) -> Option<GgmlQuantQ81Fact> {
