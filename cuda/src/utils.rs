@@ -1,6 +1,7 @@
 use std::ffi::c_int;
 use std::sync::OnceLock;
 
+use anyhow::Context;
 use libloading::{Library, Symbol};
 
 use tract_core::internal::tract_smallvec::ToSmallVec;
@@ -62,7 +63,7 @@ fn load_first_found_cuda_lib() -> TractResult<Library> {
 ///
 /// IMPORTANT: call this before touching `cudarc::driver::sys` or any cudarc context creation,
 /// otherwise cudarc may panic while eagerly binding symbols.
-pub fn ensure_cuda_driver_compatible() -> TractResult<()> {
+fn ensure_cuda_driver_compatible() -> TractResult<()> {
     // Load driver library without involving cudarc.
     let lib = load_first_found_cuda_lib()?;
 
@@ -129,7 +130,7 @@ pub fn ensure_cuda_driver_compatible() -> TractResult<()> {
     Ok(())
 }
 
-pub fn are_culibs_present() -> bool {
+fn are_cudarc_required_culibs_present() -> bool {
     *CULIBS_PRESENT.get_or_init(|| unsafe {
         cudarc::driver::sys::is_culib_present()
             && cudarc::runtime::sys::is_culib_present()
@@ -138,9 +139,17 @@ pub fn are_culibs_present() -> bool {
     })
 }
 
-pub fn ensure_cuda_runtime_dependencies() -> TractResult<()> {
-    ensure_cuda_driver_compatible()?;
-    ensure!(are_culibs_present(), "One or more required CUDA libraries are missing or too old.");
+pub fn ensure_cuda_runtime_dependencies(context_msg: &str) -> TractResult<()> {
+    ensure_cuda_driver_compatible()
+        .context("CUDA driver validation failed")
+        .context(context_msg)?;
+
+    ensure!(
+        are_cudarc_required_culibs_present(),
+        "{}: CUDA runtime sub-libraries missing/missaligned with cudarc.",
+        context_msg
+    );
+
     Ok(())
 }
 

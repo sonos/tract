@@ -14,7 +14,7 @@ pub mod time;
 
 use tract_core::internal::*;
 #[allow(unused_imports)]
-use tract_cuda::utils::are_culibs_present;
+use tract_cuda::utils::ensure_cuda_runtime_dependencies;
 
 pub fn capture_gpu_trace<F>(matches: &clap::ArgMatches, func: F) -> TractResult<()>
 where
@@ -41,10 +41,9 @@ where
             bail!("`--metal-gpu-trace` present but it is only available on MacOS and iOS")
         }
     } else if matches.is_present("cuda-gpu-trace") {
-        if !are_culibs_present() {
-            bail!("`--cuda-gpu-trace` present but no CUDA insatllation has been found")
-        }
-
+        ensure_cuda_runtime_dependencies(
+            "`--cuda-gpu-trace` present but no CUDA installation has been found",
+        )?;
         let _prof = cudarc::driver::safe::Profiler::new()?;
         func()
     } else {

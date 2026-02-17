@@ -11,7 +11,7 @@ use tract_core::ops::matmul::optimized::{OptMatMul, ProtoFusedSpec};
 use tract_core::ops::matmul::pack::DynPackedOpaqueFact;
 use tract_core::ops::scan::OptScan;
 #[allow(unused_imports)]
-use tract_cuda::utils::are_culibs_present;
+use tract_cuda::utils::ensure_cuda_runtime_dependencies;
 use tract_hir::internal::*;
 use tract_itertools::Itertools;
 use tract_libcli::annotations::*;
@@ -133,9 +133,7 @@ pub fn handle(
         if matches.is_present("metal") || matches.is_present("cuda") {
             #[cfg(not(any(target_os = "macos", target_os = "ios")))]
             {
-                if !are_culibs_present() {
-                    bail!("GPU profiling called on non-GPU device");
-                }
+                ensure_cuda_runtime_dependencies("GPU profiling called on non-GPU device")?;
             }
 
             tract_libcli::profile::profile_gpu(
@@ -176,9 +174,9 @@ pub fn handle(
     if sub_matches.is_present("memory-arena") {
         #[cfg(not(any(target_os = "macos", target_os = "ios")))]
         {
-            if !are_culibs_present() {
-                bail!("Memory arena is only enabled for MacOS / iOS devices or CUDA devices");
-            }
+            ensure_cuda_runtime_dependencies!(
+                "Memory arena is only enabled for MacOS / iOS devices or CUDA devices"
+            )?;
         }
         crate::memory_arena::dump_metrics(
             &params.req_typed_model(),
