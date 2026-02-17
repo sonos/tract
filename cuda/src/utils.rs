@@ -139,7 +139,7 @@ fn are_cudarc_required_culibs_present() -> bool {
     })
 }
 
-pub fn ensure_cuda_runtime_dependencies(context_msg: &str) -> TractResult<()> {
+pub fn ensure_cuda_runtime_dependencies(context_msg: &'static str) -> TractResult<()> {
     ensure_cuda_driver_compatible()
         .context("CUDA driver validation failed")
         .context(context_msg)?;
