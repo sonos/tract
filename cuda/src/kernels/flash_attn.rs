@@ -8,6 +8,7 @@ use tract_gpu::tensor::{DeviceTensor, IntoDevice};
 
 use crate::context::{TractCudaStream, cuda_context};
 use crate::kernels::launch_args::TractLaunchArgs;
+use crate::kernels::utils::compute_broadcast_strides;
 use crate::kernels::{LibraryName, WARP_SIZE, get_cuda_view, launch_args};
 
 #[derive(Debug, Clone)]
@@ -134,6 +135,13 @@ impl CudaFlashAttn {
         let m_view = mask.map(get_cuda_view).unwrap_or_else(|| null_ptr.as_view());
         let o_view = get_cuda_view(out);
 
+        let mask_strides = if let Some(m) = mask {
+            let strides = compute_broadcast_strides(m.shape(), m.strides())?;
+            (strides[0], strides[1])
+        } else {
+            (0, 0)
+        };
+
         let kernel_launcher = |suffix: &str, num_q_blocks: usize| -> TractResult<()> {
             let func = ctxt.load_pipeline(
                 LibraryName::FlashAttn,
@@ -156,6 +164,8 @@ impl CudaFlashAttn {
             launch_args.push_i32(head_ratio);
             launch_args.push_i32(len_q);
             launch_args.push_i32(k.shape()[2]);
+            launch_args.push_i32(mask_strides.0);
+            launch_args.push_i32(mask_strides.1);
             launch_args.push::<f32>(scale);
 
             let cfg = LaunchConfig {

@@ -532,12 +532,7 @@ fn convert_sdpa_to_cuda_flash_attn(
         let m = m_opt.unwrap();
         mut_cast(target, &node.name, m, mf.datum_type().unwrap(), DatumType::F16, ".cast_m")?;
         if mf.rank() != 4 {
-            let add = 4 - mf.rank();
-            let ax = ops::CudaAxisOp::from_tract_core(AxisOp::Reshape(
-                0,
-                tvec![],
-                tvec![TDim::Val(1); add],
-            ));
+            let ax = ops::CudaAxisOp::from_tract_core(AxisOp::Add(1));
             *m = target.wire_node(name(&node.name, ".reshape_m"), ax, &[*m])?[0];
         }
     }

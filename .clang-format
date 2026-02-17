@@ -2,4 +2,7 @@ BasedOnStyle: LLVM
 IndentWidth: 4
 TabWidth: 4
 UseTab: Never
+IndentPPDirectives: BeforeHash
+PPIndentWidth: 4
 
+# OneLineFormatOffRegex: '^\s*#\s*pragma\s+unroll\b'

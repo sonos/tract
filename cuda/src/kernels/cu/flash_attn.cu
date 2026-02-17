@@ -243,7 +243,7 @@ void kv_iter_body(
 
     this_rowmax0 = fmaxf(this_rowmax0, rowmax[qi][0]);
     this_rowmax1 = fmaxf(this_rowmax1, rowmax[qi][1]);
-    // rescale accumulators with EXACT same factor you’ll use for denominators
+    // rescale accumulators with EXACT same factor you'll use for denominators
     const float rescale0 = EXPF(rowmax[qi][0] - this_rowmax0);
     const float rescale1 = EXPF(rowmax[qi][1] - this_rowmax1);
 
@@ -295,7 +295,8 @@ static __device__ void attention_kernel(
   const half* __restrict__ V,  // [bs, len_kv, DIM]
   const half* __restrict__ M,  // [bs, len_q, len_kv]
   half* __restrict__ O,        // [bs, len_q, DIM]
-  int32_t bs, int32_t qh, int32_t head_ratio, int32_t len_q, int32_t len_kv, float scale)
+  int32_t bs, int32_t qh, int32_t head_ratio, int32_t len_q, int32_t len_kv,
+  int32_t mask_b_stride, int32_t mask_h_stride, float scale)
 {
   constexpr int TB_SIZE = NUM_WARPS * WARP_SIZE;
   constexpr int WARP_Q  = BLOCK_Q / NUM_WARPS;
@@ -327,8 +328,12 @@ static __device__ void attention_kernel(
   const half* Vptr = V + (((size_t)bid * kv_heads + kv_head_id) * (size_t)len_kv) * DIM;
   half*       Optr = O + (((size_t)bid * q_heads + hid) * (size_t)len_q + q_block_base) * DIM;
 
-  const half* __restrict__ MaskBase =
-    (MASK_MODE == mask ? (M ? (M + (size_t)q_block_base * len_kv) : nullptr) : nullptr);
+  const half* __restrict__ MaskBase = nullptr;
+  if constexpr (MASK_MODE == mask) {
+    if (M) {
+      MaskBase = M + (size_t)(q_block_base * len_kv + mask_b_stride * bid + mask_h_stride * hid);
+    }
+  }
 
   // Shared memory layout:
   // Q_smem (BLOCK_Q x DIM) overlaps K_smem (2 * BLOCK_KV x DIM), plus V_smem (BLOCK_KV x DIM)
@@ -426,7 +431,7 @@ static __device__ void attention_kernel(
         addr ^=  dk * MMA_K * sizeof(half);
         ldmatrix_x4(K_rmem[kvt][dk], addr);
       }
-    
+
     {
       // S = Q @ K^T
       float S_rmem[WARP_Q / MMA_M][BLOCK_KV / MMA_N][4] = {};
@@ -504,7 +509,7 @@ static __device__ void attention_kernel(
         addr ^=  dk * MMA_K * sizeof(half);
         ldmatrix_x4(K_rmem[kvt][dk], addr);
       }
-    
+
     {
       // S = Q @ K^T
       float S_rmem[WARP_Q / MMA_M][BLOCK_KV / MMA_N][4] = {};
@@ -582,9 +587,11 @@ extern "C" { \
     __global__ void name ( \
     const half* __restrict__ Q, const half* __restrict__ K, \
     const half* __restrict__ V, const half* __restrict__ M, half* __restrict__ O, \
-    int32_t bs, int32_t qh, int32_t head_ratio, int32_t len_q, int32_t len_kv, float scale) { \
+    int32_t bs, int32_t qh, int32_t head_ratio, int32_t len_q, int32_t len_kv, \
+    int32_t mask_b_stride, int32_t mask_h_stride, float scale) { \
       attention_kernel<BLOCK_Q, BLOCK_KV, D, 4, mask_mode, q_tile_mode>( \
-        Q, K, V, M, O, bs, qh, head_ratio, len_q, len_kv, scale); \
+        Q, K, V, M, O, bs, qh, head_ratio, len_q, len_kv, \
+        mask_b_stride, mask_h_stride, scale); \
   } \
 }
 
@@ -601,7 +608,7 @@ extern "C" { \
   INSTANTIATE_FLASH_ATTN_FOR_D(block_q, block_kv, 64) \
   INSTANTIATE_FLASH_ATTN_FOR_D(block_q, block_kv, 128) \
   INSTANTIATE_FLASH_ATTN_FOR_D(block_q, block_kv, 80) \
-  // Other supported D value. 
+  // Other supported D value.
   //Never encountered in practice so commented to keep compilation fast
   //INSTANTIATE_FLASH_ATTN_FOR_D(block_q, block_kv, 96) \
   //INSTANTIATE_FLASH_ATTN_FOR_D(block_q, block_kv, 112) \

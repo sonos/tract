@@ -52,7 +52,9 @@ impl TypedOp for CudaScaledMaskedSoftmax {
             ensure!(facts.len() == 2);
             let dt = facts[0].datum_type;
             ensure!(dt == facts[1].datum_type);
-            ensure!(facts[0].rank() == 3 && facts[1].rank() == 3);
+            ensure!(facts[0].rank() <= 5);
+            ensure!(facts[0].rank() >= 2);
+            ensure!(facts[0].rank() == facts[1].rank());
             let fact = dt.fact(facts[0].shape.clone());
             Ok(tvec!(fact))
         })

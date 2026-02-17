@@ -35,8 +35,7 @@ impl EvalOp for CudaFlashAttention {
             let q = inputs[0].to_device_tensor()?;
             let k = inputs[1].to_device_tensor()?;
             let v = inputs[2].to_device_tensor()?;
-            let mask = if inputs.len() == 4 { Some(inputs[3].to_device_tensor()?) } else { None };
-
+            let mask = inputs.get(3).map(|m| m.to_device_tensor()).transpose()?;
             let output = tract_gpu::session_handler::make_tensor_for_node(
                 session,
                 node_id,
