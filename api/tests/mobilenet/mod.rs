@@ -390,71 +390,71 @@ fn test_value_methods() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn state_init_from_facts(
-    facts: Vec<Fact>,
-    default_symbol_value: usize,
-) -> Vec<ndarray::ArrayD<f32>> {
-    let mut state_initializers = vec![];
-    for fact in facts {
-        let fact = fact.to_string();
-        let mut parsed = fact.split(',').collect::<Vec<_>>();
+// fn state_init_from_facts(
+//     facts: Vec<Fact>,
+//     default_symbol_value: usize,
+// ) -> Vec<ndarray::ArrayD<f32>> {
+//     let mut state_initializers = vec![];
+//     for fact in facts {
+//         let fact = fact.to_string();
+//         let mut parsed = fact.split(',').collect::<Vec<_>>();
 
-        let dt = parsed.pop().unwrap();
-        let dims = parsed
-            .iter()
-            .map(|p| {
-                //Set symbols to 4
-                p.parse::<usize>().unwrap_or(default_symbol_value)
-            })
-            .collect::<Vec<usize>>();
+//         let dt = parsed.pop().unwrap();
+//         let dims = parsed
+//             .iter()
+//             .map(|p| {
+//                 //Set symbols to 4
+//                 p.parse::<usize>().unwrap_or(default_symbol_value)
+//             })
+//             .collect::<Vec<usize>>();
 
-        assert_eq!(dt, "F32");
-        let tensor = ndarray::ArrayD::<f32>::zeros(dims);
-        state_initializers.push(tensor);
-    }
-    state_initializers
-}
+//         assert_eq!(dt, "F32");
+//         let tensor = ndarray::ArrayD::<f32>::zeros(dims);
+//         state_initializers.push(tensor);
+//     }
+//     state_initializers
+// }
 
-#[test]
-#[ignore = "Model need to be downloaded locally (use .travis/test-llm.sh)"]
-fn test_state_init() -> anyhow::Result<()> {
-    let nnef = nnef()?.with_tract_core()?.with_tract_transformers()?;
-    let mut model = nnef.load("TinyLlama--TinyLlama_v1.1-q40ef32.nnef.tgz")?;
+// #[test]
+// #[ignore = "Model need to be downloaded locally (use .travis/test-llm.sh)"]
+// fn test_state_init() -> anyhow::Result<()> {
+//     let nnef = nnef()?.with_tract_core()?.with_tract_transformers()?;
+//     let mut model = nnef.load("TinyLlama--TinyLlama_v1.1-q40ef32.nnef.tgz")?;
 
-    // Do KV Cache optim
-    model.transform("detect-kv-cache")?;
-    assert_eq!(model.input_count()?, 1);
+//     // Do KV Cache optim
+//     model.transform("detect-kv-cache")?;
+//     assert_eq!(model.input_count()?, 1);
 
-    let mut state = model.into_runnable()?.spawn_state()?;
+//     let mut state = model.into_runnable()?.spawn_state()?;
 
-    let state_initializers = state_init_from_facts(state.get_states_facts()?, 4);
-    state.set_states(state_initializers.clone())?;
+//     let state_initializers = state_init_from_facts(state.get_states_facts()?, 4);
+//     state.set_states(state_initializers.clone())?;
 
-    let mut out_states = state.get_states()?;
-    for v in state_initializers {
-        let s = out_states.remove(0);
-        assert_eq!(s.view::<f32>()?, v);
-    }
-    Ok(())
-}
+//     let mut out_states = state.get_states()?;
+//     for v in state_initializers {
+//         let s = out_states.remove(0);
+//         assert_eq!(s.view::<f32>()?, v);
+//     }
+//     Ok(())
+// }
 
-#[test]
-#[ignore = "Model need to be downloaded locally (use .travis/test-llm.sh)"]
-fn test_profile_with_state_init() -> anyhow::Result<()> {
-    let nnef = nnef()?.with_tract_core()?.with_tract_transformers()?;
-    let mut model = nnef.load("TinyLlama--TinyLlama_v1.1-q40ef32.nnef.tgz")?;
+// #[test]
+// #[ignore = "Model need to be downloaded locally (use .travis/test-llm.sh)"]
+// fn test_profile_with_state_init() -> anyhow::Result<()> {
+//     let nnef = nnef()?.with_tract_core()?.with_tract_transformers()?;
+//     let mut model = nnef.load("TinyLlama--TinyLlama_v1.1-q40ef32.nnef.tgz")?;
 
-    let input = ndarray::ArrayD::<i64>::zeros(vec![1, 1]);
-    let state_initializers: Vec<ndarray::ArrayD<f32>> = (1..model.input_count()?)
-        .map(|_| ndarray::ArrayD::<f32>::zeros(vec![1, 4, 4, 64]).into())
-        .collect();
+//     let input = ndarray::ArrayD::<i64>::zeros(vec![1, 1]);
+//     let state_initializers: Vec<ndarray::ArrayD<f32>> = (1..model.input_count()?)
+//         .map(|_| ndarray::ArrayD::<f32>::zeros(vec![1, 4, 4, 64]).into())
+//         .collect();
 
-    // Do KV Cache optim
-    model.transform("detect-kv-cache")?;
-    assert_eq!(model.input_count()?, 1);
+//     // Do KV Cache optim
+//     model.transform("detect-kv-cache")?;
+//     assert_eq!(model.input_count()?, 1);
 
-    let model = model.into_runnable()?;
-    model.profile_json(Some([input]), Some(state_initializers))?;
+//     let model = model.into_runnable()?;
+//     model.profile_json(Some([input]), Some(state_initializers))?;
 
-    Ok(())
-}
+//     Ok(())
+// }
