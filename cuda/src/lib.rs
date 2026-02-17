@@ -27,7 +27,7 @@ impl Runtime for CudaRuntime {
         mut model: TypedModel,
         options: &RunOptions,
     ) -> TractResult<Box<dyn Runnable>> {
-        ensure_cuda_runtime_dependencies()?;
+        ensure_cuda_runtime_dependencies("cuda runtime supported dependencies not found.")?;
         CudaTransform.transform(&mut model)?;
         model.optimize()?;
 
