@@ -39,6 +39,10 @@ criterion.workspace = true
 proptest.workspace = true
 rand.workspace = true
 
+[features]
+cuda-12060 = ["cudarc/cuda-12060"]
+default = ["cuda-12060"]
+
 [[bench]]
 name = "cuda_flash"
 harness = false
