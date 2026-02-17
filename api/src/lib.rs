@@ -259,16 +259,24 @@ pub trait StateInterface {
         V: TryInto<Self::Value, Error = E>,
         E: Into<anyhow::Error>;
 
+    #[doc(hidden)]
+    #[deprecated]
     fn initializable_states_count(&self) -> Result<usize>;
 
+    #[doc(hidden)]
+    #[deprecated]
     fn get_states_facts(&self) -> Result<Vec<Self::Fact>>;
 
+    #[doc(hidden)]
+    #[deprecated]
     fn set_states<I, V, E>(&mut self, state_initializers: I) -> Result<()>
     where
         I: IntoIterator<Item = V>,
         V: TryInto<Self::Value, Error = E>,
         E: Into<anyhow::Error> + Debug;
 
+    #[doc(hidden)]
+    #[deprecated]
     fn get_states(&self) -> Result<Vec<Self::Value>>;
 }
 
