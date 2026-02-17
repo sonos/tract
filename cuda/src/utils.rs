@@ -1,3 +1,4 @@
+use std::ffi::c_int;
 use std::sync::OnceLock;
 
 use tract_core::internal::tract_smallvec::ToSmallVec;
@@ -9,6 +10,49 @@ use crate::Q40_ROW_PADDING;
 use crate::ops::GgmlQuantQ81Fact;
 
 static CULIBS_PRESENT: OnceLock<bool> = OnceLock::new();
+
+// Ensure exactly cuda-12060 is enabled.
+// Prevent accidental change of feature gate without
+// updating this required API version used for compatibility check.
+// please update the 3 references bellow if cudarc gate is updated to a newer version.
+pub const REQUIRED_CUDA_API: i32 = 12060;
+#[cfg(not(feature = "cuda-12060"))]
+compile_error!(
+    "Tract CUDA backend currently supports only cudarc feature 'cuda-12060'. \
+        Enabled in Cargo features.",
+);
+
+pub fn ensure_cuda_driver_compatible() -> TractResult<()> {
+    unsafe {
+        let mut version: c_int = 0;
+        let res = cudarc::driver::sys::cuDriverGetVersion(&mut version);
+
+        if res != cudarc::driver::sys::CUresult::CUDA_SUCCESS {
+            bail!("Failed to query CUDA driver version: {:?}", res);
+        }
+
+        if version < REQUIRED_CUDA_API {
+            let req_major = REQUIRED_CUDA_API / 1000;
+            let req_minor = (REQUIRED_CUDA_API % 1000) / 10;
+
+            let found_major = version / 1000;
+            let found_minor = (version % 1000) / 10;
+
+            bail!(
+                "CUDA driver too old.\n\
+                 Built with cudarc feature cuda-{} (requires >= {}.{}).\n\
+                 Found driver API {}.{}.\n\
+                 Upgrade NVIDIA driver.",
+                REQUIRED_CUDA_API,
+                req_major,
+                req_minor,
+                found_major,
+                found_minor
+            );
+        }
+    }
+    Ok(())
+}
 
 pub fn are_culibs_present() -> bool {
     *CULIBS_PRESENT.get_or_init(|| unsafe {
