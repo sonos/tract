@@ -146,7 +146,7 @@ pub fn ensure_cuda_runtime_dependencies(context_msg: &'static str) -> TractResul
 
     ensure!(
         are_cudarc_required_culibs_present(),
-        "{}: CUDA runtime sub-libraries missing/missaligned with cudarc.",
+        "{}: CUDA runtime sub-libraries missing/missaligned with cudarc (nvrtc,cublas,cudart).",
         context_msg
     );
 
