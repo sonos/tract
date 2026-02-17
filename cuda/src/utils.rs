@@ -1,6 +1,8 @@
 use std::ffi::c_int;
 use std::sync::OnceLock;
 
+use libloading::{Library, Symbol};
+
 use tract_core::internal::tract_smallvec::ToSmallVec;
 use tract_core::internal::*;
 use tract_core::tract_linalg::block_quant::*;
@@ -22,47 +24,99 @@ compile_error!(
         Enabled in Cargo features.",
 );
 
-unsafe extern "C" {
-    unsafe fn cuDriverGetVersion(version: *mut c_int) -> c_int;
-    unsafe fn cuInit(flags: u32) -> c_int;
+/// CUDA Driver API status code type (CUresult is an enum, but it's ABI-compatible with int).
+type CuResult = c_int;
+
+type CuInitFn = unsafe extern "C" fn(flags: u32) -> CuResult;
+type CuDriverGetVersionFn = unsafe extern "C" fn(version: *mut c_int) -> CuResult;
+
+#[cfg(target_os = "linux")]
+const CUDA_DRIVER_LIB_CANDIDATES: [&str; 2] = ["libcuda.so.1", "libcuda.so"];
+
+#[cfg(target_os = "windows")]
+const CUDA_DRIVER_LIB_CANDIDATES: [&str; 1] = ["nvcuda.dll"];
+
+#[cfg(not(any(target_os = "linux", target_os = "windows")))]
+const CUDA_DRIVER_LIB_CANDIDATES: [&str; 0] = [];
+
+fn format_cuda_version(v: i32) -> (i32, i32) {
+    (v / 1000, (v % 1000) / 10)
 }
 
+fn load_first_found_cuda_lib() -> TractResult<Library> {
+    for name in CUDA_DRIVER_LIB_CANDIDATES {
+        if let Ok(lib) = unsafe { Library::new(name) } {
+            return Ok(lib);
+        }
+    }
+
+    bail!(
+        "CUDA driver library not found. Tried: {:?}. \
+         Is an NVIDIA driver installed \
+         (and, in containers, did you run with GPU passthrough)?",
+        CUDA_DRIVER_LIB_CANDIDATES
+    )
+}
+
+/// Checks that the installed CUDA driver is present and new enough to satisfy REQUIRED_CUDA_API.
+///
+/// IMPORTANT: call this before touching `cudarc::driver::sys` or any cudarc context creation,
+/// otherwise cudarc may panic while eagerly binding symbols.
 pub fn ensure_cuda_driver_compatible() -> TractResult<()> {
+    // Load driver library without involving cudarc.
+    let lib = load_first_found_cuda_lib()?;
+
     unsafe {
-        // Step 1: Initialize driver
-        let init_res = cuInit(0);
+        // Resolve symbols we need. If these are missing, the driver install is broken or not NVIDIA.
+        let cu_init: Symbol<CuInitFn> = lib.get(b"cuInit\0").map_err(|e| {
+            format_err!(
+                "CUDA driver library loaded, but symbol cuInit is missing. \
+                 This does not look like a functional NVIDIA driver installation. Details: {e}"
+            )
+        })?;
+
+        let cu_driver_get_version: Symbol<CuDriverGetVersionFn> =
+            lib.get(b"cuDriverGetVersion\0").map_err(|e| {
+                format_err!(
+                    "CUDA driver library loaded, but symbol cuDriverGetVersion is missing. \
+                     Driver is too old or installation is corrupted. Details: {e}"
+                )
+            })?;
+
+        // Initialize the driver. This also surfaces "no device / permission / container" issues early.
+        let init_res = cu_init(0);
         if init_res != 0 {
+            // Don't assume specific numeric codes here; just report the CUresult.
             bail!(
                 "CUDA driver initialization failed (cuInit returned {}). \
-                 Is an NVIDIA driver installed and is a CUDA-capable GPU available?",
+                 Possible causes: no CUDA-capable device exposed to this process, \
+                 missing /dev/nvidia* nodes (container), insufficient permissions, \
+                 or a broken driver install.",
                 init_res
             );
         }
 
-        // Step 2: Query version
+        // Query driver API version.
         let mut version: c_int = 0;
-        let res = cuDriverGetVersion(&mut version as *mut _);
-
-        if res != 0 {
+        let ver_res = cu_driver_get_version(&mut version as *mut _);
+        if ver_res != 0 {
             bail!(
-                "cuDriverGetVersion failed with code {}. \
-                 The NVIDIA driver may be corrupted or improperly installed.",
-                res
+                "cuDriverGetVersion failed (returned {}). \
+                 NVIDIA driver may be corrupted or not functioning properly.",
+                ver_res
             );
         }
 
+        // Compare against required API based on feature gate.
         if version < REQUIRED_CUDA_API {
-            let req_major = REQUIRED_CUDA_API / 1000;
-            let req_minor = (REQUIRED_CUDA_API % 1000) / 10;
-
-            let found_major = version / 1000;
-            let found_minor = (version % 1000) / 10;
+            let (req_major, req_minor) = format_cuda_version(REQUIRED_CUDA_API);
+            let (found_major, found_minor) = format_cuda_version(version);
 
             bail!(
                 "CUDA driver too old.\n\
-                 Built with cudarc feature cuda-{} (requires >= {}.{}).\n\
+                 Built with cudarc feature cuda-{} (requires driver API >= {}.{}).\n\
                  Found driver API {}.{}.\n\
-                 Upgrade NVIDIA driver.",
+                 Fix: upgrade the NVIDIA driver, or rebuild tract-cuda with a lower cuda-XXXXX gate.",
                 REQUIRED_CUDA_API,
                 req_major,
                 req_minor,
@@ -71,6 +125,7 @@ pub fn ensure_cuda_driver_compatible() -> TractResult<()> {
             );
         }
     }
+
     Ok(())
 }
 

@@ -32,6 +32,7 @@ tract-gpu.workspace = true
 log.workspace = true
 cudarc.workspace = true
 inventory.workspace = true
+libloading.workspace = true
 
 
 [dev-dependencies]
