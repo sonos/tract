@@ -20,6 +20,7 @@ box_drawing.workspace = true
 clap.workspace = true
 criterion.workspace = true
 colorous.workspace = true
+cudarc.workspace = true
 env_logger.workspace = true
 flate2.workspace = true
 fs-err.workspace = true

@@ -31,7 +31,12 @@ pub fn handle(
     let inputs = get_or_make_inputs(&params.tract_model, &run_params)?;
 
     limits.warmup(&params.req_runnable()?, &inputs)?;
-    let (iters, dur) = limits.bench(&params.req_runnable()?, &inputs)?;
+
+    let (iters, dur) = {
+        let _profiler =
+            sub_matches.is_present("cuda-gpu-trace").then(cudarc::driver::safe::Profiler::new);
+        limits.bench(&params.req_runnable()?, &inputs)?
+    };
     let dur = dur.div_f64(iters as _);
 
     if params.machine_friendly {

@@ -119,7 +119,13 @@ impl CudaFlashAttn {
         let tb_size = n_warps * WARP_SIZE;
         let smem_size = block_q.max(block_kv * 3) * d * size_of::<f16>();
 
-        let use_mask = mask.is_some();
+        let mask_mode = if is_causal {
+            "causal"
+        } else if mask.is_some() {
+            "mask"
+        } else {
+            "nomask"
+        };
 
         let null_ptr = stream.null()?;
 
@@ -139,7 +145,7 @@ impl CudaFlashAttn {
         let kernel_launcher = |suffix: &str, num_q_blocks: usize| -> TractResult<()> {
             let func = ctxt.load_pipeline(
                 LibraryName::FlashAttn,
-                format!("attention_v5_{suffix}{block_q}_{block_kv}_{d}_{is_causal}_{use_mask}"),
+                format!("attention_{suffix}{block_q}_{block_kv}_{d}_{mask_mode}"),
             )?;
 
             func.set_attribute(
@@ -172,19 +178,11 @@ impl CudaFlashAttn {
         };
 
         if num_full_q_blocks > 0 {
-            let mut str = "full_".to_string();
-            if len_kv % block_kv != 0 {
-                str.push_str("kv_rem_");
-            }
-            kernel_launcher(&str, num_full_q_blocks)?;
+            kernel_launcher("fullq_", num_full_q_blocks)?;
         }
 
         if len_q % block_q != 0 {
-            let mut str = "tail_".to_string();
-            if len_kv % block_kv != 0 {
-                str.push_str("kv_rem_");
-            }
-            kernel_launcher(&str, 1)?;
+            kernel_launcher("tailq_", 1)?;
         }
 
         Ok(())

@@ -763,7 +763,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
     match matches.subcommand() {
         Some(("bench", m)) => {
             need_optimisations = true;
-            bench::handle(&params, &matches, &params::bench_limits_from_clap(m)?)
+            bench::handle(&params, m, &params::bench_limits_from_clap(m)?)
         }
 
         Some(("criterion", m)) => {

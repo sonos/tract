@@ -156,6 +156,7 @@ impl TypedOp for EinSumMatMul {
             match (self.m.as_i64(), self.n.as_i64()) {
                 (Some(m), Some(n)) => m < n,
                 (None, Some(n)) => n >= 8,
+                (Some(_), _) => false,
                 _ => (self.n.clone() - &self.m).prove_positive_or_zero(),
             }
         };
@@ -170,11 +171,12 @@ impl TypedOp for EinSumMatMul {
                 &[node.inputs[1], node.inputs[0]],
                 op,
             )
-            .map(Some);
+            .map(|p| Some(p.with_context("transposing")));
         }
         // opt mat mul assumes we have at least one m or n
         if self.c_m().is_some() || self.c_n().is_some() {
-            return optimized_mat_mul(model, node, self);
+            return optimized_mat_mul(model, node, self)
+                .map(|opt| opt.map(|p| p.with_context("optimizing")));
         }
         Ok(None)
     }
