@@ -22,9 +22,9 @@ compile_error!(
         Enabled in Cargo features.",
 );
 
-extern "C" {
-    fn cuDriverGetVersion(version: *mut c_int) -> c_int;
-    fn cuInit(flags: u32) -> c_int;
+unsafe extern "C" {
+    unsafe fn cuDriverGetVersion(version: *mut c_int) -> c_int;
+    unsafe fn cuInit(flags: u32) -> c_int;
 }
 
 pub fn ensure_cuda_driver_compatible() -> TractResult<()> {
