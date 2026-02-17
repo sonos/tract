@@ -560,12 +560,14 @@ impl StateInterface for State {
         Ok(count)
     }
 
+    #[allow(deprecated)]
     fn initializable_states_count(&self) -> Result<usize> {
         let mut n_states = 0;
         check!(sys::tract_state_initializable_states_count(self.0, &mut n_states))?;
         Ok(n_states)
     }
 
+    #[allow(deprecated)]
     fn get_states_facts(&self) -> Result<Vec<Fact>> {
         let n_states = self.initializable_states_count()?;
         let mut fptrs = vec![null_mut(); n_states];
@@ -577,6 +579,7 @@ impl StateInterface for State {
         res
     }
 
+    #[allow(deprecated)]
     fn set_states<I, V, E>(&mut self, state_initializers: I) -> Result<()>
     where
         I: IntoIterator<Item = V>,
@@ -606,6 +609,7 @@ impl StateInterface for State {
         Ok(())
     }
 
+    #[allow(deprecated)]
     fn get_states(&self) -> Result<Vec<Self::Value>> {
         let n_states = self.initializable_states_count()?;
 

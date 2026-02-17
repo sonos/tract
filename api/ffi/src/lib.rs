@@ -1229,6 +1229,9 @@ pub unsafe extern "C" fn tract_state_destroy(state: *mut *mut TractState) -> TRA
 
 /// Get number of initializable stateful op
 #[unsafe(no_mangle)]
+#[deprecated]
+#[doc(hidden)]
+#[allow(deprecated)]
 pub unsafe extern "C" fn tract_state_initializable_states_count(
     state: *const TractState,
     n_states: *mut usize,
@@ -1243,6 +1246,9 @@ pub unsafe extern "C" fn tract_state_initializable_states_count(
 
 /// Get Stateful Ops's state facts
 #[unsafe(no_mangle)]
+#[deprecated]
+#[doc(hidden)]
+#[allow(deprecated)]
 pub unsafe extern "C" fn tract_state_get_states_facts(
     state: *const TractState,
     states: *mut *mut TractFact,
@@ -1260,6 +1266,9 @@ pub unsafe extern "C" fn tract_state_get_states_facts(
 }
 
 /// Initialize Stateful Ops with specified values
+#[deprecated]
+#[doc(hidden)]
+#[allow(deprecated)]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_state_set_states(
     state: *mut TractState,
@@ -1280,6 +1289,9 @@ pub unsafe extern "C" fn tract_state_set_states(
 }
 
 /// Get Stateful Ops's current states.
+#[deprecated]
+#[doc(hidden)]
+#[allow(deprecated)]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_state_get_states(
     state: *const TractState,
