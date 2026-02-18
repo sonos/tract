@@ -68,9 +68,10 @@ global_to_shared_swizzle_pad(uint32_t dst, const half *__restrict__ src, int tid
 
         const uint32_t dst_addr =
             swizzle<PADDED_DIM * sizeof(half)>(dst + (row * PADDED_DIM + col) * sizeof(half));
-        const half *__restrict__ src_addr = src + (row * DIM + col);
-
         const bool pred = (row < valid_rows) && (seg < segs_src);
+        // apparently, "forming" an invalid pointer in c++ UB, even not dereferrencing it.
+        const half *__restrict__ src_addr = pred ? (src + (row * DIM + col)) : src;
+
         cp_async_cg_16B_pred(dst_addr, src_addr, pred);
     }
 }
@@ -156,6 +157,7 @@ kv_iter_body(const int kv_tile_base, const int len_q, const int len_kv, const in
              float (&O_rmem)[(BLOCK_Q / NUM_WARPS) / 16][PADDED_DIM / 8][4],
              float (&rowmax)[(BLOCK_Q / NUM_WARPS) / 16][2],
              float (&rowsumexp)[(BLOCK_Q / NUM_WARPS) / 16][2]) {
+    static_assert(BLOCK_Q <= 2 * BLOCK_KV);
     constexpr int WARP_Q = BLOCK_Q / NUM_WARPS;
     constexpr int MMA_M = 16, MMA_N = 8;
 
@@ -614,7 +616,7 @@ static __device__ void attention_kernel(const half *__restrict__ Q, // [bs, len_
     // Other supported D value.
 // Never encountered in practice so commented to keep compilation fast
 //                                           INSTANTIATE_FLASH_ATTN_FOR_D(block_q, block_kv, 96)
-//                                                                                                                            \
+//                                                                                                                                       \
   //INSTANTIATE_FLASH_ATTN_FOR_D(block_q, block_kv, 112) \
   //INSTANTIATE_FLASH_ATTN_FOR_D(block_q, block_kv, 256) \
 
