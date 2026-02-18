@@ -47,7 +47,7 @@ jobs:
 
       - name: Extract version tag
         id: version
-        run: echo value=$(echo ${{ github.ref }} | cut -f 3 -d / | tr -d 'v' ) >> $GITHUB_OUTPUT
+        run: echo value=$(echo ${{ github.ref }} | cut -f 3 -d / | sed 's/^v//' ) >> $GITHUB_OUTPUT
 
       - name: Build tract
         run: |
