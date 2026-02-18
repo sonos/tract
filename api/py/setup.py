@@ -16,7 +16,7 @@ version = os.environ.get("PYPI_VERSION_OVERRIDE")
 if version is None or version == "":
     version = toml.load("rust-workspace/api/Cargo.toml")["package"]["version"]
     version = re.sub("\-alpha\.", "a", version)
-    version = re.sub("\-dev\.", ".dev", version)
+    version = re.sub("\\-dev(\\.)?", ".dev", version)
 
 with open('docs/index.md', 'r') as file:
     readme = file.read()
