@@ -1,6 +1,6 @@
 [package]
 name = "tract-cuda"
-version = "0.23.0-dev.1"
+version = "0.23.0-pre"
 license = "MIT OR Apache-2.0"
 authors = [
 	"Louis Chouraki <louis.chouraki@sonos.com>",
