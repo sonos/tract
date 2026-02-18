@@ -518,11 +518,11 @@ static __device__ void attention_kernel(const half *__restrict__ Q, // [bs, len_
         asm volatile("cp.async.wait_group 1;");
         __syncthreads();
         _Pragma("unroll") for (int kvt = 0; kvt < BLOCK_KV / MMA_N; ++kvt)
-            _Pragma("unroll") for (int dk = 0; dk < DIM / MMA_K; dk += 2) {
+            _Pragma("unroll") for (int dk = 0; dk < DIM / MMA_K; dk++) {
             uint32_t addr = K_smem_thread + (kv_full_iters % 2) * (BLOCK_KV * DIM * sizeof(half));
             addr += kvt * MMA_N * DIM * sizeof(half);
             addr ^= dk * MMA_K * sizeof(half);
-            ldmatrix_x4(K_rmem[kvt][dk], addr);
+            ldmatrix_x2(K_rmem[kvt][dk], addr);
         }
 
         {
@@ -541,10 +541,10 @@ static __device__ void attention_kernel(const half *__restrict__ Q, // [bs, len_
         asm volatile("cp.async.wait_group 1;");
         __syncthreads();
         _Pragma("unroll") for (int kvt = 0; kvt < BLOCK_KV / MMA_K; ++kvt)
-            _Pragma("unroll") for (int d = 0; d < DIM / MMA_N; d += 2) {
+            _Pragma("unroll") for (int d = 0; d < DIM / MMA_N; d++) {
             uint32_t addr = V_smem_thread + kvt * MMA_K * DIM * sizeof(half);
             addr ^= d * MMA_N * sizeof(half);
-            ldmatrix_x4_trans(V_rmem[kvt][d], addr);
+            ldmatrix_x2_trans(V_rmem[kvt][d], addr);
         }
 
         // O += P @ V
@@ -616,7 +616,7 @@ static __device__ void attention_kernel(const half *__restrict__ Q, // [bs, len_
     INSTANTIATE_FLASH_ATTN_FOR_D(block_q, block_kv, 80)                                            \
     // Other supported D value.
     // Never encountered in practice so commented to keep compilation fast
-    //                  INSTANTIATE_FLASH_ATTN_FOR_D(block_q, block_kv, 96) \
+    //                      INSTANTIATE_FLASH_ATTN_FOR_D(block_q, block_kv, 96) \
   //INSTANTIATE_FLASH_ATTN_FOR_D(block_q, block_kv, 112) \
   //INSTANTIATE_FLASH_ATTN_FOR_D(block_q, block_kv, 256) \
 
