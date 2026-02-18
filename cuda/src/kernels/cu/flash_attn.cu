@@ -92,6 +92,16 @@ static __device__ __forceinline__ void ldmatrix_x4_trans(uint32_t regs[4], uint3
                  : "=r"(regs[0]), "=r"(regs[1]), "=r"(regs[2]), "=r"(regs[3])
                  : "r"(addr));
 }
+static __device__ __forceinline__ void ldmatrix_x2(uint32_t regs[2], uint32_t addr) {
+    asm volatile("ldmatrix.sync.aligned.m8n8.x2.shared.b16 {%0, %1}, [%2];"
+                 : "=r"(regs[0]), "=r"(regs[1])
+                 : "r"(addr));
+}
+static __device__ __forceinline__ void ldmatrix_x2_trans(uint32_t regs[2], uint32_t addr) {
+    asm volatile("ldmatrix.sync.aligned.m8n8.x2.trans.shared.b16 {%0, %1}, [%2];"
+                 : "=r"(regs[0]), "=r"(regs[1])
+                 : "r"(addr));
+}
 static __device__ __forceinline__ void mma_m16n8k16(uint32_t A[4], uint32_t B[2], float D[4]) {
     asm volatile("mma.sync.aligned.m16n8k16.row.col.f32.f16.f16.f32 "
                  "{%0, %1, %2, %3}, "
@@ -438,11 +448,11 @@ static __device__ void attention_kernel(const half *__restrict__ Q, // [bs, len_
         asm volatile("cp.async.wait_group 1;");
         __syncthreads();
         _Pragma("unroll") for (int kvt = 0; kvt < BLOCK_KV / MMA_N; ++kvt)
-            _Pragma("unroll") for (int dk = 0; dk < DIM / MMA_K; dk += 2) {
+            _Pragma("unroll") for (int dk = 0; dk < DIM / MMA_K; dk++) {
             uint32_t addr = K_smem_thread + (kv_id % 2) * (BLOCK_KV * DIM * sizeof(half));
             addr += kvt * MMA_N * DIM * sizeof(half);
             addr ^= dk * MMA_K * sizeof(half);
-            ldmatrix_x4(K_rmem[kvt][dk], addr);
+            ldmatrix_x2(K_rmem[kvt][dk], addr);
         }
 
         {
@@ -471,10 +481,10 @@ static __device__ void attention_kernel(const half *__restrict__ Q, // [bs, len_
         __syncthreads();
 
         _Pragma("unroll") for (int kvt = 0; kvt < BLOCK_KV / MMA_K; ++kvt)
-            _Pragma("unroll") for (int d = 0; d < DIM / MMA_N; d += 2) {
+            _Pragma("unroll") for (int d = 0; d < DIM / MMA_N; d++) {
             uint32_t addr = V_smem_thread + kvt * MMA_K * DIM * sizeof(half);
             addr ^= d * MMA_N * sizeof(half);
-            ldmatrix_x4_trans(V_rmem[kvt][d], addr);
+            ldmatrix_x2_trans(V_rmem[kvt][d], addr);
         }
 
         _Pragma("unroll") for (int qi = 0; qi < WARP_Q / MMA_M; ++qi)
@@ -606,7 +616,7 @@ static __device__ void attention_kernel(const half *__restrict__ Q, // [bs, len_
     INSTANTIATE_FLASH_ATTN_FOR_D(block_q, block_kv, 80)                                            \
     // Other supported D value.
     // Never encountered in practice so commented to keep compilation fast
-    //      INSTANTIATE_FLASH_ATTN_FOR_D(block_q, block_kv, 96) \
+    //                  INSTANTIATE_FLASH_ATTN_FOR_D(block_q, block_kv, 96) \
   //INSTANTIATE_FLASH_ATTN_FOR_D(block_q, block_kv, 112) \
   //INSTANTIATE_FLASH_ATTN_FOR_D(block_q, block_kv, 256) \
 
