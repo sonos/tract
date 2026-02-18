@@ -1,6 +1,6 @@
 [package]
 name = "tract-metal"
-version = "0.22.1-pre"
+version = "0.23.0-dev.1"
 license = "MIT OR Apache-2.0"
 authors = [
 	"Hubert de La Jonquière <hubert.delajonquiere@sonos.com>",
