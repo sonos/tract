@@ -4,6 +4,7 @@ on:
   schedule:
     - cron:  '0 3 * * MON'
   release:
+    types: [published]
   workflow_dispatch:
     inputs:
       publish:
