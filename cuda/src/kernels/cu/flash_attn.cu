@@ -48,8 +48,7 @@ static __device__ inline void cp_async_cg_16B_pred(uint32_t dst, const void *src
 
 template <int HEIGHT, int DIM, int PADDED_DIM, int TB_SIZE>
 static __device__ __forceinline__ void
-global_to_shared_swizzle_pad(uint32_t dst, const half *__restrict__ src, int src_stride, int tid,
-                             int valid_rows) {
+global_to_shared_swizzle_pad(uint32_t dst, const half *__restrict__ src, int tid, int valid_rows) {
     static_assert(DIM % 8 == 0, "DIM must be multiple of 8 (16B segments)");
     static_assert(PADDED_DIM % 8 == 0, "PADDED_DIM must be multiple of 8");
     static_assert(PADDED_DIM >= DIM, "PADDED_DIM must be >= DIM");
@@ -69,7 +68,7 @@ global_to_shared_swizzle_pad(uint32_t dst, const half *__restrict__ src, int src
 
         const uint32_t dst_addr =
             swizzle<PADDED_DIM * sizeof(half)>(dst + (row * PADDED_DIM + col) * sizeof(half));
-        const half *__restrict__ src_addr = src + (row * src_stride + col);
+        const half *__restrict__ src_addr = src + (row * DIM + col);
 
         const bool pred = (row < valid_rows) && (seg < segs_src);
         cp_async_cg_16B_pred(dst_addr, src_addr, pred);
@@ -399,7 +398,7 @@ static __device__ void attention_kernel(const half *__restrict__ Q, // [bs, len_
     // ------------------ Load Q (tail-safe for last block only)
     // -----------------
     global_to_shared_swizzle_pad<BLOCK_Q, DIM, PADDED_DIM, TB_SIZE>(
-        Q_smem, Qptr, DIM, tid, (Q_TILE_MODE == fullq ? BLOCK_Q : q_valid));
+        Q_smem, Qptr, tid, (Q_TILE_MODE == fullq ? BLOCK_Q : q_valid));
     asm volatile("cp.async.commit_group;");
     asm volatile("cp.async.wait_all;");
     __syncthreads();
@@ -422,7 +421,7 @@ static __device__ void attention_kernel(const half *__restrict__ Q, // [bs, len_
     const half *Vcur = Vptr;
 
     if (kv_full_iters > 0) {
-        global_to_shared_swizzle_pad<BLOCK_KV, DIM, PADDED_DIM, TB_SIZE>(K_smem + 0, Kcur, DIM, tid,
+        global_to_shared_swizzle_pad<BLOCK_KV, DIM, PADDED_DIM, TB_SIZE>(K_smem + 0, Kcur, tid,
                                                                          BLOCK_KV);
         Kcur += (size_t)BLOCK_KV * DIM;
         asm volatile("cp.async.commit_group;");
@@ -435,7 +434,7 @@ static __device__ void attention_kernel(const half *__restrict__ Q, // [bs, len_
 
         // Prefetch V (unguarded)
         __syncthreads();
-        global_to_shared_swizzle_pad<BLOCK_KV, DIM, PADDED_DIM, TB_SIZE>(V_smem, Vcur, DIM, tid,
+        global_to_shared_swizzle_pad<BLOCK_KV, DIM, PADDED_DIM, TB_SIZE>(V_smem, Vcur, tid,
                                                                          BLOCK_KV);
         Vcur += (size_t)BLOCK_KV * DIM;
         asm volatile("cp.async.commit_group;");
@@ -463,8 +462,8 @@ static __device__ void attention_kernel(const half *__restrict__ Q, // [bs, len_
             if (kv_id + 1 < kv_full_iters) {
                 const uint32_t Kdst =
                     K_smem + ((kv_id + 1) % 2) * (BLOCK_KV * PADDED_DIM * sizeof(half));
-                global_to_shared_swizzle_pad<BLOCK_KV, DIM, PADDED_DIM, TB_SIZE>(Kdst, Kcur, DIM,
-                                                                                 tid, BLOCK_KV);
+                global_to_shared_swizzle_pad<BLOCK_KV, DIM, PADDED_DIM, TB_SIZE>(Kdst, Kcur, tid,
+                                                                                 BLOCK_KV);
                 Kcur += (size_t)BLOCK_KV * DIM;
                 asm volatile("cp.async.commit_group;");
             }
@@ -500,15 +499,13 @@ static __device__ void attention_kernel(const half *__restrict__ Q, // [bs, len_
 
         // Prefetch tail K (predicated)
         const uint32_t Kdst = K_smem + (kv_full_iters % 2) * (BLOCK_KV * PADDED_DIM * sizeof(half));
-        global_to_shared_swizzle_pad<BLOCK_KV, DIM, PADDED_DIM, TB_SIZE>(Kdst, Kcur, DIM, tid,
-                                                                         kv_rem);
+        global_to_shared_swizzle_pad<BLOCK_KV, DIM, PADDED_DIM, TB_SIZE>(Kdst, Kcur, tid, kv_rem);
         Kcur += (size_t)BLOCK_KV * DIM;
         asm volatile("cp.async.commit_group;");
 
         __syncthreads();
         // Prefetch tail V (predicated)
-        global_to_shared_swizzle_pad<BLOCK_KV, DIM, PADDED_DIM, TB_SIZE>(V_smem, Vcur, DIM, tid,
-                                                                         kv_rem);
+        global_to_shared_swizzle_pad<BLOCK_KV, DIM, PADDED_DIM, TB_SIZE>(V_smem, Vcur, tid, kv_rem);
         Vcur += (size_t)BLOCK_KV * DIM;
         asm volatile("cp.async.commit_group;");
 
@@ -617,7 +614,7 @@ static __device__ void attention_kernel(const half *__restrict__ Q, // [bs, len_
     // Other supported D value.
 // Never encountered in practice so commented to keep compilation fast
 //                                           INSTANTIATE_FLASH_ATTN_FOR_D(block_q, block_kv, 96)
-//                                                                                                                \
+//                                                                                                                            \
   //INSTANTIATE_FLASH_ATTN_FOR_D(block_q, block_kv, 112) \
   //INSTANTIATE_FLASH_ATTN_FOR_D(block_q, block_kv, 256) \
 
