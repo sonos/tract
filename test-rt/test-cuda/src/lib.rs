@@ -198,6 +198,9 @@ impl Runtime for CudaTestRuntime {
         };
         Ok(Box::new(runnable))
     }
+    fn check(&self) -> TractResult<()> {
+        tract_core::runtime::runtime_for_name("cuda").context("No cuda runtime found")?.check()
+    }
 }
 
 macro_rules! cuda_test_suite {

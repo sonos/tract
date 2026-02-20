@@ -29,6 +29,9 @@ impl Runtime for TfliteRuntime {
         // std::fs::write("foo.tflite", &buffer)?;
         Ok(Box::new(TfliteRunnable(buffer, Arc::new(model))))
     }
+    fn check(&self) -> TractResult<()> {
+        Ok(())
+    }
 }
 
 #[derive(Clone)]

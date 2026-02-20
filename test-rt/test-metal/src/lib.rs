@@ -201,6 +201,10 @@ impl Runtime for MetalTestRuntime {
         };
         Ok(Box::new(runnable))
     }
+
+    fn check(&self) -> TractResult<()> {
+        Ok(())
+    }
 }
 
 macro_rules! metal_test_suite {

@@ -43,6 +43,10 @@ impl Runtime for CudaRuntime {
 
         Ok(Box::new(Arc::new(runnable)))
     }
+
+    fn check(&self) -> TractResult<()> {
+        ensure_cuda_runtime_dependencies("cuda runtime supported dependencies not found.")
+    }
 }
 
 register_runtime!(CudaRuntime = CudaRuntime);
