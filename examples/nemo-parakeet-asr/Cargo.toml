@@ -1,0 +1,12 @@
+[package]
+name = "nemo-parakeet-asr"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow.workspace = true
+float-ord.workspace = true
+hound = "3.5.1"
+itertools.workspace = true
+serde_json.workspace = true
+tract-rs.workspace = true

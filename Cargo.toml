@@ -34,6 +34,7 @@ members = [
     "examples/tensorflow-mobilenet-v2",
     "examples/tflite-mobilenet-v3",
     "examples/keras-tract-tf2",
+    "examples/nemo-parakeet-asr",
     "examples/nnef-dump-mobilenet-v2",
     "examples/nnef-mobilenet-v2",
     "examples/nnef-mobilenet-v2-api",
