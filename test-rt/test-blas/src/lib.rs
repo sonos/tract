@@ -28,6 +28,9 @@ mod as_blas {
             tract_core::transform::get_transform("as-blas")?.unwrap().transform(&mut model)?;
             Ok(Box::new(model.into_runnable_with_options(options)?))
         }
+        fn check(&self) -> TractResult<()> {
+            Ok(())
+        }
     }
 
     include!(concat!(env!("OUT_DIR"), "/tests/as_blas.rs"));

@@ -30,6 +30,9 @@ mod unoptimized {
         ) -> TractResult<Box<dyn Runnable>> {
             Ok(Box::new(model.into_runnable_with_options(options)?))
         }
+        fn check(&self) -> TractResult<()> {
+            Ok(())
+        }
     }
 
     include!(concat!(env!("OUT_DIR"), "/tests/unoptimized.rs"));
