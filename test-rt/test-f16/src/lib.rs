@@ -30,6 +30,10 @@ mod run_as_f16 {
                 outputs_dt,
             )))
         }
+
+        fn check(&self) -> TractResult<()> {
+            Ok(())
+        }
     }
 
     #[derive(Debug)]
@@ -165,6 +169,9 @@ mod nnef_f16 {
                 reloaded.into_optimized()?.into_runnable_with_options(&options)?,
                 outputs_dt,
             )))
+        }
+        fn check(&self) -> TractResult<()> {
+            Ok(())
         }
     }
 

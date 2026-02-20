@@ -25,6 +25,7 @@ pub trait Runtime: Debug + Send + Sync + 'static {
     fn prepare(&self, model: TypedModel) -> TractResult<Box<dyn Runnable>> {
         self.prepare_with_options(model, &Default::default())
     }
+    fn check(&self) -> TractResult<()>;
     fn prepare_with_options(
         &self,
         model: TypedModel,
@@ -112,6 +113,10 @@ impl Runtime for DefaultRuntime {
     ) -> TractResult<Box<dyn Runnable>> {
         let model = model.into_optimized()?;
         Ok(Box::new(TypedSimplePlan::new_with_options(model, options)?))
+    }
+
+    fn check(&self) -> TractResult<()> {
+        Ok(())
     }
 }
 
@@ -207,6 +212,10 @@ impl Runtime for InventorizedRuntime {
     ) -> TractResult<Box<dyn Runnable>> {
         self.0.prepare_with_options(model, options)
     }
+
+    fn check(&self) -> TractResult<()> {
+        self.0.check()
+    }
 }
 
 impl Debug for InventorizedRuntime {
@@ -218,7 +227,7 @@ impl Debug for InventorizedRuntime {
 inventory::collect!(InventorizedRuntime);
 
 pub fn runtimes() -> impl Iterator<Item = &'static dyn Runtime> {
-    inventory::iter::<InventorizedRuntime>().map(|ir| ir.0)
+    inventory::iter::<InventorizedRuntime>().filter(|rt| rt.check().is_ok()).map(|ir| ir.0)
 }
 
 pub fn runtime_for_name(s: &str) -> Option<&'static dyn Runtime> {

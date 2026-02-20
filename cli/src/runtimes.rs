@@ -17,4 +17,7 @@ impl Runtime for UnoptimizedRuntime {
     ) -> TractResult<Box<dyn Runnable>> {
         Ok(Box::new(SimplePlan::new_with_options(model, options)?))
     }
+    fn check(&self) -> TractResult<()> {
+        Ok(())
+    }
 }

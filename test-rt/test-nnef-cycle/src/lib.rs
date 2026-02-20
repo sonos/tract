@@ -33,6 +33,10 @@ mod nnef_predump {
             tract_nnef::ser::rewrite_model(&mut model)?;
             Ok(Box::new(model.into_optimized()?.into_runnable_with_options(&options)?))
         }
+
+        fn check(&self) -> TractResult<()> {
+            Ok(())
+        }
     }
 
     fn runtime() -> &'static NnefPredumpRuntime {
@@ -79,6 +83,9 @@ mod nnef_cycle {
             // eprintln!("RELOADED:\n{}", reloaded.clone().into_decluttered().unwrap());
             // dbg!(reloaded.clone().into_decluttered());
             Ok(Box::new(reloaded.into_optimized()?.into_runnable_with_options(&options)?))
+        }
+        fn check(&self) -> TractResult<()> {
+            Ok(())
         }
     }
 

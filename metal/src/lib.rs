@@ -47,6 +47,10 @@ impl Runtime for MetalRuntime {
 
         Ok(Box::new(Arc::new(runnable)))
     }
+
+    fn check(&self) -> TractResult<()> {
+        Ok(())
+    }
 }
 
 register_runtime!(MetalRuntime = MetalRuntime);

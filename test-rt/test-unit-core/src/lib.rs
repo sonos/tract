@@ -22,6 +22,10 @@ mod raw {
         ) -> TractResult<Box<dyn Runnable>> {
             Ok(Box::new(model.into_runnable_with_options(options)?))
         }
+
+        fn check(&self) -> TractResult<()> {
+            Ok(())
+        }
     }
 
     include!(concat!(env!("OUT_DIR"), "/tests/raw.rs"));
@@ -47,6 +51,9 @@ mod decluttered {
             options: &RunOptions,
         ) -> TractResult<Box<dyn Runnable>> {
             Ok(Box::new(model.into_decluttered()?.into_runnable_with_options(options)?))
+        }
+        fn check(&self) -> TractResult<()> {
+            Ok(())
         }
     }
 

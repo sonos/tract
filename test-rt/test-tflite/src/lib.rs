@@ -27,6 +27,9 @@ mod tflite_predump {
             tract_tflite::rewriter::rewrite_for_tflite(&mut model).context("Preparing model")?;
             Ok(Box::new(model.into_runnable_with_options(&options)?))
         }
+        fn check(&self) -> TractResult<()> {
+            Ok(())
+        }
     }
 
     fn runtime() -> &'static TflitePredump {
@@ -96,6 +99,9 @@ mod tflite_cycle {
                     .context("Optimising post-cycle model")?
                     .into_runnable_with_options(options)?,
             ))
+        }
+        fn check(&self) -> TractResult<()> {
+            Ok(())
         }
     }
 
