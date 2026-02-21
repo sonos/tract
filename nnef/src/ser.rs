@@ -199,12 +199,12 @@ impl<'a> IntoAst<'a> {
         for sym in self.model.symbols.all_symbols() {
             extension.push(("tract_symbol".into(), sym.to_string()));
         }
-        let locked = self.model.symbols.0.lock();
-        for assert in locked.borrow().all_assertions() {
+        let locked = self.model.symbols.0.read();
+        for assert in locked.all_assertions() {
             extension.push(("tract_assert".into(), assert.to_string()));
         }
-        for scenario in locked.borrow().scenarios() {
-            for assert in locked.borrow().scenario(scenario) {
+        for scenario in locked.scenarios() {
+            for assert in locked.scenario(scenario) {
                 extension.push(("tract_assert".into(), format!("{scenario}: {assert}")));
             }
         }

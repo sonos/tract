@@ -170,10 +170,9 @@ impl TDim {
             return Val(*v);
         }
         let scope = self.find_scope().unwrap();
-        let scope = scope.0;
-        let locked = scope.lock();
-        let scope = locked.borrow();
-        self.clone().simplify_rec(&scope, Some(scenario))
+        let scope_arc = scope.0;
+        let locked = scope_arc.read();
+        self.clone().simplify_rec(&locked, Some(scenario))
     }
 
     pub fn substitute(&self, from: &Symbol, to: &Self) -> TractResult<Self> {
@@ -311,13 +310,12 @@ impl TDim {
         let Some(scope) = self.find_scope() else {
             return self;
         };
-        let scope = scope.0;
-        let locked = scope.lock();
-        let scope = locked.borrow();
-        let it = self.simplify_rec(&scope, None);
+        let scope_arc = scope.0;
+        let locked = scope_arc.read();
+        let it = self.simplify_rec(&locked, None);
         let mut current: Option<TDim> = None;
-        for scenario in scope.scenarios() {
-            let v = it.clone().simplify_rec(&scope, Some(scenario));
+        for scenario in locked.scenarios() {
+            let v = it.clone().simplify_rec(&locked, Some(scenario));
             if current.is_some_and(|c| c != v) {
                 return it;
             } else {
@@ -678,8 +676,7 @@ impl TDim {
             return Some(*v);
         }
         let scope = self.find_scope()?;
-        let data = scope.0.lock();
-        let data = data.borrow();
+        let data = scope.0.read();
         self.inclusive_bound(&data, false)
     }
 
@@ -688,8 +685,7 @@ impl TDim {
             return Some(*v);
         }
         let scope = self.find_scope()?;
-        let data = scope.0.lock();
-        let data = data.borrow();
+        let data = scope.0.read();
         self.inclusive_bound(&data, true)
     }
 
@@ -698,8 +694,7 @@ impl TDim {
             return *v >= 0;
         }
         let Some(scope) = self.find_scope() else { return false };
-        let data = scope.0.lock();
-        let data = data.borrow();
+        let data = scope.0.read();
         data.prove_positive_or_zero(self)
     }
 
