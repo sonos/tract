@@ -1,4 +1,5 @@
 use crate::internal::*;
+use crate::ops::array::MultiBroadcastTo;
 use downcast_rs::Downcast;
 use std::fmt;
 
@@ -138,7 +139,10 @@ impl TypedOp for ElementWiseOp {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         if let Some(prec) = model.single_prec(node.id)? {
-            if prec.op_is::<AxisOp>() || prec.op_is::<IntoShape>() {
+            if prec.op_is::<AxisOp>()
+                || prec.op_is::<IntoShape>()
+                || prec.op_is::<MultiBroadcastTo>()
+            {
                 let mut patch = TypedModelPatch::default();
                 let mut wire = tvec!(patch.tap_model(model, prec.inputs[0])?);
                 wire = patch.wire_node(&node.name, &node.op, &wire)?;

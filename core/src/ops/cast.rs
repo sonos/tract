@@ -1,4 +1,5 @@
 use crate::internal::*;
+use crate::ops::array::MultiBroadcastTo;
 
 pub fn cast(to: DatumType) -> Cast {
     Cast { to }
@@ -78,10 +79,22 @@ impl TypedOp for Cast {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         if model.outlet_fact(node.inputs[0])?.datum_type == self.to {
-            TypedModelPatch::shunt_one_op(model, node)
-        } else {
-            Ok(None)
+            return TypedModelPatch::shunt_one_op(model, node);
         }
+        if let Some(prec) = model.single_prec(node.id)? {
+            if prec.op_is::<AxisOp>()
+                || prec.op_is::<IntoShape>()
+                || prec.op_is::<MultiBroadcastTo>()
+            {
+                let mut patch = TypedModelPatch::default();
+                let mut wire = tvec!(patch.tap_model(model, prec.inputs[0])?);
+                wire = patch.wire_node(&node.name, &node.op, &wire)?;
+                wire = patch.wire_node(&prec.name, &prec.op, &wire)?;
+                patch.shunt_outside(model, node.id.into(), wire[0])?;
+                return Ok(Some(patch));
+            }
+        }
+        Ok(None)
     }
 
     fn axes_mapping(
