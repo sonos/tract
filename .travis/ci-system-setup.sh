@@ -66,3 +66,20 @@ else
     MODELS=${MODELS:-$ROOT/.cached}
     mkdir -p $MODELS
 fi
+
+if [ -z "$TRACT_RUN" ]
+then
+    TRACT_RUN="cargo run -p tract $CARGO_EXTRA --profile opt-no-lto --no-default-features --features transformers --"
+    export TRACT_RUN
+fi
+
+TRACT_RUNTIMES="-O"
+if [ "$(uname -a)" == "Darwin" ]  && (system_profiler SPDisplaysDataType | grep -i "Metal")
+then 
+    TRACT_RUNTIMES="$TRACT_RUNTIMES --metal"
+fi
+
+if nvidia-smi > /dev/null
+then
+    TRACT_RUNTIMES="$TRACT_RUNTIMES --cuda"
+fi
