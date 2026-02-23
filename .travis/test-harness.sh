@@ -30,7 +30,3 @@ cargo -q test $CARGO_EXTRA -q --profile opt-no-lto -p tf-inceptionv3 $ALL_FEATUR
 cargo -q test $CARGO_EXTRA -q --profile opt-no-lto -p tf-mobilenet-v2 $ALL_FEATURES
 cargo -q test $CARGO_EXTRA -q --profile opt-no-lto -p tfl-mobilenet-v2-q $ALL_FEATURES
 
-for t in find harness -name ci.sh
-do
-    t
-done
