@@ -33,9 +33,9 @@ crate=$(tomato get package.name $CRATE_PATH/Cargo.toml)
 tomato set package.version $VERSION $CRATE_PATH/Cargo.toml
 if [ "$crate" = "tract-metal" ]
 then
-    cargo publish -q --allow-dirty --no-verify -p $crate 
+    cargo publish -v --allow-dirty --no-verify -p $crate 
 else
-    cargo publish -q --allow-dirty -p $crate
+    cargo publish -v --allow-dirty -p $crate
 fi
 
 #./.change_crate_dep.sh $crate $VERSION
