@@ -177,6 +177,14 @@ then
         llm_bench openelm-270M-q40ef16-516 $backend $CACHEDIR/OpenELM-270M-q40ef16.516.nnef.tgz $extra
         llm_bench llama-3_2-1B-instruct-q40ef16-541 $backend $CACHEDIR/Llama-3.2-1B-Instruct-q40ef16.541.nnef.tgz $extra
         llm_bench openelm-270M-q40ef16-541 $backend $CACHEDIR/OpenELM-270M-q40ef16.541.nnef.tgz $extra
+        net_bench parakeet-tdt-600m-v3-f32f32-preprocessor_1s $backend $CACHEDIR/parakeet-tdt-0.6b-v3-f32f32.608.preprocessor.nnef.tgz \
+                        -t transformers-detect-all --set B=1 --set A=16000 $extra
+        net_bench parakeet-tdt-600m-v3-f32f32-encoder_1s $backend $CACHEDIR/parakeet-tdt-0.6b-v3-f32f32.608.encoder.nnef.tgz \
+                        -t transformers-detect-all --set B=1 --set S=100 $extra
+        net_bench parakeet-tdt-600m-v3-f32f32-decoder_pass $backend $CACHEDIR/parakeet-tdt-0.6b-v3-f32f32.608.decoder.nnef.tgz \
+                        -t transformers-detect-all --set B=1 --set T=1 $extra
+        net_bench parakeet-tdt-600m-v3-f32f32-joint_pass $backend $CACHEDIR/parakeet-tdt-0.6b-v3-f32f32.608.joint.nnef.tgz \
+                        -t transformers-detect-all --set B=1 --set R=1 --set U=1 $extra
 
         if [ "$backend" != "cpu" ]
         then
