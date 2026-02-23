@@ -62,6 +62,10 @@ jobs:
 
   parakeet-tdt-600m-v3:
     needs: [ cli ]
+    strategy:
+      matrix:
+        os: [ macOS, cudal-lovelace ] # these are self hosted, with metal / cuda
+    runs-on: ${{ matrix.os }}
     steps:
     - uses: actions/checkout@v4
 
