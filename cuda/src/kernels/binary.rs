@@ -121,90 +121,93 @@ impl BinOps {
         unreachable!()
     }
 
-    pub fn reshape_to_rank_4_with_broadcast(
-        lhs: &[usize],
-        rhs: &[usize],
-        out: &[usize],
-    ) -> TractResult<(TVec<usize>, TVec<usize>, TVec<usize>)> {
-        ensure!(lhs.len() == rhs.len() && lhs.len() == out.len(), "rank mismatch");
-        let rank = lhs.len();
+    // This is no plugged-in.
+    // fn reshape_to_rank_4_with_broadcast(
+    //     lhs: &[usize],
+    //     rhs: &[usize],
+    //     out: &[usize],
+    // ) -> TractResult<(TVec<usize>, TVec<usize>, TVec<usize>)> {
+    //     ensure!(lhs.len() == rhs.len() && lhs.len() == out.len(), "rank mismatch");
+    //     let rank = lhs.len();
 
-        // 1) Drop trivial axes (all ones for lhs/rhs/out).
-        let keep: Vec<usize> =
-            (0..rank).filter(|&i| !(lhs[i] == 1 && rhs[i] == 1 && out[i] == 1)).collect();
+    //     // 1) Drop trivial axes (all ones for lhs/rhs/out).
+    //     let keep: Vec<usize> =
+    //         (0..rank).filter(|&i| !(lhs[i] == 1 && rhs[i] == 1 && out[i] == 1)).collect();
 
-        if keep.is_empty() {
-            return Ok((tvec![1, 1, 1, 1], tvec![1, 1, 1, 1], tvec![1, 1, 1, 1]));
-        }
+    //     if keep.is_empty() {
+    //         return Ok((tvec![1, 1, 1, 1], tvec![1, 1, 1, 1], tvec![1, 1, 1, 1]));
+    //     }
 
-        let map = |shape: &[usize]| keep.iter().map(|&i| shape[i]).collect::<Vec<_>>();
-        let lhs_k = map(lhs);
-        let rhs_k = map(rhs);
-        let out_k = map(out);
-        let r = lhs_k.len();
+    //     let map = |shape: &[usize]| keep.iter().map(|&i| shape[i]).collect::<Vec<_>>();
+    //     let lhs_k = map(lhs);
+    //     let rhs_k = map(rhs);
+    //     let out_k = map(out);
+    //     let r = lhs_k.len();
 
-        // 2) Fast path: if reduced rank <= 4, just right-align/pad.
-        if r <= 4 {
-            let pad = |shape: &[usize]| -> TVec<usize> {
-                let mut res = [1usize; 4];
-                res[4 - shape.len()..].copy_from_slice(shape);
-                res.into()
-            };
-            return Ok((pad(&lhs_k), pad(&rhs_k), pad(&out_k)));
-        }
+    //     // 2) Fast path: if reduced rank <= 4, just right-align/pad.
+    //     if r <= 4 {
+    //         let pad = |shape: &[usize]| -> TVec<usize> {
+    //             let mut res = [1usize; 4];
+    //             res[4 - shape.len()..].copy_from_slice(shape);
+    //             res.into()
+    //         };
+    //         return Ok((pad(&lhs_k), pad(&rhs_k), pad(&out_k)));
+    //     }
 
-        // 3) If lhs == rhs after filtering and r > 4, compress the prefix into the first group.
-        if lhs_k == rhs_k {
-            let mut shape = vec![lhs_k[..r - 3].iter().product::<usize>()];
-            shape.extend(&lhs_k[r - 3..]);
-            return Ok((shape.clone().into(), shape.clone().into(), shape.into()));
-        }
+    //     // 3) If lhs == rhs after filtering and r > 4, compress the prefix into the first group.
+    //     if lhs_k == rhs_k {
+    //         let mut shape = vec![lhs_k[..r - 3].iter().product::<usize>()];
+    //         shape.extend(&lhs_k[r - 3..]);
+    //         return Ok((shape.clone().into(), shape.clone().into(), shape.into()));
+    //     }
 
-        // 4) Build segments on the reduced arrays:
-        //    - broadcast axes are singletons
-        //    - non-broadcast axes form contiguous runs
-        let is_broadcast = |i: usize| {
-            (lhs_k[i] == 1 && rhs_k[i] == out_k[i] && out_k[i] != 1)
-                || (rhs_k[i] == 1 && lhs_k[i] == out_k[i] && out_k[i] != 1)
-        };
+    //     // 4) Build segments on the reduced arrays:
+    //     //    - broadcast axes are singletons
+    //     //    - non-broadcast axes form contiguous runs
+    //     let is_broadcast = |i: usize| {
+    //         (lhs_k[i] == 1 && rhs_k[i] == out_k[i] && out_k[i] != 1)
+    //             || (rhs_k[i] == 1 && lhs_k[i] == out_k[i] && out_k[i] != 1)
+    //     };
 
-        let mut segments: Vec<Vec<usize>> = Vec::new();
-        let mut cur = vec![0usize];
-        let mut cur_is_b = is_broadcast(0);
-        for i in 1..r {
-            let b = is_broadcast(i);
-            if b == cur_is_b {
-                cur.push(i);
-            } else {
-                segments.push(std::mem::take(&mut cur));
-                cur = vec![i];
-                cur_is_b = b;
-            }
-        }
-        segments.push(cur);
-        ensure!(segments.len() <= 4, "Cannot reshape to rank 4 while isolating broadcasts");
+    //     let mut segments: Vec<Vec<usize>> = Vec::new();
+    //     let mut cur = vec![0usize];
+    //     let mut cur_is_b = is_broadcast(0);
+    //     for i in 1..r {
+    //         let b = is_broadcast(i);
+    //         if b == cur_is_b {
+    //             cur.push(i);
+    //         } else {
+    //             segments.push(std::mem::take(&mut cur));
+    //             cur = vec![i];
+    //             cur_is_b = b;
+    //         }
+    //     }
+    //     segments.push(cur);
+    //     ensure!(segments.len() <= 4, "Cannot reshape to rank 4 while isolating broadcasts");
 
-        // 6) Right-align into exactly 4 groups, padding empties on the left.
-        let pad = 4usize.saturating_sub(segments.len());
-        let mut groups: [Vec<usize>; 4] = [vec![], vec![], vec![], vec![]];
-        for (j, seg) in segments.into_iter().enumerate() {
-            groups[pad + j] = seg;
-        }
+    //     // 6) Right-align into exactly 4 groups, padding empties on the left.
+    //     let pad = 4usize.saturating_sub(segments.len());
+    //     let mut groups: [Vec<usize>; 4] = [vec![], vec![], vec![], vec![]];
+    //     for (j, seg) in segments.into_iter().enumerate() {
+    //         groups[pad + j] = seg;
+    //     }
 
-        let prod = |shape: &[usize], idxs: &Vec<usize>| {
-            if idxs.is_empty() {
-                1
-            } else {
-                idxs.iter().fold(1usize, |acc, &ix| acc.saturating_mul(shape[ix]))
-            }
-        };
+    //     let prod = |shape: &[usize], idxs: &Vec<usize>| {
+    //         if idxs.is_empty() {
+    //             1
+    //         } else {
+    //             idxs.iter().fold(1usize, |acc, &ix| acc.saturating_mul(shape[ix]))
+    //         }
+    //     };
 
-        let lhs4: TVec<usize> = groups.iter().map(|g| prod(lhs, g)).collect();
-        let rhs4: TVec<usize> = groups.iter().map(|g| prod(rhs, g)).collect();
-        let out4: TVec<usize> = groups.iter().map(|g| prod(out, g)).collect();
+    //     let lhs4: TVec<usize> = groups.iter().map(|g| prod(lhs, g)).collect();
+    //     let rhs4: TVec<usize> = groups.iter().map(|g| prod(rhs, g)).collect();
+    //     let out4: TVec<usize> = groups.iter().map(|g| prod(out, g)).collect();
 
-        Ok((lhs4, rhs4, out4))
-    }
+    //     Ok((lhs4, rhs4, out4))
+    // }
+    //
+    //
 
     pub fn kernel_name(&self, dt: DatumType, variant: &str) -> TractResult<String> {
         ensure!(self.is_supported_dt(dt), "Unsupported dt {:?} for Cuda binary ops: {self}", dt);
@@ -424,86 +427,86 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn isolates_two_broadcast_axes_exact() {
-        let lhs = [2, 3, 1, 5];
-        let rhs = [2, 1, 4, 5];
-        let out = [2, 3, 4, 5];
+    // #[test]
+    // fn isolates_two_broadcast_axes_exact() {
+    //     let lhs = [2, 3, 1, 5];
+    //     let rhs = [2, 1, 4, 5];
+    //     let out = [2, 3, 4, 5];
 
-        let (l4, r4, o4) = BinOps::reshape_to_rank_4_with_broadcast(&lhs, &rhs, &out).unwrap();
-        assert_eq!(l4, tvec![2, 3, 1, 5]);
-        assert_eq!(r4, tvec![2, 1, 4, 5]);
-        assert_eq!(o4, tvec![2, 3, 4, 5]);
-    }
+    //     let (l4, r4, o4) = BinOps::reshape_to_rank_4_with_broadcast(&lhs, &rhs, &out).unwrap();
+    //     assert_eq!(l4, tvec![2, 3, 1, 5]);
+    //     assert_eq!(r4, tvec![2, 1, 4, 5]);
+    //     assert_eq!(o4, tvec![2, 3, 4, 5]);
+    // }
 
-    #[test]
-    fn no_broadcast_splits_into_singletons_for_four_groups() {
-        let lhs = [2, 6, 7, 8];
-        let rhs = [2, 6, 7, 8];
-        let out = [2, 6, 7, 8];
+    // #[test]
+    // fn no_broadcast_splits_into_singletons_for_four_groups() {
+    //     let lhs = [2, 6, 7, 8];
+    //     let rhs = [2, 6, 7, 8];
+    //     let out = [2, 6, 7, 8];
 
-        let (l4, r4, o4) = BinOps::reshape_to_rank_4_with_broadcast(&lhs, &rhs, &out).unwrap();
-        assert_eq!(l4, tvec![2, 6, 7, 8]);
-        assert_eq!(r4, tvec![2, 6, 7, 8]);
-        assert_eq!(o4, tvec![2, 6, 7, 8]);
-    }
+    //     let (l4, r4, o4) = BinOps::reshape_to_rank_4_with_broadcast(&lhs, &rhs, &out).unwrap();
+    //     assert_eq!(l4, tvec![2, 6, 7, 8]);
+    //     assert_eq!(r4, tvec![2, 6, 7, 8]);
+    //     assert_eq!(o4, tvec![2, 6, 7, 8]);
+    // }
 
-    #[test]
-    fn split_heaviest_non_segment_around_broadcast() {
-        let lhs = [2, 3, 1, 5, 7];
-        let rhs = [2, 3, 3, 5, 7];
-        let out = [2, 3, 3, 5, 7];
+    // #[test]
+    // fn split_heaviest_non_segment_around_broadcast() {
+    //     let lhs = [2, 3, 1, 5, 7];
+    //     let rhs = [2, 3, 3, 5, 7];
+    //     let out = [2, 3, 3, 5, 7];
 
-        let (l4, r4, o4) = BinOps::reshape_to_rank_4_with_broadcast(&lhs, &rhs, &out).unwrap();
-        assert_eq!(l4, tvec![1, 6, 1, 35]);
-        assert_eq!(r4, tvec![1, 6, 3, 35]);
-        assert_eq!(o4, tvec![1, 6, 3, 35]);
-    }
+    //     let (l4, r4, o4) = BinOps::reshape_to_rank_4_with_broadcast(&lhs, &rhs, &out).unwrap();
+    //     assert_eq!(l4, tvec![1, 6, 1, 35]);
+    //     assert_eq!(r4, tvec![1, 6, 3, 35]);
+    //     assert_eq!(o4, tvec![1, 6, 3, 35]);
+    // }
 
-    #[test]
-    fn right_align_with_padding_when_fewer_than_four_groups() {
-        let lhs = [10, 1, 9];
-        let rhs = [10, 9, 9];
-        let out = [10, 9, 9];
+    // #[test]
+    // fn right_align_with_padding_when_fewer_than_four_groups() {
+    //     let lhs = [10, 1, 9];
+    //     let rhs = [10, 9, 9];
+    //     let out = [10, 9, 9];
 
-        let (l4, r4, o4) = BinOps::reshape_to_rank_4_with_broadcast(&lhs, &rhs, &out).unwrap();
-        assert_eq!(l4, tvec![1, 10, 1, 9]);
-        assert_eq!(r4, tvec![1, 10, 9, 9]);
-        assert_eq!(o4, tvec![1, 10, 9, 9]);
-    }
+    //     let (l4, r4, o4) = BinOps::reshape_to_rank_4_with_broadcast(&lhs, &rhs, &out).unwrap();
+    //     assert_eq!(l4, tvec![1, 10, 1, 9]);
+    //     assert_eq!(r4, tvec![1, 10, 9, 9]);
+    //     assert_eq!(o4, tvec![1, 10, 9, 9]);
+    // }
 
-    #[test]
-    fn scalar_broadcast() {
-        let lhs = [1, 8, 4, 10, 12];
-        let rhs = [1, 1, 1, 1, 1];
-        let out = [1, 8, 4, 10, 12];
+    // #[test]
+    // fn scalar_broadcast() {
+    //     let lhs = [1, 8, 4, 10, 12];
+    //     let rhs = [1, 1, 1, 1, 1];
+    //     let out = [1, 8, 4, 10, 12];
 
-        let (l4, r4, o4) = BinOps::reshape_to_rank_4_with_broadcast(&lhs, &rhs, &out).unwrap();
-        assert_eq!(l4, tvec![8, 4, 10, 12]);
-        assert_eq!(r4, tvec![1, 1, 1, 1]);
-        assert_eq!(o4, tvec![8, 4, 10, 12]);
-    }
+    //     let (l4, r4, o4) = BinOps::reshape_to_rank_4_with_broadcast(&lhs, &rhs, &out).unwrap();
+    //     assert_eq!(l4, tvec![8, 4, 10, 12]);
+    //     assert_eq!(r4, tvec![1, 1, 1, 1]);
+    //     assert_eq!(o4, tvec![8, 4, 10, 12]);
+    // }
 
-    #[test]
-    fn supports_adjacent_broadcasts_coalesced() {
-        let lhs = [2, 3, 4, 4, 4];
-        let rhs = [1, 3, 1, 1, 1];
-        let out = [2, 3, 4, 4, 4];
+    // #[test]
+    // fn supports_adjacent_broadcasts_coalesced() {
+    //     let lhs = [2, 3, 4, 4, 4];
+    //     let rhs = [1, 3, 1, 1, 1];
+    //     let out = [2, 3, 4, 4, 4];
 
-        let (l4, r4, o4) = BinOps::reshape_to_rank_4_with_broadcast(&lhs, &rhs, &out).unwrap();
+    //     let (l4, r4, o4) = BinOps::reshape_to_rank_4_with_broadcast(&lhs, &rhs, &out).unwrap();
 
-        assert_eq!(l4, tvec![1, 2, 3, 4 * 4 * 4]);
-        assert_eq!(r4, tvec![1, 1, 3, 1]);
-        assert_eq!(o4, tvec![1, 2, 3, 64]);
-    }
+    //     assert_eq!(l4, tvec![1, 2, 3, 4 * 4 * 4]);
+    //     assert_eq!(r4, tvec![1, 1, 3, 1]);
+    //     assert_eq!(o4, tvec![1, 2, 3, 64]);
+    // }
 
-    #[test]
-    fn too_many_segments_errors() {
-        let lhs = [2, 1, 3, 1, 5, 1, 7];
-        let rhs = [2, 9, 3, 8, 5, 6, 7];
-        let out = [2, 9, 3, 8, 5, 6, 7];
-        let err = BinOps::reshape_to_rank_4_with_broadcast(&lhs, &rhs, &out).unwrap_err();
-        let msg = format!("{err}");
-        assert!(msg.contains("Cannot reshape to rank 4"), "{msg}");
-    }
+    // #[test]
+    // fn too_many_segments_errors() {
+    //     let lhs = [2, 1, 3, 1, 5, 1, 7];
+    //     let rhs = [2, 9, 3, 8, 5, 6, 7];
+    //     let out = [2, 9, 3, 8, 5, 6, 7];
+    //     let err = BinOps::reshape_to_rank_4_with_broadcast(&lhs, &rhs, &out).unwrap_err();
+    //     let msg = format!("{err}");
+    //     assert!(msg.contains("Cannot reshape to rank 4"), "{msg}");
+    // }
 }
