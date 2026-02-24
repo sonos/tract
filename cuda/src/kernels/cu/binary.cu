@@ -256,3 +256,86 @@ DEFINE_COMP_OP(binary_not_equals, OpNotEquals)
 
 DEFINE_LOGIC_OP(binary_and, OpAnd)
 DEFINE_LOGIC_OP(binary_or, OpOr)
+
+template <typename T>
+__device__ __forceinline__ void iff_generic(
+    const bool *__restrict__ cond, const T *__restrict__ then_values,
+    const T *__restrict__ else_values, T *__restrict__ out, int32_t out_shape_0,
+    int32_t out_shape_1, int32_t out_shape_2, int32_t out_shape_3, int32_t out_shape_4,
+    int32_t cond_strides_0, int32_t cond_strides_1, int32_t cond_strides_2, int32_t cond_strides_3,
+    int32_t cond_strides_4, int32_t then_strides_0, int32_t then_strides_1, int32_t then_strides_2,
+    int32_t then_strides_3, int32_t then_strides_4, int32_t else_strides_0, int32_t else_strides_1,
+    int32_t else_strides_2, int32_t else_strides_3, int32_t else_strides_4, int32_t o_strides_0,
+    int32_t o_strides_1, int32_t o_strides_2, int32_t o_strides_3, int32_t o_strides_4) {
+    const int32_t n0 = out_shape_0;
+    const int32_t n1 = out_shape_1;
+    const int32_t n2 = out_shape_2;
+    const int32_t n3 = out_shape_3;
+    const int32_t n4 = out_shape_4;
+
+    const int32_t total = n0 * n1 * n2 * n3 * n4;
+
+    int32_t tmp = blockIdx.x * blockDim.x + threadIdx.x;
+    if (tmp >= total) {
+        return;
+    }
+
+    const int32_t i4 = tmp % n4;
+    tmp /= n4;
+    const int32_t i3 = tmp % n3;
+    tmp /= n3;
+    const int32_t i2 = tmp % n2;
+    tmp /= n2;
+    const int32_t i1 = tmp % n1;
+    tmp /= n1;
+    const int32_t i0 = tmp;
+
+    const uint32_t icond = i0 * cond_strides_0 + i1 * cond_strides_1 + i2 * cond_strides_2 +
+                           i3 * cond_strides_3 + i4 * cond_strides_4;
+    bool pick = cond[icond];
+
+    const int32_t offset = i0 * (pick ? then_strides_0 : else_strides_0) +
+                           i1 * (pick ? then_strides_1 : else_strides_1) +
+                           i2 * (pick ? then_strides_2 : else_strides_2) +
+                           i3 * (pick ? then_strides_3 : else_strides_3) +
+                           i4 * (pick ? then_strides_4 : else_strides_4);
+
+    const int32_t io = i0 * o_strides_0 + i1 * o_strides_1 + i2 * o_strides_2 + i3 * o_strides_3 +
+                       i4 * o_strides_4;
+
+    out[io] = (pick ? then_values : else_values)[offset];
+}
+
+#define DEFINE_IFF_KERNEL(tname, T)                                                                \
+    extern "C" {                                                                                   \
+    __global__ void iff_generic_##tname(                                                           \
+        const bool *__restrict__ cond_values, const T *__restrict__ then_values,                   \
+        const T *__restrict__ else_values, T *__restrict__ out, int32_t out_shape_0,               \
+        int32_t out_shape_1, int32_t out_shape_2, int32_t out_shape_3, int32_t out_shape_4,        \
+        int32_t cond_strides_0, int32_t cond_strides_1, int32_t cond_strides_2,                    \
+        int32_t cond_strides_3, int32_t cond_strides_4, int32_t then_strides_0,                    \
+        int32_t then_strides_1, int32_t then_strides_2, int32_t then_strides_3,                    \
+        int32_t then_strides_4, int32_t else_strides_0, int32_t else_strides_1,                    \
+        int32_t else_strides_2, int32_t else_strides_3, int32_t else_strides_4,                    \
+        int32_t o_strides_0, int32_t o_strides_1, int32_t o_strides_2, int32_t o_strides_3,        \
+        int32_t o_strides_4) {                                                                     \
+        iff_generic(cond_values, then_values, else_values, out, out_shape_0, out_shape_1,          \
+                    out_shape_2, out_shape_3, out_shape_4, cond_strides_0, cond_strides_1,         \
+                    cond_strides_2, cond_strides_3, cond_strides_4, then_strides_0,                \
+                    then_strides_1, then_strides_2, then_strides_3, then_strides_4,                \
+                    else_strides_0, else_strides_1, else_strides_2, else_strides_3,                \
+                    else_strides_4, o_strides_0, o_strides_1, o_strides_2, o_strides_3,            \
+                    o_strides_4);                                                                  \
+    }                                                                                              \
+    }
+
+DEFINE_IFF_KERNEL(f16, half);
+DEFINE_IFF_KERNEL(f32, float);
+DEFINE_IFF_KERNEL(i8, int8_t);
+DEFINE_IFF_KERNEL(i16, int16_t);
+DEFINE_IFF_KERNEL(i32, int32_t);
+DEFINE_IFF_KERNEL(i64, int64_t);
+DEFINE_IFF_KERNEL(u8, uint8_t);
+DEFINE_IFF_KERNEL(u16, uint16_t);
+DEFINE_IFF_KERNEL(u32, uint32_t);
+DEFINE_IFF_KERNEL(u64, uint64_t);
