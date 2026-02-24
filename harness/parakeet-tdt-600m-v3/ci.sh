@@ -15,8 +15,8 @@ do
 
 	 	model_prefix=$MODELS/asr/608/nvidia--parakeet-tdt-0.6b-v3-f32f32/nvidia--parakeet-tdt-0.6b-v3-f32f32
 
-	 	$TRACT_RUN $model_prefix.$m.nnef.tgz $rt run \
+	 	$TRACT_RUN $model_prefix.$m.nnef.tgz $rt --nnef-tract-transformers -t transformers-detect-all run \
 	 		--input-from-bundle $model_prefix.$m.io.npz --assert-output-bundle $model_prefix.$m.io.npz \
-	 		--approx approximate
+	 		--approx very
 	 done
 done
