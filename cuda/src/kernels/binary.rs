@@ -27,6 +27,9 @@ pub enum BinOps {
     NotEquals,
     And,
     Or,
+    BitAnd,
+    BitOr,
+    BitXor,
 }
 
 impl fmt::Display for BinOps {
@@ -36,7 +39,7 @@ impl fmt::Display for BinOps {
 }
 
 impl BinOps {
-    pub const ALL: [BinOps; 15] = [
+    pub const ALL: [BinOps; 18] = [
         Self::Mul,
         Self::Add,
         Self::Div,
@@ -52,6 +55,9 @@ impl BinOps {
         Self::NotEquals,
         Self::And,
         Self::Or,
+        Self::BitAnd,
+        Self::BitOr,
+        Self::BitXor,
     ];
 
     pub fn name(&self) -> Cow<'_, str> {
@@ -60,7 +66,7 @@ impl BinOps {
 
     pub fn output_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType> {
         ensure!(a == b);
-        if self.is_logic() { Ok(DatumType::Bool) } else { Ok(a) }
+        if self.is_logic() || self.is_comparison() { Ok(DatumType::Bool) } else { Ok(a) }
     }
 
     pub fn output_shape<D: DimLike>(&self, a: &[D], b: &[D]) -> TractResult<TVec<D>> {
@@ -79,36 +85,40 @@ impl BinOps {
             .collect()
     }
 
+    pub fn is_arithmetic(&self) -> bool {
+        [Self::Mul, Self::Add, Self::Div, Self::Sub, Self::Pow, Self::Min, Self::Max].contains(self)
+    }
+
+    pub fn is_comparison(&self) -> bool {
+        [
+            Self::Less,
+            Self::LessEqual,
+            Self::Greater,
+            Self::GreaterEqual,
+            Self::Equals,
+            Self::NotEquals,
+        ]
+        .contains(self)
+    }
+
     pub fn is_logic(&self) -> bool {
-        matches!(
-            self,
-            Self::Less
-                | Self::LessEqual
-                | Self::Greater
-                | Self::GreaterEqual
-                | Self::Equals
-                | Self::NotEquals
-                | Self::And
-                | Self::Or
-        )
+        [Self::And, Self::Or].contains(self)
+    }
+
+    pub fn is_bitwise(&self) -> bool {
+        [Self::BitAnd, Self::BitOr, Self::BitXor].contains(self)
     }
 
     pub fn is_supported_dt(&self, dt: DatumType) -> bool {
-        (matches!(self, Self::And | Self::Or) && dt == DatumType::Bool)
-            || (!matches!(self, Self::And | Self::Or)
-                && matches!(
-                    dt,
-                    DatumType::F32
-                        | DatumType::F16
-                        | DatumType::U8
-                        | DatumType::U16
-                        | DatumType::U32
-                        | DatumType::U64
-                        | DatumType::I8
-                        | DatumType::I16
-                        | DatumType::I32
-                        | DatumType::I64
-                ))
+        use DatumType::*;
+        if self.is_arithmetic() || self.is_comparison() {
+            return dt.is_number();
+        } else if self.is_logic() {
+            return dt.is::<bool>();
+        } else if self.is_bitwise() {
+            return dt.is_signed() || dt.is_unsigned();
+        }
+        unreachable!()
     }
 
     pub fn reshape_to_rank_4_with_broadcast(
@@ -217,6 +227,9 @@ impl BinOps {
             Self::LessEqual => "less_equal",
             Self::And => "and",
             Self::Or => "or",
+            Self::BitOr => "bitor",
+            Self::BitAnd => "bitand",
+            Self::BitXor => "bitxor",
         };
 
         Ok(format!("binary_{kname}_{variant}_{tname}"))

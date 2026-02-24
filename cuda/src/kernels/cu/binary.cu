@@ -61,6 +61,18 @@ struct OpOr {
     __device__ __forceinline__ bool operator()(bool a, bool b) const { return a || b; }
 };
 
+template <typename T> struct OpBitOr {
+    __device__ __forceinline__ T operator()(T a, T b) const { return a | b; }
+};
+
+template <typename T> struct OpBitAnd {
+    __device__ __forceinline__ T operator()(T a, T b) const { return a & b; }
+};
+
+template <typename T> struct OpBitXor {
+    __device__ __forceinline__ T operator()(T a, T b) const { return a ^ b; }
+};
+
 template <typename T_in, typename T_out, typename Op>
 __device__ __forceinline__ void
 bin_op_generic(const T_in *__restrict__ a, const T_in *__restrict__ b, T_out *__restrict__ out,
@@ -199,6 +211,16 @@ bin_op_large(const T_in *__restrict__ a, const T_in *__restrict__ b, T_out *__re
     DEFINE_BINARY_KERNEL(name, i32, int32_t, int32_t, OP<int32_t>)                                 \
     DEFINE_BINARY_KERNEL(name, i64, int64_t, int64_t, OP<int64_t>)
 
+#define DEFINE_BIT_OP(name, OP)                                                                    \
+    DEFINE_BINARY_KERNEL(name, u8, uint8_t, uint8_t, OP<uint8_t>)                                  \
+    DEFINE_BINARY_KERNEL(name, u16, uint16_t, uint16_t, OP<uint16_t>)                              \
+    DEFINE_BINARY_KERNEL(name, u32, uint32_t, uint32_t, OP<uint32_t>)                              \
+    DEFINE_BINARY_KERNEL(name, u64, uint64_t, uint64_t, OP<uint64_t>)                              \
+    DEFINE_BINARY_KERNEL(name, i8, int8_t, int8_t, OP<int8_t>)                                     \
+    DEFINE_BINARY_KERNEL(name, i16, int16_t, int16_t, OP<int16_t>)                                 \
+    DEFINE_BINARY_KERNEL(name, i32, int32_t, int32_t, OP<int32_t>)                                 \
+    DEFINE_BINARY_KERNEL(name, i64, int64_t, int64_t, OP<int64_t>)
+
 #define DEFINE_COMP_OP(name, OP)                                                                   \
     DEFINE_BINARY_KERNEL(name, f32, float, bool, OP<float>)                                        \
     DEFINE_BINARY_KERNEL(name, f16, __half, bool, OP<half>)                                        \
@@ -220,6 +242,10 @@ DEFINE_ARITHMETIC_OP(binary_div, OpDiv)
 DEFINE_ARITHMETIC_OP(binary_pow, OpPow)
 DEFINE_ARITHMETIC_OP(binary_min, OpMin)
 DEFINE_ARITHMETIC_OP(binary_max, OpMax)
+
+DEFINE_BIT_OP(binary_bitor, OpBitOr)
+DEFINE_BIT_OP(binary_bitand, OpBitAnd)
+DEFINE_BIT_OP(binary_bitxor, OpBitXor)
 
 DEFINE_COMP_OP(binary_less, OpLess)
 DEFINE_COMP_OP(binary_less_equal, OpLessEqual)
