@@ -195,11 +195,11 @@ fn can_translate_to_cuda_op(source: &TypedModel, node: &TypedNode) -> TractResul
             .is_some_and(|op| DeviceTensor::is_supported_dt(op.val().datum_type()))
             || node
                 .op_as::<Silu>()
-                .is_some_and(|_| kernels::UnaryOps::is_supported_dt(input_dts[0]))
+                .is_some_and(|_| kernels::UnaryOps::Silu.is_supported_dt(input_dts[0]))
             || node.op_as::<ElementWiseOp>().is_some_and(|op| op.0.is::<LeakyRelu>())
             || node.op_as::<ElementWiseOp>().is_some_and(|op| {
-                kernels::UnaryOps::is_supported_dt(input_dts[0])
-                    && map_element_wise_ops_to_cuda(op).is_some()
+                map_element_wise_ops_to_cuda(op)
+                    .is_some_and(|op| op.0.is_supported_dt(input_dts[0]))
             })
             || node.op_as::<TypedBinOp>().is_some_and(|op| {
                 map_binary_op_to_cuda(op).is_some_and(|op| op.0.is_supported_dt(input_dts[0]))
@@ -307,6 +307,7 @@ fn map_element_wise_ops_to_cuda(op: &ElementWiseOp) -> Option<ops::CudaUnaryOp> 
         (tract_core::ops::math::Tanh, Tanh),
         (tract_core::ops::math::Erf, Erf),
         (tract_core::ops::math::Neg, Neg),
+        (tract_core::ops::logic::BitNot, BitNot),
     ])(op)
 }
 
