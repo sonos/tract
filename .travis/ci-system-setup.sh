@@ -83,3 +83,5 @@ if which nvidia-smi
 then
     TRACT_RUNTIMES="$TRACT_RUNTIMES --cuda"
 fi
+
+echo $TRACT_RUNTIMES
