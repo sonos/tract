@@ -37,6 +37,7 @@ pub enum UnaryOps {
     Erf,
     Ln,
     Silu,
+    BitNot,
 }
 
 impl fmt::Display for UnaryOps {
@@ -46,7 +47,7 @@ impl fmt::Display for UnaryOps {
 }
 
 impl UnaryOps {
-    pub const ALL: [UnaryOps; 27] = [
+    pub const ALL: [UnaryOps; 28] = [
         Self::Neg,
         Self::Abs,
         Self::Sqr,
@@ -74,15 +75,21 @@ impl UnaryOps {
         Self::Erf,
         Self::Ln,
         Self::Silu,
+        Self::BitNot,
     ];
 
-    pub fn is_supported_dt(dt: DatumType) -> bool {
-        matches!(dt, DatumType::F32 | DatumType::F16)
+    pub fn is_supported_dt(&self, dt: DatumType) -> bool {
+        if *self == Self::BitNot {
+            dt.is_integer()
+        } else {
+            matches!(dt, DatumType::F32 | DatumType::F16)
+        }
     }
 
     pub fn name(&self) -> Cow<'_, str> {
         format!("{self}").into()
     }
+
     pub fn all_functions() -> Vec<String> {
         Self::ALL
             .into_iter()
@@ -91,41 +98,37 @@ impl UnaryOps {
             .collect()
     }
 
-    pub fn float_only(&self) -> bool {
-        matches!(
-            self,
-            Self::Exp
-                | Self::Ln
-                | Self::Sigmoid
-                | Self::Sqr
-                | Self::Rsqrt
-                | Self::Sqrt
-                | Self::Recip
-                | Self::Cos
-                | Self::Acos
-                | Self::Acosh
-                | Self::Cosh
-                | Self::Sin
-                | Self::Asin
-                | Self::Asinh
-                | Self::Sinh
-                | Self::Tan
-                | Self::Atan
-                | Self::Atanh
-                | Self::Tanh
-                | Self::Erf
-                | Self::Neg
-                | Self::Abs
-                | Self::RoundHalfToEven
-        )
-    }
+    // pub fn float_only(&self) -> bool {
+    //     matches!(
+    //         self,
+    //         Self::Exp
+    //             | Self::Ln
+    //             | Self::Sigmoid
+    //             | Self::Sqr
+    //             | Self::Rsqrt
+    //             | Self::Sqrt
+    //             | Self::Recip
+    //             | Self::Cos
+    //             | Self::Acos
+    //             | Self::Acosh
+    //             | Self::Cosh
+    //             | Self::Sin
+    //             | Self::Asin
+    //             | Self::Asinh
+    //             | Self::Sinh
+    //             | Self::Tan
+    //             | Self::Atan
+    //             | Self::Atanh
+    //             | Self::Tanh
+    //             | Self::Erf
+    //             | Self::Neg
+    //             | Self::Abs
+    //             | Self::RoundHalfToEven
+    //     )
+    // }
 
     pub fn kernel_name(&self, dt: DatumType) -> TractResult<String> {
-        if self.float_only() && !matches!(dt, DatumType::F16 | DatumType::F32) {
-            bail!("Unsupported dt for Cuda element wise ops: {:?}", self);
-        }
-
-        ensure!(Self::is_supported_dt(dt), "Unsupported dt {:?} for Cuda Unary Op", dt);
+        ensure!(self.is_supported_dt(dt), "Unsupported dt {:?} for Cuda Unary Op", dt);
         let name = if matches!(self, Self::RoundHalfToEven) {
             "rint".to_string()
         } else {
