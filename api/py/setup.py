@@ -16,10 +16,12 @@ version = os.environ.get("PYPI_VERSION_OVERRIDE")
 if version is None or version == "":
     version = toml.load("rust-workspace/api/Cargo.toml")["package"]["version"]
     version = re.sub("\-alpha\.", "a", version)
-    version = re.sub("\-.*", ".dev", version)
+    version = re.sub("\\-dev(\\.)?", ".dev", version)
 
 with open('docs/index.md', 'r') as file:
     readme = file.read()
+
+build_requires = toml.load("pyproject.toml")["build-system"]["requires"]
 
 setup(
         name="tract",
@@ -32,17 +34,17 @@ setup(
             "Documentation": "https://sonos.github.io/tract",
             "Source": "https://github.com/sonos/tract",
         },
-        license="Apache License, Version 2.0 OR MIT",
+        license="(Apache-2.0 OR MIT)",
         long_description=readme,
         long_description_content_type="text/markdown",
         options={"bdist_wheel": {"universal": True}},
         classifiers=[
             "Programming Language :: Python :: 3",
-            "Programming Language :: Python :: 3.7",
-            "Programming Language :: Python :: 3.8",
             "Programming Language :: Python :: 3.9",
             "Programming Language :: Python :: 3.10",
             "Programming Language :: Python :: 3.11",
+            "Programming Language :: Python :: 3.12",
+            "Programming Language :: Python :: 3.13",
             "Programming Language :: Rust",
             "Topic :: Scientific/Engineering :: Mathematics",
             "Topic :: Scientific/Engineering :: Artificial Intelligence",
@@ -52,8 +54,10 @@ setup(
         rust_extensions=[RustExtension("tract.tract", binding=Binding.NoBinding, path="rust-workspace/api/ffi/Cargo.toml")],
         packages=["tract"],
         zip_safe=False,
-        python_requires=">=3.7",
+        python_requires=">=3.9",
         install_requires=[ "numpy" ],
-        extras_require={ "test": ["pytest"] },
+        extras_require={
+            "test": ["pytest"],
+            "dev": build_requires + ["pytest"],
+        },
 )
-
