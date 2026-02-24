@@ -52,7 +52,7 @@ setup(
         rust_extensions=[RustExtension("tract.tract", binding=Binding.NoBinding, path="rust-workspace/api/ffi/Cargo.toml")],
         packages=["tract"],
         zip_safe=False,
-        python_requires=">=3.7",
+        python_requires=">=3.9",
         install_requires=[ "numpy" ],
         extras_require={ "test": ["pytest"] },
 )
