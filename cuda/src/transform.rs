@@ -10,7 +10,7 @@ use tract_core::ops::cnn::{Conv, rewrite_conv_with_n_axis};
 use tract_core::ops::einsum::prefix_matmul::{PrefixMatMul, rewrite_einsum_to_prefix_matmul};
 use tract_core::ops::element_wise::ElementWiseOp;
 use tract_core::ops::konst::Const;
-use tract_core::ops::logic::Comp;
+use tract_core::ops::logic::{Comp, Iff};
 use tract_core::ops::nn::{LeakyRelu, Reduce, Softmax};
 use tract_core::tract_data::itertools::Itertools;
 use tract_core::tract_linalg::block_quant::Q4_0;
@@ -31,7 +31,7 @@ use tract_transformers::ops::sdpa::Sdpa;
 use tract_transformers::ops::silu::Silu;
 
 use crate::context::cuda_context;
-use crate::ops::{CudaDelay, CudaPulsePad};
+use crate::ops::{CudaDelay, CudaIff, CudaPulsePad};
 use crate::ops::{CudaLeakyRelu, wire_cuda_conv};
 use crate::{kernels, ops, rewrite_rules};
 
@@ -204,6 +204,7 @@ fn can_translate_to_cuda_op(source: &TypedModel, node: &TypedNode) -> TractResul
             || node.op_as::<TypedBinOp>().is_some_and(|op| {
                 map_binary_op_to_cuda(op).is_some_and(|op| op.0.is_supported_dt(input_dts[0]))
             })
+            || node.op_is::<Iff>()
             || node
                 .op_as::<Comp>()
                 .is_some_and(|op| convert_logic_op_to_cuda(op).0.is_supported_dt(input_dts[0]))
@@ -636,6 +637,8 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
                     Box::new(CudaDelay::new(op.clone()))
                 } else if let Some(op) = node.op_as::<PulsePad>() {
                     Box::new(CudaPulsePad::new(op)?)
+                } else if node.op_is::<Iff>() {
+                    Box::new(CudaIff)
                 } else {
                     bail!("Failed to translate a supported CUDA Op")
                 };
