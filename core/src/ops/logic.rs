@@ -22,7 +22,7 @@ element_wise!(not, Not, [bool] => |_, vs| {
     Ok(())
 });
 
-#[derive(Debug, Clone, new, Default, Hash)]
+#[derive(Debug, Clone, new, Default, Hash, PartialEq, Eq)]
 pub struct Iff;
 
 impl Iff {
@@ -47,6 +47,7 @@ impl Op for Iff {
         "Iff".into()
     }
     op_as_typed_op!();
+    impl_op_same_as!();
 }
 
 impl EvalOp for Iff {
@@ -71,13 +72,11 @@ impl TypedOp for Iff {
     as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        anyhow::ensure!(inputs.len() == 3, "Iff expects 3 intputs.");
-        if inputs[1].datum_type != inputs[2].datum_type {
-            bail!("Then and else tensors type mismatch ({:?} and {:?}).", inputs[1], inputs[2]);
-        }
-        if inputs[0].rank() != inputs[1].rank() || inputs[0].rank() != inputs[2].rank() {
-            bail!("Inconsistent ranks, {:?}", inputs);
-        }
+        ensure!(inputs.len() == 3, "Iff expects 3 intputs.");
+        ensure!(inputs[1].datum_type == inputs[2].datum_type);
+        ensure!(inputs[0].datum_type.is::<bool>());
+        ensure!(inputs[0].rank() == inputs[1].rank());
+        ensure!(inputs[0].rank() == inputs[2].rank());
         let shape = multi_broadcast(&[
             inputs[0].shape.to_tvec(),
             inputs[1].shape.to_tvec(),
