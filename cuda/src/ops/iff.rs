@@ -44,7 +44,7 @@ impl EvalOp for CudaIff {
 
         if output.len() > 0 {
             CUDA_STREAM.with(|stream| {
-                Iff.dispatch_eval(stream, &cond, &then_t, &else_t, &output)
+                Iff.dispatch_eval(stream, cond, then_t, else_t, &output)
                     .with_context(|| "Error while dispatching eval for CudaIff")
             })?;
         }
