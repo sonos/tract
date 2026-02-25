@@ -51,7 +51,7 @@ fi
 
 S3=https://s3.amazonaws.com/tract-ci-builds/tests
 
-if  [ "$GITHUB_WORKFLOW" = "Metal tests" -o "$GITHUB_WORKFLOW" = "CUDA tests" ] 
+if  [ "$GITHUB_WORKFLOW" = "Metal tests" -o "$GITHUB_WORKFLOW" = "CUDA tests" -o "$GITHUB_WORKFLOW" == "Large Models"] 
 then
     export CACHE_FILE=$ROOT/.travis/cache_file.sh
     export MODELS=$HOME/.cache/models
