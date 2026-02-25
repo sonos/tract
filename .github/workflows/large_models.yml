@@ -75,7 +75,10 @@ jobs:
 
     - name: Cleanup os name
       run: |
-        echo OS=$(echo ${{matrix.os}} | tr A-Z a-z) >> $GITHUB_ENV
+        case $(uname) in
+          Linux) echo OS=linux >> $GITHUB_ENV;;
+          Darwin) echo OS=macos >> $GITHUB_ENV;;
+        esac
 
    
     - uses: actions/download-artifact@v4.1.7
