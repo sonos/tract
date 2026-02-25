@@ -1,6 +1,13 @@
-# Unreleased
-
+# 0.23.0-dev.2 - 2026-02-18
+* This is a pre-release release. It will be a pretty big one, here are some hilights.
+  * New public api: tract-rs should be the main point of entry for any new project. A caveat: it does support most of tract simple uses as is, but some specialized sections like state management and model transforms are not satisfactory yet, so the real 0.23.0 will presumably break these again. The plan is that this facade will be tract public API, and that it will be the only surface under semver rules. Up to there is was essentially everything `pub`, which boils down to mostly "everything".
+  * GPU: The new API puts forward the Runtime trait. It allows running models on GPU (runtimes "cuda" and "metal" offser some support, while "default" is the CPU runtime). See https://github.com/sonos/tract/blob/main/examples/nemo-parakeet-asr/src/main.rs#L21 for an example. Instead of calling into_runnable(), use Runtime::prepare().
+  * Additionally, the internal API compatibility is broken in many places (e.g. RunnableModel always takes the model as an Arc<TypedModel> while it was accepting AsRef before). As you're going to need to fix code to upgrade, it is recommended to try and use the new "tract-rs" facade (please tell us if the current API coverage is not enough, or awkward to use).
+* [Breaking][MSRV] MSRV bumped to 1.89.0
 * [linalg] Avoid panic in Apple sysctl-based feature probing (AMX detection).
+
+# 0.22.1 - 2026-02-23
+* [backport] Small bug fixes release (Slice decluttering bug)
 
 # 0.22.0 - 2025-08-25
 * [Breaking][MSRV] MSRV bumped to 1.85.0
@@ -8,6 +15,8 @@
 * bump virtuaally each and every dependency
 * (wip, experimental) cuda support for llm
 
+# 0.21.14 - 2026-02-23
+* [backport] Small bug fixes release (Slice decluttering bug)
 
 # 0.21.12 - 2025-04-10
 
