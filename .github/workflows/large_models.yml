@@ -76,7 +76,7 @@ jobs:
     - name: Cleanup os name
       run: |
         case $(uname) in
-          Linux) echo OS=linux >> $GITHUB_ENV;;
+          Linux) echo OS=ubuntu >> $GITHUB_ENV;;
           Darwin) echo OS=macos >> $GITHUB_ENV;;
         esac
 
