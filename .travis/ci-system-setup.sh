@@ -74,12 +74,12 @@ then
 fi
 
 TRACT_RUNTIMES="-O"
-if [ "$(uname -a)" == "Darwin" ]  && (system_profiler SPDisplaysDataType | grep -i "Metal")
+if [ "$(uname)" == "Darwin" ]  && (system_profiler SPDisplaysDataType | grep -i "Metal")
 then 
     TRACT_RUNTIMES="$TRACT_RUNTIMES --metal"
 fi
 
-if nvidia-smi > /dev/null
+if which nvidia-smi
 then
     TRACT_RUNTIMES="$TRACT_RUNTIMES --cuda"
 fi
