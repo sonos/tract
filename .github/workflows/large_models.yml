@@ -64,7 +64,7 @@ jobs:
     needs: [ cli ]
     strategy:
       matrix:
-        os: [ macOS, cudal-lovelace ] # these are self hosted, with metal / cuda
+        os: [ macOS, cuda-lovelace ] # these are self hosted, with metal / cuda
       fail-fast: false
     permissions:
       id-token: write
@@ -73,9 +73,14 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
+    - name: Cleanup os name
+      run: |
+        echo OS=$(echo ${{matrix.os}} | tr A-Z a-z) >> $GITHUB_ENV
+
+   
     - uses: actions/download-artifact@v4.1.7
       with:
-        pattern: tract-cli-${{matrix.os}}
+        pattern: tract-cli-${{env.OS}}
 
     - name: Configure AWS Credentials
       continue-on-error: false
@@ -86,8 +91,8 @@ jobs:
 
     - name: Download and run
       run: |
-        chmod +x tract-cli-${{matrix.os}}/tract
-        export TRACT_RUN=$GITHUB_WORKSPACE/tract-cli-${{matrix.os}}/tract
+        chmod +x tract-cli-${{env.OS}}/tract
+        export TRACT_RUN=$GITHUB_WORKSPACE/tract-cli-${{env.OS}}/tract
         ./harness/parakeet-tdt-600m-v3/ci.sh
 
   trigger-minion:
