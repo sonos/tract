@@ -65,6 +65,10 @@ jobs:
     strategy:
       matrix:
         os: [ macOS, cudal-lovelace ] # these are self hosted, with metal / cuda
+      fail-fast: false
+    permissions:
+      id-token: write
+      contents: read
     runs-on: ${{ matrix.os }}
     steps:
     - uses: actions/checkout@v4
