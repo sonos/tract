@@ -28,14 +28,36 @@ jobs:
           path: ./target/opt-no-lto/tract
 
   foundation-llms:
-    name: ${{ matrix.os }} / ${{ matrix.model }} / ${{ matrix.q }}
-    needs: [ cli ]
+    runs-on: ubuntu-latest
+    outputs:
+      os: ${{steps.set-matrix.outputs.os}}
+      rust: ${{steps.set-matrix.outputs.rust}}
+
+    steps:
+      - id: set-matrix
+        env:
+          FULL: $((github.event.workflow_dispatch || github.event.schedule ))
+        run: |
+          if [ "$FULL" == "true" ]
+          then
+            echo 'models=[ "openelm-270M", "llama-3.2-1B-instruct", "llama-3.2-3B-instruct", "llama-3.1-8B-instruct", "qwen2.5-7B-instruct", "qwen3-1.7B", "qwen3-8B" ]' >> $GITHUB_OUTPUT
+            q: q='[ "f16f16", "f32f32", "q40ef16" ]' >> $GITHUB_OUTPUT
+          else
+            echo ::notice::Skipping macOS checks on PR and commit. Dispatch workflow manually if needed.
+            echo 'models=[ llama-3.2-1B-instruct" ]' >> $GITHUB_OUTPUT
+            q: q='[ "f32f32", "q40ef16" ]' >> $GITHUB_OUTPUT
+          fi
+
+  foundation-llm:
+    name: ${{ matrix.os }} / ${{matrix.rt}} / ${{ matrix.model }} / ${{ matrix.q }}
+    needs: [ cli, foundation-llms ]
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [ macOS, cuda-lovelace ]
-        model: [ openelm-270M, llama-3.2-1B-instruct, llama-3.2-3B-instruct, llama-3.1-8B-instruct, qwen2.5-7B-instruct, qwen3-1.7B, qwen3-8B ]
-        q: [ f16f16, f32f32, q40ef16 ]
+        model: ${{fromJson(needs.foundation-llms.outputs.model)}}
+        q: ${{fromJson(needs.foundation-llms.outputs.q)}}
+        rt: [ cpu, gpu ]
       fail-fast: false
     permissions:
       id-token: write
@@ -52,12 +74,14 @@ jobs:
       run: |
         chmod +x tract-cli-${{env.uname}}/tract
         export TRACT_RUN=$GITHUB_WORKSPACE/tract-cli-${{env.uname}}/tract
-        case $(uname) in
-          Darwin) RT=metal;;
-          Linux) RT=cuda;;
-        esac
+        if "${{matrix.rt}}" = "gpu" ]
+        then
+          case $(uname) in
+            Darwin) RT=metal;;
+            Linux) RT=cuda;;
+          esac
+        fi
         .travis/test-llm.sh ${{matrix.model}} ${{matrix.q}} $RT
-        .travis/test-llm.sh ${{matrix.model}} ${{matrix.q}}
 
   parakeet-tdt-600m-v3:
     name: ${{matrix.os}} / Parakeet TDT 600m v3
