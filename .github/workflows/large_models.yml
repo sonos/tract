@@ -20,7 +20,7 @@ jobs:
       - uses: actions/checkout@v4
       - run: |
           ROOT=. ./.travis/ci-system-setup.sh
-          cargo build -p tract --release --no-default-features --features transformers
+          cargo build -p tract --profile opt-no-lto --no-default-features --features transformers
       - run: echo uname=$(uname) >> $GITHUB_ENV
       - uses: actions/upload-artifact@v4
         with:
