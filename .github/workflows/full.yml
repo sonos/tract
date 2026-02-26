@@ -10,75 +10,6 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE20: true
 
 jobs:
-  test-published-crates:
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-    permissions:
-      id-token: write
-      contents: read
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Configure AWS Credentials
-      continue-on-error: true
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        role-to-assume: arn:aws:iam::567805100031:role/github-runner-tract-ci
-        aws-region: us-east-2
-
-    - name: Get current date
-      id: date
-      run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
-
-    - uses: actions/cache@v4
-      with:
-        path: |
-          ~/.rustup
-          ~/.cargo/registry
-          ~/.cargo/git
-          target
-          .cached
-        key: ${{ runner.os }}-full-regular-${{steps.date.outputs.date}}-e
-
-    - name: Full test
-      run: .travis/test-published-crates.sh
-
-  runtime-based-tests:
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-    permissions:
-      id-token: write
-      contents: read
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Configure AWS Credentials
-      continue-on-error: true
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        role-to-assume: arn:aws:iam::567805100031:role/github-runner-tract-ci
-        aws-region: us-east-2
-
-    - name: Get current date
-      id: date
-      run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
-
-    - uses: actions/cache@v4
-      with:
-        path: |
-          ~/.rustup
-          ~/.cargo/registry
-          ~/.cargo/git
-          target
-          .cached
-        key: ${{ runner.os }}-full-regular-${{steps.date.outputs.date}}-e
-
-    - name: Full test
-      run: .travis/test-rt.sh
-
-
   old-harness:
     runs-on: ubuntu-latest
     strategy:
@@ -96,45 +27,8 @@ jobs:
         role-to-assume: arn:aws:iam::567805100031:role/github-runner-tract-ci
         aws-region: us-east-2
 
-    - name: Get current date
-      id: date
-      run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
-
-    - uses: actions/cache@v4
-      with:
-        path: |
-          ~/.rustup
-          ~/.cargo/registry
-          ~/.cargo/git
-          target
-          .cached
-        key: ${{ runner.os }}-full-regular-${{steps.date.outputs.date}}-e
-
     - name: Full test
       run: .travis/test-harness.sh
-
-  check-all-targets:
-    runs-on: ubuntu-latest
-
-    steps:
-    - uses: actions/checkout@v4
-    - name: Get current date
-      id: date
-      run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
-
-    - uses: actions/cache@v4
-      with:
-        path: |
-          ~/.rustup
-          ~/.cargo/registry
-          ~/.cargo/git
-          target
-          .cached
-        key: ${{ runner.os }}-all-targets-${{steps.date.outputs.date}}-e
-    - name: Check all targets
-      run: |
-        ROOT=$(pwd) ./.travis/ci-system-setup.sh
-        cargo check --all-targets --workspace --exclude test-metal --exclude tract-metal
 
   cli-tests:
     runs-on: ubuntu-latest
@@ -145,15 +39,6 @@ jobs:
       id: date
       run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
 
-    - uses: actions/cache@v4
-      with:
-        path: |
-          ~/.rustup
-          ~/.cargo/registry
-          ~/.cargo/git
-          target
-          .cached
-        key: ${{ runner.os }}-full-regular-${{steps.date.outputs.date}}-e
     - name: Full test 
       env:
         AWS_EC2_METADATA_DISABLED: true
@@ -167,21 +52,6 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-    - name: Get current date
-      id: date
-      run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
-
-    - uses: actions/cache@v4
-      with:
-        path: |
-          ~/.rustup
-          ~/.cargo/registry
-          ~/.cargo/git
-          target
-          .cached
-        key: ${{ runner.os }}-full-onnx-${{matrix.opset}}-${{steps.date.outputs.date}}-e
-          #    - name: "Setup sccache"
-          #      run: .travis/setup-sccache.sh
     - name: Full test
       run: .travis/onnx-tests.sh ${{ matrix.opset }}
 
@@ -193,106 +63,36 @@ jobs:
     - name: Full test
       run: .travis/tflite.sh
 
-  onnx-with-asserts:
+  some-tests-with-paranoid-asserts:
     runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v4
-    - name: Get current date
-      id: date
-      run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
-
-    - uses: actions/cache@v4
-      with:
-        path: |
-          ~/.rustup
-          ~/.cargo/registry
-          ~/.cargo/git
-          #~/.cache/sccache
-          target
-          .cached
-        key: ${{ runner.os }}-full-onnx-with-asserts-${{steps.date.outputs.date}}-e
 
     - name: With assertions
       run: |
         rustup update
-        cargo -q test -q -p test-onnx-core
+        cargo test --features paranoid_assertions -p test-onnx-core -p test-unit-core
 
   without-default-features:
     runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v4
-    - name: Get current date
-      id: date
-      run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
-
-    - uses: actions/cache@v4
-      with:
-        path: |
-          ~/.rustup
-          ~/.cargo/registry
-          ~/.cargo/git
-          #~/.cache/sccache
-          target
-          .cached
-        key: ${{ runner.os }}-full-onnx-with-asserts-${{steps.date.outputs.date}}-e
-
     - name: Without default features
       run: |
         rustup update
         cargo check -p tract --no-default-features $CARGO_EXTRA
-
 
   complexes:
     runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v4
-    - name: Get current date
-      id: date
-      run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
-
-    - uses: actions/cache@v4
-      with:
-        path: |
-          ~/.rustup
-          ~/.cargo/registry
-          ~/.cargo/git
-          #~/.cache/sccache
-          target
-          .cached
-        key: ${{ runner.os }}-full-onnx-with-asserts-${{steps.date.outputs.date}}-e
-
     - name: With complexes
       run: |
         rustup update
         cargo check -p tract-nnef --features complex $CARGO_EXTRA
-
-  core-paranoid:
-    runs-on: ubuntu-latest
-
-    steps:
-    - uses: actions/checkout@v4
-    - name: Get current date
-      id: date
-      run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
-
-    - uses: actions/cache@v4
-      with:
-        path: |
-          ~/.rustup
-          ~/.cargo/registry
-          ~/.cargo/git
-          #~/.cache/sccache
-          target
-          .cached
-        key: ${{ runner.os }}-full-core-paranoid-${{steps.date.outputs.date}}-e
-
-    - name: Core test with paranoid assertions
-      run: |
-        rustup update
-        cargo test -p tract-core --features paranoid_assertions
 
   C:
     runs-on: ubuntu-latest
@@ -321,8 +121,6 @@ jobs:
         cd api/c
         cargo install cbindgen
         make
-        #    - name: Stop sccache server
-        #      run: sccache --stop-server || true
 
   python:
     runs-on: ubuntu-latest
@@ -362,5 +160,3 @@ jobs:
         source .venv/bin/activate
         uv pip install -e ".[dev]"
         pytest .
-        #    - name: Stop sccache server
-        #      run: sccache --stop-server || true

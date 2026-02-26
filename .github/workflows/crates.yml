@@ -33,7 +33,7 @@ jobs:
           fi
 
   crates:
-    name: ${{matrix.os}} / ${{matrix.crate}} / ${{rust}}
+    name: ${{matrix.os}} / ${{matrix.crate}} / ${{matrix.rust}}
     needs: prepare-matrix
     strategy:
       matrix:
@@ -84,7 +84,7 @@ jobs:
       run: cargo test -p tract-metal -p test-metal
    
   pedantic:
-    name: fmt, clippy, etc (${{matrix.os}} / ${{rust}})
+    name: fmt, clippy, etc (${{matrix.os}} / ${{matrix.rust}})
     needs: prepare-matrix
     strategy:
       matrix:
@@ -96,6 +96,7 @@ jobs:
       RUSTUP_TOOLCHAIN: ${{matrix.rust}}
     steps:
     - uses: actions/checkout@v4
+    - run: cargo check --all-targets
     - run: rustup component add clippy && cargo clippy
     - name: fmt
       run: rustup component add rustfmt && cargo fmt --check
