@@ -1,7 +1,7 @@
 name: Large models
 
 on:
-  #   pull_request:
+  pull_request:
   schedule:
     - cron:  '0 3 * * *'
   workflow_dispatch:
