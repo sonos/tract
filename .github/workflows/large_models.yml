@@ -25,7 +25,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: tract-cli-${{env.uname}}
-          path: ./target/release/tract
+          path: ./target/opt-no-lto/tract
 
   foundation-llms:
     name: ${{ matrix.os }} / ${{ matrix.model }} / ${{ matrix.q }}
