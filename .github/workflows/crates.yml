@@ -1,4 +1,4 @@
-name: Unix build and tests
+name: Rust crates
 
 on:
   pull_request:
@@ -28,14 +28,17 @@ jobs:
             echo ::notice::Skipping macOS checks on PR and commit. Dispatch workflow manually if needed.
             echo 'os=["ubuntu-latest"]' >> $GITHUB_OUTPUT
           fi
-    
 
-  unix:
+  crates:
+    name: ${{matrix.os}} / ${{matrix.crate}}
     needs: what-to-run
     strategy:
       matrix:
         os: ${{fromJson(needs.what-to-run.outputs.os)}}
-        rust: [ 1.89.0 ]
+        crate: [  tract-data, tract-linalg, tract-core, tract-nnef, tract-hir, tract-onnx,
+                  tract-pulse, tract-onnx-opl, tract-pulse-opl, tract-rs,
+                  test-unit-core, test-onnx-core, test-nnef-cycle,
+               ]
       fail-fast: false
 
     runs-on: ${{matrix.os}}
@@ -49,28 +52,21 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Configure AWS Credentials
-      continue-on-error: true
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        role-to-assume: arn:aws:iam::567805100031:role/github-runner-tract-ci
-        aws-region: us-east-2
+    - name: Cargo test
+      run: cargo test -p ${{matrix.crate}}
 
-    - name: Get current date
-      id: date
-      run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+  cuda:
+    runs-on: cuda-lovelace
+    steps:
+    - uses: actions/checkout@v4
 
-    - uses: actions/cache@v4
-      with:
-        path: |
-          ~/.rustup
-          ~/.cargo/registry
-          ~/.cargo/git
-          target
-          .cached
-        key: ${{ runner.os }}-main-${{matrix.rust}}-${{steps.date.outputs.date}}-d
+    - name: Cargo test
+      run: cargo test -p tract-cuda -p test-cuda
 
-    - name: Native script
-      run: .travis/regular-tests.sh
-      env:
-        SHORT: yes
+  metal:
+    runs-on: macOS
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Cargo test
+      run: cargo test -p tractt-metal test-metal
