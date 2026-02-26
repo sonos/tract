@@ -94,6 +94,29 @@ jobs:
         rustup update
         cargo check -p tract-nnef --features complex $CARGO_EXTRA
 
+  check-all-targets:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Get current date
+      id: date
+      run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+
+    - uses: actions/cache@v4
+      with:
+        path: |
+          ~/.rustup
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+          .cached
+        key: ${{ runner.os }}-all-targets-${{steps.date.outputs.date}}-e
+    - name: Check all targets
+      run: |
+        ROOT=$(pwd) ./.travis/ci-system-setup.sh
+        cargo check --all-targets --workspace --exclude test-metal --exclude tract-metal
+
   C:
     runs-on: ubuntu-latest
 
