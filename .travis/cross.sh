@@ -75,7 +75,7 @@ case "$PLATFORM" in
 
     "aarch64-apple-ios")
         rustup target add aarch64-apple-ios
-        cargo dinghy --platform auto-ios-aarch64 build -p tract-linalg -p tract-ffi
+        cargo dinghy --platform auto-ios-aarch64 check -p tract-linalg -p tract-ffi
         ;;
 
     "aarch64-apple-darwin" | "x86_64-unknown-linux-gnu")

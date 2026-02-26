@@ -82,7 +82,7 @@ jobs:
           - aarch64-apple-ios
           - aarch64-apple-darwin
 
-    runs-on: macOS
+    runs-on: macos-latest
     permissions:
       id-token: write
       contents: read
