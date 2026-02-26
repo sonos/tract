@@ -69,4 +69,4 @@ jobs:
     - uses: actions/checkout@v4
 
     - name: Cargo test
-      run: cargo test -p tractt-metal test-metal
+      run: cargo test -p tract-metal test-metal
