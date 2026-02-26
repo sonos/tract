@@ -31,7 +31,7 @@ jobs:
   foundation-llms:
     name: ${{ matrix.os }} / ${{ matrix.model }} / ${{ matrix.q }}
     needs: [ cli ]
-    runs-on: ${{ matrix.os }}-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [ macOS, cuda-lovelace ]
@@ -51,8 +51,8 @@ jobs:
 
     - name: Download and run
       run: |
-        chmod +x tract-cli-${{matrix.os}}/tract
-        export TRACT_RUN=$GITHUB_WORKSPACE/tract-cli-${{matrix.os}}/tract
+        chmod +x tract-cli-${{enc-uname}}/tract
+        export TRACT_RUN=$GITHUB_WORKSPACE/tract-cli-${{matrix.uname}}/tract
         case $(uname) in
           Darwin) RT=metal;;
           Linux) RT=cuda;;
@@ -80,7 +80,7 @@ jobs:
 
     - name: Download and run
       run: |
-        chmod +x tract-cli-${{env.OS}}/tract
-        export TRACT_RUN=$GITHUB_WORKSPACE/tract-cli-${{env.OS}}/tract
+        chmod +x tract-cli-${{env.uname}}/tract
+        export TRACT_RUN=$GITHUB_WORKSPACE/tract-cli-${{env.uname}}/tract
         ./harness/parakeet-tdt-600m-v3/ci.sh
 
