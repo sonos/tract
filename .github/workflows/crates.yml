@@ -33,7 +33,7 @@ jobs:
           fi
 
   crates:
-    name: ${{matrix.os}} / ${{matrix.crate}}
+    name: ${{matrix.os}} / ${{matrix.crate}} / ${{rust}}
     needs: prepare-matrix
     strategy:
       matrix:
@@ -84,6 +84,7 @@ jobs:
       run: cargo test -p tract-metal -p test-metal
    
   pedantic:
+    name: fmt, clippy, etc (${{matrix.os}} / ${{rust}})
     needs: prepare-matrix
     strategy:
       matrix:
