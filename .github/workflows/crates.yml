@@ -60,6 +60,12 @@ jobs:
 
   cuda:
     runs-on: cuda-lovelace
+    strategy:
+      matrix:
+        rust: ${{fromJson(needs.prepare-matrix.outputs.rust)}}
+      fail-fast: false
+    env:
+      RUSTUP_TOOLCHAIN: ${{matrix.rust}}
     steps:
     - uses: actions/checkout@v4
 
@@ -68,11 +74,17 @@ jobs:
 
   metal:
     runs-on: macOS
+    strategy:
+      matrix:
+        rust: ${{fromJson(needs.prepare-matrix.outputs.rust)}}
+      fail-fast: false
+    env:
+      RUSTUP_TOOLCHAIN: ${{matrix.rust}}
     steps:
     - uses: actions/checkout@v4
 
     - name: Cargo test
-      run: cargo test -p tract-metal test-metal
+      run: cargo test -p tract-metal -p test-metal
    
   pedantic:
     needs: prepare-matrix
