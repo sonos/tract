@@ -63,52 +63,7 @@ then
     exit 0
 fi
 
-# Skipping f32f32 models except LLama 1B
-MODELS_F32_ALLOWED="llama-3.2-1B-instruct"
-if [ "$q" = "f32f32" ] && ! echo "$MODELS_F32_ALLOWED" | grep -q -w "$1"
-then
-    echo "INFO: Skipping f32f32 for model $1."
-    exit 0
-fi
-
 id=$model_id-$q
-
-# Skipping too big models for CI workers
-TOO_BIG_MODELS=(
-    "meta-llama--Llama-3.1-8B-Instruct-f32f32:cuda"
-    "meta-llama--Llama-3.1-8B-Instruct-f16f16:cuda"
-    "Qwen--Qwen2.5-7B-Instruct-f32f32:cuda"
-    "Qwen--Qwen2.5-7B-Instruct-f16f16:cuda"
-    "Qwen--Qwen3-8B-f32f32:cuda"
-    "Qwen--Qwen3-8B-f16f16:cuda"
-)
-
-for big_id in "${TOO_BIG_MODELS[@]}"
-do
-    if [ "$big_id" = "$id:$device" ]
-    then
-        echo "INFO: Skipping model $id because it is too big for $device CI worker."
-        exit 0
-    fi
-done
-
-if [ -n "$GITHUB_ACTIONS" ]
-then
-    for m in \
-        meta-llama--Llama-3.1-8B-Instruct-f32f32 \
-        meta-llama--Llama-3.1-8B-Instruct-f16f16 \
-        Qwen--Qwen2.5-7B-Instruct-f32f32 \
-        Qwen--Qwen2.5-7B-Instruct-f16f16 \
-        Qwen--Qwen3-8B-f32f32 \
-        Qwen--Qwen3-8B-f16f16
-    do
-        if [[ "$m" = "$id" ]]
-	then
-            echo "::warning title=Untestable model::$id is too big for GHA..."
-            exit 0
-	fi
-    done
-fi
 
 if which gstat > /dev/null
 then
