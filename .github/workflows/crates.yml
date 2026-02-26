@@ -55,9 +55,6 @@ jobs:
     - name: Cargo test
       run: cargo test -p ${{matrix.crate}}
 
-    - name: Clippy
-      run: cargo clippy -p ${{matrix.crate}}
-
   cuda:
     runs-on: cuda-lovelace
     strategy:
@@ -98,7 +95,7 @@ jobs:
       RUSTUP_TOOLCHAIN: ${{matrix.rust}}
     steps:
     - uses: actions/checkout@v4
-    - run: cargo clippy
+    - run: rustup component add clippy && cargo clippy
     - name: fmt
       run: rustup component add rustfmt && cargo fmt --check
     - name: Warnings
