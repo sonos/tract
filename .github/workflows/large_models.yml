@@ -51,7 +51,7 @@ jobs:
     - name: Download and run
       run: |
         chmod +x tract-cli-${{env.uname}}/tract
-        export TRACT_RUN=$GITHUB_WORKSPACE/tract-cli-${{matrix.uname}}/tract
+        export TRACT_RUN=$GITHUB_WORKSPACE/tract-cli-${{env.uname}}/tract
         case $(uname) in
           Darwin) RT=metal;;
           Linux) RT=cuda;;
@@ -64,7 +64,7 @@ jobs:
     needs: [ cli ]
     strategy:
       matrix:
-        os: [ macOS, cuda-lovelace ] # these are self hosted, with metal / cuda
+        os: [ macOS, cuda-lovelace ]
       fail-fast: false
     permissions:
       id-token: write
