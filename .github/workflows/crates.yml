@@ -57,6 +57,7 @@ jobs:
 
   cuda:
     runs-on: cuda-lovelace
+    needs: prepare-matrix
     strategy:
       matrix:
         rust: ${{fromJson(needs.prepare-matrix.outputs.rust)}}
@@ -71,6 +72,7 @@ jobs:
 
   metal:
     runs-on: macOS
+    needs: prepare-matrix
     strategy:
       matrix:
         rust: ${{fromJson(needs.prepare-matrix.outputs.rust)}}
