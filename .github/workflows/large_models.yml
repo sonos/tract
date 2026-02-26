@@ -7,9 +7,8 @@ on:
   workflow_dispatch:
 
 env:
-  CARGO_INCREMENTAL: false
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE20: true
-
+  LARGE_MODELS: true
+  
 jobs:
   cli: 
     name: Build tract on ${{ matrix.os }}
@@ -51,7 +50,7 @@ jobs:
 
     - name: Download and run
       run: |
-        chmod +x tract-cli-${{enc-uname}}/tract
+        chmod +x tract-cli-${{env.uname}}/tract
         export TRACT_RUN=$GITHUB_WORKSPACE/tract-cli-${{matrix.uname}}/tract
         case $(uname) in
           Darwin) RT=metal;;
