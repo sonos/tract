@@ -30,8 +30,8 @@ jobs:
   foundation-llms:
     runs-on: ubuntu-latest
     outputs:
-      os: ${{steps.set-matrix.outputs.os}}
-      rust: ${{steps.set-matrix.outputs.rust}}
+      models: ${{steps.set-matrix.outputs.models}}
+      q: ${{steps.set-matrix.outputs.q}}
 
     steps:
       - id: set-matrix
@@ -55,7 +55,7 @@ jobs:
     strategy:
       matrix:
         os: [ macOS, cuda-lovelace ]
-        model: ${{fromJson(needs.foundation-llms.outputs.model)}}
+        model: ${{fromJson(needs.foundation-llms.outputs.models)}}
         q: ${{fromJson(needs.foundation-llms.outputs.q)}}
         rt: [ cpu, gpu ]
       fail-fast: false
