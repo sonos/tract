@@ -74,7 +74,7 @@ then
 fi
 
 TRACT_RUNTIMES="-O"
-if [ "$(uname)" == "Darwin" ]  && (system_profiler SPDisplaysDataType | grep -i "Metal")
+if [ "$(uname)" = "Darwin" ] && (system_profiler SPDisplaysDataType | grep -i "Metal")
 then 
     TRACT_RUNTIMES="$TRACT_RUNTIMES --metal"
 fi
