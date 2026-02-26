@@ -8,7 +8,7 @@ mobilenet: tract.h libtract.so mobilenet.c
 	cc mobilenet.c -o mobilenet -L. -ltract
 
 libtract.so:
-	cargo build -p tract-ffi --release
+	cargo build -p tract-ffi --profile opt-no-lto
 	cp ../../target/release/libtract.so .
 
 tract.h:
