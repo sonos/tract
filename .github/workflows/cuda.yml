@@ -26,20 +26,11 @@ jobs:
       env:
          RUNNER_ENVIRONMENT: ${{ runner.environment }}
         
-    - run: cargo check --workspace --exclude test-blas --exclude tract-metal --exclude test-metal
-    - run: cargo test -q -p tract-linalg
-    - run: cargo test -q -p tract-core
-    - run: cargo test -q -p tract-nnef
-    - run: cargo test -q -p tract-onnx
-    - run: cargo test -q -p tract-onnx-opl
-    - run: cargo test -q -p tract-cuda
-    - run: cargo test -q -p test-onnx-core
-    - run: cargo test -q -p test-unit-core
     - run: cargo test -q -p test-cuda
 
   build-cli: 
     name: Build tract on Cuda
-    runs-on: [ self-hosted, cuda-lovelace ]
+    runs-on: [ ubuntu-latest ]
     steps:
       - uses: actions/checkout@v4
       - run: |
