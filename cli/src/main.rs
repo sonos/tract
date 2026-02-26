@@ -707,13 +707,11 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
             }
             return Ok(());
         }
-        Some(("dump", m)) => {
-            if m.is_present("metal-gpu-trace") {
-                // Set env variable before loading metal lib
-                unsafe {
-                    std::env::set_var("METAL_CAPTURE_ENABLED", "1");
-                    std::env::set_var("METAL_DEVICE_WRAPPER_TYPE", "1");
-                }
+        Some(("dump", m)) if m.is_present("metal-gpu-trace") => {
+            // Set env variable before loading metal lib
+            unsafe {
+                std::env::set_var("METAL_CAPTURE_ENABLED", "1");
+                std::env::set_var("METAL_DEVICE_WRAPPER_TYPE", "1");
             }
         }
         _ => (),
