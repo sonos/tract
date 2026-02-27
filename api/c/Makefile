@@ -9,7 +9,7 @@ mobilenet: tract.h libtract.so mobilenet.c
 
 libtract.so:
 	cargo build -p tract-ffi --profile opt-no-lto
-	cp ../../target/release/libtract.so .
+	cp ../../target/opt-no-lto/libtract.so .
 
 tract.h:
 	cd ../ffi ; cbindgen -l c > tract.h
