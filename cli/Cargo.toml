@@ -1,15 +1,18 @@
 [package]
 name = "tract"
 version = "0.23.0-pre"
-authors = [ "Romain Liautaud <romain.liautaud@snips.ai>", "Mathieu Poumeyrol <kali@zoy.org>"]
+authors = [
+  "Romain Liautaud <romain.liautaud@snips.ai>",
+  "Mathieu Poumeyrol <kali@zoy.org>",
+]
 license = "MIT OR Apache-2.0"
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
 repository = "https://github.com/snipsco/tract"
-keywords = [ "TensorFlow", "NeuralNetworks" ]
-categories = [ "science" ]
+keywords = ["TensorFlow", "NeuralNetworks"]
+categories = ["science"]
 autobenches = false
 edition = "2024"
-include = [ "Cargo.toml", "src/**/*.rs", "LICENSE*" ]
+include = ["Cargo.toml", "src/**/*.rs", "LICENSE*"]
 
 [badges]
 maintenance = { status = "actively-developed" }
@@ -20,7 +23,6 @@ box_drawing.workspace = true
 clap.workspace = true
 criterion.workspace = true
 colorous.workspace = true
-cudarc.workspace = true
 env_logger.workspace = true
 flate2.workspace = true
 fs-err.workspace = true
@@ -51,7 +53,6 @@ tract-nnef.workspace = true
 tract-nnef-resources.workspace = true
 tract-libcli.workspace = true
 tract-gpu.workspace = true
-tract-cuda.workspace = true
 tract-extra = { workspace = true, optional = true }
 tract-pulse = { workspace = true, optional = true }
 tract-pulse-opl = { workspace = true, optional = true }
@@ -66,15 +67,27 @@ levenshtein-diff.workspace = true
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
 tract-metal.workspace = true
 
+[target.'cfg(any(target_os = "linux", target_os = "windows"))'.dependencies]
+cudarc.workspace = true
+tract-cuda.workspace = true
+
 [features]
-default = ["onnx", "tf", "pulse", "pulse-opl", "tflite", "transformers", "extra"]
-apple-amx-ios = [ "tract-linalg/apple-amx-ios" ]
-onnx = [ "tract-onnx", "tract-libcli/hir", "tract-libcli/onnx" ]
-extra = [ "tract-extra" ]
-pulse-opl = [ "tract-pulse-opl" ]
-pulse = [ "tract-pulse", "tract-pulse-opl" ]
-tf = [ "tract-tensorflow", "tract-libcli/hir" ]
-tflite = [ "tract-tflite" ]
-transformers = [ "tract-transformers", "tract-libcli/transformers" ]
-conform = [ "tract-tensorflow/conform"  ]
-multithread-mm = [ "tract-linalg/multithread-mm" ]
+default = [
+  "onnx",
+  "tf",
+  "pulse",
+  "pulse-opl",
+  "tflite",
+  "transformers",
+  "extra",
+]
+apple-amx-ios = ["tract-linalg/apple-amx-ios"]
+onnx = ["tract-onnx", "tract-libcli/hir", "tract-libcli/onnx"]
+extra = ["tract-extra"]
+pulse-opl = ["tract-pulse-opl"]
+pulse = ["tract-pulse", "tract-pulse-opl"]
+tf = ["tract-tensorflow", "tract-libcli/hir"]
+tflite = ["tract-tflite"]
+transformers = ["tract-transformers", "tract-libcli/transformers"]
+conform = ["tract-tensorflow/conform"]
+multithread-mm = ["tract-linalg/multithread-mm"]
