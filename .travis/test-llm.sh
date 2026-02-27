@@ -127,7 +127,7 @@ do
             --assert-llm-lev20 999999999 \
             --prompt-chunk-size 60 \
             $approx --allow-float-casts 2>&1 | tee output.txt
-        found=$(cat output.txt | grep lev20 | cut -d '=' -f 2)
+        found=$(cat output.txt | grep 'lev20=' | cut -d '=' -f 2)
         ( ( grep -v $key $expectations || true) ; echo $key $found) | sort > $expectations.tmp
         mv $expectations.tmp $expectations
     elif [ -n "$RELAX" ]
@@ -140,7 +140,7 @@ do
             --assert-llm-lev20 999999999 \
             --prompt-chunk-size 60 \
             $approx --allow-float-casts 2>&1 | tee output.txt
-        found=$(cat output.txt | grep lev20 | cut -d '=' -f 2)
+        found=$(cat output.txt | grep 'lev20=' | cut -d '=' -f 2)
         if [ "$found" -lt "$prior" ]
         then
             found=$prior
