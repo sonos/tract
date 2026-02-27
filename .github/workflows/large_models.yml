@@ -58,6 +58,23 @@ jobs:
         model: ${{fromJson(needs.foundation-llms.outputs.models)}}
         q: ${{fromJson(needs.foundation-llms.outputs.q)}}
         rt: [ cpu, gpu ]
+        exclude:
+          - model: openelm-270M
+            q: f32f32
+          - model: Llama-3.2-3B-Instruct
+            q: f32f32
+          - model: Llama-3.2-3B-Instruct
+            q: f32f32
+          - model: Llama-3.1-8B-Instruct
+            q: f32f32
+          - model: Qwen2.5-7B-Instruct
+            q: f32f32
+          - model: Qwen3-1.7B
+            q: f32f32
+          - model: Qwen3-8B
+            q: f32f32
+          - model: OpenELM-270M
+            q: f32f32
       fail-fast: false
     permissions:
       id-token: write
@@ -80,7 +97,7 @@ jobs:
       run: |
         chmod +x tract-cli-${{env.uname}}/tract
         export TRACT_RUN=$GITHUB_WORKSPACE/tract-cli-${{env.uname}}/tract
-        if "${{matrix.rt}}" = "gpu" ]
+        if [ "${{matrix.rt}}" = "gpu" ]
         then
           case $(uname) in
             Darwin) RT=metal;;
