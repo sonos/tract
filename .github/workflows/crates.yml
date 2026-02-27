@@ -20,7 +20,7 @@ jobs:
     steps:
       - id: set-matrix
         env:
-          FULL: $((github.event.workflow_dispatch || github.event.schedule ))
+          FULL: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' }}
         run: |
           if [ "$FULL" == "true" ]
           then
