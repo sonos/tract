@@ -8,7 +8,6 @@ on:
 
 env:
   LARGE_MODELS: true
-  FULL: ${{github.event.workflow_dispatch || github.event.schedule}}
   
 jobs:
   cli: 
@@ -36,6 +35,8 @@ jobs:
 
     steps:
       - id: set-matrix
+        env:
+          FULL: ${{github.event.workflow_dispatch || github.event.schedule}}
         run: |
           if [ "$FULL" = "true" ]
           then
