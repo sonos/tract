@@ -9,6 +9,7 @@ pub mod utils;
 pub use context::CUDA_STREAM;
 use tract_core::internal::*;
 use tract_core::transform::ModelTransform;
+use tract_core::declare_transform_factories;
 pub use transform::CudaTransform;
 
 use crate::utils::ensure_cuda_runtime_dependencies;
@@ -50,3 +51,9 @@ impl Runtime for CudaRuntime {
 }
 
 register_runtime!(CudaRuntime = CudaRuntime);
+
+// Register CUDA-specific transforms via central macro (inventory/no-inventory).
+declare_transform_factories! {
+    lookup_cuda_transforms,
+    ("cuda-transform", |_| Ok(Some(Box::new(CudaTransform::default()) as Box<dyn ModelTransform>))),
+}

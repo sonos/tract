@@ -102,44 +102,103 @@ pub struct ModelTransformFactory {
     pub builder: fn(spec: &str) -> TractResult<Option<Box<dyn ModelTransform>>>,
 }
 
+#[cfg(feature = "inventory-registry")]
 inventory::collect!(ModelTransformFactory);
 
 #[macro_export]
 macro_rules! register_simple_model_transform {
     ($name: expr, $type: expr) => {
+        #[cfg(feature = "inventory-registry")]
         $crate::internal::inventory::submit! {
             $crate::transform::ModelTransformFactory {
                 name: $name,
                 builder: |_| Ok(Some(Box::new($type)))
             }
         }
+        #[cfg(not(feature = "inventory-registry"))]
+        const _: () = (); // no-op when inventory is disabled
     };
 }
 
-pub fn get_transform(spec: &str) -> TractResult<Option<Box<dyn ModelTransform>>> {
-    for factory in inventory::iter::<ModelTransformFactory>() {
-        if spec.starts_with(factory.name) {
-            return (factory.builder)(spec);
+/// Declare a set of transform factories once, and generate both
+/// inventory registrations and a non-inventory fallback `get_transform`.
+#[macro_export]
+macro_rules! declare_transform_factories {
+    ( $fname:ident, $( $(#[$m:meta])? ($name:expr, $builder:expr) ),+ $(,)? ) => {
+        $(
+            $(#[$m])?
+            #[cfg(feature = "inventory-registry")]
+            $crate::internal::inventory::submit! {
+                $crate::transform::ModelTransformFactory { name: $name, builder: $builder }
+            }
+        )+
+
+        #[cfg(not(feature = "inventory-registry"))]
+        pub fn $fname(
+            spec: &str,
+        ) -> ::std::result::Result<
+            Option<Box<dyn $crate::transform::ModelTransform>>,
+            Box<dyn ::std::error::Error + Send + Sync + 'static>,
+        > {
+            $(
+                $(#[$m])?
+                if spec.starts_with($name) {
+                    return ($builder)(spec);
+                }
+            )+
+            Ok(None)
         }
     }
-    Ok(None)
 }
 
-register_simple_model_transform!("softmax-fast-compact", SoftmaxFastCompact);
-#[cfg(feature = "blas")]
-register_simple_model_transform!("as-blas", AsBlas);
-register_simple_model_transform!("block-quant", BlockQuantTransform);
+/// Declare simple transforms by type (must be Default), generating both
+/// inventory registrations and a non-inventory `get_transform`.
+#[macro_export]
+macro_rules! declare_model_transforms {
+    ( $( ($name:expr, $ty:ty) ),+ $(,)? ) => {
+        $(
+            $crate::register_simple_model_transform!($name, <$ty>::default());
+        )+
 
-inventory::submit! {
-    ModelTransformFactory {
-        name: "f32-to-f16",
-        builder: |spec| Ok(build_float_translator::<f32,f16>(spec.strip_prefix("f32-to-f16")))
+        #[cfg(not(feature = "inventory-registry"))]
+        pub fn get_transform(
+            spec: &str,
+        ) -> ::std::result::Result<
+            Option<Box<dyn $crate::transform::ModelTransform>>,
+            Box<dyn ::std::error::Error + Send + Sync + 'static>,
+        > {
+            $(
+                if spec.starts_with($name) {
+                    return Ok(Some(Box::new(<$ty>::default())));
+                }
+            )+
+            Ok(None)
+        }
     }
 }
 
-inventory::submit! {
-    ModelTransformFactory {
-        name: "f16-to-f32",
-        builder: |spec| Ok(build_float_translator::<f16,f32>(spec.strip_prefix("f16-to-f32")))
+pub fn get_transform(spec: &str) -> TractResult<Option<Box<dyn ModelTransform>>> {
+    #[cfg(feature = "inventory-registry")]
+    {
+        for factory in inventory::iter::<ModelTransformFactory>() {
+            if spec.starts_with(factory.name) {
+                return (factory.builder)(spec);
+            }
+        }
+        Ok(None)
     }
+    #[cfg(not(feature = "inventory-registry"))]
+    {
+        return lookup_core_transforms(spec).map_err(|e| anyhow::anyhow!(e));
+    }
+}
+
+declare_transform_factories! {
+    lookup_core_transforms,
+    ("softmax-fast-compact", |_| Ok(Some(Box::new(SoftmaxFastCompact) as Box<dyn ModelTransform>))),
+    ("block-quant", |_| Ok(Some(Box::new(BlockQuantTransform) as Box<dyn ModelTransform>))),
+    #[cfg(feature = "blas")]
+    ("as-blas", |_| Ok(Some(Box::new(AsBlas) as Box<dyn ModelTransform>))),
+    ("f32-to-f16", |spec: &str| Ok(build_float_translator::<f32,f16>(spec.strip_prefix("f32-to-f16")))),
+    ("f16-to-f32", |spec: &str| Ok(build_float_translator::<f16,f32>(spec.strip_prefix("f16-to-f32")))),
 }

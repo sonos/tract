@@ -3,6 +3,7 @@ use tract_nnef::tract_core::transform::ModelTransform;
 
 use crate::ops;
 
+#[cfg_attr(not(feature = "inventory-registry"), allow(dead_code))]
 #[derive(Debug, Default)]
 pub struct RmsNormTransform;
 
@@ -16,6 +17,7 @@ impl ModelTransform for RmsNormTransform {
     }
 }
 
+#[cfg_attr(not(feature = "inventory-registry"), allow(dead_code))]
 #[derive(Debug, Default)]
 pub struct ApplyRopeTransform;
 
@@ -32,6 +34,7 @@ impl ModelTransform for ApplyRopeTransform {
     }
 }
 
+#[cfg_attr(not(feature = "inventory-registry"), allow(dead_code))]
 #[derive(Debug, Default)]
 pub struct SiluTransform;
 
@@ -45,6 +48,7 @@ impl ModelTransform for SiluTransform {
     }
 }
 
+#[cfg_attr(not(feature = "inventory-registry"), allow(dead_code))]
 #[derive(Debug, Default)]
 pub struct ScaledMaskedSoftmaxTransform;
 
@@ -60,6 +64,7 @@ impl ModelTransform for ScaledMaskedSoftmaxTransform {
     }
 }
 
+#[cfg_attr(not(feature = "inventory-registry"), allow(dead_code))]
 #[derive(Debug, Default)]
 pub struct GeluTransform;
 
@@ -75,6 +80,7 @@ impl ModelTransform for GeluTransform {
     }
 }
 
+#[cfg_attr(not(feature = "inventory-registry"), allow(dead_code))]
 #[derive(Debug, Default)]
 pub struct KeyValueCacheTransform;
 
@@ -93,6 +99,7 @@ impl ModelTransform for KeyValueCacheTransform {
     }
 }
 
+#[cfg_attr(not(feature = "inventory-registry"), allow(dead_code))]
 #[derive(Debug, Default)]
 pub struct SdpaFuseKvCacheBroadcastTransform;
 
@@ -109,6 +116,7 @@ impl ModelTransform for SdpaFuseKvCacheBroadcastTransform {
 }
 
 // TODO: This is why Transform shoudl be renamed to Remodel
+#[cfg_attr(not(feature = "inventory-registry"), allow(dead_code))]
 #[derive(Debug, Default)]
 pub struct TransformersTransform;
 

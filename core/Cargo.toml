@@ -37,10 +37,11 @@ rustfft.workspace = true
 smallvec.workspace = true
 tract-linalg.workspace = true
 tract-data.workspace = true
-inventory.workspace = true
+inventory = { workspace = true, optional = true }
 
 [features]
 default = [ ]
+inventory-registry = [ "inventory" ]
 complex = [ "tract-data/complex", "tract-linalg/complex" ]
 blas = [ "cblas" ]
 accelerate = [ "blas", "accelerate-src" ]

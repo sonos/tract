@@ -20,3 +20,5 @@ tract-nnef.workspace = true
 
 [features]
 complex = [ "tract-nnef/complex" ]
+# Dummy feature to align with cfg in macros.
+inventory-registry = []

@@ -32,6 +32,8 @@ tract-gpu.workspace = true
 
 [features]
 default = [ ]
+# Dummy feature for cfg used in macros that may expand here.
+inventory-registry = []
 
 [dev-dependencies]
 criterion.workspace = true
@@ -42,4 +44,3 @@ ggml = { git = "https://github.com/rustformers/llm.git", rev="9376078", features
 [[bench]]
 name = "metal_gemm"
 harness = false
-

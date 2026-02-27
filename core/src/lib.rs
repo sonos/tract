@@ -116,6 +116,7 @@ pub mod prelude {
 
 /// This prelude is meant for code extending tract (like implementing new ops).
 pub mod internal {
+    #[cfg(feature = "inventory-registry")]
     pub extern crate inventory;
     pub use crate::axes::{AxesMapping, Axis};
     pub use crate::late_bind::*;
