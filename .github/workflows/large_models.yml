@@ -65,6 +65,12 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+    - name: Configure AWS Credentials
+      continue-on-error: true
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: arn:aws:iam::567805100031:role/github-runner-tract-ci
+        aws-region: us-east-2
     - run: echo uname=$(uname) >> $GITHUB_ENV
     - uses: actions/download-artifact@v4.1.7
       with:
