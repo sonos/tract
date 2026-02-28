@@ -78,7 +78,6 @@ nnef=llm/$generation/$id/$id.nnef.tgz
 
 $CACHE_FILE $nnef
 
-$TRACT_RUN -v --nnef-tract-transformers $MODELS/$nnef -O --readings  --assert-maximal-mm-quality-cost 0 $TRACT_EXTRA_ARGS dump -q
 if [ -e $MODELS/$nnef ]
 then
     size=$($STAT -c %s $MODELS/$nnef)
@@ -86,6 +85,17 @@ else
     size=$(curl -s -I $MODELS/$nnef | grep Content-Length | cut -d " " -f 2 | tr -cd 0123456789)
 fi
 
+if which nvidia-smi > /dev/null
+then
+    vram=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits | awk '{print $1*1024*1024}')
+    if [ $vram -lt $size ]
+    then
+        echo "::warning::Skipping this test, not enough VRAM."
+        exit 0
+    fi
+fi
+
+$TRACT_RUN -v --nnef-tract-transformers $MODELS/$nnef -O --readings  --assert-maximal-mm-quality-cost 0 $TRACT_EXTRA_ARGS dump -q
 alloc_max=$(cat readings.out | tail -n +2 | awk '{print $10-$11}' | sort -n | tail -1)
 ratio=$((alloc_max * 100 / size))
 
