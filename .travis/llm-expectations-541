@@ -164,7 +164,7 @@ Qwen--Qwen3-8B-f16f16.p0s100.arm64.cpu 20
 Qwen--Qwen3-8B-f16f16.p0s100.arm64.metal 8
 Qwen--Qwen3-8B-f16f16.p0s100.x86_64.cpu 20
 Qwen--Qwen3-8B-f16f16.p50s50.arm64.cpu 20
-Qwen--Qwen3-8B-f16f16.p50s50.arm64.metal 6
+Qwen--Qwen3-8B-f16f16.p50s50.arm64.metal 8
 Qwen--Qwen3-8B-f16f16.p50s50.x86_64.cpu 20
 Qwen--Qwen3-8B-f16f16.p99s1.arm64.cpu 20
 Qwen--Qwen3-8B-f16f16.p99s1.arm64.metal 0
