@@ -12,6 +12,12 @@ fn argmax(slice: &[f32]) -> Option<usize> {
     slice.into_iter().position_max_by_key(|x| FloatOrd(**x))
 }
 
+fn log_softmax(xs: &[f32]) -> Vec<f32> {
+    let max = xs.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+    let lse = xs.iter().map(|&x| (x - max).exp()).sum::<f32>().ln();
+    xs.iter().map(|&x| x - max - lse).collect()
+}
+
 struct TdtModel {
     preprocessor: Runnable,
     encoder: Runnable,
@@ -47,7 +53,7 @@ impl TdtModel {
         Ok(TdtModel { preprocessor, encoder, decoder, joint, vocab, blank_id })
     }
 
-    fn transcribe(&self, wav: &[f32]) -> Result<String> {
+    fn transcribe_greedy(&self, wav: &[f32]) -> Result<String> {
         let samples: Value = Value::from_slice(&[1, wav.len()], wav)?;
         let len: Value = arr1(&[wav.len() as i64]).try_into()?;
 
@@ -88,6 +94,144 @@ impl TdtModel {
 
         Ok(hyp.into_iter().map(|t| self.vocab[t].as_str()).join(""))
     }
+
+    fn transcribe_beam(&self, wav: &[f32]) -> Result<String> {
+        let samples: Value = Value::from_slice(&[1, wav.len()], wav)?;
+        let len: Value = arr1(&[wav.len() as i64]).try_into()?;
+
+        let [features, feat_len] =
+            self.preprocessor.run([samples, len])?.try_into().unwrap();
+        let [encoded, _lens] =
+            self.encoder.run([features, feat_len])?.try_into().unwrap();
+
+        let encoded: ArrayD<f32> = encoded.view()?.into_owned();
+        let max_frames = encoded.shape()[2];
+
+        const BEAM_SIZE: usize = 4;
+        const DUR_BEAM_K: usize = 2;
+
+        struct Beam {
+            score: f32,
+            tokens: Vec<usize>,
+            last_frame: usize,
+            dec_out: Value,
+            state_0: Value,
+            state_1: Value,
+        }
+
+        let init_token = Value::from_slice(&[1, 1], &[0i32])?;
+        let init_s0: Value = Array3::<f32>::zeros([2, 1, 640]).try_into()?;
+        let init_s1: Value = Array3::<f32>::zeros([2, 1, 640]).try_into()?;
+        let [dec_out, state_0, state_1] =
+            self.decoder.run([init_token, init_s0, init_s1])?.try_into().unwrap();
+
+        let mut all_beams: Vec<Beam> = vec![Beam {
+            score: 0.0,
+            tokens: vec![],
+            last_frame: 0,
+            dec_out,
+            state_0,
+            state_1,
+        }];
+
+        for frame_ix in 0..max_frames {
+            let mut hyps: Vec<Beam> = Vec::new();
+            let mut kept: Vec<Beam> = Vec::new();
+            for b in all_beams.drain(..) {
+                if b.last_frame == frame_ix {
+                    hyps.push(b);
+                } else {
+                    kept.push(b);
+                }
+            }
+
+            let frame: Value =
+                encoded.slice_axis(Axis(2), (frame_ix..frame_ix + 1).into()).try_into()?;
+
+            while !hyps.is_empty() {
+                let best_idx = hyps
+                    .iter()
+                    .enumerate()
+                    .max_by_key(|(_, b)| FloatOrd(b.score))
+                    .map(|(i, _)| i)
+                    .unwrap();
+                let max_hyp = hyps.remove(best_idx);
+
+                let [logits] = self
+                    .joint
+                    .run([frame.clone(), max_hyp.dec_out.clone()])?
+                    .try_into()
+                    .unwrap();
+                let logits = logits.view::<f32>()?;
+                let logits = logits.as_slice().unwrap();
+
+                let log_probs = log_softmax(&logits[0..=self.blank_id]);
+                let dur_log_probs = log_softmax(&logits[self.blank_id + 1..]);
+
+                // Non-blank expansions: top BEAM_SIZE tokens, duration fixed at 0
+                let mut token_scores: Vec<(usize, f32)> =
+                    (0..self.blank_id).map(|ti| (ti, log_probs[ti])).collect();
+                token_scores.sort_by(|a, b| FloatOrd(b.1).cmp(&FloatOrd(a.1)));
+                token_scores.truncate(BEAM_SIZE);
+
+                for (ti, lp) in token_scores {
+                    let new_token = Value::from_slice(&[1, 1], &[ti as i32])?;
+                    let [new_dec_out, new_s0, new_s1] = self
+                        .decoder
+                        .run([new_token, max_hyp.state_0.clone(), max_hyp.state_1.clone()])?
+                        .try_into()
+                        .unwrap();
+                    let mut new_tokens = max_hyp.tokens.clone();
+                    new_tokens.push(ti);
+                    hyps.push(Beam {
+                        score: max_hyp.score + lp,
+                        tokens: new_tokens,
+                        last_frame: frame_ix,
+                        dec_out: new_dec_out,
+                        state_0: new_s0,
+                        state_1: new_s1,
+                    });
+                }
+
+                // Blank expansions: top DUR_BEAM_K non-zero durations
+                let mut dur_scores: Vec<(usize, f32)> =
+                    (1..dur_log_probs.len()).map(|di| (di, dur_log_probs[di])).collect();
+                dur_scores.sort_by(|a, b| FloatOrd(b.1).cmp(&FloatOrd(a.1)));
+                dur_scores.truncate(DUR_BEAM_K);
+
+                for (di, dlp) in dur_scores {
+                    kept.push(Beam {
+                        score: max_hyp.score + log_probs[self.blank_id] + dlp,
+                        tokens: max_hyp.tokens.clone(),
+                        last_frame: frame_ix + di,
+                        dec_out: max_hyp.dec_out.clone(),
+                        state_0: max_hyp.state_0.clone(),
+                        state_1: max_hyp.state_1.clone(),
+                    });
+                }
+
+                // Prune combined pool to BEAM_SIZE
+                let mut all: Vec<Beam> = hyps.drain(..).chain(kept.drain(..)).collect();
+                all.sort_by(|a, b| FloatOrd(b.score).cmp(&FloatOrd(a.score)));
+                all.truncate(BEAM_SIZE);
+                for b in all {
+                    if b.last_frame == frame_ix {
+                        hyps.push(b);
+                    } else {
+                        kept.push(b);
+                    }
+                }
+            }
+
+            all_beams = kept;
+        }
+
+        let best = all_beams
+            .into_iter()
+            .max_by_key(|b| FloatOrd(b.score))
+            .ok_or_else(|| anyhow!("no beams survived"))?;
+        Ok(best.tokens.into_iter().map(|t| self.vocab[t].as_str()).join(""))
+    }
 }
 
 fn main() -> anyhow::Result<()> {
@@ -104,7 +248,7 @@ fn main() -> anyhow::Result<()> {
         .map(|x| x.unwrap() as f32)
         .collect();
 
-    let transcript = model.transcribe(&wav)?;
+    let transcript = model.transcribe_beam(&wav)?;
     println!("Transcript: {transcript}");
     assert_eq!(
         transcript,
