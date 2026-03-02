@@ -64,6 +64,7 @@ impl Api {
         model: &str,
         prompt: impl Into<String>,
         max_tokens: usize,
+        temperature: Option<f32>,
     ) -> Result<GenericCompletion> {
         match &self {
             Api::OpenAICompletions(client, endpoint) => {
@@ -71,6 +72,7 @@ impl Api {
                     prompt: prompt.into(),
                     model: model.to_string(),
                     max_tokens,
+                    temperature,
                     stop: vec![],
                 };
                 let response = client
@@ -315,11 +317,13 @@ struct CompleteArgs {
     prompt: String,
     #[arg(short('n'), default_value = "50")]
     max_tokens: usize,
+    #[arg(short('t'), long("temperature"))]
+    temperature: Option<f32>,
 }
 
 impl CompleteArgs {
     async fn handle(&self, clients: &Clients) -> Result<()> {
-        let reply = clients.complete(&self.prompt, self.max_tokens).await?;
+        let reply = clients.complete(&self.prompt, self.max_tokens, self.temperature).await?;
         println!("{}", reply.text);
         eprintln!("prompt:{:?} generated:{}", reply.prompt_tokens, reply.generated_tokens);
         Ok(())
@@ -381,15 +385,16 @@ impl Clients {
     }
 
     async fn run_one_generate(&self, pp: usize, tg: usize) -> Result<GenericCompletion> {
-        self.api.generate(&self.model, &self.get_one_prompt(pp), tg).await
+        self.api.generate(&self.model, &self.get_one_prompt(pp), tg, None).await
     }
 
     async fn complete(
         &self,
         prompt: impl Into<String>,
         max_tokens: usize,
+        temperature: Option<f32>,
     ) -> Result<GenericCompletion> {
-        self.api.generate(&self.model, prompt.into(), max_tokens).await
+        self.api.generate(&self.model, prompt.into(), max_tokens, temperature).await
     }
 
     async fn bench_one_generate(&self, pp: usize, tg: usize) -> Result<Duration> {
