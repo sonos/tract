@@ -188,6 +188,7 @@ test_globalaveragepool
 test_globalaveragepool_precomputed
 test_globalmaxpool
 test_globalmaxpool_precomputed
+test_gridsample.*                                                              since:16
 test_greater.*
 test_gru_batchwise
 test_gru_defaults

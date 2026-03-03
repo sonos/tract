@@ -8,6 +8,7 @@ pub mod cumsum;
 mod d2s;
 mod einsum;
 mod fft;
+mod grid_sample;
 pub mod logic;
 mod math;
 mod ml;
@@ -26,6 +27,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Identity", |_, _| {
         Ok((Box::<tract_hir::ops::identity::Identity>::default(), vec![]))
     });
+    reg.insert("GridSample", grid_sample::grid_sample);
     reg.insert("Resize", resize::resize);
     reg.insert("NonMaxSuppression", non_max_suppression::non_max_suppression);
     reg.insert("Multinomial", multinomial::multinomial);
