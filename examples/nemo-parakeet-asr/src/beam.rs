@@ -206,9 +206,13 @@ pub fn transcribe_beam(
             };
             hyps = new_hyps;
 
-            // 5. Prune combined pool to BEAM_SIZE
+            // 5. Fuse duplicates then prune to BEAM_SIZE.
+            // After sorting by score, the first occurrence of each (tokens, last_frame)
+            // key is the best one; retain only that first occurrence.
             let mut all: Vec<Beam> = hyps.drain(..).chain(kept.drain(..)).collect();
             all.sort_by(|a, b| FloatOrd(b.score).cmp(&FloatOrd(a.score)));
+            let mut seen = std::collections::HashSet::<(Vec<usize>, usize)>::new();
+            all.retain(|h| seen.insert((h.tokens.clone(), h.last_frame)));
             all.truncate(cfg.beam_size);
             for b in all {
                 if b.last_frame == frame_ix {

@@ -223,8 +223,12 @@ pub fn transcribe_alsd(
             }
         }
 
-        // 5. Global prune
+        // 5. Fuse duplicates then prune to alsd_beam_size.
+        // Key is (tokens, current_frame, symbols_this_frame): same tokens → same decoder
+        // state; same frame → same encoder embedding; same symbol count → same gate behavior.
         next.sort_by(|a, b| FloatOrd(b.score).cmp(&FloatOrd(a.score)));
+        let mut seen = std::collections::HashSet::<(Vec<usize>, usize, usize)>::new();
+        next.retain(|h| seen.insert((h.tokens.clone(), h.current_frame, h.symbols_this_frame)));
         next.truncate(cfg.alsd_beam_size);
         beam = next;
     }
