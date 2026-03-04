@@ -224,15 +224,42 @@ impl TdtModel {
                 token_scores.sort_by(|a, b| FloatOrd(b.1).cmp(&FloatOrd(a.1)));
                 token_scores.truncate(BEAM_SIZE);
 
-                for (ti, lp) in token_scores {
-                    let new_token = Value::from_slice(&[1, 1], &[ti as i32])?;
-                    let t = Instant::now();
-                    let [new_dec_out, new_s0, new_s1] = self
-                        .decoder
-                        .run([new_token, max_hyp.state_0.clone(), max_hyp.state_1.clone()])?
-                        .try_into()
-                        .unwrap();
-                    decoder_stats.record(batch, t.elapsed());
+                let n = token_scores.len();
+
+                // 1. Build batched inputs
+                let token_ids: Vec<i32> =
+                    token_scores.iter().map(|&(ti, _)| ti as i32).collect();
+                let tokens_batch: Value =
+                    Array2::<i32>::from_shape_fn((n, 1), |(i, _)| token_ids[i]).try_into()?;
+
+                let s0_src = max_hyp.state_0.view::<f32>()?; // [2, 1, 640]
+                let s0_batch: Value =
+                    Array3::<f32>::from_shape_fn((2, n, 640), |(l, _, h)| s0_src[[l, 0, h]])
+                        .try_into()?;
+
+                let s1_src = max_hyp.state_1.view::<f32>()?;
+                let s1_batch: Value =
+                    Array3::<f32>::from_shape_fn((2, n, 640), |(l, _, h)| s1_src[[l, 0, h]])
+                        .try_into()?;
+
+                // 2. Single decoder call
+                let t = Instant::now();
+                let [dec_out_b, s0_b, s1_b] =
+                    self.decoder.run([tokens_batch, s0_batch, s1_batch])?.try_into().unwrap();
+                decoder_stats.record(n, t.elapsed());
+
+                // 3. Slice outputs and push beams
+                let dec_arr = dec_out_b.view::<f32>()?; // [n, hidden]
+                let s0_arr = s0_b.view::<f32>()?; // [2, n, 640]
+                let s1_arr = s1_b.view::<f32>()?; // [2, n, 640]
+
+                for (i, &(ti, lp)) in token_scores.iter().enumerate() {
+                    let new_dec_out: Value =
+                        dec_arr.slice_axis(Axis(0), (i..i + 1).into()).try_into()?;
+                    let new_s0: Value =
+                        s0_arr.slice_axis(Axis(1), (i..i + 1).into()).try_into()?;
+                    let new_s1: Value =
+                        s1_arr.slice_axis(Axis(1), (i..i + 1).into()).try_into()?;
                     let mut new_tokens = max_hyp.tokens.clone();
                     new_tokens.push(ti);
                     hyps.push(Beam {
