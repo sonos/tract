@@ -11,6 +11,7 @@ use tract_core::ops::matmul::optimized::{OptMatMul, ProtoFusedSpec};
 use tract_core::ops::matmul::pack::DynPackedOpaqueFact;
 use tract_core::ops::scan::OptScan;
 #[allow(unused_imports)]
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 use tract_cuda::utils::ensure_cuda_runtime_dependencies;
 use tract_hir::internal::*;
 use tract_itertools::Itertools;
@@ -131,8 +132,17 @@ pub fn handle(
         let inputs = get_or_make_inputs(&params.tract_model, &run_params)?;
 
         if matches.is_present("metal") || matches.is_present("cuda") {
+            #[cfg(not(any(
+                target_os = "macos",
+                target_os = "ios",
+                target_os = "linux",
+                target_os = "windows"
+            )))]
+            bail!("GPU profiling is only supported on window, linux, and osx, ios");
+
             #[cfg(not(any(target_os = "macos", target_os = "ios")))]
             {
+                #[cfg(any(target_os = "linux", target_os = "windows"))]
                 ensure_cuda_runtime_dependencies("GPU profiling called on non-GPU device")?;
             }
 
