@@ -1,5 +1,6 @@
 use std::fs::File;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::time::Instant;
 
 use anyhow::*;
 use clap::Parser;
@@ -19,6 +20,8 @@ struct Args {
     beam: beam::BeamConfig,
     #[command(flatten)]
     alsd: alsd::AlsdConfig,
+    #[arg(required = true)]
+    inputs: Vec<PathBuf>,
 }
 
 #[derive(Default)]
@@ -118,6 +121,72 @@ impl TdtModel {
     }
 }
 
+fn collect_wavs_from_dir(dir: &Path) -> Vec<PathBuf> {
+    let mut results = Vec::new();
+    if let Some(entries) = std::fs::read_dir(dir).ok() {
+        for entry in entries.flatten() {
+            let path: PathBuf = entry.path();
+            if path.is_dir() {
+                results.extend(collect_wavs_from_dir(&path));
+            } else if path.extension().and_then(|e: &std::ffi::OsStr| e.to_str()) == Some("wav") {
+                results.push(path);
+            }
+        }
+    }
+    results
+}
+
+fn collect_wavs(inputs: &[PathBuf]) -> Vec<PathBuf> {
+    let mut results = Vec::new();
+    for input in inputs {
+        if input.is_dir() {
+            results.extend(collect_wavs_from_dir(input));
+        } else {
+            results.push(input.clone());
+        }
+    }
+    results.sort();
+    results
+}
+
+fn load_wav(path: &Path) -> Result<(Vec<f32>, f64)> {
+    let mut wav_reader = hound::WavReader::open(path)?;
+    let sample_rate = wav_reader.spec().sample_rate as f64;
+    let samples: Vec<f32> = wav_reader.samples::<i16>()
+        .map(|x| x.unwrap() as f32)
+        .collect();
+    let audio_duration_s = samples.len() as f64 / sample_rate;
+    Ok((samples, audio_duration_s))
+}
+
+fn clean(s: &str) -> String {
+    s.replace('▁', " ").trim_start().to_owned()
+}
+
+fn print_result(
+    label: &str,
+    transcript: &str,
+    reference: &str,
+    elapsed_ms: f64,
+    rtfx: f64,
+    nn_ms: f64,
+    stats: &DecodingStats,
+) {
+    let mark = if transcript == reference { "\x1b[32m✓\x1b[0m" } else { "\x1b[31m✗\x1b[0m" };
+    eprintln!(
+        "  [{label}] {elapsed_ms:.1}ms  RTFx={rtfx:.1}  nn={nn_ms:.1}ms  host={:.1}ms  {mark}",
+        elapsed_ms - nn_ms
+    );
+    if transcript != reference {
+        eprintln!("    ref: {}", clean(reference));
+        eprintln!("    got: {}", clean(transcript));
+    }
+    eprintln!("    [preprocessor] {:?}", stats.preprocessor);
+    eprintln!("    [encoder]      {:?}", stats.encoder);
+    eprintln!("    [decoder]      {:?}", stats.decoder);
+    eprintln!("    [joint]        {:?}", stats.joint);
+}
+
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
     let nnef = tract_rs::nnef()?.with_tract_core()?.with_tract_transformers()?;
@@ -128,63 +197,46 @@ fn main() -> anyhow::Result<()> {
 
     let model = TdtModel::load(Path::new("assets/model"), &nnef, &gpu)?;
 
-    let mut wav_reader = hound::WavReader::open("assets/2086-149220-0033.wav")?;
-    let sample_rate = wav_reader.spec().sample_rate as f64;
-    let wav: Vec<f32> = wav_reader.samples::<i16>()
-        .map(|x| x.unwrap() as f32)
-        .collect();
-    let audio_s = wav.len() as f64 / sample_rate;
+    let gt_cfg = beam::BeamConfig { beam_size: 10, dur_beam_k: 5 };
+    let wavs = collect_wavs(&args.inputs);
 
-    greedy::transcribe_greedy(&model, &wav)?;
-    let t = std::time::Instant::now();
-    let (transcript_g, stats) = greedy::transcribe_greedy(&model, &wav)?;
-    let elapsed = t.elapsed().as_secs_f64();
-    let elapsed_ms = elapsed * 1000.0;
-    let nn_ms = stats.nn_ms();
-    eprintln!("[greedy] {elapsed_ms:.1}ms  RTFx={:.1}  nn={nn_ms:.1}ms  host={:.1}ms", audio_s / elapsed, elapsed_ms - nn_ms);
-    eprintln!("  [preprocessor] {:?}", stats.preprocessor);
-    eprintln!("  [encoder]      {:?}", stats.encoder);
-    eprintln!("  [decoder]      {:?}", stats.decoder);
-    eprintln!("  [joint]        {:?}", stats.joint);
+    // Warmup on first file (all 4 decoders)
+    if let Some(first) = wavs.first() {
+        let (wav, _) = load_wav(first)?;
+        greedy::transcribe_greedy(&model, &wav)?;
+        beam::transcribe_beam(&model, &wav, &args.beam)?;
+        alsd::transcribe_alsd(&model, &wav, &args.alsd)?;
+        beam::transcribe_beam(&model, &wav, &gt_cfg)?;
+    }
 
-    beam::transcribe_beam(&model, &wav, &args.beam)?;
-    let t = std::time::Instant::now();
-    let (transcript_b, stats) = beam::transcribe_beam(&model, &wav, &args.beam)?;
-    let elapsed = t.elapsed().as_secs_f64();
-    let elapsed_ms = elapsed * 1000.0;
-    let nn_ms = stats.nn_ms();
-    eprintln!("[beam] {elapsed_ms:.1}ms  RTFx={:.1}  nn={nn_ms:.1}ms  host={:.1}ms", audio_s / elapsed, elapsed_ms - nn_ms);
-    eprintln!("  [preprocessor] {:?}", stats.preprocessor);
-    eprintln!("  [encoder]      {:?}", stats.encoder);
-    eprintln!("  [decoder]      {:?}", stats.decoder);
-    eprintln!("  [joint]        {:?}", stats.joint);
+    for wav_path in &wavs {
+        let (wav, audio_s) = load_wav(wav_path)?;
 
-    alsd::transcribe_alsd(&model, &wav, &args.alsd)?;
-    let t = std::time::Instant::now();
-    let (transcript_a, stats) = alsd::transcribe_alsd(&model, &wav, &args.alsd)?;
-    let elapsed = t.elapsed().as_secs_f64();
-    let elapsed_ms = elapsed * 1000.0;
-    let nn_ms = stats.nn_ms();
-    eprintln!("[alsd] {elapsed_ms:.1}ms  RTFx={:.1}  nn={nn_ms:.1}ms  host={:.1}ms", audio_s / elapsed, elapsed_ms - nn_ms);
-    eprintln!("  [preprocessor] {:?}", stats.preprocessor);
-    eprintln!("  [encoder]      {:?}", stats.encoder);
-    eprintln!("  [decoder]      {:?}", stats.decoder);
-    eprintln!("  [joint]        {:?}", stats.joint);
+        // Reference — high-quality beam as ground truth (silent)
+        let (reference, _) = beam::transcribe_beam(&model, &wav, &gt_cfg)?;
+        eprintln!("{}  ({audio_s:.1}s)  {}", wav_path.display(), clean(&reference));
 
-    println!("Greedy: {transcript_g}");
-    println!("Beam:   {transcript_b}");
-    println!("ALSD:   {transcript_a}");
-    assert_eq!(
-        transcript_g,
-        "▁Well,▁I▁don't▁wish▁to▁see▁it▁any▁more,▁observed▁Phoebe,▁turning▁away▁her▁eyes."
-    );
-    assert_eq!(
-        transcript_b,
-        "▁Well,▁I▁don't▁wish▁to▁see▁it▁any▁more,▁observed▁Phoebe,▁turning▁away▁her▁eyes."
-    );
-    assert_eq!(
-        transcript_a,
-        "▁Well,▁I▁don't▁wish▁to▁see▁it▁any▁more,▁observed▁Phoebe,▁turning▁away▁her▁eyes."
-    );
+        // Greedy
+        let t = Instant::now();
+        let (transcript, stats) = greedy::transcribe_greedy(&model, &wav)?;
+        let elapsed = t.elapsed().as_secs_f64();
+        let elapsed_ms = elapsed * 1000.0;
+        print_result("greedy", &transcript, &reference, elapsed_ms, audio_s / elapsed, stats.nn_ms(), &stats);
+
+        // Beam
+        let t = Instant::now();
+        let (transcript, stats) = beam::transcribe_beam(&model, &wav, &args.beam)?;
+        let elapsed = t.elapsed().as_secs_f64();
+        let elapsed_ms = elapsed * 1000.0;
+        print_result("beam", &transcript, &reference, elapsed_ms, audio_s / elapsed, stats.nn_ms(), &stats);
+
+        // ALSD
+        let t = Instant::now();
+        let (transcript, stats) = alsd::transcribe_alsd(&model, &wav, &args.alsd)?;
+        let elapsed = t.elapsed().as_secs_f64();
+        let elapsed_ms = elapsed * 1000.0;
+        print_result("alsd", &transcript, &reference, elapsed_ms, audio_s / elapsed, stats.nn_ms(), &stats);
+    }
+
     Ok(())
 }
