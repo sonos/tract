@@ -149,6 +149,7 @@ impl TdtModel {
         let encoded: ArrayD<f32> = encoded.view()?.into_owned();
         let batch = encoded.shape()[0];
         let max_frames = encoded.shape()[2];
+        let enc_dim = encoded.shape()[1];
 
         let mut decoder_stats = CallStats::default();
         let mut joint_stats = CallStats::default();
@@ -193,103 +194,137 @@ impl TdtModel {
                 }
             }
 
-            let frame: Value =
-                encoded.slice_axis(Axis(2), (frame_ix..frame_ix + 1).into()).try_into()?;
-
             while !hyps.is_empty() {
-                let best_idx = hyps
+                let b = hyps.len();
+
+                // 1. JOINT: single call batched over all B active hypotheses
+                let frame_batch: Value = {
+                    let enc_arr = encoded.view();
+                    Array3::<f32>::from_shape_fn((b, enc_dim, 1), |(_, e, _)| {
+                        enc_arr[[0, e, frame_ix]]
+                    })
+                    .try_into()?
+                };
+                let dec_out_batch: Value = {
+                    let views: Vec<_> = hyps
+                        .iter()
+                        .map(|h| h.dec_out.view::<f32>())
+                        .collect::<Result<Vec<_>>>()?;
+                    let hidden = views[0].shape()[1]; // dec_out is [1, hidden, 1]
+                    Array3::<f32>::from_shape_fn((b, hidden, 1), |(bi, h, _)| views[bi][[0, h, 0]])
+                        .try_into()?
+                };
+                let t = Instant::now();
+                let [logits_b] =
+                    self.joint.run([frame_batch, dec_out_batch])?.try_into().unwrap();
+                joint_stats.record(b, t.elapsed());
+
+                // 2. Per-hyp: token scores + duration expansions into kept
+                let mut per_hyp_token_scores: Vec<Vec<(usize, f32)>> = Vec::with_capacity(b);
+                {
+                    let logits_arr = logits_b.view::<f32>()?; // [b, vocab+dur]
+                    for bi in 0..b {
+                        let row = logits_arr.index_axis(Axis(0), bi);
+                        let row_slice = row.as_slice().unwrap();
+                        let log_probs = log_softmax(&row_slice[0..=self.blank_id]);
+                        let dur_log_probs = log_softmax(&row_slice[self.blank_id + 1..]);
+
+                        let mut ts: Vec<(usize, f32)> =
+                            (0..self.blank_id).map(|ti| (ti, log_probs[ti])).collect();
+                        ts.sort_by(|a, b| FloatOrd(b.1).cmp(&FloatOrd(a.1)));
+                        ts.truncate(BEAM_SIZE);
+                        per_hyp_token_scores.push(ts);
+
+                        let mut ds: Vec<(usize, f32)> =
+                            (1..dur_log_probs.len()).map(|di| (di, dur_log_probs[di])).collect();
+                        ds.sort_by(|a, b| FloatOrd(b.1).cmp(&FloatOrd(a.1)));
+                        ds.truncate(DUR_BEAM_K);
+                        for (di, dlp) in ds {
+                            kept.push(Beam {
+                                score: hyps[bi].score + log_probs[self.blank_id] + dlp,
+                                tokens: hyps[bi].tokens.clone(),
+                                last_frame: frame_ix + di,
+                                dec_out: hyps[bi].dec_out.clone(),
+                                state_0: hyps[bi].state_0.clone(),
+                                state_1: hyps[bi].state_1.clone(),
+                            });
+                        }
+                    }
+                } // logits_arr dropped
+
+                // 3. DECODER: single call batched over all N token expansions
+                let expansion_hyp_idxs: Vec<usize> = per_hyp_token_scores
                     .iter()
                     .enumerate()
-                    .max_by_key(|(_, b)| FloatOrd(b.score))
-                    .map(|(i, _)| i)
-                    .unwrap();
-                let max_hyp = hyps.remove(best_idx);
+                    .flat_map(|(bi, ts)| std::iter::repeat(bi).take(ts.len()))
+                    .collect();
+                let token_ids: Vec<i32> = per_hyp_token_scores
+                    .iter()
+                    .flat_map(|ts| ts.iter().map(|&(ti, _)| ti as i32))
+                    .collect();
+                let n = token_ids.len();
 
-                let t = Instant::now();
-                let [logits] = self
-                    .joint
-                    .run([frame.clone(), max_hyp.dec_out.clone()])?
-                    .try_into()
-                    .unwrap();
-                joint_stats.record(batch, t.elapsed());
-                let logits = logits.view::<f32>()?;
-                let logits = logits.as_slice().unwrap();
-
-                let log_probs = log_softmax(&logits[0..=self.blank_id]);
-                let dur_log_probs = log_softmax(&logits[self.blank_id + 1..]);
-
-                // Non-blank expansions: top BEAM_SIZE tokens, duration fixed at 0
-                let mut token_scores: Vec<(usize, f32)> =
-                    (0..self.blank_id).map(|ti| (ti, log_probs[ti])).collect();
-                token_scores.sort_by(|a, b| FloatOrd(b.1).cmp(&FloatOrd(a.1)));
-                token_scores.truncate(BEAM_SIZE);
-
-                let n = token_scores.len();
-
-                // 1. Build batched inputs
-                let token_ids: Vec<i32> =
-                    token_scores.iter().map(|&(ti, _)| ti as i32).collect();
                 let tokens_batch: Value =
                     Array2::<i32>::from_shape_fn((n, 1), |(i, _)| token_ids[i]).try_into()?;
+                let s0_batch: Value = {
+                    let views: Vec<_> = hyps
+                        .iter()
+                        .map(|h| h.state_0.view::<f32>())
+                        .collect::<Result<Vec<_>>>()?;
+                    Array3::<f32>::from_shape_fn((2, n, 640), |(l, i, h)| {
+                        views[expansion_hyp_idxs[i]][[l, 0, h]]
+                    })
+                    .try_into()?
+                };
+                let s1_batch: Value = {
+                    let views: Vec<_> = hyps
+                        .iter()
+                        .map(|h| h.state_1.view::<f32>())
+                        .collect::<Result<Vec<_>>>()?;
+                    Array3::<f32>::from_shape_fn((2, n, 640), |(l, i, h)| {
+                        views[expansion_hyp_idxs[i]][[l, 0, h]]
+                    })
+                    .try_into()?
+                };
 
-                let s0_src = max_hyp.state_0.view::<f32>()?; // [2, 1, 640]
-                let s0_batch: Value =
-                    Array3::<f32>::from_shape_fn((2, n, 640), |(l, _, h)| s0_src[[l, 0, h]])
-                        .try_into()?;
-
-                let s1_src = max_hyp.state_1.view::<f32>()?;
-                let s1_batch: Value =
-                    Array3::<f32>::from_shape_fn((2, n, 640), |(l, _, h)| s1_src[[l, 0, h]])
-                        .try_into()?;
-
-                // 2. Single decoder call
                 let t = Instant::now();
                 let [dec_out_b, s0_b, s1_b] =
                     self.decoder.run([tokens_batch, s0_batch, s1_batch])?.try_into().unwrap();
                 decoder_stats.record(n, t.elapsed());
 
-                // 3. Slice outputs and push beams
-                let dec_arr = dec_out_b.view::<f32>()?; // [n, hidden]
-                let s0_arr = s0_b.view::<f32>()?; // [2, n, 640]
-                let s1_arr = s1_b.view::<f32>()?; // [2, n, 640]
+                // 4. Slice and build new beams
+                let new_hyps: Vec<Beam> = {
+                    let dec_arr = dec_out_b.view::<f32>()?; // [N, hidden]
+                    let s0_arr = s0_b.view::<f32>()?; // [2, N, 640]
+                    let s1_arr = s1_b.view::<f32>()?; // [2, N, 640]
+                    let mut out = Vec::with_capacity(n);
+                    let mut i = 0;
+                    for (bi, ts) in per_hyp_token_scores.iter().enumerate() {
+                        for &(ti, lp) in ts {
+                            let new_dec_out: Value =
+                                dec_arr.slice_axis(Axis(0), (i..i + 1).into()).try_into()?;
+                            let new_s0: Value =
+                                s0_arr.slice_axis(Axis(1), (i..i + 1).into()).try_into()?;
+                            let new_s1: Value =
+                                s1_arr.slice_axis(Axis(1), (i..i + 1).into()).try_into()?;
+                            let mut new_tokens = hyps[bi].tokens.clone();
+                            new_tokens.push(ti);
+                            out.push(Beam {
+                                score: hyps[bi].score + lp,
+                                tokens: new_tokens,
+                                last_frame: frame_ix,
+                                dec_out: new_dec_out,
+                                state_0: new_s0,
+                                state_1: new_s1,
+                            });
+                            i += 1;
+                        }
+                    }
+                    out
+                };
+                hyps = new_hyps;
 
-                for (i, &(ti, lp)) in token_scores.iter().enumerate() {
-                    let new_dec_out: Value =
-                        dec_arr.slice_axis(Axis(0), (i..i + 1).into()).try_into()?;
-                    let new_s0: Value =
-                        s0_arr.slice_axis(Axis(1), (i..i + 1).into()).try_into()?;
-                    let new_s1: Value =
-                        s1_arr.slice_axis(Axis(1), (i..i + 1).into()).try_into()?;
-                    let mut new_tokens = max_hyp.tokens.clone();
-                    new_tokens.push(ti);
-                    hyps.push(Beam {
-                        score: max_hyp.score + lp,
-                        tokens: new_tokens,
-                        last_frame: frame_ix,
-                        dec_out: new_dec_out,
-                        state_0: new_s0,
-                        state_1: new_s1,
-                    });
-                }
-
-                // Blank expansions: top DUR_BEAM_K non-zero durations
-                let mut dur_scores: Vec<(usize, f32)> =
-                    (1..dur_log_probs.len()).map(|di| (di, dur_log_probs[di])).collect();
-                dur_scores.sort_by(|a, b| FloatOrd(b.1).cmp(&FloatOrd(a.1)));
-                dur_scores.truncate(DUR_BEAM_K);
-
-                for (di, dlp) in dur_scores {
-                    kept.push(Beam {
-                        score: max_hyp.score + log_probs[self.blank_id] + dlp,
-                        tokens: max_hyp.tokens.clone(),
-                        last_frame: frame_ix + di,
-                        dec_out: max_hyp.dec_out.clone(),
-                        state_0: max_hyp.state_0.clone(),
-                        state_1: max_hyp.state_1.clone(),
-                    });
-                }
-
-                // Prune combined pool to BEAM_SIZE
+                // 5. Prune combined pool to BEAM_SIZE
                 let mut all: Vec<Beam> = hyps.drain(..).chain(kept.drain(..)).collect();
                 all.sort_by(|a, b| FloatOrd(b.score).cmp(&FloatOrd(a.score)));
                 all.truncate(BEAM_SIZE);
