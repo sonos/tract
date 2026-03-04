@@ -11,6 +11,7 @@ use tract_core::ops::matmul::optimized::{OptMatMul, ProtoFusedSpec};
 use tract_core::ops::matmul::pack::DynPackedOpaqueFact;
 use tract_core::ops::scan::OptScan;
 #[allow(unused_imports)]
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 use tract_cuda::utils::ensure_cuda_runtime_dependencies;
 use tract_hir::internal::*;
 use tract_itertools::Itertools;

@@ -43,6 +43,8 @@ rand.workspace = true
 [features]
 cuda-12060 = ["cudarc/cuda-12060"]
 default = ["cuda-12060"]
+# Dummy feature for cfg used in macros that may expand here.
+inventory-registry = []
 
 [[bench]]
 name = "cuda_flash"

@@ -12,6 +12,7 @@ mod utils;
 
 use tract_core::internal::*;
 use tract_core::transform::ModelTransform;
+use tract_core::declare_transform_factories;
 
 use crate::func_constants::{ConstantValues, Value};
 use crate::kernels::LibraryName;
@@ -54,3 +55,9 @@ impl Runtime for MetalRuntime {
 }
 
 register_runtime!(MetalRuntime = MetalRuntime);
+
+// Register Metal-specific transforms via central macro (inventory/no-inventory).
+declare_transform_factories! {
+    lookup_metal_transforms,
+    ("metal-transform", |_| Ok(Some(Box::new(MetalTransform::default()) as Box<dyn ModelTransform>))),
+}

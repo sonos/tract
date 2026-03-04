@@ -224,10 +224,18 @@ impl Debug for InventorizedRuntime {
     }
 }
 
+#[cfg(feature = "inventory-registry")]
 inventory::collect!(InventorizedRuntime);
 
+#[cfg(feature = "inventory-registry")]
 pub fn runtimes() -> impl Iterator<Item = &'static dyn Runtime> {
     inventory::iter::<InventorizedRuntime>().filter(|rt| rt.check().is_ok()).map(|ir| ir.0)
+}
+
+#[cfg(not(feature = "inventory-registry"))]
+pub fn runtimes() -> impl Iterator<Item = &'static dyn Runtime> {
+    static DEFAULT: DefaultRuntime = DefaultRuntime;
+    [(&DEFAULT as &'static dyn Runtime)].into_iter()
 }
 
 pub fn runtime_for_name(s: &str) -> Option<&'static dyn Runtime> {
@@ -237,8 +245,12 @@ pub fn runtime_for_name(s: &str) -> Option<&'static dyn Runtime> {
 #[macro_export]
 macro_rules! register_runtime {
     ($type: ty= $val:expr) => {
+        #[cfg(feature = "inventory-registry")]
         static D: $type = $val;
+        #[cfg(feature = "inventory-registry")]
         inventory::submit! { $crate::runtime::InventorizedRuntime(&D) }
+        #[cfg(not(feature = "inventory-registry"))]
+        const _: () = (); // no-op when inventory is disabled
     };
 }
 

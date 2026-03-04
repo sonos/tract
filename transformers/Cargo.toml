@@ -17,3 +17,9 @@ maintenance = { status = "actively-developed" }
 [dependencies]
 float-ord.workspace = true
 tract-nnef.workspace = true
+
+[features]
+default = []
+# Dummy feature to align with macros using `#[cfg(feature = "inventory-registry")]`.
+# This lets downstream crates control inventory registration globally.
+inventory-registry = []

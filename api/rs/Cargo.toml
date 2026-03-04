@@ -5,12 +5,12 @@ license = "MIT OR Apache-2.0"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
 repository = "https://github.com/sonos/tract"
-keywords = [ "NeuralNetworks" ]
-categories = [ "science" ]
+keywords = ["NeuralNetworks"]
+categories = ["science"]
 autobenches = false
 edition = "2024"
 rust-version = "1.85"
-include = [ "Cargo.toml", "src/**/*.rs", "LICENSE*", "tests" ]
+include = ["Cargo.toml", "src/**/*.rs", "LICENSE*", "tests"]
 
 [dependencies]
 anyhow.workspace = true
@@ -21,7 +21,6 @@ icu_normalizer.workspace = true
 icu_properties.workspace = true
 ndarray.workspace = true
 tract-api.workspace = true
-tract-cuda.workspace = true
 tract-nnef.workspace = true
 tract-onnx-opl.workspace = true
 tract-onnx.workspace = true
@@ -33,6 +32,10 @@ serde_json.workspace = true
 
 [target.'cfg(any(target_vendor = "apple"))'.dependencies]
 tract-metal.workspace = true
+
+[target.'cfg(any(target_os = "linux", target_os = "windows"))'.dependencies]
+tract-cuda.workspace = true
+
 
 [dev-dependencies]
 reqwest.workspace = true
