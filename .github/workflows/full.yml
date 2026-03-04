@@ -36,7 +36,7 @@ jobs:
               repo: context.repo.repo,
               pull_number: Number(prInput),
             });
-            core.info(pr);
+            core.info(pr.data.head.sha);
             core.setOutput('test_ref', pr.data.head.sha);
 
   old-harness:
