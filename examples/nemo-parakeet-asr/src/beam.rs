@@ -31,22 +31,26 @@ pub fn transcribe_beam(
     model: &crate::TdtModel,
     wav: &[f32],
     cfg: &BeamConfig,
-) -> Result<(String, crate::CallStats, crate::CallStats)> {
+) -> Result<(String, crate::DecodingStats)> {
+    let mut stats = crate::DecodingStats::default();
+
     let samples: Value = Value::from_slice(&[1, wav.len()], wav)?;
     let len: Value = arr1(&[wav.len() as i64]).try_into()?;
 
+    let t = Instant::now();
     let [features, feat_len] =
         model.preprocessor.run([samples, len])?.try_into().unwrap();
+    stats.preprocessor.record(1, t.elapsed());
+
+    let t = Instant::now();
     let [encoded, _lens] =
         model.encoder.run([features, feat_len])?.try_into().unwrap();
+    stats.encoder.record(1, t.elapsed());
 
     let encoded: ArrayD<f32> = encoded.view()?.into_owned();
     let batch = encoded.shape()[0];
     let max_frames = encoded.shape()[2];
     let enc_dim = encoded.shape()[1];
-
-    let mut decoder_stats = crate::CallStats::default();
-    let mut joint_stats = crate::CallStats::default();
 
     let init_token = Value::from_slice(&[1, 1], &[0i32])?;
     let init_s0: Value = Array3::<f32>::zeros([2, 1, 640]).try_into()?;
@@ -54,7 +58,7 @@ pub fn transcribe_beam(
     let t = Instant::now();
     let [dec_out, state_0, state_1] =
         model.decoder.run([init_token, init_s0, init_s1])?.try_into().unwrap();
-    decoder_stats.record(batch, t.elapsed());
+    stats.decoder.record(batch, t.elapsed());
 
     let mut all_beams: Vec<Beam> = vec![Beam {
         score: 0.0,
@@ -99,7 +103,7 @@ pub fn transcribe_beam(
             let t = Instant::now();
             let [logits_b] =
                 model.joint.run([frame_batch, dec_out_batch])?.try_into().unwrap();
-            joint_stats.record(b, t.elapsed());
+            stats.joint.record(b, t.elapsed());
 
             // 2. Per-hyp: token scores + duration expansions into kept
             let mut per_hyp_token_scores: Vec<Vec<(usize, f32)>> = Vec::with_capacity(b);
@@ -172,7 +176,7 @@ pub fn transcribe_beam(
             let t = Instant::now();
             let [dec_out_b, s0_b, s1_b] =
                 model.decoder.run([tokens_batch, s0_batch, s1_batch])?.try_into().unwrap();
-            decoder_stats.record(n, t.elapsed());
+            stats.decoder.record(n, t.elapsed());
 
             // 4. Slice and build new beams
             let new_hyps: Vec<Beam> = {
@@ -230,5 +234,5 @@ pub fn transcribe_beam(
         .into_iter()
         .max_by_key(|b| FloatOrd(b.score))
         .ok_or_else(|| anyhow!("no beams survived"))?;
-    Ok((best.tokens.into_iter().map(|t| model.vocab[t].as_str()).join(""), decoder_stats, joint_stats))
+    Ok((best.tokens.into_iter().map(|t| model.vocab[t].as_str()).join(""), stats))
 }

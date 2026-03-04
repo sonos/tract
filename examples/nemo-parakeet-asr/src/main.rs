@@ -34,6 +34,10 @@ impl CallStats {
         self.total_batch += batch as u64;
         self.total_us += elapsed.as_micros() as u64;
     }
+
+    pub(crate) fn total_ms(&self) -> f64 {
+        self.total_us as f64 / 1000.0
+    }
 }
 
 impl std::fmt::Debug for CallStats {
@@ -48,6 +52,23 @@ impl std::fmt::Debug for CallStats {
             "calls={:5}  avg_batch={avg_batch:.1}  avg={avg_ms:.3}ms  total={total_ms:.1}ms",
             self.calls
         )
+    }
+}
+
+#[derive(Default)]
+pub(crate) struct DecodingStats {
+    pub(crate) preprocessor: CallStats,
+    pub(crate) encoder: CallStats,
+    pub(crate) decoder: CallStats,
+    pub(crate) joint: CallStats,
+}
+
+impl DecodingStats {
+    pub(crate) fn nn_ms(&self) -> f64 {
+        self.preprocessor.total_ms()
+            + self.encoder.total_ms()
+            + self.decoder.total_ms()
+            + self.joint.total_ms()
     }
 }
 
@@ -107,25 +128,48 @@ fn main() -> anyhow::Result<()> {
 
     let model = TdtModel::load(Path::new("assets/model"), &nnef, &gpu)?;
 
-    let wav: Vec<f32> = hound::WavReader::open("assets/2086-149220-0033.wav")?
-        .samples::<i16>()
+    let mut wav_reader = hound::WavReader::open("assets/2086-149220-0033.wav")?;
+    let sample_rate = wav_reader.spec().sample_rate as f64;
+    let wav: Vec<f32> = wav_reader.samples::<i16>()
         .map(|x| x.unwrap() as f32)
         .collect();
+    let audio_s = wav.len() as f64 / sample_rate;
 
     greedy::transcribe_greedy(&model, &wav)?;
-    let (transcript_g, dec, joint) = greedy::transcribe_greedy(&model, &wav)?;
-    eprintln!("[greedy][decoder] {dec:?}");
-    eprintln!("[greedy][joint]   {joint:?}");
+    let t = std::time::Instant::now();
+    let (transcript_g, stats) = greedy::transcribe_greedy(&model, &wav)?;
+    let elapsed = t.elapsed().as_secs_f64();
+    let elapsed_ms = elapsed * 1000.0;
+    let nn_ms = stats.nn_ms();
+    eprintln!("[greedy] {elapsed_ms:.1}ms  RTFx={:.1}  nn={nn_ms:.1}ms  host={:.1}ms", audio_s / elapsed, elapsed_ms - nn_ms);
+    eprintln!("  [preprocessor] {:?}", stats.preprocessor);
+    eprintln!("  [encoder]      {:?}", stats.encoder);
+    eprintln!("  [decoder]      {:?}", stats.decoder);
+    eprintln!("  [joint]        {:?}", stats.joint);
 
     beam::transcribe_beam(&model, &wav, &args.beam)?;
-    let (transcript_b, dec, joint) = beam::transcribe_beam(&model, &wav, &args.beam)?;
-    eprintln!("[beam][decoder]   {dec:?}");
-    eprintln!("[beam][joint]     {joint:?}");
+    let t = std::time::Instant::now();
+    let (transcript_b, stats) = beam::transcribe_beam(&model, &wav, &args.beam)?;
+    let elapsed = t.elapsed().as_secs_f64();
+    let elapsed_ms = elapsed * 1000.0;
+    let nn_ms = stats.nn_ms();
+    eprintln!("[beam] {elapsed_ms:.1}ms  RTFx={:.1}  nn={nn_ms:.1}ms  host={:.1}ms", audio_s / elapsed, elapsed_ms - nn_ms);
+    eprintln!("  [preprocessor] {:?}", stats.preprocessor);
+    eprintln!("  [encoder]      {:?}", stats.encoder);
+    eprintln!("  [decoder]      {:?}", stats.decoder);
+    eprintln!("  [joint]        {:?}", stats.joint);
 
     alsd::transcribe_alsd(&model, &wav, &args.alsd)?;
-    let (transcript_a, dec, joint) = alsd::transcribe_alsd(&model, &wav, &args.alsd)?;
-    eprintln!("[alsd][decoder]   {dec:?}");
-    eprintln!("[alsd][joint]     {joint:?}");
+    let t = std::time::Instant::now();
+    let (transcript_a, stats) = alsd::transcribe_alsd(&model, &wav, &args.alsd)?;
+    let elapsed = t.elapsed().as_secs_f64();
+    let elapsed_ms = elapsed * 1000.0;
+    let nn_ms = stats.nn_ms();
+    eprintln!("[alsd] {elapsed_ms:.1}ms  RTFx={:.1}  nn={nn_ms:.1}ms  host={:.1}ms", audio_s / elapsed, elapsed_ms - nn_ms);
+    eprintln!("  [preprocessor] {:?}", stats.preprocessor);
+    eprintln!("  [encoder]      {:?}", stats.encoder);
+    eprintln!("  [decoder]      {:?}", stats.decoder);
+    eprintln!("  [joint]        {:?}", stats.joint);
 
     println!("Greedy: {transcript_g}");
     println!("Beam:   {transcript_b}");
