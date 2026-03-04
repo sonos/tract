@@ -25,6 +25,7 @@ jobs:
         with:
           script: |
             const prInput = core.getInput('pr_number');
+            core.info(`Fetching PR ${prInput}`);
             if (!prInput) {
               // Use the ref the workflow was triggered on (branch/tag/SHA in base repo)
               core.setOutput('test_ref', process.env.GITHUB_SHA);
@@ -35,6 +36,7 @@ jobs:
               repo: context.repo.repo,
               pull_number: Number(prInput),
             });
+            core.info(pr);
             core.setOutput('test_ref', pr.data.head.sha);
 
   old-harness:
