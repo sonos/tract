@@ -30,6 +30,9 @@ struct Args {
     stats: bool,
     #[arg(long)]
     no_details: bool,
+    /// Run ground-truth decoder and write transcript to a .txt file beside each wav
+    #[arg(long)]
+    write_gt: bool,
     #[arg(required = true)]
     inputs: Vec<PathBuf>,
 }
@@ -189,6 +192,35 @@ fn run_decoder(model: &TdtModel, wav: &[f32], args: &Args) -> Result<(String, De
     }
 }
 
+fn write_gt(model: &TdtModel, wavs: &[PathBuf], no_details: bool) -> anyhow::Result<()> {
+    let gt_cfg = beam::BeamConfig { beam_size: 10, beam_dur_k: 5 };
+    // Warmup
+    if let Some(first) = wavs.first() {
+        let (wav, _) = load_wav(first)?;
+        beam::transcribe_beam(model, &wav, &gt_cfg)?;
+    }
+    if no_details {
+        init_progress_bar_with_eta(wavs.len());
+        set_progress_bar_action("Writing GT", Color::Blue, Style::Bold);
+    }
+    for wav_path in wavs {
+        let (wav, _) = load_wav(wav_path)?;
+        let (transcript, _) = beam::transcribe_beam(model, &wav, &gt_cfg)?;
+        let txt_path = wav_path.with_extension("txt");
+        std::fs::write(&txt_path, clean(&transcript))?;
+        if no_details {
+            inc_progress_bar();
+        } else {
+            eprintln!("{} -> {}", wav_path.display(), txt_path.display());
+        }
+    }
+    if no_details {
+        finalize_progress_bar();
+    }
+    eprintln!("wrote {} transcript(s)", wavs.len());
+    Ok(())
+}
+
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
     let nnef = tract_rs::nnef()?.with_tract_core()?.with_tract_transformers()?;
@@ -198,9 +230,11 @@ fn main() -> anyhow::Result<()> {
         .unwrap();
 
     let model = TdtModel::load(Path::new("assets/model"), &nnef, &gpu)?;
-
-    let gt_cfg = beam::BeamConfig { beam_size: 10, beam_dur_k: 5 };
     let wavs = collect_wavs(&args.inputs);
+
+    if args.write_gt {
+        return write_gt(&model, &wavs, args.no_details);
+    }
 
     let label = decoder_label(&args);
     if !args.no_details {
@@ -213,7 +247,6 @@ fn main() -> anyhow::Result<()> {
     // Warmup on first file
     if let Some(first) = wavs.first() {
         let (wav, _) = load_wav(first)?;
-        beam::transcribe_beam(&model, &wav, &gt_cfg)?;
         run_decoder(&model, &wav, &args)?;
     }
 
@@ -223,7 +256,8 @@ fn main() -> anyhow::Result<()> {
 
     for wav_path in &wavs {
         let (wav, audio_s) = load_wav(wav_path)?;
-        let (reference, _) = beam::transcribe_beam(&model, &wav, &gt_cfg)?;
+        let reference = std::fs::read_to_string(wav_path.with_extension("txt"))
+            .with_context(|| format!("no ground-truth transcript for {} (run with --write-gt first)", wav_path.display()))?;
 
         let t = Instant::now();
         let (transcript, stats) = run_decoder(&model, &wav, &args)?;
