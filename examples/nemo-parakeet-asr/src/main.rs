@@ -4,8 +4,8 @@ use std::time::Instant;
 
 use anyhow::*;
 use clap::Parser;
-use progress_bar::*;
 use float_ord::FloatOrd;
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use itertools::Itertools;
 use tract_rs::prelude::*;
 use tract_rs::Nnef;
@@ -33,6 +33,9 @@ struct Args {
     /// Run ground-truth decoder and write transcript to a .txt file beside each wav
     #[arg(long)]
     write_gt: bool,
+    /// Sweep hardcoded decoder configs and print TSV results to stdout
+    #[arg(long)]
+    param_search: bool,
     #[arg(required = true)]
     inputs: Vec<PathBuf>,
 }
@@ -192,6 +195,131 @@ fn run_decoder(model: &TdtModel, wav: &[f32], args: &Args) -> Result<(String, De
     }
 }
 
+// ─── SearchConfig ────────────────────────────────────────────────────────────
+
+enum SearchConfig {
+    Greedy,
+    Beam(beam::BeamConfig),
+    Alsd(alsd::AlsdConfig),
+}
+
+impl SearchConfig {
+    fn label(&self) -> String {
+        match self {
+            SearchConfig::Greedy => "greedy".to_owned(),
+            SearchConfig::Beam(c) => format!("beam_{}_{}", c.beam_size, c.beam_dur_k),
+            SearchConfig::Alsd(c) => format!("alsd_{}_{}_{}", c.alsd_beam_size, c.alsd_beam_dur_k, c.alsd_max_symbols_per_frame),
+        }
+    }
+
+    fn run(&self, model: &TdtModel, wav: &[f32]) -> Result<(String, DecodingStats)> {
+        match self {
+            SearchConfig::Greedy    => greedy::transcribe_greedy(model, wav),
+            SearchConfig::Beam(c)   => beam::transcribe_beam(model, wav, c),
+            SearchConfig::Alsd(c)   => alsd::transcribe_alsd(model, wav, c),
+        }
+    }
+}
+
+fn search_configs() -> Vec<SearchConfig> {
+    fn b(beam_size: usize, beam_dur_k: usize) -> SearchConfig {
+        SearchConfig::Beam(beam::BeamConfig { beam_size, beam_dur_k })
+    }
+    fn a(alsd_beam_size: usize, alsd_beam_dur_k: usize, alsd_max_symbols_per_frame: usize) -> SearchConfig {
+        SearchConfig::Alsd(alsd::AlsdConfig { alsd_beam_size, alsd_beam_dur_k, alsd_max_symbols_per_frame })
+    }
+    vec![
+        SearchConfig::Greedy,
+        b(1, 1),
+        b(2, 1),
+        b(2, 2),
+        b(4, 1),
+        b(4, 2),
+        b(4, 4),
+        b(8, 2),
+        b(8, 4),
+        a(1, 1, 10),
+        a(2, 1, 10),
+        a(2, 2, 10),
+        a(4, 1, 10),
+        a(4, 2, 10),
+        a(4, 4, 10),
+        a(8, 2, 10),
+        a(8, 4, 10),
+        a(4, 2, 3),
+        a(4, 2, 30),
+    ]
+}
+
+fn param_search(model: &TdtModel, wavs: &[PathBuf]) -> Result<()> {
+    // Warmup
+    if let Some(first) = wavs.first() {
+        let (wav, _) = load_wav(first)?;
+        greedy::transcribe_greedy(model, &wav)?;
+    }
+
+    let configs = search_configs();
+
+    let mp = MultiProgress::new();
+    let cfg_style = ProgressStyle::with_template(
+        "Configs  {bar:40} {pos:>3}/{len} {msg}"
+    ).unwrap();
+    let file_style = ProgressStyle::with_template(
+        "Files    {bar:40} {pos:>3}/{len}"
+    ).unwrap();
+
+    let cfg_bar = mp.add(ProgressBar::new(configs.len() as u64));
+    cfg_bar.set_style(cfg_style);
+    let file_bar = mp.add(ProgressBar::new(wavs.len() as u64));
+    file_bar.set_style(file_style);
+
+    mp.suspend(|| println!("label\tEPR\tRTFx"));
+
+    for cfg in &configs {
+        let label = cfg.label();
+        cfg_bar.set_message(label.clone());
+
+        file_bar.reset();
+        file_bar.set_length(wavs.len() as u64);
+
+        let mut total_audio_s = 0.0f64;
+        let mut total_elapsed_s = 0.0f64;
+        let mut exact = 0usize;
+        let mut total = 0usize;
+
+        for wav_path in wavs {
+            let (wav, audio_s) = load_wav(wav_path)?;
+            let reference = std::fs::read_to_string(wav_path.with_extension("txt"))
+                .with_context(|| format!("no ground-truth transcript for {} (run with --write-gt first)", wav_path.display()))?;
+            let reference = reference.trim_end_matches('\n').to_owned();
+
+            let t = Instant::now();
+            let (transcript, _) = cfg.run(model, &wav)?;
+            let elapsed = t.elapsed().as_secs_f64();
+
+            total_audio_s += audio_s;
+            total_elapsed_s += elapsed;
+            total += 1;
+            if clean(&transcript) == reference { exact += 1; }
+
+            file_bar.inc(1);
+        }
+
+        let epr = if total > 0 { exact as f64 / total as f64 } else { 0.0 };
+        let rtfx = if total_elapsed_s > 0.0 { total_audio_s / total_elapsed_s } else { 0.0 };
+        mp.suspend(|| println!("{}\t{:.4}\t{:.1}", label, epr, rtfx));
+
+        cfg_bar.inc(1);
+    }
+
+    cfg_bar.finish();
+    file_bar.finish();
+
+    Ok(())
+}
+
+// ─── write_gt ────────────────────────────────────────────────────────────────
+
 fn write_gt(model: &TdtModel, wavs: &[PathBuf], no_details: bool) -> anyhow::Result<()> {
     let gt_cfg = beam::BeamConfig { beam_size: 10, beam_dur_k: 5 };
     // Warmup
@@ -199,24 +327,27 @@ fn write_gt(model: &TdtModel, wavs: &[PathBuf], no_details: bool) -> anyhow::Res
         let (wav, _) = load_wav(first)?;
         beam::transcribe_beam(model, &wav, &gt_cfg)?;
     }
-    if no_details {
-        init_progress_bar_with_eta(wavs.len());
-        set_progress_bar_action("Writing GT", Color::Blue, Style::Bold);
-    }
+    let pb = if no_details {
+        let pb = ProgressBar::new(wavs.len() as u64);
+        pb.set_style(
+            ProgressStyle::with_template("Writing GT  {bar:40} {pos:>3}/{len}").unwrap()
+        );
+        Some(pb)
+    } else {
+        None
+    };
     for wav_path in wavs {
         let (wav, _) = load_wav(wav_path)?;
         let (transcript, _) = beam::transcribe_beam(model, &wav, &gt_cfg)?;
         let txt_path = wav_path.with_extension("txt");
         std::fs::write(&txt_path, clean(&transcript))?;
-        if no_details {
-            inc_progress_bar();
+        if let Some(ref pb) = pb {
+            pb.inc(1);
         } else {
             eprintln!("{} -> {}", wav_path.display(), txt_path.display());
         }
     }
-    if no_details {
-        finalize_progress_bar();
-    }
+    if let Some(pb) = pb { pb.finish(); }
     eprintln!("wrote {} transcript(s)", wavs.len());
     Ok(())
 }
@@ -236,12 +367,13 @@ fn main() -> anyhow::Result<()> {
         return write_gt(&model, &wavs, args.no_details);
     }
 
+    if args.param_search {
+        return param_search(&model, &wavs);
+    }
+
     let label = decoder_label(&args);
     if !args.no_details {
         eprintln!("{}  files={}", label, wavs.len());
-    } else {
-        init_progress_bar_with_eta(wavs.len());
-        set_progress_bar_action("Decoding", Color::Blue, Style::Bold);
     }
 
     // Warmup on first file
@@ -249,6 +381,16 @@ fn main() -> anyhow::Result<()> {
         let (wav, _) = load_wav(first)?;
         run_decoder(&model, &wav, &args)?;
     }
+
+    let pb = if args.no_details {
+        let pb = ProgressBar::new(wavs.len() as u64);
+        pb.set_style(
+            ProgressStyle::with_template("Decoding  {bar:40} {pos:>3}/{len}").unwrap()
+        );
+        Some(pb)
+    } else {
+        None
+    };
 
     let mut total_audio_s = 0.0f64;
     let mut total_elapsed_s = 0.0f64;
@@ -266,11 +408,11 @@ fn main() -> anyhow::Result<()> {
         total_audio_s += audio_s;
         total_elapsed_s += elapsed;
 
-        let ok = transcript == reference;
+        let ok = clean(&transcript) == reference.trim_end_matches('\n');
         if ok { exact += 1; }
 
-        if args.no_details {
-            inc_progress_bar();
+        if let Some(ref pb) = pb {
+            pb.inc(1);
         } else {
             let mark = if ok { "\x1b[32m✓\x1b[0m" } else { "\x1b[31m✗\x1b[0m" };
             let elapsed_ms = elapsed * 1000.0;
@@ -292,9 +434,7 @@ fn main() -> anyhow::Result<()> {
         }
     }
 
-    if args.no_details {
-        finalize_progress_bar();
-    }
+    if let Some(pb) = pb { pb.finish(); }
     eprintln!("{}  {}/{} exact  RTFx={:.1}", label, exact, wavs.len(), total_audio_s / total_elapsed_s);
 
     Ok(())
