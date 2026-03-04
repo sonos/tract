@@ -33,6 +33,7 @@ pub fn handle(
     limits.warmup(&params.req_runnable()?, &inputs)?;
 
     let (iters, dur) = {
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
         let _profiler =
             sub_matches.is_present("cuda-gpu-trace").then(cudarc::driver::safe::Profiler::new);
         limits.bench(&params.req_runnable()?, &inputs)?
