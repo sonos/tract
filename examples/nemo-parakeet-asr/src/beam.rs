@@ -15,7 +15,7 @@ pub struct BeamConfig {
 
     /// Number of duration candidates to expand per hypothesis
     #[arg(long, default_value_t = 2)]
-    pub dur_beam_k: usize,
+    pub beam_dur_k: usize,
 }
 
 struct Beam {
@@ -124,7 +124,7 @@ pub fn transcribe_beam(
                     let mut ds: Vec<(usize, f32)> =
                         (1..dur_log_probs.len()).map(|di| (di, dur_log_probs[di])).collect();
                     ds.sort_by(|a, b| FloatOrd(b.1).cmp(&FloatOrd(a.1)));
-                    ds.truncate(cfg.dur_beam_k);
+                    ds.truncate(cfg.beam_dur_k);
                     for (di, dlp) in ds {
                         kept.push(Beam {
                             score: hyps[bi].score + log_probs[model.blank_id] + dlp,

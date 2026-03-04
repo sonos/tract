@@ -4,6 +4,7 @@ use std::time::Instant;
 
 use anyhow::*;
 use clap::Parser;
+use progress_bar::*;
 use float_ord::FloatOrd;
 use itertools::Itertools;
 use tract_rs::prelude::*;
@@ -13,6 +14,9 @@ mod greedy;
 mod beam;
 mod alsd;
 
+#[derive(clap::ValueEnum, Clone)]
+enum Decoder { Greedy, Beam, Alsd }
+
 #[derive(Parser)]
 #[command(about = "NeMo Parakeet ASR inference")]
 struct Args {
@@ -20,6 +24,12 @@ struct Args {
     beam: beam::BeamConfig,
     #[command(flatten)]
     alsd: alsd::AlsdConfig,
+    #[arg(long, value_enum, default_value_t = Decoder::Greedy)]
+    decoder: Decoder,
+    #[arg(long)]
+    stats: bool,
+    #[arg(long)]
+    no_details: bool,
     #[arg(required = true)]
     inputs: Vec<PathBuf>,
 }
@@ -163,28 +173,20 @@ fn clean(s: &str) -> String {
     s.replace('▁', " ").trim_start().to_owned()
 }
 
-fn print_result(
-    label: &str,
-    transcript: &str,
-    reference: &str,
-    elapsed_ms: f64,
-    rtfx: f64,
-    nn_ms: f64,
-    stats: &DecodingStats,
-) {
-    let mark = if transcript == reference { "\x1b[32m✓\x1b[0m" } else { "\x1b[31m✗\x1b[0m" };
-    eprintln!(
-        "  [{label}] {elapsed_ms:.1}ms  RTFx={rtfx:.1}  nn={nn_ms:.1}ms  host={:.1}ms  {mark}",
-        elapsed_ms - nn_ms
-    );
-    if transcript != reference {
-        eprintln!("    ref: {}", clean(reference));
-        eprintln!("    got: {}", clean(transcript));
+fn decoder_label(args: &Args) -> String {
+    match args.decoder {
+        Decoder::Greedy => "greedy".to_string(),
+        Decoder::Beam => format!("beam  beam_size={}  beam_dur_k={}", args.beam.beam_size, args.beam.beam_dur_k),
+        Decoder::Alsd => format!("alsd  beam_size={}  beam_dur_k={}  max_symbols={}", args.alsd.alsd_beam_size, args.alsd.alsd_beam_dur_k, args.alsd.alsd_max_symbols_per_frame),
     }
-    eprintln!("    [preprocessor] {:?}", stats.preprocessor);
-    eprintln!("    [encoder]      {:?}", stats.encoder);
-    eprintln!("    [decoder]      {:?}", stats.decoder);
-    eprintln!("    [joint]        {:?}", stats.joint);
+}
+
+fn run_decoder(model: &TdtModel, wav: &[f32], args: &Args) -> Result<(String, DecodingStats)> {
+    match args.decoder {
+        Decoder::Greedy => greedy::transcribe_greedy(model, wav),
+        Decoder::Beam   => beam::transcribe_beam(model, wav, &args.beam),
+        Decoder::Alsd   => alsd::transcribe_alsd(model, wav, &args.alsd),
+    }
 }
 
 fn main() -> anyhow::Result<()> {
@@ -197,46 +199,69 @@ fn main() -> anyhow::Result<()> {
 
     let model = TdtModel::load(Path::new("assets/model"), &nnef, &gpu)?;
 
-    let gt_cfg = beam::BeamConfig { beam_size: 10, dur_beam_k: 5 };
+    let gt_cfg = beam::BeamConfig { beam_size: 10, beam_dur_k: 5 };
     let wavs = collect_wavs(&args.inputs);
 
-    // Warmup on first file (all 4 decoders)
+    let label = decoder_label(&args);
+    if !args.no_details {
+        eprintln!("{}  files={}", label, wavs.len());
+    } else {
+        init_progress_bar_with_eta(wavs.len());
+        set_progress_bar_action("Decoding", Color::Blue, Style::Bold);
+    }
+
+    // Warmup on first file
     if let Some(first) = wavs.first() {
         let (wav, _) = load_wav(first)?;
-        greedy::transcribe_greedy(&model, &wav)?;
-        beam::transcribe_beam(&model, &wav, &args.beam)?;
-        alsd::transcribe_alsd(&model, &wav, &args.alsd)?;
         beam::transcribe_beam(&model, &wav, &gt_cfg)?;
+        run_decoder(&model, &wav, &args)?;
     }
+
+    let mut total_audio_s = 0.0f64;
+    let mut total_elapsed_s = 0.0f64;
+    let mut exact = 0usize;
 
     for wav_path in &wavs {
         let (wav, audio_s) = load_wav(wav_path)?;
-
-        // Reference — high-quality beam as ground truth (silent)
         let (reference, _) = beam::transcribe_beam(&model, &wav, &gt_cfg)?;
-        eprintln!("{}  ({audio_s:.1}s)  {}", wav_path.display(), clean(&reference));
 
-        // Greedy
         let t = Instant::now();
-        let (transcript, stats) = greedy::transcribe_greedy(&model, &wav)?;
+        let (transcript, stats) = run_decoder(&model, &wav, &args)?;
         let elapsed = t.elapsed().as_secs_f64();
-        let elapsed_ms = elapsed * 1000.0;
-        print_result("greedy", &transcript, &reference, elapsed_ms, audio_s / elapsed, stats.nn_ms(), &stats);
 
-        // Beam
-        let t = Instant::now();
-        let (transcript, stats) = beam::transcribe_beam(&model, &wav, &args.beam)?;
-        let elapsed = t.elapsed().as_secs_f64();
-        let elapsed_ms = elapsed * 1000.0;
-        print_result("beam", &transcript, &reference, elapsed_ms, audio_s / elapsed, stats.nn_ms(), &stats);
+        total_audio_s += audio_s;
+        total_elapsed_s += elapsed;
 
-        // ALSD
-        let t = Instant::now();
-        let (transcript, stats) = alsd::transcribe_alsd(&model, &wav, &args.alsd)?;
-        let elapsed = t.elapsed().as_secs_f64();
-        let elapsed_ms = elapsed * 1000.0;
-        print_result("alsd", &transcript, &reference, elapsed_ms, audio_s / elapsed, stats.nn_ms(), &stats);
+        let ok = transcript == reference;
+        if ok { exact += 1; }
+
+        if args.no_details {
+            inc_progress_bar();
+        } else {
+            let mark = if ok { "\x1b[32m✓\x1b[0m" } else { "\x1b[31m✗\x1b[0m" };
+            let elapsed_ms = elapsed * 1000.0;
+            let nn_ms = stats.nn_ms();
+            eprintln!("{}  {mark}  {audio_s:.1}s  {elapsed_ms:.1}ms  RTFx={:.1}  {}",
+                      wav_path.display(), audio_s / elapsed, clean(&transcript));
+            if !ok {
+                eprintln!("  ref: {}", clean(&reference));
+                eprintln!("  got: {}", clean(&transcript));
+            }
+            if args.stats {
+                eprintln!("  {elapsed_ms:.1}ms  RTFx={:.1}  nn={nn_ms:.1}ms  host={:.1}ms",
+                          audio_s / elapsed, elapsed_ms - nn_ms);
+                eprintln!("  [preprocessor] {:?}", stats.preprocessor);
+                eprintln!("  [encoder]      {:?}", stats.encoder);
+                eprintln!("  [decoder]      {:?}", stats.decoder);
+                eprintln!("  [joint]        {:?}", stats.joint);
+            }
+        }
     }
+
+    if args.no_details {
+        finalize_progress_bar();
+    }
+    eprintln!("{}  {}/{} exact  RTFx={:.1}", label, exact, wavs.len(), total_audio_s / total_elapsed_s);
 
     Ok(())
 }

@@ -15,7 +15,7 @@ pub struct AlsdConfig {
 
     /// Duration candidates per hypothesis in ALSD
     #[arg(long, default_value_t = 2)]
-    pub alsd_dur_beam_k: usize,
+    pub alsd_beam_dur_k: usize,
 
     /// Max non-blank tokens emitted per frame per hypothesis
     #[arg(long, default_value_t = 10)]
@@ -131,7 +131,7 @@ pub fn transcribe_alsd(
                 let mut ds: Vec<(usize, f32)> =
                     (1..dur_log_probs.len()).map(|di| (di, dur_log_probs[di])).collect();
                 ds.sort_by(|a, b| FloatOrd(b.1).cmp(&FloatOrd(a.1)));
-                ds.truncate(cfg.alsd_dur_beam_k);
+                ds.truncate(cfg.alsd_beam_dur_k);
                 for (di, dlp) in ds {
                     next.push(AlsdHyp {
                         score: active[bi].score + log_probs[model.blank_id] + dlp,
