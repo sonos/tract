@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 anyhow.workspace = true
+clap = { version = "4", features = ["derive"] }
 float-ord.workspace = true
 hound = "3.5.1"
 itertools.workspace = true

@@ -1,23 +1,32 @@
 use std::fs::File;
 use std::path::Path;
-use std::time::Instant;
 
 use anyhow::*;
+use clap::Parser;
 use float_ord::FloatOrd;
 use itertools::Itertools;
-use tract_rs::prelude::tract_ndarray::prelude::*;
 use tract_rs::prelude::*;
 use tract_rs::Nnef;
 
+mod greedy;
+mod beam;
+
+#[derive(Parser)]
+#[command(about = "NeMo Parakeet ASR inference")]
+struct Args {
+    #[command(flatten)]
+    beam: beam::BeamConfig,
+}
+
 #[derive(Default)]
-struct CallStats {
+pub(crate) struct CallStats {
     calls: u32,
     total_batch: u64,
     total_us: u64,
 }
 
 impl CallStats {
-    fn record(&mut self, batch: usize, elapsed: std::time::Duration) {
+    pub(crate) fn record(&mut self, batch: usize, elapsed: std::time::Duration) {
         self.calls += 1;
         self.total_batch += batch as u64;
         self.total_us += elapsed.as_micros() as u64;
@@ -39,23 +48,23 @@ impl std::fmt::Debug for CallStats {
     }
 }
 
-fn argmax(slice: &[f32]) -> Option<usize> {
+pub(crate) fn argmax(slice: &[f32]) -> Option<usize> {
     slice.into_iter().position_max_by_key(|x| FloatOrd(**x))
 }
 
-fn log_softmax(xs: &[f32]) -> Vec<f32> {
+pub(crate) fn log_softmax(xs: &[f32]) -> Vec<f32> {
     let max = xs.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
     let lse = xs.iter().map(|&x| (x - max).exp()).sum::<f32>().ln();
     xs.iter().map(|&x| x - max - lse).collect()
 }
 
-struct TdtModel {
-    preprocessor: Runnable,
-    encoder: Runnable,
-    decoder: Runnable,
-    joint: Runnable,
-    vocab: Vec<String>,
-    blank_id: usize,
+pub(crate) struct TdtModel {
+    pub(crate) preprocessor: Runnable,
+    pub(crate) encoder: Runnable,
+    pub(crate) decoder: Runnable,
+    pub(crate) joint: Runnable,
+    pub(crate) vocab: Vec<String>,
+    pub(crate) blank_id: usize,
 }
 
 impl TdtModel {
@@ -83,272 +92,10 @@ impl TdtModel {
 
         Ok(TdtModel { preprocessor, encoder, decoder, joint, vocab, blank_id })
     }
-
-    fn transcribe_greedy(&self, wav: &[f32]) -> Result<(String, CallStats, CallStats)> {
-        let samples: Value = Value::from_slice(&[1, wav.len()], wav)?;
-        let len: Value = arr1(&[wav.len() as i64]).try_into()?;
-
-        let [features, feat_len] =
-            self.preprocessor.run([samples, len])?.try_into().unwrap();
-        let [encoded, _lens] =
-            self.encoder.run([features, feat_len])?.try_into().unwrap();
-
-        let encoded: ArrayD<f32> = encoded.view()?.into_owned();
-        let batch = encoded.shape()[0];
-
-        let max_frames = encoded.shape()[2];
-        let max_len = max_frames * 6 + 10;
-
-        let mut decoder_stats = CallStats::default();
-        let mut joint_stats = CallStats::default();
-
-        let mut hyp = vec![];
-        let mut frame_ix = 0;
-        let mut token = Value::from_slice(&[1, 1], &[0i32])?;
-        let mut state_0: Value = Array3::<f32>::zeros([2, 1, 640]).try_into()?;
-        let mut state_1: Value = Array3::<f32>::zeros([2, 1, 640]).try_into()?;
-
-        let t = Instant::now();
-        [token, state_0, state_1] =
-            self.decoder.run([token, state_0, state_1])?.try_into().unwrap();
-        decoder_stats.record(batch, t.elapsed());
-
-        while hyp.len() < max_len && frame_ix < max_frames {
-            let frame: Value =
-                encoded.slice_axis(Axis(2), (frame_ix..frame_ix + 1).into()).try_into()?;
-            let t = Instant::now();
-            let [logits] = self.joint.run([frame, token.clone()])?.try_into().unwrap();
-            joint_stats.record(batch, t.elapsed());
-            let logits = logits.view::<f32>()?;
-            let logits = logits.as_slice().unwrap();
-            let token_id = argmax(&logits[0..self.blank_id + 1]).unwrap();
-            if token_id == self.blank_id {
-                frame_ix += argmax(&logits[self.blank_id + 1..]).unwrap_or(0).max(1);
-            } else {
-                hyp.push(token_id);
-                token = Value::from_slice(&[1, 1], &[token_id as i32])?;
-                let t = Instant::now();
-                [token, state_0, state_1] =
-                    self.decoder.run([token, state_0, state_1])?.try_into().unwrap();
-                decoder_stats.record(batch, t.elapsed());
-            }
-        }
-
-        Ok((hyp.into_iter().map(|t| self.vocab[t].as_str()).join(""), decoder_stats, joint_stats))
-    }
-
-    fn transcribe_beam(&self, wav: &[f32]) -> Result<(String, CallStats, CallStats)> {
-        let samples: Value = Value::from_slice(&[1, wav.len()], wav)?;
-        let len: Value = arr1(&[wav.len() as i64]).try_into()?;
-
-        let [features, feat_len] =
-            self.preprocessor.run([samples, len])?.try_into().unwrap();
-        let [encoded, _lens] =
-            self.encoder.run([features, feat_len])?.try_into().unwrap();
-
-        let encoded: ArrayD<f32> = encoded.view()?.into_owned();
-        let batch = encoded.shape()[0];
-        let max_frames = encoded.shape()[2];
-        let enc_dim = encoded.shape()[1];
-
-        let mut decoder_stats = CallStats::default();
-        let mut joint_stats = CallStats::default();
-
-        const BEAM_SIZE: usize = 4;
-        const DUR_BEAM_K: usize = 2;
-
-        struct Beam {
-            score: f32,
-            tokens: Vec<usize>,
-            last_frame: usize,
-            dec_out: Value,
-            state_0: Value,
-            state_1: Value,
-        }
-
-        let init_token = Value::from_slice(&[1, 1], &[0i32])?;
-        let init_s0: Value = Array3::<f32>::zeros([2, 1, 640]).try_into()?;
-        let init_s1: Value = Array3::<f32>::zeros([2, 1, 640]).try_into()?;
-        let t = Instant::now();
-        let [dec_out, state_0, state_1] =
-            self.decoder.run([init_token, init_s0, init_s1])?.try_into().unwrap();
-        decoder_stats.record(batch, t.elapsed());
-
-        let mut all_beams: Vec<Beam> = vec![Beam {
-            score: 0.0,
-            tokens: vec![],
-            last_frame: 0,
-            dec_out,
-            state_0,
-            state_1,
-        }];
-
-        for frame_ix in 0..max_frames {
-            let mut hyps: Vec<Beam> = Vec::new();
-            let mut kept: Vec<Beam> = Vec::new();
-            for b in all_beams.drain(..) {
-                if b.last_frame == frame_ix {
-                    hyps.push(b);
-                } else {
-                    kept.push(b);
-                }
-            }
-
-            while !hyps.is_empty() {
-                let b = hyps.len();
-
-                // 1. JOINT: single call batched over all B active hypotheses
-                let frame_batch: Value = {
-                    let enc_arr = encoded.view();
-                    Array3::<f32>::from_shape_fn((b, enc_dim, 1), |(_, e, _)| {
-                        enc_arr[[0, e, frame_ix]]
-                    })
-                    .try_into()?
-                };
-                let dec_out_batch: Value = {
-                    let views: Vec<_> = hyps
-                        .iter()
-                        .map(|h| h.dec_out.view::<f32>())
-                        .collect::<Result<Vec<_>>>()?;
-                    let hidden = views[0].shape()[1]; // dec_out is [1, hidden, 1]
-                    Array3::<f32>::from_shape_fn((b, hidden, 1), |(bi, h, _)| views[bi][[0, h, 0]])
-                        .try_into()?
-                };
-                let t = Instant::now();
-                let [logits_b] =
-                    self.joint.run([frame_batch, dec_out_batch])?.try_into().unwrap();
-                joint_stats.record(b, t.elapsed());
-
-                // 2. Per-hyp: token scores + duration expansions into kept
-                let mut per_hyp_token_scores: Vec<Vec<(usize, f32)>> = Vec::with_capacity(b);
-                {
-                    let logits_arr = logits_b.view::<f32>()?; // [b, vocab+dur]
-                    for bi in 0..b {
-                        let row = logits_arr.index_axis(Axis(0), bi);
-                        let row_slice = row.as_slice().unwrap();
-                        let log_probs = log_softmax(&row_slice[0..=self.blank_id]);
-                        let dur_log_probs = log_softmax(&row_slice[self.blank_id + 1..]);
-
-                        let mut ts: Vec<(usize, f32)> =
-                            (0..self.blank_id).map(|ti| (ti, log_probs[ti])).collect();
-                        ts.sort_by(|a, b| FloatOrd(b.1).cmp(&FloatOrd(a.1)));
-                        ts.truncate(BEAM_SIZE);
-                        per_hyp_token_scores.push(ts);
-
-                        let mut ds: Vec<(usize, f32)> =
-                            (1..dur_log_probs.len()).map(|di| (di, dur_log_probs[di])).collect();
-                        ds.sort_by(|a, b| FloatOrd(b.1).cmp(&FloatOrd(a.1)));
-                        ds.truncate(DUR_BEAM_K);
-                        for (di, dlp) in ds {
-                            kept.push(Beam {
-                                score: hyps[bi].score + log_probs[self.blank_id] + dlp,
-                                tokens: hyps[bi].tokens.clone(),
-                                last_frame: frame_ix + di,
-                                dec_out: hyps[bi].dec_out.clone(),
-                                state_0: hyps[bi].state_0.clone(),
-                                state_1: hyps[bi].state_1.clone(),
-                            });
-                        }
-                    }
-                } // logits_arr dropped
-
-                // 3. DECODER: single call batched over all N token expansions
-                let expansion_hyp_idxs: Vec<usize> = per_hyp_token_scores
-                    .iter()
-                    .enumerate()
-                    .flat_map(|(bi, ts)| std::iter::repeat(bi).take(ts.len()))
-                    .collect();
-                let token_ids: Vec<i32> = per_hyp_token_scores
-                    .iter()
-                    .flat_map(|ts| ts.iter().map(|&(ti, _)| ti as i32))
-                    .collect();
-                let n = token_ids.len();
-
-                let tokens_batch: Value =
-                    Array2::<i32>::from_shape_fn((n, 1), |(i, _)| token_ids[i]).try_into()?;
-                let s0_batch: Value = {
-                    let views: Vec<_> = hyps
-                        .iter()
-                        .map(|h| h.state_0.view::<f32>())
-                        .collect::<Result<Vec<_>>>()?;
-                    Array3::<f32>::from_shape_fn((2, n, 640), |(l, i, h)| {
-                        views[expansion_hyp_idxs[i]][[l, 0, h]]
-                    })
-                    .try_into()?
-                };
-                let s1_batch: Value = {
-                    let views: Vec<_> = hyps
-                        .iter()
-                        .map(|h| h.state_1.view::<f32>())
-                        .collect::<Result<Vec<_>>>()?;
-                    Array3::<f32>::from_shape_fn((2, n, 640), |(l, i, h)| {
-                        views[expansion_hyp_idxs[i]][[l, 0, h]]
-                    })
-                    .try_into()?
-                };
-
-                let t = Instant::now();
-                let [dec_out_b, s0_b, s1_b] =
-                    self.decoder.run([tokens_batch, s0_batch, s1_batch])?.try_into().unwrap();
-                decoder_stats.record(n, t.elapsed());
-
-                // 4. Slice and build new beams
-                let new_hyps: Vec<Beam> = {
-                    let dec_arr = dec_out_b.view::<f32>()?; // [N, hidden]
-                    let s0_arr = s0_b.view::<f32>()?; // [2, N, 640]
-                    let s1_arr = s1_b.view::<f32>()?; // [2, N, 640]
-                    let mut out = Vec::with_capacity(n);
-                    let mut i = 0;
-                    for (bi, ts) in per_hyp_token_scores.iter().enumerate() {
-                        for &(ti, lp) in ts {
-                            let new_dec_out: Value =
-                                dec_arr.slice_axis(Axis(0), (i..i + 1).into()).try_into()?;
-                            let new_s0: Value =
-                                s0_arr.slice_axis(Axis(1), (i..i + 1).into()).try_into()?;
-                            let new_s1: Value =
-                                s1_arr.slice_axis(Axis(1), (i..i + 1).into()).try_into()?;
-                            let mut new_tokens = hyps[bi].tokens.clone();
-                            new_tokens.push(ti);
-                            out.push(Beam {
-                                score: hyps[bi].score + lp,
-                                tokens: new_tokens,
-                                last_frame: frame_ix,
-                                dec_out: new_dec_out,
-                                state_0: new_s0,
-                                state_1: new_s1,
-                            });
-                            i += 1;
-                        }
-                    }
-                    out
-                };
-                hyps = new_hyps;
-
-                // 5. Prune combined pool to BEAM_SIZE
-                let mut all: Vec<Beam> = hyps.drain(..).chain(kept.drain(..)).collect();
-                all.sort_by(|a, b| FloatOrd(b.score).cmp(&FloatOrd(a.score)));
-                all.truncate(BEAM_SIZE);
-                for b in all {
-                    if b.last_frame == frame_ix {
-                        hyps.push(b);
-                    } else {
-                        kept.push(b);
-                    }
-                }
-            }
-
-            all_beams = kept;
-        }
-
-        let best = all_beams
-            .into_iter()
-            .max_by_key(|b| FloatOrd(b.score))
-            .ok_or_else(|| anyhow!("no beams survived"))?;
-        Ok((best.tokens.into_iter().map(|t| self.vocab[t].as_str()).join(""), decoder_stats, joint_stats))
-    }
 }
 
 fn main() -> anyhow::Result<()> {
+    let args = Args::parse();
     let nnef = tract_rs::nnef()?.with_tract_core()?.with_tract_transformers()?;
     let gpu = ["cuda", "metal", "default"]
         .iter()
@@ -362,13 +109,13 @@ fn main() -> anyhow::Result<()> {
         .map(|x| x.unwrap() as f32)
         .collect();
 
-    model.transcribe_greedy(&wav)?;
-    let (transcript_g, dec, joint) = model.transcribe_greedy(&wav)?;
+    greedy::transcribe_greedy(&model, &wav)?;
+    let (transcript_g, dec, joint) = greedy::transcribe_greedy(&model, &wav)?;
     eprintln!("[greedy][decoder] {dec:?}");
     eprintln!("[greedy][joint]   {joint:?}");
 
-    model.transcribe_beam(&wav)?;
-    let (transcript_b, dec, joint) = model.transcribe_beam(&wav)?;
+    beam::transcribe_beam(&model, &wav, &args.beam)?;
+    let (transcript_b, dec, joint) = beam::transcribe_beam(&model, &wav, &args.beam)?;
     eprintln!("[beam][decoder]   {dec:?}");
     eprintln!("[beam][joint]     {joint:?}");
 
