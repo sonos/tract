@@ -24,7 +24,7 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const prInput = core.getInput('pr_number');
+            const prInput = context.payload.inputs?.pr_number;
             core.info(`Fetching PR ${prInput}`);
             if (!prInput) {
               // Use the ref the workflow was triggered on (branch/tag/SHA in base repo)
