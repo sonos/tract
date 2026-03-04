@@ -1,5 +1,6 @@
 use std::fs::File;
 use std::path::Path;
+use std::time::Instant;
 
 use anyhow::*;
 use float_ord::FloatOrd;
@@ -7,6 +8,36 @@ use itertools::Itertools;
 use tract_rs::prelude::tract_ndarray::prelude::*;
 use tract_rs::prelude::*;
 use tract_rs::Nnef;
+
+#[derive(Default)]
+struct CallStats {
+    calls: u32,
+    total_batch: u64,
+    total_us: u64,
+}
+
+impl CallStats {
+    fn record(&mut self, batch: usize, elapsed: std::time::Duration) {
+        self.calls += 1;
+        self.total_batch += batch as u64;
+        self.total_us += elapsed.as_micros() as u64;
+    }
+}
+
+impl std::fmt::Debug for CallStats {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let avg_batch =
+            if self.calls == 0 { 0.0 } else { self.total_batch as f64 / self.calls as f64 };
+        let avg_ms =
+            if self.calls == 0 { 0.0 } else { self.total_us as f64 / self.calls as f64 / 1000.0 };
+        let total_ms = self.total_us as f64 / 1000.0;
+        write!(
+            f,
+            "calls={:5}  avg_batch={avg_batch:.1}  avg={avg_ms:.3}ms  total={total_ms:.1}ms",
+            self.calls
+        )
+    }
+}
 
 fn argmax(slice: &[f32]) -> Option<usize> {
     slice.into_iter().position_max_by_key(|x| FloatOrd(**x))
@@ -53,7 +84,7 @@ impl TdtModel {
         Ok(TdtModel { preprocessor, encoder, decoder, joint, vocab, blank_id })
     }
 
-    fn transcribe_greedy(&self, wav: &[f32]) -> Result<String> {
+    fn transcribe_greedy(&self, wav: &[f32]) -> Result<(String, CallStats, CallStats)> {
         let samples: Value = Value::from_slice(&[1, wav.len()], wav)?;
         let len: Value = arr1(&[wav.len() as i64]).try_into()?;
 
@@ -63,9 +94,13 @@ impl TdtModel {
             self.encoder.run([features, feat_len])?.try_into().unwrap();
 
         let encoded: ArrayD<f32> = encoded.view()?.into_owned();
+        let batch = encoded.shape()[0];
 
         let max_frames = encoded.shape()[2];
         let max_len = max_frames * 6 + 10;
+
+        let mut decoder_stats = CallStats::default();
+        let mut joint_stats = CallStats::default();
 
         let mut hyp = vec![];
         let mut frame_ix = 0;
@@ -73,12 +108,17 @@ impl TdtModel {
         let mut state_0: Value = Array3::<f32>::zeros([2, 1, 640]).try_into()?;
         let mut state_1: Value = Array3::<f32>::zeros([2, 1, 640]).try_into()?;
 
+        let t = Instant::now();
         [token, state_0, state_1] =
             self.decoder.run([token, state_0, state_1])?.try_into().unwrap();
+        decoder_stats.record(batch, t.elapsed());
+
         while hyp.len() < max_len && frame_ix < max_frames {
             let frame: Value =
                 encoded.slice_axis(Axis(2), (frame_ix..frame_ix + 1).into()).try_into()?;
+            let t = Instant::now();
             let [logits] = self.joint.run([frame, token.clone()])?.try_into().unwrap();
+            joint_stats.record(batch, t.elapsed());
             let logits = logits.view::<f32>()?;
             let logits = logits.as_slice().unwrap();
             let token_id = argmax(&logits[0..self.blank_id + 1]).unwrap();
@@ -87,15 +127,17 @@ impl TdtModel {
             } else {
                 hyp.push(token_id);
                 token = Value::from_slice(&[1, 1], &[token_id as i32])?;
+                let t = Instant::now();
                 [token, state_0, state_1] =
                     self.decoder.run([token, state_0, state_1])?.try_into().unwrap();
+                decoder_stats.record(batch, t.elapsed());
             }
         }
 
-        Ok(hyp.into_iter().map(|t| self.vocab[t].as_str()).join(""))
+        Ok((hyp.into_iter().map(|t| self.vocab[t].as_str()).join(""), decoder_stats, joint_stats))
     }
 
-    fn transcribe_beam(&self, wav: &[f32]) -> Result<String> {
+    fn transcribe_beam(&self, wav: &[f32]) -> Result<(String, CallStats, CallStats)> {
         let samples: Value = Value::from_slice(&[1, wav.len()], wav)?;
         let len: Value = arr1(&[wav.len() as i64]).try_into()?;
 
@@ -105,7 +147,11 @@ impl TdtModel {
             self.encoder.run([features, feat_len])?.try_into().unwrap();
 
         let encoded: ArrayD<f32> = encoded.view()?.into_owned();
+        let batch = encoded.shape()[0];
         let max_frames = encoded.shape()[2];
+
+        let mut decoder_stats = CallStats::default();
+        let mut joint_stats = CallStats::default();
 
         const BEAM_SIZE: usize = 4;
         const DUR_BEAM_K: usize = 2;
@@ -122,8 +168,10 @@ impl TdtModel {
         let init_token = Value::from_slice(&[1, 1], &[0i32])?;
         let init_s0: Value = Array3::<f32>::zeros([2, 1, 640]).try_into()?;
         let init_s1: Value = Array3::<f32>::zeros([2, 1, 640]).try_into()?;
+        let t = Instant::now();
         let [dec_out, state_0, state_1] =
             self.decoder.run([init_token, init_s0, init_s1])?.try_into().unwrap();
+        decoder_stats.record(batch, t.elapsed());
 
         let mut all_beams: Vec<Beam> = vec![Beam {
             score: 0.0,
@@ -157,11 +205,13 @@ impl TdtModel {
                     .unwrap();
                 let max_hyp = hyps.remove(best_idx);
 
+                let t = Instant::now();
                 let [logits] = self
                     .joint
                     .run([frame.clone(), max_hyp.dec_out.clone()])?
                     .try_into()
                     .unwrap();
+                joint_stats.record(batch, t.elapsed());
                 let logits = logits.view::<f32>()?;
                 let logits = logits.as_slice().unwrap();
 
@@ -176,11 +226,13 @@ impl TdtModel {
 
                 for (ti, lp) in token_scores {
                     let new_token = Value::from_slice(&[1, 1], &[ti as i32])?;
+                    let t = Instant::now();
                     let [new_dec_out, new_s0, new_s1] = self
                         .decoder
                         .run([new_token, max_hyp.state_0.clone(), max_hyp.state_1.clone()])?
                         .try_into()
                         .unwrap();
+                    decoder_stats.record(batch, t.elapsed());
                     let mut new_tokens = max_hyp.tokens.clone();
                     new_tokens.push(ti);
                     hyps.push(Beam {
@@ -230,7 +282,7 @@ impl TdtModel {
             .into_iter()
             .max_by_key(|b| FloatOrd(b.score))
             .ok_or_else(|| anyhow!("no beams survived"))?;
-        Ok(best.tokens.into_iter().map(|t| self.vocab[t].as_str()).join(""))
+        Ok((best.tokens.into_iter().map(|t| self.vocab[t].as_str()).join(""), decoder_stats, joint_stats))
     }
 }
 
@@ -248,10 +300,24 @@ fn main() -> anyhow::Result<()> {
         .map(|x| x.unwrap() as f32)
         .collect();
 
-    let transcript = model.transcribe_beam(&wav)?;
-    println!("Transcript: {transcript}");
+    model.transcribe_greedy(&wav)?;
+    let (transcript_g, dec, joint) = model.transcribe_greedy(&wav)?;
+    eprintln!("[greedy][decoder] {dec:?}");
+    eprintln!("[greedy][joint]   {joint:?}");
+
+    model.transcribe_beam(&wav)?;
+    let (transcript_b, dec, joint) = model.transcribe_beam(&wav)?;
+    eprintln!("[beam][decoder]   {dec:?}");
+    eprintln!("[beam][joint]     {joint:?}");
+
+    println!("Greedy: {transcript_g}");
+    println!("Beam:   {transcript_b}");
     assert_eq!(
-        transcript,
+        transcript_g,
+        "▁Well,▁I▁don't▁wish▁to▁see▁it▁any▁more,▁observed▁Phoebe,▁turning▁away▁her▁eyes."
+    );
+    assert_eq!(
+        transcript_b,
         "▁Well,▁I▁don't▁wish▁to▁see▁it▁any▁more,▁observed▁Phoebe,▁turning▁away▁her▁eyes."
     );
     Ok(())
