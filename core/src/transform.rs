@@ -189,7 +189,7 @@ pub fn get_transform(spec: &str) -> TractResult<Option<Box<dyn ModelTransform>>>
     }
     #[cfg(not(feature = "inventory-registry"))]
     {
-        return lookup_core_transforms(spec).map_err(|e| anyhow::anyhow!(e));
+        lookup_core_transforms(spec).map_err(|e| anyhow::anyhow!(e))
     }
 }
 
