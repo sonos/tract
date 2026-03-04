@@ -10,12 +10,15 @@ use tract_rs::Nnef;
 
 mod greedy;
 mod beam;
+mod alsd;
 
 #[derive(Parser)]
 #[command(about = "NeMo Parakeet ASR inference")]
 struct Args {
     #[command(flatten)]
     beam: beam::BeamConfig,
+    #[command(flatten)]
+    alsd: alsd::AlsdConfig,
 }
 
 #[derive(Default)]
@@ -119,14 +122,24 @@ fn main() -> anyhow::Result<()> {
     eprintln!("[beam][decoder]   {dec:?}");
     eprintln!("[beam][joint]     {joint:?}");
 
+    alsd::transcribe_alsd(&model, &wav, &args.alsd)?;
+    let (transcript_a, dec, joint) = alsd::transcribe_alsd(&model, &wav, &args.alsd)?;
+    eprintln!("[alsd][decoder]   {dec:?}");
+    eprintln!("[alsd][joint]     {joint:?}");
+
     println!("Greedy: {transcript_g}");
     println!("Beam:   {transcript_b}");
+    println!("ALSD:   {transcript_a}");
     assert_eq!(
         transcript_g,
         "▁Well,▁I▁don't▁wish▁to▁see▁it▁any▁more,▁observed▁Phoebe,▁turning▁away▁her▁eyes."
     );
     assert_eq!(
         transcript_b,
+        "▁Well,▁I▁don't▁wish▁to▁see▁it▁any▁more,▁observed▁Phoebe,▁turning▁away▁her▁eyes."
+    );
+    assert_eq!(
+        transcript_a,
         "▁Well,▁I▁don't▁wish▁to▁see▁it▁any▁more,▁observed▁Phoebe,▁turning▁away▁her▁eyes."
     );
     Ok(())
