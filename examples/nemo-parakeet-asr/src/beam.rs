@@ -38,13 +38,11 @@ pub fn transcribe_beam(
     let len: Value = arr1(&[wav.len() as i64]).try_into()?;
 
     let t = Instant::now();
-    let [features, feat_len] =
-        model.preprocessor.run([samples, len])?.try_into().unwrap();
+    let [features, feat_len] = model.run_preprocessor(samples, len)?;
     stats.preprocessor.record(1, t.elapsed());
 
     let t = Instant::now();
-    let [encoded, _lens] =
-        model.encoder.run([features, feat_len])?.try_into().unwrap();
+    let [encoded, _lens] = model.run_encoder(features, feat_len)?;
     stats.encoder.record(1, t.elapsed());
 
     let encoded: ArrayD<f32> = encoded.view()?.into_owned();
@@ -56,8 +54,7 @@ pub fn transcribe_beam(
     let init_s0: Value = Array3::<f32>::zeros([2, 1, 640]).try_into()?;
     let init_s1: Value = Array3::<f32>::zeros([2, 1, 640]).try_into()?;
     let t = Instant::now();
-    let [dec_out, state_0, state_1] =
-        model.decoder.run([init_token, init_s0, init_s1])?.try_into().unwrap();
+    let [dec_out, state_0, state_1] = model.run_decoder(init_token, init_s0, init_s1)?;
     stats.decoder.record(batch, t.elapsed());
 
     let mut all_beams: Vec<Beam> = vec![Beam {
@@ -101,8 +98,7 @@ pub fn transcribe_beam(
                     .try_into()?
             };
             let t = Instant::now();
-            let [logits_b] =
-                model.joint.run([frame_batch, dec_out_batch])?.try_into().unwrap();
+            let logits_b = model.run_joint(frame_batch, dec_out_batch)?;
             stats.joint.record(b, t.elapsed());
 
             // 2. Per-hyp: token scores + duration expansions into kept
@@ -179,8 +175,7 @@ pub fn transcribe_beam(
             };
 
             let t = Instant::now();
-            let [dec_out_b, s0_b, s1_b] =
-                model.decoder.run([tokens_batch, s0_batch, s1_batch])?.try_into().unwrap();
+            let [dec_out_b, s0_b, s1_b] = model.run_decoder(tokens_batch, s0_batch, s1_batch)?;
             stats.decoder.record(n, t.elapsed());
 
             // 4. Slice and build new beams

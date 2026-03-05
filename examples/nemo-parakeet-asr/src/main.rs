@@ -10,13 +10,18 @@ use itertools::Itertools;
 use tract_rs::prelude::*;
 use tract_rs::Nnef;
 
-mod greedy;
+mod alsd;
 mod beam;
 mod fbsd;
-mod alsd;
+mod greedy;
 
 #[derive(clap::ValueEnum, Clone)]
-enum Decoder { Greedy, Beam, Fbsd, Alsd }
+enum Decoder {
+    Greedy,
+    Beam,
+    Fbsd,
+    Alsd,
+}
 
 #[derive(Parser)]
 #[command(about = "NeMo Parakeet ASR inference")]
@@ -105,35 +110,60 @@ pub(crate) fn log_softmax(xs: &[f32]) -> Vec<f32> {
 }
 
 pub(crate) struct TdtModel {
-    pub(crate) preprocessor: Runnable,
-    pub(crate) encoder: Runnable,
-    pub(crate) decoder: Runnable,
-    pub(crate) joint: Runnable,
+    preprocessor: Runnable,
+    encoder: Runnable,
+    decoder: Runnable,
+    joint: Runnable,
     pub(crate) vocab: Vec<String>,
     pub(crate) blank_id: usize,
 }
 
 impl TdtModel {
+    #[inline(never)]
+    pub(crate) fn run_preprocessor(&self, samples: Value, len: Value) -> Result<[Value; 2]> {
+        Ok(self.preprocessor.run([samples, len])?.try_into().unwrap())
+    }
+
+    #[inline(never)]
+    pub(crate) fn run_encoder(&self, features: Value, feat_len: Value) -> Result<[Value; 2]> {
+        Ok(self.encoder.run([features, feat_len])?.try_into().unwrap())
+    }
+
+    #[inline(never)]
+    pub(crate) fn run_decoder(&self, token: Value, s0: Value, s1: Value) -> Result<[Value; 3]> {
+        Ok(self.decoder.run([token, s0, s1])?.try_into().unwrap())
+    }
+
+    #[inline(never)]
+    pub(crate) fn run_joint(&self, frame: Value, dec_out: Value) -> Result<Value> {
+        let [logits] = self.joint.run([frame, dec_out])?.try_into().unwrap();
+        Ok(logits)
+    }
+
     fn load(model_dir: impl AsRef<Path>, nnef: &Nnef, gpu: &Runtime) -> Result<TdtModel> {
         let model_dir = model_dir.as_ref();
         let config: serde_json::Value =
             serde_json::from_reader(File::open(model_dir.join("model_config.json"))?)?;
-        let blank_id =
-            config.pointer("/decoder/vocab_size").unwrap().as_i64().unwrap() as usize;
+        let blank_id = config.pointer("/decoder/vocab_size").unwrap().as_i64().unwrap() as usize;
         let vocab = config.pointer("/joint/vocabulary").unwrap().as_array().unwrap();
         let vocab: Vec<String> = vocab.iter().map(|v| v.as_str().unwrap().to_owned()).collect();
 
-        let preprocessor =
-            nnef.load(model_dir.join("preprocessor.nnef.tgz"))?.into_runnable()?;
+        let mut preprocessor = nnef.load(model_dir.join("preprocessor.nnef.tgz"))?;
+        preprocessor.transform("transformers-detect-all")?;
+        let preprocessor = gpu.prepare(preprocessor)?;
 
         let mut encoder = nnef.load(model_dir.join("encoder.nnef.tgz"))?;
         encoder.transform("transformers-detect-all")?;
         let encoder = gpu.prepare(encoder)?;
 
-        let decoder = nnef.load(model_dir.join("decoder.nnef.tgz"))?;
+        let mut decoder = nnef.load(model_dir.join("decoder.nnef.tgz"))?;
+        decoder.transform("transformers-detect-all")?;
+        decoder.concretize_symbols([("T", 1)])?;
         let decoder = gpu.prepare(decoder)?;
 
-        let joint = nnef.load(model_dir.join("joint.nnef.tgz"))?;
+        let mut joint = nnef.load(model_dir.join("joint.nnef.tgz"))?;
+        joint.transform("transformers-detect-all")?;
+        joint.concretize_symbols([("R", 1), ("U", 1)])?;
         let joint = gpu.prepare(joint)?;
 
         Ok(TdtModel { preprocessor, encoder, decoder, joint, vocab, blank_id })
@@ -171,9 +201,7 @@ fn collect_wavs(inputs: &[PathBuf]) -> Vec<PathBuf> {
 fn load_wav(path: &Path) -> Result<(Vec<f32>, f64)> {
     let mut wav_reader = hound::WavReader::open(path)?;
     let sample_rate = wav_reader.spec().sample_rate as f64;
-    let samples: Vec<f32> = wav_reader.samples::<i16>()
-        .map(|x| x.unwrap() as f32)
-        .collect();
+    let samples: Vec<f32> = wav_reader.samples::<i16>().map(|x| x.unwrap() as f32).collect();
     let audio_duration_s = samples.len() as f64 / sample_rate;
     Ok((samples, audio_duration_s))
 }
@@ -185,18 +213,28 @@ fn clean(s: &str) -> String {
 fn decoder_label(args: &Args) -> String {
     match args.decoder {
         Decoder::Greedy => "greedy".to_string(),
-        Decoder::Beam => format!("beam  beam_size={}  beam_dur_k={}", args.beam.beam_size, args.beam.beam_dur_k),
-        Decoder::Fbsd => format!("fbsd  beam_size={}  beam_dur_k={}  max_symbols={}", args.fbsd.fbsd_beam_size, args.fbsd.fbsd_beam_dur_k, args.fbsd.fbsd_max_symbols_per_frame),
-        Decoder::Alsd => format!("alsd  beam_size={}  beam_dur_k={}  u_max={}", args.alsd.alsd_beam_size, args.alsd.alsd_beam_dur_k, args.alsd.alsd_u_max),
+        Decoder::Beam => {
+            format!("beam  beam_size={}  beam_dur_k={}", args.beam.beam_size, args.beam.beam_dur_k)
+        }
+        Decoder::Fbsd => format!(
+            "fbsd  beam_size={}  beam_dur_k={}  max_symbols={}",
+            args.fbsd.fbsd_beam_size,
+            args.fbsd.fbsd_beam_dur_k,
+            args.fbsd.fbsd_max_symbols_per_frame
+        ),
+        Decoder::Alsd => format!(
+            "alsd  beam_size={}  beam_dur_k={}  u_max={}",
+            args.alsd.alsd_beam_size, args.alsd.alsd_beam_dur_k, args.alsd.alsd_u_max
+        ),
     }
 }
 
 fn run_decoder(model: &TdtModel, wav: &[f32], args: &Args) -> Result<(String, DecodingStats)> {
     match args.decoder {
         Decoder::Greedy => greedy::transcribe_greedy(model, wav),
-        Decoder::Beam   => beam::transcribe_beam(model, wav, &args.beam),
-        Decoder::Fbsd   => fbsd::transcribe_fbsd(model, wav, &args.fbsd),
-        Decoder::Alsd   => alsd::transcribe_alsd(model, wav, &args.alsd),
+        Decoder::Beam => beam::transcribe_beam(model, wav, &args.beam),
+        Decoder::Fbsd => fbsd::transcribe_fbsd(model, wav, &args.fbsd),
+        Decoder::Alsd => alsd::transcribe_alsd(model, wav, &args.alsd),
     }
 }
 
@@ -214,17 +252,20 @@ impl SearchConfig {
         match self {
             SearchConfig::Greedy => "greedy".to_owned(),
             SearchConfig::Beam(c) => format!("beam_{}_{}", c.beam_size, c.beam_dur_k),
-            SearchConfig::Fbsd(c) => format!("fbsd_{}_{}_{}", c.fbsd_beam_size, c.fbsd_beam_dur_k, c.fbsd_max_symbols_per_frame),
+            SearchConfig::Fbsd(c) => format!(
+                "fbsd_{}_{}_{}",
+                c.fbsd_beam_size, c.fbsd_beam_dur_k, c.fbsd_max_symbols_per_frame
+            ),
             SearchConfig::Alsd(c) => format!("alsd_{}_{}", c.alsd_beam_size, c.alsd_beam_dur_k),
         }
     }
 
     fn run(&self, model: &TdtModel, wav: &[f32]) -> Result<(String, DecodingStats)> {
         match self {
-            SearchConfig::Greedy    => greedy::transcribe_greedy(model, wav),
-            SearchConfig::Beam(c)   => beam::transcribe_beam(model, wav, c),
-            SearchConfig::Fbsd(c)   => fbsd::transcribe_fbsd(model, wav, c),
-            SearchConfig::Alsd(c)   => alsd::transcribe_alsd(model, wav, c),
+            SearchConfig::Greedy => greedy::transcribe_greedy(model, wav),
+            SearchConfig::Beam(c) => beam::transcribe_beam(model, wav, c),
+            SearchConfig::Fbsd(c) => fbsd::transcribe_fbsd(model, wav, c),
+            SearchConfig::Alsd(c) => alsd::transcribe_alsd(model, wav, c),
         }
     }
 }
@@ -234,10 +275,18 @@ fn search_configs() -> Vec<SearchConfig> {
         SearchConfig::Beam(beam::BeamConfig { beam_size, beam_dur_k })
     }
     fn f(beam_size: usize, beam_dur_k: usize, max_symbols: usize) -> SearchConfig {
-        SearchConfig::Fbsd(fbsd::FbsdConfig { fbsd_beam_size: beam_size, fbsd_beam_dur_k: beam_dur_k, fbsd_max_symbols_per_frame: max_symbols })
+        SearchConfig::Fbsd(fbsd::FbsdConfig {
+            fbsd_beam_size: beam_size,
+            fbsd_beam_dur_k: beam_dur_k,
+            fbsd_max_symbols_per_frame: max_symbols,
+        })
     }
     fn a(beam_size: usize, beam_dur_k: usize) -> SearchConfig {
-        SearchConfig::Alsd(alsd::AlsdConfig { alsd_beam_size: beam_size, alsd_beam_dur_k: beam_dur_k, alsd_u_max: 50 })
+        SearchConfig::Alsd(alsd::AlsdConfig {
+            alsd_beam_size: beam_size,
+            alsd_beam_dur_k: beam_dur_k,
+            alsd_u_max: 50,
+        })
     }
     vec![
         SearchConfig::Greedy,
@@ -280,12 +329,8 @@ fn param_search(model: &TdtModel, wavs: &[PathBuf]) -> Result<()> {
     let configs = search_configs();
 
     let mp = MultiProgress::new();
-    let cfg_style = ProgressStyle::with_template(
-        "Configs  {bar:40} {pos:>3}/{len} {msg}"
-    ).unwrap();
-    let file_style = ProgressStyle::with_template(
-        "Files    {bar:40} {pos:>3}/{len}"
-    ).unwrap();
+    let cfg_style = ProgressStyle::with_template("Configs  {bar:40} {pos:>3}/{len} {msg}").unwrap();
+    let file_style = ProgressStyle::with_template("Files    {bar:40} {pos:>3}/{len}").unwrap();
 
     let cfg_bar = mp.add(ProgressBar::new(configs.len() as u64));
     cfg_bar.set_style(cfg_style);
@@ -312,8 +357,13 @@ fn param_search(model: &TdtModel, wavs: &[PathBuf]) -> Result<()> {
 
         for wav_path in wavs {
             let (wav, audio_s) = load_wav(wav_path)?;
-            let reference = std::fs::read_to_string(wav_path.with_extension("txt"))
-                .with_context(|| format!("no ground-truth transcript for {} (run with --write-gt first)", wav_path.display()))?;
+            let reference =
+                std::fs::read_to_string(wav_path.with_extension("txt")).with_context(|| {
+                    format!(
+                        "no ground-truth transcript for {} (run with --write-gt first)",
+                        wav_path.display()
+                    )
+                })?;
             let reference = reference.trim_end_matches('\n').to_owned();
 
             let t = Instant::now();
@@ -323,10 +373,12 @@ fn param_search(model: &TdtModel, wavs: &[PathBuf]) -> Result<()> {
             total_audio_s += audio_s;
             total_elapsed_s += elapsed;
             total += 1;
-            if clean(&transcript) == reference { exact += 1; }
-            pre_us   += stats.preprocessor.total_us;
-            enc_us   += stats.encoder.total_us;
-            dec_us   += stats.decoder.total_us;
+            if clean(&transcript) == reference {
+                exact += 1;
+            }
+            pre_us += stats.preprocessor.total_us;
+            enc_us += stats.encoder.total_us;
+            dec_us += stats.decoder.total_us;
             joint_us += stats.joint.total_us;
 
             file_bar.inc(1);
@@ -338,9 +390,19 @@ fn param_search(model: &TdtModel, wavs: &[PathBuf]) -> Result<()> {
         let pct = |us: u64| if total_us > 0 { us as f64 / total_us as f64 * 100.0 } else { 0.0 };
         let nn_us = pre_us + enc_us + dec_us + joint_us;
         let host_us = total_us.saturating_sub(nn_us);
-        mp.suspend(|| println!("{}\t{:.4}\t{:.1}\t{:.1}\t{:.1}\t{:.1}\t{:.1}\t{:.1}",
-            label, epr, rtfx,
-            pct(pre_us), pct(enc_us), pct(dec_us), pct(joint_us), pct(host_us)));
+        mp.suspend(|| {
+            println!(
+                "{}\t{:.4}\t{:.1}\t{:.1}\t{:.1}\t{:.1}\t{:.1}\t{:.1}",
+                label,
+                epr,
+                rtfx,
+                pct(pre_us),
+                pct(enc_us),
+                pct(dec_us),
+                pct(joint_us),
+                pct(host_us)
+            )
+        });
 
         cfg_bar.inc(1);
     }
@@ -362,9 +424,7 @@ fn write_gt(model: &TdtModel, wavs: &[PathBuf], no_details: bool) -> anyhow::Res
     }
     let pb = if no_details {
         let pb = ProgressBar::new(wavs.len() as u64);
-        pb.set_style(
-            ProgressStyle::with_template("Writing GT  {bar:40} {pos:>3}/{len}").unwrap()
-        );
+        pb.set_style(ProgressStyle::with_template("Writing GT  {bar:40} {pos:>3}/{len}").unwrap());
         Some(pb)
     } else {
         None
@@ -380,7 +440,9 @@ fn write_gt(model: &TdtModel, wavs: &[PathBuf], no_details: bool) -> anyhow::Res
             eprintln!("{} -> {}", wav_path.display(), txt_path.display());
         }
     }
-    if let Some(pb) = pb { pb.finish(); }
+    if let Some(pb) = pb {
+        pb.finish();
+    }
     eprintln!("wrote {} transcript(s)", wavs.len());
     Ok(())
 }
@@ -417,9 +479,7 @@ fn main() -> anyhow::Result<()> {
 
     let pb = if args.no_details {
         let pb = ProgressBar::new(wavs.len() as u64);
-        pb.set_style(
-            ProgressStyle::with_template("Decoding  {bar:40} {pos:>3}/{len}").unwrap()
-        );
+        pb.set_style(ProgressStyle::with_template("Decoding  {bar:40} {pos:>3}/{len}").unwrap());
         Some(pb)
     } else {
         None
@@ -431,8 +491,13 @@ fn main() -> anyhow::Result<()> {
 
     for wav_path in &wavs {
         let (wav, audio_s) = load_wav(wav_path)?;
-        let reference = std::fs::read_to_string(wav_path.with_extension("txt"))
-            .with_context(|| format!("no ground-truth transcript for {} (run with --write-gt first)", wav_path.display()))?;
+        let reference =
+            std::fs::read_to_string(wav_path.with_extension("txt")).with_context(|| {
+                format!(
+                    "no ground-truth transcript for {} (run with --write-gt first)",
+                    wav_path.display()
+                )
+            })?;
 
         let t = Instant::now();
         let (transcript, stats) = run_decoder(&model, &wav, &args)?;
@@ -442,7 +507,9 @@ fn main() -> anyhow::Result<()> {
         total_elapsed_s += elapsed;
 
         let ok = clean(&transcript) == reference.trim_end_matches('\n');
-        if ok { exact += 1; }
+        if ok {
+            exact += 1;
+        }
 
         if let Some(ref pb) = pb {
             pb.inc(1);
@@ -450,15 +517,22 @@ fn main() -> anyhow::Result<()> {
             let mark = if ok { "\x1b[32m✓\x1b[0m" } else { "\x1b[31m✗\x1b[0m" };
             let elapsed_ms = elapsed * 1000.0;
             let nn_ms = stats.nn_ms();
-            eprintln!("{}  {mark}  {audio_s:.1}s  {elapsed_ms:.1}ms  RTFx={:.1}  {}",
-                      wav_path.display(), audio_s / elapsed, clean(&transcript));
+            eprintln!(
+                "{}  {mark}  {audio_s:.1}s  {elapsed_ms:.1}ms  RTFx={:.1}  {}",
+                wav_path.display(),
+                audio_s / elapsed,
+                clean(&transcript)
+            );
             if !ok {
                 eprintln!("  ref: {}", clean(&reference));
                 eprintln!("  got: {}", clean(&transcript));
             }
             if args.stats {
-                eprintln!("  {elapsed_ms:.1}ms  RTFx={:.1}  nn={nn_ms:.1}ms  host={:.1}ms",
-                          audio_s / elapsed, elapsed_ms - nn_ms);
+                eprintln!(
+                    "  {elapsed_ms:.1}ms  RTFx={:.1}  nn={nn_ms:.1}ms  host={:.1}ms",
+                    audio_s / elapsed,
+                    elapsed_ms - nn_ms
+                );
                 eprintln!("  [preprocessor] {:?}", stats.preprocessor);
                 eprintln!("  [encoder]      {:?}", stats.encoder);
                 eprintln!("  [decoder]      {:?}", stats.decoder);
@@ -467,8 +541,16 @@ fn main() -> anyhow::Result<()> {
         }
     }
 
-    if let Some(pb) = pb { pb.finish(); }
-    eprintln!("{}  {}/{} exact  RTFx={:.1}", label, exact, wavs.len(), total_audio_s / total_elapsed_s);
+    if let Some(pb) = pb {
+        pb.finish();
+    }
+    eprintln!(
+        "{}  {}/{} exact  RTFx={:.1}",
+        label,
+        exact,
+        wavs.len(),
+        total_audio_s / total_elapsed_s
+    );
 
     Ok(())
 }
