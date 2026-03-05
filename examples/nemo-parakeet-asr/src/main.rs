@@ -13,9 +13,10 @@ use tract_rs::Nnef;
 mod greedy;
 mod beam;
 mod fbsd;
+mod alsd;
 
 #[derive(clap::ValueEnum, Clone)]
-enum Decoder { Greedy, Beam, Fbsd }
+enum Decoder { Greedy, Beam, Fbsd, Alsd }
 
 #[derive(Parser)]
 #[command(about = "NeMo Parakeet ASR inference")]
@@ -24,6 +25,8 @@ struct Args {
     beam: beam::BeamConfig,
     #[command(flatten)]
     fbsd: fbsd::FbsdConfig,
+    #[command(flatten)]
+    alsd: alsd::AlsdConfig,
     #[arg(long, value_enum, default_value_t = Decoder::Greedy)]
     decoder: Decoder,
     #[arg(long)]
@@ -184,6 +187,7 @@ fn decoder_label(args: &Args) -> String {
         Decoder::Greedy => "greedy".to_string(),
         Decoder::Beam => format!("beam  beam_size={}  beam_dur_k={}", args.beam.beam_size, args.beam.beam_dur_k),
         Decoder::Fbsd => format!("fbsd  beam_size={}  beam_dur_k={}  max_symbols={}", args.fbsd.fbsd_beam_size, args.fbsd.fbsd_beam_dur_k, args.fbsd.fbsd_max_symbols_per_frame),
+        Decoder::Alsd => format!("alsd  beam_size={}  beam_dur_k={}  u_max={}", args.alsd.alsd_beam_size, args.alsd.alsd_beam_dur_k, args.alsd.alsd_u_max),
     }
 }
 
@@ -192,6 +196,7 @@ fn run_decoder(model: &TdtModel, wav: &[f32], args: &Args) -> Result<(String, De
         Decoder::Greedy => greedy::transcribe_greedy(model, wav),
         Decoder::Beam   => beam::transcribe_beam(model, wav, &args.beam),
         Decoder::Fbsd   => fbsd::transcribe_fbsd(model, wav, &args.fbsd),
+        Decoder::Alsd   => alsd::transcribe_alsd(model, wav, &args.alsd),
     }
 }
 
@@ -201,6 +206,7 @@ enum SearchConfig {
     Greedy,
     Beam(beam::BeamConfig),
     Fbsd(fbsd::FbsdConfig),
+    Alsd(alsd::AlsdConfig),
 }
 
 impl SearchConfig {
@@ -209,6 +215,7 @@ impl SearchConfig {
             SearchConfig::Greedy => "greedy".to_owned(),
             SearchConfig::Beam(c) => format!("beam_{}_{}", c.beam_size, c.beam_dur_k),
             SearchConfig::Fbsd(c) => format!("fbsd_{}_{}_{}", c.fbsd_beam_size, c.fbsd_beam_dur_k, c.fbsd_max_symbols_per_frame),
+            SearchConfig::Alsd(c) => format!("alsd_{}_{}", c.alsd_beam_size, c.alsd_beam_dur_k),
         }
     }
 
@@ -217,6 +224,7 @@ impl SearchConfig {
             SearchConfig::Greedy    => greedy::transcribe_greedy(model, wav),
             SearchConfig::Beam(c)   => beam::transcribe_beam(model, wav, c),
             SearchConfig::Fbsd(c)   => fbsd::transcribe_fbsd(model, wav, c),
+            SearchConfig::Alsd(c)   => alsd::transcribe_alsd(model, wav, c),
         }
     }
 }
@@ -225,8 +233,11 @@ fn search_configs() -> Vec<SearchConfig> {
     fn b(beam_size: usize, beam_dur_k: usize) -> SearchConfig {
         SearchConfig::Beam(beam::BeamConfig { beam_size, beam_dur_k })
     }
-    fn a(beam_size: usize, beam_dur_k: usize, max_symbols: usize) -> SearchConfig {
+    fn f(beam_size: usize, beam_dur_k: usize, max_symbols: usize) -> SearchConfig {
         SearchConfig::Fbsd(fbsd::FbsdConfig { fbsd_beam_size: beam_size, fbsd_beam_dur_k: beam_dur_k, fbsd_max_symbols_per_frame: max_symbols })
+    }
+    fn a(beam_size: usize, beam_dur_k: usize) -> SearchConfig {
+        SearchConfig::Alsd(alsd::AlsdConfig { alsd_beam_size: beam_size, alsd_beam_dur_k: beam_dur_k, alsd_u_max: 50 })
     }
     vec![
         SearchConfig::Greedy,
@@ -238,16 +249,24 @@ fn search_configs() -> Vec<SearchConfig> {
         b(4, 4),
         b(8, 2),
         b(8, 4),
-        a(1, 1, 10),
-        a(2, 1, 10),
-        a(2, 2, 10),
-        a(4, 1, 10),
-        a(4, 2, 10),
-        a(4, 4, 10),
-        a(8, 2, 10),
-        a(8, 4, 10),
-        a(4, 2, 3),
-        a(4, 2, 30),
+        f(1, 1, 10),
+        f(2, 1, 10),
+        f(2, 2, 10),
+        f(4, 1, 10),
+        f(4, 2, 10),
+        f(4, 4, 10),
+        f(8, 2, 10),
+        f(8, 4, 10),
+        f(4, 2, 3),
+        f(4, 2, 30),
+        a(1, 1),
+        a(2, 1),
+        a(2, 2),
+        a(4, 1),
+        a(4, 2),
+        a(4, 4),
+        a(8, 2),
+        a(8, 4),
     ]
 }
 
