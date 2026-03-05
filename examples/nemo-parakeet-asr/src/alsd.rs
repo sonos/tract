@@ -61,14 +61,8 @@ pub fn transcribe_alsd(
     let [dec_out, state_0, state_1] = model.run_decoder(init_token, init_s0, init_s1)?;
     stats.decoder.record(batch, t.elapsed());
 
-    let mut beam: Vec<AlsdHyp> = vec![AlsdHyp {
-        score: 0.0,
-        tokens: vec![],
-        current_frame: 0,
-        dec_out,
-        state_0,
-        state_1,
-    }];
+    let mut beam: Vec<AlsdHyp> =
+        vec![AlsdHyp { score: 0.0, tokens: vec![], current_frame: 0, dec_out, state_0, state_1 }];
 
     let mut final_hyps: Vec<AlsdHyp> = Vec::new();
 
@@ -102,10 +96,8 @@ pub fn transcribe_alsd(
             .try_into()?
         };
         let dec_out_batch: Value = {
-            let views: Vec<_> = active
-                .iter()
-                .map(|h| h.dec_out.view::<f32>())
-                .collect::<Result<Vec<_>>>()?;
+            let views: Vec<_> =
+                active.iter().map(|h| h.dec_out.view::<f32>()).collect::<Result<Vec<_>>>()?;
             let hidden = views[0].shape()[1];
             Array3::<f32>::from_shape_fn((b, hidden, 1), |(bi, h, _)| views[bi][[0, h, 0]])
                 .try_into()?
@@ -127,20 +119,24 @@ pub fn transcribe_alsd(
                 let log_probs = crate::log_softmax(&row_slice[0..=model.blank_id]);
                 let dur_log_probs = crate::log_softmax(&row_slice[model.blank_id + 1..]);
 
-                let best_dur = dur_log_probs.iter().enumerate()
-                    .max_by_key(|&(_, &v)| FloatOrd(v)).map(|(i, _)| i).unwrap_or(0);
+                let best_dur = dur_log_probs
+                    .iter()
+                    .enumerate()
+                    .max_by_key(|&(_, &v)| FloatOrd(v))
+                    .map(|(i, _)| i)
+                    .unwrap_or(0);
                 per_hyp_best_dur.push((best_dur, dur_log_probs[best_dur]));
 
                 // Blank + top-k duration expansions (decoder state unchanged).
                 let mut ds: Vec<(usize, f32)> =
-                    (1..dur_log_probs.len()).map(|di| (di, dur_log_probs[di])).collect();
+                    (0..dur_log_probs.len()).map(|di| (di, dur_log_probs[di])).collect();
                 ds.sort_by(|a, b| FloatOrd(b.1).cmp(&FloatOrd(a.1)));
                 ds.truncate(cfg.alsd_beam_dur_k);
                 for (di, dlp) in ds {
                     next.push(AlsdHyp {
                         score: active[bi].score + log_probs[model.blank_id] + dlp,
                         tokens: active[bi].tokens.clone(),
-                        current_frame: active[bi].current_frame + di,
+                        current_frame: active[bi].current_frame + di.max(1),
                         dec_out: active[bi].dec_out.clone(),
                         state_0: active[bi].state_0.clone(),
                         state_1: active[bi].state_1.clone(),
@@ -172,20 +168,16 @@ pub fn transcribe_alsd(
             let tokens_batch: Value =
                 Array2::<i32>::from_shape_fn((n, 1), |(i, _)| token_ids[i]).try_into()?;
             let s0_batch: Value = {
-                let views: Vec<_> = active
-                    .iter()
-                    .map(|h| h.state_0.view::<f32>())
-                    .collect::<Result<Vec<_>>>()?;
+                let views: Vec<_> =
+                    active.iter().map(|h| h.state_0.view::<f32>()).collect::<Result<Vec<_>>>()?;
                 Array3::<f32>::from_shape_fn((2, n, 640), |(l, i, h)| {
                     views[expansion_hyp_idxs[i]][[l, 0, h]]
                 })
                 .try_into()?
             };
             let s1_batch: Value = {
-                let views: Vec<_> = active
-                    .iter()
-                    .map(|h| h.state_1.view::<f32>())
-                    .collect::<Result<Vec<_>>>()?;
+                let views: Vec<_> =
+                    active.iter().map(|h| h.state_1.view::<f32>()).collect::<Result<Vec<_>>>()?;
                 Array3::<f32>::from_shape_fn((2, n, 640), |(l, i, h)| {
                     views[expansion_hyp_idxs[i]][[l, 0, h]]
                 })
@@ -205,10 +197,8 @@ pub fn transcribe_alsd(
                 for &(ti, lp) in ts {
                     let new_dec_out: Value =
                         dec_arr.slice_axis(Axis(0), (i..i + 1).into()).try_into()?;
-                    let new_s0: Value =
-                        s0_arr.slice_axis(Axis(1), (i..i + 1).into()).try_into()?;
-                    let new_s1: Value =
-                        s1_arr.slice_axis(Axis(1), (i..i + 1).into()).try_into()?;
+                    let new_s0: Value = s0_arr.slice_axis(Axis(1), (i..i + 1).into()).try_into()?;
+                    let new_s1: Value = s1_arr.slice_axis(Axis(1), (i..i + 1).into()).try_into()?;
                     let mut new_tokens = active[bi].tokens.clone();
                     new_tokens.push(ti);
                     next.push(AlsdHyp {
