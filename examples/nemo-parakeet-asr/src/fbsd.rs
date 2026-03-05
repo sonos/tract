@@ -8,21 +8,21 @@ use tract_rs::prelude::tract_ndarray::prelude::*;
 use tract_rs::prelude::*;
 
 #[derive(Args, Clone)]
-pub struct AlsdConfig {
-    /// Beam width for ALSD decoding
+pub struct FbsdConfig {
+    /// Beam width for FBSD decoding
     #[arg(long, default_value_t = 4)]
-    pub alsd_beam_size: usize,
+    pub fbsd_beam_size: usize,
 
-    /// Duration candidates per hypothesis in ALSD
+    /// Duration candidates per hypothesis in FBSD
     #[arg(long, default_value_t = 2)]
-    pub alsd_beam_dur_k: usize,
+    pub fbsd_beam_dur_k: usize,
 
     /// Max non-blank tokens emitted per frame per hypothesis
     #[arg(long, default_value_t = 10)]
-    pub alsd_max_symbols_per_frame: usize,
+    pub fbsd_max_symbols_per_frame: usize,
 }
 
-struct AlsdHyp {
+struct FbsdHyp {
     score: f32,
     tokens: Vec<usize>,
     current_frame: usize,
@@ -32,10 +32,10 @@ struct AlsdHyp {
     state_1: Value,
 }
 
-pub fn transcribe_alsd(
+pub fn transcribe_fbsd(
     model: &crate::TdtModel,
     wav: &[f32],
-    cfg: &AlsdConfig,
+    cfg: &FbsdConfig,
 ) -> Result<(String, crate::DecodingStats)> {
     let mut stats = crate::DecodingStats::default();
 
@@ -65,7 +65,7 @@ pub fn transcribe_alsd(
         model.decoder.run([init_token, init_s0, init_s1])?.try_into().unwrap();
     stats.decoder.record(batch, t.elapsed());
 
-    let mut beam: Vec<AlsdHyp> = vec![AlsdHyp {
+    let mut beam: Vec<FbsdHyp> = vec![FbsdHyp {
         score: 0.0,
         tokens: vec![],
         current_frame: 0,
@@ -77,8 +77,8 @@ pub fn transcribe_alsd(
 
     loop {
         // Split into active (still have frames to consume) and completed
-        let mut active: Vec<AlsdHyp> = Vec::new();
-        let mut completed: Vec<AlsdHyp> = Vec::new();
+        let mut active: Vec<FbsdHyp> = Vec::new();
+        let mut completed: Vec<FbsdHyp> = Vec::new();
         for h in beam.drain(..) {
             if h.current_frame < max_frames {
                 active.push(h);
@@ -117,7 +117,7 @@ pub fn transcribe_alsd(
         stats.joint.record(b, t.elapsed());
 
         // 2. Per-hyp: blank+duration → next; non-blank → expansion list
-        let mut next: Vec<AlsdHyp> = completed;
+        let mut next: Vec<FbsdHyp> = completed;
         let mut per_hyp_token_scores: Vec<Vec<(usize, f32)>> = Vec::with_capacity(b);
         {
             let logits_arr = logits_b.view::<f32>()?; // [b, vocab+dur]
@@ -131,9 +131,9 @@ pub fn transcribe_alsd(
                 let mut ds: Vec<(usize, f32)> =
                     (1..dur_log_probs.len()).map(|di| (di, dur_log_probs[di])).collect();
                 ds.sort_by(|a, b| FloatOrd(b.1).cmp(&FloatOrd(a.1)));
-                ds.truncate(cfg.alsd_beam_dur_k);
+                ds.truncate(cfg.fbsd_beam_dur_k);
                 for (di, dlp) in ds {
-                    next.push(AlsdHyp {
+                    next.push(FbsdHyp {
                         score: active[bi].score + log_probs[model.blank_id] + dlp,
                         tokens: active[bi].tokens.clone(),
                         current_frame: active[bi].current_frame + di,
@@ -145,11 +145,11 @@ pub fn transcribe_alsd(
                 }
 
                 // Non-blank expansions stay on the same frame (symbol count checked)
-                if active[bi].symbols_this_frame < cfg.alsd_max_symbols_per_frame {
+                if active[bi].symbols_this_frame < cfg.fbsd_max_symbols_per_frame {
                     let mut ts: Vec<(usize, f32)> =
                         (0..model.blank_id).map(|ti| (ti, log_probs[ti])).collect();
                     ts.sort_by(|a, b| FloatOrd(b.1).cmp(&FloatOrd(a.1)));
-                    ts.truncate(cfg.alsd_beam_size);
+                    ts.truncate(cfg.fbsd_beam_size);
                     per_hyp_token_scores.push(ts);
                 } else {
                     per_hyp_token_scores.push(vec![]);
@@ -213,7 +213,7 @@ pub fn transcribe_alsd(
                         s1_arr.slice_axis(Axis(1), (i..i + 1).into()).try_into()?;
                     let mut new_tokens = active[bi].tokens.clone();
                     new_tokens.push(ti);
-                    next.push(AlsdHyp {
+                    next.push(FbsdHyp {
                         score: active[bi].score + lp,
                         tokens: new_tokens,
                         current_frame: active[bi].current_frame,
@@ -227,13 +227,13 @@ pub fn transcribe_alsd(
             }
         }
 
-        // 5. Fuse duplicates then prune to alsd_beam_size.
+        // 5. Fuse duplicates then prune to fbsd_beam_size.
         // Key is (tokens, current_frame, symbols_this_frame): same tokens → same decoder
         // state; same frame → same encoder embedding; same symbol count → same gate behavior.
         next.sort_by(|a, b| FloatOrd(b.score).cmp(&FloatOrd(a.score)));
         let mut seen = std::collections::HashSet::<(Vec<usize>, usize, usize)>::new();
         next.retain(|h| seen.insert((h.tokens.clone(), h.current_frame, h.symbols_this_frame)));
-        next.truncate(cfg.alsd_beam_size);
+        next.truncate(cfg.fbsd_beam_size);
         beam = next;
     }
 
