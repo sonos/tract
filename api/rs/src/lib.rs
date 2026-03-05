@@ -262,7 +262,7 @@ impl ModelInterface for Model {
             table = table.with(&self.0.symbols.sym(k.as_ref()), v);
         }
         self.0 = self.0.concretize_dims(&table)?;
-        Ok(())
+        self.0.declutter()
     }
 
     fn transform(&mut self, transform: &str) -> Result<()> {
@@ -276,7 +276,7 @@ impl ModelInterface for Model {
         let stream_sym = self.0.symbols.sym(name.as_ref());
         let pulse_dim = parse_tdim(&self.0.symbols, value.as_ref())?;
         self.0 = PulsedModel::new(&self.0, stream_sym, &pulse_dim)?.into_typed()?;
-        Ok(())
+        self.0.declutter()
     }
 
     fn parse_fact(&self, spec: &str) -> Result<Fact> {
