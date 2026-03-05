@@ -44,7 +44,7 @@ struct Args {
 pub(crate) struct CallStats {
     calls: u32,
     total_batch: u64,
-    total_us: u64,
+    pub(crate) total_us: u64,
 }
 
 impl CallStats {
@@ -273,7 +273,7 @@ fn param_search(model: &TdtModel, wavs: &[PathBuf]) -> Result<()> {
     let file_bar = mp.add(ProgressBar::new(wavs.len() as u64));
     file_bar.set_style(file_style);
 
-    mp.suspend(|| println!("label\tEPR\tRTFx"));
+    mp.suspend(|| println!("label\tEPR\tRTFx\tpre%\tenc%\tdec%\tjoint%\thost%"));
 
     for cfg in &configs {
         let label = cfg.label();
@@ -286,6 +286,10 @@ fn param_search(model: &TdtModel, wavs: &[PathBuf]) -> Result<()> {
         let mut total_elapsed_s = 0.0f64;
         let mut exact = 0usize;
         let mut total = 0usize;
+        let mut pre_us = 0u64;
+        let mut enc_us = 0u64;
+        let mut dec_us = 0u64;
+        let mut joint_us = 0u64;
 
         for wav_path in wavs {
             let (wav, audio_s) = load_wav(wav_path)?;
@@ -294,20 +298,30 @@ fn param_search(model: &TdtModel, wavs: &[PathBuf]) -> Result<()> {
             let reference = reference.trim_end_matches('\n').to_owned();
 
             let t = Instant::now();
-            let (transcript, _) = cfg.run(model, &wav)?;
+            let (transcript, stats) = cfg.run(model, &wav)?;
             let elapsed = t.elapsed().as_secs_f64();
 
             total_audio_s += audio_s;
             total_elapsed_s += elapsed;
             total += 1;
             if clean(&transcript) == reference { exact += 1; }
+            pre_us   += stats.preprocessor.total_us;
+            enc_us   += stats.encoder.total_us;
+            dec_us   += stats.decoder.total_us;
+            joint_us += stats.joint.total_us;
 
             file_bar.inc(1);
         }
 
         let epr = if total > 0 { exact as f64 / total as f64 } else { 0.0 };
         let rtfx = if total_elapsed_s > 0.0 { total_audio_s / total_elapsed_s } else { 0.0 };
-        mp.suspend(|| println!("{}\t{:.4}\t{:.1}", label, epr, rtfx));
+        let total_us = (total_elapsed_s * 1_000_000.0) as u64;
+        let pct = |us: u64| if total_us > 0 { us as f64 / total_us as f64 * 100.0 } else { 0.0 };
+        let nn_us = pre_us + enc_us + dec_us + joint_us;
+        let host_us = total_us.saturating_sub(nn_us);
+        mp.suspend(|| println!("{}\t{:.4}\t{:.1}\t{:.1}\t{:.1}\t{:.1}\t{:.1}\t{:.1}",
+            label, epr, rtfx,
+            pct(pre_us), pct(enc_us), pct(dec_us), pct(joint_us), pct(host_us)));
 
         cfg_bar.inc(1);
     }
