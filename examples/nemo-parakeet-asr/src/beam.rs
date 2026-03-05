@@ -107,6 +107,7 @@ pub fn transcribe_beam(
 
             // 2. Per-hyp: token scores + duration expansions into kept
             let mut per_hyp_token_scores: Vec<Vec<(usize, f32)>> = Vec::with_capacity(b);
+            let mut per_hyp_best_dur: Vec<(usize, f32)> = Vec::with_capacity(b);
             {
                 let logits_arr = logits_b.view::<f32>()?; // [b, vocab+dur]
                 for bi in 0..b {
@@ -120,6 +121,10 @@ pub fn transcribe_beam(
                     ts.sort_by(|a, b| FloatOrd(b.1).cmp(&FloatOrd(a.1)));
                     ts.truncate(cfg.beam_size);
                     per_hyp_token_scores.push(ts);
+
+                    let best_dur = dur_log_probs.iter().enumerate()
+                        .max_by_key(|&(_, &v)| FloatOrd(v)).map(|(i, _)| i).unwrap_or(0);
+                    per_hyp_best_dur.push((best_dur, dur_log_probs[best_dur]));
 
                     let mut ds: Vec<(usize, f32)> =
                         (1..dur_log_probs.len()).map(|di| (di, dur_log_probs[di])).collect();
@@ -186,6 +191,7 @@ pub fn transcribe_beam(
                 let mut out = Vec::with_capacity(n);
                 let mut i = 0;
                 for (bi, ts) in per_hyp_token_scores.iter().enumerate() {
+                    let (best_dur, best_dur_lp) = per_hyp_best_dur[bi];
                     for &(ti, lp) in ts {
                         let new_dec_out: Value =
                             dec_arr.slice_axis(Axis(0), (i..i + 1).into()).try_into()?;
@@ -196,9 +202,9 @@ pub fn transcribe_beam(
                         let mut new_tokens = hyps[bi].tokens.clone();
                         new_tokens.push(ti);
                         out.push(Beam {
-                            score: hyps[bi].score + lp,
+                            score: hyps[bi].score + lp + best_dur_lp,
                             tokens: new_tokens,
-                            last_frame: frame_ix,
+                            last_frame: frame_ix + best_dur,
                             dec_out: new_dec_out,
                             state_0: new_s0,
                             state_1: new_s1,

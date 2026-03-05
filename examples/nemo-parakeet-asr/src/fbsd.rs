@@ -119,6 +119,7 @@ pub fn transcribe_fbsd(
         // 2. Per-hyp: blank+duration → next; non-blank → expansion list
         let mut next: Vec<FbsdHyp> = completed;
         let mut per_hyp_token_scores: Vec<Vec<(usize, f32)>> = Vec::with_capacity(b);
+        let mut per_hyp_best_dur: Vec<(usize, f32)> = Vec::with_capacity(b);
         {
             let logits_arr = logits_b.view::<f32>()?; // [b, vocab+dur]
             for bi in 0..b {
@@ -126,6 +127,10 @@ pub fn transcribe_fbsd(
                 let row_slice = row.as_slice().unwrap();
                 let log_probs = crate::log_softmax(&row_slice[0..=model.blank_id]);
                 let dur_log_probs = crate::log_softmax(&row_slice[model.blank_id + 1..]);
+
+                let best_dur = dur_log_probs.iter().enumerate()
+                    .max_by_key(|&(_, &v)| FloatOrd(v)).map(|(i, _)| i).unwrap_or(0);
+                per_hyp_best_dur.push((best_dur, dur_log_probs[best_dur]));
 
                 // Blank + duration expansions advance the frame and reset symbol count
                 let mut ds: Vec<(usize, f32)> =
@@ -144,7 +149,7 @@ pub fn transcribe_fbsd(
                     });
                 }
 
-                // Non-blank expansions stay on the same frame (symbol count checked)
+                // Non-blank expansions: gated by per-frame symbol cap
                 if active[bi].symbols_this_frame < cfg.fbsd_max_symbols_per_frame {
                     let mut ts: Vec<(usize, f32)> =
                         (0..model.blank_id).map(|ti| (ti, log_probs[ti])).collect();
@@ -204,6 +209,7 @@ pub fn transcribe_fbsd(
             let s1_arr = s1_b.view::<f32>()?;       // [2, N, 640]
             let mut i = 0;
             for (bi, ts) in per_hyp_token_scores.iter().enumerate() {
+                let (best_dur, best_dur_lp) = per_hyp_best_dur[bi];
                 for &(ti, lp) in ts {
                     let new_dec_out: Value =
                         dec_arr.slice_axis(Axis(0), (i..i + 1).into()).try_into()?;
@@ -214,10 +220,10 @@ pub fn transcribe_fbsd(
                     let mut new_tokens = active[bi].tokens.clone();
                     new_tokens.push(ti);
                     next.push(FbsdHyp {
-                        score: active[bi].score + lp,
+                        score: active[bi].score + lp + best_dur_lp,
                         tokens: new_tokens,
-                        current_frame: active[bi].current_frame,
-                        symbols_this_frame: active[bi].symbols_this_frame + 1,
+                        current_frame: active[bi].current_frame + best_dur,
+                        symbols_this_frame: if best_dur > 0 { 0 } else { active[bi].symbols_this_frame + 1 },
                         dec_out: new_dec_out,
                         state_0: new_s0,
                         state_1: new_s1,

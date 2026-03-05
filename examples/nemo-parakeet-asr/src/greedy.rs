@@ -48,10 +48,12 @@ pub fn transcribe_greedy(
         let logits = logits.view::<f32>()?;
         let logits = logits.as_slice().unwrap();
         let token_id = crate::argmax(&logits[0..model.blank_id + 1]).unwrap();
+        let dur = crate::argmax(&logits[model.blank_id + 1..]).unwrap_or(0);
         if token_id == model.blank_id {
-            frame_ix += crate::argmax(&logits[model.blank_id + 1..]).unwrap_or(0).max(1);
+            frame_ix += dur.max(1);
         } else {
             hyp.push(token_id);
+            frame_ix += dur;
             token = Value::from_slice(&[1, 1], &[token_id as i32])?;
             let t = Instant::now();
             [token, state_0, state_1] =
