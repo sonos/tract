@@ -52,7 +52,7 @@ pub fn transcribe_beam(
     let max_frames = encoded.shape()[2];
     let enc_dim = encoded.shape()[1];
 
-    let init_token = Value::from_slice(&[1, 1], &[0i32])?;
+    let init_token = Value::from_slice(&[1, 1], &[model.blank_id as i32])?;
     let init_s0: Value = Array3::<f32>::zeros([2, 1, 640]).try_into()?;
     let init_s1: Value = Array3::<f32>::zeros([2, 1, 640]).try_into()?;
     let t = Instant::now();

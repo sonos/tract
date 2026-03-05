@@ -30,7 +30,7 @@ pub fn transcribe_greedy(
 
     let mut hyp = vec![];
     let mut frame_ix = 0;
-    let mut token = Value::from_slice(&[1, 1], &[0i32])?;
+    let mut token = Value::from_slice(&[1, 1], &[model.blank_id as i32])?;
     let mut state_0: Value = Array3::<f32>::zeros([2, 1, 640]).try_into()?;
     let mut state_1: Value = Array3::<f32>::zeros([2, 1, 640]).try_into()?;
 
