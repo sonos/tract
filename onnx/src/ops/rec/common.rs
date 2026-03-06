@@ -84,7 +84,7 @@ impl CommonRec {
 
         let chunk = if dir == 0 { 1 } else { -1 };
 
-        let mut body = TypedModel::default();
+        let mut body = TypedModel { symbols: target.symbols.clone(), ..TypedModel::default() };
         let mut outer_inputs = vec![];
         let mut input_mapping = vec![];
 
