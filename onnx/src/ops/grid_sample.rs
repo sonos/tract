@@ -51,7 +51,6 @@ impl Expansion for GridSampleInference {
         check_output_arity(outputs, 1)?;
 
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
-        s.equals(&inputs[1].datum_type, f32::datum_type())?;
 
         s.equals(&inputs[0].rank, &inputs[1].rank)?;
         s.equals(&inputs[0].rank, &outputs[0].rank)?;
