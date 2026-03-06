@@ -122,12 +122,13 @@ pub fn handle_tensorflow(
         all_values.insert(name.to_string(), vec![Ok(generated[ix].clone().into_arc_tensor())]);
     }
     dispatch_model_no_pulse!(params.tract_model, |m| compare(
-    cumulative,
-    m,
-    &all_values,
-    &params,
-    &output_params
-    run_params,
+        cumulative,
+        m,
+        &all_values,
+        &params,
+        &output_params,
+        run_params,
+        ("tract", "tf"),
     ))
 }
 
@@ -168,6 +169,7 @@ pub fn handle_npz(
         params,
         output_params,
         run_params,
+        ("tract", "npz"),
     ))
 }
 
@@ -209,6 +211,7 @@ pub fn handle_pbdir(
         params,
         output_params,
         run_params,
+        ("tract", "pbdir"),
     ))
 }
 
@@ -273,157 +276,8 @@ pub fn handle_with_model(
         params,
         output_params,
         run_params,
+        ("tract", "reference"),
     ))
-}
-
-pub fn compare<F, O>(
-    cumulative: bool,
-    tract: &Arc<Graph<F, O>>,
-    all_values: &HashMap<String, Vec<TractResult<TValue>>>,
-    params: &Parameters,
-    output_params: &DisplayParams,
-    run_params: &RunParams,
-) -> TractResult<()>
-where
-    F: Fact + Clone + for<'a> From<&'a Arc<Tensor>> + Hash,
-    O: AsRef<dyn Op> + AsMut<dyn Op> + Display + Debug + Clone,
-    Graph<F, O>: Model,
-{
-    info!("Obtained reference data, starting test run");
-    // Execute the model step-by-step on tract.
-    let plan = Arc::clone(tract).into_runnable()?;
-    let mut state = plan.spawn()?;
-
-    let mut annotations = Annotations::from_model(tract.as_ref() as &dyn Model)?;
-    annotate_with_graph_def(&mut annotations, tract.as_ref(), &params.graph)?;
-
-    let mut failing = std::collections::HashSet::new();
-    let mut unchecked = std::collections::HashSet::new();
-    let mut ok = 0;
-    fn canonic(s: &str) -> String {
-        s.replace(['.', '-'], "_")
-    }
-    let all_values: HashMap<String, &Vec<TractResult<TValue>>> =
-        all_values.iter().map(|(k, v)| (canonic(k), v)).collect();
-    let inputs = get_or_make_inputs(&(tract.clone() as _), run_params)?;
-    state.init_states(&inputs.state_initializers)?;
-    for (turn, inputs) in inputs.sources.into_iter().enumerate() {
-        state.run_plan_with_eval(
-            inputs,
-            |session_state, state, node, input| -> TractResult<TVec<TValue>> {
-                let mut returning = tract_core::plan::eval(session_state, state, node, input)?;
-                let tags = annotations.node_mut(node.id.into());
-                let mut comparison_error = None;
-                for slot in 0..returning.len() {
-                    let get_value = |label: &str| {
-                        all_values
-                            .get(&canonic(label))
-                            .and_then(|v| v.get(turn))
-                            .and_then(|r| r.as_ref().ok())
-                            .cloned()
-                    };
-                    let reference: Option<TValue> = tract
-                        .outlet_label((node.id, slot).into())
-                        .and_then(get_value)
-                        .or_else(|| get_value(&node.name).filter(|_| slot == 0));
-
-                    let Some(reference) = reference else {
-                        tags.style = Some(Yellow.into());
-                        unchecked.insert(node.id);
-                        continue;
-                    };
-
-                    let mut reference = reference.into_tensor();
-                    let clarified_fact = crate::utils::clarify_typed_fact(
-                        node.outputs[slot].fact.to_typed_fact().unwrap(),
-                    );
-                    let needed_type = clarified_fact.datum_type;
-                    let needed_shape = clarified_fact.shape.eval_to_usize(&session_state.resolved_symbols)?;
-
-                    if **needed_shape != *reference.shape() {
-                        let Ok(reshaped) = reference.clone().into_shape(&needed_shape) else {
-                            comparison_error = Some(format!("Incompatible shape on output {slot} reference is {reference:?}, model expects {:?}.", needed_shape));
-                            tags.style = Some(Red.into());
-                            continue;
-                        };
-                        reference = reshaped;
-                    }
-
-                    if needed_type != reference.datum_type() {
-                        if needed_type.unquantized() == reference.datum_type().unquantized() {
-                            unsafe { reference.set_datum_type(needed_type) };
-                        } else if needed_type.is_float() && reference.datum_type().is_float() {
-                             reference = reference.cast_to_dt(needed_type)?.into_owned();
-                        } else {
-                            comparison_error = Some(format!("Incompatible type on output {slot} reference is {reference:?}, model expects {:?}.", needed_type));
-                            tags.style = Some(Red.into());
-                            continue;
-                        }
-                    }
-
-                    let computed = crate::utils::clarify_tvalue(&returning[slot])?;
-
-                    if let Err(e) =
-                        computed.close_enough(&reference, params.assertions.approximation)
-                    {
-                        comparison_error = Some("Mismatch value".to_string());
-                        let mut msg = vec![Red
-                            .bold()
-                            .paint(format!(
-                                "At turn {turn}, wrong value for output {slot}, {e}"
-                            ))
-                            .to_string()];
-                        msg.push(format!("got     : {:?}", computed));
-                        msg.push(format!("ref     : {:?}", reference));
-                        tags.sections.push(msg);
-                    } else {
-                        debug!(
-                            "At turn {}, matching value for {:?}",
-                            turn,
-                            OutletId::new(node.id, slot)
-                        )
-                    }
-
-                    if !cumulative && !returning[slot].datum_type().is_opaque() {
-                        returning[slot] = reference.into_tvalue();
-                    }
-                }
-                if let Some(e) = comparison_error {
-                    annotations.node_mut(node.id.into()).style = Some(Red.into());
-                    annotations.node_mut(node.id.into()).labels.push(e);
-                    failing.insert(node.id);
-                } else {
-                    ok += 1;
-                }
-                Ok(returning)
-            },
-        )?;
-    }
-    for node in tract.nodes() {
-        let color: nu_ansi_term::Style = if failing.contains(&node.id) {
-            Red.into()
-        } else if unchecked.contains(&node.id) {
-            White.into()
-        } else {
-            Green.bold()
-        };
-        annotations.node_mut(node.id.into()).style = Some(color);
-    }
-
-    if log_enabled!(Info) {
-        tract_libcli::terminal::render(tract.as_ref(), &annotations, output_params)?;
-    } else {
-        for f in failing.iter().sorted() {
-            tract_libcli::terminal::render_node(tract.as_ref(), *f, &annotations, output_params)?;
-        }
-    }
-
-    if failing.len() > 0 {
-        bail!("{} error(s).", failing.len())
-    } else {
-        println!("{}", Green.paint(format!("{ok} node(s) passed the comparison.")));
-    };
-    Ok(())
 }
 
 // handle_stream runs the pulsed model pulse-by-pulse, stitches per-node valid output regions
@@ -609,5 +463,165 @@ pub fn handle_stream(
 
     // Concretize the reference model and delegate to compare()
     let concrete_ref = Arc::new(reference.clone().concretize_dims(&concrete_sym_values)?);
-    compare(false, &concrete_ref, &all_values, params, output_params, run_params)
+    compare(
+        false,
+        &concrete_ref,
+        &all_values,
+        params,
+        output_params,
+        run_params,
+        ("reference", "pulsed"),
+    )
+}
+
+pub fn compare<F, O>(
+    cumulative: bool,
+    tract: &Arc<Graph<F, O>>,
+    all_values: &HashMap<String, Vec<TractResult<TValue>>>,
+    params: &Parameters,
+    output_params: &DisplayParams,
+    run_params: &RunParams,
+    labels: (&str, &str),
+) -> TractResult<()>
+where
+    F: Fact + Clone + for<'a> From<&'a Arc<Tensor>> + Hash,
+    O: AsRef<dyn Op> + AsMut<dyn Op> + Display + Debug + Clone,
+    Graph<F, O>: Model,
+{
+    info!("Obtained reference data, starting test run");
+    // Execute the model step-by-step on tract.
+    let plan = Arc::clone(tract).into_runnable()?;
+    let mut state = plan.spawn()?;
+
+    let mut annotations = Annotations::from_model(tract.as_ref() as &dyn Model)?;
+    annotate_with_graph_def(&mut annotations, tract.as_ref(), &params.graph)?;
+
+    let mut failing = std::collections::HashSet::new();
+    let mut unchecked = std::collections::HashSet::new();
+    let mut ok = 0;
+    fn canonic(s: &str) -> String {
+        s.replace(['.', '-'], "_")
+    }
+    let all_values: HashMap<String, &Vec<TractResult<TValue>>> =
+        all_values.iter().map(|(k, v)| (canonic(k), v)).collect();
+    let inputs = get_or_make_inputs(&(tract.clone() as _), run_params)?;
+    state.init_states(&inputs.state_initializers)?;
+    for (turn, inputs) in inputs.sources.into_iter().enumerate() {
+        state.run_plan_with_eval(
+            inputs,
+            |session_state, state, node, input| -> TractResult<TVec<TValue>> {
+                let mut returning = tract_core::plan::eval(session_state, state, node, input)?;
+                let tags = annotations.node_mut(node.id.into());
+                let mut comparison_error = None;
+                for slot in 0..returning.len() {
+                    let get_value = |label: &str| {
+                        all_values
+                            .get(&canonic(label))
+                            .and_then(|v| v.get(turn))
+                            .and_then(|r| r.as_ref().ok())
+                            .cloned()
+                    };
+                    let reference: Option<TValue> = tract
+                        .outlet_label((node.id, slot).into())
+                        .and_then(get_value)
+                        .or_else(|| get_value(&node.name).filter(|_| slot == 0));
+
+                    let Some(reference) = reference else {
+                        tags.style = Some(Yellow.into());
+                        unchecked.insert(node.id);
+                        continue;
+                    };
+
+                    let mut reference = reference.into_tensor();
+                    let clarified_fact = crate::utils::clarify_typed_fact(
+                        node.outputs[slot].fact.to_typed_fact().unwrap(),
+                    );
+                    let needed_type = clarified_fact.datum_type;
+                    let needed_shape =
+                        clarified_fact.shape.eval_to_usize(&session_state.resolved_symbols)?;
+
+                    if **needed_shape != *reference.shape() {
+                        let Ok(reshaped) = reference.clone().into_shape(&needed_shape) else {
+                            comparison_error = Some(format!("Incompatible shape on output {slot} reference is {reference:?}, model expects {:?}.", needed_shape));
+                            tags.style = Some(Red.into());
+                            continue;
+                        };
+                        reference = reshaped;
+                    }
+
+                    if needed_type != reference.datum_type() {
+                        if needed_type.unquantized() == reference.datum_type().unquantized() {
+                            unsafe { reference.set_datum_type(needed_type) };
+                        } else if needed_type.is_float() && reference.datum_type().is_float() {
+                            reference = reference.cast_to_dt(needed_type)?.into_owned();
+                        } else {
+                            comparison_error = Some(format!("Incompatible type on output {slot} reference is {reference:?}, model expects {:?}.", needed_type));
+                            tags.style = Some(Red.into());
+                            continue;
+                        }
+                    }
+
+                    let computed = crate::utils::clarify_tvalue(&returning[slot])?;
+
+                    if let Err(e) =
+                        computed.close_enough(&reference, params.assertions.approximation)
+                    {
+                        comparison_error = Some("Mismatch value".to_string());
+                        let mut msg = vec![Red
+                            .bold()
+                            .paint(format!(
+                                "At turn {turn}, wrong value for output {slot}, {e}"
+                            ))
+                            .to_string()];
+                        msg.push(format!("{:<8}: {:?}", labels.0, computed));
+                        msg.push(format!("{:<8}: {:?}", labels.1, reference));
+                        tags.sections.push(msg);
+                    } else {
+                        debug!(
+                            "At turn {}, matching value for {:?}",
+                            turn,
+                            OutletId::new(node.id, slot)
+                        )
+                    }
+
+                    if !cumulative && !returning[slot].datum_type().is_opaque() {
+                        returning[slot] = reference.into_tvalue();
+                    }
+                }
+                if let Some(e) = comparison_error {
+                    annotations.node_mut(node.id.into()).style = Some(Red.into());
+                    annotations.node_mut(node.id.into()).labels.push(e);
+                    failing.insert(node.id);
+                } else {
+                    ok += 1;
+                }
+                Ok(returning)
+            },
+        )?;
+    }
+    for node in tract.nodes() {
+        let color: nu_ansi_term::Style = if failing.contains(&node.id) {
+            Red.into()
+        } else if unchecked.contains(&node.id) {
+            White.into()
+        } else {
+            Green.bold()
+        };
+        annotations.node_mut(node.id.into()).style = Some(color);
+    }
+
+    if log_enabled!(Info) {
+        tract_libcli::terminal::render(tract.as_ref(), &annotations, output_params)?;
+    } else {
+        for f in failing.iter().sorted() {
+            tract_libcli::terminal::render_node(tract.as_ref(), *f, &annotations, output_params)?;
+        }
+    }
+
+    if failing.len() > 0 {
+        bail!("{} error(s).", failing.len())
+    } else {
+        println!("{}", Green.paint(format!("{ok} node(s) passed the comparison.")));
+    };
+    Ok(())
 }
