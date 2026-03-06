@@ -1,4 +1,4 @@
-use tract_core::ops::nn::Softmax;
+use tract_core::ops::nn::{Softmax, SoftmaxKind};
 
 use crate::infer::*;
 use crate::internal::*;
@@ -103,9 +103,18 @@ impl Expansion for LayerLogSoftmax {
         target: &mut TypedModel,
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        let softmax = LayerSoftmax { axis: self.axis, coerce_to_2d: self.coerce_to_2d }
-            .wire(name, target, inputs)?;
-        target.wire_node(format!("{name}.logsoftmax"), tract_core::ops::math::ln(), &softmax)
+        let input = inputs[0];
+        let rank = target.outlet_fact(input)?.rank();
+        let dt = target.outlet_fact(input)?.datum_type;
+        let axis = if self.axis < 0 { rank as isize + self.axis } else { self.axis } as usize;
+        let axes =
+            if self.coerce_to_2d { (axis..rank).collect::<TVec<usize>>() } else { tvec!(axis) };
+        let quant_output_dt = if dt.is_float() { None } else { Some(dt) };
+        target.wire_node(
+            name,
+            Softmax { axes, quant_output_dt, kind: SoftmaxKind::LogSoftmax },
+            inputs,
+        )
     }
 }
 
