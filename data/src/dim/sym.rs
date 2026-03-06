@@ -213,11 +213,7 @@ impl ProofCacheSession {
             let mut borrow = cell.borrow_mut();
             match &mut *borrow {
                 None => {
-                    *borrow = Some(ProofCache {
-                        scope_id,
-                        depth: 1,
-                        cache: HashMap::new(),
-                    });
+                    *borrow = Some(ProofCache { scope_id, depth: 1, cache: HashMap::new() });
                     true
                 }
                 Some(pc) if pc.scope_id == scope_id => {
