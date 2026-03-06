@@ -149,6 +149,8 @@ impl TypedOp for EinSumMatMul {
         } else if let Some(of) = b.opaque_fact() {
             ensure!(of.is::<BlockQuantFact>());
             true
+        } else if self.m == self.n {
+            false
         } else {
             match (self.m.as_i64(), self.n.as_i64()) {
                 (Some(m), Some(n)) => m < n,
