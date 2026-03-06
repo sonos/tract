@@ -846,6 +846,8 @@ impl Parameters {
             Some(("compare", sm)) => {
                 if let Some(with) = sm.value_of("stage") {
                     (false, Some(with))
+                } else if sm.is_present("stream") {
+                    (false, Some("declutter"))
                 } else {
                     (true, None)
                 }
