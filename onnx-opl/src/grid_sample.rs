@@ -85,7 +85,7 @@ impl GridSample {
 
     fn pixel_at_nd(
         &self,
-        x: &tract_ndarray::ArrayD<f32>,
+        x: &tract_ndarray::ArrayViewD<'_, f32>,
         batch: usize,
         channel: usize,
         coords: &[isize],
@@ -140,7 +140,7 @@ impl GridSample {
 
     fn sample_nd(
         &self,
-        x: &tract_ndarray::ArrayD<f32>,
+        x: &tract_ndarray::ArrayViewD<'_, f32>,
         batch: usize,
         channel: usize,
         pixel_coords: &[f32],
@@ -271,8 +271,13 @@ impl EvalOp for GridSample {
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (x, grid) = args_2!(inputs);
-        let x = x.into_tensor().into_array::<f32>()?;
-        let grid = grid.into_tensor().into_array::<f32>()?;
+        let input_dt = x.datum_type();
+        let x_tensor = x.into_tensor();
+        let x_cow = x_tensor.cast_to::<f32>()?;
+        let x = x_cow.to_array_view::<f32>()?;
+        let grid_tensor = grid.into_tensor();
+        let grid_cow = grid_tensor.cast_to::<f32>()?;
+        let grid = grid_cow.to_array_view::<f32>()?;
 
         let x_shape = x.shape();
         let grid_shape = grid.shape();
@@ -305,7 +310,7 @@ impl EvalOp for GridSample {
             self.sample_nd(&x, batch, channel, &pixel_coords, &spatial_sizes)
         });
 
-        Ok(tvec!(output.into_tvalue()))
+        Ok(tvec!(output.into_tensor().cast_to_dt(input_dt)?.into_owned().into_tvalue()))
     }
 }
 
