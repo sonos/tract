@@ -9,7 +9,7 @@ use std::fmt::Debug;
 use tract_data::TractResult;
 
 use crate::floats::FloatPrecisionTranslator;
-use crate::ops::nn::{Softmax, SoftmaxExp, TypedModel};
+use crate::ops::nn::{Softmax, SoftmaxExp, SoftmaxKind, TypedModel};
 
 pub fn get_transform(name: &str) -> Option<Box<dyn ModelTransform>> {
     match name {
@@ -77,7 +77,9 @@ impl ModelTransform for SoftmaxFastCompact {
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
         for node in &mut model.nodes {
             if let Some(softmax) = node.op_as_mut::<Softmax>() {
-                softmax.exp = SoftmaxExp::FastCompact;
+                if let SoftmaxKind::Softmax(ref mut exp) = softmax.kind {
+                    *exp = SoftmaxExp::FastCompact;
+                }
             }
         }
         Ok(())

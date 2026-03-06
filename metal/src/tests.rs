@@ -5,7 +5,7 @@ mod tests {
     use tract_core::internal::*;
     use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
     use tract_core::ops::math::{add, mul};
-    use tract_core::ops::nn::{Softmax, SoftmaxExp};
+    use tract_core::ops::nn::{Softmax, SoftmaxExp, SoftmaxKind};
     use tract_core::transform::ModelTransform;
     use tract_gpu::memory::DeviceMemSchema;
     use tract_gpu::tensor::IntoDevice;
@@ -106,7 +106,7 @@ mod tests {
         // Apply softmax
         let attention = model.wire_node(
             format!("attention_weights_{}", name),
-            Softmax::new(tvec![2], None, SoftmaxExp::Libc),
+            Softmax::new(tvec![2], None, SoftmaxKind::Softmax(SoftmaxExp::Libc)),
             &[qk_scaled_masked],
         )?[0];
 
