@@ -76,7 +76,7 @@ impl Expansion for BlockLSTM {
     ) -> TractResult<TVec<OutletId>> {
         use tract_hir::tract_core::ops::{array, math, nn, scan};
 
-        let mut body = TypedModel::default();
+        let mut body = TypedModel { symbols: model.symbols.clone(), ..TypedModel::default() };
         let mut outer_inputs = vec![];
         let mut input_mapping = vec![];
         let mut output_mapping = vec![];

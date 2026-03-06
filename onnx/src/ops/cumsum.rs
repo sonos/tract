@@ -71,7 +71,7 @@ impl Expansion for CumSum {
                 state: false,
             },
         ];
-        let mut body = TypedModel::default();
+        let mut body = TypedModel { symbols: model.symbols.clone(), ..TypedModel::default() };
         let var_fact = data.datum_type.fact(var_shape);
         let x = body.add_source("scan_input", var_fact.clone())?;
         let acc = body.add_source("acc_input", var_fact)?;
