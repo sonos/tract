@@ -27,6 +27,7 @@ where
         &self,
         source: &Graph<TI1, O1>,
     ) -> TractResult<(Graph<TI2, O2>, HashMap<OutletId, OutletId>)> {
+        let _proof_session = source.symbols.proof_cache_session();
         let mut target = Graph { symbols: source.symbols.clone(), ..Graph::default() };
         let mut mapping = HashMap::new();
         for old_id in source.eval_order()? {

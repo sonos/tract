@@ -105,6 +105,7 @@ pub struct OptimizerSession<'o> {
 
 impl OptimizerSession<'_> {
     pub fn optimize(&mut self, model: &mut TypedModel) -> TractResult<()> {
+        let _proof_session = model.symbols.proof_cache_session();
         model.check_consistency().context("during optimizer preflight check")?;
         model.compact().context("during optimizer preflight compaction")?;
         model.check_names().context("after optimizer preflight compaction")?;
