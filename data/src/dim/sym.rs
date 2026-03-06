@@ -3,6 +3,7 @@ use parking_lot::ReentrantMutex;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt::{self, Display};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Weak};
 use string_interner::DefaultStringInterner;
 use string_interner::Symbol as _;
@@ -11,6 +12,8 @@ use crate::TractResult;
 
 use super::parse::parse_assertion;
 use super::{Assertion, TDim, parse_tdim};
+
+static SCOPE_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 #[derive(Clone, Default)]
 pub struct SymbolScope(pub Arc<ReentrantMutex<RefCell<SymbolScopeData>>>);
@@ -23,14 +26,35 @@ impl PartialEq for SymbolScope {
 
 impl Eq for SymbolScope {}
 
-#[derive(Default)]
 pub struct SymbolScopeData {
+    id: usize,
     table: DefaultStringInterner,
     assertions: Vec<Assertion>,
     scenarios: Vec<(String, Vec<Assertion>)>,
 }
 
+impl Default for SymbolScopeData {
+    fn default() -> Self {
+        SymbolScopeData {
+            id: SCOPE_COUNTER.fetch_add(1, Ordering::Relaxed),
+            table: DefaultStringInterner::default(),
+            assertions: Vec::new(),
+            scenarios: Vec::new(),
+        }
+    }
+}
+
 impl SymbolScope {
+    pub fn id(&self) -> usize {
+        let locked = self.0.lock();
+        let locked = locked.borrow();
+        locked.id
+    }
+
+    pub fn proof_cache_session(&self) -> ProofCacheSession {
+        ProofCacheSession::new(self.id())
+    }
+
     pub fn get(&self, name: &str) -> Option<Symbol> {
         let locked = self.0.lock();
         let locked = locked.borrow();
@@ -169,6 +193,61 @@ impl SymbolScope {
     }
 }
 
+thread_local! {
+    static PROOF_CACHE: RefCell<Option<ProofCache>> = const { RefCell::new(None) };
+}
+
+struct ProofCache {
+    scope_id: usize,
+    depth: usize,
+    cache: HashMap<TDim, bool>,
+}
+
+pub struct ProofCacheSession {
+    active: bool,
+}
+
+impl ProofCacheSession {
+    pub fn new(scope_id: usize) -> Self {
+        let active = PROOF_CACHE.with(|cell| {
+            let mut borrow = cell.borrow_mut();
+            match &mut *borrow {
+                None => {
+                    *borrow = Some(ProofCache {
+                        scope_id,
+                        depth: 1,
+                        cache: HashMap::new(),
+                    });
+                    true
+                }
+                Some(pc) if pc.scope_id == scope_id => {
+                    pc.depth += 1;
+                    true
+                }
+                Some(_) => false,
+            }
+        });
+        ProofCacheSession { active }
+    }
+}
+
+impl Drop for ProofCacheSession {
+    fn drop(&mut self) {
+        if !self.active {
+            return;
+        }
+        PROOF_CACHE.with(|cell| {
+            let mut borrow = cell.borrow_mut();
+            if let Some(pc) = &mut *borrow {
+                pc.depth -= 1;
+                if pc.depth == 0 {
+                    *borrow = None;
+                }
+            }
+        });
+    }
+}
+
 impl SymbolScopeData {
     pub fn all_assertions(&self) -> &[Assertion] {
         &self.assertions
@@ -201,6 +280,30 @@ impl SymbolScopeData {
         if let TDim::Val(v) = t {
             return *v >= 0;
         }
+        let cached = PROOF_CACHE.with(|cell| {
+            let borrow = cell.borrow();
+            if let Some(pc) = &*borrow {
+                debug_assert_eq!(pc.scope_id, self.id, "ProofCacheSession scope_id mismatch");
+                pc.cache.get(t).copied()
+            } else {
+                None
+            }
+        });
+        if let Some(result) = cached {
+            return result;
+        }
+        let result = self.prove_positive_or_zero_inner(t);
+        PROOF_CACHE.with(|cell| {
+            let mut borrow = cell.borrow_mut();
+            if let Some(pc) = &mut *borrow {
+                pc.cache.insert(t.clone(), result);
+            }
+        });
+        result
+    }
+
+    #[allow(clippy::mutable_key_type)]
+    fn prove_positive_or_zero_inner(&self, t: &TDim) -> bool {
         let positives = self.assertions.iter().filter_map(|i| i.as_known_positive()).collect_vec();
         let mut visited = vec![];
         let mut todo = vec![t.clone()];
