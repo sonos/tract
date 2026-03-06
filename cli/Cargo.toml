@@ -42,6 +42,7 @@ pest_derive.workspace = true
 pest_generator.workspace = true
 pest_meta.workspace = true
 py_literal.workspace = true
+quinn-proto.workspace = true
 rayon-core.workspace = true
 readings-probe.workspace = true
 regex.workspace = true
