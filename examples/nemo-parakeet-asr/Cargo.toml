@@ -5,8 +5,10 @@ edition = "2024"
 
 [dependencies]
 anyhow.workspace = true
+clap = { version = "4", features = ["derive"] }
 float-ord.workspace = true
 hound = "3.5.1"
+indicatif = "0.17"
 itertools.workspace = true
 serde_json.workspace = true
 tract-rs.workspace = true
