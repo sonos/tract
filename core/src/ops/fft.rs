@@ -155,8 +155,7 @@ impl Stft {
                         .map(|(re, im)| Complex::new(*re, *im)),
                 );
                 if let Some(win) = &self.window {
-                    let win_dense = win.try_as_dense()?;
-                    let win = win_dense.as_slice::<T>()?;
+                    let win = win.try_as_dense()?.as_slice::<T>()?;
                     // symmetric padding in case window is smaller than frames (aka n fft)
                     let pad_left = (self.frame - win.len()) / 2;
                     v.iter_mut().enumerate().for_each(|(ix, v)| {

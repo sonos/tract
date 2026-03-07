@@ -15,8 +15,7 @@ pub fn fill(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn Inferenc
 impl Fill {
     fn eval_t<T: Datum>(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (shape, value) = args_2!(inputs);
-        let value_dense = value.try_as_dense()?;
-        let value = value_dense.to_scalar::<T>()?;
+        let value = value.try_as_dense()?.to_scalar::<T>()?;
         let shape = shape.cast_to::<i32>()?;
         let shape = shape.try_as_dense()?.to_array_view::<i32>()?;
         let array = tract_ndarray::Array::from_shape_fn(

@@ -246,8 +246,8 @@ impl PackedBlockQuantFormat {
 
 impl MMMInputFormat for PackedBlockQuantFormat {
     fn prepare_tensor(&self, t: &Tensor, _k_axis: usize, _mn_axis: usize) -> TractResult<Tensor> {
-        let t_dense = t.try_as_dense()?;
-        let packed = t_dense
+        let packed = t
+            .try_as_dense()?
             .as_slice::<Opaque>()?
             .iter()
             .map(|o| {
@@ -292,8 +292,7 @@ impl MMMInputFormat for PackedBlockQuantFormat {
         };
         ensure!(mn_axis == 0);
         ensure!(k_axis == 1);
-        let t_dense = t.try_as_dense()?;
-        let bwf = t_dense.to_scalar::<Opaque>()?.downcast_ref::<BlobWithFact>().unwrap();
+        let bwf = t.try_as_dense()?.to_scalar::<Opaque>()?.downcast_ref::<BlobWithFact>().unwrap();
         let bqf = bwf.fact.downcast_ref::<BlockQuantFact>().unwrap();
         let packed = self.pack(&bwf.value, bqf.k())?;
         Ok(Box::new(packed))

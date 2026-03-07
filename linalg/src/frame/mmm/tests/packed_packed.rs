@@ -292,11 +292,9 @@ impl<K: MatMatMulKer> PackedPackedProblem<K> {
         let mut c = Tensor::zero::<K::Acc>(&[m, n])?;
 
         let a = a.cast_to::<K::Acc>()?;
-        let a_dense = a.try_as_dense()?;
-        let a = a_dense.as_slice::<K::Acc>()?;
+        let a = a.try_as_dense()?.as_slice::<K::Acc>()?;
         let b = b.cast_to::<K::Acc>()?;
-        let b_dense = b.try_as_dense()?;
-        let b = b_dense.as_slice::<K::Acc>()?;
+        let b = b.try_as_dense()?.as_slice::<K::Acc>()?;
         let mut c_dense = c.try_as_dense_mut()?;
         let mut view = c_dense.to_array_view_mut::<K::Acc>()?.into_dimensionality()?;
         for ix_m in 0..m {
@@ -375,10 +373,8 @@ impl<K: MatMatMulKer> PackedPackedProblem<K> {
         };
         let result = found.close_enough(&expected, app);
         if result.is_err() {
-            let expected_dense = expected.try_as_dense()?;
-            let exp = expected_dense.as_slice::<K::Acc>()?;
-            let found_dense = found.try_as_dense()?;
-            let found = found_dense.as_slice::<K::Acc>()?;
+            let exp = expected.try_as_dense()?.as_slice::<K::Acc>()?;
+            let found = found.try_as_dense()?.as_slice::<K::Acc>()?;
             let (m, _, n) = self.mkn();
             display_error(found, exp, m, n);
         }

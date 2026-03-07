@@ -32,10 +32,8 @@ impl DirectLookup {
     }
 
     fn eval_t<T: Datum>(&self, input: &Tensor) -> TractResult<Tensor> {
-        let values_dense = self.values.try_as_dense()?;
-        let values = values_dense.as_slice::<T>()?;
-        let fallback_dense = self.fallback_value.try_as_dense()?;
-        let fallback_value = fallback_dense.to_scalar::<T>()?;
+        let values = self.values.try_as_dense()?.as_slice::<T>()?;
+        let fallback_value = self.fallback_value.try_as_dense()?.to_scalar::<T>()?;
         Ok(input
             .try_as_dense()?
             .to_array_view::<i32>()?
@@ -140,8 +138,8 @@ impl ReverseLookup {
     fn eval_t<T: Datum + Hash>(&self, input: &Tensor) -> TractResult<Tensor> {
         unsafe {
             let mut output = Tensor::uninitialized_dt(i32::datum_type(), input.shape())?;
-            let input_dense = input.try_as_dense()?;
-            for (i, o) in input_dense
+            for (i, o) in input
+                .try_as_dense()?
                 .as_slice::<T>()?
                 .iter()
                 .zip(output.as_slice_mut_unchecked::<i32>().iter_mut())

@@ -52,8 +52,7 @@ impl Expansion for Split13 {
         })?;
         s.given_2(&inputs[0].shape, &inputs[1].value, move |s, shape, splits| {
             let splits = splits.cast_to::<TDim>()?;
-            let splits_dense = splits.try_as_dense()?;
-            let splits = splits_dense.as_slice::<TDim>()?;
+            let splits = splits.try_as_dense()?.as_slice::<TDim>()?;
             let axis = self.axis + if self.axis < 0 { shape.len() as isize } else { 0 };
             for (o, dim) in outputs.iter().zip(splits.iter()) {
                 s.equals(&o.shape[axis as usize], dim)?;

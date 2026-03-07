@@ -100,8 +100,8 @@ impl EvalOp for SplitGroupBlockQuant {
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
-        let input_dense = input.try_as_dense()?;
-        let bwf = input_dense
+        let bwf = input
+            .try_as_dense()?
             .to_scalar::<Opaque>()?
             .downcast_ref::<BlobWithFact>()
             .context("Expect BlobWithFact")?;

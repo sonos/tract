@@ -102,9 +102,11 @@ pub fn variable(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> 
             tensor = tensor.cast_to_dt(*dt)?.into_owned().into_arc_tensor()
         }
     }
-    let tensor_dense = tensor.try_as_dense()?;
-    if let Some(bwf) =
-        tensor_dense.to_scalar::<Opaque>().ok().and_then(|o| o.downcast_ref::<BlobWithFact>())
+    if let Some(bwf) = tensor
+        .try_as_dense()?
+        .to_scalar::<Opaque>()
+        .ok()
+        .and_then(|o| o.downcast_ref::<BlobWithFact>())
     {
         let fact = bwf.fact.clone();
         builder.wire(Const::new_with_opaque_fact(tensor, fact)?, &[])
@@ -130,8 +132,7 @@ pub fn reshape(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> T
     let count = if count == -1 { input_shape.len() - start } else { count as usize };
     let replacement =
         convert_to_shape_input(builder, invocation, "shape")?.to::<Arc<Tensor>>(builder)?;
-    let replacement_dense = replacement.try_as_dense()?;
-    let mut replacement: TVec<TDim> = replacement_dense.as_slice::<TDim>()?.into();
+    let mut replacement: TVec<TDim> = replacement.try_as_dense()?.as_slice::<TDim>()?.into();
     for i in 0..replacement.len() {
         if replacement[i] == 0.to_dim() {
             replacement[i] = input_shape[i + start].clone();
