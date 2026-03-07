@@ -44,7 +44,8 @@ fn softmax_f32(c: &mut Criterion) {
     let mut group = c.benchmark_group("softmax_f32");
     group.throughput(Throughput::Elements(1500));
     let mut input = unsafe { Tensor::uninitialized_aligned::<f32>(&[1500], 16).unwrap() };
-    let input = input.as_slice_mut::<f32>().unwrap();
+    let mut dense = input.try_as_dense_mut().unwrap();
+    let input = dense.as_slice_mut::<f32>().unwrap();
     group.bench_function("rust", |b| b.iter(|| rust_f32(input)));
     group.bench_function("loop1/naive", |b| b.iter(|| loop1_f32_naive(input)));
     group.bench_function("loop1/generic", |b| {
