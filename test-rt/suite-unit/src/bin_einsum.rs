@@ -234,8 +234,8 @@ impl BinEinsumProblem {
         let a = self.a.cast_to::<Acc>().unwrap();
         let b = self.b.cast_to::<Acc>().unwrap();
 
-        let a = a.to_array_view::<Acc>().unwrap();
-        let b = b.to_array_view::<Acc>().unwrap();
+        let a = a.try_as_dense().unwrap().to_array_view::<Acc>().unwrap();
+        let b = b.try_as_dense().unwrap().to_array_view::<Acc>().unwrap();
 
         let k_axes: TVec<_> = self
             .expr
