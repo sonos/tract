@@ -840,8 +840,10 @@ pub mod test {
                     for c in 0..*output_shape.c() {
                         let ocoords = self.data_format.from_n_c_hw(0, c, geo_out.slice()).unwrap();
                         let icoords = self.data_format.from_n_c_hw(0, c, &geo_in).unwrap();
-                        output.to_array_view_mut::<f32>().unwrap()[&*ocoords.shape] +=
-                            self.input.to_array_view::<f32>().unwrap()[&*icoords.shape];
+                        output.try_as_dense_mut().unwrap().to_array_view_mut::<f32>().unwrap()
+                            [&*ocoords.shape] +=
+                            self.input.try_as_dense().unwrap().to_array_view::<f32>().unwrap()
+                                [&*icoords.shape];
                     }
                 }
             }
@@ -855,9 +857,9 @@ pub mod test {
             self.patch.visit_output(|visitor| {
                 for (_k, offset_in) in visitor.valid_offsets_ker_in() {
                     for c in 0..*output_shape.c() {
-                        output.as_slice_mut::<f32>().unwrap()
+                        output.try_as_dense_mut().unwrap().as_slice_mut::<f32>().unwrap()
                             [visitor.output_offset as usize + c * output_shape.c_stride()] +=
-                            self.input.as_slice::<f32>().unwrap()
+                            self.input.try_as_dense().unwrap().as_slice::<f32>().unwrap()
                                 [offset_in as usize + c * input_shape.c_stride()];
                     }
                 }
@@ -873,9 +875,9 @@ pub mod test {
                 zone.visit_output(&self.patch, |visitor| {
                     for (_k, offset_in) in visitor.valid_offsets_ker_in() {
                         for c in 0..*output_shape.c() {
-                            output.as_slice_mut::<f32>().unwrap()
+                            output.try_as_dense_mut().unwrap().as_slice_mut::<f32>().unwrap()
                                 [visitor.output_offset as usize + c * output_shape.c_stride()] +=
-                                self.input.as_slice::<f32>().unwrap()
+                                self.input.try_as_dense().unwrap().as_slice::<f32>().unwrap()
                                     [offset_in as usize + c * input_shape.c_stride()];
                         }
                     }
