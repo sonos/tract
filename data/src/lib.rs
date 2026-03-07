@@ -21,6 +21,7 @@ pub mod prelude {
     pub use crate::datum::{Datum, DatumType, QParams, round_ties_to_even};
     pub use crate::dim::{Symbol, SymbolScope, SymbolValues, TDim, ToDim};
     pub use crate::opaque::Opaque;
+    pub use crate::tensor::dense_view::{DenseView, DenseViewMut};
     pub use crate::tensor::litteral::*;
     pub use crate::tensor::storage::{DenseStorage, TensorStorage};
     pub use crate::tensor::{IntoArcTensor, IntoTensor, Tensor, natural_strides};
