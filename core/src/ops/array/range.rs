@@ -43,11 +43,16 @@ impl Range {
     ) -> TractResult<Tensor> {
         unsafe {
             let mut result = Tensor::uninitialized::<T>(&[len])?;
-            let mut v = start.to_scalar::<T>()?.clone();
-            let step = step.to_scalar::<T>()?;
-            for i in 0..len {
-                result.as_slice_mut_unchecked::<T>()[i] = v.clone();
-                v = v + step;
+            let start_dense = start.try_as_dense()?;
+            let mut v = start_dense.to_scalar::<T>()?.clone();
+            let step_dense = step.try_as_dense()?;
+            let step = step_dense.to_scalar::<T>()?;
+            {
+                let mut result_dense = result.try_as_dense_mut()?;
+                for i in 0..len {
+                    result_dense.as_slice_mut_unchecked::<T>()[i] = v.clone();
+                    v = v + step;
+                }
             }
             Ok(result)
         }
@@ -61,10 +66,10 @@ impl Range {
         values: &SymbolValues,
     ) -> TractResult<Tensor> {
         if start.datum_type() == TDim::datum_type() {
-            let start = start.to_scalar::<TDim>()?.eval(values).to_i64()?;
-            let step = step.to_scalar::<TDim>()?.eval(values).to_i64()?;
+            let start = start.try_as_dense()?.to_scalar::<TDim>()?.eval(values).to_i64()?;
+            let step = step.try_as_dense()?.to_scalar::<TDim>()?.eval(values).to_i64()?;
             let len = {
-                let end = end.to_scalar::<TDim>()?.eval(values).to_i64()?;
+                let end = end.try_as_dense()?.to_scalar::<TDim>()?.eval(values).to_i64()?;
                 #[allow(clippy::cast_abs_to_unsigned)]
                 ((end - start).abs() as usize).divceil(step.abs() as usize)
             };
@@ -83,9 +88,12 @@ impl Range {
         end: &Tensor,
         step: &Tensor,
     ) -> TractResult<usize> {
-        let start = start.to_scalar::<T>()?;
-        let end = end.to_scalar::<T>()?;
-        let step = step.to_scalar::<T>()?;
+        let start_dense = start.try_as_dense()?;
+        let start = start_dense.to_scalar::<T>()?;
+        let end_dense = end.try_as_dense()?;
+        let end = end_dense.to_scalar::<T>()?;
+        let step_dense = step.try_as_dense()?;
+        let step = step_dense.to_scalar::<T>()?;
         Ok(((end.as_() - start.as_()) / (step.as_())).ceil() as usize)
     }
 }
@@ -126,8 +134,10 @@ impl TypedOp for Range {
         ensure!(step.shape.volume().is_one());
         if let (Some(start), Some(end), Some(step)) = (&start.konst, &end.konst, &step.konst) {
             if start.datum_type() == TDim::datum_type() {
-                let start = start.to_scalar::<TDim>()?;
-                let end = end.to_scalar::<TDim>()?;
+                let start_dense = start.try_as_dense()?;
+                let start = start_dense.to_scalar::<TDim>()?;
+                let end_dense = end.try_as_dense()?;
+                let end = end_dense.to_scalar::<TDim>()?;
                 let step = step.cast_to_scalar::<i64>()?;
                 let len = if step < 0 {
                     (start.clone() - end).divceil(-step as usize)
