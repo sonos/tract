@@ -103,7 +103,7 @@ jobs:
       run: rustup component add rustfmt && cargo fmt --check
     - name: Warnings
       env:
-        RUST_FLAGS: -D warnings
+        RUSTFLAGS: -D warnings
       run: cargo check
 
   cargo-deny:
