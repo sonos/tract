@@ -34,7 +34,7 @@ impl<K: LutKer> LutImpl<K> {
 
 impl<K: LutKer> Lut for LutImpl<K> {
     fn table(&self) -> &[u8] {
-        self.table.as_slice().unwrap()
+        unsafe { self.table.as_slice_unchecked() }
     }
 
     fn run(&self, buf: &mut [u8]) {

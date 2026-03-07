@@ -148,7 +148,7 @@ impl Drop for Tensor {
             ($t: ty) => {
                 if self.dt == <$t>::datum_type() {
                     unsafe {
-                        let slice = self.as_slice_mut::<$t>().unwrap();
+                        let slice = self.as_slice_mut_unchecked::<$t>();
                         std::ptr::drop_in_place(slice as *mut [$t]);
                     }
                 }
@@ -343,7 +343,10 @@ impl Tensor {
     }
 
     pub fn fill_t<T: Datum + Clone>(&mut self, value: T) -> TractResult<()> {
-        self.as_slice_mut::<T>()?.iter_mut().for_each(|item| *item = value.clone());
+        self.try_as_dense_mut()?
+            .as_slice_mut::<T>()?
+            .iter_mut()
+            .for_each(|item| *item = value.clone());
         Ok(())
     }
 
@@ -360,15 +363,21 @@ impl Tensor {
                 let mut t = Tensor::uninitialized_dt(dt, shape)?;
                 let zp = dt.zp_scale().0;
                 match dt.unquantized() {
-                    DatumType::I8 => {
-                        t.as_slice_mut::<i8>()?.iter_mut().for_each(|item| *item = zp as _)
-                    }
-                    DatumType::U8 => {
-                        t.as_slice_mut::<u8>()?.iter_mut().for_each(|item| *item = zp as _)
-                    }
-                    DatumType::I32 => {
-                        t.as_slice_mut::<i32>()?.iter_mut().for_each(|item| *item = zp as _)
-                    }
+                    DatumType::I8 => t
+                        .try_as_dense_mut()?
+                        .as_slice_mut::<i8>()?
+                        .iter_mut()
+                        .for_each(|item| *item = zp as _),
+                    DatumType::U8 => t
+                        .try_as_dense_mut()?
+                        .as_slice_mut::<u8>()?
+                        .iter_mut()
+                        .for_each(|item| *item = zp as _),
+                    DatumType::I32 => t
+                        .try_as_dense_mut()?
+                        .as_slice_mut::<i32>()?
+                        .iter_mut()
+                        .for_each(|item| *item = zp as _),
                     _ => unreachable!(),
                 }
                 Ok(t)
@@ -860,9 +869,9 @@ impl Tensor {
         }
         let (atol, rtol, outliers) = approx.atol_rtol_outliers(&self.datum_type());
         let ma = self.cast_to::<f32>()?;
-        let ma = ma.to_array_view::<f32>()?;
+        let ma = ma.try_as_dense()?.to_array_view::<f32>()?;
         let mb = other.cast_to::<f32>()?;
-        let mb = mb.to_array_view::<f32>()?;
+        let mb = mb.try_as_dense()?.to_array_view::<f32>()?;
         let mut first_outlier = None;
         let mut outliers_count = 0;
         ndarray::indices_of(&ma).into_iter().for_each(|indices| {
@@ -900,7 +909,7 @@ impl Tensor {
 
     /// Transform the tensor into a `ndarray::Array`.
     pub fn into_array<D: Datum>(self) -> TractResult<ArrayD<D>> {
-        Ok(self.to_array_view::<D>()?.to_owned())
+        Ok(self.try_as_dense()?.to_array_view::<D>()?.to_owned())
     }
 
     /// Transform the tensor into a `ndarray::Array`.
@@ -1027,7 +1036,7 @@ impl Tensor {
     /// Make the tensor a scalar tensor (assumes it contains a single value).
     pub fn to_scalar_tensor(&self) -> TractResult<Tensor> {
         fn to_scalar_tensor_t<D: Datum>(t: &Tensor) -> TractResult<Tensor> {
-            Ok(litteral::tensor0(t.to_scalar::<D>()?.clone()))
+            Ok(litteral::tensor0(t.try_as_dense()?.to_scalar::<D>()?.clone()))
         }
         dispatch_datum!(to_scalar_tensor_t(self.datum_type())(self))
     }
@@ -1375,7 +1384,7 @@ impl Tensor {
     /// Access the data as a scalar, after a cast.
     pub fn cast_to_scalar<D: Datum + Copy>(&self) -> TractResult<D> {
         let casted = self.cast_to::<D>()?;
-        casted.to_scalar::<D>().copied()
+        casted.try_as_dense()?.to_scalar::<D>().copied()
     }
 
     /// Access the nth element of the tensor, returned as a 0-rank Tensor
@@ -1518,7 +1527,8 @@ impl Tensor {
             start: usize,
             end: usize,
         ) -> TractResult<Tensor> {
-            Ok(t.to_array_view::<T>()?
+            Ok(t.try_as_dense()?
+                .to_array_view::<T>()?
                 .slice_axis(ndarray::Axis(axis), (start..end).into())
                 .into_owned()
                 .into_tensor())
@@ -1564,7 +1574,12 @@ impl Tensor {
     /// Offsets the tensor as an i8 type if it's an u8 type, otherwise passes it unchanged.
     pub fn offset_u8_as_i8(self: &Arc<Self>) -> Arc<Self> {
         let mut t = if let DatumType::U8 = self.dt.unquantized() {
-            self.to_array_view::<u8>().unwrap().mapv(|v| v.wrapping_sub(128) as i8).into_tensor()
+            self.try_as_dense()
+                .unwrap()
+                .to_array_view::<u8>()
+                .unwrap()
+                .mapv(|v| v.wrapping_sub(128) as i8)
+                .into_tensor()
         } else {
             return self.clone();
         };
@@ -1583,7 +1598,12 @@ impl Tensor {
     /// Offsets the tensor as an u8 type if it's an i8 type, otherwise passes it unchanged.
     pub fn offset_i8_as_u8(self: &Arc<Self>) -> Arc<Self> {
         let mut t = if let DatumType::I8 = self.dt.unquantized() {
-            self.to_array_view::<i8>().unwrap().mapv(|v| (v as u8).wrapping_add(128)).into_tensor()
+            self.try_as_dense()
+                .unwrap()
+                .to_array_view::<i8>()
+                .unwrap()
+                .mapv(|v| (v as u8).wrapping_add(128))
+                .into_tensor()
         } else {
             return self.clone();
         };
@@ -1608,11 +1628,17 @@ impl Tensor {
         } else {
             let mut t = Self::zero_dt(self.dt, &self.shape)?;
             if self.dt == String::datum_type() {
-                t.as_slice_mut::<String>()?.clone_from_slice(self.as_slice()?);
+                t.try_as_dense_mut()?
+                    .as_slice_mut::<String>()?
+                    .clone_from_slice(self.try_as_dense()?.as_slice()?);
             } else if self.dt == Blob::datum_type() {
-                t.as_slice_mut::<Blob>()?.clone_from_slice(self.as_slice()?);
+                t.try_as_dense_mut()?
+                    .as_slice_mut::<Blob>()?
+                    .clone_from_slice(self.try_as_dense()?.as_slice()?);
             } else if self.dt == TDim::datum_type() {
-                t.as_slice_mut::<TDim>()?.clone_from_slice(self.as_slice()?);
+                t.try_as_dense_mut()?
+                    .as_slice_mut::<TDim>()?
+                    .clone_from_slice(self.try_as_dense()?.as_slice()?);
             }
             Ok(t)
         }
