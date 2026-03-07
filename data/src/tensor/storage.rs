@@ -6,8 +6,8 @@ use crate::blob::Blob;
 
 /// Trait abstracting over tensor storage backends.
 ///
-/// Phase 1: defined and implemented by `DenseStorage`, but `Tensor` still
-/// holds a concrete `DenseStorage` field (no dynamic dispatch yet).
+/// `Tensor` holds a `Box<dyn TensorStorage>`, dispatching through this trait.
+/// `DenseStorage` is the primary implementation backed by a contiguous `Blob`.
 pub trait TensorStorage: Send + Sync + fmt::Debug + fmt::Display {
     fn as_bytes(&self) -> &[u8];
     fn as_bytes_mut(&mut self) -> &mut [u8];
@@ -18,6 +18,9 @@ pub trait TensorStorage: Send + Sync + fmt::Debug + fmt::Display {
     fn byte_len(&self) -> usize;
     fn deep_clone(&self) -> Box<dyn TensorStorage>;
     fn same_as(&self, other: &dyn TensorStorage) -> bool;
+    /// Attempt to convert the storage into a `Blob`. Returns `None` if the
+    /// storage backend does not support this (e.g. non-dense storage).
+    fn try_into_blob(self: Box<Self>) -> Option<Blob>;
 }
 
 /// Dense, contiguous storage backed by a `Blob`.
@@ -152,5 +155,9 @@ impl TensorStorage for DenseStorage {
         !self.0.is_empty()
             && self.0.as_bytes().as_ptr() == other.as_bytes().as_ptr()
             && self.0.len() == other.byte_len()
+    }
+
+    fn try_into_blob(self: Box<Self>) -> Option<Blob> {
+        Some(self.0)
     }
 }

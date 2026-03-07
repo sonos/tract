@@ -21,7 +21,7 @@ pub mod litteral;
 pub mod storage;
 pub mod view;
 
-use storage::DenseStorage;
+use storage::{DenseStorage, TensorStorage};
 
 #[derive(Copy, Clone, Default, Debug)]
 pub enum Approximation {
@@ -73,13 +73,12 @@ impl Approximation {
 }
 
 /// Tensor is a concrete tensor in tract.
-#[derive(Eq)]
 pub struct Tensor {
     dt: DatumType,
     shape: TVec<usize>,
     strides: TVec<isize>,
     len: usize,
-    storage: DenseStorage,
+    storage: Box<dyn TensorStorage>,
 }
 
 unsafe impl Send for Tensor {}
@@ -198,7 +197,8 @@ impl Tensor {
         alignment: usize,
     ) -> TractResult<Tensor> {
         let bytes = shape.iter().cloned().product::<usize>() * dt.size_of();
-        let storage = DenseStorage::from(unsafe { Blob::new_for_size_and_align(bytes, alignment) });
+        let storage: Box<dyn TensorStorage> =
+            Box::new(DenseStorage::from(unsafe { Blob::new_for_size_and_align(bytes, alignment) }));
         let mut tensor = Tensor { strides: tvec!(), dt, shape: shape.into(), storage, len: 0 };
         if tensor.shape.len() == 0 {
             tensor.len = 1;
@@ -258,7 +258,7 @@ impl Tensor {
                 let mut offset = 0isize;
                 for v in tensors {
                     let v = v.borrow();
-                    let len = v.storage.len();
+                    let len = v.storage.byte_len();
                     std::ptr::copy_nonoverlapping(
                         v.storage.as_ptr(),
                         result.storage.as_mut_ptr().offset(offset),
@@ -936,7 +936,7 @@ impl Tensor {
     /// Access the data as a slice.
     pub fn as_slice<D: Datum>(&self) -> TractResult<&[D]> {
         let ptr: *const D = self.as_ptr()?;
-        if self.storage.len() == 0 {
+        if self.storage.byte_len() == 0 {
             Ok(&[])
         } else {
             unsafe { Ok(std::slice::from_raw_parts::<D>(ptr, self.len())) }
@@ -946,7 +946,7 @@ impl Tensor {
     /// Access the data as a mutable slice.
     pub fn as_slice_mut<D: Datum>(&mut self) -> TractResult<&mut [D]> {
         let ptr: *mut D = self.as_ptr_mut()?;
-        if self.storage.len() == 0 {
+        if self.storage.byte_len() == 0 {
             Ok(&mut [])
         } else {
             unsafe { Ok(std::slice::from_raw_parts_mut::<D>(ptr, self.len())) }
@@ -955,7 +955,7 @@ impl Tensor {
 
     /// Access the data as a slice.
     pub unsafe fn as_slice_unchecked<D: Datum>(&self) -> &[D] {
-        if self.storage.len() == 0 {
+        if self.storage.byte_len() == 0 {
             &[]
         } else {
             unsafe { std::slice::from_raw_parts::<D>(self.as_ptr_unchecked(), self.len()) }
@@ -964,7 +964,7 @@ impl Tensor {
 
     /// Access the data as a mutable slice.
     pub unsafe fn as_slice_mut_unchecked<D: Datum>(&mut self) -> &mut [D] {
-        if self.storage.len() == 0 {
+        if self.storage.byte_len() == 0 {
             &mut []
         } else {
             unsafe { std::slice::from_raw_parts_mut::<D>(self.as_ptr_mut_unchecked(), self.len()) }
@@ -1585,7 +1585,8 @@ impl Tensor {
 
     pub fn into_blob(mut self) -> TractResult<Blob> {
         ensure!(self.dt.is_copy());
-        Ok(std::mem::take(&mut self.storage).into_blob())
+        let storage = std::mem::replace(&mut self.storage, Box::new(DenseStorage::default()));
+        storage.try_into_blob().context("Storage is not dense")
     }
 }
 
@@ -1597,6 +1598,8 @@ impl PartialEq for Tensor {
         self.eq_dt(other).unwrap_or(false)
     }
 }
+
+impl Eq for Tensor {}
 
 impl fmt::Debug for Tensor {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
