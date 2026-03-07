@@ -171,7 +171,7 @@ impl Expansion for BlockLSTM {
             bail!("Non uniform seq_len is not supported");
         };
         let seqlen = seqlen.cast_to::<TDim>()?;
-        if seqlen.to_scalar::<TDim>()? != &model.outlet_fact(inputs[1])?.shape[0] {
+        if seqlen.try_as_dense()?.to_scalar::<TDim>()? != &model.outlet_fact(inputs[1])?.shape[0] {
             bail!("seq_len only supported for trivial noop case");
         };
         let scan = scan::Scan::new(body, input_mapping, output_mapping, 0)?;

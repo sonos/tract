@@ -61,6 +61,7 @@ impl Expansion for ExpandDims {
         if let Some(ref axes) = target.outlet_fact(inputs[1])?.konst {
             let mut axes = axes
                 .cast_to::<i32>()?
+                .try_as_dense()?
                 .as_slice::<i32>()?
                 .iter()
                 .map(|&axis| {

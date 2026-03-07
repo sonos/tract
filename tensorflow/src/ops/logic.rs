@@ -69,7 +69,7 @@ impl InferenceRulesOp for Switch {
     ) -> TractResult<Option<InferenceModelPatch>> {
         let pred = model.outlet_fact(node.inputs[1])?;
         if let Some(pred) = pred.concretize() {
-            let pred = *pred.to_scalar::<bool>()?;
+            let pred = *pred.try_as_dense()?.to_scalar::<bool>()?;
             let mut dead_to_visit = HashSet::new();
             let mut dead_done = HashSet::new();
             let mut patch = InferenceModelPatch::default();

@@ -22,9 +22,10 @@ impl EvalOp for SpaceToBatch {
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (input, block_shape, paddings) = args_3!(inputs);
         let block_shape = block_shape.cast_to::<i32>()?;
-        let block_shape = block_shape.to_array_view::<i32>()?.into_dimensionality()?;
+        let block_shape =
+            block_shape.try_as_dense()?.to_array_view::<i32>()?.into_dimensionality()?;
         let paddings = paddings.cast_to::<i32>()?;
-        let paddings = paddings.to_array_view::<i32>()?.into_dimensionality()?;
+        let paddings = paddings.try_as_dense()?.to_array_view::<i32>()?.into_dimensionality()?;
         let r = dispatch_numbers!(super::space_to_batch(input.datum_type())(
             input,
             &block_shape.view(),
@@ -61,7 +62,8 @@ impl InferenceRulesOp for SpaceToBatch {
             target.outlet_fact(mapping[&node.inputs[2]])?.konst.clone(),
         ) {
             let paddings = paddings.cast_to::<TDim>()?;
-            let paddings_view = paddings.to_array_view::<TDim>()?.into_dimensionality::<Ix2>()?;
+            let paddings_view =
+                paddings.try_as_dense()?.to_array_view::<TDim>()?.into_dimensionality::<Ix2>()?;
             let mut paddings = tvec![];
             for p in paddings_view.outer_iter() {
                 let pad = match (p[0].to_usize(), p[1].to_usize()) {
@@ -114,9 +116,10 @@ impl EvalOp for BatchToSpace {
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (input, block_shape, crops) = args_3!(inputs);
         let block_shape = block_shape.cast_to::<i32>()?;
-        let block_shape = block_shape.to_array_view::<i32>()?.into_dimensionality()?;
+        let block_shape =
+            block_shape.try_as_dense()?.to_array_view::<i32>()?.into_dimensionality()?;
         let crops = crops.cast_to::<i32>()?;
-        let crops = crops.to_array_view::<i32>()?.into_dimensionality()?;
+        let crops = crops.try_as_dense()?.to_array_view::<i32>()?.into_dimensionality()?;
         let r = dispatch_numbers!(super::batch_to_space(input.datum_type())(
             input,
             &block_shape.view(),
@@ -151,7 +154,8 @@ impl InferenceRulesOp for BatchToSpace {
             target.outlet_fact(mapping[&node.inputs[2]])?.konst.clone(),
         ) {
             let paddings = paddings.cast_to::<TDim>()?;
-            let paddings = paddings.to_array_view::<TDim>()?.into_dimensionality::<Ix2>()?;
+            let paddings =
+                paddings.try_as_dense()?.to_array_view::<TDim>()?.into_dimensionality::<Ix2>()?;
             let paddings = paddings
                 .outer_iter()
                 .map(|p| {
@@ -206,7 +210,8 @@ fn rules<'r, 'p: 'r>(
         s.equals(&batch.shape[0], (block_shape_prod as i64) * space.shape[0].bex())?;
         s.given(&paddings.value, move |s, paddings| {
             let paddings = paddings.cast_to::<TDim>()?;
-            let paddings = paddings.to_array_view::<TDim>()?.into_dimensionality()?;
+            let paddings =
+                paddings.try_as_dense()?.to_array_view::<TDim>()?.into_dimensionality()?;
             for d in 0..block_shape.len() {
                 s.equals(
                     space.shape[1 + d].bex() + &paddings[(d, 0)] + &paddings[(d, 1)],
