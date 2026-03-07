@@ -17,10 +17,12 @@ use std::hash::Hash;
 use std::ops::Range;
 use std::sync::Arc;
 
+pub mod dense_view;
 pub mod litteral;
 pub mod storage;
 pub mod view;
 
+pub use dense_view::{DenseView, DenseViewMut};
 use storage::{DenseStorage, TensorStorage};
 
 #[derive(Copy, Clone, Default, Debug)]
@@ -177,6 +179,20 @@ impl Tensor {
     #[inline]
     fn dense_storage_mut(&mut self) -> &mut DenseStorage {
         self.storage.as_dense_mut().expect("Non-dense storage")
+    }
+
+    /// Returns an immutable [`DenseView`] if this tensor has dense storage.
+    #[inline]
+    pub fn as_dense(&self) -> Option<DenseView<'_>> {
+        let storage = self.storage.as_dense()?;
+        Some(DenseView::new(self, storage))
+    }
+
+    /// Returns a mutable [`DenseViewMut`] if this tensor has dense storage.
+    #[inline]
+    pub fn as_dense_mut(&mut self) -> Option<DenseViewMut<'_>> {
+        let storage = self.storage.as_dense_mut()?;
+        Some(DenseViewMut::new(self.dt, &self.shape, &self.strides, self.len, storage))
     }
 
     /// Create an uninitialized tensor (dt as type paramater).
