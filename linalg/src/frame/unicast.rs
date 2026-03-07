@@ -200,8 +200,8 @@ pub mod test {
         // We allocate a tensor to ensure allocation is done with alignement
         let b = unsafe { Tensor::from_slice_align(vec_b.as_slice(), vector_size()).unwrap() };
         crate::frame::unicast::test::test_unicast::<K, _>(
-            a.as_slice_mut::<T>().unwrap(),
-            b.as_slice::<T>().unwrap(),
+            a.try_as_dense_mut().unwrap().as_slice_mut::<T>().unwrap(),
+            b.try_as_dense().unwrap().as_slice::<T>().unwrap(),
             func,
         )
     }
