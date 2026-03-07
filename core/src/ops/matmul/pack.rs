@@ -92,7 +92,8 @@ impl OptMatMulPack {
                 .into_shape(&output_shape)?
             } else {
                 let mut stores = Tensor::uninitialized_dt(Opaque::datum_type(), &output_shape)?;
-                let mut stores_view = stores.to_array_view_mut::<Opaque>()?;
+                let mut stores_dense = stores.try_as_dense_mut()?;
+                let mut stores_view = stores_dense.to_array_view_mut::<Opaque>()?;
                 let mut bc_shape: TVec<usize> = input.shape().into();
                 bc_shape[self.k_axis] = 1;
                 bc_shape[self.mn_axis] = 1;
@@ -179,6 +180,7 @@ impl EvalOp for OptSimpleMatMulPack {
         let input = args_1!(inputs);
         let mut output = tensor1(
             &input
+                .try_as_dense()?
                 .as_slice::<Opaque>()?
                 .iter()
                 .map(|i| {
