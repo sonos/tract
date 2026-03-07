@@ -54,7 +54,7 @@ impl EvalOp for Reduce {
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (input, axes) = args_2!(inputs);
-        let axes: Vec<i64> = axes.cast_to::<i64>()?.as_slice::<i64>()?.to_vec();
+        let axes: Vec<i64> = axes.cast_to::<i64>()?.try_as_dense()?.as_slice::<i64>()?.to_vec();
         let op = nn::Reduce::new(Some(axes), self.keep_dims, self.reducer);
         expand(op).eval(tvec!(input))
     }
@@ -124,7 +124,7 @@ impl InferenceRulesOp for Reduce {
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
         if let Some(ref axes) = target.outlet_fact(mapping[&node.inputs[1]])?.konst {
-            let axes: Vec<i64> = axes.cast_to::<i64>()?.as_slice::<i64>()?.to_vec();
+            let axes: Vec<i64> = axes.cast_to::<i64>()?.try_as_dense()?.as_slice::<i64>()?.to_vec();
             let op = nn::Reduce::new(Some(axes), self.keep_dims, self.reducer);
             op.wire(&node.name, target, &[mapping[&node.inputs[0]]])
         } else {

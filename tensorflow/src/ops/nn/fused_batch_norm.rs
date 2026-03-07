@@ -65,10 +65,14 @@ impl Expansion for FusedBatchNorm {
         if let (Some(scale), Some(offset), Some(mean), Some(variance)) =
             (&scale.konst, &offset.konst, &mean.konst, &variance.konst)
         {
-            let scale = scale.as_slice::<f32>()?;
-            let offset = offset.as_slice::<f32>()?;
-            let mean = mean.as_slice::<f32>()?;
-            let variance = variance.as_slice::<f32>()?;
+            let scale_dense = scale.try_as_dense()?;
+            let scale = scale_dense.as_slice::<f32>()?;
+            let offset_dense = offset.try_as_dense()?;
+            let offset = offset_dense.as_slice::<f32>()?;
+            let mean_dense = mean.try_as_dense()?;
+            let mean = mean_dense.as_slice::<f32>()?;
+            let variance_dense = variance.try_as_dense()?;
+            let variance = variance_dense.as_slice::<f32>()?;
             let slope: Vec<f32> =
                 izip!(variance, scale).map(|(v, s)| s / (v + self.epsilon).sqrt()).collect();
             let inter: Vec<f32> = izip!(offset, mean, &slope).map(|(o, m, s)| o - m * s).collect();
