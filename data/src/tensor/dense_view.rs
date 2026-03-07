@@ -94,13 +94,13 @@ impl<'a> DenseView<'a> {
     }
 
     #[inline]
-    pub fn as_slice<D: Datum>(&self) -> TractResult<&[D]> {
+    pub fn as_slice<D: Datum>(&self) -> TractResult<&'a [D]> {
         check_for_access::<D>(self.datum_type())?;
         unsafe { Ok(self.as_slice_unchecked()) }
     }
 
     #[inline]
-    pub unsafe fn as_slice_unchecked<D: Datum>(&self) -> &[D] {
+    pub unsafe fn as_slice_unchecked<D: Datum>(&self) -> &'a [D] {
         if self.storage.is_empty() {
             &[]
         } else {
@@ -109,13 +109,13 @@ impl<'a> DenseView<'a> {
     }
 
     #[inline]
-    pub fn to_scalar<D: Datum>(&self) -> TractResult<&D> {
+    pub fn to_scalar<D: Datum>(&self) -> TractResult<&'a D> {
         check_for_access::<D>(self.datum_type())?;
         unsafe { Ok(self.to_scalar_unchecked()) }
     }
 
     #[inline]
-    pub unsafe fn to_scalar_unchecked<D: Datum>(&self) -> &D {
+    pub unsafe fn to_scalar_unchecked<D: Datum>(&self) -> &'a D {
         unsafe { &*(self.storage.as_ptr() as *const D) }
     }
 
