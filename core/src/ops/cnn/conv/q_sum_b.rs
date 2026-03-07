@@ -52,7 +52,8 @@ impl TypedOp for QSumB {
 impl QSumB {
     fn eval(&self, inputs: TVec<TValue>, n: usize) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
-        let payloads = input.to_array_view::<Opaque>()?;
+        let input_dense = input.try_as_dense()?;
+        let payloads = input_dense.to_array_view::<Opaque>()?;
         let mut shape: TVec<usize> = input.shape().into();
         shape.push(n);
         let mut output = ArrayD::<i32>::zeros(&*shape);
