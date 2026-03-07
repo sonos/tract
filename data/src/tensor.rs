@@ -188,11 +188,23 @@ impl Tensor {
         Some(DenseView::new(self, storage))
     }
 
+    /// Returns an immutable [`DenseView`], or an error if storage is not dense.
+    #[inline]
+    pub fn try_as_dense(&self) -> TractResult<DenseView<'_>> {
+        self.as_dense().context("Tensor storage is not dense")
+    }
+
     /// Returns a mutable [`DenseViewMut`] if this tensor has dense storage.
     #[inline]
     pub fn as_dense_mut(&mut self) -> Option<DenseViewMut<'_>> {
         let storage = self.storage.as_dense_mut()?;
         Some(DenseViewMut::new(self.dt, &self.shape, &self.strides, self.len, storage))
+    }
+
+    /// Returns a mutable [`DenseViewMut`], or an error if storage is not dense.
+    #[inline]
+    pub fn try_as_dense_mut(&mut self) -> TractResult<DenseViewMut<'_>> {
+        self.as_dense_mut().context("Tensor storage is not dense")
     }
 
     /// Create an uninitialized tensor (dt as type paramater).
