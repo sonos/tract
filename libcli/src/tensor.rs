@@ -269,7 +269,12 @@ pub fn for_string(
             let mut tensor = Tensor::zero::<TDim>(&shape)?;
             let values =
                 value.map(|v| parse_tdim(symbol_table, v)).collect::<TractResult<Vec<_>>>()?;
-            tensor.as_slice_mut::<TDim>()?.iter_mut().zip(values).for_each(|(t, v)| *t = v);
+            tensor
+                .try_as_dense_mut()?
+                .as_slice_mut::<TDim>()?
+                .iter_mut()
+                .zip(values)
+                .for_each(|(t, v)| *t = v);
             tensor
         } else {
             dispatch_numbers!(parse_values(dt)(&*shape, value.collect()))?
@@ -596,7 +601,8 @@ pub fn random(sizes: &[usize], datum_type: DatumType, tv: Option<&TensorValues>)
     use rand::{Rng, SeedableRng};
     let mut rng = rand::rngs::StdRng::seed_from_u64(21242);
     let mut tensor = Tensor::zero::<f32>(sizes).unwrap();
-    let slice = tensor.as_slice_mut::<f32>().unwrap();
+    let mut tensor_dense = tensor.try_as_dense_mut().unwrap();
+    let slice = tensor_dense.as_slice_mut::<f32>().unwrap();
     if let Some(range) = tv.and_then(|tv| tv.random_range.as_ref()) {
         slice.iter_mut().for_each(|x| *x = rng.gen_range(range.clone()))
     } else {
