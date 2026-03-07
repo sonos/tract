@@ -29,7 +29,7 @@ impl YoloFace {
 
         // run forward pass and then convert result to f32
         let forward = self.model.run(tvec![preprocess_image.to_owned().into()])?;
-        let results = forward[0].to_array_view::<f32>()?.view().t().into_owned();
+        let results = forward[0].try_as_dense()?.to_array_view::<f32>()?.view().t().into_owned();
 
         // process results
         let mut bbox_vec: Vec<Bbox> = vec![];
