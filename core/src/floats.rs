@@ -252,6 +252,7 @@ mod test {
             .into_runnable()?;
         assert!(
             runnable_model.run(tvec![tensor1(&[f16::from_f32(5.0)]).into()])?[0]
+                .try_as_dense()?
                 .to_scalar::<f16>()?
                 .is_nan()
         );
@@ -273,6 +274,7 @@ mod test {
             .into_runnable()?;
         assert!(
             runnable_model.run(tvec![tensor1(&[f16::from_f32(5.0)]).into()])?[0]
+                .try_as_dense()?
                 .to_scalar::<f16>()?
                 .is_nan()
         );
@@ -298,6 +300,7 @@ mod test {
         let runnable_model_f16 = model_f16.clone().into_runnable()?;
         assert!(
             runnable_model_f16.run(tvec![tensor1(&[f16::from_f32(5.0)]).into()])?[0]
+                .try_as_dense()?
                 .to_scalar::<f16>()?
                 .is_nan()
         );
@@ -319,6 +322,7 @@ mod test {
         let runnable_model_f16 = model_f16_with_filter.clone().into_runnable()?;
         assert!(
             runnable_model_f16.run(tvec![tensor1(&[f16::from_f32(5.0)]).into()])?[0]
+                .try_as_dense()?
                 .to_scalar::<f16>()?
                 .is_nan()
         );
