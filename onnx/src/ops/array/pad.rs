@@ -92,7 +92,8 @@ impl Expansion for Pad18 {
         ) -> TractResult<()> {
             s.given(&inputs[1].value, move |s, pads| {
                 let pads = pads.cast_to::<TDim>()?;
-                let pads = pads.as_slice::<TDim>()?;
+                let pads_dense = pads.try_as_dense()?;
+                let pads = pads_dense.as_slice::<TDim>()?;
                 let rank = pads.len() / 2;
                 for (ix, axis) in axes.iter().enumerate() {
                     let left = pads[ix].clone();
@@ -113,6 +114,7 @@ impl Expansion for Pad18 {
             s.given_2(&inputs[0].rank, &inputs[axes].value, move |s, rank, axes| {
                 let axes = axes
                     .cast_to::<i64>()?
+                    .try_as_dense()?
                     .as_slice::<i64>()?
                     .iter()
                     .map(|x| (if *x < 0 { *x + rank } else { *x }) as usize)
@@ -151,6 +153,7 @@ impl Expansion for Pad18 {
                 .as_ref()
                 .context("Axes must be a constant")?
                 .cast_to::<i64>()?
+                .try_as_dense()?
                 .as_slice::<i64>()?
                 .iter()
                 .map(|x| (if *x < 0 { *x + rank as i64 } else { *x }) as usize)
@@ -164,7 +167,8 @@ impl Expansion for Pad18 {
             .as_ref()
             .context("Expect padding to be constant")?
             .cast_to::<i64>()?;
-        let pads = pads.as_slice::<i64>()?;
+        let pads_dense = pads.try_as_dense()?;
+        let pads = pads_dense.as_slice::<i64>()?;
 
         let mut fixed_pads = vec![(0, 0); rank];
         for (ix, &axis) in axes.iter().enumerate() {

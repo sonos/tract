@@ -33,8 +33,13 @@ impl Expansion for Squeeze13 {
         s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
         if inputs.len() == 2 {
             s.given_2(&inputs[0].shape, &inputs[1].value, move |s, shape, axes| {
-                let axes =
-                    axes.cast_to::<i64>()?.as_slice::<i64>()?.iter().map(|i| *i as isize).collect();
+                let axes = axes
+                    .cast_to::<i64>()?
+                    .try_as_dense()?
+                    .as_slice::<i64>()?
+                    .iter()
+                    .map(|i| *i as isize)
+                    .collect();
                 let op = tract_hir::ops::array::Squeeze::new(Some(axes));
                 let out_shape = op.output_shape(&shape)?;
                 s.equals(&outputs[0].shape, out_shape)
@@ -62,8 +67,13 @@ impl Expansion for Squeeze13 {
     ) -> TractResult<TVec<OutletId>> {
         if inputs.len() == 2 {
             if let Some(axes) = model.outlet_fact(inputs[1])?.konst.as_ref() {
-                let axes =
-                    axes.cast_to::<i64>()?.as_slice::<i64>()?.iter().map(|i| *i as isize).collect();
+                let axes = axes
+                    .cast_to::<i64>()?
+                    .try_as_dense()?
+                    .as_slice::<i64>()?
+                    .iter()
+                    .map(|i| *i as isize)
+                    .collect();
                 let op = tract_hir::ops::array::Squeeze::new(Some(axes));
                 op.wire(prefix, model, &inputs[0..1])
             } else {
