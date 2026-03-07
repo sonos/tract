@@ -112,6 +112,8 @@ impl Arbitrary for QBinaryOpProblem {
                         .to_owned()
                         .cast_to_dt(DatumType::F32)
                         .unwrap()
+                        .try_as_dense()
+                        .unwrap()
                         .to_array_view()
                         .unwrap()
                         .iter()

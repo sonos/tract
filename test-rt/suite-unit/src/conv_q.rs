@@ -209,7 +209,7 @@ impl QConvProblem {
     fn output_dt(&self) -> DatumType {
         self.raw_output_dt.quantize(QParams::ZpScale {
             zero_point: self.qp[4].cast_to_scalar().unwrap(),
-            scale: *self.qp[5].to_scalar().unwrap(),
+            scale: *self.qp[5].try_as_dense().unwrap().to_scalar().unwrap(),
         })
     }
 
@@ -271,7 +271,7 @@ impl Test for QConvProblem {
         let model = runtime.prepare(model).context("Preparing model")?;
         let idt = self.data.datum_type().quantize(QParams::ZpScale {
             zero_point: self.qp[0].cast_to_scalar()?,
-            scale: *self.qp[1].to_scalar()?,
+            scale: *self.qp[1].try_as_dense()?.to_scalar()?,
         });
         let data = self.data.clone().into_tensor().cast_to_dt(idt)?.into_owned().into_tvalue();
         let output = model.run(tvec!(data))?.remove(0);
