@@ -9,18 +9,13 @@ use crate::blob::Blob;
 /// `Tensor` holds a `Box<dyn TensorStorage>`, dispatching through this trait.
 /// `DenseStorage` is the primary implementation backed by a contiguous `Blob`.
 pub trait TensorStorage: Send + Sync + fmt::Debug + fmt::Display {
-    fn as_bytes(&self) -> &[u8];
-    fn as_bytes_mut(&mut self) -> &mut [u8];
-    fn as_ptr(&self) -> *const u8;
-    fn as_mut_ptr(&mut self) -> *mut u8;
-    fn layout(&self) -> &Layout;
-    fn is_empty(&self) -> bool;
     fn byte_len(&self) -> usize;
+    fn is_empty(&self) -> bool;
     fn deep_clone(&self) -> Box<dyn TensorStorage>;
     fn same_as(&self, other: &dyn TensorStorage) -> bool;
-    /// Attempt to convert the storage into a `Blob`. Returns `None` if the
-    /// storage backend does not support this (e.g. non-dense storage).
-    fn try_into_blob(self: Box<Self>) -> Option<Blob>;
+    fn as_dense(&self) -> Option<&DenseStorage>;
+    fn as_dense_mut(&mut self) -> Option<&mut DenseStorage>;
+    fn into_dense(self: Box<Self>) -> Option<DenseStorage>;
 }
 
 /// Dense, contiguous storage backed by a `Blob`.
@@ -41,6 +36,16 @@ impl DenseStorage {
     #[inline]
     pub fn as_bytes_mut(&mut self) -> &mut [u8] {
         self.0.as_bytes_mut()
+    }
+
+    #[inline]
+    pub fn as_ptr(&self) -> *const u8 {
+        self.0.as_bytes().as_ptr()
+    }
+
+    #[inline]
+    pub fn as_mut_ptr(&mut self) -> *mut u8 {
+        self.0.as_bytes_mut().as_mut_ptr()
     }
 
     #[inline]
@@ -113,31 +118,6 @@ impl fmt::Display for DenseStorage {
 
 impl TensorStorage for DenseStorage {
     #[inline]
-    fn as_bytes(&self) -> &[u8] {
-        self.0.as_bytes()
-    }
-
-    #[inline]
-    fn as_bytes_mut(&mut self) -> &mut [u8] {
-        self.0.as_bytes_mut()
-    }
-
-    #[inline]
-    fn as_ptr(&self) -> *const u8 {
-        self.0.as_bytes().as_ptr()
-    }
-
-    #[inline]
-    fn as_mut_ptr(&mut self) -> *mut u8 {
-        self.0.as_bytes_mut().as_mut_ptr()
-    }
-
-    #[inline]
-    fn layout(&self) -> &Layout {
-        self.0.layout()
-    }
-
-    #[inline]
     fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
@@ -152,12 +132,24 @@ impl TensorStorage for DenseStorage {
     }
 
     fn same_as(&self, other: &dyn TensorStorage) -> bool {
-        !self.0.is_empty()
-            && self.0.as_bytes().as_ptr() == other.as_bytes().as_ptr()
-            && self.0.len() == other.byte_len()
+        if let Some(other) = other.as_dense() {
+            !self.0.is_empty()
+                && self.0.as_bytes().as_ptr() == other.as_ptr()
+                && self.0.len() == other.byte_len()
+        } else {
+            false
+        }
     }
 
-    fn try_into_blob(self: Box<Self>) -> Option<Blob> {
-        Some(self.0)
+    fn as_dense(&self) -> Option<&DenseStorage> {
+        Some(self)
+    }
+
+    fn as_dense_mut(&mut self) -> Option<&mut DenseStorage> {
+        Some(self)
+    }
+
+    fn into_dense(self: Box<Self>) -> Option<DenseStorage> {
+        Some(*self)
     }
 }
