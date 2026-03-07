@@ -55,9 +55,12 @@ impl EvalOp for Cast {
             Ok(tvec!(input))
         } else if input.datum_type() == TDim::datum_type() {
             let mut tmp = Tensor::zero_dt(i64::datum_type(), input.shape())?;
-            for (dim, i) in
-                tract_itertools::izip!(input.as_slice::<TDim>()?, tmp.as_slice_mut::<i64>()?)
-            {
+            let input_dense = input.try_as_dense()?;
+            let mut tmp_dense = tmp.try_as_dense_mut()?;
+            for (dim, i) in tract_itertools::izip!(
+                input_dense.as_slice::<TDim>()?,
+                tmp_dense.as_slice_mut::<i64>()?
+            ) {
                 *i = dim.eval(&state.resolved_symbols).to_i64()?
             }
             Ok(tvec!(tmp.cast_to_dt(self.to)?.into_owned().into_tvalue()))
