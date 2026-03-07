@@ -21,6 +21,10 @@ pub fn handle(
 ) -> TractResult<()> {
     let run_params = crate::tensor::run_params_from_subcommand(params, sub_matches)?;
 
+    if sub_matches.is_present("stream") {
+        return handle_stream(params, &output_params, &run_params);
+    }
+
     let cumulative = sub_matches.is_present("cumulative");
     let resilent = sub_matches.is_present("resilient");
     if sub_matches.value_of("stage").is_some() {
@@ -118,12 +122,13 @@ pub fn handle_tensorflow(
         all_values.insert(name.to_string(), vec![Ok(generated[ix].clone().into_arc_tensor())]);
     }
     dispatch_model_no_pulse!(params.tract_model, |m| compare(
-    cumulative,
-    m,
-    &all_values,
-    &params,
-    &output_params
-    run_params,
+        cumulative,
+        m,
+        &all_values,
+        &params,
+        &output_params,
+        run_params,
+        ("tract", "tf"),
     ))
 }
 
@@ -164,6 +169,7 @@ pub fn handle_npz(
         params,
         output_params,
         run_params,
+        ("tract", "npz"),
     ))
 }
 
@@ -205,6 +211,7 @@ pub fn handle_pbdir(
         params,
         output_params,
         run_params,
+        ("tract", "pbdir"),
     ))
 }
 
@@ -269,7 +276,201 @@ pub fn handle_with_model(
         params,
         output_params,
         run_params,
+        ("tract", "reference"),
     ))
+}
+
+// handle_stream runs the pulsed model pulse-by-pulse, stitches per-node valid output regions
+// (accounting for each node's delay), then delegates to compare() which runs the concretized
+// reference model and handles all comparison, annotation, and rendering.
+#[cfg(not(feature = "pulse"))]
+pub fn handle_stream(
+    _params: &Parameters,
+    _output_params: &DisplayParams,
+    _run_params: &RunParams,
+) -> TractResult<()> {
+    bail!("`pulse` feature is required for --stream to work");
+}
+
+#[cfg(feature = "pulse")]
+pub fn handle_stream(
+    params: &Parameters,
+    output_params: &DisplayParams,
+    run_params: &RunParams,
+) -> TractResult<()> {
+    use tract_core::ndarray::{ArrayD, Axis};
+    use tract_core::plan::SimpleState;
+    use tract_pulse::internal::*;
+
+    let reference: &TypedModel = params
+        .reference_model
+        .as_ref()
+        .context("Reference (pre-pulse) model not available")?
+        .downcast_ref::<TypedModel>()
+        .context("Reference model is not a TypedModel")?;
+
+    let model: Arc<TypedModel> =
+        params.typed_model().context("Post-pulse TypedModel not available")?;
+
+    let ref_input_fact = reference.input_fact(0)?;
+    let model_input_fact = model.input_fact(0)?;
+
+    let input_axis = model
+        .properties
+        .get("pulse.input_axes")
+        .context("Expect pulse.input_axes property")?
+        .cast_to::<i64>()?
+        .as_slice::<i64>()?[0] as usize;
+
+    let stream_symbol = ref_input_fact.shape[input_axis]
+        .symbols()
+        .into_iter()
+        .next()
+        .context("Could not find streaming symbol in reference model input")?;
+
+    let input_pulse = model_input_fact.shape[input_axis]
+        .to_usize()
+        .context("Pulse dimension should be concrete")?;
+
+    // Recreate PulsedModel to get per-node delay/axis/pulse metadata
+    let pulsed = PulsedModel::new(reference, stream_symbol.clone(), &input_pulse.to_dim())?;
+
+    // Pre-build per-node pulse metadata (keyed by node name, slot 0 only)
+    struct PulseInfo {
+        delay: usize,
+        output_axis: usize,
+        output_pulse: usize,
+        fixed_output_len: usize,
+    }
+    let mut max_delay: usize = 0;
+    let mut pulse_meta: HashMap<String, PulseInfo> = HashMap::new();
+
+    // We need stream_dim to compute fixed_output_len, but stream_dim depends on max_delay.
+    // First pass: find max_delay.
+    for pulsed_node in pulsed.nodes() {
+        if let Ok(fact) = pulsed.outlet_fact(OutletId::new(pulsed_node.id, 0)) {
+            if let Some(stream) = &fact.stream {
+                max_delay = max_delay.max(stream.delay);
+            }
+        }
+    }
+
+    let stream_dim = max_delay + 3 * input_pulse + input_pulse / 2;
+    let concrete_sym_values = SymbolValues::default().with(&stream_symbol, stream_dim as _);
+
+    // Second pass: build full metadata with fixed_output_len
+    for pulsed_node in pulsed.nodes() {
+        if let Ok(fact) = pulsed.outlet_fact(OutletId::new(pulsed_node.id, 0)) {
+            if let Some(stream) = &fact.stream {
+                let output_pulse = fact.pulse().context("no pulse")?.to_usize()?;
+                let fixed_output_len = stream.dim.eval_to_i64(&concrete_sym_values)? as usize;
+                pulse_meta.insert(
+                    pulsed_node.name.clone(),
+                    PulseInfo {
+                        delay: stream.delay,
+                        output_axis: stream.axis,
+                        output_pulse,
+                        fixed_output_len,
+                    },
+                );
+            }
+        }
+    }
+
+    // Generate the fixed input (same seed as compare()'s get_or_make_inputs will use)
+    let concrete_shape: Vec<usize> =
+        ref_input_fact.shape.eval_to_usize(&concrete_sym_values)?.into_owned().into_vec();
+    let concrete_input_fact = ref_input_fact.datum_type.fact(&*concrete_shape);
+    let fixed_input = tract_libcli::tensor::tensor_for_fact(&concrete_input_fact, None, None)?;
+
+    // Run the pulsed model pulse-by-pulse, collecting per-node valid output slices
+    let plan = Arc::new(model.as_ref().clone().into_runnable()?);
+    let mut state = SimpleState::new(&plan)?;
+    let input_shape: TVec<usize> =
+        model_input_fact.shape.iter().map(|d| d.to_usize()).collect::<TractResult<TVec<_>>>()?;
+
+    let mut node_slices: HashMap<String, Vec<Tensor>> = HashMap::new();
+    let mut node_axes: HashMap<String, usize> = HashMap::new();
+    let num_pulses = (stream_dim + max_delay) / input_pulse + 2;
+
+    for i in 0..num_pulses {
+        let mut pulsed_input = ArrayD::from_elem(&*input_shape, f32::NAN);
+        let offset = i * input_pulse;
+        if offset < stream_dim {
+            let count = input_pulse.min(stream_dim - offset);
+            pulsed_input.slice_axis_mut(Axis(input_axis), (0..count).into()).assign(
+                &fixed_input
+                    .to_array_view::<f32>()?
+                    .slice_axis(Axis(input_axis), (offset..offset + count).into()),
+            );
+        }
+        if offset + input_pulse > stream_dim {
+            state.turn_state.resolved_symbols.set(&stream_symbol, stream_dim as _);
+        }
+
+        state.run_plan_with_eval(
+            tvec!(pulsed_input.into_tensor().into()),
+            |session, op_state, node, input| -> TractResult<TVec<TValue>> {
+                let result = tract_core::plan::eval(session, op_state, node, input)?;
+
+                if let Some(info) = pulse_meta.get(&node.name) {
+                    let output_offset = (i + 1) * info.output_pulse;
+                    // Check if this pulse has valid output for this node
+                    if output_offset > info.delay
+                        && output_offset - info.output_pulse < info.delay + info.fixed_output_len
+                    {
+                        let (p_o, count) = if output_offset - info.output_pulse < info.delay {
+                            // Beginning of signal: partial overlap
+                            let count = output_offset - info.delay;
+                            (info.output_pulse - count, count)
+                        } else if output_offset > info.delay + info.fixed_output_len {
+                            // End of signal: partial overlap
+                            let count = info.delay + info.fixed_output_len
+                                - (output_offset - info.output_pulse);
+                            (0, count)
+                        } else {
+                            // Full pulse in valid region
+                            (0, info.output_pulse)
+                        };
+                        let valid = result[0].slice(info.output_axis, p_o, p_o + count)?;
+                        node_slices.entry(node.name.clone()).or_default().push(valid.into_tensor());
+                        node_axes.insert(node.name.clone(), info.output_axis);
+                    }
+                } else if i == 0 && node.outputs.len() == 1 {
+                    // Non-streaming node: capture on first pulse only
+                    node_slices
+                        .entry(node.name.clone())
+                        .or_default()
+                        .push(result[0].clone().into_tensor());
+                }
+
+                Ok(result)
+            },
+        )?;
+    }
+
+    // Stitch: concatenate valid slices per node into full-length tensors
+    let mut all_values: HashMap<String, Vec<TractResult<TValue>>> = HashMap::new();
+    for (name, slices) in &node_slices {
+        if let Some(&axis) = node_axes.get(name) {
+            let stitched = Tensor::stack_tensors(axis, slices)?;
+            all_values.insert(name.clone(), vec![Ok(stitched.into_tvalue())]);
+        } else {
+            all_values.insert(name.clone(), vec![Ok(slices[0].clone().into_tvalue())]);
+        }
+    }
+
+    // Concretize the reference model and delegate to compare()
+    let concrete_ref = Arc::new(reference.clone().concretize_dims(&concrete_sym_values)?);
+    compare(
+        false,
+        &concrete_ref,
+        &all_values,
+        params,
+        output_params,
+        run_params,
+        ("reference", "pulsed"),
+    )
 }
 
 pub fn compare<F, O>(
@@ -279,6 +480,7 @@ pub fn compare<F, O>(
     params: &Parameters,
     output_params: &DisplayParams,
     run_params: &RunParams,
+    labels: (&str, &str),
 ) -> TractResult<()>
 where
     F: Fact + Clone + for<'a> From<&'a Arc<Tensor>> + Hash,
@@ -334,7 +536,8 @@ where
                         node.outputs[slot].fact.to_typed_fact().unwrap(),
                     );
                     let needed_type = clarified_fact.datum_type;
-                    let needed_shape = clarified_fact.shape.eval_to_usize(&session_state.resolved_symbols)?;
+                    let needed_shape =
+                        clarified_fact.shape.eval_to_usize(&session_state.resolved_symbols)?;
 
                     if **needed_shape != *reference.shape() {
                         let Ok(reshaped) = reference.clone().into_shape(&needed_shape) else {
@@ -349,7 +552,7 @@ where
                         if needed_type.unquantized() == reference.datum_type().unquantized() {
                             unsafe { reference.set_datum_type(needed_type) };
                         } else if needed_type.is_float() && reference.datum_type().is_float() {
-                             reference = reference.cast_to_dt(needed_type)?.into_owned();
+                            reference = reference.cast_to_dt(needed_type)?.into_owned();
                         } else {
                             comparison_error = Some(format!("Incompatible type on output {slot} reference is {reference:?}, model expects {:?}.", needed_type));
                             tags.style = Some(Red.into());
@@ -369,8 +572,8 @@ where
                                 "At turn {turn}, wrong value for output {slot}, {e}"
                             ))
                             .to_string()];
-                        msg.push(format!("got     : {:?}", computed));
-                        msg.push(format!("ref     : {:?}", reference));
+                        msg.push(format!("{:<8}: {:?}", labels.0, computed));
+                        msg.push(format!("{:<8}: {:?}", labels.1, reference));
                         tags.sections.push(msg);
                     } else {
                         debug!(
