@@ -89,7 +89,7 @@ impl Hash for Tensor {
         use DatumType::*;
         self.dt.hash(state);
         self.shape.hash(state);
-        self.storage.layout().align().hash(state);
+        self.dense_storage().layout().align().hash(state);
         unsafe {
             match self.dt {
                 Bool => self.as_slice_unchecked::<bool>().hash(state),
@@ -169,6 +169,16 @@ pub fn vector_size() -> usize {
 }
 
 impl Tensor {
+    #[inline]
+    fn dense_storage(&self) -> &DenseStorage {
+        self.storage.as_dense().expect("Non-dense storage")
+    }
+
+    #[inline]
+    fn dense_storage_mut(&mut self) -> &mut DenseStorage {
+        self.storage.as_dense_mut().expect("Non-dense storage")
+    }
+
     /// Create an uninitialized tensor (dt as type paramater).
     #[inline]
     pub unsafe fn uninitialized<T: Datum>(shape: &[usize]) -> TractResult<Tensor> {
@@ -208,7 +218,7 @@ impl Tensor {
         if !tensor.storage.is_empty() {
             if dt == String::datum_type() || dt == Blob::datum_type() {
                 // assumes zero-initialized string and blob are valid
-                tensor.storage.as_bytes_mut().fill(0);
+                tensor.dense_storage_mut().as_bytes_mut().fill(0);
             } else if dt == TDim::datum_type() {
                 unsafe {
                     tensor
@@ -260,8 +270,8 @@ impl Tensor {
                     let v = v.borrow();
                     let len = v.storage.byte_len();
                     std::ptr::copy_nonoverlapping(
-                        v.storage.as_ptr(),
-                        result.storage.as_mut_ptr().offset(offset),
+                        v.dense_storage().as_ptr(),
+                        result.dense_storage_mut().as_mut_ptr().offset(offset),
                         len,
                     );
                     offset += len as isize;
@@ -743,16 +753,16 @@ impl Tensor {
                 let src_start = (stride * src_range.start) as isize;
                 let len = stride * range.len();
                 if len > 0 {
-                    if self.storage.as_ptr() != src.storage.as_ptr() {
+                    if self.dense_storage().as_ptr() != src.dense_storage().as_ptr() {
                         std::ptr::copy_nonoverlapping(
-                            src.storage.as_ptr().offset(src_start),
-                            self.storage.as_mut_ptr().offset(dst_start),
+                            src.dense_storage().as_ptr().offset(src_start),
+                            self.dense_storage_mut().as_mut_ptr().offset(dst_start),
                             len,
                         );
                     } else {
                         std::ptr::copy(
-                            src.storage.as_ptr().offset(src_start),
-                            self.storage.as_mut_ptr().offset(dst_start),
+                            src.dense_storage().as_ptr().offset(src_start),
+                            self.dense_storage_mut().as_mut_ptr().offset(dst_start),
                             len,
                         );
                     }
@@ -895,7 +905,9 @@ impl Tensor {
     /// Transform the data as a `ndarray::Array`.
     pub unsafe fn to_array_view_unchecked<D: Datum>(&self) -> ArrayViewD<'_, D> {
         if self.len() != 0 {
-            unsafe { ArrayViewD::from_shape_ptr(&*self.shape, self.storage.as_ptr() as *const D) }
+            unsafe {
+                ArrayViewD::from_shape_ptr(&*self.shape, self.dense_storage().as_ptr() as *const D)
+            }
         } else {
             ArrayViewD::from_shape(&*self.shape, &[]).unwrap()
         }
@@ -905,7 +917,8 @@ impl Tensor {
     pub unsafe fn to_array_view_mut_unchecked<D: Datum>(&mut self) -> ArrayViewMutD<'_, D> {
         if self.len() != 0 {
             unsafe {
-                ArrayViewMutD::from_shape_ptr(&*self.shape, self.storage.as_mut_ptr() as *mut D)
+                let ptr = self.dense_storage_mut().as_mut_ptr() as *mut D;
+                ArrayViewMutD::from_shape_ptr(&*self.shape, ptr)
             }
         } else {
             ArrayViewMutD::from_shape(&*self.shape, &mut []).unwrap()
@@ -915,17 +928,17 @@ impl Tensor {
     /// Access the data as a pointer.
     pub fn as_ptr<D: Datum>(&self) -> TractResult<*const D> {
         self.check_for_access::<D>()?;
-        Ok(self.storage.as_ptr() as *const D)
+        Ok(self.dense_storage().as_ptr() as *const D)
     }
 
     /// Access the data as a pointer.
     pub unsafe fn as_ptr_unchecked<D: Datum>(&self) -> *const D {
-        self.storage.as_ptr() as *const D
+        self.dense_storage().as_ptr() as *const D
     }
 
     /// Access the data as a pointer.
     pub unsafe fn as_ptr_mut_unchecked<D: Datum>(&mut self) -> *mut D {
-        self.storage.as_mut_ptr() as *mut D
+        self.dense_storage_mut().as_mut_ptr() as *mut D
     }
 
     /// Access the data as a mutable pointer.
@@ -993,7 +1006,7 @@ impl Tensor {
 
     /// Access the data as a scalar.
     pub unsafe fn to_scalar_unchecked<D: Datum>(&self) -> &D {
-        unsafe { &*(self.storage.as_ptr() as *const D) }
+        unsafe { &*(self.dense_storage().as_ptr() as *const D) }
     }
 
     /// Mutable access the data as a scalar.
@@ -1010,15 +1023,15 @@ impl Tensor {
 
     /// Mutable access the data as a scalar.
     pub unsafe fn to_scalar_mut_unchecked<D: Datum>(&mut self) -> &mut D {
-        unsafe { &mut *(self.storage.as_mut_ptr() as *mut D) }
+        unsafe { &mut *(self.dense_storage_mut().as_mut_ptr() as *mut D) }
     }
 
     pub fn as_bytes(&self) -> &[u8] {
-        self.storage.as_bytes()
+        self.dense_storage().as_bytes()
     }
 
     pub fn as_bytes_mut(&mut self) -> &mut [u8] {
-        self.storage.as_bytes_mut()
+        self.dense_storage_mut().as_bytes_mut()
     }
 
     unsafe fn is_uniform_t<T: Datum>(&self) -> bool {
@@ -1394,7 +1407,7 @@ impl Tensor {
                     std::ptr::copy_nonoverlapping(
                         slice.as_ptr() as *const i8,
                         t.as_ptr_mut_unchecked(),
-                        t.storage.layout().size(),
+                        t.dense_storage().layout().size(),
                     );
                 } else {
                     t.as_slice_mut_unchecked::<T>()
@@ -1438,9 +1451,9 @@ impl Tensor {
             let mut tensor = Tensor::uninitialized_dt(self.datum_type(), self.shape()).unwrap();
             if self.len() > 0 {
                 if self.dt.is_copy() {
-                    self.storage.as_ptr().copy_to_nonoverlapping(
+                    self.dense_storage().as_ptr().copy_to_nonoverlapping(
                         tensor.as_bytes_mut().as_mut_ptr(),
-                        self.storage.layout().size(),
+                        self.dense_storage().layout().size(),
                     )
                 } else if self.dt == DatumType::String {
                     tensor
@@ -1586,7 +1599,7 @@ impl Tensor {
     pub fn into_blob(mut self) -> TractResult<Blob> {
         ensure!(self.dt.is_copy());
         let storage = std::mem::replace(&mut self.storage, Box::new(DenseStorage::default()));
-        storage.try_into_blob().context("Storage is not dense")
+        Ok(storage.into_dense().context("Storage is not dense")?.into_blob())
     }
 }
 
