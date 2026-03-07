@@ -573,9 +573,10 @@ mod tests {
         let mut padded_a = Tensor::zero::<f16>(&shape)?;
         padded_a.fill_t(value);
         padded_a
+            .try_as_dense_mut()?
             .to_array_view_mut::<f16>()?
             .slice_axis_move(tract_ndarray::Axis(axis), (0..old_value).into())
-            .assign(&a.to_array_view::<f16>()?);
+            .assign(&a.try_as_dense()?.to_array_view::<f16>()?);
         Ok(padded_a)
     }
     fn run_test_case(
