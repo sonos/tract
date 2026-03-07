@@ -134,7 +134,8 @@ impl OptMaxPool {
         geo: &ConcretePoolGeometry,
     ) -> TractResult<TVec<TValue>> {
         let input_dt = input.datum_type();
-        let input: ArrayViewD<T> = input.to_array_view()?;
+        let input_dense = input.try_as_dense()?;
+        let input: ArrayViewD<T> = input_dense.to_array_view()?;
         let input_ptr = input.as_ptr();
 
         let mut values = unsafe { ArrayD::<T>::uninit(&*geo.output_shape.shape).assume_init() };

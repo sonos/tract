@@ -156,7 +156,8 @@ impl EvalOp for Im2Col {
             if !self.pool_spec.data_format.has_n() {
                 input.insert_axis(0)?;
             }
-            let mut output_view = output.to_array_view_mut::<Opaque>()?;
+            let mut output_dense = output.try_as_dense_mut()?;
+            let mut output_view = output_dense.to_array_view_mut::<Opaque>()?;
             let panel_bytes =
                 geometry.b_pack.single_panel_len(geometry.k) * input.datum_type().size_of();
 
