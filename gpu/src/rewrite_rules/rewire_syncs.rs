@@ -67,13 +67,15 @@ pub fn rewire_sync_after_const(
 
     let host_const = device_const.to_host()?;
     let mut opaque_fact: Option<Box<dyn OpaqueFact>> = None;
-    if let Some(of) = host_const
-        .to_scalar::<Opaque>()
-        .ok()
-        .and_then(|od| od.downcast_ref::<BlobWithFact>())
-        .map(|bwf| bwf.fact.clone())
-    {
-        opaque_fact = Some(of);
+    if let Ok(host_dense) = host_const.try_as_dense() {
+        if let Some(of) = host_dense
+            .to_scalar::<Opaque>()
+            .ok()
+            .and_then(|od| od.downcast_ref::<BlobWithFact>())
+            .map(|bwf| bwf.fact.clone())
+        {
+            opaque_fact = Some(of);
+        }
     }
 
     let mut patch = TypedModelPatch::default();

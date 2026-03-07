@@ -71,7 +71,8 @@ pub fn as_quant_fact<'a>(
         .or_else(|| {
             fact.konst
                 .as_ref()
-                .and_then(|k| k.to_scalar::<Opaque>().ok())
+                .filter(|k| k.datum_type() == Opaque::datum_type() && k.len() == 1)
+                .map(|k| unsafe { k.to_scalar_unchecked::<Opaque>() })
                 .and_then(|o| o.downcast_ref::<BlobWithFact>())
                 .and_then(|bwf| bwf.fact.downcast_ref::<BlockQuantFact>())
                 .and_then(|bqf| if bqf.format.same_as(format) { Some(bqf) } else { None })
@@ -79,18 +80,16 @@ pub fn as_quant_fact<'a>(
 }
 
 pub fn as_q40_tensor(a: &Tensor) -> Option<&BlobWithFact> {
-    a.to_scalar::<Opaque>().ok().and_then(|od| {
-        od.downcast_ref::<BlobWithFact>().and_then(|bwf| {
-            if bwf
-                .fact
-                .downcast_ref::<BlockQuantFact>()
-                .is_some_and(|bqf| bqf.format.same_as(&Q4_0))
-            {
-                Some(bwf)
-            } else {
-                None
-            }
-        })
+    if a.datum_type() != Opaque::datum_type() || a.len() != 1 {
+        return None;
+    }
+    let od = unsafe { a.to_scalar_unchecked::<Opaque>() };
+    od.downcast_ref::<BlobWithFact>().and_then(|bwf| {
+        if bwf.fact.downcast_ref::<BlockQuantFact>().is_some_and(|bqf| bqf.format.same_as(&Q4_0)) {
+            Some(bwf)
+        } else {
+            None
+        }
     })
 }
 

@@ -40,8 +40,9 @@ impl Expansion for Range {
             let v0 = v0.cast_to::<TDim>()?;
             let v1 = v1.cast_to::<TDim>()?;
             let v2 = v2.cast_to::<i64>()?;
-            let out = (v1.to_scalar::<TDim>()?.clone() - v0.to_scalar::<TDim>()?)
-                .divceil(*v2.to_scalar::<i64>()? as _);
+            let out = (v1.try_as_dense()?.to_scalar::<TDim>()?.clone()
+                - v0.try_as_dense()?.to_scalar::<TDim>()?)
+            .divceil(*v2.try_as_dense()?.to_scalar::<i64>()? as _);
             s.equals(&outputs[0].shape[0], out)
         })?;
         Ok(())

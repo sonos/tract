@@ -258,14 +258,16 @@ impl DeviceTensorExt for Tensor {
     }
 
     fn to_device_tensor(&self) -> TractResult<&DeviceTensor> {
-        let opaque = self.to_scalar::<Opaque>()?;
+        self.try_as_dense()?; // verify dense storage
+        let opaque = unsafe { self.to_scalar_unchecked::<Opaque>() };
         opaque.downcast_ref::<DeviceTensor>().ok_or_else(|| {
             anyhow::anyhow!("Could convert opaque tensor to reference on a device tensor")
         })
     }
 
     fn as_device_tensor(&self) -> Option<&DeviceTensor> {
-        let opaque = self.to_scalar::<Opaque>().ok()?;
+        self.try_as_dense().ok()?; // verify dense storage
+        let opaque = unsafe { self.to_scalar_unchecked::<Opaque>() };
         opaque.downcast_ref::<DeviceTensor>()
     }
 }

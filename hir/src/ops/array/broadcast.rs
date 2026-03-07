@@ -39,8 +39,10 @@ impl Expansion for MultiBroadcastTo {
         s.given(&inputs[0].shape, move |s, shape| {
             s.given(&inputs[1].value, move |s, dims| {
                 let dims = dims.cast_to::<TDim>()?;
-                let dims =
-                    tract_core::broadcast::multi_broadcast(&[dims.as_slice::<TDim>()?, &shape])?;
+                let dims = tract_core::broadcast::multi_broadcast(&[
+                    dims.try_as_dense()?.as_slice::<TDim>()?,
+                    &shape,
+                ])?;
                 s.equals(&outputs[0].shape, ShapeFactoid::from(dims))
             })
         })?;
@@ -55,7 +57,12 @@ impl Expansion for MultiBroadcastTo {
     ) -> TractResult<TVec<OutletId>> {
         if let Some(shape) = model.outlet_fact(inputs[1])?.konst.clone() {
             let shape = shape.cast_to::<TDim>()?;
-            self.wire_with_known_target_shape(prefix, model, inputs, shape.as_slice()?)
+            self.wire_with_known_target_shape(
+                prefix,
+                model,
+                inputs,
+                shape.try_as_dense()?.as_slice()?,
+            )
         } else {
             bail!("shape input is variable")
         }
@@ -71,7 +78,12 @@ impl Expansion for MultiBroadcastTo {
     ) -> TractResult<TVec<OutletId>> {
         if let Some(shape) = model.outlet_fact(inputs[1])?.konst.clone() {
             let shape = shape.cast_to::<TDim>()?;
-            self.wire_with_known_target_shape(prefix, model, inputs, shape.as_slice()?)
+            self.wire_with_known_target_shape(
+                prefix,
+                model,
+                inputs,
+                shape.try_as_dense()?.as_slice()?,
+            )
         } else if let Some(shape) = source.outlet_fact(node.id.into())?.shape.concretize() {
             let op = Typed::new(shape.into());
             model.wire_node(prefix, op, &[inputs[0]])

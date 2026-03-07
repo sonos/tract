@@ -72,6 +72,7 @@ impl EvalOp for GeluApproximate {
 
         let pow = if self.fast_impl { 2 } else { 3 };
         let gelu_approx_f32_data = a_f32
+            .try_as_dense()?
             .as_slice::<f32>()?
             .iter()
             .map(|x| 0.5 * x * (1.0 + f32::tanh(sqrt_2_over_pi * (x + 0.044715 * x.powi(pow)))))
