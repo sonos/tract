@@ -52,7 +52,8 @@ impl Expansion for Split13 {
         })?;
         s.given_2(&inputs[0].shape, &inputs[1].value, move |s, shape, splits| {
             let splits = splits.cast_to::<TDim>()?;
-            let splits = splits.as_slice::<TDim>()?;
+            let splits_dense = splits.try_as_dense()?;
+            let splits = splits_dense.as_slice::<TDim>()?;
             let axis = self.axis + if self.axis < 0 { shape.len() as isize } else { 0 };
             for (o, dim) in outputs.iter().zip(splits.iter()) {
                 s.equals(&o.shape[axis as usize], dim)?;
@@ -71,7 +72,12 @@ impl Expansion for Split13 {
             let axis = self.axis
                 + if self.axis < 0 { model.outlet_fact(inputs[0])?.rank() as isize } else { 0 };
             let splits = splits.cast_to::<i64>()?;
-            let splits = splits.as_slice::<i64>()?.iter().map(|i| *i as usize).collect::<Vec<_>>();
+            let splits = splits
+                .try_as_dense()?
+                .as_slice::<i64>()?
+                .iter()
+                .map(|i| *i as usize)
+                .collect::<Vec<_>>();
             let op = tract_hir::ops::array::Split::new(axis, splits.len(), Some(splits));
             return op.wire(prefix, model, &inputs[0..1]);
         }

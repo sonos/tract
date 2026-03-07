@@ -74,7 +74,9 @@ impl CommonRec {
                 bail!("Non uniform seq_len is not supported");
             };
             let seqlen = seqlen.cast_to::<TDim>()?;
-            if seqlen.to_scalar::<TDim>()? != &x_fact.shape[self.batch_first as usize] {
+            if seqlen.try_as_dense()?.to_scalar::<TDim>()?
+                != &x_fact.shape[self.batch_first as usize]
+            {
                 bail!("seq_len only supported for trivial noop case");
             };
         }

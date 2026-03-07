@@ -52,7 +52,7 @@ impl Multinomial {
         });
 
         // shape: [batch_size, class_size]
-        let input = input.to_array_view::<T1>()?;
+        let input = input.try_as_dense()?.to_array_view::<T1>()?;
 
         // ONNX Multinomial inputs are "unnormalized log probabilities".
         // This means that we need to compute the maximum for each batch beforehand,
