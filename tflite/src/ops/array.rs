@@ -107,8 +107,7 @@ fn de_reshape(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
         rctensor1(&options.new_shape().as_ref().unwrap().iter().collect::<Vec<i32>>())
     };
     let shape = shape.cast_to::<TDim>()?;
-    let shape_dense = shape.try_as_dense()?;
-    let shape = shape_dense.as_slice::<TDim>()?;
+    let shape = shape.try_as_dense()?.as_slice::<TDim>()?;
     let mut wire = tvec!(op.inputs[0]);
     let prefix = op.prefix;
     for (ix, axis_op) in to_axis_ops_with_tf_rules(&input_shape, shape)?.into_iter().enumerate() {

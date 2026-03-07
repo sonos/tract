@@ -413,9 +413,10 @@ impl<'a> IntoAst<'a> {
 
         self.tensors.insert(name.clone(), tensor.clone());
         let id = self.scoped_id(&name);
-        let tensor_dense = tensor.try_as_dense()?;
         let shape = if tensor.datum_type().is_opaque() {
-            if let Some(bwf) = tensor_dense.to_scalar::<Opaque>()?.downcast_ref::<BlobWithFact>() {
+            if let Some(bwf) =
+                tensor.try_as_dense()?.to_scalar::<Opaque>()?.downcast_ref::<BlobWithFact>()
+            {
                 let bqf =
                     bwf.fact.downcast_ref::<BlockQuantFact>().context("Expected BlockQuantFacr")?;
                 bqf.shape()

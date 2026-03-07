@@ -43,10 +43,8 @@ impl Range {
     ) -> TractResult<Tensor> {
         unsafe {
             let mut result = Tensor::uninitialized::<T>(&[len])?;
-            let start_dense = start.try_as_dense()?;
-            let mut v = start_dense.to_scalar::<T>()?.clone();
-            let step_dense = step.try_as_dense()?;
-            let step = step_dense.to_scalar::<T>()?;
+            let mut v = start.try_as_dense()?.to_scalar::<T>()?.clone();
+            let step = step.try_as_dense()?.to_scalar::<T>()?;
             {
                 let mut result_dense = result.try_as_dense_mut()?;
                 for i in 0..len {
@@ -88,12 +86,9 @@ impl Range {
         end: &Tensor,
         step: &Tensor,
     ) -> TractResult<usize> {
-        let start_dense = start.try_as_dense()?;
-        let start = start_dense.to_scalar::<T>()?;
-        let end_dense = end.try_as_dense()?;
-        let end = end_dense.to_scalar::<T>()?;
-        let step_dense = step.try_as_dense()?;
-        let step = step_dense.to_scalar::<T>()?;
+        let start = start.try_as_dense()?.to_scalar::<T>()?;
+        let end = end.try_as_dense()?.to_scalar::<T>()?;
+        let step = step.try_as_dense()?.to_scalar::<T>()?;
         Ok(((end.as_() - start.as_()) / (step.as_())).ceil() as usize)
     }
 }
@@ -134,10 +129,8 @@ impl TypedOp for Range {
         ensure!(step.shape.volume().is_one());
         if let (Some(start), Some(end), Some(step)) = (&start.konst, &end.konst, &step.konst) {
             if start.datum_type() == TDim::datum_type() {
-                let start_dense = start.try_as_dense()?;
-                let start = start_dense.to_scalar::<TDim>()?;
-                let end_dense = end.try_as_dense()?;
-                let end = end_dense.to_scalar::<TDim>()?;
+                let start = start.try_as_dense()?.to_scalar::<TDim>()?;
+                let end = end.try_as_dense()?.to_scalar::<TDim>()?;
                 let step = step.cast_to_scalar::<i64>()?;
                 let len = if step < 0 {
                     (start.clone() - end).divceil(-step as usize)

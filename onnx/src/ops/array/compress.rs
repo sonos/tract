@@ -62,8 +62,7 @@ impl EvalOp for Compress {
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (input, conds) = args_2!(inputs);
-        let conds_dense = conds.try_as_dense()?;
-        let conds = conds_dense.as_slice()?;
+        let conds = conds.try_as_dense()?.as_slice()?;
         let compressed_dim = conds.iter().filter(|c| **c).count();
         let (shape, axis) = if let Some(axis) = self.axis {
             let axis = if axis < 0 { axis + input.rank() as isize } else { axis } as usize;

@@ -219,12 +219,13 @@ impl TypedOp for DequantizeLinearF32 {
                     };
                     let output =
                         SimplePlan::new(adhoc_model)?.run(tvec!(input.into_tvalue()))?.remove(0);
-                    let output_dense = output.try_as_dense()?;
                     let table: &[u8] = match dt {
                         DatumType::I8 => unsafe {
-                            std::mem::transmute::<&[i8], &[u8]>(output_dense.as_slice::<i8>()?)
+                            std::mem::transmute::<&[i8], &[u8]>(
+                                output.try_as_dense()?.as_slice::<i8>()?,
+                            )
                         },
-                        DatumType::U8 => output_dense.as_slice::<u8>()?,
+                        DatumType::U8 => output.try_as_dense()?.as_slice::<u8>()?,
                         _ => unreachable!(),
                     };
                     let op = lookup_table((tract_linalg::ops().lut_u8)(table));

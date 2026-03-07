@@ -29,8 +29,7 @@ pub fn output_shape<D: DimLike>(
 
 pub fn dequant_inputs(acc: DatumType, input: TVec<TValue>) -> TractResult<TVec<TValue>> {
     input.into_iter().map(|i| if i.datum_type().is_number() { Ok(i) } else {
-        let i_dense = i.try_as_dense()?;
-        let bwfs = i_dense.as_slice::<Opaque>()?.iter().map(|o| o.downcast_ref::<BlobWithFact>()).collect::<Option<Vec<&BlobWithFact>>>().context("Numbers and BlobWithFact are the only supported input for unoptimized einsum")?;
+        let bwfs = i.try_as_dense()?.as_slice::<Opaque>()?.iter().map(|o| o.downcast_ref::<BlobWithFact>()).collect::<Option<Vec<&BlobWithFact>>>().context("Numbers and BlobWithFact are the only supported input for unoptimized einsum")?;
         let bqfs = bwfs.iter().map(|bwf| bwf.fact.downcast_ref::<BlockQuantFact>()).collect::<Option<Vec<&BlockQuantFact>>>().context("BlobWithFact are not all BlockQuantFacts")?;
         let mut unpacked:Vec<Tensor> = if acc.is::<f16>() {
              bwfs.iter().zip(&bqfs).map(|(bwf, bqf)| bqf.format.dequant_f16(&bwf.value)).collect::<TractResult<_>>()?

@@ -90,8 +90,7 @@ pub struct TreeEnsembleData {
 
 impl Display for TreeEnsembleData {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let trees_dense = self.trees.try_as_dense().unwrap();
-        let tree = trees_dense.as_slice::<u32>().unwrap();
+        let tree = self.trees.try_as_dense().unwrap().as_slice::<u32>().unwrap();
         for t in 0..tree.len() {
             let last_node = tree.get(t + 1).cloned().unwrap_or(self.nodes.len() as u32 / 5);
             writeln!(f, "Tree {}, nodes {:?}", t, tree[t]..last_node)?;
