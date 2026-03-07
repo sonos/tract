@@ -46,16 +46,22 @@ fn bench_to_nanos<
     )
     .unwrap();
 
-    let mut v = a.to_array_view_mut::<f32>().unwrap();
+    let mut a_dense = a.try_as_dense_mut().unwrap();
+    let mut v = a_dense.to_array_view_mut::<f32>().unwrap();
     v += 1.0;
+    drop(v);
+    drop(a_dense);
     let mut b = Tensor::zero_aligned::<T>(
         &[(k + K::end_padding_packed_b()) * n],
         K::alignment_bytes_packed_b(),
     )
     .unwrap();
 
-    let mut v = b.to_array_view_mut::<f32>().unwrap();
+    let mut b_dense = b.try_as_dense_mut().unwrap();
+    let mut v = b_dense.to_array_view_mut::<f32>().unwrap();
     v += 1.0;
+    drop(v);
+    drop(b_dense);
     let mut c = Tensor::zero::<T>(&[n, m]).unwrap();
 
     let ops = unsafe {

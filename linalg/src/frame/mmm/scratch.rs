@@ -127,12 +127,12 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
             offset = offset.next_multiple_of(&align);
             let ker_spec = match spec {
                 FS::BinScalar(t, op) => match op {
-                    BinOp::Min => FKS::ScalarMin(*t.to_scalar()?),
-                    BinOp::Max => FKS::ScalarMax(*t.to_scalar()?),
-                    BinOp::Mul => FKS::ScalarMul(*t.to_scalar()?),
-                    BinOp::Add => FKS::ScalarAdd(*t.to_scalar()?),
-                    BinOp::Sub => FKS::ScalarSub(*t.to_scalar()?),
-                    BinOp::SubF => FKS::ScalarSubF(*t.to_scalar()?),
+                    BinOp::Min => FKS::ScalarMin(*t.try_as_dense()?.to_scalar()?),
+                    BinOp::Max => FKS::ScalarMax(*t.try_as_dense()?.to_scalar()?),
+                    BinOp::Mul => FKS::ScalarMul(*t.try_as_dense()?.to_scalar()?),
+                    BinOp::Add => FKS::ScalarAdd(*t.try_as_dense()?.to_scalar()?),
+                    BinOp::Sub => FKS::ScalarSub(*t.try_as_dense()?.to_scalar()?),
+                    BinOp::SubF => FKS::ScalarSubF(*t.try_as_dense()?.to_scalar()?),
                 },
                 FS::ShiftLeft(s) => FKS::ShiftLeft(*s),
                 FS::RoundingShiftRight(s, rp) => FKS::RoundingShiftRight(*s, *rp),
@@ -162,7 +162,7 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                     offset += store.item_size * ker.mr() * ker.nr();
                     FusedKerSpec::Done
                 }
-                FS::LeakyRelu(t) => FKS::LeakyRelu(*t.to_scalar()?),
+                FS::LeakyRelu(t) => FKS::LeakyRelu(*t.try_as_dense()?.to_scalar()?),
                 FS::AddMatMul { a, b, packing } => {
                     let mut ld = ld(ix, self.ker_specs.len(), offset);
                     offset += std::mem::size_of::<AddMatMulTemp>();
