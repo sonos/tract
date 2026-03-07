@@ -152,7 +152,8 @@ impl Softmax {
         }
 
         let mut output = input.into_tensor();
-        let mut view = output.to_array_view_mut::<T>()?;
+        let mut output_dense = output.try_as_dense_mut()?;
+        let mut view = output_dense.to_array_view_mut::<T>()?;
 
         for it_coords in tract_ndarray::indices(&*iterating_shape) {
             let mut view = view.view_mut();
