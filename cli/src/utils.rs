@@ -36,8 +36,10 @@ pub fn check_outputs(got: &[Vec<TValue>], params: &Parameters) -> TractResult<()
         let props = params.tract_model.properties();
 
         let got: TValue = if got[ix].len() > 1 && props.get("pulse.output_axes").is_some() {
-            let axis = props.get("pulse.output_axes").unwrap().as_slice::<i64>()?[ix] as usize;
-            let delay = props.get("pulse.delay").unwrap().as_slice::<i64>()?[ix] as usize;
+            let axis = props.get("pulse.output_axes").unwrap().try_as_dense()?.as_slice::<i64>()?
+                [ix] as usize;
+            let delay =
+                props.get("pulse.delay").unwrap().try_as_dense()?.as_slice::<i64>()?[ix] as usize;
             let stacked = Tensor::stack_tensors(axis, &got[ix])?;
             stacked.slice(axis, delay, delay + exp.shape()[axis])?.into()
         } else {
@@ -106,7 +108,7 @@ pub fn check_inferred(got: &[InferenceFact], expected: &[InferenceFact]) -> Trac
 
 pub fn clarify_tvalue(t: &TValue) -> TractResult<TValue> {
     if t.datum_type().is_opaque() && t.volume() == 1 {
-        if let Some(clarified) = t.to_scalar::<Opaque>()?.clarify_to_tensor()? {
+        if let Some(clarified) = t.try_as_dense()?.to_scalar::<Opaque>()?.clarify_to_tensor()? {
             return Ok(clarified.into_tvalue());
         }
     }

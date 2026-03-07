@@ -30,7 +30,7 @@ impl Pad {
             })
             .collect();
         let mut index_in_input = vec![0; input.rank()];
-        let input = input.to_array_view::<T>()?;
+        let input = input.try_as_dense()?.to_array_view::<T>()?;
         let result = Array::from_shape_fn(shape, |index| {
             for i in 0..input.ndim() {
                 if index[i] < paddings[(i, 0)] as usize
@@ -62,7 +62,7 @@ impl EvalOp for Pad {
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (input, paddings) = args_2!(inputs);
-        let paddings = paddings.to_array_view::<i32>()?.into_dimensionality()?;
+        let paddings = paddings.try_as_dense()?.to_array_view::<i32>()?.into_dimensionality()?;
         Ok(tvec![dispatch_copy!(Self::compute_t(input.datum_type())(&input, paddings, None))?])
     }
 }

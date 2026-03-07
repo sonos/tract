@@ -105,9 +105,9 @@ impl EvalOp for FlashSdpaOp {
         let input_dt = q.datum_type();
 
         let (q, k, v) = (q.cast_to::<f32>()?, k.cast_to::<f32>()?, v.cast_to::<f32>()?);
-        let mut q = q.to_array_view::<f32>()?;
-        let mut k = k.to_array_view::<f32>()?;
-        let mut v = v.to_array_view::<f32>()?;
+        let mut q = q.try_as_dense()?.to_array_view::<f32>()?;
+        let mut k = k.try_as_dense()?.to_array_view::<f32>()?;
+        let mut v = v.try_as_dense()?.to_array_view::<f32>()?;
 
         let is_3d_case = q.ndim() == 3;
 

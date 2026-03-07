@@ -140,7 +140,7 @@ fn ser_conv(
         // 0 1 2 3  4  5  6  7  8
         // x w b x0 xs k0 ks y0 ys
         let k0_tract = facts[5].konst.as_ref().unwrap().cast_to_scalar::<i32>()? as i64;
-        let kscale = facts[6].konst.as_ref().unwrap().as_slice::<f32>()?;
+        let kscale = facts[6].konst.as_ref().unwrap().try_as_dense()?.as_slice::<f32>()?;
         let per_channel = !kscale.iter().all_equal();
         if per_channel {
             let kernel = model

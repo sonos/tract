@@ -288,7 +288,7 @@ impl TypedFact {
             }
             if let Some(bqf) = self.opaque_fact().and_then(|of| of.downcast_ref::<BlockQuantFact>())
             {
-                for o in k.as_slice::<Opaque>().unwrap() {
+                for o in k.try_as_dense()?.as_slice::<Opaque>()? {
                     ensure!(o.is::<BlobWithFact>());
                     ensure!(
                         o.downcast_ref::<BlobWithFact>()

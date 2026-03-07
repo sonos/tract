@@ -79,11 +79,12 @@ bin_to_super_type!(mul, Mul,
                         (a.datum_type(), b.datum_type(), c_dt)
                     {
                            let multiplier = a_scale  * b_scale * (1.0/ c_scale);
-                           let a = a.to_array_view::<u8>()?;
-                           let b = b.to_array_view::<u8>()?;
+                           let a = a.try_as_dense()?.to_array_view::<u8>()?;
+                           let b = b.try_as_dense()?.to_array_view::<u8>()?;
                            let c_shape = crate::broadcast::multi_broadcast(&[a.shape(), b.shape()]).context("no broadcast solution")?;
                            let mut c = Tensor::zero_dt(c_dt, &c_shape)?;
-                           let view = c.to_array_view_mut::<u8>()?;
+                           let mut c_dense = c.try_as_dense_mut()?;
+                           let view = c_dense.to_array_view_mut::<u8>()?;
                            crate::ndarray::Zip::from(view)
                                .and_broadcast(a)
                                .and_broadcast(b)
@@ -98,10 +99,11 @@ bin_to_super_type!(mul, Mul,
                    out_of_place: |c:&mut Tensor, a:&Tensor, b: &Tensor| -> TractResult<bool> {
                        if c.datum_type() == TDim::datum_type() &&
                            a.datum_type() == TDim::datum_type() && b.datum_type() == TDim::datum_type() {
-                               let a = a.to_array_view::<TDim>()?;
+                               let a = a.try_as_dense()?.to_array_view::<TDim>()?;
                                let b = b.cast_to::<i32>()?;
-                               let b = b.to_array_view::<i32>()?;
-                               let c = c.to_array_view_mut::<TDim>()?;
+                               let b = b.try_as_dense()?.to_array_view::<i32>()?;
+                               let mut c_dense = c.try_as_dense_mut()?;
+                               let c = c_dense.to_array_view_mut::<TDim>()?;
                                crate::ndarray::Zip::from(c).and_broadcast(a).and_broadcast(b).for_each(|c,a,b| *c = a.clone() * *b);
                                Ok(true)
                            }
@@ -109,9 +111,10 @@ bin_to_super_type!(mul, Mul,
                            match c.datum_type() {
                                DatumType::QI8(params) => {
                                    let (zp, scale) = params.zp_scale();
-                                   let a = a.to_array_view::<i8>()?;
-                                   let b = b.to_array_view::<i8>()?;
-                                   let c = c.to_array_view_mut::<i8>()?;
+                                   let a = a.try_as_dense()?.to_array_view::<i8>()?;
+                                   let b = b.try_as_dense()?.to_array_view::<i8>()?;
+                                   let mut c_dense = c.try_as_dense_mut()?;
+                                   let c = c_dense.to_array_view_mut::<i8>()?;
                                    crate::ndarray::Zip::from(c)
                                        .and_broadcast(a)
                                        .and_broadcast(b)
@@ -120,9 +123,10 @@ bin_to_super_type!(mul, Mul,
                                }
                                DatumType::QU8(params) => {
                                    let (zp, scale) = params.zp_scale();
-                                   let a = a.to_array_view::<u8>()?;
-                                   let b = b.to_array_view::<u8>()?;
-                                   let c = c.to_array_view_mut::<u8>()?;
+                                   let a = a.try_as_dense()?.to_array_view::<u8>()?;
+                                   let b = b.try_as_dense()?.to_array_view::<u8>()?;
+                                   let mut c_dense = c.try_as_dense_mut()?;
+                                   let c = c_dense.to_array_view_mut::<u8>()?;
                                    crate::ndarray::Zip::from(c)
                                        .and_broadcast(a)
                                        .and_broadcast(b)
@@ -148,14 +152,15 @@ declutter: declutter_div,
 eval_override: |a:TValue, b: TValue, c_dt: DatumType| -> TractResult<Tensor> {
     if
         a.datum_type() == TDim::datum_type() && b.datum_type() == TDim::datum_type() {
-            let a = a.to_array_view::<TDim>()?;
-            let b = b.to_array_view::<TDim>()?;
+            let a = a.try_as_dense()?.to_array_view::<TDim>()?;
+            let b = b.try_as_dense()?.to_array_view::<TDim>()?;
             let c_shape = crate::broadcast::multi_broadcast(&[a.shape(), b.shape()]).context("no broadcast solution")?;
             unsafe {
                 let a = a.broadcast(&*c_shape).unwrap();
                 let b = b.broadcast(&*c_shape).unwrap();
                 let mut c = Tensor::uninitialized_dt(DatumType::TDim, &c_shape)?;
-                let mut view = c.to_array_view_mut::<TDim>()?;
+                let mut c_dense = c.try_as_dense_mut()?;
+                let mut view = c_dense.to_array_view_mut::<TDim>()?;
                 for coords in crate::ndarray::indices(&*c_shape) {
                     let (p, q) = a[&coords].maybe_div(&b[&coords])?;
                     view[&coords] = p/q;
@@ -168,11 +173,12 @@ eval_override: |a:TValue, b: TValue, c_dt: DatumType| -> TractResult<Tensor> {
                 (a.datum_type(), b.datum_type(), c_dt) {
 
                let multiplier = a_scale / (b_scale * c_scale);
-                let a = a.to_array_view::<u8>()?;
-                let b = b.to_array_view::<u8>()?;
+                let a = a.try_as_dense()?.to_array_view::<u8>()?;
+                let b = b.try_as_dense()?.to_array_view::<u8>()?;
                 let c_shape = crate::broadcast::multi_broadcast(&[a.shape(), b.shape()]).context("no broadcast solution")?;
                 let mut c = Tensor::zero_dt(c_dt, &c_shape)?;
-                let view = c.to_array_view_mut::<u8>()?;
+                let mut c_dense = c.try_as_dense_mut()?;
+                let view = c_dense.to_array_view_mut::<u8>()?;
                 crate::ndarray::Zip::from(view)
                     .and_broadcast(a)
                     .and_broadcast(b)
@@ -192,17 +198,18 @@ neutral_element: 1,
 out_of_place: |c:&mut Tensor, a:&Tensor, b: &Tensor| -> TractResult<bool> {
     if c.datum_type() == TDim::datum_type() &&
         a.datum_type() == TDim::datum_type() && b.datum_type() == TDim::datum_type() {
-            let a = a.to_array_view::<TDim>()?;
+            let a = a.try_as_dense()?.to_array_view::<TDim>()?;
             let b = b.cast_to::<i32>()?;
-            let b = b.to_array_view::<i32>()?;
-            let c = c.to_array_view_mut::<TDim>()?;
+            let b = b.try_as_dense()?.to_array_view::<i32>()?;
+            let mut c_dense = c.try_as_dense_mut()?;
+            let c = c_dense.to_array_view_mut::<TDim>()?;
             crate::ndarray::Zip::from(c).and_broadcast(a).and_broadcast(b).for_each(|c,a,b| *c = a.clone() / *b);
             Ok(true)
         } else if c.datum_type().is_quantized() || b.datum_type().is_quantized() || a.datum_type().is_quantized() {
             let a_f32 = a.cast_to::<f32>()?;
-            let a_f32 = a_f32.to_array_view::<f32>()?;
+            let a_f32 = a_f32.try_as_dense()?.to_array_view::<f32>()?;
             let b_f32 = b.cast_to::<f32>()?;
-            let b_f32 = b_f32.to_array_view::<f32>()?;
+            let b_f32 = b_f32.try_as_dense()?.to_array_view::<f32>()?;
             let c_f32 = &a_f32 / &b_f32;
             *c = c_f32.into_tensor().cast_to_dt(c.datum_type())?.into_owned();
             Ok(true)
@@ -218,13 +225,14 @@ bin_to_super_type!(rem, Rem,
                                       eval_override: |a:TValue, b: TValue, c_dt: DatumType| -> TractResult<Tensor> {
                                           if
                                               a.datum_type() == TDim::datum_type() && b.datum_type() == TDim::datum_type() {
-                                                  let a = a.to_array_view::<TDim>()?;
+                                                  let a = a.try_as_dense()?.to_array_view::<TDim>()?;
                                                   let b = b.cast_to::<i32>()?;
-                                                  let b = b.to_array_view::<i32>()?;
+                                                  let b = b.try_as_dense()?.to_array_view::<i32>()?;
                                                   let c_shape = crate::broadcast::multi_broadcast(&[a.shape(), b.shape()]).context("no broadcast solution")?;
                                                   unsafe {
                                                       let mut c = Tensor::uninitialized_dt(DatumType::TDim, &c_shape)?;
-                                                      let view = c.to_array_view_mut::<TDim>()?;
+                                                      let mut c_dense = c.try_as_dense_mut()?;
+                                                      let view = c_dense.to_array_view_mut::<TDim>()?;
                                                       crate::ndarray::Zip::from(view).and_broadcast(a).and_broadcast(b).for_each(|c,a,b| *c = a.clone() % *b);
                                                       Ok(c)
                                                   }
@@ -235,10 +243,11 @@ bin_to_super_type!(rem, Rem,
                                       out_of_place: |c:&mut Tensor, a:&Tensor, b: &Tensor| -> TractResult<bool> {
                                           if c.datum_type() == TDim::datum_type() &&
                                               a.datum_type() == TDim::datum_type() && b.datum_type() == TDim::datum_type() {
-                                                  let a = a.to_array_view::<TDim>()?;
+                                                  let a = a.try_as_dense()?.to_array_view::<TDim>()?;
                                                   let b = b.cast_to::<i32>()?;
-                                                  let b = b.to_array_view::<i32>()?;
-                                                  let c = c.to_array_view_mut::<TDim>()?;
+                                                  let b = b.try_as_dense()?.to_array_view::<i32>()?;
+                                                  let mut c_dense = c.try_as_dense_mut()?;
+                                                  let c = c_dense.to_array_view_mut::<TDim>()?;
                                                   crate::ndarray::Zip::from(c).and_broadcast(a).and_broadcast(b).for_each(|c,a,b| *c = a.clone() % *b);
                                                   Ok(true)
                                               } else {
@@ -271,12 +280,13 @@ bin_to_super_type!(max, Max,
                                 (&a, &a_zp, &a_scale, &b, &b_zp, &b_scale)
                             };
                             if e.is_uniform() { // may be relu or any scalar
-                                let e = e.cast_to::<u8>()?.as_slice::<u8>()?[0];
+                                let e = e.cast_to::<u8>()?.try_as_dense()?.as_slice::<u8>()?[0];
                                 let e_val_as_d_aligned: i32 = scale_by(e as i32 - e_zp, e_scale / d_scale);
                                 let multiplier = d_scale  * (1.0/ c_scale);
-                                let d = d.to_array_view::<u8>()?;
+                                let d = d.try_as_dense()?.to_array_view::<u8>()?;
                                 let mut c = Tensor::zero_dt(c_dt, d.shape())?;
-                                let view = c.to_array_view_mut::<u8>()?;
+                                let mut c_dense = c.try_as_dense_mut()?;
+                                let view = c_dense.to_array_view_mut::<u8>()?;
                                 crate::ndarray::Zip::from(view)
                                     .and_broadcast(d)
                                     .for_each(|c,d| {

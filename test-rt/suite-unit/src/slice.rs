@@ -42,7 +42,12 @@ impl Test for SliceProblem {
         approx: Approximation,
     ) -> infra::TestResult {
         let mut input = Tensor::zero::<f32>(&self.input_shape)?;
-        input.as_slice_mut::<f32>()?.iter_mut().enumerate().for_each(|(ix, x)| *x = ix as f32);
+        input
+            .try_as_dense_mut()?
+            .as_slice_mut::<f32>()?
+            .iter_mut()
+            .enumerate()
+            .for_each(|(ix, x)| *x = ix as f32);
         let reference = input.slice(
             self.op.axis,
             self.op.start.to_usize().unwrap(),

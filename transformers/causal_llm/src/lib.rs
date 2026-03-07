@@ -200,8 +200,13 @@ impl CausalLlmState {
 
         let start_at = self.seq.len().saturating_sub(self.config.repeat_last_n);
 
-        let mut last_token_logits =
-            output.cast_to::<f32>()?.as_slice::<f32>()?.iter().copied().collect_vec();
+        let mut last_token_logits = output
+            .cast_to::<f32>()?
+            .try_as_dense()?
+            .as_slice::<f32>()?
+            .iter()
+            .copied()
+            .collect_vec();
 
         apply_repeat_penalty(
             last_token_logits.as_mut_slice(),

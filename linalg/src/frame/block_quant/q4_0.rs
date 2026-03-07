@@ -340,7 +340,7 @@ mod tests {
         }
         let quant = b.quant_f32(&input).unwrap();
         let result = b.dequant_f32(&quant).unwrap();
-        let view = &result.as_slice::<f32>().unwrap()[..data.len()];
+        let view = &result.try_as_dense().unwrap().as_slice::<f32>().unwrap()[..data.len()];
         assert_eq!(data, view);
     }
 
@@ -351,7 +351,7 @@ mod tests {
         }
         let quant = b.quant_f16(&input).unwrap();
         let result = b.dequant_f16(&quant).unwrap();
-        let view = &result.as_slice::<f16>().unwrap();
+        let view = &result.try_as_dense().unwrap().as_slice::<f16>().unwrap();
         assert_eq!(&input, view);
     }
 
@@ -415,12 +415,13 @@ mod tests {
         let weights_orig =
             Array2::from_shape_fn((m, k), |(m, k)| ((m * 31 + k * 17) % 20) as f32 - 10.)
                 .into_tensor();
-        let weights_f32 =
-            q.dequant_f32(&q.quant_f32(weights_orig.as_slice::<f32>()?)?)?.into_shape(&[m, k])?;
+        let weights_f32 = q
+            .dequant_f32(&q.quant_f32(weights_orig.try_as_dense()?.as_slice::<f32>()?)?)?
+            .into_shape(&[m, k])?;
         let packer = PackedFormat::new(f32::datum_type(), r, 128);
         let packed_f32 = packer.pack_tensor(&weights_f32, 1, 0)?;
 
-        let q4 = q.quant_f32(weights_f32.as_slice::<f32>()?)?;
+        let q4 = q.quant_f32(weights_f32.try_as_dense()?.as_slice::<f32>()?)?;
         let packed_q4 = q.pack(&q4, k, r, zip, scales_at_end)?;
 
         for panel in 0..packed_f32.panels_count() {
@@ -434,7 +435,7 @@ mod tests {
                     panel,
                     panel_q4.as_bytes_mut().as_mut_ptr(),
                 )?;
-                assert_eq!(panel_q4.as_slice::<f32>()?, panel_f32);
+                assert_eq!(panel_q4.try_as_dense()?.as_slice::<f32>()?, panel_f32);
             }
         }
         Ok(())
@@ -466,12 +467,13 @@ mod tests {
         let weights_orig =
             Array2::from_shape_fn((m, k), |(m, k)| ((m * 31 + k * 17) % 20) as f32 - 10.)
                 .into_tensor();
-        let weights_f32 =
-            q.dequant_f32(&q.quant_f32(weights_orig.as_slice::<f32>()?)?)?.into_shape(&[m, k])?;
+        let weights_f32 = q
+            .dequant_f32(&q.quant_f32(weights_orig.try_as_dense()?.as_slice::<f32>()?)?)?
+            .into_shape(&[m, k])?;
         let packer = PackedFormat::new(f32::datum_type(), r, 128);
         let packed_f32 = packer.pack_tensor(&weights_f32, 1, 0)?;
 
-        let q4 = q.quant_f32(weights_f32.as_slice::<f32>()?)?;
+        let q4 = q.quant_f32(weights_f32.try_as_dense()?.as_slice::<f32>()?)?;
         let packed_q4 = q.pack(&q4, k, r, zip, scales_at_end)?;
 
         for row in 0..packed_f32.mn() {

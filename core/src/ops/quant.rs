@@ -81,9 +81,10 @@ impl DequantizeLinearF32 {
     fn eval_t<T: Datum + AsPrimitive<i32>>(&self, input: &Tensor) -> TractResult<Tensor> {
         let mut output = unsafe { Tensor::uninitialized::<f32>(input.shape())? };
         input
+            .try_as_dense()?
             .as_slice::<T>()?
             .iter()
-            .zip(output.as_slice_mut::<f32>()?.iter_mut())
+            .zip(output.try_as_dense_mut()?.as_slice_mut::<f32>()?.iter_mut())
             .for_each(|(x, y)| *y = (x.as_() - self.zero_point) as f32 * self.scale);
         Ok(output)
     }
@@ -220,9 +221,11 @@ impl TypedOp for DequantizeLinearF32 {
                         SimplePlan::new(adhoc_model)?.run(tvec!(input.into_tvalue()))?.remove(0);
                     let table: &[u8] = match dt {
                         DatumType::I8 => unsafe {
-                            std::mem::transmute::<&[i8], &[u8]>(output.as_slice::<i8>()?)
+                            std::mem::transmute::<&[i8], &[u8]>(
+                                output.try_as_dense()?.as_slice::<i8>()?,
+                            )
                         },
-                        DatumType::U8 => output.as_slice::<u8>()?,
+                        DatumType::U8 => output.try_as_dense()?.as_slice::<u8>()?,
                         _ => unreachable!(),
                     };
                     let op = lookup_table((tract_linalg::ops().lut_u8)(table));
@@ -293,7 +296,7 @@ impl crate::ops::binary::BinMiniOp for Scale {
 
     fn eval_out_of_place(&self, c: &mut Tensor, a: &Tensor, b: &Tensor) -> TractResult<()> {
         let a = a.cast_to::<f32>()?;
-        let a = a.to_array_view::<f32>()?;
+        let a = a.try_as_dense()?.to_array_view::<f32>()?;
         unsafe fn eval_out_of_place_t<T: Datum + AsPrimitive<f32>>(
             c: &mut Tensor,
             a: &ndarray::ArrayViewD<f32>,
@@ -313,8 +316,9 @@ impl crate::ops::binary::BinMiniOp for Scale {
     }
 
     fn eval_in_a(&self, a: &mut Tensor, b: &Tensor) -> TractResult<()> {
-        let a = a.to_array_view_mut::<f32>()?;
-        let b = b.to_array_view::<f32>()?;
+        let mut a_dense = a.try_as_dense_mut()?;
+        let a = a_dense.to_array_view_mut::<f32>()?;
+        let b = b.try_as_dense()?.to_array_view::<f32>()?;
         ndarray::Zip::from(a).and_broadcast(b).for_each(|a, b| *a = scale_by(*b, *a));
         Ok(())
     }
@@ -390,9 +394,10 @@ impl ElementWiseMiniOp for OffsetI8asU8 {
         let output_type = out_dt.unwrap_or(self.output_type(t.datum_type()).unwrap());
         let mut dst = unsafe { Tensor::uninitialized_dt(output_type, t.shape())? };
         if t.datum_type().unquantized() == i8::datum_type() {
-            t.as_slice::<i8>()?
+            t.try_as_dense()?
+                .as_slice::<i8>()?
                 .iter()
-                .zip(dst.as_slice_mut::<u8>()?.iter_mut())
+                .zip(dst.try_as_dense_mut()?.as_slice_mut::<u8>()?.iter_mut())
                 .for_each(|(x, y)| *y = offset_i8_as_u8_elementwise(*x));
             return Ok(dst);
         }
@@ -430,9 +435,10 @@ impl ElementWiseMiniOp for OffsetU8asI8 {
         let output_type = out_dt.unwrap_or(self.output_type(t.datum_type()).unwrap());
         let mut dst = unsafe { Tensor::uninitialized_dt(output_type, t.shape())? };
         if t.datum_type().unquantized() == u8::datum_type() {
-            t.as_slice::<u8>()?
+            t.try_as_dense()?
+                .as_slice::<u8>()?
                 .iter()
-                .zip(dst.as_slice_mut::<i8>()?.iter_mut())
+                .zip(dst.try_as_dense_mut()?.as_slice_mut::<i8>()?.iter_mut())
                 .for_each(|(x, y)| *y = offset_u8_as_i8_elementwise(*x));
             return Ok(dst);
         }

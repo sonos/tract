@@ -201,8 +201,11 @@ pub mod test {
                 .cast_to_dt(from.dt)?
                 .into_owned();
         let packed_orig = from.prepare_tensor(&weights_orig, 1, 0)?;
-        let packed_orig =
-            packed_orig.to_scalar::<Opaque>()?.downcast_ref::<Box<dyn MMMInputValue>>().unwrap();
+        let packed_orig = packed_orig
+            .try_as_dense()?
+            .to_scalar::<Opaque>()?
+            .downcast_ref::<Box<dyn MMMInputValue>>()
+            .unwrap();
         let packed_orig = packed_orig.downcast_ref::<EagerPackedInput>().unwrap();
 
         for panel in 0..panels {
@@ -241,17 +244,17 @@ pub mod test {
                 .into_owned();
         let weights = if to.dt == f32::datum_type() {
             from.bq
-                .dequant_f32(&from.bq.quant_f32(weights_orig.as_slice::<f32>()?)?)?
+                .dequant_f32(&from.bq.quant_f32(weights_orig.try_as_dense()?.as_slice::<f32>()?)?)?
                 .into_shape(&[m, k])?
         } else {
             from.bq
-                .dequant_f16(&from.bq.quant_f16(weights_orig.as_slice::<f16>()?)?)?
+                .dequant_f16(&from.bq.quant_f16(weights_orig.try_as_dense()?.as_slice::<f16>()?)?)?
                 .into_shape(&[m, k])?
         };
         let block_quant = if to.dt == f32::datum_type() {
-            from.bq.quant_f32(weights.as_slice::<f32>()?)?
+            from.bq.quant_f32(weights.try_as_dense()?.as_slice::<f32>()?)?
         } else {
-            from.bq.quant_f16(weights.as_slice::<f16>()?)?
+            from.bq.quant_f16(weights.try_as_dense()?.as_slice::<f16>()?)?
         };
         let packed_block_quant =
             from.bq.pack(&block_quant, k, from.r, from.zip, from.scales_at_end)?;
@@ -281,15 +284,15 @@ pub mod test {
         if tested_panel != reference_panel {
             if reference_panel.datum_type() == f32::datum_type() {
                 crate::frame::mmm::tests::display_error(
-                    tested_panel.as_slice::<f32>().unwrap(),
-                    reference_panel.as_slice::<f32>().unwrap(),
+                    tested_panel.try_as_dense().unwrap().as_slice::<f32>().unwrap(),
+                    reference_panel.try_as_dense().unwrap().as_slice::<f32>().unwrap(),
                     r,
                     k,
                 );
             } else {
                 crate::frame::mmm::tests::display_error(
-                    tested_panel.as_slice::<f16>().unwrap(),
-                    reference_panel.as_slice::<f16>().unwrap(),
+                    tested_panel.try_as_dense().unwrap().as_slice::<f16>().unwrap(),
+                    reference_panel.try_as_dense().unwrap().as_slice::<f16>().unwrap(),
                     r,
                     k,
                 );

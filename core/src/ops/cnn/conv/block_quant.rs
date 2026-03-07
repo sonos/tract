@@ -31,7 +31,7 @@ impl EvalOp for BlockQuantIntoShape {
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let mut input = args_1!(inputs).into_tensor();
-        for o in input.as_slice_mut::<Opaque>()? {
+        for o in input.try_as_dense_mut()?.as_slice_mut::<Opaque>()? {
             let old = o.0.downcast_ref::<BlobWithFact>().context("Expects only BlobWithFact")?;
             let bqf =
                 old.fact.downcast_ref::<BlockQuantFact>().context("Expects only BlockQuantFact")?;
@@ -101,6 +101,7 @@ impl EvalOp for SplitGroupBlockQuant {
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         let bwf = input
+            .try_as_dense()?
             .to_scalar::<Opaque>()?
             .downcast_ref::<BlobWithFact>()
             .context("Expect BlobWithFact")?;

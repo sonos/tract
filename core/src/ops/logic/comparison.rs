@@ -33,11 +33,12 @@ impl Op for Comp {
 
 impl Comp {
     fn eval<T: Datum + PartialOrd>(&self, a: &Tensor, b: &Tensor) -> TractResult<Tensor> {
-        let a = a.to_array_view::<T>()?;
-        let b = b.to_array_view::<T>()?;
+        let a = a.try_as_dense()?.to_array_view::<T>()?;
+        let b = b.try_as_dense()?.to_array_view::<T>()?;
         let shape = multi_broadcast(&[a.shape(), b.shape()])?;
         let mut c = unsafe { Tensor::uninitialized::<bool>(&shape)? };
-        let mut view = c.to_array_view_mut::<bool>()?;
+        let mut c_dense = c.try_as_dense_mut()?;
+        let mut view = c_dense.to_array_view_mut::<bool>()?;
         let zipped = Zip::from(&mut view).and_broadcast(&a).and_broadcast(&b);
         match *self {
             Eq => zipped.for_each(|c, a, b| *c = a == b),
@@ -65,20 +66,21 @@ impl EvalOp for Comp {
         if inputs[0].datum_type() == TDim::datum_type() {
             let mut a = inputs[0].clone().into_tensor();
             let mut b = inputs[1].clone().into_tensor();
-            for a in a.as_slice_mut::<TDim>()? {
+            for a in a.try_as_dense_mut()?.as_slice_mut::<TDim>()? {
                 *a = a.eval(&session.resolved_symbols);
             }
-            for b in b.as_slice_mut::<TDim>()? {
+            for b in b.try_as_dense_mut()?.as_slice_mut::<TDim>()? {
                 *b = b.eval(&session.resolved_symbols);
             }
             if let (Ok(a), Ok(b)) = (a.cast_to::<i64>(), b.cast_to::<i64>()) {
                 return Ok(tvec!(self.eval::<i64>(&a, &b)?.into_tvalue()));
             }
-            let a = inputs[0].to_array_view::<TDim>()?;
-            let b = inputs[0].to_array_view::<TDim>()?;
+            let a = inputs[0].try_as_dense()?.to_array_view::<TDim>()?;
+            let b = inputs[0].try_as_dense()?.to_array_view::<TDim>()?;
             let shape = multi_broadcast(&[a.shape(), b.shape()])?;
             let mut c = unsafe { Tensor::uninitialized::<bool>(&shape)? };
-            let mut view = c.to_array_view_mut::<bool>()?;
+            let mut c_dense = c.try_as_dense_mut()?;
+            let mut view = c_dense.to_array_view_mut::<bool>()?;
             let a = a.broadcast(&*shape).unwrap();
             let b = b.broadcast(&*shape).unwrap();
             for ixs in tract_ndarray::indices(&*shape) {

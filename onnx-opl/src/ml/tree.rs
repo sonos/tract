@@ -90,7 +90,7 @@ pub struct TreeEnsembleData {
 
 impl Display for TreeEnsembleData {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let tree = self.trees.as_slice::<u32>().unwrap();
+        let tree = self.trees.try_as_dense().unwrap().as_slice::<u32>().unwrap();
         for t in 0..tree.len() {
             let last_node = tree.get(t + 1).cloned().unwrap_or(self.nodes.len() as u32 / 5);
             writeln!(f, "Tree {}, nodes {:?}", t, tree[t]..last_node)?;
@@ -99,8 +99,12 @@ impl Display for TreeEnsembleData {
                     let node = self.get_unchecked(n as _);
                     if let TreeNode::Leaf(leaf) = node {
                         for vote in leaf.start_id..leaf.end_id {
-                            let cat = self.leaves.as_slice::<u32>().unwrap()[vote * 2];
-                            let contrib = self.leaves.as_slice::<u32>().unwrap()[vote * 2 + 1];
+                            let cat =
+                                self.leaves.try_as_dense().unwrap().as_slice::<u32>().unwrap()
+                                    [vote * 2];
+                            let contrib =
+                                self.leaves.try_as_dense().unwrap().as_slice::<u32>().unwrap()
+                                    [vote * 2 + 1];
                             let contrib = f32::from_bits(contrib);
                             writeln!(f, "{n} categ:{cat} add:{contrib}")?;
                         }

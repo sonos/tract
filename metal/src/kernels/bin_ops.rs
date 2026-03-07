@@ -325,9 +325,10 @@ mod tests {
     ) -> TractResult<Tensor> {
         let out_shape = tract_core::broadcast::multi_broadcast(&[a.shape(), b.shape()])?;
         let mut out = unsafe { Tensor::uninitialized_dt(FO::datum_type(), &out_shape)? };
-        let a_view = a.to_array_view::<FI>()?;
-        let b_view = b.to_array_view::<FI>()?;
-        let mut c = out.to_array_view_mut::<FO>()?;
+        let a_view = a.try_as_dense()?.to_array_view::<FI>()?;
+        let b_view = b.try_as_dense()?.to_array_view::<FI>()?;
+        let mut dense_out = out.try_as_dense_mut()?;
+        let mut c = dense_out.to_array_view_mut::<FO>()?;
         tract_core::ndarray::Zip::from(&mut c)
             .and_broadcast(a_view)
             .and_broadcast(b_view)

@@ -110,6 +110,7 @@ fn de_reduce(op: &mut DeserOp, reducer: Reducer) -> TractResult<TVec<OutletId>> 
         .konst
         .as_ref()
         .unwrap()
+        .try_as_dense()?
         .as_slice::<i32>()?
         .iter()
         .map(|d| *d as usize)
@@ -136,6 +137,7 @@ fn de_reduce_mean(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
         .konst
         .as_ref()
         .unwrap()
+        .try_as_dense()?
         .as_slice::<i32>()?
         .iter()
         .map(|d| *d as usize)

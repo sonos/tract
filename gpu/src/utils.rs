@@ -71,7 +71,7 @@ pub fn as_quant_fact<'a>(
         .or_else(|| {
             fact.konst
                 .as_ref()
-                .and_then(|k| k.to_scalar::<Opaque>().ok())
+                .and_then(|k| k.try_as_dense().ok()?.to_scalar::<Opaque>().ok())
                 .and_then(|o| o.downcast_ref::<BlobWithFact>())
                 .and_then(|bwf| bwf.fact.downcast_ref::<BlockQuantFact>())
                 .and_then(|bqf| if bqf.format.same_as(format) { Some(bqf) } else { None })
@@ -79,18 +79,13 @@ pub fn as_quant_fact<'a>(
 }
 
 pub fn as_q40_tensor(a: &Tensor) -> Option<&BlobWithFact> {
-    a.to_scalar::<Opaque>().ok().and_then(|od| {
-        od.downcast_ref::<BlobWithFact>().and_then(|bwf| {
-            if bwf
-                .fact
-                .downcast_ref::<BlockQuantFact>()
-                .is_some_and(|bqf| bqf.format.same_as(&Q4_0))
-            {
-                Some(bwf)
-            } else {
-                None
-            }
-        })
+    let od = a.try_as_dense().ok()?.to_scalar::<Opaque>().ok()?;
+    od.downcast_ref::<BlobWithFact>().and_then(|bwf| {
+        if bwf.fact.downcast_ref::<BlockQuantFact>().is_some_and(|bqf| bqf.format.same_as(&Q4_0)) {
+            Some(bwf)
+        } else {
+            None
+        }
     })
 }
 

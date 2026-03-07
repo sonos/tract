@@ -152,7 +152,8 @@ impl Softmax {
         }
 
         let mut output = input.into_tensor();
-        let mut view = output.to_array_view_mut::<T>()?;
+        let mut output_dense = output.try_as_dense_mut()?;
+        let mut view = output_dense.to_array_view_mut::<T>()?;
 
         for it_coords in tract_ndarray::indices(&*iterating_shape) {
             let mut view = view.view_mut();
@@ -460,9 +461,10 @@ mod test {
             let softmax_float = Softmax { axes: self.axes.clone(), ..Softmax::default() };
             let reference_float = softmax_float.eval(inputs_float)?;
             let reference_array = args_1!(reference_float);
-            let reference = reference_array.to_array_view::<f32>()?;
+            let reference = reference_array.try_as_dense()?.to_array_view::<f32>()?;
 
             result_float
+                .try_as_dense()?
                 .to_array_view::<f32>()?
                 .iter()
                 .zip(reference.iter())

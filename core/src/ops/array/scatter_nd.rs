@@ -20,7 +20,8 @@ impl ScatterNd {
         updates: TValue,
     ) -> TractResult<TValue> {
         let mut data = unsafe { data.into_tensor().into_array_unchecked::<T>() };
-        let updates_view = unsafe { updates.to_array_view_unchecked::<T>() };
+        let updates_dense = updates.try_as_dense()?;
+        let updates_view = unsafe { updates_dense.to_array_view_unchecked::<T>() };
         for coords in tract_ndarray::indices(&indices.shape()[..indices.ndim() - 1]) {
             let mut indices_into_data = indices.view();
             let mut updates = updates_view.view();
@@ -57,7 +58,7 @@ impl EvalOp for ScatterNd {
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (data, indices, updates) = args_3!(inputs);
         let indices = indices.cast_to::<i64>()?;
-        let indices = indices.to_array_view::<i64>()?;
+        let indices = indices.try_as_dense()?.to_array_view::<i64>()?;
         if data.datum_type() != updates.datum_type() {
             bail!(
                 "Data and update must be of the same type, got {:?} and {:?}",

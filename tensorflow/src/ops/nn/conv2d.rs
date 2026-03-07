@@ -39,7 +39,7 @@ mod tests {
             .unwrap()
             .remove(0);
         assert_eq!(expect.len(), result.shape().iter().product::<usize>());
-        let found = result.to_array_view::<f32>().unwrap();
+        let found = result.try_as_dense().unwrap().to_array_view::<f32>().unwrap();
         let expect = ArrayD::from_shape_vec(found.shape(), expect.to_vec()).unwrap();
         assert_eq!(expect, found);
     }

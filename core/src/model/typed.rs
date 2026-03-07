@@ -150,7 +150,9 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
         let name = name.into();
         // this feel incredibly hackish and dirty...
         if v.datum_type().is_opaque() && v.volume() == 1 {
-            if let Some(bwf) = v.as_slice::<Opaque>()?[0].downcast_ref::<BlobWithFact>() {
+            if let Some(bwf) =
+                v.try_as_dense()?.as_slice::<Opaque>()?[0].downcast_ref::<BlobWithFact>()
+            {
                 let opaque = bwf.fact.clone();
                 fact.opaque_fact = Some(opaque.clone());
                 return self

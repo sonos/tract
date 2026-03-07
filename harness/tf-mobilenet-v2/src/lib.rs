@@ -68,6 +68,7 @@ mod tests {
         let input = load_image(grace_hopper());
         let outputs = runnable.run(tvec![input.into()])?;
         let label_id = outputs[0]
+            .try_as_dense()?
             .as_slice::<f32>()?
             .iter()
             .enumerate()

@@ -258,14 +258,14 @@ impl DeviceTensorExt for Tensor {
     }
 
     fn to_device_tensor(&self) -> TractResult<&DeviceTensor> {
-        let opaque = self.to_scalar::<Opaque>()?;
+        let opaque = self.try_as_dense()?.to_scalar::<Opaque>()?;
         opaque.downcast_ref::<DeviceTensor>().ok_or_else(|| {
             anyhow::anyhow!("Could convert opaque tensor to reference on a device tensor")
         })
     }
 
     fn as_device_tensor(&self) -> Option<&DeviceTensor> {
-        let opaque = self.to_scalar::<Opaque>().ok()?;
+        let opaque = self.try_as_dense().ok()?.to_scalar::<Opaque>().ok()?;
         opaque.downcast_ref::<DeviceTensor>()
     }
 }
@@ -277,7 +277,7 @@ mod tests {
     #[test]
     fn test_device_tensor() -> TractResult<()> {
         let a = DeviceTensor::from_shape(&[1], &[0f32])?;
-        assert_eq!(a.to_host()?.as_slice::<f32>()?, &[0.0]);
+        assert_eq!(a.to_host()?.try_as_dense()?.as_slice::<f32>()?, &[0.0]);
         Ok(())
     }
 }

@@ -90,7 +90,7 @@ impl From<Tensor> for TensorHolder {
             #[cfg(feature = "complex")]
             DatumType::ComplexF64 => unimplemented!(),
             DatumType::TDim => {
-                let dims = m.to_array_view::<TDim>().unwrap();
+                let dims = m.try_as_dense().unwrap().to_array_view::<TDim>().unwrap();
                 if let Ok(dims) = dims.iter().map(|d| d.to_i32()).collect::<TractResult<Vec<_>>>() {
                     TensorHolder::I32(Self::to_tensor(arr1(&dims).into_dyn()))
                 } else {

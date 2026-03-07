@@ -102,8 +102,11 @@ pub fn variable(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> 
             tensor = tensor.cast_to_dt(*dt)?.into_owned().into_arc_tensor()
         }
     }
-    if let Some(bwf) =
-        tensor.to_scalar::<Opaque>().ok().and_then(|o| o.downcast_ref::<BlobWithFact>())
+    if let Some(bwf) = tensor
+        .try_as_dense()?
+        .to_scalar::<Opaque>()
+        .ok()
+        .and_then(|o| o.downcast_ref::<BlobWithFact>())
     {
         let fact = bwf.fact.clone();
         builder.wire(Const::new_with_opaque_fact(tensor, fact)?, &[])
@@ -129,7 +132,7 @@ pub fn reshape(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> T
     let count = if count == -1 { input_shape.len() - start } else { count as usize };
     let replacement =
         convert_to_shape_input(builder, invocation, "shape")?.to::<Arc<Tensor>>(builder)?;
-    let mut replacement: TVec<TDim> = replacement.as_slice::<TDim>()?.into();
+    let mut replacement: TVec<TDim> = replacement.try_as_dense()?.as_slice::<TDim>()?.into();
     for i in 0..replacement.len() {
         if replacement[i] == 0.to_dim() {
             replacement[i] = input_shape[i + start].clone();
@@ -234,8 +237,8 @@ pub fn slice(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tra
         let len = if let (Some(ev), Some(bv)) =
             (&builder.model.outlet_fact(e)?.konst, &builder.model.outlet_fact(b)?.konst)
         {
-            ev.cast_to::<TDim>()?.to_scalar::<TDim>()?.clone()
-                - bv.cast_to::<TDim>()?.to_scalar::<TDim>()?
+            ev.cast_to::<TDim>()?.try_as_dense()?.to_scalar::<TDim>()?.clone()
+                - bv.cast_to::<TDim>()?.try_as_dense()?.to_scalar::<TDim>()?
         } else {
             builder.model.symbols.new_with_prefix("slice").into()
         };

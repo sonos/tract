@@ -110,9 +110,9 @@ impl QConvProblem {
         let n = *self.shape_in.n().unwrap_or(&1);
         let ci_per_g = self.shape_in.c() / self.group;
         let co_per_g = self.co / self.group;
-        let x0 = *self.qp[0].to_scalar::<i32>().unwrap();
-        let k0 = *self.qp[2].to_scalar::<i32>().unwrap();
-        let y0 = *self.qp[4].to_scalar::<i32>().unwrap();
+        let x0 = *self.qp[0].try_as_dense().unwrap().to_scalar::<i32>().unwrap();
+        let k0 = *self.qp[2].try_as_dense().unwrap().to_scalar::<i32>().unwrap();
+        let y0 = *self.qp[4].try_as_dense().unwrap().to_scalar::<i32>().unwrap();
         let x_scale = self.qp[1].cast_to_scalar::<f32>().unwrap();
         let y_scale = self.qp[5].cast_to_scalar::<f32>().unwrap();
         let kdt = self.kernel.datum_type();
@@ -136,13 +136,13 @@ impl QConvProblem {
         let k_scale = if self.qp[3].len() == 1 {
             vec![self.qp[3].cast_to_scalar::<f32>().unwrap(); *shape_out.c()]
         } else {
-            self.qp[3].as_slice::<f32>().unwrap().into()
+            self.qp[3].try_as_dense().unwrap().as_slice::<f32>().unwrap().into()
         };
         let mut temp = ArrayD::<i32>::zeros(&*shape_out.shape);
         let data = self.data.cast_to::<i32>().unwrap();
-        let data = data.to_array_view::<i32>().unwrap();
+        let data = data.try_as_dense().unwrap().to_array_view::<i32>().unwrap();
         let kernel = self.kernel.cast_to::<i32>().unwrap();
-        let kernel = kernel.to_array_view::<i32>().unwrap();
+        let kernel = kernel.try_as_dense().unwrap().to_array_view::<i32>().unwrap();
         for n in 0..n {
             for g in 0..self.group {
                 for geo_out in tract_ndarray::indices(shape_out.hw_dims()) {
@@ -209,7 +209,7 @@ impl QConvProblem {
     fn output_dt(&self) -> DatumType {
         self.raw_output_dt.quantize(QParams::ZpScale {
             zero_point: self.qp[4].cast_to_scalar().unwrap(),
-            scale: *self.qp[5].to_scalar().unwrap(),
+            scale: *self.qp[5].try_as_dense().unwrap().to_scalar().unwrap(),
         })
     }
 
@@ -217,12 +217,12 @@ impl QConvProblem {
         assert!(self.data.shape() == &*self.shape_in.shape);
         let mut model = TypedModel::default();
         let idt = self.data.datum_type().quantize(QParams::ZpScale {
-            zero_point: self.qp[0].cast_to::<i32>()?.as_slice::<i32>()?[0],
-            scale: self.qp[1].cast_to::<f32>()?.as_slice::<f32>()?[0],
+            zero_point: self.qp[0].cast_to::<i32>()?.try_as_dense()?.as_slice::<i32>()?[0],
+            scale: self.qp[1].cast_to::<f32>()?.try_as_dense()?.as_slice::<f32>()?[0],
         });
         let kdt = self.kernel.datum_type().quantize(QParams::ZpScale {
-            zero_point: self.qp[2].cast_to::<i32>()?.as_slice::<i32>()?[0],
-            scale: self.qp[3].cast_to::<f32>()?.as_slice::<f32>()?[0],
+            zero_point: self.qp[2].cast_to::<i32>()?.try_as_dense()?.as_slice::<i32>()?[0],
+            scale: self.qp[3].cast_to::<f32>()?.try_as_dense()?.as_slice::<f32>()?[0],
         });
         let wire = model.add_source("input", idt.fact(&self.shape_in.shape))?;
         let mut inputs = tvec!(wire);
@@ -271,7 +271,7 @@ impl Test for QConvProblem {
         let model = runtime.prepare(model).context("Preparing model")?;
         let idt = self.data.datum_type().quantize(QParams::ZpScale {
             zero_point: self.qp[0].cast_to_scalar()?,
-            scale: *self.qp[1].to_scalar()?,
+            scale: *self.qp[1].try_as_dense()?.to_scalar()?,
         });
         let data = self.data.clone().into_tensor().cast_to_dt(idt)?.into_owned().into_tvalue();
         let output = model.run(tvec!(data))?.remove(0);
@@ -338,7 +338,14 @@ impl Arbitrary for QConvProblem {
                     let kernel = qtensor(ker_shape, kdt);
                     let bias = proptest::option::of(
                         qtensor(vec![co0 * group], i32::datum_type()).prop_map(|b| {
-                            arr1(b.cast_to::<i32>().unwrap().as_slice::<i32>().unwrap())
+                            arr1(
+                                b.cast_to::<i32>()
+                                    .unwrap()
+                                    .try_as_dense()
+                                    .unwrap()
+                                    .as_slice::<i32>()
+                                    .unwrap(),
+                            )
                         }),
                     );
                     (Just((kf, shape_in, co0 * group, group, odt)), data_in, kernel, bias, qp)
@@ -845,7 +852,7 @@ pub fn suite() -> TractResult<TestSuite> {
     let mut qp = qp_noop_i8();
     qp[0] = tensor0(-1i32);
     let mut kernel = Tensor::zero::<i8>(&[5, 1, 2]).unwrap();
-    *kernel.as_slice_mut::<i8>().unwrap().last_mut().unwrap() = -1;
+    *kernel.try_as_dense_mut().unwrap().as_slice_mut::<i8>().unwrap().last_mut().unwrap() = -1;
     suite.add(
         "bias_3",
         QConvProblem {

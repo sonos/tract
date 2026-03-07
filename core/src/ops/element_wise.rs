@@ -227,7 +227,8 @@ macro_rules! element_wise {
             fn eval_in_place(&self, t: &mut Tensor, out_dt: Option<DatumType>) -> TractResult<()> {
                 $(
                     $(if out_dt.unwrap_or(t.datum_type()) == $typ::datum_type() {
-                        let t: &mut[$typ] = t.as_slice_mut::<$typ>()?;
+                        let mut t_dense = t.try_as_dense_mut()?;
+                        let t: &mut[$typ] = t_dense.as_slice_mut::<$typ>()?;
                         let f: fn(&Self, &mut[$typ]) -> TractResult<()> = $f;
                         f(self, t)?;
                         return Ok(())
@@ -250,7 +251,8 @@ macro_rules! element_wise {
                                input_dt = t.datum_type(); // because zero_point change
                            }
                            unsafe { t.set_datum_type(sout_dt) } // force cast
-                           let t: &mut[$typ_dt] = t.as_slice_mut::<$typ_dt>()?;
+                           let mut t_dense = t.try_as_dense_mut()?;
+                           let t: &mut[$typ_dt] = t_dense.as_slice_mut::<$typ_dt>()?;
                            let f: fn(&Self, &mut[$typ_dt], DatumType, DatumType) -> TractResult<()> = |_, xs, input_dt, out_dt| {
                                let (izp, iscale) = input_dt.zp_scale();
                                let (ozp, oscale) = out_dt.zp_scale();
@@ -344,7 +346,8 @@ macro_rules! element_wise_oop {
                     let mut dst = unsafe { Tensor::uninitialized_dt(<$typ_dst>::datum_type(), &t.shape())? };
                     $(if t.datum_type() == $typ::datum_type() {
                         let f: fn(&Self, &[$typ], &mut[$typ_dst]) -> TractResult<()> = $f;
-                        f(self, t.as_slice::<$typ>()?, dst.as_slice_mut::<$typ_dst>()?)?;
+                        let mut dst_dense = dst.try_as_dense_mut()?;
+                        f(self, t.try_as_dense()?.as_slice::<$typ>()?, dst_dense.as_slice_mut::<$typ_dst>()?)?;
                         return Ok(dst)
                     }
                     )*

@@ -380,7 +380,7 @@ impl AxisOp {
     pub fn change_tensor(&self, tensor: &mut Tensor, broadcasting: bool) -> TractResult<()> {
         if self.required_rank() > tensor.rank() && tensor.datum_type().is_opaque() {
             let inner_change = self.trim_left(tensor.rank())?;
-            for opaque in tensor.as_slice_mut::<Opaque>()? {
+            for opaque in tensor.try_as_dense_mut()?.as_slice_mut::<Opaque>()? {
                 if let Some(bwf) = opaque.downcast_ref::<BlobWithFact>() {
                     let bqf = bwf
                         .fact
@@ -1341,7 +1341,7 @@ mod proptests {
             unsafe {
                 let mut t = Tensor::uninitialized::<i64>(&self.input)?;
                 for i in 0..t.len() {
-                    t.as_slice_mut().unwrap()[i] = i as i64;
+                    t.try_as_dense_mut().unwrap().as_slice_mut().unwrap()[i] = i as i64;
                 }
                 Ok(t)
             }
