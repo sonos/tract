@@ -22,6 +22,7 @@ pub mod prelude {
     pub use crate::dim::{Symbol, SymbolScope, SymbolValues, TDim, ToDim};
     pub use crate::opaque::Opaque;
     pub use crate::tensor::litteral::*;
+    pub use crate::tensor::storage::{DenseStorage, TensorStorage};
     pub use crate::tensor::{IntoArcTensor, IntoTensor, Tensor, natural_strides};
     #[cfg(feature = "complex")]
     pub use crate::tensor::{reinterpret_complex_as_inner_dim, reinterpret_inner_dim_as_complex};
