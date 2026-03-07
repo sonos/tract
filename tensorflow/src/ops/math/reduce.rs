@@ -94,6 +94,7 @@ impl InferenceRulesOp for Reduce {
             move |s, irank, orank, axes| {
                 let axes: TVec<usize> = axes
                     .cast_to::<i64>()?
+                    .try_as_dense()?
                     .as_slice::<i64>()?
                     .iter()
                     .map(|&ax| if ax > 0 { ax } else { ax + irank } as usize)

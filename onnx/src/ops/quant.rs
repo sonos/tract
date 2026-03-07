@@ -278,7 +278,7 @@ impl EvalOp for DynamicQuantizeLinearU8 {
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = &inputs[0];
         let input = input.cast_to::<f32>()?;
-        let a_input = input.to_array_view::<f32>()?;
+        let a_input = input.try_as_dense()?.to_array_view::<f32>()?;
         let (scale, zero_point) = scale_and_zero_point(a_input);
 
         let mut dst = unsafe { Tensor::uninitialized_dt(u8::datum_type(), input.shape())? };
@@ -287,8 +287,8 @@ impl EvalOp for DynamicQuantizeLinearU8 {
         dynamic_quantize_linear_u8(
             scale,
             zero_point,
-            input.as_slice::<f32>()?,
-            dst.as_slice_mut::<u8>()?,
+            input.try_as_dense()?.as_slice::<f32>()?,
+            dst.try_as_dense_mut()?.as_slice_mut::<u8>()?,
         );
 
         let quantized_tensor = dst.into_tvalue();

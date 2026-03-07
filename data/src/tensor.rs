@@ -928,12 +928,14 @@ impl Tensor {
     }
 
     /// Transform the data as a `ndarray::Array`.
+    #[deprecated(note = "Use `try_as_dense()?.to_array_view::<D>()` instead")]
     pub fn to_array_view<D: Datum>(&self) -> TractResult<ArrayViewD<'_, D>> {
         self.check_for_access::<D>()?;
         unsafe { Ok(self.to_array_view_unchecked()) }
     }
 
     /// Transform the data as a mutable `ndarray::Array`.
+    #[deprecated(note = "Use `try_as_dense_mut()?.to_array_view_mut::<D>()` instead")]
     pub fn to_array_view_mut<D: Datum>(&mut self) -> TractResult<ArrayViewMutD<'_, D>> {
         self.check_for_access::<D>()?;
         unsafe { Ok(self.to_array_view_mut_unchecked()) }
@@ -984,6 +986,7 @@ impl Tensor {
     }
 
     /// Access the data as a slice.
+    #[deprecated(note = "Use `try_as_dense()?.as_slice::<D>()` instead")]
     pub fn as_slice<D: Datum>(&self) -> TractResult<&[D]> {
         let ptr: *const D = self.as_ptr()?;
         if self.storage.byte_len() == 0 {
@@ -994,6 +997,7 @@ impl Tensor {
     }
 
     /// Access the data as a mutable slice.
+    #[deprecated(note = "Use `try_as_dense_mut()?.as_slice_mut::<D>()` instead")]
     pub fn as_slice_mut<D: Datum>(&mut self) -> TractResult<&mut [D]> {
         let ptr: *mut D = self.as_ptr_mut()?;
         if self.storage.byte_len() == 0 {
@@ -1022,6 +1026,7 @@ impl Tensor {
     }
 
     /// Access the data as a scalar.
+    #[deprecated(note = "Use `try_as_dense()?.to_scalar::<D>()` instead")]
     pub fn to_scalar<D: Datum>(&self) -> TractResult<&D> {
         self.check_for_access::<D>()?;
         if self.len() == 0 {

@@ -546,7 +546,7 @@ fn convert_sdpa_to_cuda_flash_attn(
     let scale = op
         .scale
         .as_ref()
-        .map(|s| *s.to_scalar::<f32>().unwrap())
+        .map(|s| *s.try_as_dense().unwrap().to_scalar::<f32>().unwrap())
         .unwrap_or(1.0 / (out_dim as f32).sqrt());
     let sdpa = ops::CudaFlashAttention::new(scale, op.is_causal);
 
