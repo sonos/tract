@@ -21,9 +21,10 @@ impl EvalOp for Trilu {
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (input, k) = args_2!(inputs);
         let mut input = input.into_tensor();
-        let k = *k.to_scalar::<i64>()?;
+        let k = *k.try_as_dense()?.to_scalar::<i64>()?;
         fn eval_t<T: Datum>(tensor: &mut Tensor, upper: bool, k: i64) -> TractResult<()> {
-            let mut view = tensor.to_array_view_mut::<T>()?;
+            let mut tensor_dense = tensor.try_as_dense_mut()?;
+            let mut view = tensor_dense.to_array_view_mut::<T>()?;
             for coords in tract_ndarray::indices(view.shape()) {
                 let row = coords[view.ndim() - 2] as i64;
                 let col = coords[view.ndim() - 1] as i64;
