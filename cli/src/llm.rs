@@ -124,6 +124,8 @@ pub fn top_logits_levenshtein(test: &Tensor, reference: &Tensor, n: usize) -> Tr
         .map(|t| {
             t.cast_to::<f32>()
                 .unwrap()
+                .try_as_dense()
+                .unwrap()
                 .as_slice::<f32>()
                 .unwrap()
                 .iter()
