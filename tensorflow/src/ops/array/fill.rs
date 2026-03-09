@@ -17,7 +17,7 @@ impl Fill {
         let (shape, value) = args_2!(inputs);
         let value = value.try_as_dense()?.to_scalar::<T>()?;
         let shape = shape.cast_to::<i32>()?;
-        let shape = shape.try_as_dense()?.to_array_view::<i32>()?;
+        let shape = shape.to_dense_array_view::<i32>()?;
         let array = tract_ndarray::Array::from_shape_fn(
             shape.iter().map(|i| *i as usize).collect::<Vec<usize>>(),
             |_| value.clone(),

@@ -25,5 +25,5 @@ fn einsum_pulsedmm() {
         .iter_mut()
         .enumerate()
         .for_each(|(ix, x)| *x = ix as f32);
-    proptest_regular_against_pulse(model, 1, input.into_array().unwrap(), 0).unwrap()
+    proptest_regular_against_pulse(model, 1, input.into_dense_array().unwrap(), 0).unwrap()
 }

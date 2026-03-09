@@ -241,7 +241,7 @@ impl EvalOp for Resize {
         } else {
             output_shape.iter().zip(inputs[0].shape()).map(|(o, i)| *o as f32 / *i as f32).collect()
         };
-        let mut data = inputs.remove(0).into_tensor().into_array::<f32>()?;
+        let mut data = inputs.remove(0).into_tensor().into_dense_array::<f32>()?;
         for (axis, scale) in scales.into_iter().enumerate().filter(|(_, s)| *s != 1.0) {
             let mut new_shape: TVec<usize> = data.shape().into();
             new_shape[axis] = output_shape[axis];

@@ -21,24 +21,22 @@ use tract_pulse::internal::*;
 fn npz_add_tensor(npz: &mut NpzWriter<File>, name: String, tensor: &Tensor) -> TractResult<()> {
     match tensor.datum_type() {
         DatumType::F16 => {
-            npz.add_array(name, &tensor.cast_to::<f32>()?.try_as_dense()?.to_array_view::<f32>()?)?
+            npz.add_array(name, &tensor.cast_to::<f32>()?.to_dense_array_view::<f32>()?)?
         }
-        DatumType::Bool => npz.add_array(name, &tensor.try_as_dense()?.to_array_view::<bool>()?)?,
-        DatumType::U8 => npz.add_array(name, &tensor.try_as_dense()?.to_array_view::<u8>()?)?,
-        DatumType::U16 => npz.add_array(name, &tensor.try_as_dense()?.to_array_view::<u16>()?)?,
-        DatumType::U32 => npz.add_array(name, &tensor.try_as_dense()?.to_array_view::<u32>()?)?,
-        DatumType::U64 => npz.add_array(name, &tensor.try_as_dense()?.to_array_view::<u64>()?)?,
-        DatumType::I8 => npz.add_array(name, &tensor.try_as_dense()?.to_array_view::<i8>()?)?,
-        DatumType::I16 => npz.add_array(name, &tensor.try_as_dense()?.to_array_view::<i16>()?)?,
-        DatumType::I32 => npz.add_array(name, &tensor.try_as_dense()?.to_array_view::<i32>()?)?,
-        DatumType::I64 => npz.add_array(name, &tensor.try_as_dense()?.to_array_view::<i64>()?)?,
-        DatumType::F32 => npz.add_array(name, &tensor.try_as_dense()?.to_array_view::<f32>()?)?,
-        DatumType::F64 => npz.add_array(name, &tensor.try_as_dense()?.to_array_view::<f64>()?)?,
-        DatumType::QI8(_) => npz.add_array(name, &tensor.try_as_dense()?.to_array_view::<i8>()?)?,
-        DatumType::QU8(_) => npz.add_array(name, &tensor.try_as_dense()?.to_array_view::<u8>()?)?,
-        DatumType::QI32(_) => {
-            npz.add_array(name, &tensor.try_as_dense()?.to_array_view::<i32>()?)?
-        }
+        DatumType::Bool => npz.add_array(name, &tensor.to_dense_array_view::<bool>()?)?,
+        DatumType::U8 => npz.add_array(name, &tensor.to_dense_array_view::<u8>()?)?,
+        DatumType::U16 => npz.add_array(name, &tensor.to_dense_array_view::<u16>()?)?,
+        DatumType::U32 => npz.add_array(name, &tensor.to_dense_array_view::<u32>()?)?,
+        DatumType::U64 => npz.add_array(name, &tensor.to_dense_array_view::<u64>()?)?,
+        DatumType::I8 => npz.add_array(name, &tensor.to_dense_array_view::<i8>()?)?,
+        DatumType::I16 => npz.add_array(name, &tensor.to_dense_array_view::<i16>()?)?,
+        DatumType::I32 => npz.add_array(name, &tensor.to_dense_array_view::<i32>()?)?,
+        DatumType::I64 => npz.add_array(name, &tensor.to_dense_array_view::<i64>()?)?,
+        DatumType::F32 => npz.add_array(name, &tensor.to_dense_array_view::<f32>()?)?,
+        DatumType::F64 => npz.add_array(name, &tensor.to_dense_array_view::<f64>()?)?,
+        DatumType::QI8(_) => npz.add_array(name, &tensor.to_dense_array_view::<i8>()?)?,
+        DatumType::QU8(_) => npz.add_array(name, &tensor.to_dense_array_view::<u8>()?)?,
+        DatumType::QI32(_) => npz.add_array(name, &tensor.to_dense_array_view::<i32>()?)?,
         _ => warn!("Not writing {name}, {tensor:?}, unsupported type"),
     }
 

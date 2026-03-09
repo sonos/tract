@@ -88,8 +88,7 @@ pub fn handle(params: &Parameters, options: &DisplayParams) -> TractResult<()> {
                     let count = input_pulse.min(stream_dim - offset);
                     pulsed_input.slice_axis_mut(Axis(stream.axis), (0..count).into()).assign(
                         &fixed_input
-                            .try_as_dense()?
-                            .to_array_view::<f32>()?
+                            .to_dense_array_view::<f32>()?
                             .slice_axis(Axis(stream.axis), (offset..offset + count).into()),
                     );
                 };
@@ -133,8 +132,7 @@ pub fn handle(params: &Parameters, options: &DisplayParams) -> TractResult<()> {
                     println!(
                         "expected: {}",
                         valid_fixed_result
-                            .try_as_dense()?
-                            .to_array_view::<f32>()?
+                            .to_dense_array_view::<f32>()?
                             .axis_iter(Axis(output_axis))
                             .map(|s| *s.iter().next().unwrap())
                             .join(" ")
@@ -143,8 +141,7 @@ pub fn handle(params: &Parameters, options: &DisplayParams) -> TractResult<()> {
                     println!(
                         "got: {}",
                         valid_pulse_result
-                            .try_as_dense()?
-                            .to_array_view::<f32>()?
+                            .to_dense_array_view::<f32>()?
                             .axis_iter(Axis(output_axis))
                             .map(|s| *s.iter().next().unwrap())
                             .join(" ")

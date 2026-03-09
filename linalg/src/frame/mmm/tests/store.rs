@@ -121,7 +121,7 @@ where
             result.into_shape(&[ker.nr(), ker.mr()]).unwrap().permute_axes(&[1, 0]).unwrap()
         }
         StoreLayout::Arbitrary => result
-            .into_array::<TC>()
+            .into_dense_array::<TC>()
             .unwrap()
             .into_shape_with_order((mr, nr, 3))
             .unwrap()

@@ -675,7 +675,11 @@ mod test {
                     self.mn_range.clone(),
                 )
             };
-            output.into_array::<u32>().unwrap().into_shape_with_order((panels, panel_len)).unwrap()
+            output
+                .into_dense_array::<u32>()
+                .unwrap()
+                .into_shape_with_order((panels, panel_len))
+                .unwrap()
         }
 
         fn reference(&self) -> Array2<u32> {

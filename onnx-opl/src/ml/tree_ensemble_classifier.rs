@@ -42,7 +42,7 @@ impl EvalOp for TreeEnsembleClassifier {
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         let input = input.cast_to::<f32>()?;
-        let input = input.try_as_dense()?.to_array_view::<f32>()?;
+        let input = input.to_dense_array_view::<f32>()?;
         let scores = self.ensemble.eval(input)?;
         Ok(tvec!(scores.into_tvalue()))
     }

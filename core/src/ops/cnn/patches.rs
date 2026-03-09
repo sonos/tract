@@ -840,10 +840,8 @@ pub mod test {
                     for c in 0..*output_shape.c() {
                         let ocoords = self.data_format.from_n_c_hw(0, c, geo_out.slice()).unwrap();
                         let icoords = self.data_format.from_n_c_hw(0, c, &geo_in).unwrap();
-                        output.try_as_dense_mut().unwrap().to_array_view_mut::<f32>().unwrap()
-                            [&*ocoords.shape] +=
-                            self.input.try_as_dense().unwrap().to_array_view::<f32>().unwrap()
-                                [&*icoords.shape];
+                        output.to_dense_array_view_mut::<f32>().unwrap()[&*ocoords.shape] +=
+                            self.input.to_dense_array_view::<f32>().unwrap()[&*icoords.shape];
                     }
                 }
             }

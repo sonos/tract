@@ -52,7 +52,7 @@ impl EvalOp for ScatterElements {
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (data, indices, updates) = args_3!(inputs);
         let indices = indices.cast_to::<i64>()?;
-        let indices = indices.try_as_dense()?.to_array_view::<i64>()?;
+        let indices = indices.to_dense_array_view::<i64>()?;
         if data.datum_type() != updates.datum_type() {
             bail!(
                 "Data and update must be of the same type, got {:?} and {:?}",

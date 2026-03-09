@@ -461,11 +461,10 @@ mod test {
             let softmax_float = Softmax { axes: self.axes.clone(), ..Softmax::default() };
             let reference_float = softmax_float.eval(inputs_float)?;
             let reference_array = args_1!(reference_float);
-            let reference = reference_array.try_as_dense()?.to_array_view::<f32>()?;
+            let reference = reference_array.to_dense_array_view::<f32>()?;
 
             result_float
-                .try_as_dense()?
-                .to_array_view::<f32>()?
+                .to_dense_array_view::<f32>()?
                 .iter()
                 .zip(reference.iter())
                 .for_each(|(a, b)| assert_is_close(*a, *b, self.data.datum_type(), self.output_dt));

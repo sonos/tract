@@ -296,7 +296,7 @@ impl crate::ops::binary::BinMiniOp for Scale {
 
     fn eval_out_of_place(&self, c: &mut Tensor, a: &Tensor, b: &Tensor) -> TractResult<()> {
         let a = a.cast_to::<f32>()?;
-        let a = a.try_as_dense()?.to_array_view::<f32>()?;
+        let a = a.to_dense_array_view::<f32>()?;
         unsafe fn eval_out_of_place_t<T: Datum + AsPrimitive<f32>>(
             c: &mut Tensor,
             a: &ndarray::ArrayViewD<f32>,
@@ -318,7 +318,7 @@ impl crate::ops::binary::BinMiniOp for Scale {
     fn eval_in_a(&self, a: &mut Tensor, b: &Tensor) -> TractResult<()> {
         let mut a_dense = a.try_as_dense_mut()?;
         let a = a_dense.to_array_view_mut::<f32>()?;
-        let b = b.try_as_dense()?.to_array_view::<f32>()?;
+        let b = b.to_dense_array_view::<f32>()?;
         ndarray::Zip::from(a).and_broadcast(b).for_each(|a, b| *a = scale_by(*b, *a));
         Ok(())
     }

@@ -25,7 +25,7 @@ impl Pad {
         T: Copy + Datum,
     {
         use tract_ndarray::*;
-        let input = input_tensor.try_as_dense()?.to_array_view::<T>()?;
+        let input = input_tensor.to_dense_array_view::<T>()?;
         let output_shape: Vec<usize> =
             input.shape().iter().zip(self.pads.iter()).map(|(&d, &(a, b))| d + a + b).collect();
         let element = match &self.mode {

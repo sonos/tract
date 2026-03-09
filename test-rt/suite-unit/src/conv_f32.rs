@@ -522,7 +522,7 @@ pub fn suite() -> TractResult<TestSuite> {
             group: 2,
             data: arr3(&[[[0.0f32, 1.0]]]).into_dyn(),
             kernel: tensor4(&[[[[0.0f32]]], [[[0.0]]], [[[0.0]]], [[[0.0]]]])
-                .into_array::<f32>()
+                .into_dense_array::<f32>()
                 .unwrap()
                 .into_dyn(),
             bias: None,
@@ -539,7 +539,7 @@ pub fn suite() -> TractResult<TestSuite> {
             group: 2,
             data: arr3(&[[[0.0f32, 1.0]]]).into_dyn(),
             kernel: tensor3(&[[[0.0f32]], [[0.0]], [[0.0]], [[0.0]]])
-                .into_array::<f32>()
+                .into_dense_array::<f32>()
                 .unwrap()
                 .into_dyn(),
             bias: None,
@@ -557,7 +557,7 @@ pub fn suite() -> TractResult<TestSuite> {
             group: 2,
             data: arr3(&[[[0.0f32, 0.0], [0.0, 1.0]]]).into_dyn(),
             kernel: tensor3(&[[[0.0f32, 0.0]], [[0.0, 0.0]], [[0.0, 0.0]], [[0.0, 1.0]]])
-                .into_array::<f32>()
+                .into_dense_array::<f32>()
                 .unwrap()
                 .into_dyn(),
             bias: None,
@@ -574,7 +574,7 @@ pub fn suite() -> TractResult<TestSuite> {
             group: 2,
             data: arr2(&[[0.0f32, 0.0, 0.0, 1.0]]).into_dyn(),
             kernel: tensor3(&[[[0.0f32], [0.0]], [[0.0], [0.0]]])
-                .into_array::<f32>()
+                .into_dense_array::<f32>()
                 .unwrap()
                 .into_dyn(),
             bias: None,
@@ -592,7 +592,7 @@ pub fn suite() -> TractResult<TestSuite> {
             group: 2,
             data: arr2(&[[0.0f32, 0.0], [0.0, 1.0]]).into_dyn(),
             kernel: tensor3(&[[[0.0f32]], [[0.0]], [[0.0]], [[1.0]]])
-                .into_array::<f32>()
+                .into_dense_array::<f32>()
                 .unwrap()
                 .into_dyn(),
             bias: None,
@@ -1427,8 +1427,8 @@ pub fn suite() -> TractResult<TestSuite> {
             shape_in: DataFormat::CHW.from_n_c_hw(1, 1, [5, 6]).unwrap(),
             kernel_format: KernelFormat::OIHW,
             group: 1,
-            data: data.into_array::<f32>().unwrap(),
-            kernel: kernel.into_array::<f32>().unwrap(),
+            data: data.into_dense_array::<f32>().unwrap(),
+            kernel: kernel.into_dense_array::<f32>().unwrap(),
             bias: None,
             pad: PaddingSpec::Valid,
             strides: tvec!(1, 1),

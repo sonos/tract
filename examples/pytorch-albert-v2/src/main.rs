@@ -43,7 +43,7 @@ fn main() -> Result<()> {
 
     let outputs =
         model.run(tvec!(input_ids.into(), attention_mask.into(), token_type_ids.into()))?;
-    let logits = outputs[0].try_as_dense()?.to_array_view::<f32>()?;
+    let logits = outputs[0].to_dense_array_view::<f32>()?;
     let logits = logits.slice(s![0, mask_pos, ..]);
     let word_id = logits.iter().zip(0..).max_by(|a, b| a.0.partial_cmp(b.0).unwrap()).unwrap().1;
     let word = tokenizer.id_to_token(word_id);

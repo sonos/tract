@@ -194,9 +194,9 @@ impl PrefixMatMul {
     ) -> TractResult<()> {
         use crate::ndarray::Dimension;
         let casted_a = a.cast_to::<Acc>()?;
-        let a = casted_a.try_as_dense()?.to_array_view::<Acc>()?;
+        let a = casted_a.to_dense_array_view::<Acc>()?;
         let casted_b = b.cast_to::<Acc>()?;
-        let b = casted_b.try_as_dense()?.to_array_view::<Acc>()?;
+        let b = casted_b.to_dense_array_view::<Acc>()?;
         let mut c_dense = acc.try_as_dense_mut()?;
         let mut c = c_dense.to_array_view_mut::<Acc>()?;
         for prefix in tract_ndarray::indices(&c.shape()[..c.ndim() - 2]) {
@@ -268,10 +268,7 @@ impl EvalOp for PrefixMatMul {
             let scale = inputs[0].datum_type().zp_scale().1 * inputs[1].datum_type().zp_scale().1
                 / qp.zp_scale().1;
             let scaler = Scaler::new(scale, tract_linalg::mmm::RoundingPolicy::Even);
-            acc.try_as_dense_mut()?
-                .to_array_view_mut::<i32>()?
-                .iter_mut()
-                .for_each(|x| *x = *x * scaler);
+            acc.to_dense_array_view_mut::<i32>()?.iter_mut().for_each(|x| *x = *x * scaler);
             let mut c: Tensor = acc.cast_to_dt(qp.unquantized())?.into_owned();
             unsafe { c.set_datum_type(qp) };
             Ok(tvec!(c.into_tvalue()))

@@ -165,8 +165,8 @@ fn eval_reference<FI: Datum, FO: Datum>(
 ) -> TractResult<Tensor> {
     let out_shape = tract_core::broadcast::multi_broadcast(&[a.shape(), b.shape()])?;
     let mut out = unsafe { Tensor::uninitialized_dt(FO::datum_type(), &out_shape)? };
-    let a_view = a.try_as_dense()?.to_array_view::<FI>()?;
-    let b_view = b.try_as_dense()?.to_array_view::<FI>()?;
+    let a_view = a.to_dense_array_view::<FI>()?;
+    let b_view = b.to_dense_array_view::<FI>()?;
     let mut c_dense = out.try_as_dense_mut()?;
     let mut c = c_dense.to_array_view_mut::<FO>()?;
     tract_core::ndarray::Zip::from(&mut c)

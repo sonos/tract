@@ -119,7 +119,7 @@ impl ConvPlusConvProblem {
         proptest_regular_against_pulse(
             Self::model(&self.convs),
             self.pulse as _,
-            self.input.try_as_dense().unwrap().to_array_view::<f32>().unwrap().to_owned(),
+            self.input.to_dense_array_view::<f32>().unwrap().to_owned(),
             2,
         )
     }

@@ -118,11 +118,11 @@ mod tests {
                 for (ix, input) in inputs.iter().enumerate() {
                     eprintln!(
                         "INPUT {ix}:\n{}",
-                        input.to_host().unwrap().try_as_dense()?.to_array_view::<f32>()?
+                        input.to_host().unwrap().to_dense_array_view::<f32>()?
                     );
                 }
-                eprintln!("FOUND:\n{}", output.try_as_dense()?.to_array_view::<f32>()?);
-                eprintln!("EXPECTED:\n{}", ref_output.try_as_dense()?.to_array_view::<f32>()?);
+                eprintln!("FOUND:\n{}", output.to_dense_array_view::<f32>()?);
+                eprintln!("EXPECTED:\n{}", ref_output.to_dense_array_view::<f32>()?);
                 panic!("Test failed");
             }
             Ok(())

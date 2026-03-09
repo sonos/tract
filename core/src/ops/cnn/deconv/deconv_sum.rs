@@ -173,7 +173,7 @@ macro_rules! impl_eval {
                         ) -> TractResult<()> {
                         let mut output_dense = output.try_as_dense_mut()?;
                         let output = output_dense.to_array_view_mut::<T>()?;
-                        let n_o_hkwk_hw: ArrayView4<T> = n_o_hkwk_hw.try_as_dense()?.to_array_view::<T>()?.into_dimensionality()?;
+                        let n_o_hkwk_hw: ArrayView4<T> = n_o_hkwk_hw.to_dense_array_view::<T>()?.into_dimensionality()?;
                         match input_shape.hw_rank() {
                             1 => [<main_loop_1d_ $suffix>](
                                 op,

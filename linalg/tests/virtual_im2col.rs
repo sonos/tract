@@ -127,8 +127,8 @@ impl ConvProblem {
         let mut output = Tensor::zero::<f32>(&output_shape).unwrap();
         let mut output_dense = output.try_as_dense_mut().unwrap();
         let mut output_view = output_dense.to_array_view_mut::<f32>().unwrap();
-        let input_view = self.input.try_as_dense().unwrap().to_array_view::<f32>().unwrap();
-        let filters_view = self.filters.try_as_dense().unwrap().to_array_view::<f32>().unwrap();
+        let input_view = self.input.to_dense_array_view::<f32>().unwrap();
+        let filters_view = self.filters.to_dense_array_view::<f32>().unwrap();
         for geo_out in tract_ndarray::indices(&output_shape[1..]) {
             for ker_geo in tract_ndarray::indices(&self.filters.shape()[0..2]) {
                 for ci in 0..self.filters.shape()[2] {
@@ -191,9 +191,9 @@ impl ConvProblem {
         let found = self.tract().unwrap();
         if found.close_enough(&expected, true).is_err() {
             println!("found: ");
-            println!("{:?}", found.try_as_dense().unwrap().to_array_view::<f32>().unwrap());
+            println!("{:?}", found.to_dense_array_view::<f32>().unwrap());
             println!("expected: ");
-            println!("{:?}", expected.try_as_dense().unwrap().to_array_view::<f32>().unwrap());
+            println!("{:?}", expected.to_dense_array_view::<f32>().unwrap());
         }
         found.close_enough(&expected, true).unwrap()
     }

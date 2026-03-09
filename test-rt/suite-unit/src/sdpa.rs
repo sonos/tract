@@ -346,9 +346,9 @@ pub fn suite() -> TractResult<TestSuite> {
     suite.add(
         "trivial_f32_0",
         SdpaProblem {
-            q: tensor3(&[[[0f32]]]).into_array::<f32>()?,
-            k: tensor3(&[[[0f32]]]).into_array::<f32>()?,
-            v: tensor3(&[[[0f32]]]).into_array::<f32>()?,
+            q: tensor3(&[[[0f32]]]).into_dense_array::<f32>()?,
+            k: tensor3(&[[[0f32]]]).into_dense_array::<f32>()?,
+            v: tensor3(&[[[0f32]]]).into_dense_array::<f32>()?,
             mask: None,
             scale: None,
             is_causal: true,

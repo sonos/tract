@@ -35,8 +35,7 @@ impl DirectLookup {
         let values = self.values.try_as_dense()?.as_slice::<T>()?;
         let fallback_value = self.fallback_value.try_as_dense()?.to_scalar::<T>()?;
         Ok(input
-            .try_as_dense()?
-            .to_array_view::<i32>()?
+            .to_dense_array_view::<i32>()?
             .mapv(|ix| values.get(ix as usize).unwrap_or(fallback_value).clone())
             .into_tensor())
     }

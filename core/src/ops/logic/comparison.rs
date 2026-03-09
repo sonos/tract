@@ -33,8 +33,8 @@ impl Op for Comp {
 
 impl Comp {
     fn eval<T: Datum + PartialOrd>(&self, a: &Tensor, b: &Tensor) -> TractResult<Tensor> {
-        let a = a.try_as_dense()?.to_array_view::<T>()?;
-        let b = b.try_as_dense()?.to_array_view::<T>()?;
+        let a = a.to_dense_array_view::<T>()?;
+        let b = b.to_dense_array_view::<T>()?;
         let shape = multi_broadcast(&[a.shape(), b.shape()])?;
         let mut c = unsafe { Tensor::uninitialized::<bool>(&shape)? };
         let mut c_dense = c.try_as_dense_mut()?;
@@ -75,8 +75,8 @@ impl EvalOp for Comp {
             if let (Ok(a), Ok(b)) = (a.cast_to::<i64>(), b.cast_to::<i64>()) {
                 return Ok(tvec!(self.eval::<i64>(&a, &b)?.into_tvalue()));
             }
-            let a = inputs[0].try_as_dense()?.to_array_view::<TDim>()?;
-            let b = inputs[0].try_as_dense()?.to_array_view::<TDim>()?;
+            let a = inputs[0].to_dense_array_view::<TDim>()?;
+            let b = inputs[0].to_dense_array_view::<TDim>()?;
             let shape = multi_broadcast(&[a.shape(), b.shape()])?;
             let mut c = unsafe { Tensor::uninitialized::<bool>(&shape)? };
             let mut c_dense = c.try_as_dense_mut()?;
