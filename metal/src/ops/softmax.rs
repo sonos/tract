@@ -4,28 +4,31 @@ use crate::MetalStream;
 use std::fmt::Debug;
 use tract_core::internal::*;
 use tract_core::ops::nn as core_ops_nn;
+use tract_core::ops::nn::SoftmaxKind;
 use tract_gpu::tensor::DeviceTensorExt;
 
-#[derive(Debug, Clone, Hash, Default)]
+#[derive(Debug, Clone, Hash)]
 pub struct MetalSoftmax {
     pub axes: TVec<usize>,
+    pub log: bool,
 }
 
 impl MetalSoftmax {
-    pub fn new(axes: TVec<usize>) -> TractResult<Self> {
+    pub fn new(axes: TVec<usize>, log: bool) -> TractResult<Self> {
         ensure!(axes.len() == 1, "Only one axis of softmax is supported by MetalSoftmax");
-        Ok(Self { axes })
+        Ok(Self { axes, log })
     }
 
     pub fn from_tract_core(core_softmax: &core_ops_nn::Softmax) -> TractResult<Self> {
         ensure!(core_softmax.quant_output_dt.is_none());
-        Self::new(core_softmax.axes.clone())
+        let log = matches!(core_softmax.kind, SoftmaxKind::LogSoftmax);
+        Self::new(core_softmax.axes.clone(), log)
     }
 }
 
 impl Op for MetalSoftmax {
     fn name(&self) -> Cow<str> {
-        "MetalSoftmax".into()
+        if self.log { "MetalLogSoftmax" } else { "MetalSoftmax" }.into()
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
@@ -49,7 +52,7 @@ impl MetalEvalOp for MetalSoftmax {
         let input = opaque.to_device_tensor()?;
         let output =
             crate::ops::make_tensor_for_node(session, node_id, input.datum_type(), input.shape())?;
-        Softmax.dispatch_eval(stream, input, self.axes[0], &output)?;
+        Softmax { log: self.log }.dispatch_eval(stream, input, self.axes[0], &output)?;
 
         Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
     }
@@ -86,7 +89,7 @@ impl TypedOp for MetalSoftmax {
             Ok(Some(AxisChangeConsequence::new(
                 model,
                 node,
-                Some(Box::new(MetalSoftmax { axes })),
+                Some(Box::new(MetalSoftmax { axes, log: self.log })),
                 change,
             )))
         } else {

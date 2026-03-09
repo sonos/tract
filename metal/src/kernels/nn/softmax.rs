@@ -6,7 +6,9 @@ use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Softmax;
+pub struct Softmax {
+    pub log: bool,
+}
 
 impl Softmax {
     pub fn is_supported_dt(dt: DatumType) -> bool {
@@ -16,7 +18,8 @@ impl Softmax {
     pub fn kernel_name(&self, dt: DatumType) -> TractResult<String> {
         ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for metal softmax  op", dt);
         let tname = DeviceTensor::tname(dt)?;
-        Ok(format!("nn_ops::softmax_nd3_{tname}"))
+        let prefix = if self.log { "logsoftmax" } else { "softmax" };
+        Ok(format!("nn_ops::{prefix}_nd3_{tname}"))
     }
 
     pub fn eval(
@@ -98,7 +101,7 @@ mod tests {
 
             let cpu_output =
                 cpu_softmax.eval(tvec![a.to_host()?.into_tvalue()])?[0].clone().into_tensor();
-            let metal_output = Softmax.eval(stream, &a, axis)?;
+            let metal_output = Softmax { log: false }.eval(stream, &a, axis)?;
             cpu_output
                 .close_enough(&metal_output.to_host()?.into_tensor(), Approximation::Approximate)?;
             Ok(())
@@ -123,7 +126,7 @@ mod tests {
 
             let cpu_output =
                 cpu_softmax.eval(tvec![a.to_host()?.into_tvalue()])?[0].clone().into_tensor();
-            let metal_output = Softmax.eval(stream, &a, axis)?;
+            let metal_output = Softmax { log: false }.eval(stream, &a, axis)?;
             cpu_output
                 .close_enough(&metal_output.to_host()?.into_tensor(), Approximation::Approximate)?;
             Ok(())
@@ -148,7 +151,54 @@ mod tests {
 
             let cpu_output =
                 cpu_softmax.eval(tvec![a.to_host()?.into_tvalue()])?[0].clone().into_tensor();
-            let metal_output = Softmax.eval(stream, &a, axis)?;
+            let metal_output = Softmax { log: false }.eval(stream, &a, axis)?;
+            cpu_output
+                .close_enough(&metal_output.to_host()?.into_tensor(), Approximation::Approximate)?;
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn test_logsoftmax_f32() -> TractResult<()> {
+        with_borrowed_metal_stream(|stream| {
+            let m = 4;
+            let k = 4;
+            let axis = 1;
+
+            let a = Tensor::from_shape(&[m, k], &(0..m * k).map(|f| f as f32).collect::<Vec<_>>())?
+                .into_device()?;
+
+            let cpu_softmax =
+                TractSoftmax { axes: tvec![axis], quant_output_dt: None, kind: SoftmaxKind::LogSoftmax };
+
+            let cpu_output =
+                cpu_softmax.eval(tvec![a.to_host()?.into_tvalue()])?[0].clone().into_tensor();
+            let metal_output = Softmax { log: true }.eval(stream, &a, axis)?;
+            cpu_output
+                .close_enough(&metal_output.to_host()?.into_tensor(), Approximation::Approximate)?;
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn test_logsoftmax_f16() -> TractResult<()> {
+        with_borrowed_metal_stream(|stream| {
+            let m = 4;
+            let k = 4;
+            let axis = 1;
+
+            let a = Tensor::from_shape(
+                &[m, k],
+                &(0..m * k).map(|f| -> f16 { f.as_() }).collect::<Vec<_>>(),
+            )?
+            .into_device()?;
+
+            let cpu_softmax =
+                TractSoftmax { axes: tvec![axis], quant_output_dt: None, kind: SoftmaxKind::LogSoftmax };
+
+            let cpu_output =
+                cpu_softmax.eval(tvec![a.to_host()?.into_tvalue()])?[0].clone().into_tensor();
+            let metal_output = Softmax { log: true }.eval(stream, &a, axis)?;
             cpu_output
                 .close_enough(&metal_output.to_host()?.into_tensor(), Approximation::Approximate)?;
             Ok(())
@@ -239,7 +289,7 @@ mod tests {
         pub fn run(&self) -> TractResult<Tensor> {
             with_borrowed_metal_stream(|stream| {
                 let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_device()?;
-                let metal_output = Softmax.eval(stream, &a, self.axis)?;
+                let metal_output = Softmax { log: false }.eval(stream, &a, self.axis)?;
                 Ok(metal_output.to_host()?.into_tensor())
             })
         }

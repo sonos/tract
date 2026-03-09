@@ -29,7 +29,12 @@ pub fn all_functions() -> Vec<String> {
     functions.extend(
         tract_gpu::tensor::DeviceTensor::SUPPORTED_DT
             .into_iter()
-            .flat_map(|dt| Softmax.kernel_name(dt).into_iter()),
+            .flat_map(|dt| (Softmax { log: false }).kernel_name(dt).into_iter()),
+    );
+    functions.extend(
+        tract_gpu::tensor::DeviceTensor::SUPPORTED_DT
+            .into_iter()
+            .flat_map(|dt| (Softmax { log: true }).kernel_name(dt).into_iter()),
     );
 
     functions.extend(
