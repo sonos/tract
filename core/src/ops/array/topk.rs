@@ -63,7 +63,7 @@ impl Topk {
     ) -> TractResult<()> {
         let mut output_values_dense = output_values.try_as_dense_mut()?;
         let mut output_values_view = output_values_dense.to_array_view_mut::<T>()?;
-        let mut view = input.try_as_dense()?.to_array_view::<T>()?;
+        let mut view = input.to_dense_array_view::<T>()?;
         for (ix, x) in coords.iter().enumerate() {
             if ix != self.axis {
                 view.collapse_axis(Axis(ix), *x);

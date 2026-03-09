@@ -362,11 +362,7 @@ impl<'a> IntoAst<'a> {
         let mut name: Identifier = name.as_ref().into();
         let have_tract_core = self.ensure_registry(&"tract_core".into()).is_ok();
         if tensor.datum_type() == TDim::datum_type() {
-            return Ok(Self::dump_rec_tensor(
-                &tensor.try_as_dense()?.to_array_view::<TDim>()?,
-                tdim,
-            )
-            .into());
+            return Ok(Self::dump_rec_tensor(&tensor.to_dense_array_view::<TDim>()?, tdim).into());
         }
         if !force_variable
             && !self.framework.extern_all_constants
@@ -374,30 +370,26 @@ impl<'a> IntoAst<'a> {
             && tensor.len() > 0
         {
             if tensor.datum_type() == String::datum_type() {
-                return Ok(Self::dump_rec_tensor(
-                    &tensor.try_as_dense()?.to_array_view::<String>()?,
-                    |f| string(f),
-                )
+                return Ok(Self::dump_rec_tensor(&tensor.to_dense_array_view::<String>()?, |f| {
+                    string(f)
+                })
                 .into());
             } else if tensor.datum_type() == DatumType::F32 {
-                return Ok(Self::dump_rec_tensor(
-                    &tensor.try_as_dense()?.to_array_view::<f32>()?,
-                    |f| numeric(f),
-                )
+                return Ok(Self::dump_rec_tensor(&tensor.to_dense_array_view::<f32>()?, |f| {
+                    numeric(f)
+                })
                 .into());
             } else if have_tract_core && tensor.datum_type() == DatumType::F16 {
                 let array =
-                    Self::dump_rec_tensor(&tensor.try_as_dense()?.to_array_view::<f16>()?, |f| {
-                        numeric(f)
-                    })
-                    .into();
+                    Self::dump_rec_tensor(&tensor.to_dense_array_view::<f16>()?, |f| numeric(f))
+                        .into();
                 return Ok(invocation("tract_core_cast", &[array], &[("to", string("f16"))]));
             } else if have_tract_core && tensor.datum_type().is_integer() {
                 if let Ok(value) = tensor.cast_to::<i64>() {
-                    let value = Self::dump_rec_tensor(
-                        &value.try_as_dense().unwrap().to_array_view::<i64>().unwrap(),
-                        |i| numeric(i),
-                    );
+                    let value =
+                        Self::dump_rec_tensor(&value.to_dense_array_view::<i64>().unwrap(), |i| {
+                            numeric(i)
+                        });
                     let to = string(format!("{:?}", tensor.datum_type()).to_lowercase());
                     return Ok(invocation("tract_core_cast", &[value.into()], &[("to", to)]));
                 }

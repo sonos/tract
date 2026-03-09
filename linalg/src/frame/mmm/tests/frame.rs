@@ -237,7 +237,7 @@ where
     let d = tensor1(&d).into_shape(&[m, n])?;
     let store_spec =
         OutputStoreSpec::View { m_axis: Some(0), n_axis: Some(1), mr: ker.mr(), nr: ker.nr() };
-    let view_d = d.try_as_dense()?.to_array_view::<TI>()?.into_dimensionality()?;
+    let view_d = d.to_dense_array_view::<TI>()?.into_dimensionality()?;
     unsafe {
         fused_ops::<K, TA, TB, TC, TI, _>(
             ker,

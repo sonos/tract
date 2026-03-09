@@ -77,8 +77,7 @@ fn de_pad(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     let (input, pads) = args_2!(op.facts()?);
     let pads = pads.konst.as_ref().context("Dynamic PAD is not supported")?;
     let prefix = op.prefix;
-    let pads: ArrayView2<i32> =
-        pads.try_as_dense()?.to_array_view::<i32>()?.into_dimensionality()?;
+    let pads: ArrayView2<i32> = pads.to_dense_array_view::<i32>()?.into_dimensionality()?;
     let pads: Vec<(usize, usize)> =
         pads.rows().into_iter().map(|row| (row[0] as usize, row[1] as usize)).collect();
     let mode =
@@ -90,8 +89,7 @@ fn de_padv2(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     let (_input, pads, value) = args_3!(op.facts()?);
     let pads = pads.konst.as_ref().context("Dynamic PADV2 is not supported")?;
     let prefix = op.prefix;
-    let pads: ArrayView2<i32> =
-        pads.try_as_dense()?.to_array_view::<i32>()?.into_dimensionality()?;
+    let pads: ArrayView2<i32> = pads.to_dense_array_view::<i32>()?.into_dimensionality()?;
     let pads: Vec<(usize, usize)> =
         pads.rows().into_iter().map(|row| (row[0] as usize, row[1] as usize)).collect();
     let mode = tract_core::ops::array::PadMode::Constant(value.konst.context("Constant expected")?);

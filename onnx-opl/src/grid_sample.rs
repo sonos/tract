@@ -274,10 +274,10 @@ impl EvalOp for GridSample {
         let input_dt = x.datum_type();
         let x_tensor = x.into_tensor();
         let x_cow = x_tensor.cast_to::<f32>()?;
-        let x = x_cow.try_as_dense()?.to_array_view::<f32>()?;
+        let x = x_cow.to_dense_array_view::<f32>()?;
         let grid_tensor = grid.into_tensor();
         let grid_cow = grid_tensor.cast_to::<f32>()?;
-        let grid = grid_cow.try_as_dense()?.to_array_view::<f32>()?;
+        let grid = grid_cow.to_dense_array_view::<f32>()?;
 
         let x_shape = x.shape();
         let grid_shape = grid.shape();

@@ -234,8 +234,8 @@ impl BinEinsumProblem {
         let a = self.a.cast_to::<Acc>().unwrap();
         let b = self.b.cast_to::<Acc>().unwrap();
 
-        let a = a.try_as_dense().unwrap().to_array_view::<Acc>().unwrap();
-        let b = b.try_as_dense().unwrap().to_array_view::<Acc>().unwrap();
+        let a = a.to_dense_array_view::<Acc>().unwrap();
+        let b = b.to_dense_array_view::<Acc>().unwrap();
 
         let k_axes: TVec<_> = self
             .expr
@@ -285,7 +285,7 @@ impl BinEinsumProblem {
             sum
         });
         if let Some(unicast_const) = self.unicast_add_constant.clone() {
-            output + unicast_const.into_array::<Acc>().unwrap()
+            output + unicast_const.into_dense_array::<Acc>().unwrap()
         } else {
             output
         }

@@ -870,9 +870,9 @@ impl Tensor {
         }
         let (atol, rtol, outliers) = approx.atol_rtol_outliers(&self.datum_type());
         let ma = self.cast_to::<f32>()?;
-        let ma = ma.try_as_dense()?.to_array_view::<f32>()?;
+        let ma = ma.to_dense_array_view::<f32>()?;
         let mb = other.cast_to::<f32>()?;
-        let mb = mb.try_as_dense()?.to_array_view::<f32>()?;
+        let mb = mb.to_dense_array_view::<f32>()?;
         let mut first_outlier = None;
         let mut outliers_count = 0;
         ndarray::indices_of(&ma).into_iter().for_each(|indices| {
@@ -909,13 +909,31 @@ impl Tensor {
     }
 
     /// Transform the tensor into a `ndarray::Array`.
-    pub fn into_array<D: Datum>(self) -> TractResult<ArrayD<D>> {
-        Ok(self.try_as_dense()?.to_array_view::<D>()?.to_owned())
+    pub fn into_dense_array<D: Datum>(self) -> TractResult<ArrayD<D>> {
+        Ok(self.to_dense_array_view::<D>()?.to_owned())
     }
 
     /// Transform the tensor into a `ndarray::Array`.
     pub unsafe fn into_array_unchecked<D: Datum>(self) -> ArrayD<D> {
         unsafe { self.to_array_view_unchecked::<D>().to_owned() }
+    }
+
+    /// Returns a dense array view of the tensor.
+    ///
+    /// Errors if the storage is not dense or the datum type does not match `D`.
+    #[inline]
+    pub fn to_dense_array_view<D: Datum>(&self) -> TractResult<ArrayViewD<'_, D>> {
+        self.try_as_dense()?.to_array_view::<D>()
+    }
+
+    /// Returns a mutable dense array view of the tensor.
+    ///
+    /// Errors if the storage is not dense or the datum type does not match `D`.
+    #[inline]
+    pub fn to_dense_array_view_mut<D: Datum>(&mut self) -> TractResult<ArrayViewMutD<'_, D>> {
+        self.check_for_access::<D>()?;
+        ensure!(self.storage.as_dense_mut().is_some(), "Tensor storage is not dense");
+        unsafe { Ok(self.to_array_view_mut_unchecked()) }
     }
 
     fn check_for_access<D: Datum>(&self) -> TractResult<()> {
@@ -1484,8 +1502,7 @@ impl Tensor {
             start: usize,
             end: usize,
         ) -> TractResult<Tensor> {
-            Ok(t.try_as_dense()?
-                .to_array_view::<T>()?
+            Ok(t.to_dense_array_view::<T>()?
                 .slice_axis(ndarray::Axis(axis), (start..end).into())
                 .into_owned()
                 .into_tensor())

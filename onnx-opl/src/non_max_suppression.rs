@@ -144,8 +144,8 @@ impl NonMaxSuppression {
         let num_classes = scores.shape()[1];
         let num_dim = scores.shape()[2];
 
-        let boxes = boxes.try_as_dense()?.to_array_view::<T>()?;
-        let scores = scores.try_as_dense()?.to_array_view::<T>()?;
+        let boxes = boxes.to_dense_array_view::<T>()?;
+        let scores = scores.to_dense_array_view::<T>()?;
 
         // items: (batch, class, index)
         let mut selected_global: TVec<(usize, usize, usize)> = tvec![];

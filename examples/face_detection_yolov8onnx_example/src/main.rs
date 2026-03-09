@@ -119,7 +119,7 @@ fn main() -> Result<(), Error> {
     //run model
     //
     let forward = model.run(tvec![image.to_owned().into()])?;
-    let results = forward[0].try_as_dense()?.to_array_view::<f32>()?.view().t().into_owned();
+    let results = forward[0].to_dense_array_view::<f32>()?.view().t().into_owned();
     let mut bbox_vec: Vec<Bbox> = vec![];
     for i in 0..results.len_of(tract_ndarray::Axis(0)) {
         let row = results.slice(s![i, .., ..]);

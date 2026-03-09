@@ -66,7 +66,7 @@ impl MatmulQ40Problem {
             padded_a_dense
                 .to_array_view_mut::<f32>()?
                 .slice_axis_move(Axis(k_axis), (0..k).into())
-                .assign(&a.try_as_dense()?.to_array_view::<f32>()?);
+                .assign(&a.to_dense_array_view::<f32>()?);
         };
 
         Ok(padded_a)
@@ -118,10 +118,9 @@ impl MatmulQ40Problem {
         let quant_dequant_a = Q4_0.simulate_precision_loss(padded_a, 1)?;
 
         let mut a_view = quant_dequant_a
-            .try_as_dense()?
-            .to_array_view::<f32>()?
+            .to_dense_array_view::<f32>()?
             .slice_axis_move(Axis(1), (0..self.a.shape()[1]).into());
-        let mut b_view = self.b.try_as_dense()?.to_array_view::<f32>()?;
+        let mut b_view = self.b.to_dense_array_view::<f32>()?;
 
         if self.weights_in_b {
             (a_view, b_view) = (b_view, a_view);

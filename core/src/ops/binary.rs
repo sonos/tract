@@ -677,8 +677,8 @@ macro_rules! bin_to_super_type {
                 $(if $out_of_place(c, a, b)? { return Ok(()) } )?
                     $(
                         $(if c.datum_type() == $typ::datum_type() {
-                            let a = a.try_as_dense()?.to_array_view::<$typ>()?;
-                            let b = b.try_as_dense()?.to_array_view::<$typ>()?;
+                            let a = a.to_dense_array_view::<$typ>()?;
+                            let b = b.to_dense_array_view::<$typ>()?;
                             let mut c_dense = c.try_as_dense_mut()?;
                             let mut c = c_dense.to_array_view_mut::<$typ>()?;
                             $crate::ndarray::Zip::from(&mut c).and_broadcast(a).and_broadcast(b).for_each($cab);
@@ -690,8 +690,8 @@ macro_rules! bin_to_super_type {
                             $(if a.datum_type().unquantized() == <$typ_dt>::datum_type().unquantized() {
                                 let cab: fn(&mut $typ_dt, &$typ_dt, &$typ_dt, i32, f32) -> () = $cab_dt;
                                 let (zp, scale) = a.datum_type().qparams().map(|q| q.zp_scale()).unwrap_or((0, 1.));
-                                let a = a.try_as_dense()?.to_array_view::<$typ_dt>()?;
-                                let b = b.try_as_dense()?.to_array_view::<$typ_dt>()?;
+                                let a = a.to_dense_array_view::<$typ_dt>()?;
+                                let b = b.to_dense_array_view::<$typ_dt>()?;
                                 let mut c_dense = c.try_as_dense_mut()?;
                                 let mut c = c_dense.to_array_view_mut::<$typ_dt>()?;
                                 $crate::ndarray::Zip::from(&mut c).and_broadcast(a).and_broadcast(b).for_each(|c, a, b| cab(c, a, b, zp, scale));
@@ -715,7 +715,7 @@ macro_rules! bin_to_super_type {
                 $(
                     $(if b.datum_type() == $typ::datum_type() {
                         let cab: fn(&mut $typ, &$typ, &$typ) -> () = $cab;
-                        let b = b.try_as_dense()?.to_array_view::<$typ>()?;
+                        let b = b.to_dense_array_view::<$typ>()?;
                         let mut a_dense = a.try_as_dense_mut()?;
                         let mut a = a_dense.to_array_view_mut::<$typ>()?;
                         $crate::ndarray::Zip::from(&mut a).and_broadcast(b).for_each(|a, b| cab(a, &a.clone(), b));
@@ -729,7 +729,7 @@ macro_rules! bin_to_super_type {
                             let (zp, scale) = a.datum_type().qparams().map(|q| q.zp_scale()).unwrap_or((0, 1.));
                             let mut a_dense = a.try_as_dense_mut()?;
                             let mut a = a_dense.to_array_view_mut::<$typ_dt>()?;
-                            let b = b.try_as_dense()?.to_array_view::<$typ_dt>()?;
+                            let b = b.to_dense_array_view::<$typ_dt>()?;
                             $crate::ndarray::Zip::from(&mut a).and_broadcast(b).for_each(|a, b| {
                                 cab(a, &(a.clone()), b, zp, scale)
                             });
@@ -821,8 +821,8 @@ macro_rules! bin_to_super_type {
                             (a.datum_type(), b.datum_type(), c_dt)
                         {
                             let c_inv_scale = 1.0 / c_scale;
-                            let a = a.try_as_dense()?.to_array_view::<u8>()?;
-                            let b = b.try_as_dense()?.to_array_view::<u8>()?;
+                            let a = a.to_dense_array_view::<u8>()?;
+                            let b = b.to_dense_array_view::<u8>()?;
                             let c_shape = $crate::broadcast::multi_broadcast(&[a.shape(), b.shape()])?;
                             let mut c = Tensor::zero_dt(*c_dt, &c_shape)?;
                             let mut c_dense = c.try_as_dense_mut()?;

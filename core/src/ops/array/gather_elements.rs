@@ -51,7 +51,7 @@ impl EvalOp for GatherElements {
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (data, indices) = args_2!(inputs);
         let indices = indices.cast_to::<i64>()?;
-        let indices = indices.try_as_dense()?.to_array_view::<i64>()?;
+        let indices = indices.to_dense_array_view::<i64>()?;
         unsafe {
             Ok(tvec!(dispatch_datum_by_size!(Self::eval_t(data.datum_type())(
                 self, data, &indices

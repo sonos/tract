@@ -105,9 +105,9 @@ impl EvalOp for FlashSdpaOp {
         let input_dt = q.datum_type();
 
         let (q, k, v) = (q.cast_to::<f32>()?, k.cast_to::<f32>()?, v.cast_to::<f32>()?);
-        let mut q = q.try_as_dense()?.to_array_view::<f32>()?;
-        let mut k = k.try_as_dense()?.to_array_view::<f32>()?;
-        let mut v = v.try_as_dense()?.to_array_view::<f32>()?;
+        let mut q = q.to_dense_array_view::<f32>()?;
+        let mut k = k.to_dense_array_view::<f32>()?;
+        let mut v = v.to_dense_array_view::<f32>()?;
 
         let is_3d_case = q.ndim() == 3;
 
@@ -138,14 +138,15 @@ impl EvalOp for FlashSdpaOp {
         let k4 = k.to_shape((batch_size, num_kv_heads, kv_len, head_dim))?;
         let v4 = v.to_shape((batch_size, num_kv_heads, kv_len, head_dim))?;
 
-        let m =
-            if let Some(m) = inputs.get(3) {
-                Some(m.cast_to::<f32>()?.into_owned().into_array::<f32>()?.into_shape_with_order(
+        let m = if let Some(m) = inputs.get(3) {
+            Some(
+                m.cast_to::<f32>()?.into_owned().into_dense_array::<f32>()?.into_shape_with_order(
                     (m.shape()[0], if m.rank() == 3 { 1 } else { m.shape()[1] }, query_len, kv_len),
-                )?)
-            } else {
-                None
-            };
+                )?,
+            )
+        } else {
+            None
+        };
 
         let mut out = self
             .flash_attention_gqa(q4.view(), k4.view(), v4.view(), m.as_ref().map(|m| m.view()))

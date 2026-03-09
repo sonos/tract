@@ -140,9 +140,9 @@ impl QConvProblem {
         };
         let mut temp = ArrayD::<i32>::zeros(&*shape_out.shape);
         let data = self.data.cast_to::<i32>().unwrap();
-        let data = data.try_as_dense().unwrap().to_array_view::<i32>().unwrap();
+        let data = data.to_dense_array_view::<i32>().unwrap();
         let kernel = self.kernel.cast_to::<i32>().unwrap();
-        let kernel = kernel.try_as_dense().unwrap().to_array_view::<i32>().unwrap();
+        let kernel = kernel.to_dense_array_view::<i32>().unwrap();
         for n in 0..n {
             for g in 0..self.group {
                 for geo_out in tract_ndarray::indices(shape_out.hw_dims()) {

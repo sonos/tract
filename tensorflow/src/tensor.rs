@@ -155,20 +155,16 @@ impl TryFrom<&Tensor> for TensorProto {
         tensor.dtype = dt.into();
         match from.datum_type() {
             DatumType::F32 => {
-                tensor.float_val =
-                    from.try_as_dense()?.to_array_view::<f32>()?.iter().cloned().collect();
+                tensor.float_val = from.to_dense_array_view::<f32>()?.iter().cloned().collect();
             }
             DatumType::F64 => {
-                tensor.double_val =
-                    from.try_as_dense()?.to_array_view::<f64>()?.iter().cloned().collect();
+                tensor.double_val = from.to_dense_array_view::<f64>()?.iter().cloned().collect();
             }
             DatumType::I32 => {
-                tensor.int_val =
-                    from.try_as_dense()?.to_array_view::<i32>()?.iter().cloned().collect();
+                tensor.int_val = from.to_dense_array_view::<i32>()?.iter().cloned().collect();
             }
             DatumType::I64 => {
-                tensor.int64_val =
-                    from.try_as_dense()?.to_array_view::<i64>()?.iter().cloned().collect();
+                tensor.int64_val = from.to_dense_array_view::<i64>()?.iter().cloned().collect();
             }
             _ => unimplemented!("missing type {:?}", from.datum_type()),
         }

@@ -35,7 +35,7 @@ fn main() -> TractResult<()> {
         let results = model.run(tvec!(images.into()))?;
 
         // loop over the batch
-        for image in results[0].try_as_dense()?.to_array_view::<f32>()?.outer_iter() {
+        for image in results[0].to_dense_array_view::<f32>()?.outer_iter() {
             // find and display the max value with its index
             let best = image.iter().zip(2..).max_by(|a, b| a.0.partial_cmp(b.0).unwrap());
             println!("  result: {best:?}");

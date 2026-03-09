@@ -40,7 +40,7 @@ impl Gather {
     fn eval_t<T: Datum>(&self, data: TValue, indices: &TValue) -> TractResult<Tensor> {
         let data_dense = data.try_as_dense()?;
         let data_view = unsafe { data_dense.to_array_view_unchecked::<T>() };
-        let indices = indices.try_as_dense()?.to_array_view::<i64>()?;
+        let indices = indices.to_dense_array_view::<i64>()?;
         let output_shape = &*self.compute_output_shape(data.shape(), indices.shape())?;
         let mut output = unsafe { Tensor::uninitialized::<T>(output_shape)? };
         let mut output_dense = output.try_as_dense_mut()?;
