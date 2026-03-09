@@ -359,6 +359,58 @@ typedef decltype(softmax_nd3<float>) softmax_nd3_t;
 template [[host_name("nn_ops::softmax_nd3_f32")]] [[kernel]] softmax_nd3_t softmax_nd3<float>;
 template [[host_name("nn_ops::softmax_nd3_f16")]] [[kernel]] softmax_nd3_t softmax_nd3<half>;
 
+template<typename F>
+[[kernel]] void logsoftmax_nd3(
+                device const void *input_b,
+                device void *output_b,
+                constant const size_t shape[3],
+                constant const size_t strides[3],
+                uint3  tgpig[[threadgroup_position_in_grid]],
+                uint  tiisg[[thread_index_in_simdgroup]],
+                uint  tpsg[[threads_per_simdgroup]]
+                ) {
+
+    device const F *input = (device const F *)input_b;
+    device F *output = (device F *)output_b;
+
+    size_t dim = shape[1];
+
+    size_t base_idx = tgpig.x * strides[2]
+            + tgpig.z * strides[0];
+
+    // Get max value on softmax dim
+    float partial_max = -INFINITY;
+    for (size_t i = tiisg; i < dim; i += tpsg) {
+        auto idx = base_idx + i * strides[1];
+        float el = static_cast<float>(input[idx]);
+        partial_max = max(partial_max, el);
+    }
+
+    float axis_max = simd_max(partial_max);
+
+    // Compute Sum(exp(x - max))
+    float partial_norm = 0;
+    for (size_t i = tiisg; i < dim; i += tpsg) {
+        auto idx = base_idx + i * strides[1];
+        float el = static_cast<float>(input[idx]);
+        partial_norm += fast::exp(el - axis_max);
+    }
+
+    float log_sum = fast::log(simd_sum(partial_norm));
+
+    // output = (x - max) - log(sum(exp(x - max)))
+    for (size_t i = tiisg; i < dim; i += tpsg) {
+        auto idx = base_idx + i * strides[1];
+        float el = static_cast<float>(input[idx]);
+        output[idx] = static_cast<F>((el - axis_max) - log_sum);
+    }
+}
+
+typedef decltype(logsoftmax_nd3<float>) logsoftmax_nd3_t;
+
+template [[host_name("nn_ops::logsoftmax_nd3_f32")]] [[kernel]] logsoftmax_nd3_t logsoftmax_nd3<float>;
+template [[host_name("nn_ops::logsoftmax_nd3_f16")]] [[kernel]] logsoftmax_nd3_t logsoftmax_nd3<half>;
+
 template<typename F>  
 [[kernel]] void scaled_masked_softmax_nd3(
                 device const void *input_b,
