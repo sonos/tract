@@ -21,7 +21,7 @@ pub mod litteral;
 pub mod storage;
 pub mod view;
 
-use storage::{DenseStorage, TensorStorage};
+use storage::{DenseStorage, StorageKind};
 
 #[derive(Copy, Clone, Default, Debug)]
 pub enum Approximation {
@@ -78,7 +78,7 @@ pub struct Tensor {
     shape: TVec<usize>,
     strides: TVec<isize>,
     len: usize,
-    storage: Box<dyn TensorStorage>,
+    storage: StorageKind,
 }
 
 unsafe impl Send for Tensor {}
@@ -197,8 +197,9 @@ impl Tensor {
         alignment: usize,
     ) -> TractResult<Tensor> {
         let bytes = shape.iter().cloned().product::<usize>() * dt.size_of();
-        let storage: Box<dyn TensorStorage> =
-            Box::new(DenseStorage::from(unsafe { Blob::new_for_size_and_align(bytes, alignment) }));
+        let storage = StorageKind::Dense(DenseStorage::from(unsafe {
+            Blob::new_for_size_and_align(bytes, alignment)
+        }));
         let mut tensor = Tensor { strides: tvec!(), dt, shape: shape.into(), storage, len: 0 };
         if tensor.shape.len() == 0 {
             tensor.len = 1;
@@ -1585,7 +1586,8 @@ impl Tensor {
 
     pub fn into_blob(mut self) -> TractResult<Blob> {
         ensure!(self.dt.is_copy());
-        let storage = std::mem::replace(&mut self.storage, Box::new(DenseStorage::default()));
+        let storage =
+            std::mem::replace(&mut self.storage, StorageKind::Dense(DenseStorage::default()));
         storage.try_into_blob().context("Storage is not dense")
     }
 }

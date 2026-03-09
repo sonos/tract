@@ -161,3 +161,99 @@ impl TensorStorage for DenseStorage {
         Some(self.0)
     }
 }
+
+/// Inline enum replacing `Box<dyn TensorStorage>`.
+///
+/// The common `Dense` case stays inline (no heap alloc, no vtable indirection).
+/// `Other` covers future non-dense backends behind a single Box indirection.
+#[allow(dead_code)]
+pub(crate) enum StorageKind {
+    Dense(DenseStorage),
+    Other(Box<dyn TensorStorage>),
+}
+
+impl StorageKind {
+    #[inline]
+    pub fn as_bytes(&self) -> &[u8] {
+        match self {
+            StorageKind::Dense(d) => d.0.as_bytes(),
+            StorageKind::Other(o) => o.as_bytes(),
+        }
+    }
+
+    #[inline]
+    pub fn as_bytes_mut(&mut self) -> &mut [u8] {
+        match self {
+            StorageKind::Dense(d) => d.0.as_bytes_mut(),
+            StorageKind::Other(o) => o.as_bytes_mut(),
+        }
+    }
+
+    #[inline]
+    pub fn as_ptr(&self) -> *const u8 {
+        match self {
+            StorageKind::Dense(d) => d.0.as_bytes().as_ptr(),
+            StorageKind::Other(o) => o.as_ptr(),
+        }
+    }
+
+    #[inline]
+    pub fn as_mut_ptr(&mut self) -> *mut u8 {
+        match self {
+            StorageKind::Dense(d) => d.0.as_bytes_mut().as_mut_ptr(),
+            StorageKind::Other(o) => o.as_mut_ptr(),
+        }
+    }
+
+    #[inline]
+    pub fn layout(&self) -> &Layout {
+        match self {
+            StorageKind::Dense(d) => d.0.layout(),
+            StorageKind::Other(o) => o.layout(),
+        }
+    }
+
+    #[inline]
+    pub fn byte_len(&self) -> usize {
+        match self {
+            StorageKind::Dense(d) => d.0.len(),
+            StorageKind::Other(o) => o.byte_len(),
+        }
+    }
+
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        match self {
+            StorageKind::Dense(d) => d.0.is_empty(),
+            StorageKind::Other(o) => o.is_empty(),
+        }
+    }
+
+    #[inline]
+    pub fn same_as(&self, other: &StorageKind) -> bool {
+        match (self, other) {
+            (StorageKind::Dense(a), StorageKind::Dense(b)) => {
+                !a.0.is_empty()
+                    && a.0.as_bytes().as_ptr() == b.0.as_bytes().as_ptr()
+                    && a.0.len() == b.0.len()
+            }
+            _ => false,
+        }
+    }
+
+    #[inline]
+    #[allow(dead_code)]
+    pub fn deep_clone(&self) -> StorageKind {
+        match self {
+            StorageKind::Dense(d) => StorageKind::Dense(d.clone()),
+            StorageKind::Other(o) => StorageKind::Other(o.deep_clone()),
+        }
+    }
+
+    pub fn try_into_blob(self) -> Option<Blob> {
+        match self {
+            StorageKind::Dense(d) => Some(d.0),
+            StorageKind::Other(o) => o.try_into_blob(),
+        }
+    }
+}
