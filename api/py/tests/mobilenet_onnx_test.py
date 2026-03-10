@@ -186,6 +186,15 @@ def test_f32_to_f16():
     model.set_input_fact(0, "1,3,224,224,f32")
     model.analyse()
     typed = model.into_tract()
+    typed.transform(tract.FloatPrecision(tract.DatumType.F32, tract.DatumType.F16))
+    assert str(typed.input_fact(0)) == "1,3,224,224,F16"
+    assert str(typed.output_fact(0)) == "1,1000,F16"
+
+def test_f32_to_f16_raw_string():
+    model = tract.onnx().load("./mobilenetv2-7.onnx")
+    model.set_input_fact(0, "1,3,224,224,f32")
+    model.analyse()
+    typed = model.into_tract()
     typed.transform("f32_to_f16")
     assert str(typed.input_fact(0)) == "1,3,224,224,F16"
     assert str(typed.output_fact(0)) == "1,1000,F16"
@@ -194,14 +203,24 @@ def test_f16_to_f32():
     model = tract.onnx().load("./mobilenetv2-7.onnx")
     model.set_input_fact(0, "1,3,224,224,f32")
     model.analyse()
-    
+
     #Convert model to half
     typed = model.into_tract()
-    typed.transform("f32_to_f16")
+    typed.transform(tract.FloatPrecision(tract.DatumType.F32, tract.DatumType.F16))
     assert str(typed.input_fact(0)) == "1,3,224,224,F16"
     assert str(typed.output_fact(0)) == "1,1000,F16"
-    
+
     # Convert back to f32
+    typed.transform(tract.FloatPrecision(tract.DatumType.F16, tract.DatumType.F32))
+    assert str(typed.input_fact(0)) == "1,3,224,224,F32"
+    assert str(typed.output_fact(0)) == "1,1000,F32"
+
+def test_f16_to_f32_raw_string():
+    model = tract.onnx().load("./mobilenetv2-7.onnx")
+    model.set_input_fact(0, "1,3,224,224,f32")
+    model.analyse()
+    typed = model.into_tract()
+    typed.transform("f32_to_f16")
     typed.transform("f16_to_f32")
     assert str(typed.input_fact(0)) == "1,3,224,224,F32"
     assert str(typed.output_fact(0)) == "1,1000,F32"

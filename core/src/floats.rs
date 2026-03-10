@@ -1,5 +1,3 @@
-use tract_num_traits::Float;
-
 use crate::internal::translator::Translate;
 use crate::internal::*;
 use crate::ops::array::{Pad, PadMode};
@@ -12,16 +10,24 @@ use crate::ops::scan::Scan;
 use crate::ops::source::TypedSource;
 use crate::transform::ModelTransform;
 
-#[derive(Default)]
-pub struct FloatPrecisionTranslator<T1: Datum + Float, T2: Datum + Float> {
+pub struct FloatPrecisionTranslator {
+    from_dt: DatumType,
+    to_dt: DatumType,
     #[allow(clippy::type_complexity)]
     node_predicate: Option<Box<dyn Fn(&TypedNode) -> bool>>,
-    _phantom: PhantomData<(T1, T2)>,
 }
 
-impl<T1: Datum + Float, T2: Datum + Float> FloatPrecisionTranslator<T1, T2> {
-    pub fn with_filter(node_predicate: impl Fn(&TypedNode) -> bool + 'static) -> Self {
-        Self { node_predicate: Some(Box::new(node_predicate)), _phantom: PhantomData }
+impl FloatPrecisionTranslator {
+    pub fn new(from_dt: DatumType, to_dt: DatumType) -> Self {
+        Self { from_dt, to_dt, node_predicate: None }
+    }
+
+    pub fn with_filter(
+        from_dt: DatumType,
+        to_dt: DatumType,
+        node_predicate: impl Fn(&TypedNode) -> bool + 'static,
+    ) -> Self {
+        Self { from_dt, to_dt, node_predicate: Some(Box::new(node_predicate)) }
     }
 
     fn should_translate_node(&self, node: &TypedNode) -> bool {
@@ -39,7 +45,7 @@ impl<T1: Datum + Float, T2: Datum + Float> FloatPrecisionTranslator<T1, T2> {
         op_float_dt: DatumType,
     ) -> TractResult<TVec<OutletId>> {
         let original_op_float_dt =
-            if op_float_dt == T1::datum_type() { T2::datum_type() } else { T1::datum_type() };
+            if op_float_dt == self.from_dt { self.to_dt } else { self.from_dt };
 
         let mut mapped_inputs = tvec![];
         for (i_idx, i) in node.inputs.iter().enumerate() {
@@ -71,10 +77,10 @@ impl<T1: Datum + Float, T2: Datum + Float> FloatPrecisionTranslator<T1, T2> {
         for (o_idx, o) in target_node_outlet_ids.into_iter().enumerate() {
             // Add Cast op for model output
             let is_source_output = source.outputs.contains(&OutletId::new(node.id, o_idx));
-            if target.outlet_fact(o)?.datum_type == T1::datum_type() && is_source_output {
+            if target.outlet_fact(o)?.datum_type == self.from_dt && is_source_output {
                 let casted_output = target.wire_node(
                     format!("{}.cast-out-{o_idx}", node.name),
-                    Cast { to: T2::datum_type() },
+                    Cast { to: self.to_dt },
                     &[o],
                 )?[0];
                 outputs.push(casted_output);
@@ -86,15 +92,18 @@ impl<T1: Datum + Float, T2: Datum + Float> FloatPrecisionTranslator<T1, T2> {
     }
 }
 
-impl<T1: Datum + Float, T2: Datum + Float> std::fmt::Debug for FloatPrecisionTranslator<T1, T2> {
+impl std::fmt::Debug for FloatPrecisionTranslator {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("FloatPrecisionTranslator").field("_phantom", &self._phantom).finish()
+        f.debug_struct("FloatPrecisionTranslator")
+            .field("from", &self.from_dt)
+            .field("to", &self.to_dt)
+            .finish()
     }
 }
 
-impl<T1: Datum + Float, T2: Datum + Float> ModelTransform for FloatPrecisionTranslator<T1, T2> {
+impl ModelTransform for FloatPrecisionTranslator {
     fn name(&self) -> StaticName {
-        format!("{:?}-to-{:?}", T1::datum_type(), T2::datum_type()).into()
+        format!("{:?}-to-{:?}", self.from_dt, self.to_dt).into()
     }
 
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
@@ -104,9 +113,8 @@ impl<T1: Datum + Float, T2: Datum + Float> ModelTransform for FloatPrecisionTran
     }
 }
 
-impl<T1: Datum + Float, T2: Datum + Float>
-    Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>>
-    for FloatPrecisionTranslator<T1, T2>
+impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>>
+    for FloatPrecisionTranslator
 {
     fn translate_node(
         &self,
@@ -120,59 +128,63 @@ impl<T1: Datum + Float, T2: Datum + Float>
             let new_op = node.op.clone();
 
             let casted_inputs =
-                self.cast_inputs_if_required(target, node, mapping, T1::datum_type())?;
+                self.cast_inputs_if_required(target, node, mapping, self.from_dt)?;
             let target_node_outlet_ids = target.wire_node(&node.name, new_op, &casted_inputs)?;
 
             self.cast_model_outputs_if_required(source, node, target, target_node_outlet_ids)
         } else {
-            let casted_inputs =
-                self.cast_inputs_if_required(target, node, mapping, T2::datum_type())?;
+            let casted_inputs = self.cast_inputs_if_required(target, node, mapping, self.to_dt)?;
 
-            let new_op = if let Some(source) = node.op_as::<TypedSource>() {
-                Box::new(TypedSource::new(fact_float_precision_conversion::<T1, T2>(&source.fact)))
+            let new_op = if let Some(source_op) = node.op_as::<TypedSource>() {
+                let mut fact = source_op.fact.clone();
+                if fact.datum_type == self.from_dt {
+                    fact.datum_type = self.to_dt;
+                }
+                Box::new(TypedSource::new(fact))
             } else if let Some(konst) = node.op_as::<Const>() {
-                if konst.val().datum_type() == T1::datum_type() {
+                if konst.val().datum_type() == self.from_dt {
                     let wire = target.add_const(
-                        format!("{}.{:?}", node.name, T1::datum_type()),
+                        format!("{}.{:?}", node.name, self.from_dt),
                         konst.val().clone(),
                     )?;
-                    return target.wire_node(&node.name, cast(T2::datum_type()), &[wire]);
+                    return target.wire_node(&node.name, cast(self.to_dt), &[wire]);
                 } else {
                     node.op.clone()
                 }
-            } else if let Some(cast) = node.op_as::<Cast>() {
-                if cast.to == T1::datum_type() {
-                    Box::new(Cast { to: T2::datum_type() })
+            } else if let Some(cast_op) = node.op_as::<Cast>() {
+                if cast_op.to == self.from_dt {
+                    Box::new(Cast { to: self.to_dt })
                 } else {
                     node.op.clone()
                 }
             } else if let Some(ew) = node.op_as::<ElementWiseOp>() {
-                if ew.1 == Some(T1::datum_type()) {
-                    Box::new(ElementWiseOp(ew.0.clone(), Some(T2::datum_type())))
+                if ew.1 == Some(self.from_dt) {
+                    Box::new(ElementWiseOp(ew.0.clone(), Some(self.to_dt)))
                 } else {
                     node.op.clone()
                 }
             } else if let Some(bin) = node.op_as::<TypedBinOp>() {
-                if bin.1 == Some(T1::datum_type()) {
-                    Box::new(TypedBinOp(bin.0.clone(), Some(T2::datum_type())))
+                if bin.1 == Some(self.from_dt) {
+                    Box::new(TypedBinOp(bin.0.clone(), Some(self.to_dt)))
                 } else {
                     node.op.clone()
                 }
             } else if let Some(op) = node.op_as::<Scan>() {
-                let body =
-                    FloatPrecisionTranslator::<T1, T2>::default().translate_model(&op.body)?;
+                let body = FloatPrecisionTranslator::new(self.from_dt, self.to_dt)
+                    .translate_model(&op.body)?;
                 Box::new(Scan { body, ..op.clone() })
             } else if let Some(op) = node.op_as::<EinSum>() {
-                Box::new(EinSum {
-                    operating_dt: dt_float_precision_conversion::<T1, T2>(op.operating_dt),
-                    ..op.clone()
-                })
+                let operating_dt =
+                    if op.operating_dt == self.from_dt { self.to_dt } else { op.operating_dt };
+                Box::new(EinSum { operating_dt, ..op.clone() })
             } else if let Some(op) = node.op_as::<Pad>() {
                 if let PadMode::Constant(t) = &op.mode {
-                    Box::new(Pad {
-                        mode: PadMode::Constant(tensor_float_precision_conversion::<T1, T2>(t)),
-                        ..op.clone()
-                    })
+                    let new_t = if t.datum_type() == self.from_dt {
+                        t.cast_to_dt(self.to_dt)?.into_owned().into_arc_tensor()
+                    } else {
+                        Arc::clone(t)
+                    };
+                    Box::new(Pad { mode: PadMode::Constant(new_t), ..op.clone() })
                 } else {
                     Box::new(op.clone())
                 }
@@ -181,32 +193,6 @@ impl<T1: Datum + Float, T2: Datum + Float>
             };
             target.wire_node(&node.name, new_op, &casted_inputs)
         }
-    }
-}
-
-fn dt_float_precision_conversion<T1: Datum + Float, T2: Datum + Float>(dt: DatumType) -> DatumType {
-    if dt == T1::datum_type() { T2::datum_type() } else { dt }
-}
-
-fn fact_float_precision_conversion<T1: Datum + Float, T2: Datum + Float>(
-    t: &TypedFact,
-) -> TypedFact {
-    if t.datum_type == T1::datum_type() {
-        let mut t = t.clone();
-        t.datum_type = T2::datum_type();
-        t
-    } else {
-        t.clone()
-    }
-}
-
-fn tensor_float_precision_conversion<T1: Datum + Float, T2: Datum + Float>(
-    t: &Arc<Tensor>,
-) -> Arc<Tensor> {
-    if t.datum_type() == T1::datum_type() {
-        t.cast_to::<T2>().unwrap().into_owned().into_arc_tensor()
-    } else {
-        Arc::clone(t)
     }
 }
 
@@ -258,20 +244,26 @@ mod test {
         );
 
         // Execution in F16 with filter that returns the good output.
-        let runnable_model =
-            &crate::transform::build_float_translator::<f32, f16>(Some("!=layer.1"))
-                .transform_into(model.clone())?
-                .into_runnable()?;
+        let runnable_model = &crate::transform::build_float_translator(
+            f32::datum_type(),
+            f16::datum_type(),
+            Some("!=layer.1"),
+        )
+        .transform_into(model.clone())?
+        .into_runnable()?;
         assert_eq!(
             runnable_model.run(tvec![tensor1(&[f16::from_f32(5.0)]).into()])?[0],
             tensor1(&[f16::NEG_INFINITY]).into()
         );
 
         // Execution in F16 with returns NaN despite the filter.
-        let runnable_model =
-            &crate::transform::build_float_translator::<f32, f16>(Some("!=layer.0"))
-                .transform_into(model)?
-                .into_runnable()?;
+        let runnable_model = &crate::transform::build_float_translator(
+            f32::datum_type(),
+            f16::datum_type(),
+            Some("!=layer.0"),
+        )
+        .transform_into(model)?
+        .into_runnable()?;
         assert!(
             runnable_model.run(tvec![tensor1(&[f16::from_f32(5.0)]).into()])?[0]
                 .try_as_dense()?
@@ -296,7 +288,8 @@ mod test {
 
         // Execution in F16 with returns NaN
         let mut model_f16 = model.clone();
-        model_f16.transform(&FloatPrecisionTranslator::<f32, f16>::default())?;
+        model_f16
+            .transform(&FloatPrecisionTranslator::new(f32::datum_type(), f16::datum_type()))?;
         let runnable_model_f16 = model_f16.clone().into_runnable()?;
         assert!(
             runnable_model_f16.run(tvec![tensor1(&[f16::from_f32(5.0)]).into()])?[0]
@@ -307,7 +300,9 @@ mod test {
 
         // Execution in F16 with filter that returns the good output.
         let mut model_f16_with_filter = model.clone();
-        model_f16_with_filter.transform(&FloatPrecisionTranslator::<f32, f16>::with_filter(
+        model_f16_with_filter.transform(&FloatPrecisionTranslator::with_filter(
+            f32::datum_type(),
+            f16::datum_type(),
             |node| !node.name.contains("layer.1"),
         ))?;
         let runnable_model_f16 = model_f16_with_filter.clone().into_runnable()?;
@@ -316,7 +311,9 @@ mod test {
             tensor1(&[f16::NEG_INFINITY]).into()
         );
         let mut model_f16_with_filter = model.clone();
-        model_f16_with_filter.transform(&FloatPrecisionTranslator::<f32, f16>::with_filter(
+        model_f16_with_filter.transform(&FloatPrecisionTranslator::with_filter(
+            f32::datum_type(),
+            f16::datum_type(),
             |node| !node.name.contains("layer.0"),
         ))?;
         let runnable_model_f16 = model_f16_with_filter.clone().into_runnable()?;

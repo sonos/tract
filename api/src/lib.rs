@@ -7,7 +7,7 @@ use std::path::Path;
 pub mod macros;
 pub mod transform;
 
-pub use transform::{ConcretizeSymbols, Pulse, TransformSpec};
+pub use transform::{ConcretizeSymbols, FloatPrecision, Pulse, TransformSpec};
 
 /// an implementation of tract's NNEF framework object
 ///

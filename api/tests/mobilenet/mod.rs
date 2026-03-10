@@ -247,6 +247,22 @@ fn test_f32_to_f16() -> anyhow::Result<()> {
     model.set_input_fact(0, "B,3,224,224,f32")?;
     model.analyse()?;
     let mut typed = model.into_tract()?;
+    typed.transform(FloatPrecision::new(
+        DatumType::TRACT_DATUM_TYPE_F32,
+        DatumType::TRACT_DATUM_TYPE_F16,
+    ))?;
+    assert_eq!(typed.input_fact(0)?.to_string(), "B,3,224,224,F16");
+    assert_eq!(typed.output_fact(0)?.to_string(), "B,1000,F16");
+    Ok(())
+}
+
+#[test]
+fn test_f32_to_f16_raw_string() -> anyhow::Result<()> {
+    ensure_models()?;
+    let mut model = onnx()?.load("mobilenetv2-7.onnx")?;
+    model.set_input_fact(0, "B,3,224,224,f32")?;
+    model.analyse()?;
+    let mut typed = model.into_tract()?;
     typed.transform("f32_to_f16")?;
     assert_eq!(typed.input_fact(0)?.to_string(), "B,3,224,224,F16");
     assert_eq!(typed.output_fact(0)?.to_string(), "B,1000,F16");
@@ -262,11 +278,31 @@ fn test_f16_to_f32() -> anyhow::Result<()> {
     let mut typed = model.into_tract()?;
 
     // Convert model to half
-    typed.transform("f32_to_f16")?;
+    typed.transform(FloatPrecision::new(
+        DatumType::TRACT_DATUM_TYPE_F32,
+        DatumType::TRACT_DATUM_TYPE_F16,
+    ))?;
     assert_eq!(typed.input_fact(0)?.to_string(), "B,3,224,224,F16");
     assert_eq!(typed.output_fact(0)?.to_string(), "B,1000,F16");
 
     // Convert back to f32
+    typed.transform(FloatPrecision::new(
+        DatumType::TRACT_DATUM_TYPE_F16,
+        DatumType::TRACT_DATUM_TYPE_F32,
+    ))?;
+    assert_eq!(typed.input_fact(0)?.to_string(), "B,3,224,224,F32");
+    assert_eq!(typed.output_fact(0)?.to_string(), "B,1000,F32");
+    Ok(())
+}
+
+#[test]
+fn test_f16_to_f32_raw_string() -> anyhow::Result<()> {
+    ensure_models()?;
+    let mut model = onnx()?.load("mobilenetv2-7.onnx")?;
+    model.set_input_fact(0, "B,3,224,224,f32")?;
+    model.analyse()?;
+    let mut typed = model.into_tract()?;
+    typed.transform("f32_to_f16")?;
     typed.transform("f16_to_f32")?;
     assert_eq!(typed.input_fact(0)?.to_string(), "B,3,224,224,F32");
     assert_eq!(typed.output_fact(0)?.to_string(), "B,1000,F32");

@@ -1,6 +1,8 @@
 import json
 from typing import Dict, Optional, Union
 
+from .value import DatumType
+
 
 class TransformSpec:
     """Base class for typed transform specifications.
@@ -59,4 +61,45 @@ class Pulse(TransformSpec):
         d = {"name": "pulse", "pulse": self._pulse}
         if self._symbol is not None:
             d["symbol"] = self._symbol
+        return json.dumps(d)
+
+
+class FloatPrecision(TransformSpec):
+    """Change the float precision of a model (e.g. F32 to F16).
+
+    Example::
+
+        model.transform(FloatPrecision(DatumType.F32, DatumType.F16))
+        # or with filter:
+        model.transform(FloatPrecision(DatumType.F32, DatumType.F16, filter="!=layer.1"))
+    """
+
+    _DT_NAMES = {
+        DatumType.F16: "f16",
+        DatumType.F32: "f32",
+        DatumType.F64: "f64",
+    }
+
+    def __init__(self, from_dt: DatumType, to_dt: DatumType, *, filter: Optional[str] = None):
+        if from_dt not in self._DT_NAMES:
+            raise ValueError(f"from_dt must be a float DatumType, got {from_dt}")
+        if to_dt not in self._DT_NAMES:
+            raise ValueError(f"to_dt must be a float DatumType, got {to_dt}")
+        self._from = from_dt
+        self._to = to_dt
+        self._filter = filter
+
+    def filter(self, pattern: str) -> "FloatPrecision":
+        """Set a node-name filter pattern. Returns self for chaining."""
+        self._filter = pattern
+        return self
+
+    def to_json(self) -> str:
+        d = {
+            "name": "float_precision",
+            "from": self._DT_NAMES[self._from],
+            "to": self._DT_NAMES[self._to],
+        }
+        if self._filter is not None:
+            d["filter"] = self._filter
         return json.dumps(d)
