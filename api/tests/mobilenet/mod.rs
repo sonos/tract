@@ -164,7 +164,7 @@ fn test_concretize() -> anyhow::Result<()> {
     let mut typed = model.into_tract()?;
     assert_eq!(typed.input_fact(0)?.to_string(), "B,3,224,224,F32");
     assert_eq!(typed.output_fact(0)?.to_string(), "B,1000,F32");
-    typed.concretize_symbols([("B", 1)])?;
+    typed.transform(r#"{"name":"concretize_symbols","values":{"B":1}}"#)?;
     assert_eq!(typed.input_fact(0)?.to_string(), "1,3,224,224,F32");
     assert_eq!(typed.output_fact(0)?.to_string(), "1,1000,F32");
     Ok(())

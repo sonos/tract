@@ -123,15 +123,9 @@ class Model:
         is informed of some specific symbol values.
         """
         self._valid()
-        nb = len(values)
-        names_str = []
-        names = (c_char_p * nb)()
-        values_list = (c_int64 * nb)()
-        for ix, (k, v) in enumerate(values.items()):
-            names_str.append(str(k).encode("utf-8"))
-            names[ix] = names_str[ix]
-            values_list[ix] = v
-        check(lib.tract_model_concretize_symbols(self.ptr, c_size_t(nb), names, values_list))
+        import json
+        spec = json.dumps({"name": "concretize_symbols", "values": values})
+        self.transform(spec)
 
     def pulse(self, symbol: str, pulse: Union[str, int]) -> None:
         """Pulsify a model."""

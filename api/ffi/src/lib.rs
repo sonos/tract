@@ -654,35 +654,6 @@ pub unsafe extern "C" fn tract_model_set_output_names(
     })
 }
 
-/// Give value one or more symbols used in the model.
-///
-/// * symbols is an array of `nb_symbols` pointers to null-terminated UTF-8 string for the symbols
-///   names to substitue
-/// * values is an array of `nb_symbols` integer values
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn tract_model_concretize_symbols(
-    model: *mut TractModel,
-    nb_symbols: usize,
-    symbols: *const *const i8,
-    values: *const i64,
-) -> TRACT_RESULT {
-    wrap(|| unsafe {
-        check_not_null!(model, symbols, values);
-        let model = &mut (*model).0;
-        let mut table = vec![];
-        for i in 0..nb_symbols {
-            let name = CStr::from_ptr(*symbols.add(i) as _)
-                .to_str()
-                .with_context(|| {
-                    format!("failed to parse symbol name for {i}th symbol (not utf8)")
-                })?
-                .to_owned();
-            table.push((name, *values.add(i)));
-        }
-        model.concretize_symbols(table)
-    })
-}
-
 /// Apply a transform to the model.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_model_transform(

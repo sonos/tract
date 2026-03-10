@@ -185,6 +185,33 @@ pub fn get_transform_with_params(
     Ok(None)
 }
 
+#[derive(Debug, Default, serde::Deserialize)]
+pub struct ConcretizeSymbolsConfig {
+    pub values: std::collections::HashMap<String, i64>,
+}
+
+#[derive(Debug)]
+struct ConcretizeSymbolsTransform(ConcretizeSymbolsConfig);
+
+impl ModelTransform for ConcretizeSymbolsTransform {
+    fn name(&self) -> StaticName {
+        "concretize_symbols".into()
+    }
+
+    fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
+        let mut table = SymbolValues::default();
+        for (k, v) in &self.0.values {
+            table = table.with(&model.symbols.sym(k), *v);
+        }
+        *model = model.concretize_dims(&table)?;
+        Ok(())
+    }
+}
+
+register_model_transform!("concretize_symbols", ConcretizeSymbolsConfig, |config| Ok(Box::new(
+    ConcretizeSymbolsTransform(config)
+)));
+
 register_simple_model_transform!("softmax_fast_compact", SoftmaxFastCompact);
 #[cfg(feature = "blas")]
 register_simple_model_transform!("as_blas", AsBlas);

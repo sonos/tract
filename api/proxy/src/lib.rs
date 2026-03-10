@@ -310,23 +310,6 @@ impl ModelInterface for Model {
         Ok(Runnable(runnable))
     }
 
-    fn concretize_symbols(
-        &mut self,
-        values: impl IntoIterator<Item = (impl AsRef<str>, i64)>,
-    ) -> Result<()> {
-        let (names, values): (Vec<_>, Vec<_>) = values.into_iter().unzip();
-        let c_strings: Vec<CString> =
-            names.into_iter().map(|a| Ok(CString::new(a.as_ref())?)).collect::<Result<_>>()?;
-        let ptrs: Vec<_> = c_strings.iter().map(|cs| cs.as_ptr()).collect();
-        check!(sys::tract_model_concretize_symbols(
-            self.0,
-            ptrs.len(),
-            ptrs.as_ptr(),
-            values.as_ptr()
-        ))?;
-        Ok(())
-    }
-
     fn transform(&mut self, transform: &str) -> Result<()> {
         let t = CString::new(transform)?;
         check!(sys::tract_model_transform(self.0, t.as_ptr()))?;
