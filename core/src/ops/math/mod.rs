@@ -507,7 +507,7 @@ fn declutter_pow(
             )?));
         }
     }
-    Ok(None)
+    crate::ops::nn::gelu_approximate::detect_gelu_approx(_op, model, node)
 }
 
 element_wise!(abs, Abs, [i8, i16, i32, i64, f16, f32, i32] => |_, xs| {

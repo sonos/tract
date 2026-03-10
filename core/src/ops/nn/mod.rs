@@ -1,9 +1,15 @@
 mod data_formats;
+pub mod gelu_approximate;
 mod reduce;
+pub mod rms_norm;
+pub mod silu;
 mod softmax;
 
 pub use self::data_formats::{BaseDataShape, DataFormat, DataShape, SymDataShape};
+pub use self::gelu_approximate::GeluApproximate;
 pub use self::reduce::{Reduce, Reducer, expand_mean_of_squares};
+pub use self::rms_norm::RmsNorm;
+pub use self::silu::Silu;
 pub use self::softmax::{Softmax, SoftmaxExp, SoftmaxKind};
 
 pub use crate::internal::*;
@@ -14,7 +20,8 @@ element_wise!(sigmoid, Sigmoid,
  [f16] => |_, xs| { (tract_linalg::ops().sigmoid_f16)().run(xs) },
  [f32] => |_, xs| { (tract_linalg::ops().sigmoid_f32)().run(xs) };
  q: [i8, u8, i32, i32] => |x: f32| 1.0 / (1.0+(-x).exp());
- cost: |dt| {tvec!((Cost::FMA(dt), 11), (Cost::Div(dt), 1))}
+ cost: |dt| {tvec!((Cost::FMA(dt), 11), (Cost::Div(dt), 1))};
+ declutter: silu::detect_silu
 );
 
 element_wise!(hard_swish, HardSwish,

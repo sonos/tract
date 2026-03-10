@@ -5,11 +5,8 @@ use std::collections::HashSet;
 use rewriter::*;
 use tract_nnef::internal::*;
 
-register_simple_model_transform!("detect-rms-norm", RmsNormTransform);
 register_simple_model_transform!("detect-apply-rope", ApplyRopeTransform);
-register_simple_model_transform!("detect-silu", SiluTransform);
 register_simple_model_transform!("detect-scaled-masked-softmax", ScaledMaskedSoftmaxTransform);
-register_simple_model_transform!("detect-gelu-approx", GeluTransform);
 register_simple_model_transform!("detect-kv-cache", KeyValueCacheTransform);
 register_simple_model_transform!(
     "detect-sdpa-kv-cache-broadcast",
@@ -18,9 +15,6 @@ register_simple_model_transform!(
 register_simple_model_transform!("transformers-detect-all", TransformersTransform);
 
 pub fn register(registry: &mut Registry) {
-    ops::rms_norm::register(registry);
-    ops::silu::register(registry);
-    ops::gelu_approximate::register(registry);
     ops::apply_rope::register(registry);
     ops::scaled_masked_softmax::register(registry);
     ops::sdpa::register(registry);
