@@ -109,7 +109,25 @@ def test_concretize():
     typed = model.into_tract()
     assert str(typed.input_fact(0)) == "B,3,224,224,F32"
     assert str(typed.output_fact(0)) == "B,1000,F32"
-    typed.concretize_symbols({ "B": 1 })
+    typed.transform(tract.ConcretizeSymbols({"B": 1}))
+    assert str(typed.input_fact(0)) == "1,3,224,224,F32"
+    assert str(typed.output_fact(0)) == "1,1000,F32"
+
+def test_concretize_builder():
+    model = tract.onnx().load("./mobilenetv2-7.onnx")
+    model.set_input_fact(0, "B,3,224,224,f32")
+    model.analyse()
+    typed = model.into_tract()
+    typed.transform(tract.ConcretizeSymbols().value("B", 1))
+    assert str(typed.input_fact(0)) == "1,3,224,224,F32"
+    assert str(typed.output_fact(0)) == "1,1000,F32"
+
+def test_concretize_raw_string():
+    model = tract.onnx().load("./mobilenetv2-7.onnx")
+    model.set_input_fact(0, "B,3,224,224,f32")
+    model.analyse()
+    typed = model.into_tract()
+    typed.transform('{"name":"concretize_symbols","values":{"B":1}}')
     assert str(typed.input_fact(0)) == "1,3,224,224,F32"
     assert str(typed.output_fact(0)) == "1,1000,F32"
 
@@ -120,13 +138,31 @@ def test_pulse():
     typed = model.into_tract()
     assert str(typed.input_fact(0)) == "B,3,224,224,F32"
     assert str(typed.output_fact(0)) == "B,1000,F32"
-    typed.pulse("B",  5)
+    typed.transform(tract.Pulse("5", symbol="B"))
     assert str(typed.input_fact(0)) == "5,3,224,224,F32"
     assert str(typed.output_fact(0)) == "5,1000,F32"
     properties = typed.property_keys()
     properties.sort()
     assert properties == ["pulse.delay", "pulse.input_axes", "pulse.output_axes"]
     assert typed.property("pulse.delay").to_numpy() == [0]
+
+def test_pulse_builder():
+    model = tract.onnx().load("./mobilenetv2-7.onnx")
+    model.set_input_fact(0, "B,3,224,224,f32")
+    model.analyse()
+    typed = model.into_tract()
+    typed.transform(tract.Pulse("5").symbol("B"))
+    assert str(typed.input_fact(0)) == "5,3,224,224,F32"
+    assert str(typed.output_fact(0)) == "5,1000,F32"
+
+def test_pulse_raw_string():
+    model = tract.onnx().load("./mobilenetv2-7.onnx")
+    model.set_input_fact(0, "B,3,224,224,f32")
+    model.analyse()
+    typed = model.into_tract()
+    typed.transform('{"name":"pulse","symbol":"B","pulse":"5"}')
+    assert str(typed.input_fact(0)) == "5,3,224,224,F32"
+    assert str(typed.output_fact(0)) == "5,1000,F32"
 
 def test_runtime_fact():
     runnable = tract.nnef().load("mobilenet_v2_1.0.onnx.nnef.tgz").into_runnable()
@@ -138,7 +174,7 @@ def test_runtime_properties():
     model.set_input_fact(0, "B,3,224,224,f32")
     model.analyse()
     typed = model.into_tract()
-    typed.pulse("B", "5")
+    typed.transform(tract.Pulse("5", symbol="B"))
     runnable = typed.into_runnable()
     properties = runnable.property_keys()
     properties.sort()
