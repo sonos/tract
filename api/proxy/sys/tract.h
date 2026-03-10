@@ -351,18 +351,6 @@ enum TRACT_RESULT tract_model_set_output_names(struct TractModel *model,
                                                const char *const *names);
 
 /**
- * Give value one or more symbols used in the model.
- *
- * * symbols is an array of `nb_symbols` pointers to null-terminated UTF-8 string for the symbols
- *   names to substitue
- * * values is an array of `nb_symbols` integer values
- */
-enum TRACT_RESULT tract_model_concretize_symbols(struct TractModel *model,
-                                                 uintptr_t nb_symbols,
-                                                 const int8_t *const *symbols,
-                                                 const int64_t *values);
-
-/**
  * Apply a transform to the model.
  */
 enum TRACT_RESULT tract_model_transform(struct TractModel *model, const int8_t *transform);

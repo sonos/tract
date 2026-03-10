@@ -252,18 +252,6 @@ impl ModelInterface for Model {
         Ok(Runnable(runnable.into()))
     }
 
-    fn concretize_symbols(
-        &mut self,
-        values: impl IntoIterator<Item = (impl AsRef<str>, i64)>,
-    ) -> Result<()> {
-        let mut table = SymbolValues::default();
-        for (k, v) in values {
-            table = table.with(&self.0.symbols.sym(k.as_ref()), v);
-        }
-        self.0 = self.0.concretize_dims(&table)?;
-        self.0.declutter()
-    }
-
     fn transform(&mut self, transform: &str) -> Result<()> {
         let transform_obj = if transform.trim_start().starts_with('{') {
             // JSON input: parse, extract name, deserialize params

@@ -156,11 +156,6 @@ pub trait ModelInterface: Sized {
 
     fn into_runnable(self) -> Result<Self::Runnable>;
 
-    fn concretize_symbols(
-        &mut self,
-        values: impl IntoIterator<Item = (impl AsRef<str>, i64)>,
-    ) -> Result<()>;
-
     fn transform(&mut self, transform: &str) -> Result<()>;
 
     fn property_keys(&self) -> Result<Vec<String>>;
