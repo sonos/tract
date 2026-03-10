@@ -4,7 +4,6 @@ use crate::internal::*;
 #[cfg(feature = "blas")]
 use crate::ops::einsum::as_blas::AsBlas;
 use crate::ops::matmul::de_block_quant::BlockQuantTransform;
-use num_traits::Float;
 use std::fmt::Debug;
 
 use tract_data::TractResult;
@@ -45,27 +44,29 @@ macro_rules! rule_if_some {
 /// filter_predicate format:
 /// - `==node-name/layer,node-name-layer.1`: Only node which has a name that contains `node-name/layer` or `node-name-layer.1`
 /// - `!=node-name/layer,node-name-layer.1`: Only node which has a name that doesn't contain `node-name/layer` or `node-name-layer.1`
-pub fn build_float_translator<T1: Datum + Float, T2: Datum + Float>(
+pub fn build_float_translator(
+    from_dt: DatumType,
+    to_dt: DatumType,
     filter_predicate: Option<&str>,
 ) -> Box<dyn ModelTransform> {
     let Some(filter_predicate) = filter_predicate.filter(|f| !f.is_empty()) else {
-        return Box::<FloatPrecisionTranslator<T1, T2>>::default();
+        return Box::new(FloatPrecisionTranslator::new(from_dt, to_dt));
     };
 
     if let Some(node_name_patterns) = filter_predicate.strip_prefix("!=") {
         let patterns =
             node_name_patterns.split(',').map(|it| it.trim().to_string()).collect::<Vec<_>>();
-        Box::new(FloatPrecisionTranslator::<T1, T2>::with_filter(move |node| {
+        Box::new(FloatPrecisionTranslator::with_filter(from_dt, to_dt, move |node| {
             !patterns.iter().any(|p| node.name.contains(p))
         }))
     } else if let Some(node_name_patterns) = filter_predicate.strip_prefix("==") {
         let patterns =
             node_name_patterns.split(',').map(|it| it.trim().to_string()).collect::<Vec<_>>();
-        Box::new(FloatPrecisionTranslator::<T1, T2>::with_filter(move |node| {
+        Box::new(FloatPrecisionTranslator::with_filter(from_dt, to_dt, move |node| {
             patterns.iter().any(|p| node.name.contains(p))
         }))
     } else {
-        Box::<FloatPrecisionTranslator<T1, T2>>::default()
+        Box::new(FloatPrecisionTranslator::new(from_dt, to_dt))
     }
 }
 
@@ -101,6 +102,15 @@ impl ModelTransform for SoftmaxFastCompact {
 /// Config for float precision transforms (f32_to_f16, f16_to_f32).
 #[derive(Debug, Default, serde::Deserialize)]
 pub struct FloatTranslatorConfig {
+    pub filter: Option<String>,
+}
+
+/// Config for the `float_precision` transform.
+#[derive(Debug, serde::Deserialize)]
+pub struct FloatPrecisionConfig {
+    pub from: String,
+    pub to: String,
+    #[serde(default)]
     pub filter: Option<String>,
 }
 
@@ -220,11 +230,11 @@ register_simple_model_transform!("block_quant", BlockQuantTransform);
 inventory::submit! {
     ModelTransformFactory {
         name: "f32_to_f16",
-        build_default: || Ok(build_float_translator::<f32, f16>(None)),
+        build_default: || Ok(build_float_translator(DatumType::F32, DatumType::F16, None)),
         build: |de| {
             let config: FloatTranslatorConfig = erased_serde::deserialize(de)
                 .map_err(|e| anyhow::anyhow!("deserializing f32_to_f16 config: {e}"))?;
-            Ok(build_float_translator::<f32, f16>(config.filter.as_deref()))
+            Ok(build_float_translator(DatumType::F32, DatumType::F16, config.filter.as_deref()))
         },
     }
 }
@@ -232,11 +242,29 @@ inventory::submit! {
 inventory::submit! {
     ModelTransformFactory {
         name: "f16_to_f32",
-        build_default: || Ok(build_float_translator::<f16, f32>(None)),
+        build_default: || Ok(build_float_translator(DatumType::F16, DatumType::F32, None)),
         build: |de| {
             let config: FloatTranslatorConfig = erased_serde::deserialize(de)
                 .map_err(|e| anyhow::anyhow!("deserializing f16_to_f32 config: {e}"))?;
-            Ok(build_float_translator::<f16, f32>(config.filter.as_deref()))
+            Ok(build_float_translator(DatumType::F16, DatumType::F32, config.filter.as_deref()))
+        },
+    }
+}
+
+inventory::submit! {
+    ModelTransformFactory {
+        name: "float_precision",
+        build_default: || {
+            anyhow::bail!("float_precision transform requires 'from' and 'to' parameters")
+        },
+        build: |de| {
+            let config: FloatPrecisionConfig = erased_serde::deserialize(de)
+                .map_err(|e| anyhow::anyhow!("deserializing float_precision config: {e}"))?;
+            let from_dt: DatumType = config.from.parse()
+                .map_err(|e| anyhow::anyhow!("parsing 'from' datum type: {e}"))?;
+            let to_dt: DatumType = config.to.parse()
+                .map_err(|e| anyhow::anyhow!("parsing 'to' datum type: {e}"))?;
+            Ok(build_float_translator(from_dt, to_dt, config.filter.as_deref()))
         },
     }
 }

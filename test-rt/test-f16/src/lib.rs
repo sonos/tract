@@ -23,7 +23,8 @@ mod run_as_f16 {
         ) -> TractResult<Box<dyn Runnable>> {
             let outputs_dt =
                 model.outputs.iter().map(|o| model.outlet_fact(*o).unwrap().datum_type).collect();
-            let tr = tract_core::floats::FloatPrecisionTranslator::<f32, f16>::default();
+            let tr =
+                tract_core::floats::FloatPrecisionTranslator::new(DatumType::F32, DatumType::F16);
             let model = tr.translate_model(&model)?;
             Ok(Box::new(RunnableAsF16(
                 model.into_optimized()?.into_runnable_with_options(options)?,
@@ -160,7 +161,8 @@ mod nnef_f16 {
         ) -> TractResult<Box<dyn Runnable>> {
             let outputs_dt =
                 model.outputs.iter().map(|o| model.outlet_fact(*o).unwrap().datum_type).collect();
-            let tr = tract_core::floats::FloatPrecisionTranslator::<f32, f16>::default();
+            let tr =
+                tract_core::floats::FloatPrecisionTranslator::new(DatumType::F32, DatumType::F16);
             let model = tr.translate_model(&model)?;
             let mut buf = vec![];
             self.0.write_to_tar(&model, &mut buf)?;

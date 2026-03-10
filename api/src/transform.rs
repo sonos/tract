@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use crate::DatumType;
+
 /// A transform specification accepted by `ModelInterface::transform`.
 ///
 /// Can be constructed from:
@@ -122,6 +124,65 @@ impl From<Pulse> for TransformSpec {
         }
         TransformSpec::Typed {
             name: "pulse",
+            params_json: serde_json::to_string(&params).expect("serialization cannot fail"),
+        }
+    }
+}
+
+/// Typed config for the `float_precision` transform.
+///
+/// Changes the float precision of a model (e.g. F32 to F16).
+///
+/// # Example
+/// ```ignore
+/// use tract_api::DatumType;
+/// model.transform(FloatPrecision::new(DatumType::TRACT_DATUM_TYPE_F32, DatumType::TRACT_DATUM_TYPE_F16))?;
+/// ```
+#[derive(Debug, Clone)]
+pub struct FloatPrecision {
+    from: DatumType,
+    to: DatumType,
+    filter: Option<String>,
+}
+
+impl FloatPrecision {
+    pub fn new(from: DatumType, to: DatumType) -> Self {
+        Self { from, to, filter: None }
+    }
+
+    /// Set a node-name filter pattern for the transform.
+    pub fn filter(mut self, pattern: impl Into<String>) -> Self {
+        self.filter = Some(pattern.into());
+        self
+    }
+}
+
+fn datum_type_to_str(dt: DatumType) -> &'static str {
+    use DatumType::*;
+    match dt {
+        TRACT_DATUM_TYPE_F16 => "f16",
+        TRACT_DATUM_TYPE_F32 => "f32",
+        TRACT_DATUM_TYPE_F64 => "f64",
+        _ => panic!("FloatPrecision only supports float datum types (F16, F32, F64)"),
+    }
+}
+
+impl From<FloatPrecision> for TransformSpec {
+    fn from(config: FloatPrecision) -> Self {
+        let mut params = serde_json::Map::new();
+        params.insert(
+            "from".into(),
+            serde_json::Value::String(datum_type_to_str(config.from).to_string()),
+        );
+        params.insert(
+            "to".into(),
+            serde_json::Value::String(datum_type_to_str(config.to).to_string()),
+        );
+        if let Some(filter) = config.filter {
+            params.insert("filter".into(), serde_json::Value::String(filter));
+        }
+        TransformSpec::Typed {
+            name: "float_precision",
             params_json: serde_json::to_string(&params).expect("serialization cannot fail"),
         }
     }
