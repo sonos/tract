@@ -140,7 +140,7 @@ macro_rules! register_model_transform {
                 },
                 build: |de: &mut dyn erased_serde::Deserializer| {
                     let config: $config = erased_serde::deserialize(de)
-                        .map_err(|e| $crate::prelude::anyhow::anyhow!("deserializing transform config: {e}"))?;
+                        .map_err(|e| $crate::internal::anyhow!("deserializing transform config: {e}"))?;
                     let builder: fn($config) -> $crate::prelude::TractResult<Box<dyn $crate::transform::ModelTransform>> = $builder;
                     builder(config)
                 },
