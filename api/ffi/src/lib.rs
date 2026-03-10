@@ -683,29 +683,6 @@ pub unsafe extern "C" fn tract_model_concretize_symbols(
     })
 }
 
-/// Pulsify the model
-///
-/// * stream_symbol is the name of the stream symbol
-/// * pulse expression is a dim to use as the pulse size (like "8", "P" or "3*p").
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn tract_model_pulse_simple(
-    model: *mut *mut TractModel,
-    stream_symbol: *const i8,
-    pulse_expr: *const i8,
-) -> TRACT_RESULT {
-    wrap(|| unsafe {
-        check_not_null!(model, *model, stream_symbol, pulse_expr);
-        let model = &mut (**model).0;
-        let stream_sym = CStr::from_ptr(stream_symbol as _)
-            .to_str()
-            .context("failed to parse stream symbol name (not utf8)")?;
-        let pulse_dim = CStr::from_ptr(pulse_expr as _)
-            .to_str()
-            .context("failed to parse stream symbol name (not utf8)")?;
-        model.pulse(stream_sym, pulse_dim)
-    })
-}
-
 /// Apply a transform to the model.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_model_transform(

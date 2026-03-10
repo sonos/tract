@@ -179,7 +179,7 @@ fn test_pulse() -> anyhow::Result<()> {
     let mut typed = model.into_tract()?;
     assert_eq!(typed.input_fact(0)?.to_string(), "B,3,224,224,F32");
     assert_eq!(typed.output_fact(0)?.to_string(), "B,1000,F32");
-    typed.pulse("B", "5")?;
+    typed.transform(r#"{"name":"pulse","symbol":"B","pulse":"5"}"#)?;
     assert_eq!(typed.input_fact(0)?.to_string(), "5,3,224,224,F32");
     assert_eq!(typed.output_fact(0)?.to_string(), "5,1000,F32");
     let mut properties = typed.property_keys()?;
@@ -205,7 +205,7 @@ fn test_runtime_properties() -> anyhow::Result<()> {
     model.set_input_fact(0, "B,3,224,224,f32")?;
     model.analyse()?;
     let mut typed = model.into_tract()?;
-    typed.pulse("B", "5")?;
+    typed.transform(r#"{"name":"pulse","symbol":"B","pulse":"5"}"#)?;
     let runnable = typed.into_runnable()?;
     let mut properties = runnable.property_keys()?;
     properties.sort();
