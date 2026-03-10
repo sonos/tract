@@ -130,6 +130,7 @@ pub mod internal {
     };
     pub use dims;
     pub use downcast_rs as tract_downcast_rs;
+    pub use register_model_transform;
     pub use register_runtime;
     pub use register_simple_model_transform;
     pub use std::borrow::Cow;

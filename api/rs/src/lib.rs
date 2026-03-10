@@ -266,9 +266,26 @@ impl ModelInterface for Model {
     }
 
     fn transform(&mut self, transform: &str) -> Result<()> {
-        let transform = tract_onnx::tract_core::transform::get_transform(transform)?
-            .with_context(|| format!("transform `{transform}' could not be found"))?;
-        transform.transform(&mut self.0)?;
+        let transform_obj = if transform.trim_start().starts_with('{') {
+            // JSON input: parse, extract name, deserialize params
+            let v: serde_json::Value = serde_json::from_str(transform)?;
+            let obj = v.as_object().context("expected JSON object")?;
+            let name = obj
+                .get("name")
+                .and_then(|v| v.as_str())
+                .context("missing 'name' field")?
+                .to_string();
+            let mut params = v.clone();
+            params.as_object_mut().unwrap().remove("name");
+            let mut erased = <dyn erased_serde::Deserializer>::erase(params);
+            tract_onnx::tract_core::transform::get_transform_with_params(&name, &mut erased)?
+                .with_context(|| format!("transform `{name}' could not be found"))?
+        } else {
+            // Plain name (no params)
+            tract_onnx::tract_core::transform::get_transform(transform)?
+                .with_context(|| format!("transform `{transform}' could not be found"))?
+        };
+        transform_obj.transform(&mut self.0)?;
         self.0.declutter()
     }
 

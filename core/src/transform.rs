@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use crate::internal::*;
 #[cfg(feature = "blas")]
 use crate::ops::einsum::as_blas::AsBlas;
@@ -45,25 +47,25 @@ macro_rules! rule_if_some {
 /// - `!=node-name/layer,node-name-layer.1`: Only node which has a name that doesn't contain `node-name/layer` or `node-name-layer.1`
 pub fn build_float_translator<T1: Datum + Float, T2: Datum + Float>(
     filter_predicate: Option<&str>,
-) -> Option<Box<dyn ModelTransform>> {
+) -> Box<dyn ModelTransform> {
     let Some(filter_predicate) = filter_predicate.filter(|f| !f.is_empty()) else {
-        return Some(Box::<FloatPrecisionTranslator<T1, T2>>::default());
+        return Box::<FloatPrecisionTranslator<T1, T2>>::default();
     };
 
     if let Some(node_name_patterns) = filter_predicate.strip_prefix("!=") {
         let patterns =
             node_name_patterns.split(',').map(|it| it.trim().to_string()).collect::<Vec<_>>();
-        Some(Box::new(FloatPrecisionTranslator::<T1, T2>::with_filter(move |node| {
+        Box::new(FloatPrecisionTranslator::<T1, T2>::with_filter(move |node| {
             !patterns.iter().any(|p| node.name.contains(p))
-        })))
+        }))
     } else if let Some(node_name_patterns) = filter_predicate.strip_prefix("==") {
         let patterns =
             node_name_patterns.split(',').map(|it| it.trim().to_string()).collect::<Vec<_>>();
-        Some(Box::new(FloatPrecisionTranslator::<T1, T2>::with_filter(move |node| {
+        Box::new(FloatPrecisionTranslator::<T1, T2>::with_filter(move |node| {
             patterns.iter().any(|p| node.name.contains(p))
-        })))
+        }))
     } else {
-        None
+        Box::<FloatPrecisionTranslator<T1, T2>>::default()
     }
 }
 
@@ -81,7 +83,7 @@ struct SoftmaxFastCompact;
 
 impl ModelTransform for SoftmaxFastCompact {
     fn name(&self) -> StaticName {
-        "softmax-fast-compact".into()
+        "softmax_fast_compact".into()
     }
 
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
@@ -96,10 +98,18 @@ impl ModelTransform for SoftmaxFastCompact {
     }
 }
 
-#[allow(clippy::type_complexity)]
+/// Config for float precision transforms (f32_to_f16, f16_to_f32).
+#[derive(Debug, Default, serde::Deserialize)]
+pub struct FloatTranslatorConfig {
+    pub filter: Option<String>,
+}
+
 pub struct ModelTransformFactory {
     pub name: &'static str,
-    pub builder: fn(spec: &str) -> TractResult<Option<Box<dyn ModelTransform>>>,
+    /// Build with default config (no params).
+    pub build_default: fn() -> TractResult<Box<dyn ModelTransform>>,
+    /// Build from a type-erased deserializer.
+    pub build: fn(&mut dyn erased_serde::Deserializer) -> TractResult<Box<dyn ModelTransform>>,
 }
 
 inventory::collect!(ModelTransformFactory);
@@ -110,36 +120,96 @@ macro_rules! register_simple_model_transform {
         $crate::internal::inventory::submit! {
             $crate::transform::ModelTransformFactory {
                 name: $name,
-                builder: |_| Ok(Some(Box::new($type)))
+                build_default: || Ok(Box::new($type)),
+                build: |_de| Ok(Box::new($type)),
             }
         }
     };
 }
 
-pub fn get_transform(spec: &str) -> TractResult<Option<Box<dyn ModelTransform>>> {
+#[macro_export]
+macro_rules! register_model_transform {
+    ($name:expr, $config:ty, $builder:expr) => {
+        $crate::internal::inventory::submit! {
+            $crate::transform::ModelTransformFactory {
+                name: $name,
+                build_default: || {
+                    let config = <$config>::default();
+                    let builder: fn($config) -> $crate::prelude::TractResult<Box<dyn $crate::transform::ModelTransform>> = $builder;
+                    builder(config)
+                },
+                build: |de: &mut dyn erased_serde::Deserializer| {
+                    let config: $config = erased_serde::deserialize(de)
+                        .map_err(|e| $crate::prelude::anyhow::anyhow!("deserializing transform config: {e}"))?;
+                    let builder: fn($config) -> $crate::prelude::TractResult<Box<dyn $crate::transform::ModelTransform>> = $builder;
+                    builder(config)
+                },
+            }
+        }
+    };
+}
+
+/// Split a transform spec like `"f32_to_f16(filter: \"!=layer.norm\")"` into name and params.
+pub fn split_spec(spec: &str) -> (Cow<'_, str>, &str) {
+    if let Some(pos) = spec.find('(') {
+        (Cow::Borrowed(&spec[..pos]), &spec[pos..])
+    } else if spec.contains('-') {
+        // Backward compat: simple name with no params, convert kebab→snake
+        (Cow::Owned(spec.replace('-', "_")), "")
+    } else {
+        (Cow::Borrowed(spec), "")
+    }
+}
+
+/// Look up a transform by name, using default config.
+pub fn get_transform(name: &str) -> TractResult<Option<Box<dyn ModelTransform>>> {
+    let (name, _) = split_spec(name);
     for factory in inventory::iter::<ModelTransformFactory>() {
-        if spec.starts_with(factory.name) {
-            return (factory.builder)(spec);
+        if factory.name == &*name {
+            return Ok(Some((factory.build_default)()?));
         }
     }
     Ok(None)
 }
 
-register_simple_model_transform!("softmax-fast-compact", SoftmaxFastCompact);
+/// Look up a transform by name, deserializing config from the given deserializer.
+pub fn get_transform_with_params(
+    name: &str,
+    de: &mut dyn erased_serde::Deserializer,
+) -> TractResult<Option<Box<dyn ModelTransform>>> {
+    for factory in inventory::iter::<ModelTransformFactory>() {
+        if factory.name == name {
+            return Ok(Some((factory.build)(de)?));
+        }
+    }
+    Ok(None)
+}
+
+register_simple_model_transform!("softmax_fast_compact", SoftmaxFastCompact);
 #[cfg(feature = "blas")]
-register_simple_model_transform!("as-blas", AsBlas);
-register_simple_model_transform!("block-quant", BlockQuantTransform);
+register_simple_model_transform!("as_blas", AsBlas);
+register_simple_model_transform!("block_quant", BlockQuantTransform);
 
 inventory::submit! {
     ModelTransformFactory {
-        name: "f32-to-f16",
-        builder: |spec| Ok(build_float_translator::<f32,f16>(spec.strip_prefix("f32-to-f16")))
+        name: "f32_to_f16",
+        build_default: || Ok(build_float_translator::<f32, f16>(None)),
+        build: |de| {
+            let config: FloatTranslatorConfig = erased_serde::deserialize(de)
+                .map_err(|e| anyhow::anyhow!("deserializing f32_to_f16 config: {e}"))?;
+            Ok(build_float_translator::<f32, f16>(config.filter.as_deref()))
+        },
     }
 }
 
 inventory::submit! {
     ModelTransformFactory {
-        name: "f16-to-f32",
-        builder: |spec| Ok(build_float_translator::<f16,f32>(spec.strip_prefix("f16-to-f32")))
+        name: "f16_to_f32",
+        build_default: || Ok(build_float_translator::<f16, f32>(None)),
+        build: |de| {
+            let config: FloatTranslatorConfig = erased_serde::deserialize(de)
+                .map_err(|e| anyhow::anyhow!("deserializing f16_to_f32 config: {e}"))?;
+            Ok(build_float_translator::<f16, f32>(config.filter.as_deref()))
+        },
     }
 }

@@ -21,6 +21,7 @@ maintenance = { status = "actively-developed" }
 atty.workspace = true
 box_drawing.workspace = true
 clap.workspace = true
+erased-serde.workspace = true
 criterion.workspace = true
 colorous.workspace = true
 env_logger.workspace = true
@@ -40,6 +41,7 @@ nu-ansi-term.workspace = true
 num_cpus.workspace = true
 py_literal.workspace = true
 readings-probe.workspace = true
+ron.workspace = true
 regex.workspace = true
 reqwest.workspace = true
 rustls.workspace = true

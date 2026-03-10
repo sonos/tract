@@ -26,7 +26,7 @@ fn main() -> anyhow::Result<()> {
     let preprocessor = nnef.load("assets/model/preprocessor.nnef.tgz")?.into_runnable()?;
 
     let mut encoder = nnef.load("assets/model/encoder.nnef.tgz")?;
-    encoder.transform("transformers-detect-all")?;
+    encoder.transform("transformers_detect_all")?;
     let encoder = gpu.prepare(encoder)?;
 
     let decoder = nnef.load("assets/model/decoder.nnef.tgz")?;

@@ -150,7 +150,7 @@ def test_f32_to_f16():
     model.set_input_fact(0, "1,3,224,224,f32")
     model.analyse()
     typed = model.into_tract()
-    typed.transform("f32-to-f16")
+    typed.transform("f32_to_f16")
     assert str(typed.input_fact(0)) == "1,3,224,224,F16"
     assert str(typed.output_fact(0)) == "1,1000,F16"
 
@@ -161,12 +161,12 @@ def test_f16_to_f32():
     
     #Convert model to half
     typed = model.into_tract()
-    typed.transform("f32-to-f16")
+    typed.transform("f32_to_f16")
     assert str(typed.input_fact(0)) == "1,3,224,224,F16"
     assert str(typed.output_fact(0)) == "1,1000,F16"
     
     # Convert back to f32
-    typed.transform("f16-to-f32")
+    typed.transform("f16_to_f32")
     assert str(typed.input_fact(0)) == "1,3,224,224,F32"
     assert str(typed.output_fact(0)) == "1,1000,F32"
 
@@ -230,12 +230,12 @@ def test_transform_registry():
     model = nnef.load("mobilenet_v2_1.0.onnx.nnef.tgz")
 
     #Convert model to half
-    model.transform("f32-to-f16")
+    model.transform("f32_to_f16")
     assert str(model.input_fact(0)) == "1,3,224,224,F16"
     assert str(model.output_fact(0)) == "1,1000,F16"
     
     # Convert back to f32 
-    model.transform("f16-to-f32")
+    model.transform("f16_to_f32")
     assert str(model.input_fact(0)) == "1,3,224,224,F32"
 
 def test_fact_and_dims():

@@ -23,6 +23,7 @@ blis-src = { version = "0.2", features = ["static", "pthreads"], optional = true
 cblas = { version = "0.5", optional = true }
 derive-new.workspace = true
 downcast-rs.workspace = true
+erased-serde.workspace = true
 dyn-clone.workspace = true
 lazy_static.workspace = true
 log.workspace = true
@@ -35,6 +36,7 @@ openblas-src = { workspace=true, optional = true }
 pastey.workspace = true
 rustfft.workspace = true
 smallvec.workspace = true
+serde.workspace = true
 tract-linalg.workspace = true
 tract-data.workspace = true
 inventory.workspace = true

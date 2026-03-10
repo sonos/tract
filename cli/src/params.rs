@@ -718,34 +718,31 @@ impl Parameters {
                 stage!("pulse-declutter", typed_model -> typed_model, |m:TypedModel| m.into_decluttered());
             }
         }
-        if matches.is_present("f32-to-f16") {
-            stage!("f32-to-f16", typed_model -> typed_model, |m:TypedModel| {
-                use tract_core::model::translator::Translate;
-                tract_core::floats::FloatPrecisionTranslator::<f32, f16>::default().translate_model(&m)
-            });
-        }
-        if matches.is_present("f16-to-f32") {
-            stage!("f16-to-f32", typed_model -> typed_model, |m:TypedModel| {
-                use tract_core::model::translator::Translate;
-                tract_core::floats::FloatPrecisionTranslator::<f16, f32>::default().translate_model(&m)
-            });
-        }
-
         let mut transforms: Vec<&str> = matches
             .values_of("transform")
             .map(|values| values.into_iter().collect())
             .unwrap_or_default();
         if matches.is_present("llm") {
-            transforms.push("transformers-detect-all");
+            transforms.push("transformers_detect_all");
         }
         if transforms.len() > 0 {
             for spec in transforms {
-                let transform = tract_core::transform::get_transform(spec)?
-                    .with_context(|| format!("Could not find transform named {spec}"))?;
+                let (name, params_str) = tract_core::transform::split_spec(spec);
+                let transform = if params_str.is_empty() {
+                    tract_core::transform::get_transform(&name)?
+                } else {
+                    let mut de = ron::Deserializer::from_str(params_str)
+                        .with_context(|| format!("Parsing RON params for transform {name}"))?;
+                    tract_core::transform::get_transform_with_params(
+                        &name,
+                        &mut <dyn erased_serde::Deserializer>::erase(&mut de),
+                    )?
+                }
+                .with_context(|| format!("Could not find transform named {name}"))?;
                 stage!(&transform.name(), typed_model -> typed_model, |m:TypedModel| {
                     transform.transform_into(m)
                 });
-                stage!(&format!("{}-declutter", transform.name()), typed_model -> typed_model, |m:TypedModel| m.into_decluttered());
+                stage!(&format!("{}_declutter", transform.name()), typed_model -> typed_model, |m:TypedModel| m.into_decluttered());
             }
         }
 

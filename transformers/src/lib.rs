@@ -5,14 +5,14 @@ use std::collections::HashSet;
 use rewriter::*;
 use tract_nnef::internal::*;
 
-register_simple_model_transform!("detect-apply-rope", ApplyRopeTransform);
-register_simple_model_transform!("detect-scaled-masked-softmax", ScaledMaskedSoftmaxTransform);
-register_simple_model_transform!("detect-kv-cache", KeyValueCacheTransform);
+register_simple_model_transform!("detect_apply_rope", ApplyRopeTransform);
+register_simple_model_transform!("detect_scaled_masked_softmax", ScaledMaskedSoftmaxTransform);
+register_simple_model_transform!("detect_kv_cache", KeyValueCacheTransform);
 register_simple_model_transform!(
-    "detect-sdpa-kv-cache-broadcast",
+    "detect_sdpa_kv_cache_broadcast",
     SdpaFuseKvCacheBroadcastTransform
 );
-register_simple_model_transform!("transformers-detect-all", TransformersTransform);
+register_simple_model_transform!("transformers_detect_all", TransformersTransform);
 
 pub fn register(registry: &mut Registry) {
     ops::apply_rope::register(registry);

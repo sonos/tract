@@ -10,7 +10,7 @@ pub struct BlockQuantTransform;
 
 impl ModelTransform for BlockQuantTransform {
     fn name(&self) -> StaticName {
-        "BlockQuantTransform".into()
+        "block_quant".into()
     }
 
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {

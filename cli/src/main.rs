@@ -137,8 +137,6 @@ fn main() -> TractResult<()> {
         .arg(arg!(--"optimize-step" [STEP] "Stop optimizing process after application of patch number N"))
         .arg(arg!(--"extract-decluttered-sub" [SUB] "Zoom on a subgraph after decluttering by parent node name"))
 
-        .arg(Arg::new("f32-to-f16").long("f32-to-f16").alias("half-floats").long_help("Convert the decluttered network from f32 to f16"))
-        .arg(arg!(--"f16-to-f32" "Convert the decluttered network from f16 to f32"))
         .arg(arg!(--"metal").long_help("Convert supported operators to Metal GPU equivalent. Only available on MacOS and iOS"))
         .arg(Arg::new("force-metal-backend").long("force-metal-backend").takes_value(true).long_help("Force specific implementations for MM kernels. Possible values: mlx, ggml, mfa. Backend is dynamically selected if option is not present"))
         .arg(arg!(--"cuda").long_help("Convert supported operators to CUDA equivalent"))
@@ -150,7 +148,7 @@ fn main() -> TractResult<()> {
             .long_help("Provide a typical value to a symbol to be used during planning (--hint S=12)"))
 
         .arg(arg!(--"causal-llm-hints" "Figures out P and S and gives them suitable hints"))
-        .arg(arg!(--llm "Shortcut setting --opl (aka all nnef extensions) --causal-llm-hints -t transorfmers-detect-all"))
+        .arg(arg!(--llm "Shortcut setting --opl (aka all nnef extensions) --causal-llm-hints -t transformers_detect_all"))
 
         // deprecated
         .arg(arg!(--"allow-float-casts" "Allow casting between f16, f32 and f64 around model").hide(true))
