@@ -440,6 +440,13 @@ enum TRACT_RESULT tract_model_destroy(struct TractModel **model);
 enum TRACT_RESULT tract_runtime_for_name(const char *name, struct TractRuntime **nnef);
 
 /**
+ * Query the name of a Runtime.
+ *
+ * The returned name must be freed by the caller using tract_free_cstring.
+ */
+enum TRACT_RESULT tract_runtime_name(const struct TractRuntime *runtime, char **name);
+
+/**
  * Convert a Model into a Runnable for this Runtime.
  *
  * This function transfers ownership of the `model` argument to the newly-created `runnable` model.

@@ -386,6 +386,16 @@ impl RuntimeInterface for Runtime {
 
     type Model = Model;
 
+    fn name(&self) -> Result<String> {
+        let mut ptr = null_mut();
+        check!(sys::tract_runtime_name(self.0, &mut ptr))?;
+        unsafe {
+            let ret = CStr::from_ptr(ptr).to_str()?.to_owned();
+            sys::tract_free_cstring(ptr);
+            Ok(ret)
+        }
+    }
+
     fn prepare(&self, model: Self::Model) -> Result<Self::Runnable> {
         let mut model = model;
         let mut runnable = null_mut();
