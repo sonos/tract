@@ -333,13 +333,6 @@ impl ModelInterface for Model {
         Ok(())
     }
 
-    fn pulse(&mut self, name: impl AsRef<str>, value: impl AsRef<str>) -> Result<()> {
-        let name = CString::new(name.as_ref())?;
-        let value = CString::new(value.as_ref())?;
-        check!(sys::tract_model_pulse_simple(&mut self.0, name.as_ptr(), value.as_ptr()))?;
-        Ok(())
-    }
-
     fn property_keys(&self) -> Result<Vec<String>> {
         let mut len = 0;
         check!(sys::tract_model_property_count(self.0, &mut len))?;

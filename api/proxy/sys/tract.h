@@ -363,16 +363,6 @@ enum TRACT_RESULT tract_model_concretize_symbols(struct TractModel *model,
                                                  const int64_t *values);
 
 /**
- * Pulsify the model
- *
- * * stream_symbol is the name of the stream symbol
- * * pulse expression is a dim to use as the pulse size (like "8", "P" or "3*p").
- */
-enum TRACT_RESULT tract_model_pulse_simple(struct TractModel **model,
-                                           const int8_t *stream_symbol,
-                                           const int8_t *pulse_expr);
-
-/**
  * Apply a transform to the model.
  */
 enum TRACT_RESULT tract_model_transform(struct TractModel *model, const int8_t *transform);

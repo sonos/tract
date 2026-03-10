@@ -134,12 +134,11 @@ class Model:
         check(lib.tract_model_concretize_symbols(self.ptr, c_size_t(nb), names, values_list))
 
     def pulse(self, symbol: str, pulse: Union[str, int]) -> None:
-        """Pulsify a model.
-
-        `pulse` is typically a one-length dictionary mapping the time dimension symbol to a pulse len.
-        """
+        """Pulsify a model."""
         self._valid()
-        check(lib.tract_model_pulse_simple(byref(self.ptr), symbol.encode("utf-8"), str(pulse).encode("utf-8")))
+        import json
+        spec = json.dumps({"name": "pulse", "symbol": symbol, "pulse": str(pulse)})
+        self.transform(spec)
 
     def transform(self, transform: str) -> None:
         """Apply a transform to the model

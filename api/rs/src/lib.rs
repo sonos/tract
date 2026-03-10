@@ -16,7 +16,7 @@ use tract_extra::WithTractExtra;
 use tract_libcli::annotations::Annotations;
 use tract_libcli::profile::BenchLimits;
 use tract_libcli::tensor::RunTensors;
-use tract_nnef::internal::{Runtime as _, parse_tdim};
+use tract_nnef::internal::Runtime as _;
 use tract_nnef::prelude::{
     Framework, IntoArcTensor, IntoTValue, SymbolValues, TDim, TValue, TVec, Tensor, TractResult,
     TypedFact, TypedModel, TypedSimplePlan,
@@ -24,7 +24,6 @@ use tract_nnef::prelude::{
 use tract_onnx::prelude::InferenceModelExt;
 use tract_onnx_opl::WithOnnx;
 use tract_pulse::WithPulse;
-use tract_pulse::model::{PulsedModel, PulsedModelExt};
 use tract_transformers::WithTractTransformers;
 
 use tract_api::*;
@@ -286,13 +285,6 @@ impl ModelInterface for Model {
                 .with_context(|| format!("transform `{transform}' could not be found"))?
         };
         transform_obj.transform(&mut self.0)?;
-        self.0.declutter()
-    }
-
-    fn pulse(&mut self, name: impl AsRef<str>, value: impl AsRef<str>) -> Result<()> {
-        let stream_sym = self.0.symbols.sym(name.as_ref());
-        let pulse_dim = parse_tdim(&self.0.symbols, value.as_ref())?;
-        self.0 = PulsedModel::new(&self.0, stream_sym, &pulse_dim)?.into_typed()?;
         self.0.declutter()
     }
 

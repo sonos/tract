@@ -15,7 +15,9 @@ maintenance = { status = "actively-developed" }
 
 [dependencies]
 downcast-rs.workspace = true
+erased-serde.workspace = true
 lazy_static.workspace = true
 log.workspace = true
+serde.workspace = true
 tract-pulse-opl.workspace = true
 

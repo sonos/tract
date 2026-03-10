@@ -21,8 +21,48 @@ pub mod internal {
 use std::ops::ControlFlow;
 
 use internal::*;
+use tract_core::transform::{ModelTransform, ModelTransformFactory};
+use tract_pulse_opl::tract_nnef::tract_core;
 
 pub use ops::PulsedOp;
+
+#[derive(Debug, Default, serde::Deserialize)]
+pub struct PulseConfig {
+    pub symbol: Option<String>,
+    pub pulse: String,
+}
+
+#[derive(Debug)]
+struct PulseTransform(PulseConfig);
+
+impl ModelTransform for PulseTransform {
+    fn name(&self) -> std::borrow::Cow<'static, str> {
+        "pulse".into()
+    }
+    fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
+        let symbol = self.0.symbol.as_deref().unwrap_or("S");
+        let sym = model.symbols.sym(symbol);
+        let pulse_dim = parse_tdim(&model.symbols, &self.0.pulse)?;
+        let pulsed = model::PulsedModel::new(model, sym, &pulse_dim)?;
+        *model = pulsed.into_typed()?;
+        Ok(())
+    }
+}
+
+tract_core::internal::inventory::submit! {
+    ModelTransformFactory {
+        name: "pulse",
+        build_default: || {
+            let config = PulseConfig::default();
+            Ok(Box::new(PulseTransform(config)))
+        },
+        build: |de: &mut dyn erased_serde::Deserializer| {
+            let config: PulseConfig = erased_serde::deserialize(de)
+                .map_err(|e| anyhow!("deserializing transform config: {e}"))?;
+            Ok(Box::new(PulseTransform(config)))
+        },
+    }
+}
 
 pub trait WithPulse {
     fn enable_pulse(&mut self);

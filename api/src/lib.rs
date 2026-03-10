@@ -163,8 +163,6 @@ pub trait ModelInterface: Sized {
 
     fn transform(&mut self, transform: &str) -> Result<()>;
 
-    fn pulse(&mut self, name: impl AsRef<str>, value: impl AsRef<str>) -> Result<()>;
-
     fn property_keys(&self) -> Result<Vec<String>>;
 
     fn property(&self, name: impl AsRef<str>) -> Result<Self::Value>;
