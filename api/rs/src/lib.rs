@@ -252,10 +252,11 @@ impl ModelInterface for Model {
         Ok(Runnable(runnable.into()))
     }
 
-    fn transform(&mut self, transform: &str) -> Result<()> {
+    fn transform(&mut self, spec: impl Into<TransformSpec>) -> Result<()> {
+        let transform = spec.into().to_transform_string();
         let transform_obj = if transform.trim_start().starts_with('{') {
             // JSON input: parse, extract name, deserialize params
-            let v: serde_json::Value = serde_json::from_str(transform)?;
+            let v: serde_json::Value = serde_json::from_str(&transform)?;
             let obj = v.as_object().context("expected JSON object")?;
             let name = obj
                 .get("name")
@@ -269,7 +270,7 @@ impl ModelInterface for Model {
                 .with_context(|| format!("transform `{name}' could not be found"))?
         } else {
             // Plain name (no params)
-            tract_onnx::tract_core::transform::get_transform(transform)?
+            tract_onnx::tract_core::transform::get_transform(&transform)?
                 .with_context(|| format!("transform `{transform}' could not be found"))?
         };
         transform_obj.transform(&mut self.0)?;
