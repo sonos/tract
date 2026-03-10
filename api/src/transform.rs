@@ -142,17 +142,24 @@ impl From<Pulse> for TransformSpec {
 pub struct FloatPrecision {
     from: DatumType,
     to: DatumType,
-    filter: Option<String>,
+    include: Option<Vec<String>>,
+    exclude: Option<Vec<String>>,
 }
 
 impl FloatPrecision {
     pub fn new(from: DatumType, to: DatumType) -> Self {
-        Self { from, to, filter: None }
+        Self { from, to, include: None, exclude: None }
     }
 
-    /// Set a node-name filter pattern for the transform.
-    pub fn filter(mut self, pattern: impl Into<String>) -> Self {
-        self.filter = Some(pattern.into());
+    /// Set include patterns — only nodes matching at least one pattern are translated.
+    pub fn include(mut self, patterns: Vec<String>) -> Self {
+        self.include = Some(patterns);
+        self
+    }
+
+    /// Set exclude patterns — matching nodes are excluded from translation.
+    pub fn exclude(mut self, patterns: Vec<String>) -> Self {
+        self.exclude = Some(patterns);
         self
     }
 }
@@ -178,8 +185,15 @@ impl From<FloatPrecision> for TransformSpec {
             "to".into(),
             serde_json::Value::String(datum_type_to_str(config.to).to_string()),
         );
-        if let Some(filter) = config.filter {
-            params.insert("filter".into(), serde_json::Value::String(filter));
+        if let Some(include) = config.include {
+            let arr: Vec<serde_json::Value> =
+                include.into_iter().map(serde_json::Value::String).collect();
+            params.insert("include".into(), serde_json::Value::Array(arr));
+        }
+        if let Some(exclude) = config.exclude {
+            let arr: Vec<serde_json::Value> =
+                exclude.into_iter().map(serde_json::Value::String).collect();
+            params.insert("exclude".into(), serde_json::Value::Array(arr));
         }
         TransformSpec::Typed {
             name: "float_precision",

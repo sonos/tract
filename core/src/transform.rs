@@ -38,36 +38,67 @@ macro_rules! rule_if_some {
     };
 }
 
-/// Build Float precision translator given a filter_predicate. If the filter_predicate is none or empty, all nodes will
-/// be translated during the transformation.
+/// Structured include/exclude filter for node names.
 ///
-/// filter_predicate format:
-/// - `==node-name/layer,node-name-layer.1`: Only node which has a name that contains `node-name/layer` or `node-name-layer.1`
-/// - `!=node-name/layer,node-name-layer.1`: Only node which has a name that doesn't contain `node-name/layer` or `node-name-layer.1`
+/// If `include` is `None`, all nodes are candidates; if `Some`, only nodes matching
+/// at least one pattern are included. `exclude` then removes from that set.
+#[derive(Debug, Clone, Default)]
+pub struct NodeFilter {
+    pub include: Option<Vec<String>>,
+    pub exclude: Option<Vec<String>>,
+}
+
+impl NodeFilter {
+    /// Returns `true` if the given node name passes the filter.
+    pub fn matches(&self, name: &str) -> bool {
+        let dominated = match &self.include {
+            Some(patterns) => patterns.iter().any(|p| name.contains(p)),
+            None => true,
+        };
+        if !dominated {
+            return false;
+        }
+        match &self.exclude {
+            Some(patterns) => !patterns.iter().any(|p| name.contains(p)),
+            None => true,
+        }
+    }
+
+    /// Returns `true` when neither include nor exclude is set.
+    pub fn is_pass_through(&self) -> bool {
+        self.include.is_none() && self.exclude.is_none()
+    }
+}
+
+/// Parse a legacy filter string (`"!=..."` / `"==..."`) into a `NodeFilter`.
+pub fn parse_legacy_filter(filter: Option<&str>) -> TractResult<NodeFilter> {
+    let Some(filter) = filter.filter(|f| !f.is_empty()) else {
+        return Ok(NodeFilter::default());
+    };
+    if let Some(patterns) = filter.strip_prefix("!=") {
+        let patterns = patterns.split(',').map(|it| it.trim().to_string()).collect();
+        Ok(NodeFilter { exclude: Some(patterns), ..Default::default() })
+    } else if let Some(patterns) = filter.strip_prefix("==") {
+        let patterns = patterns.split(',').map(|it| it.trim().to_string()).collect();
+        Ok(NodeFilter { include: Some(patterns), ..Default::default() })
+    } else {
+        Ok(NodeFilter::default())
+    }
+}
+
+/// Build Float precision translator given a `NodeFilter`. If the filter is pass-through,
+/// all nodes will be translated during the transformation.
 pub fn build_float_translator(
     from_dt: DatumType,
     to_dt: DatumType,
-    filter_predicate: Option<&str>,
+    filter: NodeFilter,
 ) -> Box<dyn ModelTransform> {
-    let Some(filter_predicate) = filter_predicate.filter(|f| !f.is_empty()) else {
+    if filter.is_pass_through() {
         return Box::new(FloatPrecisionTranslator::new(from_dt, to_dt));
-    };
-
-    if let Some(node_name_patterns) = filter_predicate.strip_prefix("!=") {
-        let patterns =
-            node_name_patterns.split(',').map(|it| it.trim().to_string()).collect::<Vec<_>>();
-        Box::new(FloatPrecisionTranslator::with_filter(from_dt, to_dt, move |node| {
-            !patterns.iter().any(|p| node.name.contains(p))
-        }))
-    } else if let Some(node_name_patterns) = filter_predicate.strip_prefix("==") {
-        let patterns =
-            node_name_patterns.split(',').map(|it| it.trim().to_string()).collect::<Vec<_>>();
-        Box::new(FloatPrecisionTranslator::with_filter(from_dt, to_dt, move |node| {
-            patterns.iter().any(|p| node.name.contains(p))
-        }))
-    } else {
-        Box::new(FloatPrecisionTranslator::new(from_dt, to_dt))
     }
+    Box::new(FloatPrecisionTranslator::with_filter(from_dt, to_dt, move |node| {
+        filter.matches(&node.name)
+    }))
 }
 
 pub trait ModelTransform: Debug {
@@ -102,7 +133,25 @@ impl ModelTransform for SoftmaxFastCompact {
 /// Config for float precision transforms (f32_to_f16, f16_to_f32).
 #[derive(Debug, Default, serde::Deserialize)]
 pub struct FloatTranslatorConfig {
+    /// Legacy filter string (`"!=..."` / `"==..."`).
+    #[serde(default)]
     pub filter: Option<String>,
+    /// Include patterns — only nodes matching at least one pattern are translated.
+    #[serde(default)]
+    pub include: Option<Vec<String>>,
+    /// Exclude patterns — matching nodes are excluded from translation.
+    #[serde(default)]
+    pub exclude: Option<Vec<String>>,
+}
+
+impl FloatTranslatorConfig {
+    pub fn into_node_filter(self) -> TractResult<NodeFilter> {
+        if self.include.is_some() || self.exclude.is_some() {
+            Ok(NodeFilter { include: self.include, exclude: self.exclude })
+        } else {
+            parse_legacy_filter(self.filter.as_deref())
+        }
+    }
 }
 
 /// Config for the `float_precision` transform.
@@ -110,8 +159,12 @@ pub struct FloatTranslatorConfig {
 pub struct FloatPrecisionConfig {
     pub from: String,
     pub to: String,
+    /// Include patterns — only nodes matching at least one pattern are translated.
     #[serde(default)]
-    pub filter: Option<String>,
+    pub include: Option<Vec<String>>,
+    /// Exclude patterns — matching nodes are excluded from translation.
+    #[serde(default)]
+    pub exclude: Option<Vec<String>>,
 }
 
 pub struct ModelTransformFactory {
@@ -230,11 +283,11 @@ register_simple_model_transform!("block_quant", BlockQuantTransform);
 inventory::submit! {
     ModelTransformFactory {
         name: "f32_to_f16",
-        build_default: || Ok(build_float_translator(DatumType::F32, DatumType::F16, None)),
+        build_default: || Ok(build_float_translator(DatumType::F32, DatumType::F16, NodeFilter::default())),
         build: |de| {
             let config: FloatTranslatorConfig = erased_serde::deserialize(de)
                 .map_err(|e| anyhow::anyhow!("deserializing f32_to_f16 config: {e}"))?;
-            Ok(build_float_translator(DatumType::F32, DatumType::F16, config.filter.as_deref()))
+            Ok(build_float_translator(DatumType::F32, DatumType::F16, config.into_node_filter()?))
         },
     }
 }
@@ -242,11 +295,11 @@ inventory::submit! {
 inventory::submit! {
     ModelTransformFactory {
         name: "f16_to_f32",
-        build_default: || Ok(build_float_translator(DatumType::F16, DatumType::F32, None)),
+        build_default: || Ok(build_float_translator(DatumType::F16, DatumType::F32, NodeFilter::default())),
         build: |de| {
             let config: FloatTranslatorConfig = erased_serde::deserialize(de)
                 .map_err(|e| anyhow::anyhow!("deserializing f16_to_f32 config: {e}"))?;
-            Ok(build_float_translator(DatumType::F16, DatumType::F32, config.filter.as_deref()))
+            Ok(build_float_translator(DatumType::F16, DatumType::F32, config.into_node_filter()?))
         },
     }
 }
@@ -264,7 +317,8 @@ inventory::submit! {
                 .map_err(|e| anyhow::anyhow!("parsing 'from' datum type: {e}"))?;
             let to_dt: DatumType = config.to.parse()
                 .map_err(|e| anyhow::anyhow!("parsing 'to' datum type: {e}"))?;
-            Ok(build_float_translator(from_dt, to_dt, config.filter.as_deref()))
+            let filter = NodeFilter { include: config.include, exclude: config.exclude };
+            Ok(build_float_translator(from_dt, to_dt, filter))
         },
     }
 }
