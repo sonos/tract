@@ -164,6 +164,19 @@ fn test_concretize() -> anyhow::Result<()> {
     let mut typed = model.into_tract()?;
     assert_eq!(typed.input_fact(0)?.to_string(), "B,3,224,224,F32");
     assert_eq!(typed.output_fact(0)?.to_string(), "B,1000,F32");
+    typed.transform(ConcretizeSymbols::new().value("B", 1))?;
+    assert_eq!(typed.input_fact(0)?.to_string(), "1,3,224,224,F32");
+    assert_eq!(typed.output_fact(0)?.to_string(), "1,1000,F32");
+    Ok(())
+}
+
+#[test]
+fn test_concretize_raw_string() -> anyhow::Result<()> {
+    ensure_models()?;
+    let mut model = onnx()?.load("mobilenetv2-7.onnx")?;
+    model.set_input_fact(0, "B,3,224,224,f32")?;
+    model.analyse()?;
+    let mut typed = model.into_tract()?;
     typed.transform(r#"{"name":"concretize_symbols","values":{"B":1}}"#)?;
     assert_eq!(typed.input_fact(0)?.to_string(), "1,3,224,224,F32");
     assert_eq!(typed.output_fact(0)?.to_string(), "1,1000,F32");
@@ -179,13 +192,26 @@ fn test_pulse() -> anyhow::Result<()> {
     let mut typed = model.into_tract()?;
     assert_eq!(typed.input_fact(0)?.to_string(), "B,3,224,224,F32");
     assert_eq!(typed.output_fact(0)?.to_string(), "B,1000,F32");
-    typed.transform(r#"{"name":"pulse","symbol":"B","pulse":"5"}"#)?;
+    typed.transform(Pulse::new("5").symbol("B"))?;
     assert_eq!(typed.input_fact(0)?.to_string(), "5,3,224,224,F32");
     assert_eq!(typed.output_fact(0)?.to_string(), "5,1000,F32");
     let mut properties = typed.property_keys()?;
     properties.sort();
     assert_eq!(&properties, &["pulse.delay", "pulse.input_axes", "pulse.output_axes"]);
     assert_eq!(typed.property("pulse.delay")?.view::<i64>()?, ndarray::arr1(&[0i64]).into_dyn());
+    Ok(())
+}
+
+#[test]
+fn test_pulse_raw_string() -> anyhow::Result<()> {
+    ensure_models()?;
+    let mut model = onnx()?.load("mobilenetv2-7.onnx")?;
+    model.set_input_fact(0, "B,3,224,224,f32")?;
+    model.analyse()?;
+    let mut typed = model.into_tract()?;
+    typed.transform(r#"{"name":"pulse","symbol":"B","pulse":"5"}"#)?;
+    assert_eq!(typed.input_fact(0)?.to_string(), "5,3,224,224,F32");
+    assert_eq!(typed.output_fact(0)?.to_string(), "5,1000,F32");
     Ok(())
 }
 

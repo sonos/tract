@@ -5,6 +5,9 @@ use std::path::Path;
 
 #[macro_use]
 pub mod macros;
+pub mod transform;
+
+pub use transform::{ConcretizeSymbols, Pulse, TransformSpec};
 
 /// an implementation of tract's NNEF framework object
 ///
@@ -156,7 +159,7 @@ pub trait ModelInterface: Sized {
 
     fn into_runnable(self) -> Result<Self::Runnable>;
 
-    fn transform(&mut self, transform: &str) -> Result<()>;
+    fn transform(&mut self, spec: impl Into<TransformSpec>) -> Result<()>;
 
     fn property_keys(&self) -> Result<Vec<String>>;
 

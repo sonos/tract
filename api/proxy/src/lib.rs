@@ -310,7 +310,8 @@ impl ModelInterface for Model {
         Ok(Runnable(runnable))
     }
 
-    fn transform(&mut self, transform: &str) -> Result<()> {
+    fn transform(&mut self, spec: impl Into<TransformSpec>) -> Result<()> {
+        let transform = spec.into().to_transform_string();
         let t = CString::new(transform)?;
         check!(sys::tract_model_transform(self.0, t.as_ptr()))?;
         Ok(())
