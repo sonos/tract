@@ -544,30 +544,6 @@ where
         Ok(Some(node.inputs.iter().map(|n| &self.nodes()[n.node]).collect()))
     }
 
-    pub fn single_prec_at(&self, id: usize, count: usize) -> TractResult<Option<&Node<F, O>>> {
-        let mut node = self.node(id);
-        for _ in 0..count {
-            if let Some(next) = self.linear_prec(node.id)? {
-                node = next
-            } else {
-                return Ok(None);
-            }
-        }
-        Ok(Some(node))
-    }
-
-    pub fn single_succ_at(&self, id: usize, count: usize) -> TractResult<Option<&Node<F, O>>> {
-        let mut node = self.node(id);
-        for _ in 0..count {
-            if let Some(next) = self.linear_succ(node.id)? {
-                node = next
-            } else {
-                return Ok(None);
-            }
-        }
-        Ok(Some(node))
-    }
-
     /// linear_succ is only intended for optimisation of simple operators
     /// with 1 output, and only 1 output successors (successor with only 1 input)
     pub fn linear_succ(&self, id: usize) -> TractResult<Option<&Node<F, O>>> {
