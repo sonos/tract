@@ -11,7 +11,7 @@ pub struct AsBlas;
 
 impl ModelTransform for AsBlas {
     fn name(&self) -> StaticName {
-        "as-blas".into()
+        "as_blas".into()
     }
 
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {

@@ -246,7 +246,7 @@ mod test {
         );
 
         // Execution in F16 with returns NaN
-        let runnable_model = &crate::transform::get_transform("f32-to-f16")?
+        let runnable_model = &crate::transform::get_transform("f32_to_f16")?
             .unwrap()
             .transform_into(model.clone())?
             .into_runnable()?;
@@ -258,20 +258,20 @@ mod test {
         );
 
         // Execution in F16 with filter that returns the good output.
-        let runnable_model = &crate::transform::get_transform("f32-to-f16!=layer.1")?
-            .unwrap()
-            .transform_into(model.clone())?
-            .into_runnable()?;
+        let runnable_model =
+            &crate::transform::build_float_translator::<f32, f16>(Some("!=layer.1"))
+                .transform_into(model.clone())?
+                .into_runnable()?;
         assert_eq!(
             runnable_model.run(tvec![tensor1(&[f16::from_f32(5.0)]).into()])?[0],
             tensor1(&[f16::NEG_INFINITY]).into()
         );
 
         // Execution in F16 with returns NaN despite the filter.
-        let runnable_model = &crate::transform::get_transform("f32-to-f16!=layer.0")?
-            .unwrap()
-            .transform_into(model)?
-            .into_runnable()?;
+        let runnable_model =
+            &crate::transform::build_float_translator::<f32, f16>(Some("!=layer.0"))
+                .transform_into(model)?
+                .into_runnable()?;
         assert!(
             runnable_model.run(tvec![tensor1(&[f16::from_f32(5.0)]).into()])?[0]
                 .try_as_dense()?

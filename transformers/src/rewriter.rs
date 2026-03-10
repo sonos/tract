@@ -8,7 +8,7 @@ pub struct ApplyRopeTransform;
 
 impl ModelTransform for ApplyRopeTransform {
     fn name(&self) -> StaticName {
-        "apply-rope-transform".into()
+        "detect_apply_rope".into()
     }
 
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
@@ -24,7 +24,7 @@ pub struct ScaledMaskedSoftmaxTransform;
 
 impl ModelTransform for ScaledMaskedSoftmaxTransform {
     fn name(&self) -> StaticName {
-        "scaled-masked-softmax-transform".into()
+        "detect_scaled_masked_softmax".into()
     }
 
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
@@ -39,7 +39,7 @@ pub struct KeyValueCacheTransform;
 
 impl ModelTransform for KeyValueCacheTransform {
     fn name(&self) -> StaticName {
-        "dynamic-kv-cache-transform".into()
+        "detect_kv_cache".into()
     }
 
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
@@ -57,7 +57,7 @@ pub struct SdpaFuseKvCacheBroadcastTransform;
 
 impl ModelTransform for SdpaFuseKvCacheBroadcastTransform {
     fn name(&self) -> StaticName {
-        "sdpa-fuse-kv-cache-broadcast-transform".into()
+        "detect_sdpa_kv_cache_broadcast".into()
     }
 
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
@@ -73,7 +73,7 @@ pub struct TransformersTransform;
 
 impl ModelTransform for TransformersTransform {
     fn name(&self) -> StaticName {
-        "transformers-transform".into()
+        "transformers_detect_all".into()
     }
 
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {

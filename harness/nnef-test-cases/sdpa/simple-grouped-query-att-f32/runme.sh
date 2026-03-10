@@ -17,4 +17,4 @@ set -ex
 : ${TRACT_RUN:=cargo run -p tract $CARGO_OPTS --}
 
 rm -rf found
-$TRACT_RUN --nnef-tract-core --nnef-tract-transformers --transform transformers-detect-all model.nnef.tgz run --input-from-bundle io.npz --steps --assert-output-bundle io.npz
+$TRACT_RUN --nnef-tract-core --nnef-tract-transformers --transform transformers_detect_all model.nnef.tgz run --input-from-bundle io.npz --steps --assert-output-bundle io.npz
