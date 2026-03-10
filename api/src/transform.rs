@@ -2,55 +2,76 @@ use std::collections::HashMap;
 
 use crate::DatumType;
 
-/// A transform specification accepted by `ModelInterface::transform`.
+/// A serialized transform specification passed to `ModelInterface::transform`.
 ///
-/// Can be constructed from:
-/// - A raw string (plain name like `"f32_to_f16"` or a JSON object string)
-/// - A typed config struct like [`ConcretizeSymbols`] or [`Pulse`]
+/// Wraps the string representation expected by the transform registry.
+/// Constructed from raw strings or typed config structs implementing [`TransformConfig`].
 #[derive(Debug, Clone)]
-pub enum TransformSpec {
-    /// Raw string: plain name ("f32_to_f16") or JSON object.
-    Raw(String),
-    /// Typed: transform name + JSON params (without "name" key).
-    Typed { name: &'static str, params_json: String },
-}
+pub struct TransformSpec(String);
 
 impl TransformSpec {
     /// Produce the string the transform registry expects.
     pub fn to_transform_string(&self) -> String {
-        match self {
-            TransformSpec::Raw(s) => s.clone(),
-            TransformSpec::Typed { name, params_json } => {
-                if params_json == "{}" {
-                    name.to_string()
-                } else {
-                    let mut obj: serde_json::Map<String, serde_json::Value> =
-                        serde_json::from_str(params_json)
-                            .expect("params_json must be a valid JSON object");
-                    obj.insert("name".into(), serde_json::Value::String(name.to_string()));
-                    serde_json::to_string(&obj).expect("serialization cannot fail")
-                }
-            }
-        }
+        self.0.clone()
     }
 }
 
 impl From<&str> for TransformSpec {
     fn from(s: &str) -> Self {
-        TransformSpec::Raw(s.to_string())
+        TransformSpec(s.to_string())
     }
 }
 
 impl From<String> for TransformSpec {
     fn from(s: String) -> Self {
-        TransformSpec::Raw(s)
+        TransformSpec(s)
     }
 }
 
 impl From<&String> for TransformSpec {
     fn from(s: &String) -> Self {
-        TransformSpec::Raw(s.clone())
+        TransformSpec(s.clone())
     }
+}
+
+/// Trait for typed transform configurations.
+///
+/// Implementors derive [`serde::Serialize`] and provide a transform [`name()`](TransformConfig::name).
+/// The default [`to_transform_string()`](TransformConfig::to_transform_string) serializes the
+/// struct as a JSON object and injects the `"name"` key.
+pub trait TransformConfig: serde::Serialize {
+    /// The transform registry name (e.g. `"pulse"`, `"float_precision"`).
+    fn name(&self) -> &'static str;
+
+    /// Produce the string the transform registry expects.
+    ///
+    /// The default implementation serializes `self` to a JSON object and inserts `"name"`.
+    fn to_transform_string(&self) -> String {
+        let mut obj: serde_json::Map<String, serde_json::Value> = serde_json::to_value(self)
+            .expect("TransformConfig serialization cannot fail")
+            .as_object()
+            .expect("TransformConfig must serialize to a JSON object")
+            .clone();
+        obj.insert("name".into(), serde_json::Value::String(self.name().to_string()));
+        serde_json::to_string(&obj).expect("serialization cannot fail")
+    }
+}
+
+/// Implements [`TransformConfig`] and `From<$ty> for TransformSpec`.
+macro_rules! transform_config {
+    ($ty:ty, $name:expr) => {
+        impl TransformConfig for $ty {
+            fn name(&self) -> &'static str {
+                $name
+            }
+        }
+
+        impl From<$ty> for TransformSpec {
+            fn from(config: $ty) -> Self {
+                TransformSpec(config.to_transform_string())
+            }
+        }
+    };
 }
 
 /// Typed config for the `concretize_symbols` transform.
@@ -61,7 +82,7 @@ impl From<&String> for TransformSpec {
 /// ```ignore
 /// model.transform(ConcretizeSymbols::new().value("B", 1))?;
 /// ```
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, serde::Serialize)]
 pub struct ConcretizeSymbols {
     values: HashMap<String, i64>,
 }
@@ -78,15 +99,7 @@ impl ConcretizeSymbols {
     }
 }
 
-impl From<ConcretizeSymbols> for TransformSpec {
-    fn from(config: ConcretizeSymbols) -> Self {
-        let params = serde_json::json!({ "values": config.values });
-        TransformSpec::Typed {
-            name: "concretize_symbols",
-            params_json: serde_json::to_string(&params).expect("serialization cannot fail"),
-        }
-    }
-}
+transform_config!(ConcretizeSymbols, "concretize_symbols");
 
 /// Typed config for the `pulse` transform.
 ///
@@ -96,9 +109,10 @@ impl From<ConcretizeSymbols> for TransformSpec {
 /// ```ignore
 /// model.transform(Pulse::new("5").symbol("B"))?;
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct Pulse {
     pulse: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     symbol: Option<String>,
 }
 
@@ -115,19 +129,7 @@ impl Pulse {
     }
 }
 
-impl From<Pulse> for TransformSpec {
-    fn from(config: Pulse) -> Self {
-        let mut params = serde_json::Map::new();
-        params.insert("pulse".into(), serde_json::Value::String(config.pulse));
-        if let Some(symbol) = config.symbol {
-            params.insert("symbol".into(), serde_json::Value::String(symbol));
-        }
-        TransformSpec::Typed {
-            name: "pulse",
-            params_json: serde_json::to_string(&params).expect("serialization cannot fail"),
-        }
-    }
-}
+transform_config!(Pulse, "pulse");
 
 /// Typed config for the `float_precision` transform.
 ///
@@ -138,17 +140,34 @@ impl From<Pulse> for TransformSpec {
 /// use tract_api::DatumType;
 /// model.transform(FloatPrecision::new(DatumType::TRACT_DATUM_TYPE_F32, DatumType::TRACT_DATUM_TYPE_F16))?;
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct FloatPrecision {
-    from: DatumType,
-    to: DatumType,
+    from: String,
+    to: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     include: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     exclude: Option<Vec<String>>,
+}
+
+fn datum_type_to_str(dt: DatumType) -> &'static str {
+    use DatumType::*;
+    match dt {
+        TRACT_DATUM_TYPE_F16 => "f16",
+        TRACT_DATUM_TYPE_F32 => "f32",
+        TRACT_DATUM_TYPE_F64 => "f64",
+        _ => panic!("FloatPrecision only supports float datum types (F16, F32, F64)"),
+    }
 }
 
 impl FloatPrecision {
     pub fn new(from: DatumType, to: DatumType) -> Self {
-        Self { from, to, include: None, exclude: None }
+        Self {
+            from: datum_type_to_str(from).to_string(),
+            to: datum_type_to_str(to).to_string(),
+            include: None,
+            exclude: None,
+        }
     }
 
     /// Set include patterns — only nodes matching at least one pattern are translated.
@@ -164,40 +183,4 @@ impl FloatPrecision {
     }
 }
 
-fn datum_type_to_str(dt: DatumType) -> &'static str {
-    use DatumType::*;
-    match dt {
-        TRACT_DATUM_TYPE_F16 => "f16",
-        TRACT_DATUM_TYPE_F32 => "f32",
-        TRACT_DATUM_TYPE_F64 => "f64",
-        _ => panic!("FloatPrecision only supports float datum types (F16, F32, F64)"),
-    }
-}
-
-impl From<FloatPrecision> for TransformSpec {
-    fn from(config: FloatPrecision) -> Self {
-        let mut params = serde_json::Map::new();
-        params.insert(
-            "from".into(),
-            serde_json::Value::String(datum_type_to_str(config.from).to_string()),
-        );
-        params.insert(
-            "to".into(),
-            serde_json::Value::String(datum_type_to_str(config.to).to_string()),
-        );
-        if let Some(include) = config.include {
-            let arr: Vec<serde_json::Value> =
-                include.into_iter().map(serde_json::Value::String).collect();
-            params.insert("include".into(), serde_json::Value::Array(arr));
-        }
-        if let Some(exclude) = config.exclude {
-            let arr: Vec<serde_json::Value> =
-                exclude.into_iter().map(serde_json::Value::String).collect();
-            params.insert("exclude".into(), serde_json::Value::Array(arr));
-        }
-        TransformSpec::Typed {
-            name: "float_precision",
-            params_json: serde_json::to_string(&params).expect("serialization cannot fail"),
-        }
-    }
-}
+transform_config!(FloatPrecision, "float_precision");
