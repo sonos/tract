@@ -21,7 +21,7 @@ pub mod internal {
 use std::ops::ControlFlow;
 
 use internal::*;
-use tract_core::transform::{ModelTransform, ModelTransformFactory};
+use tract_core::transform::ModelTransform;
 use tract_pulse_opl::tract_nnef::tract_core;
 
 pub use ops::PulsedOp;
@@ -49,20 +49,7 @@ impl ModelTransform for PulseTransform {
     }
 }
 
-tract_core::internal::inventory::submit! {
-    ModelTransformFactory {
-        name: "pulse",
-        build_default: || {
-            let config = PulseConfig::default();
-            Ok(Box::new(PulseTransform(config)))
-        },
-        build: |de: &mut dyn erased_serde::Deserializer| {
-            let config: PulseConfig = erased_serde::deserialize(de)
-                .map_err(|e| anyhow!("deserializing transform config: {e}"))?;
-            Ok(Box::new(PulseTransform(config)))
-        },
-    }
-}
+register_model_transform!("pulse", PulseConfig, |config| Ok(Box::new(PulseTransform(config))));
 
 pub trait WithPulse {
     fn enable_pulse(&mut self);
