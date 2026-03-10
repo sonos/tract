@@ -876,6 +876,23 @@ pub unsafe extern "C" fn tract_runtime_for_name(
     })
 }
 
+/// Query the name of a Runtime.
+///
+/// The returned name must be freed by the caller using tract_free_cstring.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tract_runtime_name(
+    runtime: *const TractRuntime,
+    name: *mut *mut c_char,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(runtime, name);
+        *name = std::ptr::null_mut();
+        let n = (*runtime).0.name()?;
+        *name = CString::new(n)?.into_raw();
+        Ok(())
+    })
+}
+
 /// Convert a Model into a Runnable for this Runtime.
 ///
 /// This function transfers ownership of the `model` argument to the newly-created `runnable` model.

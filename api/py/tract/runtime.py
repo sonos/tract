@@ -27,6 +27,15 @@ class Runtime:
         if self.ptr == None:
             raise TractError("invalid runtime (maybe already consumed ?)")
    
+    def name(self) -> str:
+        """Return the name of this Runtime."""
+        self._valid()
+        ptr = c_char_p()
+        check(lib.tract_runtime_name(self.ptr, byref(ptr)))
+        result = ptr.value.decode("utf-8")
+        lib.tract_free_cstring(ptr)
+        return result
+
     def prepare(self, model:Model) -> Runnable:
         """Prepare a model for execution on the Runtime.
 
