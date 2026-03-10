@@ -5,6 +5,7 @@ from .bindings import TractError, check, lib
 from .fact import Fact
 from .value import Value
 from .runnable import Runnable
+from .transform import TransformSpec
 
 class Model:
     """
@@ -114,30 +115,19 @@ class Model:
         check(lib.tract_model_output_fact(self.ptr, output_id, byref(fact)))
         return Fact(fact)
 
-    def concretize_symbols(self, values: Dict[str, int]) -> None:
-        """Substitute symbols by a value
+    def transform(self, transform: Union[str, "TransformSpec"]) -> None:
+        """Apply a transform to the model.
 
-        Replace all occurencies of the symbols in the dictionary, in all the Model facts shapes.
+        ``transform`` can be:
 
-        While this is not strictly necesary, the optimizing steps may make better choices if the model
-        is informed of some specific symbol values.
+        - a plain string name (e.g. ``"f32_to_f16"``)
+        - a JSON string with a ``"name"`` key and parameters
+        - a :class:`TransformSpec` subclass such as :class:`ConcretizeSymbols`
+          or :class:`Pulse`
         """
         self._valid()
-        import json
-        spec = json.dumps({"name": "concretize_symbols", "values": values})
-        self.transform(spec)
-
-    def pulse(self, symbol: str, pulse: Union[str, int]) -> None:
-        """Pulsify a model."""
-        self._valid()
-        import json
-        spec = json.dumps({"name": "pulse", "symbol": symbol, "pulse": str(pulse)})
-        self.transform(spec)
-
-    def transform(self, transform: str) -> None:
-        """Apply a transform to the model
-        """
-        self._valid()
+        if isinstance(transform, TransformSpec):
+            transform = transform.to_json()
         check(lib.tract_model_transform(self.ptr, str(transform).encode("utf-8")))
 
     def into_runnable(self) -> Runnable:
