@@ -247,7 +247,10 @@ mod test {
         let runnable_model = &crate::transform::build_float_translator(
             f32::datum_type(),
             f16::datum_type(),
-            Some("!=layer.1"),
+            crate::transform::NodeFilter {
+                exclude: Some(vec!["layer.1".into()]),
+                ..Default::default()
+            },
         )
         .transform_into(model.clone())?
         .into_runnable()?;
@@ -260,7 +263,10 @@ mod test {
         let runnable_model = &crate::transform::build_float_translator(
             f32::datum_type(),
             f16::datum_type(),
-            Some("!=layer.0"),
+            crate::transform::NodeFilter {
+                exclude: Some(vec!["layer.0".into()]),
+                ..Default::default()
+            },
         )
         .transform_into(model)?
         .into_runnable()?;

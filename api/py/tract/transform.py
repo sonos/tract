@@ -70,8 +70,8 @@ class FloatPrecision(TransformSpec):
     Example::
 
         model.transform(FloatPrecision(DatumType.F32, DatumType.F16))
-        # or with filter:
-        model.transform(FloatPrecision(DatumType.F32, DatumType.F16, filter="!=layer.1"))
+        # with include/exclude:
+        model.transform(FloatPrecision(DatumType.F32, DatumType.F16, exclude=["layer.1"]))
     """
 
     _DT_NAMES = {
@@ -80,18 +80,31 @@ class FloatPrecision(TransformSpec):
         DatumType.F64: "f64",
     }
 
-    def __init__(self, from_dt: DatumType, to_dt: DatumType, *, filter: Optional[str] = None):
+    def __init__(
+        self,
+        from_dt: DatumType,
+        to_dt: DatumType,
+        *,
+        include: Optional[list] = None,
+        exclude: Optional[list] = None,
+    ):
         if from_dt not in self._DT_NAMES:
             raise ValueError(f"from_dt must be a float DatumType, got {from_dt}")
         if to_dt not in self._DT_NAMES:
             raise ValueError(f"to_dt must be a float DatumType, got {to_dt}")
         self._from = from_dt
         self._to = to_dt
-        self._filter = filter
+        self._include = list(include) if include else None
+        self._exclude = list(exclude) if exclude else None
 
-    def filter(self, pattern: str) -> "FloatPrecision":
-        """Set a node-name filter pattern. Returns self for chaining."""
-        self._filter = pattern
+    def include(self, patterns: list) -> "FloatPrecision":
+        """Set include patterns — only matching nodes are translated. Returns self for chaining."""
+        self._include = list(patterns)
+        return self
+
+    def exclude(self, patterns: list) -> "FloatPrecision":
+        """Set exclude patterns — matching nodes are excluded. Returns self for chaining."""
+        self._exclude = list(patterns)
         return self
 
     def to_json(self) -> str:
@@ -100,6 +113,8 @@ class FloatPrecision(TransformSpec):
             "from": self._DT_NAMES[self._from],
             "to": self._DT_NAMES[self._to],
         }
-        if self._filter is not None:
-            d["filter"] = self._filter
+        if self._include is not None:
+            d["include"] = self._include
+        if self._exclude is not None:
+            d["exclude"] = self._exclude
         return json.dumps(d)
