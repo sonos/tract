@@ -402,6 +402,9 @@ impl TypedOp for Reduce {
         if let Some(patch) = self.declutter_reduce_reduce(model, node)? {
             return Ok(Some(patch));
         }
+        if let Some(patch) = super::rms_norm::detect_rms_norm(self, model, node)? {
+            return Ok(Some(patch));
+        }
         Ok(None)
     }
 

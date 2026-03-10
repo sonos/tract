@@ -4,19 +4,6 @@ use tract_nnef::tract_core::transform::ModelTransform;
 use crate::ops;
 
 #[derive(Debug, Default)]
-pub struct RmsNormTransform;
-
-impl ModelTransform for RmsNormTransform {
-    fn name(&self) -> StaticName {
-        "rms-norm-transform".into()
-    }
-
-    fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
-        Rewriter::default().with_rule_for("detect-rms-norm", ops::rms_norm_rule).rewrite(&(), model)
-    }
-}
-
-#[derive(Debug, Default)]
 pub struct ApplyRopeTransform;
 
 impl ModelTransform for ApplyRopeTransform {
@@ -33,19 +20,6 @@ impl ModelTransform for ApplyRopeTransform {
 }
 
 #[derive(Debug, Default)]
-pub struct SiluTransform;
-
-impl ModelTransform for SiluTransform {
-    fn name(&self) -> StaticName {
-        "silu-transform".into()
-    }
-
-    fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
-        Rewriter::default().with_rule_for("detect-silu", ops::silu_rule).rewrite(&(), model)
-    }
-}
-
-#[derive(Debug, Default)]
 pub struct ScaledMaskedSoftmaxTransform;
 
 impl ModelTransform for ScaledMaskedSoftmaxTransform {
@@ -56,21 +30,6 @@ impl ModelTransform for ScaledMaskedSoftmaxTransform {
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
         Rewriter::default()
             .with_rule_for("detect-scaled-masked-softmax", ops::scaled_masked_softmax_rule)
-            .rewrite(&(), model)
-    }
-}
-
-#[derive(Debug, Default)]
-pub struct GeluTransform;
-
-impl ModelTransform for GeluTransform {
-    fn name(&self) -> StaticName {
-        "gelu-fast-approx-transform".into()
-    }
-
-    fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
-        Rewriter::default()
-            .with_rule_for("detect-gelu-approx", ops::gelu_approx_rule)
             .rewrite(&(), model)
     }
 }
@@ -108,7 +67,7 @@ impl ModelTransform for SdpaFuseKvCacheBroadcastTransform {
     }
 }
 
-// TODO: This is why Transform shoudl be renamed to Remodel
+// TODO: This is why Transform should be renamed to Remodel
 #[derive(Debug, Default)]
 pub struct TransformersTransform;
 
@@ -121,12 +80,9 @@ impl ModelTransform for TransformersTransform {
         KeyValueCacheTransform.transform(model)?;
 
         Rewriter::default()
-            .with_rule_for("detect-rms-norm", ops::rms_norm_rule)
             .with_rule_for("detect-rotate-half", ops::rotate_half_rule)
             .with_rule_for("detect-apply-rope", ops::apply_rope_rule)
             .with_rule_for("detect-scaled-masked-softmax", ops::scaled_masked_softmax_rule)
-            .with_rule_for("detect-silu", ops::silu_rule)
-            .with_rule_for("detect-gelu-approx", ops::gelu_approx_rule)
             .with_rule_for("detect-sdpa-kv-cache-broadcast", ops::fuse_kv_cache_broadcast_rule)
             .rewrite(&(), model)
     }
