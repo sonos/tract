@@ -38,6 +38,7 @@ use std::str;
 
 mod fact;
 mod graph;
+mod helpers;
 pub mod memory;
 mod node;
 pub mod order;
@@ -45,6 +46,7 @@ mod patch;
 mod rewriter;
 pub mod translator;
 pub mod typed;
+pub use self::helpers::*;
 
 pub use self::fact::*;
 pub use self::graph::*;

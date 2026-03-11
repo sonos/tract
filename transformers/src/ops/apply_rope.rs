@@ -5,8 +5,6 @@ use tract_nnef::tract_core::ops::binary::TypedBinOp;
 use tract_nnef::tract_core::ops::element_wise::ElementWiseOp;
 use tract_nnef::tract_core::ops::math::{Add, Mul, Neg};
 
-use super::{previous_node, previous_nodes, single_prev_node_as};
-
 pub fn register(registry: &mut Registry) {
     registry.register_dumper(ser_apply_rope);
     registry.register_primitive(
@@ -100,14 +98,14 @@ pub fn rotate_half_rule(
     rule_if!(dt.is_float() || dt.is_integer());
     rule_if!(op.axis == out_fact.rank() - 1);
 
-    let in_concat = previous_nodes(model, node);
+    let in_concat = model.previous_nodes(node);
     rule_if!(in_concat.len() == 2);
 
     let neg_half = in_concat[0];
     rule_if_some!(neg_half_op = neg_half.op_as::<ElementWiseOp>());
     rule_if!(neg_half_op.0.is::<Neg>());
 
-    rule_if_some!(neg_half_slice = previous_node(model, neg_half));
+    rule_if_some!(neg_half_slice = model.previous_node(neg_half));
     rule_if_some!(neg_half_slice_op = neg_half_slice.op_as::<Slice>());
 
     rule_if!(neg_half_slice_op.axis == op.axis);
@@ -199,7 +197,7 @@ pub fn apply_rope_rule(
 ) -> TractResult<Option<TypedModelPatch>> {
     rule_if!(op.0.is::<Add>());
 
-    let in_add = previous_nodes(model, node);
+    let in_add = model.previous_nodes(node);
     rule_if!(in_add.len() == 2);
 
     let cos_mul = in_add[0];
@@ -211,14 +209,15 @@ pub fn apply_rope_rule(
     rule_if!(sin_mul_op.0.is::<Mul>());
 
     rule_if_let!(
-        Some((rotate_half_in_idx, rotate_half)) = single_prev_node_as::<RotateHalf>(model, sin_mul)
+        Some((rotate_half_in_idx, rotate_half)) = model.single_prev_node_as::<RotateHalf>(sin_mul)
     );
 
     // If cos and rotate half don't share the same input, we check if they don't
     // input node that are the same.
     let (apply_rope_in, cos) = if !cos_mul.inputs.contains(&rotate_half.inputs[0]) {
-        let Some(rotate_half_prev) = previous_node(model, rotate_half) else { return Ok(None) };
-        let Some((cos_common_input_idx, _)) = previous_nodes(model, cos_mul)
+        let Some(rotate_half_prev) = model.previous_node(rotate_half) else { return Ok(None) };
+        let Some((cos_common_input_idx, _)) = model
+            .previous_nodes(cos_mul)
             .iter()
             .enumerate()
             .find(|(_, n)| n.same_as(rotate_half_prev))

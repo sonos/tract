@@ -1,5 +1,4 @@
 use crate::internal::*;
-use crate::ops::binary::TypedBinOp;
 use crate::ops::element_wise::ElementWiseOp;
 use crate::ops::math::Mul;
 use crate::ops::nn::Sigmoid;
@@ -33,11 +32,8 @@ pub fn detect_silu(model: &TypedModel, node: &TypedNode) -> TractResult<Option<T
     // Only F16 and F32 is supported.
     rule_if!(matches!(dt, DatumType::F32 | DatumType::F16));
 
-    // Identify Mul successor
-    rule_if_some!(mul_succ = model.single_succ(node.id)?);
-    rule_if_some!(mul_succ_op = mul_succ.op_as::<TypedBinOp>());
-    rule_if!(mul_succ_op.0.is::<Mul>());
-    rule_if!(mul_succ.inputs.contains(&node.inputs[0]));
+    // Identify Mul successor: Sigmoid(A) * A
+    rule_if_some!(mul_succ = model.find_succ_bin_with_outlet::<Mul>(node, &node.inputs[0]));
 
     let mut patch = TypedModelPatch::default();
     let silu_input = patch.taps(model, &node.inputs)?;

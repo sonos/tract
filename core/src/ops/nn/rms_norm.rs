@@ -1,7 +1,6 @@
 use crate::internal::*;
 use crate::ops::binary::{BinMiniOp, TypedBinOp};
 use crate::ops::element_wise::ElementWiseOp;
-use crate::ops::konst::Const;
 use crate::ops::math::{Add, Mul, Rsqrt};
 use crate::ops::nn::{Reduce, Reducer};
 use tract_itertools::Itertools;
@@ -96,16 +95,6 @@ impl TypedOp for RmsNorm {
     as_op!();
 }
 
-fn collect_const_inputs<'a>(model: &'a TypedModel, node: &TypedNode) -> TVec<&'a Const> {
-    node.inputs
-        .iter()
-        .filter_map(|i| {
-            let prec = &model.nodes()[i.node];
-            prec.op_as::<Const>()
-        })
-        .collect::<TVec<_>>()
-}
-
 /// Search pattern => A = A * RSQRT(MEAN_OF_SQUARES(A) + EPS)
 pub fn detect_rms_norm(
     op: &Reduce,
@@ -128,7 +117,7 @@ pub fn detect_rms_norm(
     rule_if!(add_succ_op.0.is::<Add>());
 
     // Retrieve epsilon
-    let add_consts = collect_const_inputs(model, add_succ);
+    let add_consts = model.collect_const_inputs(add_succ);
     rule_if!(add_consts.len() == 1);
     let eps = add_consts[0].val().clone();
     rule_if!(eps.len() == 1);
@@ -139,11 +128,8 @@ pub fn detect_rms_norm(
     rule_if_some!(rsqrt_succ_op = rsqrt_succ.op_as::<ElementWiseOp>());
     rule_if!(rsqrt_succ_op.0.is::<Rsqrt>());
 
-    // Identify Mul
-    rule_if_some!(mul_succ = model.single_succ(rsqrt_succ.id)?);
-    rule_if_some!(mul_succ_op = mul_succ.op_as::<TypedBinOp>());
-    rule_if!(mul_succ_op.0.is::<Mul>());
-    rule_if!(mul_succ.inputs.contains(&node.inputs[0]));
+    // Identify Mul: RSQRT(...) * A
+    rule_if_some!(mul_succ = model.find_succ_bin_with_outlet::<Mul>(rsqrt_succ, &node.inputs[0]));
 
     let mut patch = TypedModelPatch::default();
     let rsm_input = patch.taps(model, &node.inputs)?;

@@ -3,8 +3,6 @@ use tract_nnef::tract_core::ops::binary::{BinMiniOp, TypedBinOp};
 use tract_nnef::tract_core::ops::math::{Add, Mul};
 use tract_nnef::tract_core::ops::nn::{Softmax, SoftmaxExp, SoftmaxKind};
 
-use super::{collect_node_const_inputs, previous_node, previous_nodes};
-
 pub fn register(registry: &mut Registry) {
     registry.register_dumper(ser_scaled_masked_softmax);
     registry.register_primitive(
@@ -111,11 +109,11 @@ pub fn scaled_masked_softmax_rule(
     rule_if!(matches!(dt, DatumType::F32 | DatumType::F16));
 
     // Identify Add operator (Mask)
-    rule_if_some!(add_prev = previous_node(model, node));
+    rule_if_some!(add_prev = model.previous_node(node));
     rule_if_some!(add_prev_op = add_prev.op_as::<TypedBinOp>());
     rule_if!(add_prev_op.0.is::<Add>());
 
-    let mut in_add = previous_nodes(model, add_prev);
+    let mut in_add = model.previous_nodes(add_prev);
     rule_if!(in_add.len() == 2);
 
     in_add.reverse();
@@ -131,7 +129,7 @@ pub fn scaled_masked_softmax_rule(
     rule_if!(scale_op.0.is::<Mul>());
 
     // Retrieve Scale
-    let mul_consts = collect_node_const_inputs(model, scale_node);
+    let mul_consts = model.collect_const_inputs(scale_node);
     rule_if!(mul_consts.len() == 1);
     let scale = mul_consts[0].val().clone();
 
