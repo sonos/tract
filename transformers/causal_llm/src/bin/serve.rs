@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 
+use anyhow::Result as TractResult;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
@@ -10,7 +11,6 @@ use axum_macros::debug_handler;
 use causal_llm::{CausalLlmModel, CausalLlmStateConfig};
 use clap::{Parser, arg, command};
 use log::{debug, info};
-use tract_nnef::prelude::TractResult;
 
 #[allow(dead_code)]
 mod common;

@@ -1,15 +1,14 @@
+use std::collections::HashSet;
 use std::path::Path;
+use std::sync::Arc;
 use std::time::Instant;
 
-use anyhow::ensure;
+use anyhow::{Context, ensure};
 use float_ord::FloatOrd;
 use log::{info, trace};
 use tokenizers::Tokenizer;
-use tract_nnef::internal::DimLike;
-use tract_nnef::internal::{TractErrorContext, anyhow};
-use tract_nnef::prelude::tract_itertools::Itertools;
-use tract_nnef::prelude::*;
-use tract_transformers::WithTractTransformers;
+use tract_rs::State;
+use tract_rs::prelude::*;
 
 #[derive(Clone, Debug)]
 struct KvCacheInfo {
@@ -27,80 +26,88 @@ pub struct CausalLlmModelConfig {
 #[derive(Clone, Debug)]
 pub struct CausalLlmModel {
     pub tokenizer: Tokenizer,
-    pub nn: Arc<dyn Runnable>,
+    pub nn: Runnable,
     pub conf: CausalLlmModelConfig,
     kv_caches: Vec<KvCacheInfo>,
     n_regular_outputs: usize,
 }
 
 impl CausalLlmModel {
-    fn from_tokenizer_and_typed_model(
+    fn from_tokenizer_and_model(
         tokenizer: tokenizers::Tokenizer,
-        nn: TypedModel,
+        nn: Model,
         conf: CausalLlmModelConfig,
-    ) -> TractResult<Arc<CausalLlmModel>> {
-        let transform = tract_core::transform::get_transform("transformers_detect_all")?
-            .context("transformers_detect_all not found")?;
-        let mut nn = nn.into_decluttered()?;
-        nn.transform(&*transform)?;
+    ) -> anyhow::Result<Arc<CausalLlmModel>> {
+        let mut nn = nn;
 
-        // Collect KV cache metadata before unfolding
-        let (b, _s, p) = tract_transformers::figure_out_causal_llm_b_s_p(&nn)?;
-        let mut resolve = SymbolValues::default();
-        if let Some(p) = &p {
-            resolve = resolve.with(p, 0);
-        }
-        if let Some(b) = &b {
-            resolve = resolve.with(b, 1);
-        }
+        // Detect transformer patterns (creates DynKeyValueCache ops)
+        nn.transform("transformers_detect_all")?;
 
-        let n_regular_outputs = nn.outputs.len();
+        let n_regular_outputs = nn.output_count()?;
 
-        let mut kv_infos = Vec::new();
-        for node in nn.nodes() {
-            if let Some(op) =
-                node.op_as::<tract_transformers::ops::dyn_kv_cache::DynKeyValueCache>()
-            {
-                let empty_shape: Vec<usize> = op
-                    .past_sequence_fact
-                    .shape
-                    .iter()
-                    .map(|d| d.eval(&resolve).to_usize())
-                    .collect::<TractResult<_>>()?;
-                kv_infos.push(KvCacheInfo {
-                    axis: op.axis,
-                    dt: op.past_sequence_fact.datum_type,
-                    empty_shape,
-                });
+        // Unfold KV caches into explicit model I/O
+        nn.transform("unfold-kv-cache")?;
+
+        // Detect KV cache inputs by comparing pre/post unfold input counts.
+        // Token input (idx 0) is integer, KV cache inputs are float.
+        let token_fact = nn.input_fact(0)?;
+        let mut token_symbols = HashSet::new();
+        for axis in 0..token_fact.rank()? {
+            let dim = token_fact.dim(axis)?;
+            if dim.to_int64().is_err() {
+                token_symbols.insert(format!("{dim}"));
             }
         }
 
-        // Unfold KV caches into explicit model I/O
-        let unfold = tract_core::transform::get_transform("unfold-kv-cache")?
-            .context("unfold-kv-cache not found")?;
-        nn.transform(&*unfold)?;
+        let n_inputs = nn.input_count()?;
+        let mut kv_infos = Vec::new();
+        for i in 1..n_inputs {
+            let fact = nn.input_fact(i)?;
+            let dt = fact.datum_type()?;
+            let mut cache_axis = None;
+            let mut empty_shape = vec![];
+            for axis in 0..fact.rank()? {
+                let dim = fact.dim(axis)?;
+                match dim.to_int64() {
+                    Ok(v) => empty_shape.push(v as usize),
+                    Err(_) => {
+                        let sym_name = format!("{dim}");
+                        if token_symbols.contains(&sym_name) {
+                            // Batch dim — default to 1
+                            empty_shape.push(1);
+                        } else {
+                            // Cache axis (past sequence) — start at 0
+                            cache_axis = Some(axis);
+                            empty_shape.push(0);
+                        }
+                    }
+                }
+            }
+            kv_infos.push(KvCacheInfo {
+                axis: cache_axis.context("no symbolic cache axis found in KV cache input")?,
+                dt,
+                empty_shape,
+            });
+        }
 
-        let options = RunOptions {
-            memory_sizing_hints: Some(tract_transformers::memory_arena_hints_for_causal_llm(&nn)?),
-            ..Default::default()
-        };
-
+        // Try runtimes in order of preference
         let runtimes =
             if conf.force_cpu { vec!["default"] } else { vec!["cuda", "metal", "default"] };
         let mut runnable = None;
-        for rt in runtimes {
-            if let Some(rt) = runtime_for_name(rt) {
-                match rt.prepare_with_options(nn.clone(), &options) {
-                    Ok(it) => {
-                        info!("Using runtime {rt:?}");
-                        runnable = Some(it);
+        for rt_name in &runtimes {
+            match runtime_for_name(rt_name) {
+                Ok(rt) => match rt.prepare(nn.clone()) {
+                    Ok(r) => {
+                        info!("Using runtime {rt_name}");
+                        runnable = Some(r);
                         break;
                     }
-                    Err(e) => info!("{rt:?} {e:?}"),
-                }
+                    Err(e) => info!("{rt_name} {e:?}"),
+                },
+                Err(_) => continue,
             }
         }
-        let nn = runnable.context("No suitable runtime")?.into();
+        let nn = runnable.context("No suitable runtime")?;
         Ok(Arc::new(CausalLlmModel { tokenizer, nn, conf, kv_caches: kv_infos, n_regular_outputs }))
     }
 
@@ -108,17 +115,18 @@ impl CausalLlmModel {
         tokenizer: impl AsRef<Path>,
         nn: impl AsRef<Path>,
         conf: CausalLlmModelConfig,
-    ) -> TractResult<Arc<CausalLlmModel>> {
-        let nnef = tract_nnef::nnef().with_tract_transformers();
-        let tokenizer = tokenizers::Tokenizer::from_file(tokenizer).map_err(|e| anyhow!(e))?;
-        let nn = nnef.model_for_path(nn.as_ref())?;
-        CausalLlmModel::from_tokenizer_and_typed_model(tokenizer, nn, conf)
+    ) -> anyhow::Result<Arc<CausalLlmModel>> {
+        let nnef = tract_rs::nnef()?.with_tract_transformers()?;
+        let tokenizer =
+            tokenizers::Tokenizer::from_file(tokenizer).map_err(|e| anyhow::anyhow!(e))?;
+        let nn = nnef.load(nn)?;
+        CausalLlmModel::from_tokenizer_and_model(tokenizer, nn, conf)
     }
 
     pub fn from_paths(
         tokenizer: impl AsRef<Path>,
         nn: impl AsRef<Path>,
-    ) -> TractResult<Arc<CausalLlmModel>> {
+    ) -> anyhow::Result<Arc<CausalLlmModel>> {
         Self::from_paths_and_conf(tokenizer, nn, Default::default())
     }
 
@@ -126,30 +134,32 @@ impl CausalLlmModel {
         tokenizer_bytes: impl AsRef<[u8]>,
         llm_model_bytes: impl AsRef<[u8]>,
         conf: CausalLlmModelConfig,
-    ) -> TractResult<Arc<CausalLlmModel>> {
-        let nnef = tract_nnef::nnef().with_tract_transformers();
-        let tokenizer = Tokenizer::from_bytes(tokenizer_bytes).map_err(|e| anyhow!(e))?;
-        let mut llm_read = std::io::Cursor::new(llm_model_bytes);
-        let nn = nnef.model_for_read(&mut llm_read)?;
-        CausalLlmModel::from_tokenizer_and_typed_model(tokenizer, nn, conf)
+    ) -> anyhow::Result<Arc<CausalLlmModel>> {
+        let nnef = tract_rs::nnef()?.with_tract_transformers()?;
+        let tokenizer = Tokenizer::from_bytes(tokenizer_bytes).map_err(|e| anyhow::anyhow!(e))?;
+        let nn = nnef.load_buffer(llm_model_bytes.as_ref())?;
+        CausalLlmModel::from_tokenizer_and_model(tokenizer, nn, conf)
     }
 
     pub fn from_bytes(
         tokenizer_bytes: impl AsRef<[u8]>,
         llm_model_bytes: impl AsRef<[u8]>,
-    ) -> TractResult<Arc<CausalLlmModel>> {
+    ) -> anyhow::Result<Arc<CausalLlmModel>> {
         Self::from_bytes_and_conf(tokenizer_bytes, llm_model_bytes, Default::default())
     }
 
-    fn make_empty_kv_caches(&self) -> TractResult<Vec<TValue>> {
+    fn make_empty_kv_caches(&self) -> anyhow::Result<Vec<Value>> {
         self.kv_caches
             .iter()
-            .map(|info| Tensor::zero_dt(info.dt, &info.empty_shape).map(|t| t.into_tvalue()))
+            .map(|info| {
+                let n_bytes = info.empty_shape.iter().product::<usize>() * info.dt.size_of();
+                Value::from_bytes(info.dt, &info.empty_shape, &vec![0u8; n_bytes])
+            })
             .collect()
     }
 
-    pub fn spawn(self: &Arc<Self>) -> TractResult<CausalLlmState> {
-        let nn_state = self.nn.spawn()?;
+    pub fn spawn(self: &Arc<Self>) -> anyhow::Result<CausalLlmState> {
+        let nn_state = self.nn.spawn_state()?;
         let kv_caches = self.make_empty_kv_caches()?;
         Ok(CausalLlmState {
             model: self.clone(),
@@ -164,8 +174,8 @@ impl CausalLlmModel {
     pub fn spawn_with_config(
         self: &Arc<Self>,
         config: CausalLlmStateConfig,
-    ) -> TractResult<CausalLlmState> {
-        let nn_state = self.nn.spawn()?;
+    ) -> anyhow::Result<CausalLlmState> {
+        let nn_state = self.nn.spawn_state()?;
         let kv_caches = self.make_empty_kv_caches()?;
         Ok(CausalLlmState {
             model: self.clone(),
@@ -199,13 +209,13 @@ impl CausalLlmStateConfig {
         prompt_chunk_size: Option<usize>,
         repeat_penalty: f32,
         repeat_last_n: usize,
-    ) -> TractResult<Self> {
+    ) -> anyhow::Result<Self> {
         let conf = Self { prompt_chunk_size, repeat_penalty, repeat_last_n };
         conf.validate()?;
         Ok(conf)
     }
 
-    pub fn validate(&self) -> TractResult<()> {
+    pub fn validate(&self) -> anyhow::Result<()> {
         if let Some(chunk_size) = self.prompt_chunk_size {
             anyhow::ensure!(
                 chunk_size > 0,
@@ -218,34 +228,35 @@ impl CausalLlmStateConfig {
     }
 }
 
-#[derive(Debug)]
 pub struct CausalLlmState {
     pub model: Arc<CausalLlmModel>,
-    nn_state: Box<dyn State>,
-    kv_caches: Vec<TValue>,
+    nn_state: State,
+    kv_caches: Vec<Value>,
     pub seq: Vec<u32>,
     pub processed_tokens: usize,
     pub config: CausalLlmStateConfig,
 }
 
 impl CausalLlmState {
-    pub fn append_text(&mut self, prompt: &str) -> TractResult<()> {
-        let _: () = self.seq.extend(self.encode(prompt, true)?);
+    pub fn append_text(&mut self, prompt: &str) -> anyhow::Result<()> {
+        self.seq.extend(self.encode(prompt, true)?);
         Ok(())
     }
 
-    pub fn generate_next_token(&mut self) -> TractResult<()> {
+    pub fn generate_next_token(&mut self) -> anyhow::Result<()> {
         let tokens = &self.seq[self.processed_tokens..];
         ensure!(tokens.len() > 0);
         let chunk_size = self.config.prompt_chunk_size.unwrap_or(usize::MAX);
         let output = tokens
             .chunks(chunk_size)
-            .map(|chunk| -> TractResult<Tensor> {
+            .map(|chunk| -> anyhow::Result<Value> {
                 let start = Instant::now();
-                let mut input = tensor1(&chunk.iter().map(|t| *t as i64).collect_vec());
-                input.insert_axis(0)?;
+                let token_data: Vec<i64> = chunk.iter().map(|t| *t as i64).collect();
+                let input: Value =
+                    tract_ndarray::Array2::from_shape_vec((1, chunk.len()), token_data)?
+                        .try_into()?;
                 // Build inputs: token_ids + current kv caches
-                let mut inputs: TVec<TValue> = tvec![input.into_tvalue()];
+                let mut inputs: Vec<Value> = vec![input];
                 inputs.extend(self.kv_caches.iter().cloned());
                 let mut results = self.nn_state.run(inputs)?;
                 // Extract updated KV caches from outputs
@@ -255,20 +266,15 @@ impl CausalLlmState {
                     self.kv_caches[i] = kv;
                 }
                 trace!("Processed {} tokens in {:?}", chunk.len(), start.elapsed());
-                Ok(results.remove(0).into_tensor())
+                Ok(results.remove(0))
             })
             .last()
             .unwrap()?;
 
         let start_at = self.seq.len().saturating_sub(self.config.repeat_last_n);
 
-        let mut last_token_logits = output
-            .cast_to::<f32>()?
-            .try_as_dense()?
-            .as_slice::<f32>()?
-            .iter()
-            .copied()
-            .collect_vec();
+        let output_f32 = output.convert_to(DatumType::TRACT_DATUM_TYPE_F32)?;
+        let mut last_token_logits: Vec<f32> = output_f32.as_slice::<f32>()?.to_vec();
 
         apply_repeat_penalty(
             last_token_logits.as_mut_slice(),
@@ -292,15 +298,15 @@ impl CausalLlmState {
         &self.model.tokenizer
     }
 
-    pub fn decode(&self, tokens: &[u32], skip_special_tokens: bool) -> TractResult<String> {
-        self.tokenizer().decode(tokens, skip_special_tokens).map_err(|e| anyhow!(e))
+    pub fn decode(&self, tokens: &[u32], skip_special_tokens: bool) -> anyhow::Result<String> {
+        self.tokenizer().decode(tokens, skip_special_tokens).map_err(|e| anyhow::anyhow!(e))
     }
 
-    pub fn encode(&self, text: &str, add_special_tokens: bool) -> TractResult<Vec<u32>> {
+    pub fn encode(&self, text: &str, add_special_tokens: bool) -> anyhow::Result<Vec<u32>> {
         Ok(self
             .tokenizer()
             .encode(text, add_special_tokens)
-            .map_err(|e| anyhow!(e))?
+            .map_err(|e| anyhow::anyhow!(e))?
             .get_ids()
             .to_vec())
     }
@@ -308,36 +314,61 @@ impl CausalLlmState {
     pub fn freeze(self) -> FrozenCausalLlmState {
         FrozenCausalLlmState {
             model: self.model,
-            kv_caches: self.kv_caches.into_iter().map(|t| t.into_tensor()).collect(),
+            kv_caches: self.kv_caches,
             seq: self.seq,
             config: self.config,
         }
     }
 
-    pub fn truncate(&mut self, len: usize) -> TractResult<()> {
+    pub fn truncate(&mut self, len: usize) -> anyhow::Result<()> {
         self.seq.truncate(len);
         for (kv, info) in self.kv_caches.iter_mut().zip(&self.model.kv_caches) {
-            *kv = kv.slice(info.axis, 0, len)?.into_tvalue();
+            *kv = slice_value(kv, info.axis, 0, len)?;
         }
         Ok(())
     }
 }
 
+/// Slice a Value along an axis, extracting elements [start..end].
+fn slice_value(value: &Value, axis: usize, start: usize, end: usize) -> anyhow::Result<Value> {
+    let (dt, shape, data) = value.as_bytes()?;
+    let elem_size = dt.size_of();
+    let new_len = end - start;
+    let mut new_shape = shape.to_vec();
+    new_shape[axis] = new_len;
+
+    let inner_size: usize = shape[axis + 1..].iter().product::<usize>() * elem_size;
+    let axis_stride = shape[axis] * inner_size;
+    let outer_count: usize = shape[..axis].iter().product::<usize>().max(1);
+
+    let new_data_len = outer_count * new_len * inner_size;
+    let mut new_data = vec![0u8; new_data_len];
+
+    for outer in 0..outer_count {
+        let src_offset = outer * axis_stride + start * inner_size;
+        let dst_offset = outer * new_len * inner_size;
+        new_data[dst_offset..dst_offset + new_len * inner_size]
+            .copy_from_slice(&data[src_offset..src_offset + new_len * inner_size]);
+    }
+
+    Value::from_bytes(dt, &new_shape, &new_data)
+}
+
 #[derive(Clone, Debug)]
 pub struct FrozenCausalLlmState {
     pub model: Arc<CausalLlmModel>,
-    kv_caches: Vec<Tensor>,
+    kv_caches: Vec<Value>,
     pub seq: Vec<u32>,
     pub config: CausalLlmStateConfig,
 }
 
 impl FrozenCausalLlmState {
-    pub fn unfreeze(self) -> TractResult<CausalLlmState> {
-        let nn_state = self.model.nn.spawn()?;
+    pub fn unfreeze(self) -> anyhow::Result<CausalLlmState> {
+        let nn_state = self.model.nn.spawn_state()?;
         Ok(CausalLlmState {
             model: self.model,
             nn_state,
-            kv_caches: self.kv_caches.into_iter().map(|t| t.into_tvalue()).collect(),
+            kv_caches: self.kv_caches,
             seq: self.seq,
             processed_tokens: 0,
             config: self.config,
