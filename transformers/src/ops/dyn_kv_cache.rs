@@ -7,8 +7,6 @@ use tract_nnef::tract_core::ops::OpStateFreeze;
 use tract_nnef::tract_core::ops::array::TypedConcat;
 use tract_nnef::tract_core::ops::source::TypedSource;
 
-use super::next_node;
-
 pub fn register(registry: &mut Registry) {
     registry.register_dumper(ser_dyn_kv_cache);
     registry.register_primitive(
@@ -271,7 +269,7 @@ impl FrozenOpState for FrozenDynKeyValueCacheState {
 pub fn replace_kv_cache(target: &mut TypedModel, source_node_id: usize) -> TractResult<Option<()>> {
     assert!(target.node(source_node_id).op_is::<TypedSource>());
     let (concat_node_id, non_source_input_id, axis, input_facts) = {
-        rule_if_some!(concat_node = next_node(target, target.node(source_node_id)));
+        rule_if_some!(concat_node = target.next_node(target.node(source_node_id)));
 
         // Check KV Cache Pattern
         rule_if!(

@@ -13,7 +13,6 @@ use tract_nnef::tract_core::ops::nn::{Softmax, SoftmaxExp, SoftmaxKind};
 use crate::ops::dyn_kv_cache::DynKeyValueCache;
 use crate::ops::flash_sdpa::FlashSdpaOp;
 
-use super::previous_node;
 use super::scaled_masked_softmax::ScaledMaskedSoftmax;
 
 pub fn register(registry: &mut Registry) {
@@ -371,11 +370,11 @@ pub fn match_broadcast_kv_cache_pattern(
     );
 
     // Find broadcast node
-    rule_if_some!(broadcast_node = previous_node(model, reshape_node));
+    rule_if_some!(broadcast_node = model.previous_node(reshape_node));
     rule_if!(broadcast_node.op_is::<MultiBroadcastTo>());
 
     // Find add axis node
-    rule_if_some!(unsqueeze_node = previous_node(model, broadcast_node));
+    rule_if_some!(unsqueeze_node = model.previous_node(broadcast_node));
     rule_if!(
         unsqueeze_node.op_is::<change_axes::AxisOp>()
             && matches!(
@@ -396,7 +395,7 @@ pub fn match_broadcast_kv_cache_pattern(
     }
 
     // Find concat or dyn kvcache node
-    rule_if_some!(node = previous_node(model, unsqueeze_node));
+    rule_if_some!(node = model.previous_node(unsqueeze_node));
     rule_if!(is_concat(model, node) || is_dynkv(node));
 
     let kv_outlet = unsqueeze_node.inputs[0];
