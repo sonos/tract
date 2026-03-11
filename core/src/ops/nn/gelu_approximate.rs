@@ -4,58 +4,29 @@ use crate::ops::element_wise::ElementWiseOp;
 use crate::ops::konst::Const;
 use crate::ops::math::{Add, Mul, Pow, Tanh};
 
-#[derive(Default, Clone, Debug, Hash)]
-/// NEW_GELU(x) = 0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)));
-pub struct GeluApproximate {
-    pub fast_impl: bool,
+use tract_data::half::f16;
+
+fn gelu_approx_f32(x: f32, pow: i32) -> f32 {
+    let sqrt_2_over_pi = (2.0 / std::f32::consts::PI).sqrt();
+    0.5 * x * (1.0 + f32::tanh(sqrt_2_over_pi * (x + 0.044715 * x.powi(pow))))
 }
 
-impl Op for GeluApproximate {
-    fn name(&self) -> StaticName {
-        if self.fast_impl {
-            "GeluApproximateFast".to_string().into()
-        } else {
-            "GeluApproximate".to_string().into()
-        }
+element_wise!(gelu_approximate, GeluApproximate { fast_impl: bool },
+    [f16] => |op, xs| {
+        let pow = if op.fast_impl { 2 } else { 3 };
+        xs.iter_mut().for_each(|x| {
+            *x = f16::from_f32(gelu_approx_f32(x.to_f32(), pow));
+        });
+        Ok(())
+    },
+    [f32] => |op, xs| {
+        let pow = if op.fast_impl { 2 } else { 3 };
+        xs.iter_mut().for_each(|x| {
+            *x = gelu_approx_f32(*x, pow);
+        });
+        Ok(())
     }
-    op_as_typed_op!();
-}
-
-impl EvalOp for GeluApproximate {
-    fn is_stateless(&self) -> bool {
-        true
-    }
-
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        let input = args_1!(inputs);
-        let dt = input.datum_type();
-
-        let a_f32 = input.cast_to_dt(DatumType::F32)?;
-
-        let sqrt_2_over_pi = (2.0 / std::f32::consts::PI).sqrt();
-
-        let pow = if self.fast_impl { 2 } else { 3 };
-        let gelu_approx_f32_data = a_f32
-            .try_as_dense()?
-            .as_slice::<f32>()?
-            .iter()
-            .map(|x| 0.5 * x * (1.0 + f32::tanh(sqrt_2_over_pi * (x + 0.044715 * x.powi(pow)))))
-            .collect::<Vec<_>>();
-
-        let gelu_approx_f32 = Tensor::from_shape(input.shape(), &gelu_approx_f32_data)?;
-        Ok(tvec![gelu_approx_f32.cast_to_dt(dt)?.into_owned().into_tvalue()])
-    }
-}
-
-impl TypedOp for GeluApproximate {
-    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        let dt = inputs[0].datum_type;
-        let fact = dt.fact(inputs[0].shape.clone());
-        Ok(tvec!(fact))
-    }
-
-    as_op!();
-}
+);
 
 // Helper: collect constant inputs of a node
 fn collect_const_inputs<'a>(model: &'a TypedModel, node: &TypedNode) -> TVec<&'a Const> {
@@ -184,7 +155,7 @@ pub fn detect_gelu_approx(
     let gelu_approx_input = patch.taps(model, &pow_node.inputs)?;
     let out = patch.wire_node(
         format!("{}.gelu_approx", pow_node.name),
-        GeluApproximate { fast_impl },
+        gelu_approximate(fast_impl),
         &[gelu_approx_input[0]],
     )?;
     patch.shunt_outside(model, last_node_id.into(), out[0])?;

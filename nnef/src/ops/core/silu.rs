@@ -1,29 +1,8 @@
 use crate::internal::*;
-use tract_core::ops::nn::Silu;
+use tract_core::ops::nn::silu::Silu;
 
 pub fn register(registry: &mut Registry) {
-    registry.register_dumper(ser_silu);
-    registry.register_primitive(
-        "tract_core_silu",
-        &[TypeName::Scalar.tensor().named("input")],
-        &[("output", TypeName::Scalar.tensor())],
-        de_silu,
-    );
+    registry.register_unit_element_wise("tract_core_silu", &Silu {});
     // Backward compatibility alias
-    registry.register_primitive(
-        "tract_transformers_silu",
-        &[TypeName::Scalar.tensor().named("input")],
-        &[("output", TypeName::Scalar.tensor())],
-        de_silu,
-    );
-}
-
-fn de_silu(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
-    let input = invocation.named_arg_as(builder, "input")?;
-    builder.wire(Silu, &[input])
-}
-
-fn ser_silu(ast: &mut IntoAst, node: &TypedNode, _op: &Silu) -> TractResult<Option<Arc<RValue>>> {
-    let input = ast.mapping[&node.inputs[0]].clone();
-    Ok(Some(invocation("tract_core_silu", &[input], &[])))
+    registry.register_unit_element_wise("tract_transformers_silu", &Silu {});
 }

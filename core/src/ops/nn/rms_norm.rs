@@ -4,6 +4,7 @@ use crate::ops::element_wise::ElementWiseOp;
 use crate::ops::konst::Const;
 use crate::ops::math::{Add, Mul, Rsqrt};
 use crate::ops::nn::{Reduce, Reducer};
+use tract_itertools::Itertools;
 
 #[derive(Clone, Debug, Hash)]
 pub struct RmsNorm {
@@ -43,6 +44,53 @@ impl TypedOp for RmsNorm {
         let dt = inputs[0].datum_type;
         let fact = dt.fact(inputs[0].shape.clone());
         Ok(tvec!(fact))
+    }
+
+    fn axes_mapping(
+        &self,
+        inputs: &[&TypedFact],
+        _outputs: &[&TypedFact],
+    ) -> TractResult<AxesMapping> {
+        let rank = inputs[0].rank();
+        let mut letters = 'a'..;
+        let axes = (0..rank)
+            .map(|ix| {
+                Axis::new(letters.next().unwrap(), inputs.len(), 1).input(0, ix).output(0, ix)
+            })
+            .collect_vec();
+        AxesMapping::new(1, 1, axes)
+    }
+
+    fn change_axes(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+        _io: InOut,
+        change: &AxisOp,
+    ) -> TractResult<Option<AxisChangeConsequence>> {
+        if let Some(axis) = change.transform_axis(self.axis) {
+            let op = Some(Box::new(RmsNorm { axis, eps: self.eps.clone() }) as _);
+            Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn slice(
+        &self,
+        patch: &mut TypedModelPatch,
+        _model: &TypedModel,
+        node: &TypedNode,
+        _prefix: &str,
+        inputs: &[OutletId],
+        output_axis: usize,
+        _start: &TDim,
+        _end: &TDim,
+    ) -> TractResult<Option<TVec<OutletId>>> {
+        if output_axis == self.axis {
+            return Ok(None);
+        }
+        patch.wire_node(&node.name, self.clone(), inputs).map(Some)
     }
 
     as_op!();
