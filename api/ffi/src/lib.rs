@@ -674,8 +674,6 @@ pub unsafe extern "C" fn tract_model_transform(
 pub unsafe extern "C" fn tract_runnable_profile_json(
     model: *mut TractRunnable,
     inputs: *mut *mut TractTensor,
-    _states: *const *const TractTensor,
-    _n_states: usize,
     json: *mut *mut i8,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
