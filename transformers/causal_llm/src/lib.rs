@@ -7,7 +7,6 @@ use anyhow::{Context, ensure};
 use float_ord::FloatOrd;
 use log::{info, trace};
 use tokenizers::Tokenizer;
-use tract_rs::State;
 use tract_rs::prelude::*;
 
 #[derive(Clone, Debug)]
@@ -159,11 +158,9 @@ impl CausalLlmModel {
     }
 
     pub fn spawn(self: &Arc<Self>) -> anyhow::Result<CausalLlmState> {
-        let nn_state = self.nn.spawn_state()?;
         let kv_caches = self.make_empty_kv_caches()?;
         Ok(CausalLlmState {
             model: self.clone(),
-            nn_state,
             kv_caches,
             seq: vec![],
             processed_tokens: 0,
@@ -175,11 +172,9 @@ impl CausalLlmModel {
         self: &Arc<Self>,
         config: CausalLlmStateConfig,
     ) -> anyhow::Result<CausalLlmState> {
-        let nn_state = self.nn.spawn_state()?;
         let kv_caches = self.make_empty_kv_caches()?;
         Ok(CausalLlmState {
             model: self.clone(),
-            nn_state,
             kv_caches,
             seq: vec![],
             processed_tokens: 0,
@@ -228,9 +223,9 @@ impl CausalLlmStateConfig {
     }
 }
 
+#[derive(Debug)]
 pub struct CausalLlmState {
     pub model: Arc<CausalLlmModel>,
-    nn_state: State,
     kv_caches: Vec<Value>,
     pub seq: Vec<u32>,
     pub processed_tokens: usize,
@@ -258,7 +253,7 @@ impl CausalLlmState {
                 // Build inputs: token_ids + current kv caches
                 let mut inputs: Vec<Value> = vec![input];
                 inputs.extend(self.kv_caches.iter().cloned());
-                let mut results = self.nn_state.run(inputs)?;
+                let mut results = self.model.nn.run(inputs)?;
                 // Extract updated KV caches from outputs
                 // outputs layout: [regular_outputs..., kv_cache_0, kv_cache_1, ...]
                 let n_regular = self.model.n_regular_outputs;
@@ -321,9 +316,14 @@ impl CausalLlmState {
     }
 
     pub fn truncate(&mut self, len: usize) -> anyhow::Result<()> {
+        anyhow::ensure!(len > 0, "cannot truncate to 0");
         self.seq.truncate(len);
+        // Slice KV caches to len-1: the last token will be re-processed by
+        // the next generate_next_token call to produce output logits.
+        let cache_len = len - 1;
+        self.processed_tokens = self.processed_tokens.min(cache_len);
         for (kv, info) in self.kv_caches.iter_mut().zip(&self.model.kv_caches) {
-            *kv = slice_value(kv, info.axis, 0, len)?;
+            *kv = slice_value(kv, info.axis, 0, cache_len)?;
         }
         Ok(())
     }
@@ -364,10 +364,8 @@ pub struct FrozenCausalLlmState {
 
 impl FrozenCausalLlmState {
     pub fn unfreeze(self) -> anyhow::Result<CausalLlmState> {
-        let nn_state = self.model.nn.spawn_state()?;
         Ok(CausalLlmState {
             model: self.model,
-            nn_state,
             kv_caches: self.kv_caches,
             seq: self.seq,
             processed_tokens: 0,
@@ -398,5 +396,70 @@ mod tests {
     #[test]
     fn frozen_state_is_send() {
         is_send::<FrozenCausalLlmState>();
+    }
+
+    #[test]
+    fn truncate_prefix_cache_hit() -> anyhow::Result<()> {
+        let model_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../.cached/llm/541/meta-llama--Llama-3.2-1B-Instruct-q40ef16");
+        if !model_dir.exists() {
+            eprintln!("Skipping: model not found at {model_dir:?}");
+            return Ok(());
+        }
+        let llm = crate::CausalLlmModel::from_paths(
+            model_dir.join("tokenizer.json"),
+            model_dir.join("meta-llama--Llama-3.2-1B-Instruct-q40ef16.nnef.tgz"),
+        )?;
+
+        // Generate from "Hello world" for 5 tokens
+        let mut state = llm.spawn()?;
+        state.append_text("Hello world")?;
+        for _ in 0..5 {
+            state.generate_next_token()?;
+        }
+        let full_seq = state.seq.clone();
+        let prompt_len = state.encode("Hello world", true)?.len();
+
+        // Truncate back to just the prompt (simulating prefix cache hit)
+        // KV cache is sliced to prompt_len-1, last token will be re-processed
+        state.truncate(prompt_len)?;
+        assert_eq!(state.seq.len(), prompt_len);
+        assert_eq!(state.processed_tokens, prompt_len - 1);
+
+        // Generate one token and verify KV cache grew by exactly 1
+        // (proving the truncated prefix was preserved, not recomputed from scratch)
+        state.generate_next_token()?;
+        {
+            use tract_rs::prelude::ValueInterface;
+            let shape = state.kv_caches[0].shape()?;
+            let cache_axis = state.model.kv_caches[0].axis;
+            assert_eq!(
+                shape[cache_axis], prompt_len,
+                "KV cache should have prompt_len entries after truncate + 1 generate"
+            );
+        }
+
+        // Generate 4 more tokens
+        for _ in 0..4 {
+            state.generate_next_token()?;
+        }
+        let regenerated_seq = state.seq.clone();
+
+        // A fresh state from the same prompt should produce identical output
+        let mut fresh = llm.spawn()?;
+        fresh.append_text("Hello world")?;
+        for _ in 0..5 {
+            fresh.generate_next_token()?;
+        }
+
+        // The truncated-and-regenerated sequence should match the fresh sequence
+        assert_eq!(
+            regenerated_seq, fresh.seq,
+            "truncate + regenerate should match fresh generation"
+        );
+        // And should also match the original since generation is deterministic
+        assert_eq!(full_seq, fresh.seq, "generation should be deterministic");
+
+        Ok(())
     }
 }
