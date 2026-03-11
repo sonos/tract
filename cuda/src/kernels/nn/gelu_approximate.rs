@@ -114,7 +114,7 @@ mod tests {
             )?
             .into_device()?;
 
-            let cpu_output = gelu_approximate::GeluApproximate::default()
+            let cpu_output = gelu_approximate::gelu_approximate(false)
                 .eval(tvec![a.to_host()?.into_tvalue()])?[0]
                 .clone()
                 .into_tensor();
@@ -259,7 +259,7 @@ mod tests {
         pub fn reference(&self) -> TractResult<Tensor> {
             let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?;
 
-            let cpu_output = gelu_approximate::GeluApproximate::default()
+            let cpu_output = gelu_approximate::gelu_approximate(false)
                 .eval(tvec![a.into_tvalue()])?[0]
                 .clone()
                 .into_tensor();
