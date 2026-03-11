@@ -305,7 +305,6 @@ pub struct RunParams {
 
 pub struct RunTensors {
     pub sources: Vec<TVec<TValue>>,
-    pub state_initializers: Vec<TValue>,
 }
 
 #[cfg(feature = "transformers")]
@@ -546,25 +545,7 @@ pub fn get_or_make_inputs(tract: &Arc<dyn Model>, params: &RunParams) -> TractRe
         .map(|i| tmp_inputs.iter().map(|t| t[i].clone()).collect::<TVec<_>>())
         .collect::<Vec<_>>();
 
-    // Resolve state initializers (KV Cache, etc.)
-    let dummy_session_state = TurnState::default();
-    let state_initializers = (0..tract.nodes_len())
-        .filter_map(|id| {
-            tract
-                .node_op(id)
-                .state(&dummy_session_state, id)
-                .ok()
-                .flatten()
-                .and_then(|state| state.init_tensor_fact())
-                .map(|(name, fact)| {
-                    let mut tmp = tvec![];
-                    get_or_make_tensors(tract, params, fact, &name, usize::MAX, &mut tmp)?;
-                    Ok(tmp.remove(0).remove(0))
-                })
-        })
-        .collect::<TractResult<Vec<_>>>()?;
-
-    Ok(RunTensors { sources, state_initializers })
+    Ok(RunTensors { sources })
 }
 
 fn make_inputs(values: &[impl std::borrow::Borrow<TypedFact>]) -> TractResult<TVec<TValue>> {

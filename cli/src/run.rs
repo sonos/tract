@@ -259,7 +259,6 @@ fn run_regular(
     if let Some(runnable) = &params.runnable {
         if let Some(plan) = runnable.typed_plan() {
             let mut state = plan.spawn()?;
-            state.init_states(&inputs.state_initializers)?;
             let results = run_regular_t(
                 &mut state,
                 inputs,

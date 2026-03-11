@@ -252,7 +252,6 @@ pub fn handle_with_model(
     let plan = reference_model.clone().into_runnable()?;
     let mut state = plan.spawn()?;
     let inputs = get_or_make_inputs(&(reference_model.clone() as _), run_params)?;
-    state.init_states(&inputs.state_initializers)?;
     for input in inputs.sources {
         state.run_plan_with_eval(input, |session, state, node, input| -> TractResult<_> {
             let result = tract_core::plan::eval(session, state, node, input)?;
@@ -505,7 +504,6 @@ where
     let all_values: HashMap<String, &Vec<TractResult<TValue>>> =
         all_values.iter().map(|(k, v)| (canonic(k), v)).collect();
     let inputs = get_or_make_inputs(&(tract.clone() as _), run_params)?;
-    state.init_states(&inputs.state_initializers)?;
     for (turn, inputs) in inputs.sources.into_iter().enumerate() {
         state.run_plan_with_eval(
             inputs,
