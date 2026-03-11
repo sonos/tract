@@ -14,9 +14,9 @@ element_wise!(silu, Silu,
         Ok(())
     },
     [f32] => |_, xs| {
-        xs.iter_mut().for_each(|x| {
-            *x = *x / (1.0 + (-*x).exp());
-        });
+        let mut sigmoid = xs.to_vec();
+        (tract_linalg::ops().sigmoid_f32)().run(&mut sigmoid)?;
+        xs.iter_mut().zip(sigmoid).for_each(|(x, s)| *x *= s);
         Ok(())
     };
     declutter: detect_silu
