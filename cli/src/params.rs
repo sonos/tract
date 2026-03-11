@@ -725,6 +725,9 @@ impl Parameters {
         if matches.is_present("llm") {
             transforms.push("transformers_detect_all");
         }
+        if matches.is_present("unfold-kv-cache") {
+            transforms.push("unfold-kv-cache");
+        }
         if transforms.len() > 0 {
             for spec in transforms {
                 let (name, params_str) = tract_core::transform::split_spec(spec);
