@@ -77,10 +77,6 @@ pub trait State: Any + Downcast + Debug + 'static {
 
     fn runnable(&self) -> &dyn Runnable;
 
-    fn init_states(&mut self, _states: &[TValue]) -> TractResult<()> {
-        Ok(())
-    }
-
     fn input_count(&self) -> usize {
         self.runnable().input_count()
     }
@@ -156,10 +152,6 @@ impl State for TypedSimpleState {
 
     fn runnable(&self) -> &dyn Runnable {
         &self.plan
-    }
-
-    fn init_states(&mut self, states: &[TValue]) -> TractResult<()> {
-        self.init_states(states)
     }
 
     fn freeze(&self) -> Box<dyn FrozenState> {

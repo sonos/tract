@@ -402,7 +402,7 @@ impl RunnableInterface for Runnable {
                 &self.0,
                 &BenchLimits::default(),
                 &mut annotations,
-                &RunTensors { sources: vec![inputs], state_initializers: vec![] },
+                &RunTensors { sources: vec![inputs] },
                 None,
                 true,
             )?;
