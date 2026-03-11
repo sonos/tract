@@ -193,9 +193,9 @@ fn can_translate_to_cuda_op(source: &TypedModel, node: &TypedNode) -> TractResul
         && (node
             .op_as::<Const>()
             .is_some_and(|op| DeviceTensor::is_supported_dt(op.val().datum_type()))
-            || node
-                .op_as::<Silu>()
-                .is_some_and(|_| kernels::UnaryOps::Silu.is_supported_dt(input_dts[0]))
+            || node.op_as::<ElementWiseOp>().is_some_and(|op| {
+                op.0.is::<Silu>() && kernels::UnaryOps::Silu.is_supported_dt(input_dts[0])
+            })
             || node.op_as::<ElementWiseOp>().is_some_and(|op| op.0.is::<LeakyRelu>())
             || node.op_as::<ElementWiseOp>().is_some_and(|op| {
                 map_element_wise_ops_to_cuda(op)
@@ -241,9 +241,10 @@ fn can_translate_to_cuda_op(source: &TypedModel, node: &TypedNode) -> TractResul
             || node
                 .op_as::<ApplyRope>()
                 .is_some_and(|_| kernels::nn::ApplyRope::is_supported_dt(input_dts[0]))
-            || node
-                .op_as::<GeluApproximate>()
-                .is_some_and(|_| kernels::nn::GeluApproximate::is_supported_dt(input_dts[0]))
+            || node.op_as::<ElementWiseOp>().is_some_and(|op| {
+                op.0.is::<GeluApproximate>()
+                    && kernels::nn::GeluApproximate::is_supported_dt(input_dts[0])
+            })
             || node.op_as::<Sdpa>().is_some()
             || node.op_as::<PrefixMatMul>().is_some_and(|op| {
                 !op.transpose_c
@@ -604,7 +605,7 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
                     Box::new(map_binary_op_to_cuda(op).unwrap())
                 } else if let Some(op) = node.op_as::<Comp>() {
                     Box::new(convert_logic_op_to_cuda(op))
-                } else if let Some(_op) = node.op_as::<Silu>() {
+                } else if node.op_as::<ElementWiseOp>().is_some_and(|op| op.0.is::<Silu>()) {
                     Box::new(ops::CudaUnaryOp(kernels::UnaryOps::Silu))
                 } else if let Some(op) = node.op_as::<MultiBroadcastTo>() {
                     Box::new(ops::CudaMultiBroadcastTo::new(op.shape.clone()))
@@ -631,8 +632,11 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
                     Box::new(ops::CudaApplyRope)
                 } else if let Some(op) = node.op_as::<RmsNorm>() {
                     Box::new(ops::CudaRmsNorm::new(op.axis, op.eps.clone()))
-                } else if let Some(op) = node.op_as::<GeluApproximate>() {
-                    Box::new(ops::CudaGeluApproximate { fast_impl: op.fast_impl })
+                } else if let Some(ew) = node
+                    .op_as::<ElementWiseOp>()
+                    .and_then(|op| op.0.downcast_ref::<GeluApproximate>())
+                {
+                    Box::new(ops::CudaGeluApproximate { fast_impl: ew.fast_impl })
                 } else if let Some(op) = node.op_as::<Delay>() {
                     Box::new(CudaDelay::new(op.clone()))
                 } else if let Some(op) = node.op_as::<PulsePad>() {

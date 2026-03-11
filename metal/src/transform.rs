@@ -259,12 +259,13 @@ fn can_translate_to_metal_op(source: &TypedModel, node: &TypedNode) -> TractResu
             || node
                 .op_as::<ApplyRope>()
                 .is_some_and(|_| kernels::nn::ApplyRope::is_supported_dt(input_dts[0]))
-            || node
-                .op_as::<Silu>()
-                .is_some_and(|_| kernels::nn::Silu::is_supported_dt(input_dts[0]))
-            || node
-                .op_as::<GeluApproximate>()
-                .is_some_and(|_| kernels::nn::GeluApproximate::is_supported_dt(input_dts[0]))))
+            || node.op_as::<ElementWiseOp>().is_some_and(|op| {
+                op.0.is::<Silu>() && kernels::nn::Silu::is_supported_dt(input_dts[0])
+            })
+            || node.op_as::<ElementWiseOp>().is_some_and(|op| {
+                op.0.is::<GeluApproximate>()
+                    && kernels::nn::GeluApproximate::is_supported_dt(input_dts[0])
+            })))
 }
 
 impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for MetalTransform {
@@ -322,10 +323,13 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
                     Box::new(ops::MetalRotateHalf)
                 } else if let Some(_op) = node.op_as::<ApplyRope>() {
                     Box::new(ops::MetalApplyRope)
-                } else if let Some(_op) = node.op_as::<Silu>() {
+                } else if node.op_as::<ElementWiseOp>().is_some_and(|op| op.0.is::<Silu>()) {
                     Box::new(ops::MetalSilu)
-                } else if let Some(op) = node.op_as::<GeluApproximate>() {
-                    Box::new(ops::MetalGeluApproximate { fast_impl: op.fast_impl })
+                } else if let Some(ew) = node
+                    .op_as::<ElementWiseOp>()
+                    .and_then(|op| op.0.downcast_ref::<GeluApproximate>())
+                {
+                    Box::new(ops::MetalGeluApproximate { fast_impl: ew.fast_impl })
                 } else if let Some(op) = node.op_as::<DynKeyValueCache>() {
                     Box::new(ops::MetalDynKVCache::from_tract_transformers(op))
                 } else {

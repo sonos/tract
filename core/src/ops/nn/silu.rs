@@ -1,43 +1,27 @@
 use crate::internal::*;
-use crate::ops::binary::{BinMiniOp, TypedBinOp};
+use crate::ops::binary::TypedBinOp;
 use crate::ops::element_wise::ElementWiseOp;
 use crate::ops::math::Mul;
 use crate::ops::nn::Sigmoid;
 
-#[derive(Clone, Debug, Hash)]
-pub struct Silu;
+use tract_data::half::f16;
 
-impl Op for Silu {
-    fn name(&self) -> StaticName {
-        "Silu".to_string().into()
-    }
-    op_as_typed_op!();
-}
-
-impl EvalOp for Silu {
-    fn is_stateless(&self) -> bool {
-        true
-    }
-
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        let input = args_1!(inputs);
-        let dt = input.datum_type();
-        let mut a = input.clone().into_tensor();
-        Sigmoid {}.eval_in_place(&mut a, None)?;
-        let a3 = Mul.eval(input, a.into_tvalue(), dt)?;
-        Ok(tvec![a3.into()])
-    }
-}
-
-impl TypedOp for Silu {
-    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        let dt = inputs[0].datum_type;
-        let fact = dt.fact(inputs[0].shape.clone());
-        Ok(tvec!(fact))
-    }
-
-    as_op!();
-}
+element_wise!(silu, Silu,
+    [f16] => |_, xs| {
+        xs.iter_mut().for_each(|x| {
+            let xf = x.to_f32();
+            *x = f16::from_f32(xf / (1.0 + (-xf).exp()));
+        });
+        Ok(())
+    },
+    [f32] => |_, xs| {
+        xs.iter_mut().for_each(|x| {
+            *x = *x / (1.0 + (-*x).exp());
+        });
+        Ok(())
+    };
+    declutter: detect_silu
+);
 
 /// Search pattern => A = A * SIGMOID(A)
 pub fn detect_silu(model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
@@ -57,7 +41,7 @@ pub fn detect_silu(model: &TypedModel, node: &TypedNode) -> TractResult<Option<T
 
     let mut patch = TypedModelPatch::default();
     let silu_input = patch.taps(model, &node.inputs)?;
-    let out = patch.wire_node(format!("{}.silu", node.name), Silu, &silu_input)?;
+    let out = patch.wire_node(format!("{}.silu", node.name), silu(), &silu_input)?;
     patch.shunt_outside(model, mul_succ.id.into(), out[0])?;
     Ok(Some(patch))
 }
