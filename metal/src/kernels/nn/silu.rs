@@ -64,6 +64,7 @@ impl Silu {
 
 #[cfg(test)]
 mod tests {
+    use crate::ops::silu;
     use crate::utils::with_borrowed_metal_stream;
     use tract_gpu::tensor::IntoDevice;
 
@@ -74,7 +75,6 @@ mod tests {
     use proptest::collection::vec;
     use proptest::prelude::*;
     use tract_core::internal::Tensor;
-    use tract_transformers::ops::silu;
 
     fn test_case<F>(
         shape: &[usize],
@@ -101,8 +101,10 @@ mod tests {
             )?
             .into_device()?;
 
-            let cpu_output =
-                silu::Silu.eval(tvec![a.to_host()?.into_tvalue()])?[0].clone().into_tensor();
+            let cpu_output = tract_core::ops::nn::silu::silu()
+                .eval(tvec![a.to_host()?.into_tvalue()])?[0]
+                .clone()
+                .into_tensor();
             let metal_output = Silu.eval(stream, &a)?;
 
             cpu_output
@@ -199,8 +201,8 @@ mod tests {
     {
         pub fn reference(&self) -> TractResult<Tensor> {
             let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?;
-
-            let cpu_output = silu::Silu.eval(tvec![a.into_tvalue()])?[0].clone().into_tensor();
+            let silu = tract_core::ops::nn::silu::silu();
+            let cpu_output = silu.eval(tvec![a.into_tvalue()])?[0].clone().into_tensor();
 
             Ok(cpu_output)
         }
