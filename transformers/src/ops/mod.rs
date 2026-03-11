@@ -20,6 +20,6 @@ pub mod gelu_approximate {
 }
 
 pub use apply_rope::{apply_rope_rule, rotate_half_rule};
-pub use dyn_kv_cache::replace_kv_cache;
+pub use dyn_kv_cache::{DynKeyValueCache, replace_kv_cache, unfold_kv_cache};
 pub use scaled_masked_softmax::scaled_masked_softmax_rule;
 pub use sdpa::fuse_kv_cache_broadcast_rule;

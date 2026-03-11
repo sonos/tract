@@ -264,6 +264,58 @@ impl FrozenOpState for FrozenDynKeyValueCacheState {
     }
 }
 
+/// Reverse of `replace_kv_cache`: replaces a DynKeyValueCache node with Source + Concat,
+/// restoring KV cache state as explicit model inputs and outputs.
+pub fn unfold_kv_cache(target: &mut TypedModel, kv_node_id: usize) -> TractResult<()> {
+    let node = target.node(kv_node_id);
+    let op = node.op_as::<DynKeyValueCache>().context("Not a DynKeyValueCache node")?;
+    let name = op.name.clone();
+    let axis = op.axis;
+    let past_fact = op.past_sequence_fact.clone();
+    let input_fact = op.input_sequence_fact.clone();
+    let existing_input = node.inputs[0];
+
+    // Add a new Source node for the past KV cache
+    let source_outlet = target.add_source(&name, past_fact)?;
+
+    // Compute output fact for the Concat
+    let mut output_fact = input_fact.clone();
+    output_fact.shape.set(
+        axis,
+        target.outlet_fact(source_outlet)?.shape.dims()[axis].clone()
+            + input_fact.shape.dims()[axis].clone(),
+    );
+
+    // Replace DynKeyValueCache op with TypedConcat
+    let kv_node = target.node_mut(kv_node_id);
+    kv_node.op = Box::new(TypedConcat { axis });
+    kv_node.outputs[0].fact = output_fact;
+
+    // Rewire: Concat takes [source, existing_input] as inputs
+    // Currently the node has [existing_input] at slot 0
+    // We need [source_outlet, existing_input] at slots [0, 1]
+    kv_node.inputs = vec![source_outlet, existing_input];
+
+    // Update successor info on the source node
+    target.nodes[source_outlet.node].outputs[source_outlet.slot]
+        .successors
+        .push(InletId::new(kv_node_id, 0));
+
+    // Update the existing input's successor slot from 0 to 1
+    target.nodes[existing_input.node].outputs[existing_input.slot].successors.iter_mut().for_each(
+        |succ| {
+            if succ.node == kv_node_id && succ.slot == 0 {
+                succ.slot = 1;
+            }
+        },
+    );
+
+    // Add the Concat output to model outputs
+    target.outputs.push(OutletId::new(kv_node_id, 0));
+
+    Ok(())
+}
+
 /// Search pattern => Input -> Concat -> Output
 /// Return type is for using rule-ensure macro
 pub fn replace_kv_cache(target: &mut TypedModel, source_node_id: usize) -> TractResult<Option<()>> {
@@ -433,6 +485,100 @@ mod tests {
         run_test_case::<f32>(&[vec![2, 2]], 0)?;
         run_test_case::<f32>(&[vec![2, 2], vec![4, 2]], 0)?;
         run_test_case::<f32>(&[vec![2, 2], vec![2, 1], vec![2, 3]], 1)?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_unfold_kv_cache() -> TractResult<()> {
+        // Build a model with DynKeyValueCache
+        let mut model = TypedModel::default();
+        let s = model.sym("S");
+        let p = model.sym("P");
+
+        let input_shape: TVec<TDim> = tvec![1.to_dim(), s.into(), 64.to_dim()];
+        let past_shape: TVec<TDim> = tvec![1.to_dim(), p.into(), 64.to_dim()];
+
+        let input = model.add_source("input", f32::fact(&input_shape))?;
+        let op = DynKeyValueCache {
+            name: "kv_cache_0".to_string(),
+            axis: 1,
+            past_sequence_fact: f32::fact(&past_shape),
+            input_sequence_fact: f32::fact(&input_shape),
+        };
+        let out = model.wire_node("kv_cache", op, &[input])?;
+        model.set_output_outlets(&out)?;
+
+        // Model should have 1 input (input), 1 output (kv_cache)
+        assert_eq!(model.inputs.len(), 1);
+        assert_eq!(model.outputs.len(), 1);
+        assert!(model.node(1).op_is::<DynKeyValueCache>());
+
+        // Unfold
+        unfold_kv_cache(&mut model, 1)?;
+
+        // After unfold: 2 inputs (input + kv_cache_0 source), 2 outputs (original + concat)
+        assert_eq!(model.inputs.len(), 2);
+        assert_eq!(model.outputs.len(), 2);
+
+        // The KV cache node should now be a Concat
+        assert!(model.node(1).op_is::<TypedConcat>());
+        let concat = model.node(1).op_as::<TypedConcat>().unwrap();
+        assert_eq!(concat.axis, 1);
+
+        // The new source node should exist
+        let source_node_id = model.inputs[1].node;
+        assert!(model.node(source_node_id).op_is::<TypedSource>());
+        assert_eq!(model.node(source_node_id).name, "kv_cache_0");
+
+        // Concat should have 2 inputs: [source, input]
+        assert_eq!(model.node(1).inputs.len(), 2);
+        assert_eq!(model.node(1).inputs[0].node, source_node_id);
+        assert_eq!(model.node(1).inputs[1].node, 0); // original input
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_fold_unfold_round_trip() -> TractResult<()> {
+        use crate::rewriter::KeyValueCacheTransform;
+        use tract_nnef::tract_core::transform::ModelTransform;
+
+        // Build a model with Source + Concat (the pre-fold pattern)
+        let mut model = TypedModel::default();
+        let s = model.sym("S");
+        let p = model.sym("P");
+
+        let input_shape: TVec<TDim> = tvec![1.to_dim(), s.into(), 64.to_dim()];
+        let past_shape: TVec<TDim> = tvec![1.to_dim(), p.into(), 64.to_dim()];
+
+        let past = model.add_source("kv_past", f32::fact(&past_shape))?;
+        let input = model.add_source("input", f32::fact(&input_shape))?;
+        let concat = model.wire_node("concat", TypedConcat { axis: 1 }, &[past, input])?;
+        model.set_output_outlets(&concat)?;
+
+        let orig_input_count = model.inputs.len();
+        let orig_output_count = model.outputs.len();
+
+        // Fold: Source + Concat -> DynKeyValueCache
+        KeyValueCacheTransform.transform(&mut model)?;
+        assert_eq!(model.inputs.len(), orig_input_count - 1); // past source removed
+        assert_eq!(model.outputs.len(), orig_output_count - 1); // concat output removed
+
+        // Find the DynKeyValueCache node
+        let kv_node_id = model.nodes().iter().find(|n| n.op_is::<DynKeyValueCache>()).unwrap().id;
+
+        // Unfold: DynKeyValueCache -> Source + Concat
+        unfold_kv_cache(&mut model, kv_node_id)?;
+
+        // Should be back to original structure
+        assert_eq!(model.inputs.len(), orig_input_count);
+        assert_eq!(model.outputs.len(), orig_output_count);
+
+        // Verify it's a Concat again
+        let concat_node = model.nodes().iter().find(|n| n.op_is::<TypedConcat>()).unwrap();
+        assert_eq!(concat_node.op_as::<TypedConcat>().unwrap().axis, 1);
+        assert_eq!(concat_node.inputs.len(), 2);
+
         Ok(())
     }
 

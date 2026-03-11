@@ -67,6 +67,28 @@ impl ModelTransform for SdpaFuseKvCacheBroadcastTransform {
     }
 }
 
+#[derive(Debug, Default)]
+pub struct UnfoldKeyValueCacheTransform;
+
+impl ModelTransform for UnfoldKeyValueCacheTransform {
+    fn name(&self) -> StaticName {
+        "unfold-kv-cache".into()
+    }
+
+    fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
+        let kv_node_ids: Vec<usize> = model
+            .nodes()
+            .iter()
+            .filter(|n| n.op_as::<ops::DynKeyValueCache>().is_some())
+            .map(|n| n.id)
+            .collect();
+        for id in kv_node_ids {
+            ops::unfold_kv_cache(model, id)?;
+        }
+        Ok(())
+    }
+}
+
 // TODO: This is why Transform should be renamed to Remodel
 #[derive(Debug, Default)]
 pub struct TransformersTransform;
