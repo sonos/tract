@@ -77,16 +77,16 @@ pub trait State: Any + Downcast + Debug + 'static {
 
     fn runnable(&self) -> &dyn Runnable;
 
-    fn initializable_states_count(&self) -> usize;
-    fn get_states_facts(&self) -> Vec<TypedFact>;
-    fn init_state(&mut self, states: &[TValue]) -> TractResult<()>;
-    fn get_states(&self) -> TractResult<Vec<TValue>>;
+    fn init_states(&mut self, _states: &[TValue]) -> TractResult<()> {
+        Ok(())
+    }
+
     fn input_count(&self) -> usize {
         self.runnable().input_count()
     }
 
     fn output_count(&self) -> usize {
-        self.runnable().input_count()
+        self.runnable().output_count()
     }
 
     fn freeze(&self) -> Box<dyn FrozenState>;
@@ -158,33 +158,8 @@ impl State for TypedSimpleState {
         &self.plan
     }
 
-    fn initializable_states_count(&self) -> usize {
-        self.op_states
-            .iter()
-            .filter_map(Option::as_ref)
-            .filter(|s| s.init_tensor_fact().is_some())
-            .count()
-    }
-
-    fn get_states_facts(&self) -> Vec<TypedFact> {
-        self.op_states
-            .iter()
-            .filter_map(|s| s.as_ref().and_then(|s| s.init_tensor_fact().map(|(_, fact)| fact)))
-            .collect()
-    }
-
-    fn init_state(&mut self, states: &[TValue]) -> TractResult<()> {
+    fn init_states(&mut self, states: &[TValue]) -> TractResult<()> {
         self.init_states(states)
-    }
-
-    fn get_states(&self) -> TractResult<Vec<TValue>> {
-        let mut states = vec![];
-        for op_state in self.op_states.iter().flatten() {
-            if op_state.init_tensor_fact().is_some() {
-                op_state.save_to(&mut states)?;
-            }
-        }
-        Ok(states)
     }
 
     fn freeze(&self) -> Box<dyn FrozenState> {

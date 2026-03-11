@@ -224,18 +224,11 @@ pub trait RunnableInterface: Send + Sync {
 
     fn cost_json(&self) -> Result<String>;
 
-    fn profile_json<I, IV, IE, S, SV, SE>(
-        &self,
-        inputs: Option<I>,
-        state_initializers: Option<S>,
-    ) -> Result<String>
+    fn profile_json<I, IV, IE>(&self, inputs: Option<I>) -> Result<String>
     where
         I: IntoIterator<Item = IV>,
         IV: TryInto<Self::Tensor, Error = IE>,
-        IE: Into<anyhow::Error> + Debug,
-        S: IntoIterator<Item = SV>,
-        SV: TryInto<Self::Tensor, Error = SE>,
-        SE: Into<anyhow::Error> + Debug;
+        IE: Into<anyhow::Error> + Debug;
 }
 
 pub trait StateInterface {
@@ -246,26 +239,6 @@ pub trait StateInterface {
     fn output_count(&self) -> Result<usize>;
 
     fn run(&mut self, inputs: impl IntoInputs<Self::Tensor>) -> Result<Vec<Self::Tensor>>;
-
-    #[doc(hidden)]
-    #[deprecated]
-    fn initializable_states_count(&self) -> Result<usize>;
-
-    #[doc(hidden)]
-    #[deprecated]
-    fn get_states_facts(&self) -> Result<Vec<Self::Fact>>;
-
-    #[doc(hidden)]
-    #[deprecated]
-    fn set_states<I, V, E>(&mut self, state_initializers: I) -> Result<()>
-    where
-        I: IntoIterator<Item = V>,
-        V: TryInto<Self::Tensor, Error = E>,
-        E: Into<anyhow::Error> + Debug;
-
-    #[doc(hidden)]
-    #[deprecated]
-    fn get_states(&self) -> Result<Vec<Self::Tensor>>;
 }
 
 pub trait TensorInterface: Debug + Sized + Clone + PartialEq + Send + Sync {

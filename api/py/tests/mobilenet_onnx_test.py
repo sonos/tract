@@ -257,7 +257,7 @@ def test_cost():
     model = tract.nnef().load("mobilenet_v2_1.0.onnx.nnef.tgz")
     assert str(model.input_fact(0)) == "1,3,224,224,F32"
     runnable = model.into_runnable()
-    profile = runnable.profile_json(None, None)
+    profile = runnable.profile_json(None)
     profile = json.loads(profile)
     assert len(profile["nodes"]) > 10
     assert profile["nodes"][0]["node_name"] != ""
@@ -269,7 +269,7 @@ def test_profile():
     assert str(model.input_fact(0)) == "1,3,224,224,F32"
     runnable = model.into_runnable()
     data = numpy.random.rand(1,3,224,224).astype(dtype="float32")
-    profile = runnable.profile_json([data], None)
+    profile = runnable.profile_json([data])
     profile = json.loads(profile)
     profiling_info = profile["profiling_info"]
     assert profiling_info["iterations"] >= 1

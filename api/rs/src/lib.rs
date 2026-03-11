@@ -376,22 +376,14 @@ impl RunnableInterface for Runnable {
 
     fn cost_json(&self) -> Result<String> {
         let input: Option<Vec<Tensor>> = None;
-        let states: Option<Vec<Tensor>> = None;
-        self.profile_json(input, states)
+        self.profile_json(input)
     }
 
-    fn profile_json<I, IV, IE, S, SV, SE>(
-        &self,
-        inputs: Option<I>,
-        state_initializers: Option<S>,
-    ) -> Result<String>
+    fn profile_json<I, IV, IE>(&self, inputs: Option<I>) -> Result<String>
     where
         I: IntoIterator<Item = IV>,
         IV: TryInto<Self::Tensor, Error = IE>,
         IE: Into<anyhow::Error> + Debug,
-        S: IntoIterator<Item = SV>,
-        SV: TryInto<Self::Tensor, Error = SE>,
-        SE: Into<anyhow::Error> + Debug,
     {
         let model = self
             .0
@@ -406,18 +398,11 @@ impl RunnableInterface for Runnable {
                 .map(|v| Ok(v.try_into().unwrap().0.into_tvalue()))
                 .collect::<TractResult<TVec<_>>>()?;
 
-            let mut state_inits: Vec<TValue> = vec![];
-
-            if let Some(states) = state_initializers {
-                states
-                    .into_iter()
-                    .for_each(|s| state_inits.push(s.try_into().unwrap().0.into_tvalue()));
-            }
             tract_libcli::profile::profile(
                 &self.0,
                 &BenchLimits::default(),
                 &mut annotations,
-                &RunTensors { sources: vec![inputs], state_initializers: state_inits },
+                &RunTensors { sources: vec![inputs], state_initializers: vec![] },
                 None,
                 true,
             )?;
@@ -447,36 +432,6 @@ impl StateInterface for State {
             inputs.into_inputs()?.into_iter().map(|v| v.0.into_tvalue()).collect();
         let outputs = self.0.run(inputs)?;
         Ok(outputs.into_iter().map(|t| Tensor(t.into_arc_tensor())).collect())
-    }
-
-    fn initializable_states_count(&self) -> Result<usize> {
-        Ok(self.0.initializable_states_count())
-    }
-
-    fn get_states_facts(&self) -> Result<Vec<Fact>> {
-        Ok(self.0.get_states_facts().into_iter().map(Fact).collect())
-    }
-
-    fn set_states<I, V, E>(&mut self, state_initializers: I) -> Result<()>
-    where
-        I: IntoIterator<Item = V>,
-        V: TryInto<Self::Tensor, Error = E>,
-        E: Into<anyhow::Error> + Debug,
-    {
-        let states: Vec<TValue> = state_initializers
-            .into_iter()
-            .map(|si| -> TractResult<TValue> {
-                let v: Tensor =
-                    si.try_into().map_err(|e| anyhow::anyhow!("Failed conversion:  {e:?}"))?;
-                Ok(v.0.into_tvalue())
-            })
-            .collect::<Result<Vec<TValue>>>()?;
-        self.0.init_state(&states)?;
-        Ok(())
-    }
-
-    fn get_states(&self) -> Result<Vec<Self::Tensor>> {
-        Ok(self.0.get_states()?.into_iter().map(|t| Tensor(t.into_arc_tensor())).collect())
     }
 }
 

@@ -125,22 +125,6 @@ impl State for TfliteState {
         self.0.input_count()
     }
 
-    fn initializable_states_count(&self) -> usize {
-        todo!()
-    }
-
-    fn get_states_facts(&self) -> Vec<TypedFact> {
-        todo!()
-    }
-
-    fn init_state(&mut self, _states: &[TValue]) -> TractResult<()> {
-        todo!()
-    }
-
-    fn get_states(&self) -> TractResult<Vec<TValue>> {
-        todo!()
-    }
-
     fn runnable(&self) -> &dyn Runnable {
         todo!()
     }
