@@ -1,10 +1,72 @@
+use std::str::FromStr;
+
 use tract_nnef::internal::*;
 use tract_nnef::prelude::tract_itertools::Itertools;
+use tract_nnef::ser::{datum_type, tdims};
 use tract_nnef::tract_core::ops::OpStateFreeze;
 use tract_nnef::tract_core::ops::array::TypedConcat;
 use tract_nnef::tract_core::ops::source::TypedSource;
 
 use super::next_node;
+
+pub fn register(registry: &mut Registry) {
+    registry.register_dumper(ser_dyn_kv_cache);
+    registry.register_primitive(
+        "tract_transformers_dyn_kv_cache",
+        &[
+            TypeName::Scalar.tensor().named("input"),
+            TypeName::String.named("name"),
+            TypeName::Integer.named("axis"),
+            TypeName::String.named("datum_type"),
+            TypeName::Integer.array().named("past_sequence_shape"),
+            TypeName::Integer.array().named("input_sequence_shape"),
+        ],
+        &[("output", TypeName::Scalar.tensor())],
+        de_dyn_kv_cache,
+    );
+}
+
+fn ser_dyn_kv_cache(
+    ast: &mut IntoAst,
+    node: &TypedNode,
+    op: &DynKeyValueCache,
+) -> TractResult<Option<Arc<RValue>>> {
+    let input = ast.mapping[&node.inputs[0]].clone();
+    Ok(Some(invocation(
+        "tract_transformers_dyn_kv_cache",
+        &[input],
+        &[
+            ("name", string(&op.name)),
+            ("axis", numeric(op.axis)),
+            ("datum_type", datum_type(op.past_sequence_fact.datum_type)),
+            ("past_sequence_shape", tdims(op.past_sequence_fact.shape.dims())),
+            ("input_sequence_shape", tdims(op.input_sequence_fact.shape.dims())),
+        ],
+    )))
+}
+
+fn de_dyn_kv_cache(
+    builder: &mut ModelBuilder,
+    invocation: &ResolvedInvocation,
+) -> TractResult<Value> {
+    let input = invocation.named_arg_as(builder, "input")?;
+    let name: String = invocation.named_arg_as(builder, "name")?;
+    let axis: usize = invocation.named_arg_as(builder, "axis")?;
+    let dt = DatumType::from_str(&invocation.named_arg_as::<String>(builder, "datum_type")?)?;
+    let past_sequence_shape: TVec<TDim> = builder
+        .allowing_new_symbols(|builder| invocation.named_arg_as(builder, "past_sequence_shape"))?;
+    let input_sequence_shape: TVec<TDim> = builder
+        .allowing_new_symbols(|builder| invocation.named_arg_as(builder, "input_sequence_shape"))?;
+    builder.wire(
+        DynKeyValueCache {
+            name,
+            axis,
+            past_sequence_fact: dt.fact(&*past_sequence_shape),
+            input_sequence_fact: dt.fact(&*input_sequence_shape),
+        },
+        &[input],
+    )
+}
 
 #[derive(Debug, Clone)]
 pub struct DynKeyValueCacheState {
@@ -373,6 +435,44 @@ mod tests {
         run_test_case::<f32>(&[vec![2, 2]], 0)?;
         run_test_case::<f32>(&[vec![2, 2], vec![4, 2]], 0)?;
         run_test_case::<f32>(&[vec![2, 2], vec![2, 1], vec![2, 3]], 1)?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_dyn_kv_cache_nnef_round_trip() -> TractResult<()> {
+        use crate::WithTractTransformers;
+
+        let mut model = TypedModel::default();
+        let s = model.sym("S");
+        let p = model.sym("P");
+
+        let input_shape: TVec<TDim> = tvec![1.to_dim(), s.into(), 64.to_dim()];
+        let past_shape: TVec<TDim> = tvec![1.to_dim(), p.into(), 64.to_dim()];
+
+        let input = model.add_source("input", f32::fact(&input_shape))?;
+        let op = DynKeyValueCache {
+            name: "kv_cache_0".to_string(),
+            axis: 1,
+            past_sequence_fact: f32::fact(&past_shape),
+            input_sequence_fact: f32::fact(&input_shape),
+        };
+        let out = model.wire_node("kv_cache", op, &[input])?;
+        model.set_output_outlets(&out)?;
+
+        let nnef = tract_nnef::nnef().with_tract_transformers();
+        let mut buffer = vec![];
+        nnef.write_to_tar(&model, &mut buffer)?;
+        let reloaded = nnef.model_for_read(&mut &*buffer)?;
+
+        assert_eq!(reloaded.nodes().len(), model.nodes().len());
+        let reloaded_kv = reloaded.node(1);
+        let reloaded_op = reloaded_kv.op_as::<DynKeyValueCache>().unwrap();
+        assert_eq!(reloaded_op.name, "kv_cache_0");
+        assert_eq!(reloaded_op.axis, 1);
+        assert_eq!(reloaded_op.past_sequence_fact.datum_type, DatumType::F32);
+        assert_eq!(reloaded_op.past_sequence_fact.shape.rank(), 3);
+        assert_eq!(reloaded_op.input_sequence_fact.datum_type, DatumType::F32);
+        assert_eq!(reloaded_op.input_sequence_fact.shape.rank(), 3);
         Ok(())
     }
 }
