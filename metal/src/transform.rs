@@ -293,7 +293,13 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
                 )?
             } else {
                 let op: Box<dyn TypedOp> = if let Some(op) = node.op_as::<ElementWiseOp>() {
-                    Box::new(map_element_wise_ops_to_metal(op).unwrap())
+                    if op.0.is::<Silu>() {
+                        Box::new(ops::MetalSilu)
+                    } else if let Some(ew) = op.0.downcast_ref::<GeluApproximate>() {
+                        Box::new(ops::MetalGeluApproximate { fast_impl: ew.fast_impl })
+                    } else {
+                        Box::new(map_element_wise_ops_to_metal(op).unwrap())
+                    }
                 } else if let Some(op) = node.op_as::<TypedBinOp>() {
                     Box::new(map_bin_ops_to_metal(&op.0).unwrap())
                 } else if let Some(op) = node.op_as::<Comp>() {
@@ -323,13 +329,6 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
                     Box::new(ops::MetalRotateHalf)
                 } else if let Some(_op) = node.op_as::<ApplyRope>() {
                     Box::new(ops::MetalApplyRope)
-                } else if node.op_as::<ElementWiseOp>().is_some_and(|op| op.0.is::<Silu>()) {
-                    Box::new(ops::MetalSilu)
-                } else if let Some(ew) = node
-                    .op_as::<ElementWiseOp>()
-                    .and_then(|op| op.0.downcast_ref::<GeluApproximate>())
-                {
-                    Box::new(ops::MetalGeluApproximate { fast_impl: ew.fast_impl })
                 } else if let Some(op) = node.op_as::<DynKeyValueCache>() {
                     Box::new(ops::MetalDynKVCache::from_tract_transformers(op))
                 } else {
