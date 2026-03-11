@@ -102,7 +102,7 @@ class Runnable:
             for ix, v in enumerate(input_values):
                 input_ptrs[ix] = v.ptr
 
-        check(lib.tract_runnable_profile_json(self.ptr, input_ptrs, None, 0, byref(cstring)))
+        check(lib.tract_runnable_profile_json(self.ptr, input_ptrs, byref(cstring)))
         result = str(cstring.value, "utf-8")
         lib.tract_free_cstring(cstring)
         return result

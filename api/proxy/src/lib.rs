@@ -474,7 +474,7 @@ impl RunnableInterface for Runnable {
         let mut json: *mut i8 = null_mut();
         let values = iptrs.as_mut().map(|it| it.as_mut_ptr()).unwrap_or(null_mut());
 
-        check!(sys::tract_runnable_profile_json(self.0, values, null(), 0, &mut json))?;
+        check!(sys::tract_runnable_profile_json(self.0, values, &mut json))?;
         anyhow::ensure!(!json.is_null());
         unsafe {
             let s = CStr::from_ptr(json).to_owned();

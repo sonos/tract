@@ -360,8 +360,6 @@ enum TRACT_RESULT tract_model_transform(struct TractModel *model, const int8_t *
  */
 enum TRACT_RESULT tract_runnable_profile_json(struct TractRunnable *model,
                                               struct TractTensor **inputs,
-                                              const struct TractTensor *const *states,
-                                              uintptr_t n_states,
                                               int8_t **json);
 
 /**
