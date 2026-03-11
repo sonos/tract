@@ -598,6 +598,10 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
                 } else if let Some(op) = node.op_as::<ElementWiseOp>() {
                     if let Some(leaky) = op.0.downcast_ref::<LeakyRelu>() {
                         Box::new(CudaLeakyRelu { alpha: leaky.alpha })
+                    } else if op.0.is::<Silu>() {
+                        Box::new(ops::CudaUnaryOp(kernels::UnaryOps::Silu))
+                    } else if let Some(ew) = op.0.downcast_ref::<GeluApproximate>() {
+                        Box::new(ops::CudaGeluApproximate { fast_impl: ew.fast_impl })
                     } else {
                         Box::new(map_element_wise_ops_to_cuda(op).unwrap())
                     }
@@ -605,8 +609,6 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
                     Box::new(map_binary_op_to_cuda(op).unwrap())
                 } else if let Some(op) = node.op_as::<Comp>() {
                     Box::new(convert_logic_op_to_cuda(op))
-                } else if node.op_as::<ElementWiseOp>().is_some_and(|op| op.0.is::<Silu>()) {
-                    Box::new(ops::CudaUnaryOp(kernels::UnaryOps::Silu))
                 } else if let Some(op) = node.op_as::<MultiBroadcastTo>() {
                     Box::new(ops::CudaMultiBroadcastTo::new(op.shape.clone()))
                 } else if let Some(op) = node.op_as::<Cast>() {
@@ -632,11 +634,6 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
                     Box::new(ops::CudaApplyRope)
                 } else if let Some(op) = node.op_as::<RmsNorm>() {
                     Box::new(ops::CudaRmsNorm::new(op.axis, op.eps.clone()))
-                } else if let Some(ew) = node
-                    .op_as::<ElementWiseOp>()
-                    .and_then(|op| op.0.downcast_ref::<GeluApproximate>())
-                {
-                    Box::new(ops::CudaGeluApproximate { fast_impl: ew.fast_impl })
                 } else if let Some(op) = node.op_as::<Delay>() {
                     Box::new(CudaDelay::new(op.clone()))
                 } else if let Some(op) = node.op_as::<PulsePad>() {
