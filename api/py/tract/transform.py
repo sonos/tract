@@ -1,19 +1,21 @@
 import json
+from abc import ABC, abstractmethod
 from typing import Dict, Optional, Union
 
 from .value import DatumType
 
 
-class TransformSpec:
+class TransformSpec(ABC):
     """Base class for typed transform specifications.
 
     Subclasses represent specific transforms with typed parameters.
     Can be passed directly to :meth:`Model.transform`.
     """
 
+    @abstractmethod
     def to_json(self) -> str:
         """Serialize this transform spec to the JSON string the FFI layer expects."""
-        raise NotImplementedError
+        ...
 
 
 class ConcretizeSymbols(TransformSpec):
