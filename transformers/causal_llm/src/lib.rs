@@ -5,12 +5,19 @@ use anyhow::ensure;
 use float_ord::FloatOrd;
 use log::{info, trace};
 use tokenizers::Tokenizer;
+use tract_nnef::internal::DimLike;
 use tract_nnef::internal::{TractErrorContext, anyhow};
 use tract_nnef::prelude::tract_itertools::Itertools;
 use tract_nnef::prelude::*;
-use tract_nnef::tract_core::ops::source::SourceState;
 use tract_transformers::WithTractTransformers;
-use tract_transformers::ops::dyn_kv_cache::DynKeyValueCacheState;
+
+#[derive(Clone, Debug)]
+struct KvCacheInfo {
+    axis: usize,
+    dt: DatumType,
+    /// Concrete shape for an empty cache (seq_len=0 on the cache axis)
+    empty_shape: Vec<usize>,
+}
 
 #[derive(Clone, Debug, Default)]
 pub struct CausalLlmModelConfig {
@@ -22,6 +29,8 @@ pub struct CausalLlmModel {
     pub tokenizer: Tokenizer,
     pub nn: Arc<dyn Runnable>,
     pub conf: CausalLlmModelConfig,
+    kv_caches: Vec<KvCacheInfo>,
+    n_regular_outputs: usize,
 }
 
 impl CausalLlmModel {
@@ -34,6 +43,42 @@ impl CausalLlmModel {
             .context("transformers_detect_all not found")?;
         let mut nn = nn.into_decluttered()?;
         nn.transform(&*transform)?;
+
+        // Collect KV cache metadata before unfolding
+        let (b, _s, p) = tract_transformers::figure_out_causal_llm_b_s_p(&nn)?;
+        let mut resolve = SymbolValues::default();
+        if let Some(p) = &p {
+            resolve = resolve.with(p, 0);
+        }
+        if let Some(b) = &b {
+            resolve = resolve.with(b, 1);
+        }
+
+        let n_regular_outputs = nn.outputs.len();
+
+        let mut kv_infos = Vec::new();
+        for node in nn.nodes() {
+            if let Some(op) =
+                node.op_as::<tract_transformers::ops::dyn_kv_cache::DynKeyValueCache>()
+            {
+                let empty_shape: Vec<usize> = op
+                    .past_sequence_fact
+                    .shape
+                    .iter()
+                    .map(|d| d.eval(&resolve).to_usize())
+                    .collect::<TractResult<_>>()?;
+                kv_infos.push(KvCacheInfo {
+                    axis: op.axis,
+                    dt: op.past_sequence_fact.datum_type,
+                    empty_shape,
+                });
+            }
+        }
+
+        // Unfold KV caches into explicit model I/O
+        let unfold = tract_core::transform::get_transform("unfold-kv-cache")?
+            .context("unfold-kv-cache not found")?;
+        nn.transform(&*unfold)?;
 
         let options = RunOptions {
             memory_sizing_hints: Some(tract_transformers::memory_arena_hints_for_causal_llm(&nn)?),
@@ -56,7 +101,7 @@ impl CausalLlmModel {
             }
         }
         let nn = runnable.context("No suitable runtime")?.into();
-        Ok(Arc::new(CausalLlmModel { tokenizer, nn, conf }))
+        Ok(Arc::new(CausalLlmModel { tokenizer, nn, conf, kv_caches: kv_infos, n_regular_outputs }))
     }
 
     pub fn from_paths_and_conf(
@@ -96,11 +141,20 @@ impl CausalLlmModel {
         Self::from_bytes_and_conf(tokenizer_bytes, llm_model_bytes, Default::default())
     }
 
+    fn make_empty_kv_caches(&self) -> TractResult<Vec<TValue>> {
+        self.kv_caches
+            .iter()
+            .map(|info| Tensor::zero_dt(info.dt, &info.empty_shape).map(|t| t.into_tvalue()))
+            .collect()
+    }
+
     pub fn spawn(self: &Arc<Self>) -> TractResult<CausalLlmState> {
         let nn_state = self.nn.spawn()?;
+        let kv_caches = self.make_empty_kv_caches()?;
         Ok(CausalLlmState {
             model: self.clone(),
             nn_state,
+            kv_caches,
             seq: vec![],
             processed_tokens: 0,
             config: CausalLlmStateConfig::default(),
@@ -112,9 +166,11 @@ impl CausalLlmModel {
         config: CausalLlmStateConfig,
     ) -> TractResult<CausalLlmState> {
         let nn_state = self.nn.spawn()?;
+        let kv_caches = self.make_empty_kv_caches()?;
         Ok(CausalLlmState {
             model: self.clone(),
             nn_state,
+            kv_caches,
             seq: vec![],
             processed_tokens: 0,
             config,
@@ -165,7 +221,8 @@ impl CausalLlmStateConfig {
 #[derive(Debug)]
 pub struct CausalLlmState {
     pub model: Arc<CausalLlmModel>,
-    pub nn_state: Box<dyn State>,
+    nn_state: Box<dyn State>,
+    kv_caches: Vec<TValue>,
     pub seq: Vec<u32>,
     pub processed_tokens: usize,
     pub config: CausalLlmStateConfig,
@@ -187,13 +244,18 @@ impl CausalLlmState {
                 let start = Instant::now();
                 let mut input = tensor1(&chunk.iter().map(|t| *t as i64).collect_vec());
                 input.insert_axis(0)?;
-                // let input_node = self.nn_state.model().input_outlets()?[0].node;
-                // let input_name = &self.nn_state.model().nodes[input_node].name;
-                // ndarray_npy::NpzWriter::new_compressed(std::fs::File::create("io.npz").unwrap())
-                //     .add_array(input_name, &input.to_array_view::<i64>()?)?;
-                let mut result = self.nn_state.run(tvec![input.into_tvalue()])?;
+                // Build inputs: token_ids + current kv caches
+                let mut inputs: TVec<TValue> = tvec![input.into_tvalue()];
+                inputs.extend(self.kv_caches.iter().cloned());
+                let mut results = self.nn_state.run(inputs)?;
+                // Extract updated KV caches from outputs
+                // outputs layout: [regular_outputs..., kv_cache_0, kv_cache_1, ...]
+                let n_regular = self.model.n_regular_outputs;
+                for (i, kv) in results.drain(n_regular..).enumerate() {
+                    self.kv_caches[i] = kv;
+                }
                 trace!("Processed {} tokens in {:?}", chunk.len(), start.elapsed());
-                Ok(result.remove(0).into_tensor())
+                Ok(results.remove(0).into_tensor())
             })
             .last()
             .unwrap()?;
@@ -246,7 +308,7 @@ impl CausalLlmState {
     pub fn freeze(self) -> FrozenCausalLlmState {
         FrozenCausalLlmState {
             model: self.model,
-            nn_state: self.nn_state.freeze(),
+            kv_caches: self.kv_caches.into_iter().map(|t| t.into_tensor()).collect(),
             seq: self.seq,
             config: self.config,
         }
@@ -254,27 +316,8 @@ impl CausalLlmState {
 
     pub fn truncate(&mut self, len: usize) -> TractResult<()> {
         self.seq.truncate(len);
-        let state: &mut TypedSimpleState = (&mut self.nn_state)
-            .downcast_mut::<TypedSimpleState>()
-            .context("Can only truncate state in TypedSimple* form. (TODO ?)")?;
-        for s in &mut state.op_states {
-            let Some(s) = s else { continue };
-            if let Some(s) = (**s).downcast_mut::<DynKeyValueCacheState>() {
-                s.truncate(len)?;
-                continue;
-            } else if s.is::<SourceState>() {
-                continue;
-            }
-            if let Some(s) = s.downcast_mut::<tract_cuda::ops::CudaDynKVCacheState>() {
-                s.truncate(len)?;
-                continue;
-            }
-            #[cfg(any(target_os = "macos", target_os = "ios"))]
-            if let Some(s) = s.downcast_mut::<tract_metal::ops::MetalDynKVCacheState>() {
-                s.truncate(len)?;
-                continue;
-            }
-            anyhow::bail!("Can not truncate context with state {s:?}");
+        for (kv, info) in self.kv_caches.iter_mut().zip(&self.model.kv_caches) {
+            *kv = kv.slice(info.axis, 0, len)?.into_tvalue();
         }
         Ok(())
     }
@@ -283,20 +326,22 @@ impl CausalLlmState {
 #[derive(Clone, Debug)]
 pub struct FrozenCausalLlmState {
     pub model: Arc<CausalLlmModel>,
-    pub nn_state: Box<dyn FrozenState>,
+    kv_caches: Vec<Tensor>,
     pub seq: Vec<u32>,
     pub config: CausalLlmStateConfig,
 }
 
 impl FrozenCausalLlmState {
-    pub fn unfreeze(self) -> CausalLlmState {
-        CausalLlmState {
+    pub fn unfreeze(self) -> TractResult<CausalLlmState> {
+        let nn_state = self.model.nn.spawn()?;
+        Ok(CausalLlmState {
             model: self.model,
-            nn_state: self.nn_state.unfreeze(),
+            nn_state,
+            kv_caches: self.kv_caches.into_iter().map(|t| t.into_tvalue()).collect(),
             seq: self.seq,
             processed_tokens: 0,
             config: self.config,
-        }
+        })
     }
 }
 
