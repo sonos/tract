@@ -288,6 +288,7 @@ pub fn unfold_kv_cache(target: &mut TypedModel, kv_node_id: usize) -> TractResul
 
     // Replace DynKeyValueCache op with TypedConcat
     let kv_node = target.node_mut(kv_node_id);
+    kv_node.name = format!("{name}_concat");
     kv_node.op = Box::new(TypedConcat { axis });
     kv_node.outputs[0].fact = output_fact;
 
