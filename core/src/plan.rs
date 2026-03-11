@@ -3,7 +3,6 @@ use std::cell::RefCell;
 use std::fmt::{Debug, Display};
 
 use multithread::Executor;
-use tract_data::itertools::Itertools;
 
 use crate::internal::*;
 use crate::model::{Fact, Graph, OutletId};
@@ -258,26 +257,6 @@ where
         let &mut SimpleState { ref plan, ref mut turn_state, op_states: ref mut states, .. } = self;
         for (ix, n) in plan.model.nodes.iter().enumerate() {
             states[ix] = if n.op().is_stateless() { None } else { n.op().state(turn_state, ix)? };
-        }
-        Ok(())
-    }
-
-    pub fn init_states(&mut self, state_init_tensors: &[TValue]) -> TractResult<()> {
-        let states_to_init = self
-            .op_states
-            .iter_mut()
-            .filter_map(Option::as_mut)
-            .filter(|s| s.init_tensor_fact().is_some())
-            .collect_vec();
-        ensure!(
-            states_to_init.len() == state_init_tensors.len(),
-            "There are {} op to init but got {} tensors",
-            states_to_init.len(),
-            state_init_tensors.len()
-        );
-        let mut iterator = state_init_tensors.iter().cloned();
-        for state in states_to_init {
-            state.load_from(&mut self.turn_state, &mut iterator)?;
         }
         Ok(())
     }
