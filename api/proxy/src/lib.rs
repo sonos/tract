@@ -450,22 +450,14 @@ impl RunnableInterface for Runnable {
 
     fn cost_json(&self) -> Result<String> {
         let input: Option<Vec<Tensor>> = None;
-        let states: Option<Vec<Tensor>> = None;
-        self.profile_json(input, states)
+        self.profile_json(input)
     }
 
-    fn profile_json<I, IV, IE, S, SV, SE>(
-        &self,
-        inputs: Option<I>,
-        state_initializers: Option<S>,
-    ) -> Result<String>
+    fn profile_json<I, IV, IE>(&self, inputs: Option<I>) -> Result<String>
     where
         I: IntoIterator<Item = IV>,
         IV: TryInto<Self::Tensor, Error = IE>,
         IE: Into<anyhow::Error>,
-        S: IntoIterator<Item = SV>,
-        SV: TryInto<Self::Tensor, Error = SE>,
-        SE: Into<anyhow::Error>,
     {
         let inputs = if let Some(inputs) = inputs {
             let inputs = inputs
@@ -482,21 +474,7 @@ impl RunnableInterface for Runnable {
         let mut json: *mut i8 = null_mut();
         let values = iptrs.as_mut().map(|it| it.as_mut_ptr()).unwrap_or(null_mut());
 
-        let (state_inits, n_states) = if let Some(state_vec) = state_initializers {
-            let mut states: Vec<*const _> = vec![];
-
-            for v in state_vec {
-                let val: Tensor = v.try_into().map_err(|e| e.into())?;
-                states.push(val.0);
-            }
-            let len = states.len();
-            (Some(states), len)
-        } else {
-            (None, 0)
-        };
-
-        let states = state_inits.map(|is| is.as_ptr()).unwrap_or(null());
-        check!(sys::tract_runnable_profile_json(self.0, values, states, n_states, &mut json))?;
+        check!(sys::tract_runnable_profile_json(self.0, values, null(), 0, &mut json))?;
         anyhow::ensure!(!json.is_null());
         unsafe {
             let s = CStr::from_ptr(json).to_owned();
@@ -532,67 +510,6 @@ impl StateInterface for State {
         let mut count = 0;
         check!(sys::tract_state_output_count(self.0, &mut count))?;
         Ok(count)
-    }
-
-    #[allow(deprecated)]
-    fn initializable_states_count(&self) -> Result<usize> {
-        let mut n_states = 0;
-        check!(sys::tract_state_initializable_states_count(self.0, &mut n_states))?;
-        Ok(n_states)
-    }
-
-    #[allow(deprecated)]
-    fn get_states_facts(&self) -> Result<Vec<Fact>> {
-        let n_states = self.initializable_states_count()?;
-        let mut fptrs = vec![null_mut(); n_states];
-
-        check!(sys::tract_state_get_states_facts(self.0, fptrs.as_mut_ptr()))?;
-
-        let res = fptrs.into_iter().map(|value| Ok(Fact(value))).collect::<Result<Vec<Fact>>>();
-
-        res
-    }
-
-    #[allow(deprecated)]
-    fn set_states<I, V, E>(&mut self, state_initializers: I) -> Result<()>
-    where
-        I: IntoIterator<Item = V>,
-        V: TryInto<Self::Tensor, Error = E>,
-        E: Into<anyhow::Error>,
-    {
-        let sptrs = {
-            let mut states: Vec<*const _> = vec![];
-
-            for s in state_initializers {
-                let val: Tensor = s.try_into().map_err(|e| e.into())?;
-                states.push(val.0);
-            }
-
-            let len = states.len();
-            anyhow::ensure!(
-                len == self.initializable_states_count()?,
-                "Expected {} states, got {len}",
-                self.initializable_states_count()?
-            );
-            Some(states)
-        };
-
-        let sptrs = sptrs.map(|it| it.as_ptr()).unwrap_or(null());
-        check!(sys::tract_state_set_states(self.0, sptrs))?;
-
-        Ok(())
-    }
-
-    #[allow(deprecated)]
-    fn get_states(&self) -> Result<Vec<Self::Tensor>> {
-        let n_states = self.initializable_states_count()?;
-
-        let mut sptrs = vec![null_mut(); n_states];
-        check!(sys::tract_state_get_states(self.0, sptrs.as_mut_ptr()))?;
-
-        let res = sptrs.into_iter().map(|value| Ok(Tensor(value))).collect::<Result<Vec<Tensor>>>();
-
-        res
     }
 }
 

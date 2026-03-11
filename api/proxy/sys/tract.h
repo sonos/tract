@@ -595,30 +595,6 @@ enum TRACT_RESULT tract_state_output_count(const struct TractState *state, uintp
 enum TRACT_RESULT tract_state_destroy(struct TractState **state);
 
 /**
- * Get number of initializable stateful op
- */
-enum TRACT_RESULT tract_state_initializable_states_count(const struct TractState *state,
-                                                         uintptr_t *n_states);
-
-/**
- * Get Stateful Ops's state facts
- */
-enum TRACT_RESULT tract_state_get_states_facts(const struct TractState *state,
-                                               struct TractFact **states);
-
-/**
- * Initialize Stateful Ops with specified tensors
- */
-enum TRACT_RESULT tract_state_set_states(struct TractState *state,
-                                         const struct TractTensor *const *states);
-
-/**
- * Get Stateful Ops's current states.
- */
-enum TRACT_RESULT tract_state_get_states(const struct TractState *state,
-                                         struct TractTensor **states);
-
-/**
  * Gets the rank (aka number of axes/dimensions) of a fact.
  */
 enum TRACT_RESULT tract_fact_rank(const struct TractFact *fact, uintptr_t *rank);

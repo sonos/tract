@@ -19,7 +19,7 @@ pub fn run_one_step(
 ) -> TractResult<Duration> {
     if !reusable_state(runnable) {
         *state = runnable.spawn()?;
-        state.init_state(&inputs.state_initializers.clone())?;
+        state.init_states(&inputs.state_initializers.clone())?;
     }
     let start = Instant::now();
     for source in &inputs.sources {
@@ -53,7 +53,7 @@ impl BenchLimits {
         }
         let reuse = reusable_state(runnable);
         let mut state = runnable.spawn()?;
-        state.init_state(&inputs.state_initializers.clone())?;
+        state.init_states(&inputs.state_initializers.clone())?;
 
         let mut iters = 0;
         let max_loops = if self.warmup_loops.is_zero() { usize::MAX } else { self.warmup_loops };
@@ -64,7 +64,7 @@ impl BenchLimits {
         while iters < max_loops && start_warmup.elapsed() < max_time {
             if !reuse {
                 state = runnable.spawn()?;
-                state.init_state(&inputs.state_initializers.clone())?;
+                state.init_states(&inputs.state_initializers.clone())?;
             }
             state.run(inputs.sources[0].clone())?;
             iters += 1;
@@ -84,7 +84,7 @@ impl BenchLimits {
         }
         let reuse = reusable_state(runnable);
         let mut state = runnable.spawn()?;
-        state.init_state(&inputs.state_initializers.clone())?;
+        state.init_states(&inputs.state_initializers.clone())?;
 
         let mut iters = 0;
         let max_loops = if self.max_loops.is_zero() { usize::MAX } else { self.max_loops };
@@ -95,7 +95,7 @@ impl BenchLimits {
         while iters < max_loops && start.elapsed() < max_time {
             if !reuse {
                 state = runnable.spawn()?;
-                state.init_state(&inputs.state_initializers.clone())?;
+                state.init_states(&inputs.state_initializers.clone())?;
             }
             let start_inner = Instant::now();
             state.run(inputs.sources[0].clone())?;
@@ -126,14 +126,14 @@ pub fn profile(
 
     let reuse = reusable_state(runnable);
     let mut state = plan.spawn()?;
-    state.init_state(&inputs.state_initializers.clone())?;
+    state.init_states(&inputs.state_initializers.clone())?;
 
     let mut dur = Duration::default();
     let mut time_accounted_by_inner_nodes = Duration::default();
     while iters < bench_limits.max_loops && dur < bench_limits.max_time {
         if !reuse {
             state = plan.spawn()?;
-            state.init_state(&inputs.state_initializers.clone())?;
+            state.init_states(&inputs.state_initializers.clone())?;
         }
         let start = Instant::now();
 
@@ -194,7 +194,7 @@ pub fn profile_gpu(
 
     let reuse = reusable_state(runnable);
     let mut state = plan.spawn()?;
-    state.init_state(&inputs.state_initializers.clone())?;
+    state.init_states(&inputs.state_initializers.clone())?;
 
     let mut dur = Duration::default();
 
@@ -202,7 +202,7 @@ pub fn profile_gpu(
         while iters < bench_limits.max_loops && dur < bench_limits.max_time {
             if !reuse {
                 state = plan.spawn()?;
-                state.init_state(&inputs.state_initializers.clone())?;
+                state.init_states(&inputs.state_initializers.clone())?;
             }
             let start = Instant::now();
             for source in &inputs.sources {

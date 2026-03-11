@@ -69,22 +69,6 @@ impl State for MetalTestTransformState {
         self.state.output_count()
     }
 
-    fn initializable_states_count(&self) -> usize {
-        self.state.initializable_states_count()
-    }
-
-    fn get_states_facts(&self) -> Vec<TypedFact> {
-        self.state.get_states_facts()
-    }
-
-    fn init_state(&mut self, states: &[TValue]) -> TractResult<()> {
-        self.state.init_state(states)
-    }
-
-    fn get_states(&self) -> TractResult<Vec<TValue>> {
-        self.state.get_states()
-    }
-
     fn runnable(&self) -> &dyn Runnable {
         self.state.runnable()
     }

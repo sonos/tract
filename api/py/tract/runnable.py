@@ -81,7 +81,7 @@ class Runnable:
         check(lib.tract_runnable_spawn_state(self.ptr, byref(state)))
         return State(state)
 
-    def profile_json(self, inputs: Union[None, List[Union[Tensor, numpy.ndarray]]], state_initializers: Union[None, List[Union[Tensor, numpy.ndarray]]]) -> str:
+    def profile_json(self, inputs: Union[None, List[Union[Tensor, numpy.ndarray]]]) -> str:
         """Profile the model. Also compute the static costs of operators.
 
         Returns is a json buffer.
@@ -102,24 +102,7 @@ class Runnable:
             for ix, v in enumerate(input_values):
                 input_ptrs[ix] = v.ptr
 
-        state_values = []
-        state_ptrs = None
-        n_states = 0
-        if state_initializers != None:
-            n_states = len(state_initializers)
-            state_ptrs = (c_void_p * n_states)()
-
-            for ix, v in enumerate(state_initializers):
-                if isinstance(v, Tensor):
-                    state_values.append(v)
-                elif isinstance(v, numpy.ndarray):
-                    state_values.append(Tensor.from_numpy(v))
-                else:
-                    raise TractError(f"State values must be of type tract.Tensor or numpy.Array, got {v}")
-
-                state_ptrs[ix] = state_values[ix].ptr
-
-        check(lib.tract_runnable_profile_json(self.ptr, input_ptrs, state_ptrs, n_states, byref(cstring)))
+        check(lib.tract_runnable_profile_json(self.ptr, input_ptrs, None, 0, byref(cstring)))
         result = str(cstring.value, "utf-8")
         lib.tract_free_cstring(cstring)
         return result

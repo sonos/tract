@@ -364,8 +364,7 @@ fn test_profile() -> anyhow::Result<()> {
     ensure_models()?;
     let model = nnef()?.load("mobilenet_v2_1.0.onnx.nnef.tgz")?.into_runnable()?;
     let data = ndarray::ArrayD::<f32>::zeros(vec![1, 3, 224, 224]);
-    let states: Option<Vec<Tensor>> = None;
-    let profile = model.profile_json(Some([data]), states)?;
+    let profile = model.profile_json(Some([data]))?;
     let profile: serde_json::Value = serde_json::from_str(&profile)?;
     let profiling_info = profile["profiling_info"].as_object().unwrap();
     assert!(profiling_info["iterations"].as_i64().unwrap() >= 1);

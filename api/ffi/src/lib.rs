@@ -674,8 +674,8 @@ pub unsafe extern "C" fn tract_model_transform(
 pub unsafe extern "C" fn tract_runnable_profile_json(
     model: *mut TractRunnable,
     inputs: *mut *mut TractTensor,
-    states: *const *const TractTensor,
-    n_states: usize,
+    _states: *const *const TractTensor,
+    _n_states: usize,
     json: *mut *mut i8,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
@@ -693,18 +693,7 @@ pub unsafe extern "C" fn tract_runnable_profile_json(
             None
         };
 
-        let state_initializers: Option<Vec<Tensor>> = if !states.is_null() {
-            anyhow::ensure!(n_states != 0);
-            let hashmap = std::slice::from_raw_parts(states, n_states)
-                .iter()
-                .map(|tv| (**tv).0.clone())
-                .collect();
-            Some(hashmap)
-        } else {
-            None
-        };
-
-        let profile = (*model).0.profile_json(input, state_initializers)?;
+        let profile = (*model).0.profile_json(input)?;
         *json = CString::new(profile)?.into_raw() as _;
         Ok(())
     })
@@ -1190,87 +1179,6 @@ pub unsafe extern "C" fn tract_state_output_count(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_state_destroy(state: *mut *mut TractState) -> TRACT_RESULT {
     release!(state)
-}
-
-/// Get number of initializable stateful op
-#[unsafe(no_mangle)]
-#[deprecated]
-#[doc(hidden)]
-#[allow(deprecated)]
-pub unsafe extern "C" fn tract_state_initializable_states_count(
-    state: *const TractState,
-    n_states: *mut usize,
-) -> TRACT_RESULT {
-    wrap(|| unsafe {
-        check_not_null!(state, n_states);
-        let state = &(*state).0;
-        *n_states = state.initializable_states_count()?;
-        Ok(())
-    })
-}
-
-/// Get Stateful Ops's state facts
-#[unsafe(no_mangle)]
-#[deprecated]
-#[doc(hidden)]
-#[allow(deprecated)]
-pub unsafe extern "C" fn tract_state_get_states_facts(
-    state: *const TractState,
-    states: *mut *mut TractFact,
-) -> TRACT_RESULT {
-    wrap(|| unsafe {
-        check_not_null!(state, states);
-        let state = &(*state).0;
-
-        let state_vec = state.get_states_facts()?;
-        for (ix, f) in state_vec.into_iter().enumerate() {
-            *states.add(ix) = Box::into_raw(Box::new(TractFact(f)));
-        }
-        Ok(())
-    })
-}
-
-/// Initialize Stateful Ops with specified tensors
-#[deprecated]
-#[doc(hidden)]
-#[allow(deprecated)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn tract_state_set_states(
-    state: *mut TractState,
-    states: *const *const TractTensor,
-) -> TRACT_RESULT {
-    wrap(|| unsafe {
-        check_not_null!(state, states);
-        let state = &mut (*state).0;
-
-        let n_states = state.initializable_states_count()?;
-        let state_initializers: Vec<Tensor> = std::slice::from_raw_parts(states, n_states)
-            .iter()
-            .map(|tv| (**tv).0.clone())
-            .collect();
-        state.set_states(state_initializers)?;
-        Ok(())
-    })
-}
-
-/// Get Stateful Ops's current states.
-#[deprecated]
-#[doc(hidden)]
-#[allow(deprecated)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn tract_state_get_states(
-    state: *const TractState,
-    states: *mut *mut TractTensor,
-) -> TRACT_RESULT {
-    wrap(|| unsafe {
-        let state = &(*state).0;
-
-        let state_vec = state.get_states()?;
-        for (ix, s) in state_vec.into_iter().enumerate() {
-            *states.add(ix) = Box::into_raw(Box::new(TractTensor(s)));
-        }
-        Ok(())
-    })
 }
 
 // FACT
