@@ -12,7 +12,7 @@ pub use transform::{ConcretizeSymbols, FloatPrecision, Pulse, TransformConfig, T
 /// an implementation of tract's NNEF framework object
 ///
 /// Entry point for NNEF model manipulation: loading from file, dumping to file.
-pub trait NnefInterface: Sized {
+pub trait NnefInterface: Debug + Sized {
     type Model: ModelInterface;
     /// Load a NNEF model from the path into a tract-core model.
     ///
@@ -96,14 +96,14 @@ pub trait NnefInterface: Sized {
     fn write_model_to_tar_gz(&self, path: impl AsRef<Path>, model: &Self::Model) -> Result<()>;
 }
 
-pub trait OnnxInterface {
+pub trait OnnxInterface: Debug {
     type InferenceModel: InferenceModelInterface;
     fn load(&self, path: impl AsRef<Path>) -> Result<Self::InferenceModel>;
     /// Load a ONNX model from a buffer into an InferenceModel.
     fn load_buffer(&self, data: &[u8]) -> Result<Self::InferenceModel>;
 }
 
-pub trait InferenceModelInterface: Sized {
+pub trait InferenceModelInterface: Debug + Sized {
     type Model: ModelInterface;
     type InferenceFact: InferenceFactInterface;
     fn set_output_names(
@@ -136,7 +136,7 @@ pub trait InferenceModelInterface: Sized {
     fn into_model(self) -> Result<Self::Model>;
 }
 
-pub trait ModelInterface: Sized {
+pub trait ModelInterface: Debug + Sized {
     type Fact: FactInterface;
     type Runnable: RunnableInterface;
     type Tensor: TensorInterface;
@@ -182,14 +182,14 @@ pub trait ModelInterface: Sized {
     }
 }
 
-pub trait RuntimeInterface {
+pub trait RuntimeInterface: Debug {
     type Runnable: RunnableInterface;
     type Model: ModelInterface;
     fn name(&self) -> Result<String>;
     fn prepare(&self, model: Self::Model) -> Result<Self::Runnable>;
 }
 
-pub trait RunnableInterface: Send + Sync {
+pub trait RunnableInterface: Debug + Send + Sync {
     type Tensor: TensorInterface;
     type Fact: FactInterface;
     type State: StateInterface<Tensor = Self::Tensor>;
@@ -231,7 +231,7 @@ pub trait RunnableInterface: Send + Sync {
         IE: Into<anyhow::Error> + Debug;
 }
 
-pub trait StateInterface {
+pub trait StateInterface: Debug {
     type Fact: FactInterface;
     type Tensor: TensorInterface;
 
@@ -328,7 +328,7 @@ pub trait InferenceFactInterface: Debug + Display + Default + Clone {
     fn empty() -> Result<Self>;
 }
 
-pub trait AsFact<M, F> {
+pub trait AsFact<M, F>: Debug {
     fn as_fact(&self, model: &M) -> Result<Bow<'_, F>>;
 }
 

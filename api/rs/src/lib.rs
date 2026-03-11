@@ -140,6 +140,13 @@ impl NnefInterface for Nnef {
 }
 
 pub struct Onnx(tract_onnx::Onnx);
+
+impl Debug for Onnx {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Onnx")
+    }
+}
+
 impl OnnxInterface for Onnx {
     type InferenceModel = InferenceModel;
     fn load(&self, path: impl AsRef<Path>) -> Result<Self::InferenceModel> {
@@ -153,6 +160,13 @@ impl OnnxInterface for Onnx {
 }
 
 pub struct InferenceModel(tract_onnx::prelude::InferenceModel);
+
+impl Debug for InferenceModel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "InferenceModel")
+    }
+}
+
 impl InferenceModelInterface for InferenceModel {
     type Model = Model;
     type InferenceFact = InferenceFact;
@@ -313,6 +327,12 @@ impl ModelInterface for Model {
 // RUNTIME
 pub struct Runtime(&'static dyn tract_nnef::internal::Runtime);
 
+impl Debug for Runtime {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Runtime({:?})", self.0.name())
+    }
+}
+
 impl RuntimeInterface for Runtime {
     type Runnable = Runnable;
 
@@ -415,6 +435,12 @@ impl RunnableInterface for Runnable {
 // STATE
 pub struct State(Box<dyn tract_nnef::internal::State>);
 
+impl Debug for State {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "State")
+    }
+}
+
 impl StateInterface for State {
     type Fact = Fact;
     type Tensor = Tensor;
@@ -454,7 +480,7 @@ impl TensorInterface for Tensor {
 
     fn as_bytes(&self) -> Result<(DatumType, &[usize], &[u8])> {
         let dt = from_internal_dt(self.0.datum_type())?;
-        Ok((dt, self.0.shape(), unsafe { self.0.as_slice_unchecked::<u8>() }))
+        Ok((dt, self.0.shape(), self.0.try_as_dense()?.as_bytes()))
     }
 
     fn convert_to(&self, to: DatumType) -> Result<Self> {
