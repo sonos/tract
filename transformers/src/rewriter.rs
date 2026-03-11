@@ -72,7 +72,7 @@ pub struct UnfoldKeyValueCacheTransform;
 
 impl ModelTransform for UnfoldKeyValueCacheTransform {
     fn name(&self) -> StaticName {
-        "unfold-kv-cache".into()
+        "unfold_kv_cache".into()
     }
 
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
