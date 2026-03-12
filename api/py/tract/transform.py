@@ -2,7 +2,7 @@ import json
 from abc import ABC, abstractmethod
 from typing import Dict, Optional, Union
 
-from .value import DatumType
+from .tensor import DatumType
 
 
 class TransformSpec(ABC):

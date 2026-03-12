@@ -6,9 +6,9 @@ use std::ffi::{CStr, CString, c_char, c_void};
 use tract_api::{
     AsFact, DatumType, DimInterface, FactInterface, InferenceModelInterface, ModelInterface,
     NnefInterface, OnnxInterface, RunnableInterface, RuntimeInterface, StateInterface,
-    ValueInterface,
+    TensorInterface,
 };
-use tract_rs::{State, Value};
+use tract_rs::{State, Tensor};
 
 /// Used as a return type of functions that can encounter errors.
 /// If the function encountered an error, you can retrieve it using the `tract_get_last_error`
@@ -673,15 +673,15 @@ pub unsafe extern "C" fn tract_model_transform(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_runnable_profile_json(
     model: *mut TractRunnable,
-    inputs: *mut *mut TractValue,
-    states: *const *const TractValue,
+    inputs: *mut *mut TractTensor,
+    states: *const *const TractTensor,
     n_states: usize,
     json: *mut *mut i8,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
         check_not_null!(model, json);
 
-        let input: Option<Vec<Value>> = if !inputs.is_null() {
+        let input: Option<Vec<Tensor>> = if !inputs.is_null() {
             let input_len = (*model).0.input_count()?;
             Some(
                 std::slice::from_raw_parts(inputs, input_len)
@@ -693,7 +693,7 @@ pub unsafe extern "C" fn tract_runnable_profile_json(
             None
         };
 
-        let state_initializers: Option<Vec<Value>> = if !states.is_null() {
+        let state_initializers: Option<Vec<Tensor>> = if !states.is_null() {
             anyhow::ensure!(n_states != 0);
             let hashmap = std::slice::from_raw_parts(states, n_states)
                 .iter()
@@ -761,12 +761,12 @@ pub unsafe extern "C" fn tract_model_property_names(
     })
 }
 
-/// Query a property value in a model.
+/// Query a property tensor in a model.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_model_property(
     model: *const TractModel,
     name: *const i8,
-    value: *mut *mut TractValue,
+    value: *mut *mut TractTensor,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
         check_not_null!(model, name, value);
@@ -775,7 +775,7 @@ pub unsafe extern "C" fn tract_model_property(
             .context("failed to parse property name (not utf8)")?
             .to_owned();
         let v = (*model).0.property(name).context("Property not found")?;
-        *value = Box::into_raw(Box::new(TractValue(v)));
+        *value = Box::into_raw(Box::new(TractTensor(v)));
         Ok(())
     })
 }
@@ -893,17 +893,17 @@ pub unsafe extern "C" fn tract_runnable_spawn_state(
 
 /// Convenience function to run a stateless model.
 ///
-/// `inputs` is a pointer to an pre-existing array of input TractValue. Its length *must* be equal
+/// `inputs` is a pointer to an pre-existing array of input TractTensor. Its length *must* be equal
 /// to the number of inputs of the models. The function does not take ownership of the input
-/// values.
-/// `outputs` is a pointer to a pre-existing array of TractValue pointers that will be overwritten
-/// with pointers to outputs values. These values are under the responsiblity of the caller, it
-/// will have to release them with `tract_value_destroy`.
+/// tensors.
+/// `outputs` is a pointer to a pre-existing array of TractTensor pointers that will be overwritten
+/// with pointers to output tensors. These tensors are under the responsiblity of the caller, it
+/// will have to release them with `tract_tensor_destroy`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_runnable_run(
     runnable: *mut TractRunnable,
-    inputs: *mut *mut TractValue,
-    outputs: *mut *mut TractValue,
+    inputs: *mut *mut TractTensor,
+    outputs: *mut *mut TractTensor,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
         check_not_null!(runnable);
@@ -1008,12 +1008,12 @@ pub unsafe extern "C" fn tract_runnable_property_names(
     })
 }
 
-/// Query a property value in a runnable model.
+/// Query a property tensor in a runnable model.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_runnable_property(
     model: *const TractRunnable,
     name: *const i8,
-    value: *mut *mut TractValue,
+    value: *mut *mut TractTensor,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
         check_not_null!(model, name, value);
@@ -1022,7 +1022,7 @@ pub unsafe extern "C" fn tract_runnable_property(
             .context("failed to parse property name (not utf8)")?
             .to_owned();
         let v = (*model).0.property(name).context("Property not found")?;
-        *value = Box::into_raw(Box::new(TractValue(v)));
+        *value = Box::into_raw(Box::new(TractTensor(v)));
         Ok(())
     })
 }
@@ -1033,23 +1033,23 @@ pub unsafe extern "C" fn tract_runnable_release(runnable: *mut *mut TractRunnabl
 }
 
 // VALUE
-pub struct TractValue(tract_rs::Value);
+pub struct TractTensor(tract_rs::Tensor);
 
-/// Create a TractValue (aka tensor) from caller data and metadata.
+/// Create a TractTensor from caller data and metadata.
 ///
 /// This call copies the data into tract space. All the pointers only need to be alive for the
 /// duration of the call.
 ///
 /// rank is the number of dimensions of the tensor (i.e. the length of the shape vector).
 ///
-/// The returned value must be destroyed by `tract_value_destroy`.
+/// The returned tensor must be destroyed by `tract_tensor_destroy`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn tract_value_from_bytes(
+pub unsafe extern "C" fn tract_tensor_from_bytes(
     datum_type: DatumType,
     rank: usize,
     shape: *const usize,
     data: *mut c_void,
-    value: *mut *mut TractValue,
+    value: *mut *mut TractTensor,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
         check_not_null!(value);
@@ -1057,18 +1057,18 @@ pub unsafe extern "C" fn tract_value_from_bytes(
         let shape = std::slice::from_raw_parts(shape, rank);
         let len = shape.iter().product::<usize>();
         let data = std::slice::from_raw_parts(data as *const u8, len * datum_type.size_of());
-        let it = Value::from_bytes(datum_type, shape, data)?;
-        *value = Box::into_raw(Box::new(TractValue(it)));
+        let it = Tensor::from_bytes(datum_type, shape, data)?;
+        *value = Box::into_raw(Box::new(TractTensor(it)));
         Ok(())
     })
 }
 
-/// Write a value as a debug string
+/// Write a tensor as a debug string
 ///
 /// The returned string must be freed by the caller using tract_free_cstring.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn tract_value_dump(
-    value: *const TractValue,
+pub unsafe extern "C" fn tract_tensor_dump(
+    value: *const TractTensor,
     spec: *mut *mut c_char,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
@@ -1078,39 +1078,39 @@ pub unsafe extern "C" fn tract_value_dump(
     })
 }
 
-/// Convert a value to a new datum type.
+/// Convert a tensor to a new datum type.
 ///
 /// This function will perform a cheap shallow clone if the destination type is
-/// the same as the current type, otherwise it returns a newly allocated Value instead.
+/// the same as the current type, otherwise it returns a newly allocated Tensor instead.
 ///
-/// In both cases, the returned value must be destroyed by `tract_value_destroy`.
-/// The input value is not consumed, it still need to be destroyed.
+/// In both cases, the returned tensor must be destroyed by `tract_tensor_destroy`.
+/// The input tensor is not consumed, it still need to be destroyed.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn tract_value_convert_to(
-    input: *const TractValue,
+pub unsafe extern "C" fn tract_tensor_convert_to(
+    input: *const TractTensor,
     datum_type: DatumType,
-    output: *mut *mut TractValue,
+    output: *mut *mut TractTensor,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
         check_not_null!(input, output);
         *output = std::ptr::null_mut();
         let new = (*input).0.convert_to(datum_type)?;
-        *output = Box::into_raw(Box::new(TractValue(new)));
+        *output = Box::into_raw(Box::new(TractTensor(new)));
         Ok(())
     })
 }
 
-/// Destroy a value.
+/// Destroy a tensor.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn tract_value_destroy(value: *mut *mut TractValue) -> TRACT_RESULT {
+pub unsafe extern "C" fn tract_tensor_destroy(value: *mut *mut TractTensor) -> TRACT_RESULT {
     release!(value)
 }
 
-/// Inspect part of a value. Except `value`, all argument pointers can be null if only some specific bits
+/// Inspect part of a tensor. Except `value`, all argument pointers can be null if only some specific bits
 /// are required.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn tract_value_as_bytes(
-    value: *mut TractValue,
+pub unsafe extern "C" fn tract_tensor_as_bytes(
+    value: *mut TractTensor,
     datum_type: *mut DatumType,
     rank: *mut usize,
     shape: *mut *const usize,
@@ -1141,17 +1141,17 @@ pub struct TractState(tract_rs::State);
 
 /// Run a turn on a model state
 ///
-/// `inputs` is a pointer to an pre-existing array of input TractValue. Its length *must* be equal
+/// `inputs` is a pointer to an pre-existing array of input TractTensor. Its length *must* be equal
 /// to the number of inputs of the models. The function does not take ownership of the input
-/// values.
-/// `outputs` is a pointer to a pre-existing array of TractValue pointers that will be overwritten
-/// with pointers to outputs values. These values are under the responsiblity of the caller, it
-/// will have to release them with `tract_value_destroy`.
+/// tensors.
+/// `outputs` is a pointer to a pre-existing array of TractTensor pointers that will be overwritten
+/// with pointers to output tensors. These tensors are under the responsiblity of the caller, it
+/// will have to release them with `tract_tensor_destroy`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_state_run(
     state: *mut TractState,
-    inputs: *mut *mut TractValue,
-    outputs: *mut *mut TractValue,
+    inputs: *mut *mut TractTensor,
+    outputs: *mut *mut TractTensor,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
         check_not_null!(state, inputs, outputs);
@@ -1230,21 +1230,21 @@ pub unsafe extern "C" fn tract_state_get_states_facts(
     })
 }
 
-/// Initialize Stateful Ops with specified values
+/// Initialize Stateful Ops with specified tensors
 #[deprecated]
 #[doc(hidden)]
 #[allow(deprecated)]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_state_set_states(
     state: *mut TractState,
-    states: *const *const TractValue,
+    states: *const *const TractTensor,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
         check_not_null!(state, states);
         let state = &mut (*state).0;
 
         let n_states = state.initializable_states_count()?;
-        let state_initializers: Vec<Value> = std::slice::from_raw_parts(states, n_states)
+        let state_initializers: Vec<Tensor> = std::slice::from_raw_parts(states, n_states)
             .iter()
             .map(|tv| (**tv).0.clone())
             .collect();
@@ -1260,14 +1260,14 @@ pub unsafe extern "C" fn tract_state_set_states(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_state_get_states(
     state: *const TractState,
-    states: *mut *mut TractValue,
+    states: *mut *mut TractTensor,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
         let state = &(*state).0;
 
         let state_vec = state.get_states()?;
         for (ix, s) in state_vec.into_iter().enumerate() {
-            *states.add(ix) = Box::into_raw(Box::new(TractValue(s)));
+            *states.add(ix) = Box::into_raw(Box::new(TractTensor(s)));
         }
         Ok(())
     })
@@ -1461,8 +1461,8 @@ pub unsafe extern "C" fn tract_dim_destroy(dim: *mut *mut TractDim) -> TRACT_RES
 
 unsafe fn state_run(
     state: &mut State,
-    inputs: *mut *mut TractValue,
-    outputs: *mut *mut TractValue,
+    inputs: *mut *mut TractTensor,
+    outputs: *mut *mut TractTensor,
 ) -> Result<()> {
     unsafe {
         let values: Vec<_> = std::slice::from_raw_parts(inputs, state.input_count()?)
@@ -1471,7 +1471,7 @@ unsafe fn state_run(
             .collect();
         let values = state.run(values)?;
         for (i, value) in values.into_iter().enumerate() {
-            *(outputs.add(i)) = Box::into_raw(Box::new(TractValue(value)))
+            *(outputs.add(i)) = Box::into_raw(Box::new(TractTensor(value)))
         }
         Ok(())
     }

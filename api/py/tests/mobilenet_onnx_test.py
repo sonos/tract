@@ -330,12 +330,12 @@ def test_runtime_fact_iterator():
     assert str(outputs[0]) == "1,1000,F32"
 
 def test_value_method():
-    floats = tract.Value.from_numpy(numpy.array([-1, -0.3, 0., 0.25, 0.75, 1.2], dtype=numpy.float32))
+    floats = tract.Tensor.from_numpy(numpy.array([-1, -0.3, 0., 0.25, 0.75, 1.2], dtype=numpy.float32))
     assert floats.datum_type().is_float()
     ints = floats.convert_to(tract.DatumType.I8)
     assert ints.datum_type().is_signed()
     assert numpy.array_equal(ints.to_numpy(), [-1, 0, 0, 0, 0, 1])
-    same = tract.Value.from_numpy(numpy.array([-1, -0.3, 0., 0.25, 0.75, 1.2], dtype=numpy.float32))
+    same = tract.Tensor.from_numpy(numpy.array([-1, -0.3, 0., 0.25, 0.75, 1.2], dtype=numpy.float32))
     assert floats == same
     halves = ints.convert_to(tract.DatumType.F16)
     print(halves)

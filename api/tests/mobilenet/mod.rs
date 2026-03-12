@@ -1,9 +1,9 @@
 use std::sync::Once;
 
-fn grace_hopper() -> Value {
+fn grace_hopper() -> Tensor {
     let data = std::fs::read("../tests/grace_hopper_3_224_224.f32.raw").unwrap();
     let data: &[f32] = unsafe { std::slice::from_raw_parts(data.as_ptr() as _, 3 * 224 * 224) };
-    Value::from_slice(&[1, 3, 224, 224], data).unwrap()
+    Tensor::from_slice(&[1, 3, 224, 224], data).unwrap()
 }
 
 fn ensure_models() -> anyhow::Result<()> {
@@ -364,7 +364,7 @@ fn test_profile() -> anyhow::Result<()> {
     ensure_models()?;
     let model = nnef()?.load("mobilenet_v2_1.0.onnx.nnef.tgz")?.into_runnable()?;
     let data = ndarray::ArrayD::<f32>::zeros(vec![1, 3, 224, 224]);
-    let states: Option<Vec<Value>> = None;
+    let states: Option<Vec<Tensor>> = None;
     let profile = model.profile_json(Some([data]), states)?;
     let profile: serde_json::Value = serde_json::from_str(&profile)?;
     let profiling_info = profile["profiling_info"].as_object().unwrap();
@@ -442,12 +442,12 @@ fn test_runtime_fact_iterator() -> anyhow::Result<()> {
 
 #[test]
 fn test_value_methods() -> anyhow::Result<()> {
-    let floats: Value = ndarray::prelude::arr1(&[-1f32, -0.3, 0., 0.25, 0.75, 1.2]).try_into()?;
+    let floats: Tensor = ndarray::prelude::arr1(&[-1f32, -0.3, 0., 0.25, 0.75, 1.2]).try_into()?;
     assert!(floats.datum_type()?.is_float());
     let ints = floats.convert_to(i8::datum_type())?;
     assert!(ints.datum_type()?.is_signed());
     assert_eq!(ints.view::<i8>()?.as_slice().unwrap(), &[-1, 0, 0, 0, 0, 1]);
-    let same: Value = ndarray::prelude::arr1(&[-1f32, -0.3, 0., 0.25, 0.75, 1.2]).try_into()?;
+    let same: Tensor = ndarray::prelude::arr1(&[-1f32, -0.3, 0., 0.25, 0.75, 1.2]).try_into()?;
     assert_eq!(floats, same);
     Ok(())
 }

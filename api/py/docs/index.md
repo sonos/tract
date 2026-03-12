@@ -97,7 +97,7 @@ out of our image loop.
 ### Running the model
 
 tract run methods take a list of inputs and returns a list of outputs. Each input
-can be a numpy array. The outputs are tract's own Value data type, which should 
+can be a numpy array. The outputs are tract's own Tensor data type, which should
 be converted to numpy array.
 
 ```python

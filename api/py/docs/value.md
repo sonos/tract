@@ -1,3 +1,3 @@
-# Value
+# Tensor
 
-::: tract.value
+::: tract.tensor

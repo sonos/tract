@@ -63,7 +63,7 @@ typedef struct TractRuntime TractRuntime;
 
 typedef struct TractState TractState;
 
-typedef struct TractValue TractValue;
+typedef struct TractTensor TractTensor;
 
 /**
  * Retrieve the last error that happened in this thread. A function encountered an error if
@@ -359,8 +359,8 @@ enum TRACT_RESULT tract_model_transform(struct TractModel *model, const int8_t *
  * Perform a profile of the model using the provided inputs.
  */
 enum TRACT_RESULT tract_runnable_profile_json(struct TractRunnable *model,
-                                              struct TractValue **inputs,
-                                              const struct TractValue *const *states,
+                                              struct TractTensor **inputs,
+                                              const struct TractTensor *const *states,
                                               uintptr_t n_states,
                                               int8_t **json);
 
@@ -389,11 +389,11 @@ enum TRACT_RESULT tract_model_property_count(const struct TractModel *model, uin
 enum TRACT_RESULT tract_model_property_names(const struct TractModel *model, int8_t **names);
 
 /**
- * Query a property value in a model.
+ * Query a property tensor in a model.
  */
 enum TRACT_RESULT tract_model_property(const struct TractModel *model,
                                        const int8_t *name,
-                                       struct TractValue **value);
+                                       struct TractTensor **value);
 
 /**
  * Parse a fact specification string into an Fact.
@@ -453,16 +453,16 @@ enum TRACT_RESULT tract_runnable_spawn_state(struct TractRunnable *runnable,
 /**
  * Convenience function to run a stateless model.
  *
- * `inputs` is a pointer to an pre-existing array of input TractValue. Its length *must* be equal
+ * `inputs` is a pointer to an pre-existing array of input TractTensor. Its length *must* be equal
  * to the number of inputs of the models. The function does not take ownership of the input
- * values.
- * `outputs` is a pointer to a pre-existing array of TractValue pointers that will be overwritten
- * with pointers to outputs values. These values are under the responsiblity of the caller, it
- * will have to release them with `tract_value_destroy`.
+ * tensors.
+ * `outputs` is a pointer to a pre-existing array of TractTensor pointers that will be overwritten
+ * with pointers to output tensors. These tensors are under the responsiblity of the caller, it
+ * will have to release them with `tract_tensor_destroy`.
  */
 enum TRACT_RESULT tract_runnable_run(struct TractRunnable *runnable,
-                                     struct TractValue **inputs,
-                                     struct TractValue **outputs);
+                                     struct TractTensor **inputs,
+                                     struct TractTensor **outputs);
 
 /**
  * Query a Runnable input counts.
@@ -509,60 +509,60 @@ enum TRACT_RESULT tract_runnable_property_count(const struct TractRunnable *mode
 enum TRACT_RESULT tract_runnable_property_names(const struct TractRunnable *model, int8_t **names);
 
 /**
- * Query a property value in a runnable model.
+ * Query a property tensor in a runnable model.
  */
 enum TRACT_RESULT tract_runnable_property(const struct TractRunnable *model,
                                           const int8_t *name,
-                                          struct TractValue **value);
+                                          struct TractTensor **value);
 
 enum TRACT_RESULT tract_runnable_release(struct TractRunnable **runnable);
 
 /**
- * Create a TractValue (aka tensor) from caller data and metadata.
+ * Create a TractTensor from caller data and metadata.
  *
  * This call copies the data into tract space. All the pointers only need to be alive for the
  * duration of the call.
  *
  * rank is the number of dimensions of the tensor (i.e. the length of the shape vector).
  *
- * The returned value must be destroyed by `tract_value_destroy`.
+ * The returned tensor must be destroyed by `tract_tensor_destroy`.
  */
-enum TRACT_RESULT tract_value_from_bytes(DatumType datum_type,
+enum TRACT_RESULT tract_tensor_from_bytes(DatumType datum_type,
                                          uintptr_t rank,
                                          const uintptr_t *shape,
                                          void *data,
-                                         struct TractValue **value);
+                                         struct TractTensor **value);
 
 /**
- * Write a value as a debug string
+ * Write a tensor as a debug string
  *
  * The returned string must be freed by the caller using tract_free_cstring.
  */
-enum TRACT_RESULT tract_value_dump(const struct TractValue *value, char **spec);
+enum TRACT_RESULT tract_tensor_dump(const struct TractTensor *value, char **spec);
 
 /**
- * Convert a value to a new datum type.
+ * Convert a tensor to a new datum type.
  *
  * This function will perform a cheap shallow clone if the destination type is
- * the same as the current type, otherwise it returns a newly allocated Value instead.
+ * the same as the current type, otherwise it returns a newly allocated tensor instead.
  *
- * In both cases, the returned value must be destroyed by `tract_value_destroy`.
- * The input value is not consumed, it still need to be destroyed.
+ * In both cases, the returned tensor must be destroyed by `tract_tensor_destroy`.
+ * The input tensor is not consumed, it still need to be destroyed.
  */
-enum TRACT_RESULT tract_value_convert_to(const struct TractValue *input,
+enum TRACT_RESULT tract_tensor_convert_to(const struct TractTensor *input,
                                          DatumType datum_type,
-                                         struct TractValue **output);
+                                         struct TractTensor **output);
 
 /**
- * Destroy a value.
+ * Destroy a tensor.
  */
-enum TRACT_RESULT tract_value_destroy(struct TractValue **value);
+enum TRACT_RESULT tract_tensor_destroy(struct TractTensor **value);
 
 /**
- * Inspect part of a value. Except `value`, all argument pointers can be null if only some specific bits
+ * Inspect part of a tensor. Except `value`, all argument pointers can be null if only some specific bits
  * are required.
  */
-enum TRACT_RESULT tract_value_as_bytes(struct TractValue *value,
+enum TRACT_RESULT tract_tensor_as_bytes(struct TractTensor *value,
                                        DatumType *datum_type,
                                        uintptr_t *rank,
                                        const uintptr_t **shape,
@@ -571,16 +571,16 @@ enum TRACT_RESULT tract_value_as_bytes(struct TractValue *value,
 /**
  * Run a turn on a model state
  *
- * `inputs` is a pointer to an pre-existing array of input TractValue. Its length *must* be equal
+ * `inputs` is a pointer to an pre-existing array of input TractTensor. Its length *must* be equal
  * to the number of inputs of the models. The function does not take ownership of the input
- * values.
- * `outputs` is a pointer to a pre-existing array of TractValue pointers that will be overwritten
- * with pointers to outputs values. These values are under the responsiblity of the caller, it
- * will have to release them with `tract_value_destroy`.
+ * tensors.
+ * `outputs` is a pointer to a pre-existing array of TractTensor pointers that will be overwritten
+ * with pointers to output tensors. These tensors are under the responsiblity of the caller, it
+ * will have to release them with `tract_tensor_destroy`.
  */
 enum TRACT_RESULT tract_state_run(struct TractState *state,
-                                  struct TractValue **inputs,
-                                  struct TractValue **outputs);
+                                  struct TractTensor **inputs,
+                                  struct TractTensor **outputs);
 
 /**
  * Query a State input counts.
@@ -607,16 +607,16 @@ enum TRACT_RESULT tract_state_get_states_facts(const struct TractState *state,
                                                struct TractFact **states);
 
 /**
- * Initialize Stateful Ops with specified values
+ * Initialize Stateful Ops with specified tensors
  */
 enum TRACT_RESULT tract_state_set_states(struct TractState *state,
-                                         const struct TractValue *const *states);
+                                         const struct TractTensor *const *states);
 
 /**
  * Get Stateful Ops's current states.
  */
 enum TRACT_RESULT tract_state_get_states(const struct TractState *state,
-                                         struct TractValue **states);
+                                         struct TractTensor **states);
 
 /**
  * Gets the rank (aka number of axes/dimensions) of a fact.

@@ -2,7 +2,7 @@ from ctypes import *
 from typing import Dict, List, Union # after ctypes so that Union is overriden
 import numpy
 from .fact import Fact
-from .value import Value
+from .tensor import Tensor
 from .state import State
 from .bindings import TractError, check, lib
 
@@ -62,14 +62,14 @@ class Runnable:
             lib.tract_free_cstring(cstrings[i])
         return names
 
-    def property(self, name: str) -> Value:
+    def property(self, name: str) -> Tensor:
         """Query a property by name"""
         self._valid()
         value = c_void_p()
         check(lib.tract_runnable_property(self.ptr, str(name).encode("utf-8"), byref(value)))
-        return Value(value)
+        return Tensor(value)
 
-    def run(self, inputs: List[Union[Value, numpy.ndarray]]) -> List[Value]:
+    def run(self, inputs: List[Union[Tensor, numpy.ndarray]]) -> List[Tensor]:
         """
         Runs the model over the provided input list, and returns the model outputs.
         """
@@ -81,7 +81,7 @@ class Runnable:
         check(lib.tract_runnable_spawn_state(self.ptr, byref(state)))
         return State(state)
 
-    def profile_json(self, inputs: Union[None, List[Union[Value, numpy.ndarray]]], state_initializers: Union[None, List[Union[Value, numpy.ndarray]]]) -> str:
+    def profile_json(self, inputs: Union[None, List[Union[Tensor, numpy.ndarray]]], state_initializers: Union[None, List[Union[Tensor, numpy.ndarray]]]) -> str:
         """Profile the model. Also compute the static costs of operators.
 
         Returns is a json buffer.
@@ -92,12 +92,12 @@ class Runnable:
         input_ptrs = None
         if inputs != None:
             for v in inputs:
-                if isinstance(v, Value):
+                if isinstance(v, Tensor):
                     input_values.append(v)
                 elif isinstance(v, numpy.ndarray):
-                    input_values.append(Value.from_numpy(v))
+                    input_values.append(Tensor.from_numpy(v))
                 else:
-                    raise TractError(f"Inputs must be of type tract.Value or numpy.Array, got {v}")
+                    raise TractError(f"Inputs must be of type tract.Tensor or numpy.Array, got {v}")
             input_ptrs = (c_void_p * len(inputs))()
             for ix, v in enumerate(input_values):
                 input_ptrs[ix] = v.ptr
@@ -110,12 +110,12 @@ class Runnable:
             state_ptrs = (c_void_p * n_states)()
 
             for ix, v in enumerate(state_initializers):
-                if isinstance(v, Value):
+                if isinstance(v, Tensor):
                     state_values.append(v)
                 elif isinstance(v, numpy.ndarray):
-                    state_values.append(Value.from_numpy(v))
+                    state_values.append(Tensor.from_numpy(v))
                 else:
-                    raise TractError(f"State values must be of type tract.Value or numpy.Array, got {v}")
+                    raise TractError(f"State values must be of type tract.Tensor or numpy.Array, got {v}")
 
                 state_ptrs[ix] = state_values[ix].ptr
 

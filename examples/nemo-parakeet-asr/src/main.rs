@@ -39,8 +39,8 @@ fn main() -> anyhow::Result<()> {
         .samples::<i16>()
         .map(|x| x.unwrap() as f32)
         .collect();
-    let samples = Value::from_slice(&[1, wav.len()], &wav)?;
-    let len = value(arr1(&[wav.len() as i64]))?;
+    let samples = Tensor::from_slice(&[1, wav.len()], &wav)?;
+    let len = tensor(arr1(&[wav.len() as i64]))?;
 
     let [features, feat_len] = preprocessor.run([samples, len])?.try_into().unwrap();
     let [encoded, _lens] = encoder.run([features, feat_len])?.try_into().unwrap();
@@ -52,13 +52,13 @@ fn main() -> anyhow::Result<()> {
 
     let mut hyp = vec![];
     let mut frame_ix = 0;
-    let mut token = Value::from_slice(&[1, 1], &[0i32])?;
-    let mut state_0 = value(Array3::<f32>::zeros([2, 1, 640]))?;
-    let mut state_1 = value(Array3::<f32>::zeros([2, 1, 640]))?;
+    let mut token = Tensor::from_slice(&[1, 1], &[0i32])?;
+    let mut state_0 = tensor(Array3::<f32>::zeros([2, 1, 640]))?;
+    let mut state_1 = tensor(Array3::<f32>::zeros([2, 1, 640]))?;
 
     [token, state_0, state_1] = decoder.run([token, state_0, state_1])?.try_into().unwrap();
     while hyp.len() < max_len && frame_ix < max_frames {
-        let frame = value(encoded.slice_axis(Axis(2), (frame_ix..frame_ix + 1).into()))?;
+        let frame = tensor(encoded.slice_axis(Axis(2), (frame_ix..frame_ix + 1).into()))?;
         let [logits] = joint.run([frame, token.clone()])?.try_into().unwrap();
         let logits = logits.view::<f32>()?;
         let logits = logits.as_slice().unwrap();
@@ -67,7 +67,7 @@ fn main() -> anyhow::Result<()> {
             frame_ix += argmax(&logits[blank_id + 1..]).unwrap_or(0).max(1);
         } else {
             hyp.push(token_id);
-            token = Value::from_slice(&[1, 1], &[token_id as i32])?;
+            token = Tensor::from_slice(&[1, 1], &[token_id as i32])?;
             [token, state_0, state_1] = decoder.run([token, state_0, state_1])?.try_into().unwrap();
         }
     }

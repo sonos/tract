@@ -3,7 +3,7 @@ from ctypes import *
 from typing import Dict, List, Union
 from .bindings import TractError, check, lib
 from .fact import Fact
-from .value import Value
+from .tensor import Tensor
 from .runnable import Runnable
 from .transform import TransformSpec
 
@@ -158,12 +158,12 @@ class Model:
             lib.tract_free_cstring(cstrings[i])
         return names
 
-    def property(self, name: str) -> Value:
+    def property(self, name: str) -> Tensor:
         """Query a property by name"""
         self._valid()
         value = c_void_p()
         check(lib.tract_model_property(self.ptr, str(name).encode("utf-8"), byref(value)))
-        return Value(value)
+        return Tensor(value)
 
     def input_facts(self) -> List[Fact]:
         return [ self.input_fact(ix) for ix in range(self.input_count()) ]
