@@ -74,7 +74,7 @@ jobs:
             export CARGO_TARGET_${RUST_TRIPLE_ENV}_LINKER=$TARGET_CC
           fi
 
-          cargo build --target ${target} --release -p tract
+          cargo build --target ${target} --release -p tract-cli
           mkdir tract-$name
           cp target/${target}/release/tract tract-${name}
           tar czf tract-${name}.tgz tract-${name}

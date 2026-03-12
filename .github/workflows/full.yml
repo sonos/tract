@@ -131,7 +131,7 @@ jobs:
     - name: Without default features
       run: |
         rustup update
-        cargo check -p tract --no-default-features $CARGO_EXTRA
+        cargo check -p tract-cli --no-default-features $CARGO_EXTRA
 
   complexes:
     runs-on: ubuntu-latest
