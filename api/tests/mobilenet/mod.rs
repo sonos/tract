@@ -32,7 +32,7 @@ fn ensure_models() -> anyhow::Result<()> {
 #[test]
 fn test_onnx() -> anyhow::Result<()> {
     ensure_models()?;
-    let model = onnx()?.load("mobilenetv2-7.onnx")?.into_tract()?.into_runnable()?;
+    let model = onnx()?.load("mobilenetv2-7.onnx")?.into_model()?.into_runnable()?;
     let hopper = grace_hopper();
     let result = model.run([hopper])?;
     let result = result[0].view::<f32>()?;
@@ -50,7 +50,7 @@ fn test_onnx() -> anyhow::Result<()> {
 #[test]
 fn test_state() -> anyhow::Result<()> {
     ensure_models()?;
-    let model = onnx()?.load("mobilenetv2-7.onnx")?.into_tract()?.into_runnable()?;
+    let model = onnx()?.load("mobilenetv2-7.onnx")?.into_model()?.into_runnable()?;
     let mut state = model.spawn_state()?;
     let hopper = grace_hopper();
     let result = state.run([hopper])?;
@@ -95,7 +95,7 @@ fn test_inference_model() -> anyhow::Result<()> {
     assert_eq!(model.output_name(0).unwrap(), "mobilenetv20_output_flatten0_reshape0");
     assert_eq!(model.input_fact(0).unwrap().to_string(), "1,3,224,224,F32");
     model.set_input_fact(0, "1,3,224,224,F32")?;
-    let model = model.into_tract()?.into_runnable()?;
+    let model = model.into_model()?.into_runnable()?;
     let hopper = grace_hopper();
     let result = model.run([hopper])?;
     let view = result[0].view::<f32>()?;
@@ -161,7 +161,7 @@ fn test_concretize() -> anyhow::Result<()> {
     let mut model = onnx()?.load("mobilenetv2-7.onnx")?;
     model.set_input_fact(0, "B,3,224,224,f32")?;
     model.analyse()?;
-    let mut typed = model.into_tract()?;
+    let mut typed = model.into_model()?;
     assert_eq!(typed.input_fact(0)?.to_string(), "B,3,224,224,F32");
     assert_eq!(typed.output_fact(0)?.to_string(), "B,1000,F32");
     typed.transform(ConcretizeSymbols::new().value("B", 1))?;
@@ -176,7 +176,7 @@ fn test_concretize_raw_string() -> anyhow::Result<()> {
     let mut model = onnx()?.load("mobilenetv2-7.onnx")?;
     model.set_input_fact(0, "B,3,224,224,f32")?;
     model.analyse()?;
-    let mut typed = model.into_tract()?;
+    let mut typed = model.into_model()?;
     typed.transform(r#"{"name":"concretize_symbols","values":{"B":1}}"#)?;
     assert_eq!(typed.input_fact(0)?.to_string(), "1,3,224,224,F32");
     assert_eq!(typed.output_fact(0)?.to_string(), "1,1000,F32");
@@ -189,7 +189,7 @@ fn test_pulse() -> anyhow::Result<()> {
     let mut model = onnx()?.load("mobilenetv2-7.onnx")?;
     model.set_input_fact(0, "B,3,224,224,f32")?;
     model.analyse()?;
-    let mut typed = model.into_tract()?;
+    let mut typed = model.into_model()?;
     assert_eq!(typed.input_fact(0)?.to_string(), "B,3,224,224,F32");
     assert_eq!(typed.output_fact(0)?.to_string(), "B,1000,F32");
     typed.transform(Pulse::new("5").symbol("B"))?;
@@ -208,7 +208,7 @@ fn test_pulse_raw_string() -> anyhow::Result<()> {
     let mut model = onnx()?.load("mobilenetv2-7.onnx")?;
     model.set_input_fact(0, "B,3,224,224,f32")?;
     model.analyse()?;
-    let mut typed = model.into_tract()?;
+    let mut typed = model.into_model()?;
     typed.transform(r#"{"name":"pulse","symbol":"B","pulse":"5"}"#)?;
     assert_eq!(typed.input_fact(0)?.to_string(), "5,3,224,224,F32");
     assert_eq!(typed.output_fact(0)?.to_string(), "5,1000,F32");
@@ -230,7 +230,7 @@ fn test_runtime_properties() -> anyhow::Result<()> {
     let mut model = onnx()?.load("mobilenetv2-7.onnx")?;
     model.set_input_fact(0, "B,3,224,224,f32")?;
     model.analyse()?;
-    let mut typed = model.into_tract()?;
+    let mut typed = model.into_model()?;
     typed.transform(r#"{"name":"pulse","symbol":"B","pulse":"5"}"#)?;
     let runnable = typed.into_runnable()?;
     let mut properties = runnable.property_keys()?;
@@ -246,7 +246,7 @@ fn test_f32_to_f16() -> anyhow::Result<()> {
     let mut model = onnx()?.load("mobilenetv2-7.onnx")?;
     model.set_input_fact(0, "B,3,224,224,f32")?;
     model.analyse()?;
-    let mut typed = model.into_tract()?;
+    let mut typed = model.into_model()?;
     typed.transform(FloatPrecision::new(
         DatumType::TRACT_DATUM_TYPE_F32,
         DatumType::TRACT_DATUM_TYPE_F16,
@@ -262,7 +262,7 @@ fn test_f32_to_f16_raw_string() -> anyhow::Result<()> {
     let mut model = onnx()?.load("mobilenetv2-7.onnx")?;
     model.set_input_fact(0, "B,3,224,224,f32")?;
     model.analyse()?;
-    let mut typed = model.into_tract()?;
+    let mut typed = model.into_model()?;
     typed.transform("f32_to_f16")?;
     assert_eq!(typed.input_fact(0)?.to_string(), "B,3,224,224,F16");
     assert_eq!(typed.output_fact(0)?.to_string(), "B,1000,F16");
@@ -275,7 +275,7 @@ fn test_f16_to_f32() -> anyhow::Result<()> {
     let mut model = onnx()?.load("mobilenetv2-7.onnx")?;
     model.set_input_fact(0, "B,3,224,224,f32")?;
     model.analyse()?;
-    let mut typed = model.into_tract()?;
+    let mut typed = model.into_model()?;
 
     // Convert model to half
     typed.transform(FloatPrecision::new(
@@ -301,7 +301,7 @@ fn test_f16_to_f32_raw_string() -> anyhow::Result<()> {
     let mut model = onnx()?.load("mobilenetv2-7.onnx")?;
     model.set_input_fact(0, "B,3,224,224,f32")?;
     model.analyse()?;
-    let mut typed = model.into_tract()?;
+    let mut typed = model.into_model()?;
     typed.transform("f32_to_f16")?;
     typed.transform("f16_to_f32")?;
     assert_eq!(typed.input_fact(0)?.to_string(), "B,3,224,224,F32");
@@ -315,7 +315,7 @@ fn test_typed_model_to_nnef_and_back() -> anyhow::Result<()> {
     let mut model = onnx()?.load("mobilenetv2-7.onnx")?;
     model.set_input_fact(0, "B,3,224,224,f32")?;
     model.analyse()?;
-    let typed = model.into_tract()?;
+    let typed = model.into_model()?;
     let dir = tempfile::tempdir()?;
     let nnef = nnef()?.with_tract_core()?;
 

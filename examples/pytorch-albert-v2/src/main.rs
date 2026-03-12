@@ -21,7 +21,7 @@ fn main() -> Result<()> {
         input_ids.iter().position(|&x| x == tokenizer.token_to_id("[MASK]").unwrap()).unwrap();
 
     let model =
-        tract::onnx()?.load(Path::join(&model_dir, "model.onnx"))?.into_tract()?.into_runnable()?;
+        tract::onnx()?.load(Path::join(&model_dir, "model.onnx"))?.into_model()?.into_runnable()?;
 
     let input_ids = tract_ndarray::Array2::from_shape_vec(
         (1, length),

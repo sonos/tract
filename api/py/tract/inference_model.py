@@ -35,7 +35,7 @@ class InferenceModel:
         if self.ptr == None:
             raise TractError("invalid inference model (maybe already consumed ?)")
 
-    def into_tract(self) -> Model:
+    def into_model(self) -> Model:
         """
         Convert an InferenceModel to a regular typed `Model`.
 
@@ -44,7 +44,7 @@ class InferenceModel:
         """
         self._valid()
         model = c_void_p()
-        check(lib.tract_inference_model_into_tract(byref(self.ptr), byref(model)))
+        check(lib.tract_inference_model_into_model(byref(self.ptr), byref(model)))
         return Model(model)
 
     def input_count(self) -> int:

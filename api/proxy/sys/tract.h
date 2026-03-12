@@ -287,7 +287,7 @@ enum TRACT_RESULT tract_inference_model_analyse(struct TractInferenceModel *mode
  *
  * On the other hand, caller will be owning the newly created `optimized` model.
  */
-enum TRACT_RESULT tract_inference_model_into_tract(struct TractInferenceModel **model,
+enum TRACT_RESULT tract_inference_model_into_model(struct TractInferenceModel **model,
                                                    struct TractModel **typed);
 
 /**

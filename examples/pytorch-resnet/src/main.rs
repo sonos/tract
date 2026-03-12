@@ -5,7 +5,7 @@ use tract_ndarray::Array;
 fn main() -> Result<()> {
     let mut model = tract::onnx()?.load("resnet.onnx")?;
     model.set_input_fact(0, "1,3,224,224,f32")?;
-    let model = model.into_tract()?.into_runnable()?;
+    let model = model.into_model()?.into_runnable()?;
 
     // Imagenet mean and standard deviation
     let mean = Array::from_shape_vec((1, 3, 1, 1), vec![0.485, 0.456, 0.406])?;
