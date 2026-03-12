@@ -1,4 +1,3 @@
-use tract::*;
-use tract_api::*;
+use tract::prelude::*;
 
 include!("../../tests/mobilenet/mod.rs");
