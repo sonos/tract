@@ -1,8 +1,8 @@
 use anyhow::Result;
-use tract_rs::prelude::*;
+use tract::prelude::*;
 
 fn main() -> Result<()> {
-    let nnef = tract_rs::nnef()?;
+    let nnef = tract::nnef()?;
     let model = nnef.load("mobilenet_v2_1.0.onnx.nnef.tgz")?.into_runnable()?;
 
     // open image, resize it and make a Tensor out of it

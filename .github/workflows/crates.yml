@@ -40,7 +40,7 @@ jobs:
         os: ${{fromJson(needs.prepare-matrix.outputs.os)}}
         rust: ${{fromJson(needs.prepare-matrix.outputs.rust)}}
         crate: [  tract-data, tract-linalg, tract-core, tract-nnef, tract-hir, tract-onnx,
-                  tract-pulse, tract-onnx-opl, tract-pulse-opl, tract-rs,
+                  tract-pulse, tract-onnx-opl, tract-pulse-opl, tract,
                   test-unit-core, test-onnx-core, test-nnef-cycle, test-f16,
                ]
       fail-fast: false

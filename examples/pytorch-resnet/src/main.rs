@@ -1,9 +1,9 @@
 use anyhow::Result;
+use tract::prelude::*;
 use tract_ndarray::Array;
-use tract_rs::prelude::*;
 
 fn main() -> Result<()> {
-    let mut model = tract_rs::onnx()?.load("resnet.onnx")?;
+    let mut model = tract::onnx()?.load("resnet.onnx")?;
     model.set_input_fact(0, "1,3,224,224,f32")?;
     let model = model.into_tract()?.into_runnable()?;
 

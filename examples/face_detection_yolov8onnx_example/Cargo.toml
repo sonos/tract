@@ -7,4 +7,4 @@ edition = "2024"
 anyhow.workspace = true
 clap = { version = "4.5.9", features = ["derive"] }
 image.workspace = true 
-tract-rs.workspace = true
+tract.workspace = true

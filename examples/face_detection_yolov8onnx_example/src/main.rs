@@ -3,8 +3,8 @@ use clap::Parser;
 use image::DynamicImage;
 use std::cmp::Ordering;
 use std::cmp::PartialOrd;
+use tract::prelude::*;
 use tract_ndarray::s;
-use tract_rs::prelude::*;
 
 #[derive(Parser)]
 struct CliArgs {
@@ -85,7 +85,7 @@ fn calculate_iou(box1: &Bbox, box2: &Bbox) -> f32 {
 
 fn main() -> Result<(), Error> {
     let args = CliArgs::parse();
-    let mut model = tract_rs::onnx()?.load(args.weights)?;
+    let mut model = tract::onnx()?.load(args.weights)?;
     model.set_input_fact(0, "1,3,640,640,f32")?;
     let model = model.into_tract()?.into_runnable()?;
     let raw_image = image::open(args.input_image)?;

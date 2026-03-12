@@ -1,9 +1,9 @@
 use anyhow::Result;
-use tract_rs::prelude::*;
+use tract::prelude::*;
 
 fn main() -> Result<()> {
     // load the model
-    let mut model = tract_rs::onnx()?.load("mobilenetv2-7.onnx")?;
+    let mut model = tract::onnx()?.load("mobilenetv2-7.onnx")?;
 
     // Create a symbolic batch dimension
     model.set_input_fact(0, "N,3,224,224,f32")?;

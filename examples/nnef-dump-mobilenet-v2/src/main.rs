@@ -1,8 +1,8 @@
 use anyhow::Result;
-use tract_rs::prelude::*;
+use tract::prelude::*;
 
 fn main() -> Result<()> {
-    let model = tract_rs::nnef()?.with_tract_core()?.load("mobilenet.nnef.tgz")?.into_runnable()?;
+    let model = tract::nnef()?.with_tract_core()?.load("mobilenet.nnef.tgz")?.into_runnable()?;
 
     // open image, resize it and make a Tensor out of it
     let image = image::open("grace_hopper.jpg").unwrap().to_rgb8();

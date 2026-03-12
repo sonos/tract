@@ -69,7 +69,7 @@ fi
 
 if [ -z "$TRACT_RUN" ]
 then
-    TRACT_RUN="cargo run -p tract $CARGO_EXTRA --profile opt-no-lto --no-default-features --features transformers --"
+    TRACT_RUN="cargo run -p tract-cli $CARGO_EXTRA --profile opt-no-lto --no-default-features --features transformers --"
     export TRACT_RUN
 fi
 
