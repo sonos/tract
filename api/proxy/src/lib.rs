@@ -391,13 +391,8 @@ impl RunnableInterface for Runnable {
     type State = State;
     type Fact = Fact;
 
-    fn run<I, V, E>(&self, inputs: I) -> Result<Vec<Value>>
-    where
-        I: IntoIterator<Item = V>,
-        V: TryInto<Value, Error = E>,
-        E: Into<anyhow::Error>,
-    {
-        self.spawn_state()?.run(inputs)
+    fn run(&self, inputs: impl IntoInputs<Value>) -> Result<Vec<Value>> {
+        StateInterface::run(&mut self.spawn_state()?, inputs.into_inputs()?)
     }
 
     fn spawn_state(&self) -> Result<State> {
@@ -518,16 +513,8 @@ impl StateInterface for State {
     type Value = Value;
     type Fact = Fact;
 
-    fn run<I, V, E>(&mut self, inputs: I) -> Result<Vec<Value>>
-    where
-        I: IntoIterator<Item = V>,
-        V: TryInto<Value, Error = E>,
-        E: Into<anyhow::Error>,
-    {
-        let inputs = inputs
-            .into_iter()
-            .map(|i| i.try_into().map_err(|e| e.into()))
-            .collect::<Result<Vec<Value>>>()?;
+    fn run(&mut self, inputs: impl IntoInputs<Value>) -> Result<Vec<Value>> {
+        let inputs = inputs.into_inputs()?;
         let mut outputs = vec![null_mut(); self.output_count()?];
         let mut inputs: Vec<_> = inputs.iter().map(|v| v.0).collect();
         check!(sys::tract_state_run(self.0, inputs.as_mut_ptr(), outputs.as_mut_ptr()))?;

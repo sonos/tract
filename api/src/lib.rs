@@ -193,13 +193,8 @@ pub trait RunnableInterface: Send + Sync {
     type Value: ValueInterface;
     type Fact: FactInterface;
     type State: StateInterface<Value = Self::Value>;
-    fn run<I, V, E>(&self, inputs: I) -> Result<Vec<Self::Value>>
-    where
-        I: IntoIterator<Item = V>,
-        V: TryInto<Self::Value, Error = E>,
-        E: Into<anyhow::Error>,
-    {
-        self.spawn_state()?.run(inputs)
+    fn run(&self, inputs: impl IntoInputs<Self::Value>) -> Result<Vec<Self::Value>> {
+        self.spawn_state()?.run(inputs.into_inputs()?)
     }
 
     fn input_count(&self) -> Result<usize>;
@@ -250,11 +245,7 @@ pub trait StateInterface {
     fn input_count(&self) -> Result<usize>;
     fn output_count(&self) -> Result<usize>;
 
-    fn run<I, V, E>(&mut self, inputs: I) -> Result<Vec<Self::Value>>
-    where
-        I: IntoIterator<Item = V>,
-        V: TryInto<Self::Value, Error = E>,
-        E: Into<anyhow::Error>;
+    fn run(&mut self, inputs: impl IntoInputs<Self::Value>) -> Result<Vec<Self::Value>>;
 
     #[doc(hidden)]
     #[deprecated]
@@ -427,6 +418,65 @@ impl DatumType {
 
 pub trait Datum {
     fn datum_type() -> DatumType;
+}
+
+// IntoInputs trait — ergonomic input conversion for run()
+pub trait IntoInputs<V: ValueInterface> {
+    fn into_inputs(self) -> Result<Vec<V>>;
+}
+
+// Arrays of anything convertible to Value
+impl<V, T, E, const N: usize> IntoInputs<V> for [T; N]
+where
+    V: ValueInterface,
+    T: TryInto<V, Error = E>,
+    E: Into<anyhow::Error>,
+{
+    fn into_inputs(self) -> Result<Vec<V>> {
+        self.into_iter().map(|v| v.try_into().map_err(|e| e.into())).collect()
+    }
+}
+
+// Vec<V> passthrough
+impl<V: ValueInterface> IntoInputs<V> for Vec<V> {
+    fn into_inputs(self) -> Result<Vec<V>> {
+        Ok(self)
+    }
+}
+
+// Tuples — each element converts independently
+macro_rules! impl_into_inputs_tuple {
+    ($($idx:tt : $T:ident),+) => {
+        impl<V, $($T),+> IntoInputs<V> for ($($T,)+)
+        where
+            V: ValueInterface,
+            $($T: TryInto<V>,
+              <$T as TryInto<V>>::Error: Into<anyhow::Error>,)+
+        {
+            fn into_inputs(self) -> Result<Vec<V>> {
+                Ok(vec![$(self.$idx.try_into().map_err(|e| e.into())?),+])
+            }
+        }
+    };
+}
+
+impl_into_inputs_tuple!(0: A);
+impl_into_inputs_tuple!(0: A, 1: B);
+impl_into_inputs_tuple!(0: A, 1: B, 2: C);
+impl_into_inputs_tuple!(0: A, 1: B, 2: C, 3: D);
+impl_into_inputs_tuple!(0: A, 1: B, 2: C, 3: D, 4: E_);
+impl_into_inputs_tuple!(0: A, 1: B, 2: C, 3: D, 4: E_, 5: F);
+impl_into_inputs_tuple!(0: A, 1: B, 2: C, 3: D, 4: E_, 5: F, 6: G);
+impl_into_inputs_tuple!(0: A, 1: B, 2: C, 3: D, 4: E_, 5: F, 6: G, 7: H);
+
+/// Convert any compatible value into a `V: ValueInterface`.
+pub fn value<V, T, E>(v: T) -> Result<V>
+where
+    V: ValueInterface,
+    T: TryInto<V, Error = E>,
+    E: Into<anyhow::Error>,
+{
+    v.try_into().map_err(|e| e.into())
 }
 
 macro_rules! impl_datum_type {

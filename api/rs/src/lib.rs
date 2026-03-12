@@ -29,9 +29,7 @@ use tract_transformers::WithTractTransformers;
 use tract_api::*;
 
 pub mod prelude {
-    pub use crate::{
-        Dim, Fact, IntoInputs, Model, Runnable, Runtime, Value, nnef, onnx, runtime_for_name, value,
-    };
+    pub use crate::{Dim, Fact, Model, Runnable, Runtime, Value, nnef, onnx, runtime_for_name};
     pub use DatumType;
     pub use ndarray as tract_ndarray;
     pub use tract_api::*;
@@ -325,13 +323,8 @@ impl RunnableInterface for Runnable {
     type State = State;
     type Fact = Fact;
 
-    fn run<I, V, E>(&self, inputs: I) -> Result<Vec<Value>>
-    where
-        I: IntoIterator<Item = V>,
-        V: TryInto<Self::Value, Error = E>,
-        E: Into<anyhow::Error>,
-    {
-        StateInterface::run(&mut self.spawn_state()?, inputs)
+    fn run(&self, inputs: impl IntoInputs<Value>) -> Result<Vec<Value>> {
+        StateInterface::run(&mut self.spawn_state()?, inputs.into_inputs()?)
     }
 
     fn spawn_state(&self) -> Result<State> {
@@ -435,16 +428,9 @@ impl StateInterface for State {
         Ok(self.0.output_count())
     }
 
-    fn run<I, V, E>(&mut self, inputs: I) -> Result<Vec<Value>>
-    where
-        I: IntoIterator<Item = V>,
-        V: TryInto<Value, Error = E>,
-        E: Into<anyhow::Error>,
-    {
-        let inputs: TVec<TValue> = inputs
-            .into_iter()
-            .map(|i| i.try_into().map_err(|e| e.into()).map(|v| v.0.into_tvalue()))
-            .collect::<Result<_>>()?;
+    fn run(&mut self, inputs: impl IntoInputs<Value>) -> Result<Vec<Value>> {
+        let inputs: TVec<TValue> =
+            inputs.into_inputs()?.into_iter().map(|v| v.0.into_tvalue()).collect();
         let outputs = self.0.run(inputs)?;
         Ok(outputs.into_iter().map(|t| Value(t.into_arc_tensor())).collect())
     }
@@ -587,78 +573,6 @@ impl Display for InferenceFact {
 value_from_to_ndarray!();
 as_inference_fact_impl!(InferenceModel, InferenceFact);
 as_fact_impl!(Model, Fact);
-
-// IntoInputs trait — ergonomic input conversion for run()
-pub trait IntoInputs {
-    fn into_inputs(self) -> Result<Vec<Value>>;
-}
-
-// Arrays of anything convertible to Value (covers [Value; N] and [ArrayX<T>; N])
-impl<V, E, const N: usize> IntoInputs for [V; N]
-where
-    V: TryInto<Value, Error = E>,
-    E: Into<anyhow::Error>,
-{
-    fn into_inputs(self) -> Result<Vec<Value>> {
-        self.into_iter().map(|v| v.try_into().map_err(|e| e.into())).collect()
-    }
-}
-
-// Vec<Value> passthrough
-impl IntoInputs for Vec<Value> {
-    fn into_inputs(self) -> Result<Vec<Value>> {
-        Ok(self)
-    }
-}
-
-// Tuples — each element converts independently (the ergonomic win)
-macro_rules! impl_into_inputs_tuple {
-    ($($idx:tt : $T:ident),+) => {
-        impl<$($T),+> IntoInputs for ($($T,)+)
-        where
-            $($T: TryInto<Value>,
-              <$T as TryInto<Value>>::Error: Into<anyhow::Error>,)+
-        {
-            fn into_inputs(self) -> Result<Vec<Value>> {
-                Ok(vec![$(self.$idx.try_into().map_err(|e| e.into())?),+])
-            }
-        }
-    };
-}
-
-impl_into_inputs_tuple!(0: A);
-impl_into_inputs_tuple!(0: A, 1: B);
-impl_into_inputs_tuple!(0: A, 1: B, 2: C);
-impl_into_inputs_tuple!(0: A, 1: B, 2: C, 3: D);
-impl_into_inputs_tuple!(0: A, 1: B, 2: C, 3: D, 4: E_);
-impl_into_inputs_tuple!(0: A, 1: B, 2: C, 3: D, 4: E_, 5: F);
-impl_into_inputs_tuple!(0: A, 1: B, 2: C, 3: D, 4: E_, 5: F, 6: G);
-impl_into_inputs_tuple!(0: A, 1: B, 2: C, 3: D, 4: E_, 5: F, 6: G, 7: H);
-
-// Inherent run() on Runnable — shadows the trait method for better type inference
-impl Runnable {
-    pub fn run(&self, inputs: impl IntoInputs) -> Result<Vec<Value>> {
-        let values = inputs.into_inputs()?;
-        RunnableInterface::run(self, values)
-    }
-}
-
-// Inherent run() on State — shadows the trait method for better type inference
-impl State {
-    pub fn run(&mut self, inputs: impl IntoInputs) -> Result<Vec<Value>> {
-        let values = inputs.into_inputs()?;
-        StateInterface::run(self, values)
-    }
-}
-
-/// Convert any compatible value into a `Value`.
-pub fn value<V, E>(v: V) -> Result<Value>
-where
-    V: TryInto<Value, Error = E>,
-    E: Into<anyhow::Error>,
-{
-    v.try_into().map_err(|e| e.into())
-}
 
 #[derive(Clone, Debug)]
 pub struct Dim(TDim);
