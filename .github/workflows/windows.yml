@@ -23,7 +23,7 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-    - uses: nick-invision/retry@v2
+    - uses: nick-fields/retry@v3
       name: Install Rustup using win.rustup.rs
       with:
         timeout_minutes: 10
@@ -34,7 +34,7 @@ jobs:
             $ProgressPreference = "SilentlyContinue"
             Invoke-WebRequest https://win.rustup.rs/ -OutFile rustup-init.exe
             .\rustup-init.exe -y --default-host=x86_64-pc-windows-msvc --profile=minimal
-    - uses: nick-invision/retry@v2
+    - uses: nick-fields/retry@v3
       name: Install the target
       with:
         timeout_minutes: 10
