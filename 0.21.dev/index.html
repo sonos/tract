@@ -863,13 +863,13 @@ im = numpy.expand_dims(im, 0)
 <p>Loading a model is relatively simple. We need to instantiate the ONNX loader
 first, the we use it to load the model. Then we ask tract to optimize the model
 and get it ready to run.</p>
-<pre><code class="language-python">model = tract.onnx().model_for_path(&quot;./mobilenetv2-7.onnx&quot;).into_optimized().into_runnable()
+<pre><code class="language-python">model = tract.onnx().load(&quot;./mobilenetv2-7.onnx&quot;).into_model().into_runnable()
 </code></pre>
 <p>If we wanted to process several images, this would only have to be done once
 out of our image loop.</p>
 <h3 id="running-the-model">Running the model</h3>
 <p>tract run methods take a list of inputs and returns a list of outputs. Each input
-can be a numpy array. The outputs are tract's own Value data type, which should 
+can be a numpy array. The outputs are tract's own Tensor data type, which should
 be converted to numpy array.</p>
 <pre><code class="language-python">outputs = model.run([im])
 output = outputs[0].to_numpy()

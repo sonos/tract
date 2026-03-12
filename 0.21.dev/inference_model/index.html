@@ -456,10 +456,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#tract.inference_model.InferenceModel.into_tract" class="md-nav__link">
+  <a href="#tract.inference_model.InferenceModel.into_model" class="md-nav__link">
     <span class="md-ellipsis">
       
-        into_tract
+        into_model
       
     </span>
   </a>
@@ -769,10 +769,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#tract.inference_model.InferenceModel.into_tract" class="md-nav__link">
+  <a href="#tract.inference_model.InferenceModel.into_model" class="md-nav__link">
     <span class="md-ellipsis">
       
-        into_tract
+        into_model
       
     </span>
   </a>
@@ -923,7 +923,7 @@ model = tract.onnx().load(&quot;./mobilenetv2-7.onnx&quot;)
 model.set_input_fact(0, &quot;1,3,224,224,f32&quot;)
 
 # get ready to run the model
-model = model.into_optimized().into_runnable()
+model = model.into_model().into_runnable()
 </code></pre>
 
 
@@ -1096,7 +1096,7 @@ model = model.into_optimized().into_runnable()
 <span class="sd">    model.set_input_fact(0, &quot;1,3,224,224,f32&quot;)</span>
 
 <span class="sd">    # get ready to run the model</span>
-<span class="sd">    model = model.into_optimized().into_runnable()</span>
+<span class="sd">    model = model.into_model().into_runnable()</span>
 <span class="sd">    ```</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ptr</span><span class="p">):</span>
@@ -1110,7 +1110,7 @@ model = model.into_optimized().into_runnable()
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">ptr</span> <span class="o">==</span> <span class="kc">None</span><span class="p">:</span>
             <span class="k">raise</span> <span class="n">TractError</span><span class="p">(</span><span class="s2">&quot;invalid inference model (maybe already consumed ?)&quot;</span><span class="p">)</span>
 
-    <span class="k">def</span><span class="w"> </span><span class="nf">into_tract</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Model</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">into_model</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Model</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Convert an InferenceModel to a regular typed `Model`.</span>
 
@@ -1119,7 +1119,7 @@ model = model.into_optimized().into_runnable()
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
         <span class="n">model</span> <span class="o">=</span> <span class="n">c_void_p</span><span class="p">()</span>
-        <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_inference_model_into_tract</span><span class="p">(</span><span class="n">byref</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">),</span> <span class="n">byref</span><span class="p">(</span><span class="n">model</span><span class="p">)))</span>
+        <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_inference_model_into_model</span><span class="p">(</span><span class="n">byref</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">),</span> <span class="n">byref</span><span class="p">(</span><span class="n">model</span><span class="p">)))</span>
         <span class="k">return</span> <span class="n">Model</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">input_count</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
@@ -1457,8 +1457,8 @@ single precision "float", i16 is a 16-bit signed integer, and u8 a 8-bit unsigne
 <div class="doc doc-object doc-function">
 
 
-<h3 id="tract.inference_model.InferenceModel.into_tract" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">into_tract</span><span class="p">()</span></code>
+<h3 id="tract.inference_model.InferenceModel.into_model" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">into_model</span><span class="p">()</span></code>
 
 </h3>
 
@@ -1481,7 +1481,7 @@ model, before optimisint it all the way.</p>
 <span class="normal">45</span>
 <span class="normal">46</span>
 <span class="normal">47</span>
-<span class="normal">48</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">into_tract</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Model</span><span class="p">:</span>
+<span class="normal">48</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">into_model</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Model</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Convert an InferenceModel to a regular typed `Model`.</span>
 
@@ -1490,7 +1490,7 @@ model, before optimisint it all the way.</p>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
     <span class="n">model</span> <span class="o">=</span> <span class="n">c_void_p</span><span class="p">()</span>
-    <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_inference_model_into_tract</span><span class="p">(</span><span class="n">byref</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">),</span> <span class="n">byref</span><span class="p">(</span><span class="n">model</span><span class="p">)))</span>
+    <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_inference_model_into_model</span><span class="p">(</span><span class="n">byref</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">),</span> <span class="n">byref</span><span class="p">(</span><span class="n">model</span><span class="p">)))</span>
     <span class="k">return</span> <span class="n">Model</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
