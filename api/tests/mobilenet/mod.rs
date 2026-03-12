@@ -93,8 +93,8 @@ fn test_inference_model() -> anyhow::Result<()> {
     assert_eq!(model.output_count().unwrap(), 1);
     assert_eq!(model.input_name(0).unwrap(), "data");
     assert_eq!(model.output_name(0).unwrap(), "mobilenetv20_output_flatten0_reshape0");
-    assert_eq!(model.input_fact(0).unwrap().to_string(), "1,3,224,224,F32");
-    model.set_input_fact(0, "1,3,224,224,F32")?;
+    assert_eq!(model.input_fact(0).unwrap().to_string(), "1,3,224,224,f32");
+    model.set_input_fact(0, "1,3,224,224,f32")?;
     let model = model.into_model()?.into_runnable()?;
     let hopper = grace_hopper();
     let result = model.run([hopper])?;
@@ -118,7 +118,7 @@ fn test_set_output_names_on_inference_model() -> anyhow::Result<()> {
     model.set_output_fact(0, None)?;
     model.analyse()?;
     model.set_output_names(["mobilenetv20_output_pred_fwd"])?;
-    assert_eq!(model.output_fact(0).unwrap().to_string(), "B,1000,1,1,F32");
+    assert_eq!(model.output_fact(0).unwrap().to_string(), "B,1000,1,1,f32");
     Ok(())
 }
 
@@ -130,8 +130,8 @@ fn test_typed_model() -> anyhow::Result<()> {
     assert_eq!(model.output_count()?, 1);
     assert_eq!(model.input_name(0)?, "data");
     assert_eq!(model.output_name(0)?, "conv_53");
-    assert_eq!(model.input_fact(0)?.to_string(), "1,3,224,224,F32");
-    assert_eq!(model.output_fact(0)?.to_string(), "1,1000,F32");
+    assert_eq!(model.input_fact(0)?.to_string(), "1,3,224,224,f32");
+    assert_eq!(model.output_fact(0)?.to_string(), "1,1000,f32");
     Ok(())
 }
 
@@ -151,7 +151,7 @@ fn test_set_output_names() -> anyhow::Result<()> {
     ensure_models()?;
     let mut model = nnef()?.load("mobilenet_v2_1.0.onnx.nnef.tgz")?;
     model.set_output_names(["mean_reduce_mean_reduce_output"])?;
-    assert_eq!(model.output_fact(0)?.to_string(), "1280,1,1,F32");
+    assert_eq!(model.output_fact(0)?.to_string(), "1280,1,1,f32");
     Ok(())
 }
 
@@ -162,11 +162,11 @@ fn test_concretize() -> anyhow::Result<()> {
     model.set_input_fact(0, "B,3,224,224,f32")?;
     model.analyse()?;
     let mut typed = model.into_model()?;
-    assert_eq!(typed.input_fact(0)?.to_string(), "B,3,224,224,F32");
-    assert_eq!(typed.output_fact(0)?.to_string(), "B,1000,F32");
+    assert_eq!(typed.input_fact(0)?.to_string(), "B,3,224,224,f32");
+    assert_eq!(typed.output_fact(0)?.to_string(), "B,1000,f32");
     typed.transform(ConcretizeSymbols::new().value("B", 1))?;
-    assert_eq!(typed.input_fact(0)?.to_string(), "1,3,224,224,F32");
-    assert_eq!(typed.output_fact(0)?.to_string(), "1,1000,F32");
+    assert_eq!(typed.input_fact(0)?.to_string(), "1,3,224,224,f32");
+    assert_eq!(typed.output_fact(0)?.to_string(), "1,1000,f32");
     Ok(())
 }
 
@@ -178,8 +178,8 @@ fn test_concretize_raw_string() -> anyhow::Result<()> {
     model.analyse()?;
     let mut typed = model.into_model()?;
     typed.transform(r#"{"name":"concretize_symbols","values":{"B":1}}"#)?;
-    assert_eq!(typed.input_fact(0)?.to_string(), "1,3,224,224,F32");
-    assert_eq!(typed.output_fact(0)?.to_string(), "1,1000,F32");
+    assert_eq!(typed.input_fact(0)?.to_string(), "1,3,224,224,f32");
+    assert_eq!(typed.output_fact(0)?.to_string(), "1,1000,f32");
     Ok(())
 }
 
@@ -190,11 +190,11 @@ fn test_pulse() -> anyhow::Result<()> {
     model.set_input_fact(0, "B,3,224,224,f32")?;
     model.analyse()?;
     let mut typed = model.into_model()?;
-    assert_eq!(typed.input_fact(0)?.to_string(), "B,3,224,224,F32");
-    assert_eq!(typed.output_fact(0)?.to_string(), "B,1000,F32");
+    assert_eq!(typed.input_fact(0)?.to_string(), "B,3,224,224,f32");
+    assert_eq!(typed.output_fact(0)?.to_string(), "B,1000,f32");
     typed.transform(Pulse::new("5").symbol("B"))?;
-    assert_eq!(typed.input_fact(0)?.to_string(), "5,3,224,224,F32");
-    assert_eq!(typed.output_fact(0)?.to_string(), "5,1000,F32");
+    assert_eq!(typed.input_fact(0)?.to_string(), "5,3,224,224,f32");
+    assert_eq!(typed.output_fact(0)?.to_string(), "5,1000,f32");
     let mut properties = typed.property_keys()?;
     properties.sort();
     assert_eq!(&properties, &["pulse.delay", "pulse.input_axes", "pulse.output_axes"]);
@@ -210,8 +210,8 @@ fn test_pulse_raw_string() -> anyhow::Result<()> {
     model.analyse()?;
     let mut typed = model.into_model()?;
     typed.transform(r#"{"name":"pulse","symbol":"B","pulse":"5"}"#)?;
-    assert_eq!(typed.input_fact(0)?.to_string(), "5,3,224,224,F32");
-    assert_eq!(typed.output_fact(0)?.to_string(), "5,1000,F32");
+    assert_eq!(typed.input_fact(0)?.to_string(), "5,3,224,224,f32");
+    assert_eq!(typed.output_fact(0)?.to_string(), "5,1000,f32");
     Ok(())
 }
 
@@ -219,8 +219,8 @@ fn test_pulse_raw_string() -> anyhow::Result<()> {
 fn test_runtime_fact() -> anyhow::Result<()> {
     ensure_models()?;
     let runnable = nnef()?.load("mobilenet_v2_1.0.onnx.nnef.tgz")?.into_runnable()?;
-    assert_eq!(runnable.input_fact(0)?.to_string(), "1,3,224,224,F32");
-    assert_eq!(runnable.output_fact(0)?.to_string(), "1,1000,F32");
+    assert_eq!(runnable.input_fact(0)?.to_string(), "1,3,224,224,f32");
+    assert_eq!(runnable.output_fact(0)?.to_string(), "1,1000,f32");
     Ok(())
 }
 
@@ -251,8 +251,8 @@ fn test_f32_to_f16() -> anyhow::Result<()> {
         DatumType::F32,
         DatumType::F16,
     ))?;
-    assert_eq!(typed.input_fact(0)?.to_string(), "B,3,224,224,F16");
-    assert_eq!(typed.output_fact(0)?.to_string(), "B,1000,F16");
+    assert_eq!(typed.input_fact(0)?.to_string(), "B,3,224,224,f16");
+    assert_eq!(typed.output_fact(0)?.to_string(), "B,1000,f16");
     Ok(())
 }
 
@@ -264,8 +264,8 @@ fn test_f32_to_f16_raw_string() -> anyhow::Result<()> {
     model.analyse()?;
     let mut typed = model.into_model()?;
     typed.transform("f32_to_f16")?;
-    assert_eq!(typed.input_fact(0)?.to_string(), "B,3,224,224,F16");
-    assert_eq!(typed.output_fact(0)?.to_string(), "B,1000,F16");
+    assert_eq!(typed.input_fact(0)?.to_string(), "B,3,224,224,f16");
+    assert_eq!(typed.output_fact(0)?.to_string(), "B,1000,f16");
     Ok(())
 }
 
@@ -282,16 +282,16 @@ fn test_f16_to_f32() -> anyhow::Result<()> {
         DatumType::F32,
         DatumType::F16,
     ))?;
-    assert_eq!(typed.input_fact(0)?.to_string(), "B,3,224,224,F16");
-    assert_eq!(typed.output_fact(0)?.to_string(), "B,1000,F16");
+    assert_eq!(typed.input_fact(0)?.to_string(), "B,3,224,224,f16");
+    assert_eq!(typed.output_fact(0)?.to_string(), "B,1000,f16");
 
     // Convert back to f32
     typed.transform(FloatPrecision::new(
         DatumType::F16,
         DatumType::F32,
     ))?;
-    assert_eq!(typed.input_fact(0)?.to_string(), "B,3,224,224,F32");
-    assert_eq!(typed.output_fact(0)?.to_string(), "B,1000,F32");
+    assert_eq!(typed.input_fact(0)?.to_string(), "B,3,224,224,f32");
+    assert_eq!(typed.output_fact(0)?.to_string(), "B,1000,f32");
     Ok(())
 }
 
@@ -304,8 +304,8 @@ fn test_f16_to_f32_raw_string() -> anyhow::Result<()> {
     let mut typed = model.into_model()?;
     typed.transform("f32_to_f16")?;
     typed.transform("f16_to_f32")?;
-    assert_eq!(typed.input_fact(0)?.to_string(), "B,3,224,224,F32");
-    assert_eq!(typed.output_fact(0)?.to_string(), "B,1000,F32");
+    assert_eq!(typed.input_fact(0)?.to_string(), "B,3,224,224,f32");
+    assert_eq!(typed.output_fact(0)?.to_string(), "B,1000,f32");
     Ok(())
 }
 
@@ -322,20 +322,20 @@ fn test_typed_model_to_nnef_and_back() -> anyhow::Result<()> {
     let path = dir.path().join("nnef-dir");
     nnef.write_model_to_dir(&path, &typed)?;
     let reloaded = nnef.load(path)?;
-    assert_eq!(reloaded.input_fact(0)?.to_string(), "B,3,224,224,F32");
-    assert_eq!(reloaded.output_fact(0)?.to_string(), "B,1000,F32");
+    assert_eq!(reloaded.input_fact(0)?.to_string(), "B,3,224,224,f32");
+    assert_eq!(reloaded.output_fact(0)?.to_string(), "B,1000,f32");
 
     let path = dir.path().join("nnef.tar");
     nnef.write_model_to_tar(&path, &typed)?;
     let reloaded = nnef.load(path)?;
-    assert_eq!(reloaded.input_fact(0)?.to_string(), "B,3,224,224,F32");
-    assert_eq!(reloaded.output_fact(0)?.to_string(), "B,1000,F32");
+    assert_eq!(reloaded.input_fact(0)?.to_string(), "B,3,224,224,f32");
+    assert_eq!(reloaded.output_fact(0)?.to_string(), "B,1000,f32");
 
     let path = dir.path().join("nnef.tar.gz");
     nnef.write_model_to_tar_gz(&path, &typed)?;
     let reloaded = nnef.load(path)?;
-    assert_eq!(reloaded.input_fact(0)?.to_string(), "B,3,224,224,F32");
-    assert_eq!(reloaded.output_fact(0)?.to_string(), "B,1000,F32");
+    assert_eq!(reloaded.input_fact(0)?.to_string(), "B,3,224,224,f32");
+    assert_eq!(reloaded.output_fact(0)?.to_string(), "B,1000,f32");
     Ok(())
 }
 
@@ -383,13 +383,13 @@ fn test_transform_registry() -> anyhow::Result<()> {
 
     // Convert model to half
     model.transform("f32_to_f16")?;
-    assert_eq!(model.input_fact(0)?.to_string(), "1,3,224,224,F16");
-    assert_eq!(model.output_fact(0)?.to_string(), "1,1000,F16");
+    assert_eq!(model.input_fact(0)?.to_string(), "1,3,224,224,f16");
+    assert_eq!(model.output_fact(0)?.to_string(), "1,1000,f16");
 
     // Convert back to f32
     model.transform("f16_to_f32")?;
-    assert_eq!(model.input_fact(0)?.to_string(), "1,3,224,224,F32");
-    assert_eq!(model.output_fact(0)?.to_string(), "1,1000,F32");
+    assert_eq!(model.input_fact(0)?.to_string(), "1,3,224,224,f32");
+    assert_eq!(model.output_fact(0)?.to_string(), "1,1000,f32");
     Ok(())
 }
 
@@ -433,10 +433,10 @@ fn test_runtime_fact_iterator() -> anyhow::Result<()> {
     let runnable = nnef.load("mobilenet_v2_1.0.onnx.nnef.tgz")?.into_runnable()?;
     let inputs = runnable.input_facts()?.collect::<Vec<_>>();
     assert!(inputs.len() == 1);
-    assert_eq!(inputs[0].to_string(), "1,3,224,224,F32");
+    assert_eq!(inputs[0].to_string(), "1,3,224,224,f32");
     let outputs = runnable.output_facts()?.collect::<Vec<_>>();
     assert!(outputs.len() == 1);
-    assert_eq!(outputs[0].to_string(), "1,1000,F32");
+    assert_eq!(outputs[0].to_string(), "1,1000,f32");
     Ok(())
 }
 
