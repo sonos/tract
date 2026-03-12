@@ -40,6 +40,13 @@ impl EvalOp for RmsNorm {
 
 impl TypedOp for RmsNorm {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        ensure!(self.eps.rank() == 0, "RmsNorm: eps must be a rank-0 tensor");
+        ensure!(
+            self.axis < inputs[0].rank(),
+            "RmsNorm: axis {} is out of bounds for input rank {}",
+            self.axis,
+            inputs[0].rank()
+        );
         let dt = inputs[0].datum_type;
         let fact = dt.fact(inputs[0].shape.clone());
         Ok(tvec!(fact))
@@ -122,6 +129,7 @@ pub fn detect_rms_norm(
     let eps = add_consts[0].val().clone();
     rule_if!(eps.len() == 1);
     rule_if!(eps.datum_type() == dt);
+    let eps = eps.into_tensor().into_shape(&[])?.into_arc_tensor();
 
     // Identify Rsqrt
     rule_if_some!(rsqrt_succ = model.single_succ(add_succ.id)?);
