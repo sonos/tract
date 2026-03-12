@@ -1,4 +1,4 @@
-numpy==1.26.4
+numpy==2.0.2
 setuptools==78.1.1
 setuptools_rust==1.12.0
 toml==0.10.2
