@@ -39,8 +39,8 @@ fn main() -> anyhow::Result<()> {
         .samples::<i16>()
         .map(|x| x.unwrap() as f32)
         .collect();
-    let samples: Value = Value::from_slice(&[1, wav.len()], &wav)?;
-    let len: Value = arr1(&[wav.len() as i64]).try_into()?;
+    let samples = Value::from_slice(&[1, wav.len()], &wav)?;
+    let len = value(arr1(&[wav.len() as i64]))?;
 
     let [features, feat_len] = preprocessor.run([samples, len])?.try_into().unwrap();
     let [encoded, _lens] = encoder.run([features, feat_len])?.try_into().unwrap();
@@ -53,13 +53,12 @@ fn main() -> anyhow::Result<()> {
     let mut hyp = vec![];
     let mut frame_ix = 0;
     let mut token = Value::from_slice(&[1, 1], &[0i32])?;
-    let mut state_0: Value = Array3::<f32>::zeros([2, 1, 640]).try_into()?;
-    let mut state_1: Value = Array3::<f32>::zeros([2, 1, 640]).try_into()?;
+    let mut state_0 = value(Array3::<f32>::zeros([2, 1, 640]))?;
+    let mut state_1 = value(Array3::<f32>::zeros([2, 1, 640]))?;
 
     [token, state_0, state_1] = decoder.run([token, state_0, state_1])?.try_into().unwrap();
     while hyp.len() < max_len && frame_ix < max_frames {
-        let frame: Value =
-            encoded.slice_axis(Axis(2), (frame_ix..frame_ix + 1).into()).try_into()?;
+        let frame = value(encoded.slice_axis(Axis(2), (frame_ix..frame_ix + 1).into()))?;
         let [logits] = joint.run([frame, token.clone()])?.try_into().unwrap();
         let logits = logits.view::<f32>()?;
         let logits = logits.as_slice().unwrap();

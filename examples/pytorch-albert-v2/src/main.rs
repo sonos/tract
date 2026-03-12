@@ -25,23 +25,20 @@ fn main() -> Result<()> {
         .into_tract()?
         .into_runnable()?;
 
-    let input_ids: Value = tract_ndarray::Array2::from_shape_vec(
+    let input_ids = tract_ndarray::Array2::from_shape_vec(
         (1, length),
         input_ids.iter().map(|&x| x as i64).collect(),
-    )?
-    .try_into()?;
-    let attention_mask: Value = tract_ndarray::Array2::from_shape_vec(
+    )?;
+    let attention_mask = tract_ndarray::Array2::from_shape_vec(
         (1, length),
         attention_mask.iter().map(|&x| x as i64).collect(),
-    )?
-    .try_into()?;
-    let token_type_ids: Value = tract_ndarray::Array2::from_shape_vec(
+    )?;
+    let token_type_ids = tract_ndarray::Array2::from_shape_vec(
         (1, length),
         token_type_ids.iter().map(|&x| x as i64).collect(),
-    )?
-    .try_into()?;
+    )?;
 
-    let outputs = model.run([input_ids, attention_mask, token_type_ids])?;
+    let outputs = model.run((input_ids, attention_mask, token_type_ids))?;
     let logits = outputs[0].view::<f32>()?;
     let logits = logits.slice(s![0, mask_pos, ..]);
     let word_id = logits.iter().zip(0..).max_by(|a, b| a.0.partial_cmp(b.0).unwrap()).unwrap().1;

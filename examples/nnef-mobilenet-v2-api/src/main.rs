@@ -16,7 +16,7 @@ fn main() -> Result<()> {
     });
 
     // run the model on the input
-    let result: Vec<Value> = model.run([input])?;
+    let result = model.run([input])?;
 
     // find and display the max value with its index
     let best =
