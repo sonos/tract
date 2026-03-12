@@ -15,7 +15,7 @@ import tract
 model = (
     tract.onnx()
     .load("./mobilenetv2-7.onnx")
-    .into_optimized()
+    .into_model()
     .into_runnable()
 )
 

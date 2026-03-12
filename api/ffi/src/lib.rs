@@ -508,7 +508,7 @@ pub unsafe extern "C" fn tract_inference_model_analyse(
 /// This function takes ownership of the InferenceModel `model` whether it succeeds
 /// or not. `tract_inference_model_destroy` must not be used on `model`.
 ///
-/// On the other hand, caller will be owning the newly created `optimized` model.
+/// On the other hand, caller will be owning the newly created typed model.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_inference_model_into_model(
     model: *mut *mut TractInferenceModel,
@@ -766,16 +766,16 @@ pub unsafe extern "C" fn tract_model_property_names(
 pub unsafe extern "C" fn tract_model_property(
     model: *const TractModel,
     name: *const i8,
-    value: *mut *mut TractTensor,
+    tensor: *mut *mut TractTensor,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
-        check_not_null!(model, name, value);
+        check_not_null!(model, name, tensor);
         let name = CStr::from_ptr(name as _)
             .to_str()
             .context("failed to parse property name (not utf8)")?
             .to_owned();
         let v = (*model).0.property(name).context("Property not found")?;
-        *value = Box::into_raw(Box::new(TractTensor(v)));
+        *tensor = Box::into_raw(Box::new(TractTensor(v)));
         Ok(())
     })
 }
@@ -1013,16 +1013,16 @@ pub unsafe extern "C" fn tract_runnable_property_names(
 pub unsafe extern "C" fn tract_runnable_property(
     model: *const TractRunnable,
     name: *const i8,
-    value: *mut *mut TractTensor,
+    tensor: *mut *mut TractTensor,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
-        check_not_null!(model, name, value);
+        check_not_null!(model, name, tensor);
         let name = CStr::from_ptr(name as _)
             .to_str()
             .context("failed to parse property name (not utf8)")?
             .to_owned();
         let v = (*model).0.property(name).context("Property not found")?;
-        *value = Box::into_raw(Box::new(TractTensor(v)));
+        *tensor = Box::into_raw(Box::new(TractTensor(v)));
         Ok(())
     })
 }
@@ -1049,16 +1049,16 @@ pub unsafe extern "C" fn tract_tensor_from_bytes(
     rank: usize,
     shape: *const usize,
     data: *mut c_void,
-    value: *mut *mut TractTensor,
+    tensor: *mut *mut TractTensor,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
-        check_not_null!(value);
-        *value = std::ptr::null_mut();
+        check_not_null!(tensor);
+        *tensor = std::ptr::null_mut();
         let shape = std::slice::from_raw_parts(shape, rank);
         let len = shape.iter().product::<usize>();
         let data = std::slice::from_raw_parts(data as *const u8, len * datum_type.size_of());
         let it = Tensor::from_bytes(datum_type, shape, data)?;
-        *value = Box::into_raw(Box::new(TractTensor(it)));
+        *tensor = Box::into_raw(Box::new(TractTensor(it)));
         Ok(())
     })
 }
@@ -1068,12 +1068,12 @@ pub unsafe extern "C" fn tract_tensor_from_bytes(
 /// The returned string must be freed by the caller using tract_free_cstring.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_tensor_dump(
-    value: *const TractTensor,
+    tensor: *const TractTensor,
     spec: *mut *mut c_char,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
-        check_not_null!(value, spec);
-        *spec = CString::new(format!("{:?}", (*value).0))?.into_raw();
+        check_not_null!(tensor, spec);
+        *spec = CString::new(format!("{:?}", (*tensor).0))?.into_raw();
         Ok(())
     })
 }
@@ -1102,24 +1102,24 @@ pub unsafe extern "C" fn tract_tensor_convert_to(
 
 /// Destroy a tensor.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn tract_tensor_destroy(value: *mut *mut TractTensor) -> TRACT_RESULT {
-    release!(value)
+pub unsafe extern "C" fn tract_tensor_destroy(tensor: *mut *mut TractTensor) -> TRACT_RESULT {
+    release!(tensor)
 }
 
-/// Inspect part of a tensor. Except `value`, all argument pointers can be null if only some specific bits
+/// Inspect part of a tensor. Except `tensor`, all argument pointers can be null if only some specific bits
 /// are required.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_tensor_as_bytes(
-    value: *mut TractTensor,
+    tensor: *mut TractTensor,
     datum_type: *mut DatumType,
     rank: *mut usize,
     shape: *mut *const usize,
     data: *mut *const c_void,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
-        check_not_null!(value);
-        let value = &(*value).0;
-        let bits = value.as_bytes()?;
+        check_not_null!(tensor);
+        let tensor = &(*tensor).0;
+        let bits = tensor.as_bytes()?;
         if !datum_type.is_null() {
             *datum_type = bits.0;
         }

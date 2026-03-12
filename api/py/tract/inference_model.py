@@ -21,7 +21,7 @@ class InferenceModel:
     model.set_input_fact(0, "1,3,224,224,f32")
 
     # get ready to run the model
-    model = model.into_optimized().into_runnable()
+    model = model.into_model().into_runnable()
     ```
     """
     def __init__(self, ptr):
