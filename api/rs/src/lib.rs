@@ -612,64 +612,64 @@ anyhow::bail!("Unsupported type {}", std::any::type_name::<T>())
 */
 
 fn to_internal_dt(it: DatumType) -> tract_nnef::prelude::DatumType {
-    use DatumType::*;
-    use tract_nnef::prelude::DatumType::*;
+    type Api = DatumType;
+    type Internal = tract_nnef::prelude::DatumType;
     match it {
-        TRACT_DATUM_TYPE_BOOL => Bool,
-        TRACT_DATUM_TYPE_U8 => U8,
-        TRACT_DATUM_TYPE_U16 => U16,
-        TRACT_DATUM_TYPE_U32 => U32,
-        TRACT_DATUM_TYPE_U64 => U64,
-        TRACT_DATUM_TYPE_I8 => I8,
-        TRACT_DATUM_TYPE_I16 => I16,
-        TRACT_DATUM_TYPE_I32 => I32,
-        TRACT_DATUM_TYPE_I64 => I64,
-        TRACT_DATUM_TYPE_F16 => F16,
-        TRACT_DATUM_TYPE_F32 => F32,
-        TRACT_DATUM_TYPE_F64 => F64,
+        Api::Bool => Internal::Bool,
+        Api::U8 => Internal::U8,
+        Api::U16 => Internal::U16,
+        Api::U32 => Internal::U32,
+        Api::U64 => Internal::U64,
+        Api::I8 => Internal::I8,
+        Api::I16 => Internal::I16,
+        Api::I32 => Internal::I32,
+        Api::I64 => Internal::I64,
+        Api::F16 => Internal::F16,
+        Api::F32 => Internal::F32,
+        Api::F64 => Internal::F64,
         #[cfg(feature = "complex")]
-        TRACT_DATUM_TYPE_COMPLEX_I16 => ComplexI16,
+        Api::ComplexI16 => Internal::ComplexI16,
         #[cfg(feature = "complex")]
-        TRACT_DATUM_TYPE_COMPLEX_I32 => ComplexI32,
+        Api::ComplexI32 => Internal::ComplexI32,
         #[cfg(feature = "complex")]
-        TRACT_DATUM_TYPE_COMPLEX_I64 => ComplexI64,
+        Api::ComplexI64 => Internal::ComplexI64,
         #[cfg(feature = "complex")]
-        TRACT_DATUM_TYPE_COMPLEX_F16 => ComplexF16,
+        Api::ComplexF16 => Internal::ComplexF16,
         #[cfg(feature = "complex")]
-        TRACT_DATUM_TYPE_COMPLEX_F32 => ComplexF32,
+        Api::ComplexF32 => Internal::ComplexF32,
         #[cfg(feature = "complex")]
-        TRACT_DATUM_TYPE_COMPLEX_F64 => ComplexF64,
+        Api::ComplexF64 => Internal::ComplexF64,
     }
 }
 
 fn from_internal_dt(it: tract_nnef::prelude::DatumType) -> Result<DatumType> {
-    use DatumType::*;
-    use tract_nnef::prelude::DatumType::*;
+    type Api = DatumType;
+    type Internal = tract_nnef::prelude::DatumType;
     Ok(match it {
-        Bool => TRACT_DATUM_TYPE_BOOL,
-        U8 => TRACT_DATUM_TYPE_U8,
-        U16 => TRACT_DATUM_TYPE_U16,
-        U32 => TRACT_DATUM_TYPE_U32,
-        U64 => TRACT_DATUM_TYPE_U64,
-        I8 => TRACT_DATUM_TYPE_I8,
-        I16 => TRACT_DATUM_TYPE_I16,
-        I32 => TRACT_DATUM_TYPE_I32,
-        I64 => TRACT_DATUM_TYPE_I64,
-        F16 => TRACT_DATUM_TYPE_F16,
-        F32 => TRACT_DATUM_TYPE_F32,
-        F64 => TRACT_DATUM_TYPE_F64,
+        Internal::Bool => Api::Bool,
+        Internal::U8 => Api::U8,
+        Internal::U16 => Api::U16,
+        Internal::U32 => Api::U32,
+        Internal::U64 => Api::U64,
+        Internal::I8 => Api::I8,
+        Internal::I16 => Api::I16,
+        Internal::I32 => Api::I32,
+        Internal::I64 => Api::I64,
+        Internal::F16 => Api::F16,
+        Internal::F32 => Api::F32,
+        Internal::F64 => Api::F64,
         #[cfg(feature = "complex")]
-        TRACT_DATUM_TYPE_COMPLEX_I16 => ComplexI16,
+        Internal::ComplexI16 => Api::ComplexI16,
         #[cfg(feature = "complex")]
-        TRACT_DATUM_TYPE_COMPLEX_I32 => ComplexI32,
+        Internal::ComplexI32 => Api::ComplexI32,
         #[cfg(feature = "complex")]
-        TRACT_DATUM_TYPE_COMPLEX_I64 => ComplexI64,
+        Internal::ComplexI64 => Api::ComplexI64,
         #[cfg(feature = "complex")]
-        TRACT_DATUM_TYPE_COMPLEX_F16 => ComplexF16,
+        Internal::ComplexF16 => Api::ComplexF16,
         #[cfg(feature = "complex")]
-        TRACT_DATUM_TYPE_COMPLEX_F32 => ComplexF32,
+        Internal::ComplexF32 => Api::ComplexF32,
         #[cfg(feature = "complex")]
-        TRACT_DATUM_TYPE_COMPLEX_F64 => ComplexF64,
+        Internal::ComplexF64 => Api::ComplexF64,
         _ => {
             anyhow::bail!("Unsupported DatumType in the public API {:?}", it)
         }

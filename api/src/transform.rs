@@ -138,7 +138,7 @@ transform_config!(Pulse, "pulse");
 /// # Example
 /// ```ignore
 /// use tract_api::DatumType;
-/// model.transform(FloatPrecision::new(DatumType::TRACT_DATUM_TYPE_F32, DatumType::TRACT_DATUM_TYPE_F16))?;
+/// model.transform(FloatPrecision::new(DatumType::F32, DatumType::F16))?;
 /// ```
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct FloatPrecision {
@@ -151,11 +151,10 @@ pub struct FloatPrecision {
 }
 
 fn datum_type_to_str(dt: DatumType) -> &'static str {
-    use DatumType::*;
     match dt {
-        TRACT_DATUM_TYPE_F16 => "f16",
-        TRACT_DATUM_TYPE_F32 => "f32",
-        TRACT_DATUM_TYPE_F64 => "f64",
+        DatumType::F16 => "f16",
+        DatumType::F32 => "f32",
+        DatumType::F64 => "f64",
         _ => panic!("FloatPrecision only supports float datum types (F16, F32, F64)"),
     }
 }
