@@ -5,6 +5,9 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
+    ignore:
+      # Only update them manually since updating them might break compatibility
+      - dependency-name: "numpy"
     groups:
       actions:
         patterns:
@@ -23,6 +26,9 @@ updates:
 
   - package-ecosystem: "pip"
     directory: "/api/py"
+    ignore:
+      # Only update them manually since updating them might break compatibility
+      - dependency-name: "numpy"
     schedule:
       interval: "weekly"
       day: "monday"
