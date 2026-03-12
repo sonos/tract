@@ -87,7 +87,7 @@ fn main() -> Result<(), Error> {
     let args = CliArgs::parse();
     let mut model = tract::onnx()?.load(args.weights)?;
     model.set_input_fact(0, "1,3,640,640,f32")?;
-    let model = model.into_tract()?.into_runnable()?;
+    let model = model.into_model()?.into_runnable()?;
     let raw_image = image::open(args.input_image)?;
 
     // scale the image with black padding

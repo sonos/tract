@@ -510,7 +510,7 @@ pub unsafe extern "C" fn tract_inference_model_analyse(
 ///
 /// On the other hand, caller will be owning the newly created `optimized` model.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn tract_inference_model_into_tract(
+pub unsafe extern "C" fn tract_inference_model_into_model(
     model: *mut *mut TractInferenceModel,
     typed: *mut *mut TractModel,
 ) -> TRACT_RESULT {
@@ -519,7 +519,7 @@ pub unsafe extern "C" fn tract_inference_model_into_tract(
         *typed = std::ptr::null_mut();
         let m = Box::from_raw(*model);
         *model = std::ptr::null_mut();
-        let result = m.0.into_tract()?;
+        let result = m.0.into_model()?;
         *typed = Box::into_raw(Box::new(TractModel(result))) as _;
         Ok(())
     })

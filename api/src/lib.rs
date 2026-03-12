@@ -133,7 +133,7 @@ pub trait InferenceModelInterface: Sized {
 
     fn analyse(&mut self) -> Result<()>;
 
-    fn into_tract(self) -> Result<Self::Model>;
+    fn into_model(self) -> Result<Self::Model>;
 }
 
 pub trait ModelInterface: Sized {

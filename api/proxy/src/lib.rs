@@ -234,9 +234,9 @@ impl InferenceModelInterface for InferenceModel {
         Ok(())
     }
 
-    fn into_tract(mut self) -> Result<Self::Model> {
+    fn into_model(mut self) -> Result<Self::Model> {
         let mut ptr = null_mut();
-        check!(sys::tract_inference_model_into_tract(&mut self.0, &mut ptr))?;
+        check!(sys::tract_inference_model_into_model(&mut self.0, &mut ptr))?;
         Ok(Model(ptr))
     }
 }

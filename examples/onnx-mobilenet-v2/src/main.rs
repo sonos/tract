@@ -2,7 +2,7 @@ use anyhow::Result;
 use tract::prelude::*;
 
 fn main() -> Result<()> {
-    let model = tract::onnx()?.load("mobilenetv2-7.onnx")?.into_tract()?.into_runnable()?;
+    let model = tract::onnx()?.load("mobilenetv2-7.onnx")?.into_model()?.into_runnable()?;
 
     // open image, resize it and make a Tensor out of it
     let image = image::open("grace_hopper.jpg").unwrap().to_rgb8();

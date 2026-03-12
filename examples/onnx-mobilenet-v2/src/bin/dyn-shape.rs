@@ -8,7 +8,7 @@ fn main() -> Result<()> {
     // Create a symbolic batch dimension
     model.set_input_fact(0, "N,3,224,224,f32")?;
 
-    let model = model.into_tract()?.into_runnable()?;
+    let model = model.into_model()?.into_runnable()?;
 
     // open image, resize it and make a Tensor out of it
     let image = image::open("grace_hopper.jpg").unwrap().to_rgb8();

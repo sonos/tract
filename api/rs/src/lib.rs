@@ -199,7 +199,7 @@ impl InferenceModelInterface for InferenceModel {
         Ok(())
     }
 
-    fn into_tract(self) -> Result<Self::Model> {
+    fn into_model(self) -> Result<Self::Model> {
         let typed = self.0.into_typed()?.into_decluttered()?;
         Ok(Model(typed))
     }
