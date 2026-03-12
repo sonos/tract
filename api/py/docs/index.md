@@ -88,7 +88,7 @@ first, the we use it to load the model. Then we ask tract to optimize the model
 and get it ready to run.
 
 ```python
-model = tract.onnx().model_for_path("./mobilenetv2-7.onnx").into_optimized().into_runnable()
+model = tract.onnx().load("./mobilenetv2-7.onnx").into_model().into_runnable()
 ```
 
 If we wanted to process several images, this would only have to be done once

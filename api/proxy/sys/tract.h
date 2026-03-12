@@ -285,7 +285,7 @@ enum TRACT_RESULT tract_inference_model_analyse(struct TractInferenceModel *mode
  * This function takes ownership of the InferenceModel `model` whether it succeeds
  * or not. `tract_inference_model_destroy` must not be used on `model`.
  *
- * On the other hand, caller will be owning the newly created `optimized` model.
+ * On the other hand, caller will be owning the newly created typed model.
  */
 enum TRACT_RESULT tract_inference_model_into_model(struct TractInferenceModel **model,
                                                    struct TractModel **typed);
@@ -393,7 +393,7 @@ enum TRACT_RESULT tract_model_property_names(const struct TractModel *model, int
  */
 enum TRACT_RESULT tract_model_property(const struct TractModel *model,
                                        const int8_t *name,
-                                       struct TractTensor **value);
+                                       struct TractTensor **tensor);
 
 /**
  * Parse a fact specification string into an Fact.
@@ -513,7 +513,7 @@ enum TRACT_RESULT tract_runnable_property_names(const struct TractRunnable *mode
  */
 enum TRACT_RESULT tract_runnable_property(const struct TractRunnable *model,
                                           const int8_t *name,
-                                          struct TractTensor **value);
+                                          struct TractTensor **tensor);
 
 enum TRACT_RESULT tract_runnable_release(struct TractRunnable **runnable);
 
@@ -531,14 +531,14 @@ enum TRACT_RESULT tract_tensor_from_bytes(DatumType datum_type,
                                          uintptr_t rank,
                                          const uintptr_t *shape,
                                          void *data,
-                                         struct TractTensor **value);
+                                         struct TractTensor **tensor);
 
 /**
  * Write a tensor as a debug string
  *
  * The returned string must be freed by the caller using tract_free_cstring.
  */
-enum TRACT_RESULT tract_tensor_dump(const struct TractTensor *value, char **spec);
+enum TRACT_RESULT tract_tensor_dump(const struct TractTensor *tensor, char **spec);
 
 /**
  * Convert a tensor to a new datum type.
@@ -556,13 +556,13 @@ enum TRACT_RESULT tract_tensor_convert_to(const struct TractTensor *input,
 /**
  * Destroy a tensor.
  */
-enum TRACT_RESULT tract_tensor_destroy(struct TractTensor **value);
+enum TRACT_RESULT tract_tensor_destroy(struct TractTensor **tensor);
 
 /**
- * Inspect part of a tensor. Except `value`, all argument pointers can be null if only some specific bits
+ * Inspect part of a tensor. Except `tensor`, all argument pointers can be null if only some specific bits
  * are required.
  */
-enum TRACT_RESULT tract_tensor_as_bytes(struct TractTensor *value,
+enum TRACT_RESULT tract_tensor_as_bytes(struct TractTensor *tensor,
                                        DatumType *datum_type,
                                        uintptr_t *rank,
                                        const uintptr_t **shape,

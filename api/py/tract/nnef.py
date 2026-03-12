@@ -37,7 +37,6 @@ class Nnef:
         model = (
             tract.nnef()
             .load("mobilenet_v2_1.0.onnx.nnef.tgz")
-            .into_optimized()
             .into_runnable()
         )
         ```
