@@ -29,10 +29,24 @@ use tract_transformers::WithTractTransformers;
 use tract_api::*;
 
 pub mod prelude {
-    pub use crate::{Dim, Fact, Model, Runnable, Runtime, Tensor, nnef, onnx, runtime_for_name};
-    pub use DatumType;
+    // Concrete types
+    pub use crate::{
+        Dim, Fact, InferenceFact, InferenceModel, Model, Nnef, Onnx, Runnable, Runtime, State,
+        Tensor, nnef, onnx, runtime_for_name,
+    };
     pub use ndarray as tract_ndarray;
-    pub use tract_api::*;
+
+    // User-facing API types
+    pub use tract_api::{
+        ConcretizeSymbols, Datum, DatumType, FloatPrecision, Pulse, TransformSpec, tensor,
+    };
+
+    // Traits needed for method resolution — hidden from namespace
+    pub use tract_api::{
+        DimInterface as _, FactInterface as _, InferenceFactInterface as _,
+        InferenceModelInterface as _, ModelInterface as _, NnefInterface as _, OnnxInterface as _,
+        RunnableInterface as _, RuntimeInterface as _, StateInterface as _, TensorInterface as _,
+    };
 }
 
 /// Creates an instance of an NNEF framework and parser that can be used to load and dump NNEF models.
