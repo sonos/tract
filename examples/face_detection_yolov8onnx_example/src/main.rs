@@ -4,7 +4,7 @@ use image::DynamicImage;
 use std::cmp::Ordering;
 use std::cmp::PartialOrd;
 use tract_ndarray::s;
-use tract_onnx::prelude::*;
+use tract_rs::prelude::*;
 
 #[derive(Parser)]
 struct CliArgs {
@@ -85,11 +85,9 @@ fn calculate_iou(box1: &Bbox, box2: &Bbox) -> f32 {
 
 fn main() -> Result<(), Error> {
     let args = CliArgs::parse();
-    let model = tract_onnx::onnx()
-        .model_for_path(args.weights)?
-        .with_input_fact(0, f32::fact([1, 3, 640, 640]).into())?
-        .into_optimized()?
-        .into_runnable()?;
+    let mut model = tract_rs::onnx()?.load(args.weights)?;
+    model.set_input_fact(0, "1,3,640,640,f32")?;
+    let model = model.into_tract()?.into_runnable()?;
     let raw_image = image::open(args.input_image)?;
 
     // scale the image with black padding
@@ -111,15 +109,13 @@ fn main() -> Result<(), Error> {
         (640 - new_width as i64) / 2,
         (640 - new_height as i64) / 2,
     );
-    let image: Tensor = tract_ndarray::Array4::from_shape_fn((1, 3, 640, 640), |(_, c, y, x)| {
+    let input = tract_ndarray::Array4::from_shape_fn((1, 3, 640, 640), |(_, c, y, x)| {
         padded.get_pixel(x as u32, y as u32)[c] as f32 / 255.0
-    })
-    .into();
+    });
 
     //run model
-    //
-    let forward = model.run(tvec![image.to_owned().into()])?;
-    let results = forward[0].to_dense_array_view::<f32>()?.view().t().into_owned();
+    let forward = model.run([input])?;
+    let results = forward[0].view::<f32>()?.t().into_owned();
     let mut bbox_vec: Vec<Bbox> = vec![];
     for i in 0..results.len_of(tract_ndarray::Axis(0)) {
         let row = results.slice(s![i, .., ..]);
