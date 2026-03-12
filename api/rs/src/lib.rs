@@ -552,15 +552,21 @@ impl Fact {
         let fact = tract_onnx::prelude::Fact::to_typed_fact(&fact)?.into_owned();
         Ok(Fact(fact))
     }
-
-    fn dump(&self) -> Result<String> {
-        Ok(format!("{:?}", self.0))
-    }
 }
 
 impl Display for Fact {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.dump().unwrap())
+        for (i, dim) in self.0.shape.iter().enumerate() {
+            if i > 0 {
+                write!(f, ",")?;
+            }
+            write!(f, "{dim}")?;
+        }
+        let dt = format!("{:?}", self.0.datum_type).to_lowercase();
+        if self.0.rank() > 0 {
+            write!(f, ",")?;
+        }
+        write!(f, "{dt}")
     }
 }
 
@@ -578,15 +584,20 @@ impl InferenceFact {
         let fact = tract_libcli::tensor::parse_spec(&model.0.symbols, &spec.to_string())?;
         Ok(InferenceFact(fact))
     }
-
-    fn dump(&self) -> Result<String> {
-        Ok(format!("{:?}", self.0))
-    }
 }
 
 impl Display for InferenceFact {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.dump().unwrap())
+        let s = self.0.format_dt_shape();
+        // Lowercase the trailing datum type token (e.g. "F32" → "f32")
+        // to match the format accepted by the parser.
+        if let Some(pos) = s.rfind(',') {
+            let (dims, dt) = s.split_at(pos + 1);
+            write!(f, "{dims}{}", dt.to_lowercase())
+        } else {
+            // Scalar or unknown: the entire string is the dtype
+            write!(f, "{}", s.to_lowercase())
+        }
     }
 }
 
