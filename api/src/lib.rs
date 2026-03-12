@@ -139,7 +139,7 @@ pub trait InferenceModelInterface: Sized {
 pub trait ModelInterface: Sized {
     type Fact: FactInterface;
     type Runnable: RunnableInterface;
-    type Value: ValueInterface;
+    type Tensor: TensorInterface;
     fn input_count(&self) -> Result<usize>;
 
     fn output_count(&self) -> Result<usize>;
@@ -163,7 +163,7 @@ pub trait ModelInterface: Sized {
 
     fn property_keys(&self) -> Result<Vec<String>>;
 
-    fn property(&self, name: impl AsRef<str>) -> Result<Self::Value>;
+    fn property(&self, name: impl AsRef<str>) -> Result<Self::Tensor>;
 
     fn parse_fact(&self, spec: &str) -> Result<Self::Fact>;
 
@@ -190,10 +190,10 @@ pub trait RuntimeInterface {
 }
 
 pub trait RunnableInterface: Send + Sync {
-    type Value: ValueInterface;
+    type Tensor: TensorInterface;
     type Fact: FactInterface;
-    type State: StateInterface<Value = Self::Value>;
-    fn run(&self, inputs: impl IntoInputs<Self::Value>) -> Result<Vec<Self::Value>> {
+    type State: StateInterface<Tensor = Self::Tensor>;
+    fn run(&self, inputs: impl IntoInputs<Self::Tensor>) -> Result<Vec<Self::Tensor>> {
         self.spawn_state()?.run(inputs.into_inputs()?)
     }
 
@@ -218,7 +218,7 @@ pub trait RunnableInterface: Send + Sync {
     }
 
     fn property_keys(&self) -> Result<Vec<String>>;
-    fn property(&self, name: impl AsRef<str>) -> Result<Self::Value>;
+    fn property(&self, name: impl AsRef<str>) -> Result<Self::Tensor>;
 
     fn spawn_state(&self) -> Result<Self::State>;
 
@@ -231,21 +231,21 @@ pub trait RunnableInterface: Send + Sync {
     ) -> Result<String>
     where
         I: IntoIterator<Item = IV>,
-        IV: TryInto<Self::Value, Error = IE>,
+        IV: TryInto<Self::Tensor, Error = IE>,
         IE: Into<anyhow::Error> + Debug,
         S: IntoIterator<Item = SV>,
-        SV: TryInto<Self::Value, Error = SE>,
+        SV: TryInto<Self::Tensor, Error = SE>,
         SE: Into<anyhow::Error> + Debug;
 }
 
 pub trait StateInterface {
     type Fact: FactInterface;
-    type Value: ValueInterface;
+    type Tensor: TensorInterface;
 
     fn input_count(&self) -> Result<usize>;
     fn output_count(&self) -> Result<usize>;
 
-    fn run(&mut self, inputs: impl IntoInputs<Self::Value>) -> Result<Vec<Self::Value>>;
+    fn run(&mut self, inputs: impl IntoInputs<Self::Tensor>) -> Result<Vec<Self::Tensor>>;
 
     #[doc(hidden)]
     #[deprecated]
@@ -260,15 +260,15 @@ pub trait StateInterface {
     fn set_states<I, V, E>(&mut self, state_initializers: I) -> Result<()>
     where
         I: IntoIterator<Item = V>,
-        V: TryInto<Self::Value, Error = E>,
+        V: TryInto<Self::Tensor, Error = E>,
         E: Into<anyhow::Error> + Debug;
 
     #[doc(hidden)]
     #[deprecated]
-    fn get_states(&self) -> Result<Vec<Self::Value>>;
+    fn get_states(&self) -> Result<Vec<Self::Tensor>>;
 }
 
-pub trait ValueInterface: Debug + Sized + Clone + PartialEq + Send + Sync {
+pub trait TensorInterface: Debug + Sized + Clone + PartialEq + Send + Sync {
     fn datum_type(&self) -> Result<DatumType>;
     fn from_bytes(dt: DatumType, shape: &[usize], data: &[u8]) -> Result<Self>;
     fn as_bytes(&self) -> Result<(DatumType, &[usize], &[u8])>;
@@ -421,14 +421,14 @@ pub trait Datum {
 }
 
 // IntoInputs trait — ergonomic input conversion for run()
-pub trait IntoInputs<V: ValueInterface> {
+pub trait IntoInputs<V: TensorInterface> {
     fn into_inputs(self) -> Result<Vec<V>>;
 }
 
-// Arrays of anything convertible to Value
+// Arrays of anything convertible to Tensor
 impl<V, T, E, const N: usize> IntoInputs<V> for [T; N]
 where
-    V: ValueInterface,
+    V: TensorInterface,
     T: TryInto<V, Error = E>,
     E: Into<anyhow::Error>,
 {
@@ -438,7 +438,7 @@ where
 }
 
 // Vec<V> passthrough
-impl<V: ValueInterface> IntoInputs<V> for Vec<V> {
+impl<V: TensorInterface> IntoInputs<V> for Vec<V> {
     fn into_inputs(self) -> Result<Vec<V>> {
         Ok(self)
     }
@@ -449,7 +449,7 @@ macro_rules! impl_into_inputs_tuple {
     ($($idx:tt : $T:ident),+) => {
         impl<V, $($T),+> IntoInputs<V> for ($($T,)+)
         where
-            V: ValueInterface,
+            V: TensorInterface,
             $($T: TryInto<V>,
               <$T as TryInto<V>>::Error: Into<anyhow::Error>,)+
         {
@@ -469,10 +469,10 @@ impl_into_inputs_tuple!(0: A, 1: B, 2: C, 3: D, 4: E_, 5: F);
 impl_into_inputs_tuple!(0: A, 1: B, 2: C, 3: D, 4: E_, 5: F, 6: G);
 impl_into_inputs_tuple!(0: A, 1: B, 2: C, 3: D, 4: E_, 5: F, 6: G, 7: H);
 
-/// Convert any compatible value into a `V: ValueInterface`.
-pub fn value<V, T, E>(v: T) -> Result<V>
+/// Convert any compatible input into a `V: TensorInterface`.
+pub fn tensor<V, T, E>(v: T) -> Result<V>
 where
-    V: ValueInterface,
+    V: TensorInterface,
     T: TryInto<V, Error = E>,
     E: Into<anyhow::Error>,
 {

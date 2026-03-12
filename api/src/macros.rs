@@ -49,32 +49,32 @@ macro_rules! as_fact_impl {
 }
 
 #[macro_export]
-macro_rules! value_from_to_ndarray {
+macro_rules! tensor_from_to_ndarray {
     () => {
-        impl<T, S, D> TryFrom<ndarray::ArrayBase<S, D>> for Value
+        impl<T, S, D> TryFrom<ndarray::ArrayBase<S, D>> for Tensor
         where
             T: $crate::Datum + Clone + 'static,
             S: RawData<Elem = T> + Data,
             D: Dimension,
         {
             type Error = anyhow::Error;
-            fn try_from(view: ndarray::ArrayBase<S, D>) -> Result<Value> {
+            fn try_from(view: ndarray::ArrayBase<S, D>) -> Result<Tensor> {
                 if let Some(slice) = view.as_slice_memory_order()
                     && (0..view.ndim()).all(|ix| {
                         view.strides().get(ix + 1).is_none_or(|next| *next <= view.strides()[ix])
                     })
                 {
-                    Value::from_slice(view.shape(), slice)
+                    Tensor::from_slice(view.shape(), slice)
                 } else {
                     let slice: Vec<_> = view.iter().cloned().collect();
-                    Value::from_slice(view.shape(), &slice)
+                    Tensor::from_slice(view.shape(), &slice)
                 }
             }
         }
 
-        impl<'a, T: $crate::Datum> TryFrom<&'a Value> for ndarray::ArrayViewD<'a, T> {
+        impl<'a, T: $crate::Datum> TryFrom<&'a Tensor> for ndarray::ArrayViewD<'a, T> {
             type Error = anyhow::Error;
-            fn try_from(value: &'a Value) -> Result<Self, Self::Error> {
+            fn try_from(value: &'a Tensor) -> Result<Self, Self::Error> {
                 value.view()
             }
         }

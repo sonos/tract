@@ -18,8 +18,8 @@ use tract_libcli::profile::BenchLimits;
 use tract_libcli::tensor::RunTensors;
 use tract_nnef::internal::Runtime as _;
 use tract_nnef::prelude::{
-    Framework, IntoArcTensor, IntoTValue, SymbolValues, TDim, TValue, TVec, Tensor, TractResult,
-    TypedFact, TypedModel, TypedSimplePlan,
+    Framework, IntoArcTensor, IntoTValue, SymbolValues, TDim, TValue, TVec,
+    Tensor as InternalTensor, TractResult, TypedFact, TypedModel, TypedSimplePlan,
 };
 use tract_onnx::prelude::InferenceModelExt;
 use tract_onnx_opl::WithOnnx;
@@ -29,7 +29,7 @@ use tract_transformers::WithTractTransformers;
 use tract_api::*;
 
 pub mod prelude {
-    pub use crate::{Dim, Fact, Model, Runnable, Runtime, Value, nnef, onnx, runtime_for_name};
+    pub use crate::{Dim, Fact, Model, Runnable, Runtime, Tensor, nnef, onnx, runtime_for_name};
     pub use DatumType;
     pub use ndarray as tract_ndarray;
     pub use tract_api::*;
@@ -212,7 +212,7 @@ pub struct Model(TypedModel);
 impl ModelInterface for Model {
     type Fact = Fact;
     type Runnable = Runnable;
-    type Value = Value;
+    type Tensor = Tensor;
 
     fn input_count(&self) -> Result<usize> {
         Ok(self.0.inputs.len())
@@ -286,13 +286,13 @@ impl ModelInterface for Model {
         Ok(self.0.properties.keys().cloned().collect())
     }
 
-    fn property(&self, name: impl AsRef<str>) -> Result<Value> {
+    fn property(&self, name: impl AsRef<str>) -> Result<Tensor> {
         let name = name.as_ref();
         self.0
             .properties
             .get(name)
             .with_context(|| format!("no property for name {name}"))
-            .map(|t| Value(t.clone()))
+            .map(|t| Tensor(t.clone()))
     }
 }
 
@@ -319,11 +319,11 @@ impl RuntimeInterface for Runtime {
 pub struct Runnable(Arc<dyn tract_nnef::internal::Runnable>);
 
 impl RunnableInterface for Runnable {
-    type Value = Value;
+    type Tensor = Tensor;
     type State = State;
     type Fact = Fact;
 
-    fn run(&self, inputs: impl IntoInputs<Value>) -> Result<Vec<Value>> {
+    fn run(&self, inputs: impl IntoInputs<Tensor>) -> Result<Vec<Tensor>> {
         StateInterface::run(&mut self.spawn_state()?, inputs.into_inputs()?)
     }
 
@@ -351,18 +351,18 @@ impl RunnableInterface for Runnable {
         Ok(self.0.properties().keys().cloned().collect())
     }
 
-    fn property(&self, name: impl AsRef<str>) -> Result<Value> {
+    fn property(&self, name: impl AsRef<str>) -> Result<Tensor> {
         let name = name.as_ref();
         self.0
             .properties()
             .get(name)
             .with_context(|| format!("no property for name {name}"))
-            .map(|t| Value(t.clone()))
+            .map(|t| Tensor(t.clone()))
     }
 
     fn cost_json(&self) -> Result<String> {
-        let input: Option<Vec<Value>> = None;
-        let states: Option<Vec<Value>> = None;
+        let input: Option<Vec<Tensor>> = None;
+        let states: Option<Vec<Tensor>> = None;
         self.profile_json(input, states)
     }
 
@@ -373,10 +373,10 @@ impl RunnableInterface for Runnable {
     ) -> Result<String>
     where
         I: IntoIterator<Item = IV>,
-        IV: TryInto<Self::Value, Error = IE>,
+        IV: TryInto<Self::Tensor, Error = IE>,
         IE: Into<anyhow::Error> + Debug,
         S: IntoIterator<Item = SV>,
-        SV: TryInto<Self::Value, Error = SE>,
+        SV: TryInto<Self::Tensor, Error = SE>,
         SE: Into<anyhow::Error> + Debug,
     {
         let model = self
@@ -418,7 +418,7 @@ pub struct State(Box<dyn tract_nnef::internal::State>);
 
 impl StateInterface for State {
     type Fact = Fact;
-    type Value = Value;
+    type Tensor = Tensor;
 
     fn input_count(&self) -> Result<usize> {
         Ok(self.0.input_count())
@@ -428,11 +428,11 @@ impl StateInterface for State {
         Ok(self.0.output_count())
     }
 
-    fn run(&mut self, inputs: impl IntoInputs<Value>) -> Result<Vec<Value>> {
+    fn run(&mut self, inputs: impl IntoInputs<Tensor>) -> Result<Vec<Tensor>> {
         let inputs: TVec<TValue> =
             inputs.into_inputs()?.into_iter().map(|v| v.0.into_tvalue()).collect();
         let outputs = self.0.run(inputs)?;
-        Ok(outputs.into_iter().map(|t| Value(t.into_arc_tensor())).collect())
+        Ok(outputs.into_iter().map(|t| Tensor(t.into_arc_tensor())).collect())
     }
 
     fn initializable_states_count(&self) -> Result<usize> {
@@ -446,13 +446,13 @@ impl StateInterface for State {
     fn set_states<I, V, E>(&mut self, state_initializers: I) -> Result<()>
     where
         I: IntoIterator<Item = V>,
-        V: TryInto<Self::Value, Error = E>,
+        V: TryInto<Self::Tensor, Error = E>,
         E: Into<anyhow::Error> + Debug,
     {
         let states: Vec<TValue> = state_initializers
             .into_iter()
             .map(|si| -> TractResult<TValue> {
-                let v: Value =
+                let v: Tensor =
                     si.try_into().map_err(|e| anyhow::anyhow!("Failed conversion:  {e:?}"))?;
                 Ok(v.0.into_tvalue())
             })
@@ -461,16 +461,16 @@ impl StateInterface for State {
         Ok(())
     }
 
-    fn get_states(&self) -> Result<Vec<Self::Value>> {
-        Ok(self.0.get_states()?.into_iter().map(|t| Value(t.into_arc_tensor())).collect())
+    fn get_states(&self) -> Result<Vec<Self::Tensor>> {
+        Ok(self.0.get_states()?.into_iter().map(|t| Tensor(t.into_arc_tensor())).collect())
     }
 }
 
-// VALUE
+// TENSOR
 #[derive(Clone, Debug)]
-pub struct Value(Arc<Tensor>);
+pub struct Tensor(Arc<InternalTensor>);
 
-impl ValueInterface for Value {
+impl TensorInterface for Tensor {
     fn datum_type(&self) -> Result<DatumType> {
         from_internal_dt(self.0.datum_type())
     }
@@ -479,8 +479,8 @@ impl ValueInterface for Value {
         let dt = to_internal_dt(dt);
         let len = shape.iter().product::<usize>() * dt.size_of();
         anyhow::ensure!(len == data.len());
-        let tensor = unsafe { Tensor::from_raw_dt(dt, shape, data)? };
-        Ok(Value(tensor.into_arc_tensor()))
+        let tensor = unsafe { InternalTensor::from_raw_dt(dt, shape, data)? };
+        Ok(Tensor(tensor.into_arc_tensor()))
     }
 
     fn as_bytes(&self) -> Result<(DatumType, &[usize], &[u8])> {
@@ -493,12 +493,12 @@ impl ValueInterface for Value {
         if self.0.datum_type() == to {
             Ok(self.clone())
         } else {
-            Ok(Value(self.0.cast_to_dt(to)?.into_owned().into_arc_tensor()))
+            Ok(Tensor(self.0.cast_to_dt(to)?.into_owned().into_arc_tensor()))
         }
     }
 }
 
-impl PartialEq for Value {
+impl PartialEq for Tensor {
     fn eq(&self, other: &Self) -> bool {
         let Ok((me_dt, me_shape, me_data)) = self.as_bytes() else { return false };
         let Ok((other_dt, other_shape, other_data)) = other.as_bytes() else { return false };
@@ -570,7 +570,7 @@ impl Display for InferenceFact {
     }
 }
 
-value_from_to_ndarray!();
+tensor_from_to_ndarray!();
 as_inference_fact_impl!(InferenceModel, InferenceFact);
 as_fact_impl!(Model, Fact);
 

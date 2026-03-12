@@ -246,7 +246,7 @@ wrapper!(Model, TractModel, tract_model_destroy);
 
 impl ModelInterface for Model {
     type Fact = Fact;
-    type Value = Value;
+    type Tensor = Tensor;
     type Runnable = Runnable;
     fn input_count(&self) -> Result<usize> {
         let mut count = 0;
@@ -333,11 +333,11 @@ impl ModelInterface for Model {
         }
     }
 
-    fn property(&self, name: impl AsRef<str>) -> Result<Value> {
+    fn property(&self, name: impl AsRef<str>) -> Result<Tensor> {
         let mut v = null_mut();
         let name = CString::new(name.as_ref())?;
         check!(sys::tract_model_property(self.0, name.as_ptr(), &mut v))?;
-        Ok(Value(v))
+        Ok(Tensor(v))
     }
 
     fn parse_fact(&self, spec: &str) -> Result<Self::Fact> {
@@ -387,11 +387,11 @@ unsafe impl Send for Runnable {}
 unsafe impl Sync for Runnable {}
 
 impl RunnableInterface for Runnable {
-    type Value = Value;
+    type Tensor = Tensor;
     type State = State;
     type Fact = Fact;
 
-    fn run(&self, inputs: impl IntoInputs<Value>) -> Result<Vec<Value>> {
+    fn run(&self, inputs: impl IntoInputs<Tensor>) -> Result<Vec<Tensor>> {
         StateInterface::run(&mut self.spawn_state()?, inputs.into_inputs()?)
     }
 
@@ -441,16 +441,16 @@ impl RunnableInterface for Runnable {
         }
     }
 
-    fn property(&self, name: impl AsRef<str>) -> Result<Value> {
+    fn property(&self, name: impl AsRef<str>) -> Result<Tensor> {
         let mut v = null_mut();
         let name = CString::new(name.as_ref())?;
         check!(sys::tract_runnable_property(self.0, name.as_ptr(), &mut v))?;
-        Ok(Value(v))
+        Ok(Tensor(v))
     }
 
     fn cost_json(&self) -> Result<String> {
-        let input: Option<Vec<Value>> = None;
-        let states: Option<Vec<Value>> = None;
+        let input: Option<Vec<Tensor>> = None;
+        let states: Option<Vec<Tensor>> = None;
         self.profile_json(input, states)
     }
 
@@ -461,23 +461,23 @@ impl RunnableInterface for Runnable {
     ) -> Result<String>
     where
         I: IntoIterator<Item = IV>,
-        IV: TryInto<Self::Value, Error = IE>,
+        IV: TryInto<Self::Tensor, Error = IE>,
         IE: Into<anyhow::Error>,
         S: IntoIterator<Item = SV>,
-        SV: TryInto<Self::Value, Error = SE>,
+        SV: TryInto<Self::Tensor, Error = SE>,
         SE: Into<anyhow::Error>,
     {
         let inputs = if let Some(inputs) = inputs {
             let inputs = inputs
                 .into_iter()
                 .map(|i| i.try_into().map_err(|e| e.into()))
-                .collect::<Result<Vec<Value>>>()?;
+                .collect::<Result<Vec<Tensor>>>()?;
             anyhow::ensure!(self.input_count()? == inputs.len());
             Some(inputs)
         } else {
             None
         };
-        let mut iptrs: Option<Vec<*mut sys::TractValue>> =
+        let mut iptrs: Option<Vec<*mut sys::TractTensor>> =
             inputs.as_ref().map(|is| is.iter().map(|v| v.0).collect());
         let mut json: *mut i8 = null_mut();
         let values = iptrs.as_mut().map(|it| it.as_mut_ptr()).unwrap_or(null_mut());
@@ -486,7 +486,7 @@ impl RunnableInterface for Runnable {
             let mut states: Vec<*const _> = vec![];
 
             for v in state_vec {
-                let val: Value = v.try_into().map_err(|e| e.into())?;
+                let val: Tensor = v.try_into().map_err(|e| e.into())?;
                 states.push(val.0);
             }
             let len = states.len();
@@ -510,15 +510,15 @@ impl RunnableInterface for Runnable {
 wrapper!(State, TractState, tract_state_destroy);
 
 impl StateInterface for State {
-    type Value = Value;
+    type Tensor = Tensor;
     type Fact = Fact;
 
-    fn run(&mut self, inputs: impl IntoInputs<Value>) -> Result<Vec<Value>> {
+    fn run(&mut self, inputs: impl IntoInputs<Tensor>) -> Result<Vec<Tensor>> {
         let inputs = inputs.into_inputs()?;
         let mut outputs = vec![null_mut(); self.output_count()?];
         let mut inputs: Vec<_> = inputs.iter().map(|v| v.0).collect();
         check!(sys::tract_state_run(self.0, inputs.as_mut_ptr(), outputs.as_mut_ptr()))?;
-        let outputs = outputs.into_iter().map(Value).collect();
+        let outputs = outputs.into_iter().map(Tensor).collect();
         Ok(outputs)
     }
 
@@ -557,14 +557,14 @@ impl StateInterface for State {
     fn set_states<I, V, E>(&mut self, state_initializers: I) -> Result<()>
     where
         I: IntoIterator<Item = V>,
-        V: TryInto<Self::Value, Error = E>,
+        V: TryInto<Self::Tensor, Error = E>,
         E: Into<anyhow::Error>,
     {
         let sptrs = {
             let mut states: Vec<*const _> = vec![];
 
             for s in state_initializers {
-                let val: Value = s.try_into().map_err(|e| e.into())?;
+                let val: Tensor = s.try_into().map_err(|e| e.into())?;
                 states.push(val.0);
             }
 
@@ -584,35 +584,35 @@ impl StateInterface for State {
     }
 
     #[allow(deprecated)]
-    fn get_states(&self) -> Result<Vec<Self::Value>> {
+    fn get_states(&self) -> Result<Vec<Self::Tensor>> {
         let n_states = self.initializable_states_count()?;
 
         let mut sptrs = vec![null_mut(); n_states];
         check!(sys::tract_state_get_states(self.0, sptrs.as_mut_ptr()))?;
 
-        let res = sptrs.into_iter().map(|value| Ok(Value(value))).collect::<Result<Vec<Value>>>();
+        let res = sptrs.into_iter().map(|value| Ok(Tensor(value))).collect::<Result<Vec<Tensor>>>();
 
         res
     }
 }
 
 // VALUE
-wrapper!(Value, TractValue, tract_value_destroy);
-unsafe impl Send for Value {}
-unsafe impl Sync for Value {}
+wrapper!(Tensor, TractTensor, tract_tensor_destroy);
+unsafe impl Send for Tensor {}
+unsafe impl Sync for Tensor {}
 
-impl ValueInterface for Value {
+impl TensorInterface for Tensor {
     fn from_bytes(dt: DatumType, shape: &[usize], data: &[u8]) -> Result<Self> {
         anyhow::ensure!(data.len() == shape.iter().product::<usize>() * dt.size_of());
         let mut value = null_mut();
-        check!(sys::tract_value_from_bytes(
+        check!(sys::tract_tensor_from_bytes(
             dt as _,
             shape.len(),
             shape.as_ptr(),
             data.as_ptr() as _,
             &mut value
         ))?;
-        Ok(Value(value))
+        Ok(Tensor(value))
     }
 
     fn as_bytes(&self) -> Result<(DatumType, &[usize], &[u8])> {
@@ -620,7 +620,7 @@ impl ValueInterface for Value {
         let mut dt = sys::DatumType_TRACT_DATUM_TYPE_BOOL as _;
         let mut shape = null();
         let mut data = null();
-        check!(sys::tract_value_as_bytes(self.0, &mut dt, &mut rank, &mut shape, &mut data))?;
+        check!(sys::tract_tensor_as_bytes(self.0, &mut dt, &mut rank, &mut shape, &mut data))?;
         unsafe {
             let dt: DatumType = std::mem::transmute(dt);
             let shape = std::slice::from_raw_parts(shape, rank);
@@ -632,7 +632,7 @@ impl ValueInterface for Value {
 
     fn datum_type(&self) -> Result<DatumType> {
         let mut dt = sys::DatumType_TRACT_DATUM_TYPE_BOOL as _;
-        check!(sys::tract_value_as_bytes(
+        check!(sys::tract_tensor_as_bytes(
             self.0,
             &mut dt,
             std::ptr::null_mut(),
@@ -647,12 +647,12 @@ impl ValueInterface for Value {
 
     fn convert_to(&self, to: DatumType) -> Result<Self> {
         let mut new = null_mut();
-        check!(sys::tract_value_convert_to(self.0, to as _, &mut new))?;
-        Ok(Value(new))
+        check!(sys::tract_tensor_convert_to(self.0, to as _, &mut new))?;
+        Ok(Tensor(new))
     }
 }
 
-impl PartialEq for Value {
+impl PartialEq for Tensor {
     fn eq(&self, other: &Self) -> bool {
         let Ok((me_dt, me_shape, me_data)) = self.as_bytes() else { return false };
         let Ok((other_dt, other_shape, other_data)) = other.as_bytes() else { return false };
@@ -660,7 +660,7 @@ impl PartialEq for Value {
     }
 }
 
-value_from_to_ndarray!();
+tensor_from_to_ndarray!();
 
 // FACT
 wrapper!(Fact, TractFact, tract_fact_destroy);

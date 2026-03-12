@@ -3,7 +3,7 @@ from ctypes import *
 from typing import Dict, List, Union
 from .bindings import TractError, check, lib
 from .fact import Fact
-from .value import Value
+from .tensor import Tensor
 
 class State:
     """
@@ -33,19 +33,19 @@ class State:
         check(lib.tract_state_output_count(self.ptr, byref(i)))
         return i.value
 
-    def run(self, inputs: List[Union[Value, numpy.ndarray]]) -> List[Value]:
+    def run(self, inputs: List[Union[Tensor, numpy.ndarray]]) -> List[Tensor]:
         """
         Runs the model over the provided input list, and returns the model outputs.
         """
         self._valid()
         input_values = []
         for v in inputs:
-            if isinstance(v, Value):
+            if isinstance(v, Tensor):
                 input_values.append(v)
             elif isinstance(v, numpy.ndarray):
-                input_values.append(Value.from_numpy(v))
+                input_values.append(Tensor.from_numpy(v))
             else:
-                raise TractError(f"Inputs must be of type tract.Value or numpy.Array, got {v}")
+                raise TractError(f"Inputs must be of type tract.Tensor or numpy.Array, got {v}")
         input_ptrs = (c_void_p * self.input_count())()
         output_ptrs = (c_void_p * self.output_count())()
         for ix, v in enumerate(input_values):
@@ -53,7 +53,7 @@ class State:
         check(lib.tract_state_run(self.ptr, input_ptrs, output_ptrs))
         result = []
         for v in output_ptrs:
-            result.append(Value(c_void_p(v)))
+            result.append(Tensor(c_void_p(v)))
         return result
 
     def freeze(self) -> "FrozenState":
@@ -89,7 +89,7 @@ class State:
 
         return res
 
-    def set_states(self, states: List[Union[Value, numpy.ndarray]]):
+    def set_states(self, states: List[Union[Tensor, numpy.ndarray]]):
         """
         Initialize Stateful Ops with given states
         """
@@ -103,18 +103,18 @@ class State:
         state_ptrs = (c_void_p * n_states)()
 
         for ix, v in enumerate(states):
-            if isinstance(v, Value):
+            if isinstance(v, Tensor):
                 state_values.append(v)
             elif isinstance(v, numpy.ndarray):
-                state_values.append(Value.from_numpy(v))
+                state_values.append(Tensor.from_numpy(v))
             else:
-                raise TractError(f"State values must be of type tract.Value or numpy.Array, got {v}")
+                raise TractError(f"State values must be of type tract.Tensor or numpy.Array, got {v}")
 
             state_ptrs[ix] = state_values[ix].ptr
 
         check(lib.tract_state_set_states(self.ptr, state_ptrs))
 
-    def get_states(self) -> List[Value]:
+    def get_states(self) -> List[Tensor]:
         """
         Get Stateful Ops' current states
         """
@@ -127,7 +127,7 @@ class State:
 
         res = []
         for i in range(n_states):
-            res.append(Value(c_void_p(state_ptrs[i])))
+            res.append(Tensor(c_void_p(state_ptrs[i])))
 
         return res
 
