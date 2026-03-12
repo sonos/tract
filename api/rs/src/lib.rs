@@ -520,6 +520,12 @@ impl PartialEq for Tensor {
     }
 }
 
+impl Display for Tensor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0.dump(false).map_err(|_| std::fmt::Error)?)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Fact(TypedFact);
 
