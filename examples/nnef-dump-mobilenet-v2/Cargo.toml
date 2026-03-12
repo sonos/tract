@@ -6,6 +6,6 @@ license = "MIT OR Apache-2.0"
 edition = "2024"
 
 [dependencies]
+anyhow.workspace = true
 image.workspace = true
-
-tract-nnef.workspace = true
+tract-rs.workspace = true

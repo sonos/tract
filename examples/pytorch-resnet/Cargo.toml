@@ -8,5 +8,6 @@ edition = "2024"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+anyhow.workspace = true
 image.workspace = true
-tract-onnx.workspace = true
+tract-rs.workspace = true
