@@ -89,7 +89,7 @@ jobs:
         role-to-assume: arn:aws:iam::567805100031:role/github-runner-tract-ci
         aws-region: us-east-2
     - run: echo uname=$(uname) >> $GITHUB_ENV
-    - uses: actions/download-artifact@v4.1.7
+    - uses: actions/download-artifact@v4
       with:
         pattern: tract-cli-${{env.uname}}
 
@@ -120,7 +120,7 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - run: echo uname=$(uname) >> $GITHUB_ENV
-    - uses: actions/download-artifact@v4.1.7
+    - uses: actions/download-artifact@v4
       with:
         pattern: tract-cli-${{env.uname}}
 

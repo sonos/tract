@@ -18,12 +18,12 @@ jobs:
         id: version
         run: echo value=$(echo ${{ github.ref }} | cut -f 3 -d / | sed 's/^v//' ) >> $GITHUB_OUTPUT
 
+      - uses: actions/checkout@v4
+
       - name: Create Release
-        id: create_release
-        uses: actions/create-release@latest
+        uses: softprops/action-gh-release@v2
+        with:
+          name: tract ${{ steps.version.outputs.value }}
         env:
           GITHUB_TOKEN: ${{ secrets.ACCESS_TOKEN_RELEASE }}
-        with:
-          tag_name: ${{ steps.version.outputs.value }}
-          release_name: tract ${{ steps.version.outputs.value }}
 
