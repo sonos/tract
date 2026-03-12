@@ -336,83 +336,72 @@ pub trait AsFact<M, F> {
 }
 
 #[repr(C)]
-#[allow(non_camel_case_types)]
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum DatumType {
-    TRACT_DATUM_TYPE_BOOL = 0x01,
-    TRACT_DATUM_TYPE_U8 = 0x11,
-    TRACT_DATUM_TYPE_U16 = 0x12,
-    TRACT_DATUM_TYPE_U32 = 0x14,
-    TRACT_DATUM_TYPE_U64 = 0x18,
-    TRACT_DATUM_TYPE_I8 = 0x21,
-    TRACT_DATUM_TYPE_I16 = 0x22,
-    TRACT_DATUM_TYPE_I32 = 0x24,
-    TRACT_DATUM_TYPE_I64 = 0x28,
-    TRACT_DATUM_TYPE_F16 = 0x32,
-    TRACT_DATUM_TYPE_F32 = 0x34,
-    TRACT_DATUM_TYPE_F64 = 0x38,
+    Bool = 0x01,
+    U8 = 0x11,
+    U16 = 0x12,
+    U32 = 0x14,
+    U64 = 0x18,
+    I8 = 0x21,
+    I16 = 0x22,
+    I32 = 0x24,
+    I64 = 0x28,
+    F16 = 0x32,
+    F32 = 0x34,
+    F64 = 0x38,
     #[cfg(feature = "complex")]
-    TRACT_DATUM_TYPE_COMPLEX_I16 = 0x42,
+    ComplexI16 = 0x42,
     #[cfg(feature = "complex")]
-    TRACT_DATUM_TYPE_COMPLEX_I32 = 0x44,
+    ComplexI32 = 0x44,
     #[cfg(feature = "complex")]
-    TRACT_DATUM_TYPE_COMPLEX_I64 = 0x48,
+    ComplexI64 = 0x48,
     #[cfg(feature = "complex")]
-    TRACT_DATUM_TYPE_COMPLEX_F16 = 0x52,
+    ComplexF16 = 0x52,
     #[cfg(feature = "complex")]
-    TRACT_DATUM_TYPE_COMPLEX_F32 = 0x54,
+    ComplexF32 = 0x54,
     #[cfg(feature = "complex")]
-    TRACT_DATUM_TYPE_COMPLEX_F64 = 0x58,
+    ComplexF64 = 0x58,
 }
 
 impl DatumType {
     pub fn size_of(&self) -> usize {
         use DatumType::*;
         match &self {
-            TRACT_DATUM_TYPE_BOOL | TRACT_DATUM_TYPE_U8 | TRACT_DATUM_TYPE_I8 => 1,
-            TRACT_DATUM_TYPE_U16 | TRACT_DATUM_TYPE_I16 | TRACT_DATUM_TYPE_F16 => 2,
-            TRACT_DATUM_TYPE_U32 | TRACT_DATUM_TYPE_I32 | TRACT_DATUM_TYPE_F32 => 4,
-            TRACT_DATUM_TYPE_U64 | TRACT_DATUM_TYPE_I64 | TRACT_DATUM_TYPE_F64 => 8,
+            Bool | U8 | I8 => 1,
+            U16 | I16 | F16 => 2,
+            U32 | I32 | F32 => 4,
+            U64 | I64 | F64 => 8,
             #[cfg(feature = "complex")]
-            TRACT_DATUM_TYPE_COMPLEX_I16 | TRACT_DATUM_TYPE_F16 => 4,
+            ComplexI16 | ComplexF16 => 4,
             #[cfg(feature = "complex")]
-            TRACT_DATUM_TYPE_COMPLEX_I32 | TRACT_DATUM_TYPE_F32 => 8,
+            ComplexI32 | ComplexF32 => 8,
             #[cfg(feature = "complex")]
-            TRACT_DATUM_TYPE_COMPLEX_I64 | TRACT_DATUM_TYPE_F64 => 16,
+            ComplexI64 | ComplexF64 => 16,
         }
     }
 
     pub fn is_bool(&self) -> bool {
-        use DatumType::*;
-        *self == TRACT_DATUM_TYPE_BOOL
+        *self == DatumType::Bool
     }
 
     pub fn is_number(&self) -> bool {
-        use DatumType::*;
-        *self != TRACT_DATUM_TYPE_BOOL
+        *self != DatumType::Bool
     }
 
     pub fn is_unsigned(&self) -> bool {
         use DatumType::*;
-        *self == TRACT_DATUM_TYPE_U8
-            || *self == TRACT_DATUM_TYPE_U16
-            || *self == TRACT_DATUM_TYPE_U32
-            || *self == TRACT_DATUM_TYPE_U64
+        *self == U8 || *self == U16 || *self == U32 || *self == U64
     }
 
     pub fn is_signed(&self) -> bool {
         use DatumType::*;
-        *self == TRACT_DATUM_TYPE_I8
-            || *self == TRACT_DATUM_TYPE_I16
-            || *self == TRACT_DATUM_TYPE_I32
-            || *self == TRACT_DATUM_TYPE_I64
+        *self == I8 || *self == I16 || *self == I32 || *self == I64
     }
 
     pub fn is_float(&self) -> bool {
         use DatumType::*;
-        *self == TRACT_DATUM_TYPE_F16
-            || *self == TRACT_DATUM_TYPE_F32
-            || *self == TRACT_DATUM_TYPE_F64
+        *self == F16 || *self == F32 || *self == F64
     }
 }
 
@@ -489,15 +478,15 @@ macro_rules! impl_datum_type {
     };
 }
 
-impl_datum_type!(bool, DatumType::TRACT_DATUM_TYPE_BOOL);
-impl_datum_type!(u8, DatumType::TRACT_DATUM_TYPE_U8);
-impl_datum_type!(u16, DatumType::TRACT_DATUM_TYPE_U16);
-impl_datum_type!(u32, DatumType::TRACT_DATUM_TYPE_U32);
-impl_datum_type!(u64, DatumType::TRACT_DATUM_TYPE_U64);
-impl_datum_type!(i8, DatumType::TRACT_DATUM_TYPE_I8);
-impl_datum_type!(i16, DatumType::TRACT_DATUM_TYPE_I16);
-impl_datum_type!(i32, DatumType::TRACT_DATUM_TYPE_I32);
-impl_datum_type!(i64, DatumType::TRACT_DATUM_TYPE_I64);
-impl_datum_type!(half::f16, DatumType::TRACT_DATUM_TYPE_F16);
-impl_datum_type!(f32, DatumType::TRACT_DATUM_TYPE_F32);
-impl_datum_type!(f64, DatumType::TRACT_DATUM_TYPE_F64);
+impl_datum_type!(bool, DatumType::Bool);
+impl_datum_type!(u8, DatumType::U8);
+impl_datum_type!(u16, DatumType::U16);
+impl_datum_type!(u32, DatumType::U32);
+impl_datum_type!(u64, DatumType::U64);
+impl_datum_type!(i8, DatumType::I8);
+impl_datum_type!(i16, DatumType::I16);
+impl_datum_type!(i32, DatumType::I32);
+impl_datum_type!(i64, DatumType::I64);
+impl_datum_type!(half::f16, DatumType::F16);
+impl_datum_type!(f32, DatumType::F32);
+impl_datum_type!(f64, DatumType::F64);
