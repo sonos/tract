@@ -10,4 +10,4 @@ edition = "2024"
 [dependencies]
 anyhow.workspace = true
 image.workspace = true
-tract-rs.workspace = true
+tract.workspace = true

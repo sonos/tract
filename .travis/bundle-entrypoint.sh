@@ -13,7 +13,7 @@ elif [ -x tract ]
 then
     TRACT=./tract
 else
-    cargo build -p tract -q --release
+    cargo build -p tract-cli -q --release
     TRACT=./target/release/tract
 fi
 

@@ -36,7 +36,7 @@ case "$PLATFORM" in
         export RUSTC_TRIPLE=arm-unknown-linux-gnueabihf
         rustup target add $RUSTC_TRIPLE
         echo "[platforms.$PLATFORM]\nrustc_triple='$RUSTC_TRIPLE'\ntoolchain='$TOOLCHAIN'" > .dinghy.toml
-        cargo dinghy --platform $PLATFORM build --release -p tract -p example-tensorflow-mobilenet-v2 -p tract-ffi
+        cargo dinghy --platform $PLATFORM build --release -p tract-cli -p example-tensorflow-mobilenet-v2 -p tract-ffi
         ;;
 
     "aarch64-linux-android"|"armv7-linux-androideabi"|"i686-linux-android"|"x86_64-linux-android")
@@ -81,7 +81,7 @@ case "$PLATFORM" in
     "aarch64-apple-darwin" | "x86_64-unknown-linux-gnu")
         RUSTC_TRIPLE=$PLATFORM
         rustup target add $RUSTC_TRIPLE
-        cargo build --target $RUSTC_TRIPLE -p tract --release
+        cargo build --target $RUSTC_TRIPLE -p tract-cli --release
         ;;
 
     "aarch64-unknown-linux-gnu-stretch" | "armv7-unknown-linux-gnueabihf-stretch" | "x86_64-unknown-linux-gnu-stretch")
@@ -196,7 +196,7 @@ case "$PLATFORM" in
 
         cargo dinghy --platform $PLATFORM $DINGHY_TEST_ARGS check -p tract-ffi
         # keep lto for these two are they're going to devices.
-        cargo dinghy --platform $PLATFORM build --release -p tract -p example-tensorflow-mobilenet-v2
+        cargo dinghy --platform $PLATFORM build --release -p tract-cli -p example-tensorflow-mobilenet-v2
         ;;
 
     wasm32-wasi)

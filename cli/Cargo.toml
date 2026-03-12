@@ -1,5 +1,5 @@
 [package]
-name = "tract"
+name = "tract-cli"
 version = "0.23.0-pre"
 authors = [
   "Romain Liautaud <romain.liautaud@snips.ai>",
@@ -13,6 +13,10 @@ categories = ["science"]
 autobenches = false
 edition = "2024"
 include = ["Cargo.toml", "src/**/*.rs", "LICENSE*"]
+
+[[bin]]
+name = "tract"
+path = "src/main.rs"
 
 [badges]
 maintenance = { status = "actively-developed" }

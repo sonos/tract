@@ -3,8 +3,8 @@ use std::fs::File;
 use anyhow::*;
 use float_ord::FloatOrd;
 use itertools::Itertools;
-use tract_rs::prelude::tract_ndarray::prelude::*;
-use tract_rs::prelude::*;
+use tract::prelude::tract_ndarray::prelude::*;
+use tract::prelude::*;
 
 fn argmax(slice: &[f32]) -> Option<usize> {
     slice.into_iter().position_max_by_key(|x| FloatOrd(**x))
@@ -17,10 +17,10 @@ fn main() -> anyhow::Result<()> {
     let vocab = config.pointer("/joint/vocabulary").unwrap().as_array().unwrap();
     let vocab: Vec<&str> = vocab.iter().map(|v| v.as_str().unwrap()).collect();
 
-    let nnef = tract_rs::nnef()?.with_tract_core()?.with_tract_transformers()?;
+    let nnef = tract::nnef()?.with_tract_core()?.with_tract_transformers()?;
     let gpu = ["cuda", "metal", "default"]
         .iter()
-        .find_map(|rt| tract_rs::runtime_for_name(rt).ok())
+        .find_map(|rt| tract::runtime_for_name(rt).ok())
         .unwrap();
 
     let preprocessor = nnef.load("assets/model/preprocessor.nnef.tgz")?.into_runnable()?;
