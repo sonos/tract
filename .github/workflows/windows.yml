@@ -22,7 +22,7 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     - uses: nick-fields/retry@v3
       name: Install Rustup using win.rustup.rs
       with:
@@ -44,7 +44,7 @@ jobs:
             rustup toolchain add stable-x86_64-pc-windows-${{matrix.toolchain}}
             rustup default stable-x86_64-pc-windows-${{matrix.toolchain}}
     - name: Install LLVM and Clang
-      uses: KyleMayes/install-llvm-action@v1
+      uses: KyleMayes/install-llvm-action@v2
       with:
         version: "11.0"
     - name: debug

@@ -17,12 +17,12 @@ jobs:
       matrix:
         os: [ macos-latest, ubuntu-latest ]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - run: |
           ROOT=. ./.travis/ci-system-setup.sh
           cargo build -p tract-cli --profile opt-no-lto --no-default-features --features transformers
       - run: echo uname=$(uname) >> $GITHUB_ENV
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: tract-cli-${{env.uname}}
           path: ./target/opt-no-lto/tract
@@ -79,15 +79,15 @@ jobs:
       contents: read
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     - name: Configure AWS Credentials
       continue-on-error: true
-      uses: aws-actions/configure-aws-credentials@v4
+      uses: aws-actions/configure-aws-credentials@v6
       with:
         role-to-assume: arn:aws:iam::567805100031:role/github-runner-tract-ci
         aws-region: us-east-2
     - run: echo uname=$(uname) >> $GITHUB_ENV
-    - uses: actions/download-artifact@v4
+    - uses: actions/download-artifact@v8
       with:
         pattern: tract-cli-${{env.uname}}
 
@@ -116,9 +116,9 @@ jobs:
       contents: read
     runs-on: ${{ matrix.os }}
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     - run: echo uname=$(uname) >> $GITHUB_ENV
-    - uses: actions/download-artifact@v4
+    - uses: actions/download-artifact@v8
       with:
         pattern: tract-cli-${{env.uname}}
 
