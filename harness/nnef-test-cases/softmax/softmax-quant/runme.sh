@@ -3,7 +3,7 @@
 cd `dirname $0`
 set -ex
 
-: ${TRACT_RUN:=cargo run -p tract $CARGO_OPTS --}
+: ${TRACT_RUN:=cargo run -p tract-cli $CARGO_OPTS --}
 
 rm -rf found
 $TRACT_RUN --no-nnef-tract-core model dump -q --nnef-dir found

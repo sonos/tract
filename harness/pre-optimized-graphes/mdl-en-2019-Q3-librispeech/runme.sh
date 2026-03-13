@@ -7,7 +7,7 @@ cd `dirname $0`
 ROOT=$(dirname $(realpath $0))/../../..
 . $ROOT/.travis/ci-system-setup.sh
 
-: ${TRACT_RUN:=cargo run -p tract $CARGO_OPTS --}
+: ${TRACT_RUN:=cargo run -p tract-cli $CARGO_OPTS --}
 
 $CACHE_FILE mdl-en-2019-Q3-librispeech.onnx
 $TRACT_RUN $MODELS/mdl-en-2019-Q3-librispeech.onnx -i S,40 --output-node output --pulse 24 --nnef-tract-pulse --nnef-extended-identifier dump -q --nnef-graph found

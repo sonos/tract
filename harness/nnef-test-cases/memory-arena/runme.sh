@@ -9,7 +9,7 @@ then
   cd `dirname $0`
   set -ex
 
-  : ${TRACT_RUN:=cargo run -p tract $CARGO_OPTS --}
+  : ${TRACT_RUN:=cargo run -p tract-cli $CARGO_OPTS --}
 
   model=OpenELM-270M
   q=q40f16
