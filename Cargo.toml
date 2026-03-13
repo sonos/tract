@@ -20,7 +20,6 @@ members = [
     "metal",
     "extra",
     "transformers",
-    "transformers/causal_llm",
     "cuda",
 
     "api",
@@ -41,6 +40,7 @@ members = [
     "examples/onnx-mobilenet-v2",
     "examples/pytorch-albert-v2",
     "examples/pytorch-resnet",
+    "examples/causal_llm",
 
     "harness/core-proptest-pulse",
     "harness/nnef-inceptionv3",
