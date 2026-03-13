@@ -136,9 +136,9 @@ do
             --llm --transform unfold-kv-cache -O $DEVICE run --prompt-chunk-size 60 --allow-missing-outputs \
             --input-from-npz $MODELS/$npz \
             --assert-output-bundle $MODELS/$npz \
-            --assert-llm-lev20 999999999 \
+            --assert-llm-rbo 0.0 \
             $approx --allow-float-casts 2>&1 | tee output.txt
-        found=$(cat output.txt | grep 'lev20=' | cut -d '=' -f 2)
+        found=$(cat output.txt | grep 'LLM RBO:' | awk '{printf "%.2f\n", $NF}')
         ( ( grep -v $key $expectations || true) ; echo $key $found) | sort > $expectations.tmp
         mv $expectations.tmp $expectations
     elif [ -n "$RELAX" ]
@@ -148,10 +148,10 @@ do
             --llm --transform unfold-kv-cache -O $DEVICE run --prompt-chunk-size 60 --allow-missing-outputs \
             --input-from-npz $MODELS/$npz \
             --assert-output-bundle $MODELS/$npz \
-            --assert-llm-lev20 999999999 \
+            --assert-llm-rbo 0.0 \
             $approx --allow-float-casts 2>&1 | tee output.txt
-        found=$(cat output.txt | grep 'lev20=' | cut -d '=' -f 2)
-        if [ "$found" -lt "$prior" ]
+        found=$(cat output.txt | grep 'LLM RBO:' | awk '{printf "%.2f\n", $NF}')
+        if [ -n "$prior" ] && awk "BEGIN{exit(!($found > $prior))}"
         then
             found=$prior
         fi
@@ -163,7 +163,7 @@ do
             --llm --transform unfold-kv-cache -O $DEVICE run --prompt-chunk-size 60 --allow-missing-outputs \
             --input-from-npz $MODELS/$npz \
             --assert-output-bundle $MODELS/$npz \
-            --assert-llm-lev20 $expectation \
+            --assert-llm-rbo $expectation \
             $approx --allow-float-casts
     fi
 
