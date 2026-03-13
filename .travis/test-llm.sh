@@ -3,6 +3,8 @@
 set -e
 set -o pipefail
 
+export LC_ALL=C
+
 ROOT=$(dirname $(dirname $(realpath $0)))
 . $ROOT/.travis/ci-system-setup.sh
 
