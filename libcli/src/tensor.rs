@@ -540,9 +540,14 @@ pub fn get_or_make_inputs(tract: &Arc<dyn Model>, params: &RunParams) -> TractRe
         get_or_make_tensors(tract, params, fact, name, ix, &mut tmp_inputs)?;
     }
 
-    let n_turns = tmp_inputs.first().map_or(0, |t| t.len());
+    let n_turns = tmp_inputs.iter().map(|t| t.len()).max().unwrap_or(0);
     let sources = (0..n_turns)
-        .map(|i| tmp_inputs.iter().map(|t| t[i].clone()).collect::<TVec<_>>())
+        .map(|i| {
+            tmp_inputs
+                .iter()
+                .map(|t| if i < t.len() { t[i].clone() } else { t[t.len() - 1].clone() })
+                .collect::<TVec<_>>()
+        })
         .collect::<Vec<_>>();
 
     Ok(RunTensors { sources })
