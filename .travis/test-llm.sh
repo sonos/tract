@@ -138,7 +138,7 @@ do
             --assert-output-bundle $MODELS/$npz \
             --assert-llm-rbo 0.0 \
             $approx --allow-float-casts 2>&1 | tee output.txt
-        found=$(cat output.txt | perl -ne 'printf("%.2f\n", $1) if /LLM RBO:\s+([\d.]+)/')
+        found=$(cat output.txt | perl -MPOSIX=floor -ne 'printf("%.2f\n", floor($1 * 100) / 100) if /LLM RBO:\s+([\d.]+)/')
         ( ( grep -v $key $expectations || true) ; echo $key $found) | sort > $expectations.tmp
         mv $expectations.tmp $expectations
     elif [ -n "$RELAX" ]
@@ -150,7 +150,7 @@ do
             --assert-output-bundle $MODELS/$npz \
             --assert-llm-rbo 0.0 \
             $approx --allow-float-casts 2>&1 | tee output.txt
-        found=$(cat output.txt | perl -ne 'printf("%.2f\n", $1) if /LLM RBO:\s+([\d.]+)/')
+        found=$(cat output.txt | perl -MPOSIX=floor -ne 'printf("%.2f\n", floor($1 * 100) / 100) if /LLM RBO:\s+([\d.]+)/')
         if [ -n "$prior" ] && perl -e 'exit($ARGV[0] <= $ARGV[1] ? 1 : 0)' "$found" "$prior"
         then
             found=$prior
