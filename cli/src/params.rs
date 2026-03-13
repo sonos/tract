@@ -1127,7 +1127,9 @@ pub struct Assertions {
     pub assert_op_count: Option<Vec<(String, usize)>>,
     pub approximation: Approximation,
     pub allow_missing_outputs: bool,
-    pub assert_llm_lev20: Option<usize>,
+    pub assert_llm_rbo: Option<f64>,
+    pub assert_llm_rbo_p: f64,
+    pub assert_llm_rbo_depth: usize,
 }
 
 impl Assertions {
@@ -1161,14 +1163,19 @@ impl Assertions {
                 _ => panic!(),
             }
         };
-        let assert_llm_lev20 = sub.value_of("assert-llm-lev20").map(|v| v.parse()).transpose()?;
+        let assert_llm_rbo = sub.value_of("assert-llm-rbo").map(|v| v.parse()).transpose()?;
+        let assert_llm_rbo_p: f64 = sub.value_of("assert-llm-rbo-p").unwrap_or("0.9").parse()?;
+        let assert_llm_rbo_depth: usize =
+            sub.value_of("assert-llm-rbo-depth").unwrap_or("100").parse()?;
         Ok(Assertions {
             assert_outputs,
             assert_output_facts,
             assert_op_count,
             approximation,
             allow_missing_outputs,
-            assert_llm_lev20,
+            assert_llm_rbo,
+            assert_llm_rbo_p,
+            assert_llm_rbo_depth,
         })
     }
 }
