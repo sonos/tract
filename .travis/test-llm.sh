@@ -131,11 +131,10 @@ do
     if [ -n "$RESET" ]
     then
         $TRACT_RUN -v $MODELS/$nnef $TRACT_EXTRA_ARGS \
-            --llm --unfold-kv-cache -O $DEVICE run --allow-missing-outputs \
+            --llm --unfold-kv-cache -O $DEVICE run --prompt-chunk-size 60 --allow-missing-outputs \
             --input-from-npz $MODELS/$npz \
             --assert-output-bundle $MODELS/$npz \
             --assert-llm-lev20 999999999 \
-            --prompt-chunk-size 60 \
             $approx --allow-float-casts 2>&1 | tee output.txt
         found=$(cat output.txt | grep 'lev20=' | cut -d '=' -f 2)
         ( ( grep -v $key $expectations || true) ; echo $key $found) | sort > $expectations.tmp
@@ -144,11 +143,10 @@ do
     then
         prior=$(grep $key $expectations | cut -f 2 -d ' ')
         $TRACT_RUN -v $MODELS/$nnef $TRACT_EXTRA_ARGS \
-            --llm --unfold-kv-cache -O $DEVICE run --allow-missing-outputs \
+            --llm --unfold-kv-cache -O $DEVICE run --prompt-chunk-size 60 --allow-missing-outputs \
             --input-from-npz $MODELS/$npz \
             --assert-output-bundle $MODELS/$npz \
             --assert-llm-lev20 999999999 \
-            --prompt-chunk-size 60 \
             $approx --allow-float-casts 2>&1 | tee output.txt
         found=$(cat output.txt | grep 'lev20=' | cut -d '=' -f 2)
         if [ "$found" -lt "$prior" ]
@@ -160,9 +158,8 @@ do
     else # test !
         expectation=$(grep $key $expectations | cut -f 2 -d ' ')
         $TRACT_RUN -v $MODELS/$nnef $TRACT_EXTRA_ARGS \
-            --llm --unfold-kv-cache -O $DEVICE run --allow-missing-outputs \
+            --llm --unfold-kv-cache -O $DEVICE run --prompt-chunk-size 60 --allow-missing-outputs \
             --input-from-npz $MODELS/$npz \
-            --prompt-chunk-size 60 \
             --assert-output-bundle $MODELS/$npz \
             --assert-llm-lev20 $expectation \
             $approx --allow-float-casts

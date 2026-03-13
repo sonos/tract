@@ -155,7 +155,32 @@ where
 {
     let mut results = tvec!(vec!(); state.model().outputs.len());
     let multiturn = inputs.sources.len() > 1;
-    for (turn, inputs) in inputs.sources.into_iter().enumerate() {
+
+    // Build output→input cache mapping for unfolded KV cache threading.
+    // Output named "{name}_concat" feeds input named "{name}".
+    let cache_output_to_input: Vec<(usize, usize)> = if multiturn {
+        let model = state.model();
+        let mut mapping = Vec::new();
+        for (out_ix, out_outlet) in model.outputs.iter().enumerate() {
+            let out_name = &model.nodes[out_outlet.node].name;
+            if let Some(base) = out_name.strip_suffix("_concat") {
+                for (in_ix, in_outlet) in model.inputs.iter().enumerate() {
+                    let in_name = &model.nodes[in_outlet.node].name;
+                    if in_name == base {
+                        mapping.push((out_ix, in_ix));
+                        break;
+                    }
+                }
+            }
+        }
+        mapping
+    } else {
+        Vec::new()
+    };
+
+    let mut sources = inputs.sources;
+    for turn in 0..sources.len() {
+        let inputs = std::mem::replace(&mut sources[turn], TVec::new());
         let turn_results =
             state.run_plan_with_eval(inputs, |session_state, state, node, input| {
                 if steps {
@@ -232,6 +257,13 @@ where
 
                 Ok(r)
             })?;
+        // Thread cache outputs into next turn's inputs
+        if turn + 1 < sources.len() && !cache_output_to_input.is_empty() {
+            for &(out_ix, in_ix) in &cache_output_to_input {
+                sources[turn + 1][in_ix] = turn_results[out_ix].clone();
+            }
+        }
+
         izip!(&mut results, turn_results).for_each(|(r, tr)| r.push(tr));
     }
     Ok(results)
