@@ -157,13 +157,13 @@ where
     let multiturn = inputs.sources.len() > 1;
 
     // Build output→input cache mapping for unfolded KV cache threading.
-    // Output named "{name}_concat" feeds input named "{name}".
+    // Output labeled "{name}_concat" feeds input named "{name}".
     let cache_output_to_input: Vec<(usize, usize)> = if multiturn {
         let model = state.model();
         let mut mapping = Vec::new();
         for (out_ix, out_outlet) in model.outputs.iter().enumerate() {
-            let out_name = &model.nodes[out_outlet.node].name;
-            if let Some(base) = out_name.strip_suffix("_concat") {
+            let out_label = model.outlet_label(*out_outlet).unwrap_or("");
+            if let Some(base) = out_label.strip_suffix("_concat") {
                 for (in_ix, in_outlet) in model.inputs.iter().enumerate() {
                     let in_name = &model.nodes[in_outlet.node].name;
                     if in_name == base {

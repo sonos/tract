@@ -311,8 +311,10 @@ pub fn unfold_kv_cache(target: &mut TypedModel, kv_node_id: usize) -> TractResul
         },
     );
 
-    // Add the Concat output to model outputs
-    target.outputs.push(OutletId::new(kv_node_id, 0));
+    // Add the Concat output to model outputs and label it so runtimes preserve the name
+    let concat_outlet = OutletId::new(kv_node_id, 0);
+    target.outputs.push(concat_outlet);
+    target.set_outlet_label(concat_outlet, format!("{name}_concat"))?;
 
     Ok(())
 }
