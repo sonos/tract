@@ -7,7 +7,7 @@ ROOT=$(dirname $(realpath $0))/../../..
 
 set -ex
 
-: ${TRACT_RUN:=cargo run -p tract $CARGO_OPTS --}
+: ${TRACT_RUN:=cargo run -p tract-cli $CARGO_OPTS --}
 
 $CACHE_FILE hey_snips_v4_model17.pb
 $TRACT_RUN $MODELS/hey_snips_v4_model17.pb -i S,20,f32 --pulse 8 --nnef-tract-pulse --nnef-extended-identifier dump -q --nnef-graph found

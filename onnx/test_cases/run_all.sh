@@ -18,7 +18,7 @@ else
     TEST_CASES="$TEST_CASE_DIR/*"
 fi
 
-: ${TRACT_RUN:=cargo run -p tract $CARGO_OPTS --}
+: ${TRACT_RUN:=cargo run -p tract-cli $CARGO_OPTS --}
 
 for tc in $TEST_CASES
 do
