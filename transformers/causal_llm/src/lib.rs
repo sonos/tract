@@ -7,7 +7,7 @@ use anyhow::{Context, ensure};
 use float_ord::FloatOrd;
 use log::{info, trace};
 use tokenizers::Tokenizer;
-use tract_rs::prelude::*;
+use tract::prelude::*;
 
 #[derive(Clone, Debug)]
 struct KvCacheInfo {
@@ -115,7 +115,7 @@ impl CausalLlmModel {
         nn: impl AsRef<Path>,
         conf: CausalLlmModelConfig,
     ) -> anyhow::Result<Arc<CausalLlmModel>> {
-        let nnef = tract_rs::nnef()?.with_tract_transformers()?;
+        let nnef = tract::nnef()?.with_tract_transformers()?;
         let tokenizer =
             tokenizers::Tokenizer::from_file(tokenizer).map_err(|e| anyhow::anyhow!(e))?;
         let nn = nnef.load(nn)?;
@@ -134,7 +134,7 @@ impl CausalLlmModel {
         llm_model_bytes: impl AsRef<[u8]>,
         conf: CausalLlmModelConfig,
     ) -> anyhow::Result<Arc<CausalLlmModel>> {
-        let nnef = tract_rs::nnef()?.with_tract_transformers()?;
+        let nnef = tract::nnef()?.with_tract_transformers()?;
         let tokenizer = Tokenizer::from_bytes(tokenizer_bytes).map_err(|e| anyhow::anyhow!(e))?;
         let nn = nnef.load_buffer(llm_model_bytes.as_ref())?;
         CausalLlmModel::from_tokenizer_and_model(tokenizer, nn, conf)
@@ -147,12 +147,12 @@ impl CausalLlmModel {
         Self::from_bytes_and_conf(tokenizer_bytes, llm_model_bytes, Default::default())
     }
 
-    fn make_empty_kv_caches(&self) -> anyhow::Result<Vec<Value>> {
+    fn make_empty_kv_caches(&self) -> anyhow::Result<Vec<Tensor>> {
         self.kv_caches
             .iter()
             .map(|info| {
                 let n_bytes = info.empty_shape.iter().product::<usize>() * info.dt.size_of();
-                Value::from_bytes(info.dt, &info.empty_shape, &vec![0u8; n_bytes])
+                Tensor::from_bytes(info.dt, &info.empty_shape, &vec![0u8; n_bytes])
             })
             .collect()
     }
@@ -226,7 +226,7 @@ impl CausalLlmStateConfig {
 #[derive(Debug)]
 pub struct CausalLlmState {
     pub model: Arc<CausalLlmModel>,
-    kv_caches: Vec<Value>,
+    kv_caches: Vec<Tensor>,
     pub seq: Vec<u32>,
     pub processed_tokens: usize,
     pub config: CausalLlmStateConfig,
@@ -244,14 +244,14 @@ impl CausalLlmState {
         let chunk_size = self.config.prompt_chunk_size.unwrap_or(usize::MAX);
         let output = tokens
             .chunks(chunk_size)
-            .map(|chunk| -> anyhow::Result<Value> {
+            .map(|chunk| -> anyhow::Result<Tensor> {
                 let start = Instant::now();
                 let token_data: Vec<i64> = chunk.iter().map(|t| *t as i64).collect();
-                let input: Value =
+                let input: Tensor =
                     tract_ndarray::Array2::from_shape_vec((1, chunk.len()), token_data)?
                         .try_into()?;
                 // Build inputs: token_ids + current kv caches
-                let mut inputs: Vec<Value> = vec![input];
+                let mut inputs: Vec<Tensor> = vec![input];
                 inputs.extend(self.kv_caches.iter().cloned());
                 let mut results = self.model.nn.run(inputs)?;
                 // Extract updated KV caches from outputs
@@ -268,7 +268,7 @@ impl CausalLlmState {
 
         let start_at = self.seq.len().saturating_sub(self.config.repeat_last_n);
 
-        let output_f32 = output.convert_to(DatumType::TRACT_DATUM_TYPE_F32)?;
+        let output_f32 = output.convert_to(DatumType::F32)?;
         let mut last_token_logits: Vec<f32> = output_f32.as_slice::<f32>()?.to_vec();
 
         apply_repeat_penalty(
@@ -330,7 +330,7 @@ impl CausalLlmState {
 }
 
 /// Slice a Value along an axis, extracting elements [start..end].
-fn slice_value(value: &Value, axis: usize, start: usize, end: usize) -> anyhow::Result<Value> {
+fn slice_value(value: &Tensor, axis: usize, start: usize, end: usize) -> anyhow::Result<Tensor> {
     let (dt, shape, data) = value.as_bytes()?;
     let elem_size = dt.size_of();
     let new_len = end - start;
@@ -351,13 +351,13 @@ fn slice_value(value: &Value, axis: usize, start: usize, end: usize) -> anyhow::
             .copy_from_slice(&data[src_offset..src_offset + new_len * inner_size]);
     }
 
-    Value::from_bytes(dt, &new_shape, &new_data)
+    Tensor::from_bytes(dt, &new_shape, &new_data)
 }
 
 #[derive(Clone, Debug)]
 pub struct FrozenCausalLlmState {
     pub model: Arc<CausalLlmModel>,
-    kv_caches: Vec<Value>,
+    kv_caches: Vec<Tensor>,
     pub seq: Vec<u32>,
     pub config: CausalLlmStateConfig,
 }
@@ -430,7 +430,6 @@ mod tests {
         // (proving the truncated prefix was preserved, not recomputed from scratch)
         state.generate_next_token()?;
         {
-            use tract_rs::prelude::ValueInterface;
             let shape = state.kv_caches[0].shape()?;
             let cache_axis = state.model.kv_caches[0].axis;
             assert_eq!(

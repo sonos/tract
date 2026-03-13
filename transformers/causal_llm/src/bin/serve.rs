@@ -9,7 +9,7 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use axum_macros::debug_handler;
 use causal_llm::{CausalLlmModel, CausalLlmStateConfig};
-use clap::{Parser, arg, command};
+use clap::Parser;
 use log::{debug, info};
 
 #[allow(dead_code)]
