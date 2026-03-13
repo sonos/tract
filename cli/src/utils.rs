@@ -55,20 +55,25 @@ pub fn check_outputs(got: &[Vec<TValue>], params: &Parameters) -> TractResult<()
             exp = exp.cast_to_dt(got.datum_type())?.into_owned().into_tvalue();
         }
         #[allow(unused)]
-        let result: TractResult<()> = if let Some(limit) = params.assertions.assert_llm_lev20 {
+        let result: TractResult<()> = if let Some(min_rbo) = params.assertions.assert_llm_rbo {
             #[cfg(not(feature = "transformers"))]
             {
-                bail!("transformers features is required for lev20 criteria")
+                bail!("transformers feature is required for RBO metric")
             }
             #[cfg(feature = "transformers")]
             {
-                let lev = crate::llm::top_logits_levenshtein(&exp, &got, 20)?;
-                info!("Levenshtein distance on first 20 logits: lev20={lev}");
-                if lev <= limit {
+                let rbo = crate::llm::top_logits_rbo(
+                    &exp,
+                    &got,
+                    params.assertions.assert_llm_rbo_p,
+                    params.assertions.assert_llm_rbo_depth,
+                )?;
+                info!("LLM RBO: {rbo:.4}");
+                if rbo >= min_rbo {
                     Ok(())
                 } else {
                     TractResult::Err(anyhow!(
-                        "Levenshtein criteria on first 20 not met found lev20={lev}, expected {limit}"
+                        "RBO criteria not met: rbo={rbo:.4}, min required {min_rbo}"
                     ))
                 }
             }

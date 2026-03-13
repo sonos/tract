@@ -118,8 +118,10 @@ pub fn bench_tg(
     Ok(())
 }
 
-pub fn top_logits_levenshtein(test: &Tensor, reference: &Tensor, n: usize) -> TractResult<usize> {
-    let (test, reference) = [test, reference]
+pub fn top_logits_rbo(test: &Tensor, reference: &Tensor, p: f64, depth: usize) -> TractResult<f64> {
+    use std::collections::HashSet;
+
+    let rankings: Vec<Vec<usize>> = [test, reference]
         .into_iter()
         .map(|t| {
             t.cast_to::<f32>()
@@ -135,8 +137,30 @@ pub fn top_logits_levenshtein(test: &Tensor, reference: &Tensor, n: usize) -> Tr
                 .map(|p| p.0)
                 .collect_vec()
         })
-        .collect_tuple()
-        .unwrap();
+        .collect();
 
-    Ok(levenshtein_diff::distance(&test[..n], &reference[..n]).0)
+    let a = &rankings[0];
+    let b = &rankings[1];
+    let k = depth.min(a.len()).min(b.len());
+
+    let mut set_a: HashSet<usize> = HashSet::new();
+    let mut set_b: HashSet<usize> = HashSet::new();
+    let mut rbo = 0.0;
+
+    for d in 1..=k {
+        set_a.insert(a[d - 1]);
+        set_b.insert(b[d - 1]);
+        let overlap = set_a.intersection(&set_b).count() as f64 / d as f64;
+        rbo += p.powi((d as i32) - 1) * overlap;
+    }
+
+    let top1_match = a[0] == b[0];
+    let top5_overlap = {
+        let sa: HashSet<usize> = a[..5.min(k)].iter().copied().collect();
+        let sb: HashSet<usize> = b[..5.min(k)].iter().copied().collect();
+        sa.intersection(&sb).count()
+    };
+    debug!("RBO detail: top1_match={top1_match} top5_overlap={top5_overlap}/5");
+
+    Ok((1.0 - p) * rbo)
 }

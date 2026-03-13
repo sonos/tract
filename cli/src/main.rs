@@ -470,10 +470,24 @@ fn assertions_options(command: clap::Command) -> clap::Command {
             .help("Allow missing output in checks")
             )
         .arg(
-            Arg::new("assert-llm-lev20")
+            Arg::new("assert-llm-rbo")
             .takes_value(true)
-            .long("assert-llm-lev20")
-            .help("Use a LLM-aware application distance on logit output")
+            .long("assert-llm-rbo")
+            .help("Use RBO (Rank-Biased Overlap) on logit output. Pass minimum similarity score (0.0-1.0)")
+            )
+        .arg(
+            Arg::new("assert-llm-rbo-p")
+            .takes_value(true)
+            .long("assert-llm-rbo-p")
+            .default_value("0.9")
+            .help("RBO persistence parameter (default 0.9)")
+            )
+        .arg(
+            Arg::new("assert-llm-rbo-depth")
+            .takes_value(true)
+            .long("assert-llm-rbo-depth")
+            .default_value("100")
+            .help("RBO max evaluation depth (default 100)")
             )
         .arg(
             Arg::new("assert-op-count")
