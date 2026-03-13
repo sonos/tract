@@ -4,8 +4,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use anyhow::{Result, bail};
-use aws_config::BehaviorVersion;
-use aws_sdk_bedrockruntime::primitives::Blob;
 use clap::Parser;
 use reqwest::Client;
 use tokenizers::Tokenizer;
@@ -37,7 +35,6 @@ struct Args {
 enum Api {
     OpenAICompletions(Client, String),
     OllamaGenerate(Client, String),
-    AWSBedrockInvokeModel(aws_sdk_bedrockruntime::Client),
 }
 
 struct GenericCompletion {
@@ -47,12 +44,8 @@ struct GenericCompletion {
 }
 
 impl Api {
-    async fn new(endpoint: &str) -> Api {
-        if endpoint == "awsbedrock" {
-            let config = aws_config::defaults(BehaviorVersion::latest()).load().await;
-            let client = aws_sdk_bedrockruntime::Client::new(&config);
-            Api::AWSBedrockInvokeModel(client)
-        } else if endpoint.ends_with("generate") {
+    fn new(endpoint: &str) -> Api {
+        if endpoint.ends_with("generate") {
             Api::OllamaGenerate(Client::new(), endpoint.to_string())
         } else {
             Api::OpenAICompletions(Client::new(), endpoint.to_string())
@@ -117,26 +110,6 @@ impl Api {
                     let error = response.text().await.unwrap();
                     anyhow::bail!(error)
                 }
-            }
-            Api::AWSBedrockInvokeModel(client) => {
-                let stop: [String; 0] = [];
-                let query = serde_json::json!({ "prompt" : prompt.into(), "max_gen_len": max_tokens, "stop":stop}).to_string();
-                let resp = client
-                    .invoke_model()
-                    .model_id(model)
-                    .content_type("application/json")
-                    .accept("application/json")
-                    .body(Blob::new(query.into_bytes()))
-                    .send()
-                    .await?;
-                let raw = String::from_utf8(resp.body.into_inner())?;
-                let v: serde_json::Value = serde_json::from_str(&raw)?;
-                Ok(GenericCompletion {
-                    text: v.get("generation").unwrap().as_str().unwrap().to_string(),
-                    generated_tokens: v.get("generation_token_count").unwrap().as_i64().unwrap()
-                        as usize,
-                    prompt_tokens: v.get("prompt_token_count").unwrap().as_i64().unwrap() as usize,
-                })
             }
         }
     }
@@ -367,11 +340,11 @@ struct Clients {
 }
 
 impl Clients {
-    async fn from_args(args: &Args) -> Self {
+    fn from_args(args: &Args) -> Self {
         let tokenizer = Tokenizer::from_file(&args.tokenizers).unwrap();
         const BASE_TEXT: &str = include_str!("../lib.rs");
         let tokens: Vec<u32> = tokenizer.encode_fast(BASE_TEXT, true).unwrap().get_ids().into();
-        let api = Api::new(&args.endpoint).await;
+        let api = Api::new(&args.endpoint);
         Clients { api, model: args.model.clone(), tokens, tokenizer }
     }
     fn get_one_prompt(&self, len: usize) -> String {
@@ -407,7 +380,7 @@ impl Clients {
 #[tokio::main(flavor = "multi_thread", worker_threads = 8)]
 async fn main() -> anyhow::Result<()> {
     let cli = Args::parse();
-    let clients = Clients::from_args(&cli).await;
+    let clients = Clients::from_args(&cli);
 
     let start = Instant::now();
     cli.command.run(&clients).await?;
