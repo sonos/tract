@@ -50,7 +50,7 @@ jobs:
       RUSTUP_TOOLCHAIN: ${{matrix.rust}}
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
 
     - name: Cargo test
       run: cargo test -p ${{matrix.crate}}
@@ -65,7 +65,7 @@ jobs:
     env:
       RUSTUP_TOOLCHAIN: ${{matrix.rust}}
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
 
     - name: Cargo test
       run: cargo test -p tract-cuda -p test-cuda
@@ -80,7 +80,7 @@ jobs:
     env:
       RUSTUP_TOOLCHAIN: ${{matrix.rust}}
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
 
     - name: Cargo test
       run: cargo test -p tract-metal -p test-metal
@@ -97,7 +97,7 @@ jobs:
     env:
       RUSTUP_TOOLCHAIN: ${{matrix.rust}}
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     - run: rustup component add clippy && cargo clippy
     - name: fmt
       run: rustup component add rustfmt && cargo fmt --check
@@ -113,7 +113,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     - name: Install cargo-deny
       run: |
         curl -L https://github.com/EmbarkStudios/cargo-deny/releases/download/$VERSION/cargo-deny-$VERSION-x86_64-unknown-linux-musl.tar.gz \
