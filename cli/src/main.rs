@@ -149,8 +149,6 @@ fn main() -> TractResult<()> {
 
         .arg(arg!(--"causal-llm-hints" "Figures out P and S and gives them suitable hints"))
         .arg(arg!(--llm "Shortcut setting --opl (aka all nnef extensions) --causal-llm-hints -t transformers_detect_all"))
-        .arg(arg!(--"unfold-kv-cache" "Unfold KV caches into explicit model inputs and outputs (use after --llm)"))
-
         // deprecated
         .arg(arg!(--"allow-float-casts" "Allow casting between f16, f32 and f64 around model").hide(true))
 

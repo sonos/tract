@@ -133,7 +133,7 @@ do
     if [ -n "$RESET" ]
     then
         $TRACT_RUN -v $MODELS/$nnef $TRACT_EXTRA_ARGS \
-            --llm --unfold-kv-cache -O $DEVICE run --prompt-chunk-size 60 --allow-missing-outputs \
+            --llm --transform unfold-kv-cache -O $DEVICE run --prompt-chunk-size 60 --allow-missing-outputs \
             --input-from-npz $MODELS/$npz \
             --assert-output-bundle $MODELS/$npz \
             --assert-llm-lev20 999999999 \
@@ -145,7 +145,7 @@ do
     then
         prior=$(grep $key $expectations | cut -f 2 -d ' ')
         $TRACT_RUN -v $MODELS/$nnef $TRACT_EXTRA_ARGS \
-            --llm --unfold-kv-cache -O $DEVICE run --prompt-chunk-size 60 --allow-missing-outputs \
+            --llm --transform unfold-kv-cache -O $DEVICE run --prompt-chunk-size 60 --allow-missing-outputs \
             --input-from-npz $MODELS/$npz \
             --assert-output-bundle $MODELS/$npz \
             --assert-llm-lev20 999999999 \
@@ -160,7 +160,7 @@ do
     else # test !
         expectation=$(grep $key $expectations | cut -f 2 -d ' ')
         $TRACT_RUN -v $MODELS/$nnef $TRACT_EXTRA_ARGS \
-            --llm --unfold-kv-cache -O $DEVICE run --prompt-chunk-size 60 --allow-missing-outputs \
+            --llm --transform unfold-kv-cache -O $DEVICE run --prompt-chunk-size 60 --allow-missing-outputs \
             --input-from-npz $MODELS/$npz \
             --assert-output-bundle $MODELS/$npz \
             --assert-llm-lev20 $expectation \
