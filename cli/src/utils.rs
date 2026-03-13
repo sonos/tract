@@ -11,16 +11,17 @@ pub fn check_outputs(got: &[Vec<TValue>], params: &Parameters) -> TractResult<()
     // iter over all possible tract model outputs
     for (ix, output) in params.tract_model.output_outlets().iter().enumerate() {
         // get either name from outlet_label or from node_name
-        let lookup_names = params
+        let mut lookup_names: Vec<&str> = params
             .tract_model
             .outlet_label(*output)
             .into_iter()
             .chain(once(params.tract_model.node_name(output.node)))
             .collect_vec();
+        lookup_names.dedup();
         let exp = lookup_names.iter().find_map(|name| params.tensors_values.by_name(name));
         if exp.is_none() {
             if params.assertions.allow_missing_outputs {
-                warn!("Missing reference output in bundle for {}", lookup_names.join(" or "));
+                debug!("Missing reference output in bundle for {}", lookup_names.join(" or "));
                 continue;
             } else {
                 bail!("Missing reference output in bundle for {}", lookup_names.join(" or "));
