@@ -8,7 +8,13 @@ from .bindings import TractError, check, lib
 
 class Runnable:
     """
-    A model in the Runnable state is ready to perform computation.
+    A model that has been fully optimized and is ready to perform computation.
+
+    This is the final stage of the model pipeline. A ``Runnable`` is obtained
+    either by calling ``Model.into_runnable()`` (CPU default) or by passing a
+    ``Model`` to ``Runtime.prepare()`` for GPU-accelerated execution. Once
+    obtained, call :meth:`run` with numpy arrays or ``Tensor`` instances to
+    perform inference.
     """
     def __init__(self, ptr):
         self.ptr = ptr

@@ -7,7 +7,12 @@ from .tensor import Tensor
 
 class State:
     """
-    The state of a stateful model.
+    Mutable execution state for stateful (typically streaming) models.
+
+    Stateful models maintain internal buffers between calls to :meth:`run`
+    (e.g. recurrent networks, pulsed convolutions). A ``State`` is created by
+    ``Runnable.spawn_state()`` and can be called repeatedly with successive
+    input chunks. Use :meth:`freeze` to snapshot the state for later reuse.
     """
     def __init__(self, ptr):
         self.ptr = ptr
