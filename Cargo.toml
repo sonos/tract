@@ -148,7 +148,7 @@ flate2 = "1.0.20"
 float-ord = "0.3.2"
 fs-err = "3"
 fs2 = "0.4.3"
-getrandom = "0.2"
+getrandom = "0.3"
 half = { version=">=2.4,<3.0", features = [ "std", "num-traits" ] }
 home = "=0.5.11"
 icu_normalizer = "1.5.0"
