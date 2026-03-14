@@ -89,7 +89,8 @@ jobs:
     - run: echo uname=$(uname) >> $GITHUB_ENV
     - uses: actions/download-artifact@v8
       with:
-        pattern: tract-cli-${{env.uname}}
+        name: tract-cli-${{env.uname}}
+        path: tract-cli-${{env.uname}}
 
     - name: Download and run
       run: |
@@ -120,7 +121,8 @@ jobs:
     - run: echo uname=$(uname) >> $GITHUB_ENV
     - uses: actions/download-artifact@v8
       with:
-        pattern: tract-cli-${{env.uname}}
+        name: tract-cli-${{env.uname}}
+        path: tract-cli-${{env.uname}}
 
     - name: Download and run
       run: |
