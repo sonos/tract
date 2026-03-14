@@ -241,5 +241,5 @@ pub fn get_sliced_cuda_view_mut(
     let offset = t.buffer_offset::<usize>() + offset;
     let ptr: *const CudaBuffer = buffer;
     let mut_buffer: &mut CudaBuffer = unsafe { (ptr as *mut CudaBuffer).as_mut().unwrap() };
-    Ok(mut_buffer.as_view_mut().slice_mut(offset..(offset + len)))
+    Ok(mut_buffer.inner.slice_mut(offset..(offset + len)))
 }
