@@ -98,8 +98,7 @@ pub trait AttrScalarType<'a>: 'a + Sized {
 impl<'a> AttrScalarType<'a> for DatumType {
     fn get_attr_opt_scalar(node: &'a NodeProto, name: &str) -> TractResult<Option<Self>> {
         i32::get_attr_opt_scalar(node, name)?
-            .map(tensor_proto::DataType::from_i32)
-            .map(|d| d.unwrap().try_into())
+            .map(|d| tensor_proto::DataType::try_from(d).unwrap().try_into())
             .transpose()
     }
 }
@@ -319,7 +318,7 @@ impl NodeProto {
             Some(attr) => attr,
             _ => return Ok(None),
         };
-        self.expect_attr(name, AttributeType::from_i32(attr.r#type).unwrap() == ty, || {
+        self.expect_attr(name, AttributeType::try_from(attr.r#type).unwrap() == ty, || {
             format!("{}, got {}", ty, attr.r#type)
         })?;
         Ok(Some(attr))

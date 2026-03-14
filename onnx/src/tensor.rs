@@ -35,7 +35,7 @@ pub fn translate_inference_fact(
     include_unknown_symbols: bool,
 ) -> TractResult<InferenceFact> {
     let mut fact = InferenceFact::default();
-    fact = fact.with_datum_type(DataType::from_i32(t.elem_type).unwrap().try_into()?);
+    fact = fact.with_datum_type(DataType::try_from(t.elem_type).unwrap().try_into()?);
     if let Some(shape) = &t.shape {
         let shape: TVec<DimFact> = shape
             .dim
@@ -130,7 +130,7 @@ pub fn load_tensor(
     t: &TensorProto,
     path: Option<&str>,
 ) -> TractResult<Tensor> {
-    let dt = DataType::from_i32(t.data_type).unwrap().try_into()?;
+    let dt = DataType::try_from(t.data_type).unwrap().try_into()?;
     let shape: Vec<usize> = t.dims.iter().map(|&i| i as usize).collect();
     // detect if the tensor is rather in an external file than inside the onnx file directly
     let is_external = t.data_location.is_some()
