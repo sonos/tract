@@ -75,7 +75,8 @@ class Runnable:
         """
         return self.spawn_state().run(inputs)
 
-    def spawn_state(self):
+    def spawn_state(self) -> State:
+        """Create a new execution state for stateful (e.g. streaming) models."""
         self._valid()
         state = c_void_p()
         check(lib.tract_runnable_spawn_state(self.ptr, byref(state)))
@@ -108,7 +109,9 @@ class Runnable:
         return result
 
     def input_facts(self) -> List[Fact]:
+        """Return the list of input facts."""
         return [ self.input_fact(ix) for ix in range(self.input_count()) ]
 
-    def output_facts(self):
+    def output_facts(self) -> List[Fact]:
+        """Return the list of output facts."""
         return [ self.output_fact(ix) for ix in range(self.output_count()) ]

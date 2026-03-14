@@ -57,6 +57,7 @@ class State:
         return result
 
     def freeze(self) -> "FrozenState":
+        """Freeze the state into an immutable ``FrozenState`` snapshot."""
         self._valid()
         frozen = c_void_p()
         check(lib.tract_state_freeze(self.ptr, byref(frozen)))
@@ -64,7 +65,9 @@ class State:
 
 class FrozenState:
     """
-    The state of a stateful model.
+    A frozen (immutable) snapshot of a stateful model's state.
+
+    Can be unfrozen back into a mutable ``State`` with :meth:`unfreeze`.
     """
     def __init__(self, ptr):
         self.ptr = ptr
@@ -77,6 +80,7 @@ class FrozenState:
             raise TractError("invalid frozen state (maybe already destroyed ?)")
 
     def unfreeze(self) -> State:
+        """Restore a mutable ``State`` from this frozen snapshot."""
         self._valid()
         state = c_void_p()
         check(lib.tract_frozen_state_unfreeze(self.ptr, byref(state)))

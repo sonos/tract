@@ -6,16 +6,24 @@ from .model import Model
 from .bindings import TractError, check, lib
 
 def runtime_for_name(name: str):
+    """Look up a runtime by name and return a ``Runtime`` instance.
+
+    Available runtimes depend on the build and the platform. For instance,
+    ``"metal"`` is available on Apple Silicon Macs, ``"gpu"`` on systems with
+    Vulkan support.
+    """
     runtime = c_void_p()
     check(lib.tract_runtime_for_name(str(name).encode("utf-8"), byref(runtime)))
     return Runtime(runtime)
 
 class Runtime:
     """
-    Represents a harware/software stack that can execute a Model.
+    Represents a hardware/software stack that can execute a Model.
 
-    The main point of interest is the "prepare" method that transform a Model
-    into a Runnable for this Runtime.
+    The default runtime is CPU. GPU-accelerated runtimes (Metal on macOS,
+    Vulkan via ``"gpu"``) can be obtained with :func:`runtime_for_name`.
+    Use :meth:`prepare` to turn a ``Model`` into a ``Runnable`` targeting
+    this runtime.
     """
     def __init__(self, ptr):
         self.ptr = ptr
