@@ -24,7 +24,6 @@ then
 	llama-3.2-1B-instruct \
 	llama-3.2-3B-instruct \
 	llama-3.1-8B-instruct \
-	qwen2.5-7B-instruct \
 	qwen3-1.7B \
 	qwen3-8B
     do
@@ -40,7 +39,6 @@ for m in \
     meta-llama--Llama-3.2-1B-Instruct \
     meta-llama--Llama-3.2-3B-Instruct \
     meta-llama--Llama-3.1-8B-Instruct \
-    Qwen--Qwen2.5-7B-Instruct \
     Qwen--Qwen3-1.7B \
     Qwen--Qwen3-8B
 do
