@@ -66,11 +66,11 @@ def test_inference_model():
     assert model.output_count() == 1
     assert model.input_name(0) == "data"
     assert model.output_name(0) == "mobilenetv20_output_flatten0_reshape0"
-    assert str(model.input_fact(0)) == "1,3,224,224,F32"
+    assert str(model.input_fact(0)) == "1,3,224,224,f32"
     model.set_input_fact(0, "B,3,224,224,f32")
     model.set_output_fact(0, None)
     model.analyse()
-    assert str(model.output_fact(0)) == "B,1000,F32"
+    assert str(model.output_fact(0)) == "B,1000,f32"
     typed = model.into_model()
 
 def test_set_output_names_on_inference_model():
@@ -78,7 +78,7 @@ def test_set_output_names_on_inference_model():
     model.set_input_fact(0, "B,3,224,224,f32")
     model.analyse()
     model.set_output_names(["mobilenetv20_output_pred_fwd"])
-    assert str(model.output_fact(0)) == "B,1000,1,1,F32"
+    assert str(model.output_fact(0)) == "B,1000,1,1,f32"
 
 def test_typed_model():
     model = tract.nnef().load("mobilenet_v2_1.0.onnx.nnef.tgz")
@@ -86,8 +86,8 @@ def test_typed_model():
     assert model.output_count() == 1
     assert model.input_name(0) == "data"
     assert model.output_name(0) == "conv_53"
-    assert str(model.input_fact(0)) == "1,3,224,224,F32"
-    assert str(model.output_fact(0)) == "1,1000,F32"
+    assert str(model.input_fact(0)) == "1,3,224,224,f32"
+    assert str(model.output_fact(0)) == "1,1000,f32"
 
 def test_runtime():
     model = tract.nnef().load("mobilenet_v2_1.0.onnx.nnef.tgz")
@@ -100,18 +100,18 @@ def test_runtime():
 def test_set_output_names():
     model = tract.nnef().load("mobilenet_v2_1.0.onnx.nnef.tgz")
     model.set_output_names(["conv_53"])
-    assert str(model.output_fact(0)) == "1,1000,F32"
+    assert str(model.output_fact(0)) == "1,1000,f32"
 
 def test_concretize():
     model = tract.onnx().load("./mobilenetv2-7.onnx")
     model.set_input_fact(0, "B,3,224,224,f32")
     model.analyse()
     typed = model.into_model()
-    assert str(typed.input_fact(0)) == "B,3,224,224,F32"
-    assert str(typed.output_fact(0)) == "B,1000,F32"
+    assert str(typed.input_fact(0)) == "B,3,224,224,f32"
+    assert str(typed.output_fact(0)) == "B,1000,f32"
     typed.transform(tract.ConcretizeSymbols({"B": 1}))
-    assert str(typed.input_fact(0)) == "1,3,224,224,F32"
-    assert str(typed.output_fact(0)) == "1,1000,F32"
+    assert str(typed.input_fact(0)) == "1,3,224,224,f32"
+    assert str(typed.output_fact(0)) == "1,1000,f32"
 
 def test_concretize_builder():
     model = tract.onnx().load("./mobilenetv2-7.onnx")
@@ -119,8 +119,8 @@ def test_concretize_builder():
     model.analyse()
     typed = model.into_model()
     typed.transform(tract.ConcretizeSymbols().value("B", 1))
-    assert str(typed.input_fact(0)) == "1,3,224,224,F32"
-    assert str(typed.output_fact(0)) == "1,1000,F32"
+    assert str(typed.input_fact(0)) == "1,3,224,224,f32"
+    assert str(typed.output_fact(0)) == "1,1000,f32"
 
 def test_concretize_raw_string():
     model = tract.onnx().load("./mobilenetv2-7.onnx")
@@ -128,19 +128,19 @@ def test_concretize_raw_string():
     model.analyse()
     typed = model.into_model()
     typed.transform('{"name":"concretize_symbols","values":{"B":1}}')
-    assert str(typed.input_fact(0)) == "1,3,224,224,F32"
-    assert str(typed.output_fact(0)) == "1,1000,F32"
+    assert str(typed.input_fact(0)) == "1,3,224,224,f32"
+    assert str(typed.output_fact(0)) == "1,1000,f32"
 
 def test_pulse():
     model = tract.onnx().load("./mobilenetv2-7.onnx")
     model.set_input_fact(0, "B,3,224,224,f32")
     model.analyse()
     typed = model.into_model()
-    assert str(typed.input_fact(0)) == "B,3,224,224,F32"
-    assert str(typed.output_fact(0)) == "B,1000,F32"
+    assert str(typed.input_fact(0)) == "B,3,224,224,f32"
+    assert str(typed.output_fact(0)) == "B,1000,f32"
     typed.transform(tract.Pulse("5", symbol="B"))
-    assert str(typed.input_fact(0)) == "5,3,224,224,F32"
-    assert str(typed.output_fact(0)) == "5,1000,F32"
+    assert str(typed.input_fact(0)) == "5,3,224,224,f32"
+    assert str(typed.output_fact(0)) == "5,1000,f32"
     properties = typed.property_keys()
     properties.sort()
     assert properties == ["pulse.delay", "pulse.input_axes", "pulse.output_axes"]
@@ -152,8 +152,8 @@ def test_pulse_builder():
     model.analyse()
     typed = model.into_model()
     typed.transform(tract.Pulse("5").symbol("B"))
-    assert str(typed.input_fact(0)) == "5,3,224,224,F32"
-    assert str(typed.output_fact(0)) == "5,1000,F32"
+    assert str(typed.input_fact(0)) == "5,3,224,224,f32"
+    assert str(typed.output_fact(0)) == "5,1000,f32"
 
 def test_pulse_raw_string():
     model = tract.onnx().load("./mobilenetv2-7.onnx")
@@ -161,13 +161,13 @@ def test_pulse_raw_string():
     model.analyse()
     typed = model.into_model()
     typed.transform('{"name":"pulse","symbol":"B","pulse":"5"}')
-    assert str(typed.input_fact(0)) == "5,3,224,224,F32"
-    assert str(typed.output_fact(0)) == "5,1000,F32"
+    assert str(typed.input_fact(0)) == "5,3,224,224,f32"
+    assert str(typed.output_fact(0)) == "5,1000,f32"
 
 def test_runtime_fact():
     runnable = tract.nnef().load("mobilenet_v2_1.0.onnx.nnef.tgz").into_runnable()
-    assert str(runnable.input_fact(0)) ==  "1,3,224,224,F32"
-    assert str(runnable.output_fact(0)) == "1,1000,F32"
+    assert str(runnable.input_fact(0)) ==  "1,3,224,224,f32"
+    assert str(runnable.output_fact(0)) == "1,1000,f32"
 
 def test_runtime_properties():
     model = tract.onnx().load("./mobilenetv2-7.onnx")
@@ -187,8 +187,8 @@ def test_f32_to_f16():
     model.analyse()
     typed = model.into_model()
     typed.transform(tract.FloatPrecision(tract.DatumType.F32, tract.DatumType.F16))
-    assert str(typed.input_fact(0)) == "1,3,224,224,F16"
-    assert str(typed.output_fact(0)) == "1,1000,F16"
+    assert str(typed.input_fact(0)) == "1,3,224,224,f16"
+    assert str(typed.output_fact(0)) == "1,1000,f16"
 
 def test_f32_to_f16_raw_string():
     model = tract.onnx().load("./mobilenetv2-7.onnx")
@@ -196,8 +196,8 @@ def test_f32_to_f16_raw_string():
     model.analyse()
     typed = model.into_model()
     typed.transform("f32_to_f16")
-    assert str(typed.input_fact(0)) == "1,3,224,224,F16"
-    assert str(typed.output_fact(0)) == "1,1000,F16"
+    assert str(typed.input_fact(0)) == "1,3,224,224,f16"
+    assert str(typed.output_fact(0)) == "1,1000,f16"
 
 def test_f16_to_f32():
     model = tract.onnx().load("./mobilenetv2-7.onnx")
@@ -207,13 +207,13 @@ def test_f16_to_f32():
     #Convert model to half
     typed = model.into_model()
     typed.transform(tract.FloatPrecision(tract.DatumType.F32, tract.DatumType.F16))
-    assert str(typed.input_fact(0)) == "1,3,224,224,F16"
-    assert str(typed.output_fact(0)) == "1,1000,F16"
+    assert str(typed.input_fact(0)) == "1,3,224,224,f16"
+    assert str(typed.output_fact(0)) == "1,1000,f16"
 
     # Convert back to f32
     typed.transform(tract.FloatPrecision(tract.DatumType.F16, tract.DatumType.F32))
-    assert str(typed.input_fact(0)) == "1,3,224,224,F32"
-    assert str(typed.output_fact(0)) == "1,1000,F32"
+    assert str(typed.input_fact(0)) == "1,3,224,224,f32"
+    assert str(typed.output_fact(0)) == "1,1000,f32"
 
 def test_f16_to_f32_raw_string():
     model = tract.onnx().load("./mobilenetv2-7.onnx")
@@ -222,8 +222,8 @@ def test_f16_to_f32_raw_string():
     typed = model.into_model()
     typed.transform("f32_to_f16")
     typed.transform("f16_to_f32")
-    assert str(typed.input_fact(0)) == "1,3,224,224,F32"
-    assert str(typed.output_fact(0)) == "1,1000,F32"
+    assert str(typed.input_fact(0)) == "1,3,224,224,f32"
+    assert str(typed.output_fact(0)) == "1,1000,f32"
 
 def test_typed_model_to_nnef_and_back():
     model = tract.onnx().load("./mobilenetv2-7.onnx")
@@ -237,25 +237,25 @@ def test_typed_model_to_nnef_and_back():
         path = tmpdirname / "nnef-dir"
         nnef.write_model_to_dir(typed, path)
         reloaded = nnef.load(path)
-        assert str(reloaded.input_fact(0)) == "B,3,224,224,F32"
-        assert str(reloaded.output_fact(0)) == "B,1000,F32"
+        assert str(reloaded.input_fact(0)) == "B,3,224,224,f32"
+        assert str(reloaded.output_fact(0)) == "B,1000,f32"
 
         path = tmpdirname / "nnef.tar"
         nnef.write_model_to_tar(typed, path)
         reloaded = nnef.load(path)
-        assert str(reloaded.input_fact(0)) == "B,3,224,224,F32"
-        assert str(reloaded.output_fact(0)) == "B,1000,F32"
+        assert str(reloaded.input_fact(0)) == "B,3,224,224,f32"
+        assert str(reloaded.output_fact(0)) == "B,1000,f32"
 
         path = tmpdirname / "nnef.tar.gz"
         nnef = nnef.with_extended_identifier_syntax()
         nnef.write_model_to_tar_gz(typed, path)
         reloaded = nnef.load(path)
-        assert str(reloaded.input_fact(0)) == "B,3,224,224,F32"
-        assert str(reloaded.output_fact(0)) == "B,1000,F32"
+        assert str(reloaded.input_fact(0)) == "B,3,224,224,f32"
+        assert str(reloaded.output_fact(0)) == "B,1000,f32"
 
 def test_cost():
     model = tract.nnef().load("mobilenet_v2_1.0.onnx.nnef.tgz")
-    assert str(model.input_fact(0)) == "1,3,224,224,F32"
+    assert str(model.input_fact(0)) == "1,3,224,224,f32"
     runnable = model.into_runnable()
     profile = runnable.profile_json(None)
     profile = json.loads(profile)
@@ -266,7 +266,7 @@ def test_cost():
 
 def test_profile():
     model = tract.nnef().load("mobilenet_v2_1.0.onnx.nnef.tgz")
-    assert str(model.input_fact(0)) == "1,3,224,224,F32"
+    assert str(model.input_fact(0)) == "1,3,224,224,f32"
     runnable = model.into_runnable()
     data = numpy.random.rand(1,3,224,224).astype(dtype="float32")
     profile = runnable.profile_json([data])
@@ -286,12 +286,12 @@ def test_transform_registry():
 
     #Convert model to half
     model.transform("f32_to_f16")
-    assert str(model.input_fact(0)) == "1,3,224,224,F16"
-    assert str(model.output_fact(0)) == "1,1000,F16"
+    assert str(model.input_fact(0)) == "1,3,224,224,f16"
+    assert str(model.output_fact(0)) == "1,1000,f16"
     
     # Convert back to f32 
     model.transform("f16_to_f32")
-    assert str(model.input_fact(0)) == "1,3,224,224,F32"
+    assert str(model.input_fact(0)) == "1,3,224,224,f32"
 
 def test_fact_and_dims():
     nnef = tract.nnef().with_tract_core()
@@ -324,10 +324,10 @@ def test_runtime_fact_iterator():
     runnable = nnef.load("mobilenet_v2_1.0.onnx.nnef.tgz").into_runnable()
     inputs = runnable.input_facts();
     assert len(inputs) == 1
-    assert str(inputs[0]) == "1,3,224,224,F32"
+    assert str(inputs[0]) == "1,3,224,224,f32"
     outputs = runnable.output_facts();
     assert len(outputs) == 1
-    assert str(outputs[0]) == "1,1000,F32"
+    assert str(outputs[0]) == "1,1000,f32"
 
 def test_value_method():
     floats = tract.Tensor.from_numpy(numpy.array([-1, -0.3, 0., 0.25, 0.75, 1.2], dtype=numpy.float32))
