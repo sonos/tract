@@ -22,7 +22,8 @@ class InferenceFact:
         if self.ptr == None:
             raise TractError("invalid inference fact (maybe already consumed ?)")
 
-    def dump(self):
+    def dump(self) -> str:
+        """Return a human-readable representation of the fact."""
         self._valid()
         cstring = c_char_p();
         check(lib.tract_inference_fact_dump(self.ptr, byref(cstring)))
@@ -52,24 +53,28 @@ class Fact:
             raise TractError("invalid fact (maybe already consumed ?)")
 
     def datum_type(self) -> int:
+        """Return the element type of the fact as a ``DatumType`` integer."""
         self._valid()
         dt = c_uint32()
         check(lib.tract_fact_datum_type(self.ptr, byref(dt)))
         return dt.value
 
     def rank(self) -> int:
+        """Return the number of dimensions (axes) of the tensor."""
         self._valid()
         rank = c_size_t()
         check(lib.tract_fact_rank(self.ptr, byref(rank)))
         return rank.value
 
     def dim(self, axis: int) -> Dim:
+        """Return the :class:`~tract.dim.Dim` for the given axis."""
         self._valid()
         ptr = c_void_p();
         check(lib.tract_fact_dim(self.ptr,  c_size_t(axis), byref(ptr)))
         return Dim(ptr)
 
-    def dump(self):
+    def dump(self) -> str:
+        """Return a human-readable representation of the fact."""
         self._valid()
         cstring = c_char_p();
         check(lib.tract_fact_dump(self.ptr, byref(cstring)))
@@ -78,4 +83,5 @@ class Fact:
         return result
 
     def dims(self):
+        """Return a list of :class:`~tract.dim.Dim` for all axes."""
         return [ self.dim(axis) for axis in range(self.rank()) ]

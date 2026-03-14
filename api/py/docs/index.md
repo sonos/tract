@@ -28,7 +28,7 @@ tensor
 - [NNEF](nnef.md) — load and save NNEF models
 - [Inference model](inference_model.md) — partially typed model from ONNX
 - [Model](model.md) — fully typed model, central to the cooking pipeline
-- [Fact](fact.md) — shape and type information
+- [Facts and Dimensions](fact.md) — shape, type, and symbolic dimension information
 - [Runnable](runnable.md) — optimized model ready to run
 - [Tensor](tensor.md) — tensor data
 

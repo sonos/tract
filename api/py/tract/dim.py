@@ -3,7 +3,13 @@ from tract.bindings import TractError, check, lib
 from typing import Dict
 
 class Dim:
-    "Tract dimension for tensor, supporting symbols"
+    """
+    A possibly symbolic dimension of a tensor.
+
+    Dimensions can be concrete integers or symbolic expressions (e.g. ``N``,
+    ``N+1``). Use :meth:`to_int64` to extract a concrete value, or :meth:`eval`
+    to substitute symbols.
+    """
 
     def __init__(self, ptr):
         self.ptr = ptr
@@ -22,7 +28,8 @@ class Dim:
         if self.ptr == None:
             raise TractError("invalid dim")
 
-    def dump(self):
+    def dump(self) -> str:
+        """Return a human-readable representation of the dimension."""
         self._valid()
         cstring = c_char_p();
         check(lib.tract_dim_dump(self.ptr, byref(cstring)))
@@ -31,6 +38,7 @@ class Dim:
         return result
 
     def eval(self, values: Dict[str, int]) -> "Dim":
+        """Substitute symbols by concrete values and return the resulting dimension."""
         self._valid()
         nb = len(values)
         names_str = []
@@ -45,6 +53,7 @@ class Dim:
         return Dim(ptr)
 
     def to_int64(self) -> int:
+        """Convert to a concrete integer. Raises if the dimension is symbolic."""
         self._valid()
         i = c_int64()
         check(lib.tract_dim_to_int64(self.ptr, byref(i)))
