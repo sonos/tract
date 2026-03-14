@@ -21,11 +21,14 @@ pub fn capture_gpu_trace<F>(matches: &clap::ArgMatches, func: F) -> TractResult<
 where
     F: FnOnce() -> TractResult<()>,
 {
-    if matches.is_present("metal-gpu-trace") {
+    if matches.contains_id("metal-gpu-trace")
+        && matches.get_one::<String>("metal-gpu-trace").is_some()
+    {
         #[cfg(any(target_os = "macos", target_os = "ios"))]
         {
             let gpu_trace_path =
-                std::path::Path::new(matches.value_of("metal-gpu-trace").unwrap()).to_path_buf();
+                std::path::Path::new(matches.get_one::<String>("metal-gpu-trace").unwrap())
+                    .to_path_buf();
             ensure!(gpu_trace_path.is_absolute(), "Metal GPU trace file has to be absolute");
             ensure!(
                 !gpu_trace_path.exists(),
@@ -41,7 +44,9 @@ where
         {
             bail!("`--metal-gpu-trace` present but it is only available on MacOS and iOS")
         }
-    } else if matches.is_present("cuda-gpu-trace") {
+    } else if matches.contains_id("cuda-gpu-trace")
+        && matches.get_one::<String>("cuda-gpu-trace").is_some()
+    {
         #[cfg(any(target_os = "linux", target_os = "windows"))]
         {
             ensure_cuda_runtime_dependencies(

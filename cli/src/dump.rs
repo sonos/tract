@@ -131,7 +131,7 @@ pub fn handle(
         let run_params = run_params_from_subcommand(params, sub_matches)?;
         let inputs = get_or_make_inputs(&params.tract_model, &run_params)?;
 
-        if matches.is_present("metal") || matches.is_present("cuda") {
+        if matches.get_flag("metal") || matches.get_flag("cuda") {
             #[cfg(not(any(
                 target_os = "macos",
                 target_os = "ios",
@@ -165,10 +165,11 @@ pub fn handle(
         }
     }
 
-    if sub_matches.is_present("axes") || sub_matches.is_present("axes-names") {
+    if sub_matches.get_flag("axes") || sub_matches.contains_id("axes-names") {
         let mut hints = HashMap::default();
-        if let Some(names) = sub_matches.values_of("axes-names") {
+        if let Some(names) = sub_matches.get_many::<String>("axes-names") {
             for param in names {
+                let param = param.as_str();
                 let (node, names) = if let Some((node, axes)) = param.split_once('=') {
                     (params.tract_model.node_id_by_name(node)?, axes)
                 } else {
@@ -181,7 +182,7 @@ pub fn handle(
         annotations.track_axes(&*params.tract_model, &hints)?;
     }
 
-    if sub_matches.is_present("memory-arena") {
+    if sub_matches.contains_id("memory-arena") {
         #[cfg(not(any(target_os = "macos", target_os = "ios")))]
         {
             ensure_cuda_runtime_dependencies(
@@ -193,13 +194,14 @@ pub fn handle(
             &plan_options_from_subcommand(sub_matches)?,
             std::path::Path::new(
                 sub_matches
-                    .value_of("memory-arena")
+                    .get_one::<String>("memory-arena")
+                    .map(String::as_str)
                     .ok_or(anyhow!("Path to JSON file required"))?,
             ),
         )?;
     }
 
-    if sub_matches.is_present("tmp_mem_usage") {
+    if sub_matches.get_flag("tmp_mem_usage") {
         let plan_options = plan_options_from_subcommand(sub_matches)?;
         annotations.track_tmp_memory_usage(
             &*params.tract_model,
@@ -226,9 +228,9 @@ pub fn handle(
         }
     }
 
-    let compress_submodels = sub_matches.is_present("compress-submodels");
-    let deterministic = sub_matches.is_present("nnef-deterministic");
-    if let Some(path) = sub_matches.value_of("nnef") {
+    let compress_submodels = sub_matches.get_flag("compress-submodels");
+    let deterministic = sub_matches.get_flag("nnef-deterministic");
+    if let Some(path) = sub_matches.get_one::<String>("nnef").map(String::as_str) {
         let nnef = super::nnef(matches);
         if let Some(typed) = params.typed_model().to_owned() {
             let mut typed = Arc::unwrap_or_clone(typed);
@@ -242,7 +244,7 @@ pub fn handle(
         }
     }
 
-    if let Some(path) = sub_matches.value_of("nnef-tar") {
+    if let Some(path) = sub_matches.get_one::<String>("nnef-tar").map(String::as_str) {
         let nnef = super::nnef(matches);
         if let Some(typed) = params.typed_model().to_owned() {
             let mut typed = Arc::unwrap_or_clone(typed);
@@ -255,15 +257,15 @@ pub fn handle(
         }
     }
 
-    if let Some(path) = sub_matches.value_of("nnef-dir") {
+    if let Some(path) = sub_matches.get_one::<String>("nnef-dir").map(String::as_str) {
         let nnef = super::nnef(matches);
         if let Some(typed) = params.typed_model().to_owned() {
             let mut typed = Arc::unwrap_or_clone(typed);
             rename_outputs(&mut typed, sub_matches)?;
-            if let Some(renamed) = sub_matches.values_of("nnef-override-output-name") {
-                for (ix, name) in renamed.into_iter().enumerate() {
+            if let Some(renamed) = sub_matches.get_many::<String>("nnef-override-output-name") {
+                for (ix, name) in renamed.enumerate() {
                     let output = typed.wire_node(
-                        name,
+                        name.as_str(),
                         tract_core::ops::identity::Identity,
                         &[typed.output_outlets()?[ix]],
                     )?;
@@ -276,7 +278,7 @@ pub fn handle(
         }
     }
 
-    if let Some(path) = sub_matches.value_of("nnef-graph") {
+    if let Some(path) = sub_matches.get_one::<String>("nnef-graph").map(String::as_str) {
         let nnef = super::nnef(matches);
         if let Some(typed) = params.typed_model().to_owned() {
             let mut typed = Arc::unwrap_or_clone(typed);
@@ -295,7 +297,7 @@ pub fn handle(
     }
 
     #[cfg(feature = "tflite")]
-    if let Some(path) = sub_matches.value_of("tflite") {
+    if let Some(path) = sub_matches.get_one::<String>("tflite").map(String::as_str) {
         let tflite = tract_tflite::tflite();
         if let Some(typed) = params.typed_model().to_owned() {
             let mut typed = Arc::unwrap_or_clone(typed);
@@ -308,14 +310,16 @@ pub fn handle(
     }
 
     #[cfg(not(feature = "tflite"))]
-    if sub_matches.value_of("tflite").is_some() {
+    if sub_matches.get_one::<String>("tflite").is_some() {
         bail!("This is a tract build without support for tflite.")
     }
 
     if options.cost {
         let total = annotations.tags.values().sum::<NodeTags>();
-        let assert =
-            sub_matches.value_of("assert-cost").map(crate::cost::parse_costs).transpose()?;
+        let assert = sub_matches
+            .get_one::<String>("assert-cost")
+            .map(|s| crate::cost::parse_costs(s))
+            .transpose()?;
         if let Some(assert) = assert {
             let assert: HashMap<Cost, TDim> =
                 assert.iter().map(|(c, n)| (c.clone(), n.to_dim())).collect();
@@ -358,10 +362,10 @@ pub fn handle(
 }
 
 fn rename_outputs(typed: &mut TypedModel, sub_matches: &clap::ArgMatches) -> TractResult<()> {
-    if let Some(renamed) = sub_matches.values_of("nnef-override-output-name") {
-        for (ix, name) in renamed.into_iter().enumerate() {
+    if let Some(renamed) = sub_matches.get_many::<String>("nnef-override-output-name") {
+        for (ix, name) in renamed.enumerate() {
             let output = typed.wire_node(
-                name,
+                name.as_str(),
                 tract_core::ops::identity::Identity,
                 &[typed.output_outlets()?[ix]],
             )?;

@@ -35,7 +35,7 @@ pub fn handle(
     let (iters, dur) = {
         #[cfg(any(target_os = "linux", target_os = "windows"))]
         let _profiler =
-            sub_matches.is_present("cuda-gpu-trace").then(cudarc::driver::safe::Profiler::new);
+            sub_matches.get_flag("cuda-gpu-trace").then(cudarc::driver::safe::Profiler::new);
         limits.bench(&params.req_runnable()?, &inputs)?
     };
     let dur = dur.div_f64(iters as _);
@@ -46,7 +46,7 @@ pub fn handle(
         println!("Bench ran {} times, {}.", iters, terminal::dur_avg(dur));
     }
 
-    if let Some(pp) = sub_matches.value_of("pp") {
+    if let Some(pp) = sub_matches.get_one::<String>("pp").map(String::as_str) {
         let pp = pp.parse::<usize>()?;
         let tokens = pp as f64 / dur.as_secs_f64();
         println!("PP{pp}: {tokens:.1} tokens/sec");
