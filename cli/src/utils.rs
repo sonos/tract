@@ -68,12 +68,13 @@ pub fn check_outputs(got: &[Vec<TValue>], params: &Parameters) -> TractResult<()
                     params.assertions.assert_llm_rbo_p,
                     params.assertions.assert_llm_rbo_depth,
                 )?;
-                info!("LLM RBO: {rbo:.4}");
+                let rbo = (rbo * 100.0).floor() / 100.0;
+                info!("LLM RBO: {rbo:.2}");
                 if rbo >= min_rbo {
                     Ok(())
                 } else {
                     TractResult::Err(anyhow!(
-                        "RBO criteria not met: rbo={rbo:.4}, min required {min_rbo}"
+                        "RBO criteria not met: rbo={rbo:.2}, min required {min_rbo}"
                     ))
                 }
             }
