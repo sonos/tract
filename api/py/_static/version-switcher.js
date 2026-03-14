@@ -17,7 +17,7 @@
   var current = parts.pop(); // version directory name
   var siteRoot = parts.join("/");
 
-  document.addEventListener("DOMContentLoaded", function () {
+  function injectSwitcher() {
     fetch(siteRoot + "/versions.json")
       .then(function (r) { return r.json(); })
       .then(function (versions) {
@@ -54,5 +54,8 @@
       .catch(function () {
         // No versions.json (local build) — silently skip.
       });
-  });
+  }
+
+  // Run immediately — script is at end of <body> so DOM is ready
+  injectSwitcher();
 })();
