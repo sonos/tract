@@ -39,6 +39,7 @@ jobs:
           pip install -r requirements-docs.txt
           pip install -e .
           sphinx-build -b html . _build/html
+          cp _static/redirect-index.html _build/html/index.html
 
       - name: Deploy to gh-pages
         # if: github.event_name != 'pull_request'
