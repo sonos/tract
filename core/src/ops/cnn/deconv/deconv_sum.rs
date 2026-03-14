@@ -452,6 +452,8 @@ macro_rules! impl_eval {
                     add: impl Fn(T, T) -> T + Copy + 'static,
                     ) -> TractResult<()> {
                     let n = *output_shape.n().unwrap_or(&1);
+                    let strides = op.pool_spec.strides();
+                    let dilations = op.pool_spec.dilations();
                     for n in 0..n {
                         for o in 0..*output_shape.c() {
                             for (kix, kcoords) in
@@ -464,8 +466,8 @@ macro_rules! impl_eval {
                                             let ocoord: TVec<isize> = tract_itertools::izip!(
                                                 kcoords.slice(),
                                                 gcoords.slice(),
-                                                op.pool_spec.strides().as_ref(),
-                                                op.pool_spec.dilations().as_ref(),
+                                                strides.as_ref(),
+                                                dilations.as_ref(),
                                                 spatial_output_details
                                                 )
                                                 .map(|(k, g, s, d, details)| {

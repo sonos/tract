@@ -47,12 +47,14 @@ pub fn adjustments(
         PaddingSpec::Valid => tvec!(0; rank),
         pad => todo!("Unsupported padding in deconvolution arguments {pad:?}"),
     };
+    let strides = pool_spec.strides();
+    let dilations = pool_spec.dilations();
     tract_itertools::izip!(
         input_geo,
         &pool_spec.kernel_shape,
         output_geo,
-        pool_spec.strides().as_ref(),
-        pool_spec.dilations().as_ref(),
+        strides.as_ref(),
+        dilations.as_ref(),
         pad,
     )
     .map(|(x, k, y, s, d, p)| {

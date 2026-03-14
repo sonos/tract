@@ -59,7 +59,7 @@ impl<'a> std::ops::Add<&'a NodeTags> for &'a NodeTags {
             .iter()
             .chain(other.cost.iter())
             .sorted_by_key(|(a, _)| a)
-            .group_by(|(a, _)| a)
+            .chunk_by(|(a, _)| a)
             .into_iter()
             .map(|(cost, dims)| {
                 (cost.clone(), dims.into_iter().fold(0.to_dim(), |acc, d| acc + &d.1))
