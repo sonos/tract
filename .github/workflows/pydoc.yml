@@ -1,0 +1,74 @@
+name: Python gh-pages doc
+
+on:
+  pull_request:
+  release:
+  workflow_dispatch:
+
+env:
+  CARGO_INCREMENTAL: false
+
+jobs:
+  build_doc:
+    name: Build doc
+    runs-on: ubuntu-latest
+    if: github.repository == 'sonos/tract'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Extract version tag
+        id: version
+        if: github.event_name == 'release' && github.event.action == 'published'
+        run: echo value=$(echo ${{ github.ref }} | cut -f 3 -d / | sed 's/^v//' ) >> $GITHUB_OUTPUT
+
+      - name: Build doc
+        run: |
+          set -ex
+          cd api/py
+          python -m venv pydocs
+          source pydocs/bin/activate
+          pip install -r requirements-docs.txt
+          pip install -e .
+          sphinx-build -b html . _build/html
+
+      - name: Deploy to gh-pages
+        if: github.event_name != 'pull_request'
+        run: |
+          set -ex
+          git config user.name "CI bot"
+          git config user.email ci-bot@tract.rs
+
+          version="${{ steps.version.outputs.value }}"
+          if [ -z "$version" ]; then
+            version="dev"
+          fi
+
+          # fetch existing gh-pages into a work directory
+          git fetch origin gh-pages --depth=1 || true
+          workdir=$(mktemp -d)
+          git worktree add "$workdir" gh-pages 2>/dev/null || {
+            git worktree add --orphan "$workdir" gh-pages
+          }
+
+          # copy new build into the versioned subdirectory
+          rm -rf "$workdir/$version"
+          cp -r api/py/_build/html "$workdir/$version"
+
+          # commit and push
+          cd "$workdir"
+          git add -A
+          git commit -m "Update Python docs ($version)" || true
+          git push origin gh-pages
+
+          # clean up worktree
+          cd -
+          git worktree remove "$workdir"
