@@ -46,7 +46,7 @@ pub fn handle(
         println!("Bench ran {} times, {}.", iters, terminal::dur_avg(dur));
     }
 
-    if let Some(pp) = sub_matches.get_one::<String>("pp").map(String::as_str) {
+    if let Some(pp) = sub_matches.get_one::<String>("pp") {
         let pp = pp.parse::<usize>()?;
         let tokens = pp as f64 / dur.as_secs_f64();
         println!("PP{pp}: {tokens:.1} tokens/sec");

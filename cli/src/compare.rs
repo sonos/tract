@@ -30,12 +30,12 @@ pub fn handle(
     if sub_matches.get_one::<String>("stage").is_some() {
         // --with is by pipeline and put in params
         return handle_reference_stage(cumulative, params, &output_params, &run_params);
-    } else if let Some(npz) = sub_matches.get_one::<String>("npz").map(String::as_str) {
+    } else if let Some(npz) = sub_matches.get_one::<String>("npz") {
         return handle_npz(cumulative, npz, params, &output_params, &run_params);
     } else if sub_matches.get_flag("twice") {
         return handle_twice(cumulative, params, &output_params, &run_params);
     }
-    if let Some(pbdir) = sub_matches.get_one::<String>("pbdir").map(String::as_str) {
+    if let Some(pbdir) = sub_matches.get_one::<String>("pbdir") {
         return handle_pbdir(cumulative, pbdir, params, &output_params, &run_params);
     }
     if sub_matches.get_flag("tf") {

@@ -728,7 +728,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
     let mut need_optimisations = false;
 
     #[cfg(feature = "multithread-mm")]
-    if let Some(threads) = matches.get_one::<String>("threads").map(String::as_str) {
+    if let Some(threads) = matches.get_one::<String>("threads") {
         let threads: usize = threads.parse()?;
         let threads = if threads == 0 { num_cpus::get_physical() } else { threads };
         multithread::set_default_executor(multithread::Executor::multithread(threads));

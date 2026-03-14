@@ -20,7 +20,7 @@ pub fn run_params_from_subcommand(
         }
     }
 
-    if let Some(dir) = sub_matches.get_one::<String>("input-from-nnef").map(String::as_str) {
+    if let Some(dir) = sub_matches.get_one::<String>("input-from-nnef") {
         for tensor in Parameters::parse_nnef_tensors(dir, true, false)? {
             tv.add(tensor);
         }
@@ -36,7 +36,7 @@ pub fn run_params_from_subcommand(
     let mut symbols = SymbolValues::default();
 
     #[cfg(feature = "transformers")]
-    if let Some(pp) = sub_matches.get_one::<String>("pp").map(String::as_str) {
+    if let Some(pp) = sub_matches.get_one::<String>("pp") {
         let value: i64 =
             pp.parse().with_context(|| format!("Can not parse symbol value in --pp {pp}"))?;
         let Some(typed_model) = params.tract_model.downcast_ref::<TypedModel>() else {
@@ -54,7 +54,7 @@ pub fn run_params_from_subcommand(
     }
 
     #[cfg(feature = "transformers")]
-    if let Some(tg) = sub_matches.get_one::<String>("tg").map(String::as_str) {
+    if let Some(tg) = sub_matches.get_one::<String>("tg") {
         let value: i64 =
             tg.parse().with_context(|| format!("Can not parse symbol value in --tg {tg}"))?;
         let Some(typed_model) = params.tract_model.downcast_ref::<TypedModel>() else {

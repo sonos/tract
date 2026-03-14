@@ -65,8 +65,7 @@ pub fn handle(
         }
     }
 
-    if let Some(file_path) = sub_matches.get_one::<String>("save-outputs-nnef").map(String::as_str)
-    {
+    if let Some(file_path) = sub_matches.get_one::<String>("save-outputs-nnef") {
         fs::create_dir_all(file_path).with_context(|| format!("Creating {file_path} directory"))?;
         for (ix, outputs) in outputs.iter().enumerate() {
             let name = params
@@ -88,7 +87,7 @@ pub fn handle(
         }
     }
 
-    if let Some(file_path) = sub_matches.get_one::<String>("save-outputs-npz").map(String::as_str) {
+    if let Some(file_path) = sub_matches.get_one::<String>("save-outputs-npz") {
         let file = fs::File::create(file_path).with_context(|| format!("Creating {file_path}"))?;
         let mut npz = ndarray_npy::NpzWriter::new_compressed(file);
 
@@ -109,7 +108,7 @@ pub fn handle(
         }
     }
 
-    if let Some(count) = sub_matches.get_one::<String>("assert-output-count").map(String::as_str) {
+    if let Some(count) = sub_matches.get_one::<String>("assert-output-count") {
         let count = count.parse::<usize>()?;
         if count != outputs.len() {
             bail!(
@@ -281,7 +280,7 @@ fn run_regular(
     let steps = sub_matches.get_flag("steps");
     let check_f16_overflow = sub_matches.get_flag("check-f16-overflow");
     let assert_sane_floats = sub_matches.get_flag("assert-sane-floats");
-    let npz = if let Some(npz) = sub_matches.get_one::<String>("save-steps").map(String::as_str) {
+    let npz = if let Some(npz) = sub_matches.get_one::<String>("save-steps") {
         let npz = fs::File::create(npz).with_context(|| format!("Creating {npz}"))?;
         Some(ndarray_npy::NpzWriter::new_compressed(npz))
     } else {

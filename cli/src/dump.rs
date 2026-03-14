@@ -195,7 +195,6 @@ pub fn handle(
             std::path::Path::new(
                 sub_matches
                     .get_one::<String>("memory-arena")
-                    .map(String::as_str)
                     .ok_or(anyhow!("Path to JSON file required"))?,
             ),
         )?;
@@ -230,7 +229,7 @@ pub fn handle(
 
     let compress_submodels = sub_matches.get_flag("compress-submodels");
     let deterministic = sub_matches.get_flag("nnef-deterministic");
-    if let Some(path) = sub_matches.get_one::<String>("nnef").map(String::as_str) {
+    if let Some(path) = sub_matches.get_one::<String>("nnef") {
         let nnef = super::nnef(matches);
         if let Some(typed) = params.typed_model().to_owned() {
             let mut typed = Arc::unwrap_or_clone(typed);
@@ -244,7 +243,7 @@ pub fn handle(
         }
     }
 
-    if let Some(path) = sub_matches.get_one::<String>("nnef-tar").map(String::as_str) {
+    if let Some(path) = sub_matches.get_one::<String>("nnef-tar") {
         let nnef = super::nnef(matches);
         if let Some(typed) = params.typed_model().to_owned() {
             let mut typed = Arc::unwrap_or_clone(typed);
@@ -257,7 +256,7 @@ pub fn handle(
         }
     }
 
-    if let Some(path) = sub_matches.get_one::<String>("nnef-dir").map(String::as_str) {
+    if let Some(path) = sub_matches.get_one::<String>("nnef-dir") {
         let nnef = super::nnef(matches);
         if let Some(typed) = params.typed_model().to_owned() {
             let mut typed = Arc::unwrap_or_clone(typed);
@@ -278,7 +277,7 @@ pub fn handle(
         }
     }
 
-    if let Some(path) = sub_matches.get_one::<String>("nnef-graph").map(String::as_str) {
+    if let Some(path) = sub_matches.get_one::<String>("nnef-graph") {
         let nnef = super::nnef(matches);
         if let Some(typed) = params.typed_model().to_owned() {
             let mut typed = Arc::unwrap_or_clone(typed);
@@ -297,7 +296,7 @@ pub fn handle(
     }
 
     #[cfg(feature = "tflite")]
-    if let Some(path) = sub_matches.get_one::<String>("tflite").map(String::as_str) {
+    if let Some(path) = sub_matches.get_one::<String>("tflite") {
         let tflite = tract_tflite::tflite();
         if let Some(typed) = params.typed_model().to_owned() {
             let mut typed = Arc::unwrap_or_clone(typed);

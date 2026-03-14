@@ -156,7 +156,7 @@ type TfExt = ();
 
 impl Parameters {
     fn disco_model(matches: &clap::ArgMatches) -> TractResult<(Location, bool)> {
-        let model = matches.get_one::<String>("model").map(String::as_str).with_context(|| {
+        let model = matches.get_one::<String>("model").with_context(|| {
             format!(
                 "Model argument required for subcommand {}",
                 matches.subcommand_name().unwrap_or("")
@@ -696,7 +696,7 @@ impl Parameters {
                 }
             }
             let mut dec = tract_core::optim::Optimizer::declutter();
-            if let Some(steps) = matches.get_one::<String>("declutter-step").map(String::as_str) {
+            if let Some(steps) = matches.get_one::<String>("declutter-step") {
                 dec = dec.stopping_at(steps.parse()?);
             }
             dec.optimize(&mut m)?;
@@ -710,7 +710,7 @@ impl Parameters {
         }
         #[cfg(feature = "pulse")]
         {
-            if let Some(spec) = matches.get_one::<String>("pulse").map(String::as_str) {
+            if let Some(spec) = matches.get_one::<String>("pulse") {
                 stage!("pulse", typed_model -> pulsed_model, |m:TypedModel| {
                     let (sym, pulse) = if let Ok((s,p)) = scan_fmt!(spec, "{}={}", String, String) {
                         (s, parse_tdim(&m.symbols, &p)?)
@@ -779,7 +779,7 @@ impl Parameters {
             });
             stage!("set-declutter", typed_model -> typed_model, |mut m| {
                 let mut dec = tract_core::optim::Optimizer::declutter();
-                if let Some(steps) = matches.get_one::<String>("declutter-set-step").map(String::as_str) {
+                if let Some(steps) = matches.get_one::<String>("declutter-set-step") {
                     dec = dec.stopping_at(steps.parse()?);
                 }
                 dec.optimize(&mut m)?;
@@ -815,8 +815,7 @@ impl Parameters {
         if matches.get_flag("tflite-cycle") {
             bail!("This tract build did not include tflite features.");
         }
-        if let Some(sub) = matches.get_one::<String>("extract-decluttered-sub").map(String::as_str)
-        {
+        if let Some(sub) = matches.get_one::<String>("extract-decluttered-sub") {
             stage!("extract", typed_model -> typed_model, |m:TypedModel| {
                 let node = m.node_id_by_name(sub)?;
                 Ok(m.nested_models(node)[0].1.downcast_ref::<TypedModel>().unwrap().clone())
@@ -1169,23 +1168,22 @@ impl Assertions {
                     .collect()
             });
         let allow_missing_outputs = sub.get_flag("allow-missing-outputs");
-        let approximation =
-            if let Some(custom) = sub.get_one::<String>("approx-custom").map(String::as_str) {
-                let Some((atol, rtol, approx)) = custom.split(",").collect_tuple() else {
-                    bail!("Can't parse approx custom. It should look like 0.001,0.002,0.003")
-                };
-                Approximation::Custom(atol.parse()?, rtol.parse()?, approx.parse()?)
-            } else {
-                match sub.get_one::<String>("approx").map(String::as_str).unwrap() {
-                    "exact" => Approximation::Exact,
-                    "close" => Approximation::Close,
-                    "approx" | "approximate" => Approximation::Approximate,
-                    "very" => Approximation::VeryApproximate,
-                    "super" => Approximation::SuperApproximate,
-                    "ultra" => Approximation::UltraApproximate,
-                    _ => panic!(),
-                }
+        let approximation = if let Some(custom) = sub.get_one::<String>("approx-custom") {
+            let Some((atol, rtol, approx)) = custom.split(",").collect_tuple() else {
+                bail!("Can't parse approx custom. It should look like 0.001,0.002,0.003")
             };
+            Approximation::Custom(atol.parse()?, rtol.parse()?, approx.parse()?)
+        } else {
+            match sub.get_one::<String>("approx").map(String::as_str).unwrap() {
+                "exact" => Approximation::Exact,
+                "close" => Approximation::Close,
+                "approx" | "approximate" => Approximation::Approximate,
+                "very" => Approximation::VeryApproximate,
+                "super" => Approximation::SuperApproximate,
+                "ultra" => Approximation::UltraApproximate,
+                _ => panic!(),
+            }
+        };
         let assert_llm_rbo =
             sub.get_one::<String>("assert-llm-rbo").map(|v| v.parse()).transpose()?;
         let assert_llm_rbo_p: f64 = sub
