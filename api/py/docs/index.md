@@ -10,6 +10,28 @@ including some which are no completely mainstream : a lot of energy have been
 invested in making `tract` an efficient engine to run models on ARM single board
 computers.
 
+```{toctree}
+:hidden:
+
+onnx
+nnef
+inference_model
+model
+fact
+runnable
+tensor
+```
+
+## API Reference
+
+- [ONNX](onnx.md) — load ONNX models
+- [NNEF](nnef.md) — load and save NNEF models
+- [Inference model](inference_model.md) — partially typed model from ONNX
+- [Model](model.md) — fully typed model, central to the cooking pipeline
+- [Fact](fact.md) — shape and type information
+- [Runnable](runnable.md) — optimized model ready to run
+- [Tensor](tensor.md) — tensor data
+
 ## Getting started
 
 ### Install tract library
@@ -202,13 +224,3 @@ or at cooking time by adding fixed delays.
 This cooking step is a recurring annoyance in the real-time voice and signal
 field : it can be done manually, but is very easy to get wrong. `tract` makes
 it automactic.
-
-```{toctree}
-onnx
-nnef
-inference_model
-model
-fact
-runnable
-tensor
-```
