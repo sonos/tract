@@ -185,8 +185,15 @@ fn main() -> TractResult<()> {
                 .value_parser(clap::builder::PossibleValuesParser::new(STAGES))
                 .help("Loading pipeline stage to compare with"),
         )
-        .arg(Arg::new("tf").long("tf").help("Compare against tensorflow"))
-        .arg(Arg::new("twice").long("twice").help("Run twice and compare"))
+        .arg(
+            Arg::new("tf").long("tf").action(ArgAction::SetTrue).help("Compare against tensorflow"),
+        )
+        .arg(
+            Arg::new("twice")
+                .long("twice")
+                .action(ArgAction::SetTrue)
+                .help("Run twice and compare"),
+        )
         .arg(Arg::new("npz").long("npz").num_args(1).help("NPZ file to compare against"))
         .arg(
             Arg::new("pbdir")
@@ -197,6 +204,7 @@ fn main() -> TractResult<()> {
         .arg(
             Arg::new("stream")
                 .long("stream")
+                .action(ArgAction::SetTrue)
                 .help("Compare pulsed execution against non-pulsed reference"),
         )
         .group(
@@ -207,11 +215,13 @@ fn main() -> TractResult<()> {
         .arg(
             Arg::new("cumulative")
                 .long("cumulative")
+                .action(ArgAction::SetTrue)
                 .help("Do not reset with reference values at each node"),
         )
         .arg(
             Arg::new("resilient")
                 .long("resilient")
+                .action(ArgAction::SetTrue)
                 .help("Try nodes one per one to mitigate crashes"),
         );
     let compare = run_options(compare);
@@ -235,7 +245,7 @@ fn main() -> TractResult<()> {
 
     let run = clap::Command::new("run")
         .long_about("Run the graph")
-        .arg(Arg::new("dump").long("dump").help("Show output"))
+        .arg(Arg::new("dump").long("dump").action(ArgAction::SetTrue).help("Show output"))
         .arg(
             Arg::new("save-outputs-npz")
                 .long("save-outputs-npz")
@@ -249,7 +259,12 @@ fn main() -> TractResult<()> {
                 .num_args(1)
                 .help("Save the output tensor into a folder of nnef .dat files"),
         )
-        .arg(Arg::new("steps").long("steps").help("Show all inputs and outputs"))
+        .arg(
+            Arg::new("steps")
+                .long("steps")
+                .action(ArgAction::SetTrue)
+                .help("Show all inputs and outputs"),
+        )
         .arg(
             Arg::new("save-steps")
                 .long("save-steps")
@@ -259,11 +274,13 @@ fn main() -> TractResult<()> {
         .arg(
             Arg::new("check-f16-overflow")
                 .long("check-f16-overflow")
+                .action(ArgAction::SetTrue)
                 .help("Check for f16 overflow in all outputs"),
         )
         .arg(
             Arg::new("assert-sane-floats")
                 .long("assert-sane-floats")
+                .action(ArgAction::SetTrue)
                 .help("Check float for NaN and infinites at each step"),
         );
     let run = run_options(run);
@@ -331,6 +348,7 @@ fn dump_subcommand() -> clap::Command {
         .arg(
             Arg::new("axes")
             .long("axes")
+            .action(clap::ArgAction::SetTrue)
             .help("Compute and display axis tracking")
             )
         .arg(
@@ -385,11 +403,13 @@ fn dump_subcommand() -> clap::Command {
         .arg(
             Arg::new("compress-submodels")
             .long("compress-submodels")
+            .action(clap::ArgAction::SetTrue)
             .help("Compress submodels if any (as a .tgz file)"),
         )
         .arg(
             Arg::new("nnef-deterministic")
             .long("nnef-deterministic")
+            .action(clap::ArgAction::SetTrue)
             .help("If provided, will try to make output .nnef.tar files deterministic"),
             )
         .arg(
@@ -456,6 +476,7 @@ fn assertions_options(command: clap::Command) -> clap::Command {
         .arg(
             Arg::new("allow-missing-outputs")
             .long("allow-missing-outputs")
+            .action(clap::ArgAction::SetTrue)
             .help("Allow missing output in checks")
             )
         .arg(
@@ -522,12 +543,14 @@ fn run_options(command: clap::Command) -> clap::Command {
         .arg(arg!(--tg [tg] "Random input for LLM-like text generation"))
         .arg(Arg::new("skip-order-opt-ram")
             .long("skip-order-opt-ram")
+            .action(clap::ArgAction::SetTrue)
             .help("Plan node evaluation order without RAM optimisation"),
             )
         .arg(
             Arg::new("allow-random-input")
             .short('R')
             .long("allow-random-input")
+            .action(clap::ArgAction::SetTrue)
             .help("Will use random generated input"),
             )
         .arg(
@@ -540,6 +563,7 @@ fn run_options(command: clap::Command) -> clap::Command {
         .arg(
             Arg::new("allow-float-casts")
             .long("allow-float-casts")
+            .action(clap::ArgAction::SetTrue)
             .help("Allow casting between f16, f32 and f64 around model"),
             )
         .arg(
@@ -551,6 +575,7 @@ fn run_options(command: clap::Command) -> clap::Command {
         .arg(
             Arg::new("cuda-gpu-trace")
                 .long("cuda-gpu-trace")
+                .action(clap::ArgAction::SetTrue)
                 .help("Capture CUDA GPU trace. Must be used with nsys profile -c cudaProfilerApi before cargo command")
         )
         .arg(
@@ -569,27 +594,88 @@ fn output_options(command: clap::Command) -> clap::Command {
             arg!(--"opt-ram-order" "dump nodes in RAM optimising order"),
             arg!(-q --quiet "don't dump"),
         ])
-        .arg(Arg::new("debug-op").long("debug-op").help("show debug dump for each op"))
+        .arg(
+            Arg::new("debug-op")
+                .long("debug-op")
+                .action(ArgAction::SetTrue)
+                .help("show debug dump for each op"),
+        )
         .arg(Arg::new("node-id").long("node-id").num_args(1).help("Select a node to dump"))
         .arg(Arg::new("successors").long("successors").num_args(1).help("Show successors of node"))
         .arg(Arg::new("op-name").long("op-name").num_args(1).help("Select one op to dump"))
         .arg(Arg::new("node-name").long("node-name").num_args(1).help("Select one node to dump"))
-        .arg(Arg::new("const").long("const").help("also display consts nodes"))
-        .arg(Arg::new("info").long("info").help("show op inner information"))
-        .arg(Arg::new("io-long").long("io-long").help("show full i/o information"))
-        .arg(Arg::new("io-none").long("io-none").help("hide i/o information"))
-        .arg(Arg::new("json").long("json").help("dump performance info as json"))
-        .arg(Arg::new("mm").long("mm").help("display Matrix Multiplication report"))
-        .arg(Arg::new("outlet-labels").long("outlet-labels").help("display outlet labels"))
-        .arg(Arg::new("cost").long("cost").help("Include const information"))
+        .arg(
+            Arg::new("const")
+                .long("const")
+                .action(ArgAction::SetTrue)
+                .help("also display consts nodes"),
+        )
+        .arg(
+            Arg::new("info")
+                .long("info")
+                .action(ArgAction::SetTrue)
+                .help("show op inner information"),
+        )
+        .arg(
+            Arg::new("io-long")
+                .long("io-long")
+                .action(ArgAction::SetTrue)
+                .help("show full i/o information"),
+        )
+        .arg(
+            Arg::new("io-none")
+                .long("io-none")
+                .action(ArgAction::SetTrue)
+                .help("hide i/o information"),
+        )
+        .arg(
+            Arg::new("json")
+                .long("json")
+                .action(ArgAction::SetTrue)
+                .help("dump performance info as json"),
+        )
+        .arg(
+            Arg::new("mm")
+                .long("mm")
+                .action(ArgAction::SetTrue)
+                .help("display Matrix Multiplication report"),
+        )
+        .arg(
+            Arg::new("outlet-labels")
+                .long("outlet-labels")
+                .action(ArgAction::SetTrue)
+                .help("display outlet labels"),
+        )
+        .arg(
+            Arg::new("cost")
+                .long("cost")
+                .action(ArgAction::SetTrue)
+                .help("Include const information"),
+        )
         .arg(
             Arg::new("tmp_mem_usage")
                 .long("tmp-mem-usage")
+                .action(ArgAction::SetTrue)
                 .help("Include temporary memory usage information"),
         )
-        .arg(Arg::new("profile").long("profile").help("Include results for profile run"))
-        .arg(Arg::new("folded").long("folded").help("Don't display submodel informations"))
-        .arg(Arg::new("invariants").long("invariants").help("Display operators invariants"))
+        .arg(
+            Arg::new("profile")
+                .long("profile")
+                .action(ArgAction::SetTrue)
+                .help("Include results for profile run"),
+        )
+        .arg(
+            Arg::new("folded")
+                .long("folded")
+                .action(ArgAction::SetTrue)
+                .help("Don't display submodel informations"),
+        )
+        .arg(
+            Arg::new("invariants")
+                .long("invariants")
+                .action(ArgAction::SetTrue)
+                .help("Display operators invariants"),
+        )
 }
 
 /// Handles the command-line input.
