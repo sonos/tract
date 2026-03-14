@@ -210,5 +210,5 @@ inference_model
 model
 fact
 runnable
-value
+tensor
 ```
