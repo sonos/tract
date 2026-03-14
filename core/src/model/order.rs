@@ -210,7 +210,7 @@ where
         fn best_upstream_starter(&mut self, dfs: &Dfs) -> Option<usize> {
             for from in self.candidates.iter() {
                 if self.cache_upstream[from].is_none() {
-                    let mut found = BitSet::with_capacity(self.done.len());
+                    let mut found = BitSet::with_capacity(self.done.capacity());
                     let mut visited = self.done.clone();
                     let mut todo = VecDeque::<usize>::new();
                     todo.push_back(from);
@@ -225,8 +225,8 @@ where
                             }
                         }
                     }
-                    debug_assert!(found.len() > 0);
-                    self.cache_upstream[from] = Some((found.len(), found));
+                    debug_assert!(found.count() > 0);
+                    self.cache_upstream[from] = Some((found.count(), found));
                 }
             }
             self.candidates
