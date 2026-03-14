@@ -29,7 +29,7 @@ tensor
 - [Inference model](inference_model.md) — partially typed model from ONNX
 - [Model](model.md) — fully typed model, central to the cooking pipeline
 - [Facts and Dimensions](fact.md) — shape, type, and symbolic dimension information
-- [Runtime, Runnable and State](runnable.md) — runtimes (CPU, Metal, Vulkan GPU), execution, and stateful models
+- [Runtime, Runnable and State](runnable.md) — runtimes (CPU, Metal, CUDA), execution, and stateful models
 - [Tensor](tensor.md) — tensor data
 
 ## Getting started
