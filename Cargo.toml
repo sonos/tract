@@ -150,7 +150,7 @@ fs-err = "3"
 fs2 = "0.4.3"
 getrandom = "0.3"
 half = { version=">=2.4,<3.0", features = [ "std", "num-traits" ] }
-home = "=0.5.11"
+home = "=0.5.12"
 icu_normalizer = "1.5.0"
 icu_normalizer_data = "1.5.1"
 icu_properties = "1.5.1"
@@ -191,7 +191,7 @@ rand_distr = "0.5"
 rayon = "1.10"
 readings-probe = "0.1.8"
 regex = "1.5.4"
-ron = "0.8"
+ron = "0.12"
 reqwest = { version = "0.12", features = [ "blocking", "rustls-tls" ], default-features = false }
 rustfft = { version = "6.1", features = [ "neon" ] }
 rustls = "0.20.4"
