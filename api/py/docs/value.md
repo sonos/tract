@@ -1,3 +1,6 @@
 # Tensor
 
-::: tract.tensor
+```{eval-rst}
+.. automodule:: tract.tensor
+   :members:
+```

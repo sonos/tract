@@ -1,3 +1,6 @@
 # Runnable model
 
-::: tract.runnable
+```{eval-rst}
+.. automodule:: tract.runnable
+   :members:
+```

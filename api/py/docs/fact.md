@@ -1,3 +1,6 @@
 # Facts
 
-::: tract.fact
+```{eval-rst}
+.. automodule:: tract.fact
+   :members:
+```

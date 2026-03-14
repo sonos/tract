@@ -1,3 +1,6 @@
 # NNEF
 
-::: tract.nnef
+```{eval-rst}
+.. automodule:: tract.nnef
+   :members:
+```
