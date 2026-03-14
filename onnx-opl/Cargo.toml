@@ -27,4 +27,4 @@ env_logger.workspace = true
 
 [features]
 default = []
-getrandom-js = ["getrandom/js"]
+getrandom-js = ["getrandom/wasm_js"]

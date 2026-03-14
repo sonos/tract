@@ -56,7 +56,7 @@ impl CudaTensor {
             .unwrap_or((tensor.as_bytes(), None));
         CUDA_STREAM.with(|stream| {
             let device_data = stream
-                .memcpy_stod(data)
+                .clone_htod(data)
                 .with_context(|| format!("Data address: {:?}", data.as_ptr()))?;
             let buffer = Arc::new(CudaBuffer { inner: device_data });
             Ok(CudaTensor {
@@ -204,7 +204,7 @@ impl OwnedDeviceTensor for CudaTensor {
 
     fn get_bytes_slice(&self, offset: usize, len: usize) -> Vec<u8> {
         CUDA_STREAM
-            .with(|stream| stream.memcpy_dtov(&self.buffer.slice(offset..offset + len)).unwrap())
+            .with(|stream| stream.clone_dtoh(&self.buffer.slice(offset..offset + len)).unwrap())
     }
 }
 

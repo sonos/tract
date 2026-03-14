@@ -11,7 +11,7 @@ autobenches = false
 edition = "2024"
 exclude = [ "test_cases" ]
 # build = "build-proto-rs"
-rust-version = "1.85"
+rust-version.workspace = true
 
 
 [badges]

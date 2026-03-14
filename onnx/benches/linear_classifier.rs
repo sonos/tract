@@ -37,12 +37,12 @@ fn bench_linear_classifier(c: &mut Criterion) {
     let num_features = shape[1];
 
     // Pre-generate random input tensors
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     let input_tensors: Arc<Vec<Tensor>> = Arc::new(
         (0..1_000_000)
             .map(|_| {
                 let sample: Vec<f32> =
-                    (0..num_features).map(|_| rng.gen_range(-30.0f32..30.0f32)).collect();
+                    (0..num_features).map(|_| rng.random_range(-30.0f32..30.0f32)).collect();
                 Tensor::from_shape(&shape, &sample).unwrap()
             })
             .collect(),
