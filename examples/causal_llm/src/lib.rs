@@ -390,6 +390,7 @@ pub fn apply_repeat_penalty(logits: &mut [f32], penalty: f32, context: &[u32]) {
 #[cfg(test)]
 mod tests {
     use crate::FrozenCausalLlmState;
+    use tract::prelude::*;
 
     fn is_send<T: Send>() {}
 
