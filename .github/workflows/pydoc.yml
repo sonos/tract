@@ -63,8 +63,21 @@ jobs:
           rm -rf "$workdir/$version"
           cp -r api/py/_build/html "$workdir/$version"
 
-          # commit and push
+          # regenerate versions.json (mike-compatible format) from directories present
           cd "$workdir"
+          python3 -c "
+          import json, os, re
+          dirs = sorted(
+              [d for d in os.listdir('.') if os.path.isdir(d) and d != '.git'],
+              key=lambda v: [int(x) if x.isdigit() else x for x in re.split(r'(\d+)', v)],
+              reverse=True,
+          )
+          versions = [{'version': d, 'title': d, 'aliases': []} for d in dirs]
+          with open('versions.json', 'w') as f:
+              json.dump(versions, f, indent=2)
+          "
+
+          # commit and push
           git add -A
           git commit -m "Update Python docs ($version)" || true
           git push origin gh-pages

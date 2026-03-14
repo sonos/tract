@@ -17,6 +17,7 @@ master_doc = "docs/index"
 
 exclude_patterns = [
     "_build",
+    "_static",
     ".venv",
     ".pytest_cache",
     "rust-workspace",
@@ -24,3 +25,6 @@ exclude_patterns = [
     "tests",
     "setup.py",
 ]
+
+html_static_path = ["_static"]
+html_js_files = ["version-switcher.js"]
