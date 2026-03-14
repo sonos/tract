@@ -9,42 +9,40 @@ from .transform import TransformSpec
 
 class Model:
     """
-    # Main model object
+    Main model object, central focus point of the model transformation pipeline.
 
-    ## Central focus point of the model transformation pipeline
- 
-    The Model is the central point of tract model loading and "model cooking". ONNX and NNEF 
+    The Model is the central point of tract model loading and "model cooking". ONNX and NNEF
     serialized models are converted to Model (more or less directly) before we can do anything
     of value with them. Model can be dumped to NNEF (or tract-opl which is NNEF plus tract
     proprietary extensions).
-    
-    A Model can be `optimize()`, substituing the "high level" operators in tract-core operator set by
-    the best implementation available for the current system. From there it can be transformed into a 
-    Runnable object that we will use to run.
- 
-    ## Model cooking
- 
-    But some model transformations can be performed on the Model class:
- 
+
+    A Model can be ``optimize()``-d, substituting the "high level" operators in tract-core
+    operator set by the best implementation available for the current system. From there it
+    can be transformed into a Runnable object that we will use to run.
+
+    **Model cooking**
+
+    Some model transformations can be performed on the Model class:
+
     - declutter (getting rid of training artefacts)
     - "pulsification" (transforming a batch-oriented model into a streaming model)
     - symbol substitution (make N or Batch a fixed number, unlocking potential optimisation later on)
-    - static cost evalation and dynamic profiling
+    - static cost evaluation and dynamic profiling
     - ...
- 
-    In some situation, these operation are done "on-the-fly" when a ONNX or NNEF model is loaded,
-    at start-up time. In other situation, when start-up time becomes an issue, it may be beneficial
-    to "pre-cook" the model: apply the transformations one time, serialize the model as NNEF (with
-    tract-opl extension if needed). At start-up this model can be significantly less expensive to
-    "cook" for inference.
- 
-    ## Model and TypedModel
+
+    In some situations, these operations are done "on-the-fly" when an ONNX or NNEF model is
+    loaded, at start-up time. In other situations, when start-up time becomes an issue, it may
+    be beneficial to "pre-cook" the model: apply the transformations once, serialize the model
+    as NNEF (with tract-opl extension if needed). At start-up this model can be significantly
+    less expensive to "cook" for inference.
+
+    **Model and TypedModel**
 
     This class is actually a wrapper around the "TypedModel" in Rust codebase. The "Typed"
-    bit means than all shapes and element types in all input, output and temporary values must
-    known. There is support in tract for symbols in dimensions, with some limited computation
-    capabilities on symbolic expression. For instance, it is relatively frequent to work with
-    a Model where all tensors shapes start with the `N` or `Batch`.
+    bit means that all shapes and element types in all input, output and temporary values must
+    be known. There is support in tract for symbols in dimensions, with some limited computation
+    capabilities on symbolic expressions. For instance, it is relatively frequent to work with
+    a Model where all tensor shapes start with ``N`` or ``Batch``.
     """
 
     def __init__(self, ptr):

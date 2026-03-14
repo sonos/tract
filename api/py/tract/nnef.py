@@ -11,10 +11,10 @@ class Nnef:
     NNEF is a neural model interchange format, similar to ONNX but focusing on the needs
     of an inference engine instead of a training framework.
 
-    `tract` can natively load NNEF models. It can also save models it tract internal format
-    as `tract-opl` models. `tract-opl` is a set of proprierary extensions to NNEF allowing to
-    serializeing most of the models tract can handle. These extension can be activated by the
-    `with_*() methods`.
+    ``tract`` can natively load NNEF models. It can also save models in tract internal format
+    as ``tract-opl`` models. ``tract-opl`` is a set of proprietary extensions to NNEF allowing
+    serialization of most of the models tract can handle. These extensions can be activated by
+    the ``with_*()`` methods.
     """
 
     def __init__(self):
@@ -31,15 +31,15 @@ class Nnef:
 
     def load(self, path: Union[str, Path]) -> Model:
         """
-        Load an NNEF model from the file or folder at `path`
+        Load an NNEF model from the file or folder at ``path``.
 
-        ```python
-        model = (
-            tract.nnef()
-            .load("mobilenet_v2_1.0.onnx.nnef.tgz")
-            .into_runnable()
-        )
-        ```
+        .. code-block:: python
+
+            model = (
+                tract.nnef()
+                .load("mobilenet_v2_1.0.onnx.nnef.tgz")
+                .into_runnable()
+            )
         """
         self._valid()
         model = c_void_p()
@@ -97,9 +97,9 @@ class Nnef:
 
     def write_model_to_dir(self, model: Model, path: Union[str, Path]) -> None:
         """
-        Save `model` as a NNEF directory model in `path`.
+        Save ``model`` as a NNEF directory model in ``path``.
 
-        tract tries to stick to strict NNEF even if extensions has been enabled.
+        tract tries to stick to strict NNEF even if extensions have been enabled.
         """
         self._valid()
         model._valid()
@@ -110,9 +110,9 @@ class Nnef:
 
     def write_model_to_tar(self, model: Model, path: Union[str, Path]) -> None:
         """
-        Save `model` as a NNEF tar archive in `path`.
+        Save ``model`` as a NNEF tar archive in ``path``.
 
-        tract tries to stick to strict NNEF even if extensions has been enabled.
+        tract tries to stick to strict NNEF even if extensions have been enabled.
         """
         self._valid()
         model._valid()
@@ -123,9 +123,9 @@ class Nnef:
 
     def write_model_to_tar_gz(self, model: Model, path: Union[str, Path]) -> None:
         """
-        Save `model` as a NNEF tar compressed archive in `path`.
+        Save ``model`` as a NNEF tar compressed archive in ``path``.
 
-        tract tries to stick to strict NNEF even if extensions has been enabled.
+        tract tries to stick to strict NNEF even if extensions have been enabled.
         """
         self._valid()
         model._valid()
