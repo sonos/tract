@@ -589,9 +589,9 @@ pub fn random(sizes: &[usize], datum_type: DatumType, tv: Option<&TensorValues>)
     let mut tensor_dense = tensor.try_as_dense_mut().unwrap();
     let slice = tensor_dense.as_slice_mut::<f32>().unwrap();
     if let Some(range) = tv.and_then(|tv| tv.random_range.as_ref()) {
-        slice.iter_mut().for_each(|x| *x = rng.gen_range(range.clone()))
+        slice.iter_mut().for_each(|x| *x = rng.random_range(range.clone()))
     } else {
-        slice.iter_mut().for_each(|x| *x = rng.r#gen())
+        slice.iter_mut().for_each(|x| *x = rng.random())
     };
     tensor.cast_to_dt(datum_type).unwrap().into_owned()
 }

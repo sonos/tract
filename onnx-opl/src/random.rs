@@ -1,6 +1,6 @@
 use rand::SeedableRng;
-use rand::distributions::uniform::SampleUniform;
-use rand::prelude::Distribution;
+use rand::distr::Distribution;
+use rand::distr::uniform::SampleUniform;
 use rand::rngs::SmallRng;
 use rand_distr::StandardNormal;
 use rand_distr::num_traits::Float;
@@ -113,7 +113,7 @@ impl EvalOp for Random {
         _session: &TurnState,
         _node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
-        let rng = self.seed.map(SmallRng::seed_from_u64).unwrap_or_else(SmallRng::from_entropy);
+        let rng = self.seed.map(SmallRng::seed_from_u64).unwrap_or_else(SmallRng::from_os_rng);
         Ok(Some(Box::new(RandomState(rng))))
     }
 }
@@ -167,8 +167,7 @@ fn sample_uniform<T: Datum + SampleUniform + Copy>(
     low: &Tensor,
     high: &Tensor,
 ) -> TractResult<()> {
-    let dist =
-        rand::distributions::Uniform::new(low.cast_to_scalar::<T>()?, high.cast_to_scalar::<T>()?);
+    let dist = rand::distr::Uniform::new(low.cast_to_scalar::<T>()?, high.cast_to_scalar::<T>()?)?;
     t.try_as_dense_mut()?
         .as_slice_mut::<T>()?
         .iter_mut()

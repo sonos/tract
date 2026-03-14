@@ -1,5 +1,5 @@
-use rand::distributions::Standard;
-use rand::prelude::Distribution;
+use rand::distr::Distribution;
+use rand::distr::StandardUniform;
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
 
@@ -29,7 +29,7 @@ impl Multinomial {
     fn eval_t0<T1>(&self, input: TValue) -> TractResult<TValue>
     where
         T1: Datum + std::ops::SubAssign + Float + std::iter::Sum,
-        Standard: Distribution<T1>,
+        StandardUniform: Distribution<T1>,
     {
         match self.dtype {
             DatumType::I32 => self.eval_t::<T1, i32>(input),
@@ -40,14 +40,14 @@ impl Multinomial {
     fn eval_t<T1, T2>(&self, input: TValue) -> TractResult<TValue>
     where
         T1: Datum + std::ops::SubAssign + Float + std::iter::Sum,
-        Standard: Distribution<T1>,
+        StandardUniform: Distribution<T1>,
         T2: Datum + Zero + Copy,
         usize: AsPrimitive<T2>,
     {
         let batch_size = input.shape()[0];
         let class_size = input.shape()[1];
 
-        let mut rng = self.seed.map_or_else(SmallRng::from_entropy, |seed| {
+        let mut rng = self.seed.map_or_else(SmallRng::from_os_rng, |seed| {
             SmallRng::seed_from_u64(seed.to_bits() as _)
         });
 
@@ -58,15 +58,18 @@ impl Multinomial {
         // This means that we need to compute the maximum for each batch beforehand,
         //  and we also need to exp every value.
 
-        let maximums: TVec<_> =
-            input.rows().into_iter().map(|r| r.iter().map(|e| e.exp()).sum::<T1>()).collect();
+        let maximums: TVec<_> = input
+            .rows()
+            .into_iter()
+            .map(|r: tract_ndarray::ArrayView1<'_, T1>| r.iter().map(|e| e.exp()).sum::<T1>())
+            .collect();
 
         // shape: [batch_size, sample_size]
         let out_shape: &[_] = &[batch_size, self.sample_size as usize];
         let output = tract_ndarray::ArrayD::from_shape_fn(out_shape, |co_o| -> T2 {
             let batch = co_o[0];
 
-            let mut rand = rng.r#gen::<T1>() * maximums[batch];
+            let mut rand = rng.random::<T1>() * maximums[batch];
             let mut ret: T2 = usize::as_(class_size - 1);
 
             for (i, prob) in input.slice(s![batch, ..]).iter().enumerate() {
