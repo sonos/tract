@@ -11,15 +11,16 @@ pub fn run_params_from_subcommand(
 ) -> TractResult<RunParams> {
     let mut tv = params.tensors_values.clone();
 
-    if let Some(bundle) = sub_matches.values_of("input-from-npz") {
+    if let Some(bundle) = sub_matches.get_many::<String>("input-from-npz") {
         for input in bundle {
+            let input = input.as_str();
             for tensor in Parameters::parse_npz(input, true, false)? {
                 tv.add(tensor);
             }
         }
     }
 
-    if let Some(dir) = sub_matches.value_of("input-from-nnef") {
+    if let Some(dir) = sub_matches.get_one::<String>("input-from-nnef") {
         for tensor in Parameters::parse_nnef_tensors(dir, true, false)? {
             tv.add(tensor);
         }
@@ -28,14 +29,14 @@ pub fn run_params_from_subcommand(
     // We also support the global arg variants for backward compatibility
     #[allow(unused_mut)]
     let mut allow_random_input: bool =
-        params.allow_random_input || sub_matches.is_present("allow-random-input");
+        params.allow_random_input || sub_matches.get_flag("allow-random-input");
     let allow_float_casts: bool =
-        params.allow_float_casts || sub_matches.is_present("allow-float-casts");
+        params.allow_float_casts || sub_matches.get_flag("allow-float-casts");
 
     let mut symbols = SymbolValues::default();
 
     #[cfg(feature = "transformers")]
-    if let Some(pp) = sub_matches.value_of("pp") {
+    if let Some(pp) = sub_matches.get_one::<String>("pp") {
         let value: i64 =
             pp.parse().with_context(|| format!("Can not parse symbol value in --pp {pp}"))?;
         let Some(typed_model) = params.tract_model.downcast_ref::<TypedModel>() else {
@@ -53,7 +54,7 @@ pub fn run_params_from_subcommand(
     }
 
     #[cfg(feature = "transformers")]
-    if let Some(tg) = sub_matches.value_of("tg") {
+    if let Some(tg) = sub_matches.get_one::<String>("tg") {
         let value: i64 =
             tg.parse().with_context(|| format!("Can not parse symbol value in --tg {tg}"))?;
         let Some(typed_model) = params.tract_model.downcast_ref::<TypedModel>() else {
@@ -70,8 +71,9 @@ pub fn run_params_from_subcommand(
         allow_random_input = true
     }
 
-    if let Some(set) = sub_matches.values_of("set") {
+    if let Some(set) = sub_matches.get_many::<String>("set") {
         for set in set {
+            let set = set.as_str();
             let (sym, value) = set.split_once('=').context("--set expect S=12 form")?;
             let sym = params.tract_model.get_or_intern_symbol(sym);
             let value: i64 = value
@@ -81,8 +83,9 @@ pub fn run_params_from_subcommand(
         }
     }
 
-    let prompt_chunk_size =
-        sub_matches.value_of("prompt-chunk-size").and_then(|chunk_size| chunk_size.parse().ok());
+    let prompt_chunk_size = sub_matches
+        .get_one::<String>("prompt-chunk-size")
+        .and_then(|chunk_size| chunk_size.parse().ok());
     Ok(RunParams {
         tensors_values: tv,
         allow_random_input,

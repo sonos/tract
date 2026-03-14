@@ -21,24 +21,24 @@ pub fn handle(
 ) -> TractResult<()> {
     let run_params = crate::tensor::run_params_from_subcommand(params, sub_matches)?;
 
-    if sub_matches.is_present("stream") {
+    if sub_matches.get_flag("stream") {
         return handle_stream(params, &output_params, &run_params);
     }
 
-    let cumulative = sub_matches.is_present("cumulative");
-    let resilent = sub_matches.is_present("resilient");
-    if sub_matches.value_of("stage").is_some() {
+    let cumulative = sub_matches.get_flag("cumulative");
+    let resilent = sub_matches.get_flag("resilient");
+    if sub_matches.get_one::<String>("stage").is_some() {
         // --with is by pipeline and put in params
         return handle_reference_stage(cumulative, params, &output_params, &run_params);
-    } else if let Some(npz) = sub_matches.value_of("npz") {
+    } else if let Some(npz) = sub_matches.get_one::<String>("npz") {
         return handle_npz(cumulative, npz, params, &output_params, &run_params);
-    } else if sub_matches.is_present("twice") {
+    } else if sub_matches.get_flag("twice") {
         return handle_twice(cumulative, params, &output_params, &run_params);
     }
-    if let Some(pbdir) = sub_matches.value_of("pbdir") {
+    if let Some(pbdir) = sub_matches.get_one::<String>("pbdir") {
         return handle_pbdir(cumulative, pbdir, params, &output_params, &run_params);
     }
-    if sub_matches.is_present("tf") {
+    if sub_matches.get_flag("tf") {
         return handle_tensorflow(cumulative, resilent, params, &output_params, &run_params);
     }
     bail!("No comparison target found")

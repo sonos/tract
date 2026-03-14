@@ -1,4 +1,3 @@
-use clap::Values;
 use fs_err as fs;
 use reqwest::Url;
 use scan_fmt::scan_fmt;
@@ -157,7 +156,7 @@ type TfExt = ();
 
 impl Parameters {
     fn disco_model(matches: &clap::ArgMatches) -> TractResult<(Location, bool)> {
-        let model = matches.value_of("model").with_context(|| {
+        let model = matches.get_one::<String>("model").with_context(|| {
             format!(
                 "Model argument required for subcommand {}",
                 matches.subcommand_name().unwrap_or("")
@@ -179,9 +178,9 @@ impl Parameters {
         symbols: SymbolScope,
     ) -> TractResult<(SomeGraphDef, Box<dyn Model>, Option<TfExt>)> {
         let need_graph =
-            matches.is_present("proto") || matches.subcommand_name() == Some("compare-pbdir");
+            matches.get_flag("proto") || matches.subcommand_name() == Some("compare-pbdir");
 
-        let format = matches.value_of("format").unwrap_or(
+        let format = matches.get_one::<String>("format").map(String::as_str).unwrap_or(
             if location.path().extension().map(|s| s == "onnx").unwrap_or(false) {
                 "onnx"
             } else if location.path().extension().map(|s| s == "tflite").unwrap_or(false) {
@@ -295,9 +294,9 @@ impl Parameters {
             #[cfg(feature = "onnx")]
             "onnx" => {
                 let onnx = tract_onnx::onnx()
-                    .with_ignore_output_shapes(matches.is_present("onnx-ignore-output-shapes"))
-                    .with_ignore_output_types(matches.is_present("onnx-ignore-output-types"))
-                    .with_ignore_value_info(matches.is_present("onnx-ignore-value-info"));
+                    .with_ignore_output_shapes(matches.get_flag("onnx-ignore-output-shapes"))
+                    .with_ignore_output_types(matches.get_flag("onnx-ignore-output-types"))
+                    .with_ignore_value_info(matches.get_flag("onnx-ignore-value-info"));
                 info_usage("loaded framework (onnx)", probe);
                 let graph = onnx.proto_model_for_read(&mut *location.read()?)?;
                 info_usage("proto model loaded", probe);
@@ -309,7 +308,7 @@ impl Parameters {
                     template,
                 )?;
 
-                if matches.is_present("determinize") {
+                if matches.get_flag("determinize") {
                     tract_onnx::Onnx::determinize(&mut parsed.model)?;
                 }
 
@@ -329,7 +328,7 @@ impl Parameters {
                 info_usage("loaded framework (tf)", probe);
                 let mut graph = tf.proto_model_for_read(&mut *location.read()?)?;
                 info_usage("proto model loaded", probe);
-                if matches.is_present("determinize") {
+                if matches.get_flag("determinize") {
                     tract_tensorflow::Tensorflow::determinize(&mut graph)?;
                 }
                 let template = InferenceModel { symbols, ..InferenceModel::default() };
@@ -438,12 +437,13 @@ impl Parameters {
         Ok(Self::tensor_values_from_iter(vector.into_iter(), get_values, get_facts))
     }
 
-    pub fn parse_set_and_hint<'c>(
+    pub fn parse_set_and_hint(
         typed_model: &TypedModel,
-        set: Values<'c>,
+        set: impl Iterator<Item = impl AsRef<str>>,
     ) -> TractResult<SymbolValues> {
         let mut values = SymbolValues::default();
         for set in set {
+            let set = set.as_ref();
             let (key, value) = set.split_once('=').with_context(|| {
                 format!("--set and --hint must be in the X=value form, got {set}")
             })?;
@@ -486,8 +486,9 @@ impl Parameters {
     ) -> TractResult<TensorsValues> {
         let mut result = TensorsValues::default();
 
-        if let Some(inputs) = matches.values_of("input") {
+        if let Some(inputs) = matches.get_many::<String>("input") {
             for (ix, v) in inputs.enumerate() {
+                let v = v.as_str();
                 let (name, fact) = tensor::for_string(symbol_table, v)?;
                 let input_index = if name.is_some() { None } else { Some(ix) };
                 result.add(TensorValues {
@@ -501,19 +502,21 @@ impl Parameters {
             }
         }
 
-        if let Some(bundle) = matches.values_of("input-bundle") {
+        if let Some(bundle) = matches.get_many::<String>("input-bundle") {
             warn!(
                 "Argument --input-bundle is deprecated and may be removed in a future release. Use --input-facts-from-bundle and/or --input-from-bundle instead."
             );
             for input in bundle {
+                let input = input.as_str();
                 for tv in Self::parse_npz(input, true, true)? {
                     result.add(tv);
                 }
             }
         }
 
-        if let Some(bundle) = matches.values_of("input-facts-from-bundle") {
+        if let Some(bundle) = matches.get_many::<String>("input-facts-from-bundle") {
             for input in bundle {
+                let input = input.as_str();
                 for tv in Self::parse_npz(input, false, true)? {
                     result.add(tv);
                 }
@@ -521,8 +524,9 @@ impl Parameters {
         }
 
         if let Some((_, sub)) = matches.subcommand() {
-            if let Some(values) = sub.values_of("assert-output") {
+            if let Some(values) = sub.get_many::<String>("assert-output") {
                 for (ix, o) in values.enumerate() {
+                    let o = o.as_str();
                     let (name, fact) = tensor::for_string(symbol_table, o)?;
                     info!(
                         "Output assertion #{}: (named: {}) {:?}",
@@ -541,8 +545,9 @@ impl Parameters {
                 }
             }
 
-            if let Some(bundles) = sub.values_of("assert-output-bundle") {
+            if let Some(bundles) = sub.get_many::<String>("assert-output-bundle") {
                 for bundle in bundles {
+                    let bundle = bundle.as_str();
                     for mut tv in Self::parse_npz(bundle, true, false)? {
                         tv.only_output = true;
                         result.add(tv);
@@ -552,7 +557,10 @@ impl Parameters {
         }
 
         if onnx_tc {
-            let data_set_name = matches.value_of("onnx-test-data-set").unwrap_or("test_data_set_0");
+            let data_set_name = matches
+                .get_one::<String>("onnx-test-data-set")
+                .map(String::as_str)
+                .unwrap_or("test_data_set_0");
 
             for tv in Self::use_onnx_test_case_data_set(
                 symbol_table,
@@ -563,8 +571,9 @@ impl Parameters {
         }
 
         if let Some((_, sub)) = matches.subcommand() {
-            if let Some(ranges) = sub.values_of("random-range") {
+            if let Some(ranges) = sub.get_many::<String>("random-range") {
                 for (ix, spec) in ranges.enumerate() {
+                    let spec = spec.as_str();
                     let (name, from, to) = if let Ok((name, from, to)) =
                         scan_fmt!(spec, "{}={f}..{f}", String, f32, f32)
                     {
@@ -597,11 +606,10 @@ impl Parameters {
         reference_stage: Option<&str>,
         keep_last: bool,
     ) -> TractResult<(Arc<dyn Model>, Option<Arc<dyn Model>>)> {
-        let stop_at = matches.value_of("pass").unwrap_or(if matches.is_present("optimize") {
-            "optimize"
-        } else {
-            "before-optimize"
-        });
+        let stop_at = matches
+            .get_one::<String>("pass")
+            .map(String::as_str)
+            .unwrap_or(if matches.get_flag("optimize") { "optimize" } else { "before-optimize" });
 
         info!("Will stop at {stop_at}");
 
@@ -665,7 +673,7 @@ impl Parameters {
 
         stage!("analyse", inference_model -> inference_model,
         |mut m:InferenceModel| -> TractResult<_> {
-            m.analyse(!matches.is_present("analyse-fail-fast")).map_err(|e|
+            m.analyse(!matches.get_flag("analyse-fail-fast")).map_err(|e|
                                                                         ModelBuildingError(Box::new(m.clone()), e.into())
                                                                        )?;
             if let Some(fail) = m.missing_type_shape()?.first() {
@@ -680,7 +688,7 @@ impl Parameters {
         stage!("incorporate", inference_model -> inference_model, |m:InferenceModel| m.incorporate());
         stage!("type", inference_model -> typed_model, |m:InferenceModel| { let mut m = m.into_typed()?; m.compact()?; Ok(m) });
         stage!("declutter", typed_model -> typed_model, |mut m:TypedModel| {
-            if matches.is_present("label-wires") {
+            if matches.get_flag("label-wires") {
                 for node in 0..m.nodes().len() {
                     if m.outlet_label(node.into()).is_none() {
                         m.set_outlet_label(node.into(), m.node(node).name.to_string())?;
@@ -688,7 +696,7 @@ impl Parameters {
                 }
             }
             let mut dec = tract_core::optim::Optimizer::declutter();
-            if let Some(steps) = matches.value_of("declutter-step") {
+            if let Some(steps) = matches.get_one::<String>("declutter-step") {
                 dec = dec.stopping_at(steps.parse()?);
             }
             dec.optimize(&mut m)?;
@@ -696,13 +704,13 @@ impl Parameters {
         });
         #[cfg(not(feature = "pulse"))]
         {
-            if matches.value_of("pulse").is_some() {
+            if matches.get_one::<String>("pulse").is_some() {
                 bail!("This build of tract has pulse disabled.")
             }
         }
         #[cfg(feature = "pulse")]
         {
-            if let Some(spec) = matches.value_of("pulse") {
+            if let Some(spec) = matches.get_one::<String>("pulse") {
                 stage!("pulse", typed_model -> pulsed_model, |m:TypedModel| {
                     let (sym, pulse) = if let Ok((s,p)) = scan_fmt!(spec, "{}={}", String, String) {
                         (s, parse_tdim(&m.symbols, &p)?)
@@ -719,10 +727,10 @@ impl Parameters {
             }
         }
         let mut transforms: Vec<&str> = matches
-            .values_of("transform")
-            .map(|values| values.into_iter().collect())
+            .get_many::<String>("transform")
+            .map(|values| values.map(String::as_str).collect())
             .unwrap_or_default();
-        if matches.is_present("llm") {
+        if matches.get_flag("llm") {
             transforms.insert(0, "transformers_detect_all");
         }
         if transforms.len() > 0 {
@@ -746,7 +754,7 @@ impl Parameters {
             }
         }
 
-        if let Some(set) = matches.values_of("set") {
+        if let Some(set) = matches.get_many::<String>("set") {
             let values = Self::parse_set_and_hint(typed_model.as_ref().unwrap(), set)?;
             stage!("set", typed_model -> typed_model, |mut m: TypedModel| {
                 for node in m.eval_order()? {
@@ -771,14 +779,14 @@ impl Parameters {
             });
             stage!("set-declutter", typed_model -> typed_model, |mut m| {
                 let mut dec = tract_core::optim::Optimizer::declutter();
-                if let Some(steps) = matches.value_of("declutter-set-step") {
+                if let Some(steps) = matches.get_one::<String>("declutter-set-step") {
                     dec = dec.stopping_at(steps.parse()?);
                 }
                 dec.optimize(&mut m)?;
                 Ok(m)
             })
         }
-        if matches.is_present("nnef-cycle") {
+        if matches.get_flag("nnef-cycle") {
             stage!("nnef-cycle", typed_model -> typed_model, |m:TypedModel| {
                 let nnef = super::nnef(matches);
                 let mut vec = vec!();
@@ -789,7 +797,7 @@ impl Parameters {
             stage!("nnef-declutter", typed_model -> typed_model, |m:TypedModel| m.into_decluttered());
         }
         #[cfg(feature = "tflite")]
-        if matches.is_present("tflite-cycle") {
+        if matches.get_flag("tflite-cycle") {
             stage!("tflite-cycle-predump", typed_model -> typed_model, |mut m:TypedModel| {
                 tract_tflite::rewriter::rewrite_for_tflite(&mut m)?;
                 Ok(m)
@@ -804,10 +812,10 @@ impl Parameters {
             stage!("tflite-declutter", typed_model -> typed_model, |m:TypedModel| m.into_decluttered());
         }
         #[cfg(not(feature = "tflite"))]
-        if matches.is_present("tflite-cycle") {
+        if matches.get_flag("tflite-cycle") {
             bail!("This tract build did not include tflite features.");
         }
-        if let Some(sub) = matches.value_of("extract-decluttered-sub") {
+        if let Some(sub) = matches.get_one::<String>("extract-decluttered-sub") {
             stage!("extract", typed_model -> typed_model, |m:TypedModel| {
                 let node = m.node_id_by_name(sub)?;
                 Ok(m.nested_models(node)[0].1.downcast_ref::<TypedModel>().unwrap().clone())
@@ -822,10 +830,10 @@ impl Parameters {
     /// Parses the command-line arguments.
     pub fn from_clap(matches: &clap::ArgMatches, probe: Option<&Probe>) -> TractResult<Parameters> {
         let symbols = SymbolScope::default();
-        for scenario in matches.values_of("scenario").unwrap_or_default() {
+        for scenario in matches.get_many::<String>("scenario").unwrap_or_default() {
             symbols.add_scenario(scenario)?;
         }
-        for rule in matches.values_of("assert").unwrap_or_default() {
+        for rule in matches.get_many::<String>("assert").unwrap_or_default() {
             if let Some((scenario, assertion)) = rule.split_once(':') {
                 symbols.add_scenario_assertion(scenario, assertion)?;
             } else {
@@ -842,9 +850,9 @@ impl Parameters {
 
         let (need_tensorflow_model, need_reference_model) = match matches.subcommand() {
             Some(("compare", sm)) => {
-                if let Some(with) = sm.value_of("stage") {
+                if let Some(with) = sm.get_one::<String>("stage").map(String::as_str) {
                     (false, Some(with))
-                } else if sm.is_present("stream") {
+                } else if sm.get_flag("stream") {
                     (false, Some("declutter"))
                 } else {
                     (true, None)
@@ -858,7 +866,7 @@ impl Parameters {
         #[cfg(feature = "conform")]
         let tf_model = if need_tensorflow_model {
             info!("Tensorflow version: {}", tract_tensorflow::conform::tf::version());
-            if matches.is_present("determinize") {
+            if matches.get_flag("determinize") {
                 if let SomeGraphDef::Tf(ref graph) = graph {
                     let graph = graph.write_to_bytes().unwrap();
                     Some(tract_tensorflow::conform::tf::for_slice(&graph)?)
@@ -872,28 +880,29 @@ impl Parameters {
             None
         };
 
-        let need_proto = matches.is_present("proto")
-            || (matches.subcommand_matches("compare").map(|sc| sc.is_present("pbdir")))
+        let need_proto = matches.get_flag("proto")
+            || (matches.subcommand_matches("compare").map(|sc| sc.contains_id("pbdir")))
                 .unwrap_or(false);
 
         if !need_proto {
             graph = SomeGraphDef::NoGraphDef;
         }
 
-        if let Some(inputs) = matches.values_of("input-node") {
-            let inputs: Vec<&str> = inputs.collect();
+        if let Some(inputs) = matches.get_many::<String>("input-node") {
+            let inputs: Vec<&str> = inputs.map(String::as_str).collect();
             raw_model.set_input_names(&inputs)?;
         };
 
-        if let Some(outputs) = matches.values_of("output-node") {
-            let outputs: Vec<&str> = outputs.collect();
+        if let Some(outputs) = matches.get_many::<String>("output-node") {
+            let outputs: Vec<&str> = outputs.map(String::as_str).collect();
             raw_model.set_output_names(&outputs)?;
         };
 
-        if let Some(override_facts) = matches.values_of("override-fact") {
+        if let Some(override_facts) = matches.get_many::<String>("override-fact") {
             for fact in override_facts {
+                let fact = fact.as_str();
                 let (name, fact) = tensor::for_string(&symbols, fact)?;
-                let node = raw_model.node_id_by_name(&name.unwrap())?;
+                let node = raw_model.node_id_by_name(name.as_ref().unwrap())?;
                 if let Some(inf) = raw_model.downcast_mut::<InferenceModel>() {
                     inf.set_outlet_fact(OutletId::new(node, 0), fact)?;
                 } else if let Some(typ) = raw_model.downcast_mut::<TypedModel>() {
@@ -902,8 +911,9 @@ impl Parameters {
             }
         };
 
-        if let Some(consts) = matches.values_of("constantize") {
+        if let Some(consts) = matches.get_many::<String>("constantize") {
             for konst in consts {
+                let konst = konst.as_str();
                 if let Some(value) = tensors_values
                     .by_name(konst)
                     .and_then(|tv| tv.values.as_ref())
@@ -964,7 +974,7 @@ impl Parameters {
             }
         }
 
-        if matches.is_present("partial") {
+        if matches.get_flag("partial") {
             if let Some(m) = raw_model.downcast_ref::<InferenceModel>() {
                 raw_model = Box::new(m.clone().into_compact()?);
             } else if let Some(m) = raw_model.downcast_ref::<TypedModel>() {
@@ -974,10 +984,10 @@ impl Parameters {
 
         let (allow_random_input, allow_float_casts) = match matches.subcommand() {
             None => (false, false),
-            Some((_, m)) => (m.is_present("allow-random-input"), m.is_present("allow-float-casts")),
+            Some((_, m)) => (m.get_flag("allow-random-input"), m.get_flag("allow-float-casts")),
         };
 
-        let keep_last = matches.is_present("keep-last");
+        let keep_last = matches.get_flag("keep-last");
         let (tract_model, reference_model) = Self::load_and_declutter(
             matches,
             probe,
@@ -990,13 +1000,13 @@ impl Parameters {
         info!("Model fully loaded");
         info_usage("model fully loaded", probe);
 
-        let runtime = if let Some(rt) = matches.value_of("runtime") {
+        let runtime = if let Some(rt) = matches.get_one::<String>("runtime").map(String::as_str) {
             rt
-        } else if matches.is_present("cuda") {
+        } else if matches.get_flag("cuda") {
             "cuda"
-        } else if matches.is_present("metal") {
+        } else if matches.get_flag("metal") {
             "metal"
-        } else if matches.is_present("optimize") {
+        } else if matches.get_flag("optimize") {
             "default"
         } else {
             "unoptimized"
@@ -1010,9 +1020,9 @@ impl Parameters {
         let typed_model =
             Arc::downcast::<TypedModel>(tract_model).map_err(|_| anyhow!("Need a typed model"))?;
         let typed_model = Arc::try_unwrap(typed_model).ok().context("Can not unwrap")?;
-        let hints = if let Some(hints) = matches.values_of("hint") {
+        let hints = if let Some(hints) = matches.get_many::<String>("hint") {
             Some(Self::parse_set_and_hint(&typed_model, hints)?)
-        } else if matches.is_present("llm") || matches.is_present("causal-llm-hints") {
+        } else if matches.get_flag("llm") || matches.get_flag("causal-llm-hints") {
             #[cfg(feature = "transformers")]
             {
                 Some(tract_transformers::memory_arena_hints_for_causal_llm(&typed_model)?)
@@ -1039,7 +1049,7 @@ impl Parameters {
             tf_model,
             tensors_values,
             assertions,
-            machine_friendly: matches.is_present("machine-friendly"),
+            machine_friendly: matches.get_flag("machine-friendly"),
             allow_random_input,
             allow_float_casts,
         })
@@ -1063,19 +1073,25 @@ impl Parameters {
 }
 
 pub fn bench_limits_from_clap(matches: &clap::ArgMatches) -> TractResult<BenchLimits> {
-    let max_loops =
-        matches.value_of("max-loops").map(usize::from_str).transpose()?.unwrap_or(100_000);
-    let warmup_loops =
-        matches.value_of("warmup-loops").map(usize::from_str).transpose()?.unwrap_or(0);
+    let max_loops = matches
+        .get_one::<String>("max-loops")
+        .map(|s| usize::from_str(s))
+        .transpose()?
+        .unwrap_or(100_000);
+    let warmup_loops = matches
+        .get_one::<String>("warmup-loops")
+        .map(|s| usize::from_str(s))
+        .transpose()?
+        .unwrap_or(0);
     let max_time = matches
-        .value_of("max-time")
-        .map(u64::from_str)
+        .get_one::<String>("max-time")
+        .map(|s| u64::from_str(s))
         .transpose()?
         .map(std::time::Duration::from_millis)
         .unwrap_or(std::time::Duration::from_secs(5));
     let warmup_time = matches
-        .value_of("warmup-time")
-        .map(u64::from_str)
+        .get_one::<String>("warmup-time")
+        .map(|s| u64::from_str(s))
         .transpose()?
         .map(std::time::Duration::from_millis)
         .unwrap_or(std::time::Duration::from_secs(0));
@@ -1087,36 +1103,40 @@ pub fn display_params_from_clap(
     matches: &clap::ArgMatches,
 ) -> TractResult<DisplayParams> {
     Ok(DisplayParams {
-        konst: matches.is_present("const"),
-        cost: matches.is_present("cost"),
-        tmp_mem_usage: matches.is_present("tmp_mem_usage"),
-        profile: matches.is_present("profile"),
-        folded: matches.is_present("folded"),
+        konst: matches.get_flag("const"),
+        cost: matches.get_flag("cost"),
+        tmp_mem_usage: matches.get_flag("tmp_mem_usage"),
+        profile: matches.get_flag("profile"),
+        folded: matches.get_flag("folded"),
         left_column_width: 0,
-        invariants: matches.is_present("invariants"),
-        quiet: matches.is_present("quiet"),
-        natural_order: matches.is_present("natural-order"),
-        opt_ram_order: matches.is_present("opt-ram-order"),
-        debug_op: matches.is_present("debug-op"),
-        node_ids: matches.values_of("node-id").map(|values| {
+        invariants: matches.get_flag("invariants"),
+        quiet: matches.get_flag("quiet"),
+        natural_order: matches.get_flag("natural-order"),
+        opt_ram_order: matches.get_flag("opt-ram-order"),
+        debug_op: matches.get_flag("debug-op"),
+        node_ids: matches.get_many::<String>("node-id").map(|values| {
             values.map(|id| tvec!((id.parse::<usize>().unwrap(), "".to_string()))).collect()
         }),
-        node_name: matches.value_of("node-name").map(String::from),
-        op_name: matches.value_of("op-name").map(String::from),
-        //        successors: matches.value_of("successors").map(|id| id.parse().unwrap()),
-        expect_core: root_matches.value_of("pass").unwrap_or("declutter") == "declutter"
-            && !root_matches.is_present("optimize"),
-        outlet_labels: matches.is_present("outlet-labels"),
-        io: if matches.is_present("io-long") {
+        node_name: matches.get_one::<String>("node-name").cloned(),
+        op_name: matches.get_one::<String>("op-name").cloned(),
+        //        successors: matches.get_one::<String>("successors").map(|id| id.parse().unwrap()),
+        expect_core: root_matches
+            .get_one::<String>("pass")
+            .map(String::as_str)
+            .unwrap_or("declutter")
+            == "declutter"
+            && !root_matches.get_flag("optimize"),
+        outlet_labels: matches.get_flag("outlet-labels"),
+        io: if matches.get_flag("io-long") {
             display_params::Io::Long
-        } else if matches.is_present("io-none") {
+        } else if matches.get_flag("io-none") {
             display_params::Io::None
         } else {
             display_params::Io::Short
         },
-        info: matches.is_present("info"),
-        json: matches.is_present("json"),
-        mm: matches.is_present("mm"),
+        info: matches.get_flag("info"),
+        json: matches.get_flag("json"),
+        mm: matches.get_flag("mm"),
     })
 }
 
@@ -1135,25 +1155,26 @@ pub struct Assertions {
 impl Assertions {
     fn from_clap(sub: &clap::ArgMatches, symbol_table: &SymbolScope) -> TractResult<Assertions> {
         let assert_outputs =
-            sub.is_present("assert-output") || sub.is_present("assert-output-bundle");
+            sub.contains_id("assert-output") || sub.contains_id("assert-output-bundle");
         let assert_output_facts: Option<Vec<InferenceFact>> = sub
-            .values_of("assert-output-fact")
+            .get_many::<String>("assert-output-fact")
             .map(|vs| vs.map(|v| tensor::for_string(symbol_table, v).unwrap().1).collect());
         let assert_op_count: Option<Vec<(String, usize)>> =
-            sub.values_of("assert-op-count").and_then(|vs| {
-                vs.chunks(2)
+            sub.get_many::<String>("assert-op-count").and_then(|vs| {
+                vs.map(String::as_str)
+                    .chunks(2)
                     .into_iter()
                     .map(|mut args| Some((args.next()?.to_string(), args.next()?.parse().ok()?)))
                     .collect()
             });
-        let allow_missing_outputs = sub.is_present("allow-missing-outputs");
-        let approximation = if let Some(custom) = sub.value_of("approx-custom") {
+        let allow_missing_outputs = sub.get_flag("allow-missing-outputs");
+        let approximation = if let Some(custom) = sub.get_one::<String>("approx-custom") {
             let Some((atol, rtol, approx)) = custom.split(",").collect_tuple() else {
                 bail!("Can't parse approx custom. It should look like 0.001,0.002,0.003")
             };
             Approximation::Custom(atol.parse()?, rtol.parse()?, approx.parse()?)
         } else {
-            match sub.value_of("approx").unwrap() {
+            match sub.get_one::<String>("approx").map(String::as_str).unwrap() {
                 "exact" => Approximation::Exact,
                 "close" => Approximation::Close,
                 "approx" | "approximate" => Approximation::Approximate,
@@ -1163,10 +1184,18 @@ impl Assertions {
                 _ => panic!(),
             }
         };
-        let assert_llm_rbo = sub.value_of("assert-llm-rbo").map(|v| v.parse()).transpose()?;
-        let assert_llm_rbo_p: f64 = sub.value_of("assert-llm-rbo-p").unwrap_or("0.9").parse()?;
-        let assert_llm_rbo_depth: usize =
-            sub.value_of("assert-llm-rbo-depth").unwrap_or("100").parse()?;
+        let assert_llm_rbo =
+            sub.get_one::<String>("assert-llm-rbo").map(|v| v.parse()).transpose()?;
+        let assert_llm_rbo_p: f64 = sub
+            .get_one::<String>("assert-llm-rbo-p")
+            .map(String::as_str)
+            .unwrap_or("0.9")
+            .parse()?;
+        let assert_llm_rbo_depth: usize = sub
+            .get_one::<String>("assert-llm-rbo-depth")
+            .map(String::as_str)
+            .unwrap_or("100")
+            .parse()?;
         Ok(Assertions {
             assert_outputs,
             assert_output_facts,

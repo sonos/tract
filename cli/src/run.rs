@@ -48,7 +48,7 @@ pub fn handle(
     matches: &clap::ArgMatches,
     sub_matches: &clap::ArgMatches,
 ) -> TractResult<()> {
-    let dump = sub_matches.is_present("dump");
+    let dump = sub_matches.get_flag("dump");
     // let outputs = dispatch_model!(&(Arc::clone(params.tract_model) as _), |m| run_regular(
     //     m,
     //     params,
@@ -65,7 +65,7 @@ pub fn handle(
         }
     }
 
-    if let Some(file_path) = sub_matches.value_of("save-outputs-nnef") {
+    if let Some(file_path) = sub_matches.get_one::<String>("save-outputs-nnef") {
         fs::create_dir_all(file_path).with_context(|| format!("Creating {file_path} directory"))?;
         for (ix, outputs) in outputs.iter().enumerate() {
             let name = params
@@ -87,7 +87,7 @@ pub fn handle(
         }
     }
 
-    if let Some(file_path) = sub_matches.value_of("save-outputs-npz") {
+    if let Some(file_path) = sub_matches.get_one::<String>("save-outputs-npz") {
         let file = fs::File::create(file_path).with_context(|| format!("Creating {file_path}"))?;
         let mut npz = ndarray_npy::NpzWriter::new_compressed(file);
 
@@ -108,7 +108,7 @@ pub fn handle(
         }
     }
 
-    if let Some(count) = sub_matches.value_of("assert-output-count") {
+    if let Some(count) = sub_matches.get_one::<String>("assert-output-count") {
         let count = count.parse::<usize>()?;
         if count != outputs.len() {
             bail!(
@@ -277,10 +277,10 @@ fn run_regular(
 ) -> TractResult<TVec<Vec<TValue>>> {
     let run_params = crate::tensor::run_params_from_subcommand(params, sub_matches)?;
 
-    let steps = sub_matches.is_present("steps");
-    let check_f16_overflow = sub_matches.is_present("check-f16-overflow");
-    let assert_sane_floats = sub_matches.is_present("assert-sane-floats");
-    let npz = if let Some(npz) = sub_matches.value_of("save-steps") {
+    let steps = sub_matches.get_flag("steps");
+    let check_f16_overflow = sub_matches.get_flag("check-f16-overflow");
+    let assert_sane_floats = sub_matches.get_flag("assert-sane-floats");
+    let npz = if let Some(npz) = sub_matches.get_one::<String>("save-steps") {
         let npz = fs::File::create(npz).with_context(|| format!("Creating {npz}"))?;
         Some(ndarray_npy::NpzWriter::new_compressed(npz))
     } else {

@@ -89,22 +89,21 @@ pub const STAGES: &[&str] = &[
 fn main() -> TractResult<()> {
     use clap::*;
     let mut app = command!()
-        .setting(AppSettings::DeriveDisplayOrder)
         .allow_hyphen_values(true)
         .arg(arg!(--readings "Start readings instrumentation"))
         .arg(arg!(--"readings-heartbeat" [MS] "Heartbeat for readings background collector").default_value("5"))
-        .arg(arg!(verbose: -v ... "Sets the level of verbosity."))
+        .arg(arg!(verbose: -v ... "Sets the level of verbosity.").action(clap::ArgAction::Count))
         .arg(arg!(--"keep-last" "Keep last model alive to dump if there is an error"))
         .arg(arg!([model] "Sets the model to use").required(false))
         .arg(arg!(-f --format [format]
                   "Hint the model format ('onnx', 'nnef', 'tflite' or 'tf') instead of guess from extension."))
-        .arg(Arg::new("input").long("input").short('i').multiple_occurrences(true).takes_value(true).long_help(
+        .arg(Arg::new("input").long("input").short('i').num_args(1).action(clap::ArgAction::Append).long_help(
                 "Set input shape and type (@file.pb or @file.npz:thing.npy or 3,4,i32)."))
-        .arg(Arg::new("constantize").long("constantize").multiple_occurrences(true).takes_value(true).long_help(
+        .arg(Arg::new("constantize").long("constantize").num_args(1).action(clap::ArgAction::Append).long_help(
                 "Transorm an input into a Constant"))
 
-        .arg(arg!(--"assert").multiple_occurrences(true).takes_value(true).long_help("Adds a TDim pre-condition (prefix by optional \"scenario_name:\")"))
-        .arg(arg!(--"scenario").multiple_occurrences(true).takes_value(true).long_help("Adds a scenario"))
+        .arg(arg!(--"assert").num_args(1).action(clap::ArgAction::Append).long_help("Adds a TDim pre-condition (prefix by optional \"scenario_name:\")"))
+        .arg(arg!(--"scenario").num_args(1).action(clap::ArgAction::Append).long_help("Adds a scenario"))
 
         // deprecated
         .arg(arg!(--"input-bundle" [input_bundle] "Path to an input container (.npz). This sets input facts and tensor values.").hide(true))
@@ -119,7 +118,7 @@ fn main() -> TractResult<()> {
         .arg(arg!(--"onnx-ignore-value-info" "Ignore value info from ONNX file while loading network"))
 
         .arg(arg!(--"input-node" [node] ... "Override input nodes names (auto-detects otherwise)."))
-        .arg(Arg::new("output-node").long("output-node").multiple_occurrences(true).takes_value(true).long_help(
+        .arg(Arg::new("output-node").long("output-node").num_args(1).action(clap::ArgAction::Append).long_help(
                 "Override output nodes by name."))
         .arg(arg!(--"label-wires" "Propagate node labels to wires"))
 
@@ -131,21 +130,19 @@ fn main() -> TractResult<()> {
         .arg(arg!(--determinize "Enforce a seed in random operator"))
         .arg(arg!(--partial "Before analyse, eliminate dead branches"))
 
-        .arg(arg!(--pass [STAGE] "Pass to stop preprocessing after.").possible_values(STAGES))
+        .arg(arg!(--pass [STAGE] "Pass to stop preprocessing after.").value_parser(clap::builder::PossibleValuesParser::new(STAGES)))
         .arg(arg!(--"declutter-step" [STEP] "Stop decluttering process after application of patch number N"))
         .arg(arg!(--"declutter-set-step" [STEP] "Stop decluttering process (the one after --set application) at patch number N"))
         .arg(arg!(--"optimize-step" [STEP] "Stop optimizing process after application of patch number N"))
         .arg(arg!(--"extract-decluttered-sub" [SUB] "Zoom on a subgraph after decluttering by parent node name"))
 
         .arg(arg!(--"metal").long_help("Convert supported operators to Metal GPU equivalent. Only available on MacOS and iOS"))
-        .arg(Arg::new("force-metal-backend").long("force-metal-backend").takes_value(true).long_help("Force specific implementations for MM kernels. Possible values: mlx, ggml, mfa. Backend is dynamically selected if option is not present"))
+        .arg(Arg::new("force-metal-backend").long("force-metal-backend").num_args(1).long_help("Force specific implementations for MM kernels. Possible values: mlx, ggml, mfa. Backend is dynamically selected if option is not present"))
         .arg(arg!(--"cuda").long_help("Convert supported operators to CUDA equivalent"))
         .arg(arg!(-r --runtime [runtime] "Run on alternative runtime (cuda, metal, ...)"))
-        .arg(Arg::new("transform").short('t').long("transform").multiple_occurrences(true).takes_value(true).help("Apply a built-in transformation to the model"))
-        .arg(Arg::new("set").long("set").multiple_occurrences(true).takes_value(true)
-             .long_help("Set a symbol to a concrete value after decluttering"))
-        .arg(Arg::new("hint").long("hint").multiple_occurrences(true).takes_value(true)
-            .long_help("Provide a typical value to a symbol to be used during planning (--hint S=12)"))
+        .arg(Arg::new("transform").short('t').long("transform").num_args(1).action(clap::ArgAction::Append).help("Apply a built-in transformation to the model"))
+        .arg(Arg::new("set").long("set").num_args(1).action(clap::ArgAction::Append).long_help("Set a symbol to a concrete value after decluttering"))
+        .arg(Arg::new("hint").long("hint").num_args(1).action(clap::ArgAction::Append).long_help("Provide a typical value to a symbol to be used during planning (--hint S=12)"))
 
         .arg(arg!(--"causal-llm-hints" "Figures out P and S and gives them suitable hints"))
         .arg(arg!(--llm "Shortcut setting --opl (aka all nnef extensions) --causal-llm-hints -t transformers_detect_all"))
@@ -185,23 +182,29 @@ fn main() -> TractResult<()> {
         .arg(
             Arg::new("stage")
                 .long("stage")
-                .takes_value(true)
-                .possible_values(STAGES)
+                .value_parser(clap::builder::PossibleValuesParser::new(STAGES))
                 .help("Loading pipeline stage to compare with"),
         )
-        .arg(Arg::new("tf").long("tf").takes_value(false).help("Compare against tensorflow"))
-        .arg(Arg::new("twice").long("twice").takes_value(false).help("Run twice and compare"))
-        .arg(Arg::new("npz").long("npz").takes_value(true).help("NPZ file to compare against"))
+        .arg(
+            Arg::new("tf").long("tf").action(ArgAction::SetTrue).help("Compare against tensorflow"),
+        )
+        .arg(
+            Arg::new("twice")
+                .long("twice")
+                .action(ArgAction::SetTrue)
+                .help("Run twice and compare"),
+        )
+        .arg(Arg::new("npz").long("npz").num_args(1).help("NPZ file to compare against"))
         .arg(
             Arg::new("pbdir")
                 .long("pbdir")
-                .takes_value(true)
+                .num_args(1)
                 .help("protobuf directory file to compare against (like ONNX tests)"),
         )
         .arg(
             Arg::new("stream")
                 .long("stream")
-                .takes_value(false)
+                .action(ArgAction::SetTrue)
                 .help("Compare pulsed execution against non-pulsed reference"),
         )
         .group(
@@ -212,13 +215,13 @@ fn main() -> TractResult<()> {
         .arg(
             Arg::new("cumulative")
                 .long("cumulative")
-                .takes_value(false)
+                .action(ArgAction::SetTrue)
                 .help("Do not reset with reference values at each node"),
         )
         .arg(
             Arg::new("resilient")
                 .long("resilient")
-                .takes_value(false)
+                .action(ArgAction::SetTrue)
                 .help("Try nodes one per one to mitigate crashes"),
         );
     let compare = run_options(compare);
@@ -242,35 +245,42 @@ fn main() -> TractResult<()> {
 
     let run = clap::Command::new("run")
         .long_about("Run the graph")
-        .arg(Arg::new("dump").long("dump").help("Show output"))
+        .arg(Arg::new("dump").long("dump").action(ArgAction::SetTrue).help("Show output"))
         .arg(
             Arg::new("save-outputs-npz")
                 .long("save-outputs-npz")
                 .alias("save-outputs")
-                .takes_value(true)
+                .num_args(1)
                 .help("Save the outputs into a npz file"),
         )
         .arg(
             Arg::new("save-outputs-nnef")
                 .long("save-outputs-nnef")
-                .takes_value(true)
+                .num_args(1)
                 .help("Save the output tensor into a folder of nnef .dat files"),
         )
-        .arg(Arg::new("steps").long("steps").help("Show all inputs and outputs"))
+        .arg(
+            Arg::new("steps")
+                .long("steps")
+                .action(ArgAction::SetTrue)
+                .help("Show all inputs and outputs"),
+        )
         .arg(
             Arg::new("save-steps")
                 .long("save-steps")
-                .takes_value(true)
+                .num_args(1)
                 .help("Save intermediary values as a npz file"),
         )
         .arg(
             Arg::new("check-f16-overflow")
                 .long("check-f16-overflow")
+                .action(ArgAction::SetTrue)
                 .help("Check for f16 overflow in all outputs"),
         )
         .arg(
             Arg::new("assert-sane-floats")
                 .long("assert-sane-floats")
+                .action(ArgAction::SetTrue)
                 .help("Check float for NaN and infinites at each step"),
         );
     let run = run_options(run);
@@ -290,11 +300,12 @@ fn main() -> TractResult<()> {
 
     let matches = app.get_matches();
 
-    let probe = if matches.is_present("readings") {
+    let probe = if matches.get_flag("readings") {
         let file = fs::File::create("readings.out").unwrap();
         let mut probe = Probe::new(file).unwrap();
         probe.register_i64("progress").unwrap();
-        let heartbeat = matches.value_of("readings-heartbeat").unwrap().parse::<f32>().unwrap();
+        let heartbeat =
+            matches.get_one::<String>("readings-heartbeat").unwrap().parse::<f32>().unwrap();
         probe.spawn_heartbeat(std::time::Duration::from_secs_f32(heartbeat / 1000.0)).unwrap();
         Some(probe)
     } else {
@@ -302,7 +313,7 @@ fn main() -> TractResult<()> {
     };
 
     if ::std::env::var("TRACT_LOG").is_err() {
-        let level = match matches.occurrences_of("verbose") {
+        let level = match matches.get_count("verbose") {
             0 => "cli=warn,tract=warn",
             1 => "cli=info,tract=info",
             2 => "cli=debug,tract=debug",
@@ -330,87 +341,87 @@ fn main() -> TractResult<()> {
 }
 
 #[allow(clippy::let_and_return)]
-fn dump_subcommand<'a>() -> clap::Command<'a> {
+fn dump_subcommand() -> clap::Command {
     use clap::*;
     let dump = clap::Command::new("dump")
         .long_about("Dumps the graph in human readable form.")
         .arg(
             Arg::new("axes")
             .long("axes")
+            .action(clap::ArgAction::SetTrue)
             .help("Compute and display axis tracking")
             )
         .arg(
             Arg::new("axes-names")
-            .takes_value(true)
             .number_of_values(1)
-            .multiple_occurrences(true)
+            .action(clap::ArgAction::Append)
             .long("axes-names")
             .help("Gave meaningful names to axes: [node_name=]axis0,axis1,..,axisN (apply to first input if no node_name is provided)")
             )
         .arg(
             Arg::new("assert-cost")
-            .takes_value(true)
             .long("assert-cost")
+            .num_args(1)
             .help("Checks computed against the provided value (form: \"FMA(F32)=2060448 DIV(F32)=24576\")")
             )
         .arg(
             Arg::new("memory-arena")
-            .takes_value(true)
             .long("memory-arena")
+            .num_args(1)
             .help("Dump arena memory statistics to a JSON file (MacOS / iOS only)")
         )
         .arg(
             Arg::new("nnef-override-output-name")
-            .takes_value(true)
             .number_of_values(1)
             .long("nnef-override-output-name")
             .help("Rename output before dumping network")
             )
         .arg(
             Arg::new("nnef-dir")
-            .takes_value(true)
             .long("nnef-dir")
+            .num_args(1)
             .help("Dump the network in NNEF format (as a directory)"),
             )
         .arg(
             Arg::new("nnef-tar")
-            .takes_value(true)
             .long("nnef-tar")
+            .num_args(1)
             .help("Dump the network in NNEF format (as a tar file)"),
             )
         .arg(
             Arg::new("nnef")
-            .takes_value(true)
             .long("nnef")
+            .num_args(1)
             .help("Dump the network in NNEF format (as a tar.gz file)"),
             )
         .arg(
             Arg::new("tflite")
-            .takes_value(true)
             .long("tflite")
+            .num_args(1)
             .help("Dump the network in TfLite format"),
             )
         .arg(
             Arg::new("compress-submodels")
             .long("compress-submodels")
+            .action(clap::ArgAction::SetTrue)
             .help("Compress submodels if any (as a .tgz file)"),
         )
         .arg(
             Arg::new("nnef-deterministic")
             .long("nnef-deterministic")
+            .action(clap::ArgAction::SetTrue)
             .help("If provided, will try to make output .nnef.tar files deterministic"),
             )
         .arg(
             Arg::new("nnef-graph")
-            .takes_value(true)
             .long("nnef-graph")
+            .num_args(1)
             .help("Dump the network definition (without the weights) as a graph.nnef-like file"),
             )
         .arg(
             Arg::new("inner")
-            .takes_value(true)
             .number_of_values(1)
-            .multiple_occurrences(true)
+            .action(clap::ArgAction::Append)
             .long("inner")
             .help("Navigate to a sub-model"),
             );
@@ -426,76 +437,72 @@ fn assertions_options(command: clap::Command) -> clap::Command {
     command
         .arg(
             Arg::new("approx")
-            .takes_value(true)
-            .possible_values(["exact", "close", "approximate", "very", "super", "ultra"])
+            .value_parser(["exact", "close", "approximate", "very", "super", "ultra"])
             .default_value("close")
             .long("approx")
             .help("Approximation level used in assertions."),
             )
         .arg(
             Arg::new("approx-custom")
-            .takes_value(true)
             .long("approx-custom")
+            .num_args(1)
             .help("Approximation level used in assertions (atol, rtol, outlier ratio). 3 coma-separated floats."),
             )
         .arg(
             Arg::new("assert-output")
-            .takes_value(true)
-            .multiple_occurrences(true)
+            .action(clap::ArgAction::Append)
             .number_of_values(1)
             .long("assert-output")
             .help("Fact to check the ouput tensor against (@filename, or 3x4xf32)"),
             )
         .arg(
             Arg::new("assert-output-bundle")
-            .takes_value(true)
             .long("assert-output-bundle")
+            .num_args(1)
             .help("Checks values against these tensor (.npz)"),
             )
         .arg(
             Arg::new("assert-output-fact")
-            .takes_value(true)
             .long("assert-output-fact")
+            .num_args(1)
             .help("Infered shape and datum type must match exactly this"),
             )
         .arg(
             Arg::new("assert-output-count")
-            .takes_value(true)
             .long("assert-output-count")
+            .num_args(1)
             .help("Check the number of outputs found."),
             )
         .arg(
             Arg::new("allow-missing-outputs")
             .long("allow-missing-outputs")
+            .action(clap::ArgAction::SetTrue)
             .help("Allow missing output in checks")
             )
         .arg(
             Arg::new("assert-llm-rbo")
-            .takes_value(true)
             .long("assert-llm-rbo")
+            .num_args(1)
             .help("Use RBO (Rank-Biased Overlap) on logit output. Pass minimum similarity score (0.0-1.0)")
             )
         .arg(
             Arg::new("assert-llm-rbo-p")
-            .takes_value(true)
             .long("assert-llm-rbo-p")
             .default_value("0.9")
             .help("RBO persistence parameter (default 0.9)")
             )
         .arg(
             Arg::new("assert-llm-rbo-depth")
-            .takes_value(true)
             .long("assert-llm-rbo-depth")
             .default_value("100")
             .help("RBO max evaluation depth (default 100)")
             )
         .arg(
             Arg::new("assert-op-count")
-            .takes_value(true)
-            .forbid_empty_values(true)
+            .value_parser(clap::builder::NonEmptyStringValueParser::new())
             .number_of_values(2)
             .value_names(&["operator", "count"])
-            .multiple_occurrences(true)
+            .action(clap::ArgAction::Append)
             .long("assert-op-count")
             .help("Specified operator must appear exactly the specified number of times. This argument can appear multiple times."),
             )
@@ -517,19 +524,18 @@ fn run_options(command: clap::Command) -> clap::Command {
             Arg::new("input-from-npz")
             .long("input-from-npz")
             .alias("input-from-bundle")
-            .takes_value(true)
+            .num_args(1)
             .help("Path to an input container (.npz). This sets tensor values."),
             )
         .arg(
             Arg::new("set")
                 .long("set")
-                .takes_value(true)
-                .multiple_occurrences(true)
+                .action(clap::ArgAction::Append)
                 .number_of_values(1)
                 .help("Set a symbol value before running the model (--set S=12)"),
         )
         .arg(
-            Arg::new("input-from-nnef").long("input-from-nnef").takes_value(true).help(
+            Arg::new("input-from-nnef").long("input-from-nnef").num_args(1).help(
                 "Path to a directory containing input tensors in NNEF format (.dat files). This sets tensor values.",
                 ),
                 )
@@ -537,41 +543,44 @@ fn run_options(command: clap::Command) -> clap::Command {
         .arg(arg!(--tg [tg] "Random input for LLM-like text generation"))
         .arg(Arg::new("skip-order-opt-ram")
             .long("skip-order-opt-ram")
+            .action(clap::ArgAction::SetTrue)
             .help("Plan node evaluation order without RAM optimisation"),
             )
         .arg(
             Arg::new("allow-random-input")
             .short('R')
             .long("allow-random-input")
+            .action(clap::ArgAction::SetTrue)
             .help("Will use random generated input"),
             )
         .arg(
             Arg::new("random-range")
             .long("random-range")
-            .multiple_occurrences(true)
-            .takes_value(true)
+            .num_args(1)
+            .action(clap::ArgAction::Append)
             .help("Constraint random values to a given range (example: input=1.0..10.0)"),
             )
         .arg(
             Arg::new("allow-float-casts")
             .long("allow-float-casts")
+            .action(clap::ArgAction::SetTrue)
             .help("Allow casting between f16, f32 and f64 around model"),
             )
         .arg(
             Arg::new("metal-gpu-trace")
                 .long("metal-gpu-trace")
-                .takes_value(true)
+                .num_args(1)
                 .help("Capture Metal GPU trace and save it at given path. Only available on MacOS and iOS")
         )
         .arg(
             Arg::new("cuda-gpu-trace")
                 .long("cuda-gpu-trace")
+                .action(clap::ArgAction::SetTrue)
                 .help("Capture CUDA GPU trace. Must be used with nsys profile -c cudaProfilerApi before cargo command")
         )
         .arg(
             Arg::new("prompt-chunk-size")
                 .long("prompt-chunk-size")
-                .takes_value(true)
                 .number_of_values(1)
                 .help("Set prompt chunk size. Help splitting too big prompts")
         )
@@ -585,40 +594,86 @@ fn output_options(command: clap::Command) -> clap::Command {
             arg!(--"opt-ram-order" "dump nodes in RAM optimising order"),
             arg!(-q --quiet "don't dump"),
         ])
-        .arg(Arg::new("debug-op").long("debug-op").help("show debug dump for each op"))
-        .arg(Arg::new("node-id").long("node-id").takes_value(true).help("Select a node to dump"))
         .arg(
-            Arg::new("successors")
-                .long("successors")
-                .takes_value(true)
-                .help("Show successors of node"),
+            Arg::new("debug-op")
+                .long("debug-op")
+                .action(ArgAction::SetTrue)
+                .help("show debug dump for each op"),
         )
-        .arg(Arg::new("op-name").long("op-name").takes_value(true).help("Select one op to dump"))
+        .arg(Arg::new("node-id").long("node-id").num_args(1).help("Select a node to dump"))
+        .arg(Arg::new("successors").long("successors").num_args(1).help("Show successors of node"))
+        .arg(Arg::new("op-name").long("op-name").num_args(1).help("Select one op to dump"))
+        .arg(Arg::new("node-name").long("node-name").num_args(1).help("Select one node to dump"))
         .arg(
-            Arg::new("node-name")
-                .long("node-name")
-                .takes_value(true)
-                .help("Select one node to dump"),
+            Arg::new("const")
+                .long("const")
+                .action(ArgAction::SetTrue)
+                .help("also display consts nodes"),
         )
-        .arg(Arg::new("const").long("const").help("also display consts nodes"))
-        .arg(Arg::new("info").long("info").help("show op inner information"))
-        .arg(Arg::new("io-long").long("io-long").help("show full i/o information"))
-        .arg(Arg::new("io-none").long("io-none").help("hide i/o information"))
-        .arg(Arg::new("json").long("json").help("dump performance info as json"))
-        .arg(Arg::new("mm").long("mm").help("display Matrix Multiplication report"))
-        .arg(Arg::new("outlet-labels").long("outlet-labels").help("display outlet labels"))
-        .arg(Arg::new("cost").long("cost").help("Include const information"))
+        .arg(
+            Arg::new("info")
+                .long("info")
+                .action(ArgAction::SetTrue)
+                .help("show op inner information"),
+        )
+        .arg(
+            Arg::new("io-long")
+                .long("io-long")
+                .action(ArgAction::SetTrue)
+                .help("show full i/o information"),
+        )
+        .arg(
+            Arg::new("io-none")
+                .long("io-none")
+                .action(ArgAction::SetTrue)
+                .help("hide i/o information"),
+        )
+        .arg(
+            Arg::new("json")
+                .long("json")
+                .action(ArgAction::SetTrue)
+                .help("dump performance info as json"),
+        )
+        .arg(
+            Arg::new("mm")
+                .long("mm")
+                .action(ArgAction::SetTrue)
+                .help("display Matrix Multiplication report"),
+        )
+        .arg(
+            Arg::new("outlet-labels")
+                .long("outlet-labels")
+                .action(ArgAction::SetTrue)
+                .help("display outlet labels"),
+        )
+        .arg(
+            Arg::new("cost")
+                .long("cost")
+                .action(ArgAction::SetTrue)
+                .help("Include const information"),
+        )
         .arg(
             Arg::new("tmp_mem_usage")
                 .long("tmp-mem-usage")
+                .action(ArgAction::SetTrue)
                 .help("Include temporary memory usage information"),
         )
-        .arg(Arg::new("profile").long("profile").help("Include results for profile run"))
-        .arg(Arg::new("folded").long("folded").help("Don't display submodel informations"))
+        .arg(
+            Arg::new("profile")
+                .long("profile")
+                .action(ArgAction::SetTrue)
+                .help("Include results for profile run"),
+        )
+        .arg(
+            Arg::new("folded")
+                .long("folded")
+                .action(ArgAction::SetTrue)
+                .help("Don't display submodel informations"),
+        )
         .arg(
             Arg::new("invariants")
-                .takes_value(false)
                 .long("invariants")
+                .action(ArgAction::SetTrue)
                 .help("Display operators invariants"),
         )
 }
@@ -718,7 +773,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
             }
             return Ok(());
         }
-        Some(("dump", m)) if m.is_present("metal-gpu-trace") => {
+        Some(("dump", m)) if m.contains_id("metal-gpu-trace") => {
             // Set env variable before loading metal lib
             unsafe {
                 std::env::set_var("METAL_CAPTURE_ENABLED", "1");
@@ -759,13 +814,13 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
     let mut need_optimisations = false;
 
     #[cfg(feature = "multithread-mm")]
-    if let Some(threads) = matches.value_of("threads") {
+    if let Some(threads) = matches.get_one::<String>("threads") {
         let threads: usize = threads.parse()?;
         let threads = if threads == 0 { num_cpus::get_physical() } else { threads };
         multithread::set_default_executor(multithread::Executor::multithread(threads));
     }
     #[cfg(not(feature = "multithread-mm"))]
-    if matches.value_of("threads").is_some() {
+    if matches.get_one::<String>("threads").is_some() {
         bail!("tract is compiled without multithread support")
     }
 
@@ -796,9 +851,9 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
         ),
 
         Some(("dump", m)) => {
-            need_optimisations = m.is_present("profile");
+            need_optimisations = m.get_flag("profile");
             let inner = m
-                .values_of("inner")
+                .get_many::<String>("inner")
                 .map(|ss| ss.map(|s| s.to_string()).collect())
                 .unwrap_or_default();
             dump::handle(
@@ -825,7 +880,11 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
         if cfg!(debug_assertions) {
             warn!("{}", style.paint("Profiling a debug build of tract!"));
         }
-        if !["cuda", "metal", "optimize", "runtime"].iter().any(|a| matches.is_present(a)) {
+        if !matches.get_flag("cuda")
+            && !matches.get_flag("metal")
+            && !matches.get_flag("optimize")
+            && !matches.contains_id("runtime")
+        {
             warn!("{}", style.paint("Profiling a non-optimized model. Use -O or a runtime."));
         }
     }
@@ -834,7 +893,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
 
 fn nnef(matches: &clap::ArgMatches) -> tract_nnef::internal::Nnef {
     let mut fw = tract_nnef::nnef();
-    if matches.is_present("nnef-tract-onnx") || matches.is_present("opl") {
+    if matches.get_flag("nnef-tract-onnx") || matches.get_flag("opl") {
         #[cfg(feature = "onnx")]
         {
             use tract_onnx::WithOnnx;
@@ -845,7 +904,7 @@ fn nnef(matches: &clap::ArgMatches) -> tract_nnef::internal::Nnef {
             panic!("tract is build without ONNX support")
         }
     }
-    if matches.is_present("nnef-tract-pulse") || matches.is_present("opl") {
+    if matches.get_flag("nnef-tract-pulse") || matches.get_flag("opl") {
         #[cfg(feature = "pulse-opl")]
         {
             use tract_pulse::WithPulse;
@@ -856,7 +915,7 @@ fn nnef(matches: &clap::ArgMatches) -> tract_nnef::internal::Nnef {
             panic!("tract is build without pulse-opl support")
         }
     }
-    if matches.is_present("nnef-tract-extra") || matches.is_present("opl") {
+    if matches.get_flag("nnef-tract-extra") || matches.get_flag("opl") {
         #[cfg(feature = "extra")]
         {
             use tract_extra::WithTractExtra;
@@ -867,9 +926,9 @@ fn nnef(matches: &clap::ArgMatches) -> tract_nnef::internal::Nnef {
             panic!("tract is build without tract-extra support")
         }
     }
-    if matches.is_present("nnef-tract-transformers")
-        || matches.is_present("llm")
-        || matches.is_present("opl")
+    if matches.get_flag("nnef-tract-transformers")
+        || matches.get_flag("llm")
+        || matches.get_flag("opl")
     {
         #[cfg(feature = "transformers")]
         {
@@ -881,17 +940,17 @@ fn nnef(matches: &clap::ArgMatches) -> tract_nnef::internal::Nnef {
             panic!("tract is build without tract-transformers support")
         }
     }
-    if !matches.is_present("no-nnef-tract-core") {
+    if !matches.get_flag("no-nnef-tract-core") {
         fw = fw.with_tract_core();
     }
-    if matches.is_present("nnef-tract-resource") || matches.is_present("opl") {
+    if matches.get_flag("nnef-tract-resource") || matches.get_flag("opl") {
         use tract_nnef_resources::internal::JsonLoader;
         fw = fw.with_tract_resource().with_resource_loader(JsonLoader);
     }
-    if matches.is_present("nnef-extended-identifier") || matches.is_present("opl") {
+    if matches.get_flag("nnef-extended-identifier") || matches.get_flag("opl") {
         fw.allow_extended_identifier_syntax(true);
     }
-    if matches.is_present("nnef-extern-all-constants") {
+    if matches.get_flag("nnef-extern-all-constants") {
         fw.extern_all_constants(true);
     }
     fw

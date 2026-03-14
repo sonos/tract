@@ -1,11 +1,11 @@
 use anyhow::{Context, Result, anyhow};
+use clap::Parser;
 use std::path::PathBuf;
-use structopt::StructOpt;
 use tract_nnef::internal::DocDumper;
 
 fn main() {
     // Collecting user arguments
-    let cli_args = CliArgs::from_args();
+    let cli_args = CliArgs::parse();
 
     // Setting up log level
     let level = match cli_args.verbosity {
@@ -23,16 +23,16 @@ fn main() {
 }
 
 /// Struct used to define NNEF documentation CLI arguments.
-#[derive(Debug, StructOpt)]
-#[structopt(
+#[derive(Debug, Parser)]
+#[command(
     name = "tract NNEF doc command line",
     about = "Command line to generate NNEF documentaion"
 )]
 pub struct CliArgs {
-    #[structopt(short = "v", parse(from_occurrences))]
-    pub verbosity: usize,
+    #[arg(short = 'v', action = clap::ArgAction::Count)]
+    pub verbosity: u8,
     /// Path to write to the directory where to write the NNEF documentations
-    #[structopt(long = "doc-dir")]
+    #[arg(long = "doc-dir")]
     pub docs_path: PathBuf,
 }
 
