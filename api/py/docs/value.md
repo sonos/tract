@@ -1,3 +1,0 @@
-# Tensor
-
-::: tract.tensor

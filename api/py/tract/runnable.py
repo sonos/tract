@@ -8,7 +8,13 @@ from .bindings import TractError, check, lib
 
 class Runnable:
     """
-    A model in the Runnable state is ready to perform computation.
+    A model that has been fully optimized and is ready to perform computation.
+
+    This is the final stage of the model pipeline. A ``Runnable`` is obtained
+    either by calling ``Model.into_runnable()`` (CPU default) or by passing a
+    ``Model`` to ``Runtime.prepare()`` for GPU-accelerated execution. Once
+    obtained, call :meth:`run` with numpy arrays or ``Tensor`` instances to
+    perform inference.
     """
     def __init__(self, ptr):
         self.ptr = ptr
@@ -75,7 +81,8 @@ class Runnable:
         """
         return self.spawn_state().run(inputs)
 
-    def spawn_state(self):
+    def spawn_state(self) -> State:
+        """Create a new execution state for stateful (e.g. streaming) models."""
         self._valid()
         state = c_void_p()
         check(lib.tract_runnable_spawn_state(self.ptr, byref(state)))
@@ -108,7 +115,9 @@ class Runnable:
         return result
 
     def input_facts(self) -> List[Fact]:
+        """Return the list of input facts."""
         return [ self.input_fact(ix) for ix in range(self.input_count()) ]
 
-    def output_facts(self):
+    def output_facts(self) -> List[Fact]:
+        """Return the list of output facts."""
         return [ self.output_fact(ix) for ix in range(self.output_count()) ]

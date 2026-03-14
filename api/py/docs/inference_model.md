@@ -1,3 +1,6 @@
 # Inference model
 
-::: tract.inference_model
+```{eval-rst}
+.. automodule:: tract.inference_model
+   :members:
+```

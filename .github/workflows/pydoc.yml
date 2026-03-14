@@ -7,7 +7,6 @@ on:
 
 env:
   CARGO_INCREMENTAL: false
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE20: true
 
 jobs:
   build_doc:
@@ -18,6 +17,14 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
       - name: Extract version tag
         id: version
         if: github.event_name == 'release' && github.event.action == 'published'
@@ -26,27 +33,56 @@ jobs:
       - name: Build doc
         run: |
           set -ex
+          cd api/py
+          python -m venv pydocs
+          source pydocs/bin/activate
+          pip install -r requirements-docs.txt
+          pip install -e .
+          sphinx-build -b html . _build/html
+          cp _static/redirect-index.html _build/html/index.html
+
+      - name: Deploy to gh-pages
+        if: github.event_name != 'pull_request'
+        run: |
+          set -ex
           git config user.name "CI bot"
           git config user.email ci-bot@tract.rs
-          git fetch origin gh-pages --depth=1
-          cd api/py
-          sudo apt-get install -y python3-pip
-          pip3 install virtualenv
-          virtualenv pydocs
-          source pydocs/bin/activate
-          pip install --ignore-installed -r requirements-docs.txt
-          version=${{steps.version.outputs.value}}
-          if [ -n "$version" ]
-          then
-            mike deploy $version
-          else
-            mike deploy 0.21.dev
-          fi
-          git fetch
-          git rebase --onto origin/gh-pages gh-pages
 
-      - name: Publish doc
-        continue-on-error: true
-        run: |
-          cd api/py
-          git push origin -f gh-pages:gh-pages
+          version="${{ steps.version.outputs.value }}"
+          if [ -z "$version" ]; then
+            version="dev"
+          fi
+
+          # fetch existing gh-pages into a work directory
+          git fetch origin gh-pages --depth=1 || true
+          workdir=$(mktemp -d)
+          git worktree add "$workdir" gh-pages 2>/dev/null || {
+            git worktree add --orphan "$workdir" gh-pages
+          }
+
+          # copy new build into the versioned subdirectory
+          rm -rf "$workdir/$version"
+          cp -r api/py/_build/html "$workdir/$version"
+
+          # regenerate versions.json (mike-compatible format) from directories present
+          cd "$workdir"
+          python3 -c "
+          import json, os, re
+          dirs = sorted(
+              [d for d in os.listdir('.') if os.path.isdir(d) and d != '.git'],
+              key=lambda v: [int(x) if x.isdigit() else x for x in re.split(r'(\d+)', v)],
+              reverse=True,
+          )
+          versions = [{'version': d, 'title': d, 'aliases': []} for d in dirs]
+          with open('versions.json', 'w') as f:
+              json.dump(versions, f, indent=2)
+          "
+
+          # commit and push
+          git add -A
+          git commit -m "Update Python docs ($version)" || true
+          git push origin gh-pages
+
+          # clean up worktree
+          cd -
+          git worktree remove "$workdir"

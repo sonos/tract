@@ -1,3 +1,9 @@
-# Facts
+# Facts and Dimensions
 
-::: tract.fact
+```{eval-rst}
+.. automodule:: tract.fact
+   :members:
+
+.. automodule:: tract.dim
+   :members:
+```

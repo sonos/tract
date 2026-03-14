@@ -85,10 +85,12 @@ def dt_numpy_to_tract(dt):
 
 class Tensor:
     """
-    Represents a tensor suitable for manipulation by tract.
+    A multidimensional array of typed data, the fundamental data carrier in tract.
 
-    On the Python side, the main way to access tensor data is to
-    convert the tensor to a numpy array.
+    Tensors flow in and out of models: they are the inputs you feed to
+    ``Runnable.run()`` and the outputs you get back. On the Python side,
+    convert to and from numpy arrays with :meth:`to_numpy` and
+    :func:`from_numpy`.
     """
     def __init__(self, ptr):
         self.ptr = ptr

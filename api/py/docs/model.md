@@ -1,3 +1,6 @@
 # Model (aka Typed Model)
 
-::: tract.model
+```{eval-rst}
+.. automodule:: tract.model
+   :members:
+```

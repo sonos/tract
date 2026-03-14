@@ -1,3 +1,6 @@
 # ONNX
 
-::: tract.onnx
+```{eval-rst}
+.. automodule:: tract.onnx
+   :members:
+```
