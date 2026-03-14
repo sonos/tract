@@ -112,6 +112,9 @@ default-members = [
     "test-rt/test-nnef-cycle",
 ]
 
+[workspace.package]
+rust-version = "1.89"
+
 [workspace.dependencies]
 accelerate-src = "0.3"
 anstyle = "1.0.2"
@@ -130,7 +133,7 @@ cc = "1.0.69"
 clap = { version = "~3.1", features = [ "cargo" ] }
 colorous = "1.0.5"
 core_affinity = "0.8.0"
-criterion = "0.7"
+criterion = "0.8"
 cudarc = { version = "0.17", features = ["dynamic-loading", "f16", "cudnn"] }
 derive-new = "0.5.9"
 dinghy-test = "0.8"

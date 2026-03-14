@@ -12,7 +12,7 @@ keywords = [ "NeuralNetworks", "NNEF" ]
 categories = [ "science" ]
 autobenches = false
 edition = "2024"
-rust-version = "1.85"
+rust-version.workspace = true
 
 [dependencies]
 anyhow.workspace = true
