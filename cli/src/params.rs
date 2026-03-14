@@ -723,7 +723,7 @@ impl Parameters {
             .map(|values| values.into_iter().collect())
             .unwrap_or_default();
         if matches.is_present("llm") {
-            transforms.push("transformers_detect_all");
+            transforms.insert(0, "transformers_detect_all");
         }
         if transforms.len() > 0 {
             for spec in transforms {
