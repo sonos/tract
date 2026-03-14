@@ -127,6 +127,31 @@ outputs = model.run([im])
 output = outputs[0].to_numpy()
 ```
 
+### Running on GPU with CUDA
+
+The example above runs on the CPU, which is the default runtime. On systems
+with an NVIDIA GPU, `tract` can leverage CUDA for accelerated inference. The
+only change is in how the model is prepared: instead of calling
+`into_runnable()`, use a CUDA runtime to prepare the model.
+
+```python
+import tract
+
+# load and type the model as before
+model = tract.onnx().load("./mobilenetv2-7.onnx").into_model()
+
+# prepare it for the CUDA runtime
+cuda = tract.runtime_for_name("cuda")
+runnable = cuda.prepare(model)
+
+# run exactly as before
+outputs = runnable.run([im])
+output = outputs[0].to_numpy()
+```
+
+The Metal runtime works the same way on Apple Silicon Macs: just replace
+`"cuda"` with `"metal"`.
+
 ### Interpreting the result
 
 If we print the output, what we get is a array of 1000 values. Each value is
