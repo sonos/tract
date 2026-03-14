@@ -42,7 +42,7 @@ jobs:
           cp _static/redirect-index.html _build/html/index.html
 
       - name: Deploy to gh-pages
-        # if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request'
         run: |
           set -ex
           git config user.name "CI bot"
