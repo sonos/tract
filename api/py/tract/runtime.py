@@ -18,12 +18,12 @@ def runtime_for_name(name: str):
 
 class Runtime:
     """
-    Represents a hardware/software stack that can execute a Model.
+    A hardware/software backend that can execute a ``Model``.
 
-    The default runtime is CPU. GPU-accelerated runtimes (Metal on macOS,
-    CUDA on NVIDIA) can be obtained with :func:`runtime_for_name`.
-    Use :meth:`prepare` to turn a ``Model`` into a ``Runnable`` targeting
-    this runtime.
+    Calling ``Model.into_runnable()`` implicitly uses the default CPU runtime.
+    To run on a GPU, obtain a ``Runtime`` via :func:`runtime_for_name` —
+    ``"metal"`` on Apple Silicon Macs, ``"cuda"`` on NVIDIA systems — then
+    call :meth:`prepare` to produce a ``Runnable`` optimized for that backend.
     """
     def __init__(self, ptr):
         self.ptr = ptr
