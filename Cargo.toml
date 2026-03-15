@@ -171,8 +171,8 @@ log = "0.4.14"
 maplit = "1.0.2"
 memmap2 = "0.9"
 metal = { version = "0.33.0" }
-ndarray = "0.16"
-ndarray-npy = { version = "0.9.1", features = [ "compressed_npz" ] }
+ndarray = "0.17"
+ndarray-npy = { version = "0.10.0", features = [ "compressed_npz" ] }
 nom = "8.0.0"
 nom-language = "0.1"
 nu-ansi-term = "0.50"
@@ -192,7 +192,7 @@ rayon = "1.10"
 readings-probe = "0.1.8"
 regex = "1.5.4"
 ron = "0.12"
-reqwest = { version = "0.12", features = [ "blocking", "rustls-tls" ], default-features = false }
+reqwest = { version = "0.13", features = [ "blocking", "rustls-tls" ], default-features = false }
 rustfft = { version = "6.1", features = [ "neon" ] }
 rustls = "0.20.4"
 safetensors = "0.6"
