@@ -170,7 +170,7 @@ litemap = "0.8"
 log = "0.4.14"
 maplit = "1.0.2"
 memmap2 = "0.9"
-metal = { version = "0.30.0" }
+metal = { version = "0.33.0" }
 ndarray = "0.17"
 ndarray-npy = { version = "0.10", features = [ "compressed_npz" ] }
 nom = "8.0.0"
