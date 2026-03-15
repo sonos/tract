@@ -393,7 +393,7 @@ impl Parameters {
         get_facts: bool,
     ) -> Vec<TensorValues> {
         let mut result = vec![];
-        for (name, vals) in iter.group_by(|triple| triple.0.clone()).into_iter() {
+        for (name, vals) in iter.chunk_by(|triple| triple.0.clone()).into_iter() {
             let vals: Vec<_> = vals
                 .into_iter()
                 .sorted_by_key(|(_, turn, _)| *turn)

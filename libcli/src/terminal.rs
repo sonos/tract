@@ -439,7 +439,7 @@ pub fn render_summaries(
                 )
             })
             .sorted_by_key(|a| a.0.to_string())
-            .group_by(|(n, _)| n.clone())
+            .chunk_by(|(n, _)| n.clone())
             .into_iter()
             .map(|(a, group)| {
                 (

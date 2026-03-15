@@ -32,7 +32,7 @@ deny = [
 
 # Skip some multiple-versions checks, until they can be fixed.
 skip = [
-    { name = "itertools", version="<=0.12.1" },
+    { name = "itertools", version="<=0.13" },
     { name = "windows-sys", version="<0.62" },
     { name = "syn", version="<2" }
 ]

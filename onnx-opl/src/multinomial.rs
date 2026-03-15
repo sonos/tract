@@ -1,7 +1,7 @@
 use rand::distr::Distribution;
 use rand::distr::StandardUniform;
 use rand::rngs::SmallRng;
-use rand::{Rng, SeedableRng};
+use rand::{RngExt, SeedableRng};
 
 use tract_nnef::internal::*;
 use tract_nnef::tract_ndarray::s;
@@ -47,9 +47,9 @@ impl Multinomial {
         let batch_size = input.shape()[0];
         let class_size = input.shape()[1];
 
-        let mut rng = self.seed.map_or_else(SmallRng::from_os_rng, |seed| {
-            SmallRng::seed_from_u64(seed.to_bits() as _)
-        });
+        let mut rng = self
+            .seed
+            .map_or_else(|| rand::make_rng(), |seed| SmallRng::seed_from_u64(seed.to_bits() as _));
 
         // shape: [batch_size, class_size]
         let input = input.to_dense_array_view::<T1>()?;

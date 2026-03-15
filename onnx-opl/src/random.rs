@@ -113,7 +113,7 @@ impl EvalOp for Random {
         _session: &TurnState,
         _node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
-        let rng = self.seed.map(SmallRng::seed_from_u64).unwrap_or_else(SmallRng::from_os_rng);
+        let rng = self.seed.map(SmallRng::seed_from_u64).unwrap_or_else(|| rand::make_rng());
         Ok(Some(Box::new(RandomState(rng))))
     }
 }

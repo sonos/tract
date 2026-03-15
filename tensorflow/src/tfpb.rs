@@ -132,7 +132,7 @@ impl NodeDef {
     pub fn get_attr_opt_datum_type(&self, name: &str) -> TractResult<Option<DatumType>> {
         if let Some(a) = self.attr.get(name) {
             if let Value::Type(v) = a.value.as_ref().unwrap() {
-                return Ok(Some(DataType::from_i32(*v).unwrap().try_into()?));
+                return Ok(Some(DataType::try_from(*v).unwrap().try_into()?));
             }
         };
         Ok(None)

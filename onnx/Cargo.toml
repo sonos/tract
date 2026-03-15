@@ -38,7 +38,7 @@ rayon.workspace = true
 
 # [build-dependencies]
 # protobuf-src = "1.0.5+3.19.3"
-# prost-build = "0.11.1"
+# prost-build = "0.14"
 
 [[bench]]
 name = "linear_classifier"

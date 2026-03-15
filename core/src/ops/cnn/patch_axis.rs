@@ -46,7 +46,7 @@ impl PatchAxis {
     fn make_invalid_regions(&self, range: Range<usize>) -> TVec<Region> {
         range
             .map(move |ix| (ix, (self.invalid_at_left(ix), self.invalid_at_right(ix))))
-            .group_by(|&pair| pair.1)
+            .chunk_by(|&pair| pair.1)
             .into_iter()
             .map(move |(invalid, pairs)| {
                 let (min, max) = pairs.map(|p| p.0).minmax().into_option().unwrap();

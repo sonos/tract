@@ -147,7 +147,7 @@ impl FragmentDecl {
             .iter()
             .map(|p| &p.id)
             .sorted()
-            .group_by(|x| x.to_owned())
+            .chunk_by(|x| x.to_owned())
             .into_iter()
             .find_map(|(key, values)| if values.count() > 1 { Some(key) } else { None })
         {
@@ -158,7 +158,7 @@ impl FragmentDecl {
             .iter()
             .map(|p| &p.id)
             .sorted()
-            .group_by(|x| x.to_owned())
+            .chunk_by(|x| x.to_owned())
             .into_iter()
             .find_map(|(key, values)| if values.count() > 1 { Some(key) } else { None })
         {
@@ -170,7 +170,7 @@ impl FragmentDecl {
             .map(|p| &p.id)
             .chain(self.results.iter().map(|p| &p.id))
             .sorted()
-            .group_by(|x| x.to_owned())
+            .chunk_by(|x| x.to_owned())
             .into_iter()
             .find_map(|(key, values)| if values.count() > 1 { Some(key) } else { None })
         {

@@ -583,7 +583,7 @@ pub fn tensor_for_fact(
 
 /// Generates a random tensor of a given size and type.
 pub fn random(sizes: &[usize], datum_type: DatumType, tv: Option<&TensorValues>) -> Tensor {
-    use rand::{Rng, SeedableRng};
+    use rand::{RngExt, SeedableRng};
     let mut rng = rand::rngs::StdRng::seed_from_u64(21242);
     let mut tensor = Tensor::zero::<f32>(sizes).unwrap();
     let mut tensor_dense = tensor.try_as_dense_mut().unwrap();

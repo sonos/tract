@@ -1,6 +1,6 @@
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 
-use rand::Rng;
+use rand::RngExt;
 use rayon::prelude::*;
 use std::path::PathBuf;
 use std::sync::Arc;

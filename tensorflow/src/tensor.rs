@@ -87,7 +87,7 @@ impl TryFrom<&TensorProto> for Tensor {
             t.tensor_shape.as_ref().unwrap().dim.iter().map(|x| x.size as _).collect();
         let rank = dims.len();
         let content = &t.tensor_content;
-        let dtype = DataType::from_i32(t.dtype).unwrap();
+        let dtype = DataType::try_from(t.dtype).unwrap();
         let mat: Tensor = if content.len() != 0 {
             unsafe {
                 match dtype {
