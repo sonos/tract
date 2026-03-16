@@ -201,7 +201,7 @@ serde = { version = "1.0.127", features = [ "derive" ] }
 serde_json = "1.0"
 simd-adler32 = { version = "0.3.7", features = ["std"] }
 smallvec = "1.6.1"
-string-interner = "0.15"
+string-interner = "0.19"
 tar = "0.4.37"
 tempfile = "3.8"
 tensorflow = "0.17.0"

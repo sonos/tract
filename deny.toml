@@ -32,9 +32,9 @@ deny = [
 
 # Skip some multiple-versions checks, until they can be fixed.
 skip = [
-    { name = "itertools", version="<=0.13" },
-    { name = "windows-sys", version="<0.62" },
-    { name = "syn", version="<2" }
+    { name = "hashbrown", version="<0.16" },
+    { name = "foldhash", version="<0.2" },
+    { name = "cpufeatures", version="<0.3" },
 ]
 
 [sources]
@@ -46,7 +46,8 @@ allow-git = [
 allow = [
     "Apache-2.0",                     # https://tldrlegal.com/license/apache-license-2.0-(apache-2.0)
     "MIT",                            # https://tldrlegal.com/license/mit-license
-    "Unicode-3.0"                     # https://spdx.org/licenses/Unicode-3.0.html
+    "Unicode-3.0",                    # https://spdx.org/licenses/Unicode-3.0.html
+    "Zlib",                           # https://tldrlegal.com/license/zlib-libpng-license
 ]
 
 clarify = [
