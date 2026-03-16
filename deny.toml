@@ -21,6 +21,7 @@ targets = [
 git-fetch-with-cli = true
 yanked = "deny"
 ignore = [
+    "RUSTSEC-2024-0436", # paste unmaintained — transitive dep from metal, tokenizers, rav1e
 ]
 
 [bans]
@@ -35,11 +36,17 @@ skip = [
     { name = "hashbrown", version="<0.16" },
     { name = "foldhash", version="<0.2" },
     { name = "cpufeatures", version="<0.3" },
+    { name = "cfg-if", version="<1" },
+    { name = "getrandom", version="<0.4" },
+    { name = "rand", version="<0.10" },
+    { name = "rand_core", version="<0.10" },
+    { name = "rand_distr", version="<0.6" },
 ]
 
 [sources]
 # trusted git sources.
 allow-git = [
+    "https://github.com/rustformers/llm.git",
 ]
 
 [licenses]
@@ -48,6 +55,8 @@ allow = [
     "MIT",                            # https://tldrlegal.com/license/mit-license
     "Unicode-3.0",                    # https://spdx.org/licenses/Unicode-3.0.html
     "Zlib",                           # https://tldrlegal.com/license/zlib-libpng-license
+    "ISC",                            # https://tldrlegal.com/license/isc-license
+    "MPL-2.0",                        # https://tldrlegal.com/license/mozilla-public-license-2.0-(mpl-2)
 ]
 
 clarify = [
