@@ -9,6 +9,7 @@ fn grace_hopper() -> Tensor {
 fn ensure_models() -> anyhow::Result<()> {
     static START: Once = Once::new();
     START.call_once(|| {
+        let _ = rustls::crypto::ring::default_provider().install_default();
         for (url, file) in [
             (
                 "https://s3.amazonaws.com/tract-ci-builds/tests/mobilenetv2-7.onnx",
