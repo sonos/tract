@@ -207,7 +207,7 @@ tempfile = "3.8"
 tensorflow = "0.17.0"
 tflitec = { git = "https://github.com/kali/tflitec-rs.git", rev="9ceb838" }
 time = "0.3.23"
-tokenizers = "0.21"
+tokenizers = "0.22"
 unicode-normalization = "0.1.19"
 walkdir = "2.3.2"
 zerofrom = "0.1.5"
