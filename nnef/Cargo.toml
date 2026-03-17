@@ -30,7 +30,7 @@ walkdir.workspace = true
 tract-core.workspace = true
 
 [dev-dependencies]
-temp-dir = "0.1.11"
+temp-dir = "0.2.0"
 serde_json.workspace = true
 
 [features]

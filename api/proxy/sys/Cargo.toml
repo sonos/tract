@@ -13,4 +13,4 @@ rust-version.workspace = true
 include = [ "Cargo.toml", "src/**/*.rs", "LICENSE*", "build.rs", "tract.h" ]
 
 [build-dependencies]
-bindgen = "0.71.0"
+bindgen = "0.72.1"

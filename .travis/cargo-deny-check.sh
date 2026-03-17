@@ -7,8 +7,4 @@ else
     CARGO_DENY="cargo deny"
 fi
 
-for crate in onnx pulse tensorflow
-do
-    echo $crate:
-    (cd $crate ; $CARGO_DENY check)
-done
+(cd api/rs ; $CARGO_DENY check)
