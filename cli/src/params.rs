@@ -1012,38 +1012,43 @@ impl Parameters {
             "unoptimized"
         };
 
-        // we assume the runnable will be a typed_model() (it is the case for all current runtimes)
-        // so we consume tract_model knowning the runnable will give us a new one later.
-        // we should hold on the old model in the general case, but this leads to dup models weights in memory
         let runtime =
             runtime_for_name(runtime).with_context(|| format!("Runtime `{runtime}' not found"))?;
-        let typed_model =
-            Arc::downcast::<TypedModel>(tract_model).map_err(|_| anyhow!("Need a typed model"))?;
-        let typed_model = Arc::try_unwrap(typed_model).ok().context("Can not unwrap")?;
-        let hints = if let Some(hints) = matches.get_many::<String>("hint") {
-            Some(Self::parse_set_and_hint(&typed_model, hints)?)
-        } else if matches.get_flag("llm") || matches.get_flag("causal-llm-hints") {
-            #[cfg(feature = "transformers")]
-            {
-                Some(tract_transformers::memory_arena_hints_for_causal_llm(&typed_model)?)
-            }
-            #[cfg(not(feature = "transformers"))]
-            {
-                bail!("transformers feature is required for llms")
-            }
-        } else {
-            None
-        };
+        let (tract_model, runnable): (Arc<dyn Model>, Option<Arc<dyn Runnable>>) =
+            if tract_model.downcast_ref::<TypedModel>().is_some() {
+                let tract_model: Arc<TypedModel> = Arc::downcast(tract_model).unwrap();
+                let typed_model = Arc::try_unwrap(tract_model).unwrap();
+                let hints = if let Some(hints) = matches.get_many::<String>("hint") {
+                    Some(Self::parse_set_and_hint(&typed_model, hints)?)
+                } else if matches.get_flag("llm") || matches.get_flag("causal-llm-hints") {
+                    #[cfg(feature = "transformers")]
+                    {
+                        Some(tract_transformers::memory_arena_hints_for_causal_llm(&typed_model)?)
+                    }
+                    #[cfg(not(feature = "transformers"))]
+                    {
+                        bail!("transformers feature is required for llms")
+                    }
+                } else {
+                    None
+                };
 
-        let options = RunOptions { memory_sizing_hints: hints, ..Default::default() };
-        let runnable = runtime.prepare_with_options(typed_model, &options)?;
-        let tract_model = runnable.typed_model().unwrap().clone();
+                let options = RunOptions { memory_sizing_hints: hints, ..Default::default() };
+                let runnable = runtime.prepare_with_options(typed_model, &options)?;
+                // we assume the runnable will be a typed_model() (it is the case for all current runtimes)
+                // so we consume tract_model knowning the runnable will give us a new one later.
+                // we should hold on the old model in the general case, but this leads to dup models weights in memory
+                let typed_model = runnable.typed_model().unwrap();
+                (typed_model.clone(), Some(runnable.into()))
+            } else {
+                (tract_model, None)
+            };
 
         info!("Model ready");
         info_usage("model ready", probe);
         Ok(Parameters {
             graph,
-            runnable: Some(runnable.into()),
+            runnable,
             tract_model,
             reference_model,
             tf_model,
