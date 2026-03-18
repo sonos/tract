@@ -26,6 +26,6 @@ rand.workspace = true
 tokenizers.workspace = true
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-tokenizers = { version = "0.21", default-features = false, features = [
+tokenizers = { version = "0.22", default-features = false, features = [
   "unstable_wasm",
 ] }
