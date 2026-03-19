@@ -58,7 +58,7 @@ impl Location {
     fn read(&self) -> TractResult<Box<dyn Read>> {
         match self {
             Location::Fs(p) => Ok(Box::new(fs::File::open(p)?)),
-            Location::Http(u) => Ok(Box::new(reqwest::blocking::get(u.clone())?)),
+            Location::Http(u) => Ok(Box::new(http_client()?.get(u.clone()).send()?)),
         }
     }
 
@@ -1212,4 +1212,24 @@ impl Assertions {
             assert_llm_rbo_depth,
         })
     }
+}
+
+fn http_client() -> TractResult<reqwest::blocking::Client> {
+    use rustls::{ClientConfig, RootCertStore};
+    use std::sync::Arc;
+
+    let mut root_store = RootCertStore::empty();
+    root_store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+
+    let config = ClientConfig::builder_with_provider(Arc::new(
+        rustls::crypto::ring::default_provider(),
+    ))
+    .with_safe_default_protocol_versions()?
+    .with_root_certificates(root_store)
+    .with_no_client_auth();
+
+    Ok(reqwest::blocking::Client::builder()
+        .use_preconfigured_tls(config)
+        .https_only(true)
+        .build()?)
 }
