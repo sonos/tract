@@ -329,6 +329,10 @@ fn main() -> TractResult<()> {
     env_logger::Builder::from_env(env).format_timestamp_nanos().init();
     info_usage("init", probe.as_ref());
 
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("failed to install ring provider");
+
     let res = handle(matches, probe.as_ref());
 
     if let Err(e) = res {
