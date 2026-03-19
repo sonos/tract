@@ -175,6 +175,3 @@ class Tensor:
         result = str(cstring.value, "utf-8")
         lib.tract_free_cstring(cstring)
         return result
-
-# Backward-compat alias
-Value = Tensor

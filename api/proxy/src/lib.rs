@@ -513,7 +513,7 @@ impl StateInterface for State {
     }
 }
 
-// VALUE
+// TENSOR
 wrapper!(Tensor, TractTensor, tract_tensor_destroy);
 unsafe impl Send for Tensor {}
 unsafe impl Sync for Tensor {}

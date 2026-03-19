@@ -1019,7 +1019,7 @@ pub unsafe extern "C" fn tract_runnable_release(runnable: *mut *mut TractRunnabl
     release!(runnable)
 }
 
-// VALUE
+// TENSOR
 pub struct TractTensor(tract_rs::Tensor);
 
 /// Create a TractTensor from caller data and metadata.
