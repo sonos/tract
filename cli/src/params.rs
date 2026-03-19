@@ -1221,15 +1221,11 @@ fn http_client() -> TractResult<reqwest::blocking::Client> {
     let mut root_store = RootCertStore::empty();
     root_store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
 
-    let config = ClientConfig::builder_with_provider(Arc::new(
-        rustls::crypto::ring::default_provider(),
-    ))
-    .with_safe_default_protocol_versions()?
-    .with_root_certificates(root_store)
-    .with_no_client_auth();
+    let config =
+        ClientConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
+            .with_safe_default_protocol_versions()?
+            .with_root_certificates(root_store)
+            .with_no_client_auth();
 
-    Ok(reqwest::blocking::Client::builder()
-        .use_preconfigured_tls(config)
-        .https_only(true)
-        .build()?)
+    Ok(reqwest::blocking::Client::builder().use_preconfigured_tls(config).build()?)
 }
