@@ -49,6 +49,7 @@ ron.workspace = true
 regex.workspace = true
 reqwest.workspace = true
 rustls.workspace = true
+webpki-roots.workspace = true
 scan_fmt.workspace = true
 serde.workspace = true
 serde_json.workspace = true
