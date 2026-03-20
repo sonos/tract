@@ -1,5 +1,5 @@
 use crate::internal::*;
-use tract_linalg::mmm::MMMInputValue;
+use tract_linalg::mmm::{MMMInputValue, PackedMatrixStorage};
 use tract_ndarray::prelude::*;
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -52,22 +52,22 @@ impl TypedOp for QSumB {
 impl QSumB {
     fn eval(&self, inputs: TVec<TValue>, n: usize) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
-        let input_dense = input.try_as_dense()?;
-        let payloads = input_dense.to_array_view::<Opaque>()?;
-        let mut shape: TVec<usize> = input.shape().into();
+        let storage = input
+            .try_storage_as::<PackedMatrixStorage>()
+            .context("Expected PackedMatrixStorage")?;
+        let batch_shape = storage.batch_shape();
+        let mut shape: TVec<usize> = batch_shape.into();
         shape.push(n);
         let mut output = ArrayD::<i32>::zeros(&*shape);
-        for b in 0..shape[0] {
+        for b in 0..batch_shape[0] {
             let mut output_view = output.index_axis_mut(Axis(0), b);
-            for g in 0..shape[1] {
+            for g in 0..batch_shape[1] {
                 let mut output_view = output_view.index_axis_mut(Axis(0), g);
                 let output_slice = output_view.as_slice_mut().unwrap();
-                let payload = payloads[[b, g]]
-                    .downcast_ref::<Box<dyn MMMInputValue>>()
-                    .context("Expected MMMInputs")?;
+                let payload = storage.value_at(&[b, g]);
                 match self.dt.unquantized() {
-                    DatumType::I8 => self.eval_t::<i8>(&**payload, output_slice)?,
-                    DatumType::U8 => self.eval_t::<u8>(&**payload, output_slice)?,
+                    DatumType::I8 => self.eval_t::<i8>(payload, output_slice)?,
+                    DatumType::U8 => self.eval_t::<u8>(payload, output_slice)?,
                     dt => bail!("Unsupported input type in quantized operation ({:?})", dt),
                 }
             }

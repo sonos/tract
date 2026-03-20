@@ -3,7 +3,7 @@ use crate::ops::einsum::block_quant_aware_input_shape;
 use crate::ops::matmul::pack::OptSimpleMatMulPack;
 use ndarray::*;
 use tract_linalg::block_quant::BlockQuantStorage;
-use tract_linalg::mmm::MMMInputValue;
+use tract_linalg::mmm::{MMMInputValue, PackedMatrixStorage};
 
 #[derive(Debug, Clone, Hash, PartialEq)]
 pub struct Gather {
@@ -268,15 +268,10 @@ impl EvalOp for Gather {
             let m = data.shape()[data.rank() - 2];
             let k = *data.shape().last().unwrap();
             dispatch_floatlike!(Self::eval_bq(dt)(self, bqs, m, k, &indices))?
-        } else if let Some(opaque) =
-            data.try_as_dense().as_ref().ok().and_then(|d| d.to_scalar::<Opaque>().ok())
-        {
+        } else if let Some(storage) = data.storage_as::<PackedMatrixStorage>() {
             let dt = self.output_type.unwrap();
-            if let Some(data) = opaque.downcast_ref::<Box<dyn MMMInputValue>>() {
-                dispatch_floatlike!(Self::eval_input_store(dt)(self, &**data, &indices))?
-            } else {
-                bail!("Can't use Gather on {:?} input", data);
-            }
+            let data_val = storage.value();
+            dispatch_floatlike!(Self::eval_input_store(dt)(self, data_val, &indices))?
         } else {
             dispatch_datum!(Self::eval_t(data.datum_type())(self, data, &indices))?
         };
