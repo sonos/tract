@@ -23,7 +23,7 @@ pub mod storage;
 pub mod view;
 
 pub use dense_view::{DenseView, DenseViewMut};
-use storage::{DenseStorage, StorageKind};
+use storage::{DenseStorage, StorageKind, TensorStorage};
 
 #[derive(Copy, Clone, Default, Debug)]
 pub enum Approximation {
@@ -91,41 +91,45 @@ impl Hash for Tensor {
         use DatumType::*;
         self.dt.hash(state);
         self.shape.hash(state);
-        self.dense_storage().layout().align().hash(state);
-        unsafe {
-            match self.dt {
-                Bool => self.as_slice_unchecked::<bool>().hash(state),
-                I8 => self.as_slice_unchecked::<i8>().hash(state),
-                I16 => self.as_slice_unchecked::<i16>().hash(state),
-                I32 => self.as_slice_unchecked::<i32>().hash(state),
-                I64 => self.as_slice_unchecked::<i64>().hash(state),
-                U8 => self.as_slice_unchecked::<u8>().hash(state),
-                U16 => self.as_slice_unchecked::<u16>().hash(state),
-                U32 => self.as_slice_unchecked::<u32>().hash(state),
-                U64 => self.as_slice_unchecked::<u64>().hash(state),
-                F16 => self.as_slice_unchecked::<i16>().hash(state),
-                F32 => self.as_slice_unchecked::<i32>().hash(state),
-                F64 => self.as_slice_unchecked::<i64>().hash(state),
-                TDim => self.as_slice_unchecked::<crate::dim::TDim>().hash(state),
-                String => self.as_slice_unchecked::<std::string::String>().hash(state),
-                Blob => self.as_slice_unchecked::<crate::blob::Blob>().hash(state),
-                Opaque => self.as_slice_unchecked::<crate::opaque::Opaque>().hash(state),
-                QI8(_) => self.as_slice_unchecked::<i8>().hash(state),
-                QU8(_) => self.as_slice_unchecked::<u8>().hash(state),
-                QI32(_) => self.as_slice_unchecked::<i32>().hash(state),
-                #[cfg(feature = "complex")]
-                ComplexI16 => self.as_slice_unchecked::<Complex<i16>>().hash(state),
-                #[cfg(feature = "complex")]
-                ComplexI32 => self.as_slice_unchecked::<Complex<i32>>().hash(state),
-                #[cfg(feature = "complex")]
-                ComplexI64 => self.as_slice_unchecked::<Complex<i64>>().hash(state),
-                #[cfg(feature = "complex")]
-                ComplexF16 => self.as_slice_unchecked::<Complex<i16>>().hash(state),
-                #[cfg(feature = "complex")]
-                ComplexF32 => self.as_slice_unchecked::<Complex<i32>>().hash(state),
-                #[cfg(feature = "complex")]
-                ComplexF64 => self.as_slice_unchecked::<Complex<i64>>().hash(state),
+        if let Some(dense) = self.storage.as_dense() {
+            dense.layout().align().hash(state);
+            unsafe {
+                match self.dt {
+                    Bool => self.as_slice_unchecked::<bool>().hash(state),
+                    I8 => self.as_slice_unchecked::<i8>().hash(state),
+                    I16 => self.as_slice_unchecked::<i16>().hash(state),
+                    I32 => self.as_slice_unchecked::<i32>().hash(state),
+                    I64 => self.as_slice_unchecked::<i64>().hash(state),
+                    U8 => self.as_slice_unchecked::<u8>().hash(state),
+                    U16 => self.as_slice_unchecked::<u16>().hash(state),
+                    U32 => self.as_slice_unchecked::<u32>().hash(state),
+                    U64 => self.as_slice_unchecked::<u64>().hash(state),
+                    F16 => self.as_slice_unchecked::<i16>().hash(state),
+                    F32 => self.as_slice_unchecked::<i32>().hash(state),
+                    F64 => self.as_slice_unchecked::<i64>().hash(state),
+                    TDim => self.as_slice_unchecked::<crate::dim::TDim>().hash(state),
+                    String => self.as_slice_unchecked::<std::string::String>().hash(state),
+                    Blob => self.as_slice_unchecked::<crate::blob::Blob>().hash(state),
+                    Opaque => self.as_slice_unchecked::<crate::opaque::Opaque>().hash(state),
+                    QI8(_) => self.as_slice_unchecked::<i8>().hash(state),
+                    QU8(_) => self.as_slice_unchecked::<u8>().hash(state),
+                    QI32(_) => self.as_slice_unchecked::<i32>().hash(state),
+                    #[cfg(feature = "complex")]
+                    ComplexI16 => self.as_slice_unchecked::<Complex<i16>>().hash(state),
+                    #[cfg(feature = "complex")]
+                    ComplexI32 => self.as_slice_unchecked::<Complex<i32>>().hash(state),
+                    #[cfg(feature = "complex")]
+                    ComplexI64 => self.as_slice_unchecked::<Complex<i64>>().hash(state),
+                    #[cfg(feature = "complex")]
+                    ComplexF16 => self.as_slice_unchecked::<Complex<i16>>().hash(state),
+                    #[cfg(feature = "complex")]
+                    ComplexF32 => self.as_slice_unchecked::<Complex<i32>>().hash(state),
+                    #[cfg(feature = "complex")]
+                    ComplexF64 => self.as_slice_unchecked::<Complex<i64>>().hash(state),
+                }
             }
+        } else {
+            self.storage.dyn_hash(state);
         }
     }
 }
@@ -144,20 +148,23 @@ impl Default for Tensor {
 
 impl Drop for Tensor {
     fn drop(&mut self) {
-        macro_rules! drop_in_place {
-            ($t: ty) => {
-                if self.dt == <$t>::datum_type() {
-                    unsafe {
-                        let slice = self.as_slice_mut_unchecked::<$t>();
-                        std::ptr::drop_in_place(slice as *mut [$t]);
+        if self.storage.as_dense().is_some() {
+            macro_rules! drop_in_place {
+                ($t: ty) => {
+                    if self.dt == <$t>::datum_type() {
+                        unsafe {
+                            let slice = self.as_slice_mut_unchecked::<$t>();
+                            std::ptr::drop_in_place(slice as *mut [$t]);
+                        }
                     }
-                }
-            };
+                };
+            }
+            drop_in_place!(Blob);
+            drop_in_place!(String);
+            drop_in_place!(TDim);
+            drop_in_place!(Opaque);
         }
-        drop_in_place!(Blob);
-        drop_in_place!(String);
-        drop_in_place!(TDim);
-        drop_in_place!(Opaque);
+        // StorageKind::Other drops via Box<dyn TensorStorage> automatically
     }
 }
 
@@ -179,6 +186,30 @@ impl Tensor {
     #[inline]
     fn dense_storage_mut(&mut self) -> &mut DenseStorage {
         self.storage.as_dense_mut().expect("Non-dense storage")
+    }
+
+    pub fn storage_as<T: TensorStorage>(&self) -> Option<&T> {
+        self.storage.as_storage().downcast_ref::<T>()
+    }
+
+    pub fn try_storage_as<T: TensorStorage>(&self) -> TractResult<&T> {
+        self.storage_as::<T>().context("Unexpected tensor storage type")
+    }
+
+    pub fn from_storage(
+        dt: DatumType,
+        shape: &[usize],
+        storage: impl TensorStorage + 'static,
+    ) -> Tensor {
+        let len = shape.iter().product::<usize>();
+        let strides = Self::natural_strides(shape);
+        Tensor {
+            dt,
+            shape: shape.into(),
+            strides,
+            len,
+            storage: StorageKind::Other(Box::new(storage)),
+        }
     }
 
     /// Returns an immutable [`DenseView`] if this tensor has dense storage.
@@ -1459,6 +1490,15 @@ impl Tensor {
     }
 
     pub fn deep_clone(&self) -> Tensor {
+        if self.storage.as_dense().is_none() {
+            return Tensor {
+                dt: self.dt,
+                shape: self.shape.clone(),
+                strides: self.strides.clone(),
+                len: self.len,
+                storage: self.storage.deep_clone(),
+            };
+        }
         unsafe {
             let mut tensor = Tensor::uninitialized_dt(self.datum_type(), self.shape()).unwrap();
             if self.len() > 0 {
@@ -1637,7 +1677,11 @@ impl PartialEq for Tensor {
         if self.dt != other.dt || self.shape != other.shape {
             return false;
         }
-        self.eq_dt(other).unwrap_or(false)
+        match (self.storage.as_dense(), other.storage.as_dense()) {
+            (Some(_), Some(_)) => self.eq_dt(other).unwrap_or(false),
+            (None, None) => self.storage.eq_storage(&other.storage),
+            _ => false,
+        }
     }
 }
 
