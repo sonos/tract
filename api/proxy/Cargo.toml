@@ -22,5 +22,6 @@ tract-proxy-sys.workspace = true
 
 [dev-dependencies]
 reqwest.workspace = true
+rustls.workspace = true
 tempfile.workspace = true
 serde_json.workspace = true
