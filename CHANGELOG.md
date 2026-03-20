@@ -1,3 +1,21 @@
+# 0.23.0-dev.3 — 2026-03-20
+
+### Breaking changes
+
+- **`Value` renamed to `Tensor`** across the entire public API surface (Rust, C, Python). The deprecated `Value` alias has been removed.
+- **Crate renamed: `tract-rs` → `tract`** — update your `Cargo.toml` dependency accordingly. The CLI binary is now `tract-cli` (previously `tract`).
+- **`into_tract()` renamed to `into_model()`** in all API layers.
+- **`DatumType` variant names shortened** — the `TRACT_DATUM_TYPE_` prefix is dropped (C API).
+- **Deprecated state methods removed**: `init_states()`, `state_initializers`, and the `n_states` parameter are gone from `State` trait and `RunTensors`.
+- **Python**: `concretize_symbols` and `pulse` methods replaced by typed transform classes; `TransformSpec` is now an abstract base class.
+
+### Improvements
+
+- **`UnfoldKeyValueCacheTransform`** — explicit KV-cache I/O mode now available as a first-class transform (CLI: `--transform unfold-kv-cache`).
+- **Structured `NodeFilter`** for `FloatPrecisionTranslator` — replaces raw filter strings.
+- Python docs migrated from mkdocs to **Sphinx** (hosted on GitHub Pages with version switcher).
+- New GPU inference section (CUDA example, `Runtime` usage).
+
 # 0.23.0-dev.2 - 2026-02-18
 * This is a pre-release release. It will be a pretty big one, here are some hilights.
   * New public api: tract-rs should be the main point of entry for any new project. A caveat: it does support most of tract simple uses as is, but some specialized sections like state management and model transforms are not satisfactory yet, so the real 0.23.0 will presumably break these again. The plan is that this facade will be tract public API, and that it will be the only surface under semver rules. Up to there is was essentially everything `pub`, which boils down to mostly "everything".
