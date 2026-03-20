@@ -7,7 +7,7 @@ use crate::ops::identity::Identity;
 use AxisOp::*;
 use num_traits::One;
 use tract_itertools::Itertools;
-use tract_linalg::block_quant::BlockQuantFact;
+use tract_linalg::block_quant::{BlockQuantFact, BlockQuantStorage};
 use tract_ndarray::{ArrayViewD, ArrayViewMutD};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -380,22 +380,14 @@ impl AxisOp {
     pub fn change_tensor(&self, tensor: &mut Tensor, broadcasting: bool) -> TractResult<()> {
         if self.required_rank() > tensor.rank() && tensor.datum_type().is_opaque() {
             let inner_change = self.trim_left(tensor.rank())?;
-            for opaque in tensor.try_as_dense_mut()?.as_slice_mut::<Opaque>()? {
-                if let Some(bwf) = opaque.downcast_ref::<BlobWithFact>() {
-                    let bqf = bwf
-                        .fact
-                        .downcast_ref::<BlockQuantFact>()
-                        .context("Expected BlockQuantFact")?;
-                    let mut new_shape: TVec<usize> = bqf.shape().into();
-                    inner_change.change_shape_array(&mut new_shape, false)?;
-                    let new_bqv = BlobWithFact {
-                        value: Arc::clone(&bwf.value),
-                        fact: Box::new(BlockQuantFact::new(bqf.format.clone(), new_shape)),
-                    };
-                    *opaque = Opaque(Arc::new(new_bqv));
-                } else {
-                    bail!("Can't apply {self:?} to opaque tensor {tensor:?}");
-                }
+            if let Some(bqs) = tensor.storage_as::<BlockQuantStorage>() {
+                let mut new_shape: TVec<usize> = tvec![bqs.m(), bqs.k()];
+                inner_change.change_shape_array(&mut new_shape, false)?;
+                let new = bqs.with_shape(new_shape[0], new_shape[1..].iter().product());
+                let mut new_tensor = new.into_tensor();
+                std::mem::swap(tensor, &mut new_tensor);
+            } else {
+                bail!("Can't apply {self:?} to opaque tensor {tensor:?}");
             }
             return Ok(());
         }

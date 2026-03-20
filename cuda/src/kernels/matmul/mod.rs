@@ -635,7 +635,7 @@ mod tests {
     use proptest::prelude::*;
     use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
     use tract_core::tract_data::itertools::Itertools;
-    use tract_core::tract_linalg::block_quant::{BlockQuant, BlockQuantFact, Q4_0};
+    use tract_core::tract_linalg::block_quant::{BlockQuant, BlockQuantStorage, Q4_0};
     use tract_gpu::tensor::IntoDevice;
 
     pub(crate) fn run_mmm_test_case(
@@ -927,15 +927,14 @@ mod tests {
                                 .map(|x| x.to_f32().unwrap())
                                 .collect_vec(),
                         )?;
-                        let bqv = BlobWithFact {
-                            fact: Box::new(BlockQuantFact::new(
-                                Box::new(Q4_0),
-                                tvec![self.b, self.n, self.k],
-                            )),
-                            value: Arc::new(w_quant),
-                        };
-                        let padded_q40 = pad_q40(&bqv)?;
-                        tensor0(Opaque(Arc::new(padded_q40)))
+                        let bqs = BlockQuantStorage::new(
+                            Box::new(Q4_0),
+                            self.b * self.n,
+                            self.k,
+                            Arc::new(w_quant),
+                        );
+                        let padded_q40 = pad_q40(&bqs)?;
+                        padded_q40.into_tensor()
                     }
                 } else {
                     Tensor::from_shape(&[self.b, self.k, self.n], &self.rhs)?

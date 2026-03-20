@@ -2,7 +2,7 @@ use crate::internal::*;
 use crate::ops::einsum::block_quant_aware_input_shape;
 use crate::ops::matmul::pack::OptSimpleMatMulPack;
 use ndarray::*;
-use tract_linalg::block_quant::BlockQuantFact;
+use tract_linalg::block_quant::BlockQuantStorage;
 use tract_linalg::mmm::MMMInputValue;
 
 #[derive(Debug, Clone, Hash, PartialEq)]
@@ -94,29 +94,28 @@ impl Gather {
         Ok(output)
     }
 
-    fn eval_bq<F: Datum>(&self, data: &BlobWithFact, indices: &TValue) -> TractResult<Tensor> {
-        let bqf = data.fact.downcast_ref::<BlockQuantFact>().context("Expected BlockQuantFact")?;
+    fn eval_bq<F: Datum>(&self, data: &BlockQuantStorage, indices: &TValue) -> TractResult<Tensor> {
         ensure!(self.axis == 0);
-        ensure!(bqf.shape().len() == 2);
-        let data_shape = &bqf.shape();
+        let data_shape = &[data.m(), data.k()];
         let output_shape = &*self.compute_output_shape(data_shape, indices.shape())?;
         let mut output = unsafe { Tensor::uninitialized::<F>(output_shape)? };
         let indices_dense = indices.try_as_dense()?;
         let indices_slice = indices_dense.as_slice::<i64>()?;
-        let vector_len = data_shape[1];
+        let vector_len = data.k();
+        let blob = data.value();
 
-        let block_len = bqf.format.block_len();
-        let block_bytes = bqf.format.block_bytes();
+        let block_len = data.format().block_len();
+        let block_bytes = data.format().block_bytes();
         if F::datum_type() == f16::datum_type() {
             let mut output_dense = output.try_as_dense_mut()?;
             let output_slice = output_dense.as_slice_mut::<f16>()?;
             for (pos, ix) in indices_slice.iter().enumerate() {
                 let slice = &mut output_slice[pos * vector_len..][..vector_len];
                 for i in (0..vector_len).step_by(block_len) {
-                    let offset = data_shape[1] * *ix as usize + i;
+                    let offset = data.k() * *ix as usize + i;
                     let block_id = offset / block_len;
-                    bqf.format.dequant_block_f16(
-                        &data.value[block_id * block_bytes..][..block_bytes],
+                    data.format().dequant_block_f16(
+                        &blob[block_id * block_bytes..][..block_bytes],
                         &mut slice[i..i + block_len],
                     );
                 }
@@ -127,10 +126,10 @@ impl Gather {
             for (pos, ix) in indices_slice.iter().enumerate() {
                 let slice = &mut output_slice[pos * vector_len..][..vector_len];
                 for i in (0..vector_len).step_by(block_len) {
-                    let offset = data_shape[1] * *ix as usize + i;
+                    let offset = data.k() * *ix as usize + i;
                     let block_id = offset / block_len;
-                    bqf.format.dequant_block_f32(
-                        &data.value[block_id * block_bytes..][..block_bytes],
+                    data.format().dequant_block_f32(
+                        &blob[block_id * block_bytes..][..block_bytes],
                         &mut slice[i..i + block_len],
                     );
                 }
@@ -258,14 +257,14 @@ impl EvalOp for Gather {
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (data, indices) = args_2!(inputs);
-        let data_dense = data.try_as_dense();
-        let result = if let Some(opaque) =
-            data_dense.as_ref().ok().and_then(|d| d.to_scalar::<Opaque>().ok())
+        let result = if let Some(bqs) = data.storage_as::<BlockQuantStorage>() {
+            let dt = self.output_type.unwrap();
+            dispatch_floatlike!(Self::eval_bq(dt)(self, bqs, &indices))?
+        } else if let Some(opaque) =
+            data.try_as_dense().as_ref().ok().and_then(|d| d.to_scalar::<Opaque>().ok())
         {
             let dt = self.output_type.unwrap();
-            if let Some(data) = opaque.downcast_ref::<BlobWithFact>() {
-                dispatch_floatlike!(Self::eval_bq(dt)(self, data, &indices))?
-            } else if let Some(data) = opaque.downcast_ref::<Box<dyn MMMInputValue>>() {
+            if let Some(data) = opaque.downcast_ref::<Box<dyn MMMInputValue>>() {
                 dispatch_floatlike!(Self::eval_input_store(dt)(self, &**data, &indices))?
             } else {
                 bail!("Can't use Gather on {:?} input", data);

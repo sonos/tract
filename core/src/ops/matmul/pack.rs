@@ -1,7 +1,7 @@
 use crate::axes::Axis;
 use crate::internal::*;
 use ndarray::*;
-use tract_linalg::block_quant::{BlockQuantFact, PackedBlockQuantFact, PackedBlockQuantFormat};
+use tract_linalg::block_quant::{BlockQuantStorage, PackedBlockQuantFact, PackedBlockQuantFormat};
 use tract_linalg::mmm::MMMInputValue;
 use tract_linalg::pack::PackedFormat;
 
@@ -178,24 +178,20 @@ impl EvalOp for OptSimpleMatMulPack {
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
-        let mut output = tensor1(
-            &input
-                .try_as_dense()?
-                .as_slice::<Opaque>()?
-                .iter()
-                .map(|i| {
-                    let i = i.downcast_ref::<BlobWithFact>().context("Expected BlockWithFact")?;
-                    let i_bqf = i
-                        .fact
-                        .downcast_ref::<BlockQuantFact>()
-                        .context("Expected BlockQuantFact")?;
-                    let iv: Box<dyn MMMInputValue> =
-                        Box::new(self.packed_format.pack(&i.value, i_bqf.k())?);
-                    Ok(Opaque(Arc::new(iv)))
-                })
-                .collect::<TractResult<Vec<_>>>()?,
-        );
-        output.set_shape(input.shape())?;
+        let bqs = input.try_storage_as::<BlockQuantStorage>()?;
+        let packed = bqs
+            .groups()
+            .iter()
+            .map(|blob| {
+                let iv: Box<dyn MMMInputValue> = Box::new(self.packed_format.pack(blob, bqs.k())?);
+                Ok(Opaque(Arc::new(iv)))
+            })
+            .collect::<TractResult<Vec<_>>>()?;
+        let output = if packed.len() == 1 {
+            tensor0(packed.into_iter().next().unwrap())
+        } else {
+            tensor1(&packed)
+        };
         Ok(tvec!(output.into_tvalue()))
     }
 }

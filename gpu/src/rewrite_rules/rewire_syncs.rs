@@ -4,6 +4,7 @@ use crate::tensor::DeviceTensorExt;
 use tract_core::internal::*;
 use tract_core::ops::konst::Const;
 use tract_core::tract_data::itertools::Itertools;
+use tract_core::tract_linalg::block_quant::BlockQuantStorage;
 
 pub fn rewire_syncs(model: &mut TypedModel) -> TractResult<()> {
     Rewriter::default()
@@ -66,16 +67,9 @@ pub fn rewire_sync_after_const(
     };
 
     let host_const = device_const.to_host()?;
-    let mut opaque_fact: Option<Box<dyn OpaqueFact>> = None;
-    if let Some(of) = host_const
-        .try_as_dense()
-        .ok()
-        .and_then(|d| d.to_scalar::<Opaque>().ok())
-        .and_then(|od| od.downcast_ref::<BlobWithFact>())
-        .map(|bwf| bwf.fact.clone())
-    {
-        opaque_fact = Some(of);
-    }
+    let opaque_fact: Option<Box<dyn OpaqueFact>> = host_const
+        .storage_as::<BlockQuantStorage>()
+        .map(|bqs| Box::new(bqs.to_block_quant_fact()) as Box<dyn OpaqueFact>);
 
     let mut patch = TypedModelPatch::default();
     let out = patch.wire_node(

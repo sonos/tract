@@ -375,7 +375,7 @@ mod tests {
     use proptest::prelude::*;
     use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
     use tract_core::tract_data::itertools::Itertools;
-    use tract_core::tract_linalg::block_quant::{BlockQuant, BlockQuantFact, Q4_0};
+    use tract_core::tract_linalg::block_quant::{BlockQuant, BlockQuantStorage, Q4_0};
     use tract_gpu::tensor::IntoDevice;
 
     pub(crate) fn run_mmm_test_case<K: GemmKernel>(
@@ -906,13 +906,13 @@ mod tests {
                                 .collect_vec(),
                         )?;
 
-                        tensor0(Opaque(Arc::new(BlobWithFact {
-                            fact: Box::new(BlockQuantFact::new(
-                                Box::new(Q4_0),
-                                tvec![self.b, self.n, self.k],
-                            )),
-                            value: Arc::new(b_quant),
-                        })))
+                        BlockQuantStorage::new(
+                            Box::new(Q4_0),
+                            self.b * self.n,
+                            self.k,
+                            Arc::new(b_quant),
+                        )
+                        .into_tensor()
                     }
                 } else {
                     Tensor::from_shape(&[self.b, self.k, self.n], &self.rhs)?

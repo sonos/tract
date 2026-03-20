@@ -1083,6 +1083,9 @@ impl Tensor {
     }
 
     pub fn is_uniform(&self) -> bool {
+        if self.storage.as_dense().is_none() {
+            return false;
+        }
         if self.len() <= 1 {
             return true;
         }
