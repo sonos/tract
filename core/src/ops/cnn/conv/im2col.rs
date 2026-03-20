@@ -1,4 +1,6 @@
-use tract_linalg::mmm::{EagerPackedInput, MMMInputValue, MatMatMul, PackedOpaqueFact};
+use tract_linalg::mmm::{
+    EagerPackedInput, MMMInputValue, MatMatMul, PackedMatrixStorage, PackedOpaqueFact,
+};
 use tract_linalg::pack::{PackedFormat, PackingWriter};
 
 use crate::internal::*;
@@ -152,26 +154,27 @@ impl EvalOp for Im2Col {
         unsafe {
             let mut input = inputs.remove(0).into_tensor();
             let pad_value: Option<&Tensor> = if inputs.len() > 0 { Some(&inputs[0]) } else { None };
-            let mut output = Tensor::uninitialized::<Opaque>(&geometry.packed_shape)?;
             if !self.pool_spec.data_format.has_n() {
                 input.insert_axis(0)?;
             }
-            let mut output_dense = output.try_as_dense_mut()?;
-            let mut output_view = output_dense.to_array_view_mut::<Opaque>()?;
             let panel_bytes =
                 geometry.b_pack.single_panel_len(geometry.k) * input.datum_type().size_of();
 
-            // in the loop, we have normalized the input so that N is
-            // always here, and output so that N and G are there.
-            if !geometry.pool.output_shape.shape.contains(&0) {
-                for i in 0..*geometry.input_shape_with_n.n().unwrap_or(&1) {
-                    let input = input.view_at_prefix(&[i])?;
-                    for g in 0..self.group {
-                        let mut data = Tensor::uninitialized_aligned_dt(
-                            input.datum_type(),
-                            &[geometry.b_pack.len(geometry.k, geometry.n)],
-                            geometry.b_pack.alignment(),
-                        )?;
+            let n_batches = *geometry.input_shape_with_n.n().unwrap_or(&1);
+            let n_groups = self.group;
+            let mut values: Vec<Box<dyn MMMInputValue>> = Vec::with_capacity(n_batches * n_groups);
+
+            for i in 0..n_batches {
+                let input = input.view_at_prefix(&[i])?;
+                for g in 0..n_groups {
+                    let n =
+                        if geometry.pool.output_shape.shape.contains(&0) { 0 } else { geometry.n };
+                    let mut data = Tensor::uninitialized_aligned_dt(
+                        input.datum_type(),
+                        &[geometry.b_pack.len(geometry.k, n)],
+                        geometry.b_pack.alignment(),
+                    )?;
+                    if n > 0 {
                         dispatch_copy_by_size!(Patcher::patch(input.datum_type())(
                             &geometry.patcher,
                             &geometry,
@@ -180,20 +183,22 @@ impl EvalOp for Im2Col {
                             g,
                             pad_value
                         ))?;
-                        let input: Box<dyn MMMInputValue> = Box::new(EagerPackedInput {
-                            fact: PackedOpaqueFact {
-                                format: Box::new(geometry.b_pack.clone()),
-                                k: geometry.k,
-                                mn: geometry.n.to_dim(),
-                            },
-                            packed: data.into_blob()?.into(),
-                            panel_bytes,
-                            mn: geometry.n,
-                        });
-                        output_view[[i, g]] = input.into();
                     }
+                    values.push(Box::new(EagerPackedInput {
+                        fact: PackedOpaqueFact {
+                            format: Box::new(geometry.b_pack.clone()),
+                            k: geometry.k,
+                            mn: n.to_dim(),
+                        },
+                        packed: data.into_blob()?.into(),
+                        panel_bytes: if n > 0 { panel_bytes } else { 0 },
+                        mn: n,
+                    }));
                 }
             }
+
+            let output =
+                PackedMatrixStorage::new_batched(&geometry.packed_shape, values).into_tensor();
             Ok(tvec!(output.into_tvalue()))
         }
     }

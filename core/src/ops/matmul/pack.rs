@@ -4,7 +4,7 @@ use ndarray::*;
 use tract_linalg::block_quant::{
     BlockQuantStorage, PackedBlockQuantFact, PackedBlockQuantFormat, block_quant_slice,
 };
-use tract_linalg::mmm::MMMInputValue;
+use tract_linalg::mmm::{MMMInputValue, PackedMatrixStorage};
 use tract_linalg::pack::PackedFormat;
 
 use super::ModePicker;
@@ -88,18 +88,15 @@ impl OptMatMulPack {
             let packer = &self.packers[mode];
             let output_shape: TVec<usize> = self.output_shape(input.shape());
             let stores = if output_shape.iter().all(|d| *d == 1) {
-                tensor0::<Opaque>(
-                    packer.pack_tensor_view(&input.view(), self.k_axis, self.mn_axis)?.into(),
-                )
-                .into_shape(&output_shape)?
+                let packed = packer.pack_tensor_view(&input.view(), self.k_axis, self.mn_axis)?;
+                PackedMatrixStorage::new_batched(&output_shape, vec![packed]).into_tensor()
             } else {
-                let mut stores = Tensor::uninitialized_dt(Opaque::datum_type(), &output_shape)?;
-                let mut stores_dense = stores.try_as_dense_mut()?;
-                let mut stores_view = stores_dense.to_array_view_mut::<Opaque>()?;
                 let mut bc_shape: TVec<usize> = input.shape().into();
                 bc_shape[self.k_axis] = 1;
                 bc_shape[self.mn_axis] = 1;
 
+                let mut values: Vec<Box<dyn MMMInputValue>> =
+                    Vec::with_capacity(output_shape.iter().product());
                 for coord in indices(&*bc_shape) {
                     let offset = coord
                         .as_array_view()
@@ -108,18 +105,13 @@ impl OptMatMulPack {
                         .map(|(x, s)| *x as isize * s)
                         .sum::<isize>()
                         * input.datum_type().size_of() as isize;
-                    let mut pack_coords: TVec<usize> = coord.slice().into();
-                    pack_coords.remove(self.k_axis.max(self.mn_axis));
-                    pack_coords.remove(self.k_axis.min(self.mn_axis));
-                    stores_view[&*pack_coords] = packer
-                        .pack_tensor_view(
-                            &TensorView::from_bytes(&input, offset, input.shape(), input.strides()),
-                            self.k_axis,
-                            self.mn_axis,
-                        )?
-                        .into();
+                    values.push(packer.pack_tensor_view(
+                        &TensorView::from_bytes(&input, offset, input.shape(), input.strides()),
+                        self.k_axis,
+                        self.mn_axis,
+                    )?);
                 }
-                stores
+                PackedMatrixStorage::new_batched(&output_shape, values).into_tensor()
             };
             Ok(tvec!(stores.into_tvalue()))
         }
@@ -180,21 +172,22 @@ impl EvalOp for OptSimpleMatMulPack {
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
+<<<<<<< HEAD
         let bqs = input.try_storage_as::<BlockQuantStorage>()?;
         // Leading dims before the last 2 (M, K) are batch/group dims
-        let leading_shape = &input.shape()[..input.rank().saturating_sub(2)];
-        let num_groups: usize = leading_shape.iter().product();
+        // Leading dims before the last 2 (M, K) are batch/group dims
+        let num_groups: usize = input.shape()[..input.rank().saturating_sub(2)].iter().product();
         let m_per_group = input.shape()[input.rank() - 2];
         let k = *input.shape().last().unwrap();
-        let packed = (0..num_groups)
+        let values = (0..num_groups)
             .map(|g| {
                 let slice = block_quant_slice(bqs.value(), bqs.format(), m_per_group, k, g);
                 let iv: Box<dyn MMMInputValue> = Box::new(self.packed_format.pack(slice, k)?);
-                Ok(Opaque(Arc::new(iv)))
+                Ok(iv)
             })
             .collect::<TractResult<Vec<_>>>()?;
-        let mut output = tensor1(&packed);
-        output.set_shape(leading_shape)?;
+        let shape: TVec<usize> = input.shape().into();
+        let output = PackedMatrixStorage::new_batched(&shape, values).into_tensor();
         Ok(tvec!(output.into_tvalue()))
     }
 }

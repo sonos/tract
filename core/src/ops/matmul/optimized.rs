@@ -6,7 +6,7 @@ use ndarray::*;
 use tract_itertools::Itertools;
 
 use tract_linalg::mmm::{
-    AsInputValue, EagerPackedInput, FusedSpec, MMMInputValue, MatMatMul, OutputStoreSpec,
+    AsInputValue, EagerPackedInput, FusedSpec, MatMatMul, OutputStoreSpec, PackedMatrixStorage,
     PanelExtractInput, PanelExtractor,
 };
 use tract_linalg::pack::PackedFormat;
@@ -63,20 +63,18 @@ impl ProtoFusedSpec {
         #[allow(clippy::let_and_return)]
         let fs = match self {
             ProtoFusedSpec::AddMatMul { geo, a, b, packings } => {
-                let mut a = inputs[*a].view();
-                let mut b = inputs[*b].view();
-                unsafe {
-                    geo.c_to_a_axis_mapping.translate_view(output_coords, &mut a);
-                }
-                let a = a.as_slice::<Opaque>().unwrap()[0]
-                    .downcast_ref::<Box<dyn MMMInputValue>>()
-                    .unwrap();
-                unsafe {
-                    geo.c_to_b_axis_mapping.translate_view(output_coords, &mut b);
-                }
-                let b = b.as_slice::<Opaque>().unwrap()[0]
-                    .downcast_ref::<Box<dyn MMMInputValue>>()
-                    .unwrap();
+                let a_tensor = &inputs[*a];
+                let a_storage = a_tensor.try_storage_as::<PackedMatrixStorage>().unwrap();
+                let a_idx =
+                    geo.c_to_a_axis_mapping.flat_index(output_coords, a_storage.batch_strides());
+                let a = a_storage.value_at_flat(a_idx);
+
+                let b_tensor = &inputs[*b];
+                let b_storage = b_tensor.try_storage_as::<PackedMatrixStorage>().unwrap();
+                let b_idx =
+                    geo.c_to_b_axis_mapping.flat_index(output_coords, b_storage.batch_strides());
+                let b = b_storage.value_at_flat(b_idx);
+
                 let (_a_packing, b_packing) = &mmm.packings()[packings[mode].0];
                 let pa = if let Some(extractor) = &packings[mode].1 {
                     let data = a.downcast_ref::<EagerPackedInput>().unwrap();
@@ -85,7 +83,7 @@ impl ProtoFusedSpec {
                         data: data.clone(),
                     }))
                 } else {
-                    AsInputValue::Borrowed(&**a)
+                    AsInputValue::Borrowed(a)
                 };
                 assert!(
                     b_packing.same_as(b.format())
@@ -95,7 +93,7 @@ impl ProtoFusedSpec {
                 debug_assert!(b.k().to_dim().compatible_with(&geo.k.to_dim()));
                 FusedSpec::AddMatMul {
                     a: pa,
-                    b: AsInputValue::Borrowed(&**b),
+                    b: AsInputValue::Borrowed(b),
                     packing: packings[mode].0,
                 }
             }
@@ -153,12 +151,10 @@ impl ProtoFusedSpec {
                 debug_assert!(a.len() == 1);
                 debug_assert!(b.datum_type().is_opaque());
                 debug_assert!(b.len() == 1);
-                let a = a.as_slice_unchecked::<Opaque>().get_unchecked(0);
-                let b = b.as_slice_unchecked::<Opaque>().get_unchecked(0);
-                debug_assert!(a.is::<Box<dyn MMMInputValue>>());
-                debug_assert!(b.is::<Box<dyn MMMInputValue>>());
-                let a = a.downcast_ref::<Box<dyn MMMInputValue>>().unwrap_unchecked();
-                let b = b.downcast_ref::<Box<dyn MMMInputValue>>().unwrap_unchecked();
+                let a_storage = a.try_storage_as::<PackedMatrixStorage>().unwrap_unchecked();
+                let b_storage = b.try_storage_as::<PackedMatrixStorage>().unwrap_unchecked();
+                let a = a_storage.value();
+                let b = b_storage.value();
                 debug_assert!(packings.len() == 1);
                 debug_assert!(packings[0].1.is_none()); // no panel extraction
                 #[cfg(debug_assertions)]
@@ -174,8 +170,8 @@ impl ProtoFusedSpec {
                     );
                 }
                 FusedSpec::AddMatMul {
-                    a: AsInputValue::Borrowed(&**a),
-                    b: AsInputValue::Borrowed(&**b),
+                    a: AsInputValue::Borrowed(a),
+                    b: AsInputValue::Borrowed(b),
                     packing: packings[mode].0,
                 }
             },

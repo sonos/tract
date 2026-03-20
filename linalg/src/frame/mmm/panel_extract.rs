@@ -162,6 +162,7 @@ macro_rules! panel_extractor {
 #[cfg(test)]
 pub mod test {
     use crate::frame::block_quant::PackedBlockQuantFormat;
+    use crate::mmm::PackedMatrixStorage;
     use tract_data::internal::*;
     use tract_ndarray::Array2;
 
@@ -201,12 +202,8 @@ pub mod test {
                 .cast_to_dt(from.dt)?
                 .into_owned();
         let packed_orig = from.prepare_tensor(&weights_orig, 1, 0)?;
-        let packed_orig = packed_orig
-            .try_as_dense()?
-            .to_scalar::<Opaque>()?
-            .downcast_ref::<Box<dyn MMMInputValue>>()
-            .unwrap();
-        let packed_orig = packed_orig.downcast_ref::<EagerPackedInput>().unwrap();
+        let packed_orig_storage = packed_orig.try_storage_as::<PackedMatrixStorage>()?;
+        let packed_orig = packed_orig_storage.value().downcast_ref::<EagerPackedInput>().unwrap();
 
         for panel in 0..panels {
             let orig_panel = &packed_orig.packed[packed_orig.panel_bytes * panel..]

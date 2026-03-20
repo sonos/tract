@@ -3,7 +3,7 @@ use crate::ops::matmul::pack::DynPackedOpaqueFact;
 use std::fmt::{Debug, Display};
 use std::ops::Range;
 use tract_linalg::WeightType;
-use tract_linalg::mmm::{MMMInputFormat, MMMInputValue};
+use tract_linalg::mmm::{MMMInputFormat, MMMInputValue, PackedMatrixStorage};
 use tract_linalg::pack::{PackedFormat, PackingWriter};
 
 #[derive(Clone, Debug, Hash, PartialEq)]
@@ -108,8 +108,8 @@ impl EvalOp for LazyIm2Col {
         let tensor = args_1!(inputs);
         let input: Box<dyn MMMInputValue> =
             Box::new(LazyIm2colInput { tensor, im2col: self.params.clone() });
-        let input = Opaque(Arc::new(input));
-        Ok(tvec!(tensor2(&[[input]]).into_tvalue()))
+        let output = PackedMatrixStorage::new_batched(&[1, 1], vec![input]).into_tensor();
+        Ok(tvec!(output.into_tvalue()))
     }
 }
 
