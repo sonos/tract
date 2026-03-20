@@ -249,21 +249,22 @@ impl PackedBlockQuantFormat {
 impl MMMInputFormat for PackedBlockQuantFormat {
     fn prepare_tensor(&self, t: &Tensor, _k_axis: usize, _mn_axis: usize) -> TractResult<Tensor> {
         let bqs = t.try_storage_as::<BlockQuantStorage>()?;
-        let num_groups = t.shape()[0];
-        let m_per_group = t.shape()[1];
+        let num_groups: usize = if t.rank() > 2 {
+            t.shape()[..t.rank() - 2].iter().product()
+        } else {
+            1
+        };
+        let m_per_group = t.shape()[t.rank().saturating_sub(2)];
         let k = *t.shape().last().unwrap();
-        let packed = (0..num_groups)
+        let values = (0..num_groups)
             .map(|g| {
                 let slice = block_quant_slice(bqs.value(), &*self.bq, m_per_group, k, g);
                 let packed = self.pack(slice, k)?;
-                Ok(Opaque(Arc::new(Box::new(packed) as Box<dyn MMMInputValue>)))
+                Ok(Box::new(packed) as Box<dyn MMMInputValue>)
             })
-            .collect::<TractResult<Vec<Opaque>>>()?;
-        if packed.len() == 1 {
-            Ok(tensor0(packed.into_iter().next().unwrap()))
-        } else {
-            Ok(tensor1(&packed))
-        }
+            .collect::<TractResult<Vec<_>>>()?;
+        let shape: TVec<usize> = t.shape().into();
+        Ok(crate::mmm::PackedMatrixStorage::new_batched(&shape, values).into_tensor())
     }
 
     fn prepare_one(

@@ -72,20 +72,6 @@ dyn_clone::clone_trait_object!(MMMInputValue);
 impl_downcast!(MMMInputValue);
 dyn_hash::hash_trait_object!(MMMInputValue);
 
-impl From<Box<dyn MMMInputValue>> for Opaque {
-    fn from(value: Box<dyn MMMInputValue>) -> Self {
-        Opaque(Arc::new(value))
-    }
-}
-
-impl OpaquePayload for Box<dyn MMMInputValue> {
-    fn same_as(&self, other: &dyn OpaquePayload) -> bool {
-        other
-            .downcast_ref::<Self>()
-            .is_some_and(|other| (&**self as &dyn MMMInputValue).same_as(&**other))
-    }
-}
-
 #[allow(clippy::derived_hash_with_manual_eq)]
 #[derive(Clone, Hash, Debug)]
 pub struct PackedOpaqueFact {
