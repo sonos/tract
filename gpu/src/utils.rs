@@ -1,6 +1,6 @@
 use tract_core::internal::*;
 use tract_core::tract_linalg::block_quant::BlockQuant;
-use tract_linalg::block_quant::{BlockQuantFact, Q4_0};
+use tract_linalg::block_quant::{BlockQuantFact, BlockQuantStorage, Q4_0};
 
 use crate::fact::*;
 use crate::tensor::DeviceTensor;
@@ -68,25 +68,10 @@ pub fn as_quant_fact<'a>(
         .as_ref()
         .and_then(|of| of.downcast_ref::<BlockQuantFact>())
         .and_then(|bqf| if bqf.format.same_as(format) { Some(bqf) } else { None })
-        .or_else(|| {
-            fact.konst
-                .as_ref()
-                .and_then(|k| k.try_as_dense().ok()?.to_scalar::<Opaque>().ok())
-                .and_then(|o| o.downcast_ref::<BlobWithFact>())
-                .and_then(|bwf| bwf.fact.downcast_ref::<BlockQuantFact>())
-                .and_then(|bqf| if bqf.format.same_as(format) { Some(bqf) } else { None })
-        })
 }
 
-pub fn as_q40_tensor(a: &Tensor) -> Option<&BlobWithFact> {
-    let od = a.try_as_dense().ok()?.to_scalar::<Opaque>().ok()?;
-    od.downcast_ref::<BlobWithFact>().and_then(|bwf| {
-        if bwf.fact.downcast_ref::<BlockQuantFact>().is_some_and(|bqf| bqf.format.same_as(&Q4_0)) {
-            Some(bwf)
-        } else {
-            None
-        }
-    })
+pub fn as_q40_tensor(a: &Tensor) -> Option<&BlockQuantStorage> {
+    a.storage_as::<BlockQuantStorage>().filter(|bqs| bqs.format().same_as(&Q4_0))
 }
 
 pub fn get_quant_fact(t: &DeviceTensor, format: &dyn BlockQuant) -> Option<BlockQuantFact> {

@@ -3,7 +3,7 @@ use crate::internal::*;
 use tract_core::ndarray::ArrayViewD;
 use tract_core::ndarray::Axis;
 use tract_core::ops::cnn::conv::{rewrite_kernel_conv_in_oihw, rewrite_kernel_deconv_in_oihw};
-use tract_core::tract_linalg::block_quant::BlockQuantFact;
+use tract_core::tract_linalg::block_quant::BlockQuantStorage;
 use tract_itertools::Itertools;
 
 pub fn rewrite_model(model: &mut TypedModel) -> TractResult<()> {
@@ -406,18 +406,10 @@ impl<'a> IntoAst<'a> {
 
         self.tensors.insert(name.clone(), tensor.clone());
         let id = self.scoped_id(&name);
-        let shape = if tensor.datum_type().is_opaque() {
-            if let Some(bwf) =
-                tensor.try_as_dense()?.to_scalar::<Opaque>()?.downcast_ref::<BlobWithFact>()
-            {
-                let bqf =
-                    bwf.fact.downcast_ref::<BlockQuantFact>().context("Expected BlockQuantFacr")?;
-                bqf.shape()
-            } else {
-                bail!("Unexpected opaque tensor in serialization {tensor:?}");
-            }
+        let shape = if let Some(bqs) = tensor.storage_as::<BlockQuantStorage>() {
+            bqs.to_block_quant_fact().shape().to_vec()
         } else {
-            tensor.shape()
+            tensor.shape().to_vec()
         };
         self.assignment(
             id.clone(),
@@ -426,7 +418,7 @@ impl<'a> IntoAst<'a> {
                 generic_type_name: Some(TypeName::Scalar),
                 arguments: vec![
                     named_arg("label", string(name.0)),
-                    named_arg("shape", ints(shape)),
+                    named_arg("shape", ints(&shape)),
                 ],
             })
             .into(),

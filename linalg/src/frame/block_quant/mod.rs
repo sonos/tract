@@ -248,18 +248,20 @@ impl PackedBlockQuantFormat {
 
 impl MMMInputFormat for PackedBlockQuantFormat {
     fn prepare_tensor(&self, t: &Tensor, _k_axis: usize, _mn_axis: usize) -> TractResult<Tensor> {
-        let packed = t
-            .try_as_dense()?
-            .as_slice::<Opaque>()?
+        let bqs = t.try_storage_as::<BlockQuantStorage>()?;
+        let packed = bqs
+            .groups()
             .iter()
-            .map(|o| {
-                let bwf = o.downcast_ref::<BlobWithFact>().unwrap();
-                let bqf = bwf.fact.downcast_ref::<BlockQuantFact>().unwrap();
-                let packed = self.pack(&bwf.value, bqf.k())?;
+            .map(|blob| {
+                let packed = self.pack(blob, bqs.k())?;
                 Ok(Opaque(Arc::new(Box::new(packed) as Box<dyn MMMInputValue>)))
             })
             .collect::<TractResult<Vec<Opaque>>>()?;
-        tensor1(&packed).into_shape(t.shape())
+        if packed.len() == 1 {
+            Ok(tensor0(packed.into_iter().next().unwrap()))
+        } else {
+            Ok(tensor1(&packed))
+        }
     }
 
     fn prepare_one(
@@ -285,18 +287,14 @@ impl MMMInputFormat for PackedBlockQuantFormat {
             } else {
                 todo!()
             };
-            Cow::Owned(tensor0(Opaque(Arc::new(BlobWithFact {
-                value: Arc::new(quant),
-                fact: Box::new(BlockQuantFact::new(self.bq.clone(), tvec!(m, k))),
-            }))))
+            Cow::Owned(BlockQuantStorage::new(self.bq.clone(), m, k, Arc::new(quant)).into_tensor())
         } else {
             Cow::Borrowed(t)
         };
         ensure!(mn_axis == 0);
         ensure!(k_axis == 1);
-        let bwf = t.try_as_dense()?.to_scalar::<Opaque>()?.downcast_ref::<BlobWithFact>().unwrap();
-        let bqf = bwf.fact.downcast_ref::<BlockQuantFact>().unwrap();
-        let packed = self.pack(&bwf.value, bqf.k())?;
+        let bqs = t.try_storage_as::<BlockQuantStorage>()?;
+        let packed = self.pack(bqs.value(), bqs.k())?;
         Ok(Box::new(packed))
     }
 

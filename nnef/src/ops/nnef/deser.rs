@@ -16,6 +16,7 @@ use tract_core::ops::konst::Const;
 use tract_core::ops::logic::Comp;
 use tract_core::ops::math::min;
 use tract_core::ops::nn::{DataFormat, Softmax, SoftmaxKind};
+use tract_core::tract_linalg::block_quant::BlockQuantStorage;
 use tract_itertools::Itertools;
 
 use tract_core::ops;
@@ -102,13 +103,8 @@ pub fn variable(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> 
             tensor = tensor.cast_to_dt(*dt)?.into_owned().into_arc_tensor()
         }
     }
-    if let Some(bwf) = tensor
-        .try_as_dense()?
-        .to_scalar::<Opaque>()
-        .ok()
-        .and_then(|o| o.downcast_ref::<BlobWithFact>())
-    {
-        let fact = bwf.fact.clone();
+    if let Some(bqs) = tensor.storage_as::<BlockQuantStorage>() {
+        let fact: Box<dyn OpaqueFact> = Box::new(bqs.to_block_quant_fact());
         builder.wire(Const::new_with_opaque_fact(tensor, fact)?, &[])
     } else {
         ensure!(

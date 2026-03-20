@@ -59,15 +59,13 @@ pub fn pad_q40_weights(
     }));
 
     let host_tensor = dev_tensor.to_host()?.into_tensor();
-    let q40_view = as_q40_tensor(&host_tensor).expect("expected Q4_0 tensor view");
-    let padded_bqv = pad_q40(q40_view)?;
+    let bqs = as_q40_tensor(&host_tensor).expect("expected Q4_0 tensor view");
+    let padded_bqs = pad_q40(bqs)?;
 
     let typed_fact: TypedFact = Arc::clone(op.val()).into();
-    let padded_fact = typed_fact.with_opaque_fact(padded_bqv.fact.clone());
+    let padded_fact = typed_fact.with_opaque_fact(padded_bqs.to_block_quant_fact());
 
-    let padded_tensor = tensor0(Opaque(Arc::new(padded_bqv)))
-        .broadcast_into_rank(cuda_tensor.shape().len())?
-        .into_arc_tensor();
+    let padded_tensor = padded_bqs.into_tensor().into_arc_tensor();
 
     let new_const = Const::new_with_opaque_fact(
         padded_tensor.into_device()?.into_opaque_tensor().into_arc_tensor(),

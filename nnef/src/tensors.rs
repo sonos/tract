@@ -3,7 +3,7 @@ use std::io::{Read, Write};
 use byteorder::{LE, ReadBytesExt, WriteBytesExt};
 use tract_core::internal::*;
 use tract_core::tract_linalg::block_quant::Q8_1;
-use tract_linalg::block_quant::{BlockQuant, BlockQuantFact, Q4_0};
+use tract_linalg::block_quant::{BlockQuant, BlockQuantStorage, Q4_0};
 
 const TRACT_ITEM_TYPE_VENDOR: u16 = ((b'T' as u16) << 8u16) | b'R' as u16;
 
@@ -189,13 +189,10 @@ pub fn read_tensor(mut reader: impl Read) -> TractResult<Tensor> {
 
 pub fn write_tensor(w: &mut impl Write, tensor: &Tensor) -> TractResult<()> {
     ensure!(tensor.datum_type() != TDim::datum_type());
-    let dense = tensor.try_as_dense()?;
-    if tensor.datum_type() == Opaque::datum_type() {
-        ensure!(tensor.rank() == 0);
-        if let Some(bwf) = dense.to_scalar::<Opaque>()?.downcast_ref::<BlobWithFact>() {
-            return write_block_quant_value(w, bwf);
-        }
+    if let Some(bqs) = tensor.storage_as::<BlockQuantStorage>() {
+        return write_block_quant_value(w, bqs);
     }
+    let dense = tensor.try_as_dense()?;
     let mut header = Header::default();
     if tensor.rank() > 8 {
         bail!("Only rank up to 8 are supported");
@@ -293,16 +290,15 @@ fn read_block_quant_value(r: &mut impl Read, header: &Header) -> TractResult<Ten
     if header.item_type == 0x2040 {
         tract_to_gguf_q4_0_packing(&mut blob)?;
     }
-    let fact = Box::new(BlockQuantFact::new(format, shape));
-    let bwf = BlobWithFact { value: Arc::new(blob), fact };
-    let tensor = tensor0(Opaque(Arc::new(bwf)));
+    let tensor = BlockQuantStorage::new(format, q_m, q_k, Arc::new(blob)).into_tensor();
     Ok(tensor)
 }
 
 #[allow(clippy::field_reassign_with_default)]
-fn write_block_quant_value(w: &mut impl Write, value: &BlobWithFact) -> TractResult<()> {
-    let fact = value.fact.downcast_ref::<BlockQuantFact>().context("Expected BlockQuantFact")?;
-    ensure!(fact.format.same_as(&Q4_0) || fact.format.same_as(&Q8_1));
+fn write_block_quant_value(w: &mut impl Write, bqs: &BlockQuantStorage) -> TractResult<()> {
+    let format = bqs.format();
+    ensure!(format.same_as(&Q4_0) || format.same_as(&Q8_1));
+    let fact = bqs.to_block_quant_fact();
 
     let mut header = Header::default();
     header.rank = fact.shape().len() as u32;
@@ -310,12 +306,12 @@ fn write_block_quant_value(w: &mut impl Write, value: &BlobWithFact) -> TractRes
         *h = *v as u32;
     }
     header.bits_per_item = u32::MAX;
-    header.data_size_bytes = value.value.len() as _;
+    header.data_size_bytes = bqs.value().len() as _;
     header.item_type_vendor = TRACT_ITEM_TYPE_VENDOR;
     // 0x3040 3 is for GGML formats, 0 for Q formats then 4 and 0
-    header.item_type = if fact.format.same_as(&Q4_0) { 0x3040 } else { 0x3081 };
+    header.item_type = if format.same_as(&Q4_0) { 0x3040 } else { 0x3081 };
     header.write(w)?;
-    w.write_all(&value.value)?;
+    w.write_all(bqs.value())?;
     Ok(())
 }
 

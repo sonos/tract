@@ -2,7 +2,7 @@ use super::AxesMapping;
 use crate::internal::*;
 use ndarray::{ArrayViewD, Zip};
 use tract_data::itertools::Itertools;
-use tract_linalg::block_quant::BlockQuantFact;
+use tract_linalg::block_quant::BlockQuantStorage;
 use tract_ndarray::{Axis, Dimension};
 use tract_num_traits::{One, Zero};
 
@@ -28,21 +28,39 @@ pub fn output_shape<D: DimLike>(
 }
 
 pub fn dequant_inputs(acc: DatumType, input: TVec<TValue>) -> TractResult<TVec<TValue>> {
-    input.into_iter().map(|i| if i.datum_type().is_number() { Ok(i) } else {
-        let bwfs = i.try_as_dense()?.as_slice::<Opaque>()?.iter().map(|o| o.downcast_ref::<BlobWithFact>()).collect::<Option<Vec<&BlobWithFact>>>().context("Numbers and BlobWithFact are the only supported input for unoptimized einsum")?;
-        let bqfs = bwfs.iter().map(|bwf| bwf.fact.downcast_ref::<BlockQuantFact>()).collect::<Option<Vec<&BlockQuantFact>>>().context("BlobWithFact are not all BlockQuantFacts")?;
-        let mut unpacked:Vec<Tensor> = if acc.is::<f16>() {
-             bwfs.iter().zip(&bqfs).map(|(bwf, bqf)| bqf.format.dequant_f16(&bwf.value)).collect::<TractResult<_>>()?
-         } else if acc.is::<f32>() {
-             bwfs.iter().zip(&bqfs).map(|(bwf, bqf)| bqf.format.dequant_f32(&bwf.value)).collect::<TractResult<_>>()?
-         } else {
-             bail!("Only f32 and f16 accumulators are compatible with BlockQuantValue inputs");
-         }    ;
-         unpacked.iter_mut().try_for_each(|t| t.insert_axis(0))?;
-         let stacked = Tensor::stack_tensors(0, &unpacked)?;
-         let shape = i.shape().iter().chain(bqfs[0].shape()).copied().collect_vec();
-         Ok(stacked.into_shape(&shape)?.into_tvalue())
-    } ).collect::<TractResult<TVec<TValue>>>()
+    input
+        .into_iter()
+        .map(|i| {
+            if i.datum_type().is_number() {
+                Ok(i)
+            } else {
+                let bqs = i.try_storage_as::<BlockQuantStorage>()?;
+                let mut unpacked: Vec<Tensor> = if acc.is::<f16>() {
+                    bqs.groups()
+                        .iter()
+                        .map(|blob| bqs.format().dequant_f16(blob))
+                        .collect::<TractResult<_>>()?
+                } else if acc.is::<f32>() {
+                    bqs.groups()
+                        .iter()
+                        .map(|blob| bqs.format().dequant_f32(blob))
+                        .collect::<TractResult<_>>()?
+                } else {
+                    bail!(
+                        "Only f32 and f16 accumulators are compatible with BlockQuantValue inputs"
+                    );
+                };
+                unpacked.iter_mut().try_for_each(|t| t.insert_axis(0))?;
+                let stacked = Tensor::stack_tensors(0, &unpacked)?;
+                let shape: Vec<usize> = if bqs.num_groups() > 1 {
+                    [bqs.num_groups(), bqs.m(), bqs.k()].into()
+                } else {
+                    [bqs.m(), bqs.k()].into()
+                };
+                Ok(stacked.into_shape(&shape)?.into_tvalue())
+            }
+        })
+        .collect::<TractResult<TVec<TValue>>>()
 }
 
 pub fn eval_t<Acc: Datum + Zero + One>(

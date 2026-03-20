@@ -5,7 +5,7 @@ use tract_core::internal::tract_smallvec::ToSmallVec;
 use tract_core::internal::*;
 use tract_core::prelude::{DatumType, TVec};
 use tract_core::tract_data::itertools::izip;
-use tract_core::tract_linalg::block_quant::{BlockQuantFact, Q8_1};
+use tract_core::tract_linalg::block_quant::{BlockQuantFact, BlockQuantStorage, Q8_1};
 use tract_gpu::device::DeviceBuffer;
 use tract_gpu::tensor::{DeviceTensor, OwnedDeviceTensor};
 use tract_gpu::utils::{as_q40_tensor, check_strides_validity};
@@ -51,22 +51,38 @@ pub struct CudaTensor {
 
 impl CudaTensor {
     pub fn from_tensor(tensor: &Tensor) -> TractResult<Self> {
-        let (data, bqf) = as_q40_tensor(tensor)
-            .map(|bqv| (bqv.value.as_bytes(), Some(bqv.fact.clone())))
-            .unwrap_or((tensor.as_bytes(), None));
-        CUDA_STREAM.with(|stream| {
-            let device_data = stream
-                .clone_htod(data)
-                .with_context(|| format!("Data address: {:?}", data.as_ptr()))?;
-            let buffer = Arc::new(CudaBuffer { inner: device_data });
-            Ok(CudaTensor {
-                buffer,
-                datum_type: tensor.datum_type(),
-                shape: tensor.shape().into(),
-                strides: tensor.strides().into(),
-                opaque_fact: bqf,
+        if let Some(bqs) = as_q40_tensor(tensor) {
+            let bqf = bqs.to_block_quant_fact();
+            let data = bqs.value().as_bytes();
+            CUDA_STREAM.with(|stream| {
+                let device_data = stream
+                    .clone_htod(data)
+                    .with_context(|| format!("Data address: {:?}", data.as_ptr()))?;
+                let buffer = Arc::new(CudaBuffer { inner: device_data });
+                Ok(CudaTensor {
+                    buffer,
+                    datum_type: tensor.datum_type(),
+                    shape: tensor.shape().into(),
+                    strides: tensor.strides().into(),
+                    opaque_fact: Some(Box::new(bqf)),
+                })
             })
-        })
+        } else {
+            let data = tensor.as_bytes();
+            CUDA_STREAM.with(|stream| {
+                let device_data = stream
+                    .clone_htod(data)
+                    .with_context(|| format!("Data address: {:?}", data.as_ptr()))?;
+                let buffer = Arc::new(CudaBuffer { inner: device_data });
+                Ok(CudaTensor {
+                    buffer,
+                    datum_type: tensor.datum_type(),
+                    shape: tensor.shape().into(),
+                    strides: tensor.strides().into(),
+                    opaque_fact: None,
+                })
+            })
+        }
     }
 
     pub fn uninitialized_dt(shape: &[usize], dt: DatumType) -> TractResult<Self> {
@@ -186,8 +202,8 @@ impl OwnedDeviceTensor for CudaTensor {
                 } else {
                     bail!("Unknown Opaque Fact")
                 };
-                let bqv = BlobWithFact { fact: Box::new(bqf), value: Arc::new(blob) };
-                Opaque(Arc::new(bqv)).into()
+                BlockQuantStorage::new(bqf.format.clone(), bqf.m(), bqf.k(), Arc::new(blob))
+                    .into_tensor()
             } else {
                 let mut tensor = unsafe { Tensor::uninitialized_dt(self.datum_type, &self.shape)? };
                 stream.memcpy_dtoh(&self.buffer.inner, tensor.as_bytes_mut())?;

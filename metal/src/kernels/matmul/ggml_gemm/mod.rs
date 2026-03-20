@@ -330,7 +330,7 @@ mod tests {
     use tract_core::ops::array::MultiBroadcastTo;
     use tract_core::ops::cast::Cast;
     use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
-    use tract_linalg::block_quant::{BlockQuant, BlockQuantFact, Q4_0};
+    use tract_linalg::block_quant::{BlockQuant, BlockQuantStorage, Q4_0};
 
     use super::*;
     use crate::kernels::matmul::GemmImpl;
@@ -461,10 +461,13 @@ mod tests {
                     Q4_0.simulate_precision_loss(Tensor::from_shape(&b_shape, &b_data)?, 2)?;
 
                 ensure!(k % 32 == 0);
-                let b_q4_0_tensor = tensor0(Opaque(Arc::new(BlobWithFact {
-                    fact: Box::new(BlockQuantFact::new(Box::new(Q4_0), tvec![batch, n, k])),
-                    value: Arc::new(Q4_0.quant_f32(&b_data)?),
-                })));
+                let b_q4_0_tensor = BlockQuantStorage::new(
+                    Box::new(Q4_0),
+                    batch * n,
+                    k,
+                    Arc::new(Q4_0.quant_f32(&b_data)?),
+                )
+                .into_tensor();
                 (b_tensor, b_q4_0_tensor)
             } else {
                 let b_tensor = Tensor::from_shape(&b_shape, &b_data)?;

@@ -2,7 +2,7 @@
 use crate::internal::*;
 use downcast_rs::Downcast;
 use std::fmt;
-use tract_linalg::block_quant::BlockQuantFact;
+use tract_linalg::block_quant::{BlockQuantFact, BlockQuantStorage};
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct ShapeFact {
@@ -288,19 +288,9 @@ impl TypedFact {
             }
             if let Some(bqf) = self.opaque_fact().and_then(|of| of.downcast_ref::<BlockQuantFact>())
             {
-                for o in k.try_as_dense()?.as_slice::<Opaque>()? {
-                    ensure!(o.is::<BlobWithFact>());
-                    ensure!(
-                        o.downcast_ref::<BlobWithFact>()
-                            .and_then(|bwf| bwf.fact.downcast_ref::<BlockQuantFact>())
-                            .is_some()
-                    );
-                    ensure!(
-                        o.downcast_ref::<BlobWithFact>()
-                            .and_then(|bwf| bwf.fact.downcast_ref::<BlockQuantFact>())
-                            .unwrap()
-                            == bqf
-                    );
+                if let Some(bqs) = k.storage_as::<BlockQuantStorage>() {
+                    let inner_bqf = bqs.to_block_quant_fact();
+                    ensure!(&inner_bqf == bqf, "BlockQuantStorage fact mismatch");
                 }
             }
         }
