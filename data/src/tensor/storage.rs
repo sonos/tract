@@ -3,12 +3,13 @@ use std::fmt;
 use std::hash::Hash;
 
 use crate::blob::Blob;
+use downcast_rs::{Downcast, impl_downcast};
 
 /// Trait abstracting over tensor storage backends.
 ///
 /// `DenseStorage` is the primary implementation backed by a contiguous `Blob`.
 /// Non-dense backends are held behind `StorageKind::Other(Box<dyn TensorStorage>)`.
-pub trait TensorStorage: Send + Sync + fmt::Debug + fmt::Display {
+pub trait TensorStorage: Send + Sync + fmt::Debug + fmt::Display + Downcast {
     fn byte_len(&self) -> usize;
     fn is_empty(&self) -> bool;
     fn deep_clone(&self) -> Box<dyn TensorStorage>;
@@ -16,7 +17,10 @@ pub trait TensorStorage: Send + Sync + fmt::Debug + fmt::Display {
     fn as_dense(&self) -> Option<&DenseStorage>;
     fn as_dense_mut(&mut self) -> Option<&mut DenseStorage>;
     fn into_dense(self: Box<Self>) -> Option<DenseStorage>;
+    fn dyn_hash(&self, state: &mut dyn std::hash::Hasher);
+    fn eq_storage(&self, other: &dyn TensorStorage) -> bool;
 }
+impl_downcast!(TensorStorage);
 
 /// Dense, contiguous storage backed by a `Blob`.
 #[derive(Eq)]
@@ -152,6 +156,14 @@ impl TensorStorage for DenseStorage {
     fn into_dense(self: Box<Self>) -> Option<DenseStorage> {
         Some(*self)
     }
+
+    fn dyn_hash(&self, state: &mut dyn std::hash::Hasher) {
+        state.write(self.0.as_bytes());
+    }
+
+    fn eq_storage(&self, other: &dyn TensorStorage) -> bool {
+        if let Some(other) = other.as_dense() { self == other } else { false }
+    }
 }
 
 /// Inline enum replacing `Box<dyn TensorStorage>`.
@@ -211,6 +223,38 @@ impl StorageKind {
         match self {
             StorageKind::Dense(d) => StorageKind::Dense(d.clone()),
             StorageKind::Other(o) => StorageKind::Other(o.deep_clone()),
+        }
+    }
+
+    #[inline]
+    pub fn as_storage(&self) -> &dyn TensorStorage {
+        match self {
+            StorageKind::Dense(d) => d,
+            StorageKind::Other(o) => o.as_ref(),
+        }
+    }
+
+    #[inline]
+    #[allow(dead_code)]
+    pub fn as_storage_mut(&mut self) -> &mut dyn TensorStorage {
+        match self {
+            StorageKind::Dense(d) => d,
+            StorageKind::Other(o) => o.as_mut(),
+        }
+    }
+
+    pub fn dyn_hash(&self, state: &mut dyn std::hash::Hasher) {
+        match self {
+            StorageKind::Dense(d) => state.write(d.as_bytes()),
+            StorageKind::Other(o) => o.dyn_hash(state),
+        }
+    }
+
+    pub fn eq_storage(&self, other: &StorageKind) -> bool {
+        match (self, other) {
+            (StorageKind::Dense(a), StorageKind::Dense(b)) => a == b,
+            (StorageKind::Other(a), StorageKind::Other(b)) => a.eq_storage(b.as_ref()),
+            _ => false,
         }
     }
 }
