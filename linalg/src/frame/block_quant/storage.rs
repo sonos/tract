@@ -74,6 +74,38 @@ impl BlockQuantStorage {
     pub fn to_block_quant_fact(&self) -> BlockQuantFact {
         BlockQuantFact::new(self.format.clone(), tvec!(self.m * self.num_groups(), self.k))
     }
+
+    /// Returns a clone with updated m and k dimensions, preserving format and group blobs.
+    pub fn with_shape(&self, m: usize, k: usize) -> Self {
+        Self { format: self.format.clone(), m, k, groups: self.groups.clone() }
+    }
+
+    /// Splits a single-group storage into `num_groups` by partitioning the m dimension.
+    ///
+    /// Each group gets `m / num_groups` rows. Panics if not single-group or m not divisible.
+    pub fn split_m(&self, num_groups: usize) -> TractResult<Self> {
+        assert_eq!(self.groups.len(), 1, "split_m requires single-group storage");
+        ensure!(
+            self.m % num_groups == 0,
+            "m={} not divisible by num_groups={}",
+            self.m,
+            num_groups
+        );
+        let rows_per_group = self.m / num_groups;
+        let row_bytes = self.k / self.format.block_len() * self.format.block_bytes();
+        let group_bytes = rows_per_group * row_bytes;
+        let blob = &self.groups[0];
+        let groups = (0..num_groups)
+            .map(|g| {
+                let start = g * group_bytes;
+                let mut new_blob =
+                    unsafe { Blob::new_for_size_and_align(group_bytes, vector_size()) };
+                new_blob.copy_from_slice(&blob[start..start + group_bytes]);
+                Arc::new(new_blob)
+            })
+            .collect();
+        Ok(Self { format: self.format.clone(), m: rows_per_group, k: self.k, groups })
+    }
 }
 
 impl Clone for BlockQuantStorage {
