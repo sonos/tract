@@ -284,6 +284,15 @@ impl MapOutputAxisToInput {
             *c -= (*c > axis) as usize;
         }
     }
+
+    /// Compute a flat index into a PackedMatrixStorage from output coordinates and batch strides.
+    #[inline]
+    pub fn flat_index(&self, output_coords: &[usize], batch_strides: &[isize]) -> usize {
+        self.0
+            .iter()
+            .map(|&(out_axis, in_axis)| output_coords[out_axis] * batch_strides[in_axis] as usize)
+            .sum()
+    }
 }
 
 #[derive(Clone, Debug)]

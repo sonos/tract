@@ -1,5 +1,150 @@
+use std::fmt;
 use std::fmt::Debug;
 use tract_data::internal::*;
+
+use super::MMMInputValue;
+
+/// Non-dense tensor storage for packed matrices.
+///
+/// Holds one or more `Box<dyn MMMInputValue>` values with an optional batch
+/// shape, replacing the previous `Tensor<Opaque>` + double-downcast pattern.
+#[derive(Clone)]
+pub struct PackedMatrixStorage {
+    values: Vec<Box<dyn MMMInputValue>>,
+    batch_shape: TVec<usize>,
+    batch_strides: TVec<isize>,
+}
+
+impl PackedMatrixStorage {
+    /// Scalar storage (one value, empty shape).
+    pub fn new(value: Box<dyn MMMInputValue>) -> Self {
+        PackedMatrixStorage { values: vec![value], batch_shape: tvec![], batch_strides: tvec![] }
+    }
+
+    /// Batched storage (shape like `[batch, group]`).
+    pub fn new_batched(shape: &[usize], values: Vec<Box<dyn MMMInputValue>>) -> Self {
+        let expected: usize = shape.iter().product();
+        assert_eq!(values.len(), expected, "values length must match shape product");
+        let strides = Self::compute_strides(shape);
+        PackedMatrixStorage { values, batch_shape: shape.into(), batch_strides: strides }
+    }
+
+    fn compute_strides(shape: &[usize]) -> TVec<isize> {
+        let mut strides: TVec<isize> = tvec![0; shape.len()];
+        if !shape.is_empty() {
+            strides[shape.len() - 1] = 1;
+            for i in (0..shape.len() - 1).rev() {
+                strides[i] = strides[i + 1] * shape[i + 1] as isize;
+            }
+        }
+        strides
+    }
+
+    /// Scalar access (asserts single value).
+    #[inline]
+    pub fn value(&self) -> &dyn MMMInputValue {
+        debug_assert_eq!(self.values.len(), 1);
+        &*self.values[0]
+    }
+
+    /// Batched access by coordinates.
+    pub fn value_at(&self, coords: &[usize]) -> &dyn MMMInputValue {
+        let idx = self.flat_index(coords);
+        &*self.values[idx]
+    }
+
+    /// Batched access by flat (pre-computed) index.
+    #[inline]
+    pub fn value_at_flat(&self, idx: usize) -> &dyn MMMInputValue {
+        &*self.values[idx]
+    }
+
+    pub fn values(&self) -> &[Box<dyn MMMInputValue>] {
+        &self.values
+    }
+
+    pub fn batch_shape(&self) -> &[usize] {
+        &self.batch_shape
+    }
+
+    pub fn batch_strides(&self) -> &[isize] {
+        &self.batch_strides
+    }
+
+    /// Convert to a Tensor with Opaque datum type.
+    pub fn into_tensor(self) -> Tensor {
+        let shape: TVec<usize> = self.batch_shape.clone();
+        Tensor::from_storage(DatumType::Opaque, &shape, self)
+    }
+
+    fn flat_index(&self, coords: &[usize]) -> usize {
+        coords.iter().zip(self.batch_strides.iter()).map(|(c, s)| *c as isize * s).sum::<isize>()
+            as usize
+    }
+}
+
+impl fmt::Debug for PackedMatrixStorage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "PackedMatrixStorage({} values, shape={:?})", self.values.len(), self.batch_shape)
+    }
+}
+
+impl fmt::Display for PackedMatrixStorage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "PackedMatrixStorage({} values, shape={:?})", self.values.len(), self.batch_shape)
+    }
+}
+
+impl TensorStorage for PackedMatrixStorage {
+    fn byte_len(&self) -> usize {
+        // Approximate: sum of individual value sizes isn't precise but gives a ballpark
+        self.values.len() * std::mem::size_of::<Box<dyn MMMInputValue>>()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.values.is_empty()
+    }
+
+    fn deep_clone(&self) -> Box<dyn TensorStorage> {
+        Box::new(self.clone())
+    }
+
+    fn same_as(&self, _other: &dyn TensorStorage) -> bool {
+        false
+    }
+
+    fn as_dense(&self) -> Option<&DenseStorage> {
+        None
+    }
+
+    fn as_dense_mut(&mut self) -> Option<&mut DenseStorage> {
+        None
+    }
+
+    fn into_dense(self: Box<Self>) -> Option<DenseStorage> {
+        None
+    }
+
+    fn dyn_hash(&self, state: &mut dyn std::hash::Hasher) {
+        for v in &self.values {
+            v.dyn_hash(state);
+        }
+    }
+
+    fn eq_storage(&self, other: &dyn TensorStorage) -> bool {
+        if let Some(other) = other.downcast_ref::<Self>() {
+            self.batch_shape == other.batch_shape
+                && self.values.len() == other.values.len()
+                && self
+                    .values
+                    .iter()
+                    .zip(other.values.iter())
+                    .all(|(a, b)| (&**a as &dyn MMMInputValue).same_as(&**b))
+        } else {
+            false
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub enum OutputStoreSpec {
