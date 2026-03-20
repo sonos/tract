@@ -14,11 +14,13 @@ use std::sync::Arc;
 mod helpers;
 mod q4_0;
 mod q8_1;
+mod storage;
 mod value;
 
 pub use helpers::{NibbleReader, NibbleWriter};
 pub use q4_0::Q4_0;
 pub use q8_1::Q8_1;
+pub use storage::BlockQuantStorage;
 pub use value::{BlockQuantFact, PackedBlockQuantFact};
 
 use crate::mmm::{EagerPackedInput, MMMInputFormat};

@@ -1,0 +1,181 @@
+use std::fmt;
+use std::hash::Hash;
+use std::sync::Arc;
+
+use tract_data::internal::*;
+
+use super::{BlockQuant, BlockQuantFact};
+
+/// Concrete tensor storage for block-quantized weights.
+///
+/// Stores one or more groups of quantized data as `Arc<Blob>` along with the
+/// block-quant format and logical m×k dimensions.  Multi-group tensors arise
+/// from `SplitGroupBlockQuant` which partitions the m dimension.
+pub struct BlockQuantStorage {
+    format: Box<dyn BlockQuant>,
+    m: usize,
+    k: usize,
+    groups: Vec<Arc<Blob>>,
+}
+
+impl BlockQuantStorage {
+    pub fn new(format: Box<dyn BlockQuant>, m: usize, k: usize, value: Arc<Blob>) -> Self {
+        Self { format, m, k, groups: vec![value] }
+    }
+
+    pub fn new_multi_group(
+        format: Box<dyn BlockQuant>,
+        m: usize,
+        k: usize,
+        groups: Vec<Arc<Blob>>,
+    ) -> Self {
+        Self { format, m, k, groups }
+    }
+
+    pub fn format(&self) -> &dyn BlockQuant {
+        &*self.format
+    }
+
+    pub fn m(&self) -> usize {
+        self.m
+    }
+
+    pub fn k(&self) -> usize {
+        self.k
+    }
+
+    pub fn num_groups(&self) -> usize {
+        self.groups.len()
+    }
+
+    pub fn group_blob(&self, i: usize) -> &Arc<Blob> {
+        &self.groups[i]
+    }
+
+    pub fn groups(&self) -> &[Arc<Blob>] {
+        &self.groups
+    }
+
+    /// Returns the single blob for a non-multi-group storage.
+    ///
+    /// # Panics
+    /// Panics if this storage has more than one group.
+    pub fn value(&self) -> &Arc<Blob> {
+        assert_eq!(self.groups.len(), 1, "value() called on multi-group BlockQuantStorage");
+        &self.groups[0]
+    }
+
+    /// Converts this storage into a rank-0 `Tensor` with `DatumType::Opaque`.
+    pub fn into_tensor(self) -> Tensor {
+        Tensor::from_storage(DatumType::Opaque, &[], self)
+    }
+
+    /// Reconstructs a `BlockQuantFact` from this storage's metadata.
+    pub fn to_block_quant_fact(&self) -> BlockQuantFact {
+        BlockQuantFact::new(self.format.clone(), tvec!(self.m * self.num_groups(), self.k))
+    }
+}
+
+impl Clone for BlockQuantStorage {
+    fn clone(&self) -> Self {
+        Self { format: self.format.clone(), m: self.m, k: self.k, groups: self.groups.clone() }
+    }
+}
+
+impl fmt::Debug for BlockQuantStorage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "BlockQuantStorage({}, m={}, k={}, groups={})",
+            self.format,
+            self.m,
+            self.k,
+            self.groups.len()
+        )
+    }
+}
+
+impl fmt::Display for BlockQuantStorage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "BlockQuantStorage({}, m={}, k={}, groups={})",
+            self.format,
+            self.m,
+            self.k,
+            self.groups.len()
+        )
+    }
+}
+
+impl TensorStorage for BlockQuantStorage {
+    fn byte_len(&self) -> usize {
+        self.groups.iter().map(|g| g.len()).sum()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.groups.is_empty() || self.groups.iter().all(|g| g.is_empty())
+    }
+
+    fn deep_clone(&self) -> Box<dyn TensorStorage> {
+        Box::new(self.clone())
+    }
+
+    fn same_as(&self, other: &dyn TensorStorage) -> bool {
+        if let Some(other) = other.downcast_ref::<Self>() {
+            self.format.same_as(&*other.format)
+                && self.m == other.m
+                && self.k == other.k
+                && self.groups.len() == other.groups.len()
+                && self.groups.iter().zip(&other.groups).all(|(a, b)| Arc::ptr_eq(a, b))
+        } else {
+            false
+        }
+    }
+
+    fn as_dense(&self) -> Option<&DenseStorage> {
+        None
+    }
+
+    fn as_dense_mut(&mut self) -> Option<&mut DenseStorage> {
+        None
+    }
+
+    fn into_dense(self: Box<Self>) -> Option<DenseStorage> {
+        None
+    }
+
+    fn dyn_hash(&self, state: &mut dyn std::hash::Hasher) {
+        self.format.dyn_hash(state);
+        self.m.hash(&mut HashWrapper(state));
+        self.k.hash(&mut HashWrapper(state));
+        for g in &self.groups {
+            state.write(g.as_bytes());
+        }
+    }
+
+    fn eq_storage(&self, other: &dyn TensorStorage) -> bool {
+        if let Some(other) = other.downcast_ref::<Self>() {
+            self.format.same_as(&*other.format)
+                && self.m == other.m
+                && self.k == other.k
+                && self.groups.len() == other.groups.len()
+                && self.groups.iter().zip(&other.groups).all(|(a, b)| a.as_bytes() == b.as_bytes())
+        } else {
+            false
+        }
+    }
+}
+
+/// Adapter to bridge `&mut dyn Hasher` into `impl Hasher` for the `Hash` trait.
+struct HashWrapper<'a>(&'a mut dyn std::hash::Hasher);
+
+impl std::hash::Hasher for HashWrapper<'_> {
+    fn finish(&self) -> u64 {
+        self.0.finish()
+    }
+
+    fn write(&mut self, bytes: &[u8]) {
+        self.0.write(bytes);
+    }
+}
