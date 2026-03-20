@@ -24,7 +24,13 @@ fi
 set +x
 cargo update
 
-for c in data linalg core nnef hir onnx pulse onnx-opl pulse-opl rs
+echo
+echo "$WHITE ### tract ### $NC"
+echo
+
+cargo test -p tract
+
+for c in data linalg core nnef hir onnx pulse onnx-opl pulse-opl
 do
     echo
     echo "$WHITE ### $c ### $NC"
