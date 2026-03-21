@@ -416,7 +416,7 @@ impl LazyIm2colInput {
         let mn_range = mn_start as isize..mn_end as isize;
         let k_range = 0..k as isize;
         let packed = buffer.unwrap();
-        if mn_range.len() == r && mn_start % r == 0 {
+        if mn_range.len() == r && mn_start.is_multiple_of(r) {
             let mut writer = self.im2col.packer.write_single_panel_with_k_outer(packed as *mut T);
             self.write(&mut writer, k_range, mn_range);
         } else {

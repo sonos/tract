@@ -134,21 +134,21 @@ pub fn fuse_axis_op(
     }
 
     // If the successor is a Move, we may fuse it now or defer.
-    if let Some(op) = node.op_as::<crate::ops::CudaAxisOp>() {
-        if matches!(op.0, AxisOp::Move(..)) {
-            let should_defer_move = !grouped_axis_ops[0].is_empty() && !can_fuse_move(model, node);
-            if should_defer_move {
-                let out = patch.wire_node(
-                    format!("{node_name}.fused_axis_op"),
-                    CudaFusedAxisOp { grouped_axis_ops, op: Box::new(op.clone()) },
-                    &tap_inputs,
-                )?;
-                patch.shunt_outside(model, node.id.into(), out[0])?;
-                return Ok(Some(patch));
-            } else {
-                // Nothing to do right now; we’ll fuse on a later pass.
-                return Ok(None);
-            }
+    if let Some(op) = node.op_as::<crate::ops::CudaAxisOp>()
+        && matches!(op.0, AxisOp::Move(..))
+    {
+        let should_defer_move = !grouped_axis_ops[0].is_empty() && !can_fuse_move(model, node);
+        if should_defer_move {
+            let out = patch.wire_node(
+                format!("{node_name}.fused_axis_op"),
+                CudaFusedAxisOp { grouped_axis_ops, op: Box::new(op.clone()) },
+                &tap_inputs,
+            )?;
+            patch.shunt_outside(model, node.id.into(), out[0])?;
+            return Ok(Some(patch));
+        } else {
+            // Nothing to do right now; we’ll fuse on a later pass.
+            return Ok(None);
         }
     }
 
@@ -180,16 +180,15 @@ pub fn fuse_move_axis(
         out_fact.as_device_fact().map(|mf| mf.shape.clone()).unwrap_or(out_fact.shape.clone());
 
     // Checks if MoveAxis has no impact on shape + layout
-    if in_shape == out_shape {
-        if let (Some(in_strides), AxisOp::Move(from, to)) =
+    if in_shape == out_shape
+        && let (Some(in_strides), AxisOp::Move(from, to)) =
             (in_shape.as_concrete().map(Tensor::natural_strides), axis_op.0.clone())
-        {
-            let mut out_strides = in_strides.clone();
-            let remove_stride = out_strides.remove(from);
-            out_strides.insert(to, remove_stride);
-            if in_strides == out_strides {
-                return TypedModelPatch::shunt_one_op(model, axis_node);
-            }
+    {
+        let mut out_strides = in_strides.clone();
+        let remove_stride = out_strides.remove(from);
+        out_strides.insert(to, remove_stride);
+        if in_strides == out_strides {
+            return TypedModelPatch::shunt_one_op(model, axis_node);
         }
     }
 
@@ -234,15 +233,13 @@ pub fn fuse_move_axis(
     if let (AxisOp::Move(from_1, to_1), AxisOp::Add(ax)) = (
         axis_op.0.clone(),
         cursor.op_as::<CudaAxisOp>().map(|ax_op| ax_op.0.clone()).unwrap_or(AxisOp::Rm(0)),
-    ) {
-        if ax == from_1 {
-            let mut patch = TypedModelPatch::default();
-            let inputs = patch.taps(model, &cursor.inputs)?;
-            let out =
-                patch.wire_node(cursor.name.clone(), CudaAxisOp(AxisOp::Add(to_1)), &inputs)?;
-            patch.shunt_outside(model, axis_node.id.into(), out[0])?;
-            return Ok(Some(patch));
-        }
+    ) && ax == from_1
+    {
+        let mut patch = TypedModelPatch::default();
+        let inputs = patch.taps(model, &cursor.inputs)?;
+        let out = patch.wire_node(cursor.name.clone(), CudaAxisOp(AxisOp::Add(to_1)), &inputs)?;
+        patch.shunt_outside(model, axis_node.id.into(), out[0])?;
+        return Ok(Some(patch));
     }
     Ok(None)
 }

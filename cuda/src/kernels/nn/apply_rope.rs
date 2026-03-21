@@ -72,7 +72,7 @@ impl ApplyRope {
             (cos.reshaped(padded_shape.clone().into())?, sin.reshaped(padded_shape.into())?);
 
         ensure!(
-            input.shape()[input.rank() - 1] % 2 == 0,
+            input.shape()[input.rank() - 1].is_multiple_of(2),
             "Rotate half required most inner dimension to be a multiple of 2: {:?}",
             input.shape()
         );

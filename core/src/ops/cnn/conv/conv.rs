@@ -672,7 +672,7 @@ impl Conv {
             self.pool_spec.stride(ax) > 1
                 && self.pool_spec.padding.valid_dim(ax, self.pool_spec.stride(ax) == 1)
                 && (self.pool_spec.kernel_shape[ax] == 1
-                    || self.pool_spec.dilation(ax) % self.pool_spec.stride(ax) == 0)
+                    || self.pool_spec.dilation(ax).is_multiple_of(self.pool_spec.stride(ax)))
         }) {
             let input_fact = model.outlet_fact(node.inputs[0])?;
             let downsample_factor = self.pool_spec.stride(axis);
@@ -1096,13 +1096,13 @@ impl TypedOp for Conv {
         if io == InOut::In(1) {
             return Ok(None);
         }
-        if io == InOut::In(2) {
-            if let &AxisOp::Rm(_) = change {
-                return Ok(Some(AxisChangeConsequence {
-                    substitute_op: Some(Box::new(self.clone())),
-                    wire_changes: tvec!(),
-                }));
-            }
+        if io == InOut::In(2)
+            && let &AxisOp::Rm(_) = change
+        {
+            return Ok(Some(AxisChangeConsequence {
+                substitute_op: Some(Box::new(self.clone())),
+                wire_changes: tvec!(),
+            }));
         }
         let full_input_shape = model.outlet_fact(node.inputs[0])?.shape.to_tvec();
         let shape = self.pool_spec.data_format.shape(full_input_shape.clone())?;

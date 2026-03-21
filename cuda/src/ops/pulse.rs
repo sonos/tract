@@ -322,11 +322,12 @@ impl CudaPulsePadOpState {
             op.end_input.eval(&session.resolved_symbols).to_usize().unwrap_or(usize::MAX);
         let after = op.after.eval(&session.resolved_symbols).to_usize().unwrap_or(usize::MAX);
 
-        if let PadMode::Edge = op.mode {
-            if after != 0 && pulse_begin < end_input {
-                let latest_valid_frame = (end_input - pulse_begin).min(pulse) - 1;
-                Self::save_frame(self, op, input, latest_valid_frame)?;
-            }
+        if let PadMode::Edge = op.mode
+            && after != 0
+            && pulse_begin < end_input
+        {
+            let latest_valid_frame = (end_input - pulse_begin).min(pulse) - 1;
+            Self::save_frame(self, op, input, latest_valid_frame)?;
         }
 
         let mut output =

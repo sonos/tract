@@ -138,11 +138,11 @@ impl GgmlFlashAttn {
 
     /* ------------------------- kernel planning ------------------------- */
     fn pick_ncols2(head_ratio: usize) -> usize {
-        if head_ratio % 8 == 0 {
+        if head_ratio.is_multiple_of(8) {
             8
-        } else if head_ratio % 4 == 0 {
+        } else if head_ratio.is_multiple_of(4) {
             4
-        } else if head_ratio % 2 == 0 {
+        } else if head_ratio.is_multiple_of(2) {
             2
         } else {
             1
@@ -198,7 +198,7 @@ impl GgmlFlashAttn {
         let ks = k.shape();
 
         let d = qs[3];
-        ensure!(d % 8 == 0, "flash-attn f16: head dimension (D) must be multiple of 8");
+        ensure!(d.is_multiple_of(8), "flash-attn f16: head dimension (D) must be multiple of 8");
 
         let head_ratio = qs[1] / ks[1];
         let ncols2 = Self::pick_ncols2(head_ratio);
@@ -207,7 +207,7 @@ impl GgmlFlashAttn {
 
         let ntiles = if ncols <= 8 { 1 } else { 2 };
         let cols_per_warp = ntiles * 8;
-        ensure!(ncols % cols_per_warp == 0, "bad ncols vs cols_per_warp");
+        ensure!(ncols.is_multiple_of(cols_per_warp), "bad ncols vs cols_per_warp");
 
         let nbatch_fa = if d != 256 { 64 } else { 32 };
         let nwarps_max_x = ncols / cols_per_warp;
@@ -267,7 +267,7 @@ impl GgmlFlashAttn {
         // Batched mask support could be done by modifying KV_max kernel
         ensure!(m.shape()[..2] == [1, 1]);
 
-        let can_vec = q.shape()[3] % 64 == 0;
+        let can_vec = q.shape()[3].is_multiple_of(64);
         let mut best = FlashAttnImpl::MmaF16;
 
         if can_vec {
@@ -278,7 +278,7 @@ impl GgmlFlashAttn {
             {
                 best = FlashAttnImpl::Vec;
             }
-            if (head_ratio % 2 != 0) && q.shape()[2] == 1 {
+            if !head_ratio.is_multiple_of(2) && q.shape()[2] == 1 {
                 best = FlashAttnImpl::Vec; // GQA-specific case
             }
         }
@@ -346,7 +346,7 @@ impl GgmlFlashAttn {
     ) -> TractResult<()> {
         // quick invariants shared by both variants
         ensure!(mask.shape()[2] >= q.shape()[2].next_multiple_of(16));
-        ensure!(k.shape()[2] % FATTN_KQ_STRIDE == 0, "Incorrect KV cache padding");
+        ensure!(k.shape()[2].is_multiple_of(FATTN_KQ_STRIDE), "Incorrect KV cache padding");
 
         let qv = get_cuda_view(q);
         let kv = get_cuda_view(k);
@@ -511,7 +511,7 @@ impl GgmlFlashAttn {
 
         // fixups
         if matches!(params.imp, FlashAttnImpl::MmaF16) {
-            if ntiles_total as u32 % cfg.grid_dim.0 != 0 {
+            if !(ntiles_total as u32).is_multiple_of(cfg.grid_dim.0) {
                 let f = cuda_context().load_pipeline(
                     LibraryName::GgmlFlashAttn,
                     format!("flash_attn_stream_k_fixup_{}_{}_{}", params.d, ncols, params.ncols2),

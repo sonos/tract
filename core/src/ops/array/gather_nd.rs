@@ -125,34 +125,35 @@ impl TypedOp for GatherNd {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        if let Some(indices) = &model.outlet_fact(node.inputs[1])?.konst {
-            if indices.rank() == 2 && indices.shape()[0] == 1 {
-                let mut patch = TypedModelPatch::default();
-                let mut wire = patch.tap_model(model, node.inputs[0])?;
-                for (axis, &i) in
-                    indices.cast_to::<i32>()?.try_as_dense()?.as_slice::<i32>()?.iter().enumerate()
-                {
-                    wire = patch.wire_node(
-                        format!("{}-slice-axis-{}", node.name, axis),
-                        crate::ops::array::Slice::new(axis, i as usize, (i + 1) as usize),
-                        &[wire],
-                    )?[0];
-                }
-                for i in (0..indices.shape()[1]).rev() {
-                    wire = patch.wire_node(
-                        format!("{}-remove_axis_{}", node.name, i),
-                        crate::ops::change_axes::AxisOp::Rm(i),
-                        &[wire],
-                    )?[0];
-                }
+        if let Some(indices) = &model.outlet_fact(node.inputs[1])?.konst
+            && indices.rank() == 2
+            && indices.shape()[0] == 1
+        {
+            let mut patch = TypedModelPatch::default();
+            let mut wire = patch.tap_model(model, node.inputs[0])?;
+            for (axis, &i) in
+                indices.cast_to::<i32>()?.try_as_dense()?.as_slice::<i32>()?.iter().enumerate()
+            {
                 wire = patch.wire_node(
-                    format!("{}-add_axis", node.name),
-                    crate::ops::change_axes::AxisOp::Add(0),
+                    format!("{}-slice-axis-{}", node.name, axis),
+                    crate::ops::array::Slice::new(axis, i as usize, (i + 1) as usize),
                     &[wire],
                 )?[0];
-                patch.shunt_outside(model, node.id.into(), wire)?;
-                return Ok(Some(patch));
             }
+            for i in (0..indices.shape()[1]).rev() {
+                wire = patch.wire_node(
+                    format!("{}-remove_axis_{}", node.name, i),
+                    crate::ops::change_axes::AxisOp::Rm(i),
+                    &[wire],
+                )?[0];
+            }
+            wire = patch.wire_node(
+                format!("{}-add_axis", node.name),
+                crate::ops::change_axes::AxisOp::Add(0),
+                &[wire],
+            )?[0];
+            patch.shunt_outside(model, node.id.into(), wire)?;
+            return Ok(Some(patch));
         }
         Ok(None)
     }

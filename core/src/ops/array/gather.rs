@@ -210,29 +210,27 @@ impl TypedOp for Gather {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         let (input_fact, indices_fact) = args_2!(model.node_input_facts(node.id)?);
-        if let Some(indices) = indices_fact.konst.as_ref() {
-            if indices.rank() == 1 && indices.len() == 1 && input_fact.datum_type.is_number() {
-                let mut patch = TypedModelPatch::default();
-                let mut wire = patch.tap_model(model, node.inputs[0])?;
-                let index = indices.cast_to_scalar::<i64>()?;
-                let index = if index < 0 {
-                    let data_fact = model.outlet_fact(node.inputs[0])?;
-                    data_fact.shape[self.axis].clone() + index.to_dim()
-                } else {
-                    index.to_dim()
-                };
-                wire = patch.wire_node(
-                    format!("{}.slice", node.name),
-                    crate::ops::array::Slice {
-                        axis: self.axis,
-                        start: index.clone(),
-                        end: index + 1,
-                    },
-                    &[wire],
-                )?[0];
-                patch.shunt_outside(model, node.id.into(), wire)?;
-                return Ok(Some(patch));
-            }
+        if let Some(indices) = indices_fact.konst.as_ref()
+            && indices.rank() == 1
+            && indices.len() == 1
+            && input_fact.datum_type.is_number()
+        {
+            let mut patch = TypedModelPatch::default();
+            let mut wire = patch.tap_model(model, node.inputs[0])?;
+            let index = indices.cast_to_scalar::<i64>()?;
+            let index = if index < 0 {
+                let data_fact = model.outlet_fact(node.inputs[0])?;
+                data_fact.shape[self.axis].clone() + index.to_dim()
+            } else {
+                index.to_dim()
+            };
+            wire = patch.wire_node(
+                format!("{}.slice", node.name),
+                crate::ops::array::Slice { axis: self.axis, start: index.clone(), end: index + 1 },
+                &[wire],
+            )?[0];
+            patch.shunt_outside(model, node.id.into(), wire)?;
+            return Ok(Some(patch));
         }
         if input_fact.konst.is_some() {
             // look for a OptSimpleMatMulPack *sibling*

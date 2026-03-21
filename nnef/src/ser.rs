@@ -313,10 +313,10 @@ impl<'a> IntoAst<'a> {
         exp: &Arc<RValue>,
     ) -> Arc<RValue> {
         let name = name.into();
-        if let RValue::Identifier(id) = exp.as_ref() {
-            if name == id.0 {
-                return exp.clone();
-            }
+        if let RValue::Identifier(id) = exp.as_ref()
+            && name == id.0
+        {
+            return exp.clone();
         }
         let name = self.scoped_id(name);
         self.assignment(name.clone(), exp.clone());
@@ -384,15 +384,16 @@ impl<'a> IntoAst<'a> {
                     Self::dump_rec_tensor(&tensor.to_dense_array_view::<f16>()?, |f| numeric(f))
                         .into();
                 return Ok(invocation("tract_core_cast", &[array], &[("to", string("f16"))]));
-            } else if have_tract_core && tensor.datum_type().is_integer() {
-                if let Ok(value) = tensor.cast_to::<i64>() {
-                    let value =
-                        Self::dump_rec_tensor(&value.to_dense_array_view::<i64>().unwrap(), |i| {
-                            numeric(i)
-                        });
-                    let to = string(format!("{:?}", tensor.datum_type()).to_lowercase());
-                    return Ok(invocation("tract_core_cast", &[value.into()], &[("to", to)]));
-                }
+            } else if have_tract_core
+                && tensor.datum_type().is_integer()
+                && let Ok(value) = tensor.cast_to::<i64>()
+            {
+                let value =
+                    Self::dump_rec_tensor(&value.to_dense_array_view::<i64>().unwrap(), |i| {
+                        numeric(i)
+                    });
+                let to = string(format!("{:?}", tensor.datum_type()).to_lowercase());
+                return Ok(invocation("tract_core_cast", &[value.into()], &[("to", to)]));
             };
         }
 

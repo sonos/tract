@@ -673,22 +673,20 @@ impl TypedOp for AxisOp {
     as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        if self.required_rank() > inputs[0].rank() {
-            if let Some(bqf) =
+        if self.required_rank() > inputs[0].rank()
+            && let Some(bqf) =
                 inputs[0].opaque_fact().and_then(|of| of.downcast_ref::<BlockQuantFact>())
-            {
-                let mut new_inner_shape: TVec<usize> = bqf.shape().into();
-                self.trim_left(inputs[0].rank())?
-                    .change_shape_array(&mut new_inner_shape, false)?;
-                let new_bqf = BlockQuantFact::new(bqf.format.clone(), new_inner_shape);
-                let mut new_fact = Opaque::fact(inputs[0].shape.clone()).with_opaque_fact(new_bqf);
-                if let Some(k) = &inputs[0].konst {
-                    let mut new = k.clone().into_tensor(); // cloning bqv is cheap
-                    self.change_tensor(&mut new, false)?;
-                    new_fact.konst = Some(new.into());
-                }
-                return Ok(tvec!(new_fact));
+        {
+            let mut new_inner_shape: TVec<usize> = bqf.shape().into();
+            self.trim_left(inputs[0].rank())?.change_shape_array(&mut new_inner_shape, false)?;
+            let new_bqf = BlockQuantFact::new(bqf.format.clone(), new_inner_shape);
+            let mut new_fact = Opaque::fact(inputs[0].shape.clone()).with_opaque_fact(new_bqf);
+            if let Some(k) = &inputs[0].konst {
+                let mut new = k.clone().into_tensor(); // cloning bqv is cheap
+                self.change_tensor(&mut new, false)?;
+                new_fact.konst = Some(new.into());
             }
+            return Ok(tvec!(new_fact));
         }
         let mut shape = inputs[0].shape.clone();
         self.change_shape(&mut shape, false)?;
@@ -725,10 +723,10 @@ impl TypedOp for AxisOp {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        if self.is_noop() {
-            if let Some(p) = TypedModelPatch::shunt_one_op(model, node)? {
-                return Ok(Some(p));
-            }
+        if self.is_noop()
+            && let Some(p) = TypedModelPatch::shunt_one_op(model, node)?
+        {
+            return Ok(Some(p));
         }
         let simplified = self.simplify();
         if simplified.len() != 1 || &simplified[0] != self {
@@ -824,10 +822,11 @@ impl TypedOp for AxisOp {
         _end: &TDim,
     ) -> TractResult<Option<TVec<OutletId>>> {
         // is this test really useful ? or axis mapping preempt this ?
-        if let Reshape(pos, _from, to) = self {
-            if output_axis >= *pos && output_axis < pos + to.len() {
-                return Ok(None);
-            }
+        if let Reshape(pos, _from, to) = self
+            && output_axis >= *pos
+            && output_axis < pos + to.len()
+        {
+            return Ok(None);
         }
         patch.wire_node(&node.name, &node.op, inputs).map(Some)
     }
@@ -840,23 +839,18 @@ impl TypedOp for AxisOp {
         if node.outputs[0].fact.opaque_fact.is_some() {
             return Ok(None);
         }
-        if let Some(shape) = node.outputs[0].fact.shape.as_concrete() {
-            if !matches!(self, AxisOp::Move(_, _)) {
-                let (inputs, outputs) = model.node_facts(node.id)?;
-                let mapping = self.axes_mapping(&inputs, &outputs)?;
-                let op = IntoShape {
-                    mapping,
-                    len: shape.iter().product(),
-                    strides: Tensor::natural_strides(shape),
-                    dims: shape.into(),
-                };
-                return Ok(Some(TypedModelPatch::replace_single_op(
-                    model,
-                    node,
-                    &node.inputs,
-                    op,
-                )?));
-            }
+        if let Some(shape) = node.outputs[0].fact.shape.as_concrete()
+            && !matches!(self, AxisOp::Move(_, _))
+        {
+            let (inputs, outputs) = model.node_facts(node.id)?;
+            let mapping = self.axes_mapping(&inputs, &outputs)?;
+            let op = IntoShape {
+                mapping,
+                len: shape.iter().product(),
+                strides: Tensor::natural_strides(shape),
+                dims: shape.into(),
+            };
+            return Ok(Some(TypedModelPatch::replace_single_op(model, node, &node.inputs, op)?));
         }
         Ok(None)
     }
@@ -1071,14 +1065,12 @@ impl TypedOp for IntoShape {
         if input.shape.as_concrete().is_some_and(|shape| shape == &*self.dims) {
             return TypedModelPatch::shunt_one_op(model, node);
         }
-        if let Some(succ) = model.single_succ(node.id)? {
-            if let Some(into_shape) = succ.op_as::<IntoShape>() {
-                let op = Self {
-                    mapping: self.mapping.compose(&into_shape.mapping)?,
-                    ..into_shape.clone()
-                };
-                return Ok(Some(TypedModelPatch::fuse_with_next(model, node, op)?));
-            }
+        if let Some(succ) = model.single_succ(node.id)?
+            && let Some(into_shape) = succ.op_as::<IntoShape>()
+        {
+            let op =
+                Self { mapping: self.mapping.compose(&into_shape.mapping)?, ..into_shape.clone() };
+            return Ok(Some(TypedModelPatch::fuse_with_next(model, node, op)?));
         }
         Ok(None)
     }

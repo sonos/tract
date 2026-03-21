@@ -576,17 +576,17 @@ fn optimized_mat_mul(
         .iter_all_axes()
         .filter(|&axis| ![op.m_axis, op.k_axis, op.n_axis].contains(&axis.repr))
     {
-        if let (&[c], &[a]) = (&*axis.outputs[0], &*axis.inputs[0]) {
-            if input_shapes[0][a] != 1.to_dim() {
-                let a = a - (a > op.a_m()) as usize - (a > op.a_k()) as usize;
-                c_to_a_axis_mapping.push((c, a));
-            }
+        if let (&[c], &[a]) = (&*axis.outputs[0], &*axis.inputs[0])
+            && input_shapes[0][a] != 1.to_dim()
+        {
+            let a = a - (a > op.a_m()) as usize - (a > op.a_k()) as usize;
+            c_to_a_axis_mapping.push((c, a));
         }
-        if let (&[c], &[b]) = (&*axis.outputs[0], &*axis.inputs[1]) {
-            if input_shapes[1][b] != 1.to_dim() {
-                let b = b - (b > op.b_n()) as usize - (b > op.b_k()) as usize;
-                c_to_b_axis_mapping.push((c, b));
-            }
+        if let (&[c], &[b]) = (&*axis.outputs[0], &*axis.inputs[1])
+            && input_shapes[1][b] != 1.to_dim()
+        {
+            let b = b - (b > op.b_n()) as usize - (b > op.b_k()) as usize;
+            c_to_b_axis_mapping.push((c, b));
         }
     }
 

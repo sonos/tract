@@ -181,7 +181,7 @@ impl CudaFlashAttn {
             kernel_launcher("fullq_", num_full_q_blocks)?;
         }
 
-        if len_q % block_q != 0 {
+        if !len_q.is_multiple_of(block_q) {
             kernel_launcher("tailq_", 1)?;
         }
 

@@ -97,10 +97,10 @@ impl<'a> Dumper<'a> {
         write!(self.w, "(")?;
         let num_parameters = parameters.len();
         for (ix, param) in parameters.iter().enumerate() {
-            if self.with_doc {
-                if let Some(doc) = &param.doc {
-                    write!(self.w, "\n    # {doc}")?;
-                }
+            if self.with_doc
+                && let Some(doc) = &param.doc
+            {
+                write!(self.w, "\n    # {doc}")?;
             }
             write!(self.w, "\n    ")?;
             self.identifier(&param.id)?;

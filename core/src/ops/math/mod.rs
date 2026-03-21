@@ -270,8 +270,7 @@ bin_to_super_type!(max, Max,
                             DatumType::QU8(QParams::ZpScale {zero_point: b_zp, scale: b_scale}),
                             DatumType::QU8(QParams::ZpScale {zero_point: c_zp, scale: c_scale})) =
                         (a.datum_type(), b.datum_type(), c_dt)
-                    {
-                        if a.is_uniform() || b.is_uniform() {
+                        && (a.is_uniform() || b.is_uniform()) {
                             // select e between a and b as uniform if exist
                             // and d remaining a or b
                             let (d, d_zp, d_scale, e, e_zp, e_scale) = if a.is_uniform() && !b.is_uniform() {
@@ -301,7 +300,6 @@ bin_to_super_type!(max, Max,
                                 return Ok(c)
                             }
                         }
-                    }
                     Max.generic_eval(a, b, c_dt)
                    },
                    linalg:Max,
@@ -442,30 +440,28 @@ fn declutter_div(
 ) -> TractResult<Option<TypedModelPatch>> {
     if let &[p, q] = &*model.node_input_facts(node.id)? {
         let dt = q.datum_type;
-        if let Some(q) = &q.uniform {
-            if let Ok(integer) = q.cast_to_scalar::<i64>() {
-                if tensor0(integer).cast_to_dt(dt)?.close_enough(q, false).is_ok()
-                    && dt.is_integer()
-                    && q.cast_to_scalar::<i64>()?.count_ones() == 1
-                {
-                    let shift = integer.trailing_zeros();
-                    return Ok(Some(TypedModelPatch::rewire(
-                        model,
-                        &[node.inputs[0]],
-                        &[node.id.into()],
-                        &|patch, taps| {
-                            let shift = patch.add_const(
-                                format!("{}.shift", node.name),
-                                tensor0(shift)
-                                    .cast_to_dt(dt)?
-                                    .into_owned()
-                                    .broadcast_into_rank(p.rank())?,
-                            )?;
-                            patch.wire_node(&node.name, shift_right(), &[taps[0], shift])
-                        },
-                    )?));
-                }
-            }
+        if let Some(q) = &q.uniform
+            && let Ok(integer) = q.cast_to_scalar::<i64>()
+            && tensor0(integer).cast_to_dt(dt)?.close_enough(q, false).is_ok()
+            && dt.is_integer()
+            && q.cast_to_scalar::<i64>()?.count_ones() == 1
+        {
+            let shift = integer.trailing_zeros();
+            return Ok(Some(TypedModelPatch::rewire(
+                model,
+                &[node.inputs[0]],
+                &[node.id.into()],
+                &|patch, taps| {
+                    let shift = patch.add_const(
+                        format!("{}.shift", node.name),
+                        tensor0(shift)
+                            .cast_to_dt(dt)?
+                            .into_owned()
+                            .broadcast_into_rank(p.rank())?,
+                    )?;
+                    patch.wire_node(&node.name, shift_right(), &[taps[0], shift])
+                },
+            )?));
         }
         if dt.is_float() {
             return Ok(Some(TypedModelPatch::rewire(
@@ -562,22 +558,22 @@ validation: Validation::Rounding
 
 fn declutter_recip(model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
     use super::element_wise::*;
-    if let Some(prec) = model.linear_prec(node.id)? {
-        if let Some(ew) = prec.op_as::<ElementWiseOp>() {
-            let repl = if ew.0.is::<Sqrt>() {
-                Some(rsqrt())
-            } else if ew.0.is::<Rsqrt>() {
-                Some(sqrt())
-            } else {
-                None
-            };
-            if let Some(repl) = repl {
-                let mut patch = TypedModelPatch::default();
-                let mut wire = patch.tap_model(model, prec.inputs[0])?;
-                wire = patch.wire_node(&node.name, repl, &[wire])?[0];
-                patch.shunt_outside(model, node.id.into(), wire)?;
-                return Ok(Some(patch));
-            }
+    if let Some(prec) = model.linear_prec(node.id)?
+        && let Some(ew) = prec.op_as::<ElementWiseOp>()
+    {
+        let repl = if ew.0.is::<Sqrt>() {
+            Some(rsqrt())
+        } else if ew.0.is::<Rsqrt>() {
+            Some(sqrt())
+        } else {
+            None
+        };
+        if let Some(repl) = repl {
+            let mut patch = TypedModelPatch::default();
+            let mut wire = patch.tap_model(model, prec.inputs[0])?;
+            wire = patch.wire_node(&node.name, repl, &[wire])?[0];
+            patch.shunt_outside(model, node.id.into(), wire)?;
+            return Ok(Some(patch));
         }
     }
     Ok(None)

@@ -41,14 +41,13 @@ impl TypedPass for ChangeAxes {
             for suggestion in node.op.suggested_axis_changes()? {
                 let outlet = suggestion.0.as_outlet(node);
                 let change = AxisChange { outlet, op: suggestion.1 };
-                if self.0.insert(change.clone()) {
-                    if let Some((patch, _)) =
+                if self.0.insert(change.clone())
+                    && let Some((patch, _)) =
                         change_axes(model, &change, &interfaces, &[], &mut explored)
                             .with_context(|| format!("Making patch for {change:?} from {node}"))?
-                    {
-                        self.1 = node.id;
-                        return Ok(Some(patch));
-                    }
+                {
+                    self.1 = node.id;
+                    return Ok(Some(patch));
                 }
             }
             for (slot, fact) in node.outputs.iter().enumerate() {
@@ -56,16 +55,15 @@ impl TypedPass for ChangeAxes {
                     if dim.is_one() {
                         let change =
                             AxisChange { outlet: OutletId::new(node.id, slot), op: AxisOp::Rm(ix) };
-                        if self.0.insert(change.clone()) {
-                            if let Some((patch, _)) =
+                        if self.0.insert(change.clone())
+                            && let Some((patch, _)) =
                                 change_axes(model, &change, &interfaces, &[], &mut explored)
                                     .with_context(|| {
                                         format!("Making patch for {change:?} from {node}")
                                     })?
-                            {
-                                self.1 = node.id;
-                                return Ok(Some(patch));
-                            }
+                        {
+                            self.1 = node.id;
+                            return Ok(Some(patch));
                         }
                     }
                 }
@@ -152,15 +150,14 @@ pub fn change_axes(
                     let outlet = wire.as_outlet(node);
                     // stop upstram propagation to a scalar constant: we will clone it and alter it
                     // at patch generation time
-                    if let InOut::In(inlet) = wire {
-                        if model
+                    if let InOut::In(inlet) = wire
+                        && model
                             .node(outlet.node)
                             .op_as::<Const>()
                             .is_some_and(|k| k.val().volume() == 1)
-                        {
-                            rewired_scalar_input.insert(InletId::new(node.id, inlet), (outlet, op));
-                            continue;
-                        }
+                    {
+                        rewired_scalar_input.insert(InletId::new(node.id, inlet), (outlet, op));
+                        continue;
                     }
                     let outlet_group = bound_outlets(wire.as_outlet(node));
                     match changed_wires.entry(outlet_group.clone()) {
