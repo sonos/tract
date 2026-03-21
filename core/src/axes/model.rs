@@ -18,19 +18,19 @@ impl<T: Clone> OutletMap<T> {
 
 impl<T> OutletMap<T> {
     fn remove(&mut self, outlet: &OutletId) -> Option<T> {
-        if let Some(node) = self.0.get_mut(outlet.node) {
-            if let Some(slot) = node.get_mut(outlet.slot) {
-                return slot.take();
-            }
+        if let Some(node) = self.0.get_mut(outlet.node)
+            && let Some(slot) = node.get_mut(outlet.slot)
+        {
+            return slot.take();
         }
         None
     }
 
     pub fn get(&self, outlet: &OutletId) -> Option<&T> {
-        if let Some(node) = self.0.get(outlet.node) {
-            if let Some(slot) = node.get(outlet.slot) {
-                return slot.as_ref();
-            }
+        if let Some(node) = self.0.get(outlet.node)
+            && let Some(slot) = node.get(outlet.slot)
+        {
+            return slot.as_ref();
         }
         None
     }

@@ -557,7 +557,7 @@ impl OptBinUnicast {
 
         if let Ok(num_element) = elements_per_iteration.to_i64() {
             let required_alignment = vector_size();
-            (num_element as usize % required_alignment) == 0
+            (num_element as usize).is_multiple_of(required_alignment)
         } else {
             false
         }

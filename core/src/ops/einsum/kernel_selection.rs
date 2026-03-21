@@ -20,26 +20,19 @@ fn single_strat(it: Impl) -> Strat {
 
 pub fn strategize(model: &TypedModel, node: &TypedNode, op: &EinSumMatMul) -> TractResult<Strat> {
     let input_facts = model.node_input_facts(node.id)?;
-    if let (Some(m), Some(k), Some(n)) = (op.m.as_i64(), op.k.as_i64(), op.n.as_i64()) {
-        if op.op.operating_dt == input_facts[0].datum_type
-            && op.op.operating_dt == input_facts[1].datum_type
-        {
-            if let Some(mmm) = tract_linalg::ops().mmm(
-                op.operating_dt,
-                Some(m as usize),
-                Some(k as usize),
-                Some(n as usize),
-            ) {
-                if mmm.quality() == ImplementationQuality::ManuallyOptimized {
-                    return Ok((
-                        ModePicker::Single,
-                        mmm.packings()[0].0.clone(),
-                        vec![(mmm, 0, None)],
-                    ));
-                }
-            }
-        };
-    }
+    if let (Some(m), Some(k), Some(n)) = (op.m.as_i64(), op.k.as_i64(), op.n.as_i64())
+        && op.op.operating_dt == input_facts[0].datum_type
+        && op.op.operating_dt == input_facts[1].datum_type
+        && let Some(mmm) = tract_linalg::ops().mmm(
+            op.operating_dt,
+            Some(m as usize),
+            Some(k as usize),
+            Some(n as usize),
+        )
+        && mmm.quality() == ImplementationQuality::ManuallyOptimized
+    {
+        return Ok((ModePicker::Single, mmm.packings()[0].0.clone(), vec![(mmm, 0, None)]));
+    };
 
     let mut impls = list_impls(model, node, op)?;
     ensure!(impls.len() > 0);

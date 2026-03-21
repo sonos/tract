@@ -205,15 +205,13 @@ pub fn slice(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tra
         let mut b = builder.wire_as_outlets(tract_core::ops::change_axes::AxisOp::Rm(0), &b)?[0];
         b = builder.wire_as_outlets(cast(TDim::datum_type()), &[b])?[0];
         b = builder.wire_as_outlets(min(), &[b, axis_len])?[0];
-        if let Some(k) = &builder.model.outlet_fact(b)?.konst {
-            if let Ok(i) = k.cast_to_scalar::<i64>() {
-                if i < 0 {
-                    b = builder.wire_as_outlets(
-                        Const::new(rctensor0(input_fact.shape[axis].clone() + i))?,
-                        &[],
-                    )?[0];
-                }
-            }
+        if let Some(k) = &builder.model.outlet_fact(b)?.konst
+            && let Ok(i) = k.cast_to_scalar::<i64>()
+            && i < 0
+        {
+            b = builder
+                .wire_as_outlets(Const::new(rctensor0(input_fact.shape[axis].clone() + i))?, &[])?
+                [0];
         }
         let e = builder.wire_as_outlets(
             tract_core::ops::array::Slice { axis: 0, start: ix.into(), end: ix.to_dim() + 1 },
@@ -224,15 +222,13 @@ pub fn slice(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tra
         e = builder.wire_as_outlets(min(), &[e, axis_len])?[0];
         // use "<=", no "<" end[axis] = 0 means "up to the end"
         // CAUTION: this notation is 1/ deprecated 2/ invalid with non trivial slicing
-        if let Some(k) = &builder.model.outlet_fact(e)?.konst {
-            if let Ok(i) = k.cast_to_scalar::<i64>() {
-                if i <= 0 {
-                    e = builder.wire_as_outlets(
-                        Const::new(rctensor0(input_fact.shape[axis].clone() + i))?,
-                        &[],
-                    )?[0];
-                }
-            }
+        if let Some(k) = &builder.model.outlet_fact(e)?.konst
+            && let Ok(i) = k.cast_to_scalar::<i64>()
+            && i <= 0
+        {
+            e = builder
+                .wire_as_outlets(Const::new(rctensor0(input_fact.shape[axis].clone() + i))?, &[])?
+                [0];
         }
         let len = if let (Some(ev), Some(bv)) =
             (&builder.model.outlet_fact(e)?.konst, &builder.model.outlet_fact(b)?.konst)

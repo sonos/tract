@@ -252,10 +252,10 @@ impl OpState for State {
                 if let Some((slot, info)) = mapping.scan {
                     Self::assign_output(&mut outputs[slot], info.axis, &v, i, info.chunk < 0);
                 }
-                if i == iters - 1 {
-                    if let Some(slot) = mapping.last_value_slot {
-                        outputs[slot] = v.clone().into_tensor();
-                    }
+                if i == iters - 1
+                    && let Some(slot) = mapping.last_value_slot
+                {
+                    outputs[slot] = v.clone().into_tensor();
                 }
                 if mapping.state {
                     hidden_state.push(v);

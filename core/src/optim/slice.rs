@@ -172,11 +172,11 @@ fn should_slice_output(
     let axis = slice_op.axis;
     let mut boundaries = tvec!();
     for succ in &node.outputs[0].successors {
-        if let Some(slice) = model.node(succ.node).op_as::<Slice>() {
-            if slice.axis == axis {
-                boundaries.push(slice.start.clone());
-                boundaries.push(slice.end.clone());
-            }
+        if let Some(slice) = model.node(succ.node).op_as::<Slice>()
+            && slice.axis == axis
+        {
+            boundaries.push(slice.start.clone());
+            boundaries.push(slice.end.clone());
         }
     }
     rule_if_let!(Ok(mut boundaries) =

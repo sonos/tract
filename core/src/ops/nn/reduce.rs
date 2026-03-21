@@ -293,11 +293,11 @@ fn max_t<T>(v: ArrayViewD<T>, _: ()) -> T
 where
     T: Copy + Datum + num_traits::Bounded + ::std::cmp::PartialOrd,
 {
-    if T::datum_type() == f32::datum_type() {
-        if let Some(slice) = v.as_slice() {
-            let slice = unsafe { transmute::<&[T], &[f32]>(slice) };
-            (tract_linalg::ops().max_f32)().run(slice).unwrap();
-        }
+    if T::datum_type() == f32::datum_type()
+        && let Some(slice) = v.as_slice()
+    {
+        let slice = unsafe { transmute::<&[T], &[f32]>(slice) };
+        (tract_linalg::ops().max_f32)().run(slice).unwrap();
     }
     v.fold(T::min_value(), |acc, &v| if acc > v { acc } else { v })
 }

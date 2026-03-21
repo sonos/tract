@@ -185,18 +185,18 @@ impl Scan {
     ) -> TractResult<Option<TypedModelPatch>> {
         let inputs = model.node_input_facts(node.id)?;
         for (slot, mapping) in self.input_mapping.iter().enumerate() {
-            if let InputMapping::Full = mapping {
-                if let Some(konst) = inputs[slot].konst.as_ref() {
-                    let mut op = self.clone();
-                    let src = op.body.inputs[slot];
-                    op.body.inputs.remove(slot);
-                    op.body.nodes[src.node].inputs.clear();
-                    op.body.nodes[src.node].op = Box::new(Const::new(konst.clone())?);
-                    op.input_mapping.remove(slot);
-                    let mut inputs = node.inputs.clone();
-                    inputs.remove(slot);
-                    return Ok(Some(TypedModelPatch::replace_single_op(model, node, &inputs, op)?));
-                }
+            if let InputMapping::Full = mapping
+                && let Some(konst) = inputs[slot].konst.as_ref()
+            {
+                let mut op = self.clone();
+                let src = op.body.inputs[slot];
+                op.body.inputs.remove(slot);
+                op.body.nodes[src.node].inputs.clear();
+                op.body.nodes[src.node].op = Box::new(Const::new(konst.clone())?);
+                op.input_mapping.remove(slot);
+                let mut inputs = node.inputs.clone();
+                inputs.remove(slot);
+                return Ok(Some(TypedModelPatch::replace_single_op(model, node, &inputs, op)?));
             }
         }
         Ok(None)
@@ -323,8 +323,8 @@ impl Scan {
                     }
                     let mut new_body = self.body.clone();
                     // insert propagate axis on einsum
-                    if let Some(einsum) = new_body.node(succ.node).op_as::<EinSum>() {
-                        if let Some(patch) = einsum
+                    if let Some(einsum) = new_body.node(succ.node).op_as::<EinSum>()
+                        && let Some(patch) = einsum
                             .propagate_axis(
                                 &new_body,
                                 new_body.node(succ.node),
@@ -332,17 +332,16 @@ impl Scan {
                                 scan_info.axis,
                             )
                             .context("building axis propagating patch")?
-                        {
-                            patch.apply(&mut new_body)?;
-                            new_body.compute_const_facts()?;
-                            // propagate axis injects new nodes at the end. last successor of input
-                            // in new net will be the new succ
-                            let new_body_scan_input = new_body.input_outlets()?[slot];
-                            succ = new_body.node(new_body_scan_input.node).outputs[0]
-                                .successors
-                                .last()
-                                .unwrap();
-                        }
+                    {
+                        patch.apply(&mut new_body)?;
+                        new_body.compute_const_facts()?;
+                        // propagate axis injects new nodes at the end. last successor of input
+                        // in new net will be the new succ
+                        let new_body_scan_input = new_body.input_outlets()?[slot];
+                        succ = new_body.node(new_body_scan_input.node).outputs[0]
+                            .successors
+                            .last()
+                            .unwrap();
                     }
 
                     let axes_mapping = {
@@ -445,16 +444,15 @@ impl Scan {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         for (model_output_ix, mapping) in self.output_mapping.iter().enumerate() {
-            if let Some(slot) = mapping.last_value_slot {
-                if let Some(k) = self.body.output_fact(model_output_ix)?.konst.clone() {
-                    let inner_node = self.body.output_outlets()?[model_output_ix].node;
-                    let inner_node = self.body.node(inner_node);
-                    let mut patch =
-                        TypedModelPatch::new(format!("Extract const node {inner_node}"));
-                    let cst = patch.add_const(format!("{}.{}", &node.name, &inner_node.name), k)?;
-                    patch.shunt_outside(model, OutletId::new(node.id, slot), cst)?;
-                    return Ok(Some(patch));
-                }
+            if let Some(slot) = mapping.last_value_slot
+                && let Some(k) = self.body.output_fact(model_output_ix)?.konst.clone()
+            {
+                let inner_node = self.body.output_outlets()?[model_output_ix].node;
+                let inner_node = self.body.node(inner_node);
+                let mut patch = TypedModelPatch::new(format!("Extract const node {inner_node}"));
+                let cst = patch.add_const(format!("{}.{}", &node.name, &inner_node.name), k)?;
+                patch.shunt_outside(model, OutletId::new(node.id, slot), cst)?;
+                return Ok(Some(patch));
             }
         }
         Ok(None)
@@ -479,8 +477,8 @@ impl Scan {
                     continue;
                 }
                 let mut new_body = self.body.clone();
-                if let Some(einsum) = new_body.node(emitter_outlet.node).op_as::<EinSum>() {
-                    if let Some(patch) = einsum
+                if let Some(einsum) = new_body.node(emitter_outlet.node).op_as::<EinSum>()
+                    && let Some(patch) = einsum
                         .propagate_axis(
                             &new_body,
                             new_body.node(emitter_outlet.node),
@@ -488,10 +486,9 @@ impl Scan {
                             scan_info.axis,
                         )
                         .context("building axis propagating patch")?
-                    {
-                        patch.apply(&mut new_body)?;
-                        new_body.prop_consts()?;
-                    }
+                {
+                    patch.apply(&mut new_body)?;
+                    new_body.prop_consts()?;
                 }
                 let emitter_outlet = new_body.output_outlets()?[mapping_ix];
                 let invariants = {
@@ -780,17 +777,17 @@ impl TypedOp for Scan {
     fn suggested_axis_changes(&self) -> TractResult<TVec<(InOut, AxisOp)>> {
         let mut suggestions = tvec!();
         for (slot, input) in self.input_mapping.iter().enumerate() {
-            if let InputMapping::Scan(info) = input {
-                if info.axis != 0 {
-                    suggestions.push((InOut::In(slot), AxisOp::Move(info.axis, 0)))
-                }
+            if let InputMapping::Scan(info) = input
+                && info.axis != 0
+            {
+                suggestions.push((InOut::In(slot), AxisOp::Move(info.axis, 0)))
             }
         }
         for output in &self.output_mapping {
-            if let Some((slot, scan)) = output.scan {
-                if scan.axis != 0 {
-                    suggestions.push((InOut::Out(slot), AxisOp::Move(scan.axis, 0)))
-                }
+            if let Some((slot, scan)) = output.scan
+                && scan.axis != 0
+            {
+                suggestions.push((InOut::Out(slot), AxisOp::Move(scan.axis, 0)))
             }
         }
         Ok(suggestions)

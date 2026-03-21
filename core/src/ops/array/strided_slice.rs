@@ -126,13 +126,13 @@ impl StridedSlice {
                 begin = 0.to_dim();
             }
         }
-        if let (Ok(b), Ok(d)) = (begin.to_isize(), dim.to_isize()) {
-            if b > d - 1 {
-                if stride > 0 {
-                    return Ok(Dim { begin: 0.to_dim(), end: 0.to_dim(), stride, shrink: false });
-                } else {
-                    begin = (d - 1).to_dim()
-                }
+        if let (Ok(b), Ok(d)) = (begin.to_isize(), dim.to_isize())
+            && b > d - 1
+        {
+            if stride > 0 {
+                return Ok(Dim { begin: 0.to_dim(), end: 0.to_dim(), stride, shrink: false });
+            } else {
+                begin = (d - 1).to_dim()
             }
         }
 
@@ -144,13 +144,13 @@ impl StridedSlice {
                 end = (-1).to_dim();
             }
         }
-        if let (Ok(e), Ok(d)) = (end.to_isize(), dim.to_isize()) {
-            if e > d - 1 {
-                if stride > 0 {
-                    end = d.to_dim()
-                } else {
-                    return Ok(Dim { begin: 0.to_dim(), end: 0.to_dim(), stride, shrink: false });
-                }
+        if let (Ok(e), Ok(d)) = (end.to_isize(), dim.to_isize())
+            && e > d - 1
+        {
+            if stride > 0 {
+                end = d.to_dim()
+            } else {
+                return Ok(Dim { begin: 0.to_dim(), end: 0.to_dim(), stride, shrink: false });
             }
         }
         Ok(Dim { begin, end, stride, shrink: false })

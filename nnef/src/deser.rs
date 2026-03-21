@@ -190,29 +190,26 @@ impl<'mb> ModelBuilder<'mb> {
                 values
             };
             for (qparam, value) in datum_types.into_iter().zip(values.iter_mut()) {
-                if let Some(qparam) = qparam {
-                    if qparam != self.model.outlet_fact(*value)?.datum_type {
-                        self.model.node_mut(value.node).name =
-                            format!("{}_raw", self.naming_scopes.iter().map(|i| &i.0).join("_"));
-                        if self.model.outlet_fact(*value)?.datum_type == TDim::datum_type() {
-                            *value = self.model.wire_node(
-                                format!(
-                                    "{}_cast_to_f32",
-                                    self.naming_scopes.iter().map(|i| &i.0).join("_")
-                                ),
-                                tract_core::ops::cast::cast(f32::datum_type()),
-                                &[*value],
-                            )?[0];
-                        }
+                if let Some(qparam) = qparam
+                    && qparam != self.model.outlet_fact(*value)?.datum_type
+                {
+                    self.model.node_mut(value.node).name =
+                        format!("{}_raw", self.naming_scopes.iter().map(|i| &i.0).join("_"));
+                    if self.model.outlet_fact(*value)?.datum_type == TDim::datum_type() {
                         *value = self.model.wire_node(
                             format!(
-                                "{}_cast_to_q",
+                                "{}_cast_to_f32",
                                 self.naming_scopes.iter().map(|i| &i.0).join("_")
                             ),
-                            tract_core::ops::cast::cast(qparam),
+                            tract_core::ops::cast::cast(f32::datum_type()),
                             &[*value],
                         )?[0];
                     }
+                    *value = self.model.wire_node(
+                        format!("{}_cast_to_q", self.naming_scopes.iter().map(|i| &i.0).join("_")),
+                        tract_core::ops::cast::cast(qparam),
+                        &[*value],
+                    )?[0];
                 }
             }
             for (id, outlet) in identifiers.iter().zip(values.iter()) {
@@ -252,13 +249,12 @@ impl<'mb> ModelBuilder<'mb> {
 
         // We start with the registry that has been added last
         for registry in self.framework.registries.iter().rev() {
-            if self.registries.contains(&registry.id) {
-                if let Some(outputs) = registry
+            if self.registries.contains(&registry.id)
+                && let Some(outputs) = registry
                     .deserialize(self, invocation, dt)
                     .with_context(|| format!("Interrogating registry {:?}", registry.id))?
-                {
-                    return Ok(outputs);
-                }
+            {
+                return Ok(outputs);
             }
         }
         bail!("No definition for operator {:?}", invocation.id);

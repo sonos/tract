@@ -73,8 +73,9 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
                 o.consistent()?;
             }
 
-            if op.is_stateless() && input_facts.len() > 0 {
-                if let Some(tensors) = input_facts
+            if op.is_stateless()
+                && input_facts.len() > 0
+                && let Some(tensors) = input_facts
                     .iter()
                     .map(|f| {
                         f.konst
@@ -84,30 +85,26 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
                             .map(|t| t.into_tvalue())
                     })
                     .collect::<Option<TVec<_>>>()
-                {
-                    if let Ok(outputs) =
-                        op.eval_with_session(usize::MAX, &TurnState::default(), tensors)
-                    {
-                        return outputs
-                            .into_iter()
-                            .enumerate()
-                            .map(|(ix, o)| {
-                                let name =
-                                    if ix == 0 { name.clone() } else { format!("{name}.{ix}") };
-                                self.wire_node(
-                                    name.clone(),
-                                    Const::new_with_opt_opaque_fact(
-                                        o.into_tensor().into(),
-                                        output_facts[ix].opaque_fact.clone(),
-                                    )?,
-                                    &[],
-                                )
-                                .with_context(|| format!("Eager const-folding {name}"))
-                                .map(|vec| vec[0])
-                            })
-                            .collect::<TractResult<TVec<OutletId>>>();
-                    }
-                }
+                && let Ok(outputs) =
+                    op.eval_with_session(usize::MAX, &TurnState::default(), tensors)
+            {
+                return outputs
+                    .into_iter()
+                    .enumerate()
+                    .map(|(ix, o)| {
+                        let name = if ix == 0 { name.clone() } else { format!("{name}.{ix}") };
+                        self.wire_node(
+                            name.clone(),
+                            Const::new_with_opt_opaque_fact(
+                                o.into_tensor().into(),
+                                output_facts[ix].opaque_fact.clone(),
+                            )?,
+                            &[],
+                        )
+                        .with_context(|| format!("Eager const-folding {name}"))
+                        .map(|vec| vec[0])
+                    })
+                    .collect::<TractResult<TVec<OutletId>>>();
             }
 
             for fact in &mut output_facts {
@@ -149,20 +146,20 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
         let mut fact = TypedFact::from(v.clone());
         let name = name.into();
         // this feel incredibly hackish and dirty...
-        if v.datum_type().is_opaque() && v.volume() == 1 {
-            if let Some(bwf) =
+        if v.datum_type().is_opaque()
+            && v.volume() == 1
+            && let Some(bwf) =
                 v.try_as_dense()?.as_slice::<Opaque>()?[0].downcast_ref::<BlobWithFact>()
-            {
-                let opaque = bwf.fact.clone();
-                fact.opaque_fact = Some(opaque.clone());
-                return self
-                    .add_node(
-                        name,
-                        crate::ops::konst::Const::new_with_opaque_fact(v, opaque)?,
-                        tvec!(fact),
-                    )
-                    .map(|id| id.into());
-            }
+        {
+            let opaque = bwf.fact.clone();
+            fact.opaque_fact = Some(opaque.clone());
+            return self
+                .add_node(
+                    name,
+                    crate::ops::konst::Const::new_with_opaque_fact(v, opaque)?,
+                    tvec!(fact),
+                )
+                .map(|id| id.into());
         }
         self.add_node(name, crate::ops::konst::Const::new(v)?, tvec!(fact)).map(|id| id.into())
     }
@@ -323,11 +320,11 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Sym
         let outlets = node.op.concretize_dims(source, node, target, mapping, self)?;
         for &outlet in &outlets {
             let fact = &mut target.nodes[outlet.node].outputs[outlet.slot].fact;
-            if fact.shape.volume().is_zero() {
-                if let Some(shape) = fact.shape.as_concrete() {
-                    let tensor = Tensor::zero_dt(fact.datum_type, shape)?;
-                    fact.konst = Some(tensor.into_arc_tensor());
-                }
+            if fact.shape.volume().is_zero()
+                && let Some(shape) = fact.shape.as_concrete()
+            {
+                let tensor = Tensor::zero_dt(fact.datum_type, shape)?;
+                fact.konst = Some(tensor.into_arc_tensor());
             }
             fact.consistent()?;
         }

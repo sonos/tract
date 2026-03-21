@@ -304,10 +304,10 @@ impl TypedFact {
                 }
             }
         }
-        if let Some(u) = &self.uniform {
-            if self.datum_type != u.datum_type() {
-                bail!("fact as uniform value {:?}, but is of type {:?}", u, self.datum_type);
-            }
+        if let Some(u) = &self.uniform
+            && self.datum_type != u.datum_type()
+        {
+            bail!("fact as uniform value {:?}, but is of type {:?}", u, self.datum_type);
         }
         if let (Some(u), Some(k)) = (self.uniform.as_deref(), self.konst.as_deref()) {
             if let Some(k) = k.as_uniform() {
@@ -355,10 +355,9 @@ impl Fact for TypedFact {
         for i in 0..t.rank() {
             if let Ok(dim) =
                 self.shape[i].eval(symbols.unwrap_or(&SymbolValues::default())).to_usize()
+                && dim != t.shape()[i]
             {
-                if dim != t.shape()[i] {
-                    return Ok(false);
-                }
+                return Ok(false);
             }
         }
         Ok(true)

@@ -156,10 +156,10 @@ impl OptimizerSession<'_> {
         model: &mut TypedModel,
     ) -> TractResult<()> {
         p.reset()?;
-        if let Some(steps) = self.optimizer.steps {
-            if self.counter >= steps {
-                return Ok(());
-            }
+        if let Some(steps) = self.optimizer.steps
+            && self.counter >= steps
+        {
+            return Ok(());
         }
         while let Some(mut patch) = p.next(self, model)? {
             patch.push_context(format!("{p:?}/{i}"));
@@ -182,10 +182,10 @@ impl OptimizerSession<'_> {
                 .check_consistency()
                 .context("Checking target model consistency after patching")?;
             self.counter += 1;
-            if let Some(steps) = self.optimizer.steps {
-                if self.counter >= steps {
-                    return Ok(());
-                }
+            if let Some(steps) = self.optimizer.steps
+                && self.counter >= steps
+            {
+                return Ok(());
             }
         }
         model.check_consistency().with_context(|| format!("after pass {p:?}"))?;

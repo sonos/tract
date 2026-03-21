@@ -300,7 +300,7 @@ fn kernel_name_q40(
     mmq_act: usize,
     fixup: bool,
 ) -> TractResult<String> {
-    let need_check = params.n % mmq_act != 0;
+    let need_check = !params.n.is_multiple_of(mmq_act);
     let fixup_str = if fixup { "stream_k_fixup_" } else { "" };
     Ok(format!("mul_mat_q40_{fixup_str}{mmq_w}_8_{need_check}"))
 }
@@ -441,7 +441,8 @@ fn dispatch_ggml_matmul_q40(
     let nty = params.n.div_ceil(MMQ_X_MAX);
 
     let fixup_tensor = {
-        let needs_fixup = (ntx * nty * params.act_batch) % props.multiProcessorCount as usize != 0;
+        let needs_fixup =
+            !(ntx * nty * params.act_batch).is_multiple_of(props.multiProcessorCount as usize);
 
         needs_fixup
             .then(|| {
