@@ -224,6 +224,7 @@ impl TensorStorage for BlockQuantStorage {
     }
 
     fn dyn_hash(&self, state: &mut dyn std::hash::Hasher) {
+        state.write_u8(1);
         self.format.dyn_hash(state);
         self.m.hash(&mut HashWrapper(state));
         self.k.hash(&mut HashWrapper(state));

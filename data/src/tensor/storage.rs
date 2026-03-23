@@ -147,6 +147,7 @@ impl TensorStorage for DenseStorage {
     }
 
     fn dyn_hash(&self, state: &mut dyn std::hash::Hasher) {
+        state.write_u8(0);
         state.write(self.0.as_bytes());
     }
 
@@ -234,7 +235,10 @@ impl StorageKind {
 
     pub fn dyn_hash(&self, state: &mut dyn std::hash::Hasher) {
         match self {
-            StorageKind::Dense(d) => state.write(d.as_bytes()),
+            StorageKind::Dense(d) => {
+                state.write_u8(0);
+                state.write(d.as_bytes())
+            }
             StorageKind::Other(o) => o.dyn_hash(state),
         }
     }
