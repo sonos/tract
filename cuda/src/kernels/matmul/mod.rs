@@ -70,10 +70,9 @@ pub fn get_concrete_shapes(
         None => a.shape().to_vec(),
     };
 
-    let b_shape = match q40_b {
-        Some(bqf) => b.shape().iter().copied().chain(bqf.shape().iter().copied()).collect(),
-        None => b.shape().to_vec(),
-    };
+    // For q40 weights the tensor shape already carries the full logical
+    // dimensions [batch, n, k].  No need to chain with the fact shape.
+    let b_shape = b.shape().to_vec();
 
     Ok((a_shape, b_shape))
 }
@@ -934,7 +933,8 @@ mod tests {
                             Arc::new(w_quant),
                         )?;
                         let padded_q40 = pad_q40(&bqs)?;
-                        padded_q40.into_tensor()
+                        let padded_k = padded_q40.k();
+                        padded_q40.into_tensor_with_shape(&[self.b, self.n, padded_k])
                     }
                 } else {
                     Tensor::from_shape(&[self.b, self.k, self.n], &self.rhs)?

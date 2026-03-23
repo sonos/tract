@@ -52,7 +52,10 @@ pub struct CudaTensor {
 impl CudaTensor {
     pub fn from_tensor(tensor: &Tensor) -> TractResult<Self> {
         if let Some(bqs) = as_q40_tensor(tensor) {
-            let bqf = bqs.to_block_quant_fact();
+            let bqf = BlockQuantFact::new(
+                tract_core::dyn_clone::clone_box(bqs.format()),
+                tensor.shape().into(),
+            );
             let data = bqs.value().as_bytes();
             CUDA_STREAM.with(|stream| {
                 let device_data = stream
@@ -190,7 +193,6 @@ impl OwnedDeviceTensor for CudaTensor {
     fn to_host(&self) -> TractResult<Arc<Tensor>> {
         CUDA_STREAM.with(|stream| {
             let t: Tensor = if let Some(of) = &self.opaque_fact {
-                ensure!(self.shape.iter().product::<usize>() == 1, "Only support Scalar Opaque");
                 let mut blob =
                     unsafe { Blob::new_for_size_and_align(self.buffer.len(), vector_size()) };
                 stream.memcpy_dtoh(&self.buffer.inner, blob.as_bytes_mut())?;
@@ -202,15 +204,16 @@ impl OwnedDeviceTensor for CudaTensor {
                 } else {
                     bail!("Unknown Opaque Fact")
                 };
-                BlockQuantStorage::new(bqf.format.clone(), bqf.m(), bqf.k(), Arc::new(blob))?
-                    .into_tensor()
+                let total_m = bqf.num_groups() * bqf.m();
+                BlockQuantStorage::new(bqf.format.clone(), total_m, bqf.k(), Arc::new(blob))?
+                    .into_tensor_with_shape(&self.shape)
             } else {
                 let mut tensor = unsafe { Tensor::uninitialized_dt(self.datum_type, &self.shape)? };
                 stream.memcpy_dtoh(&self.buffer.inner, tensor.as_bytes_mut())?;
                 tensor
             };
 
-            Ok(Arc::new(t.into_shape(&self.shape)?))
+            Ok(Arc::new(t))
         })
     }
 
