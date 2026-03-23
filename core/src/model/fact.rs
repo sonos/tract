@@ -400,11 +400,14 @@ impl From<Tensor> for TypedFact {
 
 impl From<Arc<Tensor>> for TypedFact {
     fn from(t: Arc<Tensor>) -> TypedFact {
+        let opaque_fact: Option<Box<dyn OpaqueFact>> = t
+            .storage_as::<BlockQuantStorage>()
+            .map(|bqs| Box::new(bqs.to_block_quant_fact()) as Box<dyn OpaqueFact>);
         TypedFact {
             datum_type: t.datum_type(),
             shape: ShapeFact::from_dims(t.shape().iter().map(TDim::from)),
             uniform: t.as_uniform().map(Arc::new),
-            opaque_fact: None,
+            opaque_fact,
             konst: Some(t),
         }
     }
