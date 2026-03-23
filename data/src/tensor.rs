@@ -1682,7 +1682,7 @@ impl PartialEq for Tensor {
         }
         match (self.storage.as_dense(), other.storage.as_dense()) {
             (Some(_), Some(_)) => self.eq_dt(other).unwrap_or(false),
-            (None, None) => self.storage.eq_storage(&other.storage),
+            (None, None) => self.storage.same_as(&other.storage),
             _ => false,
         }
     }
