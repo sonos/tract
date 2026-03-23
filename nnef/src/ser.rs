@@ -3,7 +3,6 @@ use crate::internal::*;
 use tract_core::ndarray::ArrayViewD;
 use tract_core::ndarray::Axis;
 use tract_core::ops::cnn::conv::{rewrite_kernel_conv_in_oihw, rewrite_kernel_deconv_in_oihw};
-use tract_core::tract_linalg::block_quant::BlockQuantStorage;
 use tract_itertools::Itertools;
 
 pub fn rewrite_model(model: &mut TypedModel) -> TractResult<()> {
@@ -406,13 +405,7 @@ impl<'a> IntoAst<'a> {
 
         self.tensors.insert(name.clone(), tensor.clone());
         let id = self.scoped_id(&name);
-        let shape = if tensor.storage_as::<BlockQuantStorage>().is_some() {
-            // NNEF format stores shape as [M*G, K] (flattened groups)
-            let s = tensor.shape();
-            vec![s[..s.len() - 1].iter().product(), *s.last().unwrap()]
-        } else {
-            tensor.shape().to_vec()
-        };
+        let shape = tensor.shape().to_vec();
         self.assignment(
             id.clone(),
             RValue::Invocation(Invocation {

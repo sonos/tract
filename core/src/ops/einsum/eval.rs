@@ -34,9 +34,12 @@ pub fn dequant_inputs(acc: DatumType, input: TVec<TValue>) -> TractResult<TVec<T
             if i.datum_type().is_number() {
                 Ok(i)
             } else {
-                let num_groups = i.shape()[0];
-                let m_per_group = i.shape()[1];
-                let k = *i.shape().last().unwrap();
+                let s = i.shape();
+                let k = *s.last().unwrap();
+                // Leading dims are group/batch dims; last two are [M, K]
+                let num_groups: usize =
+                    if s.len() > 2 { s[..s.len() - 2].iter().product() } else { 1 };
+                let m_per_group: usize = if s.len() >= 2 { s[s.len() - 2] } else { 1 };
                 let bqs = i.try_storage_as::<BlockQuantStorage>()?;
                 let mut unpacked: Vec<Tensor> = if acc.is::<f16>() {
                     (0..num_groups)
@@ -60,9 +63,12 @@ pub fn dequant_inputs(acc: DatumType, input: TVec<TValue>) -> TractResult<TVec<T
                     );
                 };
                 unpacked.iter_mut().try_for_each(|t| t.insert_axis(0))?;
-                let stacked = Tensor::stack_tensors(0, &unpacked)?;
-                let shape: Vec<usize> = vec![num_groups, m_per_group, k];
-                Ok(stacked.into_shape(&shape)?.into_tvalue())
+                let stacked = if unpacked.len() > 1 {
+                    Tensor::stack_tensors(0, &unpacked)?
+                } else {
+                    unpacked.into_iter().next().unwrap()
+                };
+                Ok(stacked.into_shape(s)?.into_tvalue())
             }
         })
         .collect::<TractResult<TVec<TValue>>>()

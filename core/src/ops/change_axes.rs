@@ -379,16 +379,9 @@ impl AxisOp {
 
     pub fn change_tensor(&self, tensor: &mut Tensor, broadcasting: bool) -> TractResult<()> {
         if tensor.storage_as::<BlockQuantStorage>().is_some() {
-            // Block-quant tensors are always rank 3 [G, M, K]. Reshape the
-            // storage when the logical shape changes.
             let bqs = tensor.try_storage_as::<BlockQuantStorage>()?.clone();
             let mut new_shape: TVec<usize> = tensor.shape().into();
             self.change_shape_array(&mut new_shape, false)?;
-            ensure!(
-                new_shape.len() == 3,
-                "Block-quant tensors must stay rank 3, got {:?} after {self:?}",
-                new_shape
-            );
             let mut new_tensor = bqs.into_tensor_with_shape(&new_shape);
             std::mem::swap(tensor, &mut new_tensor);
             return Ok(());
