@@ -227,9 +227,7 @@ impl TypedOp for EinSum {
         for (slot, i) in inputs.iter().enumerate() {
             if i.datum_type.is_opaque()
                 && (i.opaque_fact().is_some_and(|of| {
-                    of.is::<BlockQuantFact>()
-                        || of.is::<PackedOpaqueFact>()
-                        || of.is::<PackedBlockQuantFact>()
+                    of.is::<PackedOpaqueFact>() || of.is::<PackedBlockQuantFact>()
                 }))
             {
                 axes = axes

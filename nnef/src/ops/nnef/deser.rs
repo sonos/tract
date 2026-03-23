@@ -703,18 +703,28 @@ pub fn matmul(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tr
     let a_rank = builder.model.outlet_fact(a)?.rank();
     let b_rank = builder.model.outlet_fact(b)?.rank();
     if a_dt.is_opaque() {
-        ensure!(a_rank == 3);
         ensure!(builder.model.outlet_fact(a)?.opaque_fact.is_some());
-        ensure!(a_rank == b_rank);
-        let axes = AxesMapping::for_numpy_matmul(b_rank, false, b_trans, false)?;
+        // Block-quant tensor may have a leading group dim ([1, M, K]) while
+        // the other operand is 2D. Unsqueeze the non-opaque operand to match.
+        let mut b = b;
+        if a_rank > b_rank {
+            for _ in 0..(a_rank - b_rank) {
+                b = builder.wire_as_outlets(ops::change_axes::AxisOp::Add(0), &[b])?[0];
+            }
+        }
+        let axes = AxesMapping::for_numpy_matmul(a_rank, false, b_trans, false)?;
         return builder
             .wire(ops::einsum::EinSum { axes, operating_dt: b_dt, q_params: None }, &[a, b]);
     }
     if b_dt.is_opaque() {
-        ensure!(b_rank == 3);
         ensure!(builder.model.outlet_fact(b)?.opaque_fact.is_some());
-        ensure!(a_rank == b_rank);
-        let axes = AxesMapping::for_numpy_matmul(a_rank, false, !a_trans, true)?;
+        let mut a = a;
+        if b_rank > a_rank {
+            for _ in 0..(b_rank - a_rank) {
+                a = builder.wire_as_outlets(ops::change_axes::AxisOp::Add(0), &[a])?[0];
+            }
+        }
+        let axes = AxesMapping::for_numpy_matmul(b_rank, false, !a_trans, true)?;
         return builder
             .wire(ops::einsum::EinSum { axes, operating_dt: a_dt, q_params: None }, &[b, a]);
     }
