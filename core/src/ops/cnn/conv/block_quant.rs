@@ -87,6 +87,8 @@ impl EvalOp for SplitGroupBlockQuant {
 
 impl TypedOp for SplitGroupBlockQuant {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        // Output is a scalar Opaque tensor: logical m×k dimensions live inside
+        // BlockQuantStorage/BlockQuantFact, not in the tensor shape.
         let input = inputs[0];
         ensure!(input.shape.rank() == 0);
         let bqf = input
