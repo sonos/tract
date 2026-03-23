@@ -178,12 +178,12 @@ impl EvalOp for OptSimpleMatMulPack {
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
+        let num_groups = input.shape()[0];
         let bqs = input.try_storage_as::<BlockQuantStorage>()?;
-        let packed = bqs
-            .groups()
-            .iter()
-            .map(|blob| {
-                let iv: Box<dyn MMMInputValue> = Box::new(self.packed_format.pack(blob, bqs.k())?);
+        let packed = (0..num_groups)
+            .map(|g| {
+                let slice = bqs.group_slice(g, num_groups);
+                let iv: Box<dyn MMMInputValue> = Box::new(self.packed_format.pack(slice, bqs.k())?);
                 Ok(Opaque(Arc::new(iv)))
             })
             .collect::<TractResult<Vec<_>>>()?;

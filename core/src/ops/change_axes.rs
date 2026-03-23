@@ -389,8 +389,9 @@ impl AxisOp {
                 "Block-quant tensors must stay rank 3, got {:?} after {self:?}",
                 new_shape
             );
-            let new = bqs.with_shape(new_shape[1], new_shape[2])?;
-            let mut new_tensor = new.into_tensor();
+            let total_m = new_shape[0] * new_shape[1];
+            let new = bqs.with_shape(total_m, new_shape[2])?;
+            let mut new_tensor = new.into_tensor_with_shape(&new_shape);
             std::mem::swap(tensor, &mut new_tensor);
             return Ok(());
         }
