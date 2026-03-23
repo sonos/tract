@@ -211,18 +211,6 @@ impl TensorStorage for BlockQuantStorage {
         Box::new(self.clone())
     }
 
-    fn same_as(&self, other: &dyn TensorStorage) -> bool {
-        if let Some(other) = other.downcast_ref::<Self>() {
-            self.format.same_as(&*other.format)
-                && self.m == other.m
-                && self.k == other.k
-                && self.groups.len() == other.groups.len()
-                && self.groups.iter().zip(&other.groups).all(|(a, b)| Arc::ptr_eq(a, b))
-        } else {
-            false
-        }
-    }
-
     fn as_dense(&self) -> Option<&DenseStorage> {
         None
     }
@@ -244,7 +232,7 @@ impl TensorStorage for BlockQuantStorage {
         }
     }
 
-    fn eq_storage(&self, other: &dyn TensorStorage) -> bool {
+    fn same_as(&self, other: &dyn TensorStorage) -> bool {
         if let Some(other) = other.downcast_ref::<Self>() {
             self.format.same_as(&*other.format)
                 && self.m == other.m

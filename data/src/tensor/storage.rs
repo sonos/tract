@@ -13,12 +13,11 @@ pub trait TensorStorage: Send + Sync + fmt::Debug + fmt::Display + Downcast {
     fn byte_len(&self) -> usize;
     fn is_empty(&self) -> bool;
     fn deep_clone(&self) -> Box<dyn TensorStorage>;
-    fn same_as(&self, other: &dyn TensorStorage) -> bool;
     fn as_dense(&self) -> Option<&DenseStorage>;
     fn as_dense_mut(&mut self) -> Option<&mut DenseStorage>;
     fn into_dense(self: Box<Self>) -> Option<DenseStorage>;
     fn dyn_hash(&self, state: &mut dyn std::hash::Hasher);
-    fn eq_storage(&self, other: &dyn TensorStorage) -> bool;
+    fn same_as(&self, other: &dyn TensorStorage) -> bool;
 }
 impl_downcast!(TensorStorage);
 
@@ -135,16 +134,6 @@ impl TensorStorage for DenseStorage {
         Box::new(DenseStorage(self.0.clone()))
     }
 
-    fn same_as(&self, other: &dyn TensorStorage) -> bool {
-        if let Some(other) = other.as_dense() {
-            !self.0.is_empty()
-                && self.0.as_bytes().as_ptr() == other.as_ptr()
-                && self.0.len() == other.byte_len()
-        } else {
-            false
-        }
-    }
-
     fn as_dense(&self) -> Option<&DenseStorage> {
         Some(self)
     }
@@ -161,7 +150,7 @@ impl TensorStorage for DenseStorage {
         state.write(self.0.as_bytes());
     }
 
-    fn eq_storage(&self, other: &dyn TensorStorage) -> bool {
+    fn same_as(&self, other: &dyn TensorStorage) -> bool {
         if let Some(other) = other.as_dense() { self == other } else { false }
     }
 }
@@ -250,10 +239,10 @@ impl StorageKind {
         }
     }
 
-    pub fn eq_storage(&self, other: &StorageKind) -> bool {
+    pub fn same_as(&self, other: &StorageKind) -> bool {
         match (self, other) {
             (StorageKind::Dense(a), StorageKind::Dense(b)) => a == b,
-            (StorageKind::Other(a), StorageKind::Other(b)) => a.eq_storage(b.as_ref()),
+            (StorageKind::Other(a), StorageKind::Other(b)) => a.same_as(b.as_ref()),
             _ => false,
         }
     }
