@@ -178,8 +178,10 @@ impl EvalOp for OptSimpleMatMulPack {
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
-        let num_groups = input.shape()[0];
         let bqs = input.try_storage_as::<BlockQuantStorage>()?;
+        // Leading dims before the last 2 (M, K) are batch/group dims
+        let leading_shape = &input.shape()[..input.rank().saturating_sub(2)];
+        let num_groups: usize = leading_shape.iter().product();
         let packed = (0..num_groups)
             .map(|g| {
                 let slice = bqs.group_slice(g, num_groups);
@@ -187,18 +189,22 @@ impl EvalOp for OptSimpleMatMulPack {
                 Ok(Opaque(Arc::new(iv)))
             })
             .collect::<TractResult<Vec<_>>>()?;
-        let output = if packed.len() == 1 {
-            tensor0(packed.into_iter().next().unwrap())
-        } else {
-            tensor1(&packed)
-        };
+        let mut output = tensor1(&packed);
+        output.set_shape(leading_shape)?;
         Ok(tvec!(output.into_tvalue()))
     }
 }
 
 impl TypedOp for OptSimpleMatMulPack {
-    fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        let fact = Opaque::fact::<[usize; 0]>([]).with_opaque_fact(PackedBlockQuantFact {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        let input = inputs[0];
+        // Input shape is [G, M, K] — output removes M and K, keeping leading dims
+        let output_shape: TVec<TDim> = if input.rank() > 2 {
+            input.shape[..input.rank() - 2].to_vec().into()
+        } else {
+            tvec!()
+        };
+        let fact = Opaque::fact(&*output_shape).with_opaque_fact(PackedBlockQuantFact {
             format: self.packed_format.clone(),
             shape: tvec!(self.m, self.k),
         });

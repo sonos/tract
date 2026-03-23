@@ -64,7 +64,7 @@ impl Conv {
     ) -> TractResult<TVec<OutletId>> {
         let fact = model.outlet_fact(kernel)?;
         if fact.datum_type.is_opaque() {
-            ensure!(self.kernel_fmt == KernelFormat::OIHW && fact.rank() == 3);
+            ensure!(self.kernel_fmt == KernelFormat::OIHW && fact.rank() >= 2);
             kernel = model.wire_node(
                 format!("{name}.prep_kernel.g"),
                 SplitGroupBlockQuant { group: self.group },
