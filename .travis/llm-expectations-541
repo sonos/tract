@@ -69,7 +69,7 @@ apple--OpenELM-270M-q40ef16.p50s50.x86_64.cuda 0.94
 apple--OpenELM-270M-q40ef16.p99s1.arm64.cpu 0.99
 apple--OpenELM-270M-q40ef16.p99s1.arm64.metal 0.99
 apple--OpenELM-270M-q40ef16.p99s1.x86_64.cpu 0.99
-apple--OpenELM-270M-q40ef16.p99s1.x86_64.cuda 0.95
+apple--OpenELM-270M-q40ef16.p99s1.x86_64.cuda 0.89
 meta-llama--Llama-3.1-8B-Instruct-f16f16.p0s100.arm64.cpu 0.96
 meta-llama--Llama-3.1-8B-Instruct-f16f16.p0s100.arm64.metal 0.94
 meta-llama--Llama-3.1-8B-Instruct-f16f16.p0s100.x86_64.cpu 0.99
