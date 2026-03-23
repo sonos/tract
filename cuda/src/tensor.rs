@@ -202,7 +202,7 @@ impl OwnedDeviceTensor for CudaTensor {
                 } else {
                     bail!("Unknown Opaque Fact")
                 };
-                BlockQuantStorage::new(bqf.format.clone(), bqf.m(), bqf.k(), Arc::new(blob))
+                BlockQuantStorage::new(bqf.format.clone(), bqf.m(), bqf.k(), Arc::new(blob))?
                     .into_tensor()
             } else {
                 let mut tensor = unsafe { Tensor::uninitialized_dt(self.datum_type, &self.shape)? };

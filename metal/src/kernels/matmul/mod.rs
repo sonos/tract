@@ -911,7 +911,7 @@ mod tests {
                             self.b * self.n,
                             self.k,
                             Arc::new(b_quant),
-                        )
+                        )?
                         .into_tensor()
                     }
                 } else {

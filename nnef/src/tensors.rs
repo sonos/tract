@@ -290,7 +290,7 @@ fn read_block_quant_value(r: &mut impl Read, header: &Header) -> TractResult<Ten
     if header.item_type == 0x2040 {
         tract_to_gguf_q4_0_packing(&mut blob)?;
     }
-    let tensor = BlockQuantStorage::new(format, q_m, q_k, Arc::new(blob)).into_tensor();
+    let tensor = BlockQuantStorage::new(format, q_m, q_k, Arc::new(blob))?.into_tensor();
     Ok(tensor)
 }
 

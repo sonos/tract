@@ -383,7 +383,7 @@ impl AxisOp {
             if let Some(bqs) = tensor.storage_as::<BlockQuantStorage>() {
                 let mut new_shape: TVec<usize> = tvec![bqs.m(), bqs.k()];
                 inner_change.change_shape_array(&mut new_shape, false)?;
-                let new = bqs.with_shape(new_shape[0], new_shape[1..].iter().product());
+                let new = bqs.with_shape(new_shape[0], new_shape[1..].iter().product())?;
                 let mut new_tensor = new.into_tensor();
                 std::mem::swap(tensor, &mut new_tensor);
             } else {

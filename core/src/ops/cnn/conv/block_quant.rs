@@ -31,7 +31,7 @@ impl EvalOp for BlockQuantIntoShape {
         let input = args_1!(inputs).into_tensor();
         let bqs = input.try_storage_as::<BlockQuantStorage>()?;
         let new_k: usize = self.shape[1..].iter().product();
-        let new = bqs.with_shape(self.shape[0], new_k);
+        let new = bqs.with_shape(self.shape[0], new_k)?;
         Ok(tvec!(new.into_tensor().into_tvalue()))
     }
 }

@@ -466,7 +466,7 @@ mod tests {
                     batch * n,
                     k,
                     Arc::new(Q4_0.quant_f32(&b_data)?),
-                )
+                )?
                 .into_tensor();
                 (b_tensor, b_q4_0_tensor)
             } else {

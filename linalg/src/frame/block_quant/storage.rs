@@ -19,8 +19,27 @@ pub struct BlockQuantStorage {
 }
 
 impl BlockQuantStorage {
-    pub fn new(format: Box<dyn BlockQuant>, m: usize, k: usize, value: Arc<Blob>) -> Self {
-        Self { format, m, k, groups: vec![value] }
+    fn expected_group_bytes(format: &dyn BlockQuant, m: usize, k: usize) -> usize {
+        m * k / format.block_len() * format.block_bytes()
+    }
+
+    pub fn new(
+        format: Box<dyn BlockQuant>,
+        m: usize,
+        k: usize,
+        value: Arc<Blob>,
+    ) -> TractResult<Self> {
+        let expected = Self::expected_group_bytes(&*format, m, k);
+        ensure!(
+            value.len() == expected,
+            "BlockQuantStorage::new: blob length {} does not match expected {} (m={}, k={}, format={})",
+            value.len(),
+            expected,
+            m,
+            k,
+            format,
+        );
+        Ok(Self { format, m, k, groups: vec![value] })
     }
 
     pub fn new_multi_group(
@@ -28,8 +47,21 @@ impl BlockQuantStorage {
         m: usize,
         k: usize,
         groups: Vec<Arc<Blob>>,
-    ) -> Self {
-        Self { format, m, k, groups }
+    ) -> TractResult<Self> {
+        let expected = Self::expected_group_bytes(&*format, m, k);
+        for (i, g) in groups.iter().enumerate() {
+            ensure!(
+                g.len() == expected,
+                "BlockQuantStorage::new_multi_group: group {} blob length {} does not match expected {} (m={}, k={}, format={})",
+                i,
+                g.len(),
+                expected,
+                m,
+                k,
+                format,
+            );
+        }
+        Ok(Self { format, m, k, groups })
     }
 
     pub fn format(&self) -> &dyn BlockQuant {
@@ -76,8 +108,21 @@ impl BlockQuantStorage {
     }
 
     /// Returns a clone with updated m and k dimensions, preserving format and group blobs.
-    pub fn with_shape(&self, m: usize, k: usize) -> Self {
-        Self { format: self.format.clone(), m, k, groups: self.groups.clone() }
+    pub fn with_shape(&self, m: usize, k: usize) -> TractResult<Self> {
+        let expected = Self::expected_group_bytes(&*self.format, m, k);
+        for (i, g) in self.groups.iter().enumerate() {
+            ensure!(
+                g.len() == expected,
+                "BlockQuantStorage::with_shape: group {} blob length {} does not match expected {} (m={}, k={}, format={})",
+                i,
+                g.len(),
+                expected,
+                m,
+                k,
+                self.format,
+            );
+        }
+        Ok(Self { format: self.format.clone(), m, k, groups: self.groups.clone() })
     }
 
     /// Splits a single-group storage into `num_groups` by partitioning the m dimension.
@@ -104,7 +149,20 @@ impl BlockQuantStorage {
                 Arc::new(new_blob)
             })
             .collect();
-        Ok(Self { format: self.format.clone(), m: rows_per_group, k: self.k, groups })
+        let result = Self { format: self.format.clone(), m: rows_per_group, k: self.k, groups };
+        let expected = Self::expected_group_bytes(&*result.format, result.m, result.k);
+        for (i, g) in result.groups.iter().enumerate() {
+            ensure!(
+                g.len() == expected,
+                "BlockQuantStorage::split_m: group {} blob length {} does not match expected {} (m={}, k={})",
+                i,
+                g.len(),
+                expected,
+                result.m,
+                result.k,
+            );
+        }
+        Ok(result)
     }
 }
 

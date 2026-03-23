@@ -932,7 +932,7 @@ mod tests {
                             self.b * self.n,
                             self.k,
                             Arc::new(w_quant),
-                        );
+                        )?;
                         let padded_q40 = pad_q40(&bqs)?;
                         padded_q40.into_tensor()
                     }

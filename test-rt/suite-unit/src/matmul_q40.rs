@@ -84,7 +84,7 @@ impl MatmulQ40Problem {
             padded_a.shape()[0],
             padded_a.shape()[1],
             Arc::new(quant_a),
-        );
+        )?;
         let bqf = bqs.to_block_quant_fact();
         let opaque_a = Arc::new(bqs.into_tensor());
 
