@@ -97,14 +97,15 @@ impl BlockQuantStorage {
         &self.groups[0]
     }
 
-    /// Converts this storage into a rank-0 `Tensor` with `DatumType::Opaque`.
+    /// Converts this storage into a rank-3 `Tensor` with shape `[G, M, K]`.
     pub fn into_tensor(self) -> Tensor {
-        Tensor::from_storage(DatumType::Opaque, &[], self)
+        let g = self.groups.len();
+        Tensor::from_storage(DatumType::Opaque, &[g, self.m, self.k], self)
     }
 
     /// Reconstructs a `BlockQuantFact` from this storage's metadata.
     pub fn to_block_quant_fact(&self) -> BlockQuantFact {
-        BlockQuantFact::new(self.format.clone(), tvec!(self.m * self.num_groups(), self.k))
+        BlockQuantFact::new(self.format.clone(), tvec!(self.num_groups(), self.m, self.k))
     }
 
     /// Returns a clone with updated m and k dimensions, preserving format and group blobs.

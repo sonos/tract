@@ -52,11 +52,7 @@ pub fn dequant_inputs(acc: DatumType, input: TVec<TValue>) -> TractResult<TVec<T
                 };
                 unpacked.iter_mut().try_for_each(|t| t.insert_axis(0))?;
                 let stacked = Tensor::stack_tensors(0, &unpacked)?;
-                let shape: Vec<usize> = if bqs.num_groups() > 1 {
-                    [bqs.num_groups(), bqs.m(), bqs.k()].into()
-                } else {
-                    [bqs.m(), bqs.k()].into()
-                };
+                let shape: Vec<usize> = vec![bqs.num_groups(), bqs.m(), bqs.k()];
                 Ok(stacked.into_shape(&shape)?.into_tvalue())
             }
         })

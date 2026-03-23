@@ -27,7 +27,7 @@ use crate::ops::nn::Reduce;
 
 use super::depth_wise::DepthWise;
 use super::im2col::Im2Col;
-use crate::ops::cnn::conv::{KernelFormat, block_quant_aware_weight_shape};
+use crate::ops::cnn::conv::KernelFormat;
 use crate::ops::cnn::pools::{ConcretePoolGeometry, PoolGeometry, PoolSpec};
 use crate::ops::matmul::optimized::{OptMatMul, ProtoFusedSpec};
 use crate::ops::nn::{BaseDataShape, DataFormat, DataShape};
@@ -64,7 +64,7 @@ impl Conv {
     ) -> TractResult<TVec<OutletId>> {
         let fact = model.outlet_fact(kernel)?;
         if fact.datum_type.is_opaque() {
-            ensure!(self.kernel_fmt == KernelFormat::OIHW && fact.rank() == 0);
+            ensure!(self.kernel_fmt == KernelFormat::OIHW && fact.rank() == 3);
             kernel = model.wire_node(
                 format!("{name}.prep_kernel.g"),
                 SplitGroupBlockQuant { group: self.group },
@@ -954,8 +954,7 @@ impl TypedOp for Conv {
             ensure!(inputs[7].datum_type == i32::datum_type());
             ensure!(inputs[8].datum_type.is_float());
         }
-        let weight_shape = block_quant_aware_weight_shape(inputs[1])?;
-        ensure!(self.pool_spec.rank() + 2 == weight_shape.len());
+        ensure!(self.pool_spec.rank() + 2 == inputs[1].shape.len());
         if self.pool_spec.data_format.shape(&*inputs[0].shape)?.c()
             != &self.input_channels().to_dim()
         {

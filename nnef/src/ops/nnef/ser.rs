@@ -9,12 +9,10 @@ use tract_core::ops::cnn::Conv;
 use tract_core::ops::cnn::PoolSpec;
 use tract_core::ops::einsum::block_quant_aware_input_shape;
 use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
-use tract_core::ops::identity::PinConst;
 use tract_core::ops::konst::Const;
 use tract_core::ops::nn::DataFormat;
 use tract_core::ops::nn::SoftmaxKind;
 use tract_core::tract_data::itertools::Itertools;
-use tract_linalg::block_quant::BlockQuantFact;
 
 pub fn source(
     ast: &mut IntoAst,
@@ -501,36 +499,14 @@ pub fn softmax(
 
 pub fn rewrite_block_quant_const_to_scalar(
     _ctx: &(),
-    model: &TypedModel,
-    node: &TypedNode,
-    prefix: &str,
-    op: &Const,
+    _model: &TypedModel,
+    _node: &TypedNode,
+    _prefix: &str,
+    _op: &Const,
 ) -> TractResult<Option<TypedModelPatch>> {
-    let fact = &node.outputs[0].fact;
-    if fact.shape.len() == 0
-        || fact.datum_type.is_integer()
-        || !fact.opaque_fact.as_ref().is_some_and(|of| of.is::<BlockQuantFact>())
-    {
-        return Ok(None);
-    };
-    ensure!(fact.shape.volume().is_one());
-    let mut patch = TypedModelPatch::default();
-    let mut new_fact = fact.clone();
-    new_fact.shape = ShapeFact::scalar();
-    let new_tensor = op.val().to_scalar_tensor()?.into_arc_tensor();
-    new_fact.konst = Some(new_tensor.clone());
-    let mut output = patch.wire_node(
-        prefix,
-        Const::new_with_opt_opaque_fact(new_tensor, fact.opaque_fact.clone())?,
-        &[],
-    )?;
-    output = patch.wire_node(format!("{prefix}.lock"), PinConst, &output)?;
-    for i in 0..fact.rank() {
-        output = patch.wire_node(format!("{prefix}.{i}"), AxisOp::Add(0), &output)?;
-    }
-
-    patch.shunt_outside(model, node.id.into(), output[0])?;
-    Ok(Some(patch))
+    // Block-quant tensors now carry their logical shape [G, M, K] directly,
+    // so no scalar-to-shaped rewriting is needed.
+    Ok(None)
 }
 
 pub fn rewrite_matmul_to_same_rank(

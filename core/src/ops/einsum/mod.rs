@@ -27,10 +27,8 @@ pub fn block_quant_aware_input_shape(fact: &TypedFact) -> TractResult<Cow<'_, [T
     let Some(opaque_fact) = fact.opaque_fact() else {
         bail!("Datum fact is opaque, but no opaque fact was found.")
     };
-    if let Some(bqf) = opaque_fact.downcast_ref::<BlockQuantFact>() {
-        Ok(Cow::Owned(
-            fact.shape.iter().cloned().chain(bqf.shape().iter().map(|d| d.to_dim())).collect_vec(),
-        ))
+    if let Some(_bqf) = opaque_fact.downcast_ref::<BlockQuantFact>() {
+        Ok(Cow::Borrowed(&*fact.shape))
     } else if let Some(pof) = opaque_fact.downcast_ref::<PackedBlockQuantFact>() {
         Ok(Cow::Owned(
             fact.shape.iter().cloned().chain(pof.shape.iter().map(|i| i.to_dim())).collect_vec(),

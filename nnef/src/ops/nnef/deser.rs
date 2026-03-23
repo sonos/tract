@@ -694,22 +694,16 @@ pub fn matmul(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tr
     let a_rank = builder.model.outlet_fact(a)?.rank();
     let b_rank = builder.model.outlet_fact(b)?.rank();
     if a_dt.is_opaque() {
-        ensure!(builder.model.outlet_fact(a)?.shape.volume().is_one());
+        ensure!(a_rank == 3);
         ensure!(builder.model.outlet_fact(a)?.opaque_fact.is_some());
-        let a_rank =
-            tract_core::ops::einsum::block_quant_aware_input_shape(builder.model.outlet_fact(b)?)?
-                .len();
         ensure!(a_rank == b_rank);
         let axes = AxesMapping::for_numpy_matmul(b_rank, false, b_trans, false)?;
         return builder
             .wire(ops::einsum::EinSum { axes, operating_dt: b_dt, q_params: None }, &[a, b]);
     }
     if b_dt.is_opaque() {
-        ensure!(builder.model.outlet_fact(b)?.shape.volume().is_one());
+        ensure!(b_rank == 3);
         ensure!(builder.model.outlet_fact(b)?.opaque_fact.is_some());
-        let b_rank =
-            tract_core::ops::einsum::block_quant_aware_input_shape(builder.model.outlet_fact(b)?)?
-                .len();
         ensure!(a_rank == b_rank);
         let axes = AxesMapping::for_numpy_matmul(a_rank, false, !a_trans, true)?;
         return builder

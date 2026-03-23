@@ -30,22 +30,28 @@ impl EvalOp for BlockQuantIntoShape {
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs).into_tensor();
         let bqs = input.try_storage_as::<BlockQuantStorage>()?;
+        let new_m = self.shape[0];
         let new_k: usize = self.shape[1..].iter().product();
-        let new = bqs.with_shape(self.shape[0], new_k)?;
+        let new = bqs.with_shape(new_m, new_k)?;
         Ok(tvec!(new.into_tensor().into_tvalue()))
     }
 }
 
 impl TypedOp for BlockQuantIntoShape {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        let old = inputs[0]
+        let input = inputs[0];
+        let old = input
             .opaque_fact
             .as_ref()
             .and_then(|of| of.downcast_ref::<BlockQuantFact>())
-            .context("Expects BlockQuantFact")?
-            .clone();
-        let new = BlockQuantFact::new(old.format, self.shape.clone());
-        let fact = inputs[0].clone().with_opaque_fact(new);
+            .context("Expects BlockQuantFact")?;
+        let g: usize = input.shape[0].to_usize()?;
+        let new_m = self.shape[0];
+        let new_k: usize = self.shape[1..].iter().product();
+        let bqf_shape = tvec!(g, new_m, new_k);
+        let new = BlockQuantFact::new(old.format.clone(), bqf_shape.clone());
+        let shape: TVec<TDim> = bqf_shape.iter().map(|d| d.to_dim()).collect();
+        let fact = DatumType::Opaque.fact(&*shape).with_opaque_fact(new);
         Ok(tvec!(fact))
     }
     as_op!();
@@ -87,19 +93,21 @@ impl EvalOp for SplitGroupBlockQuant {
 
 impl TypedOp for SplitGroupBlockQuant {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        // Output is a scalar Opaque tensor: logical m×k dimensions live inside
-        // BlockQuantStorage/BlockQuantFact, not in the tensor shape.
         let input = inputs[0];
-        ensure!(input.shape.rank() == 0);
+        ensure!(input.shape.rank() == 3);
         let bqf = input
             .opaque_fact
             .as_ref()
             .and_then(|of| of.downcast_ref::<BlockQuantFact>())
             .context("Expect BlockQuantFact")?;
-        let mut shape: TVec<usize> = bqf.shape().into();
-        shape[0] /= self.group;
-        let opaque_fact = BlockQuantFact::new(bqf.format.clone(), shape);
-        let fact = Opaque::fact::<[usize; 0]>([]).with_opaque_fact(opaque_fact);
+        let m: usize = input.shape[1].to_usize()?;
+        let k: usize = input.shape[2].to_usize()?;
+        ensure!(m % self.group == 0);
+        let new_shape = tvec!(self.group, m / self.group, k);
+        let opaque_fact = BlockQuantFact::new(bqf.format.clone(), new_shape.clone());
+        let fact = DatumType::Opaque
+            .fact(&*new_shape.iter().map(|d| d.to_dim()).collect::<TVec<_>>())
+            .with_opaque_fact(opaque_fact);
         Ok(tvec!(fact))
     }
     as_op!();

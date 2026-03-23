@@ -407,7 +407,8 @@ impl<'a> IntoAst<'a> {
         self.tensors.insert(name.clone(), tensor.clone());
         let id = self.scoped_id(&name);
         let shape = if let Some(bqs) = tensor.storage_as::<BlockQuantStorage>() {
-            bqs.to_block_quant_fact().shape().to_vec()
+            // NNEF format stores shape as [M*G, K] (flattened groups)
+            vec![bqs.m() * bqs.num_groups(), bqs.k()]
         } else {
             tensor.shape().to_vec()
         };
