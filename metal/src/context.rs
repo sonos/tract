@@ -235,7 +235,7 @@ impl DeviceContext for MetalContext {
                 )
             };
             let tensor =
-                BlockQuantStorage::new(bqf.format.clone(), bqf.m(), bqf.k(), Arc::new(blob))
+                BlockQuantStorage::new(bqf.format.clone(), bqf.m(), bqf.k(), Arc::new(blob))?
                     .into_tensor();
             self.tensor_to_device(tensor.into())
         } else {

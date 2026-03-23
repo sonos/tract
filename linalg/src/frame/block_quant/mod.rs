@@ -287,7 +287,9 @@ impl MMMInputFormat for PackedBlockQuantFormat {
             } else {
                 todo!()
             };
-            Cow::Owned(BlockQuantStorage::new(self.bq.clone(), m, k, Arc::new(quant)).into_tensor())
+            Cow::Owned(
+                BlockQuantStorage::new(self.bq.clone(), m, k, Arc::new(quant))?.into_tensor(),
+            )
         } else {
             Cow::Borrowed(t)
         };

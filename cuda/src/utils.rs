@@ -186,10 +186,10 @@ pub fn pad_q40(bqs: &BlockQuantStorage) -> TractResult<BlockQuantStorage> {
         new_data.extend_from_slice(&pad_quant);
     }
 
-    Ok(BlockQuantStorage::new(
+    BlockQuantStorage::new(
         tract_core::dyn_clone::clone_box(bqs.format()),
         m,
         k + to_pad,
         Arc::new(Blob::from_bytes(&new_data)?),
-    ))
+    )
 }
