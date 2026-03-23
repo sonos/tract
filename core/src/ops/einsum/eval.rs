@@ -34,25 +34,25 @@ pub fn dequant_inputs(acc: DatumType, input: TVec<TValue>) -> TractResult<TVec<T
             if i.datum_type().is_number() {
                 Ok(i)
             } else {
+                let num_groups = i.shape()[0];
                 let bqs = i.try_storage_as::<BlockQuantStorage>()?;
                 let mut unpacked: Vec<Tensor> = if acc.is::<f16>() {
-                    bqs.groups()
-                        .iter()
-                        .map(|blob| bqs.format().dequant_f16(blob))
+                    (0..num_groups)
+                        .map(|g| bqs.format().dequant_f16(bqs.group_slice(g, num_groups)))
                         .collect::<TractResult<_>>()?
                 } else if acc.is::<f32>() {
-                    bqs.groups()
-                        .iter()
-                        .map(|blob| bqs.format().dequant_f32(blob))
+                    (0..num_groups)
+                        .map(|g| bqs.format().dequant_f32(bqs.group_slice(g, num_groups)))
                         .collect::<TractResult<_>>()?
                 } else {
                     bail!(
                         "Only f32 and f16 accumulators are compatible with BlockQuantValue inputs"
                     );
                 };
+                let m_per_group = bqs.m() / num_groups;
                 unpacked.iter_mut().try_for_each(|t| t.insert_axis(0))?;
                 let stacked = Tensor::stack_tensors(0, &unpacked)?;
-                let shape: Vec<usize> = vec![bqs.num_groups(), bqs.m(), bqs.k()];
+                let shape: Vec<usize> = vec![num_groups, m_per_group, bqs.k()];
                 Ok(stacked.into_shape(&shape)?.into_tvalue())
             }
         })

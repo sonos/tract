@@ -298,9 +298,7 @@ fn read_block_quant_value(r: &mut impl Read, header: &Header) -> TractResult<Ten
 fn write_block_quant_value(w: &mut impl Write, bqs: &BlockQuantStorage) -> TractResult<()> {
     let format = bqs.format();
     ensure!(format.same_as(&Q4_0) || format.same_as(&Q8_1));
-    // NNEF format stores shape as [M*G, K] (flattened groups)
-    let flat_m = bqs.m() * bqs.num_groups();
-    let flat_shape: [usize; 2] = [flat_m, bqs.k()];
+    let flat_shape: [usize; 2] = [bqs.m(), bqs.k()];
 
     let mut header = Header::default();
     header.rank = flat_shape.len() as u32;
