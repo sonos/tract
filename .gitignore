@@ -19,3 +19,4 @@ proptest-regressions
 /tmp
 wheelhouse
 target-bisector*
+/nvidia
