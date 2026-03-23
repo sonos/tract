@@ -172,9 +172,7 @@ impl EvalOp for OptSimpleMatMulPack {
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
-<<<<<<< HEAD
         let bqs = input.try_storage_as::<BlockQuantStorage>()?;
-        // Leading dims before the last 2 (M, K) are batch/group dims
         // Leading dims before the last 2 (M, K) are batch/group dims
         let num_groups: usize = input.shape()[..input.rank().saturating_sub(2)].iter().product();
         let m_per_group = input.shape()[input.rank() - 2];
@@ -186,8 +184,8 @@ impl EvalOp for OptSimpleMatMulPack {
                 Ok(iv)
             })
             .collect::<TractResult<Vec<_>>>()?;
-        let shape: TVec<usize> = input.shape().into();
-        let output = PackedMatrixStorage::new_batched(&shape, values).into_tensor();
+        let leading_shape = &input.shape()[..input.rank().saturating_sub(2)];
+        let output = PackedMatrixStorage::new_batched(leading_shape, values).into_tensor();
         Ok(tvec!(output.into_tvalue()))
     }
 }

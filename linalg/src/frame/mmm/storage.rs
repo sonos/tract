@@ -109,8 +109,18 @@ impl TensorStorage for PackedMatrixStorage {
         Box::new(self.clone())
     }
 
-    fn same_as(&self, _other: &dyn TensorStorage) -> bool {
-        false
+    fn same_as(&self, other: &dyn TensorStorage) -> bool {
+        if let Some(other) = other.downcast_ref::<Self>() {
+            self.batch_shape == other.batch_shape
+                && self.values.len() == other.values.len()
+                && self
+                    .values
+                    .iter()
+                    .zip(other.values.iter())
+                    .all(|(a, b)| (&**a as &dyn MMMInputValue).same_as(&**b))
+        } else {
+            false
+        }
     }
 
     fn as_dense(&self) -> Option<&DenseStorage> {
@@ -128,20 +138,6 @@ impl TensorStorage for PackedMatrixStorage {
     fn dyn_hash(&self, state: &mut dyn std::hash::Hasher) {
         for v in &self.values {
             v.dyn_hash(state);
-        }
-    }
-
-    fn eq_storage(&self, other: &dyn TensorStorage) -> bool {
-        if let Some(other) = other.downcast_ref::<Self>() {
-            self.batch_shape == other.batch_shape
-                && self.values.len() == other.values.len()
-                && self
-                    .values
-                    .iter()
-                    .zip(other.values.iter())
-                    .all(|(a, b)| (&**a as &dyn MMMInputValue).same_as(&**b))
-        } else {
-            false
         }
     }
 }

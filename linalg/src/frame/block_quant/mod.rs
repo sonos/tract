@@ -249,11 +249,8 @@ impl PackedBlockQuantFormat {
 impl MMMInputFormat for PackedBlockQuantFormat {
     fn prepare_tensor(&self, t: &Tensor, _k_axis: usize, _mn_axis: usize) -> TractResult<Tensor> {
         let bqs = t.try_storage_as::<BlockQuantStorage>()?;
-        let num_groups: usize = if t.rank() > 2 {
-            t.shape()[..t.rank() - 2].iter().product()
-        } else {
-            1
-        };
+        let num_groups: usize =
+            if t.rank() > 2 { t.shape()[..t.rank() - 2].iter().product() } else { 1 };
         let m_per_group = t.shape()[t.rank().saturating_sub(2)];
         let k = *t.shape().last().unwrap();
         let values = (0..num_groups)
@@ -263,8 +260,8 @@ impl MMMInputFormat for PackedBlockQuantFormat {
                 Ok(Box::new(packed) as Box<dyn MMMInputValue>)
             })
             .collect::<TractResult<Vec<_>>>()?;
-        let shape: TVec<usize> = t.shape().into();
-        Ok(crate::mmm::PackedMatrixStorage::new_batched(&shape, values).into_tensor())
+        let leading_shape = &t.shape()[..t.rank().saturating_sub(2)];
+        Ok(crate::mmm::PackedMatrixStorage::new_batched(leading_shape, values).into_tensor())
     }
 
     fn prepare_one(
