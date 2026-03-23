@@ -13,16 +13,21 @@ impl BlockQuantFact {
         Self { format, shape }
     }
 
+    /// Product of all leading dims except the last two (M, K).
+    /// For rank <= 2, returns 1.
     pub fn num_groups(&self) -> usize {
-        self.shape[0]
+        if self.shape.len() <= 2 { 1 } else { self.shape[..self.shape.len() - 2].iter().product() }
     }
 
+    /// Product of all dims except the last (K). This is the flat M
+    /// dimension (groups * m_per_group).
     pub fn m(&self) -> usize {
-        self.shape[1]
+        self.shape[..self.shape.len() - 1].iter().product()
     }
 
+    /// Last dimension.
     pub fn k(&self) -> usize {
-        self.shape[2]
+        *self.shape.last().unwrap()
     }
 
     pub fn shape(&self) -> &[usize] {
@@ -42,9 +47,8 @@ impl OpaqueFact for BlockQuantFact {
     }
 
     fn buffer_sizes(&self) -> TVec<TDim> {
-        let g = self.num_groups();
-        let per_group = self.m() * self.k() / self.format.block_len() * self.format.block_bytes();
-        tvec!((g * per_group).to_dim())
+        let total = self.m() * self.k() / self.format.block_len() * self.format.block_bytes();
+        tvec!(total.to_dim())
     }
 }
 

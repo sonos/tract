@@ -104,15 +104,12 @@ pub fn variable(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> 
         }
     }
     if let Some(bqs) = tensor.storage_as::<BlockQuantStorage>() {
-        // NNEF stores block-quant variable shapes as [M, K] for matmul or
-        // [O, I/G, spatial...] for conv. Use the NNEF shape when it has
-        // spatial dims (rank >= 3), otherwise keep the storage [1, M, K].
-        let tensor_shape: TVec<usize> =
-            if shape.len() >= 3 { shape.clone() } else { tensor.shape().into() };
-        let tensor = bqs.clone().into_tensor_with_shape(&tensor_shape).into_arc_tensor();
+        // Use the NNEF variable shape directly — the graph's own unsqueeze
+        // ops will add any group dims as needed.
+        let tensor = bqs.clone().into_tensor_with_shape(&shape).into_arc_tensor();
         let fact: Box<dyn OpaqueFact> = Box::new(BlockQuantFact::new(
             tract_core::dyn_clone::clone_box(bqs.format()),
-            tensor_shape,
+            shape.clone(),
         ));
         builder.wire(Const::new_with_opaque_fact(tensor, fact)?, &[])
     } else {
