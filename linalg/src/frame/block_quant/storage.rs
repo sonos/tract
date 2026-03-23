@@ -8,18 +8,18 @@ use super::{BlockQuant, BlockQuantFact};
 
 /// Concrete tensor storage for block-quantized weights.
 ///
-/// Stores one or more groups of quantized data as `Arc<Blob>` along with the
-/// block-quant format and logical m×k dimensions.  Multi-group tensors arise
-/// from `SplitGroupBlockQuant` which partitions the m dimension.
+/// Stores a single contiguous `Arc<Blob>` of quantized data along with the
+/// block-quant format and logical m×k dimensions.  The G (group) dimension
+/// is purely a tensor-shape concern — storage knows nothing about groups.
 pub struct BlockQuantStorage {
     format: Box<dyn BlockQuant>,
     m: usize,
     k: usize,
-    groups: Vec<Arc<Blob>>,
+    data: Arc<Blob>,
 }
 
 impl BlockQuantStorage {
-    fn expected_group_bytes(format: &dyn BlockQuant, m: usize, k: usize) -> usize {
+    fn expected_bytes(format: &dyn BlockQuant, m: usize, k: usize) -> usize {
         m * k / format.block_len() * format.block_bytes()
     }
 
@@ -27,41 +27,19 @@ impl BlockQuantStorage {
         format: Box<dyn BlockQuant>,
         m: usize,
         k: usize,
-        value: Arc<Blob>,
+        data: Arc<Blob>,
     ) -> TractResult<Self> {
-        let expected = Self::expected_group_bytes(&*format, m, k);
+        let expected = Self::expected_bytes(&*format, m, k);
         ensure!(
-            value.len() == expected,
+            data.len() == expected,
             "BlockQuantStorage::new: blob length {} does not match expected {} (m={}, k={}, format={})",
-            value.len(),
+            data.len(),
             expected,
             m,
             k,
             format,
         );
-        Ok(Self { format, m, k, groups: vec![value] })
-    }
-
-    pub fn new_multi_group(
-        format: Box<dyn BlockQuant>,
-        m: usize,
-        k: usize,
-        groups: Vec<Arc<Blob>>,
-    ) -> TractResult<Self> {
-        let expected = Self::expected_group_bytes(&*format, m, k);
-        for (i, g) in groups.iter().enumerate() {
-            ensure!(
-                g.len() == expected,
-                "BlockQuantStorage::new_multi_group: group {} blob length {} does not match expected {} (m={}, k={}, format={})",
-                i,
-                g.len(),
-                expected,
-                m,
-                k,
-                format,
-            );
-        }
-        Ok(Self { format, m, k, groups })
+        Ok(Self { format, m, k, data })
     }
 
     pub fn format(&self) -> &dyn BlockQuant {
@@ -76,100 +54,59 @@ impl BlockQuantStorage {
         self.k
     }
 
-    pub fn num_groups(&self) -> usize {
-        self.groups.len()
-    }
-
-    pub fn group_blob(&self, i: usize) -> &Arc<Blob> {
-        &self.groups[i]
-    }
-
-    pub fn groups(&self) -> &[Arc<Blob>] {
-        &self.groups
-    }
-
-    /// Returns the single blob for a non-multi-group storage.
-    ///
-    /// # Panics
-    /// Panics if this storage has more than one group.
+    /// Returns the single contiguous blob.
     pub fn value(&self) -> &Arc<Blob> {
-        assert_eq!(self.groups.len(), 1, "value() called on multi-group BlockQuantStorage");
-        &self.groups[0]
+        &self.data
     }
 
-    /// Converts this storage into a rank-3 `Tensor` with shape `[G, M, K]`.
+    /// Converts this storage into a rank-3 `Tensor` with shape `[1, M, K]`.
     pub fn into_tensor(self) -> Tensor {
-        let g = self.groups.len();
-        Tensor::from_storage(DatumType::Opaque, &[g, self.m, self.k], self)
+        Tensor::from_storage(DatumType::Opaque, &[1, self.m, self.k], self)
+    }
+
+    /// Converts this storage into a `Tensor` with the given shape.
+    ///
+    /// The shape's product of dimensions must be consistent with the stored data.
+    pub fn into_tensor_with_shape(self, shape: &[usize]) -> Tensor {
+        Tensor::from_storage(DatumType::Opaque, shape, self)
     }
 
     /// Reconstructs a `BlockQuantFact` from this storage's metadata.
     pub fn to_block_quant_fact(&self) -> BlockQuantFact {
-        BlockQuantFact::new(self.format.clone(), tvec!(self.num_groups(), self.m, self.k))
+        BlockQuantFact::new(self.format.clone(), tvec!(1, self.m, self.k))
     }
 
-    /// Returns a clone with updated m and k dimensions, preserving format and group blobs.
+    /// Returns a clone with updated m and k dimensions, preserving format and data blob.
     pub fn with_shape(&self, m: usize, k: usize) -> TractResult<Self> {
-        let expected = Self::expected_group_bytes(&*self.format, m, k);
-        for (i, g) in self.groups.iter().enumerate() {
-            ensure!(
-                g.len() == expected,
-                "BlockQuantStorage::with_shape: group {} blob length {} does not match expected {} (m={}, k={}, format={})",
-                i,
-                g.len(),
-                expected,
-                m,
-                k,
-                self.format,
-            );
-        }
-        Ok(Self { format: self.format.clone(), m, k, groups: self.groups.clone() })
+        let expected = Self::expected_bytes(&*self.format, m, k);
+        ensure!(
+            self.data.len() == expected,
+            "BlockQuantStorage::with_shape: blob length {} does not match expected {} (m={}, k={}, format={})",
+            self.data.len(),
+            expected,
+            m,
+            k,
+            self.format,
+        );
+        Ok(Self { format: self.format.clone(), m, k, data: self.data.clone() })
     }
 
-    /// Splits a single-group storage into `num_groups` by partitioning the m dimension.
+    /// Returns a byte slice for a single group within the contiguous data.
     ///
-    /// Each group gets `m / num_groups` rows. Panics if not single-group or m not divisible.
-    pub fn split_m(&self, num_groups: usize) -> TractResult<Self> {
-        assert_eq!(self.groups.len(), 1, "split_m requires single-group storage");
-        ensure!(
-            self.m % num_groups == 0,
-            "m={} not divisible by num_groups={}",
-            self.m,
-            num_groups
-        );
+    /// The caller provides the group index and total number of groups.
+    /// `self.m` must be the total M across all groups (i.e. `num_groups * m_per_group`).
+    pub fn group_slice(&self, g: usize, num_groups: usize) -> &[u8] {
         let rows_per_group = self.m / num_groups;
         let row_bytes = self.k / self.format.block_len() * self.format.block_bytes();
         let group_bytes = rows_per_group * row_bytes;
-        let blob = &self.groups[0];
-        let groups = (0..num_groups)
-            .map(|g| {
-                let start = g * group_bytes;
-                let mut new_blob =
-                    unsafe { Blob::new_for_size_and_align(group_bytes, vector_size()) };
-                new_blob.copy_from_slice(&blob[start..start + group_bytes]);
-                Arc::new(new_blob)
-            })
-            .collect();
-        let result = Self { format: self.format.clone(), m: rows_per_group, k: self.k, groups };
-        let expected = Self::expected_group_bytes(&*result.format, result.m, result.k);
-        for (i, g) in result.groups.iter().enumerate() {
-            ensure!(
-                g.len() == expected,
-                "BlockQuantStorage::split_m: group {} blob length {} does not match expected {} (m={}, k={})",
-                i,
-                g.len(),
-                expected,
-                result.m,
-                result.k,
-            );
-        }
-        Ok(result)
+        let start = g * group_bytes;
+        &self.data[start..start + group_bytes]
     }
 }
 
 impl Clone for BlockQuantStorage {
     fn clone(&self) -> Self {
-        Self { format: self.format.clone(), m: self.m, k: self.k, groups: self.groups.clone() }
+        Self { format: self.format.clone(), m: self.m, k: self.k, data: self.data.clone() }
     }
 }
 
@@ -177,11 +114,11 @@ impl fmt::Debug for BlockQuantStorage {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "BlockQuantStorage({}, m={}, k={}, groups={})",
+            "BlockQuantStorage({}, m={}, k={}, bytes={})",
             self.format,
             self.m,
             self.k,
-            self.groups.len()
+            self.data.len()
         )
     }
 }
@@ -190,22 +127,22 @@ impl fmt::Display for BlockQuantStorage {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "BlockQuantStorage({}, m={}, k={}, groups={})",
+            "BlockQuantStorage({}, m={}, k={}, bytes={})",
             self.format,
             self.m,
             self.k,
-            self.groups.len()
+            self.data.len()
         )
     }
 }
 
 impl TensorStorage for BlockQuantStorage {
     fn byte_len(&self) -> usize {
-        self.groups.iter().map(|g| g.len()).sum()
+        self.data.len()
     }
 
     fn is_empty(&self) -> bool {
-        self.groups.is_empty() || self.groups.iter().all(|g| g.is_empty())
+        self.data.is_empty()
     }
 
     fn deep_clone(&self) -> Box<dyn TensorStorage> {
@@ -229,9 +166,7 @@ impl TensorStorage for BlockQuantStorage {
         self.format.dyn_hash(state);
         self.m.hash(&mut HashWrapper(state));
         self.k.hash(&mut HashWrapper(state));
-        for g in &self.groups {
-            state.write(g.as_bytes());
-        }
+        state.write(self.data.as_bytes());
     }
 
     fn same_as(&self, other: &dyn TensorStorage) -> bool {
@@ -239,8 +174,7 @@ impl TensorStorage for BlockQuantStorage {
             self.format.same_as(&*other.format)
                 && self.m == other.m
                 && self.k == other.k
-                && self.groups.len() == other.groups.len()
-                && self.groups.iter().zip(&other.groups).all(|(a, b)| a.as_bytes() == b.as_bytes())
+                && self.data.as_bytes() == other.data.as_bytes()
         } else {
             false
         }

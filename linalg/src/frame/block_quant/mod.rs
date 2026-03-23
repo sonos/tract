@@ -249,11 +249,11 @@ impl PackedBlockQuantFormat {
 impl MMMInputFormat for PackedBlockQuantFormat {
     fn prepare_tensor(&self, t: &Tensor, _k_axis: usize, _mn_axis: usize) -> TractResult<Tensor> {
         let bqs = t.try_storage_as::<BlockQuantStorage>()?;
-        let packed = bqs
-            .groups()
-            .iter()
-            .map(|blob| {
-                let packed = self.pack(blob, bqs.k())?;
+        let num_groups = t.shape()[0];
+        let packed = (0..num_groups)
+            .map(|g| {
+                let slice = bqs.group_slice(g, num_groups);
+                let packed = self.pack(slice, bqs.k())?;
                 Ok(Opaque(Arc::new(Box::new(packed) as Box<dyn MMMInputValue>)))
             })
             .collect::<TractResult<Vec<Opaque>>>()?;
