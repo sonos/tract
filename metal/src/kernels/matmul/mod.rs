@@ -274,9 +274,9 @@ impl<M: GemmKernel> GemmImpl<M> {
         a: &DeviceTensor,
         b: &DeviceTensor,
     ) -> TractResult<DeviceTensor> {
-        let b_shape = get_quant_fact(b, &Q4_0)
-            .map(|bqf| b.shape().iter().cloned().chain(bqf.shape().iter().copied()).collect())
-            .unwrap_or(b.shape().to_vec());
+        // For q40 weights the tensor shape already carries the full logical
+        // dimensions [batch, n, k].  No need to chain with the fact shape.
+        let b_shape = b.shape().to_vec();
 
         let c_dt = self.matmul.output_dt(a.datum_type(), b.datum_type())?;
         let c_shape = self.output_shape(a.shape(), &b_shape);
@@ -299,10 +299,9 @@ impl<M: GemmKernel> GemmImpl<M> {
         stream.retain_tensor(c);
 
         let q40_b = get_quant_fact(b, &Q4_0);
-        let b_shape = q40_b
-            .clone()
-            .map(|bqf| b.shape().iter().cloned().chain(bqf.shape().iter().copied()).collect())
-            .unwrap_or(b.shape().to_vec());
+        // For q40 weights the tensor shape already carries the full logical
+        // dimensions [batch, n, k].  No need to chain with the fact shape.
+        let b_shape = b.shape().to_vec();
 
         ensure!(c.shape() == self.output_shape(a.shape(), &b_shape).as_slice());
 
@@ -912,7 +911,7 @@ mod tests {
                             self.k,
                             Arc::new(b_quant),
                         )?
-                        .into_tensor()
+                        .into_tensor_with_shape(&[self.b, self.n, self.k])
                     }
                 } else {
                     Tensor::from_shape(&[self.b, self.k, self.n], &self.rhs)?

@@ -182,7 +182,10 @@ impl DeviceContext for MetalContext {
         let (data_bytes, bqf) = if let Some(bqs) = bqs {
             (
                 bqs.value().as_bytes(),
-                Some(Box::new(bqs.to_block_quant_fact()) as Box<dyn OpaqueFact>),
+                Some(Box::new(BlockQuantFact::new(
+                    tract_core::dyn_clone::clone_box(bqs.format()),
+                    tensor.view().tensor.shape().into(),
+                )) as Box<dyn OpaqueFact>),
             )
         } else {
             (view.tensor.as_bytes(), None)

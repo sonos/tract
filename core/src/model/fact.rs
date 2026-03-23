@@ -289,7 +289,8 @@ impl TypedFact {
             if let Some(bqf) = self.opaque_fact().and_then(|of| of.downcast_ref::<BlockQuantFact>())
             {
                 if let Some(bqs) = k.storage_as::<BlockQuantStorage>() {
-                    let inner_bqf = bqs.to_block_quant_fact();
+                    let inner_bqf =
+                        BlockQuantFact::new(dyn_clone::clone_box(bqs.format()), k.shape().into());
                     ensure!(&inner_bqf == bqf, "BlockQuantStorage fact mismatch");
                 }
             }
@@ -400,9 +401,11 @@ impl From<Tensor> for TypedFact {
 
 impl From<Arc<Tensor>> for TypedFact {
     fn from(t: Arc<Tensor>) -> TypedFact {
-        let opaque_fact: Option<Box<dyn OpaqueFact>> = t
-            .storage_as::<BlockQuantStorage>()
-            .map(|bqs| Box::new(bqs.to_block_quant_fact()) as Box<dyn OpaqueFact>);
+        let opaque_fact: Option<Box<dyn OpaqueFact>> =
+            t.storage_as::<BlockQuantStorage>().map(|bqs| {
+                Box::new(BlockQuantFact::new(dyn_clone::clone_box(bqs.format()), t.shape().into()))
+                    as Box<dyn OpaqueFact>
+            });
         TypedFact {
             datum_type: t.datum_type(),
             shape: ShapeFact::from_dims(t.shape().iter().map(TDim::from)),

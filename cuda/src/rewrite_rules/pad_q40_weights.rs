@@ -63,9 +63,17 @@ pub fn pad_q40_weights(
     let padded_bqs = pad_q40(bqs)?;
 
     let typed_fact: TypedFact = Arc::clone(op.val()).into();
-    let padded_fact = typed_fact.with_opaque_fact(padded_bqs.to_block_quant_fact());
+    // Preserve the original tensor's group structure in the padded shape
+    let mut padded_shape: TVec<usize> = host_tensor.shape().into();
+    let rank = padded_shape.len();
+    padded_shape[rank - 1] = padded_bqs.k();
+    let padded_bqf = BlockQuantFact::new(
+        tract_core::dyn_clone::clone_box(padded_bqs.format()),
+        padded_shape.clone(),
+    );
+    let padded_fact = typed_fact.with_opaque_fact(padded_bqf);
 
-    let padded_tensor = padded_bqs.into_tensor().into_arc_tensor();
+    let padded_tensor = padded_bqs.into_tensor_with_shape(&padded_shape).into_arc_tensor();
 
     let new_const = Const::new_with_opaque_fact(
         padded_tensor.into_device()?.into_opaque_tensor().into_arc_tensor(),
