@@ -28,7 +28,7 @@ echo
 echo "$WHITE ### tract ### $NC"
 echo
 
-cargo test -p tract
+cargo -q test $CARGO_EXTRA -q -p tract
 
 for c in data linalg core nnef hir onnx pulse onnx-opl pulse-opl
 do
