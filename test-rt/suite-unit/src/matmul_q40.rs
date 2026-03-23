@@ -103,9 +103,11 @@ impl MatmulQ40Problem {
         )?[0];
 
         let inputs = if !self.weights_in_b { [a, padded_b] } else { [padded_b, a] };
+        // Block-quant tensor is rank 3 [G=1, rows, K]; add group dim to its axes
+        let axes_str = if !self.weights_in_b { "gmk,nk->mn" } else { "mk,gnk->mn" };
         let output = model.wire_node(
             "einsum",
-            EinSum { axes: "mk,nk->mn".parse()?, operating_dt: f32::datum_type(), q_params: None },
+            EinSum { axes: axes_str.parse()?, operating_dt: f32::datum_type(), q_params: None },
             &inputs,
         )?;
 

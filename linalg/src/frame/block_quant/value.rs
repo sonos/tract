@@ -13,12 +13,16 @@ impl BlockQuantFact {
         Self { format, shape }
     }
 
-    pub fn m(&self) -> usize {
+    pub fn num_groups(&self) -> usize {
         self.shape[0]
     }
 
+    pub fn m(&self) -> usize {
+        self.shape[1]
+    }
+
     pub fn k(&self) -> usize {
-        self.shape.iter().skip(1).product()
+        self.shape[2]
     }
 
     pub fn shape(&self) -> &[usize] {
@@ -38,11 +42,9 @@ impl OpaqueFact for BlockQuantFact {
     }
 
     fn buffer_sizes(&self) -> TVec<TDim> {
-        tvec!(
-            (self.shape.iter().product::<usize>() / self.format.block_len()
-                * self.format.block_bytes())
-            .to_dim()
-        )
+        let g = self.num_groups();
+        let per_group = self.m() * self.k() / self.format.block_len() * self.format.block_bytes();
+        tvec!((g * per_group).to_dim())
     }
 }
 

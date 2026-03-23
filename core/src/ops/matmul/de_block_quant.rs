@@ -76,7 +76,10 @@ fn block_quant_einsum_weights(
             &[],
         )?;
         let tap = patch.tap_model(model, node.inputs[1])?;
-        let wire = patch.wire_node(prefix, op.op.clone(), &[weights[0], tap])?;
+        // Block-quant tensor is rank 3 [G=1, M, K]; add a group dim to the axes
+        let mut new_op = op.op.clone();
+        new_op.axes = new_op.axes.with_extra_axis('G', InOut::In(slot), 0)?;
+        let wire = patch.wire_node(prefix, new_op, &[weights[0], tap])?;
         patch.shunt_outside(model, node.id.into(), wire[0])?;
         return Ok(Some(patch));
     }

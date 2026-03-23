@@ -378,17 +378,20 @@ impl AxisOp {
     }
 
     pub fn change_tensor(&self, tensor: &mut Tensor, broadcasting: bool) -> TractResult<()> {
-        if self.required_rank() > tensor.rank() && tensor.datum_type().is_opaque() {
-            let inner_change = self.trim_left(tensor.rank())?;
-            if let Some(bqs) = tensor.storage_as::<BlockQuantStorage>() {
-                let mut new_shape: TVec<usize> = tvec![bqs.m(), bqs.k()];
-                inner_change.change_shape_array(&mut new_shape, false)?;
-                let new = bqs.with_shape(new_shape[0], new_shape[1..].iter().product())?;
-                let mut new_tensor = new.into_tensor();
-                std::mem::swap(tensor, &mut new_tensor);
-            } else {
-                bail!("Can't apply {self:?} to opaque tensor {tensor:?}");
-            }
+        if tensor.storage_as::<BlockQuantStorage>().is_some() {
+            // Block-quant tensors are always rank 3 [G, M, K]. Reshape the
+            // storage when the logical shape changes.
+            let bqs = tensor.try_storage_as::<BlockQuantStorage>()?;
+            let mut new_shape: TVec<usize> = tensor.shape().into();
+            self.change_shape_array(&mut new_shape, false)?;
+            ensure!(
+                new_shape.len() == 3,
+                "Block-quant tensors must stay rank 3, got {:?} after {self:?}",
+                new_shape
+            );
+            let new = bqs.with_shape(new_shape[1], new_shape[2])?;
+            let mut new_tensor = new.into_tensor();
+            std::mem::swap(tensor, &mut new_tensor);
             return Ok(());
         }
         ensure!(self.required_rank() <= tensor.rank());
@@ -665,16 +668,16 @@ impl TypedOp for AxisOp {
     as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        if self.required_rank() > inputs[0].rank()
-            && let Some(bqf) =
-                inputs[0].opaque_fact().and_then(|of| of.downcast_ref::<BlockQuantFact>())
+        if let Some(bqf) =
+            inputs[0].opaque_fact().and_then(|of| of.downcast_ref::<BlockQuantFact>())
         {
-            let mut new_inner_shape: TVec<usize> = bqf.shape().into();
-            self.trim_left(inputs[0].rank())?.change_shape_array(&mut new_inner_shape, false)?;
-            let new_bqf = BlockQuantFact::new(bqf.format.clone(), new_inner_shape);
-            let mut new_fact = Opaque::fact(inputs[0].shape.clone()).with_opaque_fact(new_bqf);
+            let mut new_shape: TVec<usize> = bqf.shape().into();
+            self.change_shape_array(&mut new_shape, false)?;
+            let new_bqf = BlockQuantFact::new(bqf.format.clone(), new_shape.clone());
+            let shape: TVec<TDim> = new_shape.iter().map(|d| d.to_dim()).collect();
+            let mut new_fact = DatumType::Opaque.fact(&*shape).with_opaque_fact(new_bqf);
             if let Some(k) = &inputs[0].konst {
-                let mut new = k.clone().into_tensor(); // cloning bqv is cheap
+                let mut new = k.clone().into_tensor();
                 self.change_tensor(&mut new, false)?;
                 new_fact.konst = Some(new.into());
             }

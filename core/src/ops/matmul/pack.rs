@@ -197,8 +197,8 @@ impl EvalOp for OptSimpleMatMulPack {
 }
 
 impl TypedOp for OptSimpleMatMulPack {
-    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        let fact = Opaque::fact(inputs[0].shape.clone()).with_opaque_fact(PackedBlockQuantFact {
+    fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        let fact = Opaque::fact::<[usize; 0]>([]).with_opaque_fact(PackedBlockQuantFact {
             format: self.packed_format.clone(),
             shape: tvec!(self.m, self.k),
         });
