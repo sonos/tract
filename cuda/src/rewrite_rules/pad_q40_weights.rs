@@ -60,13 +60,15 @@ pub fn pad_q40_weights(
 
     let host_tensor = dev_tensor.to_host()?.into_tensor();
     let bqs = as_q40_tensor(&host_tensor).expect("expected Q4_0 tensor view");
-    let padded_bqs = pad_q40(bqs)?;
+    let m: usize = host_tensor.shape()[..host_tensor.rank() - 1].iter().product();
+    let k = *host_tensor.shape().last().unwrap();
+    let padded_bqs = pad_q40(bqs, m, k)?;
 
     let typed_fact: TypedFact = Arc::clone(op.val()).into();
     // Preserve the original tensor's group structure in the padded shape
     let mut padded_shape: TVec<usize> = host_tensor.shape().into();
     let rank = padded_shape.len();
-    padded_shape[rank - 1] = padded_bqs.k();
+    padded_shape[rank - 1] = k.next_multiple_of(Q40_ROW_PADDING);
     let padded_bqf = BlockQuantFact::new(
         tract_core::dyn_clone::clone_box(padded_bqs.format()),
         padded_shape.clone(),

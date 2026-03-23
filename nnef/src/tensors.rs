@@ -189,8 +189,8 @@ pub fn read_tensor(mut reader: impl Read) -> TractResult<Tensor> {
 
 pub fn write_tensor(w: &mut impl Write, tensor: &Tensor) -> TractResult<()> {
     ensure!(tensor.datum_type() != TDim::datum_type());
-    if let Some(bqs) = tensor.storage_as::<BlockQuantStorage>() {
-        return write_block_quant_value(w, bqs);
+    if tensor.storage_as::<BlockQuantStorage>().is_some() {
+        return write_block_quant_value(w, tensor);
     }
     let dense = tensor.try_as_dense()?;
     let mut header = Header::default();
@@ -290,15 +290,18 @@ fn read_block_quant_value(r: &mut impl Read, header: &Header) -> TractResult<Ten
     if header.item_type == 0x2040 {
         tract_to_gguf_q4_0_packing(&mut blob)?;
     }
-    let tensor = BlockQuantStorage::new(format, q_m, q_k, Arc::new(blob))?.into_tensor();
+    let tensor = BlockQuantStorage::new(format, q_m, q_k, Arc::new(blob))?
+        .into_tensor_with_shape(&[1, q_m, q_k]);
     Ok(tensor)
 }
 
 #[allow(clippy::field_reassign_with_default)]
-fn write_block_quant_value(w: &mut impl Write, bqs: &BlockQuantStorage) -> TractResult<()> {
+fn write_block_quant_value(w: &mut impl Write, tensor: &Tensor) -> TractResult<()> {
+    let bqs = tensor.try_storage_as::<BlockQuantStorage>()?;
     let format = bqs.format();
     ensure!(format.same_as(&Q4_0) || format.same_as(&Q8_1));
-    let flat_shape: [usize; 2] = [bqs.m(), bqs.k()];
+    let s = tensor.shape();
+    let flat_shape: [usize; 2] = [s[..s.len() - 1].iter().product(), *s.last().unwrap()];
 
     let mut header = Header::default();
     header.rank = flat_shape.len() as u32;

@@ -162,8 +162,7 @@ pub fn get_ggml_q81_fact(t: &DeviceTensor) -> Option<GgmlQuantQ81Fact> {
     }
 }
 
-pub fn pad_q40(bqs: &BlockQuantStorage) -> TractResult<BlockQuantStorage> {
-    let k = bqs.k();
+pub fn pad_q40(bqs: &BlockQuantStorage, m: usize, k: usize) -> TractResult<BlockQuantStorage> {
     ensure!(k % 32 == 0);
 
     let to_pad = k.next_multiple_of(Q40_ROW_PADDING) - k;
@@ -171,7 +170,6 @@ pub fn pad_q40(bqs: &BlockQuantStorage) -> TractResult<BlockQuantStorage> {
         return Ok(bqs.clone()); // No padding needed
     }
 
-    let m = bqs.m();
     let row_bytes = k * Q4_0.block_bytes() / Q4_0.block_len();
 
     let pad_quant = Q4_0.quant_f32(&vec![0f32; to_pad])?;

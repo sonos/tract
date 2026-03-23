@@ -20,7 +20,7 @@ mod value;
 pub use helpers::{NibbleReader, NibbleWriter};
 pub use q4_0::Q4_0;
 pub use q8_1::Q8_1;
-pub use storage::BlockQuantStorage;
+pub use storage::{BlockQuantStorage, block_quant_slice};
 pub use value::{BlockQuantFact, PackedBlockQuantFact};
 
 use crate::mmm::{EagerPackedInput, MMMInputFormat};
@@ -250,10 +250,12 @@ impl MMMInputFormat for PackedBlockQuantFormat {
     fn prepare_tensor(&self, t: &Tensor, _k_axis: usize, _mn_axis: usize) -> TractResult<Tensor> {
         let bqs = t.try_storage_as::<BlockQuantStorage>()?;
         let num_groups = t.shape()[0];
+        let m_per_group = t.shape()[1];
+        let k = *t.shape().last().unwrap();
         let packed = (0..num_groups)
             .map(|g| {
-                let slice = bqs.group_slice(g, num_groups);
-                let packed = self.pack(slice, bqs.k())?;
+                let slice = block_quant_slice(bqs.value(), &*self.bq, m_per_group, k, g);
+                let packed = self.pack(slice, k)?;
                 Ok(Opaque(Arc::new(Box::new(packed) as Box<dyn MMMInputValue>)))
             })
             .collect::<TractResult<Vec<Opaque>>>()?;
@@ -288,7 +290,8 @@ impl MMMInputFormat for PackedBlockQuantFormat {
                 todo!()
             };
             Cow::Owned(
-                BlockQuantStorage::new(self.bq.clone(), m, k, Arc::new(quant))?.into_tensor(),
+                BlockQuantStorage::new(self.bq.clone(), m, k, Arc::new(quant))?
+                    .into_tensor_with_shape(&[1, m, k]),
             )
         } else {
             Cow::Borrowed(t)
@@ -296,7 +299,8 @@ impl MMMInputFormat for PackedBlockQuantFormat {
         ensure!(mn_axis == 0);
         ensure!(k_axis == 1);
         let bqs = t.try_storage_as::<BlockQuantStorage>()?;
-        let packed = self.pack(bqs.value(), bqs.k())?;
+        let k = *t.shape().last().unwrap();
+        let packed = self.pack(bqs.value(), k)?;
         Ok(Box::new(packed))
     }
 

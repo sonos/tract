@@ -94,14 +94,20 @@ impl Gather {
         Ok(output)
     }
 
-    fn eval_bq<F: Datum>(&self, data: &BlockQuantStorage, indices: &TValue) -> TractResult<Tensor> {
+    fn eval_bq<F: Datum>(
+        &self,
+        data: &BlockQuantStorage,
+        m: usize,
+        k: usize,
+        indices: &TValue,
+    ) -> TractResult<Tensor> {
         ensure!(self.axis == 0);
-        let data_shape = &[data.m(), data.k()];
+        let data_shape = &[m, k];
         let output_shape = &*self.compute_output_shape(data_shape, indices.shape())?;
         let mut output = unsafe { Tensor::uninitialized::<F>(output_shape)? };
         let indices_dense = indices.try_as_dense()?;
         let indices_slice = indices_dense.as_slice::<i64>()?;
-        let vector_len = data.k();
+        let vector_len = k;
         let blob = data.value();
 
         let block_len = data.format().block_len();
@@ -112,7 +118,7 @@ impl Gather {
             for (pos, ix) in indices_slice.iter().enumerate() {
                 let slice = &mut output_slice[pos * vector_len..][..vector_len];
                 for i in (0..vector_len).step_by(block_len) {
-                    let offset = data.k() * *ix as usize + i;
+                    let offset = k * *ix as usize + i;
                     let block_id = offset / block_len;
                     data.format().dequant_block_f16(
                         &blob[block_id * block_bytes..][..block_bytes],
@@ -126,7 +132,7 @@ impl Gather {
             for (pos, ix) in indices_slice.iter().enumerate() {
                 let slice = &mut output_slice[pos * vector_len..][..vector_len];
                 for i in (0..vector_len).step_by(block_len) {
-                    let offset = data.k() * *ix as usize + i;
+                    let offset = k * *ix as usize + i;
                     let block_id = offset / block_len;
                     data.format().dequant_block_f32(
                         &blob[block_id * block_bytes..][..block_bytes],
@@ -259,7 +265,9 @@ impl EvalOp for Gather {
         let (data, indices) = args_2!(inputs);
         let result = if let Some(bqs) = data.storage_as::<BlockQuantStorage>() {
             let dt = self.output_type.unwrap();
-            dispatch_floatlike!(Self::eval_bq(dt)(self, bqs, &indices))?
+            let m = data.shape()[data.rank() - 2];
+            let k = *data.shape().last().unwrap();
+            dispatch_floatlike!(Self::eval_bq(dt)(self, bqs, m, k, &indices))?
         } else if let Some(opaque) =
             data.try_as_dense().as_ref().ok().and_then(|d| d.to_scalar::<Opaque>().ok())
         {

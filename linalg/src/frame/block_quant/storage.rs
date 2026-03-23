@@ -1,20 +1,16 @@
 use std::fmt;
-use std::hash::Hash;
 use std::sync::Arc;
 
 use tract_data::internal::*;
 
-use super::{BlockQuant, BlockQuantFact};
+use super::BlockQuant;
 
 /// Concrete tensor storage for block-quantized weights.
 ///
 /// Stores a single contiguous `Arc<Blob>` of quantized data along with the
-/// block-quant format and logical m×k dimensions.  The G (group) dimension
-/// is purely a tensor-shape concern — storage knows nothing about groups.
+/// block-quant format. Shape lives on the tensor, not here.
 pub struct BlockQuantStorage {
     format: Box<dyn BlockQuant>,
-    m: usize,
-    k: usize,
     data: Arc<Blob>,
 }
 
@@ -39,19 +35,11 @@ impl BlockQuantStorage {
             k,
             format,
         );
-        Ok(Self { format, m, k, data })
+        Ok(Self { format, data })
     }
 
     pub fn format(&self) -> &dyn BlockQuant {
         &*self.format
-    }
-
-    pub fn m(&self) -> usize {
-        self.m
-    }
-
-    pub fn k(&self) -> usize {
-        self.k
     }
 
     /// Returns the single contiguous blob.
@@ -59,80 +47,41 @@ impl BlockQuantStorage {
         &self.data
     }
 
-    /// Converts this storage into a rank-3 `Tensor` with shape `[1, M, K]`.
-    pub fn into_tensor(self) -> Tensor {
-        Tensor::from_storage(DatumType::Opaque, &[1, self.m, self.k], self)
-    }
-
     /// Converts this storage into a `Tensor` with the given shape.
-    ///
-    /// The shape's product of dimensions must be consistent with the stored data.
     pub fn into_tensor_with_shape(self, shape: &[usize]) -> Tensor {
         Tensor::from_storage(DatumType::Opaque, shape, self)
     }
+}
 
-    /// Reconstructs a `BlockQuantFact` from this storage's metadata.
-    pub fn to_block_quant_fact(&self) -> BlockQuantFact {
-        BlockQuantFact::new(self.format.clone(), tvec!(1, self.m, self.k))
-    }
-
-    /// Returns a clone with updated m and k dimensions, preserving format and data blob.
-    pub fn with_shape(&self, m: usize, k: usize) -> TractResult<Self> {
-        let expected = Self::expected_bytes(&*self.format, m, k);
-        ensure!(
-            self.data.len() == expected,
-            "BlockQuantStorage::with_shape: blob length {} does not match expected {} (m={}, k={}, format={})",
-            self.data.len(),
-            expected,
-            m,
-            k,
-            self.format,
-        );
-        Ok(Self { format: self.format.clone(), m, k, data: self.data.clone() })
-    }
-
-    /// Returns a byte slice for a single group within the contiguous data.
-    ///
-    /// The caller provides the group index and total number of groups.
-    /// `self.m` must be the total M across all groups (i.e. `num_groups * m_per_group`).
-    pub fn group_slice(&self, g: usize, num_groups: usize) -> &[u8] {
-        let rows_per_group = self.m / num_groups;
-        let row_bytes = self.k / self.format.block_len() * self.format.block_bytes();
-        let group_bytes = rows_per_group * row_bytes;
-        let start = g * group_bytes;
-        &self.data[start..start + group_bytes]
-    }
+/// Returns a byte slice for a single group within contiguous block-quant data.
+pub fn block_quant_slice<'a>(
+    data: &'a [u8],
+    format: &dyn BlockQuant,
+    m_per_group: usize,
+    k: usize,
+    g: usize,
+) -> &'a [u8] {
+    let row_bytes = k / format.block_len() * format.block_bytes();
+    let group_bytes = m_per_group * row_bytes;
+    let start = g * group_bytes;
+    &data[start..start + group_bytes]
 }
 
 impl Clone for BlockQuantStorage {
     fn clone(&self) -> Self {
-        Self { format: self.format.clone(), m: self.m, k: self.k, data: self.data.clone() }
+        Self { format: self.format.clone(), data: self.data.clone() }
     }
 }
 
 impl fmt::Debug for BlockQuantStorage {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "BlockQuantStorage({}, m={}, k={}, bytes={})",
-            self.format,
-            self.m,
-            self.k,
-            self.data.len()
-        )
+        write!(f, "BlockQuantStorage({}, bytes={})", self.format, self.data.len())
     }
 }
 
 impl fmt::Display for BlockQuantStorage {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "BlockQuantStorage({}, m={}, k={}, bytes={})",
-            self.format,
-            self.m,
-            self.k,
-            self.data.len()
-        )
+        write!(f, "BlockQuantStorage({}, bytes={})", self.format, self.data.len())
     }
 }
 
@@ -164,32 +113,14 @@ impl TensorStorage for BlockQuantStorage {
     fn dyn_hash(&self, state: &mut dyn std::hash::Hasher) {
         state.write_u8(1);
         self.format.dyn_hash(state);
-        self.m.hash(&mut HashWrapper(state));
-        self.k.hash(&mut HashWrapper(state));
         state.write(self.data.as_bytes());
     }
 
     fn same_as(&self, other: &dyn TensorStorage) -> bool {
         if let Some(other) = other.downcast_ref::<Self>() {
-            self.format.same_as(&*other.format)
-                && self.m == other.m
-                && self.k == other.k
-                && self.data.as_bytes() == other.data.as_bytes()
+            self.format.same_as(&*other.format) && self.data.as_bytes() == other.data.as_bytes()
         } else {
             false
         }
-    }
-}
-
-/// Adapter to bridge `&mut dyn Hasher` into `impl Hasher` for the `Hash` trait.
-struct HashWrapper<'a>(&'a mut dyn std::hash::Hasher);
-
-impl std::hash::Hasher for HashWrapper<'_> {
-    fn finish(&self) -> u64 {
-        self.0.finish()
-    }
-
-    fn write(&mut self, bytes: &[u8]) {
-        self.0.write(bytes);
     }
 }
