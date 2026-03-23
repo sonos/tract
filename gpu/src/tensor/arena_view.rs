@@ -133,7 +133,7 @@ impl DeviceArenaView {
                     bqf.k(),
                     Arc::new(Blob::from_bytes(&content)?),
                 )?
-                .into_tensor())
+                .into_tensor_with_shape(bqf.shape()))
             } else {
                 Tensor::from_raw_dt(self.dt, &self.shape, &content)
             }

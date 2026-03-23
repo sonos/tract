@@ -932,8 +932,8 @@ mod tests {
                             self.k,
                             Arc::new(w_quant),
                         )?;
-                        let padded_q40 = pad_q40(&bqs)?;
-                        let padded_k = padded_q40.k();
+                        let padded_q40 = pad_q40(&bqs, self.b * self.n, self.k)?;
+                        let padded_k = self.k.next_multiple_of(crate::Q40_ROW_PADDING);
                         padded_q40.into_tensor_with_shape(&[self.b, self.n, padded_k])
                     }
                 } else {

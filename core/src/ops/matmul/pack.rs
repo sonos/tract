@@ -1,7 +1,9 @@
 use crate::axes::Axis;
 use crate::internal::*;
 use ndarray::*;
-use tract_linalg::block_quant::{BlockQuantStorage, PackedBlockQuantFact, PackedBlockQuantFormat};
+use tract_linalg::block_quant::{
+    BlockQuantStorage, PackedBlockQuantFact, PackedBlockQuantFormat, block_quant_slice,
+};
 use tract_linalg::mmm::MMMInputValue;
 use tract_linalg::pack::PackedFormat;
 
@@ -182,10 +184,12 @@ impl EvalOp for OptSimpleMatMulPack {
         // Leading dims before the last 2 (M, K) are batch/group dims
         let leading_shape = &input.shape()[..input.rank().saturating_sub(2)];
         let num_groups: usize = leading_shape.iter().product();
+        let m_per_group = input.shape()[input.rank() - 2];
+        let k = *input.shape().last().unwrap();
         let packed = (0..num_groups)
             .map(|g| {
-                let slice = bqs.group_slice(g, num_groups);
-                let iv: Box<dyn MMMInputValue> = Box::new(self.packed_format.pack(slice, bqs.k())?);
+                let slice = block_quant_slice(bqs.value(), bqs.format(), m_per_group, k, g);
+                let iv: Box<dyn MMMInputValue> = Box::new(self.packed_format.pack(slice, k)?);
                 Ok(Opaque(Arc::new(iv)))
             })
             .collect::<TractResult<Vec<_>>>()?;

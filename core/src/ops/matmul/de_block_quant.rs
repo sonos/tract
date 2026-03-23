@@ -1,4 +1,4 @@
-use tract_linalg::block_quant::{BlockQuant, BlockQuantStorage, Q4_0};
+use tract_linalg::block_quant::{BlockQuant, BlockQuantFact, BlockQuantStorage, Q4_0};
 
 use crate::internal::*;
 use crate::ops::einsum::einsum_matmul::EinSumMatMul;
@@ -63,16 +63,14 @@ fn block_quant_einsum_weights(
             format.quant_f32(a.cast_to::<f32>()?.try_as_dense()?.as_slice::<f32>()?)?
         };
         let name = &model.node(node.inputs[0].node).name;
-        let bqs = BlockQuantStorage::new(
-            Box::new(format),
-            a.shape()[0],
-            a.shape()[1],
-            Arc::new(weights),
-        )?;
-        let fact = Box::new(bqs.to_block_quant_fact());
+        let m = a.shape()[0];
+        let k = a.shape()[1];
+        let bqs = BlockQuantStorage::new(Box::new(format), m, k, Arc::new(weights))?;
+        let fact =
+            Box::new(BlockQuantFact::new(dyn_clone::clone_box(bqs.format()), tvec!(1, m, k)));
         let weights = patch.wire_node(
             format!("{name}.bq"),
-            Const::new_with_opaque_fact(Arc::new(bqs.into_tensor()), fact)?,
+            Const::new_with_opaque_fact(Arc::new(bqs.into_tensor_with_shape(&[1, m, k])), fact)?,
             &[],
         )?;
         let tap = patch.tap_model(model, node.inputs[1])?;

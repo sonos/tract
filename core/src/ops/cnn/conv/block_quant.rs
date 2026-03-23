@@ -30,11 +30,10 @@ impl EvalOp for BlockQuantIntoShape {
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs).into_tensor();
         let g = input.shape()[0];
-        let bqs = input.try_storage_as::<BlockQuantStorage>()?;
+        let bqs = input.try_storage_as::<BlockQuantStorage>()?.clone();
         let new_m = self.shape[0];
         let new_k: usize = self.shape[1..].iter().product();
-        let new = bqs.with_shape(g * new_m, new_k)?;
-        Ok(tvec!(new.into_tensor_with_shape(&[g, new_m, new_k]).into_tvalue()))
+        Ok(tvec!(bqs.into_tensor_with_shape(&[g, new_m, new_k]).into_tvalue()))
     }
 }
 
