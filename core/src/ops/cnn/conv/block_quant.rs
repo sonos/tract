@@ -87,25 +87,28 @@ impl EvalOp for SplitGroupBlockQuant {
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         let bqs = input.try_storage_as::<BlockQuantStorage>()?.clone();
-        let m_per_group = bqs.m() / self.group;
-        let k = bqs.k();
-        Ok(tvec!(bqs.into_tensor_with_shape(&[self.group, m_per_group, k]).into_tvalue()))
+        let mut new_shape: TVec<usize> = input.shape().into();
+        let o = new_shape[0];
+        new_shape[0] = o / self.group;
+        new_shape.insert(0, self.group);
+        Ok(tvec!(bqs.into_tensor_with_shape(&new_shape).into_tvalue()))
     }
 }
 
 impl TypedOp for SplitGroupBlockQuant {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let input = inputs[0];
-        ensure!(input.shape.rank() == 3);
         let bqf = input
             .opaque_fact
             .as_ref()
             .and_then(|of| of.downcast_ref::<BlockQuantFact>())
             .context("Expect BlockQuantFact")?;
-        let m: usize = input.shape[1].to_usize()?;
-        let k: usize = input.shape[2].to_usize()?;
-        ensure!(m % self.group == 0);
-        let new_shape = tvec!(self.group, m / self.group, k);
+        let o: usize = input.shape[0].to_usize()?;
+        ensure!(o % self.group == 0);
+        let mut new_shape: TVec<usize> =
+            input.shape.iter().map(|d| d.to_usize()).collect::<TractResult<_>>()?;
+        new_shape[0] = o / self.group;
+        new_shape.insert(0, self.group);
         let opaque_fact = BlockQuantFact::new(bqf.format.clone(), new_shape.clone());
         let fact = DatumType::Opaque
             .fact(&*new_shape.iter().map(|d| d.to_dim()).collect::<TVec<_>>())
