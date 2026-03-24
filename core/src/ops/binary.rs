@@ -6,7 +6,7 @@ use tract_data::itertools::izip;
 use tract_itertools::Itertools;
 use tract_linalg::{BinOp, LinalgFn};
 
-use super::math::{Add, Max, Min, Mul, Sub};
+use super::math::{Add, Div, Max, Min, Mul, Sub};
 use super::{cast::cast, math::SubF};
 
 pub trait BinMiniOp: fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast {
@@ -134,6 +134,12 @@ impl TypedBinOp {
             Some((a.clone() + b.clone()).reduce())
         } else if self.0.downcast_ref::<Sub>().is_some() {
             Some((a.clone() - b.clone()).reduce())
+        } else if self.0.downcast_ref::<Div>().is_some() {
+            if let TDim::Val(d) = b {
+                if *d > 0 { Some(TDim::Div(Box::new(a.clone()), *d as u64).reduce()) } else { None }
+            } else {
+                None
+            }
         } else {
             None
         }

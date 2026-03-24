@@ -423,13 +423,20 @@ impl From<Arc<Tensor>> for TypedFact {
                 Box::new(BlockQuantFact::new(dyn_clone::clone_box(bqs.format()), t.shape().into()))
                     as Box<dyn OpaqueFact>
             });
+        let uniform_tdim = if t.datum_type() == TDim::datum_type() && t.len() == 1 {
+            t.try_as_dense().ok().and_then(|d| d.as_slice::<TDim>().ok()).map(|s| s[0].clone())
+        } else if t.len() == 1 && (t.datum_type().is_integer() || t.datum_type().is::<bool>()) {
+            t.cast_to_scalar::<i64>().ok().map(TDim::Val)
+        } else {
+            None
+        };
         TypedFact {
             datum_type: t.datum_type(),
             shape: ShapeFact::from_dims(t.shape().iter().map(TDim::from)),
             uniform: t.as_uniform().map(Arc::new),
             opaque_fact,
             konst: Some(t),
-            uniform_tdim: None,
+            uniform_tdim,
         }
     }
 }

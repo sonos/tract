@@ -116,9 +116,15 @@ fn try_rule2_slice(
         if let TDim::Sym(sym) = lhs.as_ref() {
             let name = format!("{sym}");
             if let Some(k) = name.strip_prefix('x').and_then(|rest| rest.parse::<usize>().ok()) {
-                let true_val_tdim = model.outlet_fact(node.inputs[1])?.uniform_tdim.clone();
+                let true_fact = model.outlet_fact(node.inputs[1])?;
+                let true_is_zero = true_fact.uniform_tdim == Some(TDim::Val(0))
+                    || true_fact
+                        .uniform
+                        .as_ref()
+                        .map(|t| t.as_bytes().iter().all(|&b| b == 0))
+                        .unwrap_or(false);
                 // Only handle the case where true branch is provably zero
-                if true_val_tdim == Some(TDim::Val(0)) {
+                if true_is_zero {
                     let false_val = node.inputs[2];
                     let mut patch = TypedModelPatch::default();
                     let false_wire = patch.tap_model(model, false_val)?;
@@ -128,7 +134,9 @@ fn try_rule2_slice(
                         crate::ops::array::Slice::new(k, TDim::Val(0), end),
                         &[false_wire],
                     )?[0];
-                    patch.shunt_outside(model, OutletId::new(node.id, 0), sliced)?;
+                    // Safety: Rule 2 intentionally changes the output shape by
+                    // trimming the zero-padded suffix (N+1 → N on axis k).
+                    unsafe { patch.shunt_outside_unchecked(OutletId::new(node.id, 0), sliced)? };
                     return Ok(Some(patch));
                 }
             }
@@ -152,7 +160,14 @@ impl TypedOp for Iff {
             inputs[2].shape.to_tvec(),
         ])
         .unwrap();
-        Ok(tvec!(inputs[1].datum_type.fact(shape)))
+        let mut fact = inputs[1].datum_type.fact(shape);
+        // Propagate uniform_tdim when condition is provably constant
+        fact.uniform_tdim = match inputs[0].uniform_tdim.as_ref().map(|d| d.clone().simplify()) {
+            Some(TDim::Val(0)) => inputs[2].uniform_tdim.clone(), // always false → false branch
+            Some(TDim::Val(_)) => inputs[1].uniform_tdim.clone(), // always true → true branch
+            _ => None,
+        };
+        Ok(tvec!(fact))
     }
 
     fn declutter(
@@ -179,7 +194,7 @@ impl TypedOp for Iff {
 
         let Some(expr) = cond_tdim else { return Ok(None) };
 
-        let simplified = expr.simplify();
+        let simplified = expr.clone().simplify();
 
         // Helper: replace Iff output with a specific input branch
         let shunt_to = |branch: OutletId| -> TractResult<Option<TypedModelPatch>> {
@@ -392,30 +407,96 @@ mod tests {
         let t_unsq = model.wire_node("T_unsq", AxisOp::Add(0), &[t_const])?[0];
         let lt = model.wire_node("lt", Comp::LT, &[range_unsq, t_unsq])?[0];
 
-        // Check facts at each stage
-        let start_fact = model.outlet_fact(start)?;
-        eprintln!("start.uniform_tdim = {:?}", start_fact.uniform_tdim);
-
         let range_fact = model.outlet_fact(range)?;
-        eprintln!("range.uniform_tdim = {:?}", range_fact.uniform_tdim);
-
         let range_unsq_fact = model.outlet_fact(range_unsq)?;
-        eprintln!("range_unsq.uniform_tdim = {:?}", range_unsq_fact.uniform_tdim);
-
-        let t_const_fact = model.outlet_fact(t_const)?;
-        eprintln!("t_const.uniform_tdim = {:?}", t_const_fact.uniform_tdim);
-
         let t_unsq_fact = model.outlet_fact(t_unsq)?;
-        eprintln!("t_unsq.uniform_tdim = {:?}", t_unsq_fact.uniform_tdim);
-
         let lt_fact = model.outlet_fact(lt)?;
-        eprintln!("lt.uniform_tdim = {:?}", lt_fact.uniform_tdim);
 
         assert!(range_fact.uniform_tdim.is_some(), "range should have uniform_tdim");
         assert!(range_unsq_fact.uniform_tdim.is_some(), "range_unsq should have uniform_tdim");
         assert!(t_unsq_fact.uniform_tdim.is_some(), "t_unsq should have uniform_tdim");
         assert!(lt_fact.uniform_tdim.is_some(), "lt should have uniform_tdim");
 
+        Ok(())
+    }
+
+    /// Test Case 3: range(0, N+1, 1) → unsqueeze(0) → ge(_, N_unsqueezed) → unsqueeze(1) → Iff
+    /// Condition is Ge(x2, N) — Rule 2 should emit Slice(false_val, axis=2, end=N).
+    #[test]
+    fn iff_fold_case3_ge_x2_n() -> TractResult<()> {
+        use crate::ops::array::Range;
+
+        let mut model = TypedModel::default();
+        model.symbols.add_assertion("T >= 1")?;
+        let t_sym = model.symbols.sym("T");
+        let t_dim = TDim::Sym(t_sym.clone());
+        let n_dim = TDim::Div(Box::new(t_dim.clone()), 160); // N = T/160
+
+        // range(0, N+1, 1) with N+1 as a TDim const
+        let n_plus_1 = TDim::Add(vec![TDim::Val(1), n_dim.clone()]);
+        let start = model.wire_node(
+            "start",
+            crate::ops::konst::Const::new(tensor0(TDim::Val(0)).into_arc_tensor())?,
+            &[],
+        )?[0];
+        let step = model.wire_node(
+            "step",
+            crate::ops::konst::Const::new(tensor0(TDim::Val(1)).into_arc_tensor())?,
+            &[],
+        )?[0];
+        let end = model.wire_node(
+            "end",
+            crate::ops::konst::Const::new(tensor0(n_plus_1).into_arc_tensor())?,
+            &[],
+        )?[0];
+        let range = model.wire_node(
+            "range",
+            Range::new(n_dim.clone() + TDim::Val(1)),
+            &[start, end, step],
+        )?[0];
+        let range_unsq = model.wire_node("range_unsq", AxisOp::Add(0), &[range])?[0];
+
+        // N as TDim const, unsqueeze to [1,1]
+        let n_const = model.wire_node(
+            "N_const",
+            crate::ops::konst::Const::new(tensor0(n_dim.clone()).into_arc_tensor())?,
+            &[],
+        )?[0];
+        let n_unsq = model.wire_node("N_unsq", AxisOp::Add(0), &[n_const])?[0];
+
+        // ge(range_unsq=[1,N+1], n_unsq=[1,1]) → bool [1,N+1]
+        let ge = model.wire_node("ge", Comp::GTE, &[range_unsq, n_unsq])?[0];
+
+        // unsqueeze(ge, [1]) → [1,1,N+1]
+        let ge_unsq = model.wire_node("ge_unsq", AxisOp::Add(1), &[ge])?[0];
+
+        // true branch: zeros broadcast to [1, 128, N+1] (F32)
+        let shape_n1 = tvec![TDim::Val(1), TDim::Val(128), n_dim.clone() + TDim::Val(1)];
+        let zero_const = model.wire_node(
+            "zero_const",
+            crate::ops::konst::Const::new(tensor0(0.0f32).into_arc_tensor())?,
+            &[],
+        )?[0];
+        let zeros = model.wire_node(
+            "zeros",
+            crate::ops::array::MultiBroadcastTo {
+                shape: ShapeFact::from_dims(shape_n1.iter().cloned()),
+            },
+            &[zero_const],
+        )?[0];
+
+        // false branch: data [1, 128, N+1]
+        let data = model.add_source("data", f32::datum_type().fact(shape_n1.clone()))?;
+
+        let iff = model.wire_node("iff", Iff, &[ge_unsq, zeros, data])?[0];
+        model.set_output_outlets(&[iff])?;
+
+        let model = model.into_decluttered()?;
+        let iff_count = model.nodes().iter().filter(|n| n.op_as::<Iff>().is_some()).count();
+        assert_eq!(
+            iff_count, 0,
+            "Expected Iff to be folded (Rule 2), but found {iff_count} Iff nodes"
+        );
         Ok(())
     }
 }
