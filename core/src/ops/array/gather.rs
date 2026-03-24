@@ -268,7 +268,9 @@ impl EvalOp for Gather {
             let m = data.shape()[data.rank() - 2];
             let k = *data.shape().last().unwrap();
             dispatch_floatlike!(Self::eval_bq(dt)(self, bqs, m, k, &indices))?
-        } else if let Some(storage) = data.storage_as::<PackedMatrixStorage>() {
+        } else if let Some(storage) = data.storage_as::<PackedMatrixStorage>()
+            && storage.batch_shape().is_empty()
+        {
             let dt = self.output_type.unwrap();
             let data_val = storage.value();
             dispatch_floatlike!(Self::eval_input_store(dt)(self, data_val, &indices))?
