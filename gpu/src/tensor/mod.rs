@@ -169,7 +169,7 @@ impl DeviceTensor {
 
     /// Convert device tensor to Opaque Tensor.
     pub fn into_opaque_tensor(self) -> Tensor {
-        tensor0::<Opaque>(self.into())
+        Tensor::from_storage(DatumType::Opaque, &[], self)
     }
 
     /// Synchronize the GPU Tensor by completing all current
@@ -213,9 +213,39 @@ impl IntoDevice<DeviceTensor> for Arc<Tensor> {
     }
 }
 
-impl From<DeviceTensor> for Opaque {
-    fn from(value: DeviceTensor) -> Self {
-        Opaque(Arc::new(value))
+impl TensorStorage for DeviceTensor {
+    fn byte_len(&self) -> usize {
+        self.len() * self.datum_type().size_of()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.byte_len() == 0
+    }
+
+    fn deep_clone(&self) -> Box<dyn TensorStorage> {
+        Box::new(self.clone())
+    }
+
+    fn same_as(&self, other: &dyn TensorStorage) -> bool {
+        other
+            .downcast_ref::<Self>()
+            .is_some_and(|other| self.device_buffer_ptr() == other.device_buffer_ptr())
+    }
+
+    fn as_dense(&self) -> Option<&DenseStorage> {
+        None
+    }
+
+    fn as_dense_mut(&mut self) -> Option<&mut DenseStorage> {
+        None
+    }
+
+    fn into_dense(self: Box<Self>) -> Option<DenseStorage> {
+        None
+    }
+
+    fn dyn_hash(&self, _state: &mut dyn std::hash::Hasher) {
+        // no meaningful hash for device memory
     }
 }
 
@@ -225,48 +255,18 @@ impl From<DeviceArenaView> for DeviceTensor {
     }
 }
 
-impl OpaquePayload for DeviceTensor {
-    fn same_as(&self, other: &dyn OpaquePayload) -> bool {
-        other
-            .downcast_ref::<Self>()
-            .is_some_and(|other| self.device_buffer_ptr() == other.device_buffer_ptr())
-    }
-
-    fn clarify_to_tensor(&self) -> TractResult<Option<Arc<Tensor>>> {
-        Ok(Some(self.to_host()?))
-    }
-}
-
 pub trait DeviceTensorExt {
     fn to_device_tensor(&self) -> TractResult<&DeviceTensor>;
     fn as_device_tensor(&self) -> Option<&DeviceTensor>;
-    fn to_device_tensor_mut(&mut self) -> TractResult<&mut DeviceTensor>;
-    fn as_device_tensor_mut(&mut self) -> Option<&mut DeviceTensor>;
 }
 
 impl DeviceTensorExt for Tensor {
-    fn to_device_tensor_mut(&mut self) -> TractResult<&mut DeviceTensor> {
-        let opaque = self.to_scalar_mut::<Opaque>()?;
-        opaque.downcast_mut::<DeviceTensor>().ok_or_else(|| {
-            anyhow::anyhow!("Could convert opaque tensor to mutable reference on a device tensor")
-        })
-    }
-
-    fn as_device_tensor_mut(&mut self) -> Option<&mut DeviceTensor> {
-        let opaque = self.to_scalar_mut::<Opaque>().ok()?;
-        opaque.downcast_mut::<DeviceTensor>()
-    }
-
     fn to_device_tensor(&self) -> TractResult<&DeviceTensor> {
-        let opaque = self.try_as_dense()?.to_scalar::<Opaque>()?;
-        opaque.downcast_ref::<DeviceTensor>().ok_or_else(|| {
-            anyhow::anyhow!("Could convert opaque tensor to reference on a device tensor")
-        })
+        self.try_storage_as::<DeviceTensor>()
     }
 
     fn as_device_tensor(&self) -> Option<&DeviceTensor> {
-        let opaque = self.try_as_dense().ok()?.to_scalar::<Opaque>().ok()?;
-        opaque.downcast_ref::<DeviceTensor>()
+        self.storage_as::<DeviceTensor>()
     }
 }
 
