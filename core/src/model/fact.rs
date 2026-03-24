@@ -281,7 +281,10 @@ impl TypedFact {
 
     pub fn consistent(&self) -> TractResult<()> {
         self.shape.consistent()?;
-        ensure!(self.datum_type.is_opaque() == self.opaque_fact.is_some());
+        ensure!(
+            self.opaque_fact.is_some() || !self.datum_type.is_opaque(),
+            "Opaque datum type requires an opaque_fact annotation"
+        );
         if let Some(k) = &self.konst {
             if !self.matches(k.as_ref(), None)? {
                 bail!("fact says {}, constant is {:?}", self.format_dt_shape_nocheck(), k);
