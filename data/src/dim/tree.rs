@@ -41,6 +41,18 @@ pub enum TDim {
     Broadcast(Vec<TDim>),
     Min(Vec<TDim>),
     Max(Vec<TDim>),
+    /// Comparison: evaluates to 1 (true) or 0 (false). lhs >= rhs
+    Ge(Box<TDim>, Box<TDim>),
+    /// Comparison: evaluates to 1 (true) or 0 (false). lhs <= rhs
+    Le(Box<TDim>, Box<TDim>),
+    /// Comparison: evaluates to 1 (true) or 0 (false). lhs < rhs
+    Lt(Box<TDim>, Box<TDim>),
+    /// Comparison: evaluates to 1 (true) or 0 (false). lhs > rhs
+    Gt(Box<TDim>, Box<TDim>),
+    /// Comparison: evaluates to 1 (true) or 0 (false). lhs == rhs
+    Eq(Box<TDim>, Box<TDim>),
+    /// Logical NOT: evaluates to 1 if inner == 0, else 0
+    Not(Box<TDim>),
 }
 
 use TDim::*;
@@ -76,6 +88,14 @@ fn tdim_lexi_order(a: &TDim, b: &TDim) -> Ordering {
         (_, Min(_)) => Ordering::Greater,
         (Max(_), _) => Ordering::Less,
         (_, Max(_)) => Ordering::Greater,
+        (Ge(a1, b1), Ge(a2, b2))
+        | (Le(a1, b1), Le(a2, b2))
+        | (Lt(a1, b1), Lt(a2, b2))
+        | (Gt(a1, b1), Gt(a2, b2))
+        | (Eq(a1, b1), Eq(a2, b2)) => tdim_lexi_order(a1, a2).then_with(|| tdim_lexi_order(b1, b2)),
+        (Not(a1), Not(a2)) => tdim_lexi_order(a1, a2),
+        (Ge(_, _) | Le(_, _) | Lt(_, _) | Gt(_, _) | Eq(_, _) | Not(_), _) => Ordering::Less,
+        (_, Ge(_, _) | Le(_, _) | Lt(_, _) | Gt(_, _) | Eq(_, _) | Not(_)) => Ordering::Greater,
     }
 }
 
@@ -91,6 +111,12 @@ impl fmt::Display for TDim {
             Max(it) => write!(fmt, "max({})", it.iter().map(|x| format!("{x}")).join(",")),
             MulInt(a, b) => write!(fmt, "{a}*{b}"),
             Div(a, b) => write!(fmt, "({a})/{b}"),
+            Ge(a, b) => write!(fmt, "({a}>={b})"),
+            Le(a, b) => write!(fmt, "({a}<={b})"),
+            Lt(a, b) => write!(fmt, "({a}<{b})"),
+            Gt(a, b) => write!(fmt, "({a}>{b})"),
+            Eq(a, b) => write!(fmt, "({a}=={b})"),
+            Not(a) => write!(fmt, "!({a})"),
         }
     }
 }
@@ -142,6 +168,12 @@ impl TDim {
             }),
             Div(a, q) => Ok(a.eval_to_i64(values)? / *q as i64),
             MulInt(p, a) => Ok(a.eval_to_i64(values)? * *p),
+            Ge(a, b) => Ok(if a.eval_to_i64(values)? >= b.eval_to_i64(values)? { 1 } else { 0 }),
+            Le(a, b) => Ok(if a.eval_to_i64(values)? <= b.eval_to_i64(values)? { 1 } else { 0 }),
+            Lt(a, b) => Ok(if a.eval_to_i64(values)? < b.eval_to_i64(values)? { 1 } else { 0 }),
+            Gt(a, b) => Ok(if a.eval_to_i64(values)? > b.eval_to_i64(values)? { 1 } else { 0 }),
+            Eq(a, b) => Ok(if a.eval_to_i64(values)? == b.eval_to_i64(values)? { 1 } else { 0 }),
+            Not(a) => Ok(if a.eval_to_i64(values)? != 0 { 0 } else { 1 }),
         }
     }
 
@@ -162,6 +194,62 @@ impl TDim {
             }),
             Div(a, q) => a.eval(values) / *q as i64,
             MulInt(p, a) => a.eval(values) * *p,
+            Ge(a, b) => {
+                let a2 = a.eval(values);
+                let b2 = b.eval(values);
+                if let (Val(av), Val(bv)) = (&a2, &b2) {
+                    Val(if av >= bv { 1 } else { 0 })
+                } else {
+                    Ge(b!(a2), b!(b2))
+                }
+            }
+            Le(a, b) => {
+                let a2 = a.eval(values);
+                let b2 = b.eval(values);
+                if let (Val(av), Val(bv)) = (&a2, &b2) {
+                    Val(if av <= bv { 1 } else { 0 })
+                } else {
+                    Le(b!(a2), b!(b2))
+                }
+            }
+            Lt(a, b) => {
+                let a2 = a.eval(values);
+                let b2 = b.eval(values);
+                if let (Val(av), Val(bv)) = (&a2, &b2) {
+                    Val(if av < bv { 1 } else { 0 })
+                } else {
+                    Lt(b!(a2), b!(b2))
+                }
+            }
+            Gt(a, b) => {
+                let a2 = a.eval(values);
+                let b2 = b.eval(values);
+                if let (Val(av), Val(bv)) = (&a2, &b2) {
+                    Val(if av > bv { 1 } else { 0 })
+                } else {
+                    Gt(b!(a2), b!(b2))
+                }
+            }
+            Eq(a, b) => {
+                let a2 = a.eval(values);
+                let b2 = b.eval(values);
+                if let (Val(av), Val(bv)) = (&a2, &b2) {
+                    Val(if av == bv { 1 } else { 0 })
+                } else {
+                    Eq(b!(a2), b!(b2))
+                }
+            }
+            Not(a) => {
+                let a2 = a.eval(values);
+                match a2 {
+                    Val(v) => Val(if v != 0 { 0 } else { 1 }),
+                    Ge(x, y) => Lt(x, y),
+                    Lt(x, y) => Ge(x, y),
+                    Le(x, y) => Gt(x, y),
+                    Gt(x, y) => Le(x, y),
+                    other => Not(b!(other)),
+                }
+            }
         }
     }
 
@@ -197,6 +285,12 @@ impl TDim {
             }),
             Div(a, q) => Ok(a.substitute(from, to)? / *q as i64),
             MulInt(p, a) => Ok(a.substitute(from, to)? * *p),
+            Ge(a, b) => Ok(Ge(b!(a.substitute(from, to)?), b!(b.substitute(from, to)?))),
+            Le(a, b) => Ok(Le(b!(a.substitute(from, to)?), b!(b.substitute(from, to)?))),
+            Lt(a, b) => Ok(Lt(b!(a.substitute(from, to)?), b!(b.substitute(from, to)?))),
+            Gt(a, b) => Ok(Gt(b!(a.substitute(from, to)?), b!(b.substitute(from, to)?))),
+            Eq(a, b) => Ok(Eq(b!(a.substitute(from, to)?), b!(b.substitute(from, to)?))),
+            Not(a) => Ok(Not(b!(a.substitute(from, to)?))),
         }
     }
 
@@ -221,13 +315,26 @@ impl TDim {
             Min(terms) | Max(terms) => 5 * terms.iter().map(TDim::cost).sum::<usize>(),
             Div(a, _) => 3 * a.cost(),
             MulInt(_, a) => 2 * a.cost(),
+            Ge(a, b) | Le(a, b) | Lt(a, b) | Gt(a, b) | Eq(a, b) => 5 * (a.cost() + b.cost()),
+            Not(a) => 3 * a.cost(),
         }
     }
 
     fn wiggle(&self) -> Vec<TDim> {
         use self::TDim::*;
         match self {
-            Sym(_) | Val(_) | Mul(_) | Broadcast(_) | Min(_) | Max(_) => vec![self.clone()],
+            Sym(_)
+            | Val(_)
+            | Mul(_)
+            | Broadcast(_)
+            | Min(_)
+            | Max(_)
+            | Ge(_, _)
+            | Le(_, _)
+            | Lt(_, _)
+            | Gt(_, _)
+            | Eq(_, _)
+            | Not(_) => vec![self.clone()],
             Add(terms) => {
                 let mut forms = vec![];
                 let sub_exprs = terms.iter().map(|e| e.wiggle()).multi_cartesian_product();
@@ -296,6 +403,10 @@ impl TDim {
                 terms.iter().find_map(Self::find_any_sym)
             }
             MulInt(_, t) | Div(t, _) => Self::find_any_sym(t),
+            Ge(a, b) | Le(a, b) | Lt(a, b) | Gt(a, b) | Eq(a, b) => {
+                Self::find_any_sym(a).or_else(|| Self::find_any_sym(b))
+            }
+            Not(a) => Self::find_any_sym(a),
         }
     }
 
@@ -592,6 +703,102 @@ impl TDim {
                 })
                 .unwrap_or(Sym(s)),
             Val(_) => self,
+            Ge(a, b) => {
+                let a = a.simplify_rec(scope, scenario);
+                let b = b.simplify_rec(scope, scenario);
+                match (&a, &b) {
+                    (Val(av), Val(bv)) => Val(if av >= bv { 1 } else { 0 }),
+                    _ => {
+                        let diff = a.clone() - b.clone();
+                        if scope.prove_positive_or_zero(&diff) {
+                            Val(1)
+                        } else if scope.prove_strict_positive(&(b.clone() - a.clone())) {
+                            Val(0)
+                        } else {
+                            Ge(b!(a), b!(b))
+                        }
+                    }
+                }
+            }
+            Le(a, b) => {
+                let a = a.simplify_rec(scope, scenario);
+                let b = b.simplify_rec(scope, scenario);
+                match (&a, &b) {
+                    (Val(av), Val(bv)) => Val(if av <= bv { 1 } else { 0 }),
+                    _ => {
+                        let diff = b.clone() - a.clone();
+                        if scope.prove_positive_or_zero(&diff) {
+                            Val(1)
+                        } else if scope.prove_strict_positive(&(a.clone() - b.clone())) {
+                            Val(0)
+                        } else {
+                            Le(b!(a), b!(b))
+                        }
+                    }
+                }
+            }
+            Lt(a, b) => {
+                let a = a.simplify_rec(scope, scenario);
+                let b = b.simplify_rec(scope, scenario);
+                match (&a, &b) {
+                    (Val(av), Val(bv)) => Val(if av < bv { 1 } else { 0 }),
+                    _ => {
+                        let diff = b.clone() - a.clone();
+                        if scope.prove_strict_positive(&diff) {
+                            Val(1)
+                        } else if scope.prove_positive_or_zero(&(a.clone() - b.clone())) {
+                            Val(0)
+                        } else {
+                            Lt(b!(a), b!(b))
+                        }
+                    }
+                }
+            }
+            Gt(a, b) => {
+                let a = a.simplify_rec(scope, scenario);
+                let b = b.simplify_rec(scope, scenario);
+                match (&a, &b) {
+                    (Val(av), Val(bv)) => Val(if av > bv { 1 } else { 0 }),
+                    _ => {
+                        let diff = a.clone() - b.clone();
+                        if scope.prove_strict_positive(&diff) {
+                            Val(1)
+                        } else if scope.prove_positive_or_zero(&(b.clone() - a.clone())) {
+                            Val(0)
+                        } else {
+                            Gt(b!(a), b!(b))
+                        }
+                    }
+                }
+            }
+            Eq(a, b) => {
+                let a = a.simplify_rec(scope, scenario);
+                let b = b.simplify_rec(scope, scenario);
+                match (&a, &b) {
+                    (Val(av), Val(bv)) => Val(if av == bv { 1 } else { 0 }),
+                    _ => {
+                        let diff = a.clone() - b.clone();
+                        if scope.prove_strict_positive(&diff)
+                            || scope.prove_strict_positive(&(b.clone() - a.clone()))
+                        {
+                            Val(0)
+                        } else {
+                            Eq(b!(a), b!(b))
+                        }
+                    }
+                }
+            }
+            Not(a) => {
+                let a = a.simplify_rec(scope, scenario);
+                match a {
+                    Val(v) => Val(if v != 0 { 0 } else { 1 }),
+                    Ge(x, y) => Lt(x, y).simplify_rec(scope, scenario),
+                    Lt(x, y) => Ge(x, y).simplify_rec(scope, scenario),
+                    Le(x, y) => Gt(x, y).simplify_rec(scope, scenario),
+                    Gt(x, y) => Le(x, y).simplify_rec(scope, scenario),
+                    other => Not(b!(other)),
+                }
+            }
         }
     }
 
@@ -667,6 +874,13 @@ impl TDim {
                     Max(terms.clone()).inclusive_bound(scope, true)
                 } else {
                     Min(terms.clone()).inclusive_bound(scope, false)
+                }
+            }
+            Ge(_, _) | Le(_, _) | Lt(_, _) | Gt(_, _) | Eq(_, _) | Not(_) => {
+                if upper {
+                    Some(1)
+                } else {
+                    Some(0)
                 }
             }
             _ => None,
@@ -745,6 +959,7 @@ impl TDim {
                 }
             }
             Broadcast(terms) => terms.iter().map(|t| t.gcd()).reduce(|a, b| a.gcd(&b)).unwrap_or(1),
+            Ge(_, _) | Le(_, _) | Lt(_, _) | Gt(_, _) | Eq(_, _) | Not(_) => 1,
         }
     }
 
@@ -770,6 +985,9 @@ impl TDim {
                 }
             }
             Div(a, q) => Div(a.clone(), q * d),
+            Ge(_, _) | Le(_, _) | Lt(_, _) | Gt(_, _) | Eq(_, _) | Not(_) => {
+                Div(Box::new(self.clone()), d)
+            }
         }
     }
 
@@ -801,6 +1019,7 @@ impl TDim {
                 Broadcast(terms) => slope_rec(&terms[0], sym),
                 Min(terms) => slope_rec(&terms[0], sym),
                 Max(terms) => slope_rec(&terms[0], sym),
+                Ge(_, _) | Le(_, _) | Lt(_, _) | Gt(_, _) | Eq(_, _) | Not(_) => (0, 1),
             }
         }
         let (p, q) = slope_rec(self, sym);
@@ -820,6 +1039,12 @@ impl TDim {
             }
             MulInt(_, a) => a.symbols(),
             Div(a, _) => a.symbols(),
+            Ge(a, b) | Le(a, b) | Lt(a, b) | Gt(a, b) | Eq(a, b) => {
+                let mut set = a.symbols();
+                set.extend(b.symbols());
+                set
+            }
+            Not(a) => a.symbols(),
         }
     }
 
@@ -1467,5 +1692,93 @@ mod tests {
         .simplify();
         assert_eq!(deep_tdim, symbols.parse_tdim("a*b*c*d*e").unwrap().simplify());
         Ok(())
+    }
+
+    // ---- Tests for new comparison/not TDim variants ----
+
+    #[test]
+    fn ge_concrete_true() {
+        assert_eq!(Ge(b!(Val(5)), b!(Val(3))).reduce(), Val(1));
+    }
+
+    #[test]
+    fn ge_concrete_false() {
+        assert_eq!(Ge(b!(Val(2)), b!(Val(3))).reduce(), Val(0));
+    }
+
+    #[test]
+    fn lt_concrete_true() {
+        assert_eq!(Lt(b!(Val(2)), b!(Val(3))).reduce(), Val(1));
+    }
+
+    #[test]
+    fn lt_concrete_false() {
+        assert_eq!(Lt(b!(Val(5)), b!(Val(3))).reduce(), Val(0));
+    }
+
+    #[test]
+    fn eq_concrete_true() {
+        assert_eq!(Eq(b!(Val(3)), b!(Val(3))).reduce(), Val(1));
+    }
+
+    #[test]
+    fn eq_concrete_false() {
+        assert_eq!(Eq(b!(Val(3)), b!(Val(4))).reduce(), Val(0));
+    }
+
+    #[test]
+    fn not_val_0() {
+        assert_eq!(Not(b!(Val(0))).reduce(), Val(1));
+    }
+
+    #[test]
+    fn not_val_1() {
+        assert_eq!(Not(b!(Val(1))).reduce(), Val(0));
+    }
+
+    #[test]
+    fn not_lt_becomes_ge() {
+        // Not(Lt(a, b)) should reduce to Ge(a, b)
+        let s = SymbolScope::default();
+        let t = s.sym("T");
+        let x = s.sym("x1");
+        let expr = Not(b!(Lt(b!(Sym(x.clone())), b!(Sym(t.clone())))));
+        let reduced = expr.reduce();
+        assert_eq!(reduced, Ge(b!(Sym(x)), b!(Sym(t))));
+    }
+
+    #[test]
+    fn eq_with_assertion_proves_false() {
+        // Eq(T, 0) should reduce to Val(0) when T >= 1
+        let s = SymbolScope::default();
+        s.add_assertion("T >= 1").unwrap();
+        let t = s.sym("T");
+        let expr = Eq(b!(Sym(t)), b!(Val(0)));
+        assert_eq!(expr.simplify(), Val(0));
+    }
+
+    #[test]
+    fn ge_coord_at_extremes() {
+        // Ge(x1, T) should not simplify without coordinate substitution
+        let s = SymbolScope::default();
+        s.add_assertion("T >= 1").unwrap();
+        let t = s.sym("T");
+        let x1 = s.sym("x1");
+        let expr = Ge(b!(Sym(x1.clone())), b!(Sym(t.clone())));
+        // simplify() alone can't prove this false (x1 could be > T)
+        // but with coordinate substitution (x1 = T-1), Ge(T-1, T) = 0
+        let at_max = expr.substitute(&x1, &(Sym(t.clone()) - Val(1))).unwrap().simplify();
+        assert_eq!(at_max, Val(0));
+    }
+
+    #[test]
+    fn eval_to_i64_new_variants() {
+        use super::super::sym::SymbolValues;
+        let sv = SymbolValues::default();
+        assert_eq!(Ge(b!(Val(5)), b!(Val(3))).eval_to_i64(&sv).unwrap(), 1);
+        assert_eq!(Lt(b!(Val(2)), b!(Val(3))).eval_to_i64(&sv).unwrap(), 1);
+        assert_eq!(Eq(b!(Val(3)), b!(Val(3))).eval_to_i64(&sv).unwrap(), 1);
+        assert_eq!(Not(b!(Val(0))).eval_to_i64(&sv).unwrap(), 1);
+        assert_eq!(Not(b!(Val(1))).eval_to_i64(&sv).unwrap(), 0);
     }
 }

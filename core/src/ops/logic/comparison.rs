@@ -143,7 +143,21 @@ impl EvalOp for Comp {
 impl TypedOp for Comp {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let shape = multi_broadcast(&[&inputs[0].shape, &inputs[1].shape])?;
-        Ok(tvec!(bool::datum_type().fact(shape)))
+        let mut fact = bool::datum_type().fact(shape);
+        if let (Some(a), Some(b)) = (&inputs[0].uniform_tdim, &inputs[1].uniform_tdim) {
+            fact.uniform_tdim = Some(
+                match self {
+                    GTE => TDim::Ge(Box::new(a.clone()), Box::new(b.clone())),
+                    LTE => TDim::Le(Box::new(a.clone()), Box::new(b.clone())),
+                    LT => TDim::Lt(Box::new(a.clone()), Box::new(b.clone())),
+                    GT => TDim::Gt(Box::new(a.clone()), Box::new(b.clone())),
+                    Eq => TDim::Eq(Box::new(a.clone()), Box::new(b.clone())),
+                    NE => TDim::Not(Box::new(TDim::Eq(Box::new(a.clone()), Box::new(b.clone())))),
+                }
+                .reduce(),
+            );
+        }
+        Ok(tvec!(fact))
     }
 
     fn change_axes(

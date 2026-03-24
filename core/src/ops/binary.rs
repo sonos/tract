@@ -128,6 +128,18 @@ impl EvalOp for TypedBinOp {
     }
 }
 
+impl TypedBinOp {
+    fn combine_uniform_tdim(&self, a: &TDim, b: &TDim) -> Option<TDim> {
+        if self.0.downcast_ref::<Add>().is_some() {
+            Some((a.clone() + b.clone()).reduce())
+        } else if self.0.downcast_ref::<Sub>().is_some() {
+            Some((a.clone() - b.clone()).reduce())
+        } else {
+            None
+        }
+    }
+}
+
 impl TypedOp for TypedBinOp {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         if inputs[0].rank() != inputs[1].rank() {
@@ -138,10 +150,14 @@ impl TypedOp for TypedBinOp {
             );
         }
         let out_dt = self.output_datum_type(inputs[0].datum_type, inputs[1].datum_type)?;
-        Ok(tvec!(out_dt.fact(&*crate::broadcast::multi_broadcast(&[
+        let mut fact = out_dt.fact(&*crate::broadcast::multi_broadcast(&[
             &inputs[0].shape.to_tvec(),
-            &inputs[1].shape.to_tvec()
-        ])?)))
+            &inputs[1].shape.to_tvec(),
+        ])?);
+        if let (Some(a), Some(b)) = (&inputs[0].uniform_tdim, &inputs[1].uniform_tdim) {
+            fact.uniform_tdim = self.combine_uniform_tdim(a, b);
+        }
+        Ok(tvec!(fact))
     }
 
     fn change_axes(

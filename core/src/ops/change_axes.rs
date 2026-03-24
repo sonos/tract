@@ -656,6 +656,84 @@ impl EvalOp for AxisOp {
     }
 }
 
+/// Remap coordinate symbols in a TDim expression according to an AxisOp.
+/// Returns None if the remapping cannot be determined (e.g. general reshape).
+fn remap_uniform_tdim(expr: &TDim, axis_op: &AxisOp) -> Option<TDim> {
+    let syms = expr.symbols();
+    let coord_syms: Vec<(usize, Symbol)> = syms
+        .into_iter()
+        .filter_map(|s| {
+            let name = format!("{s}");
+            name.strip_prefix('x').and_then(|rest| rest.parse::<usize>().ok()).map(|k| (k, s))
+        })
+        .collect();
+
+    if coord_syms.is_empty() {
+        // No coordinate symbols – the value is uniform across all positions; propagate as-is.
+        return Some(expr.clone());
+    }
+
+    let mut result = expr.clone();
+    match axis_op.canonical().as_ref() {
+        AxisOp::Add(j) => {
+            // Insert axis at position j: x_k -> x_{k+1} for k >= j.
+            let mut remaps: Vec<(usize, Symbol)> =
+                coord_syms.into_iter().filter(|(k, _)| *k >= *j).collect();
+            // Process highest k first to avoid double-substitution.
+            remaps.sort_by(|a, b| b.0.cmp(&a.0));
+            for (k, sym) in &remaps {
+                let scope = sym.scope()?;
+                let new_sym = TDim::Sym(scope.coord_sym(k + 1));
+                result = result.substitute(sym, &new_sym).ok()?;
+            }
+            Some(result)
+        }
+        AxisOp::Rm(j) => {
+            // Remove axis at position j: x_k -> x_{k-1} for k > j.
+            let mut remaps: Vec<(usize, Symbol)> =
+                coord_syms.into_iter().filter(|(k, _)| *k > *j).collect();
+            remaps.sort_by(|a, b| a.0.cmp(&b.0));
+            for (k, sym) in &remaps {
+                let scope = sym.scope()?;
+                let new_sym = TDim::Sym(scope.coord_sym(k - 1));
+                result = result.substitute(sym, &new_sym).ok()?;
+            }
+            Some(result)
+        }
+        AxisOp::Move(from, to) => {
+            let mut remaps: Vec<(usize, usize, Symbol)> = coord_syms
+                .into_iter()
+                .filter_map(|(k, sym)| {
+                    let new_k = if k == *from {
+                        *to
+                    } else if *from < *to && k > *from && k <= *to {
+                        k - 1
+                    } else if *to < *from && k >= *to && k < *from {
+                        k + 1
+                    } else {
+                        k
+                    };
+                    if new_k != k { Some((k, new_k, sym)) } else { None }
+                })
+                .collect();
+            // Process from highest source index to avoid conflicts.
+            remaps.sort_by(|a, b| b.0.cmp(&a.0));
+            for (_, new_k, sym) in &remaps {
+                let scope = sym.scope()?;
+                let new_sym = TDim::Sym(scope.coord_sym(*new_k));
+                result = result.substitute(sym, &new_sym).ok()?;
+            }
+            Some(result)
+        }
+        AxisOp::Reshape(_, from_dims, to_dims) => {
+            // Only handle trivial reshapes where all dims are 1.
+            let all_ones_from = from_dims.iter().all(|d| d.is_one());
+            let all_ones_to = to_dims.iter().all(|d| d.is_one());
+            if all_ones_from && all_ones_to { Some(expr.clone()) } else { None }
+        }
+    }
+}
+
 impl TypedOp for AxisOp {
     as_op!();
 
@@ -679,6 +757,9 @@ impl TypedOp for AxisOp {
         self.change_shape(&mut shape, false)?;
         let mut fact = inputs[0].datum_type.fact(shape);
         fact.opaque_fact.clone_from(&inputs[0].opaque_fact);
+        if let Some(tdim) = &inputs[0].uniform_tdim {
+            fact.uniform_tdim = remap_uniform_tdim(tdim, self);
+        }
         Ok(tvec!(fact))
     }
 

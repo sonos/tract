@@ -58,12 +58,25 @@ impl TypedOp for Const {
     as_op!();
 
     fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        let fact = TypedFact::from(&self.0);
+        let mut fact = TypedFact::from(&self.0);
         if let Some(opaque) = &self.1 {
-            Ok(tvec!(fact.with_opaque_fact(opaque.clone())))
-        } else {
-            Ok(tvec!(fact))
+            fact = fact.with_opaque_fact(opaque.clone());
         }
+        // Propagate value as uniform_tdim for single-element constants (rank-0 or volume-1 TDim)
+        if self.0.datum_type() == TDim::datum_type() {
+            if self.0.len() == 1 {
+                if let Ok(d) = self.0.try_as_dense().and_then(|d| d.as_slice::<TDim>()) {
+                    fact.uniform_tdim = Some(d[0].clone());
+                }
+            }
+        } else if self.0.rank() == 0
+            && (self.0.datum_type().is_integer() || self.0.datum_type().is::<bool>())
+        {
+            if let Ok(v) = self.0.cast_to_scalar::<i64>() {
+                fact.uniform_tdim = Some(TDim::Val(v));
+            }
+        }
+        Ok(tvec!(fact))
     }
 
     fn cost(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
