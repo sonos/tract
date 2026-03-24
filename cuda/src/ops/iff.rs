@@ -48,7 +48,7 @@ impl EvalOp for CudaIff {
                     .with_context(|| "Error while dispatching eval for CudaIff")
             })?;
         }
-        Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
+        Ok(tvec!(output.into_tensor().into_tvalue()))
     }
 }
 

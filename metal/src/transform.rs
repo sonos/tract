@@ -150,12 +150,10 @@ impl MetalTransform {
                 DeviceSyncKind::ToDevice if in_fact.as_device_fact().is_none() => {
                     if let Some(ref konst) = in_fact.konst {
                         if konst.as_device_tensor().is_none() {
-                            let konst_metal =
-                                konst.as_ref().clone().into_device()?.into_opaque_tensor();
+                            let konst_metal = konst.as_ref().clone().into_device()?.into_tensor();
                             let metal_fact = DeviceFact::from_host(in_fact.clone())?;
 
-                            *in_fact = TypedFact::dt_scalar(DatumType::Opaque)
-                                .with_opaque_fact(metal_fact);
+                            *in_fact = metal_fact.into_opaque_fact();
 
                             in_fact.konst = Some(Arc::new(konst_metal));
                             mapped_inputs.push(mapping[i]);
@@ -572,7 +570,7 @@ fn convert_const(op: &Const) -> TractResult<Const> {
         DeviceFact::from_host(typed_fact)?
     };
 
-    let metal_const = op.val().clone().into_device()?.into_opaque_tensor().into_arc_tensor();
+    let metal_const = op.val().clone().into_device()?.into_tensor().into_arc_tensor();
     Const::new_with_opaque_fact(metal_const, Box::new(metal_fact))
 }
 

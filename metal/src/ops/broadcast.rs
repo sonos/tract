@@ -42,7 +42,7 @@ impl EvalOp for MetalMultiBroadcastTo {
         with_borrowed_metal_stream(|stream| {
             kernels::array::MultiBroadcast.dispatch_eval(stream, input, 0, &output)
         })?;
-        Ok(tvec![output.into_opaque_tensor().into_tvalue()])
+        Ok(tvec![output.into_tensor().into_tvalue()])
     }
 }
 

@@ -64,7 +64,7 @@ impl EvalOp for MetalBinOp {
                 .dispatch_eval(stream, a, b, &output)
                 .with_context(|| "Error while dispatching eval for Metal Bin Op")
         })?;
-        Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
+        Ok(tvec!(output.into_tensor().into_tvalue()))
     }
 }
 

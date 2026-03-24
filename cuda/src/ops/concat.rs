@@ -65,7 +65,7 @@ impl EvalOp for CudaConcat {
             &output_shape,
         )?;
         CUDA_STREAM.with(|stream| self.kernel.dispatch_eval(stream, &inputs, &output))?;
-        Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
+        Ok(tvec!(output.into_tensor().into_tvalue()))
     }
 }
 

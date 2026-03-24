@@ -100,7 +100,7 @@ impl<K: GemmKernel + 'static> EvalOp for MetalGemm<K> {
 
         with_borrowed_metal_stream(|stream| self.kernel.dispatch_eval(stream, a, b, &c))?;
 
-        Ok(tvec![c.into_opaque_tensor().into_tvalue()])
+        Ok(tvec![c.into_tensor().into_tvalue()])
     }
 }
 

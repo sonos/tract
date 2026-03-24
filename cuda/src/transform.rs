@@ -122,12 +122,10 @@ impl CudaTransform {
                     if let Some(ref konst) = in_fact.konst
                         && konst.as_device_tensor().is_none()
                     {
-                        let device_konst =
-                            konst.as_ref().clone().into_device()?.into_opaque_tensor();
+                        let device_konst = konst.as_ref().clone().into_device()?.into_tensor();
                         let device_fact = DeviceFact::from_host(in_fact.clone())?;
 
-                        *in_fact =
-                            TypedFact::dt_scalar(DatumType::Opaque).with_opaque_fact(device_fact);
+                        *in_fact = device_fact.into_opaque_fact();
 
                         in_fact.konst = Some(Arc::new(device_konst));
                         mapped_inputs.push(mapping[i]);
@@ -181,10 +179,7 @@ impl CudaTransform {
 
 fn can_translate_to_cuda_op(source: &TypedModel, node: &TypedNode) -> TractResult<bool> {
     let input_facts = source.node_input_facts(node.id)?.iter().map(|f| (*f).clone()).collect_vec();
-    let input_dts = input_facts
-        .iter()
-        .map(|f| f.as_device_fact().map(|f| f.datum_type).unwrap_or(f.datum_type))
-        .collect_vec();
+    let input_dts = input_facts.iter().map(|f| f.datum_type).collect_vec();
 
     let in_dts_compatible =
         input_facts.iter().all(|fact| DeviceTensor::is_supported_dt(fact.datum_type));
@@ -266,7 +261,7 @@ fn convert_const(op: &Const) -> TractResult<Const> {
         DeviceFact::from_host(typed_fact)?
     };
 
-    let cuda_const = op.val().clone().into_device()?.into_opaque_tensor().into_arc_tensor();
+    let cuda_const = op.val().clone().into_device()?.into_tensor().into_arc_tensor();
     Const::new_with_opaque_fact(cuda_const, Box::new(cuda_fact))
 }
 

@@ -29,7 +29,7 @@ impl EvalOp for CudaUnaryOp {
             let input = opaque.to_device_tensor()?;
             let output = make_tensor_for_node(session, node_id, input.datum_type(), input.shape())?;
             self.0.dispatch_eval(stream, input, &output)?;
-            Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
+            Ok(tvec!(output.into_tensor().into_tvalue()))
         })
     }
 

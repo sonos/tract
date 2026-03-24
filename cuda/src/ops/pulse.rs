@@ -155,7 +155,7 @@ impl OpState for CudaDelayState {
             };
             let mut output = make_tensor_for_node(state, self.node_id, dt, &output_shape)?;
             self.apply_delay_unchecked(op, device_input, &mut output)?;
-            Ok(tvec!(output.into_opaque_tensor().into()))
+            Ok(tvec!(output.into_tensor().into()))
         }
     }
 }
@@ -231,7 +231,7 @@ impl OpState for CudaPulsePadOpState {
         let op = op.downcast_ref::<CudaPulsePad>().ok_or_else(|| format_err!("Wrong Op type"))?;
         let input = input.to_device_tensor()?;
         let tensor = self.pad(session, op, input)?;
-        Ok(tvec!(tensor.into_opaque_tensor().into()))
+        Ok(tvec!(tensor.into_tensor().into()))
     }
 }
 

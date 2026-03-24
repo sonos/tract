@@ -89,7 +89,7 @@ impl EvalOp for CudaPad {
         CUDA_STREAM.with(|stream| {
             Pad.dispatch_eval(stream, input, &output, paddings_before, self.mode.clone())
         })?;
-        Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
+        Ok(tvec!(output.into_tensor().into_tvalue()))
     }
 }
 

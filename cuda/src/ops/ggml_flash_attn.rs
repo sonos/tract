@@ -44,7 +44,7 @@ impl EvalOp for CudaFlashAttention {
                 &GgmlFlashAttn.output_shape(q.shape(), k.shape(), v.shape())?,
             )?;
             GgmlFlashAttn.dispatch_eval(stream, q, k, v, mask, self.scale, &output)?;
-            Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
+            Ok(tvec!(output.into_tensor().into_tvalue()))
         })
     }
 }

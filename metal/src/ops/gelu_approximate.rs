@@ -41,7 +41,7 @@ impl EvalOp for MetalGeluApproximate {
                 input_metal,
                 &output,
             )?;
-            Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
+            Ok(tvec!(output.into_tensor().into_tvalue()))
         })
     }
 }

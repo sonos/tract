@@ -28,8 +28,7 @@ impl OpState for CudaDynKVCacheState {
             self.past_sequence_fact.clone(),
             Some(kv_cache.shape()),
         )?;
-        self.kv_cache =
-            Some(kv_cache.into_tensor().into_device()?.into_opaque_tensor().into_tvalue());
+        self.kv_cache = Some(kv_cache.into_tensor().into_device()?.into_tensor().into_tvalue());
         Ok(())
     }
 
@@ -86,7 +85,7 @@ impl CudaDynKVCacheState {
         if let Some(v) = &mut self.kv_cache {
             let mut t: Tensor = v.to_device_tensor()?.to_host()?.into_tensor();
             t = t.slice(self.axis, 0, len)?;
-            *v = t.into_device()?.into_opaque_tensor().into_tvalue();
+            *v = t.into_device()?.into_tensor().into_tvalue();
         }
         Ok(())
     }
@@ -120,7 +119,7 @@ impl FrozenOpState for FrozenCudaDynKVCacheState {
             name: self.name.clone(),
             axis: self.axis,
             past_sequence_fact: self.past_sequence_fact.clone(),
-            kv_cache: self.kv_cache.clone().map(|t| t.into_opaque_tensor().into_tvalue()),
+            kv_cache: self.kv_cache.clone().map(|t| t.into_tensor().into_tvalue()),
         })
     }
 }

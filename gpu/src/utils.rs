@@ -9,7 +9,7 @@ pub fn facts_to_device_facts(
     facts: &[&TypedFact],
     resolve_facts: impl Fn(&[&TypedFact]) -> TractResult<TVec<TypedFact>>,
 ) -> TractResult<TVec<TypedFact>> {
-    if facts.iter().all(|it| it.datum_type == DatumType::Opaque) {
+    if facts.iter().all(|it| it.as_device_fact().is_some()) {
         let device_facts = facts
             .iter()
             .map(|it| it.to_device_fact().map(|it| it.as_ref()))
@@ -19,13 +19,10 @@ pub fn facts_to_device_facts(
             .into_iter()
             .map(|it| Ok(DeviceFact::new(DeviceTensorOrigin::FromDevice, it)?.into_opaque_fact()))
             .collect::<TractResult<_>>()?)
-    } else if facts.iter().all(|it| it.datum_type != DatumType::Opaque) {
+    } else if facts.iter().all(|it| it.as_device_fact().is_none()) {
         (resolve_facts)(facts)
     } else {
-        bail!(
-            "Inconsistent facts datum type: {:?}",
-            facts.iter().map(|it| it.datum_type).collect::<TVec<_>>()
-        );
+        bail!("Inconsistent facts: mix of device and host facts");
     }
 }
 
@@ -33,19 +30,16 @@ pub fn get_device_facts<'a, 'b: 'a, T>(
     facts: &'a [&'b TypedFact],
     map_facts: impl Fn(&[&'b TypedFact]) -> TractResult<T>,
 ) -> TractResult<T> {
-    if facts.iter().all(|it| it.datum_type == DatumType::Opaque) {
+    if facts.iter().all(|it| it.as_device_fact().is_some()) {
         let device_facts = facts
             .iter()
             .map(|it| it.to_device_fact().map(|it| it.as_ref()))
             .collect::<TractResult<TVec<_>>>()?;
         (map_facts)(device_facts.as_slice())
-    } else if facts.iter().all(|it| it.datum_type != DatumType::Opaque) {
+    } else if facts.iter().all(|it| it.as_device_fact().is_none()) {
         (map_facts)(facts)
     } else {
-        bail!(
-            "Inconsistent facts datum type: {:?}",
-            facts.iter().map(|it| it.datum_type).collect::<Vec<_>>()
-        );
+        bail!("Inconsistent facts: mix of device and host facts");
     }
 }
 
@@ -53,7 +47,7 @@ pub fn get_device_fact<'a, T: 'a>(
     fact: &'a TypedFact,
     map_fact: impl Fn(&'a TypedFact) -> TractResult<T>,
 ) -> TractResult<T> {
-    if fact.datum_type == DatumType::Opaque {
+    if fact.as_device_fact().is_some() {
         (map_fact)(fact.to_device_fact()?)
     } else {
         (map_fact)(fact)

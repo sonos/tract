@@ -78,7 +78,7 @@ pub fn pad_q40_weights(
     let padded_tensor = padded_bqs.into_tensor_with_shape(&padded_shape).into_arc_tensor();
 
     let new_const = Const::new_with_opaque_fact(
-        padded_tensor.into_device()?.into_opaque_tensor().into_arc_tensor(),
+        padded_tensor.into_device()?.into_tensor().into_arc_tensor(),
         Box::new(DeviceFact::from_host(padded_fact)?),
     )?;
 

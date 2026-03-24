@@ -41,7 +41,7 @@ impl EvalOp for CudaScaledMaskedSoftmax {
                 input.shape(),
             )?;
             ScaledMaskedSoftmax.dispatch_eval(stream, input, &self.scale, mask, &output)?;
-            Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
+            Ok(tvec!(output.into_tensor().into_tvalue()))
         })
     }
 }

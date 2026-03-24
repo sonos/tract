@@ -56,7 +56,7 @@ impl EvalOp for DeviceSync {
                 } else {
                     input.into_tensor().into_device()?
                 };
-                Ok(tvec![device_input.into_opaque_tensor().into()])
+                Ok(tvec![device_input.into_tensor().into()])
             }
         }
     }
@@ -81,8 +81,8 @@ impl TypedOp for DeviceSync {
             }
             DeviceSyncKind::ToDevice => {
                 ensure!(
-                    input.datum_type != DatumType::Opaque,
-                    "Cannot sync Opaque Tensor to Device"
+                    input.as_device_fact().is_none(),
+                    "Cannot sync to Device a tensor already on Device"
                 );
                 Ok(tvec![DeviceFact::from_host(input.clone())?.into_opaque_fact()])
             }

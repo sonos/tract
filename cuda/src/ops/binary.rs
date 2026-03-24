@@ -64,7 +64,7 @@ impl EvalOp for CudaBinOp {
                     .with_context(|| "Error while dispatching eval for Cuda Bin Op")
             })?;
         }
-        Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
+        Ok(tvec!(output.into_tensor().into_tvalue()))
     }
 }
 

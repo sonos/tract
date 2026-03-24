@@ -149,7 +149,7 @@ impl OpState for CudaConvState {
                 )
             })?;
         }
-        Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
+        Ok(tvec!(output.into_tensor().into_tvalue()))
     }
 }
 

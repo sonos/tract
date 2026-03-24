@@ -126,7 +126,7 @@ impl EvalOp for MetalAxisOp {
                 with_borrowed_metal_stream(|stream| {
                     PermuteAxes.dispatch_eval(stream, input, &permutation, &output)
                 })?;
-                return Ok(tvec!(output.into_opaque_tensor().into_tvalue()));
+                return Ok(tvec!(output.into_tensor().into_tvalue()));
             }
             AxisOp::Reshape(skip, from, to) => {
                 let from = from.iter().map(|d| d.eval(&session.resolved_symbols)).collect();
@@ -151,7 +151,7 @@ impl EvalOp for MetalAxisOp {
             &new_shape,
         )?;
         with_borrowed_metal_stream(|stream| Memcpy.dispatch_eval(stream, input, 0, &output))?;
-        Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
+        Ok(tvec!(output.into_tensor().into_tvalue()))
     }
 }
 
