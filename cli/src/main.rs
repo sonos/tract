@@ -171,6 +171,7 @@ fn main() -> TractResult<()> {
         .arg(arg!(--pulse [PULSE] "Translate to pulse network"))
 
         .arg(arg!(--"machine-friendly" "Machine friendly output"))
+        .arg(arg!(--"timeout" [SECONDS] "Kill the process after this many seconds"))
 
         .subcommand(Command::new("list-ops").about("List ops in TF/ONNX frameworks"))
         .subcommand(Command::new("list-runtimes").about("List runtimes"))
@@ -299,6 +300,15 @@ fn main() -> TractResult<()> {
     }
 
     let matches = app.get_matches();
+
+    if let Some(timeout) = matches.get_one::<String>("timeout") {
+        let seconds: u64 = timeout.parse().expect("--timeout value must be an integer (seconds)");
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_secs(seconds));
+            eprintln!("Timeout: process killed after {seconds}s");
+            std::process::exit(124);
+        });
+    }
 
     let probe = if matches.get_flag("readings") {
         let file = fs::File::create("readings.out").unwrap();
