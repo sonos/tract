@@ -204,7 +204,7 @@ impl OwnedDeviceTensor for CudaTensor {
                 } else {
                     bail!("Unknown Opaque Fact")
                 };
-                let total_m = bqf.num_groups() * bqf.m();
+                let total_m = bqf.m();
                 let k = bqf.k();
                 BlockQuantStorage::new(bqf.format.clone(), total_m, k, Arc::new(blob))?
                     .into_tensor_with_shape(&self.shape)
