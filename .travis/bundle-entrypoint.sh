@@ -11,10 +11,10 @@ then
     TRACT=$TRACT_RUN
 elif [ -x tract ]
 then
-    TRACT=./tract
+    TRACT="./tract --timeout 60"
 else
     cargo build -p tract-cli -q --release
-    TRACT=./target/release/tract
+    TRACT="./target/release/tract --timeout 60"
 fi
 
 CACHEDIR=${CACHEDIR:-$HOME/.cache/tract-ci-minion-models}
