@@ -109,7 +109,10 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
             }
 
             for fact in &mut output_facts {
-                if fact.konst.is_none() && fact.shape.is_concrete() && fact.shape.volume().is_zero()
+                if fact.konst.is_none()
+                    && fact.opaque_fact.is_none()
+                    && fact.shape.is_concrete()
+                    && fact.shape.volume().is_zero()
                 {
                     let tensor =
                         Tensor::zero_dt(fact.datum_type, fact.shape.as_concrete().unwrap())?;

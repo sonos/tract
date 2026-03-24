@@ -35,7 +35,7 @@ impl super::TypedPass for PropConst {
                 && !node.op_is::<TypedSource>()
                 && node.op.is_stateless()
                 && inputs.iter().zip(&node.inputs).all(|(fact, outlet)| {
-                    fact.konst.is_some()
+                    fact.konst.as_ref().is_some_and(|k| k.try_as_dense().is_ok())
                         && (model.node(outlet.node).outputs[outlet.slot].successors.len() == 1
                             || node.op_is::<Slice>()
                             || (fact.datum_type.is_number()

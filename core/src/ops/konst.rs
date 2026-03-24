@@ -19,7 +19,10 @@ impl Const {
         tensor: Arc<Tensor>,
         fact: Option<Box<dyn OpaqueFact>>,
     ) -> TractResult<Const> {
-        ensure!(fact.is_some() == tensor.datum_type().is_opaque());
+        ensure!(
+            fact.is_some() || !tensor.datum_type().is_opaque(),
+            "Opaque tensor requires an opaque_fact"
+        );
         Ok(Const(tensor, fact))
     }
 
