@@ -83,10 +83,41 @@ pub fn pad_q40_weights(
     )?;
 
     let mut patch = TypedModelPatch::default();
-    let wires = patch.wire_node(&node.name, new_const, &[])?;
-    unsafe {
-        patch.shunt_outside_unchecked(node.id.into(), wires[0])?;
+    let mut wire = patch.wire_node(&node.name, new_const, &[])?[0];
+
+    // Rebuild the CudaAxisOp chain so that intermediate facts reflect the
+    // padded k dimension.  Without this the memory pool would allocate buffers
+    // using the stale (unpadded) fact shapes, causing a size mismatch at
+    // runtime.
+    let mut cursor = node;
+    let mut obliterate_ids: TVec<usize> = tvec![node.id];
+    while let Some(succ) = model.single_succ(cursor.id)? {
+        if succ.op_is::<CudaAxisOp>() {
+            wire = patch.wire_node(&succ.name, succ.op.clone(), &[wire])?[0];
+            obliterate_ids.push(succ.id);
+            cursor = succ;
+            continue;
+        }
+        break;
     }
-    patch.obliterate(node.id)?;
+
+    // Rewire the downstream gemm node so that all facts are consistent with
+    // the padded k dimension.
+    let gemm_succ = model.single_succ(cursor.id)?.unwrap();
+    let weight_outlet: OutletId = cursor.id.into();
+    let mut gemm_inputs: TVec<OutletId> = tvec![];
+    for input in &gemm_succ.inputs {
+        if input.node == weight_outlet.node && input.slot == weight_outlet.slot {
+            gemm_inputs.push(wire);
+        } else {
+            gemm_inputs.push(patch.tap_model(model, *input)?);
+        }
+    }
+    let gemm_out = patch.wire_node(&gemm_succ.name, gemm_succ.op.clone(), &gemm_inputs)?;
+    patch.shunt_outside(model, gemm_succ.id.into(), gemm_out[0])?;
+    obliterate_ids.push(gemm_succ.id);
+    for id in obliterate_ids {
+        patch.obliterate(id)?;
+    }
     Ok(Some(patch))
 }
