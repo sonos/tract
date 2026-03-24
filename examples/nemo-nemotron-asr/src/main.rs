@@ -15,6 +15,13 @@ fn concretize_batch(mut model: Model) -> anyhow::Result<Model> {
     Ok(model)
 }
 
+fn remove_length_input(mut model: Model) -> anyhow::Result<Model> {
+    model.transform(
+        r#"{"name":"substitute_input_with_shape_of","input_to_replace":"length","source_input":"input_signal","axis":1}"#,
+    )?;
+    Ok(model)
+}
+
 fn main() -> anyhow::Result<()> {
     let config: serde_json::Value =
         serde_json::from_reader(File::open("assets/model/model_config.json")?)?;
@@ -29,7 +36,8 @@ fn main() -> anyhow::Result<()> {
         .unwrap();
 
     let preprocessor =
-        concretize_batch(nnef.load("assets/model/preprocessor.nnef.tgz")?)?.into_runnable()?;
+        remove_length_input(concretize_batch(nnef.load("assets/model/preprocessor.nnef.tgz")?)?)?
+            .into_runnable()?;
 
     let mut encoder = nnef.load("assets/model/encoder.nnef.tgz")?;
     encoder.transform("transformers_detect_all")?;
@@ -44,9 +52,8 @@ fn main() -> anyhow::Result<()> {
         .map(|x| x.unwrap() as f32 / 32768.0)
         .collect();
     let samples = Tensor::from_slice(&[1, wav.len()], &wav)?;
-    let len = tensor(arr1(&[wav.len() as i64]))?;
 
-    let [features, feat_len] = preprocessor.run([samples, len])?.try_into().unwrap();
+    let [features, feat_len] = preprocessor.run([samples])?.try_into().unwrap();
     let [encoded, _lens] = encoder.run([features, feat_len])?.try_into().unwrap();
 
     let encoded: ArrayD<f32> = encoded.view()?.into_owned();
