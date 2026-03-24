@@ -860,6 +860,13 @@ impl Tensor {
     ///
     /// `force_full` will force the tensor to be dump in full even if it is big.
     pub fn dump(&self, force_full: bool) -> TractResult<String> {
+        if self.try_as_dense().is_err() {
+            return Ok(format!(
+                "{},{:?} (non-dense storage)",
+                self.shape.iter().join(","),
+                self.dt,
+            ));
+        }
         unsafe fn dump_t<D: Datum>(tensor: &Tensor, n: usize) -> String {
             unsafe {
                 if let Some(qp) = tensor.datum_type().qparams() {

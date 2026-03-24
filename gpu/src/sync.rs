@@ -75,7 +75,11 @@ impl TypedOp for DeviceSync {
                     .clone()
                     .into_typed_fact();
                 if let Some(konst) = input.konst.clone() {
-                    typed_fact.konst = Some(konst.to_device_tensor()?.to_host()?);
+                    if let Some(dt) = konst.as_device_tensor() {
+                        typed_fact.konst = Some(dt.to_host()?);
+                    } else {
+                        typed_fact.konst = Some(konst);
+                    }
                 }
                 Ok(tvec!(typed_fact))
             }

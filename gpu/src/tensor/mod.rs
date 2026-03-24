@@ -177,7 +177,6 @@ impl DeviceTensor {
         Tensor::from_storage(dt, &shape, self)
     }
 
-
     /// Synchronize the GPU Tensor by completing all current
     /// commands on GPU and returns the inner tensor.
     pub fn to_host(&self) -> TractResult<Arc<Tensor>> {

@@ -82,5 +82,11 @@ pub fn pad_q40_weights(
         Box::new(DeviceFact::from_host(padded_fact)?),
     )?;
 
-    Ok(Some(TypedModelPatch::replace_single_op(model, node, &[], new_const)?))
+    let mut patch = TypedModelPatch::default();
+    let wires = patch.wire_node(&node.name, new_const, &[])?;
+    unsafe {
+        patch.shunt_outside_unchecked(node.id.into(), wires[0])?;
+    }
+    patch.obliterate(node.id)?;
+    Ok(Some(patch))
 }
