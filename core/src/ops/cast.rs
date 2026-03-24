@@ -72,7 +72,9 @@ impl EvalOp for Cast {
 
 impl TypedOp for Cast {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(self.to.fact(inputs[0].shape.clone())))
+        let mut fact = self.to.fact(inputs[0].shape.clone());
+        fact.uniform_tdim = inputs[0].uniform_tdim.clone();
+        Ok(tvec!(fact))
     }
 
     fn declutter(

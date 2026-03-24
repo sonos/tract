@@ -34,6 +34,7 @@ impl TypedOp for MultiBroadcastTo {
         ensure!(inputs.len() == 1);
         let mut fact = inputs[0].datum_type.fact(self.shape.clone());
         fact.uniform.clone_from(&inputs[0].uniform);
+        fact.uniform_tdim = inputs[0].uniform_tdim.clone();
         Ok(tvec!(fact))
     }
 

@@ -207,6 +207,10 @@ pub struct TypedFact {
     pub uniform: Option<Arc<Tensor>>,
     /// optional opaque fact
     pub opaque_fact: Option<Box<dyn OpaqueFact>>,
+    /// Symbolic per-element value as a TDim expression, possibly involving
+    /// coordinate symbols x0,x1,… and/or model symbols.
+    /// `None` means "unknown / not tracked".
+    pub uniform_tdim: Option<TDim>,
 }
 
 impl TypedFact {
@@ -232,6 +236,7 @@ impl TypedFact {
             uniform: None,
             konst: None,
             opaque_fact: None,
+            uniform_tdim: None,
         }
     }
 
@@ -247,6 +252,7 @@ impl TypedFact {
             konst: None,
             uniform: None,
             opaque_fact: None,
+            uniform_tdim: None,
         }
     }
 
@@ -254,7 +260,14 @@ impl TypedFact {
     where
         S: Into<ShapeFact>,
     {
-        TypedFact { datum_type, shape: shape.into(), konst: None, uniform: None, opaque_fact: None }
+        TypedFact {
+            datum_type,
+            shape: shape.into(),
+            konst: None,
+            uniform: None,
+            opaque_fact: None,
+            uniform_tdim: None,
+        }
     }
 
     pub fn rank(&self) -> usize {
@@ -321,6 +334,7 @@ impl TypedFact {
         let mut new = self.clone();
         new.konst = None;
         new.uniform = None;
+        new.uniform_tdim = None;
         new
     }
 
@@ -415,6 +429,7 @@ impl From<Arc<Tensor>> for TypedFact {
             uniform: t.as_uniform().map(Arc::new),
             opaque_fact,
             konst: Some(t),
+            uniform_tdim: None,
         }
     }
 }

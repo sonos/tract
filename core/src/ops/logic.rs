@@ -68,6 +68,75 @@ impl EvalOp for Iff {
     }
 }
 
+/// Evaluate a boolean TDim expression at given extreme coordinate values.
+/// For each coordinate symbol x_k present in `expr`, substitute it with either
+/// 0 (use_max=false) or shape[k]-1 (use_max=true), then simplify.
+fn eval_at_coord_extreme(expr: &TDim, shape: &ShapeFact, use_max: bool) -> TDim {
+    let mut result = expr.clone();
+    let syms = expr.symbols();
+    for sym in &syms {
+        let name = format!("{sym}");
+        if let Some(k) = name.strip_prefix('x').and_then(|rest| rest.parse::<usize>().ok()) {
+            if k < shape.rank() {
+                let coord_val =
+                    if use_max { shape[k].clone() - TDim::Val(1) } else { TDim::Val(0) };
+                result = result.substitute(sym, &coord_val).unwrap_or(result.clone());
+            }
+        }
+    }
+    result.simplify()
+}
+
+fn is_provably_all_false(expr: &TDim, shape: &ShapeFact) -> bool {
+    let at_min = eval_at_coord_extreme(expr, shape, false);
+    if at_min != TDim::Val(0) {
+        return false;
+    }
+    let at_max = eval_at_coord_extreme(expr, shape, true);
+    at_max == TDim::Val(0)
+}
+
+fn is_provably_all_true(expr: &TDim, shape: &ShapeFact) -> bool {
+    let at_min = eval_at_coord_extreme(expr, shape, false);
+    if at_min != TDim::Val(1) {
+        return false;
+    }
+    let at_max = eval_at_coord_extreme(expr, shape, true);
+    at_max == TDim::Val(1)
+}
+
+/// Attempt to apply Rule 2: condition is Ge(x_k, threshold) form with true_val all zeros.
+/// Emits Slice(false_val, axis=k, start=0, end=threshold).
+fn try_rule2_slice(
+    model: &TypedModel,
+    node: &TypedNode,
+    expr: &TDim,
+) -> TractResult<Option<TypedModelPatch>> {
+    if let TDim::Ge(lhs, threshold) = expr {
+        if let TDim::Sym(sym) = lhs.as_ref() {
+            let name = format!("{sym}");
+            if let Some(k) = name.strip_prefix('x').and_then(|rest| rest.parse::<usize>().ok()) {
+                let true_val_tdim = model.outlet_fact(node.inputs[1])?.uniform_tdim.clone();
+                // Only handle the case where true branch is provably zero
+                if true_val_tdim == Some(TDim::Val(0)) {
+                    let false_val = node.inputs[2];
+                    let mut patch = TypedModelPatch::default();
+                    let false_wire = patch.tap_model(model, false_val)?;
+                    let end = threshold.as_ref().clone();
+                    let sliced = patch.wire_node(
+                        format!("{}.slice_false", node.name),
+                        crate::ops::array::Slice::new(k, TDim::Val(0), end),
+                        &[false_wire],
+                    )?[0];
+                    patch.shunt_outside(model, OutletId::new(node.id, 0), sliced)?;
+                    return Ok(Some(patch));
+                }
+            }
+        }
+    }
+    Ok(None)
+}
+
 impl TypedOp for Iff {
     as_op!();
 
@@ -84,6 +153,66 @@ impl TypedOp for Iff {
         ])
         .unwrap();
         Ok(tvec!(inputs[1].datum_type.fact(shape)))
+    }
+
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        let cond_outlet = node.inputs[0];
+        let cond_fact = model.outlet_fact(cond_outlet)?;
+
+        // Get uniform_tdim from condition fact, or trace through BitNot one level.
+        let mut cond_tdim = cond_fact.uniform_tdim.clone();
+        if cond_tdim.is_none() {
+            let cond_node = model.node(cond_outlet.node);
+            if let Some(ew) = cond_node.op_as::<crate::ops::element_wise::ElementWiseOp>() {
+                if ew.0.downcast_ref::<BitNot>().is_some() && cond_node.inputs.len() == 1 {
+                    let inner_fact = model.outlet_fact(cond_node.inputs[0])?;
+                    if let Some(inner_tdim) = &inner_fact.uniform_tdim {
+                        cond_tdim = Some(TDim::Not(Box::new(inner_tdim.clone())).reduce());
+                    }
+                }
+            }
+        }
+
+        let Some(expr) = cond_tdim else { return Ok(None) };
+
+        let simplified = expr.simplify();
+
+        // Helper: replace Iff output with a specific input branch
+        let shunt_to = |branch: OutletId| -> TractResult<Option<TypedModelPatch>> {
+            let mut patch = TypedModelPatch::default();
+            let wire = patch.tap_model(model, branch)?;
+            patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
+            Ok(Some(patch))
+        };
+
+        // Rule 1a: condition is provably always false → use false branch (inputs[2])
+        if simplified == TDim::Val(0) {
+            return shunt_to(node.inputs[2]);
+        }
+
+        // Rule 1b: condition is provably always true → use true branch (inputs[1])
+        if simplified == TDim::Val(1) {
+            return shunt_to(node.inputs[1]);
+        }
+
+        let cond_shape = &cond_fact.shape;
+
+        // Rule 1c: prove all-false using coordinate extremes
+        if is_provably_all_false(&simplified, cond_shape) {
+            return shunt_to(node.inputs[2]);
+        }
+
+        // Rule 1d: prove all-true using coordinate extremes
+        if is_provably_all_true(&simplified, cond_shape) {
+            return shunt_to(node.inputs[1]);
+        }
+
+        // Rule 2: Ge(x_k, threshold) with true_val = 0 → Slice(false_val, axis=k, end=threshold)
+        try_rule2_slice(model, node, &simplified)
     }
 
     fn axes_mapping(
@@ -106,3 +235,187 @@ element_wise!(bitnot, BitNot, [bool, u8, u16, u32, u64, i8, i16, i32, i64] => |_
     xs.iter_mut().for_each(|x| *x = !*x);
     Ok(())
 });
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ops::change_axes::AxisOp;
+    use crate::ops::logic::Comp;
+
+    /// Test Case 1: Iff where condition is Eq(T, 0) with T >= 1 assertion.
+    /// After declutter, the Iff should fold to the false branch (inputs[2]).
+    #[test]
+    fn iff_fold_case1_eq_t_zero() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        model.symbols.add_assertion("T >= 1")?;
+        let t_sym = model.symbols.sym("T");
+        let t_dim = TDim::Sym(t_sym.clone());
+
+        // Const T (scalar TDim)
+        let t_wire = model.wire_node(
+            "T",
+            crate::ops::konst::Const::new(tensor0(t_dim.clone()).into_arc_tensor())?,
+            &[],
+        )?[0];
+
+        // Const 0 (scalar TDim)
+        let zero_wire = model.wire_node(
+            "zero",
+            crate::ops::konst::Const::new(tensor0(TDim::Val(0)).into_arc_tensor())?,
+            &[],
+        )?[0];
+
+        // Eq(T, 0) → bool scalar
+        let eq_wire = model.wire_node("eq", Comp::Eq, &[t_wire, zero_wire])?[0];
+
+        // Some data wire for the false branch
+        let data_wire = model.add_source("data", TDim::datum_type().scalar_fact())?;
+
+        // Iff(eq, zero, data) — zero is "true" branch, data is "false" branch
+        let iff_wire = model.wire_node("iff", Iff, &[eq_wire, zero_wire, data_wire])?[0];
+        model.set_output_outlets(&[iff_wire])?;
+
+        let model = model.into_decluttered()?;
+
+        // The Iff should have been folded away (condition is always false given T >= 1)
+        let iff_count = model.nodes().iter().filter(|n| n.op_as::<Iff>().is_some()).count();
+        assert_eq!(iff_count, 0, "Expected Iff to be folded, but found {iff_count} Iff nodes");
+        Ok(())
+    }
+
+    /// Test Case 2: range(0,T,1) → unsqueeze(0) → lt(_, T_unsqueezed) → bitnot → Iff
+    /// The bitnot produces Ge(x1, T), all-false for x1 in [0, T-1].
+    /// After declutter, the Iff should fold to the false branch (data input).
+    #[test]
+    fn iff_fold_case2_not_lt_x1_t() -> TractResult<()> {
+        use crate::ops::array::Range;
+
+        let mut model = TypedModel::default();
+        model.symbols.add_assertion("T >= 1")?;
+        let t_sym = model.symbols.sym("T");
+        let t_dim = TDim::Sym(t_sym.clone());
+
+        // Const start=0 (TDim) and step=1 (TDim) — these get uniform_tdim set in output_facts
+        let start = model.wire_node(
+            "start",
+            crate::ops::konst::Const::new(tensor0(TDim::Val(0)).into_arc_tensor())?,
+            &[],
+        )?[0];
+        let step = model.wire_node(
+            "step",
+            crate::ops::konst::Const::new(tensor0(TDim::Val(1)).into_arc_tensor())?,
+            &[],
+        )?[0];
+        // T is a dynamic TDim input (not a Const) so Range takes the else branch and
+        // sets uniform_tdim = start + step * x0 = x0
+        let end = model.add_source("T_dyn", TDim::datum_type().scalar_fact())?;
+
+        // Range(start=0, end=T, step=1) → [T] TDim with uniform_tdim = x0
+        let range = model.wire_node("range", Range::new(t_dim.clone()), &[start, end, step])?[0];
+
+        // unsqueeze(0) → [1, T] TDim, remap x0→x1 → uniform_tdim = x1
+        let range_unsq = model.wire_node("range_unsq", AxisOp::Add(0), &[range])?[0];
+
+        // T const for comparison, scalar TDim with uniform_tdim = Sym(T)
+        let t_const = model.wire_node(
+            "T_const",
+            crate::ops::konst::Const::new(tensor0(t_dim.clone()).into_arc_tensor())?,
+            &[],
+        )?[0];
+        // unsqueeze T_const → [1] TDim (scalar value, no coord remapping needed)
+        let t_unsq = model.wire_node("T_unsq", AxisOp::Add(0), &[t_const])?[0];
+
+        // lt(range_unsq=[1,T], T_unsq=[1]) → bool [1,T], uniform_tdim = Lt(x1,T)
+        let lt = model.wire_node("lt", Comp::LT, &[range_unsq, t_unsq])?[0];
+
+        // bitnot(lt): BitNot doesn't propagate uniform_tdim in output_facts,
+        // but Iff::declutter traces through it to get Not(Lt(x1,T))=Ge(x1,T)
+        let bn = model.wire_node("bitnot", bitnot(), &[lt])?[0];
+
+        // Data source [1, T]
+        let data_shape = tvec![TDim::Val(1), t_dim.clone()];
+        let data = model.add_source("data", TDim::datum_type().fact(data_shape.clone()))?;
+
+        // zeros broadcast to [1, T], uniform_tdim = Val(0)
+        let zero_scalar = model.wire_node(
+            "zero_s",
+            crate::ops::konst::Const::new(tensor0(TDim::Val(0)).into_arc_tensor())?,
+            &[],
+        )?[0];
+        let zeros = model.wire_node(
+            "zeros",
+            crate::ops::array::MultiBroadcastTo {
+                shape: ShapeFact::from_dims(data_shape.iter().cloned()),
+            },
+            &[zero_scalar],
+        )?[0];
+
+        // Iff(bn, zeros, data): condition Ge(x1,T) is all-false → fold to data
+        let iff = model.wire_node("iff", Iff, &[bn, zeros, data])?[0];
+        model.set_output_outlets(&[iff])?;
+
+        let model = model.into_decluttered()?;
+
+        let iff_count = model.nodes().iter().filter(|n| n.op_as::<Iff>().is_some()).count();
+        assert_eq!(iff_count, 0, "Expected Iff to be folded, but found {iff_count} Iff nodes");
+        Ok(())
+    }
+
+    /// Verify that uniform_tdim propagation produces the expected values at each stage.
+    #[test]
+    fn verify_uniform_tdim_propagation() -> TractResult<()> {
+        use crate::ops::array::Range;
+
+        let mut model = TypedModel::default();
+        model.symbols.add_assertion("T >= 1")?;
+        let t_sym = model.symbols.sym("T");
+        let t_dim = TDim::Sym(t_sym.clone());
+
+        let start = model.wire_node(
+            "start",
+            crate::ops::konst::Const::new(tensor0(TDim::Val(0)).into_arc_tensor())?,
+            &[],
+        )?[0];
+        let step = model.wire_node(
+            "step",
+            crate::ops::konst::Const::new(tensor0(TDim::Val(1)).into_arc_tensor())?,
+            &[],
+        )?[0];
+        let end = model.add_source("T_dyn", TDim::datum_type().scalar_fact())?;
+        let range = model.wire_node("range", Range::new(t_dim.clone()), &[start, end, step])?[0];
+        let range_unsq = model.wire_node("range_unsq", AxisOp::Add(0), &[range])?[0];
+        let t_const = model.wire_node(
+            "T_const",
+            crate::ops::konst::Const::new(tensor0(t_dim.clone()).into_arc_tensor())?,
+            &[],
+        )?[0];
+        let t_unsq = model.wire_node("T_unsq", AxisOp::Add(0), &[t_const])?[0];
+        let lt = model.wire_node("lt", Comp::LT, &[range_unsq, t_unsq])?[0];
+
+        // Check facts at each stage
+        let start_fact = model.outlet_fact(start)?;
+        eprintln!("start.uniform_tdim = {:?}", start_fact.uniform_tdim);
+
+        let range_fact = model.outlet_fact(range)?;
+        eprintln!("range.uniform_tdim = {:?}", range_fact.uniform_tdim);
+
+        let range_unsq_fact = model.outlet_fact(range_unsq)?;
+        eprintln!("range_unsq.uniform_tdim = {:?}", range_unsq_fact.uniform_tdim);
+
+        let t_const_fact = model.outlet_fact(t_const)?;
+        eprintln!("t_const.uniform_tdim = {:?}", t_const_fact.uniform_tdim);
+
+        let t_unsq_fact = model.outlet_fact(t_unsq)?;
+        eprintln!("t_unsq.uniform_tdim = {:?}", t_unsq_fact.uniform_tdim);
+
+        let lt_fact = model.outlet_fact(lt)?;
+        eprintln!("lt.uniform_tdim = {:?}", lt_fact.uniform_tdim);
+
+        assert!(range_fact.uniform_tdim.is_some(), "range should have uniform_tdim");
+        assert!(range_unsq_fact.uniform_tdim.is_some(), "range_unsq should have uniform_tdim");
+        assert!(t_unsq_fact.uniform_tdim.is_some(), "t_unsq should have uniform_tdim");
+        assert!(lt_fact.uniform_tdim.is_some(), "lt should have uniform_tdim");
+
+        Ok(())
+    }
+}
