@@ -35,9 +35,13 @@ fn main() -> anyhow::Result<()> {
         .find_map(|rt| tract::runtime_for_name(rt).ok())
         .unwrap();
 
-    let preprocessor =
-        remove_length_input(concretize_batch(nnef.load("assets/model/preprocessor.nnef.tgz")?)?)?
-            .into_runnable()?;
+    let patched_preprocessor =
+        remove_length_input(concretize_batch(nnef.load("assets/model/preprocessor.nnef.tgz")?)?)?;
+    nnef.write_model_to_tar_gz(
+        "assets/model/preprocessor_patched.nnef.tgz",
+        &patched_preprocessor,
+    )?;
+    let preprocessor = patched_preprocessor.into_runnable()?;
 
     let mut encoder = nnef.load("assets/model/encoder.nnef.tgz")?;
     encoder.transform("transformers_detect_all")?;
