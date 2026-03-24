@@ -11,23 +11,39 @@ use crate::ops::{CudaAxisOp, CudaFusedAxisOp, CudaGgmlGemm};
 use crate::tensor::CudaTensor;
 use crate::utils::pad_q40;
 
-fn is_mm_weights(model: &TypedModel, node: &TypedNode) -> TractResult<bool> {
+/// Walk the successor chain from a Const node to find a GEMM consumer.
+/// Returns the effective weight shape as seen by the GEMM kernel (after all
+/// axis ops, including CudaFusedAxisOp internal reshapes).  The last
+/// dimension of the returned shape is the k dimension.
+fn effective_gemm_shape(
+    model: &TypedModel,
+    node: &TypedNode,
+    shape: &[usize],
+) -> TractResult<Option<TVec<usize>>> {
     let mut cursor = node;
+    let mut effective_shape: TVec<usize> = shape.into();
     while let Some(succ) = model.single_succ(cursor.id)? {
-        if succ.op_is::<CudaGgmlGemm>()
-            || (succ.op_as::<CudaFusedAxisOp>().is_some_and(|fao| fao.op.is::<CudaGgmlGemm>()))
-        {
-            return Ok(true);
+        if succ.op_is::<CudaGgmlGemm>() {
+            return Ok(Some(effective_shape));
         }
-
-        if succ.op_is::<CudaAxisOp>() {
+        if let Some(fao) = succ.op_as::<CudaFusedAxisOp>() {
+            if fao.op.is::<CudaGgmlGemm>() {
+                // Apply the fused axis ops for the weight input slot.
+                let weight_inlet = succ.inputs.iter().position(|i| i.node == cursor.id).unwrap();
+                for axis_op in &fao.grouped_axis_ops[weight_inlet] {
+                    axis_op.0.change_shape_array(&mut effective_shape, false)?;
+                }
+                return Ok(Some(effective_shape));
+            }
+        }
+        if let Some(axis_op) = succ.op_as::<CudaAxisOp>() {
+            axis_op.0.change_shape_array(&mut effective_shape, false)?;
             cursor = succ;
             continue;
         }
         break;
     }
-
-    Ok(false)
+    Ok(None)
 }
 
 // This rule is necessary GGML Q40 Matmul kernels that requires k % 512 == 0
@@ -38,10 +54,6 @@ pub fn pad_q40_weights(
     _node_name: &str,
     op: &Const,
 ) -> TractResult<Option<TypedModelPatch>> {
-    if !is_mm_weights(model, node)? {
-        return Ok(None);
-    }
-
     let Some(dev_tensor) = op.val().to_device_tensor().ok() else {
         return Ok(None);
     };
@@ -53,27 +65,43 @@ pub fn pad_q40_weights(
         return Ok(None);
     };
 
-    rule_ensure!(cuda_tensor.opaque_fact().is_some_and(|of| {
-        of.downcast_ref::<BlockQuantFact>()
-            .is_some_and(|bqf| bqf.format.same_as(&Q4_0) && bqf.k() % Q40_ROW_PADDING != 0)
-    }));
+    let bqf = cuda_tensor
+        .opaque_fact()
+        .and_then(|of| of.downcast_ref::<BlockQuantFact>())
+        .filter(|bqf| bqf.format.same_as(&Q4_0));
+    rule_ensure!(bqf.is_some());
+    let bqf = bqf.unwrap();
+
+    // Compute the effective weight shape as seen by the GEMM kernel (after
+    // all axis ops and CudaFusedAxisOp internal reshapes).  The raw tensor
+    // may have a per-head shape like [m, num_heads, head_dim] that gets
+    // collapsed before the GEMM.
+    let Some(effective_shape) = effective_gemm_shape(model, node, bqf.shape())? else {
+        return Ok(None);
+    };
+    let effective_k = *effective_shape.last().unwrap();
+    rule_ensure!(effective_k % Q40_ROW_PADDING != 0);
 
     let host_tensor = dev_tensor.to_host()?.into_tensor();
     let bqs = as_q40_tensor(&host_tensor).expect("expected Q4_0 tensor view");
-    let m: usize = host_tensor.shape()[..host_tensor.rank() - 1].iter().product();
-    let k = *host_tensor.shape().last().unwrap();
-    let padded_bqs = pad_q40(bqs, m, k)?;
+    // Compute flat (m, k) matching the contiguous Q4_0 data layout.
+    // The data can be viewed as flat_m rows of effective_k elements each.
+    let total_elements: usize = bqf.shape().iter().product();
+    let flat_m = total_elements / effective_k;
+    let padded_bqs = pad_q40(bqs, flat_m, effective_k)?;
 
-    let typed_fact: TypedFact = Arc::clone(op.val()).into();
-    // Preserve the original tensor's group structure in the padded shape
-    let mut padded_shape: TVec<usize> = host_tensor.shape().into();
-    let rank = padded_shape.len();
-    padded_shape[rank - 1] = k.next_multiple_of(Q40_ROW_PADDING);
+    // Build padded shape preserving the rank and batch structure expected by
+    // the GEMM.  effective_shape already incorporates all CudaAxisOp and
+    // CudaFusedAxisOp transformations, so we just replace k with padded_k.
+    let padded_k = effective_k.next_multiple_of(Q40_ROW_PADDING);
+    let mut padded_shape = effective_shape.clone();
+    *padded_shape.last_mut().unwrap() = padded_k;
     let padded_bqf = BlockQuantFact::new(
         tract_core::dyn_clone::clone_box(padded_bqs.format()),
         padded_shape.clone(),
     );
-    let padded_fact = typed_fact.with_opaque_fact(padded_bqf);
+    let padded_fact =
+        TypedFact::dt_shape(DatumType::Opaque, &padded_shape).with_opaque_fact(padded_bqf);
 
     let padded_tensor = padded_bqs.into_tensor_with_shape(&padded_shape).into_arc_tensor();
 
@@ -83,17 +111,15 @@ pub fn pad_q40_weights(
     )?;
 
     let mut patch = TypedModelPatch::default();
-    let mut wire = patch.wire_node(&node.name, new_const, &[])?[0];
+    let wire = patch.wire_node(&node.name, new_const, &[])?[0];
 
-    // Rebuild the CudaAxisOp chain so that intermediate facts reflect the
-    // padded k dimension.  Without this the memory pool would allocate buffers
-    // using the stale (unpadded) fact shapes, causing a size mismatch at
-    // runtime.
+    // The padded const already has the effective GEMM shape (with padded k),
+    // so skip the CudaAxisOp chain — those transforms are baked in.
+    // Collect the intermediate node ids to obliterate.
     let mut cursor = node;
     let mut obliterate_ids: TVec<usize> = tvec![node.id];
     while let Some(succ) = model.single_succ(cursor.id)? {
         if succ.op_is::<CudaAxisOp>() {
-            wire = patch.wire_node(&succ.name, succ.op.clone(), &[wire])?[0];
             obliterate_ids.push(succ.id);
             cursor = succ;
             continue;
@@ -101,19 +127,32 @@ pub fn pad_q40_weights(
         break;
     }
 
-    // Rewire the downstream gemm node so that all facts are consistent with
-    // the padded k dimension.
+    // Rewire the downstream GEMM node.  If the consumer is a CudaFusedAxisOp,
+    // clear the weight input's axis ops since the padded tensor is already in
+    // the expected shape.
     let gemm_succ = model.single_succ(cursor.id)?.unwrap();
     let weight_outlet: OutletId = cursor.id.into();
+    let weight_inlet = gemm_succ
+        .inputs
+        .iter()
+        .position(|i| i.node == weight_outlet.node && i.slot == weight_outlet.slot)
+        .unwrap();
     let mut gemm_inputs: TVec<OutletId> = tvec![];
-    for input in &gemm_succ.inputs {
-        if input.node == weight_outlet.node && input.slot == weight_outlet.slot {
+    for (ix, input) in gemm_succ.inputs.iter().enumerate() {
+        if ix == weight_inlet {
             gemm_inputs.push(wire);
         } else {
             gemm_inputs.push(patch.tap_model(model, *input)?);
         }
     }
-    let gemm_out = patch.wire_node(&gemm_succ.name, gemm_succ.op.clone(), &gemm_inputs)?;
+    let gemm_op: Box<dyn TypedOp> = if let Some(fao) = gemm_succ.op_as::<CudaFusedAxisOp>() {
+        let mut axis_ops = fao.grouped_axis_ops.clone();
+        axis_ops[weight_inlet].clear();
+        Box::new(CudaFusedAxisOp::new(axis_ops, fao.op.clone()))
+    } else {
+        gemm_succ.op.clone()
+    };
+    let gemm_out = patch.wire_node(&gemm_succ.name, gemm_op, &gemm_inputs)?;
     patch.shunt_outside(model, gemm_succ.id.into(), gemm_out[0])?;
     obliterate_ids.push(gemm_succ.id);
     for id in obliterate_ids {
