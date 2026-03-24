@@ -186,7 +186,7 @@ impl TypedOp for Iff {
                 if ew.0.downcast_ref::<BitNot>().is_some() && cond_node.inputs.len() == 1 {
                     let inner_fact = model.outlet_fact(cond_node.inputs[0])?;
                     if let Some(inner_tdim) = &inner_fact.uniform_tdim {
-                        cond_tdim = Some(TDim::Not(Box::new(inner_tdim.clone())).reduce());
+                        cond_tdim = Some((TDim::Val(1) - inner_tdim.clone()).reduce());
                     }
                 }
             }

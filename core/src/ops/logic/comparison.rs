@@ -148,11 +148,15 @@ impl TypedOp for Comp {
             fact.uniform_tdim = Some(
                 match self {
                     GTE => TDim::Ge(Box::new(a.clone()), Box::new(b.clone())),
-                    LTE => TDim::Le(Box::new(a.clone()), Box::new(b.clone())),
-                    LT => TDim::Lt(Box::new(a.clone()), Box::new(b.clone())),
-                    GT => TDim::Gt(Box::new(a.clone()), Box::new(b.clone())),
+                    LTE => TDim::Ge(Box::new(b.clone()), Box::new(a.clone())),
+                    LT => {
+                        TDim::Ge(Box::new(b.clone()), Box::new((a.clone() + TDim::Val(1)).reduce()))
+                    }
+                    GT => {
+                        TDim::Ge(Box::new((a.clone() + TDim::Val(1)).reduce()), Box::new(b.clone()))
+                    }
                     Eq => TDim::Eq(Box::new(a.clone()), Box::new(b.clone())),
-                    NE => TDim::Not(Box::new(TDim::Eq(Box::new(a.clone()), Box::new(b.clone())))),
+                    NE => TDim::Val(1) - TDim::Eq(Box::new(a.clone()), Box::new(b.clone())),
                 }
                 .reduce(),
             );

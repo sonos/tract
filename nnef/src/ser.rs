@@ -463,12 +463,7 @@ pub fn tdim(dim: &TDim) -> RValue {
         TDim::Div(x, y) => RValue::Binary(tdim(x).boxed(), "/".to_string(), numeric(y).boxed()),
         TDim::Broadcast(_) => todo!(),
         TDim::Min(_) | TDim::Max(_) => todo!(),
-        TDim::Ge(_, _)
-        | TDim::Le(_, _)
-        | TDim::Lt(_, _)
-        | TDim::Gt(_, _)
-        | TDim::Eq(_, _)
-        | TDim::Not(_) => {
+        TDim::Ge(_, _) | TDim::Eq(_, _) => {
             panic!("Comparison/boolean TDim variants are transient and cannot be serialized")
         }
     }
