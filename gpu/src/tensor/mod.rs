@@ -177,11 +177,6 @@ impl DeviceTensor {
         Tensor::from_storage(dt, &shape, self)
     }
 
-    /// Deprecated alias for `into_tensor`.
-    #[deprecated(note = "Use into_tensor() instead")]
-    pub fn into_opaque_tensor(self) -> Tensor {
-        self.into_tensor()
-    }
 
     /// Synchronize the GPU Tensor by completing all current
     /// commands on GPU and returns the inner tensor.
