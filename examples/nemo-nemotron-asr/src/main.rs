@@ -10,6 +10,11 @@ fn argmax(slice: &[f32]) -> Option<usize> {
     slice.into_iter().position_max_by_key(|x| FloatOrd(**x))
 }
 
+fn concretize_batch(mut model: Model) -> anyhow::Result<Model> {
+    model.transform(ConcretizeSymbols::new().value("BATCH", 1))?;
+    Ok(model)
+}
+
 fn main() -> anyhow::Result<()> {
     let config: serde_json::Value =
         serde_json::from_reader(File::open("assets/model/model_config.json")?)?;
@@ -23,17 +28,15 @@ fn main() -> anyhow::Result<()> {
         .find_map(|rt| tract::runtime_for_name(rt).ok())
         .unwrap();
 
-    let preprocessor = nnef.load("assets/model/preprocessor.nnef.tgz")?.into_runnable()?;
+    let preprocessor =
+        concretize_batch(nnef.load("assets/model/preprocessor.nnef.tgz")?)?.into_runnable()?;
 
     let mut encoder = nnef.load("assets/model/encoder.nnef.tgz")?;
     encoder.transform("transformers_detect_all")?;
-    let encoder = gpu.prepare(encoder)?;
+    let encoder = gpu.prepare(concretize_batch(encoder)?)?;
 
-    let decoder = nnef.load("assets/model/decoder.nnef.tgz")?;
-    let decoder = gpu.prepare(decoder)?;
-
-    let joint = nnef.load("assets/model/joint.nnef.tgz")?;
-    let joint = gpu.prepare(joint)?;
+    let decoder = gpu.prepare(concretize_batch(nnef.load("assets/model/decoder.nnef.tgz")?)?)?;
+    let joint = gpu.prepare(concretize_batch(nnef.load("assets/model/joint.nnef.tgz")?)?)?;
 
     // soundfile (Python) normalizes i16 PCM to [-1, 1]; match that here
     let wav: Vec<f32> = hound::WavReader::open("assets/2086-149220-0033.wav")?
