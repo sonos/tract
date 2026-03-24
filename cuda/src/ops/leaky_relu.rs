@@ -38,7 +38,7 @@ impl EvalOp for CudaLeakyRelu {
                 input_cuda.shape(),
             )?;
             LeakyRelu.dispatch_eval(stream, input_cuda, self.alpha, &output)?;
-            Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
+            Ok(tvec!(output.into_tensor().into_tvalue()))
         })
     }
 }

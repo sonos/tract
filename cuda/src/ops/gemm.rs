@@ -80,7 +80,7 @@ impl EvalOp for CudaGgmlGemm {
 
         CUDA_STREAM.with(|stream| GgmlGemm.dispatch_eval(stream, activs, weights, &out))?;
 
-        Ok(tvec![out.into_opaque_tensor().into_tvalue()])
+        Ok(tvec![out.into_tensor().into_tvalue()])
     }
 }
 

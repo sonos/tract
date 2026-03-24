@@ -56,7 +56,7 @@ impl EvalOp for MetalSoftmax {
             )?;
             Softmax.dispatch_eval(stream, input, self.axes[0], &output)?;
 
-            Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
+            Ok(tvec!(output.into_tensor().into_tvalue()))
         })
     }
 }

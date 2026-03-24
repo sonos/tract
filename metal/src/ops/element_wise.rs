@@ -44,7 +44,7 @@ impl EvalOp for MetalElementWiseOp {
                 a.shape(),
             )?;
             self.0.dispatch_eval(stream, a, &output)?;
-            Ok(tvec![output.into_opaque_tensor().into_tvalue()])
+            Ok(tvec![output.into_tensor().into_tvalue()])
         })
     }
 }

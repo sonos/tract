@@ -52,7 +52,7 @@ impl EvalOp for CudaFlashAttention {
                 &output,
                 self.is_causal,
             )?;
-            Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
+            Ok(tvec!(output.into_tensor().into_tvalue()))
         })
     }
 }

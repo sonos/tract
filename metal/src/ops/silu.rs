@@ -36,7 +36,7 @@ impl EvalOp for MetalSilu {
                 input.shape(),
             )?;
             Silu.dispatch_eval(stream, input, &output)?;
-            Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
+            Ok(tvec!(output.into_tensor().into_tvalue()))
         })
     }
 }

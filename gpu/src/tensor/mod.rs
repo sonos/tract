@@ -167,9 +167,20 @@ impl DeviceTensor {
         }
     }
 
-    /// Convert device tensor to Opaque Tensor.
+    /// Convert device tensor to a Tensor backed by device storage.
+    ///
+    /// The resulting tensor carries the real datum type and shape from the
+    /// device tensor (e.g. F32 / \[2,3\]), rather than an opaque scalar wrapper.
+    pub fn into_tensor(self) -> Tensor {
+        let dt = self.datum_type();
+        let shape: TVec<usize> = self.shape().into();
+        Tensor::from_storage(dt, &shape, self)
+    }
+
+    /// Deprecated alias for `into_tensor`.
+    #[deprecated(note = "Use into_tensor() instead")]
     pub fn into_opaque_tensor(self) -> Tensor {
-        Tensor::from_storage(DatumType::Opaque, &[], self)
+        self.into_tensor()
     }
 
     /// Synchronize the GPU Tensor by completing all current

@@ -49,7 +49,9 @@ impl DeviceFact {
     }
 
     pub fn into_opaque_fact(self) -> TypedFact {
-        TypedFact::dt_scalar(DatumType::Opaque).with_opaque_fact(self)
+        let dt = self.fact.datum_type;
+        let shape = self.fact.shape.clone();
+        TypedFact::dt_shape(dt, shape).with_opaque_fact(self)
     }
 }
 
@@ -94,14 +96,10 @@ pub trait DeviceTypedFactExt {
 
 impl DeviceTypedFactExt for TypedFact {
     fn to_device_fact(&self) -> TractResult<&DeviceFact> {
-        ensure!(
-            self.datum_type == DatumType::Opaque,
-            "Cannot retrieve DeviceFact from a non Opaque Tensor"
-        );
         self.opaque_fact
             .as_ref()
             .and_then(|m| m.downcast_ref::<DeviceFact>())
-            .ok_or_else(|| anyhow!("DeviceFact not found in Opaque Tensor"))
+            .ok_or_else(|| anyhow!("DeviceFact not found"))
     }
     fn as_device_fact(&self) -> Option<&DeviceFact> {
         self.opaque_fact.as_ref().and_then(|m| m.downcast_ref::<DeviceFact>())

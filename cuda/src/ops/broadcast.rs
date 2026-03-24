@@ -42,7 +42,7 @@ impl EvalOp for CudaMultiBroadcastTo {
         CUDA_STREAM.with(|stream| {
             kernels::array::MultiBroadcast.dispatch_eval(stream, input, 0, &output)
         })?;
-        Ok(tvec![output.into_opaque_tensor().into_tvalue()])
+        Ok(tvec![output.into_tensor().into_tvalue()])
     }
 }
 

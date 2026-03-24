@@ -64,7 +64,7 @@ fn compute_reshaped_inputs(
                 },
             )?;
 
-            Ok(reshaped_input.into_opaque_tensor().into())
+            Ok(reshaped_input.into_tensor().into())
         })
         .collect::<TractResult<TVec<_>>>()
 }
