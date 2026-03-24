@@ -129,15 +129,21 @@ impl TypedOp for Range {
         ensure!(step.shape.volume().is_one());
         if let (Some(start), Some(end), Some(step)) = (&start.konst, &end.konst, &step.konst) {
             if start.datum_type() == TDim::datum_type() {
-                let start = start.try_as_dense()?.to_scalar::<TDim>()?;
-                let end = end.try_as_dense()?.to_scalar::<TDim>()?;
+                let start_tdim = start.try_as_dense()?.to_scalar::<TDim>()?.clone();
+                let end_tdim = end.try_as_dense()?.to_scalar::<TDim>()?;
                 let step = step.cast_to_scalar::<i64>()?;
                 let len = if step < 0 {
-                    (start.clone() - end).divceil(-step as usize)
+                    (start_tdim.clone() - end_tdim).divceil(-step as usize)
                 } else {
-                    (end.clone() - start).divceil(step as usize)
+                    (end_tdim.clone() - start_tdim.clone()).divceil(step as usize)
                 };
-                Ok(tvec!(DatumType::I64.fact([len])))
+                let mut fact = DatumType::I64.fact([len]);
+                if let Some(scope) = start_tdim.find_scope().or_else(|| end_tdim.find_scope()) {
+                    let x0 = TDim::Sym(scope.coord_sym(0));
+                    let term = if step == 1 { x0 } else { TDim::MulInt(step, Box::new(x0)) };
+                    fact.uniform_tdim = Some((start_tdim + term).reduce());
+                }
+                Ok(tvec!(fact))
             } else {
                 let len = dispatch_numbers!(Self::len_for_numbers(start.datum_type())(
                     self, start, end, step
