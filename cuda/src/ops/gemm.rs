@@ -27,7 +27,7 @@ impl CudaGgmlGemm {
             bail!("Expects 2 inputs");
         };
 
-        if a.datum_type.is_number() && b.datum_type.is_number() {
+        if a.datum_type.is_number() && b.datum_type.is_number() && a.is_plain() && b.is_plain() {
             ensure!(a.rank() == b.rank());
             ensure!(a.rank() >= 2);
             ensure!(a.shape[a.rank() - 1] == b.shape[b.rank() - 1]);
