@@ -10,6 +10,7 @@ use ndarray::*;
 
 use crate::broadcast::multi_broadcast;
 use crate::internal::*;
+use crate::ops::array::{Slice, TypedConcat};
 
 bin_to_super_type!(and, And,
                    [bool, u8, u16, u32, u64, i8, i16, i32, i64] => |c, &a, &b| *c = (a as i64 != 0 && b as i64 != 0) as _);
@@ -68,16 +69,14 @@ impl EvalOp for Iff {
     }
 }
 
+fn sym_to_coord_axis(sym: &Symbol) -> Option<usize> {
+    format!("{sym}").strip_prefix('x')?.parse::<usize>().ok()
+}
+
 fn coord_bound_assertions(expr: &TDim, shape: &ShapeFact) -> Vec<Assertion> {
     expr.symbols()
         .into_iter()
-        .filter_map(|s| {
-            let name = format!("{s}");
-            name.strip_prefix('x')
-                .and_then(|rest| rest.parse::<usize>().ok())
-                .filter(|k| *k < shape.rank())
-                .map(|k| (k, s))
-        })
+        .filter_map(|s| sym_to_coord_axis(&s).filter(|k| *k < shape.rank()).map(|k| (k, s)))
         .flat_map(|(k, sym)| {
             [
                 Assertion::GTE(TDim::Sym(sym.clone()), TDim::Val(0)),
@@ -95,6 +94,77 @@ fn is_provably_all_false(expr: &TDim, shape: &ShapeFact) -> bool {
 fn is_provably_all_true(expr: &TDim, shape: &ShapeFact) -> bool {
     let extra = coord_bound_assertions(expr, shape);
     expr.clone().simplify_with_extra_assertions(&extra) == TDim::Val(1)
+}
+
+fn extract_split_pattern(expr: &TDim, shape: &ShapeFact) -> Option<(usize, TDim, bool)> {
+    fn try_ge(ge: &TDim, shape: &ShapeFact) -> Option<(usize, TDim)> {
+        if let TDim::Ge(lhs, rhs) = ge {
+            if let TDim::Sym(sym) = &**lhs {
+                let k = sym_to_coord_axis(sym)?;
+                if k < shape.rank() && !rhs.symbols().contains(sym) {
+                    return Some((k, *rhs.clone()));
+                }
+            }
+        }
+        None
+    }
+
+    // Form A: Ge(x_k, split) — lower half is false branch
+    if let Some((k, split)) = try_ge(expr, shape) {
+        return Some((k, split, false));
+    }
+    // Form B: 1 - Ge(x_k, split) — lower half is true branch
+    let flipped = (TDim::Val(1) - expr.clone()).simplify();
+    if let Some((k, split)) = try_ge(&flipped, shape) {
+        return Some((k, split, true));
+    }
+    None
+}
+
+fn split_iff_to_slice_concat(
+    model: &TypedModel,
+    node: &TypedNode,
+    axis: usize,
+    split: TDim,
+    lower_is_true: bool,
+) -> TractResult<Option<TypedModelPatch>> {
+    let (lower_outlet, upper_outlet) = if lower_is_true {
+        (node.inputs[1], node.inputs[2])
+    } else {
+        (node.inputs[2], node.inputs[1])
+    };
+
+    let out_dim = model.outlet_fact(OutletId::new(node.id, 0))?.shape[axis].clone();
+    if model.outlet_fact(node.inputs[1])?.shape[axis] != out_dim
+        || model.outlet_fact(node.inputs[2])?.shape[axis] != out_dim
+    {
+        return Ok(None);
+    }
+
+    let mut patch = TypedModelPatch::default();
+    let lower_wire = patch.tap_model(model, lower_outlet)?;
+    let upper_wire = patch.tap_model(model, upper_outlet)?;
+
+    let lower_slice = patch.wire_node(
+        format!("{}.lower_slice", node.name),
+        Slice::new(axis, TDim::Val(0), split.clone()),
+        &[lower_wire],
+    )?[0];
+
+    let upper_slice = patch.wire_node(
+        format!("{}.upper_slice", node.name),
+        Slice::new(axis, split, out_dim),
+        &[upper_wire],
+    )?[0];
+
+    let concat = patch.wire_node(
+        format!("{}.concat", node.name),
+        TypedConcat::new(axis),
+        &[lower_slice, upper_slice],
+    )?[0];
+
+    patch.shunt_outside(model, node.id.into(), concat)?;
+    Ok(Some(patch))
 }
 
 impl TypedOp for Iff {
@@ -176,6 +246,11 @@ impl TypedOp for Iff {
         // Rule 1d: prove all-true using coordinate extremes
         if is_provably_all_true(&simplified, cond_shape) {
             return shunt_to(node.inputs[1]);
+        }
+
+        // Rule 2: condition is ge(x_k, split) or 1-ge(x_k, split) — split into slice+concat
+        if let Some((axis, split, lower_is_true)) = extract_split_pattern(&simplified, cond_shape) {
+            return split_iff_to_slice_concat(model, node, axis, split, lower_is_true);
         }
 
         Ok(None)
@@ -324,6 +399,86 @@ mod tests {
 
         let iff_count = model.nodes().iter().filter(|n| n.op_as::<Iff>().is_some()).count();
         assert_eq!(iff_count, 0, "Expected Iff to be folded, but found {iff_count} Iff nodes");
+        Ok(())
+    }
+
+    /// Rule 2: condition ge(x2, T/160) over [1,1,1+T/160] → slice+concat, no Iff remaining.
+    #[test]
+    fn iff_split_to_slice_concat() -> TractResult<()> {
+        use crate::ops::array::Range;
+
+        let mut model = TypedModel::default();
+        model.symbols.add_assertion("T >= 160")?;
+        let t_sym = model.symbols.sym("T");
+        let t_dim = TDim::Sym(t_sym.clone());
+
+        // split = T/160
+        let split = t_dim.clone() / 160;
+        // output shape: [1, 1, 1 + T/160]
+        let out_len = TDim::Val(1) + split.clone();
+
+        // Build condition: Range over [0, 1+T/160) on axis 2, then compare >= T/160
+        // We'll construct it directly as a source with the right uniform_tdim.
+        // Simpler: use Range + unsqueeze twice + Ge comparison.
+
+        // Range(0, 1+T/160, 1) → [1+T/160] with uniform_tdim = x0
+        let start = model.wire_node(
+            "start",
+            crate::ops::konst::Const::new(tensor0(TDim::Val(0)).into_arc_tensor())?,
+            &[],
+        )?[0];
+        let step = model.wire_node(
+            "step",
+            crate::ops::konst::Const::new(tensor0(TDim::Val(1)).into_arc_tensor())?,
+            &[],
+        )?[0];
+        let end_val = model.wire_node(
+            "end_val",
+            crate::ops::konst::Const::new(tensor0(out_len.clone()).into_arc_tensor())?,
+            &[],
+        )?[0];
+        let range =
+            model.wire_node("range", Range::new(out_len.clone()), &[start, end_val, step])?[0];
+        // unsqueeze(0): [1, 1+T/160], x0 → x1
+        let r1 = model.wire_node("r1", AxisOp::Add(0), &[range])?[0];
+        // unsqueeze(0): [1, 1, 1+T/160], x1 → x2
+        let r2 = model.wire_node("r2", AxisOp::Add(0), &[r1])?[0];
+
+        // split const
+        let split_const = model.wire_node(
+            "split_const",
+            crate::ops::konst::Const::new(tensor0(split.clone()).into_arc_tensor())?,
+            &[],
+        )?[0];
+        // unsqueeze twice so it can broadcast against [1,1,1+T/160]
+        let sc1 = model.wire_node("sc1", AxisOp::Add(0), &[split_const])?[0];
+        let sc2 = model.wire_node("sc2", AxisOp::Add(0), &[sc1])?[0];
+
+        // Ge(range_3d, split_3d) → bool [1,1,1+T/160], uniform_tdim = Ge(x2, T/160)
+        let cond = model.wire_node("cond", Comp::GTE, &[r2, sc2])?[0];
+
+        // true and false branches: shape [1,1,1+T/160]
+        let true_branch = model.add_source(
+            "true_b",
+            TDim::datum_type().fact(tvec![TDim::Val(1), TDim::Val(1), out_len.clone()]),
+        )?;
+        let false_branch = model.add_source(
+            "false_b",
+            TDim::datum_type().fact(tvec![TDim::Val(1), TDim::Val(1), out_len.clone()]),
+        )?;
+
+        let iff = model.wire_node("iff", Iff, &[cond, true_branch, false_branch])?[0];
+        model.set_output_outlets(&[iff])?;
+
+        let model = model.into_decluttered()?;
+
+        let iff_count = model.nodes().iter().filter(|n| n.op_as::<Iff>().is_some()).count();
+        assert_eq!(iff_count, 0, "Expected no Iff nodes after declutter, found {iff_count}");
+
+        let concat_count =
+            model.nodes().iter().filter(|n| n.op_as::<TypedConcat>().is_some()).count();
+        assert!(concat_count > 0, "Expected at least one Concat node after declutter");
+
         Ok(())
     }
 
