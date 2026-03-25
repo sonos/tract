@@ -197,7 +197,10 @@ impl GemmKernel for GgmlGemm {
 fn mv_kernel_name_and_dispatch_params(
     params: &GemmDispatchParams,
 ) -> TractResult<(String, (u64, u64, u64))> {
-    if params.dts[1] == F32 {
+    if params.q40_b {
+        ensure!(params.dts[0] == F32);
+        Ok(("kernel_mul_mv_q4_0_f32".to_string(), (8, 8, 1)))
+    } else if params.dts[1] == F32 {
         ensure!(params.dts[0] == F32);
         Ok(("kernel_mul_mv_f32_f32".to_string(), (32, 1, 4)))
     } else if params.dts[1] == F16 {
@@ -215,8 +218,7 @@ fn mv_kernel_name_and_dispatch_params(
             Ok(("kernel_mul_mv_f16_f16".to_string(), (32, 1, 4)))
         }
     } else {
-        ensure!((params.q40_b) && (params.dts[0] == F32));
-        Ok(("kernel_mul_mv_q4_0_f32".to_string(), (8, 8, 1)))
+        bail!("Unsupported dtype combination for GGML gemv: dts={:?}", params.dts);
     }
 }
 
