@@ -130,19 +130,16 @@ impl EvalOp for TypedBinOp {
 
 impl TypedBinOp {
     fn combine_uniform_tdim(&self, a: &TDim, b: &TDim) -> Option<TDim> {
-        if self.0.downcast_ref::<Add>().is_some() {
-            Some((a.clone() + b.clone()).reduce())
-        } else if self.0.downcast_ref::<Sub>().is_some() {
-            Some((a.clone() - b.clone()).reduce())
-        } else if self.0.downcast_ref::<Div>().is_some() {
-            if let TDim::Val(d) = b {
-                if *d > 0 { Some(TDim::Div(Box::new(a.clone()), *d as u64).reduce()) } else { None }
-            } else {
-                None
-            }
-        } else {
-            None
-        }
+        let a = tensor0(a.clone()).into_tvalue();
+        let b = tensor0(b.clone()).into_tvalue();
+        let result = self.0.eval(a, b, TDim::datum_type()).ok()?;
+        result
+            .try_as_dense()
+            .ok()
+            .and_then(|d| d.as_slice::<TDim>().ok())
+            .and_then(|s| s.first())
+            .cloned()
+            .map(|d| d.reduce())
     }
 }
 
