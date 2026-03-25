@@ -148,7 +148,7 @@ impl Default for Tensor {
 
 impl Drop for Tensor {
     fn drop(&mut self) {
-        if self.storage.as_dense().is_some() {
+        if self.is_plain() {
             macro_rules! drop_in_place {
                 ($t: ty) => {
                     if self.dt == <$t>::datum_type() {
@@ -164,7 +164,7 @@ impl Drop for Tensor {
             drop_in_place!(TDim);
             drop_in_place!(Opaque);
         }
-        // StorageKind::Other drops via Box<dyn TensorStorage> automatically
+        // StorageKind::Exotic drops via Box<dyn TensorStorage> automatically
     }
 }
 
@@ -208,7 +208,7 @@ impl Tensor {
             shape: shape.into(),
             strides,
             len,
-            storage: StorageKind::Other(Box::new(storage)),
+            storage: StorageKind::Exotic(Box::new(storage)),
         }
     }
 
@@ -223,6 +223,18 @@ impl Tensor {
     #[inline]
     pub fn try_as_dense(&self) -> TractResult<DenseView<'_>> {
         self.as_dense().context("Tensor storage is not dense")
+    }
+
+    /// Returns `true` if this tensor uses plain dense (contiguous) storage.
+    #[inline]
+    pub fn is_plain(&self) -> bool {
+        self.storage.as_dense().is_some()
+    }
+
+    /// Returns `true` if this tensor uses exotic (non-dense) storage.
+    #[inline]
+    pub fn is_exotic(&self) -> bool {
+        !self.is_plain()
     }
 
     /// Returns a mutable [`DenseViewMut`] if this tensor has dense storage.
@@ -266,7 +278,7 @@ impl Tensor {
         alignment: usize,
     ) -> TractResult<Tensor> {
         let bytes = shape.iter().cloned().product::<usize>() * dt.size_of();
-        let storage = StorageKind::Dense(DenseStorage::from(unsafe {
+        let storage = StorageKind::Plain(DenseStorage::from(unsafe {
             Blob::new_for_size_and_align(bytes, alignment)
         }));
         let mut tensor = Tensor { strides: tvec!(), dt, shape: shape.into(), storage, len: 0 };
@@ -860,7 +872,7 @@ impl Tensor {
     ///
     /// `force_full` will force the tensor to be dump in full even if it is big.
     pub fn dump(&self, force_full: bool) -> TractResult<String> {
-        if self.try_as_dense().is_err() {
+        if self.is_exotic() {
             return Ok(format!(
                 "{},{:?} (non-dense storage)",
                 self.shape.iter().join(","),
@@ -1090,7 +1102,7 @@ impl Tensor {
     }
 
     pub fn is_uniform(&self) -> bool {
-        if self.storage.as_dense().is_none() {
+        if self.is_exotic() {
             return false;
         }
         if self.len() <= 1 {
@@ -1500,7 +1512,7 @@ impl Tensor {
     }
 
     pub fn deep_clone(&self) -> Tensor {
-        if self.storage.as_dense().is_none() {
+        if self.is_exotic() {
             return Tensor {
                 dt: self.dt,
                 shape: self.shape.clone(),
@@ -1677,7 +1689,7 @@ impl Tensor {
     pub fn into_blob(mut self) -> TractResult<Blob> {
         ensure!(self.dt.is_copy());
         let storage =
-            std::mem::replace(&mut self.storage, StorageKind::Dense(DenseStorage::default()));
+            std::mem::replace(&mut self.storage, StorageKind::Plain(DenseStorage::default()));
         Ok(storage.into_dense().context("Storage is not dense")?.into_blob())
     }
 }
