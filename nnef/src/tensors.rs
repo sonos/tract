@@ -228,7 +228,7 @@ pub fn write_tensor(w: &mut impl Write, tensor: &Tensor) -> TractResult<()> {
             (TRACT_ITEM_TYPE_VENDOR, 4)
         }
         DatumType::Bool => (0, 5),
-        DatumType::TDim | DatumType::Blob | DatumType::Opaque => {
+        DatumType::TDim | DatumType::Blob => {
             bail!("Don't know how to serialize {:?}", tensor.datum_type())
         }
     };

@@ -20,7 +20,6 @@ pub mod prelude {
     pub use crate::blob::Blob;
     pub use crate::datum::{Datum, DatumType, QParams, round_ties_to_even};
     pub use crate::dim::{Assertion, Symbol, SymbolScope, SymbolValues, TDim, ToDim};
-    pub use crate::opaque::Opaque;
     pub use crate::tensor::litteral::*;
     pub use crate::tensor::plain_view::{PlainView, PlainViewMut};
     pub use crate::tensor::storage::{PlainStorage, TensorStorage};
@@ -42,7 +41,7 @@ pub mod prelude {
 pub mod internal {
     pub use crate::datum::ClampCast;
     pub use crate::dim::{DimLike, parse_tdim, solve_for};
-    pub use crate::opaque::{ExoticFact, OpaquePayload};
+    pub use crate::opaque::ExoticFact;
     pub use crate::prelude::*;
     pub use crate::tensor::Approximation;
     pub use crate::tensor::view::TensorView;

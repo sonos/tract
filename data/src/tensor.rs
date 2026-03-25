@@ -4,7 +4,6 @@ use crate::blob::Blob;
 use crate::datum::{ClampCast, Datum, DatumType, QParams, round_ties_to_even, scale_by};
 use crate::dim::TDim;
 use crate::internal::*;
-use crate::opaque::Opaque;
 use half::f16;
 use itertools::{Itertools, izip};
 use ndarray::prelude::*;
@@ -110,7 +109,6 @@ impl Hash for Tensor {
                     TDim => self.as_slice_unchecked::<crate::dim::TDim>().hash(state),
                     String => self.as_slice_unchecked::<std::string::String>().hash(state),
                     Blob => self.as_slice_unchecked::<crate::blob::Blob>().hash(state),
-                    Opaque => self.as_slice_unchecked::<crate::opaque::Opaque>().hash(state),
                     QI8(_) => self.as_slice_unchecked::<i8>().hash(state),
                     QU8(_) => self.as_slice_unchecked::<u8>().hash(state),
                     QI32(_) => self.as_slice_unchecked::<i32>().hash(state),
@@ -162,7 +160,6 @@ impl Drop for Tensor {
             drop_in_place!(Blob);
             drop_in_place!(String);
             drop_in_place!(TDim);
-            drop_in_place!(Opaque);
         }
         // StorageKind::Exotic drops via Box<dyn TensorStorage> automatically
     }
@@ -298,12 +295,6 @@ impl Tensor {
                         .iter_mut()
                         .for_each(|dim| std::ptr::write(dim, TDim::zero()))
                 }
-            } else if dt == Opaque::datum_type() {
-                unsafe {
-                    tensor.as_slice_mut_unchecked::<Opaque>().iter_mut().for_each(|p| {
-                        std::ptr::write(p, Opaque::default());
-                    })
-                };
             } else if cfg!(debug_assertions) {
                 assert!(dt.is_copy());
                 if dt == DatumType::F32 {
@@ -1536,10 +1527,6 @@ impl Tensor {
                 } else if self.dt == DatumType::Blob {
                     tensor
                         .as_slice_mut_unchecked::<Blob>()
-                        .clone_from_slice(self.as_slice_unchecked());
-                } else if self.dt == DatumType::Opaque {
-                    tensor
-                        .as_slice_mut_unchecked::<Opaque>()
                         .clone_from_slice(self.as_slice_unchecked());
                 } else if self.dt == DatumType::TDim {
                     tensor

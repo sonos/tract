@@ -19,7 +19,7 @@ impl Const {
         tensor: Arc<Tensor>,
         fact: Option<Box<dyn ExoticFact>>,
     ) -> TractResult<Const> {
-        ensure!(fact.is_some() || tensor.is_plain(), "Opaque tensor requires an exotic_fact");
+        ensure!(fact.is_some() || tensor.is_plain(), "Exotic tensor requires an exotic_fact");
         Ok(Const(tensor, fact))
     }
 

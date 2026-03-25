@@ -143,7 +143,7 @@ impl TypedOp for EinSumMatMul {
         }
         ensure!(node.inputs.len() == 2);
         let (a, b) = model.node_input_facts(node.id)?.into_iter().collect_tuple().unwrap();
-        // at this stage a and b must NOT be packed yet. if they are Opaque, we can assume it's just compression
+        // at this stage a and b must NOT be packed yet. if they are exotic, we can assume it's just compression
         let must_transpose = if let Some(of) = a.exotic_fact() {
             ensure!(of.is::<BlockQuantFact>());
             false

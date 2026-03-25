@@ -294,12 +294,6 @@ impl TypedFact {
 
     pub fn consistent(&self) -> TractResult<()> {
         self.shape.consistent()?;
-        // Plain Opaque tensors still require an exotic_fact annotation.
-        // Exotic tensors now carry the logical element type instead.
-        ensure!(
-            !self.datum_type.is_opaque() || self.exotic_fact.is_some(),
-            "Opaque datum type requires an exotic_fact annotation"
-        );
         if let Some(k) = &self.konst {
             if !self.matches(k.as_ref(), None)? {
                 bail!("fact says {}, constant is {:?}", self.format_dt_shape_nocheck(), k);

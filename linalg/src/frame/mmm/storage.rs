@@ -7,7 +7,7 @@ use super::MMMInputValue;
 /// Non-plain tensor storage for packed matrices.
 ///
 /// Holds one or more `Box<dyn MMMInputValue>` values with an optional batch
-/// shape, replacing the previous `Tensor<Opaque>` + double-downcast pattern.
+/// shape, replacing the previous `Tensor` + double-downcast pattern.
 #[derive(Clone)]
 pub struct PackedMatrixStorage {
     values: Vec<Box<dyn MMMInputValue>>,
