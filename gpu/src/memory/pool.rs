@@ -29,7 +29,6 @@ impl DeviceMemoryPool {
         dt: DatumType,
         shape: &[usize],
     ) -> TractResult<DeviceTensor> {
-        ensure!(dt != DatumType::Opaque, "Use opaque_tensor for node instead");
         self.resolved_schema.offsets_by_node[node_id]
             .as_ref()
             .map(|offsets| {
@@ -54,6 +53,7 @@ impl DeviceMemoryPool {
     pub fn scalar_opaque_tensor_for_node(
         &self,
         node_id: usize,
+        dt: DatumType,
         opaque_fact: Box<dyn OpaqueFact>,
     ) -> TractResult<DeviceTensor> {
         match self.resolved_schema.offsets_by_node[node_id].as_ref() {
@@ -64,7 +64,7 @@ impl DeviceMemoryPool {
                 );
                 Ok(DeviceArenaView {
                     arena: Arc::clone(&self.storage),
-                    dt: DatumType::Opaque,
+                    dt,
                     len: 1,
                     shape: tvec!(),
                     strides: tvec!(),

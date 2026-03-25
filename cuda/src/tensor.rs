@@ -113,7 +113,7 @@ impl CudaTensor {
                 let buffer = Arc::new(CudaBuffer { inner: device_data });
                 Ok(CudaTensor {
                     buffer,
-                    datum_type: DatumType::Opaque,
+                    datum_type: f32::datum_type(),
                     shape: tvec!(),
                     strides: tvec!(),
                     opaque_fact: Some(Box::new(bqf.clone())),
@@ -127,7 +127,7 @@ impl CudaTensor {
                 let buffer = Arc::new(CudaBuffer { inner: device_data });
                 Ok(CudaTensor {
                     buffer,
-                    datum_type: DatumType::Opaque,
+                    datum_type: f32::datum_type(),
                     shape: tvec!(),
                     strides: tvec!(),
                     opaque_fact: Some(Box::new(ggml_q81_fact.clone())),

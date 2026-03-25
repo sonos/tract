@@ -101,7 +101,7 @@ pub fn pad_q40_weights(
         padded_shape.clone(),
     );
     let padded_fact =
-        TypedFact::dt_shape(DatumType::Opaque, &padded_shape).with_opaque_fact(padded_bqf);
+        TypedFact::dt_shape(f32::datum_type(), &padded_shape).with_opaque_fact(padded_bqf);
 
     let padded_tensor =
         padded_bqs.into_tensor_with_shape(f32::datum_type(), &padded_shape).into_arc_tensor();
