@@ -128,7 +128,6 @@ pub enum DatumType {
     ComplexF32,
     #[cfg(feature = "complex")]
     ComplexF64,
-    Opaque,
 }
 
 impl DatumType {
@@ -217,10 +216,6 @@ impl DatumType {
 
     pub fn is_tdim(&self) -> bool {
         *self == DatumType::TDim
-    }
-
-    pub fn is_opaque(&self) -> bool {
-        *self == DatumType::Opaque
     }
 
     #[cfg(feature = "complex")]
@@ -521,7 +516,6 @@ datum!(u64, U64);
 datum!(TDim, TDim);
 datum!(String, String);
 datum!(crate::blob::Blob, Blob);
-datum!(crate::opaque::Opaque, Opaque);
 #[cfg(feature = "complex")]
 datum!(Complex<i16>, ComplexI16);
 #[cfg(feature = "complex")]

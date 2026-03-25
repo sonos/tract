@@ -39,7 +39,6 @@ macro_rules! dispatch_datum {
             DatumType::Blob => $($path)::*::<$crate::prelude::Blob>($($args),*),
             DatumType::TDim => $($path)::*::<TDim>($($args),*),
             DatumType::String => $($path)::*::<String>($($args),*),
-            DatumType::Opaque => $($path)::*::<$crate::prelude::Opaque>($($args),*),
             DatumType::QI8(_) => $($path)::*::<i8>($($args),*),
             DatumType::QU8(_) => $($path)::*::<u8>($($args),*),
             DatumType::QI32(_) => $($path)::*::<i32>($($args),*),
@@ -80,7 +79,6 @@ macro_rules! dispatch_datum_by_size {
             DatumType::Blob => $($path)::*::<Blob>($($args),*),
             DatumType::TDim => $($path)::*::<TDim>($($args),*),
             DatumType::String => $($path)::*::<String>($($args),*),
-            DatumType::Opaque => $($path)::*::<$crate::prelude::Opaque>($($args),*),
             DatumType::QI8(_)   => $($path)::*::<i8>($($args),*),
             DatumType::QU8(_)   => $($path)::*::<u8>($($args),*),
             DatumType::QI32(_)   => $($path)::*::<i32>($($args),*),
@@ -282,7 +280,6 @@ macro_rules! dispatch_hash {
             DatumType::Blob => $($path)::*::<Blob>($($args),*),
             DatumType::TDim => $($path)::*::<TDim>($($args),*),
             DatumType::String => $($path)::*::<String>($($args),*),
-            DatumType::Opaque => $($path)::*::<$crate::prelude::Opaque>($($args),*),
             #[cfg(feature="complex")]
             DatumType::ComplexI16 => $($path)::*::<Complex<i16>>($($args),*),
             #[cfg(feature="complex")]

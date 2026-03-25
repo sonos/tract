@@ -1,24 +1,11 @@
 #![allow(clippy::derived_hash_with_manual_eq)]
 use crate::datum::DatumType;
 use crate::dim::TDim;
-use crate::internal::{TVec, Tensor, TractResult};
-use std::fmt::{Debug, Display};
-use std::hash::Hash;
-use std::ops::Deref;
-use std::sync::Arc;
+use crate::internal::TVec;
+use std::fmt::Debug;
 
 use downcast_rs::{Downcast, impl_downcast};
 use dyn_hash::DynHash;
-
-pub trait OpaquePayload: DynHash + Send + Sync + Debug + Display + Downcast {
-    fn clarify_to_tensor(&self) -> TractResult<Option<Arc<Tensor>>> {
-        Ok(None)
-    }
-
-    fn same_as(&self, other: &dyn OpaquePayload) -> bool;
-}
-impl_downcast!(OpaquePayload);
-dyn_hash::hash_trait_object!(OpaquePayload);
 
 pub trait ExoticFact: DynHash + Send + Sync + Debug + dyn_clone::DynClone + Downcast {
     fn same_as(&self, other: &dyn ExoticFact) -> bool;
@@ -75,58 +62,5 @@ impl ExoticFact for TVec<Option<Box<dyn ExoticFact>>> {
 
     fn buffer_sizes(&self) -> TVec<TDim> {
         self.iter().flatten().flat_map(|it| it.buffer_sizes()).collect()
-    }
-}
-
-#[derive(Debug, Hash, PartialEq, Eq)]
-pub struct DummyPayload;
-
-impl OpaquePayload for DummyPayload {
-    fn same_as(&self, other: &dyn OpaquePayload) -> bool {
-        other.downcast_ref::<Self>().is_some()
-    }
-}
-
-impl Display for DummyPayload {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "DummyPayload")
-    }
-}
-
-#[derive(Clone, Debug, Hash)]
-pub struct Opaque(pub Arc<dyn OpaquePayload>);
-
-impl Opaque {
-    pub fn downcast_ref<T: OpaquePayload>(&self) -> Option<&T> {
-        (*self.0).downcast_ref::<T>()
-    }
-
-    pub fn downcast_mut<T: OpaquePayload>(&mut self) -> Option<&mut T> {
-        Arc::get_mut(&mut self.0).and_then(|it| it.downcast_mut::<T>())
-    }
-}
-
-impl Deref for Opaque {
-    type Target = dyn OpaquePayload;
-    fn deref(&self) -> &Self::Target {
-        &*self.0
-    }
-}
-
-impl Display for Opaque {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl Default for Opaque {
-    fn default() -> Self {
-        Opaque(Arc::new(DummyPayload))
-    }
-}
-
-impl PartialEq for Opaque {
-    fn eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.0, &other.0) && self.0.same_as(&*other.0)
     }
 }

@@ -101,7 +101,7 @@ impl From<Tensor> for TensorHolder {
                 TensorHolder::String(Self::to_tensor(m.into_plain_array().unwrap()))
             }
             DatumType::Blob => TensorHolder::String(Self::to_tensor(m.into_plain_array().unwrap())),
-            DatumType::Opaque => panic!("No support for Opaque DT in tensorflow"),
+            _ => panic!("No support for {:?} DT in tensorflow", m.datum_type()),
         }
     }
 }

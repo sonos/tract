@@ -202,7 +202,7 @@ impl OwnedDeviceTensor for CudaTensor {
                     let out_shape = ggml_q81.concrete_out_shape()?;
                     BlockQuantFact::new(Box::new(Q8_1), out_shape.into())
                 } else {
-                    bail!("Unknown Opaque Fact")
+                    bail!("Unknown exotic fact")
                 };
                 let total_m = bqf.m();
                 let k = bqf.k();
