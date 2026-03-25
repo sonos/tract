@@ -270,7 +270,7 @@ pub fn for_string(
             let values =
                 value.map(|v| parse_tdim(symbol_table, v)).collect::<TractResult<Vec<_>>>()?;
             tensor
-                .try_as_dense_mut()?
+                .try_as_plain_mut()?
                 .as_slice_mut::<TDim>()?
                 .iter_mut()
                 .zip(values)
@@ -454,7 +454,7 @@ fn get_or_make_tensors(
                 .get("pulse.input_axes")
                 .context("Expect pulse.input_axes property")?
                 .cast_to::<i64>()?
-                .try_as_dense()?
+                .try_as_plain()?
                 .as_slice::<i64>()?[input_idx] as usize;
             let input_pulse = fact.shape.get(input_pulse_axis).unwrap().to_usize().unwrap();
             let input_len = value.shape()[input_pulse_axis];
@@ -466,14 +466,14 @@ fn get_or_make_tensors(
                 .get("pulse.output_axes")
                 .context("Expect pulse.output_axes property")?
                 .cast_to::<i64>()?
-                .try_as_dense()?
+                .try_as_plain()?
                 .as_slice::<i64>()?[0] as usize;
             let output_fact = model.outlet_typedfact(model.output_outlets()[0])?;
             let output_pulse =
                 output_fact.shape.get(output_pulse_axis).unwrap().to_usize().unwrap();
             let output_len = input_len * output_pulse / input_pulse;
             let output_delay =
-                model.properties()["pulse.delay"].try_as_dense()?.as_slice::<i64>()?[0] as usize;
+                model.properties()["pulse.delay"].try_as_plain()?.as_slice::<i64>()?[0] as usize;
             let last_frame = output_len + output_delay;
             let needed_pulses = last_frame.divceil(output_pulse);
             let mut values = vec![];
@@ -586,8 +586,8 @@ pub fn random(sizes: &[usize], datum_type: DatumType, tv: Option<&TensorValues>)
     use rand::{RngExt, SeedableRng};
     let mut rng = rand::rngs::StdRng::seed_from_u64(21242);
     let mut tensor = Tensor::zero::<f32>(sizes).unwrap();
-    let mut tensor_dense = tensor.try_as_dense_mut().unwrap();
-    let slice = tensor_dense.as_slice_mut::<f32>().unwrap();
+    let mut tensor_plain = tensor.try_as_plain_mut().unwrap();
+    let slice = tensor_plain.as_slice_mut::<f32>().unwrap();
     if let Some(range) = tv.and_then(|tv| tv.random_range.as_ref()) {
         slice.iter_mut().for_each(|x| *x = rng.random_range(range.clone()))
     } else {

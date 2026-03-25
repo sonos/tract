@@ -40,7 +40,7 @@ impl Expansion for MultiBroadcastTo {
             s.given(&inputs[1].value, move |s, dims| {
                 let dims = dims.cast_to::<TDim>()?;
                 let dims = tract_core::broadcast::multi_broadcast(&[
-                    dims.try_as_dense()?.as_slice::<TDim>()?,
+                    dims.try_as_plain()?.as_slice::<TDim>()?,
                     &shape,
                 ])?;
                 s.equals(&outputs[0].shape, ShapeFactoid::from(dims))
@@ -61,7 +61,7 @@ impl Expansion for MultiBroadcastTo {
                 prefix,
                 model,
                 inputs,
-                shape.try_as_dense()?.as_slice()?,
+                shape.try_as_plain()?.as_slice()?,
             )
         } else {
             bail!("shape input is variable")
@@ -82,7 +82,7 @@ impl Expansion for MultiBroadcastTo {
                 prefix,
                 model,
                 inputs,
-                shape.try_as_dense()?.as_slice()?,
+                shape.try_as_plain()?.as_slice()?,
             )
         } else if let Some(shape) = source.outlet_fact(node.id.into())?.shape.concretize() {
             let op = Typed::new(shape.into());

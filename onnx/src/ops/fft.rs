@@ -354,8 +354,8 @@ impl Expansion for MelWeightMatrix {
             .collect();
 
         let mut output = Tensor::zero::<f32>(&[num_spectrogram_bins, num_mel_bins])?;
-        let mut output_dense = output.try_as_dense_mut()?;
-        let mut view = output_dense.to_array_view_mut::<f32>()?.into_dimensionality()?;
+        let mut output_plain = output.try_as_plain_mut()?;
+        let mut view = output_plain.to_array_view_mut::<f32>()?.into_dimensionality()?;
         for i in 0..num_mel_bins {
             let lower = frequency_bins[i];
             let center = frequency_bins[i + 1];
@@ -392,7 +392,7 @@ impl StftWindowType {
         let mut output = Tensor::zero::<f32>(&[size])?;
         match self {
             Self::Blackman => {
-                output.try_as_dense_mut()?.as_slice_mut::<f32>()?.iter_mut().enumerate().for_each(
+                output.try_as_plain_mut()?.as_slice_mut::<f32>()?.iter_mut().enumerate().for_each(
                     |(ix, y)| {
                         *y = 0.42 - 0.5 * (2. * PI * ix as f32 * divisor).cos()
                             + 0.08 * (4. * PI * ix as f32 * divisor).cos()
@@ -400,14 +400,14 @@ impl StftWindowType {
                 )
             }
             Self::Hamming => {
-                output.try_as_dense_mut()?.as_slice_mut::<f32>()?.iter_mut().enumerate().for_each(
+                output.try_as_plain_mut()?.as_slice_mut::<f32>()?.iter_mut().enumerate().for_each(
                     |(ix, y)| {
                         *y = (25. / 46.) - (21. / 46.) * (2. * PI * ix as f32 * divisor).cos()
                     },
                 )
             }
             Self::Hann => output
-                .try_as_dense_mut()?
+                .try_as_plain_mut()?
                 .as_slice_mut::<f32>()?
                 .iter_mut()
                 .enumerate()

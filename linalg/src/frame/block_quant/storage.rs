@@ -98,15 +98,15 @@ impl TensorStorage for BlockQuantStorage {
         Box::new(self.clone())
     }
 
-    fn as_dense(&self) -> Option<&DenseStorage> {
+    fn as_plain(&self) -> Option<&PlainStorage> {
         None
     }
 
-    fn as_dense_mut(&mut self) -> Option<&mut DenseStorage> {
+    fn as_plain_mut(&mut self) -> Option<&mut PlainStorage> {
         None
     }
 
-    fn into_dense(self: Box<Self>) -> Option<DenseStorage> {
+    fn into_plain(self: Box<Self>) -> Option<PlainStorage> {
         None
     }
 

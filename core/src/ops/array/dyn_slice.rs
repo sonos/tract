@@ -41,13 +41,13 @@ impl EvalOp for DynSlice {
     ) -> TractResult<TVec<TValue>> {
         let start = inputs[1]
             .cast_to::<TDim>()?
-            .try_as_dense()?
+            .try_as_plain()?
             .to_scalar::<TDim>()?
             .eval(&session.resolved_symbols)
             .to_usize()?;
         let end = inputs[2]
             .cast_to::<TDim>()?
-            .try_as_dense()?
+            .try_as_plain()?
             .to_scalar::<TDim>()?
             .eval(&session.resolved_symbols)
             .to_usize()?;
@@ -107,8 +107,8 @@ impl TypedOp for DynSlice {
         let inputs = model.node_input_facts(node.id)?;
         rule_if_some!(start = &inputs[1].konst);
         rule_if_some!(end = &inputs[2].konst);
-        let start = start.cast_to::<TDim>()?.try_as_dense()?.to_scalar::<TDim>()?.clone();
-        let end = end.cast_to::<TDim>()?.try_as_dense()?.to_scalar::<TDim>()?.clone();
+        let start = start.cast_to::<TDim>()?.try_as_plain()?.to_scalar::<TDim>()?.clone();
+        let end = end.cast_to::<TDim>()?.try_as_plain()?.to_scalar::<TDim>()?.clone();
 
         Ok(Some(TypedModelPatch::replace_single_op(
             model,

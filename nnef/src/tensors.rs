@@ -152,9 +152,9 @@ pub fn read_tensor(mut reader: impl Read) -> TractResult<Tensor> {
     };
     if dt.is_copy() {
         let mut tensor = unsafe { Tensor::uninitialized_dt(dt, &shape)? };
-        let mut dense = tensor.try_as_dense_mut()?;
+        let mut plain = tensor.try_as_plain_mut()?;
         if dt == DatumType::Bool && header.bits_per_item == 1 {
-            let buf = dense.as_slice_mut::<bool>()?;
+            let buf = plain.as_slice_mut::<bool>()?;
 
             let mut current_byte = 0;
             for (ix, value) in buf.iter_mut().enumerate() {
@@ -165,13 +165,13 @@ pub fn read_tensor(mut reader: impl Read) -> TractResult<Tensor> {
                 *value = ((current_byte >> (7 - bit_ix)) & 0x1) != 0;
             }
         } else {
-            reader.read_exact(dense.as_bytes_mut())?;
+            reader.read_exact(plain.as_bytes_mut())?;
         }
         Ok(tensor)
     } else if dt == DatumType::String {
         let mut tensor = Tensor::zero_dt(dt, &shape)?;
-        let mut dense = tensor.try_as_dense_mut()?;
-        for item in dense.as_slice_mut::<String>()? {
+        let mut plain = tensor.try_as_plain_mut()?;
+        for item in plain.as_slice_mut::<String>()? {
             let len: u32 = reader.read_u32::<LE>()?;
             let mut bytes = Vec::with_capacity(len as usize);
             #[allow(clippy::uninit_vec)]
@@ -192,7 +192,7 @@ pub fn write_tensor(w: &mut impl Write, tensor: &Tensor) -> TractResult<()> {
     if tensor.storage_as::<BlockQuantStorage>().is_some() {
         return write_block_quant_value(w, tensor);
     }
-    let dense = tensor.try_as_dense()?;
+    let plain = tensor.try_as_plain()?;
     let mut header = Header::default();
     if tensor.rank() > 8 {
         bail!("Only rank up to 8 are supported");
@@ -236,9 +236,9 @@ pub fn write_tensor(w: &mut impl Write, tensor: &Tensor) -> TractResult<()> {
     header.item_type_vendor = itv;
     header.write(w)?;
     if tensor.datum_type().is_copy() {
-        w.write_all(dense.as_bytes())?;
+        w.write_all(plain.as_bytes())?;
     } else if tensor.datum_type() == DatumType::String {
-        for s in dense.as_slice::<String>()? {
+        for s in plain.as_slice::<String>()? {
             w.write_u32::<LE>(s.len() as u32)?;
             w.write_all(s.as_bytes())?;
         }

@@ -84,7 +84,7 @@ pub fn eval_t<Acc: Datum + Zero + One>(
     let inputs: TVec<Cow<Tensor>> =
         inputs.iter().map(|t| t.cast_to::<Acc>()).collect::<TractResult<_>>()?;
     let inputs: TVec<tract_ndarray::ArrayViewD<Acc>> =
-        inputs.iter().map(|t| t.to_dense_array_view::<Acc>()).collect::<TractResult<_>>()?;
+        inputs.iter().map(|t| t.to_plain_array_view::<Acc>()).collect::<TractResult<_>>()?;
     let summing_axes: TVec<_> = expr
         .iter_all_axes()
         .filter(|a| {
@@ -159,7 +159,7 @@ pub fn eval_q(expr: &AxesMapping, qp: DatumType, inputs: TVec<TValue>) -> TractR
         qp_slot: InOut,
     ) -> TractResult<ArrayViewD<'a, f32>> {
         if qp.rank() == 0 {
-            qp.try_as_dense()?.to_array_view()
+            qp.try_as_plain()?.to_array_view()
         } else {
             let data_rank = expr.rank(data_slot);
 
@@ -169,7 +169,7 @@ pub fn eval_q(expr: &AxesMapping, qp: DatumType, inputs: TVec<TValue>) -> TractR
 
             let mut shape = vec![1; data_rank];
             shape[pos_in_input] = qp.len();
-            Ok(qp.try_as_dense()?.to_array_view()?.into_shape_with_order(shape)?)
+            Ok(qp.try_as_plain()?.to_array_view()?.into_shape_with_order(shape)?)
         }
     }
     let [a, b, bias, a0, a_scale, b0, b_scale, c0, c_scale] = &*inputs else {
@@ -194,18 +194,18 @@ pub fn eval_q(expr: &AxesMapping, qp: DatumType, inputs: TVec<TValue>) -> TractR
     ensure!(c_scale.rank() < 2);
     ensure!(bias.rank() < 2);
 
-    Zip::from(a.to_dense_array_view_mut::<f32>()?)
+    Zip::from(a.to_plain_array_view_mut::<f32>()?)
         .and_broadcast(reshape_param(expr, InOut::In(0), &a0, InOut::In(3))?)
         .and_broadcast(reshape_param(expr, InOut::In(0), &a_scale, InOut::In(4))?)
         .for_each(|a, a0, a_scale| *a = a_scale * (*a - a0));
 
-    Zip::from(b.to_dense_array_view_mut::<f32>()?)
+    Zip::from(b.to_plain_array_view_mut::<f32>()?)
         .and_broadcast(reshape_param(expr, InOut::In(1), &b0, InOut::In(5))?)
         .and_broadcast(reshape_param(expr, InOut::In(1), &b_scale, InOut::In(6))?)
         .for_each(|b, b0, b_scale| *b = b_scale * (*b - b0));
 
     let mut output =
-        eval_t::<f32>(expr, tvec!(a.into_tvalue(), b.into_tvalue()))?.into_dense_array::<f32>()?;
+        eval_t::<f32>(expr, tvec!(a.into_tvalue(), b.into_tvalue()))?.into_plain_array::<f32>()?;
 
     Zip::from(&mut output)
         .and_broadcast(reshape_param(expr, InOut::Out(0), &bias, InOut::In(2))?)

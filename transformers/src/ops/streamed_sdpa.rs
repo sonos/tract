@@ -109,9 +109,9 @@ impl EvalOp for StreamedSdpaOp {
         let input_dt = q.datum_type();
 
         let (q, k, v) = (q.cast_to::<f32>()?, k.cast_to::<f32>()?, v.cast_to::<f32>()?);
-        let mut q = q.to_dense_array_view::<f32>()?;
-        let mut k = k.to_dense_array_view::<f32>()?;
-        let mut v = v.to_dense_array_view::<f32>()?;
+        let mut q = q.to_plain_array_view::<f32>()?;
+        let mut k = k.to_plain_array_view::<f32>()?;
+        let mut v = v.to_plain_array_view::<f32>()?;
 
         let is_3d_case = q.ndim() == 3;
 
@@ -146,7 +146,7 @@ impl EvalOp for StreamedSdpaOp {
             Some(
                 m.cast_to::<f32>()?
                     .into_owned()
-                    .into_dense_array::<f32>()?
+                    .into_plain_array::<f32>()?
                     .into_shape_with_order((query_len, kv_len))?,
             )
         } else {

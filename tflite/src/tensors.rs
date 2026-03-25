@@ -73,7 +73,7 @@ fn create_tensor(dt: DatumType, shape: &[usize], data: &[u8]) -> TractResult<Ten
             #[cfg(feature = "complex")]
             DatumType::ComplexF64 => Tensor::from_raw::<Complex<f64>>(&shape, data), // TODO check this
             DatumType::Bool => Ok(Tensor::from_raw::<u8>(shape, data)?
-                .into_dense_array::<u8>()?
+                .into_plain_array::<u8>()?
                 .mapv(|x| x != 0)
                 .into()),
             _ => unimplemented!("FIXME, raw tensor loading"),

@@ -34,7 +34,7 @@ impl InferenceRulesOp for StridedSlice {
                 let axes = axes.cast_to::<i64>()?.into_owned();
                 s.given(&outputs[0].rank, move |s, orank| {
                     let axes = axes
-                        .try_as_dense()?
+                        .try_as_plain()?
                         .as_slice::<i64>()?
                         .iter()
                         .map(|a| if *a >= 0 { *a } else { *a + orank } as usize)
@@ -59,13 +59,13 @@ impl InferenceRulesOp for StridedSlice {
                 let end = &params[1];
                 let strides = if let Some(i) = self.optional_steps_input {
                     let t = params[i - 1].cast_to::<i32>()?;
-                    t.try_as_dense()?.as_slice::<i32>()?.to_vec()
+                    t.try_as_plain()?.as_slice::<i32>()?.to_vec()
                 } else {
                     vec![1; input_shape.len()]
                 };
                 let axes: TVec<usize> = if let Some(i) = self.optional_axes_input {
                     let axes = params[i - 1].cast_to::<i32>()?;
-                    axes.try_as_dense()?
+                    axes.try_as_plain()?
                         .as_slice::<i32>()?
                         .iter()
                         .map(|&i| if i < 0 { input_shape.len() as i32 + i } else { i } as usize)

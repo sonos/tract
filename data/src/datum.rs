@@ -544,7 +544,7 @@ mod tests {
     fn test_array_to_tensor_to_array() {
         let array = arr1(&[12i32, 42]);
         let tensor = Tensor::from(array.clone());
-        let view = tensor.to_dense_array_view::<i32>().unwrap();
+        let view = tensor.to_plain_array_view::<i32>().unwrap();
         assert_eq!(array, view.into_dimensionality().unwrap());
     }
 

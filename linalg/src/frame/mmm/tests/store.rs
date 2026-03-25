@@ -121,15 +121,15 @@ where
             result.into_shape(&[ker.nr(), ker.mr()]).unwrap().permute_axes(&[1, 0]).unwrap()
         }
         StoreLayout::Arbitrary => result
-            .into_dense_array::<TC>()
+            .into_plain_array::<TC>()
             .unwrap()
             .into_shape_with_order((mr, nr, 3))
             .unwrap()
             .index_axis_move(Axis(2), 0)
             .into_tensor(),
     };
-    let expected = expected.try_as_dense().unwrap().as_slice::<TC>().unwrap();
-    let result = result.try_as_dense().unwrap().as_slice::<TC>().unwrap();
+    let expected = expected.try_as_plain().unwrap().as_slice::<TC>().unwrap();
+    let result = result.try_as_plain().unwrap().as_slice::<TC>().unwrap();
     display_error(result, expected, ker.mr(), ker.nr());
     assert_eq!(result, expected);
 }

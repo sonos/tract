@@ -22,8 +22,8 @@ impl Fft {
         let len = tensor.shape()[self.axis];
         let direction = if self.inverse { FftDirection::Inverse } else { FftDirection::Forward };
         let fft = rustfft::FftPlanner::new().plan_fft(len, direction);
-        let mut tensor_dense = tensor.try_as_dense_mut()?;
-        let mut array = tensor_dense.to_array_view_mut::<T>()?;
+        let mut tensor_plain = tensor.try_as_plain_mut()?;
+        let mut array = tensor_plain.to_array_view_mut::<T>()?;
         let mut v = Vec::with_capacity(len);
         for coords in tract_ndarray::indices(&*iterator_shape) {
             v.clear();
@@ -118,9 +118,9 @@ impl Stft {
         output_shape[self.axis + 1] = self.frame;
         let mut output = unsafe { Tensor::uninitialized::<T>(&output_shape)? };
         let fft = rustfft::FftPlanner::new().plan_fft_forward(self.frame);
-        let input = input.to_dense_array_view::<T>()?;
-        let mut output_dense = output.try_as_dense_mut()?;
-        let mut oview = output_dense.to_array_view_mut::<T>()?;
+        let input = input.to_plain_array_view::<T>()?;
+        let mut output_plain = output.try_as_plain_mut()?;
+        let mut oview = output_plain.to_array_view_mut::<T>()?;
         let mut v = Vec::with_capacity(self.frame);
         for coords in tract_ndarray::indices(&*iterator_shape) {
             let islice = input.slice_each_axis(|ax| {
@@ -155,7 +155,7 @@ impl Stft {
                         .map(|(re, im)| Complex::new(*re, *im)),
                 );
                 if let Some(win) = &self.window {
-                    let win = win.try_as_dense()?.as_slice::<T>()?;
+                    let win = win.try_as_plain()?.as_slice::<T>()?;
                     // symmetric padding in case window is smaller than frames (aka n fft)
                     let pad_left = (self.frame - win.len()) / 2;
                     v.iter_mut().enumerate().for_each(|(ix, v)| {

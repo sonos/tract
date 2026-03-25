@@ -1369,7 +1369,7 @@ mod proptests {
             unsafe {
                 let mut t = Tensor::uninitialized::<i64>(&self.input)?;
                 for i in 0..t.len() {
-                    t.try_as_dense_mut().unwrap().as_slice_mut().unwrap()[i] = i as i64;
+                    t.try_as_plain_mut().unwrap().as_slice_mut().unwrap()[i] = i as i64;
                 }
                 Ok(t)
             }

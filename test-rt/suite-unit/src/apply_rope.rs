@@ -130,9 +130,9 @@ pub fn suite() -> TractResult<TestSuite> {
     suite.add(
         "trivial_f32_0",
         ApplyRopeProblem {
-            input: tensor2(&[[0f32, 1f32]]).into_dense_array::<f32>().unwrap(),
-            cos: tensor2(&[[0f32, 0f32]]).into_dense_array::<f32>().unwrap(),
-            sin: tensor2(&[[0f32, 0f32]]).into_dense_array::<f32>().unwrap(),
+            input: tensor2(&[[0f32, 1f32]]).into_plain_array::<f32>().unwrap(),
+            cos: tensor2(&[[0f32, 0f32]]).into_plain_array::<f32>().unwrap(),
+            sin: tensor2(&[[0f32, 0f32]]).into_plain_array::<f32>().unwrap(),
         },
     );
     Ok(suite)

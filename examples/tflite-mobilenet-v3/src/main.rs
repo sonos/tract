@@ -23,7 +23,7 @@ fn main() -> TractResult<()> {
 
     // find and display the max value with its index
     let best = result[0]
-        .to_dense_array_view::<f32>()?
+        .to_plain_array_view::<f32>()?
         .iter()
         .cloned()
         .zip(1..)

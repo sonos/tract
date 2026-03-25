@@ -188,7 +188,7 @@ impl Resize {
                 let mut shape = tvec!();
                 for (i, s) in input_shape
                     .iter()
-                    .zip(scale.cast_to::<f32>()?.try_as_dense()?.as_slice::<f32>()?.iter())
+                    .zip(scale.cast_to::<f32>()?.try_as_plain()?.as_slice::<f32>()?.iter())
                 {
                     if s.round() == *s {
                         shape.push(i.clone() * (*s as usize));
@@ -207,7 +207,7 @@ impl Resize {
             if sizes.len() == input_shape.len() {
                 return sizes
                     .cast_to::<TDim>()?
-                    .try_as_dense()?
+                    .try_as_plain()?
                     .as_slice::<TDim>()?
                     .iter()
                     .map(|i| i.try_into())
@@ -237,11 +237,11 @@ impl EvalOp for Resize {
             sizes.map(|t| &**t),
         )?;
         let scales: TVec<f32> = if let Some(scales) = scales {
-            scales.try_as_dense()?.as_slice::<f32>()?.into()
+            scales.try_as_plain()?.as_slice::<f32>()?.into()
         } else {
             output_shape.iter().zip(inputs[0].shape()).map(|(o, i)| *o as f32 / *i as f32).collect()
         };
-        let mut data = inputs.remove(0).into_tensor().into_dense_array::<f32>()?;
+        let mut data = inputs.remove(0).into_tensor().into_plain_array::<f32>()?;
         for (axis, scale) in scales.into_iter().enumerate().filter(|(_, s)| *s != 1.0) {
             let mut new_shape: TVec<usize> = data.shape().into();
             new_shape[axis] = output_shape[axis];

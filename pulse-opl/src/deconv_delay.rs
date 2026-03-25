@@ -87,10 +87,10 @@ impl DeconvDelayState {
         input: &mut Tensor,
     ) -> TractResult<()> {
         let buffer = self.buffer.as_mut().unwrap();
-        let mut buffer_dense = buffer.try_as_dense_mut()?;
-        let mut buffer = buffer_dense.to_array_view_mut::<T>()?;
-        let mut input_dense = input.try_as_dense_mut()?;
-        let mut input = input_dense.to_array_view_mut::<T>()?;
+        let mut buffer_plain = buffer.try_as_plain_mut()?;
+        let mut buffer = buffer_plain.to_array_view_mut::<T>()?;
+        let mut input_plain = input.try_as_plain_mut()?;
+        let mut input = input_plain.to_array_view_mut::<T>()?;
         let input_pulse = input.shape()[op.axis];
         let output_pulse = input_pulse - op.overlap;
         self.valid_inputed += output_pulse as isize;

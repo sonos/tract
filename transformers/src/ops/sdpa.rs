@@ -177,7 +177,7 @@ impl Sdpa {
         let scale = self
             .scale
             .as_ref()
-            .map(|t| *t.try_as_dense().unwrap().to_scalar::<f32>().unwrap())
+            .map(|t| *t.try_as_plain().unwrap().to_scalar::<f32>().unwrap())
             .unwrap_or_else(|| (num_kd as f32).sqrt().recip());
 
         if self.is_causal {

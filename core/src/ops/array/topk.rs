@@ -35,8 +35,8 @@ impl EvalOp for Topk {
         let mut output_indices = Tensor::zero::<i64>(&output_shape)?;
         let mut iterating_shape = output_shape.clone();
         iterating_shape[self.axis] = 1;
-        let mut output_indices_dense = output_indices.try_as_dense_mut()?;
-        let mut output_indices_view = output_indices_dense.to_array_view_mut::<i64>()?;
+        let mut output_indices_plain = output_indices.try_as_plain_mut()?;
+        let mut output_indices_view = output_indices_plain.to_array_view_mut::<i64>()?;
         for coords in tract_ndarray::indices(&*iterating_shape) {
             let mut coords: TVec<usize> = coords.as_array_view().as_slice().unwrap().into();
             dispatch_numbers!(Self::inner_loop_t(dt)(
@@ -61,9 +61,9 @@ impl Topk {
         output_indices_view: &mut ArrayViewMutD<i64>,
         k: usize,
     ) -> TractResult<()> {
-        let mut output_values_dense = output_values.try_as_dense_mut()?;
-        let mut output_values_view = output_values_dense.to_array_view_mut::<T>()?;
-        let mut view = input.to_dense_array_view::<T>()?;
+        let mut output_values_plain = output_values.try_as_plain_mut()?;
+        let mut output_values_view = output_values_plain.to_array_view_mut::<T>()?;
+        let mut view = input.to_plain_array_view::<T>()?;
         for (ix, x) in coords.iter().enumerate() {
             if ix != self.axis {
                 view.collapse_axis(Axis(ix), *x);
@@ -93,7 +93,7 @@ impl TypedOp for Topk {
         let mut fact_values = inputs[0].without_value();
         let mut fact_indices = inputs[0].without_value();
         let k: TDim = if let Some(k) = &inputs[1].konst {
-            k.cast_to::<TDim>()?.try_as_dense()?.to_scalar::<TDim>()?.clone()
+            k.cast_to::<TDim>()?.try_as_plain()?.to_scalar::<TDim>()?.clone()
         } else {
             self.fallback_k.clone()
         };

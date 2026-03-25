@@ -52,7 +52,7 @@ impl Multinomial {
             .map_or_else(|| rand::make_rng(), |seed| SmallRng::seed_from_u64(seed.to_bits() as _));
 
         // shape: [batch_size, class_size]
-        let input = input.to_dense_array_view::<T1>()?;
+        let input = input.to_plain_array_view::<T1>()?;
 
         // ONNX Multinomial inputs are "unnormalized log probabilities".
         // This means that we need to compute the maximum for each batch beforehand,

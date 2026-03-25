@@ -523,7 +523,7 @@ mod test {
                     outputs
                         .remove(0)
                         .into_tensor()
-                        .into_dense_array::<$c>()
+                        .into_plain_array::<$c>()
                         .unwrap()
                         .into_dimensionality()
                         .unwrap()

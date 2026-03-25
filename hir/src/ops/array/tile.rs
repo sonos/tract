@@ -22,7 +22,7 @@ impl Expansion for Tile {
         s.equals(&inputs[1].shape[0], inputs[0].rank.bex().to_dim())?;
         s.given(&inputs[1].value, move |s, mult| {
             for (ix, m) in
-                mult.cast_to::<TDim>()?.try_as_dense()?.as_slice::<TDim>()?.iter().enumerate()
+                mult.cast_to::<TDim>()?.try_as_plain()?.as_slice::<TDim>()?.iter().enumerate()
             {
                 if let Some(m) = m.as_i64() {
                     s.equals(m * inputs[0].shape[ix].bex(), &outputs[0].shape[ix])?;
@@ -46,7 +46,7 @@ impl Expansion for Tile {
     ) -> TractResult<TVec<OutletId>> {
         if let Some(ref mult) = target.outlet_fact(inputs[1])?.konst {
             let mult: TVec<TDim> =
-                mult.cast_to::<TDim>()?.try_as_dense()?.as_slice::<TDim>()?.into();
+                mult.cast_to::<TDim>()?.try_as_plain()?.as_slice::<TDim>()?.into();
             target.wire_node(prefix, tract_core::ops::array::Tile::new(mult), &inputs[0..1])
         } else {
             bail!("shape input is variable")

@@ -127,7 +127,7 @@ impl EvalOp for DynTile {
     ) -> TractResult<TVec<TValue>> {
         let multipliers = inputs[1].cast_to::<TDim>()?;
         let multipliers: TVec<usize> = multipliers
-            .try_as_dense()?
+            .try_as_plain()?
             .as_slice::<TDim>()?
             .iter()
             .map(|m| Ok(m.eval_to_i64(&session.resolved_symbols)? as usize))
@@ -149,7 +149,7 @@ impl TypedOp for DynTile {
         if let Some(mult) = &model.outlet_fact(node.inputs[1])?.konst {
             let multipliers = mult
                 .cast_to::<TDim>()?
-                .try_as_dense()?
+                .try_as_plain()?
                 .as_slice::<TDim>()?
                 .iter()
                 .cloned()
@@ -167,7 +167,7 @@ impl TypedOp for DynTile {
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let multipliers = if let Some(k) = &inputs[1].konst {
-            k.cast_to::<TDim>()?.try_as_dense()?.as_slice::<TDim>()?.iter().cloned().collect()
+            k.cast_to::<TDim>()?.try_as_plain()?.as_slice::<TDim>()?.iter().cloned().collect()
         } else {
             self.multiplier_placeholders.clone()
         };
@@ -178,8 +178,8 @@ impl TypedOp for DynTile {
 }
 
 fn eval_t<T: Datum>(data: &TValue, multipliers: &[usize]) -> TractResult<TValue> {
-    let data_dense = data.try_as_dense()?;
-    let view = unsafe { data_dense.to_array_view_unchecked::<T>() };
+    let data_plain = data.try_as_plain()?;
+    let view = unsafe { data_plain.to_array_view_unchecked::<T>() };
     let output_shape: TVec<usize> =
         view.shape().iter().zip(multipliers.iter()).map(|(&d, &m)| d * m).collect();
     let output = ndarray::ArrayD::from_shape_fn(&*output_shape, |coords| {

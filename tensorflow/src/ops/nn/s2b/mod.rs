@@ -70,7 +70,7 @@ fn batch_to_space<T: Copy + Datum + Zero>(
     block_shape: &ArrayView1<i32>,
     crops: &ArrayView2<i32>,
 ) -> TractResult<TValue> {
-    let data = input.into_tensor().into_dense_array()?;
+    let data = input.into_tensor().into_plain_array()?;
     let input_shape = data.shape().to_vec();
     let crops: ArrayView2<i32> = crops.view().into_dimensionality()?;
 

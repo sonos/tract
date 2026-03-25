@@ -76,8 +76,8 @@ pub trait BlockQuant: Debug + Display + Send + Sync + DynClone + DynHash + Downc
         unsafe {
             let blocks = input.len() / self.block_bytes();
             let mut tensor = Tensor::uninitialized::<f32>(&[blocks * self.block_len()])?;
-            let mut tensor_dense = tensor.try_as_dense_mut()?;
-            let slice = tensor_dense.as_slice_mut::<f32>()?;
+            let mut tensor_plain = tensor.try_as_plain_mut()?;
+            let slice = tensor_plain.as_slice_mut::<f32>()?;
             for b in 0..blocks {
                 let block = &mut slice[b * self.block_len()..][..self.block_len()];
                 let qblock = &input[b * self.block_bytes()..][..self.block_bytes()];
@@ -91,8 +91,8 @@ pub trait BlockQuant: Debug + Display + Send + Sync + DynClone + DynHash + Downc
         unsafe {
             let blocks = input.len() / self.block_bytes();
             let mut tensor = Tensor::uninitialized::<f16>(&[blocks * self.block_len()])?;
-            let mut tensor_dense = tensor.try_as_dense_mut()?;
-            let slice = tensor_dense.as_slice_mut::<f16>()?;
+            let mut tensor_plain = tensor.try_as_plain_mut()?;
+            let slice = tensor_plain.as_slice_mut::<f16>()?;
             for b in 0..blocks {
                 let block = &mut slice[b * self.block_len()..][..self.block_len()];
                 let qblock = &input[b * self.block_bytes()..][..self.block_bytes()];
@@ -133,20 +133,20 @@ pub trait BlockQuant: Debug + Display + Send + Sync + DynClone + DynHash + Downc
         ensure!(tensor.shape()[block_axis] % self.block_len() == 0);
         let mut scratch = vec![0u8; self.block_bytes()];
         if tensor.datum_type() == f32::datum_type() {
-            let mut tensor_dense = tensor.try_as_dense_mut()?;
-            for block in tensor_dense.as_slice_mut::<f32>()?.chunks_mut(self.block_len()) {
+            let mut tensor_plain = tensor.try_as_plain_mut()?;
+            for block in tensor_plain.as_slice_mut::<f32>()?.chunks_mut(self.block_len()) {
                 self.quant_block_f32(block, &mut scratch);
                 self.dequant_block_f32(&scratch, block);
             }
-            drop(tensor_dense);
+            drop(tensor_plain);
             Ok(tensor)
         } else if tensor.datum_type() == f16::datum_type() {
-            let mut tensor_dense = tensor.try_as_dense_mut()?;
-            for block in tensor_dense.as_slice_mut::<f16>()?.chunks_mut(self.block_len()) {
+            let mut tensor_plain = tensor.try_as_plain_mut()?;
+            for block in tensor_plain.as_slice_mut::<f16>()?.chunks_mut(self.block_len()) {
                 self.quant_block_f16(block, &mut scratch);
                 self.dequant_block_f16(&scratch, block);
             }
-            drop(tensor_dense);
+            drop(tensor_plain);
             Ok(tensor)
         } else {
             todo!()
@@ -281,9 +281,9 @@ impl MMMInputFormat for PackedBlockQuantFormat {
                 Cow::Owned(t.clone().move_axis(1, 0)?)
             };
             let quant = if t.datum_type() == f32::datum_type() {
-                self.bq.quant_f32(t.try_as_dense()?.as_slice()?)?
+                self.bq.quant_f32(t.try_as_plain()?.as_slice()?)?
             } else if t.datum_type() == f16::datum_type() {
-                self.bq.quant_f16(t.try_as_dense()?.as_slice()?)?
+                self.bq.quant_f16(t.try_as_plain()?.as_slice()?)?
             } else {
                 todo!()
             };

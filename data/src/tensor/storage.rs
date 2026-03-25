@@ -7,25 +7,25 @@ use downcast_rs::{Downcast, impl_downcast};
 
 /// Trait abstracting over tensor storage backends.
 ///
-/// `DenseStorage` is the primary implementation backed by a contiguous `Blob`.
-/// Non-dense backends are held behind `StorageKind::Exotic(Box<dyn TensorStorage>)`.
+/// `PlainStorage` is the primary implementation backed by a contiguous `Blob`.
+/// Non-plain backends are held behind `StorageKind::Exotic(Box<dyn TensorStorage>)`.
 pub trait TensorStorage: Send + Sync + fmt::Debug + fmt::Display + Downcast {
     fn byte_len(&self) -> usize;
     fn is_empty(&self) -> bool;
     fn deep_clone(&self) -> Box<dyn TensorStorage>;
-    fn as_dense(&self) -> Option<&DenseStorage>;
-    fn as_dense_mut(&mut self) -> Option<&mut DenseStorage>;
-    fn into_dense(self: Box<Self>) -> Option<DenseStorage>;
+    fn as_plain(&self) -> Option<&PlainStorage>;
+    fn as_plain_mut(&mut self) -> Option<&mut PlainStorage>;
+    fn into_plain(self: Box<Self>) -> Option<PlainStorage>;
     fn dyn_hash(&self, state: &mut dyn std::hash::Hasher);
     fn same_as(&self, other: &dyn TensorStorage) -> bool;
 }
 impl_downcast!(TensorStorage);
 
-/// Dense, contiguous storage backed by a `Blob`.
+/// Plain, contiguous storage backed by a `Blob`.
 #[derive(Eq)]
-pub struct DenseStorage(pub(crate) Blob);
+pub struct PlainStorage(pub(crate) Blob);
 
-impl DenseStorage {
+impl PlainStorage {
     #[inline]
     pub fn layout(&self) -> &Layout {
         self.0.layout()
@@ -57,42 +57,42 @@ impl DenseStorage {
     }
 }
 
-impl Default for DenseStorage {
+impl Default for PlainStorage {
     #[inline]
     fn default() -> Self {
-        DenseStorage(Blob::default())
+        PlainStorage(Blob::default())
     }
 }
 
-impl Clone for DenseStorage {
+impl Clone for PlainStorage {
     #[inline]
     fn clone(&self) -> Self {
-        DenseStorage(self.0.clone())
+        PlainStorage(self.0.clone())
     }
 }
 
-impl Hash for DenseStorage {
+impl Hash for PlainStorage {
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.0.hash(state);
     }
 }
 
-impl PartialEq for DenseStorage {
+impl PartialEq for PlainStorage {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.0 == other.0
     }
 }
 
-impl From<Blob> for DenseStorage {
+impl From<Blob> for PlainStorage {
     #[inline]
     fn from(blob: Blob) -> Self {
-        DenseStorage(blob)
+        PlainStorage(blob)
     }
 }
 
-impl std::ops::Deref for DenseStorage {
+impl std::ops::Deref for PlainStorage {
     type Target = [u8];
     #[inline]
     fn deref(&self) -> &[u8] {
@@ -100,26 +100,26 @@ impl std::ops::Deref for DenseStorage {
     }
 }
 
-impl std::ops::DerefMut for DenseStorage {
+impl std::ops::DerefMut for PlainStorage {
     #[inline]
     fn deref_mut(&mut self) -> &mut [u8] {
         self.0.as_bytes_mut()
     }
 }
 
-impl fmt::Debug for DenseStorage {
+impl fmt::Debug for PlainStorage {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Debug::fmt(&self.0, f)
     }
 }
 
-impl fmt::Display for DenseStorage {
+impl fmt::Display for PlainStorage {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Display::fmt(&self.0, f)
     }
 }
 
-impl TensorStorage for DenseStorage {
+impl TensorStorage for PlainStorage {
     #[inline]
     fn is_empty(&self) -> bool {
         self.0.is_empty()
@@ -131,18 +131,18 @@ impl TensorStorage for DenseStorage {
     }
 
     fn deep_clone(&self) -> Box<dyn TensorStorage> {
-        Box::new(DenseStorage(self.0.clone()))
+        Box::new(PlainStorage(self.0.clone()))
     }
 
-    fn as_dense(&self) -> Option<&DenseStorage> {
+    fn as_plain(&self) -> Option<&PlainStorage> {
         Some(self)
     }
 
-    fn as_dense_mut(&mut self) -> Option<&mut DenseStorage> {
+    fn as_plain_mut(&mut self) -> Option<&mut PlainStorage> {
         Some(self)
     }
 
-    fn into_dense(self: Box<Self>) -> Option<DenseStorage> {
+    fn into_plain(self: Box<Self>) -> Option<PlainStorage> {
         Some(*self)
     }
 
@@ -152,42 +152,42 @@ impl TensorStorage for DenseStorage {
     }
 
     fn same_as(&self, other: &dyn TensorStorage) -> bool {
-        if let Some(other) = other.as_dense() { self == other } else { false }
+        if let Some(other) = other.as_plain() { self == other } else { false }
     }
 }
 
 /// Inline enum replacing `Box<dyn TensorStorage>`.
 ///
 /// The common `Plain` case stays inline (no heap alloc, no vtable indirection).
-/// `Exotic` covers non-dense backends behind a single Box indirection.
+/// `Exotic` covers non-plain backends behind a single Box indirection.
 #[allow(dead_code)]
 pub(crate) enum StorageKind {
-    Plain(DenseStorage),
+    Plain(PlainStorage),
     Exotic(Box<dyn TensorStorage>),
 }
 
 impl StorageKind {
     #[inline]
-    pub fn as_dense(&self) -> Option<&DenseStorage> {
+    pub fn as_plain(&self) -> Option<&PlainStorage> {
         match self {
             StorageKind::Plain(d) => Some(d),
-            StorageKind::Exotic(o) => o.as_dense(),
+            StorageKind::Exotic(o) => o.as_plain(),
         }
     }
 
     #[inline]
-    pub fn as_dense_mut(&mut self) -> Option<&mut DenseStorage> {
+    pub fn as_plain_mut(&mut self) -> Option<&mut PlainStorage> {
         match self {
             StorageKind::Plain(d) => Some(d),
-            StorageKind::Exotic(o) => o.as_dense_mut(),
+            StorageKind::Exotic(o) => o.as_plain_mut(),
         }
     }
 
     #[inline]
-    pub fn into_dense(self) -> Option<DenseStorage> {
+    pub fn into_plain(self) -> Option<PlainStorage> {
         match self {
             StorageKind::Plain(d) => Some(d),
-            StorageKind::Exotic(o) => o.into_dense(),
+            StorageKind::Exotic(o) => o.into_plain(),
         }
     }
 

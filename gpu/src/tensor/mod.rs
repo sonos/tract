@@ -237,15 +237,15 @@ impl TensorStorage for DeviceTensor {
             .is_some_and(|other| self.device_buffer_ptr() == other.device_buffer_ptr())
     }
 
-    fn as_dense(&self) -> Option<&DenseStorage> {
+    fn as_plain(&self) -> Option<&PlainStorage> {
         None
     }
 
-    fn as_dense_mut(&mut self) -> Option<&mut DenseStorage> {
+    fn as_plain_mut(&mut self) -> Option<&mut PlainStorage> {
         None
     }
 
-    fn into_dense(self: Box<Self>) -> Option<DenseStorage> {
+    fn into_plain(self: Box<Self>) -> Option<PlainStorage> {
         None
     }
 
@@ -282,7 +282,7 @@ mod tests {
     #[test]
     fn test_device_tensor() -> TractResult<()> {
         let a = DeviceTensor::from_shape(&[1], &[0f32])?;
-        assert_eq!(a.to_host()?.try_as_dense()?.as_slice::<f32>()?, &[0.0]);
+        assert_eq!(a.to_host()?.try_as_plain()?.as_slice::<f32>()?, &[0.0]);
         Ok(())
     }
 }

@@ -765,7 +765,7 @@ impl Parameters {
                             let mut constant:Tensor = (**op.val()).clone();
                             // Generally a shape or hyperparam
                             constant
-                                .try_as_dense_mut()?
+                                .try_as_plain_mut()?
                                 .as_slice_mut::<TDim>()?
                                 .iter_mut()
                                 .for_each(|x| *x = x.eval(&values));
