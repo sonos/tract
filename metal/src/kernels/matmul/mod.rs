@@ -209,7 +209,8 @@ pub trait GemmKernel: fmt::Display + fmt::Debug + Clone + Default + Send + Sync 
 
     fn is_supported_dts(&self, facts: &[TypedFact]) -> bool {
         assert!(facts.len() == 2, "Expected 2 inputs for matmul");
-        matches!(facts[0].datum_type, DatumType::F32 | DatumType::F16)
+        facts.iter().all(|f| f.is_plain())
+            && matches!(facts[0].datum_type, DatumType::F32 | DatumType::F16)
             && facts[0].datum_type == facts[1].datum_type
     }
 
