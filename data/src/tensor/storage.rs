@@ -8,7 +8,7 @@ use downcast_rs::{Downcast, impl_downcast};
 /// Trait abstracting over tensor storage backends.
 ///
 /// `DenseStorage` is the primary implementation backed by a contiguous `Blob`.
-/// Non-dense backends are held behind `StorageKind::Other(Box<dyn TensorStorage>)`.
+/// Non-dense backends are held behind `StorageKind::Exotic(Box<dyn TensorStorage>)`.
 pub trait TensorStorage: Send + Sync + fmt::Debug + fmt::Display + Downcast {
     fn byte_len(&self) -> usize;
     fn is_empty(&self) -> bool;
@@ -158,52 +158,52 @@ impl TensorStorage for DenseStorage {
 
 /// Inline enum replacing `Box<dyn TensorStorage>`.
 ///
-/// The common `Dense` case stays inline (no heap alloc, no vtable indirection).
-/// `Other` covers future non-dense backends behind a single Box indirection.
+/// The common `Plain` case stays inline (no heap alloc, no vtable indirection).
+/// `Exotic` covers non-dense backends behind a single Box indirection.
 #[allow(dead_code)]
 pub(crate) enum StorageKind {
-    Dense(DenseStorage),
-    Other(Box<dyn TensorStorage>),
+    Plain(DenseStorage),
+    Exotic(Box<dyn TensorStorage>),
 }
 
 impl StorageKind {
     #[inline]
     pub fn as_dense(&self) -> Option<&DenseStorage> {
         match self {
-            StorageKind::Dense(d) => Some(d),
-            StorageKind::Other(o) => o.as_dense(),
+            StorageKind::Plain(d) => Some(d),
+            StorageKind::Exotic(o) => o.as_dense(),
         }
     }
 
     #[inline]
     pub fn as_dense_mut(&mut self) -> Option<&mut DenseStorage> {
         match self {
-            StorageKind::Dense(d) => Some(d),
-            StorageKind::Other(o) => o.as_dense_mut(),
+            StorageKind::Plain(d) => Some(d),
+            StorageKind::Exotic(o) => o.as_dense_mut(),
         }
     }
 
     #[inline]
     pub fn into_dense(self) -> Option<DenseStorage> {
         match self {
-            StorageKind::Dense(d) => Some(d),
-            StorageKind::Other(o) => o.into_dense(),
+            StorageKind::Plain(d) => Some(d),
+            StorageKind::Exotic(o) => o.into_dense(),
         }
     }
 
     #[inline]
     pub fn byte_len(&self) -> usize {
         match self {
-            StorageKind::Dense(d) => d.0.len(),
-            StorageKind::Other(o) => o.byte_len(),
+            StorageKind::Plain(d) => d.0.len(),
+            StorageKind::Exotic(o) => o.byte_len(),
         }
     }
 
     #[inline]
     pub fn is_empty(&self) -> bool {
         match self {
-            StorageKind::Dense(d) => d.0.is_empty(),
-            StorageKind::Other(o) => o.is_empty(),
+            StorageKind::Plain(d) => d.0.is_empty(),
+            StorageKind::Exotic(o) => o.is_empty(),
         }
     }
 
@@ -211,16 +211,16 @@ impl StorageKind {
     #[allow(dead_code)]
     pub fn deep_clone(&self) -> StorageKind {
         match self {
-            StorageKind::Dense(d) => StorageKind::Dense(d.clone()),
-            StorageKind::Other(o) => StorageKind::Other(o.deep_clone()),
+            StorageKind::Plain(d) => StorageKind::Plain(d.clone()),
+            StorageKind::Exotic(o) => StorageKind::Exotic(o.deep_clone()),
         }
     }
 
     #[inline]
     pub fn as_storage(&self) -> &dyn TensorStorage {
         match self {
-            StorageKind::Dense(d) => d,
-            StorageKind::Other(o) => o.as_ref(),
+            StorageKind::Plain(d) => d,
+            StorageKind::Exotic(o) => o.as_ref(),
         }
     }
 
@@ -228,25 +228,25 @@ impl StorageKind {
     #[allow(dead_code)]
     pub fn as_storage_mut(&mut self) -> &mut dyn TensorStorage {
         match self {
-            StorageKind::Dense(d) => d,
-            StorageKind::Other(o) => o.as_mut(),
+            StorageKind::Plain(d) => d,
+            StorageKind::Exotic(o) => o.as_mut(),
         }
     }
 
     pub fn dyn_hash(&self, state: &mut dyn std::hash::Hasher) {
         match self {
-            StorageKind::Dense(d) => {
+            StorageKind::Plain(d) => {
                 state.write_u8(0);
                 state.write(d.as_bytes())
             }
-            StorageKind::Other(o) => o.dyn_hash(state),
+            StorageKind::Exotic(o) => o.dyn_hash(state),
         }
     }
 
     pub fn same_as(&self, other: &StorageKind) -> bool {
         match (self, other) {
-            (StorageKind::Dense(a), StorageKind::Dense(b)) => a == b,
-            (StorageKind::Other(a), StorageKind::Other(b)) => a.same_as(b.as_ref()),
+            (StorageKind::Plain(a), StorageKind::Plain(b)) => a == b,
+            (StorageKind::Exotic(a), StorageKind::Exotic(b)) => a.same_as(b.as_ref()),
             _ => false,
         }
     }
