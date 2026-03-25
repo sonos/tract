@@ -305,7 +305,17 @@ impl SymbolScopeData {
 
     #[allow(clippy::mutable_key_type)]
     fn prove_positive_or_zero_inner(&self, t: &TDim) -> bool {
-        let positives = self.assertions.iter().filter_map(|i| i.as_known_positive()).collect_vec();
+        self.prove_positive_or_zero_inner_with_extra(t, &[])
+    }
+
+    #[allow(clippy::mutable_key_type)]
+    fn prove_positive_or_zero_inner_with_extra(&self, t: &TDim, extra: &[Assertion]) -> bool {
+        let positives = self
+            .assertions
+            .iter()
+            .chain(extra.iter())
+            .filter_map(|i| i.as_known_positive())
+            .collect_vec();
         let mut visited = vec![];
         let mut todo = vec![t.clone()];
         while let Some(t) = todo.pop() {
@@ -339,8 +349,16 @@ impl SymbolScopeData {
         false
     }
 
-    pub(crate) fn prove_strict_positive(&self, b: &TDim) -> bool {
-        self.prove_positive_or_zero(&(b.clone() - 1))
+    pub(crate) fn prove_positive_or_zero_with_extra(&self, t: &TDim, extra: &[Assertion]) -> bool {
+        if let TDim::Val(v) = t {
+            return *v >= 0;
+        }
+        // Skip the proof cache for extra-assertion calls (cache is keyed without extra context)
+        self.prove_positive_or_zero_inner_with_extra(t, extra)
+    }
+
+    pub(crate) fn prove_strict_positive_with_extra(&self, b: &TDim, extra: &[Assertion]) -> bool {
+        self.prove_positive_or_zero_with_extra(&(b.clone() - 1), extra)
     }
 }
 
