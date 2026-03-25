@@ -46,7 +46,7 @@ impl Expansion for Transpose {
         s.equals(&inputs[1].shape[0], inputs[0].rank.bex().to_dim())?;
         s.given_2(&inputs[0].shape, &inputs[1].value, move |s, shape, perm| {
             let perm = perm.cast_to::<i32>()?;
-            let output_shape = Self::compute_shape(&shape, perm.try_as_dense()?.as_slice::<i32>()?);
+            let output_shape = Self::compute_shape(&shape, perm.try_as_plain()?.as_slice::<i32>()?);
             s.equals(&outputs[0].shape, output_shape)
         })
     }
@@ -60,7 +60,7 @@ impl Expansion for Transpose {
         if let Some(axes) = &target.outlet_fact(inputs[1])?.konst {
             let axes: TVec<usize> = axes
                 .cast_to::<i64>()?
-                .try_as_dense()?
+                .try_as_plain()?
                 .as_slice::<i64>()?
                 .iter()
                 .map(|i| *i as usize)

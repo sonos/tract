@@ -6,7 +6,7 @@ use crate::datum::{Datum, DatumType};
 use crate::internal::*;
 use crate::tensor::Tensor;
 
-use super::storage::DenseStorage;
+use super::storage::PlainStorage;
 
 fn check_for_access<D: Datum>(dt: DatumType) -> TractResult<()> {
     ensure!(
@@ -18,21 +18,21 @@ fn check_for_access<D: Datum>(dt: DatumType) -> TractResult<()> {
     Ok(())
 }
 
-/// Immutable view into a [`Tensor`] verified to have dense storage.
+/// Immutable view into a [`Tensor`] verified to have plain storage.
 ///
-/// Construction is the single point of failure (`Tensor::as_dense()` returns
+/// Construction is the single point of failure (`Tensor::as_plain()` returns
 /// `Option`). Once constructed, all data access is infallible with no
-/// `unwrap()`/`expect()` on the dense codepath.
-pub struct DenseView<'a> {
+/// `unwrap()`/`expect()` on the plain codepath.
+pub struct PlainView<'a> {
     tensor: &'a Tensor,
-    storage: &'a DenseStorage,
+    storage: &'a PlainStorage,
 }
 
-impl<'a> DenseView<'a> {
-    /// Private constructor used by `Tensor::as_dense()`.
+impl<'a> PlainView<'a> {
+    /// Private constructor used by `Tensor::as_plain()`.
     #[inline]
-    pub(crate) fn new(tensor: &'a Tensor, storage: &'a DenseStorage) -> Self {
-        DenseView { tensor, storage }
+    pub(crate) fn new(tensor: &'a Tensor, storage: &'a PlainStorage) -> Self {
+        PlainView { tensor, storage }
     }
 
     // -- Metadata (delegated to tensor) --
@@ -67,7 +67,7 @@ impl<'a> DenseView<'a> {
         self.tensor.len()
     }
 
-    // -- Dense-specific (direct storage access, no dispatch) --
+    // -- Plain-specific (direct storage access, no dispatch) --
 
     #[inline]
     pub fn as_bytes(&self) -> &'a [u8] {
@@ -80,7 +80,7 @@ impl<'a> DenseView<'a> {
     }
 
     // -- Typed access --
-    // TractResult is for datum-type check only, NOT dense check.
+    // TractResult is for datum-type check only, NOT plain check.
 
     #[inline]
     pub fn as_ptr<D: Datum>(&self) -> TractResult<*const D> {
@@ -135,29 +135,29 @@ impl<'a> DenseView<'a> {
     }
 }
 
-/// Mutable view into a [`Tensor`] verified to have dense storage.
+/// Mutable view into a [`Tensor`] verified to have plain storage.
 ///
 /// Fields are split to satisfy the borrow checker: mutable storage +
 /// immutable metadata borrowed from the same Tensor.
-pub struct DenseViewMut<'a> {
+pub struct PlainViewMut<'a> {
     dt: DatumType,
     shape: &'a [usize],
     strides: &'a [isize],
     len: usize,
-    storage: &'a mut DenseStorage,
+    storage: &'a mut PlainStorage,
 }
 
-impl<'a> DenseViewMut<'a> {
-    /// Private constructor used by `Tensor::as_dense_mut()`.
+impl<'a> PlainViewMut<'a> {
+    /// Private constructor used by `Tensor::as_plain_mut()`.
     #[inline]
     pub(crate) fn new(
         dt: DatumType,
         shape: &'a [usize],
         strides: &'a [isize],
         len: usize,
-        storage: &'a mut DenseStorage,
+        storage: &'a mut PlainStorage,
     ) -> Self {
-        DenseViewMut { dt, shape, strides, len, storage }
+        PlainViewMut { dt, shape, strides, len, storage }
     }
 
     // -- Metadata --
@@ -187,7 +187,7 @@ impl<'a> DenseViewMut<'a> {
         self.len
     }
 
-    // -- Read access (same as DenseView, self.storage reborrows as &DenseStorage) --
+    // -- Read access (same as PlainView, self.storage reborrows as &PlainStorage) --
 
     #[inline]
     pub fn as_bytes(&self) -> &[u8] {

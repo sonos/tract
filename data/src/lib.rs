@@ -21,9 +21,9 @@ pub mod prelude {
     pub use crate::datum::{Datum, DatumType, QParams, round_ties_to_even};
     pub use crate::dim::{Assertion, Symbol, SymbolScope, SymbolValues, TDim, ToDim};
     pub use crate::opaque::Opaque;
-    pub use crate::tensor::dense_view::{DenseView, DenseViewMut};
     pub use crate::tensor::litteral::*;
-    pub use crate::tensor::storage::{DenseStorage, TensorStorage};
+    pub use crate::tensor::plain_view::{PlainView, PlainViewMut};
+    pub use crate::tensor::storage::{PlainStorage, TensorStorage};
     pub use crate::tensor::{IntoArcTensor, IntoTensor, Tensor, natural_strides};
     #[cfg(feature = "complex")]
     pub use crate::tensor::{reinterpret_complex_as_inner_dim, reinterpret_inner_dim_as_complex};

@@ -157,8 +157,8 @@ pub fn suite() -> TractResult<TestSuite> {
     suite.add(
         "trivial_f32_0",
         ScaledMaskedSoftmaxProblem {
-            input: tensor4(&[[[[0f32]]]]).into_dense_array()?.into_dimensionality()?,
-            mask: tensor4(&[[[[0f32]]]]).into_dense_array()?.into_dimensionality()?,
+            input: tensor4(&[[[[0f32]]]]).into_plain_array()?.into_dimensionality()?,
+            mask: tensor4(&[[[[0f32]]]]).into_plain_array()?.into_dimensionality()?,
             scale: 1f32,
         },
     );
@@ -167,10 +167,10 @@ pub fn suite() -> TractResult<TestSuite> {
         "trivial_f32_1",
         ScaledMaskedSoftmaxProblem {
             input: tensor4(&[[[[0f32, 0f32], [0f32, 0f32]]]])
-                .into_dense_array()?
+                .into_plain_array()?
                 .into_dimensionality()?,
             mask: tensor4(&[[[[f32::NEG_INFINITY, 0f32], [0f32, 0f32]]]])
-                .into_dense_array()?
+                .into_plain_array()?
                 .into_dimensionality()?,
             scale: 1f32,
         },
@@ -188,8 +188,8 @@ pub fn suite() -> TractResult<TestSuite> {
     suite.add(
         "trivial_f32_3",
         ScaledMaskedSoftmaxProblem {
-            input: tensor4(&[[[[0f32, 0f32]]]]).into_dense_array()?.into_dimensionality()?,
-            mask: tensor4(&[[[[0f32, 0f32]]]]).into_dense_array()?.into_dimensionality()?,
+            input: tensor4(&[[[[0f32, 0f32]]]]).into_plain_array()?.into_dimensionality()?,
+            mask: tensor4(&[[[[0f32, 0f32]]]]).into_plain_array()?.into_dimensionality()?,
             scale: 1f32,
         },
     );

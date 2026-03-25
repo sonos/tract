@@ -117,7 +117,7 @@ fn create_tensor(shape: Vec<usize>, dt: DatumType, data: &[u8]) -> TractResult<T
             DatumType::F32 => Tensor::from_raw::<f32>(&shape, data),
             DatumType::F64 => Tensor::from_raw::<f64>(&shape, data),
             DatumType::Bool => Ok(Tensor::from_raw::<u8>(&shape, data)?
-                .into_dense_array::<u8>()?
+                .into_plain_array::<u8>()?
                 .mapv(|x| x != 0)
                 .into()),
             _ => unimplemented!("FIXME, raw tensor loading"),

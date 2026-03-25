@@ -466,7 +466,7 @@ impl TensorInterface for Tensor {
 
     fn as_bytes(&self) -> Result<(DatumType, &[usize], &[u8])> {
         let dt = from_internal_dt(self.0.datum_type())?;
-        Ok((dt, self.0.shape(), self.0.try_as_dense()?.as_bytes()))
+        Ok((dt, self.0.shape(), self.0.try_as_plain()?.as_bytes()))
     }
 
     fn convert_to(&self, to: DatumType) -> Result<Self> {

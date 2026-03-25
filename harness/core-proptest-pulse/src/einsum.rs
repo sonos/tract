@@ -18,12 +18,12 @@ fn einsum_pulsedmm() {
 
     let mut input = Tensor::zero::<f32>(&[5, 8, 2]).unwrap();
     input
-        .try_as_dense_mut()
+        .try_as_plain_mut()
         .unwrap()
         .as_slice_mut::<f32>()
         .unwrap()
         .iter_mut()
         .enumerate()
         .for_each(|(ix, x)| *x = ix as f32);
-    proptest_regular_against_pulse(model, 1, input.into_dense_array().unwrap(), 0).unwrap()
+    proptest_regular_against_pulse(model, 1, input.into_plain_array().unwrap(), 0).unwrap()
 }

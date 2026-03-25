@@ -67,7 +67,7 @@ mod test {
             let output = state.run(tvec!(tensor1(&input).into())).unwrap();
             let skip = (delay + overlap).saturating_sub(i * pulse).min(pulse + overlap);
             assert_eq!(
-                &output[0].try_as_dense().unwrap().as_slice::<u8>().unwrap()[skip..],
+                &output[0].try_as_plain().unwrap().as_slice::<u8>().unwrap()[skip..],
                 &expect[skip..]
             );
         }
@@ -128,7 +128,7 @@ mod test {
             let skip = 4usize.saturating_sub(i * pulse).min(pulse);
             let output = state.run(tvec!(tensor1(&input).into())).unwrap();
             assert_eq!(
-                &output[0].try_as_dense().unwrap().as_slice::<u8>().unwrap()[skip..],
+                &output[0].try_as_plain().unwrap().as_slice::<u8>().unwrap()[skip..],
                 &expect[skip..]
             );
         }

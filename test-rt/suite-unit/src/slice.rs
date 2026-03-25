@@ -43,7 +43,7 @@ impl Test for SliceProblem {
     ) -> infra::TestResult {
         let mut input = Tensor::zero::<f32>(&self.input_shape)?;
         input
-            .try_as_dense_mut()?
+            .try_as_plain_mut()?
             .as_slice_mut::<f32>()?
             .iter_mut()
             .enumerate()

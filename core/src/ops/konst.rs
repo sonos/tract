@@ -80,7 +80,7 @@ impl TypedOp for Const {
     ) -> TractResult<TVec<OutletId>> {
         let op = if self.0.datum_type() == TDim::datum_type() {
             let mut tensor = self.0.clone().into_tensor();
-            for d in tensor.try_as_dense_mut()?.as_slice_mut::<TDim>()? {
+            for d in tensor.try_as_plain_mut()?.as_slice_mut::<TDim>()? {
                 *d = d.eval(values);
             }
             Const(tensor.into_arc_tensor(), self.1.clone())

@@ -38,9 +38,9 @@ impl GatherNd {
         let mut data_shape_op: TVec<usize> =
             data.shape().iter().skip(batch_dims).copied().collect();
         data_shape_op.insert(0, batch_size);
-        let data_dense = data.try_as_dense()?;
+        let data_plain = data.try_as_plain()?;
         let reshaped_data = unsafe {
-            data_dense
+            data_plain
                 .to_array_view_unchecked::<T>()
                 .into_shape_with_order(&*data_shape_op)
                 .unwrap()
@@ -49,9 +49,9 @@ impl GatherNd {
         let mut output_shape_op: TVec<usize> =
             data.shape().iter().skip(n + batch_dims).copied().collect();
         output_shape_op.insert(0, batch_size * remaining);
-        let mut output_dense = output.try_as_dense_mut()?;
+        let mut output_plain = output.try_as_plain_mut()?;
         let mut output = unsafe {
-            output_dense
+            output_plain
                 .to_array_view_mut_unchecked::<T>()
                 .into_shape_with_order(&*output_shape_op)
                 .unwrap()
@@ -98,7 +98,7 @@ impl EvalOp for GatherNd {
         let (data, indices) = args_2!(inputs);
         let shape = self.compute_shape(data.shape(), indices.shape())?;
         let indices = indices.cast_to::<i32>()?;
-        let indices = indices.to_dense_array_view::<i32>()?;
+        let indices = indices.to_plain_array_view::<i32>()?;
         unsafe {
             let mut output = Tensor::uninitialized_dt(data.datum_type(), &shape)?;
             dispatch_datum_by_size!(Self::eval_t(data.datum_type())(
@@ -132,7 +132,7 @@ impl TypedOp for GatherNd {
             let mut patch = TypedModelPatch::default();
             let mut wire = patch.tap_model(model, node.inputs[0])?;
             for (axis, &i) in
-                indices.cast_to::<i32>()?.try_as_dense()?.as_slice::<i32>()?.iter().enumerate()
+                indices.cast_to::<i32>()?.try_as_plain()?.as_slice::<i32>()?.iter().enumerate()
             {
                 wire = patch.wire_node(
                     format!("{}-slice-axis-{}", node.name, axis),

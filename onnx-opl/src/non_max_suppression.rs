@@ -129,10 +129,10 @@ impl NonMaxSuppression {
             };
 
         let mut max_output_boxes_per_class =
-            *max_output_boxes_per_class.try_as_dense()?.to_scalar::<i64>()?;
-        let iou_threshold = *iou_threshold.try_as_dense()?.to_scalar::<T>()?;
+            *max_output_boxes_per_class.try_as_plain()?.to_scalar::<i64>()?;
+        let iou_threshold = *iou_threshold.try_as_plain()?.to_scalar::<T>()?;
         let score_threshold = score_threshold.map_or(Ok::<_, TractError>(None), |val| {
-            Ok(Some(*val.try_as_dense()?.to_scalar::<T>()?))
+            Ok(Some(*val.try_as_plain()?.to_scalar::<T>()?))
         })?;
 
         if max_output_boxes_per_class == 0 {
@@ -144,8 +144,8 @@ impl NonMaxSuppression {
         let num_classes = scores.shape()[1];
         let num_dim = scores.shape()[2];
 
-        let boxes = boxes.to_dense_array_view::<T>()?;
-        let scores = scores.to_dense_array_view::<T>()?;
+        let boxes = boxes.to_plain_array_view::<T>()?;
+        let scores = scores.to_plain_array_view::<T>()?;
 
         // items: (batch, class, index)
         let mut selected_global: TVec<(usize, usize, usize)> = tvec![];

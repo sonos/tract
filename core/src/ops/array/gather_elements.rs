@@ -20,8 +20,8 @@ impl GatherElements {
         data: TValue,
         indices: &ArrayViewD<i64>,
     ) -> TractResult<TValue> {
-        let data_dense = data.try_as_dense()?;
-        let data_view = unsafe { data_dense.to_array_view_unchecked::<T>() };
+        let data_plain = data.try_as_plain()?;
+        let data_view = unsafe { data_plain.to_array_view_unchecked::<T>() };
         let output = ArrayD::<T>::from_shape_fn(indices.shape(), |mut coords| {
             let index = indices[&coords];
             coords[self.axis] =
@@ -51,7 +51,7 @@ impl EvalOp for GatherElements {
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (data, indices) = args_2!(inputs);
         let indices = indices.cast_to::<i64>()?;
-        let indices = indices.to_dense_array_view::<i64>()?;
+        let indices = indices.to_plain_array_view::<i64>()?;
         unsafe {
             Ok(tvec!(dispatch_datum_by_size!(Self::eval_t(data.datum_type())(
                 self, data, &indices

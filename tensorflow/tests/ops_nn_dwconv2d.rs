@@ -175,7 +175,7 @@ fn conv_eval_8() {
 fn conv_eval_9() {
     let i: Tensor = tensor4(&[[[[0f32, 0.0, 0.0, 0.0, 1.0]]]]);
     let mut k = Tensor::zero::<f32>(&[1, 1, 5, 3]).unwrap();
-    *k.try_as_dense_mut().unwrap().as_slice_mut::<f32>().unwrap().last_mut().unwrap() = 1.0;
+    *k.try_as_plain_mut().unwrap().as_slice_mut::<f32>().unwrap().last_mut().unwrap() = 1.0;
     let model = convolution_pb(1, false, &k).unwrap();
     compare(&model, vec![("data", i.into())], "conv").unwrap();
 }

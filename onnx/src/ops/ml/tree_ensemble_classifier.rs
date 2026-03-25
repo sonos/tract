@@ -26,7 +26,7 @@ fn tree_classifier(
         && ensemble
             .data
             .leaves
-            .try_as_dense()?
+            .try_as_plain()?
             .as_slice::<u32>()?
             .iter()
             .enumerate()

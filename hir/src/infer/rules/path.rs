@@ -310,7 +310,7 @@ fn get_value_path(value: &ValueFact, path: &[isize]) -> TractResult<Wrapped> {
             if tensor.rank() == 0 && path == tvec!(0) {
                 Ok(tensor.cast_to_scalar::<i64>()?.wrap())
             } else {
-                Ok(tensor.cast_to::<i64>()?.to_dense_array_view::<i64>()?[&*path].wrap())
+                Ok(tensor.cast_to::<i64>()?.to_plain_array_view::<i64>()?[&*path].wrap())
             }
         }
     };

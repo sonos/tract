@@ -77,7 +77,7 @@ mod tests {
         let outputs = model.run(tvec![input.into()]).unwrap();
         let labels = load_labels();
         let label_id = outputs[0]
-            .try_as_dense()
+            .try_as_plain()
             .unwrap()
             .to_array_view::<f32>()
             .unwrap()

@@ -36,7 +36,7 @@ impl Expansion for Unsqueeze13 {
         s.given_2(&inputs[0].shape, &inputs[1].value, move |s, shape, axes| {
             let axes = axes
                 .cast_to::<i64>()?
-                .try_as_dense()?
+                .try_as_plain()?
                 .as_slice::<i64>()?
                 .iter()
                 .map(|i| *i as isize)
@@ -56,7 +56,7 @@ impl Expansion for Unsqueeze13 {
         if let Some(axes) = model.outlet_fact(inputs[1])?.konst.as_ref() {
             let axes = axes
                 .cast_to::<i64>()?
-                .try_as_dense()?
+                .try_as_plain()?
                 .as_slice::<i64>()?
                 .iter()
                 .map(|i| *i as isize)

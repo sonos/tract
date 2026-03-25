@@ -55,7 +55,7 @@ impl Expansion for ReduceSum13 {
         }
         if self.have_axis_input {
             s.given_2(&inputs[0].rank, &inputs[1].value, move |s, rank, axes| {
-                let mut axes = axes.cast_to::<i64>()?.try_as_dense()?.as_slice::<i64>()?.to_vec();
+                let mut axes = axes.cast_to::<i64>()?.try_as_plain()?.as_slice::<i64>()?.to_vec();
                 if axes.len() == 0 && !self.noop_with_empty_axes {
                     axes = (0..rank).collect()
                 };
@@ -107,7 +107,7 @@ impl Expansion for ReduceSum13 {
                 .konst
                 .as_ref()
                 .context("expected axes as a constant")?
-                .try_as_dense()?
+                .try_as_plain()?
                 .as_slice::<i64>()?
                 .to_vec()
         } else {

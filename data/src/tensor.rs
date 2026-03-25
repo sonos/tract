@@ -17,13 +17,13 @@ use std::hash::Hash;
 use std::ops::Range;
 use std::sync::Arc;
 
-pub mod dense_view;
 pub mod litteral;
+pub mod plain_view;
 pub mod storage;
 pub mod view;
 
-pub use dense_view::{DenseView, DenseViewMut};
-use storage::{DenseStorage, StorageKind, TensorStorage};
+pub use plain_view::{PlainView, PlainViewMut};
+use storage::{PlainStorage, StorageKind, TensorStorage};
 
 #[derive(Copy, Clone, Default, Debug)]
 pub enum Approximation {
@@ -91,8 +91,8 @@ impl Hash for Tensor {
         use DatumType::*;
         self.dt.hash(state);
         self.shape.hash(state);
-        if let Some(dense) = self.storage.as_dense() {
-            dense.layout().align().hash(state);
+        if let Some(plain) = self.storage.as_plain() {
+            plain.layout().align().hash(state);
             unsafe {
                 match self.dt {
                     Bool => self.as_slice_unchecked::<bool>().hash(state),
@@ -179,13 +179,13 @@ pub fn vector_size() -> usize {
 
 impl Tensor {
     #[inline]
-    fn dense_storage(&self) -> &DenseStorage {
-        self.storage.as_dense().expect("Non-dense storage")
+    fn plain_storage(&self) -> &PlainStorage {
+        self.storage.as_plain().expect("Non-plain storage")
     }
 
     #[inline]
-    fn dense_storage_mut(&mut self) -> &mut DenseStorage {
-        self.storage.as_dense_mut().expect("Non-dense storage")
+    fn plain_storage_mut(&mut self) -> &mut PlainStorage {
+        self.storage.as_plain_mut().expect("Non-plain storage")
     }
 
     pub fn storage_as<T: TensorStorage>(&self) -> Option<&T> {
@@ -212,42 +212,42 @@ impl Tensor {
         }
     }
 
-    /// Returns an immutable [`DenseView`] if this tensor has dense storage.
+    /// Returns an immutable [`PlainView`] if this tensor has plain storage.
     #[inline]
-    pub fn as_dense(&self) -> Option<DenseView<'_>> {
-        let storage = self.storage.as_dense()?;
-        Some(DenseView::new(self, storage))
+    pub fn as_plain(&self) -> Option<PlainView<'_>> {
+        let storage = self.storage.as_plain()?;
+        Some(PlainView::new(self, storage))
     }
 
-    /// Returns an immutable [`DenseView`], or an error if storage is not dense.
+    /// Returns an immutable [`PlainView`], or an error if storage is not plain.
     #[inline]
-    pub fn try_as_dense(&self) -> TractResult<DenseView<'_>> {
-        self.as_dense().context("Tensor storage is not dense")
+    pub fn try_as_plain(&self) -> TractResult<PlainView<'_>> {
+        self.as_plain().context("Tensor storage is not plain")
     }
 
-    /// Returns `true` if this tensor uses plain dense (contiguous) storage.
+    /// Returns `true` if this tensor uses plain (contiguous) storage.
     #[inline]
     pub fn is_plain(&self) -> bool {
-        self.storage.as_dense().is_some()
+        self.storage.as_plain().is_some()
     }
 
-    /// Returns `true` if this tensor uses exotic (non-dense) storage.
+    /// Returns `true` if this tensor uses exotic (non-plain) storage.
     #[inline]
     pub fn is_exotic(&self) -> bool {
         !self.is_plain()
     }
 
-    /// Returns a mutable [`DenseViewMut`] if this tensor has dense storage.
+    /// Returns a mutable [`PlainViewMut`] if this tensor has plain storage.
     #[inline]
-    pub fn as_dense_mut(&mut self) -> Option<DenseViewMut<'_>> {
-        let storage = self.storage.as_dense_mut()?;
-        Some(DenseViewMut::new(self.dt, &self.shape, &self.strides, self.len, storage))
+    pub fn as_plain_mut(&mut self) -> Option<PlainViewMut<'_>> {
+        let storage = self.storage.as_plain_mut()?;
+        Some(PlainViewMut::new(self.dt, &self.shape, &self.strides, self.len, storage))
     }
 
-    /// Returns a mutable [`DenseViewMut`], or an error if storage is not dense.
+    /// Returns a mutable [`PlainViewMut`], or an error if storage is not plain.
     #[inline]
-    pub fn try_as_dense_mut(&mut self) -> TractResult<DenseViewMut<'_>> {
-        self.as_dense_mut().context("Tensor storage is not dense")
+    pub fn try_as_plain_mut(&mut self) -> TractResult<PlainViewMut<'_>> {
+        self.as_plain_mut().context("Tensor storage is not plain")
     }
 
     /// Create an uninitialized tensor (dt as type paramater).
@@ -278,7 +278,7 @@ impl Tensor {
         alignment: usize,
     ) -> TractResult<Tensor> {
         let bytes = shape.iter().cloned().product::<usize>() * dt.size_of();
-        let storage = StorageKind::Plain(DenseStorage::from(unsafe {
+        let storage = StorageKind::Plain(PlainStorage::from(unsafe {
             Blob::new_for_size_and_align(bytes, alignment)
         }));
         let mut tensor = Tensor { strides: tvec!(), dt, shape: shape.into(), storage, len: 0 };
@@ -290,7 +290,7 @@ impl Tensor {
         if !tensor.storage.is_empty() {
             if dt == String::datum_type() || dt == Blob::datum_type() {
                 // assumes zero-initialized string and blob are valid
-                tensor.dense_storage_mut().as_bytes_mut().fill(0);
+                tensor.plain_storage_mut().as_bytes_mut().fill(0);
             } else if dt == TDim::datum_type() {
                 unsafe {
                     tensor
@@ -342,8 +342,8 @@ impl Tensor {
                     let v = v.borrow();
                     let len = v.storage.byte_len();
                     std::ptr::copy_nonoverlapping(
-                        v.dense_storage().as_ptr(),
-                        result.dense_storage_mut().as_mut_ptr().offset(offset),
+                        v.plain_storage().as_ptr(),
+                        result.plain_storage_mut().as_mut_ptr().offset(offset),
                         len,
                     );
                     offset += len as isize;
@@ -387,7 +387,7 @@ impl Tensor {
     }
 
     pub fn fill_t<T: Datum + Clone>(&mut self, value: T) -> TractResult<()> {
-        self.try_as_dense_mut()?
+        self.try_as_plain_mut()?
             .as_slice_mut::<T>()?
             .iter_mut()
             .for_each(|item| *item = value.clone());
@@ -408,17 +408,17 @@ impl Tensor {
                 let zp = dt.zp_scale().0;
                 match dt.unquantized() {
                     DatumType::I8 => t
-                        .try_as_dense_mut()?
+                        .try_as_plain_mut()?
                         .as_slice_mut::<i8>()?
                         .iter_mut()
                         .for_each(|item| *item = zp as _),
                     DatumType::U8 => t
-                        .try_as_dense_mut()?
+                        .try_as_plain_mut()?
                         .as_slice_mut::<u8>()?
                         .iter_mut()
                         .for_each(|item| *item = zp as _),
                     DatumType::I32 => t
-                        .try_as_dense_mut()?
+                        .try_as_plain_mut()?
                         .as_slice_mut::<i32>()?
                         .iter_mut()
                         .for_each(|item| *item = zp as _),
@@ -834,16 +834,16 @@ impl Tensor {
                 let src_start = (stride * src_range.start) as isize;
                 let len = stride * range.len();
                 if len > 0 {
-                    if self.dense_storage().as_ptr() != src.dense_storage().as_ptr() {
+                    if self.plain_storage().as_ptr() != src.plain_storage().as_ptr() {
                         std::ptr::copy_nonoverlapping(
-                            src.dense_storage().as_ptr().offset(src_start),
-                            self.dense_storage_mut().as_mut_ptr().offset(dst_start),
+                            src.plain_storage().as_ptr().offset(src_start),
+                            self.plain_storage_mut().as_mut_ptr().offset(dst_start),
                             len,
                         );
                     } else {
                         std::ptr::copy(
-                            src.dense_storage().as_ptr().offset(src_start),
-                            self.dense_storage_mut().as_mut_ptr().offset(dst_start),
+                            src.plain_storage().as_ptr().offset(src_start),
+                            self.plain_storage_mut().as_mut_ptr().offset(dst_start),
                             len,
                         );
                     }
@@ -874,7 +874,7 @@ impl Tensor {
     pub fn dump(&self, force_full: bool) -> TractResult<String> {
         if self.is_exotic() {
             return Ok(format!(
-                "{},{:?} (non-dense storage)",
+                "{},{:?} (non-plain storage)",
                 self.shape.iter().join(","),
                 self.dt,
             ));
@@ -920,9 +920,9 @@ impl Tensor {
         }
         let (atol, rtol, outliers) = approx.atol_rtol_outliers(&self.datum_type());
         let ma = self.cast_to::<f32>()?;
-        let ma = ma.to_dense_array_view::<f32>()?;
+        let ma = ma.to_plain_array_view::<f32>()?;
         let mb = other.cast_to::<f32>()?;
-        let mb = mb.to_dense_array_view::<f32>()?;
+        let mb = mb.to_plain_array_view::<f32>()?;
         let mut first_outlier = None;
         let mut outliers_count = 0;
         ndarray::indices_of(&ma).into_iter().for_each(|indices| {
@@ -959,8 +959,8 @@ impl Tensor {
     }
 
     /// Transform the tensor into a `ndarray::Array`.
-    pub fn into_dense_array<D: Datum>(self) -> TractResult<ArrayD<D>> {
-        Ok(self.to_dense_array_view::<D>()?.to_owned())
+    pub fn into_plain_array<D: Datum>(self) -> TractResult<ArrayD<D>> {
+        Ok(self.to_plain_array_view::<D>()?.to_owned())
     }
 
     /// Transform the tensor into a `ndarray::Array`.
@@ -968,21 +968,21 @@ impl Tensor {
         unsafe { self.to_array_view_unchecked::<D>().to_owned() }
     }
 
-    /// Returns a dense array view of the tensor.
+    /// Returns a plain array view of the tensor.
     ///
-    /// Errors if the storage is not dense or the datum type does not match `D`.
+    /// Errors if the storage is not plain or the datum type does not match `D`.
     #[inline]
-    pub fn to_dense_array_view<D: Datum>(&self) -> TractResult<ArrayViewD<'_, D>> {
-        self.try_as_dense()?.to_array_view::<D>()
+    pub fn to_plain_array_view<D: Datum>(&self) -> TractResult<ArrayViewD<'_, D>> {
+        self.try_as_plain()?.to_array_view::<D>()
     }
 
-    /// Returns a mutable dense array view of the tensor.
+    /// Returns a mutable plain array view of the tensor.
     ///
-    /// Errors if the storage is not dense or the datum type does not match `D`.
+    /// Errors if the storage is not plain or the datum type does not match `D`.
     #[inline]
-    pub fn to_dense_array_view_mut<D: Datum>(&mut self) -> TractResult<ArrayViewMutD<'_, D>> {
+    pub fn to_plain_array_view_mut<D: Datum>(&mut self) -> TractResult<ArrayViewMutD<'_, D>> {
         self.check_for_access::<D>()?;
-        ensure!(self.storage.as_dense_mut().is_some(), "Tensor storage is not dense");
+        ensure!(self.storage.as_plain_mut().is_some(), "Tensor storage is not plain");
         unsafe { Ok(self.to_array_view_mut_unchecked()) }
     }
 
@@ -1000,7 +1000,7 @@ impl Tensor {
     pub unsafe fn to_array_view_unchecked<D: Datum>(&self) -> ArrayViewD<'_, D> {
         if self.len() != 0 {
             unsafe {
-                ArrayViewD::from_shape_ptr(&*self.shape, self.dense_storage().as_ptr() as *const D)
+                ArrayViewD::from_shape_ptr(&*self.shape, self.plain_storage().as_ptr() as *const D)
             }
         } else {
             ArrayViewD::from_shape(&*self.shape, &[]).unwrap()
@@ -1011,7 +1011,7 @@ impl Tensor {
     pub unsafe fn to_array_view_mut_unchecked<D: Datum>(&mut self) -> ArrayViewMutD<'_, D> {
         if self.len() != 0 {
             unsafe {
-                let ptr = self.dense_storage_mut().as_mut_ptr() as *mut D;
+                let ptr = self.plain_storage_mut().as_mut_ptr() as *mut D;
                 ArrayViewMutD::from_shape_ptr(&*self.shape, ptr)
             }
         } else {
@@ -1022,17 +1022,17 @@ impl Tensor {
     /// Access the data as a pointer.
     pub fn as_ptr<D: Datum>(&self) -> TractResult<*const D> {
         self.check_for_access::<D>()?;
-        Ok(self.dense_storage().as_ptr() as *const D)
+        Ok(self.plain_storage().as_ptr() as *const D)
     }
 
     /// Access the data as a pointer.
     pub unsafe fn as_ptr_unchecked<D: Datum>(&self) -> *const D {
-        self.dense_storage().as_ptr() as *const D
+        self.plain_storage().as_ptr() as *const D
     }
 
     /// Access the data as a pointer.
     pub unsafe fn as_ptr_mut_unchecked<D: Datum>(&mut self) -> *mut D {
-        self.dense_storage_mut().as_mut_ptr() as *mut D
+        self.plain_storage_mut().as_mut_ptr() as *mut D
     }
 
     /// Access the data as a mutable pointer.
@@ -1061,14 +1061,14 @@ impl Tensor {
     /// Make the tensor a scalar tensor (assumes it contains a single value).
     pub fn to_scalar_tensor(&self) -> TractResult<Tensor> {
         fn to_scalar_tensor_t<D: Datum>(t: &Tensor) -> TractResult<Tensor> {
-            Ok(litteral::tensor0(t.try_as_dense()?.to_scalar::<D>()?.clone()))
+            Ok(litteral::tensor0(t.try_as_plain()?.to_scalar::<D>()?.clone()))
         }
         dispatch_datum!(to_scalar_tensor_t(self.datum_type())(self))
     }
 
     /// Access the data as a scalar.
     pub unsafe fn to_scalar_unchecked<D: Datum>(&self) -> &D {
-        unsafe { &*(self.dense_storage().as_ptr() as *const D) }
+        unsafe { &*(self.plain_storage().as_ptr() as *const D) }
     }
 
     /// Mutable access the data as a scalar.
@@ -1085,15 +1085,15 @@ impl Tensor {
 
     /// Mutable access the data as a scalar.
     pub unsafe fn to_scalar_mut_unchecked<D: Datum>(&mut self) -> &mut D {
-        unsafe { &mut *(self.dense_storage_mut().as_mut_ptr() as *mut D) }
+        unsafe { &mut *(self.plain_storage_mut().as_mut_ptr() as *mut D) }
     }
 
     pub fn as_bytes(&self) -> &[u8] {
-        self.dense_storage().as_bytes()
+        self.plain_storage().as_bytes()
     }
 
     pub fn as_bytes_mut(&mut self) -> &mut [u8] {
-        self.dense_storage_mut().as_bytes_mut()
+        self.plain_storage_mut().as_bytes_mut()
     }
 
     unsafe fn is_uniform_t<T: Datum>(&self) -> bool {
@@ -1412,7 +1412,7 @@ impl Tensor {
     /// Access the data as a scalar, after a cast.
     pub fn cast_to_scalar<D: Datum + Copy>(&self) -> TractResult<D> {
         let casted = self.cast_to::<D>()?;
-        casted.try_as_dense()?.to_scalar::<D>().copied()
+        casted.try_as_plain()?.to_scalar::<D>().copied()
     }
 
     /// Access the nth element of the tensor, returned as a 0-rank Tensor
@@ -1472,7 +1472,7 @@ impl Tensor {
                     std::ptr::copy_nonoverlapping(
                         slice.as_ptr() as *const i8,
                         t.as_ptr_mut_unchecked(),
-                        t.dense_storage().layout().size(),
+                        t.plain_storage().layout().size(),
                     );
                 } else {
                     t.as_slice_mut_unchecked::<T>()
@@ -1525,9 +1525,9 @@ impl Tensor {
             let mut tensor = Tensor::uninitialized_dt(self.datum_type(), self.shape()).unwrap();
             if self.len() > 0 {
                 if self.dt.is_copy() {
-                    self.dense_storage().as_ptr().copy_to_nonoverlapping(
+                    self.plain_storage().as_ptr().copy_to_nonoverlapping(
                         tensor.as_bytes_mut().as_mut_ptr(),
-                        self.dense_storage().layout().size(),
+                        self.plain_storage().layout().size(),
                     )
                 } else if self.dt == DatumType::String {
                     tensor
@@ -1564,7 +1564,7 @@ impl Tensor {
             start: usize,
             end: usize,
         ) -> TractResult<Tensor> {
-            Ok(t.to_dense_array_view::<T>()?
+            Ok(t.to_plain_array_view::<T>()?
                 .slice_axis(ndarray::Axis(axis), (start..end).into())
                 .into_owned()
                 .into_tensor())
@@ -1610,7 +1610,7 @@ impl Tensor {
     /// Offsets the tensor as an i8 type if it's an u8 type, otherwise passes it unchanged.
     pub fn offset_u8_as_i8(self: &Arc<Self>) -> Arc<Self> {
         let mut t = if let DatumType::U8 = self.dt.unquantized() {
-            self.try_as_dense()
+            self.try_as_plain()
                 .unwrap()
                 .to_array_view::<u8>()
                 .unwrap()
@@ -1634,7 +1634,7 @@ impl Tensor {
     /// Offsets the tensor as an u8 type if it's an i8 type, otherwise passes it unchanged.
     pub fn offset_i8_as_u8(self: &Arc<Self>) -> Arc<Self> {
         let mut t = if let DatumType::I8 = self.dt.unquantized() {
-            self.try_as_dense()
+            self.try_as_plain()
                 .unwrap()
                 .to_array_view::<i8>()
                 .unwrap()
@@ -1664,17 +1664,17 @@ impl Tensor {
         } else {
             let mut t = Self::zero_dt(self.dt, &self.shape)?;
             if self.dt == String::datum_type() {
-                t.try_as_dense_mut()?
+                t.try_as_plain_mut()?
                     .as_slice_mut::<String>()?
-                    .clone_from_slice(self.try_as_dense()?.as_slice()?);
+                    .clone_from_slice(self.try_as_plain()?.as_slice()?);
             } else if self.dt == Blob::datum_type() {
-                t.try_as_dense_mut()?
+                t.try_as_plain_mut()?
                     .as_slice_mut::<Blob>()?
-                    .clone_from_slice(self.try_as_dense()?.as_slice()?);
+                    .clone_from_slice(self.try_as_plain()?.as_slice()?);
             } else if self.dt == TDim::datum_type() {
-                t.try_as_dense_mut()?
+                t.try_as_plain_mut()?
                     .as_slice_mut::<TDim>()?
-                    .clone_from_slice(self.try_as_dense()?.as_slice()?);
+                    .clone_from_slice(self.try_as_plain()?.as_slice()?);
             }
             Ok(t)
         }
@@ -1689,8 +1689,8 @@ impl Tensor {
     pub fn into_blob(mut self) -> TractResult<Blob> {
         ensure!(self.dt.is_copy());
         let storage =
-            std::mem::replace(&mut self.storage, StorageKind::Plain(DenseStorage::default()));
-        Ok(storage.into_dense().context("Storage is not dense")?.into_blob())
+            std::mem::replace(&mut self.storage, StorageKind::Plain(PlainStorage::default()));
+        Ok(storage.into_plain().context("Storage is not plain")?.into_blob())
     }
 }
 
@@ -1699,7 +1699,7 @@ impl PartialEq for Tensor {
         if self.dt != other.dt || self.shape != other.shape {
             return false;
         }
-        match (self.storage.as_dense(), other.storage.as_dense()) {
+        match (self.storage.as_plain(), other.storage.as_plain()) {
             (Some(_), Some(_)) => self.eq_dt(other).unwrap_or(false),
             (None, None) => self.storage.same_as(&other.storage),
             _ => false,

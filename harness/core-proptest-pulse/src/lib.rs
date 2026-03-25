@@ -104,7 +104,7 @@ fn proptest_regular_against_pulse(
         let mut outputs = state.run(tvec!(chunk.into_tensor().into_tvalue())).unwrap();
         got = tract_ndarray::concatenate(
             Axis(output_stream_axis),
-            &[got.view(), outputs.remove(0).to_dense_array_view::<f32>().unwrap()],
+            &[got.view(), outputs.remove(0).to_plain_array_view::<f32>().unwrap()],
         )
         .unwrap();
         eprintln!("GOT: {got}");

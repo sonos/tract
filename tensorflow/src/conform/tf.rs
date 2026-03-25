@@ -62,21 +62,21 @@ impl TensorHolder {
 impl From<Tensor> for TensorHolder {
     fn from(m: Tensor) -> TensorHolder {
         match m.datum_type() {
-            DatumType::Bool => TensorHolder::Bool(Self::to_tensor(m.into_dense_array().unwrap())),
+            DatumType::Bool => TensorHolder::Bool(Self::to_tensor(m.into_plain_array().unwrap())),
             DatumType::F16 => unimplemented!(),
-            DatumType::F32 => TensorHolder::F32(Self::to_tensor(m.into_dense_array().unwrap())),
-            DatumType::F64 => TensorHolder::F64(Self::to_tensor(m.into_dense_array().unwrap())),
-            DatumType::I8 => TensorHolder::I8(Self::to_tensor(m.into_dense_array().unwrap())),
-            DatumType::I16 => TensorHolder::I16(Self::to_tensor(m.into_dense_array().unwrap())),
-            DatumType::I32 => TensorHolder::I32(Self::to_tensor(m.into_dense_array().unwrap())),
-            DatumType::I64 => TensorHolder::I64(Self::to_tensor(m.into_dense_array().unwrap())),
-            DatumType::U8 => TensorHolder::U8(Self::to_tensor(m.into_dense_array().unwrap())),
-            DatumType::U16 => TensorHolder::U16(Self::to_tensor(m.into_dense_array().unwrap())),
-            DatumType::U32 => TensorHolder::U16(Self::to_tensor(m.into_dense_array().unwrap())),
-            DatumType::U64 => TensorHolder::U16(Self::to_tensor(m.into_dense_array().unwrap())),
-            DatumType::QU8(_) => TensorHolder::U8(Self::to_tensor(m.into_dense_array().unwrap())),
-            DatumType::QI8(_) => TensorHolder::I8(Self::to_tensor(m.into_dense_array().unwrap())),
-            DatumType::QI32(_) => TensorHolder::I32(Self::to_tensor(m.into_dense_array().unwrap())),
+            DatumType::F32 => TensorHolder::F32(Self::to_tensor(m.into_plain_array().unwrap())),
+            DatumType::F64 => TensorHolder::F64(Self::to_tensor(m.into_plain_array().unwrap())),
+            DatumType::I8 => TensorHolder::I8(Self::to_tensor(m.into_plain_array().unwrap())),
+            DatumType::I16 => TensorHolder::I16(Self::to_tensor(m.into_plain_array().unwrap())),
+            DatumType::I32 => TensorHolder::I32(Self::to_tensor(m.into_plain_array().unwrap())),
+            DatumType::I64 => TensorHolder::I64(Self::to_tensor(m.into_plain_array().unwrap())),
+            DatumType::U8 => TensorHolder::U8(Self::to_tensor(m.into_plain_array().unwrap())),
+            DatumType::U16 => TensorHolder::U16(Self::to_tensor(m.into_plain_array().unwrap())),
+            DatumType::U32 => TensorHolder::U16(Self::to_tensor(m.into_plain_array().unwrap())),
+            DatumType::U64 => TensorHolder::U16(Self::to_tensor(m.into_plain_array().unwrap())),
+            DatumType::QU8(_) => TensorHolder::U8(Self::to_tensor(m.into_plain_array().unwrap())),
+            DatumType::QI8(_) => TensorHolder::I8(Self::to_tensor(m.into_plain_array().unwrap())),
+            DatumType::QI32(_) => TensorHolder::I32(Self::to_tensor(m.into_plain_array().unwrap())),
             #[cfg(feature = "complex")]
             DatumType::ComplexI16 => unimplemented!(),
             #[cfg(feature = "complex")]
@@ -90,7 +90,7 @@ impl From<Tensor> for TensorHolder {
             #[cfg(feature = "complex")]
             DatumType::ComplexF64 => unimplemented!(),
             DatumType::TDim => {
-                let dims = m.to_dense_array_view::<TDim>().unwrap();
+                let dims = m.to_plain_array_view::<TDim>().unwrap();
                 if let Ok(dims) = dims.iter().map(|d| d.to_i32()).collect::<TractResult<Vec<_>>>() {
                     TensorHolder::I32(Self::to_tensor(arr1(&dims).into_dyn()))
                 } else {
@@ -98,9 +98,9 @@ impl From<Tensor> for TensorHolder {
                 }
             }
             DatumType::String => {
-                TensorHolder::String(Self::to_tensor(m.into_dense_array().unwrap()))
+                TensorHolder::String(Self::to_tensor(m.into_plain_array().unwrap()))
             }
-            DatumType::Blob => TensorHolder::String(Self::to_tensor(m.into_dense_array().unwrap())),
+            DatumType::Blob => TensorHolder::String(Self::to_tensor(m.into_plain_array().unwrap())),
             DatumType::Opaque => panic!("No support for Opaque DT in tensorflow"),
         }
     }

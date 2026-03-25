@@ -85,7 +85,7 @@ where
     fn reference(&self) -> ArrayD<F> {
         let input = self.input.cast_to::<f32>().unwrap();
 
-        let a = input.to_dense_array_view::<f32>().unwrap().to_owned();
+        let a = input.to_plain_array_view::<f32>().unwrap().to_owned();
         let mean_square = a.pow2().mean_axis(tract_ndarray::Axis(self.axis)).unwrap();
 
         let norm = mean_square

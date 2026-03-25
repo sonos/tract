@@ -27,8 +27,8 @@ struct FakeQuantWithMinMaxVars {
 
 impl FakeQuantWithMinMaxVars {
     fn step(&self, min: &Tensor, max: &Tensor) -> TractResult<f32> {
-        let min = min.try_as_dense()?.to_scalar::<f32>()?;
-        let max = max.try_as_dense()?.to_scalar::<f32>()?;
+        let min = min.try_as_plain()?.to_scalar::<f32>()?;
+        let max = max.try_as_plain()?.to_scalar::<f32>()?;
         let amplitude = max - min;
         let scale_len = 2_usize.pow(self.num_bits as u32) - 1 - self.narrow_range as usize;
         Ok(amplitude / scale_len as f32)
@@ -75,8 +75,8 @@ impl Expansion for FakeQuantWithMinMaxVars {
                 };
             }
             let step = self.step(min, max)?;
-            let min = *min.try_as_dense()?.to_scalar::<f32>()?;
-            let max = *max.try_as_dense()?.to_scalar::<f32>()?;
+            let min = *min.try_as_plain()?.to_scalar::<f32>()?;
+            let max = *max.try_as_plain()?.to_scalar::<f32>()?;
             let min_adj = step * round_ties_to_even(min / step);
             let max_adj = max - min + min_adj;
             let wire = inputs[0];

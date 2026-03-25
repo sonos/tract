@@ -14,7 +14,7 @@ impl Lrn {
     where
         T: Datum + tract_num_traits::Float + ::std::iter::Sum,
     {
-        let input = input.to_dense_array_view::<T>()?;
+        let input = input.to_plain_array_view::<T>()?;
         let channels = input.shape()[1];
         let output = Array::from_shape_fn(input.shape(), |mut coords| {
             let c = coords[1];

@@ -72,7 +72,7 @@ impl Pad {
         let rank = input.rank();
         let i_view = get_cuda_view(input);
         let o_view = get_cuda_view(output);
-        let fill_value = val.try_as_dense()?.to_scalar::<T>()?;
+        let fill_value = val.try_as_plain()?.to_scalar::<T>()?;
 
         let mut in_shape = [1usize; PAD_MAX_RANK];
         let mut out_shape = [1usize; PAD_MAX_RANK];

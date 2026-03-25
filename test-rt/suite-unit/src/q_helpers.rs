@@ -74,7 +74,7 @@ pub trait QOpProblem {
             (out_dt.unquantized().max_value().cast_to_scalar::<f32>()? - zero_point as f32) * scale;
 
         reference
-            .try_as_dense_mut()?
+            .try_as_plain_mut()?
             .to_array_view_mut()?
             .iter_mut()
             .for_each(|x: &mut f32| *x = (*x).clamp(min_repr_val, max_repr_val));
@@ -87,8 +87,8 @@ pub trait QOpProblem {
             _ => 3.,
         };
         assert!(
-            tract_core::ndarray::Zip::from(fp_results.try_as_dense_mut()?.to_array_view_mut()?)
-                .and(reference.try_as_dense()?.to_array_view()?)
+            tract_core::ndarray::Zip::from(fp_results.try_as_plain_mut()?.to_array_view_mut()?)
+                .and(reference.try_as_plain()?.to_array_view()?)
                 .all(|x: &mut f32, xref: &f32| {
                     let closest_x = (*x).clamp(min_repr_val, max_repr_val);
                     // core maximal accepted distance by default

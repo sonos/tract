@@ -677,7 +677,7 @@ mod test {
                 )
             };
             output
-                .into_dense_array::<u32>()
+                .into_plain_array::<u32>()
                 .unwrap()
                 .into_shape_with_order((panels, panel_len))
                 .unwrap()

@@ -4,7 +4,7 @@ use tract_data::internal::*;
 
 use super::MMMInputValue;
 
-/// Non-dense tensor storage for packed matrices.
+/// Non-plain tensor storage for packed matrices.
 ///
 /// Holds one or more `Box<dyn MMMInputValue>` values with an optional batch
 /// shape, replacing the previous `Tensor<Opaque>` + double-downcast pattern.
@@ -123,15 +123,15 @@ impl TensorStorage for PackedMatrixStorage {
         }
     }
 
-    fn as_dense(&self) -> Option<&DenseStorage> {
+    fn as_plain(&self) -> Option<&PlainStorage> {
         None
     }
 
-    fn as_dense_mut(&mut self) -> Option<&mut DenseStorage> {
+    fn as_plain_mut(&mut self) -> Option<&mut PlainStorage> {
         None
     }
 
-    fn into_dense(self: Box<Self>) -> Option<DenseStorage> {
+    fn into_plain(self: Box<Self>) -> Option<PlainStorage> {
         None
     }
 

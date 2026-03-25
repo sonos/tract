@@ -61,7 +61,7 @@ impl RmsNorm {
         launch_args.push_view(&o_view);
         launch_args.push_slice_i32(&shape_nd3);
         launch_args.push_slice_i32(&strides_nd3);
-        launch_args.push::<f32>(*eps.try_as_dense()?.to_scalar::<f32>()?);
+        launch_args.push::<f32>(*eps.try_as_plain()?.to_scalar::<f32>()?);
 
         let cfg = LaunchConfig {
             grid_dim: ((shape_nd3[2] * shape_nd3[0]) as _, 1, 1),

@@ -50,7 +50,7 @@ impl Expansion for Topk {
                     s.given(&inputs[1].value, move |s, k| {
                         if let Ok(k) = k
                             .cast_to::<TDim>()
-                            .and_then(|t| t.try_as_dense()?.to_scalar::<TDim>().cloned())
+                            .and_then(|t| t.try_as_plain()?.to_scalar::<TDim>().cloned())
                         {
                             s.equals(&outputs[0].shape[ix], k.clone())?;
                             s.equals(&outputs[1].shape[ix], k)?;

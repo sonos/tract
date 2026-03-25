@@ -21,22 +21,22 @@ use tract_pulse::internal::*;
 fn npz_add_tensor(npz: &mut NpzWriter<File>, name: String, tensor: &Tensor) -> TractResult<()> {
     match tensor.datum_type() {
         DatumType::F16 => {
-            npz.add_array(name, &tensor.cast_to::<f32>()?.to_dense_array_view::<f32>()?)?
+            npz.add_array(name, &tensor.cast_to::<f32>()?.to_plain_array_view::<f32>()?)?
         }
-        DatumType::Bool => npz.add_array(name, &tensor.to_dense_array_view::<bool>()?)?,
-        DatumType::U8 => npz.add_array(name, &tensor.to_dense_array_view::<u8>()?)?,
-        DatumType::U16 => npz.add_array(name, &tensor.to_dense_array_view::<u16>()?)?,
-        DatumType::U32 => npz.add_array(name, &tensor.to_dense_array_view::<u32>()?)?,
-        DatumType::U64 => npz.add_array(name, &tensor.to_dense_array_view::<u64>()?)?,
-        DatumType::I8 => npz.add_array(name, &tensor.to_dense_array_view::<i8>()?)?,
-        DatumType::I16 => npz.add_array(name, &tensor.to_dense_array_view::<i16>()?)?,
-        DatumType::I32 => npz.add_array(name, &tensor.to_dense_array_view::<i32>()?)?,
-        DatumType::I64 => npz.add_array(name, &tensor.to_dense_array_view::<i64>()?)?,
-        DatumType::F32 => npz.add_array(name, &tensor.to_dense_array_view::<f32>()?)?,
-        DatumType::F64 => npz.add_array(name, &tensor.to_dense_array_view::<f64>()?)?,
-        DatumType::QI8(_) => npz.add_array(name, &tensor.to_dense_array_view::<i8>()?)?,
-        DatumType::QU8(_) => npz.add_array(name, &tensor.to_dense_array_view::<u8>()?)?,
-        DatumType::QI32(_) => npz.add_array(name, &tensor.to_dense_array_view::<i32>()?)?,
+        DatumType::Bool => npz.add_array(name, &tensor.to_plain_array_view::<bool>()?)?,
+        DatumType::U8 => npz.add_array(name, &tensor.to_plain_array_view::<u8>()?)?,
+        DatumType::U16 => npz.add_array(name, &tensor.to_plain_array_view::<u16>()?)?,
+        DatumType::U32 => npz.add_array(name, &tensor.to_plain_array_view::<u32>()?)?,
+        DatumType::U64 => npz.add_array(name, &tensor.to_plain_array_view::<u64>()?)?,
+        DatumType::I8 => npz.add_array(name, &tensor.to_plain_array_view::<i8>()?)?,
+        DatumType::I16 => npz.add_array(name, &tensor.to_plain_array_view::<i16>()?)?,
+        DatumType::I32 => npz.add_array(name, &tensor.to_plain_array_view::<i32>()?)?,
+        DatumType::I64 => npz.add_array(name, &tensor.to_plain_array_view::<i64>()?)?,
+        DatumType::F32 => npz.add_array(name, &tensor.to_plain_array_view::<f32>()?)?,
+        DatumType::F64 => npz.add_array(name, &tensor.to_plain_array_view::<f64>()?)?,
+        DatumType::QI8(_) => npz.add_array(name, &tensor.to_plain_array_view::<i8>()?)?,
+        DatumType::QU8(_) => npz.add_array(name, &tensor.to_plain_array_view::<u8>()?)?,
+        DatumType::QI32(_) => npz.add_array(name, &tensor.to_plain_array_view::<i32>()?)?,
         _ => warn!("Not writing {name}, {tensor:?}, unsupported type"),
     }
 
@@ -224,8 +224,8 @@ where
                     }
                     if check_f16_overflow {
                         for (ix, o) in clarified_r.iter().enumerate() {
-                            if let Ok(dense) = o.try_as_dense() {
-                                if let Ok(f32s) = dense.as_slice::<f32>() {
+                            if let Ok(plain) = o.try_as_plain() {
+                                if let Ok(f32s) = plain.as_slice::<f32>() {
                                     if f32s.iter().any(|f| f.abs() > f16::MAX.to_f32()) {
                                         warn!("{node}, output {ix} overflows f16");
                                     }
@@ -238,13 +238,13 @@ where
                             if node.op_is::<Im2Col>() || node.op_is::<OptMatMulPack>() {
                                 continue;
                             }
-                            if let Ok(dense) = o.try_as_dense() {
-                                if let Ok(floats) = dense.as_slice::<f32>() {
+                            if let Ok(plain) = o.try_as_plain() {
+                                if let Ok(floats) = plain.as_slice::<f32>() {
                                     if let Some(pos) = floats.iter().position(|f| !f.is_finite()) {
                                         eprintln!("{floats:?}");
                                         bail!("Found {} in output {} of {}", floats[pos], ix, node);
                                     }
-                                } else if let Ok(floats) = dense.as_slice::<f16>() {
+                                } else if let Ok(floats) = plain.as_slice::<f16>() {
                                     if let Some(pos) = floats.iter().position(|f| !f.is_finite()) {
                                         eprintln!("{floats:?}");
                                         bail!("Found {} in output {} of {}", floats[pos], ix, node);

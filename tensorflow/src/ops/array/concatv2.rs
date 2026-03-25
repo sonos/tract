@@ -30,7 +30,7 @@ impl Expansion for ConcatV2 {
         s.equals(&inputs[n].rank, 0)?;
         s.equals(&outputs[0].rank, &inputs[0].rank)?;
         s.given(&inputs[n].value, move |s, axis| {
-            let axis = *axis.try_as_dense()?.to_scalar::<i32>()? as usize;
+            let axis = *axis.try_as_plain()?.to_scalar::<i32>()? as usize;
             trace!("axis for ConcatV2: {axis}");
             for d in 0..axis {
                 s.equals_all((0..n).map(|i| (&inputs[i].shape[d]).bex()).collect())?;
@@ -64,7 +64,7 @@ impl Expansion for ConcatV2 {
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
         if let Some(ref axis) = model.outlet_fact(*inputs.last().unwrap())?.konst {
-            let axis = *axis.try_as_dense()?.to_scalar::<i32>()? as usize;
+            let axis = *axis.try_as_plain()?.to_scalar::<i32>()? as usize;
             let inputs = inputs.iter().copied().rev().skip(1).rev().collect::<TVec<_>>();
             model.wire_node(prefix, TypedConcat::new(axis), &inputs)
         } else {

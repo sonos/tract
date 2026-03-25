@@ -19,7 +19,7 @@ impl ArcFace {
         let preprocess_image = preprocess_arcface(input_image, 112)?;
         let forward = self.model.run(tvec![preprocess_image.to_owned().into()])?;
         println!("FORWARD {forward:?}");
-        let results = forward[0].to_dense_array_view::<f32>()?.to_shape(512)?.to_owned();
+        let results = forward[0].to_plain_array_view::<f32>()?.to_shape(512)?.to_owned();
         Ok(results)
     }
 }

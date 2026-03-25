@@ -41,7 +41,7 @@ fn de_broadcast_to(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     let shape = shape.konst.clone().context("Dynamic BROADCAST_TO is not supported")?;
     let shape = shape
         .cast_to::<i32>()?
-        .try_as_dense()?
+        .try_as_plain()?
         .as_slice::<i32>()?
         .iter()
         .map(|d| *d as usize)
@@ -65,7 +65,7 @@ fn de_expand_dims(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     let axes = axes.konst.clone().context("Dynamic EXPAND_DIMS is not supported")?;
     let mut wire = tvec!(op.inputs[0]);
     let prefix = op.prefix;
-    for (ix, &axis) in axes.try_as_dense()?.as_slice::<i32>()?.iter().sorted().rev().enumerate() {
+    for (ix, &axis) in axes.try_as_plain()?.as_slice::<i32>()?.iter().sorted().rev().enumerate() {
         let axis = if axis < 0 { axis + input.rank() as i32 } else { axis };
         wire =
             op.ctx.target.wire_node(format!("{prefix}.{ix}"), AxisOp::Add(axis as usize), &wire)?;
@@ -77,7 +77,7 @@ fn de_pad(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     let (input, pads) = args_2!(op.facts()?);
     let pads = pads.konst.as_ref().context("Dynamic PAD is not supported")?;
     let prefix = op.prefix;
-    let pads: ArrayView2<i32> = pads.to_dense_array_view::<i32>()?.into_dimensionality()?;
+    let pads: ArrayView2<i32> = pads.to_plain_array_view::<i32>()?.into_dimensionality()?;
     let pads: Vec<(usize, usize)> =
         pads.rows().into_iter().map(|row| (row[0] as usize, row[1] as usize)).collect();
     let mode =
@@ -89,7 +89,7 @@ fn de_padv2(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     let (_input, pads, value) = args_3!(op.facts()?);
     let pads = pads.konst.as_ref().context("Dynamic PADV2 is not supported")?;
     let prefix = op.prefix;
-    let pads: ArrayView2<i32> = pads.to_dense_array_view::<i32>()?.into_dimensionality()?;
+    let pads: ArrayView2<i32> = pads.to_plain_array_view::<i32>()?.into_dimensionality()?;
     let pads: Vec<(usize, usize)> =
         pads.rows().into_iter().map(|row| (row[0] as usize, row[1] as usize)).collect();
     let mode = tract_core::ops::array::PadMode::Constant(value.konst.context("Constant expected")?);
@@ -105,7 +105,7 @@ fn de_reshape(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
         rctensor1(&options.new_shape().as_ref().unwrap().iter().collect::<Vec<i32>>())
     };
     let shape = shape.cast_to::<TDim>()?;
-    let shape = shape.try_as_dense()?.as_slice::<TDim>()?;
+    let shape = shape.try_as_plain()?.as_slice::<TDim>()?;
     let mut wire = tvec!(op.inputs[0]);
     let prefix = op.prefix;
     for (ix, axis_op) in to_axis_ops_with_tf_rules(&input_shape, shape)?.into_iter().enumerate() {
@@ -125,8 +125,8 @@ fn de_slice(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     let mut wire = tvec!(op.inputs[0]);
     if let (Some(begins), Some(sizes)) = (begins.konst, sizes.konst) {
         for ix in 0..input.rank() {
-            let start = begins.try_as_dense()?.as_slice::<i32>()?[ix] as usize;
-            let size = sizes.try_as_dense()?.as_slice::<i32>()?[ix] as usize;
+            let start = begins.try_as_plain()?.as_slice::<i32>()?[ix] as usize;
+            let size = sizes.try_as_plain()?.as_slice::<i32>()?[ix] as usize;
             if start > 0 || size.to_dim() != input.shape[ix] {
                 wire = op.ctx.target.wire_node(
                     format!("{}.{ix}", op.prefix),
@@ -172,7 +172,7 @@ fn de_transpose(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
         .konst
         .as_ref()
         .context("Dynamic TRANSPOSE in not supported by tract")?;
-    let perm = perm.try_as_dense()?.as_slice::<i32>()?.iter().map(|x| *x as usize).collect_vec();
+    let perm = perm.try_as_plain()?.as_slice::<i32>()?.iter().map(|x| *x as usize).collect_vec();
     let mut wire = tvec!(op.inputs[0]);
     let prefix = op.prefix;
     for (ix, axis_op) in perm_to_ops(&perm).into_iter().enumerate() {

@@ -62,11 +62,11 @@ impl MatmulQ40Problem {
             if k_axis == 0 { [k.next_multiple_of(32), mn] } else { [mn, k.next_multiple_of(32)] };
         let mut padded_a = Tensor::zero::<f32>(&shape)?;
         {
-            let mut padded_a_dense = padded_a.try_as_dense_mut()?;
-            padded_a_dense
+            let mut padded_a_plain = padded_a.try_as_plain_mut()?;
+            padded_a_plain
                 .to_array_view_mut::<f32>()?
                 .slice_axis_move(Axis(k_axis), (0..k).into())
-                .assign(&a.to_dense_array_view::<f32>()?);
+                .assign(&a.to_plain_array_view::<f32>()?);
         };
 
         Ok(padded_a)
@@ -77,7 +77,7 @@ impl MatmulQ40Problem {
 
         let padded_a = Self::pad_tensor(&self.a, 1)?;
 
-        let quant_a = Q4_0.quant_f32(padded_a.try_as_dense()?.as_slice::<f32>()?)?;
+        let quant_a = Q4_0.quant_f32(padded_a.try_as_plain()?.as_slice::<f32>()?)?;
 
         let m = padded_a.shape()[0];
         let k = padded_a.shape()[1];
@@ -121,9 +121,9 @@ impl MatmulQ40Problem {
         let quant_dequant_a = Q4_0.simulate_precision_loss(padded_a, 1)?;
 
         let mut a_view = quant_dequant_a
-            .to_dense_array_view::<f32>()?
+            .to_plain_array_view::<f32>()?
             .slice_axis_move(Axis(1), (0..self.a.shape()[1]).into());
-        let mut b_view = self.b.to_dense_array_view::<f32>()?;
+        let mut b_view = self.b.to_plain_array_view::<f32>()?;
 
         if self.weights_in_b {
             (a_view, b_view) = (b_view, a_view);

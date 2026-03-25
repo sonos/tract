@@ -319,7 +319,7 @@ pub fn handle_stream(
         .get("pulse.input_axes")
         .context("Expect pulse.input_axes property")?
         .cast_to::<i64>()?
-        .try_as_dense()?
+        .try_as_plain()?
         .as_slice::<i64>()?[0] as usize;
 
     let stream_symbol = ref_input_fact.shape[input_axis]
@@ -400,7 +400,7 @@ pub fn handle_stream(
             let count = input_pulse.min(stream_dim - offset);
             pulsed_input.slice_axis_mut(Axis(input_axis), (0..count).into()).assign(
                 &fixed_input
-                    .to_dense_array_view::<f32>()?
+                    .to_plain_array_view::<f32>()?
                     .slice_axis(Axis(input_axis), (offset..offset + count).into()),
             );
         }

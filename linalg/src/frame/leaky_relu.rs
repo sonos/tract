@@ -48,7 +48,7 @@ pub mod test {
     {
         let data = tract_data::prelude::tensor1(values);
         let data = data.cast_to::<T>().unwrap();
-        let data = data.try_as_dense().unwrap().as_slice::<T>().unwrap();
+        let data = data.try_as_plain().unwrap().as_slice::<T>().unwrap();
         let alpha: T = tract_data::prelude::tensor0(alpha).cast_to_scalar::<T>().unwrap();
         crate::frame::element_wise::test::test_element_wise_params::<K, T, _, T>(
             data,

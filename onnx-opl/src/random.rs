@@ -168,7 +168,7 @@ fn sample_uniform<T: Datum + SampleUniform + Copy>(
     high: &Tensor,
 ) -> TractResult<()> {
     let dist = rand::distr::Uniform::new(low.cast_to_scalar::<T>()?, high.cast_to_scalar::<T>()?)?;
-    t.try_as_dense_mut()?
+    t.try_as_plain_mut()?
         .as_slice_mut::<T>()?
         .iter_mut()
         .zip(dist.sample_iter(r))
@@ -187,7 +187,7 @@ where
 {
     let dist =
         rand_distr::Normal::<T>::new(mean.cast_to_scalar::<T>()?, dev.cast_to_scalar::<T>()?)?;
-    t.try_as_dense_mut()?
+    t.try_as_plain_mut()?
         .as_slice_mut::<T>()?
         .iter_mut()
         .zip(dist.sample_iter(r))

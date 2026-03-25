@@ -33,7 +33,7 @@ impl Expansion for OneHot {
             let rank = model.outlet_fact(inputs[0])?.rank();
             let axis = if self.axis < 0 { self.axis + rank as i64 + 1 } else { self.axis } as usize;
             let dim = dim.cast_to::<i64>()?;
-            let dim = dim.try_as_dense()?.as_slice::<i64>()?[0];
+            let dim = dim.try_as_plain()?.as_slice::<i64>()?[0];
             if dim < 0 {
                 bail!("Expected positive dimension, got {}", dim)
             }
