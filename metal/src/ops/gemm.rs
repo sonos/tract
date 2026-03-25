@@ -55,16 +55,12 @@ impl<K: GemmKernel> MetalGemm<K> {
             );
             let out_shape = self.kernel.output_shape(&a.shape, &b.shape);
             Ok(self.kernel.output_facts(&out_shape, a.datum_type, b.datum_type)?)
-        } else if let Some(opf) = as_quant_fact(inputs[0], &Q4_0) {
-            let a_shape: ShapeFact =
-                a.shape.iter().cloned().chain(opf.shape().iter().map(|d| d.to_dim())).collect();
-
-            let out_shape = self.kernel.output_shape(&a_shape, &b.shape);
-            Ok(self.kernel.output_facts(&out_shape, a.datum_type, b.datum_type)?)
-        } else if let Some(opf) = as_quant_fact(inputs[1], &Q4_0) {
-            let b_shape: ShapeFact =
-                b.shape.iter().cloned().chain(opf.shape().iter().map(|d| d.to_dim())).collect();
-            let out_shape = self.kernel.output_shape(&a.shape, &b_shape);
+        } else if as_quant_fact(inputs[0], &Q4_0).is_some()
+            || as_quant_fact(inputs[1], &Q4_0).is_some()
+        {
+            // Exotic tensors now carry their full logical shape directly on the
+            // fact, so no need to chain with BlockQuantFact.shape().
+            let out_shape = self.kernel.output_shape(&a.shape, &b.shape);
             Ok(self.kernel.output_facts(&out_shape, a.datum_type, b.datum_type)?)
         } else {
             todo!()
