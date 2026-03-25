@@ -114,7 +114,7 @@ pub fn check_inferred(got: &[InferenceFact], expected: &[InferenceFact]) -> Trac
 }
 
 pub fn clarify_tvalue(t: &TValue) -> TractResult<TValue> {
-    if t.datum_type().is_opaque() && t.volume() == 1 {
+    if t.is_exotic() && t.volume() == 1 {
         if let Some(clarified) = t.try_as_plain()?.to_scalar::<Opaque>()?.clarify_to_tensor()? {
             return Ok(clarified.into_tvalue());
         }
