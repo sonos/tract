@@ -70,7 +70,7 @@ impl EvalOp for Iff {
 }
 
 fn sym_to_coord_axis(sym: &Symbol) -> Option<usize> {
-    format!("{sym}").strip_prefix('x')?.parse::<usize>().ok()
+    format!("{sym}").strip_prefix("🎯")?.parse::<usize>().ok()
 }
 
 fn coord_bound_assertions(expr: &TDim, shape: &ShapeFact) -> Vec<Assertion> {

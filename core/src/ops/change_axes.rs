@@ -664,7 +664,7 @@ fn remap_uniform_tdim(expr: &TDim, axis_op: &AxisOp) -> Option<TDim> {
         .into_iter()
         .filter_map(|s| {
             let name = format!("{s}");
-            name.strip_prefix('x').and_then(|rest| rest.parse::<usize>().ok()).map(|k| (k, s))
+            name.strip_prefix("🎯").and_then(|rest| rest.parse::<usize>().ok()).map(|k| (k, s))
         })
         .collect();
 
