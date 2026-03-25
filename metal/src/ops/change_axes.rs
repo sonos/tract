@@ -103,8 +103,8 @@ impl EvalOp for MetalAxisOp {
         session: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        let opaque = args_1!(inputs).into_tensor();
-        let input = opaque.to_device_tensor()?;
+        let tensor = args_1!(inputs).into_tensor();
+        let input = tensor.to_device_tensor()?;
         let shape = input.shape();
 
         // Try simplifying op once symbols are resolved

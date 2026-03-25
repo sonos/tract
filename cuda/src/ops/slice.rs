@@ -40,8 +40,8 @@ impl EvalOp for CudaSlice {
         session: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        let opaque = args_1!(inputs);
-        let input = opaque.to_device_tensor()?;
+        let input_value = args_1!(inputs);
+        let input = input_value.to_device_tensor()?;
 
         let start = self.0.start.eval(&session.resolved_symbols).to_usize()?;
         let end = self.0.end.eval(&session.resolved_symbols).to_usize()?;

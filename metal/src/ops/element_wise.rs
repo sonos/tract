@@ -35,8 +35,8 @@ impl EvalOp for MetalElementWiseOp {
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         with_borrowed_metal_stream(|stream| {
-            let opaque_a = args_1!(inputs);
-            let a = opaque_a.to_device_tensor()?;
+            let a_value = args_1!(inputs);
+            let a = a_value.to_device_tensor()?;
             let output = tract_gpu::session_handler::make_tensor_for_node(
                 session,
                 node_id,

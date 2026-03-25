@@ -134,7 +134,7 @@ impl CudaTensor {
                 })
             })
         } else {
-            bail!("Unsupported opaque type")
+            bail!("Unsupported exotic type")
         }
     }
 }

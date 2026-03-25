@@ -65,8 +65,8 @@ impl EvalOp for CudaPad {
         session: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        let opaque_input = args_1!(inputs);
-        let input = opaque_input.to_device_tensor()?;
+        let input_value = args_1!(inputs);
+        let input = input_value.to_device_tensor()?;
         let padding = &self.pads;
         ensure!(input.rank() == padding.len());
 

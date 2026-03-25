@@ -702,7 +702,7 @@ pub fn matmul(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tr
     let b_rank = builder.model.outlet_fact(b)?.rank();
     if builder.model.outlet_fact(a)?.is_exotic() {
         // Block-quant tensor may have a leading group dim ([1, M, K]) while
-        // the other operand is 2D. Unsqueeze the non-opaque operand to match.
+        // the other operand is 2D. Unsqueeze the non-exotic operand to match.
         let mut b = b;
         if a_rank > b_rank {
             for _ in 0..(a_rank - b_rank) {

@@ -25,7 +25,7 @@ pub fn block_quant_aware_input_shape(fact: &TypedFact) -> TractResult<Cow<'_, [T
         return Ok(Cow::Borrowed(&*fact.shape));
     }
     let Some(exotic_fact) = fact.exotic_fact() else {
-        bail!("Datum fact is opaque, but no opaque fact was found.")
+        bail!("Datum fact is exotic, but no exotic fact was found.")
     };
     if let Some(_bqf) = exotic_fact.downcast_ref::<BlockQuantFact>() {
         Ok(Cow::Borrowed(&*fact.shape))
@@ -38,7 +38,7 @@ pub fn block_quant_aware_input_shape(fact: &TypedFact) -> TractResult<Cow<'_, [T
             fact.shape.iter().cloned().chain([pof.mn.clone(), pof.k.to_dim()]).collect_vec(),
         ))
     } else {
-        bail!("Unsupported opaque fact {exotic_fact:?}")
+        bail!("Unsupported exotic fact {exotic_fact:?}")
     }
 }
 

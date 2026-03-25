@@ -63,7 +63,7 @@ fn rule(
     for op in a_transform {
         wire[0] = patch.wire_node(&name, op, &[wire[0]])?[0];
     }
-    // terrible hack to maintain opaque fact through eager propatagation of constant through the
+    // terrible hack to maintain exotic fact through eager propagation of constant through the
     // axes transformation
     if let Some(op) = patch.node_mut(wire[0].node).op_as_mut::<Const>() {
         *op = Const::new_with_opt_exotic_fact(

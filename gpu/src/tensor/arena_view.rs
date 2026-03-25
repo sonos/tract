@@ -76,7 +76,7 @@ impl DeviceArenaView {
 
     /// Reshaped tensor with given shape.
     pub fn reshaped(&self, shape: impl Into<TVec<usize>>) -> TractResult<Self> {
-        ensure!(self.exotic_fact.is_none(), "Can't reshape opaque tensor");
+        ensure!(self.exotic_fact.is_none(), "Can't reshape exotic tensor");
         let shape = shape.into();
         if self.len() != shape.iter().product::<usize>() {
             bail!("Invalid reshape {:?} to {:?}", self.shape(), shape);
@@ -97,7 +97,7 @@ impl DeviceArenaView {
     }
 
     pub fn restrided(&self, strides: impl Into<TVec<isize>>) -> TractResult<Self> {
-        ensure!(self.exotic_fact.is_none(), "Can't restride opaque tensor");
+        ensure!(self.exotic_fact.is_none(), "Can't restride exotic tensor");
         let strides = strides.into();
         check_strides_validity(self.shape().into(), strides.clone())?;
 

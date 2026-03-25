@@ -46,8 +46,8 @@ impl EvalOp for MetalSoftmax {
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         with_borrowed_metal_stream(|stream| {
-            let opaque = args_1!(inputs);
-            let input = opaque.to_device_tensor()?;
+            let input_value = args_1!(inputs);
+            let input = input_value.to_device_tensor()?;
             let output = tract_gpu::session_handler::make_tensor_for_node(
                 session,
                 node_id,

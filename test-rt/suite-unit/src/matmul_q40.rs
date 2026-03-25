@@ -83,10 +83,10 @@ impl MatmulQ40Problem {
         let k = padded_a.shape()[1];
         let bqs = BlockQuantStorage::new(Box::new(Q4_0), m, k, Arc::new(quant_a))?;
         let bqf = BlockQuantFact::new(Box::new(Q4_0), tvec!(1, m, k));
-        let opaque_a = Arc::new(bqs.into_tensor_with_shape(f32::datum_type(), &[1, m, k]));
+        let packed_a = Arc::new(bqs.into_tensor_with_shape(f32::datum_type(), &[1, m, k]));
 
         let a =
-            model.wire_node("a", Const::new_with_exotic_fact(opaque_a, Box::new(bqf))?, &[])?[0];
+            model.wire_node("a", Const::new_with_exotic_fact(packed_a, Box::new(bqf))?, &[])?[0];
         let b = model.add_source("b", TypedFact::shape_and_dt_of(&self.b))?;
 
         let k = self.b.shape()[1];

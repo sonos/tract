@@ -82,13 +82,13 @@ impl<K: GemmKernel + 'static> EvalOp for MetalGemm<K> {
         session: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        let (a_opaque, b_opaque) = args_2!(inputs);
-        let a = a_opaque
+        let (a_raw, b_raw) = args_2!(inputs);
+        let a = a_raw
             .to_device_tensor()
-            .with_context(|| format!("A tensor is not a metal tensor: {:?}", a_opaque))?;
-        let b = b_opaque
+            .with_context(|| format!("A tensor is not a metal tensor: {:?}", a_raw))?;
+        let b = b_raw
             .to_device_tensor()
-            .with_context(|| format!("B tensor is not a metal tensor {:?}", b_opaque))?;
+            .with_context(|| format!("B tensor is not a metal tensor {:?}", b_raw))?;
 
         // For q40 weights the tensor shape already carries the full logical
         // dimensions [batch, n, k].  No need to chain with the fact shape.

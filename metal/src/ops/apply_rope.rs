@@ -26,10 +26,10 @@ impl EvalOp for MetalApplyRope {
         session: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        let (opaque_input, opaque_cos, opaque_sin) = args_3!(inputs);
-        let input = opaque_input.to_device_tensor()?;
-        let cos = opaque_cos.to_device_tensor()?;
-        let sin = opaque_sin.to_device_tensor()?;
+        let (raw_input, raw_cos, raw_sin) = args_3!(inputs);
+        let input = raw_input.to_device_tensor()?;
+        let cos = raw_cos.to_device_tensor()?;
+        let sin = raw_sin.to_device_tensor()?;
         let output = tract_gpu::session_handler::make_tensor_for_node(
             session,
             node_id,

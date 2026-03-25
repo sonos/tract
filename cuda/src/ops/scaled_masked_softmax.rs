@@ -31,9 +31,9 @@ impl EvalOp for CudaScaledMaskedSoftmax {
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         CUDA_STREAM.with(|stream| {
-            let (opaque_input, opaque_mask) = args_2!(inputs);
-            let input = opaque_input.to_device_tensor()?;
-            let mask = opaque_mask.to_device_tensor()?;
+            let (input_val, mask_val) = args_2!(inputs);
+            let input = input_val.to_device_tensor()?;
+            let mask = mask_val.to_device_tensor()?;
             let output = tract_gpu::session_handler::make_tensor_for_node(
                 session,
                 node_id,

@@ -61,13 +61,13 @@ impl EvalOp for CudaGgmlGemm {
         session: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        let (act_opaque, weights_opaque) = args_2!(inputs);
-        let activs = act_opaque
+        let (act_raw, weights_raw) = args_2!(inputs);
+        let activs = act_raw
             .to_device_tensor()
-            .with_context(|| format!("A tensor is not a cuda tensor: {act_opaque:?}"))?;
-        let weights = weights_opaque
+            .with_context(|| format!("A tensor is not a cuda tensor: {act_raw:?}"))?;
+        let weights = weights_raw
             .to_device_tensor()
-            .with_context(|| format!("B tensor is not a cuda tensor {weights_opaque:?}"))?;
+            .with_context(|| format!("B tensor is not a cuda tensor {weights_raw:?}"))?;
 
         let (activ_shape, weights_shape) =
             crate::kernels::matmul::get_concrete_shapes(activs, weights)?;
