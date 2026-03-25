@@ -673,65 +673,33 @@ fn remap_uniform_tdim(expr: &TDim, axis_op: &AxisOp) -> Option<TDim> {
         return Some(expr.clone());
     }
 
-    let mut result = expr.clone();
-    match axis_op.canonical().as_ref() {
-        AxisOp::Add(j) => {
-            // Insert axis at position j: x_k -> x_{k+1} for k >= j.
-            let mut remaps: Vec<(usize, Symbol)> =
-                coord_syms.into_iter().filter(|(k, _)| *k >= *j).collect();
-            // Process highest k first to avoid double-substitution.
-            remaps.sort_by(|a, b| b.0.cmp(&a.0));
-            for (k, sym) in &remaps {
-                let scope = sym.scope()?;
-                let new_sym = TDim::Sym(scope.coord_sym(k + 1));
-                result = result.substitute(sym, &new_sym).ok()?;
-            }
-            Some(result)
-        }
-        AxisOp::Rm(j) => {
-            // Remove axis at position j: x_k -> x_{k-1} for k > j.
-            let mut remaps: Vec<(usize, Symbol)> =
-                coord_syms.into_iter().filter(|(k, _)| *k > *j).collect();
-            remaps.sort_by(|a, b| a.0.cmp(&b.0));
-            for (k, sym) in &remaps {
-                let scope = sym.scope()?;
-                let new_sym = TDim::Sym(scope.coord_sym(k - 1));
-                result = result.substitute(sym, &new_sym).ok()?;
-            }
-            Some(result)
-        }
-        AxisOp::Move(from, to) => {
-            let mut remaps: Vec<(usize, usize, Symbol)> = coord_syms
-                .into_iter()
-                .filter_map(|(k, sym)| {
-                    let new_k = if k == *from {
-                        *to
-                    } else if *from < *to && k > *from && k <= *to {
-                        k - 1
-                    } else if *to < *from && k >= *to && k < *from {
-                        k + 1
-                    } else {
-                        k
-                    };
-                    if new_k != k { Some((k, new_k, sym)) } else { None }
-                })
-                .collect();
-            // Process from highest source index to avoid conflicts.
-            remaps.sort_by(|a, b| b.0.cmp(&a.0));
-            for (_, new_k, sym) in &remaps {
-                let scope = sym.scope()?;
-                let new_sym = TDim::Sym(scope.coord_sym(*new_k));
-                result = result.substitute(sym, &new_sym).ok()?;
-            }
-            Some(result)
-        }
-        AxisOp::Reshape(_, from_dims, to_dims) => {
-            // Only handle trivial reshapes where all dims are 1.
-            let all_ones_from = from_dims.iter().all(|d| d.is_one());
-            let all_ones_to = to_dims.iter().all(|d| d.is_one());
-            if all_ones_from && all_ones_to { Some(expr.clone()) } else { None }
-        }
+    // Reshape: only handle trivial all-ones case.
+    if let AxisOp::Reshape(_, from_dims, to_dims) = axis_op.canonical().as_ref() {
+        return if from_dims.iter().all(|d| d.is_one()) && to_dims.iter().all(|d| d.is_one()) {
+            Some(expr.clone())
+        } else {
+            None
+        };
     }
+
+    // For Add/Rm/Move: use transform_axis for the remapping.
+    // Sort order matters to avoid double-substitution: Rm shifts indices down so process
+    // ascending (lowest first); Add/Move shift up or mixed so process descending (highest first).
+    let ascending = matches!(axis_op.canonical().as_ref(), AxisOp::Rm(_));
+    let mut remaps: Vec<(usize, usize, Symbol)> = coord_syms
+        .into_iter()
+        .filter_map(|(k, sym)| axis_op.transform_axis(k).map(|new_k| (k, new_k, sym)))
+        .filter(|(k, new_k, _)| k != new_k)
+        .collect();
+    remaps.sort_by(|a, b| if ascending { a.0.cmp(&b.0) } else { b.0.cmp(&a.0) });
+
+    let mut result = expr.clone();
+    for (_, new_k, sym) in &remaps {
+        let scope = sym.scope()?;
+        let new_sym = TDim::Sym(scope.coord_sym(*new_k));
+        result = result.substitute(sym, &new_sym).ok()?;
+    }
+    Some(result)
 }
 
 impl TypedOp for AxisOp {
