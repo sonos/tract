@@ -63,7 +63,7 @@ impl Conv {
         mut kernel: OutletId,
     ) -> TractResult<TVec<OutletId>> {
         let fact = model.outlet_fact(kernel)?;
-        if fact.datum_type.is_opaque() {
+        if fact.is_exotic() {
             ensure!(self.kernel_fmt == KernelFormat::OIHW && fact.rank() >= 2);
             kernel = model.wire_node(
                 format!("{name}.prep_kernel.g"),
@@ -103,7 +103,7 @@ impl Conv {
         kernel: OutletId,
     ) -> TractResult<OutletId> {
         let fact = model.outlet_fact(kernel)?;
-        let wire = if fact.datum_type.is_opaque() {
+        let wire = if fact.is_exotic() {
             let fact = model
                 .outlet_fact(kernel)?
                 .opaque_fact
@@ -540,7 +540,7 @@ impl Conv {
         let x_dt = input_fact.datum_type;
 
         let acc = if x_dt.is_float() { x_dt } else { i32::datum_type() };
-        if w_dt.is_opaque() {
+        if weight_fact.is_exotic() {
             let bqf = weight_fact
                 .opaque_fact
                 .as_ref()
@@ -982,7 +982,7 @@ impl TypedOp for Conv {
             fact.datum_type = dt;
         } else {
             ensure!(
-                inputs[1].datum_type.is_opaque() || inputs[0].datum_type == inputs[1].datum_type,
+                inputs[1].is_exotic() || inputs[0].datum_type == inputs[1].datum_type,
                 "Convolution input, weights and bias must have the same type, got {inputs:?}",
             )
         }
@@ -1145,7 +1145,7 @@ impl TypedOp for Conv {
             }));
         }
         // geo axis manips
-        if model.node_input_facts(node.id)?[1].datum_type.is_opaque() {
+        if model.node_input_facts(node.id)?[1].is_exotic() {
             return Ok(None);
         }
         use AxisOp::*;
