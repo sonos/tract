@@ -351,8 +351,12 @@ fn convert_logic_op_to_cuda(op: &Comp) -> ops::CudaBinOp {
 fn can_convert_to_cuda_gemm(facts: &[TypedFact]) -> bool {
     assert!(facts.len() == 2, "Ggml: Expected 2 inputs for Matmul");
 
-    let regular_types_support =
-        matches!((facts[0].datum_type, facts[1].datum_type), (F32, F32) | (F16, F16) | (F16, F32));
+    let regular_types_support = facts[0].is_plain()
+        && facts[1].is_plain()
+        && matches!(
+            (facts[0].datum_type, facts[1].datum_type),
+            (F32, F32) | (F16, F16) | (F16, F32)
+        );
 
     regular_types_support
         || (as_quant_fact(&facts[1], &Q4_0).is_some() && matches!(facts[0].datum_type, F16 | F32))
