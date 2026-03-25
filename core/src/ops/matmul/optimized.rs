@@ -147,9 +147,9 @@ impl ProtoFusedSpec {
                 debug_assert!(inputs.get(*b).is_some());
                 let a = inputs.get_unchecked(*a);
                 let b = inputs.get_unchecked(*b);
-                debug_assert!(a.datum_type().is_opaque());
+                debug_assert!(a.is_exotic());
                 debug_assert!(a.len() == 1);
-                debug_assert!(b.datum_type().is_opaque());
+                debug_assert!(b.is_exotic());
                 debug_assert!(b.len() == 1);
                 let a_storage = a.try_storage_as::<PackedMatrixStorage>().unwrap_unchecked();
                 let b_storage = b.try_storage_as::<PackedMatrixStorage>().unwrap_unchecked();

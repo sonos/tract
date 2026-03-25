@@ -582,7 +582,7 @@ where
                         )
                     }
 
-                    if !cumulative && !returning[slot].datum_type().is_opaque() {
+                    if !cumulative && returning[slot].is_plain() {
                         returning[slot] = reference.into_tvalue();
                     }
                 }
