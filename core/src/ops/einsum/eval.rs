@@ -31,7 +31,7 @@ pub fn dequant_inputs(acc: DatumType, input: TVec<TValue>) -> TractResult<TVec<T
     input
         .into_iter()
         .map(|i| {
-            if i.datum_type().is_number() {
+            if i.is_plain() && i.datum_type().is_number() {
                 Ok(i)
             } else {
                 let s = i.shape();

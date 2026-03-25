@@ -272,7 +272,7 @@ impl MMMInputFormat for PackedBlockQuantFormat {
         mn_axis: usize,
     ) -> TractResult<Box<dyn MMMInputValue>> {
         // this code path is essentially there for test scenarios
-        let t = if t.datum_type().is_number() {
+        let t = if t.is_plain() && t.datum_type().is_number() {
             let k = t.shape()[k_axis];
             let m = t.shape()[mn_axis];
             assert!(k % self.bq.block_len() == 0);
