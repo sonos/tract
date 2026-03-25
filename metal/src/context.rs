@@ -239,7 +239,7 @@ impl DeviceContext for MetalContext {
             };
             let tensor =
                 BlockQuantStorage::new(bqf.format.clone(), bqf.m(), bqf.k(), Arc::new(blob))?
-                    .into_tensor_with_shape(bqf.shape());
+                    .into_tensor_with_shape(f32::datum_type(), bqf.shape());
             self.tensor_to_device(tensor.into())
         } else {
             bail!("Only BlockQuant Tensor allocation supported for now")

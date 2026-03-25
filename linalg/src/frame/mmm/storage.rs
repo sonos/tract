@@ -71,10 +71,10 @@ impl PackedMatrixStorage {
         &self.batch_strides
     }
 
-    /// Convert to a Tensor with Opaque datum type.
-    pub fn into_tensor(self) -> Tensor {
+    /// Convert to a Tensor with the given logical datum type.
+    pub fn into_tensor(self, dt: DatumType) -> Tensor {
         let shape: TVec<usize> = self.batch_shape.clone();
-        Tensor::from_storage(DatumType::Opaque, &shape, self)
+        Tensor::from_storage(dt, &shape, self)
     }
 
     fn flat_index(&self, coords: &[usize]) -> usize {

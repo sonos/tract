@@ -467,7 +467,7 @@ mod tests {
                     k,
                     Arc::new(Q4_0.quant_f32(&b_data)?),
                 )?
-                .into_tensor_with_shape(&[batch, n, k]);
+                .into_tensor_with_shape(f32::datum_type(), &[batch, n, k]);
                 (b_tensor, b_q4_0_tensor)
             } else {
                 let b_tensor = Tensor::from_shape(&b_shape, &b_data)?;

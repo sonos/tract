@@ -197,8 +197,8 @@ impl EvalOp for Im2Col {
                 }
             }
 
-            let output =
-                PackedMatrixStorage::new_batched(&geometry.packed_shape, values).into_tensor();
+            let output = PackedMatrixStorage::new_batched(&geometry.packed_shape, values)
+                .into_tensor(input.datum_type());
             Ok(tvec!(output.into_tvalue()))
         }
     }
@@ -217,7 +217,9 @@ impl TypedOp for Im2Col {
             mn,
         };
         Ok(tvec!(
-            Opaque::fact(&[input_shape.n().cloned().unwrap_or(1.into()), self.group.into()])
+            inputs[0]
+                .datum_type
+                .fact(&[input_shape.n().cloned().unwrap_or(1.into()), self.group.into()])
                 .with_opaque_fact(pof)
         ))
     }

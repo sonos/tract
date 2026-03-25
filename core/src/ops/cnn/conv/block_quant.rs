@@ -33,7 +33,7 @@ impl EvalOp for BlockQuantIntoShape {
         let bqs = input.try_storage_as::<BlockQuantStorage>()?.clone();
         let new_m = self.shape[0];
         let new_k: usize = self.shape[1..].iter().product();
-        Ok(tvec!(bqs.into_tensor_with_shape(&[g, new_m, new_k]).into_tvalue()))
+        Ok(tvec!(bqs.into_tensor_with_shape(input.datum_type(), &[g, new_m, new_k]).into_tvalue()))
     }
 }
 
@@ -51,7 +51,7 @@ impl TypedOp for BlockQuantIntoShape {
         let bqf_shape = tvec!(g, new_m, new_k);
         let new = BlockQuantFact::new(old.format.clone(), bqf_shape.clone());
         let shape: TVec<TDim> = bqf_shape.iter().map(|d| d.to_dim()).collect();
-        let fact = DatumType::Opaque.fact(&*shape).with_opaque_fact(new);
+        let fact = inputs[0].datum_type.fact(&*shape).with_opaque_fact(new);
         Ok(tvec!(fact))
     }
     as_op!();
@@ -90,7 +90,7 @@ impl EvalOp for SplitGroupBlockQuant {
         let o = new_shape[0];
         new_shape[0] = o / self.group;
         new_shape.insert(0, self.group);
-        Ok(tvec!(bqs.into_tensor_with_shape(&new_shape).into_tvalue()))
+        Ok(tvec!(bqs.into_tensor_with_shape(input.datum_type(), &new_shape).into_tvalue()))
     }
 }
 
@@ -109,7 +109,8 @@ impl TypedOp for SplitGroupBlockQuant {
         new_shape[0] = o / self.group;
         new_shape.insert(0, self.group);
         let opaque_fact = BlockQuantFact::new(bqf.format.clone(), new_shape.clone());
-        let fact = DatumType::Opaque
+        let fact = inputs[0]
+            .datum_type
             .fact(&*new_shape.iter().map(|d| d.to_dim()).collect::<TVec<_>>())
             .with_opaque_fact(opaque_fact);
         Ok(tvec!(fact))

@@ -911,7 +911,7 @@ mod tests {
                             self.k,
                             Arc::new(b_quant),
                         )?
-                        .into_tensor_with_shape(&[self.b, self.n, self.k])
+                        .into_tensor_with_shape(f32::datum_type(), &[self.b, self.n, self.k])
                     }
                 } else {
                     Tensor::from_shape(&[self.b, self.k, self.n], &self.rhs)?

@@ -207,7 +207,7 @@ impl OwnedDeviceTensor for CudaTensor {
                 let total_m = bqf.m();
                 let k = bqf.k();
                 BlockQuantStorage::new(bqf.format.clone(), total_m, k, Arc::new(blob))?
-                    .into_tensor_with_shape(&self.shape)
+                    .into_tensor_with_shape(self.datum_type, &self.shape)
             } else {
                 let mut tensor = unsafe { Tensor::uninitialized_dt(self.datum_type, &self.shape)? };
                 stream.memcpy_dtoh(&self.buffer.inner, tensor.as_bytes_mut())?;

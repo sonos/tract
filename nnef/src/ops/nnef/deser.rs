@@ -106,7 +106,8 @@ pub fn variable(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> 
     if let Some(bqs) = tensor.storage_as::<BlockQuantStorage>() {
         // Use the NNEF variable shape directly — the graph's own unsqueeze
         // ops will add any group dims as needed.
-        let tensor = bqs.clone().into_tensor_with_shape(&shape).into_arc_tensor();
+        let tensor =
+            bqs.clone().into_tensor_with_shape(tensor.datum_type(), &shape).into_arc_tensor();
         let fact: Box<dyn OpaqueFact> = Box::new(BlockQuantFact::new(
             tract_core::dyn_clone::clone_box(bqs.format()),
             shape.clone(),

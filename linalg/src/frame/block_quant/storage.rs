@@ -48,8 +48,11 @@ impl BlockQuantStorage {
     }
 
     /// Converts this storage into a `Tensor` with the given shape.
-    pub fn into_tensor_with_shape(self, shape: &[usize]) -> Tensor {
-        Tensor::from_storage(DatumType::Opaque, shape, self)
+    ///
+    /// `dt` is the logical element type (e.g. f32, f16) — the type these
+    /// weights represent when dequantized.
+    pub fn into_tensor_with_shape(self, dt: DatumType, shape: &[usize]) -> Tensor {
+        Tensor::from_storage(dt, shape, self)
     }
 }
 
