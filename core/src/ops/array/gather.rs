@@ -218,6 +218,7 @@ impl TypedOp for Gather {
         if let Some(indices) = indices_fact.konst.as_ref()
             && indices.rank() == 1
             && indices.len() == 1
+            && input_fact.is_plain()
             && input_fact.datum_type.is_number()
         {
             let mut patch = TypedModelPatch::default();
