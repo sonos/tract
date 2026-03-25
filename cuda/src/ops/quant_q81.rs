@@ -81,8 +81,12 @@ impl EvalOp for CudaGgmlQuantQ81 {
 
             let resolved_io_facts = self.io_facts.eval(&session.resolved_symbols)?;
 
-            let output =
-                make_scalar_opaque_tensor_for_node(session, node_id, Box::new(resolved_io_facts))?;
+            let output = make_scalar_opaque_tensor_for_node(
+                session,
+                node_id,
+                input.datum_type(),
+                Box::new(resolved_io_facts),
+            )?;
 
             GgmlQuantQ81.dispatch_eval(stream, input, &output)?;
 
@@ -98,9 +102,9 @@ impl EvalOp for CudaGgmlQuantQ81 {
 impl TypedOp for CudaGgmlQuantQ81 {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         ensure!(inputs.len() == 1);
-        tract_gpu::utils::facts_to_device_facts(inputs, |_| {
-            let fact =
-                TypedFact::dt_scalar(DatumType::Opaque).with_opaque_fact(self.io_facts.clone());
+        tract_gpu::utils::facts_to_device_facts(inputs, |input_facts| {
+            let dt = input_facts[0].datum_type;
+            let fact = TypedFact::dt_scalar(dt).with_opaque_fact(self.io_facts.clone());
             Ok(tvec!(fact))
         })
         .with_context(|| format!("Error while computing facts for {:?}", self.name()))

@@ -120,13 +120,9 @@ impl DeviceArenaView {
         get_context()?.synchronize()?;
         let content = self.as_bytes();
         unsafe {
-            if self.dt == DatumType::Opaque {
-                ensure!(self.len == 1, "Expected scalar Opaque");
-                let of = self
-                    .opaque_fact
-                    .as_ref()
-                    .context("Expected Opaque Fact for Opaque ArenaView")?;
-                let bqf = of.downcast_ref::<BlockQuantFact>().context("Expected BlockQuantFact")?;
+            if let Some(bqf) =
+                self.opaque_fact.as_ref().and_then(|of| of.downcast_ref::<BlockQuantFact>())
+            {
                 Ok(BlockQuantStorage::new(
                     bqf.format.clone(),
                     bqf.m(),

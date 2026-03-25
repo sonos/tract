@@ -24,7 +24,7 @@ pub enum DeviceTensor {
 }
 
 impl DeviceTensor {
-    pub const SUPPORTED_DT: [DatumType; 12] = [
+    pub const SUPPORTED_DT: [DatumType; 11] = [
         DatumType::Bool,
         DatumType::F32,
         DatumType::F16,
@@ -36,7 +36,6 @@ impl DeviceTensor {
         DatumType::U32,
         DatumType::I64,
         DatumType::U64,
-        DatumType::Opaque,
     ];
 
     pub fn tname(dt: DatumType) -> TractResult<&'static str> {
@@ -52,7 +51,6 @@ impl DeviceTensor {
             DatumType::I32 => "i32",
             DatumType::I64 => "i64",
             DatumType::Bool => "bool",
-            DatumType::Opaque => "opaque",
             _ => bail!("Unsupported dt {:?} for GPU Tensor", dt),
         })
     }

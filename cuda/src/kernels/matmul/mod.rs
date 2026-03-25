@@ -525,11 +525,8 @@ fn dispatch_ggml_matvec_q40(
 
 impl GgmlGemm {
     fn output_dt(&self, activ_dt: DatumType, weight_dt: DatumType) -> TractResult<DatumType> {
-        // Exotic tensors may carry the logical dt (f32) or legacy Opaque.
-        // Normalise both to the logical type before comparing.
-        let norm = |dt: DatumType| if dt == DatumType::Opaque { DatumType::F32 } else { dt };
-        ensure!(norm(weight_dt) == norm(activ_dt));
-        Ok(norm(activ_dt))
+        ensure!(weight_dt == activ_dt);
+        Ok(activ_dt)
     }
 
     pub fn output_shape<D: DimLike + One>(&self, a: &[D], b: &[D]) -> TVec<D> {
