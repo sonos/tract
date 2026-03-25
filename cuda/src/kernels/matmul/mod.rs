@@ -934,7 +934,8 @@ mod tests {
                         )?;
                         let padded_q40 = pad_q40(&bqs, self.b * self.n, self.k)?;
                         let padded_k = self.k.next_multiple_of(crate::Q40_ROW_PADDING);
-                        padded_q40.into_tensor_with_shape(&[self.b, self.n, padded_k])
+                        padded_q40
+                            .into_tensor_with_shape(f32::datum_type(), &[self.b, self.n, padded_k])
                     }
                 } else {
                     Tensor::from_shape(&[self.b, self.k, self.n], &self.rhs)?

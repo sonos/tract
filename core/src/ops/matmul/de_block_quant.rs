@@ -70,7 +70,10 @@ fn block_quant_einsum_weights(
             Box::new(BlockQuantFact::new(dyn_clone::clone_box(bqs.format()), tvec!(1, m, k)));
         let weights = patch.wire_node(
             format!("{name}.bq"),
-            Const::new_with_opaque_fact(Arc::new(bqs.into_tensor_with_shape(&[1, m, k])), fact)?,
+            Const::new_with_opaque_fact(
+                Arc::new(bqs.into_tensor_with_shape(a.datum_type(), &[1, m, k])),
+                fact,
+            )?,
             &[],
         )?;
         let tap = patch.tap_model(model, node.inputs[1])?;

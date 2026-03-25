@@ -55,7 +55,8 @@ impl TypedOp for OptMatMulPack {
         let mn = inputs[0].shape[self.mn_axis].clone();
         let opaque_fact = DynPackedOpaqueFact { k, mn, packers: self.packers.clone() };
         Ok(tvec!(
-            Opaque::datum_type()
+            inputs[0]
+                .datum_type
                 .fact(self.output_shape(&inputs[0].shape))
                 .with_opaque_fact(opaque_fact)
         ))
@@ -89,7 +90,8 @@ impl OptMatMulPack {
             let output_shape: TVec<usize> = self.output_shape(input.shape());
             let stores = if output_shape.iter().all(|d| *d == 1) {
                 let packed = packer.pack_tensor_view(&input.view(), self.k_axis, self.mn_axis)?;
-                PackedMatrixStorage::new_batched(&output_shape, vec![packed]).into_tensor()
+                PackedMatrixStorage::new_batched(&output_shape, vec![packed])
+                    .into_tensor(input.datum_type())
             } else {
                 let mut bc_shape: TVec<usize> = input.shape().into();
                 bc_shape[self.k_axis] = 1;
@@ -111,7 +113,8 @@ impl OptMatMulPack {
                         self.mn_axis,
                     )?);
                 }
-                PackedMatrixStorage::new_batched(&output_shape, values).into_tensor()
+                PackedMatrixStorage::new_batched(&output_shape, values)
+                    .into_tensor(input.datum_type())
             };
             Ok(tvec!(stores.into_tvalue()))
         }
@@ -185,7 +188,8 @@ impl EvalOp for OptSimpleMatMulPack {
             })
             .collect::<TractResult<Vec<_>>>()?;
         let leading_shape = &input.shape()[..input.rank().saturating_sub(2)];
-        let output = PackedMatrixStorage::new_batched(leading_shape, values).into_tensor();
+        let output =
+            PackedMatrixStorage::new_batched(leading_shape, values).into_tensor(input.datum_type());
         Ok(tvec!(output.into_tvalue()))
     }
 }
@@ -199,10 +203,11 @@ impl TypedOp for OptSimpleMatMulPack {
         } else {
             tvec!()
         };
-        let fact = Opaque::fact(&*output_shape).with_opaque_fact(PackedBlockQuantFact {
-            format: self.packed_format.clone(),
-            shape: tvec!(self.m, self.k),
-        });
+        let fact =
+            inputs[0].datum_type.fact(&*output_shape).with_opaque_fact(PackedBlockQuantFact {
+                format: self.packed_format.clone(),
+                shape: tvec!(self.m, self.k),
+            });
         Ok(tvec!(fact))
     }
 

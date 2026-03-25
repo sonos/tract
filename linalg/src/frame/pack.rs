@@ -21,7 +21,7 @@ pub struct PackedFormat {
 impl MMMInputFormat for PackedFormat {
     fn prepare_tensor(&self, t: &Tensor, k_axis: usize, mn_axis: usize) -> TractResult<Tensor> {
         let packed = PackedFormat::pack_tensor(self, t, k_axis, mn_axis)?;
-        Ok(PackedMatrixStorage::new(packed).into_tensor())
+        Ok(PackedMatrixStorage::new(packed).into_tensor(t.datum_type()))
     }
 
     fn prepare_one(

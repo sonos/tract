@@ -382,7 +382,7 @@ impl AxisOp {
             let bqs = tensor.try_storage_as::<BlockQuantStorage>()?.clone();
             let mut new_shape: TVec<usize> = tensor.shape().into();
             self.change_shape_array(&mut new_shape, false)?;
-            let mut new_tensor = bqs.into_tensor_with_shape(&new_shape);
+            let mut new_tensor = bqs.into_tensor_with_shape(tensor.datum_type(), &new_shape);
             std::mem::swap(tensor, &mut new_tensor);
             return Ok(());
         }
@@ -713,7 +713,7 @@ impl TypedOp for AxisOp {
             self.change_shape_array(&mut new_shape, false)?;
             let new_bqf = BlockQuantFact::new(bqf.format.clone(), new_shape.clone());
             let shape: TVec<TDim> = new_shape.iter().map(|d| d.to_dim()).collect();
-            let mut new_fact = DatumType::Opaque.fact(&*shape).with_opaque_fact(new_bqf);
+            let mut new_fact = inputs[0].datum_type.fact(&*shape).with_opaque_fact(new_bqf);
             if let Some(k) = &inputs[0].konst {
                 let mut new = k.clone().into_tensor();
                 self.change_tensor(&mut new, false)?;

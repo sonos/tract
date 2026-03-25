@@ -204,8 +204,8 @@ impl ProtoFusedSpec {
         use ProtoFusedSpec::*;
         match self {
             AddMatMul { a, b, .. } => {
-                ensure!(inputs[*a].datum_type == Opaque::datum_type());
-                ensure!(inputs[*b].datum_type == Opaque::datum_type());
+                ensure!(inputs[*a].is_exotic());
+                ensure!(inputs[*b].is_exotic());
             }
             BinScalar(v, _)
             | LeakyRelu(v)

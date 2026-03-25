@@ -261,7 +261,8 @@ impl MMMInputFormat for PackedBlockQuantFormat {
             })
             .collect::<TractResult<Vec<_>>>()?;
         let leading_shape = &t.shape()[..t.rank().saturating_sub(2)];
-        Ok(crate::mmm::PackedMatrixStorage::new_batched(leading_shape, values).into_tensor())
+        Ok(crate::mmm::PackedMatrixStorage::new_batched(leading_shape, values)
+            .into_tensor(t.datum_type()))
     }
 
     fn prepare_one(
@@ -289,7 +290,7 @@ impl MMMInputFormat for PackedBlockQuantFormat {
             };
             Cow::Owned(
                 BlockQuantStorage::new(self.bq.clone(), m, k, Arc::new(quant))?
-                    .into_tensor_with_shape(&[1, m, k]),
+                    .into_tensor_with_shape(t.datum_type(), &[1, m, k]),
             )
         } else {
             Cow::Borrowed(t)

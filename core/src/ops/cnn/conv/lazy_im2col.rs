@@ -106,21 +106,22 @@ impl EvalOp for LazyIm2Col {
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let tensor = args_1!(inputs);
+        let dt = tensor.datum_type();
         let input: Box<dyn MMMInputValue> =
             Box::new(LazyIm2colInput { tensor, im2col: self.params.clone() });
-        let output = PackedMatrixStorage::new_batched(&[1, 1], vec![input]).into_tensor();
+        let output = PackedMatrixStorage::new_batched(&[1, 1], vec![input]).into_tensor(dt);
         Ok(tvec!(output.into_tvalue()))
     }
 }
 
 impl TypedOp for LazyIm2Col {
-    fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let opaque_fact = DynPackedOpaqueFact {
             k: self.params.k_byte_offsets.len().to_dim(),
             mn: self.params.n_byte_offsets.len().to_dim(),
             packers: vec![self.params.packer.clone()],
         };
-        Ok(tvec!(Opaque::fact([1, 1]).with_opaque_fact(opaque_fact)))
+        Ok(tvec!(inputs[0].datum_type.fact([1, 1]).with_opaque_fact(opaque_fact)))
     }
 
     as_op!();
