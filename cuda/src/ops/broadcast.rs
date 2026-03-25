@@ -29,9 +29,9 @@ impl EvalOp for CudaMultiBroadcastTo {
         session: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        let opaque = args_1!(inputs);
+        let input_value = args_1!(inputs);
+        let input = input_value.to_device_tensor()?;
         let shape = self.shape.eval_to_usize(&session.resolved_symbols)?;
-        let input = opaque.to_device_tensor()?;
         let output = tract_gpu::session_handler::make_tensor_for_node(
             session,
             node_id,

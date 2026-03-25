@@ -48,10 +48,10 @@ impl EvalOp for CudaBinOp {
         session: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        let (opaque_a, opaque_b) = args_2!(inputs);
+        let (a_val, b_val) = args_2!(inputs);
 
-        let a = opaque_a.to_device_tensor()?;
-        let b = opaque_b.to_device_tensor()?;
+        let a = a_val.to_device_tensor()?;
+        let b = b_val.to_device_tensor()?;
         let out_shape = self.0.output_shape(a.shape(), b.shape())?;
         let out_dt = self.0.output_datum_type(a.datum_type(), b.datum_type())?;
         let output =

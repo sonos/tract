@@ -469,7 +469,7 @@ impl fmt::Debug for TypedFact {
             if let Some(of) = &self.exotic_fact {
                 write!(fmt, " 🔍 {of:?} ")?
             } else {
-                write!(fmt, " 🔍 <no opaque fact> ")?
+                write!(fmt, " 🔍 <no exotic fact> ")?
             }
         }
         if let Some(k) = &self.konst {

@@ -26,10 +26,10 @@ impl EvalOp for CudaApplyRope {
         session: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        let (opaque_input, opaque_cos, opaque_sin) = args_3!(inputs);
-        let input = opaque_input.to_device_tensor()?;
-        let cos = opaque_cos.to_device_tensor()?;
-        let sin = opaque_sin.to_device_tensor()?;
+        let (input_val, cos_val, sin_val) = args_3!(inputs);
+        let input = input_val.to_device_tensor()?;
+        let cos = cos_val.to_device_tensor()?;
+        let sin = sin_val.to_device_tensor()?;
         let output = tract_gpu::session_handler::make_tensor_for_node(
             session,
             node_id,

@@ -27,11 +27,11 @@ impl EvalOp for CudaIff {
         session: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        let (opaque_cond, opaque_then, opaque_else) = args_3!(inputs);
+        let (cond_val, then_val, else_val) = args_3!(inputs);
 
-        let cond = opaque_cond.to_device_tensor()?;
-        let then_t = opaque_then.to_device_tensor()?;
-        let else_t = opaque_else.to_device_tensor()?;
+        let cond = cond_val.to_device_tensor()?;
+        let then_t = then_val.to_device_tensor()?;
+        let else_t = else_val.to_device_tensor()?;
         ensure!(cond.rank() == then_t.rank());
         ensure!(cond.rank() == else_t.rank());
         ensure!(then_t.datum_type() == else_t.datum_type());

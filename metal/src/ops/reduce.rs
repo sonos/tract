@@ -54,8 +54,8 @@ impl EvalOp for MetalReduce {
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         with_borrowed_metal_stream(|stream| {
-            let opaque = args_1!(inputs);
-            let input = opaque.to_device_tensor()?;
+            let input_value = args_1!(inputs);
+            let input = input_value.to_device_tensor()?;
             let mut output_shape = input.shape().to_vec();
             output_shape[self.axes[0]] = 1;
             let output = tract_gpu::session_handler::make_tensor_for_node(

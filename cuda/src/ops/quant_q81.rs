@@ -76,8 +76,8 @@ impl EvalOp for CudaGgmlQuantQ81 {
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         CUDA_STREAM.with(|stream| {
-            let opaque = args_1!(inputs);
-            let input = opaque.to_device_tensor()?;
+            let input_value = args_1!(inputs);
+            let input = input_value.to_device_tensor()?;
 
             let resolved_io_facts = self.io_facts.eval(&session.resolved_symbols)?;
 

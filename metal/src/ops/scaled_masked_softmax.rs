@@ -31,9 +31,9 @@ impl EvalOp for MetalScaledMaskedSoftmax {
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         with_borrowed_metal_stream(|stream| {
-            let (opaque_input, opaque_mask) = args_2!(inputs);
-            let input = opaque_input.to_device_tensor()?;
-            let mask = opaque_mask.to_device_tensor()?;
+            let (raw_input, raw_mask) = args_2!(inputs);
+            let input = raw_input.to_device_tensor()?;
+            let mask = raw_mask.to_device_tensor()?;
             let output = tract_gpu::session_handler::make_tensor_for_node(
                 session,
                 node_id,

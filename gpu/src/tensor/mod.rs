@@ -168,7 +168,7 @@ impl DeviceTensor {
     /// Convert device tensor to a Tensor backed by device storage.
     ///
     /// The resulting tensor carries the real datum type and shape from the
-    /// device tensor (e.g. F32 / \[2,3\]), rather than an opaque scalar wrapper.
+    /// device tensor (e.g. F32 / \[2,3\]), rather than an exotic scalar wrapper.
     pub fn into_tensor(self) -> Tensor {
         let dt = self.datum_type();
         let shape: TVec<usize> = self.shape().into();

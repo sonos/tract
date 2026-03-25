@@ -25,8 +25,8 @@ impl EvalOp for CudaUnaryOp {
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         CUDA_STREAM.with(|stream| {
-            let opaque = args_1!(inputs);
-            let input = opaque.to_device_tensor()?;
+            let input_value = args_1!(inputs);
+            let input = input_value.to_device_tensor()?;
             let output = make_tensor_for_node(session, node_id, input.datum_type(), input.shape())?;
             self.0.dispatch_eval(stream, input, &output)?;
             Ok(tvec!(output.into_tensor().into_tvalue()))
