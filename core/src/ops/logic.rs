@@ -68,18 +68,19 @@ impl EvalOp for Iff {
     }
 }
 
-/// Substitute all coordinate symbols x_k in `expr` with their worst-case bound for the
-/// given direction, then let the proving system in `simplify()` finish the job.
-/// For all_false: worst case is the maximum coordinate (shape[k]-1) — most likely to be true.
-/// For all_true:  worst case is the minimum coordinate (0) — most likely to be false.
-fn substitute_coord_worst_case(expr: &TDim, shape: &ShapeFact, all_false: bool) -> TDim {
+/// Evaluate a boolean TDim expression at given extreme coordinate values.
+/// For each coordinate symbol x_k present in `expr`, substitute it with either
+/// 0 (use_max=false) or shape[k]-1 (use_max=true), then simplify.
+fn eval_at_coord_extreme(expr: &TDim, shape: &ShapeFact, use_max: bool) -> TDim {
     let mut result = expr.clone();
-    for sym in &expr.symbols() {
+    let syms = expr.symbols();
+    for sym in &syms {
         let name = format!("{sym}");
         if let Some(k) = name.strip_prefix('x').and_then(|rest| rest.parse::<usize>().ok()) {
             if k < shape.rank() {
-                let bound = if all_false { shape[k].clone() - TDim::Val(1) } else { TDim::Val(0) };
-                result = result.substitute(sym, &bound).unwrap_or(result.clone());
+                let coord_val =
+                    if use_max { shape[k].clone() - TDim::Val(1) } else { TDim::Val(0) };
+                result = result.substitute(sym, &coord_val).unwrap_or(result.clone());
             }
         }
     }
@@ -87,11 +88,21 @@ fn substitute_coord_worst_case(expr: &TDim, shape: &ShapeFact, all_false: bool) 
 }
 
 fn is_provably_all_false(expr: &TDim, shape: &ShapeFact) -> bool {
-    substitute_coord_worst_case(expr, shape, true) == TDim::Val(0)
+    let at_min = eval_at_coord_extreme(expr, shape, false);
+    if at_min != TDim::Val(0) {
+        return false;
+    }
+    let at_max = eval_at_coord_extreme(expr, shape, true);
+    at_max == TDim::Val(0)
 }
 
 fn is_provably_all_true(expr: &TDim, shape: &ShapeFact) -> bool {
-    substitute_coord_worst_case(expr, shape, false) == TDim::Val(1)
+    let at_min = eval_at_coord_extreme(expr, shape, false);
+    if at_min != TDim::Val(1) {
+        return false;
+    }
+    let at_max = eval_at_coord_extreme(expr, shape, true);
+    at_max == TDim::Val(1)
 }
 
 /// Attempt to apply Rule 2: condition is Ge(x_k, threshold) form with true_val all zeros.
