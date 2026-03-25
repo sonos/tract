@@ -124,7 +124,9 @@ fn rule(
         let a_dt = input_facts[0].datum_type;
         let b_dt = input_facts[1].datum_type;
         let operating_dt = quantize_output.unwrap_or(op.operating_dt);
-        let allowed_dt = matmul_semantic_output_dt(&a_dt, &b_dt);
+        let a_plain = input_facts[0].is_plain();
+        let b_plain = input_facts[1].is_plain();
+        let allowed_dt = matmul_semantic_output_dt(&a_dt, a_plain, &b_dt, b_plain);
 
         ensure!(
             operating_dt == allowed_dt,
@@ -153,8 +155,17 @@ fn rule(
     Ok(Some(patch))
 }
 
-fn matmul_semantic_output_dt(a_dt: &DatumType, b_dt: &DatumType) -> DatumType {
-    if a_dt.is_number() {
+fn matmul_semantic_output_dt(
+    a_dt: &DatumType,
+    a_plain: bool,
+    b_dt: &DatumType,
+    b_plain: bool,
+) -> DatumType {
+    if a_plain && a_dt.is_number() {
+        *a_dt
+    } else if b_plain && b_dt.is_number() {
+        *b_dt
+    } else if a_dt.is_number() {
         *a_dt
     } else if b_dt.is_number() {
         *b_dt
@@ -243,7 +254,7 @@ impl EvalOp for PrefixMatMul {
         let c_dt = self.operating_dt.unwrap_or_else(|| {
             let a_dt = inputs[0].datum_type();
             let b_dt = inputs[1].datum_type();
-            matmul_semantic_output_dt(&a_dt, &b_dt)
+            matmul_semantic_output_dt(&a_dt, inputs[0].is_plain(), &b_dt, inputs[1].is_plain())
         });
 
         let inputs = dequant_inputs(c_dt, inputs)?;
@@ -287,10 +298,12 @@ impl TypedOp for PrefixMatMul {
         };
         let a_shape = block_quant_aware_input_shape(a)?;
         let b_shape = block_quant_aware_input_shape(b)?;
-        let dt = self
-            .quantize_output
-            .or(self.operating_dt)
-            .unwrap_or(matmul_semantic_output_dt(&a.datum_type, &b.datum_type));
+        let dt = self.quantize_output.or(self.operating_dt).unwrap_or(matmul_semantic_output_dt(
+            &a.datum_type,
+            a.is_plain(),
+            &b.datum_type,
+            b.is_plain(),
+        ));
         Ok(tvec!(dt.fact(self.output_shape(&a_shape, &b_shape))))
     }
 
