@@ -140,13 +140,15 @@ impl GemmKernel for GgmlGemm {
     fn is_supported_dts(&self, facts: &[TypedFact]) -> bool {
         assert!(facts.len() == 2, "Ggml: Expected 2 inputs for Matmul");
 
-        let regular_types_support = matches!(
-            (facts[0].datum_type, facts[1].datum_type),
-            (F32, F32) | (F16, F16) | (F32, F16)
-        );
+        let regular_types_support = facts.iter().all(|f| f.is_plain())
+            && matches!(
+                (facts[0].datum_type, facts[1].datum_type),
+                (F32, F32) | (F16, F16) | (F32, F16)
+            );
 
         regular_types_support
             || (as_quant_fact(&facts[1], &Q4_0).is_some()
+                && facts[0].is_plain()
                 && matches!(facts[0].datum_type, F16 | F32))
     }
 

@@ -46,7 +46,7 @@ impl<K: GemmKernel> MetalGemm<K> {
             bail!("Expects 2 inputs");
         };
 
-        if a.datum_type.is_number() && b.datum_type.is_number() {
+        if a.is_plain() && b.is_plain() && a.datum_type.is_number() && b.datum_type.is_number() {
             ensure!(a.rank() == b.rank());
             ensure!(a.rank() >= 2);
             ensure!(
