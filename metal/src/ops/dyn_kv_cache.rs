@@ -239,6 +239,7 @@ mod tests {
                 shape: source_shape,
                 konst: None,
                 uniform: None,
+                uniform_tdim: None,
                 opaque_fact: None,
             };
 
