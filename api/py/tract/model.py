@@ -86,17 +86,6 @@ class Model:
         check(lib.tract_model_input_fact(self.ptr, input_id, byref(fact)))
         return Fact(fact)
 
-    def set_output_names(self, names: List[str]):
-        """Change the output nodes of the model"""
-        self._valid()
-        nb = len(names)
-        names_str = []
-        names_ptr = (c_char_p * nb)()
-        for ix, n in enumerate(names):
-            names_str.append(str(n).encode("utf-8"))
-            names_ptr[ix] = names_str[ix]
-        check(lib.tract_model_set_output_names(self.ptr, nb, names_ptr))
-
     def output_name(self, output_id: int) -> str:
         """Return the name of the output_id-th output"""
         self._valid()

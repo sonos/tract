@@ -436,25 +436,6 @@ pub unsafe extern "C" fn tract_inference_model_set_input_fact(
     })
 }
 
-/// Change the model outputs nodes (by name).
-///
-/// `names` is an array containing `len` pointers to null terminated strings.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn tract_inference_model_set_output_names(
-    model: *mut TractInferenceModel,
-    len: usize,
-    names: *const *const c_char,
-) -> TRACT_RESULT {
-    wrap(|| unsafe {
-        check_not_null!(model, names, *names);
-        let node_names = (0..len)
-            .map(|i| Ok(CStr::from_ptr(*names.add(i)).to_str()?.to_owned()))
-            .collect::<Result<Vec<_>>>()?;
-        (*model).0.set_output_names(&node_names)?;
-        Ok(())
-    })
-}
-
 /// Query an output fact for an InferenceModel.
 ///
 /// The return model must be freed using `tract_inference_fact_destroy`.
@@ -633,24 +614,6 @@ pub unsafe extern "C" fn tract_model_output_fact(
         let f = (*model).0.output_fact(input_id)?;
         *fact = Box::into_raw(Box::new(TractFact(f)));
         Ok(())
-    })
-}
-
-/// Change the model outputs nodes (by name).
-///
-/// `names` is an array containing `len` pointers to null terminated strings.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn tract_model_set_output_names(
-    model: *mut TractModel,
-    len: usize,
-    names: *const *const c_char,
-) -> TRACT_RESULT {
-    wrap(|| unsafe {
-        check_not_null!(model, names, *names);
-        let node_names = (0..len)
-            .map(|i| Ok(CStr::from_ptr(*names.add(i)).to_str()?.to_owned()))
-            .collect::<Result<Vec<_>>>()?;
-        (*model).0.set_output_names(&node_names)
     })
 }
 

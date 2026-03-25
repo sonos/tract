@@ -247,15 +247,6 @@ enum TRACT_RESULT tract_inference_model_set_input_fact(struct TractInferenceMode
                                                        const struct TractInferenceFact *fact);
 
 /**
- * Change the model outputs nodes (by name).
- *
- * `names` is an array containing `len` pointers to null terminated strings.
- */
-enum TRACT_RESULT tract_inference_model_set_output_names(struct TractInferenceModel *model,
-                                                         uintptr_t len,
-                                                         const char *const *names);
-
-/**
  * Query an output fact for an InferenceModel.
  *
  * The return model must be freed using `tract_inference_fact_destroy`.
@@ -340,15 +331,6 @@ enum TRACT_RESULT tract_model_output_name(const struct TractModel *model,
 enum TRACT_RESULT tract_model_output_fact(const struct TractModel *model,
                                           uintptr_t input_id,
                                           struct TractFact **fact);
-
-/**
- * Change the model outputs nodes (by name).
- *
- * `names` is an array containing `len` pointers to null terminated strings.
- */
-enum TRACT_RESULT tract_model_set_output_names(struct TractModel *model,
-                                               uintptr_t len,
-                                               const char *const *names);
 
 /**
  * Apply a transform to the model.

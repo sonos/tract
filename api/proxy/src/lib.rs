@@ -150,21 +150,6 @@ wrapper!(InferenceModel, TractInferenceModel, tract_inference_model_destroy);
 impl InferenceModelInterface for InferenceModel {
     type Model = Model;
     type InferenceFact = InferenceFact;
-    fn set_output_names(
-        &mut self,
-        outputs: impl IntoIterator<Item = impl AsRef<str>>,
-    ) -> Result<()> {
-        let c_strings: Vec<CString> =
-            outputs.into_iter().map(|a| Ok(CString::new(a.as_ref())?)).collect::<Result<_>>()?;
-        let ptrs: Vec<_> = c_strings.iter().map(|cs| cs.as_ptr()).collect();
-        check!(sys::tract_inference_model_set_output_names(
-            self.0,
-            c_strings.len(),
-            ptrs.as_ptr()
-        ))?;
-        Ok(())
-    }
-
     fn input_count(&self) -> Result<usize> {
         let mut count = 0;
         check!(sys::tract_inference_model_input_count(self.0, &mut count))?;
@@ -278,17 +263,6 @@ impl ModelInterface for Model {
             sys::tract_free_cstring(ptr);
             Ok(ret)
         }
-    }
-
-    fn set_output_names(
-        &mut self,
-        outputs: impl IntoIterator<Item = impl AsRef<str>>,
-    ) -> Result<()> {
-        let c_strings: Vec<CString> =
-            outputs.into_iter().map(|a| Ok(CString::new(a.as_ref())?)).collect::<Result<_>>()?;
-        let ptrs: Vec<_> = c_strings.iter().map(|cs| cs.as_ptr()).collect();
-        check!(sys::tract_model_set_output_names(self.0, c_strings.len(), ptrs.as_ptr()))?;
-        Ok(())
     }
 
     fn input_fact(&self, id: usize) -> Result<Fact> {

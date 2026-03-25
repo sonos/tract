@@ -189,13 +189,6 @@ impl InferenceModelInterface for InferenceModel {
         Ok(self.0.node(node).name.to_string())
     }
 
-    fn set_output_names(
-        &mut self,
-        outputs: impl IntoIterator<Item = impl AsRef<str>>,
-    ) -> Result<()> {
-        self.0.set_output_names(outputs)
-    }
-
     fn input_fact(&self, id: usize) -> Result<InferenceFact> {
         Ok(InferenceFact(self.0.input_fact(id)?.clone()))
     }
@@ -258,13 +251,6 @@ impl ModelInterface for Model {
     fn output_name(&self, id: usize) -> Result<String> {
         let node = self.0.outputs[id].node;
         Ok(self.0.node(node).name.to_string())
-    }
-
-    fn set_output_names(
-        &mut self,
-        outputs: impl IntoIterator<Item = impl AsRef<str>>,
-    ) -> Result<()> {
-        self.0.set_output_names(outputs)
     }
 
     fn input_fact(&self, id: usize) -> Result<Fact> {
