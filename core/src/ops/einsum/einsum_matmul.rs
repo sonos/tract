@@ -144,10 +144,10 @@ impl TypedOp for EinSumMatMul {
         ensure!(node.inputs.len() == 2);
         let (a, b) = model.node_input_facts(node.id)?.into_iter().collect_tuple().unwrap();
         // at this stage a and b must NOT be packed yet. if they are Opaque, we can assume it's just compression
-        let must_transpose = if let Some(of) = a.opaque_fact() {
+        let must_transpose = if let Some(of) = a.exotic_fact() {
             ensure!(of.is::<BlockQuantFact>());
             false
-        } else if let Some(of) = b.opaque_fact() {
+        } else if let Some(of) = b.exotic_fact() {
             ensure!(of.is::<BlockQuantFact>());
             true
         } else if self.m == self.n {
@@ -601,7 +601,7 @@ fn optimized_mat_mul(
     let trivial_packing = mmms.len() == 1
         && packings[0] == 0
         && extractor[0].is_none()
-        && input_facts[0].opaque_fact.is_none();
+        && input_facts[0].exotic_fact.is_none();
     let opt = OptMatMul::new(
         mmms,
         mode_picker,

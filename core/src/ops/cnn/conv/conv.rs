@@ -106,7 +106,7 @@ impl Conv {
         let wire = if fact.is_exotic() {
             let fact = model
                 .outlet_fact(kernel)?
-                .opaque_fact
+                .exotic_fact
                 .as_ref()
                 .and_then(|of| of.downcast_ref::<BlockQuantFact>())
                 .context("Only manage BlockQuant")?;
@@ -542,7 +542,7 @@ impl Conv {
         let acc = if x_dt.is_float() { x_dt } else { i32::datum_type() };
         if weight_fact.is_exotic() {
             let bqf = weight_fact
-                .opaque_fact
+                .exotic_fact
                 .as_ref()
                 .and_then(|of| of.downcast_ref::<BlockQuantFact>())
                 .unwrap();

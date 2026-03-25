@@ -243,8 +243,8 @@ mod tests {
                 shape: source_shape,
                 konst: None,
                 uniform: None,
+                exotic_fact: None,
                 uniform_tdim: None,
-                opaque_fact: None,
             };
 
             let op = DynKeyValueCache {

@@ -108,11 +108,11 @@ pub fn variable(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> 
         // ops will add any group dims as needed.
         let tensor =
             bqs.clone().into_tensor_with_shape(tensor.datum_type(), &shape).into_arc_tensor();
-        let fact: Box<dyn OpaqueFact> = Box::new(BlockQuantFact::new(
+        let fact: Box<dyn ExoticFact> = Box::new(BlockQuantFact::new(
             tract_core::dyn_clone::clone_box(bqs.format()),
             shape.clone(),
         ));
-        builder.wire(Const::new_with_opaque_fact(tensor, fact)?, &[])
+        builder.wire(Const::new_with_exotic_fact(tensor, fact)?, &[])
     } else {
         ensure!(
             tensor.shape() == &*shape,

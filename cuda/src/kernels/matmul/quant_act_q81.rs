@@ -112,7 +112,7 @@ impl GgmlQuantQ81 {
         input: &DeviceTensor,
         output_fact: GgmlQuantQ81Fact,
     ) -> TractResult<DeviceTensor> {
-        let output = unsafe { DeviceTensor::uninitialized_opaque(Box::new(output_fact))? };
+        let output = unsafe { DeviceTensor::uninitialized_exotic(Box::new(output_fact))? };
         self.dispatch_eval(stream, input, &output)?;
         stream.synchronize()?;
         Ok(output)

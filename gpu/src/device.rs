@@ -4,7 +4,7 @@ use std::sync::Mutex;
 use anyhow::{anyhow, bail};
 use downcast_rs::{Downcast, impl_downcast};
 use tract_core::dyn_clone;
-use tract_core::internal::OpaqueFact;
+use tract_core::internal::ExoticFact;
 use tract_core::prelude::{DatumType, TractResult};
 use tract_core::value::TValue;
 
@@ -17,9 +17,9 @@ pub trait DeviceContext: Downcast + dyn_clone::DynClone + Send + Sync {
         shape: &[usize],
         dt: DatumType,
     ) -> TractResult<Box<dyn OwnedDeviceTensor>>;
-    fn uninitialized_device_opaque_tensor(
+    fn uninitialized_device_exotic_tensor(
         &self,
-        opaque_fact: Box<dyn OpaqueFact>,
+        exotic_fact: Box<dyn ExoticFact>,
     ) -> TractResult<Box<dyn OwnedDeviceTensor>>;
     fn synchronize(&self) -> TractResult<()>;
 }

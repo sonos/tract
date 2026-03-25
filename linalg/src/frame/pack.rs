@@ -5,7 +5,7 @@ use std::ops::Range;
 use tract_data::internal::*;
 
 use crate::mmm::{
-    EagerPackedInput, MMMInputFormat, MMMInputValue, PackedMatrixStorage, PackedOpaqueFact,
+    EagerPackedInput, MMMInputFormat, MMMInputValue, PackedExoticFact, PackedMatrixStorage,
 };
 
 use crate::WeightType;
@@ -219,7 +219,7 @@ impl PackedFormat {
                 0..mn
             ));
             Ok(Box::new(EagerPackedInput {
-                fact: PackedOpaqueFact { format: Box::new(self.clone()), mn: mn.to_dim(), k },
+                fact: PackedExoticFact { format: Box::new(self.clone()), mn: mn.to_dim(), k },
                 packed: packed.into(),
                 panel_bytes,
                 mn,
@@ -262,7 +262,7 @@ impl PackedFormat {
                 0..mn
             ));
             Ok(Box::new(EagerPackedInput {
-                fact: PackedOpaqueFact { format: Box::new(self.clone()), mn: mn.to_dim(), k },
+                fact: PackedExoticFact { format: Box::new(self.clone()), mn: mn.to_dim(), k },
                 packed: packed.into(),
                 panel_bytes,
                 mn,

@@ -66,7 +66,7 @@ pub fn pad_q40_weights(
     };
 
     let bqf = cuda_tensor
-        .opaque_fact()
+        .exotic_fact()
         .and_then(|of| of.downcast_ref::<BlockQuantFact>())
         .filter(|bqf| bqf.format.same_as(&Q4_0));
     rule_ensure!(bqf.is_some());
@@ -101,12 +101,12 @@ pub fn pad_q40_weights(
         padded_shape.clone(),
     );
     let padded_fact =
-        TypedFact::dt_shape(f32::datum_type(), &padded_shape).with_opaque_fact(padded_bqf);
+        TypedFact::dt_shape(f32::datum_type(), &padded_shape).with_exotic_fact(padded_bqf);
 
     let padded_tensor =
         padded_bqs.into_tensor_with_shape(f32::datum_type(), &padded_shape).into_arc_tensor();
 
-    let new_const = Const::new_with_opaque_fact(
+    let new_const = Const::new_with_exotic_fact(
         padded_tensor.into_device()?.into_tensor().into_arc_tensor(),
         Box::new(DeviceFact::from_host(padded_fact)?),
     )?;

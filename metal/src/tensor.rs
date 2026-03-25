@@ -113,7 +113,7 @@ impl From<Arc<Tensor>> for MValue {
 pub struct MetalTensor {
     pub inner: MValue,
     pub device_buffer: MetalBuffer,
-    pub opaque_fact: Option<Box<dyn OpaqueFact>>,
+    pub exotic_fact: Option<Box<dyn ExoticFact>>,
 }
 
 impl std::fmt::Debug for MetalTensor {
@@ -167,7 +167,7 @@ impl OwnedDeviceTensor for MetalTensor {
         Ok(DeviceTensor::Owned(Box::new(Self {
             inner: self.inner.reshaped(shape)?,
             device_buffer: self.device_buffer.clone(),
-            opaque_fact: self.opaque_fact.clone(),
+            exotic_fact: self.exotic_fact.clone(),
         })))
     }
 
@@ -177,7 +177,7 @@ impl OwnedDeviceTensor for MetalTensor {
         Ok(DeviceTensor::Owned(Box::new(Self {
             inner: self.inner.restrided(strides)?,
             device_buffer: self.device_buffer.clone(),
-            opaque_fact: self.opaque_fact.clone(),
+            exotic_fact: self.exotic_fact.clone(),
         })))
     }
 
@@ -189,8 +189,8 @@ impl OwnedDeviceTensor for MetalTensor {
             .unwrap_or_else(|| self.inner.clone().into_tensor().into_arc_tensor()))
     }
 
-    fn opaque_fact(&self) -> Option<&dyn OpaqueFact> {
-        self.opaque_fact.as_deref()
+    fn exotic_fact(&self) -> Option<&dyn ExoticFact> {
+        self.exotic_fact.as_deref()
     }
 
     fn get_bytes_slice(&self, offset: usize, len: usize) -> Vec<u8> {

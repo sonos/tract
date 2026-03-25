@@ -1,5 +1,5 @@
 use crate::internal::*;
-use crate::ops::matmul::pack::DynPackedOpaqueFact;
+use crate::ops::matmul::pack::DynPackedExoticFact;
 use std::fmt::{Debug, Display};
 use std::ops::Range;
 use tract_linalg::WeightType;
@@ -71,8 +71,8 @@ impl Display for LazyIm2colParams {
     }
 }
 
-impl OpaqueFact for LazyIm2colParams {
-    fn same_as(&self, _other: &dyn OpaqueFact) -> bool {
+impl ExoticFact for LazyIm2colParams {
+    fn same_as(&self, _other: &dyn ExoticFact) -> bool {
         _other.downcast_ref::<Self>().is_some_and(|o| o == self)
     }
 
@@ -116,12 +116,12 @@ impl EvalOp for LazyIm2Col {
 
 impl TypedOp for LazyIm2Col {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        let opaque_fact = DynPackedOpaqueFact {
+        let exotic_fact = DynPackedExoticFact {
             k: self.params.k_byte_offsets.len().to_dim(),
             mn: self.params.n_byte_offsets.len().to_dim(),
             packers: vec![self.params.packer.clone()],
         };
-        Ok(tvec!(inputs[0].datum_type.fact([1, 1]).with_opaque_fact(opaque_fact)))
+        Ok(tvec!(inputs[0].datum_type.fact([1, 1]).with_exotic_fact(exotic_fact)))
     }
 
     as_op!();
@@ -391,7 +391,7 @@ impl MMMInputValue for LazyIm2colInput {
         &*self.im2col
     }
 
-    fn opaque_fact(&self) -> &dyn OpaqueFact {
+    fn exotic_fact(&self) -> &dyn ExoticFact {
         &*self.im2col
     }
 

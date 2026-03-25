@@ -35,7 +35,7 @@ impl CudaGgmlGemm {
             Ok(tvec![a.datum_type().unwrap().fact(out_shape)])
         } else if let Some(a_bqf) = as_quant_fact(inputs[1], &Q4_0) {
             let Some(b_ggml_qf) =
-                inputs[0].opaque_fact.as_ref().and_then(|of| of.downcast_ref::<GgmlQuantQ81Fact>())
+                inputs[0].exotic_fact.as_ref().and_then(|of| of.downcast_ref::<GgmlQuantQ81Fact>())
             else {
                 bail!("Expected GGML Q81 activations for Q40 MM")
             };

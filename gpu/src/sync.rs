@@ -88,7 +88,7 @@ impl TypedOp for DeviceSync {
                     input.as_device_fact().is_none(),
                     "Cannot sync to Device a tensor already on Device"
                 );
-                Ok(tvec![DeviceFact::from_host(input.clone())?.into_opaque_fact()])
+                Ok(tvec![DeviceFact::from_host(input.clone())?.into_exotic_fact()])
             }
         }
     }

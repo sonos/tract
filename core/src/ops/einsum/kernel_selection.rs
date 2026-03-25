@@ -102,7 +102,7 @@ pub fn list_impls(
     let a_dt = a_fact.datum_type;
     let b_dt = b_fact.datum_type;
 
-    let a_weight: WeightType = if let Some(of) = a_fact.opaque_fact() {
+    let a_weight: WeightType = if let Some(of) = a_fact.exotic_fact() {
         if let Some(bqf) = of.downcast_ref::<BlockQuantFact>() {
             WeightType::BlockQuant(bqf.format.clone())
         } else {

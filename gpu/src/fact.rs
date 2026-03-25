@@ -48,14 +48,14 @@ impl DeviceFact {
         self.fact
     }
 
-    pub fn into_opaque_fact(self) -> TypedFact {
+    pub fn into_exotic_fact(self) -> TypedFact {
         let dt = self.fact.datum_type;
         let shape = self.fact.shape.clone();
-        TypedFact::dt_shape(dt, shape).with_opaque_fact(self)
+        TypedFact::dt_shape(dt, shape).with_exotic_fact(self)
     }
 }
 
-impl OpaqueFact for DeviceFact {
+impl ExoticFact for DeviceFact {
     fn clarify_dt_shape(&self) -> Option<(DatumType, TVec<TDim>)> {
         Some((self.fact.datum_type, self.fact.shape.to_tvec()))
     }
@@ -63,16 +63,16 @@ impl OpaqueFact for DeviceFact {
     fn buffer_sizes(&self) -> TVec<TDim> {
         let inner_fact = &self.fact;
         let mut sizes = tvec!(inner_fact.shape.volume() * inner_fact.datum_type.size_of());
-        if let Some(of) = inner_fact.opaque_fact() {
+        if let Some(of) = inner_fact.exotic_fact() {
             sizes.extend(of.buffer_sizes());
         }
         sizes
     }
 
-    fn same_as(&self, other: &dyn OpaqueFact) -> bool {
+    fn same_as(&self, other: &dyn ExoticFact) -> bool {
         other.downcast_ref::<Self>().is_some_and(|o| o == self)
     }
-    fn compatible_with(&self, other: &dyn OpaqueFact) -> bool {
+    fn compatible_with(&self, other: &dyn ExoticFact) -> bool {
         other.is::<Self>()
     }
 }
@@ -96,16 +96,16 @@ pub trait DeviceTypedFactExt {
 
 impl DeviceTypedFactExt for TypedFact {
     fn to_device_fact(&self) -> TractResult<&DeviceFact> {
-        self.opaque_fact
+        self.exotic_fact
             .as_ref()
             .and_then(|m| m.downcast_ref::<DeviceFact>())
             .ok_or_else(|| anyhow!("DeviceFact not found"))
     }
     fn as_device_fact(&self) -> Option<&DeviceFact> {
-        self.opaque_fact.as_ref().and_then(|m| m.downcast_ref::<DeviceFact>())
+        self.exotic_fact.as_ref().and_then(|m| m.downcast_ref::<DeviceFact>())
     }
     fn as_device_fact_mut(&mut self) -> Option<&mut DeviceFact> {
-        self.opaque_fact.as_mut().and_then(|m| m.downcast_mut::<DeviceFact>())
+        self.exotic_fact.as_mut().and_then(|m| m.downcast_mut::<DeviceFact>())
     }
 }
 

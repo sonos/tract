@@ -1,5 +1,5 @@
 use tract_linalg::mmm::{
-    EagerPackedInput, MMMInputValue, MatMatMul, PackedMatrixStorage, PackedOpaqueFact,
+    EagerPackedInput, MMMInputValue, MatMatMul, PackedExoticFact, PackedMatrixStorage,
 };
 use tract_linalg::pack::{PackedFormat, PackingWriter};
 
@@ -185,7 +185,7 @@ impl EvalOp for Im2Col {
                         ))?;
                     }
                     values.push(Box::new(EagerPackedInput {
-                        fact: PackedOpaqueFact {
+                        fact: PackedExoticFact {
                             format: Box::new(geometry.b_pack.clone()),
                             k: geometry.k,
                             mn: n.to_dim(),
@@ -211,7 +211,7 @@ impl TypedOp for Im2Col {
         let input_shape = self.pool_spec.data_format.shape(inputs[0].shape.to_tvec())?;
         let output_shape = self.pool_spec.output_shape(&inputs[0].shape)?;
         let mn = output_shape.hw_dims().iter().product::<TDim>();
-        let pof = PackedOpaqueFact {
+        let pof = PackedExoticFact {
             format: Box::new(self.geometry.b_pack().clone()),
             k: self.geometry.k(),
             mn,
@@ -220,7 +220,7 @@ impl TypedOp for Im2Col {
             inputs[0]
                 .datum_type
                 .fact(&[input_shape.n().cloned().unwrap_or(1.into()), self.group.into()])
-                .with_opaque_fact(pof)
+                .with_exotic_fact(pof)
         ))
     }
 

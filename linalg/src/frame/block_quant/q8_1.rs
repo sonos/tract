@@ -1,4 +1,4 @@
-use crate::mmm::PackedOpaqueFact;
+use crate::mmm::PackedExoticFact;
 
 use super::*;
 use num_traits::{AsPrimitive, Float, Zero};
@@ -261,7 +261,7 @@ impl<const QK: usize> BlockQuant for BaseQ8_1<QK> {
             }
         }
         Ok(EagerPackedInput {
-            fact: PackedOpaqueFact {
+            fact: PackedExoticFact {
                 format: Box::new(PackedBlockQuantFormat {
                     bq: Box::new(*self),
                     r,

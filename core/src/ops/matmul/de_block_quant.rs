@@ -70,7 +70,7 @@ fn block_quant_einsum_weights(
             Box::new(BlockQuantFact::new(dyn_clone::clone_box(bqs.format()), tvec!(1, m, k)));
         let weights = patch.wire_node(
             format!("{name}.bq"),
-            Const::new_with_opaque_fact(
+            Const::new_with_exotic_fact(
                 Arc::new(bqs.into_tensor_with_shape(a.datum_type(), &[1, m, k])),
                 fact,
             )?,

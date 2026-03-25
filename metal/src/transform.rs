@@ -153,7 +153,7 @@ impl MetalTransform {
                             let konst_metal = konst.as_ref().clone().into_device()?.into_tensor();
                             let metal_fact = DeviceFact::from_host(in_fact.clone())?;
 
-                            *in_fact = metal_fact.into_opaque_fact();
+                            *in_fact = metal_fact.into_exotic_fact();
 
                             in_fact.konst = Some(Arc::new(konst_metal));
                             mapped_inputs.push(mapping[i]);
@@ -502,7 +502,7 @@ fn convert_matmul_to_metal(
             if swap_inputs {
                 let out_fact = target.outlet_fact(matmul_output[0])?;
                 let rank = &out_fact
-                    .opaque_fact
+                    .exotic_fact
                     .clone()
                     .map(|fact| fact.clarify_dt_shape().unwrap().1.len())
                     .unwrap();
@@ -564,14 +564,14 @@ fn convert_logic_ops_to_metal(op: &Comp) -> ops::MetalBinOp {
 
 fn convert_const(op: &Const) -> TractResult<Const> {
     let typed_fact: TypedFact = Arc::clone(op.val()).into();
-    let metal_fact = if let Some(of) = op.opaque_fact() {
-        DeviceFact::from_host(typed_fact.with_opaque_fact(clone_box(of)))?
+    let metal_fact = if let Some(of) = op.exotic_fact() {
+        DeviceFact::from_host(typed_fact.with_exotic_fact(clone_box(of)))?
     } else {
         DeviceFact::from_host(typed_fact)?
     };
 
     let metal_const = op.val().clone().into_device()?.into_tensor().into_arc_tensor();
-    Const::new_with_opaque_fact(metal_const, Box::new(metal_fact))
+    Const::new_with_exotic_fact(metal_const, Box::new(metal_fact))
 }
 
 fn map_element_wise_ops_to_metal(op: &ElementWiseOp) -> Option<ops::MetalElementWiseOp> {

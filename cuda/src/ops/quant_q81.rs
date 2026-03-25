@@ -1,6 +1,6 @@
 use tract_core::internal::*;
 use tract_core::tract_linalg::block_quant::{BlockQuant, Q8_1};
-use tract_gpu::session_handler::make_scalar_opaque_tensor_for_node;
+use tract_gpu::session_handler::make_scalar_exotic_tensor_for_node;
 use tract_gpu::tensor::DeviceTensorExt;
 
 use crate::context::CUDA_STREAM;
@@ -37,8 +37,8 @@ impl GgmlQuantQ81Fact {
     }
 }
 
-impl OpaqueFact for GgmlQuantQ81Fact {
-    fn same_as(&self, other: &dyn OpaqueFact) -> bool {
+impl ExoticFact for GgmlQuantQ81Fact {
+    fn same_as(&self, other: &dyn ExoticFact) -> bool {
         let Some(other) = other.downcast_ref::<Self>() else { return false };
         (other.in_fact == self.in_fact) && (other.out_fact == self.out_fact)
     }
@@ -81,7 +81,7 @@ impl EvalOp for CudaGgmlQuantQ81 {
 
             let resolved_io_facts = self.io_facts.eval(&session.resolved_symbols)?;
 
-            let output = make_scalar_opaque_tensor_for_node(
+            let output = make_scalar_exotic_tensor_for_node(
                 session,
                 node_id,
                 input.datum_type(),
@@ -104,7 +104,7 @@ impl TypedOp for CudaGgmlQuantQ81 {
         ensure!(inputs.len() == 1);
         tract_gpu::utils::facts_to_device_facts(inputs, |input_facts| {
             let dt = input_facts[0].datum_type;
-            let fact = TypedFact::dt_scalar(dt).with_opaque_fact(self.io_facts.clone());
+            let fact = TypedFact::dt_scalar(dt).with_exotic_fact(self.io_facts.clone());
             Ok(tvec!(fact))
         })
         .with_context(|| format!("Error while computing facts for {:?}", self.name()))
