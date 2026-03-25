@@ -6,7 +6,7 @@ use tract_data::itertools::izip;
 use tract_itertools::Itertools;
 use tract_linalg::{BinOp, LinalgFn};
 
-use super::math::{Add, Div, Max, Min, Mul, Sub};
+use super::math::{Add, Max, Min, Mul, Sub};
 use super::{cast::cast, math::SubF};
 
 pub trait BinMiniOp: fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast {

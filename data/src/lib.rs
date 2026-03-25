@@ -19,7 +19,7 @@ pub mod prelude {
     pub use crate::TVec;
     pub use crate::blob::Blob;
     pub use crate::datum::{Datum, DatumType, QParams, round_ties_to_even};
-    pub use crate::dim::{Symbol, SymbolScope, SymbolValues, TDim, ToDim};
+    pub use crate::dim::{Assertion, Symbol, SymbolScope, SymbolValues, TDim, ToDim};
     pub use crate::opaque::Opaque;
     pub use crate::tensor::dense_view::{DenseView, DenseViewMut};
     pub use crate::tensor::litteral::*;
