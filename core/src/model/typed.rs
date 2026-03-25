@@ -96,9 +96,9 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
                         let name = if ix == 0 { name.clone() } else { format!("{name}.{ix}") };
                         self.wire_node(
                             name.clone(),
-                            Const::new_with_opt_opaque_fact(
+                            Const::new_with_opt_exotic_fact(
                                 o.into_tensor().into(),
-                                output_facts[ix].opaque_fact.clone(),
+                                output_facts[ix].exotic_fact.clone(),
                             )?,
                             &[],
                         )
@@ -110,7 +110,7 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
 
             for fact in &mut output_facts {
                 if fact.konst.is_none()
-                    && fact.opaque_fact.is_none()
+                    && fact.exotic_fact.is_none()
                     && fact.shape.is_concrete()
                     && fact.shape.volume().is_zero()
                 {
@@ -150,13 +150,13 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
         let mut fact = TypedFact::from(v.clone());
         let name = name.into();
         if let Some(bqs) = v.storage_as::<BlockQuantStorage>() {
-            let opaque: Box<dyn OpaqueFact> =
+            let opaque: Box<dyn ExoticFact> =
                 Box::new(BlockQuantFact::new(dyn_clone::clone_box(bqs.format()), v.shape().into()));
-            fact.opaque_fact = Some(opaque.clone());
+            fact.exotic_fact = Some(opaque.clone());
             return self
                 .add_node(
                     name,
-                    crate::ops::konst::Const::new_with_opaque_fact(v, opaque)?,
+                    crate::ops::konst::Const::new_with_exotic_fact(v, opaque)?,
                     tvec!(fact),
                 )
                 .map(|id| id.into());

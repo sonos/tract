@@ -18,27 +18,27 @@ mod proptest;
 
 use num_traits::One;
 use tract_linalg::block_quant::{BlockQuantFact, PackedBlockQuantFact};
-use tract_linalg::mmm::PackedOpaqueFact;
+use tract_linalg::mmm::PackedExoticFact;
 
 pub fn block_quant_aware_input_shape(fact: &TypedFact) -> TractResult<Cow<'_, [TDim]>> {
     if fact.is_plain() {
         return Ok(Cow::Borrowed(&*fact.shape));
     }
-    let Some(opaque_fact) = fact.opaque_fact() else {
+    let Some(exotic_fact) = fact.exotic_fact() else {
         bail!("Datum fact is opaque, but no opaque fact was found.")
     };
-    if let Some(_bqf) = opaque_fact.downcast_ref::<BlockQuantFact>() {
+    if let Some(_bqf) = exotic_fact.downcast_ref::<BlockQuantFact>() {
         Ok(Cow::Borrowed(&*fact.shape))
-    } else if let Some(pof) = opaque_fact.downcast_ref::<PackedBlockQuantFact>() {
+    } else if let Some(pof) = exotic_fact.downcast_ref::<PackedBlockQuantFact>() {
         Ok(Cow::Owned(
             fact.shape.iter().cloned().chain(pof.shape.iter().map(|i| i.to_dim())).collect_vec(),
         ))
-    } else if let Some(pof) = opaque_fact.downcast_ref::<PackedOpaqueFact>() {
+    } else if let Some(pof) = exotic_fact.downcast_ref::<PackedExoticFact>() {
         Ok(Cow::Owned(
             fact.shape.iter().cloned().chain([pof.mn.clone(), pof.k.to_dim()]).collect_vec(),
         ))
     } else {
-        bail!("Unsupported opaque fact {opaque_fact:?}")
+        bail!("Unsupported opaque fact {exotic_fact:?}")
     }
 }
 
@@ -226,8 +226,8 @@ impl TypedOp for EinSum {
         let mut axes = self.axes.clone();
         for (slot, i) in inputs.iter().enumerate() {
             if i.is_exotic()
-                && (i.opaque_fact().is_some_and(|of| {
-                    of.is::<PackedOpaqueFact>() || of.is::<PackedBlockQuantFact>()
+                && (i.exotic_fact().is_some_and(|of| {
+                    of.is::<PackedExoticFact>() || of.is::<PackedBlockQuantFact>()
                 }))
             {
                 axes = axes

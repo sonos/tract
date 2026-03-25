@@ -205,8 +205,8 @@ pub struct TypedFact {
     pub konst: Option<Arc<Tensor>>,
     /// optional uniform value
     pub uniform: Option<Arc<Tensor>>,
-    /// optional opaque fact
-    pub opaque_fact: Option<Box<dyn OpaqueFact>>,
+    /// optional exotic fact
+    pub exotic_fact: Option<Box<dyn ExoticFact>>,
     /// Symbolic per-element value as a TDim expression, possibly involving
     /// coordinate symbols 🎯0,🎯1,… and/or model symbols.
     /// `None` means "unknown / not tracked".
@@ -235,14 +235,14 @@ impl TypedFact {
             shape: ShapeFact::from_dims(t.shape().iter().map(TDim::from)),
             uniform: None,
             konst: None,
-            opaque_fact: None,
+            exotic_fact: None,
             uniform_tdim: None,
         }
     }
 
     pub fn mem_size(&self) -> TDim {
         self.shape.volume() * self.datum_type.size_of()
-            + self.opaque_fact().iter().flat_map(|it| it.buffer_sizes()).sum::<TDim>()
+            + self.exotic_fact().iter().flat_map(|it| it.buffer_sizes()).sum::<TDim>()
     }
 
     pub fn dt_scalar(datum_type: DatumType) -> TypedFact {
@@ -251,7 +251,7 @@ impl TypedFact {
             shape: ShapeFact::scalar(),
             konst: None,
             uniform: None,
-            opaque_fact: None,
+            exotic_fact: None,
             uniform_tdim: None,
         }
     }
@@ -265,7 +265,7 @@ impl TypedFact {
             shape: shape.into(),
             konst: None,
             uniform: None,
-            opaque_fact: None,
+            exotic_fact: None,
             uniform_tdim: None,
         }
     }
@@ -294,17 +294,17 @@ impl TypedFact {
 
     pub fn consistent(&self) -> TractResult<()> {
         self.shape.consistent()?;
-        // Plain Opaque tensors still require an opaque_fact annotation.
+        // Plain Opaque tensors still require an exotic_fact annotation.
         // Exotic tensors now carry the logical element type instead.
         ensure!(
-            !self.datum_type.is_opaque() || self.opaque_fact.is_some(),
-            "Opaque datum type requires an opaque_fact annotation"
+            !self.datum_type.is_opaque() || self.exotic_fact.is_some(),
+            "Opaque datum type requires an exotic_fact annotation"
         );
         if let Some(k) = &self.konst {
             if !self.matches(k.as_ref(), None)? {
                 bail!("fact says {}, constant is {:?}", self.format_dt_shape_nocheck(), k);
             }
-            if let Some(bqf) = self.opaque_fact().and_then(|of| of.downcast_ref::<BlockQuantFact>())
+            if let Some(bqf) = self.exotic_fact().and_then(|of| of.downcast_ref::<BlockQuantFact>())
             {
                 if let Some(bqs) = k.storage_as::<BlockQuantStorage>() {
                     let inner_bqf =
@@ -340,23 +340,23 @@ impl TypedFact {
         new
     }
 
-    pub fn with_opaque_fact<O: Into<Box<dyn OpaqueFact>>>(mut self, opaque_fact: O) -> Self {
-        self.opaque_fact = Some(opaque_fact.into());
+    pub fn with_exotic_fact<O: Into<Box<dyn ExoticFact>>>(mut self, exotic_fact: O) -> Self {
+        self.exotic_fact = Some(exotic_fact.into());
         self
     }
 
-    pub fn opaque_fact(&self) -> Option<&dyn OpaqueFact> {
-        self.opaque_fact.as_deref()
+    pub fn exotic_fact(&self) -> Option<&dyn ExoticFact> {
+        self.exotic_fact.as_deref()
     }
 
     #[inline]
     pub fn is_exotic(&self) -> bool {
-        self.opaque_fact.is_some()
+        self.exotic_fact.is_some()
     }
 
     #[inline]
     pub fn is_plain(&self) -> bool {
-        self.opaque_fact.is_none()
+        self.exotic_fact.is_none()
     }
 }
 
@@ -408,8 +408,8 @@ impl Fact for TypedFact {
             self.datum_type == other.datum_type
                 && self.shape.compatible_with(&other.shape)
                 && self
-                    .opaque_fact()
-                    .zip(other.opaque_fact())
+                    .exotic_fact()
+                    .zip(other.exotic_fact())
                     .map(|(a, b)| a.compatible_with(b))
                     .unwrap_or(true)
         } else {
@@ -430,10 +430,10 @@ impl From<Tensor> for TypedFact {
 
 impl From<Arc<Tensor>> for TypedFact {
     fn from(t: Arc<Tensor>) -> TypedFact {
-        let opaque_fact: Option<Box<dyn OpaqueFact>> =
+        let exotic_fact: Option<Box<dyn ExoticFact>> =
             t.storage_as::<BlockQuantStorage>().map(|bqs| {
                 Box::new(BlockQuantFact::new(dyn_clone::clone_box(bqs.format()), t.shape().into()))
-                    as Box<dyn OpaqueFact>
+                    as Box<dyn ExoticFact>
             });
         let uniform_tdim = if t.datum_type() == TDim::datum_type() && t.len() == 1 {
             t.try_as_dense().ok().and_then(|d| d.as_slice::<TDim>().ok()).map(|s| s[0].clone())
@@ -449,7 +449,7 @@ impl From<Arc<Tensor>> for TypedFact {
             datum_type: t.datum_type(),
             shape: ShapeFact::from_dims(t.shape().iter().map(TDim::from)),
             uniform: t.as_uniform().map(Arc::new),
-            opaque_fact,
+            exotic_fact,
             konst: Some(t),
             uniform_tdim,
         }
@@ -472,7 +472,7 @@ impl fmt::Debug for TypedFact {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(fmt, "{:?},{:?}", self.shape, self.datum_type)?;
         if self.is_exotic() {
-            if let Some(of) = &self.opaque_fact {
+            if let Some(of) = &self.exotic_fact {
                 write!(fmt, " 🔍 {of:?} ")?
             } else {
                 write!(fmt, " 🔍 <no opaque fact> ")?

@@ -68,8 +68,8 @@ impl MMMInputValue for PanelExtractInput {
     fn format(&self) -> &dyn MMMInputFormat {
         &self.format.to
     }
-    fn opaque_fact(&self) -> &dyn OpaqueFact {
-        self.data.opaque_fact()
+    fn exotic_fact(&self) -> &dyn ExoticFact {
+        self.data.exotic_fact()
     }
     fn same_as(&self, other: &dyn MMMInputValue) -> bool {
         other

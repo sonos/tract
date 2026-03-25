@@ -283,11 +283,11 @@ impl DeviceContext for TractCudaContext {
         Ok(Box::new(CudaTensor::uninitialized_dt(shape, dt)?))
     }
 
-    fn uninitialized_device_opaque_tensor(
+    fn uninitialized_device_exotic_tensor(
         &self,
-        opaque_fact: Box<dyn OpaqueFact>,
+        exotic_fact: Box<dyn ExoticFact>,
     ) -> TractResult<Box<dyn OwnedDeviceTensor>> {
-        Ok(Box::new(CudaTensor::uninitialized_opaque(opaque_fact)?))
+        Ok(Box::new(CudaTensor::uninitialized_exotic(exotic_fact)?))
     }
 }
 

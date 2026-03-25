@@ -43,24 +43,24 @@ impl DeviceMemoryPool {
                     shape: shape.into(),
                     strides: Tensor::natural_strides(shape),
                     offset_bytes: offsets[0][0],
-                    opaque_fact: None,
+                    exotic_fact: None,
                 }
                 .into())
             })
             .unwrap_or_else(|| DeviceTensor::uninitialized_dt(dt, shape))
     }
 
-    pub fn scalar_opaque_tensor_for_node(
+    pub fn scalar_exotic_tensor_for_node(
         &self,
         node_id: usize,
         dt: DatumType,
-        opaque_fact: Box<dyn OpaqueFact>,
+        exotic_fact: Box<dyn ExoticFact>,
     ) -> TractResult<DeviceTensor> {
         match self.resolved_schema.offsets_by_node[node_id].as_ref() {
             Some(offsets) => {
                 ensure!(
                     offsets.len() == 1 && offsets[0].len() == 2,
-                    "'scalar_opaque_tensor_for_node' is for mono-output nodes only"
+                    "'scalar_exotic_tensor_for_node' is for mono-output nodes only"
                 );
                 Ok(DeviceArenaView {
                     arena: Arc::clone(&self.storage),
@@ -69,11 +69,11 @@ impl DeviceMemoryPool {
                     shape: tvec!(),
                     strides: tvec!(),
                     offset_bytes: offsets[0][1],
-                    opaque_fact: Some(opaque_fact.clone()),
+                    exotic_fact: Some(exotic_fact.clone()),
                 }
                 .into())
             }
-            None => DeviceTensor::uninitialized_opaque(opaque_fact),
+            None => DeviceTensor::uninitialized_exotic(exotic_fact),
         }
     }
 }

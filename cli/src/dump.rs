@@ -8,7 +8,7 @@ use nu_ansi_term::Color::*;
 use nu_ansi_term::Style;
 use tract_core::ops::einsum::EinSum;
 use tract_core::ops::matmul::optimized::{OptMatMul, ProtoFusedSpec};
-use tract_core::ops::matmul::pack::DynPackedOpaqueFact;
+use tract_core::ops::matmul::pack::DynPackedExoticFact;
 use tract_core::ops::scan::OptScan;
 #[allow(unused_imports)]
 #[cfg(any(target_os = "linux", target_os = "windows"))]
@@ -22,7 +22,7 @@ use tract_libcli::profile::BenchLimits;
 use tract_libcli::tensor::get_or_make_inputs;
 use tract_libcli::terminal;
 use tract_linalg::block_quant::PackedBlockQuantFact;
-use tract_linalg::mmm::PackedOpaqueFact;
+use tract_linalg::mmm::PackedExoticFact;
 
 #[allow(unused_variables)]
 pub fn annotate_with_graph_def(
@@ -440,13 +440,13 @@ pub fn mm_report(
                 .iter()
                 .take(2)
                 .map(|fact| {
-                    fact.opaque_fact
+                    fact.exotic_fact
                         .as_ref()
                         .and_then(|of| {
-                            of.downcast_ref::<DynPackedOpaqueFact>()
+                            of.downcast_ref::<DynPackedExoticFact>()
                                 .map(|of| of.packers.iter().map(|m| format!("{m}")).join(", "))
                                 .or_else(|| {
-                                    of.downcast_ref::<PackedOpaqueFact>()
+                                    of.downcast_ref::<PackedExoticFact>()
                                         .map(|pof| format!("{}", pof.format))
                                 })
                                 .or_else(|| {

@@ -120,7 +120,7 @@ impl CudaTransform {
                                 konst.as_ref().clone().into_device()?.into_tensor();
                             let device_fact = DeviceFact::from_host(in_fact.clone())?;
 
-                            *in_fact = device_fact.into_opaque_fact();
+                            *in_fact = device_fact.into_exotic_fact();
 
                             in_fact.konst = Some(Arc::new(device_konst));
                             mapped_inputs.push(mapping[i]);
@@ -249,14 +249,14 @@ fn can_translate_to_cuda_op(source: &TypedModel, node: &TypedNode) -> TractResul
 
 fn convert_const(op: &Const) -> TractResult<Const> {
     let typed_fact: TypedFact = Arc::clone(op.val()).into();
-    let cuda_fact = if let Some(of) = op.opaque_fact() {
-        DeviceFact::from_host(typed_fact.with_opaque_fact(clone_box(of)))?
+    let cuda_fact = if let Some(of) = op.exotic_fact() {
+        DeviceFact::from_host(typed_fact.with_exotic_fact(clone_box(of)))?
     } else {
         DeviceFact::from_host(typed_fact)?
     };
 
     let cuda_const = op.val().clone().into_device()?.into_tensor().into_arc_tensor();
-    Const::new_with_opaque_fact(cuda_const, Box::new(cuda_fact))
+    Const::new_with_exotic_fact(cuda_const, Box::new(cuda_fact))
 }
 
 macro_rules! map_unary_ops {
@@ -414,7 +414,7 @@ fn convert_matmul_to_cuda(
     if swap_inputs {
         let out_fact = target.outlet_fact(matmul_output[0])?;
         let rank = &out_fact
-            .opaque_fact
+            .exotic_fact
             .clone()
             .map(|fact| fact.clarify_dt_shape().unwrap().1.len())
             .unwrap();

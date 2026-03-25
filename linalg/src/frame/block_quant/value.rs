@@ -41,8 +41,8 @@ impl std::fmt::Debug for BlockQuantFact {
     }
 }
 
-impl OpaqueFact for BlockQuantFact {
-    fn same_as(&self, other: &dyn OpaqueFact) -> bool {
+impl ExoticFact for BlockQuantFact {
+    fn same_as(&self, other: &dyn ExoticFact) -> bool {
         other.downcast_ref::<Self>().is_some_and(|o| o == self)
     }
 
@@ -70,8 +70,8 @@ impl std::fmt::Debug for PackedBlockQuantFact {
     }
 }
 
-impl OpaqueFact for PackedBlockQuantFact {
-    fn same_as(&self, other: &dyn OpaqueFact) -> bool {
+impl ExoticFact for PackedBlockQuantFact {
+    fn same_as(&self, other: &dyn ExoticFact) -> bool {
         other.downcast_ref::<Self>().is_some_and(|o| o == self)
     }
 

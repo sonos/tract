@@ -45,14 +45,14 @@ pub fn make_tensor_for_node(
         .unwrap_or_else(|| DeviceTensor::uninitialized_dt(dt, shape))
 }
 
-pub fn make_scalar_opaque_tensor_for_node(
+pub fn make_scalar_exotic_tensor_for_node(
     session: &TurnState,
     node_id: usize,
     dt: DatumType,
-    opaque_fact: Box<dyn OpaqueFact>,
+    exotic_fact: Box<dyn ExoticFact>,
 ) -> TractResult<DeviceTensor> {
     match session.scratch_extensions.get::<DeviceMemoryPool>() {
-        Some(mem) => mem.scalar_opaque_tensor_for_node(node_id, dt, opaque_fact),
-        None => DeviceTensor::uninitialized_opaque(opaque_fact),
+        Some(mem) => mem.scalar_exotic_tensor_for_node(node_id, dt, exotic_fact),
+        None => DeviceTensor::uninitialized_exotic(exotic_fact),
     }
 }

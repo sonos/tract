@@ -115,13 +115,13 @@ pub fn eval_device_mem_req_for_nodes(
     Ok(scoped_nodes)
 }
 
-fn collect_opaque_facts(model: &TypedModel) -> TractResult<Vec<NodeOpaqueFacts>> {
-    let mut res: Vec<TVec<Option<Box<dyn OpaqueFact>>>> = vec![];
+fn collect_exotic_facts(model: &TypedModel) -> TractResult<Vec<NodeExoticFacts>> {
+    let mut res: Vec<TVec<Option<Box<dyn ExoticFact>>>> = vec![];
     for node in model.nodes() {
-        let mut tmp: TVec<Option<Box<dyn OpaqueFact>>> = tvec![];
+        let mut tmp: TVec<Option<Box<dyn ExoticFact>>> = tvec![];
         for fact in model.node_output_facts(node.id)? {
             if let Some(dev_fact) = fact.as_device_fact() {
-                tmp.push(dev_fact.opaque_fact.clone());
+                tmp.push(dev_fact.exotic_fact.clone());
             }
         }
         res.push(tmp);
@@ -163,7 +163,7 @@ impl Partition {
     }
 }
 
-type NodeOpaqueFacts = TVec<Option<Box<dyn OpaqueFact>>>;
+type NodeExoticFacts = TVec<Option<Box<dyn ExoticFact>>>;
 /// This struct represents a resolved memory schema for a model that contains
 /// GPU operators. This schema is concrete.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -181,7 +181,7 @@ pub struct DeviceMemSchema {
     pub by_partition: Vec<Partition>,
     // vec![vec![Option<NodeMemReq>; num_partitions]; num_steps].
     pub by_steps: Vec<Vec<Option<NodeMemReq>>>,
-    pub opaque_facts: Vec<NodeOpaqueFacts>,
+    pub exotic_facts: Vec<NodeExoticFacts>,
 }
 
 impl DeviceMemSchema {
@@ -310,7 +310,7 @@ impl DeviceMemSchema {
     ) -> TractResult<DeviceMemSchema> {
         let mut nodes_mem_req = eval_device_mem_req_for_nodes(model, order)?;
 
-        let opaque_facts = collect_opaque_facts(model)?;
+        let exotic_facts = collect_exotic_facts(model)?;
         let hinted_mem_size = nodes_mem_req
             .iter()
             .map(|node_mem| Ok((node_mem.outlet_id, node_mem.mem_size.eval_to_i64(hint)?)))
@@ -355,7 +355,7 @@ impl DeviceMemSchema {
             model_num_nodes: model.nodes().len(),
             by_partition: partitions,
             by_steps,
-            opaque_facts,
+            exotic_facts,
         })
     }
 }

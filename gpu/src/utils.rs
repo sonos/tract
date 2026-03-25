@@ -17,7 +17,7 @@ pub fn facts_to_device_facts(
         let output_facts = (resolve_facts)(device_facts.as_slice())?;
         Ok(output_facts
             .into_iter()
-            .map(|it| Ok(DeviceFact::new(DeviceTensorOrigin::FromDevice, it)?.into_opaque_fact()))
+            .map(|it| Ok(DeviceFact::new(DeviceTensorOrigin::FromDevice, it)?.into_exotic_fact()))
             .collect::<TractResult<_>>()?)
     } else if facts.iter().all(|it| it.as_device_fact().is_none()) {
         (resolve_facts)(facts)
@@ -58,7 +58,7 @@ pub fn as_quant_fact<'a>(
     fact: &'a TypedFact,
     format: &dyn BlockQuant,
 ) -> Option<&'a BlockQuantFact> {
-    fact.opaque_fact
+    fact.exotic_fact
         .as_ref()
         .and_then(|of| of.downcast_ref::<BlockQuantFact>())
         .and_then(|bqf| if bqf.format.same_as(format) { Some(bqf) } else { None })
@@ -70,7 +70,7 @@ pub fn as_q40_tensor(a: &Tensor) -> Option<&BlockQuantStorage> {
 
 pub fn get_quant_fact(t: &DeviceTensor, format: &dyn BlockQuant) -> Option<BlockQuantFact> {
     if let DeviceTensor::Owned(t) = t {
-        t.opaque_fact()
+        t.exotic_fact()
             .and_then(|of| of.downcast_ref::<BlockQuantFact>())
             .cloned()
             .filter(|bqf| bqf.format.same_as(format))

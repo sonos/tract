@@ -185,7 +185,7 @@ impl DeviceContext for MetalContext {
                 Some(Box::new(BlockQuantFact::new(
                     tract_core::dyn_clone::clone_box(bqs.format()),
                     tensor.view().tensor.shape().into(),
-                )) as Box<dyn OpaqueFact>),
+                )) as Box<dyn ExoticFact>),
             )
         } else {
             (view.tensor.as_bytes(), None)
@@ -208,7 +208,7 @@ impl DeviceContext for MetalContext {
         Ok(Box::new(MetalTensor {
             inner: MValue::Natural(tensor.into_arc_tensor()),
             device_buffer,
-            opaque_fact: bqf,
+            exotic_fact: bqf,
         }))
     }
 
@@ -225,11 +225,11 @@ impl DeviceContext for MetalContext {
         self.tensor_to_device(tensor.into())
     }
 
-    fn uninitialized_device_opaque_tensor(
+    fn uninitialized_device_exotic_tensor(
         &self,
-        opaque_fact: Box<dyn OpaqueFact>,
+        exotic_fact: Box<dyn ExoticFact>,
     ) -> TractResult<Box<dyn OwnedDeviceTensor>> {
-        if let Some(bqf) = opaque_fact.downcast_ref::<BlockQuantFact>() {
+        if let Some(bqf) = exotic_fact.downcast_ref::<BlockQuantFact>() {
             let blocks = bqf.shape().iter().product::<usize>() / bqf.format.block_len();
             let blob = unsafe {
                 Blob::for_layout(

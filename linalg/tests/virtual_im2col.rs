@@ -361,7 +361,7 @@ impl MMMInputValue for EagerIm2col {
         &self.packer
     }
 
-    fn opaque_fact(&self) -> &dyn OpaqueFact {
+    fn exotic_fact(&self) -> &dyn ExoticFact {
         unimplemented!()
     }
 
@@ -533,7 +533,7 @@ impl MMMInputValue for LazyIm2col {
         &self.spec
     }
 
-    fn opaque_fact(&self) -> &dyn OpaqueFact {
+    fn exotic_fact(&self) -> &dyn ExoticFact {
         unimplemented!()
     }
 

@@ -23,7 +23,7 @@ use anyhow::{bail, ensure};
 pub use binary::BinOps;
 use cudarc::driver::{CudaView, CudaViewMut};
 pub use iff::Iff;
-use tract_core::internal::OpaqueFact;
+use tract_core::internal::ExoticFact;
 use tract_core::prelude::{TDim, TractResult};
 use tract_core::tract_linalg::block_quant::{BlockQuant, BlockQuantFact, Q4_0, Q8_1};
 use tract_gpu::tensor::{DeviceTensor, OwnedDeviceTensor};
@@ -188,16 +188,16 @@ impl BroadcastKind {
 }
 
 fn tensor_size(t: &DeviceTensor) -> usize {
-    let opaque_fact: Option<&dyn OpaqueFact> = match t {
+    let exotic_fact: Option<&dyn ExoticFact> = match t {
         DeviceTensor::Owned(ot) => {
             let cuda_tensor =
                 ot.downcast_ref::<CudaTensor>().expect("Non Cuda-Tensor in a Cuda Context");
-            cuda_tensor.opaque_fact()
+            cuda_tensor.exotic_fact()
         }
-        DeviceTensor::ArenaView(av) => av.opaque_fact(),
+        DeviceTensor::ArenaView(av) => av.exotic_fact(),
     };
 
-    if let Some(of) = opaque_fact {
+    if let Some(of) = exotic_fact {
         of.buffer_sizes()
             .iter()
             .sum::<TDim>()

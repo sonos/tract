@@ -1,25 +1,25 @@
 use crate::internal::*;
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
-pub struct Const(Arc<Tensor>, Option<Box<dyn OpaqueFact>>);
+pub struct Const(Arc<Tensor>, Option<Box<dyn ExoticFact>>);
 
 impl Const {
     pub fn new(tensor: Arc<Tensor>) -> TractResult<Const> {
-        Self::new_with_opt_opaque_fact(tensor, None)
+        Self::new_with_opt_exotic_fact(tensor, None)
     }
 
-    pub fn new_with_opaque_fact(
+    pub fn new_with_exotic_fact(
         tensor: Arc<Tensor>,
-        fact: Box<dyn OpaqueFact>,
+        fact: Box<dyn ExoticFact>,
     ) -> TractResult<Const> {
-        Self::new_with_opt_opaque_fact(tensor, Some(fact))
+        Self::new_with_opt_exotic_fact(tensor, Some(fact))
     }
 
-    pub fn new_with_opt_opaque_fact(
+    pub fn new_with_opt_exotic_fact(
         tensor: Arc<Tensor>,
-        fact: Option<Box<dyn OpaqueFact>>,
+        fact: Option<Box<dyn ExoticFact>>,
     ) -> TractResult<Const> {
-        ensure!(fact.is_some() || tensor.is_plain(), "Opaque tensor requires an opaque_fact");
+        ensure!(fact.is_some() || tensor.is_plain(), "Opaque tensor requires an exotic_fact");
         Ok(Const(tensor, fact))
     }
 
@@ -27,7 +27,7 @@ impl Const {
         &self.0
     }
 
-    pub fn opaque_fact(&self) -> Option<&dyn OpaqueFact> {
+    pub fn exotic_fact(&self) -> Option<&dyn ExoticFact> {
         self.1.as_deref()
     }
 }
@@ -55,11 +55,11 @@ impl TypedOp for Const {
     as_op!();
 
     fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        let mut fact = TypedFact::from(&self.0);
-        if let Some(opaque) = &self.1 {
-            fact = fact.with_opaque_fact(opaque.clone());
+        let mut fact = TypedFact::try_from(&self.0)?;
+        if let Some(exotic) = &self.1 {
+            fact = fact.with_exotic_fact(exotic.clone());
         }
-        // uniform_tdim is already set by TypedFact::from for single-element constants
+        // uniform_tdim is already set by TypedFact::try_from for single-element constants
         Ok(tvec!(fact))
     }
 
@@ -101,7 +101,7 @@ impl TypedOp for Const {
             if self.1.is_some() {
                 let my_fact = self.output_facts(&[])?;
                 let changed_fact = change.output_facts(&[&my_fact[0]])?;
-                sub.1 = changed_fact[0].opaque_fact.clone();
+                sub.1 = changed_fact[0].exotic_fact.clone();
             }
             Ok(Some(AxisChangeConsequence {
                 substitute_op: Some(Box::new(sub)),

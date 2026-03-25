@@ -17,7 +17,7 @@ pub struct DeviceArenaView {
     pub(crate) shape: TVec<usize>,
     pub(crate) strides: TVec<isize>,
     pub(crate) offset_bytes: usize,
-    pub(crate) opaque_fact: Option<Box<dyn OpaqueFact>>,
+    pub(crate) exotic_fact: Option<Box<dyn ExoticFact>>,
 }
 
 impl DeviceArenaView {
@@ -54,8 +54,8 @@ impl DeviceArenaView {
         self.offset_bytes.as_()
     }
 
-    pub fn opaque_fact(&self) -> Option<&dyn OpaqueFact> {
-        self.opaque_fact.as_deref()
+    pub fn exotic_fact(&self) -> Option<&dyn ExoticFact> {
+        self.exotic_fact.as_deref()
     }
 
     /// Get the number of values in the tensor.
@@ -66,7 +66,7 @@ impl DeviceArenaView {
     }
 
     pub fn as_bytes(&self) -> Vec<u8> {
-        let len = if let Some(of) = &self.opaque_fact {
+        let len = if let Some(of) = &self.exotic_fact {
             of.mem_size().as_i64().unwrap() as usize
         } else {
             self.len() * self.dt.size_of()
@@ -76,7 +76,7 @@ impl DeviceArenaView {
 
     /// Reshaped tensor with given shape.
     pub fn reshaped(&self, shape: impl Into<TVec<usize>>) -> TractResult<Self> {
-        ensure!(self.opaque_fact.is_none(), "Can't reshape opaque tensor");
+        ensure!(self.exotic_fact.is_none(), "Can't reshape opaque tensor");
         let shape = shape.into();
         if self.len() != shape.iter().product::<usize>() {
             bail!("Invalid reshape {:?} to {:?}", self.shape(), shape);
@@ -89,7 +89,7 @@ impl DeviceArenaView {
                 strides: Tensor::natural_strides(&shape),
                 shape,
                 offset_bytes: self.offset_bytes,
-                opaque_fact: None,
+                exotic_fact: None,
             })
         } else {
             Ok(self.clone())
@@ -97,7 +97,7 @@ impl DeviceArenaView {
     }
 
     pub fn restrided(&self, strides: impl Into<TVec<isize>>) -> TractResult<Self> {
-        ensure!(self.opaque_fact.is_none(), "Can't restride opaque tensor");
+        ensure!(self.exotic_fact.is_none(), "Can't restride opaque tensor");
         let strides = strides.into();
         check_strides_validity(self.shape().into(), strides.clone())?;
 
@@ -109,7 +109,7 @@ impl DeviceArenaView {
                 strides,
                 shape: self.shape.clone(),
                 offset_bytes: self.offset_bytes,
-                opaque_fact: None,
+                exotic_fact: None,
             })
         } else {
             Ok(self.clone())
@@ -121,7 +121,7 @@ impl DeviceArenaView {
         let content = self.as_bytes();
         unsafe {
             if let Some(bqf) =
-                self.opaque_fact.as_ref().and_then(|of| of.downcast_ref::<BlockQuantFact>())
+                self.exotic_fact.as_ref().and_then(|of| of.downcast_ref::<BlockQuantFact>())
             {
                 Ok(BlockQuantStorage::new(
                     bqf.format.clone(),

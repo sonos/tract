@@ -41,7 +41,7 @@ impl TypedOp for BlockQuantIntoShape {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let input = inputs[0];
         let old = input
-            .opaque_fact
+            .exotic_fact
             .as_ref()
             .and_then(|of| of.downcast_ref::<BlockQuantFact>())
             .context("Expects BlockQuantFact")?;
@@ -51,7 +51,7 @@ impl TypedOp for BlockQuantIntoShape {
         let bqf_shape = tvec!(g, new_m, new_k);
         let new = BlockQuantFact::new(old.format.clone(), bqf_shape.clone());
         let shape: TVec<TDim> = bqf_shape.iter().map(|d| d.to_dim()).collect();
-        let fact = inputs[0].datum_type.fact(&*shape).with_opaque_fact(new);
+        let fact = inputs[0].datum_type.fact(&*shape).with_exotic_fact(new);
         Ok(tvec!(fact))
     }
     as_op!();
@@ -98,7 +98,7 @@ impl TypedOp for SplitGroupBlockQuant {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let input = inputs[0];
         let bqf = input
-            .opaque_fact
+            .exotic_fact
             .as_ref()
             .and_then(|of| of.downcast_ref::<BlockQuantFact>())
             .context("Expect BlockQuantFact")?;
@@ -108,11 +108,11 @@ impl TypedOp for SplitGroupBlockQuant {
             input.shape.iter().map(|d| d.to_usize()).collect::<TractResult<_>>()?;
         new_shape[0] = o / self.group;
         new_shape.insert(0, self.group);
-        let opaque_fact = BlockQuantFact::new(bqf.format.clone(), new_shape.clone());
+        let exotic_fact = BlockQuantFact::new(bqf.format.clone(), new_shape.clone());
         let fact = inputs[0]
             .datum_type
             .fact(&*new_shape.iter().map(|d| d.to_dim()).collect::<TVec<_>>())
-            .with_opaque_fact(opaque_fact);
+            .with_exotic_fact(exotic_fact);
         Ok(tvec!(fact))
     }
     as_op!();

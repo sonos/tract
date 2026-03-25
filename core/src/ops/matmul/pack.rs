@@ -53,12 +53,12 @@ impl TypedOp for OptMatMulPack {
         }
         let k = inputs[0].shape[self.k_axis].clone();
         let mn = inputs[0].shape[self.mn_axis].clone();
-        let opaque_fact = DynPackedOpaqueFact { k, mn, packers: self.packers.clone() };
+        let exotic_fact = DynPackedExoticFact { k, mn, packers: self.packers.clone() };
         Ok(tvec!(
             inputs[0]
                 .datum_type
                 .fact(self.output_shape(&inputs[0].shape))
-                .with_opaque_fact(opaque_fact)
+                .with_exotic_fact(exotic_fact)
         ))
     }
 
@@ -129,14 +129,14 @@ impl OptMatMulPack {
 }
 
 #[derive(Hash, Clone, Debug, PartialEq, Eq)]
-pub struct DynPackedOpaqueFact {
+pub struct DynPackedExoticFact {
     pub k: TDim,
     pub mn: TDim,
     pub packers: Vec<PackedFormat>,
 }
 
-impl OpaqueFact for DynPackedOpaqueFact {
-    fn same_as(&self, other: &dyn OpaqueFact) -> bool {
+impl ExoticFact for DynPackedExoticFact {
+    fn same_as(&self, other: &dyn ExoticFact) -> bool {
         other.downcast_ref::<Self>().is_some_and(|o| o == self)
     }
 
@@ -204,7 +204,7 @@ impl TypedOp for OptSimpleMatMulPack {
             tvec!()
         };
         let fact =
-            inputs[0].datum_type.fact(&*output_shape).with_opaque_fact(PackedBlockQuantFact {
+            inputs[0].datum_type.fact(&*output_shape).with_exotic_fact(PackedBlockQuantFact {
                 format: self.packed_format.clone(),
                 shape: tvec!(self.m, self.k),
             });

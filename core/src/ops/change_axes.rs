@@ -707,13 +707,13 @@ impl TypedOp for AxisOp {
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         if let Some(bqf) =
-            inputs[0].opaque_fact().and_then(|of| of.downcast_ref::<BlockQuantFact>())
+            inputs[0].exotic_fact().and_then(|of| of.downcast_ref::<BlockQuantFact>())
         {
             let mut new_shape: TVec<usize> = bqf.shape().into();
             self.change_shape_array(&mut new_shape, false)?;
             let new_bqf = BlockQuantFact::new(bqf.format.clone(), new_shape.clone());
             let shape: TVec<TDim> = new_shape.iter().map(|d| d.to_dim()).collect();
-            let mut new_fact = inputs[0].datum_type.fact(&*shape).with_opaque_fact(new_bqf);
+            let mut new_fact = inputs[0].datum_type.fact(&*shape).with_exotic_fact(new_bqf);
             if let Some(k) = &inputs[0].konst {
                 let mut new = k.clone().into_tensor();
                 self.change_tensor(&mut new, false)?;
@@ -724,7 +724,7 @@ impl TypedOp for AxisOp {
         let mut shape = inputs[0].shape.clone();
         self.change_shape(&mut shape, false)?;
         let mut fact = inputs[0].datum_type.fact(shape);
-        fact.opaque_fact.clone_from(&inputs[0].opaque_fact);
+        fact.exotic_fact.clone_from(&inputs[0].exotic_fact);
         if let Some(tdim) = &inputs[0].uniform_tdim {
             fact.uniform_tdim = remap_uniform_tdim(tdim, self);
         }
@@ -872,7 +872,7 @@ impl TypedOp for AxisOp {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        if node.outputs[0].fact.opaque_fact.is_some() {
+        if node.outputs[0].fact.exotic_fact.is_some() {
             return Ok(None);
         }
         if let Some(shape) = node.outputs[0].fact.shape.as_concrete()
@@ -1086,8 +1086,8 @@ impl EvalOp for IntoShape {
 impl TypedOp for IntoShape {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut fact = inputs[0].datum_type.fact(&self.dims);
-        if let Some(of) = &inputs[0].opaque_fact {
-            fact = fact.with_opaque_fact(of.clone());
+        if let Some(of) = &inputs[0].exotic_fact {
+            fact = fact.with_exotic_fact(of.clone());
         }
         Ok(tvec!(fact))
     }

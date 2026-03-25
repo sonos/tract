@@ -67,18 +67,18 @@ pub fn rewire_sync_after_const(
     };
 
     let host_const = device_const.to_host()?;
-    let opaque_fact: Option<Box<dyn OpaqueFact>> =
+    let exotic_fact: Option<Box<dyn ExoticFact>> =
         host_const.storage_as::<BlockQuantStorage>().map(|bqs| {
             Box::new(BlockQuantFact::new(
                 tract_core::dyn_clone::clone_box(bqs.format()),
                 host_const.shape().into(),
-            )) as Box<dyn OpaqueFact>
+            )) as Box<dyn ExoticFact>
         });
 
     let mut patch = TypedModelPatch::default();
     let out = patch.wire_node(
         node_name.to_string(),
-        Const::new_with_opt_opaque_fact(host_const, opaque_fact)?,
+        Const::new_with_opt_exotic_fact(host_const, exotic_fact)?,
         &[],
     )?;
 

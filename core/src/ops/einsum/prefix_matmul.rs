@@ -66,15 +66,15 @@ fn rule(
     // terrible hack to maintain opaque fact through eager propatagation of constant through the
     // axes transformation
     if let Some(op) = patch.node_mut(wire[0].node).op_as_mut::<Const>() {
-        *op = Const::new_with_opt_opaque_fact(
+        *op = Const::new_with_opt_exotic_fact(
             op.val().clone(),
-            model.outlet_fact(node.inputs[0])?.opaque_fact.clone(),
+            model.outlet_fact(node.inputs[0])?.exotic_fact.clone(),
         )?;
     }
     patch
         .outlet_fact_mut(wire[0])?
-        .opaque_fact
-        .clone_from(&model.outlet_fact(node.inputs[0])?.opaque_fact);
+        .exotic_fact
+        .clone_from(&model.outlet_fact(node.inputs[0])?.exotic_fact);
     // end of hack
 
     let b_order_es: String = op.axes.axes(InOut::In(1)).map(|a| a.repr).collect();

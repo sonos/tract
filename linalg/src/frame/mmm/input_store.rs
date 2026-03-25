@@ -62,7 +62,7 @@ pub trait MMMInputValue: DynClone + Debug + DynHash + Send + Sync + Display + Do
     }
     fn mn(&self) -> usize;
     fn k(&self) -> usize;
-    fn opaque_fact(&self) -> &dyn OpaqueFact;
+    fn exotic_fact(&self) -> &dyn ExoticFact;
     fn same_as(&self, other: &dyn MMMInputValue) -> bool;
 
     fn extract_at_mn_f16(&self, mn: usize, slice: &mut [f16]) -> TractResult<()>;
@@ -74,20 +74,20 @@ dyn_hash::hash_trait_object!(MMMInputValue);
 
 #[allow(clippy::derived_hash_with_manual_eq)]
 #[derive(Clone, Hash, Debug)]
-pub struct PackedOpaqueFact {
+pub struct PackedExoticFact {
     pub format: Box<dyn MMMInputFormat>,
     pub mn: TDim,
     pub k: usize,
 }
 
-impl Display for PackedOpaqueFact {
+impl Display for PackedExoticFact {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Eager {} tensor (mn={} k={})", self.format, self.mn, self.k)
     }
 }
 
-impl OpaqueFact for PackedOpaqueFact {
-    fn same_as(&self, other: &dyn OpaqueFact) -> bool {
+impl ExoticFact for PackedExoticFact {
+    fn same_as(&self, other: &dyn ExoticFact) -> bool {
         other.downcast_ref::<Self>().is_some_and(|o| o == self)
     }
 
@@ -96,7 +96,7 @@ impl OpaqueFact for PackedOpaqueFact {
     }
 }
 
-impl PartialEq for PackedOpaqueFact {
+impl PartialEq for PackedExoticFact {
     fn eq(&self, other: &Self) -> bool {
         self.format.same_as(&*other.format) && self.mn == other.mn && self.k == other.k
     }
@@ -104,7 +104,7 @@ impl PartialEq for PackedOpaqueFact {
 
 #[derive(Clone, Hash)]
 pub struct EagerPackedInput {
-    pub fact: PackedOpaqueFact,
+    pub fact: PackedExoticFact,
     pub packed: Arc<Blob>,
     pub panel_bytes: usize,
     pub mn: usize,
@@ -126,7 +126,7 @@ impl MMMInputValue for EagerPackedInput {
     fn format(&self) -> &dyn MMMInputFormat {
         &*self.fact.format
     }
-    fn opaque_fact(&self) -> &dyn OpaqueFact {
+    fn exotic_fact(&self) -> &dyn ExoticFact {
         &self.fact
     }
     fn same_as(&self, other: &dyn MMMInputValue) -> bool {

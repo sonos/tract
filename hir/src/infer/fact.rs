@@ -179,7 +179,7 @@ impl TryFrom<&InferenceFact> for TypedFact {
                 shape,
                 konst,
                 uniform,
-                opaque_fact: None,
+                exotic_fact: None,
                 uniform_tdim: None,
             })
         } else {
