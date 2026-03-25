@@ -49,7 +49,8 @@ impl FloatPrecisionTranslator {
 
         let mut mapped_inputs = tvec![];
         for (i_idx, i) in node.inputs.iter().enumerate() {
-            if model.outlet_fact(mapping[i])?.datum_type == original_op_float_dt {
+            let fact = model.outlet_fact(mapping[i])?;
+            if fact.datum_type == original_op_float_dt && fact.is_plain() {
                 let casted_mapped_input = model.wire_node(
                     format!("{}.cast-{i_idx}", node.name),
                     Cast { to: op_float_dt },
@@ -77,7 +78,8 @@ impl FloatPrecisionTranslator {
         for (o_idx, o) in target_node_outlet_ids.into_iter().enumerate() {
             // Add Cast op for model output
             let is_source_output = source.outputs.contains(&OutletId::new(node.id, o_idx));
-            if target.outlet_fact(o)?.datum_type == self.from_dt && is_source_output {
+            let fact = target.outlet_fact(o)?;
+            if fact.datum_type == self.from_dt && fact.is_plain() && is_source_output {
                 let casted_output = target.wire_node(
                     format!("{}.cast-out-{o_idx}", node.name),
                     Cast { to: self.to_dt },
@@ -142,7 +144,7 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>>
                 }
                 Box::new(TypedSource::new(fact))
             } else if let Some(konst) = node.op_as::<Const>() {
-                if konst.val().datum_type() == self.from_dt {
+                if konst.val().datum_type() == self.from_dt && konst.val().is_plain() {
                     let wire = target.add_const(
                         format!("{}.{:?}", node.name, self.from_dt),
                         konst.val().clone(),
