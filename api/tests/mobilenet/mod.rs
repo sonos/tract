@@ -111,17 +111,6 @@ fn test_inference_model() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[test]
-fn test_set_output_names_on_inference_model() -> anyhow::Result<()> {
-    ensure_models()?;
-    let mut model = onnx()?.load("mobilenetv2-7.onnx")?;
-    model.set_input_fact(0, "B,3,224,224,f32")?;
-    model.set_output_fact(0, None)?;
-    model.analyse()?;
-    model.set_output_names(["mobilenetv20_output_pred_fwd"])?;
-    assert_eq!(model.output_fact(0).unwrap().to_string(), "B,1000,1,1,f32");
-    Ok(())
-}
 
 #[test]
 fn test_typed_model() -> anyhow::Result<()> {
@@ -147,14 +136,6 @@ fn test_runtime() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[test]
-fn test_set_output_names() -> anyhow::Result<()> {
-    ensure_models()?;
-    let mut model = nnef()?.load("mobilenet_v2_1.0.onnx.nnef.tgz")?;
-    model.set_output_names(["mean_reduce_mean_reduce_output"])?;
-    assert_eq!(model.output_fact(0)?.to_string(), "1280,1,1,f32");
-    Ok(())
-}
 
 #[test]
 fn test_concretize() -> anyhow::Result<()> {

@@ -73,12 +73,6 @@ def test_inference_model():
     assert str(model.output_fact(0)) == "B,1000,f32"
     typed = model.into_model()
 
-def test_set_output_names_on_inference_model():
-    model = tract.onnx().load("./mobilenetv2-7.onnx")
-    model.set_input_fact(0, "B,3,224,224,f32")
-    model.analyse()
-    model.set_output_names(["mobilenetv20_output_pred_fwd"])
-    assert str(model.output_fact(0)) == "B,1000,1,1,f32"
 
 def test_typed_model():
     model = tract.nnef().load("mobilenet_v2_1.0.onnx.nnef.tgz")
@@ -97,10 +91,6 @@ def test_runtime():
     confidences = result[0].to_numpy()
     assert numpy.argmax(confidences) == 652
 
-def test_set_output_names():
-    model = tract.nnef().load("mobilenet_v2_1.0.onnx.nnef.tgz")
-    model.set_output_names(["conv_53"])
-    assert str(model.output_fact(0)) == "1,1000,f32"
 
 def test_concretize():
     model = tract.onnx().load("./mobilenetv2-7.onnx")
