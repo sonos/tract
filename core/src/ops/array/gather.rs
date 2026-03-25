@@ -181,19 +181,19 @@ impl TypedOp for Gather {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         if let Some(dt) = self.output_type {
             ensure!(
-                inputs[0].datum_type.is_opaque() || inputs[0].datum_type == dt,
+                inputs[0].is_exotic() || inputs[0].datum_type == dt,
                 "Inconsistent datum_type in Gather: attribute is {:?}, but inputs[0] is {:?}",
                 dt,
                 inputs[0].datum_type
             );
         } else {
             ensure!(
-                !inputs[0].datum_type.is_opaque(),
+                inputs[0].is_plain(),
                 "Gather applied to compressed data requires an explicit datum_type attribute for its output"
             );
         }
         ensure!(inputs[1].datum_type == i64::datum_type());
-        if inputs[0].datum_type.is_opaque() {
+        if inputs[0].is_exotic() {
             let data_shape = block_quant_aware_input_shape(inputs[0])?;
             Ok(tvec!(
                 self.output_type

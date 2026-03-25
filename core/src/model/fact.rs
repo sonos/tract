@@ -294,8 +294,9 @@ impl TypedFact {
 
     pub fn consistent(&self) -> TractResult<()> {
         self.shape.consistent()?;
+        // TODO: remove when DatumType::Opaque is eliminated
         ensure!(
-            self.opaque_fact.is_some() || !self.datum_type.is_opaque(),
+            self.is_exotic() || !self.datum_type.is_opaque(),
             "Opaque datum type requires an opaque_fact annotation"
         );
         if let Some(k) = &self.konst {
@@ -345,6 +346,16 @@ impl TypedFact {
 
     pub fn opaque_fact(&self) -> Option<&dyn OpaqueFact> {
         self.opaque_fact.as_deref()
+    }
+
+    #[inline]
+    pub fn is_exotic(&self) -> bool {
+        self.opaque_fact.is_some()
+    }
+
+    #[inline]
+    pub fn is_plain(&self) -> bool {
+        self.opaque_fact.is_none()
     }
 }
 
@@ -459,7 +470,7 @@ impl<'a> From<&'a Arc<Tensor>> for TypedFact {
 impl fmt::Debug for TypedFact {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(fmt, "{:?},{:?}", self.shape, self.datum_type)?;
-        if self.datum_type.is_opaque() {
+        if self.is_exotic() {
             if let Some(of) = &self.opaque_fact {
                 write!(fmt, " 🔍 {of:?} ")?
             } else {

@@ -128,7 +128,7 @@ pub fn clarify_tvalues(values: &TVec<TValue>) -> TractResult<TVec<TValue>> {
 
 pub fn clarify_typed_fact<'a>(fact: impl Into<Cow<'a, TypedFact>>) -> Cow<'a, TypedFact> {
     let fact = fact.into();
-    if fact.datum_type == DatumType::Opaque {
+    if fact.is_exotic() {
         fact.opaque_fact
             .as_ref()
             .and_then(|it| it.clarify_dt_shape())

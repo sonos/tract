@@ -21,7 +21,7 @@ use tract_linalg::block_quant::{BlockQuantFact, PackedBlockQuantFact};
 use tract_linalg::mmm::PackedOpaqueFact;
 
 pub fn block_quant_aware_input_shape(fact: &TypedFact) -> TractResult<Cow<'_, [TDim]>> {
-    if !fact.datum_type.is_opaque() {
+    if fact.is_plain() {
         return Ok(Cow::Borrowed(&*fact.shape));
     }
     let Some(opaque_fact) = fact.opaque_fact() else {
@@ -225,7 +225,7 @@ impl TypedOp for EinSum {
     ) -> TractResult<AxesMapping> {
         let mut axes = self.axes.clone();
         for (slot, i) in inputs.iter().enumerate() {
-            if i.datum_type.is_opaque()
+            if i.is_exotic()
                 && (i.opaque_fact().is_some_and(|of| {
                     of.is::<PackedOpaqueFact>() || of.is::<PackedBlockQuantFact>()
                 }))
@@ -278,7 +278,7 @@ impl TypedOp for EinSum {
         if facts
             .iter()
             .enumerate()
-            .any(|(slot, fact)| axis.inputs[slot].len() > 0 && fact.datum_type.is_opaque())
+            .any(|(slot, fact)| axis.inputs[slot].len() > 0 && fact.is_exotic())
         {
             Ok(None)
         } else {

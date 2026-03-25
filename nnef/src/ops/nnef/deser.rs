@@ -699,8 +699,7 @@ pub fn matmul(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tr
     let name = &*invocation.invocation.id.0;
     let a_rank = builder.model.outlet_fact(a)?.rank();
     let b_rank = builder.model.outlet_fact(b)?.rank();
-    if a_dt.is_opaque() {
-        ensure!(builder.model.outlet_fact(a)?.opaque_fact.is_some());
+    if builder.model.outlet_fact(a)?.is_exotic() {
         // Block-quant tensor may have a leading group dim ([1, M, K]) while
         // the other operand is 2D. Unsqueeze the non-opaque operand to match.
         let mut b = b;
@@ -713,8 +712,7 @@ pub fn matmul(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tr
         return builder
             .wire(ops::einsum::EinSum { axes, operating_dt: b_dt, q_params: None }, &[a, b]);
     }
-    if b_dt.is_opaque() {
-        ensure!(builder.model.outlet_fact(b)?.opaque_fact.is_some());
+    if builder.model.outlet_fact(b)?.is_exotic() {
         let mut a = a;
         if b_rank > a_rank {
             for _ in 0..(b_rank - a_rank) {
