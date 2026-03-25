@@ -61,9 +61,9 @@ impl SymbolScope {
         locked.table.get(name).map(|sym| Symbol(Arc::downgrade(&self.0), sym))
     }
 
-    /// Get or create the coordinate symbol for axis `k` (named "x{k}").
+    /// Get or create the coordinate symbol for axis `k` (named "🎯{k}").
     pub fn coord_sym(&self, k: usize) -> Symbol {
-        self.sym(&format!("x{k}"))
+        self.sym(&format!("🎯{k}"))
     }
 
     pub fn sym(&self, name: &str) -> Symbol {

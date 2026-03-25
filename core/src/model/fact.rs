@@ -208,7 +208,7 @@ pub struct TypedFact {
     /// optional opaque fact
     pub opaque_fact: Option<Box<dyn OpaqueFact>>,
     /// Symbolic per-element value as a TDim expression, possibly involving
-    /// coordinate symbols x0,x1,… and/or model symbols.
+    /// coordinate symbols 🎯0,🎯1,… and/or model symbols.
     /// `None` means "unknown / not tracked".
     pub uniform_tdim: Option<TDim>,
 }
