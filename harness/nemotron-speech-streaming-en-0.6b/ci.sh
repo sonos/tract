@@ -34,3 +34,11 @@ $TRACT_RUN $model_prefix.preprocessor.nnef.tgz \
 	-t 'select_outputs(outputs: ["processed_signal"])' \
 	dump -q \
 	--assert-op-count Iff 0
+
+# Check that the preprocessor can be pulsified
+$TRACT_RUN $model_prefix.preprocessor.nnef.tgz \
+	-t 'concretize_symbols(values: {"BATCH": 1})' \
+	-t 'substitute_input_with_shape_of(input_to_replace: "length", source_input: "input_signal", axis: 1)' \
+	-t 'select_outputs(outputs: ["processed_signal"])' \
+	-t 'pulse(symbol: Some("INPUT_SIGNAL__TIME"), pulse: "4800")' \
+	dump -q

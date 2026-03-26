@@ -9,8 +9,8 @@ fn pulsify(
     node: &TypedNode,
     target: &mut PulsedModel,
     mapping: &HashMap<OutletId, OutletId>,
-    _symbol: &Symbol,
-    _pulse: &TDim,
+    symbol: &Symbol,
+    pulse: &TDim,
 ) -> TractResult<Option<TVec<OutletId>>> {
     let input = mapping[&node.inputs[0]];
     let fact = target.outlet_fact(input)?.clone();
@@ -21,8 +21,10 @@ fn pulsify(
         )
     })?;
     if op.axis == stream.axis {
-        let skip = op.start.to_usize()?;
-        let take = (op.end.clone() - &op.start).to_dim();
+        let start = op.start.substitute(symbol, pulse)?;
+        let end = op.end.substitute(symbol, pulse)?;
+        let skip = start.to_usize()?;
+        let take = (end - &start).to_dim();
         let op = PulsedAxisSlice { axis: op.axis, skip, take };
         Ok(Some(target.wire_node(&*node.name, op, &[input])?))
     } else {
