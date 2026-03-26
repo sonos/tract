@@ -438,6 +438,13 @@ fn dump_subcommand() -> clap::Command {
             .action(clap::ArgAction::Append)
             .long("inner")
             .help("Navigate to a sub-model"),
+            )
+        .arg(
+            Arg::new("summary")
+            .short('s')
+            .long("summary")
+            .action(clap::ArgAction::SetTrue)
+            .help("Display a short summary: properties, model inputs and outputs"),
             );
     let dump = run_options(dump);
     let dump = output_options(dump);
