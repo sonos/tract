@@ -19,6 +19,7 @@ element_wise!(silu, Silu,
         xs.iter_mut().zip(sigmoid).for_each(|(x, s)| *x *= s);
         Ok(())
     };
+    cost: |dt| {tvec!((Cost::FMA(dt), 12), (Cost::Div(dt), 1))};
     declutter: detect_silu
 );
 

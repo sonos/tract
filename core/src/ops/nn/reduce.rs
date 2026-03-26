@@ -408,6 +408,21 @@ impl TypedOp for Reduce {
         Ok(None)
     }
 
+    fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
+        let dt = inputs[0].datum_type;
+        let count: TDim = inputs[0].shape.iter().product();
+        match self.reducer {
+            Reducer::Sum
+            | Reducer::Prod
+            | Reducer::Min
+            | Reducer::Max
+            | Reducer::All
+            | Reducer::Any => Ok(tvec!((Cost::FMA(dt), count))),
+            Reducer::MeanOfSquares => Ok(tvec!((Cost::FMA(dt), count * 2))),
+            Reducer::ArgMax(_) | Reducer::ArgMin(_) => Ok(tvec!((Cost::FMA(dt), count))),
+        }
+    }
+
     fn axes_mapping(
         &self,
         inputs: &[&TypedFact],
