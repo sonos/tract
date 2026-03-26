@@ -483,7 +483,7 @@ pub fn compare<F, O>(
     labels: (&str, &str),
 ) -> TractResult<()>
 where
-    F: Fact + Clone + for<'a> From<&'a Arc<Tensor>> + Hash,
+    F: Fact + Clone + Hash,
     O: AsRef<dyn Op> + AsMut<dyn Op> + Display + Debug + Clone,
     Graph<F, O>: Model,
 {
