@@ -195,7 +195,10 @@ fn ser_axisop(
             let mut permutation: Vec<i32> = (0..rank).map(|d| d as i32).collect();
             permutation.remove(*from);
             permutation.insert(*to, *from as _);
-            inputs.push(builder.write_fact(format!("{}.perm", node.name), tensor1(&permutation))?);
+            inputs.push(builder.write_fact(
+                format!("{}.perm", node.name),
+                TypedFact::try_from(tensor1(&permutation))?,
+            )?);
             let options = TransposeOptions::create(builder.fb(), &TransposeOptionsArgs {});
             builder.write_op_with_options(
                 &inputs,
@@ -205,7 +208,10 @@ fn ser_axisop(
             )
         }
         AxisOp::Add(a) => {
-            inputs.push(builder.write_fact(format!("{}.axis", node.name), tensor0(*a as i32))?);
+            inputs.push(builder.write_fact(
+                format!("{}.axis", node.name),
+                TypedFact::try_from(tensor0(*a as i32))?,
+            )?);
             let options = ExpandDimsOptions::create(builder.fb(), &ExpandDimsOptionsArgs {});
             builder.write_op_with_options(
                 &inputs,
@@ -264,7 +270,8 @@ fn ser_broadcast_to(
     let output = builder.outlets_to_tensors[&node.id.into()];
     let shape =
         node.outputs[0].fact.shape.iter().map(|x| x.to_i32()).collect::<TractResult<Vec<i32>>>()?;
-    let shape = builder.write_fact(format!("{}.shape", node.name), tensor1(&shape))?;
+    let shape = builder
+        .write_fact(format!("{}.shape", node.name), TypedFact::try_from(tensor1(&shape))?)?;
     inputs.push(shape);
     builder.write_op(&inputs, &[output], 130, 3, BuiltinOperator::BROADCAST_TO)
 }
@@ -316,9 +323,19 @@ fn ser_downsample(
         ends[op.axis] = 0;
     }
     let mut inputs = tvec!(builder.outlets_to_tensors[&node.inputs[0]]);
-    inputs.push(builder.write_fact(format!("{}.begins", node.name), tensor1(&begins))?);
-    inputs.push(builder.write_fact(format!("{}.ends", node.name), tensor1(&ends))?);
-    inputs.push(builder.write_fact(format!("{}.strides", node.name), tensor1(&strides))?);
+    inputs.push(
+        builder
+            .write_fact(format!("{}.begins", node.name), TypedFact::try_from(tensor1(&begins))?)?,
+    );
+    inputs.push(
+        builder.write_fact(format!("{}.ends", node.name), TypedFact::try_from(tensor1(&ends))?)?,
+    );
+    inputs.push(
+        builder.write_fact(
+            format!("{}.strides", node.name),
+            TypedFact::try_from(tensor1(&strides))?,
+        )?,
+    );
     let output = builder.outlets_to_tensors[&OutletId::new(node.id, 0)];
     let options = StridedSliceOptions::create(
         builder.fb(),
@@ -360,8 +377,8 @@ fn ser_slice(
     let begins = tensor1(&begins);
     let sizes = tensor1(&sizes);
     let mut inputs = tvec!(builder.outlets_to_tensors[&node.inputs[0]]);
-    inputs.push(builder.write_fact(format!("{}.begins", node.name), begins)?);
-    inputs.push(builder.write_fact(format!("{}.sizes", node.name), sizes)?);
+    inputs.push(builder.write_fact(format!("{}.begins", node.name), TypedFact::try_from(begins)?)?);
+    inputs.push(builder.write_fact(format!("{}.sizes", node.name), TypedFact::try_from(sizes)?)?);
     let output = builder.outlets_to_tensors[&OutletId::new(node.id, 0)];
     let options = SliceOptions::create(builder.fb(), &SliceOptionsArgs {});
     builder.write_op_with_options(

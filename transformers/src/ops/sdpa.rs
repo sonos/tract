@@ -265,8 +265,10 @@ impl EvalOp for Sdpa {
     }
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        let input_facts: TVec<TypedFact> =
-            inputs.iter().map(|tv| TypedFact::from(tv.clone().into_arc_tensor())).collect();
+        let input_facts: TVec<TypedFact> = inputs
+            .iter()
+            .map(|tv| TypedFact::try_from(tv.clone().into_arc_tensor()))
+            .collect::<TractResult<_>>()?;
         let input_fact_refs: TVec<&TypedFact> = input_facts.iter().collect();
         let body =
             self.build_sdpa_graph(input_fact_refs).context("Wiring adhoc fallback graph ")?;

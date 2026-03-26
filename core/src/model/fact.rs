@@ -230,6 +230,10 @@ impl TypedFact {
     }
 
     pub fn shape_and_dt_of(t: &Tensor) -> TypedFact {
+        debug_assert!(
+            t.is_plain(),
+            "shape_and_dt_of called on exotic tensor, exotic_fact will be lost"
+        );
         TypedFact {
             datum_type: t.datum_type(),
             shape: ShapeFact::from_dims(t.shape().iter().map(TDim::from)),
@@ -416,37 +420,35 @@ impl Fact for TypedFact {
     }
 }
 
-impl From<Tensor> for TypedFact {
-    fn from(t: Tensor) -> TypedFact {
-        TypedFact::from(t.into_arc_tensor())
+impl TryFrom<Tensor> for TypedFact {
+    type Error = TractError;
+    fn try_from(t: Tensor) -> TractResult<TypedFact> {
+        TypedFact::try_from(t.into_arc_tensor())
     }
 }
 
-impl From<Arc<Tensor>> for TypedFact {
-    fn from(t: Arc<Tensor>) -> TypedFact {
-        let exotic_fact: Option<Box<dyn ExoticFact>> =
-            t.storage_as::<BlockQuantStorage>().map(|bqs| {
-                Box::new(BlockQuantFact::new(dyn_clone::clone_box(bqs.format()), t.shape().into()))
-                    as Box<dyn ExoticFact>
-            });
+impl TryFrom<Arc<Tensor>> for TypedFact {
+    type Error = TractError;
+    fn try_from(t: Arc<Tensor>) -> TractResult<TypedFact> {
+        let exotic_fact = t.exotic_fact()?;
         let uniform_tdim = if t.datum_type() == TDim::datum_type() && t.len() == 1 {
-            t.try_as_dense().ok().and_then(|d| d.as_slice::<TDim>().ok()).map(|s| s[0].clone())
+            t.try_as_plain().ok().and_then(|d| d.as_slice::<TDim>().ok()).map(|s| s[0].clone())
         } else if t.len() == 1
-            && t.try_as_dense().is_ok()
+            && t.try_as_plain().is_ok()
             && (t.datum_type().is_integer() || t.datum_type().is::<bool>())
         {
             t.cast_to_scalar::<i64>().ok().map(TDim::Val)
         } else {
             None
         };
-        TypedFact {
+        Ok(TypedFact {
             datum_type: t.datum_type(),
             shape: ShapeFact::from_dims(t.shape().iter().map(TDim::from)),
             uniform: t.as_uniform().map(Arc::new),
             exotic_fact,
             konst: Some(t),
             uniform_tdim,
-        }
+        })
     }
 }
 
@@ -456,9 +458,10 @@ impl From<&TypedFact> for TypedFact {
     }
 }
 
-impl<'a> From<&'a Arc<Tensor>> for TypedFact {
-    fn from(t: &'a Arc<Tensor>) -> TypedFact {
-        Arc::clone(t).into()
+impl<'a> TryFrom<&'a Arc<Tensor>> for TypedFact {
+    type Error = TractError;
+    fn try_from(t: &'a Arc<Tensor>) -> TractResult<TypedFact> {
+        TypedFact::try_from(Arc::clone(t))
     }
 }
 

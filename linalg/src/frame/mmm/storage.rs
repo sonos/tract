@@ -140,6 +140,16 @@ impl TensorStorage for PackedMatrixStorage {
             v.dyn_hash(state);
         }
     }
+
+    fn exotic_fact(&self, _shape: &[usize]) -> TractResult<Option<Box<dyn ExoticFact>>> {
+        if self.values.len() == 1 {
+            Ok(Some(dyn_clone::clone_box(self.values[0].exotic_fact())))
+        } else {
+            let facts: TVec<Box<dyn ExoticFact>> =
+                self.values.iter().map(|v| dyn_clone::clone_box(v.exotic_fact())).collect();
+            Ok(Some(Box::new(facts)))
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]

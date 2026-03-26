@@ -254,7 +254,7 @@ fn can_translate_to_cuda_op(source: &TypedModel, node: &TypedNode) -> TractResul
 }
 
 fn convert_const(op: &Const) -> TractResult<Const> {
-    let typed_fact: TypedFact = Arc::clone(op.val()).into();
+    let typed_fact: TypedFact = Arc::clone(op.val()).try_into()?;
     let cuda_fact = if let Some(of) = op.exotic_fact() {
         DeviceFact::from_host(typed_fact.with_exotic_fact(clone_box(of)))?
     } else {

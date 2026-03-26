@@ -235,7 +235,7 @@ fn ser_reduce(
 ) -> TractResult<()> {
     let axes = builder.write_fact(
         format!("{}.axes", node.name),
-        tensor1(&op.axes.iter().map(|axis| *axis as i32).collect_vec()),
+        TypedFact::try_from(tensor1(&op.axes.iter().map(|axis| *axis as i32).collect_vec()))?,
     )?;
     let inputs = [builder.map_outlet(model, node.inputs[0])?, axes];
     let output = builder.map_outlets(model, [OutletId::from(node.id)])?;

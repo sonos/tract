@@ -286,12 +286,10 @@ impl EvalOp for StridedSlice {
         model.symbols = scope.unwrap_or_default();
         let mut source = tvec!();
         for (ix, input) in inputs.iter().enumerate() {
-            source.push(
-                model.add_source(
-                    format!("adhoc_input.{ix}"),
-                    input.clone().into_arc_tensor().into(),
-                )?,
-            );
+            source.push(model.add_source(
+                format!("adhoc_input.{ix}"),
+                input.clone().into_arc_tensor().try_into()?,
+            )?);
         }
         let output = self.wire("adhoc", &mut model, &source)?;
         model.set_output_outlets(&output)?;
