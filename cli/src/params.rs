@@ -1142,6 +1142,7 @@ pub fn display_params_from_clap(
         info: matches.get_flag("info"),
         json: matches.get_flag("json"),
         mm: matches.get_flag("mm"),
+        summary: matches.get_flag("summary"),
     })
 }
 

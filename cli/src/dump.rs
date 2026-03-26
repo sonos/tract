@@ -120,12 +120,16 @@ pub fn handle(
     let mut annotations = Annotations::from_model(&*params.tract_model)?;
     annotate_with_graph_def(&mut annotations, &*params.tract_model, &params.graph)?;
     let run_params = run_params_from_subcommand(params, sub_matches)?;
-    if options.cost {
+    if options.cost || options.summary {
         tract_libcli::profile::extract_costs(
             &mut annotations,
             &*params.tract_model,
             &run_params.symbols,
         )?;
+    }
+    if options.summary {
+        terminal::render_summary(&*params.tract_model, &annotations)?;
+        return Ok(());
     }
     if options.profile {
         let run_params = run_params_from_subcommand(params, sub_matches)?;

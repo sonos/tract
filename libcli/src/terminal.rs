@@ -519,6 +519,95 @@ pub fn render_summaries(
     Ok(())
 }
 
+pub fn render_summary(model: &dyn Model, annotations: &Annotations) -> TractResult<()> {
+    if !model.properties().is_empty() {
+        println!("{}", White.bold().paint("# Properties"));
+        for (k, v) in model.properties().iter().sorted_by_key(|(k, _)| k.to_string()) {
+            println!("* {}: {:?}", White.paint(k), v);
+        }
+    }
+    println!("{}", White.bold().paint("# Inputs"));
+    for (ix, input) in model.input_outlets().iter().enumerate() {
+        let name = model.node_name(input.node);
+        let fact = model.outlet_typedfact(*input)?;
+        println!("  {ix}: {name}: {fact:?}");
+    }
+    println!("{}", White.bold().paint("# Outputs"));
+    for (ix, output) in model.output_outlets().iter().enumerate() {
+        let name = model.node_name(output.node);
+        let fact = model.outlet_typedfact(*output)?;
+        println!("  {ix}: {name}: {fact:?}");
+    }
+    let mut op_counts: HashMap<StaticName, usize> = HashMap::default();
+    let mut op_costs: HashMap<StaticName, Vec<(Cost, TDim)>> = HashMap::default();
+    for id in 0..model.nodes_len() {
+        let op_name = model.node_op_name(id);
+        *op_counts.entry(op_name.clone()).or_default() += 1;
+        if let Some(tags) = annotations.tags.get(&NodeQId(tvec!(), id)) {
+            let costs = op_costs.entry(op_name).or_default();
+            for (cost_kind, value) in &tags.cost {
+                if let Some(existing) = costs.iter_mut().find(|(k, _)| k == cost_kind) {
+                    existing.1 = existing.1.clone() + value;
+                } else {
+                    costs.push((cost_kind.clone(), value.clone()));
+                }
+            }
+        }
+    }
+    let total = annotations.tags.values().sum::<NodeTags>();
+    let total_cost_str = total
+        .cost
+        .iter()
+        .filter(|(k, _)| k.is_compute())
+        .map(|(kind, val)| format!("{kind:?}: {}", render_tdim(val)))
+        .join(", ");
+    let all_costs_concrete = op_costs
+        .values()
+        .all(|costs| costs.iter().filter(|(k, _)| k.is_compute()).all(|(_, v)| v.to_i64().is_ok()));
+    let concrete_compute_cost = |op: &StaticName| -> i64 {
+        op_costs
+            .get(op)
+            .map(|costs| {
+                costs
+                    .iter()
+                    .filter(|(k, _)| k.is_compute())
+                    .filter_map(|(_, v)| v.to_i64().ok())
+                    .sum::<i64>()
+            })
+            .unwrap_or(0)
+    };
+    println!("{}", White.bold().paint("# Operators"));
+    for (op, count) in op_counts.iter().sorted_by(|a, b| {
+        if all_costs_concrete {
+            concrete_compute_cost(b.0)
+                .cmp(&concrete_compute_cost(a.0))
+                .then(b.1.cmp(a.1))
+                .then(a.0.cmp(b.0))
+        } else {
+            b.1.cmp(a.1).then(a.0.cmp(b.0))
+        }
+    }) {
+        let cost_str = op_costs
+            .get(op)
+            .map(|costs| {
+                costs.iter().map(|(kind, val)| format!("{kind:?}: {}", render_tdim(val))).join(", ")
+            })
+            .unwrap_or_default();
+        if cost_str.is_empty() {
+            println!("  {count:>5} {op}");
+        } else {
+            println!("  {count:>5} {op}  [{cost_str}]");
+        }
+    }
+    let total_nodes: usize = op_counts.values().sum();
+    if total_cost_str.is_empty() {
+        println!("  {total_nodes:>5} total");
+    } else {
+        println!("  {total_nodes:>5} total  [{total_cost_str}]");
+    }
+    Ok(())
+}
+
 /// Format a rusage::Duration showing avgtime in ms.
 pub fn dur_avg(measure: Duration) -> String {
     White.bold().paint(format!("{:.3} ms/i", measure.as_secs_f64() * 1e3)).to_string()
