@@ -1,7 +1,7 @@
 use crate::internal::*;
 use crate::ops::array::{Slice, TypedConcat};
 use crate::ops::binary::TypedBinOp;
-use crate::ops::logic::{ConditionPattern, Iff, classify_condition_tdim};
+use crate::ops::logic::{And, ConditionPattern, Iff, classify_condition_tdim};
 use crate::optim::OptimizerSession;
 
 /// Optimizer pass that exploits boolean-valued `uniform_tdim` on wires feeding `Iff` and `Mul`.
@@ -44,8 +44,15 @@ fn try_fold_node(model: &TypedModel, node: &TypedNode) -> TractResult<Option<Typ
     if node.op_is::<Iff>() {
         return try_fold_iff(model, node);
     }
-    if node.op_as::<TypedBinOp>().is_some_and(|b| b.0.neutral_element() == Some(1)) {
-        return try_fold_mul_mask(model, node);
+    if let Some(bin_op) = node.op_as::<TypedBinOp>() {
+        if bin_op.0.is::<And>()
+            && model.outlet_fact(node.id.into())?.datum_type == bool::datum_type()
+        {
+            return try_fold_bitand_bool(model, node);
+        }
+        if bin_op.0.neutral_element() == Some(1) {
+            return try_fold_mul_mask(model, node);
+        }
     }
     Ok(None)
 }
@@ -128,6 +135,47 @@ fn try_fold_mul_mask(model: &TypedModel, node: &TypedNode) -> TractResult<Option
                     return Ok(Some(patch));
                 }
             }
+        }
+    }
+    Ok(None)
+}
+
+// ── Bool BitAnd by AllTrue mask ───────────────────────────────────────────────
+
+/// Returns true if the fact is provably all-true (as a Bool tensor).
+/// Checks both `uniform_tdim` (symbolic) and `uniform` (concrete uniform value).
+fn fact_is_all_true(fact: &TypedFact) -> bool {
+    if let Some(expr) = &fact.uniform_tdim {
+        if matches!(classify_condition_tdim(expr, &fact.shape), Some(ConditionPattern::AllTrue)) {
+            return true;
+        }
+    }
+    if let Some(u) = &fact.uniform {
+        if let Ok(v) = u.cast_to_scalar::<bool>() {
+            return v;
+        }
+    }
+    false
+}
+
+/// Fold `And(AllTrue, signal) → signal` for Bool-typed And nodes.
+/// When one input is provably all-true (identity for boolean AND), the node is a no-op.
+fn try_fold_bitand_bool(
+    model: &TypedModel,
+    node: &TypedNode,
+) -> TractResult<Option<TypedModelPatch>> {
+    let input_facts = model.node_input_facts(node.id)?;
+    let out_fact = model.outlet_fact(node.id.into())?;
+    for mask_ix in 0..2usize {
+        let mask_fact = input_facts[mask_ix];
+        if !fact_is_all_true(mask_fact) {
+            continue;
+        }
+        let signal_ix = 1 - mask_ix;
+        let signal_outlet = node.inputs[signal_ix];
+        let signal_fact = input_facts[signal_ix];
+        if signal_fact.shape == out_fact.shape {
+            return shunt_output(model, node, signal_outlet);
         }
     }
     Ok(None)
