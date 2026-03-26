@@ -22,9 +22,8 @@ fn pulsify(
     })?;
     if op.axis == stream.axis {
         let start = op.start.substitute(symbol, pulse)?;
-        let end = op.end.substitute(symbol, pulse)?;
         let skip = start.to_usize()?;
-        let take = (end - &start).to_dim();
+        let take = node.outputs[0].fact.shape[op.axis].clone();
         let op = PulsedAxisSlice { axis: op.axis, skip, take };
         Ok(Some(target.wire_node(&*node.name, op, &[input])?))
     } else {
