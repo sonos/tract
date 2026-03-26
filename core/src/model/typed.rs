@@ -215,6 +215,25 @@ impl TypedModel {
         Ok(())
     }
 
+    /// Re-run `output_facts` for every node in topological order, updating stored facts in-place.
+    ///
+    /// Call this after operations that rewire graph topology (e.g. `TypedModelPatch::apply`)
+    /// without rebuilding the model, so that derived fact fields like `uniform_tdim` reflect
+    /// the new input facts.
+    pub fn refresh_output_facts(&mut self) -> TractResult<()> {
+        let order = self.eval_order()?;
+        for node_id in order {
+            let output_facts = {
+                let input_facts = self.node_input_facts(node_id)?;
+                self.nodes[node_id].op.output_facts(&input_facts)?
+            };
+            for (ix, fact) in output_facts.into_iter().enumerate() {
+                self.set_outlet_fact(OutletId::new(node_id, ix), fact)?;
+            }
+        }
+        Ok(())
+    }
+
     pub fn into_decluttered(mut self) -> TractResult<TypedModel> {
         self.declutter()?;
         Ok(self)

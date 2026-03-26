@@ -327,9 +327,8 @@ impl ModelTransform for SubstituteInputWithShapeOfTransform {
         patch.apply(model)?;
 
         model.inputs.retain(|&o| o != length_outlet);
-        // Shunting an input doesn't update the facts of downstream nodes. Rebuild the
-        // model so that output_facts is re-run everywhere and uniform_tdim is fresh.
-        *model = model.concretize_dims(&SymbolValues::default())?;
+        // Shunting an input doesn't update downstream facts; refresh them in-place.
+        model.refresh_output_facts()?;
         Ok(())
     }
 }
