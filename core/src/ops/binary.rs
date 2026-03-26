@@ -159,7 +159,7 @@ impl TypedBinOp {
             && let Some(f) = konst.cast_to_scalar::<f64>().ok().filter(|&f| f > 0.0)
         {
             let n = (1.0 / f).round() as u64;
-            if n >= 2 && (f * n as f64 - 1.0).abs() < 1e-9 {
+            if n >= 2 && (f * n as f64 - 1.0).abs() < 1e-6 {
                 return Some(TDim::Div(Box::new(a.clone()), n).reduce());
             }
         }

@@ -2,6 +2,23 @@ use crate::broadcast::multi_broadcast;
 use crate::internal::*;
 use crate::ndarray::Zip;
 
+/// Extract a `TDim::Val(n)` from a scalar constant fact (integer or integer-valued float).
+fn scalar_konst_to_tdim(fact: &TypedFact) -> Option<TDim> {
+    let konst = fact.konst.as_ref()?;
+    if konst.len() != 1 {
+        return None;
+    }
+    if konst.datum_type().is_integer() || konst.datum_type().is::<bool>() {
+        konst.cast_to_scalar::<i64>().ok().map(TDim::Val)
+    } else if konst.datum_type().is_float() {
+        konst.cast_to_scalar::<f64>().ok().and_then(|f| {
+            if (f - f.round()).abs() < 1e-6 { Some(TDim::Val(f.round() as i64)) } else { None }
+        })
+    } else {
+        None
+    }
+}
+
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub enum Comp {
     Eq,
@@ -144,7 +161,15 @@ impl TypedOp for Comp {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let shape = multi_broadcast(&[&inputs[0].shape, &inputs[1].shape])?;
         let mut fact = bool::datum_type().fact(shape);
-        if let (Some(a), Some(b)) = (&inputs[0].uniform_tdim, &inputs[1].uniform_tdim) {
+        // Try to get TDim values for both sides, falling back to scalar konst when
+        // uniform_tdim is absent (handles float consts like 0.0f32 / 2.0f32).
+        let tdim_pair = match (&inputs[0].uniform_tdim, &inputs[1].uniform_tdim) {
+            (Some(a), Some(b)) => Some((a.clone(), b.clone())),
+            (Some(a), None) => scalar_konst_to_tdim(inputs[1]).map(|b| (a.clone(), b)),
+            (None, Some(b)) => scalar_konst_to_tdim(inputs[0]).map(|a| (a, b.clone())),
+            (None, None) => None,
+        };
+        if let Some((a, b)) = tdim_pair {
             fact.uniform_tdim = Some(
                 match self {
                     GTE => TDim::Ge(Box::new(a.clone()), Box::new(b.clone())),
