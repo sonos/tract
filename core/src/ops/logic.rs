@@ -68,11 +68,11 @@ impl EvalOp for Iff {
     }
 }
 
-fn sym_to_coord_axis(sym: &Symbol) -> Option<usize> {
+pub(crate) fn sym_to_coord_axis(sym: &Symbol) -> Option<usize> {
     format!("{sym}").strip_prefix("🎯")?.parse::<usize>().ok()
 }
 
-fn coord_bound_assertions(expr: &TDim, shape: &ShapeFact) -> Vec<Assertion> {
+pub(crate) fn coord_bound_assertions(expr: &TDim, shape: &ShapeFact) -> Vec<Assertion> {
     expr.symbols()
         .into_iter()
         .filter_map(|s| sym_to_coord_axis(&s).filter(|k| *k < shape.rank()).map(|k| (k, s)))
@@ -85,17 +85,43 @@ fn coord_bound_assertions(expr: &TDim, shape: &ShapeFact) -> Vec<Assertion> {
         .collect()
 }
 
-fn is_provably_all_false(expr: &TDim, shape: &ShapeFact) -> bool {
+pub(crate) fn is_provably_all_false(expr: &TDim, shape: &ShapeFact) -> bool {
     let extra = coord_bound_assertions(expr, shape);
     expr.clone().simplify_with_extra_assertions(&extra) == TDim::Val(0)
 }
 
-fn is_provably_all_true(expr: &TDim, shape: &ShapeFact) -> bool {
+pub(crate) fn is_provably_all_true(expr: &TDim, shape: &ShapeFact) -> bool {
     let extra = coord_bound_assertions(expr, shape);
     expr.clone().simplify_with_extra_assertions(&extra) == TDim::Val(1)
 }
 
-fn extract_split_pattern(expr: &TDim, shape: &ShapeFact) -> Option<(usize, TDim, bool)> {
+pub(crate) enum ConditionPattern {
+    AllFalse,
+    AllTrue,
+    TwoRegions { axis: usize, split: TDim, lower_is_true: bool },
+}
+
+pub(crate) fn classify_condition_tdim(expr: &TDim, shape: &ShapeFact) -> Option<ConditionPattern> {
+    let simplified = expr.clone().simplify();
+    if simplified == TDim::Val(0) {
+        return Some(ConditionPattern::AllFalse);
+    }
+    if simplified == TDim::Val(1) {
+        return Some(ConditionPattern::AllTrue);
+    }
+    if is_provably_all_false(&simplified, shape) {
+        return Some(ConditionPattern::AllFalse);
+    }
+    if is_provably_all_true(&simplified, shape) {
+        return Some(ConditionPattern::AllTrue);
+    }
+    if let Some((axis, split, lower_is_true)) = extract_split_pattern(&simplified, shape) {
+        return Some(ConditionPattern::TwoRegions { axis, split, lower_is_true });
+    }
+    None
+}
+
+pub(crate) fn extract_split_pattern(expr: &TDim, shape: &ShapeFact) -> Option<(usize, TDim, bool)> {
     fn try_ge(ge: &TDim, shape: &ShapeFact) -> Option<(usize, TDim)> {
         if let TDim::Ge(lhs, rhs) = ge {
             if let TDim::Sym(sym) = &**lhs {
@@ -215,7 +241,7 @@ impl TypedOp for Iff {
 
         let Some(expr) = cond_tdim else { return Ok(None) };
 
-        let simplified = expr.clone().simplify();
+        let cond_shape = &cond_fact.shape;
 
         // Helper: replace Iff output with a specific input branch
         let shunt_to = |branch: OutletId| -> TractResult<Option<TypedModelPatch>> {
@@ -225,34 +251,14 @@ impl TypedOp for Iff {
             Ok(Some(patch))
         };
 
-        // Rule 1a: condition is provably always false → use false branch (inputs[2])
-        if simplified == TDim::Val(0) {
-            return shunt_to(node.inputs[2]);
+        match classify_condition_tdim(&expr, cond_shape) {
+            Some(ConditionPattern::AllFalse) => shunt_to(node.inputs[2]),
+            Some(ConditionPattern::AllTrue) => shunt_to(node.inputs[1]),
+            Some(ConditionPattern::TwoRegions { axis, split, lower_is_true }) => {
+                split_iff_to_slice_concat(model, node, axis, split, lower_is_true)
+            }
+            None => Ok(None),
         }
-
-        // Rule 1b: condition is provably always true → use true branch (inputs[1])
-        if simplified == TDim::Val(1) {
-            return shunt_to(node.inputs[1]);
-        }
-
-        let cond_shape = &cond_fact.shape;
-
-        // Rule 1c: prove all-false using coordinate extremes
-        if is_provably_all_false(&simplified, cond_shape) {
-            return shunt_to(node.inputs[2]);
-        }
-
-        // Rule 1d: prove all-true using coordinate extremes
-        if is_provably_all_true(&simplified, cond_shape) {
-            return shunt_to(node.inputs[1]);
-        }
-
-        // Rule 2: condition is ge(x_k, split) or 1-ge(x_k, split) — split into slice+concat
-        if let Some((axis, split, lower_is_true)) = extract_split_pattern(&simplified, cond_shape) {
-            return split_iff_to_slice_concat(model, node, axis, split, lower_is_true);
-        }
-
-        Ok(None)
     }
 
     fn axes_mapping(
