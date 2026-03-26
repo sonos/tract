@@ -27,6 +27,8 @@ tar.workspace = true
 flate2 = { workspace = true, optional = true }
 simd-adler32.workspace = true
 walkdir.workspace = true
+erased-serde.workspace = true
+serde.workspace = true
 tract-core.workspace = true
 
 [dev-dependencies]

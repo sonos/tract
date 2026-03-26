@@ -11,6 +11,7 @@ pub mod registry;
 pub mod resource;
 pub mod ser;
 pub mod tensors;
+mod transform;
 
 pub use ast::ProtoModel;
 
@@ -25,9 +26,9 @@ pub mod prelude {
 
 pub mod internal {
     pub use crate::ast::dump_doc::DocDumper;
-    pub use crate::ast::parse::parse_parameters;
+    pub use crate::ast::parse::{parse_assignments, parse_parameters};
     pub use crate::ast::{
-        FragmentDecl, FragmentDef, Identifier, Parameter, RValue, TypeName, param,
+        Assignment, FragmentDecl, FragmentDef, Identifier, Parameter, RValue, TypeName, param,
     };
     pub use crate::deser::{ModelBuilder, ResolvedInvocation, Value};
     pub use crate::framework::Nnef;

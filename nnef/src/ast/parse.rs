@@ -45,6 +45,11 @@ pub fn parse_parameters(doc: &str) -> TractResult<Vec<Parameter>> {
     unwrap_parse(doc, parameter_list)
 }
 
+#[inline(never)]
+pub fn parse_assignments(doc: &str) -> TractResult<Vec<Assignment>> {
+    unwrap_parse(doc, many1(assignment))
+}
+
 // <document> ::= <version> <extension>* <fragmentdefinition>* <graph-definition>
 fn document(i: &str) -> R<'_, Document> {
     map(
