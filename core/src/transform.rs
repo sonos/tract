@@ -349,6 +349,28 @@ inventory::submit! {
     }
 }
 
+#[derive(Debug, serde::Deserialize, Default)]
+pub struct SelectOutputsConfig {
+    pub outputs: Vec<String>,
+}
+
+#[derive(Debug)]
+struct SelectOutputsTransform(SelectOutputsConfig);
+
+impl ModelTransform for SelectOutputsTransform {
+    fn name(&self) -> StaticName {
+        "select_outputs".into()
+    }
+
+    fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
+        model.select_outputs_by_name(self.0.outputs.iter())
+    }
+}
+
+register_model_transform!("select_outputs", SelectOutputsConfig, |config| Ok(Box::new(
+    SelectOutputsTransform(config)
+)));
+
 inventory::submit! {
     ModelTransformFactory {
         name: "f32_to_f16",
