@@ -15,6 +15,9 @@ pub struct ModelBuilder<'a> {
     pub proto_model: &'a ProtoModel,
     pub symbols: Vec<Symbol>,
     allow_new_symbol: bool,
+    #[allow(clippy::type_complexity)]
+    pub wire_resolver:
+        Option<Box<dyn FnMut(&str, &mut TypedModel) -> TractResult<Option<OutletId>> + 'a>>,
 }
 
 impl<'mb> ModelBuilder<'mb> {
@@ -32,6 +35,7 @@ impl<'mb> ModelBuilder<'mb> {
             proto_model,
             symbols: vec![],
             allow_new_symbol: false,
+            wire_resolver: None,
         }
     }
 
@@ -475,6 +479,18 @@ impl RValue {
                         }
                     }
                     Ok(outlet)
+                } else if let Some(outlet) = {
+                    if let Some(mut resolver) = builder.wire_resolver.take() {
+                        let result = resolver(&id.0, &mut builder.model);
+                        builder.wire_resolver = Some(resolver);
+                        result?
+                    } else {
+                        None
+                    }
+                } {
+                    let value = Value::Wire(outlet);
+                    builder.scopes.last_mut().unwrap().insert(id.clone(), value.clone());
+                    Ok(value)
                 } else if let Some(sym) = builder.model.symbols.get(&id.0) {
                     Ok(Value::Dim(sym.into()))
                 } else if builder.allow_new_symbol {
@@ -572,7 +588,44 @@ impl RValue {
                     .map(|(i, dt)| RValue::Literal(i.clone()).resolve(builder, &[*dt]))
                     .collect::<TractResult<_>>()?,
             )),
-            _ => panic!("{self:?}"),
+            RValue::Subscript(target, subscript) => {
+                let target_value = target.resolve(builder, dt)?;
+                match subscript.as_ref() {
+                    Subscript::Single(idx_rvalue) => {
+                        let idx: usize = idx_rvalue.resolve(builder, &[])?.to(builder)?;
+                        match target_value {
+                            Value::Array(vec) | Value::Tuple(vec) => vec
+                                .into_iter()
+                                .nth(idx)
+                                .with_context(|| format!("Index {idx} out of bounds")),
+                            Value::Wire(outlet) => {
+                                let fact = builder.model.outlet_fact(outlet)?;
+                                if let Some(konst) = &fact.konst {
+                                    let plain = konst.try_as_plain()?;
+                                    if konst.datum_type() == TDim::datum_type() {
+                                        let dim = plain.as_slice::<TDim>()?[idx].clone();
+                                        Ok(Value::Dim(dim))
+                                    } else {
+                                        let element = konst
+                                            .slice(0, idx, idx + 1)?
+                                            .into_shape(&[])?
+                                            .into_arc_tensor();
+                                        let wire = builder
+                                            .model
+                                            .add_const(builder.generate_node_name(), element)?;
+                                        Ok(Value::Wire(wire))
+                                    }
+                                } else {
+                                    bail!("Subscript on non-const wire not yet supported")
+                                }
+                            }
+                            _ => bail!("Subscript not supported on {target_value:?}"),
+                        }
+                    }
+                    Subscript::Range(..) => bail!("Subscript ranges not yet supported"),
+                }
+            }
+            _ => bail!("Unsupported RValue variant: {self:?}"),
         }
     }
 }
