@@ -55,11 +55,21 @@ impl TypedOp for Const {
     as_op!();
 
     fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        let mut fact = TypedFact::try_from(&self.0)?;
-        if let Some(exotic) = &self.1 {
-            fact = fact.with_exotic_fact(exotic.clone());
-        }
-        // uniform_tdim is already set by TypedFact::try_from for single-element constants
+        let fact = if self.1.is_some() {
+            // Exotic const tensors (e.g. device-backed) may have storage that
+            // cannot produce an ExoticFact (like DeviceTensor). Build the fact
+            // from dt/shape and attach the explicit exotic_fact from self.1.
+            let mut f = TypedFact::dt_shape(
+                self.0.datum_type(),
+                ShapeFact::from_dims(self.0.shape().iter().map(TDim::from)),
+            );
+            f.konst = Some(Arc::clone(&self.0));
+            f.exotic_fact.clone_from(&self.1);
+            f
+        } else {
+            // Plain tensor: TryFrom sets uniform, uniform_tdim, exotic_fact from storage.
+            TypedFact::try_from(&self.0)?
+        };
         Ok(tvec!(fact))
     }
 
