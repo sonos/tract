@@ -44,6 +44,7 @@ fn try_fold_node(model: &TypedModel, node: &TypedNode) -> TractResult<Option<Typ
     if node.op_is::<Iff>() {
         return try_fold_iff(model, node);
     }
+    #[allow(clippy::collapsible_if)]
     if let Some(bin_op) = node.op_as::<TypedBinOp>() {
         if bin_op.0.neutral_element() == Some(1) {
             return try_fold_mul_mask(model, node);
@@ -164,6 +165,7 @@ fn inject_const_mask(
 
 /// Slice the signal along `axis`, emit two sub-`Mul`s each with a concrete constant mask,
 /// then concat.  Subsequent pass iterations fold each sub-`Mul` via existing declutter rules.
+#[allow(clippy::too_many_arguments)]
 fn split_mul_two_regions(
     model: &TypedModel,
     node: &TypedNode,
