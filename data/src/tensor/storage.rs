@@ -2,7 +2,9 @@ use std::alloc::Layout;
 use std::fmt;
 use std::hash::Hash;
 
+use crate::TractResult;
 use crate::blob::Blob;
+use crate::exotic::ExoticFact;
 use downcast_rs::{Downcast, impl_downcast};
 
 /// Trait abstracting over tensor storage backends.
@@ -18,6 +20,12 @@ pub trait TensorStorage: Send + Sync + fmt::Debug + fmt::Display + Downcast {
     fn into_plain(self: Box<Self>) -> Option<PlainStorage>;
     fn dyn_hash(&self, state: &mut dyn std::hash::Hasher);
     fn same_as(&self, other: &dyn TensorStorage) -> bool;
+    /// Build the `ExoticFact` that describes this storage for use in `TypedFact`.
+    ///
+    /// Plain storage returns `None`. Exotic storages should return the
+    /// appropriate fact so that `From<Arc<Tensor>> for TypedFact` preserves
+    /// exotic-ness.
+    fn exotic_fact(&self, shape: &[usize]) -> TractResult<Option<Box<dyn ExoticFact>>>;
 }
 impl_downcast!(TensorStorage);
 
@@ -153,6 +161,10 @@ impl TensorStorage for PlainStorage {
 
     fn same_as(&self, other: &dyn TensorStorage) -> bool {
         if let Some(other) = other.as_plain() { self == other } else { false }
+    }
+
+    fn exotic_fact(&self, _shape: &[usize]) -> TractResult<Option<Box<dyn ExoticFact>>> {
+        Ok(None)
     }
 }
 

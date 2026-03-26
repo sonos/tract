@@ -210,15 +210,17 @@ impl From<TypedFact> for InferenceFact {
     }
 }
 
-impl<'a> From<&'a Arc<Tensor>> for InferenceFact {
-    fn from(t: &'a Arc<Tensor>) -> InferenceFact {
-        InferenceFact::from(&TypedFact::from(Arc::clone(t)))
+impl<'a> TryFrom<&'a Arc<Tensor>> for InferenceFact {
+    type Error = TractError;
+    fn try_from(t: &'a Arc<Tensor>) -> TractResult<InferenceFact> {
+        Ok(InferenceFact::from(&TypedFact::try_from(Arc::clone(t))?))
     }
 }
 
-impl From<Arc<Tensor>> for InferenceFact {
-    fn from(t: Arc<Tensor>) -> InferenceFact {
-        InferenceFact::from(&TypedFact::from(t))
+impl TryFrom<Arc<Tensor>> for InferenceFact {
+    type Error = TractError;
+    fn try_from(t: Arc<Tensor>) -> TractResult<InferenceFact> {
+        Ok(InferenceFact::from(&TypedFact::try_from(t)?))
     }
 }
 

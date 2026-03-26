@@ -234,6 +234,11 @@ impl Tensor {
         !self.is_plain()
     }
 
+    /// Build the `ExoticFact` matching this tensor's storage, or `None` for plain tensors.
+    pub fn exotic_fact(&self) -> TractResult<Option<Box<dyn crate::exotic::ExoticFact>>> {
+        self.storage.as_storage().exotic_fact(&self.shape)
+    }
+
     /// Returns a mutable [`PlainViewMut`] if this tensor has plain storage.
     #[inline]
     pub fn as_plain_mut(&mut self) -> Option<PlainViewMut<'_>> {

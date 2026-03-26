@@ -155,7 +155,7 @@ fn ser_conv(
                 .context("tract TODO: dynamic convolution and per-channel scales")?;
             inputs.push(builder.write_fact_with_per_axis_q(
                 format!("{node_name}.weights"),
-                kernel,
+                TypedFact::try_from(kernel.clone())?,
                 &vec![k0_tract; conv.output_channels()],
                 kscale,
                 0,
@@ -164,7 +164,7 @@ fn ser_conv(
             let bias = bias.clone().into_tensor().cast_to::<i32>()?.into_owned().into_arc_tensor();
             inputs.push(builder.write_fact_with_per_axis_q(
                 format!("{node_name}.bias"),
-                &bias,
+                TypedFact::try_from(bias.clone())?,
                 &vec![0i64; bias.len()],
                 &bscale,
                 0,
@@ -176,7 +176,8 @@ fn ser_conv(
                 .datum_type()
                 .quantize(QParams::ZpScale { zero_point: 0, scale: iscale * kscale[0] });
             let bias = bias.cast_to_dt(bias_qdt)?.into_owned();
-            inputs.push(builder.write_fact(format!("{node_name}.bias"), bias)?);
+            inputs
+                .push(builder.write_fact(format!("{node_name}.bias"), TypedFact::try_from(bias)?)?);
         }
     } else {
         inputs.push(builder.map_outlet(model, node.inputs[1])?);
@@ -324,11 +325,19 @@ fn ser_pad(
     let paddings = tract_ndarray::Array2::<i32>::from_shape_fn((pad.pads.len(), 2), |(d, side)| {
         (if side == 0 { pad.pads[d].0 } else { pad.pads[d].1 }) as i32
     });
-    inputs.push(builder.write_fact(format!("{node_name}.paddings"), paddings.into_tensor())?);
+    inputs.push(builder.write_fact(
+        format!("{node_name}.paddings"),
+        TypedFact::try_from(paddings.into_tensor())?,
+    )?);
     let PadMode::Constant(pad_value) = &pad.mode else {
         bail!("Only constant padding is supported by tflite");
     };
-    inputs.push(builder.write_fact(format!("{node_name}.pad_value"), pad_value)?);
+    inputs.push(
+        builder.write_fact(
+            format!("{node_name}.pad_value"),
+            TypedFact::try_from(pad_value.clone())?,
+        )?,
+    );
     let options = PadOptions::create(builder.fb(), &PadOptionsArgs {});
     builder.write_op_with_options(
         &inputs,

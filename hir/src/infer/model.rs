@@ -193,7 +193,7 @@ impl SpecialOps<InferenceFact, Box<dyn InferenceOp>> for InferenceModel {
             }
         }
         let name = name.into();
-        let fact = TypedFact::from(v.clone());
+        let fact = TypedFact::try_from(v.clone())?;
         self.add_node(name, crate::ops::konst::Const::new(v)?, tvec!(fact.into()))
             .map(|id| id.into())
     }

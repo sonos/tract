@@ -6,7 +6,6 @@ use crate::optim::OptimizerSession;
 use crate::plan::{FrozenSimpleState, SimplePlan, SimpleState};
 use crate::transform::ModelTransform;
 use tract_data::TooEarly;
-use tract_linalg::block_quant::{BlockQuantFact, BlockQuantStorage};
 use tract_num_traits::Zero;
 
 /// A model with completely determined types and shapes.
@@ -147,21 +146,14 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
                 return Ok(node.id.into());
             }
         }
-        let mut fact = TypedFact::from(v.clone());
+        let fact = TypedFact::try_from(v.clone())?;
         let name = name.into();
-        if let Some(bqs) = v.storage_as::<BlockQuantStorage>() {
-            let exotic: Box<dyn ExoticFact> =
-                Box::new(BlockQuantFact::new(dyn_clone::clone_box(bqs.format()), v.shape().into()));
-            fact.exotic_fact = Some(exotic.clone());
-            return self
-                .add_node(
-                    name,
-                    crate::ops::konst::Const::new_with_exotic_fact(v, exotic)?,
-                    tvec!(fact),
-                )
-                .map(|id| id.into());
-        }
-        self.add_node(name, crate::ops::konst::Const::new(v)?, tvec!(fact)).map(|id| id.into())
+        let op = if let Some(exotic) = &fact.exotic_fact {
+            crate::ops::konst::Const::new_with_exotic_fact(v, exotic.clone())?
+        } else {
+            crate::ops::konst::Const::new(v)?
+        };
+        self.add_node(name, op, tvec!(fact)).map(|id| id.into())
     }
 }
 

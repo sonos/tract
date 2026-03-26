@@ -4,6 +4,7 @@ use std::sync::Arc;
 use tract_data::internal::*;
 
 use super::BlockQuant;
+use super::BlockQuantFact;
 
 /// Concrete tensor storage for block-quantized weights.
 ///
@@ -125,5 +126,9 @@ impl TensorStorage for BlockQuantStorage {
         } else {
             false
         }
+    }
+
+    fn exotic_fact(&self, shape: &[usize]) -> TractResult<Option<Box<dyn ExoticFact>>> {
+        Ok(Some(Box::new(BlockQuantFact::new(dyn_clone::clone_box(&*self.format), shape.into()))))
     }
 }

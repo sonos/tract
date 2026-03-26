@@ -126,7 +126,7 @@ pub fn flat_tensor_to_tract_fact<'m>(
             unsafe {
                 data.set_datum_type(dt);
             };
-            fact = data.into();
+            fact = TypedFact::try_from(data)?;
         }
     }
     Ok((fact, flat.name().unwrap()))

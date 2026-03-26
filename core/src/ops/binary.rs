@@ -134,7 +134,7 @@ impl TypedBinOp {
         let b = tensor0(b.clone()).into_tvalue();
         let result = self.0.eval(a, b, TDim::datum_type()).ok()?;
         result
-            .try_as_dense()
+            .try_as_plain()
             .ok()
             .and_then(|d| d.as_slice::<TDim>().ok())
             .and_then(|s| s.first())

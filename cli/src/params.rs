@@ -935,7 +935,7 @@ impl Parameters {
                     } else if let Some(typ) = raw_model.downcast_mut::<TypedModel>() {
                         typ.inputs.retain(|i| i.node != id);
                         typ.nodes[id].op = op;
-                        typ.nodes[id].outputs[0].fact = TypedFact::from(value.clone());
+                        typ.nodes[id].outputs[0].fact = TypedFact::try_from(value.clone())?;
                     }
                 }
             }

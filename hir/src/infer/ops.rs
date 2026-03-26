@@ -35,8 +35,10 @@ pub trait InferenceOp: Op {
                 .collect(); // checked
             match self.eval(input_values) {
                 Ok(values) => {
-                    let output_values =
-                        values.into_iter().map(|t| t.into_arc_tensor().into()).collect::<TVec<_>>();
+                    let output_values = values
+                        .into_iter()
+                        .map(|t| t.into_arc_tensor().try_into())
+                        .collect::<TractResult<TVec<_>>>()?;
                     return Ok((infered_inputs, output_values, observed));
                 }
                 Err(e) if e.root_cause().downcast_ref::<TooEarly>().is_some() => (),

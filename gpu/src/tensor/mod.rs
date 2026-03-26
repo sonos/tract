@@ -250,6 +250,12 @@ impl TensorStorage for DeviceTensor {
     fn dyn_hash(&self, _state: &mut dyn std::hash::Hasher) {
         // no meaningful hash for device memory
     }
+
+    fn exotic_fact(&self, _shape: &[usize]) -> TractResult<Option<Box<dyn ExoticFact>>> {
+        bail!(
+            "DeviceTensor cannot reconstruct a DeviceFact: origin (FromHost/FromDevice) is not carried by storage"
+        )
+    }
 }
 
 impl From<DeviceArenaView> for DeviceTensor {
