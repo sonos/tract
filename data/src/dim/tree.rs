@@ -135,12 +135,16 @@ impl TDim {
                 Ok(v)
             }
             Val(v) => Ok(*v),
-            Add(terms) => {
-                terms.iter().try_fold(0, |acc, it| it.eval_to_i64(values).map(|x| acc + x))
-            }
-            Mul(terms) => {
-                terms.iter().try_fold(1, |acc, it| it.eval_to_i64(values).map(|x| acc * x))
-            }
+            Add(terms) => terms.iter().try_fold(0i64, |acc, it| {
+                let x = it.eval_to_i64(values)?;
+                acc.checked_add(x)
+                    .with_context(|| format!("Overflow in TDim addition ({acc} + {x})"))
+            }),
+            Mul(terms) => terms.iter().try_fold(1i64, |acc, it| {
+                let x = it.eval_to_i64(values)?;
+                acc.checked_mul(x)
+                    .with_context(|| format!("Overflow in TDim multiplication ({acc} * {x})"))
+            }),
             Min(terms) => terms
                 .iter()
                 .try_fold(i64::MAX, |acc, it| it.eval_to_i64(values).map(|x| acc.min(x))),
@@ -152,7 +156,11 @@ impl TDim {
                     .and_then(|x| ((acc as usize).broadcast(x as usize)).map(|x| x as i64))
             }),
             Div(a, q) => Ok(a.eval_to_i64(values)? / *q as i64),
-            MulInt(p, a) => Ok(a.eval_to_i64(values)? * *p),
+            MulInt(p, a) => {
+                let x = a.eval_to_i64(values)?;
+                x.checked_mul(*p)
+                    .with_context(|| format!("Overflow in TDim multiplication ({x} * {p})"))
+            }
             Ge(a, b) => Ok(if a.eval_to_i64(values)? >= b.eval_to_i64(values)? { 1 } else { 0 }),
             Eq(a, b) => Ok(if a.eval_to_i64(values)? == b.eval_to_i64(values)? { 1 } else { 0 }),
         }
@@ -486,9 +494,18 @@ impl TDim {
             MulInt(coef, expr) => {
                 match *expr {
                     MulInt(c2, inner) => {
-                        return MulInt(coef * c2, inner).simplify_rec(scope, scenario, extra);
+                        if let Some(c) = coef.checked_mul(c2) {
+                            return MulInt(c, inner).simplify_rec(scope, scenario, extra);
+                        } else {
+                            return MulInt(coef, Box::new(MulInt(c2, inner)));
+                        }
                     }
-                    Val(v) => return Val(coef * v),
+                    Val(v) => {
+                        return coef
+                            .checked_mul(v)
+                            .map(Val)
+                            .unwrap_or_else(|| MulInt(coef, Box::new(Val(v))));
+                    }
                     _ => {}
                 }
 
@@ -502,8 +519,16 @@ impl TDim {
                             MulInt(coef, Box::new(term)).simplify_rec(scope, scenario, extra)
                         })
                         .collect()), // Case #3: If expression is an addition, distribute the coef
-                    (c, Val(v)) => Val(c * v), // Case #4: If expression is a value, combine coefs
-                    (c, MulInt(v, inner)) => MulInt(c * v, inner), // Case #5: If expression is a MulInt, combine coefs
+                    (c, Val(v)) => {
+                        c.checked_mul(v).map(Val).unwrap_or_else(|| MulInt(c, Box::new(Val(v))))
+                    } // Case #4: If expression is a value, combine coefs
+                    (c, MulInt(v, inner)) => {
+                        if let Some(cv) = c.checked_mul(v) {
+                            MulInt(cv, inner) // Case #5: If expression is a MulInt, combine coefs
+                        } else {
+                            MulInt(c, Box::new(MulInt(v, inner)))
+                        }
+                    }
                     (_, s) => MulInt(coef, Box::new(s)), // Case #6: Otherwise, return the original
                 }
             }
@@ -602,6 +627,7 @@ impl TDim {
                     .into_iter()
                     .map(|t| t.simplify_rec(scope, scenario, extra))
                     .flat_map(|t| if let Min(t) = t { t } else { vec![t] })
+                    .filter(|t| t != &Val(i64::MAX))
                     .sorted_by(tdim_lexi_order)
                     .dedup()
                     .collect();
@@ -633,6 +659,7 @@ impl TDim {
                     .into_iter()
                     .map(|t| t.simplify_rec(scope, scenario, extra))
                     .flat_map(|t| if let Max(t) = t { t } else { vec![t] })
+                    .filter(|t| t != &Val(i64::MIN))
                     .sorted_by(tdim_lexi_order)
                     .dedup()
                     .collect();
@@ -751,10 +778,10 @@ impl TDim {
                 }
             }
             Add(terms) => {
-                let mut bound = 0;
+                let mut bound: i64 = 0;
                 for t in terms {
                     if let Some(b) = t.inclusive_bound(scope, upper) {
-                        bound += b;
+                        bound = bound.checked_add(b)?;
                     } else {
                         return None;
                     }
@@ -763,8 +790,10 @@ impl TDim {
             }
             MulInt(p, a) => match p.cmp(&0) {
                 Ordering::Equal => Some(0),
-                Ordering::Greater => a.inclusive_bound(scope, upper).map(|x| x * p),
-                Ordering::Less => a.inclusive_bound(scope, !upper).map(|x| x * p),
+                Ordering::Greater => {
+                    a.inclusive_bound(scope, upper).and_then(|x| x.checked_mul(*p))
+                }
+                Ordering::Less => a.inclusive_bound(scope, !upper).and_then(|x| x.checked_mul(*p)),
             },
             Mul(_) => None,
             Min(terms) if !upper => {
@@ -852,8 +881,8 @@ impl TDim {
                 let (head, tail) = terms.split_first().unwrap();
                 tail.iter().fold(head.gcd(), |a, b| a.gcd(&b.gcd()))
             }
-            MulInt(p, a) => a.gcd() * p.unsigned_abs(),
-            Mul(terms) => terms.iter().map(|t| t.gcd()).product(),
+            MulInt(p, a) => a.gcd().saturating_mul(p.unsigned_abs()),
+            Mul(terms) => terms.iter().map(|t| t.gcd()).fold(1u64, |a, b| a.saturating_mul(b)),
             Min(terms) => terms.iter().map(|t| t.gcd()).reduce(|a, b| a.gcd(&b)).unwrap(),
             Max(terms) => terms.iter().map(|t| t.gcd()).reduce(|a, b| a.gcd(&b)).unwrap(),
             Div(a, q) => {
