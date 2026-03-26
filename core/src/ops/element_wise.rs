@@ -111,6 +111,21 @@ impl TypedOp for ElementWiseOp {
         } else if let Some(dt) = self.0.output_type(dt) {
             fact.datum_type = dt;
         }
+        // Propagate uniform_tdim by evaluating the op on the TDim scalar.
+        // Ops that register a TDim arm (e.g. Floor → identity) will pass the value through;
+        // ops that don't support TDim will return an error and uniform_tdim stays None.
+        if let Some(tdim) = &inputs[0].uniform_tdim {
+            let mut tmp = tensor0(tdim.clone());
+            if self.0.eval_in_place(&mut tmp, None).is_ok() {
+                fact.uniform_tdim = tmp
+                    .try_as_plain()
+                    .ok()
+                    .and_then(|d| d.as_slice::<TDim>().ok())
+                    .and_then(|s| s.first())
+                    .cloned()
+                    .map(|d| d.reduce());
+            }
+        }
         Ok(tvec!(fact))
     }
 

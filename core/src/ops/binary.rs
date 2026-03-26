@@ -135,6 +135,36 @@ impl TypedBinOp {
             .cloned()
             .map(|d| d.reduce())
     }
+
+    fn combine_uniform_tdim_with_konst(&self, a: &TDim, konst: &Tensor) -> Option<TDim> {
+        if konst.len() != 1 {
+            return None;
+        }
+        // Integer-valued scalar (including float constants like 2.0, 1.0, 3.0)
+        let b_int: Option<i64> =
+            if konst.datum_type().is_integer() || konst.datum_type().is::<bool>() {
+                konst.cast_to_scalar::<i64>().ok()
+            } else if konst.datum_type().is_float() {
+                konst.cast_to_scalar::<f64>().ok().and_then(|f| {
+                    if (f - f.round()).abs() < 1e-6 { Some(f.round() as i64) } else { None }
+                })
+            } else {
+                None
+            };
+        if let Some(b) = b_int {
+            return self.combine_uniform_tdim(a, &TDim::Val(b));
+        }
+        // Mul by reciprocal of integer (e.g. ×0.5 → Div(a, 2))
+        if self.0.neutral_element() == Some(1)
+            && let Some(f) = konst.cast_to_scalar::<f64>().ok().filter(|&f| f > 0.0)
+        {
+            let n = (1.0 / f).round() as u64;
+            if n >= 2 && (f * n as f64 - 1.0).abs() < 1e-9 {
+                return Some(TDim::Div(Box::new(a.clone()), n).reduce());
+            }
+        }
+        None
+    }
 }
 
 impl TypedOp for TypedBinOp {
@@ -153,6 +183,20 @@ impl TypedOp for TypedBinOp {
         ])?);
         if let (Some(a), Some(b)) = (&inputs[0].uniform_tdim, &inputs[1].uniform_tdim) {
             fact.uniform_tdim = self.combine_uniform_tdim(a, b);
+        }
+        // Fallback: one side has uniform_tdim, the other is a scalar constant
+        if fact.uniform_tdim.is_none() {
+            for (expr, konst_fact) in [
+                (inputs[0].uniform_tdim.as_ref(), inputs[1]),
+                (inputs[1].uniform_tdim.as_ref(), inputs[0]),
+            ] {
+                let Some(a) = expr else { continue };
+                let Some(konst) = konst_fact.konst.as_ref() else { continue };
+                fact.uniform_tdim = self.combine_uniform_tdim_with_konst(a, konst);
+                if fact.uniform_tdim.is_some() {
+                    break;
+                }
+            }
         }
         Ok(tvec!(fact))
     }
