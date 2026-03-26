@@ -44,11 +44,8 @@ fn try_fold_node(model: &TypedModel, node: &TypedNode) -> TractResult<Option<Typ
     if node.op_is::<Iff>() {
         return try_fold_iff(model, node);
     }
-    #[allow(clippy::collapsible_if)]
-    if let Some(bin_op) = node.op_as::<TypedBinOp>() {
-        if bin_op.0.neutral_element() == Some(1) {
-            return try_fold_mul_mask(model, node);
-        }
+    if node.op_as::<TypedBinOp>().is_some_and(|b| b.0.neutral_element() == Some(1)) {
+        return try_fold_mul_mask(model, node);
     }
     Ok(None)
 }
