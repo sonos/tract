@@ -656,6 +656,12 @@ fn output_options(command: clap::Command) -> clap::Command {
                 .help("dump performance info as json"),
         )
         .arg(
+            Arg::new("audit-json")
+                .long("audit-json")
+                .action(ArgAction::SetTrue)
+                .help("dump full model graph as JSON for machine consumption"),
+        )
+        .arg(
             Arg::new("mm")
                 .long("mm")
                 .action(ArgAction::SetTrue)
