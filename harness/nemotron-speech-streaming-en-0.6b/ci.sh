@@ -23,3 +23,12 @@ do
 			--approx very
 	done
 done
+
+model_prefix=$MODELS/$S3DIR/$MODEL
+
+# Check that the substitute_input_with_shape_of transform eliminates all Iff nodes
+$TRACT_RUN $model_prefix.preprocessor.nnef.tgz \
+	-t 'concretize_symbols(values: {"BATCH": 1})' \
+	-t 'substitute_input_with_shape_of(input_to_replace: "length", source_input: "input_signal", axis: 1)' \
+	dump -q \
+	--assert-op-count Iff 0
