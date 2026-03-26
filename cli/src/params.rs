@@ -1143,6 +1143,7 @@ pub fn display_params_from_clap(
         json: matches.get_flag("json"),
         mm: matches.get_flag("mm"),
         summary: matches.get_flag("summary"),
+        audit_json: matches.get_flag("audit-json"),
     })
 }
 

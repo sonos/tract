@@ -32,6 +32,7 @@ pub struct DisplayParams {
     pub left_column_width: usize,
     pub mm: bool,
     pub summary: bool,
+    pub audit_json: bool,
 }
 
 impl DisplayParams {

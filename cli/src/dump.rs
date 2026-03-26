@@ -120,7 +120,7 @@ pub fn handle(
     let mut annotations = Annotations::from_model(&*params.tract_model)?;
     annotate_with_graph_def(&mut annotations, &*params.tract_model, &params.graph)?;
     let run_params = run_params_from_subcommand(params, sub_matches)?;
-    if options.cost || options.summary {
+    if options.cost || options.summary || options.audit_json {
         tract_libcli::profile::extract_costs(
             &mut annotations,
             &*params.tract_model,
@@ -349,7 +349,9 @@ pub fn handle(
         }
     }
 
-    if options.json {
+    if options.audit_json {
+        tract_libcli::export::audit_json(&*params.tract_model, &annotations, std::io::stdout())?;
+    } else if options.json {
         let export = tract_libcli::export::GraphPerfInfo::from(&*params.tract_model, &annotations);
         serde_json::to_writer(std::io::stdout(), &export)?;
     } else {
