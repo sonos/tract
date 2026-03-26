@@ -99,6 +99,21 @@ impl TypedOp for RmsNorm {
         patch.wire_node(&node.name, self.clone(), inputs).map(Some)
     }
 
+    fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
+        let dt = inputs[0].datum_type;
+        let count: TDim = inputs[0].shape.iter().product();
+        // per element: square + accumulate + mul by rsqrt ≈ 3 FMA
+        // per reduction group: 1 div (rsqrt)
+        let groups: TDim = inputs[0]
+            .shape
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| *i != self.axis)
+            .map(|(_, d)| d)
+            .product();
+        Ok(tvec!((Cost::FMA(dt), count * 3), (Cost::Div(dt), groups)))
+    }
+
     as_op!();
 }
 

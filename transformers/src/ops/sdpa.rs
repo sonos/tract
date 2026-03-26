@@ -338,6 +338,25 @@ impl TypedOp for Sdpa {
         Ok(tvec!(out_fact))
     }
 
+    fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
+        let dt = inputs[0].datum_type;
+        let rank = inputs[0].rank();
+        let q = &inputs[0].shape;
+        let k = &inputs[1].shape;
+        let v = &inputs[2].shape;
+        // rank 3: [B, S_q, D_k], rank 4: [B, H, S_q, D_k]
+        let (batch, heads, s_q, d_k) = if rank == 4 {
+            (q[0].clone(), q[1].clone(), q[2].clone(), q[3].clone())
+        } else {
+            (q[0].clone(), 1.to_dim(), q[1].clone(), q[2].clone())
+        };
+        let s_k = k[rank - 2].clone();
+        let d_v = v[rank - 1].clone();
+        // Q*K^T: B*H*S_q*S_k*D_k, attn*V: B*H*S_q*S_k*D_v
+        let fma = batch * &heads * &s_q * &s_k * (d_k + d_v);
+        Ok(tvec!((Cost::FMA(dt), fma)))
+    }
+
     fn codegen(
         &self,
         model: &TypedModel,

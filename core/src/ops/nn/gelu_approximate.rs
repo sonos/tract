@@ -24,7 +24,8 @@ element_wise!(gelu_approximate, GeluApproximate { fast_impl: bool },
             *x = gelu_approx_f32(*x, pow);
         });
         Ok(())
-    }
+    };
+    cost: |dt| {tvec!((Cost::FMA(dt), 15))}
 );
 
 /// Search pattern => NEW_GELU(x) = 0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^N))); N ∈ {2, 3}
