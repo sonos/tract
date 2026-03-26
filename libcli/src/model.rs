@@ -45,7 +45,7 @@ pub trait Model:
     fn input_outlets(&self) -> &[OutletId];
 
     fn set_input_names(&mut self, names: &[&str]) -> TractResult<()>;
-    fn set_output_names(&mut self, names: &[&str]) -> TractResult<()>;
+    fn select_outputs_by_name(&mut self, names: &[&str]) -> TractResult<()>;
 
     /// Outputs of the model
     fn output_outlets(&self) -> &[OutletId];
@@ -188,8 +188,8 @@ where
         self.set_input_names(names.iter())
     }
 
-    fn set_output_names(&mut self, names: &[&str]) -> TractResult<()> {
-        self.set_output_names(names)
+    fn select_outputs_by_name(&mut self, names: &[&str]) -> TractResult<()> {
+        self.select_outputs_by_name(names)
     }
 
     fn output_outlets(&self) -> &[OutletId] {

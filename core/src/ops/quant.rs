@@ -208,7 +208,7 @@ impl TypedOp for DequantizeLinearF32 {
                     // plug in quant
                     wire =
                         adhoc_model.wire_node(&*quant.name, quant.op.clone(), [wire].as_ref())?[0];
-                    adhoc_model.set_output_outlets(&[wire])?;
+                    adhoc_model.select_output_outlets(&[wire])?;
                     let input = (0u8..=255).collect::<Vec<u8>>();
                     let input = match dt {
                         DatumType::I8 => unsafe {
@@ -482,7 +482,7 @@ pub mod scale {
         let output = model
             .wire_node("mmm", op, &[a, b, bias, a0, a_scale, b0, b_scale, c0, c_scale])
             .unwrap();
-        model.set_output_outlets(&output).unwrap();
+        model.select_output_outlets(&output).unwrap();
 
         let plain = model.clone().into_runnable().unwrap().run(input.clone()).unwrap();
         assert_eq!(*plain[0], expected);

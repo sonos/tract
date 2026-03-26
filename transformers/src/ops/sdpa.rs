@@ -222,7 +222,7 @@ impl Sdpa {
             output =
                 graph.wire_node("cast_output", Cast::new(input_facts[0].datum_type), &[output])?[0];
         }
-        graph.set_output_outlets(&[output])?;
+        graph.select_output_outlets(&[output])?;
         Ok(graph)
     }
 

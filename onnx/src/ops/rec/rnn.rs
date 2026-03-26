@@ -79,7 +79,7 @@ impl WireBody for RNN {
         wire!(Ht = self.fore.clone(), ht0);
 
         wire!(y_h = AxisOp::Add(1), Ht);
-        body.set_output_outlets(&[y_h])?;
+        body.select_output_outlets(&[y_h])?;
         Ok(())
     }
 }

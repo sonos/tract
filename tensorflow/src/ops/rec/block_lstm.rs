@@ -154,7 +154,7 @@ impl Expansion for BlockLSTM {
         wire!(ci_ = AxisOp::Add(0), ci);
         wire!(co_ = AxisOp::Add(0), co);
         wire!(h_ = AxisOp::Add(0), h);
-        body.set_output_outlets(&[i_, cs_, f_, o_, ci_, co_, h_])?;
+        body.select_output_outlets(&[i_, cs_, f_, o_, ci_, co_, h_])?;
         for ix in 0..7 {
             output_mapping.push(scan::OutputMapping::<TDim> {
                 state: ix == 1 || ix == 6,

@@ -221,19 +221,19 @@ where
     }
 
     /// Change model outputs.
-    pub fn set_output_outlets(&mut self, outputs: &[OutletId]) -> TractResult<()> {
+    pub fn select_output_outlets(&mut self, outputs: &[OutletId]) -> TractResult<()> {
         self.outputs = outputs.to_vec();
         Ok(())
     }
 
     /// Change model outputs and return `self`.
     pub fn with_output_outlets(mut self, outputs: &[OutletId]) -> TractResult<Self> {
-        self.set_output_outlets(outputs)?;
+        self.select_output_outlets(outputs)?;
         Ok(self)
     }
 
     /// Set model outputs by node names.
-    pub fn set_output_names(
+    pub fn select_outputs_by_name(
         &mut self,
         outputs: impl IntoIterator<Item = impl AsRef<str>>,
     ) -> TractResult<()> {
@@ -260,11 +260,11 @@ where
     }
 
     /// Set model outputs by node names and return `self`.
-    pub fn with_output_names(
+    pub fn with_outputs_by_name(
         mut self,
         outputs: impl IntoIterator<Item = impl AsRef<str>>,
     ) -> TractResult<Self> {
-        self.set_output_names(outputs)?;
+        self.select_outputs_by_name(outputs)?;
         Ok(self)
     }
 

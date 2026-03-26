@@ -144,7 +144,7 @@ impl WireBody for GRU {
         wire!(Ht = math::add(), one_sub_zt_ht, zt_Ht_1);
 
         wire!(y_h = AxisOp::Add(1), Ht);
-        body.set_output_outlets(&[y_h])?;
+        body.select_output_outlets(&[y_h])?;
         Ok(())
     }
 }

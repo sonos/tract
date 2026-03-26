@@ -59,7 +59,7 @@ impl DelayPlusDownsampleProblem {
                 &crop,
             )
             .unwrap();
-        model.set_output_outlets(&ds).unwrap();
+        model.select_output_outlets(&ds).unwrap();
         proptest_regular_against_pulse(model, self.pulse as _, t(self.input), 1)
     }
 }

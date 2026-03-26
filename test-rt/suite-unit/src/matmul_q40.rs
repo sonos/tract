@@ -108,7 +108,7 @@ impl MatmulQ40Problem {
             &inputs,
         )?;
 
-        model.set_output_outlets(&output)?;
+        model.select_output_outlets(&output)?;
         //let test = model.node_by_name("einsum")?.op.as_op().downcast_ref::<EinSum>().unwrap();
 
         //let test1 = model.node_by_name("einsum")?.op.as_op().downcast_ref::<EinSum>().unwrap();

@@ -895,7 +895,7 @@ impl Parameters {
 
         if let Some(outputs) = matches.get_many::<String>("output-node") {
             let outputs: Vec<&str> = outputs.map(String::as_str).collect();
-            raw_model.set_output_names(&outputs)?;
+            raw_model.select_outputs_by_name(&outputs)?;
         };
 
         if let Some(override_facts) = matches.get_many::<String>("override-fact") {

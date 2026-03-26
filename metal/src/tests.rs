@@ -176,7 +176,7 @@ mod tests {
         let outputs = wire_sdpa_layer(&mut model, "0", q, k, v)?;
         let outputs = wire_sdpa_layer(&mut model, "1", outputs[0], k, v)?;
 
-        model.set_output_outlets(&outputs)?;
+        model.select_output_outlets(&outputs)?;
 
         // Transform model for Metal execution
         let model = MetalTransform::default().transform_into(model)?;

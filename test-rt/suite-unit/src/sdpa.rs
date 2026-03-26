@@ -180,7 +180,7 @@ where
             },
             &inputs,
         )?;
-        model.set_output_outlets(&output)?;
+        model.select_output_outlets(&output)?;
         model.into_decluttered()
     }
 

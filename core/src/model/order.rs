@@ -299,7 +299,7 @@ mod tests {
         let add = model.wire_node("add", math::add(), &[a, a]).unwrap()[0];
         let neg = model.wire_node("neg", math::add(), &[add, a]).unwrap()[0];
         model.add_edge(neg, InletId::new(add.node, 1)).unwrap();
-        model.set_output_outlets(&[neg]).unwrap();
+        model.select_output_outlets(&[neg]).unwrap();
         let cloned = model.clone();
         let (rx, tx) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
@@ -321,7 +321,7 @@ mod tests {
         let a = model.add_source("a", i32::fact([10]))?;
         let c = model.wire_node("c", Gather::new(0), &[a, b])?[0];
         let e = model.wire_node("e", Gather::new(0), &[c, d])?[0];
-        model.set_output_outlets(&[e]).unwrap();
+        model.select_output_outlets(&[e]).unwrap();
         eprintln!("{model}");
         assert!(model.eval_order_opt_ram()?[2..] == [c.node, d.node, e.node]);
         Ok(())

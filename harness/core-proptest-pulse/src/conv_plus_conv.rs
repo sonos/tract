@@ -111,7 +111,7 @@ impl ConvPlusConvProblem {
         for (ix, cv) in ops.iter().enumerate() {
             wire = cv.chain(&format!("conv{ix}"), &mut model, &wire);
         }
-        model.set_output_outlets(&wire).unwrap();
+        model.select_output_outlets(&wire).unwrap();
         model
     }
 

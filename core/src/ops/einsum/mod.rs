@@ -175,7 +175,7 @@ impl EvalOp for EinSum {
                 wires.push(wire);
             }
             let output = adhoc_model.wire_node("einsum", self.clone(), &wires)?;
-            adhoc_model.set_output_outlets(&output)?;
+            adhoc_model.select_output_outlets(&output)?;
             let opti = adhoc_model.into_optimized()?;
             if opti.nodes.iter().all(|node| !node.op_is::<Self>()) {
                 return opti.into_runnable()?.run(inputs);

@@ -116,7 +116,7 @@ mod test {
                 &[delay_1],
             )
             .unwrap();
-        model.set_output_outlets(&delay_2).unwrap();
+        model.select_output_outlets(&delay_2).unwrap();
 
         let plan = model.into_runnable().unwrap();
         let mut state = plan.spawn().unwrap();

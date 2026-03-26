@@ -143,7 +143,7 @@ impl Test for QBinaryOpProblem {
         op.1 = Some(self.c_dt);
         // }
         let c = model.wire_node("c", op, &[a, b])?[0];
-        model.set_output_outlets(&[c])?;
+        model.select_output_outlets(&[c])?;
 
         let result = runtime
             .prepare(model)

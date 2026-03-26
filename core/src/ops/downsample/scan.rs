@@ -28,7 +28,7 @@ pub fn pull_downsample_over_scan(
             )?[0])
         })
         .collect::<TractResult<Vec<_>>>()?;
-    downsampled_body.set_output_outlets(&downsample_outputs)?;
+    downsampled_body.select_output_outlets(&downsample_outputs)?;
     downsampled_body.declutter()?;
     downsampled_body.check_consistency()?;
 

@@ -677,7 +677,7 @@ mod test {
         };
 
         let matmul_out = model.wire_node("matmul", op, &[source_a, source_b])?;
-        model.set_output_outlets(&matmul_out)?;
+        model.select_output_outlets(&matmul_out)?;
 
         let tensor_a = Tensor::zero::<f32>(&[b, m, k])?;
         let tensor_b = Tensor::zero::<f16>(&[b, k, n])?;

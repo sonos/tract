@@ -141,7 +141,7 @@ proptest! {
         let s = model.symbols.sym("S");
         let a = model.add_source("a", f32::fact(&[s])).unwrap();
         let slice = model.wire_node("slice", Slice::new(0, begin as usize, (input_len + begin) as usize), &[a]).unwrap();
-        model.set_output_outlets(&slice).unwrap();
+        model.select_output_outlets(&slice).unwrap();
 
         let input = Array1::range(1.0f32, full_len as f32 + 1.0, 1.0);
         proptest_regular_against_pulse(model, pulse as _, input.into_dyn(), 0)?;
@@ -154,7 +154,7 @@ proptest! {
         let a = model.add_source("a", f32::fact(&[s])).unwrap();
         let pad = model.wire_node("pad", Pad::new(vec![(begin as _, end as _)],
         PadMode::Constant(Arc::new(Tensor::from(-1f32)))), &[a]).unwrap();
-        model.set_output_outlets(&pad).unwrap();
+        model.select_output_outlets(&pad).unwrap();
 
         let input = Array1::range(1.0f32, input_len as f32 + 1.0, 1.0);
         proptest_regular_against_pulse(model, pulse as _, input.into_dyn(), 0)?;

@@ -85,7 +85,7 @@ mod tests {
             let down = model
                 .wire_node("down", Downsample::new(0, stride as isize, modulo), &crop)
                 .unwrap();
-            model.set_output_outlets(&down).unwrap();
+            model.select_output_outlets(&down).unwrap();
             model
         };
         trace!("{model:#?}");

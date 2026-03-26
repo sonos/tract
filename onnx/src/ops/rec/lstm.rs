@@ -176,7 +176,7 @@ impl WireBody for LSTM {
         // add sequence axis (chunk == 1)
         wire!(Ht_fixed = AxisOp::Add(1), Ht);
         wire!(Ct_fixed = AxisOp::Add(1), Ct);
-        body.set_output_outlets(&[Ht_fixed, Ct_fixed])?;
+        body.select_output_outlets(&[Ht_fixed, Ct_fixed])?;
 
         Ok(())
     }

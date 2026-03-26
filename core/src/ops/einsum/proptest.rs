@@ -117,7 +117,7 @@ impl BinEinsumProblem {
             let c = model.add_const("c", c.clone())?;
             output = model.wire_node("add", crate::ops::math::add(), &[output[0], c])?;
         }
-        model.set_output_outlets(&output)?;
+        model.select_output_outlets(&output)?;
         model = model.into_decluttered()?;
         let expected = model.clone().into_runnable()?.run(inputs.clone())?.remove(0);
         let optimised = model.clone().into_optimized()?;

@@ -161,7 +161,7 @@ impl DeconvProblem {
             self.as_op().context("Generating op")?,
             &[src, kernel, bias],
         )?;
-        model.set_output_outlets(&output)?;
+        model.select_output_outlets(&output)?;
         Ok(model)
     }
 

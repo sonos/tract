@@ -250,7 +250,7 @@ mod test {
             },
             &[source, kernel, bias],
         )?;
-        model.set_output_outlets(&conv)?;
+        model.select_output_outlets(&conv)?;
         let pulsed = PulsedModel::new(&model, stream_sym, &1.to_dim())?;
         let output_fact = pulsed.output_fact(0)?;
         assert_eq!(output_fact.stream.as_ref().unwrap().delay, 0);

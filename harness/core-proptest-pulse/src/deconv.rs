@@ -101,7 +101,7 @@ impl DeconvProblem {
         fact.shape.set(2, s.to_dim());
         let input = model.add_source("a", fact).unwrap();
         let id = self.deconv.chain("deconv1", &mut model, input);
-        model.set_output_outlets(&[id]).unwrap();
+        model.select_output_outlets(&[id]).unwrap();
         proptest_regular_against_pulse(model, self.pulse as _, self.input.clone().into_dyn(), 2)
     }
 }
@@ -286,7 +286,7 @@ fn deconv2d() {
     let kernel = model.add_const("kernel", kernel).unwrap();
     let bias = model.add_const("bias", rctensor0(0f32)).unwrap();
     let deconv = model.wire_node("deconv", deconv, &[a, kernel, bias]).unwrap();
-    model.set_output_outlets(&deconv).unwrap();
+    model.select_output_outlets(&deconv).unwrap();
     model.declutter().unwrap();
 
     let mut input = Tensor::zero::<f32>(&[1, 2, 5, 8]).unwrap();
