@@ -6,6 +6,8 @@ use tract_nnef::tract_core::trivial_op_state_freeze;
 #[derive(Debug, Clone, Hash)]
 pub struct PulsedSameAxisConcat {
     pub axis: usize,
+    pub before_len: usize,
+    pub after_len: usize,
     pub input_delay: usize,
     pub input_len: TDim,
 }
