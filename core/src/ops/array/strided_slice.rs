@@ -294,7 +294,7 @@ impl EvalOp for StridedSlice {
             );
         }
         let output = self.wire("adhoc", &mut model, &source)?;
-        model.set_output_outlets(&output)?;
+        model.select_output_outlets(&output)?;
         model.into_runnable()?.run(inputs)
     }
 }
@@ -307,7 +307,7 @@ impl TypedOp for StridedSlice {
             source.push(model.add_source(format!("adhoc_input.{ix}"), (*input).clone())?);
         }
         let output = self.wire("adhoc", &mut model, &source)?;
-        model.set_output_outlets(&output)?;
+        model.select_output_outlets(&output)?;
         Ok(tvec!(model.outlet_fact(output[0])?.clone()))
     }
 

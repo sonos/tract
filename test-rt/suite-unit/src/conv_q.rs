@@ -253,7 +253,7 @@ impl QConvProblem {
             Some(self.output_dt()),
         );
         let wire = model.wire_node("conv", op, &inputs)?[0];
-        model.set_output_outlets(&[wire])?;
+        model.select_output_outlets(&[wire])?;
         Ok(model)
     }
 }

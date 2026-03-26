@@ -47,7 +47,7 @@ impl Test for QFlavoursProblem {
         } else {
             model.wire_node("flavour", offset_u8_as_i8(), &[wire])?
         };
-        model.set_output_outlets(&output)?;
+        model.select_output_outlets(&output)?;
         let output = runtime
             .prepare(model)?
             .run(tvec![self.input.clone().into_tvalue()])?

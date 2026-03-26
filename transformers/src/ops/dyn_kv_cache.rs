@@ -509,7 +509,7 @@ mod tests {
             input_sequence_fact: f32::fact(&input_shape),
         };
         let out = model.wire_node("kv_cache", op, &[input])?;
-        model.set_output_outlets(&out)?;
+        model.select_output_outlets(&out)?;
 
         // Model should have 1 input (input), 1 output (kv_cache)
         assert_eq!(model.inputs.len(), 1);
@@ -557,7 +557,7 @@ mod tests {
         let past = model.add_source("kv_past", f32::fact(&past_shape))?;
         let input = model.add_source("input", f32::fact(&input_shape))?;
         let concat = model.wire_node("concat", TypedConcat { axis: 1 }, &[past, input])?;
-        model.set_output_outlets(&concat)?;
+        model.select_output_outlets(&concat)?;
 
         let orig_input_count = model.inputs.len();
         let orig_output_count = model.outputs.len();
@@ -604,7 +604,7 @@ mod tests {
             input_sequence_fact: f32::fact(&input_shape),
         };
         let out = model.wire_node("kv_cache", op, &[input])?;
-        model.set_output_outlets(&out)?;
+        model.select_output_outlets(&out)?;
 
         let nnef = tract_nnef::nnef().with_tract_transformers();
         let mut buffer = vec![];

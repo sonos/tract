@@ -493,7 +493,7 @@ mod test {
                             },
                             &inputs,
                         ).unwrap();
-                    model.set_output_outlets(&result).unwrap();
+                    model.select_output_outlets(&result).unwrap();
 
                     let inputs = if qp {
                         tvec![

@@ -314,7 +314,7 @@ mod tests {
 
         // Iff(eq, zero, data) — zero is "true" branch, data is "false" branch
         let iff_wire = model.wire_node("iff", Iff, &[eq_wire, zero_wire, data_wire])?[0];
-        model.set_output_outlets(&[iff_wire])?;
+        model.select_output_outlets(&[iff_wire])?;
 
         let model = model.into_decluttered()?;
 
@@ -393,7 +393,7 @@ mod tests {
 
         // Iff(bn, zeros, data): condition Ge(x1,T) is all-false → fold to data
         let iff = model.wire_node("iff", Iff, &[bn, zeros, data])?[0];
-        model.set_output_outlets(&[iff])?;
+        model.select_output_outlets(&[iff])?;
 
         let model = model.into_decluttered()?;
 
@@ -468,7 +468,7 @@ mod tests {
         )?;
 
         let iff = model.wire_node("iff", Iff, &[cond, true_branch, false_branch])?[0];
-        model.set_output_outlets(&[iff])?;
+        model.select_output_outlets(&[iff])?;
 
         let model = model.into_decluttered()?;
 

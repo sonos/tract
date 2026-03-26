@@ -422,7 +422,7 @@ mod tests {
         }
         let output = model.wire_node("matmul", matmul, &[lhs, rhs])?;
 
-        model.set_output_outlets(&output)?;
+        model.select_output_outlets(&output)?;
         model = model.into_decluttered()?;
         let mut output =
             DefaultRuntime.prepare(model)?.run(tvec!(a.into_tvalue(), b.into_tvalue()))?;

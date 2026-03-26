@@ -106,7 +106,7 @@ impl<'mb> ModelBuilder<'mb> {
             .into_iter()
             .map(|s| s.to::<OutletId>(self))
             .collect::<TractResult<TVec<OutletId>>>()?;
-        self.model.set_output_outlets(&outputs)?;
+        self.model.select_output_outlets(&outputs)?;
 
         self.parse_properties().context("Parsing properties")?;
 

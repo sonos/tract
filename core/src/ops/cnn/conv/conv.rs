@@ -932,7 +932,7 @@ impl EvalOp for Conv {
                 self.wire_as_im2col_pair(&mut model, "im2col-adhoc", &wire)?
             }
         };
-        model.set_output_outlets(&wire)?;
+        model.select_output_outlets(&wire)?;
         model.into_runnable()?.run(inputs)
     }
 }
@@ -1323,7 +1323,7 @@ mod test {
             },
             &[wire[0], kernel, bias],
         )?;
-        model.set_output_outlets(&wire)?;
+        model.select_output_outlets(&wire)?;
         model.declutter()?;
         assert_eq!(model.nodes().len(), 4); // source + conv + kernel + bias
         let cv = model.nodes()[3].op_as::<Conv>().unwrap();

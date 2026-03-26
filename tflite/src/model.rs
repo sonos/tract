@@ -111,7 +111,7 @@ impl Framework<TfliteProtoModel, TypedModel> for Tflite {
             .iter()
             .map(|o| mapping[&o])
             .collect();
-        target.set_output_outlets(&outputs)?;
+        target.select_output_outlets(&outputs)?;
         Ok(target)
     }
 }

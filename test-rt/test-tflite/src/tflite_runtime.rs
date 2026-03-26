@@ -151,7 +151,7 @@ mod tests {
     fn test_trivial() -> TractResult<()> {
         let mut model = TypedModel::default();
         let wire = model.add_source("x", f32::fact([1]))?;
-        model.set_output_outlets(&[wire])?;
+        model.select_output_outlets(&[wire])?;
         let out = runtime().prepare(model)?.run(tvec!(tensor1(&[0f32]).into_tvalue()))?.remove(0);
         assert_eq!(out, tensor1(&[0f32]).into_tvalue());
         Ok(())

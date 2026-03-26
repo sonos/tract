@@ -57,7 +57,7 @@ impl Test for SliceProblem {
         model.properties.insert("tract-rt-test.id".to_string(), rctensor0(id.to_string()));
         let wire = model.add_source("input", TypedFact::shape_and_dt_of(&input))?;
         let output = model.wire_node("slice", self.op.clone(), &[wire])?;
-        model.set_output_outlets(&output)?;
+        model.select_output_outlets(&output)?;
         let prepared = runtime.prepare(model)?;
         let mut output = prepared.run(tvec![input.clone().into_tvalue()])?;
         let output = output.remove(0).into_tensor();

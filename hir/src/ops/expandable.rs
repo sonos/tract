@@ -96,7 +96,7 @@ impl EvalOp for Box<dyn Expansion> {
             .collect::<TractResult<TVec<OutletId>>>()?;
 
         let wires = self.wire("adhoc", &mut adhoc, &wires)?;
-        adhoc.set_output_outlets(&wires)?;
+        adhoc.select_output_outlets(&wires)?;
         SimplePlan::new(adhoc)?.run(inputs)
     }
 }

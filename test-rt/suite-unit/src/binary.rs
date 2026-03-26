@@ -221,7 +221,7 @@ where
             model.add_source("rhs", TypedFact::shape_and_dt_of(&self.rhs.clone().into_tensor()))?;
 
         let output = model.wire_node("bin_op", to_tract_op(self.op), &[lhs, rhs])?;
-        model.set_output_outlets(&output)?;
+        model.select_output_outlets(&output)?;
 
         model = model.into_decluttered()?;
         Ok(model)

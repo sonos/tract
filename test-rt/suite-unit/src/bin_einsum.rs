@@ -207,7 +207,7 @@ impl BinEinsumProblem {
             output = model.wire_node("add", tract_core::ops::math::add(), &[output[0], c])?;
         }
 
-        model.set_output_outlets(&output)?;
+        model.select_output_outlets(&output)?;
 
         //let test = model.node_by_name("einsum")?.op.as_op().downcast_ref::<EinSum>().unwrap();
 

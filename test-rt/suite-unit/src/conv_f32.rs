@@ -211,7 +211,7 @@ impl ConvProblem {
             None,
         );
         let wire = model.wire_node("conv", op, &[wire, kernel, bias])?[0];
-        model.set_output_outlets(&[wire])?;
+        model.select_output_outlets(&[wire])?;
         Ok(model)
     }
 }

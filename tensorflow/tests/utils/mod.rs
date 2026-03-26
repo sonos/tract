@@ -33,7 +33,7 @@ pub fn run_tract<S: AsRef<str>>(
 ) -> TractResult<TVec<Arc<Tensor>>> {
     let mut model = tract_tensorflow::tensorflow().model_for_read(&mut &*graph)?;
     model.set_input_names(&inputs.iter().map(|pair| pair.0.as_ref()).collect::<Vec<&str>>())?;
-    model.set_output_names(&[output])?;
+    model.select_outputs_by_name(&[output])?;
     for (ix, (_, tf)) in inputs.iter().enumerate() {
         model.set_input_fact(ix, tf.datum_type().fact(tf.shape()).into())?;
     }
@@ -98,7 +98,7 @@ pub fn infer<S: AsRef<str>>(
     model
         .set_input_names(&inputs.iter().map(|pair| pair.0.as_ref()).collect::<Vec<&str>>())
         .unwrap();
-    model.set_output_names(&[output_str]).unwrap();
+    model.select_outputs_by_name(&[output_str]).unwrap();
     for (ix, (_, tf)) in inputs.iter().enumerate() {
         model.set_input_fact(ix, tf.datum_type().fact(tf.shape()).into())?;
     }

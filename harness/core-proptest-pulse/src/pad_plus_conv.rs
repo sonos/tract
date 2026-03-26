@@ -97,7 +97,7 @@ impl PadPlusConvProblem {
                 &[wire, kernel, bias],
             )
             .unwrap();
-        model.set_output_outlets(&conv).unwrap();
+        model.select_output_outlets(&conv).unwrap();
         proptest_regular_against_pulse(model, self.pulse as _, self.input.clone().into_dyn(), 2)
     }
 }

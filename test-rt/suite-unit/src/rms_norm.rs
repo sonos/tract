@@ -76,7 +76,7 @@ where
             RmsNorm { axis: self.axis, eps: tensor0(self.eps).into_arc_tensor() },
             &[input],
         )?;
-        model.set_output_outlets(&output)?;
+        model.select_output_outlets(&output)?;
 
         model = model.into_decluttered()?;
         Ok(model)

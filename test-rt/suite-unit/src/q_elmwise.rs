@@ -84,7 +84,7 @@ impl Test for QElmWiseOpProblem {
         op.1 = Some(self.out_dt);
         // }
         let out = model.wire_node("out", op, &[inp])?[0];
-        model.set_output_outlets(&[out])?;
+        model.select_output_outlets(&[out])?;
 
         let result = runtime
             .prepare(model)?

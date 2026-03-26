@@ -13,7 +13,7 @@ fn einsum_pulsedmm() {
     let einsum = EinSum { axes: expr, operating_dt: f32::datum_type(), q_params: None };
 
     let einsum = model.wire_node("einsum", einsum, &[x, w]).unwrap();
-    model.set_output_outlets(&einsum).unwrap();
+    model.select_output_outlets(&einsum).unwrap();
     model.declutter().unwrap();
 
     let mut input = Tensor::zero::<f32>(&[5, 8, 2]).unwrap();

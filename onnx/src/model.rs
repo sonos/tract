@@ -183,7 +183,7 @@ impl ParsingContext<'_> {
             model.set_outlet_label(outlet, output.name.clone())?;
             model.set_outlet_fact(outlet, fact)?;
         }
-        model.set_output_outlets(&outputs)?;
+        model.select_output_outlets(&outputs)?;
         if !self.framework.ignore_value_info {
             for info in &graph.value_info {
                 if let Some(TypeProto { value: Some(Value::TensorType(t)), .. }) = &info.r#type {

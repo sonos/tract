@@ -80,7 +80,7 @@ where
             ScaledMaskedSoftmax { scale: tensor0(self.scale).into_arc_tensor() },
             &[input, mask],
         )?;
-        model.set_output_outlets(&output)?;
+        model.select_output_outlets(&output)?;
 
         model = model.into_decluttered()?;
         Ok(model)

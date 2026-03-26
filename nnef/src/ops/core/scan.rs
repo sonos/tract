@@ -201,7 +201,7 @@ fn de_scan(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tract
         .map(|v| v.to::<OutletId>(builder))
         .collect::<TractResult<Vec<OutletId>>>()
         .context("Coercing outputs to wires")?;
-    body.model.set_output_outlets(&body_outputs)?;
+    body.model.select_output_outlets(&body_outputs)?;
     // preferred form for output is 4 arguments, but early models had 3 arguments output,
     // breaking support for bidirectional
     // this awkward dance somewhat maintains compatibility

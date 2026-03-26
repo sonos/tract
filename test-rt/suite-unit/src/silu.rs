@@ -47,7 +47,7 @@ where
         let input = model.add_source("input", TypedFact::shape_and_dt_of(&input))?;
 
         let output = model.wire_node("silu", silu(), &[input])?;
-        model.set_output_outlets(&output)?;
+        model.select_output_outlets(&output)?;
 
         model = model.into_decluttered()?;
         Ok(model)

@@ -401,7 +401,7 @@ mod test {
                 EinSum::new(self.expr.parse().unwrap(), f32::datum_type()),
                 &[sa, sb],
             )?;
-            model.set_output_outlets(&einsum)?;
+            model.select_output_outlets(&einsum)?;
             let a = self.a.clone().into_tvalue();
             let b = self.b.clone().into_tvalue();
             let inputs = tvec!(a, b);
@@ -536,7 +536,7 @@ mod test {
             model.add_const("c_scale", tensor0(qp.zp_scale().1))?,
         ];
         let wire = model.wire_node("einsum", op.clone(), &inputs)?;
-        model.set_output_outlets(&wire)?;
+        model.select_output_outlets(&wire)?;
         rewrite_einsum_to_prefix_matmul(&mut model, true)?;
         assert!(model.nodes.iter().all(|n| !n.op_is::<EinSum>()));
         Ok(())

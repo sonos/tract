@@ -1361,7 +1361,7 @@ mod proptests {
             for (ix, op) in self.ops.iter().enumerate() {
                 wire = model.wire_node(format!("op_{ix}"), op.clone(), &[wire])?[0];
             }
-            model.set_output_outlets(&[wire])?;
+            model.select_output_outlets(&[wire])?;
             Ok(model)
         }
 

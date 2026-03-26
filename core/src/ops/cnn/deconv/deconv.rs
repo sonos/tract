@@ -149,7 +149,7 @@ impl EvalOp for Deconv {
             .map(|(ix, input)| model.add_const(format!("s{ix}"), input.into_tensor()))
             .collect::<TractResult<TVec<OutletId>>>()?;
         let output = self.wire_with_deconv_sum("adhoc", &mut model, &inputs)?;
-        model.set_output_outlets(&output)?;
+        model.select_output_outlets(&output)?;
         model.into_runnable()?.run(tvec![]).context("In adhoc deconvolution eval")
     }
 }
