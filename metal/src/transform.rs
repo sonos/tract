@@ -319,7 +319,9 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
                     Box::new(ops::MetalReduce::from_tract_core(op).unwrap())
                 } else if let Some(op) = node.op_as::<CoreSoftmax>() {
                     Box::new(ops::MetalSoftmax::from_tract_core(op).unwrap())
-                } else if let Some(op) = node.op_as::<ScaledMaskedSoftmax>() {
+                } else if let Some(op) = node.op_as::<ScaledMaskedSoftmax>()
+                    && !op.post_softmax_mask
+                {
                     Box::new(ops::MetalScaledMaskedSoftmax { scale: op.scale.clone() })
                 } else if let Some(op) = node.op_as::<RmsNorm>() {
                     Box::new(ops::MetalRmsNorm::new(op.axis, op.eps.clone()))
