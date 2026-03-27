@@ -6,7 +6,7 @@ use tract_gpu::utils::check_strides_validity;
 
 use crate::context::MetalBuffer;
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum MValue {
     Natural(Arc<Tensor>),
     Reshaped { t: Arc<Tensor>, shape: TVec<usize>, strides: TVec<isize> },

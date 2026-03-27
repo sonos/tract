@@ -49,7 +49,7 @@ impl PartialEq for WeightType {
         use WeightType::*;
         match (self, other) {
             (Plain(a), Plain(b)) => a == b,
-            (BlockQuant(a), BlockQuant(b)) => a.same_as(&**b),
+            (BlockQuant(a), BlockQuant(b)) => a == b,
             _ => false,
         }
     }

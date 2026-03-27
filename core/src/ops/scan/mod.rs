@@ -13,7 +13,7 @@ pub struct ScanInfo {
     pub chunk: isize,
 }
 
-#[derive(Clone, new, Hash, Debug)]
+#[derive(Clone, new, Hash, Debug, PartialEq, Eq)]
 pub enum InputMapping {
     Full,
     State,
@@ -37,7 +37,7 @@ impl InputMapping {
     }
 }
 
-#[derive(Clone, new, Hash, Default)]
+#[derive(Clone, new, Hash, Default, PartialEq, Eq)]
 pub struct OutputMapping<F: Clone> {
     pub scan: Option<(usize, ScanInfo)>,
     pub full_dim_hint: Option<F>,

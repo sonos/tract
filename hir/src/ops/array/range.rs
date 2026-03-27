@@ -2,7 +2,7 @@ use tract_core::ops::cast::wire_cast;
 
 use crate::internal::*;
 
-#[derive(Debug, Default, Clone, new, Hash)]
+#[derive(Debug, Default, Clone, new, Hash, PartialEq, Eq)]
 pub struct Range;
 
 impl Expansion for Range {

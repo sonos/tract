@@ -10,14 +10,14 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
     reg.insert("LoopCond", |_, _| Ok(Box::new(LoopGate(LoopGateRole::LoopCond))));
 }
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum LoopGateRole {
     Enter(String),
     Exit,
     LoopCond,
 }
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct LoopGate(LoopGateRole);
 
 impl Op for LoopGate {
@@ -61,7 +61,7 @@ pub enum NextIterationRole {
     Sink,
 }
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new, Hash, PartialEq, Eq)]
 pub struct NextIteration {
     name: String,
     role: NextIterationRole,

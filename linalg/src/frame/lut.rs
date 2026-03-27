@@ -10,6 +10,13 @@ pub trait Lut: fmt::Debug + dyn_clone::DynClone + Send + Sync {
 
 dyn_clone::clone_trait_object!(Lut);
 
+impl PartialEq for dyn Lut {
+    fn eq(&self, other: &Self) -> bool {
+        self.table() == other.table()
+    }
+}
+impl Eq for dyn Lut {}
+
 #[derive(Debug, Clone, Hash)]
 pub struct LutImpl<K: LutKer> {
     table: Tensor,

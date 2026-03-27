@@ -57,7 +57,6 @@ impl Op for Fft {
     }
 
     op_as_typed_op!();
-    impl_op_same_as!();
 }
 
 impl EvalOp for Fft {
@@ -185,7 +184,6 @@ impl Op for Stft {
     }
 
     op_as_typed_op!();
-    impl_op_same_as!();
 }
 
 impl EvalOp for Stft {

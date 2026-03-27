@@ -30,9 +30,10 @@ impl Display for PanelExtractor {
 
 impl PartialEq for PanelExtractor {
     fn eq(&self, other: &Self) -> bool {
-        self.name == other.name && self.from.same_as(&*other.from) && self.to == other.to
+        self.name == other.name && *self.from == *other.from && self.to == other.to
     }
 }
+impl Eq for PanelExtractor {}
 
 impl PanelExtractor {
     #[allow(unused_variables)]
@@ -41,7 +42,7 @@ impl PanelExtractor {
     }
 }
 
-#[derive(Clone, Hash)]
+#[derive(Clone, Hash, PartialEq, Eq)]
 pub struct PanelExtractInput {
     pub format: PanelExtractor,
     pub data: EagerPackedInput,
@@ -70,11 +71,6 @@ impl MMMInputValue for PanelExtractInput {
     }
     fn exotic_fact(&self) -> &dyn ExoticFact {
         self.data.exotic_fact()
-    }
-    fn same_as(&self, other: &dyn MMMInputValue) -> bool {
-        other
-            .downcast_ref::<Self>()
-            .is_some_and(|o| o.format == self.format && o.data.same_as(&self.data))
     }
     fn extract_at_mn_f16(&self, mn: usize, slice: &mut [f16]) -> TractResult<()> {
         self.data.extract_at_mn_f16(mn, slice)

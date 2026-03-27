@@ -1,6 +1,7 @@
 #![allow(clippy::type_complexity)]
 
 use dyn_clone::clone_box;
+use dyn_eq::DynEq;
 use tract_itertools::Itertools;
 use tract_linalg::WeightType;
 use tract_linalg::block_quant::BlockQuantFact;
@@ -132,7 +133,7 @@ pub fn list_impls(
                 tract_linalg::ops()
                     .panel_extractors()
                     .iter()
-                    .find(|pe| pe.from.precursor() == a_weight && pe.to.same_as(&**pa))
+                    .find(|pe| pe.from.precursor() == a_weight && pe.to.dyn_eq(&**pa))
                     .map(|pe| (m, p, Some(pe.clone())))
             }
         })

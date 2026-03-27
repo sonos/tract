@@ -124,7 +124,7 @@ impl FrozenOpState for FrozenCudaDynKVCacheState {
     }
 }
 
-#[derive(new, Debug, Clone, Hash)]
+#[derive(new, Debug, Clone, Hash, PartialEq, Eq)]
 pub struct CudaDynKVCache {
     name: String,
     past_sequence_fact: TypedFact,

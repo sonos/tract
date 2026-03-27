@@ -74,13 +74,13 @@ fn dump(_ast: &mut IntoAst, _node: &TypedNode, op: &Random) -> TractResult<Optio
     Ok(Some(invocation("tract_onnx_random", &[], &named)))
 }
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum Dist {
     Uniform { low: Arc<Tensor>, high: Arc<Tensor> },
     Normal { mean: Arc<Tensor>, dev: Arc<Tensor> },
 }
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Random {
     pub fact: TypedFact,
     pub dist: Dist,
@@ -113,7 +113,7 @@ impl EvalOp for Random {
         _session: &TurnState,
         _node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
-        let rng = self.seed.map(SmallRng::seed_from_u64).unwrap_or_else(|| rand::make_rng());
+        let rng = self.seed.map(SmallRng::seed_from_u64).unwrap_or_else(rand::make_rng);
         Ok(Some(Box::new(RandomState(rng))))
     }
 }

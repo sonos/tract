@@ -20,7 +20,6 @@ impl Op for Store {
         Ok(vec![format!("id: {:?}", self.id)])
     }
 
-    impl_op_same_as!();
     op_as_typed_op!();
 }
 

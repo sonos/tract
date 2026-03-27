@@ -32,7 +32,7 @@ pub fn conv_transpose(
     ))
 }
 
-#[derive(Debug, Clone, new, Default, Hash)]
+#[derive(Debug, Clone, new, Default, Hash, PartialEq, Eq)]
 pub struct ConvTranspose {
     padding_spec: PaddingSpec,
     strides: Option<TVec<usize>>,

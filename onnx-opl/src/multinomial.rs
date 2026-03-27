@@ -24,6 +24,12 @@ pub struct Multinomial {
     pub sample_size: i32,
     pub seed: Option<f32>,
 }
+impl PartialEq for Multinomial {
+    fn eq(&self, _: &Self) -> bool {
+        false
+    }
+}
+impl Eq for Multinomial {}
 
 impl Multinomial {
     fn eval_t0<T1>(&self, input: TValue) -> TractResult<TValue>
@@ -49,7 +55,7 @@ impl Multinomial {
 
         let mut rng = self
             .seed
-            .map_or_else(|| rand::make_rng(), |seed| SmallRng::seed_from_u64(seed.to_bits() as _));
+            .map_or_else(rand::make_rng, |seed| SmallRng::seed_from_u64(seed.to_bits() as _));
 
         // shape: [batch_size, class_size]
         let input = input.to_plain_array_view::<T1>()?;

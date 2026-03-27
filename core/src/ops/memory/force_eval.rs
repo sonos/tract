@@ -20,7 +20,6 @@ impl Op for ForceEval {
         Ok(vec![format!("slots: {:?}", self.slots)])
     }
 
-    impl_op_same_as!();
     op_as_typed_op!();
 }
 

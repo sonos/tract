@@ -9,7 +9,7 @@ pub fn dropout(
     Ok((Box::new(Dropout::new(node.output.len() == 2)), vec![]))
 }
 
-#[derive(Debug, Clone, new, Default, Hash)]
+#[derive(Debug, Clone, new, Default, Hash, PartialEq, Eq)]
 pub struct Dropout {
     output_mask: bool,
 }

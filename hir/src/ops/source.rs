@@ -3,7 +3,7 @@ use crate::internal::*;
 
 use tract_core::ops::source::{SourceState, TypedSource};
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new, Hash, PartialEq, Eq)]
 pub struct Source;
 
 impl Op for Source {

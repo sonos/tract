@@ -38,7 +38,7 @@ impl Expansion for Comp {
     }
 }
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Iff;
 
 impl Expansion for Iff {

@@ -11,7 +11,6 @@ impl Op for InnerDimToComplex {
     }
 
     op_as_typed_op!();
-    impl_op_same_as!();
 }
 
 impl EvalOp for InnerDimToComplex {
@@ -48,7 +47,6 @@ impl Op for ComplexToInnerDim {
     }
 
     op_as_typed_op!();
-    impl_op_same_as!();
 }
 
 impl EvalOp for ComplexToInnerDim {

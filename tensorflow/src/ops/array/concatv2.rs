@@ -7,7 +7,7 @@ pub fn build(_ctx: &ParsingContext, _pb: &NodeDef) -> TractResult<Box<dyn Infere
     Ok(expand(ConcatV2))
 }
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new, Hash, PartialEq, Eq)]
 pub struct ConcatV2;
 
 impl Expansion for ConcatV2 {

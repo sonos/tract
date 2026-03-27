@@ -4,7 +4,7 @@ use tract_ndarray::Dimension;
 use crate::model::ParsingContext;
 use crate::pb::NodeProto;
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct NonZero(Symbol);
 
 pub fn non_zero(

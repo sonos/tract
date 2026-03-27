@@ -324,7 +324,7 @@ pub fn parametric_softplus(
     Ok((expand(ops::activations::ParametricSoftplus(alpha, beta)), vec![]))
 }
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 struct Prelu;
 
 impl Expansion for Prelu {

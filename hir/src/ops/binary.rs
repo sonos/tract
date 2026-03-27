@@ -214,3 +214,10 @@ impl InferenceRulesOp for Nary {
 
     as_op!();
 }
+
+impl PartialEq for Nary {
+    fn eq(&self, other: &Self) -> bool {
+        self.1 == other.1 && *self.0 == *other.0
+    }
+}
+impl Eq for Nary {}

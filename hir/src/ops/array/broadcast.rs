@@ -3,7 +3,7 @@ use crate::internal::*;
 
 use tract_core::ops::array::MultiBroadcastTo as Typed;
 
-#[derive(Debug, Clone, new, Default, Hash)]
+#[derive(Debug, Clone, new, Default, Hash, PartialEq, Eq)]
 pub struct MultiBroadcastTo;
 
 impl MultiBroadcastTo {

@@ -9,6 +9,12 @@ pub struct CudaFlashAttention {
     scale: f32,
     is_causal: bool,
 }
+impl PartialEq for CudaFlashAttention {
+    fn eq(&self, _: &Self) -> bool {
+        false
+    }
+}
+impl Eq for CudaFlashAttention {}
 
 impl Op for CudaFlashAttention {
     fn name(&self) -> StaticName {

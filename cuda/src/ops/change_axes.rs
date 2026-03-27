@@ -5,7 +5,7 @@ use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensorExt;
 use tract_itertools::Itertools;
 
-#[derive(Clone, Hash, PartialEq)]
+#[derive(Clone, Hash, PartialEq, Eq)]
 pub struct CudaAxisOp(pub AxisOp);
 
 impl CudaAxisOp {

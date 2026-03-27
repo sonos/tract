@@ -17,7 +17,7 @@ fn cumsum(
     Ok((expand(CumSum { reverse, exclusive }), vec![]))
 }
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct CumSum {
     pub reverse: bool,
     pub exclusive: bool,

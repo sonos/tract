@@ -12,7 +12,7 @@ pub fn pack(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn Inferenc
     Ok(expand(Pack::new(n, axis)))
 }
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new, Hash, PartialEq, Eq)]
 pub struct Pack {
     n: usize, // The number of inputs
     axis: usize,

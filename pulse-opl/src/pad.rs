@@ -90,7 +90,7 @@ unsafe fn fill_slice_with_frame<T: Datum + Copy>(
     }
 }
 
-#[derive(Debug, Clone, Default, Hash)]
+#[derive(Debug, Clone, Default, Hash, PartialEq, Eq)]
 struct PulsePadOpState {
     current_pos: usize,
     last_valid_frame: Option<Tensor>,
@@ -210,7 +210,7 @@ impl PulsePadOpState {
     }
 }
 
-#[derive(Debug, Clone, Default, Hash)]
+#[derive(Debug, Clone, Default, Hash, PartialEq, Eq)]
 pub struct PulsePad {
     pub axis: usize,
     pub before: usize,

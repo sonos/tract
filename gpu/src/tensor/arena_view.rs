@@ -20,6 +20,12 @@ pub struct DeviceArenaView {
     pub(crate) exotic_fact: Option<Box<dyn ExoticFact>>,
 }
 
+impl PartialEq for DeviceArenaView {
+    fn eq(&self, _: &Self) -> bool {
+        false
+    }
+}
+impl Eq for DeviceArenaView {}
 impl DeviceArenaView {
     #[inline]
     pub fn shape(&self) -> &[usize] {

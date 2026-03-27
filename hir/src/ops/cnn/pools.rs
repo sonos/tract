@@ -5,7 +5,7 @@ use tract_core::ops::cnn::MaxPool;
 use tract_core::ops::cnn::PoolSpec;
 use tract_core::ops::cnn::SumPool;
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new, Hash, PartialEq, Eq)]
 pub struct HirSumPool {
     pub pool_spec: PoolSpec,
     pub count_include_pad: bool,
@@ -56,7 +56,7 @@ impl Expansion for HirSumPool {
     }
 }
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new, Hash, PartialEq, Eq)]
 pub struct HirMaxPool {
     pub pool_spec: PoolSpec,
     pub with_index_outputs: Option<DatumType>,

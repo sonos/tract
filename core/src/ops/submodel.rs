@@ -12,6 +12,13 @@ pub struct SubmodelOp {
     codegen: bool,
 }
 
+impl PartialEq for SubmodelOp {
+    fn eq(&self, _other: &Self) -> bool {
+        false
+    }
+}
+impl Eq for SubmodelOp {}
+
 impl SubmodelOp {
     pub fn new(model: Box<dyn InnerModel>, label: &str) -> TractResult<Self> {
         Ok(Self { model, label: label.to_string(), decluttered: false, codegen: false })

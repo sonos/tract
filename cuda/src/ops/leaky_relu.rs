@@ -8,6 +8,7 @@ use crate::kernels::nn::LeakyRelu;
 pub struct CudaLeakyRelu {
     pub alpha: f32,
 }
+impl Eq for CudaLeakyRelu {}
 
 impl Op for CudaLeakyRelu {
     fn name(&self) -> StaticName {

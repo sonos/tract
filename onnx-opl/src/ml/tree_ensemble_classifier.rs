@@ -21,7 +21,7 @@ pub fn parse_aggregate(s: &str) -> TractResult<Aggregate> {
     }
 }
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct TreeEnsembleClassifier {
     pub ensemble: TreeEnsemble,
 }

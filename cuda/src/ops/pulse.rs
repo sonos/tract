@@ -15,6 +15,12 @@ use crate::tensor::{device_tensor_assign_slice, device_tensor_launch_copy};
 
 #[derive(Debug, new, Clone)]
 pub struct CudaDelay(Delay);
+impl PartialEq for CudaDelay {
+    fn eq(&self, _: &Self) -> bool {
+        false
+    }
+}
+impl Eq for CudaDelay {}
 
 impl Op for CudaDelay {
     fn name(&self) -> StaticName {
@@ -167,6 +173,12 @@ pub struct CudaPulsePad {
     op: PulsePad,
     device_cst: Option<DeviceTensor>,
 }
+impl PartialEq for CudaPulsePad {
+    fn eq(&self, _: &Self) -> bool {
+        false
+    }
+}
+impl Eq for CudaPulsePad {}
 
 impl CudaPulsePad {
     pub fn new(op: &PulsePad) -> TractResult<CudaPulsePad> {
@@ -213,7 +225,7 @@ impl TypedOp for CudaPulsePad {
 
     as_op!();
 }
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 struct CudaPulsePadOpState {
     node_id: usize,
     current_pos: usize,

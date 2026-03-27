@@ -5,7 +5,7 @@ use tract_core::ops::nn as core_ops_nn;
 use tract_gpu::tensor::DeviceTensorExt;
 use tract_itertools::Itertools;
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct MetalReduce {
     pub axes: TVec<usize>,
     pub reducer: Reducer,

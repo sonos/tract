@@ -18,7 +18,6 @@ impl Op for Tile {
     }
 
     op_as_typed_op!();
-    impl_op_same_as!();
 }
 
 impl EvalOp for Tile {
@@ -113,7 +112,6 @@ impl Op for DynTile {
     }
 
     op_as_typed_op!();
-    impl_op_same_as!();
 }
 
 impl EvalOp for DynTile {

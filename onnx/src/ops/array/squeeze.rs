@@ -15,7 +15,7 @@ pub fn squeeze(
     }
 }
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 struct Squeeze13;
 
 impl Expansion for Squeeze13 {

@@ -17,7 +17,7 @@ pub fn split(
     }
 }
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 struct Split13 {
     axis: isize,
     outputs: usize,

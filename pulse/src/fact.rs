@@ -1,4 +1,5 @@
 use crate::internal::*;
+use dyn_eq::DynEq;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct StreamInfo {
@@ -100,12 +101,8 @@ impl Fact for PulsedFact {
         Ok(Cow::Owned(self.into()))
     }
 
-    fn same_as(&self, other: &dyn Fact) -> bool {
-        if let Some(other) = other.downcast_ref::<PulsedFact>() { other == self } else { false }
-    }
-
     fn compatible_with(&self, other: &dyn Fact) -> bool {
-        self.same_as(other)
+        self.dyn_eq(other)
     }
 
     fn datum_type(&self) -> Option<DatumType> {

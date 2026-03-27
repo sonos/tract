@@ -4,7 +4,7 @@ use derive_new::new;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensorExt;
 
-#[derive(Clone, Debug, new, Hash)]
+#[derive(Clone, Debug, new, Hash, PartialEq, Eq)]
 pub struct MetalRotateHalf;
 
 impl Op for MetalRotateHalf {

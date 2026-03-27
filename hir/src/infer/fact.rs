@@ -144,14 +144,6 @@ impl Fact for InferenceFact {
         Ok(true)
     }
 
-    fn same_as(&self, other: &dyn Fact) -> bool {
-        if let Some(other) = other.downcast_ref::<Self>() {
-            self.unify(other).is_ok()
-        } else {
-            false
-        }
-    }
-
     fn compatible_with(&self, other: &dyn Fact) -> bool {
         if let Some(other) = other.downcast_ref::<Self>() {
             self.unify(other).is_ok()

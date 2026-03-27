@@ -4,7 +4,7 @@ use tract_gpu::tensor::DeviceTensorExt;
 
 use crate::context::CUDA_STREAM;
 
-#[derive(Clone, Debug, Default, Hash)]
+#[derive(Clone, Debug, Default, Hash, PartialEq, Eq)]
 pub struct CudaGeluApproximate {
     pub fast_impl: bool,
 }

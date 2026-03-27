@@ -90,6 +90,7 @@ pub struct ExpUnitNorm {
     pub mean: bool,
     pub scaling_factor: f32,
 }
+impl Eq for ExpUnitNorm {}
 
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct ExpUnitNormState {

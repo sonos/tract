@@ -1,6 +1,6 @@
 use crate::internal::*;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Trilu {
     pub upper: bool,
 }

@@ -304,7 +304,7 @@ where
             let Node { id: patch_node_id, name, inputs, op, outputs } = node;
             let n_outputs = outputs.len();
             for dup in 0..target.nodes.len() {
-                if target.node(dup).op().same_as(op.as_ref())
+                if target.node(dup).op().dyn_eq(op.as_ref())
                     && inputs.len() == target.node(dup).inputs.len()
                     && inputs
                         .iter()

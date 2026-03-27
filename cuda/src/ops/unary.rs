@@ -6,7 +6,7 @@ use tract_gpu::tensor::DeviceTensorExt;
 use crate::context::CUDA_STREAM;
 use crate::kernels::UnaryOps;
 
-#[derive(Clone, Debug, new, Hash)]
+#[derive(Clone, Debug, new, Hash, PartialEq, Eq)]
 pub struct CudaUnaryOp(pub UnaryOps);
 
 impl Op for CudaUnaryOp {

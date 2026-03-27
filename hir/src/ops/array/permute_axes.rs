@@ -1,7 +1,7 @@
 use crate::infer::*;
 use crate::internal::*;
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new, Hash, PartialEq, Eq)]
 pub struct PermuteAxes {
     pub axes: Option<TVec<usize>>,
 }

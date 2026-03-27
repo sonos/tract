@@ -299,7 +299,7 @@ fn read_block_quant_value(r: &mut impl Read, header: &Header) -> TractResult<Ten
 fn write_block_quant_value(w: &mut impl Write, tensor: &Tensor) -> TractResult<()> {
     let bqs = tensor.try_storage_as::<BlockQuantStorage>()?;
     let format = bqs.format();
-    ensure!(format.same_as(&Q4_0) || format.same_as(&Q8_1));
+    ensure!(format.dyn_eq(&Q4_0) || format.dyn_eq(&Q8_1));
     let s = tensor.shape();
     let flat_shape: [usize; 2] = [s[..s.len() - 1].iter().product(), *s.last().unwrap()];
 
@@ -312,7 +312,7 @@ fn write_block_quant_value(w: &mut impl Write, tensor: &Tensor) -> TractResult<(
     header.data_size_bytes = bqs.value().len() as _;
     header.item_type_vendor = TRACT_ITEM_TYPE_VENDOR;
     // 0x3040 3 is for GGML formats, 0 for Q formats then 4 and 0
-    header.item_type = if format.same_as(&Q4_0) { 0x3040 } else { 0x3081 };
+    header.item_type = if format.dyn_eq(&Q4_0) { 0x3040 } else { 0x3081 };
     header.write(w)?;
     w.write_all(bqs.value())?;
     Ok(())

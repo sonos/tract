@@ -12,6 +12,12 @@ pub struct CudaFusedAxisOp {
     pub grouped_axis_ops: TVec<TVec<CudaAxisOp>>,
     pub op: Box<dyn TypedOp>,
 }
+impl PartialEq for CudaFusedAxisOp {
+    fn eq(&self, _: &Self) -> bool {
+        false
+    }
+}
+impl Eq for CudaFusedAxisOp {}
 
 #[derive(Debug, Clone, new)]
 pub struct CudaFusedAxisOpState {
@@ -144,11 +150,6 @@ impl Op for CudaFusedAxisOp {
             }
         }
         Ok(info)
-    }
-
-    fn same_as(&self, other: &dyn Op) -> bool {
-        let Some(other) = other.downcast_ref::<CudaFusedAxisOp>() else { return false };
-        self.op.same_as(other.op.as_op()) && self.grouped_axis_ops == other.grouped_axis_ops
     }
 
     op_as_typed_op!();

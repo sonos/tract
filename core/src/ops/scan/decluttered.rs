@@ -20,6 +20,13 @@ pub struct Scan {
     pub output_mapping: Vec<OutputMapping<TDim>>,
 }
 
+impl PartialEq for Scan {
+    fn eq(&self, _other: &Self) -> bool {
+        false
+    }
+}
+impl Eq for Scan {}
+
 impl Scan {
     pub fn to_codegen_op(&self, optimize_inner: bool) -> TractResult<OptScan> {
         let mut model = self.body.clone();

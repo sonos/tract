@@ -62,6 +62,12 @@ pub struct If {
     pub else_body: InferenceModel,
     else_input_mapping: Vec<usize>,
 }
+impl PartialEq for If {
+    fn eq(&self, _: &Self) -> bool {
+        false
+    }
+}
+impl Eq for If {}
 
 impl Op for If {
     fn name(&self) -> StaticName {

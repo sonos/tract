@@ -22,6 +22,13 @@ impl std::ops::Deref for OptScan {
     }
 }
 
+impl PartialEq for OptScan {
+    fn eq(&self, _other: &Self) -> bool {
+        false
+    }
+}
+impl Eq for OptScan {}
+
 impl OptScan {
     pub fn iteration_count(&self, inputs: &[&TypedFact]) -> Option<TDim> {
         super::iteration_count(&self.input_mapping, inputs)

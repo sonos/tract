@@ -1,9 +1,10 @@
 use crate::internal::*;
 use downcast_rs::Downcast;
+use dyn_eq::DynEq;
 use std::fmt;
 
 pub trait ElementWiseMiniOp:
-    fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast
+    fmt::Debug + dyn_clone::DynClone + dyn_eq::DynEq + Send + Sync + 'static + Downcast
 {
     fn name(&self) -> String;
     fn prefix(&self) -> &'static str {
@@ -54,14 +55,10 @@ pub trait ElementWiseMiniOp:
     fn info(&self) -> TractResult<Vec<String>> {
         Ok(vec![])
     }
-
-    #[allow(unused_variables)]
-    fn same_as(&self, other: &dyn ElementWiseMiniOp) -> bool {
-        false
-    }
 }
 
 dyn_clone::clone_trait_object!(ElementWiseMiniOp);
+dyn_eq::eq_trait_object!(ElementWiseMiniOp);
 downcast_rs::impl_downcast!(ElementWiseMiniOp);
 
 #[derive(Debug, Clone)]
@@ -72,6 +69,13 @@ impl ElementWiseOp {
         self.1.unwrap_or(self.0.operating_datum_type(input_dt))
     }
 }
+
+impl PartialEq for ElementWiseOp {
+    fn eq(&self, other: &Self) -> bool {
+        self.1 == other.1 && *self.0 == *other.0
+    }
+}
+impl Eq for ElementWiseOp {}
 
 impl Op for ElementWiseOp {
     fn name(&self) -> StaticName {
@@ -84,11 +88,6 @@ impl Op for ElementWiseOp {
 
     fn validation(&self) -> Validation {
         self.0.validation()
-    }
-
-    fn same_as(&self, other: &dyn Op) -> bool {
-        let Some(other) = other.downcast_ref::<ElementWiseOp>() else { return false };
-        self.1 == other.1 && self.0.same_as(&*other.0)
     }
 
     op_as_typed_op!();
@@ -214,15 +213,17 @@ macro_rules! element_wise {
     ) => {
         #[derive(Debug, Clone)]
         pub struct $Op { $( $( $(#[$meta])? pub $var: $var_typ),* )? }
+        impl PartialEq for $Op {
+            #[allow(unused_variables)]
+            fn eq(&self, other: &Self) -> bool {
+                $( $( if &self.$var != &other.$var { return false; })* )?
+                true
+            }
+        }
+        impl Eq for $Op {}
         impl $crate::ops::element_wise::ElementWiseMiniOp for $Op {
             fn name(&self) -> String {
                 format!("{}{}", self.prefix(), stringify!($Op))
-            }
-            #[allow(unused_variables)]
-            fn same_as(&self, other: &dyn ElementWiseMiniOp) -> bool {
-                let Some(other) = other.downcast_ref::<$Op>() else { return false };
-                $( $( if self.$var != other.$var { return false; })* )?
-                true
             }
             fn eval_in_place(&self, t: &mut Tensor, out_dt: Option<DatumType>) -> TractResult<()> {
                 $(
@@ -328,6 +329,14 @@ macro_rules! element_wise_oop {
     ) => {
         #[derive(Debug, Clone)]
         pub struct $Op { $( $($(#[$meta])? pub $var: $var_typ),* )? }
+        impl PartialEq for $Op {
+            #[allow(unused_variables)]
+            fn eq(&self, other: &Self) -> bool {
+                $( $( if &self.$var != &other.$var { return false; })* )?
+                true
+            }
+        }
+        impl Eq for $Op {}
         impl $crate::ops::element_wise::ElementWiseMiniOp for $Op {
             fn name(&self) -> String {
                 format!("{}{}", self.prefix(), stringify!($Op))

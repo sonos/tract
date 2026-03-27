@@ -123,7 +123,7 @@ impl Ops {
                     packs.push(p)
                 };
                 for pe in &self.panel_extractors {
-                    if pe.from.precursor() == weight_type && pe.to.same_as(p) {
+                    if pe.from.precursor() == weight_type && pe.to.dyn_eq(p) {
                         packs.push(&*pe.from);
                     }
                 }
@@ -159,12 +159,12 @@ impl Ops {
                     .map(|(pack_ix, (a, b))| (&**mmm, pack_ix, &**a, &**b))
             })
             .filter_map(|(mmm, ix, a, b)| {
-                if a.same_as(weight) {
+                if a.dyn_eq(weight) {
                     Some((mmm, ix, a, None, b))
                 } else {
                     self.panel_extractors
                         .iter()
-                        .find(|pe| pe.from.same_as(weight) && pe.to.same_as(a))
+                        .find(|pe| pe.from.dyn_eq(weight) && pe.to.dyn_eq(a))
                         .map(|pe| (mmm, ix, a, Some(pe), b))
                 }
             })
@@ -325,6 +325,7 @@ pub fn ops() -> &'static Ops {
     &OPS
 }
 
+use dyn_eq::DynEq;
 use num_traits::*;
 use std::collections::HashMap;
 use std::fmt::Debug;

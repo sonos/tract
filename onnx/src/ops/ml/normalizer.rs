@@ -25,7 +25,7 @@ fn parse_norm_kind(s: &str) -> TractResult<NormKind> {
     }
 }
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 struct Normalizer {
     kind: NormKind,
 }

@@ -20,7 +20,7 @@ fn cast(
     Ok((ElementWiseOp(Box::new(Cast::new(to)), None).into_hir(), vec![]))
 }
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new, Hash, PartialEq, Eq)]
 pub struct Cast {
     to: DatumType,
 }
@@ -88,7 +88,7 @@ fn cast_like(
     Ok((expand(CastLike), vec![]))
 }
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new, Hash, PartialEq, Eq)]
 pub struct CastLike;
 
 impl Expansion for CastLike {

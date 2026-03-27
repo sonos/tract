@@ -11,7 +11,7 @@ pub fn mat_mul_integer(
     Ok((expand(op), vec![]))
 }
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new, Hash, PartialEq, Eq)]
 struct MatMulInteger {
     pub optional_a_zero_point_input: Option<usize>,
     pub optional_b_zero_point_input: Option<usize>,
@@ -83,7 +83,7 @@ pub fn q_linear_mat_mul(
     Ok((expand(QLinearMatMul), vec![]))
 }
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new, Hash, PartialEq, Eq)]
 struct QLinearMatMul;
 
 impl Expansion for QLinearMatMul {

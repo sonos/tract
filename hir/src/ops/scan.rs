@@ -14,6 +14,13 @@ pub struct InferenceScan {
     pub iter_count_fact: GenericFactoid<TDim>,
 }
 
+impl PartialEq for InferenceScan {
+    fn eq(&self, _other: &Self) -> bool {
+        false
+    }
+}
+impl Eq for InferenceScan {}
+
 impl Op for InferenceScan {
     fn name(&self) -> StaticName {
         "Scan".into()

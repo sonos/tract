@@ -11,7 +11,7 @@ pub fn register(registry: &mut Registry) {
     registry.register_dumper(dump);
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum InterpolationMode {
     Bilinear,
     Nearest,
@@ -37,7 +37,7 @@ impl InterpolationMode {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PaddingMode {
     Zeros,
     Border,
@@ -63,7 +63,7 @@ impl PaddingMode {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct GridSample {
     pub mode: InterpolationMode,
     pub padding_mode: PaddingMode,

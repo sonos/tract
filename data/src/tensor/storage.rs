@@ -6,12 +6,15 @@ use crate::TractResult;
 use crate::blob::Blob;
 use crate::exotic::ExoticFact;
 use downcast_rs::{Downcast, impl_downcast};
+use dyn_eq::DynEq;
 
 /// Trait abstracting over tensor storage backends.
 ///
 /// `PlainStorage` is the primary implementation backed by a contiguous `Blob`.
 /// Non-plain backends are held behind `StorageKind::Exotic(Box<dyn TensorStorage>)`.
-pub trait TensorStorage: Send + Sync + fmt::Debug + fmt::Display + Downcast {
+pub trait TensorStorage:
+    Send + Sync + fmt::Debug + fmt::Display + dyn_eq::DynEq + Downcast
+{
     fn byte_len(&self) -> usize;
     fn is_empty(&self) -> bool;
     fn deep_clone(&self) -> Box<dyn TensorStorage>;
@@ -19,7 +22,6 @@ pub trait TensorStorage: Send + Sync + fmt::Debug + fmt::Display + Downcast {
     fn as_plain_mut(&mut self) -> Option<&mut PlainStorage>;
     fn into_plain(self: Box<Self>) -> Option<PlainStorage>;
     fn dyn_hash(&self, state: &mut dyn std::hash::Hasher);
-    fn same_as(&self, other: &dyn TensorStorage) -> bool;
     /// Build the `ExoticFact` that describes this storage for use in `TypedFact`.
     ///
     /// Plain storage returns `None`. Exotic storages should return the
@@ -28,6 +30,7 @@ pub trait TensorStorage: Send + Sync + fmt::Debug + fmt::Display + Downcast {
     fn exotic_fact(&self, shape: &[usize]) -> TractResult<Option<Box<dyn ExoticFact>>>;
 }
 impl_downcast!(TensorStorage);
+dyn_eq::eq_trait_object!(TensorStorage);
 
 /// Plain, contiguous storage backed by a `Blob`.
 #[derive(Eq)]
@@ -159,10 +162,6 @@ impl TensorStorage for PlainStorage {
         state.write(self.0.as_bytes());
     }
 
-    fn same_as(&self, other: &dyn TensorStorage) -> bool {
-        if let Some(other) = other.as_plain() { self == other } else { false }
-    }
-
     fn exotic_fact(&self, _shape: &[usize]) -> TractResult<Option<Box<dyn ExoticFact>>> {
         Ok(None)
     }
@@ -172,6 +171,7 @@ impl TensorStorage for PlainStorage {
 ///
 /// The common `Plain` case stays inline (no heap alloc, no vtable indirection).
 /// `Exotic` covers non-plain backends behind a single Box indirection.
+#[derive(Debug, PartialEq, Eq)]
 #[allow(dead_code)]
 pub(crate) enum StorageKind {
     Plain(PlainStorage),
@@ -252,14 +252,6 @@ impl StorageKind {
                 state.write(d.as_bytes())
             }
             StorageKind::Exotic(o) => o.dyn_hash(state),
-        }
-    }
-
-    pub fn same_as(&self, other: &StorageKind) -> bool {
-        match (self, other) {
-            (StorageKind::Plain(a), StorageKind::Plain(b)) => a == b,
-            (StorageKind::Exotic(a), StorageKind::Exotic(b)) => a.same_as(b.as_ref()),
-            _ => false,
         }
     }
 }

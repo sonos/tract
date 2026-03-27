@@ -5,7 +5,7 @@ use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensorExt;
 use tract_itertools::Itertools;
 
-#[derive(Clone, Hash, PartialEq)]
+#[derive(Clone, Hash, PartialEq, Eq)]
 #[allow(clippy::large_enum_variant)] // FIXME ?
 #[allow(clippy::derived_hash_with_manual_eq)] // FIXME. this one may be pretty bad. how about a.canonical() == b.canonical() ? need proper canonicalizeation of Reshape
 pub struct MetalAxisOp(pub AxisOp);

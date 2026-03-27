@@ -18,7 +18,7 @@ pub fn pulsify(
     Ok(Some(tvec!(id)))
 }
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct PulsedSource(pub PulsedFact);
 
 impl Op for PulsedSource {

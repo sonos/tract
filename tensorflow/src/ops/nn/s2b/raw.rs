@@ -1,7 +1,7 @@
 use tract_hir::internal::*;
 use tract_ndarray::prelude::*;
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new, Hash, PartialEq, Eq)]
 pub struct SpaceToBatch {
     datum_type: DatumType,
 }
@@ -94,7 +94,7 @@ impl InferenceRulesOp for SpaceToBatch {
     }
 }
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new, Hash, PartialEq, Eq)]
 pub struct BatchToSpace {
     datum_type: DatumType,
 }

@@ -63,6 +63,12 @@ pub struct CudaConv {
     op: Conv,
     kernel: Box<dyn ConvKernel>,
 }
+impl PartialEq for CudaConv {
+    fn eq(&self, _: &Self) -> bool {
+        false
+    }
+}
+impl Eq for CudaConv {}
 
 impl Op for CudaConv {
     fn name(&self) -> StaticName {

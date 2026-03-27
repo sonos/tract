@@ -34,7 +34,7 @@ dyn_clone::clone_trait_object!(ConvKernel);
 
 impl ConvKernelScratch for () {}
 
-#[derive(Hash, Clone, Debug)]
+#[derive(Hash, Clone, Debug, PartialEq, Eq)]
 pub struct ConvGeneric;
 
 impl ConvKernel for ConvGeneric {

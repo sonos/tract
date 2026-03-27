@@ -170,7 +170,7 @@ impl OpState for DynKeyValueCacheState {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DynKeyValueCache {
     pub name: String,
     pub axis: usize,

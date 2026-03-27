@@ -174,15 +174,6 @@ macro_rules! args_8 {
 }
 
 #[macro_export]
-macro_rules! impl_op_same_as {
-    () => {
-        fn same_as(&self, other: &dyn Op) -> bool {
-            if let Some(other) = other.downcast_ref::<Self>() { self == other } else { false }
-        }
-    };
-}
-
-#[macro_export]
 macro_rules! assert_close {
     ($left:expr, $right:expr) => ({
         match (&$left, &$right) {

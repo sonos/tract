@@ -32,7 +32,7 @@ fn pulsify(
 }
 
 /// Concat with pulse along concat axis
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 struct PulsedMultibroadcastTo {
     fact: PulsedFact,
 }

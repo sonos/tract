@@ -4,7 +4,7 @@ use crate::internal::*;
 use tract_core::ops::einsum::EinSum;
 use tract_core::tract_data::itertools::Itertools;
 
-#[derive(Debug, Clone, Default, Hash)]
+#[derive(Debug, Clone, Default, Hash, PartialEq, Eq)]
 pub struct MatMulInference {
     pub a_trans: bool,
     pub b_trans: bool,

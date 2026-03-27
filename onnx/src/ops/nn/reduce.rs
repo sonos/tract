@@ -25,7 +25,7 @@ pub(crate) fn reduce(
     }
 }
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 struct ReduceSum13 {
     pub have_axis_input: bool,
     pub keep_dims: bool,

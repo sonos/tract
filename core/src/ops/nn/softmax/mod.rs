@@ -13,7 +13,7 @@ use tract_num_traits::Zero;
 use crate::internal::*;
 use ndarray::prelude::*;
 
-#[derive(Debug, Copy, Clone, Hash, PartialEq)]
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 pub enum SoftmaxKind {
     Softmax(SoftmaxExp),
     LogSoftmax,
@@ -25,7 +25,7 @@ impl Default for SoftmaxKind {
     }
 }
 
-#[derive(Debug, Copy, Clone, Hash, Default, PartialEq)]
+#[derive(Debug, Copy, Clone, Hash, Default, PartialEq, Eq)]
 pub enum SoftmaxExp {
     #[default]
     Libc,
@@ -33,7 +33,7 @@ pub enum SoftmaxExp {
     FastCompact,
 }
 
-#[derive(Debug, Clone, new, Hash, Default)]
+#[derive(Debug, Clone, new, Hash, Default, PartialEq, Eq)]
 pub struct Softmax {
     pub axes: TVec<usize>,
     pub quant_output_dt: Option<DatumType>,

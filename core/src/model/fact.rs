@@ -1,6 +1,7 @@
 //! Partial and complete tensor types representations.
 use crate::internal::*;
 use downcast_rs::Downcast;
+use dyn_eq::DynEq;
 use std::fmt;
 use tract_linalg::block_quant::{BlockQuantFact, BlockQuantStorage};
 
@@ -157,14 +158,14 @@ impl<D: ToDim, T: IntoIterator<Item = D>> From<T> for ShapeFact {
 
 /// Type information about a tensor: shape, and element type, in various state
 /// of determination.
-pub trait Fact: std::fmt::Debug + Downcast + dyn_clone::DynClone + Send + Sync + 'static {
+pub trait Fact:
+    std::fmt::Debug + Downcast + dyn_clone::DynClone + dyn_eq::DynEq + Send + Sync + 'static
+{
     fn to_typed_fact(&self) -> TractResult<Cow<'_, TypedFact>>;
 
     fn matches(&self, t: &Tensor, symbols: Option<&SymbolValues>) -> TractResult<bool> {
         self.to_typed_fact()?.matches(t, symbols)
     }
-
-    fn same_as(&self, _other: &dyn Fact) -> bool;
 
     /// Ensure that self is same type as another fact or a subtype
     fn compatible_with(&self, _other: &dyn Fact) -> bool;
@@ -174,6 +175,7 @@ pub trait Fact: std::fmt::Debug + Downcast + dyn_clone::DynClone + Send + Sync +
 
 impl_downcast!(Fact);
 dyn_clone::clone_trait_object!(Fact);
+dyn_eq::eq_trait_object!(Fact);
 
 impl<D: ToDim> std::iter::FromIterator<D> for ShapeFact {
     fn from_iter<T: IntoIterator<Item = D>>(iter: T) -> Self {
@@ -379,20 +381,6 @@ impl Fact for TypedFact {
             }
         }
         Ok(true)
-    }
-
-    fn same_as(&self, other: &dyn Fact) -> bool {
-        if cfg!(debug_assertions) {
-            self.consistent().unwrap()
-        }
-        if let Some(other) = other.downcast_ref::<Self>() {
-            if cfg!(debug_assertions) {
-                other.consistent().unwrap()
-            }
-            self == other
-        } else {
-            false
-        }
     }
 
     fn compatible_with(&self, other: &dyn Fact) -> bool {

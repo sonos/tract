@@ -86,7 +86,7 @@ impl ProtoFusedSpec {
                     AsInputValue::Borrowed(a)
                 };
                 assert!(
-                    b_packing.same_as(b.format())
+                    b_packing.dyn_eq(b.format())
                         || (b_packing.is::<PackedFormat>() && b_packing.r() == b.format().r())
                 );
                 debug_assert!(pa.k().to_dim().compatible_with(&geo.k.to_dim()));
@@ -161,11 +161,11 @@ impl ProtoFusedSpec {
                 {
                     let (a_packing, b_packing) = &_mmm.packings()[packings[mode].0];
                     debug_assert!(
-                        a_packing.same_as(a.format())
+                        a_packing.dyn_eq(a.format())
                             || (a_packing.is::<PackedFormat>() && a_packing.r() == a.format().r())
                     );
                     debug_assert!(
-                        b_packing.same_as(b.format())
+                        b_packing.dyn_eq(b.format())
                             || (b_packing.is::<PackedFormat>() && b_packing.r() == b.format().r())
                     );
                 }
@@ -309,6 +309,13 @@ pub struct OptMatMul {
     pub trivial_packing: bool,
     pub trivial_path: bool,
 }
+
+impl PartialEq for OptMatMul {
+    fn eq(&self, _other: &Self) -> bool {
+        false
+    }
+}
+impl Eq for OptMatMul {}
 
 impl Op for OptMatMul {
     fn name(&self) -> StaticName {
