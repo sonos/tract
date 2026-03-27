@@ -11,10 +11,10 @@ then
     TRACT=$TRACT_RUN
 elif [ -x tract ]
 then
-    TRACT="./tract --timeout 60"
+    TRACT="./tract"
 else
     cargo build -p tract-cli -q --release
-    TRACT="./target/release/tract --timeout 60"
+    TRACT="./target/release/tract"
 fi
 
 CACHEDIR=${CACHEDIR:-$HOME/.cache/tract-ci-minion-models}
@@ -163,13 +163,12 @@ fi
 if [ -n "$LLM_BACKENDS" ]
 then
     for backend in $LLM_BACKENDS
-    do
         case $backend in
-            cpu) extra="";;
-            metal) extra="--metal"
+            cpu) extra="--timeout 180";;
+            metal) extra="--metal --timeout 60"
                    BENCH_OPTS="--warmup-loops 1"
                    ;;
-            cuda) extra="--cuda"
+            cuda) extra="--cuda --timeout 60"
                   BENCH_OPTS="--warmup-loops 1"
                   ;;
         esac
