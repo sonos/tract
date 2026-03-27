@@ -111,19 +111,27 @@ impl TypedOp for ElementWiseOp {
         } else if let Some(dt) = self.0.output_type(dt) {
             fact.datum_type = dt;
         }
-        // Propagate uniform_tdim by evaluating the op on the TDim scalar.
-        // Ops that register a TDim arm (e.g. Floor → identity) will pass the value through;
-        // ops that don't support TDim will return an error and uniform_tdim stays None.
+        // Propagate uniform_tdim through this op.
         if let Some(tdim) = &inputs[0].uniform_tdim {
-            let mut tmp = tensor0(tdim.clone());
-            if self.0.eval_in_place(&mut tmp, None).is_ok() {
-                fact.uniform_tdim = tmp
-                    .try_as_plain()
-                    .ok()
-                    .and_then(|d| d.as_slice::<TDim>().ok())
-                    .and_then(|s| s.first())
-                    .cloned()
-                    .map(|d| d.reduce());
+            // Boolean NOT: NOT(x) = 1 - x  (for 0/1 values)
+            if self.0.downcast_ref::<crate::ops::logic::BitNot>().is_some()
+                || self.0.downcast_ref::<crate::ops::logic::Not>().is_some()
+            {
+                fact.uniform_tdim = Some((TDim::Val(1) - tdim.clone()).reduce());
+            } else {
+                // General path: evaluate the op on a TDim scalar.
+                // Ops with a TDim arm (e.g. Floor → identity) pass the value through;
+                // ops without one return an error and uniform_tdim stays None.
+                let mut tmp = tensor0(tdim.clone());
+                if self.0.eval_in_place(&mut tmp, None).is_ok() {
+                    fact.uniform_tdim = tmp
+                        .try_as_plain()
+                        .ok()
+                        .and_then(|d| d.as_slice::<TDim>().ok())
+                        .and_then(|s| s.first())
+                        .cloned()
+                        .map(|d| d.reduce());
+                }
             }
         }
         Ok(tvec!(fact))

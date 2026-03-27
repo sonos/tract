@@ -183,6 +183,10 @@ impl TypedOp for TypedBinOp {
         ])?);
         if let (Some(a), Some(b)) = (&inputs[0].uniform_tdim, &inputs[1].uniform_tdim) {
             fact.uniform_tdim = self.combine_uniform_tdim(a, b);
+            // And(a,b) has no TDim kernel; for 0/1 booleans And == Mul
+            if fact.uniform_tdim.is_none() && self.0.is::<crate::ops::logic::And>() {
+                fact.uniform_tdim = Some(TDim::Mul(vec![a.clone(), b.clone()]).reduce());
+            }
         }
         // Fallback: one side has uniform_tdim, the other is a scalar constant
         if fact.uniform_tdim.is_none() {
