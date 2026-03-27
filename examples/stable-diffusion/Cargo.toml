@@ -8,4 +8,6 @@ anyhow.workspace = true
 image = "0.25"
 ndarray.workspace = true
 ndarray-npy.workspace = true
+rand = "0.9"
+rand_distr = "0.5"
 tract.workspace = true

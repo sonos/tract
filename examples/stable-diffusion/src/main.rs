@@ -9,56 +9,37 @@ struct EulerScheduler {
 
 impl EulerScheduler {
     fn new(num_inference_steps: usize) -> Self {
+        use tract_ndarray::{Array1, Axis, concatenate};
+
         // SD 1.5 config: scaled_linear beta schedule, 1000 training steps
-        let beta_start: f64 = 0.00085;
-        let beta_end: f64 = 0.012;
-        let num_train: usize = 1000;
+        let num_train = 1000;
+        let betas = Array1::linspace(0.00085f64.sqrt(), 0.012f64.sqrt(), num_train).mapv(|b| b * b);
+        let alphas = betas.mapv(|b| 1.0 - b);
 
-        // scaled_linear: betas = linspace(sqrt(beta_start), sqrt(beta_end), n)^2
-        let betas: Vec<f64> = (0..num_train)
-            .map(|i| {
-                let t = i as f64 / (num_train - 1) as f64;
-                let b = beta_start.sqrt() + t * (beta_end.sqrt() - beta_start.sqrt());
-                b * b
-            })
-            .collect();
-
-        // alphas_cumprod
-        let mut alphas_cumprod = Vec::with_capacity(num_train);
-        let mut prod = 1.0f64;
-        for &beta in &betas {
-            prod *= 1.0 - beta;
-            alphas_cumprod.push(prod);
+        // cumulative product → sigmas
+        let mut alphas_cumprod = alphas.clone();
+        for i in 1..num_train {
+            alphas_cumprod[i] *= alphas_cumprod[i - 1];
         }
+        let all_sigmas = alphas_cumprod.mapv(|a| ((1.0 - a) / a).sqrt());
 
-        // sigma_t = sqrt((1 - alphas_cumprod_t) / alphas_cumprod_t)
-        let all_sigmas: Vec<f64> =
-            alphas_cumprod.iter().map(|&acp| ((1.0 - acp) / acp).sqrt()).collect();
+        // Timesteps: linspace num_train-1 → 0
+        let timesteps = Array1::linspace((num_train - 1) as f64, 0.0, num_inference_steps)
+            .mapv(|t| t.round() as i64);
 
-        // Timesteps: linearly spaced from num_train-1 to 0
-        let timesteps: Vec<i64> = (0..num_inference_steps)
-            .map(|i| {
-                let t = (num_train - 1) as f64
-                    - i as f64 * (num_train - 1) as f64 / (num_inference_steps - 1) as f64;
-                t.round() as i64
-            })
-            .collect();
+        // Interpolate sigmas at timestep positions, append 0
+        let sigmas_at_t = timesteps.mapv(|t| {
+            let t = t as f64;
+            let lo = t.floor() as usize;
+            let hi = (lo + 1).min(num_train - 1);
+            let frac = t - lo as f64;
+            (all_sigmas[lo] * (1.0 - frac) + all_sigmas[hi] * frac) as f32
+        });
+        let sigmas =
+            concatenate(Axis(0), &[sigmas_at_t.view(), Array1::from_vec(vec![0.0f32]).view()])
+                .unwrap();
 
-        // Interpolate sigmas at timestep positions + append 0
-        let mut sigmas: Vec<f32> = timesteps
-            .iter()
-            .map(|&t| {
-                let t = t as f64;
-                let lo = t.floor() as usize;
-                let hi = (lo + 1).min(num_train - 1);
-                let frac = t - lo as f64;
-                let s = all_sigmas[lo] * (1.0 - frac) + all_sigmas[hi] * frac;
-                s as f32
-            })
-            .collect();
-        sigmas.push(0.0);
-
-        EulerScheduler { timesteps, sigmas }
+        EulerScheduler { timesteps: timesteps.to_vec(), sigmas: sigmas.to_vec() }
     }
 
     fn init_noise_sigma(&self) -> f32 {
@@ -91,7 +72,13 @@ fn main() -> Result<()> {
     let mut npz = ndarray_npy::NpzReader::new(std::io::Cursor::new(npz_bytes))?;
     let input_ids: ndarray::Array2<i64> = npz.by_name("input_ids")?;
     let uncond_input_ids: ndarray::Array2<i64> = npz.by_name("uncond_input_ids")?;
-    let initial_latent: ndarray::Array4<f32> = npz.by_name("initial_latent")?;
+
+    // Generate initial latent noise
+    use rand::SeedableRng;
+    use rand_distr::{Distribution, StandardNormal};
+    let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+    let initial_latent =
+        ndarray::Array4::<f32>::from_shape_fn((1, 4, 64, 64), |_| StandardNormal.sample(&mut rng));
 
     // Build scheduler from scratch
     let num_steps = 20;
