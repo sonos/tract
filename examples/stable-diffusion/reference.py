@@ -4,7 +4,7 @@
 import torch
 import numpy as np
 from pathlib import Path
-from diffusers import StableDiffusionPipeline
+from diffusers import StableDiffusionPipeline, EulerDiscreteScheduler
 
 ASSETS = Path("assets")
 MODEL_ID = "stable-diffusion-v1-5/stable-diffusion-v1-5"
@@ -16,6 +16,7 @@ GUIDANCE_SCALE = 7.5
 def main():
     print(f"Loading {MODEL_ID}...")
     pipe = StableDiffusionPipeline.from_pretrained(MODEL_ID, torch_dtype=torch.float32)
+    pipe.scheduler = EulerDiscreteScheduler.from_config(pipe.scheduler.config)
     pipe = pipe.to("cpu")
 
     # Tokenize
@@ -128,20 +129,22 @@ def main():
     )
     print("Saved vae_decoder.io.npz")
 
-    # --- Save data for Rust ---
-    input_ids.numpy().tofile(str(ASSETS / "input_ids.bin"))
-    uncond_input_ids.numpy().tofile(str(ASSETS / "uncond_input_ids.bin"))
-    torch.randn(1, 4, 64, 64, generator=torch.Generator().manual_seed(SEED)).numpy().tofile(str(ASSETS / "initial_latent.bin"))
-    timesteps.numpy().tofile(str(ASSETS / "timesteps.bin"))
-
+    # --- Save all data for Rust in a single npz ---
+    pipe.scheduler.set_timesteps(NUM_STEPS)
     sigma = pipe.scheduler.init_noise_sigma
-    sigma_val = sigma.item() if hasattr(sigma, 'item') else sigma
-    with open(str(ASSETS / "params.txt"), "w") as f:
-        f.write(f"vae_scaling_factor={pipe.vae.config.scaling_factor}\n")
-        f.write(f"init_noise_sigma={sigma_val}\n")
-        f.write(f"num_steps={NUM_STEPS}\n")
+    sigma_val = sigma.item() if hasattr(sigma, 'item') else float(sigma)
+    sigmas = pipe.scheduler.sigmas.numpy().astype(np.float32)
 
-    print("Saved reference data")
+    np.savez(str(ASSETS / "pipeline.npz"),
+        input_ids=input_ids.numpy().astype(np.int64),
+        uncond_input_ids=uncond_input_ids.numpy().astype(np.int64),
+        initial_latent=torch.randn(1, 4, 64, 64, generator=torch.Generator().manual_seed(SEED)).numpy(),
+        timesteps=timesteps.numpy().astype(np.int64),
+        sigmas=sigmas,
+        vae_scaling_factor=np.array([pipe.vae.config.scaling_factor], dtype=np.float32),
+        init_noise_sigma=np.array([sigma_val], dtype=np.float32),
+    )
+    print(f"Saved pipeline.npz (sigmas: {sigmas.shape}, timesteps: {timesteps.shape})")
 
     # Also save image as PNG for visual inspection
     image_np = ((image[0].permute(1, 2, 0).clamp(-1, 1) + 1) / 2 * 255).byte().numpy()

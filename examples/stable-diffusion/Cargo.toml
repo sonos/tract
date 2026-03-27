@@ -6,4 +6,6 @@ edition = "2024"
 [dependencies]
 anyhow.workspace = true
 image = "0.25"
+ndarray.workspace = true
+ndarray-npy.workspace = true
 tract.workspace = true

@@ -1,52 +1,22 @@
 use anyhow::*;
 use tract::prelude::*;
 
-/// Read a flat binary file of f32 values and reshape.
-fn read_f32(
-    path: impl AsRef<std::path::Path>,
-    shape: &[usize],
-) -> Result<tract_ndarray::ArrayD<f32>> {
-    let bytes = std::fs::read(path)?;
-    let data: Vec<f32> =
-        bytes.chunks_exact(4).map(|c| f32::from_le_bytes(c.try_into().unwrap())).collect();
-    Ok(tract_ndarray::ArrayD::from_shape_vec(shape.to_vec(), data)?)
-}
-
-/// Read a flat binary file of i64 values and reshape.
-fn read_i64(
-    path: impl AsRef<std::path::Path>,
-    shape: &[usize],
-) -> Result<tract_ndarray::ArrayD<i64>> {
-    let bytes = std::fs::read(path)?;
-    let data: Vec<i64> =
-        bytes.chunks_exact(8).map(|c| i64::from_le_bytes(c.try_into().unwrap())).collect();
-    Ok(tract_ndarray::ArrayD::from_shape_vec(shape.to_vec(), data)?)
-}
-
 fn main() -> Result<()> {
     let assets = std::path::Path::new("assets");
 
-    // Load reference data (pre-computed by reference.py)
-    eprintln!("Loading reference data...");
-    let input_ids = read_i64(assets.join("input_ids.bin"), &[1, 77])?;
-    let uncond_input_ids = read_i64(assets.join("uncond_input_ids.bin"), &[1, 77])?;
-    let initial_latent = read_f32(assets.join("initial_latent.bin"), &[1, 4, 64, 64])?;
-    let ts_bytes = std::fs::read(assets.join("timesteps.bin"))?;
-    let timesteps: Vec<i64> =
-        ts_bytes.chunks_exact(8).map(|c| i64::from_le_bytes(c.try_into().unwrap())).collect();
-
-    // Read scalar params
-    let params = std::fs::read_to_string(assets.join("params.txt"))?;
-    let mut vae_scaling_factor: f32 = 0.0;
-    let mut init_noise_sigma: f32 = 0.0;
-    for line in params.lines() {
-        if let Some(v) = line.strip_prefix("vae_scaling_factor=") {
-            vae_scaling_factor = v.parse()?;
-        }
-        if let Some(v) = line.strip_prefix("init_noise_sigma=") {
-            init_noise_sigma = v.parse()?;
-        }
-    }
+    // Load pipeline data from npz
+    eprintln!("Loading pipeline data...");
+    let npz_bytes = std::fs::read(assets.join("pipeline.npz"))?;
+    let mut npz = ndarray_npy::NpzReader::new(std::io::Cursor::new(npz_bytes))?;
+    let input_ids: ndarray::Array2<i64> = npz.by_name("input_ids")?;
+    let uncond_input_ids: ndarray::Array2<i64> = npz.by_name("uncond_input_ids")?;
+    let initial_latent: ndarray::Array4<f32> = npz.by_name("initial_latent")?;
+    let timesteps: ndarray::Array1<i64> = npz.by_name("timesteps")?;
+    let sigmas: ndarray::Array1<f32> = npz.by_name("sigmas")?;
+    let vae_sf: ndarray::Array1<f32> = npz.by_name("vae_scaling_factor")?;
+    let vae_scaling_factor = vae_sf[0];
+    let ins: ndarray::Array1<f32> = npz.by_name("init_noise_sigma")?;
+    let init_noise_sigma = ins[0];
 
     // Pick best available runtime (CUDA > Metal > CPU)
     let gpu = ["cuda", "metal", "default"]
@@ -57,7 +27,6 @@ fn main() -> Result<()> {
 
     eprintln!("Loading models...");
     let onnx = tract::onnx()?;
-
     let text_encoder = gpu.prepare(onnx.load(assets.join("text_encoder.onnx"))?.into_model()?)?;
     let unet = gpu.prepare(onnx.load(assets.join("unet.onnx"))?.into_model()?)?;
     let vae_decoder = gpu.prepare(onnx.load(assets.join("vae_decoder.onnx"))?.into_model()?)?;
@@ -71,30 +40,37 @@ fn main() -> Result<()> {
     let uncond = uncond_emb[0].view::<f32>()?;
     let text_embeddings =
         tract_ndarray::concatenate(tract_ndarray::Axis(0), &[uncond.view(), cond.view()])?;
-    eprintln!("  Text embeddings shape: {:?}", text_embeddings.shape());
+    eprintln!("  Text embeddings: {:?}", text_embeddings.shape());
 
-    // Split text embeddings for separate uncond/cond UNet runs
+    // Split for separate uncond/cond UNet runs (batch=1 model)
     let uncond_emb_arr =
         text_embeddings.slice(tract_ndarray::s![0..1, .., ..]).to_owned().into_dyn();
     let cond_emb_arr = text_embeddings.slice(tract_ndarray::s![1..2, .., ..]).to_owned().into_dyn();
 
-    // --- Denoising loop ---
+    // --- Denoising loop (Euler discrete scheduler) ---
     let n_steps = timesteps.len();
-    eprintln!("Running denoising loop ({n_steps} steps)...");
+    eprintln!("Running denoising loop ({n_steps} steps, Euler scheduler)...");
     let guidance_scale: f32 = 7.5;
-    let mut latent = initial_latent.mapv(|x| x * init_noise_sigma);
+    let mut latent = initial_latent.mapv(|x| x * init_noise_sigma).into_dyn();
 
     for (i, &t) in timesteps.iter().enumerate() {
+        let sigma = sigmas[i];
+        let sigma_next = sigmas[i + 1];
+
+        // Euler scale_model_input: sample / sqrt(sigma^2 + 1)
+        let scale = 1.0 / (sigma * sigma + 1.0).sqrt();
+        let scaled_latent = latent.mapv(|x| x * scale);
+
         let timestep = tract_ndarray::arr1(&[t]).into_dyn();
 
         // Run UNet twice: unconditional and conditional
         let uncond_pred = unet.run(vec![
-            tensor(latent.clone())?,
+            tensor(scaled_latent.clone())?,
             tensor(timestep.clone())?,
             tensor(uncond_emb_arr.clone())?,
         ])?;
         let cond_pred = unet.run(vec![
-            tensor(latent.clone())?,
+            tensor(scaled_latent)?,
             tensor(timestep)?,
             tensor(cond_emb_arr.clone())?,
         ])?;
@@ -103,14 +79,22 @@ fn main() -> Result<()> {
         let c = cond_pred[0].as_slice::<f32>()?;
 
         // Classifier-free guidance
-        let guided: Vec<f32> =
+        let noise_pred: Vec<f32> =
             u.iter().zip(c).map(|(&u, &c)| u + guidance_scale * (c - u)).collect();
 
-        // TODO: proper scheduler step (Euler/PNDM)
-        latent = tract_ndarray::ArrayD::from_shape_vec(vec![1, 4, 64, 64], guided)?;
+        // Euler step: latent = latent + noise_pred * (sigma_next - sigma)
+        let dt = sigma_next - sigma;
+        let new_latent: Vec<f32> = latent
+            .as_slice()
+            .unwrap()
+            .iter()
+            .zip(&noise_pred)
+            .map(|(&x, &eps)| x + eps * dt)
+            .collect();
+        latent = tract_ndarray::ArrayD::from_shape_vec(vec![1, 4, 64, 64], new_latent)?;
 
         if i % 5 == 0 {
-            eprintln!("  Step {i}/{n_steps}, t={t}");
+            eprintln!("  Step {i}/{n_steps}, t={t}, sigma={sigma:.4}");
         }
     }
 
@@ -119,7 +103,6 @@ fn main() -> Result<()> {
     let latent_scaled = latent.mapv(|x| x / vae_scaling_factor);
     let image_result = vae_decoder.run([latent_scaled])?;
     let image_data = image_result[0].as_slice::<f32>()?;
-    eprintln!("  Image: {} floats", image_data.len());
 
     // Save as PNG (NCHW -> RGB pixels)
     let (h, w) = (512usize, 512usize);
