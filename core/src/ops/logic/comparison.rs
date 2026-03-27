@@ -46,6 +46,7 @@ impl Op for Comp {
     }
 
     op_as_typed_op!();
+    impl_op_same_as!();
 }
 
 impl Comp {
