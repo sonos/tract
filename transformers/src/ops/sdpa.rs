@@ -313,9 +313,9 @@ impl TypedOp for Sdpa {
                 q_heads,
                 k_heads
             );
-            ensure!(mask
-                .as_ref()
-                .is_none_or(|m| m.shape[1].is_one() || m.shape[1] == q_heads.into()));
+            ensure!(
+                mask.as_ref().is_none_or(|m| m.shape[1].is_one() || m.shape[1] == q_heads.into())
+            );
         }
 
         let output_shape = match rank {

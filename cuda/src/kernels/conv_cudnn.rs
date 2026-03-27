@@ -1,6 +1,6 @@
-use crate::context::{cuda_context, TractCudaStream};
+use crate::context::{TractCudaStream, cuda_context};
 use crate::kernels::conv::{ConvKernel, ConvKernelScratch};
-use crate::kernels::{get_cuda_view, get_cuda_view_mut, WARP_SIZE};
+use crate::kernels::{WARP_SIZE, get_cuda_view, get_cuda_view_mut};
 use cudarc::cudnn::{ConvDescriptor, ConvForward, FilterDescriptor, TensorDescriptor};
 use cudarc::driver::{CudaStream, LaunchArgs, LaunchConfig, PushKernelArg};
 use std::any::Any;

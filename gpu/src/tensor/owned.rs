@@ -1,4 +1,4 @@
-use downcast_rs::{impl_downcast, Downcast};
+use downcast_rs::{Downcast, impl_downcast};
 use dyn_clone::DynClone;
 use dyn_eq::DynEq;
 use std::fmt::Debug;

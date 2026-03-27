@@ -17,7 +17,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, OnceLock, RwLock};
 
-use anyhow::{anyhow, Context};
+use anyhow::{Context, anyhow};
 use metal::{
     Buffer, CommandQueue, CompileOptions, ComputePipelineState, Device, Function,
     FunctionConstantValues, Library, MTLResourceOptions,

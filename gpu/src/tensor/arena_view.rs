@@ -4,7 +4,7 @@ use std::fmt::Display;
 use tract_core::internal::*;
 use tract_core::tract_linalg::block_quant::{BlockQuantFact, BlockQuantStorage};
 
-use crate::device::{get_context, DeviceBuffer};
+use crate::device::{DeviceBuffer, get_context};
 use crate::utils::check_strides_validity;
 
 use super::OwnedDeviceTensor;

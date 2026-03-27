@@ -3,8 +3,8 @@ use crate::kernels::conv::{ConvGeneric, ConvKernel, ConvKernelScratch};
 use crate::kernels::conv_cudnn::ConvCudnn;
 use crate::ops::{CudaAxisOp, CudaBinOp};
 use tract_core::internal::*;
-use tract_core::ops::cnn::Conv;
 use tract_core::ops::OpStateFreeze;
+use tract_core::ops::cnn::Conv;
 use tract_gpu::tensor::DeviceTensorExt;
 
 pub fn wire_cuda_conv(
