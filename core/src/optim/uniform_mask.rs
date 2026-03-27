@@ -193,14 +193,7 @@ fn split_op_two_regions(
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
-/// Build a concrete tensor of shape `[1]*rank` with every element equal to
-/// `1` (if `is_true`) or `0` (if not).
+/// Build a tensor of shape `[1]*rank` with every element equal to `1` (if `is_true`) or `0`.
 fn uniform_const(dt: DatumType, rank: usize, is_true: bool) -> TractResult<Tensor> {
-    let shape = vec![1usize; rank];
-    let scalar = match dt {
-        DatumType::Bool => tensor0(is_true),
-        _ if is_true => tensor0(1i64).cast_to_dt(dt)?.into_owned(),
-        _ => Tensor::zero_dt(dt, &[])?,
-    };
-    scalar.into_shape(&shape)
+    tensor0(is_true as i64).cast_to_dt(dt)?.into_owned().broadcast_into_rank(rank)
 }
