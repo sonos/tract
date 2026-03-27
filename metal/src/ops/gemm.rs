@@ -7,7 +7,7 @@ use tract_core::tract_linalg::block_quant::Q4_0;
 use tract_gpu::tensor::DeviceTensorExt;
 use tract_gpu::utils::as_quant_fact;
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Hash, PartialEq, Eq)]
 pub struct MetalGemm<K: GemmKernel> {
     pub kernel: GemmImpl<K>,
 }
