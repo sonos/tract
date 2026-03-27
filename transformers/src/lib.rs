@@ -24,6 +24,7 @@ pub fn register(registry: &mut Registry) {
     ops::apply_rope::register(registry);
     ops::scaled_masked_softmax::register(registry);
     ops::sdpa::register(registry);
+    ops::moe_ffn::register(registry);
 }
 
 pub trait WithTractTransformers {
