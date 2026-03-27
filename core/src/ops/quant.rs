@@ -273,7 +273,7 @@ element_wise_oop!(lookup_table,
  }
 );
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Scale;
 
 impl crate::ops::binary::BinMiniOp for Scale {

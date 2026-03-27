@@ -2,7 +2,7 @@ use tract_linalg::block_quant::{BlockQuantFact, BlockQuantStorage};
 
 use crate::internal::*;
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new, Hash, PartialEq, Eq)]
 pub struct BlockQuantIntoShape {
     pub shape: TVec<usize>,
 }
@@ -12,6 +12,7 @@ impl Op for BlockQuantIntoShape {
         "BlockQuantIntoShape".into()
     }
     op_as_typed_op!();
+    impl_op_same_as!();
 }
 
 impl EvalOp for BlockQuantIntoShape {
@@ -57,7 +58,7 @@ impl TypedOp for BlockQuantIntoShape {
     as_op!();
 }
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new, Hash, PartialEq, Eq)]
 pub struct SplitGroupBlockQuant {
     pub group: usize,
 }
@@ -68,6 +69,7 @@ impl Op for SplitGroupBlockQuant {
     }
 
     op_as_typed_op!();
+    impl_op_same_as!();
 }
 
 impl EvalOp for SplitGroupBlockQuant {

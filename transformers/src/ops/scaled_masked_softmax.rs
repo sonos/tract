@@ -43,7 +43,7 @@ fn ser_scaled_masked_softmax(
 
 /// A = SOFTMAX(INPUT * SCALE + MASK, AXIS=2)
 /// Both inputs must have rank 5 (batch, kv_heads, grouped, s, s+p) broadcast allowed to the left
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct ScaledMaskedSoftmax {
     pub scale: Arc<Tensor>,
 }

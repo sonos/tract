@@ -3,7 +3,7 @@ use ndarray::*;
 
 use super::MultiBroadcastTo;
 
-#[derive(Debug, Clone, new, Default, Hash)]
+#[derive(Debug, Clone, new, Default, Hash, PartialEq, Eq)]
 pub struct Tile {
     pub multipliers: TVec<TDim>,
 }
@@ -18,6 +18,7 @@ impl Op for Tile {
     }
 
     op_as_typed_op!();
+    impl_op_same_as!();
 }
 
 impl EvalOp for Tile {
@@ -93,7 +94,7 @@ impl TypedOp for Tile {
     }
 }
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct DynTile {
     pub multiplier_placeholders: TVec<TDim>,
 }
@@ -112,6 +113,7 @@ impl Op for DynTile {
     }
 
     op_as_typed_op!();
+    impl_op_same_as!();
 }
 
 impl EvalOp for DynTile {

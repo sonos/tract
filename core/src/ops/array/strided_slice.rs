@@ -1,6 +1,6 @@
 use crate::internal::*;
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct StridedSlice {
     pub optional_axes_input: Option<usize>,
     pub optional_steps_input: Option<usize>,

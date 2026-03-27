@@ -1,7 +1,7 @@
 use crate::internal::*;
 use tract_itertools::Itertools;
 
-#[derive(Debug, Clone, new, Default, Hash)]
+#[derive(Debug, Clone, new, Default, Hash, PartialEq, Eq)]
 pub struct FiniteReshape {
     pub shape: TVec<usize>,
 }

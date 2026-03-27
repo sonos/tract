@@ -35,7 +35,7 @@ use crate::ops::nn::{BaseDataShape, DataFormat, DataShape};
 use tract_linalg::mmm::{MMMInputFormat, MatMatMul};
 use tract_linalg::pack::PackedFormat;
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new, Hash, PartialEq, Eq)]
 pub struct Conv {
     pub pool_spec: PoolSpec,
     pub kernel_fmt: KernelFormat,

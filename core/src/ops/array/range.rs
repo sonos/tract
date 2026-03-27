@@ -6,7 +6,7 @@ use crate::internal::*;
 
 use super::Slice;
 
-#[derive(Debug, Default, Clone, new, Hash)]
+#[derive(Debug, Default, Clone, new, Hash, PartialEq, Eq)]
 pub struct Range {
     len: TDim,
 }

@@ -40,7 +40,7 @@ fn ser_apply_rope(
     Ok(Some(invocation("tract_transformers_apply_rope", &[input, cos, sin], &[])))
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct RotateHalf;
 
 impl Op for RotateHalf {
@@ -48,6 +48,7 @@ impl Op for RotateHalf {
         "RotateHalf".to_string().into()
     }
     op_as_typed_op!();
+    impl_op_same_as!();
 }
 
 impl EvalOp for RotateHalf {
@@ -145,7 +146,7 @@ pub fn rotate_half_rule(
     Ok(Some(patch))
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct ApplyRope;
 
 impl ApplyRope {
@@ -159,6 +160,7 @@ impl Op for ApplyRope {
         "ApplyRope".to_string().into()
     }
     op_as_typed_op!();
+    impl_op_same_as!();
 }
 
 impl EvalOp for ApplyRope {

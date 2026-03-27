@@ -5,7 +5,7 @@ use crate::ops::math::{Add, Mul, Rsqrt};
 use crate::ops::nn::{Reduce, Reducer};
 use tract_itertools::Itertools;
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct RmsNorm {
     pub axis: usize,
     pub eps: Arc<Tensor>,

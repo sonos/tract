@@ -1,7 +1,7 @@
 use crate::internal::*;
 use tract_ndarray::prelude::*;
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new, Hash, PartialEq, Eq)]
 pub struct GatherNd {
     pub batch_dims: usize,
 }

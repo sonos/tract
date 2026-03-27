@@ -1,7 +1,7 @@
 use crate::internal::*;
 use ndarray::*;
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new, Hash, PartialEq, Eq)]
 pub struct ScatterElements {
     pub axis: usize,
 }
