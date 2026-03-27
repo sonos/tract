@@ -66,12 +66,19 @@ const VAE_SCALING_FACTOR: f32 = 0.18215;
 fn main() -> Result<()> {
     let assets = std::path::Path::new("assets");
 
-    // Load tokenized prompt from npz (only tokens + initial latent needed)
-    eprintln!("Loading pipeline data...");
-    let npz_bytes = std::fs::read(assets.join("pipeline.npz"))?;
-    let mut npz = ndarray_npy::NpzReader::new(std::io::Cursor::new(npz_bytes))?;
-    let input_ids: ndarray::Array2<i64> = npz.by_name("input_ids")?;
-    let uncond_input_ids: ndarray::Array2<i64> = npz.by_name("uncond_input_ids")?;
+    // Tokenize prompt
+    let prompt = "a photo of a cat";
+    eprintln!("Prompt: \"{prompt}\"");
+    let tokenizer = tokenizers::Tokenizer::from_file(assets.join("tokenizer/tokenizer.json"))
+        .map_err(|e| anyhow!("{e}"))?;
+    let encode = |text: &str| -> Result<ndarray::Array2<i64>> {
+        let enc = tokenizer.encode(text, true).map_err(|e| anyhow!("{e}"))?;
+        let mut ids: Vec<i64> = enc.get_ids().iter().map(|&id| id as i64).collect();
+        ids.resize(77, tokenizer.token_to_id("<|endoftext|>").unwrap_or(49407) as i64);
+        Ok(ndarray::Array2::from_shape_vec((1, 77), ids)?)
+    };
+    let input_ids = encode(prompt)?;
+    let uncond_input_ids = encode("")?;
 
     // Generate initial latent noise
     use rand::SeedableRng;
