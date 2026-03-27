@@ -1,0 +1,9 @@
+[package]
+name = "stable-diffusion"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow.workspace = true
+image = "0.25"
+tract.workspace = true
