@@ -61,7 +61,7 @@ dyn_clone::clone_trait_object!(ElementWiseMiniOp);
 dyn_eq::eq_trait_object!(ElementWiseMiniOp);
 downcast_rs::impl_downcast!(ElementWiseMiniOp);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ElementWiseOp(pub Box<dyn ElementWiseMiniOp>, pub Option<DatumType>);
 
 impl ElementWiseOp {
@@ -69,13 +69,6 @@ impl ElementWiseOp {
         self.1.unwrap_or(self.0.operating_datum_type(input_dt))
     }
 }
-
-impl PartialEq for ElementWiseOp {
-    fn eq(&self, other: &Self) -> bool {
-        self.1 == other.1 && *self.0 == *other.0
-    }
-}
-impl Eq for ElementWiseOp {}
 
 impl Op for ElementWiseOp {
     fn name(&self) -> StaticName {
@@ -211,15 +204,8 @@ macro_rules! element_wise {
         $(; quantize: $quantize:expr )?
         $(; validation: $validation:expr )?
     ) => {
-        #[derive(Debug, Clone)]
+        #[derive(Debug, Clone, PartialEq)]
         pub struct $Op { $( $( $(#[$meta])? pub $var: $var_typ),* )? }
-        impl PartialEq for $Op {
-            #[allow(unused_variables)]
-            fn eq(&self, other: &Self) -> bool {
-                $( $( if &self.$var != &other.$var { return false; })* )?
-                true
-            }
-        }
         impl Eq for $Op {}
         impl $crate::ops::element_wise::ElementWiseMiniOp for $Op {
             fn name(&self) -> String {

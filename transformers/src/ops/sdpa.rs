@@ -80,14 +80,13 @@ fn deser_spda(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tr
     builder.wire(Sdpa { scale: scale.map(tensor0), datum_type, acc_datum_type, is_causal }, &inputs)
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Sdpa {
     pub scale: Option<Tensor>,
     pub datum_type: DatumType,
     pub acc_datum_type: DatumType,
     pub is_causal: bool,
 }
-impl Eq for Sdpa {}
 
 impl Sdpa {
     fn wire_softmax(
@@ -314,9 +313,9 @@ impl TypedOp for Sdpa {
                 q_heads,
                 k_heads
             );
-            ensure!(
-                mask.as_ref().is_none_or(|m| m.shape[1].is_one() || m.shape[1] == q_heads.into())
-            );
+            ensure!(mask
+                .as_ref()
+                .is_none_or(|m| m.shape[1].is_one() || m.shape[1] == q_heads.into()));
         }
 
         let output_shape = match rank {

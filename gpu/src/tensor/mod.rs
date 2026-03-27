@@ -13,22 +13,16 @@ use std::fmt::Display;
 use tract_core::internal::*;
 use tract_data::itertools::Itertools;
 
-use crate::device::{DeviceBuffer, get_context};
+use crate::device::{get_context, DeviceBuffer};
 
 /// This struct represents a GPU tensor that can be either a owned tensor
 /// or an arena view.
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum DeviceTensor {
     Owned(Box<dyn OwnedDeviceTensor>),
     ArenaView(DeviceArenaView),
 }
 
-impl PartialEq for DeviceTensor {
-    fn eq(&self, _: &Self) -> bool {
-        false
-    }
-}
-impl Eq for DeviceTensor {}
 impl DeviceTensor {
     pub const SUPPORTED_DT: [DatumType; 11] = [
         DatumType::Bool,

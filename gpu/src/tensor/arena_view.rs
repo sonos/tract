@@ -4,12 +4,12 @@ use std::fmt::Display;
 use tract_core::internal::*;
 use tract_core::tract_linalg::block_quant::{BlockQuantFact, BlockQuantStorage};
 
-use crate::device::{DeviceBuffer, get_context};
+use crate::device::{get_context, DeviceBuffer};
 use crate::utils::check_strides_validity;
 
 use super::OwnedDeviceTensor;
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct DeviceArenaView {
     pub(crate) arena: Arc<Box<dyn OwnedDeviceTensor>>,
     pub(crate) dt: DatumType,
@@ -20,12 +20,6 @@ pub struct DeviceArenaView {
     pub(crate) exotic_fact: Option<Box<dyn ExoticFact>>,
 }
 
-impl PartialEq for DeviceArenaView {
-    fn eq(&self, _: &Self) -> bool {
-        false
-    }
-}
-impl Eq for DeviceArenaView {}
 impl DeviceArenaView {
     #[inline]
     pub fn shape(&self) -> &[usize] {

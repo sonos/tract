@@ -91,7 +91,7 @@ impl<B: BinMiniOp> BinIntoHir for B {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Nary(pub Box<dyn mir::binary::BinMiniOp>, pub bool);
 
 impl Nary {
@@ -214,10 +214,3 @@ impl InferenceRulesOp for Nary {
 
     as_op!();
 }
-
-impl PartialEq for Nary {
-    fn eq(&self, other: &Self) -> bool {
-        self.1 == other.1 && *self.0 == *other.0
-    }
-}
-impl Eq for Nary {}

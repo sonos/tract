@@ -1,8 +1,9 @@
-use crate::context::{TractCudaStream, cuda_context};
+use crate::context::{cuda_context, TractCudaStream};
 use crate::kernels::launch_args::TractLaunchArgs;
-use crate::kernels::{WARP_SIZE, get_cuda_view};
+use crate::kernels::{get_cuda_view, WARP_SIZE};
 use cudarc::driver::{LaunchArgs, LaunchConfig, PushKernelArg};
-use downcast_rs::{Downcast, impl_downcast};
+use downcast_rs::{impl_downcast, Downcast};
+use dyn_eq::DynEq;
 use std::any::Any;
 use std::fmt::Debug;
 use tract_core::dyn_clone::{self, DynClone};
@@ -13,7 +14,7 @@ use tract_gpu::tensor::DeviceTensor;
 pub trait ConvKernelScratch: Debug + Downcast {}
 impl_downcast!(ConvKernelScratch);
 
-pub trait ConvKernel: 'static + Send + Sync + Debug + DynClone {
+pub trait ConvKernel: 'static + Send + Sync + Debug + DynClone + DynEq {
     fn name(&self) -> StaticName;
     #[allow(clippy::too_many_arguments)]
     fn state(&self) -> Box<dyn ConvKernelScratch>;
@@ -31,6 +32,7 @@ pub trait ConvKernel: 'static + Send + Sync + Debug + DynClone {
     ) -> TractResult<()>;
 }
 dyn_clone::clone_trait_object!(ConvKernel);
+dyn_eq::eq_trait_object!(ConvKernel);
 
 impl ConvKernelScratch for () {}
 

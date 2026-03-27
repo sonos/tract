@@ -10,14 +10,8 @@ use tract_core::tract_linalg::block_quant::Q4_0;
 use tract_gpu::tensor::DeviceTensorExt;
 use tract_gpu::utils::as_quant_fact;
 
-#[derive(Debug, new, Default, Clone)]
+#[derive(Debug, new, Default, Clone, PartialEq, Eq)]
 pub struct CudaGgmlGemm;
-impl PartialEq for CudaGgmlGemm {
-    fn eq(&self, _: &Self) -> bool {
-        false
-    }
-}
-impl Eq for CudaGgmlGemm {}
 
 impl Op for CudaGgmlGemm {
     fn name(&self) -> StaticName {

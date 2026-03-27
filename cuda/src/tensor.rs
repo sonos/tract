@@ -10,10 +10,10 @@ use tract_gpu::device::DeviceBuffer;
 use tract_gpu::tensor::{DeviceTensor, OwnedDeviceTensor};
 use tract_gpu::utils::{as_q40_tensor, check_strides_validity};
 
-use crate::context::{CUDA_STREAM, TractCudaStream, cuda_context};
+use crate::context::{cuda_context, TractCudaStream, CUDA_STREAM};
 use crate::kernels::launch_args::TractLaunchArgs;
 use crate::kernels::utils::cuda_launch_cfg_for_cpy;
-use crate::kernels::{BroadcastKind, LibraryName, get_sliced_cuda_view};
+use crate::kernels::{get_sliced_cuda_view, BroadcastKind, LibraryName};
 use crate::ops::GgmlQuantQ81Fact;
 
 #[derive(Debug, Clone)]
@@ -40,7 +40,14 @@ impl DerefMut for CudaBuffer {
     }
 }
 
-#[derive(Clone)]
+impl PartialEq for CudaBuffer {
+    fn eq(&self, other: &Self) -> bool {
+        self.ptr() == other.ptr() && self.inner.len() == other.inner.len()
+    }
+}
+impl Eq for CudaBuffer {}
+
+#[derive(Clone, PartialEq, Eq)]
 pub struct CudaTensor {
     buffer: Arc<CudaBuffer>,
     datum_type: DatumType,

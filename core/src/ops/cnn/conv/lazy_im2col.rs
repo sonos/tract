@@ -2,9 +2,9 @@ use crate::internal::*;
 use crate::ops::matmul::pack::DynPackedExoticFact;
 use std::fmt::{Debug, Display};
 use std::ops::Range;
-use tract_linalg::WeightType;
 use tract_linalg::mmm::{MMMInputFormat, MMMInputValue, PackedMatrixStorage};
 use tract_linalg::pack::{PackedFormat, PackingWriter};
+use tract_linalg::WeightType;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct LazyIm2colParams {
@@ -118,17 +118,11 @@ impl TypedOp for LazyIm2Col {
     as_op!();
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 struct LazyIm2colInput {
     tensor: TValue,
     im2col: Arc<LazyIm2colParams>,
 }
-impl PartialEq for LazyIm2colInput {
-    fn eq(&self, _: &Self) -> bool {
-        false
-    }
-}
-impl Eq for LazyIm2colInput {}
 
 impl Display for LazyIm2colInput {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

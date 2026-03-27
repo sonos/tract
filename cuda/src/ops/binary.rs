@@ -3,14 +3,8 @@ use crate::kernels::BinOps;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensorExt;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CudaBinOp(pub BinOps);
-impl PartialEq for CudaBinOp {
-    fn eq(&self, _: &Self) -> bool {
-        false
-    }
-}
-impl Eq for CudaBinOp {}
 
 impl CudaBinOp {
     fn resolve_output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {

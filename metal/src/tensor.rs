@@ -109,7 +109,7 @@ impl From<Arc<Tensor>> for MValue {
 
 /// This struct represents a owned tensor that can be accessed from the
 /// GPU and the CPU.
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct MetalTensor {
     pub inner: MValue,
     pub device_buffer: MetalBuffer,

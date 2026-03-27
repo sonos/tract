@@ -5,19 +5,13 @@ use tract_core::internal::*;
 use tract_core::ops::OpStateFreeze;
 use tract_gpu::tensor::{DeviceTensor, DeviceTensorExt};
 
-#[derive(Clone, Debug, new)]
+#[derive(Clone, Debug, new, PartialEq, Eq)]
 pub struct MetalFusedAxisOp {
     /// List of axis ops to apply for each op inputs
     /// Length of the list is equal to number of inputs
     pub grouped_axis_ops: TVec<TVec<MetalAxisOp>>,
     pub op: Box<dyn TypedOp>,
 }
-impl PartialEq for MetalFusedAxisOp {
-    fn eq(&self, _: &Self) -> bool {
-        false
-    }
-}
-impl Eq for MetalFusedAxisOp {}
 
 #[derive(Debug, Clone, new)]
 pub struct MetalFusedAxisOpState {

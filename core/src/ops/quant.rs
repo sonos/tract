@@ -4,9 +4,9 @@ use crate::internal::*;
 use crate::ops::element_wise::ElementWiseOp;
 use crate::ops::math::QScale;
 use num_traits::AsPrimitive;
-use tract_linalg::Scaler;
 use tract_linalg::lut::Lut;
 use tract_linalg::mmm::RoundingPolicy;
+use tract_linalg::Scaler;
 
 use super::binary::TypedBinOp;
 use super::math::round_ties_to_even;
@@ -71,17 +71,12 @@ fn info_quantize_linear_i8(q: &QuantizeLinearI8) -> TractResult<Vec<String>> {
     )])
 }
 
-#[derive(Clone, Debug, new)]
+#[derive(Clone, Debug, new, PartialEq)]
 pub struct DequantizeLinearF32 {
     pub scale: f32,
     pub zero_point: i32,
 }
 
-impl PartialEq for DequantizeLinearF32 {
-    fn eq(&self, _other: &Self) -> bool {
-        false
-    }
-}
 impl Eq for DequantizeLinearF32 {}
 
 impl DequantizeLinearF32 {
@@ -381,14 +376,8 @@ pub(crate) fn offset_i8_as_u8_elementwise(x: i8) -> u8 {
     (x as u8).wrapping_add(128)
 }
 
-#[derive(Debug, Clone)]
-pub struct OffsetI8asU8 {}
-impl PartialEq for OffsetI8asU8 {
-    fn eq(&self, _: &Self) -> bool {
-        true
-    }
-}
-impl Eq for OffsetI8asU8 {}
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OffsetI8asU8;
 impl ElementWiseMiniOp for OffsetI8asU8 {
     fn name(&self) -> String {
         format!("{}{}", self.prefix(), stringify!(OffsetI8asU8))
@@ -428,14 +417,8 @@ pub(crate) fn offset_u8_as_i8_elementwise(x: u8) -> i8 {
     x.wrapping_sub(128) as i8
 }
 
-#[derive(Debug, Clone)]
-pub struct OffsetU8asI8 {}
-impl PartialEq for OffsetU8asI8 {
-    fn eq(&self, _: &Self) -> bool {
-        true
-    }
-}
-impl Eq for OffsetU8asI8 {}
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OffsetU8asI8;
 impl ElementWiseMiniOp for OffsetU8asI8 {
     fn name(&self) -> String {
         format!("{}{}", self.prefix(), stringify!(OffsetU8asI8))

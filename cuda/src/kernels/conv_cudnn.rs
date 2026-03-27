@@ -1,6 +1,6 @@
-use crate::context::{TractCudaStream, cuda_context};
+use crate::context::{cuda_context, TractCudaStream};
 use crate::kernels::conv::{ConvKernel, ConvKernelScratch};
-use crate::kernels::{WARP_SIZE, get_cuda_view, get_cuda_view_mut};
+use crate::kernels::{get_cuda_view, get_cuda_view_mut, WARP_SIZE};
 use cudarc::cudnn::{ConvDescriptor, ConvForward, FilterDescriptor, TensorDescriptor};
 use cudarc::driver::{CudaStream, LaunchArgs, LaunchConfig, PushKernelArg};
 use std::any::Any;
@@ -136,7 +136,7 @@ impl CudnnConvDescriptors {
 
 impl ConvKernelScratch for Option<CudnnConvDescriptors> {}
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct ConvCudnn;
 
 impl ConvKernel for ConvCudnn {
