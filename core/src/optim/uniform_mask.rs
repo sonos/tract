@@ -197,13 +197,10 @@ fn split_op_two_regions(
 /// `1` (if `is_true`) or `0` (if not).
 fn uniform_const(dt: DatumType, rank: usize, is_true: bool) -> TractResult<Tensor> {
     let shape = vec![1usize; rank];
-    if is_true {
-        let scalar = match dt {
-            DatumType::Bool => tensor0(true),
-            _ => tensor0(1i64).cast_to_dt(dt)?.into_owned(),
-        };
-        scalar.into_shape(&shape)
-    } else {
-        Tensor::zero_dt(dt, &shape)
-    }
+    let scalar = match dt {
+        DatumType::Bool => tensor0(is_true),
+        _ if is_true => tensor0(1i64).cast_to_dt(dt)?.into_owned(),
+        _ => Tensor::zero_dt(dt, &[])?,
+    };
+    scalar.into_shape(&shape)
 }
