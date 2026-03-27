@@ -5,7 +5,7 @@ use ndarray::*;
 use tract_linalg::block_quant::BlockQuantStorage;
 use tract_linalg::mmm::{MMMInputValue, PackedMatrixStorage};
 
-#[derive(Debug, Clone, Hash, PartialEq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Gather {
     pub axis: usize,
     pub output_type: Option<DatumType>,
@@ -17,7 +17,6 @@ impl Op for Gather {
     }
 
     op_as_typed_op!();
-    impl_op_same_as!();
 }
 
 impl Gather {

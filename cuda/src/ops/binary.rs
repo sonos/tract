@@ -5,6 +5,12 @@ use tract_gpu::tensor::DeviceTensorExt;
 
 #[derive(Debug, Clone)]
 pub struct CudaBinOp(pub BinOps);
+impl PartialEq for CudaBinOp {
+    fn eq(&self, _: &Self) -> bool {
+        false
+    }
+}
+impl Eq for CudaBinOp {}
 
 impl CudaBinOp {
     fn resolve_output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
@@ -27,11 +33,6 @@ impl CudaBinOp {
 impl Op for CudaBinOp {
     fn name(&self) -> StaticName {
         format!("Cuda{}", self.0.name()).into()
-    }
-
-    fn same_as(&self, other: &dyn Op) -> bool {
-        let Some(other) = other.downcast_ref::<CudaBinOp>() else { return false };
-        self.0 == other.0
     }
 
     op_as_typed_op!();

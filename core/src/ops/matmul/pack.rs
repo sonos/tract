@@ -27,7 +27,6 @@ impl Op for OptMatMulPack {
     }
 
     op_as_typed_op!();
-    impl_op_same_as!();
 }
 
 impl EvalOp for OptMatMulPack {
@@ -136,10 +135,6 @@ pub struct DynPackedExoticFact {
 }
 
 impl ExoticFact for DynPackedExoticFact {
-    fn same_as(&self, other: &dyn ExoticFact) -> bool {
-        other.downcast_ref::<Self>().is_some_and(|o| o == self)
-    }
-
     fn buffer_sizes(&self) -> TVec<TDim> {
         tvec!(self.k.clone() * &self.mn * self.packers[0].dt.size_of())
     }
@@ -157,7 +152,6 @@ impl Op for OptSimpleMatMulPack {
         "OptSimpleMatMulPack".into()
     }
     op_as_typed_op!();
-    impl_op_same_as!();
 }
 
 impl EvalOp for OptSimpleMatMulPack {

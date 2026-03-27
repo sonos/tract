@@ -143,7 +143,7 @@ pub mod internal {
     };
     pub use tvec;
     pub use {args_1, args_2, args_3, args_4, args_5, args_6, args_7, args_8};
-    pub use {as_op, impl_op_same_as, not_a_typed_op, op_as_typed_op};
+    pub use {as_op, not_a_typed_op, op_as_typed_op};
     pub use {bin_to_super_type, element_wise, element_wise_oop};
     pub use {rule_if, rule_if_let, rule_if_some};
 }

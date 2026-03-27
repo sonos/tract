@@ -7,7 +7,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("CategoryMapper", category_mapper);
 }
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 struct CategoryMapper {
     pub from: Arc<Tensor>,
     pub to: Arc<Tensor>,

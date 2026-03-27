@@ -5,7 +5,7 @@ use tract_core::ops::array as core_array;
 use tract_core::tract_data::itertools::Itertools;
 use tract_gpu::tensor::DeviceTensorExt;
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct CudaPad {
     pads: Vec<(TDim, TDim)>,
     mode: core_array::PadMode,
@@ -44,11 +44,6 @@ impl Op for CudaPad {
 
     fn info(&self) -> TractResult<Vec<String>> {
         Ok(vec![format!("padding: {:?} with mode: {:?}", self.pads, self.mode)])
-    }
-
-    fn same_as(&self, other: &dyn Op) -> bool {
-        let Some(other) = other.downcast_ref::<CudaPad>() else { return false };
-        self.pads == other.pads && self.mode == other.mode
     }
 
     op_as_typed_op!();

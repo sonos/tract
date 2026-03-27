@@ -5,7 +5,7 @@ use std::sync::Arc;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensorExt;
 
-#[derive(Clone, Debug, new, Hash)]
+#[derive(Clone, Debug, new, Hash, PartialEq, Eq)]
 pub struct MetalRmsNorm {
     pub axis: usize,
     pub eps: Arc<Tensor>,

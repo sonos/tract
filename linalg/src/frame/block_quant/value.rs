@@ -42,10 +42,6 @@ impl std::fmt::Debug for BlockQuantFact {
 }
 
 impl ExoticFact for BlockQuantFact {
-    fn same_as(&self, other: &dyn ExoticFact) -> bool {
-        other.downcast_ref::<Self>().is_some_and(|o| o == self)
-    }
-
     fn buffer_sizes(&self) -> TVec<TDim> {
         let total = self.m() * self.k() / self.format.block_len() * self.format.block_bytes();
         tvec!(total.to_dim())
@@ -54,15 +50,17 @@ impl ExoticFact for BlockQuantFact {
 
 impl PartialEq for BlockQuantFact {
     fn eq(&self, other: &Self) -> bool {
-        self.format.same_as(&*other.format) && self.shape == other.shape
+        *self.format == *other.format && self.shape == other.shape
     }
 }
+impl Eq for BlockQuantFact {}
 
 #[derive(Clone, Hash, PartialEq)]
 pub struct PackedBlockQuantFact {
     pub format: PackedBlockQuantFormat,
     pub shape: TVec<usize>,
 }
+impl Eq for PackedBlockQuantFact {}
 
 impl std::fmt::Debug for PackedBlockQuantFact {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -71,10 +69,6 @@ impl std::fmt::Debug for PackedBlockQuantFact {
 }
 
 impl ExoticFact for PackedBlockQuantFact {
-    fn same_as(&self, other: &dyn ExoticFact) -> bool {
-        other.downcast_ref::<Self>().is_some_and(|o| o == self)
-    }
-
     fn buffer_sizes(&self) -> TVec<TDim> {
         tvec!(
             (self.shape.iter().product::<usize>() / self.format.bq.block_len()

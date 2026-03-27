@@ -31,13 +31,13 @@ pub fn depth_to_space_mode(node: &NodeProto) -> TractResult<DepthToSpaceMode> {
     Ok(mode)
 }
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum DepthToSpaceMode {
     Dcr,
     Crd,
 }
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 struct DepthToSpace {
     blocksize: usize,
     mode: DepthToSpaceMode,

@@ -236,7 +236,7 @@ fn parse_nodes_data(node: &NodeProto, is_classifier: bool) -> TractResult<TreeEn
     TreeEnsemble::build(data, max_used_features, n_classes, aggregate_fn)
 }
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct TreeEnsembleClassifier {
     pub ensemble: TreeEnsemble,
     pub class_labels: Arc<Tensor>,

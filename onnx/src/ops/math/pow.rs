@@ -9,7 +9,7 @@ pub fn pow(
     Ok((expand(Pow), vec![]))
 }
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new, Hash, PartialEq, Eq)]
 pub struct Pow;
 
 impl Expansion for Pow {

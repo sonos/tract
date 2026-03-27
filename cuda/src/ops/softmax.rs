@@ -5,7 +5,7 @@ use tract_core::internal::*;
 use tract_core::ops::nn as core_ops_nn;
 use tract_gpu::tensor::DeviceTensorExt;
 
-#[derive(Debug, Clone, Hash, Default)]
+#[derive(Debug, Clone, Hash, Default, PartialEq, Eq)]
 pub struct CudaSoftmax {
     pub axes: TVec<usize>,
 }

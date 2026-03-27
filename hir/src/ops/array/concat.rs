@@ -5,7 +5,7 @@ pub use tract_core::ops::array::TypedConcat;
 use tract_core::ops::cast::wire_cast;
 
 /// Concat: high level concat op
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new, Hash, PartialEq, Eq)]
 pub struct Concat {
     axis: i64,
 }

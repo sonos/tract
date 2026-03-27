@@ -62,7 +62,7 @@ where
 
     /// Check that this node produce the same outputs as `other`.
     pub fn same_as(&self, other: &Node<F, NodeOp>) -> bool {
-        self.inputs == other.inputs && self.op().same_as(other.op())
+        self.inputs == other.inputs && self.op().dyn_eq(other.op())
     }
 }
 

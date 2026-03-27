@@ -210,6 +210,13 @@ impl
 #[derive(Debug, Clone)]
 pub(crate) struct PulseWrappingOp(pub Box<dyn TypedOp>);
 
+impl PartialEq for PulseWrappingOp {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.as_op() == other.0.as_op()
+    }
+}
+impl Eq for PulseWrappingOp {}
+
 impl Op for PulseWrappingOp {
     fn name(&self) -> StaticName {
         format!("PulseWrapping({}", self.0.name()).into()
@@ -281,6 +288,13 @@ impl PulsedOp for PulseWrappingOp {
 
 #[derive(Debug, Clone)]
 pub(crate) struct NonPulsingWrappingOp(pub Box<dyn TypedOp>);
+
+impl PartialEq for NonPulsingWrappingOp {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.as_op() == other.0.as_op()
+    }
+}
+impl Eq for NonPulsingWrappingOp {}
 
 impl Op for NonPulsingWrappingOp {
     fn name(&self) -> StaticName {

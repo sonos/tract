@@ -7,6 +7,13 @@ pub struct ConstantLike {
     value: f32,
 }
 
+impl PartialEq for ConstantLike {
+    fn eq(&self, other: &Self) -> bool {
+        self.value.to_bits() == other.value.to_bits()
+    }
+}
+impl Eq for ConstantLike {}
+
 impl Op for ConstantLike {
     fn name(&self) -> StaticName {
         "ConstantLike".into()
@@ -63,7 +70,7 @@ impl TypedOp for ConstantLike {
     }
 }
 
-#[derive(Debug, Clone, new, Default, Hash)]
+#[derive(Debug, Clone, new, Default, Hash, PartialEq, Eq)]
 pub struct EyeLike {
     dt: Option<DatumType>,
     k: isize,

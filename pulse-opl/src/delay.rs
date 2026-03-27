@@ -128,7 +128,6 @@ impl Op for Delay {
         ])
     }
 
-    impl_op_same_as!();
     op_as_typed_op!();
 }
 

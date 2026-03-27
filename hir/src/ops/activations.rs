@@ -61,7 +61,7 @@ activation!(Clip, |op, name: &str, model: &mut TypedModel, inputs| {
     Ok(wire)
 });
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new, Hash, PartialEq, Eq)]
 pub struct Softplus;
 
 activation!(Softplus, |_op, name: &str, model: &mut TypedModel, inputs| {
@@ -72,7 +72,7 @@ activation!(Softplus, |_op, name: &str, model: &mut TypedModel, inputs| {
     Ok(wire)
 });
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new, Hash, PartialEq, Eq)]
 pub struct Softsign;
 
 activation!(Softsign, |_op, name: &str, model: &mut TypedModel, inputs| {

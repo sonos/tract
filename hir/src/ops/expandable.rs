@@ -61,6 +61,13 @@ pub trait Expansion:
 
 tract_core::dyn_clone::clone_trait_object!(Expansion);
 
+impl PartialEq for Box<dyn Expansion> {
+    fn eq(&self, _other: &Self) -> bool {
+        false
+    }
+}
+impl Eq for Box<dyn Expansion> {}
+
 impl Op for Box<dyn Expansion> {
     fn name(&self) -> StaticName {
         self.as_ref().name()

@@ -12,7 +12,6 @@ impl Op for BlockQuantIntoShape {
         "BlockQuantIntoShape".into()
     }
     op_as_typed_op!();
-    impl_op_same_as!();
 }
 
 impl EvalOp for BlockQuantIntoShape {
@@ -69,7 +68,6 @@ impl Op for SplitGroupBlockQuant {
     }
 
     op_as_typed_op!();
-    impl_op_same_as!();
 }
 
 impl EvalOp for SplitGroupBlockQuant {

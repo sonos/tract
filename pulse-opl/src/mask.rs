@@ -39,7 +39,7 @@ fn deser(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractRe
     builder.wire(op, &[wire])
 }
 
-#[derive(Debug, Clone, Default, Hash)]
+#[derive(Debug, Clone, Default, Hash, PartialEq, Eq)]
 struct PulseMaskOpState {
     current_pos: usize,
 }
@@ -103,7 +103,7 @@ impl PulseMaskOpState {
     }
 }
 
-#[derive(Debug, Clone, Default, Hash)]
+#[derive(Debug, Clone, Default, Hash, PartialEq, Eq)]
 pub struct PulseMask {
     pub axis: usize,
     pub begin: usize,

@@ -14,7 +14,7 @@ pub fn space_to_depth(
     Ok((expand(SpaceToDepth { blocksize }), vec![]))
 }
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 struct SpaceToDepth {
     blocksize: usize,
 }

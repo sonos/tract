@@ -77,6 +77,13 @@ pub struct DequantizeLinearF32 {
     pub zero_point: i32,
 }
 
+impl PartialEq for DequantizeLinearF32 {
+    fn eq(&self, _other: &Self) -> bool {
+        false
+    }
+}
+impl Eq for DequantizeLinearF32 {}
+
 impl DequantizeLinearF32 {
     fn eval_t<T: Datum + AsPrimitive<i32>>(&self, input: &Tensor) -> TractResult<Tensor> {
         let mut output = unsafe { Tensor::uninitialized::<f32>(input.shape())? };
@@ -376,6 +383,12 @@ pub(crate) fn offset_i8_as_u8_elementwise(x: i8) -> u8 {
 
 #[derive(Debug, Clone)]
 pub struct OffsetI8asU8 {}
+impl PartialEq for OffsetI8asU8 {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
+}
+impl Eq for OffsetI8asU8 {}
 impl ElementWiseMiniOp for OffsetI8asU8 {
     fn name(&self) -> String {
         format!("{}{}", self.prefix(), stringify!(OffsetI8asU8))
@@ -417,6 +430,12 @@ pub(crate) fn offset_u8_as_i8_elementwise(x: u8) -> i8 {
 
 #[derive(Debug, Clone)]
 pub struct OffsetU8asI8 {}
+impl PartialEq for OffsetU8asI8 {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
+}
+impl Eq for OffsetU8asI8 {}
 impl ElementWiseMiniOp for OffsetU8asI8 {
     fn name(&self) -> String {
         format!("{}{}", self.prefix(), stringify!(OffsetU8asI8))

@@ -5,7 +5,7 @@ use tract_core::internal::*;
 use tract_core::ops::array::TypedConcat;
 use tract_gpu::tensor::DeviceTensorExt;
 
-#[derive(new, Debug, Clone, Hash)]
+#[derive(new, Debug, Clone, Hash, PartialEq, Eq)]
 pub struct MetalConcat {
     pub kernel: Concat,
 }

@@ -774,7 +774,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
                     println!("  * {packing:?}");
                     for mmm in tract_linalg::ops().mmm_impls() {
                         for (ix, p) in mmm.packings().iter().enumerate() {
-                            if p.0.same_as(packing) {
+                            if p.0.dyn_eq(packing) {
                                 println!(
                                     "    - {} ({ix}) {:?} {:?}",
                                     colored_name(&**mmm),
@@ -784,7 +784,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
                             } else if let Some(pe) = tract_linalg::ops()
                                 .panel_extractors()
                                 .iter()
-                                .find(|pe| pe.from.same_as(packing) && p.0.same_as(&pe.to))
+                                .find(|pe| pe.from.dyn_eq(packing) && p.0.dyn_eq(&pe.to))
                             {
                                 println!(
                                     "    - {} ({ix}) {:?} {:?} using {}",

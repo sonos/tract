@@ -1,6 +1,7 @@
 use crate::internal::*;
 use crate::ndarray::Dimension;
 use downcast_rs::Downcast;
+use dyn_eq::DynEq;
 use std::fmt::{self, Debug};
 use tract_data::itertools::izip;
 use tract_itertools::Itertools;
@@ -9,7 +10,9 @@ use tract_linalg::{BinOp, LinalgFn};
 use super::math::{Add, Max, Min, Mul, Sub};
 use super::{cast::cast, math::SubF};
 
-pub trait BinMiniOp: fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast {
+pub trait BinMiniOp:
+    fmt::Debug + dyn_clone::DynClone + dyn_eq::DynEq + Send + Sync + 'static + Downcast
+{
     fn name(&self) -> &'static str;
     fn validation(&self) -> Validation {
         Validation::Accurate
@@ -80,17 +83,20 @@ pub trait BinMiniOp: fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + 
     fn as_linalg_binop(&self) -> Option<tract_linalg::BinOp> {
         None
     }
-
-    #[allow(unused_variables)]
-    fn same_as(&self, other: &dyn BinMiniOp) -> bool {
-        false
-    }
 }
 dyn_clone::clone_trait_object!(BinMiniOp);
+dyn_eq::eq_trait_object!(BinMiniOp);
 downcast_rs::impl_downcast!(BinMiniOp);
 
 #[derive(Debug, Clone)]
 pub struct TypedBinOp(pub Box<dyn BinMiniOp>, pub Option<DatumType>);
+
+impl PartialEq for TypedBinOp {
+    fn eq(&self, other: &Self) -> bool {
+        self.1 == other.1 && *self.0 == *other.0
+    }
+}
+impl Eq for TypedBinOp {}
 
 impl Op for TypedBinOp {
     fn name(&self) -> StaticName {
@@ -99,11 +105,6 @@ impl Op for TypedBinOp {
 
     fn validation(&self) -> Validation {
         self.0.validation()
-    }
-
-    fn same_as(&self, other: &dyn Op) -> bool {
-        let Some(other) = other.downcast_ref::<TypedBinOp>() else { return false };
-        self.1 == other.1 && self.0.same_as(&*other.0)
     }
 
     op_as_typed_op!();
@@ -469,14 +470,16 @@ impl OptBinByScalar {
     }
 }
 
+impl PartialEq for OptBinByScalar {
+    fn eq(&self, other: &Self) -> bool {
+        *self.binop == *other.binop
+    }
+}
+impl Eq for OptBinByScalar {}
+
 impl Op for OptBinByScalar {
     fn name(&self) -> StaticName {
         format!("Opt{}ByScalar", self.binop.name()).into()
-    }
-
-    fn same_as(&self, other: &dyn Op) -> bool {
-        let Some(other) = other.downcast_ref::<OptBinByScalar>() else { return false };
-        self.binop.same_as(&*other.binop)
     }
 
     op_as_typed_op!();
@@ -597,15 +600,18 @@ impl OptBinUnicast {
     }
 }
 
+impl PartialEq for OptBinUnicast {
+    fn eq(&self, other: &Self) -> bool {
+        *self.binop == *other.binop
+    }
+}
+impl Eq for OptBinUnicast {}
+
 impl Op for OptBinUnicast {
     fn name(&self) -> StaticName {
         format!("Opt{}Unicast", self.binop.name()).into()
     }
 
-    fn same_as(&self, other: &dyn Op) -> bool {
-        let Some(other) = other.downcast_ref::<OptBinUnicast>() else { return false };
-        self.binop.same_as(&*other.binop)
-    }
     op_as_typed_op!();
 }
 
@@ -686,10 +692,6 @@ macro_rules! bin_to_super_type {
         impl $crate::ops::binary::BinMiniOp for $Op {
             fn name(&self) -> &'static str {
                 stringify!($Op)
-            }
-
-            fn same_as(&self, other: &dyn $crate::ops::binary::BinMiniOp) -> bool {
-                other.downcast_ref::<$Op>().is_some()
             }
 
             fn eval_out_of_place(&self, c: &mut Tensor, a: &Tensor, b: &Tensor) -> TractResult<()> {

@@ -14,6 +14,12 @@ pub struct PackedMatrixStorage {
     batch_shape: TVec<usize>,
     batch_strides: TVec<isize>,
 }
+impl PartialEq for PackedMatrixStorage {
+    fn eq(&self, _: &Self) -> bool {
+        false
+    }
+}
+impl Eq for PackedMatrixStorage {}
 
 impl PackedMatrixStorage {
     /// Scalar storage (one value, empty shape).
@@ -107,20 +113,6 @@ impl TensorStorage for PackedMatrixStorage {
 
     fn deep_clone(&self) -> Box<dyn TensorStorage> {
         Box::new(self.clone())
-    }
-
-    fn same_as(&self, other: &dyn TensorStorage) -> bool {
-        if let Some(other) = other.downcast_ref::<Self>() {
-            self.batch_shape == other.batch_shape
-                && self.values.len() == other.values.len()
-                && self
-                    .values
-                    .iter()
-                    .zip(other.values.iter())
-                    .all(|(a, b)| (&**a as &dyn MMMInputValue).same_as(&**b))
-        } else {
-            false
-        }
     }
 
     fn as_plain(&self) -> Option<&PlainStorage> {

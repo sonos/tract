@@ -5,7 +5,7 @@ use tract_gpu::tensor::DeviceTensorExt;
 use crate::context::CUDA_STREAM;
 use crate::kernels;
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new, Hash, PartialEq, Eq)]
 pub struct CudaMultiBroadcastTo {
     pub shape: ShapeFact,
 }

@@ -16,7 +16,7 @@ pub fn register(registry: &mut Registry) {
     registry.register_dumper(dump);
 }
 
-#[derive(Copy, Clone, Debug, Hash)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub enum BoxRepr {
     // boxes data format [y1, x1, y2, x2]
     TwoPoints,
@@ -110,7 +110,7 @@ impl BoxRepr {
     }
 }
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct NonMaxSuppression {
     pub center_point_box: BoxRepr,
     pub num_selected_indices_symbol: Symbol,

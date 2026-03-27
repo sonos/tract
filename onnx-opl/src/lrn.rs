@@ -1,13 +1,14 @@
 use tract_ndarray::prelude::*;
 use tract_nnef::internal::*;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct Lrn {
     pub alpha: f32,
     pub beta: f32,
     pub bias: f32,
     pub size: usize,
 }
+impl Eq for Lrn {}
 
 impl Lrn {
     fn eval_t<T>(&self, input: TValue) -> TractResult<TVec<TValue>>

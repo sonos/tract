@@ -80,13 +80,14 @@ fn deser_spda(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tr
     builder.wire(Sdpa { scale: scale.map(tensor0), datum_type, acc_datum_type, is_causal }, &inputs)
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Sdpa {
     pub scale: Option<Tensor>,
     pub datum_type: DatumType,
     pub acc_datum_type: DatumType,
     pub is_causal: bool,
 }
+impl Eq for Sdpa {}
 
 impl Sdpa {
     fn wire_softmax(

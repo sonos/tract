@@ -11,7 +11,7 @@ pub fn einsum(
     Ok((expand(EinSum { expr }), vec![]))
 }
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct EinSum {
     pub expr: AxesMapping,
 }

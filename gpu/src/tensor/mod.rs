@@ -23,6 +23,12 @@ pub enum DeviceTensor {
     ArenaView(DeviceArenaView),
 }
 
+impl PartialEq for DeviceTensor {
+    fn eq(&self, _: &Self) -> bool {
+        false
+    }
+}
+impl Eq for DeviceTensor {}
 impl DeviceTensor {
     pub const SUPPORTED_DT: [DatumType; 11] = [
         DatumType::Bool,
@@ -227,12 +233,6 @@ impl TensorStorage for DeviceTensor {
 
     fn deep_clone(&self) -> Box<dyn TensorStorage> {
         Box::new(self.clone())
-    }
-
-    fn same_as(&self, other: &dyn TensorStorage) -> bool {
-        other
-            .downcast_ref::<Self>()
-            .is_some_and(|other| self.device_buffer_ptr() == other.device_buffer_ptr())
     }
 
     fn as_plain(&self) -> Option<&PlainStorage> {

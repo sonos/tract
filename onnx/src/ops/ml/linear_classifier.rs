@@ -38,7 +38,7 @@ fn parse_class_data(node: &NodeProto) -> TractResult<Arc<Tensor>> {
     }
 }
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct LinearClassifier {
     pub class_labels: Arc<Tensor>,
     pub coefficients: Arc<Tensor>,

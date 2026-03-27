@@ -124,7 +124,7 @@ impl FrozenOpState for FrozenMetalDynKVCacheState {
     }
 }
 
-#[derive(new, Debug, Clone, Hash)]
+#[derive(new, Debug, Clone, Hash, PartialEq, Eq)]
 pub struct MetalDynKVCache {
     name: String,
     past_sequence_fact: TypedFact,

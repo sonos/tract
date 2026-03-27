@@ -5,7 +5,7 @@ use crate::internal::*;
 
 // TODO tricky to re-express in "core" because of the multiple hot point... do
 // we need one more reduce ?
-#[derive(Debug, Clone, new, Default, Hash)]
+#[derive(Debug, Clone, new, Default, Hash, PartialEq, Eq)]
 pub struct LayerHardmax {
     axis: isize,
     coerce_to_2d: bool,
@@ -77,7 +77,7 @@ impl Expansion for LayerHardmax {
     }
 }
 
-#[derive(Debug, Clone, new, Default, Hash)]
+#[derive(Debug, Clone, new, Default, Hash, PartialEq, Eq)]
 pub struct LayerLogSoftmax {
     pub axis: isize,
     pub coerce_to_2d: bool,
@@ -109,7 +109,7 @@ impl Expansion for LayerLogSoftmax {
     }
 }
 
-#[derive(Debug, Clone, new, Default, Hash)]
+#[derive(Debug, Clone, new, Default, Hash, PartialEq, Eq)]
 pub struct LayerSoftmax {
     axis: isize,
     coerce_to_2d: bool,

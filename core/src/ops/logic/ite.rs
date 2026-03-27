@@ -8,6 +8,13 @@ pub struct IfThenElse {
     pub else_input_mapping: Vec<usize>,
 }
 
+impl PartialEq for IfThenElse {
+    fn eq(&self, _other: &Self) -> bool {
+        false
+    }
+}
+impl Eq for IfThenElse {}
+
 impl Op for IfThenElse {
     fn name(&self) -> StaticName {
         "IfThenElse".into()

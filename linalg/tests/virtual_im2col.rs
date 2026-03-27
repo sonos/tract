@@ -226,11 +226,17 @@ fn tensor(shape: Vec<usize>) -> Tensor {
     tensor
 }
 
-#[derive(Clone, Debug, Hash, Eq, PartialEq)]
+#[derive(Clone, Debug, Hash)]
 struct EagerIm2colSpec {
     packer: PackedFormat,
     full_kernel_shape: TVec<usize>,
 }
+impl PartialEq for EagerIm2colSpec {
+    fn eq(&self, _: &Self) -> bool {
+        false
+    }
+}
+impl Eq for EagerIm2colSpec {}
 
 impl EagerIm2colSpec {
     fn wrap(&self, input: &TensorView) -> Box<dyn MMMInputValue> {
@@ -272,10 +278,6 @@ impl MMMInputFormat for EagerIm2colSpec {
         self.packer.r()
     }
 
-    fn same_as(&self, other: &dyn MMMInputFormat) -> bool {
-        other.downcast_ref::<Self>().is_some_and(|other| other == self)
-    }
-
     fn mem_size(&self, _k: TDim, _mn: TDim) -> TDim {
         unimplemented!()
     }
@@ -314,6 +316,12 @@ struct EagerIm2col {
     im2col: Tensor,
     k: usize,
 }
+impl PartialEq for EagerIm2col {
+    fn eq(&self, _: &Self) -> bool {
+        false
+    }
+}
+impl Eq for EagerIm2col {}
 
 impl Display for EagerIm2col {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -365,10 +373,6 @@ impl MMMInputValue for EagerIm2col {
         unimplemented!()
     }
 
-    fn same_as(&self, _other: &dyn MMMInputValue) -> bool {
-        unimplemented!()
-    }
-
     fn extract_at_mn_f16(&self, _mn: usize, _slice: &mut [f16]) -> TractResult<()> {
         unimplemented!()
     }
@@ -378,11 +382,17 @@ impl MMMInputValue for EagerIm2col {
     }
 }
 
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[derive(Clone, Debug, Hash)]
 struct LazyIm2colSpec {
     packer: PackedFormat,
     full_kernel_shape: TVec<usize>,
 }
+impl PartialEq for LazyIm2colSpec {
+    fn eq(&self, _: &Self) -> bool {
+        false
+    }
+}
+impl Eq for LazyIm2colSpec {}
 
 impl LazyIm2colSpec {
     fn wrap(&self, input: &TensorView) -> Box<dyn MMMInputValue> {
@@ -446,10 +456,6 @@ impl MMMInputFormat for LazyIm2colSpec {
         self.packer.r()
     }
 
-    fn same_as(&self, other: &dyn MMMInputFormat) -> bool {
-        other.downcast_ref::<Self>().is_some_and(|other| other == self)
-    }
-
     fn mem_size(&self, _k: TDim, _mn: TDim) -> TDim {
         unimplemented!()
     }
@@ -481,6 +487,12 @@ struct LazyIm2col {
     n_offsets: Vec<isize>,
     k_offsets: Vec<isize>,
 }
+impl PartialEq for LazyIm2col {
+    fn eq(&self, _: &Self) -> bool {
+        false
+    }
+}
+impl Eq for LazyIm2col {}
 unsafe impl Send for LazyIm2col {}
 unsafe impl Sync for LazyIm2col {}
 
@@ -534,10 +546,6 @@ impl MMMInputValue for LazyIm2col {
     }
 
     fn exotic_fact(&self) -> &dyn ExoticFact {
-        unimplemented!()
-    }
-
-    fn same_as(&self, _other: &dyn MMMInputValue) -> bool {
         unimplemented!()
     }
 

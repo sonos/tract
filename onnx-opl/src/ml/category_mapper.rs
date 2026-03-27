@@ -20,7 +20,7 @@ pub fn register(registry: &mut Registry) {
     registry.register_dumper(dump_reverse_lookup);
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct DirectLookup {
     values: Arc<Tensor>,
     fallback_value: Arc<Tensor>,
@@ -100,6 +100,12 @@ pub struct ReverseLookup {
     index: HashMap<u64, SmallVec<[i32; 1]>>,
     fallback_value: i32,
 }
+impl PartialEq for ReverseLookup {
+    fn eq(&self, _other: &Self) -> bool {
+        false
+    }
+}
+impl Eq for ReverseLookup {}
 
 #[allow(clippy::manual_hash_one)]
 impl ReverseLookup {

@@ -34,7 +34,7 @@ fn dynamic_quantize_linear(
     Ok((expand(op), vec![]))
 }
 
-#[derive(Debug, Clone, new, Default, Hash)]
+#[derive(Debug, Clone, new, Default, Hash, PartialEq, Eq)]
 pub struct QuantizeLinear {
     optional_zero_point_input: Option<usize>,
 }
@@ -98,7 +98,7 @@ impl Expansion for QuantizeLinear {
     }
 }
 
-#[derive(Debug, Clone, new, Default, Hash)]
+#[derive(Debug, Clone, new, Default, Hash, PartialEq, Eq)]
 pub struct DequantizeLinear {
     optional_zero_point_input: Option<usize>,
 }
@@ -170,7 +170,7 @@ impl Expansion for DequantizeLinear {
     }
 }
 
-#[derive(Debug, Clone, new, Default, Hash)]
+#[derive(Debug, Clone, new, Default, Hash, PartialEq, Eq)]
 pub struct DynamicQuantizeLinear {}
 
 impl Expansion for DynamicQuantizeLinear {
@@ -252,7 +252,7 @@ fn scale_and_zero_point(v: ArrayViewD<f32>) -> (f32, u8) {
     (scale, zero_point)
 }
 
-#[derive(Clone, Debug, new, Hash)]
+#[derive(Clone, Debug, new, Hash, PartialEq, Eq)]
 pub struct DynamicQuantizeLinearU8;
 
 impl Op for DynamicQuantizeLinearU8 {

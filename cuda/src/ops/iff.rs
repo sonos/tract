@@ -7,13 +7,13 @@ use tract_gpu::tensor::DeviceTensorExt;
 #[derive(Debug, Clone, PartialEq)]
 pub struct CudaIff;
 
+impl Eq for CudaIff {}
 impl Op for CudaIff {
     fn name(&self) -> StaticName {
         "CudaIff".into()
     }
 
     op_as_typed_op!();
-    impl_op_same_as!();
 }
 
 impl EvalOp for CudaIff {

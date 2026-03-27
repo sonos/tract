@@ -39,7 +39,7 @@ pub fn pull_downsample_over_scan(
             input.outputs[0]
                 .successors
                 .iter()
-                .all(|succ| downsampled_body.node(succ.node).op().same_as(down_op))
+                .all(|succ| downsampled_body.node(succ.node).op().dyn_eq(down_op))
         )
     }
 

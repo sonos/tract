@@ -1,6 +1,6 @@
 use tract_nnef::internal::*;
 
-#[derive(Debug, Clone, Default, Hash)]
+#[derive(Debug, Clone, Default, Hash, PartialEq, Eq)]
 pub struct PulsedAxisSlice {
     pub axis: usize,
     pub skip: usize,

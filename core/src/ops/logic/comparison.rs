@@ -2,7 +2,7 @@ use crate::broadcast::multi_broadcast;
 use crate::internal::*;
 use crate::ndarray::Zip;
 
-#[derive(Clone, Copy, Debug, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub enum Comp {
     Eq,
     NE,
@@ -29,7 +29,6 @@ impl Op for Comp {
     }
 
     op_as_typed_op!();
-    impl_op_same_as!();
 }
 
 impl Comp {

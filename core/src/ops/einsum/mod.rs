@@ -42,7 +42,7 @@ pub fn block_quant_aware_input_shape(fact: &TypedFact) -> TractResult<Cow<'_, [T
     }
 }
 
-#[derive(Clone, Hash, PartialEq)]
+#[derive(Clone, Hash, PartialEq, Eq)]
 pub struct EinSum {
     pub axes: AxesMapping,
     pub operating_dt: DatumType,
@@ -158,7 +158,6 @@ impl Op for EinSum {
     }
 
     op_as_typed_op!();
-    impl_op_same_as!();
 }
 
 impl EvalOp for EinSum {

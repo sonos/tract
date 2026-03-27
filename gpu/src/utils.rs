@@ -61,11 +61,11 @@ pub fn as_quant_fact<'a>(
     fact.exotic_fact
         .as_ref()
         .and_then(|of| of.downcast_ref::<BlockQuantFact>())
-        .and_then(|bqf| if bqf.format.same_as(format) { Some(bqf) } else { None })
+        .and_then(|bqf| if bqf.format.dyn_eq(format) { Some(bqf) } else { None })
 }
 
 pub fn as_q40_tensor(a: &Tensor) -> Option<&BlockQuantStorage> {
-    a.storage_as::<BlockQuantStorage>().filter(|bqs| bqs.format().same_as(&Q4_0))
+    a.storage_as::<BlockQuantStorage>().filter(|bqs| bqs.format().dyn_eq(&Q4_0))
 }
 
 pub fn get_quant_fact(t: &DeviceTensor, format: &dyn BlockQuant) -> Option<BlockQuantFact> {
@@ -73,7 +73,7 @@ pub fn get_quant_fact(t: &DeviceTensor, format: &dyn BlockQuant) -> Option<Block
         t.exotic_fact()
             .and_then(|of| of.downcast_ref::<BlockQuantFact>())
             .cloned()
-            .filter(|bqf| bqf.format.same_as(format))
+            .filter(|bqf| bqf.format.dyn_eq(format))
     } else {
         None
     }

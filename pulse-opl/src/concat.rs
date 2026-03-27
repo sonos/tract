@@ -3,7 +3,7 @@ use tract_nnef::internal::*;
 use tract_nnef::tract_core::trivial_op_state_freeze;
 
 /// Concat with pulse along concat axis
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct PulsedSameAxisConcat {
     pub axis: usize,
     pub before_len: usize,

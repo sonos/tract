@@ -73,7 +73,7 @@ impl Display for Cmp {
     }
 }
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct TreeEnsembleData {
     // u32, [Ntrees], root row of each tree in nodes array (in rows)
     pub trees: Arc<Tensor>,
@@ -208,7 +208,7 @@ impl BranchNode {
     }
 }
 
-#[derive(Copy, Clone, Debug, Hash)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 struct LeafNode {
     pub start_id: usize,
     pub end_id: usize,
@@ -281,7 +281,7 @@ pub enum Aggregate {
     Min,
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct TreeEnsemble {
     pub data: TreeEnsembleData,
     pub max_used_feature: usize,

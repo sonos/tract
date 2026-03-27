@@ -68,7 +68,7 @@ pub fn pad_q40_weights(
     let bqf = cuda_tensor
         .exotic_fact()
         .and_then(|of| of.downcast_ref::<BlockQuantFact>())
-        .filter(|bqf| bqf.format.same_as(&Q4_0));
+        .filter(|bqf| bqf.format.dyn_eq(&Q4_0));
     rule_ensure!(bqf.is_some());
     let bqf = bqf.unwrap();
 

@@ -6,7 +6,7 @@ use tract_linalg::WeightType;
 use tract_linalg::mmm::{MMMInputFormat, MMMInputValue, PackedMatrixStorage};
 use tract_linalg::pack::{PackedFormat, PackingWriter};
 
-#[derive(Clone, Debug, Hash, PartialEq)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct LazyIm2colParams {
     pub packer: PackedFormat,
     pub n_byte_offsets: Vec<isize>,
@@ -28,10 +28,6 @@ impl MMMInputFormat for LazyIm2colParams {
 
     fn k_alignment(&self) -> usize {
         1
-    }
-
-    fn same_as(&self, other: &dyn MMMInputFormat) -> bool {
-        other.downcast_ref::<Self>().is_some_and(|other| self == other)
     }
 
     fn mem_size(&self, k: TDim, mn: TDim) -> TDim {
@@ -72,10 +68,6 @@ impl Display for LazyIm2colParams {
 }
 
 impl ExoticFact for LazyIm2colParams {
-    fn same_as(&self, _other: &dyn ExoticFact) -> bool {
-        _other.downcast_ref::<Self>().is_some_and(|o| o == self)
-    }
-
     fn buffer_sizes(&self) -> TVec<TDim> {
         tvec!(MMMInputFormat::mem_size(
             self,
@@ -85,7 +77,7 @@ impl ExoticFact for LazyIm2colParams {
     }
 }
 
-#[derive(Clone, Debug, Hash, PartialEq)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct LazyIm2Col {
     pub params: Arc<LazyIm2colParams>,
 }
@@ -95,7 +87,6 @@ impl Op for LazyIm2Col {
         "LazyIm2col".into()
     }
 
-    impl_op_same_as!();
     op_as_typed_op!();
 }
 
@@ -132,6 +123,12 @@ struct LazyIm2colInput {
     tensor: TValue,
     im2col: Arc<LazyIm2colParams>,
 }
+impl PartialEq for LazyIm2colInput {
+    fn eq(&self, _: &Self) -> bool {
+        false
+    }
+}
+impl Eq for LazyIm2colInput {}
 
 impl Display for LazyIm2colInput {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -393,12 +390,6 @@ impl MMMInputValue for LazyIm2colInput {
 
     fn exotic_fact(&self) -> &dyn ExoticFact {
         &*self.im2col
-    }
-
-    fn same_as(&self, other: &dyn MMMInputValue) -> bool {
-        other.downcast_ref::<Self>().is_some_and(|o| {
-            o.tensor == self.tensor && (&*o.im2col as &dyn MMMInputFormat).same_as(&*self.im2col)
-        })
     }
     fn extract_at_mn_f16(&self, _mn: usize, _slice: &mut [f16]) -> TractResult<()> {
         unimplemented!()

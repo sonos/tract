@@ -6,7 +6,7 @@ use tract_core::ops::cnn::conv::KernelFormat;
 use tract_core::ops::cnn::{PaddingSpec, PoolSpec};
 use tract_core::ops::nn::DataFormat;
 
-#[derive(Debug, Clone, Default, Hash)]
+#[derive(Debug, Clone, Default, Hash, PartialEq, Eq)]
 pub struct Conv {
     pub data_format: DataFormat,
     pub kernel_fmt: KernelFormat,

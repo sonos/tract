@@ -53,7 +53,7 @@ pub fn pad_18(
     Ok((expand(op), vec![]))
 }
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new, Hash, PartialEq, Eq)]
 pub struct Pad18 {
     mode: array::PadMode,
     constant_input: Option<usize>,

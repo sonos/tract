@@ -66,7 +66,7 @@ fn window(
     Ok((expand(StftWindow { datum_type, periodic, window }), vec![]))
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 struct Dft {
     axis: usize,
     inverse: bool,
@@ -155,7 +155,7 @@ impl Expansion for Dft {
     }
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 struct Stft {
     onesided: bool,
     optional_window_input: Option<usize>,
@@ -279,7 +279,7 @@ impl Expansion for Stft {
     }
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct MelWeightMatrix {
     datum_type: DatumType,
 }
@@ -378,7 +378,7 @@ impl Expansion for MelWeightMatrix {
     }
 }
 
-#[derive(Copy, Clone, Debug, Hash)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 enum StftWindowType {
     Blackman,
     Hamming,
@@ -417,7 +417,7 @@ impl StftWindowType {
     }
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct StftWindow {
     datum_type: DatumType,
     periodic: bool,

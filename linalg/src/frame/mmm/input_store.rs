@@ -1,5 +1,6 @@
 use downcast_rs::{Downcast, impl_downcast};
 use dyn_clone::DynClone;
+use dyn_eq::DynEq;
 use dyn_hash::DynHash;
 use std::alloc::Layout;
 use std::fmt::{Debug, Display};
@@ -9,7 +10,9 @@ use tract_data::internal::*;
 
 use crate::WeightType;
 
-pub trait MMMInputFormat: Downcast + Debug + DynHash + DynClone + Send + Sync + Display {
+pub trait MMMInputFormat:
+    Downcast + Debug + DynHash + dyn_eq::DynEq + DynClone + Send + Sync + Display
+{
     fn prepare_tensor(&self, t: &Tensor, k_axis: usize, mn_axis: usize) -> TractResult<Tensor>;
     fn prepare_one(
         &self,
@@ -20,12 +23,11 @@ pub trait MMMInputFormat: Downcast + Debug + DynHash + DynClone + Send + Sync + 
     fn precursor(&self) -> WeightType;
     fn r(&self) -> usize;
     fn k_alignment(&self) -> usize;
-    fn same_as(&self, other: &dyn MMMInputFormat) -> bool;
     fn merge_with<'o, 'a: 'o, 'b: 'o>(
         &'a self,
         other: &'b dyn MMMInputFormat,
     ) -> Option<&'o dyn MMMInputFormat> {
-        if self.same_as(other) { Some(other) } else { None }
+        if self.dyn_eq(other) { Some(other) } else { None }
     }
     fn mem_size(&self, k: TDim, mn: TDim) -> TDim;
     fn extract_at_mn_f16(
@@ -45,15 +47,11 @@ pub trait MMMInputFormat: Downcast + Debug + DynHash + DynClone + Send + Sync + 
 dyn_clone::clone_trait_object!(MMMInputFormat);
 impl_downcast!(MMMInputFormat);
 dyn_hash::hash_trait_object!(MMMInputFormat);
+dyn_eq::eq_trait_object!(MMMInputFormat);
 
-impl Eq for &dyn MMMInputFormat {}
-impl PartialEq for &dyn MMMInputFormat {
-    fn eq(&self, other: &Self) -> bool {
-        self.same_as(*other)
-    }
-}
-
-pub trait MMMInputValue: DynClone + Debug + DynHash + Send + Sync + Display + Downcast {
+pub trait MMMInputValue:
+    DynClone + Debug + DynHash + dyn_eq::DynEq + Send + Sync + Display + Downcast
+{
     fn format(&self) -> &dyn MMMInputFormat;
     fn scratch_panel_buffer_layout(&self) -> Option<Layout>;
     fn panel_bytes(&self, i: usize, buffer: Option<*mut u8>) -> TractResult<*const u8>;
@@ -63,7 +61,6 @@ pub trait MMMInputValue: DynClone + Debug + DynHash + Send + Sync + Display + Do
     fn mn(&self) -> usize;
     fn k(&self) -> usize;
     fn exotic_fact(&self) -> &dyn ExoticFact;
-    fn same_as(&self, other: &dyn MMMInputValue) -> bool;
 
     fn extract_at_mn_f16(&self, mn: usize, slice: &mut [f16]) -> TractResult<()>;
     fn extract_at_mn_f32(&self, mn: usize, slice: &mut [f32]) -> TractResult<()>;
@@ -71,6 +68,7 @@ pub trait MMMInputValue: DynClone + Debug + DynHash + Send + Sync + Display + Do
 dyn_clone::clone_trait_object!(MMMInputValue);
 impl_downcast!(MMMInputValue);
 dyn_hash::hash_trait_object!(MMMInputValue);
+dyn_eq::eq_trait_object!(MMMInputValue);
 
 #[allow(clippy::derived_hash_with_manual_eq)]
 #[derive(Clone, Hash, Debug)]
@@ -87,10 +85,6 @@ impl Display for PackedExoticFact {
 }
 
 impl ExoticFact for PackedExoticFact {
-    fn same_as(&self, other: &dyn ExoticFact) -> bool {
-        other.downcast_ref::<Self>().is_some_and(|o| o == self)
-    }
-
     fn buffer_sizes(&self) -> TVec<TDim> {
         tvec!(self.format.mem_size(self.k.to_dim(), self.mn.clone()))
     }
@@ -98,11 +92,12 @@ impl ExoticFact for PackedExoticFact {
 
 impl PartialEq for PackedExoticFact {
     fn eq(&self, other: &Self) -> bool {
-        self.format.same_as(&*other.format) && self.mn == other.mn && self.k == other.k
+        self.format == other.format && self.mn == other.mn && self.k == other.k
     }
 }
+impl Eq for PackedExoticFact {}
 
-#[derive(Clone, Hash)]
+#[derive(Clone, Hash, PartialEq, Eq)]
 pub struct EagerPackedInput {
     pub fact: PackedExoticFact,
     pub packed: Arc<Blob>,
@@ -128,13 +123,6 @@ impl MMMInputValue for EagerPackedInput {
     }
     fn exotic_fact(&self) -> &dyn ExoticFact {
         &self.fact
-    }
-    fn same_as(&self, other: &dyn MMMInputValue) -> bool {
-        other.downcast_ref::<Self>().is_some_and(|other| {
-            self.fact.same_as(&other.fact)
-                && self.packed == other.packed
-                && self.panel_bytes == other.panel_bytes
-        })
     }
     fn extract_at_mn_f16(&self, mn: usize, slice: &mut [f16]) -> TractResult<()> {
         ensure!(slice.len() == self.k());

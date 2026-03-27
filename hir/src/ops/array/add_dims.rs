@@ -2,7 +2,7 @@ use crate::infer::*;
 use crate::internal::*;
 use tract_itertools::Itertools;
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new, Hash, PartialEq, Eq)]
 pub struct AddDims {
     pub axes: Vec<isize>,
 }

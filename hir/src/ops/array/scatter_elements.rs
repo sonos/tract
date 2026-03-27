@@ -3,7 +3,7 @@ use tract_core::ops::cast::wire_cast;
 use crate::infer::*;
 use crate::internal::*;
 
-#[derive(Debug, Clone, new, Default, Hash)]
+#[derive(Debug, Clone, new, Default, Hash, PartialEq, Eq)]
 pub struct ScatterElements {
     axis: i64,
 }

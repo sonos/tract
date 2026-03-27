@@ -23,7 +23,7 @@ pub fn non_max_suppression(
     ))
 }
 
-#[derive(Clone, new, Debug, Hash)]
+#[derive(Clone, new, Debug, Hash, PartialEq, Eq)]
 struct NonMaxSuppression {
     optional_max_output_boxes_per_class_input: Option<usize>,
     optional_iou_threshold_input: Option<usize>,

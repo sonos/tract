@@ -8,6 +8,7 @@ pub struct FlashSdpaOp {
     pub causal: bool,
     pub scale: Option<f32>,
 }
+impl Eq for FlashSdpaOp {}
 
 impl Op for FlashSdpaOp {
     fn name(&self) -> StaticName {
@@ -16,10 +17,6 @@ impl Op for FlashSdpaOp {
 
     fn info(&self) -> TractResult<Vec<String>> {
         Ok(vec![format!("causal={}, scale={:?}", self.causal, self.scale)])
-    }
-
-    fn same_as(&self, other: &dyn Op) -> bool {
-        other.downcast_ref::<Self>().is_some_and(|o| o == self)
     }
 
     op_as_typed_op!();

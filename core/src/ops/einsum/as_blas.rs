@@ -42,7 +42,7 @@ fn matmul_to_sgemm(
     }
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct SGemm {}
 
 impl Op for SGemm {

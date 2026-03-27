@@ -32,7 +32,7 @@ pub fn clip_11(
     Ok((expand(op), vec![]))
 }
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new, Hash, PartialEq, Eq)]
 pub struct Clip11 {
     input_min: Option<usize>,
     input_max: Option<usize>,

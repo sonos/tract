@@ -107,7 +107,7 @@ impl Reducer {
     }
 }
 
-#[derive(Clone, Debug, new, Hash)]
+#[derive(Clone, Debug, new, Hash, PartialEq, Eq)]
 pub struct Reduce {
     pub axes: Option<Vec<i64>>,
     pub keep_dims: bool,

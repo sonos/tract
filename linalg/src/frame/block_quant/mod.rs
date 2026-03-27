@@ -1,5 +1,6 @@
 use downcast_rs::{Downcast, impl_downcast};
 use dyn_clone::{DynClone, clone_box};
+use dyn_eq::DynEq;
 use dyn_hash::DynHash;
 use num_traits::Zero;
 use tract_data::internal::*;
@@ -30,9 +31,9 @@ use crate::WeightType;
 
 use super::mmm::MMMInputValue;
 
-pub trait BlockQuant: Debug + Display + Send + Sync + DynClone + DynHash + Downcast {
-    fn same_as(&self, other: &dyn BlockQuant) -> bool;
-
+pub trait BlockQuant:
+    Debug + Display + Send + Sync + DynClone + DynHash + dyn_eq::DynEq + Downcast
+{
     fn block_len(&self) -> usize;
 
     fn block_bytes(&self) -> usize;
@@ -187,6 +188,7 @@ pub trait BlockQuant: Debug + Display + Send + Sync + DynClone + DynHash + Downc
 
 dyn_clone::clone_trait_object!(BlockQuant);
 dyn_hash::hash_trait_object!(BlockQuant);
+dyn_eq::eq_trait_object!(BlockQuant);
 impl_downcast!(BlockQuant);
 
 #[allow(clippy::derived_hash_with_manual_eq)]
@@ -200,7 +202,7 @@ pub struct PackedBlockQuantFormat {
 
 impl PartialEq for PackedBlockQuantFormat {
     fn eq(&self, other: &Self) -> bool {
-        self.bq.same_as(&*other.bq)
+        *self.bq == *other.bq
             && self.r == other.r
             && self.zip == other.zip
             && self.scales_at_end == other.scales_at_end
@@ -317,10 +319,6 @@ impl MMMInputFormat for PackedBlockQuantFormat {
 
     fn mem_size(&self, k: TDim, mn: TDim) -> TDim {
         k * mn * self.bq.block_bytes() / self.bq.block_len()
-    }
-
-    fn same_as(&self, other: &dyn MMMInputFormat) -> bool {
-        other.downcast_ref::<Self>().is_some_and(|other| self == other)
     }
 
     fn extract_at_mn_f16(

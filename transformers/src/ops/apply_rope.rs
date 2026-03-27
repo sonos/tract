@@ -48,7 +48,6 @@ impl Op for RotateHalf {
         "RotateHalf".to_string().into()
     }
     op_as_typed_op!();
-    impl_op_same_as!();
 }
 
 impl EvalOp for RotateHalf {
@@ -160,7 +159,6 @@ impl Op for ApplyRope {
         "ApplyRope".to_string().into()
     }
     op_as_typed_op!();
-    impl_op_same_as!();
 }
 
 impl EvalOp for ApplyRope {

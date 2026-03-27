@@ -3,7 +3,7 @@ use crate::utils::with_borrowed_metal_stream;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensorExt;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MetalElementWiseOp(pub ElementWiseOps);
 
 impl Op for MetalElementWiseOp {
@@ -13,11 +13,6 @@ impl Op for MetalElementWiseOp {
 
     fn validation(&self) -> Validation {
         self.0.validation()
-    }
-
-    fn same_as(&self, other: &dyn Op) -> bool {
-        let Some(other) = other.downcast_ref::<MetalElementWiseOp>() else { return false };
-        self.0 == other.0
     }
 
     op_as_typed_op!();

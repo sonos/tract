@@ -20,6 +20,7 @@ maintenance = { status = "actively-developed" }
 [dependencies]
 anyhow.workspace = true
 derive-new.workspace = true
+dyn-eq.workspace = true
 dirs.workspace = true
 downcast-rs.workspace = true
 liquid.workspace = true

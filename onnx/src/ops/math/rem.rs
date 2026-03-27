@@ -15,7 +15,7 @@ pub fn rem(
     }
 }
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new, Hash, PartialEq, Eq)]
 pub struct RemInt;
 
 impl Expansion for RemInt {

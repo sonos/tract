@@ -3,7 +3,7 @@ use tract_core::ops::change_axes::wire_with_rank_broadcast;
 use crate::infer::*;
 use crate::internal::*;
 
-#[derive(Clone, Debug, new, Hash)]
+#[derive(Clone, Debug, new, Hash, PartialEq, Eq)]
 pub struct GlobalAvgPool;
 
 impl Expansion for GlobalAvgPool {
@@ -50,7 +50,7 @@ impl Expansion for GlobalAvgPool {
     }
 }
 
-#[derive(Clone, Debug, new, Hash)]
+#[derive(Clone, Debug, new, Hash, PartialEq, Eq)]
 pub struct GlobalLpPool(usize);
 
 impl Expansion for GlobalLpPool {
@@ -134,7 +134,7 @@ impl Expansion for GlobalLpPool {
     }
 }
 
-#[derive(Clone, Debug, new, Hash)]
+#[derive(Clone, Debug, new, Hash, PartialEq, Eq)]
 pub struct GlobalMaxPool;
 
 impl Expansion for GlobalMaxPool {

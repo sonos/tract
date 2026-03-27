@@ -6,7 +6,7 @@ pub fn gather_v2(_ctx: &ParsingContext, _pb: &NodeDef) -> TractResult<Box<dyn In
     Ok(expand(GatherV2))
 }
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new, Hash, PartialEq, Eq)]
 pub struct GatherV2;
 
 impl Expansion for GatherV2 {

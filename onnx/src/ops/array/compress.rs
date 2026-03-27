@@ -9,7 +9,7 @@ pub fn compress(
     Ok((Box::new(Compress::new(node.get_attr_opt("axis")?)), vec![]))
 }
 
-#[derive(Debug, Clone, new, Default, Hash)]
+#[derive(Debug, Clone, new, Default, Hash, PartialEq, Eq)]
 pub struct Compress {
     axis: Option<isize>,
 }

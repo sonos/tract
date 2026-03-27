@@ -19,7 +19,6 @@ impl Op for MaxPool {
     }
 
     op_as_typed_op!();
-    impl_op_same_as!();
 }
 
 impl EvalOp for MaxPool {
@@ -101,7 +100,6 @@ impl Op for OptMaxPool {
     }
 
     op_as_typed_op!();
-    impl_op_same_as!();
 }
 
 impl EvalOp for OptMaxPool {

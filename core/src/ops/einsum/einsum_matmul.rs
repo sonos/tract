@@ -26,7 +26,7 @@ pub fn flatten_all(model: &mut TypedModel) -> TractResult<()> {
     Rewriter::default().with_rule_for("flatten-matmul-einsum", flatten_rule).rewrite(&(), model)
 }
 
-#[derive(Clone, Hash, PartialEq)]
+#[derive(Clone, Hash, PartialEq, Eq)]
 pub struct EinSumMatMul {
     pub op: EinSum,
     pub m_axis: char,
@@ -109,7 +109,6 @@ impl Op for EinSumMatMul {
     }
 
     op_as_typed_op!();
-    impl_op_same_as!();
 }
 
 impl EvalOp for EinSumMatMul {

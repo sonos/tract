@@ -8,6 +8,7 @@ pub struct StreamedSdpaOp {
     pub block_k: usize,
     pub scale: Option<f32>,
 }
+impl Eq for StreamedSdpaOp {}
 
 impl Op for StreamedSdpaOp {
     fn name(&self) -> StaticName {
@@ -19,10 +20,6 @@ impl Op for StreamedSdpaOp {
             "causal={}, block_k={}, scale={:?}",
             self.causal, self.block_k, self.scale
         )])
-    }
-
-    fn same_as(&self, other: &dyn Op) -> bool {
-        other.downcast_ref::<Self>().is_some_and(|o| o == self)
     }
 
     op_as_typed_op!();

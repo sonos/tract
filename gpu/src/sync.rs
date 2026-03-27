@@ -26,11 +26,6 @@ impl Op for DeviceSync {
         format!("DeviceSync{}", self.kind).into()
     }
 
-    fn same_as(&self, other: &dyn Op) -> bool {
-        let Some(other) = other.downcast_ref::<DeviceSync>() else { return false };
-        self == other
-    }
-
     op_as_typed_op!();
 }
 

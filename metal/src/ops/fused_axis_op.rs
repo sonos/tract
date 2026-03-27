@@ -12,6 +12,12 @@ pub struct MetalFusedAxisOp {
     pub grouped_axis_ops: TVec<TVec<MetalAxisOp>>,
     pub op: Box<dyn TypedOp>,
 }
+impl PartialEq for MetalFusedAxisOp {
+    fn eq(&self, _: &Self) -> bool {
+        false
+    }
+}
+impl Eq for MetalFusedAxisOp {}
 
 #[derive(Debug, Clone, new)]
 pub struct MetalFusedAxisOpState {

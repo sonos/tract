@@ -76,7 +76,7 @@ impl<const QK: usize> BaseQ4_0<QK> {
             })?;
         ensure!(pbqf.r == target.r);
         ensure!(value.fact.k % self.block_len() == 0);
-        ensure!(pbqf.bq.same_as(self));
+        ensure!(*pbqf.bq == *(self as &dyn BlockQuant));
         let scratch =
             unsafe { std::slice::from_raw_parts_mut(scratch as *mut T, value.fact.k * target.r) };
         let blocks_for_k = value.fact.k / self.block_len();
@@ -126,7 +126,7 @@ impl<const QK: usize> BaseQ4_0<QK> {
                 format!("Expecing PackedBlockQuantFormat, found {:?}", value.fact.format)
             })?;
         ensure!(value.fact.k % self.block_len() == 0);
-        ensure!(pbqf.bq.same_as(self));
+        ensure!(*pbqf.bq == *(self as &dyn BlockQuant));
         ensure!(value.fact.mn.to_usize().ok().map(|it| mn < it).unwrap_or(true));
         ensure!(value.fact.k == target.len());
         let blocks_for_k = value.fact.k / self.block_len();
@@ -175,10 +175,6 @@ fn zipped_order(r: usize, zip: usize) -> Vec<usize> {
 }
 
 impl<const QK: usize> BlockQuant for BaseQ4_0<QK> {
-    fn same_as(&self, other: &dyn BlockQuant) -> bool {
-        other.downcast_ref::<Self>().map(|other| other == self).unwrap_or(false)
-    }
-
     fn block_len(&self) -> usize {
         QK
     }

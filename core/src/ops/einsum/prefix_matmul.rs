@@ -174,7 +174,7 @@ fn matmul_semantic_output_dt(
     }
 }
 
-#[derive(Clone, Debug, Copy)]
+#[derive(Clone, Debug, Copy, PartialEq, Eq)]
 pub struct PrefixMatMul {
     pub transpose_a: bool,
     pub transpose_b: bool,
@@ -397,7 +397,7 @@ mod test {
         Ok(())
     }
 
-    #[derive(Debug, Clone, PartialEq)]
+    #[derive(Debug, Clone, PartialEq, Eq)]
     struct EinSumProblem {
         expr: String,
         a: Tensor,

@@ -23,6 +23,12 @@ pub struct Multinomial {
     sample_size: i32,
     pub seed: Option<f32>,
 }
+impl PartialEq for Multinomial {
+    fn eq(&self, _: &Self) -> bool {
+        false
+    }
+}
+impl Eq for Multinomial {}
 
 impl Expansion for Multinomial {
     fn name(&self) -> StaticName {

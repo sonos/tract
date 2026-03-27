@@ -22,10 +22,6 @@ impl Op for DynSlice {
     }
 
     op_as_typed_op!();
-
-    fn same_as(&self, other: &dyn Op) -> bool {
-        if let Some(other) = other.downcast_ref::<Self>() { other == self } else { false }
-    }
 }
 
 impl EvalOp for DynSlice {

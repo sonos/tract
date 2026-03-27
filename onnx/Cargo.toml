@@ -19,6 +19,7 @@ maintenance = { status = "actively-developed" }
 
 [dependencies]
 bytes.workspace = true
+dyn-eq.workspace = true
 derive-new.workspace = true
 log.workspace = true
 memmap2.workspace = true

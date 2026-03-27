@@ -68,10 +68,6 @@ impl ExoticFact for DeviceFact {
         }
         sizes
     }
-
-    fn same_as(&self, other: &dyn ExoticFact) -> bool {
-        other.downcast_ref::<Self>().is_some_and(|o| o == self)
-    }
     fn compatible_with(&self, other: &dyn ExoticFact) -> bool {
         other.is::<Self>()
     }

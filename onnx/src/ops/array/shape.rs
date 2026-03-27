@@ -13,7 +13,7 @@ pub fn shape(
     Ok((expand(Shape { start, end }), vec![]))
 }
 
-#[derive(Debug, Clone, new, Default, Hash)]
+#[derive(Debug, Clone, new, Default, Hash, PartialEq, Eq)]
 struct Shape {
     start: i64,
     end: Option<i64>,

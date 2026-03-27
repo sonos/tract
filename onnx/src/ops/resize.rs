@@ -69,7 +69,7 @@ fn resize_18(node: &NodeProto) -> TractResult<Resize> {
     })
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 enum CoordTransformer {
     HalfPixel,
     AlignCorners,
@@ -97,7 +97,7 @@ impl CoordTransformer {
     }
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 enum Interpolator {
     Linear,
     Nearest,
@@ -137,7 +137,7 @@ impl Interpolator {
     }
 }
 
-#[derive(Clone, Copy, Debug, Hash)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 enum Nearest {
     Floor,
     Ceil,
@@ -157,7 +157,7 @@ impl Nearest {
     }
 }
 
-#[derive(Clone, new, Debug, Hash)]
+#[derive(Clone, new, Debug, Hash, PartialEq, Eq)]
 struct Resize {
     axes: Option<Vec<i64>>,
     coord_transformer: CoordTransformer,

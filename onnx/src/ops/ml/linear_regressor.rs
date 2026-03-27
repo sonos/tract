@@ -23,7 +23,7 @@ pub fn parse_post_transform(s: &str) -> TractResult<Option<PostTransform>> {
     }
 }
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct LinearRegressor {
     pub coefficients: Arc<Tensor>,
     pub intercepts: Option<Arc<Tensor>>,

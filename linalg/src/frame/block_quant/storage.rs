@@ -14,6 +14,12 @@ pub struct BlockQuantStorage {
     format: Box<dyn BlockQuant>,
     data: Arc<Blob>,
 }
+impl PartialEq for BlockQuantStorage {
+    fn eq(&self, _: &Self) -> bool {
+        false
+    }
+}
+impl Eq for BlockQuantStorage {}
 
 impl BlockQuantStorage {
     fn expected_bytes(format: &dyn BlockQuant, m: usize, k: usize) -> usize {
@@ -118,14 +124,6 @@ impl TensorStorage for BlockQuantStorage {
         state.write_u8(1);
         self.format.dyn_hash(state);
         state.write(self.data.as_bytes());
-    }
-
-    fn same_as(&self, other: &dyn TensorStorage) -> bool {
-        if let Some(other) = other.downcast_ref::<Self>() {
-            self.format.same_as(&*other.format) && self.data.as_bytes() == other.data.as_bytes()
-        } else {
-            false
-        }
     }
 
     fn exotic_fact(&self, shape: &[usize]) -> TractResult<Option<Box<dyn ExoticFact>>> {

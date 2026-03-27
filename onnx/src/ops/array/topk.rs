@@ -11,7 +11,7 @@ pub fn topk(
     Ok((expand(Topk { axis, largest }), vec![]))
 }
 
-#[derive(Debug, Clone, new, Default, Hash)]
+#[derive(Debug, Clone, new, Default, Hash, PartialEq, Eq)]
 struct Topk {
     axis: i64,
     largest: bool,

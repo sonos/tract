@@ -1693,7 +1693,7 @@ impl PartialEq for Tensor {
         }
         match (self.storage.as_plain(), other.storage.as_plain()) {
             (Some(_), Some(_)) => self.eq_dt(other).unwrap_or(false),
-            (None, None) => self.storage.same_as(&other.storage),
+            (None, None) => self.storage == other.storage,
             _ => false,
         }
     }

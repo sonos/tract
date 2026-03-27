@@ -5,7 +5,7 @@ use std::fmt::Debug;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensorExt;
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new, Hash, PartialEq, Eq)]
 pub struct MetalMultiBroadcastTo {
     pub shape: ShapeFact,
 }

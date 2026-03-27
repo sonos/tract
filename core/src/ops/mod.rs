@@ -4,6 +4,7 @@ use std::fmt;
 use downcast_rs::Downcast;
 
 use dyn_clone;
+use dyn_eq::DynEq;
 
 #[macro_use]
 pub mod macros;
@@ -149,19 +150,15 @@ pub trait EvalOp {
 }
 
 /// A base operation
-pub trait Op: fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast + EvalOp {
+pub trait Op:
+    fmt::Debug + dyn_clone::DynClone + dyn_eq::DynEq + Send + Sync + 'static + Downcast + EvalOp
+{
     fn name(&self) -> StaticName;
 
     /// The kind of accuracy check that should be performed on operation when
     /// testing them.
     fn validation(&self) -> Validation {
         Validation::Accurate
-    }
-
-    /// Compare two ops.
-    // Should this one be and Eq or PartialEq impl instead ?
-    fn same_as(&self, _other: &dyn Op) -> bool {
-        false
     }
 
     /// Short (one-line) strings giving hints on internal implementation or
@@ -172,6 +169,8 @@ pub trait Op: fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcas
 
     fn as_typed(&self) -> Option<&dyn TypedOp>;
 }
+
+dyn_eq::eq_trait_object!(Op);
 
 pub trait TypedOp:
     Op + fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast + EvalOp

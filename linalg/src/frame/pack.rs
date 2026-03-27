@@ -45,10 +45,6 @@ impl MMMInputFormat for PackedFormat {
         1
     }
 
-    fn same_as(&self, other: &dyn MMMInputFormat) -> bool {
-        other.downcast_ref::<Self>().is_some_and(|other| self == other)
-    }
-
     #[allow(clippy::collapsible_if)]
     fn merge_with<'o, 'a: 'o, 'b: 'o>(
         &'a self,
@@ -81,7 +77,7 @@ impl MMMInputFormat for PackedFormat {
         mn: usize,
         slice: &mut [f16],
     ) -> TractResult<()> {
-        ensure!(data.format().same_as(self));
+        ensure!(data.format().dyn_eq(self));
         ensure!(self.len(data.k(), data.mn()) * self.dt.size_of() == data.packed.len());
         unsafe {
             let ptr = data.packed.as_ptr().add(
@@ -107,7 +103,7 @@ impl MMMInputFormat for PackedFormat {
         mn: usize,
         slice: &mut [f32],
     ) -> TractResult<()> {
-        ensure!(data.format().same_as(self));
+        ensure!(data.format().dyn_eq(self));
         ensure!(self.len(data.k(), data.mn()) * self.dt.size_of() == data.packed.len());
         unsafe {
             let ptr = data.packed.as_ptr().add(

@@ -38,17 +38,12 @@ impl GgmlQuantQ81Fact {
 }
 
 impl ExoticFact for GgmlQuantQ81Fact {
-    fn same_as(&self, other: &dyn ExoticFact) -> bool {
-        let Some(other) = other.downcast_ref::<Self>() else { return false };
-        (other.in_fact == self.in_fact) && (other.out_fact == self.out_fact)
-    }
-
     fn buffer_sizes(&self) -> TVec<TDim> {
         tvec!(self.out_fact.iter().product::<TDim>() * Q8_1.block_bytes() / Q8_1.block_len())
     }
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct CudaGgmlQuantQ81 {
     io_facts: GgmlQuantQ81Fact,
 }
