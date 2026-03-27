@@ -1,7 +1,7 @@
 use crate::internal::*;
 use crate::ops::array::{Slice, TypedConcat};
 use crate::ops::binary::TypedBinOp;
-use crate::ops::logic::{And, ConditionPattern, Iff, classify_condition_tdim};
+use crate::ops::logic::{And, Iff, classify_positive_range};
 use crate::optim::OptimizerSession;
 
 /// Optimizer pass that exploits boolean-valued `uniform_tdim` on wires feeding `Iff` and `Mul`.
@@ -74,17 +74,18 @@ fn try_fold_uniform_bool_input(
     // Skipping here prevents an infinite loop (inject const → same uniform_tdim → inject again).
     rule_if!(bool_fact.konst.is_none());
     rule_if_some!(expr = &bool_fact.uniform_tdim);
-    rule_if_some!(pattern = classify_condition_tdim(expr, &bool_fact.shape));
+    rule_if_some!(range = classify_positive_range(expr, &bool_fact.shape));
 
     let dt = bool_fact.datum_type;
     let rank = bool_fact.rank();
-    match pattern {
-        ConditionPattern::AllTrue => inject_scalar_const(model, node, bool_ix, dt, rank, true),
-        ConditionPattern::AllFalse => inject_scalar_const(model, node, bool_ix, dt, rank, false),
-        ConditionPattern::TwoRegions { axis, split, lower_is_true } => {
-            split_op_two_regions(model, node, bool_ix, dt, rank, axis, split, lower_is_true)
-        }
+    if range.is_full() {
+        return inject_scalar_const(model, node, bool_ix, dt, rank, true);
     }
+    if range.is_empty() {
+        return inject_scalar_const(model, node, bool_ix, dt, rank, false);
+    }
+    rule_if_some!((split, lower_is_true) = range.two_region_split());
+    split_op_two_regions(model, node, bool_ix, dt, rank, range.axis, split, lower_is_true)
 }
 
 /// Replace the bool input at `bool_ix` with `Const(is_true ? 1 : 0, [1]*rank)` and rewire.

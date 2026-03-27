@@ -95,33 +95,49 @@ pub(crate) fn is_provably_all_true(expr: &TDim, shape: &ShapeFact) -> bool {
     expr.clone().simplify_with_extra_assertions(&extra) == TDim::Val(1)
 }
 
-pub(crate) enum ConditionPattern {
-    AllFalse,
-    AllTrue,
-    TwoRegions { axis: usize, split: TDim, lower_is_true: bool },
+/// The interval of indices along one axis where a boolean condition is true.
+///
+/// `None` on a bound means "open" — start defaults to 0, end defaults to `dim`.
+///
+/// | `start`   | `end`        | meaning                           |
+/// |-----------|--------------|-----------------------------------|
+/// | `None`    | `None`       | whole dimension (AllTrue)         |
+/// | `None`    | `Some(0)`    | empty (AllFalse)                  |
+/// | `None`    | `Some(e)`    | `[0, e)` — lower region true      |
+/// | `Some(s)` | `None`       | `[s, dim)` — upper region true    |
+/// | `Some(s)` | `Some(e)`    | `[s, e)` — three zones (future)   |
+#[derive(Debug, Clone)]
+pub(crate) struct PositiveRange {
+    pub axis: usize,
+    pub start: Option<TDim>, // None = 0
+    pub end: Option<TDim>,   // None = dim
 }
 
-pub(crate) fn classify_condition_tdim(expr: &TDim, shape: &ShapeFact) -> Option<ConditionPattern> {
-    let simplified = expr.clone().simplify();
-    if simplified == TDim::Val(0) {
-        return Some(ConditionPattern::AllFalse);
+impl PositiveRange {
+    /// Condition is true for the entire dimension.
+    pub fn is_full(&self) -> bool {
+        self.start.is_none() && self.end.is_none()
     }
-    if simplified == TDim::Val(1) {
-        return Some(ConditionPattern::AllTrue);
+    /// Condition is never true (empty range).
+    pub fn is_empty(&self) -> bool {
+        match (&self.start, &self.end) {
+            (None, Some(e)) => *e == TDim::Val(0),
+            (Some(s), Some(e)) => s == e,
+            _ => false,
+        }
     }
-    if is_provably_all_false(&simplified, shape) {
-        return Some(ConditionPattern::AllFalse);
+    /// Returns `(split, lower_is_true)` for a clean two-region split,
+    /// or `None` if full, empty, or three zones (not yet handled).
+    pub fn two_region_split(&self) -> Option<(TDim, bool)> {
+        match (&self.start, &self.end) {
+            (None, Some(e)) if *e != TDim::Val(0) => Some((e.clone(), true)),
+            (Some(s), None) => Some((s.clone(), false)),
+            _ => None,
+        }
     }
-    if is_provably_all_true(&simplified, shape) {
-        return Some(ConditionPattern::AllTrue);
-    }
-    if let Some((axis, split, lower_is_true)) = extract_split_pattern(&simplified, shape) {
-        return Some(ConditionPattern::TwoRegions { axis, split, lower_is_true });
-    }
-    None
 }
 
-pub(crate) fn extract_split_pattern(expr: &TDim, shape: &ShapeFact) -> Option<(usize, TDim, bool)> {
+pub(crate) fn classify_positive_range(expr: &TDim, shape: &ShapeFact) -> Option<PositiveRange> {
     fn try_ge(ge: &TDim, shape: &ShapeFact) -> Option<(usize, TDim)> {
         if let TDim::Ge(lhs, rhs) = ge {
             if let TDim::Sym(sym) = &**lhs {
@@ -134,14 +150,23 @@ pub(crate) fn extract_split_pattern(expr: &TDim, shape: &ShapeFact) -> Option<(u
         None
     }
 
-    // Form A: Ge(x_k, split) — lower half is false branch
-    if let Some((k, split)) = try_ge(expr, shape) {
-        return Some((k, split, false));
+    let simplified = expr.clone().simplify();
+    // All-false: empty range on axis 0
+    if simplified == TDim::Val(0) || is_provably_all_false(&simplified, shape) {
+        return Some(PositiveRange { axis: 0, start: None, end: Some(TDim::Val(0)) });
     }
-    // Form B: 1 - Ge(x_k, split) — lower half is true branch
-    let flipped = (TDim::Val(1) - expr.clone()).simplify();
-    if let Some((k, split)) = try_ge(&flipped, shape) {
-        return Some((k, split, true));
+    // All-true: open (unbounded) range on axis 0
+    if simplified == TDim::Val(1) || is_provably_all_true(&simplified, shape) {
+        return Some(PositiveRange { axis: 0, start: None, end: None });
+    }
+    // Ge(x_k, split): true when x_k >= split → [split, dim)
+    if let Some((axis, split)) = try_ge(&simplified, shape) {
+        return Some(PositiveRange { axis, start: Some(split), end: None });
+    }
+    // 1 - Ge(x_k, split): true when x_k < split → [0, split)
+    let flipped = (TDim::Val(1) - simplified).simplify();
+    if let Some((axis, split)) = try_ge(&flipped, shape) {
+        return Some(PositiveRange { axis, start: None, end: Some(split) });
     }
     None
 }
@@ -251,14 +276,15 @@ impl TypedOp for Iff {
             Ok(Some(patch))
         };
 
-        match classify_condition_tdim(&expr, cond_shape) {
-            Some(ConditionPattern::AllFalse) => shunt_to(node.inputs[2]),
-            Some(ConditionPattern::AllTrue) => shunt_to(node.inputs[1]),
-            Some(ConditionPattern::TwoRegions { axis, split, lower_is_true }) => {
-                split_iff_to_slice_concat(model, node, axis, split, lower_is_true)
-            }
-            None => Ok(None),
+        rule_if_some!(range = classify_positive_range(&expr, cond_shape));
+        if range.is_full() {
+            return shunt_to(node.inputs[1]);
         }
+        if range.is_empty() {
+            return shunt_to(node.inputs[2]);
+        }
+        rule_if_some!((split, lower_is_true) = range.two_region_split());
+        split_iff_to_slice_concat(model, node, range.axis, split, lower_is_true)
     }
 
     fn axes_mapping(
