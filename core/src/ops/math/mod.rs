@@ -535,8 +535,24 @@ element_wise!(square, Square, [f16, f32, f64] => |_, xs| {
     Ok(())
 };
 q: [i8, u8, i32, i32] => |f : f32| f.powi(2);
+declutter: declutter_square;
 validation: Validation::Rounding
 );
+
+fn declutter_square(model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
+    use super::element_wise::*;
+    // Square(Sqrt(x)) → x (Sqrt output is non-negative, so Square is exact inverse)
+    if let Some(prec) = model.linear_prec(node.id)?
+        && let Some(ew) = prec.op_as::<ElementWiseOp>()
+        && ew.0.is::<Sqrt>()
+    {
+        let mut patch = TypedModelPatch::default();
+        let tap = patch.tap_model(model, prec.inputs[0])?;
+        patch.shunt_outside(model, node.id.into(), tap)?;
+        return Ok(Some(patch));
+    }
+    Ok(None)
+}
 
 element_wise!(sqrt, Sqrt, [f16, f32, f64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.sqrt());
