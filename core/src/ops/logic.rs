@@ -200,43 +200,17 @@ impl TypedOp for Iff {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        let cond_outlet = node.inputs[0];
-        let cond_fact = model.outlet_fact(cond_outlet)?;
-
-        // Get uniform_tdim from condition fact, or trace through BitNot one level.
-        let mut cond_tdim = cond_fact.uniform_tdim.clone();
-        if cond_tdim.is_none() {
-            let cond_node = model.node(cond_outlet.node);
-            if let Some(ew) = cond_node.op_as::<crate::ops::element_wise::ElementWiseOp>() {
-                if ew.0.downcast_ref::<BitNot>().is_some() && cond_node.inputs.len() == 1 {
-                    let inner_fact = model.outlet_fact(cond_node.inputs[0])?;
-                    if let Some(inner_tdim) = &inner_fact.uniform_tdim {
-                        cond_tdim = Some((TDim::Val(1) - inner_tdim.clone()).reduce());
-                    }
-                }
-            }
-        }
-
-        let Some(expr) = cond_tdim else { return Ok(None) };
-
-        let cond_shape = &cond_fact.shape;
-
-        // Helper: replace Iff output with a specific input branch
-        let shunt_to = |branch: OutletId| -> TractResult<Option<TypedModelPatch>> {
-            let mut patch = TypedModelPatch::default();
-            let wire = patch.tap_model(model, branch)?;
-            patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
-            Ok(Some(patch))
-        };
-
-        rule_if_some!(range = classify_positive_range(&expr, cond_shape));
-        if range.is_full() {
-            return shunt_to(node.inputs[1]);
-        }
-        if range.is_empty() {
-            return shunt_to(node.inputs[2]);
-        }
-        Ok(None) // TwoRegions: handled by FoldUniformMask
+        // Fold Iff(const, t, f) → t or f.
+        // Symbolic uniform_tdim cases are handled upstream by FoldUniformMask,
+        // which injects a concrete Const(0/1) that this rule then folds.
+        let cond_fact = model.outlet_fact(node.inputs[0])?;
+        rule_if_some!(uniform = &cond_fact.uniform);
+        let Ok(cond_val) = uniform.cast_to_scalar::<bool>() else { return Ok(None) };
+        let branch = if cond_val { node.inputs[1] } else { node.inputs[2] };
+        let mut patch = TypedModelPatch::default();
+        let wire = patch.tap_model(model, branch)?;
+        patch.shunt_outside(model, node.id.into(), wire)?;
+        Ok(Some(patch))
     }
 
     fn axes_mapping(
