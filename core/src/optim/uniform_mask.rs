@@ -84,8 +84,7 @@ fn try_fold_uniform_bool_input(
     if range.is_empty() {
         return inject_scalar_const(model, node, bool_ix, dt, rank, false);
     }
-    rule_if_some!((split, lower_is_true) = range.two_region_split());
-    split_op_two_regions(model, node, bool_ix, dt, rank, range.axis, split, lower_is_true)
+    split_op_regions(model, node, bool_ix, dt, rank, &range)
 }
 
 /// Replace the bool input at `bool_ix` with `Const(is_true ? 1 : 0, [1]*rank)` and rewire.
@@ -118,76 +117,82 @@ fn inject_scalar_const(
     Ok(Some(patch))
 }
 
-/// Slice all inputs along `axis`, duplicate the op once per region (each with a concrete
-/// bool const for the bool input), then concat the two outputs.
+/// Slice all inputs along `range.axis`, duplicate the op once per region
+/// (each with a concrete bool const for the bool input), then concat the outputs.
 ///
+/// Handles two-region (one bound is None) and three-region (both bounds are Some) cases.
 /// For each non-bool input:
-/// - `shape[axis] == 1` → broadcast dimension; share the same wire for both regions.
-/// - `shape[axis] == out_dim` → slice it into lower `[0..split]` and upper `[split..out_dim]`.
-/// - anything else → bail (return `Ok(None)`).
-#[allow(clippy::too_many_arguments)]
-fn split_op_two_regions(
+/// - `shape[axis] == 1` → broadcast dimension; share the same wire across all regions.
+/// - `shape[axis] == out_dim` → slice per region.
+/// - anything else → bail (`Ok(None)`).
+fn split_op_regions(
     model: &TypedModel,
     node: &TypedNode,
     bool_ix: usize,
     bool_dt: DatumType,
     bool_rank: usize,
-    axis: usize,
-    split: TDim,
-    lower_is_true: bool,
+    range: &crate::ops::logic::PositiveRange,
 ) -> TractResult<Option<TypedModelPatch>> {
+    let axis = range.axis;
     let out_dim = model.outlet_fact(node.id.into())?.shape[axis].clone();
-    let mut patch = TypedModelPatch::default();
-    let mut lower_inputs = tvec![OutletId::new(0, 0); node.inputs.len()];
-    let mut upper_inputs = tvec![OutletId::new(0, 0); node.inputs.len()];
 
-    for (ix, &outlet) in node.inputs.iter().enumerate() {
-        if ix == bool_ix {
-            let lo = uniform_const(bool_dt, bool_rank, lower_is_true)?;
-            let hi = uniform_const(bool_dt, bool_rank, !lower_is_true)?;
-            lower_inputs[ix] = patch.wire_node(
-                format!("{}.bool_lower", node.name),
-                crate::ops::konst::Const::new(lo.into_arc_tensor())?,
-                &[],
-            )?[0];
-            upper_inputs[ix] = patch.wire_node(
-                format!("{}.bool_upper", node.name),
-                crate::ops::konst::Const::new(hi.into_arc_tensor())?,
-                &[],
-            )?[0];
-        } else {
-            let fact = model.outlet_fact(outlet)?;
-            let wire = patch.tap_model(model, outlet)?;
-            if fact.shape[axis].is_one() {
-                lower_inputs[ix] = wire;
-                upper_inputs[ix] = wire;
-            } else if fact.shape[axis] == out_dim {
-                lower_inputs[ix] = patch.wire_node(
-                    format!("{}.lower_{ix}", node.name),
-                    Slice::new(axis, TDim::Val(0), split.clone()),
-                    &[wire],
-                )?[0];
-                upper_inputs[ix] = patch.wire_node(
-                    format!("{}.upper_{ix}", node.name),
-                    Slice::new(axis, split.clone(), out_dim.clone()),
-                    &[wire],
+    // Build the list of (start, end, is_true) regions.
+    let regions: TVec<(TDim, TDim, bool)> = match (&range.start, &range.end) {
+        (None, Some(e)) => {
+            tvec![(TDim::Val(0), e.clone(), true), (e.clone(), out_dim.clone(), false),]
+        }
+        (Some(s), None) => {
+            tvec![(TDim::Val(0), s.clone(), false), (s.clone(), out_dim.clone(), true),]
+        }
+        (Some(s), Some(e)) => tvec![
+            (TDim::Val(0), s.clone(), false),
+            (s.clone(), e.clone(), true),
+            (e.clone(), out_dim.clone(), false),
+        ],
+        _ => return Ok(None), // full or empty — handled by caller
+    };
+
+    let mut patch = TypedModelPatch::default();
+    let mut region_outs = tvec![];
+
+    for (r_start, r_end, is_true) in &regions {
+        let mut region_inputs = tvec![OutletId::new(0, 0); node.inputs.len()];
+        for (ix, &outlet) in node.inputs.iter().enumerate() {
+            if ix == bool_ix {
+                let c = uniform_const(bool_dt, bool_rank, *is_true)?;
+                region_inputs[ix] = patch.wire_node(
+                    format!("{}.bool_{r_start}", node.name),
+                    crate::ops::konst::Const::new(c.into_arc_tensor())?,
+                    &[],
                 )?[0];
             } else {
-                return Ok(None);
+                let fact = model.outlet_fact(outlet)?;
+                let wire = patch.tap_model(model, outlet)?;
+                if fact.shape[axis].is_one() {
+                    region_inputs[ix] = wire;
+                } else if fact.shape[axis] == out_dim {
+                    region_inputs[ix] = patch.wire_node(
+                        format!("{}.slice_{r_start}_{ix}", node.name),
+                        Slice::new(axis, r_start.clone(), r_end.clone()),
+                        &[wire],
+                    )?[0];
+                } else {
+                    return Ok(None);
+                }
             }
         }
+        region_outs.push(
+            patch.wire_node(
+                format!("{}.region_{r_start}", node.name),
+                node.op.clone(),
+                &region_inputs,
+            )?[0],
+        );
     }
 
-    let lower_out =
-        patch.wire_node(format!("{}.lower", node.name), node.op.clone(), &lower_inputs)?[0];
-    let upper_out =
-        patch.wire_node(format!("{}.upper", node.name), node.op.clone(), &upper_inputs)?[0];
-    let concat = patch.wire_node(
-        format!("{}.concat", node.name),
-        TypedConcat::new(axis),
-        &[lower_out, upper_out],
-    )?[0];
-    patch.shunt_outside(model, node.id.into(), concat)?;
+    let result =
+        patch.wire_node(format!("{}.concat", node.name), TypedConcat::new(axis), &region_outs)?[0];
+    patch.shunt_outside(model, node.id.into(), result)?;
     Ok(Some(patch))
 }
 

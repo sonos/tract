@@ -104,7 +104,7 @@ pub(crate) fn is_provably_all_true(expr: &TDim, shape: &ShapeFact) -> bool {
 /// | `None`    | `Some(0)`    | empty (AllFalse)                  |
 /// | `None`    | `Some(e)`    | `[0, e)` — lower region true      |
 /// | `Some(s)` | `None`       | `[s, dim)` — upper region true    |
-/// | `Some(s)` | `Some(e)`    | `[s, e)` — three zones (future)   |
+/// | `Some(s)` | `Some(e)`    | `[s, e)` — three zones            |
 #[derive(Debug, Clone)]
 pub(crate) struct PositiveRange {
     pub axis: usize,
@@ -123,15 +123,6 @@ impl PositiveRange {
             (None, Some(e)) => *e == TDim::Val(0),
             (Some(s), Some(e)) => s == e,
             _ => false,
-        }
-    }
-    /// Returns `(split, lower_is_true)` for a clean two-region split,
-    /// or `None` if full, empty, or three zones (not yet handled).
-    pub fn two_region_split(&self) -> Option<(TDim, bool)> {
-        match (&self.start, &self.end) {
-            (None, Some(e)) if *e != TDim::Val(0) => Some((e.clone(), true)),
-            (Some(s), None) => Some((s.clone(), false)),
-            _ => None,
         }
     }
 }
