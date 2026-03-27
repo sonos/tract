@@ -200,7 +200,9 @@ impl GemmDispatchParams {
     }
 }
 
-pub trait GemmKernel: fmt::Display + fmt::Debug + Clone + Default + Send + Sync {
+pub trait GemmKernel:
+    fmt::Display + fmt::Debug + Clone + Default + Send + Sync + PartialEq + Eq + Hash
+{
     fn name() -> &'static str;
 
     fn supports_broadcast() -> bool {
