@@ -8,18 +8,12 @@ use super::MMMInputValue;
 ///
 /// Holds one or more `Box<dyn MMMInputValue>` values with an optional batch
 /// shape, replacing the previous `Tensor` + double-downcast pattern.
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct PackedMatrixStorage {
     values: Vec<Box<dyn MMMInputValue>>,
     batch_shape: TVec<usize>,
     batch_strides: TVec<isize>,
 }
-impl PartialEq for PackedMatrixStorage {
-    fn eq(&self, _: &Self) -> bool {
-        false
-    }
-}
-impl Eq for PackedMatrixStorage {}
 
 impl PackedMatrixStorage {
     /// Scalar storage (one value, empty shape).

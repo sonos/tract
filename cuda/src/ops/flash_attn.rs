@@ -4,15 +4,10 @@ use derive_new::new;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensorExt;
 
-#[derive(Clone, Debug, new)]
+#[derive(Clone, Debug, new, PartialEq)]
 pub struct CudaFlashAttention {
     scale: f32,
     is_causal: bool,
-}
-impl PartialEq for CudaFlashAttention {
-    fn eq(&self, _: &Self) -> bool {
-        false
-    }
 }
 impl Eq for CudaFlashAttention {}
 

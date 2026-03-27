@@ -39,12 +39,16 @@ impl PulsedModelExt for PulsedModel {
 
     fn into_typed(self) -> TractResult<TypedModel> {
         let mut typed = tract_core::model::translator::IntoTranslator.translate_model(&self)?;
-        ensure!(
-            self.input_outlets()?.iter().all(|o| self.outlet_fact(*o).unwrap().stream.is_some())
-        );
-        ensure!(
-            self.output_outlets()?.iter().all(|o| self.outlet_fact(*o).unwrap().stream.is_some())
-        );
+        ensure!(self.input_outlets()?.iter().all(|o| self
+            .outlet_fact(*o)
+            .unwrap()
+            .stream
+            .is_some()));
+        ensure!(self.output_outlets()?.iter().all(|o| self
+            .outlet_fact(*o)
+            .unwrap()
+            .stream
+            .is_some()));
         let delays = tensor1(
             &self
                 .output_outlets()?
@@ -207,15 +211,8 @@ impl
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PulseWrappingOp(pub Box<dyn TypedOp>);
-
-impl PartialEq for PulseWrappingOp {
-    fn eq(&self, other: &Self) -> bool {
-        self.0.as_op() == other.0.as_op()
-    }
-}
-impl Eq for PulseWrappingOp {}
 
 impl Op for PulseWrappingOp {
     fn name(&self) -> StaticName {
@@ -286,15 +283,8 @@ impl PulsedOp for PulseWrappingOp {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct NonPulsingWrappingOp(pub Box<dyn TypedOp>);
-
-impl PartialEq for NonPulsingWrappingOp {
-    fn eq(&self, other: &Self) -> bool {
-        self.0.as_op() == other.0.as_op()
-    }
-}
-impl Eq for NonPulsingWrappingOp {}
 
 impl Op for NonPulsingWrappingOp {
     fn name(&self) -> StaticName {

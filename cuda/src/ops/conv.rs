@@ -3,8 +3,8 @@ use crate::kernels::conv::{ConvGeneric, ConvKernel, ConvKernelScratch};
 use crate::kernels::conv_cudnn::ConvCudnn;
 use crate::ops::{CudaAxisOp, CudaBinOp};
 use tract_core::internal::*;
-use tract_core::ops::OpStateFreeze;
 use tract_core::ops::cnn::Conv;
+use tract_core::ops::OpStateFreeze;
 use tract_gpu::tensor::DeviceTensorExt;
 
 pub fn wire_cuda_conv(
@@ -58,17 +58,11 @@ pub fn wire_cuda_conv(
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CudaConv {
     op: Conv,
     kernel: Box<dyn ConvKernel>,
 }
-impl PartialEq for CudaConv {
-    fn eq(&self, _: &Self) -> bool {
-        false
-    }
-}
-impl Eq for CudaConv {}
 
 impl Op for CudaConv {
     fn name(&self) -> StaticName {

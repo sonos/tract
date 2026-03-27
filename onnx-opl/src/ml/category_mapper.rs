@@ -94,18 +94,12 @@ impl TypedOp for DirectLookup {
     as_op!();
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ReverseLookup {
     keys: Arc<Tensor>,
     index: HashMap<u64, SmallVec<[i32; 1]>>,
     fallback_value: i32,
 }
-impl PartialEq for ReverseLookup {
-    fn eq(&self, _other: &Self) -> bool {
-        false
-    }
-}
-impl Eq for ReverseLookup {}
 
 #[allow(clippy::manual_hash_one)]
 impl ReverseLookup {

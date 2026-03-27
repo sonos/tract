@@ -88,15 +88,8 @@ dyn_clone::clone_trait_object!(BinMiniOp);
 dyn_eq::eq_trait_object!(BinMiniOp);
 downcast_rs::impl_downcast!(BinMiniOp);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypedBinOp(pub Box<dyn BinMiniOp>, pub Option<DatumType>);
-
-impl PartialEq for TypedBinOp {
-    fn eq(&self, other: &Self) -> bool {
-        self.1 == other.1 && *self.0 == *other.0
-    }
-}
-impl Eq for TypedBinOp {}
 
 impl Op for TypedBinOp {
     fn name(&self) -> StaticName {
@@ -112,7 +105,11 @@ impl Op for TypedBinOp {
 
 impl TypedBinOp {
     fn output_datum_type(&self, a_dt: DatumType, b_dt: DatumType) -> TractResult<DatumType> {
-        if let Some(dt) = self.1 { Ok(dt) } else { self.0.result_datum_type(a_dt, b_dt) }
+        if let Some(dt) = self.1 {
+            Ok(dt)
+        } else {
+            self.0.result_datum_type(a_dt, b_dt)
+        }
     }
 }
 

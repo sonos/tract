@@ -17,7 +17,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, OnceLock, RwLock};
 
-use anyhow::{Context, anyhow};
+use anyhow::{anyhow, Context};
 use metal::{
     Buffer, CommandQueue, CompileOptions, ComputePipelineState, Device, Function,
     FunctionConstantValues, Library, MTLResourceOptions,
@@ -383,6 +383,13 @@ impl Drop for MetalStream {
 pub struct MetalBuffer {
     pub inner: Buffer,
 }
+
+impl PartialEq for MetalBuffer {
+    fn eq(&self, other: &Self) -> bool {
+        self.inner.length() == other.inner.length() && self.inner.length() == other.inner.length()
+    }
+}
+impl Eq for MetalBuffer {}
 
 impl Deref for MetalBuffer {
     type Target = Buffer;

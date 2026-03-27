@@ -120,6 +120,7 @@ impl PartialEq for Box<dyn MatMatMul> {
         self.name() == other.name()
     }
 }
+impl Eq for Box<dyn MatMatMul> {}
 
 impl std::hash::Hash for Box<dyn MatMatMul> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {

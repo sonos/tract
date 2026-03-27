@@ -10,16 +10,11 @@ use super::BlockQuantFact;
 ///
 /// Stores a single contiguous `Arc<Blob>` of quantized data along with the
 /// block-quant format. Shape lives on the tensor, not here.
+#[derive(Clone, PartialEq, Eq)]
 pub struct BlockQuantStorage {
     format: Box<dyn BlockQuant>,
     data: Arc<Blob>,
 }
-impl PartialEq for BlockQuantStorage {
-    fn eq(&self, _: &Self) -> bool {
-        false
-    }
-}
-impl Eq for BlockQuantStorage {}
 
 impl BlockQuantStorage {
     fn expected_bytes(format: &dyn BlockQuant, m: usize, k: usize) -> usize {
@@ -75,12 +70,6 @@ pub fn block_quant_slice<'a>(
     let group_bytes = m_per_group * row_bytes;
     let start = g * group_bytes;
     &data[start..start + group_bytes]
-}
-
-impl Clone for BlockQuantStorage {
-    fn clone(&self) -> Self {
-        Self { format: self.format.clone(), data: self.data.clone() }
-    }
 }
 
 impl fmt::Debug for BlockQuantStorage {

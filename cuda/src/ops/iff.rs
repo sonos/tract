@@ -4,10 +4,9 @@ use tract_core::broadcast::multi_broadcast;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensorExt;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CudaIff;
 
-impl Eq for CudaIff {}
 impl Op for CudaIff {
     fn name(&self) -> StaticName {
         "CudaIff".into()

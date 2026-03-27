@@ -1,5 +1,6 @@
-use downcast_rs::{Downcast, impl_downcast};
+use downcast_rs::{impl_downcast, Downcast};
 use dyn_clone::DynClone;
+use dyn_eq::DynEq;
 use std::fmt::Debug;
 use tract_core::dyn_clone;
 use tract_core::internal::*;
@@ -9,7 +10,7 @@ use crate::device::DeviceBuffer;
 use super::DeviceTensor;
 
 #[allow(clippy::len_without_is_empty)]
-pub trait OwnedDeviceTensor: Downcast + DynClone + Send + Sync + Debug {
+pub trait OwnedDeviceTensor: Downcast + DynClone + Send + Sync + Debug + DynEq {
     fn datum_type(&self) -> DatumType;
 
     fn shape(&self) -> &[usize];
@@ -33,3 +34,4 @@ pub trait OwnedDeviceTensor: Downcast + DynClone + Send + Sync + Debug {
 impl_downcast!(OwnedDeviceTensor);
 dyn_hash::hash_trait_object!(OwnedDeviceTensor);
 dyn_clone::clone_trait_object!(OwnedDeviceTensor);
+dyn_eq::eq_trait_object!(OwnedDeviceTensor);

@@ -1,15 +1,15 @@
 use std::alloc::Layout;
 use std::fmt::Display;
 
-use DatumType::F32;
 use proptest::arbitrary::Arbitrary;
 use proptest::prelude::*;
 use proptest::strategy::{BoxedStrategy, Strategy};
 use tract_data::internal::*;
-use tract_linalg::WeightType;
 use tract_linalg::mmm::FusedSpec;
 use tract_linalg::mmm::{AsInputValue, EagerPackedInput, MMMInputFormat, MMMInputValue};
 use tract_linalg::pack::{PackedFormat, PackingWriter};
+use tract_linalg::WeightType;
+use DatumType::F32;
 
 proptest::proptest! {
     #[test]
@@ -226,17 +226,11 @@ fn tensor(shape: Vec<usize>) -> Tensor {
     tensor
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 struct EagerIm2colSpec {
     packer: PackedFormat,
     full_kernel_shape: TVec<usize>,
 }
-impl PartialEq for EagerIm2colSpec {
-    fn eq(&self, _: &Self) -> bool {
-        false
-    }
-}
-impl Eq for EagerIm2colSpec {}
 
 impl EagerIm2colSpec {
     fn wrap(&self, input: &TensorView) -> Box<dyn MMMInputValue> {
@@ -310,18 +304,12 @@ impl MMMInputFormat for EagerIm2colSpec {
     }
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 struct EagerIm2col {
     packer: PackedFormat,
     im2col: Tensor,
     k: usize,
 }
-impl PartialEq for EagerIm2col {
-    fn eq(&self, _: &Self) -> bool {
-        false
-    }
-}
-impl Eq for EagerIm2col {}
 
 impl Display for EagerIm2col {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -382,17 +370,11 @@ impl MMMInputValue for EagerIm2col {
     }
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 struct LazyIm2colSpec {
     packer: PackedFormat,
     full_kernel_shape: TVec<usize>,
 }
-impl PartialEq for LazyIm2colSpec {
-    fn eq(&self, _: &Self) -> bool {
-        false
-    }
-}
-impl Eq for LazyIm2colSpec {}
 
 impl LazyIm2colSpec {
     fn wrap(&self, input: &TensorView) -> Box<dyn MMMInputValue> {
@@ -479,7 +461,7 @@ impl MMMInputFormat for LazyIm2colSpec {
     }
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 struct LazyIm2col {
     spec: LazyIm2colSpec,
     packer: PackedFormat,
@@ -487,12 +469,6 @@ struct LazyIm2col {
     n_offsets: Vec<isize>,
     k_offsets: Vec<isize>,
 }
-impl PartialEq for LazyIm2col {
-    fn eq(&self, _: &Self) -> bool {
-        false
-    }
-}
-impl Eq for LazyIm2col {}
 unsafe impl Send for LazyIm2col {}
 unsafe impl Sync for LazyIm2col {}
 

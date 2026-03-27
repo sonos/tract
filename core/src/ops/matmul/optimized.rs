@@ -15,7 +15,7 @@ use tract_smallvec::ToSmallVec;
 
 use super::ModePicker;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ProtoFusedSpec {
     AddMatMul {
         geo: AddMatMulGeometry,
@@ -263,7 +263,7 @@ impl ProtoFusedSpec {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MapOutputAxisToInput(pub TVec<(usize, usize)>);
 
 impl MapOutputAxisToInput {
@@ -291,14 +291,14 @@ impl MapOutputAxisToInput {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AddMatMulGeometry {
     pub k: TDim,
     pub c_to_a_axis_mapping: MapOutputAxisToInput,
     pub c_to_b_axis_mapping: MapOutputAxisToInput,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct OptMatMul {
     pub c_fact: TypedFact,
     pub micro_ops: Vec<ProtoFusedSpec>,
@@ -309,13 +309,6 @@ pub struct OptMatMul {
     pub trivial_packing: bool,
     pub trivial_path: bool,
 }
-
-impl PartialEq for OptMatMul {
-    fn eq(&self, _other: &Self) -> bool {
-        false
-    }
-}
-impl Eq for OptMatMul {}
 
 impl Op for OptMatMul {
     fn name(&self) -> StaticName {

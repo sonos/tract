@@ -170,6 +170,8 @@ pub trait Op:
     fn as_typed(&self) -> Option<&dyn TypedOp>;
 }
 
+impl_downcast!(Op);
+dyn_clone::clone_trait_object!(Op);
 dyn_eq::eq_trait_object!(Op);
 
 pub trait TypedOp:
@@ -307,11 +309,9 @@ pub trait TypedOp:
     }
 }
 
-impl_downcast!(Op);
 impl_downcast!(TypedOp);
-
-dyn_clone::clone_trait_object!(Op);
 dyn_clone::clone_trait_object!(TypedOp);
+dyn_eq::eq_trait_object!(TypedOp);
 
 impl<O: Op> From<O> for Box<dyn Op> {
     fn from(it: O) -> Box<dyn Op> {
