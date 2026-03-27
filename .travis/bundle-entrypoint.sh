@@ -23,10 +23,10 @@ case $CACHEDIR in
         wget $CACHEDIR/private/private-benches.sh
         PRIVATE=`pwd`/private-benches.sh
     ;;
-    *) 
+    *)
         [ -d $CACHEDIR ] || mkdir $CACHEDIR
         PATH=$PATH:/usr/local/bin # for aws command on darwin
-        aws s3 sync s3://tract-ci-builds/model $CACHEDIR
+        aws s3 sync s3://tract-ci-builds/model $CACHEDIR || echo "Warning: aws s3 sync failed, continuing with cached models"
         (cd $CACHEDIR
             [ -d en_libri_real ] || tar zxf en_libri_real.tar.gz
             [ -d en_tdnn_lstm_bn_q7 ] || tar zxf en_tdnn_lstm_bn_q7.tar.gz
@@ -163,6 +163,7 @@ fi
 if [ -n "$LLM_BACKENDS" ]
 then
     for backend in $LLM_BACKENDS
+    do
         case $backend in
             cpu) extra="--timeout 180";;
             metal) extra="--metal --timeout 60"
