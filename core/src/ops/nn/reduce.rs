@@ -344,7 +344,7 @@ fn any_bool(v: ArrayViewD<bool>, _: ()) -> bool {
     v.iter().any(|v| *v)
 }
 
-#[derive(Clone, Debug, new, Hash)]
+#[derive(Clone, Debug, new, Hash, PartialEq, Eq)]
 pub struct Reduce {
     pub axes: TVec<usize>,
     pub reducer: Reducer,

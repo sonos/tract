@@ -22,7 +22,7 @@ impl OpState for SourceState {
     }
 }
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new, Hash, PartialEq, Eq)]
 pub struct TypedSource {
     pub fact: TypedFact,
 }

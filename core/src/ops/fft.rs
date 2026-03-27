@@ -5,7 +5,7 @@ use rustfft::{FftDirection, FftNum};
 use tract_data::itertools::Itertools;
 use tract_ndarray::Axis;
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Fft {
     pub axis: usize,
     pub inverse: bool,
@@ -57,6 +57,7 @@ impl Op for Fft {
     }
 
     op_as_typed_op!();
+    impl_op_same_as!();
 }
 
 impl EvalOp for Fft {
@@ -96,7 +97,7 @@ impl TypedOp for Fft {
     as_op!();
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Stft {
     pub axis: usize,
     pub frame: usize,
@@ -184,6 +185,7 @@ impl Op for Stft {
     }
 
     op_as_typed_op!();
+    impl_op_same_as!();
 }
 
 impl EvalOp for Stft {

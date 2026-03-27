@@ -4,7 +4,7 @@ use crate::ops::cnn::patches::{Zone, ZoneScanner};
 use crate::ops::nn::DataShape;
 use num_traits::Zero;
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new, Hash, PartialEq, Eq)]
 pub struct DepthWise {
     patch: Patch,
     input_shape: DataShape,

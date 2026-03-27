@@ -13,7 +13,7 @@ impl Default for PadMode {
     }
 }
 
-#[derive(Debug, Clone, new, Default, Hash)]
+#[derive(Debug, Clone, new, Default, Hash, PartialEq, Eq)]
 pub struct Pad {
     pub pads: Vec<(usize, usize)>,
     pub mode: PadMode,

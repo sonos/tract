@@ -1,6 +1,6 @@
 use crate::internal::*;
 
-#[derive(Debug, Clone, Default, Hash)]
+#[derive(Debug, Clone, Default, Hash, PartialEq, Eq)]
 pub struct Identity;
 
 impl Op for Identity {
@@ -9,6 +9,7 @@ impl Op for Identity {
     }
 
     op_as_typed_op!();
+    impl_op_same_as!();
 }
 
 impl EvalOp for Identity {
@@ -50,7 +51,7 @@ impl TypedOp for Identity {
     as_op!();
 }
 
-#[derive(Debug, Clone, Default, Hash)]
+#[derive(Debug, Clone, Default, Hash, PartialEq, Eq)]
 pub struct PinConst;
 
 impl Op for PinConst {
@@ -59,6 +60,7 @@ impl Op for PinConst {
     }
 
     op_as_typed_op!();
+    impl_op_same_as!();
 }
 
 impl EvalOp for PinConst {

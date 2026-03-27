@@ -2,7 +2,7 @@ use std::iter::once;
 
 use crate::internal::*;
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct InnerDimToComplex;
 
 impl Op for InnerDimToComplex {
@@ -11,6 +11,7 @@ impl Op for InnerDimToComplex {
     }
 
     op_as_typed_op!();
+    impl_op_same_as!();
 }
 
 impl EvalOp for InnerDimToComplex {
@@ -38,7 +39,7 @@ impl TypedOp for InnerDimToComplex {
     as_op!();
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct ComplexToInnerDim;
 
 impl Op for ComplexToInnerDim {
@@ -47,6 +48,7 @@ impl Op for ComplexToInnerDim {
     }
 
     op_as_typed_op!();
+    impl_op_same_as!();
 }
 
 impl EvalOp for ComplexToInnerDim {

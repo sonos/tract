@@ -19,7 +19,7 @@ DeconvSum      (N) (G) O   H'  W'
 
 // f32, ndarray::indices in order
 
-#[derive(Clone, Debug, new, Hash)]
+#[derive(Clone, Debug, new, Hash, PartialEq, Eq)]
 pub struct DeconvSum {
     pub pool_spec: PoolSpec,
     pub kernel_format: KernelFormat,

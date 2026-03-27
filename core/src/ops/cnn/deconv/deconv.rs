@@ -5,7 +5,7 @@ use crate::ops::cnn::PoolSpec;
 use crate::ops::cnn::wire_reshape_bias_for_bin;
 use crate::ops::einsum::EinSum;
 
-#[derive(Clone, Debug, new, Hash)]
+#[derive(Clone, Debug, new, Hash, PartialEq, Eq)]
 pub struct Deconv {
     pub pool_spec: PoolSpec,
     pub kernel_format: KernelFormat,

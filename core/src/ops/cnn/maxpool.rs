@@ -3,7 +3,7 @@ use ndarray::prelude::*;
 
 use crate::ops::cnn::pools::{ConcretePoolGeometry, PoolGeometry, PoolSpec};
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new, Hash, PartialEq, Eq)]
 pub struct MaxPool {
     pub pool_spec: PoolSpec,
     pub with_index_outputs: Option<DatumType>,
@@ -19,6 +19,7 @@ impl Op for MaxPool {
     }
 
     op_as_typed_op!();
+    impl_op_same_as!();
 }
 
 impl EvalOp for MaxPool {
@@ -83,7 +84,7 @@ impl MaxPool {
     }
 }
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new, Hash, PartialEq, Eq)]
 pub struct OptMaxPool {
     pub pool_spec: PoolSpec,
     pub with_index_outputs: Option<DatumType>,
@@ -100,6 +101,7 @@ impl Op for OptMaxPool {
     }
 
     op_as_typed_op!();
+    impl_op_same_as!();
 }
 
 impl EvalOp for OptMaxPool {

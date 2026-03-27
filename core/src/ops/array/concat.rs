@@ -5,7 +5,7 @@ use crate::internal::*;
 
 use super::Slice;
 
-#[derive(new, Debug, Clone, Hash)]
+#[derive(new, Debug, Clone, Hash, PartialEq, Eq)]
 pub struct TypedConcat {
     pub axis: usize,
 }

@@ -680,7 +680,7 @@ macro_rules! bin_to_super_type {
      $(q: $([$($typ_dt:ident),*] => $cab_dt:expr),* ;)?
      $(q_op_on_f32: $q_op_on_f32:expr,)?
      $( [$($typ:ident),*] => $cab:expr),*) => {
-        #[derive(Debug, Clone, Hash)]
+        #[derive(Debug, Clone, Hash, PartialEq, Eq)]
         pub struct $Op;
         #[allow(clippy::redundant_closure_call)]
         impl $crate::ops::binary::BinMiniOp for $Op {

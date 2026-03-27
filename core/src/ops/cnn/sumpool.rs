@@ -4,7 +4,7 @@ use std::iter::Sum;
 
 use crate::ops::cnn::pools::{ConcretePoolGeometry, PoolGeometry, PoolSpec};
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new, Hash, PartialEq, Eq)]
 pub struct SumPool {
     pub pool_spec: PoolSpec,
     pub count_include_pad: bool,
@@ -25,6 +25,7 @@ impl Op for SumPool {
     }
 
     op_as_typed_op!();
+    impl_op_same_as!();
 }
 
 impl EvalOp for SumPool {
@@ -74,7 +75,7 @@ impl SumPool {
     }
 }
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, new, Hash, PartialEq, Eq)]
 pub struct OptSumPool {
     pub pool_spec: PoolSpec,
     pub count_include_pad: bool,
@@ -96,6 +97,7 @@ impl Op for OptSumPool {
     }
 
     op_as_typed_op!();
+    impl_op_same_as!();
 }
 
 impl EvalOp for OptSumPool {
