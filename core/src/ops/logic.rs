@@ -10,7 +10,6 @@ use ndarray::*;
 
 use crate::broadcast::multi_broadcast;
 use crate::internal::*;
-use crate::ops::array::{Slice, TypedConcat};
 
 bin_to_super_type!(and, And,
                    [bool, u8, u16, u32, u64, i8, i16, i32, i64] => |c, &a, &b| *c = (a as i64 != 0 && b as i64 != 0) as _);
@@ -171,52 +170,6 @@ pub(crate) fn classify_positive_range(expr: &TDim, shape: &ShapeFact) -> Option<
     None
 }
 
-fn split_iff_to_slice_concat(
-    model: &TypedModel,
-    node: &TypedNode,
-    axis: usize,
-    split: TDim,
-    lower_is_true: bool,
-) -> TractResult<Option<TypedModelPatch>> {
-    let (lower_outlet, upper_outlet) = if lower_is_true {
-        (node.inputs[1], node.inputs[2])
-    } else {
-        (node.inputs[2], node.inputs[1])
-    };
-
-    let out_dim = model.outlet_fact(OutletId::new(node.id, 0))?.shape[axis].clone();
-    if model.outlet_fact(node.inputs[1])?.shape[axis] != out_dim
-        || model.outlet_fact(node.inputs[2])?.shape[axis] != out_dim
-    {
-        return Ok(None);
-    }
-
-    let mut patch = TypedModelPatch::default();
-    let lower_wire = patch.tap_model(model, lower_outlet)?;
-    let upper_wire = patch.tap_model(model, upper_outlet)?;
-
-    let lower_slice = patch.wire_node(
-        format!("{}.lower_slice", node.name),
-        Slice::new(axis, TDim::Val(0), split.clone()),
-        &[lower_wire],
-    )?[0];
-
-    let upper_slice = patch.wire_node(
-        format!("{}.upper_slice", node.name),
-        Slice::new(axis, split, out_dim),
-        &[upper_wire],
-    )?[0];
-
-    let concat = patch.wire_node(
-        format!("{}.concat", node.name),
-        TypedConcat::new(axis),
-        &[lower_slice, upper_slice],
-    )?[0];
-
-    patch.shunt_outside(model, node.id.into(), concat)?;
-    Ok(Some(patch))
-}
-
 impl TypedOp for Iff {
     as_op!();
 
@@ -283,8 +236,7 @@ impl TypedOp for Iff {
         if range.is_empty() {
             return shunt_to(node.inputs[2]);
         }
-        rule_if_some!((split, lower_is_true) = range.two_region_split());
-        split_iff_to_slice_concat(model, node, range.axis, split, lower_is_true)
+        Ok(None) // TwoRegions: handled by FoldUniformMask
     }
 
     fn axes_mapping(
