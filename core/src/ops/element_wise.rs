@@ -113,10 +113,13 @@ impl TypedOp for ElementWiseOp {
         }
         // Propagate uniform_tdim through this op.
         if let Some(tdim) = &inputs[0].uniform_tdim {
-            // Boolean NOT: NOT(x) = 1 - x  (for 0/1 values)
-            if self.0.downcast_ref::<crate::ops::logic::BitNot>().is_some()
-                || self.0.downcast_ref::<crate::ops::logic::Not>().is_some()
-            {
+            // Logical NOT on bool tensors: NOT(x) = 1 - x for 0/1 values.
+            // Not is bool-only by definition. BitNot is bitwise (valid on integers
+            // where ~x ≠ 1-x), so only apply this for bool input.
+            let is_logical_not = self.0.downcast_ref::<crate::ops::logic::Not>().is_some()
+                || (self.0.downcast_ref::<crate::ops::logic::BitNot>().is_some()
+                    && inputs[0].datum_type == bool::datum_type());
+            if is_logical_not {
                 fact.uniform_tdim = Some((TDim::Val(1) - tdim.clone()).reduce());
             } else {
                 // General path: evaluate the op on a TDim scalar.
