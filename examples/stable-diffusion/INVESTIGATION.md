@@ -457,3 +457,46 @@ Pattern: `NIHW,OI->NHWO` where N=batch, I=in_channels, H=64, W=64, O=out_channel
 The merge-same-role pass doesn't catch H,W because they have role `(true, false, true)` same as N — but H and W are **not consecutive with N** in the input `NIHW` (I sits between N and H). So the consecutivity guard correctly blocks the merge.
 
 These convs need a different treatment — H,W could be folded with N if I were moved, but that's a transpose. Or the conv lowering should handle the weight broadcast differently.
+
+### Entry 14: Conv EinSum lowering trace — `NIHW,OI->NHWO`
+
+**Decluttered form:**
+```
+EinSum NIHW,OI->NHWO
+  A: (batch, 320, 64, 64)   NCHW activation
+  B: (320, 320)              1×1 conv weight (O,I)
+  C: (batch, 64, 64, 320)   NHWC output
+```
+
+Axis roles: N,H,W = (true,false,true), I = (true,true,false) = k, O = (false,true,true) = n.
+
+**Merge pass results (two iterations):**
+1. First: `NIHW,OI->NHWO` — H,W have same role and are consecutive in A (pos 2,3) and C (pos 1,2) → merged. Becomes `NIH,OI->NHO` where H = H*W = 4096.
+2. Second: `NIH,OI->NHO` — N,H have same role but NOT consecutive in A (`N,I,H` — I between them). No merge.
+
+**Eager lowering (batch=1):**
+```
+A: (1,320,64,64) → MoveAxis → (1, 4096, 320)
+B: (320,320)      → Const   → (1, 320, 320)
+GEMM: (1, 4096, 320) × (1, 320, 320) → (1, 4096, 320)   [Cutlass SGEMM]
+```
+
+**Late lowering (symbolic batch):**
+```
+A: (batch,320,64,64) → MoveAxis → (4096, batch, 320)   [H*W as prefix, batch as m!]
+B: (320,320)          → Const   → (1, 320, 320)
+B:                    → Broadcast → (4096, 320, 320)      [1.6GB!]
+GEMM: (4096, batch, 320) × (4096, 320, 320) → (4096, batch, 320) [matvec fallback]
+C: → MoveAxis → (batch, 4096, 320)
+```
+
+**Remaining broadcast shapes after H,W merge:**
+```
+15x  4096,320,320,F32    (1.6GB each)
+15x  256,1280,1280,F32   (1.2GB each)
+14x  1024,640,640,F32    (1.6GB each)
+ 8x  64,1280,1280,F32    (0.8GB each)
+ 6x  misc smaller
+```
+
+**The blocker:** N and H (=H*W) can't merge because I (=k axis) sits between them in A's order `N,I,H`. Merging would require transposing A from `NIH` to `NHI` first — moving the k axis to the end. This is a valid optimization but requires the merge pass to insert transposes, which goes beyond "merge consecutive same-role axes".
