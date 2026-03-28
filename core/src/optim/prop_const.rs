@@ -45,9 +45,21 @@ impl super::TypedPass for PropConst {
             {
                 let inputs =
                     inputs.iter().map(|f| f.konst.clone().unwrap().into_tvalue()).collect();
+                let input_mem: u64 = model
+                    .node_input_facts(node.id)?
+                    .iter()
+                    .map(|f| f.mem_size().to_i64().unwrap_or(i64::MAX) as u64)
+                    .sum();
                 match node.op.eval_with_session(node.id, &TurnState::default(), inputs) {
                     Ok(mut res) => {
                         self.0 = node.id;
+                        let output_mem: u64 = res
+                            .iter()
+                            .map(|t| (t.datum_type().size_of() * t.volume()) as u64)
+                            .sum();
+                        if output_mem > input_mem.max(1 << 20) {
+                            continue;
+                        }
                         let mut node = node;
                         loop {
                             let Some(succ) = model.single_succ(node.id)? else {
@@ -63,6 +75,13 @@ impl super::TypedPass for PropConst {
                             ) else {
                                 break;
                             };
+                            let succ_mem: u64 = succ_res
+                                .iter()
+                                .map(|t| (t.datum_type().size_of() * t.volume()) as u64)
+                                .sum();
+                            if succ_mem > input_mem.max(1 << 20) {
+                                break;
+                            }
                             res = succ_res;
                             node = succ;
                         }
