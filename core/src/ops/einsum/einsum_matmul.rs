@@ -31,6 +31,9 @@ fn merge_same_role_axes_rule(
     node_name: &str,
     op: &EinSum,
 ) -> TractResult<Option<TypedModelPatch>> {
+    // Only handle 2-input EinSums (matmul-like)
+    rule_if!(node.inputs.len() == 2);
+
     // Compute role signature for each axis: (in_input_0, in_input_1, in_output)
     type Role = (bool, bool, bool);
     let axes: Vec<(char, Role)> = op
@@ -46,96 +49,171 @@ fn merge_same_role_axes_rule(
     let b_order: Vec<char> = op.axes.axes(InOut::In(1)).map(|a| a.repr).collect();
     let c_order: Vec<char> = op.axes.axes(InOut::Out(0)).map(|a| a.repr).collect();
 
-    // Find first group of 2+ consecutive axes with same role
-    // "Consecutive" = adjacent in every tensor where they appear
-    let mut i = 0;
-    while i < axes.len() {
-        let (first_repr, first_role) = axes[i];
-        let mut group = vec![first_repr];
-        let mut j = i + 1;
-        while j < axes.len() && axes[j].1 == first_role {
-            let candidate = axes[j].0;
-            // Check consecutive in all slots where both appear
-            let consecutive = [&a_order, &b_order, &c_order].iter().all(|order| {
-                let positions: Vec<usize> = group
+    // Find first group of 2+ same-role axes that are consecutive in all inputs.
+    // Scan each input's axis order for runs of same-role axes.
+    let role_map: std::collections::HashMap<char, Role> = axes.iter().cloned().collect();
+    let mut best_group: Option<Vec<char>> = None;
+
+    // Try each input order as the primary scan order
+    let all_orders = [&a_order, &b_order];
+    for (primary_idx, primary_order) in all_orders.iter().enumerate() {
+        let mut i = 0;
+        while i < primary_order.len() {
+            let first = primary_order[i];
+            let first_role = role_map[&first];
+            let mut group = vec![first];
+            let mut j = i + 1;
+            while j < primary_order.len() {
+                let candidate = primary_order[j];
+                if role_map[&candidate] != first_role {
+                    break;
+                }
+                // Check consecutive in the OTHER input too
+                let consecutive_in_others = all_orders
                     .iter()
-                    .chain(std::iter::once(&candidate))
-                    .filter_map(|c| order.iter().position(|x| x == c))
-                    .collect();
-                if positions.len() <= 1 {
-                    return true; // 0 or 1 present — no constraint
+                    .enumerate()
+                    .filter(|(idx, _)| *idx != primary_idx)
+                    .all(|(_, order)| {
+                        let positions: Vec<usize> = group
+                            .iter()
+                            .chain(std::iter::once(&candidate))
+                            .filter_map(|c| order.iter().position(|x| x == c))
+                            .collect();
+                        if positions.len() <= 1 {
+                            return true;
+                        }
+                        let mut sorted = positions.clone();
+                        sorted.sort();
+                        sorted == positions
+                            && sorted.last().unwrap() - sorted.first().unwrap() == sorted.len() - 1
+                    });
+                if !consecutive_in_others {
+                    break;
                 }
-                // Must be contiguous ascending
-                let mut sorted = positions.clone();
-                sorted.sort();
-                sorted == positions
-                    && sorted.last().unwrap() - sorted.first().unwrap() == sorted.len() - 1
-            });
-            if !consecutive {
-                break;
+                group.push(candidate);
+                j += 1;
             }
-            group.push(candidate);
-            j += 1;
+            if group.len() >= 2 && best_group.as_ref().map_or(true, |bg| group.len() > bg.len()) {
+                best_group = Some(group);
+            }
+            i = j;
+        }
+    }
+
+    if let Some(group) = best_group {
+        // Found a mergeable group. Emit the patch.
+        let input_facts = model.node_input_facts(node.id)?;
+        let input_shapes = op.actual_input_shapes_from_facts(&input_facts)?;
+        let output_shape = super::eval::output_shape(&op.axes, &input_shapes)?;
+
+        let drop_set: Vec<char> = group[1..].to_vec();
+
+        let mut patch = TypedModelPatch::default();
+        let mut wires: TVec<OutletId> = patch.taps(model, &node.inputs)?;
+
+        // Reshape each input to merge the group
+        for (slot, order) in [(0, &a_order), (1, &b_order)] {
+            let positions: Vec<usize> =
+                group.iter().filter_map(|c| order.iter().position(|x| x == c)).collect();
+            if positions.len() < 2 {
+                continue;
+            }
+            let start = positions[0];
+            let from_dims: TVec<TDim> =
+                positions.iter().map(|&p| input_shapes[slot][p].clone()).collect();
+            let merged: TDim = from_dims.iter().product();
+            wires[slot] = patch.wire_node(
+                format!("{node_name}.merge_in{slot}"),
+                AxisOp::Reshape(start, from_dims, tvec![merged]),
+                &[wires[slot]],
+            )?[0];
         }
 
-        if group.len() >= 2 {
-            // Found a mergeable group. Emit the patch.
-            let input_facts = model.node_input_facts(node.id)?;
-            let input_shapes = op.actual_input_shapes_from_facts(&input_facts)?;
-            let output_shape = super::eval::output_shape(&op.axes, &input_shapes)?;
-
-            let drop_set: Vec<char> = group[1..].to_vec();
-
-            let mut patch = TypedModelPatch::default();
-            let mut wires: TVec<OutletId> = patch.taps(model, &node.inputs)?;
-
-            // Reshape each input to merge the group
-            for (slot, order) in [(0, &a_order), (1, &b_order)] {
-                let positions: Vec<usize> =
-                    group.iter().filter_map(|c| order.iter().position(|x| x == c)).collect();
-                if positions.len() < 2 {
-                    continue;
+        // If group axes aren't consecutive in C, reorder the EinSum output
+        let c_positions: Vec<usize> =
+            group.iter().filter_map(|c| c_order.iter().position(|x| x == c)).collect();
+        let c_needs_reorder = c_positions.len() >= 2 && {
+            let mut sorted = c_positions.clone();
+            sorted.sort();
+            sorted.last().unwrap() - sorted.first().unwrap() != sorted.len() - 1
+                || sorted != c_positions
+        };
+        let mut adjusted_c_order = c_order.clone();
+        if c_needs_reorder {
+            // Move group axes together (put second next to first)
+            for k in 1..c_positions.len() {
+                let cur_pos = adjusted_c_order.iter().position(|&c| c == group[k]).unwrap();
+                let target_pos =
+                    adjusted_c_order.iter().position(|&c| c == group[k - 1]).unwrap() + 1;
+                if cur_pos != target_pos {
+                    let removed = adjusted_c_order.remove(cur_pos);
+                    let insert_at = if cur_pos < target_pos { target_pos - 1 } else { target_pos };
+                    adjusted_c_order.insert(insert_at, removed);
                 }
-                let start = positions[0];
-                let from_dims: TVec<TDim> =
-                    positions.iter().map(|&p| input_shapes[slot][p].clone()).collect();
-                let merged: TDim = from_dims.iter().product();
-                wires[slot] = patch.wire_node(
-                    format!("{node_name}.merge_in{slot}"),
-                    AxisOp::Reshape(start, from_dims, tvec![merged]),
-                    &[wires[slot]],
-                )?[0];
             }
+        }
 
-            // Build new EinSum with merged axis
-            let mut new_axes = op.axes.clone();
-            for &drop in &drop_set {
-                new_axes = new_axes.remove_axis(drop)?;
-            }
-            let new_op =
-                EinSum { axes: new_axes, operating_dt: op.operating_dt, q_params: op.q_params };
-            let mut result = patch.wire_node(node_name, new_op, &wires)?;
+        // Rebuild EinSum formula with adjusted output and dropped axes
+        let in0: String = a_order.iter().collect();
+        let in1: String = b_order.iter().collect();
+        let out: String = adjusted_c_order.iter().collect();
+        let expr = format!("{in0},{in1}->{out}");
+        let mut new_axes: AxesMapping = expr.parse()?;
+        for &drop in &drop_set {
+            new_axes = new_axes.remove_axis(drop)?;
+        }
+        let new_op =
+            EinSum { axes: new_axes, operating_dt: op.operating_dt, q_params: op.q_params };
+        let mut result = patch.wire_node(node_name, new_op, &wires)?;
 
-            // Reshape output to split back
-            let c_positions: Vec<usize> =
+        // Reshape output to split the merged axis back
+        let merged_c_positions: Vec<usize> =
+            group.iter().filter_map(|c| adjusted_c_order.iter().position(|x| x == c)).collect();
+        if merged_c_positions.len() >= 2 {
+            let start = merged_c_positions[0];
+            // Use original output dims for the group axes
+            let original_c_positions: Vec<usize> =
                 group.iter().filter_map(|c| c_order.iter().position(|x| x == c)).collect();
-            if c_positions.len() >= 2 {
-                let start = c_positions[0];
-                let original_dims: TVec<TDim> =
-                    c_positions.iter().map(|&p| output_shape[p].clone()).collect();
-                let merged: TDim = original_dims.iter().product();
-                result[0] = patch.wire_node(
-                    format!("{node_name}.unmerge_out"),
-                    AxisOp::Reshape(start, tvec![merged], original_dims),
-                    &[result[0]],
-                )?[0];
-            }
-
-            patch.shunt_outside(model, node.id.into(), result[0])?;
-            return Ok(Some(patch));
+            let original_dims: TVec<TDim> =
+                original_c_positions.iter().map(|&p| output_shape[p].clone()).collect();
+            let merged: TDim = original_dims.iter().product();
+            result[0] = patch.wire_node(
+                format!("{node_name}.unmerge_out"),
+                AxisOp::Reshape(start, tvec![merged], original_dims),
+                &[result[0]],
+            )?[0];
         }
 
-        i = j;
+        // Restore original output order if we reordered
+        if c_needs_reorder {
+            // After unmerge, axes are in adjusted_c_order (but with group expanded).
+            // Need to permute back to c_order.
+            // Build the unmerged adjusted order
+            let mut unmerged_adj: Vec<char> = Vec::new();
+            for &c in &adjusted_c_order {
+                if c == group[0] {
+                    unmerged_adj.extend(&group);
+                } else if !group.contains(&c) {
+                    unmerged_adj.push(c);
+                }
+            }
+            // Find what moves are needed to get from unmerged_adj to c_order
+            for target_pos in 0..c_order.len() {
+                let cur_pos = unmerged_adj.iter().position(|&c| c == c_order[target_pos]).unwrap();
+                if cur_pos != target_pos {
+                    result[0] = patch.wire_node(
+                        format!("{node_name}.restore_out_{target_pos}"),
+                        AxisOp::Move(cur_pos, target_pos),
+                        &[result[0]],
+                    )?[0];
+                    let removed = unmerged_adj.remove(cur_pos);
+                    unmerged_adj.insert(target_pos, removed);
+                }
+            }
+        }
+
+        patch.shunt_outside(model, node.id.into(), result[0])?;
+        return Ok(Some(patch));
     }
 
     // Second pass: look for same-role pairs separated by exactly one k-like axis
@@ -181,63 +259,58 @@ fn merge_same_role_axes_rule(
                 continue;
             }
 
+            // Use change_axes to update the EinSum formula for the input move
+            let move_op = AxisOp::Move(mid_pos, end_pos);
+            let Some(AxisChangeConsequence { substitute_op, .. }) =
+                op.change_axes(model, node, InOut::In(slot), &move_op)?
+            else {
+                continue;
+            };
+            let mut current_op = *substitute_op
+                .unwrap()
+                .downcast::<EinSum>()
+                .map_err(|_| anyhow!("expected EinSum"))?;
+
+            // Also make left,right adjacent in the output if needed
+            let new_c: Vec<char> = current_op.axes.axes(InOut::Out(0)).map(|a| a.repr).collect();
+            let left_c = new_c.iter().position(|&c| c == left);
+            let right_c = new_c.iter().position(|&c| c == right);
+            let need_output_fix = matches!((left_c, right_c), (Some(l), Some(r)) if r != l + 1);
+            if need_output_fix {
+                let r_pos = right_c.unwrap();
+                let l_pos = left_c.unwrap();
+                let target = if r_pos < l_pos { l_pos } else { l_pos + 1 };
+                if let Some(AxisChangeConsequence { substitute_op, .. }) = current_op.change_axes(
+                    model,
+                    node,
+                    InOut::Out(0),
+                    &AxisOp::Move(r_pos, target),
+                )? {
+                    current_op = *substitute_op
+                        .unwrap()
+                        .downcast::<EinSum>()
+                        .map_err(|_| anyhow!("expected EinSum"))?;
+                }
+            }
+
             let mut patch = TypedModelPatch::default();
             let mut wires: TVec<OutletId> = patch.taps(model, &node.inputs)?;
 
-            // MoveAxis on this input: push k to the end
-            wires[slot] = patch.wire_node(
-                format!("{node_name}.move_k_in{slot}"),
-                AxisOp::Move(mid_pos, end_pos),
-                &[wires[slot]],
-            )?[0];
+            wires[slot] =
+                patch.wire_node(format!("{node_name}.move_k_in{slot}"), move_op, &[wires[slot]])?
+                    [0];
 
-            // Build new input order
-            let mut new_order = order.clone();
-            let removed = new_order.remove(mid_pos);
-            new_order.push(removed);
+            let final_c: Vec<char> = current_op.axes.axes(InOut::Out(0)).map(|a| a.repr).collect();
+            let mut result = patch.wire_node(node_name, current_op, &wires)?;
 
-            // Also reorder output to make left,right adjacent
-            // (put them together, with other axes around them)
-            let mut new_c_order = c_order.clone();
-            let left_c = new_c_order.iter().position(|&c| c == left);
-            let right_c = new_c_order.iter().position(|&c| c == right);
-            let need_output_fix = match (left_c, right_c) {
-                (Some(l), Some(r)) => r != l + 1,
-                _ => false,
-            };
+            // Restore original output order
             if need_output_fix {
-                // Move right next to left in the output
-                let r_pos = new_c_order.iter().position(|&c| c == right).unwrap();
-                let l_pos = new_c_order.iter().position(|&c| c == left).unwrap();
-                let removed = new_c_order.remove(r_pos);
-                let insert_pos = if r_pos < l_pos { l_pos } else { l_pos + 1 };
-                new_c_order.insert(insert_pos, removed);
-            }
-
-            // Reconstruct EinSum
-            let other_slot = 1 - slot;
-            let other_order: &Vec<char> = if other_slot == 0 { &a_order } else { &b_order };
-            let (in0, in1) = if slot == 0 {
-                (new_order.iter().collect::<String>(), other_order.iter().collect::<String>())
-            } else {
-                (other_order.iter().collect::<String>(), new_order.iter().collect::<String>())
-            };
-            let out: String = new_c_order.iter().collect();
-            let expr = format!("{in0},{in1}->{out}");
-            let new_axes: AxesMapping = expr.parse()?;
-
-            let new_op =
-                EinSum { axes: new_axes, operating_dt: op.operating_dt, q_params: op.q_params };
-            let mut result = patch.wire_node(node_name, new_op, &wires)?;
-
-            // If we reordered the output, add MoveAxis to restore original order
-            if need_output_fix {
-                let r_new = new_c_order.iter().position(|&c| c == right).unwrap();
+                let r_cur = final_c.iter().position(|&c| c == right).unwrap();
                 let r_orig = c_order.iter().position(|&c| c == right).unwrap();
-                if r_new != r_orig {
+                if r_cur != r_orig {
                     result[0] = patch.wire_node(
                         format!("{node_name}.restore_out"),
-                        AxisOp::Move(r_new, r_orig),
+                        AxisOp::Move(r_cur, r_orig),
                         &[result[0]],
                     )?[0];
                 }
