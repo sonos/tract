@@ -66,26 +66,33 @@ impl TypedOp for SpaceToBatchUnary {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        let [succ] = &*model.node(node.id).outputs[0].successors else { return Ok(None) };
-        let conv_node = model.node(succ.node);
-        let Some(conv_op) = conv_node.op_as::<Conv>() else { return Ok(None) };
-        let [succ] = &*conv_node.outputs[0].successors else { return Ok(None) };
-        let b2s_node = model.node(succ.node);
-        let Some(_bs2_op) = b2s_node.op_as::<BatchToSpaceUnary>() else { return Ok(None) };
-        let op = Conv {
-            pool_spec: PoolSpec {
-                dilations: Some(self.block_shape.iter().map(|&i| i as usize).collect()),
-                ..conv_op.pool_spec.clone()
-            },
-            ..conv_op.clone()
-        };
-        let mut patch = TypedModelPatch::default();
-        let taps_s2b = patch.taps(model, &node.inputs)?;
-        let mut taps_conv = patch.taps(model, &conv_node.inputs)?;
-        taps_conv[0] = taps_s2b[0];
-        let out = patch.model.wire_node(&*conv_node.name, op, &taps_conv)?[0];
-        patch.shunt_outside(model, OutletId::new(b2s_node.id, 0), out)?;
-        Ok(Some(patch))
+        // Find any successor chain: S2B → Conv → B2S
+        // (S2B may have multiple successors after PushSplitDown merges duplicate nodes)
+        for succ in &model.node(node.id).outputs[0].successors {
+            let conv_node = model.node(succ.node);
+            let Some(conv_op) = conv_node.op_as::<Conv>() else { continue };
+            for conv_succ in &conv_node.outputs[0].successors {
+                let b2s_node = model.node(conv_succ.node);
+                if b2s_node.op_as::<BatchToSpaceUnary>().is_none() {
+                    continue;
+                }
+                let op = Conv {
+                    pool_spec: PoolSpec {
+                        dilations: Some(self.block_shape.iter().map(|&i| i as usize).collect()),
+                        ..conv_op.pool_spec.clone()
+                    },
+                    ..conv_op.clone()
+                };
+                let mut patch = TypedModelPatch::default();
+                let taps_s2b = patch.taps(model, &node.inputs)?;
+                let mut taps_conv = patch.taps(model, &conv_node.inputs)?;
+                taps_conv[0] = taps_s2b[0];
+                let out = patch.model.wire_node(&*conv_node.name, op, &taps_conv)?[0];
+                patch.shunt_outside(model, OutletId::new(b2s_node.id, 0), out)?;
+                return Ok(Some(patch));
+            }
+        }
+        Ok(None)
     }
 
     as_op!();
