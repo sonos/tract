@@ -456,7 +456,40 @@ Pattern: `NIHW,OI->NHWO` where N=batch, I=in_channels, H=64, W=64, O=out_channel
 
 The merge-same-role pass doesn't catch H,W because they have role `(true, false, true)` same as N — but H and W are **not consecutive with N** in the input `NIHW` (I sits between N and H). So the consecutivity guard correctly blocks the merge.
 
-These convs need a different treatment — H,W could be folded with N if I were moved, but that's a transpose. Or the conv lowering should handle the weight broadcast differently.
+### Entry 15: Fixing the merge scan — input order, not alphabet order
+
+The merge pass scanned `iter_all_axes()` which returns axes in **alphabetical order** by repr char. For `NHI,OI->NOH`, this is `H,I,N,O`. N and H are at indices 2 and 0 — never adjacent in the scan. The pass never saw them as a candidate pair.
+
+**Fix:** Scan each input's axis order instead. For A order `N,H,I`: N and H are at positions 0,1 — adjacent, same role → merge candidate.
+
+### Entry 16: Relaxing the output consecutiveness check
+
+After fixing the scan, merges still failed because the check required group axes consecutive in **all** tensors including output. For `NHI,OI->NOH`: N,H consecutive in A ✓, both absent in B ✓, but in C `N,O,H` — not consecutive ✗.
+
+**Fix:** Only require consecutiveness in inputs. The output order is controlled by the EinSum formula — rewrite it to place merged axes adjacent, then add `MoveAxis` after the unmerge reshape to restore the original output order.
+
+### Entry 17: Final result — zero broadcasts, parity performance
+
+After all three fixes (scan order, output relaxation, move-k-to-inner):
+
+| Metric | Before | After |
+|---|---|---|
+| MultiBroadcastTo count | 234 | **0** |
+| Late-set CUDA runtime | 3m35s | **3.6s** |
+| Eager-set CUDA runtime | 3.4s | 3.8s |
+
+Late-set is now at **parity** with eager — actually slightly faster (3.6s vs 3.8s) because the merged axes produce a more efficient GEMM shape (single tall-skinny matmul vs batched).
+
+**Summary of all changes on `fix-propconst-broadcast-oom`:**
+
+1. **PropConst size guard** (`core/src/optim/prop_const.rs`): Skip folding when output_mem > max(input_mem, 1MB). Safety net against pathological expansion.
+
+2. **merge_consecutive_same_role_axes** (`core/src/ops/einsum/einsum_matmul.rs`): Pre-pass before `detect_all` that merges axes with identical role signatures:
+   - Scans each input's axis order (not alphabetical)
+   - Only requires consecutiveness in inputs (output reordered via EinSum formula)
+   - Inserts Reshape to merge, Reshape to unmerge, MoveAxis to restore output order
+
+3. **Move-k-to-inner** (same file, second scan): When same-role axes are separated by a k-axis in one input, insert MoveAxis to push k to the end, enabling the merge.
 
 ### Entry 14a: NCHW→NHWC global propagation experiment
 
