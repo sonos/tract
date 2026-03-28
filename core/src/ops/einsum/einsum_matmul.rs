@@ -138,6 +138,116 @@ fn merge_same_role_axes_rule(
         i = j;
     }
 
+    // Second pass: look for same-role pairs separated by exactly one k-like axis
+    // in a single input. Insert a MoveAxis to push the separator to the end.
+    let k_role: Role = (true, true, false); // present in both inputs, absent from output
+    let role_of = |c: char| axes.iter().find(|(ch, _)| *ch == c).map(|(_, r)| *r);
+
+    for (slot, order) in [(0usize, &a_order), (1, &b_order)] {
+        // Find three consecutive axes in this input where the outer two share a role
+        // and the middle one is a k-axis
+        for w in order.windows(3) {
+            let (left, mid, right) = (w[0], w[1], w[2]);
+            let left_role = role_of(left);
+            let mid_role = role_of(mid);
+            let right_role = role_of(right);
+            if left_role != right_role || mid_role != Some(k_role) {
+                continue;
+            }
+            // left and right must also be consecutive in other inputs
+            // (output order is handled by the EinSum formula)
+            let other_input_orders: Vec<&Vec<char>> = [(0, &a_order), (1, &b_order)]
+                .iter()
+                .filter(|(s, _)| *s != slot)
+                .map(|(_, o)| *o)
+                .collect();
+            let consecutive_elsewhere = other_input_orders.iter().all(|order| {
+                let lp = order.iter().position(|&c| c == left);
+                let rp = order.iter().position(|&c| c == right);
+                match (lp, rp) {
+                    (Some(l), Some(r)) => r == l + 1,
+                    _ => true, // one or both absent — no constraint
+                }
+            });
+            if !consecutive_elsewhere {
+                continue;
+            }
+
+            // Move the k-axis to the inner (last) position in inputs and
+            // make left,right adjacent in the output too.
+            let mid_pos = order.iter().position(|&c| c == mid).unwrap();
+            let end_pos = order.len() - 1;
+            if mid_pos == end_pos {
+                continue;
+            }
+
+            let mut patch = TypedModelPatch::default();
+            let mut wires: TVec<OutletId> = patch.taps(model, &node.inputs)?;
+
+            // MoveAxis on this input: push k to the end
+            wires[slot] = patch.wire_node(
+                format!("{node_name}.move_k_in{slot}"),
+                AxisOp::Move(mid_pos, end_pos),
+                &[wires[slot]],
+            )?[0];
+
+            // Build new input order
+            let mut new_order = order.clone();
+            let removed = new_order.remove(mid_pos);
+            new_order.push(removed);
+
+            // Also reorder output to make left,right adjacent
+            // (put them together, with other axes around them)
+            let mut new_c_order = c_order.clone();
+            let left_c = new_c_order.iter().position(|&c| c == left);
+            let right_c = new_c_order.iter().position(|&c| c == right);
+            let need_output_fix = match (left_c, right_c) {
+                (Some(l), Some(r)) => r != l + 1,
+                _ => false,
+            };
+            if need_output_fix {
+                // Move right next to left in the output
+                let r_pos = new_c_order.iter().position(|&c| c == right).unwrap();
+                let l_pos = new_c_order.iter().position(|&c| c == left).unwrap();
+                let removed = new_c_order.remove(r_pos);
+                let insert_pos = if r_pos < l_pos { l_pos } else { l_pos + 1 };
+                new_c_order.insert(insert_pos, removed);
+            }
+
+            // Reconstruct EinSum
+            let other_slot = 1 - slot;
+            let other_order: &Vec<char> = if other_slot == 0 { &a_order } else { &b_order };
+            let (in0, in1) = if slot == 0 {
+                (new_order.iter().collect::<String>(), other_order.iter().collect::<String>())
+            } else {
+                (other_order.iter().collect::<String>(), new_order.iter().collect::<String>())
+            };
+            let out: String = new_c_order.iter().collect();
+            let expr = format!("{in0},{in1}->{out}");
+            let new_axes: AxesMapping = expr.parse()?;
+
+            let new_op =
+                EinSum { axes: new_axes, operating_dt: op.operating_dt, q_params: op.q_params };
+            let mut result = patch.wire_node(node_name, new_op, &wires)?;
+
+            // If we reordered the output, add MoveAxis to restore original order
+            if need_output_fix {
+                let r_new = new_c_order.iter().position(|&c| c == right).unwrap();
+                let r_orig = c_order.iter().position(|&c| c == right).unwrap();
+                if r_new != r_orig {
+                    result[0] = patch.wire_node(
+                        format!("{node_name}.restore_out"),
+                        AxisOp::Move(r_new, r_orig),
+                        &[result[0]],
+                    )?[0];
+                }
+            }
+
+            patch.shunt_outside(model, node.id.into(), result[0])?;
+            return Ok(Some(patch));
+        }
+    }
+
     Ok(None)
 }
 
