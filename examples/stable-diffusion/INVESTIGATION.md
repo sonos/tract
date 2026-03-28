@@ -307,3 +307,73 @@ No OOM, but 50x slower. The GEMM doesn't know how to batch over the broadcast.
 3. **Don't broadcast at all for `amk,kn->amn`**: The `add_broadcast_pre_matmul` rewrite could recognize that this pattern is just a standard batched matmul where the weight is naturally shared. Lower it directly to `stridedBatchedGemm(strideA=m*k, strideB=0, strideC=m*n)` without any broadcast node.
 
 4. **Hybrid PropConst guard**: Allow folding if the output fits in a budget (e.g. 256MB), skip if it would blow up. This handles the common case while protecting against the pathological one. But it's fragile and model-dependent.
+
+### Entry 10: EinSum lowering chains inventory
+
+#### Common first step (core)
+
+All paths start with the same two steps:
+
+1. **`einsum_matmul::detect_all(model)`** — rewrites generic `EinSum` ops into `EinSumMatMul` ops by identifying `m`, `k`, `n` axes and "prefix" axes (all other axes = batch dims).
+
+2. **`rewrite_einsum_to_prefix_matmul` rule** — rewrites `EinSumMatMul` into `PrefixMatMul` by:
+   - Reordering A to `prefix+m+k` (or transposed `prefix+k+m`)
+   - Reordering B to `prefix+k+n` (or transposed `prefix+n+k`)
+   - Choosing least-cost transpose variant
+   - Recording `transpose_a`, `transpose_b`, `transpose_c` flags
+
+   **The prefix includes ALL axes not in {m,k,n}**, regardless of whether they appear in both inputs. For `amk,kn->amn`, prefix=`a`, so B is expected to have shape `a+k+n`. But B only has `k+n` — the `a` dim is missing.
+
+#### CPU path (DefaultRuntime → `into_optimized`)
+
+```
+EinSum
+  ↓ detect_all
+EinSumMatMul {m,k,n, prefix="a"}
+  ↓ rewrite_einsum_to_prefix_matmul(strict=true)
+PrefixMatMul (A: a+m+k, B: a+k+n — B gets size-1 axis added for missing prefix)
+  ↓ AsBlas: matmul_to_sgemm
+SGemm (if not transposed, f32, no quant)
+  ↓ codegen optimizer (PropConst etc.)
+(optimized graph)
+```
+
+**CPU handles the missing prefix** by broadcasting B's size-1 prefix dim at runtime via ndarray broadcasting. No explicit MultiBroadcastTo is inserted. SGemm's eval handles this natively.
+
+#### CUDA path (CudaTransform)
+
+```
+EinSum
+  ↓ detect_all
+EinSumMatMul {m,k,n, prefix="a"}
+  ↓ rewrite_einsum_to_prefix_matmul(strict=false)       [phase 0]
+PrefixMatMul (A: a+m+k, B: a+k+n — B has size-1 prefix)
+  ↓ add_broadcast_pre_matmul                              [phase 1]
+MultiBroadcastTo(B: k+n → a+m+k+n) + PrefixMatMul
+  ↓ translate_model (CudaTransform)                       [phase 2]
+CudaMultiBroadcastTo + CudaGgmlGemm
+  ↓ codegen optimizer (PropConst, fuse_axis_op etc.)      [phase 3]
+(optimized CUDA graph)
+```
+
+**The CUDA path inserts an explicit `MultiBroadcastTo`** because `CudaGgmlGemm` expects matching batch dims. This is where the problem occurs — PropConst folds the broadcast into a giant constant.
+
+**Key difference:** `strict=true` (CPU) vs `strict=false` (CUDA). With `strict=false`, the PrefixMatMul has `operating_dt=Some(F32)` which allows more flexible kernel selection. But this doesn't affect the broadcast issue.
+
+#### Metal path (MetalTransform)
+
+Same structure as CUDA — calls `rewrite_einsum_to_prefix_matmul(strict=false)` then has its own rewrite rules.
+
+#### The fold-into-m optimization target
+
+The optimization we're implementing modifies **step 2** (`rewrite_einsum_to_prefix_matmul`) to detect prefix axes that only appear in A (not in B), and fold them into `m` via a reshape. This way B doesn't need a broadcast at all:
+
+```
+EinSumMatMul amk,kn->amn (prefix="a", a only in A)
+  ↓ fold 'a' into m
+Reshape A: (batch,4096,320) → (batch*4096, 320)
+PrefixMatMul (A: (batch*4096)+k, B: k+n) — no prefix mismatch!
+Reshape C: (batch*4096, 320) → (batch, 4096, 320)
+```
+
+This benefits **all backends** (CPU, CUDA, Metal) since it happens in core before any backend-specific transforms.
