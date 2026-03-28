@@ -458,6 +458,17 @@ The merge-same-role pass doesn't catch H,W because they have role `(true, false,
 
 These convs need a different treatment — H,W could be folded with N if I were moved, but that's a transpose. Or the conv lowering should handle the weight broadcast differently.
 
+### Entry 14a: NCHW→NHWC global propagation experiment
+
+Tried using the `change_axes` infrastructure to propagate `Move(1,3)` (NCHW→NHWC) on wires feeding EinSums with NCHW-ordered inputs. Result: **zero successful propagations**.
+
+Blocked by:
+- `Conv` ops (3×3 real convs) — can't absorb axis permutation
+- `Reduce<Sum>` (InstanceNorm mean/variance) — can't absorb reshape
+- `Mul` (GroupNorm scale) — can't absorb
+
+The NCHW zone (Conv, InstanceNorm, residual Add) forms a hard boundary. The NCHW→NHWC change can't propagate past these ops. **Global NHWC is not viable without teaching Conv and InstanceNorm to handle axis permutations.** The local approach (transpose just the EinSum input) is needed.
+
 ### Entry 14: Conv EinSum lowering trace — `NIHW,OI->NHWO`
 
 **Decluttered form:**
