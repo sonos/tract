@@ -70,17 +70,17 @@ fn resize_18(node: &NodeProto) -> TractResult<Resize> {
 }
 
 fn coord_transformer_from_node(node: &NodeProto) -> TractResult<CoordTransformer> {
-    CoordTransformer::from_str(
+    CoordTransformer::parse(
         node.get_attr_opt("coordinate_transformation_mode")?.unwrap_or("half_pixel"),
     )
 }
 
 fn interpolator_from_node(node: &NodeProto) -> TractResult<Interpolator> {
-    Interpolator::from_str(node.get_attr_opt("mode")?.unwrap_or("nearest"))
+    Interpolator::parse(node.get_attr_opt("mode")?.unwrap_or("nearest"))
 }
 
 fn nearest_from_node(node: &NodeProto) -> TractResult<Nearest> {
-    Nearest::from_str(node.get_attr_opt("nearest_mode")?.unwrap_or("round_prefer_floor"))
+    Nearest::parse(node.get_attr_opt("nearest_mode")?.unwrap_or("round_prefer_floor"))
 }
 
 #[derive(Clone, Debug)]

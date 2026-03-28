@@ -26,7 +26,7 @@ impl CoordTransformer {
         }
     }
 
-    pub fn from_str(s: &str) -> TractResult<Self> {
+    pub fn parse(s: &str) -> TractResult<Self> {
         Ok(match s {
             "half_pixel" => CoordTransformer::HalfPixel,
             "align_corners" => CoordTransformer::AlignCorners,
@@ -80,7 +80,7 @@ impl Interpolator {
         }
     }
 
-    pub fn from_str(s: &str) -> TractResult<Self> {
+    pub fn parse(s: &str) -> TractResult<Self> {
         Ok(match s {
             "linear" => Interpolator::Linear,
             "nearest" => Interpolator::Nearest,
@@ -107,7 +107,7 @@ impl Nearest {
         }
     }
 
-    pub fn from_str(s: &str) -> TractResult<Self> {
+    pub fn parse(s: &str) -> TractResult<Self> {
         Ok(match s {
             "floor" => Nearest::Floor,
             "ceil" => Nearest::Ceil,
@@ -246,10 +246,102 @@ impl TypedOp for Resize {
 
     fn declutter(
         &self,
-        _model: &TypedModel,
-        _node: &TypedNode,
+        model: &TypedModel,
+        node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        Ok(None)
+        // Lower nearest-neighbor integer-scale upsamples to Reshape → Tile → Reshape
+        if !matches!(self.interpolator, Interpolator::Nearest) {
+            return Ok(None);
+        }
+        let Some(scales_input) = self.optional_scales_input else { return Ok(None) };
+        let input_fact = model.outlet_fact(node.inputs[0])?;
+        let scales_fact = model.outlet_fact(node.inputs[scales_input])?;
+        let Some(scales_tensor) = &scales_fact.konst else { return Ok(None) };
+        let scales: Vec<f32> =
+            scales_tensor.cast_to::<f32>()?.try_as_plain()?.as_slice::<f32>()?.to_vec();
+
+        // Check all scales are positive integers
+        let int_scales: Vec<usize> = scales.iter().map(|&s| s.round() as usize).collect();
+        if scales.iter().zip(&int_scales).any(|(&s, &i)| (s - i as f32).abs() > 1e-5 || i == 0) {
+            return Ok(None);
+        }
+        // Only if at least one axis actually upsamples
+        if int_scales.iter().all(|&s| s == 1) {
+            return Ok(None);
+        }
+
+        let input_shape = &input_fact.shape;
+
+        let mut patch = TypedModelPatch::default();
+        let mut wire = patch.tap_model(model, node.inputs[0])?;
+
+        // Step 1: Reshape to interleave size-1 axes after each upsampled dim
+        // e.g. (N, C, H, W) with scales (1,1,2,2) → (N, C, H, 1, W, 1)
+        let mut from_dims: TVec<TDim> = tvec![];
+        let mut to_dims: TVec<TDim> = tvec![];
+        let mut tile_multipliers: TVec<TDim> = tvec![];
+        let mut first_upsampled = None;
+
+        for (i, &scale) in int_scales.iter().enumerate() {
+            from_dims.push(input_shape[i].clone());
+            to_dims.push(input_shape[i].clone());
+            tile_multipliers.push(1.into());
+            if scale > 1 {
+                if first_upsampled.is_none() {
+                    first_upsampled = Some(i);
+                }
+                to_dims.push(1.into());
+                tile_multipliers.push(scale.into());
+            }
+        }
+
+        if to_dims.len() > from_dims.len() {
+            let first = first_upsampled.unwrap();
+            wire = patch.wire_node(
+                format!("{}.reshape_pre", node.name),
+                AxisOp::Reshape(first, from_dims[first..].into(), to_dims[first..].into()),
+                &[wire],
+            )?[0];
+        }
+
+        // Step 2: Tile the size-1 axes
+        use tract_core::ops::array::Tile;
+        wire = patch.wire_node(
+            format!("{}.tile", node.name),
+            Tile { multipliers: tile_multipliers },
+            &[wire],
+        )?[0];
+
+        // Step 3: Reshape back to merge the tiled dims
+        // e.g. (N, C, H, 2, W, 2) → (N, C, H*2, W*2)
+        let tiled_shape: TVec<TDim> = to_dims
+            .iter()
+            .zip(int_scales.iter().flat_map(|&s| if s > 1 { vec![1usize, s] } else { vec![1] }))
+            .map(|(d, s)| d.clone() * s)
+            .collect();
+        let mut final_dims: TVec<TDim> = tvec![];
+        let mut idx = 0;
+        for &scale in &int_scales {
+            if scale > 1 {
+                final_dims.push(tiled_shape[idx].clone() * tiled_shape[idx + 1].clone());
+                idx += 2;
+            } else {
+                final_dims.push(tiled_shape[idx].clone());
+                idx += 1;
+            }
+        }
+
+        if tiled_shape.len() > final_dims.len() {
+            let first = first_upsampled.unwrap();
+            wire = patch.wire_node(
+                format!("{}.reshape_post", node.name),
+                AxisOp::Reshape(first, tiled_shape[first..].into(), final_dims[first..].into()),
+                &[wire],
+            )?[0];
+        }
+
+        patch.shunt_outside(model, node.id.into(), wire)?;
+        Ok(Some(patch))
     }
 }
 
@@ -299,9 +391,9 @@ fn load(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractRes
 
     let op = Resize {
         axes: None,
-        coord_transformer: CoordTransformer::from_str(&coord_transformer)?,
-        interpolator: Interpolator::from_str(&interpolator)?,
-        nearest: Nearest::from_str(&nearest_mode)?,
+        coord_transformer: CoordTransformer::parse(&coord_transformer)?,
+        interpolator: Interpolator::parse(&interpolator)?,
+        nearest: Nearest::parse(&nearest_mode)?,
         optional_roi_input: None,
         optional_scales_input: Some(1),
         optional_sizes_input: None,
