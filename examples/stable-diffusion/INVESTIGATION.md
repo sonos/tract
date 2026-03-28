@@ -221,3 +221,89 @@ Profiled `--set batch=1` on the left (eager) vs right (late) of `run`:
 **The real fix** should be:
 - The CUDA GEMM kernel should handle stride-0 broadcasts natively without needing physical expansion
 - Or `add_broadcast_pre_matmul` should not emit the broadcast when the spatial dims are being treated as batch — the original EinSum `amk,kn->amn` should lower directly to a batched GEMM with the weight shared across `m`
+
+## Summary: EinSum lowering to CUDA — the full picture
+
+### The EinSum
+
+After declutter, the SD 1.5 UNet attention layers produce EinSums like:
+
+```
+#103 node_linear_3 (EinSum) amk,kn->amn
+  Input A: batch,4096,320,F32   (activation from LayerNorm)
+  Input B: 320,320,F32          (constant weight)
+  Output:  batch,4096,320,F32
+```
+
+This is `torch.nn.Linear` — a batched matmul where `a=batch` (symbolic), `m=4096` (spatial=64×64), `k=n=320` (features). The weight `(k,n)` is shared across both `a` and `m`.
+
+### Lowering path: EinSum → PrefixMatMul → CUDA
+
+1. **EinSum → PrefixMatMul**: The EinSum `amk,kn->amn` is lowered to `PrefixMatMul` with prefix dims `[a,m]` and matmul dims `[k,n]`. At this point, `(batch,4096)` are "batch" dims and `(320,320)` are the matmul.
+
+2. **`add_broadcast_pre_matmul`** (cuda/src/rewrite_rules/add_matmul_broadcast.rs): Detects that input B `(320,320)` has no batch prefix while A has `(batch,4096)`. Inserts `MultiBroadcastTo` to expand B from `(320,320)` to `(batch,4096,320,320)`. This is meant to make B's shape match A's batch prefix so the CUDA GEMM receives uniformly-shaped inputs.
+
+3. **CUDA GEMM selection**: With the broadcast materialized, the GEMM sees matching batch dims and selects a batched Cutlass SGEMM kernel.
+
+### Case 1: Concrete batch (eager `--set batch=1` before CUDA)
+
+```
+EinSum amk,kn->amn
+  ↓ lower to PrefixMatMul
+PrefixMatMul [1,4096] + [320,320]
+  ↓ add_broadcast_pre_matmul
+MultiBroadcastTo(320,320 → 1,4096,320,320) + PrefixMatMul
+  ↓ PropConst folds the broadcast (input=320×320=400KB, output=1×4096×320×320=1.6GB)
+Const(1,4096,320,320) + CudaGgmlGemm
+  → Cutlass batched SGEMM, 4s total
+```
+
+PropConst materializes the broadcast at prepare time. 1.6GB per attention layer, but with batch=1 and the constants already on GPU, the GEMM is fast. Peak ~4GB RAM.
+
+### Case 2: Symbolic batch (late `--set batch=1` at runtime), WITHOUT PropConst guard
+
+```
+EinSum amk,kn->amn
+  ↓ lower to PrefixMatMul
+PrefixMatMul [batch,4096] + [320,320]
+  ↓ add_broadcast_pre_matmul
+MultiBroadcastTo(320,320 → batch,4096,320,320) + PrefixMatMul
+  ↓ PropConst: output volume = batch×4096×320×320 — unknown at optimize time?
+```
+
+**Actually NO** — PropConst evaluates the op at optimize time. With symbolic batch, `MultiBroadcastTo::eval` needs concrete dims from `session.resolved_symbols` (line 27 of broadcast.rs). With no symbols resolved, it would fail with `TooEarly`. So PropConst skips it (line 93 catches the error). But at runtime with `--set batch=1`, the broadcast DOES execute — producing `(1,4096,320,320)` on GPU via `copy_nd3_f32` (4.3ms each), and the GEMM falls back to `ggml_matvec` (scalar). **OOM doesn't happen because batch=1 keeps things at 1.6GB per layer.**
+
+Wait — but we DID see OOM earlier with symbolic batch. Let me reconsider: the MultiBroadcastTo shape is `batch,4096,320,320`. With symbolic `batch`, `eval` fails (`TooEarly`). But some of the other broadcasts DON'T involve `batch` — for example `64,64,320,320` (the conv einsum broadcasts). Those ARE concrete and PropConst folds them at 1.6GB each, ~30 times = 48GB → OOM.
+
+**Corrected understanding**: The OOM comes from broadcasts where ALL dims are concrete (no `batch` involved), such as conv weight broadcasts `(320,320) → (64,64,320,320)`. The attention broadcasts `(320,320) → (batch,4096,320,320)` are actually safe because `batch` prevents evaluation.
+
+### Case 3: Symbolic batch, WITH PropConst guard (the fix)
+
+```
+EinSum amk,kn->amn
+  ↓ lower to PrefixMatMul
+PrefixMatMul [batch,4096] + [320,320]
+  ↓ add_broadcast_pre_matmul
+MultiBroadcastTo(320,320 → batch,4096,320,320) + PrefixMatMul
+  ↓ PropConst: skipped (output_mem > max(input_mem, 1MB))
+CudaMultiBroadcastTo + CudaGgmlGemm
+  → copy_nd3_f32 (4.3ms) + ggml_matvec (scalar), 3m35s total
+```
+
+No OOM, but 50x slower. The GEMM doesn't know how to batch over the broadcast.
+
+### The core tension
+
+- **PropConst folding is the "fast path"** — it materializes the broadcast once at prepare time, letting Cutlass see full batch dims for efficient SGEMM.
+- **PropConst folding causes OOM** when the broadcast produces multi-GB tensors (especially conv weight broadcasts with concrete spatial dims).
+- **Skipping the fold** is safe for memory but the CUDA runtime path (copy + matvec) is extremely slow.
+
+### Possible resolutions
+
+1. **Fold at prepare time, but on GPU**: Instead of PropConst materializing on CPU, have the CUDA runtime materialize the broadcast into GPU memory once during `prepare()`. This keeps the fast GEMM path without CPU RAM blowup.
+
+2. **Make GEMM handle stride-0**: Teach `CudaGgmlGemm` to handle a weight with stride-0 in the batch dimension — shared across all batch elements. This is what cuBLAS `stridedBatchedGemm` with `strideB=0` does natively.
+
+3. **Don't broadcast at all for `amk,kn->amn`**: The `add_broadcast_pre_matmul` rewrite could recognize that this pattern is just a standard batched matmul where the weight is naturally shared. Lower it directly to `stridedBatchedGemm(strideA=m*k, strideB=0, strideC=m*n)` without any broadcast node.
+
+4. **Hybrid PropConst guard**: Allow folding if the output fits in a budget (e.g. 256MB), skip if it would blow up. This handles the common case while protecting against the pathological one. But it's fragile and model-dependent.
