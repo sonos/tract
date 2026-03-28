@@ -200,6 +200,24 @@ PropConst sees: stateless op + constant input + single successor → evaluates i
 
 Both graphs have identical op counts — all nodes are lowered to CUDA. The 234 `CudaMultiBroadcastTo` ops are the problem. Previously PropConst folded them into dense constants (zero runtime cost, huge memory). Now they execute on GPU every forward pass.
 
-**Root cause of slowness:** The CUDA GEMM kernel (`CudaGgmlGemm`) doesn't consume the broadcast via stride tricks. The `add_broadcast_pre_matmul` rewrite assumes the broadcast will be materialized before the GEMM, not that the GEMM will handle strides. The proper fix is either:
-- Make `CudaGgmlGemm` handle stride-0 broadcast natively (zero-copy weight sharing)
-- Or have the CUDA runtime materialize the broadcast once into GPU memory at prepare time (not per inference)
+**Root cause of slowness:** Confirmed by nsight-systems profiling.
+
+### Entry 9: nsys profiling — `copy_nd3_f32` is the bottleneck
+
+Profiled `--set batch=1` on the left (eager) vs right (late) of `run`:
+
+| | Eager (4s) | Late (3m35s) |
+|---|---|---|
+| **Top GPU kernel** | `cutlass_sgemm` 9.6% | `copy_nd3_f32` **78.7%** |
+| `copy_nd3_f32` instances | 160 @ 6µs avg | 384 @ **4.3ms** avg |
+| GEMM kernel | `cutlass_sgemm_128x128` (batched) | `ggml_matvec_ncols_1` (vector!) |
+| GEMM instances | 80 cutlass + 64 others | 114+100+11 matvec |
+
+**Key findings:**
+1. `copy_nd3_f32` physically materializes the broadcast on GPU — 384 calls × 4.3ms = 1.6s of pure copy
+2. The GEMM fell back from batched Cutlass SGEMM to `ggml_matvec` — a **scalar vector** kernel. The broadcast produces a batch of matrices but each has batch=1 spatial, so GGML treats it as individual matvecs
+3. In eager mode, PropConst folds the broadcast at prepare time, so the GEMM receives a pre-expanded constant and Cutlass recognizes the full batch
+
+**The real fix** should be:
+- The CUDA GEMM kernel should handle stride-0 broadcasts natively without needing physical expansion
+- Or `add_broadcast_pre_matmul` should not emit the broadcast when the spatial dims are being treated as batch — the original EinSum `amk,kn->amn` should lower directly to a batched GEMM with the weight shared across `m`
