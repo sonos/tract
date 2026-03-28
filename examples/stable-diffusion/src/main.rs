@@ -65,6 +65,7 @@ const VAE_SCALING_FACTOR: f32 = 0.18215;
 
 fn main() -> Result<()> {
     let assets = std::path::Path::new("assets");
+    let num_images: usize = std::env::args().nth(1).and_then(|s| s.parse().ok()).unwrap_or(1);
 
     // Tokenize prompt
     let prompt = "a photo of a cat";
@@ -80,12 +81,9 @@ fn main() -> Result<()> {
     let input_ids = encode(prompt)?;
     let uncond_input_ids = encode("")?;
 
-    // Generate initial latent noise
     use rand::SeedableRng;
     use rand_distr::{Distribution, StandardNormal};
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
-    let initial_latent =
-        ndarray::Array4::<f32>::from_shape_fn((1, 4, 64, 64), |_| StandardNormal.sample(&mut rng));
 
     // Build scheduler from scratch
     let num_steps = 20;
@@ -104,7 +102,7 @@ fn main() -> Result<()> {
     let onnx = tract::onnx()?;
     let text_encoder = gpu.prepare(onnx.load(assets.join("text_encoder.onnx"))?.into_model()?)?;
     let unet = gpu.prepare(onnx.load(assets.join("unet.onnx"))?.into_model()?)?;
-    let vae_decoder = gpu.prepare(onnx.load(assets.join("vae_decoder.onnx"))?.into_model()?)?;
+    let vae_decoder = onnx.load(assets.join("vae_decoder.onnx"))?.into_model()?.into_runnable()?;
 
     // --- Text encoding ---
     eprintln!("Running text encoder...");
@@ -117,73 +115,76 @@ fn main() -> Result<()> {
         tract_ndarray::concatenate(tract_ndarray::Axis(0), &[uncond.view(), cond.view()])?;
     eprintln!("  Text embeddings: {:?}", text_embeddings.shape());
 
-    // Split for separate uncond/cond UNet runs (batch=1 model)
+    // Split text embeddings for separate uncond/cond UNet runs
     let uncond_emb_arr =
         text_embeddings.slice(tract_ndarray::s![0..1, .., ..]).to_owned().into_dyn();
     let cond_emb_arr = text_embeddings.slice(tract_ndarray::s![1..2, .., ..]).to_owned().into_dyn();
 
-    // --- Denoising loop ---
-    eprintln!("Running denoising loop ({num_steps} steps, Euler scheduler)...");
     let guidance_scale: f32 = 7.5;
-    let mut latent: Vec<f32> =
-        initial_latent.as_slice().unwrap().iter().map(|&x| x * init_noise_sigma).collect();
-
-    for (i, &t) in scheduler.timesteps.iter().enumerate() {
-        let scaled = scheduler.scale_model_input(&latent, i);
-        let scaled_arr = tract_ndarray::ArrayD::from_shape_vec(vec![1, 4, 64, 64], scaled)?;
-        let timestep = tract_ndarray::arr1(&[t]).into_dyn();
-
-        // Run UNet twice: unconditional and conditional
-        let uncond_pred = unet.run(vec![
-            tensor(scaled_arr.clone())?,
-            tensor(timestep.clone())?,
-            tensor(uncond_emb_arr.clone())?,
-        ])?;
-        let cond_pred =
-            unet.run(vec![tensor(scaled_arr)?, tensor(timestep)?, tensor(cond_emb_arr.clone())?])?;
-
-        let u = uncond_pred[0].as_slice::<f32>()?;
-        let c = cond_pred[0].as_slice::<f32>()?;
-
-        // Classifier-free guidance
-        let noise_pred: Vec<f32> =
-            u.iter().zip(c).map(|(&u, &c)| u + guidance_scale * (c - u)).collect();
-
-        // Euler step
-        latent = scheduler.step(&latent, &noise_pred, i);
-
-        if i % 5 == 0 {
-            let sigma = scheduler.sigmas[i];
-            eprintln!("  Step {i}/{num_steps}, t={t}, sigma={sigma:.4}");
-        }
-    }
-
-    // --- VAE decode ---
-    eprintln!("Running VAE decoder...");
-    let latent_scaled: Vec<f32> = latent.iter().map(|&x| x / VAE_SCALING_FACTOR).collect();
-    let latent_arr = tract_ndarray::ArrayD::from_shape_vec(vec![1, 4, 64, 64], latent_scaled)?;
-    let image_result = vae_decoder.run([latent_arr])?;
-    let image_data = image_result[0].as_slice::<f32>()?;
-
-    // Save as PNG (NCHW -> RGB pixels)
     let (h, w) = (512usize, 512usize);
-    let mut pixels = vec![0u8; h * w * 3];
-    for y in 0..h {
-        for x in 0..w {
-            for ch in 0..3 {
-                let val = (image_data[ch * h * w + y * w + x].clamp(-1.0, 1.0) + 1.0) / 2.0 * 255.0;
-                pixels[(y * w + x) * 3 + ch] = val as u8;
+
+    for n in 0..num_images {
+        // Generate initial latent noise for this image
+        let initial_latent = ndarray::Array4::<f32>::from_shape_fn((1, 4, 64, 64), |_| {
+            StandardNormal.sample(&mut rng)
+        });
+        let mut latent: Vec<f32> =
+            initial_latent.as_slice().unwrap().iter().map(|&x| x * init_noise_sigma).collect();
+
+        // --- Denoising loop ---
+        eprintln!("Image {n}: denoising ({num_steps} steps)...");
+        for (i, &t) in scheduler.timesteps.iter().enumerate() {
+            let scaled = scheduler.scale_model_input(&latent, i);
+            let scaled_arr = tract_ndarray::ArrayD::from_shape_vec(vec![1, 4, 64, 64], scaled)?;
+            let timestep = tract_ndarray::arr1(&[t]).into_dyn();
+
+            let uncond_pred = unet.run(vec![
+                tensor(scaled_arr.clone())?,
+                tensor(timestep.clone())?,
+                tensor(uncond_emb_arr.clone())?,
+            ])?;
+            let cond_pred = unet.run(vec![
+                tensor(scaled_arr)?,
+                tensor(timestep)?,
+                tensor(cond_emb_arr.clone())?,
+            ])?;
+
+            let u = uncond_pred[0].as_slice::<f32>()?;
+            let c = cond_pred[0].as_slice::<f32>()?;
+            let noise_pred: Vec<f32> =
+                u.iter().zip(c).map(|(&u, &c)| u + guidance_scale * (c - u)).collect();
+            latent = scheduler.step(&latent, &noise_pred, i);
+
+            if i % 5 == 0 {
+                let sigma = scheduler.sigmas[i];
+                eprintln!("  Step {i}/{num_steps}, t={t}, sigma={sigma:.4}");
             }
         }
+
+        // --- VAE decode (CPU) ---
+        let latent_scaled: Vec<f32> = latent.iter().map(|&x| x / VAE_SCALING_FACTOR).collect();
+        let latent_arr = tract_ndarray::ArrayD::from_shape_vec(vec![1, 4, 64, 64], latent_scaled)?;
+        let image_result = vae_decoder.run([latent_arr])?;
+        let image_data = image_result[0].as_slice::<f32>()?;
+
+        let mut pixels = vec![0u8; h * w * 3];
+        for y in 0..h {
+            for x in 0..w {
+                for ch in 0..3 {
+                    let val =
+                        (image_data[ch * h * w + y * w + x].clamp(-1.0, 1.0) + 1.0) / 2.0 * 255.0;
+                    pixels[(y * w + x) * 3 + ch] = val as u8;
+                }
+            }
+        }
+        let path = if num_images == 1 {
+            assets.join("output.png")
+        } else {
+            assets.join(format!("output_{n}.png"))
+        };
+        image::save_buffer(&path, &pixels, w as u32, h as u32, image::ColorType::Rgb8)?;
+        eprintln!("Saved {}", path.display());
     }
-    image::save_buffer(
-        assets.join("output.png"),
-        &pixels,
-        w as u32,
-        h as u32,
-        image::ColorType::Rgb8,
-    )?;
-    eprintln!("Saved output to assets/output.png");
 
     Ok(())
 }
