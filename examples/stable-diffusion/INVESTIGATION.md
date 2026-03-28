@@ -393,6 +393,12 @@ In `detect_rule` (einsum_matmul.rs:220-238), `possible_m_axes` includes both `a`
 
 **This is the actual root cause.** The fold-into-m optimization in prefix_matmul.rs isn't firing because by the time it runs, the axes are already swapped — what we think of as `m` is already a prefix.
 
-**Fix options:**
-1. In `detect_rule`, prefer concrete dims over symbolic for m_axis selection (don't use i64::MAX for symbolic)
-2. Or: when a symbolic dim competes with a concrete dim for m_axis, pick the concrete one
+### Entry 12: Pre-pass to merge consecutive same-role axes
+
+**Fix implemented**: `merge_consecutive_same_role_axes()` in `einsum_matmul.rs`.
+
+Runs before `detect_all` in `rewrite_einsum_to_prefix_matmul`. For each EinSum, computes the "role signature" of each axis = `(in_input_0, in_input_1, in_output)`. Consecutive axes with the same role and consecutive positions in every tensor where they appear get merged via Reshape.
+
+For `amk,kn->amn`: axes `a` and `m` both have role `(true, false, true)`, consecutive in A and C → merged into single axis `a` with dim `batch*4096`. The EinSum becomes `ak,kn->an`. `detect_rule` then has only one m candidate → no ambiguity, no broadcast.
+
+**Result**: MultiBroadcastTo count dropped from **234 to 58**. The remaining 58 are from conv EinSums with a different pattern (`NIHW,OI->NHWO`) where H,W play a different role — to be investigated next.
