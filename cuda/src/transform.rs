@@ -71,6 +71,7 @@ impl CudaTransform {
 
         Rewriter::default()
             .with_rule_for("remove_rms_norm_cast", remove_rms_norm_cast)
+            .with_rule_for("split_multi_axis_reduce", split_multi_axis_reduce)
             .rewrite(&(), model)?;
 
         if stop_at_phase == 1 {
@@ -690,4 +691,27 @@ mod test {
         let _ = cuda_runnable.run(inputs)?;
         Ok(())
     }
+}
+
+fn split_multi_axis_reduce(
+    _ctx: &(),
+    model: &TypedModel,
+    node: &TypedNode,
+    node_name: &str,
+    op: &Reduce,
+) -> TractResult<Option<TypedModelPatch>> {
+    rule_if!(op.axes.len() > 1);
+    use tract_core::ops::nn::Reducer::*;
+    rule_if!(matches!(op.reducer, Sum | Prod | Min | Max | Any | All));
+    let mut patch = TypedModelPatch::default();
+    let mut wire = patch.tap_model(model, node.inputs[0])?;
+    // Reduce axes from highest to lowest so indices stay valid
+    let mut axes = op.axes.clone();
+    axes.sort();
+    for (i, &axis) in axes.iter().rev().enumerate() {
+        let single = Reduce { axes: tvec![axis], reducer: op.reducer };
+        wire = patch.wire_node(format!("{node_name}.axis_{i}"), single, &[wire])?[0];
+    }
+    patch.shunt_outside(model, node.id.into(), wire)?;
+    Ok(Some(patch))
 }
