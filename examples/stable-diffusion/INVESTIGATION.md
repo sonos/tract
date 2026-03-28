@@ -401,4 +401,59 @@ Runs before `detect_all` in `rewrite_einsum_to_prefix_matmul`. For each EinSum, 
 
 For `amk,kn->amn`: axes `a` and `m` both have role `(true, false, true)`, consecutive in A and C → merged into single axis `a` with dim `batch*4096`. The EinSum becomes `ak,kn->an`. `detect_rule` then has only one m candidate → no ambiguity, no broadcast.
 
-**Result**: MultiBroadcastTo count dropped from **234 to 58**. The remaining 58 are from conv EinSums with a different pattern (`NIHW,OI->NHWO`) where H,W play a different role — to be investigated next.
+**Result**: MultiBroadcastTo count dropped from **234 to 58**. The remaining 58 are from conv EinSums with a different pattern (`NIHW,OI->NHWO`) where H,W play a different role — investigated below.
+
+### Entry 13: Performance after axis merge fix + remaining gap analysis
+
+**Timings** (batch=1):
+| Mode | Before fix | After merge fix | Target |
+|---|---|---|---|
+| Late set (`--cuda run --set batch=1`) | 3m35s | **36s** | 3.4s |
+| Early set (`--set batch=1 --cuda run`) | 3.4s | 3.4s | — |
+
+6x improvement. Still **10x gap** vs eager.
+
+**Static op histogram diff** (eager vs late):
+
+| Op | Eager | Late | Delta |
+|---|---|---|---|
+| CudaMultiBroadcastTo | 0 | **58** | +58 (all conv) |
+| CudaMoveAxis | 346 | 484 | +138 |
+| CudaMul | 408 | 469 | +61 |
+| Reduce\<Sum\> | 61 | 122 | +61 |
+| CudaSqr | 0 | 61 | +61 |
+| CudaRecip | 0 | 10 | +10 |
+| Cast | 0 | 10 | +10 |
+| Reduce\<MeanOfSquares\> | 61 | 0 | -61 (decomposed) |
+
+Notable: InstanceNorm is decomposed differently — eager fuses into `Reduce<MeanOfSquares>`, late decomposes into `CudaSqr + Reduce<Sum> + CudaRecip`.
+
+**nsys profile** (late, after fix):
+
+| Kernel | % GPU time | Instances | Avg |
+|---|---|---|---|
+| `copy_nd3_f32` | **37.6%** | 174 | 348µs |
+| `ggml_matvec_ncols_1_bs_160` | **22.9%** | 34 | 1.09ms |
+| `ggml_matvec_ncols_1_bs_224` | **12.4%** | 47 | 424µs |
+| `cutlass_sgemm_128x128` | 3.0% | 80 | 61µs |
+
+Same root cause as before but for conv EinSums: `copy_nd3` materializes broadcasts, GEMM falls back to scalar `ggml_matvec` instead of batched Cutlass.
+
+**nsys profile** (eager, reference):
+
+| Kernel | % GPU time | Instances | Avg |
+|---|---|---|---|
+| `cutlass_sgemm_128x128` | **14.1%** | 114 | 57µs |
+| `softmax_f32` | 10.4% | 10 | 478µs |
+| `sm80_xmma_fprop` | 8.4% | 26 | 150µs |
+| `copy_nd3_f32` | 2.9% | 202 | 6.7µs |
+
+In eager mode, `copy_nd3` is trivial (6.7µs vs 348µs) and all GEMMs use Cutlass.
+
+**Remaining 58 broadcasts: conv EinSums**
+
+Pattern: `NIHW,OI->NHWO` where N=batch, I=in_channels, H=64, W=64, O=out_channels.
+
+The merge-same-role pass doesn't catch H,W because they have role `(true, false, true)` same as N — but H and W are **not consecutive with N** in the input `NIHW` (I sits between N and H). So the consecutivity guard correctly blocks the merge.
+
+These convs need a different treatment — H,W could be folded with N if I were moved, but that's a transpose. Or the conv lowering should handle the weight broadcast differently.
