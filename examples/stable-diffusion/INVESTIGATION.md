@@ -377,3 +377,22 @@ Reshape C: (batch*4096, 320) → (batch, 4096, 320)
 ```
 
 This benefits **all backends** (CPU, CUDA, Metal) since it happens in core before any backend-specific transforms.
+
+### Entry 11: detect_all assigns m_axis incorrectly for symbolic batch
+
+For `amk,kn->amn` (batch=symbolic, 4096, 320):
+
+In `detect_rule` (einsum_matmul.rs:220-238), `possible_m_axes` includes both `a` and `m` since both appear in input 0 and output but not in input 1. The tiebreaker at line 236 picks the axis with the **largest dimension**: `max_by_key(|a| input_shapes[0][a.inputs[0][0]].as_i64().unwrap_or(i64::MAX))`.
+
+- Axis `m` (spatial): dim=4096 → `as_i64() = Some(4096)`
+- Axis `a` (batch): dim=symbolic → `as_i64() = None` → `i64::MAX`
+
+**Result:** `a` (batch) is selected as `m_axis` because symbolic dims sort last (MAX). The real spatial dim `m=4096` becomes a prefix axis. Since prefix `m=4096` appears in A but not B, `add_broadcast_pre_matmul` broadcasts B from `(320,320)` to `(4096,320,320)`.
+
+**With concrete batch=1:** `a` has dim=1, `m` has dim=4096. `m` correctly wins as m_axis. No broadcast needed for the prefix.
+
+**This is the actual root cause.** The fold-into-m optimization in prefix_matmul.rs isn't firing because by the time it runs, the axes are already swapped — what we think of as `m` is already a prefix.
+
+**Fix options:**
+1. In `detect_rule`, prefer concrete dims over symbolic for m_axis selection (don't use i64::MAX for symbolic)
+2. Or: when a symbolic dim competes with a concrete dim for m_axis, pick the concrete one

@@ -16,14 +16,14 @@ impl EulerScheduler {
         let betas = Array1::linspace(0.00085f64.sqrt(), 0.012f64.sqrt(), num_train).mapv(|b| b * b);
         let alphas = betas.mapv(|b| 1.0 - b);
 
-        // cumulative product → sigmas
+        // cumulative product -> sigmas
         let mut alphas_cumprod = alphas.clone();
         for i in 1..num_train {
             alphas_cumprod[i] *= alphas_cumprod[i - 1];
         }
         let all_sigmas = alphas_cumprod.mapv(|a| ((1.0 - a) / a).sqrt());
 
-        // Timesteps: linspace num_train-1 → 0
+        // Timesteps: linspace num_train-1 -> 0
         let timesteps = Array1::linspace((num_train - 1) as f64, 0.0, num_inference_steps)
             .mapv(|t| t.round() as i64);
 
@@ -46,17 +46,13 @@ impl EulerScheduler {
         self.sigmas[0]
     }
 
-    fn scale_model_input(&self, latent: &[f32], step: usize) -> Vec<f32> {
+    fn scale_factor(&self, step: usize) -> f32 {
         let sigma = self.sigmas[step];
-        let scale = 1.0 / (sigma * sigma + 1.0).sqrt();
-        latent.iter().map(|&x| x * scale).collect()
+        1.0 / (sigma * sigma + 1.0).sqrt()
     }
 
-    fn step(&self, latent: &[f32], noise_pred: &[f32], step: usize) -> Vec<f32> {
-        let sigma = self.sigmas[step];
-        let sigma_next = self.sigmas[step + 1];
-        let dt = sigma_next - sigma;
-        latent.iter().zip(noise_pred).map(|(&x, &eps)| x + eps * dt).collect()
+    fn dt(&self, step: usize) -> f32 {
+        self.sigmas[step + 1] - self.sigmas[step]
     }
 }
 
@@ -65,40 +61,44 @@ const VAE_SCALING_FACTOR: f32 = 0.18215;
 
 fn main() -> Result<()> {
     let assets = std::path::Path::new("assets");
+    let num_images: usize = std::env::args().nth(1).and_then(|s| s.parse().ok()).unwrap_or(1);
 
     // Tokenize prompt
     let prompt = "a photo of a cat";
-    eprintln!("Prompt: \"{prompt}\"");
+    eprintln!("Prompt: \"{prompt}\", generating {num_images} image(s)");
     let tokenizer = tokenizers::Tokenizer::from_file(assets.join("tokenizer/tokenizer.json"))
         .map_err(|e| anyhow!("{e}"))?;
-    let encode = |text: &str| -> Result<ndarray::Array2<i64>> {
+    let encode = |text: &str| -> Result<Vec<i64>> {
         let enc = tokenizer.encode(text, true).map_err(|e| anyhow!("{e}"))?;
         let mut ids: Vec<i64> = enc.get_ids().iter().map(|&id| id as i64).collect();
         ids.resize(77, tokenizer.token_to_id("<|endoftext|>").unwrap_or(49407) as i64);
-        Ok(ndarray::Array2::from_shape_vec((1, 77), ids)?)
+        Ok(ids)
     };
-    let input_ids = encode(prompt)?;
-    let uncond_input_ids = encode("")?;
+    let cond_ids = encode(prompt)?;
+    let uncond_ids = encode("")?;
 
-    // Generate initial latent noise
+    // Generate initial latent noise — one per image
     use rand::SeedableRng;
     use rand_distr::{Distribution, StandardNormal};
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
-    let initial_latent =
-        ndarray::Array4::<f32>::from_shape_fn((1, 4, 64, 64), |_| StandardNormal.sample(&mut rng));
+    let latent_size = 4 * 64 * 64;
+    let initial_noise: Vec<f32> =
+        (0..num_images * latent_size).map(|_| StandardNormal.sample(&mut rng)).collect();
 
-    // Build scheduler from scratch
+    // Build scheduler
     let num_steps = 20;
     let scheduler = EulerScheduler::new(num_steps);
     let init_noise_sigma = scheduler.init_noise_sigma();
     eprintln!("  Scheduler: {num_steps} steps, init_sigma={init_noise_sigma:.4}");
 
-    // Pick best available runtime (CUDA > Metal > CPU)
+    // Pick best available runtime
     let gpu = ["cuda", "metal", "default"]
         .iter()
         .find_map(|rt| tract::runtime_for_name(rt).ok())
         .unwrap();
     eprintln!("Using runtime: {gpu:?}");
+
+    let b2 = 2 * num_images;
 
     eprintln!("Loading models...");
     let onnx = tract::onnx()?;
@@ -106,51 +106,59 @@ fn main() -> Result<()> {
     let unet = gpu.prepare(onnx.load(assets.join("unet.onnx"))?.into_model()?)?;
     let vae_decoder = gpu.prepare(onnx.load(assets.join("vae_decoder.onnx"))?.into_model()?)?;
 
-    // --- Text encoding ---
+    // --- Text encoding (batch=1 is fine, same embeddings for all images) ---
     eprintln!("Running text encoder...");
-    let cond_emb = text_encoder.run([input_ids])?;
-    let uncond_emb = text_encoder.run([uncond_input_ids])?;
+    let cond_arr = ndarray::Array2::from_shape_vec((1, 77), cond_ids)?;
+    let uncond_arr = ndarray::Array2::from_shape_vec((1, 77), uncond_ids)?;
+    let cond_emb = text_encoder.run([cond_arr])?;
+    let uncond_emb = text_encoder.run([uncond_arr])?;
+    let cond_slice = cond_emb[0].as_slice::<f32>()?; // (1, 77, 768)
+    let uncond_slice = uncond_emb[0].as_slice::<f32>()?;
 
-    let cond = cond_emb[0].view::<f32>()?;
-    let uncond = uncond_emb[0].view::<f32>()?;
-    let text_embeddings =
-        tract_ndarray::concatenate(tract_ndarray::Axis(0), &[uncond.view(), cond.view()])?;
-    eprintln!("  Text embeddings: {:?}", text_embeddings.shape());
+    // Build batched embeddings: [uncond*N, cond*N] -> (2N, 77, 768)
+    let emb_size = 77 * 768;
+    let mut emb_data = Vec::with_capacity(2 * num_images * emb_size);
+    for _ in 0..num_images {
+        emb_data.extend_from_slice(uncond_slice);
+    }
+    for _ in 0..num_images {
+        emb_data.extend_from_slice(cond_slice);
+    }
+    let text_emb = tract_ndarray::ArrayD::from_shape_vec(vec![2 * num_images, 77, 768], emb_data)?;
 
-    // Split for separate uncond/cond UNet runs (batch=1 model)
-    let uncond_emb_arr =
-        text_embeddings.slice(tract_ndarray::s![0..1, .., ..]).to_owned().into_dyn();
-    let cond_emb_arr = text_embeddings.slice(tract_ndarray::s![1..2, .., ..]).to_owned().into_dyn();
-
-    // --- Denoising loop ---
-    eprintln!("Running denoising loop ({num_steps} steps, Euler scheduler)...");
+    // --- Denoising loop (batched) ---
+    eprintln!("Running denoising loop ({num_steps} steps, {num_images} images)...");
     let guidance_scale: f32 = 7.5;
-    let mut latent: Vec<f32> =
-        initial_latent.as_slice().unwrap().iter().map(|&x| x * init_noise_sigma).collect();
+    let batch_latent_size = num_images * latent_size;
+    let mut latents: Vec<f32> = initial_noise.iter().map(|&x| x * init_noise_sigma).collect();
 
     for (i, &t) in scheduler.timesteps.iter().enumerate() {
-        let scaled = scheduler.scale_model_input(&latent, i);
-        let scaled_arr = tract_ndarray::ArrayD::from_shape_vec(vec![1, 4, 64, 64], scaled)?;
-        let timestep = tract_ndarray::arr1(&[t]).into_dyn();
+        let scale = scheduler.scale_factor(i);
 
-        // Run UNet twice: unconditional and conditional
-        let uncond_pred = unet.run(vec![
-            tensor(scaled_arr.clone())?,
-            tensor(timestep.clone())?,
-            tensor(uncond_emb_arr.clone())?,
-        ])?;
-        let cond_pred =
-            unet.run(vec![tensor(scaled_arr)?, tensor(timestep)?, tensor(cond_emb_arr.clone())?])?;
+        // Build UNet input: [scaled_latents * N, scaled_latents * N] -> (2N, 4, 64, 64)
+        let mut sample_data = Vec::with_capacity(2 * batch_latent_size);
+        for &x in &latents {
+            sample_data.push(x * scale);
+        }
+        for &x in &latents {
+            sample_data.push(x * scale);
+        }
+        let sample =
+            tract_ndarray::ArrayD::from_shape_vec(vec![2 * num_images, 4, 64, 64], sample_data)?;
+        let timestep = tract_ndarray::Array1::from_vec(vec![t; b2]).into_dyn();
 
-        let u = uncond_pred[0].as_slice::<f32>()?;
-        let c = cond_pred[0].as_slice::<f32>()?;
+        let noise_pred =
+            unet.run(vec![tensor(sample)?, tensor(timestep)?, tensor(text_emb.clone())?])?;
+        let pred = noise_pred[0].as_slice::<f32>()?;
 
-        // Classifier-free guidance
-        let noise_pred: Vec<f32> =
-            u.iter().zip(c).map(|(&u, &c)| u + guidance_scale * (c - u)).collect();
-
-        // Euler step
-        latent = scheduler.step(&latent, &noise_pred, i);
+        // CFG: split uncond (first N) / cond (last N), combine
+        let dt = scheduler.dt(i);
+        for j in 0..batch_latent_size {
+            let u = pred[j];
+            let c = pred[batch_latent_size + j];
+            let eps = u + guidance_scale * (c - u);
+            latents[j] += eps * dt;
+        }
 
         if i % 5 == 0 {
             let sigma = scheduler.sigmas[i];
@@ -158,32 +166,38 @@ fn main() -> Result<()> {
         }
     }
 
-    // --- VAE decode ---
+    // --- VAE decode (batched) ---
     eprintln!("Running VAE decoder...");
-    let latent_scaled: Vec<f32> = latent.iter().map(|&x| x / VAE_SCALING_FACTOR).collect();
-    let latent_arr = tract_ndarray::ArrayD::from_shape_vec(vec![1, 4, 64, 64], latent_scaled)?;
+    let latent_scaled: Vec<f32> = latents.iter().map(|&x| x / VAE_SCALING_FACTOR).collect();
+    let latent_arr =
+        tract_ndarray::ArrayD::from_shape_vec(vec![num_images, 4, 64, 64], latent_scaled)?;
     let image_result = vae_decoder.run([latent_arr])?;
     let image_data = image_result[0].as_slice::<f32>()?;
 
-    // Save as PNG (NCHW -> RGB pixels)
+    // Save each image as PNG (NCHW -> RGB pixels)
     let (h, w) = (512usize, 512usize);
-    let mut pixels = vec![0u8; h * w * 3];
-    for y in 0..h {
-        for x in 0..w {
-            for ch in 0..3 {
-                let val = (image_data[ch * h * w + y * w + x].clamp(-1.0, 1.0) + 1.0) / 2.0 * 255.0;
-                pixels[(y * w + x) * 3 + ch] = val as u8;
+    let img_size = 3 * h * w;
+    for n in 0..num_images {
+        let offset = n * img_size;
+        let mut pixels = vec![0u8; h * w * 3];
+        for y in 0..h {
+            for x in 0..w {
+                for ch in 0..3 {
+                    let val = (image_data[offset + ch * h * w + y * w + x].clamp(-1.0, 1.0) + 1.0)
+                        / 2.0
+                        * 255.0;
+                    pixels[(y * w + x) * 3 + ch] = val as u8;
+                }
             }
         }
+        let path = if num_images == 1 {
+            assets.join("output.png")
+        } else {
+            assets.join(format!("output_{n}.png"))
+        };
+        image::save_buffer(&path, &pixels, w as u32, h as u32, image::ColorType::Rgb8)?;
+        eprintln!("Saved {}", path.display());
     }
-    image::save_buffer(
-        assets.join("output.png"),
-        &pixels,
-        w as u32,
-        h as u32,
-        image::ColorType::Rgb8,
-    )?;
-    eprintln!("Saved output to assets/output.png");
 
     Ok(())
 }

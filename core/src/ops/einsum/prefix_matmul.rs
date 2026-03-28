@@ -39,20 +39,56 @@ fn rule(
         op.q_params.is_none()
             || model.node_input_facts(node.id)?.iter().skip(3).all(|i| i.konst.is_some())
     );
+    let (m, k, n) = (op.m_axis, op.k_axis, op.n_axis);
+    let a_axes_es: Vec<char> = op.axes.axes(InOut::In(0)).map(|a| a.repr).collect();
+    let b_axes_es: Vec<char> = op.axes.axes(InOut::In(1)).map(|a| a.repr).collect();
+    let c_axes_es: Vec<char> = op.axes.axes(InOut::Out(0)).map(|a| a.repr).collect();
+
     let prefix: String = op
         .axes
         .iter_all_axes()
-        .filter(|a| ![op.m_axis, op.k_axis, op.n_axis].contains(&a.repr))
+        .filter(|a| ![m, k, n].contains(&a.repr))
         .map(|a| a.repr)
         .collect();
+
+    // Identify prefix axes only in A (not in B) — candidates for folding into m.
+    // We can fold them if they are consecutive with m in both A and C orderings.
+    let a_only_prefix: Vec<char> = prefix.chars().filter(|c| !b_axes_es.contains(c)).collect();
+    debug!("prefix_matmul fold check: a_axes={a_axes_es:?} b_axes={b_axes_es:?} c_axes={c_axes_es:?} prefix={prefix:?} a_only={a_only_prefix:?} m={m} k={k} n={n}");
+    let fold_into_m = if !a_only_prefix.is_empty() {
+        // Check that a_only_prefix axes + m are consecutive in A's order
+        let a_m_pos = a_axes_es.iter().position(|&c| c == m).unwrap();
+        let a_consecutive = a_only_prefix.len() <= a_m_pos
+            && a_axes_es[a_m_pos - a_only_prefix.len()..a_m_pos]
+                .iter()
+                .zip(&a_only_prefix)
+                .all(|(a, b)| a == b);
+        // Check that a_only_prefix axes + m are consecutive in C's order
+        let c_m_pos = c_axes_es.iter().position(|&c| c == m).unwrap();
+        let c_consecutive = a_only_prefix.len() <= c_m_pos
+            && c_axes_es[c_m_pos - a_only_prefix.len()..c_m_pos]
+                .iter()
+                .zip(&a_only_prefix)
+                .all(|(a, b)| a == b);
+        a_consecutive && c_consecutive
+    } else {
+        false
+    };
+
+    // Effective prefix for the PrefixMatMul: exclude folded axes
+    let effective_prefix: String = if fold_into_m {
+        prefix.chars().filter(|c| !a_only_prefix.contains(c)).collect()
+    } else {
+        prefix.clone()
+    };
+
     let mut patch = TypedModelPatch::default();
     let inputs = patch.taps(model, &node.inputs)?;
     let mut wire = tvec!(inputs[0], inputs[1]);
 
-    let (m, k, n) = (op.m_axis, op.k_axis, op.n_axis);
-    let a_order_es: String = op.axes.axes(InOut::In(0)).map(|a| a.repr).collect();
-    let a_order_mm = format!("{prefix}{m}{k}");
-    let a_order_mm_t = format!("{prefix}{k}{m}");
+    let a_order_es: String = a_axes_es.iter().collect();
+    let a_order_mm = format!("{effective_prefix}{}{m}{k}", if fold_into_m { a_only_prefix.iter().collect::<String>() } else { String::new() });
+    let a_order_mm_t = format!("{effective_prefix}{}{k}{m}", if fold_into_m { a_only_prefix.iter().collect::<String>() } else { String::new() });
     let a_transform =
         format!("{a_order_es}->{a_order_mm}").parse::<AxesMapping>()?.translate_to_axis_ops()?;
     let a_transform_t =
@@ -63,6 +99,36 @@ fn rule(
     for op in a_transform {
         wire[0] = patch.wire_node(&name, op, &[wire[0]])?[0];
     }
+
+    // If folding, reshape A to merge a_only_prefix dims with m
+    if fold_into_m {
+        let a_fact = patch.outlet_fact(wire[0])?.clone();
+        let a_shape = &a_fact.shape;
+        let rank = a_shape.rank();
+        let n_fold = a_only_prefix.len();
+        // The folded dims are right before the last 2 (m, k) — positions rank-2-n_fold..rank-2
+        let mut new_shape: TVec<TDim> = TVec::new();
+        for i in 0..rank - 2 - n_fold {
+            new_shape.push(a_shape[i].clone());
+        }
+        // Fold n_fold dims + m into one
+        let mut merged = TDim::Val(1);
+        for i in rank - 2 - n_fold..rank - 1 {
+            merged = merged * a_shape[i].clone();
+        }
+        new_shape.push(merged);
+        new_shape.push(a_shape[rank - 1].clone()); // k
+        wire[0] = patch.wire_node(
+            format!("{node_name}.fold_a"),
+            AxisOp::Reshape(
+                rank - 2 - n_fold,
+                a_shape.dims()[rank - 2 - n_fold..rank - 1].into(),
+                tvec![new_shape[new_shape.len() - 2].clone()],
+            ),
+            &[wire[0]],
+        )?[0];
+    }
+
     // terrible hack to maintain exotic fact through eager propagation of constant through the
     // axes transformation
     if let Some(op) = patch.node_mut(wire[0].node).op_as_mut::<Const>() {
@@ -77,9 +143,9 @@ fn rule(
         .clone_from(&model.outlet_fact(node.inputs[0])?.exotic_fact);
     // end of hack
 
-    let b_order_es: String = op.axes.axes(InOut::In(1)).map(|a| a.repr).collect();
-    let b_order_mm = format!("{prefix}{k}{n}");
-    let b_order_mm_t = format!("{prefix}{n}{k}");
+    let b_order_es: String = b_axes_es.iter().collect();
+    let b_order_mm = format!("{effective_prefix}{k}{n}");
+    let b_order_mm_t = format!("{effective_prefix}{n}{k}");
     let b_transform =
         format!("{b_order_es}->{b_order_mm}").parse::<AxesMapping>()?.translate_to_axis_ops()?;
     let b_transform_t =
@@ -91,9 +157,9 @@ fn rule(
         wire[1] = patch.wire_node(&name, op, &[wire[1]])?[0];
     }
 
-    let c_order_es: String = op.axes.axes(InOut::Out(0)).map(|a| a.repr).collect();
-    let c_order_mm = format!("{prefix}{m}{n}");
-    let c_order_mm_t = format!("{prefix}{n}{m}");
+    let c_order_es: String = c_axes_es.iter().collect();
+    let c_order_mm = format!("{effective_prefix}{m}{n}");
+    let c_order_mm_t = format!("{effective_prefix}{n}{m}");
     let c_transform =
         format!("{c_order_mm}->{c_order_es}").parse::<AxesMapping>()?.translate_to_axis_ops()?;
     let c_transform_t =
@@ -147,6 +213,32 @@ fn rule(
         PrefixMatMul { transpose_a, transpose_b, transpose_c, quantize_output, operating_dt },
         &wire,
     )?;
+
+    // If we folded a_only_prefix dims into m, unfold them back in the output.
+    // Output of PrefixMatMul is (effective_prefix, m_merged, n) or (effective_prefix, n, m_merged).
+    // We need to split m_merged back into (a_only_prefix_dims..., m).
+    if fold_into_m {
+        let c_fact = patch.outlet_fact(wire[0])?.clone();
+        let c_shape = &c_fact.shape;
+        let c_rank = c_shape.rank();
+        let n_fold = a_only_prefix.len();
+        // m_merged is at position c_rank-2 (if not transposed) or c_rank-1 (if transposed)
+        let m_pos = if transpose_c { c_rank - 1 } else { c_rank - 2 };
+        let in_facts = model.node_input_facts(node.id)?;
+        // Recover the original dims for the folded axes from input A's shape
+        let a_orig_shape = &in_facts[0].shape;
+        let a_m_pos_orig = a_axes_es.iter().position(|&c| c == m).unwrap();
+        let mut unfolded_dims: TVec<TDim> = TVec::new();
+        for i in 0..n_fold {
+            unfolded_dims.push(a_orig_shape[a_m_pos_orig - n_fold + i].clone());
+        }
+        unfolded_dims.push(a_orig_shape[a_m_pos_orig].clone());
+        wire = patch.wire_node(
+            format!("{node_name}.unfold_c"),
+            AxisOp::Reshape(m_pos, tvec![c_shape[m_pos].clone()], unfolded_dims),
+            &wire,
+        )?;
+    }
 
     for (ix, op) in c_transform.into_iter().enumerate() {
         wire = patch.wire_node(format!("{node_name}.fix_c.{ix}"), op, &wire)?;
