@@ -214,6 +214,7 @@ fn can_translate_to_cuda_op(source: &TypedModel, node: &TypedNode) -> TractResul
             || node.op_is::<DynKeyValueCache>()
             || node.op_as::<Reduce>().is_some_and(|op| {
                 kernels::nn::Reducer::is_supported_dt(input_dts[0])
+                    && op.axes.len() == 1
                     && ops::CudaReduce::from_tract_core(op).is_ok()
             })
             || node.op_as::<Softmax>().is_some_and(|op| {
