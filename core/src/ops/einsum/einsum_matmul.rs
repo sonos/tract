@@ -18,6 +18,129 @@ use crate::ops::matmul::quant::{
 };
 use crate::ops::nn::{Reduce, Reducer};
 
+pub fn merge_consecutive_same_role_axes(model: &mut TypedModel) -> TractResult<()> {
+    Rewriter::default()
+        .with_rule_for("merge-same-role-axes", merge_same_role_axes_rule)
+        .rewrite(&(), model)
+}
+
+fn merge_same_role_axes_rule(
+    _ctx: &(),
+    model: &TypedModel,
+    node: &TypedNode,
+    node_name: &str,
+    op: &EinSum,
+) -> TractResult<Option<TypedModelPatch>> {
+    // Compute role signature for each axis: (in_input_0, in_input_1, in_output)
+    type Role = (bool, bool, bool);
+    let axes: Vec<(char, Role)> = op
+        .axes
+        .iter_all_axes()
+        .map(|a| {
+            (a.repr, (!a.inputs[0].is_empty(), !a.inputs[1].is_empty(), !a.outputs[0].is_empty()))
+        })
+        .collect();
+
+    // For each input/output slot, get the axis order
+    let a_order: Vec<char> = op.axes.axes(InOut::In(0)).map(|a| a.repr).collect();
+    let b_order: Vec<char> = op.axes.axes(InOut::In(1)).map(|a| a.repr).collect();
+    let c_order: Vec<char> = op.axes.axes(InOut::Out(0)).map(|a| a.repr).collect();
+
+    // Find first group of 2+ consecutive axes with same role
+    // "Consecutive" = adjacent in every tensor where they appear
+    let mut i = 0;
+    while i < axes.len() {
+        let (first_repr, first_role) = axes[i];
+        let mut group = vec![first_repr];
+        let mut j = i + 1;
+        while j < axes.len() && axes[j].1 == first_role {
+            let candidate = axes[j].0;
+            // Check consecutive in all slots where both appear
+            let consecutive = [&a_order, &b_order, &c_order].iter().all(|order| {
+                let positions: Vec<usize> = group
+                    .iter()
+                    .chain(std::iter::once(&candidate))
+                    .filter_map(|c| order.iter().position(|x| x == c))
+                    .collect();
+                if positions.len() <= 1 {
+                    return true; // 0 or 1 present — no constraint
+                }
+                // Must be contiguous ascending
+                let mut sorted = positions.clone();
+                sorted.sort();
+                sorted == positions
+                    && sorted.last().unwrap() - sorted.first().unwrap() == sorted.len() - 1
+            });
+            if !consecutive {
+                break;
+            }
+            group.push(candidate);
+            j += 1;
+        }
+
+        if group.len() >= 2 {
+            // Found a mergeable group. Emit the patch.
+            let input_facts = model.node_input_facts(node.id)?;
+            let input_shapes = op.actual_input_shapes_from_facts(&input_facts)?;
+            let output_shape = super::eval::output_shape(&op.axes, &input_shapes)?;
+
+            let drop_set: Vec<char> = group[1..].to_vec();
+
+            let mut patch = TypedModelPatch::default();
+            let mut wires: TVec<OutletId> = patch.taps(model, &node.inputs)?;
+
+            // Reshape each input to merge the group
+            for (slot, order) in [(0, &a_order), (1, &b_order)] {
+                let positions: Vec<usize> =
+                    group.iter().filter_map(|c| order.iter().position(|x| x == c)).collect();
+                if positions.len() < 2 {
+                    continue;
+                }
+                let start = positions[0];
+                let from_dims: TVec<TDim> =
+                    positions.iter().map(|&p| input_shapes[slot][p].clone()).collect();
+                let merged: TDim = from_dims.iter().product();
+                wires[slot] = patch.wire_node(
+                    format!("{node_name}.merge_in{slot}"),
+                    AxisOp::Reshape(start, from_dims, tvec![merged]),
+                    &[wires[slot]],
+                )?[0];
+            }
+
+            // Build new EinSum with merged axis
+            let mut new_axes = op.axes.clone();
+            for &drop in &drop_set {
+                new_axes = new_axes.remove_axis(drop)?;
+            }
+            let new_op =
+                EinSum { axes: new_axes, operating_dt: op.operating_dt, q_params: op.q_params };
+            let mut result = patch.wire_node(node_name, new_op, &wires)?;
+
+            // Reshape output to split back
+            let c_positions: Vec<usize> =
+                group.iter().filter_map(|c| c_order.iter().position(|x| x == c)).collect();
+            if c_positions.len() >= 2 {
+                let start = c_positions[0];
+                let original_dims: TVec<TDim> =
+                    c_positions.iter().map(|&p| output_shape[p].clone()).collect();
+                let merged: TDim = original_dims.iter().product();
+                result[0] = patch.wire_node(
+                    format!("{node_name}.unmerge_out"),
+                    AxisOp::Reshape(start, tvec![merged], original_dims),
+                    &[result[0]],
+                )?[0];
+            }
+
+            patch.shunt_outside(model, node.id.into(), result[0])?;
+            return Ok(Some(patch));
+        }
+
+        i = j;
+    }
+
+    Ok(None)
+}
+
 pub fn detect_all(model: &mut TypedModel) -> TractResult<()> {
     Rewriter::default().with_rule_for("detect-matmul-einsum", detect_rule).rewrite(&(), model)
 }
