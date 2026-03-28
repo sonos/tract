@@ -18,6 +18,7 @@ pub fn rewrite_einsum_to_prefix_matmul(
     model: &mut TypedModel,
     ensure_strict_matmul_semantic: bool,
 ) -> TractResult<()> {
+    super::einsum_matmul::merge_consecutive_same_role_axes(model)?;
     super::einsum_matmul::detect_all(model)?;
     let ctx = EinSumToPrefixMatmulCtx { ensure_strict_matmul_semantic };
     Rewriter::default().with_rule_for("einsum-to-prefix-matmul", rule).rewrite(&ctx, model)
