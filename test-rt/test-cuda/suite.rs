@@ -33,15 +33,11 @@ fn mk_suite() -> infra::TestSuite {
         },
     );
 
-    unit.get_sub_mut("conv_f32").add_arbitrary::<ConvProblem>(
-        "proptest",
-        ConvProblemParams { no_group: true, ..ConvProblemParams::default() },
-    );
+    unit.get_sub_mut("conv_f32")
+        .add_arbitrary::<ConvProblem>("proptest", ConvProblemParams::default());
 
-    unit.get_sub_mut("conv_f16").add_arbitrary::<ConvProblemF16>(
-        "proptest",
-        ConvProblemParams { no_group: true, ..ConvProblemParams::default() },
-    );
+    unit.get_sub_mut("conv_f16")
+        .add_arbitrary::<ConvProblemF16>("proptest", ConvProblemParams::default());
 
     unit.get_sub_mut("sdpa").add_arbitrary::<SdpaProblem<half::f16>>(
         "proptest_f16",
