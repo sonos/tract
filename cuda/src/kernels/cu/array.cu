@@ -131,33 +131,34 @@ static __device__ void pad_constant(
                     blockIdx.z * in_strides_0;                                 \
     int out_offset = blockIdx.x * out_strides_2 + blockIdx.y * out_strides_1 + \
                      blockIdx.z * out_strides_0;                               \
-    for (int i = threadIdx.x; i < out_shape_3; i += MAX_THREADS) {  \
+    for (int i = threadIdx.x; i < out_shape_3; i += MAX_THREADS) {             \
       output[out_offset + i * out_strides_3] =                                 \
           input[in_offset + i * in_strides_3];                                 \
     }                                                                          \
   }                                                                            \
                                                                                \
+  /* nd5: z=d0, y=d1, x=d2*d3 (packed), threads=d4 */                         \
   extern "C" __global__ void copy_nd5_##name(                                  \
       const T *input, T *output, int32_t in_strides_0, int32_t in_strides_1,           \
       int32_t in_strides_2, int32_t in_strides_3, int32_t in_strides_4, int32_t out_shape_0,   \
       int32_t out_shape_1, int32_t out_shape_2, int32_t out_shape_3, int32_t out_shape_4,      \
       int32_t out_strides_0, int32_t out_strides_1, int32_t out_strides_2,                 \
       int32_t out_strides_3, int32_t out_strides_4) {                                  \
-    int in_offset = blockIdx.x * in_strides_3 + blockIdx.y * in_strides_2;     \
-    int out_offset = blockIdx.x * out_strides_3 + blockIdx.y * out_strides_2;  \
-    int block_idx_z = blockIdx.z;                                              \
-    in_offset += (block_idx_z % out_shape_1) * in_strides_1;                   \
-    out_offset += (block_idx_z % out_shape_1) * out_strides_1;                 \
-    block_idx_z /= out_shape_1;                                                \
-    in_offset += (block_idx_z % out_shape_0) * in_strides_0;                   \
-    out_offset += (block_idx_z % out_shape_0) * out_strides_0;                 \
-                                                                               \
-    for (int i = threadIdx.x; i < out_shape_4; i += MAX_THREADS) {  \
+    int block_idx_x = blockIdx.x;                                              \
+    int idx_3 = block_idx_x % out_shape_3;                                     \
+    block_idx_x /= out_shape_3;                                                \
+    int idx_2 = block_idx_x;                                                   \
+    int in_offset = blockIdx.z * in_strides_0 + blockIdx.y * in_strides_1 +    \
+                    idx_2 * in_strides_2 + idx_3 * in_strides_3;               \
+    int out_offset = blockIdx.z * out_strides_0 + blockIdx.y * out_strides_1 + \
+                     idx_2 * out_strides_2 + idx_3 * out_strides_3;            \
+    for (int i = threadIdx.x; i < out_shape_4; i += MAX_THREADS) {             \
       output[out_offset + i * out_strides_4] =                                 \
           input[in_offset + i * in_strides_4];                                 \
     }                                                                          \
   }                                                                            \
                                                                                \
+  /* nd6: z=d0, y=d1, x=d2*d3*d4 (packed), threads=d5 */                      \
   extern "C" __global__ void copy_nd6_##name(                                  \
       const T *input, T *output, int32_t in_strides_0, int32_t in_strides_1,           \
       int32_t in_strides_2, int32_t in_strides_3, int32_t in_strides_4, int32_t in_strides_5,  \
@@ -165,19 +166,19 @@ static __device__ void pad_constant(
       int32_t out_shape_4, int32_t out_shape_5, int32_t out_strides_0, int32_t out_strides_1,  \
       int32_t out_strides_2, int32_t out_strides_3, int32_t out_strides_4,                 \
       int32_t out_strides_5) {                                                     \
-    int in_offset = blockIdx.x * in_strides_4 + blockIdx.y * in_strides_3;     \
-    int out_offset = blockIdx.x * out_strides_4 + blockIdx.y * out_strides_3;  \
-    int block_idx_z = blockIdx.z;                                              \
-    in_offset += (block_idx_z % out_shape_2) * in_strides_2;                   \
-    out_offset += (block_idx_z % out_shape_2) * out_strides_2;                 \
-    block_idx_z /= out_shape_2;                                                \
-    in_offset += (block_idx_z % out_shape_1) * in_strides_1;                   \
-    out_offset += (block_idx_z % out_shape_1) * out_strides_1;                 \
-    block_idx_z /= out_shape_1;                                                \
-    in_offset += (block_idx_z % out_shape_0) * in_strides_0;                   \
-    out_offset += (block_idx_z % out_shape_0) * out_strides_0;                 \
-                                                                               \
-    for (int i = threadIdx.x; i < out_shape_5; i += MAX_THREADS) {  \
+    int block_idx_x = blockIdx.x;                                              \
+    int idx_4 = block_idx_x % out_shape_4;                                     \
+    block_idx_x /= out_shape_4;                                                \
+    int idx_3 = block_idx_x % out_shape_3;                                     \
+    block_idx_x /= out_shape_3;                                                \
+    int idx_2 = block_idx_x;                                                   \
+    int in_offset = blockIdx.z * in_strides_0 + blockIdx.y * in_strides_1 +    \
+                    idx_2 * in_strides_2 + idx_3 * in_strides_3 +              \
+                    idx_4 * in_strides_4;                                      \
+    int out_offset = blockIdx.z * out_strides_0 + blockIdx.y * out_strides_1 + \
+                     idx_2 * out_strides_2 + idx_3 * out_strides_3 +           \
+                     idx_4 * out_strides_4;                                    \
+    for (int i = threadIdx.x; i < out_shape_5; i += MAX_THREADS) {             \
       output[out_offset + i * out_strides_5] =                                 \
           input[in_offset + i * in_strides_5];                                 \
     }                                                                          \
