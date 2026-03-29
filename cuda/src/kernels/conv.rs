@@ -62,7 +62,8 @@ impl ConvKernel for ConvGeneric {
         let input_shape = op.pool_spec.data_format.shape(input.shape())?;
 
         let ctx = cuda_context();
-        let func_name = format!("conv{}d_f32_generic", input_shape.hw_rank());
+        let dt_name = if input.datum_type() == DatumType::F16 { "f16" } else { "f32" };
+        let func_name = format!("conv{}d_{}_generic", input_shape.hw_rank(), dt_name);
         let func = ctx.load_pipeline(crate::kernels::LibraryName::Cnn, func_name)?;
         let null = stream.null::<u8>()?;
         let null_view = null.as_view();
