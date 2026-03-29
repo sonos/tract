@@ -8,11 +8,6 @@ A minimal text-to-image pipeline running entirely in Rust using [tract](https://
 # Export ONNX models and tokenizer (one-time setup)
 pip install torch diffusers transformers accelerate onnxscript onnx Pillow
 python export.py
-python -c "
-from transformers import CLIPTokenizerFast
-tok = CLIPTokenizerFast.from_pretrained('stable-diffusion-v1-5/stable-diffusion-v1-5', subfolder='tokenizer')
-tok.save_pretrained('assets/tokenizer')
-"
 
 # Generate images
 cargo run --release -- -p "a photo of a cat" -o cat.png
