@@ -44,6 +44,7 @@ members = [
     "examples/causal_llm",
     "examples/stable-diffusion",
     "examples/stable-diffusion-3",
+    "examples/stable-diffusion-xl",
 
     "harness/core-proptest-pulse",
     "harness/nnef-inceptionv3",
