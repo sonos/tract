@@ -69,16 +69,25 @@ fn base64_encode(data: &[u8]) -> String {
 
 fn display_inline(path: &std::path::Path) {
     use std::io::Write as _;
-    if let std::result::Result::Ok(png_data) = std::fs::read(path) {
-        let b64 = base64_encode(&png_data);
-        let in_tmux = std::env::var("TMUX").is_ok();
-        let osc = if in_tmux { "\x1bPtmux;\x1b\x1b]" } else { "\x1b]" };
-        let st = if in_tmux { "\x07\x1b\\" } else { "\x07" };
-        let _ = write!(
-            std::io::stderr(),
-            "{osc}1337;File=inline=1;width=20;preserveAspectRatio=1:{b64}{st}\n"
-        );
+    // Re-encode as a small PNG thumbnail to keep the escape sequence manageable.
+    let img = match image::open(path) {
+        std::result::Result::Ok(img) => img,
+        _ => return,
+    };
+    let thumb = img.thumbnail(256, 256);
+    let mut png_data = Vec::new();
+    let encoder = image::codecs::png::PngEncoder::new(std::io::Cursor::new(&mut png_data));
+    if thumb.write_with_encoder(encoder).is_err() {
+        return;
     }
+    let b64 = base64_encode(&png_data);
+    let in_tmux = std::env::var("TMUX").is_ok();
+    let osc = if in_tmux { "\x1bPtmux;\x1b\x1b]" } else { "\x1b]" };
+    let st = if in_tmux { "\x07\x1b\\" } else { "\x07" };
+    let _ = write!(
+        std::io::stderr(),
+        "{osc}1337;File=inline=1;width=20;preserveAspectRatio=1:{b64}{st}\n"
+    );
 }
 
 /// Stable Diffusion XL 1.0 image generation with tract

@@ -42,6 +42,7 @@ members = [
     "examples/pytorch-albert-v2",
     "examples/pytorch-resnet",
     "examples/causal_llm",
+    "examples/stable-diffusion",
     "examples/stable-diffusion-xl",
 
     "harness/core-proptest-pulse",
