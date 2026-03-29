@@ -69,9 +69,9 @@ def main():
         print("Exporting unet...")
         unet = pipe.unet
         unet.eval()
-        sample = torch.randn(1, 4, 64, 64)
-        timestep = torch.tensor([999], dtype=torch.int64)
-        encoder_hidden_states = torch.randn(1, 77, 768)
+        sample = torch.randn(2, 4, 64, 64)
+        timestep = torch.tensor([999, 999], dtype=torch.int64)
+        encoder_hidden_states = torch.randn(2, 77, 768)
         with torch.no_grad():
             torch.onnx.export(
                 unet,
@@ -80,6 +80,12 @@ def main():
                 input_names=["sample", "timestep", "encoder_hidden_states"],
                 output_names=["noise_pred"],
                 opset_version=17,
+                dynamic_axes={
+                    "sample": {0: "batch"},
+                    "timestep": {0: "batch"},
+                    "encoder_hidden_states": {0: "batch"},
+                    "noise_pred": {0: "batch"},
+                },
             )
         print(f"  Exported to {ASSETS / 'unet.onnx'}")
 
