@@ -102,7 +102,7 @@ fn main() -> Result<()> {
     let onnx = tract::onnx()?;
     let text_encoder = gpu.prepare(onnx.load(assets.join("text_encoder.onnx"))?.into_model()?)?;
     let unet = gpu.prepare(onnx.load(assets.join("unet.onnx"))?.into_model()?)?;
-    let vae_decoder = onnx.load(assets.join("vae_decoder.onnx"))?.into_model()?.into_runnable()?;
+    let vae_decoder = gpu.prepare(onnx.load(assets.join("vae_decoder.onnx"))?.into_model()?)?;
 
     // --- Text encoding ---
     eprintln!("Running text encoder...");
