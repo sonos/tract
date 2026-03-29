@@ -1,0 +1,15 @@
+[package]
+name = "flux-schnell"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow.workspace = true
+clap = { workspace = true, features = ["derive"] }
+image = "0.25"
+kdam = "0.6"
+ndarray.workspace = true
+rand = "0.9"
+rand_distr = "0.5"
+tokenizers = "0.21"
+tract.workspace = true
