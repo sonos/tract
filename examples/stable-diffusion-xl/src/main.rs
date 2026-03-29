@@ -170,14 +170,20 @@ fn main() -> Result<()> {
     let uncond2 = text_encoder_2.run([uncond_input_ids])?;
 
     // Concatenate hidden states: (1,77,768) + (1,77,1280) → (1,77,2048)
+    // TE1: output[0] = last_hidden_state (1,77,768), output[1] = pooler (1,768)
+    // TE2: output[0] = text_embeds/pooled (1,1280), output[1] = last_hidden_state (1,77,1280)
     let cond_h1 = cond1[0].view::<f32>()?;
-    let cond_h2 = cond2[0].view::<f32>()?;
+    let cond_h2 = cond2[1].view::<f32>()?;
     let uncond_h1 = uncond1[0].view::<f32>()?;
-    let uncond_h2 = uncond2[0].view::<f32>()?;
+    let uncond_h2 = uncond2[1].view::<f32>()?;
     let cond_cat =
-        tract_ndarray::concatenate(tract_ndarray::Axis(2), &[cond_h1.view(), cond_h2.view()])?;
+        tract_ndarray::concatenate(tract_ndarray::Axis(2), &[cond_h1.view(), cond_h2.view()])?
+            .as_standard_layout()
+            .into_owned();
     let uncond_cat =
-        tract_ndarray::concatenate(tract_ndarray::Axis(2), &[uncond_h1.view(), uncond_h2.view()])?;
+        tract_ndarray::concatenate(tract_ndarray::Axis(2), &[uncond_h1.view(), uncond_h2.view()])?
+            .as_standard_layout()
+            .into_owned();
 
     // Build batched: [uncond×N, cond×N] → (2N, 77, 2048)
     let b2 = 2 * num_images;
@@ -195,9 +201,9 @@ fn main() -> Result<()> {
     let text_emb = tract_ndarray::ArrayD::from_shape_vec(vec![b2, 77, emb_dim], emb_data)?;
     eprintln!("  Text embeddings: {:?}", text_emb.shape());
 
-    // Pooled text embeddings from text_encoder_2 (output 1)
-    let cond_pooled = cond2[1].as_slice::<f32>()?;
-    let uncond_pooled = uncond2[1].as_slice::<f32>()?;
+    // Pooled text embeddings from text_encoder_2 (output 0)
+    let cond_pooled = cond2[0].as_slice::<f32>()?;
+    let uncond_pooled = uncond2[0].as_slice::<f32>()?;
     let pooled_dim = cond_pooled.len();
     let mut pooled_data = Vec::with_capacity(b2 * pooled_dim);
     for _ in 0..num_images {
