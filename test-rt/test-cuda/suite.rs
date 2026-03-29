@@ -2,6 +2,7 @@ use std::vec;
 
 use infra::Test;
 use suite_unit::bin_einsum::{BinEinsumProblem, BinEinsumProblemParams};
+use suite_unit::conv_f16::ConvProblemF16;
 use suite_unit::conv_f32::{ConvProblem, ConvProblemParams};
 use suite_unit::sdpa::{SdpaProblem, SdpaProblemParams};
 use tract_core::num_traits::Float;
@@ -33,6 +34,11 @@ fn mk_suite() -> infra::TestSuite {
     );
 
     unit.get_sub_mut("conv_f32").add_arbitrary::<ConvProblem>(
+        "proptest",
+        ConvProblemParams { no_group: true, ..ConvProblemParams::default() },
+    );
+
+    unit.get_sub_mut("conv_f16").add_arbitrary::<ConvProblemF16>(
         "proptest",
         ConvProblemParams { no_group: true, ..ConvProblemParams::default() },
     );

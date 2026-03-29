@@ -4,29 +4,42 @@
 
 // liquid:true
 
+{% assign types = "f32,f16" | split: "," %}
+
+{% for type in types %}
+{% if type == "f32" %}
+  {% assign T = "float" %}
+  {% assign load = "" %}
+  {% assign store = "" %}
+{% else %}
+  {% assign T = "__half" %}
+  {% assign load = "__half2float(" %}
+  {% assign store = "__float2half(" %}
+{% endif %}
+
 {% for georank in (1..4) %}
 
-extern "C" __global__ void conv{{georank}}d_f32_generic(
-    const float *input,
+extern "C" __global__ void conv{{georank}}d_{{type}}_generic(
+    const {{T}} *input,
     int32_t in_n, int32_t in_c,
     {% for i in (1..georank) %} int32_t in_{{i}}, {% endfor %}
     int32_t in_n_stride, int32_t in_c_stride,
     {% for i in (1..georank) %} int32_t in_{{i}}_stride, {% endfor %}
 
-    const float *kernel,
+    const {{T}} *kernel,
     int32_t groups, int32_t co_per_group, int32_t ci_per_group,
     {% for i in (1..georank) %} int32_t ker_{{i}}, {% endfor %}
     int32_t ker_g_stride, int32_t ker_o_stride, int32_t ker_i_stride,
     {% for i in (1..georank) %} int32_t ker_{{i}}_stride, {% endfor %}
 
-    const float *bias,
+    const {{T}} *bias,
     int32_t bias_stride,
-  
+
     {% for i in (1..georank) %} int32_t pad_{{i}}, {% endfor %}
     {% for i in (1..georank) %} int32_t stride_{{i}}, {% endfor %}
     {% for i in (1..georank) %} int32_t dil_{{i}}, {% endfor %}
-    
-    float *output,
+
+    {{T}} *output,
     int32_t out_n, int32_t out_c,
     {% for i in (1..georank) %} int32_t out_{{i}}, {% endfor %}
     int32_t out_n_stride, int32_t out_c_stride
@@ -37,7 +50,7 @@ extern "C" __global__ void conv{{georank}}d_f32_generic(
   assert(blockDim.z == 1);
 
   assert(blockDim.y == 1);
-  
+
   size_t n = blockIdx.z;
   size_t co = blockIdx.y;
   size_t group = co / co_per_group;
@@ -56,14 +69,12 @@ extern "C" __global__ void conv{{georank}}d_f32_generic(
      }
   {% endfor %}
 
-  // printf("co={} group={} groups={} co_per_group={}\n", co, group, co_per_group);
-
-  const float *pfi = input + n * in_n_stride + ci_per_group * group * in_c_stride;
-  const float *pfk = kernel + co * ker_o_stride; 
+  const {{T}} *pfi = input + n * in_n_stride + ci_per_group * group * in_c_stride;
+  const {{T}} *pfk = kernel + co * ker_o_stride;
 
   float sum = 0;
   if(bias) {
-    sum = *(bias + co * bias_stride);
+    sum = {{load}}*(bias + co * bias_stride){% if type == "f16" %}){% endif %};
   }
 
   for(int ci = 0; ci < ci_per_group; ci++ ) {
@@ -75,18 +86,23 @@ extern "C" __global__ void conv{{georank}}d_f32_generic(
       }
   {% endfor %}
 
-        float i = *(pfi + ci * in_c_stride
-        {% for i in (1..georank) %} + x_{{i}} * in_{{i}}_stride {%endfor%});
-        float k = *(pfk + ci * ker_i_stride +
-        {% for i in (1..georank) %} + k_{{i}} * ker_{{i}}_stride {%endfor%});
+        float i = {{load}}*(pfi + ci * in_c_stride
+        {% for i in (1..georank) %} + x_{{i}} * in_{{i}}_stride {%endfor%}){% if type == "f16" %}){% endif %};
+        float k = {{load}}*(pfk + ci * ker_i_stride +
+        {% for i in (1..georank) %} + k_{{i}} * ker_{{i}}_stride {%endfor%}){% if type == "f16" %}){% endif %};
         sum += i*k;
     {% for i in (1..georank) %} } {%endfor%} // nested georank loops
   } // ci loop
 
   size_t poffset = n * out_n_stride + co * out_c_stride
       {% for i in (1..georank) %} + ox_{{i}} * out_{{i}}_stride {%endfor%};
+  {% if type == "f16" %}
+  *(output + poffset) = __float2half(sum);
+  {% else %}
   *(output + poffset) = sum;
-  
+  {% endif %}
+
 }
 
+{% endfor %}
 {% endfor %}
