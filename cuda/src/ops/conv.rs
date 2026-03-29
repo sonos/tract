@@ -17,8 +17,9 @@ pub fn wire_cuda_conv(
     let facts = source.node_input_facts(node.id)?;
     let data_shape = op.pool_spec.data_format.shape(&facts[0].shape)?;
     let hw_rank = data_shape.hw_rank();
-    if facts.iter().all(|f| f.datum_type.is::<f32>())
-        && hw_rank <= 6
+    let is_f16 = facts[0].datum_type.is::<f16>();
+    if facts.iter().all(|f| f.datum_type.is::<f32>() || f.datum_type.is::<f16>())
+        && hw_rank <= if is_f16 { 2 } else { 6 }
         && op
             .pool_spec
             .computed_padding(data_shape.hw_dims())
