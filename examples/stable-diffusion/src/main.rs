@@ -52,10 +52,17 @@ impl EulerScheduler {
         latent.iter().map(|&x| x * scale).collect()
     }
 
-    fn step(&self, latent: &[f32], noise_pred: &[f32], step: usize) -> Vec<f32> {
+    fn scale_factor(&self, step: usize) -> f32 {
         let sigma = self.sigmas[step];
-        let sigma_next = self.sigmas[step + 1];
-        let dt = sigma_next - sigma;
+        1.0 / (sigma * sigma + 1.0).sqrt()
+    }
+
+    fn dt(&self, step: usize) -> f32 {
+        self.sigmas[step + 1] - self.sigmas[step]
+    }
+
+    fn step(&self, latent: &[f32], noise_pred: &[f32], step: usize) -> Vec<f32> {
+        let dt = self.dt(step);
         latent.iter().zip(noise_pred).map(|(&x, &eps)| x + eps * dt).collect()
     }
 }
@@ -115,55 +122,74 @@ fn main() -> Result<()> {
         tract_ndarray::concatenate(tract_ndarray::Axis(0), &[uncond.view(), cond.view()])?;
     eprintln!("  Text embeddings: {:?}", text_embeddings.shape());
 
-    // Split text embeddings for separate uncond/cond UNet runs
-    let uncond_emb_arr =
-        text_embeddings.slice(tract_ndarray::s![0..1, .., ..]).to_owned().into_dyn();
-    let cond_emb_arr = text_embeddings.slice(tract_ndarray::s![1..2, .., ..]).to_owned().into_dyn();
+    // Build batched text embeddings: [uncond×N, cond×N] → (2N, 77, 768)
+    let uncond_slice = uncond_emb[0].as_slice::<f32>()?;
+    let cond_slice = cond_emb[0].as_slice::<f32>()?;
+    let emb_size = 77 * 768;
+    let mut emb_data = Vec::with_capacity(2 * num_images * emb_size);
+    for _ in 0..num_images {
+        emb_data.extend_from_slice(uncond_slice);
+    }
+    for _ in 0..num_images {
+        emb_data.extend_from_slice(cond_slice);
+    }
+    let b2 = 2 * num_images;
+    let text_emb = tract_ndarray::ArrayD::from_shape_vec(vec![b2, 77, 768], emb_data)?;
 
+    // Generate initial latent noise for all images
+    let latent_size = 4 * 64 * 64;
+    let mut latents: Vec<f32> = (0..num_images * latent_size)
+        .map(|_| {
+            <StandardNormal as Distribution<f32>>::sample(&StandardNormal, &mut rng)
+                * init_noise_sigma
+        })
+        .collect();
+
+    // --- Batched denoising loop ---
     let guidance_scale: f32 = 7.5;
-    let (h, w) = (512usize, 512usize);
+    eprintln!("Denoising {num_images} image(s), {num_steps} steps, batch={b2}...");
+    for (i, &t) in scheduler.timesteps.iter().enumerate() {
+        let scale = scheduler.scale_factor(i);
 
-    for n in 0..num_images {
-        // Generate initial latent noise for this image
-        let initial_latent = ndarray::Array4::<f32>::from_shape_fn((1, 4, 64, 64), |_| {
-            StandardNormal.sample(&mut rng)
-        });
-        let mut latent: Vec<f32> =
-            initial_latent.as_slice().unwrap().iter().map(|&x| x * init_noise_sigma).collect();
+        // Build UNet input: [scaled_latents×N, scaled_latents×N] → (2N, 4, 64, 64)
+        let mut sample_data = Vec::with_capacity(b2 * latent_size);
+        for &x in &latents {
+            sample_data.push(x * scale);
+        }
+        for &x in &latents {
+            sample_data.push(x * scale);
+        }
+        let sample = tract_ndarray::ArrayD::from_shape_vec(vec![b2, 4, 64, 64], sample_data)?;
+        let timestep = tract_ndarray::Array1::from_vec(vec![t; b2]).into_dyn();
 
-        // --- Denoising loop ---
-        eprintln!("Image {n}: denoising ({num_steps} steps)...");
-        for (i, &t) in scheduler.timesteps.iter().enumerate() {
-            let scaled = scheduler.scale_model_input(&latent, i);
-            let scaled_arr = tract_ndarray::ArrayD::from_shape_vec(vec![1, 4, 64, 64], scaled)?;
-            let timestep = tract_ndarray::arr1(&[t]).into_dyn();
+        let noise_pred =
+            unet.run(vec![tensor(sample)?, tensor(timestep)?, tensor(text_emb.clone())?])?;
+        let pred = noise_pred[0].as_slice::<f32>()?;
 
-            let uncond_pred = unet.run(vec![
-                tensor(scaled_arr.clone())?,
-                tensor(timestep.clone())?,
-                tensor(uncond_emb_arr.clone())?,
-            ])?;
-            let cond_pred = unet.run(vec![
-                tensor(scaled_arr)?,
-                tensor(timestep)?,
-                tensor(cond_emb_arr.clone())?,
-            ])?;
-
-            let u = uncond_pred[0].as_slice::<f32>()?;
-            let c = cond_pred[0].as_slice::<f32>()?;
-            let noise_pred: Vec<f32> =
-                u.iter().zip(c).map(|(&u, &c)| u + guidance_scale * (c - u)).collect();
-            latent = scheduler.step(&latent, &noise_pred, i);
-
-            if i % 5 == 0 {
-                let sigma = scheduler.sigmas[i];
-                eprintln!("  Step {i}/{num_steps}, t={t}, sigma={sigma:.4}");
-            }
+        // CFG: split uncond (first N) / cond (last N), combine
+        let batch_latent_size = num_images * latent_size;
+        let dt = scheduler.dt(i);
+        for j in 0..batch_latent_size {
+            let u = pred[j];
+            let c = pred[batch_latent_size + j];
+            let eps = u + guidance_scale * (c - u);
+            latents[j] += eps * dt;
         }
 
-        // --- VAE decode (CPU) ---
-        let latent_scaled: Vec<f32> = latent.iter().map(|&x| x / VAE_SCALING_FACTOR).collect();
-        let latent_arr = tract_ndarray::ArrayD::from_shape_vec(vec![1, 4, 64, 64], latent_scaled)?;
+        if i % 5 == 0 {
+            let sigma = scheduler.sigmas[i];
+            eprintln!("  Step {i}/{num_steps}, t={t}, sigma={sigma:.4}");
+        }
+    }
+
+    // --- VAE decode + save each image ---
+    let (h, w) = (512usize, 512usize);
+    for n in 0..num_images {
+        let img_latent: Vec<f32> = latents[n * latent_size..(n + 1) * latent_size]
+            .iter()
+            .map(|&x| x / VAE_SCALING_FACTOR)
+            .collect();
+        let latent_arr = tract_ndarray::ArrayD::from_shape_vec(vec![1, 4, 64, 64], img_latent)?;
         let image_result = vae_decoder.run([latent_arr])?;
         let image_data = image_result[0].as_slice::<f32>()?;
 
