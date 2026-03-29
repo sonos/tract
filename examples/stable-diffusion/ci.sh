@@ -1,15 +1,16 @@
 #!/bin/bash
 
-set -x
+set -ex
 
-VENV_PYTHON=$(dirname $(dirname $(realpath $0)))/stable-diffusion/.venv/bin/python
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+cd "$SCRIPT_DIR"
 
+# Create venv
 if [ ! -e .venv ]; then
-    # Use virtualenv from api/py venv if system python3 -m venv doesn't work
     if python3 -m venv .venv 2>/dev/null; then
         true
     else
-        $(dirname $(dirname $(realpath $0)))/../api/py/.venv/bin/virtualenv .venv
+        ../../api/py/.venv/bin/virtualenv .venv
     fi
 fi
 source .venv/bin/activate
@@ -17,12 +18,45 @@ source .venv/bin/activate
 pip install -q torch diffusers "transformers>=4.44,<4.50" accelerate onnxscript onnx Pillow
 
 # Export models to ONNX
+mkdir -p assets
 python export.py
 
-# Generate reference data
+# Generate reference I/O data for validation
 python reference.py
 
-# Run Rust example
-cargo run --release
+# Save fast tokenizer (needed by Rust)
+python -c "
+from transformers import CLIPTokenizerFast
+tok = CLIPTokenizerFast.from_pretrained('stable-diffusion-v1-5/stable-diffusion-v1-5', subfolder='tokenizer')
+tok.save_pretrained('assets/tokenizer')
+"
 
-rm -rf assets
+# Validate each model against Python reference
+TRACT=../../target/opt-no-lto/tract
+cargo build --profile opt-no-lto -p tract-cli
+
+echo "Validating text encoder..."
+$TRACT assets/text_encoder.onnx -O run \
+    --input-from-bundle assets/text_encoder.io.npz \
+    --assert-output-bundle assets/text_encoder.io.npz --approx very
+
+echo "Validating VAE decoder..."
+$TRACT assets/vae_decoder.onnx -O run \
+    --input-from-bundle assets/vae_decoder.io.npz \
+    --assert-output-bundle assets/vae_decoder.io.npz --approx very
+
+echo "Validating UNet..."
+$TRACT assets/unet.onnx -O run \
+    --input-from-bundle assets/unet.io.npz \
+    --assert-output-bundle assets/unet.io.npz --approx very
+
+# Run the Rust example
+cargo run -p stable-diffusion --release -- \
+    -p "a photo of a cat" -s 10 --seed 42 \
+    -o assets/test_output.png \
+    --assets assets
+
+test -f assets/test_output.png
+echo "CI passed: test_output.png generated"
+
+rm -rf assets .venv
