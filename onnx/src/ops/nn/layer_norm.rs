@@ -166,18 +166,28 @@ impl Expansion for LayerNorm {
             cast(fact.datum_type),
             &normalized,
         )?;
+        let cast_scale_back = model.wire_node(
+            format!("{prefix}.cast_scale_back"),
+            cast(fact.datum_type),
+            &cast_scale,
+        )?;
         let normalized_scaled = wire_with_rank_broadcast(
             format!("{prefix}.normalized_scaled"),
             model,
             mul(),
-            &[cast_normalized[0], cast_scale[0]],
+            &[cast_normalized[0], cast_scale_back[0]],
         )?;
         let y = if let Some(bias) = cast_bias {
+            let cast_bias_back = model.wire_node(
+                format!("{prefix}.cast_bias_back"),
+                cast(fact.datum_type),
+                &bias,
+            )?;
             wire_with_rank_broadcast(
                 format!("{prefix}.y"),
                 model,
                 add(),
-                &[normalized_scaled[0], bias[0]],
+                &[normalized_scaled[0], cast_bias_back[0]],
             )?
         } else {
             normalized_scaled
