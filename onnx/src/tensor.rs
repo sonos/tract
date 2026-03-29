@@ -48,10 +48,15 @@ pub fn translate_inference_fact(
                     Some(tensor_shape_proto::dimension::Value::DimParam(v)) => {
                         if v == "?" || (v.starts_with("unk__") && !include_unknown_symbols) {
                             Ok(DimFact::default())
-                        } else {
-                            let dim = parse_tdim(&ctx.template.symbols, v)
-                                .with_context(|| format!("Parsing as TDim: `{v}'"))?;
+                        } else if let Ok(dim) = parse_tdim(&ctx.template.symbols, v) {
                             Ok(DimFact::from(dim))
+                        } else {
+                            // Non-standard dim_param (e.g. sympy expressions from torch dynamo):
+                            // treat as unknown and let tract infer from the graph.
+                            log::debug!(
+                                "Could not parse dim_param `{v}` as TDim, treating as unknown"
+                            );
+                            Ok(DimFact::default())
                         }
                     }
                     _ => Ok(DimFact::default()),
