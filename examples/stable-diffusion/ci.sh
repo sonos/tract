@@ -44,7 +44,7 @@ $TRACT assets/unet.onnx -O run \
     --assert-output-bundle assets/unet.io.npz --approx very
 
 # Run the Rust example
-cargo run -p stable-diffusion --release -- \
+cargo run -p stable-diffusion --profile opt-no-lto -- \
     -p "a photo of a cat" -s 10 --seed 42 \
     -o assets/test_output.png \
     --assets assets
