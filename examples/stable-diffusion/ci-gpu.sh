@@ -25,21 +25,30 @@ python export.py
 python reference.py
 
 # Validate each model against Python reference
+# tract-cli is pre-built by CI, fall back to building locally
 TRACT=../../target/opt-no-lto/tract
-cargo build --profile opt-no-lto -p tract-cli
+if [ ! -x "$TRACT" ]; then
+    cargo build --profile opt-no-lto -p tract-cli
+fi
 
-echo "Validating text encoder..."
-$TRACT assets/text_encoder.onnx -O run \
+if nvidia-smi > /dev/null 2>&1; then
+    RUNTIME="--cuda"
+else
+    RUNTIME="-O"
+fi
+
+echo "Validating text encoder ($RUNTIME)..."
+$TRACT assets/text_encoder.onnx $RUNTIME run \
     --input-from-bundle assets/text_encoder.io.npz \
     --assert-output-bundle assets/text_encoder.io.npz --approx very
 
-echo "Validating VAE decoder..."
-$TRACT assets/vae_decoder.onnx -O run \
+echo "Validating VAE decoder ($RUNTIME)..."
+$TRACT assets/vae_decoder.onnx $RUNTIME run \
     --input-from-bundle assets/vae_decoder.io.npz \
     --assert-output-bundle assets/vae_decoder.io.npz --approx very
 
-echo "Validating UNet..."
-$TRACT assets/unet.onnx -O run \
+echo "Validating UNet ($RUNTIME)..."
+$TRACT assets/unet.onnx $RUNTIME run \
     --input-from-bundle assets/unet.io.npz \
     --assert-output-bundle assets/unet.io.npz --approx very
 
