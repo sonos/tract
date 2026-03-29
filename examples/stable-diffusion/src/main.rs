@@ -46,12 +46,6 @@ impl EulerScheduler {
         self.sigmas[0]
     }
 
-    fn scale_model_input(&self, latent: &[f32], step: usize) -> Vec<f32> {
-        let sigma = self.sigmas[step];
-        let scale = 1.0 / (sigma * sigma + 1.0).sqrt();
-        latent.iter().map(|&x| x * scale).collect()
-    }
-
     fn scale_factor(&self, step: usize) -> f32 {
         let sigma = self.sigmas[step];
         1.0 / (sigma * sigma + 1.0).sqrt()
@@ -60,23 +54,85 @@ impl EulerScheduler {
     fn dt(&self, step: usize) -> f32 {
         self.sigmas[step + 1] - self.sigmas[step]
     }
-
-    fn step(&self, latent: &[f32], noise_pred: &[f32], step: usize) -> Vec<f32> {
-        let dt = self.dt(step);
-        latent.iter().zip(noise_pred).map(|(&x, &eps)| x + eps * dt).collect()
-    }
 }
 
 /// SD 1.5 VAE scaling factor
 const VAE_SCALING_FACTOR: f32 = 0.18215;
 
-fn main() -> Result<()> {
-    let assets = std::path::Path::new("assets");
-    let num_images: usize = std::env::args().nth(1).and_then(|s| s.parse().ok()).unwrap_or(1);
+fn base64_encode(data: &[u8]) -> String {
+    const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity((data.len() + 2) / 3 * 4);
+    for chunk in data.chunks(3) {
+        let b = match chunk.len() {
+            3 => [chunk[0], chunk[1], chunk[2]],
+            2 => [chunk[0], chunk[1], 0],
+            1 => [chunk[0], 0, 0],
+            _ => unreachable!(),
+        };
+        let n = (b[0] as u32) << 16 | (b[1] as u32) << 8 | b[2] as u32;
+        out.push(CHARS[(n >> 18 & 63) as usize] as char);
+        out.push(CHARS[(n >> 12 & 63) as usize] as char);
+        if chunk.len() > 1 {
+            out.push(CHARS[(n >> 6 & 63) as usize] as char);
+        } else {
+            out.push('=');
+        }
+        if chunk.len() > 2 {
+            out.push(CHARS[(n & 63) as usize] as char);
+        } else {
+            out.push('=');
+        }
+    }
+    out
+}
 
-    // Tokenize prompt
-    let prompt = "a photo of a cat";
-    eprintln!("Prompt: \"{prompt}\"");
+/// Stable Diffusion 1.5 image generation with tract
+#[derive(clap::Parser)]
+struct Args {
+    /// Text prompt for image generation
+    #[arg(short, long, default_value = "a photo of a cat")]
+    prompt: String,
+
+    /// Number of images to generate
+    #[arg(short, long, default_value_t = 1)]
+    num_images: usize,
+
+    /// Number of denoising steps
+    #[arg(short, long, default_value_t = 20)]
+    steps: usize,
+
+    /// Random seed
+    #[arg(long, default_value_t = 42)]
+    seed: u64,
+
+    /// Classifier-free guidance scale
+    #[arg(short, long, default_value_t = 7.5)]
+    guidance_scale: f32,
+
+    /// Output filename (or prefix for multiple images)
+    #[arg(short, long, default_value = "output.png")]
+    output: String,
+
+    /// Path to model assets directory
+    #[arg(long, default_value = "assets")]
+    assets: std::path::PathBuf,
+}
+
+fn main() -> Result<()> {
+    use clap::Parser as _;
+    let args = Args::parse();
+
+    let prompt = &args.prompt;
+    let num_images = args.num_images;
+    let num_steps = args.steps;
+    let seed = args.seed;
+    let guidance_scale = args.guidance_scale;
+    let output = &args.output;
+    let assets = &args.assets;
+
+    eprintln!(
+        "Prompt: \"{prompt}\", images: {num_images}, steps: {num_steps}, seed: {seed}, guidance: {guidance_scale}"
+    );
     let tokenizer = tokenizers::Tokenizer::from_file(assets.join("tokenizer/tokenizer.json"))
         .map_err(|e| anyhow!("{e}"))?;
     let encode = |text: &str| -> Result<ndarray::Array2<i64>> {
@@ -90,10 +146,9 @@ fn main() -> Result<()> {
 
     use rand::SeedableRng;
     use rand_distr::{Distribution, StandardNormal};
-    let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+    let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
 
     // Build scheduler from scratch
-    let num_steps = 20;
     let scheduler = EulerScheduler::new(num_steps);
     let init_noise_sigma = scheduler.init_noise_sigma();
     eprintln!("  Scheduler: {num_steps} steps, init_sigma={init_noise_sigma:.4}");
@@ -146,8 +201,12 @@ fn main() -> Result<()> {
         .collect();
 
     // --- Batched denoising loop ---
-    let guidance_scale: f32 = 7.5;
-    eprintln!("Denoising {num_images} image(s), {num_steps} steps, batch={b2}...");
+    use kdam::BarExt as _;
+    let mut pb = kdam::Bar::builder()
+        .total(num_steps)
+        .desc(format!("Denoising {num_images} image(s)"))
+        .build()
+        .unwrap();
     for (i, &t) in scheduler.timesteps.iter().enumerate() {
         let scale = scheduler.scale_factor(i);
 
@@ -176,11 +235,11 @@ fn main() -> Result<()> {
             latents[j] += eps * dt;
         }
 
-        if i % 5 == 0 {
-            let sigma = scheduler.sigmas[i];
-            eprintln!("  Step {i}/{num_steps}, t={t}, sigma={sigma:.4}");
-        }
+        let sigma = scheduler.sigmas[i];
+        pb.set_postfix(format!("t={t} σ={sigma:.2}"));
+        pb.update(1).ok();
     }
+    eprintln!();
 
     // --- VAE decode + save each image ---
     let (h, w) = (512usize, 512usize);
@@ -204,12 +263,37 @@ fn main() -> Result<()> {
             }
         }
         let path = if num_images == 1 {
-            assets.join("output.png")
+            std::path::PathBuf::from(output)
         } else {
-            assets.join(format!("output_{n}.png"))
+            let stem = std::path::Path::new(output)
+                .file_stem()
+                .unwrap_or_default()
+                .to_str()
+                .unwrap_or("output");
+            let ext = std::path::Path::new(output)
+                .extension()
+                .unwrap_or_default()
+                .to_str()
+                .unwrap_or("png");
+            std::path::PathBuf::from(format!("{stem}_{n}.{ext}"))
         };
         image::save_buffer(&path, &pixels, w as u32, h as u32, image::ColorType::Rgb8)?;
         eprintln!("Saved {}", path.display());
+
+        // Display inline in iTerm2/WezTerm/compatible terminals (with tmux passthrough)
+        {
+            use std::io::Write as _;
+            if let std::result::Result::Ok(png_data) = std::fs::read(&path) {
+                let b64 = base64_encode(&png_data);
+                let in_tmux = std::env::var("TMUX").is_ok();
+                let osc = if in_tmux { "\x1bPtmux;\x1b\x1b]" } else { "\x1b]" };
+                let st = if in_tmux { "\x07\x1b\\" } else { "\x07" };
+                let _ = write!(
+                    std::io::stderr(),
+                    "{osc}1337;File=inline=1;width=20;preserveAspectRatio=1:{b64}{st}\n"
+                );
+            }
+        }
     }
 
     Ok(())
