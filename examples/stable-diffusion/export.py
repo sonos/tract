@@ -89,9 +89,11 @@ def main():
             )
         print(f"  Exported to {ASSETS / 'unet.onnx'}")
 
-    # Save tokenizer for Rust side
+    # Save fast tokenizer (with tokenizer.json) for Rust side
     print("Saving tokenizer...")
-    pipe.tokenizer.save_pretrained(str(ASSETS / "tokenizer"))
+    from transformers import CLIPTokenizerFast
+    tok = CLIPTokenizerFast.from_pretrained(MODEL_ID, subfolder="tokenizer")
+    tok.save_pretrained(str(ASSETS / "tokenizer"))
 
     print("Export complete.")
 

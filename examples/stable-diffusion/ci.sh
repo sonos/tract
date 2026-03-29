@@ -24,13 +24,6 @@ python export.py
 # Generate reference I/O data for validation
 python reference.py
 
-# Save fast tokenizer (needed by Rust)
-python -c "
-from transformers import CLIPTokenizerFast
-tok = CLIPTokenizerFast.from_pretrained('stable-diffusion-v1-5/stable-diffusion-v1-5', subfolder='tokenizer')
-tok.save_pretrained('assets/tokenizer')
-"
-
 # Validate each model against Python reference
 TRACT=../../target/opt-no-lto/tract
 cargo build --profile opt-no-lto -p tract-cli
