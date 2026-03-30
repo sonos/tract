@@ -30,7 +30,7 @@ pub struct ConvProblem {
 }
 
 impl ConvProblem {
-    fn geo_ker(&self) -> &[usize] {
+    pub fn geo_ker(&self) -> &[usize] {
         &self.kernel.shape()[self.kernel_format.h_axis()..][..self.shape_in.hw_rank()]
     }
 
