@@ -72,8 +72,6 @@ else
     STAT=stat
 fi
 
-set -x
-
 nnef=llm/$generation/$id/$id.nnef.tgz
 
 $CACHE_FILE $nnef
@@ -111,8 +109,6 @@ then
     exit 1
 fi
 
-set -x
-
 for t in p0s100 p50s50 p99s1 
 do
     npz=llm/$generation/$id/$id.$t.io.npz
@@ -120,6 +116,10 @@ do
 
     key=$id.$t.$(arch).$device
     expectations="$ROOT/.travis/llm-expectations-541"
+
+    echo
+    echo "      Key: $key"
+    echo
 
     case $device in 
         cuda)
