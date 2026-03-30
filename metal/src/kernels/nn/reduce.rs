@@ -5,40 +5,27 @@ use metal::MTLSize;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
 
+pub use tract_gpu::ops::reduce::Reducer;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Reducer {
-    MeanOfSquares,
-    Sum,
-    Prod,
-    Min,
-    Max,
-    All,
-    Any,
-}
+pub struct MetalReducer(pub Reducer);
 
-impl Reducer {
-    pub const ALL: [Reducer; 7] =
-        [Self::MeanOfSquares, Self::Sum, Self::Prod, Self::Min, Self::Max, Self::All, Self::Any];
-
-    pub fn is_logic(&self) -> bool {
-        *self == Reducer::All || *self == Reducer::Any
-    }
-
-    pub fn is_supported_dt(&self, dt: DatumType) -> bool {
-        if self.is_logic() { dt.is::<bool>() } else { dt.is::<f32>() || dt.is::<f16>() }
-    }
-
+impl MetalReducer {
     pub fn kernel_name(&self, dt: DatumType) -> TractResult<String> {
-        ensure!(self.is_supported_dt(dt), "Unsupported dt {dt:?} for metal reduceop {self:?}");
+        ensure!(
+            self.0.is_supported_dt(dt),
+            "Unsupported dt {dt:?} for metal reduceop {:?}",
+            self.0
+        );
         let tname = DeviceTensor::tname(dt)?;
-        let op = match self {
-            Self::MeanOfSquares => "mean_of_squares",
-            Self::Sum => "sum",
-            Self::Prod => "prod",
-            Self::Min => "min",
-            Self::Max => "max",
-            Self::All => "all",
-            Self::Any => "any",
+        let op = match self.0 {
+            Reducer::MeanOfSquares => "mean_of_squares",
+            Reducer::Sum => "sum",
+            Reducer::Prod => "prod",
+            Reducer::Min => "min",
+            Reducer::Max => "max",
+            Reducer::All => "all",
+            Reducer::Any => "any",
         };
         Ok(format!("nn_ops::reduce_{op}_nd3_{tname}"))
     }

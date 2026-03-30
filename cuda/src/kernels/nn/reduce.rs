@@ -5,40 +5,23 @@ use cudarc::driver::{CudaStream, LaunchConfig, PushKernelArg};
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
 
+pub use tract_gpu::ops::reduce::Reducer;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Reducer {
-    MeanOfSquares,
-    Sum,
-    Prod,
-    Min,
-    Max,
-    Any,
-    All,
-}
+pub struct CudaReducer(pub Reducer);
 
-impl Reducer {
-    pub const ALL: [Reducer; 7] =
-        [Self::MeanOfSquares, Self::Sum, Self::Prod, Self::Min, Self::Max, Self::Any, Self::All];
-
-    pub fn is_logic(&self) -> bool {
-        *self == Reducer::All || *self == Reducer::Any
-    }
-
-    pub fn is_supported_dt(&self, dt: DatumType) -> bool {
-        if self.is_logic() { dt.is::<bool>() } else { dt.is::<f32>() || dt.is::<f16>() }
-    }
-
+impl CudaReducer {
     pub fn kernel_name(&self, dt: DatumType, n_cols: usize) -> TractResult<String> {
-        ensure!(self.is_supported_dt(dt), "Unsupported dt {dt:?} for cuda reduceop {self:?}");
+        ensure!(self.0.is_supported_dt(dt), "Unsupported dt {dt:?} for cuda reduceop {:?}", self.0);
         let tname = DeviceTensor::tname(dt)?;
-        let op = match self {
-            Self::MeanOfSquares => "mean_of_squares",
-            Self::Sum => "sum",
-            Self::Prod => "prod",
-            Self::Min => "min",
-            Self::Max => "max",
-            Self::Any => "any",
-            Self::All => "all",
+        let op = match self.0 {
+            Reducer::MeanOfSquares => "mean_of_squares",
+            Reducer::Sum => "sum",
+            Reducer::Prod => "prod",
+            Reducer::Min => "min",
+            Reducer::Max => "max",
+            Reducer::Any => "any",
+            Reducer::All => "all",
         };
         if n_cols < 1024 {
             Ok(format!("reduce_{op}_small_{tname}"))
@@ -148,7 +131,7 @@ mod tests {
             .into_device()?;
 
             let cpu_output = tract_reducer.reduce(&[axis], &a.to_host()?.into_tensor())?;
-            let cuda_output = reducer.eval(stream, &a, axis)?;
+            let cuda_output = CudaReducer(reducer).eval(stream, &a, axis)?;
             cpu_output
                 .close_enough(&cuda_output.to_host()?.into_tensor(), Approximation::Approximate)
                 .with_context(|| {
@@ -381,7 +364,7 @@ mod tests {
         pub fn run(&self) -> TractResult<Tensor> {
             CUDA_STREAM.with(|stream| {
                 let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_device()?;
-                let cuda_output = self.op.eval(stream, &a, self.axis)?;
+                let cuda_output = CudaReducer(self.op).eval(stream, &a, self.axis)?;
                 Ok(cuda_output.to_host()?.into_tensor())
             })
         }
