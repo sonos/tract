@@ -42,7 +42,7 @@ pub use leaky_relu::CudaLeakyRelu;
 pub use pad::CudaPad;
 pub use pulse::{CudaDelay, CudaPulsePad};
 pub use quant_q81::{CudaGgmlQuantQ81, GgmlQuantQ81Fact};
-pub use reduce::CudaReduce;
+pub use reduce::{CudaReduce, cuda_reduce};
 pub use rms_norm::CudaRmsNorm;
 pub use rotate_half::CudaRotateHalf;
 pub use scaled_masked_softmax::CudaScaledMaskedSoftmax;

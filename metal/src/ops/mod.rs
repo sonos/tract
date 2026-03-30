@@ -28,7 +28,7 @@ pub use element_wise::MetalElementWiseOp;
 pub use fused_axis_op::MetalFusedAxisOp;
 pub use gelu_approximate::MetalGeluApproximate;
 pub use gemm::MetalGemm;
-pub use reduce::MetalReduce;
+pub use reduce::{MetalReduce, metal_reduce};
 pub use rms_norm::MetalRmsNorm;
 pub use rotate_half::MetalRotateHalf;
 pub use scaled_masked_softmax::MetalScaledMaskedSoftmax;

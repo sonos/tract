@@ -1,11 +1,23 @@
-use crate::tensor::{DeviceTensor, DeviceTensorExt};
+use crate::tensor::DeviceTensor;
+use downcast_rs::{Downcast, impl_downcast};
 use std::fmt;
-use std::fmt::Debug;
-use std::hash::Hash;
-use std::marker::PhantomData;
 use tract_core::internal::*;
 use tract_core::ops::nn as core_ops_nn;
 use tract_itertools::Itertools;
+
+pub trait GpuStream: Downcast {}
+impl_downcast!(GpuStream);
+
+pub type DispatchReduceFn =
+    fn(&dyn GpuStream, &Reducer, &DeviceTensor, usize, &DeviceTensor) -> TractResult<()>;
+pub type WithStreamReduceFn = fn(
+    DispatchReduceFn,
+    &Reducer,
+    &[usize],
+    usize,
+    &TurnState,
+    TVec<TValue>,
+) -> TractResult<TVec<TValue>>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Reducer {
@@ -58,67 +70,59 @@ impl Reducer {
     }
 }
 
-pub trait GpuReduceBackend: Clone + Debug + Hash + PartialEq + Eq + Send + Sync + 'static {
-    type Stream;
-
-    fn name() -> &'static str;
-
-    fn with_stream<R>(f: impl FnOnce(&Self::Stream) -> TractResult<R>) -> TractResult<R>;
-
-    fn dispatch_reduce(
-        stream: &Self::Stream,
-        reducer: &Reducer,
-        input: &DeviceTensor,
-        axis: usize,
-        output: &DeviceTensor,
-    ) -> TractResult<()>;
-
-    fn eval(
-        reducer: &Reducer,
-        axes: &[usize],
-        node_id: usize,
-        session: &TurnState,
-        inputs: TVec<TValue>,
-    ) -> TractResult<TVec<TValue>> {
-        Self::with_stream(|stream| {
-            let input_value = args_1!(inputs);
-            let input = input_value.to_device_tensor()?;
-            let mut output_shape = input.shape().to_vec();
-            output_shape[axes[0]] = 1;
-            let output = crate::session_handler::make_tensor_for_node(
-                session,
-                node_id,
-                input.datum_type(),
-                &output_shape,
-            )?;
-            Self::dispatch_reduce(stream, reducer, input, axes[0], &output)?;
-            Ok(tvec!(output.into_tensor().into_tvalue()))
-        })
-    }
-}
-
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct GpuReduce<B: GpuReduceBackend> {
+#[derive(Clone, Debug)]
+pub struct GpuReduce {
     pub axes: TVec<usize>,
     pub reducer: Reducer,
-    _backend: PhantomData<B>,
+    pub backend_name: &'static str,
+    pub with_stream: WithStreamReduceFn,
+    pub dispatch: DispatchReduceFn,
 }
 
-impl<B: GpuReduceBackend> GpuReduce<B> {
-    pub fn new(axes: TVec<usize>, reducer: Reducer) -> TractResult<Self> {
-        ensure!(axes.len() == 1, "Only one axis of reduce is supported by {}Reduce", B::name());
-        Ok(Self { axes, reducer, _backend: PhantomData })
+impl PartialEq for GpuReduce {
+    fn eq(&self, other: &Self) -> bool {
+        self.axes == other.axes
+            && self.reducer == other.reducer
+            && self.backend_name == other.backend_name
+    }
+}
+
+impl Eq for GpuReduce {}
+
+impl std::hash::Hash for GpuReduce {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.axes.hash(state);
+        self.reducer.hash(state);
+        self.backend_name.hash(state);
+    }
+}
+
+impl GpuReduce {
+    pub fn new(
+        axes: TVec<usize>,
+        reducer: Reducer,
+        backend_name: &'static str,
+        with_stream: WithStreamReduceFn,
+        dispatch: DispatchReduceFn,
+    ) -> TractResult<Self> {
+        ensure!(axes.len() == 1, "Only one axis of reduce is supported by {backend_name}Reduce");
+        Ok(Self { axes, reducer, backend_name, with_stream, dispatch })
     }
 
-    pub fn from_tract_core(core_reduce: &core_ops_nn::Reduce) -> TractResult<Self> {
+    pub fn from_tract_core(
+        core_reduce: &core_ops_nn::Reduce,
+        backend_name: &'static str,
+        with_stream: WithStreamReduceFn,
+        dispatch: DispatchReduceFn,
+    ) -> TractResult<Self> {
         let reducer = Reducer::from_tract_core(&core_reduce.reducer)?;
-        Self::new(core_reduce.axes.clone(), reducer)
+        Self::new(core_reduce.axes.clone(), reducer, backend_name, with_stream, dispatch)
     }
 }
 
-impl<B: GpuReduceBackend> Op for GpuReduce<B> {
+impl Op for GpuReduce {
     fn name(&self) -> StaticName {
-        format!("{}Reduce<{:?}>", B::name(), self.reducer).into()
+        format!("{}Reduce<{:?}>", self.backend_name, self.reducer).into()
     }
     fn info(&self) -> TractResult<Vec<String>> {
         Ok(vec![format!("axes: {:?}", self.axes)])
@@ -126,7 +130,7 @@ impl<B: GpuReduceBackend> Op for GpuReduce<B> {
     op_as_typed_op!();
 }
 
-impl<B: GpuReduceBackend> EvalOp for GpuReduce<B> {
+impl EvalOp for GpuReduce {
     fn is_stateless(&self) -> bool {
         true
     }
@@ -137,11 +141,11 @@ impl<B: GpuReduceBackend> EvalOp for GpuReduce<B> {
         session: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        B::eval(&self.reducer, &self.axes, node_id, session, inputs)
+        (self.with_stream)(self.dispatch, &self.reducer, &self.axes, node_id, session, inputs)
     }
 }
 
-impl<B: GpuReduceBackend> TypedOp for GpuReduce<B> {
+impl TypedOp for GpuReduce {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         ensure!(self.axes.iter().tuple_windows().all(|(a, b)| a < b));
         crate::utils::facts_to_device_facts(inputs, |facts| {

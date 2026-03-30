@@ -160,8 +160,7 @@ fn can_translate_to_metal_op(source: &TypedModel, node: &TypedNode) -> TractResu
             || node.op_is::<TypedConcat>()
             || node.op_is::<DynKeyValueCache>()
             || node.op_as::<Reduce>().is_some_and(|op| {
-                ops::MetalReduce::from_tract_core(op)
-                    .is_ok_and(|op| op.reducer.is_supported_dt(input_dts[0]))
+                ops::metal_reduce(op).is_ok_and(|op| op.reducer.is_supported_dt(input_dts[0]))
             })
             || node.op_as::<CoreSoftmax>().is_some_and(|op| {
                 kernels::nn::Softmax::is_supported_dt(input_dts[0])
@@ -238,7 +237,7 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
                 } else if let Some(op) = node.op_as::<TypedConcat>() {
                     Box::new(ops::MetalConcat::from_tract_core(op))
                 } else if let Some(op) = node.op_as::<Reduce>() {
-                    Box::new(ops::MetalReduce::from_tract_core(op).unwrap())
+                    Box::new(ops::metal_reduce(op).unwrap())
                 } else if let Some(op) = node.op_as::<CoreSoftmax>() {
                     Box::new(ops::MetalSoftmax::from_tract_core(op).unwrap())
                 } else if let Some(op) = node.op_as::<ScaledMaskedSoftmax>() {

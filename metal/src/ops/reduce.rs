@@ -1,33 +1,30 @@
-use crate::MetalStream;
 use crate::kernels::nn::MetalReducer;
 use crate::utils::with_borrowed_metal_stream;
 use tract_core::internal::*;
-use tract_gpu::ops::reduce::{GpuReduce, GpuReduceBackend, Reducer};
+use tract_gpu::ops::reduce::{GpuReduce, GpuStream, Reducer};
 use tract_gpu::tensor::DeviceTensor;
 
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct MetalReduceBackend;
+impl GpuStream for crate::MetalStream {}
 
-impl GpuReduceBackend for MetalReduceBackend {
-    type Stream = MetalStream;
-
-    fn name() -> &'static str {
-        "Metal"
-    }
-
-    fn with_stream<R>(f: impl FnOnce(&Self::Stream) -> TractResult<R>) -> TractResult<R> {
-        with_borrowed_metal_stream(f)
-    }
-
-    fn dispatch_reduce(
-        stream: &Self::Stream,
-        reducer: &Reducer,
-        input: &DeviceTensor,
-        axis: usize,
-        output: &DeviceTensor,
-    ) -> TractResult<()> {
-        MetalReducer(*reducer).dispatch_eval(stream, input, axis, output)
-    }
+fn with_stream(
+    f: Box<dyn FnOnce(&dyn GpuStream) -> TractResult<TVec<TValue>>>,
+) -> TractResult<TVec<TValue>> {
+    with_borrowed_metal_stream(|s| f(s as &dyn GpuStream))
 }
 
-pub type MetalReduce = GpuReduce<MetalReduceBackend>;
+fn dispatch(
+    stream: &dyn GpuStream,
+    reducer: &Reducer,
+    input: &DeviceTensor,
+    axis: usize,
+    output: &DeviceTensor,
+) -> TractResult<()> {
+    let stream = stream.downcast_ref::<crate::MetalStream>().unwrap();
+    MetalReducer(*reducer).dispatch_eval(stream, input, axis, output)
+}
+
+pub type MetalReduce = GpuReduce;
+
+pub fn metal_reduce(core_reduce: &tract_core::ops::nn::Reduce) -> TractResult<MetalReduce> {
+    GpuReduce::from_tract_core(core_reduce, "Metal", with_stream, dispatch)
+}
