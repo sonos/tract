@@ -203,7 +203,7 @@ impl TypedOp for CudaDynKVCache {
 #[cfg(test)]
 mod tests {
     use crate::CudaTransform;
-    use crate::context::CUDA_STREAM;
+    use crate::context::StreamExt;
 
     use super::*;
     use tract_core::ops::array::TypedConcat;
@@ -218,7 +218,8 @@ mod tests {
     where
         usize: AsPrimitive<F>,
     {
-        CUDA_STREAM.with(|_| {
+        tract_gpu::with_stream(|stream| {
+            let _stream = stream.cuda()?;
             let op_name = "test".to_string();
 
             let mut model = TypedModel::default();

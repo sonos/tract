@@ -6,17 +6,13 @@ mod tensor;
 mod transform;
 pub mod utils;
 
-pub use context::CUDA_STREAM;
+pub use context::register_cuda_stream_factory;
 use tract_core::internal::*;
 use tract_core::transform::ModelTransform;
 use tract_gpu::GpuStream;
 pub use transform::CudaTransform;
 
 impl GpuStream for context::TractCudaStream {}
-
-fn cuda_with_stream(f: &mut dyn FnMut(&dyn GpuStream) -> TractResult<()>) -> TractResult<()> {
-    CUDA_STREAM.with(|stream| f(stream as &dyn GpuStream))
-}
 
 use crate::utils::ensure_cuda_runtime_dependencies;
 const Q40_ROW_PADDING: usize = 512;
@@ -35,6 +31,7 @@ impl Runtime for CudaRuntime {
         options: &RunOptions,
     ) -> TractResult<Box<dyn Runnable>> {
         ensure_cuda_runtime_dependencies("cuda runtime supported dependencies not found.")?;
+        register_cuda_stream_factory();
         CudaTransform.transform(&mut model)?;
         model.optimize()?;
 

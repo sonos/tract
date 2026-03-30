@@ -2,7 +2,7 @@ use derive_new::new;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensorExt;
 
-use crate::context::CUDA_STREAM;
+use crate::context::StreamExt;
 use crate::kernels;
 
 #[derive(Debug, Clone, new, Hash, PartialEq, Eq)]
@@ -39,7 +39,8 @@ impl EvalOp for CudaMultiBroadcastTo {
             &shape,
         )?;
 
-        CUDA_STREAM.with(|stream| {
+        tract_gpu::with_stream(|stream| {
+            let stream = stream.cuda()?;
             kernels::array::MultiBroadcast.dispatch_eval(stream, input, 0, &output)
         })?;
         Ok(tvec![output.into_tensor().into_tvalue()])

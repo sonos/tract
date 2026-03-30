@@ -25,12 +25,12 @@ use cudarc::nvrtc::sys::{
 use std::ffi::{CStr, CString, c_char};
 use std::path::{Path, PathBuf};
 
-thread_local! {
-    pub static CUDA_STREAM: TractCudaStream = {
-        let stream = TractCudaStream::new().expect("Could not create Cuda Stream");
-        tract_gpu::register_stream(crate::cuda_with_stream);
-        stream
-    };
+fn create_cuda_stream() -> Box<dyn tract_gpu::GpuStream> {
+    Box::new(TractCudaStream::new().expect("Could not create Cuda Stream"))
+}
+
+pub fn register_cuda_stream_factory() {
+    tract_gpu::register_stream_factory(create_cuda_stream);
 }
 
 pub fn cuda_context() -> &'static TractCudaContext {
@@ -38,6 +38,7 @@ pub fn cuda_context() -> &'static TractCudaContext {
     INSTANCE.get_or_init(|| {
         let ctxt = TractCudaContext::new().expect("Could not create CUDA context");
         tract_gpu::device::set_context(Box::new(ctxt.clone())).expect("Could not set CUDA context");
+        register_cuda_stream_factory();
         ctxt
     })
 }
@@ -282,7 +283,10 @@ impl TractCudaContext {
 
 impl DeviceContext for TractCudaContext {
     fn synchronize(&self) -> TractResult<()> {
-        CUDA_STREAM.with(|stream| stream.synchronize().map_err(|e| e.into()))
+        tract_gpu::with_stream(|stream| {
+            let stream = stream.cuda()?;
+            stream.synchronize().map_err(|e| e.into())
+        })
     }
 
     fn tensor_to_device(&self, tensor: TValue) -> TractResult<Box<dyn OwnedDeviceTensor>> {

@@ -1,4 +1,4 @@
-use crate::context::CUDA_STREAM;
+use crate::context::StreamExt;
 use crate::kernels;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensorExt;
@@ -48,8 +48,10 @@ impl EvalOp for CudaCast {
                 self.to,
                 input.shape(),
             )?;
-            CUDA_STREAM
-                .with(|stream| kernels::array::Cast.dispatch_eval(stream, input, &output))?;
+            tract_gpu::with_stream(|stream| {
+                let stream = stream.cuda()?;
+                kernels::array::Cast.dispatch_eval(stream, input, &output)
+            })?;
             Ok(tvec![output.into_tensor().into_tvalue()])
         }
     }

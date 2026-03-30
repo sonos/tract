@@ -1,4 +1,4 @@
-use crate::context::CUDA_STREAM;
+use crate::context::StreamExt;
 use crate::kernels::BinOps;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensorExt;
@@ -53,7 +53,8 @@ impl EvalOp for CudaBinOp {
             tract_gpu::session_handler::make_tensor_for_node(session, node_id, out_dt, &out_shape)?;
 
         if a.len() > 0 && b.len() > 0 {
-            CUDA_STREAM.with(|stream| {
+            tract_gpu::with_stream(|stream| {
+                let stream = stream.cuda()?;
                 self.0
                     .dispatch_eval(stream, a, b, &output)
                     .with_context(|| "Error while dispatching eval for Cuda Bin Op")

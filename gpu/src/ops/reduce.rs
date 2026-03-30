@@ -127,9 +127,8 @@ impl EvalOp for GpuReduce {
         session: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        let mut inputs = Some(inputs);
         crate::with_stream(|stream| {
-            let input_value = args_1!(inputs.take().unwrap());
+            let input_value = args_1!(inputs);
             let input = input_value.to_device_tensor()?;
             let mut output_shape = input.shape().to_vec();
             output_shape[self.axes[0]] = 1;

@@ -2,7 +2,7 @@ use crate::kernels::nn::GeluApproximate;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensorExt;
 
-use crate::context::CUDA_STREAM;
+use crate::context::StreamExt;
 
 #[derive(Clone, Debug, Default, Hash, PartialEq, Eq)]
 pub struct CudaGeluApproximate {
@@ -28,7 +28,8 @@ impl EvalOp for CudaGeluApproximate {
         session: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        CUDA_STREAM.with(|stream| {
+        tract_gpu::with_stream(|stream| {
+            let stream = stream.cuda()?;
             let input = args_1!(inputs);
             let input_cuda = input.to_device_tensor()?;
             let output = tract_gpu::session_handler::make_tensor_for_node(

@@ -339,7 +339,7 @@ mod tests {
 
     use super::*;
 
-    use crate::context::CUDA_STREAM;
+    use crate::context::StreamExt;
 
     /* Except for And and Or, Binops are proptest for almost all types  */
 
@@ -367,7 +367,8 @@ mod tests {
         b_shape: &[usize],
         cab: impl Fn(&mut bool, &bool, &bool),
     ) -> TractResult<()> {
-        CUDA_STREAM.with(|stream| {
+        tract_gpu::with_stream(|stream| {
+            let stream = stream.cuda()?;
             let a_len = a_shape.iter().product::<usize>();
             let b_len = b_shape.iter().product::<usize>();
 
@@ -402,7 +403,8 @@ mod tests {
         b_shape: &[usize],
         cab: impl Fn(&mut f32, &f32, &f32),
     ) -> TractResult<()> {
-        CUDA_STREAM.with(|stream| {
+        tract_gpu::with_stream(|stream| {
+            let stream = stream.cuda()?;
             let a_len = a_shape.iter().product::<usize>();
             let b_len = b_shape.iter().product::<usize>();
 

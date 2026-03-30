@@ -7,7 +7,7 @@ use tract_gpu::session_handler::make_tensor_for_node;
 use tract_gpu::tensor::{DeviceTensor, DeviceTensorExt, IntoDevice};
 use tract_pulse_opl::ops::{Delay, PulsePad};
 
-use crate::CUDA_STREAM;
+use crate::context::StreamExt;
 use crate::kernels::{
     get_cuda_view, get_cuda_view_mut, get_sliced_cuda_view, get_sliced_cuda_view_mut,
 };
@@ -74,7 +74,8 @@ impl CudaDelayState {
 
         let from_input = input_pulse.saturating_sub(op.delay);
         let from_buffer = output_pulse.saturating_sub(from_input);
-        CUDA_STREAM.with(|stream| -> TractResult<()> {
+        tract_gpu::with_stream(|stream| {
+            let stream = stream.cuda()?;
             device_tensor_assign_slice(
                 stream,
                 output,
@@ -241,7 +242,8 @@ fn fill_slice_constant(
     axis: usize,
     range: Range<usize>,
 ) -> TractResult<()> {
-    CUDA_STREAM.with(|stream| {
+    tract_gpu::with_stream(|stream| {
+        let stream = stream.cuda()?;
         let mut zone_shape: TVec<usize> = dst.shape().into();
         zone_shape[axis] = range.len();
         let mut dst_origin = tvec!(0; dst.rank());
@@ -266,7 +268,8 @@ fn fill_slice_repeating_one_frame(
     dst_range: Range<usize>,
     src_frame: usize,
 ) -> TractResult<()> {
-    CUDA_STREAM.with(|stream| {
+    tract_gpu::with_stream(|stream| {
+        let stream = stream.cuda()?;
         let mut zone_shape: TVec<usize> = dst.shape().into();
         zone_shape[axis] = dst_range.len();
         let mut dst_origin = tvec!(0; dst.rank());
@@ -293,7 +296,8 @@ impl CudaPulsePadOpState {
         let mut frame_shape: TVec<usize> = input.shape().into();
         frame_shape[op.axis] = 1;
         let last_valid_frame = DeviceTensor::uninitialized_dt(input.datum_type(), &frame_shape)?;
-        CUDA_STREAM.with(|stream| {
+        tract_gpu::with_stream(|stream| {
+            let stream = stream.cuda()?;
             device_tensor_assign_slice(
                 stream,
                 &last_valid_frame,
@@ -332,8 +336,9 @@ impl CudaPulsePadOpState {
 
         let mut output =
             make_tensor_for_node(session, self.node_id, input.datum_type(), input.shape())?;
-        CUDA_STREAM.with(|stream| {
-            stream.memcpy_dtod(&get_cuda_view(input), &mut get_cuda_view_mut(&output))
+        tract_gpu::with_stream(|stream| {
+            let stream = stream.cuda()?;
+            Ok(stream.memcpy_dtod(&get_cuda_view(input), &mut get_cuda_view_mut(&output))?)
         })?;
 
         // pulse is entirely in either valid input or invalid input

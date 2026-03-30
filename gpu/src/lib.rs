@@ -1,4 +1,5 @@
 use downcast_rs::{Downcast, impl_downcast};
+use std::cell::RefCell;
 use tract_core::prelude::TractResult;
 
 pub mod device;
@@ -14,35 +15,46 @@ pub mod utils;
 pub trait GpuStream: Downcast {}
 impl_downcast!(GpuStream);
 
-type WithStreamFn = fn(&mut dyn FnMut(&dyn GpuStream) -> TractResult<()>) -> TractResult<()>;
+type StreamInitFn = fn() -> Box<dyn GpuStream>;
 
 thread_local! {
-    static GPU_WITH_STREAM: std::cell::Cell<Option<WithStreamFn>> = const { std::cell::Cell::new(None) };
+    static GPU_STREAM: RefCell<Option<Box<dyn GpuStream>>> = const { RefCell::new(None) };
+    static GPU_STREAM_INITIALIZING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
-pub fn register_stream(f: WithStreamFn) {
-    GPU_WITH_STREAM.with(|cell| cell.set(Some(f)));
+static STREAM_INIT: std::sync::OnceLock<StreamInitFn> = std::sync::OnceLock::new();
+
+/// Register a factory function that creates the GPU stream on first access per thread.
+pub fn register_stream_factory(f: StreamInitFn) {
+    STREAM_INIT.set(f).ok();
 }
 
-pub fn with_stream<R>(mut f: impl FnMut(&dyn GpuStream) -> TractResult<R>) -> TractResult<R> {
-    let mut result: Option<R> = None;
-    let mut err: Option<anyhow::Error> = None;
-    GPU_WITH_STREAM.with(|cell| {
-        let ws = cell.get().expect("GPU stream not registered");
-        let _ = ws(&mut |stream| match f(stream) {
-            Ok(r) => {
-                result = Some(r);
-                Ok(())
-            }
-            Err(e) => {
-                err = Some(e);
-                Ok(())
-            }
-        });
+pub fn set_stream(stream: Box<dyn GpuStream>) {
+    GPU_STREAM.with(|cell| {
+        *cell.borrow_mut() = Some(stream);
     });
-    match (result, err) {
-        (Some(r), _) => Ok(r),
-        (_, Some(e)) => Err(e),
-        _ => unreachable!(),
+}
+
+fn ensure_stream() {
+    let needs_init = GPU_STREAM.with(|cell| cell.borrow().is_none());
+    let initializing = GPU_STREAM_INITIALIZING.with(|cell| cell.get());
+    if needs_init && !initializing {
+        if let Some(init) = STREAM_INIT.get() {
+            GPU_STREAM_INITIALIZING.with(|cell| cell.set(true));
+            let stream = init();
+            set_stream(stream);
+            GPU_STREAM_INITIALIZING.with(|cell| cell.set(false));
+        }
     }
+}
+
+pub fn with_stream<R>(f: impl FnOnce(&dyn GpuStream) -> TractResult<R>) -> TractResult<R> {
+    ensure_stream();
+    GPU_STREAM.with(|cell| {
+        let borrow = cell.borrow();
+        let stream = borrow
+            .as_ref()
+            .expect("GPU stream not set. Register a stream factory or call set_stream() first.");
+        f(&**stream)
+    })
 }

@@ -3,7 +3,7 @@ use tract_core::internal::*;
 use tract_gpu::session_handler::make_tensor_for_node;
 use tract_gpu::tensor::DeviceTensorExt;
 
-use crate::context::CUDA_STREAM;
+use crate::context::StreamExt;
 use crate::kernels::UnaryOps;
 
 #[derive(Clone, Debug, new, Hash, PartialEq, Eq)]
@@ -24,7 +24,8 @@ impl EvalOp for CudaUnaryOp {
         session: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        CUDA_STREAM.with(|stream| {
+        tract_gpu::with_stream(|stream| {
+            let stream = stream.cuda()?;
             let input_value = args_1!(inputs);
             let input = input_value.to_device_tensor()?;
             let output = make_tensor_for_node(session, node_id, input.datum_type(), input.shape())?;

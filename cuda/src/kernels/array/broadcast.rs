@@ -130,10 +130,11 @@ mod tests {
 
     use super::*;
 
-    use crate::context::CUDA_STREAM;
+    use crate::context::StreamExt;
 
     fn run_test_case(in_shape: &[usize], out_shape: &[usize]) -> TractResult<()> {
-        CUDA_STREAM.with(|stream| {
+        tract_gpu::with_stream(|stream| {
+            let stream = stream.cuda()?;
             let a_len = in_shape.iter().product::<usize>();
 
             let a =

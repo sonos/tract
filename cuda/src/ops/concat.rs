@@ -1,4 +1,4 @@
-use crate::context::CUDA_STREAM;
+use crate::context::StreamExt;
 use crate::kernels::array::Concat;
 use derive_new::new;
 use tract_core::internal::*;
@@ -64,7 +64,10 @@ impl EvalOp for CudaConcat {
             inputs[0].datum_type(),
             &output_shape,
         )?;
-        CUDA_STREAM.with(|stream| self.kernel.dispatch_eval(stream, &inputs, &output))?;
+        tract_gpu::with_stream(|stream| {
+            let stream = stream.cuda()?;
+            self.kernel.dispatch_eval(stream, &inputs, &output)
+        })?;
         Ok(tvec!(output.into_tensor().into_tvalue()))
     }
 }

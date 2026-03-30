@@ -65,7 +65,7 @@ pub fn cuda_reduce_launch(
 
 #[cfg(test)]
 mod tests {
-    use crate::context::CUDA_STREAM;
+    use crate::context::StreamExt;
 
     use super::*;
     use derive_new::new;
@@ -90,7 +90,8 @@ mod tests {
         usize: AsPrimitive<f32>,
         f32: AsPrimitive<F>,
     {
-        CUDA_STREAM.with(|stream| {
+        tract_gpu::with_stream(|stream| {
+            let stream = stream.cuda()?;
             let len = shape.iter().product::<usize>();
 
             let a = Tensor::from_shape(
@@ -342,7 +343,8 @@ mod tests {
         }
 
         pub fn run(&self) -> TractResult<Tensor> {
-            CUDA_STREAM.with(|stream| {
+            tract_gpu::with_stream(|stream| {
+                let stream = stream.cuda()?;
                 let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_device()?;
                 let mut o_shape = a.shape().to_vec();
                 o_shape[self.axis] = 1;

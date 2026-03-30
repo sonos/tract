@@ -145,7 +145,7 @@ impl Pad {
 mod tests {
     use std::f32::INFINITY;
 
-    use crate::context::CUDA_STREAM;
+    use crate::context::StreamExt;
 
     use super::*;
     use tract_core::internal::Tensor;
@@ -160,7 +160,8 @@ mod tests {
     where
         T: Datum + Copy + From<u8>,
     {
-        CUDA_STREAM.with(|stream| {
+        tract_gpu::with_stream(|stream| {
+            let stream = stream.cuda()?;
             let num_elements = in_shape.iter().product();
 
             let a = Tensor::from_shape(
