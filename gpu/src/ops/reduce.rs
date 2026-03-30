@@ -1,3 +1,4 @@
+use crate::tensor::{DeviceTensor, DeviceTensorExt};
 use std::fmt;
 use std::fmt::Debug;
 use std::hash::Hash;
@@ -58,14 +59,42 @@ impl Reducer {
 }
 
 pub trait GpuReduceBackend: Clone + Debug + Hash + PartialEq + Eq + Send + Sync + 'static {
+    type Stream;
+
     fn name() -> &'static str;
+
+    fn with_stream<R>(f: impl FnOnce(&Self::Stream) -> TractResult<R>) -> TractResult<R>;
+
+    fn dispatch_reduce(
+        stream: &Self::Stream,
+        reducer: &Reducer,
+        input: &DeviceTensor,
+        axis: usize,
+        output: &DeviceTensor,
+    ) -> TractResult<()>;
+
     fn eval(
         reducer: &Reducer,
         axes: &[usize],
         node_id: usize,
         session: &TurnState,
         inputs: TVec<TValue>,
-    ) -> TractResult<TVec<TValue>>;
+    ) -> TractResult<TVec<TValue>> {
+        Self::with_stream(|stream| {
+            let input_value = args_1!(inputs);
+            let input = input_value.to_device_tensor()?;
+            let mut output_shape = input.shape().to_vec();
+            output_shape[axes[0]] = 1;
+            let output = crate::session_handler::make_tensor_for_node(
+                session,
+                node_id,
+                input.datum_type(),
+                &output_shape,
+            )?;
+            Self::dispatch_reduce(stream, reducer, input, axes[0], &output)?;
+            Ok(tvec!(output.into_tensor().into_tvalue()))
+        })
+    }
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
