@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 anyhow.workspace = true
+half.workspace = true
 clap = { workspace = true, features = ["derive"] }
 image = "0.25"
 kdam = "0.6"
