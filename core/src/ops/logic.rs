@@ -106,13 +106,13 @@ pub(crate) fn is_provably_all_true(expr: &TDim, shape: &ShapeFact) -> bool {
 /// | `Some(s)` | `None`       | `[s, dim)` — upper region true    |
 /// | `Some(s)` | `Some(e)`    | `[s, e)` — three zones            |
 #[derive(Debug, Clone)]
-pub(crate) struct PositiveRange {
+pub(crate) struct TrueRange {
     pub axis: usize,
     pub start: Option<TDim>, // None = 0
     pub end: Option<TDim>,   // None = dim
 }
 
-impl PositiveRange {
+impl TrueRange {
     /// Condition is true for the entire dimension.
     pub fn is_full(&self) -> bool {
         self.start.is_none() && self.end.is_none()
@@ -127,7 +127,7 @@ impl PositiveRange {
     }
 }
 
-pub(crate) fn classify_positive_range(expr: &TDim, shape: &ShapeFact) -> Option<PositiveRange> {
+pub(crate) fn classify_true_range(expr: &TDim, shape: &ShapeFact) -> Option<TrueRange> {
     fn try_ge(ge: &TDim, shape: &ShapeFact) -> Option<(usize, TDim)> {
         if let TDim::Ge(lhs, rhs) = ge {
             if let TDim::Sym(sym) = &**lhs {
@@ -143,20 +143,20 @@ pub(crate) fn classify_positive_range(expr: &TDim, shape: &ShapeFact) -> Option<
     let simplified = expr.clone().simplify();
     // All-false: empty range on axis 0
     if simplified == TDim::Val(0) || is_provably_all_false(&simplified, shape) {
-        return Some(PositiveRange { axis: 0, start: None, end: Some(TDim::Val(0)) });
+        return Some(TrueRange { axis: 0, start: None, end: Some(TDim::Val(0)) });
     }
     // All-true: open (unbounded) range on axis 0
     if simplified == TDim::Val(1) || is_provably_all_true(&simplified, shape) {
-        return Some(PositiveRange { axis: 0, start: None, end: None });
+        return Some(TrueRange { axis: 0, start: None, end: None });
     }
     // Ge(x_k, split): true when x_k >= split → [split, dim)
     if let Some((axis, split)) = try_ge(&simplified, shape) {
-        return Some(PositiveRange { axis, start: Some(split), end: None });
+        return Some(TrueRange { axis, start: Some(split), end: None });
     }
     // 1 - Ge(x_k, split): true when x_k < split → [0, split)
     let flipped = (TDim::Val(1) - simplified).simplify();
     if let Some((axis, split)) = try_ge(&flipped, shape) {
-        return Some(PositiveRange { axis, start: None, end: Some(split) });
+        return Some(TrueRange { axis, start: None, end: Some(split) });
     }
     None
 }

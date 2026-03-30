@@ -1,7 +1,7 @@
 use crate::internal::*;
 use crate::ops::array::{Slice, TypedConcat};
 use crate::ops::binary::TypedBinOp;
-use crate::ops::logic::{And, Iff, classify_positive_range};
+use crate::ops::logic::{And, Iff, classify_true_range};
 use crate::optim::OptimizerSession;
 
 /// Optimizer pass that exploits boolean-valued `uniform_tdim` on wires feeding `Iff` and `Mul`.
@@ -74,7 +74,7 @@ fn try_fold_uniform_bool_input(
     // Skipping here prevents an infinite loop (inject const → same uniform_tdim → inject again).
     rule_if!(bool_fact.konst.is_none());
     rule_if_some!(expr = &bool_fact.uniform_tdim);
-    rule_if_some!(range = classify_positive_range(expr, &bool_fact.shape));
+    rule_if_some!(range = classify_true_range(expr, &bool_fact.shape));
 
     let dt = bool_fact.datum_type;
     let rank = bool_fact.rank();
@@ -131,7 +131,7 @@ fn split_op_regions(
     bool_ix: usize,
     bool_dt: DatumType,
     bool_rank: usize,
-    range: &crate::ops::logic::PositiveRange,
+    range: &crate::ops::logic::TrueRange,
 ) -> TractResult<Option<TypedModelPatch>> {
     let axis = range.axis;
     let out_dim = model.outlet_fact(node.id.into())?.shape[axis].clone();
