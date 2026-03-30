@@ -16,6 +16,7 @@ use tract_core::tract_data::itertools::Itertools;
 use tract_core::tract_linalg::block_quant::Q4_0;
 use tract_core::transform::ModelTransform;
 use tract_gpu::fact::{DeviceFact, DeviceTypedFactExt};
+use tract_gpu::ops::reduce::GpuReduce;
 use tract_gpu::rewrite_rules::rewire_syncs::rewire_syncs;
 use tract_gpu::rewrite_rules::rms_norm::remove_rms_norm_cast;
 use tract_gpu::sync::{DeviceSyncKind, sync_inputs_if_required, sync_model_outputs_if_required};
@@ -31,6 +32,7 @@ use tract_transformers::ops::sdpa::Sdpa;
 use tract_transformers::ops::silu::Silu;
 
 use crate::context::cuda_context;
+use crate::kernels::nn::cuda_reduce_launch;
 use crate::ops::{CudaDelay, CudaIff, CudaPulsePad};
 use crate::ops::{CudaLeakyRelu, wire_cuda_conv};
 use crate::{kernels, ops, rewrite_rules};
@@ -140,7 +142,8 @@ fn can_translate_to_cuda_op(source: &TypedModel, node: &TypedNode) -> TractResul
             || node.op_is::<TypedConcat>()
             || node.op_is::<DynKeyValueCache>()
             || node.op_as::<Reduce>().is_some_and(|op| {
-                ops::cuda_reduce(op).is_ok_and(|op| op.reducer.is_supported_dt(input_dts[0]))
+                GpuReduce::from_tract_core(op, "Cuda", cuda_reduce_launch)
+                    .is_ok_and(|op| op.reducer.is_supported_dt(input_dts[0]))
             })
             || node.op_as::<Softmax>().is_some_and(|op| {
                 kernels::nn::Softmax::is_supported_dt(input_dts[0])
@@ -544,7 +547,7 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
                 } else if let Some(op) = node.op_as::<DynKeyValueCache>() {
                     Box::new(ops::CudaDynKVCache::from_tract_transformers(op))
                 } else if let Some(op) = node.op_as::<Reduce>() {
-                    Box::new(ops::cuda_reduce(op)?)
+                    Box::new(GpuReduce::from_tract_core(op, "Cuda", cuda_reduce_launch)?)
                 } else if let Some(op) = node.op_as::<Softmax>() {
                     Box::new(ops::CudaSoftmax::from_tract_core(op)?)
                 } else if let Some(op) = node.op_as::<ScaledMaskedSoftmax>() {

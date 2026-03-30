@@ -1,8 +1,9 @@
-use crate::context::{TractCudaStream, cuda_context};
+use crate::context::{StreamExt, TractCudaStream, cuda_context};
 use crate::kernels::launch_args::TractLaunchArgs;
 use crate::kernels::{LibraryName, MAX_THREADS, get_cuda_view, launch_args, utils};
 use cudarc::driver::{CudaStream, LaunchConfig, PushKernelArg};
 use tract_core::internal::*;
+use tract_gpu::GpuStream;
 use tract_gpu::tensor::DeviceTensor;
 
 pub use tract_gpu::ops::reduce::Reducer;
@@ -18,12 +19,13 @@ pub fn kernel_name(reducer: &Reducer, dt: DatumType, n_cols: usize) -> TractResu
 }
 
 pub fn cuda_reduce_launch(
-    stream: &TractCudaStream,
+    stream: &dyn GpuStream,
     reducer: &Reducer,
     input: &DeviceTensor,
     axis: usize,
     output: &DeviceTensor,
 ) -> TractResult<()> {
+    let stream = stream.cuda()?;
     ensure!(output.datum_type() == input.datum_type());
     ensure!(output.shape()[axis] == 1);
 

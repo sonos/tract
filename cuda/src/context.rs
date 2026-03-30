@@ -3,6 +3,7 @@ use cudarc::cudnn::Cudnn;
 use cudarc::nvrtc::Ptx;
 use cudarc::runtime::result::device::get_device_prop;
 use cudarc::runtime::sys::cudaDeviceProp;
+use tract_gpu::GpuStream;
 use tract_gpu::device::DeviceContext;
 use tract_gpu::tensor::{DeviceTensor, OwnedDeviceTensor};
 
@@ -39,6 +40,16 @@ pub fn cuda_context() -> &'static TractCudaContext {
         tract_gpu::device::set_context(Box::new(ctxt.clone())).expect("Could not set CUDA context");
         ctxt
     })
+}
+
+pub trait StreamExt {
+    fn cuda(&self) -> TractResult<&TractCudaStream>;
+}
+
+impl StreamExt for &dyn GpuStream {
+    fn cuda(&self) -> TractResult<&TractCudaStream> {
+        self.downcast_ref().context("Expected a cuda stream")
+    }
 }
 
 #[derive(Debug, Clone)]
