@@ -9,7 +9,14 @@ pub mod utils;
 pub use context::CUDA_STREAM;
 use tract_core::internal::*;
 use tract_core::transform::ModelTransform;
+use tract_gpu::GpuStream;
 pub use transform::CudaTransform;
+
+impl GpuStream for context::TractCudaStream {}
+
+fn cuda_with_stream(f: &mut dyn FnMut(&dyn GpuStream) -> TractResult<()>) -> TractResult<()> {
+    CUDA_STREAM.with(|stream| f(stream as &dyn GpuStream))
+}
 
 use crate::utils::ensure_cuda_runtime_dependencies;
 const Q40_ROW_PADDING: usize = 512;

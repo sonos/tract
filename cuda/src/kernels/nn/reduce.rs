@@ -7,11 +7,7 @@ use tract_gpu::tensor::DeviceTensor;
 
 pub use tract_gpu::ops::reduce::Reducer;
 
-// #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-// pub struct CudaReducer(pub Reducer);
-
-// impl CudaReducer {
-fn kernel_name(reducer: &Reducer, dt: DatumType, n_cols: usize) -> TractResult<String> {
+pub fn kernel_name(reducer: &Reducer, dt: DatumType, n_cols: usize) -> TractResult<String> {
     ensure!(reducer.is_supported_dt(dt), "Unsupported dt {dt:?} for cuda reduceop {:?}", reducer);
     let tname = DeviceTensor::tname(dt)?;
     if n_cols < 1024 {
@@ -20,20 +16,6 @@ fn kernel_name(reducer: &Reducer, dt: DatumType, n_cols: usize) -> TractResult<S
         Ok(format!("reduce_{}_{tname}", reducer))
     }
 }
-
-// pub fn eval(
-//     &self,
-//     stream: &TractCudaStream,
-//     input: &DeviceTensor,
-//     axis: usize,
-// ) -> TractResult<DeviceTensor> {
-//     let mut o_shape = input.shape().to_vec();
-//     o_shape[axis] = 1;
-//     let output = unsafe { DeviceTensor::uninitialized_dt(input.datum_type(), &o_shape)? };
-//     self.dispatch_eval(stream, input, axis, &output)?;
-//     stream.synchronize()?;
-//     Ok(output)
-// }
 
 pub fn cuda_reduce_launch(
     stream: &TractCudaStream,
@@ -78,7 +60,6 @@ pub fn cuda_reduce_launch(
 
     launch_args.launch(cfg)
 }
-// }
 
 #[cfg(test)]
 mod tests {
@@ -122,7 +103,13 @@ mod tests {
             .into_device()?;
 
             let cpu_output = tract_reducer.reduce(&[axis], &a.to_host()?.into_tensor())?;
-            let cuda_output = CudaReducer(reducer).eval(stream, &a, axis)?;
+            let mut o_shape = a.shape().to_vec();
+            o_shape[axis] = 1;
+            let cuda_output_dt =
+                unsafe { DeviceTensor::uninitialized_dt(a.datum_type(), &o_shape)? };
+            cuda_reduce_launch(stream, &reducer, &a, axis, &cuda_output_dt)?;
+            stream.synchronize()?;
+            let cuda_output = cuda_output_dt;
             cpu_output
                 .close_enough(&cuda_output.to_host()?.into_tensor(), Approximation::Approximate)
                 .with_context(|| {
@@ -355,8 +342,12 @@ mod tests {
         pub fn run(&self) -> TractResult<Tensor> {
             CUDA_STREAM.with(|stream| {
                 let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_device()?;
-                let cuda_output = CudaReducer(self.op).eval(stream, &a, self.axis)?;
-                Ok(cuda_output.to_host()?.into_tensor())
+                let mut o_shape = a.shape().to_vec();
+                o_shape[self.axis] = 1;
+                let output = unsafe { DeviceTensor::uninitialized_dt(a.datum_type(), &o_shape)? };
+                cuda_reduce_launch(stream, &self.op, &a, self.axis, &output)?;
+                stream.synchronize()?;
+                Ok(output.to_host()?.into_tensor())
             })
         }
     }

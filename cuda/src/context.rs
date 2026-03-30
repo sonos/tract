@@ -25,7 +25,11 @@ use std::ffi::{CStr, CString, c_char};
 use std::path::{Path, PathBuf};
 
 thread_local! {
-    pub static CUDA_STREAM: TractCudaStream = TractCudaStream::new().expect("Could not create Cuda Stream");
+    pub static CUDA_STREAM: TractCudaStream = {
+        let stream = TractCudaStream::new().expect("Could not create Cuda Stream");
+        tract_gpu::register_stream(crate::cuda_with_stream);
+        stream
+    };
 }
 
 pub fn cuda_context() -> &'static TractCudaContext {

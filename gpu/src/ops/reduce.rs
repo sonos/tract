@@ -1,5 +1,5 @@
+use crate::GpuStream;
 use crate::tensor::{DeviceTensor, DeviceTensorExt};
-use crate::{GPU_STREAM, GpuStream};
 use std::fmt;
 use tract_core::internal::*;
 use tract_core::ops::nn as core_ops_nn;
@@ -138,8 +138,9 @@ impl EvalOp for GpuReduce {
         session: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
+        let mut inputs = Some(inputs);
         crate::with_stream(|stream| {
-            let input_value = args_1!(inputs);
+            let input_value = args_1!(inputs.take().unwrap());
             let input = input_value.to_device_tensor()?;
             let mut output_shape = input.shape().to_vec();
             output_shape[self.axes[0]] = 1;
