@@ -630,7 +630,6 @@ impl Op for AxisOp {
     }
 
     op_as_typed_op!();
-    impl_op_same_as!();
 }
 
 impl EvalOp for AxisOp {
