@@ -24,12 +24,23 @@ use metal::{
 };
 use std::collections::HashMap;
 use tract_core::internal::*;
+use tract_gpu::GpuStream;
 
 thread_local! {
     pub static METAL_STREAM: RefCell<MetalStream> = {
         tract_gpu::register_stream(crate::metal_with_stream);
         RefCell::new(MetalStream::new())
     };
+}
+
+pub trait StreamExt {
+    fn metal(&self) -> TractResult<&MetalStream>;
+}
+
+impl StreamExt for &dyn GpuStream {
+    fn metal(&self) -> TractResult<&MetalStream> {
+        self.downcast_ref().context("Expected a metal stream")
+    }
 }
 
 pub fn metal_context() -> MetalContext {

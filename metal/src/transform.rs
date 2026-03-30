@@ -1,8 +1,10 @@
 use crate::context::metal_context;
 use crate::kernels::matmul::{GemmKernel, GgmlGemm, MetalGemmImplKind, MfaGemm, MlxGemm};
+use crate::kernels::nn::metal_reduce_launch;
 use crate::{kernels, ops};
 use tract_core::tract_linalg::block_quant::Q4_0;
 use tract_gpu::fact::DeviceTypedFactExt;
+use tract_gpu::ops::reduce::GpuReduce;
 use tract_gpu::rewrite_rules::rewire_sdpa::rewire_sdpa;
 use tract_gpu::rewrite_rules::rewire_syncs::rewire_syncs;
 use tract_gpu::rewrite_rules::rms_norm::remove_rms_norm_cast;
@@ -160,7 +162,8 @@ fn can_translate_to_metal_op(source: &TypedModel, node: &TypedNode) -> TractResu
             || node.op_is::<TypedConcat>()
             || node.op_is::<DynKeyValueCache>()
             || node.op_as::<Reduce>().is_some_and(|op| {
-                ops::metal_reduce(op).is_ok_and(|op| op.reducer.is_supported_dt(input_dts[0]))
+                GpuReduce::from_tract_core(op, "Metal", metal_reduce_launch)
+                    .is_ok_and(|op| op.reducer.is_supported_dt(input_dts[0]))
             })
             || node.op_as::<CoreSoftmax>().is_some_and(|op| {
                 kernels::nn::Softmax::is_supported_dt(input_dts[0])
@@ -237,7 +240,7 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
                 } else if let Some(op) = node.op_as::<TypedConcat>() {
                     Box::new(ops::MetalConcat::from_tract_core(op))
                 } else if let Some(op) = node.op_as::<Reduce>() {
-                    Box::new(ops::metal_reduce(op).unwrap())
+                    Box::new(GpuReduce::from_tract_core(op, "Metal", metal_reduce_launch).unwrap())
                 } else if let Some(op) = node.op_as::<CoreSoftmax>() {
                     Box::new(ops::MetalSoftmax::from_tract_core(op).unwrap())
                 } else if let Some(op) = node.op_as::<ScaledMaskedSoftmax>() {
