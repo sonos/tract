@@ -7,78 +7,78 @@ use tract_gpu::tensor::DeviceTensor;
 
 pub use tract_gpu::ops::reduce::Reducer;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct CudaReducer(pub Reducer);
+// #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+// pub struct CudaReducer(pub Reducer);
 
-impl CudaReducer {
-    pub fn kernel_name(&self, dt: DatumType, n_cols: usize) -> TractResult<String> {
-        ensure!(self.0.is_supported_dt(dt), "Unsupported dt {dt:?} for cuda reduceop {:?}", self.0);
-        let tname = DeviceTensor::tname(dt)?;
-        if n_cols < 1024 {
-            Ok(format!("reduce_{}_small_{tname}", self.0))
-        } else {
-            Ok(format!("reduce_{}_{tname}", self.0))
-        }
-    }
-
-    pub fn eval(
-        &self,
-        stream: &TractCudaStream,
-        input: &DeviceTensor,
-        axis: usize,
-    ) -> TractResult<DeviceTensor> {
-        let mut o_shape = input.shape().to_vec();
-        o_shape[axis] = 1;
-        let output = unsafe { DeviceTensor::uninitialized_dt(input.datum_type(), &o_shape)? };
-        self.dispatch_eval(stream, input, axis, &output)?;
-        stream.synchronize()?;
-        Ok(output)
-    }
-
-    pub fn dispatch_eval(
-        &self,
-        stream: &TractCudaStream,
-        input: &DeviceTensor,
-        axis: usize,
-        output: &DeviceTensor,
-    ) -> TractResult<()> {
-        ensure!(output.datum_type() == input.datum_type());
-        ensure!(output.shape()[axis] == 1);
-
-        let input_shape_nd3 = utils::reshape_to_rank_3(input.shape(), axis);
-        let input_strides_nd3 = Tensor::natural_strides(&input_shape_nd3);
-        let output_shape_nd3 = utils::reshape_to_rank_3(output.shape(), axis);
-        let output_strides_nd3 = Tensor::natural_strides(&output_shape_nd3);
-
-        let total = (input_shape_nd3[0] as u64) * (input_shape_nd3[2] as u64);
-
-        let i_view = get_cuda_view(input);
-        let o_view = get_cuda_view(output);
-
-        let func = cuda_context().load_pipeline(
-            LibraryName::NN,
-            self.kernel_name(input.datum_type(), input_shape_nd3[1])?,
-        )?;
-        let mut launch_args = TractLaunchArgs::new(stream, &func);
-        launch_args.push_view(&i_view);
-        launch_args.push_view(&o_view);
-        launch_args.push_slice_i32(&input_shape_nd3);
-        launch_args.push_slice_i32(&input_strides_nd3);
-        launch_args.push_slice_i32(&output_strides_nd3);
-
-        let cfg = LaunchConfig {
-            grid_dim: (total as u32, 1, 1),
-            block_dim: if input_shape_nd3[1] < MAX_THREADS {
-                (32, 1, 1)
-            } else {
-                (MAX_THREADS as _, 1, 1)
-            },
-            shared_mem_bytes: 0,
-        };
-
-        launch_args.launch(cfg)
+// impl CudaReducer {
+fn kernel_name(reducer: &Reducer, dt: DatumType, n_cols: usize) -> TractResult<String> {
+    ensure!(reducer.is_supported_dt(dt), "Unsupported dt {dt:?} for cuda reduceop {:?}", reducer);
+    let tname = DeviceTensor::tname(dt)?;
+    if n_cols < 1024 {
+        Ok(format!("reduce_{}_small_{tname}", reducer))
+    } else {
+        Ok(format!("reduce_{}_{tname}", reducer))
     }
 }
+
+// pub fn eval(
+//     &self,
+//     stream: &TractCudaStream,
+//     input: &DeviceTensor,
+//     axis: usize,
+// ) -> TractResult<DeviceTensor> {
+//     let mut o_shape = input.shape().to_vec();
+//     o_shape[axis] = 1;
+//     let output = unsafe { DeviceTensor::uninitialized_dt(input.datum_type(), &o_shape)? };
+//     self.dispatch_eval(stream, input, axis, &output)?;
+//     stream.synchronize()?;
+//     Ok(output)
+// }
+
+pub fn cuda_reduce_launch(
+    stream: &TractCudaStream,
+    reducer: &Reducer,
+    input: &DeviceTensor,
+    axis: usize,
+    output: &DeviceTensor,
+) -> TractResult<()> {
+    ensure!(output.datum_type() == input.datum_type());
+    ensure!(output.shape()[axis] == 1);
+
+    let input_shape_nd3 = utils::reshape_to_rank_3(input.shape(), axis);
+    let input_strides_nd3 = Tensor::natural_strides(&input_shape_nd3);
+    let output_shape_nd3 = utils::reshape_to_rank_3(output.shape(), axis);
+    let output_strides_nd3 = Tensor::natural_strides(&output_shape_nd3);
+
+    let total = (input_shape_nd3[0] as u64) * (input_shape_nd3[2] as u64);
+
+    let i_view = get_cuda_view(input);
+    let o_view = get_cuda_view(output);
+
+    let func = cuda_context().load_pipeline(
+        LibraryName::NN,
+        kernel_name(reducer, input.datum_type(), input_shape_nd3[1])?,
+    )?;
+    let mut launch_args = TractLaunchArgs::new(stream, &func);
+    launch_args.push_view(&i_view);
+    launch_args.push_view(&o_view);
+    launch_args.push_slice_i32(&input_shape_nd3);
+    launch_args.push_slice_i32(&input_strides_nd3);
+    launch_args.push_slice_i32(&output_strides_nd3);
+
+    let cfg = LaunchConfig {
+        grid_dim: (total as u32, 1, 1),
+        block_dim: if input_shape_nd3[1] < MAX_THREADS {
+            (32, 1, 1)
+        } else {
+            (MAX_THREADS as _, 1, 1)
+        },
+        shared_mem_bytes: 0,
+    };
+
+    launch_args.launch(cfg)
+}
+// }
 
 #[cfg(test)]
 mod tests {

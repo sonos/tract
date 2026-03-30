@@ -1,23 +1,20 @@
-use crate::tensor::DeviceTensor;
-use downcast_rs::{Downcast, impl_downcast};
+use crate::tensor::{DeviceTensor, DeviceTensorExt};
+use crate::{GPU_STREAM, GpuStream};
 use std::fmt;
 use tract_core::internal::*;
 use tract_core::ops::nn as core_ops_nn;
 use tract_itertools::Itertools;
 
-pub trait GpuStream: Downcast {}
-impl_downcast!(GpuStream);
-
 pub type DispatchReduceFn =
     fn(&dyn GpuStream, &Reducer, &DeviceTensor, usize, &DeviceTensor) -> TractResult<()>;
-pub type WithStreamReduceFn = fn(
-    DispatchReduceFn,
-    &Reducer,
-    &[usize],
-    usize,
-    &TurnState,
-    TVec<TValue>,
-) -> TractResult<TVec<TValue>>;
+// pub type WithStreamReduceFn = fn(
+//     DispatchReduceFn,
+//     &Reducer,
+//     &[usize],
+//     usize,
+//     &TurnState,
+//     TVec<TValue>,
+// ) -> TractResult<TVec<TValue>>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Reducer {
@@ -75,7 +72,7 @@ pub struct GpuReduce {
     pub axes: TVec<usize>,
     pub reducer: Reducer,
     pub backend_name: &'static str,
-    pub with_stream: WithStreamReduceFn,
+    // pub with_stream: WithStreamReduceFn,
     pub dispatch: DispatchReduceFn,
 }
 
@@ -102,21 +99,21 @@ impl GpuReduce {
         axes: TVec<usize>,
         reducer: Reducer,
         backend_name: &'static str,
-        with_stream: WithStreamReduceFn,
+        // with_stream: WithStreamReduceFn,
         dispatch: DispatchReduceFn,
     ) -> TractResult<Self> {
         ensure!(axes.len() == 1, "Only one axis of reduce is supported by {backend_name}Reduce");
-        Ok(Self { axes, reducer, backend_name, with_stream, dispatch })
+        Ok(Self { axes, reducer, backend_name, /* with_stream, */ dispatch })
     }
 
     pub fn from_tract_core(
         core_reduce: &core_ops_nn::Reduce,
         backend_name: &'static str,
-        with_stream: WithStreamReduceFn,
+        // with_stream: WithStreamReduceFn,
         dispatch: DispatchReduceFn,
     ) -> TractResult<Self> {
         let reducer = Reducer::from_tract_core(&core_reduce.reducer)?;
-        Self::new(core_reduce.axes.clone(), reducer, backend_name, with_stream, dispatch)
+        Self::new(core_reduce.axes.clone(), reducer, backend_name, /* with_stream, */ dispatch)
     }
 }
 
@@ -141,7 +138,20 @@ impl EvalOp for GpuReduce {
         session: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        (self.with_stream)(self.dispatch, &self.reducer, &self.axes, node_id, session, inputs)
+        crate::with_stream(|stream| {
+            let input_value = args_1!(inputs);
+            let input = input_value.to_device_tensor()?;
+            let mut output_shape = input.shape().to_vec();
+            output_shape[self.axes[0]] = 1;
+            let output = crate::session_handler::make_tensor_for_node(
+                session,
+                node_id,
+                input.datum_type(),
+                &output_shape,
+            )?;
+            (self.dispatch)(stream, &self.reducer, input, self.axes[0], &output)?;
+            Ok(tvec!(output.into_tensor().into_tvalue()))
+        })
     }
 }
 
