@@ -228,6 +228,7 @@ element_wise!(bitnot, BitNot, [bool, u8, u16, u32, u64, i8, i16, i32, i64] => |_
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ops::array::TypedConcat;
     use crate::ops::change_axes::AxisOp;
     use crate::ops::logic::Comp;
 
