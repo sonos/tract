@@ -7,14 +7,6 @@ use tract_itertools::Itertools;
 
 pub type DispatchReduceFn =
     fn(&dyn GpuStream, &Reducer, &DeviceTensor, usize, &DeviceTensor) -> TractResult<()>;
-// pub type WithStreamReduceFn = fn(
-//     DispatchReduceFn,
-//     &Reducer,
-//     &[usize],
-//     usize,
-//     &TurnState,
-//     TVec<TValue>,
-// ) -> TractResult<TVec<TValue>>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Reducer {
@@ -72,7 +64,6 @@ pub struct GpuReduce {
     pub axes: TVec<usize>,
     pub reducer: Reducer,
     pub backend_name: &'static str,
-    // pub with_stream: WithStreamReduceFn,
     pub dispatch: DispatchReduceFn,
 }
 
@@ -99,21 +90,19 @@ impl GpuReduce {
         axes: TVec<usize>,
         reducer: Reducer,
         backend_name: &'static str,
-        // with_stream: WithStreamReduceFn,
         dispatch: DispatchReduceFn,
     ) -> TractResult<Self> {
         ensure!(axes.len() == 1, "Only one axis of reduce is supported by {backend_name}Reduce");
-        Ok(Self { axes, reducer, backend_name, /* with_stream, */ dispatch })
+        Ok(Self { axes, reducer, backend_name, dispatch })
     }
 
     pub fn from_tract_core(
         core_reduce: &core_ops_nn::Reduce,
         backend_name: &'static str,
-        // with_stream: WithStreamReduceFn,
         dispatch: DispatchReduceFn,
     ) -> TractResult<Self> {
         let reducer = Reducer::from_tract_core(&core_reduce.reducer)?;
-        Self::new(core_reduce.axes.clone(), reducer, backend_name, /* with_stream, */ dispatch)
+        Self::new(core_reduce.axes.clone(), reducer, backend_name, dispatch)
     }
 }
 

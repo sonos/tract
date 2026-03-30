@@ -26,7 +26,10 @@ use std::collections::HashMap;
 use tract_core::internal::*;
 
 thread_local! {
-    pub static METAL_STREAM: RefCell<MetalStream> = RefCell::new(MetalStream::new());
+    pub static METAL_STREAM: RefCell<MetalStream> = {
+        tract_gpu::register_stream(crate::metal_with_stream);
+        RefCell::new(MetalStream::new())
+    };
 }
 
 pub fn metal_context() -> MetalContext {

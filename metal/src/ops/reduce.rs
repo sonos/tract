@@ -1,20 +1,14 @@
 use crate::kernels::nn::MetalReducer;
-use crate::utils::with_borrowed_metal_stream;
 use tract_core::internal::*;
-use tract_gpu::ops::reduce::{GpuReduce, GpuStream, Reducer};
+use tract_gpu::GpuStream;
+use tract_gpu::ops::reduce::GpuReduce;
 use tract_gpu::tensor::DeviceTensor;
 
-impl GpuStream for crate::MetalStream {}
-
-fn with_stream(
-    f: Box<dyn FnOnce(&dyn GpuStream) -> TractResult<TVec<TValue>>>,
-) -> TractResult<TVec<TValue>> {
-    with_borrowed_metal_stream(|s| f(s as &dyn GpuStream))
-}
+pub type MetalReduce = GpuReduce;
 
 fn dispatch(
     stream: &dyn GpuStream,
-    reducer: &Reducer,
+    reducer: &tract_gpu::ops::reduce::Reducer,
     input: &DeviceTensor,
     axis: usize,
     output: &DeviceTensor,
@@ -23,8 +17,6 @@ fn dispatch(
     MetalReducer(*reducer).dispatch_eval(stream, input, axis, output)
 }
 
-pub type MetalReduce = GpuReduce;
-
 pub fn metal_reduce(core_reduce: &tract_core::ops::nn::Reduce) -> TractResult<MetalReduce> {
-    GpuReduce::from_tract_core(core_reduce, "Metal", with_stream, dispatch)
+    GpuReduce::from_tract_core(core_reduce, "Metal", dispatch)
 }
