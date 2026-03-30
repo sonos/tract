@@ -18,16 +18,7 @@ impl MetalReducer {
             self.0
         );
         let tname = DeviceTensor::tname(dt)?;
-        let op = match self.0 {
-            Reducer::MeanOfSquares => "mean_of_squares",
-            Reducer::Sum => "sum",
-            Reducer::Prod => "prod",
-            Reducer::Min => "min",
-            Reducer::Max => "max",
-            Reducer::All => "all",
-            Reducer::Any => "any",
-        };
-        Ok(format!("nn_ops::reduce_{op}_nd3_{tname}"))
+        Ok(format!("nn_ops::reduce_{}_nd3_{tname}", self.0))
     }
 
     pub fn eval(

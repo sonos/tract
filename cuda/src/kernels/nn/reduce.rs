@@ -14,19 +14,10 @@ impl CudaReducer {
     pub fn kernel_name(&self, dt: DatumType, n_cols: usize) -> TractResult<String> {
         ensure!(self.0.is_supported_dt(dt), "Unsupported dt {dt:?} for cuda reduceop {:?}", self.0);
         let tname = DeviceTensor::tname(dt)?;
-        let op = match self.0 {
-            Reducer::MeanOfSquares => "mean_of_squares",
-            Reducer::Sum => "sum",
-            Reducer::Prod => "prod",
-            Reducer::Min => "min",
-            Reducer::Max => "max",
-            Reducer::Any => "any",
-            Reducer::All => "all",
-        };
         if n_cols < 1024 {
-            Ok(format!("reduce_{op}_small_{tname}"))
+            Ok(format!("reduce_{}_small_{tname}", self.0))
         } else {
-            Ok(format!("reduce_{op}_{tname}"))
+            Ok(format!("reduce_{}_{tname}", self.0))
         }
     }
 

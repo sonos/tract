@@ -1,3 +1,4 @@
+use std::fmt;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::marker::PhantomData;
@@ -14,6 +15,20 @@ pub enum Reducer {
     Max,
     All,
     Any,
+}
+
+impl fmt::Display for Reducer {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::MeanOfSquares => write!(f, "mean_of_squares"),
+            Self::Sum => write!(f, "sum"),
+            Self::Prod => write!(f, "prod"),
+            Self::Min => write!(f, "min"),
+            Self::Max => write!(f, "max"),
+            Self::All => write!(f, "all"),
+            Self::Any => write!(f, "any"),
+        }
+    }
 }
 
 impl Reducer {
