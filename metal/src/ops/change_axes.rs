@@ -1,5 +1,5 @@
+use crate::context::StreamExt;
 use crate::kernels::array::{Memcpy, PermuteAxes};
-use crate::utils::with_borrowed_metal_stream;
 use std::fmt::Debug;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensorExt;
@@ -123,7 +123,8 @@ impl EvalOp for MetalAxisOp {
                     input.datum_type(),
                     &PermuteAxes::output_shape(input.shape(), &permutation)?,
                 )?;
-                with_borrowed_metal_stream(|stream| {
+                tract_gpu::with_stream(|stream| {
+                    let stream = stream.metal()?;
                     PermuteAxes.dispatch_eval(stream, input, &permutation, &output)
                 })?;
                 return Ok(tvec!(output.into_tensor().into_tvalue()));
@@ -150,7 +151,10 @@ impl EvalOp for MetalAxisOp {
             input.datum_type(),
             &new_shape,
         )?;
-        with_borrowed_metal_stream(|stream| Memcpy.dispatch_eval(stream, input, 0, &output))?;
+        tract_gpu::with_stream(|stream| {
+            let stream = stream.metal()?;
+            Memcpy.dispatch_eval(stream, input, 0, &output)
+        })?;
         Ok(tvec!(output.into_tensor().into_tvalue()))
     }
 }

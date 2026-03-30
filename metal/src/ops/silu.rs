@@ -1,5 +1,5 @@
+use crate::context::StreamExt;
 use crate::kernels::nn::Silu;
-use crate::utils::with_borrowed_metal_stream;
 use derive_new::new;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensorExt;
@@ -26,7 +26,8 @@ impl EvalOp for MetalSilu {
         session: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        with_borrowed_metal_stream(|stream| {
+        tract_gpu::with_stream(|stream| {
+            let stream = stream.metal()?;
             let input_value = args_1!(inputs);
             let input = input_value.to_device_tensor()?;
             let output = tract_gpu::session_handler::make_tensor_for_node(

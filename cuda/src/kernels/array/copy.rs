@@ -88,7 +88,7 @@ mod tests {
     use tract_core::internal::Tensor;
 
     fn run_test_case(shape: &[usize], offset: usize) -> TractResult<()> {
-        tract_gpu::with_stream(|stream| {
+        crate::context::with_cuda_stream(|stream| {
             let stream = stream.cuda()?;
             let len = shape.iter().product::<usize>();
             let data = (0..len).map(|f| f as f32).collect::<Vec<_>>();

@@ -29,16 +29,22 @@ fn create_cuda_stream() -> Box<dyn tract_gpu::GpuStream> {
     Box::new(TractCudaStream::new().expect("Could not create Cuda Stream"))
 }
 
-pub fn register_cuda_stream_factory() {
-    tract_gpu::register_stream_factory(create_cuda_stream);
+/// Call with_stream after ensuring the CUDA context (and stream factory) is initialized.
+/// Used by kernel unit tests that don't go through the runtime.
+#[cfg(test)]
+pub fn with_cuda_stream<R>(
+    f: impl FnOnce(&dyn tract_gpu::GpuStream) -> TractResult<R>,
+) -> TractResult<R> {
+    cuda_context(); // ensures factory is registered
+    tract_gpu::with_stream(f)
 }
 
 pub fn cuda_context() -> &'static TractCudaContext {
     static INSTANCE: OnceLock<TractCudaContext> = OnceLock::new();
     INSTANCE.get_or_init(|| {
+        tract_gpu::register_stream_factory(create_cuda_stream);
         let ctxt = TractCudaContext::new().expect("Could not create CUDA context");
         tract_gpu::device::set_context(Box::new(ctxt.clone())).expect("Could not set CUDA context");
-        register_cuda_stream_factory();
         ctxt
     })
 }

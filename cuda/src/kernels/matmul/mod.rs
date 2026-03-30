@@ -639,7 +639,7 @@ mod tests {
         act_dt: DatumType,
         w_dt: DatumType,
     ) -> TractResult<()> {
-        tract_gpu::with_stream(|stream| {
+        crate::context::with_cuda_stream(|stream| {
             let stream = stream.cuda()?;
             let act_shape = if !transpose_a { [act_batch, m, k] } else { [act_batch, k, m] };
             let w_shape = if !transpose_b { [w_batch, k, n] } else { [w_batch, n, k] };
@@ -887,7 +887,7 @@ mod tests {
         }
 
         pub fn run(&self) -> TractResult<Tensor> {
-            tract_gpu::with_stream(|stream| {
+            crate::context::with_cuda_stream(|stream| {
                 let stream = stream.cuda()?;
                 let lhs = if self.transpose_lhs {
                     Tensor::from_shape(&[self.b, self.k, self.m], &self.lhs)?.into_device()?

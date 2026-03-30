@@ -6,7 +6,7 @@ mod tensor;
 mod transform;
 pub mod utils;
 
-pub use context::register_cuda_stream_factory;
+pub use context::StreamExt;
 use tract_core::internal::*;
 use tract_core::transform::ModelTransform;
 use tract_gpu::GpuStream;
@@ -31,7 +31,7 @@ impl Runtime for CudaRuntime {
         options: &RunOptions,
     ) -> TractResult<Box<dyn Runnable>> {
         ensure_cuda_runtime_dependencies("cuda runtime supported dependencies not found.")?;
-        register_cuda_stream_factory();
+        context::cuda_context();
         CudaTransform.transform(&mut model)?;
         model.optimize()?;
 

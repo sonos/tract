@@ -100,7 +100,7 @@ mod tests {
         usize: AsPrimitive<f32>,
         f32: AsPrimitive<F>,
     {
-        tract_gpu::with_stream(|stream| {
+        crate::context::with_cuda_stream(|stream| {
             let stream = stream.cuda()?;
             let len = shape.iter().product::<usize>();
 
@@ -269,7 +269,7 @@ mod tests {
         }
 
         pub fn run(&self) -> TractResult<Tensor> {
-            tract_gpu::with_stream(|stream| {
+            crate::context::with_cuda_stream(|stream| {
                 let stream = stream.cuda()?;
                 let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_device()?;
                 let cuda_output = GeluApproximate::accurate().eval(stream, &a)?;

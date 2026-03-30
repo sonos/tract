@@ -104,7 +104,7 @@ mod tests {
     fn run_test_case<T0: Datum + Copy + FromPrimitive, T1: Datum>(
         shape: &[usize],
     ) -> TractResult<()> {
-        tract_gpu::with_stream(|stream| {
+        crate::context::with_cuda_stream(|stream| {
             let stream = stream.cuda()?;
             let len = shape.iter().product::<usize>();
             let data = (0..len).map(|f| T0::from_f32(f as f32 / 2.).unwrap()).collect::<Vec<_>>();

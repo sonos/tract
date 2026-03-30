@@ -135,7 +135,7 @@ mod tests {
     use tract_gpu::tensor::IntoDevice;
 
     fn run_test_case<F: Datum + Zero + Copy>(shape: &[usize], axes: &[usize]) -> TractResult<()> {
-        tract_gpu::with_stream(|stream| {
+        crate::context::with_cuda_stream(|stream| {
             let stream = stream.cuda()?;
             let a_len = shape.iter().product::<usize>();
             let a_data = (0..a_len).map(|f| f as f32).collect::<Vec<_>>();

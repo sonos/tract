@@ -1,5 +1,5 @@
+use crate::context::StreamExt;
 use crate::kernels::matmul::{GemmImpl, GemmKernel};
-use crate::utils::with_borrowed_metal_stream;
 
 use anyhow::{bail, ensure};
 use tract_core::internal::*;
@@ -94,7 +94,10 @@ impl<K: GemmKernel + 'static> EvalOp for MetalGemm<K> {
         let c_shape = self.kernel.output_shape(a.shape(), &b_shape);
         let c = tract_gpu::session_handler::make_tensor_for_node(session, node_id, c_dt, &c_shape)?;
 
-        with_borrowed_metal_stream(|stream| self.kernel.dispatch_eval(stream, a, b, &c))?;
+        tract_gpu::with_stream(|stream| {
+            let stream = stream.metal()?;
+            self.kernel.dispatch_eval(stream, a, b, &c)
+        })?;
 
         Ok(tvec![c.into_tensor().into_tvalue()])
     }

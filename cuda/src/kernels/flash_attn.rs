@@ -211,7 +211,7 @@ mod tests {
         create_mask: bool,
     ) -> TractResult<()> {
         ensure!(!(create_mask && is_causal));
-        tract_gpu::with_stream(|stream| {
+        crate::context::with_cuda_stream(|stream| {
             let stream = stream.cuda()?;
             let q_shape = [batch, q_heads, seq_len, out_dim];
             let kv_shape = [batch, kv_heads, past_seq_len + seq_len, out_dim];

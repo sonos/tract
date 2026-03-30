@@ -367,7 +367,7 @@ mod tests {
         b_shape: &[usize],
         cab: impl Fn(&mut bool, &bool, &bool),
     ) -> TractResult<()> {
-        tract_gpu::with_stream(|stream| {
+        crate::context::with_cuda_stream(|stream| {
             let stream = stream.cuda()?;
             let a_len = a_shape.iter().product::<usize>();
             let b_len = b_shape.iter().product::<usize>();
@@ -403,7 +403,7 @@ mod tests {
         b_shape: &[usize],
         cab: impl Fn(&mut f32, &f32, &f32),
     ) -> TractResult<()> {
-        tract_gpu::with_stream(|stream| {
+        crate::context::with_cuda_stream(|stream| {
             let stream = stream.cuda()?;
             let a_len = a_shape.iter().product::<usize>();
             let b_len = b_shape.iter().product::<usize>();

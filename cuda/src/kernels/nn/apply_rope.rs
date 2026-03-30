@@ -142,7 +142,7 @@ mod tests {
     use tract_transformers::ops::apply_rope;
 
     fn run_test_case(shape: &[usize]) -> TractResult<()> {
-        tract_gpu::with_stream(|stream| {
+        crate::context::with_cuda_stream(|stream| {
             let stream = stream.cuda()?;
             let len = shape.iter().product::<usize>();
 

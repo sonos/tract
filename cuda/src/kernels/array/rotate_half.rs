@@ -97,7 +97,7 @@ mod tests {
         F: Copy + 'static + Datum,
         usize: AsPrimitive<F>,
     {
-        tract_gpu::with_stream(|stream| {
+        crate::context::with_cuda_stream(|stream| {
             let stream = stream.cuda()?;
             let len = shape.iter().product::<usize>();
 

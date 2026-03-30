@@ -2,8 +2,8 @@
 
 use std::ffi::c_void;
 
-use crate::context::MetalBuffer;
-use crate::{METAL_STREAM, MetalStream};
+use crate::MetalStream;
+use crate::context::{MetalBuffer, StreamExt};
 use metal::Buffer;
 use objc::runtime::{objc_autoreleasePoolPop, objc_autoreleasePoolPush};
 use tract_gpu::tensor::DeviceTensor;
@@ -25,9 +25,15 @@ impl Drop for AutoReleaseHelper {
     }
 }
 
-pub fn with_borrowed_metal_stream<T, F: FnOnce(&MetalStream) -> T>(f: F) -> T {
+pub fn with_borrowed_metal_stream<T, F: FnOnce(&MetalStream) -> TractResult<T>>(
+    f: F,
+) -> TractResult<T> {
     let _context = unsafe { AutoReleaseHelper::new() };
-    METAL_STREAM.with_borrow(f)
+    crate::context::metal_context(); // ensures stream factory is registered
+    tract_gpu::with_stream(|stream| {
+        let stream = stream.metal()?;
+        f(stream)
+    })
 }
 
 pub fn get_metal_buffer(tensor: &DeviceTensor) -> &Buffer {
@@ -37,3 +43,5 @@ pub fn get_metal_buffer(tensor: &DeviceTensor) -> &Buffer {
         panic!("Non-Metal Buffer accessed during Metal execution")
     }
 }
+
+use tract_core::internal::*;

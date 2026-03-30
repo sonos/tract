@@ -125,7 +125,7 @@ mod tests {
 
     #[test]
     fn test_scaled_masked_softmax_f32() -> TractResult<()> {
-        tract_gpu::with_stream(|stream| {
+        crate::context::with_cuda_stream(|stream| {
             let stream = stream.cuda()?;
             let m = 6;
             let n = 33;
@@ -237,7 +237,7 @@ mod tests {
         }
 
         pub fn run(&self) -> TractResult<Tensor> {
-            tract_gpu::with_stream(|stream| {
+            crate::context::with_cuda_stream(|stream| {
                 let stream = stream.cuda()?;
                 let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_device()?;
                 let mask =

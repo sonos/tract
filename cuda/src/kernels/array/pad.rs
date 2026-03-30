@@ -160,7 +160,7 @@ mod tests {
     where
         T: Datum + Copy + From<u8>,
     {
-        tract_gpu::with_stream(|stream| {
+        crate::context::with_cuda_stream(|stream| {
             let stream = stream.cuda()?;
             let num_elements = in_shape.iter().product();
 

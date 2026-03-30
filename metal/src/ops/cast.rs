@@ -1,5 +1,5 @@
+use crate::context::StreamExt;
 use crate::kernels;
-use crate::utils::with_borrowed_metal_stream;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensorExt;
 
@@ -48,7 +48,8 @@ impl EvalOp for MetalCast {
                 self.to,
                 input.shape(),
             )?;
-            with_borrowed_metal_stream(|stream| {
+            tract_gpu::with_stream(|stream| {
+                let stream = stream.metal()?;
                 kernels::array::Cast.dispatch_eval(stream, input, &output)
             })?;
             Ok(tvec![output.into_tensor().into_tvalue()])

@@ -1,5 +1,5 @@
+use crate::context::StreamExt;
 use crate::kernels::nn::ApplyRope;
-use crate::utils::with_borrowed_metal_stream;
 use derive_new::new;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensorExt;
@@ -37,7 +37,8 @@ impl EvalOp for MetalApplyRope {
             input.shape(),
         )?;
 
-        with_borrowed_metal_stream(|stream| {
+        tract_gpu::with_stream(|stream| {
+            let stream = stream.metal()?;
             ApplyRope.dispatch_eval(stream, input, cos, sin, &output)
         })?;
         Ok(tvec!(output.into_tensor().into_tvalue()))

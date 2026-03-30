@@ -99,7 +99,7 @@ mod tests {
     use tract_core::internal::Tensor;
 
     fn run_test_case(shapes: &[&[usize]], axis: usize) -> TractResult<()> {
-        tract_gpu::with_stream(|stream| {
+        crate::context::with_cuda_stream(|stream| {
             let stream = stream.cuda()?;
             let mut inputs = tvec![];
             for (ix, shape) in shapes.iter().enumerate() {
