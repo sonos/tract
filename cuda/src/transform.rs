@@ -18,8 +18,8 @@ use tract_core::transform::ModelTransform;
 use tract_gpu::fact::{DeviceFact, DeviceTypedFactExt};
 use tract_gpu::rewrite_rules::rewire_syncs::rewire_syncs;
 use tract_gpu::rewrite_rules::rms_norm::remove_rms_norm_cast;
-use tract_gpu::sync::{DeviceSync, DeviceSyncKind};
-use tract_gpu::tensor::{DeviceTensor, DeviceTensorExt, IntoDevice};
+use tract_gpu::sync::{DeviceSyncKind, sync_inputs_if_required, sync_model_outputs_if_required};
+use tract_gpu::tensor::{DeviceTensor, IntoDevice};
 use tract_gpu::utils::as_quant_fact;
 use tract_pulse_opl::ops::{Delay, PulsePad};
 use tract_transformers::ops::apply_rope::{ApplyRope, RotateHalf};
@@ -97,84 +97,6 @@ impl CudaTransform {
             .with_rule_for("pad_q40_weights", rewrite_rules::pad_q40_weights)
             .rewrite(&(), model)?;
         Ok(())
-    }
-
-    fn sync_inputs_if_required(
-        &self,
-        model: &mut TypedModel,
-        node: &TypedNode,
-        mapping: &HashMap<OutletId, OutletId>,
-        sync_kind: DeviceSyncKind,
-    ) -> TractResult<TVec<OutletId>> {
-        let mut mapped_inputs = tvec![];
-        for (i_idx, i) in node.inputs.iter().enumerate() {
-            let in_fact = model.outlet_fact_mut(mapping[i])?;
-            match sync_kind {
-                DeviceSyncKind::ToHost if in_fact.as_device_fact().is_some() => {
-                    mapped_inputs.push(
-                        model.wire_node(
-                            format!("{}.to-cpu-{i_idx}", node.name),
-                            DeviceSync::new(sync_kind),
-                            &[mapping[i]],
-                        )?[0],
-                    );
-                }
-                DeviceSyncKind::ToDevice if in_fact.as_device_fact().is_none() => {
-                    if let Some(ref konst) = in_fact.konst
-                        && konst.as_device_tensor().is_none()
-                    {
-                        let device_konst = konst.as_ref().clone().into_device()?.into_tensor();
-                        let device_fact = DeviceFact::from_host(in_fact.clone())?;
-
-                        *in_fact = device_fact.into_exotic_fact();
-
-                        in_fact.konst = Some(Arc::new(device_konst));
-                        mapped_inputs.push(mapping[i]);
-                        continue;
-                    }
-                    ensure!(
-                        in_fact.datum_type.is_copy(),
-                        "Only copy DatumType can be sync to Device: {:?}",
-                        in_fact.datum_type
-                    );
-
-                    mapped_inputs.push(
-                        model.wire_node(
-                            format!("{}.to-device-{i_idx}", node.name),
-                            DeviceSync::new(sync_kind),
-                            &[mapping[i]],
-                        )?[0],
-                    );
-                }
-                _ => mapped_inputs.push(mapping[i]),
-            }
-        }
-        Ok(mapped_inputs)
-    }
-
-    fn sync_model_outputs_if_required(
-        &self,
-        src: &TypedModel,
-        node: &TypedNode,
-        target: &mut TypedModel,
-        target_node_outlet_ids: TVec<OutletId>,
-    ) -> TractResult<TVec<OutletId>> {
-        let mut outputs = tvec![];
-        for (o_idx, o) in target_node_outlet_ids.into_iter().enumerate() {
-            // Add DeviceSync op for model output
-            let is_src_output = src.outputs.contains(&OutletId::new(node.id, o_idx));
-            if target.outlet_fact(o)?.as_device_fact().is_some() && is_src_output {
-                let sync_output = target.wire_node(
-                    format!("{}.to-host-{o_idx}-out", node.name),
-                    DeviceSync::new(DeviceSyncKind::ToHost),
-                    &[o],
-                )?[0];
-                outputs.push(sync_output);
-            } else {
-                outputs.push(o)
-            }
-        }
-        Ok(outputs)
     }
 }
 
@@ -584,7 +506,7 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
 
         if translatable {
             let mut device_inputs =
-                self.sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
+                sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
 
             let outlet_ids: TVec<OutletId> = if let Some(op) = node.op_as::<PrefixMatMul>() {
                 convert_matmul_to_cuda(source, node, target, &mut device_inputs, op)?
@@ -645,10 +567,10 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
                 };
                 target.wire_node(node.name.clone(), op, &device_inputs)?
             };
-            self.sync_model_outputs_if_required(source, node, target, outlet_ids)
+            sync_model_outputs_if_required(source, node, target, outlet_ids)
         } else {
             let cpu_inputs =
-                self.sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToHost)?;
+                sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToHost)?;
             target.wire_node(&node.name, node.op.clone(), &cpu_inputs)
         }
     }

@@ -1,7 +1,9 @@
 use crate::fact::{DeviceFact, DeviceTypedFactExt};
 use crate::tensor::{DeviceTensorExt, IntoDevice};
 use derive_new::new;
+use std::collections::HashMap;
 use std::fmt;
+use std::sync::Arc;
 use tract_core::internal::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -89,4 +91,82 @@ impl TypedOp for DeviceSync {
     }
 
     as_op!();
+}
+
+/// Map node inputs through the translation mapping, inserting DeviceSync nodes
+/// where needed to move tensors to/from the device.
+pub fn sync_inputs_if_required(
+    model: &mut TypedModel,
+    node: &TypedNode,
+    mapping: &HashMap<OutletId, OutletId>,
+    sync_kind: DeviceSyncKind,
+) -> TractResult<TVec<OutletId>> {
+    let mut mapped_inputs = tvec![];
+    for (i_idx, i) in node.inputs.iter().enumerate() {
+        let in_fact = model.outlet_fact_mut(mapping[i])?;
+        match sync_kind {
+            DeviceSyncKind::ToHost if in_fact.as_device_fact().is_some() => {
+                mapped_inputs.push(
+                    model.wire_node(
+                        format!("{}.to-cpu-{i_idx}", node.name),
+                        DeviceSync::new(sync_kind),
+                        &[mapping[i]],
+                    )?[0],
+                );
+            }
+            DeviceSyncKind::ToDevice if in_fact.as_device_fact().is_none() => {
+                if let Some(ref konst) = in_fact.konst
+                    && konst.as_device_tensor().is_none()
+                {
+                    let device_konst = konst.as_ref().clone().into_device()?.into_tensor();
+                    let device_fact = DeviceFact::from_host(in_fact.clone())?;
+
+                    *in_fact = device_fact.into_exotic_fact();
+
+                    in_fact.konst = Some(Arc::new(device_konst));
+                    mapped_inputs.push(mapping[i]);
+                    continue;
+                }
+                ensure!(
+                    in_fact.datum_type.is_copy(),
+                    "Only copy DatumType can be sync to Device: {:?}",
+                    in_fact.datum_type
+                );
+
+                mapped_inputs.push(
+                    model.wire_node(
+                        format!("{}.to-device-{i_idx}", node.name),
+                        DeviceSync::new(sync_kind),
+                        &[mapping[i]],
+                    )?[0],
+                );
+            }
+            _ => mapped_inputs.push(mapping[i]),
+        }
+    }
+    Ok(mapped_inputs)
+}
+
+/// For model outputs that are on device, insert DeviceSync nodes to move them back to host.
+pub fn sync_model_outputs_if_required(
+    src: &TypedModel,
+    node: &TypedNode,
+    target: &mut TypedModel,
+    target_node_outlet_ids: TVec<OutletId>,
+) -> TractResult<TVec<OutletId>> {
+    let mut outputs = tvec![];
+    for (o_idx, o) in target_node_outlet_ids.into_iter().enumerate() {
+        let is_src_output = src.outputs.contains(&OutletId::new(node.id, o_idx));
+        if target.outlet_fact(o)?.as_device_fact().is_some() && is_src_output {
+            let sync_output = target.wire_node(
+                format!("{}.to-host-{o_idx}-out", node.name),
+                DeviceSync::new(DeviceSyncKind::ToHost),
+                &[o],
+            )?[0];
+            outputs.push(sync_output);
+        } else {
+            outputs.push(o)
+        }
+    }
+    Ok(outputs)
 }
