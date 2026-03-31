@@ -1,5 +1,4 @@
 mod apply_rope;
-mod binary;
 mod broadcast;
 mod cast;
 mod change_axes;
@@ -23,7 +22,6 @@ mod softmax;
 mod unary;
 
 pub use apply_rope::CudaApplyRope;
-pub use binary::CudaBinOp;
 pub use broadcast::CudaMultiBroadcastTo;
 pub use cast::CudaCast;
 pub use change_axes::CudaAxisOp;

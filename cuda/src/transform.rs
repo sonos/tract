@@ -122,7 +122,7 @@ fn can_translate_to_cuda_op(source: &TypedModel, node: &TypedNode) -> TractResul
                     .is_some_and(|op| op.0.is_supported_dt(input_dts[0]))
             })
             || node.op_as::<TypedBinOp>().is_some_and(|op| {
-                map_binary_op_to_cuda(op).is_some_and(|op| op.0.is_supported_dt(input_dts[0]))
+                map_binary_op_to_cuda(op).is_some_and(|op| op.op.is_supported_dt(input_dts[0]))
             })
             || node.op_is::<Iff>()
             || node
@@ -232,11 +232,17 @@ fn map_element_wise_ops_to_cuda(op: &ElementWiseOp) -> Option<ops::CudaUnaryOp> 
     ])(op)
 }
 
+use tract_gpu::ops::binary::{BinOp, GpuBinOp};
+
+pub fn cuda_bin_op(op: BinOp) -> GpuBinOp {
+    GpuBinOp { backend_name: "Cuda", op, dispatch: crate::kernels::binary::cuda_bin_op_dispatch }
+}
+
 macro_rules! map_bin_ops {
-    ([$(($tract_bin_op:path, $cuda_bin_op:ident)),* $(,)?]) => {
-        |op: &TypedBinOp | {
+    ([$(($tract_bin_op:path, $gpu_bin_op:ident)),* $(,)?]) => {
+        |op: &TypedBinOp| {
             $(if let Some(_op) = op.0.downcast_ref::<$tract_bin_op>() {
-                return Some($crate::ops::CudaBinOp(kernels::BinOps::$cuda_bin_op));
+                return Some(cuda_bin_op(BinOp::$gpu_bin_op));
             })*
             return None;
         }
@@ -244,7 +250,7 @@ macro_rules! map_bin_ops {
 }
 
 #[allow(clippy::borrowed_box)]
-fn map_binary_op_to_cuda(op: &TypedBinOp) -> Option<ops::CudaBinOp> {
+fn map_binary_op_to_cuda(op: &TypedBinOp) -> Option<GpuBinOp> {
     map_bin_ops!([
         (tract_core::ops::math::Mul, Mul),
         (tract_core::ops::math::Add, Add),
