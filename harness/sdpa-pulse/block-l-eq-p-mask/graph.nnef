@@ -1,0 +1,40 @@
+version 1.0;
+
+extension tract_registry tract_core;
+extension tract_registry tract_transformers;
+extension tract_symbol S;
+extension tract_assert S>=0;
+
+# Block-diagonal bidirectional attention with boolean mask + Iff.
+# L = P = 2: each chunk attends only to its own tokens.
+# Identical attention pattern to block-l-eq-p, but with an explicit boolean
+# mask and Iff pre-softmax, exercising the FoldUniformMask pipeline.
+#
+# C=4 chunks, P=2 tokens/chunk, Dh=8
+#
+# Input: qkv  [S, 3*P, Dh] = [S, 6, 8]
+#        mask [S, P,   P]  = [S, 2, 2]  bool, all-true (every token attends
+#                                        to every other token in the chunk)
+#
+# Graph structure:
+#   scores = Q · Kᵀ           [S, P, P]
+#   masked = select(mask, scores, -inf)
+#   attn   = softmax(masked)   [S, P, P]
+#   output = attn · V          [S, P, Dh]
+
+graph network(qkv, mask) -> (output)
+{
+    qkv  = tract_core_external(shape = [S, 6, 8], datum_type = 'f32');
+    mask = tract_core_external(shape = [S, 2, 2], datum_type = 'bool');
+
+    q = slice(qkv, axes = [1], begin = [0], end = [2]);   # [S, 2, 8]
+    k = slice(qkv, axes = [1], begin = [2], end = [4]);
+    v = slice(qkv, axes = [1], begin = [4], end = [6]);
+
+    scores = tract_core_einsum([q, k], expr = "cpd,cqd->cpq", acc = "f32");
+
+    masked_scores = select(mask, scores, scores * 0.0 + -inf);
+
+    attn   = softmax(masked_scores, axes = [2]);
+    output = tract_core_einsum([attn, v], expr = "cpq,cqd->cpd", acc = "f32");
+}
