@@ -4,13 +4,13 @@ pub mod array;
 pub mod binary;
 pub mod conv;
 pub mod conv_cudnn;
+pub mod element_wise;
 pub mod flash_attn;
 pub mod ggml_flash_attn;
 mod iff;
 pub(crate) mod launch_args;
 pub mod matmul;
 pub mod nn;
-pub mod unary;
 pub(crate) mod utils;
 
 use std::env;
@@ -46,7 +46,7 @@ pub fn cubin_dir() -> &'static Path {
         .as_path()
 }
 
-const UNARY_OPS: &str = include_str!("cu/unary.cu");
+const ELEMENT_WISE_OPS: &str = include_str!("cu/element_wise.cu");
 const BINARY_OPS: &str = include_str!("cu/binary.cu");
 const ARRAY_OPS: &str = include_str!("cu/array.cu");
 const NN_OPS: &str = include_str!("cu/nn.cu");
@@ -100,7 +100,7 @@ impl LibraryName {
 
     pub fn content(&self) -> &str {
         match self {
-            Self::ElementWise => UNARY_OPS,
+            Self::ElementWise => ELEMENT_WISE_OPS,
             Self::Binary => BINARY_OPS,
             Self::Array => ARRAY_OPS,
             Self::NN => NN_OPS,
@@ -115,7 +115,7 @@ impl LibraryName {
 
     pub fn cubin_path(&self) -> PathBuf {
         let basename = match self {
-            Self::ElementWise => "unary",
+            Self::ElementWise => "element_wise",
             Self::Binary => "binary",
             Self::Array => "array",
             Self::NN => "nn",

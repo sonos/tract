@@ -112,9 +112,9 @@ fn can_translate_to_cuda_op(source: &TypedModel, node: &TypedNode) -> TractResul
             .op_as::<Const>()
             .is_some_and(|op| DeviceTensor::is_supported_dt(op.val().datum_type()))
             || node.op_as::<ElementWiseOp>().is_some_and(|op| op.0.is::<LeakyRelu>())
-            || node
-                .op_as::<ElementWiseOp>()
-                .is_some_and(|op| crate::kernels::unary::is_supported(&*op.0, input_dts[0]))
+            || node.op_as::<ElementWiseOp>().is_some_and(|op| {
+                crate::kernels::element_wise::is_supported(&*op.0, input_dts[0])
+            })
             || node
                 .op_as::<TypedBinOp>()
                 .is_some_and(|op| crate::kernels::binary::is_supported(&*op.0, input_dts[0]))
@@ -189,7 +189,7 @@ fn cuda_element_wise_op(mini_op: Box<dyn ElementWiseMiniOp>) -> GpuElementWise {
     GpuElementWise {
         backend_name: "Cuda",
         mini_op,
-        dispatch: crate::kernels::unary::cuda_element_wise_dispatch,
+        dispatch: crate::kernels::element_wise::cuda_element_wise_dispatch,
     }
 }
 
