@@ -73,6 +73,11 @@ impl TypedOp for Cast {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut fact = self.to.fact(inputs[0].shape.clone());
         fact.uniform_tdim = inputs[0].uniform_tdim.clone();
+        if let Some(u) = &inputs[0].uniform {
+            if let Ok(cast_u) = u.cast_to_dt(self.to) {
+                fact.uniform = Some(std::sync::Arc::new(cast_u.into_owned()));
+            }
+        }
         Ok(tvec!(fact))
     }
 

@@ -466,6 +466,9 @@ impl fmt::Debug for TypedFact {
         if let Some(k) = &self.konst {
             write!(fmt, "🟰 {k:?}")?
         }
+        if let Some(u) = &self.uniform {
+            write!(fmt, " ◻️{u:?}")?
+        }
         if let Some(u) = &self.uniform_tdim {
             write!(fmt, " 📐{u}")?
         }

@@ -550,7 +550,9 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
                     Box::new(GpuReduce::from_tract_core(op, "Cuda", cuda_reduce_launch)?)
                 } else if let Some(op) = node.op_as::<Softmax>() {
                     Box::new(ops::CudaSoftmax::from_tract_core(op)?)
-                } else if let Some(op) = node.op_as::<ScaledMaskedSoftmax>() {
+                } else if let Some(op) = node.op_as::<ScaledMaskedSoftmax>()
+                    && !op.post_softmax_mask
+                {
                     Box::new(ops::CudaScaledMaskedSoftmax { scale: op.scale.clone() })
                 } else if let Some(_op) = node.op_as::<RotateHalf>() {
                     Box::new(ops::CudaRotateHalf)

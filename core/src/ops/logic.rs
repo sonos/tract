@@ -10,7 +10,6 @@ use ndarray::*;
 
 use crate::broadcast::multi_broadcast;
 use crate::internal::*;
-use crate::ops::array::{Slice, TypedConcat};
 
 bin_to_super_type!(and, And,
                    [bool, u8, u16, u32, u64, i8, i16, i32, i64] => |c, &a, &b| *c = (a as i64 != 0 && b as i64 != 0) as _);
@@ -68,11 +67,11 @@ impl EvalOp for Iff {
     }
 }
 
-fn sym_to_coord_axis(sym: &Symbol) -> Option<usize> {
+pub(crate) fn sym_to_coord_axis(sym: &Symbol) -> Option<usize> {
     format!("{sym}").strip_prefix("🎯")?.parse::<usize>().ok()
 }
 
-fn coord_bound_assertions(expr: &TDim, shape: &ShapeFact) -> Vec<Assertion> {
+pub(crate) fn coord_bound_assertions(expr: &TDim, shape: &ShapeFact) -> Vec<Assertion> {
     expr.symbols()
         .into_iter()
         .filter_map(|s| sym_to_coord_axis(&s).filter(|k| *k < shape.rank()).map(|k| (k, s)))
@@ -85,17 +84,50 @@ fn coord_bound_assertions(expr: &TDim, shape: &ShapeFact) -> Vec<Assertion> {
         .collect()
 }
 
-fn is_provably_all_false(expr: &TDim, shape: &ShapeFact) -> bool {
+pub(crate) fn is_provably_all_false(expr: &TDim, shape: &ShapeFact) -> bool {
     let extra = coord_bound_assertions(expr, shape);
     expr.clone().simplify_with_extra_assertions(&extra) == TDim::Val(0)
 }
 
-fn is_provably_all_true(expr: &TDim, shape: &ShapeFact) -> bool {
+pub(crate) fn is_provably_all_true(expr: &TDim, shape: &ShapeFact) -> bool {
     let extra = coord_bound_assertions(expr, shape);
     expr.clone().simplify_with_extra_assertions(&extra) == TDim::Val(1)
 }
 
-fn extract_split_pattern(expr: &TDim, shape: &ShapeFact) -> Option<(usize, TDim, bool)> {
+/// The interval of indices along one axis where a boolean condition is true.
+///
+/// `None` on a bound means "open" — start defaults to 0, end defaults to `dim`.
+///
+/// | `start`   | `end`        | meaning                           |
+/// |-----------|--------------|-----------------------------------|
+/// | `None`    | `None`       | whole dimension (AllTrue)         |
+/// | `None`    | `Some(0)`    | empty (AllFalse)                  |
+/// | `None`    | `Some(e)`    | `[0, e)` — lower region true      |
+/// | `Some(s)` | `None`       | `[s, dim)` — upper region true    |
+/// | `Some(s)` | `Some(e)`    | `[s, e)` — three zones            |
+#[derive(Debug, Clone)]
+pub(crate) struct TrueRange {
+    pub axis: usize,
+    pub start: Option<TDim>, // None = 0
+    pub end: Option<TDim>,   // None = dim
+}
+
+impl TrueRange {
+    /// Condition is true for the entire dimension.
+    pub fn is_full(&self) -> bool {
+        self.start.is_none() && self.end.is_none()
+    }
+    /// Condition is never true (empty range).
+    pub fn is_empty(&self) -> bool {
+        match (&self.start, &self.end) {
+            (None, Some(e)) => *e == TDim::Val(0),
+            (Some(s), Some(e)) => s == e,
+            _ => false,
+        }
+    }
+}
+
+pub(crate) fn classify_true_range(expr: &TDim, shape: &ShapeFact) -> Option<TrueRange> {
     fn try_ge(ge: &TDim, shape: &ShapeFact) -> Option<(usize, TDim)> {
         if let TDim::Ge(lhs, rhs) = ge {
             if let TDim::Sym(sym) = &**lhs {
@@ -108,62 +140,25 @@ fn extract_split_pattern(expr: &TDim, shape: &ShapeFact) -> Option<(usize, TDim,
         None
     }
 
-    // Form A: Ge(x_k, split) — lower half is false branch
-    if let Some((k, split)) = try_ge(expr, shape) {
-        return Some((k, split, false));
+    let simplified = expr.clone().simplify();
+    // All-false: empty range on axis 0
+    if simplified == TDim::Val(0) || is_provably_all_false(&simplified, shape) {
+        return Some(TrueRange { axis: 0, start: None, end: Some(TDim::Val(0)) });
     }
-    // Form B: 1 - Ge(x_k, split) — lower half is true branch
-    let flipped = (TDim::Val(1) - expr.clone()).simplify();
-    if let Some((k, split)) = try_ge(&flipped, shape) {
-        return Some((k, split, true));
+    // All-true: open (unbounded) range on axis 0
+    if simplified == TDim::Val(1) || is_provably_all_true(&simplified, shape) {
+        return Some(TrueRange { axis: 0, start: None, end: None });
+    }
+    // Ge(x_k, split): true when x_k >= split → [split, dim)
+    if let Some((axis, split)) = try_ge(&simplified, shape) {
+        return Some(TrueRange { axis, start: Some(split), end: None });
+    }
+    // 1 - Ge(x_k, split): true when x_k < split → [0, split)
+    let flipped = (TDim::Val(1) - simplified).simplify();
+    if let Some((axis, split)) = try_ge(&flipped, shape) {
+        return Some(TrueRange { axis, start: None, end: Some(split) });
     }
     None
-}
-
-fn split_iff_to_slice_concat(
-    model: &TypedModel,
-    node: &TypedNode,
-    axis: usize,
-    split: TDim,
-    lower_is_true: bool,
-) -> TractResult<Option<TypedModelPatch>> {
-    let (lower_outlet, upper_outlet) = if lower_is_true {
-        (node.inputs[1], node.inputs[2])
-    } else {
-        (node.inputs[2], node.inputs[1])
-    };
-
-    let out_dim = model.outlet_fact(OutletId::new(node.id, 0))?.shape[axis].clone();
-    if model.outlet_fact(node.inputs[1])?.shape[axis] != out_dim
-        || model.outlet_fact(node.inputs[2])?.shape[axis] != out_dim
-    {
-        return Ok(None);
-    }
-
-    let mut patch = TypedModelPatch::default();
-    let lower_wire = patch.tap_model(model, lower_outlet)?;
-    let upper_wire = patch.tap_model(model, upper_outlet)?;
-
-    let lower_slice = patch.wire_node(
-        format!("{}.lower_slice", node.name),
-        Slice::new(axis, TDim::Val(0), split.clone()),
-        &[lower_wire],
-    )?[0];
-
-    let upper_slice = patch.wire_node(
-        format!("{}.upper_slice", node.name),
-        Slice::new(axis, split, out_dim),
-        &[upper_wire],
-    )?[0];
-
-    let concat = patch.wire_node(
-        format!("{}.concat", node.name),
-        TypedConcat::new(axis),
-        &[lower_slice, upper_slice],
-    )?[0];
-
-    patch.shunt_outside(model, node.id.into(), concat)?;
-    Ok(Some(patch))
 }
 
 impl TypedOp for Iff {
@@ -196,63 +191,17 @@ impl TypedOp for Iff {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        let cond_outlet = node.inputs[0];
-        let cond_fact = model.outlet_fact(cond_outlet)?;
-
-        // Get uniform_tdim from condition fact, or trace through BitNot one level.
-        let mut cond_tdim = cond_fact.uniform_tdim.clone();
-        if cond_tdim.is_none() {
-            let cond_node = model.node(cond_outlet.node);
-            if let Some(ew) = cond_node.op_as::<crate::ops::element_wise::ElementWiseOp>() {
-                if ew.0.downcast_ref::<BitNot>().is_some() && cond_node.inputs.len() == 1 {
-                    let inner_fact = model.outlet_fact(cond_node.inputs[0])?;
-                    if let Some(inner_tdim) = &inner_fact.uniform_tdim {
-                        cond_tdim = Some((TDim::Val(1) - inner_tdim.clone()).reduce());
-                    }
-                }
-            }
-        }
-
-        let Some(expr) = cond_tdim else { return Ok(None) };
-
-        let simplified = expr.clone().simplify();
-
-        // Helper: replace Iff output with a specific input branch
-        let shunt_to = |branch: OutletId| -> TractResult<Option<TypedModelPatch>> {
-            let mut patch = TypedModelPatch::default();
-            let wire = patch.tap_model(model, branch)?;
-            patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
-            Ok(Some(patch))
-        };
-
-        // Rule 1a: condition is provably always false → use false branch (inputs[2])
-        if simplified == TDim::Val(0) {
-            return shunt_to(node.inputs[2]);
-        }
-
-        // Rule 1b: condition is provably always true → use true branch (inputs[1])
-        if simplified == TDim::Val(1) {
-            return shunt_to(node.inputs[1]);
-        }
-
-        let cond_shape = &cond_fact.shape;
-
-        // Rule 1c: prove all-false using coordinate extremes
-        if is_provably_all_false(&simplified, cond_shape) {
-            return shunt_to(node.inputs[2]);
-        }
-
-        // Rule 1d: prove all-true using coordinate extremes
-        if is_provably_all_true(&simplified, cond_shape) {
-            return shunt_to(node.inputs[1]);
-        }
-
-        // Rule 2: condition is ge(x_k, split) or 1-ge(x_k, split) — split into slice+concat
-        if let Some((axis, split, lower_is_true)) = extract_split_pattern(&simplified, cond_shape) {
-            return split_iff_to_slice_concat(model, node, axis, split, lower_is_true);
-        }
-
-        Ok(None)
+        // Fold Iff(const, t, f) → t or f.
+        // Symbolic uniform_tdim cases are handled upstream by FoldUniformMask,
+        // which injects a concrete Const(0/1) that this rule then folds.
+        let cond_fact = model.outlet_fact(node.inputs[0])?;
+        rule_if_some!(uniform = &cond_fact.uniform);
+        let Ok(cond_val) = uniform.cast_to_scalar::<bool>() else { return Ok(None) };
+        let branch = if cond_val { node.inputs[1] } else { node.inputs[2] };
+        let mut patch = TypedModelPatch::default();
+        let wire = patch.tap_model(model, branch)?;
+        patch.shunt_outside(model, node.id.into(), wire)?;
+        Ok(Some(patch))
     }
 
     fn axes_mapping(
@@ -279,6 +228,7 @@ element_wise!(bitnot, BitNot, [bool, u8, u16, u32, u64, i8, i16, i32, i64] => |_
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ops::array::TypedConcat;
     use crate::ops::change_axes::AxisOp;
     use crate::ops::logic::Comp;
 

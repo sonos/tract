@@ -106,7 +106,7 @@ impl Sdpa {
             graph
                 .wire_node(
                     "att_scaled_masked_softmax",
-                    ScaledMaskedSoftmax { scale: scale.into() },
+                    ScaledMaskedSoftmax { scale: scale.into(), post_softmax_mask: false },
                     &[scores, mask],
                 )
                 .map(|o| o[0])

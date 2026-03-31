@@ -111,6 +111,32 @@ impl TypedOp for ElementWiseOp {
         } else if let Some(dt) = self.0.output_type(dt) {
             fact.datum_type = dt;
         }
+        // Propagate uniform_tdim through this op.
+        if let Some(tdim) = &inputs[0].uniform_tdim {
+            // Logical NOT on bool tensors: NOT(x) = 1 - x for 0/1 values.
+            // Not is bool-only by definition. BitNot is bitwise (valid on integers
+            // where ~x ≠ 1-x), so only apply this for bool input.
+            let is_logical_not = self.0.downcast_ref::<crate::ops::logic::Not>().is_some()
+                || (self.0.downcast_ref::<crate::ops::logic::BitNot>().is_some()
+                    && inputs[0].datum_type == bool::datum_type());
+            if is_logical_not {
+                fact.uniform_tdim = Some((TDim::Val(1) - tdim.clone()).reduce());
+            } else {
+                // General path: evaluate the op on a TDim scalar.
+                // Ops with a TDim arm (e.g. Floor → identity) pass the value through;
+                // ops without one return an error and uniform_tdim stays None.
+                let mut tmp = tensor0(tdim.clone());
+                if self.0.eval_in_place(&mut tmp, None).is_ok() {
+                    fact.uniform_tdim = tmp
+                        .try_as_plain()
+                        .ok()
+                        .and_then(|d| d.as_slice::<TDim>().ok())
+                        .and_then(|s| s.first())
+                        .cloned()
+                        .map(|d| d.reduce());
+                }
+            }
+        }
         Ok(tvec!(fact))
     }
 

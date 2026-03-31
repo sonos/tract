@@ -138,7 +138,10 @@ mod tests {
             )?
             .into_device()?;
 
-            let cpu = scaled_masked_softmax::ScaledMaskedSoftmax { scale: scale.clone() };
+            let cpu = scaled_masked_softmax::ScaledMaskedSoftmax {
+                scale: scale.clone(),
+                post_softmax_mask: false,
+            };
 
             let cpu_output = cpu
                 .eval(tvec![a.to_host()?.into_tvalue(), mask.to_host()?.into_tvalue()])?[0]
@@ -229,10 +232,11 @@ mod tests {
             let mask = Tensor::from_shape(self.mask_shape.as_slice(), &self.mask)?;
             let scale: Arc<_> = tensor0::<F>(0.125f32.as_()).into();
 
-            let cpu_output = scaled_masked_softmax::ScaledMaskedSoftmax { scale }
-                .eval(tvec![a.into_tvalue(), mask.into_tvalue()])?[0]
-                .clone()
-                .into_tensor();
+            let cpu_output =
+                scaled_masked_softmax::ScaledMaskedSoftmax { scale, post_softmax_mask: false }
+                    .eval(tvec![a.into_tvalue(), mask.into_tvalue()])?[0]
+                    .clone()
+                    .into_tensor();
             Ok(cpu_output)
         }
 

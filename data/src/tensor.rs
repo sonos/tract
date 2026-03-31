@@ -422,6 +422,10 @@ impl Tensor {
                 }
                 Ok(t)
             }
+        } else if dt == DatumType::Bool {
+            let mut t = unsafe { Tensor::uninitialized_dt(dt, shape)? };
+            t.fill_t::<bool>(false)?;
+            Ok(t)
         } else {
             dispatch_zerolike!(Self::zero_aligned(dt)(shape, alignment))
         }

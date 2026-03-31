@@ -77,7 +77,10 @@ where
 
         let output = model.wire_node(
             "scaled_masked_softmax",
-            ScaledMaskedSoftmax { scale: tensor0(self.scale).into_arc_tensor() },
+            ScaledMaskedSoftmax {
+                scale: tensor0(self.scale).into_arc_tensor(),
+                post_softmax_mask: false,
+            },
             &[input, mask],
         )?;
         model.select_output_outlets(&output)?;
