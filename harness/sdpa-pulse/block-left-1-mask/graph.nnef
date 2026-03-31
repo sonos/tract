@@ -1,0 +1,79 @@
+version 1.0;
+
+extension tract_registry tract_core;
+extension tract_registry tract_transformers;
+extension tract_symbol S;
+extension tract_assert S>=0;
+
+# Flat-token sliding-window attention with computed chunk mask.
+# Adapted from the real Nemotron encoder mask construction (lines ~759-797 of
+# encoder graph.nnef), with the following simplifications:
+#   - chunk_size P=2 (was 14 in the model)
+#   - left_chunks=1  (model uses 5; variable name "c43" in encoder is misleading)
+#   - no batch dimension
+#   - no padMask (no 'length' input; all tokens are valid)
+#   - T is derived via shape_of(qkv)[0] instead of coming from a shape variable
+#
+# Input:  qkv [S, 3*Dh] = [S, 12]   S = total token count, Dh=4
+# Output: [S, Dh] = [S, 4]
+#
+# Attention structure:
+#   scores [S, S]   -- full T x T dot-product attention
+#   mask   [S, S]   -- computed from chunk indices: token i attends to token j iff
+#                       0 <= floor(i/P) - floor(j/P) <= left_chunks
+#   output [S, Dh]
+#
+# Streaming: pulse_size = P = 2  (one chunk per pulse, --pulse 2 in ci.sh)
+#
+# This test exercises whether uniform_tdim propagates through the mask chain
+#   range -> cast -> div/floor -> cast -> unsqueeze -> sub -> le/ge -> and
+# and FoldUniformMask can fold the Iff nodes to expose the windowed structure,
+# enabling the pulsifier to insert Delay ops for K/V lookback.
+#
+# The batch run (step 2 in ci.sh) should always pass.
+# The streaming compare (step 3) will pass only once FoldUniformMask handles
+# the 2-D chunk-based pattern correctly.
+
+graph network(qkv) -> (output)
+{
+    qkv = tract_core_external(shape = [S, 12], datum_type = 'f32');
+
+    q = slice(qkv, axes = [1], begin = [0], end = [4]);    # [S, 4]
+    k = slice(qkv, axes = [1], begin = [4], end = [8]);
+    v = slice(qkv, axes = [1], begin = [8], end = [12]);
+
+    # Full T x T attention scores
+    scores = tract_core_einsum([q, k], expr = "id,jd->ij", acc = "f32");  # [S, S]
+
+    # mask computation (adapted from encoder graph.nnef)
+    # T = shape_of(qkv)[0]
+    qkv_shape     = tract_core_shape_of(qkv);
+    T_slice       = slice(qkv_shape, axes = [0], begin = [0], end = [1], stride = [1]);
+    T             = squeeze(T_slice, axes = [0]);
+
+    # chunk index for every token position: floor(pos / P) where P=2
+    positions          = tract_core_range(0, T, step = 1);           # [S]
+    positions_f32      = tract_core_cast(positions, to = 'f32');
+    chunk_size_f32     = tract_core_cast(2, to = 'f32');
+    chunkIdx_f32       = div(positions_f32, chunk_size_f32);         # [S] f32
+    chunkIdx_f32_floor = floor(chunkIdx_f32);
+    chunkIdx           = tract_core_cast(chunkIdx_f32_floor, to = 'i64');  # [S]
+
+    # diffChunks[i,j] = chunkIdx[i] - chunkIdx[j]  ([S,1] - [1,S] = [S,S])
+    ci_row     = unsqueeze(chunkIdx, axes = [1]);   # [S, 1]
+    ci_col     = unsqueeze(chunkIdx, axes = [0]);   # [1, S]
+    diffChunks = sub(ci_row, ci_col);               # [S, S] i64
+
+    # chunkedLimitedMask: 0 <= diffChunks <= left_chunks  (left_chunks=1)
+    left_chunks_i64 = tract_core_cast(1, to = 'i64');
+    zero_i64        = tract_core_cast(0, to = 'i64');
+    le_mask      = le(diffChunks, left_chunks_i64);   # [S, S] bool
+    ge_mask      = ge(diffChunks, zero_i64);           # [S, S] bool
+    chunked_mask = and(le_mask, ge_mask);              # [S, S] bool
+
+    # apply mask: keep scores where mask=true, -inf elsewhere
+    masked_scores = select(chunked_mask, scores, scores * 0.0 + -inf);
+
+    attn   = softmax(masked_scores, axes = [1]);                               # [S, S]
+    output = tract_core_einsum([attn, v], expr = "ij,jd->id", acc = "f32");   # [S, 4]
+}
