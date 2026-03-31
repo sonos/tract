@@ -130,6 +130,21 @@ impl EvalOp for TypedBinOp {
         true
     }
 
+    fn eval_with_session(
+        &self,
+        _node_id: usize,
+        session: &TurnState,
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
+        if let Some(result) = self.0.eval_symbolic(session, inputs.clone())? {
+            return Ok(result);
+        }
+        let (a, b) = args_2!(inputs);
+        ensure!(a.rank() == b.rank());
+        let c_dt = self.output_datum_type(a.datum_type(), b.datum_type())?;
+        Ok(tvec!(self.0.eval(a, b, c_dt)?.into_tvalue()))
+    }
+
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (a, b) = args_2!(inputs);
         ensure!(a.rank() == b.rank());
@@ -140,6 +155,10 @@ impl EvalOp for TypedBinOp {
 
 impl TypedBinOp {
     fn combine_uniform_tdim(&self, a: &TDim, b: &TDim) -> Option<TDim> {
+        // Comparison ops provide their own TDim combination
+        if let Some(result) = self.0.uniform_tdim_comparison(a, b) {
+            return Some(result);
+        }
         let a = tensor0(a.clone()).into_tvalue();
         let b = tensor0(b.clone()).into_tvalue();
         let result = self.0.eval(a, b, TDim::datum_type()).ok()?;

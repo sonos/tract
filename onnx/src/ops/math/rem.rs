@@ -1,8 +1,9 @@
 use crate::model::ParsingContext;
 use crate::pb::*;
+use tract_core::ops::binary::TypedBinOp;
+use tract_core::ops::logic::{comp_gt, comp_lt};
 use tract_hir::internal::*;
 use tract_hir::ops;
-use tract_hir::ops::logic::Comp;
 
 pub fn rem(
     _ctx: &ParsingContext,
@@ -56,14 +57,26 @@ impl Expansion for RemInt {
         let zero = model.add_const(name.to_string() + ".zero", zero)?;
         let rem =
             model.wire_node(name.to_string() + ".rem", tract_hir::ops::math::rem(), &wires)?[0];
-        let rem_is_neg =
-            model.wire_node(name.to_string() + ".rem_is_neg", Comp::GT, &[zero, rem])?;
-        let rem_is_pos =
-            model.wire_node(name.to_string() + ".rem_is_pos", Comp::LT, &[zero, rem])?;
-        let b_is_neg =
-            model.wire_node(name.to_string() + ".b_is_neg", Comp::GT, &[zero, wires[1]])?;
-        let b_is_pos =
-            model.wire_node(name.to_string() + ".b_is_pos", Comp::LT, &[zero, wires[1]])?;
+        let rem_is_neg = model.wire_node(
+            name.to_string() + ".rem_is_neg",
+            TypedBinOp(comp_gt(), None),
+            &[zero, rem],
+        )?;
+        let rem_is_pos = model.wire_node(
+            name.to_string() + ".rem_is_pos",
+            TypedBinOp(comp_lt(), None),
+            &[zero, rem],
+        )?;
+        let b_is_neg = model.wire_node(
+            name.to_string() + ".b_is_neg",
+            TypedBinOp(comp_gt(), None),
+            &[zero, wires[1]],
+        )?;
+        let b_is_pos = model.wire_node(
+            name.to_string() + ".b_is_pos",
+            TypedBinOp(comp_lt(), None),
+            &[zero, wires[1]],
+        )?;
         let rem_is_neg_b_is_pos = model.wire_node(
             name.to_string() + ".rem_is_neg_b_is_pos",
             tract_hir::ops::logic::and(),

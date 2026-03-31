@@ -145,7 +145,6 @@ macro_rules! comp_bin_mini_op {
             }
 
             fn eval(&self, a: TValue, b: TValue, c_dt: DatumType) -> TractResult<Tensor> {
-                debug_assert_eq!(c_dt, bool::datum_type());
                 let c_shape = crate::broadcast::multi_broadcast(&[a.shape(), b.shape()])?;
                 let mut c = unsafe { Tensor::uninitialized_dt(c_dt, &c_shape)? };
                 self.eval_out_of_place(&mut c, &a, &b)?;

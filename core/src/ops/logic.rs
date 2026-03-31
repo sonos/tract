@@ -4,6 +4,8 @@
 mod comparison;
 mod ite;
 pub use comparison::Comp;
+pub use comparison::{CompEq, CompGT, CompGTE, CompLT, CompLTE, CompNE};
+pub use comparison::{comp_eq, comp_gt, comp_gte, comp_lt, comp_lte, comp_ne};
 pub use ite::IfThenElse;
 
 use ndarray::*;
