@@ -23,7 +23,6 @@ use tract_core::ops::cast::Cast;
 use tract_core::ops::einsum::prefix_matmul::{PrefixMatMul, rewrite_einsum_to_prefix_matmul};
 use tract_core::ops::element_wise::ElementWiseOp;
 use tract_core::ops::konst::Const;
-use tract_core::ops::logic::Comp;
 use tract_core::ops::nn::{Reduce, Softmax as CoreSoftmax};
 use tract_core::transform::ModelTransform;
 use tract_gpu::fact::DeviceFact;
@@ -145,7 +144,6 @@ fn can_translate_to_metal_op(source: &TypedModel, node: &TypedNode) -> TractResu
             .op_as::<ElementWiseOp>()
             .is_some_and(|op| map_element_wise_ops_to_metal(op).is_some())
             || node.op_as::<TypedBinOp>().is_some_and(|op| map_bin_ops_to_metal(&op.0).is_some())
-            || node.op_is::<Comp>()
             || node.op_is::<MultiBroadcastTo>()
             || node.op_as::<PrefixMatMul>().is_some_and(|op| {
                 !op.transpose_c && op.quantize_output.is_none() && check_matmul_in_dts(&input_facts)
@@ -224,8 +222,6 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
                     }
                 } else if let Some(op) = node.op_as::<TypedBinOp>() {
                     Box::new(map_bin_ops_to_metal(&op.0).unwrap())
-                } else if let Some(op) = node.op_as::<Comp>() {
-                    Box::new(convert_logic_ops_to_metal(op))
                 } else if let Some(op) = node.op_as::<MultiBroadcastTo>() {
                     Box::new(ops::MetalMultiBroadcastTo::new(op.shape.clone()))
                 } else if let Some(op) = node.op_as::<Const>() {
@@ -474,18 +470,13 @@ fn map_bin_ops_to_metal(op: &Box<dyn BinMiniOp>) -> Option<ops::MetalBinOp> {
         (tract_core::ops::math::Pow, Pow),
         (tract_core::ops::logic::And, And),
         (tract_core::ops::logic::Or, Or),
+        (tract_core::ops::logic::CompEq, Equals),
+        (tract_core::ops::logic::CompNE, NotEquals),
+        (tract_core::ops::logic::CompLT, Less),
+        (tract_core::ops::logic::CompLTE, LessEqual),
+        (tract_core::ops::logic::CompGT, Greater),
+        (tract_core::ops::logic::CompGTE, GreaterEqual),
     ])(op)
-}
-
-fn convert_logic_ops_to_metal(op: &Comp) -> ops::MetalBinOp {
-    match op {
-        Comp::Eq => ops::MetalBinOp(ops::binary::BinOps::Equals),
-        Comp::NE => ops::MetalBinOp(ops::binary::BinOps::NotEquals),
-        Comp::LT => ops::MetalBinOp(ops::binary::BinOps::Less),
-        Comp::LTE => ops::MetalBinOp(ops::binary::BinOps::LessEqual),
-        Comp::GT => ops::MetalBinOp(ops::binary::BinOps::Greater),
-        Comp::GTE => ops::MetalBinOp(ops::binary::BinOps::GreaterEqual),
-    }
 }
 
 fn convert_const(op: &Const) -> TractResult<Const> {

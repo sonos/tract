@@ -10,7 +10,7 @@ use tract_core::ops::cnn::{Conv, rewrite_conv_with_n_axis};
 use tract_core::ops::einsum::prefix_matmul::{PrefixMatMul, rewrite_einsum_to_prefix_matmul};
 use tract_core::ops::element_wise::ElementWiseOp;
 use tract_core::ops::konst::Const;
-use tract_core::ops::logic::{Comp, Iff};
+use tract_core::ops::logic::Iff;
 use tract_core::ops::nn::{LeakyRelu, Reduce, Softmax};
 use tract_core::tract_data::itertools::Itertools;
 use tract_core::tract_linalg::block_quant::Q4_0;
@@ -125,9 +125,6 @@ fn can_translate_to_cuda_op(source: &TypedModel, node: &TypedNode) -> TractResul
                 map_binary_op_to_cuda(op).is_some_and(|op| op.0.is_supported_dt(input_dts[0]))
             })
             || node.op_is::<Iff>()
-            || node
-                .op_as::<Comp>()
-                .is_some_and(|op| convert_logic_op_to_cuda(op).0.is_supported_dt(input_dts[0]))
             || node
                 .op_as::<Const>()
                 .is_some_and(|op| DeviceTensor::is_supported_dt(op.val().datum_type()))
@@ -257,20 +254,15 @@ fn map_binary_op_to_cuda(op: &TypedBinOp) -> Option<ops::CudaBinOp> {
         (tract_core::ops::logic::And, And),
         (tract_core::ops::logic::Or, Or),
         (tract_core::ops::logic::BitOr, BitOr),
-        (tract_core::ops::logic::And, BitAnd),
+        (tract_core::ops::logic::BitAnd, BitAnd),
         (tract_core::ops::logic::BitXor, BitXor),
+        (tract_core::ops::logic::CompEq, Equals),
+        (tract_core::ops::logic::CompNE, NotEquals),
+        (tract_core::ops::logic::CompLT, Less),
+        (tract_core::ops::logic::CompLTE, LessEqual),
+        (tract_core::ops::logic::CompGT, Greater),
+        (tract_core::ops::logic::CompGTE, GreaterEqual),
     ])(op)
-}
-
-fn convert_logic_op_to_cuda(op: &Comp) -> ops::CudaBinOp {
-    match op {
-        Comp::Eq => ops::CudaBinOp(kernels::BinOps::Equals),
-        Comp::NE => ops::CudaBinOp(kernels::BinOps::NotEquals),
-        Comp::LT => ops::CudaBinOp(kernels::BinOps::Less),
-        Comp::LTE => ops::CudaBinOp(kernels::BinOps::LessEqual),
-        Comp::GT => ops::CudaBinOp(kernels::BinOps::Greater),
-        Comp::GTE => ops::CudaBinOp(kernels::BinOps::GreaterEqual),
-    }
 }
 
 fn can_convert_to_cuda_gemm(facts: &[TypedFact]) -> bool {
@@ -531,8 +523,6 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
                     }
                 } else if let Some(op) = node.op_as::<TypedBinOp>() {
                     Box::new(map_binary_op_to_cuda(op).unwrap())
-                } else if let Some(op) = node.op_as::<Comp>() {
-                    Box::new(convert_logic_op_to_cuda(op))
                 } else if let Some(op) = node.op_as::<MultiBroadcastTo>() {
                     Box::new(ops::CudaMultiBroadcastTo::new(op.shape.clone()))
                 } else if let Some(op) = node.op_as::<Cast>() {
