@@ -7,7 +7,6 @@ pub mod matmul;
 pub mod nn;
 mod utils;
 
-pub use bin_ops::BinOps;
 pub use element_wise::ElementWiseOps;
 
 use tract_core::internal::*;

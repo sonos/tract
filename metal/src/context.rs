@@ -83,7 +83,7 @@ impl MetalContext {
         for ew_func in crate::kernels::ElementWiseOps::all_functions() {
             let _ = self.load_pipeline(LibraryName::ElementWiseOps, &ew_func);
         }
-        for bin_func in crate::kernels::BinOps::all_functions() {
+        for bin_func in crate::kernels::bin_ops::all_functions() {
             let _ = self.load_pipeline(LibraryName::BinOps, &bin_func);
         }
         for func in crate::kernels::array::all_functions() {

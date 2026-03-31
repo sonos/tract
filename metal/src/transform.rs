@@ -142,7 +142,9 @@ fn can_translate_to_metal_op(source: &TypedModel, node: &TypedNode) -> TractResu
         && (node
             .op_as::<ElementWiseOp>()
             .is_some_and(|op| map_element_wise_ops_to_metal(op).is_some())
-            || node.op_as::<TypedBinOp>().is_some_and(|op| map_bin_ops_to_metal(&op.0).is_some())
+            || node
+                .op_as::<TypedBinOp>()
+                .is_some_and(|op| crate::kernels::bin_ops::is_supported(&*op.0, input_dts[0]))
             || node.op_is::<MultiBroadcastTo>()
             || node.op_as::<PrefixMatMul>().is_some_and(|op| {
                 !op.transpose_c && op.quantize_output.is_none() && check_matmul_in_dts(&input_facts)
@@ -215,7 +217,7 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
                         Box::new(map_element_wise_ops_to_metal(op).unwrap())
                     }
                 } else if let Some(op) = node.op_as::<TypedBinOp>() {
-                    Box::new(map_bin_ops_to_metal(&op.0).unwrap())
+                    Box::new(metal_bin_op(op.0.clone()))
                 } else if let Some(op) = node.op_as::<MultiBroadcastTo>() {
                     Box::new(ops::MetalMultiBroadcastTo::new(op.shape.clone()))
                 } else if let Some(op) = node.op_as::<Const>() {
@@ -259,21 +261,15 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
     }
 }
 
-use tract_gpu::ops::binary::{BinOp, GpuBinOp};
+use tract_core::ops::binary::BinMiniOp;
+use tract_gpu::ops::binary::GpuBinOp;
 
-fn metal_bin_op(op: BinOp) -> GpuBinOp {
-    GpuBinOp { backend_name: "Metal", op, dispatch: crate::kernels::bin_ops::metal_bin_op_dispatch }
-}
-
-macro_rules! map_bin_ops {
-    ([$(($tract_bin_op:path, $gpu_bin_op:ident)),* $(,)?]) => {
-        |op: &Box<dyn tract_core::ops::binary::BinMiniOp>| {
-            $(if let Some(_op) = op.downcast_ref::<$tract_bin_op>() {
-                return Some(metal_bin_op(BinOp::$gpu_bin_op));
-            })*
-            return None;
-        }
-    };
+fn metal_bin_op(mini_op: Box<dyn BinMiniOp>) -> GpuBinOp {
+    GpuBinOp {
+        backend_name: "Metal",
+        mini_op,
+        dispatch: crate::kernels::bin_ops::metal_bin_op_dispatch,
+    }
 }
 
 macro_rules! map_element_wise_ops {
@@ -460,29 +456,6 @@ fn convert_matmul_to_metal(
     Ok(matmul_output)
 }
 
-#[allow(clippy::borrowed_box)]
-fn map_bin_ops_to_metal(op: &Box<dyn BinMiniOp>) -> Option<GpuBinOp> {
-    map_bin_ops!([
-        (tract_core::ops::math::Mul, Mul),
-        (tract_core::ops::math::Add, Add),
-        (tract_core::ops::math::Div, Div),
-        (tract_core::ops::math::Sub, Sub),
-        (tract_core::ops::math::Pow, Pow),
-        (tract_core::ops::math::Min, Min),
-        (tract_core::ops::math::Max, Max),
-        (tract_core::ops::logic::And, And),
-        (tract_core::ops::logic::Or, Or),
-        (tract_core::ops::logic::BitAnd, BitAnd),
-        (tract_core::ops::logic::BitOr, BitOr),
-        (tract_core::ops::logic::BitXor, BitXor),
-        (tract_core::ops::logic::CompEq, Equals),
-        (tract_core::ops::logic::CompNE, NotEquals),
-        (tract_core::ops::logic::CompLT, Less),
-        (tract_core::ops::logic::CompLTE, LessEqual),
-        (tract_core::ops::logic::CompGT, Greater),
-        (tract_core::ops::logic::CompGTE, GreaterEqual),
-    ])(op)
-}
 
 fn convert_const(op: &Const) -> TractResult<Const> {
     let typed_fact: TypedFact = Arc::clone(op.val()).try_into()?;
