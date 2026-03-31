@@ -81,12 +81,33 @@ impl BinOp {
         }
     }
 
-    fn output_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType> {
+    pub const ALL: [BinOp; 18] = [
+        Self::Mul,
+        Self::Add,
+        Self::Div,
+        Self::Sub,
+        Self::Pow,
+        Self::Min,
+        Self::Max,
+        Self::Less,
+        Self::LessEqual,
+        Self::Greater,
+        Self::GreaterEqual,
+        Self::Equals,
+        Self::NotEquals,
+        Self::And,
+        Self::Or,
+        Self::BitAnd,
+        Self::BitOr,
+        Self::BitXor,
+    ];
+
+    pub fn output_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType> {
         ensure!(a == b);
         if self.is_logic() { Ok(DatumType::Bool) } else { Ok(a) }
     }
 
-    fn output_shape<D: DimLike>(&self, a: &[D], b: &[D]) -> TractResult<TVec<D>> {
+    pub fn output_shape<D: DimLike>(&self, a: &[D], b: &[D]) -> TractResult<TVec<D>> {
         tract_core::broadcast::multi_broadcast(&[a, b])
             .with_context(|| format!("Error while broadcasting {:?} {:?}", a, b))
     }

@@ -222,7 +222,7 @@ impl TractCudaContext {
             let _ = self.load_pipeline(LibraryName::Unary, ew_func);
         }
 
-        for bin_func in crate::kernels::BinOps::all_functions() {
+        for bin_func in crate::kernels::binary::all_functions() {
             let _ = self.load_pipeline(LibraryName::Binary, bin_func);
         }
 
