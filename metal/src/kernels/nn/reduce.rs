@@ -1,10 +1,8 @@
 use crate::LibraryName;
-use crate::context::StreamExt;
 use crate::encoder::EncoderExt;
 use crate::kernels::utils;
 use metal::MTLSize;
 use tract_core::internal::*;
-use tract_gpu::GpuStream;
 use tract_gpu::tensor::DeviceTensor;
 
 pub use tract_gpu::ops::reduce::Reducer;
@@ -16,13 +14,12 @@ pub fn kernel_name(reducer: &Reducer, dt: DatumType) -> TractResult<String> {
 }
 
 pub fn metal_reduce_launch(
-    stream: &dyn GpuStream,
     reducer: &Reducer,
     input: &DeviceTensor,
     axis: usize,
     output: &DeviceTensor,
 ) -> TractResult<()> {
-    let stream = stream.metal()?;
+    crate::with_metal_stream(|stream| {
     stream.retain_tensor(input);
     stream.retain_tensor(output);
 
@@ -52,6 +49,7 @@ pub fn metal_reduce_launch(
         encoder.dispatch_thread_groups(grid_size, group_size);
     });
     Ok(())
+    })
 }
 
 #[cfg(test)]
@@ -98,7 +96,7 @@ mod tests {
             let mut o_shape = a.shape().to_vec();
             o_shape[axis] = 1;
             let output = unsafe { DeviceTensor::uninitialized_dt(a.datum_type(), &o_shape)? };
-            metal_reduce_launch(stream as &dyn GpuStream, &reducer, &a, axis, &output)?;
+            metal_reduce_launch(&reducer, &a, axis, &output)?;
             stream.wait_until_completed()?;
             let metal_output = output;
             cpu_output
@@ -336,7 +334,7 @@ mod tests {
                 let mut o_shape = a.shape().to_vec();
                 o_shape[self.axis] = 1;
                 let output = unsafe { DeviceTensor::uninitialized_dt(a.datum_type(), &o_shape)? };
-                metal_reduce_launch(stream as &dyn GpuStream, &self.op, &a, self.axis, &output)?;
+                metal_reduce_launch(&self.op, &a, self.axis, &output)?;
                 stream.wait_until_completed()?;
                 Ok(output.to_host()?.into_tensor())
             })

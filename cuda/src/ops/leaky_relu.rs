@@ -1,7 +1,6 @@
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensorExt;
 
-use crate::context::StreamExt;
 use crate::kernels::nn::LeakyRelu;
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -29,8 +28,7 @@ impl EvalOp for CudaLeakyRelu {
         session: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        tract_gpu::with_stream(|stream| {
-            let stream = stream.cuda()?;
+        crate::with_cuda_stream(|stream| {
             let input = args_1!(inputs);
             let input_cuda = input.to_device_tensor()?;
             let output = tract_gpu::session_handler::make_tensor_for_node(

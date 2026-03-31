@@ -1,4 +1,3 @@
-use crate::context::StreamExt;
 use crate::kernels::Iff;
 use tract_core::broadcast::multi_broadcast;
 use tract_core::internal::*;
@@ -42,8 +41,7 @@ impl EvalOp for CudaIff {
             tract_gpu::session_handler::make_tensor_for_node(session, node_id, out_dt, &out_shape)?;
 
         if output.len() > 0 {
-            tract_gpu::with_stream(|stream| {
-                let stream = stream.cuda()?;
+            crate::with_cuda_stream(|stream| {
                 Iff.dispatch_eval(stream, cond, then_t, else_t, &output)
                     .with_context(|| "Error while dispatching eval for CudaIff")
             })?;

@@ -1,4 +1,3 @@
-use crate::context::StreamExt;
 use crate::kernels;
 use tract_core::internal::*;
 use tract_core::ops::array::Slice;
@@ -70,8 +69,7 @@ impl EvalOp for CudaSlice {
 
         // Perform slicing only if the output is not empty.
         if o_shape[axis] != 0 {
-            tract_gpu::with_stream(|stream| {
-                let stream = stream.cuda()?;
+            crate::with_cuda_stream(|stream| {
                 kernels::array::MultiBroadcast.dispatch_eval(stream, input, offset, &output)
             })?;
         }
@@ -112,8 +110,7 @@ mod tests {
     use tract_gpu::tensor::IntoDevice;
 
     fn run_test(shape: &[usize], slice: Slice) -> TractResult<()> {
-        tract_gpu::with_stream(|stream| {
-            let stream = stream.cuda()?;
+        crate::with_cuda_stream(|stream| {
             let num_elements = shape.iter().product();
 
             let a = Tensor::from_shape(

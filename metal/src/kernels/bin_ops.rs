@@ -352,15 +352,14 @@ impl From<BinOp> for BinOps {
 }
 
 pub fn metal_bin_op_dispatch(
-    stream: &dyn tract_gpu::GpuStream,
     op: BinOp,
     lhs: &DeviceTensor,
     rhs: &DeviceTensor,
     output: &DeviceTensor,
 ) -> TractResult<()> {
-    use crate::context::StreamExt;
-    let stream = stream.metal()?;
-    BinOps::from(op).dispatch_eval(stream, lhs, rhs, output)
+    crate::with_metal_stream(|stream| {
+        BinOps::from(op).dispatch_eval(stream, lhs, rhs, output)
+    })
 }
 
 #[cfg(test)]

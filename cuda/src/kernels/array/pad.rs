@@ -145,8 +145,6 @@ impl Pad {
 mod tests {
     use std::f32::INFINITY;
 
-    use crate::context::StreamExt;
-
     use super::*;
     use tract_core::internal::Tensor;
     use tract_core::ops::array::{Pad, PadMode};
@@ -160,8 +158,7 @@ mod tests {
     where
         T: Datum + Copy + From<u8>,
     {
-        crate::context::with_cuda_stream(|stream| {
-            let stream = stream.cuda()?;
+        crate::with_cuda_stream(|stream| {
             let num_elements = in_shape.iter().product();
 
             let a = Tensor::from_shape(

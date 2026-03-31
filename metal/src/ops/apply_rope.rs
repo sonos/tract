@@ -1,4 +1,3 @@
-use crate::context::StreamExt;
 use crate::kernels::nn::ApplyRope;
 use derive_new::new;
 use tract_core::internal::*;
@@ -37,8 +36,7 @@ impl EvalOp for MetalApplyRope {
             input.shape(),
         )?;
 
-        tract_gpu::with_stream(|stream| {
-            let stream = stream.metal()?;
+        crate::with_metal_stream(|stream| {
             ApplyRope.dispatch_eval(stream, input, cos, sin, &output)
         })?;
         Ok(tvec!(output.into_tensor().into_tvalue()))

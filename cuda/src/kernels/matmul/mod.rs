@@ -619,7 +619,7 @@ impl GgmlGemm {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::context::StreamExt;
+
     use crate::kernels::matmul::quant_act_q81::GgmlQuantQ81;
     use crate::ops::GgmlQuantQ81Fact;
     use crate::utils::pad_q40;
@@ -639,8 +639,7 @@ mod tests {
         act_dt: DatumType,
         w_dt: DatumType,
     ) -> TractResult<()> {
-        crate::context::with_cuda_stream(|stream| {
-            let stream = stream.cuda()?;
+        crate::with_cuda_stream(|stream| {
             let act_shape = if !transpose_a { [act_batch, m, k] } else { [act_batch, k, m] };
             let w_shape = if !transpose_b { [w_batch, k, n] } else { [w_batch, n, k] };
             let mut activs = if act_dt == DatumType::F16 {
@@ -887,8 +886,7 @@ mod tests {
         }
 
         pub fn run(&self) -> TractResult<Tensor> {
-            crate::context::with_cuda_stream(|stream| {
-                let stream = stream.cuda()?;
+            crate::with_cuda_stream(|stream| {
                 let lhs = if self.transpose_lhs {
                     Tensor::from_shape(&[self.b, self.k, self.m], &self.lhs)?.into_device()?
                 } else {

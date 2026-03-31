@@ -10,7 +10,7 @@ use tract_gpu::device::DeviceBuffer;
 use tract_gpu::tensor::{DeviceTensor, OwnedDeviceTensor};
 use tract_gpu::utils::{as_q40_tensor, check_strides_validity};
 
-use crate::context::{StreamExt, TractCudaStream, cuda_context};
+use crate::context::{TractCudaStream, cuda_context};
 use crate::kernels::launch_args::TractLaunchArgs;
 use crate::kernels::utils::cuda_launch_cfg_for_cpy;
 use crate::kernels::{BroadcastKind, LibraryName, get_sliced_cuda_view};
@@ -23,11 +23,7 @@ pub struct CudaBuffer {
 
 impl DeviceBuffer for CudaBuffer {
     fn ptr(&self) -> *const std::ffi::c_void {
-        tract_gpu::with_stream(|stream| {
-            let stream = stream.cuda()?;
-            Ok(self.inner.device_ptr(stream).0 as _)
-        })
-        .unwrap()
+        crate::with_cuda_stream(|stream| Ok(self.inner.device_ptr(stream).0 as _)).unwrap()
     }
 }
 impl Deref for CudaBuffer {
@@ -68,8 +64,7 @@ impl CudaTensor {
                 tensor.shape().into(),
             );
             let data = bqs.value().as_bytes();
-            tract_gpu::with_stream(|stream| {
-                let stream = stream.cuda()?;
+            crate::with_cuda_stream(|stream| {
                 let device_data = stream
                     .clone_htod(data)
                     .with_context(|| format!("Data address: {:?}", data.as_ptr()))?;
@@ -84,8 +79,7 @@ impl CudaTensor {
             })
         } else {
             let data = tensor.as_bytes();
-            tract_gpu::with_stream(|stream| {
-                let stream = stream.cuda()?;
+            crate::with_cuda_stream(|stream| {
                 let device_data = stream
                     .clone_htod(data)
                     .with_context(|| format!("Data address: {:?}", data.as_ptr()))?;
@@ -102,8 +96,7 @@ impl CudaTensor {
     }
 
     pub fn uninitialized_dt(shape: &[usize], dt: DatumType) -> TractResult<Self> {
-        tract_gpu::with_stream(|stream| unsafe {
-            let stream = stream.cuda()?;
+        crate::with_cuda_stream(|stream| unsafe {
             let device_data = stream.alloc(shape.iter().product::<usize>() * dt.size_of()).unwrap();
             let buffer = Arc::new(CudaBuffer { inner: device_data });
             Ok(CudaTensor {
@@ -122,8 +115,7 @@ impl CudaTensor {
             let format = bqf.format.clone();
             let len = shape.iter().product::<usize>();
             ensure!(len % format.block_len() == 0);
-            tract_gpu::with_stream(|stream| unsafe {
-                let stream = stream.cuda()?;
+            crate::with_cuda_stream(|stream| unsafe {
                 let device_data = stream.alloc(len * format.block_bytes() / format.block_len())?;
                 let buffer = Arc::new(CudaBuffer { inner: device_data });
                 Ok(CudaTensor {
@@ -137,8 +129,7 @@ impl CudaTensor {
         } else if let Some(ggml_q81_fact) = exotic_fact.downcast_ref::<GgmlQuantQ81Fact>() {
             let mem_size = ggml_q81_fact.mem_size().as_i64().unwrap() as usize;
 
-            tract_gpu::with_stream(|stream| unsafe {
-                let stream = stream.cuda()?;
+            crate::with_cuda_stream(|stream| unsafe {
                 let device_data = stream.alloc(mem_size)?;
                 let buffer = Arc::new(CudaBuffer { inner: device_data });
                 Ok(CudaTensor {
@@ -207,8 +198,7 @@ impl OwnedDeviceTensor for CudaTensor {
     }
 
     fn to_host(&self) -> TractResult<Arc<Tensor>> {
-        tract_gpu::with_stream(|stream| {
-            let stream = stream.cuda()?;
+        crate::with_cuda_stream(|stream| {
             let t: Tensor = if let Some(of) = &self.exotic_fact {
                 let mut blob =
                     unsafe { Blob::new_for_size_and_align(self.buffer.len(), vector_size()) };
@@ -240,8 +230,7 @@ impl OwnedDeviceTensor for CudaTensor {
     }
 
     fn get_bytes_slice(&self, offset: usize, len: usize) -> Vec<u8> {
-        tract_gpu::with_stream(|stream| {
-            let stream = stream.cuda()?;
+        crate::with_cuda_stream(|stream| {
             Ok(stream.clone_dtoh(&self.buffer.slice(offset..offset + len)).unwrap())
         })
         .unwrap()

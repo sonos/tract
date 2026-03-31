@@ -3,7 +3,7 @@ use cudarc::cudnn::Cudnn;
 use cudarc::nvrtc::Ptx;
 use cudarc::runtime::result::device::get_device_prop;
 use cudarc::runtime::sys::cudaDeviceProp;
-use tract_gpu::GpuStream;
+use std::cell::RefCell;
 use tract_gpu::device::DeviceContext;
 use tract_gpu::tensor::{DeviceTensor, OwnedDeviceTensor};
 
@@ -25,38 +25,30 @@ use cudarc::nvrtc::sys::{
 use std::ffi::{CStr, CString, c_char};
 use std::path::{Path, PathBuf};
 
-fn create_cuda_stream() -> Box<dyn tract_gpu::GpuStream> {
-    Box::new(TractCudaStream::new().expect("Could not create Cuda Stream"))
-}
-
-/// Call with_stream after ensuring the CUDA context (and stream factory) is initialized.
-/// Used by kernel unit tests that don't go through the runtime.
-#[cfg(test)]
-pub fn with_cuda_stream<R>(
-    f: impl FnOnce(&dyn tract_gpu::GpuStream) -> TractResult<R>,
-) -> TractResult<R> {
-    cuda_context(); // ensures factory is registered
-    tract_gpu::with_stream(f)
-}
-
 pub fn cuda_context() -> &'static TractCudaContext {
     static INSTANCE: OnceLock<TractCudaContext> = OnceLock::new();
     INSTANCE.get_or_init(|| {
-        tract_gpu::register_stream_factory(create_cuda_stream);
         let ctxt = TractCudaContext::new().expect("Could not create CUDA context");
         tract_gpu::device::set_context(Box::new(ctxt.clone())).expect("Could not set CUDA context");
         ctxt
     })
 }
 
-pub trait StreamExt {
-    fn cuda(&self) -> TractResult<&TractCudaStream>;
+thread_local! {
+    static CUDA_STREAM: RefCell<Option<TractCudaStream>> = const { RefCell::new(None) };
 }
 
-impl StreamExt for &dyn GpuStream {
-    fn cuda(&self) -> TractResult<&TractCudaStream> {
-        self.downcast_ref().context("Expected a cuda stream")
-    }
+pub fn with_cuda_stream<R>(f: impl FnOnce(&TractCudaStream) -> TractResult<R>) -> TractResult<R> {
+    cuda_context(); // ensures context is initialized
+    CUDA_STREAM.with(|cell| {
+        let needs_init = cell.borrow().is_none();
+        if needs_init {
+            let stream = TractCudaStream::new().expect("Could not create Cuda Stream");
+            *cell.borrow_mut() = Some(stream);
+        }
+        let borrow = cell.borrow();
+        f(borrow.as_ref().unwrap())
+    })
 }
 
 #[derive(Debug, Clone)]
@@ -289,10 +281,7 @@ impl TractCudaContext {
 
 impl DeviceContext for TractCudaContext {
     fn synchronize(&self) -> TractResult<()> {
-        tract_gpu::with_stream(|stream| {
-            let stream = stream.cuda()?;
-            stream.synchronize().map_err(|e| e.into())
-        })
+        with_cuda_stream(|stream| stream.synchronize().map_err(|e| e.into()))
     }
 
     fn tensor_to_device(&self, tensor: TValue) -> TractResult<Box<dyn OwnedDeviceTensor>> {

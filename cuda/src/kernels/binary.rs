@@ -4,7 +4,7 @@ use tract_core::internal::*;
 use tract_gpu::ops::binary::BinOp;
 use tract_gpu::tensor::DeviceTensor;
 
-use crate::context::{StreamExt, TractCudaStream, cuda_context};
+use crate::context::{TractCudaStream, cuda_context};
 use crate::kernels::launch_args::TractLaunchArgs;
 use crate::kernels::{LibraryName, get_cuda_view};
 
@@ -141,14 +141,12 @@ pub fn dispatch_eval(
 }
 
 pub fn cuda_bin_op_dispatch(
-    stream: &dyn tract_gpu::GpuStream,
     op: BinOp,
     lhs: &DeviceTensor,
     rhs: &DeviceTensor,
     output: &DeviceTensor,
 ) -> TractResult<()> {
-    let stream = stream.cuda()?;
-    dispatch_eval(stream, op, lhs, rhs, output)
+    crate::with_cuda_stream(|stream| dispatch_eval(stream, op, lhs, rhs, output))
 }
 
 #[cfg(test)]
@@ -156,7 +154,7 @@ mod tests {
     use tract_gpu::tensor::IntoDevice;
 
     use super::*;
-    use crate::context::with_cuda_stream;
+    use crate::with_cuda_stream;
     use derive_new::new;
     use num_traits::AsPrimitive;
     use num_traits::Float;
@@ -171,7 +169,6 @@ mod tests {
         f32: AsPrimitive<F>,
     {
         with_cuda_stream(|stream| {
-            let stream = stream.cuda()?;
             let len = shape.iter().product::<usize>();
 
             let a = Tensor::from_shape(

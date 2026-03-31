@@ -2,9 +2,9 @@ use criterion::measurement::WallTime;
 use criterion::*;
 
 use tract_core::internal::*;
-use tract_cuda::StreamExt;
 use tract_cuda::kernels::flash_attn::CudaFlashAttn;
 use tract_cuda::kernels::ggml_flash_attn::GgmlFlashAttn;
+use tract_cuda::with_cuda_stream;
 use tract_gpu::tensor::IntoDevice;
 
 pub fn cuda_ggml_flash(
@@ -16,8 +16,7 @@ pub fn cuda_ggml_flash(
     seq_len: usize,
     out_dim: usize,
 ) {
-    tract_gpu::with_stream(|stream| {
-        let stream = stream.cuda().unwrap();
+    with_cuda_stream(|stream| {
         let q = Tensor::zero_dt(DatumType::F32, &[batch, q_heads, seq_len, out_dim]).unwrap();
         let k = Tensor::zero_dt(
             DatumType::F16,
@@ -60,8 +59,7 @@ pub fn cuda_minimal_flash(
     seq_len: usize,
     out_dim: usize,
 ) {
-    tract_gpu::with_stream(|stream| {
-        let stream = stream.cuda().unwrap();
+    with_cuda_stream(|stream| {
         let q = Tensor::zero_dt(DatumType::F16, &[batch, q_heads, seq_len, out_dim]).unwrap();
         let k =
             Tensor::zero_dt(DatumType::F16, &[batch, kv_heads, past_seq_len + seq_len, out_dim])

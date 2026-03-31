@@ -88,7 +88,6 @@ impl Concat {
 
 #[cfg(test)]
 mod tests {
-    use crate::context::StreamExt;
 
     use super::*;
     use tract_gpu::tensor::IntoDevice;
@@ -99,8 +98,7 @@ mod tests {
     use tract_core::internal::Tensor;
 
     fn run_test_case(shapes: &[&[usize]], axis: usize) -> TractResult<()> {
-        crate::context::with_cuda_stream(|stream| {
-            let stream = stream.cuda()?;
+        crate::with_cuda_stream(|stream| {
             let mut inputs = tvec![];
             for (ix, shape) in shapes.iter().enumerate() {
                 let len = shape.iter().product::<usize>();

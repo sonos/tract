@@ -1,4 +1,3 @@
-use crate::context::StreamExt;
 use crate::kernels::conv::{ConvGeneric, ConvKernel, ConvKernelScratch};
 use crate::kernels::conv_cudnn::ConvCudnn;
 use crate::ops::CudaAxisOp;
@@ -137,8 +136,7 @@ impl OpState for CudaConvState {
         }
 
         if output.len() > 0 {
-            tract_gpu::with_stream(|stream| {
-                let stream = stream.cuda()?;
+            crate::with_cuda_stream(|stream| {
                 op.kernel.dispatch(
                     &mut **self.1.as_mut().unwrap(),
                     self.0,

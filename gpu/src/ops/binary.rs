@@ -1,4 +1,3 @@
-use crate::GpuStream;
 use crate::tensor::{DeviceTensor, DeviceTensorExt};
 use std::fmt;
 use tract_core::internal::*;
@@ -114,7 +113,7 @@ impl BinOp {
 }
 
 pub type DispatchBinOpFn =
-    fn(&dyn GpuStream, BinOp, &DeviceTensor, &DeviceTensor, &DeviceTensor) -> TractResult<()>;
+    fn(BinOp, &DeviceTensor, &DeviceTensor, &DeviceTensor) -> TractResult<()>;
 
 #[derive(Clone, Debug)]
 pub struct GpuBinOp {
@@ -182,10 +181,8 @@ impl EvalOp for GpuBinOp {
         let output =
             crate::session_handler::make_tensor_for_node(session, node_id, out_dt, &out_shape)?;
         if a.len() > 0 && b.len() > 0 {
-            crate::with_stream(|stream| {
-                (self.dispatch)(stream, self.op, a, b, &output)
-                    .with_context(|| format!("Error while dispatching eval for {}", self.name()))
-            })?;
+            (self.dispatch)(self.op, a, b, &output)
+                .with_context(|| format!("Error while dispatching eval for {}", self.name()))?;
         }
         Ok(tvec!(output.into_tensor().into_tvalue()))
     }

@@ -1,12 +1,10 @@
-use crate::GpuStream;
 use crate::tensor::{DeviceTensor, DeviceTensorExt};
 use std::fmt;
 use tract_core::internal::*;
 use tract_core::ops::nn as core_ops_nn;
 use tract_itertools::Itertools;
 
-pub type DispatchReduceFn =
-    fn(&dyn GpuStream, &Reducer, &DeviceTensor, usize, &DeviceTensor) -> TractResult<()>;
+pub type DispatchReduceFn = fn(&Reducer, &DeviceTensor, usize, &DeviceTensor) -> TractResult<()>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Reducer {
@@ -127,20 +125,18 @@ impl EvalOp for GpuReduce {
         session: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        crate::with_stream(|stream| {
-            let input_value = args_1!(inputs);
-            let input = input_value.to_device_tensor()?;
-            let mut output_shape = input.shape().to_vec();
-            output_shape[self.axes[0]] = 1;
-            let output = crate::session_handler::make_tensor_for_node(
-                session,
-                node_id,
-                input.datum_type(),
-                &output_shape,
-            )?;
-            (self.dispatch)(stream, &self.reducer, input, self.axes[0], &output)?;
-            Ok(tvec!(output.into_tensor().into_tvalue()))
-        })
+        let input_value = args_1!(inputs);
+        let input = input_value.to_device_tensor()?;
+        let mut output_shape = input.shape().to_vec();
+        output_shape[self.axes[0]] = 1;
+        let output = crate::session_handler::make_tensor_for_node(
+            session,
+            node_id,
+            input.datum_type(),
+            &output_shape,
+        )?;
+        (self.dispatch)(&self.reducer, input, self.axes[0], &output)?;
+        Ok(tvec!(output.into_tensor().into_tvalue()))
     }
 }
 

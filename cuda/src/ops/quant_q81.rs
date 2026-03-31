@@ -3,7 +3,6 @@ use tract_core::tract_linalg::block_quant::{BlockQuant, Q8_1};
 use tract_gpu::session_handler::make_scalar_exotic_tensor_for_node;
 use tract_gpu::tensor::DeviceTensorExt;
 
-use crate::context::StreamExt;
 use crate::kernels::matmul::quant_act_q81::GgmlQuantQ81;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -70,8 +69,7 @@ impl EvalOp for CudaGgmlQuantQ81 {
         session: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        tract_gpu::with_stream(|stream| {
-            let stream = stream.cuda()?;
+        crate::with_cuda_stream(|stream| {
             let input_value = args_1!(inputs);
             let input = input_value.to_device_tensor()?;
 

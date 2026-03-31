@@ -6,13 +6,10 @@ mod tensor;
 mod transform;
 pub mod utils;
 
-pub use context::StreamExt;
+pub use context::with_cuda_stream;
 use tract_core::internal::*;
 use tract_core::transform::ModelTransform;
-use tract_gpu::GpuStream;
 pub use transform::CudaTransform;
-
-impl GpuStream for context::TractCudaStream {}
 
 use crate::utils::ensure_cuda_runtime_dependencies;
 const Q40_ROW_PADDING: usize = 512;

@@ -111,8 +111,6 @@ fn pad(vals: &[impl AsPrimitive<i32>], neutral: i32) -> [i32; 5] {
 mod tests {
     use tract_gpu::tensor::IntoDevice;
 
-    use crate::context::StreamExt;
-
     use super::*;
     use derive_new::new;
     use num_traits::AsPrimitive;
@@ -125,8 +123,7 @@ mod tests {
 
     #[test]
     fn test_scaled_masked_softmax_f32() -> TractResult<()> {
-        crate::context::with_cuda_stream(|stream| {
-            let stream = stream.cuda()?;
+        crate::with_cuda_stream(|stream| {
             let m = 6;
             let n = 33;
             let scale: Arc<_> = tensor0(0.125f32).into();
@@ -241,8 +238,7 @@ mod tests {
         }
 
         pub fn run(&self) -> TractResult<Tensor> {
-            crate::context::with_cuda_stream(|stream| {
-                let stream = stream.cuda()?;
+            crate::with_cuda_stream(|stream| {
                 let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_device()?;
                 let mask =
                     Tensor::from_shape(self.mask_shape.as_slice(), &self.mask)?.into_device()?;

@@ -1,4 +1,3 @@
-use crate::context::StreamExt;
 use crate::kernels;
 use tract_core::internal::*;
 use tract_core::ops::array::Slice;
@@ -70,8 +69,7 @@ impl EvalOp for MetalSlice {
 
         // Perform slicing only if the output is not empty.
         if o_shape[axis] != 0 {
-            tract_gpu::with_stream(|stream| {
-                let stream = stream.metal()?;
+            crate::with_metal_stream(|stream| {
                 kernels::array::MultiBroadcast.dispatch_eval(stream, input, offset, &output)
             })?;
         }
@@ -108,13 +106,11 @@ impl TypedOp for MetalSlice {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::context::StreamExt;
     use tract_core::internal::Tensor;
     use tract_gpu::tensor::IntoDevice;
 
     fn run_test(shape: &[usize], slice: Slice) -> TractResult<()> {
-        tract_gpu::with_stream(|stream| {
-            let stream = stream.metal()?;
+        crate::with_metal_stream(|stream| {
             let num_elements = shape.iter().product();
 
             let a = Tensor::from_shape(

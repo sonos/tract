@@ -1,4 +1,3 @@
-use crate::context::StreamExt;
 use crate::kernels::ggml_flash_attn::GgmlFlashAttn;
 use derive_new::new;
 use tract_core::internal::*;
@@ -29,8 +28,7 @@ impl EvalOp for CudaFlashAttention {
         session: &SessionState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        tract_gpu::with_stream(|stream| {
-            let stream = stream.cuda()?;
+        crate::with_cuda_stream(|stream| {
             ensure!(inputs.len() == 4, "flash-attn expects [q, k, v, mask]");
 
             let q = inputs[0].to_device_tensor()?;

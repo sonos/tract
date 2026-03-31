@@ -199,7 +199,6 @@ impl TypedOp for MetalDynKVCache {
 #[cfg(test)]
 mod tests {
     use crate::MetalTransform;
-    use crate::context::StreamExt;
 
     use super::*;
     use tract_core::ops::array::TypedConcat;
@@ -214,8 +213,7 @@ mod tests {
     where
         usize: AsPrimitive<F>,
     {
-        tract_gpu::with_stream(|stream| {
-            let _stream = stream.metal()?;
+        crate::with_metal_stream(|_stream| {
             let op_name = "test".to_string();
 
             let mut model = TypedModel::default();
