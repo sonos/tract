@@ -11,5 +11,5 @@ kdam = "0.6"
 ndarray.workspace = true
 rand = "0.9"
 rand_distr = "0.5"
-tokenizers = "0.21"
+tokenizers = "0.22"
 tract.workspace = true
