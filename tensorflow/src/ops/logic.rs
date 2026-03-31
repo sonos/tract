@@ -1,6 +1,7 @@
 use tract_hir::internal::*;
 use tract_hir::ops;
-use tract_hir::ops::logic::Comp;
+use tract_hir::ops::binary::BinIntoHir;
+use tract_hir::ops::logic::{CompEq, CompGT, CompGTE, CompLT, CompLTE};
 
 use crate::model::ParsingContext;
 use crate::model::TfOpRegister;
@@ -8,11 +9,11 @@ use crate::tfpb::tensorflow::NodeDef;
 use std::collections::HashSet;
 
 pub fn register_all_ops(reg: &mut TfOpRegister) {
-    reg.insert("Equal", |_, _| Ok(expand(Comp::Eq)));
-    reg.insert("Greater", |_, _| Ok(expand(Comp::GT)));
-    reg.insert("GreaterEqual", |_, _| Ok(expand(Comp::GTE)));
-    reg.insert("Less", |_, _| Ok(expand(Comp::LT)));
-    reg.insert("LessEqual", |_, _| Ok(expand(Comp::LTE)));
+    reg.insert("Equal", |_, _| Ok(CompEq.into_hir()));
+    reg.insert("Greater", |_, _| Ok(CompGT.into_hir()));
+    reg.insert("GreaterEqual", |_, _| Ok(CompGTE.into_hir()));
+    reg.insert("Less", |_, _| Ok(CompLT.into_hir()));
+    reg.insert("LessEqual", |_, _| Ok(CompLTE.into_hir()));
     reg.insert("LogicalAnd", |_, _| Ok(ops::logic::And.into_hir()));
     reg.insert("LogicalOr", |_, _| Ok(ops::logic::Or.into_hir()));
     reg.insert("Merge", merge);

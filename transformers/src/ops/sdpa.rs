@@ -502,7 +502,7 @@ pub fn wire_attention_mask(
 
     let greater = model.wire_node(
         prefix.to_string() + ".mask.greater",
-        tract_core::ops::logic::Comp::GT,
+        tract_core::ops::binary::TypedBinOp(tract_core::ops::logic::comp_gt(), None),
         &[s_plus_p_range_add_axis, s_range_add_axis],
     )?[0];
     let cast_greater =
