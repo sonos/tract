@@ -6,8 +6,7 @@ use tract_gpu::tensor::DeviceTensor;
 
 use crate::context::{StreamExt, TractCudaStream, cuda_context};
 use crate::kernels::launch_args::TractLaunchArgs;
-use crate::kernels::utils::compute_broadcast_strides;
-use crate::kernels::{LibraryName, MAX_THREADS, get_cuda_view};
+use crate::kernels::{LibraryName, get_cuda_view};
 
 static BINARY_MAX_RANK: usize = 5;
 
@@ -80,51 +79,61 @@ pub fn dispatch_eval(
     let mut lhs_shape = [1usize; BINARY_MAX_RANK];
     let mut rhs_shape = [1usize; BINARY_MAX_RANK];
     let mut out_shape = [1usize; BINARY_MAX_RANK];
+    let mut lhs_strides = [0isize; BINARY_MAX_RANK];
+    let mut rhs_strides = [0isize; BINARY_MAX_RANK];
+    let mut out_strides = [0isize; BINARY_MAX_RANK];
 
-    lhs_shape[rank_offset..].copy_from_slice(lhs.shape());
-    rhs_shape[rank_offset..].copy_from_slice(rhs.shape());
-    out_shape[rank_offset..].copy_from_slice(output.shape());
+    let base_l_shape = lhs.shape();
+    let base_r_shape = rhs.shape();
+    let base_o_shape = output.shape();
+    let base_l_strides = lhs.strides();
+    let base_r_strides = rhs.strides();
+    let base_o_strides = output.strides();
+    for i in 0..rank {
+        let dst = rank_offset + i;
+        lhs_shape[dst] = base_l_shape[i];
+        rhs_shape[dst] = base_r_shape[i];
+        out_shape[dst] = base_o_shape[i];
+        lhs_strides[dst] =
+            if base_l_shape[i] == 1 && base_r_shape[i] != 1 { 0 } else { base_l_strides[i] };
+        rhs_strides[dst] =
+            if base_r_shape[i] == 1 && base_l_shape[i] != 1 { 0 } else { base_r_strides[i] };
+        out_strides[dst] = base_o_strides[i];
+    }
 
-    let lhs_strides: TVec<usize> =
-        compute_broadcast_strides(&lhs_shape, &Tensor::natural_strides(&lhs_shape))?;
-    let rhs_strides: TVec<usize> =
-        compute_broadcast_strides(&rhs_shape, &Tensor::natural_strides(&rhs_shape))?;
-    let out_strides = Tensor::natural_strides(&out_shape);
-    let n_el = out_shape.iter().product::<usize>();
-
-    let use_large_kernel = n_el >= MAX_THREADS;
-    let variant = if use_large_kernel { "large" } else { "generic" };
+    let total_elems: usize = out_shape.iter().product();
+    let block_dim = (128_u32, 1, 1);
+    let (grid_dim, variant) = if out_shape[BINARY_MAX_RANK - 1] >= 256 && total_elems >= 4096 {
+        (
+            (
+                out_shape[BINARY_MAX_RANK - 2] as u32,
+                out_shape[BINARY_MAX_RANK - 3] as u32,
+                out_shape[..BINARY_MAX_RANK - 3].iter().product::<usize>() as u32,
+            ),
+            "large",
+        )
+    } else {
+        ((total_elems.div_ceil(block_dim.0 as usize) as u32, 1, 1), "generic")
+    };
 
     let kname = kernel_name(op, lhs.datum_type(), variant)?;
     let func = cuda_context().load_pipeline(LibraryName::Binary, kname)?;
+
+    let cfg = LaunchConfig { grid_dim, block_dim, shared_mem_bytes: 0 };
 
     let lhs_view = get_cuda_view(lhs);
     let rhs_view = get_cuda_view(rhs);
     let out_view = get_cuda_view(output);
 
     let mut launch_args = TractLaunchArgs::new(stream, &func);
-
     launch_args.push_view(&lhs_view);
-    launch_args.push_slice_i32(&lhs_shape);
-    launch_args.push_slice_i32(&lhs_strides);
-
     launch_args.push_view(&rhs_view);
-    launch_args.push_slice_i32(&rhs_shape);
-    launch_args.push_slice_i32(&rhs_strides);
-
     launch_args.push_view(&out_view);
+    launch_args.push_slice_i32(&rhs_shape);
     launch_args.push_slice_i32(&out_shape);
+    launch_args.push_slice_i32(&lhs_strides);
+    launch_args.push_slice_i32(&rhs_strides);
     launch_args.push_slice_i32(&out_strides);
-
-    let cfg = if use_large_kernel {
-        LaunchConfig {
-            grid_dim: (n_el.div_ceil(MAX_THREADS) as u32, 1, 1),
-            block_dim: (MAX_THREADS as u32, 1, 1),
-            shared_mem_bytes: 0,
-        }
-    } else {
-        LaunchConfig { grid_dim: (1, 1, 1), block_dim: (n_el as u32, 1, 1), shared_mem_bytes: 0 }
-    };
 
     launch_args.launch(cfg)?;
 
