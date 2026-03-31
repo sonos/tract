@@ -131,41 +131,41 @@ template <typename T> static __device__ __forceinline__ T op_bitnot(T x) { retur
     DEFINE_UNARY_KERNEL(name, f32, float, OP)                                                      \
     DEFINE_UNARY_KERNEL(name, f16, __half, OP)
 
-DEFINE_OP_FOR_ALL_TYPES(unary_neg, op_neg)
-DEFINE_OP_FOR_ALL_TYPES(unary_abs, op_abs)
-DEFINE_OP_FOR_ALL_TYPES(unary_sqr, op_sqr)
-DEFINE_OP_FOR_ALL_TYPES(unary_sqrt, op_sqrt)
-DEFINE_OP_FOR_ALL_TYPES(unary_rsqrt, op_rsqrt)
-DEFINE_OP_FOR_ALL_TYPES(unary_recip, op_recip)
-DEFINE_OP_FOR_ALL_TYPES(unary_ceil, op_ceil)
-DEFINE_OP_FOR_ALL_TYPES(unary_floor, op_floor)
-DEFINE_OP_FOR_ALL_TYPES(unary_round, op_round)
-DEFINE_OP_FOR_ALL_TYPES(unary_rint, op_rint)
-DEFINE_OP_FOR_ALL_TYPES(unary_sin, op_sin)
-DEFINE_OP_FOR_ALL_TYPES(unary_sinh, op_sinh)
-DEFINE_OP_FOR_ALL_TYPES(unary_asin, op_asin)
-DEFINE_OP_FOR_ALL_TYPES(unary_asinh, op_asinh)
-DEFINE_OP_FOR_ALL_TYPES(unary_cos, op_cos)
-DEFINE_OP_FOR_ALL_TYPES(unary_cosh, op_cosh)
-DEFINE_OP_FOR_ALL_TYPES(unary_acos, op_acos)
-DEFINE_OP_FOR_ALL_TYPES(unary_acosh, op_acosh)
-DEFINE_OP_FOR_ALL_TYPES(unary_tan, op_tan)
-DEFINE_OP_FOR_ALL_TYPES(unary_tanh, op_tanh)
-DEFINE_OP_FOR_ALL_TYPES(unary_atan, op_atan)
-DEFINE_OP_FOR_ALL_TYPES(unary_atanh, op_atanh)
-DEFINE_OP_FOR_ALL_TYPES(unary_exp, op_exp)
-DEFINE_OP_FOR_ALL_TYPES(unary_sigmoid, op_sigmoid)
-DEFINE_OP_FOR_ALL_TYPES(unary_ln, op_ln)
-DEFINE_OP_FOR_ALL_TYPES(unary_erf, op_erf)
-DEFINE_OP_FOR_ALL_TYPES(unary_silu, op_silu)
-DEFINE_OP_FOR_ALL_TYPES(unary_sign, op_sign)
-DEFINE_OP_FOR_ALL_TYPES(unary_hard_swish, op_hard_swish)
+DEFINE_OP_FOR_ALL_TYPES(element_wise_neg, op_neg)
+DEFINE_OP_FOR_ALL_TYPES(element_wise_abs, op_abs)
+DEFINE_OP_FOR_ALL_TYPES(element_wise_square, op_sqr)
+DEFINE_OP_FOR_ALL_TYPES(element_wise_sqrt, op_sqrt)
+DEFINE_OP_FOR_ALL_TYPES(element_wise_rsqrt, op_rsqrt)
+DEFINE_OP_FOR_ALL_TYPES(element_wise_recip, op_recip)
+DEFINE_OP_FOR_ALL_TYPES(element_wise_ceil, op_ceil)
+DEFINE_OP_FOR_ALL_TYPES(element_wise_floor, op_floor)
+DEFINE_OP_FOR_ALL_TYPES(element_wise_round, op_round)
+DEFINE_OP_FOR_ALL_TYPES(element_wise_roundhalftoeven, op_rint)
+DEFINE_OP_FOR_ALL_TYPES(element_wise_sin, op_sin)
+DEFINE_OP_FOR_ALL_TYPES(element_wise_sinh, op_sinh)
+DEFINE_OP_FOR_ALL_TYPES(element_wise_asin, op_asin)
+DEFINE_OP_FOR_ALL_TYPES(element_wise_asinh, op_asinh)
+DEFINE_OP_FOR_ALL_TYPES(element_wise_cos, op_cos)
+DEFINE_OP_FOR_ALL_TYPES(element_wise_cosh, op_cosh)
+DEFINE_OP_FOR_ALL_TYPES(element_wise_acos, op_acos)
+DEFINE_OP_FOR_ALL_TYPES(element_wise_acosh, op_acosh)
+DEFINE_OP_FOR_ALL_TYPES(element_wise_tan, op_tan)
+DEFINE_OP_FOR_ALL_TYPES(element_wise_tanh, op_tanh)
+DEFINE_OP_FOR_ALL_TYPES(element_wise_atan, op_atan)
+DEFINE_OP_FOR_ALL_TYPES(element_wise_atanh, op_atanh)
+DEFINE_OP_FOR_ALL_TYPES(element_wise_exp, op_exp)
+DEFINE_OP_FOR_ALL_TYPES(element_wise_sigmoid, op_sigmoid)
+DEFINE_OP_FOR_ALL_TYPES(element_wise_ln, op_ln)
+DEFINE_OP_FOR_ALL_TYPES(element_wise_erf, op_erf)
+DEFINE_OP_FOR_ALL_TYPES(element_wise_silu, op_silu)
+DEFINE_OP_FOR_ALL_TYPES(element_wise_sign, op_sign)
+DEFINE_OP_FOR_ALL_TYPES(element_wise_hardswish, op_hard_swish)
 
-DEFINE_UNARY_KERNEL(unary_bitnot, u8, uint8_t, op_bitnot);
-DEFINE_UNARY_KERNEL(unary_bitnot, u16, uint16_t, op_bitnot);
-DEFINE_UNARY_KERNEL(unary_bitnot, u32, uint32_t, op_bitnot);
-DEFINE_UNARY_KERNEL(unary_bitnot, u64, uint64_t, op_bitnot);
-DEFINE_UNARY_KERNEL(unary_bitnot, i8, int8_t, op_bitnot);
-DEFINE_UNARY_KERNEL(unary_bitnot, i16, int16_t, op_bitnot);
-DEFINE_UNARY_KERNEL(unary_bitnot, i32, int32_t, op_bitnot);
-DEFINE_UNARY_KERNEL(unary_bitnot, i64, int64_t, op_bitnot);
+DEFINE_UNARY_KERNEL(element_wise_bitnot, u8, uint8_t, op_bitnot);
+DEFINE_UNARY_KERNEL(element_wise_bitnot, u16, uint16_t, op_bitnot);
+DEFINE_UNARY_KERNEL(element_wise_bitnot, u32, uint32_t, op_bitnot);
+DEFINE_UNARY_KERNEL(element_wise_bitnot, u64, uint64_t, op_bitnot);
+DEFINE_UNARY_KERNEL(element_wise_bitnot, i8, int8_t, op_bitnot);
+DEFINE_UNARY_KERNEL(element_wise_bitnot, i16, int16_t, op_bitnot);
+DEFINE_UNARY_KERNEL(element_wise_bitnot, i32, int32_t, op_bitnot);
+DEFINE_UNARY_KERNEL(element_wise_bitnot, i64, int64_t, op_bitnot);

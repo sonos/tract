@@ -10,7 +10,7 @@ mod iff;
 pub(crate) mod launch_args;
 pub mod matmul;
 pub mod nn;
-mod unary;
+pub mod unary;
 pub(crate) mod utils;
 
 use std::env;
@@ -27,7 +27,6 @@ use tract_core::prelude::{TDim, TractResult};
 use tract_core::tract_linalg::block_quant::{BlockQuant, BlockQuantFact, Q4_0, Q8_1};
 use tract_gpu::tensor::{DeviceTensor, OwnedDeviceTensor};
 use tract_gpu::utils::as_q40_tensor;
-pub use unary::UnaryOps;
 
 const MAX_THREADS: usize = 1024;
 const WARP_SIZE: usize = 32;
@@ -61,7 +60,7 @@ pub const COMMON_H: &str = include_str!("cu/common.cuh");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LibraryName {
-    Unary,
+    ElementWise,
     Binary,
     Array,
     NN,
@@ -89,7 +88,7 @@ impl LibraryName {
     pub const ALL: [LibraryName; 10] = [
         Self::FlashAttn,
         Self::GgmlFlashAttn,
-        Self::Unary,
+        Self::ElementWise,
         Self::Binary,
         Self::Array,
         Self::NN,
@@ -101,7 +100,7 @@ impl LibraryName {
 
     pub fn content(&self) -> &str {
         match self {
-            Self::Unary => UNARY_OPS,
+            Self::ElementWise => UNARY_OPS,
             Self::Binary => BINARY_OPS,
             Self::Array => ARRAY_OPS,
             Self::NN => NN_OPS,
@@ -116,7 +115,7 @@ impl LibraryName {
 
     pub fn cubin_path(&self) -> PathBuf {
         let basename = match self {
-            Self::Unary => "unary",
+            Self::ElementWise => "unary",
             Self::Binary => "binary",
             Self::Array => "array",
             Self::NN => "nn",

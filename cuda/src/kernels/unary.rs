@@ -1,181 +1,162 @@
-use std::fmt;
-
 use cudarc::driver::{LaunchConfig, PushKernelArg};
 use tract_core::internal::*;
+use tract_core::ops::element_wise::ElementWiseMiniOp;
 use tract_gpu::tensor::DeviceTensor;
 
 use crate::context::{TractCudaStream, cuda_context};
 use crate::kernels::launch_args::TractLaunchArgs;
 use crate::kernels::*;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
-pub enum UnaryOps {
-    Neg,
-    Abs,
-    Sqr,
-    Sqrt,
-    Rsqrt,
-    Recip,
-    Ceil,
-    Floor,
-    Round,
-    RoundHalfToEven,
-    Exp,
-    Sigmoid,
-    Sin,
-    Sinh,
-    Asin,
-    Asinh,
-    Cos,
-    Cosh,
-    Acos,
-    Acosh,
-    Tan,
-    Tanh,
-    Atan,
-    Atanh,
-    Erf,
-    Ln,
-    Silu,
-    Sign,
-    HardSwish,
-    BitNot,
+const ALL_OP_NAMES: &[&str] = &[
+    "neg",
+    "abs",
+    "square",
+    "sqrt",
+    "rsqrt",
+    "recip",
+    "ceil",
+    "floor",
+    "round",
+    "roundhalftoeven",
+    "exp",
+    "sigmoid",
+    "sin",
+    "sinh",
+    "asin",
+    "asinh",
+    "cos",
+    "cosh",
+    "acos",
+    "acosh",
+    "tan",
+    "tanh",
+    "atan",
+    "atanh",
+    "erf",
+    "ln",
+    "silu",
+    "sign",
+    "hardswish",
+    "bitnot",
+];
+
+pub fn all_functions() -> Vec<String> {
+    ALL_OP_NAMES
+        .iter()
+        .flat_map(|kname| {
+            DeviceTensor::SUPPORTED_DT.into_iter().flat_map(move |dt| {
+                let tname = DeviceTensor::tname(dt).ok()?;
+                Some(format!("element_wise_{kname}_{tname}"))
+            })
+        })
+        .collect()
 }
 
-impl fmt::Display for UnaryOps {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{self:?}")
-    }
-}
-
-impl UnaryOps {
-    pub const ALL: [UnaryOps; 30] = [
-        Self::Neg,
-        Self::Abs,
-        Self::Sqr,
-        Self::Sqrt,
-        Self::Rsqrt,
-        Self::Recip,
-        Self::Ceil,
-        Self::Floor,
-        Self::Round,
-        Self::RoundHalfToEven,
-        Self::Exp,
-        Self::Sigmoid,
-        Self::Sin,
-        Self::Sinh,
-        Self::Asin,
-        Self::Asinh,
-        Self::Cos,
-        Self::Cosh,
-        Self::Acos,
-        Self::Acosh,
-        Self::Tan,
-        Self::Tanh,
-        Self::Atan,
-        Self::Atanh,
-        Self::Erf,
-        Self::Ln,
-        Self::Silu,
-        Self::Sign,
-        Self::HardSwish,
-        Self::BitNot,
-    ];
-
-    pub fn is_supported_dt(&self, dt: DatumType) -> bool {
-        if *self == Self::BitNot {
+pub fn is_supported(mini_op: &dyn ElementWiseMiniOp, dt: DatumType) -> bool {
+    let name = mini_op.name().to_lowercase();
+    ALL_OP_NAMES.contains(&name.as_str())
+        && if name == "bitnot" {
             dt.is_integer()
         } else {
             matches!(dt, DatumType::F32 | DatumType::F16)
         }
+}
+
+pub fn dispatch_eval(
+    stream: &TractCudaStream,
+    mini_op: &dyn ElementWiseMiniOp,
+    input: &DeviceTensor,
+    output: &DeviceTensor,
+) -> TractResult<()> {
+    ensure!(output.shape() == input.shape());
+    ensure!(output.datum_type() == input.datum_type());
+
+    let op_name = mini_op.name().to_lowercase();
+    let tname = DeviceTensor::tname(input.datum_type())?;
+    let kname = format!("element_wise_{op_name}_{tname}");
+
+    let func = cuda_context().load_pipeline(LibraryName::ElementWise, kname)?;
+
+    let len = input.len();
+
+    let i_view = get_cuda_view(input);
+    let o_view = get_cuda_view(output);
+
+    let cfg = LaunchConfig::for_num_elems(len as _);
+    let mut launch_args = TractLaunchArgs::new(stream, &func);
+    launch_args.push_view(&i_view);
+    launch_args.push_view(&o_view);
+    launch_args.push_i32(len);
+
+    launch_args.launch(cfg)
+}
+
+pub fn cuda_element_wise_dispatch(
+    mini_op: &dyn ElementWiseMiniOp,
+    input: &DeviceTensor,
+    output: &DeviceTensor,
+) -> TractResult<()> {
+    crate::with_cuda_stream(|stream| dispatch_eval(stream, mini_op, input, output))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::with_cuda_stream;
+    use num_traits::AsPrimitive;
+    use num_traits::Float;
+    use tract_gpu::tensor::IntoDevice;
+
+    fn test_case<F>(mini_op: &dyn ElementWiseMiniOp, shape: &[usize]) -> TractResult<()>
+    where
+        F: Float + Datum,
+        usize: AsPrimitive<f32>,
+        f32: AsPrimitive<F>,
+    {
+        with_cuda_stream(|stream| {
+            let len = shape.iter().product::<usize>();
+            let input = Tensor::from_shape(
+                shape,
+                &(0..len)
+                    .map(|f| -> F {
+                        let v: f32 = f.as_();
+                        (v / len as f32).as_()
+                    })
+                    .collect::<Vec<_>>(),
+            )?
+            .into_device()?;
+
+            let output =
+                unsafe { DeviceTensor::uninitialized_dt(input.datum_type(), input.shape())? };
+            dispatch_eval(stream, mini_op, &input, &output)?;
+            stream.synchronize()?;
+
+            let out = output.to_host()?.into_tensor();
+            assert_eq!(out.shape(), shape);
+            Ok(())
+        })
     }
 
-    pub fn name(&self) -> Cow<'_, str> {
-        format!("{self}").into()
+    use tract_core::ops::math;
+    use tract_core::ops::nn;
+
+    #[test]
+    fn test_element_wise_exp() -> TractResult<()> {
+        test_case::<f32>(&math::Exp {}, &[4, 4])?;
+        test_case::<f16>(&math::Exp {}, &[4, 4])?;
+        Ok(())
     }
 
-    pub fn all_functions() -> Vec<String> {
-        Self::ALL
-            .into_iter()
-            .flat_map(|op| DeviceTensor::SUPPORTED_DT.into_iter().map(move |dt| (op, dt)))
-            .flat_map(|(op, dt)| op.kernel_name(dt).into_iter())
-            .collect()
+    #[test]
+    fn test_element_wise_sigmoid() -> TractResult<()> {
+        test_case::<f32>(&nn::Sigmoid {}, &[4, 4])?;
+        test_case::<f16>(&nn::Sigmoid {}, &[4, 4])?;
+        Ok(())
     }
 
-    // pub fn float_only(&self) -> bool {
-    //     matches!(
-    //         self,
-    //         Self::Exp
-    //             | Self::Ln
-    //             | Self::Sigmoid
-    //             | Self::Sqr
-    //             | Self::Rsqrt
-    //             | Self::Sqrt
-    //             | Self::Recip
-    //             | Self::Cos
-    //             | Self::Acos
-    //             | Self::Acosh
-    //             | Self::Cosh
-    //             | Self::Sin
-    //             | Self::Asin
-    //             | Self::Asinh
-    //             | Self::Sinh
-    //             | Self::Tan
-    //             | Self::Atan
-    //             | Self::Atanh
-    //             | Self::Tanh
-    //             | Self::Erf
-    //             | Self::Neg
-    //             | Self::Abs
-    //             | Self::RoundHalfToEven
-    //     )
-    // }
-
-    pub fn kernel_name(&self, dt: DatumType) -> TractResult<String> {
-        ensure!(self.is_supported_dt(dt), "Unsupported dt {:?} for Cuda Unary Op", dt);
-        let name = match self {
-            Self::RoundHalfToEven => "rint".to_string(),
-            Self::HardSwish => "hard_swish".to_string(),
-            _ => self.name().to_lowercase(),
-        };
-        Ok(format!("unary_{}_{}", name, DeviceTensor::tname(dt)?))
-    }
-
-    pub fn eval(
-        &self,
-        stream: &TractCudaStream,
-        input: &DeviceTensor,
-    ) -> TractResult<DeviceTensor> {
-        let output = unsafe { DeviceTensor::uninitialized_dt(input.datum_type(), input.shape())? };
-        self.dispatch_eval(stream, input, &output)?;
-        stream.synchronize()?;
-
-        Ok(output)
-    }
-
-    pub fn dispatch_eval(
-        &self,
-        stream: &TractCudaStream,
-        input: &DeviceTensor,
-        output: &DeviceTensor,
-    ) -> TractResult<()> {
-        ensure!(output.shape() == input.shape());
-        ensure!(output.datum_type() == input.datum_type());
-
-        let func = cuda_context()
-            .load_pipeline(LibraryName::Unary, self.kernel_name(input.datum_type())?)?;
-
-        let len = input.len();
-
-        let i_view = get_cuda_view(input);
-        let o_view = get_cuda_view(output);
-
-        let cfg = LaunchConfig::for_num_elems(len as _);
-        let mut launch_args = TractLaunchArgs::new(stream, &func);
-        launch_args.push_view(&i_view);
-        launch_args.push_view(&o_view);
-        launch_args.push_i32(len);
-
-        launch_args.launch(cfg)
+    #[test]
+    fn test_element_wise_abs() -> TractResult<()> {
+        test_case::<f32>(&math::Abs {}, &[4, 4])?;
+        Ok(())
     }
 }

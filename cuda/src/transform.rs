@@ -1,3 +1,8 @@
+use crate::context::cuda_context;
+use crate::kernels::nn::cuda_reduce_launch;
+use crate::ops::{CudaDelay, CudaIff, CudaPulsePad};
+use crate::ops::{CudaLeakyRelu, wire_cuda_conv};
+use crate::{kernels, ops, rewrite_rules};
 use DatumType::{F16, F32};
 use tract_core::dyn_clone::clone_box;
 use tract_core::internal::*;
@@ -29,13 +34,6 @@ use tract_transformers::ops::gelu_approximate::GeluApproximate;
 use tract_transformers::ops::rms_norm::RmsNorm;
 use tract_transformers::ops::scaled_masked_softmax::ScaledMaskedSoftmax;
 use tract_transformers::ops::sdpa::Sdpa;
-use tract_transformers::ops::silu::Silu;
-
-use crate::context::cuda_context;
-use crate::kernels::nn::cuda_reduce_launch;
-use crate::ops::{CudaDelay, CudaIff, CudaPulsePad};
-use crate::ops::{CudaLeakyRelu, wire_cuda_conv};
-use crate::{kernels, ops, rewrite_rules};
 
 #[derive(Debug, Default)]
 pub struct CudaTransform;
@@ -113,14 +111,10 @@ fn can_translate_to_cuda_op(source: &TypedModel, node: &TypedNode) -> TractResul
         && (node
             .op_as::<Const>()
             .is_some_and(|op| DeviceTensor::is_supported_dt(op.val().datum_type()))
-            || node.op_as::<ElementWiseOp>().is_some_and(|op| {
-                op.0.is::<Silu>() && kernels::UnaryOps::Silu.is_supported_dt(input_dts[0])
-            })
             || node.op_as::<ElementWiseOp>().is_some_and(|op| op.0.is::<LeakyRelu>())
-            || node.op_as::<ElementWiseOp>().is_some_and(|op| {
-                map_element_wise_ops_to_cuda(op)
-                    .is_some_and(|op| op.0.is_supported_dt(input_dts[0]))
-            })
+            || node
+                .op_as::<ElementWiseOp>()
+                .is_some_and(|op| crate::kernels::unary::is_supported(&*op.0, input_dts[0]))
             || node
                 .op_as::<TypedBinOp>()
                 .is_some_and(|op| crate::kernels::binary::is_supported(&*op.0, input_dts[0]))
@@ -187,52 +181,17 @@ fn convert_const(op: &Const) -> TractResult<Const> {
     Const::new_with_exotic_fact(cuda_const, Box::new(cuda_fact))
 }
 
-macro_rules! map_unary_ops {
-    ([$(($tract_unary_op:path, $cuda_unary_op:ident)),* $(,)?]) => {
-        |op: &tract_core::ops::element_wise::ElementWiseOp| {
-            $(if let Some(_op) = op.0.downcast_ref::<$tract_unary_op>() {
-                return Some($crate::ops::CudaUnaryOp(kernels::UnaryOps::$cuda_unary_op));
-            })*
-            return None;
-        }
-    };
-}
-
-fn map_element_wise_ops_to_cuda(op: &ElementWiseOp) -> Option<ops::CudaUnaryOp> {
-    map_unary_ops!([
-        (tract_core::ops::math::Abs, Abs),
-        (tract_core::ops::math::Exp, Exp),
-        (tract_core::ops::math::Ln, Ln),
-        (tract_core::ops::nn::Sigmoid, Sigmoid),
-        (tract_core::ops::math::Square, Sqr),
-        (tract_core::ops::math::Sqrt, Sqrt),
-        (tract_core::ops::math::Rsqrt, Rsqrt),
-        (tract_core::ops::math::Recip, Recip),
-        (tract_core::ops::math::Ceil, Ceil),
-        (tract_core::ops::math::Floor, Floor),
-        (tract_core::ops::math::Round, Round),
-        (tract_core::ops::math::RoundHalfToEven, RoundHalfToEven),
-        (tract_core::ops::math::Cos, Cos),
-        (tract_core::ops::math::Acos, Acos),
-        (tract_core::ops::math::Acosh, Acosh),
-        (tract_core::ops::math::Cosh, Cosh),
-        (tract_core::ops::math::Sin, Sin),
-        (tract_core::ops::math::Asin, Asin),
-        (tract_core::ops::math::Asinh, Asinh),
-        (tract_core::ops::math::Sinh, Sinh),
-        (tract_core::ops::math::Tan, Tan),
-        (tract_core::ops::math::Atan, Atan),
-        (tract_core::ops::math::Atanh, Atanh),
-        (tract_core::ops::math::Tanh, Tanh),
-        (tract_core::ops::math::Erf, Erf),
-        (tract_core::ops::math::Neg, Neg),
-        (tract_core::ops::math::Sign, Sign),
-        (tract_core::ops::nn::HardSwish, HardSwish),
-        (tract_core::ops::logic::BitNot, BitNot),
-    ])(op)
-}
-
+use tract_core::ops::element_wise::ElementWiseMiniOp;
 use tract_gpu::ops::binary::GpuBinOp;
+use tract_gpu::ops::element_wise::GpuElementWise;
+
+fn cuda_element_wise_op(mini_op: Box<dyn ElementWiseMiniOp>) -> GpuElementWise {
+    GpuElementWise {
+        backend_name: "Cuda",
+        mini_op,
+        dispatch: crate::kernels::unary::cuda_element_wise_dispatch,
+    }
+}
 
 pub fn cuda_bin_op(mini_op: Box<dyn BinMiniOp>) -> GpuBinOp {
     GpuBinOp {
@@ -491,12 +450,10 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
                 } else if let Some(op) = node.op_as::<ElementWiseOp>() {
                     if let Some(leaky) = op.0.downcast_ref::<LeakyRelu>() {
                         Box::new(CudaLeakyRelu { alpha: leaky.alpha })
-                    } else if op.0.is::<Silu>() {
-                        Box::new(ops::CudaUnaryOp(kernels::UnaryOps::Silu))
                     } else if let Some(ew) = op.0.downcast_ref::<GeluApproximate>() {
                         Box::new(ops::CudaGeluApproximate { fast_impl: ew.fast_impl })
                     } else {
-                        Box::new(map_element_wise_ops_to_cuda(op).unwrap())
+                        Box::new(cuda_element_wise_op(op.0.clone()))
                     }
                 } else if let Some(op) = node.op_as::<TypedBinOp>() {
                     Box::new(cuda_bin_op(op.0.clone()))

@@ -210,8 +210,8 @@ impl TractCudaContext {
     }
 
     pub fn preload_pipelines(&self) -> TractResult<()> {
-        for ew_func in crate::kernels::UnaryOps::all_functions() {
-            let _ = self.load_pipeline(LibraryName::Unary, ew_func);
+        for ew_func in crate::kernels::unary::all_functions() {
+            let _ = self.load_pipeline(LibraryName::ElementWise, ew_func);
         }
 
         for bin_func in crate::kernels::binary::all_functions() {
