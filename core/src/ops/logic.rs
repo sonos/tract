@@ -231,8 +231,8 @@ element_wise!(bitnot, BitNot, [bool, u8, u16, u32, u64, i8, i16, i32, i64] => |_
 mod tests {
     use super::*;
     use crate::ops::array::TypedConcat;
+    use crate::ops::binary::TypedBinOp;
     use crate::ops::change_axes::AxisOp;
-    use crate::ops::logic::Comp;
 
     /// Test Case 1: Iff where condition is Eq(T, 0) with T >= 1 assertion.
     /// After declutter, the Iff should fold to the false branch (inputs[2]).
@@ -258,7 +258,7 @@ mod tests {
         )?[0];
 
         // Eq(T, 0) → bool scalar
-        let eq_wire = model.wire_node("eq", Comp::Eq, &[t_wire, zero_wire])?[0];
+        let eq_wire = model.wire_node("eq", TypedBinOp(comp_eq(), None), &[t_wire, zero_wire])?[0];
 
         // Some data wire for the false branch
         let data_wire = model.add_source("data", TDim::datum_type().scalar_fact())?;
@@ -314,11 +314,12 @@ mod tests {
             crate::ops::konst::Const::new(tensor0(t_dim.clone()).into_arc_tensor())?,
             &[],
         )?[0];
-        // unsqueeze T_const → [1] TDim (scalar value, no coord remapping needed)
+        // unsqueeze T_const → [1,1] TDim to match range_unsq rank
         let t_unsq = model.wire_node("T_unsq", AxisOp::Add(0), &[t_const])?[0];
+        let t_unsq2 = model.wire_node("T_unsq2", AxisOp::Add(0), &[t_unsq])?[0];
 
-        // lt(range_unsq=[1,T], T_unsq=[1]) → bool [1,T], uniform_tdim = Lt(x1,T)
-        let lt = model.wire_node("lt", Comp::LT, &[range_unsq, t_unsq])?[0];
+        // lt(range_unsq=[1,T], t_unsq2=[1,1]) → bool [1,T], uniform_tdim = Lt(x1,T)
+        let lt = model.wire_node("lt", TypedBinOp(comp_lt(), None), &[range_unsq, t_unsq2])?[0];
 
         // bitnot(lt): BitNot doesn't propagate uniform_tdim in output_facts,
         // but Iff::declutter traces through it to get Not(Lt(x1,T))=Ge(x1,T)
@@ -401,12 +402,13 @@ mod tests {
             crate::ops::konst::Const::new(tensor0(split.clone()).into_arc_tensor())?,
             &[],
         )?[0];
-        // unsqueeze twice so it can broadcast against [1,1,1+T/160]
+        // unsqueeze three times so it can broadcast against [1,1,1+T/160]
         let sc1 = model.wire_node("sc1", AxisOp::Add(0), &[split_const])?[0];
         let sc2 = model.wire_node("sc2", AxisOp::Add(0), &[sc1])?[0];
+        let sc2 = model.wire_node("sc3", AxisOp::Add(0), &[sc2])?[0];
 
         // Ge(range_3d, split_3d) → bool [1,1,1+T/160], uniform_tdim = Ge(x2, T/160)
-        let cond = model.wire_node("cond", Comp::GTE, &[r2, sc2])?[0];
+        let cond = model.wire_node("cond", TypedBinOp(comp_gte(), None), &[r2, sc2])?[0];
 
         // true and false branches: shape [1,1,1+T/160]
         let true_branch = model.add_source(
@@ -462,7 +464,8 @@ mod tests {
             &[],
         )?[0];
         let t_unsq = model.wire_node("T_unsq", AxisOp::Add(0), &[t_const])?[0];
-        let lt = model.wire_node("lt", Comp::LT, &[range_unsq, t_unsq])?[0];
+        let t_unsq2 = model.wire_node("T_unsq2", AxisOp::Add(0), &[t_unsq])?[0];
+        let lt = model.wire_node("lt", TypedBinOp(comp_lt(), None), &[range_unsq, t_unsq2])?[0];
 
         let range_fact = model.outlet_fact(range)?;
         let range_unsq_fact = model.outlet_fact(range_unsq)?;
