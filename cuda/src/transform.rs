@@ -3,7 +3,7 @@ use tract_core::dyn_clone::clone_box;
 use tract_core::internal::*;
 use tract_core::model::translator::Translate;
 use tract_core::ops::array::{MultiBroadcastTo, Slice, TypedConcat};
-use tract_core::ops::binary::TypedBinOp;
+use tract_core::ops::binary::{BinMiniOp, TypedBinOp};
 use tract_core::ops::cast::Cast;
 use tract_core::ops::cnn::conv::rewrite_kernel_conv_in_oihw;
 use tract_core::ops::cnn::{Conv, rewrite_conv_with_n_axis};
@@ -121,9 +121,9 @@ fn can_translate_to_cuda_op(source: &TypedModel, node: &TypedNode) -> TractResul
                 map_element_wise_ops_to_cuda(op)
                     .is_some_and(|op| op.0.is_supported_dt(input_dts[0]))
             })
-            || node.op_as::<TypedBinOp>().is_some_and(|op| {
-                map_binary_op_to_cuda(op).is_some_and(|op| op.op.is_supported_dt(input_dts[0]))
-            })
+            || node
+                .op_as::<TypedBinOp>()
+                .is_some_and(|op| crate::kernels::binary::is_supported(&*op.0, input_dts[0]))
             || node.op_is::<Iff>()
             || node
                 .op_as::<Const>()
@@ -232,45 +232,14 @@ fn map_element_wise_ops_to_cuda(op: &ElementWiseOp) -> Option<ops::CudaUnaryOp> 
     ])(op)
 }
 
-use tract_gpu::ops::binary::{BinOp, GpuBinOp};
+use tract_gpu::ops::binary::GpuBinOp;
 
-pub fn cuda_bin_op(op: BinOp) -> GpuBinOp {
-    GpuBinOp { backend_name: "Cuda", op, dispatch: crate::kernels::binary::cuda_bin_op_dispatch }
-}
-
-macro_rules! map_bin_ops {
-    ([$(($tract_bin_op:path, $gpu_bin_op:ident)),* $(,)?]) => {
-        |op: &TypedBinOp| {
-            $(if let Some(_op) = op.0.downcast_ref::<$tract_bin_op>() {
-                return Some(cuda_bin_op(BinOp::$gpu_bin_op));
-            })*
-            return None;
-        }
-    };
-}
-
-#[allow(clippy::borrowed_box)]
-fn map_binary_op_to_cuda(op: &TypedBinOp) -> Option<GpuBinOp> {
-    map_bin_ops!([
-        (tract_core::ops::math::Mul, Mul),
-        (tract_core::ops::math::Add, Add),
-        (tract_core::ops::math::Div, Div),
-        (tract_core::ops::math::Sub, Sub),
-        (tract_core::ops::math::Min, Min),
-        (tract_core::ops::math::Max, Max),
-        (tract_core::ops::math::Pow, Pow),
-        (tract_core::ops::logic::And, And),
-        (tract_core::ops::logic::Or, Or),
-        (tract_core::ops::logic::BitOr, BitOr),
-        (tract_core::ops::logic::BitAnd, BitAnd),
-        (tract_core::ops::logic::BitXor, BitXor),
-        (tract_core::ops::logic::CompEq, Equals),
-        (tract_core::ops::logic::CompNE, NotEquals),
-        (tract_core::ops::logic::CompLT, Less),
-        (tract_core::ops::logic::CompLTE, LessEqual),
-        (tract_core::ops::logic::CompGT, Greater),
-        (tract_core::ops::logic::CompGTE, GreaterEqual),
-    ])(op)
+pub fn cuda_bin_op(mini_op: Box<dyn BinMiniOp>) -> GpuBinOp {
+    GpuBinOp {
+        backend_name: "Cuda",
+        mini_op,
+        dispatch: crate::kernels::binary::cuda_bin_op_dispatch,
+    }
 }
 
 fn can_convert_to_cuda_gemm(facts: &[TypedFact]) -> bool {
@@ -530,7 +499,7 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
                         Box::new(map_element_wise_ops_to_cuda(op).unwrap())
                     }
                 } else if let Some(op) = node.op_as::<TypedBinOp>() {
-                    Box::new(map_binary_op_to_cuda(op).unwrap())
+                    Box::new(cuda_bin_op(op.0.clone()))
                 } else if let Some(op) = node.op_as::<MultiBroadcastTo>() {
                     Box::new(ops::CudaMultiBroadcastTo::new(op.shape.clone()))
                 } else if let Some(op) = node.op_as::<Cast>() {

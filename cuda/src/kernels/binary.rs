@@ -1,7 +1,6 @@
 use cudarc::driver::{CudaStream, LaunchConfig, PushKernelArg};
-use std::fmt;
 use tract_core::internal::*;
-use tract_gpu::ops::binary::BinOp;
+use tract_core::ops::binary::BinMiniOp;
 use tract_gpu::tensor::DeviceTensor;
 
 use crate::context::{TractCudaStream, cuda_context};
@@ -10,63 +9,36 @@ use crate::kernels::{LibraryName, get_cuda_view};
 
 static BINARY_MAX_RANK: usize = 5;
 
+const ALL_OP_NAMES: &[&str] = &[
+    "mul", "add", "div", "sub", "pow", "min", "max", "gt", "gte", "eq", "ne", "lt", "lte", "and",
+    "or", "bitor", "bitand", "bitxor",
+];
+
 pub fn all_functions() -> Vec<String> {
-    BinOp::ALL
-        .into_iter()
-        .flat_map(|op| DeviceTensor::SUPPORTED_DT.into_iter().map(move |dt| (op, dt)))
-        .flat_map(|(op, dt)| ["large", "generic"].into_iter().map(move |variant| (op, dt, variant)))
-        .flat_map(|(op, dt, variant)| kernel_name(op, dt, variant).into_iter())
+    ALL_OP_NAMES
+        .iter()
+        .flat_map(|kname| {
+            DeviceTensor::SUPPORTED_DT.into_iter().flat_map(move |dt| {
+                let tname = DeviceTensor::tname(dt).ok()?;
+                Some(
+                    ["large", "generic"]
+                        .into_iter()
+                        .map(move |variant| format!("binary_{kname}_{variant}_{tname}")),
+                )
+            })
+        })
+        .flatten()
         .collect()
 }
 
-pub fn kernel_name(op: BinOp, dt: DatumType, variant: &str) -> TractResult<String> {
-    ensure!(op.is_supported_dt(dt), "Unsupported dt {:?} for Cuda binary ops: {op}", dt);
-
-    let tname = DeviceTensor::tname(dt)?;
-
-    let kname = match op {
-        BinOp::Mul => "mul",
-        BinOp::Add => "add",
-        BinOp::Div => "div",
-        BinOp::Sub => "sub",
-        BinOp::Pow => "pow",
-        BinOp::Min => "min",
-        BinOp::Max => "max",
-        BinOp::Greater => "greater",
-        BinOp::GreaterEqual => "greater_equal",
-        BinOp::Equals => "equals",
-        BinOp::NotEquals => "not_equals",
-        BinOp::Less => "less",
-        BinOp::LessEqual => "less_equal",
-        BinOp::And => "and",
-        BinOp::Or => "or",
-        BinOp::BitOr => "bitor",
-        BinOp::BitAnd => "bitand",
-        BinOp::BitXor => "bitxor",
-    };
-
-    Ok(format!("binary_{kname}_{variant}_{tname}"))
-}
-
-pub fn eval(
-    stream: &TractCudaStream,
-    op: BinOp,
-    lhs: &DeviceTensor,
-    rhs: &DeviceTensor,
-) -> TractResult<DeviceTensor> {
-    let out_shape = op.output_shape(lhs.shape(), rhs.shape())?;
-    let out_dt = op.output_datum_type(lhs.datum_type(), rhs.datum_type())?;
-    let output = unsafe { DeviceTensor::uninitialized_dt(out_dt, &out_shape)? };
-
-    dispatch_eval(stream, op, lhs, rhs, &output)?;
-
-    stream.synchronize()?;
-    Ok(output)
+pub fn is_supported(mini_op: &dyn BinMiniOp, dt: DatumType) -> bool {
+    ALL_OP_NAMES.contains(&mini_op.name().to_lowercase().as_str())
+        && (dt.is_number() || dt.is::<bool>())
 }
 
 pub fn dispatch_eval(
     stream: &TractCudaStream,
-    op: BinOp,
+    mini_op: &dyn BinMiniOp,
     lhs: &DeviceTensor,
     rhs: &DeviceTensor,
     output: &DeviceTensor,
@@ -116,7 +88,9 @@ pub fn dispatch_eval(
         ((total_elems.div_ceil(block_dim.0 as usize) as u32, 1, 1), "generic")
     };
 
-    let kname = kernel_name(op, lhs.datum_type(), variant)?;
+    let op_name = mini_op.name().to_lowercase();
+    let tname = DeviceTensor::tname(lhs.datum_type())?;
+    let kname = format!("binary_{op_name}_{variant}_{tname}");
     let func = cuda_context().load_pipeline(LibraryName::Binary, kname)?;
 
     let cfg = LaunchConfig { grid_dim, block_dim, shared_mem_bytes: 0 };
@@ -141,12 +115,12 @@ pub fn dispatch_eval(
 }
 
 pub fn cuda_bin_op_dispatch(
-    op: BinOp,
+    mini_op: &dyn BinMiniOp,
     lhs: &DeviceTensor,
     rhs: &DeviceTensor,
     output: &DeviceTensor,
 ) -> TractResult<()> {
-    crate::with_cuda_stream(|stream| dispatch_eval(stream, op, lhs, rhs, output))
+    crate::with_cuda_stream(|stream| dispatch_eval(stream, mini_op, lhs, rhs, output))
 }
 
 #[cfg(test)]
@@ -162,7 +136,12 @@ mod tests {
     use proptest::prelude::*;
     use tract_core::internal::Tensor;
 
-    fn test_case<F>(op: BinOp, shape: &[usize], offset: f32, scale: f32) -> TractResult<()>
+    fn test_case<F>(
+        mini_op: &dyn BinMiniOp,
+        shape: &[usize],
+        offset: f32,
+        scale: f32,
+    ) -> TractResult<()>
     where
         F: Float + Datum,
         usize: AsPrimitive<f32>,
@@ -193,44 +172,48 @@ mod tests {
             )?
             .into_device()?;
 
-            let cuda_output = eval(stream, op, &a, &b)?;
+            let out_dt = mini_op.result_datum_type(a.datum_type(), b.datum_type())?;
+            let output = unsafe { DeviceTensor::uninitialized_dt(out_dt, shape)? };
+            dispatch_eval(stream, mini_op, &a, &b, &output)?;
+            stream.synchronize()?;
 
-            // Just check it doesn't crash and produces the right shape
-            let out = cuda_output.to_host()?.into_tensor();
+            let out = output.to_host()?.into_tensor();
             assert_eq!(out.shape(), shape);
             Ok(())
         })
     }
 
+    use tract_core::ops::math;
+
     #[test]
     fn test_binary_add() -> TractResult<()> {
-        test_case::<f32>(BinOp::Add, &[4, 4], 0.0, 1.0)?;
-        test_case::<f16>(BinOp::Add, &[4, 4], 0.0, 1.0 / 100.0)?;
+        test_case::<f32>(&math::Add, &[4, 4], 0.0, 1.0)?;
+        test_case::<f16>(&math::Add, &[4, 4], 0.0, 1.0 / 100.0)?;
         Ok(())
     }
 
     #[test]
     fn test_binary_mul() -> TractResult<()> {
-        test_case::<f32>(BinOp::Mul, &[4, 4], 0.0, 1.0)?;
-        test_case::<f16>(BinOp::Mul, &[4, 4], 0.0, 1.0 / 100.0)?;
+        test_case::<f32>(&math::Mul, &[4, 4], 0.0, 1.0)?;
+        test_case::<f16>(&math::Mul, &[4, 4], 0.0, 1.0 / 100.0)?;
         Ok(())
     }
 
     #[test]
     fn test_binary_sub() -> TractResult<()> {
-        test_case::<f32>(BinOp::Sub, &[4, 4], 0.0, 1.0)?;
+        test_case::<f32>(&math::Sub, &[4, 4], 0.0, 1.0)?;
         Ok(())
     }
 
     #[test]
     fn test_binary_min() -> TractResult<()> {
-        test_case::<f32>(BinOp::Min, &[4, 4], 0.0, 1.0)?;
+        test_case::<f32>(&math::Min, &[4, 4], 0.0, 1.0)?;
         Ok(())
     }
 
     #[test]
     fn test_binary_max() -> TractResult<()> {
-        test_case::<f32>(BinOp::Max, &[4, 4], 0.0, 1.0)?;
+        test_case::<f32>(&math::Max, &[4, 4], 0.0, 1.0)?;
         Ok(())
     }
 }
