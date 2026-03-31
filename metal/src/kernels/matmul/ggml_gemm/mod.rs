@@ -343,7 +343,7 @@ mod tests {
 
     #[test]
     fn test_ggml_compilation() -> TractResult<()> {
-        crate::METAL_STREAM.with_borrow(|stream| stream.load_library(LibraryName::Ggml))?;
+        crate::utils::with_borrowed_metal_stream(|stream| stream.load_library(LibraryName::Ggml))?;
         Ok(())
     }
 

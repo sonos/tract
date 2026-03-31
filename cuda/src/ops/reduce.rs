@@ -1,92 +1,22 @@
-use crate::context::CUDA_STREAM;
-use crate::kernels::nn::Reducer;
+use crate::kernels::nn::cuda_reduce_launch;
 use tract_core::internal::*;
-use tract_core::ops::nn as core_ops_nn;
-use tract_gpu::tensor::DeviceTensorExt;
-use tract_itertools::Itertools;
+use tract_gpu::GpuStream;
+use tract_gpu::ops::reduce::GpuReduce;
+use tract_gpu::tensor::DeviceTensor;
 
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct CudaReduce {
-    pub axes: TVec<usize>,
-    pub reducer: Reducer,
+pub type CudaReduce = GpuReduce;
+
+fn dispatch(
+    stream: &dyn GpuStream,
+    reducer: &tract_gpu::ops::reduce::Reducer,
+    input: &DeviceTensor,
+    axis: usize,
+    output: &DeviceTensor,
+) -> TractResult<()> {
+    let stream = stream.downcast_ref::<crate::context::TractCudaStream>().unwrap();
+    cuda_reduce_launch(stream, reducer, input, axis, output).context("In cuda reducer")
 }
 
-impl CudaReduce {
-    pub fn new(axes: TVec<usize>, reducer: Reducer) -> TractResult<Self> {
-        ensure!(axes.len() == 1, "Only one axis of reduce is supported by CudaReduce");
-        Ok(Self { axes, reducer })
-    }
-
-    pub fn from_tract_core(core_reduce: &core_ops_nn::Reduce) -> TractResult<Self> {
-        let cuda_reducer = match core_reduce.reducer {
-            core_ops_nn::Reducer::Sum => Reducer::Sum,
-            core_ops_nn::Reducer::MeanOfSquares => Reducer::MeanOfSquares,
-            core_ops_nn::Reducer::Prod => Reducer::Prod,
-            core_ops_nn::Reducer::Min => Reducer::Min,
-            core_ops_nn::Reducer::Max => Reducer::Max,
-            core_ops_nn::Reducer::All => Reducer::All,
-            core_ops_nn::Reducer::Any => Reducer::Any,
-            _ => bail!("Unsupported reducer {:?} on cuda", core_reduce.reducer),
-        };
-        Self::new(core_reduce.axes.clone(), cuda_reducer)
-    }
-}
-
-impl Op for CudaReduce {
-    fn name(&self) -> StaticName {
-        format!("CudaReduce<{:?}>", self.reducer).into()
-    }
-    fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec![format!("axes: {:?}", self.axes)])
-    }
-    op_as_typed_op!();
-}
-
-impl EvalOp for CudaReduce {
-    fn is_stateless(&self) -> bool {
-        true
-    }
-
-    fn eval_with_session(
-        &self,
-        node_id: usize,
-        session: &TurnState,
-        inputs: TVec<TValue>,
-    ) -> TractResult<TVec<TValue>> {
-        CUDA_STREAM.with(|stream| {
-            let input_value = args_1!(inputs);
-            let input = input_value.to_device_tensor()?;
-            let mut output_shape = input.shape().to_vec();
-            output_shape[self.axes[0]] = 1;
-            let output = tract_gpu::session_handler::make_tensor_for_node(
-                session,
-                node_id,
-                input.datum_type(),
-                &output_shape,
-            )?;
-
-            self.reducer
-                .dispatch_eval(stream, input, self.axes[0], &output)
-                .context("In cuda reducer")?;
-
-            Ok(tvec!(output.into_tensor().into_tvalue()))
-        })
-    }
-}
-
-impl TypedOp for CudaReduce {
-    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        ensure!(self.axes.iter().tuple_windows().all(|(a, b)| a < b));
-        tract_gpu::utils::facts_to_device_facts(inputs, |facts| {
-            let mut shape: TVec<_> = facts[0].shape.to_tvec();
-            for &ax in &self.axes {
-                shape[ax] = 1.to_dim();
-            }
-            let dt = facts[0].datum_type;
-            Ok(tvec!(dt.fact(shape)))
-        })
-        .with_context(|| format!("Error while computing facts for {:?}", self.name()))
-    }
-
-    as_op!();
+pub fn cuda_reduce(core_reduce: &tract_core::ops::nn::Reduce) -> TractResult<CudaReduce> {
+    GpuReduce::from_tract_core(core_reduce, "Cuda", dispatch)
 }

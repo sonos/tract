@@ -134,7 +134,7 @@ impl ApplyRope {
 mod tests {
     use std::f32::consts::PI;
 
-    use crate::context::CUDA_STREAM;
+    use crate::context::StreamExt;
 
     use super::*;
     use tract_core::internal::Tensor;
@@ -142,7 +142,8 @@ mod tests {
     use tract_transformers::ops::apply_rope;
 
     fn run_test_case(shape: &[usize]) -> TractResult<()> {
-        CUDA_STREAM.with(|stream| {
+        crate::context::with_cuda_stream(|stream| {
+            let stream = stream.cuda()?;
             let len = shape.iter().product::<usize>();
 
             let a = Tensor::from_shape(

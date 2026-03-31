@@ -1,5 +1,5 @@
+use crate::context::StreamExt;
 use crate::kernels::nn::ScaledMaskedSoftmax;
-use crate::utils::with_borrowed_metal_stream;
 use derive_new::new;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensorExt;
@@ -30,7 +30,8 @@ impl EvalOp for MetalScaledMaskedSoftmax {
         session: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        with_borrowed_metal_stream(|stream| {
+        tract_gpu::with_stream(|stream| {
+            let stream = stream.metal()?;
             let (raw_input, raw_mask) = args_2!(inputs);
             let input = raw_input.to_device_tensor()?;
             let mask = raw_mask.to_device_tensor()?;

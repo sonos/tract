@@ -1,5 +1,5 @@
+use crate::context::StreamExt;
 pub use crate::kernels::ElementWiseOps;
-use crate::utils::with_borrowed_metal_stream;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensorExt;
 
@@ -29,7 +29,8 @@ impl EvalOp for MetalElementWiseOp {
         session: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        with_borrowed_metal_stream(|stream| {
+        tract_gpu::with_stream(|stream| {
+            let stream = stream.metal()?;
             let a_value = args_1!(inputs);
             let a = a_value.to_device_tensor()?;
             let output = tract_gpu::session_handler::make_tensor_for_node(

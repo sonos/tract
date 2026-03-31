@@ -8,7 +8,7 @@ pub mod softmax;
 
 pub use apply_rope::ApplyRope;
 pub use gelu_approximate::GeluApproximate;
-pub use reduce::Reducer;
+pub use reduce::{Reducer, metal_reduce_launch};
 pub use rms_norm::RmsNorm;
 pub use scaled_masked_softmax::ScaledMaskedSoftmax;
 pub use silu::Silu;
@@ -26,7 +26,7 @@ pub fn all_functions() -> Vec<String> {
             .flat_map(|op| {
                 tract_gpu::tensor::DeviceTensor::SUPPORTED_DT.into_iter().map(move |dt| (op, dt))
             })
-            .flat_map(|(op, dt)| op.kernel_name(dt).into_iter()),
+            .flat_map(|(op, dt)| reduce::kernel_name(&op, dt).into_iter()),
     );
     functions.extend(
         tract_gpu::tensor::DeviceTensor::SUPPORTED_DT

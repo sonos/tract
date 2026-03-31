@@ -75,7 +75,7 @@ impl Softmax {
 
 #[cfg(test)]
 mod tests {
-    use crate::context::CUDA_STREAM;
+    use crate::context::StreamExt;
 
     use super::*;
     use derive_new::new;
@@ -90,7 +90,8 @@ mod tests {
 
     #[test]
     fn test_softmax_f32() -> TractResult<()> {
-        CUDA_STREAM.with(|stream| {
+        crate::context::with_cuda_stream(|stream| {
+            let stream = stream.cuda()?;
             let m = 2;
             let k = 3;
             let axis = 1;
@@ -116,7 +117,8 @@ mod tests {
 
     #[test]
     fn test_softmax_f32_2() -> TractResult<()> {
-        CUDA_STREAM.with(|stream| {
+        crate::context::with_cuda_stream(|stream| {
+            let stream = stream.cuda()?;
             let shape = [8, 4, 3];
             let num_elements = shape.iter().product();
             let axis = 0;
@@ -144,7 +146,8 @@ mod tests {
 
     #[test]
     fn test_softmax_f16() -> TractResult<()> {
-        CUDA_STREAM.with(|stream| {
+        crate::context::with_cuda_stream(|stream| {
+            let stream = stream.cuda()?;
             let m = 4;
             let k = 4;
             let axis = 1;
@@ -252,7 +255,8 @@ mod tests {
         }
 
         pub fn run(&self) -> TractResult<Tensor> {
-            CUDA_STREAM.with(|stream| {
+            crate::context::with_cuda_stream(|stream| {
+                let stream = stream.cuda()?;
                 let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_device()?;
                 let cuda_output = Softmax.eval(stream, &a, self.axis)?;
                 Ok(cuda_output.to_host()?.into_tensor())

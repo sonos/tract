@@ -1,4 +1,4 @@
-use crate::context::CUDA_STREAM;
+use crate::context::StreamExt;
 use crate::kernels::nn::Softmax;
 use std::fmt::Debug;
 use tract_core::internal::*;
@@ -45,7 +45,8 @@ impl EvalOp for CudaSoftmax {
         session: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        CUDA_STREAM.with(|stream| {
+        tract_gpu::with_stream(|stream| {
+            let stream = stream.cuda()?;
             let input_value = args_1!(inputs);
             let input = input_value.to_device_tensor()?;
             let output = tract_gpu::session_handler::make_tensor_for_node(

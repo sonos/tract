@@ -1,4 +1,4 @@
-use crate::context::CUDA_STREAM;
+use crate::context::StreamExt;
 use crate::kernels::nn::ApplyRope;
 use derive_new::new;
 use tract_core::internal::*;
@@ -37,7 +37,10 @@ impl EvalOp for CudaApplyRope {
             input.shape(),
         )?;
 
-        CUDA_STREAM.with(|stream| ApplyRope.dispatch_eval(stream, input, cos, sin, &output))?;
+        tract_gpu::with_stream(|stream| {
+            let stream = stream.cuda()?;
+            ApplyRope.dispatch_eval(stream, input, cos, sin, &output)
+        })?;
         Ok(tvec!(output.into_tensor().into_tvalue()))
     }
 }

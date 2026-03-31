@@ -2,7 +2,7 @@ use criterion::measurement::WallTime;
 use criterion::*;
 
 use tract_core::internal::*;
-use tract_cuda::CUDA_STREAM;
+use tract_cuda::StreamExt;
 use tract_cuda::kernels::flash_attn::CudaFlashAttn;
 use tract_cuda::kernels::ggml_flash_attn::GgmlFlashAttn;
 use tract_gpu::tensor::IntoDevice;
@@ -16,7 +16,8 @@ pub fn cuda_ggml_flash(
     seq_len: usize,
     out_dim: usize,
 ) {
-    CUDA_STREAM.with(|stream| {
+    tract_gpu::with_stream(|stream| {
+        let stream = stream.cuda().unwrap();
         let q = Tensor::zero_dt(DatumType::F32, &[batch, q_heads, seq_len, out_dim]).unwrap();
         let k = Tensor::zero_dt(
             DatumType::F16,
@@ -45,7 +46,9 @@ pub fn cuda_ggml_flash(
                     GgmlFlashAttn.eval(stream, &cuda_q, &cuda_k, &cuda_v, &cuda_mask, 1.0).unwrap();
             });
         });
+        Ok(())
     })
+    .unwrap()
 }
 
 pub fn cuda_minimal_flash(
@@ -57,7 +60,8 @@ pub fn cuda_minimal_flash(
     seq_len: usize,
     out_dim: usize,
 ) {
-    CUDA_STREAM.with(|stream| {
+    tract_gpu::with_stream(|stream| {
+        let stream = stream.cuda().unwrap();
         let q = Tensor::zero_dt(DatumType::F16, &[batch, q_heads, seq_len, out_dim]).unwrap();
         let k =
             Tensor::zero_dt(DatumType::F16, &[batch, kv_heads, past_seq_len + seq_len, out_dim])
@@ -80,7 +84,9 @@ pub fn cuda_minimal_flash(
                     .unwrap();
             });
         });
+        Ok(())
     })
+    .unwrap()
 }
 
 fn flash_attn(
@@ -105,19 +111,6 @@ fn flash_attn(
 #[allow(unused)]
 fn small(c: &mut Criterion) {
     let shapes = vec![
-        //(1, 1, 1, 0, 1, 64),
-        //(1, 1, 1, 4096, 4096, 128),
-        //(1, 8, 8, 4096, 4096, 128),
-        //(1, 1, 1, 0, 64, 64),
-        //(1, 1, 1, 0, 256, 64),
-        //(1, 1, 1, 0, 256, 128),
-        //(1, 4, 4, 256, 256, 64),
-        //(1, 8, 8, 512, 512, 128),
-        //(1, 1, 1, 4096, 4096, 64),
-        //(1, 4, 4, 256, 2048, 64),
-        //(1, 32, 32, 512, 1024, 128),
-        //(1, 1, 1, 0, 64, 128),
-        //(1, 8, 8, 0, 64, 128),
         (1, 1, 1, 0, 128, 128),
         (1, 1, 1, 64, 64, 128),
         (1, 1, 1, 32, 128, 128),
@@ -167,5 +160,5 @@ fn benched_models_pp(c: &mut Criterion) {
     }
 }
 
-criterion_group!(benches, benched_models_pp); //big, wavenet, asr_15_m, inception, whisper_base);
+criterion_group!(benches, benched_models_pp);
 criterion_main!(benches);

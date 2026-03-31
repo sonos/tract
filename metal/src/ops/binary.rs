@@ -1,5 +1,5 @@
+use crate::context::StreamExt;
 pub use crate::kernels::BinOps;
-use crate::utils::with_borrowed_metal_stream;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensorExt;
 
@@ -54,7 +54,8 @@ impl EvalOp for MetalBinOp {
         let out_dt = self.0.output_datum_type(a.datum_type(), b.datum_type())?;
         let output =
             tract_gpu::session_handler::make_tensor_for_node(session, node_id, out_dt, &out_shape)?;
-        with_borrowed_metal_stream(|stream| {
+        tract_gpu::with_stream(|stream| {
+            let stream = stream.metal()?;
             self.0
                 .dispatch_eval(stream, a, b, &output)
                 .with_context(|| "Error while dispatching eval for Metal Bin Op")

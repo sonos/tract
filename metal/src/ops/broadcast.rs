@@ -1,5 +1,5 @@
+use crate::context::StreamExt;
 use crate::kernels;
-use crate::utils::with_borrowed_metal_stream;
 use derive_new::new;
 use std::fmt::Debug;
 use tract_core::internal::*;
@@ -39,7 +39,8 @@ impl EvalOp for MetalMultiBroadcastTo {
             &shape,
         )?;
 
-        with_borrowed_metal_stream(|stream| {
+        tract_gpu::with_stream(|stream| {
+            let stream = stream.metal()?;
             kernels::array::MultiBroadcast.dispatch_eval(stream, input, 0, &output)
         })?;
         Ok(tvec![output.into_tensor().into_tvalue()])

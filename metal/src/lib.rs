@@ -17,8 +17,12 @@ use crate::func_constants::{ConstantValues, Value};
 use crate::kernels::LibraryName;
 pub use crate::kernels::matmul::MetalGemmImplKind;
 
-pub use crate::context::{METAL_STREAM, MetalContext, MetalStream};
+pub use crate::context::{MetalContext, MetalStream, StreamExt, register_metal_stream_factory};
 pub use crate::transform::MetalTransform;
+
+use tract_gpu::GpuStream;
+
+impl GpuStream for MetalStream {}
 
 #[derive(Debug)]
 struct MetalRuntime;

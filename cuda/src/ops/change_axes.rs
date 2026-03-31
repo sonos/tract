@@ -1,4 +1,4 @@
-use crate::context::CUDA_STREAM;
+use crate::context::StreamExt;
 use crate::kernels::array::{Memcpy, PermuteAxes};
 use std::fmt::Debug;
 use tract_core::internal::*;
@@ -122,7 +122,8 @@ impl EvalOp for CudaAxisOp {
                     input.datum_type(),
                     &PermuteAxes::output_shape(input.shape(), &permutation)?,
                 )?;
-                CUDA_STREAM.with(|stream| {
+                tract_gpu::with_stream(|stream| {
+                    let stream = stream.cuda()?;
                     PermuteAxes.dispatch_eval(stream, input, &permutation, &output)
                 })?;
                 return Ok(tvec!(output.into_tensor().into_tvalue()));
@@ -149,7 +150,10 @@ impl EvalOp for CudaAxisOp {
             input.datum_type(),
             &new_shape,
         )?;
-        CUDA_STREAM.with(|stream| Memcpy.dispatch_eval(stream, input, 0, &output))?;
+        tract_gpu::with_stream(|stream| {
+            let stream = stream.cuda()?;
+            Memcpy.dispatch_eval(stream, input, 0, &output)
+        })?;
         Ok(tvec!(output.into_tensor().into_tvalue()))
     }
 }

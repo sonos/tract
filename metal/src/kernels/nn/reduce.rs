@@ -1,99 +1,57 @@
+use crate::LibraryName;
+use crate::context::StreamExt;
 use crate::encoder::EncoderExt;
 use crate::kernels::utils;
-use crate::{LibraryName, MetalStream};
 use metal::MTLSize;
 use tract_core::internal::*;
+use tract_gpu::GpuStream;
 use tract_gpu::tensor::DeviceTensor;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Reducer {
-    MeanOfSquares,
-    Sum,
-    Prod,
-    Min,
-    Max,
-    All,
-    Any,
+pub use tract_gpu::ops::reduce::Reducer;
+
+pub fn kernel_name(reducer: &Reducer, dt: DatumType) -> TractResult<String> {
+    ensure!(reducer.is_supported_dt(dt), "Unsupported dt {dt:?} for metal reduceop {reducer:?}",);
+    let tname = DeviceTensor::tname(dt)?;
+    Ok(format!("nn_ops::reduce_{}_nd3_{tname}", reducer))
 }
 
-impl Reducer {
-    pub const ALL: [Reducer; 7] =
-        [Self::MeanOfSquares, Self::Sum, Self::Prod, Self::Min, Self::Max, Self::All, Self::Any];
+pub fn metal_reduce_launch(
+    stream: &dyn GpuStream,
+    reducer: &Reducer,
+    input: &DeviceTensor,
+    axis: usize,
+    output: &DeviceTensor,
+) -> TractResult<()> {
+    let stream = stream.metal()?;
+    stream.retain_tensor(input);
+    stream.retain_tensor(output);
 
-    pub fn is_logic(&self) -> bool {
-        *self == Reducer::All || *self == Reducer::Any
-    }
+    ensure!(output.datum_type() == input.datum_type());
+    ensure!(output.shape()[axis] == 1);
 
-    pub fn is_supported_dt(&self, dt: DatumType) -> bool {
-        if self.is_logic() { dt.is::<bool>() } else { dt.is::<f32>() || dt.is::<f16>() }
-    }
+    let input_shape_nd3 = utils::reshape_to_rank_3(input.shape(), axis);
+    let input_strides_nd3 = Tensor::natural_strides(&input_shape_nd3);
+    let output_shape_nd3 = utils::reshape_to_rank_3(output.shape(), axis);
+    let output_strides_nd3 = Tensor::natural_strides(&output_shape_nd3);
 
-    pub fn kernel_name(&self, dt: DatumType) -> TractResult<String> {
-        ensure!(self.is_supported_dt(dt), "Unsupported dt {dt:?} for metal reduceop {self:?}");
-        let tname = DeviceTensor::tname(dt)?;
-        let op = match self {
-            Self::MeanOfSquares => "mean_of_squares",
-            Self::Sum => "sum",
-            Self::Prod => "prod",
-            Self::Min => "min",
-            Self::Max => "max",
-            Self::All => "all",
-            Self::Any => "any",
-        };
-        Ok(format!("nn_ops::reduce_{op}_nd3_{tname}"))
-    }
+    let pipeline =
+        stream.load_pipeline(LibraryName::NNOps, &kernel_name(reducer, input.datum_type())?)?;
 
-    pub fn eval(
-        &self,
-        stream: &MetalStream,
-        input: &DeviceTensor,
-        axis: usize,
-    ) -> TractResult<DeviceTensor> {
-        let mut o_shape = input.shape().to_vec();
-        o_shape[axis] = 1;
-        let output = unsafe { DeviceTensor::uninitialized_dt(input.datum_type(), &o_shape)? };
-        self.dispatch_eval(stream, input, axis, &output)?;
-        stream.wait_until_completed()?;
-        Ok(output)
-    }
+    let command_buffer = stream.command_buffer();
+    command_buffer.encode(|encoder| {
+        encoder.set_compute_pipeline_state(&pipeline);
+        encoder.set_metal_tensor(0, input, metal::MTLResourceUsage::Read);
+        encoder.set_metal_tensor(1, output, metal::MTLResourceUsage::Write);
+        encoder.set_slice(2, &input_shape_nd3);
+        encoder.set_slice(3, &input_strides_nd3);
+        encoder.set_slice(4, &output_strides_nd3);
 
-    pub fn dispatch_eval(
-        &self,
-        stream: &MetalStream,
-        input: &DeviceTensor,
-        axis: usize,
-        output: &DeviceTensor,
-    ) -> TractResult<()> {
-        stream.retain_tensor(input);
-        stream.retain_tensor(output);
-
-        ensure!(output.datum_type() == input.datum_type());
-        ensure!(output.shape()[axis] == 1);
-
-        let input_shape_nd3 = utils::reshape_to_rank_3(input.shape(), axis);
-        let input_strides_nd3 = Tensor::natural_strides(&input_shape_nd3);
-        let output_shape_nd3 = utils::reshape_to_rank_3(output.shape(), axis);
-        let output_strides_nd3 = Tensor::natural_strides(&output_shape_nd3);
-
-        let pipeline =
-            stream.load_pipeline(LibraryName::NNOps, &self.kernel_name(input.datum_type())?)?;
-
-        let command_buffer = stream.command_buffer();
-        command_buffer.encode(|encoder| {
-            encoder.set_compute_pipeline_state(&pipeline);
-            encoder.set_metal_tensor(0, input, metal::MTLResourceUsage::Read);
-            encoder.set_metal_tensor(1, output, metal::MTLResourceUsage::Write);
-            encoder.set_slice(2, &input_shape_nd3);
-            encoder.set_slice(3, &input_strides_nd3);
-            encoder.set_slice(4, &output_strides_nd3);
-
-            let grid_size = utils::build_metal_size_for_shape(&output_shape_nd3);
-            let group_size =
-                MTLSize { width: usize::min(32, input_shape_nd3[1]) as _, height: 1, depth: 1 };
-            encoder.dispatch_thread_groups(grid_size, group_size);
-        });
-        Ok(())
-    }
+        let grid_size = utils::build_metal_size_for_shape(&output_shape_nd3);
+        let group_size =
+            MTLSize { width: usize::min(32, input_shape_nd3[1]) as _, height: 1, depth: 1 };
+        encoder.dispatch_thread_groups(grid_size, group_size);
+    });
+    Ok(())
 }
 
 #[cfg(test)]
@@ -137,7 +95,12 @@ mod tests {
             .into_device()?;
 
             let cpu_output = tract_reducer.reduce(&[axis], &a.to_host()?.into_tensor())?;
-            let metal_output = reducer.eval(stream, &a, axis)?;
+            let mut o_shape = a.shape().to_vec();
+            o_shape[axis] = 1;
+            let output = unsafe { DeviceTensor::uninitialized_dt(a.datum_type(), &o_shape)? };
+            metal_reduce_launch(stream as &dyn GpuStream, &reducer, &a, axis, &output)?;
+            stream.wait_until_completed()?;
+            let metal_output = output;
             cpu_output
                 .close_enough(&metal_output.to_host()?.into_tensor(), Approximation::Approximate)
                 .with_context(|| {
@@ -370,8 +333,12 @@ mod tests {
         pub fn run(&self) -> TractResult<Tensor> {
             with_borrowed_metal_stream(|stream| {
                 let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_device()?;
-                let metal_output = self.op.eval(stream, &a, self.axis)?;
-                Ok(metal_output.to_host()?.into_tensor())
+                let mut o_shape = a.shape().to_vec();
+                o_shape[self.axis] = 1;
+                let output = unsafe { DeviceTensor::uninitialized_dt(a.datum_type(), &o_shape)? };
+                metal_reduce_launch(stream as &dyn GpuStream, &self.op, &a, self.axis, &output)?;
+                stream.wait_until_completed()?;
+                Ok(output.to_host()?.into_tensor())
             })
         }
     }

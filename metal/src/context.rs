@@ -24,9 +24,24 @@ use metal::{
 };
 use std::collections::HashMap;
 use tract_core::internal::*;
+use tract_gpu::GpuStream;
 
-thread_local! {
-    pub static METAL_STREAM: RefCell<MetalStream> = RefCell::new(MetalStream::new());
+fn create_metal_stream() -> Box<dyn GpuStream> {
+    Box::new(MetalStream::new())
+}
+
+pub fn register_metal_stream_factory() {
+    tract_gpu::register_stream_factory(create_metal_stream);
+}
+
+pub trait StreamExt {
+    fn metal(&self) -> TractResult<&MetalStream>;
+}
+
+impl StreamExt for &dyn GpuStream {
+    fn metal(&self) -> TractResult<&MetalStream> {
+        self.downcast_ref().context("Expected a metal stream")
+    }
 }
 
 pub fn metal_context() -> MetalContext {
@@ -36,6 +51,7 @@ pub fn metal_context() -> MetalContext {
             let ctxt = MetalContext::new().expect("Could not create Metal context");
             tract_gpu::device::set_context(Box::new(ctxt.clone()))
                 .expect("Could not set Metal context");
+            register_metal_stream_factory();
             ctxt
         })
         .clone()
@@ -167,7 +183,10 @@ impl MetalContext {
 
 impl DeviceContext for MetalContext {
     fn synchronize(&self) -> TractResult<()> {
-        METAL_STREAM.with_borrow(|stream| stream.wait_until_completed())
+        tract_gpu::with_stream(|stream| {
+            let stream = stream.metal()?;
+            stream.wait_until_completed()
+        })
     }
 
     fn tensor_to_device(&self, tensor: TValue) -> TractResult<Box<dyn OwnedDeviceTensor>> {

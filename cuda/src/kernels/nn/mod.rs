@@ -9,7 +9,7 @@ mod softmax;
 pub use apply_rope::ApplyRope;
 pub use gelu_approximate::GeluApproximate;
 pub use leaky_relu::LeakyRelu;
-pub use reduce::Reducer;
+pub use reduce::{Reducer, cuda_reduce_launch};
 pub use rms_norm::RmsNorm;
 pub use scaled_masked_softmax::ScaledMaskedSoftmax;
 pub use softmax::Softmax;
@@ -37,7 +37,7 @@ pub fn all_functions() -> Vec<String> {
                 tract_gpu::tensor::DeviceTensor::SUPPORTED_DT.into_iter().map(move |dt| (op, dt))
             })
             .flat_map(|(op, dt)| [0, MAX_THREADS].into_iter().map(move |n_cols| (op, dt, n_cols)))
-            .flat_map(|(op, dt, n_cols)| op.kernel_name(dt, n_cols).into_iter()),
+            .flat_map(|(op, dt, n_cols)| reduce::kernel_name(&op, dt, n_cols).into_iter()),
     );
     functions.extend(
         tract_gpu::tensor::DeviceTensor::SUPPORTED_DT
