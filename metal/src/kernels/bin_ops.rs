@@ -18,6 +18,8 @@ pub enum BinOps {
     Div,
     Sub,
     Pow,
+    Min,
+    Max,
     Less,
     LessEqual,
     Greater,
@@ -26,6 +28,9 @@ pub enum BinOps {
     NotEquals,
     And,
     Or,
+    BitAnd,
+    BitOr,
+    BitXor,
 }
 
 impl fmt::Display for BinOps {
@@ -35,12 +40,14 @@ impl fmt::Display for BinOps {
 }
 
 impl BinOps {
-    pub const ALL: [BinOps; 13] = [
+    pub const ALL: [BinOps; 18] = [
         Self::Mul,
         Self::Add,
         Self::Div,
         Self::Sub,
         Self::Pow,
+        Self::Min,
+        Self::Max,
         Self::Less,
         Self::LessEqual,
         Self::Greater,
@@ -49,6 +56,9 @@ impl BinOps {
         Self::NotEquals,
         Self::And,
         Self::Or,
+        Self::BitAnd,
+        Self::BitOr,
+        Self::BitXor,
     ];
 
     pub fn name(&self) -> StaticName {
@@ -200,6 +210,8 @@ impl BinOps {
             Self::Div => "div",
             Self::Sub => "sub",
             Self::Pow => "pow",
+            Self::Min => "min",
+            Self::Max => "max",
             Self::Greater => "greater",
             Self::GreaterEqual => "greater_equal",
             Self::Equals => "equals",
@@ -208,6 +220,9 @@ impl BinOps {
             Self::LessEqual => "less_equal",
             Self::And => "and",
             Self::Or => "or",
+            Self::BitAnd => "bit_and",
+            Self::BitOr => "bit_or",
+            Self::BitXor => "bit_xor",
         };
 
         if use_row_kernel {
