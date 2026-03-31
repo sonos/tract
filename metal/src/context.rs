@@ -78,7 +78,7 @@ impl MetalContext {
     }
 
     pub fn preload_pipelines(&self) -> TractResult<()> {
-        for ew_func in crate::kernels::ElementWiseOps::all_functions() {
+        for ew_func in crate::kernels::element_wise::all_functions() {
             let _ = self.load_pipeline(LibraryName::ElementWiseOps, &ew_func);
         }
         for bin_func in crate::kernels::bin_ops::all_functions() {

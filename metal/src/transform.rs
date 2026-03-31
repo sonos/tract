@@ -141,7 +141,7 @@ fn can_translate_to_metal_op(source: &TypedModel, node: &TypedNode) -> TractResu
     Ok(in_dts_metal_compatible
         && (node
             .op_as::<ElementWiseOp>()
-            .is_some_and(|op| map_element_wise_ops_to_metal(op).is_some())
+            .is_some_and(|op| crate::kernels::element_wise::is_supported(&*op.0, input_dts[0]))
             || node
                 .op_as::<TypedBinOp>()
                 .is_some_and(|op| crate::kernels::bin_ops::is_supported(&*op.0, input_dts[0]))
@@ -214,7 +214,7 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
                     if let Some(ew) = op.0.downcast_ref::<GeluApproximate>() {
                         Box::new(ops::MetalGeluApproximate { fast_impl: ew.fast_impl })
                     } else {
-                        Box::new(map_element_wise_ops_to_metal(op).unwrap())
+                        Box::new(metal_element_wise_op(op.0.clone()))
                     }
                 } else if let Some(op) = node.op_as::<TypedBinOp>() {
                     Box::new(metal_bin_op(op.0.clone()))
@@ -271,15 +271,15 @@ fn metal_bin_op(mini_op: Box<dyn BinMiniOp>) -> GpuBinOp {
     }
 }
 
-macro_rules! map_element_wise_ops {
-    ([$(($tract_bin_op:path, $metal_bin_op:ident)),* $(,)?]) => {
-        |op: &tract_core::ops::element_wise::ElementWiseOp| {
-            $(if let Some(_op) = op.0.downcast_ref::<$tract_bin_op>() {
-                return Some($crate::ops::element_wise::MetalElementWiseOp($crate::ops::element_wise::ElementWiseOps::$metal_bin_op));
-            })*
-            return None;
-        }
-    };
+use tract_core::ops::element_wise::ElementWiseMiniOp;
+use tract_gpu::ops::element_wise::GpuElementWise;
+
+fn metal_element_wise_op(mini_op: Box<dyn ElementWiseMiniOp>) -> GpuElementWise {
+    GpuElementWise {
+        backend_name: "Metal",
+        mini_op,
+        dispatch: crate::kernels::element_wise::metal_element_wise_dispatch,
+    }
 }
 
 fn check_matmul_in_dts(in_facts: &[TypedFact]) -> bool {
@@ -467,36 +467,3 @@ fn convert_const(op: &Const) -> TractResult<Const> {
     Const::new_with_exotic_fact(metal_const, Box::new(metal_fact))
 }
 
-fn map_element_wise_ops_to_metal(op: &ElementWiseOp) -> Option<ops::MetalElementWiseOp> {
-    map_element_wise_ops!([
-        (tract_core::ops::math::Abs, Abs),
-        (tract_core::ops::math::Exp, Exp),
-        (tract_core::ops::math::Ln, Ln),
-        (tract_core::ops::nn::Sigmoid, Sigmoid),
-        (tract_core::ops::math::Square, Square),
-        (tract_core::ops::math::Sqrt, Sqrt),
-        (tract_core::ops::math::Rsqrt, Rsqrt),
-        (tract_core::ops::math::Recip, Recip),
-        (tract_core::ops::math::Ceil, Ceil),
-        (tract_core::ops::math::Floor, Floor),
-        (tract_core::ops::math::Round, Round),
-        (tract_core::ops::math::RoundHalfToEven, RoundHalfToEven),
-        (tract_core::ops::math::Cos, Cos),
-        (tract_core::ops::math::Acos, Acos),
-        (tract_core::ops::math::Acosh, Acosh),
-        (tract_core::ops::math::Cosh, Cosh),
-        (tract_core::ops::math::Sin, Sin),
-        (tract_core::ops::math::Asin, Asin),
-        (tract_core::ops::math::Asinh, Asinh),
-        (tract_core::ops::math::Sinh, Sinh),
-        (tract_core::ops::math::Tan, Tan),
-        (tract_core::ops::math::Atan, Atan),
-        (tract_core::ops::math::Atanh, Atanh),
-        (tract_core::ops::math::Tanh, Tanh),
-        (tract_core::ops::math::Erf, Erf),
-        (tract_core::ops::math::Neg, Neg),
-        (tract_core::ops::math::Sign, Sign),
-        (tract_core::ops::nn::HardSwish, HardSwish),
-        (tract_core::ops::nn::Silu, Silu),
-    ])(op)
-}

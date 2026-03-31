@@ -7,8 +7,6 @@ pub mod matmul;
 pub mod nn;
 mod utils;
 
-pub use element_wise::ElementWiseOps;
-
 use tract_core::internal::*;
 
 #[cfg(target_os = "ios")]
