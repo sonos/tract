@@ -14,10 +14,10 @@ use tract_core::internal::*;
 use tract_core::transform::ModelTransform;
 
 use crate::func_constants::{ConstantValues, Value};
-use crate::kernels::LibraryName;
 pub use crate::kernels::matmul::MetalGemmImplKind;
+use crate::kernels::LibraryName;
 
-pub use crate::context::{MetalContext, MetalStream, register_metal_stream_factory};
+pub use crate::context::{register_metal_stream_factory, MetalContext, MetalStream, StreamExt};
 pub use crate::transform::MetalTransform;
 
 use tract_gpu::GpuStream;
