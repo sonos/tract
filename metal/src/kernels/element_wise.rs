@@ -34,6 +34,9 @@ pub enum ElementWiseOps {
     Tanh,
     Erf,
     Neg,
+    Sign,
+    HardSwish,
+    Silu,
 }
 
 impl fmt::Display for ElementWiseOps {
@@ -43,7 +46,7 @@ impl fmt::Display for ElementWiseOps {
 }
 
 impl ElementWiseOps {
-    pub const ALL: [ElementWiseOps; 26] = [
+    pub const ALL: [ElementWiseOps; 29] = [
         Self::Abs,
         Self::Exp,
         Self::Ln,
@@ -70,6 +73,9 @@ impl ElementWiseOps {
         Self::Tanh,
         Self::Erf,
         Self::Neg,
+        Self::Sign,
+        Self::HardSwish,
+        Self::Silu,
     ];
 
     pub fn name(&self) -> StaticName {
@@ -114,6 +120,8 @@ impl ElementWiseOps {
                 | Self::Neg
                 | Self::Abs
                 | Self::RoundHalfToEven
+                | Self::HardSwish
+                | Self::Silu
         )
     }
 
@@ -169,6 +177,9 @@ impl ElementWiseOps {
             Self::Tanh => "tanh",
             Self::Erf => "erf",
             Self::Neg => "neg",
+            Self::Sign => "sign",
+            Self::HardSwish => "hard_swish",
+            Self::Silu => "silu",
         };
 
         if in_place {

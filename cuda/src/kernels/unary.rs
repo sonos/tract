@@ -37,6 +37,8 @@ pub enum UnaryOps {
     Erf,
     Ln,
     Silu,
+    Sign,
+    HardSwish,
     BitNot,
 }
 
@@ -47,7 +49,7 @@ impl fmt::Display for UnaryOps {
 }
 
 impl UnaryOps {
-    pub const ALL: [UnaryOps; 28] = [
+    pub const ALL: [UnaryOps; 30] = [
         Self::Neg,
         Self::Abs,
         Self::Sqr,
@@ -75,6 +77,8 @@ impl UnaryOps {
         Self::Erf,
         Self::Ln,
         Self::Silu,
+        Self::Sign,
+        Self::HardSwish,
         Self::BitNot,
     ];
 
@@ -129,10 +133,10 @@ impl UnaryOps {
 
     pub fn kernel_name(&self, dt: DatumType) -> TractResult<String> {
         ensure!(self.is_supported_dt(dt), "Unsupported dt {:?} for Cuda Unary Op", dt);
-        let name = if matches!(self, Self::RoundHalfToEven) {
-            "rint".to_string()
-        } else {
-            self.name().to_lowercase()
+        let name = match self {
+            Self::RoundHalfToEven => "rint".to_string(),
+            Self::HardSwish => "hard_swish".to_string(),
+            _ => self.name().to_lowercase(),
         };
         Ok(format!("unary_{}_{}", name, DeviceTensor::tname(dt)?))
     }

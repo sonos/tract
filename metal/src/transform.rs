@@ -34,7 +34,6 @@ use tract_transformers::ops::apply_rope::{ApplyRope, RotateHalf};
 use tract_transformers::ops::gelu_approximate::GeluApproximate;
 use tract_transformers::ops::rms_norm::RmsNorm;
 use tract_transformers::ops::scaled_masked_softmax::ScaledMaskedSoftmax;
-use tract_transformers::ops::silu::Silu;
 
 impl MetalGemmImplKind {
     pub fn variants() -> Vec<MetalGemmImplKind> {
@@ -180,9 +179,6 @@ fn can_translate_to_metal_op(source: &TypedModel, node: &TypedNode) -> TractResu
                 .op_as::<ApplyRope>()
                 .is_some_and(|_| kernels::nn::ApplyRope::is_supported_dt(input_dts[0]))
             || node.op_as::<ElementWiseOp>().is_some_and(|op| {
-                op.0.is::<Silu>() && kernels::nn::Silu::is_supported_dt(input_dts[0])
-            })
-            || node.op_as::<ElementWiseOp>().is_some_and(|op| {
                 op.0.is::<GeluApproximate>()
                     && kernels::nn::GeluApproximate::is_supported_dt(input_dts[0])
             })))
@@ -213,9 +209,7 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
                 )?
             } else {
                 let op: Box<dyn TypedOp> = if let Some(op) = node.op_as::<ElementWiseOp>() {
-                    if op.0.is::<Silu>() {
-                        Box::new(ops::MetalSilu)
-                    } else if let Some(ew) = op.0.downcast_ref::<GeluApproximate>() {
+                    if let Some(ew) = op.0.downcast_ref::<GeluApproximate>() {
                         Box::new(ops::MetalGeluApproximate { fast_impl: ew.fast_impl })
                     } else {
                         Box::new(map_element_wise_ops_to_metal(op).unwrap())
@@ -524,5 +518,8 @@ fn map_element_wise_ops_to_metal(op: &ElementWiseOp) -> Option<ops::MetalElement
         (tract_core::ops::math::Tanh, Tanh),
         (tract_core::ops::math::Erf, Erf),
         (tract_core::ops::math::Neg, Neg),
+        (tract_core::ops::math::Sign, Sign),
+        (tract_core::ops::nn::HardSwish, HardSwish),
+        (tract_core::ops::nn::Silu, Silu),
     ])(op)
 }

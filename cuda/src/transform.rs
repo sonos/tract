@@ -226,6 +226,8 @@ fn map_element_wise_ops_to_cuda(op: &ElementWiseOp) -> Option<ops::CudaUnaryOp> 
         (tract_core::ops::math::Tanh, Tanh),
         (tract_core::ops::math::Erf, Erf),
         (tract_core::ops::math::Neg, Neg),
+        (tract_core::ops::math::Sign, Sign),
+        (tract_core::ops::nn::HardSwish, HardSwish),
         (tract_core::ops::logic::BitNot, BitNot),
     ])(op)
 }

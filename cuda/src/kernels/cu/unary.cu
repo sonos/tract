@@ -98,6 +98,25 @@ static __device__ __forceinline__ float op_silu(float x) { return (x / (1.0f + e
 static __device__ __forceinline__ __half op_silu(__half x) {
     return (x / ((__half)1.0f + hexp(-x)));
 }
+static __device__ __forceinline__ float op_sign(float x) {
+    return (x > 0.0f) ? 1.0f : ((x < 0.0f) ? -1.0f : 0.0f);
+}
+static __device__ __forceinline__ __half op_sign(__half x) {
+    return (x > (__half)0.0f) ? (__half)1.0f : ((x < (__half)0.0f) ? (__half)-1.0f : (__half)0.0f);
+}
+
+static __device__ __forceinline__ float op_hard_swish(float x) {
+    return x * fmaxf(0.0f, fminf(1.0f, x / 6.0f + 0.5f));
+}
+static __device__ __forceinline__ __half op_hard_swish(__half x) {
+    __half zero = (__half)0.0f;
+    __half one = (__half)1.0f;
+    __half six = (__half)6.0f;
+    __half half_val = (__half)0.5f;
+    __half t = __hmax(zero, __hmin(one, __hdiv(x, six) + half_val));
+    return __hmul(x, t);
+}
+
 template <typename T> static __device__ __forceinline__ T op_bitnot(T x) { return ~x; }
 
 #define DEFINE_UNARY_KERNEL(name, tname, T, OP)                                                    \
@@ -139,6 +158,8 @@ DEFINE_OP_FOR_ALL_TYPES(unary_sigmoid, op_sigmoid)
 DEFINE_OP_FOR_ALL_TYPES(unary_ln, op_ln)
 DEFINE_OP_FOR_ALL_TYPES(unary_erf, op_erf)
 DEFINE_OP_FOR_ALL_TYPES(unary_silu, op_silu)
+DEFINE_OP_FOR_ALL_TYPES(unary_sign, op_sign)
+DEFINE_OP_FOR_ALL_TYPES(unary_hard_swish, op_hard_swish)
 
 DEFINE_UNARY_KERNEL(unary_bitnot, u8, uint8_t, op_bitnot);
 DEFINE_UNARY_KERNEL(unary_bitnot, u16, uint16_t, op_bitnot);
