@@ -1,5 +1,4 @@
 pub mod apply_rope;
-pub mod binary;
 pub mod broadcast;
 pub mod cast;
 pub mod change_axes;
@@ -16,7 +15,6 @@ pub mod slice;
 pub mod softmax;
 
 pub use apply_rope::MetalApplyRope;
-pub use binary::MetalBinOp;
 pub use broadcast::MetalMultiBroadcastTo;
 pub use cast::MetalCast;
 pub use change_axes::MetalAxisOp;

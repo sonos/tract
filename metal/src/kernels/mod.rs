@@ -1,7 +1,7 @@
 #![allow(unused)]
 
 pub mod array;
-mod bin_ops;
+pub mod bin_ops;
 mod element_wise;
 pub mod matmul;
 pub mod nn;

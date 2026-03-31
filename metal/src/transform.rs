@@ -259,11 +259,17 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
     }
 }
 
+use tract_gpu::ops::binary::{BinOp, GpuBinOp};
+
+fn metal_bin_op(op: BinOp) -> GpuBinOp {
+    GpuBinOp { backend_name: "Metal", op, dispatch: crate::kernels::bin_ops::metal_bin_op_dispatch }
+}
+
 macro_rules! map_bin_ops {
-    ([$(($tract_bin_op:path, $metal_bin_op:ident)),* $(,)?]) => {
-        |op: &Box<dyn tract_core::ops::binary::BinMiniOp >| {
+    ([$(($tract_bin_op:path, $gpu_bin_op:ident)),* $(,)?]) => {
+        |op: &Box<dyn tract_core::ops::binary::BinMiniOp>| {
             $(if let Some(_op) = op.downcast_ref::<$tract_bin_op>() {
-                return Some($crate::ops::binary::MetalBinOp($crate::ops::binary::BinOps::$metal_bin_op));
+                return Some(metal_bin_op(BinOp::$gpu_bin_op));
             })*
             return None;
         }
@@ -455,7 +461,7 @@ fn convert_matmul_to_metal(
 }
 
 #[allow(clippy::borrowed_box)]
-fn map_bin_ops_to_metal(op: &Box<dyn BinMiniOp>) -> Option<ops::MetalBinOp> {
+fn map_bin_ops_to_metal(op: &Box<dyn BinMiniOp>) -> Option<GpuBinOp> {
     map_bin_ops!([
         (tract_core::ops::math::Mul, Mul),
         (tract_core::ops::math::Add, Add),

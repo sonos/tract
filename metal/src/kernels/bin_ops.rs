@@ -324,6 +324,45 @@ impl BinOps {
     }
 }
 
+use tract_gpu::ops::binary::BinOp;
+
+impl From<BinOp> for BinOps {
+    fn from(op: BinOp) -> Self {
+        match op {
+            BinOp::Mul => Self::Mul,
+            BinOp::Add => Self::Add,
+            BinOp::Div => Self::Div,
+            BinOp::Sub => Self::Sub,
+            BinOp::Pow => Self::Pow,
+            BinOp::Min => Self::Min,
+            BinOp::Max => Self::Max,
+            BinOp::Less => Self::Less,
+            BinOp::LessEqual => Self::LessEqual,
+            BinOp::Greater => Self::Greater,
+            BinOp::GreaterEqual => Self::GreaterEqual,
+            BinOp::Equals => Self::Equals,
+            BinOp::NotEquals => Self::NotEquals,
+            BinOp::And => Self::And,
+            BinOp::Or => Self::Or,
+            BinOp::BitAnd => Self::BitAnd,
+            BinOp::BitOr => Self::BitOr,
+            BinOp::BitXor => Self::BitXor,
+        }
+    }
+}
+
+pub fn metal_bin_op_dispatch(
+    stream: &dyn tract_gpu::GpuStream,
+    op: BinOp,
+    lhs: &DeviceTensor,
+    rhs: &DeviceTensor,
+    output: &DeviceTensor,
+) -> TractResult<()> {
+    use crate::context::StreamExt;
+    let stream = stream.metal()?;
+    BinOps::from(op).dispatch_eval(stream, lhs, rhs, output)
+}
+
 #[cfg(test)]
 mod tests {
     use crate::utils::with_borrowed_metal_stream;
