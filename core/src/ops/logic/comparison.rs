@@ -5,23 +5,6 @@ use crate::ops::binary::BinMiniOp;
 
 use tract_data::TooEarly;
 
-/// Extract a `TDim::Val(n)` from a scalar constant fact (integer or integer-valued float).
-pub fn scalar_konst_to_tdim(fact: &TypedFact) -> Option<TDim> {
-    let konst = fact.konst.as_ref()?;
-    if konst.len() != 1 {
-        return None;
-    }
-    if konst.datum_type().is_integer() || konst.datum_type().is::<bool>() {
-        konst.cast_to_scalar::<i64>().ok().map(TDim::Val)
-    } else if konst.datum_type().is_float() {
-        konst.cast_to_scalar::<f64>().ok().and_then(|f| {
-            if (f - f.round()).abs() < 1e-6 { Some(TDim::Val(f.round() as i64)) } else { None }
-        })
-    } else {
-        None
-    }
-}
-
 // Helper for eval_out_of_place dispatch
 fn eval_comp_oop<T: Datum + PartialOrd>(
     a: &Tensor,
@@ -87,6 +70,10 @@ macro_rules! comp_bin_mini_op {
 
             fn result_datum_type(&self, _a: DatumType, _b: DatumType) -> TractResult<DatumType> {
                 Ok(bool::datum_type())
+            }
+
+            fn is_commutative(&self) -> bool {
+                false
             }
 
             fn eval_in_a(&self, _a: &mut Tensor, _b: &Tensor) -> TractResult<()> {
