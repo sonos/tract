@@ -2,7 +2,7 @@
 
 pub mod array;
 pub mod bin_ops;
-mod element_wise;
+pub mod element_wise;
 pub mod matmul;
 pub mod nn;
 mod utils;
