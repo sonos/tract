@@ -30,4 +30,10 @@ if [ -n "$CI" ]
 then
     cargo clean
 fi
+if nvidia-smi > /dev/null 2>&1
+then
+    cargo test -p tract-cuda --lib
+    cargo test -p test-cuda
+fi
+
 ./.travis/cli-tests.sh
