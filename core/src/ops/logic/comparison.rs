@@ -6,7 +6,7 @@ use crate::ops::binary::BinMiniOp;
 use tract_data::TooEarly;
 
 /// Extract a `TDim::Val(n)` from a scalar constant fact (integer or integer-valued float).
-fn scalar_konst_to_tdim(fact: &TypedFact) -> Option<TDim> {
+pub fn scalar_konst_to_tdim(fact: &TypedFact) -> Option<TDim> {
     let konst = fact.konst.as_ref()?;
     if konst.len() != 1 {
         return None;
@@ -19,29 +19,6 @@ fn scalar_konst_to_tdim(fact: &TypedFact) -> Option<TDim> {
         })
     } else {
         None
-    }
-}
-
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-pub enum Comp {
-    Eq,
-    NE,
-    LT,
-    GT,
-    GTE,
-    LTE,
-}
-
-impl Comp {
-    pub fn to_bin_mini_op(&self) -> Box<dyn BinMiniOp> {
-        match self {
-            Comp::Eq => Box::new(CompEq),
-            Comp::NE => Box::new(CompNE),
-            Comp::LT => Box::new(CompLT),
-            Comp::GT => Box::new(CompGT),
-            Comp::GTE => Box::new(CompGTE),
-            Comp::LTE => Box::new(CompLTE),
-        }
     }
 }
 
@@ -250,95 +227,4 @@ pub fn comp_lte() -> Box<dyn BinMiniOp> {
 }
 pub fn comp_gte() -> Box<dyn BinMiniOp> {
     Box::new(CompGTE)
-}
-
-// Keep old Comp as Op for backward compat during migration
-use Comp::*;
-
-impl Op for Comp {
-    fn name(&self) -> StaticName {
-        match *self {
-            Eq => "==",
-            NE => "!=",
-            LT => "<",
-            GT => ">",
-            LTE => "<=",
-            GTE => ">=",
-        }
-        .into()
-    }
-    op_as_typed_op!();
-}
-
-impl EvalOp for Comp {
-    fn is_stateless(&self) -> bool {
-        true
-    }
-
-    fn eval_with_session(
-        &self,
-        _node_id: usize,
-        session: &TurnState,
-        inputs: TVec<TValue>,
-    ) -> TractResult<TVec<TValue>> {
-        let mini = self.to_bin_mini_op();
-        if let Some(result) = mini.eval_symbolic(session, inputs.clone())? {
-            return Ok(result);
-        }
-        let c_dt = mini.result_datum_type(inputs[0].datum_type(), inputs[1].datum_type())?;
-        Ok(tvec!(mini.eval(inputs[0].clone(), inputs[1].clone(), c_dt)?.into_tvalue()))
-    }
-}
-
-impl TypedOp for Comp {
-    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        let mini = self.to_bin_mini_op();
-        let shape = multi_broadcast(&[&inputs[0].shape, &inputs[1].shape])?;
-        let mut fact = bool::datum_type().fact(shape);
-<<<<<<< HEAD
-        if let (Some(a), Some(b)) = (&inputs[0].uniform_tdim, &inputs[1].uniform_tdim) {
-            fact.uniform_tdim = mini.uniform_tdim_comparison(a, b);
-        }
-        Ok(tvec!(fact))
-    }
-
-    fn change_axes(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-        _io: InOut,
-        change: &AxisOp,
-    ) -> TractResult<Option<AxisChangeConsequence>> {
-        if let AxisOp::Rm(rm) = change {
-            let (inputs, outputs) = model.node_facts(node.id)?;
-            rule_if!(inputs[0].shape[*rm].is_one());
-            rule_if!(inputs[1].shape[*rm].is_one());
-            rule_if!(outputs[0].shape[*rm].is_one());
-        }
-        Ok(Some(AxisChangeConsequence::new(model, node, None, change)))
-    }
-
-    fn slice(
-        &self,
-        patch: &mut TypedModelPatch,
-        _model: &TypedModel,
-        _node: &TypedNode,
-        prefix: &str,
-        inputs: &[OutletId],
-        _output_axis: usize,
-        _start: &TDim,
-        _end: &TDim,
-    ) -> TractResult<Option<TVec<OutletId>>> {
-        Ok(Some(patch.wire_node(prefix, *self, inputs)?))
-    }
-
-    fn axes_mapping(
-        &self,
-        inputs: &[&TypedFact],
-        outputs: &[&TypedFact],
-    ) -> TractResult<AxesMapping> {
-        AxesMapping::natural(inputs, outputs)
-    }
-
-    as_op!();
 }

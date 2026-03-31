@@ -6,7 +6,7 @@ use proptest::collection::vec;
 use tract_core::ndarray::ArrayD;
 use tract_core::num_traits::{AsPrimitive, FromPrimitive, Num, ToPrimitive};
 use tract_core::ops::binary::TypedBinOp;
-use tract_core::ops::logic::Comp;
+use tract_core::ops::logic;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum BinOps {
@@ -44,12 +44,12 @@ fn to_tract_op(op: BinOps) -> Box<dyn TypedOp> {
         BinOps::Div => Box::new(TypedBinOp(Box::new(tract_core::ops::math::Div), None)),
         BinOps::Sub => Box::new(TypedBinOp(Box::new(tract_core::ops::math::Sub), None)),
         BinOps::Pow => Box::new(TypedBinOp(Box::new(tract_core::ops::math::Pow), None)),
-        BinOps::Less => Box::new(Comp::LT),
-        BinOps::LessEqual => Box::new(Comp::LTE),
-        BinOps::Greater => Box::new(Comp::GT),
-        BinOps::GreaterEqual => Box::new(Comp::GTE),
-        BinOps::Equals => Box::new(Comp::Eq),
-        BinOps::NotEquals => Box::new(Comp::NE),
+        BinOps::Less => Box::new(TypedBinOp(logic::comp_lt(), None)),
+        BinOps::LessEqual => Box::new(TypedBinOp(logic::comp_lte(), None)),
+        BinOps::Greater => Box::new(TypedBinOp(logic::comp_gt(), None)),
+        BinOps::GreaterEqual => Box::new(TypedBinOp(logic::comp_gte(), None)),
+        BinOps::Equals => Box::new(TypedBinOp(logic::comp_eq(), None)),
+        BinOps::NotEquals => Box::new(TypedBinOp(logic::comp_ne(), None)),
     }
 }
 
