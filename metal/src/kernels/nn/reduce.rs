@@ -20,35 +20,35 @@ pub fn metal_reduce_launch(
     output: &DeviceTensor,
 ) -> TractResult<()> {
     crate::with_metal_stream(|stream| {
-    stream.retain_tensor(input);
-    stream.retain_tensor(output);
+        stream.retain_tensor(input);
+        stream.retain_tensor(output);
 
-    ensure!(output.datum_type() == input.datum_type());
-    ensure!(output.shape()[axis] == 1);
+        ensure!(output.datum_type() == input.datum_type());
+        ensure!(output.shape()[axis] == 1);
 
-    let input_shape_nd3 = utils::reshape_to_rank_3(input.shape(), axis);
-    let input_strides_nd3 = Tensor::natural_strides(&input_shape_nd3);
-    let output_shape_nd3 = utils::reshape_to_rank_3(output.shape(), axis);
-    let output_strides_nd3 = Tensor::natural_strides(&output_shape_nd3);
+        let input_shape_nd3 = utils::reshape_to_rank_3(input.shape(), axis);
+        let input_strides_nd3 = Tensor::natural_strides(&input_shape_nd3);
+        let output_shape_nd3 = utils::reshape_to_rank_3(output.shape(), axis);
+        let output_strides_nd3 = Tensor::natural_strides(&output_shape_nd3);
 
-    let pipeline =
-        stream.load_pipeline(LibraryName::NNOps, &kernel_name(reducer, input.datum_type())?)?;
+        let pipeline =
+            stream.load_pipeline(LibraryName::NNOps, &kernel_name(reducer, input.datum_type())?)?;
 
-    let command_buffer = stream.command_buffer();
-    command_buffer.encode(|encoder| {
-        encoder.set_compute_pipeline_state(&pipeline);
-        encoder.set_metal_tensor(0, input, metal::MTLResourceUsage::Read);
-        encoder.set_metal_tensor(1, output, metal::MTLResourceUsage::Write);
-        encoder.set_slice(2, &input_shape_nd3);
-        encoder.set_slice(3, &input_strides_nd3);
-        encoder.set_slice(4, &output_strides_nd3);
+        let command_buffer = stream.command_buffer();
+        command_buffer.encode(|encoder| {
+            encoder.set_compute_pipeline_state(&pipeline);
+            encoder.set_metal_tensor(0, input, metal::MTLResourceUsage::Read);
+            encoder.set_metal_tensor(1, output, metal::MTLResourceUsage::Write);
+            encoder.set_slice(2, &input_shape_nd3);
+            encoder.set_slice(3, &input_strides_nd3);
+            encoder.set_slice(4, &output_strides_nd3);
 
-        let grid_size = utils::build_metal_size_for_shape(&output_shape_nd3);
-        let group_size =
-            MTLSize { width: usize::min(32, input_shape_nd3[1]) as _, height: 1, depth: 1 };
-        encoder.dispatch_thread_groups(grid_size, group_size);
-    });
-    Ok(())
+            let grid_size = utils::build_metal_size_for_shape(&output_shape_nd3);
+            let group_size =
+                MTLSize { width: usize::min(32, input_shape_nd3[1]) as _, height: 1, depth: 1 };
+            encoder.dispatch_thread_groups(grid_size, group_size);
+        });
+        Ok(())
     })
 }
 

@@ -93,9 +93,7 @@ impl<K: GemmKernel + 'static> EvalOp for MetalGemm<K> {
         let c_shape = self.kernel.output_shape(a.shape(), &b_shape);
         let c = tract_gpu::session_handler::make_tensor_for_node(session, node_id, c_dt, &c_shape)?;
 
-        crate::with_metal_stream(|stream| {
-            self.kernel.dispatch_eval(stream, a, b, &c)
-        })?;
+        crate::with_metal_stream(|stream| self.kernel.dispatch_eval(stream, a, b, &c))?;
 
         Ok(tvec![c.into_tensor().into_tvalue()])
     }

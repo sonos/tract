@@ -3,7 +3,7 @@ use super::utils::build_metal_grid_and_groups_for_el_wise_op;
 use crate::encoder::EncoderExt;
 use crate::kernels::utils::compute_broadcast_strides;
 use crate::{LibraryName, MetalStream};
-use anyhow::{ensure};
+use anyhow::ensure;
 use metal::{MTLSize, NSUInteger};
 use std::ffi::c_void;
 use tract_core::internal::tract_smallvec::SmallVec;
@@ -22,17 +22,13 @@ pub fn all_functions() -> Vec<String> {
         .flat_map(|kname| {
             DeviceTensor::SUPPORTED_DT.into_iter().flat_map(move |dt| {
                 let tname = DeviceTensor::tname(dt).ok()?;
-                Some(
-                    [true, false]
-                        .into_iter()
-                        .map(move |row| {
-                            if row {
-                                format!("bin_ops::{kname}_1row_{tname}")
-                            } else {
-                                format!("bin_ops::{kname}_{tname}")
-                            }
-                        }),
-                )
+                Some([true, false].into_iter().map(move |row| {
+                    if row {
+                        format!("bin_ops::{kname}_1row_{tname}")
+                    } else {
+                        format!("bin_ops::{kname}_{tname}")
+                    }
+                }))
             })
         })
         .flatten()
@@ -62,8 +58,7 @@ fn can_use_row_kernel(mini_op: &dyn BinMiniOp, lhs: &DeviceTensor, rhs: &DeviceT
         && compatible_type
         && (rank > 0)
         && ((rhs.len() == rhs.shape()[rank - 1])
-            || ((lhs.len() == lhs.shape()[rank - 1])
-                && matches!(mini_op.name(), "Mul" | "Add")))
+            || ((lhs.len() == lhs.shape()[rank - 1]) && matches!(mini_op.name(), "Mul" | "Add")))
         && (lhs.shape()[rank - 1] % 4 == 0)
         && (rhs.shape()[rank - 1] % 4 == 0)
 }
@@ -134,10 +129,10 @@ fn reshape_to_rank_4_with_broadcast(
     }
 }
 
-fn natural_strides(shape: &[usize]) -> SmallVec<[usize; 4]> {
+fn natural_strides(shape: &[usize]) -> SmallVec<[isize; 4]> {
     let mut strides = SmallVec::from_elem(1, shape.len());
     for i in (0..shape.len()).rev().skip(1) {
-        strides[i] = strides[i + 1] * shape[i + 1];
+        strides[i] = strides[i + 1] * shape[i + 1] as isize;
     }
     strides
 }
@@ -163,8 +158,7 @@ pub fn dispatch_eval(
     if use_row {
         let pipeline = stream.load_pipeline(LibraryName::BinOps, &kname)?;
 
-        let (a, b) =
-            if rhs.len() == rhs.shape()[rank - 1] { (lhs, rhs) } else { (rhs, lhs) };
+        let (a, b) = if rhs.len() == rhs.shape()[rank - 1] { (lhs, rhs) } else { (rhs, lhs) };
         let command_buffer = stream.command_buffer();
         command_buffer.encode(|encoder| {
             encoder.set_compute_pipeline_state(&pipeline);
@@ -183,11 +177,10 @@ pub fn dispatch_eval(
             encoder.dispatch_thread_groups(grid_size, group_size);
         });
     } else {
-        let (lhs_shape, rhs_shape, out_shape) =
-            reshape_to_rank_4_with_broadcast(lhs, rhs, output)?;
+        let (lhs_shape, rhs_shape, out_shape) = reshape_to_rank_4_with_broadcast(lhs, rhs, output)?;
 
         let lhs_strides =
-            compute_broadcast_strides::<usize>(&lhs_shape, &natural_strides(&lhs_shape))?;
+            compute_broadcast_strides::<usize>(&lhs_shape, &*natural_strides(&lhs_shape))?;
         let rhs_strides =
             compute_broadcast_strides::<usize>(&rhs_shape, &natural_strides(&rhs_shape))?;
         let out_strides =

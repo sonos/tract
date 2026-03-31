@@ -149,9 +149,7 @@ impl EvalOp for MetalAxisOp {
             input.datum_type(),
             &new_shape,
         )?;
-        crate::with_metal_stream(|stream| {
-            Memcpy.dispatch_eval(stream, input, 0, &output)
-        })?;
+        crate::with_metal_stream(|stream| Memcpy.dispatch_eval(stream, input, 0, &output))?;
         Ok(tvec!(output.into_tensor().into_tvalue()))
     }
 }

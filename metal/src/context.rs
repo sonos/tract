@@ -29,9 +29,7 @@ thread_local! {
     static METAL_STREAM: RefCell<Option<MetalStream>> = const { RefCell::new(None) };
 }
 
-pub fn with_metal_stream<R>(
-    f: impl FnOnce(&MetalStream) -> TractResult<R>,
-) -> TractResult<R> {
+pub fn with_metal_stream<R>(f: impl FnOnce(&MetalStream) -> TractResult<R>) -> TractResult<R> {
     metal_context(); // ensures context is initialized
     METAL_STREAM.with(|cell| {
         let needs_init = cell.borrow().is_none();

@@ -63,9 +63,7 @@ impl EvalOp for MetalConcat {
             inputs[0].datum_type(),
             &output_shape,
         )?;
-        crate::with_metal_stream(|stream| {
-            self.kernel.dispatch_eval(stream, &inputs, &output)
-        })?;
+        crate::with_metal_stream(|stream| self.kernel.dispatch_eval(stream, &inputs, &output))?;
         Ok(tvec!(output.into_tensor().into_tvalue()))
     }
 }

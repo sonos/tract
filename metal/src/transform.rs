@@ -261,7 +261,6 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
     }
 }
 
-use tract_core::ops::binary::BinMiniOp;
 use tract_gpu::ops::binary::GpuBinOp;
 
 fn metal_bin_op(mini_op: Box<dyn BinMiniOp>) -> GpuBinOp {
@@ -455,7 +454,6 @@ fn convert_matmul_to_metal(
     }
     Ok(matmul_output)
 }
-
 
 fn convert_const(op: &Const) -> TractResult<Const> {
     let typed_fact: TypedFact = Arc::clone(op.val()).try_into()?;
