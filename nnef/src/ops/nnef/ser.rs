@@ -61,23 +61,7 @@ pub fn konst(
     Ok(Some(ast.konst(&node.name, op.val())?))
 }
 
-pub fn comp(
-    ast: &mut IntoAst,
-    node: &TypedNode,
-    op: &ops::logic::Comp,
-) -> TractResult<Option<Arc<RValue>>> {
-    use ops::logic::Comp::*;
-    let inputs = node.inputs.iter().map(|i| Arc::clone(&ast.mapping[i])).collect_vec();
-    let name = match *op {
-        Eq => "eq",
-        NE => "ne",
-        LT => "lt",
-        GT => "gt",
-        LTE => "le",
-        GTE => "ge",
-    };
-    Ok(Some(invocation(name, &inputs, &[])))
-}
+// comp() removed — comparison ops now serialized via register_binary
 
 pub fn concat(
     ast: &mut IntoAst,
