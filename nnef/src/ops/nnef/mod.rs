@@ -93,10 +93,12 @@ pub fn tract_nnef() -> Registry {
         deser::leaky_relu,
     );
 
-    registry.register_dumper(ser::comp);
-    for c in ["eq", "ne", "ge", "gt", "le", "lt"] {
-        primitive(&mut registry, c, deser::comp);
-    }
+    registry.register_binary("eq", &ops::logic::CompEq);
+    registry.register_binary("ne", &ops::logic::CompNE);
+    registry.register_binary("lt", &ops::logic::CompLT);
+    registry.register_binary("gt", &ops::logic::CompGT);
+    registry.register_binary("le", &ops::logic::CompLTE);
+    registry.register_binary("ge", &ops::logic::CompGTE);
 
     registry.register_binary("and", &ops::logic::And {});
     registry.register_binary("or", &ops::logic::Or {});
