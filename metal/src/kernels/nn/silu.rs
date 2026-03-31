@@ -64,7 +64,6 @@ impl Silu {
 
 #[cfg(test)]
 mod tests {
-    use crate::ops::silu;
     use crate::utils::with_borrowed_metal_stream;
     use tract_gpu::tensor::IntoDevice;
 
