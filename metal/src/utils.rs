@@ -18,8 +18,8 @@ pub use tests::with_borrowed_metal_stream;
 mod tests {
     use std::ffi::c_void;
 
-    use crate::context::StreamExt;
     use crate::MetalStream;
+    use crate::context::StreamExt;
     use objc::runtime::{objc_autoreleasePoolPop, objc_autoreleasePoolPush};
     use tract_core::internal::*;
 
