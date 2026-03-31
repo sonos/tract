@@ -3,6 +3,7 @@ version 1.0;
 extension tract_registry tract_core;
 extension tract_registry tract_transformers;
 extension tract_symbol S;
+extension tract_assert S>=0;
 
 # Block attention with left_chunks=1: each chunk attends to its own tokens plus
 # the previous chunk's tokens (bidirectional within the 2-chunk window).
