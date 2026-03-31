@@ -83,6 +83,22 @@ pub trait BinMiniOp:
     fn as_linalg_binop(&self) -> Option<tract_linalg::BinOp> {
         None
     }
+
+    /// Override for ops that can evaluate symbolic TDim inputs (comparisons).
+    #[allow(unused_variables)]
+    fn eval_symbolic(
+        &self,
+        session: &TurnState,
+        inputs: TVec<TValue>,
+    ) -> TractResult<Option<TVec<TValue>>> {
+        Ok(None)
+    }
+
+    /// Override for ops that produce TDim-level comparison expressions (comparisons).
+    #[allow(unused_variables)]
+    fn uniform_tdim_comparison(&self, a: &TDim, b: &TDim) -> Option<TDim> {
+        None
+    }
 }
 dyn_clone::clone_trait_object!(BinMiniOp);
 dyn_eq::eq_trait_object!(BinMiniOp);
