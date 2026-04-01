@@ -5,6 +5,7 @@ use tract_itertools::Itertools;
 
 pub mod change_axes;
 mod concat_then_einsum;
+mod fold_window_attention;
 mod op_optim;
 mod prop_const;
 pub mod propagate_roi;
@@ -13,6 +14,7 @@ mod slice;
 mod uniform_mask;
 
 use self::change_axes::ChangeAxes;
+use self::fold_window_attention::FoldWindowAttention;
 use self::prop_const::PropConst;
 use self::propagate_roi::PropagateRoi;
 use self::push_split_down::PushSplitDown;
@@ -70,6 +72,7 @@ impl Optimizer {
         Optimizer::passes(vec![
             Box::<PropConst>::default(),
             Box::<PropagateRoi>::default(),
+            Box::<FoldWindowAttention>::default(),
             Box::<FoldUniformMask>::default(),
             Box::new(OpOptim("declutter", TypedOp::declutter_with_session, 0)),
             Box::new(PushSliceUp),
