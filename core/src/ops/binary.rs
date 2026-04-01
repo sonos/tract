@@ -249,9 +249,16 @@ impl TypedOp for TypedBinOp {
     ) -> TractResult<Option<AxisChangeConsequence>> {
         if let AxisOp::Rm(rm) = change {
             let (inputs, outputs) = model.node_facts(node.id)?;
-            rule_if!(inputs[0].shape[*rm].is_one());
-            rule_if!(inputs[1].shape[*rm].is_one());
-            rule_if!(outputs[0].shape[*rm].is_one());
+            if inputs.len() >= 2
+                && outputs.len() >= 1
+                && inputs[0].rank() > *rm
+                && inputs[1].rank() > *rm
+                && outputs[0].rank() > *rm
+            {
+                rule_if!(inputs[0].shape[*rm].is_one());
+                rule_if!(inputs[1].shape[*rm].is_one());
+                rule_if!(outputs[0].shape[*rm].is_one());
+            }
         }
         Ok(Some(AxisChangeConsequence::new(model, node, None, change)))
     }

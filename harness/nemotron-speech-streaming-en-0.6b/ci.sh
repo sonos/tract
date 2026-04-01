@@ -12,14 +12,18 @@ for rt in $TRACT_RUNTIMES
 do
 	for m in preprocessor encoder decoder joint
 	do
+		# Encoder uses a patched model with upper bound assertion on AUDIO_SIGNAL__TIME
+		if [ "$m" = "encoder" ]; then
+			nnef_file=$MODEL.$m.p1.nnef.tgz
+		else
+			nnef_file=$MODEL.$m.nnef.tgz
+		fi
 		$CACHE_FILE \
-			$S3DIR/$MODEL.$m.nnef.tgz \
+			$S3DIR/$nnef_file \
 			$S3DIR/$MODEL.$m.io.npz
 
-		model_prefix=$MODELS/$S3DIR/$MODEL
-
-		$TRACT_RUN $model_prefix.$m.nnef.tgz $rt --nnef-tract-transformers -t transformers_detect_all run \
-			--input-from-bundle $model_prefix.$m.io.npz --assert-output-bundle $model_prefix.$m.io.npz \
+		$TRACT_RUN $MODELS/$S3DIR/$nnef_file $rt --nnef-tract-transformers -t transformers_detect_all run \
+			--input-from-bundle $MODELS/$S3DIR/$MODEL.$m.io.npz --assert-output-bundle $MODELS/$S3DIR/$MODEL.$m.io.npz \
 			--approx very
 	done
 done
