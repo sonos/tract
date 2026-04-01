@@ -3,7 +3,6 @@ use cudarc::cudnn::Cudnn;
 use cudarc::nvrtc::Ptx;
 use cudarc::runtime::result::device::get_device_prop;
 use cudarc::runtime::sys::cudaDeviceProp;
-use std::cell::RefCell;
 use tract_gpu::device::DeviceContext;
 use tract_gpu::tensor::{DeviceTensor, OwnedDeviceTensor};
 
@@ -35,20 +34,11 @@ pub fn cuda_context() -> &'static TractCudaContext {
 }
 
 thread_local! {
-    static CUDA_STREAM: RefCell<Option<TractCudaStream>> = const { RefCell::new(None) };
+    static CUDA_STREAM: TractCudaStream = TractCudaStream::new().expect("Could not create Cuda Stream");
 }
 
 pub fn with_cuda_stream<R>(f: impl FnOnce(&TractCudaStream) -> TractResult<R>) -> TractResult<R> {
-    cuda_context(); // ensures context is initialized
-    CUDA_STREAM.with(|cell| {
-        let needs_init = cell.borrow().is_none();
-        if needs_init {
-            let stream = TractCudaStream::new().expect("Could not create Cuda Stream");
-            *cell.borrow_mut() = Some(stream);
-        }
-        let borrow = cell.borrow();
-        f(borrow.as_ref().unwrap())
-    })
+    CUDA_STREAM.with(|cell| f(cell))
 }
 
 #[derive(Debug, Clone)]

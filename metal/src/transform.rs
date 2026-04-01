@@ -466,4 +466,3 @@ fn convert_const(op: &Const) -> TractResult<Const> {
     let metal_const = op.val().clone().into_device()?.into_tensor().into_arc_tensor();
     Const::new_with_exotic_fact(metal_const, Box::new(metal_fact))
 }
-
