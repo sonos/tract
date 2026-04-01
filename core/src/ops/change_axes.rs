@@ -347,6 +347,16 @@ impl AxisOp {
                     for _ in to.iter().rev() {
                         shape.insert(*at, 1.into());
                     }
+                } else if shape.len() >= from.len() + *at {
+                    // from_volume == to_volume was already verified above.  The actual shape
+                    // values may be symbolically equivalent to `from` without being structurally
+                    // equal (e.g. `S` vs `P*(S/P)`).  Trust the from.len() count and apply.
+                    for _ in from {
+                        shape.remove(*at);
+                    }
+                    for d in to.iter().rev() {
+                        shape.insert(*at, d.try_into()?);
+                    }
                 } else {
                     bail!("Incompatible reshape for shape {:?} and {:?}", shape, self);
                 }

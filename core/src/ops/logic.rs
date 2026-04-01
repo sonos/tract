@@ -95,6 +95,89 @@ pub fn sym_to_coord_axis(sym: &Symbol) -> Option<usize> {
     format!("{sym}").strip_prefix("🎯")?.parse::<usize>().ok()
 }
 
+/// Parameters extracted from a 2-D chunk-window mask `uniform_tdim`.
+///
+/// The mask is true at `[i, j]` iff `0 <= floor(i / P) - floor(j / P) <= L`,
+/// i.e. the chunk-index difference is in `[0, left_chunks]`.
+#[derive(Debug, Clone)]
+pub(crate) struct ChunkWindowParams {
+    /// Output axis that carries the "row" (query) coordinate (🎯row_axis).
+    pub row_axis: usize,
+    /// Output axis that carries the "col" (key) coordinate (🎯col_axis).
+    pub col_axis: usize,
+    /// Tokens per chunk (P).
+    pub chunk_size: u64,
+    /// Number of left-chunk lookbacks (L).
+    pub left_chunks: i64,
+}
+
+/// Try to decompose `expr` as `Add([MulInt(-1, Div(🎯col, P)), Div(🎯row, P)])` —
+/// i.e., `floor(🎯row / P) - floor(🎯col / P)` in TDim's sorted normal form.
+/// Returns `(row_axis, col_axis, P)` on success.
+fn extract_div_diff_axes(expr: &TDim) -> Option<(usize, usize, u64)> {
+    let TDim::Add(terms) = expr else { return None };
+    if terms.len() != 2 {
+        return None;
+    }
+    let mut pos: Option<(usize, u64)> = None; // +Div(🎯k, P)
+    let mut neg: Option<(usize, u64)> = None; // -Div(🎯k, P)
+    for term in terms {
+        match term {
+            TDim::Div(inner, p) => {
+                let TDim::Sym(sym) = inner.as_ref() else { return None };
+                pos = Some((sym_to_coord_axis(sym)?, *p));
+            }
+            TDim::MulInt(-1, inner) => {
+                let TDim::Div(inner2, p) = inner.as_ref() else { return None };
+                let TDim::Sym(sym) = inner2.as_ref() else { return None };
+                neg = Some((sym_to_coord_axis(sym)?, *p));
+            }
+            _ => return None,
+        }
+    }
+    let (row_axis, p_row) = pos?;
+    let (col_axis, p_col) = neg?;
+    if p_row != p_col {
+        return None;
+    }
+    Some((row_axis, col_axis, p_row))
+}
+
+/// Recognise a 2-D chunk-window `uniform_tdim` expression.
+///
+/// Matches `Mul([Ge(Val(L), diff), Ge(diff, Val(0))])` (in either sort order)
+/// where `diff = Add([MulInt(-1, Div(🎯col, P)), Div(🎯row, P)])`.
+pub(crate) fn classify_chunk_window(expr: &TDim) -> Option<ChunkWindowParams> {
+    let TDim::Mul(factors) = expr else { return None };
+    if factors.len() != 2 {
+        return None;
+    }
+    // Try both orderings of the two Ge factors.
+    for &(f0, f1) in &[(0usize, 1usize), (1, 0)] {
+        let TDim::Ge(lhs0, rhs0) = &factors[f0] else { continue };
+        let TDim::Ge(lhs1, rhs1) = &factors[f1] else { continue };
+        // f0 must be Ge(Val(L), diff) and f1 must be Ge(diff, Val(0)).
+        let TDim::Val(l) = lhs0.as_ref() else { continue };
+        let TDim::Val(0) = rhs1.as_ref() else { continue };
+        let Some((row, col, p)) = extract_div_diff_axes(rhs0) else { continue };
+        // Verify f1 references the same diff expression.
+        let Some((row2, col2, p2)) = extract_div_diff_axes(lhs1) else { continue };
+        if row != row2 || col != col2 || p != p2 {
+            continue;
+        }
+        if *l < 0 {
+            continue;
+        }
+        return Some(ChunkWindowParams {
+            row_axis: row,
+            col_axis: col,
+            chunk_size: p,
+            left_chunks: *l,
+        });
+    }
+    None
+}
+
 pub(crate) fn coord_bound_assertions(expr: &TDim, shape: &ShapeFact) -> Vec<Assertion> {
     expr.symbols()
         .into_iter()
