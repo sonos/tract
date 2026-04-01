@@ -9,6 +9,7 @@ jobs:
   minion:
     strategy:
       matrix:
+        fail-fast: false
         os:
           - macOS
           - cuda-lovelace
