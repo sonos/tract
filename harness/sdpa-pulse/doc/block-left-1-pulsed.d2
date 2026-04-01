@@ -1,0 +1,40 @@
+direction: down
+
+# block-left-1  —  pulsed graph  (pulse = 1 chunk)
+# The Pad+Slice pair collapses into a single Delay op per K and V.
+# Delay(axis=0, delay=1) buffers the previous chunk; initialised to zero.
+
+qkv: "qkv  [1, 6, 8]\nstream axis=0  dim=S" { shape: oval }
+
+q: "Slice  q\n[1, 2, 8]" { shape: rectangle }
+k: "Slice  k\n[1, 2, 8]" { shape: rectangle }
+v: "Slice  v\n[1, 2, 8]" { shape: rectangle }
+
+qkv -> q: "chunk c"
+qkv -> k: "chunk c"
+qkv -> v: "chunk c"
+
+k_prev: "Delay  axis=0  delay=1\nk_prev  [1, 2, 8]" { shape: rectangle }
+k -> k_prev: "chunk c"
+
+v_prev: "Delay  axis=0  delay=1\nv_prev  [1, 2, 8]" { shape: rectangle }
+v -> v_prev: "chunk c"
+
+k_ctx: "Concat  axis=1\nk_ctx  [1, 4, 8]" { shape: rectangle }
+k_prev -> k_ctx: "chunk c-1"
+k      -> k_ctx: "chunk c"
+
+v_ctx: "Concat  axis=1\nv_ctx  [1, 4, 8]" { shape: rectangle }
+v_prev -> v_ctx: "chunk c-1"
+v      -> v_ctx: "chunk c"
+
+scores: "EinSum  cpd,cld->cpl\nscores  [1, 2, 4]" { shape: rectangle }
+q     -> scores: "chunk c"
+k_ctx -> scores: "chunks c-1..c"
+
+attn: "Softmax  axis=2\nattn  [1, 2, 4]" { shape: rectangle }
+scores -> attn
+
+output: "EinSum  cpl,cld->cpd\noutput  [1, 2, 8]" { shape: rectangle }
+attn  -> output
+v_ctx -> output: "chunks c-1..c"
