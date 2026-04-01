@@ -1,0 +1,59 @@
+direction: down
+
+# block-left-1-mask  —  batch graph (original, before any optimizer pass)
+# Flat-token sliding-window attention with a computed chunk-window mask.
+# S = total tokens (streaming), P=2, Dh=4, left_chunks=1.
+# The mask subgraph mirrors the real Nemotron encoder mask construction.
+
+qkv: "qkv  [S, 12]" { shape: oval }
+
+q: "Slice  q\n[S, 4]" { shape: rectangle }
+k: "Slice  k\n[S, 4]" { shape: rectangle }
+v: "Slice  v\n[S, 4]" { shape: rectangle }
+
+qkv -> q
+qkv -> k
+qkv -> v
+
+scores: "EinSum  id,jd->ij\nscores  [S, S]" { shape: rectangle }
+q -> scores
+k -> scores
+
+# mask computation subgraph
+shape_of: "shape_of(qkv) → T" { shape: rectangle }
+qkv -> shape_of
+
+positions: "Range(0, T, 1)\npositions  [S]" { shape: rectangle }
+shape_of -> positions
+
+chunkIdx: "cast f32  →  div(P=2)  →  floor  →  cast i64\nchunkIdx  [S]  (floor(pos/P))" { shape: rectangle }
+positions -> chunkIdx
+
+ci_row: "unsqueeze axis=1\nci_row  [S, 1]" { shape: rectangle }
+ci_col: "unsqueeze axis=0\nci_col  [1, S]" { shape: rectangle }
+chunkIdx -> ci_row
+chunkIdx -> ci_col
+
+diffChunks: "sub  ci_row - ci_col\ndiffChunks  [S, S]  i64" { shape: rectangle }
+ci_row -> diffChunks
+ci_col -> diffChunks
+
+le_mask: "le(diffChunks, 1)\n[S, S]  bool" { shape: rectangle }
+ge_mask: "ge(diffChunks, 0)\n[S, S]  bool" { shape: rectangle }
+diffChunks -> le_mask
+diffChunks -> ge_mask
+
+chunked_mask: "and(le_mask, ge_mask)\nchunked_mask  [S, S]  bool\nuniform_tdim: 0 ≤ ⌊🎯0/P⌋ − ⌊🎯1/P⌋ ≤ 1" { shape: rectangle }
+le_mask -> chunked_mask
+ge_mask -> chunked_mask
+
+masked_scores: "Iff  select(chunked_mask, scores, -inf)\nmasked_scores  [S, S]" { shape: rectangle }
+chunked_mask -> masked_scores
+scores       -> masked_scores
+
+attn: "Softmax  axis=1\nattn  [S, S]" { shape: rectangle }
+masked_scores -> attn
+
+output: "EinSum  ij,jd->id\noutput  [S, 4]" { shape: rectangle }
+attn -> output
+v    -> output

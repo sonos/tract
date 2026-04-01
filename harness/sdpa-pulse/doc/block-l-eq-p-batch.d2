@@ -1,0 +1,26 @@
+direction: down
+
+# block-l-eq-p  —  batch graph
+# S = chunk count (streaming), P=2 tokens/chunk, Dh=8
+# left_chunks=0: each chunk attends only to its own 2 tokens
+
+qkv: "qkv  [S, 6, 8]" { shape: oval }
+
+q: "Slice  q\n[S, 2, 8]" { shape: rectangle }
+k: "Slice  k\n[S, 2, 8]" { shape: rectangle }
+v: "Slice  v\n[S, 2, 8]" { shape: rectangle }
+
+qkv -> q
+qkv -> k
+qkv -> v
+
+scores: "EinSum  cpd,cqd->cpq\nscores  [S, 2, 2]" { shape: rectangle }
+q -> scores
+k -> scores
+
+attn: "Softmax  axis=2\nattn  [S, 2, 2]" { shape: rectangle }
+scores -> attn
+
+output: "EinSum  cpq,cqd->cpd\noutput  [S, 2, 8]" { shape: rectangle }
+attn -> output
+v    -> output

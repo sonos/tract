@@ -1,0 +1,32 @@
+direction: down
+
+# block-l-eq-p-mask  —  batch graph
+# Same block-diagonal attention as block-l-eq-p, but with an explicit boolean
+# mask and Iff pre-softmax, exercising the Iff+Softmax pipeline.
+# S = chunk count, P=2, Dh=8.  Mask is all-true (external input).
+
+qkv:  "qkv   [S, 6, 8]" { shape: oval }
+mask: "mask  [S, 2, 2]  bool\n(all-true, external input)" { shape: oval }
+
+q: "Slice  q\n[S, 2, 8]" { shape: rectangle }
+k: "Slice  k\n[S, 2, 8]" { shape: rectangle }
+v: "Slice  v\n[S, 2, 8]" { shape: rectangle }
+
+qkv -> q
+qkv -> k
+qkv -> v
+
+scores: "EinSum  cpd,cqd->cpq\nscores  [S, 2, 2]" { shape: rectangle }
+q -> scores
+k -> scores
+
+masked_scores: "Iff  select(mask, scores, -inf)\nmasked_scores  [S, 2, 2]" { shape: rectangle }
+mask   -> masked_scores
+scores -> masked_scores
+
+attn: "Softmax  axis=2\nattn  [S, 2, 2]" { shape: rectangle }
+masked_scores -> attn
+
+output: "EinSum  cpq,cqd->cpd\noutput  [S, 2, 8]" { shape: rectangle }
+attn -> output
+v    -> output
