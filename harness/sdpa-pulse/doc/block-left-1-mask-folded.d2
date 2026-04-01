@@ -1,0 +1,55 @@
+direction: down
+
+# block-left-1-mask  —  after FoldWindowAttention  (batch, before pulsify)
+# FoldWindowAttention detects Iff(chunk_window_mask) → Softmax → EinSum
+# and rewrites to bounded-window chunk-layout attention.
+# The entire mask subgraph (Range/cast/div/floor/sub/le/ge/and/Iff) is eliminated.
+# S = total tokens, C = S/P chunks, P=2, Dh=4, left_chunks=1.
+
+qkv: "qkv  [S, 12]" { shape: oval }
+
+q: "Slice  q\n[S, 4]" { shape: rectangle }
+k: "Slice  k\n[S, 4]" { shape: rectangle }
+v: "Slice  v\n[S, 4]" { shape: rectangle }
+
+qkv -> q
+qkv -> k
+qkv -> v
+
+q_c: "Reshape  [S] → [S/P, P]\nq_c  [C, 2, 4]" { shape: rectangle }
+k_c: "Reshape  [S] → [S/P, P]\nk_c  [C, 2, 4]" { shape: rectangle }
+v_c: "Reshape  [S] → [S/P, P]\nv_c  [C, 2, 4]" { shape: rectangle }
+
+q -> q_c
+k -> k_c
+v -> v_c
+
+k_pad:  "Pad  axis=0, before=1\n[C+1, 2, 4]" { shape: rectangle }
+k_prev: "Slice  end=C\nk_prev  [C, 2, 4]" { shape: rectangle }
+k_c -> k_pad -> k_prev
+
+v_pad:  "Pad  axis=0, before=1\n[C+1, 2, 4]" { shape: rectangle }
+v_prev: "Slice  end=C\nv_prev  [C, 2, 4]" { shape: rectangle }
+v_c -> v_pad -> v_prev
+
+k_ctx: "Concat  axis=1\nk_ctx  [C, 4, 4]" { shape: rectangle }
+k_prev -> k_ctx
+k_c    -> k_ctx
+
+v_ctx: "Concat  axis=1\nv_ctx  [C, 4, 4]" { shape: rectangle }
+v_prev -> v_ctx
+v_c    -> v_ctx
+
+scores_c: "EinSum  cpd,cld->cpl\nscores_c  [C, 2, 4]" { shape: rectangle }
+q_c   -> scores_c
+k_ctx -> scores_c
+
+attn_c: "Softmax  axis=2\nattn_c  [C, 2, 4]" { shape: rectangle }
+scores_c -> attn_c
+
+out_c: "EinSum  cpl,cld->cpd\nout_c  [C, 2, 4]" { shape: rectangle }
+attn_c -> out_c
+v_ctx  -> out_c
+
+output: "Reshape  [S/P, P] → [S]\noutput  [S, 4]" { shape: rectangle }
+out_c -> output
