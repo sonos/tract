@@ -18,6 +18,7 @@
 use crate::internal::*;
 use crate::model::{NonPulsingWrappingOp, PulseWrappingOp};
 use tract_core::ops::binary::TypedBinOp;
+use tract_core::ops::change_axes::AxisOp;
 use tract_core::ops::konst::Const;
 use tract_core::ops::logic::{Iff, classify_chunk_window};
 use tract_nnef::tract_core::trivial_op_state_freeze;
@@ -196,29 +197,39 @@ fn pulsify(
     let key_window = (left_chunks + 1) * pulse_size;
 
     // Wire ChunkWindowMask (no inputs): produces [P, (L+1)*P] bool, stream: None.
-    let mask_wire = target.wire_node(
+    let mask_wire_2d = target.wire_node(
         format!("{}.chunk_window_mask", node.name),
         ChunkWindowMask { left_chunks, pulse_size, key_window },
         &[],
     )?[0];
 
     let true_wire = mapping[&node.inputs[1]];
+    let true_rank = target.outlet_fact(true_wire)?.shape.len();
     let true_dtype = target.outlet_fact(true_wire)?.datum_type;
+
+    // Promote mask from [P, kw] (rank 2) to [1,...,1,P,kw] (rank = true_rank).
+    // Iff.output_facts requires all three inputs to have identical rank.
+    let mask_wire = {
+        let mut w = mask_wire_2d;
+        for leading in 0..true_rank.saturating_sub(2) {
+            w = target.wire_node(
+                format!("{}.mask_unsqueeze_{leading}", node.name),
+                NonPulsingWrappingOp(Box::new(AxisOp::Add(0))),
+                &[w],
+            )?[0];
+        }
+        w
+    };
 
     // False branch: extract the scalar fill value from the source model.
     // The pulsed false-branch wire may have the wrong shape (MultiBroadcastTo([S,S])
     // substitutes S→P in both axes, giving [P,P] instead of [P,(L+1)P]).
     // Instead, create a fresh scalar Const which broadcasts correctly.
-    // Iff.output_facts requires all three inputs to have the same rank.
-    // Use shape [1,1] so it broadcasts correctly against [P,(L+1)*P].
+    // Shape is [1; true_rank] so it broadcasts against [1,...,1,P,(L+1)*P].
     let fill_wire = if let Some(fill_f32) = try_fill_scalar_f32(source, node.inputs[2]) {
-        let val = match true_dtype {
-            DatumType::F32 => fill_f32,
-            DatumType::F64 => fill_f32,
-            _ => fill_f32,
-        };
+        let fill_shape = vec![1usize; true_rank];
         let fill_tensor =
-            Tensor::from_shape(&[1usize, 1], &[val])?.cast_to_dt(true_dtype)?.into_owned();
+            Tensor::from_shape(&fill_shape, &[fill_f32])?.cast_to_dt(true_dtype)?.into_owned();
         target.wire_node(
             format!("{}.fill", node.name),
             NonPulsingWrappingOp(Box::new(Const::new(fill_tensor.into_arc_tensor())?)),
