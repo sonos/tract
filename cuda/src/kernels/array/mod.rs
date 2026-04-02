@@ -4,9 +4,11 @@ mod dispatch;
 mod rotate_half;
 
 pub use cast::Cast;
+pub use cast::cuda_cast_dispatch;
 pub use copy::Memcpy;
 pub use dispatch::cuda_copy_nd_dispatch;
 pub use rotate_half::RotateHalf;
+pub use rotate_half::cuda_rotate_half_dispatch;
 
 pub fn all_functions() -> Vec<String> {
     use std::collections::HashSet;

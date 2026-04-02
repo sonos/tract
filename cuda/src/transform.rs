@@ -1,7 +1,7 @@
 use crate::context::cuda_context;
 use crate::kernels::nn::cuda_reduce_launch;
 use crate::ops::CudaIff;
-use crate::ops::{CudaLeakyRelu, wire_cuda_conv};
+use crate::ops::wire_cuda_conv;
 use crate::{kernels, ops, rewrite_rules};
 use DatumType::{F16, F32};
 use tract_core::dyn_clone::clone_box;
@@ -123,7 +123,8 @@ fn can_translate_to_cuda_op(source: &TypedModel, node: &TypedNode) -> TractResul
                 .op_as::<Const>()
                 .is_some_and(|op| DeviceTensor::is_supported_dt(op.val().datum_type()))
             || node.op_as::<Cast>().is_some_and(|op| {
-                ops::CudaCast::is_supported_dt(input_dts[0]) && ops::CudaCast::new(op.to).is_some()
+                kernels::array::Cast::is_supported_dt(input_dts[0])
+                    && kernels::array::Cast::is_supported_dt(op.to)
             })
             || node.op_is::<MultiBroadcastTo>()
             || node.op_is::<AxisOp>()
@@ -138,7 +139,12 @@ fn can_translate_to_cuda_op(source: &TypedModel, node: &TypedNode) -> TractResul
             })
             || node.op_as::<Softmax>().is_some_and(|op| {
                 kernels::nn::Softmax::is_supported_dt(input_dts[0])
-                    && ops::CudaSoftmax::from_tract_core(op).is_ok()
+                    && tract_gpu::ops::softmax::GpuSoftmax::from_tract_core(
+                        op,
+                        "Cuda",
+                        kernels::nn::cuda_softmax_dispatch,
+                    )
+                    .is_ok()
             })
             || node
                 .op_as::<ScaledMaskedSoftmax>()
@@ -184,6 +190,15 @@ fn convert_const(op: &Const) -> TractResult<Const> {
 use tract_core::ops::element_wise::ElementWiseMiniOp;
 use tract_gpu::ops::binary::GpuBinOp;
 use tract_gpu::ops::element_wise::GpuElementWise;
+
+fn cuda_cast_new(to: DatumType) -> Option<tract_gpu::ops::cast::GpuCast> {
+    tract_gpu::ops::cast::GpuCast::new(
+        to,
+        "Cuda",
+        kernels::array::cuda_cast_dispatch,
+        kernels::array::Cast::is_supported_dt,
+    )
+}
 
 fn cuda_element_wise_op(mini_op: Box<dyn ElementWiseMiniOp>) -> GpuElementWise {
     GpuElementWise {
@@ -256,11 +271,11 @@ fn convert_matmul_to_cuda(
     }
 
     if act_fact.datum_type == DatumType::F16 && as_quant_fact(weight_fact, &Q4_0).is_some() {
-        let in_cast_op = ops::CudaCast::new(DatumType::F32).unwrap();
+        let in_cast_op = cuda_cast_new(DatumType::F32).unwrap();
         *act_outlet =
             target.wire_node(node.name.clone() + ".in_cast", in_cast_op, &[*act_outlet])?[0];
     } else if act_fact.datum_type == DatumType::F16 && weight_fact.datum_type == DatumType::F32 {
-        let in_cast_op = ops::CudaCast::new(DatumType::F16).unwrap();
+        let in_cast_op = cuda_cast_new(DatumType::F16).unwrap();
         *weights_outlet =
             target.wire_node(node.name.clone() + ".in_cast", in_cast_op, &[*weights_outlet])?[0];
     }
@@ -311,10 +326,10 @@ fn convert_matmul_to_cuda(
     let expected_dt = model.node_output_facts(node.id)?[0].datum_type;
     if out_dt != expected_dt {
         ensure!(
-            ops::CudaCast::is_supported_dt(out_dt),
+            kernels::array::Cast::is_supported_dt(out_dt),
             "Matmul output type cannot be casted to expected type"
         );
-        let cast_op = ops::CudaCast::new(model.node_output_facts(node.id)?[0].datum_type).unwrap();
+        let cast_op = cuda_cast_new(model.node_output_facts(node.id)?[0].datum_type).unwrap();
         matmul_output =
             target.wire_node(node.name.clone() + ".out_cast", cast_op, &matmul_output)?
     }
@@ -354,11 +369,9 @@ fn convert_sdpa_to_cuda_flash_attn(
         suffix: &str,
     ) -> TractResult<()> {
         if have != want {
-            *dst = target.wire_node(
-                name(node_name, suffix),
-                ops::CudaCast::new(want).unwrap(),
-                &[*dst],
-            )?[0];
+            *dst =
+                target.wire_node(name(node_name, suffix), cuda_cast_new(want).unwrap(), &[*dst])?
+                    [0];
         }
         Ok(())
     }
@@ -438,11 +451,8 @@ fn convert_sdpa_to_cuda_flash_attn(
     }
 
     if q_dt != DatumType::F16 {
-        out = target.wire_node(
-            name(&node.name, ".cast_out"),
-            ops::CudaCast::new(q_dt).unwrap(),
-            &out,
-        )?;
+        out =
+            target.wire_node(name(&node.name, ".cast_out"), cuda_cast_new(q_dt).unwrap(), &out)?;
     }
 
     Ok(out)
@@ -473,9 +483,17 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
                     Box::new(convert_const(op)?)
                 } else if let Some(op) = node.op_as::<ElementWiseOp>() {
                     if let Some(leaky) = op.0.downcast_ref::<LeakyRelu>() {
-                        Box::new(CudaLeakyRelu { alpha: leaky.alpha })
+                        Box::new(tract_gpu::ops::leaky_relu::GpuLeakyRelu::new(
+                            leaky.alpha,
+                            "Cuda",
+                            kernels::nn::cuda_leaky_relu_dispatch,
+                        ))
                     } else if let Some(ew) = op.0.downcast_ref::<GeluApproximate>() {
-                        Box::new(ops::CudaGeluApproximate { fast_impl: ew.fast_impl })
+                        Box::new(tract_gpu::ops::gelu_approximate::GpuGeluApproximate::new(
+                            ew.fast_impl,
+                            "Cuda",
+                            kernels::nn::cuda_gelu_approximate_dispatch,
+                        ))
                     } else {
                         Box::new(cuda_element_wise_op(op.0.clone()))
                     }
@@ -488,7 +506,7 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
                         crate::kernels::array::cuda_copy_nd_dispatch,
                     ))
                 } else if let Some(op) = node.op_as::<Cast>() {
-                    Box::new(ops::CudaCast::new(op.to).unwrap())
+                    Box::new(cuda_cast_new(op.to).unwrap())
                 } else if let Some(op) = node.op_as::<AxisOp>() {
                     let in_fact = source.node_input_facts(node.id)?[0];
                     Box::new(tract_gpu::ops::change_axes::GpuAxisOp::from_tract_core_with_fact(
@@ -518,17 +536,29 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
                 } else if let Some(op) = node.op_as::<Reduce>() {
                     Box::new(GpuReduce::from_tract_core(op, "Cuda", cuda_reduce_launch)?)
                 } else if let Some(op) = node.op_as::<Softmax>() {
-                    Box::new(ops::CudaSoftmax::from_tract_core(op)?)
+                    Box::new(tract_gpu::ops::softmax::GpuSoftmax::from_tract_core(
+                        op,
+                        "Cuda",
+                        kernels::nn::cuda_softmax_dispatch,
+                    )?)
                 } else if let Some(op) = node.op_as::<ScaledMaskedSoftmax>()
                     && !op.post_softmax_mask
                 {
                     Box::new(ops::CudaScaledMaskedSoftmax { scale: op.scale.clone() })
                 } else if let Some(_op) = node.op_as::<RotateHalf>() {
-                    Box::new(ops::CudaRotateHalf)
+                    Box::new(tract_gpu::ops::rotate_half::GpuRotateHalf::new(
+                        "Cuda",
+                        kernels::array::cuda_rotate_half_dispatch,
+                    ))
                 } else if let Some(_op) = node.op_as::<ApplyRope>() {
                     Box::new(ops::CudaApplyRope)
                 } else if let Some(op) = node.op_as::<RmsNorm>() {
-                    Box::new(ops::CudaRmsNorm::new(op.axis, op.eps.clone()))
+                    Box::new(tract_gpu::ops::rms_norm::GpuRmsNorm::new(
+                        op.axis,
+                        op.eps.clone(),
+                        "Cuda",
+                        kernels::nn::cuda_rms_norm_dispatch,
+                    ))
                 } else if let Some(op) = node.op_as::<Delay>() {
                     Box::new(tract_gpu::ops::pulse::GpuDelay::new(
                         op,

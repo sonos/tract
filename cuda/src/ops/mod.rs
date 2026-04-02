@@ -1,28 +1,24 @@
 mod apply_rope;
-mod cast;
 mod conv;
 mod flash_attn;
 mod fused_axis_op;
-mod gelu_approximate;
 mod gemm;
 mod iff;
-mod leaky_relu;
 mod quant_q81;
-mod rms_norm;
-mod rotate_half;
 mod scaled_masked_softmax;
-mod softmax;
 pub use apply_rope::CudaApplyRope;
-pub use cast::CudaCast;
 pub use conv::{CudaConv, wire_cuda_conv};
 pub use flash_attn::CudaFlashAttention;
 pub use fused_axis_op::CudaFusedAxisOp;
-pub use gelu_approximate::CudaGeluApproximate;
 pub use gemm::CudaGgmlGemm;
 pub use iff::CudaIff;
-pub use leaky_relu::CudaLeakyRelu;
 pub use quant_q81::{CudaGgmlQuantQ81, GgmlQuantQ81Fact};
-pub use rms_norm::CudaRmsNorm;
-pub use rotate_half::CudaRotateHalf;
 pub use scaled_masked_softmax::CudaScaledMaskedSoftmax;
-pub use softmax::CudaSoftmax;
+
+// Re-export shared GPU ops for backward compatibility
+pub use tract_gpu::ops::cast::GpuCast as CudaCast;
+pub use tract_gpu::ops::gelu_approximate::GpuGeluApproximate as CudaGeluApproximate;
+pub use tract_gpu::ops::leaky_relu::GpuLeakyRelu as CudaLeakyRelu;
+pub use tract_gpu::ops::rms_norm::GpuRmsNorm as CudaRmsNorm;
+pub use tract_gpu::ops::rotate_half::GpuRotateHalf as CudaRotateHalf;
+pub use tract_gpu::ops::softmax::GpuSoftmax as CudaSoftmax;

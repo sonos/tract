@@ -130,6 +130,15 @@ impl RmsNorm {
     }
 }
 
+pub fn metal_rms_norm_dispatch(
+    input: &DeviceTensor,
+    axis: usize,
+    eps: &Tensor,
+    output: &DeviceTensor,
+) -> TractResult<()> {
+    crate::with_metal_stream(|stream| RmsNorm.dispatch_eval(stream, input, axis, eps, output))
+}
+
 #[cfg(test)]
 mod tests {
     use crate::utils::with_borrowed_metal_stream;

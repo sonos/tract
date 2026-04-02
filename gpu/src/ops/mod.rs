@@ -1,9 +1,15 @@
 pub mod binary;
 pub mod broadcast;
+pub mod cast;
 pub mod change_axes;
 pub mod concat;
 pub mod dyn_kv_cache;
 pub mod element_wise;
+pub mod gelu_approximate;
+pub mod leaky_relu;
 pub mod pulse;
 pub mod reduce;
+pub mod rms_norm;
+pub mod rotate_half;
 pub mod slice;
+pub mod softmax;

@@ -80,6 +80,10 @@ impl RotateHalf {
     }
 }
 
+pub fn metal_rotate_half_dispatch(input: &DeviceTensor, output: &DeviceTensor) -> TractResult<()> {
+    crate::with_metal_stream(|stream| RotateHalf.dispatch_eval(stream, input, output))
+}
+
 #[cfg(test)]
 mod tests {
     use crate::utils::with_borrowed_metal_stream;

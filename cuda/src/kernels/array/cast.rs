@@ -89,6 +89,10 @@ impl Cast {
     }
 }
 
+pub fn cuda_cast_dispatch(input: &DeviceTensor, output: &DeviceTensor) -> TractResult<()> {
+    crate::with_cuda_stream(|stream| Cast.dispatch_eval(stream, input, output))
+}
+
 #[cfg(test)]
 mod tests {
 

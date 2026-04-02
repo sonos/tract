@@ -89,3 +89,7 @@ impl Cast {
         Ok(())
     }
 }
+
+pub fn metal_cast_dispatch(input: &DeviceTensor, output: &DeviceTensor) -> TractResult<()> {
+    crate::with_metal_stream(|stream| Cast.dispatch_eval(stream, input, output))
+}
