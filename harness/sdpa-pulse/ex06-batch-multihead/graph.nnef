@@ -1,0 +1,66 @@
+version 1.0;
+
+extension tract_registry tract_core;
+extension tract_registry tract_transformers;
+extension tract_symbol S;
+extension tract_assert S>=0;
+
+# Batch + multi-head sliding-window attention.
+# B=1, H=2, T=S tokens, Dh=4, P=2 (chunk_size), left_chunks=1
+#
+# Input:  qkv [1, 2, S, 12]  (axis 2 streams at pulse_size=P=2)
+# Output: [1, 2, S, 4]
+#
+# Attention:
+#   Q, K, V: [1, 2, S, 4]   (sliced from last dim of qkv)
+#   scores:  [1, 2, S, S]   via EinSum "bhtd,bhsd->bhts"
+#   mask:    [1, 1, S, S]   computed from chunk indices, broadcast over H
+#   output:  [1, 2, S, 4]   via EinSum "bhts,bhsd->bhtd"
+#
+# Streaming: --pulse 2  (one chunk per pulse, streaming axis = 2)
+#
+# This test exercises whether the uniform_tdim and ChunkWindowMask
+# pulsification machinery handles a non-zero streaming axis and rank-4 tensors.
+
+graph network(qkv) -> (output)
+{
+    qkv = tract_core_external(shape = [1, 2, S, 12], datum_type = 'f32');
+
+    q = slice(qkv, axes = [3], begin = [0], end = [4]);    # [1, 2, S, 4]
+    k = slice(qkv, axes = [3], begin = [4], end = [8]);
+    v = slice(qkv, axes = [3], begin = [8], end = [12]);
+
+    # Full T×T attention scores  [1, 2, S, S]
+    scores = tract_core_einsum([q, k], expr = "bhtd,bhsd->bhts", acc = "f32");
+
+    # Derive T from shape_of(qkv)[2]
+    qkv_shape  = tract_core_shape_of(qkv);
+    T_slice    = slice(qkv_shape, axes = [0], begin = [2], end = [3], stride = [1]);
+    T          = squeeze(T_slice, axes = [0]);
+
+    # Chunk index per token: floor(pos / P) where P=2
+    positions          = tract_core_range(0, T, step = 1);
+    positions_f32      = tract_core_cast(positions, to = 'f32');
+    chunk_size_f32     = tract_core_cast(2, to = 'f32');
+    chunkIdx_f32       = div(positions_f32, chunk_size_f32);
+    chunkIdx_f32_floor = floor(chunkIdx_f32);
+    chunkIdx           = tract_core_cast(chunkIdx_f32_floor, to = 'i64');  # [S]
+
+    ci_row     = unsqueeze(chunkIdx, axes = [1]);   # [S, 1]
+    ci_col     = unsqueeze(chunkIdx, axes = [0]);   # [1, S]
+    diffChunks = sub(ci_row, ci_col);               # [S, S] i64
+
+    left_chunks_i64 = tract_core_cast(1, to = 'i64');
+    zero_i64        = tract_core_cast(0, to = 'i64');
+    le_mask         = le(diffChunks, left_chunks_i64);
+    ge_mask         = ge(diffChunks, zero_i64);
+    chunked_mask_2d = and(le_mask, ge_mask);                     # [S, S] bool
+
+    # Broadcast mask to [1, 1, S, S] to match scores [1, 2, S, S]
+    chunked_mask_3d = unsqueeze(chunked_mask_2d, axes = [0]);    # [1, S, S]
+    chunked_mask_4d = unsqueeze(chunked_mask_3d, axes = [0]);    # [1, 1, S, S]
+
+    masked_scores = select(chunked_mask_4d, scores, scores * 0.0 + -inf);  # [1, 2, S, S]
+    attn          = softmax(masked_scores, axes = [3]);                      # [1, 2, S, S]
+    output        = tract_core_einsum([attn, v], expr = "bhts,bhsd->bhtd", acc = "f32");  # [1, 2, S, 4]
+}
