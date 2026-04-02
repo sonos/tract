@@ -92,31 +92,48 @@ No padding mask.  Pulsify with `--pulse P` (P tokens = 1 chunk per pulse).
   correctly.
 - The sliding-window mask is correct: token i attends to token j iff
   `0 <= floor(i/P) - floor(j/P) <= left_chunks`.
-- `FoldWindowAttention` detects the `Iff(chunk_window_mask) → Softmax → EinSum`
-  pattern from `uniform_tdim` on the mask wire and rewrites it to bounded-window
-  chunk attention (`[C, P, D]` layout with explicit K/V context via pad+slice+concat).
-- `PulsedTokenFold` / `PulsedTokenUnfold` pulsifiers for `AxisOp::Reshape` correctly
-  handle the token-to-chunk fold (`[T, D] → [C, P, D]` at batch time; `[P, D] → [1, P, D]`
-  at pulse time) and its inverse.
-- Reference semantics: chunk 0's context window is zero-padded (startup latency), which
-  is absorbed in streaming by discarding early output pulses via Delay.
+- `uniform_tdim` propagates through the full mask computation chain
+  (`range → cast → div/floor → cast → unsqueeze → sub → le/ge → and`),
+  letting `FoldUniformMask` fold the `Iff` nodes away in the pulsed model.
+- `ChunkWindowMask` correctly materialises the per-pulse boolean mask
+  at streaming time (steady-state: all-true over the `(left_chunks+1)*P` context window).
+- Intermediate pulsed shapes (`[P, key_window]`) differ from the reference (`[S, S]`);
+  `compare --stream` skips incompatible-shape intermediates rather than failing.
+- Reference uses `-inf` masking (natural batch graph semantics); startup latency is
+  absorbed in streaming by the Delay discard mechanism.
 
-**Story role:** The computed-mask milestone.  Proves the full pipeline works end-to-end:
-mask construction in NNEF → `FoldWindowAttention` recognises the structure → pulsifier
-inserts Delay ops for K/V lookback.
+**Story role:** The computed-mask milestone.  Proves the full `uniform_tdim` propagation
+pipeline: mask construction in NNEF → `FoldUniformMask` folds Iff away → pulsifier inserts
+Delay ops for K/V lookback.
+
+---
+
+## ex05-block-left-1-posenc ✓
+
+Same sliding-window attention as ex04, plus an ALiBi-style position bias added
+to the scores before the mask.  The bias is computed as `−slope × (i − j)` for
+each token pair.
+
+**Proves:**
+- Position bias (a constant additive term to scores) pulsifies correctly via the
+  binary pulsifier (materialised from `region_of_interest` + `uniform_tdim`).
+- The full pipeline works with `Add(EinSum_scores, pos_bias)` before the mask,
+  without any special handling of the additive term.
+
+**Story role:** Nearest harness approximation to the real Nemotron encoder, which
+uses Transformer-XL relative-position attention (content + position scores, both
+masked).
 
 ---
 
 ## The arc
 
 ```
-ex01-block-l-eq-p        attention pulsifies (trivial, no state)
-ex03-block-left-1        K/V lookback pulsifies (Delay ops, explicit window)
-ex02-block-l-eq-p-mask   Iff+softmax pulsifies (external mask, raw op test)
-ex04-block-left-1-mask   FoldWindowAttention + token fold/unfold pulsifiers  ✓
+ex01-block-l-eq-p        attention pulsifies (trivial, no state)                     ✓
+ex03-block-left-1        K/V lookback pulsifies (Delay ops, explicit window)          ✓
+ex02-block-l-eq-p-mask   Iff+softmax pulsifies (external mask, batch only)            ✓ batch
+ex04-block-left-1-mask   computed mask + uniform_tdim + FoldUniformMask + Delay       ✓
+ex05-block-left-1-posenc ex04 + ALiBi position bias pulsified via binary pulsifier    ✓
 ```
 
-Every passing test proves one more piece of the machinery works.  The failing
-test pinpoints what is missing: a `FoldUniformMask` that can recognise a 2-D
-chunk-index-based true region and fold the T×T attention down to a bounded
-window before the pulsifier runs.
+Every passing test proves one more piece of the machinery works.

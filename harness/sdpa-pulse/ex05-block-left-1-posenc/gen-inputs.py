@@ -10,14 +10,13 @@ Input:  qkv [T, 3*Dh] = [8, 12]   (axis 0 streams at pulse_size=P=2)
 Output: [T, Dh] = [8, 4]
 
 Reference uses the flat T×T masked attention with pos_bias, matching the
-unoptimised batch graph (Iff masking with -inf, NOT zero-padded startup).
-FoldWindowAttention does not fire here because the Iff's true branch is
-Add(einsum_scores, pos_bias) rather than a bare EinSum — so the batch
-model retains the -inf mask semantics.
+unoptimised batch graph (Iff masking with -inf for out-of-window tokens).
 
-Once FoldWindowAttention is extended to handle the biased-scores pattern,
-the batch model will switch to zero-padded startup and gen-inputs.py will
-need to be updated to match.
+In streaming, the pulsifier uses ChunkWindowMask + binary pulsifier to
+handle the windowed attention.
+Intermediate pulsed shapes ([P, key_window]) differ from the reference
+([S, S]) but the final output matches; compare --stream skips incompatible-
+shape intermediates rather than failing on them.
 """
 
 import numpy as np

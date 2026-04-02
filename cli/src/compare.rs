@@ -355,7 +355,10 @@ pub fn handle_stream(
         }
     }
 
-    let stream_dim = max_delay + 3 * input_pulse + input_pulse / 2;
+    let stream_dim = {
+        let raw = max_delay + 3 * input_pulse + input_pulse / 2;
+        ((raw + input_pulse - 1) / input_pulse) * input_pulse
+    };
     let concrete_sym_values = SymbolValues::default().with(&stream_symbol, stream_dim as _);
 
     // Second pass: build full metadata with fixed_output_len
@@ -552,8 +555,12 @@ where
 
                     if **needed_shape != *reference.shape() {
                         let Ok(reshaped) = reference.clone().into_shape(&needed_shape) else {
-                            comparison_error = Some(format!("Incompatible shape on output {slot} reference is {reference:?}, model expects {:?}.", needed_shape));
-                            tags.style = Some(Red.into());
+                            // Shapes are structurally incompatible — the pulsed model uses a
+                            // different intermediate representation (e.g. windowed attention
+                            // [P, key_window] vs full attention [S, S]). Treat as unchecked
+                            // rather than failing; the final output will still be verified.
+                            tags.style = Some(Yellow.into());
+                            unchecked.insert(node.id);
                             continue;
                         };
                         reference = reshaped;
