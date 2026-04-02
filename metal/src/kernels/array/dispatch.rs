@@ -20,9 +20,8 @@ pub fn metal_copy_nd_dispatch(
         stream.retain_tensor(input);
         stream.retain_tensor(output);
 
-        let broadcast_kind = BroadcastKind::from_rank(output_shape.len())?;
-        let tname = DeviceTensor::tname(input.datum_type())?;
-        let kernel_name = format!("array_ops::copy_{}_{tname}", broadcast_kind.name());
+        let kernel_name = BroadcastKind::from_rank(output_shape.len())?
+            .copy_kernel_name(input.datum_type(), "array_ops::")?;
 
         let pipeline = stream.load_pipeline(LibraryName::ArrayOps, &kernel_name)?;
         let command_buffer = stream.command_buffer();

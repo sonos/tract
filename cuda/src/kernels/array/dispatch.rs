@@ -18,9 +18,8 @@ pub fn cuda_copy_nd_dispatch(
     output_strides: &[isize],
 ) -> TractResult<()> {
     crate::with_cuda_stream(|stream| {
-        let broadcast_kind = BroadcastKind::from_rank(output_shape.len())?;
-        let tname = DeviceTensor::tname(input.datum_type())?;
-        let kernel_name = format!("copy_{}_{tname}", broadcast_kind.name());
+        let kernel_name = BroadcastKind::from_rank(output_shape.len())?
+            .copy_kernel_name(input.datum_type(), "")?;
         let func = cuda_context().load_pipeline(LibraryName::Array, kernel_name)?;
 
         let i_view = get_sliced_cuda_view(

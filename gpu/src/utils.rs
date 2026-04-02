@@ -131,6 +131,22 @@ impl BroadcastKind {
             Self::Nd6 => "nd6",
         }
     }
+
+    pub fn copy_kernel_name(&self, dt: DatumType, prefix: &str) -> TractResult<String> {
+        let tname = crate::tensor::DeviceTensor::tname(dt)?;
+        Ok(format!("{prefix}copy_{}_{tname}", self.name()))
+    }
+
+    pub fn all_copy_kernel_names(prefix: &str) -> Vec<String> {
+        Self::ALL
+            .into_iter()
+            .flat_map(|bk| {
+                crate::tensor::DeviceTensor::SUPPORTED_DT
+                    .into_iter()
+                    .flat_map(move |dt| bk.copy_kernel_name(dt, prefix).into_iter())
+            })
+            .collect()
+    }
 }
 
 pub fn compute_broadcast_strides<T: num_traits::Zero + Copy + 'static>(
