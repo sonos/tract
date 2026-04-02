@@ -19,7 +19,6 @@ fn can_fuse_move(model: &TypedModel, axis_node: &TypedNode) -> bool {
             || node.op_is::<tract_gpu::ops::broadcast::GpuMultiBroadcastTo>()
             || node.op_is::<tract_gpu::ops::dyn_kv_cache::GpuDynKVCache>()
             || node.op_is::<crate::ops::CudaGgmlQuantQ81>()
-            || node.op_is::<crate::ops::CudaPad>()
             || node.op_is::<crate::ops::CudaDelay>()
             || node.op_is::<crate::ops::CudaPulsePad>()
             || node.op_is::<tract_gpu::ops::binary::GpuBinOp>()

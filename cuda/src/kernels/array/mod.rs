@@ -1,13 +1,11 @@
 mod cast;
 mod copy;
 mod dispatch;
-mod pad;
 mod rotate_half;
 
 pub use cast::Cast;
 pub use copy::Memcpy;
 pub use dispatch::cuda_copy_nd_dispatch;
-pub use pad::Pad;
 pub use rotate_half::RotateHalf;
 
 pub fn all_functions() -> Vec<String> {
@@ -26,8 +24,5 @@ pub fn all_functions() -> Vec<String> {
             .flat_map(|(dt1, dt2)| Cast.kernel_name(dt1, dt2).into_iter()),
     );
 
-    functions.extend(
-        tract_gpu::tensor::DeviceTensor::SUPPORTED_DT.into_iter().flat_map(Pad::kernel_name),
-    );
     functions.into_iter().collect()
 }
