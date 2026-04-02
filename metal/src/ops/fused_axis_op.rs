@@ -1,8 +1,8 @@
-use tract_gpu::ops::change_axes::GpuAxisOp;
 use derive_new::new;
 use tract_core::internal::tract_smallvec::ToSmallVec;
 use tract_core::internal::*;
 use tract_core::ops::OpStateFreeze;
+use tract_gpu::ops::change_axes::GpuAxisOp;
 use tract_gpu::tensor::{DeviceTensor, DeviceTensorExt};
 
 #[derive(Clone, Debug, new, PartialEq, Eq)]

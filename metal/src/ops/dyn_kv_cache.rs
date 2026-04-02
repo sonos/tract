@@ -74,8 +74,7 @@ impl OpState for MetalDynKVCacheState {
         let inputs =
             op_inputs.iter().map(|it| it.to_device_tensor()).collect::<TractResult<TVec<_>>>()?;
         let mut output_shape = inputs[0].shape().to_vec();
-        output_shape[concat.axis] =
-            inputs.iter().map(|it| it.shape()[concat.axis]).sum();
+        output_shape[concat.axis] = inputs.iter().map(|it| it.shape()[concat.axis]).sum();
         let output = tract_gpu::session_handler::make_tensor_for_node(
             session,
             self.node_id,
