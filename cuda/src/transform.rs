@@ -1,6 +1,6 @@
 use crate::context::cuda_context;
 use crate::kernels::nn::cuda_reduce_launch;
-use crate::ops::{CudaDelay, CudaIff, CudaPulsePad};
+use crate::ops::CudaIff;
 use crate::ops::{CudaLeakyRelu, wire_cuda_conv};
 use crate::{kernels, ops, rewrite_rules};
 use DatumType::{F16, F32};
@@ -530,9 +530,17 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
                 } else if let Some(op) = node.op_as::<RmsNorm>() {
                     Box::new(ops::CudaRmsNorm::new(op.axis, op.eps.clone()))
                 } else if let Some(op) = node.op_as::<Delay>() {
-                    Box::new(CudaDelay::new(op.clone()))
+                    Box::new(tract_gpu::ops::pulse::GpuDelay::new(
+                        op,
+                        "Cuda",
+                        crate::kernels::array::cuda_copy_nd_dispatch,
+                    ))
                 } else if let Some(op) = node.op_as::<PulsePad>() {
-                    Box::new(CudaPulsePad::new(op)?)
+                    Box::new(tract_gpu::ops::pulse::GpuPulsePad::new(
+                        op,
+                        "Cuda",
+                        crate::kernels::array::cuda_copy_nd_dispatch,
+                    )?)
                 } else if node.op_is::<Iff>() {
                     Box::new(CudaIff)
                 } else {

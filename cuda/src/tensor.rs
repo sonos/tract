@@ -1,19 +1,14 @@
-use std::ops::{Deref, DerefMut, RangeBounds};
+use std::ops::{Deref, DerefMut};
 
 use cudarc::driver::{CudaSlice, DevicePtr};
 use tract_core::internal::tract_smallvec::ToSmallVec;
 use tract_core::internal::*;
 use tract_core::prelude::{DatumType, TVec};
-use tract_core::tract_data::itertools::izip;
 use tract_core::tract_linalg::block_quant::{BlockQuantFact, BlockQuantStorage, Q8_1};
 use tract_gpu::device::DeviceBuffer;
 use tract_gpu::tensor::{DeviceTensor, OwnedDeviceTensor};
 use tract_gpu::utils::{as_q40_tensor, check_strides_validity};
 
-use crate::context::{TractCudaStream, cuda_context};
-use crate::kernels::launch_args::TractLaunchArgs;
-use crate::kernels::utils::cuda_launch_cfg_for_cpy;
-use crate::kernels::{BroadcastKind, LibraryName, get_sliced_cuda_view};
 use crate::ops::GgmlQuantQ81Fact;
 
 #[derive(Debug, Clone)]
@@ -235,97 +230,4 @@ impl OwnedDeviceTensor for CudaTensor {
         })
         .unwrap()
     }
-}
-
-pub fn device_tensor_assign_slice(
-    stream: &TractCudaStream,
-    dst: &DeviceTensor,
-    dst_range: impl RangeBounds<usize>,
-    src: &DeviceTensor,
-    src_range: impl RangeBounds<usize>,
-    axis: usize,
-) -> TractResult<()> {
-    ensure!(src.datum_type() == dst.datum_type());
-    ensure!(src.datum_type().is_copy() && src.datum_type().is_number());
-    ensure!(src.rank() == dst.rank() && axis < src.rank());
-    let src_range = clip_range_bounds(src.shape()[axis], src_range);
-    let dst_range = clip_range_bounds(dst.shape()[axis], dst_range);
-    if src_range.is_empty() {
-        return Ok(());
-    }
-    ensure!(dst_range.len() == src_range.len());
-    ensure!(
-        tract_itertools::izip!(dst.shape(), src.shape(), 0..).all(|(d, s, a)| a == axis || s == d)
-    );
-
-    let mut shape = src.shape().to_vec();
-    shape[axis] = src_range.len();
-
-    let mut dst_origin = tvec!(0usize; shape.len());
-    dst_origin[axis] = dst_range.start;
-    let src_origin = tvec!(0usize; shape.len());
-
-    device_tensor_launch_copy(
-        stream,
-        &shape,
-        dst,
-        &dst_origin,
-        dst.strides(),
-        src,
-        &src_origin,
-        src.strides(),
-    )
-}
-
-#[allow(clippy::too_many_arguments)]
-pub fn device_tensor_launch_copy(
-    stream: &TractCudaStream,
-    zone_shape: &[usize],
-    dst: &DeviceTensor,
-    dst_origin: &[usize],
-    dst_strides: &[isize],
-    src: &DeviceTensor,
-    src_origin: &[usize],
-    src_strides: &[isize],
-) -> TractResult<()> {
-    ensure!(src.datum_type() == dst.datum_type());
-    ensure!(src.datum_type().is_copy() && src.datum_type().is_number());
-    ensure!(zone_shape.len() == dst.rank());
-    ensure!(zone_shape.len() == dst_origin.len());
-    ensure!(zone_shape.len() == dst_strides.len());
-    ensure!(zone_shape.len() == src_origin.len());
-    ensure!(zone_shape.len() == src_strides.len());
-    let broadcast_kind = BroadcastKind::from_rank(dst.rank()).with_context(|| {
-        format!(
-            "Unsupported broadcast for assign slice: (in: {:?}, out: {:?})",
-            src.shape(),
-            dst.shape()
-        )
-    })?;
-    ensure!(src.len() > 0);
-
-    let tname = DeviceTensor::tname(src.datum_type())?;
-    let broadcast_name = broadcast_kind.name();
-    let kernel_name = format!("copy_{broadcast_name}_{tname}");
-    let func = cuda_context().load_pipeline(LibraryName::Array, kernel_name)?;
-
-    let dst_offset = izip!(dst_origin, dst_strides).map(|(a, b)| a * *b as usize).sum::<usize>()
-        * dst.datum_type().size_of();
-    let dst_len = dst.len() * dst.datum_type().size_of();
-    let dst_view = get_sliced_cuda_view(dst, dst_offset, dst_len - dst_offset)?;
-
-    let src_offset = izip!(src_origin, src_strides).map(|(a, b)| a * *b as usize).sum::<usize>()
-        * src.datum_type().size_of();
-    let src_len = src.len() * src.datum_type().size_of();
-    let src_view = get_sliced_cuda_view(src, src_offset, src_len - src_offset)?;
-
-    let mut launch_args = TractLaunchArgs::new(stream, &func);
-    launch_args.push_view(&src_view);
-    launch_args.push_view(&dst_view);
-    launch_args.push_slice_i32(src_strides);
-    launch_args.push_slice_i32(zone_shape);
-    launch_args.push_slice_i32(dst_strides);
-
-    let cfg = cuda_launch_cfg_for_cpy(zone_shape);
-    launch_args.launch(cfg)
 }
