@@ -123,6 +123,14 @@ impl PermuteAxes {
     }
 }
 
+pub fn cuda_permute_dispatch(
+    input: &DeviceTensor,
+    permutation: &[usize],
+    output: &DeviceTensor,
+) -> TractResult<()> {
+    crate::with_cuda_stream(|stream| PermuteAxes.dispatch_eval(stream, input, permutation, output))
+}
+
 #[cfg(test)]
 mod tests {
 

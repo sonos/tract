@@ -1,11 +1,12 @@
-use crate::ops::{CudaAxisOp, CudaFusedAxisOp};
+use crate::ops::CudaFusedAxisOp;
 use tract_core::internal::*;
 use tract_core::tract_data::itertools::Itertools;
 use tract_gpu::fact::DeviceTypedFactExt;
+use tract_gpu::ops::change_axes::GpuAxisOp;
 use tract_gpu::rule_ensure;
 
-fn is_supported_axis_op(op: &CudaAxisOp) -> bool {
-    matches!(op.0, AxisOp::Add(_) | AxisOp::Rm(_) | AxisOp::Reshape(..))
+fn is_supported_axis_op(op: &GpuAxisOp) -> bool {
+    matches!(op.inner, AxisOp::Add(_) | AxisOp::Rm(_) | AxisOp::Reshape(..))
 }
 
 // these are operators that can handle arbitrarty strides
@@ -29,12 +30,13 @@ fn can_fuse_move(model: &TypedModel, axis_node: &TypedNode) -> bool {
 pub fn collect_chain_of_axis_ops<'a>(
     model: &'a TypedModel,
     mut cursor: &'a TypedNode,
-) -> TractResult<Option<(TVec<CudaAxisOp>, &'a TypedNode)>> {
+) -> TractResult<Option<(TVec<GpuAxisOp>, &'a TypedNode)>> {
     let mut acc_axis_ops = tvec![];
     let mut head_of_chain = cursor;
 
-    while let Some(axis_op) = cursor.op_as::<CudaAxisOp>().filter(|o| {
-        is_supported_axis_op(o) || (matches!(o.0, AxisOp::Move(..)) && can_fuse_move(model, cursor))
+    while let Some(axis_op) = cursor.op_as::<GpuAxisOp>().filter(|o| {
+        is_supported_axis_op(o)
+            || (matches!(o.inner, AxisOp::Move(..)) && can_fuse_move(model, cursor))
     }) {
         acc_axis_ops.push(axis_op.clone());
         head_of_chain = cursor;
@@ -57,7 +59,7 @@ fn split_succs(
     model: &TypedModel,
     axis_node: &TypedNode,
     axis_node_name: &str,
-    axis_op: &CudaAxisOp,
+    axis_op: &GpuAxisOp,
 ) -> TractResult<Option<TypedModelPatch>> {
     let succs = model.all_succ(axis_node.id)?.context("Expected node with successors")?;
 
@@ -93,10 +95,10 @@ pub fn fuse_axis_op(
     model: &TypedModel,
     axis_node: &TypedNode,
     axis_node_name: &str,
-    axis_op: &CudaAxisOp,
+    axis_op: &GpuAxisOp,
 ) -> TractResult<Option<TypedModelPatch>> {
     // Only support certain axis ops (or a Move, which is handled specially below)
-    rule_ensure!(is_supported_axis_op(axis_op) || matches!(axis_op.0, AxisOp::Move(..)));
+    rule_ensure!(is_supported_axis_op(axis_op) || matches!(axis_op.inner, AxisOp::Move(..)));
 
     let Some(node) = model.single_succ(axis_node.id)? else {
         return split_succs(model, axis_node, axis_node_name, axis_op);
@@ -104,9 +106,9 @@ pub fn fuse_axis_op(
 
     // Disallow fusing when the successor is already an axis/fused op or a sync,
     // *unless* it's a Move AxisOp (we allow that via the early-quit branch).
-    let is_axis_like = node.op_is::<CudaAxisOp>() || node.op_is::<CudaFusedAxisOp>();
+    let is_axis_like = node.op_is::<GpuAxisOp>() || node.op_is::<CudaFusedAxisOp>();
     let is_allowed_move =
-        node.op_as::<CudaAxisOp>().is_some_and(|op| matches!(op.0, AxisOp::Move(..)));
+        node.op_as::<GpuAxisOp>().is_some_and(|op| matches!(op.inner, AxisOp::Move(..)));
 
     rule_ensure!(!is_axis_like || is_allowed_move);
 
@@ -116,7 +118,7 @@ pub fn fuse_axis_op(
         return Ok(None);
     };
 
-    let mut grouped_axis_ops: TVec<TVec<CudaAxisOp>> = tvec![];
+    let mut grouped_axis_ops: TVec<TVec<GpuAxisOp>> = tvec![];
     let mut tap_inputs = tvec![];
     let mut patch = TypedModelPatch::default();
 
@@ -134,8 +136,8 @@ pub fn fuse_axis_op(
     }
 
     // If the successor is a Move, we may fuse it now or defer.
-    if let Some(op) = node.op_as::<crate::ops::CudaAxisOp>()
-        && matches!(op.0, AxisOp::Move(..))
+    if let Some(op) = node.op_as::<GpuAxisOp>()
+        && matches!(op.inner, AxisOp::Move(..))
     {
         let should_defer_move = !grouped_axis_ops[0].is_empty() && !can_fuse_move(model, node);
         if should_defer_move {
@@ -167,9 +169,9 @@ pub fn fuse_move_axis(
     model: &TypedModel,
     axis_node: &TypedNode,
     axis_node_name: &str,
-    axis_op: &CudaAxisOp,
+    axis_op: &GpuAxisOp,
 ) -> TractResult<Option<TypedModelPatch>> {
-    rule_ensure!(matches!(axis_op.0, AxisOp::Move(..)));
+    rule_ensure!(matches!(axis_op.inner, AxisOp::Move(..)));
 
     let in_fact = model.node_input_facts(axis_node.id)?[0];
     let in_shape =
@@ -182,7 +184,7 @@ pub fn fuse_move_axis(
     // Checks if MoveAxis has no impact on shape + layout
     if in_shape == out_shape
         && let (Some(in_strides), AxisOp::Move(from, to)) =
-            (in_shape.as_concrete().map(Tensor::natural_strides), axis_op.0.clone())
+            (in_shape.as_concrete().map(Tensor::natural_strides), axis_op.inner.clone())
     {
         let mut out_strides = in_strides.clone();
         let remove_stride = out_strides.remove(from);
@@ -193,7 +195,13 @@ pub fn fuse_move_axis(
     }
 
     // Reshape are always fusable. Change Move by Reshape if possible
-    let simpl_op = CudaAxisOp::simplify_axis_op(axis_op.0.clone(), in_shape.dims());
+    let simpl_op = GpuAxisOp::simplify_axis_op(
+        axis_op.inner.clone(),
+        in_shape.dims(),
+        axis_op.backend_name,
+        axis_op.dispatch_permute,
+        axis_op.dispatch_memcpy,
+    );
     if simpl_op != *axis_op {
         return Ok(Some(TypedModelPatch::replace_single_op(
             model,
@@ -206,8 +214,8 @@ pub fn fuse_move_axis(
     // Fuse consecutive MoveAxis if possible
     let Some(cursor) = model.single_succ(axis_node.id)? else { return Ok(None) };
     if let (AxisOp::Move(from_1, to_1), AxisOp::Move(from_2, to_2)) = (
-        axis_op.0.clone(),
-        cursor.op_as::<CudaAxisOp>().map(|ax_op| ax_op.0.clone()).unwrap_or(AxisOp::Add(0)),
+        axis_op.inner.clone(),
+        cursor.op_as::<GpuAxisOp>().map(|ax_op| ax_op.inner.clone()).unwrap_or(AxisOp::Add(0)),
     ) {
         let max_rank = [from_1, from_2, to_1, to_2].iter().max().unwrap() + 1;
         let mut perm: TVec<usize> = (0..max_rank).collect_vec().into();
@@ -220,7 +228,12 @@ pub fn fuse_move_axis(
             let inputs = patch.taps(model, &axis_node.inputs)?;
             let out = patch.wire_node(
                 format!("{axis_node_name}.fused_move_axis"),
-                CudaAxisOp(new_axis_ops[0].clone()),
+                GpuAxisOp::new(
+                    new_axis_ops[0].clone(),
+                    axis_op.backend_name,
+                    axis_op.dispatch_permute,
+                    axis_op.dispatch_memcpy,
+                ),
                 &inputs,
             )?;
             patch.shunt_outside(model, cursor.id.into(), out[0])?;
@@ -231,13 +244,22 @@ pub fn fuse_move_axis(
     // Add(x) -> Move(x, y)
     let Some(cursor) = model.single_prec(axis_node.id)? else { return Ok(None) };
     if let (AxisOp::Move(from_1, to_1), AxisOp::Add(ax)) = (
-        axis_op.0.clone(),
-        cursor.op_as::<CudaAxisOp>().map(|ax_op| ax_op.0.clone()).unwrap_or(AxisOp::Rm(0)),
+        axis_op.inner.clone(),
+        cursor.op_as::<GpuAxisOp>().map(|ax_op| ax_op.inner.clone()).unwrap_or(AxisOp::Rm(0)),
     ) && ax == from_1
     {
         let mut patch = TypedModelPatch::default();
         let inputs = patch.taps(model, &cursor.inputs)?;
-        let out = patch.wire_node(cursor.name.clone(), CudaAxisOp(AxisOp::Add(to_1)), &inputs)?;
+        let out = patch.wire_node(
+            cursor.name.clone(),
+            GpuAxisOp::new(
+                AxisOp::Add(to_1),
+                axis_op.backend_name,
+                axis_op.dispatch_permute,
+                axis_op.dispatch_memcpy,
+            ),
+            &inputs,
+        )?;
         patch.shunt_outside(model, axis_node.id.into(), out[0])?;
         return Ok(Some(patch));
     }

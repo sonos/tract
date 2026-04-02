@@ -235,7 +235,7 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
                     Box::new(ops::MetalCast::new(op.to).unwrap())
                 } else if let Some(op) = node.op_as::<AxisOp>() {
                     let in_fact = source.node_input_facts(node.id)?[0];
-                    Box::new(ops::MetalAxisOp::from_tract_core_with_fact(op.clone(), in_fact))
+                    Box::new(tract_gpu::ops::change_axes::GpuAxisOp::from_tract_core_with_fact(op.clone(), in_fact, "Metal", crate::kernels::array::metal_permute_dispatch, crate::kernels::array::metal_memcpy_dispatch))
                 } else if let Some(op) = node.op_as::<Slice>() {
                     Box::new(tract_gpu::ops::slice::GpuSlice::new(
                         op.clone(),
@@ -402,10 +402,10 @@ fn convert_matmul_to_metal(
                 );
 
                 let rank = input_facts[a_pos].rank();
-                let perm_a_op = ops::change_axes::MetalAxisOp::from_tract_core(AxisOp::Move(
+                let perm_a_op = tract_gpu::ops::change_axes::GpuAxisOp::new(AxisOp::Move(
                     rank - 2,
                     rank - 1,
-                ));
+                ), "Metal", crate::kernels::array::metal_permute_dispatch, crate::kernels::array::metal_memcpy_dispatch);
                 let perm_a_name = node.name.clone() + ".perm_a";
                 inputs[a_pos] = target.wire_node(perm_a_name, perm_a_op, &[inputs[a_pos]])?[0];
             }
@@ -423,10 +423,10 @@ fn convert_matmul_to_metal(
                 );
 
                 let rank = input_facts[b_pos].rank();
-                let perm_b_op = ops::change_axes::MetalAxisOp::from_tract_core(AxisOp::Move(
+                let perm_b_op = tract_gpu::ops::change_axes::GpuAxisOp::new(AxisOp::Move(
                     rank - 2,
                     rank - 1,
-                ));
+                ), "Metal", crate::kernels::array::metal_permute_dispatch, crate::kernels::array::metal_memcpy_dispatch);
                 let perm_b_name = node.name.clone() + ".perm_b";
                 inputs[b_pos] = target.wire_node(perm_b_name, perm_b_op, &[inputs[b_pos]])?[0];
             }
@@ -441,10 +441,10 @@ fn convert_matmul_to_metal(
                     .map(|fact| fact.clarify_dt_shape().unwrap().1.len())
                     .unwrap();
 
-                let perm_out_op = ops::change_axes::MetalAxisOp::from_tract_core(AxisOp::Move(
+                let perm_out_op = tract_gpu::ops::change_axes::GpuAxisOp::new(AxisOp::Move(
                     rank - 2,
                     rank - 1,
-                ));
+                ), "Metal", crate::kernels::array::metal_permute_dispatch, crate::kernels::array::metal_memcpy_dispatch);
                 matmul_output = target.wire_node(
                     node.name.clone() + ".perm_out",
                     perm_out_op,

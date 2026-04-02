@@ -75,6 +75,14 @@ impl Memcpy {
     }
 }
 
+pub fn cuda_memcpy_dispatch(
+    input: &DeviceTensor,
+    input_offset: usize,
+    output: &DeviceTensor,
+) -> TractResult<()> {
+    crate::with_cuda_stream(|stream| Memcpy.dispatch_eval(stream, input, input_offset, output))
+}
+
 #[cfg(test)]
 mod tests {
 

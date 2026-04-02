@@ -1,6 +1,5 @@
 mod apply_rope;
 mod cast;
-mod change_axes;
 mod conv;
 mod dyn_kv_cache;
 mod flash_attn;
@@ -18,7 +17,6 @@ mod scaled_masked_softmax;
 mod softmax;
 pub use apply_rope::CudaApplyRope;
 pub use cast::CudaCast;
-pub use change_axes::CudaAxisOp;
 pub use conv::{CudaConv, wire_cuda_conv};
 pub use dyn_kv_cache::{CudaDynKVCache, CudaDynKVCacheState};
 pub use flash_attn::CudaFlashAttention;

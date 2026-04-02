@@ -7,9 +7,10 @@ use tract_gpu::tensor::{DeviceTensor, DeviceTensorExt, IntoDevice, OwnedDeviceTe
 use tract_gpu::utils::as_q40_tensor;
 
 use crate::Q40_ROW_PADDING;
-use crate::ops::{CudaAxisOp, CudaFusedAxisOp, CudaGgmlGemm};
+use crate::ops::{CudaFusedAxisOp, CudaGgmlGemm};
 use crate::tensor::CudaTensor;
 use crate::utils::pad_q40;
+use tract_gpu::ops::change_axes::GpuAxisOp;
 
 /// Walk the successor chain from a Const node to find a GEMM consumer.
 /// Returns the effective weight shape as seen by the GEMM kernel (after all
@@ -31,13 +32,13 @@ fn effective_gemm_shape(
                 // Apply the fused axis ops for the weight input slot.
                 let weight_inlet = succ.inputs.iter().position(|i| i.node == cursor.id).unwrap();
                 for axis_op in &fao.grouped_axis_ops[weight_inlet] {
-                    axis_op.0.change_shape_array(&mut effective_shape, false)?;
+                    axis_op.inner.change_shape_array(&mut effective_shape, false)?;
                 }
                 return Ok(Some(effective_shape));
             }
         }
-        if let Some(axis_op) = succ.op_as::<CudaAxisOp>() {
-            axis_op.0.change_shape_array(&mut effective_shape, false)?;
+        if let Some(axis_op) = succ.op_as::<GpuAxisOp>() {
+            axis_op.inner.change_shape_array(&mut effective_shape, false)?;
             cursor = succ;
             continue;
         }
@@ -91,7 +92,7 @@ pub fn pad_q40_weights(
     let padded_bqs = pad_q40(bqs, flat_m, effective_k)?;
 
     // Build padded shape preserving the rank and batch structure expected by
-    // the GEMM.  effective_shape already incorporates all CudaAxisOp and
+    // the GEMM.  effective_shape already incorporates all GpuAxisOp and
     // CudaFusedAxisOp transformations, so we just replace k with padded_k.
     let padded_k = effective_k.next_multiple_of(Q40_ROW_PADDING);
     let mut padded_shape = effective_shape.clone();
@@ -115,12 +116,12 @@ pub fn pad_q40_weights(
     let wire = patch.wire_node(&node.name, new_const, &[])?[0];
 
     // The padded const already has the effective GEMM shape (with padded k),
-    // so skip the CudaAxisOp chain — those transforms are baked in.
+    // so skip the GpuAxisOp chain — those transforms are baked in.
     // Collect the intermediate node ids to obliterate.
     let mut cursor = node;
     let mut obliterate_ids: TVec<usize> = tvec![node.id];
     while let Some(succ) = model.single_succ(cursor.id)? {
-        if succ.op_is::<CudaAxisOp>() {
+        if succ.op_is::<GpuAxisOp>() {
             obliterate_ids.push(succ.id);
             cursor = succ;
             continue;

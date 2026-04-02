@@ -129,6 +129,14 @@ impl PermuteAxes {
     }
 }
 
+pub fn metal_permute_dispatch(
+    input: &DeviceTensor,
+    permutation: &[usize],
+    output: &DeviceTensor,
+) -> TractResult<()> {
+    crate::with_metal_stream(|stream| PermuteAxes.dispatch_eval(stream, input, permutation, output))
+}
+
 #[cfg(test)]
 mod tests {
     use crate::utils::with_borrowed_metal_stream;

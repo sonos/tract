@@ -1,9 +1,9 @@
 use crate::kernels::conv::{ConvGeneric, ConvKernel, ConvKernelScratch};
 use crate::kernels::conv_cudnn::ConvCudnn;
-use crate::ops::CudaAxisOp;
 use tract_core::internal::*;
 use tract_core::ops::OpStateFreeze;
 use tract_core::ops::cnn::Conv;
+use tract_gpu::ops::change_axes::GpuAxisOp;
 use tract_gpu::tensor::DeviceTensorExt;
 
 pub fn wire_cuda_conv(
@@ -39,7 +39,12 @@ pub fn wire_cuda_conv(
             needed_shape[data_shape.c_axis()] = op.pool_spec.output_channels.to_dim();
             let reshaped = target.wire_node(
                 format!("{prefix}.bias_reshaped"),
-                CudaAxisOp(AxisOp::Reshape(0, bias.shape.to_tvec(), needed_shape)),
+                GpuAxisOp::new(
+                    AxisOp::Reshape(0, bias.shape.to_tvec(), needed_shape),
+                    "Cuda",
+                    crate::kernels::array::cuda_permute_dispatch,
+                    crate::kernels::array::cuda_memcpy_dispatch,
+                ),
                 &[inputs[2]],
             )?[0];
             conv_wire = target.wire_node(

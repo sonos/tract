@@ -9,9 +9,9 @@ mod rotate_half;
 pub use broadcast::{MultiBroadcast, cuda_broadcast_dispatch};
 pub use cast::Cast;
 pub use concat::{Concat, cuda_concat_dispatch};
-pub use copy::Memcpy;
+pub use copy::{Memcpy, cuda_memcpy_dispatch};
 pub use pad::Pad;
-pub use permute_axes::PermuteAxes;
+pub use permute_axes::{PermuteAxes, cuda_permute_dispatch};
 pub use rotate_half::RotateHalf;
 
 pub fn all_functions() -> Vec<String> {

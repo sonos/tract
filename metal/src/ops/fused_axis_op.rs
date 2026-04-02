@@ -1,4 +1,4 @@
-use crate::ops::MetalAxisOp;
+use tract_gpu::ops::change_axes::GpuAxisOp;
 use derive_new::new;
 use tract_core::internal::tract_smallvec::ToSmallVec;
 use tract_core::internal::*;
@@ -9,7 +9,7 @@ use tract_gpu::tensor::{DeviceTensor, DeviceTensorExt};
 pub struct MetalFusedAxisOp {
     /// List of axis ops to apply for each op inputs
     /// Length of the list is equal to number of inputs
-    pub grouped_axis_ops: TVec<TVec<MetalAxisOp>>,
+    pub grouped_axis_ops: TVec<TVec<GpuAxisOp>>,
     pub op: Box<dyn TypedOp>,
 }
 
@@ -20,7 +20,7 @@ pub struct MetalFusedAxisOpState {
 
 fn compute_reshaped_inputs(
     inputs: TVec<TValue>,
-    grouped_axis_ops: &TVec<TVec<MetalAxisOp>>,
+    grouped_axis_ops: &TVec<TVec<GpuAxisOp>>,
     session: &TurnState,
 ) -> TractResult<TVec<TValue>> {
     // Apply Axis Ops per input
@@ -36,7 +36,7 @@ fn compute_reshaped_inputs(
             let reshaped_input = axis_ops.iter().try_fold(
                 m_input.clone(),
                 |t, axis_op| -> TractResult<DeviceTensor> {
-                    let new_shape = match &axis_op.0 {
+                    let new_shape = match &axis_op.inner {
                         AxisOp::Reshape(skip, from, to) => {
                             let from =
                                 from.iter().map(|d| d.eval(&session.resolved_symbols)).collect();
@@ -48,11 +48,11 @@ fn compute_reshaped_inputs(
                         }
                         AxisOp::Add(_) | AxisOp::Rm(_) | AxisOp::Move(..) => {
                             let mut shape: TVec<usize> = t.shape().into();
-                            axis_op.0.change_shape_array(&mut shape, false)?;
+                            axis_op.inner.change_shape_array(&mut shape, false)?;
                             shape
                         }
                     };
-                    if let AxisOp::Move(from, to) = axis_op.0 {
+                    if let AxisOp::Move(from, to) = axis_op.inner {
                         let mut out_strides: TVec<isize> = t.strides().to_smallvec();
                         let removed_stride = out_strides.remove(from);
                         out_strides.insert(to, removed_stride);

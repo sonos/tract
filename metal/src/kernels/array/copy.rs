@@ -15,6 +15,14 @@ impl fmt::Display for Memcpy {
     }
 }
 
+pub fn metal_memcpy_dispatch(
+    input: &DeviceTensor,
+    input_offset: usize,
+    output: &DeviceTensor,
+) -> TractResult<()> {
+    crate::with_metal_stream(|stream| Memcpy.dispatch_eval(stream, input, input_offset, output))
+}
+
 impl Memcpy {
     pub fn is_supported_dt(dt: DatumType) -> bool {
         matches!(
