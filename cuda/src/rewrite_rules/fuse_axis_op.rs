@@ -14,7 +14,7 @@ fn can_fuse_move(model: &TypedModel, axis_node: &TypedNode) -> bool {
         node.op_is::<crate::ops::CudaConcat>()
             || node.op_is::<crate::ops::CudaApplyRope>()
             || node.op_is::<crate::ops::CudaScaledMaskedSoftmax>()
-            || node.op_is::<crate::ops::CudaSlice>()
+            || node.op_is::<tract_gpu::ops::slice::GpuSlice>()
             || node.op_is::<tract_gpu::ops::broadcast::GpuMultiBroadcastTo>()
             || node.op_is::<crate::ops::CudaDynKVCache>()
             || node.op_is::<crate::ops::CudaGgmlQuantQ81>()

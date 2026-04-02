@@ -10,7 +10,6 @@ pub mod leaky_relu;
 pub mod rms_norm;
 pub mod rotate_half;
 pub mod scaled_masked_softmax;
-pub mod slice;
 pub mod softmax;
 
 pub use apply_rope::MetalApplyRope;
@@ -25,5 +24,4 @@ pub use leaky_relu::MetalLeakyRelu;
 pub use rms_norm::MetalRmsNorm;
 pub use rotate_half::MetalRotateHalf;
 pub use scaled_masked_softmax::MetalScaledMaskedSoftmax;
-pub use slice::MetalSlice;
 pub use softmax::MetalSoftmax;

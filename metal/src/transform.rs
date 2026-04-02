@@ -237,7 +237,11 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
                     let in_fact = source.node_input_facts(node.id)?[0];
                     Box::new(ops::MetalAxisOp::from_tract_core_with_fact(op.clone(), in_fact))
                 } else if let Some(op) = node.op_as::<Slice>() {
-                    Box::new(ops::MetalSlice::from_tract_core(op.clone()))
+                    Box::new(tract_gpu::ops::slice::GpuSlice::new(
+                        op.clone(),
+                        "Metal",
+                        crate::kernels::array::metal_broadcast_dispatch,
+                    ))
                 } else if let Some(op) = node.op_as::<TypedConcat>() {
                     Box::new(ops::MetalConcat::from_tract_core(op))
                 } else if let Some(op) = node.op_as::<Reduce>() {
