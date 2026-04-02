@@ -185,8 +185,7 @@ fn can_translate_to_metal_op(source: &TypedModel, node: &TypedNode) -> TractResu
                     && kernels::nn::GeluApproximate::is_supported_dt(input_dts[0])
             })
             || node.op_as::<ElementWiseOp>().is_some_and(|op| {
-                op.0.is::<LeakyRelu>()
-                    && kernels::nn::LeakyRelu::is_supported_dt(input_dts[0])
+                op.0.is::<LeakyRelu>() && kernels::nn::LeakyRelu::is_supported_dt(input_dts[0])
             })))
 }
 
