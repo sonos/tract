@@ -27,8 +27,7 @@ pub fn metal_copy_nd_dispatch(
         let command_buffer = stream.command_buffer();
 
         // Convert isize strides to usize for Metal buffers
-        let input_strides_usize: TVec<usize> =
-            input_strides.iter().map(|&s| s as usize).collect();
+        let input_strides_usize: TVec<usize> = input_strides.iter().map(|&s| s as usize).collect();
         let output_strides_usize: TVec<usize> =
             output_strides.iter().map(|&s| s as usize).collect();
 

@@ -132,18 +132,30 @@ impl BroadcastKind {
         }
     }
 
+    /// Map datum type to the copy kernel type name based on element size.
+    /// Copy kernels only care about element size, not the actual type.
+    pub fn copy_tname(dt: DatumType) -> &'static str {
+        match dt.size_of() {
+            1 => "u8",
+            2 => "u16",
+            4 => "u32",
+            8 => "u64",
+            _ => panic!("Unsupported element size {} for copy kernel", dt.size_of()),
+        }
+    }
+
     pub fn copy_kernel_name(&self, dt: DatumType, prefix: &str) -> TractResult<String> {
-        let tname = crate::tensor::DeviceTensor::tname(dt)?;
-        Ok(format!("{prefix}copy_{}_{tname}", self.name()))
+        Ok(format!("{prefix}copy_{}_{}", self.name(), Self::copy_tname(dt)))
     }
 
     pub fn all_copy_kernel_names(prefix: &str) -> Vec<String> {
+        let copy_types = ["u8", "u16", "u32", "u64"];
         Self::ALL
             .into_iter()
             .flat_map(|bk| {
-                crate::tensor::DeviceTensor::SUPPORTED_DT
+                copy_types
                     .into_iter()
-                    .flat_map(move |dt| bk.copy_kernel_name(dt, prefix).into_iter())
+                    .map(move |tname| format!("{prefix}copy_{}_{tname}", bk.name()))
             })
             .collect()
     }
