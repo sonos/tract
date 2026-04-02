@@ -1,5 +1,4 @@
 mod apply_rope;
-mod broadcast;
 mod cast;
 mod change_axes;
 mod concat;
@@ -20,7 +19,6 @@ mod scaled_masked_softmax;
 mod slice;
 mod softmax;
 pub use apply_rope::CudaApplyRope;
-pub use broadcast::CudaMultiBroadcastTo;
 pub use cast::CudaCast;
 pub use change_axes::CudaAxisOp;
 pub use concat::CudaConcat;

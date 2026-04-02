@@ -224,7 +224,11 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
                 } else if let Some(op) = node.op_as::<TypedBinOp>() {
                     Box::new(metal_bin_op(op.0.clone()))
                 } else if let Some(op) = node.op_as::<MultiBroadcastTo>() {
-                    Box::new(ops::MetalMultiBroadcastTo::new(op.shape.clone()))
+                    Box::new(tract_gpu::ops::broadcast::GpuMultiBroadcastTo::new(
+                        op.shape.clone(),
+                        "Metal",
+                        crate::kernels::array::metal_broadcast_dispatch,
+                    ))
                 } else if let Some(op) = node.op_as::<Const>() {
                     Box::new(convert_const(op)?)
                 } else if let Some(op) = node.op_as::<Cast>() {

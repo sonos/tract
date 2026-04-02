@@ -458,7 +458,11 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
                 } else if let Some(op) = node.op_as::<TypedBinOp>() {
                     Box::new(cuda_bin_op(op.0.clone()))
                 } else if let Some(op) = node.op_as::<MultiBroadcastTo>() {
-                    Box::new(ops::CudaMultiBroadcastTo::new(op.shape.clone()))
+                    Box::new(tract_gpu::ops::broadcast::GpuMultiBroadcastTo::new(
+                        op.shape.clone(),
+                        "Cuda",
+                        crate::kernels::array::cuda_broadcast_dispatch,
+                    ))
                 } else if let Some(op) = node.op_as::<Cast>() {
                     Box::new(ops::CudaCast::new(op.to).unwrap())
                 } else if let Some(op) = node.op_as::<AxisOp>() {

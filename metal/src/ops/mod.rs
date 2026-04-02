@@ -1,5 +1,4 @@
 pub mod apply_rope;
-pub mod broadcast;
 pub mod cast;
 pub mod change_axes;
 pub mod concat;
@@ -15,7 +14,6 @@ pub mod slice;
 pub mod softmax;
 
 pub use apply_rope::MetalApplyRope;
-pub use broadcast::MetalMultiBroadcastTo;
 pub use cast::MetalCast;
 pub use change_axes::MetalAxisOp;
 pub use concat::MetalConcat;

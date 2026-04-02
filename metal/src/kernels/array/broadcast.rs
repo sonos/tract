@@ -129,3 +129,13 @@ impl MultiBroadcast {
         Ok(())
     }
 }
+
+pub fn metal_broadcast_dispatch(
+    input: &DeviceTensor,
+    input_offset: usize,
+    output: &DeviceTensor,
+) -> TractResult<()> {
+    crate::with_metal_stream(|stream| {
+        MultiBroadcast.dispatch_eval(stream, input, input_offset, output)
+    })
+}

@@ -124,6 +124,16 @@ impl MultiBroadcast {
     }
 }
 
+pub fn cuda_broadcast_dispatch(
+    input: &DeviceTensor,
+    input_offset: usize,
+    output: &DeviceTensor,
+) -> TractResult<()> {
+    crate::with_cuda_stream(|stream| {
+        MultiBroadcast.dispatch_eval(stream, input, input_offset, output)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use tract_gpu::tensor::IntoDevice;

@@ -5,7 +5,7 @@ mod copy;
 mod permute_axes;
 mod rotate_half;
 
-pub use broadcast::MultiBroadcast;
+pub use broadcast::{MultiBroadcast, metal_broadcast_dispatch};
 pub use cast::Cast;
 pub use concat::Concat;
 pub use copy::Memcpy;
