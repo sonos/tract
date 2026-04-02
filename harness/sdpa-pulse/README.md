@@ -126,6 +126,28 @@ masked).
 
 ---
 
+## ex06-batch-multihead ✓
+
+Same sliding-window attention as ex04, but with batch and head dimensions:
+`qkv [1, 2, S, 12]` where axis 2 streams (not axis 0).  Q/K/V are `[1, 2, S, 4]`,
+scores and attn are `[1, 2, S, S]`, mask is `[1, 1, S, S]` (broadcast over H).
+
+**Proves:**
+- The pulsification machinery handles a non-zero streaming axis (axis 2 of 4).
+- `uniform_tdim` propagates correctly through two `unsqueeze` ops, remapping
+  coord symbols from `🎯0,🎯1` to `🎯2,🎯3`.
+- `classify_chunk_window` recognises the pattern with arbitrary row/col axes.
+- The EinSum pulsifiers (`pulsify_qk`, `pulsify_av`) correctly identify Q, K, V
+  and their key axes for arbitrary rank via the axes-mapping and streaming fact.
+- The Iff pulsifier promotes `ChunkWindowMask`'s rank-2 `[P, kw]` output to
+  `[1, 1, P, kw]` by inserting leading `AxisOp::Add(0)` nodes, and creates the
+  fill tensor with the matching rank.
+
+**Story role:** Proves the machinery is not rank-2 specific.  Required before
+tackling the real encoder's `[B, H, T, T]` attention.
+
+---
+
 ## The arc
 
 ```
@@ -134,6 +156,7 @@ ex03-block-left-1        K/V lookback pulsifies (Delay ops, explicit window)    
 ex02-block-l-eq-p-mask   Iff+softmax pulsifies (external mask, batch only)            ✓ batch
 ex04-block-left-1-mask   computed mask + uniform_tdim + FoldUniformMask + Delay       ✓
 ex05-block-left-1-posenc ex04 + ALiBi position bias pulsified via binary pulsifier    ✓
+ex06-batch-multihead     ex04 lifted to [B,H,T,T]; streaming axis=2, rank-4           ✓
 ```
 
 Every passing test proves one more piece of the machinery works.
