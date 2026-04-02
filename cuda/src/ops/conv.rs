@@ -1,7 +1,6 @@
-use crate::context::StreamExt;
 use crate::kernels::conv::{ConvGeneric, ConvKernel, ConvKernelScratch};
 use crate::kernels::conv_cudnn::ConvCudnn;
-use crate::ops::{CudaAxisOp, CudaBinOp};
+use crate::ops::CudaAxisOp;
 use tract_core::internal::*;
 use tract_core::ops::OpStateFreeze;
 use tract_core::ops::cnn::Conv;
@@ -45,7 +44,7 @@ pub fn wire_cuda_conv(
             )?[0];
             conv_wire = target.wire_node(
                 prefix,
-                CudaBinOp(crate::kernels::BinOps::Add),
+                crate::transform::cuda_bin_op(Box::new(tract_core::ops::math::Add)),
                 &[conv_wire, reshaped],
             )?[0];
         }
@@ -137,8 +136,7 @@ impl OpState for CudaConvState {
         }
 
         if output.len() > 0 {
-            tract_gpu::with_stream(|stream| {
-                let stream = stream.cuda()?;
+            crate::with_cuda_stream(|stream| {
                 op.kernel.dispatch(
                     &mut **self.1.as_mut().unwrap(),
                     self.0,

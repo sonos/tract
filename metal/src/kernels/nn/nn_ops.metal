@@ -299,6 +299,22 @@ template [[host_name("nn_ops::silu_f16")]] [[kernel]] silu_t silu<half>;
 template [[host_name("nn_ops::silu_4_f32")]] [[kernel]] silu_4_t silu_4<float4>;
 template [[host_name("nn_ops::silu_4_f16")]] [[kernel]] silu_4_t silu_4<half4>;
 
+template <typename T>
+[[kernel]] void leaky_relu(device const void *input_b [[buffer(0)]],
+                           device void *output_b [[buffer(1)]],
+                           constant float &alpha [[buffer(2)]],
+                           uint tpig [[thread_position_in_grid]]) {
+    device const T *input = (device const T *)input_b;
+    device T *output = (device T *)output_b;
+    T x = input[tpig];
+    output[tpig] = x >= T(0) ? x : T(alpha) * x;
+}
+
+typedef decltype(leaky_relu<float>) leaky_relu_t;
+
+template [[host_name("nn_ops::leaky_relu_f32")]] [[kernel]] leaky_relu_t leaky_relu<float>;
+template [[host_name("nn_ops::leaky_relu_f16")]] [[kernel]] leaky_relu_t leaky_relu<half>;
+
 template <typename F>
 [[kernel]] void softmax_nd3(device const void *input_b, device void *output_b,
                             constant const size_t shape[3],

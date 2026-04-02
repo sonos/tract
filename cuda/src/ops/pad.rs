@@ -1,4 +1,3 @@
-use crate::context::StreamExt;
 use crate::kernels::array::Pad;
 use tract_core::internal::*;
 use tract_core::ops::array as core_array;
@@ -81,8 +80,7 @@ impl EvalOp for CudaPad {
             &output_shape,
         )?;
 
-        tract_gpu::with_stream(|stream| {
-            let stream = stream.cuda()?;
+        crate::with_cuda_stream(|stream| {
             Pad.dispatch_eval(stream, input, &output, paddings_before, self.mode.clone())
         })?;
         Ok(tvec!(output.into_tensor().into_tvalue()))

@@ -1,5 +1,4 @@
 mod apply_rope;
-mod binary;
 mod broadcast;
 mod cast;
 mod change_axes;
@@ -20,10 +19,7 @@ mod rotate_half;
 mod scaled_masked_softmax;
 mod slice;
 mod softmax;
-mod unary;
-
 pub use apply_rope::CudaApplyRope;
-pub use binary::CudaBinOp;
 pub use broadcast::CudaMultiBroadcastTo;
 pub use cast::CudaCast;
 pub use change_axes::CudaAxisOp;
@@ -44,4 +40,3 @@ pub use rotate_half::CudaRotateHalf;
 pub use scaled_masked_softmax::CudaScaledMaskedSoftmax;
 pub use slice::CudaSlice;
 pub use softmax::CudaSoftmax;
-pub use unary::CudaUnaryOp;

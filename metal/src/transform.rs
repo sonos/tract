@@ -23,7 +23,7 @@ use tract_core::ops::cast::Cast;
 use tract_core::ops::einsum::prefix_matmul::{PrefixMatMul, rewrite_einsum_to_prefix_matmul};
 use tract_core::ops::element_wise::ElementWiseOp;
 use tract_core::ops::konst::Const;
-use tract_core::ops::nn::{Reduce, Softmax as CoreSoftmax};
+use tract_core::ops::nn::{LeakyRelu, Reduce, Softmax as CoreSoftmax};
 use tract_core::transform::ModelTransform;
 use tract_gpu::fact::DeviceFact;
 use tract_gpu::tensor::DeviceTensor;
@@ -34,7 +34,6 @@ use tract_transformers::ops::apply_rope::{ApplyRope, RotateHalf};
 use tract_transformers::ops::gelu_approximate::GeluApproximate;
 use tract_transformers::ops::rms_norm::RmsNorm;
 use tract_transformers::ops::scaled_masked_softmax::ScaledMaskedSoftmax;
-use tract_transformers::ops::silu::Silu;
 
 impl MetalGemmImplKind {
     pub fn variants() -> Vec<MetalGemmImplKind> {
@@ -142,8 +141,10 @@ fn can_translate_to_metal_op(source: &TypedModel, node: &TypedNode) -> TractResu
     Ok(in_dts_metal_compatible
         && (node
             .op_as::<ElementWiseOp>()
-            .is_some_and(|op| map_element_wise_ops_to_metal(op).is_some())
-            || node.op_as::<TypedBinOp>().is_some_and(|op| map_bin_ops_to_metal(&op.0).is_some())
+            .is_some_and(|op| crate::kernels::element_wise::is_supported(&*op.0, input_dts[0]))
+            || node
+                .op_as::<TypedBinOp>()
+                .is_some_and(|op| crate::kernels::bin_ops::is_supported(&*op.0, input_dts[0]))
             || node.op_is::<MultiBroadcastTo>()
             || node.op_as::<PrefixMatMul>().is_some_and(|op| {
                 !op.transpose_c && op.quantize_output.is_none() && check_matmul_in_dts(&input_facts)
@@ -180,11 +181,11 @@ fn can_translate_to_metal_op(source: &TypedModel, node: &TypedNode) -> TractResu
                 .op_as::<ApplyRope>()
                 .is_some_and(|_| kernels::nn::ApplyRope::is_supported_dt(input_dts[0]))
             || node.op_as::<ElementWiseOp>().is_some_and(|op| {
-                op.0.is::<Silu>() && kernels::nn::Silu::is_supported_dt(input_dts[0])
-            })
-            || node.op_as::<ElementWiseOp>().is_some_and(|op| {
                 op.0.is::<GeluApproximate>()
                     && kernels::nn::GeluApproximate::is_supported_dt(input_dts[0])
+            })
+            || node.op_as::<ElementWiseOp>().is_some_and(|op| {
+                op.0.is::<LeakyRelu>() && kernels::nn::LeakyRelu::is_supported_dt(input_dts[0])
             })))
 }
 
@@ -213,15 +214,15 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
                 )?
             } else {
                 let op: Box<dyn TypedOp> = if let Some(op) = node.op_as::<ElementWiseOp>() {
-                    if op.0.is::<Silu>() {
-                        Box::new(ops::MetalSilu)
-                    } else if let Some(ew) = op.0.downcast_ref::<GeluApproximate>() {
+                    if let Some(ew) = op.0.downcast_ref::<GeluApproximate>() {
                         Box::new(ops::MetalGeluApproximate { fast_impl: ew.fast_impl })
+                    } else if let Some(leaky) = op.0.downcast_ref::<LeakyRelu>() {
+                        Box::new(ops::MetalLeakyRelu { alpha: leaky.alpha })
                     } else {
-                        Box::new(map_element_wise_ops_to_metal(op).unwrap())
+                        Box::new(metal_element_wise_op(op.0.clone()))
                     }
                 } else if let Some(op) = node.op_as::<TypedBinOp>() {
-                    Box::new(map_bin_ops_to_metal(&op.0).unwrap())
+                    Box::new(metal_bin_op(op.0.clone()))
                 } else if let Some(op) = node.op_as::<MultiBroadcastTo>() {
                     Box::new(ops::MetalMultiBroadcastTo::new(op.shape.clone()))
                 } else if let Some(op) = node.op_as::<Const>() {
@@ -265,26 +266,25 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
     }
 }
 
-macro_rules! map_bin_ops {
-    ([$(($tract_bin_op:path, $metal_bin_op:ident)),* $(,)?]) => {
-        |op: &Box<dyn tract_core::ops::binary::BinMiniOp >| {
-            $(if let Some(_op) = op.downcast_ref::<$tract_bin_op>() {
-                return Some($crate::ops::binary::MetalBinOp($crate::ops::binary::BinOps::$metal_bin_op));
-            })*
-            return None;
-        }
-    };
+use tract_gpu::ops::binary::GpuBinOp;
+
+fn metal_bin_op(mini_op: Box<dyn BinMiniOp>) -> GpuBinOp {
+    GpuBinOp {
+        backend_name: "Metal",
+        mini_op,
+        dispatch: crate::kernels::bin_ops::metal_bin_op_dispatch,
+    }
 }
 
-macro_rules! map_element_wise_ops {
-    ([$(($tract_bin_op:path, $metal_bin_op:ident)),* $(,)?]) => {
-        |op: &tract_core::ops::element_wise::ElementWiseOp| {
-            $(if let Some(_op) = op.0.downcast_ref::<$tract_bin_op>() {
-                return Some($crate::ops::element_wise::MetalElementWiseOp($crate::ops::element_wise::ElementWiseOps::$metal_bin_op));
-            })*
-            return None;
-        }
-    };
+use tract_core::ops::element_wise::ElementWiseMiniOp;
+use tract_gpu::ops::element_wise::GpuElementWise;
+
+fn metal_element_wise_op(mini_op: Box<dyn ElementWiseMiniOp>) -> GpuElementWise {
+    GpuElementWise {
+        backend_name: "Metal",
+        mini_op,
+        dispatch: crate::kernels::element_wise::metal_element_wise_dispatch,
+    }
 }
 
 fn check_matmul_in_dts(in_facts: &[TypedFact]) -> bool {
@@ -460,25 +460,6 @@ fn convert_matmul_to_metal(
     Ok(matmul_output)
 }
 
-#[allow(clippy::borrowed_box)]
-fn map_bin_ops_to_metal(op: &Box<dyn BinMiniOp>) -> Option<ops::MetalBinOp> {
-    map_bin_ops!([
-        (tract_core::ops::math::Mul, Mul),
-        (tract_core::ops::math::Add, Add),
-        (tract_core::ops::math::Div, Div),
-        (tract_core::ops::math::Sub, Sub),
-        (tract_core::ops::math::Pow, Pow),
-        (tract_core::ops::logic::And, And),
-        (tract_core::ops::logic::Or, Or),
-        (tract_core::ops::logic::CompEq, Equals),
-        (tract_core::ops::logic::CompNE, NotEquals),
-        (tract_core::ops::logic::CompLT, Less),
-        (tract_core::ops::logic::CompLTE, LessEqual),
-        (tract_core::ops::logic::CompGT, Greater),
-        (tract_core::ops::logic::CompGTE, GreaterEqual),
-    ])(op)
-}
-
 fn convert_const(op: &Const) -> TractResult<Const> {
     let typed_fact: TypedFact = Arc::clone(op.val()).try_into()?;
     let metal_fact = if let Some(of) = op.exotic_fact() {
@@ -489,35 +470,4 @@ fn convert_const(op: &Const) -> TractResult<Const> {
 
     let metal_const = op.val().clone().into_device()?.into_tensor().into_arc_tensor();
     Const::new_with_exotic_fact(metal_const, Box::new(metal_fact))
-}
-
-fn map_element_wise_ops_to_metal(op: &ElementWiseOp) -> Option<ops::MetalElementWiseOp> {
-    map_element_wise_ops!([
-        (tract_core::ops::math::Abs, Abs),
-        (tract_core::ops::math::Exp, Exp),
-        (tract_core::ops::math::Ln, Ln),
-        (tract_core::ops::nn::Sigmoid, Sigmoid),
-        (tract_core::ops::math::Square, Square),
-        (tract_core::ops::math::Sqrt, Sqrt),
-        (tract_core::ops::math::Rsqrt, Rsqrt),
-        (tract_core::ops::math::Recip, Recip),
-        (tract_core::ops::math::Ceil, Ceil),
-        (tract_core::ops::math::Floor, Floor),
-        (tract_core::ops::math::Round, Round),
-        (tract_core::ops::math::RoundHalfToEven, RoundHalfToEven),
-        (tract_core::ops::math::Cos, Cos),
-        (tract_core::ops::math::Acos, Acos),
-        (tract_core::ops::math::Acosh, Acosh),
-        (tract_core::ops::math::Cosh, Cosh),
-        (tract_core::ops::math::Sin, Sin),
-        (tract_core::ops::math::Asin, Asin),
-        (tract_core::ops::math::Asinh, Asinh),
-        (tract_core::ops::math::Sinh, Sinh),
-        (tract_core::ops::math::Tan, Tan),
-        (tract_core::ops::math::Atan, Atan),
-        (tract_core::ops::math::Atanh, Atanh),
-        (tract_core::ops::math::Tanh, Tanh),
-        (tract_core::ops::math::Erf, Erf),
-        (tract_core::ops::math::Neg, Neg),
-    ])(op)
 }

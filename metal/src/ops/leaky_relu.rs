@@ -1,21 +1,23 @@
-use crate::context::StreamExt;
-use crate::kernels::nn::Silu;
-use derive_new::new;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensorExt;
 
-#[derive(Clone, Debug, new, Hash, PartialEq, Eq)]
-pub struct MetalSilu;
+use crate::kernels::nn::LeakyRelu;
 
-impl Op for MetalSilu {
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct MetalLeakyRelu {
+    pub alpha: f32,
+}
+impl Eq for MetalLeakyRelu {}
+
+impl Op for MetalLeakyRelu {
     fn name(&self) -> StaticName {
-        "MetalSilu".into()
+        "MetalLeakyRelu".into()
     }
 
     op_as_typed_op!();
 }
 
-impl EvalOp for MetalSilu {
+impl EvalOp for MetalLeakyRelu {
     fn is_stateless(&self) -> bool {
         true
     }
@@ -26,23 +28,22 @@ impl EvalOp for MetalSilu {
         session: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        tract_gpu::with_stream(|stream| {
-            let stream = stream.metal()?;
-            let input_value = args_1!(inputs);
-            let input = input_value.to_device_tensor()?;
+        crate::with_metal_stream(|stream| {
+            let input = args_1!(inputs);
+            let input_metal = input.to_device_tensor()?;
             let output = tract_gpu::session_handler::make_tensor_for_node(
                 session,
                 node_id,
-                input.datum_type(),
-                input.shape(),
+                input_metal.datum_type(),
+                input_metal.shape(),
             )?;
-            Silu.dispatch_eval(stream, input, &output)?;
+            LeakyRelu.dispatch_eval(stream, input_metal, self.alpha, &output)?;
             Ok(tvec!(output.into_tensor().into_tvalue()))
         })
     }
 }
 
-impl TypedOp for MetalSilu {
+impl TypedOp for MetalLeakyRelu {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         tract_gpu::utils::facts_to_device_facts(inputs, |facts| {
             let dt = facts[0].datum_type;

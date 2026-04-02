@@ -1,4 +1,3 @@
-use crate::context::StreamExt;
 use crate::kernels::matmul::GgmlGemm;
 use crate::ops::GgmlQuantQ81Fact;
 use crate::utils::get_ggml_q81_fact;
@@ -78,10 +77,7 @@ impl EvalOp for CudaGgmlGemm {
         let out =
             tract_gpu::session_handler::make_tensor_for_node(session, node_id, out_dt, &out_shape)?;
 
-        tract_gpu::with_stream(|stream| {
-            let stream = stream.cuda()?;
-            GgmlGemm.dispatch_eval(stream, activs, weights, &out)
-        })?;
+        crate::with_cuda_stream(|stream| GgmlGemm.dispatch_eval(stream, activs, weights, &out))?;
 
         Ok(tvec![out.into_tensor().into_tvalue()])
     }

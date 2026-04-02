@@ -267,6 +267,34 @@ struct Neg {
     };
 };
 
+struct Sign {
+    template <typename T>
+    metal::enable_if_t<!metal::is_integral_v<T>, T>
+    operator()(T x) {
+        return (x > T(0)) ? T(1) : ((x < T(0)) ? T(-1) : T(0));
+    }
+
+    template <typename T>
+    metal::enable_if_t<metal::is_integral_v<T>, T>
+    operator()(T x) {
+        return (x > T(0)) - (x < T(0));
+    }
+};
+
+struct HardSwish {
+    template <typename T>
+    T operator()(T x) {
+        return x * metal::max(T(0), metal::min(T(1), x / T(6) + T(0.5)));
+    }
+};
+
+struct Silu {
+    template <typename T>
+    T operator()(T x) {
+        return x / (T(1) + metal::exp(-x));
+    }
+};
+
 template<typename T, typename Op>
 [[kernel]] void eval_out_of_place(device const T *input[  [buffer(0)]],
                                   device T *output [[buffer(1)]],
@@ -327,7 +355,7 @@ INSTANTIATE_FLOAT(recip, Recip)
 INSTANTIATE_ALL_TYPES(ceil, Ceil)
 INSTANTIATE_ALL_TYPES(floor, Floor)
 INSTANTIATE_ALL_TYPES(round, Round)
-INSTANTIATE_ALL_TYPES(round_half_to_even, RoundHalfToEven)
+INSTANTIATE_ALL_TYPES(roundhalftoeven, RoundHalfToEven)
 INSTANTIATE_FLOAT(cos, Cos)
 INSTANTIATE_FLOAT(acos, Acos)
 INSTANTIATE_FLOAT(acosh, Acosh)
@@ -343,3 +371,7 @@ INSTANTIATE_FLOAT(tanh, Tanh)
 INSTANTIATE_FLOAT(erf, Erf)
 INSTANTIATE_FLOAT(neg, Neg)
 INSTANTIATE_INTEGER_SIGNED(neg, Neg)
+INSTANTIATE_FLOAT(sign, Sign)
+INSTANTIATE_INTEGER_SIGNED(sign, Sign)
+INSTANTIATE_FLOAT(hardswish, HardSwish)
+INSTANTIATE_FLOAT(silu, Silu)

@@ -1,10 +1,8 @@
 use crate::LibraryName;
-use crate::context::StreamExt;
 use crate::encoder::EncoderExt;
 use crate::kernels::utils;
 use metal::MTLSize;
 use tract_core::internal::*;
-use tract_gpu::GpuStream;
 use tract_gpu::tensor::DeviceTensor;
 
 pub use tract_gpu::ops::reduce::Reducer;
@@ -16,42 +14,42 @@ pub fn kernel_name(reducer: &Reducer, dt: DatumType) -> TractResult<String> {
 }
 
 pub fn metal_reduce_launch(
-    stream: &dyn GpuStream,
     reducer: &Reducer,
     input: &DeviceTensor,
     axis: usize,
     output: &DeviceTensor,
 ) -> TractResult<()> {
-    let stream = stream.metal()?;
-    stream.retain_tensor(input);
-    stream.retain_tensor(output);
+    crate::with_metal_stream(|stream| {
+        stream.retain_tensor(input);
+        stream.retain_tensor(output);
 
-    ensure!(output.datum_type() == input.datum_type());
-    ensure!(output.shape()[axis] == 1);
+        ensure!(output.datum_type() == input.datum_type());
+        ensure!(output.shape()[axis] == 1);
 
-    let input_shape_nd3 = utils::reshape_to_rank_3(input.shape(), axis);
-    let input_strides_nd3 = Tensor::natural_strides(&input_shape_nd3);
-    let output_shape_nd3 = utils::reshape_to_rank_3(output.shape(), axis);
-    let output_strides_nd3 = Tensor::natural_strides(&output_shape_nd3);
+        let input_shape_nd3 = utils::reshape_to_rank_3(input.shape(), axis);
+        let input_strides_nd3 = Tensor::natural_strides(&input_shape_nd3);
+        let output_shape_nd3 = utils::reshape_to_rank_3(output.shape(), axis);
+        let output_strides_nd3 = Tensor::natural_strides(&output_shape_nd3);
 
-    let pipeline =
-        stream.load_pipeline(LibraryName::NNOps, &kernel_name(reducer, input.datum_type())?)?;
+        let pipeline =
+            stream.load_pipeline(LibraryName::NNOps, &kernel_name(reducer, input.datum_type())?)?;
 
-    let command_buffer = stream.command_buffer();
-    command_buffer.encode(|encoder| {
-        encoder.set_compute_pipeline_state(&pipeline);
-        encoder.set_metal_tensor(0, input, metal::MTLResourceUsage::Read);
-        encoder.set_metal_tensor(1, output, metal::MTLResourceUsage::Write);
-        encoder.set_slice(2, &input_shape_nd3);
-        encoder.set_slice(3, &input_strides_nd3);
-        encoder.set_slice(4, &output_strides_nd3);
+        let command_buffer = stream.command_buffer();
+        command_buffer.encode(|encoder| {
+            encoder.set_compute_pipeline_state(&pipeline);
+            encoder.set_metal_tensor(0, input, metal::MTLResourceUsage::Read);
+            encoder.set_metal_tensor(1, output, metal::MTLResourceUsage::Write);
+            encoder.set_slice(2, &input_shape_nd3);
+            encoder.set_slice(3, &input_strides_nd3);
+            encoder.set_slice(4, &output_strides_nd3);
 
-        let grid_size = utils::build_metal_size_for_shape(&output_shape_nd3);
-        let group_size =
-            MTLSize { width: usize::min(32, input_shape_nd3[1]) as _, height: 1, depth: 1 };
-        encoder.dispatch_thread_groups(grid_size, group_size);
-    });
-    Ok(())
+            let grid_size = utils::build_metal_size_for_shape(&output_shape_nd3);
+            let group_size =
+                MTLSize { width: usize::min(32, input_shape_nd3[1]) as _, height: 1, depth: 1 };
+            encoder.dispatch_thread_groups(grid_size, group_size);
+        });
+        Ok(())
+    })
 }
 
 #[cfg(test)]
@@ -98,7 +96,7 @@ mod tests {
             let mut o_shape = a.shape().to_vec();
             o_shape[axis] = 1;
             let output = unsafe { DeviceTensor::uninitialized_dt(a.datum_type(), &o_shape)? };
-            metal_reduce_launch(stream as &dyn GpuStream, &reducer, &a, axis, &output)?;
+            metal_reduce_launch(&reducer, &a, axis, &output)?;
             stream.wait_until_completed()?;
             let metal_output = output;
             cpu_output
@@ -336,7 +334,7 @@ mod tests {
                 let mut o_shape = a.shape().to_vec();
                 o_shape[self.axis] = 1;
                 let output = unsafe { DeviceTensor::uninitialized_dt(a.datum_type(), &o_shape)? };
-                metal_reduce_launch(stream as &dyn GpuStream, &self.op, &a, self.axis, &output)?;
+                metal_reduce_launch(&self.op, &a, self.axis, &output)?;
                 stream.wait_until_completed()?;
                 Ok(output.to_host()?.into_tensor())
             })

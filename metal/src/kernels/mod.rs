@@ -1,14 +1,11 @@
 #![allow(unused)]
 
 pub mod array;
-mod bin_ops;
-mod element_wise;
+pub mod bin_ops;
+pub mod element_wise;
 pub mod matmul;
 pub mod nn;
 mod utils;
-
-pub use bin_ops::BinOps;
-pub use element_wise::ElementWiseOps;
 
 use tract_core::internal::*;
 

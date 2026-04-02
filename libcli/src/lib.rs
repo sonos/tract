@@ -36,9 +36,8 @@ where
             );
 
             log::info!("Capturing Metal GPU trace at : {gpu_trace_path:?}");
-            tract_gpu::with_stream(move |stream| {
-                use tract_metal::StreamExt;
-                stream.metal()?.capture_trace(gpu_trace_path, move |_stream| func())
+            tract_metal::with_metal_stream(move |stream| {
+                stream.capture_trace(gpu_trace_path, move |_stream| func())
             })
         }
         #[cfg(not(any(target_os = "macos", target_os = "ios")))]

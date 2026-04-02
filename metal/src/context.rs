@@ -24,24 +24,22 @@ use metal::{
 };
 use std::collections::HashMap;
 use tract_core::internal::*;
-use tract_gpu::GpuStream;
 
-fn create_metal_stream() -> Box<dyn GpuStream> {
-    Box::new(MetalStream::new())
+thread_local! {
+    static METAL_STREAM: RefCell<Option<MetalStream>> = const { RefCell::new(None) };
 }
 
-pub fn register_metal_stream_factory() {
-    tract_gpu::register_stream_factory(create_metal_stream);
-}
-
-pub trait StreamExt {
-    fn metal(&self) -> TractResult<&MetalStream>;
-}
-
-impl StreamExt for &dyn GpuStream {
-    fn metal(&self) -> TractResult<&MetalStream> {
-        self.downcast_ref().context("Expected a metal stream")
-    }
+pub fn with_metal_stream<R>(f: impl FnOnce(&MetalStream) -> TractResult<R>) -> TractResult<R> {
+    metal_context(); // ensures context is initialized
+    METAL_STREAM.with(|cell| {
+        let needs_init = cell.borrow().is_none();
+        if needs_init {
+            let stream = MetalStream::new();
+            *cell.borrow_mut() = Some(stream);
+        }
+        let borrow = cell.borrow();
+        f(borrow.as_ref().unwrap())
+    })
 }
 
 pub fn metal_context() -> MetalContext {
@@ -51,7 +49,6 @@ pub fn metal_context() -> MetalContext {
             let ctxt = MetalContext::new().expect("Could not create Metal context");
             tract_gpu::device::set_context(Box::new(ctxt.clone()))
                 .expect("Could not set Metal context");
-            register_metal_stream_factory();
             ctxt
         })
         .clone()
@@ -81,10 +78,10 @@ impl MetalContext {
     }
 
     pub fn preload_pipelines(&self) -> TractResult<()> {
-        for ew_func in crate::kernels::ElementWiseOps::all_functions() {
+        for ew_func in crate::kernels::element_wise::all_functions() {
             let _ = self.load_pipeline(LibraryName::ElementWiseOps, &ew_func);
         }
-        for bin_func in crate::kernels::BinOps::all_functions() {
+        for bin_func in crate::kernels::bin_ops::all_functions() {
             let _ = self.load_pipeline(LibraryName::BinOps, &bin_func);
         }
         for func in crate::kernels::array::all_functions() {
@@ -183,10 +180,7 @@ impl MetalContext {
 
 impl DeviceContext for MetalContext {
     fn synchronize(&self) -> TractResult<()> {
-        tract_gpu::with_stream(|stream| {
-            let stream = stream.metal()?;
-            stream.wait_until_completed()
-        })
+        with_metal_stream(|stream| stream.wait_until_completed())
     }
 
     fn tensor_to_device(&self, tensor: TValue) -> TractResult<Box<dyn OwnedDeviceTensor>> {

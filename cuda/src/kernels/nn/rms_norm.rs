@@ -81,8 +81,6 @@ impl RmsNorm {
 mod tests {
     use tract_gpu::tensor::IntoDevice;
 
-    use crate::context::StreamExt;
-
     use super::*;
     use derive_new::new;
     use num_traits::AsPrimitive;
@@ -98,8 +96,7 @@ mod tests {
         usize: AsPrimitive<f32>,
         f32: AsPrimitive<F>,
     {
-        crate::context::with_cuda_stream(|stream| {
-            let stream = stream.cuda()?;
+        crate::with_cuda_stream(|stream| {
             let len = shape.iter().product::<usize>();
 
             let a = Tensor::from_shape(
@@ -229,8 +226,7 @@ mod tests {
         }
 
         pub fn run(&self) -> TractResult<Tensor> {
-            crate::context::with_cuda_stream(|stream| {
-                let stream = stream.cuda()?;
+            crate::with_cuda_stream(|stream| {
                 let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_device()?;
                 let cuda_output = RmsNorm.eval(stream, &a, self.axis, &self.eps)?;
                 Ok(cuda_output.to_host()?.into_tensor())

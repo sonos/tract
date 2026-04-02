@@ -77,7 +77,6 @@ impl Memcpy {
 
 #[cfg(test)]
 mod tests {
-    use crate::context::StreamExt;
 
     use super::*;
     use tract_gpu::tensor::IntoDevice;
@@ -88,8 +87,7 @@ mod tests {
     use tract_core::internal::Tensor;
 
     fn run_test_case(shape: &[usize], offset: usize) -> TractResult<()> {
-        crate::context::with_cuda_stream(|stream| {
-            let stream = stream.cuda()?;
+        crate::with_cuda_stream(|stream| {
             let len = shape.iter().product::<usize>();
             let data = (0..len).map(|f| f as f32).collect::<Vec<_>>();
             let input = Tensor::from_shape(shape, &data)?;

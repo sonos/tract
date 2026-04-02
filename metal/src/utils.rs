@@ -19,7 +19,6 @@ mod tests {
     use std::ffi::c_void;
 
     use crate::MetalStream;
-    use crate::context::StreamExt;
     use objc::runtime::{objc_autoreleasePoolPop, objc_autoreleasePoolPush};
     use tract_core::internal::*;
 
@@ -44,10 +43,6 @@ mod tests {
         f: F,
     ) -> TractResult<T> {
         let _context = unsafe { AutoReleaseHelper::new() };
-        crate::context::metal_context(); // ensures stream factory is registered
-        tract_gpu::with_stream(|stream| {
-            let stream = stream.metal()?;
-            f(stream)
-        })
+        crate::with_metal_stream(f)
     }
 }

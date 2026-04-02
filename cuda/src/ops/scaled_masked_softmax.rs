@@ -1,4 +1,3 @@
-use crate::context::StreamExt;
 use crate::kernels::nn::ScaledMaskedSoftmax;
 use derive_new::new;
 use tract_core::internal::*;
@@ -30,8 +29,7 @@ impl EvalOp for CudaScaledMaskedSoftmax {
         session: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        tract_gpu::with_stream(|stream| {
-            let stream = stream.cuda()?;
+        crate::with_cuda_stream(|stream| {
             let (input_val, mask_val) = args_2!(inputs);
             let input = input_val.to_device_tensor()?;
             let mask = mask_val.to_device_tensor()?;

@@ -84,7 +84,6 @@ impl RotateHalf {
 
 #[cfg(test)]
 mod tests {
-    use crate::context::StreamExt;
 
     use super::*;
     use num_traits::AsPrimitive;
@@ -97,8 +96,7 @@ mod tests {
         F: Copy + 'static + Datum,
         usize: AsPrimitive<F>,
     {
-        crate::context::with_cuda_stream(|stream| {
-            let stream = stream.cuda()?;
+        crate::with_cuda_stream(|stream| {
             let len = shape.iter().product::<usize>();
 
             let a =

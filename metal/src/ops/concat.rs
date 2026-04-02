@@ -1,4 +1,3 @@
-use crate::context::StreamExt;
 use crate::kernels::array::Concat;
 use derive_new::new;
 use tract_core::internal::*;
@@ -64,10 +63,7 @@ impl EvalOp for MetalConcat {
             inputs[0].datum_type(),
             &output_shape,
         )?;
-        tract_gpu::with_stream(|stream| {
-            let stream = stream.metal()?;
-            self.kernel.dispatch_eval(stream, &inputs, &output)
-        })?;
+        crate::with_metal_stream(|stream| self.kernel.dispatch_eval(stream, &inputs, &output))?;
         Ok(tvec!(output.into_tensor().into_tvalue()))
     }
 }

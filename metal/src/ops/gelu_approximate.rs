@@ -1,4 +1,3 @@
-use crate::context::StreamExt;
 use crate::kernels::nn::GeluApproximate;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensorExt;
@@ -27,8 +26,7 @@ impl EvalOp for MetalGeluApproximate {
         session: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        tract_gpu::with_stream(|stream| {
-            let stream = stream.metal()?;
+        crate::with_metal_stream(|stream| {
             let input = args_1!(inputs);
             let input_metal = input.to_device_tensor()?;
             let output = tract_gpu::session_handler::make_tensor_for_node(

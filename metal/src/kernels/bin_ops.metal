@@ -131,6 +131,41 @@ struct Or {
     };
 };
 
+struct Min {
+    template <typename T>
+    T operator()(T x, T y) {
+        return x < y ? x : y;
+    }
+};
+
+struct Max {
+    template <typename T>
+    T operator()(T x, T y) {
+        return x > y ? x : y;
+    }
+};
+
+struct BitAnd {
+    template <typename T>
+    T operator()(T x, T y) {
+        return x & y;
+    }
+};
+
+struct BitOr {
+    template <typename T>
+    T operator()(T x, T y) {
+        return x | y;
+    }
+};
+
+struct BitXor {
+    template <typename T>
+    T operator()(T x, T y) {
+        return x ^ y;
+    }
+};
+
 struct Pow {
     template <typename T>
     metal::enable_if_t<!metal::is_integral_v<T>, T>
@@ -261,12 +296,17 @@ INSTANTIATE_ALL_TYPES(div, Div)
 INSTANTIATE_ALL_TYPES(add, Add)
 INSTANTIATE_ALL_TYPES(sub, Sub)
 INSTANTIATE_ALL_TYPES(pow, Pow)
-INSTANTIATE_ALL_TYPES_BOOL(less, Less)
-INSTANTIATE_ALL_TYPES_BOOL(greater, Greater)
-INSTANTIATE_ALL_TYPES_BOOL(less_equal, LessEqual)
-INSTANTIATE_ALL_TYPES_BOOL(greater_equal, GreaterEqual)
-INSTANTIATE_ALL_TYPES_BOOL(equals, Equals)
-INSTANTIATE_ALL_TYPES_BOOL(not_equals, NotEquals)
+INSTANTIATE_ALL_TYPES_BOOL(lt, Less)
+INSTANTIATE_ALL_TYPES_BOOL(gt, Greater)
+INSTANTIATE_ALL_TYPES_BOOL(lte, LessEqual)
+INSTANTIATE_ALL_TYPES_BOOL(gte, GreaterEqual)
+INSTANTIATE_ALL_TYPES_BOOL(eq, Equals)
+INSTANTIATE_ALL_TYPES_BOOL(ne, NotEquals)
+INSTANTIATE_ALL_TYPES(min, Min)
+INSTANTIATE_ALL_TYPES(max, Max)
+INSTANTIATE_INTEGER(bitand, BitAnd)
+INSTANTIATE_INTEGER(bitor, BitOr)
+INSTANTIATE_INTEGER(bitxor, BitXor)
 INSTANTIATE_BIN_OP(and, And, bool, bool, bool)
 INSTANTIATE_BIN_OP(or, Or, bool, bool, bool)
 

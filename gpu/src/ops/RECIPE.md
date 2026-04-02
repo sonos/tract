@@ -11,7 +11,6 @@ Each backend had its own copy of:
 - A `from_tract_core()` that maps core ops to the backend op
 
 The only real differences were:
-- How to access the stream (`CUDA_STREAM.with` vs `with_borrowed_metal_stream`)
 - How to launch the kernel (cudarc vs Metal command buffers)
 
 ## After
@@ -28,82 +27,40 @@ Move the op enum (e.g. `Reducer`) into `gpu/src/ops/reduce.rs` with:
 
 `GpuReduce` in `gpu/src/ops/reduce.rs`:
 - Stores: `axes`, `reducer`, `backend_name: &'static str`, `dispatch: DispatchReduceFn`
-- `DispatchReduceFn = fn(&dyn GpuStream, &Reducer, &DeviceTensor, usize, &DeviceTensor) -> TractResult<()>`
+- `DispatchReduceFn = fn(&Reducer, &DeviceTensor, usize, &DeviceTensor) -> TractResult<()>`
 - Implements `Op`, `EvalOp`, `TypedOp` once — shared across backends
-- `eval_with_session` calls `gpu::with_stream()` (the global thread-local callback) then `(self.dispatch)(...)`
+- `eval_with_session` calls `(self.dispatch)(...)` directly
 - `PartialEq`/`Hash` are manual impls that ignore the fn pointer (compare by axes + reducer + backend_name)
 
-### 3. Global GPU stream access in `gpu/src/lib.rs`
+### 3. Stream access
 
-```rust
-pub trait GpuStream: Downcast {}
+The `gpu` crate has no stream concept. Each backend owns its stream in its
+own thread-local:
+- CUDA: `cuda/src/context.rs` has `CUDA_STREAM` TLS and `with_cuda_stream()`
+- Metal: `metal/src/context.rs` has `METAL_STREAM` TLS and `with_metal_stream()`
 
-type WithStreamFn = fn(&mut dyn FnMut(&dyn GpuStream) -> TractResult<()>) -> TractResult<()>;
+Dispatch functions access the stream internally — they do not receive it
+as a parameter.
 
-thread_local! {
-    static GPU_WITH_STREAM: Cell<Option<WithStreamFn>> = ...;
-}
+### 4. Backend kernel launch function
 
-pub fn register_stream(f: WithStreamFn) { ... }
-pub fn with_stream<R>(f: impl FnMut(&dyn GpuStream) -> TractResult<R>) -> TractResult<R> { ... }
-```
-
-`with_stream` uses type-erased `FnMut` + `Option<R>` to bridge the generic return
-type through the non-generic fn pointer.
-
-### 4. Backend registration (once per backend)
-
-In `cuda/src/lib.rs`:
-```rust
-impl GpuStream for TractCudaStream {}
-
-fn cuda_with_stream(f: &mut dyn FnMut(&dyn GpuStream) -> TractResult<()>) -> TractResult<()> {
-    CUDA_STREAM.with(|stream| f(stream as &dyn GpuStream))
-}
-```
-
-Registration happens in the `CUDA_STREAM` thread_local initializer:
-```rust
-thread_local! {
-    pub static CUDA_STREAM: TractCudaStream = {
-        let stream = TractCudaStream::new().expect("...");
-        tract_gpu::register_stream(crate::cuda_with_stream);
-        stream
-    };
-}
-```
-
-### 5. Backend kernel launch function
-
-In `cuda/src/kernels/nn/reduce.rs`, the launch function takes `&dyn GpuStream`
-and downcasts:
+In `cuda/src/kernels/nn/reduce.rs`, the launch function accesses the
+stream via its own TLS:
 
 ```rust
 pub fn cuda_reduce_launch(
-    stream: &dyn GpuStream,
     reducer: &Reducer,
     input: &DeviceTensor,
     axis: usize,
     output: &DeviceTensor,
 ) -> TractResult<()> {
-    let stream = stream.cuda()?;  // StreamExt downcast
-    // ... kernel launch code (unchanged from before)
+    crate::with_cuda_stream(|stream| {
+        // ... kernel launch code
+    })
 }
 ```
 
-`StreamExt` is defined in `cuda/src/context.rs`:
-```rust
-pub trait StreamExt {
-    fn cuda(&self) -> TractResult<&TractCudaStream>;
-}
-impl StreamExt for &dyn GpuStream {
-    fn cuda(&self) -> TractResult<&TractCudaStream> {
-        self.downcast_ref().context("Expected a cuda stream")
-    }
-}
-```
-
-### 6. Wiring in transform.rs
+### 5. Wiring in transform.rs
 
 No per-op wrapper module needed. Transform calls `GpuReduce::from_tract_core`
 directly with the backend's launch function:
@@ -121,7 +78,7 @@ Box::new(GpuReduce::from_tract_core(op, "Cuda", cuda_reduce_launch)?)
 
 1. Move enum + predicates + `from_tract_core` + `Display` to `gpu/src/ops/`
 2. Create `GpuXxx` struct with fn pointer dispatch, impl Op/EvalOp/TypedOp
-3. Define `DispatchXxxFn` type alias
-4. In each backend kernel file: make launch fn take `&dyn GpuStream`, downcast with `StreamExt`
+3. Define `DispatchXxxFn` type alias (no stream parameter)
+4. In each backend kernel file: make launch fn access its own stream TLS internally
 5. In each backend transform.rs: call `GpuXxx::from_tract_core(op, "Backend", launch_fn)`
 6. Delete the backend `ops/xxx.rs` wrapper
