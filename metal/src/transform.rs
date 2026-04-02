@@ -263,7 +263,11 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
                 } else if let Some(_op) = node.op_as::<ApplyRope>() {
                     Box::new(ops::MetalApplyRope)
                 } else if let Some(op) = node.op_as::<DynKeyValueCache>() {
-                    Box::new(ops::MetalDynKVCache::from_tract_transformers(op))
+                    Box::new(tract_gpu::ops::dyn_kv_cache::GpuDynKVCache::from_tract_transformers(
+                        op,
+                        "Metal",
+                        crate::kernels::array::metal_copy_nd_dispatch,
+                    ))
                 } else {
                     bail!("Failed to translate a supported Metal Op")
                 };

@@ -1,7 +1,6 @@
 mod apply_rope;
 mod cast;
 mod conv;
-mod dyn_kv_cache;
 mod flash_attn;
 mod fused_axis_op;
 mod gelu_approximate;
@@ -18,7 +17,6 @@ mod softmax;
 pub use apply_rope::CudaApplyRope;
 pub use cast::CudaCast;
 pub use conv::{CudaConv, wire_cuda_conv};
-pub use dyn_kv_cache::{CudaDynKVCache, CudaDynKVCacheState};
 pub use flash_attn::CudaFlashAttention;
 pub use fused_axis_op::CudaFusedAxisOp;
 pub use gelu_approximate::CudaGeluApproximate;

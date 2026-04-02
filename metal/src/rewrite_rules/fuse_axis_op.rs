@@ -16,7 +16,7 @@ fn can_fuse_move(model: &TypedModel, axis_node: &TypedNode) -> bool {
             || node.op_is::<crate::ops::MetalScaledMaskedSoftmax>()
             || node.op_is::<tract_gpu::ops::slice::GpuSlice>()
             || node.op_is::<tract_gpu::ops::broadcast::GpuMultiBroadcastTo>()
-            || node.op_is::<crate::ops::MetalDynKVCache>()
+            || node.op_is::<tract_gpu::ops::dyn_kv_cache::GpuDynKVCache>()
     })
 }
 

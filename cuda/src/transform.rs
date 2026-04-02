@@ -510,7 +510,11 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
                         crate::kernels::array::cuda_copy_nd_dispatch,
                     ))
                 } else if let Some(op) = node.op_as::<DynKeyValueCache>() {
-                    Box::new(ops::CudaDynKVCache::from_tract_transformers(op))
+                    Box::new(tract_gpu::ops::dyn_kv_cache::GpuDynKVCache::from_tract_transformers(
+                        op,
+                        "Cuda",
+                        crate::kernels::array::cuda_copy_nd_dispatch,
+                    ))
                 } else if let Some(op) = node.op_as::<Reduce>() {
                     Box::new(GpuReduce::from_tract_core(op, "Cuda", cuda_reduce_launch)?)
                 } else if let Some(op) = node.op_as::<Softmax>() {
