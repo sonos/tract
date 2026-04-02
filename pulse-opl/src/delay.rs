@@ -91,7 +91,7 @@ impl OpState for DelayState {
             if self.buffer.is_none() {
                 let mut shape = input.shape().to_owned();
                 shape[op.axis] = buffered;
-                self.buffer = Some(Tensor::uninitialized_dt(input.datum_type(), &shape)?);
+                self.buffer = Some(Tensor::zero_dt(input.datum_type(), &shape)?);
             };
             let mut output = Tensor::uninitialized_dt(input.datum_type(), &output_shape)?;
             self.apply_delay_unchecked(op, &input, &mut output);

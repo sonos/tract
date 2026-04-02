@@ -11,9 +11,6 @@
 #   1. Generate reference Q/K/V inputs and batch output (with pos_bias)
 #   2. Run the batch graph — sanity check
 #   3. Pulsify and compare streaming output against batch
-#      NOTE: step 3 requires FoldWindowAttention to be extended to handle
-#      Iff(mask, Add(einsum_scores, pos_bias), -inf) rather than
-#      Iff(mask, einsum_scores, -inf).  It will fail until that is implemented.
 
 cd "$(dirname "$0")"
 set -ex

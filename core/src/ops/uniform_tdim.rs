@@ -116,6 +116,21 @@ impl TypedOp for UniformTDim {
         Ok(tvec!(fact))
     }
 
+    fn concretize_dims(
+        &self,
+        _source: &TypedModel,
+        node: &TypedNode,
+        target: &mut TypedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+        values: &SymbolValues,
+    ) -> TractResult<TVec<OutletId>> {
+        let new_shape: ShapeFact =
+            self.shape.iter().map(|d| d.eval(values)).collect::<TVec<_>>().into();
+        let new_op = UniformTDim { expr: self.expr.clone(), shape: new_shape, dt: self.dt };
+        let inputs = node.inputs.iter().map(|i| mapping[i]).collect::<TVec<_>>();
+        target.wire_node(&node.name, new_op, &inputs)
+    }
+
     as_op!();
 }
 
