@@ -32,6 +32,7 @@ pub mod quant;
 pub mod scan;
 pub mod source;
 pub mod submodel;
+pub mod uniform_tdim;
 pub mod unimpl;
 
 pub use downsample::Downsample;

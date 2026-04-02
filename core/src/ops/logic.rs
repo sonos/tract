@@ -100,13 +100,13 @@ pub fn sym_to_coord_axis(sym: &Symbol) -> Option<usize> {
 /// The mask is true at `[i, j]` iff `0 <= floor(i / P) - floor(j / P) <= L`,
 /// i.e. the chunk-index difference is in `[0, left_chunks]`.
 #[derive(Debug, Clone)]
-pub(crate) struct ChunkWindowParams {
+pub struct ChunkWindowParams {
     /// Output axis that carries the "row" (query) coordinate (🎯row_axis).
     pub row_axis: usize,
     /// Output axis that carries the "col" (key) coordinate (🎯col_axis).
     pub col_axis: usize,
     /// Tokens per chunk (P).
-    pub chunk_size: u64,
+    pub p: u64,
     /// Number of left-chunk lookbacks (L).
     pub left_chunks: i64,
 }
@@ -147,7 +147,7 @@ fn extract_div_diff_axes(expr: &TDim) -> Option<(usize, usize, u64)> {
 ///
 /// Matches `Mul([Ge(Val(L), diff), Ge(diff, Val(0))])` (in either sort order)
 /// where `diff = Add([MulInt(-1, Div(🎯col, P)), Div(🎯row, P)])`.
-pub(crate) fn classify_chunk_window(expr: &TDim) -> Option<ChunkWindowParams> {
+pub fn classify_chunk_window(expr: &TDim) -> Option<ChunkWindowParams> {
     let TDim::Mul(factors) = expr else { return None };
     if factors.len() != 2 {
         return None;
@@ -168,12 +168,7 @@ pub(crate) fn classify_chunk_window(expr: &TDim) -> Option<ChunkWindowParams> {
         if *l < 0 {
             continue;
         }
-        return Some(ChunkWindowParams {
-            row_axis: row,
-            col_axis: col,
-            chunk_size: p,
-            left_chunks: *l,
-        });
+        return Some(ChunkWindowParams { row_axis: row, col_axis: col, p, left_chunks: *l });
     }
     None
 }

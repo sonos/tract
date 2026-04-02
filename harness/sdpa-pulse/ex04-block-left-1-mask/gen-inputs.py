@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate io.npz for the block-left-1-mask test.
+"""Generate io.npz for the ex04-block-left-1-mask test.
 
 Parameters
 ----------

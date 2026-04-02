@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate io.npz for the block-l-eq-p-mask test.
+"""Generate io.npz for the ex02-block-l-eq-p-mask test.
 
 Parameters
 ----------
@@ -9,7 +9,7 @@ Input:  qkv  [C, 3*P, Dh]  (axis 0 streams)
         mask [C, P,   P]   (bool, all-true — every token attends to all others in the chunk)
 Output: [C, P, Dh]
 
-The mask is all-true so the output is identical to block-l-eq-p.
+The mask is all-true so the output is identical to ex01-block-l-eq-p.
 The mask input is included to exercise the Iff + softmax pipeline.
 """
 

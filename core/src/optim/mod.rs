@@ -5,6 +5,7 @@ use tract_itertools::Itertools;
 
 pub mod change_axes;
 mod concat_then_einsum;
+mod fold_uniform_tdim;
 mod fold_window_attention;
 mod op_optim;
 mod prop_const;
@@ -14,6 +15,7 @@ mod slice;
 mod uniform_mask;
 
 use self::change_axes::ChangeAxes;
+use self::fold_uniform_tdim::FoldUniformTDim;
 use self::fold_window_attention::FoldWindowAttention;
 use self::prop_const::PropConst;
 use self::propagate_roi::PropagateRoi;
@@ -71,9 +73,10 @@ impl Optimizer {
     pub fn declutter() -> Optimizer {
         Optimizer::passes(vec![
             Box::<PropConst>::default(),
+            Box::<FoldUniformMask>::default(),
             Box::<PropagateRoi>::default(),
             Box::<FoldWindowAttention>::default(),
-            Box::<FoldUniformMask>::default(),
+            Box::<FoldUniformTDim>::default(),
             Box::new(OpOptim("declutter", TypedOp::declutter_with_session, 0)),
             Box::new(PushSliceUp),
             Box::new(PushSplitDown),

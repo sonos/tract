@@ -7,15 +7,18 @@ use lazy_static::lazy_static;
 use tract_pulse_opl::ops::Delay;
 
 pub mod array;
+pub mod binary;
 pub mod cnn;
 pub mod delay;
 pub mod downsample;
 pub mod dummy;
+pub mod einsum;
 pub mod fft;
 pub mod mask;
 pub mod scan;
 pub mod slice;
 pub mod source;
+pub mod uniform_tdim;
 
 pub(crate) fn sync_inputs(
     node: &TypedNode,
@@ -49,7 +52,7 @@ pub(crate) fn sync_inputs(
     Ok(inputs)
 }
 
-register_all_mod!(array, cnn, downsample, fft, scan, source);
+register_all_mod!(array, binary, cnn, downsample, einsum, fft, mask, scan, source, uniform_tdim);
 
 type PulsifierFn = fn(
     &TypedModel,
