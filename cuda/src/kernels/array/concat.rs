@@ -86,6 +86,14 @@ impl Concat {
     }
 }
 
+pub fn cuda_concat_dispatch(
+    inputs: &[&DeviceTensor],
+    axis: usize,
+    output: &DeviceTensor,
+) -> TractResult<()> {
+    crate::with_cuda_stream(|stream| Concat { axis }.dispatch_eval(stream, inputs, output))
+}
+
 #[cfg(test)]
 mod tests {
 

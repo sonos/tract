@@ -11,7 +11,7 @@ fn is_supported_axis_op(op: &CudaAxisOp) -> bool {
 // these are operators that can handle arbitrarty strides
 fn can_fuse_move(model: &TypedModel, axis_node: &TypedNode) -> bool {
     model.single_succ(axis_node.id).unwrap().is_some_and(|node| {
-        node.op_is::<crate::ops::CudaConcat>()
+        node.op_is::<tract_gpu::ops::concat::GpuConcat>()
             || node.op_is::<crate::ops::CudaApplyRope>()
             || node.op_is::<crate::ops::CudaScaledMaskedSoftmax>()
             || node.op_is::<tract_gpu::ops::slice::GpuSlice>()

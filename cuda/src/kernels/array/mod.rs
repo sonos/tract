@@ -8,7 +8,7 @@ mod rotate_half;
 
 pub use broadcast::{MultiBroadcast, cuda_broadcast_dispatch};
 pub use cast::Cast;
-pub use concat::Concat;
+pub use concat::{Concat, cuda_concat_dispatch};
 pub use copy::Memcpy;
 pub use pad::Pad;
 pub use permute_axes::PermuteAxes;

@@ -10,7 +10,7 @@ fn is_supported_axis_op(op: &MetalAxisOp) -> bool {
 
 fn can_fuse_move(model: &TypedModel, axis_node: &TypedNode) -> bool {
     model.single_succ(axis_node.id).unwrap().is_some_and(|node| {
-        node.op_is::<crate::ops::MetalConcat>()
+        node.op_is::<tract_gpu::ops::concat::GpuConcat>()
             || node.op_is::<crate::ops::MetalApplyRope>()
             || node.op_is::<crate::ops::MetalScaledMaskedSoftmax>()
             || node.op_is::<tract_gpu::ops::slice::GpuSlice>()

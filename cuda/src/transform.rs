@@ -475,7 +475,11 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
                         crate::kernels::array::cuda_broadcast_dispatch,
                     ))
                 } else if let Some(op) = node.op_as::<TypedConcat>() {
-                    Box::new(ops::CudaConcat::from_tract_core(op))
+                    Box::new(tract_gpu::ops::concat::GpuConcat::new(
+                        op.axis,
+                        "Cuda",
+                        crate::kernels::array::cuda_concat_dispatch,
+                    ))
                 } else if let Some(op) = node.op_as::<DynKeyValueCache>() {
                     Box::new(ops::CudaDynKVCache::from_tract_transformers(op))
                 } else if let Some(op) = node.op_as::<Reduce>() {

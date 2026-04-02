@@ -243,7 +243,11 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
                         crate::kernels::array::metal_broadcast_dispatch,
                     ))
                 } else if let Some(op) = node.op_as::<TypedConcat>() {
-                    Box::new(ops::MetalConcat::from_tract_core(op))
+                    Box::new(tract_gpu::ops::concat::GpuConcat::new(
+                        op.axis,
+                        "Metal",
+                        crate::kernels::array::metal_concat_dispatch,
+                    ))
                 } else if let Some(op) = node.op_as::<Reduce>() {
                     Box::new(GpuReduce::from_tract_core(op, "Metal", metal_reduce_launch).unwrap())
                 } else if let Some(op) = node.op_as::<CoreSoftmax>() {

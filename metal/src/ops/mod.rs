@@ -1,7 +1,6 @@
 pub mod apply_rope;
 pub mod cast;
 pub mod change_axes;
-pub mod concat;
 pub mod dyn_kv_cache;
 pub mod fused_axis_op;
 pub mod gelu_approximate;
@@ -15,7 +14,6 @@ pub mod softmax;
 pub use apply_rope::MetalApplyRope;
 pub use cast::MetalCast;
 pub use change_axes::MetalAxisOp;
-pub use concat::MetalConcat;
 pub use dyn_kv_cache::{MetalDynKVCache, MetalDynKVCacheState};
 pub use fused_axis_op::MetalFusedAxisOp;
 pub use gelu_approximate::MetalGeluApproximate;

@@ -1,5 +1,4 @@
 use crate::kernels::array::Concat;
-use crate::ops::CudaConcat;
 use derive_new::new;
 use tract_core::internal::*;
 use tract_core::ops::OpStateFreeze;
@@ -72,7 +71,18 @@ impl OpState for CudaDynKVCacheState {
             .downcast_ref::<CudaDynKVCache>()
             .ok_or_else(|| format_err!("Wrong Op type"))?
             .concat;
-        let res = concat.eval_with_session(self.node_id, session, op_inputs)?.remove(0);
+        let inputs =
+            op_inputs.iter().map(|it| it.to_device_tensor()).collect::<TractResult<TVec<_>>>()?;
+        let mut output_shape = inputs[0].shape().to_vec();
+        output_shape[concat.axis] = inputs.iter().map(|it| it.shape()[concat.axis]).sum();
+        let output = tract_gpu::session_handler::make_tensor_for_node(
+            session,
+            self.node_id,
+            inputs[0].datum_type(),
+            &output_shape,
+        )?;
+        crate::with_cuda_stream(|stream| concat.dispatch_eval(stream, &inputs, &output))?;
+        let res = output.into_tensor().into_tvalue();
 
         self.kv_cache = Some(res.clone());
 
@@ -129,21 +139,21 @@ pub struct CudaDynKVCache {
     name: String,
     past_sequence_fact: TypedFact,
     input_sequence_fact: TypedFact,
-    concat: CudaConcat,
+    concat: Concat,
 }
 
 impl CudaDynKVCache {
     pub fn from_tract_transformers(op: &DynKeyValueCache) -> Self {
         Self {
             name: op.name.clone(),
-            concat: CudaConcat { kernel: Concat { axis: op.axis } },
+            concat: Concat { axis: op.axis },
             past_sequence_fact: op.past_sequence_fact.clone(),
             input_sequence_fact: op.input_sequence_fact.clone(),
         }
     }
 
     pub fn axis(&self) -> usize {
-        self.concat.kernel.axis
+        self.concat.axis
     }
 }
 

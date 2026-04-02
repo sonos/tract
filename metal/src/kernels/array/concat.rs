@@ -128,6 +128,14 @@ impl Concat {
     }
 }
 
+pub fn metal_concat_dispatch(
+    inputs: &[&DeviceTensor],
+    axis: usize,
+    output: &DeviceTensor,
+) -> TractResult<()> {
+    crate::with_metal_stream(|stream| Concat { axis }.dispatch_eval(stream, inputs, output))
+}
+
 #[cfg(test)]
 mod tests {
     use crate::utils::with_borrowed_metal_stream;
