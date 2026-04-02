@@ -12,11 +12,9 @@ extension tract_assert S>=0;
 #
 # Parameters: T=8, P=2, Dh=4, left_chunks=1
 #
-# Key question for pulsification: does uniform_tdim propagate through the pos_bias
-# subgraph (range → cast_f32 → unsqueeze → sub → mul_by_scalar)?
 # In windowed form, pos_bias[p, l] = -slope * (L*P + p - l) — independent of chunk c —
-# so at pulse time it collapses to a precomputed constant [P, (L+1)*P] tensor.
-# FoldWindowAttention needs to be extended to handle Iff(mask, Add(einsum, pos_bias), -inf).
+# so at pulse time it collapses to a precomputed constant [P, (L+1)*P] tensor via the
+# binary pulsifier (uniform_tdim + region_of_interest on the pos_bias wire).
 #
 # Input:  qkv [S, 3*Dh] = [S, 12]   S = total token count, Dh=4
 # Output: [S, Dh] = [S, 4]

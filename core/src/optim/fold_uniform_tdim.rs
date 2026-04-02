@@ -55,8 +55,7 @@ impl super::TypedPass for FoldUniformTDim {
                 }
 
                 // Only fold bool wires.  Non-bool wires may carry uniform_tdim as
-                // metadata for other passes (e.g. FoldWindowAttention detecting a
-                // coordinate-derived wire), but UniformTDim can only materialise
+                // metadata for other passes, but UniformTDim can only materialise
                 // bool tensors (TDim is integer-valued).
                 if fact.datum_type != DatumType::Bool {
                     continue;
