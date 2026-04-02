@@ -82,6 +82,10 @@ impl RotateHalf {
     }
 }
 
+pub fn cuda_rotate_half_dispatch(input: &DeviceTensor, output: &DeviceTensor) -> TractResult<()> {
+    crate::with_cuda_stream(|stream| RotateHalf.dispatch_eval(stream, input, output))
+}
+
 #[cfg(test)]
 mod tests {
 

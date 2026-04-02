@@ -67,6 +67,16 @@ impl GeluApproximate {
     }
 }
 
+pub fn metal_gelu_approximate_dispatch(
+    fast_impl: bool,
+    input: &DeviceTensor,
+    output: &DeviceTensor,
+) -> TractResult<()> {
+    crate::with_metal_stream(|stream| {
+        GeluApproximate { fast_impl }.dispatch_eval(stream, input, output)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

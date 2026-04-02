@@ -62,3 +62,11 @@ impl LeakyRelu {
         Ok(())
     }
 }
+
+pub fn cuda_leaky_relu_dispatch(
+    alpha: f32,
+    input: &DeviceTensor,
+    output: &DeviceTensor,
+) -> TractResult<()> {
+    crate::with_cuda_stream(|stream| LeakyRelu.dispatch_eval(stream, input, alpha, output))
+}

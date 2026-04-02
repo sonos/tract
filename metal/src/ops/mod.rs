@@ -1,22 +1,18 @@
 pub mod apply_rope;
-pub mod cast;
 pub mod conv;
 pub mod fused_axis_op;
-pub mod gelu_approximate;
 pub mod gemm;
-pub mod leaky_relu;
-pub mod rms_norm;
-pub mod rotate_half;
 pub mod scaled_masked_softmax;
-pub mod softmax;
 
 pub use apply_rope::MetalApplyRope;
-pub use cast::MetalCast;
 pub use fused_axis_op::MetalFusedAxisOp;
-pub use gelu_approximate::MetalGeluApproximate;
 pub use gemm::MetalGemm;
-pub use leaky_relu::MetalLeakyRelu;
-pub use rms_norm::MetalRmsNorm;
-pub use rotate_half::MetalRotateHalf;
 pub use scaled_masked_softmax::MetalScaledMaskedSoftmax;
-pub use softmax::MetalSoftmax;
+
+// Re-export shared GPU ops for backward compatibility
+pub use tract_gpu::ops::cast::GpuCast as MetalCast;
+pub use tract_gpu::ops::gelu_approximate::GpuGeluApproximate as MetalGeluApproximate;
+pub use tract_gpu::ops::leaky_relu::GpuLeakyRelu as MetalLeakyRelu;
+pub use tract_gpu::ops::rms_norm::GpuRmsNorm as MetalRmsNorm;
+pub use tract_gpu::ops::rotate_half::GpuRotateHalf as MetalRotateHalf;
+pub use tract_gpu::ops::softmax::GpuSoftmax as MetalSoftmax;

@@ -159,8 +159,8 @@ fn can_translate_to_metal_op(source: &TypedModel, node: &TypedNode) -> TractResu
                 .op_as::<Const>()
                 .is_some_and(|op| DeviceTensor::is_supported_dt(op.val().datum_type()))
             || node.op_as::<Cast>().is_some_and(|op| {
-                ops::MetalCast::is_supported_dt(input_dts[0])
-                    && ops::MetalCast::new(op.to).is_some()
+                kernels::array::Cast::is_supported_dt(input_dts[0])
+                    && kernels::array::Cast::is_supported_dt(op.to)
             })
             || node.op_is::<AxisOp>()
             || node.op_is::<Slice>()
@@ -172,7 +172,12 @@ fn can_translate_to_metal_op(source: &TypedModel, node: &TypedNode) -> TractResu
             })
             || node.op_as::<CoreSoftmax>().is_some_and(|op| {
                 kernels::nn::Softmax::is_supported_dt(input_dts[0])
-                    && ops::MetalSoftmax::from_tract_core(op).is_ok()
+                    && tract_gpu::ops::softmax::GpuSoftmax::from_tract_core(
+                        op,
+                        "Metal",
+                        kernels::nn::metal_softmax_dispatch,
+                    )
+                    .is_ok()
             })
             || node
                 .op_as::<ScaledMaskedSoftmax>()
@@ -223,9 +228,17 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
             } else {
                 let op: Box<dyn TypedOp> = if let Some(op) = node.op_as::<ElementWiseOp>() {
                     if let Some(ew) = op.0.downcast_ref::<GeluApproximate>() {
-                        Box::new(ops::MetalGeluApproximate { fast_impl: ew.fast_impl })
+                        Box::new(tract_gpu::ops::gelu_approximate::GpuGeluApproximate::new(
+                            ew.fast_impl,
+                            "Metal",
+                            kernels::nn::metal_gelu_approximate_dispatch,
+                        ))
                     } else if let Some(leaky) = op.0.downcast_ref::<LeakyRelu>() {
-                        Box::new(ops::MetalLeakyRelu { alpha: leaky.alpha })
+                        Box::new(tract_gpu::ops::leaky_relu::GpuLeakyRelu::new(
+                            leaky.alpha,
+                            "Metal",
+                            kernels::nn::metal_leaky_relu_dispatch,
+                        ))
                     } else {
                         Box::new(metal_element_wise_op(op.0.clone()))
                     }
@@ -240,7 +253,7 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
                 } else if let Some(op) = node.op_as::<Const>() {
                     Box::new(convert_const(op)?)
                 } else if let Some(op) = node.op_as::<Cast>() {
-                    Box::new(ops::MetalCast::new(op.to).unwrap())
+                    Box::new(metal_cast_new(op.to).unwrap())
                 } else if let Some(op) = node.op_as::<AxisOp>() {
                     let in_fact = source.node_input_facts(node.id)?[0];
                     Box::new(tract_gpu::ops::change_axes::GpuAxisOp::from_tract_core_with_fact(
@@ -264,15 +277,30 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
                 } else if let Some(op) = node.op_as::<Reduce>() {
                     Box::new(GpuReduce::from_tract_core(op, "Metal", metal_reduce_launch).unwrap())
                 } else if let Some(op) = node.op_as::<CoreSoftmax>() {
-                    Box::new(ops::MetalSoftmax::from_tract_core(op).unwrap())
+                    Box::new(
+                        tract_gpu::ops::softmax::GpuSoftmax::from_tract_core(
+                            op,
+                            "Metal",
+                            kernels::nn::metal_softmax_dispatch,
+                        )
+                        .unwrap(),
+                    )
                 } else if let Some(op) = node.op_as::<ScaledMaskedSoftmax>()
                     && !op.post_softmax_mask
                 {
                     Box::new(ops::MetalScaledMaskedSoftmax { scale: op.scale.clone() })
                 } else if let Some(op) = node.op_as::<RmsNorm>() {
-                    Box::new(ops::MetalRmsNorm::new(op.axis, op.eps.clone()))
+                    Box::new(tract_gpu::ops::rms_norm::GpuRmsNorm::new(
+                        op.axis,
+                        op.eps.clone(),
+                        "Metal",
+                        kernels::nn::metal_rms_norm_dispatch,
+                    ))
                 } else if let Some(_op) = node.op_as::<RotateHalf>() {
-                    Box::new(ops::MetalRotateHalf)
+                    Box::new(tract_gpu::ops::rotate_half::GpuRotateHalf::new(
+                        "Metal",
+                        kernels::array::metal_rotate_half_dispatch,
+                    ))
                 } else if let Some(_op) = node.op_as::<ApplyRope>() {
                     Box::new(ops::MetalApplyRope)
                 } else if let Some(op) = node.op_as::<DynKeyValueCache>() {
@@ -296,6 +324,15 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
 }
 
 use tract_gpu::ops::binary::GpuBinOp;
+
+fn metal_cast_new(to: DatumType) -> Option<tract_gpu::ops::cast::GpuCast> {
+    tract_gpu::ops::cast::GpuCast::new(
+        to,
+        "Metal",
+        kernels::array::metal_cast_dispatch,
+        kernels::array::Cast::is_supported_dt,
+    )
+}
 
 fn metal_bin_op(mini_op: Box<dyn BinMiniOp>) -> GpuBinOp {
     GpuBinOp {
@@ -386,7 +423,7 @@ fn convert_matmul_to_metal(
         };
         *inp_to_cast = target.wire_node(
             node.name.clone() + ".cast_input",
-            ops::MetalCast::new(DatumType::F32).unwrap(),
+            metal_cast_new(DatumType::F32).unwrap(),
             &[*inp_to_cast],
         )?[0];
     }
@@ -429,7 +466,7 @@ fn convert_matmul_to_metal(
             }
 
             if input_facts[0].datum_type == DatumType::F16 {
-                let in_cast_op = ops::MetalCast::new(DatumType::F32).unwrap();
+                let in_cast_op = metal_cast_new(DatumType::F32).unwrap();
                 inputs[0] =
                     target.wire_node(node.name.clone() + ".in_cast", in_cast_op, &[inputs[0]])?[0];
             }
@@ -482,10 +519,10 @@ fn convert_matmul_to_metal(
 
     if out_dt != expected_dt {
         ensure!(
-            ops::MetalCast::is_supported_dt(out_dt),
+            kernels::array::Cast::is_supported_dt(out_dt),
             "Matmul output type cannot be casted to expected type"
         );
-        let cast_op = ops::MetalCast::new(model.node_output_facts(node.id)?[0].datum_type).unwrap();
+        let cast_op = metal_cast_new(model.node_output_facts(node.id)?[0].datum_type).unwrap();
         matmul_output =
             target.wire_node(node.name.clone() + ".out_cast", cast_op, &matmul_output)?
     }

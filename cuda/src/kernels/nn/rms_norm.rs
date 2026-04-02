@@ -77,6 +77,15 @@ impl RmsNorm {
     }
 }
 
+pub fn cuda_rms_norm_dispatch(
+    input: &DeviceTensor,
+    axis: usize,
+    eps: &Tensor,
+    output: &DeviceTensor,
+) -> TractResult<()> {
+    crate::with_cuda_stream(|stream| RmsNorm.dispatch_eval(stream, input, axis, eps, output))
+}
+
 #[cfg(test)]
 mod tests {
     use tract_gpu::tensor::IntoDevice;

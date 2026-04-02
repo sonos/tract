@@ -68,6 +68,14 @@ impl Softmax {
     }
 }
 
+pub fn metal_softmax_dispatch(
+    input: &DeviceTensor,
+    axis: usize,
+    output: &DeviceTensor,
+) -> TractResult<()> {
+    crate::with_metal_stream(|stream| Softmax.dispatch_eval(stream, input, axis, output))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

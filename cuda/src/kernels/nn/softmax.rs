@@ -73,6 +73,14 @@ impl Softmax {
     }
 }
 
+pub fn cuda_softmax_dispatch(
+    input: &DeviceTensor,
+    axis: usize,
+    output: &DeviceTensor,
+) -> TractResult<()> {
+    crate::with_cuda_stream(|stream| Softmax.dispatch_eval(stream, input, axis, output))
+}
+
 #[cfg(test)]
 mod tests {
 
