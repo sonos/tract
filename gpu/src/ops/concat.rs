@@ -1,17 +1,16 @@
-use crate::tensor::{DeviceTensor, DeviceTensorExt};
+use crate::tensor::DeviceTensorExt;
+use crate::utils::DispatchCopyNdFn;
 use tract_core::internal::*;
-
-pub type DispatchConcatFn = fn(&[&DeviceTensor], usize, &DeviceTensor) -> TractResult<()>;
 
 #[derive(Clone)]
 pub struct GpuConcat {
     pub axis: usize,
     pub backend_name: &'static str,
-    pub dispatch: DispatchConcatFn,
+    pub dispatch: DispatchCopyNdFn,
 }
 
 impl GpuConcat {
-    pub fn new(axis: usize, backend_name: &'static str, dispatch: DispatchConcatFn) -> Self {
+    pub fn new(axis: usize, backend_name: &'static str, dispatch: DispatchCopyNdFn) -> Self {
         Self { axis, backend_name, dispatch }
     }
 
@@ -81,7 +80,37 @@ impl EvalOp for GpuConcat {
             inputs[0].datum_type(),
             &output_shape,
         )?;
-        (self.dispatch)(&inputs, self.axis, &output)?;
+
+        let mut cursor = 0usize;
+        for input in &inputs {
+            let slice_len = input.shape()[self.axis];
+            if slice_len == 0 {
+                continue;
+            }
+            // Build zone shape (same as input shape for this slice)
+            let zone_shape = input.shape();
+            // Output offset along concat axis
+            let dst_offset =
+                cursor * output.strides()[self.axis] as usize * output.datum_type().size_of();
+
+            (self.dispatch)(
+                input,
+                0,
+                input.strides(),
+                &output,
+                dst_offset,
+                zone_shape,
+                output.strides(),
+            )
+            .with_context(|| {
+                format!(
+                    "Error in concat dispatch for slice at offset {} (shape {:?})",
+                    cursor, zone_shape
+                )
+            })?;
+            cursor += slice_len;
+        }
+
         Ok(tvec!(output.into_tensor().into_tvalue()))
     }
 }

@@ -1,14 +1,13 @@
-use crate::tensor::{DeviceTensor, DeviceTensorExt};
+use crate::tensor::DeviceTensorExt;
+use crate::utils::{DispatchCopyNdFn, compute_broadcast_strides};
 use derive_new::new;
 use tract_core::internal::*;
-
-pub type DispatchBroadcastFn = fn(&DeviceTensor, usize, &DeviceTensor) -> TractResult<()>;
 
 #[derive(Clone, new)]
 pub struct GpuMultiBroadcastTo {
     pub shape: ShapeFact,
     pub backend_name: &'static str,
-    pub dispatch: DispatchBroadcastFn,
+    pub dispatch: DispatchCopyNdFn,
 }
 
 impl std::fmt::Debug for GpuMultiBroadcastTo {
@@ -61,7 +60,23 @@ impl EvalOp for GpuMultiBroadcastTo {
             &shape,
         )?;
 
-        (self.dispatch)(input, 0, &output)?;
+        // Pad input shape/strides to output rank for broadcasting
+        let mut input_strides = vec![input.strides()[0]; output.rank() - input.rank()];
+        input_strides.extend(input.strides());
+        let mut input_shape = vec![1usize; output.rank() - input.rank()];
+        input_shape.extend(input.shape());
+        let broadcast_strides: TVec<isize> =
+            compute_broadcast_strides(&input_shape, &input_strides)?;
+
+        (self.dispatch)(
+            input,
+            0,
+            &broadcast_strides,
+            &output,
+            0,
+            output.shape(),
+            output.strides(),
+        )?;
         Ok(tvec![output.into_tensor().into_tvalue()])
     }
 }

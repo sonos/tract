@@ -165,6 +165,20 @@ pub fn reshape_to_rank_3(shape: &[usize], axis: usize) -> TVec<usize> {
     tvec![dim_axis_0, dim_axis_1, dim_axis_2]
 }
 
+/// Dispatch function for strided copy_nd kernels. All array ops (broadcast,
+/// slice, concat, permute_axes) ultimately call a copy_nd kernel with this
+/// signature. The backend derives the kernel name from output rank + dtype.
+/// Both offsets are in bytes.
+pub type DispatchCopyNdFn = fn(
+    input: &crate::tensor::DeviceTensor,
+    input_offset: usize,
+    input_strides: &[isize],
+    output: &crate::tensor::DeviceTensor,
+    output_offset: usize,
+    output_shape: &[usize],
+    output_strides: &[isize],
+) -> TractResult<()>;
+
 pub fn check_strides_validity(shape: TVec<usize>, strides: TVec<isize>) -> TractResult<()> {
     let mut zipped_shape_strides: Vec<_> = shape.into_iter().zip(strides).collect();
     zipped_shape_strides.sort_by_key(|&(_, stride)| stride);

@@ -2,16 +2,18 @@ mod broadcast;
 mod cast;
 mod concat;
 mod copy;
+mod dispatch;
 mod pad;
 mod permute_axes;
 mod rotate_half;
 
-pub use broadcast::{MultiBroadcast, cuda_broadcast_dispatch};
+pub use broadcast::MultiBroadcast;
 pub use cast::Cast;
-pub use concat::{Concat, cuda_concat_dispatch};
-pub use copy::{Memcpy, cuda_memcpy_dispatch};
+pub use concat::Concat;
+pub use copy::Memcpy;
+pub use dispatch::cuda_copy_nd_dispatch;
 pub use pad::Pad;
-pub use permute_axes::{PermuteAxes, cuda_permute_dispatch};
+pub use permute_axes::PermuteAxes;
 pub use rotate_half::RotateHalf;
 
 pub fn all_functions() -> Vec<String> {

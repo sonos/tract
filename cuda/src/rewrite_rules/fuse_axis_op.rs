@@ -199,8 +199,7 @@ pub fn fuse_move_axis(
         axis_op.inner.clone(),
         in_shape.dims(),
         axis_op.backend_name,
-        axis_op.dispatch_permute,
-        axis_op.dispatch_memcpy,
+        axis_op.dispatch,
     );
     if simpl_op != *axis_op {
         return Ok(Some(TypedModelPatch::replace_single_op(
@@ -228,12 +227,7 @@ pub fn fuse_move_axis(
             let inputs = patch.taps(model, &axis_node.inputs)?;
             let out = patch.wire_node(
                 format!("{axis_node_name}.fused_move_axis"),
-                GpuAxisOp::new(
-                    new_axis_ops[0].clone(),
-                    axis_op.backend_name,
-                    axis_op.dispatch_permute,
-                    axis_op.dispatch_memcpy,
-                ),
+                GpuAxisOp::new(new_axis_ops[0].clone(), axis_op.backend_name, axis_op.dispatch),
                 &inputs,
             )?;
             patch.shunt_outside(model, cursor.id.into(), out[0])?;
@@ -252,12 +246,7 @@ pub fn fuse_move_axis(
         let inputs = patch.taps(model, &cursor.inputs)?;
         let out = patch.wire_node(
             cursor.name.clone(),
-            GpuAxisOp::new(
-                AxisOp::Add(to_1),
-                axis_op.backend_name,
-                axis_op.dispatch_permute,
-                axis_op.dispatch_memcpy,
-            ),
+            GpuAxisOp::new(AxisOp::Add(to_1), axis_op.backend_name, axis_op.dispatch),
             &inputs,
         )?;
         patch.shunt_outside(model, axis_node.id.into(), out[0])?;

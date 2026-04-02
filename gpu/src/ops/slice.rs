@@ -1,5 +1,5 @@
-use crate::ops::broadcast::DispatchBroadcastFn;
 use crate::tensor::DeviceTensorExt;
+use crate::utils::{DispatchCopyNdFn, compute_broadcast_strides};
 use tract_core::internal::*;
 use tract_core::ops::array::Slice;
 
@@ -7,11 +7,11 @@ use tract_core::ops::array::Slice;
 pub struct GpuSlice {
     pub inner: Slice,
     pub backend_name: &'static str,
-    pub dispatch: DispatchBroadcastFn,
+    pub dispatch: DispatchCopyNdFn,
 }
 
 impl GpuSlice {
-    pub fn new(inner: Slice, backend_name: &'static str, dispatch: DispatchBroadcastFn) -> Self {
+    pub fn new(inner: Slice, backend_name: &'static str, dispatch: DispatchCopyNdFn) -> Self {
         Self { inner, backend_name, dispatch }
     }
 }
@@ -80,7 +80,7 @@ impl EvalOp for GpuSlice {
             axis
         );
 
-        let mut o_shape: TVec<_> = input_shape.into();
+        let mut o_shape: TVec<usize> = input_shape.into();
         o_shape[axis] = end - start;
 
         let offset = (start * input_strides[axis] as usize) * input_dt.size_of();
@@ -93,7 +93,18 @@ impl EvalOp for GpuSlice {
         )?;
 
         if o_shape[axis] != 0 {
-            (self.dispatch)(input, offset, &output)?;
+            // Slice uses same strides as input (broadcast strides with matching shapes)
+            let broadcast_strides: TVec<isize> =
+                compute_broadcast_strides(&o_shape, input_strides)?;
+            (self.dispatch)(
+                input,
+                offset,
+                &broadcast_strides,
+                &output,
+                0,
+                output.shape(),
+                output.strides(),
+            )?;
         }
         Ok(tvec![output.into_tensor().into_tvalue()])
     }

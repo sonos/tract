@@ -1,36 +1,25 @@
 use crate::tensor::DeviceTensorExt;
+use crate::utils::DispatchCopyNdFn;
 use tract_core::internal::*;
 use tract_itertools::Itertools;
-
-use crate::tensor::DeviceTensor;
-
-pub type DispatchPermuteFn = fn(&DeviceTensor, &[usize], &DeviceTensor) -> TractResult<()>;
-pub type DispatchMemcpyFn = fn(&DeviceTensor, usize, &DeviceTensor) -> TractResult<()>;
 
 #[derive(Clone)]
 pub struct GpuAxisOp {
     pub inner: AxisOp,
     pub backend_name: &'static str,
-    pub dispatch_permute: DispatchPermuteFn,
-    pub dispatch_memcpy: DispatchMemcpyFn,
+    pub dispatch: DispatchCopyNdFn,
 }
 
 impl GpuAxisOp {
-    pub fn new(
-        inner: AxisOp,
-        backend_name: &'static str,
-        dispatch_permute: DispatchPermuteFn,
-        dispatch_memcpy: DispatchMemcpyFn,
-    ) -> Self {
-        Self { inner, backend_name, dispatch_permute, dispatch_memcpy }
+    pub fn new(inner: AxisOp, backend_name: &'static str, dispatch: DispatchCopyNdFn) -> Self {
+        Self { inner, backend_name, dispatch }
     }
 
     pub fn simplify_axis_op(
         op: AxisOp,
         dims: &[TDim],
         backend_name: &'static str,
-        dispatch_permute: DispatchPermuteFn,
-        dispatch_memcpy: DispatchMemcpyFn,
+        dispatch: DispatchCopyNdFn,
     ) -> Self {
         let inner = match op {
             AxisOp::Move(from, to) if from.abs_diff(to) == 1 => {
@@ -68,18 +57,17 @@ impl GpuAxisOp {
             }
             _ => op,
         };
-        Self { inner, backend_name, dispatch_permute, dispatch_memcpy }
+        Self { inner, backend_name, dispatch }
     }
 
     pub fn from_tract_core_with_fact(
         op: AxisOp,
         fact: &TypedFact,
         backend_name: &'static str,
-        dispatch_permute: DispatchPermuteFn,
-        dispatch_memcpy: DispatchMemcpyFn,
+        dispatch: DispatchCopyNdFn,
     ) -> Self {
         let dims = fact.shape.dims();
-        Self::simplify_axis_op(op, dims, backend_name, dispatch_permute, dispatch_memcpy)
+        Self::simplify_axis_op(op, dims, backend_name, dispatch)
     }
 }
 
@@ -148,8 +136,7 @@ impl EvalOp for GpuAxisOp {
             self.inner.clone(),
             &shape.iter().map(|s| s.into()).collect_vec(),
             self.backend_name,
-            self.dispatch_permute,
-            self.dispatch_memcpy,
+            self.dispatch,
         );
 
         let new_shape = match &simplified.inner {
@@ -165,7 +152,18 @@ impl EvalOp for GpuAxisOp {
                     input.datum_type(),
                     &out_shape,
                 )?;
-                (self.dispatch_permute)(input, &permutation, &output)?;
+                // Compute permuted input strides
+                let permuted_strides: TVec<isize> =
+                    permutation.iter().map(|&i| input.strides()[i]).collect();
+                (self.dispatch)(
+                    input,
+                    0,
+                    &permuted_strides,
+                    &output,
+                    0,
+                    output.shape(),
+                    output.strides(),
+                )?;
                 return Ok(tvec!(output.into_tensor().into_tvalue()));
             }
             AxisOp::Reshape(skip, from, to) => {
@@ -182,13 +180,15 @@ impl EvalOp for GpuAxisOp {
             }
         };
 
+        // Memcpy path (Reshape/Add/Rm) — flat copy, treat as 1D
         let output = crate::session_handler::make_tensor_for_node(
             session,
             node_id,
             input.datum_type(),
             &new_shape,
         )?;
-        (self.dispatch_memcpy)(input, 0, &output)?;
+        let flat_len = input.len();
+        (self.dispatch)(input, 0, &[1], &output, 0, &[flat_len], &[1])?;
         Ok(tvec!(output.into_tensor().into_tvalue()))
     }
 }
@@ -226,12 +226,7 @@ impl TypedOp for GpuAxisOp {
         } else {
             self.inner.clone()
         };
-        let op = GpuAxisOp {
-            inner,
-            backend_name: self.backend_name,
-            dispatch_permute: self.dispatch_permute,
-            dispatch_memcpy: self.dispatch_memcpy,
-        };
+        let op = GpuAxisOp { inner, backend_name: self.backend_name, dispatch: self.dispatch };
         target.wire_node(&node.name, op, &[mapping[&node.inputs[0]]])
     }
 

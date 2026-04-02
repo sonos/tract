@@ -42,8 +42,7 @@ pub fn wire_cuda_conv(
                 GpuAxisOp::new(
                     AxisOp::Reshape(0, bias.shape.to_tvec(), needed_shape),
                     "Cuda",
-                    crate::kernels::array::cuda_permute_dispatch,
-                    crate::kernels::array::cuda_memcpy_dispatch,
+                    crate::kernels::array::cuda_copy_nd_dispatch,
                 ),
                 &[inputs[2]],
             )?[0];
