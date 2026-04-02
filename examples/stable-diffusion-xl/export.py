@@ -45,7 +45,7 @@ def main():
             (input_ids,),
             str(ASSETS / "text_encoder_2.onnx"),
             input_names=["input_ids"],
-            output_names=["last_hidden_state", "text_embeds"],
+            output_names=["text_embeds", "last_hidden_state"],
             opset_version=17,
         )
     print(f"  Exported to {ASSETS / 'text_encoder_2.onnx'}")
