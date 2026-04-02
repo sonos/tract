@@ -23,7 +23,7 @@ use tract_core::ops::cast::Cast;
 use tract_core::ops::einsum::prefix_matmul::{PrefixMatMul, rewrite_einsum_to_prefix_matmul};
 use tract_core::ops::element_wise::ElementWiseOp;
 use tract_core::ops::konst::Const;
-use tract_core::ops::nn::{Reduce, Softmax as CoreSoftmax};
+use tract_core::ops::nn::{LeakyRelu, Reduce, Softmax as CoreSoftmax};
 use tract_core::transform::ModelTransform;
 use tract_gpu::fact::DeviceFact;
 use tract_gpu::tensor::DeviceTensor;
@@ -183,6 +183,10 @@ fn can_translate_to_metal_op(source: &TypedModel, node: &TypedNode) -> TractResu
             || node.op_as::<ElementWiseOp>().is_some_and(|op| {
                 op.0.is::<GeluApproximate>()
                     && kernels::nn::GeluApproximate::is_supported_dt(input_dts[0])
+            })
+            || node.op_as::<ElementWiseOp>().is_some_and(|op| {
+                op.0.is::<LeakyRelu>()
+                    && kernels::nn::LeakyRelu::is_supported_dt(input_dts[0])
             })))
 }
 
@@ -213,6 +217,8 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
                 let op: Box<dyn TypedOp> = if let Some(op) = node.op_as::<ElementWiseOp>() {
                     if let Some(ew) = op.0.downcast_ref::<GeluApproximate>() {
                         Box::new(ops::MetalGeluApproximate { fast_impl: ew.fast_impl })
+                    } else if let Some(leaky) = op.0.downcast_ref::<LeakyRelu>() {
+                        Box::new(ops::MetalLeakyRelu { alpha: leaky.alpha })
                     } else {
                         Box::new(metal_element_wise_op(op.0.clone()))
                     }
