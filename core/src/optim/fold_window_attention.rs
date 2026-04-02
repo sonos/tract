@@ -257,8 +257,8 @@ fn try_fold(model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedMod
 
     // ── All preconditions met – build the transformation ──────────────────────
 
-    let chunk_count = TDim::Div(Box::new(token_dim.clone()), cw.chunk_size); // C = T/P
-    let p_tdim = TDim::Val(cw.chunk_size as i64);
+    let chunk_count = TDim::Div(Box::new(token_dim.clone()), cw.p); // C = T/P
+    let p_tdim = TDim::Val(cw.p as i64);
     // Use chunk_count * p_tdim instead of token_dim as the reshape `from` spec so that
     // both sides of the volume check reduce to the same symbolic form (MulInt(P, Div(T, P))).
     let token_dim_as_product = chunk_count.clone() * p_tdim.clone();
