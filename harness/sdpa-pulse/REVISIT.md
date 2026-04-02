@@ -5,6 +5,38 @@ the current harnesses but may need generalization before the real encoder lands.
 
 ---
 
+## 9. Transformer-XL content-to-position score — Q @ R skew pulsifier
+
+**Location:** new file needed, e.g. `pulse/src/ops/einsum_rel.rs`
+
+**What is missing:** The Transformer-XL attention adds a term `q[i] @ R[i−j]^T`
+to the content scores.  R is a positional encoding matrix [max_rel, Dh] (or
+computed symbolically from `range(0, 2T−1)`).  The batch graph computes this
+via the "relative-shift" skewing trick: `Q @ R^T [T, 2T−1]` → Pad → Reshape →
+Slice → `[T, T]`.
+
+**Why it does not pulsify today:**
+- `remap_uniform_tdim` returns `None` for any non-trivial Reshape; the Reshape
+  in the skew ([T, 2T] → [2T, T]) breaks uniform_tdim propagation.
+- Pad and Slice also do not propagate `uniform_tdim`.
+- PropagateRoi only walks backward through TypedBinOp; it cannot cross Slice,
+  Reshape, or Pad, so the wires inside the skew chain never acquire roi.
+
+**What needs to be implemented:**
+1. A dedicated pulsifier (or higher-level pattern rewrite) for the relative-shift
+   op sequence: recognise Pad([T,2T−1]→[T,2T]) + Reshape([T,2T]→[2T,T]) +
+   Slice(rows 1..T+1) and pulsify the whole block.
+2. For the constant v-bias variant (`v @ R[i−j]^T`), the gather from a constant
+   table with a coordinate-expression index can be handled by a new `Gather`
+   pulsifier: fires when the indices wire has `uniform_tdim` and the data source
+   is a constant tensor.
+
+**Current workaround (ex07):** The v-bias is implemented as a direct arithmetic
+expression `slope * (floor(i/P) − floor(j/P))`, which propagates through TypedBinOp
+and is handled by the existing binary pulsifier.
+
+---
+
 ## 1. `classify_chunk_window` — 2-D window detection
 
 **Location:** `core/src/ops/logic.rs`
