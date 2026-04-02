@@ -148,15 +148,49 @@ tackling the real encoder's `[B, H, T, T]` attention.
 
 ---
 
+## ex07-block-left-1-chunkpos ✓
+
+Same sliding-window attention as ex04, but adds a **chunk-level** relative-position
+bias analogous to the Transformer-XL v-bias term:
+
+```
+v_bias[i,j] = slope × (floor(i/P) − floor(j/P))   slope = −0.5
+```
+
+The bias is zero within the same chunk and `−slope` when j is one chunk earlier.
+
+**Proves:**
+- `Div` inside a TDim coordinate expression propagates correctly through
+  `uniform_tdim`: the `chunk_diff` wire carries `Div(🎯0, 2) − Div(🎯1, 2)`,
+  which the binary pulsifier evaluates at steady-state coords to produce a
+  constant `[P, (L+1)*P]` tensor.
+- `PropagateRoi` reaches `chunk_diff` through the `Add(scores, pos_bias)` →
+  `Mul(chunk_diff, slope)` → `Sub(ci_row, ci_col)` TypedBinOp chain.
+- The binary pulsifier correctly handles integer floor-division in the
+  coordinate expression — the key step for representing chunk-level position
+  encoding without a lookup table.
+
+**What this does NOT cover:** The Transformer-XL Q-dependent content-to-position
+score `q[i] @ R[i−j]^T` (which depends on streaming Q).  That term requires
+either a dedicated EinSum+gather pulsifier or a rewrite into purely arithmetic
+form — a REVISIT item.
+
+**Story role:** Proves `Div` in TDim coordinate expressions works end-to-end.
+This is the key building block for any position encoding that is a function of
+chunk-index difference (vs token-index difference in ex05).
+
+---
+
 ## The arc
 
 ```
-ex01-block-l-eq-p        attention pulsifies (trivial, no state)                     ✓
-ex03-block-left-1        K/V lookback pulsifies (Delay ops, explicit window)          ✓
-ex02-block-l-eq-p-mask   Iff+softmax pulsifies (external mask, batch only)            ✓ batch
-ex04-block-left-1-mask   computed mask + uniform_tdim + FoldUniformMask + Delay       ✓
-ex05-block-left-1-posenc ex04 + ALiBi position bias pulsified via binary pulsifier    ✓
-ex06-batch-multihead     ex04 lifted to [B,H,T,T]; streaming axis=2, rank-4           ✓
+ex01-block-l-eq-p        attention pulsifies (trivial, no state)                         ✓
+ex03-block-left-1        K/V lookback pulsifies (Delay ops, explicit window)              ✓
+ex02-block-l-eq-p-mask   Iff+softmax pulsifies (external mask, batch only)                ✓ batch
+ex04-block-left-1-mask   computed mask + uniform_tdim + FoldUniformMask + Delay           ✓
+ex05-block-left-1-posenc ex04 + ALiBi position bias (linear i−j) via binary pulsifier     ✓
+ex06-batch-multihead     ex04 lifted to [B,H,T,T]; streaming axis=2, rank-4               ✓
+ex07-block-left-1-chunkpos  ex04 + chunk-level pos bias; Div() in TDim coord expression   ✓
 ```
 
 Every passing test proves one more piece of the machinery works.

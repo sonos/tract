@@ -1,0 +1,80 @@
+version 1.0;
+
+extension tract_registry tract_core;
+extension tract_registry tract_transformers;
+extension tract_symbol S;
+extension tract_assert S>=0;
+
+# Flat-token sliding-window attention with computed chunk mask +
+# chunk-level relative-position bias.
+#
+# Position bias: v_bias[i,j] = slope * (floor(i/P) - floor(j/P))
+#                            = slope * (chunk_idx[i] - chunk_idx[j])
+#
+# where P=2, slope=-0.5.  This is the Transformer-XL "v-bias" concept
+# (position-to-position additive term) with a simple linear chunk encoding.
+#
+# At pulse time the wire `chunk_diff` carries:
+#   uniform_tdim = Div(🎯0, 2) - Div(🎯1, 2)    (chunk-index difference)
+#   region_of_interest = chunk-window expression  (propagated by PropagateRoi)
+#
+# The binary pulsifier evaluates Div() in the TDim expression at steady-state
+# coordinates and materialises chunk_diff as a [P, (L+1)*P] Const tensor.
+# This exercises Div inside a TDim coordinate expression — new vs ex05 which
+# only used linear (i-j).
+#
+# Parameters: T=8, P=2, Dh=4, left_chunks=1, slope=-0.5
+#
+# Input:  qkv [S, 3*Dh] = [S, 12]   S = total token count
+# Output: [S, Dh] = [S, 4]
+# Streaming: pulse_size = P = 2  (one chunk per pulse, --pulse 2)
+
+graph network(qkv) -> (output)
+{
+    qkv = tract_core_external(shape = [S, 12], datum_type = 'f32');
+
+    q = slice(qkv, axes = [1], begin = [0], end = [4]);    # [S, 4]
+    k = slice(qkv, axes = [1], begin = [4], end = [8]);
+    v = slice(qkv, axes = [1], begin = [8], end = [12]);
+
+    # Full T x T attention scores  [S, S]
+    scores = tract_core_einsum([q, k], expr = "id,jd->ij", acc = "f32");
+
+    # ── Shared: token positions ────────────────────────────────────────────────
+    qkv_shape     = tract_core_shape_of(qkv);
+    T_slice       = slice(qkv_shape, axes = [0], begin = [0], end = [1], stride = [1]);
+    T             = squeeze(T_slice, axes = [0]);
+    positions     = tract_core_range(0, T, step = 1);          # [S] i64
+    positions_f32 = tract_core_cast(positions, to = 'f32');    # [S] f32
+
+    chunk_size_f32 = tract_core_cast(2, to = 'f32');
+
+    # ── Chunk-level position bias: slope*(floor(i/P) - floor(j/P)) ────────────
+    chunkIdx_f32       = div(positions_f32, chunk_size_f32);   # [S] f32
+    chunkIdx_f32_floor = floor(chunkIdx_f32);                  # [S] f32: chunk index as f32
+
+    ci_row_f32 = unsqueeze(chunkIdx_f32_floor, axes = [1]);    # [S, 1]
+    ci_col_f32 = unsqueeze(chunkIdx_f32_floor, axes = [0]);    # [1, S]
+    chunk_diff = sub(ci_row_f32, ci_col_f32);                  # [S, S]: floor(i/P)-floor(j/P)
+    pos_bias   = chunk_diff * -0.5;                            # [S, S]
+
+    biased_scores = add(scores, pos_bias);                     # [S, S]
+
+    # ── Chunk mask (same as ex04) ──────────────────────────────────────────────
+    chunkIdx           = tract_core_cast(chunkIdx_f32_floor, to = 'i64');  # [S] i64
+    left_chunks_i64    = tract_core_cast(1, to = 'i64');
+    zero_i64           = tract_core_cast(0, to = 'i64');
+
+    ci_row     = unsqueeze(chunkIdx, axes = [1]);              # [S, 1] i64
+    ci_col     = unsqueeze(chunkIdx, axes = [0]);              # [1, S] i64
+    diffChunks = sub(ci_row, ci_col);                          # [S, S] i64
+
+    le_mask      = le(diffChunks, left_chunks_i64);
+    ge_mask      = ge(diffChunks, zero_i64);
+    chunked_mask = and(le_mask, ge_mask);                      # [S, S] bool
+
+    masked_scores = select(chunked_mask, biased_scores, biased_scores * 0.0 + -inf);
+
+    attn   = softmax(masked_scores, axes = [1]);
+    output = tract_core_einsum([attn, v], expr = "ij,jd->id", acc = "f32");
+}
