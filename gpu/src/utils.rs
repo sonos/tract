@@ -207,6 +207,64 @@ pub type DispatchCopyNdFn = fn(
     output_strides: &[isize],
 ) -> TractResult<()>;
 
+/// Copy a slice along `axis` from `src[src_range]` into `dst[dst_range]`.
+/// Both ranges are along the given axis; other dimensions are copied fully.
+pub fn dispatch_assign_slice(
+    dispatch: DispatchCopyNdFn,
+    dst: &crate::tensor::DeviceTensor,
+    dst_range: std::ops::Range<usize>,
+    src: &crate::tensor::DeviceTensor,
+    src_range: std::ops::Range<usize>,
+    axis: usize,
+) -> TractResult<()> {
+    let mut zone_shape: TVec<usize> = src.shape().into();
+    zone_shape[axis] = src_range.len();
+    if zone_shape.iter().product::<usize>() == 0 {
+        return Ok(());
+    }
+    let src_offset = src_range.start * src.strides()[axis] as usize * src.datum_type().size_of();
+    let dst_offset = dst_range.start * dst.strides()[axis] as usize * dst.datum_type().size_of();
+    dispatch(src, src_offset, src.strides(), dst, dst_offset, &zone_shape, dst.strides())
+}
+
+/// Copy from `src` into `dst` with given origins and strides.
+/// Origins are element indices per dimension, converted to byte offsets internally.
+pub fn dispatch_copy_with_origins(
+    dispatch: DispatchCopyNdFn,
+    zone_shape: &[usize],
+    dst: &crate::tensor::DeviceTensor,
+    dst_origin: &[usize],
+    dst_strides: &[isize],
+    src: &crate::tensor::DeviceTensor,
+    src_origin: &[usize],
+    src_strides: &[isize],
+) -> TractResult<()> {
+    if zone_shape.iter().product::<usize>() == 0 {
+        return Ok(());
+    }
+    let dt_size = src.datum_type().size_of();
+    let src_offset: usize =
+        src_origin.iter().zip(src_strides).map(|(o, s)| o * *s as usize).sum::<usize>() * dt_size;
+    let dst_offset: usize =
+        dst_origin.iter().zip(dst_strides).map(|(o, s)| o * *s as usize).sum::<usize>() * dt_size;
+    dispatch(src, src_offset, src_strides, dst, dst_offset, zone_shape, dst_strides)
+}
+
+/// Flat memcpy of `len` bytes from `src` at `src_offset` to `dst` at `dst_offset`.
+pub fn dispatch_flat_copy(
+    dispatch: DispatchCopyNdFn,
+    src: &crate::tensor::DeviceTensor,
+    src_byte_offset: usize,
+    dst: &crate::tensor::DeviceTensor,
+    dst_byte_offset: usize,
+    byte_len: usize,
+) -> TractResult<()> {
+    if byte_len == 0 {
+        return Ok(());
+    }
+    dispatch(src, src_byte_offset, &[1], dst, dst_byte_offset, &[byte_len], &[1])
+}
+
 pub fn check_strides_validity(shape: TVec<usize>, strides: TVec<isize>) -> TractResult<()> {
     let mut zipped_shape_strides: Vec<_> = shape.into_iter().zip(strides).collect();
     zipped_shape_strides.sort_by_key(|&(_, stride)| stride);
