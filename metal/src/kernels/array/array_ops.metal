@@ -241,7 +241,14 @@ typedef decltype(rotate_half_nd2<float>) rotate_half_nd2_t;
         "array_ops::rotate_half_nd2_" #tname)]] [[kernel]] rotate_half_nd2_t   \
         rotate_half_nd2<type>;
 
-#define INSTANTIATE_CAST_AND_COPY(tname, type)                                 \
+// Copy kernels: only u8/u16/u32/u64 (copy is type-size based)
+INSTANTIATE_COPY(u8, uint8_t)
+INSTANTIATE_COPY(u16, uint16_t)
+INSTANTIATE_COPY(u32, uint32_t)
+INSTANTIATE_COPY(u64, uint64_t)
+
+// Cast kernels: all types
+#define INSTANTIATE_CAST_FROM(tname, type)                                     \
     INSTANTIATE_CAST_OP(tname##_bool, type, bool)                              \
     INSTANTIATE_CAST_OP(tname##_f32, type, float)                              \
     INSTANTIATE_CAST_OP(tname##_f16, type, half)                               \
@@ -252,21 +259,20 @@ typedef decltype(rotate_half_nd2<float>) rotate_half_nd2_t;
     INSTANTIATE_CAST_OP(tname##_i8, type, int8_t)                              \
     INSTANTIATE_CAST_OP(tname##_i16, type, int16_t)                            \
     INSTANTIATE_CAST_OP(tname##_i32, type, int32_t)                            \
-    INSTANTIATE_CAST_OP(tname##_i64, type, int64_t)                            \
-    INSTANTIATE_COPY(tname, type)
+    INSTANTIATE_CAST_OP(tname##_i64, type, int64_t)
 
-#define INSTANTIATE_ALL(tname, type)                                           \
-    INSTANTIATE_CAST_AND_COPY(tname, type)                                     \
-    INSTANTIATE_ROTATE_HALF_OP(tname, type)
+INSTANTIATE_CAST_FROM(bool, bool)
+INSTANTIATE_CAST_FROM(f32, float)
+INSTANTIATE_CAST_FROM(f16, half)
+INSTANTIATE_CAST_FROM(i8, int8_t)
+INSTANTIATE_CAST_FROM(i16, int16_t)
+INSTANTIATE_CAST_FROM(i32, int32_t)
+INSTANTIATE_CAST_FROM(i64, int64_t)
+INSTANTIATE_CAST_FROM(u8, uint8_t)
+INSTANTIATE_CAST_FROM(u16, uint16_t)
+INSTANTIATE_CAST_FROM(u32, uint32_t)
+INSTANTIATE_CAST_FROM(u64, uint64_t)
 
-INSTANTIATE_CAST_AND_COPY(bool, bool)
-INSTANTIATE_ALL(f32, float)
-INSTANTIATE_ALL(f16, half)
-INSTANTIATE_ALL(i8, int8_t)
-INSTANTIATE_ALL(i16, int16_t)
-INSTANTIATE_ALL(i32, int32_t)
-INSTANTIATE_ALL(i64, int64_t)
-INSTANTIATE_CAST_AND_COPY(u8, uint8_t)
-INSTANTIATE_CAST_AND_COPY(u16, uint16_t)
-INSTANTIATE_CAST_AND_COPY(u32, uint32_t)
-INSTANTIATE_CAST_AND_COPY(u64, uint64_t)
+// Rotate half: only float types
+INSTANTIATE_ROTATE_HALF_OP(f32, float)
+INSTANTIATE_ROTATE_HALF_OP(f16, half)

@@ -1,32 +1,24 @@
-mod broadcast;
 mod cast;
-mod concat;
 mod copy;
-mod permute_axes;
+mod dispatch;
 mod rotate_half;
 
-pub use broadcast::MultiBroadcast;
 pub use cast::Cast;
-pub use concat::Concat;
 pub use copy::Memcpy;
-pub use permute_axes::PermuteAxes;
+pub use dispatch::metal_copy_nd_dispatch;
 pub use rotate_half::RotateHalf;
 
 pub fn all_functions() -> Vec<String> {
     use std::collections::HashSet;
+    use tract_gpu::utils::BroadcastKind;
     let mut functions = HashSet::<String>::new();
 
-    functions.extend(
-        tract_gpu::tensor::DeviceTensor::SUPPORTED_DT
-            .into_iter()
-            .flat_map(|dt| crate::kernels::BroadcastKind::ALL.into_iter().map(move |b| (dt, b)))
-            .flat_map(|(dt, b)| MultiBroadcast.kernel_name(dt, b).into_iter()),
-    );
+    functions.extend(BroadcastKind::all_copy_kernel_names("array_ops::"));
 
     functions.extend(
-        tract_gpu::tensor::DeviceTensor::SUPPORTED_DT
+        ["u8", "u16", "u32", "u64"]
             .into_iter()
-            .flat_map(|dt| Memcpy.kernel_name(dt).into_iter()),
+            .map(|tname| format!("array_ops::copy_unicast_{tname}")),
     );
 
     functions.extend(

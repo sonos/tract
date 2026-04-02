@@ -1,29 +1,19 @@
-mod broadcast;
 mod cast;
-mod concat;
 mod copy;
-mod pad;
-mod permute_axes;
+mod dispatch;
 mod rotate_half;
 
-pub use broadcast::MultiBroadcast;
 pub use cast::Cast;
-pub use concat::Concat;
 pub use copy::Memcpy;
-pub use pad::Pad;
-pub use permute_axes::PermuteAxes;
+pub use dispatch::cuda_copy_nd_dispatch;
 pub use rotate_half::RotateHalf;
 
 pub fn all_functions() -> Vec<String> {
     use std::collections::HashSet;
+    use tract_gpu::utils::BroadcastKind;
     let mut functions = HashSet::<String>::new();
 
-    functions.extend(
-        tract_gpu::tensor::DeviceTensor::SUPPORTED_DT
-            .into_iter()
-            .flat_map(|dt| crate::kernels::BroadcastKind::ALL.into_iter().map(move |b| (dt, b)))
-            .flat_map(|(dt, b)| MultiBroadcast.kernel_name(dt, b).into_iter()),
-    );
+    functions.extend(BroadcastKind::all_copy_kernel_names(""));
 
     functions.extend(
         tract_gpu::tensor::DeviceTensor::SUPPORTED_DT
@@ -34,8 +24,5 @@ pub fn all_functions() -> Vec<String> {
             .flat_map(|(dt1, dt2)| Cast.kernel_name(dt1, dt2).into_iter()),
     );
 
-    functions.extend(
-        tract_gpu::tensor::DeviceTensor::SUPPORTED_DT.into_iter().flat_map(Pad::kernel_name),
-    );
     functions.into_iter().collect()
 }

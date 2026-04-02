@@ -129,9 +129,7 @@ mod tests {
         run_test_case::<f32>(&[10, 8, 8])?;
         run_test_case::<f32>(&[10, 512, 1024])?;
         run_test_case::<f32>(&[10, 512, 1024])?;
-        run_test_case::<i8>(&[10, 1, 2])?;
-        run_test_case::<i16>(&[10, 256, 4])?;
-        run_test_case::<i32>(&[10, 512, 1024])?;
+        run_test_case::<f16>(&[10, 256, 4])?;
         Ok(())
     }
 }

@@ -1,42 +1,8 @@
 use cudarc::driver::LaunchConfig;
-use num_traits::{AsPrimitive, Zero};
-use tract_core::internal::*;
-use tract_core::tract_linalg::block_quant::{BlockQuantFact, Q4_0};
-use tract_gpu::tensor::DeviceTensor;
 
 use crate::kernels::MAX_THREADS;
-use crate::tensor::CudaTensor;
 
-pub fn compute_broadcast_strides<T: Zero + Copy + 'static>(
-    shape: &[usize],
-    strides: &[isize],
-) -> TractResult<TVec<T>>
-where
-    isize: AsPrimitive<T>,
-{
-    ensure!(
-        shape.len() == strides.len(),
-        "Mistmach between shape and strides length while computing broadcast strides"
-    );
-    Ok(strides
-        .iter()
-        .zip(shape)
-        .map(|(s, dim)| if *dim == 1 { T::zero() } else { s.as_() })
-        .collect::<TVec<T>>())
-}
-
-pub fn reshape_to_rank_2(shape: &[usize], axis: usize) -> TVec<usize> {
-    let dim_axis_0 = shape[0..axis].iter().product::<usize>();
-    let dim_axis_2 = shape[axis..].iter().product::<usize>();
-    tvec![dim_axis_0, dim_axis_2]
-}
-
-pub fn reshape_to_rank_3(shape: &[usize], axis: usize) -> TVec<usize> {
-    let dim_axis_0 = shape[0..axis].iter().product::<usize>();
-    let dim_axis_1 = shape[axis];
-    let dim_axis_2 = shape[axis + 1..].iter().product::<usize>();
-    tvec![dim_axis_0, dim_axis_1, dim_axis_2]
-}
+pub use tract_gpu::utils::{compute_broadcast_strides, reshape_to_rank_2, reshape_to_rank_3};
 
 pub fn cuda_launch_cfg_for_cpy(shape: &[usize]) -> LaunchConfig {
     // Grid layout: z=dim0, y=dim1, x=product(middle dims), threads=innermost

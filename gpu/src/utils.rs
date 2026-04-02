@@ -79,6 +79,134 @@ pub fn get_quant_fact(t: &DeviceTensor, format: &dyn BlockQuant) -> Option<Block
     }
 }
 
+// --- Shared array/copy utilities ---
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum BroadcastKind {
+    Unicast,
+    ByScalarLeft,
+    ByScalarRight,
+    Nd1,
+    Nd2,
+    Nd3,
+    Nd4,
+    Nd5,
+    Nd6,
+}
+
+impl BroadcastKind {
+    pub const ALL: [BroadcastKind; 8] = [
+        Self::Unicast,
+        Self::ByScalarLeft,
+        Self::ByScalarRight,
+        Self::Nd1,
+        Self::Nd2,
+        Self::Nd3,
+        Self::Nd4,
+        Self::Nd5,
+    ];
+
+    pub fn from_rank(rank: usize) -> TractResult<Self> {
+        match rank {
+            1 => Ok(Self::Nd1),
+            2 => Ok(Self::Nd2),
+            3 => Ok(Self::Nd3),
+            4 => Ok(Self::Nd4),
+            5 => Ok(Self::Nd5),
+            6 => Ok(Self::Nd6),
+            _ => bail!("Unsupported rank {rank} for broadcasting"),
+        }
+    }
+
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::Unicast => "unicast",
+            Self::ByScalarLeft => "by_scalar_lhs",
+            Self::ByScalarRight => "by_scalar_rhs",
+            Self::Nd1 => "nd1",
+            Self::Nd2 => "nd2",
+            Self::Nd3 => "nd3",
+            Self::Nd4 => "nd4",
+            Self::Nd5 => "nd5",
+            Self::Nd6 => "nd6",
+        }
+    }
+
+    /// Map datum type to the copy kernel type name based on element size.
+    /// Copy kernels only care about element size, not the actual type.
+    pub fn copy_tname(dt: DatumType) -> &'static str {
+        match dt.size_of() {
+            1 => "u8",
+            2 => "u16",
+            4 => "u32",
+            8 => "u64",
+            _ => panic!("Unsupported element size {} for copy kernel", dt.size_of()),
+        }
+    }
+
+    pub fn copy_kernel_name(&self, dt: DatumType, prefix: &str) -> TractResult<String> {
+        Ok(format!("{prefix}copy_{}_{}", self.name(), Self::copy_tname(dt)))
+    }
+
+    pub fn all_copy_kernel_names(prefix: &str) -> Vec<String> {
+        let copy_types = ["u8", "u16", "u32", "u64"];
+        Self::ALL
+            .into_iter()
+            .flat_map(|bk| {
+                copy_types
+                    .into_iter()
+                    .map(move |tname| format!("{prefix}copy_{}_{tname}", bk.name()))
+            })
+            .collect()
+    }
+}
+
+pub fn compute_broadcast_strides<T: num_traits::Zero + Copy + 'static>(
+    shape: &[usize],
+    strides: &[isize],
+) -> TractResult<TVec<T>>
+where
+    isize: num_traits::AsPrimitive<T>,
+{
+    use num_traits::AsPrimitive;
+    ensure!(
+        shape.len() == strides.len(),
+        "Mismatch between shape and strides length while computing broadcast strides"
+    );
+    Ok(strides
+        .iter()
+        .zip(shape)
+        .map(|(s, dim)| if *dim == 1 { T::zero() } else { s.as_() })
+        .collect::<TVec<T>>())
+}
+
+pub fn reshape_to_rank_2(shape: &[usize], axis: usize) -> TVec<usize> {
+    let dim_axis_0 = shape[0..axis].iter().product::<usize>();
+    let dim_axis_2 = shape[axis..].iter().product::<usize>();
+    tvec![dim_axis_0, dim_axis_2]
+}
+
+pub fn reshape_to_rank_3(shape: &[usize], axis: usize) -> TVec<usize> {
+    let dim_axis_0 = shape[0..axis].iter().product::<usize>();
+    let dim_axis_1 = shape[axis];
+    let dim_axis_2 = shape[axis + 1..].iter().product::<usize>();
+    tvec![dim_axis_0, dim_axis_1, dim_axis_2]
+}
+
+/// Dispatch function for strided copy_nd kernels. All array ops (broadcast,
+/// slice, concat, permute_axes) ultimately call a copy_nd kernel with this
+/// signature. The backend derives the kernel name from output rank + dtype.
+/// Both offsets are in bytes.
+pub type DispatchCopyNdFn = fn(
+    input: &crate::tensor::DeviceTensor,
+    input_offset: usize,
+    input_strides: &[isize],
+    output: &crate::tensor::DeviceTensor,
+    output_offset: usize,
+    output_shape: &[usize],
+    output_strides: &[isize],
+) -> TractResult<()>;
+
 pub fn check_strides_validity(shape: TVec<usize>, strides: TVec<isize>) -> TractResult<()> {
     let mut zipped_shape_strides: Vec<_> = shape.into_iter().zip(strides).collect();
     zipped_shape_strides.sort_by_key(|&(_, stride)| stride);

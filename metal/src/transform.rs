@@ -224,18 +224,35 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
                 } else if let Some(op) = node.op_as::<TypedBinOp>() {
                     Box::new(metal_bin_op(op.0.clone()))
                 } else if let Some(op) = node.op_as::<MultiBroadcastTo>() {
-                    Box::new(ops::MetalMultiBroadcastTo::new(op.shape.clone()))
+                    Box::new(tract_gpu::ops::broadcast::GpuMultiBroadcastTo::new(
+                        op.shape.clone(),
+                        "Metal",
+                        crate::kernels::array::metal_copy_nd_dispatch,
+                    ))
                 } else if let Some(op) = node.op_as::<Const>() {
                     Box::new(convert_const(op)?)
                 } else if let Some(op) = node.op_as::<Cast>() {
                     Box::new(ops::MetalCast::new(op.to).unwrap())
                 } else if let Some(op) = node.op_as::<AxisOp>() {
                     let in_fact = source.node_input_facts(node.id)?[0];
-                    Box::new(ops::MetalAxisOp::from_tract_core_with_fact(op.clone(), in_fact))
+                    Box::new(tract_gpu::ops::change_axes::GpuAxisOp::from_tract_core_with_fact(
+                        op.clone(),
+                        in_fact,
+                        "Metal",
+                        crate::kernels::array::metal_copy_nd_dispatch,
+                    ))
                 } else if let Some(op) = node.op_as::<Slice>() {
-                    Box::new(ops::MetalSlice::from_tract_core(op.clone()))
+                    Box::new(tract_gpu::ops::slice::GpuSlice::new(
+                        op.clone(),
+                        "Metal",
+                        crate::kernels::array::metal_copy_nd_dispatch,
+                    ))
                 } else if let Some(op) = node.op_as::<TypedConcat>() {
-                    Box::new(ops::MetalConcat::from_tract_core(op))
+                    Box::new(tract_gpu::ops::concat::GpuConcat::new(
+                        op.axis,
+                        "Metal",
+                        crate::kernels::array::metal_copy_nd_dispatch,
+                    ))
                 } else if let Some(op) = node.op_as::<Reduce>() {
                     Box::new(GpuReduce::from_tract_core(op, "Metal", metal_reduce_launch).unwrap())
                 } else if let Some(op) = node.op_as::<CoreSoftmax>() {
@@ -251,7 +268,11 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
                 } else if let Some(_op) = node.op_as::<ApplyRope>() {
                     Box::new(ops::MetalApplyRope)
                 } else if let Some(op) = node.op_as::<DynKeyValueCache>() {
-                    Box::new(ops::MetalDynKVCache::from_tract_transformers(op))
+                    Box::new(tract_gpu::ops::dyn_kv_cache::GpuDynKVCache::from_tract_transformers(
+                        op,
+                        "Metal",
+                        crate::kernels::array::metal_copy_nd_dispatch,
+                    ))
                 } else {
                     bail!("Failed to translate a supported Metal Op")
                 };
@@ -390,10 +411,11 @@ fn convert_matmul_to_metal(
                 );
 
                 let rank = input_facts[a_pos].rank();
-                let perm_a_op = ops::change_axes::MetalAxisOp::from_tract_core(AxisOp::Move(
-                    rank - 2,
-                    rank - 1,
-                ));
+                let perm_a_op = tract_gpu::ops::change_axes::GpuAxisOp::new(
+                    AxisOp::Move(rank - 2, rank - 1),
+                    "Metal",
+                    crate::kernels::array::metal_copy_nd_dispatch,
+                );
                 let perm_a_name = node.name.clone() + ".perm_a";
                 inputs[a_pos] = target.wire_node(perm_a_name, perm_a_op, &[inputs[a_pos]])?[0];
             }
@@ -411,10 +433,11 @@ fn convert_matmul_to_metal(
                 );
 
                 let rank = input_facts[b_pos].rank();
-                let perm_b_op = ops::change_axes::MetalAxisOp::from_tract_core(AxisOp::Move(
-                    rank - 2,
-                    rank - 1,
-                ));
+                let perm_b_op = tract_gpu::ops::change_axes::GpuAxisOp::new(
+                    AxisOp::Move(rank - 2, rank - 1),
+                    "Metal",
+                    crate::kernels::array::metal_copy_nd_dispatch,
+                );
                 let perm_b_name = node.name.clone() + ".perm_b";
                 inputs[b_pos] = target.wire_node(perm_b_name, perm_b_op, &[inputs[b_pos]])?[0];
             }
@@ -429,10 +452,11 @@ fn convert_matmul_to_metal(
                     .map(|fact| fact.clarify_dt_shape().unwrap().1.len())
                     .unwrap();
 
-                let perm_out_op = ops::change_axes::MetalAxisOp::from_tract_core(AxisOp::Move(
-                    rank - 2,
-                    rank - 1,
-                ));
+                let perm_out_op = tract_gpu::ops::change_axes::GpuAxisOp::new(
+                    AxisOp::Move(rank - 2, rank - 1),
+                    "Metal",
+                    crate::kernels::array::metal_copy_nd_dispatch,
+                );
                 matmul_output = target.wire_node(
                     node.name.clone() + ".perm_out",
                     perm_out_op,

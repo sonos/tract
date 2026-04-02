@@ -15,6 +15,14 @@ impl fmt::Display for Memcpy {
     }
 }
 
+pub fn metal_memcpy_dispatch(
+    input: &DeviceTensor,
+    input_offset: usize,
+    output: &DeviceTensor,
+) -> TractResult<()> {
+    crate::with_metal_stream(|stream| Memcpy.dispatch_eval(stream, input, input_offset, output))
+}
+
 impl Memcpy {
     pub fn is_supported_dt(dt: DatumType) -> bool {
         matches!(
@@ -35,7 +43,7 @@ impl Memcpy {
 
     pub fn kernel_name(&self, dt: DatumType) -> TractResult<String> {
         ensure!(Self::is_supported_dt(dt), "Unsupported dt {:?} for metal copyop", dt);
-        let tname = DeviceTensor::tname(dt)?;
+        let tname = tract_gpu::utils::BroadcastKind::copy_tname(dt);
         Ok(format!("array_ops::copy_unicast_{tname}"))
     }
 
