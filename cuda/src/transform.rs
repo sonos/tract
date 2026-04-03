@@ -140,9 +140,10 @@ fn can_translate_to_cuda_op(source: &TypedModel, node: &TypedNode) -> TractResul
                 kernels::nn::Softmax::is_supported_dt(input_dts[0])
                     && ops::CudaSoftmax::from_tract_core(op).is_ok()
             })
-            || node
-                .op_as::<ScaledMaskedSoftmax>()
-                .is_some_and(|_| kernels::nn::ScaledMaskedSoftmax::is_supported_dt(input_dts[0]))
+            || node.op_as::<ScaledMaskedSoftmax>().is_some_and(|op| {
+                !op.post_softmax_mask
+                    && kernels::nn::ScaledMaskedSoftmax::is_supported_dt(input_dts[0])
+            })
             || node
                 .op_as::<RmsNorm>()
                 .is_some_and(|_| kernels::nn::RmsNorm::is_supported_dt(input_dts[0]))
