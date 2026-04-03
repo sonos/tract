@@ -247,6 +247,7 @@ fn dispatch_cublas_gemm<F: Datum + Float>(
 where
     CudaBlas: Gemm<F>,
 {
+    let events = stream.record_profile_events()?;
     let dispatch_params = CublasDispatchParams::compute_dispatch_params(&params)?;
     for d in dispatch_params {
         let act_len = params.act_strides[0] as usize * d.act_batch * params.dts[0].size_of();
@@ -290,6 +291,9 @@ where
         };
     }
 
+    if let Some((start, end)) = events {
+        stream.finish_profile_entry(start, end)?;
+    }
     Ok(())
 }
 
