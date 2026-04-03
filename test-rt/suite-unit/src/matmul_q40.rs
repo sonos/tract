@@ -7,7 +7,9 @@ use tract_core::internal::*;
 use tract_core::ndarray::Ix2;
 use tract_core::ops::array::{Pad, PadMode};
 use tract_core::ops::konst::Const;
-use tract_core::tract_linalg::block_quant::{BlockQuant, BlockQuantFact, BlockQuantStorage, Q4_0};
+use tract_core::tract_linalg::block_quant::{
+    BlockQuant, BlockQuantFact, BlockQuantStorage, Q4_0, Q8_1,
+};
 use tract_ndarray::{ArrayD, Axis};
 
 use tract_core::ops::einsum::EinSum;
@@ -116,14 +118,26 @@ impl MatmulQ40Problem {
         Ok(model)
     }
 
-    fn reference(&self) -> TractResult<Tensor> {
+    fn reference(&self, simulate_q81_activation_loss: bool) -> TractResult<Tensor> {
         let padded_a = Self::pad_tensor(&self.a, 1)?;
         let quant_dequant_a = Q4_0.simulate_precision_loss(padded_a, 1)?;
+
+        // The GGML CUDA kernel internally quantizes activations to Q8_1.
+        // When testing against such a runtime, the reference must account
+        // for that additional precision loss.
+        let quant_dequant_b = if simulate_q81_activation_loss {
+            let padded_b = Self::pad_tensor(&self.b, 1)?;
+            Q8_1.simulate_precision_loss(padded_b, 1)?
+        } else {
+            self.b.clone()
+        };
 
         let mut a_view = quant_dequant_a
             .to_plain_array_view::<f32>()?
             .slice_axis_move(Axis(1), (0..self.a.shape()[1]).into());
-        let mut b_view = self.b.to_plain_array_view::<f32>()?;
+        let mut b_view = quant_dequant_b
+            .to_plain_array_view::<f32>()?
+            .slice_axis_move(Axis(1), (0..self.b.shape()[1]).into());
 
         if self.weights_in_b {
             (a_view, b_view) = (b_view, a_view);
@@ -140,7 +154,8 @@ impl Test for MatmulQ40Problem {
         runtime: &dyn Runtime,
         _approx: Approximation,
     ) -> TestResult {
-        let reference = self.reference()?;
+        let uses_q81_activations = runtime.name().contains("cuda");
+        let reference = self.reference(uses_q81_activations)?;
         //dbg!(&reference);
         let mut model = self.tract()?;
 
@@ -201,6 +216,44 @@ pub fn suite() -> TractResult<TestSuite> {
             weights_in_b: true,
         },
     );
+
+    // Reduced from proptest — k=87 (not a multiple of 32) triggers Q8_1
+    // activation quantization mismatch between CUDA GGML kernel and CPU reference.
+    suite.add("proptest_reduced_k87", {
+        #[rustfmt::skip]
+        let a_row2: &[f32] = &[
+            -0.69, -0.19, 0.0, 0.07, 0.0, 0.19, 0.0, -0.19, -0.94, 0.0,
+            0.82, 0.32, 0.0, 0.32, -0.07, -0.07, 0.69, -0.07, -0.98, 0.19,
+            0.56, -0.56, 0.0, -0.68, 0.68, -0.19, -0.07, 0.19, -0.07, -0.19,
+            0.8, -0.56, 0.57, -0.07, 0.19, 0.82, -0.32, -0.32, 0.0, 0.07,
+            0.0, 0.0, -0.82, 0.07, 0.0, -0.44, 0.44, 0.32, 0.07, 0.57,
+            0.57, 0.0, 0.0, 0.57, 0.44, -0.07, 0.0, 0.0, 0.82, 0.69,
+            0.32, -0.82, 0.44, 0.99, 0.18, 0.42, 0.66, 0.3, 0.0, 0.66,
+            0.78, 0.0, -0.43, 0.18, 0.3, 0.0, 0.0, 0.78, -0.43, 0.66,
+            0.0, -0.78, 0.0, -0.95, 0.18, 0.66, 0.3,
+        ];
+        let mut a_data = vec![0f32; 3 * 87];
+        a_data[2 * 87..].copy_from_slice(a_row2);
+        let a = Tensor::from_shape(&[3, 87], &a_data).unwrap();
+
+        #[rustfmt::skip]
+        let b_row1: &[f32] = &[
+            -0.34, 0.54, -0.3, 0.32, -0.3, -0.2, 0.0, -0.08, -1.0, -0.04,
+            0.91, 0.43, 0.0, 0.65, -0.34, -0.46, 0.76, 0.0, 0.0, 0.0,
+            -0.18, 0.65, 0.1, 0.58, -0.98, 0.54, 0.06, 0.0, 0.0, 0.17,
+            -0.71, 0.0, 0.0, 0.0, 0.0, 0.97, 0.0, 0.21, 0.07, -0.01,
+            -0.54, -0.12, 0.0, 0.0, 0.2, 0.21, -0.6, -0.09, -0.15, -0.41,
+            0.0, 0.0, 0.0, -0.25, 0.0, 0.0, 0.0, 0.0, -0.54, -0.8,
+            0.0, -0.28, 0.0, -0.71, 0.98, -0.21, 0.0, 0.0, 0.0, -0.61,
+            -0.32, 0.19, 0.16, 0.16, 0.0, 0.0, 0.0, 0.06, 0.36, 0.09,
+            0.06, -0.4, -0.04, -0.51, 0.09, 0.73, 0.02,
+        ];
+        let mut b_data = vec![0f32; 7 * 87];
+        b_data[87..2 * 87].copy_from_slice(b_row1);
+        let b = Tensor::from_shape(&[7, 87], &b_data).unwrap();
+
+        MatmulQ40Problem { a, b, weights_in_b: false }
+    });
 
     Ok(suite)
 }
