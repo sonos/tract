@@ -10,6 +10,8 @@ use crate::{kernels, ops};
 use tract_core::dyn_clone::clone_box;
 use tract_core::internal::translator::Translate;
 use tract_core::internal::*;
+use tract_core::ops::cnn::Conv;
+use tract_core::ops::cnn::conv::rewrite_kernel_conv_in_oihw;
 use tract_core::ops::einsum::prefix_matmul::{PrefixMatMul, rewrite_einsum_to_prefix_matmul};
 use tract_core::ops::konst::Const;
 use tract_core::tract_linalg::block_quant::Q4_0;
@@ -118,6 +120,7 @@ impl MetalTransform {
         Rewriter::<MetalTransform>::default()
             .with_rule_for("untranspose-matmul-output", rewrite_rules::untranspose_matmul_output)
             .with_rule_for("add-broadcast-pre-matmul", rewrite_rules::add_broadcast_pre_matmul)
+            .with_rule_for("rewrite_kernel_conv_in_oihw", rewrite_kernel_conv_in_oihw)
             .rewrite(self, model)?;
 
         Rewriter::default()
@@ -205,6 +208,17 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
                     op,
                     self.gemm_impl,
                 )?;
+                return sync_model_outputs_if_required(source, node, target, outlet_ids);
+            }
+        }
+        if let Some(conv) = node.op_as::<Conv>() {
+            if input_facts.iter().all(|f| DeviceTensor::is_supported_dt(f.datum_type))
+                && matches!(input_facts[0].datum_type, DatumType::F16 | DatumType::F32)
+            {
+                let device_inputs =
+                    sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
+                let outlet_ids =
+                    ops::conv::wire_metal_conv(source, node, target, &device_inputs, conv)?;
                 return sync_model_outputs_if_required(source, node, target, outlet_ids);
             }
         }
