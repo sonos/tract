@@ -107,6 +107,17 @@ fn pad(vals: &[impl AsPrimitive<i32>], neutral: i32) -> [i32; 5] {
     it
 }
 
+pub fn cuda_scaled_masked_softmax_dispatch(
+    input: &DeviceTensor,
+    scale: &Tensor,
+    mask: &DeviceTensor,
+    output: &DeviceTensor,
+) -> TractResult<()> {
+    crate::with_cuda_stream(|stream| {
+        ScaledMaskedSoftmax.dispatch_eval(stream, input, scale, mask, output)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use tract_gpu::tensor::IntoDevice;

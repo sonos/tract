@@ -1,3 +1,4 @@
+pub mod apply_rope;
 pub mod binary;
 pub mod broadcast;
 pub mod cast;
@@ -12,5 +13,6 @@ pub mod pulse;
 pub mod reduce;
 pub mod rms_norm;
 pub mod rotate_half;
+pub mod scaled_masked_softmax;
 pub mod slice;
 pub mod softmax;

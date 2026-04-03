@@ -6,7 +6,7 @@ mod rms_norm;
 mod scaled_masked_softmax;
 mod softmax;
 
-pub use apply_rope::ApplyRope;
+pub use apply_rope::{ApplyRope, cuda_apply_rope_dispatch};
 pub use gelu_approximate::GeluApproximate;
 pub use gelu_approximate::cuda_gelu_approximate_dispatch;
 pub use leaky_relu::LeakyRelu;
@@ -14,7 +14,7 @@ pub use leaky_relu::cuda_leaky_relu_dispatch;
 pub use reduce::{Reducer, cuda_reduce_launch};
 pub use rms_norm::RmsNorm;
 pub use rms_norm::cuda_rms_norm_dispatch;
-pub use scaled_masked_softmax::ScaledMaskedSoftmax;
+pub use scaled_masked_softmax::{ScaledMaskedSoftmax, cuda_scaled_masked_softmax_dispatch};
 pub use softmax::Softmax;
 pub use softmax::cuda_softmax_dispatch;
 
