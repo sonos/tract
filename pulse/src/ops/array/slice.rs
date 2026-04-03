@@ -16,8 +16,9 @@ fn pulsify(
     let fact = target.outlet_fact(input)?.clone();
 
     // Non-streaming input: the streaming symbol appears only in start/end
-    // (e.g. a static PE table sliced to the current frame count).
-    // Substitute S→pulse to get a concrete slice, wired as a static op.
+    // (e.g. a static PE table sliced to the current frame count, or to a
+    // symmetric RPE window centered at MAX with start=MAX-T', end=MAX+T'+1).
+    // Substitute S→pulse directly to get the concrete per-pulse bounds.
     if fact.stream.is_none() {
         let start = op.start.substitute(symbol, pulse)?;
         let end = op.end.substitute(symbol, pulse)?;
@@ -37,6 +38,41 @@ fn pulsify(
         let op = PulsedAxisSlice { axis: op.axis, skip, take };
         Ok(Some(target.wire_node(&*node.name, op, &[input])?))
     } else {
+        // Slice on a non-streaming axis whose bounds may contain the streaming
+        // symbol (e.g. axis 2 sliced to 2*T'-1 after the skew reshape).
+        //
+        // Try full substitution first (S→pulse): correct for bounds like
+        // MAX-T' / MAX+T'+1 (RPE symmetric window) where the constant base
+        // term must be preserved.
+        //
+        // If full substitution leaves symbols (e.g. TDim::Broadcast artifacts
+        // from shape_of chains), fall back to the boundary-correction delta
+        // formula (sub(S,pulse) - sub(S,0)) which cancels those artifacts.
+        let start_full = op.start.substitute(symbol, pulse)?;
+        let end_full = op.end.substitute(symbol, pulse)?;
+        if start_full.symbols().is_empty() && end_full.symbols().is_empty() {
+            use crate::model::PulseWrappingOp;
+            return Ok(Some(target.wire_node(
+                &*node.name,
+                PulseWrappingOp(Box::new(Slice {
+                    axis: op.axis,
+                    start: start_full,
+                    end: end_full,
+                })),
+                &[input],
+            )?));
+        }
+        // Full substitution left symbols; try delta formula to cancel artifacts.
+        let start = start_full - op.start.substitute(symbol, &TDim::Val(0))?;
+        let end = end_full - op.end.substitute(symbol, &TDim::Val(0))?;
+        if start.symbols().is_empty() && end.symbols().is_empty() {
+            use crate::model::PulseWrappingOp;
+            return Ok(Some(target.wire_node(
+                &*node.name,
+                PulseWrappingOp(Box::new(Slice { axis: op.axis, start, end })),
+                &[input],
+            )?));
+        }
         Ok(None)
     }
 }

@@ -126,7 +126,8 @@ impl TypedOp for ElementWiseOp {
                 // Ops with a TDim arm (e.g. Floor → identity) pass the value through;
                 // ops without one return an error and uniform_tdim stays None.
                 let mut tmp = tensor0(tdim.clone());
-                if self.0.eval_in_place(&mut tmp, None).is_ok() {
+                let eval_result = self.0.eval_in_place(&mut tmp, None);
+                if eval_result.is_ok() {
                     fact.uniform_tdim = tmp
                         .try_as_plain()
                         .ok()
