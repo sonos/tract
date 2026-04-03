@@ -52,6 +52,18 @@ crate::register_metal_op!(
     }
 );
 
+crate::register_metal_op!(tract_pulse_opl::ops::Delay, |_source, _node, op| {
+    Ok(Some(Box::new(tract_gpu::ops::pulse::GpuDelay::new(op, "Metal", metal_copy_nd_dispatch))))
+});
+
+crate::register_metal_op!(tract_pulse_opl::ops::PulsePad, |_source, _node, op| {
+    Ok(Some(Box::new(tract_gpu::ops::pulse::GpuPulsePad::new(
+        op,
+        "Metal",
+        metal_copy_nd_dispatch,
+    )?)))
+});
+
 /// Single dispatch function for all copy_nd kernel launches.
 /// Used by GpuMultiBroadcastTo, GpuSlice, GpuConcat, and GpuAxisOp.
 pub fn metal_copy_nd_dispatch(
