@@ -139,6 +139,11 @@ fn try_make_cuda_op(
         return Ok(None);
     }
 
+    // Copy-based ops are fully generic (no backend-specific dispatch needed).
+    if let Some(op) = tract_gpu::ops::copy_based::try_make_copy_based_op(source, node)? {
+        return Ok(Some(op));
+    }
+
     if let Some(fns) = map.get(&(*node.op).type_id()) {
         for f in fns {
             if let Some(op) = f(source, node)? {
@@ -215,11 +220,8 @@ fn convert_matmul_to_cuda(
 
     if transpose_act {
         let rank = act_fact.rank();
-        let perm_act_op = tract_gpu::ops::change_axes::GpuAxisOp::new(
-            AxisOp::Move(rank - 2, rank - 1),
-            "Cuda",
-            crate::kernels::array::cuda_copy_nd_dispatch,
-        );
+        let perm_act_op =
+            tract_gpu::ops::change_axes::GpuAxisOp::new(AxisOp::Move(rank - 2, rank - 1));
         let perm_act_name = node.name.clone() + ".perm_activs";
         *act_outlet = target.wire_node(perm_act_name, perm_act_op, &[*act_outlet])?[0];
     }
@@ -238,11 +240,8 @@ fn convert_matmul_to_cuda(
         ensure!(as_quant_fact(weight_fact, &Q4_0).is_none(), "Cannot transpose Q40 tensor");
 
         let rank = weight_fact.rank();
-        let perm_weights_op = tract_gpu::ops::change_axes::GpuAxisOp::new(
-            AxisOp::Move(rank - 2, rank - 1),
-            "Cuda",
-            crate::kernels::array::cuda_copy_nd_dispatch,
-        );
+        let perm_weights_op =
+            tract_gpu::ops::change_axes::GpuAxisOp::new(AxisOp::Move(rank - 2, rank - 1));
         let perm_weights_name = node.name.clone() + ".perm_weights";
         *weights_outlet =
             target.wire_node(perm_weights_name, perm_weights_op, &[*weights_outlet])?[0];
@@ -265,11 +264,8 @@ fn convert_matmul_to_cuda(
             .map(|fact| fact.clarify_dt_shape().unwrap().1.len())
             .unwrap();
 
-        let perm_out_op = tract_gpu::ops::change_axes::GpuAxisOp::new(
-            AxisOp::Move(rank - 2, rank - 1),
-            "Cuda",
-            crate::kernels::array::cuda_copy_nd_dispatch,
-        );
+        let perm_out_op =
+            tract_gpu::ops::change_axes::GpuAxisOp::new(AxisOp::Move(rank - 2, rank - 1));
         matmul_output =
             target.wire_node(node.name.clone() + ".perm_out", perm_out_op, &matmul_output)?;
     }
@@ -338,11 +334,7 @@ fn convert_sdpa_to_cuda_flash_attn(
         suffix: &str,
     ) -> TractResult<bool> {
         if fact.rank() == 3 {
-            let ax = tract_gpu::ops::change_axes::GpuAxisOp::new(
-                AxisOp::Add(1),
-                "Cuda",
-                crate::kernels::array::cuda_copy_nd_dispatch,
-            );
+            let ax = tract_gpu::ops::change_axes::GpuAxisOp::new(AxisOp::Add(1));
             *dst = target.wire_node(name(node_name, suffix), ax, &[*dst])?[0];
             Ok(true)
         } else {
@@ -373,11 +365,7 @@ fn convert_sdpa_to_cuda_flash_attn(
         let m = m_opt.unwrap();
         mut_cast(target, &node.name, m, mf.datum_type().unwrap(), DatumType::F16, ".cast_m")?;
         if mf.rank() != 4 {
-            let ax = tract_gpu::ops::change_axes::GpuAxisOp::new(
-                AxisOp::Add(1),
-                "Cuda",
-                crate::kernels::array::cuda_copy_nd_dispatch,
-            );
+            let ax = tract_gpu::ops::change_axes::GpuAxisOp::new(AxisOp::Add(1));
             *m = target.wire_node(name(&node.name, ".reshape_m"), ax, &[*m])?[0];
         }
     }
@@ -395,11 +383,7 @@ fn convert_sdpa_to_cuda_flash_attn(
     if added_head_axis {
         out = target.wire_node(
             name(&node.name, ".reshape_out"),
-            tract_gpu::ops::change_axes::GpuAxisOp::new(
-                AxisOp::Rm(1),
-                "Cuda",
-                crate::kernels::array::cuda_copy_nd_dispatch,
-            ),
+            tract_gpu::ops::change_axes::GpuAxisOp::new(AxisOp::Rm(1)),
             &out,
         )?;
     }

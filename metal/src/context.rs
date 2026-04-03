@@ -258,6 +258,27 @@ impl DeviceContext for MetalContext {
             bail!("Only BlockQuant Tensor allocation supported for now")
         }
     }
+
+    fn copy_nd(
+        &self,
+        input: &DeviceTensor,
+        input_offset: usize,
+        input_strides: &[isize],
+        output: &DeviceTensor,
+        output_offset: usize,
+        output_shape: &[usize],
+        output_strides: &[isize],
+    ) -> TractResult<()> {
+        crate::kernels::array::metal_copy_nd_dispatch(
+            input,
+            input_offset,
+            input_strides,
+            output,
+            output_offset,
+            output_shape,
+            output_strides,
+        )
+    }
 }
 
 #[derive(Debug)]

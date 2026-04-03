@@ -1,9 +1,7 @@
 #![allow(unpredictable_function_pointer_comparisons)]
+use crate::device::{DeviceContext, get_context};
 use crate::session_handler::make_tensor_for_node;
 use crate::tensor::{DeviceTensor, DeviceTensorExt, IntoDevice};
-use crate::utils::{
-    DispatchCopyNdFn, dispatch_assign_slice, dispatch_copy_with_origins, dispatch_flat_copy,
-};
 use std::ops::Range;
 use tract_core::internal::*;
 use tract_core::ops::array::PadMode;
@@ -12,29 +10,20 @@ use tract_pulse_opl::ops::{Delay, PulsePad};
 
 // ─── GpuDelay ────────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct GpuDelay {
     pub inner: Delay,
-    pub backend_name: &'static str,
-    pub dispatch: DispatchCopyNdFn,
 }
 
 impl GpuDelay {
-    pub fn new(inner: &Delay, backend_name: &'static str, dispatch: DispatchCopyNdFn) -> Self {
-        Self { inner: inner.clone(), backend_name, dispatch }
-    }
-}
-
-impl std::hash::Hash for GpuDelay {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.backend_name.hash(state);
-        self.inner.hash(state);
+    pub fn new(inner: &Delay) -> Self {
+        Self { inner: inner.clone() }
     }
 }
 
 impl Op for GpuDelay {
     fn name(&self) -> StaticName {
-        format!("{}Delay", self.backend_name).into()
+        "GpuDelay".into()
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
@@ -50,7 +39,7 @@ impl EvalOp for GpuDelay {
     }
 
     fn state(&self, _session: &TurnState, node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
-        Ok(Some(Box::new(GpuDelayState { node_id, dispatch: self.dispatch, buffer: None })))
+        Ok(Some(Box::new(GpuDelayState { node_id, buffer: None })))
     }
 }
 
@@ -70,15 +59,14 @@ impl TypedOp for GpuDelay {
 #[derive(Debug, Clone)]
 pub struct GpuDelayState {
     pub node_id: usize,
-    pub dispatch: DispatchCopyNdFn,
     pub buffer: Option<DeviceTensor>,
 }
 
 impl GpuDelayState {
     unsafe fn apply_delay_unchecked(
         &mut self,
+        ctx: &dyn DeviceContext,
         op: &Delay,
-        dispatch: DispatchCopyNdFn,
         input: &DeviceTensor,
         output: &mut DeviceTensor,
     ) -> TractResult<()> {
@@ -91,21 +79,13 @@ impl GpuDelayState {
         let from_buffer = output_pulse.saturating_sub(from_input);
 
         // Copy from buffer to output
-        dispatch_assign_slice(dispatch, output, 0..from_buffer, buffer, 0..from_buffer, op.axis)?;
+        ctx.assign_slice(output, 0..from_buffer, buffer, 0..from_buffer, op.axis)?;
         // Copy from input to output
-        dispatch_assign_slice(
-            dispatch,
-            output,
-            from_buffer..output_pulse,
-            input,
-            0..from_input,
-            op.axis,
-        )?;
+        ctx.assign_slice(output, from_buffer..output_pulse, input, 0..from_input, op.axis)?;
 
         // Maintain buffer
         if buffered < input_pulse {
-            dispatch_assign_slice(
-                dispatch,
+            ctx.assign_slice(
                 buffer,
                 0..buffered,
                 input,
@@ -117,10 +97,9 @@ impl GpuDelayState {
             let dt = input.datum_type();
             let shift_bytes = buffer.strides()[op.axis] as usize * dt.size_of() * input_pulse;
             let remaining = buffer.len() * dt.size_of() - shift_bytes;
-            dispatch_flat_copy(dispatch, buffer, shift_bytes, buffer, 0, remaining)?;
+            ctx.flat_copy(buffer, shift_bytes, buffer, 0, remaining)?;
             // Copy input to end of buffer
-            dispatch_assign_slice(
-                dispatch,
+            ctx.assign_slice(
                 buffer,
                 (buffered - input_pulse)..buffered,
                 input,
@@ -148,6 +127,7 @@ impl OpState for GpuDelayState {
         let mut output_shape: TVec<usize> = device_input.shape().into();
         output_shape[op.axis] = output_pulse;
         let dt = device_input.datum_type();
+        let ctx = get_context()?;
         unsafe {
             if self.buffer.is_none() {
                 let mut shape = device_input.shape().to_owned();
@@ -155,7 +135,7 @@ impl OpState for GpuDelayState {
                 self.buffer = Some(DeviceTensor::uninitialized_dt(dt, &shape)?);
             };
             let mut output = make_tensor_for_node(state, self.node_id, dt, &output_shape)?;
-            self.apply_delay_unchecked(op, self.dispatch, device_input, &mut output)?;
+            self.apply_delay_unchecked(&*ctx, op, device_input, &mut output)?;
             Ok(tvec!(output.into_tensor().into()))
         }
     }
@@ -169,32 +149,25 @@ trivial_op_state_freeze!(GpuDelayState);
 pub struct GpuPulsePad {
     pub op: PulsePad,
     pub device_cst: Option<DeviceTensor>,
-    pub backend_name: &'static str,
-    pub dispatch: DispatchCopyNdFn,
 }
 
 impl GpuPulsePad {
-    pub fn new(
-        op: &PulsePad,
-        backend_name: &'static str,
-        dispatch: DispatchCopyNdFn,
-    ) -> TractResult<Self> {
+    pub fn new(op: &PulsePad) -> TractResult<Self> {
         let device_cst =
             if let PadMode::Constant(c) = &op.mode { Some(c.clone().into_device()?) } else { None };
-        Ok(Self { op: op.clone(), device_cst, backend_name, dispatch })
+        Ok(Self { op: op.clone(), device_cst })
     }
 }
 
 impl std::hash::Hash for GpuPulsePad {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.backend_name.hash(state);
         self.op.hash(state);
     }
 }
 
 impl Op for GpuPulsePad {
     fn name(&self) -> StaticName {
-        format!("{}PulsePad", self.backend_name).into()
+        "GpuPulsePad".into()
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
@@ -210,12 +183,7 @@ impl EvalOp for GpuPulsePad {
     }
 
     fn state(&self, _session: &TurnState, node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
-        Ok(Some(Box::new(GpuPulsePadState {
-            node_id,
-            current_pos: 0,
-            last_valid_frame: None,
-            dispatch: self.dispatch,
-        })))
+        Ok(Some(Box::new(GpuPulsePadState { node_id, current_pos: 0, last_valid_frame: None })))
     }
 }
 
@@ -237,11 +205,10 @@ struct GpuPulsePadState {
     node_id: usize,
     current_pos: usize,
     last_valid_frame: Option<DeviceTensor>,
-    dispatch: DispatchCopyNdFn,
 }
 
 fn fill_slice_constant(
-    dispatch: DispatchCopyNdFn,
+    ctx: &dyn DeviceContext,
     dst: &mut DeviceTensor,
     cst: &DeviceTensor,
     axis: usize,
@@ -251,8 +218,7 @@ fn fill_slice_constant(
     zone_shape[axis] = range.len();
     let mut dst_origin = tvec!(0; dst.rank());
     dst_origin[axis] = range.start;
-    dispatch_copy_with_origins(
-        dispatch,
+    ctx.copy_with_origins(
         &zone_shape,
         dst,
         &dst_origin,
@@ -264,7 +230,7 @@ fn fill_slice_constant(
 }
 
 fn fill_slice_repeating_one_frame(
-    dispatch: DispatchCopyNdFn,
+    ctx: &dyn DeviceContext,
     dst: &mut DeviceTensor,
     src: &DeviceTensor,
     axis: usize,
@@ -279,8 +245,7 @@ fn fill_slice_repeating_one_frame(
     src_origin[axis] = src_frame;
     let mut src_strides: TVec<isize> = src.strides().into();
     src_strides[axis] = 0;
-    dispatch_copy_with_origins(
-        dispatch,
+    ctx.copy_with_origins(
         &zone_shape,
         dst,
         &dst_origin,
@@ -294,7 +259,7 @@ fn fill_slice_repeating_one_frame(
 impl GpuPulsePadState {
     fn save_frame(
         &mut self,
-        dispatch: DispatchCopyNdFn,
+        ctx: &dyn DeviceContext,
         op: &PulsePad,
         input: &DeviceTensor,
         frame: usize,
@@ -302,7 +267,7 @@ impl GpuPulsePadState {
         let mut frame_shape: TVec<usize> = input.shape().into();
         frame_shape[op.axis] = 1;
         let last_valid_frame = DeviceTensor::uninitialized_dt(input.datum_type(), &frame_shape)?;
-        dispatch_assign_slice(dispatch, &last_valid_frame, 0..1, input, frame..frame + 1, op.axis)?;
+        ctx.assign_slice(&last_valid_frame, 0..1, input, frame..frame + 1, op.axis)?;
         self.last_valid_frame = Some(last_valid_frame);
         Ok(())
     }
@@ -313,8 +278,8 @@ impl GpuPulsePadState {
         gpu_op: &GpuPulsePad,
         input: &DeviceTensor,
     ) -> TractResult<DeviceTensor> {
+        let ctx = get_context()?;
         let op = &gpu_op.op;
-        let dispatch = gpu_op.dispatch;
         let pulse = input.shape()[op.axis];
         let pulse_begin = self.current_pos;
         let pulse_end = self.current_pos + pulse;
@@ -328,14 +293,14 @@ impl GpuPulsePadState {
             && pulse_begin < end_input
         {
             let latest_valid_frame = (end_input - pulse_begin).min(pulse) - 1;
-            self.save_frame(dispatch, op, input, latest_valid_frame)?;
+            self.save_frame(&*ctx, op, input, latest_valid_frame)?;
         }
 
         // Start with a copy of input
         let mut output =
             make_tensor_for_node(session, self.node_id, input.datum_type(), input.shape())?;
         let flat_len = input.len() * input.datum_type().size_of();
-        dispatch_flat_copy(dispatch, input, 0, &output, 0, flat_len)?;
+        ctx.flat_copy(input, 0, &output, 0, flat_len)?;
 
         // Quick return if entirely in valid or invalid range
         if (pulse_begin >= op.begin_input && pulse_end <= end_input)
@@ -349,14 +314,14 @@ impl GpuPulsePadState {
             let fill_up_to = (op.begin_input - pulse_begin).min(pulse);
             match &op.mode {
                 PadMode::Constant(_) => fill_slice_constant(
-                    dispatch,
+                    &*ctx,
                     &mut output,
                     gpu_op.device_cst.as_ref().unwrap(),
                     op.axis,
                     0..fill_up_to,
                 )?,
                 PadMode::Edge => fill_slice_repeating_one_frame(
-                    dispatch,
+                    &*ctx,
                     &mut output,
                     input,
                     op.axis,
@@ -366,18 +331,19 @@ impl GpuPulsePadState {
                 _ => unimplemented!(),
             }
         }
-        if pulse_end > end_input && after > 0 {
+
+        if pulse_end > end_input {
             let fill_from = pulse - (pulse_end - end_input).min(pulse);
             match &op.mode {
                 PadMode::Constant(_) => fill_slice_constant(
-                    dispatch,
+                    &*ctx,
                     &mut output,
                     gpu_op.device_cst.as_ref().unwrap(),
                     op.axis,
                     fill_from..pulse,
                 )?,
                 PadMode::Edge => fill_slice_repeating_one_frame(
-                    dispatch,
+                    &*ctx,
                     &mut output,
                     self.last_valid_frame.as_ref().unwrap(),
                     op.axis,
@@ -387,7 +353,6 @@ impl GpuPulsePadState {
                 _ => unimplemented!(),
             }
         }
-
         Ok(output)
     }
 }
@@ -399,11 +364,12 @@ impl OpState for GpuPulsePadState {
         op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        let input = args_1!(inputs).into_tensor();
-        let op = op.downcast_ref::<GpuPulsePad>().ok_or_else(|| format_err!("Wrong Op type"))?;
-        let input = input.to_device_tensor()?;
-        let tensor = self.pad(session, op, input)?;
-        Ok(tvec!(tensor.into_tensor().into()))
+        let input = args_1!(inputs);
+        let gpu_op =
+            op.downcast_ref::<GpuPulsePad>().ok_or_else(|| format_err!("Wrong Op type"))?;
+        let device_input = input.as_device_tensor().context("Expected a GPU tensor")?;
+        let output = self.pad(session, gpu_op, device_input)?;
+        Ok(tvec!(output.into_tensor().into_tvalue()))
     }
 }
 

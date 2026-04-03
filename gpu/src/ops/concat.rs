@@ -1,17 +1,14 @@
 use crate::tensor::DeviceTensorExt;
-use crate::utils::DispatchCopyNdFn;
 use tract_core::internal::*;
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct GpuConcat {
     pub axis: usize,
-    pub backend_name: &'static str,
-    pub dispatch: DispatchCopyNdFn,
 }
 
 impl GpuConcat {
-    pub fn new(axis: usize, backend_name: &'static str, dispatch: DispatchCopyNdFn) -> Self {
-        Self { axis, backend_name, dispatch }
+    pub fn new(axis: usize) -> Self {
+        Self { axis }
     }
 
     pub fn offsets(&self, inputs: &[&TypedFact]) -> TractResult<Vec<TDim>> {
@@ -25,30 +22,9 @@ impl GpuConcat {
     }
 }
 
-impl std::fmt::Debug for GpuConcat {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}Concat(axis={})", self.backend_name, self.axis)
-    }
-}
-
-impl PartialEq for GpuConcat {
-    fn eq(&self, other: &Self) -> bool {
-        self.backend_name == other.backend_name && self.axis == other.axis
-    }
-}
-
-impl Eq for GpuConcat {}
-
-impl std::hash::Hash for GpuConcat {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.backend_name.hash(state);
-        self.axis.hash(state);
-    }
-}
-
 impl Op for GpuConcat {
     fn name(&self) -> StaticName {
-        format!("{}Concat", self.backend_name).into()
+        "GpuConcat".into()
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
@@ -81,6 +57,7 @@ impl EvalOp for GpuConcat {
             &output_shape,
         )?;
 
+        let ctx = crate::device::get_context()?;
         let mut cursor = 0usize;
         for input in &inputs {
             let slice_len = input.shape()[self.axis];
@@ -93,7 +70,7 @@ impl EvalOp for GpuConcat {
             let dst_offset =
                 cursor * output.strides()[self.axis] as usize * output.datum_type().size_of();
 
-            (self.dispatch)(
+            ctx.copy_nd(
                 input,
                 0,
                 input.strides(),

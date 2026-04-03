@@ -4,6 +4,7 @@ pub mod broadcast;
 pub mod cast;
 pub mod change_axes;
 pub mod concat;
+pub mod copy_based;
 pub mod dyn_kv_cache;
 pub mod element_wise;
 pub mod gelu_approximate;
