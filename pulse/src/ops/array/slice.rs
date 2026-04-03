@@ -14,12 +14,22 @@ fn pulsify(
 ) -> TractResult<Option<TVec<OutletId>>> {
     let input = mapping[&node.inputs[0]];
     let fact = target.outlet_fact(input)?.clone();
-    let stream = fact.stream.with_context(|| {
-        format!(
-            "Unexpected streamless fact in pulsify {node}\ninput:{:?}",
-            target.outlet_fact(input).unwrap()
-        )
-    })?;
+
+    // Non-streaming input: the streaming symbol appears only in start/end
+    // (e.g. a static PE table sliced to the current frame count).
+    // Substitute S→pulse to get a concrete slice, wired as a static op.
+    if fact.stream.is_none() {
+        let start = op.start.substitute(symbol, pulse)?;
+        let end = op.end.substitute(symbol, pulse)?;
+        if start.symbols().is_empty() && end.symbols().is_empty() {
+            use crate::model::NonPulsingWrappingOp;
+            let concrete_op = NonPulsingWrappingOp(Box::new(Slice { axis: op.axis, start, end }));
+            return target.wire_node(&*node.name, concrete_op, &[input]).map(Some);
+        }
+        return Ok(None);
+    }
+
+    let stream = fact.stream.as_ref().unwrap();
     if op.axis == stream.axis {
         let start = op.start.substitute(symbol, pulse)?;
         let skip = start.to_usize()?;

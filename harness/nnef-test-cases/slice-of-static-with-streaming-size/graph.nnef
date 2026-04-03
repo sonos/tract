@@ -1,0 +1,44 @@
+version 1.0;
+
+extension tract_registry tract_core;
+
+# Minimal reproducer for: Slice pulsifier crashes when the input tensor has no
+# streaming dimension but the slice length is derived from the streaming symbol.
+#
+# Pattern from the Nemotron encoder: a large PE table [9999, D] is sliced to
+# [T', D] where T' (the conv output length) is a function of S.  DynSlice
+# declutters to Slice{axis=0, start=0, end=S}.  The Slice pulsifier then
+# requires the input to be streaming and crashes:
+#   "Unexpected streamless fact in pulsify … Slice   input:9999,1,F32"
+#
+# Fix: when the input is non-streaming and start/end are concrete after
+# substituting S→pulse, wire a static Slice sized to the pulse.
+# The downstream add receives one streaming [P,1] and one static [P,1] input,
+# handled naturally by PulseWrappingOp.
+#
+# Note: pe_table is a uniform constant so that each streaming pulse adds the
+# same value as the corresponding batch slice — making compare --stream valid.
+
+graph static_pe_slice(input) -> (output)
+{
+    # Streaming input: [S, 1]
+    input    = external<scalar>(shape = [S, 1]);
+
+    # Non-streaming PE table: shape [9999, 1] — no S in shape.
+    # Uniform value so batch and streaming outputs agree element-wise.
+    pe_table = tract_core_broadcast(0.0001, shape = [9999, 1]);
+
+    # Derive the slice length from the streaming input shape.
+    # tract_core_shape_of returns a TDim constant [S, 1] in the typed model,
+    # so DynSlice declutters to Slice{axis=0, start=0, end=S}.
+    s_shape  = tract_core_shape_of(input);
+    s_len    = slice(s_shape, axes=[0], begin=[0], end=[1], stride=[1]);
+    s_len    = squeeze(s_len, axes=[0]);
+
+    # Slice the non-streaming PE table to length S.
+    # THIS IS THE BUG TRIGGER: non-streaming input, streaming-formula output size.
+    pe_slice = slice(pe_table, axes=[0], begin=[0], end=[s_len]);
+
+    # Add streaming input to the sliced PE table; both shapes are [S, 1].
+    output   = add(input, pe_slice);
+}
