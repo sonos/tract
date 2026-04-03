@@ -545,14 +545,21 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
                 } else if let Some(op) = node.op_as::<ScaledMaskedSoftmax>()
                     && !op.post_softmax_mask
                 {
-                    Box::new(ops::CudaScaledMaskedSoftmax { scale: op.scale.clone() })
+                    Box::new(tract_gpu::ops::scaled_masked_softmax::GpuScaledMaskedSoftmax {
+                        scale: op.scale.clone(),
+                        backend_name: "Cuda",
+                        dispatch: kernels::nn::cuda_scaled_masked_softmax_dispatch,
+                    })
                 } else if let Some(_op) = node.op_as::<RotateHalf>() {
                     Box::new(tract_gpu::ops::rotate_half::GpuRotateHalf::new(
                         "Cuda",
                         kernels::array::cuda_rotate_half_dispatch,
                     ))
                 } else if let Some(_op) = node.op_as::<ApplyRope>() {
-                    Box::new(ops::CudaApplyRope)
+                    Box::new(tract_gpu::ops::apply_rope::GpuApplyRope {
+                        backend_name: "Cuda",
+                        dispatch: kernels::nn::cuda_apply_rope_dispatch,
+                    })
                 } else if let Some(op) = node.op_as::<RmsNorm>() {
                     Box::new(tract_gpu::ops::rms_norm::GpuRmsNorm::new(
                         op.axis,

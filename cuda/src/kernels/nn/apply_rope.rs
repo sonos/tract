@@ -130,6 +130,15 @@ impl ApplyRope {
     }
 }
 
+pub fn cuda_apply_rope_dispatch(
+    input: &DeviceTensor,
+    cos: &DeviceTensor,
+    sin: &DeviceTensor,
+    output: &DeviceTensor,
+) -> TractResult<()> {
+    crate::with_cuda_stream(|stream| ApplyRope.dispatch_eval(stream, input, cos, sin, output))
+}
+
 #[cfg(test)]
 mod tests {
     use std::f32::consts::PI;
