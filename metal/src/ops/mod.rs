@@ -1,5 +1,6 @@
 pub mod apply_rope;
 pub mod cast;
+pub mod conv;
 pub mod fused_axis_op;
 pub mod gelu_approximate;
 pub mod gemm;

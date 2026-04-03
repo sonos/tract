@@ -20,6 +20,8 @@ use tract_core::internal::*;
 use tract_core::ops::array::{MultiBroadcastTo, Slice, TypedConcat};
 use tract_core::ops::binary::{BinMiniOp, TypedBinOp};
 use tract_core::ops::cast::Cast;
+use tract_core::ops::cnn::conv::rewrite_kernel_conv_in_oihw;
+use tract_core::ops::cnn::{Conv, rewrite_conv_with_n_axis};
 use tract_core::ops::einsum::prefix_matmul::{PrefixMatMul, rewrite_einsum_to_prefix_matmul};
 use tract_core::ops::element_wise::ElementWiseOp;
 use tract_core::ops::konst::Const;
@@ -100,6 +102,8 @@ impl MetalTransform {
         Rewriter::<MetalTransform>::default()
             .with_rule_for("untranspose-matmul-output", rewrite_rules::untranspose_matmul_output)
             .with_rule_for("add-broadcast-pre-matmul", rewrite_rules::add_broadcast_pre_matmul)
+            .with_rule_for("rewrite_kernel_conv_in_oihw", rewrite_kernel_conv_in_oihw)
+            .with_rule_for("rewrite_conv_with_n_axis", rewrite_conv_with_n_axis)
             .rewrite(self, model)?;
 
         Rewriter::default()
@@ -149,6 +153,8 @@ fn can_translate_to_metal_op(source: &TypedModel, node: &TypedNode) -> TractResu
             || node.op_as::<PrefixMatMul>().is_some_and(|op| {
                 !op.transpose_c && op.quantize_output.is_none() && check_matmul_in_dts(&input_facts)
             })
+            || (node.op_is::<Conv>()
+                && matches!(input_facts[0].datum_type, DatumType::F16 | DatumType::F32))
             || node
                 .op_as::<Const>()
                 .is_some_and(|op| DeviceTensor::is_supported_dt(op.val().datum_type()))
@@ -212,6 +218,8 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
                     op,
                     self.gemm_impl,
                 )?
+            } else if let Some(conv) = node.op_as::<Conv>() {
+                ops::conv::wire_metal_conv(source, node, target, &device_inputs, conv)?
             } else {
                 let op: Box<dyn TypedOp> = if let Some(op) = node.op_as::<ElementWiseOp>() {
                     if let Some(ew) = op.0.downcast_ref::<GeluApproximate>() {

@@ -2,6 +2,7 @@
 
 pub mod array;
 pub mod bin_ops;
+pub mod conv;
 pub mod element_wise;
 pub mod matmul;
 pub mod nn;
@@ -27,6 +28,7 @@ const BASIC_MAT_MUL: &str = include_str!("matmul/basic/basic_mat_mul.metal");
 const ARRAY_OPS: &str = include_str!("array/array_ops.metal");
 const BIN_OPS: &str = include_str!("bin_ops.metal");
 const NN_OPS: &str = include_str!("nn/nn_ops.metal");
+const CONV_OPS: &str = include_str!("conv.metal");
 const ELEMENT_WISE_OPS: &str = include_str!("element_wise.metal");
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -43,6 +45,7 @@ pub enum LibraryName {
     BasicMatMul,
     BinOps,
     ArrayOps,
+    ConvOps,
     NNOps,
     ElementWiseOps,
     Ggml,
@@ -55,6 +58,7 @@ impl LibraryName {
             Self::BasicMatMul => LibraryContent::Source(BASIC_MAT_MUL),
             Self::ArrayOps => LibraryContent::Source(ARRAY_OPS),
             Self::BinOps => LibraryContent::Source(BIN_OPS),
+            Self::ConvOps => LibraryContent::Source(CONV_OPS),
             Self::NNOps => LibraryContent::Source(NN_OPS),
             Self::ElementWiseOps => LibraryContent::Source(ELEMENT_WISE_OPS),
             Self::MlxGemm => LibraryContent::Source(MLX_GEMM),
