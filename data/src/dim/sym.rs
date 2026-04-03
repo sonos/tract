@@ -325,6 +325,12 @@ impl SymbolScopeData {
             if t.inclusive_bound(self, false).is_some_and(|l| l >= 0) {
                 return true;
             }
+            // Coord symbols (🎯k) represent element coordinates and are always non-negative.
+            if let TDim::Sym(s) = &t {
+                if format!("{s}").starts_with("🎯") {
+                    return true;
+                }
+            }
             // Div(a, q) with q >= 1 is non-negative whenever a is non-negative.
             if let TDim::Div(a, q) = &t {
                 if *q >= 1 && self.prove_positive_or_zero_inner_with_extra(a, extra) {

@@ -29,6 +29,79 @@ fn pulsify(
     let outlet = OutletId::new(node.id, 0);
     let fact = source.outlet_fact(outlet)?;
 
+    // Special case: Bool dtype with chunk-window uniform_tdim.
+    // Fires for nodes like attMask = And(padMask, UniformTDim) where
+    // uniform_tdim propagates a chunk-window expression.  The Iff consumer
+    // will be replaced by ChunkWindowMask and ignores the actual bool values,
+    // so we produce an all-true stub of the right shape [1,…,P,…,(L+1)P,…].
+    if fact.datum_type == DatumType::Bool {
+        // The stored output fact may not have uniform_tdim even when an input
+        // does (FoldUniformTDim creates UniformTDim nodes but does not
+        // re-propagate uniform_tdim to successor nodes).  Fall back to
+        // scanning the node's input outlets.
+        let uniform_expr = if let Some(e) = &fact.uniform_tdim {
+            e.clone()
+        } else {
+            // Check if any input carries a chunk-window uniform_tdim.
+            let found = node.inputs.iter().find_map(|inp| {
+                let f = source.outlet_fact(*inp).ok()?;
+                let e = f.uniform_tdim.as_ref()?;
+                classify_chunk_window(&e.clone().simplify())?;
+                Some(e.clone())
+            });
+            match found {
+                Some(e) => e,
+                None => return Ok(None),
+            }
+        };
+        let cw = match classify_chunk_window(&uniform_expr.clone().simplify()) {
+            Some(cw) => cw,
+            None => return Ok(None),
+        };
+        let pulse_i64 = pulse.to_i64()?;
+        // Compute effective token-axis pulse using shape delta (handles downsampling).
+        let pulse_size =
+            if let Some(dim) = fact.shape.iter().find(|d| d.symbols().contains(_symbol)) {
+                let mut sv_at = SymbolValues::default();
+                sv_at.set(_symbol, pulse_i64);
+                let mut sv_zero = SymbolValues::default();
+                sv_zero.set(_symbol, 0);
+                let at_pulse = dim.eval(&sv_at).to_i64()?;
+                let at_zero = dim.eval(&sv_zero).to_i64()?;
+                (at_pulse - at_zero) as usize
+            } else {
+                cw.p as usize
+            };
+        ensure!(
+            pulse_size == cw.p as usize,
+            "Bool chunk-window pulsifier: pulse size {pulse_size} != chunk size {}",
+            cw.p
+        );
+        let key_window = (cw.left_chunks as usize + 1) * pulse_size;
+        let rank = fact.rank();
+        let mut sv_zero = SymbolValues::default();
+        sv_zero.set(_symbol, 0);
+        let mut shape: Vec<usize> = Vec::with_capacity(rank);
+        for (ax, dim) in fact.shape.iter().enumerate() {
+            if ax == cw.row_axis {
+                shape.push(pulse_size);
+            } else if ax == cw.col_axis {
+                shape.push(key_window);
+            } else {
+                // Non-window axis: evaluate at symbol=0, fall back to 1 for
+                // batch or other undetermined symbols (the stub broadcasts).
+                shape.push(dim.eval(&sv_zero).to_usize().unwrap_or(1));
+            }
+        }
+        let total: usize = shape.iter().product();
+        let tensor = Tensor::from_shape(&shape, &vec![true; total])?;
+        return Ok(Some(target.wire_node(
+            &node.name,
+            NonPulsingWrappingOp(Box::new(Const::new(tensor.into_arc_tensor())?)),
+            &[],
+        )?));
+    }
+
     // Need ROI + uniform_tdim on this wire, and a non-bool numeric dtype.
     let roi_expr = match &fact.region_of_interest {
         Some(e) => e.clone(),
@@ -38,9 +111,6 @@ fn pulsify(
         Some(e) => e.clone(),
         None => return Ok(None),
     };
-    if fact.datum_type == DatumType::Bool {
-        return Ok(None);
-    }
 
     let cw = match classify_chunk_window(&roi_expr.clone().simplify()) {
         Some(cw) => cw,

@@ -10,7 +10,7 @@ fn pulsify_axis_op(
     node: &TypedNode,
     target: &mut PulsedModel,
     mapping: &HashMap<OutletId, OutletId>,
-    _symbol: &Symbol,
+    symbol: &Symbol,
     pulse: &TDim,
 ) -> TractResult<Option<TVec<OutletId>>> {
     let input = mapping[&node.inputs[0]];
@@ -24,6 +24,44 @@ fn pulsify_axis_op(
         AxisOp::Reshape(at, from, to) => (at, from, to),
         _ => return Ok(None),
     };
+    // Case 3: 2-dim block where both axes contain the streaming symbol and
+    // the streaming axis is one of the two (RPE skew trick).
+    // Example: [T', 2·T'] → [2·T', T'] (node 189) or [2·T'-1, T'] → [T', 2·T'-1] (node 191).
+    // We find which output slot retains the same pulse-contribution as the
+    // streaming input dim and set that as the new streaming axis.
+    if from.len() == 2
+        && to.len() == 2
+        && (stream.axis == *at || stream.axis == at + 1)
+        && from.iter().any(|d| d.symbols().contains(symbol))
+        && to.iter().any(|d| d.symbols().contains(symbol))
+    {
+        let stream_offset = stream.axis - at; // 0 or 1 — which `from` slot is streaming
+        let in_delta = from[stream_offset].substitute(symbol, pulse)?
+            - from[stream_offset].substitute(symbol, &TDim::Val(0))?;
+
+        for (j, to_dim) in to.iter().enumerate() {
+            let out_delta =
+                to_dim.substitute(symbol, pulse)? - to_dim.substitute(symbol, &TDim::Val(0))?;
+            if in_delta == out_delta {
+                let new_stream_axis = at + j;
+                // Per-pulse streaming size is preserved (same element count flows through).
+                let p_stream = fact.shape[stream.axis].clone();
+                let p_total = fact.shape[*at].to_i64()? * fact.shape[at + 1].to_i64()?;
+                let p_other = (p_total / p_stream.to_i64()?).to_dim();
+                let (p_to0, p_to1) = if j == 0 { (p_stream, p_other) } else { (p_other, p_stream) };
+                let concrete_from = tvec![fact.shape[*at].clone(), fact.shape[at + 1].clone()];
+                let concrete_to = tvec![p_to0, p_to1];
+                let pulsed_op = PulsedSkewReshape {
+                    at: *at,
+                    from: concrete_from,
+                    to: concrete_to,
+                    new_stream_axis,
+                    full_dim: stream.dim.clone(),
+                };
+                return Ok(Some(target.wire_node(&node.name, pulsed_op, &[input])?));
+            }
+        }
+    }
 
     if stream.axis != *at {
         return Ok(None);
@@ -47,6 +85,70 @@ fn pulsify_axis_op(
     }
 
     Ok(None)
+}
+
+// ─── Skew reshape: [A, B] → [B, A] where both axes contain the stream symbol ─
+
+/// Pulsed form of the RPE skew reshape.  The 2-dim block at axes `[at, at+1]`
+/// is reshaped with concrete per-pulse sizes; the streaming axis moves from its
+/// input position to `new_stream_axis`.
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct PulsedSkewReshape {
+    pub at: usize,
+    pub from: TVec<TDim>, // concrete per-pulse sizes of the input block
+    pub to: TVec<TDim>,   // concrete per-pulse sizes of the output block
+    pub new_stream_axis: usize,
+    pub full_dim: TDim, // stream.dim (full symbolic sequence length)
+}
+
+impl Op for PulsedSkewReshape {
+    fn name(&self) -> StaticName {
+        "PulsedSkewReshape".into()
+    }
+
+    fn info(&self) -> TractResult<Vec<String>> {
+        Ok(vec![format!(
+            "at:{} {:?}→{:?} new_stream:{}",
+            self.at, self.from, self.to, self.new_stream_axis
+        )])
+    }
+
+    not_a_typed_op!();
+}
+
+impl EvalOp for PulsedSkewReshape {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+        AxisOp::Reshape(self.at, self.from.clone(), self.to.clone()).eval(inputs)
+    }
+}
+
+impl PulsedOp for PulsedSkewReshape {
+    fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
+        let stream = inputs[0].stream.as_ref().unwrap();
+        let mut out_shape = inputs[0].shape.to_tvec();
+        for (k, d) in self.to.iter().enumerate() {
+            out_shape[self.at + k] = d.clone();
+        }
+        Ok(tvec![PulsedFact {
+            datum_type: inputs[0].datum_type,
+            shape: out_shape.into(),
+            stream: Some(StreamInfo {
+                axis: self.new_stream_axis,
+                dim: self.full_dim.clone(),
+                delay: stream.delay,
+            }),
+        }])
+    }
+
+    fn to_typed(&self) -> Box<dyn TypedOp> {
+        Box::new(AxisOp::Reshape(self.at, self.from.clone(), self.to.clone()))
+    }
+
+    as_op!();
 }
 
 // ─── Token-fold: [T, ...] → [C, P, ...] ───────────────────────────────────
