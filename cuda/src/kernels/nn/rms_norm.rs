@@ -86,6 +86,16 @@ pub fn cuda_rms_norm_dispatch(
     crate::with_cuda_stream(|stream| RmsNorm.dispatch_eval(stream, input, axis, eps, output))
 }
 
+crate::register_cuda_op!(tract_transformers::ops::rms_norm::RmsNorm, |source, node, op| {
+    rule_if!(RmsNorm::is_supported_dt(source.node_input_facts(node.id)?[0].datum_type));
+    Ok(Some(Box::new(tract_gpu::ops::rms_norm::GpuRmsNorm::new(
+        op.axis,
+        op.eps.clone(),
+        "Cuda",
+        cuda_rms_norm_dispatch,
+    ))))
+});
+
 #[cfg(test)]
 mod tests {
     use tract_gpu::tensor::IntoDevice;

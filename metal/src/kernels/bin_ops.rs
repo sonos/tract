@@ -32,6 +32,11 @@ pub fn all_functions() -> Vec<String> {
             })
         })
         .flatten()
+        .chain(
+            ["u8", "u16", "u32", "u64"]
+                .into_iter()
+                .map(|tname| format!("bin_ops::iff_generic_{tname}")),
+        )
         .collect()
 }
 
@@ -217,6 +222,75 @@ pub fn metal_bin_op_dispatch(
     output: &DeviceTensor,
 ) -> TractResult<()> {
     crate::with_metal_stream(|stream| dispatch_eval(stream, mini_op, lhs, rhs, output))
+}
+
+pub fn metal_bin_op(mini_op: Box<dyn BinMiniOp>) -> tract_gpu::ops::binary::GpuBinOp {
+    tract_gpu::ops::binary::GpuBinOp {
+        backend_name: "Metal",
+        mini_op,
+        dispatch: metal_bin_op_dispatch,
+    }
+}
+
+crate::register_metal_op!(tract_core::ops::binary::TypedBinOp, |source, node, op| {
+    rule_if!(is_supported(&*op.0, source.node_input_facts(node.id)?[0].datum_type));
+    Ok(Some(Box::new(metal_bin_op(op.0.clone()))))
+});
+
+crate::register_metal_op!(tract_core::ops::logic::Iff, |_source, _node, _op| {
+    Ok(Some(Box::new(tract_gpu::ops::iff::GpuIff {
+        backend_name: "Metal",
+        dispatch: metal_iff_dispatch,
+    })))
+});
+
+pub fn metal_iff_dispatch(
+    cond: &DeviceTensor,
+    then_value: &DeviceTensor,
+    else_value: &DeviceTensor,
+    cond_strides: &[isize],
+    then_strides: &[isize],
+    else_strides: &[isize],
+    output: &DeviceTensor,
+    output_shape: &[usize],
+    output_strides: &[isize],
+) -> TractResult<()> {
+    crate::with_metal_stream(|stream| {
+        stream.retain_tensor(cond);
+        stream.retain_tensor(then_value);
+        stream.retain_tensor(else_value);
+        stream.retain_tensor(output);
+
+        let tname = tract_gpu::utils::BroadcastKind::copy_tname(output.datum_type());
+        let kernel_name = format!("bin_ops::iff_generic_{tname}");
+        let total_elems: usize = output_shape.iter().product();
+
+        let pipeline = stream.load_pipeline(LibraryName::BinOps, &kernel_name)?;
+        let command_buffer = stream.command_buffer();
+
+        let cond_strides_usize: TVec<usize> = cond_strides.iter().map(|&s| s as usize).collect();
+        let then_strides_usize: TVec<usize> = then_strides.iter().map(|&s| s as usize).collect();
+        let else_strides_usize: TVec<usize> = else_strides.iter().map(|&s| s as usize).collect();
+        let out_strides_usize: TVec<usize> = output_strides.iter().map(|&s| s as usize).collect();
+
+        command_buffer.encode(|encoder| {
+            encoder.set_compute_pipeline_state(&pipeline);
+            encoder.set_metal_tensor(0, cond, metal::MTLResourceUsage::Read);
+            encoder.set_metal_tensor(1, then_value, metal::MTLResourceUsage::Read);
+            encoder.set_metal_tensor(2, else_value, metal::MTLResourceUsage::Read);
+            encoder.set_metal_tensor(3, output, metal::MTLResourceUsage::Write);
+            encoder.set_slice(4, output_shape);
+            encoder.set_slice(5, &cond_strides_usize);
+            encoder.set_slice(6, &then_strides_usize);
+            encoder.set_slice(7, &else_strides_usize);
+            encoder.set_slice(8, &out_strides_usize);
+
+            let grid_size = MTLSize { width: total_elems as NSUInteger, height: 1, depth: 1 };
+            let group_size = MTLSize { width: 1, height: 1, depth: 1 };
+            encoder.dispatch_thread_groups(grid_size, group_size);
+        });
+        Ok(())
+    })
 }
 
 #[cfg(test)]

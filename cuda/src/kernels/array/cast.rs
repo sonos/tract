@@ -93,6 +93,10 @@ pub fn cuda_cast_dispatch(input: &DeviceTensor, output: &DeviceTensor) -> TractR
     crate::with_cuda_stream(|stream| Cast.dispatch_eval(stream, input, output))
 }
 
+crate::register_cuda_op!(tract_core::ops::cast::Cast, |_source, _node, op| {
+    Ok(crate::transform::cuda_cast_new(op.to).map(|c| Box::new(c) as _))
+});
+
 #[cfg(test)]
 mod tests {
 

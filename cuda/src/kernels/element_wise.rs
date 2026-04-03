@@ -99,6 +99,22 @@ pub fn cuda_element_wise_dispatch(
     crate::with_cuda_stream(|stream| dispatch_eval(stream, mini_op, input, output))
 }
 
+pub fn cuda_element_wise_op(
+    mini_op: Box<dyn ElementWiseMiniOp>,
+) -> tract_gpu::ops::element_wise::GpuElementWise {
+    tract_gpu::ops::element_wise::GpuElementWise {
+        backend_name: "Cuda",
+        mini_op,
+        dispatch: cuda_element_wise_dispatch,
+    }
+}
+
+// Generic element-wise fallback — checked after LeakyRelu, GeluApproximate.
+crate::register_cuda_op!(tract_core::ops::element_wise::ElementWiseOp, |source, node, op| {
+    rule_if!(is_supported(&*op.0, source.node_input_facts(node.id)?[0].datum_type));
+    Ok(Some(Box::new(cuda_element_wise_op(op.0.clone()))))
+});
+
 #[cfg(test)]
 mod tests {
     use super::*;

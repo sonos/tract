@@ -77,6 +77,19 @@ pub fn metal_gelu_approximate_dispatch(
     })
 }
 
+// GeluApproximate is an ElementWiseMiniOp, so we register under ElementWiseOp's TypeId.
+crate::register_metal_op!(tract_core::ops::element_wise::ElementWiseOp, |source, node, op| {
+    rule_if_some!(
+        ew = op.0.downcast_ref::<tract_transformers::ops::gelu_approximate::GeluApproximate>()
+    );
+    rule_if!(GeluApproximate::is_supported_dt(source.node_input_facts(node.id)?[0].datum_type));
+    Ok(Some(Box::new(tract_gpu::ops::gelu_approximate::GpuGeluApproximate::new(
+        ew.fast_impl,
+        "Metal",
+        metal_gelu_approximate_dispatch,
+    ))))
+});
+
 #[cfg(test)]
 mod tests {
     use super::*;
