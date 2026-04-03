@@ -329,12 +329,7 @@ __device__ __forceinline__ void iff_generic(
     }                                                                                              \
     }
 
-DEFINE_IFF_KERNEL(f16, half);
-DEFINE_IFF_KERNEL(f32, float);
-DEFINE_IFF_KERNEL(i8, int8_t);
-DEFINE_IFF_KERNEL(i16, int16_t);
-DEFINE_IFF_KERNEL(i32, int32_t);
-DEFINE_IFF_KERNEL(i64, int64_t);
+// Iff kernels: only u8/u16/u32/u64 (select is type-size based)
 DEFINE_IFF_KERNEL(u8, uint8_t);
 DEFINE_IFF_KERNEL(u16, uint16_t);
 DEFINE_IFF_KERNEL(u32, uint32_t);

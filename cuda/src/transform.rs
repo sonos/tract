@@ -1,6 +1,5 @@
 use crate::context::cuda_context;
 use crate::kernels::nn::cuda_reduce_launch;
-use crate::ops::CudaIff;
 use crate::ops::wire_cuda_conv;
 use crate::{kernels, ops, rewrite_rules};
 use DatumType::{F16, F32};
@@ -572,7 +571,10 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
                         crate::kernels::array::cuda_copy_nd_dispatch,
                     )?)
                 } else if node.op_is::<Iff>() {
-                    Box::new(CudaIff)
+                    Box::new(tract_gpu::ops::iff::GpuIff {
+                        backend_name: "Cuda",
+                        dispatch: crate::kernels::cuda_iff_dispatch,
+                    })
                 } else {
                     bail!("Failed to translate a supported CUDA Op")
                 };

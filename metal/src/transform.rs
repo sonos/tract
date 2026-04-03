@@ -146,6 +146,7 @@ fn can_translate_to_metal_op(source: &TypedModel, node: &TypedNode) -> TractResu
                 .op_as::<TypedBinOp>()
                 .is_some_and(|op| crate::kernels::bin_ops::is_supported(&*op.0, input_dts[0]))
             || node.op_is::<MultiBroadcastTo>()
+            || node.op_is::<tract_core::ops::logic::Iff>()
             || node.op_as::<PrefixMatMul>().is_some_and(|op| {
                 !op.transpose_c && op.quantize_output.is_none() && check_matmul_in_dts(&input_facts)
             })
@@ -301,6 +302,11 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
                         "Metal",
                         crate::kernels::array::metal_copy_nd_dispatch,
                     ))
+                } else if node.op_is::<tract_core::ops::logic::Iff>() {
+                    Box::new(tract_gpu::ops::iff::GpuIff {
+                        backend_name: "Metal",
+                        dispatch: crate::kernels::bin_ops::metal_iff_dispatch,
+                    })
                 } else {
                     bail!("Failed to translate a supported Metal Op")
                 };

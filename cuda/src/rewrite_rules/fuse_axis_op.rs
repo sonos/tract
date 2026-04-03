@@ -22,7 +22,7 @@ fn can_fuse_move(model: &TypedModel, axis_node: &TypedNode) -> bool {
             || node.op_is::<tract_gpu::ops::pulse::GpuDelay>()
             || node.op_is::<tract_gpu::ops::pulse::GpuPulsePad>()
             || node.op_is::<tract_gpu::ops::binary::GpuBinOp>()
-            || node.op_is::<crate::ops::CudaIff>()
+            || node.op_is::<tract_gpu::ops::iff::GpuIff>()
     })
 }
 

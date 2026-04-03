@@ -3,7 +3,6 @@ mod conv;
 mod flash_attn;
 mod fused_axis_op;
 mod gemm;
-mod iff;
 mod quant_q81;
 mod scaled_masked_softmax;
 pub use apply_rope::CudaApplyRope;
@@ -11,7 +10,6 @@ pub use conv::{CudaConv, wire_cuda_conv};
 pub use flash_attn::CudaFlashAttention;
 pub use fused_axis_op::CudaFusedAxisOp;
 pub use gemm::CudaGgmlGemm;
-pub use iff::CudaIff;
 pub use quant_q81::{CudaGgmlQuantQ81, GgmlQuantQ81Fact};
 pub use scaled_masked_softmax::CudaScaledMaskedSoftmax;
 

@@ -21,7 +21,7 @@ use crate::ops::GgmlQuantQ81Fact;
 use crate::tensor::{CudaBuffer, CudaTensor};
 use anyhow::{bail, ensure};
 use cudarc::driver::{CudaView, CudaViewMut};
-pub use iff::Iff;
+pub use iff::{Iff, cuda_iff_dispatch};
 use tract_core::internal::ExoticFact;
 use tract_core::prelude::{TDim, TractResult};
 use tract_core::tract_linalg::block_quant::{BlockQuant, BlockQuantFact, Q4_0, Q8_1};

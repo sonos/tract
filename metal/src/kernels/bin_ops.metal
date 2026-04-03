@@ -311,3 +311,54 @@ INSTANTIATE_BIN_OP(and, And, bool, bool, bool)
 INSTANTIATE_BIN_OP(or, Or, bool, bool, bool)
 
 INSTANTIATE_1ROW_BIN_OP()
+
+// --- Iff (select) kernel ---
+
+template <typename T>
+[[kernel]] void iff_generic(
+    device const bool *cond [[buffer(0)]],
+    device const T *then_values [[buffer(1)]],
+    device const T *else_values [[buffer(2)]],
+    device T *out [[buffer(3)]],
+    constant const size_t *out_shape [[buffer(4)]],
+    constant const size_t *cond_strides [[buffer(5)]],
+    constant const size_t *then_strides [[buffer(6)]],
+    constant const size_t *else_strides [[buffer(7)]],
+    constant const size_t *out_strides [[buffer(8)]],
+    uint tpig [[thread_position_in_grid]])
+{
+    size_t total = out_shape[0] * out_shape[1] * out_shape[2] * out_shape[3] * out_shape[4];
+    if (tpig >= total) return;
+
+    size_t tmp = tpig;
+    size_t i4 = tmp % out_shape[4]; tmp /= out_shape[4];
+    size_t i3 = tmp % out_shape[3]; tmp /= out_shape[3];
+    size_t i2 = tmp % out_shape[2]; tmp /= out_shape[2];
+    size_t i1 = tmp % out_shape[1]; tmp /= out_shape[1];
+    size_t i0 = tmp;
+
+    size_t icond = i0 * cond_strides[0] + i1 * cond_strides[1] + i2 * cond_strides[2]
+                 + i3 * cond_strides[3] + i4 * cond_strides[4];
+    bool pick = cond[icond];
+
+    size_t offset = i0 * (pick ? then_strides[0] : else_strides[0])
+                  + i1 * (pick ? then_strides[1] : else_strides[1])
+                  + i2 * (pick ? then_strides[2] : else_strides[2])
+                  + i3 * (pick ? then_strides[3] : else_strides[3])
+                  + i4 * (pick ? then_strides[4] : else_strides[4]);
+
+    size_t io = i0 * out_strides[0] + i1 * out_strides[1] + i2 * out_strides[2]
+              + i3 * out_strides[3] + i4 * out_strides[4];
+
+    out[io] = (pick ? then_values : else_values)[offset];
+}
+
+typedef decltype(iff_generic<float>) iff_generic_t;
+
+#define INSTANTIATE_IFF(tname, type) \
+    template [[host_name("bin_ops::iff_generic_" #tname)]] [[kernel]] iff_generic_t iff_generic<type>;
+
+INSTANTIATE_IFF(u8, uint8_t)
+INSTANTIATE_IFF(u16, uint16_t)
+INSTANTIATE_IFF(u32, uint32_t)
+INSTANTIATE_IFF(u64, uint64_t)
