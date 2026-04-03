@@ -19,8 +19,9 @@ use crate::internal::*;
 use crate::model::{NonPulsingWrappingOp, PulseWrappingOp};
 use tract_core::ops::binary::TypedBinOp;
 use tract_core::ops::change_axes::AxisOp;
+use tract_core::ops::element_wise::ElementWiseOp;
 use tract_core::ops::konst::Const;
-use tract_core::ops::logic::{Iff, classify_chunk_window};
+use tract_core::ops::logic::{BitNot, Iff, classify_chunk_window};
 use tract_nnef::tract_core::trivial_op_state_freeze;
 
 register_all!(Iff: pulsify);
@@ -163,6 +164,35 @@ fn try_fill_scalar_f32(source: &TypedModel, outlet: OutletId) -> Option<f32> {
 
 // ── Iff pulsifier ─────────────────────────────────────────────────────────
 
+/// Walk back through the source-model condition graph, peeling `AddAxis`
+/// (unsqueeze) and `BitNot` (logical NOT) ops that wrap the real mask.
+///
+/// Returns `(inner_outlet, inverted)` where `inverted` is `true` when the
+/// condition has been NOTted an odd number of times — i.e. the condition is
+/// True where the attention position should be *masked out* (fill with -∞).
+fn peel_condition(source: &TypedModel, mut outlet: OutletId) -> (OutletId, bool) {
+    let mut inverted = false;
+    loop {
+        let node = &source.nodes()[outlet.node];
+        if node.inputs.len() != 1 {
+            break;
+        }
+        if node.op_as::<AxisOp>().is_some() {
+            outlet = node.inputs[0];
+            continue;
+        }
+        if let Some(ew) = node.op_as::<ElementWiseOp>() {
+            if ew.0.is::<BitNot>() {
+                inverted = !inverted;
+                outlet = node.inputs[0];
+                continue;
+            }
+        }
+        break;
+    }
+    (outlet, inverted)
+}
+
 fn pulsify(
     _op: &Iff,
     source: &TypedModel,
@@ -173,12 +203,35 @@ fn pulsify(
     _pulse: &TDim,
 ) -> TractResult<Option<TVec<OutletId>>> {
     // inputs[0] = condition, inputs[1] = true branch, inputs[2] = false branch
-    let cond_outlet = node.inputs[0];
-    let cond_fact = source.outlet_fact(cond_outlet)?;
+    //
+    // Two conventions appear in practice:
+    //   Normal   (inverted=false): condition=True → keep score (inputs[1])
+    //   Inverted (inverted=true):  condition=True → fill with -∞ (inputs[1]),
+    //                              condition=False → keep score (inputs[2])
+    //
+    // We peel AddAxis / BitNot wrappers from the condition to find the
+    // underlying chunk-window mask and detect which convention is in use.
+    let raw_cond = node.inputs[0];
+    let (inner_outlet, inverted) = peel_condition(source, raw_cond);
+    let inner_fact = source.outlet_fact(inner_outlet)?;
 
-    // Only fire when the condition carries a chunk-window uniform_tdim.
-    let expr = match cond_fact.uniform_tdim.as_ref() {
-        Some(e) => e.clone().simplify(),
+    // Try to obtain a chunk-window uniform_tdim expression.
+    // The stored output fact may not have it when FoldUniformTDim introduced a
+    // UniformTDim node but did not re-propagate uniform_tdim to successor nodes
+    // (e.g. attMask_1 = And(padMask, UniformTDim) may have uniform_tdim=None
+    // on its output fact even though its UniformTDim input carries it).
+    // Fall back to scanning the inner node's inputs.
+    let expr_opt = inner_fact.uniform_tdim.as_ref().map(|e| e.clone().simplify()).or_else(|| {
+        let inner_node = &source.nodes()[inner_outlet.node];
+        inner_node.inputs.iter().find_map(|inp| {
+            let f = source.outlet_fact(*inp).ok()?;
+            let e = f.uniform_tdim.as_ref()?;
+            classify_chunk_window(&e.clone().simplify())?;
+            Some(e.clone().simplify())
+        })
+    });
+    let expr = match expr_opt {
+        Some(e) => e,
         None => return Ok(None),
     };
     let cw = match classify_chunk_window(&expr) {
@@ -189,26 +242,35 @@ fn pulsify(
     let left_chunks = cw.left_chunks as usize;
     let pulse_size = cw.p as usize;
 
+    // For the inverted convention: condition is True when masked.
+    // At left_chunks=0 all positions are valid, so condition is all-False →
+    // always take the false branch (inputs[2] = scores).
+    // For normal convention: all-True → always take inputs[1] (scores).
     if left_chunks == 0 {
-        // No lookback → mask is always all-true → elide Iff.
-        return Ok(Some(tvec![mapping[&node.inputs[1]]]));
+        let keep_wire = if inverted { node.inputs[2] } else { node.inputs[1] };
+        return Ok(Some(tvec![mapping[&keep_wire]]));
     }
 
     let key_window = (left_chunks + 1) * pulse_size;
 
-    // Wire ChunkWindowMask (no inputs): produces [P, (L+1)*P] bool, stream: None.
+    // Wire ChunkWindowMask (no inputs): produces [P, (L+1)*P] bool, True = in-window.
     let mask_wire_2d = target.wire_node(
         format!("{}.chunk_window_mask", node.name),
         ChunkWindowMask { left_chunks, pulse_size, key_window },
         &[],
     )?[0];
 
-    let true_wire = mapping[&node.inputs[1]];
+    // ChunkWindowMask is True for in-window positions (normal convention).
+    // For the inverted convention the Iff has scores as inputs[2] and fill as
+    // inputs[1], so we swap which source input we treat as "true" (score) wire.
+    let scores_input = if inverted { node.inputs[2] } else { node.inputs[1] };
+    let fill_input = if inverted { node.inputs[1] } else { node.inputs[2] };
+
+    let true_wire = mapping[&scores_input];
     let true_rank = target.outlet_fact(true_wire)?.shape.len();
     let true_dtype = target.outlet_fact(true_wire)?.datum_type;
 
     // Promote mask from [P, kw] (rank 2) to [1,...,1,P,kw] (rank = true_rank).
-    // Iff.output_facts requires all three inputs to have identical rank.
     let mask_wire = {
         let mut w = mask_wire_2d;
         for leading in 0..true_rank.saturating_sub(2) {
@@ -221,12 +283,11 @@ fn pulsify(
         w
     };
 
-    // False branch: extract the scalar fill value from the source model.
-    // The pulsed false-branch wire may have the wrong shape (MultiBroadcastTo([S,S])
+    // Fill branch: extract the scalar fill value from the source model.
+    // The pulsed fill-branch wire may have the wrong shape (MultiBroadcastTo([S,S])
     // substitutes S→P in both axes, giving [P,P] instead of [P,(L+1)P]).
     // Instead, create a fresh scalar Const which broadcasts correctly.
-    // Shape is [1; true_rank] so it broadcasts against [1,...,1,P,(L+1)*P].
-    let fill_wire = if let Some(fill_f32) = try_fill_scalar_f32(source, node.inputs[2]) {
+    let fill_wire = if let Some(fill_f32) = try_fill_scalar_f32(source, fill_input) {
         let fill_shape = vec![1usize; true_rank];
         let fill_tensor =
             Tensor::from_shape(&fill_shape, &[fill_f32])?.cast_to_dt(true_dtype)?.into_owned();
@@ -236,12 +297,11 @@ fn pulsify(
             &[],
         )?[0]
     } else {
-        // Fallback: use the pulsed false branch wire (may have wrong shape).
-        mapping[&node.inputs[2]]
+        mapping[&fill_input]
     };
 
-    // Wire Iff with PulseWrappingOp so the streaming axis propagates from the
-    // true branch to the output.
+    // Wire Iff(ChunkWindowMask=True_in_window, true=scores, false=fill).
+    // Streaming axis propagates from the scores (true) branch.
     Ok(Some(target.wire_node(
         &node.name,
         PulseWrappingOp(Box::new(Iff)),
