@@ -17,3 +17,6 @@ maintenance = { status = "actively-developed" }
 [dependencies]
 float-ord.workspace = true
 tract-nnef.workspace = true
+
+[dev-dependencies]
+ndarray-npy.workspace = true
