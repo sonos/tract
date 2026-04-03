@@ -12,6 +12,7 @@ static VEC_CAPACITY: usize = 1024;
 /// and handing `&'a T` refs to `inner.arg(...)`.
 pub struct TractLaunchArgs<'a> {
     inner: LaunchArgs<'a>,
+    stream: &'a TractCudaStream,
     keepalive: Vec<u8>,
     keepalive_overflow: Vec<Box<[u8]>>,
 }
@@ -20,6 +21,7 @@ impl<'a> TractLaunchArgs<'a> {
     pub fn new(stream: &'a TractCudaStream, func: &'a CudaFunction) -> Self {
         Self {
             inner: stream.launch_builder(func),
+            stream,
             keepalive: Vec::with_capacity(VEC_CAPACITY),
             keepalive_overflow: Vec::new(),
         }
@@ -74,8 +76,15 @@ impl<'a> TractLaunchArgs<'a> {
     }
 
     pub fn launch(&mut self, cfg: LaunchConfig) -> TractResult<()> {
-        unsafe {
-            self.inner.launch(cfg)?;
+        if let Some((start, end)) = self.stream.record_profile_events()? {
+            unsafe {
+                self.inner.launch(cfg)?;
+            }
+            self.stream.finish_profile_entry(start, end)?;
+        } else {
+            unsafe {
+                self.inner.launch(cfg)?;
+            }
         }
         Ok(())
     }

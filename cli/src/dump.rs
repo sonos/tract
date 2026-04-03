@@ -150,12 +150,79 @@ pub fn handle(
                 ensure_cuda_runtime_dependencies("GPU profiling called on non-GPU device")?;
             }
 
+            #[cfg(any(target_os = "linux", target_os = "windows"))]
+            let is_cuda = matches.get_flag("cuda");
+            #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+            let is_cuda = false;
+
+            if is_cuda {
+                #[cfg(any(target_os = "linux", target_os = "windows"))]
+                tract_cuda::with_cuda_stream(|s| {
+                    s.enable_profiling();
+                    Ok(())
+                })?;
+            }
+
+            let before_node: Box<dyn Fn(usize)> = if is_cuda {
+                #[cfg(any(target_os = "linux", target_os = "windows"))]
+                {
+                    Box::new(|node_id| {
+                        tract_cuda::with_cuda_stream(|s| {
+                            s.set_current_node(node_id);
+                            Ok(())
+                        })
+                        .ok();
+                    })
+                }
+                #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+                Box::new(|_| {})
+            } else {
+                Box::new(|_| {})
+            };
+
+            let after_iteration: Box<
+                dyn Fn(
+                    &mut tract_libcli::annotations::Annotations,
+                    &[(usize, String)],
+                ) -> TractResult<()>,
+            > = if is_cuda {
+                #[cfg(any(target_os = "linux", target_os = "windows"))]
+                {
+                    Box::new(|dg, prefix| {
+                        tract_cuda::with_cuda_stream(|s| {
+                            s.synchronize()?;
+                            if let Some(entries) = s.drain_profile() {
+                                for entry in entries {
+                                    let ms = entry.start.elapsed_ms(&entry.end)?;
+                                    let dur =
+                                        std::time::Duration::from_secs_f64(ms as f64 / 1000.0);
+                                    let node_id = tract_libcli::annotations::NodeQId(
+                                        prefix.into(),
+                                        entry.node_id,
+                                    );
+                                    *dg.node_mut(node_id)
+                                        .accelerator_profile
+                                        .get_or_insert(std::time::Duration::default()) += dur;
+                                }
+                            }
+                            Ok(())
+                        })
+                    })
+                }
+                #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+                Box::new(|_, _| Ok(()))
+            } else {
+                Box::new(|_, _| Ok(()))
+            };
+
             tract_libcli::profile::profile_gpu(
                 &params.req_runnable()?,
                 bench_limits,
                 sub_matches,
                 &mut annotations,
                 &inputs,
+                &*before_node,
+                &*after_iteration,
             )?;
         } else {
             tract_libcli::profile::profile(

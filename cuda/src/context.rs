@@ -6,13 +6,14 @@ use cudarc::runtime::sys::cudaDeviceProp;
 use tract_gpu::device::DeviceContext;
 use tract_gpu::tensor::{DeviceTensor, OwnedDeviceTensor};
 
+use std::cell::{Cell, RefCell};
 use std::mem::MaybeUninit;
 use std::ops::Deref;
 use std::sync::{OnceLock, RwLock};
 
 use tract_core::internal::*;
 
-use cudarc::driver::{CudaContext, CudaFunction, CudaModule, CudaStream};
+use cudarc::driver::{CudaContext, CudaEvent, CudaFunction, CudaModule, CudaStream};
 
 use crate::kernels::{COMMON_H, LibraryName, cubin_dir};
 use crate::tensor::CudaTensor;
@@ -295,10 +296,21 @@ impl DeviceContext for TractCudaContext {
     }
 }
 
+/// A recorded GPU kernel timing entry: start/end events tagged with a node_id.
+pub struct GpuProfileEntry {
+    pub node_id: usize,
+    pub start: CudaEvent,
+    pub end: CudaEvent,
+}
+
 pub struct TractCudaStream {
     inner: Arc<CudaStream>,
     cublas: CudaBlas,
     cudnn: Arc<Cudnn>,
+    /// When Some, kernel launches record start/end events here.
+    profile_log: RefCell<Option<Vec<GpuProfileEntry>>>,
+    /// The node_id currently being evaluated (set by the profiling harness).
+    current_node_id: Cell<usize>,
 }
 
 impl TractCudaStream {
@@ -306,7 +318,13 @@ impl TractCudaStream {
         let stream = cuda_context().default_stream();
         let cublas = CudaBlas::new(stream.clone())?;
         let cudnn = Cudnn::new(stream.clone())?;
-        Ok(TractCudaStream { inner: stream, cublas, cudnn })
+        Ok(TractCudaStream {
+            inner: stream,
+            cublas,
+            cudnn,
+            profile_log: RefCell::new(None),
+            current_node_id: Cell::new(0),
+        })
     }
 
     pub fn cublas(&self) -> &CudaBlas {
@@ -315,6 +333,49 @@ impl TractCudaStream {
 
     pub fn cudnn(&self) -> &Arc<Cudnn> {
         &self.cudnn
+    }
+
+    /// Enable GPU profiling. Kernel launches will record timing events.
+    pub fn enable_profiling(&self) {
+        *self.profile_log.borrow_mut() = Some(Vec::new());
+    }
+
+    /// Set the current node being evaluated (used by the profiling harness).
+    pub fn set_current_node(&self, node_id: usize) {
+        self.current_node_id.set(node_id);
+    }
+
+    /// Returns true if profiling is active.
+    pub fn is_profiling(&self) -> bool {
+        self.profile_log.borrow().is_some()
+    }
+
+    /// Record a start/end event pair around a kernel launch.
+    /// Call this from `TractLaunchArgs::launch()` when profiling is active.
+    pub fn record_profile_events(&self) -> TractResult<Option<(CudaEvent, CudaEvent)>> {
+        if !self.is_profiling() {
+            return Ok(None);
+        }
+        let flags = Some(cudarc::driver::sys::CUevent_flags::CU_EVENT_DEFAULT);
+        let start = self.inner.record_event(flags)?;
+        Ok(Some((start, self.inner.context().new_event(flags)?)))
+    }
+
+    /// Finish recording a profile entry (call after kernel launch).
+    pub fn finish_profile_entry(&self, start: CudaEvent, end: CudaEvent) -> TractResult<()> {
+        end.record(&self.inner)?;
+        let node_id = self.current_node_id.get();
+        self.profile_log.borrow_mut().as_mut().unwrap().push(GpuProfileEntry {
+            node_id,
+            start,
+            end,
+        });
+        Ok(())
+    }
+
+    /// Drain all recorded profile entries. Caller should synchronize first.
+    pub fn drain_profile(&self) -> Option<Vec<GpuProfileEntry>> {
+        self.profile_log.borrow_mut().as_mut().map(|log| std::mem::take(log))
     }
 }
 
