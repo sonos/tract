@@ -46,7 +46,7 @@ pub fn metal_conv_dispatch(
     // ker_params: [groups, co_per_group, ci_per_group, ker_spatial...]
     let mut ker_params: TVec<i32> =
         tvec![op.group as i32, co_per_group as i32, ci_per_group as i32];
-    ker_params.extend(weights.shape()[1..].iter().map(|&d| d as i32));
+    ker_params.extend(weights.shape()[2..].iter().map(|&d| d as i32));
 
     // ker_strides: [g_stride, o_stride, i_stride, spatial...]
     let group_stride = weights.strides()[0] as usize * co_per_group;
