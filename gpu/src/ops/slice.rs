@@ -1,45 +1,22 @@
 use crate::tensor::DeviceTensorExt;
-use crate::utils::{DispatchCopyNdFn, compute_broadcast_strides};
+use crate::utils::compute_broadcast_strides;
 use tract_core::internal::*;
 use tract_core::ops::array::Slice;
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct GpuSlice {
     pub inner: Slice,
-    pub backend_name: &'static str,
-    pub dispatch: DispatchCopyNdFn,
 }
 
 impl GpuSlice {
-    pub fn new(inner: Slice, backend_name: &'static str, dispatch: DispatchCopyNdFn) -> Self {
-        Self { inner, backend_name, dispatch }
-    }
-}
-
-impl std::fmt::Debug for GpuSlice {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}Slice({:?})", self.backend_name, self.inner)
-    }
-}
-
-impl PartialEq for GpuSlice {
-    fn eq(&self, other: &Self) -> bool {
-        self.backend_name == other.backend_name && self.inner == other.inner
-    }
-}
-
-impl Eq for GpuSlice {}
-
-impl std::hash::Hash for GpuSlice {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.backend_name.hash(state);
-        self.inner.hash(state);
+    pub fn new(inner: Slice) -> Self {
+        Self { inner }
     }
 }
 
 impl Op for GpuSlice {
     fn name(&self) -> StaticName {
-        format!("{}Slice", self.backend_name).into()
+        "GpuSlice".into()
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
@@ -96,7 +73,8 @@ impl EvalOp for GpuSlice {
             // Slice uses same strides as input (broadcast strides with matching shapes)
             let broadcast_strides: TVec<isize> =
                 compute_broadcast_strides(&o_shape, input_strides)?;
-            (self.dispatch)(
+            let ctx = crate::device::get_context()?;
+            ctx.copy_nd(
                 input,
                 offset,
                 &broadcast_strides,
@@ -130,8 +108,6 @@ impl TypedOp for GpuSlice {
                 start: self.inner.start.eval(values),
                 end: self.inner.end.eval(values),
             },
-            backend_name: self.backend_name,
-            dispatch: self.dispatch,
         };
         let inputs = node.inputs.iter().map(|i| mapping[i]).collect::<TVec<_>>();
         target.wire_node(&node.name, op, &inputs)

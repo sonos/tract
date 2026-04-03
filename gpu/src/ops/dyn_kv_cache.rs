@@ -1,6 +1,5 @@
 use crate::fact::DeviceTypedFactExt;
 use crate::tensor::{DeviceTensor, DeviceTensorExt, IntoDevice};
-use crate::utils::DispatchCopyNdFn;
 use derive_new::new;
 use tract_core::internal::*;
 use tract_core::ops::OpStateFreeze;
@@ -12,7 +11,6 @@ pub struct GpuDynKVCacheState {
     name: String,
     axis: usize,
     past_sequence_fact: TypedFact,
-    dispatch: DispatchCopyNdFn,
     kv_cache: Option<TValue>,
 }
 
@@ -71,7 +69,6 @@ impl OpState for GpuDynKVCacheState {
         let gpu_op =
             op.downcast_ref::<GpuDynKVCache>().ok_or_else(|| format_err!("Wrong Op type"))?;
         let axis = gpu_op.axis;
-        let dispatch = gpu_op.dispatch;
 
         let inputs =
             op_inputs.iter().map(|it| it.to_device_tensor()).collect::<TractResult<TVec<_>>>()?;
@@ -85,6 +82,7 @@ impl OpState for GpuDynKVCacheState {
         )?;
 
         // Concat inputs into output
+        let ctx = crate::device::get_context()?;
         let mut cursor = 0usize;
         for input in &inputs {
             let slice_len = input.shape()[axis];
@@ -93,7 +91,7 @@ impl OpState for GpuDynKVCacheState {
             }
             let dst_offset =
                 cursor * output.strides()[axis] as usize * output.datum_type().size_of();
-            dispatch(
+            ctx.copy_nd(
                 input,
                 0,
                 input.strides(),
@@ -128,7 +126,6 @@ pub struct FrozenGpuDynKVCacheState {
     name: String,
     axis: usize,
     past_sequence_fact: TypedFact,
-    dispatch: DispatchCopyNdFn,
     kv_cache: Option<DeviceTensor>,
 }
 
@@ -139,7 +136,6 @@ impl OpStateFreeze for GpuDynKVCacheState {
             name: self.name.clone(),
             axis: self.axis,
             past_sequence_fact: self.past_sequence_fact.clone(),
-            dispatch: self.dispatch,
             kv_cache: self.kv_cache.clone().map(|t| t.to_device_tensor().cloned().unwrap()),
         })
     }
@@ -152,7 +148,6 @@ impl FrozenOpState for FrozenGpuDynKVCacheState {
             name: self.name.clone(),
             axis: self.axis,
             past_sequence_fact: self.past_sequence_fact.clone(),
-            dispatch: self.dispatch,
             kv_cache: self.kv_cache.clone().map(|t| t.into_tensor().into_tvalue()),
         })
     }
@@ -164,37 +159,28 @@ pub struct GpuDynKVCache {
     pub past_sequence_fact: TypedFact,
     pub input_sequence_fact: TypedFact,
     pub axis: usize,
-    pub backend_name: &'static str,
-    pub dispatch: DispatchCopyNdFn,
 }
 
 impl GpuDynKVCache {
-    pub fn from_tract_transformers(
-        op: &DynKeyValueCache,
-        backend_name: &'static str,
-        dispatch: DispatchCopyNdFn,
-    ) -> Self {
+    pub fn from_tract_transformers(op: &DynKeyValueCache) -> Self {
         Self {
             name: op.name.clone(),
             axis: op.axis,
             past_sequence_fact: op.past_sequence_fact.clone(),
             input_sequence_fact: op.input_sequence_fact.clone(),
-            backend_name,
-            dispatch,
         }
     }
 }
 
 impl std::fmt::Debug for GpuDynKVCache {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}DynKVCache({}, axis={})", self.backend_name, self.name, self.axis)
+        write!(f, "GpuDynKVCache({}, axis={})", self.name, self.axis)
     }
 }
 
 impl PartialEq for GpuDynKVCache {
     fn eq(&self, other: &Self) -> bool {
-        self.backend_name == other.backend_name
-            && self.name == other.name
+        self.name == other.name
             && self.axis == other.axis
             && self.past_sequence_fact == other.past_sequence_fact
             && self.input_sequence_fact == other.input_sequence_fact
@@ -205,7 +191,6 @@ impl Eq for GpuDynKVCache {}
 
 impl std::hash::Hash for GpuDynKVCache {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.backend_name.hash(state);
         self.name.hash(state);
         self.axis.hash(state);
     }
@@ -213,7 +198,7 @@ impl std::hash::Hash for GpuDynKVCache {
 
 impl Op for GpuDynKVCache {
     fn name(&self) -> StaticName {
-        format!("{}DynKVCache", self.backend_name).into()
+        "GpuDynKVCache".into()
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
@@ -234,7 +219,6 @@ impl EvalOp for GpuDynKVCache {
             self.name.clone(),
             self.axis,
             self.past_sequence_fact.clone(),
-            self.dispatch,
             None,
         ))))
     }
