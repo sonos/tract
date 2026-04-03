@@ -44,9 +44,7 @@ where
         {
             bail!("`--metal-gpu-trace` present but it is only available on MacOS and iOS")
         }
-    } else if matches.contains_id("cuda-gpu-trace")
-        && matches.get_one::<String>("cuda-gpu-trace").is_some()
-    {
+    } else if matches.get_flag("cuda-gpu-trace") {
         #[cfg(any(target_os = "linux", target_os = "windows"))]
         {
             ensure_cuda_runtime_dependencies(

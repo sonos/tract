@@ -251,11 +251,24 @@ fn render_node_prefixed(
         };
     }
 
+    let have_accel_profiling =
+        annotations.tags.iter().any(|(_, tag)| tag.accelerator_profile.is_some());
+    let is_cpu_fallback = have_accel_profiling
+        && tags.accelerator_profile.unwrap_or_default() == Duration::default()
+        && tags.profile.unwrap_or_default() > Duration::default();
+    let op_color = if node_name == "UnimplementedOp" {
+        Red.bold()
+    } else if is_cpu_fallback {
+        Yellow.bold()
+    } else {
+        Blue.bold()
+    };
+
     prefix!();
     println!(
         "{} {} {}",
         White.bold().paint(format!("{node_id}")),
-        (if node_name == "UnimplementedOp" { Red.bold() } else { Blue.bold() }).paint(node_op_name),
+        op_color.paint(node_op_name),
         name_color.italic().paint(node_name)
     );
     for label in tags.labels.iter() {
@@ -453,9 +466,13 @@ pub fn render_summaries(
             .sorted_by_key(|(_, d)| if have_accel_profiling { d.1 } else { d.0 })
             .rev()
         {
+            let is_cpu_fallback = have_accel_profiling
+                && accel_dur == Duration::default()
+                && cpu_dur > Duration::default();
+            let op_color = if is_cpu_fallback { Yellow.bold() } else { Blue.bold() };
             println!(
                 " * {} {:3} nodes: {}  {}",
-                Blue.bold().paint(format!("{op:22}")),
+                op_color.paint(format!("{op:22}")),
                 n,
                 dur_avg_ratio(cpu_dur, summary.sum),
                 if have_accel_profiling {

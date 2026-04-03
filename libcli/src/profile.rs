@@ -175,6 +175,8 @@ pub fn profile_gpu(
     sub_matches: &clap::ArgMatches,
     dg: &mut Annotations,
     inputs: &RunTensors,
+    before_node: &dyn Fn(usize),
+    after_iteration: &dyn Fn(&mut Annotations, &[(usize, String)]) -> TractResult<()>,
 ) -> TractResult<()> {
     let Some(plan) = runnable.typed_plan() else {
         bail!("Can only profile TypedRunnable");
@@ -197,8 +199,9 @@ pub fn profile_gpu(
             }
             let start = Instant::now();
             for source in &inputs.sources {
-                rec_profiler_gpu(&mut state, dg, source, &prefix)?;
+                rec_profiler_gpu(&mut state, dg, source, &prefix, before_node)?;
             }
+            after_iteration(dg, &prefix)?;
             dur += start.elapsed();
             iters += 1;
         }
@@ -231,10 +234,12 @@ pub fn rec_profiler_gpu(
     dg: &mut Annotations,
     inputs: &TVec<TValue>,
     prefix: &[(usize, String)],
+    before_node: &dyn Fn(usize),
 ) -> TractResult<TVec<TValue>> {
     let r = state.run_plan_with_eval(
         inputs.clone(),
         |session_state, mut node_state, node, input| {
+            before_node(node.id);
             // Profile node
             let start = crate::time::now();
             let res = tract_core::plan::eval(
