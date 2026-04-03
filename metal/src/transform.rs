@@ -29,7 +29,6 @@ use tract_gpu::fact::DeviceFact;
 use tract_gpu::tensor::DeviceTensor;
 use tract_gpu::tensor::IntoDevice;
 use tract_gpu::utils::as_quant_fact;
-use tract_itertools::Itertools;
 use tract_transformers::ops::apply_rope::{ApplyRope, RotateHalf};
 use tract_transformers::ops::gelu_approximate::GeluApproximate;
 use tract_transformers::ops::rms_norm::RmsNorm;
@@ -128,71 +127,191 @@ impl MetalTransform {
     }
 }
 
-fn can_translate_to_metal_op(source: &TypedModel, node: &TypedNode) -> TractResult<bool> {
-    let input_facts = source.node_input_facts(node.id)?.iter().map(|f| (*f).clone()).collect_vec();
-    let input_dts = input_facts
+/// Returns `Some(gpu_op)` if the node can be translated to a single GPU op,
+/// `None` if it should stay on CPU or needs special multi-node handling.
+/// Multi-node ops (PrefixMatMul, Const) are handled separately in translate_node.
+fn try_make_metal_op(
+    source: &TypedModel,
+    node: &TypedNode,
+) -> TractResult<Option<Box<dyn TypedOp>>> {
+    let input_facts = source.node_input_facts(node.id)?;
+    let input_dts: Vec<_> = input_facts
         .iter()
         .map(|f| f.as_device_fact().map(|f| f.datum_type).unwrap_or(f.datum_type))
-        .collect_vec();
+        .collect();
+    if !input_facts.iter().all(|f| DeviceTensor::is_supported_dt(f.datum_type)) {
+        return Ok(None);
+    }
 
-    let in_dts_metal_compatible =
-        input_facts.iter().all(|fact| DeviceTensor::is_supported_dt(fact.datum_type));
-
-    Ok(in_dts_metal_compatible
-        && (node
-            .op_as::<ElementWiseOp>()
-            .is_some_and(|op| crate::kernels::element_wise::is_supported(&*op.0, input_dts[0]))
-            || node
-                .op_as::<TypedBinOp>()
-                .is_some_and(|op| crate::kernels::bin_ops::is_supported(&*op.0, input_dts[0]))
-            || node.op_is::<MultiBroadcastTo>()
-            || node.op_is::<tract_core::ops::logic::Iff>()
-            || node.op_as::<PrefixMatMul>().is_some_and(|op| {
-                !op.transpose_c && op.quantize_output.is_none() && check_matmul_in_dts(&input_facts)
-            })
-            || node
-                .op_as::<Const>()
-                .is_some_and(|op| DeviceTensor::is_supported_dt(op.val().datum_type()))
-            || node.op_as::<Cast>().is_some_and(|op| {
-                kernels::array::Cast::is_supported_dt(input_dts[0])
-                    && kernels::array::Cast::is_supported_dt(op.to)
-            })
-            || node.op_is::<AxisOp>()
-            || node.op_is::<Slice>()
-            || node.op_is::<TypedConcat>()
-            || node.op_is::<DynKeyValueCache>()
-            || node.op_as::<Reduce>().is_some_and(|op| {
-                GpuReduce::from_tract_core(op, "Metal", metal_reduce_launch)
-                    .is_ok_and(|op| op.reducer.is_supported_dt(input_dts[0]))
-            })
-            || node.op_as::<CoreSoftmax>().is_some_and(|op| {
-                kernels::nn::Softmax::is_supported_dt(input_dts[0])
-                    && tract_gpu::ops::softmax::GpuSoftmax::from_tract_core(
-                        op,
+    // ElementWise ops (special cases first, then generic)
+    if let Some(op) = node.op_as::<ElementWiseOp>() {
+        if let Some(ew) = op.0.downcast_ref::<GeluApproximate>() {
+            if kernels::nn::GeluApproximate::is_supported_dt(input_dts[0]) {
+                return Ok(Some(Box::new(
+                    tract_gpu::ops::gelu_approximate::GpuGeluApproximate::new(
+                        ew.fast_impl,
                         "Metal",
-                        kernels::nn::metal_softmax_dispatch,
-                    )
-                    .is_ok()
-            })
-            || node
-                .op_as::<ScaledMaskedSoftmax>()
-                .is_some_and(|_| kernels::nn::ScaledMaskedSoftmax::is_supported_dt(input_dts[0]))
-            || node
-                .op_as::<RmsNorm>()
-                .is_some_and(|_| kernels::nn::RmsNorm::is_supported_dt(input_dts[0]))
-            || node
-                .op_as::<RotateHalf>()
-                .is_some_and(|_| kernels::array::RotateHalf::is_supported_dt(input_dts[0]))
-            || node
-                .op_as::<ApplyRope>()
-                .is_some_and(|_| kernels::nn::ApplyRope::is_supported_dt(input_dts[0]))
-            || node.op_as::<ElementWiseOp>().is_some_and(|op| {
-                op.0.is::<GeluApproximate>()
-                    && kernels::nn::GeluApproximate::is_supported_dt(input_dts[0])
-            })
-            || node.op_as::<ElementWiseOp>().is_some_and(|op| {
-                op.0.is::<LeakyRelu>() && kernels::nn::LeakyRelu::is_supported_dt(input_dts[0])
-            })))
+                        kernels::nn::metal_gelu_approximate_dispatch,
+                    ),
+                )));
+            }
+            return Ok(None);
+        }
+        if let Some(leaky) = op.0.downcast_ref::<LeakyRelu>() {
+            if kernels::nn::LeakyRelu::is_supported_dt(input_dts[0]) {
+                return Ok(Some(Box::new(tract_gpu::ops::leaky_relu::GpuLeakyRelu::new(
+                    leaky.alpha,
+                    "Metal",
+                    kernels::nn::metal_leaky_relu_dispatch,
+                ))));
+            }
+            return Ok(None);
+        }
+        if crate::kernels::element_wise::is_supported(&*op.0, input_dts[0]) {
+            return Ok(Some(Box::new(metal_element_wise_op(op.0.clone()))));
+        }
+        return Ok(None);
+    }
+
+    // Binary ops
+    if let Some(op) = node.op_as::<TypedBinOp>() {
+        if crate::kernels::bin_ops::is_supported(&*op.0, input_dts[0]) {
+            return Ok(Some(Box::new(metal_bin_op(op.0.clone()))));
+        }
+        return Ok(None);
+    }
+
+    // Cast
+    if let Some(op) = node.op_as::<Cast>() {
+        return Ok(metal_cast_new(op.to).map(|c| Box::new(c) as _));
+    }
+
+    // Iff
+    if node.op_is::<tract_core::ops::logic::Iff>() {
+        return Ok(Some(Box::new(tract_gpu::ops::iff::GpuIff {
+            backend_name: "Metal",
+            dispatch: crate::kernels::bin_ops::metal_iff_dispatch,
+        })));
+    }
+
+    // Array ops
+    if let Some(op) = node.op_as::<MultiBroadcastTo>() {
+        return Ok(Some(Box::new(tract_gpu::ops::broadcast::GpuMultiBroadcastTo::new(
+            op.shape.clone(),
+            "Metal",
+            crate::kernels::array::metal_copy_nd_dispatch,
+        ))));
+    }
+    if let Some(op) = node.op_as::<AxisOp>() {
+        let in_fact = input_facts[0];
+        return Ok(Some(Box::new(
+            tract_gpu::ops::change_axes::GpuAxisOp::from_tract_core_with_fact(
+                op.clone(),
+                in_fact,
+                "Metal",
+                crate::kernels::array::metal_copy_nd_dispatch,
+            ),
+        )));
+    }
+    if let Some(op) = node.op_as::<Slice>() {
+        return Ok(Some(Box::new(tract_gpu::ops::slice::GpuSlice::new(
+            op.clone(),
+            "Metal",
+            crate::kernels::array::metal_copy_nd_dispatch,
+        ))));
+    }
+    if let Some(op) = node.op_as::<TypedConcat>() {
+        return Ok(Some(Box::new(tract_gpu::ops::concat::GpuConcat::new(
+            op.axis,
+            "Metal",
+            crate::kernels::array::metal_copy_nd_dispatch,
+        ))));
+    }
+    if let Some(op) = node.op_as::<DynKeyValueCache>() {
+        return Ok(Some(Box::new(
+            tract_gpu::ops::dyn_kv_cache::GpuDynKVCache::from_tract_transformers(
+                op,
+                "Metal",
+                crate::kernels::array::metal_copy_nd_dispatch,
+            ),
+        )));
+    }
+
+    // Reduce
+    if let Some(op) = node.op_as::<Reduce>() {
+        if let Ok(gpu_op) = GpuReduce::from_tract_core(op, "Metal", metal_reduce_launch) {
+            if gpu_op.reducer.is_supported_dt(input_dts[0]) {
+                return Ok(Some(Box::new(gpu_op)));
+            }
+        }
+        return Ok(None);
+    }
+
+    // Softmax
+    if let Some(op) = node.op_as::<CoreSoftmax>() {
+        if kernels::nn::Softmax::is_supported_dt(input_dts[0]) {
+            if let Ok(gpu_op) = tract_gpu::ops::softmax::GpuSoftmax::from_tract_core(
+                op,
+                "Metal",
+                kernels::nn::metal_softmax_dispatch,
+            ) {
+                return Ok(Some(Box::new(gpu_op)));
+            }
+        }
+        return Ok(None);
+    }
+
+    // ScaledMaskedSoftmax
+    if let Some(op) = node.op_as::<ScaledMaskedSoftmax>() {
+        if !op.post_softmax_mask && kernels::nn::ScaledMaskedSoftmax::is_supported_dt(input_dts[0])
+        {
+            return Ok(Some(Box::new(
+                tract_gpu::ops::scaled_masked_softmax::GpuScaledMaskedSoftmax {
+                    scale: op.scale.clone(),
+                    backend_name: "Metal",
+                    dispatch: kernels::nn::metal_scaled_masked_softmax_dispatch,
+                },
+            )));
+        }
+        return Ok(None);
+    }
+
+    // RmsNorm
+    if let Some(op) = node.op_as::<RmsNorm>() {
+        if kernels::nn::RmsNorm::is_supported_dt(input_dts[0]) {
+            return Ok(Some(Box::new(tract_gpu::ops::rms_norm::GpuRmsNorm::new(
+                op.axis,
+                op.eps.clone(),
+                "Metal",
+                kernels::nn::metal_rms_norm_dispatch,
+            ))));
+        }
+        return Ok(None);
+    }
+
+    // RotateHalf
+    if node.op_as::<RotateHalf>().is_some() {
+        if kernels::array::RotateHalf::is_supported_dt(input_dts[0]) {
+            return Ok(Some(Box::new(tract_gpu::ops::rotate_half::GpuRotateHalf::new(
+                "Metal",
+                kernels::array::metal_rotate_half_dispatch,
+            ))));
+        }
+        return Ok(None);
+    }
+
+    // ApplyRope
+    if node.op_as::<ApplyRope>().is_some() {
+        if kernels::nn::ApplyRope::is_supported_dt(input_dts[0]) {
+            return Ok(Some(Box::new(tract_gpu::ops::apply_rope::GpuApplyRope {
+                backend_name: "Metal",
+                dispatch: kernels::nn::metal_apply_rope_dispatch,
+            })));
+        }
+        return Ok(None);
+    }
+
+    Ok(None)
 }
 
 impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for MetalTransform {
@@ -203,122 +322,40 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
         target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
-        let translatable = can_translate_to_metal_op(source, node)?;
-
-        if translatable {
-            let mut device_inputs =
-                sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
-
-            let outlet_ids: TVec<OutletId> = if let Some(op) = node.op_as::<PrefixMatMul>() {
-                convert_matmul_to_metal(
+        // Special multi-node ops handled first
+        let input_facts = source.node_input_facts(node.id)?;
+        if let Some(op) = node.op_as::<PrefixMatMul>() {
+            let facts: Vec<TypedFact> = input_facts.iter().map(|f| (*f).clone()).collect();
+            if !op.transpose_c && op.quantize_output.is_none() && check_matmul_in_dts(&facts) {
+                let mut device_inputs =
+                    sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
+                let outlet_ids = convert_matmul_to_metal(
                     source,
                     node,
                     target,
                     &mut device_inputs,
                     op,
                     self.gemm_impl,
-                )?
-            } else {
-                let op: Box<dyn TypedOp> = if let Some(op) = node.op_as::<ElementWiseOp>() {
-                    if let Some(ew) = op.0.downcast_ref::<GeluApproximate>() {
-                        Box::new(tract_gpu::ops::gelu_approximate::GpuGeluApproximate::new(
-                            ew.fast_impl,
-                            "Metal",
-                            kernels::nn::metal_gelu_approximate_dispatch,
-                        ))
-                    } else if let Some(leaky) = op.0.downcast_ref::<LeakyRelu>() {
-                        Box::new(tract_gpu::ops::leaky_relu::GpuLeakyRelu::new(
-                            leaky.alpha,
-                            "Metal",
-                            kernels::nn::metal_leaky_relu_dispatch,
-                        ))
-                    } else {
-                        Box::new(metal_element_wise_op(op.0.clone()))
-                    }
-                } else if let Some(op) = node.op_as::<TypedBinOp>() {
-                    Box::new(metal_bin_op(op.0.clone()))
-                } else if let Some(op) = node.op_as::<MultiBroadcastTo>() {
-                    Box::new(tract_gpu::ops::broadcast::GpuMultiBroadcastTo::new(
-                        op.shape.clone(),
-                        "Metal",
-                        crate::kernels::array::metal_copy_nd_dispatch,
-                    ))
-                } else if let Some(op) = node.op_as::<Const>() {
-                    Box::new(convert_const(op)?)
-                } else if let Some(op) = node.op_as::<Cast>() {
-                    Box::new(metal_cast_new(op.to).unwrap())
-                } else if let Some(op) = node.op_as::<AxisOp>() {
-                    let in_fact = source.node_input_facts(node.id)?[0];
-                    Box::new(tract_gpu::ops::change_axes::GpuAxisOp::from_tract_core_with_fact(
-                        op.clone(),
-                        in_fact,
-                        "Metal",
-                        crate::kernels::array::metal_copy_nd_dispatch,
-                    ))
-                } else if let Some(op) = node.op_as::<Slice>() {
-                    Box::new(tract_gpu::ops::slice::GpuSlice::new(
-                        op.clone(),
-                        "Metal",
-                        crate::kernels::array::metal_copy_nd_dispatch,
-                    ))
-                } else if let Some(op) = node.op_as::<TypedConcat>() {
-                    Box::new(tract_gpu::ops::concat::GpuConcat::new(
-                        op.axis,
-                        "Metal",
-                        crate::kernels::array::metal_copy_nd_dispatch,
-                    ))
-                } else if let Some(op) = node.op_as::<Reduce>() {
-                    Box::new(GpuReduce::from_tract_core(op, "Metal", metal_reduce_launch).unwrap())
-                } else if let Some(op) = node.op_as::<CoreSoftmax>() {
-                    Box::new(
-                        tract_gpu::ops::softmax::GpuSoftmax::from_tract_core(
-                            op,
-                            "Metal",
-                            kernels::nn::metal_softmax_dispatch,
-                        )
-                        .unwrap(),
-                    )
-                } else if let Some(op) = node.op_as::<ScaledMaskedSoftmax>()
-                    && !op.post_softmax_mask
-                {
-                    Box::new(tract_gpu::ops::scaled_masked_softmax::GpuScaledMaskedSoftmax {
-                        scale: op.scale.clone(),
-                        backend_name: "Metal",
-                        dispatch: kernels::nn::metal_scaled_masked_softmax_dispatch,
-                    })
-                } else if let Some(op) = node.op_as::<RmsNorm>() {
-                    Box::new(tract_gpu::ops::rms_norm::GpuRmsNorm::new(
-                        op.axis,
-                        op.eps.clone(),
-                        "Metal",
-                        kernels::nn::metal_rms_norm_dispatch,
-                    ))
-                } else if let Some(_op) = node.op_as::<RotateHalf>() {
-                    Box::new(tract_gpu::ops::rotate_half::GpuRotateHalf::new(
-                        "Metal",
-                        kernels::array::metal_rotate_half_dispatch,
-                    ))
-                } else if let Some(_op) = node.op_as::<ApplyRope>() {
-                    Box::new(tract_gpu::ops::apply_rope::GpuApplyRope {
-                        backend_name: "Metal",
-                        dispatch: kernels::nn::metal_apply_rope_dispatch,
-                    })
-                } else if let Some(op) = node.op_as::<DynKeyValueCache>() {
-                    Box::new(tract_gpu::ops::dyn_kv_cache::GpuDynKVCache::from_tract_transformers(
-                        op,
-                        "Metal",
-                        crate::kernels::array::metal_copy_nd_dispatch,
-                    ))
-                } else if node.op_is::<tract_core::ops::logic::Iff>() {
-                    Box::new(tract_gpu::ops::iff::GpuIff {
-                        backend_name: "Metal",
-                        dispatch: crate::kernels::bin_ops::metal_iff_dispatch,
-                    })
-                } else {
-                    bail!("Failed to translate a supported Metal Op")
-                };
-                target.wire_node(node.name.clone(), op, &device_inputs)?
-            };
+                )?;
+                return sync_model_outputs_if_required(source, node, target, outlet_ids);
+            }
+        }
+        // Const: inline conversion, not a GPU op
+        if let Some(op) = node.op_as::<Const>() {
+            if DeviceTensor::is_supported_dt(op.val().datum_type()) {
+                let device_inputs =
+                    sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
+                let outlet_ids =
+                    target.wire_node(node.name.clone(), convert_const(op)?, &device_inputs)?;
+                return sync_model_outputs_if_required(source, node, target, outlet_ids);
+            }
+        }
+
+        // Single-op translation
+        if let Some(gpu_op) = try_make_metal_op(source, node)? {
+            let device_inputs =
+                sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
+            let outlet_ids = target.wire_node(node.name.clone(), gpu_op, &device_inputs)?;
             sync_model_outputs_if_required(source, node, target, outlet_ids)
         } else {
             let cpu_inputs =
