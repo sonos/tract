@@ -80,12 +80,6 @@ impl DrawingState {
             };
         }
         let passthrough_count = self.passthrough_count(node);
-        /*
-        println!("\n{}", model.node_format(node));
-        for (ix, w) in self.wires.iter().enumerate() {
-            println!(" * {} {:?}", ix, w);
-        }
-        */
         for (ix, &input) in model.node_inputs(node).iter().enumerate().rev() {
             let wire = self.wires.iter().position(|o| o.outlet == input).unwrap();
             let wanted = passthrough_count + ix;
@@ -98,22 +92,18 @@ impl DrawingState {
                     .wires
                     .iter()
                     .skip(little + 1)
-                    .take(big - little)
+                    .take(big.saturating_sub(little + 1))
                     .filter(|w| w.color.is_some())
-                    .count()
-                    + must_clone as usize;
+                    .count();
                 // println!("{}->{} (offset: {})", little, big, offset);
-                #[allow(clippy::unnecessary_unwrap)]
-                if moving.color.is_some() && offset != 0 {
-                    let color = moving.color.unwrap();
+                if let Some(color) = moving.color {
                     for w in &self.wires[0..little] {
                         if let Some(c) = w.color {
                             p!("{}", c.paint(VERTICAL));
                         }
                     }
-                    // println!("offset: {}", offset);
                     p!("{}", color.paint(if must_clone { VERTICAL_RIGHT } else { UP_RIGHT }));
-                    for _ in 0..offset - 1 {
+                    for _ in 0..offset {
                         p!("{}", color.paint(HORIZONTAL));
                     }
                     p!("{}", color.paint(DOWN_LEFT));
@@ -149,6 +139,9 @@ impl DrawingState {
         }
         while lines.last().map(|s| s.trim()) == Some("") {
             lines.pop();
+        }
+        while lines.first().map(|s| s.trim()) == Some("") {
+            lines.remove(0);
         }
         Ok(lines)
     }
@@ -260,7 +253,14 @@ impl DrawingState {
         let wires_before = self.wires.clone();
         self.wires.retain(|w| !w.successors.is_empty());
         for (wanted_at, w) in self.wires.iter().enumerate() {
-            let is_at = wires_before.iter().position(|w2| w.outlet == w2.outlet).unwrap();
+            // is_at_orig: position in wires_before (includes dead wires)
+            let is_at_orig = wires_before.iter().position(|w2| w.outlet == w2.outlet).unwrap();
+            // Count how many colored wires in wires_before[0..is_at_orig] were retained
+            // to get the effective position in the post-retain self.wires
+            let is_at = wires_before[..is_at_orig]
+                .iter()
+                .filter(|w| !w.successors.is_empty() && w.color.is_some())
+                .count();
             if wanted_at < is_at {
                 let mut s = String::new();
                 for w in 0..wanted_at {
@@ -270,13 +270,13 @@ impl DrawingState {
                 }
                 if let Some(color) = self.wires[wanted_at].color {
                     write!(&mut s, "{}", color.paint(DOWN_RIGHT))?;
-                    for w in is_at + 1..wanted_at {
+                    for w in wanted_at + 1..is_at {
                         if self.wires[w].color.is_some() {
                             write!(&mut s, "{}", color.paint(HORIZONTAL))?;
                         }
                     }
                     write!(&mut s, "{}", color.paint(UP_LEFT))?;
-                    for w in is_at..self.wires.len() {
+                    for w in is_at + 1..self.wires.len() {
                         if let Some(color) = self.wires[w].color {
                             write!(&mut s, "{}", color.paint(VERTICAL))?;
                         }
