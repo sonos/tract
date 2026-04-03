@@ -1,0 +1,37 @@
+version 1.0;
+
+extension tract_registry tract_core;
+
+# Minimal reproducer for the Nemotron encoder shape mismatch during pulsification.
+#
+# A stride-2 conv is followed by an add with a tensor whose shape is derived from
+# the batch-formula output size (1 + S/2) via tract_core_broadcast.  This mirrors
+# the encoder pattern where shape_of(conv_out) is used as a compile-time constant
+# to size a validity mask.
+#
+# In batch mode both sides of the add have time dimension 1 + S/2 and the op is fine.
+# During pulsification the MultiBroadcastTo pulsifier substitutes S → pulse, giving
+# the right-hand operand pulse = 1 + pulse/2, while conv_out produces pulse/2 frames
+# per step — a one-frame discrepancy that makes the add fail.
+graph streaming_conv_mask(input) -> (output)
+{
+    # Streaming input: [batch=1, channels=1, time=S]
+    input  = external<scalar>(shape = [1, 1, S]);
+    kernel = [[[0.333, 0.333, 0.334]]];   # [out=1, in=1, k=3]
+
+    # Explicit pad [2,1] on time axis, then stride-2 conv.
+    # Batch output time dim: (S + 3 - 3) / 2 + 1 = 1 + S/2  (e.g. S=8 -> 5)
+    padded   = pad(input, padding = [[0,0],[0,0],[2,1]], value = 0.0);
+    conv_out = conv(padded, kernel,
+                   dilation = [1], padding = [(0,0)], stride = [2],
+                   groups = 1, border = 'constant');
+
+    # tract_core_broadcast with the batch formula shape [1, 1, 1 + S/2].
+    # In the typed model this becomes MultiBroadcastTo { shape: [1, 1, 1+S/2] }.
+    # The pulsifier substitutes S → pulse, yielding:
+    #   broadcast pulse  = 1 + pulse/2   (e.g. pulse=4 -> 3)
+    #   conv_out pulse   =     pulse/2   (e.g. pulse=4 -> 2)   <- mismatch!
+    # The downstream add therefore fails with "Can not broadcast 2 against 3".
+    small   = tract_core_broadcast(0.0001, shape = [1, 1, S/2 + 1]);
+    output  = add(conv_out, small);
+}
