@@ -102,11 +102,11 @@ impl MetalTransform {
         Rewriter::<MetalTransform>::default()
             .with_rule_for("untranspose-matmul-output", rewrite_rules::untranspose_matmul_output)
             .with_rule_for("add-broadcast-pre-matmul", rewrite_rules::add_broadcast_pre_matmul)
-            .with_rule_for("rewrite_kernel_conv_in_oihw", rewrite_kernel_conv_in_oihw)
-            .with_rule_for("rewrite_conv_with_n_axis", rewrite_conv_with_n_axis)
             .rewrite(self, model)?;
 
         Rewriter::default()
+            .with_rule_for("rewrite_kernel_conv_in_oihw", rewrite_kernel_conv_in_oihw)
+            .with_rule_for("rewrite_conv_with_n_axis", rewrite_conv_with_n_axis)
             .with_rule_for("remove_rms_norm_cast", remove_rms_norm_cast)
             .rewrite(&(), model)?;
 
