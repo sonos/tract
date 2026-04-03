@@ -117,7 +117,7 @@ default-members = [
 ]
 
 [workspace.package]
-rust-version = "1.89"
+rust-version = "1.91"
 
 [workspace.dependencies]
 accelerate-src = "0.3"

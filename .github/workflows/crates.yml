@@ -25,11 +25,11 @@ jobs:
           if [ "$FULL" == "true" ]
           then
             echo 'os=["ubuntu-latest", "macos-latest"]' >> $GITHUB_OUTPUT
-            echo 'rust=["1.89.0", "stable", "beta", "nightly"]' >> $GITHUB_OUTPUT
+            echo 'rust=["1.91.0", "stable", "beta", "nightly"]' >> $GITHUB_OUTPUT
           else
             echo ::notice::Skipping macOS checks on PR and commit. Dispatch workflow manually if needed.
             echo 'os=["ubuntu-latest"]' >> $GITHUB_OUTPUT
-            echo 'rust=["1.89.0"]' >> $GITHUB_OUTPUT
+            echo 'rust=["1.91.0"]' >> $GITHUB_OUTPUT
           fi
 
   crates:
