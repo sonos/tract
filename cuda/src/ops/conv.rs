@@ -48,7 +48,7 @@ pub fn wire_cuda_conv(
             )?[0];
             conv_wire = target.wire_node(
                 prefix,
-                crate::transform::cuda_bin_op(Box::new(tract_core::ops::math::Add)),
+                crate::kernels::binary::cuda_bin_op(Box::new(tract_core::ops::math::Add)),
                 &[conv_wire, reshaped],
             )?[0];
         }

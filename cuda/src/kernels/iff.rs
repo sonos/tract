@@ -167,3 +167,10 @@ pub fn cuda_iff_dispatch(
         launch_args.launch(cfg)
     })
 }
+
+crate::register_cuda_op!(tract_core::ops::logic::Iff, |_source, _node, _op| {
+    Ok(Some(Box::new(tract_gpu::ops::iff::GpuIff {
+        backend_name: "Cuda",
+        dispatch: cuda_iff_dispatch,
+    })))
+});

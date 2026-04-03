@@ -118,6 +118,21 @@ pub fn metal_scaled_masked_softmax_dispatch(
     })
 }
 
+crate::register_metal_op!(
+    tract_transformers::ops::scaled_masked_softmax::ScaledMaskedSoftmax,
+    |source, node, op| {
+        rule_if!(!op.post_softmax_mask);
+        rule_if!(ScaledMaskedSoftmax::is_supported_dt(
+            source.node_input_facts(node.id)?[0].datum_type
+        ));
+        Ok(Some(Box::new(tract_gpu::ops::scaled_masked_softmax::GpuScaledMaskedSoftmax {
+            scale: op.scale.clone(),
+            backend_name: "Metal",
+            dispatch: metal_scaled_masked_softmax_dispatch,
+        })))
+    }
+);
+
 #[cfg(test)]
 mod tests {
     use crate::utils::with_borrowed_metal_stream;

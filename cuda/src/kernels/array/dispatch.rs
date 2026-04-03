@@ -6,6 +6,61 @@ use cudarc::driver::PushKernelArg;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
 
+// --- Inventory registrations for all ops that use cuda_copy_nd_dispatch ---
+
+crate::register_cuda_op!(tract_core::ops::array::MultiBroadcastTo, |_source, _node, op| {
+    Ok(Some(Box::new(tract_gpu::ops::broadcast::GpuMultiBroadcastTo::new(
+        op.shape.clone(),
+        "Cuda",
+        cuda_copy_nd_dispatch,
+    ))))
+});
+
+crate::register_cuda_op!(AxisOp, |source, node, op| {
+    let in_fact = source.node_input_facts(node.id)?[0];
+    Ok(Some(Box::new(tract_gpu::ops::change_axes::GpuAxisOp::from_tract_core_with_fact(
+        op.clone(),
+        in_fact,
+        "Cuda",
+        cuda_copy_nd_dispatch,
+    ))))
+});
+
+crate::register_cuda_op!(tract_core::ops::array::Slice, |_source, _node, op| {
+    Ok(Some(Box::new(tract_gpu::ops::slice::GpuSlice::new(
+        op.clone(),
+        "Cuda",
+        cuda_copy_nd_dispatch,
+    ))))
+});
+
+crate::register_cuda_op!(tract_core::ops::array::TypedConcat, |_source, _node, op| {
+    Ok(Some(Box::new(tract_gpu::ops::concat::GpuConcat::new(
+        op.axis,
+        "Cuda",
+        cuda_copy_nd_dispatch,
+    ))))
+});
+
+crate::register_cuda_op!(
+    tract_transformers::ops::dyn_kv_cache::DynKeyValueCache,
+    |_source, _node, op| {
+        Ok(Some(Box::new(tract_gpu::ops::dyn_kv_cache::GpuDynKVCache::from_tract_transformers(
+            op,
+            "Cuda",
+            cuda_copy_nd_dispatch,
+        ))))
+    }
+);
+
+crate::register_cuda_op!(tract_pulse_opl::ops::Delay, |_source, _node, op| {
+    Ok(Some(Box::new(tract_gpu::ops::pulse::GpuDelay::new(op, "Cuda", cuda_copy_nd_dispatch))))
+});
+
+crate::register_cuda_op!(tract_pulse_opl::ops::PulsePad, |_source, _node, op| {
+    Ok(Some(Box::new(tract_gpu::ops::pulse::GpuPulsePad::new(op, "Cuda", cuda_copy_nd_dispatch)?)))
+});
+
 /// Single dispatch function for all copy_nd kernel launches.
 /// Used by GpuMultiBroadcastTo, GpuSlice, GpuConcat, and GpuAxisOp.
 pub fn cuda_copy_nd_dispatch(

@@ -224,6 +224,26 @@ pub fn metal_bin_op_dispatch(
     crate::with_metal_stream(|stream| dispatch_eval(stream, mini_op, lhs, rhs, output))
 }
 
+pub fn metal_bin_op(mini_op: Box<dyn BinMiniOp>) -> tract_gpu::ops::binary::GpuBinOp {
+    tract_gpu::ops::binary::GpuBinOp {
+        backend_name: "Metal",
+        mini_op,
+        dispatch: metal_bin_op_dispatch,
+    }
+}
+
+crate::register_metal_op!(tract_core::ops::binary::TypedBinOp, |source, node, op| {
+    rule_if!(is_supported(&*op.0, source.node_input_facts(node.id)?[0].datum_type));
+    Ok(Some(Box::new(metal_bin_op(op.0.clone()))))
+});
+
+crate::register_metal_op!(tract_core::ops::logic::Iff, |_source, _node, _op| {
+    Ok(Some(Box::new(tract_gpu::ops::iff::GpuIff {
+        backend_name: "Metal",
+        dispatch: metal_iff_dispatch,
+    })))
+});
+
 pub fn metal_iff_dispatch(
     cond: &DeviceTensor,
     then_value: &DeviceTensor,
