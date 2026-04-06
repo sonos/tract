@@ -386,9 +386,7 @@ fn render_node_prefixed(
             && model.outlet_fact_format(node_id.into())
                 == model.outlet_fact_format(model.node_inputs(node_id)[0]);
         if !same || model.output_outlets().iter().any(|o| o.node == node_id) {
-            let style = drawing_state
-                .map(|s| s.wires.last().and_then(|w| w.color).unwrap_or(s.latest_node_color))
-                .unwrap_or_else(|| White.into());
+            let style = drawing_state.map(|s| s.last_wire_color()).unwrap_or_else(|| White.into());
             for ix in 0..model.node_output_count(node_id) {
                 prefix!();
                 println!(
@@ -547,13 +545,15 @@ pub fn render_summary(model: &dyn Model, annotations: &Annotations) -> TractResu
     for (ix, input) in model.input_outlets().iter().enumerate() {
         let name = model.node_name(input.node);
         let fact = model.outlet_typedfact(*input)?;
-        println!("  {ix}: {name}: {fact:?}");
+        let symbol = crate::draw::circled_input(ix);
+        println!("  {symbol} {name}: {fact:?}");
     }
     println!("{}", White.bold().paint("# Outputs"));
     for (ix, output) in model.output_outlets().iter().enumerate() {
         let name = model.node_name(output.node);
         let fact = model.outlet_typedfact(*output)?;
-        println!("  {ix}: {name}: {fact:?}");
+        let symbol = crate::draw::circled_output(ix);
+        println!("  {symbol} {name}: {fact:?}");
     }
     let mut op_counts: HashMap<StaticName, usize> = HashMap::default();
     let mut op_costs: HashMap<StaticName, Vec<(Cost, TDim)>> = HashMap::default();
