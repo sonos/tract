@@ -30,7 +30,7 @@ impl Iff {
     }
 
     pub fn kernel_name(&self, dt: DatumType, variant: &str) -> TractResult<String> {
-        Ok(format!("iff_{variant}_{}", DeviceTensor::tname(dt)?))
+        Ok(format!("iff_{variant}_{}", tract_gpu::utils::BroadcastKind::copy_tname(dt)))
     }
 
     pub fn eval(
@@ -124,3 +124,50 @@ impl Iff {
         Ok(())
     }
 }
+
+pub fn cuda_iff_dispatch(
+    cond: &DeviceTensor,
+    then_value: &DeviceTensor,
+    else_value: &DeviceTensor,
+    cond_strides: &[isize],
+    then_strides: &[isize],
+    else_strides: &[isize],
+    output: &DeviceTensor,
+    output_shape: &[usize],
+    output_strides: &[isize],
+) -> TractResult<()> {
+    crate::with_cuda_stream(|stream| {
+        let total_elems: usize = output_shape.iter().product();
+        let block_dim = (128_u32, 1, 1);
+        let grid_dim = (total_elems.div_ceil(block_dim.0 as usize) as u32, 1, 1);
+
+        let kernel_name = format!(
+            "iff_generic_{}",
+            tract_gpu::utils::BroadcastKind::copy_tname(output.datum_type())
+        );
+        let func = cuda_context().load_pipeline(LibraryName::Binary, kernel_name)?;
+        let cfg = LaunchConfig { grid_dim, block_dim, shared_mem_bytes: 0 };
+
+        let cond_view = get_cuda_view(cond);
+        let then_view = get_cuda_view(then_value);
+        let else_view = get_cuda_view(else_value);
+        let o_view = get_cuda_view(output);
+
+        let mut launch_args = TractLaunchArgs::new(stream, &func);
+        launch_args.push_view(&cond_view);
+        launch_args.push_view(&then_view);
+        launch_args.push_view(&else_view);
+        launch_args.push_view(&o_view);
+        launch_args.push_slice_i32(output_shape);
+        launch_args.push_slice_i32(cond_strides);
+        launch_args.push_slice_i32(then_strides);
+        launch_args.push_slice_i32(else_strides);
+        launch_args.push_slice_i32(output_strides);
+
+        launch_args.launch(cfg)
+    })
+}
+
+crate::register_cuda_op!(tract_core::ops::logic::Iff, |_source, _node, _op| {
+    Ok(Some(Box::new(tract_gpu::ops::iff::GpuIff::new("Cuda", cuda_iff_dispatch))))
+});

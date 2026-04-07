@@ -1,14 +1,15 @@
 use crate::tensor::{DeviceTensor, DeviceTensorExt};
+use derive_new::new;
 use tract_core::internal::*;
 use tract_core::ops::binary::BinMiniOp;
 
 pub type DispatchBinOpFn =
     fn(&dyn BinMiniOp, &DeviceTensor, &DeviceTensor, &DeviceTensor) -> TractResult<()>;
 
-#[derive(Clone)]
+#[derive(Clone, new)]
 pub struct GpuBinOp {
-    pub backend_name: &'static str,
     pub mini_op: Box<dyn BinMiniOp>,
+    pub backend_name: &'static str,
     pub dispatch: DispatchBinOpFn,
 }
 

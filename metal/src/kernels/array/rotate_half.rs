@@ -80,6 +80,18 @@ impl RotateHalf {
     }
 }
 
+pub fn metal_rotate_half_dispatch(input: &DeviceTensor, output: &DeviceTensor) -> TractResult<()> {
+    crate::with_metal_stream(|stream| RotateHalf.dispatch_eval(stream, input, output))
+}
+
+crate::register_metal_op!(tract_transformers::ops::apply_rope::RotateHalf, |source, node, _op| {
+    rule_if!(RotateHalf::is_supported_dt(source.node_input_facts(node.id)?[0].datum_type));
+    Ok(Some(Box::new(tract_gpu::ops::rotate_half::GpuRotateHalf::new(
+        "Metal",
+        metal_rotate_half_dispatch,
+    ))))
+});
+
 #[cfg(test)]
 mod tests {
     use crate::utils::with_borrowed_metal_stream;

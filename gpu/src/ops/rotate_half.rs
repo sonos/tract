@@ -1,48 +1,44 @@
 use crate::tensor::{DeviceTensor, DeviceTensorExt};
 use derive_new::new;
 use tract_core::internal::*;
-use tract_core::ops::element_wise::ElementWiseMiniOp;
 
-pub type DispatchElementWiseFn =
-    fn(&dyn ElementWiseMiniOp, &DeviceTensor, &DeviceTensor) -> TractResult<()>;
+pub type DispatchRotateHalfFn = fn(&DeviceTensor, &DeviceTensor) -> TractResult<()>;
 
 #[derive(Clone, new)]
-pub struct GpuElementWise {
-    pub mini_op: Box<dyn ElementWiseMiniOp>,
+pub struct GpuRotateHalf {
     pub backend_name: &'static str,
-    pub dispatch: DispatchElementWiseFn,
+    pub dispatch: DispatchRotateHalfFn,
 }
 
-impl std::fmt::Debug for GpuElementWise {
+impl std::fmt::Debug for GpuRotateHalf {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "GpuElementWise({}{:?})", self.backend_name, self.mini_op)
+        write!(f, "{}RotateHalf", self.backend_name)
     }
 }
 
-impl PartialEq for GpuElementWise {
+impl PartialEq for GpuRotateHalf {
     fn eq(&self, other: &Self) -> bool {
-        self.backend_name == other.backend_name && self.mini_op == other.mini_op
+        self.backend_name == other.backend_name
     }
 }
 
-impl Eq for GpuElementWise {}
+impl Eq for GpuRotateHalf {}
 
-impl std::hash::Hash for GpuElementWise {
+impl std::hash::Hash for GpuRotateHalf {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.backend_name.hash(state);
-        self.mini_op.name().hash(state);
     }
 }
 
-impl Op for GpuElementWise {
+impl Op for GpuRotateHalf {
     fn name(&self) -> StaticName {
-        format!("{}{}", self.backend_name, self.mini_op.name()).into()
+        format!("{}RotateHalf", self.backend_name).into()
     }
 
     op_as_typed_op!();
 }
 
-impl EvalOp for GpuElementWise {
+impl EvalOp for GpuRotateHalf {
     fn is_stateless(&self) -> bool {
         true
     }
@@ -61,13 +57,12 @@ impl EvalOp for GpuElementWise {
             input.datum_type(),
             input.shape(),
         )?;
-        (self.dispatch)(&*self.mini_op, input, &output)
-            .with_context(|| format!("Error while dispatching eval for {}", self.name()))?;
+        (self.dispatch)(input, &output)?;
         Ok(tvec!(output.into_tensor().into_tvalue()))
     }
 }
 
-impl TypedOp for GpuElementWise {
+impl TypedOp for GpuRotateHalf {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         crate::utils::facts_to_device_facts(inputs, |facts| {
             let dt = facts[0].datum_type;

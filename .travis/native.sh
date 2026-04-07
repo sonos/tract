@@ -4,7 +4,7 @@ set -ex
 
 if [ -z "$RUSTUP_TOOLCHAIN" ]
 then
-    export RUSTUP_TOOLCHAIN=1.89.0
+    export RUSTUP_TOOLCHAIN=1.91.0
 fi
 
 rustup update

@@ -39,16 +39,12 @@ pub fn wire_cuda_conv(
             needed_shape[data_shape.c_axis()] = op.pool_spec.output_channels.to_dim();
             let reshaped = target.wire_node(
                 format!("{prefix}.bias_reshaped"),
-                GpuAxisOp::new(
-                    AxisOp::Reshape(0, bias.shape.to_tvec(), needed_shape),
-                    "Cuda",
-                    crate::kernels::array::cuda_copy_nd_dispatch,
-                ),
+                GpuAxisOp::new(AxisOp::Reshape(0, bias.shape.to_tvec(), needed_shape)),
                 &[inputs[2]],
             )?[0];
             conv_wire = target.wire_node(
                 prefix,
-                crate::transform::cuda_bin_op(Box::new(tract_core::ops::math::Add)),
+                crate::kernels::binary::cuda_bin_op(Box::new(tract_core::ops::math::Add)),
                 &[conv_wire, reshaped],
             )?[0];
         }

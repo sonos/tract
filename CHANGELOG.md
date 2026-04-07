@@ -1,3 +1,7 @@
+# Unreleased
+
+* [Breaking][MSRV] MSRV bumped to 1.91.0 (for `const TypeId::of`).
+
 # 0.23.0-dev.3 — 2026-03-20
 
 ### Breaking changes

@@ -52,3 +52,21 @@ impl LeakyRelu {
         Ok(())
     }
 }
+
+pub fn metal_leaky_relu_dispatch(
+    alpha: f32,
+    input: &DeviceTensor,
+    output: &DeviceTensor,
+) -> TractResult<()> {
+    crate::with_metal_stream(|stream| LeakyRelu.dispatch_eval(stream, input, alpha, output))
+}
+
+// LeakyRelu is an ElementWiseMiniOp, so we register under ElementWiseOp's TypeId.
+crate::register_metal_op!(tract_core::ops::element_wise::ElementWiseOp, |_source, _node, op| {
+    rule_if_some!(leaky = op.0.downcast_ref::<tract_core::ops::nn::LeakyRelu>());
+    Ok(Some(Box::new(tract_gpu::ops::leaky_relu::GpuLeakyRelu::new(
+        leaky.alpha,
+        "Metal",
+        metal_leaky_relu_dispatch,
+    ))))
+});

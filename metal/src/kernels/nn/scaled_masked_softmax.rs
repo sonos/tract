@@ -107,6 +107,32 @@ fn pad(vals: &[impl AsPrimitive<isize>], neutral: isize) -> [isize; 5] {
     it
 }
 
+pub fn metal_scaled_masked_softmax_dispatch(
+    input: &DeviceTensor,
+    scale: &Tensor,
+    mask: &DeviceTensor,
+    output: &DeviceTensor,
+) -> TractResult<()> {
+    crate::with_metal_stream(|stream| {
+        ScaledMaskedSoftmax.dispatch_eval(stream, input, scale, mask, output)
+    })
+}
+
+crate::register_metal_op!(
+    tract_transformers::ops::scaled_masked_softmax::ScaledMaskedSoftmax,
+    |source, node, op| {
+        rule_if!(!op.post_softmax_mask);
+        rule_if!(ScaledMaskedSoftmax::is_supported_dt(
+            source.node_input_facts(node.id)?[0].datum_type
+        ));
+        Ok(Some(Box::new(tract_gpu::ops::scaled_masked_softmax::GpuScaledMaskedSoftmax::new(
+            op.scale.clone(),
+            "Metal",
+            metal_scaled_masked_softmax_dispatch,
+        ))))
+    }
+);
+
 #[cfg(test)]
 mod tests {
     use crate::utils::with_borrowed_metal_stream;

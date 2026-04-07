@@ -107,6 +107,32 @@ fn pad(vals: &[impl AsPrimitive<i32>], neutral: i32) -> [i32; 5] {
     it
 }
 
+pub fn cuda_scaled_masked_softmax_dispatch(
+    input: &DeviceTensor,
+    scale: &Tensor,
+    mask: &DeviceTensor,
+    output: &DeviceTensor,
+) -> TractResult<()> {
+    crate::with_cuda_stream(|stream| {
+        ScaledMaskedSoftmax.dispatch_eval(stream, input, scale, mask, output)
+    })
+}
+
+crate::register_cuda_op!(
+    tract_transformers::ops::scaled_masked_softmax::ScaledMaskedSoftmax,
+    |source, node, op| {
+        rule_if!(!op.post_softmax_mask);
+        rule_if!(ScaledMaskedSoftmax::is_supported_dt(
+            source.node_input_facts(node.id)?[0].datum_type
+        ));
+        Ok(Some(Box::new(tract_gpu::ops::scaled_masked_softmax::GpuScaledMaskedSoftmax::new(
+            op.scale.clone(),
+            "Cuda",
+            cuda_scaled_masked_softmax_dispatch,
+        ))))
+    }
+);
+
 #[cfg(test)]
 mod tests {
     use tract_gpu::tensor::IntoDevice;

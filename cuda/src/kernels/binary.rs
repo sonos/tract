@@ -123,6 +123,15 @@ pub fn cuda_bin_op_dispatch(
     crate::with_cuda_stream(|stream| dispatch_eval(stream, mini_op, lhs, rhs, output))
 }
 
+pub fn cuda_bin_op(mini_op: Box<dyn BinMiniOp>) -> tract_gpu::ops::binary::GpuBinOp {
+    tract_gpu::ops::binary::GpuBinOp::new(mini_op, "Cuda", cuda_bin_op_dispatch)
+}
+
+crate::register_cuda_op!(tract_core::ops::binary::TypedBinOp, |source, node, op| {
+    rule_if!(is_supported(&*op.0, source.node_input_facts(node.id)?[0].datum_type));
+    Ok(Some(Box::new(cuda_bin_op(op.0.clone()))))
+});
+
 #[cfg(test)]
 mod tests {
     use tract_gpu::tensor::IntoDevice;

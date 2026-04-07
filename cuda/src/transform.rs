@@ -1,39 +1,57 @@
+use std::any::TypeId;
+use std::collections::HashMap;
+use std::sync::OnceLock;
+
 use crate::context::cuda_context;
-use crate::kernels::nn::cuda_reduce_launch;
-use crate::ops::CudaIff;
-use crate::ops::{CudaLeakyRelu, wire_cuda_conv};
+use crate::ops::wire_cuda_conv;
 use crate::{kernels, ops, rewrite_rules};
 use DatumType::{F16, F32};
 use tract_core::dyn_clone::clone_box;
 use tract_core::internal::*;
 use tract_core::model::translator::Translate;
-use tract_core::ops::array::{MultiBroadcastTo, Slice, TypedConcat};
-use tract_core::ops::binary::{BinMiniOp, TypedBinOp};
-use tract_core::ops::cast::Cast;
 use tract_core::ops::cnn::conv::rewrite_kernel_conv_in_oihw;
 use tract_core::ops::cnn::{Conv, rewrite_conv_with_n_axis};
 use tract_core::ops::einsum::prefix_matmul::{PrefixMatMul, rewrite_einsum_to_prefix_matmul};
-use tract_core::ops::element_wise::ElementWiseOp;
 use tract_core::ops::konst::Const;
-use tract_core::ops::logic::Iff;
-use tract_core::ops::nn::{LeakyRelu, Reduce, Softmax};
-use tract_core::tract_data::itertools::Itertools;
+use tract_core::ops::nn::Reduce;
 use tract_core::tract_linalg::block_quant::Q4_0;
 use tract_core::transform::ModelTransform;
 use tract_gpu::fact::{DeviceFact, DeviceTypedFactExt};
-use tract_gpu::ops::reduce::GpuReduce;
 use tract_gpu::rewrite_rules::rewire_syncs::rewire_syncs;
 use tract_gpu::rewrite_rules::rms_norm::remove_rms_norm_cast;
 use tract_gpu::sync::{DeviceSyncKind, sync_inputs_if_required, sync_model_outputs_if_required};
 use tract_gpu::tensor::{DeviceTensor, IntoDevice};
 use tract_gpu::utils::as_quant_fact;
-use tract_pulse_opl::ops::{Delay, PulsePad};
-use tract_transformers::ops::apply_rope::{ApplyRope, RotateHalf};
-use tract_transformers::ops::dyn_kv_cache::DynKeyValueCache;
-use tract_transformers::ops::gelu_approximate::GeluApproximate;
-use tract_transformers::ops::rms_norm::RmsNorm;
-use tract_transformers::ops::scaled_masked_softmax::ScaledMaskedSoftmax;
 use tract_transformers::ops::sdpa::Sdpa;
+
+/// A registered translator that can convert a core op into a CUDA GPU op.
+/// Each kernel module submits one (or more) of these via [`register_cuda_op!`].
+pub struct CudaOpTranslator {
+    pub type_id: TypeId,
+    pub try_make: fn(&TypedModel, &TypedNode) -> TractResult<Option<Box<dyn TypedOp>>>,
+}
+
+inventory::collect!(CudaOpTranslator);
+
+/// Register a translator for a core op type. The closure receives `(source, node, op)`
+/// where `op` is already downcast to `$op_type`. Return `Ok(Some(gpu_op))` to translate,
+/// `Ok(None)` to skip.
+#[macro_export]
+macro_rules! register_cuda_op {
+    ($op_type:ty, |$source:ident, $node:ident, $op:ident| $body:expr) => {
+        inventory::submit! {
+            $crate::transform::CudaOpTranslator {
+                type_id: std::any::TypeId::of::<$op_type>(),
+                try_make: |$source, $node| {
+                    let Some($op) = $node.op_as::<$op_type>() else {
+                        return Ok(None);
+                    };
+                    $body
+                },
+            }
+        }
+    };
+}
 
 #[derive(Debug, Default)]
 pub struct CudaTransform;
@@ -100,74 +118,40 @@ impl CudaTransform {
     }
 }
 
-fn can_translate_to_cuda_op(source: &TypedModel, node: &TypedNode) -> TractResult<bool> {
-    let input_facts = source.node_input_facts(node.id)?.iter().map(|f| (*f).clone()).collect_vec();
-    let input_dts = input_facts.iter().map(|f| f.datum_type).collect_vec();
+/// Looks up the node's op TypeId in the inventory of registered `CudaOpTranslator`s.
+/// Returns `Some(gpu_op)` if a translator matches and succeeds, `None` otherwise.
+fn try_make_cuda_op(
+    source: &TypedModel,
+    node: &TypedNode,
+) -> TractResult<Option<Box<dyn TypedOp>>> {
+    type TranslateFn = fn(&TypedModel, &TypedNode) -> TractResult<Option<Box<dyn TypedOp>>>;
+    static MAP: OnceLock<HashMap<TypeId, Vec<TranslateFn>>> = OnceLock::new();
+    let map = MAP.get_or_init(|| {
+        let mut m: HashMap<TypeId, Vec<TranslateFn>> = HashMap::new();
+        for t in inventory::iter::<CudaOpTranslator> {
+            m.entry(t.type_id).or_default().push(t.try_make);
+        }
+        m
+    });
 
-    let in_dts_compatible =
-        input_facts.iter().all(|fact| DeviceTensor::is_supported_dt(fact.datum_type));
+    let input_facts = source.node_input_facts(node.id)?;
+    if !input_facts.iter().all(|f| DeviceTensor::is_supported_dt(f.datum_type)) {
+        return Ok(None);
+    }
 
-    Ok(in_dts_compatible
-        && (node
-            .op_as::<Const>()
-            .is_some_and(|op| DeviceTensor::is_supported_dt(op.val().datum_type()))
-            || node.op_as::<ElementWiseOp>().is_some_and(|op| op.0.is::<LeakyRelu>())
-            || node.op_as::<ElementWiseOp>().is_some_and(|op| {
-                crate::kernels::element_wise::is_supported(&*op.0, input_dts[0])
-            })
-            || node
-                .op_as::<TypedBinOp>()
-                .is_some_and(|op| crate::kernels::binary::is_supported(&*op.0, input_dts[0]))
-            || node.op_is::<Iff>()
-            || node
-                .op_as::<Const>()
-                .is_some_and(|op| DeviceTensor::is_supported_dt(op.val().datum_type()))
-            || node.op_as::<Cast>().is_some_and(|op| {
-                ops::CudaCast::is_supported_dt(input_dts[0]) && ops::CudaCast::new(op.to).is_some()
-            })
-            || node.op_is::<MultiBroadcastTo>()
-            || node.op_is::<AxisOp>()
-            || node.op_is::<Slice>()
-            || node.op_is::<Delay>()
-            || node.op_is::<PulsePad>()
-            || node.op_is::<TypedConcat>()
-            || node.op_is::<DynKeyValueCache>()
-            || node.op_as::<Reduce>().is_some_and(|op| {
-                GpuReduce::from_tract_core(op, "Cuda", cuda_reduce_launch)
-                    .is_ok_and(|op| op.reducer.is_supported_dt(input_dts[0]))
-            })
-            || node.op_as::<Softmax>().is_some_and(|op| {
-                kernels::nn::Softmax::is_supported_dt(input_dts[0])
-                    && ops::CudaSoftmax::from_tract_core(op).is_ok()
-            })
-            || node.op_as::<ScaledMaskedSoftmax>().is_some_and(|op| {
-                !op.post_softmax_mask
-                    && kernels::nn::ScaledMaskedSoftmax::is_supported_dt(input_dts[0])
-            })
-            || node
-                .op_as::<RmsNorm>()
-                .is_some_and(|_| kernels::nn::RmsNorm::is_supported_dt(input_dts[0]))
-            || node
-                .op_as::<RotateHalf>()
-                .is_some_and(|_| kernels::array::RotateHalf::is_supported_dt(input_dts[0]))
-            || node
-                .op_as::<ApplyRope>()
-                .is_some_and(|_| kernels::nn::ApplyRope::is_supported_dt(input_dts[0]))
-            || node.op_as::<ElementWiseOp>().is_some_and(|op| {
-                op.0.is::<GeluApproximate>()
-                    && kernels::nn::GeluApproximate::is_supported_dt(input_dts[0])
-            })
-            || node.op_as::<Sdpa>().is_some()
-            || node.op_as::<PrefixMatMul>().is_some_and(|op| {
-                !op.transpose_c
-                    && op.quantize_output.is_none()
-                    && (can_convert_to_cuda_gemm(&input_facts)
-                        || can_convert_to_cuda_gemm(&[
-                            input_facts[1].clone(),
-                            input_facts[0].clone(),
-                        ]))
-            })
-            || (node.op_is::<Conv>() && matches!(input_facts[0].datum_type, F16 | F32))))
+    // Copy-based ops are fully generic (no backend-specific dispatch needed).
+    if let Some(op) = tract_gpu::ops::copy_based::try_make_copy_based_op(source, node)? {
+        return Ok(Some(op));
+    }
+
+    if let Some(fns) = map.get(&(*node.op).type_id()) {
+        for f in fns {
+            if let Some(op) = f(source, node)? {
+                return Ok(Some(op));
+            }
+        }
+    }
+    Ok(None)
 }
 
 fn convert_const(op: &Const) -> TractResult<Const> {
@@ -182,24 +166,13 @@ fn convert_const(op: &Const) -> TractResult<Const> {
     Const::new_with_exotic_fact(cuda_const, Box::new(cuda_fact))
 }
 
-use tract_core::ops::element_wise::ElementWiseMiniOp;
-use tract_gpu::ops::binary::GpuBinOp;
-use tract_gpu::ops::element_wise::GpuElementWise;
-
-fn cuda_element_wise_op(mini_op: Box<dyn ElementWiseMiniOp>) -> GpuElementWise {
-    GpuElementWise {
-        backend_name: "Cuda",
-        mini_op,
-        dispatch: crate::kernels::element_wise::cuda_element_wise_dispatch,
-    }
-}
-
-pub fn cuda_bin_op(mini_op: Box<dyn BinMiniOp>) -> GpuBinOp {
-    GpuBinOp {
-        backend_name: "Cuda",
-        mini_op,
-        dispatch: crate::kernels::binary::cuda_bin_op_dispatch,
-    }
+pub(crate) fn cuda_cast_new(to: DatumType) -> Option<tract_gpu::ops::cast::GpuCast> {
+    tract_gpu::ops::cast::GpuCast::new(
+        to,
+        "Cuda",
+        kernels::array::cuda_cast_dispatch,
+        kernels::array::Cast::is_supported_dt,
+    )
 }
 
 fn can_convert_to_cuda_gemm(facts: &[TypedFact]) -> bool {
@@ -247,21 +220,18 @@ fn convert_matmul_to_cuda(
 
     if transpose_act {
         let rank = act_fact.rank();
-        let perm_act_op = tract_gpu::ops::change_axes::GpuAxisOp::new(
-            AxisOp::Move(rank - 2, rank - 1),
-            "Cuda",
-            crate::kernels::array::cuda_copy_nd_dispatch,
-        );
+        let perm_act_op =
+            tract_gpu::ops::change_axes::GpuAxisOp::new(AxisOp::Move(rank - 2, rank - 1));
         let perm_act_name = node.name.clone() + ".perm_activs";
         *act_outlet = target.wire_node(perm_act_name, perm_act_op, &[*act_outlet])?[0];
     }
 
     if act_fact.datum_type == DatumType::F16 && as_quant_fact(weight_fact, &Q4_0).is_some() {
-        let in_cast_op = ops::CudaCast::new(DatumType::F32).unwrap();
+        let in_cast_op = cuda_cast_new(DatumType::F32).unwrap();
         *act_outlet =
             target.wire_node(node.name.clone() + ".in_cast", in_cast_op, &[*act_outlet])?[0];
     } else if act_fact.datum_type == DatumType::F16 && weight_fact.datum_type == DatumType::F32 {
-        let in_cast_op = ops::CudaCast::new(DatumType::F16).unwrap();
+        let in_cast_op = cuda_cast_new(DatumType::F16).unwrap();
         *weights_outlet =
             target.wire_node(node.name.clone() + ".in_cast", in_cast_op, &[*weights_outlet])?[0];
     }
@@ -270,11 +240,8 @@ fn convert_matmul_to_cuda(
         ensure!(as_quant_fact(weight_fact, &Q4_0).is_none(), "Cannot transpose Q40 tensor");
 
         let rank = weight_fact.rank();
-        let perm_weights_op = tract_gpu::ops::change_axes::GpuAxisOp::new(
-            AxisOp::Move(rank - 2, rank - 1),
-            "Cuda",
-            crate::kernels::array::cuda_copy_nd_dispatch,
-        );
+        let perm_weights_op =
+            tract_gpu::ops::change_axes::GpuAxisOp::new(AxisOp::Move(rank - 2, rank - 1));
         let perm_weights_name = node.name.clone() + ".perm_weights";
         *weights_outlet =
             target.wire_node(perm_weights_name, perm_weights_op, &[*weights_outlet])?[0];
@@ -297,11 +264,8 @@ fn convert_matmul_to_cuda(
             .map(|fact| fact.clarify_dt_shape().unwrap().1.len())
             .unwrap();
 
-        let perm_out_op = tract_gpu::ops::change_axes::GpuAxisOp::new(
-            AxisOp::Move(rank - 2, rank - 1),
-            "Cuda",
-            crate::kernels::array::cuda_copy_nd_dispatch,
-        );
+        let perm_out_op =
+            tract_gpu::ops::change_axes::GpuAxisOp::new(AxisOp::Move(rank - 2, rank - 1));
         matmul_output =
             target.wire_node(node.name.clone() + ".perm_out", perm_out_op, &matmul_output)?;
     }
@@ -312,10 +276,10 @@ fn convert_matmul_to_cuda(
     let expected_dt = model.node_output_facts(node.id)?[0].datum_type;
     if out_dt != expected_dt {
         ensure!(
-            ops::CudaCast::is_supported_dt(out_dt),
+            kernels::array::Cast::is_supported_dt(out_dt),
             "Matmul output type cannot be casted to expected type"
         );
-        let cast_op = ops::CudaCast::new(model.node_output_facts(node.id)?[0].datum_type).unwrap();
+        let cast_op = cuda_cast_new(model.node_output_facts(node.id)?[0].datum_type).unwrap();
         matmul_output =
             target.wire_node(node.name.clone() + ".out_cast", cast_op, &matmul_output)?
     }
@@ -355,11 +319,9 @@ fn convert_sdpa_to_cuda_flash_attn(
         suffix: &str,
     ) -> TractResult<()> {
         if have != want {
-            *dst = target.wire_node(
-                name(node_name, suffix),
-                ops::CudaCast::new(want).unwrap(),
-                &[*dst],
-            )?[0];
+            *dst =
+                target.wire_node(name(node_name, suffix), cuda_cast_new(want).unwrap(), &[*dst])?
+                    [0];
         }
         Ok(())
     }
@@ -372,11 +334,7 @@ fn convert_sdpa_to_cuda_flash_attn(
         suffix: &str,
     ) -> TractResult<bool> {
         if fact.rank() == 3 {
-            let ax = tract_gpu::ops::change_axes::GpuAxisOp::new(
-                AxisOp::Add(1),
-                "Cuda",
-                crate::kernels::array::cuda_copy_nd_dispatch,
-            );
+            let ax = tract_gpu::ops::change_axes::GpuAxisOp::new(AxisOp::Add(1));
             *dst = target.wire_node(name(node_name, suffix), ax, &[*dst])?[0];
             Ok(true)
         } else {
@@ -407,11 +365,7 @@ fn convert_sdpa_to_cuda_flash_attn(
         let m = m_opt.unwrap();
         mut_cast(target, &node.name, m, mf.datum_type().unwrap(), DatumType::F16, ".cast_m")?;
         if mf.rank() != 4 {
-            let ax = tract_gpu::ops::change_axes::GpuAxisOp::new(
-                AxisOp::Add(1),
-                "Cuda",
-                crate::kernels::array::cuda_copy_nd_dispatch,
-            );
+            let ax = tract_gpu::ops::change_axes::GpuAxisOp::new(AxisOp::Add(1));
             *m = target.wire_node(name(&node.name, ".reshape_m"), ax, &[*m])?[0];
         }
     }
@@ -429,21 +383,14 @@ fn convert_sdpa_to_cuda_flash_attn(
     if added_head_axis {
         out = target.wire_node(
             name(&node.name, ".reshape_out"),
-            tract_gpu::ops::change_axes::GpuAxisOp::new(
-                AxisOp::Rm(1),
-                "Cuda",
-                crate::kernels::array::cuda_copy_nd_dispatch,
-            ),
+            tract_gpu::ops::change_axes::GpuAxisOp::new(AxisOp::Rm(1)),
             &out,
         )?;
     }
 
     if q_dt != DatumType::F16 {
-        out = target.wire_node(
-            name(&node.name, ".cast_out"),
-            ops::CudaCast::new(q_dt).unwrap(),
-            &out,
-        )?;
+        out =
+            target.wire_node(name(&node.name, ".cast_out"), cuda_cast_new(q_dt).unwrap(), &out)?;
     }
 
     Ok(out)
@@ -457,98 +404,55 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
         target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
-        let translatable = can_translate_to_cuda_op(source, node)?;
-
-        if translatable {
+        // Special multi-node ops handled first
+        let input_facts = source.node_input_facts(node.id)?;
+        if let Some(op) = node.op_as::<PrefixMatMul>() {
+            let facts: Vec<TypedFact> = input_facts.iter().map(|f| (*f).clone()).collect();
+            if !op.transpose_c
+                && op.quantize_output.is_none()
+                && (can_convert_to_cuda_gemm(&facts)
+                    || can_convert_to_cuda_gemm(&[facts[1].clone(), facts[0].clone()]))
+            {
+                let mut device_inputs =
+                    sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
+                let outlet_ids =
+                    convert_matmul_to_cuda(source, node, target, &mut device_inputs, op)?;
+                return sync_model_outputs_if_required(source, node, target, outlet_ids);
+            }
+        }
+        if let Some(op) = node.op_as::<Sdpa>() {
             let mut device_inputs =
                 sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
+            let outlet_ids =
+                convert_sdpa_to_cuda_flash_attn(source, node, target, &mut device_inputs, op)?;
+            return sync_model_outputs_if_required(source, node, target, outlet_ids);
+        }
+        if let Some(conv) = node.op_as::<Conv>() {
+            if input_facts.iter().all(|f| DeviceTensor::is_supported_dt(f.datum_type))
+                && matches!(input_facts[0].datum_type, F16 | F32)
+            {
+                let device_inputs =
+                    sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
+                let outlet_ids = wire_cuda_conv(source, node, target, &device_inputs, conv)?;
+                return sync_model_outputs_if_required(source, node, target, outlet_ids);
+            }
+        }
+        // Const: inline conversion, not a GPU op
+        if let Some(op) = node.op_as::<Const>() {
+            if DeviceTensor::is_supported_dt(op.val().datum_type()) {
+                let device_inputs =
+                    sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
+                let outlet_ids =
+                    target.wire_node(node.name.clone(), convert_const(op)?, &device_inputs)?;
+                return sync_model_outputs_if_required(source, node, target, outlet_ids);
+            }
+        }
 
-            let outlet_ids: TVec<OutletId> = if let Some(op) = node.op_as::<PrefixMatMul>() {
-                convert_matmul_to_cuda(source, node, target, &mut device_inputs, op)?
-            } else if let Some(op) = node.op_as::<Sdpa>() {
-                convert_sdpa_to_cuda_flash_attn(source, node, target, &mut device_inputs, op)?
-            } else if let Some(conv) = node.op_as::<Conv>() {
-                wire_cuda_conv(source, node, target, &device_inputs, conv)?
-            } else {
-                let op: Box<dyn TypedOp> = if let Some(op) = node.op_as::<Const>() {
-                    Box::new(convert_const(op)?)
-                } else if let Some(op) = node.op_as::<ElementWiseOp>() {
-                    if let Some(leaky) = op.0.downcast_ref::<LeakyRelu>() {
-                        Box::new(CudaLeakyRelu { alpha: leaky.alpha })
-                    } else if let Some(ew) = op.0.downcast_ref::<GeluApproximate>() {
-                        Box::new(ops::CudaGeluApproximate { fast_impl: ew.fast_impl })
-                    } else {
-                        Box::new(cuda_element_wise_op(op.0.clone()))
-                    }
-                } else if let Some(op) = node.op_as::<TypedBinOp>() {
-                    Box::new(cuda_bin_op(op.0.clone()))
-                } else if let Some(op) = node.op_as::<MultiBroadcastTo>() {
-                    Box::new(tract_gpu::ops::broadcast::GpuMultiBroadcastTo::new(
-                        op.shape.clone(),
-                        "Cuda",
-                        crate::kernels::array::cuda_copy_nd_dispatch,
-                    ))
-                } else if let Some(op) = node.op_as::<Cast>() {
-                    Box::new(ops::CudaCast::new(op.to).unwrap())
-                } else if let Some(op) = node.op_as::<AxisOp>() {
-                    let in_fact = source.node_input_facts(node.id)?[0];
-                    Box::new(tract_gpu::ops::change_axes::GpuAxisOp::from_tract_core_with_fact(
-                        op.clone(),
-                        in_fact,
-                        "Cuda",
-                        crate::kernels::array::cuda_copy_nd_dispatch,
-                    ))
-                } else if let Some(op) = node.op_as::<Slice>() {
-                    Box::new(tract_gpu::ops::slice::GpuSlice::new(
-                        op.clone(),
-                        "Cuda",
-                        crate::kernels::array::cuda_copy_nd_dispatch,
-                    ))
-                } else if let Some(op) = node.op_as::<TypedConcat>() {
-                    Box::new(tract_gpu::ops::concat::GpuConcat::new(
-                        op.axis,
-                        "Cuda",
-                        crate::kernels::array::cuda_copy_nd_dispatch,
-                    ))
-                } else if let Some(op) = node.op_as::<DynKeyValueCache>() {
-                    Box::new(tract_gpu::ops::dyn_kv_cache::GpuDynKVCache::from_tract_transformers(
-                        op,
-                        "Cuda",
-                        crate::kernels::array::cuda_copy_nd_dispatch,
-                    ))
-                } else if let Some(op) = node.op_as::<Reduce>() {
-                    Box::new(GpuReduce::from_tract_core(op, "Cuda", cuda_reduce_launch)?)
-                } else if let Some(op) = node.op_as::<Softmax>() {
-                    Box::new(ops::CudaSoftmax::from_tract_core(op)?)
-                } else if let Some(op) = node.op_as::<ScaledMaskedSoftmax>()
-                    && !op.post_softmax_mask
-                {
-                    Box::new(ops::CudaScaledMaskedSoftmax { scale: op.scale.clone() })
-                } else if let Some(_op) = node.op_as::<RotateHalf>() {
-                    Box::new(ops::CudaRotateHalf)
-                } else if let Some(_op) = node.op_as::<ApplyRope>() {
-                    Box::new(ops::CudaApplyRope)
-                } else if let Some(op) = node.op_as::<RmsNorm>() {
-                    Box::new(ops::CudaRmsNorm::new(op.axis, op.eps.clone()))
-                } else if let Some(op) = node.op_as::<Delay>() {
-                    Box::new(tract_gpu::ops::pulse::GpuDelay::new(
-                        op,
-                        "Cuda",
-                        crate::kernels::array::cuda_copy_nd_dispatch,
-                    ))
-                } else if let Some(op) = node.op_as::<PulsePad>() {
-                    Box::new(tract_gpu::ops::pulse::GpuPulsePad::new(
-                        op,
-                        "Cuda",
-                        crate::kernels::array::cuda_copy_nd_dispatch,
-                    )?)
-                } else if node.op_is::<Iff>() {
-                    Box::new(CudaIff)
-                } else {
-                    bail!("Failed to translate a supported CUDA Op")
-                };
-                target.wire_node(node.name.clone(), op, &device_inputs)?
-            };
+        // Single-op translation
+        if let Some(gpu_op) = try_make_cuda_op(source, node)? {
+            let device_inputs =
+                sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
+            let outlet_ids = target.wire_node(node.name.clone(), gpu_op, &device_inputs)?;
             sync_model_outputs_if_required(source, node, target, outlet_ids)
         } else {
             let cpu_inputs =

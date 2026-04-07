@@ -1,6 +1,7 @@
 use crate::kernels::conv::metal_conv_dispatch;
 use tract_core::internal::*;
 use tract_core::ops::cnn::Conv;
+use tract_gpu::ops::change_axes::GpuAxisOp;
 use tract_gpu::tensor::DeviceTensorExt;
 
 pub fn wire_metal_conv(
@@ -26,20 +27,12 @@ pub fn wire_metal_conv(
         needed_shape[data_shape.c_axis()] = op.pool_spec.output_channels.to_dim();
         let reshaped = target.wire_node(
             format!("{prefix}.bias_reshaped"),
-            tract_gpu::ops::change_axes::GpuAxisOp::new(
-                AxisOp::Reshape(0, bias.shape.to_tvec(), needed_shape),
-                "Metal",
-                crate::kernels::array::metal_copy_nd_dispatch,
-            ),
+            GpuAxisOp::new(AxisOp::Reshape(0, bias.shape.to_tvec(), needed_shape)),
             &[inputs[2]],
         )?[0];
         conv_wire = target.wire_node(
             prefix,
-            tract_gpu::ops::binary::GpuBinOp {
-                backend_name: "Metal",
-                mini_op: Box::new(tract_core::ops::math::Add),
-                dispatch: crate::kernels::bin_ops::metal_bin_op_dispatch,
-            },
+            crate::kernels::bin_ops::metal_bin_op(Box::new(tract_core::ops::math::Add)),
             &[conv_wire, reshaped],
         )?[0];
     }

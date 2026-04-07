@@ -13,8 +13,8 @@ fn is_supported_axis_op(op: &GpuAxisOp) -> bool {
 fn can_fuse_move(model: &TypedModel, axis_node: &TypedNode) -> bool {
     model.single_succ(axis_node.id).unwrap().is_some_and(|node| {
         node.op_is::<tract_gpu::ops::concat::GpuConcat>()
-            || node.op_is::<crate::ops::CudaApplyRope>()
-            || node.op_is::<crate::ops::CudaScaledMaskedSoftmax>()
+            || node.op_is::<tract_gpu::ops::apply_rope::GpuApplyRope>()
+            || node.op_is::<tract_gpu::ops::scaled_masked_softmax::GpuScaledMaskedSoftmax>()
             || node.op_is::<tract_gpu::ops::slice::GpuSlice>()
             || node.op_is::<tract_gpu::ops::broadcast::GpuMultiBroadcastTo>()
             || node.op_is::<tract_gpu::ops::dyn_kv_cache::GpuDynKVCache>()
@@ -194,12 +194,7 @@ pub fn fuse_move_axis(
     }
 
     // Reshape are always fusable. Change Move by Reshape if possible
-    let simpl_op = GpuAxisOp::simplify_axis_op(
-        axis_op.inner.clone(),
-        in_shape.dims(),
-        axis_op.backend_name,
-        axis_op.dispatch,
-    );
+    let simpl_op = GpuAxisOp::simplify_axis_op(axis_op.inner.clone(), in_shape.dims());
     if simpl_op != *axis_op {
         return Ok(Some(TypedModelPatch::replace_single_op(
             model,
@@ -226,7 +221,7 @@ pub fn fuse_move_axis(
             let inputs = patch.taps(model, &axis_node.inputs)?;
             let out = patch.wire_node(
                 format!("{axis_node_name}.fused_move_axis"),
-                GpuAxisOp::new(new_axis_ops[0].clone(), axis_op.backend_name, axis_op.dispatch),
+                GpuAxisOp::new(new_axis_ops[0].clone()),
                 &inputs,
             )?;
             patch.shunt_outside(model, cursor.id.into(), out[0])?;
@@ -243,11 +238,8 @@ pub fn fuse_move_axis(
     {
         let mut patch = TypedModelPatch::default();
         let inputs = patch.taps(model, &cursor.inputs)?;
-        let out = patch.wire_node(
-            cursor.name.clone(),
-            GpuAxisOp::new(AxisOp::Add(to_1), axis_op.backend_name, axis_op.dispatch),
-            &inputs,
-        )?;
+        let out =
+            patch.wire_node(cursor.name.clone(), GpuAxisOp::new(AxisOp::Add(to_1)), &inputs)?;
         patch.shunt_outside(model, axis_node.id.into(), out[0])?;
         return Ok(Some(patch));
     }

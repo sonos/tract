@@ -1,39 +1,21 @@
 use crate::tensor::DeviceTensorExt;
-use crate::utils::{DispatchCopyNdFn, compute_broadcast_strides};
-use derive_new::new;
+use crate::utils::compute_broadcast_strides;
 use tract_core::internal::*;
 
-#[derive(Clone, new)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct GpuMultiBroadcastTo {
     pub shape: ShapeFact,
-    pub backend_name: &'static str,
-    pub dispatch: DispatchCopyNdFn,
 }
 
-impl std::fmt::Debug for GpuMultiBroadcastTo {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}MultiBroadcastTo({:?})", self.backend_name, self.shape)
-    }
-}
-
-impl PartialEq for GpuMultiBroadcastTo {
-    fn eq(&self, other: &Self) -> bool {
-        self.backend_name == other.backend_name && self.shape == other.shape
-    }
-}
-
-impl Eq for GpuMultiBroadcastTo {}
-
-impl std::hash::Hash for GpuMultiBroadcastTo {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.backend_name.hash(state);
-        self.shape.hash(state);
+impl GpuMultiBroadcastTo {
+    pub fn new(shape: ShapeFact) -> Self {
+        Self { shape }
     }
 }
 
 impl Op for GpuMultiBroadcastTo {
     fn name(&self) -> StaticName {
-        format!("{}MultiBroadcastTo", self.backend_name).into()
+        "GpuMultiBroadcastTo".into()
     }
 
     op_as_typed_op!();
@@ -68,15 +50,8 @@ impl EvalOp for GpuMultiBroadcastTo {
         let broadcast_strides: TVec<isize> =
             compute_broadcast_strides(&input_shape, &input_strides)?;
 
-        (self.dispatch)(
-            input,
-            0,
-            &broadcast_strides,
-            &output,
-            0,
-            output.shape(),
-            output.strides(),
-        )?;
+        let ctx = crate::device::get_context()?;
+        ctx.copy_nd(input, 0, &broadcast_strides, &output, 0, output.shape(), output.strides())?;
         Ok(tvec![output.into_tensor().into_tvalue()])
     }
 }

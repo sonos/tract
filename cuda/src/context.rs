@@ -294,6 +294,27 @@ impl DeviceContext for TractCudaContext {
     ) -> TractResult<Box<dyn OwnedDeviceTensor>> {
         Ok(Box::new(CudaTensor::uninitialized_exotic(exotic_fact)?))
     }
+
+    fn copy_nd(
+        &self,
+        input: &DeviceTensor,
+        input_offset: usize,
+        input_strides: &[isize],
+        output: &DeviceTensor,
+        output_offset: usize,
+        output_shape: &[usize],
+        output_strides: &[isize],
+    ) -> TractResult<()> {
+        crate::kernels::array::cuda_copy_nd_dispatch(
+            input,
+            input_offset,
+            input_strides,
+            output,
+            output_offset,
+            output_shape,
+            output_strides,
+        )
+    }
 }
 
 /// A recorded GPU kernel timing entry: start/end events tagged with a node_id.

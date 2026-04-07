@@ -82,6 +82,18 @@ impl RotateHalf {
     }
 }
 
+pub fn cuda_rotate_half_dispatch(input: &DeviceTensor, output: &DeviceTensor) -> TractResult<()> {
+    crate::with_cuda_stream(|stream| RotateHalf.dispatch_eval(stream, input, output))
+}
+
+crate::register_cuda_op!(tract_transformers::ops::apply_rope::RotateHalf, |source, node, _op| {
+    rule_if!(RotateHalf::is_supported_dt(source.node_input_facts(node.id)?[0].datum_type));
+    Ok(Some(Box::new(tract_gpu::ops::rotate_half::GpuRotateHalf::new(
+        "Cuda",
+        cuda_rotate_half_dispatch,
+    ))))
+});
+
 #[cfg(test)]
 mod tests {
 
