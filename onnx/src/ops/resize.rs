@@ -27,6 +27,7 @@ fn resize_10(node: &NodeProto) -> TractResult<Resize> {
         coord_transformer: coord_transformer_from_node(node)?,
         interpolator: interpolator_from_node(node)?,
         nearest: nearest_from_node(node)?,
+        cubic_coeff_a_bits: cubic_coeff_a_from_node(node)?,
     })
 }
 
@@ -40,6 +41,7 @@ fn resize_11(node: &NodeProto) -> TractResult<Resize> {
         coord_transformer: coord_transformer_from_node(node)?,
         interpolator: interpolator_from_node(node)?,
         nearest: nearest_from_node(node)?,
+        cubic_coeff_a_bits: cubic_coeff_a_from_node(node)?,
     })
 }
 
@@ -53,6 +55,7 @@ fn resize_13(node: &NodeProto) -> TractResult<Resize> {
         coord_transformer: coord_transformer_from_node(node)?,
         interpolator: interpolator_from_node(node)?,
         nearest: nearest_from_node(node)?,
+        cubic_coeff_a_bits: cubic_coeff_a_from_node(node)?,
     })
 }
 
@@ -66,6 +69,7 @@ fn resize_18(node: &NodeProto) -> TractResult<Resize> {
         coord_transformer: coord_transformer_from_node(node)?,
         interpolator: interpolator_from_node(node)?,
         nearest: nearest_from_node(node)?,
+        cubic_coeff_a_bits: cubic_coeff_a_from_node(node)?,
     })
 }
 
@@ -81,6 +85,11 @@ fn interpolator_from_node(node: &NodeProto) -> TractResult<Interpolator> {
 
 fn nearest_from_node(node: &NodeProto) -> TractResult<Nearest> {
     Nearest::parse(node.get_attr_opt("nearest_mode")?.unwrap_or("round_prefer_floor"))
+}
+
+fn cubic_coeff_a_from_node(node: &NodeProto) -> TractResult<u32> {
+    let coeff: f32 = node.get_attr_opt("cubic_coeff_a")?.unwrap_or(-0.75);
+    Ok(coeff.to_bits())
 }
 
 #[derive(Clone, Debug)]
