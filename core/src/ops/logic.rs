@@ -152,6 +152,28 @@ fn extract_div_diff_axes(expr: &TDim) -> Option<(usize, usize, u64)> {
 /// Additional factors in the Mul (e.g. padding-validity conditions ANDed in)
 /// are ignored: in streaming inference every token in the key window is valid,
 /// so those factors are always True within the chunk window.
+/// Recognise a negated chunk-window `uniform_tdim` expression: `1 + -1*cw`.
+///
+/// `not(window_mask)` produces a boolean whose `uniform_tdim` is
+/// `Add([Val(1), MulInt(-1, cw_expr)])`.  Returns the same `ChunkWindowParams`
+/// as the underlying positive expression.
+pub fn classify_negated_chunk_window(expr: &TDim) -> Option<ChunkWindowParams> {
+    let TDim::Add(terms) = expr else { return None };
+    // Require a Val(1) somewhere in the sum.
+    if !terms.iter().any(|t| matches!(t, TDim::Val(1))) {
+        return None;
+    }
+    // Look for MulInt(-1, inner) where inner is a chunk-window expression.
+    for term in terms {
+        if let TDim::MulInt(-1, inner) = term {
+            if let Some(params) = classify_chunk_window(inner) {
+                return Some(params);
+            }
+        }
+    }
+    None
+}
+
 pub fn classify_chunk_window(expr: &TDim) -> Option<ChunkWindowParams> {
     let TDim::Mul(factors) = expr else { return None };
     let n = factors.len();
