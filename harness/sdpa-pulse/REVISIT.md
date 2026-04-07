@@ -186,6 +186,27 @@ annotation on the accumulated slice.
 
 ---
 
+## 10. Unify `Iff` and `ScaledMaskedSoftmax` ROI propagation via `input_roi`
+
+**Location:** `core/src/optim/propagate_roi.rs`, `core/src/ops/logic.rs` (`Iff`)
+
+**Current state:** `PropagateRoi::run_direct` has two separate sub-loops:
+1. A hand-coded `Iff`-specific loop with inversion detection (`peel_negated_chunk_window_expr`,
+   `peel_condition`, inverted-convention handling).
+2. A generic loop that calls `op.input_roi(...)` — currently only `ScaledMaskedSoftmax` overrides this.
+
+**What should happen:** The Iff-specific logic should be migrated into `Iff::input_roi`, making
+the hand-coded loop in `PropagateRoi` unnecessary. `PropagateRoi` would then have a single
+generic loop over all nodes. This makes every op's ROI contribution operator-local and
+removes the asymmetry between `Iff` and `ScaledMaskedSoftmax`.
+
+**Why it wasn't done yet:** `Iff::input_roi` would need to replicate the inversion detection
+currently in `PropagateRoi` (walking through `peel_condition`, detecting `extra_inverted`,
+deciding which branch is scores vs fill). That logic is subtle and wasn't worth refactoring
+during the initial `input_roi` introduction. The two-loop approach is correct but redundant.
+
+---
+
 ## 5. Pipeline ordering: `ScaledMaskedSoftmax` vs `FoldUniformMask`
 
 **Location:** `core/src/optim/mod.rs` (declutter pass order)
