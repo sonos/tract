@@ -42,7 +42,7 @@ pub use range::Range;
 pub use reshape::Reshape;
 pub use rm_dims::RmDims;
 pub use scatter_elements::ScatterElements;
-pub use scatter_nd::ScatterNd;
+pub use scatter_nd::{ScatterNd, ScatterReduction};
 pub use shape::Shape;
 pub use size::Size;
 pub use slice::Slice;

@@ -35,7 +35,11 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Reshape", |_, _| Ok((expand(array::Reshape::default()), vec![])));
     reg.insert("Scatter", scatter_elements);
     reg.insert("ScatterElements", scatter_elements);
-    reg.insert("ScatterND", |_, _| Ok((Box::new(array::ScatterNd), vec![])));
+    reg.insert("ScatterND", |_, node| {
+        let reduction =
+            array::ScatterReduction::parse(node.get_attr_opt("reduction")?.unwrap_or("none"))?;
+        Ok((Box::new(array::ScatterNd::new(reduction)), vec![]))
+    });
     reg.insert("Shape", shape::shape);
     reg.insert("Size", |_, _| Ok((expand(array::Size::new(DatumType::TDim)), vec![])));
     reg.insert("Slice", slice::slice);
@@ -142,7 +146,9 @@ pub fn scatter_elements(
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let axis = node.get_attr_opt("axis")?.unwrap_or(0);
-    Ok((expand(array::ScatterElements::new(axis)), vec![]))
+    let reduction =
+        array::ScatterReduction::parse(node.get_attr_opt("reduction")?.unwrap_or("none"))?;
+    Ok((expand(array::ScatterElements::new(axis, reduction)), vec![]))
 }
 
 pub fn transpose(

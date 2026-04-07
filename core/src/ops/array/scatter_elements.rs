@@ -1,9 +1,11 @@
+use super::scatter_nd::ScatterReduction;
 use crate::internal::*;
 use ndarray::*;
 
 #[derive(Debug, Clone, new, Hash, PartialEq, Eq)]
 pub struct ScatterElements {
     pub axis: usize,
+    pub reduction: ScatterReduction,
 }
 
 impl Op for ScatterElements {
@@ -16,19 +18,55 @@ impl Op for ScatterElements {
 
 impl ScatterElements {
     unsafe fn eval_t<T: Datum>(
-        &self,
         data: TValue,
         indices: &ArrayViewD<i64>,
         updates: TValue,
+        axis: usize,
     ) -> TractResult<TValue> {
         let mut data = unsafe { data.into_tensor().into_array_unchecked::<T>() };
         let updates_plain = updates.try_as_plain()?;
         let updates_view = unsafe { updates_plain.to_array_view_unchecked::<T>() };
         for (mut coords, value) in updates_view.indexed_iter() {
             let index = indices[&coords];
-            coords[self.axis] =
-                if index < 0 { index + data.shape()[self.axis] as i64 } else { index } as usize;
+            coords[axis] =
+                if index < 0 { index + data.shape()[axis] as i64 } else { index } as usize;
             data[coords] = value.clone()
+        }
+        let mut tensor = data.into_tensor();
+        unsafe { tensor.set_datum_type(updates.datum_type()) };
+        Ok(tensor.into_tvalue())
+    }
+
+    unsafe fn eval_t_reduce<T: Datum + PartialOrd + std::ops::AddAssign + std::ops::MulAssign>(
+        data: TValue,
+        indices: &ArrayViewD<i64>,
+        updates: TValue,
+        axis: usize,
+        reduction: ScatterReduction,
+    ) -> TractResult<TValue> {
+        let mut data = unsafe { data.into_tensor().into_array_unchecked::<T>() };
+        let updates_plain = updates.try_as_plain()?;
+        let updates_view = unsafe { updates_plain.to_array_view_unchecked::<T>() };
+        for (mut coords, value) in updates_view.indexed_iter() {
+            let index = indices[&coords];
+            coords[axis] =
+                if index < 0 { index + data.shape()[axis] as i64 } else { index } as usize;
+            let d = &mut data[coords];
+            match reduction {
+                ScatterReduction::Add => *d += value.clone(),
+                ScatterReduction::Mul => *d *= value.clone(),
+                ScatterReduction::Min => {
+                    if value < d {
+                        *d = value.clone()
+                    }
+                }
+                ScatterReduction::Max => {
+                    if value > d {
+                        *d = value.clone()
+                    }
+                }
+                ScatterReduction::None => unreachable!(),
+            }
         }
         let mut tensor = data.into_tensor();
         unsafe { tensor.set_datum_type(updates.datum_type()) };
@@ -61,9 +99,16 @@ impl EvalOp for ScatterElements {
             );
         }
         unsafe {
-            Ok(tvec!(dispatch_datum_by_size!(Self::eval_t(data.datum_type())(
-                self, data, &indices, updates
-            ))?))
+            match self.reduction {
+                ScatterReduction::None => {
+                    Ok(tvec!(dispatch_datum_by_size!(Self::eval_t(data.datum_type())(
+                        data, &indices, updates, self.axis
+                    ))?))
+                }
+                reduction => Ok(tvec!(dispatch_numbers!(Self::eval_t_reduce(data.datum_type())(
+                    data, &indices, updates, self.axis, reduction
+                ))?)),
+            }
         }
     }
 }
