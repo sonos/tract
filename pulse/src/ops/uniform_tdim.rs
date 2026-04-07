@@ -1,16 +1,20 @@
 /// Pulsifier for `UniformTDim`.
 ///
-/// At pulse time the chunk-window mask is always all-true within the key
-/// window `[(c-L)*P, (c+1)*P)` that the ROI-aware EinSum already enforces
-/// via a Delay on K.  So the pulsified `UniformTDim` is a constant all-true
-/// tensor.
+/// At pulse time the chunk-window mask is constant within the key window
+/// `[(c-L)*P, (c+1)*P)` that the ROI-aware EinSum already enforces via a
+/// Delay on K.  Two conventions are handled:
+///
+/// - Standard  (`cw`):       condition=True means in-window → all-true tensor.
+/// - Inverted  (`1 + -1*cw`): condition=True means out-of-window → all-false tensor.
 ///
 /// The output shape respects the original node's shape: leading singleton
 /// dims are kept, and the two streaming dims become `[P, (L+1)*P]`.
 use crate::internal::*;
 use crate::model::NonPulsingWrappingOp;
 use tract_core::ops::konst::Const;
-use tract_core::ops::logic::{ChunkWindowParams, classify_chunk_window};
+use tract_core::ops::logic::{
+    ChunkWindowParams, classify_chunk_window, classify_negated_chunk_window,
+};
 use tract_core::ops::uniform_tdim::UniformTDim;
 
 register_all!(UniformTDim: pulsify);
@@ -24,10 +28,14 @@ fn pulsify(
     symbol: &Symbol,
     pulse: &TDim,
 ) -> TractResult<Option<TVec<OutletId>>> {
-    let ChunkWindowParams { p, left_chunks, row_axis, col_axis } =
-        match classify_chunk_window(&op.expr.clone().simplify()) {
-            Some(cw) => cw,
-            None => return Ok(None),
+    let expr = op.expr.clone().simplify();
+    let (ChunkWindowParams { p, left_chunks, row_axis, col_axis }, fill_value) =
+        if let Some(cw) = classify_chunk_window(&expr) {
+            (cw, true) // standard: in-window → True
+        } else if let Some(cw) = classify_negated_chunk_window(&expr) {
+            (cw, false) // inverted: in-window → False (was masked out)
+        } else {
+            return Ok(None);
         };
 
     // The raw pulse is in the streaming symbol's units (e.g. audio frames).
@@ -73,7 +81,7 @@ fn pulsify(
     }
 
     let total: usize = shape.iter().product();
-    let data = vec![true; total];
+    let data = vec![fill_value; total];
     let tensor = Tensor::from_shape(&shape, &data)?;
 
     Ok(Some(target.wire_node(
