@@ -8,11 +8,16 @@ pub enum CoordTransformer {
 }
 
 impl CoordTransformer {
-    pub fn transform(&self, x_out: usize, scale: f32, len_in: usize, len_out: usize) -> f32 {
+    pub fn transform(&self, x_out: usize, scale: f32, len_in: usize, _len_out: usize) -> f32 {
         match self {
             CoordTransformer::HalfPixel => (x_out as f32 + 0.5) / scale - 0.5,
             CoordTransformer::AlignCorners => {
-                (x_out as f32 * (len_in as f32 - 1.0)) / (len_out as f32 - 1.0)
+                let output_width = scale * len_in as f32;
+                if output_width == 1.0 {
+                    0.0
+                } else {
+                    (x_out as f32 * (len_in as f32 - 1.0)) / (output_width - 1.0)
+                }
             }
             CoordTransformer::Asymmetric => (x_out as f32) / scale,
         }
@@ -142,6 +147,7 @@ pub struct Resize {
     pub interpolator: Interpolator,
     pub nearest: Nearest,
     pub cubic_coeff_a_bits: u32,
+    pub exclude_outside: bool,
     pub optional_roi_input: Option<usize>,
     pub optional_scales_input: Option<usize>,
     pub optional_sizes_input: Option<usize>,
@@ -234,6 +240,7 @@ impl EvalOp for Resize {
             data = match self.interpolator {
                 Interpolator::Cubic => {
                     let a = self.cubic_coeff_a();
+                    let exclude = self.exclude_outside;
                     tract_ndarray::ArrayD::from_shape_fn(&*new_shape, |co_o| -> f32 {
                         let x_out = co_o[axis];
                         let x_in = self.coord_transformer.transform(
@@ -245,13 +252,29 @@ impl EvalOp for Resize {
                         let x_floor = x_in.floor() as isize;
                         let t = x_in - x_floor as f32;
                         let mut co_i = co_o;
-                        let mut result = 0.0f32;
-                        for j in -1..=2isize {
-                            let idx = (x_floor + j).clamp(0, input_len as isize - 1) as usize;
-                            co_i[axis] = idx;
-                            result += data[&co_i] * cubic_kernel(t - j as f32, a);
+                        let mut weights = [0.0f32; 4];
+                        let mut values = [0.0f32; 4];
+                        for (i, j) in (-1..=2isize).enumerate() {
+                            let raw_idx = x_floor + j;
+                            let w = cubic_kernel(t - j as f32, a);
+                            if exclude && (raw_idx < 0 || raw_idx >= input_len as isize) {
+                                weights[i] = 0.0;
+                            } else {
+                                weights[i] = w;
+                                let idx = raw_idx.clamp(0, input_len as isize - 1) as usize;
+                                co_i[axis] = idx;
+                                values[i] = data[&co_i];
+                            }
                         }
-                        result
+                        if exclude {
+                            let sum: f32 = weights.iter().sum();
+                            if sum != 0.0 {
+                                for w in &mut weights {
+                                    *w /= sum;
+                                }
+                            }
+                        }
+                        weights.iter().zip(values.iter()).map(|(w, v)| w * v).sum()
                     })
                 }
                 _ => tract_ndarray::ArrayD::from_shape_fn(&*new_shape, |co_o| -> f32 {
@@ -410,6 +433,7 @@ fn parameters() -> Vec<Parameter> {
         TypeName::String.named("interpolator").default("nearest"),
         TypeName::String.named("nearest_mode").default("floor"),
         TypeName::Scalar.named("cubic_coeff_a").default(-0.75f32),
+        TypeName::Logical.named("exclude_outside").default(false),
     ]
 }
 
@@ -425,6 +449,7 @@ fn dump(ast: &mut IntoAst, node: &TypedNode, op: &Resize) -> TractResult<Option<
             ("interpolator", string(op.interpolator.as_str())),
             ("nearest_mode", string(op.nearest.as_str())),
             ("cubic_coeff_a", numeric(op.cubic_coeff_a())),
+            ("exclude_outside", logical(op.exclude_outside)),
         ],
     )))
 }
@@ -436,6 +461,7 @@ fn load(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractRes
     let interpolator: String = invocation.named_arg_as(builder, "interpolator")?;
     let nearest_mode: String = invocation.named_arg_as(builder, "nearest_mode")?;
     let cubic_coeff_a: f32 = invocation.named_arg_as(builder, "cubic_coeff_a")?;
+    let exclude_outside: bool = invocation.named_arg_as(builder, "exclude_outside")?;
 
     let op = Resize {
         axes: None,
@@ -443,6 +469,7 @@ fn load(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractRes
         interpolator: Interpolator::parse(&interpolator)?,
         nearest: Nearest::parse(&nearest_mode)?,
         cubic_coeff_a_bits: cubic_coeff_a.to_bits(),
+        exclude_outside,
         optional_roi_input: None,
         optional_scales_input: Some(1),
         optional_sizes_input: None,
@@ -484,6 +511,7 @@ mod tests {
             interpolator: Interpolator::Cubic,
             nearest: Nearest::Floor,
             cubic_coeff_a_bits: (-0.75f32).to_bits(),
+            exclude_outside: false,
             optional_roi_input: None,
             optional_scales_input: Some(1),
             optional_sizes_input: None,
@@ -506,6 +534,7 @@ mod tests {
             interpolator: Interpolator::Cubic,
             nearest: Nearest::Floor,
             cubic_coeff_a_bits: (-0.75f32).to_bits(),
+            exclude_outside: false,
             optional_roi_input: None,
             optional_scales_input: Some(1),
             optional_sizes_input: None,
