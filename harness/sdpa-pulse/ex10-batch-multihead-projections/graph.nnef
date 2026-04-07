@@ -1,0 +1,75 @@
+version 1.0;
+
+extension tract_registry tract_core;
+extension tract_registry tract_transformers;
+extension tract_symbol S;
+extension tract_assert S>=0;
+
+# ex10: inverted Iff convention — condition=True means MASKED OUT.
+#
+# In ex04/08/09 the convention is:  select(mask, scores, -inf)
+#   condition=True  → keep score (in-window)
+#   condition=False → fill with -inf (out-of-window)
+# PropagateRoi annotates inputs[1] (scores) with the ROI.
+#
+# Some models (including the real Nemotron encoder) use the opposite:
+#   select(mask, -inf, scores)       i.e. select(NOT window_mask, -inf, scores)
+# or equivalently:
+#   select(~mask, scores, -inf)      i.e. condition=True → masked out
+#   condition=True  → fill with -inf
+#   condition=False → keep score
+# Here the scores are at inputs[2] and PropagateRoi must annotate that slot
+# for the K/V Delay to be inserted.
+#
+# Parameters: B=1, H=2, T=8, P=2, left_chunks=1, Dh=4
+# Input:  qkv [1, S, 24]
+# Output: [1, S, 8]
+
+graph network(qkv) -> (output)
+{
+    qkv = tract_core_external(shape = [1, S, 24], datum_type = 'f32');
+
+    q_flat = slice(qkv, axes = [2], begin = [0],  end = [8]);
+    k_flat = slice(qkv, axes = [2], begin = [8],  end = [16]);
+    v_flat = slice(qkv, axes = [2], begin = [16], end = [24]);
+
+    q = reshape(q_flat, shape = [1, S, 2, 4]);
+    k = reshape(k_flat, shape = [1, S, 2, 4]);
+    v = reshape(v_flat, shape = [1, S, 2, 4]);
+
+    scores = tract_core_einsum([q, k], expr = "bihd,bjhd->bhij", acc = "f32");  # [1, 2, S, S]
+
+    # Chunk-window mask — same computation as ex09
+    qkv_shape = tract_core_shape_of(qkv);
+    T_slice   = slice(qkv_shape, axes = [0], begin = [1], end = [2], stride = [1]);
+    T         = squeeze(T_slice, axes = [0]);
+
+    positions          = tract_core_range(0, T, step = 1);
+    positions_f32      = tract_core_cast(positions, to = 'f32');
+    chunk_size_f32     = tract_core_cast(2, to = 'f32');
+    chunkIdx_f32       = div(positions_f32, chunk_size_f32);
+    chunkIdx_f32_floor = floor(chunkIdx_f32);
+    chunkIdx           = tract_core_cast(chunkIdx_f32_floor, to = 'i64');
+
+    ci_row     = unsqueeze(chunkIdx, axes = [1]);
+    ci_col     = unsqueeze(chunkIdx, axes = [0]);
+    diffChunks = sub(ci_row, ci_col);
+
+    left_chunks_i64 = tract_core_cast(1, to = 'i64');
+    zero_i64        = tract_core_cast(0, to = 'i64');
+    le_mask         = le(diffChunks, left_chunks_i64);
+    ge_mask         = ge(diffChunks, zero_i64);
+    window_mask_2d  = and(le_mask, ge_mask);             # [S, S]  True = in-window
+
+    # INVERTED: not(window_mask) → True where we want to FILL with -inf
+    inv_mask_2d = not(window_mask_2d);                   # [S, S]  True = out-of-window
+    inv_mask    = unsqueeze(inv_mask_2d, axes = [0, 0]); # [1, 1, S, S]
+
+    # select(inv_mask, fill, scores): condition=True → -inf, condition=False → keep score
+    masked_scores = select(inv_mask, scores * 0.0 + -inf, scores);
+
+    attn = softmax(masked_scores, axes = [3]);
+
+    ctx    = tract_core_einsum([attn, v], expr = "bhij,bjhd->bihd", acc = "f32");
+    output = reshape(ctx, shape = [1, S, 8]);
+}
