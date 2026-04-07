@@ -1162,6 +1162,7 @@ pub struct Assertions {
     pub assert_llm_rbo: Option<f64>,
     pub assert_llm_rbo_p: f64,
     pub assert_llm_rbo_depth: usize,
+    pub assert_op_only: Option<Vec<String>>,
 }
 
 impl Assertions {
@@ -1208,6 +1209,9 @@ impl Assertions {
             .map(String::as_str)
             .unwrap_or("100")
             .parse()?;
+        let assert_op_only = sub
+            .get_one::<String>("assert-op-only")
+            .map(|v| v.split(',').map(|s| s.trim().to_string()).collect());
         Ok(Assertions {
             assert_outputs,
             assert_output_facts,
@@ -1217,6 +1221,7 @@ impl Assertions {
             assert_llm_rbo,
             assert_llm_rbo_p,
             assert_llm_rbo_depth,
+            assert_op_only,
         })
     }
 }

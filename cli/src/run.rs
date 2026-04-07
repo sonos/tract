@@ -138,6 +138,10 @@ pub fn handle(
         }
     }
 
+    if let Some(patterns) = &params.assertions.assert_op_only {
+        crate::utils::check_op_only(&*params.tract_model, patterns)?;
+    }
+
     Ok(())
 }
 

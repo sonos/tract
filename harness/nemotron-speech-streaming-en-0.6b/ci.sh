@@ -10,6 +10,12 @@ S3DIR=asr/613/$MODEL
 
 for rt in $TRACT_RUNTIMES
 do
+	gpu_assert=""
+	case "$rt" in
+		--cuda) gpu_assert="--assert-op-only Cuda*,Gpu*,DeviceSync*,Const,Source,STFT,Pad,IsNan,Add,Range,Cast,Eq,Div,Sub,Scan,Gather";;
+		--metal) gpu_assert="--assert-op-only Metal*,Gpu*,DeviceSync*,Const,Source,STFT,Pad,IsNan,Add,Range,Cast,Eq,Div,Sub,Scan,Gather,Reduce*";;
+	esac
+
 	for m in preprocessor encoder decoder joint
 	do
 		# Encoder uses a patched model with upper bound assertion on AUDIO_SIGNAL__TIME
@@ -24,7 +30,7 @@ do
 
 		$TRACT_RUN $MODELS/$S3DIR/$nnef_file $rt --nnef-tract-transformers -t transformers_detect_all run \
 			--input-from-bundle $MODELS/$S3DIR/$MODEL.$m.io.npz --assert-output-bundle $MODELS/$S3DIR/$MODEL.$m.io.npz \
-			--approx very
+			--approx very $gpu_assert
 	done
 done
 

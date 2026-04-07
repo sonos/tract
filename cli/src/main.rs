@@ -527,6 +527,12 @@ fn assertions_options(command: clap::Command) -> clap::Command {
             .long("assert-op-count")
             .help("Specified operator must appear exactly the specified number of times. This argument can appear multiple times."),
             )
+        .arg(
+            Arg::new("assert-op-only")
+            .long("assert-op-only")
+            .num_args(1)
+            .help("Assert all ops match the given comma-separated patterns (prefix* or exact)"),
+            )
 }
 
 fn bench_options(command: clap::Command) -> clap::Command {

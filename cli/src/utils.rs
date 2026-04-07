@@ -134,6 +134,32 @@ pub fn clarify_typed_fact<'a>(fact: impl Into<Cow<'a, TypedFact>>) -> Cow<'a, Ty
     }
 }
 
+fn matches_pattern(op_name: &str, pattern: &str) -> bool {
+    if let Some(prefix) = pattern.strip_suffix('*') {
+        op_name.starts_with(prefix)
+    } else {
+        op_name == pattern
+    }
+}
+
+pub fn check_op_only(model: &dyn Model, patterns: &[String]) -> TractResult<()> {
+    let mut unexpected = vec![];
+    for node_id in model.eval_order()? {
+        let op = model.node_op_name(node_id);
+        if !patterns.iter().any(|p| matches_pattern(&op, p)) {
+            let name = model.node_name(node_id);
+            unexpected.push(format!("  {name} ({op})"));
+        }
+    }
+    unexpected.sort();
+    unexpected.dedup();
+    if unexpected.is_empty() {
+        Ok(())
+    } else {
+        bail!("Model has {} unexpected op(s):\n{}", unexpected.len(), unexpected.join("\n"))
+    }
+}
+
 pub fn count_op(model: &dyn Model, name: &str) -> TractResult<usize> {
     Ok(model
         .eval_order()
