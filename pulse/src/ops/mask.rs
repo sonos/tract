@@ -21,7 +21,9 @@ use tract_core::ops::binary::TypedBinOp;
 use tract_core::ops::change_axes::AxisOp;
 use tract_core::ops::element_wise::ElementWiseOp;
 use tract_core::ops::konst::Const;
-use tract_core::ops::logic::{BitNot, Iff, classify_chunk_window};
+use tract_core::ops::logic::{
+    BitNot, Iff, Not, classify_chunk_window, classify_negated_chunk_window,
+};
 use tract_nnef::tract_core::trivial_op_state_freeze;
 
 register_all!(Iff: pulsify);
@@ -182,7 +184,8 @@ fn peel_condition(source: &TypedModel, mut outlet: OutletId) -> (OutletId, bool)
             continue;
         }
         if let Some(ew) = node.op_as::<ElementWiseOp>() {
-            if ew.0.is::<BitNot>() {
+            // Both BitNot (tract_core_bitnot) and Not (NNEF logical not) invert a bool.
+            if ew.0.is::<BitNot>() || ew.0.is::<Not>() {
                 inverted = !inverted;
                 outlet = node.inputs[0];
                 continue;
@@ -234,10 +237,17 @@ fn pulsify(
         Some(e) => e,
         None => return Ok(None),
     };
-    let cw = match classify_chunk_window(&expr) {
-        Some(cw) => cw,
-        None => return Ok(None),
+    // Detect both standard (cw) and negated (1 + -1*cw) chunk-window expressions.
+    // FoldUniformTDim may replace not(window_mask) with a UniformTDim carrying the
+    // negated expression, so peel_condition might not have detected the inversion.
+    let (cw, extra_inverted) = if let Some(cw) = classify_chunk_window(&expr) {
+        (cw, false)
+    } else if let Some(cw) = classify_negated_chunk_window(&expr) {
+        (cw, true)
+    } else {
+        return Ok(None);
     };
+    let inverted = inverted ^ extra_inverted;
 
     let left_chunks = cw.left_chunks as usize;
     let pulse_size = cw.p as usize;
