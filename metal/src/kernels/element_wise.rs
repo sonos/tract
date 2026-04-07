@@ -95,11 +95,7 @@ pub fn metal_element_wise_dispatch(
 pub fn metal_element_wise_op(
     mini_op: Box<dyn ElementWiseMiniOp>,
 ) -> tract_gpu::ops::element_wise::GpuElementWise {
-    tract_gpu::ops::element_wise::GpuElementWise {
-        backend_name: "Metal",
-        mini_op,
-        dispatch: metal_element_wise_dispatch,
-    }
+    tract_gpu::ops::element_wise::GpuElementWise::new(mini_op, "Metal", metal_element_wise_dispatch)
 }
 
 // Generic element-wise fallback — checked after LeakyRelu, GeluApproximate.

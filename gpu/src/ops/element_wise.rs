@@ -1,14 +1,15 @@
 use crate::tensor::{DeviceTensor, DeviceTensorExt};
+use derive_new::new;
 use tract_core::internal::*;
 use tract_core::ops::element_wise::ElementWiseMiniOp;
 
 pub type DispatchElementWiseFn =
     fn(&dyn ElementWiseMiniOp, &DeviceTensor, &DeviceTensor) -> TractResult<()>;
 
-#[derive(Clone)]
+#[derive(Clone, new)]
 pub struct GpuElementWise {
-    pub backend_name: &'static str,
     pub mini_op: Box<dyn ElementWiseMiniOp>,
+    pub backend_name: &'static str,
     pub dispatch: DispatchElementWiseFn,
 }
 

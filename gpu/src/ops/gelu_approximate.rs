@@ -1,25 +1,14 @@
-use crate::tensor::DeviceTensorExt;
+use crate::tensor::{DeviceTensor, DeviceTensorExt};
+use derive_new::new;
 use tract_core::internal::*;
-
-use crate::tensor::DeviceTensor;
 
 pub type DispatchGeluApproximateFn = fn(bool, &DeviceTensor, &DeviceTensor) -> TractResult<()>;
 
-#[derive(Clone)]
+#[derive(Clone, new)]
 pub struct GpuGeluApproximate {
     pub fast_impl: bool,
     pub backend_name: &'static str,
     pub dispatch: DispatchGeluApproximateFn,
-}
-
-impl GpuGeluApproximate {
-    pub fn new(
-        fast_impl: bool,
-        backend_name: &'static str,
-        dispatch: DispatchGeluApproximateFn,
-    ) -> Self {
-        Self { fast_impl, backend_name, dispatch }
-    }
 }
 
 impl std::fmt::Debug for GpuGeluApproximate {

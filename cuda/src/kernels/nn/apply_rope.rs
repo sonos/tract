@@ -141,10 +141,10 @@ pub fn cuda_apply_rope_dispatch(
 
 crate::register_cuda_op!(tract_transformers::ops::apply_rope::ApplyRope, |source, node, _op| {
     rule_if!(ApplyRope::is_supported_dt(source.node_input_facts(node.id)?[0].datum_type));
-    Ok(Some(Box::new(tract_gpu::ops::apply_rope::GpuApplyRope {
-        backend_name: "Cuda",
-        dispatch: cuda_apply_rope_dispatch,
-    })))
+    Ok(Some(Box::new(tract_gpu::ops::apply_rope::GpuApplyRope::new(
+        "Cuda",
+        cuda_apply_rope_dispatch,
+    ))))
 });
 
 #[cfg(test)]

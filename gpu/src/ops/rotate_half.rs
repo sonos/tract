@@ -1,20 +1,13 @@
-use crate::tensor::DeviceTensorExt;
+use crate::tensor::{DeviceTensor, DeviceTensorExt};
+use derive_new::new;
 use tract_core::internal::*;
-
-use crate::tensor::DeviceTensor;
 
 pub type DispatchRotateHalfFn = fn(&DeviceTensor, &DeviceTensor) -> TractResult<()>;
 
-#[derive(Clone)]
+#[derive(Clone, new)]
 pub struct GpuRotateHalf {
     pub backend_name: &'static str,
     pub dispatch: DispatchRotateHalfFn,
-}
-
-impl GpuRotateHalf {
-    pub fn new(backend_name: &'static str, dispatch: DispatchRotateHalfFn) -> Self {
-        Self { backend_name, dispatch }
-    }
 }
 
 impl std::fmt::Debug for GpuRotateHalf {

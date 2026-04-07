@@ -225,11 +225,7 @@ pub fn metal_bin_op_dispatch(
 }
 
 pub fn metal_bin_op(mini_op: Box<dyn BinMiniOp>) -> tract_gpu::ops::binary::GpuBinOp {
-    tract_gpu::ops::binary::GpuBinOp {
-        backend_name: "Metal",
-        mini_op,
-        dispatch: metal_bin_op_dispatch,
-    }
+    tract_gpu::ops::binary::GpuBinOp::new(mini_op, "Metal", metal_bin_op_dispatch)
 }
 
 crate::register_metal_op!(tract_core::ops::binary::TypedBinOp, |source, node, op| {
@@ -238,10 +234,7 @@ crate::register_metal_op!(tract_core::ops::binary::TypedBinOp, |source, node, op
 });
 
 crate::register_metal_op!(tract_core::ops::logic::Iff, |_source, _node, _op| {
-    Ok(Some(Box::new(tract_gpu::ops::iff::GpuIff {
-        backend_name: "Metal",
-        dispatch: metal_iff_dispatch,
-    })))
+    Ok(Some(Box::new(tract_gpu::ops::iff::GpuIff::new("Metal", metal_iff_dispatch))))
 });
 
 pub fn metal_iff_dispatch(

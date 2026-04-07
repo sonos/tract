@@ -1,28 +1,16 @@
-use crate::tensor::DeviceTensorExt;
+use crate::tensor::{DeviceTensor, DeviceTensorExt};
+use derive_new::new;
 use std::sync::Arc;
 use tract_core::internal::*;
 
-use crate::tensor::DeviceTensor;
-
 pub type DispatchRmsNormFn = fn(&DeviceTensor, usize, &Tensor, &DeviceTensor) -> TractResult<()>;
 
-#[derive(Clone)]
+#[derive(Clone, new)]
 pub struct GpuRmsNorm {
     pub axis: usize,
     pub eps: Arc<Tensor>,
     pub backend_name: &'static str,
     pub dispatch: DispatchRmsNormFn,
-}
-
-impl GpuRmsNorm {
-    pub fn new(
-        axis: usize,
-        eps: Arc<Tensor>,
-        backend_name: &'static str,
-        dispatch: DispatchRmsNormFn,
-    ) -> Self {
-        Self { axis, eps, backend_name, dispatch }
-    }
 }
 
 impl std::fmt::Debug for GpuRmsNorm {

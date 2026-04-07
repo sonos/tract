@@ -1,4 +1,5 @@
 use crate::tensor::{DeviceTensor, DeviceTensorExt};
+use derive_new::new;
 use tract_core::broadcast::multi_broadcast;
 use tract_core::internal::*;
 
@@ -19,7 +20,7 @@ pub type DispatchIffFn = fn(
     output_strides: &[isize],
 ) -> TractResult<()>;
 
-#[derive(Clone)]
+#[derive(Clone, new)]
 pub struct GpuIff {
     pub backend_name: &'static str,
     pub dispatch: DispatchIffFn,

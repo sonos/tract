@@ -124,11 +124,7 @@ pub fn cuda_bin_op_dispatch(
 }
 
 pub fn cuda_bin_op(mini_op: Box<dyn BinMiniOp>) -> tract_gpu::ops::binary::GpuBinOp {
-    tract_gpu::ops::binary::GpuBinOp {
-        backend_name: "Cuda",
-        mini_op,
-        dispatch: cuda_bin_op_dispatch,
-    }
+    tract_gpu::ops::binary::GpuBinOp::new(mini_op, "Cuda", cuda_bin_op_dispatch)
 }
 
 crate::register_cuda_op!(tract_core::ops::binary::TypedBinOp, |source, node, op| {

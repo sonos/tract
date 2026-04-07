@@ -1,10 +1,11 @@
 use crate::tensor::{DeviceTensor, DeviceTensorExt};
+use derive_new::new;
 use tract_core::internal::*;
 
 pub type DispatchApplyRopeFn =
     fn(&DeviceTensor, &DeviceTensor, &DeviceTensor, &DeviceTensor) -> TractResult<()>;
 
-#[derive(Clone)]
+#[derive(Clone, new)]
 pub struct GpuApplyRope {
     pub backend_name: &'static str,
     pub dispatch: DispatchApplyRopeFn,

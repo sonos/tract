@@ -169,8 +169,5 @@ pub fn cuda_iff_dispatch(
 }
 
 crate::register_cuda_op!(tract_core::ops::logic::Iff, |_source, _node, _op| {
-    Ok(Some(Box::new(tract_gpu::ops::iff::GpuIff {
-        backend_name: "Cuda",
-        dispatch: cuda_iff_dispatch,
-    })))
+    Ok(Some(Box::new(tract_gpu::ops::iff::GpuIff::new("Cuda", cuda_iff_dispatch))))
 });

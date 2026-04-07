@@ -1,21 +1,14 @@
-use crate::tensor::DeviceTensorExt;
+use crate::tensor::{DeviceTensor, DeviceTensorExt};
+use derive_new::new;
 use tract_core::internal::*;
-
-use crate::tensor::DeviceTensor;
 
 pub type DispatchLeakyReluFn = fn(f32, &DeviceTensor, &DeviceTensor) -> TractResult<()>;
 
-#[derive(Clone)]
+#[derive(Clone, new)]
 pub struct GpuLeakyRelu {
     pub alpha: f32,
     pub backend_name: &'static str,
     pub dispatch: DispatchLeakyReluFn,
-}
-
-impl GpuLeakyRelu {
-    pub fn new(alpha: f32, backend_name: &'static str, dispatch: DispatchLeakyReluFn) -> Self {
-        Self { alpha, backend_name, dispatch }
-    }
 }
 
 impl std::fmt::Debug for GpuLeakyRelu {

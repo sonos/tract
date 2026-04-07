@@ -125,11 +125,11 @@ crate::register_metal_op!(
         rule_if!(ScaledMaskedSoftmax::is_supported_dt(
             source.node_input_facts(node.id)?[0].datum_type
         ));
-        Ok(Some(Box::new(tract_gpu::ops::scaled_masked_softmax::GpuScaledMaskedSoftmax {
-            scale: op.scale.clone(),
-            backend_name: "Metal",
-            dispatch: metal_scaled_masked_softmax_dispatch,
-        })))
+        Ok(Some(Box::new(tract_gpu::ops::scaled_masked_softmax::GpuScaledMaskedSoftmax::new(
+            op.scale.clone(),
+            "Metal",
+            metal_scaled_masked_softmax_dispatch,
+        ))))
     }
 );
 

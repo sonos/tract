@@ -1,4 +1,5 @@
 use crate::tensor::{DeviceTensor, DeviceTensorExt};
+use derive_new::new;
 use tract_core::internal::*;
 
 /// A = SOFTMAX(INPUT * SCALE + MASK, AXIS=2)
@@ -6,7 +7,7 @@ use tract_core::internal::*;
 pub type DispatchScaledMaskedSoftmaxFn =
     fn(&DeviceTensor, &Tensor, &DeviceTensor, &DeviceTensor) -> TractResult<()>;
 
-#[derive(Clone)]
+#[derive(Clone, new)]
 pub struct GpuScaledMaskedSoftmax {
     pub scale: Arc<Tensor>,
     pub backend_name: &'static str,

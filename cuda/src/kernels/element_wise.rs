@@ -102,11 +102,7 @@ pub fn cuda_element_wise_dispatch(
 pub fn cuda_element_wise_op(
     mini_op: Box<dyn ElementWiseMiniOp>,
 ) -> tract_gpu::ops::element_wise::GpuElementWise {
-    tract_gpu::ops::element_wise::GpuElementWise {
-        backend_name: "Cuda",
-        mini_op,
-        dispatch: cuda_element_wise_dispatch,
-    }
+    tract_gpu::ops::element_wise::GpuElementWise::new(mini_op, "Cuda", cuda_element_wise_dispatch)
 }
 
 // Generic element-wise fallback — checked after LeakyRelu, GeluApproximate.
