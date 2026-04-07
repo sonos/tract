@@ -40,6 +40,7 @@ impl CoordTransformer {
 pub enum Interpolator {
     Linear,
     Nearest,
+    Cubic,
 }
 
 impl Interpolator {
@@ -70,6 +71,9 @@ impl Interpolator {
                     }
                 }
             },
+            Interpolator::Cubic => {
+                unreachable!("cubic interpolation uses a 4-tap kernel, not the 2-tap path")
+            }
         }
     }
 
@@ -77,6 +81,7 @@ impl Interpolator {
         match self {
             Interpolator::Linear => "linear",
             Interpolator::Nearest => "nearest",
+            Interpolator::Cubic => "cubic",
         }
     }
 
@@ -84,8 +89,20 @@ impl Interpolator {
         Ok(match s {
             "linear" => Interpolator::Linear,
             "nearest" => Interpolator::Nearest,
+            "cubic" => Interpolator::Cubic,
             s => bail!("mode: {s}"),
         })
+    }
+}
+
+fn cubic_kernel(s: f32, a: f32) -> f32 {
+    let abs_s = s.abs();
+    if abs_s <= 1.0 {
+        (a + 2.0) * abs_s * abs_s * abs_s - (a + 3.0) * abs_s * abs_s + 1.0
+    } else if abs_s <= 2.0 {
+        a * abs_s * abs_s * abs_s - 5.0 * a * abs_s * abs_s + 8.0 * a * abs_s - 4.0 * a
+    } else {
+        0.0
     }
 }
 
@@ -124,9 +141,16 @@ pub struct Resize {
     pub coord_transformer: CoordTransformer,
     pub interpolator: Interpolator,
     pub nearest: Nearest,
+    pub cubic_coeff_a_bits: u32,
     pub optional_roi_input: Option<usize>,
     pub optional_scales_input: Option<usize>,
     pub optional_sizes_input: Option<usize>,
+}
+
+impl Resize {
+    pub fn cubic_coeff_a(&self) -> f32 {
+        f32::from_bits(self.cubic_coeff_a_bits)
+    }
 }
 
 impl Resize {
@@ -206,24 +230,45 @@ impl EvalOp for Resize {
         for (axis, scale) in scales.into_iter().enumerate().filter(|(_, s)| *s != 1.0) {
             let mut new_shape: TVec<usize> = data.shape().into();
             new_shape[axis] = output_shape[axis];
-            data = tract_ndarray::ArrayD::from_shape_fn(&*new_shape, |co_o| -> f32 {
-                let x_out = co_o[axis];
-                let x_in = self.coord_transformer.transform(
-                    x_out,
-                    scale,
-                    data.shape()[axis],
-                    new_shape[axis],
-                );
-                let mut co_i = co_o;
-                let x_left = (x_in as usize).clamp(0, data.shape()[axis] - 1);
-                co_i[axis] = x_left;
-                let y_left = data[&co_i];
-                let x_right = (x_left + 1).min(data.shape()[axis] - 1);
-                co_i[axis] = x_right;
-                let y_right = data[&co_i];
-                let x_frac = x_in - x_left as f32;
-                self.interpolator.interpolate(y_left, y_right, x_frac, self.nearest)
-            })
+            let input_len = data.shape()[axis];
+            data = match self.interpolator {
+                Interpolator::Cubic => {
+                    let a = self.cubic_coeff_a();
+                    tract_ndarray::ArrayD::from_shape_fn(&*new_shape, |co_o| -> f32 {
+                        let x_out = co_o[axis];
+                        let x_in = self.coord_transformer.transform(
+                            x_out,
+                            scale,
+                            input_len,
+                            new_shape[axis],
+                        );
+                        let x_floor = x_in.floor() as isize;
+                        let t = x_in - x_floor as f32;
+                        let mut co_i = co_o;
+                        let mut result = 0.0f32;
+                        for j in -1..=2isize {
+                            let idx = (x_floor + j).clamp(0, input_len as isize - 1) as usize;
+                            co_i[axis] = idx;
+                            result += data[&co_i] * cubic_kernel(t - j as f32, a);
+                        }
+                        result
+                    })
+                }
+                _ => tract_ndarray::ArrayD::from_shape_fn(&*new_shape, |co_o| -> f32 {
+                    let x_out = co_o[axis];
+                    let x_in =
+                        self.coord_transformer.transform(x_out, scale, input_len, new_shape[axis]);
+                    let mut co_i = co_o;
+                    let x_left = (x_in as usize).clamp(0, input_len - 1);
+                    co_i[axis] = x_left;
+                    let y_left = data[&co_i];
+                    let x_right = (x_left + 1).min(input_len - 1);
+                    co_i[axis] = x_right;
+                    let y_right = data[&co_i];
+                    let x_frac = x_in - x_left as f32;
+                    self.interpolator.interpolate(y_left, y_right, x_frac, self.nearest)
+                }),
+            }
         }
         Ok(tvec!(data.into_tvalue()))
     }
@@ -364,6 +409,7 @@ fn parameters() -> Vec<Parameter> {
         TypeName::String.named("coord_transformer").default("half_pixel"),
         TypeName::String.named("interpolator").default("nearest"),
         TypeName::String.named("nearest_mode").default("floor"),
+        TypeName::Scalar.named("cubic_coeff_a").default(-0.75f32),
     ]
 }
 
@@ -378,6 +424,7 @@ fn dump(ast: &mut IntoAst, node: &TypedNode, op: &Resize) -> TractResult<Option<
             ("coord_transformer", string(op.coord_transformer.as_str())),
             ("interpolator", string(op.interpolator.as_str())),
             ("nearest_mode", string(op.nearest.as_str())),
+            ("cubic_coeff_a", numeric(op.cubic_coeff_a())),
         ],
     )))
 }
@@ -388,16 +435,83 @@ fn load(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractRes
     let coord_transformer: String = invocation.named_arg_as(builder, "coord_transformer")?;
     let interpolator: String = invocation.named_arg_as(builder, "interpolator")?;
     let nearest_mode: String = invocation.named_arg_as(builder, "nearest_mode")?;
+    let cubic_coeff_a: f32 = invocation.named_arg_as(builder, "cubic_coeff_a")?;
 
     let op = Resize {
         axes: None,
         coord_transformer: CoordTransformer::parse(&coord_transformer)?,
         interpolator: Interpolator::parse(&interpolator)?,
         nearest: Nearest::parse(&nearest_mode)?,
+        cubic_coeff_a_bits: cubic_coeff_a.to_bits(),
         optional_roi_input: None,
         optional_scales_input: Some(1),
         optional_sizes_input: None,
     };
 
     builder.wire(op, &[input, scales])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cubic_kernel_properties() {
+        let a = -0.75f32;
+        assert!((cubic_kernel(0.0, a) - 1.0).abs() < 1e-6);
+        assert!(cubic_kernel(2.0, a).abs() < 1e-6);
+        assert!(cubic_kernel(3.0, a).abs() < 1e-6);
+
+        for t_int in 0..=100 {
+            let t = t_int as f32 / 100.0;
+            let sum = cubic_kernel(t + 1.0, a)
+                + cubic_kernel(t, a)
+                + cubic_kernel(1.0 - t, a)
+                + cubic_kernel(2.0 - t, a);
+            assert!((sum - 1.0).abs() < 1e-5, "kernel weights must sum to 1.0, got {sum} at t={t}");
+        }
+    }
+
+    #[test]
+    fn cubic_resize_1d_upsample() {
+        let input = tract_ndarray::arr1(&[0.0f32, 1.0, 2.0, 3.0]);
+        let input_tensor = input.into_tensor().into_tvalue();
+        let scales = tract_ndarray::arr1(&[2.0f32]);
+        let scales_tensor = scales.into_tensor().into_tvalue();
+        let op = Resize {
+            axes: None,
+            coord_transformer: CoordTransformer::HalfPixel,
+            interpolator: Interpolator::Cubic,
+            nearest: Nearest::Floor,
+            cubic_coeff_a_bits: (-0.75f32).to_bits(),
+            optional_roi_input: None,
+            optional_scales_input: Some(1),
+            optional_sizes_input: None,
+        };
+        let result = op.eval(tvec!(input_tensor, scales_tensor)).unwrap();
+        let output = result[0].try_as_plain().unwrap().as_slice::<f32>().unwrap();
+        assert_eq!(output.len(), 8);
+        assert!((output[0] - (-0.10546875)).abs() < 1e-4, "got {}", output[0]);
+    }
+
+    #[test]
+    fn cubic_resize_2d_upsample() {
+        let input = tract_ndarray::arr2(&[[1.0f32, 2.0], [3.0, 4.0]]);
+        let input_tensor = input.into_tensor().into_tvalue();
+        let scales = tract_ndarray::arr1(&[2.0f32, 2.0]);
+        let scales_tensor = scales.into_tensor().into_tvalue();
+        let op = Resize {
+            axes: None,
+            coord_transformer: CoordTransformer::HalfPixel,
+            interpolator: Interpolator::Cubic,
+            nearest: Nearest::Floor,
+            cubic_coeff_a_bits: (-0.75f32).to_bits(),
+            optional_roi_input: None,
+            optional_scales_input: Some(1),
+            optional_sizes_input: None,
+        };
+        let result = op.eval(tvec!(input_tensor, scales_tensor)).unwrap();
+        let shape = result[0].shape();
+        assert_eq!(shape, &[4, 4]);
+    }
 }
