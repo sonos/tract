@@ -56,6 +56,16 @@ fn konst(
         tensor0(i)
     } else if let Some(v) = node.get_attr_opt::<f32>("value_float")? {
         tensor0(v)
+    } else if let Some(ints) = node.get_attr_opt_slice::<i64>("value_ints")? {
+        tensor1(ints)
+    } else if let Some(floats) = node.get_attr_opt_slice::<f32>("value_floats")? {
+        tensor1(floats)
+    } else if let Some(s) = node.get_attr_opt::<String>("value_string")? {
+        tensor0(s)
+    } else if let Some(strings) = node.get_attr_opt_slice::<Vec<u8>>("value_strings")? {
+        let strings: Vec<String> =
+            strings.iter().map(|b| String::from_utf8_lossy(b).into_owned()).collect();
+        tensor1(&strings)
     } else {
         bail!("Could not extract value out of Constant node")
     };
