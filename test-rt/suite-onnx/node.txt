@@ -485,8 +485,17 @@ test_reshape_reordered_dims                                                     
 test_reshape_reordered_last_dims input:data
 test_reshape_zero_and_negative_dim input:data
 test_reshape_zero_dim input:data
+test_resize_downsample_scales_cubic                                                 input:X
+test_resize_downsample_scales_cubic_align_corners                                   input:X
+test_resize_downsample_scales_cubic_A_n0p5_exclude_outside                          input:X
 test_resize_downsample_scales_linear                                                input:X
+test_resize_downsample_sizes_cubic                                                  input:X
+test_resize_upsample_scales_cubic                                                   input:X
+test_resize_upsample_scales_cubic_align_corners                                     input:X
+test_resize_upsample_scales_cubic_asymmetric                                        input:X
+test_resize_upsample_scales_cubic_A_n0p5_exclude_outside                            input:X
 test_resize_upsample_scales_linear_align_corners                                    input:X not-nnef
+test_resize_upsample_sizes_cubic                                                    input:X
 test_rnn_seq_length
 test_round
 test_scan9_sum

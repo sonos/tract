@@ -28,6 +28,7 @@ fn resize_10(node: &NodeProto) -> TractResult<Resize> {
         interpolator: interpolator_from_node(node)?,
         nearest: nearest_from_node(node)?,
         cubic_coeff_a_bits: cubic_coeff_a_from_node(node)?,
+        exclude_outside: exclude_outside_from_node(node)?,
     })
 }
 
@@ -42,6 +43,7 @@ fn resize_11(node: &NodeProto) -> TractResult<Resize> {
         interpolator: interpolator_from_node(node)?,
         nearest: nearest_from_node(node)?,
         cubic_coeff_a_bits: cubic_coeff_a_from_node(node)?,
+        exclude_outside: exclude_outside_from_node(node)?,
     })
 }
 
@@ -56,6 +58,7 @@ fn resize_13(node: &NodeProto) -> TractResult<Resize> {
         interpolator: interpolator_from_node(node)?,
         nearest: nearest_from_node(node)?,
         cubic_coeff_a_bits: cubic_coeff_a_from_node(node)?,
+        exclude_outside: exclude_outside_from_node(node)?,
     })
 }
 
@@ -70,6 +73,7 @@ fn resize_18(node: &NodeProto) -> TractResult<Resize> {
         interpolator: interpolator_from_node(node)?,
         nearest: nearest_from_node(node)?,
         cubic_coeff_a_bits: cubic_coeff_a_from_node(node)?,
+        exclude_outside: exclude_outside_from_node(node)?,
     })
 }
 
@@ -90,6 +94,10 @@ fn nearest_from_node(node: &NodeProto) -> TractResult<Nearest> {
 fn cubic_coeff_a_from_node(node: &NodeProto) -> TractResult<u32> {
     let coeff: f32 = node.get_attr_opt("cubic_coeff_a")?.unwrap_or(-0.75);
     Ok(coeff.to_bits())
+}
+
+fn exclude_outside_from_node(node: &NodeProto) -> TractResult<bool> {
+    Ok(node.get_attr_opt::<i64>("exclude_outside")?.unwrap_or(0) != 0)
 }
 
 #[derive(Clone, Debug)]
