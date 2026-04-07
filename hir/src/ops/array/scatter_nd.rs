@@ -1,7 +1,7 @@
 use crate::infer::*;
 use crate::internal::*;
 
-pub use tract_core::ops::array::ScatterNd;
+pub use tract_core::ops::array::{ScatterNd, ScatterReduction};
 
 impl InferenceRulesOp for ScatterNd {
     fn rules<'r, 'p: 'r, 's: 'r>(

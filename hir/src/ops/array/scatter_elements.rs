@@ -6,6 +6,7 @@ use crate::internal::*;
 #[derive(Debug, Clone, new, Default, Hash, PartialEq, Eq)]
 pub struct ScatterElements {
     axis: i64,
+    reduction: tract_core::ops::array::ScatterReduction,
 }
 
 impl Expansion for ScatterElements {
@@ -52,7 +53,7 @@ impl Expansion for ScatterElements {
         let casted = wire_cast(prefix, model, &[inputs[0], inputs[2]], super_type)?;
         model.wire_node(
             prefix,
-            tract_core::ops::array::ScatterElements { axis },
+            tract_core::ops::array::ScatterElements { axis, reduction: self.reduction },
             &[casted[0], inputs[1], casted[1]],
         )
     }

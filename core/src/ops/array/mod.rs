@@ -28,7 +28,7 @@ pub use self::pad::{Pad, PadMode};
 pub use self::range::Range;
 pub use self::reshape::FiniteReshape;
 pub use self::scatter_elements::ScatterElements;
-pub use self::scatter_nd::ScatterNd;
+pub use self::scatter_nd::{ScatterNd, ScatterReduction};
 pub use self::slice::Slice;
 pub use self::strided_slice::StridedSlice;
 pub use self::tile::{DynTile, Tile};
