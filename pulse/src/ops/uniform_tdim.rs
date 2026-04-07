@@ -1,16 +1,23 @@
 /// Pulsifier for `UniformTDim`.
 ///
-/// At pulse time the chunk-window mask is constant within the key window
-/// `[(c-L)*P, (c+1)*P)` that the ROI-aware EinSum already enforces via a
-/// Delay on K.  Two conventions are handled:
+/// Two regimes depending on `left_chunks`:
 ///
-/// - Standard  (`cw`):       condition=True means in-window → all-true tensor.
-/// - Inverted  (`1 + -1*cw`): condition=True means out-of-window → all-false tensor.
+/// **`left_chunks == 0` (no lookback):** the mask is permanently all-True
+/// (standard) or all-False (inverted) — no startup transient.  Emit a
+/// constant tensor of that value with shape `[..., P, (L+1)*P]`.
 ///
-/// The output shape respects the original node's shape: leading singleton
-/// dims are kept, and the two streaming dims become `[P, (L+1)*P]`.
+/// **`left_chunks > 0` (lookback):** the mask has a startup transient: for
+/// the first L chunks the K Delay buffer is zero-padded, and those L*P
+/// positions should be masked False (out-of-window).  Emit a `ChunkWindowMask`
+/// stateful op (shape `[P, (L+1)*P]`) followed by `AxisOp::Reshape` to
+/// restore any leading singleton dimensions.  Inverted expressions
+/// (`1 + -1*cw`) emit constant all-False (no startup issue: attention is
+/// always fully masked at steady state, which is handled by Iff's own
+/// pulsifier; this path is a safe fallback).
 use crate::internal::*;
 use crate::model::NonPulsingWrappingOp;
+use crate::ops::mask::ChunkWindowMask;
+use tract_core::ops::change_axes::AxisOp;
 use tract_core::ops::konst::Const;
 use tract_core::ops::logic::{
     ChunkWindowParams, classify_chunk_window, classify_negated_chunk_window,
@@ -60,7 +67,8 @@ fn pulsify(
         "UniformTDim pulsifier: pulse size {pulse_size} != expr chunk size {p}"
     );
 
-    let key_window = (left_chunks as usize + 1) * pulse_size;
+    let left_chunks = left_chunks as usize;
+    let key_window = (left_chunks + 1) * pulse_size;
     let rank = op.shape.len();
 
     // Build the output shape: leading dims (before row_axis) stay as-is (evaluated
@@ -80,6 +88,36 @@ fn pulsify(
         }
     }
 
+    // For left_chunks > 0 and standard convention (fill_value=true): emit a
+    // ChunkWindowMask stateful op so that zero-padded K positions during
+    // startup are correctly masked False.  A constant all-True mask would
+    // incorrectly treat the zero-padded lookback keys as valid.
+    if left_chunks > 0 && fill_value {
+        let cwm_wire = target.wire_node(
+            format!("{}.chunk_window_mask", node.name),
+            ChunkWindowMask { left_chunks, pulse_size, key_window },
+            &[],
+        )?[0];
+
+        // ChunkWindowMask produces [pulse_size, key_window] (rank 2).
+        // Reshape to the full target shape (restores leading singleton dims).
+        let wire = if rank == 2 {
+            cwm_wire
+        } else {
+            target.wire_node(
+                format!("{}.reshape", node.name),
+                NonPulsingWrappingOp(Box::new(AxisOp::Reshape(
+                    0,
+                    tvec![pulse_size.to_dim(), key_window.to_dim()],
+                    shape.iter().map(|&s| TDim::Val(s as i64)).collect(),
+                ))),
+                &[cwm_wire],
+            )?[0]
+        };
+        return Ok(Some(tvec![wire]));
+    }
+
+    // Default: constant tensor (all-True for standard L=0, all-False for inverted).
     let total: usize = shape.iter().product();
     let data = vec![fill_value; total];
     let tensor = Tensor::from_shape(&shape, &data)?;
