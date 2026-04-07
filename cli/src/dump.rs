@@ -297,6 +297,9 @@ pub fn handle(
             }
         }
     }
+    if let Some(patterns) = &params.assertions.assert_op_only {
+        crate::utils::check_op_only(&*params.tract_model, patterns)?;
+    }
 
     let compress_submodels = sub_matches.get_flag("compress-submodels");
     let deterministic = sub_matches.get_flag("nnef-deterministic");

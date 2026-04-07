@@ -169,3 +169,6 @@ DEFINE_UNARY_KERNEL(element_wise_bitnot, i8, int8_t, op_bitnot);
 DEFINE_UNARY_KERNEL(element_wise_bitnot, i16, int16_t, op_bitnot);
 DEFINE_UNARY_KERNEL(element_wise_bitnot, i32, int32_t, op_bitnot);
 DEFINE_UNARY_KERNEL(element_wise_bitnot, i64, int64_t, op_bitnot);
+
+static __device__ __forceinline__ bool op_bitnot_bool(bool x) { return !x; }
+DEFINE_UNARY_KERNEL(element_wise_bitnot, bool, bool, op_bitnot_bool);

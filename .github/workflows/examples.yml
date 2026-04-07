@@ -60,6 +60,16 @@ jobs:
           name: tract-cli-x86_64
           path: ./target/opt-no-lto/tract
 
+  build-tract-cli-macos:
+    runs-on: macOS
+    steps:
+      - uses: actions/checkout@v6
+      - run: cargo build -p tract-cli --profile opt-no-lto
+      - uses: actions/upload-artifact@v7
+        with:
+          name: tract-cli-aarch64-apple
+          path: ./target/opt-no-lto/tract
+
   gpu-examples:
     runs-on: ubuntu-latest
     outputs:
@@ -72,7 +82,7 @@ jobs:
           echo examples=`find examples -name ci-gpu.sh | cut -d/ -f 2 | jq -Rsc '. / "\n" - [""]'` >> "$GITHUB_OUTPUT"
 
   gpu-example:
-    name: ${{ matrix.ex }} (GPU)
+    name: ${{ matrix.ex }} (CUDA)
     runs-on: cuda-lovelace
     needs: [gpu-examples, build-tract-cli]
     strategy:
@@ -91,6 +101,31 @@ jobs:
     - run: chmod +x target/opt-no-lto/tract
 
     - name: GPU example tests
+      timeout-minutes: 60
+      run: |
+        cd examples/${{matrix.ex}}
+        ./ci-gpu.sh
+
+  gpu-example-metal:
+    name: ${{ matrix.ex }} (Metal)
+    runs-on: macOS
+    needs: [gpu-examples, build-tract-cli-macos]
+    strategy:
+      fail-fast: false
+      matrix:
+        ex: ${{fromJSON(needs.gpu-examples.outputs.examples)}}
+
+    steps:
+    - uses: actions/checkout@v6
+
+    - uses: actions/download-artifact@v8
+      with:
+        name: tract-cli-aarch64-apple
+        path: target/opt-no-lto
+
+    - run: chmod +x target/opt-no-lto/tract
+
+    - name: Metal GPU example tests
       timeout-minutes: 60
       run: |
         cd examples/${{matrix.ex}}

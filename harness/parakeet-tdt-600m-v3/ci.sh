@@ -7,6 +7,12 @@ ROOT=$(realpath $(dirname $(realpath $0))/../..)
 
 for rt in $TRACT_RUNTIMES
 do
+	gpu_assert=""
+	case "$rt" in
+		--cuda) gpu_assert="--assert-op-only Cuda*,Gpu*,DeviceSync*,Const,Source,STFT,Pad,IsNan,Add,Range,Cast,Eq,Div,Sub,Scan,Gather";;
+		--metal) gpu_assert="--assert-op-only Metal*,Gpu*,DeviceSync*,Const,Source,STFT,Pad,IsNan,Add,Range,Cast,Eq,Div,Sub,Scan,Gather,Reduce*";;
+	esac
+
 	for m in preprocessor encoder decoder joint
 	do
 		# Encoder uses a patched model with upper bound assertion on S
@@ -23,6 +29,6 @@ do
 			--nnef-tract-transformers -t transformers_detect_all run \
 			--input-from-bundle $MODELS/asr/608/nvidia--parakeet-tdt-0.6b-v3-f32f32/nvidia--parakeet-tdt-0.6b-v3-f32f32.$m.io.npz \
 			--assert-output-bundle $MODELS/asr/608/nvidia--parakeet-tdt-0.6b-v3-f32f32/nvidia--parakeet-tdt-0.6b-v3-f32f32.$m.io.npz \
-			--approx very
+			--approx very $gpu_assert
 	 done
 done

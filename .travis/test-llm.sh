@@ -121,11 +121,18 @@ do
     echo "      Key: $key"
     echo
 
-    case $device in 
+    case $device in
         cuda)
             DEVICE="--cuda"
+            GPU_ASSERT="--assert-op-only Cuda*,Gpu*,DeviceSync*,Const,Source,Range,Gather"
         ;;
-        metal) DEVICE="--metal";;
+        metal)
+            DEVICE="--metal"
+            GPU_ASSERT="--assert-op-only Metal*,Gpu*,DeviceSync*,Const,Source,Range,Gather"
+        ;;
+        *)
+            GPU_ASSERT=""
+        ;;
     esac
 
     if [ -n "$RESET" ]
@@ -135,7 +142,7 @@ do
             --input-from-npz $MODELS/$npz \
             --assert-output-bundle $MODELS/$npz \
             --assert-llm-rbo 0.0 \
-            $approx --allow-float-casts 2>&1 | tee output.txt
+            $approx --allow-float-casts $GPU_ASSERT 2>&1 | tee output.txt
         found=$(cat output.txt | perl -MPOSIX=floor -ne 'printf("%.2f\n", floor($1 * 100) / 100) if /LLM RBO:\s+([\d.]+)/')
         ( ( grep -v $key $expectations || true) ; echo $key $found) | sort > $expectations.tmp
         mv $expectations.tmp $expectations
@@ -147,7 +154,7 @@ do
             --input-from-npz $MODELS/$npz \
             --assert-output-bundle $MODELS/$npz \
             --assert-llm-rbo 0.0 \
-            $approx --allow-float-casts 2>&1 | tee output.txt
+            $approx --allow-float-casts $GPU_ASSERT 2>&1 | tee output.txt
         found=$(cat output.txt | perl -MPOSIX=floor -ne 'printf("%.2f\n", floor($1 * 100) / 100) if /LLM RBO:\s+([\d.]+)/')
         if [ -n "$prior" ] && perl -e 'exit($ARGV[0] <= $ARGV[1] ? 1 : 0)' "$found" "$prior"
         then
@@ -162,7 +169,7 @@ do
             --input-from-npz $MODELS/$npz \
             --assert-output-bundle $MODELS/$npz \
             --assert-llm-rbo $expectation \
-            $approx --allow-float-casts
+            $approx --allow-float-casts $GPU_ASSERT
     fi
 
 done

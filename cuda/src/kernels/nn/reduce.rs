@@ -7,8 +7,17 @@ use tract_gpu::tensor::DeviceTensor;
 
 pub use tract_gpu::ops::reduce::Reducer;
 
+fn cuda_reduce_is_supported_dt(reducer: &Reducer, dt: DatumType) -> bool {
+    reducer.is_supported_dt(dt)
+        || (matches!(reducer, Reducer::Sum | Reducer::Prod) && dt.is::<i64>())
+}
+
 pub fn kernel_name(reducer: &Reducer, dt: DatumType, n_cols: usize) -> TractResult<String> {
-    ensure!(reducer.is_supported_dt(dt), "Unsupported dt {dt:?} for cuda reduceop {:?}", reducer);
+    ensure!(
+        cuda_reduce_is_supported_dt(reducer, dt),
+        "Unsupported dt {dt:?} for cuda reduceop {:?}",
+        reducer
+    );
     let tname = DeviceTensor::tname(dt)?;
     if n_cols < 1024 {
         Ok(format!("reduce_{}_small_{tname}", reducer))
@@ -67,7 +76,7 @@ crate::register_cuda_op!(tract_core::ops::nn::Reduce, |source, node, op| {
     if let Ok(gpu_op) =
         tract_gpu::ops::reduce::GpuReduce::from_tract_core(op, "Cuda", cuda_reduce_launch)
     {
-        if gpu_op.reducer.is_supported_dt(dt) {
+        if cuda_reduce_is_supported_dt(&gpu_op.reducer, dt) {
             return Ok(Some(Box::new(gpu_op)));
         }
     }
