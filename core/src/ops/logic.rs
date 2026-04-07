@@ -158,6 +158,14 @@ fn extract_div_diff_axes(expr: &TDim) -> Option<(usize, usize, u64)> {
 /// `Add([Val(1), MulInt(-1, cw_expr)])`.  Returns the same `ChunkWindowParams`
 /// as the underlying positive expression.
 pub fn classify_negated_chunk_window(expr: &TDim) -> Option<ChunkWindowParams> {
+    peel_negated_chunk_window_expr(expr).and_then(|inner| classify_chunk_window(&inner))
+}
+
+/// Extract the inner positive chunk-window TDim from a negated expression `1 + -1*cw`.
+///
+/// Returns `Some(cw_expr)` if `expr` matches `Add([Val(1), MulInt(-1, cw), ...])` where
+/// `cw` is a valid chunk-window expression; `None` otherwise.
+pub fn peel_negated_chunk_window_expr(expr: &TDim) -> Option<TDim> {
     let TDim::Add(terms) = expr else { return None };
     // Require a Val(1) somewhere in the sum.
     if !terms.iter().any(|t| matches!(t, TDim::Val(1))) {
@@ -166,8 +174,8 @@ pub fn classify_negated_chunk_window(expr: &TDim) -> Option<ChunkWindowParams> {
     // Look for MulInt(-1, inner) where inner is a chunk-window expression.
     for term in terms {
         if let TDim::MulInt(-1, inner) = term {
-            if let Some(params) = classify_chunk_window(inner) {
-                return Some(params);
+            if classify_chunk_window(inner).is_some() {
+                return Some(*inner.clone());
             }
         }
     }
