@@ -45,10 +45,23 @@ $TRACT assets/text_encoder_2.onnx $RUNTIME run \
     --input-from-bundle assets/text_encoder_2.io.npz \
     --assert-output-bundle assets/text_encoder_2.io.npz --approx very
 
-echo "Validating UNet ($RUNTIME)..."
-$TRACT assets/unet.onnx $RUNTIME run \
-    --input-from-bundle assets/unet.io.npz \
-    --assert-output-bundle assets/unet.io.npz --approx very
+# Validate UNet — needs >=16GB VRAM for f32, skip on smaller GPUs
+if nvidia-smi > /dev/null 2>&1; then
+    GPU_MEM_MB=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits | head -1 | tr -d ' ')
+    if [ "$GPU_MEM_MB" -ge 16000 ] 2>/dev/null; then
+        echo "Validating UNet f32 ($RUNTIME)..."
+        $TRACT assets/unet.onnx $RUNTIME run \
+            --input-from-bundle assets/unet.io.npz \
+            --assert-output-bundle assets/unet.io.npz --approx very
+    else
+        echo "Skipping UNet validation (GPU has ${GPU_MEM_MB}MB, need >=16000MB for f32)"
+    fi
+else
+    echo "Validating UNet f32 (CPU)..."
+    $TRACT assets/unet.onnx -O run \
+        --input-from-bundle assets/unet.io.npz \
+        --assert-output-bundle assets/unet.io.npz --approx very
+fi
 
 echo "Validating VAE decoder ($RUNTIME)..."
 $TRACT assets/vae_decoder.onnx $RUNTIME run \
