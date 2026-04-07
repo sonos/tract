@@ -714,6 +714,40 @@ fn remap_uniform_tdim(expr: &TDim, axis_op: &AxisOp) -> Option<TDim> {
 impl TypedOp for AxisOp {
     as_op!();
 
+    fn input_roi(
+        &self,
+        inputs: &[&TypedFact],
+        outputs: &[&TypedFact],
+        symbols: &SymbolScope,
+    ) -> TractResult<TVec<Option<TDim>>> {
+        use crate::ops::logic::{build_chunk_window_roi, classify_chunk_window};
+        let AxisOp::Reshape(at, _from, _to) = self else {
+            return Ok(tvec![outputs[0].region_of_interest.clone(); inputs.len()]);
+        };
+        if inputs.len() != 1 {
+            return Ok(tvec![outputs[0].region_of_interest.clone()]);
+        }
+        let roi = match &outputs[0].region_of_interest {
+            Some(r) => r.clone().simplify(),
+            None => return Ok(tvec![None]),
+        };
+        let cw = match classify_chunk_window(&roi) {
+            Some(cw) => cw,
+            None => return Ok(tvec![Some(roi)]),
+        };
+        // If the reshape swaps the two axes in the block [at, at+1], swap col/row in the ROI.
+        let at = *at;
+        let (new_row, new_col) = if (cw.row_axis == at && cw.col_axis == at + 1)
+            || (cw.row_axis == at + 1 && cw.col_axis == at)
+        {
+            (cw.col_axis, cw.row_axis)
+        } else {
+            (cw.row_axis, cw.col_axis)
+        };
+        let new_roi = build_chunk_window_roi(symbols, cw.p, cw.left_chunks, new_row, new_col);
+        Ok(tvec![Some(new_roi)])
+    }
+
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         if let Some(bqf) =
             inputs[0].exotic_fact().and_then(|of| of.downcast_ref::<BlockQuantFact>())

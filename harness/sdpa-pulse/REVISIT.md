@@ -5,35 +5,41 @@ the current harnesses but may need generalization before the real encoder lands.
 
 ---
 
-## 9. Transformer-XL content-to-position score — Q @ R skew pulsifier
+## 11. `compare --stream` error message — "Undetermined symbol in expression"
 
-**Location:** new file needed, e.g. `pulse/src/ops/einsum_rel.rs`
+**Location:** `cli/src/compare.rs` (or wherever `compare --stream` evaluates the pulsed model)
 
-**What is missing:** The Transformer-XL attention adds a term `q[i] @ R[i−j]^T`
-to the content scores.  R is a positional encoding matrix [max_rel, Dh] (or
-computed symbolically from `range(0, 2T−1)`).  The batch graph computes this
-via the "relative-shift" skewing trick: `Q @ R^T [T, 2T−1]` → Pad → Reshape →
-Slice → `[T, T]`.
+**Observed:** Running `compare --stream --allow-random-input` on the encoder produces only:
 
-**Why it does not pulsify today:**
-- `remap_uniform_tdim` returns `None` for any non-trivial Reshape; the Reshape
-  in the skew ([T, 2T] → [2T, T]) breaks uniform_tdim propagation.
-- Pad and Slice also do not propagate `uniform_tdim`.
-- PropagateRoi only walks backward through TypedBinOp; it cannot cross Slice,
-  Reshape, or Pad, so the wires inside the skew chain never acquire roi.
+```
+ERROR tract] Undetermined symbol in expression: (14)#(15)
+```
 
-**What needs to be implemented:**
-1. A dedicated pulsifier (or higher-level pattern rewrite) for the relative-shift
-   op sequence: recognise Pad([T,2T−1]→[T,2T]) + Reshape([T,2T]→[2T,T]) +
-   Slice(rows 1..T+1) and pulsify the whole block.
-2. For the constant v-bias variant (`v @ R[i−j]^T`), the gather from a constant
-   table with a coordinate-expression index can be handled by a new `Gather`
-   pulsifier: fires when the indices wire has `uniform_tdim` and the data source
-   is a constant tensor.
+with no node name, no stack, no indication of which op or wire triggered it,
+and `(14)#(15)` is an internal TDim `Broadcast` variant that is opaque to the user.
 
-**Current workaround (ex07):** The v-bias is implemented as a direct arithmetic
-expression `slope * (floor(i/P) − floor(j/P))`, which propagates through TypedBinOp
-and is handled by the existing binary pulsifier.
+**What would be better:**
+- Report the node name and outlet index where evaluation failed.
+- Translate `(N)#(M)` into a human-readable description (e.g. "Broadcast of M and N — symbol not resolved").
+- Include the full Caused-by chain (the error is currently swallowed at the compare loop level).
+
+**Why it matters:** Without a node name it is impossible to know whether the failure
+is in the pulsed model construction, the reference model evaluation, or the pulse-by-pulse
+accumulation loop.  Diagnosing the encoder failure required a bisect + dump workflow
+that a better error message would have made unnecessary.
+
+---
+
+## 9. ~~Transformer-XL content-to-position score — Q @ R skew pulsifier~~ ✅ FIXED
+
+**Reproducer:** `harness/sdpa-pulse/ex13-rel-pos-skew-window` (batch + pulse PASS)
+
+**Fix:** Per-operator `input_roi` hooks on Slice, AxisOp::Reshape (with axis-swap),
+Pad, DynSlice, and EinSum propagate the chunk-window ROI backward from the attention
+mask through the full skew chain.  The Slice pulsifier extends each slice by L*P in
+the direction determined by whether `start` decreases with S (center-anchored R
+extraction → extend start back) or is fixed (skew slices, pos_scores → extend end
+forward).  See `pulse/src/ops/array/slice.rs`.
 
 ---
 
