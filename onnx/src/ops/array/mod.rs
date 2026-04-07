@@ -38,7 +38,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("ScatterND", |_, node| {
         let reduction =
             array::ScatterReduction::parse(node.get_attr_opt("reduction")?.unwrap_or("none"))?;
-        Ok((Box::new(array::ScatterNd::new(reduction)), vec![]))
+        Ok((expand(array::ScatterNd::new(reduction)), vec![]))
     });
     reg.insert("Shape", shape::shape);
     reg.insert("Size", |_, _| Ok((expand(array::Size::new(DatumType::TDim)), vec![])));

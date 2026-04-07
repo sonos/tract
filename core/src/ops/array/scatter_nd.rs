@@ -1,5 +1,4 @@
 use crate::internal::*;
-use crate::prelude::DatumType;
 use ndarray::*;
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Default)]
@@ -134,22 +133,6 @@ impl EvalOp for ScatterNd {
         let (data, indices, updates) = args_3!(inputs);
         let indices = indices.cast_to::<i64>()?;
         let indices = indices.to_plain_array_view::<i64>()?;
-        let (data, updates) =
-            if data.datum_type() == DatumType::TDim || updates.datum_type() == DatumType::TDim {
-                let data = if data.datum_type() == DatumType::TDim {
-                    data.cast_to::<i64>()?.into_owned().into_tvalue()
-                } else {
-                    data
-                };
-                let updates = if updates.datum_type() == DatumType::TDim {
-                    updates.cast_to::<i64>()?.into_owned().into_tvalue()
-                } else {
-                    updates
-                };
-                (data, updates)
-            } else {
-                (data, updates)
-            };
         if data.datum_type() != updates.datum_type() {
             bail!(
                 "Data and update must be of the same type, got {:?} and {:?}",
@@ -169,49 +152,5 @@ impl EvalOp for ScatterNd {
                 ))?)),
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn scatter_nd_i64() {
-        let data = tensor2(&[[1i64, 2, 3, 4], [5, 6, 7, 8]]);
-        let indices = tensor2(&[[0i64], [1]]);
-        let updates = tensor2(&[[9i64, 10, 11, 12], [13, 14, 15, 16]]);
-        let result = ScatterNd.eval(tvec!(data.into(), indices.into(), updates.into())).unwrap();
-        assert_eq!(*result[0], tensor2(&[[9i64, 10, 11, 12], [13, 14, 15, 16]]));
-    }
-
-    #[test]
-    fn scatter_nd_tdim_data_and_updates() {
-        let data = tensor2(&[[1i64, 2], [3, 4]]).cast_to_dt(DatumType::TDim).unwrap().into_owned();
-        let indices = tensor2(&[[0i64, 1]]);
-        let updates = tensor1(&[99i64]).cast_to_dt(DatumType::TDim).unwrap().into_owned();
-        let result = ScatterNd.eval(tvec!(data.into(), indices.into(), updates.into())).unwrap();
-        assert_eq!(result[0].datum_type(), DatumType::I64);
-        assert_eq!(result[0].try_as_plain().unwrap().as_slice::<i64>().unwrap(), &[1, 99, 3, 4]);
-    }
-
-    #[test]
-    fn scatter_nd_tdim_updates_i64_data() {
-        let data = tensor2(&[[0i64, 0], [0, 0]]);
-        let indices = tensor2(&[[1i64, 0]]);
-        let updates = tensor1(&[42i64]).cast_to_dt(DatumType::TDim).unwrap().into_owned();
-        let result = ScatterNd.eval(tvec!(data.into(), indices.into(), updates.into())).unwrap();
-        assert_eq!(result[0].datum_type(), DatumType::I64);
-        assert_eq!(result[0].try_as_plain().unwrap().as_slice::<i64>().unwrap(), &[0, 0, 42, 0]);
-    }
-
-    #[test]
-    fn scatter_nd_i64_updates_tdim_data() {
-        let data = tensor2(&[[1i64, 2], [3, 4]]).cast_to_dt(DatumType::TDim).unwrap().into_owned();
-        let indices = tensor2(&[[0i64, 0]]);
-        let updates = tensor1(&[77i64]);
-        let result = ScatterNd.eval(tvec!(data.into(), indices.into(), updates.into())).unwrap();
-        assert_eq!(result[0].datum_type(), DatumType::I64);
-        assert_eq!(result[0].try_as_plain().unwrap().as_slice::<i64>().unwrap(), &[77, 2, 3, 4]);
     }
 }
