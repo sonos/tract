@@ -295,6 +295,18 @@ struct Silu {
     }
 };
 
+struct BitNot {
+    template <typename T>
+    metal::enable_if_t<metal::is_integral_v<T>, T>
+    operator()(T x) {
+        return ~x;
+    }
+
+    bool operator()(bool x) {
+        return !x;
+    }
+};
+
 template<typename T, typename Op>
 [[kernel]] void eval_out_of_place(device const T *input[  [buffer(0)]],
                                   device T *output [[buffer(1)]],
@@ -375,3 +387,5 @@ INSTANTIATE_FLOAT(sign, Sign)
 INSTANTIATE_INTEGER_SIGNED(sign, Sign)
 INSTANTIATE_FLOAT(hardswish, HardSwish)
 INSTANTIATE_FLOAT(silu, Silu)
+INSTANTIATE_INTEGER(bitnot, BitNot)
+INSTANTIATE_ELEMENT_WISE_OP(bitnot, BitNot, bool, bool)

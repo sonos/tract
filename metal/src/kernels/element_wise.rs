@@ -36,6 +36,7 @@ const ALL_OP_NAMES: &[&str] = &[
     "sign",
     "hardswish",
     "silu",
+    "bitnot",
 ];
 
 pub fn all_functions() -> Vec<String> {
@@ -51,8 +52,13 @@ pub fn all_functions() -> Vec<String> {
 }
 
 pub fn is_supported(mini_op: &dyn ElementWiseMiniOp, dt: DatumType) -> bool {
-    ALL_OP_NAMES.contains(&mini_op.name().to_lowercase().as_str())
-        && matches!(dt, DatumType::F32 | DatumType::F16)
+    let name = mini_op.name().to_lowercase();
+    ALL_OP_NAMES.contains(&name.as_str())
+        && if name == "bitnot" {
+            dt.is_integer() || dt.is::<bool>()
+        } else {
+            matches!(dt, DatumType::F32 | DatumType::F16)
+        }
 }
 
 pub fn dispatch_eval(

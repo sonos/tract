@@ -56,7 +56,7 @@ pub fn is_supported(mini_op: &dyn ElementWiseMiniOp, dt: DatumType) -> bool {
     let name = mini_op.name().to_lowercase();
     ALL_OP_NAMES.contains(&name.as_str())
         && if name == "bitnot" {
-            dt.is_integer()
+            dt.is_integer() || dt.is::<bool>()
         } else {
             matches!(dt, DatumType::F32 | DatumType::F16)
         }
