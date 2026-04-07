@@ -65,7 +65,11 @@ impl Expansion for Gemm {
             [a, b].as_ref(),
         )?[0];
         if self.alpha != 1.0 {
-            let alpha = tensor0(self.alpha).broadcast_into_rank(model.outlet_fact(wire)?.rank())?;
+            let dt = model.outlet_fact(wire)?.datum_type;
+            let alpha = tensor0(self.alpha)
+                .cast_to_dt(dt)?
+                .into_owned()
+                .broadcast_into_rank(model.outlet_fact(wire)?.rank())?;
             let alpha = model.add_const(name.to_string() + ".alpha_ab.cst", alpha)?;
             wire = model.wire_node(
                 name.to_string() + ".alpha_ab",
@@ -82,7 +86,11 @@ impl Expansion for Gemm {
                     &[c],
                 )?[0];
             }
-            let beta = tensor0(self.beta).broadcast_into_rank(model.outlet_fact(wire)?.rank())?;
+            let dt = model.outlet_fact(wire)?.datum_type;
+            let beta = tensor0(self.beta)
+                .cast_to_dt(dt)?
+                .into_owned()
+                .broadcast_into_rank(model.outlet_fact(wire)?.rank())?;
             let beta = model.add_const(name.to_string() + ".beta_c.cst", beta)?;
             let beta_c =
                 model.wire_node(name.to_string() + ".beta_c", ops::math::mul(), &[beta, c])?[0];
