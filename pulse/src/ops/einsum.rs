@@ -36,11 +36,11 @@ fn pulsify(
     node: &TypedNode,
     target: &mut PulsedModel,
     mapping: &HashMap<OutletId, OutletId>,
-    _symbol: &Symbol,
-    _pulse: &TDim,
+    symbol: &Symbol,
+    pulse: &TDim,
 ) -> TractResult<Option<TVec<OutletId>>> {
     // Case 1: ROI-annotated QK EinSum.
-    if let Some(result) = pulsify_qk(op, source, node, target, mapping)? {
+    if let Some(result) = pulsify_qk(op, source, node, target, mapping, symbol, pulse)? {
         return Ok(Some(result));
     }
     // Case 2: AV EinSum (streaming attn × streaming V with contracted streaming axis).
@@ -58,6 +58,8 @@ fn pulsify_qk(
     node: &TypedNode,
     target: &mut PulsedModel,
     mapping: &HashMap<OutletId, OutletId>,
+    symbol: &Symbol,
+    pulse: &TDim,
 ) -> TractResult<Option<TVec<OutletId>>> {
     let roi_raw = source.outlet_fact(OutletId::new(node.id, 0))?.region_of_interest.clone();
     let roi = match roi_raw.as_ref().and_then(|r| classify_chunk_window(&r.clone().simplify())) {
@@ -105,7 +107,8 @@ fn pulsify_qk(
     let k_input_ix = match k_streaming_ix {
         Some(ix) => ix,
         None => {
-            // Look for a non-streaming input that maps to the output col axis.
+            // Look for a non-streaming input that maps to the output col axis
+            // but NOT the row axis (same criterion as EinSum::input_roi for K/R).
             let found = pulsed_inputs.iter().find_map(|(ix, out)| {
                 if *ix == q_input_ix {
                     return None;
@@ -114,10 +117,14 @@ fn pulsify_qk(
                     return None;
                 }
                 let maps_to_col = op.axes.iter_all_axes().any(|ax| {
-                    !ax.inputs.get(*ix).map(|v| v.is_empty()).unwrap_or(true)
+                    ax.inputs.get(*ix).map_or(false, |v| !v.is_empty())
                         && ax.outputs[0].first().copied() == Some(roi.col_axis)
                 });
-                if maps_to_col { Some(*ix) } else { None }
+                let maps_to_row = op.axes.iter_all_axes().any(|ax| {
+                    ax.inputs.get(*ix).map_or(false, |v| !v.is_empty())
+                        && ax.outputs[0].first().copied() == Some(roi.row_axis)
+                });
+                if maps_to_col && !maps_to_row { Some(*ix) } else { None }
             });
             match found {
                 Some(ix) => ix,
@@ -169,9 +176,10 @@ fn pulsify_qk(
             .as_ref()
             .map(Arc::clone)
             .or_else(|| try_compute_const(source, source_inlet))
+            .or_else(|| try_compute_const_with_substitution(source, source_inlet, symbol, pulse))
         {
             Some(t) => t,
-            None => return Ok(None), // non-const, non-streaming K — let generic pulsifier handle it
+            None => return Ok(None),
         };
 
         // Check whether the EinSum output feeds into non-elementwise ops
@@ -324,4 +332,20 @@ fn try_compute_const(source: &TypedModel, outlet: OutletId) -> Option<Arc<Tensor
         .collect::<Option<_>>()?;
     let results = node.op.eval(inputs).ok()?;
     results.into_iter().nth(outlet.slot).map(|t| t.into_arc_tensor())
+}
+
+/// Like `try_compute_const`, but first concretizes the subgraph by substituting
+/// the streaming symbol with the pulse value.  This handles chains like
+/// `posEnc[0:T] @ W_pos` where T depends on the streaming symbol.
+fn try_compute_const_with_substitution(
+    source: &TypedModel,
+    outlet: OutletId,
+    symbol: &Symbol,
+    pulse: &TDim,
+) -> Option<Arc<Tensor>> {
+    use tract_core::model::translator::Translate;
+    // Concretize the source model by substituting the streaming symbol.
+    let sv = SymbolValues::default().with(symbol, pulse.to_i64().ok()? as _);
+    let concretized = sv.translate_model(source).ok()?;
+    try_compute_const(&concretized, outlet)
 }
