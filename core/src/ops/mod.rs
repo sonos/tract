@@ -228,6 +228,20 @@ pub trait TypedOp:
         Ok(tvec!())
     }
 
+    /// Derive ROI (region of interest) expressions for this node's inputs.
+    /// Called by the PropagateRoi pass. The op can read output ROIs, sibling
+    /// input facts, uniform_tdim, etc. from the model.
+    /// Return `Some(vec)` with one `Option<TDim>` per input, or `None` to
+    /// signal that this op doesn't participate in ROI propagation.
+    #[allow(unused_variables)]
+    fn input_roi(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TVec<Option<TDim>>>> {
+        Ok(None)
+    }
+
     #[allow(unused_variables)]
     fn suggested_axis_changes(&self) -> TractResult<TVec<(InOut, AxisOp)>> {
         Ok(tvec!())

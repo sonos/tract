@@ -173,6 +173,7 @@ impl TryFrom<&InferenceFact> for TypedFact {
                 uniform,
                 exotic_fact: None,
                 uniform_tdim: None,
+                region_of_interest: None,
             })
         } else {
             bail!("Can not make a TypedFact out of {:?}", fact)
