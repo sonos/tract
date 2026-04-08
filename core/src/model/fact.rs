@@ -482,7 +482,7 @@ impl fmt::Debug for TypedFact {
             write!(fmt, " 📐{u}")?
         }
         if let Some(r) = &self.region_of_interest {
-            write!(fmt, " 🎯roi:{r}")?
+            write!(fmt, " 🬳 {r}")?
         }
         Ok(())
     }
