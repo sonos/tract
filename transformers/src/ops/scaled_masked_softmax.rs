@@ -112,6 +112,14 @@ impl EvalOp for ScaledMaskedSoftmax {
 }
 
 impl TypedOp for ScaledMaskedSoftmax {
+    fn axes_mapping(
+        &self,
+        inputs: &[&TypedFact],
+        outputs: &[&TypedFact],
+    ) -> TractResult<AxesMapping> {
+        AxesMapping::natural(inputs, outputs)
+    }
+
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         ensure!(!self.scale.is_zero()?);
         ensure!(inputs.len() == 2);
