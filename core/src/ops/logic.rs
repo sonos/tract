@@ -13,10 +13,33 @@ use crate::broadcast::multi_broadcast;
 use crate::internal::*;
 
 bin_to_super_type!(and, And,
+                   neutral_element: 1,
+                   absorbing_element: 0,
                    [bool, u8, u16, u32, u64, i8, i16, i32, i64] => |c, &a, &b| *c = (a as i64 != 0 && b as i64 != 0) as _);
 bin_to_super_type!(or, Or,
+                   neutral_element: 0,
+                   absorbing_element: 1,
                    [bool, u8, u16, u32, u64, i8, i16, i32, i64] => |c, &a, &b| *c = (a as i64 != 0 || b as i64 != 0) as _);
-bin_to_super_type!(xor, Xor, /*flip: commute, */ [bool] => |c, &a, &b| *c = a ^ b);
+bin_to_super_type!(xor, Xor, declutter: declutter_xor, neutral_element: 0, [bool] => |c, &a, &b| *c = a ^ b);
+
+fn declutter_xor(
+    _op: &Xor,
+    model: &TypedModel,
+    node: &TypedNode,
+) -> TractResult<Option<TypedModelPatch>> {
+    // Xor(x, 1) = Not(x)
+    if let Some(uniform) = crate::ops::binary::one_input_is_uniform(model, node)? {
+        if tensor0(1i64).close_enough(&uniform.uni, false).is_ok() {
+            return Ok(Some(TypedModelPatch::replace_single_op(
+                model,
+                node,
+                &[uniform.var],
+                crate::ops::element_wise::ElementWiseOp(Box::new(Not {}), None),
+            )?));
+        }
+    }
+    Ok(None)
+}
 
 element_wise!(not, Not, [bool] => |_, vs| {
     vs.iter_mut().for_each(|a| *a = !*a);
@@ -215,11 +238,40 @@ impl TypedOp for Iff {
 }
 
 bin_to_super_type!(bitand, BitAnd,
+                   absorbing_element: 0,
                    [bool, u8, u16, u32, u64, i8, i16, i32, i64] => |c, &a, &b| *c = a & b);
 bin_to_super_type!(bitor, BitOr,
+                   neutral_element: 0,
                    [bool, u8, u16, u32, u64, i8, i16, i32, i64] => |c, &a, &b| *c = a | b);
 bin_to_super_type!(bitxor, BitXor,
+                   declutter: declutter_bitxor,
+                   neutral_element: 0,
                    [bool, u8, u16, u32, u64, i8, i16, i32, i64] => |c, &a, &b| *c = a ^ b);
+
+fn declutter_bitxor(
+    _op: &BitXor,
+    model: &TypedModel,
+    node: &TypedNode,
+) -> TractResult<Option<TypedModelPatch>> {
+    // BitXor(x, all_ones) = BitNot(x) — for bool, all_ones = 1
+    if let Some(uniform) = crate::ops::binary::one_input_is_uniform(model, node)? {
+        let var_dt = model.outlet_fact(uniform.var)?.datum_type;
+        let is_all_ones = if var_dt.is::<bool>() {
+            tensor0(1i64).close_enough(&uniform.uni, false).is_ok()
+        } else {
+            tensor0(-1i64).close_enough(&uniform.uni, false).is_ok()
+        };
+        if is_all_ones {
+            return Ok(Some(TypedModelPatch::replace_single_op(
+                model,
+                node,
+                &[uniform.var],
+                crate::ops::element_wise::ElementWiseOp(Box::new(BitNot {}), None),
+            )?));
+        }
+    }
+    Ok(None)
+}
 
 element_wise!(bitnot, BitNot, [bool, u8, u16, u32, u64, i8, i16, i32, i64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = !*x);

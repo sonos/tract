@@ -30,6 +30,9 @@ pub trait BinMiniOp:
     fn neutral_element(&self) -> Option<i64> {
         None
     }
+    fn absorbing_element(&self) -> Option<i64> {
+        None
+    }
 
     #[allow(unused_variables)]
     fn maybe_eval_qbinary_as_float_op(
@@ -310,6 +313,9 @@ impl TypedOp for TypedBinOp {
         {
             return Ok(Some(neutral_patch));
         }
+        if let Some(absorbing_patch) = declutter_absorbing(model, node, self.0.as_ref())? {
+            return Ok(Some(absorbing_patch));
+        }
         if let Some(broadcast_patch) =
             declutter_broadcasting_operand_1(model, node, self.0.clone())?
         {
@@ -475,6 +481,31 @@ fn declutter_neutral(
                     &|_, inputs| Ok(inputs.into()),
                 )?));
             }
+        }
+    }
+    Ok(None)
+}
+
+/// When one input is the absorbing element (e.g. 0 for Mul, false for And),
+/// replace the entire op with the uniform (absorbing) input.
+fn declutter_absorbing(
+    model: &TypedModel,
+    node: &TypedNode,
+    mini_op: &dyn BinMiniOp,
+) -> TractResult<Option<TypedModelPatch>> {
+    if let Some(uniform) = crate::ops::binary::one_input_is_uniform(model, node)? {
+        let is_absorbing = mini_op
+            .absorbing_element()
+            .map(|absorb| tensor0(absorb).close_enough(&uniform.uni, false).is_ok())
+            .unwrap_or(false);
+        if is_absorbing {
+            let uni_inlet = if uniform.left_is_uniform { 0 } else { 1 };
+            return Ok(Some(TypedModelPatch::rewire(
+                model,
+                &[node.inputs[uni_inlet]],
+                &[node.id.into()],
+                &|_, inputs| Ok(inputs.into()),
+            )?));
         }
     }
     Ok(None)
@@ -764,6 +795,7 @@ macro_rules! bin_to_super_type {
      $(operating_datum_type: $operating_datum_type:expr,)?
      $(is_commutative: $is_commutative:expr,)?
      $(neutral_element: $neutral_element:expr,)?
+     $(absorbing_element: $absorbing_element:expr,)?
      $(out_of_place: $out_of_place:expr,)?
      $(validation: $validation:expr,)?
      $(q: $([$($typ_dt:ident),*] => $cab_dt:expr),* ;)?
@@ -812,6 +844,9 @@ macro_rules! bin_to_super_type {
             })?
             $(fn neutral_element(&self) -> Option<i64> {
                 Some($neutral_element)
+            })?
+            $(fn absorbing_element(&self) -> Option<i64> {
+                Some($absorbing_element)
             })?
             fn eval_in_a(&self, a: &mut Tensor, b: &Tensor) -> TractResult<()> {
                 // c and a are same type
