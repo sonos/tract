@@ -1,0 +1,78 @@
+version 1.0;
+
+extension tract_registry tract_core;
+extension tract_registry tract_transformers;
+extension tract_symbol S;
+extension tract_assert S>=0;
+
+# Reduced ex14: constant position table without the skew trick.
+#
+# This isolates the same pulsification failure as ex14 with fewer nodes.
+# Instead of the 5-node skew (pad→reshape→dyn_slice→reshape→dyn_slice),
+# position scores are computed directly as Q @ r_pos^T.
+#
+# r_pos = variable[T_const=8, Dh=4] — a constant locked at T_const=8.
+# At batch time (S=T=8):
+#   content_scores = Q @ K^T = [1, 8, 8]
+#   pos_scores     = Q @ r_pos^T = [1, 8, 8]   r_pos=[8,4]
+#   scores = [1, 8, 8]; output = softmax+V = [1, 8, 4] ✓
+#
+# At pulse time (S=P=2, K delayed by W=4 from chunk-window ROI):
+#   content_scores = [1, 2, 4]   (Q[1,P,D] @ K_ctx[1,W,D]^T)
+#   pos_scores     = [1, 2, 8]   (r_pos stays [8,4] — a constant)
+#   add([1, 2, 4], [1, 2, 8]) → broadcast(W=4, T_const=8) → pulsification fails.
+#
+# This graph IS pulsifiable (output [1,S,Dh]) once the pulsifier correctly
+# extracts the W-wide window from r_pos for the current pulse context.
+#
+# Parameters: T=8, P=2, left_chunks=1, W=(left_chunks+1)*P=4, Dh=4, B=1
+# r_pos shape = [T_const, Dh] = [8, 4]
+#
+# Inputs:  q [1, S, 4], k [1, S, 4], v [1, S, 4]   streaming on axis 1
+# Output: [1, S, 4]
+
+graph network(q, k, v) -> (output)
+{
+    q = tract_core_external(shape = [1, S, 4], datum_type = 'f32');
+    k = tract_core_external(shape = [1, S, 4], datum_type = 'f32');
+    v = tract_core_external(shape = [1, S, 4], datum_type = 'f32');
+
+    r_pos = variable<scalar>(label = 'r_pos', shape = [8, 4]);
+
+    # Content scores: Q @ K^T → [1, S, S]
+    content_scores = tract_core_einsum([q, k], expr = "bid,bjd->bij", acc = "f32");
+
+    # Position scores: Q @ r_pos^T → [1, S, T_const=8]
+    # r_pos is a FIXED constant — never adjusted for the windowed pulse context.
+    pos_scores = tract_core_einsum([q, r_pos], expr = "bid,jd->bij", acc = "f32");
+
+    scores = add(content_scores, pos_scores);
+
+    # Chunk-window mask (left_chunks=1, chunk_size=2)
+    q_shape            = tract_core_shape_of(q);
+    T_sl               = slice(q_shape, axes = [0], begin = [1], end = [2], stride = [1]);
+    T                  = squeeze(T_sl, axes = [0]);
+
+    positions          = tract_core_range(0, T, step = 1);
+    positions_f32      = tract_core_cast(positions, to = 'f32');
+    chunk_size_f32     = tract_core_cast(2, to = 'f32');
+    chunkIdx_f32       = div(positions_f32, chunk_size_f32);
+    chunkIdx_f32_floor = floor(chunkIdx_f32);
+    chunkIdx           = tract_core_cast(chunkIdx_f32_floor, to = 'i64');
+
+    ci_row             = unsqueeze(chunkIdx, axes = [1]);
+    ci_col             = unsqueeze(chunkIdx, axes = [0]);
+    diffChunks         = sub(ci_row, ci_col);
+
+    left_chunks_i64    = tract_core_cast(1, to = 'i64');
+    zero_i64           = tract_core_cast(0, to = 'i64');
+    le_mask            = le(diffChunks, left_chunks_i64);
+    ge_mask            = ge(diffChunks, zero_i64);
+    window_mask_2d     = and(le_mask, ge_mask);
+    window_mask        = unsqueeze(window_mask_2d, axes = [0]);  # [1, S, S]
+
+    masked_scores = select(window_mask, scores, scores * 0.0 + -inf);
+    attn          = softmax(masked_scores, axes = [2]);
+
+    output = tract_core_einsum([attn, v], expr = "bij,bjd->bid", acc = "f32");
+}
