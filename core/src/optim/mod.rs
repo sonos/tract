@@ -7,7 +7,7 @@ pub mod change_axes;
 mod concat_then_einsum;
 mod op_optim;
 mod prop_const;
-mod propagate_roi;
+pub mod propagate_roi;
 mod push_split_down;
 mod slice;
 mod uniform_mask;

@@ -1,4 +1,5 @@
 use crate::internal::*;
+use crate::ops::logic::sym_to_coord_axis;
 use crate::optim::OptimizerSession;
 
 /// Backward pass that propagates `region_of_interest` annotations by
@@ -22,8 +23,39 @@ fn roi_union(a: &TDim, b: &TDim) -> TDim {
     if a == b {
         return a.clone();
     }
-    // De Morgan: a + b - a*b
     a.clone() + b.clone() - a.clone() * b.clone()
+}
+
+/// Check whether a TDim expression references coordinate symbol 🎯{axis}.
+fn roi_mentions_axis(roi: &TDim, axis: usize) -> bool {
+    roi.symbols().iter().any(|s| sym_to_coord_axis(s) == Some(axis))
+}
+
+/// Bubble output ROI to inputs for ops with natural axes mapping
+/// (axis i in output corresponds to axis i in each input).
+///
+/// For broadcast dims (input dim = 1, output dim > 1): if the ROI expression
+/// mentions that axis's coordinate symbol, we can't propagate (return None
+/// for that input). Otherwise the ROI passes through.
+pub fn bubble_roi_natural(
+    model: &TypedModel,
+    node: &TypedNode,
+) -> TractResult<Option<TVec<Option<TDim>>>> {
+    let output_fact = model.outlet_fact(OutletId::new(node.id, 0))?;
+    let Some(roi) = &output_fact.region_of_interest else { return Ok(None) };
+
+    let mut result = tvec![];
+    for input in &node.inputs {
+        let input_fact = model.outlet_fact(*input)?;
+        let can_propagate = input_fact
+            .shape
+            .iter()
+            .zip(output_fact.shape.iter())
+            .enumerate()
+            .all(|(a, (idim, odim))| idim == odim || !roi_mentions_axis(roi, a));
+        result.push(if can_propagate { Some(roi.clone()) } else { None });
+    }
+    Ok(Some(result))
 }
 
 impl super::TypedPass for PropagateRoi {
@@ -45,12 +77,7 @@ impl super::TypedPass for PropagateRoi {
             let order = model.eval_order()?;
             let mut changed = false;
 
-            // Collect ROI demands from all nodes. For each outlet, track
-            // whether all consumers agree (Some) or any needs everything (None).
-            // We use Option<Option<TDim>>:
-            //   - absent from map: no consumer has spoken yet
-            //   - Some(Some(roi)): all consumers so far agree on a ROI
-            //   - Some(None): at least one consumer needs everything
+            // Collect ROI demands from all nodes.
             let mut demands: HashMap<OutletId, Option<TDim>> = HashMap::new();
 
             for &node_id in &order {
@@ -61,17 +88,13 @@ impl super::TypedPass for PropagateRoi {
                 for (ix, roi) in input_rois.into_iter().enumerate() {
                     let outlet = node.inputs[ix];
                     match (demands.get(&outlet), &roi) {
-                        // This consumer needs everything → wire has no ROI
                         (_, None) => {
                             demands.insert(outlet, None);
                         }
-                        // First consumer with a ROI
                         (Option::None, Some(roi)) => {
                             demands.insert(outlet, Some(roi.clone()));
                         }
-                        // Previous consumer already cancelled ROI
                         (Some(None), Some(_)) => {}
-                        // Merge with existing ROI via OR
                         (Some(Some(existing)), Some(new)) => {
                             demands.insert(outlet, Some(roi_union(existing, new)));
                         }
