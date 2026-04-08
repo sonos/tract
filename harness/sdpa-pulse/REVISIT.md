@@ -251,3 +251,23 @@ order to recover actual float values (`collect_scalar_op_chain`).
 ops that preserve coordinate structure, analogous to the ROI propagation PR
 (#2114).  This would make the upstream-walk workaround unnecessary and ensure
 uniform_tdim is available on every wire where the coordinate pattern holds.
+
+---
+
+## 14. `classify_chunk_window` with offset coordinates
+
+**Location:** `core/src/ops/logic.rs` — `extract_div_diff_axes`, `extract_coord_sym_from_div_arg`
+
+**Observed:** After ROI bubbles through Pad/Reshape, coordinate symbols get
+offset (`Div(🎯k+1, P)` instead of `Div(🎯k, P)`) and extra `Val` constants
+appear in the diff expression.
+
+**Current workaround:** `extract_div_diff_axes` accepts `Div(Add(Sym, Val), P)`
+and ignores `Val(_)` terms.  This works because the offsets don't change P, L,
+or axis assignment.
+
+**Proper fix:** The ROI bubbling through Pad/Reshape should either normalize
+the expression back to canonical form, or the offset should be tracked
+explicitly in `ChunkWindowParams` so downstream consumers can use it.
+The current approach silently discards the offset information which could
+matter for correct coordinate evaluation.
