@@ -52,3 +52,12 @@ $TRACT_RUN $model_prefix.preprocessor.nnef.tgz \
 	-t 'select_outputs(outputs: ["processed_signal"])' \
 	-t 'pulse(symbol: Some("INPUT_SIGNAL__TIME"), pulse: "4800")' \
 	dump -q
+
+# Check that the encoder can be pulsified.
+# The encoder subsamples by 8x (three stride-2 convolutions) before the transformer.
+# The chunk-window mask has P=14 transformer tokens per chunk, so the input pulse
+# must be 14 * 8 = 112 audio frames.
+$TRACT_RUN $model_prefix.encoder.nnef.tgz \
+	--nnef-tract-transformers \
+	-t 'pulse(symbol: Some("AUDIO_SIGNAL__TIME"), pulse: "112")' \
+	dump -q

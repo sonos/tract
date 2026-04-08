@@ -61,6 +61,27 @@ impl TypedOp for DynSlice {
         ensure!(inputs.len() == 3);
         let mut fact = inputs[0].without_value();
         fact.shape.set(self.axis, self.len.clone());
+        // Propagate uniform_tdim when begin is statically known to be 0.
+        // With begin=0 the result coordinates are identical to the input coordinates, so
+        // the uniform_tdim predicate (which is expressed in terms of coordinate symbols)
+        // remains valid for the sliced output.
+        let begin_is_zero = inputs[1]
+            .konst
+            .as_ref()
+            .map(|k| {
+                k.cast_to_dt(i64::datum_type())
+                    .ok()
+                    .and_then(|c| {
+                        c.try_as_plain().ok().and_then(|p| {
+                            p.as_slice::<i64>().ok().map(|s| s.iter().all(|&v| v == 0))
+                        })
+                    })
+                    .unwrap_or(false)
+            })
+            .unwrap_or(false);
+        if begin_is_zero {
+            fact.uniform_tdim = inputs[0].uniform_tdim.clone();
+        }
         Ok(tvec!(fact))
     }
 
