@@ -31,10 +31,10 @@ fi
 
 if nvidia-smi > /dev/null 2>&1; then
     RUNTIME="--cuda"
-    GPU_ASSERT="--assert-op-only Cuda*,Gpu*,DeviceSync*,Const,Source"
+    GPU_ASSERT="--assert-op-only Cuda*,Gpu*,DeviceSync*,Const,Source,IsNan,Gather*,Reduce*"
 elif [ "$(uname)" = "Darwin" ] && system_profiler SPDisplaysDataType 2>/dev/null | grep -qi metal; then
     RUNTIME="--metal"
-    GPU_ASSERT="--assert-op-only Metal*,Gpu*,DeviceSync*,Const,Source"
+    GPU_ASSERT="--assert-op-only Metal*,Gpu*,DeviceSync*,Const,Source,IsNan,Gather*,Reduce*"
 else
     RUNTIME="-O"
     GPU_ASSERT=""
