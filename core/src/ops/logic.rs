@@ -91,7 +91,7 @@ impl EvalOp for Iff {
     }
 }
 
-pub(crate) fn sym_to_coord_axis(sym: &Symbol) -> Option<usize> {
+pub fn sym_to_coord_axis(sym: &Symbol) -> Option<usize> {
     format!("{sym}").strip_prefix("🎯")?.parse::<usize>().ok()
 }
 
@@ -208,6 +208,21 @@ impl TypedOp for Iff {
             _ => None,
         };
         Ok(tvec!(fact))
+    }
+
+    fn input_roi(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TVec<Option<TDim>>>> {
+        // Introduction: condition's uniform_tdim defines which positions matter
+        // for the true-branch (scores) input.
+        let cond_fact = model.outlet_fact(node.inputs[0])?;
+        if let Some(mask_expr) = &cond_fact.uniform_tdim {
+            return Ok(Some(tvec![None, Some(mask_expr.clone()), None]));
+        }
+        // Bubbling: delegate to the natural blanket implementation.
+        crate::optim::propagate_roi::bubble_roi(model, node)
     }
 
     fn declutter(

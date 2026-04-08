@@ -82,6 +82,7 @@ pub trait DimLike:
     fn eval_to_i64(&self, values: &SymbolValues) -> TractResult<i64>;
 
     fn substitute(&self, from: &Symbol, to: &Self) -> TractResult<Self>;
+    fn substitute_all(&self, map: &std::collections::HashMap<Symbol, Self>) -> TractResult<Self>;
 
     fn broadcast(self, other: Self) -> TractResult<Self>;
     fn mini(self, other: Self) -> Self;
@@ -154,6 +155,10 @@ impl DimLike for TDim {
         self.substitute(from, to)
     }
 
+    fn substitute_all(&self, map: &std::collections::HashMap<Symbol, Self>) -> TractResult<Self> {
+        TDim::substitute_all(self, map)
+    }
+
     fn eval_to_i64(&self, values: &SymbolValues) -> TractResult<i64> {
         TDim::eval_to_i64(self, values)
     }
@@ -204,6 +209,10 @@ impl DimLike for usize {
     }
 
     fn substitute(&self, _from: &Symbol, _to: &Self) -> TractResult<Self> {
+        Ok(*self)
+    }
+
+    fn substitute_all(&self, _map: &std::collections::HashMap<Symbol, Self>) -> TractResult<Self> {
         Ok(*self)
     }
 

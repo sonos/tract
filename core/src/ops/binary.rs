@@ -243,6 +243,27 @@ impl TypedOp for TypedBinOp {
         Ok(tvec!(fact))
     }
 
+    fn input_roi(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TVec<Option<TDim>>>> {
+        // Introduction: Mul (or any op with neutral_element=1) with a mask
+        // that has uniform_tdim → the other input gets that expression as ROI.
+        if self.0.neutral_element() == Some(1) {
+            for (mask_ix, other_ix) in [(0usize, 1usize), (1, 0)] {
+                let fact = model.outlet_fact(node.inputs[mask_ix])?;
+                if let Some(mask_expr) = &fact.uniform_tdim {
+                    let mut rois = tvec![None; node.inputs.len()];
+                    rois[other_ix] = Some(mask_expr.clone());
+                    return Ok(Some(rois));
+                }
+            }
+        }
+        // Bubbling: delegate to the natural blanket implementation.
+        crate::optim::propagate_roi::bubble_roi(model, node)
+    }
+
     fn change_axes(
         &self,
         model: &TypedModel,

@@ -7,12 +7,14 @@ pub mod change_axes;
 mod concat_then_einsum;
 mod op_optim;
 mod prop_const;
+pub mod propagate_roi;
 mod push_split_down;
 mod slice;
 mod uniform_mask;
 
 use self::change_axes::ChangeAxes;
 use self::prop_const::PropConst;
+use self::propagate_roi::PropagateRoi;
 use self::push_split_down::PushSplitDown;
 use self::slice::PushSliceUp;
 use self::uniform_mask::FoldUniformMask;
@@ -25,6 +27,10 @@ pub trait TypedPass: Debug + Send + Sync + dyn_clone::DynClone {
         session: &mut OptimizerSession,
         model: &TypedModel,
     ) -> TractResult<Option<TypedModelPatch>>;
+    /// In-place model mutation hook. Returns true if the model was changed.
+    fn run_direct(&mut self, _model: &mut TypedModel) -> TractResult<bool> {
+        Ok(false)
+    }
 }
 
 dyn_clone::clone_trait_object!(TypedPass);
@@ -63,6 +69,7 @@ impl Optimizer {
     pub fn declutter() -> Optimizer {
         Optimizer::passes(vec![
             Box::<PropConst>::default(),
+            Box::<PropagateRoi>::default(),
             Box::<FoldUniformMask>::default(),
             Box::new(OpOptim("declutter", TypedOp::declutter_with_session, 0)),
             Box::new(PushSliceUp),
@@ -190,6 +197,9 @@ impl OptimizerSession<'_> {
             {
                 return Ok(());
             }
+        }
+        if p.run_direct(model)? {
+            model.check_consistency().with_context(|| format!("after run_direct {p:?}"))?;
         }
         model.check_consistency().with_context(|| format!("after pass {p:?}"))?;
         Ok(())

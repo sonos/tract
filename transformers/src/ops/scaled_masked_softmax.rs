@@ -129,6 +129,20 @@ impl TypedOp for ScaledMaskedSoftmax {
         Ok(tvec!(fact))
     }
 
+    fn input_roi(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TVec<Option<TDim>>>> {
+        // Introduction: mask's uniform_tdim defines which positions matter for scores.
+        let mask_fact = model.outlet_fact(node.inputs[1])?;
+        if let Some(mask_expr) = &mask_fact.uniform_tdim {
+            return Ok(Some(tvec![Some(mask_expr.clone()), None]));
+        }
+        // Bubbling: delegate to the natural blanket implementation.
+        tract_nnef::tract_core::optim::propagate_roi::bubble_roi(model, node)
+    }
+
     as_op!();
 }
 

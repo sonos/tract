@@ -213,6 +213,10 @@ pub struct TypedFact {
     /// coordinate symbols 🎯0,🎯1,… and/or model symbols.
     /// `None` means "unknown / not tracked".
     pub uniform_tdim: Option<TDim>,
+    /// Boolean TDim expression in coordinate symbols defining which positions
+    /// in the tensor are relevant to downstream consumers.
+    /// `None` means "all positions matter" (no demand annotation).
+    pub region_of_interest: Option<TDim>,
 }
 
 impl TypedFact {
@@ -243,6 +247,7 @@ impl TypedFact {
             konst: None,
             exotic_fact: None,
             uniform_tdim: None,
+            region_of_interest: None,
         }
     }
 
@@ -259,6 +264,7 @@ impl TypedFact {
             uniform: None,
             exotic_fact: None,
             uniform_tdim: None,
+            region_of_interest: None,
         }
     }
 
@@ -273,6 +279,7 @@ impl TypedFact {
             uniform: None,
             exotic_fact: None,
             uniform_tdim: None,
+            region_of_interest: None,
         }
     }
 
@@ -337,6 +344,7 @@ impl TypedFact {
         new.konst = None;
         new.uniform = None;
         new.uniform_tdim = None;
+        new.region_of_interest = None;
         new
     }
 
@@ -436,6 +444,7 @@ impl TryFrom<Arc<Tensor>> for TypedFact {
             exotic_fact,
             konst: Some(t),
             uniform_tdim,
+            region_of_interest: None,
         })
     }
 }
@@ -471,6 +480,9 @@ impl fmt::Debug for TypedFact {
         }
         if let Some(u) = &self.uniform_tdim {
             write!(fmt, " 📐{u}")?
+        }
+        if let Some(r) = &self.region_of_interest {
+            write!(fmt, " 🬳 {r}")?
         }
         Ok(())
     }
