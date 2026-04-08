@@ -163,15 +163,6 @@ impl TypedOp for Slice {
         }
     }
 
-    fn input_roi(
-        &self,
-        _inputs: &[&TypedFact],
-        outputs: &[&TypedFact],
-        _symbols: &SymbolScope,
-    ) -> TractResult<TVec<Option<TDim>>> {
-        Ok(tvec![outputs[0].region_of_interest.clone()])
-    }
-
     fn declutter(
         &self,
         model: &TypedModel,

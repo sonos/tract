@@ -87,12 +87,13 @@ impl TypedOp for DynSlice {
 
     fn input_roi(
         &self,
-        _inputs: &[&TypedFact],
-        outputs: &[&TypedFact],
-        _symbols: &SymbolScope,
-    ) -> TractResult<TVec<Option<TDim>>> {
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TVec<Option<TDim>>>> {
+        let output_fact = model.outlet_fact(OutletId::new(node.id, 0))?;
+        let Some(roi) = &output_fact.region_of_interest else { return Ok(None) };
         // Propagate output ROI to the data input only; start/end scalars don't carry ROI.
-        Ok(tvec![outputs[0].region_of_interest.clone(), None, None])
+        Ok(Some(tvec![Some(roi.clone()), None, None]))
     }
 
     fn axes_mapping(
