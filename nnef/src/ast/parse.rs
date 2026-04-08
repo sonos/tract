@@ -420,7 +420,7 @@ fn literal(i: &str) -> R<'_, Literal> {
 
 pub(super) fn numeric_literal(i: &str) -> R<'_, String> {
     fn exp_part(i: &str) -> R<'_, &str> {
-        recognize((one_of("eE"), opt(tag("-")), digit1)).parse(i)
+        recognize((one_of("eE"), opt(one_of("+-")), digit1)).parse(i)
     }
     fn frac_part(i: &str) -> R<'_, &str> {
         recognize((tag("."), digit0)).parse(i)
