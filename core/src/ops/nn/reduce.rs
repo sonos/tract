@@ -371,6 +371,14 @@ impl EvalOp for Reduce {
 }
 
 impl TypedOp for Reduce {
+    fn input_roi(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TVec<Option<TDim>>>> {
+        crate::optim::propagate_roi::bubble_roi_natural(model, node)
+    }
+
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         ensure!(self.axes.iter().tuple_windows().all(|(a, b)| a < b));
         if inputs[0].datum_type == TDim::datum_type() {

@@ -731,6 +731,24 @@ impl TypedOp for AxisOp {
         Ok(tvec!(fact))
     }
 
+    fn input_roi(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TVec<Option<TDim>>>> {
+        let output_fact = model.outlet_fact(OutletId::new(node.id, 0))?;
+        let Some(roi) = &output_fact.region_of_interest else { return Ok(None) };
+        // Inverse remap: output→input coordinate space
+        let inverse = match self {
+            AxisOp::Add(k) => AxisOp::Rm(*k),
+            AxisOp::Rm(k) => AxisOp::Add(*k),
+            AxisOp::Move(from, to) => AxisOp::Move(*to, *from),
+            AxisOp::Reshape(..) => return Ok(Some(tvec![Some(roi.clone())])),
+        };
+        let input_roi = remap_uniform_tdim(roi, &inverse).unwrap_or_else(|| roi.clone());
+        Ok(Some(tvec![Some(input_roi)]))
+    }
+
     fn axes_mapping(
         &self,
         inputs: &[&TypedFact],

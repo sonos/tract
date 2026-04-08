@@ -99,6 +99,31 @@ impl TypedOp for Slice {
         Ok(tvec!(fact))
     }
 
+    fn input_roi(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TVec<Option<TDim>>>> {
+        let output_fact = model.outlet_fact(OutletId::new(node.id, 0))?;
+        let Some(roi) = &output_fact.region_of_interest else { return Ok(None) };
+        if self.start.is_zero() {
+            return Ok(Some(tvec![Some(roi.clone())]));
+        }
+        // Remap: output 🎯axis = input 🎯axis - start, so substitute 🎯axis → 🎯axis + start
+        if let Some(sym) = roi
+            .symbols()
+            .into_iter()
+            .find(|s| crate::ops::logic::sym_to_coord_axis(s) == Some(self.axis))
+        {
+            let shifted = TDim::Sym(sym.clone()) + self.start.clone();
+            if let Ok(input_roi) = roi.substitute(&sym, &shifted) {
+                return Ok(Some(tvec![Some(input_roi)]));
+            }
+        }
+        // ROI doesn't mention the sliced axis — pass through unchanged
+        Ok(Some(tvec![Some(roi.clone())]))
+    }
+
     fn axes_mapping(
         &self,
         inputs: &[&TypedFact],

@@ -121,6 +121,31 @@ impl TypedOp for Pad {
         Ok(tvec!(fact))
     }
 
+    fn input_roi(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TVec<Option<TDim>>>> {
+        let output_fact = model.outlet_fact(OutletId::new(node.id, 0))?;
+        let Some(roi) = &output_fact.region_of_interest else { return Ok(None) };
+        // For each padded axis, substitute 🎯axis → 🎯axis - before
+        let mut input_roi = roi.clone();
+        for (axis, &(before, _)) in self.pads.iter().enumerate() {
+            if before == 0 {
+                continue;
+            }
+            if let Some(sym) = input_roi
+                .symbols()
+                .into_iter()
+                .find(|s| crate::ops::logic::sym_to_coord_axis(s) == Some(axis))
+            {
+                let shifted = TDim::Sym(sym.clone()) - TDim::Val(before as i64);
+                input_roi = input_roi.substitute(&sym, &shifted).unwrap_or(input_roi);
+            }
+        }
+        Ok(Some(tvec![Some(input_roi)]))
+    }
+
     fn axes_mapping(
         &self,
         inputs: &[&TypedFact],
