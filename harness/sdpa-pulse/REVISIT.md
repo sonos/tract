@@ -230,3 +230,24 @@ must run *after* pulsification and mask folding — not before.  This ordering i
 currently not enforced.  When wiring up the real encoder pulsification pipeline,
 verify the transform order, or extend `FoldUniformMask` to decompose
 `ScaledMaskedSoftmax` inline.
+
+---
+
+## 13. Systematic `uniform_tdim` propagation
+
+**Location:** `core/src/ops/binary.rs` (output_facts), `pulse/src/ops/binary.rs` (pulsifier)
+
+**Observed:** `uniform_tdim` is set on a few specific ops (Range, comparisons,
+UniformTDim) but does not propagate through arithmetic ops like Mul, Sub, Add,
+Cast.  For example, `pos_bias = -0.125 * rel_pos` loses `uniform_tdim` at the
+Mul because TDim can't represent float scaling.
+
+**Current workaround:** The binary pulsifier in `pulse/src/ops/binary.rs` walks
+upstream through scalar-constant TypedBinOp nodes (`find_upstream_uniform_tdim`)
+to locate the nearest `uniform_tdim`, then replays the scalar ops in forward
+order to recover actual float values (`collect_scalar_op_chain`).
+
+**Proper fix:** Systematic `uniform_tdim` propagation in `output_facts` for all
+ops that preserve coordinate structure, analogous to the ROI propagation PR
+(#2114).  This would make the upstream-walk workaround unnecessary and ensure
+uniform_tdim is available on every wire where the coordinate pattern holds.
