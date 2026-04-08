@@ -109,7 +109,15 @@ fn pulsify(
     };
     let uniform_expr = match &fact.uniform_tdim {
         Some(e) => e.clone(),
-        None => return Ok(None),
+        None => {
+            // Walk upstream through scalar-arithmetic ops to find the nearest
+            // uniform_tdim.  This handles e.g. Mul(rel_pos, -0.125) where rel_pos
+            // has uniform_tdim but the float scaling breaks TDim propagation.
+            match find_upstream_uniform_tdim(source, outlet) {
+                Some(e) => e,
+                None => return Ok(None),
+            }
+        }
     };
 
     let cw = match classify_chunk_window(&roi_expr.clone().simplify()) {
@@ -177,18 +185,34 @@ fn pulsify(
         int_values[flat] = uniform_expr.eval(&sv).to_i64()?;
     }
 
-    // Cast to the wire's datum type.
-    let tensor = match fact.datum_type {
-        DatumType::F32 => {
-            let vals: Vec<f32> = int_values.iter().map(|&v| v as f32).collect();
-            Tensor::from_shape(&shape, &vals)?
+    // Cast to the dtype of the wire that carries uniform_tdim, then replay
+    // any scalar arithmetic ops between that wire and the current node to
+    // recover the actual output values (e.g. Mul by -0.125).
+    let tensor = {
+        let utdim_dt = find_upstream_uniform_dt(source, outlet).unwrap_or(fact.datum_type);
+        let mut seed: Tensor = match utdim_dt {
+            DatumType::F32 => {
+                let vals: Vec<f32> = int_values.iter().map(|&v| v as f32).collect();
+                Tensor::from_shape(&shape, &vals)?
+            }
+            DatumType::I64 => Tensor::from_shape(&shape, &int_values)?,
+            DatumType::I32 => {
+                let vals: Vec<i32> = int_values.iter().map(|&v| v as i32).collect();
+                Tensor::from_shape(&shape, &vals)?
+            }
+            _ => return Ok(None),
+        };
+        // Replay scalar ops from the uniform_tdim wire forward to `outlet`.
+        let chain = collect_scalar_op_chain(source, outlet);
+        for (op_node_id, scalar_tensor, data_is_input_0) in chain {
+            let inputs = if data_is_input_0 {
+                tvec![seed.into_tvalue(), scalar_tensor.into_tvalue()]
+            } else {
+                tvec![scalar_tensor.into_tvalue(), seed.into_tvalue()]
+            };
+            seed = source.node(op_node_id).op.eval(inputs)?[0].clone().into_tensor();
         }
-        DatumType::I64 => Tensor::from_shape(&shape, &int_values)?,
-        DatumType::I32 => {
-            let vals: Vec<i32> = int_values.iter().map(|&v| v as i32).collect();
-            Tensor::from_shape(&shape, &vals)?
-        }
-        _ => return Ok(None),
+        seed
     };
 
     Ok(Some(target.wire_node(
@@ -196,4 +220,86 @@ fn pulsify(
         NonPulsingWrappingOp(Box::new(Const::new(tensor.into_arc_tensor())?)),
         &[],
     )?))
+}
+
+/// Walk upstream from `outlet` through TypedBinOp nodes that have one scalar
+/// constant input, looking for the first wire that carries `uniform_tdim`.
+/// This bridges the gap when float scaling (e.g. Mul by -0.125) breaks TDim
+/// propagation but the underlying integer coordinate pattern is still valid.
+fn find_upstream_uniform_tdim(model: &TypedModel, mut outlet: OutletId) -> Option<TDim> {
+    for _ in 0..8 {
+        let node = model.node(outlet.node);
+        if node.op_as::<TypedBinOp>().is_none() {
+            return None;
+        }
+        let (data_inlet, _) = scalar_binop_data_inlet(model, node)?;
+        let data_fact = model.outlet_fact(data_inlet).ok()?;
+        if let Some(e) = &data_fact.uniform_tdim {
+            return Some(e.clone());
+        }
+        outlet = data_inlet;
+    }
+    None
+}
+
+/// Return the datum type of the upstream wire that carries uniform_tdim.
+fn find_upstream_uniform_dt(model: &TypedModel, mut outlet: OutletId) -> Option<DatumType> {
+    for _ in 0..8 {
+        let fact = model.outlet_fact(outlet).ok()?;
+        if fact.uniform_tdim.is_some() {
+            return Some(fact.datum_type);
+        }
+        let node = model.node(outlet.node);
+        if node.op_as::<TypedBinOp>().is_none() {
+            return None;
+        }
+        let (data_inlet, _) = scalar_binop_data_inlet(model, node)?;
+        outlet = data_inlet;
+    }
+    None
+}
+
+/// Collect the chain of scalar TypedBinOp nodes from the uniform_tdim wire
+/// forward to `target_outlet`.  Returns (node_id, scalar_tensor, data_is_input_0)
+/// in forward order.
+fn collect_scalar_op_chain(
+    model: &TypedModel,
+    target_outlet: OutletId,
+) -> Vec<(usize, Arc<Tensor>, bool)> {
+    let mut chain = Vec::new();
+    let mut cur = target_outlet;
+    loop {
+        let fact = model.outlet_fact(cur).ok();
+        if fact.and_then(|f| f.uniform_tdim.as_ref()).is_some() {
+            break;
+        }
+        let node = model.node(cur.node);
+        let Some((data_inlet, scalar_inlet)) = scalar_binop_data_inlet(model, node) else {
+            break;
+        };
+        let scalar = model.outlet_fact(scalar_inlet).ok().and_then(|f| f.konst.clone());
+        let Some(scalar) = scalar else { break };
+        let data_is_input_0 = data_inlet == node.inputs[0];
+        chain.push((node.id, scalar, data_is_input_0));
+        cur = data_inlet;
+    }
+    chain.reverse();
+    chain
+}
+
+/// For a TypedBinOp node with one scalar constant input and one data input,
+/// return (data_inlet, scalar_inlet).
+fn scalar_binop_data_inlet(model: &TypedModel, node: &TypedNode) -> Option<(OutletId, OutletId)> {
+    if node.inputs.len() != 2 {
+        return None;
+    }
+    let f0 = model.outlet_fact(node.inputs[0]).ok()?;
+    let f1 = model.outlet_fact(node.inputs[1]).ok()?;
+    if f0.konst.is_some() && f0.shape.volume().to_usize().ok() == Some(1) {
+        Some((node.inputs[1], node.inputs[0]))
+    } else if f1.konst.is_some() && f1.shape.volume().to_usize().ok() == Some(1) {
+        Some((node.inputs[0], node.inputs[1]))
+    } else {
+        None
+    }
 }
