@@ -140,7 +140,7 @@ impl TypedOp for ScaledMaskedSoftmax {
             return Ok(Some(tvec![Some(mask_expr.clone()), None]));
         }
         // Bubbling: delegate to the natural blanket implementation.
-        tract_nnef::tract_core::optim::propagate_roi::bubble_roi_natural(model, node)
+        tract_nnef::tract_core::optim::propagate_roi::bubble_roi(model, node)
     }
 
     as_op!();

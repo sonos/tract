@@ -222,7 +222,7 @@ impl TypedOp for Iff {
             return Ok(Some(tvec![None, Some(mask_expr.clone()), None]));
         }
         // Bubbling: delegate to the natural blanket implementation.
-        crate::optim::propagate_roi::bubble_roi_natural(model, node)
+        crate::optim::propagate_roi::bubble_roi(model, node)
     }
 
     fn declutter(

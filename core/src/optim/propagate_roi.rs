@@ -26,35 +26,48 @@ fn roi_union(a: &TDim, b: &TDim) -> TDim {
     a.clone() + b.clone() - a.clone() * b.clone()
 }
 
-/// Check whether a TDim expression references coordinate symbol 🎯{axis}.
-fn roi_mentions_axis(roi: &TDim, axis: usize) -> bool {
-    roi.symbols().iter().any(|s| sym_to_coord_axis(s) == Some(axis))
-}
-
-/// Bubble output ROI to inputs for ops with natural axes mapping
-/// (axis i in output corresponds to axis i in each input).
+/// Bubble output ROI to inputs using the op's axes_mapping.
 ///
-/// For broadcast dims (input dim = 1, output dim > 1): if the ROI expression
-/// mentions that axis's coordinate symbol, we can't propagate (return None
-/// for that input). Otherwise the ROI passes through.
-pub fn bubble_roi_natural(
-    model: &TypedModel,
-    node: &TypedNode,
-) -> TractResult<Option<TVec<Option<TDim>>>> {
+/// For each input, builds a coordinate substitution map from the axes mapping:
+/// each output axis that appears in this input gets 🎯{out_pos} → 🎯{in_pos}.
+/// If any ROI coordinate symbol has no corresponding input axis (contracted,
+/// broadcast from dim=1, or absent), returns None for that input.
+pub fn bubble_roi(model: &TypedModel, node: &TypedNode) -> TractResult<Option<TVec<Option<TDim>>>> {
     let output_fact = model.outlet_fact(OutletId::new(node.id, 0))?;
     let Some(roi) = &output_fact.region_of_interest else { return Ok(None) };
 
-    let mut result = tvec![];
-    for input in &node.inputs {
-        let input_fact = model.outlet_fact(*input)?;
-        let can_propagate = input_fact
-            .shape
-            .iter()
-            .zip(output_fact.shape.iter())
-            .enumerate()
-            .all(|(a, (idim, odim))| idim == odim || !roi_mentions_axis(roi, a));
-        result.push(if can_propagate { Some(roi.clone()) } else { None });
-    }
+    let input_facts: TVec<&TypedFact> =
+        node.inputs.iter().map(|i| model.outlet_fact(*i)).collect::<TractResult<_>>()?;
+    let output_facts = tvec![output_fact];
+    let inputs_ref: Vec<&TypedFact> = input_facts.iter().copied().collect();
+    let outputs_ref: Vec<&TypedFact> = output_facts.iter().copied().collect();
+    let mapping = node.op.as_typed().unwrap().axes_mapping(&inputs_ref, &outputs_ref)?;
+
+    // Collect ROI coordinate symbols and their output axis positions.
+    let roi_coord_syms: Vec<(usize, Symbol)> =
+        roi.symbols().into_iter().filter_map(|s| sym_to_coord_axis(&s).map(|k| (k, s))).collect();
+
+    let remap_for_input = |input_ix: usize| -> Option<TDim> {
+        let mut sub_map: HashMap<Symbol, TDim> = HashMap::new();
+        for (out_pos, sym) in &roi_coord_syms {
+            let logical = mapping
+                .iter_all_axes()
+                .find(|a| a.outputs.first().is_some_and(|o| o.contains(out_pos)))?;
+            if logical.inputs[input_ix].is_empty() {
+                return None;
+            }
+            let in_pos = logical.inputs[input_ix][0];
+            if input_facts[input_ix].shape[in_pos] != output_fact.shape[*out_pos] {
+                return None;
+            }
+            if in_pos != *out_pos {
+                let scope = sym.scope()?;
+                sub_map.insert(sym.clone(), TDim::Sym(scope.coord_sym(in_pos)));
+            }
+        }
+        if sub_map.is_empty() { Some(roi.clone()) } else { roi.substitute_all(&sub_map).ok() }
+    };
+    let result: TVec<Option<TDim>> = (0..node.inputs.len()).map(|ix| remap_for_input(ix)).collect();
     Ok(Some(result))
 }
 

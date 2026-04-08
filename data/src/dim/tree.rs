@@ -216,28 +216,35 @@ impl TDim {
     }
 
     pub fn substitute(&self, from: &Symbol, to: &Self) -> TractResult<Self> {
+        self.substitute_all(&std::collections::HashMap::from([(from.clone(), to.clone())]))
+    }
+
+    pub fn substitute_all(
+        &self,
+        map: &std::collections::HashMap<Symbol, Self>,
+    ) -> TractResult<Self> {
         match self {
-            Sym(sym) => Ok(if sym == from { to.clone() } else { self.clone() }),
+            Sym(sym) => Ok(map.get(sym).cloned().unwrap_or_else(|| self.clone())),
             Val(v) => Ok(Val(*v)),
             Add(terms) => terms.iter().try_fold(Val(0), |acc, it| -> TractResult<TDim> {
-                Ok(acc + it.substitute(from, to)?)
+                Ok(acc + it.substitute_all(map)?)
             }),
             Mul(terms) => terms.iter().try_fold(Val(1), |acc, it| -> TractResult<TDim> {
-                Ok(acc * it.substitute(from, to)?)
+                Ok(acc * it.substitute_all(map)?)
             }),
             Broadcast(terms) => terms.iter().try_fold(Val(1), |acc, it| -> TractResult<TDim> {
-                acc.broadcast(it.substitute(from, to)?)
+                acc.broadcast(it.substitute_all(map)?)
             }),
             Min(terms) => terms.iter().try_fold(Val(i64::MAX), |acc, it| -> TractResult<TDim> {
-                Ok(acc.mini(it.substitute(from, to)?))
+                Ok(acc.mini(it.substitute_all(map)?))
             }),
             Max(terms) => terms.iter().try_fold(Val(i64::MIN), |acc, it| -> TractResult<TDim> {
-                Ok(acc.maxi(it.substitute(from, to)?))
+                Ok(acc.maxi(it.substitute_all(map)?))
             }),
-            Div(a, q) => Ok(a.substitute(from, to)? / *q as i64),
-            MulInt(p, a) => Ok(a.substitute(from, to)? * *p),
-            Ge(a, b) => Ok(Ge(b!(a.substitute(from, to)?), b!(b.substitute(from, to)?))),
-            Eq(a, b) => Ok(Eq(b!(a.substitute(from, to)?), b!(b.substitute(from, to)?))),
+            Div(a, q) => Ok(a.substitute_all(map)? / *q as i64),
+            MulInt(p, a) => Ok(a.substitute_all(map)? * *p),
+            Ge(a, b) => Ok(Ge(b!(a.substitute_all(map)?), b!(b.substitute_all(map)?))),
+            Eq(a, b) => Ok(Eq(b!(a.substitute_all(map)?), b!(b.substitute_all(map)?))),
         }
     }
 

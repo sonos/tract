@@ -682,24 +682,23 @@ fn remap_uniform_tdim(expr: &TDim, axis_op: &AxisOp) -> Option<TDim> {
         };
     }
 
-    // For Add/Rm/Move: use transform_axis for the remapping.
-    // Sort order matters to avoid double-substitution: Rm shifts indices down so process
-    // ascending (lowest first); Add/Move shift up or mixed so process descending (highest first).
-    let ascending = matches!(axis_op.canonical().as_ref(), AxisOp::Rm(_));
-    let mut remaps: Vec<(usize, usize, Symbol)> = coord_syms
+    // For Add/Rm/Move: use transform_axis and substitute all at once to avoid
+    // double-substitution when two axes swap positions (e.g. Move).
+    let map: HashMap<Symbol, TDim> = coord_syms
         .into_iter()
-        .filter_map(|(k, sym)| axis_op.transform_axis(k).map(|new_k| (k, new_k, sym)))
-        .filter(|(k, new_k, _)| k != new_k)
+        .filter_map(|(k, sym)| {
+            let new_k = axis_op.transform_axis(k)?;
+            if new_k == k {
+                return None;
+            }
+            let scope = sym.scope()?;
+            Some((sym, TDim::Sym(scope.coord_sym(new_k))))
+        })
         .collect();
-    remaps.sort_by(|a, b| if ascending { a.0.cmp(&b.0) } else { b.0.cmp(&a.0) });
-
-    let mut result = expr.clone();
-    for (_, new_k, sym) in &remaps {
-        let scope = sym.scope()?;
-        let new_sym = TDim::Sym(scope.coord_sym(*new_k));
-        result = result.substitute(sym, &new_sym).ok()?;
+    if map.is_empty() {
+        return Some(expr.clone());
     }
-    Some(result)
+    expr.substitute_all(&map).ok()
 }
 
 impl TypedOp for AxisOp {
@@ -729,24 +728,6 @@ impl TypedOp for AxisOp {
             fact.uniform_tdim = remap_uniform_tdim(tdim, self);
         }
         Ok(tvec!(fact))
-    }
-
-    fn input_roi(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TVec<Option<TDim>>>> {
-        let output_fact = model.outlet_fact(OutletId::new(node.id, 0))?;
-        let Some(roi) = &output_fact.region_of_interest else { return Ok(None) };
-        // Inverse remap: output→input coordinate space
-        let inverse = match self {
-            AxisOp::Add(k) => AxisOp::Rm(*k),
-            AxisOp::Rm(k) => AxisOp::Add(*k),
-            AxisOp::Move(from, to) => AxisOp::Move(*to, *from),
-            AxisOp::Reshape(..) => return Ok(Some(tvec![Some(roi.clone())])),
-        };
-        let input_roi = remap_uniform_tdim(roi, &inverse).unwrap_or_else(|| roi.clone());
-        Ok(Some(tvec![Some(input_roi)]))
     }
 
     fn axes_mapping(
