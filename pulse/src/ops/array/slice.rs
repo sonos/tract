@@ -38,13 +38,25 @@ fn pulsify(
                     let lp = cw.left_chunks as i64 * pulse.to_i64()?;
                     let start_i64 = start.to_i64()?;
                     let start_base = op.start.substitute(symbol, &TDim::Val(0))?;
-                    if start_base.symbols().is_empty() && start_i64 < start_base.to_i64()? {
-                        // start decreases with S (e.g. center-S): extend backward
-                        (TDim::Val(start_i64 - lp), end)
-                    } else {
-                        // start is fixed: extend end forward
-                        (start, TDim::Val(end.to_i64()? + lp))
-                    }
+                    let (adj_s, adj_e) =
+                        if start_base.symbols().is_empty() && start_i64 < start_base.to_i64()? {
+                            // start decreases with S (e.g. center-S): extend backward
+                            (TDim::Val(start_i64 - lp), end.clone())
+                        } else {
+                            // start is fixed: extend end forward
+                            (start.clone(), TDim::Val(end.to_i64()? + lp))
+                        };
+                    // Only apply if the adjusted bounds fit the input.
+                    let input_len = source.outlet_fact(node.inputs[0])?.shape[op.axis]
+                        .substitute(symbol, pulse)?;
+                    let fits = adj_s
+                        .to_i64()
+                        .ok()
+                        .zip(adj_e.to_i64().ok())
+                        .zip(input_len.to_i64().ok())
+                        .map(|((s, e), l)| s >= 0 && e <= l)
+                        .unwrap_or(false);
+                    if fits { (adj_s, adj_e) } else { (start, end) }
                 } else {
                     (start, end)
                 }
@@ -92,16 +104,30 @@ fn pulsify(
                     } else {
                         (start_sub, TDim::Val(end_sub.to_i64()? + lp))
                     };
-                    use crate::model::PulseWrappingOp;
-                    return Ok(Some(target.wire_node(
-                        &*node.name,
-                        PulseWrappingOp(Box::new(Slice {
-                            axis: op.axis,
-                            start: adj_start,
-                            end: adj_end,
-                        })),
-                        &[input],
-                    )?));
+                    // Only apply ROI extension if the adjusted bounds fit within
+                    // the input's actual size on this axis.  If the upstream hasn't
+                    // been expanded to support the wider range, fall through to the
+                    // non-ROI path.
+                    let input_len = fact.shape[op.axis].clone();
+                    let fits = adj_start
+                        .to_i64()
+                        .ok()
+                        .zip(adj_end.to_i64().ok())
+                        .zip(input_len.to_i64().ok())
+                        .map(|((s, e), l)| s >= 0 && e <= l)
+                        .unwrap_or(false);
+                    if fits {
+                        use crate::model::PulseWrappingOp;
+                        return Ok(Some(target.wire_node(
+                            &*node.name,
+                            PulseWrappingOp(Box::new(Slice {
+                                axis: op.axis,
+                                start: adj_start,
+                                end: adj_end,
+                            })),
+                            &[input],
+                        )?));
+                    }
                 }
             }
         }
