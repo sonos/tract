@@ -111,27 +111,35 @@ pub struct ChunkWindowParams {
     pub left_chunks: i64,
 }
 
-/// Try to decompose `expr` as `Add([MulInt(-1, Div(🎯col, P)), Div(🎯row, P)])` —
-/// i.e., `floor(🎯row / P) - floor(🎯col / P)` in TDim's sorted normal form.
+/// Try to decompose `expr` as a chunk-index difference:
+///   `floor((🎯row + r_off) / P) - floor((🎯col + c_off) / P) + constant`
+///
+/// The canonical form is `Add([MulInt(-1, Div(🎯col, P)), Div(🎯row, P)])`.
+/// After ROI bubbles through Pad/Reshape, coordinates may be offset (e.g.
+/// `Div(Add(🎯k, 1), P)`) and extra constant terms may appear.  These
+/// offsets don't change P, L, or the axis assignment — they're positional
+/// shifts — so we ignore them.
+///
 /// Returns `(row_axis, col_axis, P)` on success.
 fn extract_div_diff_axes(expr: &TDim) -> Option<(usize, usize, u64)> {
     let TDim::Add(terms) = expr else { return None };
-    if terms.len() != 2 {
-        return None;
-    }
-    let mut pos: Option<(usize, u64)> = None; // +Div(🎯k, P)
-    let mut neg: Option<(usize, u64)> = None; // -Div(🎯k, P)
+    let mut pos: Option<(usize, u64)> = None; // +Div(🎯k+offset, P)
+    let mut neg: Option<(usize, u64)> = None; // -Div(🎯k+offset, P)
     for term in terms {
         match term {
             TDim::Div(inner, p) => {
-                let TDim::Sym(sym) = inner.as_ref() else { return None };
-                pos = Some((sym_to_coord_axis(sym)?, *p));
+                if let Some(axis) = extract_coord_sym_from_div_arg(inner) {
+                    pos = Some((axis, *p));
+                }
             }
             TDim::MulInt(-1, inner) => {
-                let TDim::Div(inner2, p) = inner.as_ref() else { return None };
-                let TDim::Sym(sym) = inner2.as_ref() else { return None };
-                neg = Some((sym_to_coord_axis(sym)?, *p));
+                if let TDim::Div(inner2, p) = inner.as_ref() {
+                    if let Some(axis) = extract_coord_sym_from_div_arg(inner2) {
+                        neg = Some((axis, *p));
+                    }
+                }
             }
+            TDim::Val(_) => {} // constant offset — ignore
             _ => return None,
         }
     }
@@ -141,6 +149,31 @@ fn extract_div_diff_axes(expr: &TDim) -> Option<(usize, usize, u64)> {
         return None;
     }
     Some((row_axis, col_axis, p_row))
+}
+
+/// Extract the coordinate axis from a Div numerator that is either `Sym(🎯k)`
+/// or `Add([Sym(🎯k), Val(offset)])`.
+fn extract_coord_sym_from_div_arg(inner: &TDim) -> Option<usize> {
+    match inner {
+        TDim::Sym(sym) => sym_to_coord_axis(sym),
+        TDim::Add(terms) => {
+            let mut axis = None;
+            for t in terms {
+                match t {
+                    TDim::Sym(sym) => {
+                        if axis.is_some() {
+                            return None; // multiple symbols
+                        }
+                        axis = sym_to_coord_axis(sym);
+                    }
+                    TDim::Val(_) => {} // constant offset
+                    _ => return None,
+                }
+            }
+            axis
+        }
+        _ => None,
+    }
 }
 
 /// Recognise a 2-D chunk-window `uniform_tdim` expression.
