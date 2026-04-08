@@ -50,14 +50,6 @@ fn pulsify_range(
     sv_zero.set(symbol, 0);
     let delta = len_dim.eval(&sv_pulse).to_i64()? - len_dim.eval(&sv_zero).to_i64()?;
 
-    // Only handle the non-trivial case where the per-pulse token count differs from the
-    // pulse size (e.g. T_tokens formula with a constant offset).  When delta == pulse the
-    // output is a simple [0..pulse-1] range that the default NonPulsingWrappingOp path
-    // handles correctly with the original datum type.
-    if delta == pulse_i64 {
-        return Ok(None);
-    }
-
     // Build new start=const(0), end=const(delta), step=const(1) wires so that
     // Range::eval produces exactly `delta` elements at runtime (not T_tokens(pulse)).
     // Use I64 constants: Range::make always emits I64 when inputs are TDim, so using
