@@ -59,12 +59,8 @@ fn pulsify_qk(
     target: &mut PulsedModel,
     mapping: &HashMap<OutletId, OutletId>,
 ) -> TractResult<Option<TVec<OutletId>>> {
-    let roi = match source
-        .outlet_fact(OutletId::new(node.id, 0))?
-        .region_of_interest
-        .as_ref()
-        .and_then(|r| classify_chunk_window(&r.clone().simplify()))
-    {
+    let roi_raw = source.outlet_fact(OutletId::new(node.id, 0))?.region_of_interest.clone();
+    let roi = match roi_raw.as_ref().and_then(|r| classify_chunk_window(&r.clone().simplify())) {
         Some(p) => p,
         None => return Ok(None),
     };
