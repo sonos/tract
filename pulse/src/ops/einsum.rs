@@ -73,7 +73,7 @@ fn pulsify_qk(
 
     // Identify Q (row) and K (col) by which AxesMapping axis connects each input's
     // streaming axis to the ROI row/col output axis.
-    let (q_input_ix, k_input_ix) = {
+    let (q_input_ix, k_streaming_ix) = {
         let mut q_ix = None;
         let mut k_ix = None;
         for (input_ix, pulsed_outlet) in &pulsed_inputs {
@@ -94,15 +94,40 @@ fn pulsify_qk(
                 }
             }
         }
-        // If either Q or K couldn't be identified as streaming (e.g. Q@R^T where R is a
-        // fixed position-encoding table), decline and let the generic pulsifier handle it.
-        if q_ix.is_none() || k_ix.is_none() {
+        if q_ix.is_none() {
             return Ok(None);
         }
-        (q_ix.unwrap(), k_ix.unwrap())
+        // K may be streaming (normal QK) or non-streaming (Q@R^T position table).
+        (q_ix.unwrap(), k_ix)
     };
 
-    // The key axis in K: the K input axis that maps to the output key axis (col_axis).
+    // Find the non-streaming K input if no streaming K was found.
+    let k_input_ix = match k_streaming_ix {
+        Some(ix) => ix,
+        None => {
+            // Look for a non-streaming input that maps to the output col axis.
+            let found = pulsed_inputs.iter().find_map(|(ix, out)| {
+                if *ix == q_input_ix {
+                    return None;
+                }
+                if target.outlet_fact(*out).ok()?.stream.is_some() {
+                    return None;
+                }
+                let maps_to_col = op.axes.iter_all_axes().any(|ax| {
+                    !ax.inputs.get(*ix).map(|v| v.is_empty()).unwrap_or(true)
+                        && ax.outputs[0].first().copied() == Some(roi.col_axis)
+                });
+                if maps_to_col { Some(*ix) } else { None }
+            });
+            match found {
+                Some(ix) => ix,
+                None => return Ok(None),
+            }
+        }
+    };
+
+    // The key axis in K/R: the input axis that maps to the output col axis,
+    // not present in Q.
     let k_axis_in_k = op
         .axes
         .iter_all_axes()
@@ -118,20 +143,62 @@ fn pulsify_qk(
 
     let name = &node.name;
     let q_wire = pulsed_inputs[q_input_ix].1;
+    let key_window = (left_chunks + 1) * chunk_size as usize; // W = (L+1)*P
 
-    // K: Delay(axis=k_axis_in_k, delay=0, overlap=L*P).
-    // output_pulse = P + overlap = (L+1)*P — exactly the context window size.
-    let k_wire_in = pulsed_inputs[k_input_ix].1;
-    let k_fact_typed: TypedFact = target.outlet_fact(k_wire_in)?.clone().into();
-    let overlap = left_chunks * chunk_size as usize;
-    let k_wire = if left_chunks > 0 {
-        target.wire_node(
-            format!("{name}.k_delay"),
-            Delay::new_typed(&k_fact_typed, k_axis_in_k, 0, overlap),
-            &[k_wire_in],
-        )?[0]
+    let k_wire = if k_streaming_ix.is_some() {
+        // Streaming K: Delay(axis=k_axis_in_k, delay=0, overlap=L*P).
+        let k_wire_in = pulsed_inputs[k_input_ix].1;
+        let k_fact_typed: TypedFact = target.outlet_fact(k_wire_in)?.clone().into();
+        let overlap = left_chunks * chunk_size as usize;
+        if left_chunks > 0 {
+            target.wire_node(
+                format!("{name}.k_delay"),
+                Delay::new_typed(&k_fact_typed, k_axis_in_k, 0, overlap),
+                &[k_wire_in],
+            )?[0]
+        } else {
+            pulsed_inputs[k_input_ix].1
+        }
     } else {
-        k_wire_in
+        // Non-streaming K (constant position table).
+        // Try to get the tensor value for pre-slicing.
+        let source_inlet = node.inputs[k_input_ix];
+        let r_tensor = match source
+            .outlet_fact(source_inlet)?
+            .konst
+            .as_ref()
+            .map(Arc::clone)
+            .or_else(|| try_compute_const(source, source_inlet))
+        {
+            Some(t) => t,
+            None => return Ok(None), // non-const, non-streaming K — let generic pulsifier handle it
+        };
+
+        // Check whether the EinSum output feeds into non-elementwise ops
+        // (Pad = skew trick) or only elementwise ops (APE addition).
+        let feeds_into_nonlinear =
+            source.outlet_successors(OutletId::new(node.id, 0)).iter().any(|succ| {
+                source.node(succ.node).op_as::<tract_core::ops::binary::TypedBinOp>().is_none()
+            });
+
+        if feeds_into_nonlinear {
+            // Symmetric RPE: pre-slice r_pos to [W+P-1, Dh] centered at zero.
+            let n = r_tensor.shape()[k_axis_in_k];
+            let t_max = (n + 1) / 2;
+            if t_max < key_window {
+                return Ok(None);
+            }
+            let window_start = t_max - key_window;
+            let window_len = key_window + chunk_size as usize - 1;
+            if window_start + window_len > n {
+                return Ok(None);
+            }
+            let r_window = r_tensor.slice(k_axis_in_k, window_start, window_start + window_len)?;
+            target.add_const(format!("{name}.r_pos_window"), r_window.into_arc_tensor())?
+        } else {
+            // APE constant: not yet supported in the current pulsifier.
+            return Ok(None);
+        }
     };
 
     // Wire EinSum with PulseWrappingOp so that Q's streaming axis propagates
@@ -237,4 +304,24 @@ fn pulsify_av(
     inputs[v_input_ix] = v_wire;
 
     Ok(Some(target.wire_node(name, PulseWrappingOp(Box::new(op.clone())), &inputs)?))
+}
+
+/// Recursively evaluate a source-model outlet whose upstream subgraph is
+/// made entirely of stateless ops with constant inputs.
+fn try_compute_const(source: &TypedModel, outlet: OutletId) -> Option<Arc<Tensor>> {
+    let fact = source.outlet_fact(outlet).ok()?;
+    if let Some(k) = &fact.konst {
+        return Some(Arc::clone(k));
+    }
+    let node = source.node(outlet.node);
+    if !node.op.is_stateless() {
+        return None;
+    }
+    let inputs: TVec<TValue> = node
+        .inputs
+        .iter()
+        .map(|o| try_compute_const(source, *o).map(|t| t.into_tvalue()))
+        .collect::<Option<_>>()?;
+    let results = node.op.eval(inputs).ok()?;
+    results.into_iter().nth(outlet.slot).map(|t| t.into_arc_tensor())
 }
