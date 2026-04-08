@@ -352,10 +352,20 @@ impl TypedOp for Iff {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TVec<Option<TDim>>>> {
-        // Introduction: condition's uniform_tdim defines which positions matter
-        // for the true-branch (scores) input.
+        // Introduction: condition's uniform_tdim defines which positions matter.
+        // Standard convention:  select(window_mask, scores, fill) — scores at inputs[1]
+        // Inverted convention: select(~window_mask, fill, scores) — scores at inputs[2]
         let cond_fact = model.outlet_fact(node.inputs[0])?;
         if let Some(mask_expr) = &cond_fact.uniform_tdim {
+            let expr = mask_expr.clone().simplify();
+            if classify_chunk_window(&expr).is_some() {
+                // Standard: scores at inputs[1], annotate with the positive expression.
+                return Ok(Some(tvec![None, Some(expr), None]));
+            } else if let Some(positive) = peel_negated_chunk_window_expr(&expr) {
+                // Inverted: scores at inputs[2], annotate with the positive expression.
+                return Ok(Some(tvec![None, None, Some(positive)]));
+            }
+            // Not a chunk-window — annotate true-branch as before.
             return Ok(Some(tvec![None, Some(mask_expr.clone()), None]));
         }
         // Bubbling: delegate to the natural blanket implementation.

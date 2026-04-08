@@ -110,15 +110,6 @@ impl EvalOp for Pad {
 impl TypedOp for Pad {
     as_op!();
 
-    fn input_roi(
-        &self,
-        _inputs: &[&TypedFact],
-        outputs: &[&TypedFact],
-        _symbols: &SymbolScope,
-    ) -> TractResult<TVec<Option<TDim>>> {
-        Ok(tvec![outputs[0].region_of_interest.clone()])
-    }
-
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut fact = inputs[0].without_value();
         if self.pads.len() != fact.rank() {

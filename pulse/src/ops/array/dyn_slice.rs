@@ -46,6 +46,11 @@ fn pulsify_dyn_slice(
             .as_ref()
             .and_then(|k| k.cast_to_scalar::<i64>().ok())
             .unwrap_or(0i64);
+        // Only apply if the input has enough room on this axis.
+        let input_axis_len = data_fact.shape[op.axis].to_i64().ok();
+        if input_axis_len.is_some_and(|l| start_i64 + w > l) {
+            return Ok(None);
+        }
         use crate::model::PulseWrappingOp;
         use tract_core::ops::array::Slice;
         let out = target.wire_node(

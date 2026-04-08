@@ -194,24 +194,26 @@ impl EvalOp for EinSum {
 impl TypedOp for EinSum {
     fn input_roi(
         &self,
-        _inputs: &[&TypedFact],
-        outputs: &[&TypedFact],
-        symbols: &SymbolScope,
-    ) -> TractResult<TVec<Option<TDim>>> {
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TVec<Option<TDim>>>> {
         use crate::ops::logic::{build_chunk_window_roi, classify_chunk_window};
-        let roi = match &outputs[0].region_of_interest {
+        let output_fact = &node.outputs[0].fact;
+        let roi = match &output_fact.region_of_interest {
             Some(r) => r.clone().simplify(),
-            None => return Ok(tvec![None; _inputs.len()]),
+            None => return Ok(None),
         };
         let cw = match classify_chunk_window(&roi) {
             Some(cw) => cw,
-            None => return Ok(tvec![None; _inputs.len()]),
+            None => return Ok(None),
         };
+        let symbols = &model.symbols;
+        let num_inputs = node.inputs.len();
         // For each input, find the axis that maps to the output col_axis.
         // Annotate only inputs that have the col axis but NOT the row axis
         // (i.e., the key/position input, not the query input).
-        let mut result: TVec<Option<TDim>> = tvec![None; _inputs.len()];
-        for ix in 0.._inputs.len() {
+        let mut result: TVec<Option<TDim>> = tvec![None; num_inputs];
+        for ix in 0..num_inputs {
             let col_in_input = self
                 .axes
                 .iter_all_axes()
@@ -233,7 +235,7 @@ impl TypedOp for EinSum {
                 }
             }
         }
-        Ok(result)
+        Ok(Some(result))
     }
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {

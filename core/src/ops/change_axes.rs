@@ -716,24 +716,24 @@ impl TypedOp for AxisOp {
 
     fn input_roi(
         &self,
-        inputs: &[&TypedFact],
-        outputs: &[&TypedFact],
-        symbols: &SymbolScope,
-    ) -> TractResult<TVec<Option<TDim>>> {
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TVec<Option<TDim>>>> {
         use crate::ops::logic::{build_chunk_window_roi, classify_chunk_window};
         let AxisOp::Reshape(at, _from, _to) = self else {
-            return Ok(tvec![outputs[0].region_of_interest.clone(); inputs.len()]);
+            return crate::optim::propagate_roi::bubble_roi(model, node);
         };
-        if inputs.len() != 1 {
-            return Ok(tvec![outputs[0].region_of_interest.clone()]);
+        if node.inputs.len() != 1 {
+            return crate::optim::propagate_roi::bubble_roi(model, node);
         }
-        let roi = match &outputs[0].region_of_interest {
+        let output_fact = &node.outputs[0].fact;
+        let roi = match &output_fact.region_of_interest {
             Some(r) => r.clone().simplify(),
-            None => return Ok(tvec![None]),
+            None => return Ok(None),
         };
         let cw = match classify_chunk_window(&roi) {
             Some(cw) => cw,
-            None => return Ok(tvec![Some(roi)]),
+            None => return Ok(Some(tvec![Some(roi)])),
         };
         // If the reshape swaps the two axes in the block [at, at+1], swap col/row in the ROI.
         let at = *at;
@@ -744,8 +744,9 @@ impl TypedOp for AxisOp {
         } else {
             (cw.row_axis, cw.col_axis)
         };
-        let new_roi = build_chunk_window_roi(symbols, cw.p, cw.left_chunks, new_row, new_col);
-        Ok(tvec![Some(new_roi)])
+        let symbols = &model.symbols;
+        let new_roi = build_chunk_window_roi(&symbols, cw.p, cw.left_chunks, new_row, new_col);
+        Ok(Some(tvec![Some(new_roi)]))
     }
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
