@@ -71,22 +71,28 @@ fn pulsify(
     let key_window = (left_chunks + 1) * pulse_size;
     let rank = op.shape.len();
 
-    // Build the output shape: leading dims (before row_axis) stay as-is (evaluated
-    // at symbol=0, since they don't depend on the streaming symbol or are batch dims),
-    // row_axis → pulse_size, col_axis → key_window.
+    // Build the output shape as TDim: leading dims stay as-is (may be symbolic,
+    // e.g. BATCH), row_axis → pulse_size, col_axis → key_window.
+    // Evaluate the streaming symbol to 0 to collapse the streaming dims, but
+    // leave other symbols (BATCH, etc.) intact as TDim expressions.
     let mut sv_zero = SymbolValues::default();
     sv_zero.set(symbol, 0);
-    let mut shape: Vec<usize> = Vec::with_capacity(rank);
-    for (ax, dim) in op.shape.iter().enumerate() {
-        if ax == row_axis {
-            shape.push(pulse_size);
-        } else if ax == col_axis {
-            shape.push(key_window);
-        } else {
-            // Non-streaming dim: evaluate at symbol=0.
-            shape.push(dim.eval(&sv_zero).to_usize()?);
-        }
-    }
+    let shape: TVec<TDim> = op
+        .shape
+        .iter()
+        .enumerate()
+        .map(|(ax, dim)| {
+            if ax == row_axis {
+                TDim::Val(pulse_size as i64)
+            } else if ax == col_axis {
+                TDim::Val(key_window as i64)
+            } else {
+                // Non-streaming dim: evaluate the streaming symbol away; any remaining
+                // symbols (e.g. BATCH) stay symbolic.
+                dim.eval(&sv_zero)
+            }
+        })
+        .collect();
 
     // For left_chunks > 0 and standard convention (fill_value=true): emit a
     // ChunkWindowMask stateful op so that zero-padded K positions during
@@ -100,7 +106,8 @@ fn pulsify(
         )?[0];
 
         // ChunkWindowMask produces [pulse_size, key_window] (rank 2).
-        // Reshape to the full target shape (restores leading singleton dims).
+        // Reshape to the full target shape (restores leading singleton dims,
+        // which may be symbolic, e.g. BATCH).
         let wire = if rank == 2 {
             cwm_wire
         } else {
@@ -109,7 +116,7 @@ fn pulsify(
                 NonPulsingWrappingOp(Box::new(AxisOp::Reshape(
                     0,
                     tvec![pulse_size.to_dim(), key_window.to_dim()],
-                    shape.iter().map(|&s| TDim::Val(s as i64)).collect(),
+                    shape.clone(),
                 ))),
                 &[cwm_wire],
             )?[0]
@@ -118,9 +125,12 @@ fn pulsify(
     }
 
     // Default: constant tensor (all-True for standard L=0, all-False for inverted).
-    let total: usize = shape.iter().product();
+    // Evaluate any remaining symbolic dims (e.g. BATCH) to 1, which is correct for
+    // streaming inference where batch dims broadcast.
+    let concrete_shape: Vec<usize> = shape.iter().map(|d| d.to_usize().unwrap_or(1)).collect();
+    let total: usize = concrete_shape.iter().product();
     let data = vec![fill_value; total];
-    let tensor = Tensor::from_shape(&shape, &data)?;
+    let tensor = Tensor::from_shape(&concrete_shape, &data)?;
 
     Ok(Some(target.wire_node(
         &node.name,

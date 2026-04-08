@@ -316,6 +316,19 @@ impl TypedOp for TypedBinOp {
         AxesMapping::natural(inputs, outputs)
     }
 
+    /// Propagate the output ROI backward through element-wise binary ops.
+    /// Both inputs receive the same ROI as the output (broadcasting is ignored —
+    /// the ROI is valid for any non-unit-sized axis of either input).
+    fn input_roi(
+        &self,
+        inputs: &[&TypedFact],
+        outputs: &[&TypedFact],
+        _symbols: &tract_data::prelude::SymbolScope,
+    ) -> TractResult<TVec<Option<TDim>>> {
+        let roi = outputs[0].region_of_interest.clone();
+        Ok(tvec![roi.clone(); inputs.len()])
+    }
+
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
         let count: TDim = self.output_facts(inputs)?[0].shape.iter().product();
         Ok(self
