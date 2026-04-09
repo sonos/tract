@@ -3,8 +3,6 @@ version 1.0;
 extension tract_registry tract_core;
 extension tract_registry tract_transformers;
 extension tract_symbol S;
-extension tract_symbol BATCH;
-extension tract_assert BATCH>=1;
 extension tract_assert S>=0;
 
 # Minimal repro: symmetric RPE via dynamic slice + skew trick.
@@ -13,8 +11,8 @@ extension tract_assert S>=0;
 
 graph network(q, k) -> (output)
 {
-    q      = tract_core_external(shape = [BATCH, S, 4], datum_type = 'f32');
-    k      = tract_core_external(shape = [BATCH, S, 4], datum_type = 'f32');
+    q      = tract_core_external(shape = [1, S, 4], datum_type = 'f32');
+    k      = tract_core_external(shape = [1, S, 4], datum_type = 'f32');
     r_full = variable<scalar>(label = 'r_pos', shape = [15, 4]);
 
     content_scores = tract_core_einsum([q, k], expr = "bid,bjd->bij", acc = "f32");
@@ -31,11 +29,11 @@ graph network(q, k) -> (output)
     pos_raw = tract_core_einsum([q, r_pos], expr = "bid,jd->bij", acc = "f32");
 
     pos_padded = pad(pos_raw, padding = [[0, 0], [0, 0], [1, 0]], value = 0.0);
-    pos_view   = reshape(pos_padded, shape = [BATCH, -1, T]);
+    pos_view   = reshape(pos_padded, shape = [1, -1, T]);
     one_i64    = tract_core_cast(1, to = 'i64');
     two_S      = add(T, T);
     pos_sliced = tract_core_dyn_slice(pos_view, one_i64, two_S, axis = 1, len = 2 * S - 1);
-    pos_bd     = reshape(pos_sliced, shape = [BATCH, T, -1]);
+    pos_bd     = reshape(pos_sliced, shape = [1, T, -1]);
     zero_i64   = tract_core_cast(0, to = 'i64');
     pos_scores = tract_core_dyn_slice(pos_bd, zero_i64, T, axis = 2, len = S);
 
