@@ -1,0 +1,86 @@
+version 1.0;
+
+extension tract_registry tract_core;
+extension tract_registry tract_transformers;
+extension tract_symbol S;
+extension tract_assert S>=0;
+
+# Encoder-like attention with shared posEnc constant and linear projection.
+#
+# Mimics the Nemotron encoder pattern:
+#   posEnc [2*T_max-1, D_model] is a constant symmetric RPE table
+#   r_pos_proj = posEnc @ W_pos  (linear projection, shared posEnc)
+#   r_pos_view = reshape(r_pos_proj, [R, H, Dh])
+#   pos_raw = Q @ r_pos_view^T
+#   pos_scores via skew trick
+#
+# The key challenge: posEnc is shared (multiple successors in the real model),
+# so PropConst doesn't fold linearPos.  pulsify_qk must evaluate the chain
+# at pulsify time via try_compute_const.
+#
+# Parameters: T=8, P=2, left_chunks=1, W=4, H=2, Dh=4, D_model=8
+# posEnc shape = [2*T-1, D_model] = [15, 8]
+# W_pos shape = [D_model, H*Dh] = [8, 8]
+
+graph network(q, k, v) -> (output)
+{
+    q = tract_core_external(shape = [1, S, 8], datum_type = 'f32');
+    k = tract_core_external(shape = [1, S, 8], datum_type = 'f32');
+    v = tract_core_external(shape = [1, S, 8], datum_type = 'f32');
+    posEnc = variable<scalar>(label = 'posEnc', shape = [15, 8]);
+    W_pos  = variable<scalar>(label = 'W_pos',  shape = [8, 8]);
+
+    # ── Content scores: Q @ K^T → [1, S, S] ───────────────────────────────
+    q_view = reshape(q, shape = [1, S, 2, 4]);    # [1, S, H, Dh]
+    k_view = reshape(k, shape = [1, S, 2, 4]);
+    content_scores = tract_core_einsum([q_view, k_view], expr = "bihd,bjhd->bhij", acc = "f32");
+
+    # ── Position encoding: posEnc @ W_pos → reshape → [R, H, Dh] ──────────
+    linearPos = tract_core_einsum([posEnc, W_pos], expr = "rd,de->re", acc = "f32");  # [15, 8]
+    r_pos_view = reshape(linearPos, shape = [15, 2, 4]);  # [R, H, Dh]
+
+    # ── Position scores: Q @ r_pos_view^T → [1, H, S, R] ──────────────────
+    pos_raw = tract_core_einsum([q_view, r_pos_view], expr = "bihd,jhd->bhij", acc = "f32");
+
+    # ── Skew trick ──────────────────────────────────────────────────────────
+    q_shape   = tract_core_shape_of(q);
+    T_sl      = slice(q_shape, axes = [0], begin = [1], end = [2], stride = [1]);
+    T         = squeeze(T_sl, axes = [0]);
+
+    pos_padded = pad(pos_raw, padding = [[0, 0], [0, 0], [0, 0], [1, 0]], value = 0.0);
+    pos_view   = reshape(pos_padded, shape = [1, 2, -1, T]);
+    one_i64    = tract_core_cast(1, to = 'i64');
+    two_S      = add(T, T);
+    pos_sliced = tract_core_dyn_slice(pos_view, one_i64, two_S, axis = 2, len = 2 * S - 1);
+    pos_bd     = reshape(pos_sliced, shape = [1, 2, T, -1]);
+    zero_i64   = tract_core_cast(0, to = 'i64');
+    pos_scores = tract_core_dyn_slice(pos_bd, zero_i64, T, axis = 3, len = S);
+
+    # ── Combine and mask ────────────────────────────────────────────────────
+    scores = add(content_scores, pos_scores);
+
+    positions          = tract_core_range(0, T, step = 1);
+    positions_f32      = tract_core_cast(positions, to = 'f32');
+    chunk_size_f32     = tract_core_cast(2, to = 'f32');
+    chunkIdx_f32       = div(positions_f32, chunk_size_f32);
+    chunkIdx           = tract_core_cast(floor(chunkIdx_f32), to = 'i64');
+
+    ci_row         = unsqueeze(chunkIdx, axes = [1]);
+    ci_col         = unsqueeze(chunkIdx, axes = [0]);
+    diffChunks     = sub(ci_row, ci_col);
+
+    left_chunks_i64 = tract_core_cast(1, to = 'i64');
+    zero_i64b       = tract_core_cast(0, to = 'i64');
+    le_mask         = le(diffChunks, left_chunks_i64);
+    ge_mask         = ge(diffChunks, zero_i64b);
+    window_mask_2d  = and(le_mask, ge_mask);
+    window_mask     = unsqueeze(window_mask_2d, axes = [0]);
+    window_mask_h   = unsqueeze(window_mask, axes = [1]);   # [1, 1, S, S]
+
+    masked_scores = select(window_mask_h, scores, scores * 0.0 + -inf);
+    attn          = softmax(masked_scores, axes = [3]);
+
+    v_view = reshape(v, shape = [1, S, 2, 4]);
+    ctx    = tract_core_einsum([attn, v_view], expr = "bhij,bjhd->bihd", acc = "f32");
+    output = reshape(ctx, shape = [1, S, 8]);
+}
