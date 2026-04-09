@@ -1,16 +1,8 @@
 #!/bin/sh
 
-# ex15: encoder-like attention with shared posEnc constant + linear projection + skew trick.
-#
-# Mimics the Nemotron encoder: posEnc [15, 8] is a constant symmetric RPE table,
-# linearPos = posEnc @ W_pos projects it, then the skew trick extracts relative
-# position scores.
-#
-# The key challenge: posEnc is a shared constant (in the real model it has 24
-# successors), so PropConst doesn't fold linearPos.  pulsify_qk must evaluate
-# the chain at pulsify time via try_compute_const.
-#
-# Parameters: T=8, P=2, left_chunks=1, W=4, H=2, Dh=4, D_model=8
+# ex15: fixed symmetric RPE [15,4] with left_chunks=3, W=8 > 2P-1=3.
+# Same structure as ex14-rel-pos-skew-large-table but with larger left_chunks.
+# Reproduces the encoder skew trick failure: pos_scores = [P, P] vs content = [P, W].
 
 cd "$(dirname "$0")"
 set -ex
@@ -19,7 +11,6 @@ set -ex
 
 python3 gen-inputs.py
 
-# Batch run
 $TRACT_RUN \
     --nnef-tract-core --nnef-tract-transformers \
     . \
@@ -28,12 +19,10 @@ $TRACT_RUN \
     --assert-output-bundle io.npz \
     --approx very
 
-# Pulsed run (with concretize_symbols, matching the encoder pipeline)
 $TRACT_RUN \
     --nnef-tract-core --nnef-tract-transformers \
     . \
-    -t 'concretize_symbols(values: {"BATCH": 1})' \
-    -t 'pulse(symbol: Some("S"), pulse: "2")' \
+    -t 'concretize_symbols(values: {"BATCH": 1})' -t 'pulse(symbol: Some("S"), pulse: "4")' \
     run \
     --input-from-bundle io.npz \
     --assert-output-bundle io.npz \
