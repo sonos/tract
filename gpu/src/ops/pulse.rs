@@ -93,11 +93,13 @@ impl GpuDelayState {
                 op.axis,
             )?;
         } else {
-            // Shift buffer left by input_pulse elements
-            let dt = input.datum_type();
-            let shift_bytes = buffer.strides()[op.axis] as usize * dt.size_of() * input_pulse;
-            let remaining = buffer.len() * dt.size_of() - shift_bytes;
-            ctx.flat_copy(buffer, shift_bytes, buffer, 0, remaining)?;
+            // Shift buffer left by input_pulse elements.
+            // CUDA memcpy is undefined for overlapping regions in the same
+            // buffer, so copy via a temporary.
+            let keep = buffered - input_pulse;
+            let mut temp = DeviceTensor::uninitialized_dt(input.datum_type(), buffer.shape())?;
+            ctx.assign_slice(&temp, 0..keep, buffer, input_pulse..buffered, op.axis)?;
+            ctx.assign_slice(buffer, 0..keep, &temp, 0..keep, op.axis)?;
             // Copy input to end of buffer
             ctx.assign_slice(
                 buffer,
@@ -132,7 +134,7 @@ impl OpState for GpuDelayState {
             if self.buffer.is_none() {
                 let mut shape = device_input.shape().to_owned();
                 shape[op.axis] = buffered;
-                self.buffer = Some(DeviceTensor::uninitialized_dt(dt, &shape)?);
+                self.buffer = Some(Tensor::zero_dt(dt, &shape)?.into_device()?);
             };
             let mut output = make_tensor_for_node(state, self.node_id, dt, &output_shape)?;
             self.apply_delay_unchecked(&*ctx, op, device_input, &mut output)?;
