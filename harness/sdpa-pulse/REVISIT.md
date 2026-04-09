@@ -271,3 +271,37 @@ the expression back to canonical form, or the offset should be tracked
 explicitly in `ChunkWindowParams` so downstream consumers can use it.
 The current approach silently discards the offset information which could
 matter for correct coordinate evaluation.
+
+---
+
+## 15. Encoder skew trick: T→P substitution vs pre-sliced r_pos_window
+
+**Location:** `pulse/src/ops/einsum.rs` (pulsify_qk), Slice/DynSlice pulsifiers
+
+**Observed:** For the p1 encoder, pulsify_qk successfully pre-slices
+r_pos_proj to [W+P-1, H, Dh] via try_compute_const_with_substitution.
+But the downstream skew trick (Pad→Reshape→Slice→Reshape→Slice) uses
+T=P from shape_of(q) for its reshape/slice targets, producing [P, 2P-1]
+intermediate shapes.  The final Slice (pos_scores = pos_bd[0:T=P])
+produces [P, P] instead of [P, W].
+
+The ROI-aware Slice pulsifier would extend [0:P] to [0:W], but the
+input (pos_bd) only has 2P-1 columns (from the T=P reshape), so the
+bounds check fails and the extension is skipped.
+
+**Root cause:** The skew trick's reshapes use shape_of(q)[streaming_axis]
+which becomes P at pulse time.  The pre-sliced r_pos_window has W+P-1
+columns, but the reshape to [B, H, -1, T=P] distributes them into
+more rows rather than keeping a wider column dimension.
+
+In ex13/ex14 tests, the r_pos is a direct constant (not via EinSum chain),
+so pulsify_qk pre-slices before pulsification changes the shape_of chain,
+and the downstream skew trick nodes see correct streaming shapes with ROI
+extensions.
+
+**Fix options:**
+1. Have pulsify_qk wire the entire skew trick chain as a unit, using W
+   instead of T for the intermediate shapes
+2. Replace shape_of(q) references in the skew trick with values derived
+   from the r_pos_window size
+3. Add a dedicated SkewTrick composite op that pulsifies as a unit
