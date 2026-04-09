@@ -22,7 +22,7 @@ $TRACT_RUN \
 $TRACT_RUN \
     --nnef-tract-core --nnef-tract-transformers \
     . \
-    -t 'concretize_symbols(values: {"BATCH": 1})' -t 'pulse(symbol: Some("S"), pulse: "4")' \
+    -t 'pulse: "4")' \
     run \
     --input-from-bundle io.npz \
     --assert-output-bundle io.npz \
