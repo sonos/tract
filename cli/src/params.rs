@@ -447,11 +447,13 @@ impl Parameters {
             let (key, value) = set.split_once('=').with_context(|| {
                 format!("--set and --hint must be in the X=value form, got {set}")
             })?;
-            let value: i64 = value
-                .parse()
-                .with_context(|| format!("value expected to be an integer, got {value}"))?;
+            let tdim = tract_core::internal::parse_tdim(&typed_model.symbols, value)
+                .with_context(|| format!("Failed to parse value for --set {key}={value}"))?;
             let key = typed_model.get_or_intern_symbol(key);
-            values.set(&key, value);
+            match tdim.to_i64() {
+                Ok(v) => values.set(&key, v),
+                Err(_) => values.set_tdim(&key, tdim),
+            }
         }
         Ok(values)
     }
@@ -702,6 +704,38 @@ impl Parameters {
             dec.optimize(&mut m)?;
             Ok(m)
         });
+        if let Some(set) = matches.get_many::<String>("set") {
+            let values = Self::parse_set_and_hint(typed_model.as_ref().unwrap(), set)?;
+            stage!("set", typed_model -> typed_model, |mut m: TypedModel| {
+                for node in m.eval_order()? {
+                    let node = m.node_mut(node);
+                    if let Some(op) = node.op_as_mut::<Const>() {
+                        if op.val().datum_type() == DatumType::TDim { {
+                            // get inner value to Arc<Tensor>
+                            let mut constant:Tensor = (**op.val()).clone();
+                            // Generally a shape or hyperparam
+                            constant
+                                .try_as_plain_mut()?
+                                .as_slice_mut::<TDim>()?
+                                .iter_mut()
+                                .for_each(|x| *x = x.eval(&values));
+
+                            *op = Const::new(constant.into_arc_tensor())?;
+                        }
+                        }
+                    }
+                }
+                m.concretize_dims(&values)
+            });
+            stage!("set-declutter", typed_model -> typed_model, |mut m| {
+                let mut dec = tract_core::optim::Optimizer::declutter();
+                if let Some(steps) = matches.get_one::<String>("declutter-set-step") {
+                    dec = dec.stopping_at(steps.parse()?);
+                }
+                dec.optimize(&mut m)?;
+                Ok(m)
+            })
+        }
         #[cfg(not(feature = "pulse"))]
         {
             if matches.get_one::<String>("pulse").is_some() {
@@ -752,39 +786,6 @@ impl Parameters {
                 });
                 stage!(&format!("{}_declutter", transform.name()), typed_model -> typed_model, |m:TypedModel| m.into_decluttered());
             }
-        }
-
-        if let Some(set) = matches.get_many::<String>("set") {
-            let values = Self::parse_set_and_hint(typed_model.as_ref().unwrap(), set)?;
-            stage!("set", typed_model -> typed_model, |mut m: TypedModel| {
-                for node in m.eval_order()? {
-                    let node = m.node_mut(node);
-                    if let Some(op) = node.op_as_mut::<Const>() {
-                        if op.val().datum_type() == DatumType::TDim { {
-                            // get inner value to Arc<Tensor>
-                            let mut constant:Tensor = (**op.val()).clone();
-                            // Generally a shape or hyperparam
-                            constant
-                                .try_as_plain_mut()?
-                                .as_slice_mut::<TDim>()?
-                                .iter_mut()
-                                .for_each(|x| *x = x.eval(&values));
-
-                            *op = Const::new(constant.into_arc_tensor())?;
-                        }
-                        }
-                    }
-                }
-                m.concretize_dims(&values)
-            });
-            stage!("set-declutter", typed_model -> typed_model, |mut m| {
-                let mut dec = tract_core::optim::Optimizer::declutter();
-                if let Some(steps) = matches.get_one::<String>("declutter-set-step") {
-                    dec = dec.stopping_at(steps.parse()?);
-                }
-                dec.optimize(&mut m)?;
-                Ok(m)
-            })
         }
         if matches.get_flag("nnef-cycle") {
             stage!("nnef-cycle", typed_model -> typed_model, |m:TypedModel| {
