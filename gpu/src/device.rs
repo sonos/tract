@@ -90,7 +90,25 @@ pub trait DeviceContext: Downcast + dyn_clone::DynClone + Send + Sync {
         if byte_len == 0 {
             return Ok(());
         }
-        self.copy_nd(src, src_byte_offset, &[1], dst, dst_byte_offset, &[byte_len], &[1])
+        // copy_nd dispatches a typed kernel (u8/u16/u32/u64 based on datum_type),
+        // so shape and strides are in elements, not bytes.
+        let elem_size = src.datum_type().size_of();
+        ensure!(
+            byte_len % elem_size == 0
+                && src_byte_offset % elem_size == 0
+                && dst_byte_offset % elem_size == 0,
+            "flat_copy: byte_len {byte_len}, src_offset {src_byte_offset}, dst_offset {dst_byte_offset} \
+             not aligned to element size {elem_size}"
+        );
+        self.copy_nd(
+            src,
+            src_byte_offset,
+            &[1],
+            dst,
+            dst_byte_offset,
+            &[byte_len / elem_size],
+            &[1],
+        )
     }
 }
 
