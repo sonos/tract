@@ -305,3 +305,32 @@ extensions.
 2. Replace shape_of(q) references in the skew trick with values derived
    from the r_pos_window size
 3. Add a dedicated SkewTrick composite op that pulsifies as a unit
+
+---
+
+## 16. Pre-flight superlinear-wire check — false-positive warnings
+
+**Location:** `pulse/src/model.rs` — `check_no_unannotated_superlinear_wires`
+
+**Current state:** Before pulsification, every wire whose shape is superlinear
+in the streaming symbol (S appears in ≥ 2 dimensions) and has no
+`region_of_interest` or `uniform_tdim` gets a `log::warn!`.  This correctly
+identifies the ex15/encoder failure (skew trick intermediates, content_scores,
+pos_scores all missing ROI).
+
+**Problem:** Working models also trigger warnings on wires that are quadratic
+but handled fine by their consumers — e.g. `masked_scores_false_value` (broadcast
+fill), `masked_scores` (Iff output), `attn` (softmax output).  These downstream
+wires are quadratic but the pulsifiers for Iff/Softmax/AV-EinSum handle them
+directly without ROI.
+
+**Proper fix:** Either (a) make the check smarter — e.g. only warn about wires
+whose *producers* are not attention-domain ops that handle quadratic output
+natively, or (b) fix ROI propagation so that all quadratic wires truly get ROI
+(fixing the `bubble_roi` verified-dim mismatch would be a start), then promote
+the warning to an error.
+
+**Related:** The `bubble_roi` shape-equality check (`!=` on TDim) rejects
+`(S/2)#((S+1)/2)` vs `(S+1)/2` as unequal even though they are semantically
+identical given S≥0.  Fixing that would let ROI propagate through Add in
+subsampled models and may eliminate most false positives.

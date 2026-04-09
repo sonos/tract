@@ -10,6 +10,7 @@ pub mod array;
 pub mod binary;
 pub mod cnn;
 pub mod delay;
+pub mod diag_gather;
 pub mod downsample;
 pub mod dummy;
 pub mod einsum;
@@ -52,7 +53,19 @@ pub(crate) fn sync_inputs(
     Ok(inputs)
 }
 
-register_all_mod!(array, binary, cnn, downsample, einsum, fft, mask, scan, source, uniform_tdim);
+register_all_mod!(
+    array,
+    binary,
+    cnn,
+    diag_gather,
+    downsample,
+    einsum,
+    fft,
+    mask,
+    scan,
+    source,
+    uniform_tdim
+);
 
 type PulsifierFn = fn(
     &TypedModel,
