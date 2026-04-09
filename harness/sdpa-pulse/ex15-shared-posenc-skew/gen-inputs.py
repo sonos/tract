@@ -4,7 +4,7 @@
 import struct
 import numpy as np
 
-T, H, Dh, P, left_chunks, B = 8, 2, 4, 2, 1, 1
+T, H, Dh, P, left_chunks, B = 8, 2, 4, 2, 5, 1
 D_model = H * Dh  # 8
 W = (left_chunks + 1) * P  # 4
 R = 2 * T - 1  # 15
