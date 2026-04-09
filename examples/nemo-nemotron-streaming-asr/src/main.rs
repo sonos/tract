@@ -223,6 +223,7 @@ fn main() -> anyhow::Result<()> {
             let features: ArrayD<f32> = $features;
             let usable_start = pp_delay_remaining.min(pp_out_pulse);
             pp_delay_remaining = pp_delay_remaining.saturating_sub(pp_out_pulse);
+            let _ = pp_delay_remaining;
             if usable_start < pp_out_pulse {
                 let usable =
                     features.slice_axis(Axis(pp_out_axis), (usable_start..pp_out_pulse).into());
