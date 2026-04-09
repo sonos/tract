@@ -257,44 +257,7 @@ impl TypedModel {
     }
 
     pub fn concretize_dims(&self, values: &SymbolValues) -> TractResult<TypedModel> {
-        let mut model = if values.tdim_iter().next().is_some() {
-            self.substitute_dims(values)?
-        } else {
-            self.clone()
-        };
-        if values.tdim_iter().next().is_some() {
-            // After substitution, build a SymbolValues with only the integer entries.
-            let int_only = {
-                let mut sv = SymbolValues::default();
-                for (s, v) in values.iter() {
-                    sv.set(s, v);
-                }
-                sv
-            };
-            model = int_only.translate_model(&model)?;
-        } else {
-            model = values.translate_model(&model)?;
-        }
-        Ok(model)
-    }
-
-    /// Substitute TDim-valued symbols throughout the model's facts.
-    fn substitute_dims(&self, values: &SymbolValues) -> TractResult<TypedModel> {
-        let mut model = self.clone();
-        for (sym, tdim) in values.tdim_iter() {
-            for node in &mut model.nodes {
-                for output in &mut node.outputs {
-                    let fact = &mut output.fact;
-                    let new_shape: TVec<TDim> = fact
-                        .shape
-                        .iter()
-                        .map(|d| d.substitute(sym, tdim))
-                        .collect::<TractResult<_>>()?;
-                    fact.shape = new_shape.into();
-                }
-            }
-        }
-        Ok(model)
+        values.translate_model(self)
     }
 
     pub fn prop_consts(&mut self) -> TractResult<()> {
