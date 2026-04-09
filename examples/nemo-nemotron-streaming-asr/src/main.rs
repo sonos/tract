@@ -1,6 +1,6 @@
 use std::fs::File;
 use std::sync::mpsc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use anyhow::*;
 use float_ord::FloatOrd;
@@ -12,21 +12,21 @@ fn argmax(slice: &[f32]) -> Option<usize> {
     slice.into_iter().position_max_by_key(|x| FloatOrd(**x))
 }
 
+fn show(hyp: &[usize], vocab: &[&str], label: &str) {
+    let text: String = hyp.iter().map(|&t| vocab[t]).join("");
+    let display = text.replace('▁', " ");
+    eprint!("\r{} {label}          ", display.trim_start());
+}
+
 /// Audio chunk size sent by the "microphone" thread (samples at 16kHz).
-/// 80 samples = 5ms of audio — simulates a real-time audio callback.
 const AUDIO_CHUNK: usize = 80;
-
-/// Preprocessor pulse in audio samples.
-/// 112 feature frames × 160 samples/frame (STFT hop) = 17920 samples.
+/// Preprocessor pulse in audio samples (112 feat frames × 160 hop).
 const PREPROC_PULSE: usize = 17920;
-
-/// Encoder pulse in feature frames.
-/// 14 transformer-token chunks × 8x conv subsampling = 112 frames.
+/// Encoder pulse in feature frames (14 token chunks × 8x subsampling).
 const ENCODER_PULSE: usize = 112;
 
 fn main() -> anyhow::Result<()> {
     let t0 = Instant::now();
-    eprintln!("[{:7.3}] Loading models...", t0.elapsed().as_secs_f64());
 
     let config: serde_json::Value =
         serde_json::from_reader(File::open("assets/model/model_config.json")?)?;
@@ -39,7 +39,6 @@ fn main() -> anyhow::Result<()> {
         .iter()
         .find_map(|rt| tract::runtime_for_name(rt).ok())
         .unwrap();
-    eprintln!("[{:7.3}] Runtime: {}", t0.elapsed().as_secs_f64(), runtime.name()?);
 
     // ── Preprocessor (pulsified) ────────────────────────────────────────
     let mut preprocessor = nnef.load("assets/model/preprocessor.nnef.tgz")?;
@@ -93,17 +92,7 @@ fn main() -> anyhow::Result<()> {
     )?;
     let joint = runtime.prepare(joint_model)?;
 
-    eprintln!(
-        "[{:7.3}] Models loaded. Preproc: {} samples/pulse -> {} feat frames (delay {}). \
-         Encoder: {} feat frames/pulse -> {} token frames (delay {}).",
-        t0.elapsed().as_secs_f64(),
-        PREPROC_PULSE,
-        pp_out_pulse,
-        pp_delay,
-        ENCODER_PULSE,
-        enc_output_pulse,
-        enc_delay,
-    );
+    let load_time = t0.elapsed();
 
     // ── Load audio ──────────────────────────────────────────────────────
     let wav: Vec<f32> = hound::WavReader::open("assets/2086-149220-0033.wav")?
@@ -111,13 +100,7 @@ fn main() -> anyhow::Result<()> {
         .map(|x| x.unwrap() as f32 / 32768.0)
         .collect();
     let total_samples = wav.len();
-    eprintln!(
-        "[{:7.3}] Audio: {:.2}s at 16kHz, chunk: {} samples ({:.1}ms)",
-        t0.elapsed().as_secs_f64(),
-        total_samples as f64 / 16000.0,
-        AUDIO_CHUNK,
-        AUDIO_CHUNK as f64 / 16.0,
-    );
+    let audio_duration = total_samples as f64 / 16000.0;
 
     // ── Mic thread ──────────────────────────────────────────────────────
     let (audio_tx, audio_rx) = mpsc::sync_channel::<Vec<f32>>(4);
@@ -129,18 +112,11 @@ fn main() -> anyhow::Result<()> {
                 break;
             }
             offset = end;
-            std::thread::sleep(std::time::Duration::from_secs_f64(AUDIO_CHUNK as f64 / 16000.0));
+            std::thread::sleep(Duration::from_secs_f64(AUDIO_CHUNK as f64 / 16000.0));
         }
     })?;
 
-    // ── Main thread: streaming pipeline ─────────────────────────────────
-
-    let print_partial = |hyp: &[usize], vocab: &[&str], tag: &str| {
-        let text: String = hyp.iter().map(|&t| vocab[t]).join("");
-        let display = text.replace('▁', " ");
-        eprintln!("{} {tag}", display.trim_start());
-    };
-
+    // ── State ───────────────────────────────────────────────────────────
     let mut audio_buf: Vec<f32> = Vec::new();
     let mut audio_consumed: usize = 0;
     let mut preproc_state = preprocessor.spawn_state()?;
@@ -148,11 +124,20 @@ fn main() -> anyhow::Result<()> {
     let mut enc_delay_remaining = enc_delay;
     let mut pp_delay_remaining = pp_delay;
     let mut pulse_count: usize = 0;
-    let max_tokens_per_frame = 10;
-    // Feature buffer: accumulates preprocessor output frames until a full
-    // encoder pulse (ENCODER_PULSE frames) is available.
     let mut feat_buf: Vec<ArrayD<f32>> = Vec::new();
     let mut feat_buf_frames: usize = 0;
+    let mut hyp: Vec<usize> = vec![];
+    let max_tokens_per_frame = 10;
+
+    // Stats.
+    let mut total_preproc = Duration::ZERO;
+    let mut total_encoder = Duration::ZERO;
+    let mut total_joint = Duration::ZERO;
+    let mut total_decoder = Duration::ZERO;
+    let mut n_preproc: usize = 0;
+    let mut n_encoder: usize = 0;
+    let mut n_joint: usize = 0;
+    let mut n_decoder: usize = 0;
 
     // Warm-up decoder.
     let blank_tok = Tensor::from_slice(&[1, 1], &[blank_id as i32])?;
@@ -165,58 +150,51 @@ fn main() -> anyhow::Result<()> {
     state_0 = s0;
     state_1 = s1;
 
-    let mut hyp: Vec<usize> = vec![];
+    // ── Inline helpers as macros to avoid borrow issues ─────────────────
 
-    // Helper: run RNNT decode on one encoder output frame.
-    let mut decode_frame = |frame: Tensor,
-                            dec_token: &mut Tensor,
-                            state_0: &mut Tensor,
-                            state_1: &mut Tensor,
-                            hyp: &mut Vec<usize>,
-                            vocab: &[&str]|
-     -> anyhow::Result<()> {
-        let mut tokens_this_frame = 0;
-        loop {
-            let [logits] = joint.run([frame.clone(), dec_token.clone()])?.try_into().unwrap();
-            let logits_view = logits.view::<f32>()?;
-            let token_id = argmax(logits_view.as_slice().unwrap()).unwrap();
-            if token_id == blank_id {
-                break;
+    /// Run RNNT decode loop on one encoder frame.
+    macro_rules! decode_frame {
+        ($frame:expr) => {{
+            let frame = $frame;
+            let mut tokens_this_frame = 0usize;
+            loop {
+                show(&hyp, &vocab, "[jnt]");
+                let t = Instant::now();
+                let [logits] = joint.run([frame.clone(), dec_token.clone()])?.try_into().unwrap();
+                total_joint += t.elapsed();
+                n_joint += 1;
+                let logits_view = logits.view::<f32>()?;
+                let token_id = argmax(logits_view.as_slice().unwrap()).unwrap();
+                if token_id == blank_id {
+                    break;
+                }
+                hyp.push(token_id);
+                tokens_this_frame += 1;
+                show(&hyp, &vocab, "[dec]");
+                let t = Instant::now();
+                let tok = Tensor::from_slice(&[1, 1], &[token_id as i32])?;
+                [dec_token, state_0, state_1] =
+                    decoder.run([tok, state_0, state_1])?.try_into().unwrap();
+                total_decoder += t.elapsed();
+                n_decoder += 1;
+                if tokens_this_frame >= max_tokens_per_frame {
+                    break;
+                }
             }
-            hyp.push(token_id);
-            tokens_this_frame += 1;
-            let tok = Tensor::from_slice(&[1, 1], &[token_id as i32])?;
-            let [dt, s0, s1] =
-                decoder.run([tok, state_0.clone(), state_1.clone()])?.try_into().unwrap();
-            *dec_token = dt;
-            *state_0 = s0;
-            *state_1 = s1;
-            print_partial(hyp, vocab, "[decoder]");
-            if tokens_this_frame >= max_tokens_per_frame {
-                break;
-            }
-        }
-        Ok(())
-    };
+        }};
+    }
 
-    // Helper: process one encoder pulse from feature data.
-    let mut run_encoder_pulse =
-        |features: &ArrayD<f32>, tag: &str, audio_time: f64| -> anyhow::Result<()> {
-            let enc_start = Instant::now();
-            let pulse_tensor: Tensor = tensor(features.to_owned())?;
+    /// Run one encoder pulse and decode all output frames.
+    macro_rules! encoder_pulse {
+        ($features:expr) => {{
+            show(&hyp, &vocab, "[enc]");
+            let t = Instant::now();
+            let pulse_tensor: Tensor = tensor($features)?;
             let enc_results = encoder_state.run([pulse_tensor])?;
-            let enc_ms = enc_start.elapsed().as_secs_f64() * 1000.0;
+            total_encoder += t.elapsed();
+            n_encoder += 1;
             let enc_out: ArrayD<f32> = enc_results[0].view()?.into_owned();
-
             pulse_count += 1;
-            print_partial(
-                &hyp,
-                &vocab,
-                &format!(
-                    "[{tag} encoder {enc_ms:.0}ms | pulse {pulse_count} | audio {audio_time:.2}s]"
-                ),
-            );
-
             for f in 0..enc_output_pulse {
                 if enc_delay_remaining > 0 {
                     enc_delay_remaining -= 1;
@@ -224,101 +202,145 @@ fn main() -> anyhow::Result<()> {
                 }
                 let frame: Tensor =
                     tensor(enc_out.slice_axis(Axis(enc_output_axis), (f..f + 1).into()))?;
-                decode_frame(frame, &mut dec_token, &mut state_0, &mut state_1, &mut hyp, &vocab)?;
+                decode_frame!(frame);
             }
-            Ok(())
-        };
+        }};
+    }
 
-    // Helper: buffer preprocessor output and feed encoder when ready.
-    let mut feed_features =
-        |features: ArrayD<f32>, pp_tag: &str, audio_time: f64| -> anyhow::Result<()> {
-            // Skip delay frames from preprocessor output.
+    /// Buffer preprocessor features and run encoder when enough accumulate.
+    macro_rules! feed_features {
+        ($features:expr) => {{
+            let features: ArrayD<f32> = $features;
             let usable_start = pp_delay_remaining.min(pp_out_pulse);
             pp_delay_remaining = pp_delay_remaining.saturating_sub(pp_out_pulse);
-            if usable_start >= pp_out_pulse {
-                return Ok(());
-            }
-            let usable =
-                features.slice_axis(Axis(pp_out_axis), (usable_start..pp_out_pulse).into());
-            let n_new = usable.shape()[pp_out_axis];
-            feat_buf.push(usable.to_owned());
-            feat_buf_frames += n_new;
-
-            // Run encoder pulses from the feature buffer.
-            while feat_buf_frames >= ENCODER_PULSE {
-                // Concatenate buffered features and take ENCODER_PULSE.
-                let refs: Vec<_> = feat_buf.iter().map(|a| a.view()).collect();
-                let all = tract::prelude::tract_ndarray::concatenate(Axis(pp_out_axis), &refs)?;
-                let enc_features = all.slice_axis(Axis(pp_out_axis), (..ENCODER_PULSE).into());
-                run_encoder_pulse(&enc_features.to_owned(), pp_tag, audio_time)?;
-
-                // Keep leftover features.
-                let leftover = all.slice_axis(Axis(pp_out_axis), (ENCODER_PULSE..).into());
-                feat_buf_frames -= ENCODER_PULSE;
-                feat_buf.clear();
-                if feat_buf_frames > 0 {
-                    feat_buf.push(leftover.to_owned());
+            if usable_start < pp_out_pulse {
+                let usable =
+                    features.slice_axis(Axis(pp_out_axis), (usable_start..pp_out_pulse).into());
+                feat_buf.push(usable.to_owned());
+                feat_buf_frames += usable.shape()[pp_out_axis];
+                while feat_buf_frames >= ENCODER_PULSE {
+                    let refs: Vec<_> = feat_buf.iter().map(|a| a.view()).collect();
+                    let all = tract::prelude::tract_ndarray::concatenate(Axis(pp_out_axis), &refs)?;
+                    let enc_feat = all.slice_axis(Axis(pp_out_axis), (..ENCODER_PULSE).into());
+                    encoder_pulse!(enc_feat.to_owned());
+                    let leftover = all.slice_axis(Axis(pp_out_axis), (ENCODER_PULSE..).into());
+                    feat_buf_frames -= ENCODER_PULSE;
+                    feat_buf.clear();
+                    if feat_buf_frames > 0 {
+                        feat_buf.push(leftover.to_owned());
+                    }
                 }
             }
-            Ok(())
-        };
+        }};
+    }
+
+    /// Run preprocessor on a sample buffer and feed features.
+    macro_rules! run_preproc {
+        ($input:expr) => {{
+            show(&hyp, &vocab, "[pre]");
+            let t = Instant::now();
+            let pp_results = preproc_state.run([$input])?;
+            total_preproc += t.elapsed();
+            n_preproc += 1;
+            let features: ArrayD<f32> = pp_results[0].view()?.into_owned();
+            feed_features!(features);
+        }};
+    }
+
+    // ── Main loop ───────────────────────────────────────────────────────
+
+    let stream_start = Instant::now();
 
     for chunk in audio_rx {
         audio_buf.extend_from_slice(&chunk);
+        show(&hyp, &vocab, "");
 
-        // Run preprocessor pulses as audio accumulates.
         while audio_consumed + PREPROC_PULSE <= audio_buf.len() {
             let start = audio_consumed;
             let end = start + PREPROC_PULSE;
-
             let pp_input = Tensor::from_slice(&pp_input_shape, &audio_buf[start..end])?;
-            let pp_start = Instant::now();
-            let pp_results = preproc_state.run([pp_input])?;
-            let pp_ms = pp_start.elapsed().as_secs_f64() * 1000.0;
-            let features: ArrayD<f32> = pp_results[0].view()?.into_owned();
             audio_consumed = end;
-
-            let audio_time = audio_buf.len() as f64 / 16000.0;
-            feed_features(features, &format!("preproc {pp_ms:.0}ms +"), audio_time)?;
+            run_preproc!(pp_input);
         }
     }
 
-    // Flush: zero-padded final preprocessor pulse.
-    {
-        let remaining = audio_buf.len() - audio_consumed;
-        if remaining > 0 {
-            let mut pp_input_data = vec![0.0f32; pp_input_shape.iter().product()];
-            pp_input_data[..remaining].copy_from_slice(&audio_buf[audio_consumed..]);
-            let pp_input = Tensor::from_slice(&pp_input_shape, &pp_input_data)?;
-            let pp_results = preproc_state.run([pp_input])?;
-            let features: ArrayD<f32> = pp_results[0].view()?.into_owned();
-            let audio_time = audio_buf.len() as f64 / 16000.0;
-            feed_features(features, "flush +", audio_time)?;
-        }
-        // Flush remaining buffered features as a zero-padded encoder pulse.
-        if feat_buf_frames > 0 {
-            let refs: Vec<_> = feat_buf.iter().map(|a| a.view()).collect();
-            let leftover = tract::prelude::tract_ndarray::concatenate(Axis(pp_out_axis), &refs)?;
-            let mut enc_input =
-                Array3::<f32>::zeros((enc_input_shape[0], enc_input_shape[1], enc_input_shape[2]));
-            let n = leftover.shape()[pp_out_axis].min(enc_input_shape[2]);
-            enc_input.slice_mut(s![.., .., ..n]).assign(&leftover.slice(s![.., .., ..n]));
-            let at = audio_buf.len() as f64 / 16000.0;
-            run_encoder_pulse(&enc_input.into_dyn(), "flush +", at)?;
-        }
+    // Flush remaining audio.
+    let remaining = audio_buf.len() - audio_consumed;
+    if remaining > 0 {
+        let mut pp_input_data = vec![0.0f32; pp_input_shape.iter().product()];
+        pp_input_data[..remaining].copy_from_slice(&audio_buf[audio_consumed..]);
+        let pp_input = Tensor::from_slice(&pp_input_shape, &pp_input_data)?;
+        run_preproc!(pp_input);
+    }
+    // Flush remaining buffered features.
+    if feat_buf_frames > 0 {
+        let refs: Vec<_> = feat_buf.iter().map(|a| a.view()).collect();
+        let leftover = tract::prelude::tract_ndarray::concatenate(Axis(pp_out_axis), &refs)?;
+        let mut enc_input =
+            Array3::<f32>::zeros((enc_input_shape[0], enc_input_shape[1], enc_input_shape[2]));
+        let n = leftover.shape()[pp_out_axis].min(enc_input_shape[2]);
+        enc_input.slice_mut(s![.., .., ..n]).assign(&leftover.slice(s![.., .., ..n]));
+        encoder_pulse!(enc_input);
     }
 
+    let stream_time = stream_start.elapsed();
     mic_handle.join().unwrap();
 
+    // Final transcript.
     let transcript: String = hyp.iter().map(|&t| vocab[t]).join("");
     let display = transcript.replace('▁', " ");
-    eprintln!("\n{}", display.trim_start());
+    eprint!("\r{}                    \n", display.trim_start());
+
+    // Stats.
+    eprintln!();
+    eprintln!("--- stats ---");
+    eprintln!("runtime:       {}", runtime.name()?);
+    eprintln!("model load:    {:.1}s", load_time.as_secs_f64());
+    eprintln!("audio:         {:.2}s ({} samples at 16kHz)", audio_duration, total_samples);
+    eprintln!(
+        "stream wall:   {:.2}s ({:.1}x real-time)",
+        stream_time.as_secs_f64(),
+        audio_duration / stream_time.as_secs_f64()
+    );
+    eprintln!("pulses:        {pulse_count}");
+    if n_preproc > 0 {
+        eprintln!(
+            "preprocessor:  {:.1}ms total, {:.1}ms/pulse ({n_preproc} calls)",
+            total_preproc.as_secs_f64() * 1000.0,
+            total_preproc.as_secs_f64() * 1000.0 / n_preproc as f64
+        );
+    }
+    if n_encoder > 0 {
+        eprintln!(
+            "encoder:       {:.1}ms total, {:.1}ms/pulse ({n_encoder} calls)",
+            total_encoder.as_secs_f64() * 1000.0,
+            total_encoder.as_secs_f64() * 1000.0 / n_encoder as f64
+        );
+    }
+    if n_joint > 0 {
+        eprintln!(
+            "joint:         {:.1}ms total, {:.2}ms/call ({n_joint} calls)",
+            total_joint.as_secs_f64() * 1000.0,
+            total_joint.as_secs_f64() * 1000.0 / n_joint as f64
+        );
+    }
+    if n_decoder > 0 {
+        eprintln!(
+            "decoder:       {:.1}ms total, {:.2}ms/call ({n_decoder} calls)",
+            total_decoder.as_secs_f64() * 1000.0,
+            total_decoder.as_secs_f64() * 1000.0 / n_decoder as f64
+        );
+    }
+    let compute_total = total_preproc + total_encoder + total_joint + total_decoder;
+    eprintln!(
+        "compute total: {:.1}ms ({:.1}x real-time)",
+        compute_total.as_secs_f64() * 1000.0,
+        audio_duration / compute_total.as_secs_f64()
+    );
 
     let expected = "▁well▁I▁don't▁wish▁to▁see▁it▁any▁more▁observed▁Phoebe,▁turning▁away▁her▁eyes.▁It▁is▁certainly▁very▁like▁the▁old▁portrait";
     if transcript != expected {
-        eprintln!(
-            "\nNOTE: streaming transcript differs slightly from batch reference (pulse boundary effects)"
-        );
+        eprintln!("\nNOTE: streaming transcript differs slightly from batch reference");
     }
     Ok(())
 }
