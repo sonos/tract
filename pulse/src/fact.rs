@@ -42,7 +42,13 @@ impl PulsedFact {
             .stream_info(symbol)
             .ok_or_else(|| format_err!("Can not pulse a tensor with no streaming dim"))?;
         let mut shape: TVec<TDim> = tf.shape.to_tvec();
-        shape[axis] = pulse.clone();
+        // Compute the pulse-time size: substitute the streaming symbol with the
+        // pulse value in the dimension expression.  For `2*s` with pulse=2, this
+        // gives 4.  For plain `s` with pulse=2, this gives 2 (unchanged).
+        let mut sv = SymbolValues::default();
+        sv.set_tdim(symbol, pulse.clone());
+        let pulsed_dim = len.eval(&sv);
+        shape[axis] = pulsed_dim;
         Ok(PulsedFact {
             datum_type,
             shape: shape.into(),
