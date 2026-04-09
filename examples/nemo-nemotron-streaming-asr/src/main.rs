@@ -41,24 +41,27 @@ fn main() -> anyhow::Result<()> {
         .unwrap();
 
     // ── Preprocessor (pulsified) ────────────────────────────────────────
-    eprint!("Loading preprocessor...");
+    eprint!("Loading preprocessor to {}...", runtime.name()?);
     let mut preprocessor = nnef.load("assets/model/preprocessor.nnef.tgz")?;
     preprocessor.transform(ConcretizeSymbols::new().value("BATCH", 1))?;
     preprocessor
         .transform(r#"{"name":"patch","body":"length = tract_core_shape_of(input_signal)[1];"}"#)?;
     preprocessor.transform(r#"{"name":"select_outputs","outputs":["processed_signal"]}"#)?;
     preprocessor.transform(Pulse::new(PREPROC_PULSE.to_string()).symbol("INPUT_SIGNAL__TIME"))?;
-    let preprocessor = preprocessor.into_runnable()?;
-    eprintln!(" done.");
-
+    // Read pulse metadata before GPU preparation (GPU runtime may not report
+    // streaming dim sizes through the Fact interface).
     let pp_delay = preprocessor.property("pulse.delay")?.view::<i64>()?[0].to_owned() as usize;
     let pp_out_axis =
         preprocessor.property("pulse.output_axes")?.view::<i64>()?[0].to_owned() as usize;
     let pp_out_pulse = preprocessor.output_fact(0)?.dim(pp_out_axis)?.to_int64()? as usize;
-    let pp_fact = preprocessor.input_fact(0)?;
-    let pp_input_shape: Vec<usize> = (0..pp_fact.rank()?)
-        .map(|a| pp_fact.dim(a).and_then(|d| d.to_int64()).map(|v| v as usize))
-        .collect::<Result<_>>()?;
+    let pp_input_shape: Vec<usize> = {
+        let f = preprocessor.input_fact(0)?;
+        (0..f.rank()?)
+            .map(|a| f.dim(a).and_then(|d| d.to_int64()).map(|v| v as usize))
+            .collect::<Result<_>>()?
+    };
+    let preprocessor = runtime.prepare(preprocessor)?;
+    eprintln!(" done.");
 
     // ── Encoder (pulsified) ─────────────────────────────────────────────
     eprint!("Loading encoder to {}...", runtime.name()?);
