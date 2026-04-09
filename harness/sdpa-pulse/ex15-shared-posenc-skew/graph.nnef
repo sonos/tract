@@ -11,18 +11,15 @@ extension tract_assert S>=0;
 # The DynSlice has symbolic bounds so try_compute_const fails.
 # left_chunks=3, W=8, T=8, P=2
 
-graph network(qkv) -> (output)
+graph network(q, k) -> (output)
 {
-    qkv    = tract_core_external(shape = [BATCH, S, 12], datum_type = 'f32');
+    q      = tract_core_external(shape = [BATCH, S, 4], datum_type = 'f32');
+    k      = tract_core_external(shape = [BATCH, S, 4], datum_type = 'f32');
     r_full = variable<scalar>(label = 'r_pos', shape = [15, 4]);
-
-    q = slice(qkv, axes = [2], begin = [0],  end = [4]);
-    k = slice(qkv, axes = [2], begin = [4],  end = [8]);
-    v = slice(qkv, axes = [2], begin = [8],  end = [12]);
 
     content_scores = tract_core_einsum([q, k], expr = "bid,bjd->bij", acc = "f32");
 
-    q_shape   = tract_core_shape_of(qkv);
+    q_shape   = tract_core_shape_of(q);
     T_sl      = slice(q_shape, axes = [0], begin = [1], end = [2], stride = [1]);
     T         = squeeze(T_sl, axes = [0]);
 
@@ -61,8 +58,5 @@ graph network(qkv) -> (output)
     window_mask_2d  = and(le_mask, ge_mask);
     window_mask     = unsqueeze(window_mask_2d, axes = [0]);
 
-    masked_scores = select(window_mask, scores, scores * 0.0 + -inf);
-    attn          = softmax(masked_scores, axes = [2]);
-
-    output = tract_core_einsum([attn, v], expr = "bij,bjd->bid", acc = "f32");
+    output = select(window_mask, scores, scores * 0.0 + -inf);
 }
