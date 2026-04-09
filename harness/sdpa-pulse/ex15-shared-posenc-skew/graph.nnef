@@ -24,7 +24,7 @@ extension tract_assert BATCH>=1;
 # linearPos still has konst=false.  pulsify_qk must use try_compute_const
 # to evaluate the chain.
 #
-# Parameters: T=8, P=2, left_chunks=1, W=4, H=2, Dh=4, D_model=8
+# Parameters: T=8, P=2, left_chunks=5 (ci-failing) / 1 (ci), W=12/4, H=2, Dh=4, D_model=8
 # posEnc_full shape = [2*T_max-1, D_model] = [15, 8]
 # center = 8 (= T_max)
 
@@ -91,7 +91,7 @@ graph network(q, k, v) -> (output)
     ci_col         = unsqueeze(chunkIdx, axes = [0]);
     diffChunks     = sub(ci_row, ci_col);
 
-    left_chunks_i64 = tract_core_cast(1, to = 'i64');
+    left_chunks_i64 = tract_core_cast(5, to = 'i64');
     zero_i64b       = tract_core_cast(0, to = 'i64');
     le_mask         = le(diffChunks, left_chunks_i64);
     ge_mask         = ge(diffChunks, zero_i64b);
