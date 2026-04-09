@@ -35,6 +35,7 @@ members = [
     "examples/keras-tract-tf2",
     "examples/nemo-parakeet-asr",
     "examples/nemo-nemotron-asr",
+    "examples/nemo-nemotron-streaming-asr",
     "examples/nnef-dump-mobilenet-v2",
     "examples/nnef-mobilenet-v2",
     "examples/nnef-mobilenet-v2-api",
