@@ -16,9 +16,13 @@ fn argmax(slice: &[f32]) -> Option<usize> {
 /// 80 samples = 5ms of audio — simulates a real-time audio callback.
 const AUDIO_CHUNK: usize = 80;
 
-/// The encoder pulse in audio feature frames (after STFT).
-/// 14 transformer-token chunks * 8x conv subsampling = 112 frames.
-const AUDIO_PULSE: usize = 112;
+/// Preprocessor pulse in audio samples.
+/// 112 feature frames × 160 samples/frame (STFT hop) = 17920 samples.
+const PREPROC_PULSE: usize = 17920;
+
+/// Encoder pulse in feature frames.
+/// 14 transformer-token chunks × 8x conv subsampling = 112 frames.
+const ENCODER_PULSE: usize = 112;
 
 fn main() -> anyhow::Result<()> {
     let t0 = Instant::now();
@@ -37,13 +41,23 @@ fn main() -> anyhow::Result<()> {
         .unwrap();
     eprintln!("[{:7.3}] Runtime: {}", t0.elapsed().as_secs_f64(), runtime.name()?);
 
-    // ── Preprocessor (CPU — variable-length input not suited for GPU) ──
+    // ── Preprocessor (pulsified) ────────────────────────────────────────
     let mut preprocessor = nnef.load("assets/model/preprocessor.nnef.tgz")?;
     preprocessor.transform(ConcretizeSymbols::new().value("BATCH", 1))?;
     preprocessor
         .transform(r#"{"name":"patch","body":"length = tract_core_shape_of(input_signal)[1];"}"#)?;
     preprocessor.transform(r#"{"name":"select_outputs","outputs":["processed_signal"]}"#)?;
+    preprocessor.transform(Pulse::new(PREPROC_PULSE.to_string()).symbol("INPUT_SIGNAL__TIME"))?;
     let preprocessor = preprocessor.into_runnable()?;
+
+    let pp_delay = preprocessor.property("pulse.delay")?.view::<i64>()?[0].to_owned() as usize;
+    let pp_out_axis =
+        preprocessor.property("pulse.output_axes")?.view::<i64>()?[0].to_owned() as usize;
+    let pp_out_pulse = preprocessor.output_fact(0)?.dim(pp_out_axis)?.to_int64()? as usize;
+    let pp_fact = preprocessor.input_fact(0)?;
+    let pp_input_shape: Vec<usize> = (0..pp_fact.rank()?)
+        .map(|a| pp_fact.dim(a).and_then(|d| d.to_int64()).map(|v| v as usize))
+        .collect::<Result<_>>()?;
 
     // ── Encoder (pulsified) ─────────────────────────────────────────────
     let mut encoder = nnef.load("assets/model/encoder.p1.nnef.tgz")?;
@@ -52,7 +66,7 @@ fn main() -> anyhow::Result<()> {
     encoder
         .transform(r#"{"name":"patch","body":"length = tract_core_shape_of(audio_signal)[2];"}"#)?;
     encoder.transform(r#"{"name":"select_outputs","outputs":["outputs"]}"#)?;
-    encoder.transform(Pulse::new(AUDIO_PULSE.to_string()).symbol("AUDIO_SIGNAL__TIME"))?;
+    encoder.transform(Pulse::new(ENCODER_PULSE.to_string()).symbol("AUDIO_SIGNAL__TIME"))?;
     let encoder = runtime.prepare(encoder)?;
 
     let enc_output_axis =
@@ -64,13 +78,12 @@ fn main() -> anyhow::Result<()> {
         .map(|a| enc_fact.dim(a).and_then(|d| d.to_int64()).map(|v| v as usize))
         .collect::<Result<_>>()?;
 
-    // ── Decoder ─────────────────────────────────────────────────────────
+    // ── Decoder + Joint ─────────────────────────────────────────────────
     let mut decoder_model = nnef.load("assets/model/decoder.nnef.tgz")?;
     decoder_model
         .transform(ConcretizeSymbols::new().value("BATCH", 1).value("TARGETS__TIME", 1))?;
     let decoder = runtime.prepare(decoder_model)?;
 
-    // ── Joint ───────────────────────────────────────────────────────────
     let mut joint_model = nnef.load("assets/model/joint.nnef.tgz")?;
     joint_model.transform(
         ConcretizeSymbols::new()
@@ -81,9 +94,13 @@ fn main() -> anyhow::Result<()> {
     let joint = runtime.prepare(joint_model)?;
 
     eprintln!(
-        "[{:7.3}] Models loaded. Encoder: {} audio frames/pulse -> {} token frames, delay: {}",
+        "[{:7.3}] Models loaded. Preproc: {} samples/pulse -> {} feat frames (delay {}). \
+         Encoder: {} feat frames/pulse -> {} token frames (delay {}).",
         t0.elapsed().as_secs_f64(),
-        AUDIO_PULSE,
+        PREPROC_PULSE,
+        pp_out_pulse,
+        pp_delay,
+        ENCODER_PULSE,
         enc_output_pulse,
         enc_delay,
     );
@@ -102,7 +119,7 @@ fn main() -> anyhow::Result<()> {
         AUDIO_CHUNK as f64 / 16.0,
     );
 
-    // ── Mic thread: sends audio in small chunks ─────────────────────────
+    // ── Mic thread ──────────────────────────────────────────────────────
     let (audio_tx, audio_rx) = mpsc::sync_channel::<Vec<f32>>(4);
     let mic_handle = std::thread::Builder::new().name("mic".into()).spawn(move || {
         let mut offset = 0;
@@ -116,7 +133,7 @@ fn main() -> anyhow::Result<()> {
         }
     })?;
 
-    // ── Main thread: preproc + encoder + decoder pipeline ───────────────
+    // ── Main thread: streaming pipeline ─────────────────────────────────
 
     let print_partial = |hyp: &[usize], vocab: &[&str], tag: &str| {
         let text: String = hyp.iter().map(|&t| vocab[t]).join("");
@@ -125,177 +142,169 @@ fn main() -> anyhow::Result<()> {
     };
 
     let mut audio_buf: Vec<f32> = Vec::new();
-    let mut features_produced: usize = 0;
+    let mut audio_consumed: usize = 0;
     let mut preproc_state = preprocessor.spawn_state()?;
     let mut encoder_state = encoder.spawn_state()?;
-    let mut delay_remaining = enc_delay;
+    let mut enc_delay_remaining = enc_delay;
+    let mut pp_delay_remaining = pp_delay;
     let mut pulse_count: usize = 0;
+    let max_tokens_per_frame = 10;
+    // Feature buffer: accumulates preprocessor output frames until a full
+    // encoder pulse (ENCODER_PULSE frames) is available.
+    let mut feat_buf: Vec<ArrayD<f32>> = Vec::new();
+    let mut feat_buf_frames: usize = 0;
 
-    // Warm-up decoder: NeMo's predict(add_sos=True, y=None) prepends a zero vector
-    // then processes one zero embedding — 2 steps total.  With TARGETS__TIME=1 we
-    // run the decoder twice with [blank_id] (which has zero embedding via padding_idx).
+    // Warm-up decoder.
     let blank_tok = Tensor::from_slice(&[1, 1], &[blank_id as i32])?;
     let mut state_0 = tensor(Array3::<f32>::zeros([2, 1, 640]))?;
     let mut state_1 = tensor(Array3::<f32>::zeros([2, 1, 640]))?;
-    // Step 1: SOS
     let [_out, s0, s1] = decoder.run([blank_tok.clone(), state_0, state_1])?.try_into().unwrap();
     state_0 = s0;
     state_1 = s1;
-    // Step 2: first blank
     let [mut dec_token, s0, s1] = decoder.run([blank_tok, state_0, state_1])?.try_into().unwrap();
     state_0 = s0;
     state_1 = s1;
 
     let mut hyp: Vec<usize> = vec![];
-    let max_tokens_per_frame = 10;
 
-    for chunk in audio_rx {
-        audio_buf.extend_from_slice(&chunk);
+    // Helper: run RNNT decode on one encoder output frame.
+    let mut decode_frame = |frame: Tensor,
+                            dec_token: &mut Tensor,
+                            state_0: &mut Tensor,
+                            state_1: &mut Tensor,
+                            hyp: &mut Vec<usize>,
+                            vocab: &[&str]|
+     -> anyhow::Result<()> {
+        let mut tokens_this_frame = 0;
+        loop {
+            let [logits] = joint.run([frame.clone(), dec_token.clone()])?.try_into().unwrap();
+            let logits_view = logits.view::<f32>()?;
+            let token_id = argmax(logits_view.as_slice().unwrap()).unwrap();
+            if token_id == blank_id {
+                break;
+            }
+            hyp.push(token_id);
+            tokens_this_frame += 1;
+            let tok = Tensor::from_slice(&[1, 1], &[token_id as i32])?;
+            let [dt, s0, s1] =
+                decoder.run([tok, state_0.clone(), state_1.clone()])?.try_into().unwrap();
+            *dec_token = dt;
+            *state_0 = s0;
+            *state_1 = s1;
+            print_partial(hyp, vocab, "[decoder]");
+            if tokens_this_frame >= max_tokens_per_frame {
+                break;
+            }
+        }
+        Ok(())
+    };
 
-        // Run preprocessor on accumulated audio.
-        let samples_tensor = Tensor::from_slice(&[1, audio_buf.len()], &audio_buf)?;
-        let pp_start = Instant::now();
-        let pp_results = preproc_state.run([samples_tensor])?;
-        let pp_ms = pp_start.elapsed().as_secs_f64() * 1000.0;
-        let features: ArrayD<f32> = pp_results[0].view()?.into_owned();
-        let total_feat_frames = features.shape()[2];
-
-        // Run encoder pulses as they become available.
-        while features_produced + AUDIO_PULSE <= total_feat_frames {
-            let start = features_produced;
-            let end = start + AUDIO_PULSE;
-
-            let mut pulse_data =
-                Array3::<f32>::zeros((enc_input_shape[0], enc_input_shape[1], enc_input_shape[2]));
-            pulse_data.slice_mut(s![.., .., ..AUDIO_PULSE]).assign(&features.slice(s![
-                ..,
-                ..,
-                start..end
-            ]));
-
+    // Helper: process one encoder pulse from feature data.
+    let mut run_encoder_pulse =
+        |features: &ArrayD<f32>, tag: &str, audio_time: f64| -> anyhow::Result<()> {
             let enc_start = Instant::now();
-            let pulse_tensor: Tensor = tensor(pulse_data)?;
+            let pulse_tensor: Tensor = tensor(features.to_owned())?;
             let enc_results = encoder_state.run([pulse_tensor])?;
             let enc_ms = enc_start.elapsed().as_secs_f64() * 1000.0;
             let enc_out: ArrayD<f32> = enc_results[0].view()?.into_owned();
 
             pulse_count += 1;
-            features_produced = end;
-
-            let audio_time = audio_buf.len() as f64 / 16000.0;
             print_partial(
                 &hyp,
                 &vocab,
                 &format!(
-                    "[preproc {pp_ms:.0}ms + encoder {enc_ms:.0}ms | pulse {pulse_count} | audio {audio_time:.2}s]"
+                    "[{tag} encoder {enc_ms:.0}ms | pulse {pulse_count} | audio {audio_time:.2}s]"
                 ),
             );
 
-            // Decode each encoder output frame.
             for f in 0..enc_output_pulse {
-                if delay_remaining > 0 {
-                    delay_remaining -= 1;
+                if enc_delay_remaining > 0 {
+                    enc_delay_remaining -= 1;
                     continue;
                 }
                 let frame: Tensor =
                     tensor(enc_out.slice_axis(Axis(enc_output_axis), (f..f + 1).into()))?;
+                decode_frame(frame, &mut dec_token, &mut state_0, &mut state_1, &mut hyp, &vocab)?;
+            }
+            Ok(())
+        };
 
-                let mut tokens_this_frame = 0;
-                loop {
-                    let [logits] =
-                        joint.run([frame.clone(), dec_token.clone()])?.try_into().unwrap();
-                    let logits = logits.view::<f32>()?;
-                    let logits = logits.as_slice().unwrap();
-                    let token_id = argmax(logits).unwrap();
+    // Helper: buffer preprocessor output and feed encoder when ready.
+    let mut feed_features =
+        |features: ArrayD<f32>, pp_tag: &str, audio_time: f64| -> anyhow::Result<()> {
+            // Skip delay frames from preprocessor output.
+            let usable_start = pp_delay_remaining.min(pp_out_pulse);
+            pp_delay_remaining = pp_delay_remaining.saturating_sub(pp_out_pulse);
+            if usable_start >= pp_out_pulse {
+                return Ok(());
+            }
+            let usable =
+                features.slice_axis(Axis(pp_out_axis), (usable_start..pp_out_pulse).into());
+            let n_new = usable.shape()[pp_out_axis];
+            feat_buf.push(usable.to_owned());
+            feat_buf_frames += n_new;
 
-                    if token_id == blank_id {
-                        break;
-                    }
+            // Run encoder pulses from the feature buffer.
+            while feat_buf_frames >= ENCODER_PULSE {
+                // Concatenate buffered features and take ENCODER_PULSE.
+                let refs: Vec<_> = feat_buf.iter().map(|a| a.view()).collect();
+                let all = tract::prelude::tract_ndarray::concatenate(Axis(pp_out_axis), &refs)?;
+                let enc_features = all.slice_axis(Axis(pp_out_axis), (..ENCODER_PULSE).into());
+                run_encoder_pulse(&enc_features.to_owned(), pp_tag, audio_time)?;
 
-                    hyp.push(token_id);
-                    tokens_this_frame += 1;
-
-                    let tok = Tensor::from_slice(&[1, 1], &[token_id as i32])?;
-                    [dec_token, state_0, state_1] =
-                        decoder.run([tok, state_0, state_1])?.try_into().unwrap();
-
-                    print_partial(&hyp, &vocab, "[decoder]");
-
-                    if tokens_this_frame >= max_tokens_per_frame {
-                        break;
-                    }
+                // Keep leftover features.
+                let leftover = all.slice_axis(Axis(pp_out_axis), (ENCODER_PULSE..).into());
+                feat_buf_frames -= ENCODER_PULSE;
+                feat_buf.clear();
+                if feat_buf_frames > 0 {
+                    feat_buf.push(leftover.to_owned());
                 }
             }
+            Ok(())
+        };
+
+    for chunk in audio_rx {
+        audio_buf.extend_from_slice(&chunk);
+
+        // Run preprocessor pulses as audio accumulates.
+        while audio_consumed + PREPROC_PULSE <= audio_buf.len() {
+            let start = audio_consumed;
+            let end = start + PREPROC_PULSE;
+
+            let pp_input = Tensor::from_slice(&pp_input_shape, &audio_buf[start..end])?;
+            let pp_start = Instant::now();
+            let pp_results = preproc_state.run([pp_input])?;
+            let pp_ms = pp_start.elapsed().as_secs_f64() * 1000.0;
+            let features: ArrayD<f32> = pp_results[0].view()?.into_owned();
+            audio_consumed = end;
+
+            let audio_time = audio_buf.len() as f64 / 16000.0;
+            feed_features(features, &format!("preproc {pp_ms:.0}ms +"), audio_time)?;
         }
     }
 
-    // Flush: zero-padded final pulse if there are leftover features.
+    // Flush: zero-padded final preprocessor pulse.
     {
-        let samples_tensor = Tensor::from_slice(&[1, audio_buf.len()], &audio_buf)?;
-        let pp_results = preproc_state.run([samples_tensor])?;
-        let features: ArrayD<f32> = pp_results[0].view()?.into_owned();
-        let total_feat_frames = features.shape()[2];
-
-        if total_feat_frames > features_produced {
-            let start = features_produced;
-            let remaining = total_feat_frames - start;
-
-            let mut pulse_data =
+        let remaining = audio_buf.len() - audio_consumed;
+        if remaining > 0 {
+            let mut pp_input_data = vec![0.0f32; pp_input_shape.iter().product()];
+            pp_input_data[..remaining].copy_from_slice(&audio_buf[audio_consumed..]);
+            let pp_input = Tensor::from_slice(&pp_input_shape, &pp_input_data)?;
+            let pp_results = preproc_state.run([pp_input])?;
+            let features: ArrayD<f32> = pp_results[0].view()?.into_owned();
+            let audio_time = audio_buf.len() as f64 / 16000.0;
+            feed_features(features, "flush +", audio_time)?;
+        }
+        // Flush remaining buffered features as a zero-padded encoder pulse.
+        if feat_buf_frames > 0 {
+            let refs: Vec<_> = feat_buf.iter().map(|a| a.view()).collect();
+            let leftover = tract::prelude::tract_ndarray::concatenate(Axis(pp_out_axis), &refs)?;
+            let mut enc_input =
                 Array3::<f32>::zeros((enc_input_shape[0], enc_input_shape[1], enc_input_shape[2]));
-            pulse_data.slice_mut(s![.., .., ..remaining]).assign(&features.slice(s![
-                ..,
-                ..,
-                start..total_feat_frames
-            ]));
-
-            let enc_start = Instant::now();
-            let pulse_tensor: Tensor = tensor(pulse_data)?;
-            let enc_results = encoder_state.run([pulse_tensor])?;
-            let enc_ms = enc_start.elapsed().as_secs_f64() * 1000.0;
-            let enc_out: ArrayD<f32> = enc_results[0].view()?.into_owned();
-
-            pulse_count += 1;
-            print_partial(
-                &hyp,
-                &vocab,
-                &format!("[encoder {enc_ms:.0}ms | pulse {pulse_count} (flush)]"),
-            );
-
-            let output_frames = (total_feat_frames + 6) / 8 + 1 - (features_produced + 6) / 8;
-            for f in 0..output_frames.min(enc_output_pulse) {
-                if delay_remaining > 0 {
-                    delay_remaining -= 1;
-                    continue;
-                }
-                let frame: Tensor =
-                    tensor(enc_out.slice_axis(Axis(enc_output_axis), (f..f + 1).into()))?;
-
-                let mut tokens_this_frame = 0;
-                loop {
-                    let [logits] =
-                        joint.run([frame.clone(), dec_token.clone()])?.try_into().unwrap();
-                    let logits = logits.view::<f32>()?;
-                    let logits = logits.as_slice().unwrap();
-                    let token_id = argmax(logits).unwrap();
-
-                    if token_id == blank_id {
-                        break;
-                    }
-
-                    hyp.push(token_id);
-                    tokens_this_frame += 1;
-
-                    let tok = Tensor::from_slice(&[1, 1], &[token_id as i32])?;
-                    [dec_token, state_0, state_1] =
-                        decoder.run([tok, state_0, state_1])?.try_into().unwrap();
-
-                    print_partial(&hyp, &vocab, "[decoder]");
-
-                    if tokens_this_frame >= max_tokens_per_frame {
-                        break;
-                    }
-                }
-            }
+            let n = leftover.shape()[pp_out_axis].min(enc_input_shape[2]);
+            enc_input.slice_mut(s![.., .., ..n]).assign(&leftover.slice(s![.., .., ..n]));
+            let at = audio_buf.len() as f64 / 16000.0;
+            run_encoder_pulse(&enc_input.into_dyn(), "flush +", at)?;
         }
     }
 
