@@ -250,76 +250,7 @@ pub fn get_transform_with_params(
 
 #[derive(Debug, Default, serde::Deserialize)]
 pub struct ConcretizeSymbolsConfig {
-    #[serde(default, deserialize_with = "deserialize_symbol_values")]
-    pub values: std::collections::HashMap<String, String>,
-}
-
-fn deserialize_symbol_values<'de, D>(
-    deserializer: D,
-) -> Result<std::collections::HashMap<String, String>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    use serde::de::{MapAccess, Visitor};
-    use std::fmt;
-
-    struct SymbolValuesVisitor;
-
-    impl<'de> Visitor<'de> for SymbolValuesVisitor {
-        type Value = std::collections::HashMap<String, String>;
-
-        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-            formatter.write_str("a map of symbol names to integer or TDim expression values")
-        }
-
-        fn visit_map<M>(self, mut map: M) -> Result<Self::Value, M::Error>
-        where
-            M: MapAccess<'de>,
-        {
-            let mut result = std::collections::HashMap::new();
-            while let Some(key) = map.next_key::<String>()? {
-                let value: StringOrInt = map.next_value()?;
-                result.insert(key, value.0);
-            }
-            Ok(result)
-        }
-    }
-
-    deserializer.deserialize_map(SymbolValuesVisitor)
-}
-
-/// Helper that deserializes either an integer or a string into a String.
-struct StringOrInt(String);
-
-impl<'de> serde::Deserialize<'de> for StringOrInt {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        use serde::de::Visitor;
-        use std::fmt;
-
-        struct V;
-        impl<'de> Visitor<'de> for V {
-            type Value = StringOrInt;
-            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
-                f.write_str("integer or string")
-            }
-            fn visit_i64<E: serde::de::Error>(self, v: i64) -> Result<StringOrInt, E> {
-                Ok(StringOrInt(v.to_string()))
-            }
-            fn visit_u64<E: serde::de::Error>(self, v: u64) -> Result<StringOrInt, E> {
-                Ok(StringOrInt(v.to_string()))
-            }
-            fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<StringOrInt, E> {
-                Ok(StringOrInt(v.to_string()))
-            }
-            fn visit_string<E: serde::de::Error>(self, v: String) -> Result<StringOrInt, E> {
-                Ok(StringOrInt(v))
-            }
-        }
-        deserializer.deserialize_any(V)
-    }
+    pub values: std::collections::HashMap<String, i64>,
 }
 
 #[derive(Debug)]
@@ -333,14 +264,7 @@ impl ModelTransform for ConcretizeSymbolsTransform {
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
         let mut table = SymbolValues::default();
         for (k, v) in &self.0.values {
-            let sym = model.symbols.sym(k);
-            let tdim = crate::internal::parse_tdim(&model.symbols, v).with_context(|| {
-                format!("concretize_symbols: failed to parse value for {k}: {v}")
-            })?;
-            match tdim.to_i64() {
-                Ok(i) => table.set(&sym, i),
-                Err(_) => table.set_tdim(&sym, tdim),
-            }
+            table = table.with(&model.symbols.sym(k), *v);
         }
         *model = model.concretize_dims(&table)?;
         Ok(())
