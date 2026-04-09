@@ -447,11 +447,13 @@ impl Parameters {
             let (key, value) = set.split_once('=').with_context(|| {
                 format!("--set and --hint must be in the X=value form, got {set}")
             })?;
-            let value: i64 = value
-                .parse()
-                .with_context(|| format!("value expected to be an integer, got {value}"))?;
+            let tdim = tract_core::internal::parse_tdim(&typed_model.symbols, value)
+                .with_context(|| format!("Failed to parse value for --set {key}={value}"))?;
             let key = typed_model.get_or_intern_symbol(key);
-            values.set(&key, value);
+            match tdim.to_i64() {
+                Ok(v) => values.set(&key, v),
+                Err(_) => values.set_tdim(&key, tdim),
+            }
         }
         Ok(values)
     }
