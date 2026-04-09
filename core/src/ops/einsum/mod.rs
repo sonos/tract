@@ -264,8 +264,6 @@ impl TypedOp for EinSum {
         }
     }
 
-
-
     fn axes_mapping(
         &self,
         inputs: &[&TypedFact],
