@@ -97,7 +97,7 @@ impl GpuDelayState {
             // CUDA memcpy is undefined for overlapping regions in the same
             // buffer, so copy via a temporary.
             let keep = buffered - input_pulse;
-            let mut temp = DeviceTensor::uninitialized_dt(input.datum_type(), buffer.shape())?;
+            let temp = DeviceTensor::uninitialized_dt(input.datum_type(), buffer.shape())?;
             ctx.assign_slice(&temp, 0..keep, buffer, input_pulse..buffered, op.axis)?;
             ctx.assign_slice(buffer, 0..keep, &temp, 0..keep, op.axis)?;
             // Copy input to end of buffer
