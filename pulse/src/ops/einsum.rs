@@ -99,7 +99,6 @@ fn pulsify_qk(
         if q_ix.is_none() {
             return Ok(None);
         }
-        // K may be streaming (normal QK) or non-streaming (Q@R^T position table).
         (q_ix.unwrap(), k_ix)
     };
 
@@ -113,7 +112,9 @@ fn pulsify_qk(
                 if *ix == q_input_ix {
                     return None;
                 }
-                if target.outlet_fact(*out).ok()?.stream.is_some() {
+                let pulsed_fact = target.outlet_fact(*out).ok()?;
+                let is_streaming = pulsed_fact.stream.is_some();
+                if is_streaming {
                     return None;
                 }
                 let maps_to_col = op.axes.iter_all_axes().any(|ax| {
@@ -168,7 +169,6 @@ fn pulsify_qk(
         }
     } else {
         // Non-streaming K (constant position table).
-        // Try to get the tensor value for pre-slicing.
         let source_inlet = node.inputs[k_input_ix];
         let r_tensor = match source
             .outlet_fact(source_inlet)?
@@ -191,11 +191,41 @@ fn pulsify_qk(
 
         if feeds_into_nonlinear {
             // Symmetric RPE: pre-slice r_pos to [W+P-1, Dh] centered at zero.
+            // If the tensor was computed with a small substitution value (one pulse),
+            // it may be too small.  Re-evaluate with a larger value that guarantees
+            // enough rows: t_max >= key_window → n >= 2*key_window - 1.
+            let mut r_tensor = r_tensor;
             let n = r_tensor.shape()[k_axis_in_k];
             let t_max = (n + 1) / 2;
             if t_max < key_window {
-                return Ok(None);
+                let needed_t = key_window; // t_max must be >= key_window
+                // Compute the streaming symbol value that produces enough rows.
+                // The r_pos has 2*T-1 rows where T depends on the streaming symbol.
+                // We need 2*T-1 >= 2*key_window-1, i.e. T >= key_window.
+                // T = f(symbol). For the encoder: T = 1+(symbol+6)/8.
+                // Invert: symbol = (T-1)*8 - 6. Use a generous multiple of pulse.
+                let pulse_i64 = pulse.to_i64()?;
+                let needed_symbol = needed_t as i64 * pulse_i64; // conservative upper bound
+                match try_compute_const_with_symbol_value(
+                    source,
+                    source_inlet,
+                    symbol,
+                    needed_symbol,
+                ) {
+                    Some(bigger) => {
+                        let bigger_n = bigger.shape()[k_axis_in_k];
+                        let bigger_t_max = (bigger_n + 1) / 2;
+                        if bigger_t_max >= key_window {
+                            r_tensor = bigger;
+                        } else {
+                            return Ok(None);
+                        }
+                    }
+                    None => return Ok(None),
+                }
             }
+            let n = r_tensor.shape()[k_axis_in_k];
+            let t_max = (n + 1) / 2;
             let window_start = t_max - key_window;
             let window_len = key_window + chunk_size as usize - 1;
             if window_start + window_len > n {
@@ -343,8 +373,17 @@ fn try_compute_const_with_substitution(
     symbol: &Symbol,
     pulse: &TDim,
 ) -> Option<Arc<Tensor>> {
+    try_compute_const_with_symbol_value(source, outlet, symbol, pulse.to_i64().ok()?)
+}
+
+fn try_compute_const_with_symbol_value(
+    source: &TypedModel,
+    outlet: OutletId,
+    symbol: &Symbol,
+    value: i64,
+) -> Option<Arc<Tensor>> {
     use tract_core::model::translator::Translate;
-    let sv = SymbolValues::default().with(symbol, pulse.to_i64().ok()? as _);
+    let sv = SymbolValues::default().with(symbol, value);
     let (concretized, mapping) = sv.translate_model_with_mappings(source).ok()?;
     let mapped_outlet = *mapping.get(&outlet)?;
     try_compute_const(&concretized, mapped_outlet)
