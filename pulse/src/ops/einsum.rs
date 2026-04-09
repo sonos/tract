@@ -330,7 +330,7 @@ fn try_compute_const(source: &TypedModel, outlet: OutletId) -> Option<Arc<Tensor
         .iter()
         .map(|o| try_compute_const(source, *o).map(|t| t.into_tvalue()))
         .collect::<Option<_>>()?;
-    let results = node.op.eval(inputs).ok()?;
+    let results = node.op.eval_with_session(node.id, &TurnState::default(), inputs).ok()?;
     results.into_iter().nth(outlet.slot).map(|t| t.into_arc_tensor())
 }
 
@@ -344,8 +344,8 @@ fn try_compute_const_with_substitution(
     pulse: &TDim,
 ) -> Option<Arc<Tensor>> {
     use tract_core::model::translator::Translate;
-    // Concretize the source model by substituting the streaming symbol.
     let sv = SymbolValues::default().with(symbol, pulse.to_i64().ok()? as _);
-    let concretized = sv.translate_model(source).ok()?;
-    try_compute_const(&concretized, outlet)
+    let (concretized, mapping) = sv.translate_model_with_mappings(source).ok()?;
+    let mapped_outlet = *mapping.get(&outlet)?;
+    try_compute_const(&concretized, mapped_outlet)
 }
