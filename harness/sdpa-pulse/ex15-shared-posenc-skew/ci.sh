@@ -28,10 +28,11 @@ $TRACT_RUN \
     --assert-output-bundle io.npz \
     --approx very
 
-# Pulsed run
+# Pulsed run (with concretize_symbols, matching the encoder pipeline)
 $TRACT_RUN \
     --nnef-tract-core --nnef-tract-transformers \
     . \
+    -t 'concretize_symbols(values: {"BATCH": 1})' \
     -t 'pulse(symbol: Some("S"), pulse: "2")' \
     run \
     --input-from-bundle io.npz \
