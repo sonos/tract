@@ -20,8 +20,8 @@ fn show(hyp: &[usize], vocab: &[&str], label: &str) {
 
 /// Audio chunk size sent by the "microphone" thread (samples at 16kHz).
 const AUDIO_CHUNK: usize = 80;
-/// Preprocessor pulse in audio samples (112 feat frames × 160 hop).
-const PREPROC_PULSE: usize = 17920;
+/// Preprocessor pulse in audio samples (~100ms at 16kHz = 10 feat frames × 160 hop).
+const PREPROC_PULSE: usize = 1600;
 /// Encoder pulse in feature frames (14 token chunks × 8x subsampling).
 const ENCODER_PULSE: usize = 112;
 
@@ -41,6 +41,7 @@ fn main() -> anyhow::Result<()> {
         .unwrap();
 
     // ── Preprocessor (pulsified) ────────────────────────────────────────
+    eprint!("Loading preprocessor...");
     let mut preprocessor = nnef.load("assets/model/preprocessor.nnef.tgz")?;
     preprocessor.transform(ConcretizeSymbols::new().value("BATCH", 1))?;
     preprocessor
@@ -48,6 +49,7 @@ fn main() -> anyhow::Result<()> {
     preprocessor.transform(r#"{"name":"select_outputs","outputs":["processed_signal"]}"#)?;
     preprocessor.transform(Pulse::new(PREPROC_PULSE.to_string()).symbol("INPUT_SIGNAL__TIME"))?;
     let preprocessor = preprocessor.into_runnable()?;
+    eprintln!(" done.");
 
     let pp_delay = preprocessor.property("pulse.delay")?.view::<i64>()?[0].to_owned() as usize;
     let pp_out_axis =
@@ -59,6 +61,7 @@ fn main() -> anyhow::Result<()> {
         .collect::<Result<_>>()?;
 
     // ── Encoder (pulsified) ─────────────────────────────────────────────
+    eprint!("Loading encoder to {}...", runtime.name()?);
     let mut encoder = nnef.load("assets/model/encoder.p1.nnef.tgz")?;
     encoder.transform(ConcretizeSymbols::new().value("BATCH", 1))?;
     encoder.transform("transformers_detect_all")?;
@@ -67,6 +70,7 @@ fn main() -> anyhow::Result<()> {
     encoder.transform(r#"{"name":"select_outputs","outputs":["outputs"]}"#)?;
     encoder.transform(Pulse::new(ENCODER_PULSE.to_string()).symbol("AUDIO_SIGNAL__TIME"))?;
     let encoder = runtime.prepare(encoder)?;
+    eprintln!(" done.");
 
     let enc_output_axis =
         encoder.property("pulse.output_axes")?.view::<i64>()?[0].to_owned() as usize;
@@ -77,12 +81,16 @@ fn main() -> anyhow::Result<()> {
         .map(|a| enc_fact.dim(a).and_then(|d| d.to_int64()).map(|v| v as usize))
         .collect::<Result<_>>()?;
 
-    // ── Decoder + Joint ─────────────────────────────────────────────────
+    // ── Decoder ─────────────────────────────────────────────────────────
+    eprint!("Loading decoder to {}...", runtime.name()?);
     let mut decoder_model = nnef.load("assets/model/decoder.nnef.tgz")?;
     decoder_model
         .transform(ConcretizeSymbols::new().value("BATCH", 1).value("TARGETS__TIME", 1))?;
     let decoder = runtime.prepare(decoder_model)?;
+    eprintln!(" done.");
 
+    // ── Joint ─────────────────────────────────────────────────────────
+    eprint!("Loading joint to {}...", runtime.name()?);
     let mut joint_model = nnef.load("assets/model/joint.nnef.tgz")?;
     joint_model.transform(
         ConcretizeSymbols::new()
@@ -91,8 +99,10 @@ fn main() -> anyhow::Result<()> {
             .value("DECODER_OUTPUTS__TIME", 1),
     )?;
     let joint = runtime.prepare(joint_model)?;
+    eprintln!(" done.");
 
     let load_time = t0.elapsed();
+    eprintln!("Ready ({:.1}s)", load_time.as_secs_f64());
 
     // ── Load audio ──────────────────────────────────────────────────────
     let wav: Vec<f32> = hound::WavReader::open("assets/2086-149220-0033.wav")?
