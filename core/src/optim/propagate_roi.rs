@@ -95,7 +95,8 @@ impl super::TypedPass for PropagateRoi {
 
             for &node_id in &order {
                 let node = &model.nodes()[node_id];
-                let Some(input_rois) = node.op.as_typed().unwrap().input_roi(model, node)? else {
+                let Some(typed) = node.op.as_typed() else { continue };
+                let Some(input_rois) = typed.input_roi(model, node)? else {
                     continue;
                 };
                 for (ix, roi) in input_rois.into_iter().enumerate() {
