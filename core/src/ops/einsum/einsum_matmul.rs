@@ -156,6 +156,7 @@ impl TypedOp for EinSumMatMul {
             match (self.m.as_i64(), self.n.as_i64()) {
                 (Some(m), Some(n)) => m < n,
                 (None, Some(n)) => n >= 8,
+                (Some(_), _) => false,
                 _ => (self.n.clone() - &self.m).prove_positive_or_zero(),
             }
         };
