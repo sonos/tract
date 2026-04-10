@@ -439,8 +439,25 @@ fn parameters() -> Vec<Parameter> {
 
 fn dump(ast: &mut IntoAst, node: &TypedNode, op: &Resize) -> TractResult<Option<Arc<RValue>>> {
     let input = ast.mapping[&node.inputs[0]].clone();
-    let scales =
-        ast.mapping[&node.inputs[op.optional_scales_input.context("no scales input")?]].clone();
+    let scales = if let Some(scales_ix) = op.optional_scales_input {
+        ast.mapping[&node.inputs[scales_ix]].clone()
+    } else if let Some(sizes_ix) = op.optional_sizes_input {
+        let input_shape = ast.model.outlet_fact(node.inputs[0])?.shape.to_tvec();
+        let sizes_fact = ast.model.outlet_fact(node.inputs[sizes_ix])?;
+        let sizes =
+            sizes_fact.konst.as_ref().context("sizes must be a constant for NNEF export")?;
+        let sizes = sizes.cast_to::<f32>()?;
+        let sizes = sizes.try_as_plain()?.as_slice::<f32>()?;
+        let scales: Vec<f32> = input_shape
+            .iter()
+            .zip(sizes.iter())
+            .map(|(i, s)| i.to_usize().map(|i| *s / i as f32).unwrap_or(1.0))
+            .collect();
+        let scales_tensor = tract_ndarray::arr1(&scales).into_arc_tensor();
+        ast.konst_variable(format!("{}.scales", node.name), &scales_tensor)?
+    } else {
+        bail!("Resize op has neither scales nor sizes input")
+    };
     Ok(Some(invocation(
         "tract_onnx_resize",
         &[input, scales],
