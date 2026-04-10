@@ -3,9 +3,13 @@ name = "nemo-nemotron-streaming-asr"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+live = ["cpal"]
+
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
+cpal = { version = "0.15", optional = true }
 float-ord.workspace = true
 hound = "3.5.1"
 itertools.workspace = true
