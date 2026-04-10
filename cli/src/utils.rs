@@ -42,7 +42,12 @@ pub fn check_outputs(got: &[Vec<TValue>], params: &Parameters) -> TractResult<()
             let delay =
                 props.get("pulse.delay").unwrap().try_as_plain()?.as_slice::<i64>()?[ix] as usize;
             let stacked = Tensor::stack_tensors(axis, &got[ix])?;
-            stacked.slice(axis, delay, delay + exp.shape()[axis])?.into()
+            let available = stacked.shape()[axis] - delay;
+            let len = available.min(exp.shape()[axis]);
+            if len < exp.shape()[axis] {
+                exp = exp.slice(axis, 0, len)?.into();
+            }
+            stacked.slice(axis, delay, delay + len)?.into()
         } else {
             // This handles LLM prompt-chunking output
             got[ix].last().unwrap().clone()

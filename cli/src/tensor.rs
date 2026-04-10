@@ -86,11 +86,13 @@ pub fn run_params_from_subcommand(
     let prompt_chunk_size = sub_matches
         .get_one::<String>("prompt-chunk-size")
         .and_then(|chunk_size| chunk_size.parse().ok());
+    let drop_partial_pulse = sub_matches.get_flag("drop-partial-pulse");
     Ok(RunParams {
         tensors_values: tv,
         allow_random_input,
         allow_float_casts,
         symbols,
         prompt_chunk_size,
+        drop_partial_pulse,
     })
 }

@@ -301,6 +301,7 @@ pub struct RunParams {
     pub allow_float_casts: bool,
     pub symbols: SymbolValues,
     pub prompt_chunk_size: Option<usize>,
+    pub drop_partial_pulse: bool,
 }
 
 pub struct RunTensors {
@@ -457,7 +458,16 @@ fn get_or_make_tensors(
                 .try_as_plain()?
                 .as_slice::<i64>()?[input_idx] as usize;
             let input_pulse = fact.shape.get(input_pulse_axis).unwrap().to_usize().unwrap();
-            let input_len = value.shape()[input_pulse_axis];
+            let mut input_len = value.shape()[input_pulse_axis];
+            if params.drop_partial_pulse && input_len % input_pulse != 0 {
+                input_len = (input_len / input_pulse) * input_pulse;
+                info!(
+                    "Dropping partial trailing pulse: truncating input from {} to {} on axis {}.",
+                    value.shape()[input_pulse_axis],
+                    input_len,
+                    input_pulse_axis
+                );
+            }
 
             // how many pulses do we need to push full result out ?
             // guess by looking at len and delay of the first output
