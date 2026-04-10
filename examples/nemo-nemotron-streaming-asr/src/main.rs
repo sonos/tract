@@ -6,6 +6,8 @@ use std::time::{Duration, Instant};
 
 use anyhow::*;
 use clap::Parser;
+#[cfg(feature = "live")]
+use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use float_ord::FloatOrd;
 use itertools::Itertools;
 use tract::prelude::tract_ndarray::prelude::*;
@@ -13,21 +15,25 @@ use tract::prelude::*;
 
 /// Streaming ASR demo using nvidia/nemotron-speech-streaming-en-0.6b.
 ///
-/// Simulates real-time audio input and transcribes incrementally using
-/// pulsified preprocessor + encoder on GPU with RNNT greedy decoding.
+/// Transcribes audio incrementally using pulsified preprocessor + encoder
+/// on GPU with RNNT greedy decoding.
+///
+/// By default, reads from a WAV file with simulated real-time playback.
+/// Use --live to capture from the system microphone.
 #[derive(Parser)]
 struct Config {
     /// Path to the model assets directory.
     #[arg(long, default_value = "assets")]
     assets: PathBuf,
 
-    /// WAV file to transcribe (16kHz mono PCM).
+    /// WAV file to transcribe (16kHz mono PCM). Ignored if --live is set.
     #[arg(long, default_value = "assets/2086-149220-0033.wav")]
     wav: PathBuf,
 
-    /// Audio chunk size sent by the simulated microphone (samples at 16kHz).
-    #[arg(long, default_value_t = 80)]
-    audio_chunk: usize,
+    /// Capture from the system microphone instead of a WAV file.
+    /// Requires the `live` feature: cargo run --features live -- --live
+    #[arg(long)]
+    live: bool,
 
     /// Preprocessor pulse in audio samples. ~100ms = 1600 samples.
     #[arg(long, default_value_t = 1600)]
@@ -37,9 +43,9 @@ struct Config {
     #[arg(long, default_value_t = 112)]
     encoder_pulse: usize,
 
-    /// Simulate real-time playback speed (sleep between chunks).
-    #[arg(long, default_value_t = true)]
-    realtime: bool,
+    /// Do not simulate real-time playback (WAV mode only: process as fast as possible).
+    #[arg(long)]
+    no_realtime: bool,
 }
 
 fn argmax(slice: &[f32]) -> Option<usize> {
@@ -417,28 +423,25 @@ impl StreamState {
 
 // ─── Main ───────────────────────────────────────────────────────────────────
 
-fn main() -> anyhow::Result<()> {
-    let config = Config::parse();
-    let wav_path = config.wav.clone();
-    let audio_chunk = config.audio_chunk;
-    let realtime = config.realtime;
-
-    let (models, load_time) = NemotronModels::load(config)?;
-    let mut state = models.spawn()?;
-
-    let wav: Vec<f32> = hound::WavReader::open(&wav_path)?
+/// Start a WAV file audio source: reads samples in chunks with optional real-time pacing.
+fn start_wav_source(
+    path: &PathBuf,
+    realtime: bool,
+) -> anyhow::Result<(mpsc::Receiver<Vec<f32>>, std::thread::JoinHandle<()>, f64)> {
+    let wav: Vec<f32> = hound::WavReader::open(path)?
         .samples::<i16>()
         .map(|x| x.unwrap() as f32 / 32768.0)
         .collect();
     let audio_duration = wav.len() as f64 / 16000.0;
-
     let total_samples = wav.len();
-    let (audio_tx, audio_rx) = mpsc::sync_channel::<Vec<f32>>(4);
-    let mic_handle = std::thread::Builder::new().name("mic".into()).spawn(move || {
+    let audio_chunk = 80; // 5ms chunks
+
+    let (tx, rx) = mpsc::sync_channel::<Vec<f32>>(4);
+    let handle = std::thread::Builder::new().name("wav".into()).spawn(move || {
         let mut offset = 0;
         while offset < total_samples {
             let end = (offset + audio_chunk).min(total_samples);
-            if audio_tx.send(wav[offset..end].to_vec()).is_err() {
+            if tx.send(wav[offset..end].to_vec()).is_err() {
                 break;
             }
             offset = end;
@@ -447,25 +450,89 @@ fn main() -> anyhow::Result<()> {
             }
         }
     })?;
+    Ok((rx, handle, audio_duration))
+}
 
-    let stream_start = Instant::now();
-    for chunk in audio_rx {
-        state.push_audio(&chunk)?;
-    }
-    state.flush()?;
-    let stream_time = stream_start.elapsed();
+/// Start a live microphone audio source via cpal.
+#[cfg(feature = "live")]
+fn start_live_source() -> anyhow::Result<(mpsc::Receiver<Vec<f32>>, cpal::Stream)> {
+    let host = cpal::default_host();
+    let device = host.default_input_device().context("no input device")?;
+    eprintln!("Microphone: {}", device.name()?);
 
-    mic_handle.join().unwrap();
+    let target_config = cpal::StreamConfig {
+        channels: 1,
+        sample_rate: cpal::SampleRate(16000),
+        buffer_size: cpal::BufferSize::Default,
+    };
 
-    let transcript = state.transcript();
-    let display = transcript.replace('▁', " ");
-    eprint!("\r{}                    \n", display.trim_start());
+    let (tx, rx) = mpsc::sync_channel::<Vec<f32>>(8);
+    let stream = device.build_input_stream(
+        &target_config,
+        move |data: &[f32], _: &cpal::InputCallbackInfo| {
+            let _ = tx.send(data.to_vec());
+        },
+        |err| eprintln!("audio error: {err}"),
+        None,
+    )?;
+    stream.play()?;
+    Ok((rx, stream))
+}
 
-    state.print_stats(load_time, stream_time, audio_duration);
+fn main() -> anyhow::Result<()> {
+    let config = Config::parse();
+    let live = config.live;
+    let wav_path = config.wav.clone();
+    let no_realtime = config.no_realtime;
 
-    let expected = "▁well▁I▁don't▁wish▁to▁see▁it▁any▁more▁observed▁Phoebe,▁turning▁away▁her▁eyes.▁It▁is▁certainly▁very▁like▁the▁old▁portrait";
-    if transcript != expected {
-        eprintln!("\nNOTE: streaming transcript differs slightly from batch reference");
+    let (models, load_time) = NemotronModels::load(config)?;
+    let mut state = models.spawn()?;
+
+    if live {
+        #[cfg(not(feature = "live"))]
+        anyhow::bail!("--live requires the `live` feature: cargo run --features live -- --live");
+
+        #[cfg(feature = "live")]
+        {
+            let (audio_rx, _stream) = start_live_source()?;
+            eprintln!("Listening... (press Ctrl-C to stop)\n");
+
+            let stream_start = Instant::now();
+            for chunk in audio_rx {
+                state.push_audio(&chunk)?;
+            }
+            state.flush()?;
+            let stream_time = stream_start.elapsed();
+            let audio_duration = stream_time.as_secs_f64();
+
+            let transcript = state.transcript();
+            let display = transcript.replace('▁', " ");
+            eprint!("\r{}                    \n", display.trim_start());
+            state.print_stats(load_time, stream_time, audio_duration);
+        }
+    } else {
+        // ── WAV file mode ───────────────────────────────────────────
+        let (audio_rx, mic_handle, audio_duration) = start_wav_source(&wav_path, !no_realtime)?;
+
+        let stream_start = Instant::now();
+        for chunk in audio_rx {
+            state.push_audio(&chunk)?;
+        }
+        state.flush()?;
+        let stream_time = stream_start.elapsed();
+
+        mic_handle.join().unwrap();
+
+        let transcript = state.transcript();
+        let display = transcript.replace('▁', " ");
+        eprint!("\r{}                    \n", display.trim_start());
+
+        state.print_stats(load_time, stream_time, audio_duration);
+
+        let expected = "▁well▁I▁don't▁wish▁to▁see▁it▁any▁more▁observed▁Phoebe,▁turning▁away▁her▁eyes.▁It▁is▁certainly▁very▁like▁the▁old▁portrait";
+        if transcript != expected {
+            eprintln!("\nNOTE: streaming transcript differs slightly from batch reference");
+        }
     }
     Ok(())
 }
