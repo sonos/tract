@@ -20,7 +20,21 @@ fn pulsify(
             shape: op
                 .shape
                 .iter()
-                .map(|dim| dim.substitute(symbol, pulse))
+                .enumerate()
+                .map(|(i, dim)| {
+                    if i == axis {
+                        // Remove the constant boundary term so that per-pulse output size
+                        // matches the actual pulsed output of any upstream strided conv.
+                        // E.g. shape_of(stride-2 conv) = 1 + S/2:
+                        //   substitute(S→P) = 1 + P/2  (wrong)
+                        //   substitute(S→P) - substitute(S→0) = P/2  (correct)
+                        let full = dim.substitute(symbol, pulse)?;
+                        let base = dim.substitute(symbol, &TDim::Val(0))?;
+                        Ok(full - base)
+                    } else {
+                        dim.substitute(symbol, pulse)
+                    }
+                })
                 .collect::<TractResult<_>>()?,
             stream: Some(StreamInfo { axis, dim: full_dim, delay: 0 }),
         };

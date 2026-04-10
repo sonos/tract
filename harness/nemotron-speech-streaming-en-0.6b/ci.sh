@@ -45,10 +45,39 @@ $TRACT_RUN $model_prefix.preprocessor.nnef.tgz \
 	dump -q \
 	--assert-op-count Iff 0
 
-# Check that the preprocessor can be pulsified
+# Check that the preprocessor can be pulsified (both large and small pulse)
 $TRACT_RUN $model_prefix.preprocessor.nnef.tgz \
 	-t 'concretize_symbols(values: {"BATCH": 1})' \
 	-t 'patch(body: "length = tract_core_shape_of(input_signal)[1];")' \
 	-t 'select_outputs(outputs: ["processed_signal"])' \
 	-t 'pulse(symbol: Some("INPUT_SIGNAL__TIME"), pulse: "4800")' \
 	dump -q
+$TRACT_RUN $model_prefix.preprocessor.nnef.tgz \
+	-t 'concretize_symbols(values: {"BATCH": 1})' \
+	-t 'patch(body: "length = tract_core_shape_of(input_signal)[1];")' \
+	-t 'select_outputs(outputs: ["processed_signal"])' \
+	-t 'pulse(symbol: Some("INPUT_SIGNAL__TIME"), pulse: "1600")' \
+	dump -q
+
+# Check that the encoder can be pulsified.
+# The encoder subsamples by 8x (three stride-2 convolutions) before the transformer.
+# The chunk-window mask has P=14 transformer tokens per chunk, so the input pulse
+# must be 14 * 8 = 112 audio frames.
+$TRACT_RUN $model_prefix.encoder.p1.nnef.tgz \
+	--nnef-tract-transformers \
+	-t 'pulse(symbol: Some("AUDIO_SIGNAL__TIME"), pulse: "112")' \
+	dump -q
+
+# Check that the pulsified encoder runs without error.
+# We don't assert output equality because the test audio (744 frames) is not
+# exactly divisible by the pulse (112), causing small mismatches at the tail
+# of the last partial pulse.  The batch test above covers numerical correctness;
+# this test verifies the pulsified model executes end-to-end.
+$TRACT_RUN $model_prefix.encoder.p1.nnef.tgz \
+	--nnef-tract-transformers \
+	-t 'concretize_symbols(values: {"BATCH": 1})' \
+	-t 'patch(body: "length = tract_core_shape_of(audio_signal)[2];")' \
+	-t 'select_outputs(outputs: ["outputs"])' \
+	-t 'pulse(symbol: Some("AUDIO_SIGNAL__TIME"), pulse: "112")' \
+	run \
+	--input-from-bundle $MODELS/$S3DIR/$MODEL.encoder.io.npz

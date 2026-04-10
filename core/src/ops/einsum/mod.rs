@@ -192,6 +192,52 @@ impl EvalOp for EinSum {
 }
 
 impl TypedOp for EinSum {
+    fn input_roi(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TVec<Option<TDim>>>> {
+        use crate::ops::logic::{build_chunk_window_roi, classify_chunk_window};
+        let output_fact = &node.outputs[0].fact;
+        let roi = match &output_fact.region_of_interest {
+            Some(r) => r.clone().simplify(),
+            None => return Ok(None),
+        };
+        let cw = match classify_chunk_window(&roi) {
+            Some(cw) => cw,
+            None => return Ok(None),
+        };
+        let symbols = &model.symbols;
+        let num_inputs = node.inputs.len();
+        // For each input, find the axis that maps to the output col_axis.
+        // Annotate only inputs that have the col axis but NOT the row axis
+        // (i.e., the key/position input, not the query input).
+        let mut result: TVec<Option<TDim>> = tvec![None; num_inputs];
+        for ix in 0..num_inputs {
+            let col_in_input = self
+                .axes
+                .iter_all_axes()
+                .find(|ax| {
+                    ax.outputs[0].contains(&cw.col_axis)
+                        && ax.inputs.get(ix).map_or(false, |v| !v.is_empty())
+                })
+                .and_then(|ax| ax.inputs.get(ix)?.first().copied());
+            let has_row = self.axes.iter_all_axes().any(|ax| {
+                ax.outputs[0].contains(&cw.row_axis)
+                    && ax.inputs.get(ix).map_or(false, |v| !v.is_empty())
+            });
+            // Only annotate the key input: has col axis but not row axis.
+            if let Some(col_ax) = col_in_input {
+                if !has_row {
+                    // Use row_axis=1 as a placeholder (doesn't affect pulsifier logic).
+                    result[ix] =
+                        Some(build_chunk_window_roi(symbols, cw.p, cw.left_chunks, 1, col_ax));
+                }
+            }
+        }
+        Ok(Some(result))
+    }
+
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let shapes = self.actual_input_shapes_from_facts(inputs)?;
         for i in 0..inputs.len() {

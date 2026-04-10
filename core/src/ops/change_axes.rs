@@ -347,6 +347,16 @@ impl AxisOp {
                     for _ in to.iter().rev() {
                         shape.insert(*at, 1.into());
                     }
+                } else if shape.len() >= from.len() + *at {
+                    // from_volume == to_volume was already verified above.  The actual shape
+                    // values may be symbolically equivalent to `from` without being structurally
+                    // equal (e.g. `S` vs `P*(S/P)`).  Trust the from.len() count and apply.
+                    for _ in from {
+                        shape.remove(*at);
+                    }
+                    for d in to.iter().rev() {
+                        shape.insert(*at, d.try_into()?);
+                    }
                 } else {
                     bail!("Incompatible reshape for shape {:?} and {:?}", shape, self);
                 }
@@ -703,6 +713,41 @@ fn remap_uniform_tdim(expr: &TDim, axis_op: &AxisOp) -> Option<TDim> {
 
 impl TypedOp for AxisOp {
     as_op!();
+
+    fn input_roi(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TVec<Option<TDim>>>> {
+        use crate::ops::logic::{build_chunk_window_roi, classify_chunk_window};
+        let AxisOp::Reshape(at, _from, _to) = self else {
+            return crate::optim::propagate_roi::bubble_roi(model, node);
+        };
+        if node.inputs.len() != 1 {
+            return crate::optim::propagate_roi::bubble_roi(model, node);
+        }
+        let output_fact = &node.outputs[0].fact;
+        let roi = match &output_fact.region_of_interest {
+            Some(r) => r.clone().simplify(),
+            None => return Ok(None),
+        };
+        let cw = match classify_chunk_window(&roi) {
+            Some(cw) => cw,
+            None => return Ok(Some(tvec![Some(roi)])),
+        };
+        // If the reshape swaps the two axes in the block [at, at+1], swap col/row in the ROI.
+        let at = *at;
+        let (new_row, new_col) = if (cw.row_axis == at && cw.col_axis == at + 1)
+            || (cw.row_axis == at + 1 && cw.col_axis == at)
+        {
+            (cw.col_axis, cw.row_axis)
+        } else {
+            (cw.row_axis, cw.col_axis)
+        };
+        let symbols = &model.symbols;
+        let new_roi = build_chunk_window_roi(&symbols, cw.p, cw.left_chunks, new_row, new_col);
+        Ok(Some(tvec![Some(new_roi)]))
+    }
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         if let Some(bqf) =

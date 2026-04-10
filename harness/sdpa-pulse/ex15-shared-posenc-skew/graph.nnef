@@ -1,0 +1,73 @@
+version 1.0;
+
+extension tract_registry tract_core;
+extension tract_registry tract_transformers;
+extension tract_symbol S;
+extension tract_assert S>=0;
+
+# Repro of encoder.p1 skew trick failure.
+#
+# S is the "audio" streaming symbol. Inputs are subsampled by 2 to get
+# token-space tensors of length S/2.  Chunk size P_token=2, pulse on S
+# with pulse=4 (so P_audio=4, P_token=2).  left_chunks=3, W=8.
+#
+# The key: T = S/2 ≠ S at pulse time (T=2, S=4), matching the encoder
+# pattern where AUDIO_SIGNAL__TIME/8 ≠ AUDIO_SIGNAL__TIME.
+
+graph network(q_audio, k_audio, v_audio) -> (output)
+{
+    q_audio = tract_core_external(shape = [1, S, 4], datum_type = 'f32');
+    k_audio = tract_core_external(shape = [1, S, 4], datum_type = 'f32');
+    v_audio = tract_core_external(shape = [1, S, 4], datum_type = 'f32');
+    r_full  = variable<scalar>(label = 'r_pos', shape = [31, 4]);
+
+    # Subsample by 2 (stride-2 slice): S audio frames → S/2 tokens
+    q = slice(q_audio, axes = [1], begin = [0], end = [S], stride = [2]);
+    k = slice(k_audio, axes = [1], begin = [0], end = [S], stride = [2]);
+    v = slice(v_audio, axes = [1], begin = [0], end = [S], stride = [2]);
+
+    content_scores = tract_core_einsum([q, k], expr = "bid,bjd->bij", acc = "f32");
+
+    q_shape   = tract_core_shape_of(q);
+    T_sl      = slice(q_shape, axes = [0], begin = [1], end = [2], stride = [1]);
+    T         = squeeze(T_sl, axes = [0]);
+
+    center  = tract_core_cast(16, to = 'i64');
+    r_begin = sub(center, T);
+    r_end   = sub(add(center, T), 1);
+    r_pos   = tract_core_dyn_slice(r_full, r_begin, r_end, axis = 0, len = 2 * S / 2 - 1);
+
+    pos_raw = tract_core_einsum([q, r_pos], expr = "bid,jd->bij", acc = "f32");
+
+    pos_padded = pad(pos_raw, padding = [[0, 0], [0, 0], [1, 0]], value = 0.0);
+    pos_view   = reshape(pos_padded, shape = [1, -1, T]);
+    one_i64    = tract_core_cast(1, to = 'i64');
+    two_T      = add(T, T);
+    pos_sliced = tract_core_dyn_slice(pos_view, one_i64, two_T, axis = 1, len = 2 * S / 2 - 1);
+    pos_bd     = reshape(pos_sliced, shape = [1, T, -1]);
+    zero_i64   = tract_core_cast(0, to = 'i64');
+    pos_scores = tract_core_dyn_slice(pos_bd, zero_i64, T, axis = 2, len = S / 2);
+
+    scores = add(content_scores, pos_scores);
+
+    positions          = tract_core_range(0, T, step = 1);
+    positions_f32      = tract_core_cast(positions, to = 'f32');
+    chunk_size_f32     = tract_core_cast(2, to = 'f32');
+    chunkIdx_f32       = div(positions_f32, chunk_size_f32);
+    chunkIdx           = tract_core_cast(floor(chunkIdx_f32), to = 'i64');
+
+    ci_row         = unsqueeze(chunkIdx, axes = [1]);
+    ci_col         = unsqueeze(chunkIdx, axes = [0]);
+    diffChunks     = sub(ci_row, ci_col);
+
+    left_chunks_i64 = tract_core_cast(3, to = 'i64');
+    zero_i64b       = tract_core_cast(0, to = 'i64');
+    le_mask         = le(diffChunks, left_chunks_i64);
+    ge_mask         = ge(diffChunks, zero_i64b);
+    window_mask_2d  = and(le_mask, ge_mask);
+    window_mask     = unsqueeze(window_mask_2d, axes = [0]);
+
+    masked_scores = select(window_mask, scores, scores * 0.0 + -inf);
+    attn          = softmax(masked_scores, axes = [2]);
+    output        = tract_core_einsum([attn, v], expr = "bij,bjd->bid", acc = "f32");
+}

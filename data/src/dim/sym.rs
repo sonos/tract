@@ -325,6 +325,12 @@ impl SymbolScopeData {
             if t.inclusive_bound(self, false).is_some_and(|l| l >= 0) {
                 return true;
             }
+            // Coord symbols (🎯k) represent element coordinates and are always non-negative.
+            if let TDim::Sym(s) = &t {
+                if format!("{s}").starts_with("🎯") {
+                    return true;
+                }
+            }
             // Div(a, q) with q >= 1 is non-negative whenever a is non-negative.
             if let TDim::Div(a, q) = &t {
                 if *q >= 1 && self.prove_positive_or_zero_inner_with_extra(a, extra) {
@@ -447,6 +453,7 @@ impl fmt::Debug for Symbol {
 #[derive(Clone, Debug, Default)]
 pub struct SymbolValues {
     values: HashMap<Symbol, i64>,
+    tdim_values: HashMap<Symbol, TDim>,
 }
 
 impl SymbolValues {
@@ -461,6 +468,24 @@ impl SymbolValues {
 
     pub fn get(&self, s: &Symbol) -> Option<i64> {
         self.values.get(s).copied()
+    }
+
+    pub fn set_tdim(&mut self, s: &Symbol, v: TDim) {
+        self.tdim_values.insert(s.clone(), v);
+    }
+
+    pub fn get_tdim(&self, s: &Symbol) -> Option<&TDim> {
+        self.tdim_values.get(s)
+    }
+
+    /// Iterate over concrete (i64) values.
+    pub fn iter(&self) -> impl Iterator<Item = (&Symbol, i64)> {
+        self.values.iter().map(|(k, v)| (k, *v))
+    }
+
+    /// Iterate over symbolic (TDim) substitutions.
+    pub fn tdim_iter(&self) -> impl Iterator<Item = (&Symbol, &TDim)> {
+        self.tdim_values.iter()
     }
 }
 

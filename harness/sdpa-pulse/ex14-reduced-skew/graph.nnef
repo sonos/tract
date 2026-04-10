@@ -1,0 +1,87 @@
+version 1.0;
+
+extension tract_registry tract_core;
+extension tract_registry tract_transformers;
+extension tract_symbol S;
+extension tract_assert S>=0;
+
+# Reduced version of ex14-rel-pos-skew-large-table.
+#
+# Drops the QKV split (uses separate q, k, v inputs) and simplifies the mask
+# to the ScaledMaskedSoftmax form.  Everything else is identical to ex14.
+#
+# r_pos = variable[2*T_max-1=15, Dh=4] is a constant locked at the full-
+# sequence size.  The skew trick is used to extract relative-position scores.
+#
+# At batch (S=T=8): pos_raw=[1,8,15] → skew → pos_scores=[1,8,8] ✓
+#
+# At pulse (S=P=2):
+#   Our PulsedConstSlice fix turns the pos_raw einsum into a sliding window on
+#   r_pos, giving pos_raw=[1,P,15].  But the skew trick then tries:
+#     pos_padded=[1,P,16]; reshape([1,-1,T=P]); dyn_slice(begin=1,end=2P,len=2P-1)
+#   and the DynSlice pulsifier fails: end > len (same "end <= len" condition as ex14).
+#
+# Parameters: T=8, P=2, left_chunks=1, W=(left_chunks+1)*P=4, Dh=4, B=1
+# r_pos shape = [2*T_max-1, Dh] = [15, 4]
+
+graph network(q, k, v) -> (output)
+{
+    q = tract_core_external(shape = [1, S, 4], datum_type = 'f32');
+    k = tract_core_external(shape = [1, S, 4], datum_type = 'f32');
+    v = tract_core_external(shape = [1, S, 4], datum_type = 'f32');
+    r_pos = variable<scalar>(label = 'r_pos', shape = [15, 4]);
+
+    # ── Content scores: Q @ K^T → [1, S, S] ─────────────────────────────────
+    content_scores = tract_core_einsum([q, k], expr = "bid,bjd->bij", acc = "f32");
+
+    # ── Position scores via skew trick ───────────────────────────────────────
+    # pos_raw: Q @ r_pos^T → [1, S, 15]
+    pos_raw = tract_core_einsum([q, r_pos], expr = "bid,jd->bij", acc = "f32");
+
+    q_shape   = tract_core_shape_of(q);
+    T_sl      = slice(q_shape, axes = [0], begin = [1], end = [2], stride = [1]);
+    T         = squeeze(T_sl, axes = [0]);                  # scalar i64: S
+
+    # Step 1: pad left on last axis → [1, S, 2T]
+    pos_padded = pad(pos_raw, padding = [[0, 0], [0, 0], [1, 0]], value = 0.0);
+
+    # Step 2: reshape [1, S, 2T] → [1, 2T, S]
+    pos_view = reshape(pos_padded, shape = [1, -1, T]);
+
+    # Step 3: slice off first row → [1, 2T-1, S]
+    one_i64    = tract_core_cast(1, to = 'i64');
+    two_S      = add(T, T);
+    pos_sliced = tract_core_dyn_slice(pos_view, one_i64, two_S, axis = 1, len = 2 * S - 1);
+
+    # Step 4: reshape back → [1, S, 2T-1]
+    pos_bd = reshape(pos_sliced, shape = [1, T, -1]);
+
+    # Step 5: slice last T columns → [1, S, S]
+    zero_i64   = tract_core_cast(0, to = 'i64');
+    pos_scores = tract_core_dyn_slice(pos_bd, zero_i64, T, axis = 2, len = S);
+
+    # ── Combine and mask ──────────────────────────────────────────────────────
+    scores = add(content_scores, pos_scores);
+
+    positions          = tract_core_range(0, T, step = 1);
+    positions_f32      = tract_core_cast(positions, to = 'f32');
+    chunk_size_f32     = tract_core_cast(2, to = 'f32');
+    chunkIdx_f32       = div(positions_f32, chunk_size_f32);
+    chunkIdx           = tract_core_cast(floor(chunkIdx_f32), to = 'i64');
+
+    ci_row         = unsqueeze(chunkIdx, axes = [1]);
+    ci_col         = unsqueeze(chunkIdx, axes = [0]);
+    diffChunks     = sub(ci_row, ci_col);
+
+    left_chunks_i64 = tract_core_cast(1, to = 'i64');
+    zero_i64b       = tract_core_cast(0, to = 'i64');
+    le_mask         = le(diffChunks, left_chunks_i64);
+    ge_mask         = ge(diffChunks, zero_i64b);
+    window_mask_2d  = and(le_mask, ge_mask);
+    window_mask     = unsqueeze(window_mask_2d, axes = [0]);
+
+    masked_scores = select(window_mask, scores, scores * 0.0 + -inf);
+    attn          = softmax(masked_scores, axes = [2]);
+
+    output = tract_core_einsum([attn, v], expr = "bij,bjd->bid", acc = "f32");
+}

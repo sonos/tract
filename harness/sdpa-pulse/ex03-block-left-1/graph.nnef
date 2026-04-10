@@ -1,0 +1,53 @@
+version 1.0;
+
+extension tract_registry tract_core;
+extension tract_registry tract_transformers;
+extension tract_symbol S;
+extension tract_assert S>=0;
+
+# Block attention with left_chunks=1: each chunk attends to its own tokens plus
+# the previous chunk's tokens (bidirectional within the 2-chunk window).
+#
+# C=4 chunks, P=2 tokens/chunk, Dh=8
+# S = number of chunks (streaming axis, pulse=1 chunk per step)
+#
+# Input: qkv [S, 3*P, Dh] = [S, 6, 8]
+#   axis 0: chunk (streaming, S)
+#   axis 1: Q[0..P], K[P..2P], V[2P..3P] flattened (P=2)
+#   axis 2: head dimension (Dh=8)
+#
+# At each chunk c, Q[c] attends over concat(K[c-1], K[c]) and V[c-1], V[c]).
+# K[c-1] is zero for c=0 (the delay buffer initialises to zero).
+
+graph network(qkv) -> (output)
+{
+    qkv = tract_core_external(shape = [S, 6, 8], datum_type = 'f32');
+
+    # slice Q / K / V  [S, 2, 8] each  (P=2)
+    q = slice(qkv, axes = [1], begin = [0], end = [2]);
+    k = slice(qkv, axes = [1], begin = [2], end = [4]);
+    v = slice(qkv, axes = [1], begin = [4], end = [6]);
+
+    # Shift K and V backwards by 1 chunk to obtain previous-chunk context.
+    # pad(before=1) on the streaming axis followed by slice(end=S) is a pure
+    # sequence shift: output[c] = input[c-1] (zero-initialised for c=0).
+    # The pulsifier converts this into Delay(axis=0, delay=1, overlap=0).
+    k_padded = pad(k, padding = [(1, 0), (0, 0), (0, 0)]);
+    k_prev   = slice(k_padded, axes = [0], begin = [0], end = [S]);
+
+    v_padded = pad(v, padding = [(1, 0), (0, 0), (0, 0)]);
+    v_prev   = slice(v_padded, axes = [0], begin = [0], end = [S]);
+
+    # Concatenate previous + current chunk K/V on the token axis → [S, 2*P, Dh]
+    k_ctx = concat([k_prev, k], axis = 1);    # [S, 4, 8]
+    v_ctx = concat([v_prev, v], axis = 1);    # [S, 4, 8]
+
+    # scores = Q · K_ctx^T within each chunk  [S, P, 2P] = [S, 2, 4]
+    scores = tract_core_einsum([q, k_ctx], expr = "cpd,cld->cpl", acc = "f32");
+
+    # softmax over the full key context axis
+    attn = softmax(scores, axes = [2]);
+
+    # weighted sum over V_ctx  [S, P, Dh] = [S, 2, 8]
+    output = tract_core_einsum([attn, v_ctx], expr = "cpl,cld->cpd", acc = "f32");
+}

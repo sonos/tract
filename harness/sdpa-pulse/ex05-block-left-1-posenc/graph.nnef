@@ -1,0 +1,72 @@
+version 1.0;
+
+extension tract_registry tract_core;
+extension tract_registry tract_transformers;
+extension tract_symbol S;
+extension tract_assert S>=0;
+
+# Flat-token sliding-window attention with computed chunk mask + ALiBi position bias.
+# Extends ex04-block-left-1-mask by adding an additive relative-position bias to scores.
+#
+#   pos_bias[i,j] = -slope * (i - j)   where slope = 0.125
+#
+# Parameters: T=8, P=2, Dh=4, left_chunks=1
+#
+# In windowed form, pos_bias[p, l] = -slope * (L*P + p - l) — independent of chunk c —
+# so at pulse time it collapses to a precomputed constant [P, (L+1)*P] tensor via the
+# binary pulsifier (uniform_tdim + region_of_interest on the pos_bias wire).
+#
+# Input:  qkv [S, 3*Dh] = [S, 12]   S = total token count, Dh=4
+# Output: [S, Dh] = [S, 4]
+# Streaming: pulse_size = P = 2  (one chunk per pulse, --pulse 2 in ci.sh)
+
+graph network(qkv) -> (output)
+{
+    qkv = tract_core_external(shape = [S, 12], datum_type = 'f32');
+
+    q = slice(qkv, axes = [1], begin = [0], end = [4]);    # [S, 4]
+    k = slice(qkv, axes = [1], begin = [4], end = [8]);
+    v = slice(qkv, axes = [1], begin = [8], end = [12]);
+
+    # Full T x T attention scores
+    scores = tract_core_einsum([q, k], expr = "id,jd->ij", acc = "f32");  # [S, S]
+
+    # Shape info
+    qkv_shape = tract_core_shape_of(qkv);
+    T_slice   = slice(qkv_shape, axes = [0], begin = [0], end = [1], stride = [1]);
+    T         = squeeze(T_slice, axes = [0]);
+
+    # Token positions [S] i64
+    positions = tract_core_range(0, T, step = 1);
+
+    # ── ALiBi position bias: pos_bias[i,j] = -0.125 * (i - j) ────────────
+    positions_f32 = tract_core_cast(positions, to = 'f32');
+    row_pos       = unsqueeze(positions_f32, axes = [1]);   # [S, 1]
+    col_pos       = unsqueeze(positions_f32, axes = [0]);   # [1, S]
+    rel_pos       = sub(row_pos, col_pos);                  # [S, S]: i - j  (f32)
+    pos_bias      = rel_pos * -0.125;                       # [S, S]: -0.125*(i-j)
+
+    biased_scores = add(scores, pos_bias);                  # [S, S]
+
+    # ── Chunk mask (same as ex04) ──────────────────────────────────────────
+    chunk_size_f32     = tract_core_cast(2, to = 'f32');
+    chunkIdx_f32       = div(positions_f32, chunk_size_f32);
+    chunkIdx_f32_floor = floor(chunkIdx_f32);
+    chunkIdx           = tract_core_cast(chunkIdx_f32_floor, to = 'i64');
+
+    ci_row     = unsqueeze(chunkIdx, axes = [1]);
+    ci_col     = unsqueeze(chunkIdx, axes = [0]);
+    diffChunks = sub(ci_row, ci_col);
+
+    left_chunks_i64 = tract_core_cast(1, to = 'i64');
+    zero_i64        = tract_core_cast(0, to = 'i64');
+    le_mask      = le(diffChunks, left_chunks_i64);
+    ge_mask      = ge(diffChunks, zero_i64);
+    chunked_mask = and(le_mask, ge_mask);
+
+    # Apply mask: keep biased scores where mask=true, -inf elsewhere
+    masked_scores = select(chunked_mask, biased_scores, biased_scores * 0.0 + -inf);
+
+    attn   = softmax(masked_scores, axes = [1]);
+    output = tract_core_einsum([attn, v], expr = "ij,jd->id", acc = "f32");
+}

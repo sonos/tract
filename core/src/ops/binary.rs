@@ -226,6 +226,27 @@ impl TypedOp for TypedBinOp {
                 fact.uniform_tdim = Some(TDim::Mul(vec![a.clone(), b.clone()]).reduce());
             }
         }
+        // And-specific: if one input carries a chunk-window uniform_tdim and the
+        // other has None (e.g. a padding-validity mask whose uniform_tdim chain
+        // broke because the audio-length scalar has no coordinate expression),
+        // propagate the chunk-window expression.  In streaming inference every
+        // token in the chunk window is a valid (non-padding) token, so the
+        // None-side is effectively always-True within the window.
+        if fact.uniform_tdim.is_none() && self.0.is::<crate::ops::logic::And>() {
+            use crate::ops::logic::classify_chunk_window;
+            let cw_expr = match (&inputs[0].uniform_tdim, &inputs[1].uniform_tdim) {
+                (Some(a), None) if classify_chunk_window(&a.clone().simplify()).is_some() => {
+                    Some(a.clone())
+                }
+                (None, Some(b)) if classify_chunk_window(&b.clone().simplify()).is_some() => {
+                    Some(b.clone())
+                }
+                _ => None,
+            };
+            if let Some(expr) = cw_expr {
+                fact.uniform_tdim = Some(expr);
+            }
+        }
         // Fallback: one side has uniform_tdim, the other is a scalar constant
         if fact.uniform_tdim.is_none() {
             for (expr, konst_fact) in [

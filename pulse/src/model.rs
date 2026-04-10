@@ -10,6 +10,39 @@ use tract_pulse_opl::tract_core::ops::source::TypedSource;
 pub type PulsedModel = Graph<PulsedFact, Box<dyn PulsedOp>>;
 pub type PulsedNode = Node<PulsedFact, Box<dyn PulsedOp>>;
 
+/// Pre-flight check: reject models with wires whose size is superlinear in the
+/// streaming symbol but have no `region_of_interest` annotation.
+///
+/// A wire is superlinear when the streaming symbol appears in more than one
+/// shape dimension (e.g. `[T, T]` or `[T, 2T-1]`).  Such wires cannot be
+/// pulsified unless ROI narrows the live region to linear size.
+fn check_no_unannotated_superlinear_wires(model: &TypedModel, symbol: &Symbol) -> TractResult<()> {
+    for node in &model.nodes {
+        for (slot, output) in node.outputs.iter().enumerate() {
+            let streaming_dims: usize =
+                output.fact.shape.iter().filter(|d| d.symbols().contains(symbol)).count();
+            if streaming_dims > 1
+                && output.fact.region_of_interest.is_none()
+                && output.fact.uniform_tdim.is_none()
+                && output.fact.konst.is_none()
+            {
+                log::warn!(
+                    "Wire {}/{} ({:?}) has shape {:?} which is superlinear in streaming \
+                     symbol {} ({} dimensions depend on it) but carries no region_of_interest \
+                     annotation. Pulsification may fail.",
+                    node.name,
+                    slot,
+                    OutletId::new(node.id, slot),
+                    output.fact.shape,
+                    symbol,
+                    streaming_dims,
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
 #[allow(clippy::new_ret_no_self)]
 pub trait PulsedModelExt {
     fn new(source: &TypedModel, symbol: Symbol, pulse: &TDim) -> TractResult<PulsedModel>;
@@ -33,39 +66,68 @@ impl PulsedModelExt for PulsedModel {
         symbol: Symbol,
         pulse: &TDim,
     ) -> TractResult<(PulsedModel, HashMap<OutletId, OutletId>)> {
+        check_no_unannotated_superlinear_wires(source, &symbol)?;
         let pulsifiers = crate::ops::OpPulsifier::inventory();
         Pulsifier(symbol, pulse.to_owned(), pulsifiers).translate_model_with_mappings(source)
     }
 
     fn into_typed(self) -> TractResult<TypedModel> {
         let mut typed = tract_core::model::translator::IntoTranslator.translate_model(&self)?;
+        // At least one input must be streaming; non-streaming auxiliary inputs
+        // (e.g. a sequence-length tensor) are allowed.
         ensure!(
-            self.input_outlets()?.iter().all(|o| self.outlet_fact(*o).unwrap().stream.is_some())
+            self.input_outlets()?.iter().any(|o| self.outlet_fact(*o).unwrap().stream.is_some())
         );
+        // At least one output must be streaming; non-streaming auxiliary outputs
+        // (e.g. encoded_lengths) are allowed.
         ensure!(
-            self.output_outlets()?.iter().all(|o| self.outlet_fact(*o).unwrap().stream.is_some())
+            self.output_outlets()?.iter().any(|o| self.outlet_fact(*o).unwrap().stream.is_some())
         );
+        // Use 0 delay for non-streaming (auxiliary) outputs.
         let delays = tensor1(
             &self
                 .output_outlets()?
                 .iter()
-                .map(|oo| Ok(self.outlet_fact(*oo)?.stream.as_ref().unwrap().delay as _))
+                .map(|oo| {
+                    Ok(self
+                        .outlet_fact(*oo)?
+                        .stream
+                        .as_ref()
+                        .map(|s| s.delay as i64)
+                        .unwrap_or(0i64))
+                })
                 .collect::<TractResult<TVec<i64>>>()?,
         );
         typed.properties.insert("pulse.delay".to_string(), delays.into_arc_tensor());
+        // Use -1 as sentinel axis for non-streaming (auxiliary) inputs.
         let input_axes = tensor1(
             &self
                 .input_outlets()?
                 .iter()
-                .map(|oo| Ok(self.outlet_fact(*oo)?.stream.as_ref().unwrap().axis as _))
+                .map(|oo| {
+                    Ok(self
+                        .outlet_fact(*oo)?
+                        .stream
+                        .as_ref()
+                        .map(|s| s.axis as i64)
+                        .unwrap_or(-1i64))
+                })
                 .collect::<TractResult<TVec<i64>>>()?,
         );
         typed.properties.insert("pulse.input_axes".to_string(), input_axes.into_arc_tensor());
+        // Use -1 as sentinel axis for non-streaming (auxiliary) outputs.
         let output_axes = tensor1(
             &self
                 .output_outlets()?
                 .iter()
-                .map(|oo| Ok(self.outlet_fact(*oo)?.stream.as_ref().unwrap().axis as _))
+                .map(|oo| {
+                    Ok(self
+                        .outlet_fact(*oo)?
+                        .stream
+                        .as_ref()
+                        .map(|s| s.axis as i64)
+                        .unwrap_or(-1i64))
+                })
                 .collect::<TractResult<TVec<i64>>>()?,
         );
         typed.properties.insert("pulse.output_axes".to_string(), output_axes.into_arc_tensor());
@@ -98,7 +160,8 @@ impl SpecialOps<PulsedFact, Box<dyn PulsedOp>> for PulsedModel {
                 inputs.iter().map(|o| self.outlet_fact(*o)).collect::<TractResult<TVec<_>>>()?;
             op.pulsed_output_facts(&input_facts)?
         };
-        let id = self.add_node(name, op, output_facts)?;
+        let name_str = name.into();
+        let id = self.add_node(name_str, op, output_facts)?;
         inputs
             .iter()
             .enumerate()

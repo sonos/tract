@@ -1,0 +1,37 @@
+version 1.0;
+
+extension tract_registry tract_core;
+extension tract_registry tract_transformers;
+extension tract_symbol S;
+
+# Block attention: L = P = 2, Dh = 8
+# S = number of chunks (T / P), streaming axis.
+#
+# Input: qkv  [S, 3*P, Dh] = [S, 6, 8]
+#   axis 0: chunk (streaming, S)
+#   axis 1: Q[0..P], K[P..2P], V[2P..3P]  flattened  (P = 2)
+#   axis 2: head dimension (Dh = 8)
+#
+# This layout avoids a slice+squeeze and ensures the EinSum always sees
+# clean 3D inputs [S, P, Dh] with no singleton dimensions.
+#
+# Pulsify with --pulse 1: one chunk per step.
+
+graph network(qkv) -> (output)
+{
+    qkv = tract_core_external(shape = [S, 6, 8], datum_type = 'f32');
+
+    # slice Q / K / V  [S, 2, 8] each  (P = 2)
+    q = slice(qkv, axes = [1], begin = [0], end = [2]);
+    k = slice(qkv, axes = [1], begin = [2], end = [4]);
+    v = slice(qkv, axes = [1], begin = [4], end = [6]);
+
+    # scores = Q · Kᵀ within each chunk  [S, 2, 2]
+    scores = tract_core_einsum([q, k], expr = "cpd,cqd->cpq", acc = "f32");
+
+    # softmax over the key axis  [S, 2, 2]
+    attn = softmax(scores, axes = [2]);
+
+    # attn · V within each chunk  [S, 2, 8]
+    output = tract_core_einsum([attn, v], expr = "cpq,cqd->cpd", acc = "f32");
+}

@@ -95,7 +95,8 @@ impl super::TypedPass for PropagateRoi {
 
             for &node_id in &order {
                 let node = &model.nodes()[node_id];
-                let Some(input_rois) = node.op.as_typed().unwrap().input_roi(model, node)? else {
+                let Some(typed) = node.op.as_typed() else { continue };
+                let Some(input_rois) = typed.input_roi(model, node)? else {
                     continue;
                 };
                 for (ix, roi) in input_rois.into_iter().enumerate() {
@@ -118,6 +119,11 @@ impl super::TypedPass for PropagateRoi {
             // Apply demands to model facts.
             for (outlet, demand) in demands {
                 if let Some(roi) = demand {
+                    let roi = roi.simplify();
+                    // ROI of 1 means "all positions matter" — equivalent to None.
+                    if roi == TDim::Val(1) {
+                        continue;
+                    }
                     let fact = &mut model.nodes_mut()[outlet.node].outputs[outlet.slot].fact;
                     if fact.region_of_interest.as_ref() != Some(&roi) {
                         fact.region_of_interest = Some(roi);

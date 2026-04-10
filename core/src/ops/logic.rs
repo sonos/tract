@@ -95,6 +95,176 @@ pub fn sym_to_coord_axis(sym: &Symbol) -> Option<usize> {
     format!("{sym}").strip_prefix("🎯")?.parse::<usize>().ok()
 }
 
+/// Parameters extracted from a 2-D chunk-window mask `uniform_tdim`.
+///
+/// The mask is true at `[i, j]` iff `0 <= floor(i / P) - floor(j / P) <= L`,
+/// i.e. the chunk-index difference is in `[0, left_chunks]`.
+#[derive(Debug, Clone)]
+pub struct ChunkWindowParams {
+    /// Output axis that carries the "row" (query) coordinate (🎯row_axis).
+    pub row_axis: usize,
+    /// Output axis that carries the "col" (key) coordinate (🎯col_axis).
+    pub col_axis: usize,
+    /// Tokens per chunk (P).
+    pub p: u64,
+    /// Number of left-chunk lookbacks (L).
+    pub left_chunks: i64,
+}
+
+/// Try to decompose `expr` as a chunk-index difference:
+///   `floor((🎯row + r_off) / P) - floor((🎯col + c_off) / P) + constant`
+///
+/// The canonical form is `Add([MulInt(-1, Div(🎯col, P)), Div(🎯row, P)])`.
+/// After ROI bubbles through Pad/Reshape, coordinates may be offset (e.g.
+/// `Div(Add(🎯k, 1), P)`) and extra constant terms may appear.  These
+/// offsets don't change P, L, or the axis assignment — they're positional
+/// shifts — so we ignore them.
+///
+/// Returns `(row_axis, col_axis, P)` on success.
+fn extract_div_diff_axes(expr: &TDim) -> Option<(usize, usize, u64)> {
+    let TDim::Add(terms) = expr else { return None };
+    let mut pos: Option<(usize, u64)> = None; // +Div(🎯k+offset, P)
+    let mut neg: Option<(usize, u64)> = None; // -Div(🎯k+offset, P)
+    for term in terms {
+        match term {
+            TDim::Div(inner, p) => {
+                if let Some(axis) = extract_coord_sym_from_div_arg(inner) {
+                    pos = Some((axis, *p));
+                }
+            }
+            TDim::MulInt(-1, inner) => {
+                if let TDim::Div(inner2, p) = inner.as_ref() {
+                    if let Some(axis) = extract_coord_sym_from_div_arg(inner2) {
+                        neg = Some((axis, *p));
+                    }
+                }
+            }
+            TDim::Val(_) => {} // constant offset — ignore
+            _ => return None,
+        }
+    }
+    let (row_axis, p_row) = pos?;
+    let (col_axis, p_col) = neg?;
+    if p_row != p_col {
+        return None;
+    }
+    Some((row_axis, col_axis, p_row))
+}
+
+/// Extract the coordinate axis from a Div numerator that is either `Sym(🎯k)`
+/// or `Add([Sym(🎯k), Val(offset)])`.
+fn extract_coord_sym_from_div_arg(inner: &TDim) -> Option<usize> {
+    match inner {
+        TDim::Sym(sym) => sym_to_coord_axis(sym),
+        TDim::Add(terms) => {
+            let mut axis = None;
+            for t in terms {
+                match t {
+                    TDim::Sym(sym) => {
+                        if axis.is_some() {
+                            return None; // multiple symbols
+                        }
+                        axis = sym_to_coord_axis(sym);
+                    }
+                    TDim::Val(_) => {} // constant offset
+                    _ => return None,
+                }
+            }
+            axis
+        }
+        _ => None,
+    }
+}
+
+/// Recognise a 2-D chunk-window `uniform_tdim` expression.
+///
+/// Matches an expression that is (or contains within a Mul) the pattern
+/// `Ge(Val(L), diff) * Ge(diff, Val(0))` where
+/// `diff = Add([MulInt(-1, Div(🎯col, P)), Div(🎯row, P)])`.
+///
+/// Additional factors in the Mul (e.g. padding-validity conditions ANDed in)
+/// are ignored: in streaming inference every token in the key window is valid,
+/// so those factors are always True within the chunk window.
+/// Recognise a negated chunk-window `uniform_tdim` expression: `1 + -1*cw`.
+///
+/// `not(window_mask)` produces a boolean whose `uniform_tdim` is
+/// `Add([Val(1), MulInt(-1, cw_expr)])`.  Returns the same `ChunkWindowParams`
+/// as the underlying positive expression.
+pub fn classify_negated_chunk_window(expr: &TDim) -> Option<ChunkWindowParams> {
+    peel_negated_chunk_window_expr(expr).and_then(|inner| classify_chunk_window(&inner))
+}
+
+/// Extract the inner positive chunk-window TDim from a negated expression `1 + -1*cw`.
+///
+/// Returns `Some(cw_expr)` if `expr` matches `Add([Val(1), MulInt(-1, cw), ...])` where
+/// `cw` is a valid chunk-window expression; `None` otherwise.
+pub fn peel_negated_chunk_window_expr(expr: &TDim) -> Option<TDim> {
+    let TDim::Add(terms) = expr else { return None };
+    // Require a Val(1) somewhere in the sum.
+    if !terms.iter().any(|t| matches!(t, TDim::Val(1))) {
+        return None;
+    }
+    // Look for MulInt(-1, inner) where inner is a chunk-window expression.
+    for term in terms {
+        if let TDim::MulInt(-1, inner) = term {
+            if classify_chunk_window(inner).is_some() {
+                return Some(*inner.clone());
+            }
+        }
+    }
+    None
+}
+
+/// Build a chunk-window TDim expression with explicit row/col axes.
+pub fn build_chunk_window_roi(
+    symbols: &SymbolScope,
+    p: u64,
+    left_chunks: i64,
+    row_axis: usize,
+    col_axis: usize,
+) -> TDim {
+    let row = TDim::Sym(symbols.coord_sym(row_axis));
+    let col = TDim::Sym(symbols.coord_sym(col_axis));
+    let div_row = TDim::Div(Box::new(row), p);
+    let div_col = TDim::Div(Box::new(col), p);
+    let diff = (div_row - div_col).simplify();
+    let ge_upper = TDim::Ge(Box::new(TDim::Val(left_chunks)), Box::new(diff.clone()));
+    let ge_lower = TDim::Ge(Box::new(diff), Box::new(TDim::Val(0)));
+    TDim::Mul(vec![ge_upper, ge_lower])
+}
+
+pub fn classify_chunk_window(expr: &TDim) -> Option<ChunkWindowParams> {
+    let TDim::Mul(factors) = expr else { return None };
+    let n = factors.len();
+    if n < 2 {
+        return None;
+    }
+    // Search all ordered pairs (f0, f1) among the factors for the pattern.
+    for f0 in 0..n {
+        for f1 in 0..n {
+            if f0 == f1 {
+                continue;
+            }
+            let TDim::Ge(lhs0, rhs0) = &factors[f0] else { continue };
+            let TDim::Ge(lhs1, rhs1) = &factors[f1] else { continue };
+            // f0 must be Ge(Val(L), diff) and f1 must be Ge(diff, Val(0)).
+            let TDim::Val(l) = lhs0.as_ref() else { continue };
+            let TDim::Val(0) = rhs1.as_ref() else { continue };
+            let Some((row, col, p)) = extract_div_diff_axes(rhs0) else { continue };
+            // Verify f1 references the same diff expression.
+            let Some((row2, col2, p2)) = extract_div_diff_axes(lhs1) else { continue };
+            if row != row2 || col != col2 || p != p2 {
+                continue;
+            }
+            if *l < 0 {
+                continue;
+            }
+            return Some(ChunkWindowParams { row_axis: row, col_axis: col, p, left_chunks: *l });
+        }
+    }
+    None
+}
+
 pub(crate) fn coord_bound_assertions(expr: &TDim, shape: &ShapeFact) -> Vec<Assertion> {
     expr.symbols()
         .into_iter()
@@ -215,10 +385,20 @@ impl TypedOp for Iff {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TVec<Option<TDim>>>> {
-        // Introduction: condition's uniform_tdim defines which positions matter
-        // for the true-branch (scores) input.
+        // Introduction: condition's uniform_tdim defines which positions matter.
+        // Standard convention:  select(window_mask, scores, fill) — scores at inputs[1]
+        // Inverted convention: select(~window_mask, fill, scores) — scores at inputs[2]
         let cond_fact = model.outlet_fact(node.inputs[0])?;
         if let Some(mask_expr) = &cond_fact.uniform_tdim {
+            let expr = mask_expr.clone().simplify();
+            if classify_chunk_window(&expr).is_some() {
+                // Standard: scores at inputs[1], annotate with the positive expression.
+                return Ok(Some(tvec![None, Some(expr), None]));
+            } else if let Some(positive) = peel_negated_chunk_window_expr(&expr) {
+                // Inverted: scores at inputs[2], annotate with the positive expression.
+                return Ok(Some(tvec![None, None, Some(positive)]));
+            }
+            // Not a chunk-window — annotate true-branch as before.
             return Ok(Some(tvec![None, Some(mask_expr.clone()), None]));
         }
         // Bubbling: delegate to the natural blanket implementation.

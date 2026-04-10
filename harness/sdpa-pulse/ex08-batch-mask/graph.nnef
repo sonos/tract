@@ -1,0 +1,63 @@
+version 1.0;
+
+extension tract_registry tract_core;
+extension tract_registry tract_transformers;
+extension tract_symbol S;
+extension tract_assert S>=0;
+
+# ex08: ex04 + batch dimension.
+#
+# Same flat T×T masked attention as ex04, but wrapped in a batch axis B.
+# Scores shape: [B, S, S] (was [S, S] in ex04).
+# Mask shape:   [B, S, S].
+#
+# Purpose: verify that the ROI/uniform_tdim backward propagation that gives
+# the scores EinSum its 🬳 annotation in ex04 still works when B is present.
+# If it does, K gets a Delay and streaming compare passes.
+# If it doesn't, K stays at P tokens → Broadcast error or wrong output.
+#
+# Parameters: B=1, T=8, P=2, left_chunks=1, Dh=4
+# Input:  qkv [B, S, 3*Dh] = [1, S, 12]
+# Output: [B, S, Dh]        = [1, S, 4]
+
+graph network(qkv) -> (output)
+{
+    qkv = tract_core_external(shape = [1, S, 12], datum_type = 'f32');
+
+    q = slice(qkv, axes = [2], begin = [0], end = [4]);    # [1, S, 4]
+    k = slice(qkv, axes = [2], begin = [4], end = [8]);
+    v = slice(qkv, axes = [2], begin = [8], end = [12]);
+
+    # Full [B, S, S] attention scores
+    scores = tract_core_einsum([q, k], expr = "bid,bjd->bij", acc = "f32");  # [1, S, S]
+
+    # Chunk-window mask (same computation as ex04, lifted to batch)
+    qkv_shape = tract_core_shape_of(qkv);
+    T_slice   = slice(qkv_shape, axes = [0], begin = [1], end = [2], stride = [1]);
+    T         = squeeze(T_slice, axes = [0]);
+
+    positions          = tract_core_range(0, T, step = 1);
+    positions_f32      = tract_core_cast(positions, to = 'f32');
+    chunk_size_f32     = tract_core_cast(2, to = 'f32');
+    chunkIdx_f32       = div(positions_f32, chunk_size_f32);
+    chunkIdx_f32_floor = floor(chunkIdx_f32);
+    chunkIdx           = tract_core_cast(chunkIdx_f32_floor, to = 'i64');
+
+    ci_row     = unsqueeze(chunkIdx, axes = [1]);   # [S, 1]
+    ci_col     = unsqueeze(chunkIdx, axes = [0]);   # [1, S]
+    diffChunks = sub(ci_row, ci_col);               # [S, S]
+
+    left_chunks_i64 = tract_core_cast(1, to = 'i64');
+    zero_i64        = tract_core_cast(0, to = 'i64');
+    le_mask         = le(diffChunks, left_chunks_i64);
+    ge_mask         = ge(diffChunks, zero_i64);
+    window_mask_2d  = and(le_mask, ge_mask);            # [S, S] bool
+
+    # Lift to [1, S, S] for batch broadcast
+    window_mask = unsqueeze(window_mask_2d, axes = [0]);  # [1, S, S]
+
+    masked_scores = select(window_mask, scores, scores * 0.0 + -inf);
+
+    attn   = softmax(masked_scores, axes = [2]);
+    output = tract_core_einsum([attn, v], expr = "bij,bjd->bid", acc = "f32");  # [1, S, 4]
+}

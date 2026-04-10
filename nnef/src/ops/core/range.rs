@@ -33,6 +33,36 @@ fn range_load(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tr
     let end: OutletId = invocation.named_arg_as(builder, "end")?;
     let step: OutletId = invocation.named_arg_as(builder, "step")?;
 
-    let len = builder.model.symbols.new_with_prefix("range");
-    builder.wire(Range::new(len.into()), &[start, end, step])
+    // If start/end/step are all constant TDim scalars, compute the length symbolically
+    // so that self.len carries the correct expression (e.g. T_tokens) rather than a
+    // fresh free symbol.  This matters for pulsification: NonPulsingWrappingOp drops
+    // konst when converting PulsedFact → TypedFact, so output_facts falls back to
+    // self.len for the output shape — a free symbol would contaminate pulsed shapes.
+    let len: TDim = {
+        let sf = builder.model.outlet_fact(start)?;
+        let ef = builder.model.outlet_fact(end)?;
+        let kf = builder.model.outlet_fact(step)?;
+        if let (Some(s), Some(e), Some(k)) = (&sf.konst, &ef.konst, &kf.konst) {
+            if s.datum_type() == TDim::datum_type() {
+                if let (Ok(s_tdim), Ok(e_tdim), Ok(step_val)) = (
+                    s.try_as_plain().and_then(|t| t.to_scalar::<TDim>()).map(|d| d.clone()),
+                    e.try_as_plain().and_then(|t| t.to_scalar::<TDim>()).map(|d| d.clone()),
+                    k.cast_to_scalar::<i64>(),
+                ) {
+                    if step_val > 0 {
+                        (e_tdim - s_tdim).divceil(step_val as usize)
+                    } else {
+                        builder.model.symbols.new_with_prefix("range").into()
+                    }
+                } else {
+                    builder.model.symbols.new_with_prefix("range").into()
+                }
+            } else {
+                builder.model.symbols.new_with_prefix("range").into()
+            }
+        } else {
+            builder.model.symbols.new_with_prefix("range").into()
+        }
+    };
+    builder.wire(Range::new(len), &[start, end, step])
 }
