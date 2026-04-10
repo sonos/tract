@@ -57,7 +57,22 @@ $TRACT_RUN $model_prefix.preprocessor.nnef.tgz \
 # The encoder subsamples by 8x (three stride-2 convolutions) before the transformer.
 # The chunk-window mask has P=14 transformer tokens per chunk, so the input pulse
 # must be 14 * 8 = 112 audio frames.
-$TRACT_RUN $model_prefix.encoder.nnef.tgz \
+$TRACT_RUN $model_prefix.encoder.p1.nnef.tgz \
 	--nnef-tract-transformers \
 	-t 'pulse(symbol: Some("AUDIO_SIGNAL__TIME"), pulse: "112")' \
 	dump -q
+
+# Check that pulsified encoder output matches batch output.
+# --drop-partial-pulse truncates the input to a multiple of the pulse size,
+# and the output comparison is trimmed accordingly.
+$TRACT_RUN $model_prefix.encoder.p1.nnef.tgz \
+	--nnef-tract-transformers \
+	-t 'concretize_symbols(values: {"BATCH": 1})' \
+	-t 'patch(body: "length = tract_core_shape_of(audio_signal)[2];")' \
+	-t 'select_outputs(outputs: ["outputs"])' \
+	-t 'pulse(symbol: Some("AUDIO_SIGNAL__TIME"), pulse: "112")' \
+	run \
+	--input-from-bundle $MODELS/$S3DIR/$MODEL.encoder.io.npz \
+	--assert-output-bundle $MODELS/$S3DIR/$MODEL.encoder.io.npz \
+	--approx very \
+	--drop-partial-pulse

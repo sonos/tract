@@ -611,6 +611,12 @@ fn run_options(command: clap::Command) -> clap::Command {
                 .number_of_values(1)
                 .help("Set prompt chunk size. Help splitting too big prompts")
         )
+        .arg(
+            Arg::new("drop-partial-pulse")
+                .long("drop-partial-pulse")
+                .action(clap::ArgAction::SetTrue)
+                .help("Truncate input to a multiple of the pulse size, dropping trailing frames")
+        )
 }
 
 fn output_options(command: clap::Command) -> clap::Command {
