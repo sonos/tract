@@ -1137,6 +1137,22 @@ pub unsafe extern "C" fn tract_state_output_count(
     })
 }
 
+/// Clone a State, creating an independent copy.
+///
+/// `clone` will be overwritten with a pointer to the new state. The new state must eventually be
+/// destroyed with `tract_state_destroy`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tract_state_clone(
+    state: *const TractState,
+    clone: *mut *mut TractState,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(state, clone);
+        *clone = Box::into_raw(Box::new(TractState((*state).0.clone())));
+        Ok(())
+    })
+}
+
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_state_destroy(state: *mut *mut TractState) -> TRACT_RESULT {
     release!(state)

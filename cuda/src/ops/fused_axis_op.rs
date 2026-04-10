@@ -112,6 +112,10 @@ impl OpStateFreeze for CudaFusedAxisOpState {
     fn freeze(&self) -> Box<dyn FrozenOpState + 'static> {
         Box::new(FrozenCudaFusedAxisOpState { op_state: self.op_state.freeze() })
     }
+
+    fn freeze_into(self: Box<Self>) -> Box<dyn FrozenOpState> {
+        Box::new(FrozenCudaFusedAxisOpState { op_state: self.op_state.freeze_into() })
+    }
 }
 
 impl FrozenOpState for FrozenCudaFusedAxisOpState {

@@ -271,6 +271,13 @@ impl OpStateFreeze for PulsePadOpState {
             last_valid_frame: self.last_valid_frame.as_ref().map(|t| t.clone().into_arc_tensor()),
         })
     }
+
+    fn freeze_into(self: Box<Self>) -> Box<dyn FrozenOpState> {
+        Box::new(FrozenPulsePadOpState {
+            current_pos: self.current_pos,
+            last_valid_frame: self.last_valid_frame.map(|t| t.into_arc_tensor()),
+        })
+    }
 }
 
 impl FrozenOpState for FrozenPulsePadOpState {

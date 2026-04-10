@@ -572,6 +572,14 @@ enum TRACT_RESULT tract_state_input_count(const struct TractState *state, uintpt
  */
 enum TRACT_RESULT tract_state_output_count(const struct TractState *state, uintptr_t *outputs);
 
+/**
+ * Clone a State, creating an independent copy.
+ *
+ * `clone` will be overwritten with a pointer to the new state. The new state must eventually be
+ * destroyed with `tract_state_destroy`.
+ */
+enum TRACT_RESULT tract_state_clone(const struct TractState *state, struct TractState **clone);
+
 enum TRACT_RESULT tract_state_destroy(struct TractState **state);
 
 /**
