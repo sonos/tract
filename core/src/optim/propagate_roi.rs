@@ -85,52 +85,45 @@ impl super::TypedPass for PropagateRoi {
     }
 
     fn run_direct(&mut self, model: &mut TypedModel) -> TractResult<bool> {
-        let mut any_changed = false;
-        loop {
-            let order = model.eval_order()?;
-            let mut changed = false;
+        let order = model.eval_order()?;
+        let mut changed = false;
 
-            // Collect ROI demands from all nodes.
-            let mut demands: HashMap<OutletId, Option<TDim>> = HashMap::new();
+        // Collect ROI demands from all nodes.
+        let mut demands: HashMap<OutletId, Option<TDim>> = HashMap::new();
 
-            for &node_id in &order {
-                let node = &model.nodes()[node_id];
-                let Some(input_rois) = node.op.as_typed().unwrap().input_roi(model, node)? else {
-                    continue;
-                };
-                for (ix, roi) in input_rois.into_iter().enumerate() {
-                    let outlet = node.inputs[ix];
-                    match (demands.get(&outlet), &roi) {
-                        (_, None) => {
-                            demands.insert(outlet, None);
-                        }
-                        (Option::None, Some(roi)) => {
-                            demands.insert(outlet, Some(roi.clone()));
-                        }
-                        (Some(None), Some(_)) => {}
-                        (Some(Some(existing)), Some(new)) => {
-                            demands.insert(outlet, Some(roi_union(existing, new)));
-                        }
+        for &node_id in &order {
+            let node = &model.nodes()[node_id];
+            let Some(input_rois) = node.op.as_typed().unwrap().input_roi(model, node)? else {
+                continue;
+            };
+            for (ix, roi) in input_rois.into_iter().enumerate() {
+                let outlet = node.inputs[ix];
+                match (demands.get(&outlet), &roi) {
+                    (_, None) => {
+                        demands.insert(outlet, None);
+                    }
+                    (Option::None, Some(roi)) => {
+                        demands.insert(outlet, Some(roi.clone()));
+                    }
+                    (Some(None), Some(_)) => {}
+                    (Some(Some(existing)), Some(new)) => {
+                        demands.insert(outlet, Some(roi_union(existing, new)));
                     }
                 }
-            }
-
-            // Apply demands to model facts.
-            for (outlet, demand) in demands {
-                if let Some(roi) = demand {
-                    let fact = &mut model.nodes_mut()[outlet.node].outputs[outlet.slot].fact;
-                    if fact.region_of_interest.as_ref() != Some(&roi) {
-                        fact.region_of_interest = Some(roi);
-                        changed = true;
-                    }
-                }
-            }
-
-            any_changed |= changed;
-            if !changed {
-                break;
             }
         }
-        Ok(any_changed)
+
+        // Apply demands to model facts.
+        for (outlet, demand) in demands {
+            if let Some(roi) = demand {
+                let fact = &mut model.nodes_mut()[outlet.node].outputs[outlet.slot].fact;
+                if fact.region_of_interest.as_ref() != Some(&roi) {
+                    fact.region_of_interest = Some(roi);
+                    changed = true;
+                }
+            }
+        }
+
+        Ok(changed)
     }
 }

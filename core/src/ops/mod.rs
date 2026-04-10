@@ -229,16 +229,15 @@ pub trait TypedOp:
     }
 
     /// Derive ROI (region of interest) expressions for this node's inputs.
-    /// Called by the PropagateRoi pass. The default implementation uses
-    /// axes_mapping to bubble output ROI to inputs with coordinate remapping.
-    /// Override for ops that introduce ROIs (e.g. Iff, masked softmax) or
-    /// that need arithmetic coordinate transforms (e.g. Slice, Pad).
+    /// Called by the PropagateRoi pass. Default returns None (no propagation).
+    /// Override to introduce ROIs or bubble them through.
+    #[allow(unused_variables)]
     fn input_roi(
         &self,
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TVec<Option<TDim>>>> {
-        crate::optim::propagate_roi::bubble_roi(model, node)
+        Ok(None)
     }
 
     #[allow(unused_variables)]
