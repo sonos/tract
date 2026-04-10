@@ -1,4 +1,5 @@
 use std::fs::File;
+use std::sync::Arc;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
@@ -41,7 +42,7 @@ struct NemotronModels {
 }
 
 impl NemotronModels {
-    fn load(assets: &str) -> anyhow::Result<(Self, Duration)> {
+    fn load(assets: &str) -> anyhow::Result<(Arc<Self>, Duration)> {
         let t0 = Instant::now();
 
         let config: serde_json::Value =
@@ -119,7 +120,7 @@ impl NemotronModels {
         eprintln!("Ready ({:.1}s)", load_time.as_secs_f64());
 
         Ok((
-            Self {
+            Arc::new(Self {
                 preprocessor,
                 encoder,
                 decoder,
@@ -134,9 +135,13 @@ impl NemotronModels {
                 enc_output_axis,
                 enc_output_pulse,
                 enc_input_shape,
-            },
+            }),
             load_time,
         ))
+    }
+
+    fn spawn(self: &Arc<Self>) -> anyhow::Result<StreamState> {
+        StreamState::new(Arc::clone(self))
     }
 }
 
@@ -147,6 +152,7 @@ fn fact_shape(f: &Fact) -> anyhow::Result<Vec<usize>> {
 // ─── Mutable streaming state ────────────────────────────────────────────────
 
 struct StreamState {
+    models: Arc<NemotronModels>,
     preproc: State,
     encoder: State,
     // Decoder RNNT state.
@@ -176,7 +182,7 @@ struct StreamState {
 }
 
 impl StreamState {
-    fn new(models: &NemotronModels) -> anyhow::Result<Self> {
+    fn new(models: Arc<NemotronModels>) -> anyhow::Result<Self> {
         let preproc = models.preprocessor.spawn_state()?;
         let encoder = models.encoder.spawn_state()?;
 
@@ -189,6 +195,9 @@ impl StreamState {
             models.decoder.run([blank_tok, s0, s1])?.try_into().unwrap();
 
         Ok(Self {
+            pp_delay_remaining: models.pp_delay,
+            enc_delay_remaining: models.enc_delay,
+            models,
             preproc,
             encoder,
             dec_token,
@@ -198,8 +207,6 @@ impl StreamState {
             audio_consumed: 0,
             feat_buf: Vec::new(),
             feat_buf_frames: 0,
-            pp_delay_remaining: models.pp_delay,
-            enc_delay_remaining: models.enc_delay,
             hyp: Vec::new(),
             pulse_count: 0,
             total_preproc: Duration::ZERO,
@@ -213,91 +220,88 @@ impl StreamState {
         })
     }
 
-    fn show(&self, models: &NemotronModels, label: &str) {
-        let vocab: Vec<&str> = models.vocab.iter().map(|s| s.as_str()).collect();
+    fn show(&self, label: &str) {
+        let vocab: Vec<&str> = self.models.vocab.iter().map(|s| s.as_str()).collect();
         let text: String = self.hyp.iter().map(|&t| vocab[t]).join("");
         let display = text.replace('▁', " ");
         eprint!("\r{} {label}          ", display.trim_start());
     }
 
     /// Push audio samples. Runs preprocessor + encoder + decoder as data accumulates.
-    fn push_audio(&mut self, models: &NemotronModels, samples: &[f32]) -> anyhow::Result<()> {
+    fn push_audio(&mut self, samples: &[f32]) -> anyhow::Result<()> {
         self.audio_buf.extend_from_slice(samples);
-        self.show(models, "");
+        self.show("");
 
         while self.audio_consumed + PREPROC_PULSE <= self.audio_buf.len() {
             let start = self.audio_consumed;
             let end = start + PREPROC_PULSE;
-            let pp_input = Tensor::from_slice(&models.pp_input_shape, &self.audio_buf[start..end])?;
+            let pp_input =
+                Tensor::from_slice(&self.models.pp_input_shape, &self.audio_buf[start..end])?;
             self.audio_consumed = end;
-            self.run_preproc(models, pp_input)?;
+            self.run_preproc(pp_input)?;
         }
         Ok(())
     }
 
     /// Signal end of audio. Flushes remaining buffers.
-    fn flush(&mut self, models: &NemotronModels) -> anyhow::Result<()> {
+    fn flush(&mut self) -> anyhow::Result<()> {
         // Flush remaining audio as a zero-padded preprocessor pulse.
         let remaining = self.audio_buf.len() - self.audio_consumed;
         if remaining > 0 {
-            let mut data = vec![0.0f32; models.pp_input_shape.iter().product()];
+            let mut data = vec![0.0f32; self.models.pp_input_shape.iter().product()];
             data[..remaining].copy_from_slice(&self.audio_buf[self.audio_consumed..]);
-            let pp_input = Tensor::from_slice(&models.pp_input_shape, &data)?;
-            self.run_preproc(models, pp_input)?;
+            let pp_input = Tensor::from_slice(&self.models.pp_input_shape, &data)?;
+            self.run_preproc(pp_input)?;
         }
         // Flush remaining buffered features as a zero-padded encoder pulse.
         if self.feat_buf_frames > 0 {
             let refs: Vec<_> = self.feat_buf.iter().map(|a| a.view()).collect();
             let leftover =
-                tract::prelude::tract_ndarray::concatenate(Axis(models.pp_out_axis), &refs)?;
-            let s = &models.enc_input_shape;
+                tract::prelude::tract_ndarray::concatenate(Axis(self.models.pp_out_axis), &refs)?;
+            let s = &self.models.enc_input_shape;
             let mut enc_input = Array3::<f32>::zeros((s[0], s[1], s[2]));
-            let n = leftover.shape()[models.pp_out_axis].min(s[2]);
+            let n = leftover.shape()[self.models.pp_out_axis].min(s[2]);
             enc_input.slice_mut(s![.., .., ..n]).assign(&leftover.slice(s![.., .., ..n]));
-            self.run_encoder_pulse(models, enc_input.into_dyn())?;
+            self.run_encoder_pulse(enc_input.into_dyn())?;
         }
         Ok(())
     }
 
-    fn transcript(&self, models: &NemotronModels) -> String {
-        let vocab: Vec<&str> = models.vocab.iter().map(|s| s.as_str()).collect();
+    fn transcript(&self) -> String {
+        let vocab: Vec<&str> = self.models.vocab.iter().map(|s| s.as_str()).collect();
         self.hyp.iter().map(|&t| vocab[t]).join("")
     }
 
     // ── Internal pipeline methods ───────────────────────────────────────
 
-    fn run_preproc(&mut self, models: &NemotronModels, input: Tensor) -> anyhow::Result<()> {
-        self.show(models, "[pre]");
+    fn run_preproc(&mut self, input: Tensor) -> anyhow::Result<()> {
+        self.show("[pre]");
         let t = Instant::now();
         let results = self.preproc.run([input])?;
         self.total_preproc += t.elapsed();
         self.n_preproc += 1;
         let features: ArrayD<f32> = results[0].view()?.into_owned();
-        self.feed_features(models, features)
+        self.feed_features(features)
     }
 
-    fn feed_features(
-        &mut self,
-        models: &NemotronModels,
-        features: ArrayD<f32>,
-    ) -> anyhow::Result<()> {
-        let usable_start = self.pp_delay_remaining.min(models.pp_out_pulse);
-        self.pp_delay_remaining = self.pp_delay_remaining.saturating_sub(models.pp_out_pulse);
-        if usable_start >= models.pp_out_pulse {
+    fn feed_features(&mut self, features: ArrayD<f32>) -> anyhow::Result<()> {
+        let pp_out_pulse = self.models.pp_out_pulse;
+        let pp_out_axis = self.models.pp_out_axis;
+        let usable_start = self.pp_delay_remaining.min(pp_out_pulse);
+        self.pp_delay_remaining = self.pp_delay_remaining.saturating_sub(pp_out_pulse);
+        if usable_start >= pp_out_pulse {
             return Ok(());
         }
-        let usable = features
-            .slice_axis(Axis(models.pp_out_axis), (usable_start..models.pp_out_pulse).into());
-        self.feat_buf_frames += usable.shape()[models.pp_out_axis];
+        let usable = features.slice_axis(Axis(pp_out_axis), (usable_start..pp_out_pulse).into());
+        self.feat_buf_frames += usable.shape()[pp_out_axis];
         self.feat_buf.push(usable.to_owned());
 
         while self.feat_buf_frames >= ENCODER_PULSE {
             let refs: Vec<_> = self.feat_buf.iter().map(|a| a.view()).collect();
-            let all = tract::prelude::tract_ndarray::concatenate(Axis(models.pp_out_axis), &refs)?;
-            let enc_feat =
-                all.slice_axis(Axis(models.pp_out_axis), (..ENCODER_PULSE).into()).to_owned();
-            self.run_encoder_pulse(models, enc_feat)?;
-            let leftover = all.slice_axis(Axis(models.pp_out_axis), (ENCODER_PULSE..).into());
+            let all = tract::prelude::tract_ndarray::concatenate(Axis(pp_out_axis), &refs)?;
+            let enc_feat = all.slice_axis(Axis(pp_out_axis), (..ENCODER_PULSE).into()).to_owned();
+            self.run_encoder_pulse(enc_feat)?;
+            let leftover = all.slice_axis(Axis(pp_out_axis), (ENCODER_PULSE..).into());
             self.feat_buf_frames -= ENCODER_PULSE;
             self.feat_buf.clear();
             if self.feat_buf_frames > 0 {
@@ -307,12 +311,8 @@ impl StreamState {
         Ok(())
     }
 
-    fn run_encoder_pulse(
-        &mut self,
-        models: &NemotronModels,
-        features: ArrayD<f32>,
-    ) -> anyhow::Result<()> {
-        self.show(models, "[enc]");
+    fn run_encoder_pulse(&mut self, features: ArrayD<f32>) -> anyhow::Result<()> {
+        self.show("[enc]");
         let t = Instant::now();
         let pulse_tensor: Tensor = tensor(features)?;
         let results = self.encoder.run([pulse_tensor])?;
@@ -321,39 +321,40 @@ impl StreamState {
         let enc_out: ArrayD<f32> = results[0].view()?.into_owned();
         self.pulse_count += 1;
 
-        for f in 0..models.enc_output_pulse {
+        for f in 0..self.models.enc_output_pulse {
             if self.enc_delay_remaining > 0 {
                 self.enc_delay_remaining -= 1;
                 continue;
             }
             let frame: Tensor =
-                tensor(enc_out.slice_axis(Axis(models.enc_output_axis), (f..f + 1).into()))?;
-            self.decode_frame(models, frame)?;
+                tensor(enc_out.slice_axis(Axis(self.models.enc_output_axis), (f..f + 1).into()))?;
+            self.decode_frame(frame)?;
         }
         Ok(())
     }
 
-    fn decode_frame(&mut self, models: &NemotronModels, frame: Tensor) -> anyhow::Result<()> {
+    fn decode_frame(&mut self, frame: Tensor) -> anyhow::Result<()> {
         let max_tokens_per_frame = 10;
         let mut tokens_this_frame = 0usize;
         loop {
-            self.show(models, "[jnt]");
+            self.show("[jnt]");
             let t = Instant::now();
             let [logits] =
-                models.joint.run([frame.clone(), self.dec_token.clone()])?.try_into().unwrap();
+                self.models.joint.run([frame.clone(), self.dec_token.clone()])?.try_into().unwrap();
             self.total_joint += t.elapsed();
             self.n_joint += 1;
             let logits_view = logits.view::<f32>()?;
             let token_id = argmax(logits_view.as_slice().unwrap()).unwrap();
-            if token_id == models.blank_id {
+            if token_id == self.models.blank_id {
                 break;
             }
             self.hyp.push(token_id);
             tokens_this_frame += 1;
-            self.show(models, "[dec]");
+            self.show("[dec]");
             let t = Instant::now();
             let tok = Tensor::from_slice(&[1, 1], &[token_id as i32])?;
-            [self.dec_token, self.dec_state_0, self.dec_state_1] = models
+            [self.dec_token, self.dec_state_0, self.dec_state_1] = self
+                .models
                 .decoder
                 .run([tok, self.dec_state_0.clone(), self.dec_state_1.clone()])?
                 .try_into()
@@ -371,7 +372,7 @@ impl StreamState {
         eprintln!();
         eprintln!("--- stats ---");
         eprintln!("model load:    {:.1}s", load_time.as_secs_f64());
-        eprintln!("audio:         {:.2}s", audio_duration,);
+        eprintln!("audio:         {:.2}s", audio_duration);
         eprintln!(
             "stream wall:   {:.2}s ({:.1}x real-time)",
             stream_time.as_secs_f64(),
@@ -424,7 +425,7 @@ impl StreamState {
 
 fn main() -> anyhow::Result<()> {
     let (models, load_time) = NemotronModels::load("assets")?;
-    let mut state = StreamState::new(&models)?;
+    let mut state = models.spawn()?;
 
     // Load audio.
     let wav: Vec<f32> = hound::WavReader::open("assets/2086-149220-0033.wav")?
@@ -451,15 +452,15 @@ fn main() -> anyhow::Result<()> {
     // Stream.
     let stream_start = Instant::now();
     for chunk in audio_rx {
-        state.push_audio(&models, &chunk)?;
+        state.push_audio(&chunk)?;
     }
-    state.flush(&models)?;
+    state.flush()?;
     let stream_time = stream_start.elapsed();
 
     mic_handle.join().unwrap();
 
     // Final transcript.
-    let transcript = state.transcript(&models);
+    let transcript = state.transcript();
     let display = transcript.replace('▁', " ");
     eprint!("\r{}                    \n", display.trim_start());
 
