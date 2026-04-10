@@ -1,40 +1,69 @@
 use std::fs::File;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use anyhow::*;
+use clap::Parser;
 use float_ord::FloatOrd;
 use itertools::Itertools;
 use tract::prelude::tract_ndarray::prelude::*;
 use tract::prelude::*;
 
+/// Streaming ASR demo using nvidia/nemotron-speech-streaming-en-0.6b.
+///
+/// Simulates real-time audio input and transcribes incrementally using
+/// pulsified preprocessor + encoder on GPU with RNNT greedy decoding.
+#[derive(Parser)]
+struct Config {
+    /// Path to the model assets directory.
+    #[arg(long, default_value = "assets")]
+    assets: PathBuf,
+
+    /// WAV file to transcribe (16kHz mono PCM).
+    #[arg(long, default_value = "assets/2086-149220-0033.wav")]
+    wav: PathBuf,
+
+    /// Audio chunk size sent by the simulated microphone (samples at 16kHz).
+    #[arg(long, default_value_t = 80)]
+    audio_chunk: usize,
+
+    /// Preprocessor pulse in audio samples. ~100ms = 1600 samples.
+    #[arg(long, default_value_t = 1600)]
+    preproc_pulse: usize,
+
+    /// Encoder pulse in feature frames. 14 token chunks * 8x subsampling = 112.
+    #[arg(long, default_value_t = 112)]
+    encoder_pulse: usize,
+
+    /// Simulate real-time playback speed (sleep between chunks).
+    #[arg(long, default_value_t = true)]
+    realtime: bool,
+}
+
 fn argmax(slice: &[f32]) -> Option<usize> {
     slice.into_iter().position_max_by_key(|x| FloatOrd(**x))
 }
 
-/// Audio chunk size sent by the "microphone" thread (samples at 16kHz).
-const AUDIO_CHUNK: usize = 80;
-/// Preprocessor pulse in audio samples (~100ms at 16kHz = 10 feat frames × 160 hop).
-const PREPROC_PULSE: usize = 1600;
-/// Encoder pulse in feature frames (14 token chunks × 8x subsampling).
-const ENCODER_PULSE: usize = 112;
+fn fact_shape(f: &Fact) -> anyhow::Result<Vec<usize>> {
+    (0..f.rank()?).map(|a| f.dim(a).and_then(|d| d.to_int64()).map(|v| v as usize)).collect()
+}
 
 // ─── Shared read-only model context ─────────────────────────────────────────
 
 struct NemotronModels {
+    config: Config,
     preprocessor: Runnable,
     encoder: Runnable,
     decoder: Runnable,
     joint: Runnable,
     vocab: Vec<String>,
     blank_id: usize,
-    // Preprocessor pulse metadata.
     pp_delay: usize,
     pp_out_axis: usize,
     pp_out_pulse: usize,
     pp_input_shape: Vec<usize>,
-    // Encoder pulse metadata.
     enc_delay: usize,
     enc_output_axis: usize,
     enc_output_pulse: usize,
@@ -42,13 +71,15 @@ struct NemotronModels {
 }
 
 impl NemotronModels {
-    fn load(assets: &str) -> anyhow::Result<(Arc<Self>, Duration)> {
+    fn load(config: Config) -> anyhow::Result<(Arc<Self>, Duration)> {
         let t0 = Instant::now();
+        let assets = config.assets.display();
 
-        let config: serde_json::Value =
+        let model_config: serde_json::Value =
             serde_json::from_reader(File::open(format!("{assets}/model/model_config.json"))?)?;
-        let blank_id = config.pointer("/decoder/vocab_size").unwrap().as_i64().unwrap() as usize;
-        let vocab: Vec<String> = config
+        let blank_id =
+            model_config.pointer("/decoder/vocab_size").unwrap().as_i64().unwrap() as usize;
+        let vocab: Vec<String> = model_config
             .pointer("/joint/vocabulary")
             .unwrap()
             .as_array()
@@ -63,7 +94,6 @@ impl NemotronModels {
             .find_map(|rt| tract::runtime_for_name(rt).ok())
             .unwrap();
 
-        // Preprocessor (pulsified).
         eprint!("Loading preprocessor to {}...", runtime.name()?);
         let mut pp = nnef.load(format!("{assets}/model/preprocessor.nnef.tgz"))?;
         pp.transform(ConcretizeSymbols::new().value("BATCH", 1))?;
@@ -71,7 +101,7 @@ impl NemotronModels {
             r#"{"name":"patch","body":"length = tract_core_shape_of(input_signal)[1];"}"#,
         )?;
         pp.transform(r#"{"name":"select_outputs","outputs":["processed_signal"]}"#)?;
-        pp.transform(Pulse::new(PREPROC_PULSE.to_string()).symbol("INPUT_SIGNAL__TIME"))?;
+        pp.transform(Pulse::new(config.preproc_pulse.to_string()).symbol("INPUT_SIGNAL__TIME"))?;
         let pp_delay = pp.property("pulse.delay")?.view::<i64>()?[0].to_owned() as usize;
         let pp_out_axis = pp.property("pulse.output_axes")?.view::<i64>()?[0].to_owned() as usize;
         let pp_out_pulse = pp.output_fact(0)?.dim(pp_out_axis)?.to_int64()? as usize;
@@ -79,7 +109,6 @@ impl NemotronModels {
         let preprocessor = runtime.prepare(pp)?;
         eprintln!(" done.");
 
-        // Encoder (pulsified).
         eprint!("Loading encoder to {}...", runtime.name()?);
         let mut enc = nnef.load(format!("{assets}/model/encoder.p1.nnef.tgz"))?;
         enc.transform(ConcretizeSymbols::new().value("BATCH", 1))?;
@@ -88,7 +117,7 @@ impl NemotronModels {
             r#"{"name":"patch","body":"length = tract_core_shape_of(audio_signal)[2];"}"#,
         )?;
         enc.transform(r#"{"name":"select_outputs","outputs":["outputs"]}"#)?;
-        enc.transform(Pulse::new(ENCODER_PULSE.to_string()).symbol("AUDIO_SIGNAL__TIME"))?;
+        enc.transform(Pulse::new(config.encoder_pulse.to_string()).symbol("AUDIO_SIGNAL__TIME"))?;
         let enc_delay = enc.property("pulse.delay")?.view::<i64>()?[0].to_owned() as usize;
         let enc_output_axis =
             enc.property("pulse.output_axes")?.view::<i64>()?[0].to_owned() as usize;
@@ -97,14 +126,12 @@ impl NemotronModels {
         let encoder = runtime.prepare(enc)?;
         eprintln!(" done.");
 
-        // Decoder.
         eprint!("Loading decoder to {}...", runtime.name()?);
         let mut dec = nnef.load(format!("{assets}/model/decoder.nnef.tgz"))?;
         dec.transform(ConcretizeSymbols::new().value("BATCH", 1).value("TARGETS__TIME", 1))?;
         let decoder = runtime.prepare(dec)?;
         eprintln!(" done.");
 
-        // Joint.
         eprint!("Loading joint to {}...", runtime.name()?);
         let mut jnt = nnef.load(format!("{assets}/model/joint.nnef.tgz"))?;
         jnt.transform(
@@ -121,6 +148,7 @@ impl NemotronModels {
 
         Ok((
             Arc::new(Self {
+                config,
                 preprocessor,
                 encoder,
                 decoder,
@@ -145,32 +173,23 @@ impl NemotronModels {
     }
 }
 
-fn fact_shape(f: &Fact) -> anyhow::Result<Vec<usize>> {
-    (0..f.rank()?).map(|a| f.dim(a).and_then(|d| d.to_int64()).map(|v| v as usize)).collect()
-}
-
 // ─── Mutable streaming state ────────────────────────────────────────────────
 
 struct StreamState {
     models: Arc<NemotronModels>,
     preproc: State,
     encoder: State,
-    // Decoder RNNT state.
     dec_token: Tensor,
     dec_state_0: Tensor,
     dec_state_1: Tensor,
-    // Audio buffering.
     audio_buf: Vec<f32>,
     audio_consumed: usize,
-    // Feature buffering between preprocessor and encoder.
     feat_buf: Vec<ArrayD<f32>>,
     feat_buf_frames: usize,
     pp_delay_remaining: usize,
     enc_delay_remaining: usize,
-    // Output.
     hyp: Vec<usize>,
     pulse_count: usize,
-    // Stats.
     total_preproc: Duration,
     total_encoder: Duration,
     total_joint: Duration,
@@ -186,7 +205,6 @@ impl StreamState {
         let preproc = models.preprocessor.spawn_state()?;
         let encoder = models.encoder.spawn_state()?;
 
-        // Warm up decoder: 2 steps of blank_id (SOS + first blank).
         let blank_tok = Tensor::from_slice(&[1, 1], &[models.blank_id as i32])?;
         let s0 = tensor(Array3::<f32>::zeros([2, 1, 640]))?;
         let s1 = tensor(Array3::<f32>::zeros([2, 1, 640]))?;
@@ -227,14 +245,13 @@ impl StreamState {
         eprint!("\r{} {label}          ", display.trim_start());
     }
 
-    /// Push audio samples. Runs preprocessor + encoder + decoder as data accumulates.
     fn push_audio(&mut self, samples: &[f32]) -> anyhow::Result<()> {
         self.audio_buf.extend_from_slice(samples);
         self.show("");
-
-        while self.audio_consumed + PREPROC_PULSE <= self.audio_buf.len() {
+        let preproc_pulse = self.models.config.preproc_pulse;
+        while self.audio_consumed + preproc_pulse <= self.audio_buf.len() {
             let start = self.audio_consumed;
-            let end = start + PREPROC_PULSE;
+            let end = start + preproc_pulse;
             let pp_input =
                 Tensor::from_slice(&self.models.pp_input_shape, &self.audio_buf[start..end])?;
             self.audio_consumed = end;
@@ -243,9 +260,7 @@ impl StreamState {
         Ok(())
     }
 
-    /// Signal end of audio. Flushes remaining buffers.
     fn flush(&mut self) -> anyhow::Result<()> {
-        // Flush remaining audio as a zero-padded preprocessor pulse.
         let remaining = self.audio_buf.len() - self.audio_consumed;
         if remaining > 0 {
             let mut data = vec![0.0f32; self.models.pp_input_shape.iter().product()];
@@ -253,7 +268,6 @@ impl StreamState {
             let pp_input = Tensor::from_slice(&self.models.pp_input_shape, &data)?;
             self.run_preproc(pp_input)?;
         }
-        // Flush remaining buffered features as a zero-padded encoder pulse.
         if self.feat_buf_frames > 0 {
             let refs: Vec<_> = self.feat_buf.iter().map(|a| a.view()).collect();
             let leftover =
@@ -272,8 +286,6 @@ impl StreamState {
         self.hyp.iter().map(|&t| vocab[t]).join("")
     }
 
-    // ── Internal pipeline methods ───────────────────────────────────────
-
     fn run_preproc(&mut self, input: Tensor) -> anyhow::Result<()> {
         self.show("[pre]");
         let t = Instant::now();
@@ -287,6 +299,7 @@ impl StreamState {
     fn feed_features(&mut self, features: ArrayD<f32>) -> anyhow::Result<()> {
         let pp_out_pulse = self.models.pp_out_pulse;
         let pp_out_axis = self.models.pp_out_axis;
+        let encoder_pulse = self.models.config.encoder_pulse;
         let usable_start = self.pp_delay_remaining.min(pp_out_pulse);
         self.pp_delay_remaining = self.pp_delay_remaining.saturating_sub(pp_out_pulse);
         if usable_start >= pp_out_pulse {
@@ -296,13 +309,13 @@ impl StreamState {
         self.feat_buf_frames += usable.shape()[pp_out_axis];
         self.feat_buf.push(usable.to_owned());
 
-        while self.feat_buf_frames >= ENCODER_PULSE {
+        while self.feat_buf_frames >= encoder_pulse {
             let refs: Vec<_> = self.feat_buf.iter().map(|a| a.view()).collect();
             let all = tract::prelude::tract_ndarray::concatenate(Axis(pp_out_axis), &refs)?;
-            let enc_feat = all.slice_axis(Axis(pp_out_axis), (..ENCODER_PULSE).into()).to_owned();
+            let enc_feat = all.slice_axis(Axis(pp_out_axis), (..encoder_pulse).into()).to_owned();
             self.run_encoder_pulse(enc_feat)?;
-            let leftover = all.slice_axis(Axis(pp_out_axis), (ENCODER_PULSE..).into());
-            self.feat_buf_frames -= ENCODER_PULSE;
+            let leftover = all.slice_axis(Axis(pp_out_axis), (encoder_pulse..).into());
+            self.feat_buf_frames -= encoder_pulse;
             self.feat_buf.clear();
             if self.feat_buf_frames > 0 {
                 self.feat_buf.push(leftover.to_owned());
@@ -320,7 +333,6 @@ impl StreamState {
         self.n_encoder += 1;
         let enc_out: ArrayD<f32> = results[0].view()?.into_owned();
         self.pulse_count += 1;
-
         for f in 0..self.models.enc_output_pulse {
             if self.enc_delay_remaining > 0 {
                 self.enc_delay_remaining -= 1;
@@ -334,7 +346,6 @@ impl StreamState {
     }
 
     fn decode_frame(&mut self, frame: Tensor) -> anyhow::Result<()> {
-        let max_tokens_per_frame = 10;
         let mut tokens_this_frame = 0usize;
         loop {
             self.show("[jnt]");
@@ -361,7 +372,7 @@ impl StreamState {
                 .unwrap();
             self.total_decoder += t.elapsed();
             self.n_decoder += 1;
-            if tokens_this_frame >= max_tokens_per_frame {
+            if tokens_this_frame >= 10 {
                 break;
             }
         }
@@ -379,37 +390,20 @@ impl StreamState {
             audio_duration / stream_time.as_secs_f64()
         );
         eprintln!("pulses:        {}", self.pulse_count);
-        if self.n_preproc > 0 {
-            eprintln!(
-                "preprocessor:  {:.1}ms total, {:.1}ms/call ({} calls)",
-                self.total_preproc.as_secs_f64() * 1000.0,
-                self.total_preproc.as_secs_f64() * 1000.0 / self.n_preproc as f64,
-                self.n_preproc,
-            );
-        }
-        if self.n_encoder > 0 {
-            eprintln!(
-                "encoder:       {:.1}ms total, {:.1}ms/call ({} calls)",
-                self.total_encoder.as_secs_f64() * 1000.0,
-                self.total_encoder.as_secs_f64() * 1000.0 / self.n_encoder as f64,
-                self.n_encoder,
-            );
-        }
-        if self.n_joint > 0 {
-            eprintln!(
-                "joint:         {:.1}ms total, {:.2}ms/call ({} calls)",
-                self.total_joint.as_secs_f64() * 1000.0,
-                self.total_joint.as_secs_f64() * 1000.0 / self.n_joint as f64,
-                self.n_joint,
-            );
-        }
-        if self.n_decoder > 0 {
-            eprintln!(
-                "decoder:       {:.1}ms total, {:.2}ms/call ({} calls)",
-                self.total_decoder.as_secs_f64() * 1000.0,
-                self.total_decoder.as_secs_f64() * 1000.0 / self.n_decoder as f64,
-                self.n_decoder,
-            );
+        let stats = [
+            ("preprocessor", self.total_preproc, self.n_preproc),
+            ("encoder", self.total_encoder, self.n_encoder),
+            ("joint", self.total_joint, self.n_joint),
+            ("decoder", self.total_decoder, self.n_decoder),
+        ];
+        for (name, total, n) in &stats {
+            if *n > 0 {
+                eprintln!(
+                    "{name:14} {:.1}ms total, {:.2}ms/call ({n} calls)",
+                    total.as_secs_f64() * 1000.0,
+                    total.as_secs_f64() * 1000.0 / *n as f64,
+                );
+            }
         }
         let compute =
             self.total_preproc + self.total_encoder + self.total_joint + self.total_decoder;
@@ -424,32 +418,36 @@ impl StreamState {
 // ─── Main ───────────────────────────────────────────────────────────────────
 
 fn main() -> anyhow::Result<()> {
-    let (models, load_time) = NemotronModels::load("assets")?;
+    let config = Config::parse();
+    let wav_path = config.wav.clone();
+    let audio_chunk = config.audio_chunk;
+    let realtime = config.realtime;
+
+    let (models, load_time) = NemotronModels::load(config)?;
     let mut state = models.spawn()?;
 
-    // Load audio.
-    let wav: Vec<f32> = hound::WavReader::open("assets/2086-149220-0033.wav")?
+    let wav: Vec<f32> = hound::WavReader::open(&wav_path)?
         .samples::<i16>()
         .map(|x| x.unwrap() as f32 / 32768.0)
         .collect();
     let audio_duration = wav.len() as f64 / 16000.0;
 
-    // Mic thread: sends audio in small chunks, simulating real-time.
     let total_samples = wav.len();
     let (audio_tx, audio_rx) = mpsc::sync_channel::<Vec<f32>>(4);
     let mic_handle = std::thread::Builder::new().name("mic".into()).spawn(move || {
         let mut offset = 0;
         while offset < total_samples {
-            let end = (offset + AUDIO_CHUNK).min(total_samples);
+            let end = (offset + audio_chunk).min(total_samples);
             if audio_tx.send(wav[offset..end].to_vec()).is_err() {
                 break;
             }
             offset = end;
-            std::thread::sleep(Duration::from_secs_f64(AUDIO_CHUNK as f64 / 16000.0));
+            if realtime {
+                std::thread::sleep(Duration::from_secs_f64(audio_chunk as f64 / 16000.0));
+            }
         }
     })?;
 
-    // Stream.
     let stream_start = Instant::now();
     for chunk in audio_rx {
         state.push_audio(&chunk)?;
@@ -459,7 +457,6 @@ fn main() -> anyhow::Result<()> {
 
     mic_handle.join().unwrap();
 
-    // Final transcript.
     let transcript = state.transcript();
     let display = transcript.replace('▁', " ");
     eprint!("\r{}                    \n", display.trim_start());
