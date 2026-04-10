@@ -1,16 +1,20 @@
 from setuptools import setup
 from setuptools_rust import Binding, RustExtension
+import atexit
 import shutil
 import toml
 import re
 import os
 
+_created_workspace = False
 if not os.path.exists("rust-workspace"):
+    _created_workspace = True
     shutil.copytree(
         "../..",
         "rust-workspace",
         ignore = shutil.ignore_patterns(".cached", "target", ".git", "issue-*", ".travis", "assets", ".github", "py")
     )
+    atexit.register(lambda: shutil.rmtree("rust-workspace", ignore_errors=True))
 
 version = os.environ.get("PYPI_VERSION_OVERRIDE")
 if version is None or version == "":
