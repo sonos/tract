@@ -644,6 +644,30 @@ where
                 .collect(),
         }
     }
+
+    pub fn freeze_into(self) -> FrozenSimpleState<F, O> {
+        let plan = self.plan;
+        let model = &plan.model;
+        FrozenSimpleState {
+            resolved_symbols: self.turn_state.resolved_symbols,
+            scenario: self.turn_state.scenario,
+            states: self.op_states.into_iter().map(|s| s.map(|s| s.freeze_into())).collect(),
+            values: self
+                .turn_state
+                .values
+                .into_iter()
+                .enumerate()
+                .map(|(ix, t)| {
+                    if model.nodes[ix].op_is::<Const>() {
+                        t.map(|t| t.into_iter().map(|t| t.into_tensor()).collect())
+                    } else {
+                        None
+                    }
+                })
+                .collect(),
+            plan,
+        }
+    }
 }
 
 pub fn eval<F, O>(
@@ -685,6 +709,10 @@ where
     F: Fact + Clone + 'static,
     O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
+    pub fn plan(&self) -> &Arc<SimplePlan<F, O>> {
+        &self.plan
+    }
+
     pub fn unfreeze(&self) -> SimpleState<F, O> {
         SimpleState {
             plan: self.plan.clone(),

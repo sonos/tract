@@ -125,6 +125,13 @@ impl OpStateFreeze for DeconvDelayState {
             buffer: self.buffer.as_ref().map(|t| t.clone().into_arc_tensor()),
         })
     }
+
+    fn freeze_into(self: Box<Self>) -> Box<dyn FrozenOpState> {
+        Box::new(FrozenDeconvDelayState {
+            valid_inputed: self.valid_inputed,
+            buffer: self.buffer.map(|t| t.into_arc_tensor()),
+        })
+    }
 }
 
 impl FrozenOpState for FrozenDeconvDelayState {

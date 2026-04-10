@@ -112,6 +112,10 @@ impl OpStateFreeze for MetalFusedAxisOpState {
     fn freeze(&self) -> Box<dyn FrozenOpState + 'static> {
         Box::new(FrozenMetalFusedAxisOpState { op_state: self.op_state.freeze() })
     }
+
+    fn freeze_into(self: Box<Self>) -> Box<dyn FrozenOpState> {
+        Box::new(FrozenMetalFusedAxisOpState { op_state: self.op_state.freeze_into() })
+    }
 }
 
 impl FrozenOpState for FrozenMetalFusedAxisOpState {

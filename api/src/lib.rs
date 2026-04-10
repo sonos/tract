@@ -222,7 +222,7 @@ pub trait RunnableInterface: Debug + Send + Sync {
         IE: Into<anyhow::Error> + Debug;
 }
 
-pub trait StateInterface: Debug {
+pub trait StateInterface: Debug + Clone + Send {
     type Fact: FactInterface;
     type Tensor: TensorInterface;
 

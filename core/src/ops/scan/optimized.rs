@@ -98,6 +98,15 @@ impl OpStateFreeze for State {
             model_state: self.model_state.freeze(),
         })
     }
+
+    fn freeze_into(self: Box<Self>) -> Box<dyn FrozenOpState> {
+        Box::new(FrozenState {
+            op: self.op,
+            position: self.position,
+            hidden_state: self.hidden_state.into_iter().map(|t| t.into_tensor()).collect(),
+            model_state: self.model_state.freeze_into(),
+        })
+    }
 }
 
 impl FrozenOpState for FrozenState {

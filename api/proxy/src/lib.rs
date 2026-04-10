@@ -459,7 +459,34 @@ impl RunnableInterface for Runnable {
 }
 
 // STATE
-wrapper!(State, TractState, tract_state_destroy);
+pub struct State(*mut sys::TractState);
+
+impl Drop for State {
+    fn drop(&mut self) {
+        unsafe {
+            sys::tract_state_destroy(&mut self.0);
+        }
+    }
+}
+
+impl std::fmt::Debug for State {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "State({:?})", self.0)
+    }
+}
+
+impl Clone for State {
+    fn clone(&self) -> Self {
+        let mut clone = null_mut();
+        unsafe {
+            sys::tract_state_clone(self.0, &mut clone);
+        }
+        State(clone)
+    }
+}
+
+// Safety: the underlying FrozenState is Send
+unsafe impl Send for State {}
 
 impl StateInterface for State {
     type Tensor = Tensor;
