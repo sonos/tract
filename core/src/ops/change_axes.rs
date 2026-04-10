@@ -730,6 +730,14 @@ impl TypedOp for AxisOp {
         Ok(tvec!(fact))
     }
 
+    fn input_roi(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TVec<Option<TDim>>>> {
+        crate::optim::propagate_roi::bubble_roi(model, node)
+    }
+
     fn axes_mapping(
         &self,
         inputs: &[&TypedFact],

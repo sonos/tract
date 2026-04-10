@@ -81,6 +81,14 @@ impl TypedOp for Cast {
         Ok(tvec!(fact))
     }
 
+    fn input_roi(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TVec<Option<TDim>>>> {
+        crate::optim::propagate_roi::bubble_roi(model, node)
+    }
+
     fn declutter(
         &self,
         model: &TypedModel,
