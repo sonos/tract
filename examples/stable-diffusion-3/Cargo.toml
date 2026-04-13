@@ -9,7 +9,7 @@ clap = { workspace = true, features = ["derive"] }
 image = "0.25"
 kdam = "0.6"
 ndarray.workspace = true
-rand = "0.9"
+rand = "0.10"
 rand_distr = "0.5"
 tokenizers = "0.22"
 tract.workspace = true
