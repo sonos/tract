@@ -454,6 +454,8 @@ fn start_wav_source(
 }
 
 /// Start a live microphone audio source via cpal.
+/// Tries 16kHz mono first; falls back to the device's default config
+/// and resamples to 16kHz mono on the fly.
 #[cfg(feature = "live")]
 fn start_live_source() -> anyhow::Result<(mpsc::Receiver<Vec<f32>>, cpal::Stream)> {
     let host = cpal::default_host();
@@ -467,14 +469,50 @@ fn start_live_source() -> anyhow::Result<(mpsc::Receiver<Vec<f32>>, cpal::Stream
     };
 
     let (tx, rx) = mpsc::sync_channel::<Vec<f32>>(8);
-    let stream = device.build_input_stream(
+
+    // Try native 16kHz mono first, fall back to device default with resampling.
+    let stream = if let Ok(stream) = device.build_input_stream(
         &target_config,
-        move |data: &[f32], _: &cpal::InputCallbackInfo| {
-            let _ = tx.send(data.to_vec());
+        {
+            let tx = tx.clone();
+            move |data: &[f32], _: &cpal::InputCallbackInfo| {
+                let _ = tx.send(data.to_vec());
+            }
         },
         |err| eprintln!("audio error: {err}"),
         None,
-    )?;
+    ) {
+        eprintln!("Audio: 16kHz mono (native)");
+        stream
+    } else {
+        let default_config = device.default_input_config()?;
+        let channels = default_config.channels() as usize;
+        let sample_rate = default_config.sample_rate().0 as f64;
+        eprintln!("Audio: {}Hz {}ch (resampling to 16kHz mono)", sample_rate as u32, channels);
+        let ratio = 16000.0 / sample_rate;
+        let mut resample_pos = 0.0f64;
+
+        device.build_input_stream(
+            &default_config.into(),
+            move |data: &[f32], _: &cpal::InputCallbackInfo| {
+                let mut out = Vec::new();
+                while (resample_pos as usize) < data.len() / channels {
+                    let idx = resample_pos as usize * channels;
+                    // Average channels to mono
+                    let sample: f32 =
+                        data[idx..idx + channels].iter().sum::<f32>() / channels as f32;
+                    out.push(sample);
+                    resample_pos += 1.0 / ratio;
+                }
+                resample_pos -= (data.len() / channels) as f64;
+                if !out.is_empty() {
+                    let _ = tx.send(out);
+                }
+            },
+            |err| eprintln!("audio error: {err}"),
+            None,
+        )?
+    };
     stream.play()?;
     Ok((rx, stream))
 }
