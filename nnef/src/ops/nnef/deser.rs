@@ -198,6 +198,29 @@ pub fn slice(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tra
     let strides: TVec<isize> =
         invocation.named_arg_as(builder, "stride").unwrap_or_else(|_| tvec!(1; axes.len()));
     for (ix, axis) in axes.into_iter().enumerate() {
+        // Extract begin[ix] and end[ix] as TDim directly from the Const tensors.
+        // These survive unevaluated through the min()-clamping graph ops below, so
+        // we capture them here to use as a fallback for the `len` computation.
+        // begin=[0] is typically stored as i64; end=[S] as TDim — handle both.
+        let get_tdim_at = |outlet: OutletId| -> Option<TDim> {
+            let konst = builder.model.outlet_fact(outlet).ok()?.konst.clone()?;
+            if konst.datum_type() == TDim::datum_type() {
+                let view = konst.try_as_plain().ok()?;
+                return view.as_slice::<TDim>().ok()?.get(ix).cloned();
+            }
+            if konst.datum_type() == i64::datum_type() {
+                let view = konst.try_as_plain().ok()?;
+                return view.as_slice::<i64>().ok()?.get(ix).map(|&v| TDim::Val(v));
+            }
+            if konst.datum_type() == i32::datum_type() {
+                let view = konst.try_as_plain().ok()?;
+                return view.as_slice::<i32>().ok()?.get(ix).map(|&v| TDim::Val(v as i64));
+            }
+            None
+        };
+        let begin_ix_tdim: Option<TDim> = get_tdim_at(begins);
+        let end_ix_tdim: Option<TDim> = get_tdim_at(ends);
+
         let axis_len = builder
             .wire_as_outlets(Const::new(rctensor0(input_fact.shape[axis].clone()))?, &[])?[0];
         let b = builder.wire_as_outlets(
@@ -232,7 +255,27 @@ pub fn slice(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tra
                 .wire_as_outlets(Const::new(rctensor0(input_fact.shape[axis].clone() + i))?, &[])?
                 [0];
         }
-        let len = if let (Some(ev), Some(bv)) =
+        // Prefer direct TDim extraction from the original Const tensors: avoids the
+        // symbolic imprecision introduced by the min()-clamping graph ops above
+        // (e.g. min(S, S+1) - min(0, S+1) may not simplify to S even though S≥0).
+        // Only use this when the result is non-negative or symbolic — out-of-bounds
+        // starts/ends need the clamping graph to produce len=0.
+        let direct_len = match (&end_ix_tdim, &begin_ix_tdim) {
+            (Some(ev), Some(bv)) => {
+                let l = ev.clone() - bv.clone();
+                if l.to_i64().map(|v| v >= 0).unwrap_or(true) {
+                    Some((l, bv.clone(), ev.clone()))
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        };
+        let len = if let Some((len, bv, ev)) = direct_len {
+            b = builder.wire_as_outlets(Const::new(rctensor0(bv))?, &[])?[0];
+            e = builder.wire_as_outlets(Const::new(rctensor0(ev))?, &[])?[0];
+            len
+        } else if let (Some(ev), Some(bv)) =
             (&builder.model.outlet_fact(e)?.konst, &builder.model.outlet_fact(b)?.konst)
         {
             ev.cast_to::<TDim>()?.try_as_plain()?.to_scalar::<TDim>()?.clone()
