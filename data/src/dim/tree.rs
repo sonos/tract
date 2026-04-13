@@ -733,6 +733,29 @@ impl TDim {
                         {
                             Val(0)
                         } else {
+                            // When one side is 0 or 1 and the other is
+                            // provably in [0,1], reduce to boolean algebra:
+                            //   Eq(expr, 0) → 1 - expr
+                            //   Eq(expr, 1) → expr
+                            let boolean_case = match (&a, &b) {
+                                (Val(0), e) | (e, Val(0)) => Some((e, false)),
+                                (Val(1), e) | (e, Val(1)) => Some((e, true)),
+                                _ => None,
+                            };
+                            if let Some((expr, equals_one)) = boolean_case {
+                                if scope.prove_positive_or_zero_with_extra(expr, extra)
+                                    && scope.prove_positive_or_zero_with_extra(
+                                        &(Val(1) - expr.clone()),
+                                        extra,
+                                    )
+                                {
+                                    return if equals_one {
+                                        expr.clone()
+                                    } else {
+                                        (Val(1) - expr.clone()).simplify_rec(scope, scenario, extra)
+                                    };
+                                }
+                            }
                             Eq(b!(a), b!(b))
                         }
                     }
@@ -802,7 +825,21 @@ impl TDim {
                 }
                 Ordering::Less => a.inclusive_bound(scope, !upper).and_then(|x| x.checked_mul(*p)),
             },
-            Mul(_) => None,
+            Mul(terms) => {
+                // If all factors have known non-negative bounds, we can bound the product.
+                let mut lo: i64 = 1;
+                let mut hi: i64 = 1;
+                for t in terms {
+                    let t_lo = t.inclusive_bound(scope, false)?;
+                    let t_hi = t.inclusive_bound(scope, true)?;
+                    if t_lo < 0 {
+                        return None;
+                    }
+                    lo = lo.checked_mul(t_lo)?;
+                    hi = hi.checked_mul(t_hi)?;
+                }
+                Some(if upper { hi } else { lo })
+            }
             Min(terms) if !upper => {
                 terms.iter().filter_map(|t| t.inclusive_bound(scope, false)).min()
             }
@@ -1722,5 +1759,33 @@ mod tests {
         assert_eq!(Ge(b!(Val(3)), b!(Val(5))).eval_to_i64(&sv).unwrap(), 0);
         assert_eq!(Eq(b!(Val(3)), b!(Val(3))).eval_to_i64(&sv).unwrap(), 1);
         assert_eq!(Eq(b!(Val(3)), b!(Val(4))).eval_to_i64(&sv).unwrap(), 0);
+    }
+
+    #[test]
+    fn eq_boolean_simplifies() {
+        let s = SymbolScope::default();
+        s.add_assertion("cw >= 0").unwrap();
+        s.add_assertion("cw <= 1").unwrap();
+        let cw = s.sym("cw");
+        // Eq(1 - cw, 0) → cw
+        assert_eq!(Eq(b!(Val(1) - Sym(cw.clone())), b!(Val(0))).simplify(), Sym(cw.clone()));
+        // Eq(cw, 0) → 1 - cw
+        assert_eq!(Eq(b!(Sym(cw.clone())), b!(Val(0))).simplify(), Val(1) - Sym(cw.clone()));
+        // Eq(cw, 1) → cw
+        assert_eq!(Eq(b!(Sym(cw.clone())), b!(Val(1))).simplify(), Sym(cw.clone()));
+        // Eq(1 - cw, 1) → 1 - cw
+        assert_eq!(Eq(b!(Val(1) - Sym(cw.clone())), b!(Val(1))).simplify(), Val(1) - Sym(cw));
+    }
+
+    #[test]
+    fn eq_boolean_mul_of_ge() {
+        // Product of Ge terms: Ge(a,b) * Ge(c,d) is in [0,1]
+        // so Eq(product, 0) should simplify to 1 - product
+        let s = SymbolScope::default();
+        let x = s.sym("x");
+        let product =
+            Mul(vec![Ge(b!(Val(2)), b!(Sym(x.clone()))), Ge(b!(Sym(x.clone())), b!(Val(0)))]);
+        let eq = Eq(b!(product.clone()), b!(Val(0)));
+        assert_eq!(eq.simplify(), Val(1) - product);
     }
 }

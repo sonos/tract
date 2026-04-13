@@ -215,11 +215,14 @@ impl TypedOp for Iff {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TVec<Option<TDim>>>> {
-        // Introduction: condition's uniform_tdim defines which positions matter
-        // for the true-branch (scores) input.
+        // select(cond, then, else):
+        //   then-branch matters where cond is nonzero → propagate cond
+        //   else-branch matters where cond is zero    → propagate cond==0
         let cond_fact = model.outlet_fact(node.inputs[0])?;
-        if let Some(mask_expr) = &cond_fact.uniform_tdim {
-            return Ok(Some(tvec![None, Some(mask_expr.clone()), None]));
+        if let Some(cond_expr) = &cond_fact.uniform_tdim {
+            let cond = cond_expr.clone().simplify();
+            let not_cond = TDim::Eq(Box::new(cond.clone()), Box::new(TDim::Val(0))).simplify();
+            return Ok(Some(tvec![None, Some(cond), Some(not_cond)]));
         }
         // Bubbling: delegate to the natural blanket implementation.
         crate::optim::propagate_roi::bubble_roi(model, node)
