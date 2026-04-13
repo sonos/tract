@@ -248,7 +248,15 @@ impl StreamState {
         let vocab: Vec<&str> = self.models.vocab.iter().map(|s| s.as_str()).collect();
         let text: String = self.hyp.iter().map(|&t| vocab[t]).join("");
         let display = text.replace('▁', " ");
-        eprint!("\r{} {label}          ", display.trim_start());
+        let display = display.trim_start();
+        // Truncate to avoid terminal wrapping artifacts with \r
+        let max_width = 70usize.saturating_sub(label.len() + 1);
+        let display = if display.len() > max_width {
+            &display[display.len() - max_width..]
+        } else {
+            display
+        };
+        eprint!("\r{display} {label}          ");
     }
 
     fn push_audio(&mut self, samples: &[f32]) -> anyhow::Result<()> {
@@ -471,7 +479,7 @@ fn start_live_source() -> anyhow::Result<(mpsc::Receiver<Vec<f32>>, cpal::Stream
     let (tx, rx) = mpsc::sync_channel::<Vec<f32>>(8);
 
     // Try native 16kHz mono first, fall back to device default with resampling.
-    let stream = if let Ok(stream) = device.build_input_stream(
+    let stream = if let Result::Ok(stream) = device.build_input_stream(
         &target_config,
         {
             let tx = tx.clone();
