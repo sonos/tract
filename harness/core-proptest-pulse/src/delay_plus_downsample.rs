@@ -6,7 +6,7 @@ use tract_core::tract_data::itertools::Itertools;
 use super::*;
 
 #[derive(Debug, Clone)]
-struct DelayPlusDownsampleProblem {
+pub(crate) struct DelayPlusDownsampleProblem {
     input: usize,
     pulse: usize,
     delay: usize,
@@ -45,6 +45,22 @@ impl Arbitrary for DelayPlusDownsampleProblem {
 }
 
 impl DelayPlusDownsampleProblem {
+    pub fn run_v2(&self) -> TestCaseResult {
+        let mut model = TypedModel::default();
+        let s = model.symbols.sym("S");
+        let a = model.add_source("a", f32::fact(dims!(1, s, 1))).unwrap();
+        let crop = model.wire_node("delay", Slice::new(1, self.delay, s), &[a]).unwrap();
+        let ds = model
+            .wire_node(
+                "ds",
+                Downsample { axis: 1, stride: self.stride as isize, modulo: self.modulo },
+                &crop,
+            )
+            .unwrap();
+        model.select_output_outlets(&ds).unwrap();
+        crate::v2::run_and_compare_v2(model, self.pulse, &t(self.input).into_tensor(), 1)
+    }
+
     pub fn run(&self) -> TestCaseResult {
         let mut model = TypedModel::default();
         let s = model.symbols.sym("S");
