@@ -52,11 +52,23 @@ impl PulseV2Region {
 
 // ── Region transforms (inventory) ──────────────────────────────────────
 
-/// Given an op and the source increment region (what the source provides),
-/// return the required input regions. Returns None to fall through to
-/// the default (same region as source on every input).
-pub type RegionTransformFn =
-    fn(op: &dyn TypedOp, source_region: &PulseV2Region) -> TractResult<TVec<Option<PulseV2Region>>>;
+/// Result of a region transform: either adjust input regions (the generic
+/// pulsifier handles buffer insertion and op wiring) or replace the op
+/// entirely with pre-wired outlets.
+pub enum PulseV2Action {
+    /// Use these input regions. None means "not streaming, pass as-is".
+    InputRegions(TVec<Option<PulseV2Region>>),
+    /// Skip this op — just forward the mapped inputs as outputs.
+    Skip,
+    /// Replace this op with a different one (same inputs).
+    ReplaceOp(Box<dyn TypedOp>),
+}
+
+pub type RegionTransformFn = fn(
+    op: &dyn TypedOp,
+    source_region: &PulseV2Region,
+    symbols: &PulseV2Symbols,
+) -> TractResult<Option<PulseV2Action>>;
 
 /// Inventory entry: maps an op TypeId to its region transform.
 pub struct RegionTransform {
@@ -69,11 +81,12 @@ inventory::collect!(RegionTransform);
 fn lookup_region_transform(
     op: &dyn TypedOp,
     source_region: &PulseV2Region,
-) -> TractResult<Option<TVec<Option<PulseV2Region>>>> {
+    symbols: &PulseV2Symbols,
+) -> TractResult<Option<PulseV2Action>> {
     let type_id = op.type_id();
     for rt in inventory::iter::<RegionTransform> {
         if rt.type_id == type_id {
-            return Ok(Some((rt.func)(op, source_region)?));
+            return (rt.func)(op, source_region, symbols);
         }
     }
     Ok(None)
@@ -161,15 +174,56 @@ impl PulseV2Model {
                 .find_map(|i| mapping.get(i).and_then(|o| wire_regions.get(o)))
                 .cloned();
 
-            // Compute required input regions.
+            // Ask the region transform what to do.
             let typed_op: &dyn TypedOp = node.op.as_ref();
-            let input_regions: TVec<Option<PulseV2Region>> = if let Some(src) = &source_region {
-                lookup_region_transform(typed_op, src)?.unwrap_or_else(|| {
-                    // Default: every input gets the source region (pass-through).
-                    node.inputs.iter().map(|_| Some(src.clone())).collect()
-                })
+            let action = if let Some(src) = &source_region {
+                lookup_region_transform(typed_op, src, &symbols)?
             } else {
-                tvec![None; node.inputs.len()]
+                None
+            };
+
+            // Handle Skip: forward inputs directly as outputs.
+            if matches!(action, Some(PulseV2Action::Skip)) {
+                for (slot, batch_input) in node.inputs.iter().enumerate() {
+                    let pulsed = mapping.get(batch_input).copied().unwrap_or(*batch_input);
+                    mapping.insert(OutletId::new(node_id, slot), pulsed);
+                }
+                if let Some(region) = &source_region {
+                    for slot in 0..node.outputs.len() {
+                        if let Some(&pulsed) = mapping.get(&OutletId::new(node_id, slot)) {
+                            wire_regions.insert(pulsed, region.clone());
+                        }
+                    }
+                }
+                continue;
+            }
+
+            // Handle ReplaceOp: wire the replacement op instead.
+            if let Some(PulseV2Action::ReplaceOp(replacement)) = action {
+                let inputs: TVec<OutletId> =
+                    node.inputs.iter().map(|i| mapping.get(i).copied().unwrap_or(*i)).collect();
+                let new_outlets = typed.wire_node(&node.name, replacement, &inputs)?;
+                for (slot, &new_outlet) in new_outlets.iter().enumerate() {
+                    mapping.insert(OutletId::new(node_id, slot), new_outlet);
+                }
+                if let Some(region) = &source_region {
+                    for &new_outlet in &new_outlets {
+                        wire_regions.insert(new_outlet, region.clone());
+                    }
+                }
+                continue;
+            }
+
+            let input_regions: TVec<Option<PulseV2Region>> = match action {
+                Some(PulseV2Action::InputRegions(r)) => r,
+                _ => {
+                    // Default: every input gets the source region.
+                    if let Some(src) = &source_region {
+                        node.inputs.iter().map(|_| Some(src.clone())).collect()
+                    } else {
+                        tvec![None; node.inputs.len()]
+                    }
+                }
             };
 
             // Wire inputs, inserting buffers where needed.

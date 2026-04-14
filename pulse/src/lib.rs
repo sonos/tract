@@ -8,6 +8,7 @@ pub mod ops;
 pub mod v2;
 pub mod v2_buffer;
 pub mod v2_conv;
+pub mod v2_slice;
 
 pub mod internal {
     pub use std::fmt;
