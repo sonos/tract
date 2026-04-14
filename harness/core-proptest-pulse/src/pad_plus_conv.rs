@@ -5,7 +5,7 @@ use proptest::*;
 use super::*;
 
 #[derive(Debug, Clone)]
-struct PadPlusConvProblem {
+pub(crate) struct PadPlusConvProblem {
     pad_before: usize,
     pad_after: usize,
     pad_mode: PadMode,
@@ -105,6 +105,50 @@ impl PadPlusConvProblem {
 proptest! {
     #[test]
     fn proptest_conv(pb in PadPlusConvProblem::arbitrary()) { pb.run().unwrap() }
+}
+
+impl PadPlusConvProblem {
+    pub fn run_v2(&self) -> TestCaseResult {
+        let mut model = TypedModel::default();
+        let s = model.symbols.sym("S");
+        let mut wire = model.add_source("a", f32::fact(dims!(1, 1, s))).unwrap();
+        if self.pad_before > 0 || self.pad_after > 0 {
+            wire = model
+                .wire_node(
+                    "pad",
+                    Pad::new(
+                        vec![(0, 0), (0, 0), (self.pad_before, self.pad_after)],
+                        self.pad_mode.clone(),
+                    ),
+                    &[wire],
+                )
+                .unwrap()[0];
+        }
+        let kernel = model.add_const("kernel", self.ker.clone()).unwrap();
+        let bias = model.add_const("bias", tensor0(0f32)).unwrap();
+        let conv = model
+            .wire_node(
+                "conv",
+                Conv {
+                    pool_spec: PoolSpec {
+                        data_format: DataFormat::NCHW,
+                        kernel_shape: self.ker.shape()[2..].into(),
+                        padding: PaddingSpec::Valid,
+                        dilations: Some(tvec!(self.dilation)),
+                        strides: Some(tvec!(self.stride)),
+                        input_channels: 1,
+                        output_channels: 1,
+                    },
+                    kernel_fmt: tract_core::ops::cnn::KernelFormat::OIHW,
+                    group: 1,
+                    q_params: None,
+                },
+                &[wire, kernel, bias],
+            )
+            .unwrap();
+        model.select_output_outlets(&conv).unwrap();
+        crate::v2::run_and_compare_v2(model, self.pulse, &self.input.clone().into_tensor(), 2)
+    }
 }
 
 #[test]
