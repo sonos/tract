@@ -144,6 +144,7 @@ impl PulseV2Fact {
 // ── Pulsification ──────────────────────────────────────────────────────────
 
 /// Symbols used during PulseV2 pulsification.
+#[derive(Clone, Debug)]
 pub struct PulseV2Symbols {
     /// The stream-length symbol in the batch model (e.g. S).
     pub stream: Symbol,
@@ -151,6 +152,85 @@ pub struct PulseV2Symbols {
     pub pulse: Symbol,
     /// Pulse index symbol (T) — increments at each step: 0, 1, 2, …
     pub pulse_id: Symbol,
+}
+
+/// PulseV2 model: a TypedModel annotated with per-wire region/increment.
+///
+/// The underlying TypedModel has pulse-sized shapes (S replaced by P).
+/// The `regions` map holds PulseV2Fact for each wire, describing what
+/// part of the batch tensor each pulse produces.
+///
+/// Pulsification builds this by:
+/// 1. Cloning the batch model
+/// 2. Computing PulseV2Fact for each Source from its batch shape
+/// 3. Propagating regions forward through each op (via axes_mapping
+///    for trivial ops, custom logic for conv/einsum)
+/// 4. Inserting Delay nodes where an op's input region extends into
+///    previous pulses
+/// 5. Concretizing P to the actual pulse value
+pub struct PulseV2Model {
+    /// The pulsed TypedModel (with Delay nodes, concrete pulse shapes).
+    pub typed: TypedModel,
+    /// Per-wire region metadata (keyed by OutletId).
+    pub regions: HashMap<OutletId, PulseV2Fact>,
+    /// The symbols.
+    pub symbols: PulseV2Symbols,
+}
+
+impl PulseV2Model {
+    /// Pulsify a batch model.
+    ///
+    /// For now only handles trivial models (Source → elementwise chains).
+    /// Conv and other ops with receptive fields are not yet supported.
+    pub fn new(batch_model: &TypedModel, stream_sym: Symbol, pulse: usize) -> TractResult<Self> {
+        let p_sym = batch_model.symbols.sym("P");
+        let t_sym = batch_model.symbols.sym("T");
+
+        let symbols = PulseV2Symbols {
+            stream: stream_sym.clone(),
+            pulse: p_sym.clone(),
+            pulse_id: t_sym.clone(),
+        };
+
+        // Build regions for all wires by walking the eval order.
+        let mut regions: HashMap<OutletId, PulseV2Fact> = HashMap::new();
+
+        // Sources: derive region from batch shape.
+        for &input_id in batch_model.input_outlets()? {
+            let fact = batch_model.outlet_fact(input_id)?;
+            let pv2 = PulseV2Fact::from_batch_input(fact, &stream_sym, &p_sym, &t_sym)?;
+            regions.insert(input_id, pv2);
+        }
+
+        // TODO: walk eval order, propagate regions through ops via axes_mapping.
+        // For now, just propagate directly: output regions = input regions
+        // (only works for Source → output identity models).
+        for &output_id in batch_model.output_outlets()? {
+            if !regions.contains_key(&output_id) {
+                // Try to find the region from the node's input.
+                let node = batch_model.node(output_id.node);
+                if !node.inputs.is_empty() {
+                    if let Some(input_region) = regions.get(&node.inputs[0]) {
+                        regions.insert(output_id, input_region.clone());
+                    }
+                }
+            }
+        }
+
+        // Build the pulsed TypedModel: substitute S → P, then concretize P.
+        let sv = SymbolValues::default().with(&stream_sym, pulse as i64);
+        let typed = batch_model.clone().concretize_dims(&sv)?;
+
+        Ok(PulseV2Model { typed, regions, symbols })
+    }
+
+    /// Lower to a runnable TypedModel.
+    ///
+    /// For now this just returns the concretized model as-is.
+    /// Eventually this will insert Delay nodes for buffering.
+    pub fn into_typed(self) -> TractResult<TypedModel> {
+        Ok(self.typed)
+    }
 }
 
 #[cfg(test)]

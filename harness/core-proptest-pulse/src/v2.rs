@@ -4,58 +4,10 @@ use tract_core::ops::cnn::{Conv, KernelFormat, PaddingSpec, PoolSpec};
 use tract_core::ops::nn::DataFormat;
 use tract_core::plan::SimplePlan;
 use tract_core::prelude::*;
+use tract_pulse::v2::PulseV2Model;
 
-/// Run a batch model pulse by pulse (naive: no buffering) and return
-/// the stitched output. This is a test utility, not the real pulsifier.
-fn run_pulse_v2_naive(
-    batch_model: &TypedModel,
-    stream_sym: &Symbol,
-    pulse: usize,
-    input_array: &Tensor,
-    input_axis: usize,
-) -> TractResult<Tensor> {
-    let input_len = input_array.shape()[input_axis];
-
-    // Create the pulsed typed model: same graph but with S → pulse in shapes.
-    let sv = SymbolValues::default().with(stream_sym, pulse as i64);
-    let pulsed = batch_model.clone().concretize_dims(&sv)?;
-    let plan = SimplePlan::new(pulsed)?;
-    let mut state = plan.spawn()?;
-
-    // Determine output axis
-    let batch_output_fact = batch_model.output_fact(0)?;
-    let output_axis = batch_output_fact
-        .shape
-        .iter()
-        .position(|d| d.symbols().contains(stream_sym))
-        .unwrap_or(input_axis);
-
-    let mut output_chunks: Vec<Tensor> = vec![];
-    let mut written = 0;
-
-    while written < input_len {
-        let chunk_len = pulse.min(input_len - written);
-        let chunk = input_array.slice(input_axis, written, written + chunk_len)?;
-
-        let chunk = if chunk_len < pulse {
-            let mut padded_shape = input_array.shape().to_vec();
-            padded_shape[input_axis] = pulse;
-            let mut padded = Tensor::zero_dt(input_array.datum_type(), &padded_shape)?;
-            padded.assign_slice(0..chunk_len, &chunk, 0..chunk_len, input_axis)?;
-            state.turn_state.resolved_symbols.set(stream_sym, input_len as i64);
-            padded
-        } else {
-            chunk.into_tensor()
-        };
-
-        let outputs = state.run(tvec!(chunk.into_tvalue()))?;
-        output_chunks.push(outputs[0].clone().into_tensor());
-        written += pulse;
-    }
-
-    Tensor::stack_tensors(output_axis, &output_chunks)
-}
-
+/// Pulsify a model via PulseV2, run pulse by pulse, stitch output,
+/// and compare against batch reference.
 fn run_and_compare(
     model: TypedModel,
     stream_sym: &Symbol,
@@ -67,8 +19,46 @@ fn run_and_compare(
     let batch =
         model.clone().into_runnable().unwrap().run(tvec!(input.clone().into_tvalue())).unwrap();
 
-    // PulseV2
-    let pulsed_output = run_pulse_v2_naive(&model, stream_sym, pulse, input, axis).unwrap();
+    // PulseV2: pulsify → lower to typed → run pulse by pulse
+    let pv2 = PulseV2Model::new(&model, stream_sym.clone(), pulse).unwrap();
+
+    // Determine output streaming axis from the regions
+    let batch_output_fact = model.output_fact(0).unwrap();
+    let output_axis = batch_output_fact
+        .shape
+        .iter()
+        .position(|d| d.symbols().contains(stream_sym))
+        .unwrap_or(axis);
+
+    let typed = pv2.into_typed().unwrap();
+    let plan = SimplePlan::new(typed).unwrap();
+    let mut state = plan.spawn().unwrap();
+
+    let input_len = input.shape()[axis];
+    let mut output_chunks: Vec<Tensor> = vec![];
+    let mut written = 0;
+
+    while written < input_len {
+        let chunk_len = pulse.min(input_len - written);
+        let chunk = input.slice(axis, written, written + chunk_len).unwrap();
+
+        let chunk = if chunk_len < pulse {
+            let mut padded_shape = input.shape().to_vec();
+            padded_shape[axis] = pulse;
+            let mut padded = Tensor::zero_dt(input.datum_type(), &padded_shape).unwrap();
+            padded.assign_slice(0..chunk_len, &chunk, 0..chunk_len, axis).unwrap();
+            state.turn_state.resolved_symbols.set(stream_sym, input_len as i64);
+            padded
+        } else {
+            chunk.into_tensor()
+        };
+
+        let outputs = state.run(tvec!(chunk.into_tvalue())).unwrap();
+        output_chunks.push(outputs[0].clone().into_tensor());
+        written += pulse;
+    }
+
+    let pulsed_output = Tensor::stack_tensors(output_axis, &output_chunks).unwrap();
 
     // Compare: trim both to the shorter length on the streaming axis
     let batch_output = &batch[0];
