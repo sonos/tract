@@ -175,8 +175,6 @@ pub struct PulseV2Model {
     pub regions: HashMap<OutletId, PulseV2Fact>,
     /// The symbols.
     pub symbols: PulseV2Symbols,
-    /// Output frames to skip from the start (zero-padded buffer startup).
-    pub startup_skip: usize,
 }
 
 impl PulseV2Model {
@@ -240,8 +238,14 @@ impl PulseV2Model {
                     let lookback = (kernel_len - 1) * dilation;
 
                     if lookback > 0 {
-                        let depth = (lookback + pulse - 1) / pulse; // how many past pulses needed
-                        let buffer = PulseV2Buffer { axis, lookback, depth };
+                        let depth = (lookback + pulse - 1) / pulse;
+                        let buffer = PulseV2Buffer {
+                            axis,
+                            lookback,
+                            depth,
+                            pulse_id: t_sym.clone(),
+                            pulse_dim: pulse.to_dim(),
+                        };
                         let buffered = typed.wire_node(
                             format!("{}.buffer", node.name),
                             buffer,
@@ -262,26 +266,12 @@ impl PulseV2Model {
         let pulsed_outputs: TVec<OutletId> = batch_outputs.iter().map(|o| mapping[o]).collect();
         typed.select_output_outlets(&pulsed_outputs)?;
 
-        // Track the startup skip: frames to discard from the start of the
-        // output due to zero-padded buffer at T=0.
-        let mut startup_skip: usize = 0;
-        for node in &typed.nodes {
-            if let Some(buf) = node.op.downcast_ref::<PulseV2Buffer>() {
-                startup_skip = startup_skip.max(buf.lookback);
-            }
-        }
-
-        Ok(PulseV2Model { typed, regions, symbols, startup_skip })
+        Ok(PulseV2Model { typed, regions, symbols })
     }
 
     /// Lower to a runnable TypedModel.
     pub fn into_typed(self) -> TractResult<TypedModel> {
         Ok(self.typed)
-    }
-
-    /// Number of output frames to skip at the start (from zero-padded buffer).
-    pub fn startup_skip(&self) -> usize {
-        self.startup_skip
     }
 }
 
