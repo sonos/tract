@@ -873,10 +873,18 @@ impl TDim {
                 Some(if upper { hi } else { lo })
             }
             Min(terms) if !upper => {
-                terms.iter().filter_map(|t| t.inclusive_bound(scope, false)).min()
+                // All terms must have known lower bounds; if any is unknown,
+                // the Min lower bound is unknown.
+                let bounds: Option<Vec<i64>> =
+                    terms.iter().map(|t| t.inclusive_bound(scope, false)).collect();
+                bounds.map(|b| b.into_iter().min().unwrap_or(i64::MAX))
             }
             Max(terms) if upper => {
-                terms.iter().filter_map(|t| t.inclusive_bound(scope, true)).max()
+                // All terms must have known upper bounds; if any is unknown,
+                // the Max upper bound is unknown.
+                let bounds: Option<Vec<i64>> =
+                    terms.iter().map(|t| t.inclusive_bound(scope, true)).collect();
+                bounds.map(|b| b.into_iter().max().unwrap_or(i64::MIN))
             }
             Div(a, q) => a.inclusive_bound(scope, upper).map(|x| x / (*q as i64)),
             Broadcast(terms) => {
@@ -1819,5 +1827,63 @@ mod tests {
             Mul(vec![Ge(b!(Val(2)), b!(Sym(x.clone()))), Ge(b!(Sym(x.clone())), b!(Val(0)))]);
         let eq = Eq(b!(product.clone()), b!(Val(0)));
         assert_eq!(eq.simplify(), Val(1) - product);
+    }
+
+    #[test]
+    fn min_1_max_0_sym() {
+        // Min(1, Max(0, X)) must not simplify away the Min when X is unconstrained.
+        let s = SymbolScope::default();
+        let x = s.sym("X");
+        let expr = Min(vec![Val(1), Max(vec![Val(0), Sym(x)])]);
+        let simplified = expr.simplify();
+        eprintln!("simplified: {simplified}");
+        assert!(format!("{simplified}").contains("min"), "Min dropped: {simplified}");
+    }
+
+    #[test]
+    fn min_preserved_in_subtraction_parts() {
+        // Test that Min([1, X]) simplifies correctly in isolation
+        let s = SymbolScope::default();
+        let t = s.sym("T");
+        let p = s.sym("P");
+        let ss = s.sym("S");
+
+        let cum_after =
+            Max(vec![Val(0), (Sym(t.clone()) + Val(1)) * Sym(p.clone()) - Sym(ss.clone())]);
+        let min_after = Min(vec![Val(1), cum_after.clone()]);
+        let simplified = min_after.simplify();
+        eprintln!("min_after simplified: {simplified}");
+        // Must contain "min" — the Min must not be dropped
+        assert!(format!("{simplified}").contains("min"), "Min wrapper was dropped: {simplified}");
+    }
+
+    #[test]
+    fn min_preserved_in_subtraction() {
+        // min(1, X) - min(1, Y) must preserve the min() wrappers.
+        // This is the pattern used by PulseV2Pad's output_facts for after-padding.
+        let s = SymbolScope::default();
+        let t = s.sym("T");
+        let p = s.sym("P");
+        let ss = s.sym("S");
+
+        let cum_after =
+            Max(vec![Val(0), (Sym(t.clone()) + Val(1)) * Sym(p.clone()) - Sym(ss.clone())]);
+        let cum_before = Max(vec![Val(0), Sym(t.clone()) * Sym(p.clone()) - Sym(ss.clone())]);
+
+        let ap = Min(vec![Val(1), cum_after.clone()]) - Min(vec![Val(1), cum_before.clone()]);
+        let simplified = ap.simplify();
+
+        // At T=1, P=4, S=3: min(1, max(0, 8-3)) - min(1, max(0, 4-3)) = 1 - 1 = 0
+        use super::super::sym::SymbolValues;
+        let sv = SymbolValues::default().with(&t, 1).with(&p, 4).with(&ss, 3);
+        assert_eq!(simplified.eval_to_i64(&sv).unwrap(), 0, "simplified: {simplified}");
+
+        // At T=0, P=4, S=3: min(1, max(0, 4-3)) - min(1, max(0, 0-3)) = 1 - 0 = 1
+        let sv = SymbolValues::default().with(&t, 0).with(&p, 4).with(&ss, 3);
+        assert_eq!(simplified.eval_to_i64(&sv).unwrap(), 1, "simplified: {simplified}");
+
+        // At T=0, P=1, S=1: min(1, max(0, 1-1)) - min(1, max(0, 0-1)) = 0 - 0 = 0
+        let sv = SymbolValues::default().with(&t, 0).with(&p, 1).with(&ss, 1);
+        assert_eq!(simplified.eval_to_i64(&sv).unwrap(), 0, "simplified: {simplified}");
     }
 }
