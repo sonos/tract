@@ -1,21 +1,29 @@
+use proptest::prelude::*;
+use proptest::test_runner::TestCaseResult;
 use tract_core::dims;
-use tract_core::ndarray::*;
-use tract_core::ops::cnn::{Conv, KernelFormat, PaddingSpec, PoolSpec};
-use tract_core::ops::nn::DataFormat;
 use tract_core::plan::SimplePlan;
 use tract_core::prelude::*;
 use tract_pulse::v2::PulseV2Model;
 
 /// Pulsify a model via PulseV2, run pulse by pulse, stitch output,
-/// and compare against batch reference.
-fn run_and_compare(
+/// and compare against batch reference. Returns TestCaseResult for proptest.
+pub fn run_and_compare_v2(
     model: TypedModel,
-    stream_sym: &Symbol,
     pulse: usize,
     input: &Tensor,
     axis: usize,
-) {
-    // Batch reference — feed the full input directly, S resolves from shape
+) -> TestCaseResult {
+    // Find the streaming symbol (first symbol in any input shape).
+    let stream_sym = model
+        .input_fact(0)
+        .unwrap()
+        .shape
+        .iter()
+        .flat_map(|d| d.symbols())
+        .next()
+        .expect("No streaming symbol found in model input");
+
+    // Batch reference
     let batch =
         model.clone().into_runnable().unwrap().run(tvec!(input.clone().into_tvalue())).unwrap();
 
@@ -24,12 +32,11 @@ fn run_and_compare(
     let t_sym = pv2.symbols.pulse_id.clone();
     let p_sym = pv2.symbols.pulse.clone();
 
-    // Determine output streaming axis from the batch model
     let batch_output_fact = model.output_fact(0).unwrap();
     let output_axis = batch_output_fact
         .shape
         .iter()
-        .position(|d| d.symbols().contains(stream_sym))
+        .position(|d| d.symbols().contains(&stream_sym))
         .unwrap_or(axis);
 
     let typed = pv2.into_typed().unwrap();
@@ -45,7 +52,6 @@ fn run_and_compare(
         let chunk_len = pulse.min(input_len - written);
         let chunk = input.slice(axis, written, written + chunk_len).unwrap();
 
-        // Set T and P so symbolic shapes resolve correctly
         state.turn_state.resolved_symbols.set(&t_sym, pulse_idx);
         state.turn_state.resolved_symbols.set(&p_sym, pulse as i64);
 
@@ -54,7 +60,7 @@ fn run_and_compare(
             padded_shape[axis] = pulse;
             let mut padded = Tensor::zero_dt(input.datum_type(), &padded_shape).unwrap();
             padded.assign_slice(0..chunk_len, &chunk, 0..chunk_len, axis).unwrap();
-            state.turn_state.resolved_symbols.set(stream_sym, input_len as i64);
+            state.turn_state.resolved_symbols.set(&stream_sym, input_len as i64);
             padded
         } else {
             chunk.into_tensor()
@@ -66,56 +72,61 @@ fn run_and_compare(
         pulse_idx += 1;
     }
 
-    // Stitch — no delay to skip, every frame is valid
     let pulsed_output = Tensor::stack_tensors(output_axis, &output_chunks).unwrap();
 
-    // Every frame is valid — no delay, no skip
     let batch_output = &batch[0];
     let batch_len = batch_output.shape()[output_axis];
     let pulsed_len = pulsed_output.shape()[output_axis];
     let compare_len = batch_len.min(pulsed_len);
-    assert!(compare_len > 0, "No output produced");
+    prop_assert!(compare_len > 0, "No output produced");
     let batch_slice = batch_output.slice(output_axis, 0, compare_len).unwrap();
     let pulsed_slice = pulsed_output.slice(output_axis, 0, compare_len).unwrap();
-    pulsed_slice.close_enough(&batch_slice, true).unwrap_or_else(|e| {
-        panic!("Mismatch: {e}\nbatch:  {batch_slice:?}\npulsed: {pulsed_slice:?}")
-    });
+    prop_assert!(
+        pulsed_slice.close_enough(&batch_slice, true).is_ok(),
+        "Mismatch:\nbatch:  {:?}\npulsed: {:?}",
+        batch_slice,
+        pulsed_slice
+    );
+    Ok(())
 }
 
-/// Identity: Source → output
-#[test]
-fn test_v2_identity() {
-    let mut model = TypedModel::default();
-    let s = model.symbols.sym("S");
-    let a = model.add_source("a", f32::fact(dims!(1, s, 4))).unwrap();
-    model.select_output_outlets(&[a]).unwrap();
+use super::conv_plus_conv::ConvPlusConvProblem;
 
-    let input =
-        Array3::<f32>::from_shape_fn((1, 8, 4), |(_, t, c)| (t * 10 + c) as f32).into_tensor();
-    run_and_compare(model, &s, 3, &input, 1);
+/// Full proptest over all conv combinations (stride, dilation, padding).
+/// TODO: support stride > 1, explicit padding, dilation in PulseV2.
+#[test]
+#[ignore]
+fn proptest_v2_conv_full() {
+    use proptest::test_runner::{Config, TestRunner};
+    let mut runner = TestRunner::new(Config::default());
+    runner.run(&ConvPlusConvProblem::arbitrary(), |pb| pb.run_v2()).unwrap();
 }
 
-/// Simple conv: Source → Conv (kernel=3, valid padding) → output
-/// The conv needs 2 past samples (kernel-1) so pulse-by-pulse without
-/// buffering will produce wrong results for now — this test documents
-/// the current behavior.
-#[test]
-fn test_v2_simple_conv() {
-    let mut model = TypedModel::default();
-    let s = model.symbols.sym("S");
-    let a = model.add_source("a", f32::fact(dims!(1, 1, s))).unwrap();
-    let kernel = model.add_const("kernel", rctensor3(&[[[0.5f32, 1.0, -0.1]]])).unwrap();
-    let bias = model.add_const("bias", tensor0(0f32)).unwrap();
-    let conv = model
+use tract_core::ops::cnn::*;
+use tract_core::ops::nn::DataFormat;
+
+fn wire_conv(
+    model: &mut TypedModel,
+    name: &str,
+    input: OutletId,
+    kernel_size: usize,
+    dilation: usize,
+    stride: usize,
+) -> TVec<OutletId> {
+    let ker_data: Vec<f32> = (0..kernel_size).map(|i| (i + 1) as f32).collect();
+    let ker_tensor = tensor1(&ker_data).into_shape(&[1, 1, kernel_size]).unwrap();
+    let k = model.add_const(format!("{name}.k"), ker_tensor).unwrap();
+    let b = model.add_const(format!("{name}.b"), tensor0(0f32)).unwrap();
+    model
         .wire_node(
-            "conv",
+            name,
             Conv {
                 pool_spec: PoolSpec {
                     data_format: DataFormat::NCHW,
-                    kernel_shape: tvec!(3),
+                    kernel_shape: tvec!(kernel_size),
                     padding: PaddingSpec::Valid,
-                    dilations: None,
-                    strides: None,
+                    dilations: if dilation > 1 { Some(tvec!(dilation)) } else { None },
+                    strides: if stride > 1 { Some(tvec!(stride)) } else { None },
                     input_channels: 1,
                     output_channels: 1,
                 },
@@ -123,14 +134,120 @@ fn test_v2_simple_conv() {
                 group: 1,
                 q_params: None,
             },
-            &[a, kernel, bias],
+            &[input, k, b],
         )
-        .unwrap();
-    model.select_output_outlets(&conv).unwrap();
+        .unwrap()
+}
 
-    let input = arr3(&[[[1.0f32, 0.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0]]]).into_tensor();
-    // pulse=4, input_len=8, kernel=3 → batch output_len=6
-    // Without buffering this will fail — each pulse sees only its own 4 samples
-    // and the conv at pulse boundaries misses the overlap.
-    run_and_compare(model, &s, 4, &input, 2);
+proptest! {
+    #[test]
+    fn proptest_v2_single_conv(
+        kernel in 1usize..5,
+        pulse_extra in 0usize..5,
+        input_extra in 0usize..8,
+    ) {
+        let pulse = kernel + pulse_extra;
+        let input_len = kernel + pulse + input_extra;
+        let mut model = TypedModel::default();
+        let s = model.symbols.sym("S");
+        let a = model.add_source("a", f32::fact(dims!(1, 1, s))).unwrap();
+        let conv = wire_conv(&mut model, "conv", a, kernel, 1, 1);
+        model.select_output_outlets(&conv).unwrap();
+
+        let input_data: Vec<f32> = (0..input_len).map(|i| i as f32).collect();
+        let input = tensor1(&input_data).into_shape(&[1, 1, input_len]).unwrap();
+        run_and_compare_v2(model, pulse, &input, 2)?;
+    }
+
+    #[test]
+    fn proptest_v2_conv_chain(
+        k1 in 1usize..4,
+        k2 in 1usize..4,
+        pulse_extra in 0usize..4,
+        input_extra in 0usize..6,
+    ) {
+        let total_lookback = (k1 - 1) + (k2 - 1);
+        let pulse = total_lookback.max(1) + pulse_extra;
+        let input_len = total_lookback + pulse + input_extra + 1;
+        let mut model = TypedModel::default();
+        let s = model.symbols.sym("S");
+        let a = model.add_source("a", f32::fact(dims!(1, 1, s))).unwrap();
+        let c1 = wire_conv(&mut model, "conv1", a, k1, 1, 1);
+        let c2 = wire_conv(&mut model, "conv2", c1[0], k2, 1, 1);
+        model.select_output_outlets(&c2).unwrap();
+
+        let input_data: Vec<f32> = (0..input_len).map(|i| i as f32).collect();
+        let input = tensor1(&input_data).into_shape(&[1, 1, input_len]).unwrap();
+        run_and_compare_v2(model, pulse, &input, 2)?;
+    }
+
+    #[test]
+    fn proptest_v2_conv_dilation(
+        kernel in 1usize..4,
+        dilation in 1usize..4,
+        pulse_extra in 0usize..4,
+        input_extra in 0usize..6,
+    ) {
+        let receptive = (kernel - 1) * dilation;
+        let pulse = receptive.max(1) + pulse_extra;
+        let input_len = receptive + pulse + input_extra + 1;
+        let mut model = TypedModel::default();
+        let s = model.symbols.sym("S");
+        let a = model.add_source("a", f32::fact(dims!(1, 1, s))).unwrap();
+        let conv = wire_conv(&mut model, "conv", a, kernel, dilation, 1);
+        model.select_output_outlets(&conv).unwrap();
+
+        let input_data: Vec<f32> = (0..input_len).map(|i| i as f32).collect();
+        let input = tensor1(&input_data).into_shape(&[1, 1, input_len]).unwrap();
+        run_and_compare_v2(model, pulse, &input, 2)?;
+    }
+
+}
+
+proptest! {
+    #[test]
+    fn proptest_v2_conv_stride(
+        kernel in 1usize..4,
+        conv_stride in 1usize..4,
+        pulse_extra in 0usize..4,
+        input_extra in 0usize..6,
+    ) {
+        let receptive = kernel;
+        // pulse must be >= kernel and a multiple of stride
+        let min_pulse_factors = (kernel + conv_stride - 1) / conv_stride;
+        let pulse = conv_stride * (min_pulse_factors + pulse_extra);
+        let input_len = receptive + pulse + input_extra;
+        let mut model = TypedModel::default();
+        let s = model.symbols.sym("S");
+        let a = model.add_source("a", f32::fact(dims!(1, 1, s))).unwrap();
+        let conv = wire_conv(&mut model, "conv", a, kernel, 1, conv_stride);
+        model.select_output_outlets(&conv).unwrap();
+
+        let input_data: Vec<f32> = (0..input_len).map(|i| i as f32).collect();
+        let input = tensor1(&input_data).into_shape(&[1, 1, input_len]).unwrap();
+        run_and_compare_v2(model, pulse, &input, 2)?;
+    }
+}
+
+proptest! {
+    #[test]
+    fn proptest_v2_crop(
+        pulse in 1usize..5,
+        input_len in 1usize..10,
+        begin in 0usize..3,
+        end_margin in 0usize..3,
+    ) {
+        use tract_core::ops::array::Slice;
+        let full_len = input_len + begin + end_margin;
+        let slice_end = begin + input_len;
+        let mut model = TypedModel::default();
+        let s = model.symbols.sym("S");
+        let a = model.add_source("a", f32::fact(&[TDim::from(s.clone())])).unwrap();
+        let slice = model.wire_node("slice", Slice::new(0, begin, slice_end), &[a]).unwrap();
+        model.select_output_outlets(&slice).unwrap();
+
+        let input_data: Vec<f32> = (1..=full_len).map(|i| i as f32).collect();
+        let input = tensor1(&input_data);
+        run_and_compare_v2(model, pulse, &input, 0)?;
+    }
 }
