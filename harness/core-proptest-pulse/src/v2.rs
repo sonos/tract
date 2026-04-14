@@ -21,7 +21,7 @@ fn run_and_compare(
 
     // PulseV2: pulsify → lower to typed → run pulse by pulse
     let pv2 = PulseV2Model::new(&model, stream_sym.clone(), pulse).unwrap();
-    let skip = pv2.startup_skip();
+    let t_sym = pv2.symbols.pulse_id.clone();
 
     // Determine output streaming axis from the batch model
     let batch_output_fact = model.output_fact(0).unwrap();
@@ -38,10 +38,14 @@ fn run_and_compare(
     let input_len = input.shape()[axis];
     let mut output_chunks: Vec<Tensor> = vec![];
     let mut written = 0;
+    let mut pulse_idx: i64 = 0;
 
     while written < input_len {
         let chunk_len = pulse.min(input_len - written);
         let chunk = input.slice(axis, written, written + chunk_len).unwrap();
+
+        // Set T for this pulse so symbolic shapes resolve correctly
+        state.turn_state.resolved_symbols.set(&t_sym, pulse_idx);
 
         let chunk = if chunk_len < pulse {
             let mut padded_shape = input.shape().to_vec();
@@ -57,20 +61,20 @@ fn run_and_compare(
         let outputs = state.run(tvec!(chunk.into_tvalue())).unwrap();
         output_chunks.push(outputs[0].clone().into_tensor());
         written += pulse;
+        pulse_idx += 1;
     }
 
     // Stitch — no delay to skip, every frame is valid
     let pulsed_output = Tensor::stack_tensors(output_axis, &output_chunks).unwrap();
 
-    // Skip startup frames, then compare against batch
+    // Every frame is valid — no delay, no skip
     let batch_output = &batch[0];
     let batch_len = batch_output.shape()[output_axis];
     let pulsed_len = pulsed_output.shape()[output_axis];
-    let available = pulsed_len.saturating_sub(skip);
-    let compare_len = batch_len.min(available);
-    assert!(compare_len > 0, "No valid output (skip={skip}, pulsed_len={pulsed_len})");
+    let compare_len = batch_len.min(pulsed_len);
+    assert!(compare_len > 0, "No output produced");
     let batch_slice = batch_output.slice(output_axis, 0, compare_len).unwrap();
-    let pulsed_slice = pulsed_output.slice(output_axis, skip, skip + compare_len).unwrap();
+    let pulsed_slice = pulsed_output.slice(output_axis, 0, compare_len).unwrap();
     pulsed_slice.close_enough(&batch_slice, true).unwrap_or_else(|e| {
         panic!("Mismatch: {e}\nbatch:  {batch_slice:?}\npulsed: {pulsed_slice:?}")
     });
