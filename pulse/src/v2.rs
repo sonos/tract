@@ -166,11 +166,9 @@ mod tests {
         assert!(!region.axes[2].is_streaming()); // channels
 
         // Shape at pulse T should be [1, P, 16]
-        // Evaluate at concrete values since TDim doesn't simplify (T+1)*P - T*P to P
         let shape = fact.pulse_shape();
         assert_eq!(shape[0], 1.to_dim());
-        let sv = SymbolValues::default().with(&t, 3).with(&p, 8);
-        assert_eq!(shape[1].eval(&sv).to_i64().unwrap(), 8); // P=8
+        assert_eq!(shape[1].clone().simplify(), TDim::Sym(p)); // (T+1)*P - T*P simplifies to P
         assert_eq!(shape[2], 16.to_dim());
     }
 }
