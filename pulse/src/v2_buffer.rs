@@ -20,11 +20,18 @@ use tract_pulse_opl::tract_core::ops::{FrozenOpState, OpStateFreeze};
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct PulseV2Buffer {
     /// Per-axis lookback. lookback[i] = 0 means no buffering on axis i.
+    /// This is the amount of history stored (may be stride-rounded).
     pub lookback: TVec<usize>,
+    /// Per-axis overlap: the actual data overlap the consumer needs.
+    /// overlap[i] <= lookback[i]. The difference (lookback - overlap) is
+    /// stride alignment padding that gets trimmed from the output.
+    pub overlap: TVec<usize>,
     /// Number of previous pulse tensors to keep in the ring buffer.
     pub depth: usize,
     /// Pulse index symbol (T).
     pub pulse_id: Symbol,
+    /// Pulse size symbol (P) — used for cumulative history estimation.
+    pub pulse_sym: Symbol,
 }
 
 impl PulseV2Buffer {
@@ -63,7 +70,10 @@ impl EvalOp for PulseV2Buffer {
         _session: &TurnState,
         _node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
-        Ok(Some(Box::new(PulseV2BufferState { ring: Vec::new() })))
+        Ok(Some(Box::new(PulseV2BufferState {
+            ring: Vec::new(),
+            cumulative: tvec![0; self.lookback.len()],
+        })))
     }
 }
 
@@ -74,12 +84,18 @@ impl TypedOp for PulseV2Buffer {
         let mut fact = inputs[0].clone();
         let t = TDim::Sym(self.pulse_id.clone());
         for (axis, lookback) in self.buffered_axes() {
-            // Output dim = input_dim + min(T * input_dim, lookback).
-            // At T=0: input_dim (no lookback). At steady state: input_dim + lookback.
+            // Output dim = input_dim + H, where H is a symbol representing
+            // the actual history provided. H is bounded: 0 <= H <= lookback.
+            // At runtime, H resolves from the actual tensor size.
+            // This avoids using min(T*P, lookback) which overestimates for
+            // intermediate buffers (after convs that reduce the stream).
             let input_dim = fact.shape[axis].clone();
-            let available = t.clone() * input_dim.clone();
-            let effective = TDim::Min(vec![available, TDim::Val(lookback as i64)]);
-            fact.shape.set(axis, input_dim + effective);
+            let scope =
+                fact.shape.iter().find_map(|d| d.find_scope()).unwrap_or_else(SymbolScope::default);
+            let h = scope.new_with_prefix("H");
+            scope.add_assertion(format!("{h} >= 0")).ok();
+            scope.add_assertion(format!("{h} <= {lookback}")).ok();
+            fact.shape.set(axis, input_dim + TDim::Sym(h));
         }
         Ok(tvec!(fact))
     }
@@ -88,6 +104,8 @@ impl TypedOp for PulseV2Buffer {
 #[derive(Debug, Clone)]
 pub struct PulseV2BufferState {
     ring: Vec<Tensor>,
+    /// Cumulative input elements received on each buffered axis.
+    cumulative: TVec<usize>,
 }
 
 impl OpStateFreeze for PulseV2BufferState {
@@ -99,7 +117,7 @@ impl OpStateFreeze for PulseV2BufferState {
 impl OpState for PulseV2BufferState {
     fn eval(
         &mut self,
-        _state: &mut TurnState,
+        session: &mut TurnState,
         op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
@@ -108,13 +126,24 @@ impl OpState for PulseV2BufferState {
         let input_tensor = input.into_tensor();
 
         let output = if self.ring.is_empty() {
-            // T=0: no buffer, output is just the input.
+            // Track cumulative input for each buffered axis.
+            for (axis, _) in op.buffered_axes() {
+                self.cumulative[axis] = input_tensor.shape()[axis];
+            }
             input_tensor.clone()
         } else {
-            // Stitch along each buffered axis.
             let mut result = input_tensor.clone();
             for (axis, lookback) in op.buffered_axes() {
-                // Concatenate all buffered tensors + current along this axis
+                let current_size = input_tensor.shape()[axis];
+
+                // Compute target history: min(T*P, lookback) per output_facts.
+                let t = session.resolved_symbols.get(&op.pulse_id).unwrap_or(0) as usize;
+                let p = session.resolved_symbols.get(&op.pulse_sym).unwrap_or(1) as usize;
+                let target_history = lookback.min(t * p);
+                // Actual history may be less if upstream produced fewer elements.
+                let actual_history = target_history.min(self.cumulative[axis]);
+                self.cumulative[axis] += current_size;
+
                 let mut parts: Vec<Tensor> = Vec::with_capacity(self.ring.len() + 1);
                 for prev in &self.ring {
                     parts.push(prev.clone());
@@ -122,10 +151,8 @@ impl OpState for PulseV2BufferState {
                 parts.push(result);
                 let stitched = Tensor::stack_tensors(axis, &parts)?;
 
-                // Trim to keep only the last (lookback + current_size)
                 let total = stitched.shape()[axis];
-                let current_size = input_tensor.shape()[axis];
-                let keep = lookback + current_size;
+                let keep = actual_history + current_size;
                 result = if total > keep {
                     stitched.slice(axis, total - keep, total)?.into_tensor()
                 } else {
