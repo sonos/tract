@@ -1,23 +1,19 @@
 /// PulseV2: region/increment-based pulsification.
 ///
-/// Instead of tracking a single streaming axis with a fixed pulse size and
-/// startup delay, PulseV2 describes per-axis **regions** (what data an op
-/// needs or produces at pulse T) and **increments** (what's new compared
-/// to pulse T-1).
-///
 /// Symbols:
 ///   T — pulse index (0, 1, 2, …)
-///   P — pulse size (a concrete positive integer)
+///   P — pulse size (kept symbolic until runtime)
 ///
-/// For a given node at pulse T, each axis is either:
-///   - Fixed: the full extent is produced every pulse (batch, channel, etc.)
-///   - Streaming: a range [start(T,P), end(T,P)) is produced
+/// Each op declares a RegionTransform: "given my output region, what input
+/// regions do I need?" The generic pulsifier compares what each op needs
+/// against what the source provides, and inserts PulseV2Buffer where there's
+/// a gap (lookback into previous pulses).
 ///
-/// The **region** is the full range needed/produced at pulse T.
-/// The **increment** is the new data: region(T) \ region(T-1).
-/// The **buffer** is the overlap: region(T) ∩ region(T-1) — data that must
-/// be retained from the previous pulse.
+/// Output shapes are computed by the batch model's output_facts — no separate
+/// region propagation needed on the forward path.
 use crate::internal::*;
+
+// ── Per-axis region ────────────────────────────────────────────────────
 
 /// Per-axis specification at pulse T.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -30,7 +26,6 @@ pub enum AxisRegion {
 }
 
 impl AxisRegion {
-    /// Size of this axis at pulse T.
     pub fn size(&self) -> TDim {
         match self {
             AxisRegion::Fixed(d) => d.clone(),
@@ -38,154 +33,77 @@ impl AxisRegion {
         }
     }
 
-    /// Is this axis streaming?
     pub fn is_streaming(&self) -> bool {
         matches!(self, AxisRegion::Streaming { .. })
     }
 }
 
-/// Region/increment description for a wire at pulse T.
+/// Region description for a wire at pulse T.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct PulseV2Region {
-    /// Per-axis region specification.
     pub axes: TVec<AxisRegion>,
 }
 
 impl PulseV2Region {
-    /// Shape of the tensor at pulse T (one TDim per axis).
-    pub fn shape(&self) -> TVec<TDim> {
-        self.axes.iter().map(|a| a.size()).collect()
-    }
-
-    /// Rank.
     pub fn rank(&self) -> usize {
         self.axes.len()
     }
-
-    /// Indices of streaming axes.
-    pub fn streaming_axes(&self) -> TVec<usize> {
-        self.axes.iter().enumerate().filter(|(_, a)| a.is_streaming()).map(|(i, _)| i).collect()
-    }
 }
 
-/// Fact for a wire in a PulseV2 model.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct PulseV2Fact {
-    pub datum_type: DatumType,
-    /// Region at pulse T. None for non-streaming wires (constants, etc.)
-    pub region: Option<PulseV2Region>,
-    /// The batch (full-stream) shape, with symbolic stream dimensions.
-    pub batch_shape: ShapeFact,
+// ── Region transforms (inventory) ──────────────────────────────────────
+
+/// Given an op and the source increment region (what the source provides),
+/// return the required input regions. Returns None to fall through to
+/// the default (same region as source on every input).
+pub type RegionTransformFn =
+    fn(op: &dyn TypedOp, source_region: &PulseV2Region) -> TractResult<TVec<Option<PulseV2Region>>>;
+
+/// Inventory entry: maps an op TypeId to its region transform.
+pub struct RegionTransform {
+    pub type_id: std::any::TypeId,
+    pub func: RegionTransformFn,
 }
 
-impl PulseV2Fact {
-    /// Create a PulseV2Fact for a streaming input.
-    ///
-    /// `batch_fact` is the TypedFact from the batch model.
-    /// `stream_sym` is the symbol representing total stream length.
-    /// `pulse_sym` is the symbol representing pulse size (P).
-    /// `pulse_id_sym` is the symbol representing pulse index (T).
-    ///
-    /// All axes containing `stream_sym` become Streaming with
-    /// start/end derived by substituting stream_sym → T*P..(T+1)*P.
-    pub fn from_batch_input(
-        batch_fact: &TypedFact,
-        stream_sym: &Symbol,
-        pulse_sym: &Symbol,
-        pulse_id_sym: &Symbol,
-    ) -> TractResult<Self> {
-        let t = TDim::Sym(pulse_id_sym.clone());
-        let p = TDim::Sym(pulse_sym.clone());
-        let mut axes = TVec::new();
+inventory::collect!(RegionTransform);
 
-        for dim in batch_fact.shape.iter() {
-            if dim.symbols().contains(stream_sym) {
-                // This axis depends on the stream symbol.
-                // For a simple case like dim=S, region is [T*P, (T+1)*P).
-                // For dim=(S+k)/stride, we'd need to transform accordingly.
-                // Start simple: only handle dim=S directly.
-                if dim == &TDim::Sym(stream_sym.clone()) {
-                    axes.push(AxisRegion::Streaming {
-                        start: t.clone() * p.clone(),
-                        end: (t.clone() + 1) * p.clone(),
-                    });
-                } else {
-                    bail!(
-                        "PulseV2: streaming dimension {dim} is not a simple symbol — \
-                         complex streaming dims not yet supported"
-                    );
-                }
-            } else {
-                axes.push(AxisRegion::Fixed(dim.clone()));
-            }
-        }
-
-        Ok(PulseV2Fact {
-            datum_type: batch_fact.datum_type,
-            region: Some(PulseV2Region { axes }),
-            batch_shape: batch_fact.shape.clone(),
-        })
-    }
-
-    /// Shape at pulse T (substituting region sizes).
-    pub fn pulse_shape(&self) -> TVec<TDim> {
-        match &self.region {
-            Some(r) => r.shape(),
-            None => self.batch_shape.to_tvec(),
+fn lookup_region_transform(
+    op: &dyn TypedOp,
+    source_region: &PulseV2Region,
+) -> TractResult<Option<TVec<Option<PulseV2Region>>>> {
+    let type_id = op.type_id();
+    for rt in inventory::iter::<RegionTransform> {
+        if rt.type_id == type_id {
+            return Ok(Some((rt.func)(op, source_region)?));
         }
     }
-
-    /// Is this wire streaming?
-    pub fn is_streaming(&self) -> bool {
-        self.region.is_some()
-    }
+    Ok(None)
 }
 
-// ── Pulsification ──────────────────────────────────────────────────────────
+// ── Symbols ────────────────────────────────────────────────────────────
 
-/// Symbols used during PulseV2 pulsification.
 #[derive(Clone, Debug)]
 pub struct PulseV2Symbols {
-    /// The stream-length symbol in the batch model (e.g. S).
     pub stream: Symbol,
-    /// Pulse size symbol (P) — will be set to a concrete value at runtime.
     pub pulse: Symbol,
-    /// Pulse index symbol (T) — increments at each step: 0, 1, 2, …
     pub pulse_id: Symbol,
 }
 
-/// PulseV2 model: a TypedModel annotated with per-wire region/increment.
-///
-/// The underlying TypedModel has pulse-sized shapes (S replaced by P).
-/// The `regions` map holds PulseV2Fact for each wire, describing what
-/// part of the batch tensor each pulse produces.
-///
-/// Pulsification builds this by:
-/// 1. Cloning the batch model
-/// 2. Computing PulseV2Fact for each Source from its batch shape
-/// 3. Propagating regions forward through each op (via axes_mapping
-///    for trivial ops, custom logic for conv/einsum)
-/// 4. Inserting Delay nodes where an op's input region extends into
-///    previous pulses
-/// 5. Concretizing P to the actual pulse value
+// ── PulseV2Model ───────────────────────────────────────────────────────
+
 pub struct PulseV2Model {
-    /// The pulsed TypedModel (with buffer nodes, concrete pulse shapes).
     pub typed: TypedModel,
-    /// Per-wire region metadata (keyed by OutletId).
-    pub regions: HashMap<OutletId, PulseV2Fact>,
-    /// The symbols.
     pub symbols: PulseV2Symbols,
 }
 
 impl PulseV2Model {
     /// Pulsify a batch model.
     ///
-    /// Builds a new TypedModel with pulse-sized shapes. Inserts Delay
-    /// nodes where an op needs lookback into previous pulses (e.g. conv).
-    pub fn new(batch_model: &TypedModel, stream_sym: Symbol, pulse: usize) -> TractResult<Self> {
-        use crate::fact::StreamFact;
+    /// For each Source, substitute S → P. For each op, ask its RegionTransform
+    /// what input regions it needs. Where an input needs lookback beyond the
+    /// source increment, insert a PulseV2Buffer. Wire the op with (potentially
+    /// buffered) inputs. Output shapes are computed by the op's output_facts.
+    pub fn new(batch_model: &TypedModel, stream_sym: Symbol) -> TractResult<Self> {
         use crate::v2_buffer::PulseV2Buffer;
-        use tract_core::ops::cnn::Conv;
 
         let p_sym = batch_model.symbols.sym("P");
         let t_sym = batch_model.symbols.sym("T");
@@ -196,69 +114,118 @@ impl PulseV2Model {
             pulse_id: t_sym.clone(),
         };
 
-        let mut regions: HashMap<OutletId, PulseV2Fact> = HashMap::new();
+        // The source increment: what one pulse provides on streaming axes.
+        // This is the baseline — ops that need more get a buffer.
+        let t = TDim::Sym(t_sym.clone());
+        let p = TDim::Sym(p_sym.clone());
 
-        // Build the pulsed model node by node.
         let mut typed = TypedModel::default();
         let mut mapping: HashMap<OutletId, OutletId> = HashMap::new();
+        // Track which pulsed wires are streaming and what their source region is.
+        let mut wire_regions: HashMap<OutletId, PulseV2Region> = HashMap::new();
 
         let order = batch_model.eval_order()?;
-        let sv = SymbolValues::default().with(&stream_sym, pulse as i64);
 
         for &node_id in &order {
             let node = batch_model.node(node_id);
 
+            // Source: substitute S → P, record the source increment as region.
             if node.op.downcast_ref::<tract_core::ops::source::TypedSource>().is_some() {
                 let batch_fact = batch_model.outlet_fact(OutletId::new(node_id, 0))?;
-                let pulse_shape: TVec<TDim> =
-                    batch_fact.shape.iter().map(|d| d.eval(&sv)).collect();
+                let mut axes = TVec::new();
+                let mut pulse_shape = TVec::new();
+                for dim in batch_fact.shape.iter() {
+                    if dim.symbols().contains(&stream_sym) && dim == &TDim::Sym(stream_sym.clone())
+                    {
+                        axes.push(AxisRegion::Streaming {
+                            start: t.clone() * p.clone(),
+                            end: (t.clone() + 1) * p.clone(),
+                        });
+                        pulse_shape.push(p.clone());
+                    } else {
+                        axes.push(AxisRegion::Fixed(dim.clone()));
+                        pulse_shape.push(dim.clone());
+                    }
+                }
                 let pulse_fact = batch_fact.datum_type.fact(pulse_shape);
                 let new_outlet = typed.add_source(&node.name, pulse_fact)?;
                 mapping.insert(OutletId::new(node_id, 0), new_outlet);
-
-                let pv2 = PulseV2Fact::from_batch_input(batch_fact, &stream_sym, &p_sym, &t_sym)?;
-                regions.insert(new_outlet, pv2);
+                wire_regions.insert(new_outlet, PulseV2Region { axes });
                 continue;
             }
 
-            let mut inputs: TVec<OutletId> =
-                node.inputs.iter().map(|i| mapping.get(i).copied().unwrap_or(*i)).collect();
+            // Find the source region for the first streaming input.
+            let source_region = node
+                .inputs
+                .iter()
+                .find_map(|i| mapping.get(i).and_then(|o| wire_regions.get(o)))
+                .cloned();
 
-            // Conv: insert PulseV2Buffer for lookback on the data input.
-            if let Some(conv) = node.op.downcast_ref::<Conv>() {
-                let stream_axis = batch_model
-                    .outlet_fact(node.inputs[0])?
-                    .shape
-                    .stream_info(&stream_sym)
-                    .map(|(ax, _)| ax);
+            // Compute required input regions.
+            let typed_op: &dyn TypedOp = node.op.as_ref();
+            let input_regions: TVec<Option<PulseV2Region>> = if let Some(src) = &source_region {
+                lookup_region_transform(typed_op, src)?.unwrap_or_else(|| {
+                    // Default: every input gets the source region (pass-through).
+                    node.inputs.iter().map(|_| Some(src.clone())).collect()
+                })
+            } else {
+                tvec![None; node.inputs.len()]
+            };
 
-                if let Some(axis) = stream_axis {
-                    let kernel_len = conv.pool_spec.kernel_shape[0];
-                    let dilation = conv.pool_spec.dilations.as_ref().map_or(1, |d| d[0]);
-                    let lookback = (kernel_len - 1) * dilation;
+            // Wire inputs, inserting buffers where needed.
+            let mut inputs: TVec<OutletId> = TVec::new();
+            for (ix, batch_input) in node.inputs.iter().enumerate() {
+                let pulsed_input = mapping.get(batch_input).copied().unwrap_or(*batch_input);
+                let wire_region = wire_regions.get(&pulsed_input);
+                let needed = input_regions.get(ix).and_then(|r| r.as_ref());
 
-                    if lookback > 0 {
-                        let depth = (lookback + pulse - 1) / pulse;
-                        let buffer = PulseV2Buffer {
-                            axis,
-                            lookback,
-                            depth,
-                            pulse_id: t_sym.clone(),
-                            pulse_dim: pulse.to_dim(),
-                        };
-                        let buffered = typed.wire_node(
-                            format!("{}.buffer", node.name),
-                            buffer,
-                            &[inputs[0]],
-                        )?;
-                        inputs[0] = buffered[0];
+                if let (Some(needed), Some(provided)) = (needed, wire_region) {
+                    let mut lookback = tvec![0usize; needed.rank()];
+                    let mut needs_buffer = false;
+                    for (ax, (needed_ax, provided_ax)) in
+                        needed.axes.iter().zip(provided.axes.iter()).enumerate()
+                    {
+                        if let (
+                            AxisRegion::Streaming { start: needed_start, .. },
+                            AxisRegion::Streaming { start: provided_start, .. },
+                        ) = (needed_ax, provided_ax)
+                        {
+                            let lb = (provided_start.clone() - needed_start.clone()).simplify();
+                            if let Ok(v) = lb.to_i64() {
+                                if v > 0 {
+                                    lookback[ax] = v as usize;
+                                    needs_buffer = true;
+                                }
+                            }
+                        }
                     }
+
+                    if needs_buffer {
+                        let depth = *lookback.iter().max().unwrap_or(&1);
+                        let buffer = PulseV2Buffer { lookback, depth, pulse_id: t_sym.clone() };
+                        let buffered = typed.wire_node(
+                            format!("{}.buffer.{}", node.name, ix),
+                            buffer,
+                            &[pulsed_input],
+                        )?;
+                        inputs.push(buffered[0]);
+                    } else {
+                        inputs.push(pulsed_input);
+                    }
+                } else {
+                    inputs.push(pulsed_input);
                 }
             }
 
             let new_outlets = typed.wire_node(&node.name, node.op.clone(), &inputs)?;
             for (slot, &new_outlet) in new_outlets.iter().enumerate() {
                 mapping.insert(OutletId::new(node_id, slot), new_outlet);
+                // Propagate region: the output wire's region is the source region.
+                // The shape is computed by output_facts; the region just tracks
+                // "this wire is streaming, with these coordinates."
+                if let Some(region) = &source_region {
+                    wire_regions.insert(new_outlet, region.clone());
+                }
             }
         }
 
@@ -266,10 +233,9 @@ impl PulseV2Model {
         let pulsed_outputs: TVec<OutletId> = batch_outputs.iter().map(|o| mapping[o]).collect();
         typed.select_output_outlets(&pulsed_outputs)?;
 
-        Ok(PulseV2Model { typed, regions, symbols })
+        Ok(PulseV2Model { typed, symbols })
     }
 
-    /// Lower to a runnable TypedModel.
     pub fn into_typed(self) -> TractResult<TypedModel> {
         Ok(self.typed)
     }
@@ -286,23 +252,25 @@ mod tests {
         let p = scope.sym("P");
         let t = scope.sym("T");
 
-        // Batch shape: [1, S, 16] — a 1D streaming signal with 16 channels
         let batch_fact = DatumType::F32.fact(&[1.to_dim(), s.clone().into(), 16.to_dim()]);
-        let fact = PulseV2Fact::from_batch_input(&batch_fact, &s, &p, &t).unwrap();
 
-        assert_eq!(fact.datum_type, DatumType::F32);
-        assert!(fact.is_streaming());
+        let mut axes = TVec::new();
+        for dim in batch_fact.shape.iter() {
+            if dim == &TDim::Sym(s.clone()) {
+                axes.push(AxisRegion::Streaming {
+                    start: TDim::Sym(t.clone()) * TDim::Sym(p.clone()),
+                    end: (TDim::Sym(t.clone()) + 1) * TDim::Sym(p.clone()),
+                });
+            } else {
+                axes.push(AxisRegion::Fixed(dim.clone()));
+            }
+        }
+        let region = PulseV2Region { axes };
 
-        let region = fact.region.as_ref().unwrap();
         assert_eq!(region.rank(), 3);
-        assert!(!region.axes[0].is_streaming()); // batch
-        assert!(region.axes[1].is_streaming()); // time
-        assert!(!region.axes[2].is_streaming()); // channels
-
-        // Shape at pulse T should be [1, P, 16]
-        let shape = fact.pulse_shape();
-        assert_eq!(shape[0], 1.to_dim());
-        assert_eq!(shape[1].clone().simplify(), TDim::Sym(p)); // (T+1)*P - T*P simplifies to P
-        assert_eq!(shape[2], 16.to_dim());
+        assert!(!region.axes[0].is_streaming());
+        assert!(region.axes[1].is_streaming());
+        assert!(!region.axes[2].is_streaming());
+        assert_eq!(region.axes[1].size().simplify(), TDim::Sym(p));
     }
 }
