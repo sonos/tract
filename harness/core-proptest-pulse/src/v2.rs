@@ -104,6 +104,7 @@ pub fn run_and_compare_v2(
 // ── Proptests using V1 problem generators ──────────────────────────────
 
 use super::conv_plus_conv::ConvPlusConvProblem;
+use super::deconv::DeconvProblem;
 use super::delay_plus_downsample::DelayPlusDownsampleProblem;
 use super::delay_plus_pool::DelayPlusPoolProblem;
 use super::pad_plus_conv::PadPlusConvProblem;
@@ -130,6 +131,14 @@ fn proptest_v2_delay_plus_pool_full() {
     use proptest::test_runner::{Config, TestRunner};
     let mut runner = TestRunner::new(Config::default());
     runner.run(&DelayPlusPoolProblem::arbitrary(), |pb| pb.run_v2()).unwrap();
+}
+
+#[test]
+#[ignore]
+fn proptest_v2_deconv_full() {
+    use proptest::test_runner::{Config, TestRunner};
+    let mut runner = TestRunner::new(Config::default());
+    runner.run(&DeconvProblem::arbitrary(), |pb| pb.run_v2()).unwrap();
 }
 
 #[test]
