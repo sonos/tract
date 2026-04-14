@@ -5,7 +5,7 @@ use tract_core::ops::cnn::MaxPool;
 use super::*;
 
 #[derive(Debug, Clone)]
-struct DelayPlusPoolProblem {
+pub(crate) struct DelayPlusPoolProblem {
     input: Vec<f32>,
     pulse: usize,
     delay: usize,
@@ -44,6 +44,27 @@ impl Arbitrary for DelayPlusPoolProblem {
 }
 
 impl DelayPlusPoolProblem {
+    pub fn run_v2(&self) -> TestCaseResult {
+        let mut model = TypedModel::default();
+        let s = model.symbols.sym("S");
+        let a = model.add_source("a", f32::fact(dims!(1, s, 1))).unwrap();
+        let crop = model.wire_node("delay", Slice::new(1, self.delay, s), &[a]).unwrap();
+        let pool_spec = PoolSpec::new(
+            DataFormat::NHWC,
+            tvec!(self.pool_window),
+            self.padding.clone(),
+            None,
+            Some(tvec!(self.stride)),
+            1,
+            1,
+        );
+        let pool = model.wire_node("pool", MaxPool::new(pool_spec, None), &crop).unwrap();
+        model.select_output_outlets(&pool).unwrap();
+        let input =
+            arr1(&self.input).into_shape_with_order((1, self.input.len(), 1)).unwrap().into_dyn();
+        crate::v2::run_and_compare_v2(model, self.pulse, &input.into_tensor(), 1)
+    }
+
     pub fn run(&self) -> TestCaseResult {
         let mut model = TypedModel::default();
         let s = model.symbols.sym("S");

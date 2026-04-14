@@ -22,8 +22,8 @@ use tract_pulse::internal::*;
 
 pub(crate) mod conv_plus_conv;
 mod deconv;
-mod delay_plus_downsample;
-mod delay_plus_pool;
+pub(crate) mod delay_plus_downsample;
+pub(crate) mod delay_plus_pool;
 mod einsum;
 pub(crate) mod pad_plus_conv;
 mod v2;
