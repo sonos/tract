@@ -169,20 +169,26 @@ pub struct PulseV2Symbols {
 ///    previous pulses
 /// 5. Concretizing P to the actual pulse value
 pub struct PulseV2Model {
-    /// The pulsed TypedModel (with Delay nodes, concrete pulse shapes).
+    /// The pulsed TypedModel (with buffer nodes, concrete pulse shapes).
     pub typed: TypedModel,
     /// Per-wire region metadata (keyed by OutletId).
     pub regions: HashMap<OutletId, PulseV2Fact>,
     /// The symbols.
     pub symbols: PulseV2Symbols,
+    /// Output frames to skip from the start (zero-padded buffer startup).
+    pub startup_skip: usize,
 }
 
 impl PulseV2Model {
     /// Pulsify a batch model.
     ///
-    /// For now only handles trivial models (Source → elementwise chains).
-    /// Conv and other ops with receptive fields are not yet supported.
+    /// Builds a new TypedModel with pulse-sized shapes. Inserts Delay
+    /// nodes where an op needs lookback into previous pulses (e.g. conv).
     pub fn new(batch_model: &TypedModel, stream_sym: Symbol, pulse: usize) -> TractResult<Self> {
+        use crate::fact::StreamFact;
+        use crate::v2_buffer::PulseV2Buffer;
+        use tract_core::ops::cnn::Conv;
+
         let p_sym = batch_model.symbols.sym("P");
         let t_sym = batch_model.symbols.sym("T");
 
@@ -192,44 +198,90 @@ impl PulseV2Model {
             pulse_id: t_sym.clone(),
         };
 
-        // Build regions for all wires by walking the eval order.
         let mut regions: HashMap<OutletId, PulseV2Fact> = HashMap::new();
 
-        // Sources: derive region from batch shape.
-        for &input_id in batch_model.input_outlets()? {
-            let fact = batch_model.outlet_fact(input_id)?;
-            let pv2 = PulseV2Fact::from_batch_input(fact, &stream_sym, &p_sym, &t_sym)?;
-            regions.insert(input_id, pv2);
-        }
+        // Build the pulsed model node by node.
+        let mut typed = TypedModel::default();
+        let mut mapping: HashMap<OutletId, OutletId> = HashMap::new();
 
-        // TODO: walk eval order, propagate regions through ops via axes_mapping.
-        // For now, just propagate directly: output regions = input regions
-        // (only works for Source → output identity models).
-        for &output_id in batch_model.output_outlets()? {
-            if !regions.contains_key(&output_id) {
-                // Try to find the region from the node's input.
-                let node = batch_model.node(output_id.node);
-                if !node.inputs.is_empty() {
-                    if let Some(input_region) = regions.get(&node.inputs[0]) {
-                        regions.insert(output_id, input_region.clone());
+        let order = batch_model.eval_order()?;
+        let sv = SymbolValues::default().with(&stream_sym, pulse as i64);
+
+        for &node_id in &order {
+            let node = batch_model.node(node_id);
+
+            if node.op.downcast_ref::<tract_core::ops::source::TypedSource>().is_some() {
+                let batch_fact = batch_model.outlet_fact(OutletId::new(node_id, 0))?;
+                let pulse_shape: TVec<TDim> =
+                    batch_fact.shape.iter().map(|d| d.eval(&sv)).collect();
+                let pulse_fact = batch_fact.datum_type.fact(pulse_shape);
+                let new_outlet = typed.add_source(&node.name, pulse_fact)?;
+                mapping.insert(OutletId::new(node_id, 0), new_outlet);
+
+                let pv2 = PulseV2Fact::from_batch_input(batch_fact, &stream_sym, &p_sym, &t_sym)?;
+                regions.insert(new_outlet, pv2);
+                continue;
+            }
+
+            let mut inputs: TVec<OutletId> =
+                node.inputs.iter().map(|i| mapping.get(i).copied().unwrap_or(*i)).collect();
+
+            // Conv: insert PulseV2Buffer for lookback on the data input.
+            if let Some(conv) = node.op.downcast_ref::<Conv>() {
+                let stream_axis = batch_model
+                    .outlet_fact(node.inputs[0])?
+                    .shape
+                    .stream_info(&stream_sym)
+                    .map(|(ax, _)| ax);
+
+                if let Some(axis) = stream_axis {
+                    let kernel_len = conv.pool_spec.kernel_shape[0];
+                    let dilation = conv.pool_spec.dilations.as_ref().map_or(1, |d| d[0]);
+                    let lookback = (kernel_len - 1) * dilation;
+
+                    if lookback > 0 {
+                        let depth = (lookback + pulse - 1) / pulse; // how many past pulses needed
+                        let buffer = PulseV2Buffer { axis, lookback, depth };
+                        let buffered = typed.wire_node(
+                            format!("{}.buffer", node.name),
+                            buffer,
+                            &[inputs[0]],
+                        )?;
+                        inputs[0] = buffered[0];
                     }
                 }
             }
+
+            let new_outlets = typed.wire_node(&node.name, node.op.clone(), &inputs)?;
+            for (slot, &new_outlet) in new_outlets.iter().enumerate() {
+                mapping.insert(OutletId::new(node_id, slot), new_outlet);
+            }
         }
 
-        // Build the pulsed TypedModel: substitute S → P, then concretize P.
-        let sv = SymbolValues::default().with(&stream_sym, pulse as i64);
-        let typed = batch_model.clone().concretize_dims(&sv)?;
+        let batch_outputs = batch_model.output_outlets()?.to_vec();
+        let pulsed_outputs: TVec<OutletId> = batch_outputs.iter().map(|o| mapping[o]).collect();
+        typed.select_output_outlets(&pulsed_outputs)?;
 
-        Ok(PulseV2Model { typed, regions, symbols })
+        // Track the startup skip: frames to discard from the start of the
+        // output due to zero-padded buffer at T=0.
+        let mut startup_skip: usize = 0;
+        for node in &typed.nodes {
+            if let Some(buf) = node.op.downcast_ref::<PulseV2Buffer>() {
+                startup_skip = startup_skip.max(buf.lookback);
+            }
+        }
+
+        Ok(PulseV2Model { typed, regions, symbols, startup_skip })
     }
 
     /// Lower to a runnable TypedModel.
-    ///
-    /// For now this just returns the concretized model as-is.
-    /// Eventually this will insert Delay nodes for buffering.
     pub fn into_typed(self) -> TractResult<TypedModel> {
         Ok(self.typed)
+    }
+
+    /// Number of output frames to skip at the start (from zero-padded buffer).
+    pub fn startup_skip(&self) -> usize {
+        self.startup_skip
     }
 }
 
