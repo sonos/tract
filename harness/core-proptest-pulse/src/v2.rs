@@ -21,8 +21,9 @@ fn run_and_compare(
 
     // PulseV2: pulsify → lower to typed → run pulse by pulse
     let pv2 = PulseV2Model::new(&model, stream_sym.clone(), pulse).unwrap();
+    let skip = pv2.startup_skip();
 
-    // Determine output streaming axis from the regions
+    // Determine output streaming axis from the batch model
     let batch_output_fact = model.output_fact(0).unwrap();
     let output_axis = batch_output_fact
         .shape
@@ -58,15 +59,18 @@ fn run_and_compare(
         written += pulse;
     }
 
+    // Stitch — no delay to skip, every frame is valid
     let pulsed_output = Tensor::stack_tensors(output_axis, &output_chunks).unwrap();
 
-    // Compare: trim both to the shorter length on the streaming axis
+    // Skip startup frames, then compare against batch
     let batch_output = &batch[0];
-    let batch_len = batch_output.shape()[axis];
-    let pulsed_len = pulsed_output.shape()[axis];
-    let compare_len = batch_len.min(pulsed_len);
-    let batch_slice = batch_output.slice(axis, 0, compare_len).unwrap();
-    let pulsed_slice = pulsed_output.slice(axis, 0, compare_len).unwrap();
+    let batch_len = batch_output.shape()[output_axis];
+    let pulsed_len = pulsed_output.shape()[output_axis];
+    let available = pulsed_len.saturating_sub(skip);
+    let compare_len = batch_len.min(available);
+    assert!(compare_len > 0, "No valid output (skip={skip}, pulsed_len={pulsed_len})");
+    let batch_slice = batch_output.slice(output_axis, 0, compare_len).unwrap();
+    let pulsed_slice = pulsed_output.slice(output_axis, skip, skip + compare_len).unwrap();
     pulsed_slice.close_enough(&batch_slice, true).unwrap_or_else(|e| {
         panic!("Mismatch: {e}\nbatch:  {batch_slice:?}\npulsed: {pulsed_slice:?}")
     });
