@@ -48,28 +48,46 @@ pub fn run_and_compare_v2(
     let mut written = 0;
     let mut pulse_idx: i64 = 0;
 
-    while written < input_len {
-        let chunk_len = pulse.min(input_len - written);
-        let chunk = input.slice(axis, written, written + chunk_len).unwrap();
+    let batch_len = batch[0].shape()[output_axis];
+
+    loop {
+        let chunk_len = pulse.min(input_len.saturating_sub(written));
 
         state.turn_state.resolved_symbols.set(&t_sym, pulse_idx);
         state.turn_state.resolved_symbols.set(&p_sym, pulse as i64);
+        state.turn_state.resolved_symbols.set(&stream_sym, input_len as i64);
 
-        let chunk = if chunk_len < pulse {
+        let chunk = if chunk_len == 0 {
+            let mut shape = input.shape().to_vec();
+            shape[axis] = pulse;
+            Tensor::zero_dt(input.datum_type(), &shape).unwrap()
+        } else if chunk_len < pulse {
+            let chunk = input.slice(axis, written, written + chunk_len).unwrap();
             let mut padded_shape = input.shape().to_vec();
             padded_shape[axis] = pulse;
             let mut padded = Tensor::zero_dt(input.datum_type(), &padded_shape).unwrap();
             padded.assign_slice(0..chunk_len, &chunk, 0..chunk_len, axis).unwrap();
-            state.turn_state.resolved_symbols.set(&stream_sym, input_len as i64);
             padded
         } else {
-            chunk.into_tensor()
+            input.slice(axis, written, written + chunk_len).unwrap().into_tensor()
         };
 
         let outputs = state.run(tvec!(chunk.into_tvalue())).unwrap();
-        output_chunks.push(outputs[0].clone().into_tensor());
+        let out = outputs[0].clone().into_tensor();
+        if out.shape()[output_axis] > 0 {
+            output_chunks.push(out);
+        }
         written += pulse;
         pulse_idx += 1;
+
+        // Check if we have enough output.
+        let total_out: usize = output_chunks.iter().map(|t| t.shape()[output_axis]).sum();
+        if total_out >= batch_len {
+            break;
+        }
+        if pulse_idx > 1000 {
+            panic!("Pulsed run exceeded 1000 pulses");
+        }
     }
 
     let pulsed_output = Tensor::stack_tensors(output_axis, &output_chunks).unwrap();
@@ -247,6 +265,36 @@ proptest! {
         model.select_output_outlets(&slice).unwrap();
 
         let input_data: Vec<f32> = (1..=full_len).map(|i| i as f32).collect();
+        let input = tensor1(&input_data);
+        run_and_compare_v2(model, pulse, &input, 0)?;
+    }
+}
+
+proptest! {
+    #[test]
+    fn proptest_v2_pad(
+        pulse in 1usize..5,
+        input_len in 1usize..10,
+        before in 0usize..4,
+        after in 0usize..4,
+    ) {
+        use tract_core::ops::array::{Pad, PadMode};
+        let mut model = TypedModel::default();
+        let s = model.symbols.sym("S");
+        let a = model.add_source("a", f32::fact(&[TDim::from(s.clone())])).unwrap();
+        let pad = model
+            .wire_node(
+                "pad",
+                Pad::new(
+                    vec![(before, after)],
+                    PadMode::Constant(Arc::new(Tensor::from(-1f32))),
+                ),
+                &[a],
+            )
+            .unwrap();
+        model.select_output_outlets(&pad).unwrap();
+
+        let input_data: Vec<f32> = (1..=input_len).map(|i| i as f32).collect();
         let input = tensor1(&input_data);
         run_and_compare_v2(model, pulse, &input, 0)?;
     }
