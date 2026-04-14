@@ -227,7 +227,8 @@ impl EvalOp for Resize {
             scales.map(|t| &**t),
             sizes.map(|t| &**t),
         )?;
-        let scales: TVec<f32> = if let Some(scales) = scales {
+        let scales: TVec<f32> = if let Some(scales) = scales.filter(|s| s.len() == inputs[0].rank())
+        {
             scales.try_as_plain()?.as_slice::<f32>()?.into()
         } else {
             output_shape.iter().zip(inputs[0].shape()).map(|(o, i)| *o as f32 / *i as f32).collect()
