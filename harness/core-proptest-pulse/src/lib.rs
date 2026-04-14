@@ -26,6 +26,7 @@ mod delay_plus_downsample;
 mod delay_plus_pool;
 mod einsum;
 mod pad_plus_conv;
+mod v2;
 
 #[allow(dead_code)]
 fn setup_test_logger() {
