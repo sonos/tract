@@ -455,6 +455,38 @@ impl TDim {
                 }
             }
             Mul(terms) => {
+                // Distribute over Add: if exactly one factor is an Add,
+                // expand Mul([a, Add([b, c])]) => Add([Mul([a, b]), Mul([a, c])]).
+                // This lets (T+1)*P simplify to T*P + P, which is needed for
+                // cancellation in expressions like (T+1)*P - T*P.
+                {
+                    let add_indices: Vec<usize> = terms
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, t)| matches!(t, Add(_)))
+                        .map(|(i, _)| i)
+                        .collect();
+                    if add_indices.len() == 1 {
+                        let add_idx = add_indices[0];
+                        let Add(add_terms) = &terms[add_idx] else { unreachable!() };
+                        let other_factors: Vec<TDim> = terms
+                            .iter()
+                            .enumerate()
+                            .filter(|(i, _)| *i != add_idx)
+                            .map(|(_, t)| t.clone())
+                            .collect();
+                        let distributed: Vec<TDim> = add_terms
+                            .iter()
+                            .map(|at| {
+                                let mut product = other_factors.clone();
+                                product.push(at.clone());
+                                Mul(product)
+                            })
+                            .collect();
+                        return Add(distributed).simplify_rec(scope, scenario, extra);
+                    }
+                }
+
                 // in case a term is a multiplication itself, flatten it
                 // e.g., (a*b)*c => a*b*c
                 let mut flattened_terms = vec![];
