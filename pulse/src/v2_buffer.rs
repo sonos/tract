@@ -1,10 +1,13 @@
 /// PulseV2Buffer: stateful op that stores previous pulse tensors and
 /// stitches them with the current input.
 ///
+/// Parameterized by per-axis lookback: for each axis, how many past
+/// samples to retain. Axes with lookback=0 are passed through unchanged.
+///
 /// At each pulse T, the op:
-/// 1. Concatenates buffered tensors with the current input along `axis`
-/// 2. Slices the result to keep only the last `lookback + current_size`
-///    elements on `axis`
+/// 1. Concatenates buffered tensors with the current input along each
+///    axis that has nonzero lookback
+/// 2. Trims to keep only (lookback + current_size) on each such axis
 /// 3. Pushes the current input into the ring buffer
 /// 4. Outputs the stitched tensor
 ///
@@ -16,17 +19,24 @@ use tract_pulse_opl::tract_core::ops::{FrozenOpState, OpStateFreeze};
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct PulseV2Buffer {
-    /// Axis along which to concatenate.
-    pub axis: usize,
-    /// How many past samples to retain along `axis`.
-    pub lookback: usize,
-    /// Number of previous pulse tensors to keep (typically 1 for small kernels,
-    /// more if lookback > pulse_size).
+    /// Per-axis lookback. lookback[i] = 0 means no buffering on axis i.
+    pub lookback: TVec<usize>,
+    /// Number of previous pulse tensors to keep in the ring buffer.
     pub depth: usize,
     /// Pulse index symbol (T).
     pub pulse_id: Symbol,
-    /// Pulse size symbol or concrete value.
-    pub pulse_dim: TDim,
+}
+
+impl PulseV2Buffer {
+    /// Total lookback (sum of all axes). Used for conservative depth estimate.
+    pub fn total_lookback(&self) -> usize {
+        *self.lookback.iter().max().unwrap_or(&0)
+    }
+
+    /// Axes that have nonzero lookback.
+    fn buffered_axes(&self) -> impl Iterator<Item = (usize, usize)> + '_ {
+        self.lookback.iter().copied().enumerate().filter(|(_, lb)| *lb > 0)
+    }
 }
 
 impl Op for PulseV2Buffer {
@@ -35,7 +45,9 @@ impl Op for PulseV2Buffer {
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec![format!("axis={} lookback={} depth={}", self.axis, self.lookback, self.depth)])
+        let axes: Vec<String> =
+            self.buffered_axes().map(|(ax, lb)| format!("axis {ax}: lookback {lb}")).collect();
+        Ok(vec![format!("depth={} {}", self.depth, axes.join(", "))])
     }
 
     op_as_typed_op!();
@@ -59,23 +71,22 @@ impl TypedOp for PulseV2Buffer {
     as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        // Output dim = input_dim + min(T * input_dim, lookback).
-        // At T=0: input_dim + 0 = input_dim (no lookback yet).
-        // At T≥1 (steady state): input_dim + lookback.
-        let input_dim = inputs[0].shape[self.axis].clone();
-        let t = TDim::Sym(self.pulse_id.clone());
-        let available = t * input_dim.clone();
-        let effective_lookback = TDim::Min(vec![available, TDim::Val(self.lookback as i64)]);
-        let out_dim = input_dim + effective_lookback;
         let mut fact = inputs[0].clone();
-        fact.shape.set(self.axis, out_dim);
+        let t = TDim::Sym(self.pulse_id.clone());
+        for (axis, lookback) in self.buffered_axes() {
+            // Output dim = input_dim + min(T * input_dim, lookback).
+            // At T=0: input_dim (no lookback). At steady state: input_dim + lookback.
+            let input_dim = fact.shape[axis].clone();
+            let available = t.clone() * input_dim.clone();
+            let effective = TDim::Min(vec![available, TDim::Val(lookback as i64)]);
+            fact.shape.set(axis, input_dim + effective);
+        }
         Ok(tvec!(fact))
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct PulseV2BufferState {
-    /// Ring buffer of previous pulse tensors.
     ring: Vec<Tensor>,
 }
 
@@ -100,24 +111,31 @@ impl OpState for PulseV2BufferState {
             // T=0: no buffer, output is just the input.
             input_tensor.clone()
         } else {
-            // Stitch: concatenate all buffered tensors + current along axis
-            let mut parts: Vec<&Tensor> = Vec::with_capacity(self.ring.len() + 1);
-            parts.extend(self.ring.iter());
-            parts.push(&input_tensor);
-            let stitched = Tensor::stack_tensors(op.axis, &parts)?;
+            // Stitch along each buffered axis.
+            let mut result = input_tensor.clone();
+            for (axis, lookback) in op.buffered_axes() {
+                // Concatenate all buffered tensors + current along this axis
+                let mut parts: Vec<Tensor> = Vec::with_capacity(self.ring.len() + 1);
+                for prev in &self.ring {
+                    parts.push(prev.clone());
+                }
+                parts.push(result);
+                let stitched = Tensor::stack_tensors(axis, &parts)?;
 
-            // Trim to keep only the last (lookback + current_size) on axis
-            let total = stitched.shape()[op.axis];
-            let current_size = input_tensor.shape()[op.axis];
-            let keep = op.lookback + current_size;
-            if total > keep {
-                stitched.slice(op.axis, total - keep, total)?.into_tensor()
-            } else {
-                stitched
+                // Trim to keep only the last (lookback + current_size)
+                let total = stitched.shape()[axis];
+                let current_size = input_tensor.shape()[axis];
+                let keep = lookback + current_size;
+                result = if total > keep {
+                    stitched.slice(axis, total - keep, total)?.into_tensor()
+                } else {
+                    stitched
+                };
             }
+            result
         };
 
-        // Push current input into ring buffer, evict oldest if full
+        // Push current input into ring buffer, evict oldest if full.
         self.ring.push(input_tensor);
         if self.ring.len() > op.depth {
             self.ring.remove(0);

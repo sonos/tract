@@ -20,8 +20,9 @@ fn run_and_compare(
         model.clone().into_runnable().unwrap().run(tvec!(input.clone().into_tvalue())).unwrap();
 
     // PulseV2: pulsify → lower to typed → run pulse by pulse
-    let pv2 = PulseV2Model::new(&model, stream_sym.clone(), pulse).unwrap();
+    let pv2 = PulseV2Model::new(&model, stream_sym.clone()).unwrap();
     let t_sym = pv2.symbols.pulse_id.clone();
+    let p_sym = pv2.symbols.pulse.clone();
 
     // Determine output streaming axis from the batch model
     let batch_output_fact = model.output_fact(0).unwrap();
@@ -44,8 +45,9 @@ fn run_and_compare(
         let chunk_len = pulse.min(input_len - written);
         let chunk = input.slice(axis, written, written + chunk_len).unwrap();
 
-        // Set T for this pulse so symbolic shapes resolve correctly
+        // Set T and P so symbolic shapes resolve correctly
         state.turn_state.resolved_symbols.set(&t_sym, pulse_idx);
+        state.turn_state.resolved_symbols.set(&p_sym, pulse as i64);
 
         let chunk = if chunk_len < pulse {
             let mut padded_shape = input.shape().to_vec();
