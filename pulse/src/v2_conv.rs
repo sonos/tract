@@ -18,12 +18,14 @@ fn pool_spec_input_regions(
         pool_spec.data_format.h_axis()..pool_spec.data_format.h_axis() + kernel_shape.len();
 
     let mut axes = source_region.axes.clone();
+    let mut overlap_per_axis = tvec![0usize; source_region.rank()];
     for (geo_ix, ax_ix) in geo_axes.enumerate() {
         if let Some(AxisRegion::Streaming { start, .. }) = axes.get_mut(ax_ix) {
             let kernel_field = (kernel_shape[geo_ix] - 1) * dilations[geo_ix];
             let s = strides[geo_ix];
             let overlap = kernel_field.saturating_sub(s - 1);
             let lookback = if s > 1 && overlap > 0 { ((overlap + s - 1) / s) * s } else { overlap };
+            overlap_per_axis[ax_ix] = overlap;
             if lookback > 0 {
                 *start = start.clone() - TDim::Val(lookback as i64);
             }
@@ -31,12 +33,13 @@ fn pool_spec_input_regions(
     }
     let data_region = PulseV2Region { axes };
 
-    // Data input gets the region; other inputs (kernel, bias, etc.) don't.
-    let mut result = tvec![Some(data_region)];
+    let mut regions = tvec![Some(data_region)];
     for _ in 1..n_inputs {
-        result.push(None);
+        regions.push(None);
     }
-    Ok(Some(PulseV2Action::InputRegions(result)))
+    // Pass per-input overlap hints (only for the data input).
+    let overlaps = tvec![overlap_per_axis];
+    Ok(Some(PulseV2Action::InputRegions(regions, Some(overlaps))))
 }
 
 fn conv_input_regions(
@@ -45,6 +48,8 @@ fn conv_input_regions(
     _symbols: &PulseV2Symbols,
 ) -> TractResult<Option<PulseV2Action>> {
     let conv = op.downcast_ref::<Conv>().unwrap();
+    // Padding on streaming axes is decomposed into Pad + Conv(valid) by
+    // decompose_streaming_padding() before pulsification reaches here.
     pool_spec_input_regions(&conv.pool_spec, source_region, 3)
 }
 

@@ -57,11 +57,19 @@ impl PulseV2Region {
 /// entirely with pre-wired outlets.
 pub enum PulseV2Action {
     /// Use these input regions. None means "not streaming, pass as-is".
-    InputRegions(TVec<Option<PulseV2Region>>),
+    /// overlap: optional per-input, per-axis overlap (un-rounded).
+    /// When provided, lookback = region difference (rounded) and
+    /// overlap < lookback. The buffer trims (lookback - overlap) from the front.
+    InputRegions(TVec<Option<PulseV2Region>>, Option<TVec<TVec<usize>>>),
     /// Skip this op — just forward the mapped inputs as outputs.
     Skip,
     /// Replace this op with a different one (same inputs).
     ReplaceOp(Box<dyn TypedOp>),
+    /// Wire the original op normally, then append a post-processing op on its output.
+    WireOpThenPostOp(Box<dyn TypedOp>),
+    /// Wire a pre-op on the data input (index 0), then wire the replacement op.
+    /// Used for decomposing Conv(padded) into PulseV2Pad + Conv(valid).
+    WirePreOpThenOp { pre_op: Box<dyn TypedOp>, main_op: Box<dyn TypedOp> },
 }
 
 pub type RegionTransformFn = fn(
@@ -118,8 +126,18 @@ impl PulseV2Model {
     pub fn new(batch_model: &TypedModel, stream_sym: Symbol) -> TractResult<Self> {
         use crate::v2_buffer::PulseV2Buffer;
 
+        // Pre-process: decompose Conv/MaxPool with non-valid padding on
+        // streaming axes into Pad + Conv/MaxPool(valid).
+        let batch_model = Self::decompose_streaming_padding(batch_model, &stream_sym)?;
+        let batch_model = &batch_model;
+
         let p_sym = batch_model.symbols.sym("P");
         let t_sym = batch_model.symbols.sym("T");
+
+        // Assert S >= P: the stream must be at least one pulse long.
+        // This ensures min(T*P, lookback) is valid — there really are
+        // T*P cumulative source samples at pulse T.
+        batch_model.symbols.add_assertion(format!("{} >= {}", stream_sym, p_sym)).ok();
 
         let symbols = PulseV2Symbols {
             stream: stream_sym.clone(),
@@ -214,15 +232,104 @@ impl PulseV2Model {
                 continue;
             }
 
-            let input_regions: TVec<Option<PulseV2Region>> = match action {
-                Some(PulseV2Action::InputRegions(r)) => r,
+            // Handle WireOpThenPostOp: wire the original op, then append a post-op.
+            if let Some(PulseV2Action::WireOpThenPostOp(post_op)) = action {
+                let inputs: TVec<OutletId> =
+                    node.inputs.iter().map(|i| mapping.get(i).copied().unwrap_or(*i)).collect();
+                let op_outlets = typed.wire_node(&node.name, node.op.clone(), &inputs)?;
+                let post_outlets =
+                    typed.wire_node(format!("{}.accum", node.name), post_op, &op_outlets)?;
+                for (slot, &new_outlet) in post_outlets.iter().enumerate() {
+                    mapping.insert(OutletId::new(node_id, slot), new_outlet);
+                }
+                if let Some(region) = &source_region {
+                    for &new_outlet in &post_outlets {
+                        wire_regions.insert(new_outlet, region.clone());
+                    }
+                }
+                continue;
+            }
+
+            // Handle WirePreOpThenOp: wire pre-op on input 0, then look up
+            // the main_op's region transform (for buffer insertion), then wire main_op.
+            if let Some(PulseV2Action::WirePreOpThenOp { pre_op, main_op }) = action {
+                let mut inputs: TVec<OutletId> =
+                    node.inputs.iter().map(|i| mapping.get(i).copied().unwrap_or(*i)).collect();
+                // Wire pre-op on the first (data) input.
+                let pre_outlets =
+                    typed.wire_node(format!("{}.pre", node.name), pre_op, &[inputs[0]])?;
+                inputs[0] = pre_outlets[0];
+                // Check if the main_op needs a buffer (e.g. Conv(valid) after Pad).
+                let main_typed: &dyn TypedOp = main_op.as_ref();
+                if let Some(src) = &source_region {
+                    if let Some(PulseV2Action::InputRegions(main_regions, _)) =
+                        lookup_region_transform(main_typed, src, &symbols)?
+                    {
+                        // Insert buffer on the data input if needed.
+                        if let Some(Some(needed)) = main_regions.first() {
+                            let provided = src;
+                            let mut lookback = tvec![0usize; needed.rank()];
+                            let mut needs_buffer = false;
+                            for (ax, (n, p)) in
+                                needed.axes.iter().zip(provided.axes.iter()).enumerate()
+                            {
+                                if let (
+                                    AxisRegion::Streaming { start: ns, .. },
+                                    AxisRegion::Streaming { start: ps, .. },
+                                ) = (n, p)
+                                {
+                                    let lb = (ps.clone() - ns.clone()).simplify();
+                                    if let Ok(v) = lb.to_i64() {
+                                        if v > 0 {
+                                            lookback[ax] = v as usize;
+                                            needs_buffer = true;
+                                        }
+                                    }
+                                }
+                            }
+                            if needs_buffer {
+                                let depth = *lookback.iter().max().unwrap_or(&1);
+                                let buffer = PulseV2Buffer {
+                                    overlap: lookback.clone(),
+                                    lookback,
+                                    depth,
+                                    pulse_id: t_sym.clone(),
+                                    pulse_sym: p_sym.clone(),
+                                };
+                                let buffered = typed.wire_node(
+                                    format!("{}.buffer", node.name),
+                                    buffer,
+                                    &[inputs[0]],
+                                )?;
+                                inputs[0] = buffered[0];
+                            }
+                        }
+                    }
+                }
+                let new_outlets = typed.wire_node(&node.name, main_op, &inputs)?;
+                for (slot, &new_outlet) in new_outlets.iter().enumerate() {
+                    mapping.insert(OutletId::new(node_id, slot), new_outlet);
+                }
+                if let Some(region) = &source_region {
+                    for &new_outlet in &new_outlets {
+                        wire_regions.insert(new_outlet, region.clone());
+                    }
+                }
+                continue;
+            }
+
+            let (input_regions, overlap_hints): (
+                TVec<Option<PulseV2Region>>,
+                Option<TVec<TVec<usize>>>,
+            ) = match action {
+                Some(PulseV2Action::InputRegions(r, o)) => (r, o),
                 _ => {
-                    // Default: every input gets the source region.
-                    if let Some(src) = &source_region {
+                    let r = if let Some(src) = &source_region {
                         node.inputs.iter().map(|_| Some(src.clone())).collect()
                     } else {
                         tvec![None; node.inputs.len()]
-                    }
+                    };
+                    (r, None)
                 }
             };
 
@@ -256,7 +363,18 @@ impl PulseV2Model {
 
                     if needs_buffer {
                         let depth = *lookback.iter().max().unwrap_or(&1);
-                        let buffer = PulseV2Buffer { lookback, depth, pulse_id: t_sym.clone() };
+                        let overlap = overlap_hints
+                            .as_ref()
+                            .and_then(|h| h.get(ix))
+                            .cloned()
+                            .unwrap_or_else(|| lookback.clone());
+                        let buffer = PulseV2Buffer {
+                            overlap,
+                            lookback,
+                            depth,
+                            pulse_id: t_sym.clone(),
+                            pulse_sym: p_sym.clone(),
+                        };
                         let buffered = typed.wire_node(
                             format!("{}.buffer.{}", node.name, ix),
                             buffer,
@@ -274,12 +392,12 @@ impl PulseV2Model {
             let new_outlets = typed.wire_node(&node.name, node.op.clone(), &inputs)?;
             for (slot, &new_outlet) in new_outlets.iter().enumerate() {
                 mapping.insert(OutletId::new(node_id, slot), new_outlet);
-                // Propagate region: the output wire's region is the source region.
-                // The shape is computed by output_facts; the region just tracks
-                // "this wire is streaming, with these coordinates."
                 if let Some(region) = &source_region {
                     wire_regions.insert(new_outlet, region.clone());
                 }
+                // Clamp any streaming dim that could go negative (e.g. conv
+                // with P < K at T=0) to max(0, dim).
+                Self::clamp_negative_streaming_dims(&mut typed, new_outlet, &t_sym, &p_sym)?;
             }
         }
 
@@ -288,6 +406,199 @@ impl PulseV2Model {
         typed.select_output_outlets(&pulsed_outputs)?;
 
         Ok(PulseV2Model { typed, symbols })
+    }
+
+    /// Clamp any output dimension that depends on T and could evaluate to
+    /// negative (e.g. conv output when P < K). Wraps the dim in Max(0, dim).
+    fn clamp_negative_streaming_dims(
+        model: &mut TypedModel,
+        outlet: OutletId,
+        pulse_id: &Symbol,
+        pulse_sym: &Symbol,
+    ) -> TractResult<()> {
+        let fact = model.outlet_fact(outlet)?.clone();
+        let mut changed = false;
+        let mut new_shape = fact.shape.to_tvec();
+        for (ax, dim) in fact.shape.iter().enumerate() {
+            // Probe multiple worst cases. If ANY evaluates negative, clamp.
+            let syms = dim.symbols();
+            if !syms.is_empty() {
+                // Probe worst cases: various T, P, H values.
+                // Any negative result → clamp.
+                let probes: &[(i64, i64, i64)] = &[
+                    (0, 1, 0),   // T=0, P=1, H=0: startup
+                    (0, 100, 0), // T=0, large pulse, H=0
+                    (100, 1, 0), // T=large, P=1, H=0: past end, no history
+                    (100, 1, 1), // T=large, P=1, H=1: past end, some history
+                ];
+                let mut needs_clamp = false;
+                for &(t_val, p_val, h_val) in probes {
+                    let mut sv =
+                        SymbolValues::default().with(pulse_id, t_val).with(pulse_sym, p_val);
+                    for s in &syms {
+                        if format!("{s}").starts_with("H") {
+                            sv.set(s, h_val);
+                        }
+                        if format!("{s}").starts_with("S") {
+                            sv.set(s, p_val); // S >= P
+                        }
+                    }
+                    if dim.eval(&sv).to_i64().is_ok_and(|v| v < 0) {
+                        needs_clamp = true;
+                        break;
+                    }
+                }
+                if needs_clamp {
+                    new_shape[ax] = TDim::Max(vec![TDim::Val(0), dim.clone()]);
+                    changed = true;
+                }
+            }
+        }
+        if changed {
+            let node = &mut model.nodes_mut()[outlet.node];
+            node.outputs[outlet.slot].fact.shape = new_shape.into();
+        }
+        Ok(())
+    }
+
+    /// Decompose Conv/MaxPool with non-valid padding on streaming axes
+    /// into explicit Pad + Conv/MaxPool(valid-on-streaming-axis).
+    fn decompose_streaming_padding(
+        model: &TypedModel,
+        stream_sym: &Symbol,
+    ) -> TractResult<TypedModel> {
+        use crate::fact::StreamFact;
+        use tract_pulse_opl::tract_core::ops::array::{Pad, PadMode};
+        use tract_pulse_opl::tract_core::ops::cnn::{Conv, MaxPool, PaddingSpec, PoolSpec};
+
+        let mut new_model = TypedModel::default();
+        new_model.symbols = model.symbols.clone();
+        let mut mapping: HashMap<OutletId, OutletId> = HashMap::new();
+        let order = model.eval_order()?;
+        let mut changed = false;
+
+        for &node_id in &order {
+            let node = model.node(node_id);
+
+            // Check if this node is a Conv or MaxPool with non-valid padding
+            // on a streaming axis.
+            let pool_spec = node
+                .op
+                .downcast_ref::<Conv>()
+                .map(|c| &c.pool_spec)
+                .or_else(|| node.op.downcast_ref::<MaxPool>().map(|p| &p.pool_spec));
+
+            if let Some(spec) = pool_spec {
+                let input_fact = model.outlet_fact(node.inputs[0])?;
+                let stream_axis = input_fact.shape.stream_info(stream_sym).map(|(ax, _)| ax);
+
+                if let Some(stream_ax) = stream_axis {
+                    let geo_axis = stream_ax - spec.data_format.h_axis();
+                    if geo_axis < spec.kernel_shape.len()
+                        && !spec.padding.valid_dim(geo_axis, false)
+                    {
+                        // Compute padding amounts.
+                        let dummy_hw: TVec<usize> =
+                            spec.kernel_shape.iter().map(|k| k * 10).collect();
+                        let computed = spec.computed_padding(&dummy_hw);
+
+                        // Build Pad op: only pad the streaming axis.
+                        let rank = input_fact.rank();
+                        let mut pads = vec![(0usize, 0usize); rank];
+                        pads[stream_ax] = (
+                            computed[geo_axis].pad_before.to_usize().unwrap_or(0),
+                            computed[geo_axis].pad_after.to_usize().unwrap_or(0),
+                        );
+
+                        // Build new PoolSpec with zero padding on streaming axis.
+                        let mut bef = tvec![];
+                        let mut aft = tvec![];
+                        for ix in 0..spec.kernel_shape.len() {
+                            if ix == geo_axis {
+                                bef.push(0);
+                                aft.push(0);
+                            } else {
+                                bef.push(computed[ix].pad_before.to_usize().unwrap_or(0));
+                                aft.push(computed[ix].pad_after.to_usize().unwrap_or(0));
+                            }
+                        }
+                        let new_padding =
+                            if bef.iter().all(|b| *b == 0) && aft.iter().all(|a| *a == 0) {
+                                PaddingSpec::Valid
+                            } else {
+                                PaddingSpec::ExplicitOnnxPool(bef, aft, false)
+                            };
+
+                        // Wire: input → Pad → Conv/MaxPool(new_padding)
+                        let data_input =
+                            mapping.get(&node.inputs[0]).copied().unwrap_or(node.inputs[0]);
+                        let pad_wire = new_model.wire_node(
+                            format!("{}.pad", node.name),
+                            Pad::new(pads, PadMode::Constant(Arc::new(Tensor::from(0.0f32)))),
+                            &[data_input],
+                        )?;
+
+                        let mut inputs: TVec<OutletId> = node
+                            .inputs
+                            .iter()
+                            .map(|i| mapping.get(i).copied().unwrap_or(*i))
+                            .collect();
+                        inputs[0] = pad_wire[0];
+
+                        let new_op: Box<dyn TypedOp> =
+                            if let Some(conv) = node.op.downcast_ref::<Conv>() {
+                                Box::new(Conv {
+                                    pool_spec: PoolSpec {
+                                        padding: new_padding,
+                                        ..conv.pool_spec.clone()
+                                    },
+                                    ..conv.clone()
+                                })
+                            } else {
+                                let pool = node.op.downcast_ref::<MaxPool>().unwrap();
+                                Box::new(MaxPool {
+                                    pool_spec: PoolSpec {
+                                        padding: new_padding,
+                                        ..pool.pool_spec.clone()
+                                    },
+                                    ..pool.clone()
+                                })
+                            };
+
+                        let new_outlets = new_model.wire_node(&node.name, new_op, &inputs)?;
+                        for (slot, &outlet) in new_outlets.iter().enumerate() {
+                            mapping.insert(OutletId::new(node_id, slot), outlet);
+                        }
+                        changed = true;
+                        continue;
+                    }
+                }
+            }
+
+            // Default: copy the node as-is.
+            if node
+                .op
+                .downcast_ref::<tract_pulse_opl::tract_core::ops::source::TypedSource>()
+                .is_some()
+            {
+                let fact = model.outlet_fact(OutletId::new(node_id, 0))?;
+                let new_outlet = new_model.add_source(&node.name, fact.clone())?;
+                mapping.insert(OutletId::new(node_id, 0), new_outlet);
+            } else {
+                let inputs: TVec<OutletId> =
+                    node.inputs.iter().map(|i| mapping.get(i).copied().unwrap_or(*i)).collect();
+                let new_outlets = new_model.wire_node(&node.name, node.op.clone(), &inputs)?;
+                for (slot, &outlet) in new_outlets.iter().enumerate() {
+                    mapping.insert(OutletId::new(node_id, slot), outlet);
+                }
+            }
+        }
+
+        let outputs = model.output_outlets()?.to_vec();
+        let new_outputs: TVec<OutletId> = outputs.iter().map(|o| mapping[o]).collect();
+        new_model.select_output_outlets(&new_outputs)?;
+
+        if changed { Ok(new_model) } else { Ok(model.clone()) }
     }
 
     pub fn into_typed(self) -> TractResult<TypedModel> {
