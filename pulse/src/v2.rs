@@ -141,6 +141,18 @@ impl PulseV2Fact {
     }
 }
 
+// ── Pulsification ──────────────────────────────────────────────────────────
+
+/// Symbols used during PulseV2 pulsification.
+pub struct PulseV2Symbols {
+    /// The stream-length symbol in the batch model (e.g. S).
+    pub stream: Symbol,
+    /// Pulse size symbol (P) — will be set to a concrete value at runtime.
+    pub pulse: Symbol,
+    /// Pulse index symbol (T) — increments at each step: 0, 1, 2, …
+    pub pulse_id: Symbol,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
