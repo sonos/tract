@@ -162,21 +162,20 @@ fn main() -> Result<()> {
         .unwrap();
     eprintln!("Using runtime: {gpu:?}");
 
-    // --- Load models ---
-    eprintln!("Loading models...");
-    let onnx = tract::onnx()?;
-    let text_encoder = gpu.prepare(onnx.load(assets.join("text_encoder.onnx"))?.into_model()?)?;
-    let text_encoder_2 =
-        gpu.prepare(onnx.load(assets.join("text_encoder_2.onnx"))?.into_model()?)?;
-    let unet = gpu.prepare(onnx.load(assets.join("unet.onnx"))?.into_model()?)?;
-    let vae_decoder = gpu.prepare(onnx.load(assets.join("vae_decoder.onnx"))?.into_model()?)?;
-
-    // --- Text encoding (two encoders, concatenated) ---
+    // --- Text encoding (load each encoder, run, drop to save VRAM) ---
     eprintln!("Running text encoders...");
+    let onnx = tract::onnx()?;
+
+    let text_encoder = gpu.prepare(onnx.load(assets.join("text_encoder.onnx"))?.into_model()?)?;
     let cond1 = text_encoder.run([input_ids.clone()])?;
     let uncond1 = text_encoder.run([uncond_input_ids.clone()])?;
+    drop(text_encoder);
+
+    let text_encoder_2 =
+        gpu.prepare(onnx.load(assets.join("text_encoder_2.onnx"))?.into_model()?)?;
     let cond2 = text_encoder_2.run([input_ids])?;
     let uncond2 = text_encoder_2.run([uncond_input_ids])?;
+    drop(text_encoder_2);
 
     // Concatenate hidden states: (1,77,768) + (1,77,1280) → (1,77,2048)
     // TE1: output[0] = last_hidden_state (1,77,768), output[1] = pooler (1,768)
@@ -240,7 +239,9 @@ fn main() -> Result<()> {
         })
         .collect();
 
-    // --- Batched denoising ---
+    // --- Batched denoising (load UNet, run, drop to free VRAM for VAE) ---
+    eprintln!("Loading UNet...");
+    let unet = gpu.prepare(onnx.load(assets.join("unet.onnx"))?.into_model()?)?;
     use kdam::BarExt as _;
     let mut pb = kdam::Bar::builder()
         .total(num_steps)
@@ -284,8 +285,11 @@ fn main() -> Result<()> {
         pb.update(1).ok();
     }
     eprintln!();
+    drop(unet);
 
     // --- VAE decode + save ---
+    eprintln!("Loading VAE decoder...");
+    let vae_decoder = gpu.prepare(onnx.load(assets.join("vae_decoder.onnx"))?.into_model()?)?;
     let (h, w) = (1024usize, 1024usize);
     for n in 0..num_images {
         let img_latent: Vec<f32> = latents[n * latent_size..(n + 1) * latent_size]

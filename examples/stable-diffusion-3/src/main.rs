@@ -172,9 +172,6 @@ fn main() -> Result<()> {
     } else {
         None
     };
-    let transformer = gpu.prepare(onnx.load(assets.join("transformer.onnx"))?.into_model()?)?;
-    let vae_decoder = gpu.prepare(onnx.load(assets.join("vae_decoder.onnx"))?.into_model()?)?;
-
     // --- Text encoding ---
     eprintln!("Running text encoders...");
     let cond1 = text_encoder.run([input_ids.clone()])?;
@@ -282,7 +279,9 @@ fn main() -> Result<()> {
         })
         .collect();
 
-    // --- Batched denoising ---
+    // --- Batched denoising (load transformer, run, drop to free VRAM for VAE) ---
+    eprintln!("Loading transformer...");
+    let transformer = gpu.prepare(onnx.load(assets.join("transformer.onnx"))?.into_model()?)?;
     use kdam::BarExt as _;
     let mut pb = kdam::Bar::builder()
         .total(num_steps)
@@ -325,8 +324,11 @@ fn main() -> Result<()> {
         pb.update(1).ok();
     }
     eprintln!();
+    drop(transformer);
 
     // --- VAE decode + save ---
+    eprintln!("Loading VAE decoder...");
+    let vae_decoder = gpu.prepare(onnx.load(assets.join("vae_decoder.onnx"))?.into_model()?)?;
     let (h, w) = (1024usize, 1024usize);
     for n in 0..num_images {
         let img_latent: Vec<f32> = latents[n * latent_size..(n + 1) * latent_size]

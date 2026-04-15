@@ -160,16 +160,13 @@ fn main() -> Result<()> {
         .unwrap();
     eprintln!("Using runtime: {gpu:?}");
 
-    eprintln!("Loading models...");
+    // --- Text encoding (load encoder, run, drop to save VRAM) ---
+    eprintln!("Running text encoder...");
     let onnx = tract::onnx()?;
     let text_encoder = gpu.prepare(onnx.load(assets.join("text_encoder.onnx"))?.into_model()?)?;
-    let unet = gpu.prepare(onnx.load(assets.join("unet.onnx"))?.into_model()?)?;
-    let vae_decoder = gpu.prepare(onnx.load(assets.join("vae_decoder.onnx"))?.into_model()?)?;
-
-    // --- Text encoding ---
-    eprintln!("Running text encoder...");
     let cond_emb = text_encoder.run([input_ids])?;
     let uncond_emb = text_encoder.run([uncond_input_ids])?;
+    drop(text_encoder);
 
     let cond = cond_emb[0].view::<f32>()?;
     let uncond = uncond_emb[0].view::<f32>()?;
@@ -200,7 +197,9 @@ fn main() -> Result<()> {
         })
         .collect();
 
-    // --- Batched denoising loop ---
+    // --- Batched denoising loop (load UNet, run, drop to free VRAM for VAE) ---
+    eprintln!("Loading UNet...");
+    let unet = gpu.prepare(onnx.load(assets.join("unet.onnx"))?.into_model()?)?;
     use kdam::BarExt as _;
     let mut pb = kdam::Bar::builder()
         .total(num_steps)
@@ -240,8 +239,11 @@ fn main() -> Result<()> {
         pb.update(1).ok();
     }
     eprintln!();
+    drop(unet);
 
     // --- VAE decode + save each image ---
+    eprintln!("Loading VAE decoder...");
+    let vae_decoder = gpu.prepare(onnx.load(assets.join("vae_decoder.onnx"))?.into_model()?)?;
     let (h, w) = (512usize, 512usize);
     for n in 0..num_images {
         let img_latent: Vec<f32> = latents[n * latent_size..(n + 1) * latent_size]
