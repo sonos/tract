@@ -488,13 +488,16 @@ impl TDim {
                 }
 
                 // in case a term is a multiplication itself, flatten it
-                // e.g., (a*b)*c => a*b*c
+                // e.g., (a*b)*c => a*b*c, and MulInt(k, x) => Val(k)*x
                 let mut flattened_terms = vec![];
                 for t in terms {
-                    if let Mul(inner_terms) = t.clone().reduce() {
-                        flattened_terms.extend(inner_terms);
-                    } else {
-                        flattened_terms.push(t);
+                    match t.clone().reduce() {
+                        Mul(inner_terms) => flattened_terms.extend(inner_terms),
+                        MulInt(k, inner) => {
+                            flattened_terms.push(Val(k));
+                            flattened_terms.push(*inner);
+                        }
+                        other => flattened_terms.push(other),
                     }
                 }
                 let mut terms = flattened_terms;
@@ -1885,5 +1888,17 @@ mod tests {
         // At T=0, P=1, S=1: min(1, max(0, 1-1)) - min(1, max(0, 0-1)) = 0 - 0 = 0
         let sv = SymbolValues::default().with(&t, 0).with(&p, 1).with(&ss, 1);
         assert_eq!(simplified.eval_to_i64(&sv).unwrap(), 0, "simplified: {simplified}");
+    }
+
+    #[test]
+    fn mul_neg_b_by_8() {
+        let s = SymbolScope::default();
+        let b = Sym(s.sym("B"));
+        // 8*(-1*B) should equal -8*B
+        let a = Mul(vec![Val(8), MulInt(-1, Box::new(b.clone()))]);
+        let c = MulInt(-8, Box::new(b.clone()));
+        let a_s = a.simplify();
+        let c_s = c.simplify();
+        assert_eq!(a_s, c_s, "8*(-1*B) should simplify the same as -8*B");
     }
 }
