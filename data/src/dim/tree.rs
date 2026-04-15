@@ -1902,3 +1902,17 @@ mod tests {
         assert_eq!(a_s, c_s, "8*(-1*B) should simplify the same as -8*B");
     }
 }
+
+#[test]
+fn mul_neg_b_by_8() {
+    let s = crate::dim::SymbolScope::default();
+    let b = Sym(s.sym("B"));
+    // 8*(-1*B) should equal -8*B
+    let a = Mul(vec![Val(8), MulInt(-1, Box::new(b.clone()))]);
+    let c = MulInt(-8, Box::new(b.clone()));
+    let a_s = a.simplify();
+    let c_s = c.simplify();
+    eprintln!("8*(-1*B) = {a_s}");
+    eprintln!("-8*B     = {c_s}");
+    assert_eq!(a_s, c_s, "8*(-1*B) should simplify the same as -8*B");
+}
