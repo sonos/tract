@@ -73,13 +73,26 @@ $TRACT assets/vae_decoder.onnx $RUNTIME run \
     --input-from-bundle assets/vae_decoder.io.npz \
     --assert-output-bundle assets/vae_decoder.io.npz --approx very $GPU_ASSERT
 
-# Run the Rust example
-cargo run -p stable-diffusion-xl --profile opt-no-lto -- \
-    -p "a photo of a cat" -s 10 --seed 42 \
-    -o assets/test_output.png \
-    --assets assets
+# Run the Rust example — needs >=16GB VRAM for the f32 UNet
+RUN_EXAMPLE=true
+if nvidia-smi > /dev/null 2>&1; then
+    GPU_MEM_MB=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits | head -1 | tr -d ' ')
+    if [ "$GPU_MEM_MB" -lt 16000 ] 2>/dev/null; then
+        echo "Skipping end-to-end example (GPU has ${GPU_MEM_MB}MB, need >=16000MB for f32 UNet)"
+        RUN_EXAMPLE=false
+    fi
+fi
 
-test -f assets/test_output.png
-echo "CI passed: test_output.png generated"
+if [ "$RUN_EXAMPLE" = true ]; then
+    cargo run -p stable-diffusion-xl --profile opt-no-lto -- \
+        -p "a photo of a cat" -s 10 --seed 42 \
+        -o assets/test_output.png \
+        --assets assets
+
+    test -f assets/test_output.png
+    echo "CI passed: test_output.png generated"
+else
+    echo "CI passed: model validations OK (end-to-end skipped, insufficient VRAM)"
+fi
 
 rm -rf assets .venv
