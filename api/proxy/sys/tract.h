@@ -508,10 +508,10 @@ enum TRACT_RESULT tract_runnable_release(struct TractRunnable **runnable);
  * The returned tensor must be destroyed by `tract_tensor_destroy`.
  */
 enum TRACT_RESULT tract_tensor_from_bytes(DatumType datum_type,
-                                         uintptr_t rank,
-                                         const uintptr_t *shape,
-                                         void *data,
-                                         struct TractTensor **tensor);
+                                          uintptr_t rank,
+                                          const uintptr_t *shape,
+                                          void *data,
+                                          struct TractTensor **tensor);
 
 /**
  * Write a tensor as a debug string
@@ -524,18 +524,23 @@ enum TRACT_RESULT tract_tensor_dump(const struct TractTensor *tensor, char **spe
  * Convert a tensor to a new datum type.
  *
  * This function will perform a cheap shallow clone if the destination type is
- * the same as the current type, otherwise it returns a newly allocated tensor instead.
+ * the same as the current type, otherwise it returns a newly allocated Tensor instead.
  *
  * In both cases, the returned tensor must be destroyed by `tract_tensor_destroy`.
  * The input tensor is not consumed, it still need to be destroyed.
  */
 enum TRACT_RESULT tract_tensor_convert_to(const struct TractTensor *input,
-                                         DatumType datum_type,
-                                         struct TractTensor **output);
+                                          DatumType datum_type,
+                                          struct TractTensor **output);
 
 /**
  * Destroy a tensor.
+ * Clone a Tensor, creating an independent copy.
+ *
+ * The returned tensor must be destroyed by `tract_tensor_destroy`.
  */
+enum TRACT_RESULT tract_tensor_clone(const struct TractTensor *tensor, struct TractTensor **clone);
+
 enum TRACT_RESULT tract_tensor_destroy(struct TractTensor **tensor);
 
 /**
@@ -543,10 +548,10 @@ enum TRACT_RESULT tract_tensor_destroy(struct TractTensor **tensor);
  * are required.
  */
 enum TRACT_RESULT tract_tensor_as_bytes(struct TractTensor *tensor,
-                                       DatumType *datum_type,
-                                       uintptr_t *rank,
-                                       const uintptr_t **shape,
-                                       const void **data);
+                                        DatumType *datum_type,
+                                        uintptr_t *rank,
+                                        const uintptr_t **shape,
+                                        const void **data);
 
 /**
  * Run a turn on a model state
@@ -606,6 +611,13 @@ enum TRACT_RESULT tract_fact_dim(const struct TractFact *fact,
  */
 enum TRACT_RESULT tract_fact_dump(const struct TractFact *fact, char **spec);
 
+/**
+ * Clone a Fact, creating an independent copy.
+ *
+ * The returned fact must be destroyed by `tract_fact_destroy`.
+ */
+enum TRACT_RESULT tract_fact_clone(const struct TractFact *fact, struct TractFact **clone);
+
 enum TRACT_RESULT tract_fact_destroy(struct TractFact **fact);
 
 /**
@@ -630,6 +642,14 @@ enum TRACT_RESULT tract_inference_fact_empty(struct TractInferenceFact **fact);
  * The returned string must be freed by the caller using tract_free_cstring.
  */
 enum TRACT_RESULT tract_inference_fact_dump(const struct TractInferenceFact *fact, char **spec);
+
+/**
+ * Clone an InferenceFact, creating an independent copy.
+ *
+ * The returned fact must be destroyed by `tract_inference_fact_destroy`.
+ */
+enum TRACT_RESULT tract_inference_fact_clone(const struct TractInferenceFact *fact,
+                                             struct TractInferenceFact **clone);
 
 /**
  * Destroy a fact.
@@ -658,6 +678,13 @@ enum TRACT_RESULT tract_dim_to_int64(const struct TractDim *fact, int64_t *i);
  * The returned string must be freed by the caller using tract_free_cstring.
  */
 enum TRACT_RESULT tract_dim_dump(const struct TractDim *dim, char **spec);
+
+/**
+ * Clone a Dim, creating an independent copy.
+ *
+ * The returned dim must be destroyed by `tract_dim_destroy`.
+ */
+enum TRACT_RESULT tract_dim_clone(const struct TractDim *dim, struct TractDim **clone);
 
 /**
  * Destroy a dim.

@@ -1051,6 +1051,21 @@ pub unsafe extern "C" fn tract_tensor_convert_to(
 }
 
 /// Destroy a tensor.
+/// Clone a Tensor, creating an independent copy.
+///
+/// The returned tensor must be destroyed by `tract_tensor_destroy`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tract_tensor_clone(
+    tensor: *const TractTensor,
+    clone: *mut *mut TractTensor,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(tensor, clone);
+        *clone = Box::into_raw(Box::new(TractTensor((*tensor).0.clone())));
+        Ok(())
+    })
+}
+
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_tensor_destroy(tensor: *mut *mut TractTensor) -> TRACT_RESULT {
     release!(tensor)
@@ -1214,6 +1229,21 @@ pub unsafe extern "C" fn tract_fact_dump(
     })
 }
 
+/// Clone a Fact, creating an independent copy.
+///
+/// The returned fact must be destroyed by `tract_fact_destroy`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tract_fact_clone(
+    fact: *const TractFact,
+    clone: *mut *mut TractFact,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(fact, clone);
+        *clone = Box::into_raw(Box::new(TractFact((*fact).0.clone())));
+        Ok(())
+    })
+}
+
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_fact_destroy(fact: *mut *mut TractFact) -> TRACT_RESULT {
     release!(fact)
@@ -1265,6 +1295,21 @@ pub unsafe extern "C" fn tract_inference_fact_dump(
     wrap(|| unsafe {
         check_not_null!(fact, spec);
         *spec = CString::new(format!("{}", (*fact).0))?.into_raw();
+        Ok(())
+    })
+}
+
+/// Clone an InferenceFact, creating an independent copy.
+///
+/// The returned fact must be destroyed by `tract_inference_fact_destroy`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tract_inference_fact_clone(
+    fact: *const TractInferenceFact,
+    clone: *mut *mut TractInferenceFact,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(fact, clone);
+        *clone = Box::into_raw(Box::new(TractInferenceFact((*fact).0.clone())));
         Ok(())
     })
 }
@@ -1330,6 +1375,21 @@ pub unsafe extern "C" fn tract_dim_dump(
     wrap(|| unsafe {
         check_not_null!(dim, spec);
         *spec = CString::new((*dim).0.to_string())?.into_raw();
+        Ok(())
+    })
+}
+
+/// Clone a Dim, creating an independent copy.
+///
+/// The returned dim must be destroyed by `tract_dim_destroy`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tract_dim_clone(
+    dim: *const TractDim,
+    clone: *mut *mut TractDim,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(dim, clone);
+        *clone = Box::into_raw(Box::new(TractDim((*dim).0.clone())));
         Ok(())
     })
 }

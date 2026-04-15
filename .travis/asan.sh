@@ -37,3 +37,13 @@ then
 fi
 ./.travis/cli-tests.sh
 
+if [ -n "$CI" ]
+then
+    cargo clean
+fi
+
+# Build libtract.so with asan, then run proxy tests against it
+cargo build -p tract-ffi $CARGO_EXTRA
+LIBTRACT_DIR=$(dirname $(find target -name 'libtract.so' | head -1))
+TRACT_DYLIB_SEARCH_PATH=$LIBTRACT_DIR LD_LIBRARY_PATH=$LIBTRACT_DIR cargo -q test -q -p tract-proxy $CARGO_EXTRA
+

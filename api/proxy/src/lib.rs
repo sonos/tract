@@ -23,7 +23,7 @@ macro_rules! check {
 
 macro_rules! wrapper {
     ($new_type:ident, $c_type:ident, $dest:ident $(, $typ:ty )*) => {
-        #[derive(Debug, Clone)]
+        #[derive(Debug)]
         pub struct $new_type(*mut sys::$c_type $(, $typ)*);
 
         impl Drop for $new_type {
@@ -31,6 +31,20 @@ macro_rules! wrapper {
                 unsafe {
                     sys::$dest(&mut self.0);
                 }
+            }
+        }
+    };
+}
+
+macro_rules! wrapper_clone {
+    ($new_type:ident, $clone_fn:ident) => {
+        impl Clone for $new_type {
+            fn clone(&self) -> Self {
+                let mut clone = null_mut();
+                unsafe {
+                    sys::$clone_fn(self.0, &mut clone);
+                }
+                $new_type(clone)
             }
         }
     };
@@ -516,6 +530,7 @@ impl StateInterface for State {
 
 // TENSOR
 wrapper!(Tensor, TractTensor, tract_tensor_destroy);
+wrapper_clone!(Tensor, tract_tensor_clone);
 unsafe impl Send for Tensor {}
 unsafe impl Sync for Tensor {}
 
@@ -582,6 +597,7 @@ tensor_from_to_ndarray!();
 
 // FACT
 wrapper!(Fact, TractFact, tract_fact_destroy);
+wrapper_clone!(Fact, tract_fact_clone);
 
 impl Fact {
     fn new(model: &Model, spec: impl ToString) -> Result<Fact> {
@@ -635,6 +651,7 @@ impl std::fmt::Display for Fact {
 
 // INFERENCE FACT
 wrapper!(InferenceFact, TractInferenceFact, tract_inference_fact_destroy);
+wrapper_clone!(InferenceFact, tract_inference_fact_clone);
 
 impl InferenceFact {
     fn new(model: &InferenceModel, spec: impl ToString) -> Result<InferenceFact> {
@@ -683,6 +700,7 @@ as_fact_impl!(Model, Fact);
 
 // Dim
 wrapper!(Dim, TractDim, tract_dim_destroy);
+wrapper_clone!(Dim, tract_dim_clone);
 
 impl Dim {
     fn dump(&self) -> Result<String> {
@@ -720,5 +738,17 @@ impl std::fmt::Display for Dim {
             Ok(s) => f.write_str(&s),
             Err(_) => Err(std::fmt::Error),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn clone_tensor_no_double_free() {
+        let t = Tensor::from_slice::<f32>(&[2, 2], &[1.0, 2.0, 3.0, 4.0]).unwrap();
+        let clone = t.clone();
+        assert_eq!(t, clone);
     }
 }
