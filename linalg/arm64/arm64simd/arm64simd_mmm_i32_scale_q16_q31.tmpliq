@@ -34,7 +34,7 @@
         // rust: signum * ((abs + nudge2) >> shift
         // asm: signum * (2*abs - 1) >>r (shift + 1)
 
-    {% for q in (16..31) %}
+    {% for q in range(16, 32) %}
         cmlt        v0.4s, v{{q}}.4s, #0
         abs         v{{q}}.4s, v{{q}}.4s
         sqdmull     v8.2d, v{{q}}.2s, v2.2s
@@ -56,7 +56,7 @@
 
 .q_scale_rounding_away: // signum * (abs >> (shift-1) + 1 >> 1)
 
-    {% for q in (16..31) %}
+    {% for q in range(16, 32) %}
         cmlt        v0.4s, v{{q}}.4s, #0
         abs         v{{q}}.4s, v{{q}}.4s
         sqdmull     v8.2d, v{{q}}.2s, v2.2s
@@ -75,7 +75,7 @@
 
 .q_scale_rounding_minus_inf: // val >> shift
 
-    {% for q in (16..31) %}
+    {% for q in range(16, 32) %}
         sqdmull     v8.2d, v{{q}}.2s, v2.2s
         sqdmull2    v9.2d, v{{q}}.4s, v2.4s     //mul without shift and store results in v8 and v9
 
@@ -92,7 +92,7 @@
 
 .q_scale_rounding_plus_inf: // (val >> shift-1)+1 >>1
 
-    {% for q in (16..31) %}
+    {% for q in range(16, 32) %}
         sqdmull     v8.2d, v{{q}}.2s, v2.2s
         sqdmull2    v9.2d, v{{q}}.4s, v2.4s     //mul without shift and store results in v8 and v9
 
@@ -106,7 +106,7 @@
 
 .q_scale_rounding_even: // signum * ((abs >> shift-1) + (abs & 0x1) - 1 >> 1)
 
-    {% for q in (16..31) %}
+    {% for q in range(16, 32) %}
         cmlt        v0.4s, v{{q}}.4s, #0
         abs         v{{q}}.4s, v{{q}}.4s
         sqdmull     v8.2d, v{{q}}.2s, v2.2s
@@ -136,7 +136,7 @@
 
 .q_scale_rounding_odd: // signum * ((abs >> shift-1) - (abs & 0x1) >> 1)
 
-    {% for q in (16..31) %}
+    {% for q in range(16, 32) %}
         cmlt        v0.4s, v{{q}}.4s, #0
         abs         v{{q}}.4s, v{{q}}.4s
         sqdmull     v8.2d, v{{q}}.2s, v2.2s
@@ -167,7 +167,7 @@
     ins     v1.s[0], w5
     dup     v1.4s, v1.s[0]              // v1.4s <- shift
 
-    {% for q in (16..31) %}
+    {% for q in range(16, 32) %}
         sqrshl      v{{q}}.4s, v{{q}}.4s, v1.4s
     {% endfor %}
     b .non_linear_loop
@@ -200,7 +200,7 @@
 
 .q_shr_rounding_zero:
     // asm: signum * (abs >>r shift)
-    {% for q in (16..31) %}
+    {% for q in range(16, 32) %}
         cmlt        v0.4s, v{{q}}.4s, #0
         abs         v{{q}}.4s, v{{q}}.4s
 
@@ -213,7 +213,7 @@
     b .non_linear_loop
 
 .q_shr_rounding_away:
-    {% for q in (16..31) %}
+    {% for q in range(16, 32) %}
         cmlt        v0.4s, v{{q}}.4s, #0
         abs         v{{q}}.4s, v{{q}}.4s
 
@@ -225,7 +225,7 @@
     b .non_linear_loop
 
 .q_shr_rounding_minus_inf:
-    {% for q in (16..31) %}
+    {% for q in range(16, 32) %}
         sqneg       v{{q}}.4s, v{{q}}.4s
         sqrshl      v{{q}}.4s, v{{q}}.4s, v1.4s
         sqneg       v{{q}}.4s, v{{q}}.4s
@@ -233,7 +233,7 @@
     b .non_linear_loop
 
 .q_shr_rounding_plus_inf:
-    {% for q in (16..31) %}
+    {% for q in range(16, 32) %}
         sqrshl      v{{q}}.4s, v{{q}}.4s, v1.4s
     {% endfor %}
     b .non_linear_loop
@@ -244,7 +244,7 @@
     // if it's even, we need to nudge towards 0 by adding -1
     // => nudge = (x >>l shift) & 0x1 - 1 (>>l is sqshl)
     // => result is (x + nudge) >>r shift (with sqrshl)
-    {% for q in (16..31) %}
+    {% for q in range(16, 32) %}
         sqshl       v3.4s, v{{q}}.4s, v1.4s // trunc
         and         v3.16b, v3.16b, v4.16b
         sub         v3.4s, v3.4s, v4.4s
@@ -256,7 +256,7 @@
 
 .q_shr_rounding_odd:
     // here: nudge is -((x >>l shift) & 0x1)
-    {% for q in (16..31) %}
+    {% for q in range(16, 32) %}
         sqshl       v3.4s, v{{q}}.4s, v1.4s // trunc
         and         v3.16b, v3.16b, v4.16b
         neg         v3.4s, v3.4s

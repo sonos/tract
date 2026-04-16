@@ -1,14 +1,14 @@
 // vim: ft=arm
 
-{% include "arm64fp16_mmm_8h_scalar.tmpliq" label:"scalar_min", op:"fmin", from:from, to:to %}
-{% include "arm64fp16_mmm_8h_scalar.tmpliq" label:"scalar_max", op:"fmax", from:from, to:to %}
-{% include "arm64fp16_mmm_8h_scalar.tmpliq" label:"scalar_mul", op:"fmul", from:from, to:to %}
-{% include "arm64fp16_mmm_8h_scalar.tmpliq" label:"scalar_add", op:"fadd", from:from, to:to %}
-{% include "arm64fp16_mmm_8h_scalar.tmpliq" label:"scalar_sub", op:"fsub", from:from, to:to %}
-{% include "arm64fp16_mmm_8h_scalar.tmpliq" label:"scalar_sub_flipped", op:"fsub", from:from, to:to, flipped:true %}
+{% set label = "scalar_min" %}{% set op = "fmin" %}{% set from = from %}{% set to = to %}{% set flipped = false %}{% include "arm64fp16_mmm_8h_scalar.tmpliq" %}
+{% set label = "scalar_max" %}{% set op = "fmax" %}{% set from = from %}{% set to = to %}{% set flipped = false %}{% include "arm64fp16_mmm_8h_scalar.tmpliq" %}
+{% set label = "scalar_mul" %}{% set op = "fmul" %}{% set from = from %}{% set to = to %}{% set flipped = false %}{% include "arm64fp16_mmm_8h_scalar.tmpliq" %}
+{% set label = "scalar_add" %}{% set op = "fadd" %}{% set from = from %}{% set to = to %}{% set flipped = false %}{% include "arm64fp16_mmm_8h_scalar.tmpliq" %}
+{% set label = "scalar_sub" %}{% set op = "fsub" %}{% set from = from %}{% set to = to %}{% set flipped = false %}{% include "arm64fp16_mmm_8h_scalar.tmpliq" %}
+{% set label = "scalar_sub_flipped" %}{% set op = "fsub" %}{% set from = from %}{% set to = to %}{% set flipped = true %}{% include "arm64fp16_mmm_8h_scalar.tmpliq" %}
 
 .clear:
-{% for r in (from..to) %}
+{% for r in range(from, to + 1) %}
     eor         v{{r}}.8b, v{{r}}.8b, v{{r}}.8b
 {% endfor %}
     b .non_linear_loop
@@ -20,7 +20,7 @@
 
     // bsl cond/dst, then, else
     // fcmge dst, src, #0.0
-    {% for r in (from..to) %}
+    {% for r in range(from, to + 1) %}
         fmul  v0.8h, v{{r}}.8h, v4.8h
         fcmge v1.8h, v{{r}}.8h, #0.0
         bsl   v1.16b, v{{r}}.16b, v0.16b
@@ -34,3 +34,4 @@
 .q_shl:
 .q_shr:
     b .unsupported
+{% set flipped = false %}

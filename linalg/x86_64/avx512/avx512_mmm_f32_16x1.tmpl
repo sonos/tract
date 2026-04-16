@@ -1,4 +1,4 @@
-{% comment %}
+{#
 // vim: set syntax=asm :
 
 /* mmm 16 x 1
@@ -17,10 +17,10 @@ Windows ABI:
     scratch: RAX, RCX, RDX, R8, R9, R10, R11, XMM0-5, and the upper portions of ZMM0-15 and ZMM0-15
     return: rax (+rdx)
 */
-{% endcomment %}
+#}
 
 
-{% include "preamble.tmpliq" size:"16x1", suffix:suffix, G:G, arch:"avx512" %}
+{% set size = "16x1" %}{% set suffix = suffix %}{% set G = G %}{% set arch = "avx512" %}{% include "preamble.tmpliq" %}
 
 {{L}}clear:
     vzeroall
@@ -45,7 +45,7 @@ Windows ABI:
 	cmp rbx,        4
 	jge              {{L}}main_loop_packed_packed
 
-	{% for r in (1..3) %}
+	{% for r in range(1, 4) %}
 	   vaddps zmm0, zmm0, zmm{{r}}
 	{% endfor %}
 
@@ -61,10 +61,10 @@ Windows ABI:
 
     jmp      {{L}}non_linear_loop
 
-{% include "f32_scalars.tmpliq" from:0, to:0 %}
-{% include "f32_per_rows.tmpliq" mr:16, from:0, to:0 %}
-{% include "f32_per_cols.tmpliq" mr:16, from:0, to:0 %}
-{% include "avx512_mmm_load_tile.tmpliq" from:0, to:0 %}
+{% set from = 0 %}{% set to = 0 %}{% include "f32_scalars.tmpliq" %}
+{% set mr = 16 %}{% set from = 0 %}{% set to = 0 %}{% include "f32_per_rows.tmpliq" %}
+{% set mr = 16 %}{% set from = 0 %}{% set to = 0 %}{% include "f32_per_cols.tmpliq" %}
+{% set from = 0 %}{% set to = 0 %}{% include "avx512_mmm_load_tile.tmpliq" %}
 
 {{L}}add_unicast:
     mov     r10,    [rdi + 8]           // c ptr
@@ -80,18 +80,18 @@ Windows ABI:
 {{L}}add_unicast_generic:
     mov r8, [0]
 //     mov     eax,    0
-// {% for i in (0..3) %}
+// {% for i in range(0, 4) %}
 //     pinsrd  xmm14, eax, {{i}}
 //     add     eax,    esi
 // {% endfor %}
-// {% for i in (0..3) %}
+// {% for i in range(0, 4) %}
 //     pinsrd  xmm15, eax, {{i}}
 //     add     eax,    esi
 // {% endfor %}
 //
 //     vperm2f128      zmm14,  zmm14, zmm15,         32 // zmm14 <- xmm14::xmm15
 //
-// {% for i in (0..7) %}
+// {% for i in range(0, 8) %}
 //     vpcmpeqd        zmm15,  zmm15, zmm15
 //     vgatherdps      zmm12,  [ r10 + zmm14 ], zmm15
 //
@@ -107,8 +107,8 @@ Windows ABI:
 
     vbroadcastss    zmm14, dword ptr [rbx]
 
-{% for i in (0..0) %}
-    vmovups         zmm12,  [rax + {{i|times:64}}]
+{% for i in range(0, 1) %}
+    vmovups         zmm12,  [rax + {{ i * 64 }}]
     vfmadd231ps     zmm{{i}}, zmm12, zmm14
 {% endfor %}
     jmp    {{L}}non_linear_loop
@@ -131,13 +131,13 @@ Windows ABI:
     jmp     {{L}}non_linear_loop
 
 {{L}}store_noncontiguous:
-    {% for quarter in (0..3) %}
+    {% for quarter in range(0, 4) %}
         vextractf32x4 xmm8, zmm0, {{quarter}}
-        {% for row in (0..3) %}
+        {% for row in range(0, 4) %}
             vextractps  dword ptr [r8], xmm8, {{row}}
             add         r8, rsi
         {% endfor %}
     {% endfor %}
     jmp     {{L}}non_linear_loop
 
-{% include "postamble.tmpliq" size:"16x1", suffix:suffix, G:G, L:L, arch:"avx512" %}
+{% set size = "16x1" %}{% set suffix = suffix %}{% set G = G %}{% set L = L %}{% set arch = "avx512" %}{% include "postamble.tmpliq" %}

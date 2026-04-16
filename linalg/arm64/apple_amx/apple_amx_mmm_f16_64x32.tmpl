@@ -41,21 +41,21 @@
     cmp         x3, #0
     beq         .non_linear_loop
 
-    orr         x4, x4, {{0|setting:62}}    // load pairs (A)
+    orr         x4, x4, {{ 0 | setting(62) }}    // load pairs (A)
 
     eor         x5, x5, x5                  // top left
 
-    orr         x7, x5, {{ 0|setting:20 }}
-    orr         x7, x7, {{ 0|setting:6 }}   // bottom left
+    orr         x7, x5, {{ 0 | setting(20) }}
+    orr         x7, x7, {{ 0 | setting(6) }}   // bottom left
 
     .packed_packed_loop_1:
-    {% amx ldx x2 %}
-    {% amx ldy x4 %}
+    {{ amx("ldx", 2) }}
+    {{ amx("ldy", 4) }}
     add x2, x2, 64
     add x4, x4, 128
 
-    {% amx fma16 x5 %}
-    {% amx fma16 x7 %}
+    {{ amx("fma16", 5) }}
+    {{ amx("fma16", 7) }}
 
     subs x3, x3, #1
     bne .packed_packed_loop_1
@@ -65,22 +65,22 @@
 .clear:
     // top left
     eor x2, x2, x2
-    orr x2, x2, {{ 0|setting:27 }}
-    orr x2, x2, {{ 0|setting:28 }}
-    orr x2, x2, {{ 0|setting:29 }}  // Z = 0
-    {% amx fma32 x2 %}
+    orr x2, x2, {{ 0 | setting(27) }}
+    orr x2, x2, {{ 0 | setting(28) }}
+    orr x2, x2, {{ 0 | setting(29) }}  // Z = 0
+    {{ amx("fma32", 2) }}
 
     // top right
-    orr x2, x2, {{ 0|setting:20 }}  // Z row = 1
-    {% amx fma32 x2 %}
+    orr x2, x2, {{ 0 | setting(20) }}  // Z row = 1
+    {{ amx("fma32", 2) }}
 
     // bottom right
-    orr x2, x2, {{ 0|setting:21 }}  // Z row = 3
-    {% amx fma32 x2 %}
+    orr x2, x2, {{ 0 | setting(21) }}  // Z row = 3
+    {{ amx("fma32", 2) }}
 
     // bottom left
-    eor x2, x2, {{ 0|setting:20 }}  // Z row = 2
-    {% amx fma32 x2 %}
+    eor x2, x2, {{ 0 | setting(20) }}  // Z row = 2
+    {{ amx("fma32", 2) }}
 
     mov     x3, #16
     str     x3, [x1]
@@ -92,16 +92,16 @@
     // performs a unary neg on Z
     eor x2, x2, x2                      // X[0] = Z[0]
 
-    mov x4, {{ 0|setting:63 }}          // vector mode
-    orr x4, x4, {{ 0|setting:28 }}
-    orr x4, x4, {{ 0|setting:27 }}      // Z=-X
+    mov x4, {{ 0 | setting(63) }}          // vector mode
+    orr x4, x4, {{ 0 | setting(28) }}
+    orr x4, x4, {{ 0 | setting(27) }}      // Z=-X
 
     mov x6, 64
     .per_col_sub_loop:
-        {% amx extrx x2 %}
-        {% amx fms16 x4 %}
-        add x2, x2, {{0|setting:20}}    // next Z row
-        add x4, x4, {{0|setting:20}}    // next Z row
+        {{ amx("extrx", 2) }}
+        {{ amx("fms16", 4) }}
+        add x2, x2, {{ 0 | setting(20) }}    // next Z row
+        add x4, x4, {{ 0 | setting(20) }}    // next Z row
     subs x6, x6, 1
     bne .per_col_sub_loop
 
@@ -112,16 +112,16 @@
 
     ld1         { v0.4s, v1.4s, v2.4s, v3.4s }, [x2]
     st1         { v0.4s, v1.4s, v2.4s, v3.4s }, [x1]
-    {% amx ldx x1 %}
+    {{ amx("ldx", 1) }}
 
-    mov x2, {{ 0|setting:28 }}      // z += y
+    mov x2, {{ 0 | setting(28) }}      // z += y
 
     // top left
-    {% amx fma16 x2 %}
+    {{ amx("fma16", 2) }}
 
     // bottom left
-    orr x2, x2, {{ 0|setting:20 }}  // Z row = 2
-    {% amx fma16 x2 %}
+    orr x2, x2, {{ 0 | setting(20) }}  // Z row = 2
+    {{ amx("fma16", 2) }}
 
     b .non_linear_loop
 
@@ -131,13 +131,13 @@
     ld1         { v0.8h, v1.8h, v2.8h, v3.8h }, [x2]
     st1         { v0.8h, v1.8h, v2.8h, v3.8h }, [x1]
 
-    {% amx ldx x1 %}
+    {{ amx("ldx", 1) }}
 
-    mov x2, {{ 0|setting:28 }}      // z += y
+    mov x2, {{ 0 | setting(28) }}      // z += y
 
-    {% amx fms16 x2 %}
-    orr x2, x2, {{ 0|setting:20 }}  // Z row = 1
-    {% amx fms16 x2 %}
+    {{ amx("fms16", 2) }}
+    orr x2, x2, {{ 0 | setting(20) }}  // Z row = 1
+    {{ amx("fms16", 2) }}
 
     b .non_linear_loop
 
@@ -150,18 +150,18 @@
     st1         { v0.8h, v1.8h, v2.8h, v3.8h }, [x1]
     sub x1, x1, #64
 
-    orr x2, x1, {{ 0|setting:62 }}  // load a pair
-    {% amx ldy x2 %}
+    orr x2, x1, {{ 0 | setting(62) }}  // load a pair
+    {{ amx("ldy", 2) }}
 
-    mov x2, {{ 0|setting:29 }}      // z += y
+    mov x2, {{ 0 | setting(29) }}      // z += y
 
     // top left
-    {% amx fms16 x2 %}
+    {{ amx("fms16", 2) }}
 
     // bottom right
-    orr x2, x2, {{ 0|setting:20 }}  // Z row = 3
-    orr x2, x2, {{ 0|setting:6 }}   // Y offset
-    {% amx fms16 x2 %}
+    orr x2, x2, {{ 0 | setting(20) }}  // Z row = 3
+    orr x2, x2, {{ 0 | setting(6) }}   // Y offset
+    {{ amx("fms16", 2) }}
 
     b .non_linear_loop
 
@@ -169,16 +169,16 @@
     // performs a unary neg on Z
     eor x2, x2, x2                      // X[0] = Z[0]
 
-    mov x4, {{ 0|setting:63 }}          // vector mode
-    orr x4, x4, {{ 0|setting:28 }}
-    orr x4, x4, {{ 0|setting:27 }}      // Z=-X
+    mov x4, {{ 0 | setting(63) }}          // vector mode
+    orr x4, x4, {{ 0 | setting(28) }}
+    orr x4, x4, {{ 0 | setting(27) }}      // Z=-X
 
     mov x6, 64
     .per_row_sub_loop:
-        {% amx extrx x2 %}
-        {% amx fms16 x4 %}
-        add x2, x2, {{0|setting:20}}    // next Z row
-        add x4, x4, {{0|setting:20}}    // next Z row
+        {{ amx("extrx", 2) }}
+        {{ amx("fms16", 4) }}
+        add x2, x2, {{ 0 | setting(20) }}    // next Z row
+        add x4, x4, {{ 0 | setting(20) }}    // next Z row
     subs x6, x6, 1
     bne .per_row_sub_loop
 
@@ -193,18 +193,18 @@
     st1         { v0.8h, v1.8h, v2.8h, v3.8h }, [x1]
     sub x1, x1, #64
 
-    orr x2, x1, {{ 0|setting:62 }}  // load a pair
-    {% amx ldy x2 %}
+    orr x2, x1, {{ 0 | setting(62) }}  // load a pair
+    {{ amx("ldy", 2) }}
 
-    mov x2, {{ 0|setting:29 }}      // z += y
+    mov x2, {{ 0 | setting(29) }}      // z += y
 
     // top left
-    {% amx fma16 x2 %}
+    {{ amx("fma16", 2) }}
 
     // bottom right
-    orr x2, x2, {{ 0|setting:20 }}  // Z row = 1
-    orr x2, x2, {{ 0|setting:6 }}   // Y offset
-    {% amx fma16 x2 %}
+    orr x2, x2, {{ 0 | setting(20) }}  // Z row = 1
+    orr x2, x2, {{ 0 | setting(6) }}   // Y offset
+    {{ amx("fma16", 2) }}
 
     b .non_linear_loop
 
@@ -219,9 +219,9 @@
     add x6, x5, 64
 
     lsl x2, x2, 47                  // max(x,z) (or min)
-    orr x2, x2, {{ 0|setting:43 }}  // f16
+    orr x2, x2, {{ 0 | setting(43) }}  // f16
 
-    orr x8, x2, {{ 0|setting:20 }}  // bottom left
+    orr x8, x2, {{ 0 | setting(20) }}  // bottom left
 
     mov x4, 32
     .loop_per_row_max:
@@ -233,10 +233,10 @@
         dup         v3.8h, v0.h[0]
         st1         { v0.8h, v1.8h, v2.8h, v3.8h }, [x1]
 
-        {% amx ldx x1 %}
-        {% amx vecfp x2 %}
+        {{ amx("ldx", 1) }}
+        {{ amx("vecfp", 2) }}
 
-        add x2, x2, {{ 0|setting:21 }}
+        add x2, x2, {{ 0 | setting(21) }}
 
         // bottom half
         ld1         { v0.h }[0], [x6], #2
@@ -246,10 +246,10 @@
         dup         v3.8h, v0.h[0]
         st1         { v0.8h, v1.8h, v2.8h, v3.8h }, [x1]
 
-        {% amx ldx x1 %}
-        {% amx vecfp x8 %}
+        {{ amx("ldx", 1) }}
+        {{ amx("vecfp", 8) }}
 
-        add x8, x8, {{ 0|setting:21 }}
+        add x8, x8, {{ 0 | setting(21) }}
 
     subs x4, x4, 1
     bne .loop_per_row_max
@@ -266,15 +266,15 @@
 
     ld1         { v0.8h, v1.8h, v2.8h, v3.8h }, [x4]
     st1         { v0.8h, v1.8h, v2.8h, v3.8h }, [x1]
-    {% amx ldx x1 %}
+    {{ amx("ldx", 1) }}
 
     lsl x2, x2, 47                  // max(x,z) (or min)
-    orr x2, x2, {{ 0|setting:43 }}  // f16
+    orr x2, x2, {{ 0 | setting(43) }}  // f16
 
     mov x4, 64
     .loop_per_col_max:
-        {% amx vecfp x2 %}
-        add x2, x2, {{ 0|setting:20 }}
+        {{ amx("vecfp", 2) }}
+        add x2, x2, {{ 0 | setting(20) }}
     subs x4, x4, 1
     bne .loop_per_col_max
 
@@ -285,19 +285,19 @@
 
     ld1         { v0.4s, v1.4s, v2.4s, v3.4s }, [x4]
     st1         { v0.4s, v1.4s, v2.4s, v3.4s }, [x1]
-    {% amx ldy x1 %}
+    {{ amx("ldy", 1) }}
 
     eor x2, x2, x2                      // X[0] = Z[0]
 
-    mov x4, {{ 0|setting:63 }}          // vector mode
-    orr x4, x4, {{ 0|setting:27 }}      // Z=X*Y
+    mov x4, {{ 0 | setting(63) }}          // vector mode
+    orr x4, x4, {{ 0 | setting(27) }}      // Z=X*Y
 
     mov x6, 64
     .loop_per_col_mul:
-        {% amx extrx x2 %}
-        {% amx fma16 x4 %}
-        add x2, x2, {{0|setting:20}}
-        add x4, x4, {{0|setting:20}}
+        {{ amx("extrx", 2) }}
+        {{ amx("fma16", 4) }}
+        add x2, x2, {{ 0 | setting(20) }}
+        add x4, x4, {{ 0 | setting(20) }}
     subs x6, x6, 1
     bne .loop_per_col_mul
 
@@ -311,14 +311,14 @@
     eor x2, x2, x2                      // X[0] = Z[0] (top left)
 
     eor x4, x4, x4
-    orr x4, x4, {{0|setting:20}}        // X[0] = Z[1] (bottom left)
+    orr x4, x4, {{ 0 | setting(20) }}        // X[0] = Z[1] (bottom left)
 
     // fma16
     eor x6, x6, x6
-    orr x6, x6, {{0|setting:63}}        // vector mode
-    orr x6, x6, {{0|setting:27}}        // Z=X*Y       Z[0]=X[0]*Y[0]
+    orr x6, x6, {{ 0 | setting(63) }}        // vector mode
+    orr x6, x6, {{ 0 | setting(27) }}        // Z=X*Y       Z[0]=X[0]*Y[0]
 
-    orr x8, x6, {{0|setting:20}}        // Z[1]
+    orr x8, x6, {{ 0 | setting(20) }}        // Z[1]
 
     mov x10, 32
     .loop_per_row_mul:
@@ -330,12 +330,12 @@
         dup         v3.8h, v0.h[0]
         st1         { v0.8h, v1.8h, v2.8h, v3.8h }, [x1]
 
-        {% amx ldy x1 %}
-        {% amx extrx x2 %}
-        {% amx fma16 x6 %}
+        {{ amx("ldy", 1) }}
+        {{ amx("extrx", 2) }}
+        {{ amx("fma16", 6) }}
 
-        add x2, x2, {{ 0|setting:21 }}
-        add x6, x6, {{ 0|setting:21 }}
+        add x2, x2, {{ 0 | setting(21) }}
+        add x6, x6, {{ 0 | setting(21) }}
 
         // bottom
         ld1         { v0.h }[0], [x15], #2
@@ -345,12 +345,12 @@
         dup         v3.8h, v0.h[0]
         st1         { v0.8h, v1.8h, v2.8h, v3.8h }, [x1]
 
-        {% amx ldy x1 %}
-        {% amx extrx x4 %}
-        {% amx fma16 x8 %}
+        {{ amx("ldy", 1) }}
+        {{ amx("extrx", 4) }}
+        {{ amx("fma16", 8) }}
 
-        add x4, x4, {{ 0|setting:21 }}
-        add x8, x8, {{ 0|setting:21 }}
+        add x4, x4, {{ 0 | setting(21) }}
+        add x8, x8, {{ 0 | setting(21) }}
 
     subs x10, x10, 1
     bne .loop_per_row_mul
@@ -361,16 +361,16 @@
     // performs a unary neg on Z, then go to scalar_add
     eor x2, x2, x2                      // X[0] = Z[0]
 
-    mov x4, {{ 0|setting:63 }}          // vector mode
-    orr x4, x4, {{ 0|setting:28 }}
-    orr x4, x4, {{ 0|setting:27 }}      // Z=-X
+    mov x4, {{ 0 | setting(63) }}          // vector mode
+    orr x4, x4, {{ 0 | setting(28) }}
+    orr x4, x4, {{ 0 | setting(27) }}      // Z=-X
 
     mov x6, 64
     .scalar_sub_loop:
-        {% amx extrx x2 %}
-        {% amx fms16 x4 %}
-        add x2, x2, {{0|setting:20}}    // next Z row
-        add x4, x4, {{0|setting:20}}    // next Z row
+        {{ amx("extrx", 2) }}
+        {{ amx("fms16", 4) }}
+        add x2, x2, {{ 0 | setting(20) }}    // next Z row
+        add x4, x4, {{ 0 | setting(20) }}    // next Z row
     subs x6, x6, 1
     bne .scalar_sub_loop
 
@@ -386,12 +386,12 @@
     dup         v3.8h, v0.h[0]
 
     st1         { v0.8h, v1.8h, v2.8h, v3.8h }, [x1]
-    {% amx ldx x1 %}    // load 16 values
+    {{ amx("ldx", 1) }}    // load 16 values
 
-    mov x2, {{ 0|setting:28 }}          // Z+=X 
-    {% amx fma16 x2 %}
-    add x2, x2, {{0|setting:20}}    // Z1
-    {% amx fma16 x2 %}
+    mov x2, {{ 0 | setting(28) }}          // Z+=X 
+    {{ amx("fma16", 2) }}
+    add x2, x2, {{ 0 | setting(20) }}    // Z1
+    {{ amx("fma16", 2) }}
     b .non_linear_loop
 
 .scalar_sub_flipped:
@@ -404,12 +404,12 @@
     dup         v3.8h, v0.h[0]
 
     st1         { v0.8h, v1.8h, v2.8h, v3.8h }, [x1]
-    {% amx ldx x1 %}    // load 32 values
+    {{ amx("ldx", 1) }}    // load 32 values
 
-    mov x2, {{ 0|setting:28 }}          // Z-=X 
-    {% amx fms16 x2 %}
-    add x2, x2, {{0|setting:20}}    // next Z row
-    {% amx fms16 x2 %}
+    mov x2, {{ 0 | setting(28) }}          // Z-=X 
+    {{ amx("fms16", 2) }}
+    add x2, x2, {{ 0 | setting(20) }}    // next Z row
+    {{ amx("fms16", 2) }}
     b .non_linear_loop
 
 .scalar_mul:
@@ -422,19 +422,19 @@
     dup         v3.8h, v0.h[0]
 
     st1         { v0.8h, v1.8h, v2.8h, v3.8h }, [x1]
-    {% amx ldy x1 %}    // load 32 values
+    {{ amx("ldy", 1) }}    // load 32 values
 
     eor x2, x2, x2                      // X[0] = Z[0]
 
-    mov x4, {{ 0|setting:63 }}          // vector mode
-    orr x4, x4, {{ 0|setting:27 }}      // Z=X*Y
+    mov x4, {{ 0 | setting(63) }}          // vector mode
+    orr x4, x4, {{ 0 | setting(27) }}      // Z=X*Y
 
     mov x6, 64
     .scalar_mul_loop:
-        {% amx extrx x2 %}
-        {% amx fma16 x4 %}
-        add x2, x2, {{0|setting:20}}    // next Z row
-        add x4, x4, {{0|setting:20}}    // next Z row
+        {{ amx("extrx", 2) }}
+        {{ amx("fma16", 4) }}
+        add x2, x2, {{ 0 | setting(20) }}    // next Z row
+        add x4, x4, {{ 0 | setting(20) }}    // next Z row
     subs x6, x6, 1
     bne .scalar_mul_loop
 
@@ -455,15 +455,15 @@
     dup         v3.8h, v0.h[0]
 
     st1         { v0.8h, v1.8h, v2.8h, v3.8h }, [x1]
-    {% amx ldx x1 %}    // load 16 values
+    {{ amx("ldx", 1) }}    // load 16 values
 
     lsl x2, x2, 47
-    orr x2, x2, {{ 0|setting:43 }} // f32
+    orr x2, x2, {{ 0 | setting(43) }} // f32
 
     mov x3, 64
     .loop_scalar_max:
-        add x2, x2, {{ 0|setting:20}} // next Z
-        {% amx vecfp x2 %}
+        add x2, x2, {{ 0 | setting(20) }} // next Z
+        {{ amx("vecfp", 2) }}
         subs x3, x3, 1
         bne .loop_scalar_max
 
@@ -482,19 +482,19 @@
         add x9, x9, x10
 
         mov x4, x5
-        {% for neon in (0..3) %}
-            {% for lane in (0..7) %}
+        {% for neon in range(0, 4) %}
+            {% for lane in range(0, 8) %}
                 ld1 { v{{neon}}.h }[{{lane}}], [x4], x7
             {% endfor %}
         {% endfor %}
 
         st1 { v0.8h, v1.8h, v2.8h, v3.8h }, [x1]
-        {% amx ldy x1 %}
+        {{ amx("ldy", 1) }}
 
         lsl x2, x9, 20                  // Z register to update
-        orr x2, x2, {{ 0|setting:63 }}  // vector mode
-        orr x2, x2, {{ 0|setting:29 }}  // perform Z+=Y
-        {% amx fma16 x2 %}
+        orr x2, x2, {{ 0 | setting(63) }}  // vector mode
+        orr x2, x2, {{ 0 | setting(29) }}  // perform Z+=Y
+        {{ amx("fma16", 2) }}
 
         add x5, x5, x6
         add x3, x3, 1
@@ -511,31 +511,31 @@
         add x9, x9, x10                     // x9 = x9 + x10
 
         mov x4, x5
-        {% for neon in (0..3) %}
-            {% for lane in (0..3) %}
+        {% for neon in range(0, 4) %}
+            {% for lane in range(0, 4) %}
                 ld1 { v{{neon}}.s }[{{lane}}], [x4], x7
             {% endfor %}
         {% endfor %}
         st1 { v0.4s, v1.4s, v2.4s, v3.4s }, [x1]
-        {% for neon in (0..3) %}
-            {% for lane in (0..3) %}
+        {% for neon in range(0, 4) %}
+            {% for lane in range(0, 4) %}
                 ld1 { v{{neon}}.s }[{{lane}}], [x4], x7
             {% endfor %}
         {% endfor %}
         st1 { v0.4s, v1.4s, v2.4s, v3.4s }, [x8]
 
         mov x2, x1
-        orr x2, x2, {{ 0|setting:62 }} // load 32 values
-        {% amx ldy x2 %}
+        orr x2, x2, {{ 0 | setting(62) }} // load 32 values
+        {{ amx("ldy", 2) }}
 
         lsl x2, x9, 20                  // left Z register to update
-        orr x2, x2, {{ 0|setting:63 }}  // vector mode
-        orr x2, x2, {{ 0|setting:29 }}  // perform Z+=Y
-        {% amx fma32 x2 %}
+        orr x2, x2, {{ 0 | setting(63) }}  // vector mode
+        orr x2, x2, {{ 0 | setting(29) }}  // perform Z+=Y
+        {{ amx("fma32", 2) }}
 
-        add x2, x2, {{0|setting:20}}
+        add x2, x2, {{ 0 | setting(20) }}
         orr x2, x2, 64                  // offset Y by 16 values
-        {% amx fma32 x2 %}
+        {{ amx("fma32", 2) }}
 
         add x5, x5, x6
     add x3, x3, 1
@@ -557,22 +557,22 @@
     st1         { v0.4s, v1.4s, v2.4s, v3.4s }, [x1]
     sub x1, x1, #64
 
-    orr x2, x1, {{ 0|setting:62 }}  // load a pair
-    {% amx ldy x2 %}
+    orr x2, x1, {{ 0 | setting(62) }}  // load a pair
+    {{ amx("ldy", 2) }}
 
     ld1         { v0.4s, v1.4s, v2.4s, v3.4s }, [x6]
     st1         { v0.4s, v1.4s, v2.4s, v3.4s }, [x1]
 
-    {% amx ldx x1 %}
+    {{ amx("ldx", 1) }}
 
     // top
     eor x2, x2, x2
-    {% amx fma16 x2 %}
+    {{ amx("fma16", 2) }}
 
     // bottom right
-    orr x2, x2, {{ 0|setting:20 }}  // Z row = 1
-    orr x2, x2, {{ 0|setting:6 }}   // Y offset
-    {% amx fma16 x2 %}
+    orr x2, x2, {{ 0 | setting(20) }}  // Z row = 1
+    orr x2, x2, {{ 0 | setting(6) }}   // Y offset
+    {{ amx("fma16", 2) }}
 
     b .non_linear_loop
 
@@ -589,15 +589,15 @@
 
     lsl x8, x6, 5
     add x8, x8, x5                          // x8 = 32*rsc
-    orr x8, x8, {{ 0|setting:56 }}          // first to x8 is z1
+    orr x8, x8, {{ 0 | setting(56) }}          // first to x8 is z1
 
-    mov x4, {{0|setting:57}}                // Zreg += 2
+    mov x4, {{ 0 | setting(57) }}                // Zreg += 2
     add x4, x4, x6                          // +rsc
 
     mov x3, 32
     .loop_store_direct:
-        {% amx stz x5 %}
-        {% amx stz x8 %}
+        {{ amx("stz", 5) }}
+        {{ amx("stz", 8) }}
         add x5, x5, x4
         add x8, x8, x4
     subs x3, x3, 1
@@ -617,13 +617,13 @@
 
         lsl x2, x9, 56
         orr x2, x2, x1
-        {% amx stz x2 %}                            // f16 x 32
+        {{ amx("stz", 2) }}                            // f16 x 32
 
         ld1 { v0.8h, v1.8h, v2.8h, v3.8h }, [x1]
 
         mov x4, x5
-        {% for neon in (0..3) %}
-            {% for lane in (0..7) %}
+        {% for neon in range(0, 4) %}
+            {% for lane in range(0, 8) %}
                 st1 { v{{neon}}.h }[{{lane}}], [x4], x7
             {% endfor %}
         {% endfor %}
@@ -636,16 +636,16 @@
 
 .load_tile:
     ldr  x2, [x0, #16]                      // row major ptr
-    orr  x3, x2, {{0|setting:56}}
+    orr  x3, x2, {{ 0 | setting(56) }}
     add  x3, x3, #2048
     
-    mov  x4, {{0|setting:57}}               // z+=2
+    mov  x4, {{ 0 | setting(57) }}               // z+=2
     add  x4, x4, #64
 
     mov x8, 32
     .loop_load_tile:
-        {% amx ldz x2 %}
-        {% amx ldz x3 %}
+        {{ amx("ldz", 2) }}
+        {{ amx("ldz", 3) }}
         add x2, x2, x4
         add x3, x3, x4
     subs x8, x8, 1

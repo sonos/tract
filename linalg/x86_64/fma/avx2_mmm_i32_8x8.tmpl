@@ -1,4 +1,4 @@
-{% comment %}
+{#
 // vim: set syntax=asm :
 
 /* mmm 8x8:
@@ -17,7 +17,7 @@ Windows ABI:
     scratch: RAX, RCX, RDX, R8, R9, R10, R11, XMM0-5, and the upper portions of YMM0-15 and ZMM0-15
     return: rax (+rdx)
 */
-{% endcomment %}
+#}
 
 {% if msvc %}
 
@@ -103,7 +103,7 @@ avx2_mmm_i32_8x8_{{suffix}} proc
 {{L}}main_loop_packed_packed:
     vmovaps         ymm12,  [rax]
 
-    {% for i in (0..7) %}
+    {% for i in range(0, 8) %}
         vbroadcastss    ymm14, dword ptr [rbx + {{i}} * 4]
         vpmulld         ymm13, ymm12, ymm14
         vpaddd          ymm{{i}}, ymm{{i}}, ymm13
@@ -171,10 +171,10 @@ avx2_mmm_i32_8x8_{{suffix}} proc
 
     jmp             {{L}}non_linear_loop
 
-{% include "fma_mmm_i32_scalars.tmpliq" from:0, to:7 %}
-{% include "fma_mmm_i32_per_rows.tmpliq" mr:8,from:0, to:7 %}
-{% include "fma_mmm_i32_per_cols.tmpliq" mr:8,from:0, to:7 %}
-{% include "fma_mmm_load_tile.tmpliq" from:0, to:7 %}
+{% set from = 0 %}{% set to = 7 %}{% include "fma_mmm_i32_scalars.tmpliq" %}
+{% set mr = 8 %}{% set from = 0 %}{% set to = 7 %}{% include "fma_mmm_i32_per_rows.tmpliq" %}
+{% set mr = 8 %}{% set from = 0 %}{% set to = 7 %}{% include "fma_mmm_i32_per_cols.tmpliq" %}
+{% set from = 0 %}{% set to = 7 %}{% include "fma_mmm_load_tile.tmpliq" %}
 
 {{L}}add_unicast:
 
@@ -186,11 +186,11 @@ avx2_mmm_i32_8x8_{{suffix}} proc
     cmp     r8,    4
     je      {{L}}non_linear_addc_i32
 
-{% comment %}
+{#
 // This is not great as vgatherdps reads 32-bits values and goes beyond our buffer. Probably harmless though.
 // Commented and replaced with the "mov al" loop beyond to pacify valgrind.
 // ymm14 and ymm15 are the same as in the non_linear_addc_i32 case (compute them before the test right above here.
-// {% for i in (0..7) %}
+// {% for i in range(0, 8) %}
 //     vpcmpeqd        ymm15, ymm15, ymm15
 //     vgatherdps      ymm12, [ r10 + ymm14 ], ymm15   // 0xxx 1xxx 2xxx 3xxx 4xxx 5xxx 6xxx 7xxx
 //
@@ -203,12 +203,12 @@ avx2_mmm_i32_8x8_{{suffix}} proc
 //     vpaddd          ymm{{i}},   ymm{{i}},   ymm12
 //     add             r10, rbx
 // {% endfor %}
-{% endcomment %}
+#}
 
-    {% for col in (0..7) %}
+    {% for col in range(0, 8) %}
         mov r8, r10
-        {% for half in (0..1) %}
-            {% for lane in (0..3) %}
+        {% for half in range(0, 2) %}
+            {% for lane in range(0, 4) %}
                 mov al, [ r8 ]
                 add r8, rsi
                 movsx eax, al
@@ -225,12 +225,12 @@ avx2_mmm_i32_8x8_{{suffix}} proc
 {{L}}non_linear_addc_i32:
 
     mov     eax,    0
-{% for i in (0..3) %}
+{% for i in range(0, 4) %}
     pinsrd  xmm14, eax, {{i}}
     add     eax,    esi
 {% endfor %}
     vpermq          ymm14, ymm14, 78 // 0b01001110
-{% for i in (0..3) %}
+{% for i in range(0, 4) %}
     pinsrd  xmm14, eax, {{i}}
     add     eax,    esi
 {% endfor %}
@@ -245,7 +245,7 @@ avx2_mmm_i32_8x8_{{suffix}} proc
     vmovups         ymm11, [ rip + {{L}}i128_shuffle ]
 {% endif %}
 
-{% for i in (0..7) %}
+{% for i in range(0, 8) %}
     vpcmpeqd        ymm15, ymm15, ymm15
     vgatherdps      ymm12, [ r10 + ymm14 ], ymm15
     vpaddd          ymm{{i}},   ymm{{i}},   ymm12
@@ -270,8 +270,8 @@ i128_shuffle dd              0, 4
 
     vmovups         ymm12,  [rax]
 
-{% for i in (0..7) %}
-    vbroadcastss    ymm14, dword ptr [rbx + {{i|times:4}} ]
+{% for i in range(0, 8) %}
+    vbroadcastss    ymm14, dword ptr [rbx + {{ i * 4 }} ]
     vpmulld         ymm15, ymm12, ymm14
     vpaddd          ymm{{i}}, ymm{{i}}, ymm15
 {% endfor %}
@@ -311,7 +311,7 @@ i128_shuffle dd              0, 4
     jmp    {{L}}unsupported
 
 {{L}}q_scale_rounding_zero:           // signum * ( (abs + nudge) >> shift )
-{% for i in (0..7) %}
+{% for i in range(0, 8) %}
     vpabsd      ymm14, ymm{{i}}
     vpsrldq     ymm15, ymm14, 4             // ymm15 <- a1, a2, a3, a4, a5, a6, a7, 0
     vpmuldq     ymm14, ymm14, ymm8          // ymm14  <- a0*c, a2*c, a4*c, a6*c
@@ -334,7 +334,7 @@ i128_shuffle dd              0, 4
     jmp    {{L}}non_linear_loop
 
 {{L}}q_scale_rounding_away:           // signum * ( (abs + nudge) >> shift )
-{% for i in (0..7) %}
+{% for i in range(0, 8) %}
     vpabsd      ymm14, ymm{{i}}
     vpsrldq     ymm15, ymm14, 4             // ymm15 <- a1, a2, a3, a4, a5, a6, a7, 0
     vpmuldq     ymm14, ymm14, ymm8          // ymm14  <- a0*c, a2*c, a4*c, a6*c
@@ -354,7 +354,7 @@ i128_shuffle dd              0, 4
     jmp    {{L}}non_linear_loop
 
 {{L}}q_scale_rounding_minus_inf:           // signum * ( (abs << 32 + 1<<30+shift) >> shift )
-{% for i in (0..7) %}
+{% for i in range(0, 8) %}
     vpabsd      ymm14, ymm{{i}}
     // sign extract for nudging in the right direction
     vpxor       ymm13, ymm13, ymm13
@@ -392,7 +392,7 @@ i128_shuffle dd              0, 4
 
     vpbroadcastd ymm9, xmm9
 
-{% for i in (0..7) %}
+{% for i in range(0, 8) %}
     vpabsd      ymm14, ymm{{i}}
     vpxor       ymm13, ymm13, ymm13
 
@@ -428,7 +428,7 @@ i128_shuffle dd              0, 4
     jmp    {{L}}non_linear_loop
 
 {{L}}q_scale_rounding_even:           // signum * ( (abs + nudge) >> shift )
-{% for i in (0..7) %}
+{% for i in range(0, 8) %}
     vpabsd      ymm14, ymm{{i}}
     vpsrldq     ymm15, ymm14, 4             // ymm15 <- a1, a2, a3, a4, a5, a6, a7, 0
     vpmuldq     ymm14, ymm14, ymm8          // ymm14  <- a0*c, a2*c, a4*c, a6*c
@@ -457,7 +457,7 @@ i128_shuffle dd              0, 4
     jmp    {{L}}non_linear_loop
 
 {{L}}q_scale_rounding_odd:           // signum * ( (abs + nudge) >> shift )
-{% for i in (0..7) %}
+{% for i in range(0, 8) %}
     vpabsd      ymm14, ymm{{i}}
     vpsrldq     ymm15, ymm14, 4             // ymm15 <- a1, a2, a3, a4, a5, a6, a7, 0
     vpmuldq     ymm14, ymm14, ymm8          // ymm14  <- a0*c, a2*c, a4*c, a6*c
@@ -489,7 +489,7 @@ i128_shuffle dd              0, 4
     movd            xmm10, eax
     vpbroadcastd    ymm10, xmm10
 
-{% for i in (0..7) %}
+{% for i in range(0, 8) %}
     vpsllvd     ymm{{i}}, ymm{{i}}, ymm10
 {% endfor %}
     jmp     {{L}}non_linear_loop
@@ -530,7 +530,7 @@ i128_shuffle dd              0, 4
     jmp    {{L}}unsupported
 
 {{L}}q_shr_rounding_zero:
-{% for i in (0..7) %}
+{% for i in range(0, 8) %}
     vpabsd      ymm14, ymm{{i}}
     vpsubd      ymm14, ymm14, ymm9
     vpaddd      ymm14, ymm14, ymm11
@@ -540,7 +540,7 @@ i128_shuffle dd              0, 4
     jmp     {{L}}non_linear_loop
 
 {{L}}q_shr_rounding_away:
-{% for i in (0..7) %}
+{% for i in range(0, 8) %}
     vpabsd      ymm14, ymm{{i}}
     vpaddd      ymm14, ymm14, ymm11
     vpsravd     ymm14, ymm14, ymm10
@@ -549,7 +549,7 @@ i128_shuffle dd              0, 4
     jmp     {{L}}non_linear_loop
 
 {{L}}q_shr_rounding_minus_inf:
-{% for i in (0..7) %}
+{% for i in range(0, 8) %}
     vpsubd  ymm{{i}}, ymm{{i}}, ymm9
     vpaddd  ymm{{i}}, ymm{{i}}, ymm11
     vpsravd ymm{{i}}, ymm{{i}}, ymm10
@@ -557,14 +557,14 @@ i128_shuffle dd              0, 4
     jmp     {{L}}non_linear_loop
 
 {{L}}q_shr_rounding_plus_inf:
-{% for i in (0..7) %}
+{% for i in range(0, 8) %}
     vpaddd  ymm{{i}}, ymm{{i}}, ymm11
     vpsravd ymm{{i}}, ymm{{i}}, ymm10
 {% endfor %}
     jmp     {{L}}non_linear_loop
 
 {{L}}q_shr_rounding_even:
-{% for i in (0..7) %}
+{% for i in range(0, 8) %}
     vpabsd      ymm14, ymm{{i}}
     vpsravd ymm13, ymm14, ymm10
     vpand   ymm13, ymm13, ymm9
@@ -577,7 +577,7 @@ i128_shuffle dd              0, 4
     jmp     {{L}}non_linear_loop
 
 {{L}}q_shr_rounding_odd:
-{% for i in (0..7) %}
+{% for i in range(0, 8) %}
     vpabsd      ymm14, ymm{{i}}
     vpsravd ymm13, ymm14, ymm10
     vpand   ymm13, ymm13, ymm9
@@ -598,15 +598,15 @@ i128_shuffle dd              0, 4
     cmp     rcx,    4
     je      {{L}}store_strides_i32
 
-    {% for col in (0..7) %}
+    {% for col in range(0, 8) %}
         mov r10, r8
-        {% for row in (0..3) %}
+        {% for row in range(0, 4) %}
             extractps   ebx, xmm{{col}}, {{row}}
             mov         byte ptr [r10], bl
             add         r10, rsi
         {% endfor %}
         vperm2f128  ymm{{col}},   ymm{{col}},   ymm{{col}},  1
-        {% for row in (0..3) %}
+        {% for row in range(0, 4) %}
             extractps   ebx, xmm{{col}}, {{row}}
             mov         byte ptr [r10], bl
             add         r10, rsi
@@ -617,15 +617,15 @@ i128_shuffle dd              0, 4
     jmp     {{L}}non_linear_loop
 
 {{L}}store_strides_i32:
-    {% for col in (0..7) %}
+    {% for col in range(0, 8) %}
         mov r10,    r8
-        {% for row in (0..3) %}
+        {% for row in range(0, 4) %}
             extractps   ebx, xmm{{col}}, {{row}}
             mov         dword ptr [r10], ebx
             add         r10, rsi
         {% endfor %}
         vperm2f128  ymm{{col}},   ymm{{col}},   ymm{{col}},  1
-        {% for row in (0..3) %}
+        {% for row in range(0, 4) %}
             extractps   ebx, xmm{{col}}, {{row}}
             mov         dword ptr [r10], ebx
             add         r10, rsi

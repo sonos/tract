@@ -1,10 +1,11 @@
 // vim: set syntax=asm :
-{% unless arch %}
-   {% assign arch = "ymm" %}
-{% endunless %}
-{% include "zmm_scalar.tmpliq" label:"scalar_min", op:"vpminsd", from:from, to:to, arch:arch %}
-{% include "zmm_scalar.tmpliq" label:"scalar_max", op:"vpmaxsd", from:from, to:to, arch:arch %}
-{% include "zmm_scalar.tmpliq" label:"scalar_mul", op:"vpmulld", from:from, to:to, arch:arch %}
-{% include "zmm_scalar.tmpliq" label:"scalar_add", op:"vpaddd", from:from, to:to, arch:arch %}
-{% include "zmm_scalar.tmpliq" label:"scalar_sub", op:"vpsubd", from:from, to:to, arch:arch %}
-{% include "zmm_scalar.tmpliq" label:"scalar_sub_flipped", op:"vpsubd", from:from, to:to, flipped: true, arch:arch %}
+{% if not arch %}
+   {% set arch = "ymm" %}
+{% endif %}
+{% set label = "scalar_min" %}{% set op = "vpminsd" %}{% set from = from %}{% set to = to %}{% set arch = arch %}{% set flipped = false %}{% include "zmm_scalar.tmpliq" %}
+{% set label = "scalar_max" %}{% set op = "vpmaxsd" %}{% set from = from %}{% set to = to %}{% set arch = arch %}{% set flipped = false %}{% include "zmm_scalar.tmpliq" %}
+{% set label = "scalar_mul" %}{% set op = "vpmulld" %}{% set from = from %}{% set to = to %}{% set arch = arch %}{% set flipped = false %}{% include "zmm_scalar.tmpliq" %}
+{% set label = "scalar_add" %}{% set op = "vpaddd" %}{% set from = from %}{% set to = to %}{% set arch = arch %}{% set flipped = false %}{% include "zmm_scalar.tmpliq" %}
+{% set label = "scalar_sub" %}{% set op = "vpsubd" %}{% set from = from %}{% set to = to %}{% set arch = arch %}{% set flipped = false %}{% include "zmm_scalar.tmpliq" %}
+{% set label = "scalar_sub_flipped" %}{% set op = "vpsubd" %}{% set from = from %}{% set to = to %}{% set flipped = true %}{% set arch = arch %}{% include "zmm_scalar.tmpliq" %}
+{% set flipped = false %}

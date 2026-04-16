@@ -41,20 +41,20 @@
     ld1         { v4.8h, v5.8h, v6.8h }, [ x1 ], #48
     add         x2, x2, #6
 
-{% for col in (0..2) %}
-    fmla        v{{ col|times:8|plus:8}}.8h, v0.8h, v7.h[{{ col }}]
+{% for col in range(0, 3) %}
+    fmla        v{{ col * 8 + 8 }}.8h, v0.8h, v7.h[{{ col }}]
 {% endfor %}
 
     ld1         { v0.8h }, [ x1 ], #16
 
-{% for row in (1..6) %}
-    {% for col in (0..2) %}
-        fmla        v{{ col|times:8|plus:8|plus:row}}.8h, v{{row}}.8h, v7.h[{{col}}]
+{% for row in range(1, 7) %}
+    {% for col in range(0, 3) %}
+        fmla        v{{ col * 8 + 8 + row }}.8h, v{{row}}.8h, v7.h[{{ col }}]
     {% endfor %}
 {% endfor %}
 
-{% for col in (0..2) %}
-    fmla        v{{ col|times:8|plus:15}}.8h, v0.8h, v7.h[{{ col }}]
+{% for col in range(0, 3) %}
+    fmla        v{{ col * 8 + 15 }}.8h, v0.8h, v7.h[{{ col }}]
 {% endfor %}
 
     subs        x3, x3, #1
@@ -62,22 +62,22 @@
 
     b           .non_linear_loop
 
-{% include "arm64fp16_mmm_f16_scalars.tmpliq" from:8, to:31%}
-{% include "arm64fp16_mmm_f16_per_rows.tmpliq" mr:64, from:8, to:31%}
-{% include "arm64fp16_mmm_f16_per_cols.tmpliq" mr:64, from:8, to:31%}
-{% include "arm64fp16_mmm_load_tile.tmpliq" from:8, to:31 %}
+{% set from = 8 %}{% set to = 31 %}{% include "arm64fp16_mmm_f16_scalars.tmpliq" %}
+{% set mr = 64 %}{% set from = 8 %}{% set to = 31 %}{% include "arm64fp16_mmm_f16_per_rows.tmpliq" %}
+{% set mr = 64 %}{% set from = 8 %}{% set to = 31 %}{% include "arm64fp16_mmm_f16_per_cols.tmpliq" %}
+{% set from = 8 %}{% set to = 31 %}{% include "arm64fp16_mmm_load_tile.tmpliq" %}
 
 .add_unicast:
     ldp         x5, x6, [x0, #8]
     ldp         x7, x8, [x0, #24]
 
-    {% for col in (0..2) %}
+    {% for col in range(0, 3) %}
         mov x4, x5
-        {% for reg in (0..7) %}
-            {% for lane in (0..7) %}
+        {% for reg in range(0, 8) %}
+            {% for lane in range(0, 8) %}
                 ld1 {v0.h}[{{lane}}], [ x4 ], x6
             {% endfor %}
-            fadd v{{col | times:8 | plus: 8| plus: reg}}.8h, v{{col | times:8 | plus: 8 | plus: reg}}.8h, v0.8h
+            fadd v{{ col * 8 + 8 + reg }}.8h, v{{ col * 8 + 8 + reg }}.8h, v0.8h
         {% endfor %}
         add x5, x5, x7
     {% endfor %}
@@ -88,8 +88,8 @@
     ld1     {v0.8h-v3.8h}, [x5], #64
     ld1     {v4.8h-v7.8h}, [x5], #64
 
-    {% for r in (0..7) %}
-        fadd v{{r| plus: 24}}.8h, v{{r | plus: 24}}.8h, v{{r}}.8h
+    {% for r in range(0, 8) %}
+        fadd v{{ r + 24 }}.8h, v{{ r + 24 }}.8h, v{{r}}.8h
     {% endfor %}
 
     b           .non_linear_loop
@@ -102,20 +102,20 @@
     ld1         { v0.8h, v1.8h, v2.8h, v3.8h }, [ x2 ], #64
     ld1         { v4.8h, v5.8h, v6.8h }, [ x2 ], #48
 
-{% for col in (0..2) %}
-    fmla        v{{ col|times:8|plus:8}}.8h, v0.8h, v7.h[{{ col }}]
+{% for col in range(0, 3) %}
+    fmla        v{{ col * 8 + 8 }}.8h, v0.8h, v7.h[{{ col }}]
 {% endfor %}
 
     ld1         { v0.8h }, [ x2 ], #16
 
-{% for row in (1..6) %}
-    {% for col in (0..2) %}
-        fmla        v{{ col|times:8|plus:8|plus:row}}.8h, v{{row}}.8h, v7.h[{{col}}]
+{% for row in range(1, 7) %}
+    {% for col in range(0, 3) %}
+        fmla        v{{ col * 8 + 8 + row }}.8h, v{{row}}.8h, v7.h[{{ col }}]
     {% endfor %}
 {% endfor %}
 
-{% for col in (0..2) %}
-    fmla        v{{ col|times:8|plus:15}}.8h, v0.8h, v7.h[{{ col }}]
+{% for col in range(0, 3) %}
+    fmla        v{{ col * 8 + 15 }}.8h, v0.8h, v7.h[{{ col }}]
 {% endfor %}
 
     b           .non_linear_loop
@@ -127,11 +127,11 @@
     cmp         x6, #2
     beq         .store_strides_contig
 
-    {% for col in (0..2) %}
+    {% for col in range(0, 3) %}
         mov x4, x5
-        {% for reg in (0..7) %}
-            {% for lane in (0..7) %}
-                st1 { v{{col | times:8 | plus: 8 | plus: reg}}.h }[{{lane}}], [ x4 ], x6
+        {% for reg in range(0, 8) %}
+            {% for lane in range(0, 8) %}
+                st1 { v{{ col * 8 + 8 + reg }}.h }[{{lane}}], [ x4 ], x6
             {% endfor %}
         {% endfor %}
         add x5, x5, x7
@@ -140,10 +140,10 @@
 
 .store_strides_contig:
 
-    {% for col in (0..2) %}
+    {% for col in range(0, 3) %}
         mov x4, x5
-        {% for r in (0..7) %}
-            st1 { v{{col | times:8 | plus: 8 | plus: r}}.8h }, [ x4 ], 16
+        {% for r in range(0, 8) %}
+            st1 { v{{ col * 8 + 8 + r }}.8h }, [ x4 ], 16
         {% endfor %}
         add x5, x5, x7
     {% endfor %}

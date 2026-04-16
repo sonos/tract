@@ -49,22 +49,22 @@
     ld1         { v0.4s, v1.4s }, [ x1 ], #32
     ld1         { v4.4s, v5.4s }, [ x2 ], #32
 
-{% capture packed_packed_loop1 %}
+{% set packed_packed_loop1 %}
     {% if core == "a53" %}
         {% include "arm64simd_mmm_f32_8x8/packed_packed_loop1/ldr_x_preload.tmpli" %}
     {% else %}
         {% include "arm64simd_mmm_f32_8x8/packed_packed_loop1/naive.tmpli" %}
     {% endif %}
-{% endcapture %}
+{% endset %}
 
-{% capture packed_packed_loop2 %}
+{% set packed_packed_loop2 %}
     {% if core == "a55" %}
         {% include "arm64simd_mmm_f32_8x8/packed_packed_loop2/cortex_a55.tmpli" %}
     {% else %}
         {{ packed_packed_loop1 }}
         {{ packed_packed_loop1 }}
     {% endif %}
-{% endcapture %}
+{% endset %}
 
     cmp         x3, #4
     blt         .packed_packed_loop_1
@@ -90,22 +90,22 @@
 
     b .non_linear_loop
 
-{% include "arm64simd_mmm_f32_scalars.tmpliq" from:16, to:31%}
-{% include "arm64simd_mmm_f32_per_rows.tmpliq" mr:8, from:16, to:31 %}
-{% include "arm64simd_mmm_f32_per_cols.tmpliq" mr:8, from:16, to:31 %}
-{% include "arm64simd_mmm_load_tile.tmpliq" from:16, to:31 %}
+{% set from = 16 %}{% set to = 31 %}{% include "arm64simd_mmm_f32_scalars.tmpliq" %}
+{% set mr = 8 %}{% set from = 16 %}{% set to = 31 %}{% include "arm64simd_mmm_f32_per_rows.tmpliq" %}
+{% set mr = 8 %}{% set from = 16 %}{% set to = 31 %}{% include "arm64simd_mmm_f32_per_cols.tmpliq" %}
+{% set from = 16 %}{% set to = 31 %}{% include "arm64simd_mmm_load_tile.tmpliq" %}
 
 .add_unicast:
     ldp         x5, x6, [x0, #8]
     ldp         x7, x8, [x0, #24]
 
-    {% for col in (8..15) %}
+    {% for col in range(8, 16) %}
         mov x4, x5
-        {% for reg in (0..1) %}
-            {% for lane in (0..3) %}
+        {% for reg in range(0, 2) %}
+            {% for lane in range(0, 4) %}
                 ld1 {v0.s}[{{lane}}], [ x4 ], x6
             {% endfor %}
-            fadd v{{col | times:2 | plus: reg}}.4s, v{{col | times:2 | plus: reg}}.4s, v0.4s
+            fadd v{{ col * 2 + reg }}.4s, v{{ col * 2 + reg }}.4s, v0.4s
         {% endfor %}
         add x5, x5, x7
     {% endfor %}
@@ -146,9 +146,9 @@
     cmp         x6, #4
     bne         .store_strides_generic
 
-    {% for col in (8..15) %}
-        str q{{col | times:2 }}, [ x5 ]
-        str q{{col | times:2 | plus: 1}}, [ x5, #16 ]
+    {% for col in range(8, 16) %}
+        str q{{ col * 2 }}, [ x5 ]
+        str q{{ col * 2 + 1 }}, [ x5, #16 ]
         add x5, x5, x7
     {% endfor %}
 
@@ -156,11 +156,11 @@
 
 .store_strides_generic:
 
-    {% for col in (8..15) %}
+    {% for col in range(8, 16) %}
         mov x4, x5
-        {% for reg in (0..1) %}
-            {% for lane in (0..3) %}
-                st1 { v{{col | times:2 | plus: reg}}.s }[{{lane}}], [ x4 ], x6
+        {% for reg in range(0, 2) %}
+            {% for lane in range(0, 4) %}
+                st1 { v{{ col * 2 + reg }}.s }[{{lane}}], [ x4 ], x6
             {% endfor %}
         {% endfor %}
         add x5, x5, x7

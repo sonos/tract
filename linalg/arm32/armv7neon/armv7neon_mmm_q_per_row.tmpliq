@@ -2,21 +2,21 @@
 
 .{{label}}:
 
-{% capture mr_over_4 %}{{ mr | divided_by: 4}}{%endcapture%}
-{% capture mr_over_4_min_1 %}{{ mr | divided_by: 4 | minus: 1}}{%endcapture%}
+{% set mr_over_4 = mr // 4 %}
+{% set mr_over_4_min_1 = mr // 4 - 1 %}
 
-{% for reg in (0..mr_over_4_min_1) %}
+{% for reg in range(0, mr_over_4_min_1 + 1) %}
     vldmia         r3!, { q{{reg}} }
 {% endfor %}
 
-{% if flipped %}
-    {% for acc in (from..to) %}
-        {% capture other%}{{acc | minus: from | modulo: mr_over_4}}{%endcapture%}
+{% if flipped | default(false) %}
+    {% for acc in range(from, to + 1) %}
+        {% set other = (acc - from) % mr_over_4 %}
         {{op}} q{{acc}}, q{{acc}}, q{{other}}
     {% endfor %}
 {% else %}
-    {% for acc in (from..to) %}
-        {% capture other%}{{acc | minus: from | modulo: mr_over_4}}{%endcapture%}
+    {% for acc in range(from, to + 1) %}
+        {% set other = (acc - from) % mr_over_4 %}
         {{op}} q{{acc}}, q{{other}}, q{{acc}}
     {% endfor %}
 {% endif %}

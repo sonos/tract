@@ -1,4 +1,4 @@
-{% comment %}
+{#
 // vim: set syntax=asm :
 
 
@@ -16,7 +16,7 @@ Windows ABI:
     scratch: RAX, RCX, RDX, R8, R9, R10, R11, XMM0-5, and the upper portions of ZMM0-15 and ZMM0-15
     return: rax (+rdx)
 
-{% endcomment %}
+#}
 
 {% if msvc %}
 
@@ -84,7 +84,7 @@ avx512_sigmoid_f32_{{suffix}} proc
     ldmxcsr     [rsp]
 // ----------------------------------------------------------------------
 
-{%capture offset%}{% if msvc %} offset {%else%} rip + {%endif%} {%endcapture%}
+{% set offset %}{% if msvc %} offset {%else%} rip + {%endif%} {% endset %}
 
     cmp     rsi, 0
     je      {{L}}done
@@ -281,7 +281,7 @@ avx512_sigmoid_f32_{{suffix}} proc
     pop rbp
     ret
 
-{%capture float%}{% if msvc %} real4 {%else%} .float {%endif%}{%endcapture%}
+{% set float %}{% if msvc %} real4 {%else%} .float {%endif%}{% endset %}
 
 {{L}}coeffs_num_low:
     {{float}} -18.0                    // low

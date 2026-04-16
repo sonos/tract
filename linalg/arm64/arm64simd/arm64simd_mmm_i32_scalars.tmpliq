@@ -1,14 +1,14 @@
 // vim: ft=arm
 
-{% include "arm64simd_mmm_4s_scalar.tmpliq" label:"scalar_min", op:"smin", from:from, to:to%}
-{% include "arm64simd_mmm_4s_scalar.tmpliq" label:"scalar_max", op:"smax", from:from, to:to%}
-{% include "arm64simd_mmm_4s_scalar.tmpliq" label:"scalar_mul", op:"mul", from:from, to:to%}
-{% include "arm64simd_mmm_4s_scalar.tmpliq" label:"scalar_add", op:"add", from:from, to:to%}
-{% include "arm64simd_mmm_4s_scalar.tmpliq" label:"scalar_sub", op:"sub", from:from, to:to%}
-{% include "arm64simd_mmm_4s_scalar.tmpliq" label:"scalar_sub_flipped", op:"sub", from:from, to:to, flipped:true%}
+{% set label = "scalar_min" %}{% set op = "smin" %}{% set from = from %}{% set to = to %}{% set flipped = false %}{% include "arm64simd_mmm_4s_scalar.tmpliq" %}
+{% set label = "scalar_max" %}{% set op = "smax" %}{% set from = from %}{% set to = to %}{% set flipped = false %}{% include "arm64simd_mmm_4s_scalar.tmpliq" %}
+{% set label = "scalar_mul" %}{% set op = "mul" %}{% set from = from %}{% set to = to %}{% set flipped = false %}{% include "arm64simd_mmm_4s_scalar.tmpliq" %}
+{% set label = "scalar_add" %}{% set op = "add" %}{% set from = from %}{% set to = to %}{% set flipped = false %}{% include "arm64simd_mmm_4s_scalar.tmpliq" %}
+{% set label = "scalar_sub" %}{% set op = "sub" %}{% set from = from %}{% set to = to %}{% set flipped = false %}{% include "arm64simd_mmm_4s_scalar.tmpliq" %}
+{% set label = "scalar_sub_flipped" %}{% set op = "sub" %}{% set from = from %}{% set to = to %}{% set flipped = true %}{% include "arm64simd_mmm_4s_scalar.tmpliq" %}
 
 .clear:
-{% for r in (from..to) %}
+{% for r in range(from, to + 1) %}
     eor         v{{r}}.8b, v{{r}}.8b, v{{r}}.8b
 {% endfor %}
     b .non_linear_loop
@@ -20,7 +20,7 @@
 
     // bsl cond/dst, then, else
     // fcmge dst, src, #0.0
-    {% for r in (from..to) %}
+    {% for r in range(from, to + 1) %}
         mul   v0.4s, v{{r}}.4s, v4.4s
         cmge  v1.4s, v{{r}}.4s, #0
         bsl   v1.16b, v{{r}}.16b, v0.16b
@@ -29,3 +29,4 @@
 
     b .non_linear_loop
 
+{% set flipped = false %}

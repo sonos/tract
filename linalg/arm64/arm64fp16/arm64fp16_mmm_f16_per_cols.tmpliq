@@ -1,9 +1,10 @@
 // vim: ft=arm
 
-{% include "arm64fp16_mmm_8h_per_col.tmpliq" label:"per_col_min", op:"fmin", mr:mr, from:from, to:to %}
-{% include "arm64fp16_mmm_8h_per_col.tmpliq" label:"per_col_max", op:"fmax", mr:mr, from:from, to:to %}
-{% include "arm64fp16_mmm_8h_per_col.tmpliq" label:"per_col_mul", op:"fmul", mr:mr, from:from, to:to %}
-{% include "arm64fp16_mmm_8h_per_col.tmpliq" label:"per_col_add", op:"fadd", mr:mr, from:from, to:to %}
-{% include "arm64fp16_mmm_8h_per_col.tmpliq" label:"per_col_sub", op:"fsub", mr:mr, from:from, to:to %}
-{% include "arm64fp16_mmm_8h_per_col.tmpliq" label:"per_col_sub_flipped", op:"fsub", mr:mr, from:from, to:to, flipped: true%}
+{% set label = "per_col_min" %}{% set op = "fmin" %}{% set mr = mr %}{% set from = from %}{% set to = to %}{% set flipped = false %}{% include "arm64fp16_mmm_8h_per_col.tmpliq" %}
+{% set label = "per_col_max" %}{% set op = "fmax" %}{% set mr = mr %}{% set from = from %}{% set to = to %}{% set flipped = false %}{% include "arm64fp16_mmm_8h_per_col.tmpliq" %}
+{% set label = "per_col_mul" %}{% set op = "fmul" %}{% set mr = mr %}{% set from = from %}{% set to = to %}{% set flipped = false %}{% include "arm64fp16_mmm_8h_per_col.tmpliq" %}
+{% set label = "per_col_add" %}{% set op = "fadd" %}{% set mr = mr %}{% set from = from %}{% set to = to %}{% set flipped = false %}{% include "arm64fp16_mmm_8h_per_col.tmpliq" %}
+{% set label = "per_col_sub" %}{% set op = "fsub" %}{% set mr = mr %}{% set from = from %}{% set to = to %}{% set flipped = false %}{% include "arm64fp16_mmm_8h_per_col.tmpliq" %}
+{% set label = "per_col_sub_flipped" %}{% set op = "fsub" %}{% set mr = mr %}{% set from = from %}{% set to = to %}{% set flipped = true %}{% include "arm64fp16_mmm_8h_per_col.tmpliq" %}
 
+{% set flipped = false %}

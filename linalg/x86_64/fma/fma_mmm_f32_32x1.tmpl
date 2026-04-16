@@ -1,4 +1,4 @@
-{% comment %}
+{#
 // vim: set syntax=asm :
 
 /* mmm 64 x 1
@@ -20,9 +20,9 @@ Windows ABI:
     scratch: RAX, RCX, RDX, R8, R9, R10, R11, XMM0-5, and the upper portions of YMM0-15 and ZMM0-15
     return: rax (+rdx)
 */
-{% endcomment %}
+#}
 
-{% include "preamble.tmpliq" type:"f32", size:"32x1", suffix:suffix, G:G %}
+{% set type = "f32" %}{% set size = "32x1" %}{% set suffix = suffix %}{% set G = G %}{% include "preamble.tmpliq" %}
 
 {{L}}clear:
     vzeroall
@@ -304,10 +304,10 @@ Windows ABI:
     jmp             {{L}}non_linear_loop
 
 
-{% include "fma_mmm_f32_scalars.tmpliq" from:0, to:3, type:"f32" %}
-{% include "fma_mmm_f32_per_rows.tmpliq" mr:32, from:0, to:3, type:"f32" %}
-{% include "fma_mmm_f32_per_cols.tmpliq" mr:32, from:0, to:3, type:"f32" %}
-{% include "fma_mmm_load_tile.tmpliq" from:0, to:3 %}
+{% set from = 0 %}{% set to = 3 %}{% set type = "f32" %}{% include "fma_mmm_f32_scalars.tmpliq" %}
+{% set mr = 32 %}{% set from = 0 %}{% set to = 3 %}{% set type = "f32" %}{% include "fma_mmm_f32_per_rows.tmpliq" %}
+{% set mr = 32 %}{% set from = 0 %}{% set to = 3 %}{% set type = "f32" %}{% include "fma_mmm_f32_per_cols.tmpliq" %}
+{% set from = 0 %}{% set to = 3 %}{% include "fma_mmm_load_tile.tmpliq" %}
 
 {{L}}add_unicast:
     mov     r10,    [rdi + 8]           // c ptr
@@ -316,8 +316,8 @@ Windows ABI:
 	cmp rsi, 4
 	jne {{L}}add_unicast_generic
 
-    {% for row in (0..3) %}
-        vaddps ymm{{row}}, ymm{{row}}, [ r10 + {{row|times:32}} ]
+    {% for row in range(0, 4) %}
+        vaddps ymm{{row}}, ymm{{row}}, [ r10 + {{ row * 32 }} ]
     {% endfor %}
     jmp    {{L}}non_linear_loop
 
@@ -326,18 +326,18 @@ Windows ABI:
 
 {{L}}add_unicast_generic:
     mov     eax,    0
-{% for i in (0..3) %}
+{% for i in range(0, 4) %}
     pinsrd  xmm14, eax, {{i}}
     add     eax,    esi
 {% endfor %}
-{% for i in (0..3) %}
+{% for i in range(0, 4) %}
     pinsrd  xmm15, eax, {{i}}
     add     eax,    esi
 {% endfor %}
 
     vperm2f128      ymm14,  ymm14, ymm15,         32 // ymm14 <- xmm14::xmm15
 
-{% for i in (0..3) %}
+{% for i in range(0, 4) %}
     vpcmpeqd        ymm15,  ymm15, ymm15
     vgatherdps      ymm12,  [ r10 + ymm14 ], ymm15
 
@@ -353,8 +353,8 @@ Windows ABI:
 
     vbroadcastss    ymm14, dword ptr [rbx]
 
-{% for i in (0..3) %}
-    vmovups         ymm12,  [rax + {{i|times:32}}]
+{% for i in range(0, 4) %}
+    vmovups         ymm12,  [rax + {{ i * 32 }}]
     vfmadd231ps     ymm{{i}}, ymm12, ymm14
 {% endfor %}
     jmp    {{L}}non_linear_loop
@@ -370,22 +370,22 @@ Windows ABI:
 	cmp rsi, 4
 	jne {{L}}store_generic
 
-	{% for row in (0..3) %}
-        vmovups [r8 + {{row|times:32}}], ymm{{row}}
+	{% for row in range(0, 4) %}
+        vmovups [r8 + {{ row * 32 }}], ymm{{row}}
     {% endfor %}
 
     jmp     {{L}}non_linear_loop
 
 {{L}}store_generic:
 
-    {% for vec in (0..3) %}
-        {% for half in (0..1) %}
+    {% for vec in range(0, 4) %}
+        {% for half in range(0, 2) %}
             {% if half == 0 %}
                 movaps xmm9, xmm{{vec}}
             {% else %}
                 vperm2f128 ymm9, ymm{{vec}}, ymm{{vec}}, 1
             {% endif %}
-            {% for row in (0..3) %}
+            {% for row in range(0, 4) %}
                 vextractps  dword ptr [r8], xmm9, {{row}}
                 add         r8, rsi
             {% endfor %}
@@ -404,16 +404,16 @@ Windows ABI:
     cmp         rsi, 2
 	jne {{L}}store_generic_f16
 
-	{% for row in (0..3) %}
-        vmovups [r8 + {{row|times:16}}], xmm{{row}}
+	{% for row in range(0, 4) %}
+        vmovups [r8 + {{ row * 16 }}], xmm{{row}}
     {% endfor %}
 
     jmp     {{L}}non_linear_loop
     
 {{L}}store_generic_f16:
 
-    {% for vec in (0..3) %}
-        {% for row in (0..7) %}
+    {% for vec in range(0, 4) %}
+        {% for row in range(0, 8) %}
             pextrw      word ptr [r8], xmm{{vec}}, {{row}}
             add         r8, rsi
         {% endfor %}
@@ -421,4 +421,4 @@ Windows ABI:
 
     jmp     {{L}}non_linear_loop
 
-{% include "postamble.tmpliq" type:"f32", size:"32x1", suffix:suffix, G:G, L:L %}
+{% set type = "f32" %}{% set size = "32x1" %}{% set suffix = suffix %}{% set G = G %}{% set L = L %}{% include "postamble.tmpliq" %}

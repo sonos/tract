@@ -73,8 +73,8 @@
     eor      v12.16b, v12.16b, v12.16b
 
 .q4f16se_outerloop:
-{% for i in (0..7) %}
-    eor      v{{i|plus:16}}.16b, v{{i|plus:16}}.16b, v{{i|plus:16}}.16b
+{% for i in range(0, 8) %}
+    eor      v{{ i + 16 }}.16b, v{{ i + 16 }}.16b, v{{ i + 16 }}.16b
 {% endfor %}
     mov         x4, #32
 
@@ -104,8 +104,8 @@
         zip1     v4.16b, v12.16b, v4.16b
         zip1     v6.16b, v12.16b, v6.16b
 
-{% for i in (0..7) %}
-        fmla        v{{ i|plus: 16 }}.8h, v{{i}}.8h, v8.h[0]
+{% for i in range(0, 8) %}
+        fmla        v{{ i + 16 }}.8h, v{{i}}.8h, v8.h[0]
 {% endfor %}
 
     subs        x4, x4, #1
@@ -115,8 +115,8 @@
     ld1         { v0.8h-v3.8h }, [ x1 ], #64
     ld1         { v4.8h-v7.8h }, [ x1 ], #64
 
-{% for i in (0..7) %}
-       fmla     v{{i|plus:24}}.8h, v{{i}}.8h, v{{i|plus:16}}.8h
+{% for i in range(0, 8) %}
+       fmla     v{{ i + 24 }}.8h, v{{i}}.8h, v{{ i + 16 }}.8h
 {% endfor %}
 
     subs        x3, x3, #32
@@ -162,12 +162,12 @@
         zip1     v4.16b, v12.16b, v4.16b
         zip1     v6.16b, v12.16b, v6.16b
 
-{% for i in (0..7) %}
-       fmul     v{{i}}.8h, v{{i}}.8h, v{{i|plus:16}}.8h
+{% for i in range(0, 8) %}
+       fmul     v{{i}}.8h, v{{i}}.8h, v{{ i + 16 }}.8h
 {% endfor %}
 
-{% for i in (0..7) %}
-        fmla        v{{ i|plus: 24 }}.8h, v{{i}}.8h, v8.h[0]
+{% for i in range(0, 8) %}
+        fmla        v{{ i + 24 }}.8h, v{{i}}.8h, v8.h[0]
 {% endfor %}
 
     subs        x4, x4, #1
@@ -178,18 +178,18 @@
 
     b           .non_linear_loop
 
-{% include "arm64fp16_mmm_f16_scalars.tmpliq" from:24, to:31%}
-{% include "arm64fp16_mmm_f16_per_rows.tmpliq" mr:64, from:24, to:31%}
-{% include "arm64fp16_mmm_f16_per_cols.tmpliq" mr:64, from:24, to:31%}
-{% include "arm64fp16_mmm_load_tile.tmpliq" from:24, to:31 %}
+{% set from = 24 %}{% set to = 31 %}{% include "arm64fp16_mmm_f16_scalars.tmpliq" %}
+{% set mr = 64 %}{% set from = 24 %}{% set to = 31 %}{% include "arm64fp16_mmm_f16_per_rows.tmpliq" %}
+{% set mr = 64 %}{% set from = 24 %}{% set to = 31 %}{% include "arm64fp16_mmm_f16_per_cols.tmpliq" %}
+{% set from = 24 %}{% set to = 31 %}{% include "arm64fp16_mmm_load_tile.tmpliq" %}
 
 .add_unicast:
     ldp         x5, x6, [x0, #8]           // c base ptr, rsc
     cmp         x6, #2
     beq         .do_per_row_add
 
-    {% for reg in (24..31) %}
-        {% for lane in (0..7) %}
+    {% for reg in range(24, 32) %}
+        {% for lane in range(0, 8) %}
             ld1 {v0.h}[{{lane}}], [ x5 ], x6
         {% endfor %}
         fadd v{{reg}}.8h, v{{reg}}.8h, v0.8h
@@ -201,8 +201,8 @@
     ld1     {v0.8h-v3.8h}, [x5], #64
     ld1     {v4.8h-v7.8h}, [x5], #64
 
-    {% for r in (0..7) %}
-        fadd v{{r| plus: 24}}.8h, v{{r | plus: 24}}.8h, v{{r}}.8h
+    {% for r in range(0, 8) %}
+        fadd v{{ r + 24 }}.8h, v{{ r + 24 }}.8h, v{{r}}.8h
     {% endfor %}
 
     b           .non_linear_loop
@@ -213,7 +213,7 @@
 
     ld1         {v8.h}[0], [ x3 ]
 
-    {% for r in (0..7) %}
+    {% for r in range(0, 8) %}
         ldr     q{{r}}, [x2], #16
     {% endfor %}
 
@@ -234,8 +234,8 @@
     cmp         x6, #2
     beq         .store_strides_contig
 
-    {% for reg in (24..31) %}
-        {% for lane in (0..7) %}
+    {% for reg in range(24, 32) %}
+        {% for lane in range(0, 8) %}
             st1 { v{{reg}}.h }[{{lane}}], [ x5 ], x6
         {% endfor %}
     {% endfor %}
@@ -243,7 +243,7 @@
 
 .store_strides_contig:
 
-    {% for reg in (24..31) %}
+    {% for reg in range(24, 32) %}
         st1 { v{{reg}}.8h }, [ x5 ], #16
     {% endfor %}
 

@@ -3,21 +3,21 @@
 .{{label}}:
     ldr         x2, [x0, #8]
 
-{% capture mr_over_4 %}{{ mr | divided_by: 4}}{%endcapture%}
-{% capture mr_over_4_min_1 %}{{ mr | divided_by: 4 | minus: 1}}{%endcapture%}
+{% set mr_over_4 = mr // 4 %}
+{% set mr_over_4_min_1 = mr // 4 - 1 %}
 
-{% for reg in (0..mr_over_4_min_1) %}
+{% for reg in range(0, mr_over_4_min_1 + 1) %}
     ldr         q{{reg}}, [ x2 ], #16
 {% endfor %}
 
-{% if flipped %}
-    {% for acc in (from..to) %}
-        {% capture other%}{{acc | minus: from | modulo: mr_over_4}}{%endcapture%}
+{% if flipped | default(false) %}
+    {% for acc in range(from, to + 1) %}
+        {% set other = (acc - from) % mr_over_4 %}
         {{op}} v{{acc}}.4s, v{{acc}}.4s, v{{other}}.4s
     {% endfor %}
 {% else %}
-    {% for acc in (from..to) %}
-        {% capture other%}{{acc | minus: from | modulo: mr_over_4}}{%endcapture%}
+    {% for acc in range(from, to + 1) %}
+        {% set other = (acc - from) % mr_over_4 %}
         {{op}} v{{acc}}.4s, v{{other}}.4s, v{{acc}}.4s
     {% endfor %}
 {% endif %}

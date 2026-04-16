@@ -3,29 +3,29 @@
 {{L}}{{label}}:
     mov             rax, [ rdi + 8 ]
 
-{% capture mr_over_8 %}{{ mr | divided_by: 8}}{%endcapture%}
-{% capture mr_over_8_min_1 %}{{ mr | divided_by: 8 | minus: 1}}{%endcapture%}
+{% set mr_over_8 = mr // 8 %}
+{% set mr_over_8_min_1 = mr // 8 - 1 %}
 
 {% if type == "f16" %}
-    {% for ix in (0..mr_over_8_min_1) %}
-        vmovups         xmm{{to | plus: 1 | plus: ix}},  [rax + {{ix | times: 16}}]
+    {% for ix in range(0, mr_over_8_min_1 + 1) %}
+        vmovups         xmm{{ to + 1 + ix }},  [rax + {{ ix * 16 }}]
     {% endfor %}
-    {% for ix in (0..mr_over_8_min_1) %}
-        vcvtph2ps       ymm{{to | plus: 1 | plus: ix}}, xmm{{to | plus: 1 | plus: ix}}
+    {% for ix in range(0, mr_over_8_min_1 + 1) %}
+        vcvtph2ps       ymm{{ to + 1 + ix }}, xmm{{ to + 1 + ix }}
     {% endfor %}
 {% else %}
-    {% for ix in (0..mr_over_8_min_1) %}
-        vmovups         ymm{{to | plus: 1 | plus: ix}},  [rax + {{ix | times: 32}}]
+    {% for ix in range(0, mr_over_8_min_1 + 1) %}
+        vmovups         ymm{{ to + 1 + ix }},  [rax + {{ ix * 32 }}]
     {% endfor %}
 {% endif %}
 
-{% if flipped %}
-    {% for acc in (from..to) %}
-        {{op}} ymm{{acc}}, ymm{{acc}}, ymm{{ acc | modulo: mr_over_8 | plus: to | plus: 1 }}
+{% if flipped | default(false) %}
+    {% for acc in range(from, to + 1) %}
+        {{op}} ymm{{acc}}, ymm{{acc}}, ymm{{ acc % mr_over_8 + to + 1 }}
     {% endfor %}
 {% else %}
-    {% for acc in (from..to) %}
-        {{op}} ymm{{acc}}, ymm{{ acc | modulo: mr_over_8 | plus: to | plus: 1 }}, ymm{{acc}}
+    {% for acc in range(from, to + 1) %}
+        {{op}} ymm{{acc}}, ymm{{ acc % mr_over_8 + to + 1 }}, ymm{{acc}}
     {% endfor %}
 {% endif %}
 
