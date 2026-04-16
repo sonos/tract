@@ -31,9 +31,7 @@ tract-data.workspace = true
 [build-dependencies]
 cc.workspace = true
 half.workspace = true
-liquid.workspace = true
-liquid-core.workspace = true
-liquid-derive.workspace = true
+minijinja.workspace = true
 smallvec.workspace = true
 unicode-normalization.workspace = true
 time.workspace = true

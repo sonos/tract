@@ -4,12 +4,12 @@
     add         x2, x0, #8
     ld1         {v0.s}[0], [ x2 ]
     dup         v0.4s, v0.s[0]
-    {% if flipped %}
-        {% for reg in (from..to) %}
+    {% if flipped | default(false) %}
+        {% for reg in range(from, to + 1) %}
             {{op}}       v{{reg}}.4s, v{{reg}}.4s, v0.4s
         {% endfor %}
     {% else %}
-        {% for reg in (from..to) %}
+        {% for reg in range(from, to + 1) %}
             {{op}}       v{{reg}}.4s, v0.4s, v{{reg}}.4s
         {% endfor %}
     {% endif %}

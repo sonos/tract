@@ -1,13 +1,4 @@
-#![allow(clippy::box_default)]
-
-use liquid_core::Runtime;
-use liquid_core::{Display_filter, Filter, FilterReflection, ParseFilter};
-use liquid_core::{Value, ValueView};
-
 use std::{env, ffi, fs, path};
-
-#[path = "arm64/apple_amx/instructions.rs"]
-mod apple_amx_instructions;
 
 fn var(k: &str) -> String {
     env::var(k).unwrap()
@@ -243,8 +234,6 @@ fn preprocess_file(
     let family = var("CARGO_CFG_TARGET_FAMILY");
     let os = var("CARGO_CFG_TARGET_OS");
 
-    // We also check to see if we're on a windows host, if we aren't, we won't be
-    // able to use the Microsoft assemblers,
     let msvc = use_masm();
     println!("cargo:rerun-if-changed={}", template.as_ref().to_string_lossy());
     let mut input = fs::read_to_string(&template).unwrap();
@@ -259,46 +248,65 @@ fn preprocess_file(
     .to_owned();
     let long = if msvc { "dd" } else { ".long" };
     let g = if os == "macos" || os == "ios" || os == "watchos" || os == "tvos" { "_" } else { "" };
-    // note: use .align with bytes instead of p2align since they both use direct bytes.
     let align = if msvc { "align" } else { ".align" };
-    let mut globals = liquid::object!({
-        "msvc": msvc,
-        "needs_pragma": needs_pragma,
-        "family": family,
-        "os": os,
-        "L": l,
-        "G": g,
-        "suffix": suffix,
-        "long": long,
-        "jump_table": jump_table(),
-        "align": align,
-        "offset": if msvc { "offset" } else { "rip + "},
+    let offset = if msvc { "offset" } else { "rip + " };
+
+    let mut env = build_jinja_env(template.as_ref().parent().unwrap(), msvc);
+
+    let main_name = template.as_ref().file_name().unwrap().to_str().unwrap();
+    env.add_template_owned(main_name.to_string(), input).unwrap_or_else(|e| {
+        eprintln!("Parsing {}: {e}", template.as_ref().to_string_lossy());
+        panic!();
     });
+
+    let tmpl = env.get_template(main_name).unwrap();
+
+    let mut ctx = std::collections::BTreeMap::<String, minijinja::Value>::new();
+    ctx.insert("msvc".into(), msvc.into());
+    ctx.insert("needs_pragma".into(), needs_pragma.into());
+    ctx.insert("family".into(), family.into());
+    ctx.insert("os".into(), os.into());
+    ctx.insert("L".into(), l.into());
+    ctx.insert("G".into(), g.into());
+    ctx.insert("suffix".into(), suffix.into());
+    ctx.insert("long".into(), long.into());
+    ctx.insert("jump_table".into(), minijinja::Value::from_serialize(&jump_table()));
+    ctx.insert("align".into(), align.into());
+    ctx.insert("offset".into(), offset.into());
+
     for (k, v) in variants {
-        globals.insert(k.to_string().into(), liquid::model::Value::scalar(*v));
+        ctx.insert(k.to_string(), (*v).into());
     }
-    let partials = load_partials(template.as_ref().parent().unwrap(), msvc);
-    let mut parser = liquid::ParserBuilder::with_stdlib()
-        .partials(liquid::partials::LazyCompiler::new(partials))
-        .filter(F16);
+
     if include_amx() {
-        parser = apple_amx_instructions::register(parser);
-        globals.extend(apple_amx_instructions::globals());
+        let (amx_set, amx_clr) = amx_globals();
+        ctx.insert("AMX_SET".into(), amx_set.into());
+        ctx.insert("AMX_CLR".into(), amx_clr.into());
     }
-    if let Err(e) = parser
-        .build()
-        .and_then(|p| p.parse(&input))
-        .and_then(|r| r.render_to(&mut fs::File::create(&output).unwrap(), &globals))
-    {
-        eprintln!("Processing {}", template.as_ref().to_string_lossy());
-        eprintln!("{e}");
-        panic!()
+
+    match tmpl.render(&ctx) {
+        Ok(rendered) => fs::write(&output, rendered).unwrap(),
+        Err(e) => {
+            eprintln!("Rendering {}: {e:#}", template.as_ref().to_string_lossy());
+            panic!();
+        }
     }
 }
 
-fn load_partials(p: &path::Path, msvc: bool) -> liquid::partials::InMemorySource {
-    let mut mem = liquid::partials::InMemorySource::new();
-    for f in walkdir::WalkDir::new(p) {
+fn build_jinja_env(template_dir: &path::Path, msvc: bool) -> minijinja::Environment<'static> {
+    let mut env = minijinja::Environment::new();
+
+    // Custom filters
+    env.add_filter("float16", float16_filter);
+    env.add_filter("setting", setting_filter);
+    env.add_filter("lsl", lsl_filter);
+    env.add_filter("u", unsigned_filter);
+
+    // Custom function: amx("op", gpr) -> assembly .word directive
+    env.add_function("amx", amx_function);
+
+    // Load all partials (.tmpliq and .tmpli)
+    for f in walkdir::WalkDir::new(template_dir) {
         let f = f.unwrap();
         if f.path().is_dir() {
             continue;
@@ -313,14 +321,23 @@ fn load_partials(p: &path::Path, msvc: bool) -> liquid::partials::InMemorySource
         };
         if let Some(text) = text {
             let text = strip_comments(text, msvc);
-            let key =
-                f.path().strip_prefix(p).unwrap().to_str().unwrap().to_owned().replace('\\', "/");
+            let key = f
+                .path()
+                .strip_prefix(template_dir)
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .to_owned()
+                .replace('\\', "/");
             println!("cargo:rerun-if-changed={}", f.path().to_string_lossy().replace('\\', "/"));
-
-            mem.add(key, text);
+            env.add_template_owned(key, text).unwrap_or_else(|e| {
+                eprintln!("Parsing partial {}: {e}", f.path().to_string_lossy());
+                panic!();
+            });
         }
     }
-    mem
+
+    env
 }
 
 fn make_extern_kernel_decl_macro(out_dir: &path::Path, suffix: &str) {
@@ -337,27 +354,42 @@ fn make_extern_kernel_decl_macro(out_dir: &path::Path, suffix: &str) {
     std::fs::write(out_dir.join("extern_kernel_macro.rs"), macro_decl).unwrap();
 }
 
-#[derive(Clone, ParseFilter, FilterReflection)]
-#[filter(
-    name = "float16",
-    description = "Write a float16 constant with the .float16 directive in gcc, or as short in clang",
-    parsed(F16Filter)
-)]
-pub struct F16;
+// --- Custom filters and functions ---
 
-#[derive(Debug, Default, Display_filter)]
-#[name = "float16"]
-struct F16Filter;
+fn float16_filter(value: f64) -> String {
+    let bits = half::f16::from_f32(value as f32).to_bits();
+    format!(".short {bits}")
+}
 
-impl Filter for F16Filter {
-    fn evaluate(
-        &self,
-        input: &dyn ValueView,
-        _runtime: &dyn Runtime,
-    ) -> liquid_core::Result<Value> {
-        let input: f32 = input.as_scalar().unwrap().to_float().unwrap() as f32;
-        let value = half::f16::from_f32(input);
-        let bits = value.to_bits();
-        Ok(format!(".short {bits}").to_value())
-    }
+fn setting_filter(value: i64, bit: i64) -> String {
+    let result = value | (1i64 << bit);
+    result.to_string()
+}
+
+fn lsl_filter(value: i64, shift: i64) -> String {
+    let result = value << shift;
+    result.to_string()
+}
+
+fn unsigned_filter(value: i64) -> String {
+    let result = value as u64;
+    result.to_string()
+}
+
+fn amx_function(op: String, gpr: u32) -> String {
+    let ops = [
+        "ldx", "ldy", "stx", "sty", "ldz", "stz", "ldzi", "stzi", "extrx", "extry", "fma64",
+        "fms64", "fma32", "fms32", "mac16", "fma16", "fms16", "setclr", "vecint", "vecfp",
+        "matint", "matfp", "genlut",
+    ];
+    let op_id = ops.iter().position(|x| *x == op.as_str()).unwrap();
+    format!(".word 0x{:x} \t\t\t\t// AMX {} x{}\n", 0x201000 + (op_id << 5) + gpr as usize, op, gpr)
+}
+
+fn amx_nop_op_imm5(op: usize, imm5: usize) -> String {
+    format!("nop\nnop\nnop\n.word 0x{:x}\n", (0x201000 + (op << 5) + imm5))
+}
+
+fn amx_globals() -> (String, String) {
+    (amx_nop_op_imm5(17, 0), amx_nop_op_imm5(17, 1))
 }

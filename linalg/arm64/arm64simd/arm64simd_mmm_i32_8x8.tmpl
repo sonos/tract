@@ -112,10 +112,10 @@
 
     b .non_linear_loop
 
-{% include "arm64simd_mmm_i32_scalars.tmpliq" from:16, to:31%}
-{% include "arm64simd_mmm_i32_per_rows.tmpliq" mr:8, from:16, to:31%}
-{% include "arm64simd_mmm_i32_per_cols.tmpliq" mr:8, from:16, to:31%}
-{% include "arm64simd_mmm_load_tile.tmpliq" from:16, to:31 %}
+{% set from = 16 %}{% set to = 31 %}{% include "arm64simd_mmm_i32_scalars.tmpliq" %}
+{% set mr = 8 %}{% set from = 16 %}{% set to = 31 %}{% include "arm64simd_mmm_i32_per_rows.tmpliq" %}
+{% set mr = 8 %}{% set from = 16 %}{% set to = 31 %}{% include "arm64simd_mmm_i32_per_cols.tmpliq" %}
+{% set from = 16 %}{% set to = 31 %}{% include "arm64simd_mmm_load_tile.tmpliq" %}
 
 .add_unicast:
     ldp         x5, x6, [x0, #8]
@@ -124,15 +124,15 @@
     cmp         x8, #4
     beq         non_linear_addc_i32
 
-    {% for col in (8..15) %}
+    {% for col in range(8, 16) %}
         mov x4, x5
-        {% for reg in (0..1) %}
-            {% for lane in (0..3) %}
+        {% for reg in range(0, 2) %}
+            {% for lane in range(0, 4) %}
                 ld1 {v0.b}[{{lane}}], [ x4 ], x6
             {% endfor %}
             sshll v0.8h, v0.8b, 0
             sshll v0.4s, v0.4h, 0
-            add v{{col | times:2 | plus: reg}}.4s, v{{col | times:2 | plus: reg}}.4s, v0.4s
+            add v{{ col * 2 + reg }}.4s, v{{ col * 2 + reg }}.4s, v0.4s
         {% endfor %}
         add x5, x5, x7
     {% endfor %}
@@ -140,13 +140,13 @@
     b           .non_linear_loop
 
 non_linear_addc_i32:
-    {% for col in (8..15) %}
+    {% for col in range(8, 16) %}
         mov x4, x5
-        {% for reg in (0..1) %}
-            {% for lane in (0..3) %}
+        {% for reg in range(0, 2) %}
+            {% for lane in range(0, 4) %}
                 ld1 {v0.s}[{{lane}}], [ x4 ], x6
             {% endfor %}
-            add v{{col | times:2 | plus: reg}}.4s, v{{col | times:2 | plus: reg}}.4s, v0.4s
+            add v{{ col * 2 + reg }}.4s, v{{ col * 2 + reg }}.4s, v0.4s
         {% endfor %}
         add x5, x5, x7
     {% endfor %}
@@ -194,11 +194,11 @@ non_linear_addc_i32:
     cmp         x8, #4
     beq         .store_strides_i32
 
-    {% for col in (8..15) %}
+    {% for col in range(8, 16) %}
         mov x4, x5
-        {% for reg in (0..1) %}
-            {% for lane in (0..3) %}
-                st1 { v{{col | times:2 | plus: reg}}.b }[{{lane|times:4}}], [ x4 ], x6
+        {% for reg in range(0, 2) %}
+            {% for lane in range(0, 4) %}
+                st1 { v{{ col * 2 + reg }}.b }[{{ lane * 4 }}], [ x4 ], x6
             {% endfor %}
         {% endfor %}
         add x5, x5, x7
@@ -207,11 +207,11 @@ non_linear_addc_i32:
     b           .non_linear_loop
 
 .store_strides_i32:
-    {% for col in (8..15) %}
+    {% for col in range(8, 16) %}
         mov x4, x5
-        {% for reg in (0..1) %}
-            {% for lane in (0..3) %}
-                st1 { v{{col | times:2 | plus: reg}}.s }[{{lane}}], [ x4 ], x6
+        {% for reg in range(0, 2) %}
+            {% for lane in range(0, 4) %}
+                st1 { v{{ col * 2 + reg }}.s }[{{lane}}], [ x4 ], x6
             {% endfor %}
         {% endfor %}
         add x5, x5, x7

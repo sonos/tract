@@ -29,17 +29,17 @@
     b .unsupported
 
 .q_scale_rounding_zero:
-    {% for q in (8..15) %}
+    {% for q in range(8, 16) %}
         vclt.s32    q7, q{{q}}, #0
         vabs.s32    q{{q}}, q{{q}}
-        vqdmull.s32 q5, d{{q | times:2}}, d0[0]
-        vqdmull.s32 q6, d{{q | times:2 | plus:1}}, d0[0]
+        vqdmull.s32 q5, d{{ q * 2 }}, d0[0]
+        vqdmull.s32 q6, d{{ q * 2 + 1 }}, d0[0]
         vsub.s64    q5, q1
         vsub.s64    q6, q1
         vqrshl.s64  q5, q2
         vqrshl.s64  q6, q2
-        vmovn.s64   d{{q | times:2}}, q5
-        vmovn.s64   d{{q | times:2 | plus: 1}}, q6
+        vmovn.s64   d{{ q * 2 }}, q5
+        vmovn.s64   d{{ q * 2 + 1 }}, q6
         vneg.s32    q5, q{{q}}
         vbit.s32    q{{q}}, q5, q7
     {% endfor %}
@@ -47,15 +47,15 @@
     b .non_linear_loop
 
 .q_scale_rounding_away:
-    {% for q in (8..15) %}
+    {% for q in range(8, 16) %}
         vclt.s32    q7, q{{q}}, #0
         vabs.s32    q{{q}}, q{{q}}
-        vqdmull.s32 q5, d{{q | times:2}}, d0[0]
-        vqdmull.s32 q6, d{{q | times:2 | plus:1}}, d0[0]
+        vqdmull.s32 q5, d{{ q * 2 }}, d0[0]
+        vqdmull.s32 q6, d{{ q * 2 + 1 }}, d0[0]
         vqrshl.s64  q5, q2
         vqrshl.s64  q6, q2
-        vmovn.s64   d{{q | times:2}}, q5
-        vmovn.s64   d{{q | times:2 | plus: 1}}, q6
+        vmovn.s64   d{{ q * 2 }}, q5
+        vmovn.s64   d{{ q * 2 + 1 }}, q6
         vneg.s32    q5, q{{q}}
         vbit.s32    q{{q}}, q5, q7
     {% endfor %}
@@ -63,37 +63,37 @@
     b .non_linear_loop
 
 .q_scale_rounding_minus_inf:
-    {% for q in (8..15) %}
-        vqdmull.s32 q5, d{{q | times:2}}, d0[0]
-        vqdmull.s32 q6, d{{q | times:2 | plus:1}}, d0[0]
+    {% for q in range(8, 16) %}
+        vqdmull.s32 q5, d{{ q * 2 }}, d0[0]
+        vqdmull.s32 q6, d{{ q * 2 + 1 }}, d0[0]
         vsub.s64    q5, q1
         vsub.s64    q6, q1
         vqrshl.s64  q5, q2
         vqrshl.s64  q6, q2
-        vmovn.s64   d{{q | times:2}}, q5
-        vmovn.s64   d{{q | times:2 | plus: 1}}, q6
+        vmovn.s64   d{{ q * 2 }}, q5
+        vmovn.s64   d{{ q * 2 + 1 }}, q6
     {% endfor %}
 
     b .non_linear_loop
 
 .q_scale_rounding_plus_inf:
-    {% for q in (8..15) %}
-        vqdmull.s32 q5, d{{q | times:2}}, d0[0]
-        vqdmull.s32 q6, d{{q | times:2 | plus:1}}, d0[0]
+    {% for q in range(8, 16) %}
+        vqdmull.s32 q5, d{{ q * 2 }}, d0[0]
+        vqdmull.s32 q6, d{{ q * 2 + 1 }}, d0[0]
         vqrshl.s64  q5, q2
         vqrshl.s64  q6, q2
-        vmovn.s64   d{{q | times:2}}, q5
-        vmovn.s64   d{{q | times:2 | plus: 1}}, q6
+        vmovn.s64   d{{ q * 2 }}, q5
+        vmovn.s64   d{{ q * 2 + 1 }}, q6
     {% endfor %}
 
     b .non_linear_loop
 
 .q_scale_rounding_even:
-    {% for q in (8..15) %}
+    {% for q in range(8, 16) %}
         vclt.s32    q7, q{{q}}, #0
         vabs.s32    q{{q}}, q{{q}}
-        vqdmull.s32 q5, d{{q | times:2}}, d0[0]
-        vqdmull.s32 q6, d{{q | times:2 | plus:1}}, d0[0]
+        vqdmull.s32 q5, d{{ q * 2 }}, d0[0]
+        vqdmull.s32 q6, d{{ q * 2 + 1 }}, d0[0]
         vqshl.s64   q3, q5, q2
         vqshl.s64   q4, q6, q2
         vand        q3, q3, q1
@@ -104,8 +104,8 @@
         vadd.s64    q6, q4
         vqrshl.s64  q5, q2
         vqrshl.s64  q6, q2
-        vmovn.s64   d{{q | times:2}}, q5
-        vmovn.s64   d{{q | times:2 | plus: 1}}, q6
+        vmovn.s64   d{{ q * 2 }}, q5
+        vmovn.s64   d{{ q * 2 + 1 }}, q6
         vneg.s32    q5, q{{q}}
         vbit.s32    q{{q}}, q5, q7
     {% endfor %}
@@ -113,11 +113,11 @@
     b .non_linear_loop
 
 .q_scale_rounding_odd:
-    {% for q in (8..15) %}
+    {% for q in range(8, 16) %}
         vclt.s32    q7, q{{q}}, #0
         vabs.s32    q{{q}}, q{{q}}
-        vqdmull.s32 q5, d{{q | times:2}}, d0[0]
-        vqdmull.s32 q6, d{{q | times:2 | plus:1}}, d0[0]
+        vqdmull.s32 q5, d{{ q * 2 }}, d0[0]
+        vqdmull.s32 q6, d{{ q * 2 + 1 }}, d0[0]
         vqshl.s64   q3, q5, q2
         vqshl.s64   q4, q6, q2
         vand        q3, q3, q1
@@ -126,8 +126,8 @@
         vsub.s64    q6, q4
         vqrshl.s64  q5, q2
         vqrshl.s64  q6, q2
-        vmovn.s64   d{{q | times:2}}, q5
-        vmovn.s64   d{{q | times:2 | plus: 1}}, q6
+        vmovn.s64   d{{ q * 2 }}, q5
+        vmovn.s64   d{{ q * 2 + 1 }}, q6
         vneg.s32    q5, q{{q}}
         vbit.s32    q{{q}}, q5, q7
     {% endfor %}
@@ -138,7 +138,7 @@
     ldm         r0, { r4, r5 }      // fixme params are already loaded by disp.
     vdup.s32    q2, r5              // q2 <- shift
 
-    {% for q in (8..15) %}
+    {% for q in range(8, 16) %}
         vqrshl.s32  q{{q}}, q2      // Shift
     {% endfor %}
 
@@ -170,7 +170,7 @@
 
 .q_shr_rounding_zero:
     // return signum(x) * ((abs(x) - 1) >>r shift )
-    {% for q in (8..15) %}
+    {% for q in range(8, 16) %}
         vclt.s32    q3, q{{q}}, #0  // Store the sign of the value
         vabs.s32    q{{q}}, q{{q}}  // Compute their abs
         vsub.s32    q{{q}}, q1      // Substract 1 to abs(x)
@@ -182,7 +182,7 @@
 
 .q_shr_rounding_away:
     // return signum(x) * (abs(x) >>r shift )
-    {% for q in (8..15) %}
+    {% for q in range(8, 16) %}
         vclt.s32    q3, q{{q}}, #0  // Store the sign of the value
         vabs.s32    q{{q}}, q{{q}}  // Compute their abs
         vqrshl.s32  q{{q}}, q2      // Rounding shift (0.5 -> 1)
@@ -193,7 +193,7 @@
 
 .q_shr_rounding_minus_inf:
     // return -(-x >>r shift)
-    {% for q in (8..15) %}
+    {% for q in range(8, 16) %}
         vneg.s32    q3, q{{q}}      // Compute -x
         vqrshl.s32  q3, q2          // Rounding shift (0.5 -> 1)
         vneg.s32    q{{q}}, q3      // Compute -(-x >>r shift)
@@ -202,7 +202,7 @@
 
 .q_shr_rounding_plus_inf:
     // return x >>r shift
-    {% for q in (8..15) %}
+    {% for q in range(8, 16) %}
         vqrshl.s32  q{{q}}, q2      // Rounding shift (0.5 -> 1)
     {% endfor %}
     b .non_linear_loop
@@ -210,7 +210,7 @@
 .q_shr_rounding_even:
     // If (x >> shift) is odd -> (x - 0) >>r shift
     // If (x >> shift) is even -> (x - 1) >>r shift
-    {% for q in (8..15) %}
+    {% for q in range(8, 16) %}
         vqshl.s32   q3, q{{q}}, q2      // Truncate shift (0.5 -> 0)
         vand.s32    q4, q3, q1          // Store if x is odd
         vsub.s32    q5, q4, q1          // If (x >> shift) is odd 0 else -1
@@ -222,7 +222,7 @@
 .q_shr_rounding_odd:
     // If (x >> shift) is even -> (x - 0) >>r shift
     // If (x >> shift) is odd -> (x - 1) >>r shift
-    {% for q in (8..15) %}
+    {% for q in range(8, 16) %}
         vqshl.s32   q3, q{{q}}, q2      // Truncate shift (0.5 -> 0)
         vand.s32    q4, q3, q1          // Store if x >> shift is odd
         vneg.s32    q5, q4              // If x is odd -1 else 0

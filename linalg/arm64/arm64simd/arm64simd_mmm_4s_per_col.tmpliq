@@ -3,29 +3,29 @@
 .{{label}}:
     ldr         x2, [x0, #8]
 
-{% capture mr_over_4 %}{{ mr | divided_by: 4}}{%endcapture%}
-{% capture cols%}{{to | plus: 1| minus:from| divided_by:mr_over_4}}{%endcapture%}
+{% set mr_over_4 = mr // 4 %}
+{% set cols = (to + 1 - from) // mr_over_4 %}
 
-{% capture loads %}{{cols | divided_by:4}}{% endcapture %}
+{% set loads = cols // 4 %}
 
 {%if cols == "1" %}
         ld1         {v0.s}[0], [ x2 ]
-{% elsif cols == "3" %}
+{% elif cols == "3" %}
         ld1         {v0.d}[0], [ x2 ], #8
         ld1         {v0.s}[2], [ x2 ]
 {% else %}
-    {% for reg in (1..loads) %}
-        ldr         q{{reg |minus:1}}, [ x2 ], #16
+    {% for reg in range(1, loads + 1) %}
+        ldr         q{{ reg - 1 }}, [ x2 ], #16
     {% endfor %}
 {% endif %}
 
 // {{mr}} {{cols}}
 
-{% for col in (1..cols) %}
-    dup v3.4s, v{{col| minus: 1|divided_by:4}}.s[{{col| minus: 1|modulo:4}}]
-    {% for row in (1..mr_over_4) %}
-        {% capture acc %}{{ col|minus:1|times:mr_over_4|plus:row|minus:1|plus:from }}{% endcapture %}
-        {% if flipped %}
+{% for col in range(1, cols + 1) %}
+    dup v3.4s, v{{ (col - 1) // 4 }}.s[{{ (col - 1) % 4 }}]
+    {% for row in range(1, mr_over_4 + 1) %}
+        {% set acc = (col - 1) * mr_over_4 + row - 1 + from %}
+        {% if flipped | default(false) %}
             {{op}} v{{acc}}.4s, v{{acc}}.4s, v3.4s
         {% else %}
             {{op}} v{{acc}}.4s, v3.4s, v{{acc}}.4s

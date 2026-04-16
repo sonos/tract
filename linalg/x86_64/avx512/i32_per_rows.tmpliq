@@ -1,8 +1,9 @@
 // vim: set syntax=asm :
 
-{% include "zmm_per_row.tmpliq" label:"per_row_min", op:"vpminsd", mr:mr, from:from, to:to%}
-{% include "zmm_per_row.tmpliq" label:"per_row_max", op:"vpmaxsd", mr:mr, from:from, to:to%}
-{% include "zmm_per_row.tmpliq" label:"per_row_add", op:"vpaddd", mr:mr, from:from, to:to%}
-{% include "zmm_per_row.tmpliq" label:"per_row_mul", op:"vpmulld", mr:mr, from:from, to:to%}
-{% include "zmm_per_row.tmpliq" label:"per_row_sub", op:"vpsubd", from:from, to:to%}
-{% include "zmm_per_row.tmpliq" label:"per_row_sub_flipped", op:"vpsubd", from:from, to:to, flipped: true%}
+{% set label = "per_row_min" %}{% set op = "vpminsd" %}{% set mr = mr %}{% set from = from %}{% set to = to %}{% set flipped = false %}{% include "zmm_per_row.tmpliq" %}
+{% set label = "per_row_max" %}{% set op = "vpmaxsd" %}{% set mr = mr %}{% set from = from %}{% set to = to %}{% set flipped = false %}{% include "zmm_per_row.tmpliq" %}
+{% set label = "per_row_add" %}{% set op = "vpaddd" %}{% set mr = mr %}{% set from = from %}{% set to = to %}{% set flipped = false %}{% include "zmm_per_row.tmpliq" %}
+{% set label = "per_row_mul" %}{% set op = "vpmulld" %}{% set mr = mr %}{% set from = from %}{% set to = to %}{% set flipped = false %}{% include "zmm_per_row.tmpliq" %}
+{% set label = "per_row_sub" %}{% set op = "vpsubd" %}{% set from = from %}{% set to = to %}{% set flipped = false %}{% include "zmm_per_row.tmpliq" %}
+{% set label = "per_row_sub_flipped" %}{% set op = "vpsubd" %}{% set from = from %}{% set to = to %}{% set flipped = true %}{% include "zmm_per_row.tmpliq" %}
+{% set flipped = false %}

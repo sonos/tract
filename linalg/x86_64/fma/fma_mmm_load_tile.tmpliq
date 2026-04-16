@@ -2,8 +2,8 @@
 
 {{L}}load_tile:
     mov          r8, [rdi + 8]
-    {% for reg in (from..to) %}
-        vmovups         ymm{{reg}}, ymmword ptr [r8 + {{ reg|minus:from|times:32 }}]
+    {% for reg in range(from, to + 1) %}
+        vmovups         ymm{{reg}}, ymmword ptr [r8 + {{ (reg - from) * 32 }}]
     {% endfor %}
 
     jmp    {{L}}non_linear_loop

@@ -47,7 +47,7 @@ armv7neon_mmm_f32_8x4_{{core}}_{{suffix}}:
     vldr            d3, [r1, #24]
     vldr            d4, [r5]
     vldr            d5, [r5, #8]
-{% elsif core == "cortexa9" %}
+{% elif core == "cortexa9" %}
     vld1.64         {d0-d3}, [r1]!
     vld1.64         {d4, d5}, [r5]!
 {% else %}
@@ -81,18 +81,18 @@ armv7neon_mmm_f32_8x4_{{core}}_{{suffix}}:
     bne .packed_packed_loop_1
     b   .non_linear_loop
 
-{% include "armv7neon_mmm_f32_scalars.tmpliq" from:8, to:15 %}
-{% include "armv7neon_mmm_f32_per_rows.tmpliq" mr:8, from:8, to:15 %}
-{% include "armv7neon_mmm_f32_per_cols.tmpliq" mr:8, from:8, to:15 %}
+{% set from = 8 %}{% set to = 15 %}{% include "armv7neon_mmm_f32_scalars.tmpliq" %}
+{% set mr = 8 %}{% set from = 8 %}{% set to = 15 %}{% include "armv7neon_mmm_f32_per_rows.tmpliq" %}
+{% set mr = 8 %}{% set from = 8 %}{% set to = 15 %}{% include "armv7neon_mmm_f32_per_cols.tmpliq" %}
 
 .add_unicast:
     // r3, r4, r5 <- ptr, rsc, csc
-    {% for col in (0..3) %}
+    {% for col in range(0, 4) %}
         mov         r2, r3
-        {% for reg in (0..3) %}
+        {% for reg in range(0, 4) %}
             vld1.f32    d0[0], [ r2 ], r4
             vld1.f32    d0[1], [ r2 ], r4
-            vadd.f32    d{{col | times: 4 | plus: reg | plus : 16}}, d0
+            vadd.f32    d{{ col * 4 + reg + 16 }}, d0
         {% endfor %}
         add r3, r3, r5
     {% endfor %}
@@ -119,11 +119,11 @@ armv7neon_mmm_f32_8x4_{{core}}_{{suffix}}:
 
 .store:
     // r3,r4,r5 are c,rsc,csc
-    {% for col in (0..3) %}
+    {% for col in range(0, 4) %}
         mov         r8, r3
-        {% for reg in (0..3) %}
-            vst1.f32    d{{col | times: 4 | plus: reg | plus : 16}}[0], [ r8 ], r4
-            vst1.f32    d{{col | times: 4 | plus: reg | plus : 16}}[1], [ r8 ], r4
+        {% for reg in range(0, 4) %}
+            vst1.f32    d{{ col * 4 + reg + 16 }}[0], [ r8 ], r4
+            vst1.f32    d{{ col * 4 + reg + 16 }}[1], [ r8 ], r4
         {% endfor %}
         {% if col < 3 %}
             add r3, r3, r5

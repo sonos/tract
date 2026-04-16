@@ -1,16 +1,16 @@
 // vim: ft=arm
 
-{% include "armv7neon_mmm_q_scalar.tmpliq" label:"scalar_min", op:"vmin.f32", from:from, to:to%}
-{% include "armv7neon_mmm_q_scalar.tmpliq" label:"scalar_max", op:"vmax.f32", from:from, to:to%}
-{% include "armv7neon_mmm_q_scalar.tmpliq" label:"scalar_mul", op:"vmul.f32", from:from, to:to%}
-{% include "armv7neon_mmm_q_scalar.tmpliq" label:"scalar_add", op:"vadd.f32", from:from, to:to%}
-{% include "armv7neon_mmm_q_scalar.tmpliq" label:"scalar_sub", op:"vsub.f32", from:from, to:to%}
-{% include "armv7neon_mmm_q_scalar.tmpliq" label:"scalar_sub_flipped", op:"vsub.f32", from:from, to:to, flipped:true%}
+{% set label = "scalar_min" %}{% set op = "vmin.f32" %}{% set from = from %}{% set to = to %}{% set flipped = false %}{% include "armv7neon_mmm_q_scalar.tmpliq" %}
+{% set label = "scalar_max" %}{% set op = "vmax.f32" %}{% set from = from %}{% set to = to %}{% set flipped = false %}{% include "armv7neon_mmm_q_scalar.tmpliq" %}
+{% set label = "scalar_mul" %}{% set op = "vmul.f32" %}{% set from = from %}{% set to = to %}{% set flipped = false %}{% include "armv7neon_mmm_q_scalar.tmpliq" %}
+{% set label = "scalar_add" %}{% set op = "vadd.f32" %}{% set from = from %}{% set to = to %}{% set flipped = false %}{% include "armv7neon_mmm_q_scalar.tmpliq" %}
+{% set label = "scalar_sub" %}{% set op = "vsub.f32" %}{% set from = from %}{% set to = to %}{% set flipped = false %}{% include "armv7neon_mmm_q_scalar.tmpliq" %}
+{% set label = "scalar_sub_flipped" %}{% set op = "vsub.f32" %}{% set from = from %}{% set to = to %}{% set flipped = true %}{% include "armv7neon_mmm_q_scalar.tmpliq" %}
 
 .leaky_relu:
     vmov            s0, r3
     vdup.32         q0, d0[0]
-    {% for reg in (from..to) %}
+    {% for reg in range(from, to + 1) %}
         vmul.f32    q2, q{{reg}}, q0
         vcgt.f32    q1, q{{reg}}, 0
         vbsl        q1, q{{reg}}, q2
@@ -22,3 +22,4 @@
 .q_shr:
 .q_scale:
     b .unsupported
+{% set flipped = false %}

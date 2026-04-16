@@ -3,20 +3,20 @@
 {{L}}{{label}}:
     mov             rax, [ rdi + 8 ]
 
-{% capture mr_over_16 %}{{ mr | divided_by: 16}}{%endcapture%}
-{% capture mr_over_16_min_1 %}{{ mr | divided_by: 16 | minus: 1}}{%endcapture%}
+{% set mr_over_16 = mr // 16 %}
+{% set mr_over_16_min_1 = mr // 16 - 1 %}
 
-{% for ix in (0..mr_over_16_min_1) %}
-    vmovups         zmm{{to | plus: 1 | plus: ix}},  [rax + {{ix | times: 64}}]
+{% for ix in range(0, mr_over_16_min_1 + 1) %}
+    vmovups         zmm{{ to + 1 + ix }},  [rax + {{ ix * 64 }}]
 {% endfor %}
 
-{% if flipped %}
-    {% for acc in (from..to) %}
-        {{op}} zmm{{acc}}, zmm{{acc}}, zmm{{ acc | modulo: mr_over_16 | plus: to | plus: 1 }}
+{% if flipped | default(false) %}
+    {% for acc in range(from, to + 1) %}
+        {{op}} zmm{{acc}}, zmm{{acc}}, zmm{{ acc % mr_over_16 + to + 1 }}
     {% endfor %}
 {% else %}
-    {% for acc in (from..to) %}
-        {{op}} zmm{{acc}}, zmm{{ acc | modulo: mr_over_16 | plus: to | plus: 1 }}, zmm{{acc}}
+    {% for acc in range(from, to + 1) %}
+        {{op}} zmm{{acc}}, zmm{{ acc % mr_over_16 + to + 1 }}, zmm{{acc}}
     {% endfor %}
 {% endif %}
 

@@ -1,4 +1,4 @@
-{% comment %}
+{#
 // vim: set syntax=asm :
 
 /* mmm 32 x 5:
@@ -18,9 +18,9 @@ Windows ABI:
     scratch: RAX, RCX, RDX, R8, R9, R10, R11, XMM0-5, and the upper portions of YMM0-15 and ZMM0-15
     return: rax (+rdx)
 */
-{% endcomment %}
+#}
 
-{% include "preamble.tmpliq" size:"32x5", suffix:suffix, G:G, arch:"avx512" %}
+{% set size = "32x5" %}{% set suffix = suffix %}{% set G = G %}{% set arch = "avx512" %}{% include "preamble.tmpliq" %}
 
 {{L}}clear:
     vzeroall
@@ -42,10 +42,10 @@ Windows ABI:
 
     jmp             {{L}}non_linear_loop
 
-{% include "f32_scalars.tmpliq" from:0, to:9 %}
-{% include "f32_per_rows.tmpliq" mr:32, from:0, to:9 %}
-{% include "f32_per_cols.tmpliq" mr:32, from:0, to:9 %}
-{% include "avx512_mmm_load_tile.tmpliq" from:0, to:9 %}
+{% set from = 0 %}{% set to = 9 %}{% include "f32_scalars.tmpliq" %}
+{% set mr = 32 %}{% set from = 0 %}{% set to = 9 %}{% include "f32_per_rows.tmpliq" %}
+{% set mr = 32 %}{% set from = 0 %}{% set to = 9 %}{% include "f32_per_cols.tmpliq" %}
+{% set from = 0 %}{% set to = 9 %}{% include "avx512_mmm_load_tile.tmpliq" %}
 
 {{L}}add_unicast:
 
@@ -55,19 +55,19 @@ Windows ABI:
 
     mov     eax,    0
 
-{% for i in (0..3) %}
+{% for i in range(0, 4) %}
     pinsrd  xmm14, eax, {{i}}
     add     eax,    esi
 {% endfor %}
-{% for i in (0..3) %}
+{% for i in range(0, 4) %}
     pinsrd  xmm15, eax, {{i}}
     add     eax,    esi
 {% endfor %}
-{% for i in (0..3) %}
+{% for i in range(0, 4) %}
     pinsrd  xmm12, eax, {{i}}
     add     eax,    esi
 {% endfor %}
-{% for i in (0..3) %}
+{% for i in range(0, 4) %}
     pinsrd  xmm13, eax, {{i}}
     add     eax,    esi
 {% endfor %}
@@ -76,11 +76,11 @@ Windows ABI:
     vperm2f128      ymm13,  ymm12, ymm13,         32 // ymm12 <- xmm12::xmm13
     vinsertf32x8    zmm14, zmm14, ymm13, 1
 
-{% for i in (0..4) %}
+{% for i in range(0, 5) %}
     kxnorw k1,k1,k1
     vgatherdps      zmm12{k1},  [ r10 + zmm14 ]
     add     r10, rbx
-    vaddps          zmm{{i | times: 2}},   zmm{{i | times: 2}},   zmm12
+    vaddps          zmm{{ i * 2 }},   zmm{{ i * 2 }},   zmm12
 {% endfor %}
 
     imul    esi,    16
@@ -89,11 +89,11 @@ Windows ABI:
     mov     r10,    [rdi + 8]
     vpaddd          zmm14, zmm14, zmm15
 
-{% for i in (0..4) %}
+{% for i in range(0, 5) %}
     kxnorw k1,k1,k1
     vgatherdps      zmm12{k1},  [ r10 + zmm14 ]
     add     r10, rbx
-    vaddps          zmm{{i | times: 2 | plus: 1}},   zmm{{i | times: 2 | plus: 1}},   zmm12
+    vaddps          zmm{{ i * 2 + 1 }},   zmm{{ i * 2 + 1 }},   zmm12
 {% endfor %}
 
     jmp    {{L}}non_linear_loop
@@ -105,10 +105,10 @@ Windows ABI:
     vmovups         zmm12, zmmword ptr [rax]
     vmovups         zmm13, zmmword ptr [rax+64]
 
-{% for i in (0..4) %}
-    vbroadcastss    zmm14, dword ptr [rbx + {{i|times:4}} ]
-    vfmadd231ps     zmm{{i | times: 2}}, zmm12, zmm14
-    vfmadd231ps     zmm{{i | times: 2 | plus: 1}}, zmm13, zmm14
+{% for i in range(0, 5) %}
+    vbroadcastss    zmm14, dword ptr [rbx + {{ i * 4 }} ]
+    vfmadd231ps     zmm{{ i * 2 }}, zmm12, zmm14
+    vfmadd231ps     zmm{{ i * 2 + 1 }}, zmm13, zmm14
 {% endfor %}
 
     jmp    {{L}}non_linear_loop
@@ -124,15 +124,15 @@ Windows ABI:
     lea     r11,    [ r10 + rbx ]
     lea     r12,    [ r10 + 2 * rbx ]
 
-    {% for word in (0..1) %}
-        {% for quarter in (0..3) %}
-            {% for r in (0..4) %}
-                vextractf32x4 xmm{{r | plus: 11}}, zmm{{r | times: 2 | plus: word}}, {{quarter}}
+    {% for word in range(0, 2) %}
+        {% for quarter in range(0, 4) %}
+            {% for r in range(0, 5) %}
+                vextractf32x4 xmm{{ r + 11 }}, zmm{{ r * 2 + word }}, {{quarter}}
             {% endfor %}
-            {% for row in (0..3) %}
-                {% for i in (0..4) %}
-                    vextractps  dword ptr [r{{i | plus: 8}}], xmm{{i | plus: 11}}, {{row}}
-                    add         r{{i | plus: 8}}, rsi
+            {% for row in range(0, 4) %}
+                {% for i in range(0, 5) %}
+                    vextractps  dword ptr [r{{ i + 8 }}], xmm{{ i + 11 }}, {{row}}
+                    add         r{{ i + 8 }}, rsi
                 {% endfor %}
             {% endfor %}
         {% endfor %}
@@ -140,5 +140,5 @@ Windows ABI:
 
     jmp     {{L}}non_linear_loop
 
-{% include "postamble.tmpliq" size:"32x5", suffix:suffix, G:G, L:L, arch:"avx512" %}
+{% set size = "32x5" %}{% set suffix = suffix %}{% set G = G %}{% set L = L %}{% set arch = "avx512" %}{% include "postamble.tmpliq" %}
 

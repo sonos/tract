@@ -2,7 +2,7 @@
 
 .load_tile:
     ldr         x2, [ x0, #8 ]
-    {% for reg in (from..to) %}
+    {% for reg in range(from, to + 1) %}
         ld1         { v{{reg}}.4s }, [ x2 ], #16
     {% endfor %}
 

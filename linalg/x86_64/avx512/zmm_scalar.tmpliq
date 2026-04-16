@@ -2,12 +2,12 @@
 
 {{L}}{{label}}:
     vbroadcastss    zmm12, dword ptr [rdi + 8]
-    {% if flipped %}
-        {% for reg in (from..to) %}
+    {% if flipped | default(false) %}
+        {% for reg in range(from, to + 1) %}
             {{op}}          zmm{{reg}}, zmm{{reg}}, zmm12
         {% endfor %}
     {% else %}
-        {% for reg in (from..to) %}
+        {% for reg in range(from, to + 1) %}
             {{op}}          zmm{{reg}}, zmm12, zmm{{reg}}
         {% endfor %}
     {% endif %}
