@@ -1,11 +1,12 @@
 // vim: ft=arm
+{% from "armv7neon_mmm_q_ops.tmpliq" import scalar %}
 
-{% set label = "scalar_min" %}{% set op = "vmin.s32" %}{% set from = from %}{% set to = to %}{% set flipped = false %}{% include "armv7neon_mmm_q_scalar.tmpliq" %}
-{% set label = "scalar_max" %}{% set op = "vmax.s32" %}{% set from = from %}{% set to = to %}{% set flipped = false %}{% include "armv7neon_mmm_q_scalar.tmpliq" %}
-{% set label = "scalar_mul" %}{% set op = "vmul.s32" %}{% set from = from %}{% set to = to %}{% set flipped = false %}{% include "armv7neon_mmm_q_scalar.tmpliq" %}
-{% set label = "scalar_add" %}{% set op = "vadd.s32" %}{% set from = from %}{% set to = to %}{% set flipped = false %}{% include "armv7neon_mmm_q_scalar.tmpliq" %}
-{% set label = "scalar_sub" %}{% set op = "vsub.s32" %}{% set from = from %}{% set to = to %}{% set flipped = false %}{% include "armv7neon_mmm_q_scalar.tmpliq" %}
-{% set label = "scalar_sub_flipped" %}{% set op = "vsub.s32" %}{% set from = from %}{% set to = to %}{% set flipped = true %}{% include "armv7neon_mmm_q_scalar.tmpliq" %}
+{{ scalar("scalar_min", "vmin.s32", from, to) }}
+{{ scalar("scalar_max", "vmax.s32", from, to) }}
+{{ scalar("scalar_mul", "vmul.s32", from, to) }}
+{{ scalar("scalar_add", "vadd.s32", from, to) }}
+{{ scalar("scalar_sub", "vsub.s32", from, to) }}
+{{ scalar("scalar_sub_flipped", "vsub.s32", from, to, flipped=true) }}
 
 .leaky_relu:
     vmov            s0, r3
@@ -17,5 +18,3 @@
         vmov        q{{reg}}, q1
     {% endfor %}
     b .non_linear_loop
-
-{% set flipped = false %}
