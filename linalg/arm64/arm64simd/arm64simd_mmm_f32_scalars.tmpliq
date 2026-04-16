@@ -1,11 +1,13 @@
 // vim: ft=arm
 
-{% set label = "scalar_min" %}{% set op = "fmin" %}{% set from = from %}{% set to = to %}{% set flipped = false %}{% include "arm64simd_mmm_4s_scalar.tmpliq" %}
-{% set label = "scalar_max" %}{% set op = "fmax" %}{% set from = from %}{% set to = to %}{% set flipped = false %}{% include "arm64simd_mmm_4s_scalar.tmpliq" %}
-{% set label = "scalar_mul" %}{% set op = "fmul" %}{% set from = from %}{% set to = to %}{% set flipped = false %}{% include "arm64simd_mmm_4s_scalar.tmpliq" %}
-{% set label = "scalar_add" %}{% set op = "fadd" %}{% set from = from %}{% set to = to %}{% set flipped = false %}{% include "arm64simd_mmm_4s_scalar.tmpliq" %}
-{% set label = "scalar_sub" %}{% set op = "fsub" %}{% set from = from %}{% set to = to %}{% set flipped = false %}{% include "arm64simd_mmm_4s_scalar.tmpliq" %}
-{% set label = "scalar_sub_flipped" %}{% set op = "fsub" %}{% set from = from %}{% set to = to %}{% set flipped = true %}{% include "arm64simd_mmm_4s_scalar.tmpliq" %}
+{% from "arm64simd_mmm_4s_ops.tmpliq" import scalar %}
+
+{{ scalar(label="scalar_min", op="fmin", from=from, to=to) }}
+{{ scalar(label="scalar_max", op="fmax", from=from, to=to) }}
+{{ scalar(label="scalar_mul", op="fmul", from=from, to=to) }}
+{{ scalar(label="scalar_add", op="fadd", from=from, to=to) }}
+{{ scalar(label="scalar_sub", op="fsub", from=from, to=to) }}
+{{ scalar(label="scalar_sub_flipped", op="fsub", from=from, to=to, flipped=true) }}
 
 
 .clear:
@@ -34,4 +36,3 @@
 .q_shl:
 .q_shr:
     b .unsupported
-{% set flipped = false %}

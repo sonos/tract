@@ -2,10 +2,11 @@
 {% if not arch %}
    {% set arch = "ymm" %}
 {% endif %}
-{% set label = "scalar_min" %}{% set op = "vpminsd" %}{% set from = from %}{% set to = to %}{% set arch = arch %}{% set flipped = false %}{% include "zmm_scalar.tmpliq" %}
-{% set label = "scalar_max" %}{% set op = "vpmaxsd" %}{% set from = from %}{% set to = to %}{% set arch = arch %}{% set flipped = false %}{% include "zmm_scalar.tmpliq" %}
-{% set label = "scalar_mul" %}{% set op = "vpmulld" %}{% set from = from %}{% set to = to %}{% set arch = arch %}{% set flipped = false %}{% include "zmm_scalar.tmpliq" %}
-{% set label = "scalar_add" %}{% set op = "vpaddd" %}{% set from = from %}{% set to = to %}{% set arch = arch %}{% set flipped = false %}{% include "zmm_scalar.tmpliq" %}
-{% set label = "scalar_sub" %}{% set op = "vpsubd" %}{% set from = from %}{% set to = to %}{% set arch = arch %}{% set flipped = false %}{% include "zmm_scalar.tmpliq" %}
-{% set label = "scalar_sub_flipped" %}{% set op = "vpsubd" %}{% set from = from %}{% set to = to %}{% set flipped = true %}{% set arch = arch %}{% include "zmm_scalar.tmpliq" %}
-{% set flipped = false %}
+{% from "zmm_ops.tmpliq" import scalar %}
+
+{{ scalar("scalar_min", "vpminsd", from, to) }}
+{{ scalar("scalar_max", "vpmaxsd", from, to) }}
+{{ scalar("scalar_mul", "vpmulld", from, to) }}
+{{ scalar("scalar_add", "vpaddd", from, to) }}
+{{ scalar("scalar_sub", "vpsubd", from, to) }}
+{{ scalar("scalar_sub_flipped", "vpsubd", from, to, flipped=true) }}

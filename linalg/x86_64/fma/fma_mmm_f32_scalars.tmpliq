@@ -1,11 +1,12 @@
 // vim: set syntax=asm :
+{% from "fma_mmm_ymm_ops.tmpliq" import scalar %}
 
-{% set label = "scalar_min" %}{% set op = "vminps" %}{% set from = from %}{% set to = to %}{% set type = type %}{% set flipped = false %}{% include "fma_mmm_ymm_scalar.tmpliq" %}
-{% set label = "scalar_max" %}{% set op = "vmaxps" %}{% set from = from %}{% set to = to %}{% set type = type %}{% set flipped = false %}{% include "fma_mmm_ymm_scalar.tmpliq" %}
-{% set label = "scalar_add" %}{% set op = "vaddps" %}{% set from = from %}{% set to = to %}{% set type = type %}{% set flipped = false %}{% include "fma_mmm_ymm_scalar.tmpliq" %}
-{% set label = "scalar_mul" %}{% set op = "vmulps" %}{% set from = from %}{% set to = to %}{% set type = type %}{% set flipped = false %}{% include "fma_mmm_ymm_scalar.tmpliq" %}
-{% set label = "scalar_sub" %}{% set op = "vsubps" %}{% set from = from %}{% set to = to %}{% set type = type %}{% set flipped = false %}{% include "fma_mmm_ymm_scalar.tmpliq" %}
-{% set label = "scalar_sub_flipped" %}{% set op = "vsubps" %}{% set from = from %}{% set to = to %}{% set flipped = true %}{% set type = type %}{% include "fma_mmm_ymm_scalar.tmpliq" %}
+{{ scalar("scalar_min", "vminps", from, to, type=type) }}
+{{ scalar("scalar_max", "vmaxps", from, to, type=type) }}
+{{ scalar("scalar_add", "vaddps", from, to, type=type) }}
+{{ scalar("scalar_mul", "vmulps", from, to, type=type) }}
+{{ scalar("scalar_sub", "vsubps", from, to, type=type) }}
+{{ scalar("scalar_sub_flipped", "vsubps", from, to, type=type, flipped=true) }}
 
 {{L}}leaky_relu:
     // can only use ymm12 to ymm15
@@ -35,5 +36,3 @@
 {{L}}q_shl:
 {{L}}q_shr:
     jmp {{L}}unsupported
-
-{% set flipped = false %}

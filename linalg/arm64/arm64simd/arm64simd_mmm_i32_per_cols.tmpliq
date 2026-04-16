@@ -1,9 +1,10 @@
 // vim: ft=arm
 
-{% set label = "per_col_min" %}{% set op = "smin" %}{% set mr = mr %}{% set from = from %}{% set to = to %}{% set flipped = false %}{% include "arm64simd_mmm_4s_per_col.tmpliq" %}
-{% set label = "per_col_max" %}{% set op = "smax" %}{% set mr = mr %}{% set from = from %}{% set to = to %}{% set flipped = false %}{% include "arm64simd_mmm_4s_per_col.tmpliq" %}
-{% set label = "per_col_mul" %}{% set op = "mul" %}{% set mr = mr %}{% set from = from %}{% set to = to %}{% set flipped = false %}{% include "arm64simd_mmm_4s_per_col.tmpliq" %}
-{% set label = "per_col_add" %}{% set op = "add" %}{% set mr = mr %}{% set from = from %}{% set to = to %}{% set flipped = false %}{% include "arm64simd_mmm_4s_per_col.tmpliq" %}
-{% set label = "per_col_sub" %}{% set op = "sub" %}{% set mr = mr %}{% set from = from %}{% set to = to %}{% set flipped = false %}{% include "arm64simd_mmm_4s_per_col.tmpliq" %}
-{% set label = "per_col_sub_flipped" %}{% set op = "sub" %}{% set mr = mr %}{% set from = from %}{% set to = to %}{% set flipped = true %}{% include "arm64simd_mmm_4s_per_col.tmpliq" %}
-{% set flipped = false %}
+{% from "arm64simd_mmm_4s_ops.tmpliq" import per_col %}
+
+{{ per_col(label="per_col_min", op="smin", mr=mr, from=from, to=to) }}
+{{ per_col(label="per_col_max", op="smax", mr=mr, from=from, to=to) }}
+{{ per_col(label="per_col_mul", op="mul", mr=mr, from=from, to=to) }}
+{{ per_col(label="per_col_add", op="add", mr=mr, from=from, to=to) }}
+{{ per_col(label="per_col_sub", op="sub", mr=mr, from=from, to=to) }}
+{{ per_col(label="per_col_sub_flipped", op="sub", mr=mr, from=from, to=to, flipped=true) }}
