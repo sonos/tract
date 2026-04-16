@@ -1,9 +1,9 @@
 // vim: ft=arm
+{% from "armv7neon_mmm_q_ops.tmpliq" import per_col %}
 
-{% set label = "per_col_min" %}{% set op = "vmin.s32" %}{% set mr = mr %}{% set from = from %}{% set to = to %}{% set flipped = false %}{% include "armv7neon_mmm_q_per_col.tmpliq" %}
-{% set label = "per_col_max" %}{% set op = "vmax.s32" %}{% set mr = mr %}{% set from = from %}{% set to = to %}{% set flipped = false %}{% include "armv7neon_mmm_q_per_col.tmpliq" %}
-{% set label = "per_col_mul" %}{% set op = "vmul.s32" %}{% set mr = mr %}{% set from = from %}{% set to = to %}{% set flipped = false %}{% include "armv7neon_mmm_q_per_col.tmpliq" %}
-{% set label = "per_col_add" %}{% set op = "vadd.s32" %}{% set mr = mr %}{% set from = from %}{% set to = to %}{% set flipped = false %}{% include "armv7neon_mmm_q_per_col.tmpliq" %}
-{% set label = "per_col_sub" %}{% set op = "vsub.s32" %}{% set mr = mr %}{% set from = from %}{% set to = to %}{% set flipped = false %}{% include "armv7neon_mmm_q_per_col.tmpliq" %}
-{% set label = "per_col_sub_flipped" %}{% set op = "vsub.s32" %}{% set mr = mr %}{% set from = from %}{% set to = to %}{% set flipped = true %}{% include "armv7neon_mmm_q_per_col.tmpliq" %}
-{% set flipped = false %}
+{{ per_col("per_col_min", "vmin.s32", mr, from, to) }}
+{{ per_col("per_col_max", "vmax.s32", mr, from, to) }}
+{{ per_col("per_col_mul", "vmul.s32", mr, from, to) }}
+{{ per_col("per_col_add", "vadd.s32", mr, from, to) }}
+{{ per_col("per_col_sub", "vsub.s32", mr, from, to) }}
+{{ per_col("per_col_sub_flipped", "vsub.s32", mr, from, to, flipped=true) }}
