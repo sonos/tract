@@ -4,13 +4,13 @@ pub(crate) fn process_file(
     input: &str,
     resources: &HashMap<String, Arc<dyn Resource>>,
 ) -> TractResult<String> {
-    let parser = liquid::ParserBuilder::with_stdlib().build()?;
-    let tmpl = parser.parse(input)?;
-    let mut globals = liquid::object!({});
+    let env = minijinja::Environment::new();
+    let tmpl = env.template_from_str(input)?;
+    let mut globals = serde_json::Map::new();
     for (k, v) in resources {
-        if let Some(value) = v.to_liquid_value() {
-            globals.insert(k.into(), value);
+        if let Some(value) = v.to_template_value() {
+            globals.insert(k.clone(), value);
         }
     }
-    Ok(tmpl.render(&globals)?)
+    Ok(tmpl.render(serde_json::Value::Object(globals))?)
 }

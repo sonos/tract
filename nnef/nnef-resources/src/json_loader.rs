@@ -57,29 +57,8 @@ impl Resource for JsonResource {
             .with_context(|| anyhow!("Error while converting JSON value to NNEF value"))
     }
 
-    fn to_liquid_value(&self) -> Option<liquid_core::model::Value> {
-        Some(json_to_liquid(&self.0))
-    }
-}
-
-fn json_to_liquid(json: &serde_json::Value) -> liquid_core::model::Value {
-    use liquid_core::model::Value as L;
-    use serde_json::Value as J;
-    match json {
-        J::Number(n) => {
-            if let Some(n) = n.as_i64() {
-                L::Scalar(n.into())
-            } else {
-                L::Scalar(n.as_f64().unwrap().into())
-            }
-        }
-        J::Null => L::Nil,
-        J::Bool(b) => L::Scalar((*b).into()),
-        J::String(s) => L::Scalar(s.clone().into()),
-        J::Array(values) => L::Array(values.iter().map(json_to_liquid).collect()),
-        J::Object(map) => {
-            L::Object(map.iter().map(|(k, v)| (k.into(), json_to_liquid(v))).collect())
-        }
+    fn to_template_value(&self) -> Option<serde_json::Value> {
+        Some(self.0.clone())
     }
 }
 

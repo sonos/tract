@@ -16,8 +16,7 @@ maintenance = { status = "actively-developed" }
 
 [dependencies]
 byteorder.workspace = true
-liquid.workspace = true
-liquid-core.workspace = true
+minijinja.workspace = true
 log.workspace = true
 nom.workspace = true
 nom-language.workspace = true

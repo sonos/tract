@@ -32,9 +32,6 @@ tract-data.workspace = true
 cc.workspace = true
 half.workspace = true
 minijinja.workspace = true
-smallvec.workspace = true
-unicode-normalization.workspace = true
-time.workspace = true
 walkdir.workspace = true
 
 [dev-dependencies]

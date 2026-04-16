@@ -100,10 +100,9 @@ impl TractCudaContext {
 
             let mut input = lib.content().to_string();
             if input.contains("// liquid:true") {
-                let parser = liquid::ParserBuilder::with_stdlib().build()?;
-                let tmpl = parser.parse(lib.content())?;
-                let globals = liquid::object!({});
-                input = tmpl.render(&globals)?;
+                let env = minijinja::Environment::new();
+                let tmpl = env.template_from_str(lib.content())?;
+                input = tmpl.render(())?;
             }
 
             let c_src = CString::new(input).context("Failed to make CString from CUDA source")?;
