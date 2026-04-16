@@ -1,4 +1,4 @@
-use std::{env, ffi, fs, path};
+use std::{env, fs, path};
 
 fn var(k: &str) -> String {
     env::var(k).unwrap()
@@ -189,8 +189,9 @@ fn preprocess_files(
         dir_entries
     };
     for f in dir_entries {
-        if f.path().extension() == Some(ffi::OsStr::new("tmpl")) {
-            let tmpl_file = f.path().file_name().unwrap().to_str().unwrap().to_owned();
+        let fname = f.path().file_name().unwrap().to_str().unwrap().to_owned();
+        if fname.ends_with(".S.j2") {
+            let tmpl_file = fname;
             let concerned_variants: Vec<&Variant> =
                 variants.iter().filter(|v| tmpl_file.contains(v.0)).collect();
             let expanded_variants = concerned_variants.iter().map(|pair| pair.1.len()).product();
@@ -205,8 +206,8 @@ fn preprocess_files(
                     tmpl_file = tmpl_file.replace(key, value);
                     id /= variable.1.len();
                 }
-                let mut file = out_dir.join(tmpl_file);
-                file.set_extension("S");
+                let out_name = tmpl_file.strip_suffix(".S.j2").unwrap();
+                let file = out_dir.join(format!("{out_name}.S"));
                 preprocess_file(f.path(), &file, &globals, suffix, needs_pragma);
                 files.push(file);
             }
@@ -305,19 +306,21 @@ fn build_jinja_env(template_dir: &path::Path, msvc: bool) -> minijinja::Environm
     // Custom function: amx("op", gpr) -> assembly .word directive
     env.add_function("amx", amx_function);
 
-    // Load all partials (.tmpliq and .tmpli)
+    // Load all partials (.j2 = Jinja2 macros/includes, .S.raw = raw assembly with brace escaping)
     for f in walkdir::WalkDir::new(template_dir) {
         let f = f.unwrap();
         if f.path().is_dir() {
             continue;
         }
 
-        let ext = f.path().extension().map(|s| s.to_string_lossy()).unwrap_or("".into());
+        let fname = f.path().file_name().unwrap().to_str().unwrap().to_owned();
         let text = std::fs::read_to_string(f.path()).unwrap_or_else(|_| panic!("file {f:?}"));
-        let text = match ext.as_ref() {
-            "tmpli" => Some(text.replace("{{", "{").replace("}}", "}")),
-            "tmpliq" => Some(text),
-            _ => None,
+        let text = if fname.ends_with(".S.raw") {
+            Some(text.replace("{{", "{").replace("}}", "}"))
+        } else if fname.ends_with(".j2") && !fname.ends_with(".S.j2") {
+            Some(text)
+        } else {
+            None
         };
         if let Some(text) = text {
             let text = strip_comments(text, msvc);
