@@ -1,10 +1,9 @@
 // vim: set syntax=asm :
+{% from "fma_mmm_ymm_ops.tmpliq" import per_row %}
 
-{% set label = "per_row_min" %}{% set op = "vpminsd" %}{% set mr = mr %}{% set from = from %}{% set to = to %}{% set type = "i32" %}{% set flipped = false %}{% include "fma_mmm_ymm_per_row.tmpliq" %}
-{% set label = "per_row_max" %}{% set op = "vpmaxsd" %}{% set mr = mr %}{% set from = from %}{% set to = to %}{% set type = "i32" %}{% set flipped = false %}{% include "fma_mmm_ymm_per_row.tmpliq" %}
-{% set label = "per_row_add" %}{% set op = "vpaddd" %}{% set mr = mr %}{% set from = from %}{% set to = to %}{% set type = "i32" %}{% set flipped = false %}{% include "fma_mmm_ymm_per_row.tmpliq" %}
-{% set label = "per_row_mul" %}{% set op = "vpmulld" %}{% set mr = mr %}{% set from = from %}{% set to = to %}{% set type = "i32" %}{% set flipped = false %}{% include "fma_mmm_ymm_per_row.tmpliq" %}
-{% set label = "per_row_sub" %}{% set op = "vpsubd" %}{% set from = from %}{% set to = to %}{% set type = "i32" %}{% set flipped = false %}{% include "fma_mmm_ymm_per_row.tmpliq" %}
-{% set label = "per_row_sub_flipped" %}{% set op = "vpsubd" %}{% set from = from %}{% set to = to %}{% set flipped = true %}{% set type = "i32" %}{% include "fma_mmm_ymm_per_row.tmpliq" %}
-
-{% set flipped = false %}
+{{ per_row("per_row_min", "vpminsd", mr, from, to, type="i32") }}
+{{ per_row("per_row_max", "vpmaxsd", mr, from, to, type="i32") }}
+{{ per_row("per_row_add", "vpaddd", mr, from, to, type="i32") }}
+{{ per_row("per_row_mul", "vpmulld", mr, from, to, type="i32") }}
+{{ per_row("per_row_sub", "vpsubd", mr, from, to, type="i32") }}
+{{ per_row("per_row_sub_flipped", "vpsubd", mr, from, to, type="i32", flipped=true) }}

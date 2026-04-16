@@ -1,9 +1,9 @@
 // vim: set syntax=asm :
+{% from "zmm_ops.tmpliq" import per_row %}
 
-{% set label = "per_row_min" %}{% set op = "vminps" %}{% set mr = mr %}{% set from = from %}{% set to = to %}{% set flipped = false %}{% include "zmm_per_row.tmpliq" %}
-{% set label = "per_row_max" %}{% set op = "vmaxps" %}{% set mr = mr %}{% set from = from %}{% set to = to %}{% set flipped = false %}{% include "zmm_per_row.tmpliq" %}
-{% set label = "per_row_add" %}{% set op = "vaddps" %}{% set mr = mr %}{% set from = from %}{% set to = to %}{% set flipped = false %}{% include "zmm_per_row.tmpliq" %}
-{% set label = "per_row_mul" %}{% set op = "vmulps" %}{% set mr = mr %}{% set from = from %}{% set to = to %}{% set flipped = false %}{% include "zmm_per_row.tmpliq" %}
-{% set label = "per_row_sub" %}{% set op = "vsubps" %}{% set from = from %}{% set to = to %}{% set flipped = false %}{% include "zmm_per_row.tmpliq" %}
-{% set label = "per_row_sub_flipped" %}{% set op = "vsubps" %}{% set from = from %}{% set to = to %}{% set flipped = true %}{% include "zmm_per_row.tmpliq" %}
-{% set flipped = false %}
+{{ per_row("per_row_min", "vminps", mr, from, to) }}
+{{ per_row("per_row_max", "vmaxps", mr, from, to) }}
+{{ per_row("per_row_add", "vaddps", mr, from, to) }}
+{{ per_row("per_row_mul", "vmulps", mr, from, to) }}
+{{ per_row("per_row_sub", "vsubps", mr, from, to) }}
+{{ per_row("per_row_sub_flipped", "vsubps", mr, from, to, flipped=true) }}

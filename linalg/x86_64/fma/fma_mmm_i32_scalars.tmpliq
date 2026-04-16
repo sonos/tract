@@ -1,11 +1,12 @@
 // vim: set syntax=asm :
+{% from "fma_mmm_ymm_ops.tmpliq" import scalar %}
 
-{% set label = "scalar_min" %}{% set op = "vpminsd" %}{% set from = from %}{% set to = to %}{% set type = "i32" %}{% set flipped = false %}{% include "fma_mmm_ymm_scalar.tmpliq" %}
-{% set label = "scalar_max" %}{% set op = "vpmaxsd" %}{% set from = from %}{% set to = to %}{% set type = "i32" %}{% set flipped = false %}{% include "fma_mmm_ymm_scalar.tmpliq" %}
-{% set label = "scalar_mul" %}{% set op = "vpmulld" %}{% set from = from %}{% set to = to %}{% set type = "i32" %}{% set flipped = false %}{% include "fma_mmm_ymm_scalar.tmpliq" %}
-{% set label = "scalar_add" %}{% set op = "vpaddd" %}{% set from = from %}{% set to = to %}{% set type = "i32" %}{% set flipped = false %}{% include "fma_mmm_ymm_scalar.tmpliq" %}
-{% set label = "scalar_sub" %}{% set op = "vpsubd" %}{% set from = from %}{% set to = to %}{% set type = "i32" %}{% set flipped = false %}{% include "fma_mmm_ymm_scalar.tmpliq" %}
-{% set label = "scalar_sub_flipped" %}{% set op = "vpsubd" %}{% set from = from %}{% set to = to %}{% set flipped = true %}{% set type = "i32" %}{% include "fma_mmm_ymm_scalar.tmpliq" %}
+{{ scalar("scalar_min", "vpminsd", from, to, type="i32") }}
+{{ scalar("scalar_max", "vpmaxsd", from, to, type="i32") }}
+{{ scalar("scalar_mul", "vpmulld", from, to, type="i32") }}
+{{ scalar("scalar_add", "vpaddd", from, to, type="i32") }}
+{{ scalar("scalar_sub", "vpsubd", from, to, type="i32") }}
+{{ scalar("scalar_sub_flipped", "vpsubd", from, to, type="i32", flipped=true) }}
 
 {{L}}leaky_relu:
     // can only use ymm12 to ymm15
@@ -21,4 +22,3 @@
     {% endfor %}
 
     jmp    {{L}}non_linear_loop
-{% set flipped = false %}
