@@ -23,7 +23,7 @@ pub trait Resource: DowncastSync + std::fmt::Debug + Send + Sync {
         bail!("No key access supported by this resource");
     }
 
-    fn to_liquid_value(&self) -> Option<liquid::model::Value> {
+    fn to_template_value(&self) -> Option<serde_json::Value> {
         None
     }
 }
