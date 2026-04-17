@@ -13,14 +13,14 @@ use crate::ops::GgmlQuantQ81Fact;
 
 static CULIBS_PRESENT: OnceLock<bool> = OnceLock::new();
 
-// Ensure exactly cuda-12060 is enabled.
+// Ensure exactly cuda-13000 is enabled.
 // Prevent accidental change of feature gate without
 // updating this required API version used for compatibility check.
 // please update the 3 references bellow if cudarc gate is updated to a newer version.
-pub const REQUIRED_CUDA_API: i32 = 12060;
-#[cfg(not(feature = "cuda-12060"))]
+pub const REQUIRED_CUDA_API: i32 = 13000;
+#[cfg(not(feature = "cuda-13000"))]
 compile_error!(
-    "Tract CUDA backend currently supports only cudarc feature 'cuda-12060'. \
+    "Tract CUDA backend currently supports only cudarc feature 'cuda-13000'. \
         Enabled in Cargo features.",
 );
 
