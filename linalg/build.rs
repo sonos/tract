@@ -216,12 +216,10 @@ fn preprocess_files(
     files
 }
 
-fn strip_comments(s: String, msvc: bool) -> String {
-    if msvc {
-        s.lines().map(|line| line.replace("//", ";")).collect::<Vec<String>>().join("\n")
-    } else {
-        s
-    }
+/// Replace `//` assembly comments with `;` for MSVC assembler.
+/// Must be called on rendered output (not on Jinja2 source, which uses `//` for integer division).
+fn strip_comments(s: &str) -> String {
+    s.lines().map(|line| line.replace("//", ";")).collect::<Vec<String>>().join("\n")
 }
 
 fn preprocess_file(
@@ -237,8 +235,7 @@ fn preprocess_file(
 
     let msvc = use_masm();
     println!("cargo:rerun-if-changed={}", template.as_ref().to_string_lossy());
-    let mut input = fs::read_to_string(&template).unwrap();
-    input = strip_comments(input, msvc);
+    let input = fs::read_to_string(&template).unwrap();
     let l = if os == "macos" {
         "L"
     } else if family == "windows" {
@@ -252,7 +249,7 @@ fn preprocess_file(
     let align = if msvc { "align" } else { ".align" };
     let offset = if msvc { "offset" } else { "rip + " };
 
-    let mut env = build_jinja_env(template.as_ref().parent().unwrap(), msvc);
+    let mut env = build_jinja_env(template.as_ref().parent().unwrap());
 
     let main_name = template.as_ref().file_name().unwrap().to_str().unwrap();
     env.add_template_owned(main_name.to_string(), input).unwrap_or_else(|e| {
@@ -286,7 +283,10 @@ fn preprocess_file(
     }
 
     match tmpl.render(&ctx) {
-        Ok(rendered) => fs::write(&output, rendered).unwrap(),
+        Ok(rendered) => {
+            let rendered = if msvc { strip_comments(&rendered) } else { rendered };
+            fs::write(&output, rendered).unwrap();
+        }
         Err(e) => {
             eprintln!("Rendering {}: {e:#}", template.as_ref().to_string_lossy());
             panic!();
@@ -294,7 +294,7 @@ fn preprocess_file(
     }
 }
 
-fn build_jinja_env(template_dir: &path::Path, msvc: bool) -> minijinja::Environment<'static> {
+fn build_jinja_env(template_dir: &path::Path) -> minijinja::Environment<'static> {
     let mut env = minijinja::Environment::new();
 
     // Custom filters
@@ -323,7 +323,6 @@ fn build_jinja_env(template_dir: &path::Path, msvc: bool) -> minijinja::Environm
             None
         };
         if let Some(text) = text {
-            let text = strip_comments(text, msvc);
             let key = f
                 .path()
                 .strip_prefix(template_dir)
