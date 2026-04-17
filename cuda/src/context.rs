@@ -167,7 +167,13 @@ impl TractCudaContext {
             self.device_properties.major, self.device_properties.minor
         );
 
-        Ok(vec!["--std=c++17".into(), arch, format!("-I{}", cuda_inc.display())])
+        let mut opts = vec!["--std=c++17".into(), arch, format!("-I{}", cuda_inc.display())];
+        // CUDA 13 moved libcudacxx (`cuda/std/*`) under `include/cccl/`.
+        let cccl_inc = cuda_inc.join("cccl");
+        if cccl_inc.exists() {
+            opts.push(format!("-I{}", cccl_inc.display()));
+        }
+        Ok(opts)
     }
 
     /// Read the NVRTC program log as String.
