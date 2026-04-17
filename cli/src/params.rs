@@ -1013,7 +1013,7 @@ impl Parameters {
         };
 
         let runtime =
-            runtime_for_name(runtime).with_context(|| format!("Runtime `{runtime}' not found"))?;
+            runtime_for_name(runtime)?.with_context(|| format!("Runtime `{runtime}' not found"))?;
         let (tract_model, runnable): (Arc<dyn Model>, Option<Arc<dyn Runnable>>) =
             if tract_model.downcast_ref::<TypedModel>().is_some() {
                 let tract_model: Arc<TypedModel> = Arc::downcast(tract_model).unwrap();
