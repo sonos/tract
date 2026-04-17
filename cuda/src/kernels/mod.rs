@@ -41,6 +41,7 @@ pub fn cubin_dir() -> &'static Path {
                 .join("tract")
                 .join(env!("CARGO_PKG_VERSION"))
                 .join("cuda")
+                .join(crate::utils::REQUIRED_CUDA_API.to_string())
                 .join("cubins")
         })
         .as_path()
