@@ -14,7 +14,7 @@ fn cast(
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let mut to = node.get_attr::<DatumType>("to")?;
-    if to == i64::datum_type() {
+    if to == i64::datum_type() || to == i32::datum_type() {
         to = TDim::datum_type();
     }
     Ok((ElementWiseOp(Box::new(Cast::new(to)), None).into_hir(), vec![]))
