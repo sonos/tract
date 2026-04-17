@@ -215,8 +215,12 @@ pub fn runtimes() -> impl Iterator<Item = &'static dyn Runtime> {
     inventory::iter::<InventorizedRuntime>().filter(|rt| rt.check().is_ok()).map(|ir| ir.0)
 }
 
-pub fn runtime_for_name(s: &str) -> Option<&'static dyn Runtime> {
-    runtimes().find(|rt| rt.name() == s)
+pub fn runtime_for_name(s: &str) -> TractResult<Option<&'static dyn Runtime>> {
+    let Some(rt) = inventory::iter::<InventorizedRuntime>().find(|rt| rt.name() == s) else {
+        return Ok(None);
+    };
+    rt.check()?;
+    Ok(Some(rt.0))
 }
 
 #[macro_export]

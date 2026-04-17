@@ -59,10 +59,10 @@ pub fn onnx() -> Result<Onnx> {
 }
 
 pub fn runtime_for_name(name: &str) -> Result<Runtime> {
-    if let Some(rt) = tract_onnx::tract_core::runtime::runtime_for_name(name) {
+    if let Some(rt) = tract_onnx::tract_core::runtime::runtime_for_name(name)? {
         Ok(Runtime(rt))
     } else {
-        anyhow::bail!("Runtime {name} not available")
+        anyhow::bail!("Unknown runtime {name} (not compiled in tract?)")
     }
 }
 
