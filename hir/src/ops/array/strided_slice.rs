@@ -76,6 +76,12 @@ impl InferenceRulesOp for StridedSlice {
                 let mut output_shape = input_shape.clone();
                 let mut shrink = vec![];
                 for (ix, axis) in axes.into_iter().enumerate() {
+                    ensure!(
+                        axis < input_shape.len(),
+                        "StridedSlice: axis {} out of range for input of rank {}",
+                        axis,
+                        input_shape.len()
+                    );
                     let preped =
                         self.prepare_one_dim(ix, &input_shape[axis], begin, end, &strides)?;
                     output_shape[axis] = preped.soft_len()?;
