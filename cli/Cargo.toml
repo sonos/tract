@@ -1,6 +1,6 @@
 [package]
 name = "tract-cli"
-version = "0.23.0-dev.4"
+version = "0.23.0-pre"
 authors = [
   "Romain Liautaud <romain.liautaud@snips.ai>",
   "Mathieu Poumeyrol <kali@zoy.org>",
