@@ -3,6 +3,10 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      version_override:
+        description: version to build (default derived from tag ref)
+        type: string
 
 name: Upload Release Binaries
 
@@ -48,7 +52,12 @@ jobs:
 
       - name: Extract version tag
         id: version
-        run: echo value=$(echo ${{ github.ref }} | cut -f 3 -d / | sed 's/^v//' ) >> $GITHUB_OUTPUT
+        run: |
+          if [ -n "${{ inputs.version_override }}" ]; then
+            echo "value=${{ inputs.version_override }}" >> $GITHUB_OUTPUT
+          else
+            echo "value=$(echo ${{ github.ref }} | cut -f 3 -d / | sed 's/^v//' )" >> $GITHUB_OUTPUT
+          fi
 
       - name: Build tract
         run: |
@@ -85,6 +94,7 @@ jobs:
         with:
           files: tract-${{matrix.target}}-${{ steps.version.outputs.value }}.tgz
           name: ${{ steps.version.outputs.value }}
+          tag_name: v${{ steps.version.outputs.value }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
