@@ -8,7 +8,7 @@ use tract_api::{
     NnefInterface, OnnxInterface, RunnableInterface, RuntimeInterface, StateInterface,
     TensorInterface,
 };
-use tract_rs::{State, Tensor};
+use tract::{State, Tensor};
 
 /// Used as a return type of functions that can encounter errors.
 /// If the function encountered an error, you can retrieve it using the `tract_get_last_error`
@@ -102,7 +102,7 @@ macro_rules! release {
 }
 
 // NNEF
-pub struct TractNnef(tract_rs::Nnef);
+pub struct TractNnef(tract::Nnef);
 
 /// Creates an instance of an NNEF framework and parser that can be used to load and dump NNEF models.
 ///
@@ -112,7 +112,7 @@ pub struct TractNnef(tract_rs::Nnef);
 pub unsafe extern "C" fn tract_nnef_create(nnef: *mut *mut TractNnef) -> TRACT_RESULT {
     wrap(|| unsafe {
         check_not_null!(nnef);
-        *nnef = Box::into_raw(Box::new(TractNnef(tract_rs::nnef()?)));
+        *nnef = Box::into_raw(Box::new(TractNnef(tract::nnef()?)));
         Ok(())
     })
 }
@@ -274,7 +274,7 @@ pub unsafe extern "C" fn tract_nnef_write_model_to_dir(
 }
 
 // ONNX
-pub struct TractOnnx(tract_rs::Onnx);
+pub struct TractOnnx(tract::Onnx);
 
 /// Creates an instance of an ONNX framework and parser that can be used to load models.
 ///
@@ -284,7 +284,7 @@ pub struct TractOnnx(tract_rs::Onnx);
 pub unsafe extern "C" fn tract_onnx_create(onnx: *mut *mut TractOnnx) -> TRACT_RESULT {
     wrap(|| unsafe {
         check_not_null!(onnx);
-        *onnx = Box::into_raw(Box::new(TractOnnx(tract_rs::onnx()?)));
+        *onnx = Box::into_raw(Box::new(TractOnnx(tract::onnx()?)));
         Ok(())
     })
 }
@@ -336,7 +336,7 @@ pub unsafe extern "C" fn tract_onnx_load_buffer(
 }
 
 // INFERENCE MODEL
-pub struct TractInferenceModel(tract_rs::InferenceModel);
+pub struct TractInferenceModel(tract::InferenceModel);
 
 /// Query an InferenceModel input counts.
 #[unsafe(no_mangle)]
@@ -515,7 +515,7 @@ pub unsafe extern "C" fn tract_inference_model_destroy(
 }
 // TYPED MODEL
 
-pub struct TractModel(tract_rs::Model);
+pub struct TractModel(tract::Model);
 
 /// Query an InferenceModel input counts.
 #[unsafe(no_mangle)]
@@ -742,7 +742,7 @@ pub unsafe extern "C" fn tract_model_parse_fact(
     wrap(|| unsafe {
         check_not_null!(model, spec, fact);
         let spec = CStr::from_ptr(spec).to_str()?;
-        let f: tract_rs::Fact = spec.as_fact(&(*model).0)?.as_ref().clone();
+        let f: tract::Fact = spec.as_fact(&(*model).0)?.as_ref().clone();
         *fact = Box::into_raw(Box::new(TractFact(f)));
         Ok(())
     })
@@ -755,7 +755,7 @@ pub unsafe extern "C" fn tract_model_destroy(model: *mut *mut TractModel) -> TRA
 }
 
 // RUNTIME MODEL
-pub struct TractRuntime(tract_rs::Runtime);
+pub struct TractRuntime(tract::Runtime);
 
 /// Creates an instance of a tract Runtime that can be used to run model on a specific
 /// hardware / software stack (like a GPU).
@@ -769,7 +769,7 @@ pub unsafe extern "C" fn tract_runtime_for_name(
     wrap(|| unsafe {
         check_not_null!(nnef);
         let name = CStr::from_ptr(name).to_str()?;
-        *nnef = Box::into_raw(Box::new(TractRuntime(tract_rs::runtime_for_name(name)?)));
+        *nnef = Box::into_raw(Box::new(TractRuntime(tract::runtime_for_name(name)?)));
         Ok(())
     })
 }
@@ -817,7 +817,7 @@ pub unsafe extern "C" fn tract_runtime_release(runtime: *mut *mut TractRuntime) 
 }
 
 // RUNNABLE MODEL
-pub struct TractRunnable(tract_rs::Runnable);
+pub struct TractRunnable(tract::Runnable);
 
 /// Spawn a session state from a runnable model.
 ///
@@ -983,7 +983,7 @@ pub unsafe extern "C" fn tract_runnable_release(runnable: *mut *mut TractRunnabl
 }
 
 // TENSOR
-pub struct TractTensor(tract_rs::Tensor);
+pub struct TractTensor(tract::Tensor);
 
 /// Create a TractTensor from caller data and metadata.
 ///
@@ -1102,7 +1102,7 @@ pub unsafe extern "C" fn tract_tensor_as_bytes(
 }
 
 // STATE
-pub struct TractState(tract_rs::State);
+pub struct TractState(tract::State);
 
 /// Run a turn on a model state
 ///
@@ -1174,7 +1174,7 @@ pub unsafe extern "C" fn tract_state_destroy(state: *mut *mut TractState) -> TRA
 }
 
 // FACT
-pub struct TractFact(tract_rs::Fact);
+pub struct TractFact(tract::Fact);
 
 /// Gets the rank (aka number of axes/dimensions) of a fact.
 #[unsafe(no_mangle)]
@@ -1250,7 +1250,7 @@ pub unsafe extern "C" fn tract_fact_destroy(fact: *mut *mut TractFact) -> TRACT_
 }
 
 // INFERENCE FACT
-pub struct TractInferenceFact(tract_rs::InferenceFact);
+pub struct TractInferenceFact(tract::InferenceFact);
 
 /// Parse a fact specification string into an InferenceFact.
 ///
@@ -1264,7 +1264,7 @@ pub unsafe extern "C" fn tract_inference_fact_parse(
     wrap(|| unsafe {
         check_not_null!(model, spec, fact);
         let spec = CStr::from_ptr(spec).to_str()?;
-        let f: tract_rs::InferenceFact = spec.as_fact(&(*model).0)?.as_ref().clone();
+        let f: tract::InferenceFact = spec.as_fact(&(*model).0)?.as_ref().clone();
         *fact = Box::into_raw(Box::new(TractInferenceFact(f)));
         Ok(())
     })
@@ -1323,7 +1323,7 @@ pub unsafe extern "C" fn tract_inference_fact_destroy(
 }
 
 /// Dim
-pub struct TractDim(tract_rs::Dim);
+pub struct TractDim(tract::Dim);
 
 /// Substitute symbols by the provided values in the Dim, generating a new one.
 #[unsafe(no_mangle)]
