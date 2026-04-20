@@ -3,12 +3,12 @@
 use anyhow::{Context, Result};
 use std::cell::RefCell;
 use std::ffi::{CStr, CString, c_char, c_void};
+use tract::{State, Tensor};
 use tract_api::{
     AsFact, DatumType, DimInterface, FactInterface, InferenceModelInterface, ModelInterface,
     NnefInterface, OnnxInterface, RunnableInterface, RuntimeInterface, StateInterface,
     TensorInterface,
 };
-use tract::{State, Tensor};
 
 /// Used as a return type of functions that can encounter errors.
 /// If the function encountered an error, you can retrieve it using the `tract_get_last_error`

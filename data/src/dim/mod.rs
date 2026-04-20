@@ -98,6 +98,21 @@ impl DimLike for TDim {
         } else if other.is_zero() {
             bail!("Division by zero")
         }
+        // If self is a sum and every term divides by `other` with the same
+        // remaining divisor, distribute: (a + b) / d = a/d + b/d. This
+        // catches shared symbolic factors the bag-based path below misses,
+        // e.g. `8*slice*((T+7)/8) + 8*((T+7)/8)` divided by `8*((T+7)/8)`.
+        if let TDim::Add(terms) = self
+            && terms.len() >= 2
+            && let Some(parts) =
+                terms.iter().map(|t| t.maybe_div(other).ok()).collect::<Option<Vec<_>>>()
+            && let Some((_, q0)) = parts.first()
+            && parts.iter().all(|(_, q)| q == q0)
+        {
+            let q = *q0;
+            let sum = parts.into_iter().map(|(d, _)| d).fold(TDim::zero(), |acc, d| acc + d);
+            return Ok((sum.reduce(), q));
+        }
         fn expand(dim: &TDim) -> (i64, Vec<TDim>) {
             match dim {
                 TDim::Mul(terms) => terms.iter().map(expand).fold((1i64, vec![]), |acc, t| {
@@ -327,5 +342,20 @@ mod tests {
     #[test]
     fn div_sym_sym_with_add() {
         assert_eq!((s() * 80 - 160).maybe_div(&(s() - 2)).unwrap(), (80.into(), 1));
+    }
+
+    #[test]
+    fn div_with_shared_div_ceil_factor() {
+        // Repro for:
+        //   Can't divide 8*(slice)*((T+7)/8)+8*(T+7)/8 by 8*(T+7)/8
+        //
+        // Numerator factors as (slice + 1) * 8 * ((T+7)/8); denominator is the
+        // shared 8 * ((T+7)/8), so the division should yield slice + 1.
+        let t: TDim = S.0.sym("T").into();
+        let slice = S.0.sym("slice");
+        let c = t.div_ceil(8); // (T+7)/8
+        let num = 8.to_dim() * &slice * &c + 8.to_dim() * &c;
+        let denom = 8.to_dim() * &c;
+        assert_eq!(num.maybe_div(&denom).unwrap(), (slice.to_dim() + 1, 1));
     }
 }
