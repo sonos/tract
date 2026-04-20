@@ -3,8 +3,9 @@ name: Python wheels
 on:
   schedule:
     - cron:  '0 3 * * MON'
-  release:
-    types: [created]
+  push:
+    tags:
+      - 'v*'
   workflow_dispatch:
     inputs:
       publish:
@@ -80,7 +81,7 @@ jobs:
   upload_all:
     needs: [build_wheels, make_sdist]
     runs-on: ubuntu-latest
-    if: (github.event_name == 'release' && github.event.action == 'published') || inputs.publish
+    if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || inputs.publish
 
     steps:
     - uses: actions/download-artifact@v8
