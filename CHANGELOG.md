@@ -1,6 +1,56 @@
-# Unreleased
+# 0.23.0-dev.4 — 2026-04-20
 
-* [Breaking][MSRV] MSRV bumped to 1.91.0 (for `const TypeId::of`).
+### API
+
+- [MSRV] **MSRV bumped to 1.91.0** (for `const TypeId::of`).
+- **`patch` transform** — generic NNEF-syntax model surgery.
+- **`select_outputs` transform** — rewire model outputs via transform config.
+- **`freeze_into`** — zero-copy `State` freezing; `FrozenState` wrapped in the public API.
+
+### Examples
+
+- **Stable Diffusion 1.5** (txt2img), **Stable Diffusion XL**, **Stable Diffusion 3 Medium** end-to-end examples, with GPU validation on cuda-lovelace CI.
+- **nemo-nemotron-asr** example and harness, including a pulsified preprocessor. (WIP)
+
+### GPU runtimes
+
+- **CUDA 12** support is dropped.
+- **CUDA 13** support. (cudarc 0.19, `cuda-13000` feature gate, NVRTC `include/cccl` paths, cubin cache namespaced by `REQUIRED_CUDA_API`).
+- **f16 CUDA conv** (generic + cuDNN 2D) with LayerNorm/Gemm f16 fixes; group restriction lifted.
+- **CUDA copy kernels**: repack grid axes to avoid `gridDim.z` overflow. Multi-axis Reduce split into sequential single-axis reduces.
+- **Generic direct convolution kernel for Metal.**
+- **GPU factorization**: binary/element-wise/array/pulse ops factored into the shared `gpu` crate (`GpuDelay`, `GpuPulsePad`, cast, rotate_half, softmax, rms_norm, gelu_approximate). `BinOp/UnaryOps` enums replaced by `&dyn BinMiniOp / ElementWiseMiniOp`. Sync helpers extracted from CUDA/Metal.
+- **`--assert-all-gpu` CLI flag**, enabled in CI.
+
+### Notable internals changes
+
+- **`DatumType::Opaque` removed.** Exotic storage now flows through `TypedFact::exotic_fact` and the `TensorStorage` trait. `OpaqueFact` → `ExoticFact`, `data/src/opaque.rs` → `data/src/exotic.rs`. `is_opaque()` split into `is_plain()` / `is_exotic()` at both tensor and fact level.
+- **`Dense` terminology renamed to `Plain`** (`StorageKind::Dense`→`Plain`, `Other`→`Exotic`; `try_as_dense()` boolean checks → `is_plain()`).
+- **Graph output-selection API renamed**: `set_output_outlets` → `select_output_outlets`, `set_output_names` → `select_outputs_by_name`, `with_output_names` → `with_outputs_by_name`. Public `set_output_names` dropped.
+- **liquid → minijinja** migration across linalg, nnef and cuda; `liquid` dropped from the workspace.
+
+### Symbolic shapes / TDim
+
+- TDim simplification: flatten `MulInt` into `Mul`, distribute `Mul` over `Add`, fix `Min/Max inclusive_bound` dropping unknown terms.
+- Fix i64 overflow panics in TDim arithmetic.
+- Reduce TDim comparison variants to `Ge` + `Eq`.
+- **Symbolic value propagation** via `TypedFact.uniform_tdim` — folds `Iff` in preprocessors via uniform_tdim.
+- STFT pulsifier; fixes for `Slice` with symbolic start, `PulsedAxisSlice` preserving symbolic stream dim, `PulsedSameAxisConcat` source-model stream input detection, `MultiBroadcastTo` per-pulse size with multi-axis pad.
+- Pulsify `Slice` when the input is non-streaming but `end` contains the stream symbol.
+- CLI: `compare --stream` skips intermediate nodes whose streaming axis was optimised away. new `--drop-partial-pulse` flag for last partial pulse.
+
+### New ops / op enhancements
+
+- **Resize**: cubic interpolation mode, `exclude_outside`, `AlignCorners` for non-integer scales, 9 new ONNX test cases; NNEF serialization for sizes-based Resize; nearest-neighbor integer-scale decluttered to `Reshape+Tile+Reshape`. Moved to `onnx-opl`.
+- **ScatterNd / ScatterElements**: `reduction` attribute support.
+- **ONNX Constant**: `value_ints`, `value_floats`, `value_string(s)` attributes.
+- Neutral/absorbing elements added for boolean and bitwise ops.
+
+### CLI additions
+
+- **`dump --audit-json`** — machine-readable model dump.
+- **`dump --summary` / `-s`** — condensed dump mode.
+- **`--timeout`** — process watchdog on the `tract` CLI.
 
 # 0.23.0-dev.3 — 2026-03-20
 
