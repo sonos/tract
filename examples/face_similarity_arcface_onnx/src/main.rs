@@ -5,6 +5,8 @@ use arc_face::{ArcFace, cosine_similarity, load_arcface_model};
 use clap::Parser;
 use yolo_face::{YoloFace, load_yolo_model, sort_conf_bbox};
 
+tract::impl_ndarray_interop!();
+
 #[derive(Parser)]
 struct CliArgs {
     #[arg(long)]

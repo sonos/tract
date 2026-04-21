@@ -1,45 +1,35 @@
 use anyhow::{Error, Result};
 use image::{DynamicImage, imageops};
-use tract_ndarray::{Array1, Array3};
-use tract_ndarray::{ArrayBase, OwnedRepr};
-use tract_onnx::prelude::*;
+use ndarray::{Array1, Array3, Array4, Axis};
+use tract::prelude::*;
 
-#[allow(clippy::type_complexity)]
+use crate::{Ndarray, Tract};
+
 pub struct ArcFace {
-    model: Arc<TypedRunnableModel>,
+    model: Runnable,
 }
 
 impl ArcFace {
-    /// returns a ndarray of length 512 representing a face
-    /// please crop face before using !
-    pub fn get_face_embedding(
-        &self,
-        input_image: &DynamicImage,
-    ) -> Result<ArrayBase<OwnedRepr<f32>, tract_core::ndarray::Dim<[usize; 1]>>, Error> {
+    /// Returns an ndarray of length 512 representing a face.
+    /// Please crop the face before using!
+    pub fn get_face_embedding(&self, input_image: &DynamicImage) -> Result<Array1<f32>> {
         let preprocess_image = preprocess_arcface(input_image, 112)?;
-        let forward = self.model.run(tvec![preprocess_image.to_owned().into()])?;
+        let forward = self.model.run([preprocess_image.tract()?])?;
         println!("FORWARD {forward:?}");
-        let results = forward[0].to_plain_array_view::<f32>()?.to_shape(512)?.to_owned();
+        let results = forward[0].ndarray::<f32>()?.to_shape(512)?.to_owned();
         Ok(results)
     }
 }
 
 pub fn load_arcface_model(model_path: &str, input_size: i32) -> ArcFace {
-    let load_model = tract_onnx::onnx()
-        .model_for_path(model_path)
-        .unwrap()
-        .with_input_fact(0, f32::fact([1, 3, input_size, input_size]).into())
-        .unwrap()
-        .incorporate()
-        .unwrap()
-        .into_optimized()
-        .unwrap()
-        .into_runnable()
-        .unwrap();
-    ArcFace { model: load_model }
+    let mut model = tract::onnx().unwrap().load(model_path).unwrap();
+    let spec = format!("1,3,{input_size},{input_size},f32");
+    model.set_input_fact(0, spec.as_str()).unwrap();
+    let model = model.into_model().unwrap().into_runnable().unwrap();
+    ArcFace { model }
 }
 
-fn image_to_tract_tensor(img: &DynamicImage) -> Array3<f32> {
+fn image_to_ndarray(img: &DynamicImage) -> Array3<f32> {
     let height = img.height();
     let width = img.width();
     let img_buffer = img.to_rgb8();
@@ -48,14 +38,15 @@ fn image_to_tract_tensor(img: &DynamicImage) -> Array3<f32> {
         .mapv(|x| x as f32)
 }
 
-pub fn preprocess_arcface(input_image: &DynamicImage, target_size: u32) -> Result<Tensor, Error> {
+pub fn preprocess_arcface(
+    input_image: &DynamicImage,
+    target_size: u32,
+) -> Result<Array4<f32>, Error> {
     let resize = input_image.resize_exact(target_size, target_size, imageops::FilterType::Triangle);
-    let ndarray_img = image_to_tract_tensor(&resize);
-    // ndarray_img *= 1.0 / 127.5;
-    // ndarray_img -= 127.5;
-    let mut _final: Tensor = ndarray_img.permuted_axes((2, 0, 1)).into();
-    _final.insert_axis(0).unwrap();
-    Ok(_final)
+    let ndarray_img = image_to_ndarray(&resize);
+    // (H, W, 3) → (3, H, W) → (1, 3, H, W)
+    let permuted = ndarray_img.permuted_axes((2, 0, 1));
+    Ok(permuted.insert_axis(Axis(0)))
 }
 
 pub fn cosine_similarity(a: &Array1<f32>, b: &Array1<f32>) -> f32 {
