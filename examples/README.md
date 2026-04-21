@@ -15,7 +15,6 @@ tires.
 |---------|--------------|-------|
 | [`onnx-mobilenet-v2`](onnx-mobilenet-v2) | ONNX | MobileNet v2. Second binary `dyn-shape` demonstrates symbolic batch dim and runtime shape dispatch. |
 | [`nnef-mobilenet-v2`](nnef-mobilenet-v2) | NNEF | Same model, pre-compiled to NNEF. Faster load, smaller artifact. |
-| [`nnef-mobilenet-v2-api`](nnef-mobilenet-v2-api) | NNEF | Same as above via the `tract` facade. |
 | [`nnef-dump-mobilenet-v2`](nnef-dump-mobilenet-v2) | TF → NNEF | Shows how to `tract … dump --nnef` a TF model and then run the NNEF. |
 | [`pytorch-resnet`](pytorch-resnet) | PyTorch → ONNX | ResNet classification with `ndarray` broadcasting for per-channel normalisation. |
 | [`keras-tract-tf2`](keras-tract-tf2) | Keras → ONNX | Numeric equivalence check: runs the same inputs through the ONNX model and compares to `.npz` reference outputs. |

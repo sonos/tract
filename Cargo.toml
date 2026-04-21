@@ -37,7 +37,6 @@ members = [
     "examples/nemo-nemotron-asr",
     "examples/nnef-dump-mobilenet-v2",
     "examples/nnef-mobilenet-v2",
-    "examples/nnef-mobilenet-v2-api",
     "examples/onnx-mobilenet-v2",
     "examples/pytorch-albert-v2",
     "examples/pytorch-resnet",
