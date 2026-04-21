@@ -66,9 +66,10 @@ the basic pattern.
 
 ## Legacy
 
-These examples sit on framework crates that the `tract` facade does not
-re-export. They still work but are left on the old preludes until the
-facade grows matching loaders (or the examples are retired).
+TensorFlow and TFLite are legacy formats as far as tract is concerned:
+the `tract-tensorflow` and `tract-tflite` crates are still maintained for
+existing users but the `tract` facade intentionally doesn't expose them,
+and that isn't expected to change. Prefer ONNX or NNEF for new work.
 
 | Example | Model source | Notes |
 |---------|--------------|-------|
