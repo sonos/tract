@@ -17,6 +17,23 @@
 ///   `ndarray6::<T>()`, implemented for `tract::Tensor`. `ndarrayN` returns a
 ///   rank-`N` `ArrayView`; `ndarray` returns the dynamic-rank `ArrayViewD`.
 ///
+/// # Invocation
+///
+/// Zero-argument form uses the `ndarray` crate from your crate's
+/// dependencies:
+///
+/// ```ignore
+/// tract::impl_ndarray_interop!();
+/// ```
+///
+/// Explicit form takes the ndarray root as a path — useful if your
+/// `Cargo.toml` renames the crate or pins multiple versions side by side:
+///
+/// ```ignore
+/// // Cargo.toml: ndarray_017 = { package = "ndarray", version = "0.17" }
+/// tract::impl_ndarray_interop!(ndarray_017);
+/// ```
+///
 /// # Example
 ///
 /// ```ignore
@@ -29,20 +46,21 @@
 /// let view = outputs[0].ndarray::<f32>()?;          // ArrayViewD<f32>
 /// let v4   = outputs[0].ndarray4::<f32>()?;         // ArrayView4<f32>
 /// ```
-///
-/// Your crate must depend on `ndarray` directly for this macro to compile.
 #[macro_export]
 macro_rules! impl_ndarray_interop {
     () => {
+        $crate::impl_ndarray_interop!(ndarray);
+    };
+    ($($nd:ident)::+) => {
         trait Tract {
             fn tract(self) -> $crate::__ndarray_interop::anyhow::Result<$crate::Tensor>;
         }
 
-        impl<T, S, D> Tract for ::ndarray::ArrayBase<S, D>
+        impl<T, S, D> Tract for $($nd)::+::ArrayBase<S, D>
         where
             T: $crate::__ndarray_interop::Datum + Clone + 'static,
-            S: ::ndarray::RawData<Elem = T> + ::ndarray::Data,
-            D: ::ndarray::Dimension,
+            S: $($nd)::+::RawData<Elem = T> + $($nd)::+::Data,
+            D: $($nd)::+::Dimension,
         {
             fn tract(self) -> $crate::__ndarray_interop::anyhow::Result<$crate::Tensor> {
                 use $crate::__ndarray_interop::TensorInterface as _;
@@ -62,71 +80,71 @@ macro_rules! impl_ndarray_interop {
         trait Ndarray {
             fn ndarray<T: $crate::__ndarray_interop::Datum>(
                 &self,
-            ) -> $crate::__ndarray_interop::anyhow::Result<::ndarray::ArrayViewD<'_, T>>;
+            ) -> $crate::__ndarray_interop::anyhow::Result<$($nd)::+::ArrayViewD<'_, T>>;
             fn ndarray0<T: $crate::__ndarray_interop::Datum>(
                 &self,
-            ) -> $crate::__ndarray_interop::anyhow::Result<::ndarray::ArrayView0<'_, T>>;
+            ) -> $crate::__ndarray_interop::anyhow::Result<$($nd)::+::ArrayView0<'_, T>>;
             fn ndarray1<T: $crate::__ndarray_interop::Datum>(
                 &self,
-            ) -> $crate::__ndarray_interop::anyhow::Result<::ndarray::ArrayView1<'_, T>>;
+            ) -> $crate::__ndarray_interop::anyhow::Result<$($nd)::+::ArrayView1<'_, T>>;
             fn ndarray2<T: $crate::__ndarray_interop::Datum>(
                 &self,
-            ) -> $crate::__ndarray_interop::anyhow::Result<::ndarray::ArrayView2<'_, T>>;
+            ) -> $crate::__ndarray_interop::anyhow::Result<$($nd)::+::ArrayView2<'_, T>>;
             fn ndarray3<T: $crate::__ndarray_interop::Datum>(
                 &self,
-            ) -> $crate::__ndarray_interop::anyhow::Result<::ndarray::ArrayView3<'_, T>>;
+            ) -> $crate::__ndarray_interop::anyhow::Result<$($nd)::+::ArrayView3<'_, T>>;
             fn ndarray4<T: $crate::__ndarray_interop::Datum>(
                 &self,
-            ) -> $crate::__ndarray_interop::anyhow::Result<::ndarray::ArrayView4<'_, T>>;
+            ) -> $crate::__ndarray_interop::anyhow::Result<$($nd)::+::ArrayView4<'_, T>>;
             fn ndarray5<T: $crate::__ndarray_interop::Datum>(
                 &self,
-            ) -> $crate::__ndarray_interop::anyhow::Result<::ndarray::ArrayView5<'_, T>>;
+            ) -> $crate::__ndarray_interop::anyhow::Result<$($nd)::+::ArrayView5<'_, T>>;
             fn ndarray6<T: $crate::__ndarray_interop::Datum>(
                 &self,
-            ) -> $crate::__ndarray_interop::anyhow::Result<::ndarray::ArrayView6<'_, T>>;
+            ) -> $crate::__ndarray_interop::anyhow::Result<$($nd)::+::ArrayView6<'_, T>>;
         }
 
         impl Ndarray for $crate::Tensor {
             fn ndarray<T: $crate::__ndarray_interop::Datum>(
                 &self,
-            ) -> $crate::__ndarray_interop::anyhow::Result<::ndarray::ArrayViewD<'_, T>> {
+            ) -> $crate::__ndarray_interop::anyhow::Result<$($nd)::+::ArrayViewD<'_, T>> {
                 use $crate::__ndarray_interop::TensorInterface as _;
                 let (shape, data) = self.as_shape_and_slice::<T>()?;
-                Ok(unsafe { ::ndarray::ArrayViewD::from_shape_ptr(shape, data.as_ptr()) })
+                Ok(unsafe { $($nd)::+::ArrayViewD::from_shape_ptr(shape, data.as_ptr()) })
             }
             fn ndarray0<T: $crate::__ndarray_interop::Datum>(
                 &self,
-            ) -> $crate::__ndarray_interop::anyhow::Result<::ndarray::ArrayView0<'_, T>> {
+            ) -> $crate::__ndarray_interop::anyhow::Result<$($nd)::+::ArrayView0<'_, T>> {
                 Ok(self.ndarray::<T>()?.into_dimensionality()?)
             }
             fn ndarray1<T: $crate::__ndarray_interop::Datum>(
                 &self,
-            ) -> $crate::__ndarray_interop::anyhow::Result<::ndarray::ArrayView1<'_, T>> {
+            ) -> $crate::__ndarray_interop::anyhow::Result<$($nd)::+::ArrayView1<'_, T>> {
                 Ok(self.ndarray::<T>()?.into_dimensionality()?)
             }
             fn ndarray2<T: $crate::__ndarray_interop::Datum>(
                 &self,
-            ) -> $crate::__ndarray_interop::anyhow::Result<::ndarray::ArrayView2<'_, T>> {
+            ) -> $crate::__ndarray_interop::anyhow::Result<$($nd)::+::ArrayView2<'_, T>> {
                 Ok(self.ndarray::<T>()?.into_dimensionality()?)
             }
             fn ndarray3<T: $crate::__ndarray_interop::Datum>(
                 &self,
-            ) -> $crate::__ndarray_interop::anyhow::Result<::ndarray::ArrayView3<'_, T>> {
+            ) -> $crate::__ndarray_interop::anyhow::Result<$($nd)::+::ArrayView3<'_, T>> {
                 Ok(self.ndarray::<T>()?.into_dimensionality()?)
             }
             fn ndarray4<T: $crate::__ndarray_interop::Datum>(
                 &self,
-            ) -> $crate::__ndarray_interop::anyhow::Result<::ndarray::ArrayView4<'_, T>> {
+            ) -> $crate::__ndarray_interop::anyhow::Result<$($nd)::+::ArrayView4<'_, T>> {
                 Ok(self.ndarray::<T>()?.into_dimensionality()?)
             }
             fn ndarray5<T: $crate::__ndarray_interop::Datum>(
                 &self,
-            ) -> $crate::__ndarray_interop::anyhow::Result<::ndarray::ArrayView5<'_, T>> {
+            ) -> $crate::__ndarray_interop::anyhow::Result<$($nd)::+::ArrayView5<'_, T>> {
                 Ok(self.ndarray::<T>()?.into_dimensionality()?)
             }
             fn ndarray6<T: $crate::__ndarray_interop::Datum>(
                 &self,
-            ) -> $crate::__ndarray_interop::anyhow::Result<::ndarray::ArrayView6<'_, T>> {
+            ) -> $crate::__ndarray_interop::anyhow::Result<$($nd)::+::ArrayView6<'_, T>> {
                 Ok(self.ndarray::<T>()?.into_dimensionality()?)
             }
         }
