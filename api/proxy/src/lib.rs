@@ -7,26 +7,8 @@ use tract_proxy_sys as sys;
 
 use anyhow::{Context, Result};
 
-#[doc(hidden)]
-pub use ::tract_api::impl_ndarray_interop_with as __impl_ndarray_interop_with;
-
-#[doc(hidden)]
-pub use ::tract_api::{Datum as __Datum, TensorInterface as __TensorInterface};
-
-/// Generate ndarray interop for `tract_proxy::Tensor` using the caller
-/// crate's own `ndarray` version. See `tract::impl_ndarray_interop!` for
-/// the generated surface and usage; this macro is its exact counterpart
-/// for the FFI-backed API.
-#[macro_export]
-macro_rules! impl_ndarray_interop {
-    () => {
-        $crate::__impl_ndarray_interop_with!(
-            $crate::Tensor,
-            $crate::__Datum,
-            $crate::__TensorInterface,
-        );
-    };
-}
+mod ndarray_interop;
+pub use ndarray_interop::__ndarray_interop;
 
 macro_rules! check {
     ($expr:expr) => {
