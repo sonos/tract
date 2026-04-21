@@ -3,8 +3,10 @@ use std::fs::File;
 use anyhow::*;
 use float_ord::FloatOrd;
 use itertools::Itertools;
-use tract::prelude::tract_ndarray::prelude::*;
+use ndarray::prelude::*;
 use tract::prelude::*;
+
+tract::impl_ndarray_interop!();
 
 fn argmax(slice: &[f32]) -> Option<usize> {
     slice.into_iter().position_max_by_key(|x| FloatOrd(**x))
@@ -40,12 +42,12 @@ fn main() -> anyhow::Result<()> {
         .map(|x| x.unwrap() as f32)
         .collect();
     let samples = Tensor::from_slice(&[1, wav.len()], &wav)?;
-    let len = tensor(arr1(&[wav.len() as i64]))?;
+    let len = arr1(&[wav.len() as i64]).tract()?;
 
     let [features, feat_len] = preprocessor.run([samples, len])?.try_into().unwrap();
     let [encoded, _lens] = encoder.run([features, feat_len])?.try_into().unwrap();
 
-    let encoded: ArrayD<f32> = encoded.view()?.into_owned();
+    let encoded: ArrayD<f32> = encoded.ndarray()?.into_owned();
 
     let max_frames = encoded.shape()[2];
     let max_len = max_frames * 6 + 10;
@@ -53,15 +55,14 @@ fn main() -> anyhow::Result<()> {
     let mut hyp = vec![];
     let mut frame_ix = 0;
     let mut token = Tensor::from_slice(&[1, 1], &[0i32])?;
-    let mut state_0 = tensor(Array3::<f32>::zeros([2, 1, 640]))?;
-    let mut state_1 = tensor(Array3::<f32>::zeros([2, 1, 640]))?;
+    let mut state_0 = Array3::<f32>::zeros([2, 1, 640]).tract()?;
+    let mut state_1 = Array3::<f32>::zeros([2, 1, 640]).tract()?;
 
     [token, state_0, state_1] = decoder.run([token, state_0, state_1])?.try_into().unwrap();
     while hyp.len() < max_len && frame_ix < max_frames {
-        let frame = tensor(encoded.slice_axis(Axis(2), (frame_ix..frame_ix + 1).into()))?;
+        let frame = encoded.slice_axis(Axis(2), (frame_ix..frame_ix + 1).into()).tract()?;
         let [logits] = joint.run([frame, token.clone()])?.try_into().unwrap();
-        let logits = logits.view::<f32>()?;
-        let logits = logits.as_slice().unwrap();
+        let logits = logits.as_slice::<f32>()?;
         let token_id = argmax(&logits[0..blank_id + 1]).unwrap();
         if token_id == blank_id {
             frame_ix += argmax(&logits[blank_id + 1..]).unwrap_or(0).max(1);

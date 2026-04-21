@@ -9,6 +9,7 @@ edition = "2024"
 anstyle.workspace = true
 anstyle-parse.workspace = true
 anstyle-query.workspace = true
+ndarray.workspace = true
 tokenizers.workspace = true
 clap_builder = { version = "4.4" }
 clap_lex = { version = "1.1" }

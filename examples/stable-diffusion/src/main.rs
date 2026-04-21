@@ -1,6 +1,8 @@
 use anyhow::*;
 use tract::prelude::*;
 
+tract::impl_ndarray_interop!();
+
 /// SD 1.5 Euler discrete scheduler — compute sigmas from scratch.
 struct EulerScheduler {
     timesteps: Vec<i64>,
@@ -9,7 +11,7 @@ struct EulerScheduler {
 
 impl EulerScheduler {
     fn new(num_inference_steps: usize) -> Self {
-        use tract_ndarray::{Array1, Axis, concatenate};
+        use ndarray::{Array1, Axis, concatenate};
 
         // SD 1.5 config: scaled_linear beta schedule, 1000 training steps
         let num_train = 1000;
@@ -164,14 +166,13 @@ fn main() -> Result<()> {
     eprintln!("Running text encoder...");
     let onnx = tract::onnx()?;
     let text_encoder = gpu.prepare(onnx.load(assets.join("text_encoder.onnx"))?.into_model()?)?;
-    let cond_emb = text_encoder.run([input_ids])?;
-    let uncond_emb = text_encoder.run([uncond_input_ids])?;
+    let cond_emb = text_encoder.run([input_ids.tract()?])?;
+    let uncond_emb = text_encoder.run([uncond_input_ids.tract()?])?;
     drop(text_encoder);
 
-    let cond = cond_emb[0].view::<f32>()?;
-    let uncond = uncond_emb[0].view::<f32>()?;
-    let text_embeddings =
-        tract_ndarray::concatenate(tract_ndarray::Axis(0), &[uncond.view(), cond.view()])?;
+    let cond = cond_emb[0].ndarray::<f32>()?;
+    let uncond = uncond_emb[0].ndarray::<f32>()?;
+    let text_embeddings = ndarray::concatenate(ndarray::Axis(0), &[uncond.view(), cond.view()])?;
     eprintln!("  Text embeddings: {:?}", text_embeddings.shape());
 
     // Build batched text embeddings: [uncond×N, cond×N] → (2N, 77, 768)
@@ -186,7 +187,7 @@ fn main() -> Result<()> {
         emb_data.extend_from_slice(cond_slice);
     }
     let b2 = 2 * num_images;
-    let text_emb = tract_ndarray::ArrayD::from_shape_vec(vec![b2, 77, 768], emb_data)?;
+    let text_emb = ndarray::ArrayD::from_shape_vec(vec![b2, 77, 768], emb_data)?;
 
     // Generate initial latent noise for all images
     let latent_size = 4 * 64 * 64;
@@ -217,11 +218,11 @@ fn main() -> Result<()> {
         for &x in &latents {
             sample_data.push(x * scale);
         }
-        let sample = tract_ndarray::ArrayD::from_shape_vec(vec![b2, 4, 64, 64], sample_data)?;
-        let timestep = tract_ndarray::Array1::from_vec(vec![t; b2]).into_dyn();
+        let sample = ndarray::ArrayD::from_shape_vec(vec![b2, 4, 64, 64], sample_data)?;
+        let timestep = ndarray::Array1::from_vec(vec![t; b2]).into_dyn();
 
         let noise_pred =
-            unet.run(vec![tensor(sample)?, tensor(timestep)?, tensor(text_emb.clone())?])?;
+            unet.run(vec![sample.tract()?, timestep.tract()?, text_emb.clone().tract()?])?;
         let pred = noise_pred[0].as_slice::<f32>()?;
 
         // CFG: split uncond (first N) / cond (last N), combine
@@ -250,8 +251,8 @@ fn main() -> Result<()> {
             .iter()
             .map(|&x| x / VAE_SCALING_FACTOR)
             .collect();
-        let latent_arr = tract_ndarray::ArrayD::from_shape_vec(vec![1, 4, 64, 64], img_latent)?;
-        let image_result = vae_decoder.run([latent_arr])?;
+        let latent_arr = ndarray::ArrayD::from_shape_vec(vec![1, 4, 64, 64], img_latent)?;
+        let image_result = vae_decoder.run([latent_arr.tract()?])?;
         let image_data = image_result[0].as_slice::<f32>()?;
 
         let mut pixels = vec![0u8; h * w * 3];

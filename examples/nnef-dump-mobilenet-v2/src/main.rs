@@ -1,6 +1,8 @@
 use anyhow::Result;
 use tract::prelude::*;
 
+tract::impl_ndarray_interop!();
+
 fn main() -> Result<()> {
     let model = tract::nnef()?.with_tract_core()?.load("mobilenet.nnef.tgz")?.into_runnable()?;
 
@@ -8,12 +10,12 @@ fn main() -> Result<()> {
     let image = image::open("grace_hopper.jpg").unwrap().to_rgb8();
     let resized =
         image::imageops::resize(&image, 224, 224, ::image::imageops::FilterType::Triangle);
-    let input = tract_ndarray::Array4::from_shape_fn((1, 224, 224, 3), |(_, y, x, c)| {
+    let input = ndarray::Array4::from_shape_fn((1, 224, 224, 3), |(_, y, x, c)| {
         resized[(x as _, y as _)][c] as f32 / 255.0
     });
 
     // run the model on the input
-    let result = model.run([input])?;
+    let result = model.run([input.tract()?])?;
 
     // find and display the max value with its index
     let best =

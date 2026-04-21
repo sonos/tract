@@ -267,35 +267,6 @@ pub trait TensorInterface: Debug + Sized + Clone + PartialEq + Send + Sync {
         Ok(shape)
     }
 
-    fn view<T: Datum>(&self) -> Result<ndarray::ArrayViewD<'_, T>> {
-        let (shape, data) = self.as_shape_and_slice()?;
-        Ok(unsafe { ndarray::ArrayViewD::from_shape_ptr(shape, data.as_ptr()) })
-    }
-
-    fn view1<T: Datum>(&self) -> Result<ndarray::ArrayView1<'_, T>> {
-        Ok(self.view::<T>()?.into_dimensionality()?)
-    }
-
-    fn view2<T: Datum>(&self) -> Result<ndarray::ArrayView2<'_, T>> {
-        Ok(self.view::<T>()?.into_dimensionality()?)
-    }
-
-    fn view3<T: Datum>(&self) -> Result<ndarray::ArrayView3<'_, T>> {
-        Ok(self.view::<T>()?.into_dimensionality()?)
-    }
-
-    fn view4<T: Datum>(&self) -> Result<ndarray::ArrayView4<'_, T>> {
-        Ok(self.view::<T>()?.into_dimensionality()?)
-    }
-
-    fn view5<T: Datum>(&self) -> Result<ndarray::ArrayView5<'_, T>> {
-        Ok(self.view::<T>()?.into_dimensionality()?)
-    }
-
-    fn view6<T: Datum>(&self) -> Result<ndarray::ArrayView6<'_, T>> {
-        Ok(self.view::<T>()?.into_dimensionality()?)
-    }
-
     fn convert_to(&self, to: DatumType) -> Result<Self>;
 }
 

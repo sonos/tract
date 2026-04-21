@@ -1,10 +1,12 @@
+use ndarray::s;
 use std::{
     path::{Path, PathBuf},
     str::FromStr,
 };
 use tokenizers::tokenizer::{Result, Tokenizer};
 use tract::prelude::*;
-use tract_ndarray::s;
+
+tract::impl_ndarray_interop!();
 
 fn main() -> Result<()> {
     let model_dir = PathBuf::from_str("./albert")?;
@@ -23,21 +25,22 @@ fn main() -> Result<()> {
     let model =
         tract::onnx()?.load(Path::join(&model_dir, "model.onnx"))?.into_model()?.into_runnable()?;
 
-    let input_ids = tract_ndarray::Array2::from_shape_vec(
+    let input_ids = ndarray::Array2::from_shape_vec(
         (1, length),
         input_ids.iter().map(|&x| x as i64).collect(),
     )?;
-    let attention_mask = tract_ndarray::Array2::from_shape_vec(
+    let attention_mask = ndarray::Array2::from_shape_vec(
         (1, length),
         attention_mask.iter().map(|&x| x as i64).collect(),
     )?;
-    let token_type_ids = tract_ndarray::Array2::from_shape_vec(
+    let token_type_ids = ndarray::Array2::from_shape_vec(
         (1, length),
         token_type_ids.iter().map(|&x| x as i64).collect(),
     )?;
 
-    let outputs = model.run((input_ids, attention_mask, token_type_ids))?;
-    let logits = outputs[0].view::<f32>()?;
+    let outputs =
+        model.run((input_ids.tract()?, attention_mask.tract()?, token_type_ids.tract()?))?;
+    let logits = outputs[0].ndarray::<f32>()?;
     let logits = logits.slice(s![0, mask_pos, ..]);
     let word_id = logits.iter().zip(0..).max_by(|a, b| a.0.partial_cmp(b.0).unwrap()).unwrap().1;
     let word = tokenizer.id_to_token(word_id);

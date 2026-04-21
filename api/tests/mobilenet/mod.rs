@@ -30,21 +30,22 @@ fn ensure_models() -> anyhow::Result<()> {
     Ok(())
 }
 
+fn argmax(slice: &[f32]) -> usize {
+    slice
+        .iter()
+        .enumerate()
+        .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
+        .unwrap()
+        .0
+}
+
 #[test]
 fn test_onnx() -> anyhow::Result<()> {
     ensure_models()?;
     let model = onnx()?.load("mobilenetv2-7.onnx")?.into_model()?.into_runnable()?;
     let hopper = grace_hopper();
     let result = model.run([hopper])?;
-    let result = result[0].view::<f32>()?;
-    let best = result
-        .as_slice()
-        .unwrap()
-        .iter()
-        .enumerate()
-        .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
-        .unwrap();
-    assert_eq!(best.0, 652);
+    assert_eq!(argmax(result[0].as_slice::<f32>()?), 652);
     Ok(())
 }
 
@@ -55,15 +56,7 @@ fn test_state() -> anyhow::Result<()> {
     let mut state = model.spawn_state()?;
     let hopper = grace_hopper();
     let result = state.run([hopper])?;
-    let result = result[0].view::<f32>()?;
-    let best = result
-        .as_slice()
-        .unwrap()
-        .iter()
-        .enumerate()
-        .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
-        .unwrap();
-    assert_eq!(best.0, 652);
+    assert_eq!(argmax(result[0].as_slice::<f32>()?), 652);
     Ok(())
 }
 
@@ -74,15 +67,7 @@ fn test_nnef() -> anyhow::Result<()> {
     let hopper = grace_hopper();
     let result = model.run([hopper])?;
     assert_eq!(result[0].datum_type()?, f32::datum_type());
-    let result = result[0].view::<f32>()?;
-    let best = result
-        .as_slice()
-        .unwrap()
-        .iter()
-        .enumerate()
-        .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
-        .unwrap();
-    assert_eq!(best.0, 652);
+    assert_eq!(argmax(result[0].as_slice::<f32>()?), 652);
     Ok(())
 }
 
@@ -99,15 +84,7 @@ fn test_inference_model() -> anyhow::Result<()> {
     let model = model.into_model()?.into_runnable()?;
     let hopper = grace_hopper();
     let result = model.run([hopper])?;
-    let view = result[0].view::<f32>()?;
-    let best = view
-        .as_slice()
-        .unwrap()
-        .iter()
-        .enumerate()
-        .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
-        .unwrap();
-    assert_eq!(best.0, 652);
+    assert_eq!(argmax(result[0].as_slice::<f32>()?), 652);
     Ok(())
 }
 
@@ -180,7 +157,7 @@ fn test_pulse() -> anyhow::Result<()> {
     let mut properties = typed.property_keys()?;
     properties.sort();
     assert_eq!(&properties, &["pulse.delay", "pulse.input_axes", "pulse.output_axes"]);
-    assert_eq!(typed.property("pulse.delay")?.view::<i64>()?, ndarray::arr1(&[0i64]).into_dyn());
+    assert_eq!(typed.property("pulse.delay")?.as_slice::<i64>()?, &[0i64]);
     Ok(())
 }
 
@@ -218,7 +195,7 @@ fn test_runtime_properties() -> anyhow::Result<()> {
     let mut properties = runnable.property_keys()?;
     properties.sort();
     assert_eq!(&properties, &["pulse.delay", "pulse.input_axes", "pulse.output_axes"]);
-    assert_eq!(runnable.property("pulse.delay")?.view::<i64>()?, ndarray::arr1(&[0i64]).into_dyn());
+    assert_eq!(runnable.property("pulse.delay")?.as_slice::<i64>()?, &[0i64]);
     Ok(())
 }
 
@@ -345,7 +322,7 @@ fn test_cost() -> anyhow::Result<()> {
 fn test_profile() -> anyhow::Result<()> {
     ensure_models()?;
     let model = nnef()?.load("mobilenet_v2_1.0.onnx.nnef.tgz")?.into_runnable()?;
-    let data = ndarray::ArrayD::<f32>::zeros(vec![1, 3, 224, 224]);
+    let data = Tensor::from_slice::<f32>(&[1, 3, 224, 224], &vec![0f32; 1 * 3 * 224 * 224])?;
     let profile = model.profile_json(Some([data]))?;
     let profile: serde_json::Value = serde_json::from_str(&profile)?;
     let profiling_info = profile["profiling_info"].as_object().unwrap();
@@ -423,12 +400,12 @@ fn test_runtime_fact_iterator() -> anyhow::Result<()> {
 
 #[test]
 fn test_tensor_methods() -> anyhow::Result<()> {
-    let floats: Tensor = tensor(ndarray::prelude::arr1(&[-1f32, -0.3, 0., 0.25, 0.75, 1.2]))?;
+    let floats = Tensor::from_slice::<f32>(&[6], &[-1f32, -0.3, 0., 0.25, 0.75, 1.2])?;
     assert!(floats.datum_type()?.is_float());
     let ints = floats.convert_to(i8::datum_type())?;
     assert!(ints.datum_type()?.is_signed());
-    assert_eq!(ints.view::<i8>()?.as_slice().unwrap(), &[-1, 0, 0, 0, 0, 1]);
-    let same: Tensor = tensor(ndarray::prelude::arr1(&[-1f32, -0.3, 0., 0.25, 0.75, 1.2]))?;
+    assert_eq!(ints.as_slice::<i8>()?, &[-1, 0, 0, 0, 0, 1]);
+    let same = Tensor::from_slice::<f32>(&[6], &[-1f32, -0.3, 0., 0.25, 0.75, 1.2])?;
     assert_eq!(floats, same);
     Ok(())
 }
