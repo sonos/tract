@@ -9,6 +9,8 @@ use log::{info, trace};
 use tokenizers::Tokenizer;
 use tract::prelude::*;
 
+tract::impl_ndarray_interop!();
+
 #[derive(Clone, Debug)]
 struct KvCacheInfo {
     axis: usize,
@@ -247,9 +249,8 @@ impl CausalLlmState {
             .map(|chunk| -> anyhow::Result<Tensor> {
                 let start = Instant::now();
                 let token_data: Vec<i64> = chunk.iter().map(|t| *t as i64).collect();
-                let input: Tensor =
-                    tract_ndarray::Array2::from_shape_vec((1, chunk.len()), token_data)?
-                        .try_into()?;
+                let input =
+                    ndarray::Array2::from_shape_vec((1, chunk.len()), token_data)?.tract()?;
                 // Build inputs: token_ids + current kv caches
                 let mut inputs: Vec<Tensor> = vec![input];
                 inputs.extend(self.kv_caches.iter().cloned());

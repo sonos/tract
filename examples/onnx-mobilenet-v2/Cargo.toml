@@ -9,4 +9,5 @@ default-run = "example-onnx-mobilenet-v2"
 [dependencies]
 anyhow.workspace = true
 image.workspace = true
+ndarray.workspace = true
 tract.workspace = true

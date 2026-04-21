@@ -1,6 +1,8 @@
 use anyhow::Result;
+use ndarray::Array;
 use tract::prelude::*;
-use tract_ndarray::Array;
+
+tract::impl_ndarray_interop!();
 
 fn main() -> Result<()> {
     let mut model = tract::onnx()?.load("resnet.onnx")?;
@@ -13,12 +15,12 @@ fn main() -> Result<()> {
 
     let img = image::open("elephants.jpg").unwrap().to_rgb8();
     let resized = image::imageops::resize(&img, 224, 224, ::image::imageops::FilterType::Triangle);
-    let input = (tract_ndarray::Array4::from_shape_fn((1, 3, 224, 224), |(_, c, y, x)| {
+    let input = (ndarray::Array4::from_shape_fn((1, 3, 224, 224), |(_, c, y, x)| {
         resized[(x as _, y as _)][c] as f32 / 255.0
     }) - mean)
         / std;
 
-    let result = model.run([input])?;
+    let result = model.run([input.tract()?])?;
 
     // find and display the max value with its index
     let best =

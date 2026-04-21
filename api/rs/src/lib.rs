@@ -11,7 +11,6 @@ use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
-use ndarray::{Data, Dimension, RawData};
 use tract_extra::WithTractExtra;
 use tract_libcli::annotations::Annotations;
 use tract_libcli::profile::BenchLimits;
@@ -28,13 +27,15 @@ use tract_transformers::WithTractTransformers;
 
 use tract_api::*;
 
+mod ndarray_interop;
+pub use ndarray_interop::__ndarray_interop;
+
 pub mod prelude {
     // Concrete types
     pub use crate::{
         Dim, Fact, InferenceFact, InferenceModel, Model, Nnef, Onnx, Runnable, Runtime, State,
         Tensor, nnef, onnx, runtime_for_name,
     };
-    pub use ndarray as tract_ndarray;
 
     // User-facing API types
     pub use tract_api::{
@@ -581,7 +582,6 @@ impl Display for InferenceFact {
     }
 }
 
-tensor_from_to_ndarray!();
 as_inference_fact_impl!(InferenceModel, InferenceFact);
 as_fact_impl!(Model, Fact);
 

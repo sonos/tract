@@ -1,3 +1,9 @@
+# 0.23.0-dev.5 (unreleased)
+
+### API — breaking
+
+- **`ndarray` removed from the `tract` public API.** `tract::prelude::tract_ndarray`, the `Tensor::view*()` methods, and the automatic `TryFrom<ndarray::Array> for Tensor` impls are gone; `tract` no longer drags an `ndarray` version into its public surface. Downstream crates that want `ndarray` ergonomics invoke **`tract::impl_ndarray_interop!()`** at their crate root — the macro expands in the user's scope, so the `ndarray::*` types it references resolve against the *user's* `ndarray` dependency. It generates a `Tract` trait (`arr.tract()? -> tract::Tensor`) and an `Ndarray` trait (`tensor.ndarray::<T>()?` for dynamic-rank view, plus `ndarray0..ndarray6` for rank-specialised views — `ndarray0` is new and covers scalars). Migration: replace `view()` with `ndarray()`, `view1..view6` with `ndarray1..ndarray6`, `tensor(arr)?` / `arr.try_into()?` with `arr.tract()?`. The `tract-proxy` (FFI) Rust API loses its built-in ndarray bridge in this release; it can be re-added as a follow-up.
+
 # 0.23.0-dev.4 — 2026-04-20
 
 ### API

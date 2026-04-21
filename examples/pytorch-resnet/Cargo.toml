@@ -10,4 +10,5 @@ edition = "2024"
 [dependencies]
 anyhow.workspace = true
 image.workspace = true
+ndarray.workspace = true
 tract.workspace = true

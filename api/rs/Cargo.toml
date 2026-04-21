@@ -20,7 +20,6 @@ flate2.workspace = true
 half.workspace = true
 icu_normalizer.workspace = true
 icu_properties.workspace = true
-ndarray.workspace = true
 tract-api.workspace = true
 tract-nnef.workspace = true
 tract-onnx-opl.workspace = true

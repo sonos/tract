@@ -3,8 +3,10 @@ use std::fs::File;
 use anyhow::*;
 use float_ord::FloatOrd;
 use itertools::Itertools;
-use tract::prelude::tract_ndarray::prelude::*;
+use ndarray::prelude::*;
 use tract::prelude::*;
+
+tract::impl_ndarray_interop!();
 
 fn argmax(slice: &[f32]) -> Option<usize> {
     slice.into_iter().position_max_by_key(|x| FloatOrd(**x))
@@ -59,7 +61,7 @@ fn main() -> anyhow::Result<()> {
     let [features, feat_len] = preprocessor.run([samples])?.try_into().unwrap();
     let [encoded, _lens] = encoder.run([features, feat_len])?.try_into().unwrap();
 
-    let encoded: ArrayD<f32> = encoded.view()?.into_owned();
+    let encoded: ArrayD<f32> = encoded.ndarray()?.into_owned();
 
     let max_frames = encoded.shape()[2];
     let max_len = max_frames * 6 + 10;
@@ -71,19 +73,18 @@ fn main() -> anyhow::Result<()> {
     // one zero embedding — 2 steps of zero input total. Token blank_id has zero embedding
     // (padding_idx=blank_id), so pass [blank_id, blank_id] and take the last output step.
     let warmup_tokens = Tensor::from_slice(&[1, 2], &[blank_id as i32, blank_id as i32])?;
-    let state_0 = tensor(Array3::<f32>::zeros([2, 1, 640]))?;
-    let state_1 = tensor(Array3::<f32>::zeros([2, 1, 640]))?;
+    let state_0 = Array3::<f32>::zeros([2, 1, 640]).tract()?;
+    let state_1 = Array3::<f32>::zeros([2, 1, 640]).tract()?;
     let [warmup_out, mut state_0, mut state_1] =
         decoder.run([warmup_tokens, state_0, state_1])?.try_into().unwrap();
     // warmup_out shape: [1, 640, 2] — take last timestep → [1, 640, 1]
-    let warmup_out: ArrayD<f32> = warmup_out.view()?.into_owned();
-    let mut token: Tensor = tensor(warmup_out.slice_axis(Axis(2), (1..2).into()).to_owned())?;
+    let warmup_out: ArrayD<f32> = warmup_out.ndarray()?.into_owned();
+    let mut token = warmup_out.slice_axis(Axis(2), (1..2).into()).to_owned().tract()?;
 
     while hyp.len() < max_len && frame_ix < max_frames {
-        let frame: Tensor = tensor(encoded.slice_axis(Axis(2), (frame_ix..frame_ix + 1).into()))?;
+        let frame = encoded.slice_axis(Axis(2), (frame_ix..frame_ix + 1).into()).tract()?;
         let [logits] = joint.run([frame, token.clone()])?.try_into().unwrap();
-        let logits = logits.view::<f32>()?;
-        let logits = logits.as_slice().unwrap();
+        let logits = logits.as_slice::<f32>()?;
         let token_id = argmax(logits).unwrap();
         if token_id == blank_id {
             frame_ix += 1;

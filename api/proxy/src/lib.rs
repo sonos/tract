@@ -6,7 +6,6 @@ use tract_api::*;
 use tract_proxy_sys as sys;
 
 use anyhow::{Context, Result};
-use ndarray::*;
 
 macro_rules! check {
     ($expr:expr) => {
@@ -592,8 +591,6 @@ impl PartialEq for Tensor {
         me_dt == other_dt && me_shape == other_shape && me_data == other_data
     }
 }
-
-tensor_from_to_ndarray!();
 
 // FACT
 wrapper!(Fact, TractFact, tract_fact_destroy);

@@ -1,6 +1,8 @@
 use anyhow::*;
 use tract::prelude::*;
 
+tract::impl_ndarray_interop!();
+
 /// Flow-matching Euler scheduler for SD3.
 struct FlowMatchScheduler {
     timesteps: Vec<f32>,
@@ -174,25 +176,24 @@ fn main() -> Result<()> {
     };
     // --- Text encoding ---
     eprintln!("Running text encoders...");
-    let cond1 = text_encoder.run([input_ids.clone()])?;
-    let uncond1 = text_encoder.run([uncond_input_ids.clone()])?;
-    let cond2 = text_encoder_2.run([input_ids])?;
-    let uncond2 = text_encoder_2.run([uncond_input_ids])?;
+    let cond1 = text_encoder.run([input_ids.clone().tract()?])?;
+    let uncond1 = text_encoder.run([uncond_input_ids.clone().tract()?])?;
+    let cond2 = text_encoder_2.run([input_ids.tract()?])?;
+    let uncond2 = text_encoder_2.run([uncond_input_ids.tract()?])?;
 
     // CLIPTextModelWithProjection outputs:
     //   output[0] = text_embeds (pooled projected), output[1] = last_hidden_state
-    let cond_h1 = cond1[1].view::<f32>()?; // (1, 77, 768)
-    let cond_h2 = cond2[1].view::<f32>()?; // (1, 77, 1280)
-    let uncond_h1 = uncond1[1].view::<f32>()?;
-    let uncond_h2 = uncond2[1].view::<f32>()?;
+    let cond_h1 = cond1[1].ndarray::<f32>()?; // (1, 77, 768)
+    let cond_h2 = cond2[1].ndarray::<f32>()?; // (1, 77, 1280)
+    let uncond_h1 = uncond1[1].ndarray::<f32>()?;
+    let uncond_h2 = uncond2[1].ndarray::<f32>()?;
 
     // Concatenate CLIP hidden states: (1,77,768) + (1,77,1280) → (1,77,2048), pad to 4096
-    let cond_clip =
-        tract_ndarray::concatenate(tract_ndarray::Axis(2), &[cond_h1.view(), cond_h2.view()])?
-            .as_standard_layout()
-            .into_owned();
+    let cond_clip = ndarray::concatenate(ndarray::Axis(2), &[cond_h1.view(), cond_h2.view()])?
+        .as_standard_layout()
+        .into_owned();
     let uncond_clip =
-        tract_ndarray::concatenate(tract_ndarray::Axis(2), &[uncond_h1.view(), uncond_h2.view()])?
+        ndarray::concatenate(ndarray::Axis(2), &[uncond_h1.view(), uncond_h2.view()])?
             .as_standard_layout()
             .into_owned();
 
@@ -217,8 +218,8 @@ fn main() -> Result<()> {
     // Run T5 if available: (1, 256) → (1, 256, 4096)
     let (cond_t5, uncond_t5) = if let Some(te3) = &text_encoder_3 {
         eprintln!("Running T5 encoder...");
-        let c = te3.run([t5_input_ids.unwrap()])?;
-        let u = te3.run([t5_uncond_ids.unwrap()])?;
+        let c = te3.run([t5_input_ids.unwrap().tract()?])?;
+        let u = te3.run([t5_uncond_ids.unwrap().tract()?])?;
         let c_sl = c[0].as_slice::<f32>()?.to_vec();
         let u_sl = u[0].as_slice::<f32>()?.to_vec();
         (Some(c_sl), Some(u_sl))
@@ -251,7 +252,7 @@ fn main() -> Result<()> {
     for _ in 0..num_images {
         emb_data.extend_from_slice(&cond_emb);
     }
-    let text_emb = tract_ndarray::ArrayD::from_shape_vec(vec![b2, seq_len, 4096], emb_data)?;
+    let text_emb = ndarray::ArrayD::from_shape_vec(vec![b2, seq_len, 4096], emb_data)?;
     eprintln!("  Text embeddings: {:?}", text_emb.shape());
 
     // Pooled: cat CLIP-L pooled (768) + CLIP-G pooled (1280) → (1, 2048)
@@ -269,7 +270,7 @@ fn main() -> Result<()> {
         pooled_data.extend_from_slice(cond_p1);
         pooled_data.extend_from_slice(cond_p2);
     }
-    let pooled = tract_ndarray::ArrayD::from_shape_vec(vec![b2, pooled_dim], pooled_data)?;
+    let pooled = ndarray::ArrayD::from_shape_vec(vec![b2, pooled_dim], pooled_data)?;
 
     // --- Generate latent noise (16 channels for SD3) ---
     let latent_size = 16 * 128 * 128;
@@ -297,15 +298,15 @@ fn main() -> Result<()> {
         for &x in &latents {
             sample_data.push(x);
         }
-        let sample = tract_ndarray::ArrayD::from_shape_vec(vec![b2, 16, 128, 128], sample_data)?;
-        let timestep = tract_ndarray::Array1::from_vec(vec![t; b2]).into_dyn();
+        let sample = ndarray::ArrayD::from_shape_vec(vec![b2, 16, 128, 128], sample_data)?;
+        let timestep = ndarray::Array1::from_vec(vec![t; b2]).into_dyn();
 
         // MMDiT: 4 inputs (hidden_states, encoder_hidden_states, pooled_projections, timestep)
         let noise_pred = transformer.run(vec![
-            tensor(sample)?,
-            tensor(text_emb.clone())?,
-            tensor(pooled.clone())?,
-            tensor(timestep)?,
+            sample.tract()?,
+            text_emb.clone().tract()?,
+            pooled.clone().tract()?,
+            timestep.tract()?,
         ])?;
         let pred = noise_pred[0].as_slice::<f32>()?;
 
@@ -335,8 +336,8 @@ fn main() -> Result<()> {
             .iter()
             .map(|&x| x / VAE_SCALING_FACTOR + VAE_SHIFT_FACTOR)
             .collect();
-        let latent_arr = tract_ndarray::ArrayD::from_shape_vec(vec![1, 16, 128, 128], img_latent)?;
-        let image_result = vae_decoder.run([latent_arr])?;
+        let latent_arr = ndarray::ArrayD::from_shape_vec(vec![1, 16, 128, 128], img_latent)?;
+        let image_result = vae_decoder.run([latent_arr.tract()?])?;
         let image_data = image_result[0].as_slice::<f32>()?;
 
         let mut pixels = vec![0u8; h * w * 3];

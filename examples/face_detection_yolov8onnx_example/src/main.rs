@@ -1,10 +1,12 @@
 use anyhow::{Error, Result};
 use clap::Parser;
 use image::DynamicImage;
+use ndarray::s;
 use std::cmp::Ordering;
 use std::cmp::PartialOrd;
 use tract::prelude::*;
-use tract_ndarray::s;
+
+tract::impl_ndarray_interop!();
 
 #[derive(Parser)]
 struct CliArgs {
@@ -109,15 +111,15 @@ fn main() -> Result<(), Error> {
         (640 - new_width as i64) / 2,
         (640 - new_height as i64) / 2,
     );
-    let input = tract_ndarray::Array4::from_shape_fn((1, 3, 640, 640), |(_, c, y, x)| {
+    let input = ndarray::Array4::from_shape_fn((1, 3, 640, 640), |(_, c, y, x)| {
         padded.get_pixel(x as u32, y as u32)[c] as f32 / 255.0
     });
 
     //run model
-    let forward = model.run([input])?;
-    let results = forward[0].view::<f32>()?.t().into_owned();
+    let forward = model.run([input.tract()?])?;
+    let results = forward[0].ndarray::<f32>()?.t().into_owned();
     let mut bbox_vec: Vec<Bbox> = vec![];
-    for i in 0..results.len_of(tract_ndarray::Axis(0)) {
+    for i in 0..results.len_of(ndarray::Axis(0)) {
         let row = results.slice(s![i, .., ..]);
         let confidence = row[[4, 0]];
 
