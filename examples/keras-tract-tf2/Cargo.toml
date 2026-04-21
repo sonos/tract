@@ -8,8 +8,8 @@ edition = "2024"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-
-tract-core.workspace = true
-tract-onnx.workspace = true
+anyhow.workspace = true
+ndarray.workspace = true
 ndarray-npy.workspace = true
+tract.workspace = true
 
