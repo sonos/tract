@@ -27,8 +27,58 @@ use tract_transformers::WithTractTransformers;
 
 use tract_api::*;
 
-mod ndarray_interop;
-pub use ndarray_interop::__ndarray_interop;
+#[doc(hidden)]
+pub use ::tract_api::impl_ndarray_interop_with as __impl_ndarray_interop_with;
+
+#[doc(hidden)]
+pub use ::tract_api::{Datum as __Datum, TensorInterface as __TensorInterface};
+
+/// Generate ndarray interop for `tract::Tensor` using the caller crate's
+/// own `ndarray` version.
+///
+/// `tract` itself has no public `ndarray` dependency: the tensor interface
+/// deals only in shapes, slices, bytes and primitive datums. If your
+/// application wants the ergonomics of `ndarray`, invoke this macro once
+/// at the root of your crate. The macro expands in your crate's scope, so
+/// the `ndarray::*` types referenced in the generated code resolve against
+/// *your* `ndarray` dependency — freeing you from whichever version
+/// `tract` happens to use internally.
+///
+/// Two traits are generated:
+///
+/// - `Tract`, with method `fn tract(self) -> anyhow::Result<tract::Tensor>`,
+///   implemented for every `ndarray::ArrayBase<S, D>` with a `Datum`
+///   element type.
+/// - `Ndarray`, with methods `ndarray::<T>()`, `ndarray0::<T>()` …
+///   `ndarray6::<T>()`, implemented for `tract::Tensor`. `ndarrayN`
+///   returns a rank-`N` `ArrayView`; `ndarray` returns the dynamic-rank
+///   `ArrayViewD`.
+///
+/// # Example
+///
+/// ```ignore
+/// tract::impl_ndarray_interop!();
+///
+/// use ndarray::Array4;
+///
+/// let input: tract::Tensor = Array4::<f32>::zeros((1, 3, 224, 224)).tract()?;
+/// let outputs = model.run([input])?;
+/// let view = outputs[0].ndarray::<f32>()?;          // ArrayViewD<f32>
+/// let v4   = outputs[0].ndarray4::<f32>()?;         // ArrayView4<f32>
+/// ```
+///
+/// Your crate must depend on `ndarray` and `anyhow` directly for this
+/// macro to compile.
+#[macro_export]
+macro_rules! impl_ndarray_interop {
+    () => {
+        $crate::__impl_ndarray_interop_with!(
+            $crate::Tensor,
+            $crate::__Datum,
+            $crate::__TensorInterface,
+        );
+    };
+}
 
 pub mod prelude {
     // Concrete types
