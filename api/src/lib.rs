@@ -5,7 +5,6 @@ use std::path::Path;
 
 #[macro_use]
 pub mod macros;
-pub mod ndarray_interop;
 pub mod transform;
 
 pub use transform::{ConcretizeSymbols, FloatPrecision, Pulse, TransformConfig, TransformSpec};
