@@ -18,8 +18,6 @@ tires.
 | [`nnef-dump-mobilenet-v2`](nnef-dump-mobilenet-v2) | TF → NNEF | Shows how to `tract … dump --nnef` a TF model and then run the NNEF. |
 | [`pytorch-resnet`](pytorch-resnet) | PyTorch → ONNX | ResNet classification with `ndarray` broadcasting for per-channel normalisation. |
 | [`keras-tract-tf2`](keras-tract-tf2) | Keras → ONNX | Numeric equivalence check: runs the same inputs through the ONNX model and compares to `.npz` reference outputs. |
-| [`tensorflow-mobilenet-v2`](tensorflow-mobilenet-v2) | TensorFlow `.pb` | Uses the legacy `tract-tensorflow` crate directly — the `tract` facade does not expose TF `.pb` loading. |
-| [`tflite-mobilenet-v3`](tflite-mobilenet-v3) | TFLite | Uses the legacy `tract-tflite` crate directly — the `tract` facade does not expose TFLite loading. |
 
 ## Detection and face similarity
 
@@ -65,3 +63,14 @@ the caller's scope, so the `ndarray` version used is whichever one the
 example declares in its `Cargo.toml` — `tract` itself no longer re-exports
 `ndarray`. See the macro's rustdoc or `onnx-mobilenet-v2/src/main.rs` for
 the basic pattern.
+
+## Legacy
+
+These examples sit on framework crates that the `tract` facade does not
+re-export. They still work but are left on the old preludes until the
+facade grows matching loaders (or the examples are retired).
+
+| Example | Model source | Notes |
+|---------|--------------|-------|
+| [`tensorflow-mobilenet-v2`](tensorflow-mobilenet-v2) | TensorFlow `.pb` | Uses `tract-tensorflow` directly. |
+| [`tflite-mobilenet-v3`](tflite-mobilenet-v3) | TFLite | Uses `tract-tflite` directly. |
