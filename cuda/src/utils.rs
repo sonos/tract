@@ -11,7 +11,8 @@ use tract_gpu::tensor::DeviceTensor;
 use crate::Q40_ROW_PADDING;
 use crate::ops::GgmlQuantQ81Fact;
 
-static CULIBS_PRESENT: OnceLock<bool> = OnceLock::new();
+static CULIBS_MISSING: OnceLock<Option<&'static str>> = OnceLock::new();
+static DEPENDENCIES_OK: OnceLock<()> = OnceLock::new();
 
 // Ensure exactly cuda-13000 is enabled.
 // Prevent accidental change of feature gate without
@@ -43,10 +44,14 @@ fn format_cuda_version(v: i32) -> (i32, i32) {
     (v / 1000, (v % 1000) / 10)
 }
 
-fn load_first_found_cuda_lib() -> TractResult<Library> {
+fn load_first_found_cuda_lib() -> TractResult<(&'static str, Library)> {
     for name in CUDA_DRIVER_LIB_CANDIDATES {
-        if let Ok(lib) = unsafe { Library::new(name) } {
-            return Ok(lib);
+        match unsafe { Library::new(name) } {
+            Ok(lib) => {
+                log::debug!("tract-cuda: driver candidate {name:?} loaded");
+                return Ok((name, lib));
+            }
+            Err(e) => log::debug!("tract-cuda: driver candidate {name:?} not loadable: {e}"),
         }
     }
 
@@ -64,13 +69,14 @@ fn load_first_found_cuda_lib() -> TractResult<Library> {
 /// otherwise cudarc may panic while eagerly binding symbols.
 fn ensure_cuda_driver_compatible() -> TractResult<()> {
     // Load driver library without involving cudarc.
-    let lib = load_first_found_cuda_lib()?;
+    let (lib_name, lib) = load_first_found_cuda_lib()?;
+    let (req_major, req_minor) = format_cuda_version(REQUIRED_CUDA_API);
 
     unsafe {
         // Resolve symbols we need. If these are missing, the driver install is broken or not NVIDIA.
         let cu_init: Symbol<CuInitFn> = lib.get(b"cuInit\0").map_err(|e| {
             format_err!(
-                "CUDA driver library loaded, but symbol cuInit is missing. \
+                "CUDA driver library loaded ({lib_name}), but symbol cuInit is missing. \
                  This does not look like a functional NVIDIA driver installation. Details: {e}"
             )
         })?;
@@ -78,7 +84,7 @@ fn ensure_cuda_driver_compatible() -> TractResult<()> {
         let cu_driver_get_version: Symbol<CuDriverGetVersionFn> =
             lib.get(b"cuDriverGetVersion\0").map_err(|e| {
                 format_err!(
-                    "CUDA driver library loaded, but symbol cuDriverGetVersion is missing. \
+                    "CUDA driver library loaded ({lib_name}), but symbol cuDriverGetVersion is missing. \
                      Driver is too old or installation is corrupted. Details: {e}"
                 )
             })?;
@@ -88,7 +94,7 @@ fn ensure_cuda_driver_compatible() -> TractResult<()> {
         if init_res != 0 {
             // Don't assume specific numeric codes here; just report the CUresult.
             bail!(
-                "CUDA driver initialization failed (cuInit returned {}). \
+                "CUDA driver initialization failed (cuInit returned {}, via {lib_name}). \
                  Possible causes: no CUDA-capable device exposed to this process, \
                  missing /dev/nvidia* nodes (container), insufficient permissions, \
                  or a broken driver install.",
@@ -101,19 +107,19 @@ fn ensure_cuda_driver_compatible() -> TractResult<()> {
         let ver_res = cu_driver_get_version(&mut version as *mut _);
         if ver_res != 0 {
             bail!(
-                "cuDriverGetVersion failed (returned {}). \
+                "cuDriverGetVersion failed (returned {}, via {lib_name}). \
                  NVIDIA driver may be corrupted or not functioning properly.",
                 ver_res
             );
         }
 
+        let (found_major, found_minor) = format_cuda_version(version);
+
         // Compare against required API based on feature gate.
         if version < REQUIRED_CUDA_API {
-            let (req_major, req_minor) = format_cuda_version(REQUIRED_CUDA_API);
-            let (found_major, found_minor) = format_cuda_version(version);
-
             bail!(
                 "CUDA driver too old.\n\
+                 Driver library: {lib_name}\n\
                  Built with cudarc feature cuda-{} (requires driver API >= {}.{}).\n\
                  Found driver API {}.{}.\n\
                  Fix: upgrade the NVIDIA driver, or rebuild tract-cuda with a lower cuda-XXXXX gate.",
@@ -124,31 +130,67 @@ fn ensure_cuda_driver_compatible() -> TractResult<()> {
                 found_minor
             );
         }
+
+        log::info!(
+            "tract-cuda: CUDA driver {lib_name} OK; API version {found_major}.{found_minor} (built for >= {req_major}.{req_minor})"
+        );
     }
 
     Ok(())
 }
 
-fn are_cudarc_required_culibs_present() -> bool {
-    *CULIBS_PRESENT.get_or_init(|| unsafe {
-        cudarc::driver::sys::is_culib_present()
-            && cudarc::runtime::sys::is_culib_present()
-            && cudarc::nvrtc::sys::is_culib_present()
-            && cudarc::cublas::sys::is_culib_present()
+/// Probe each cudarc-backed sub-library we rely on and return the name of the first one
+/// that fails to load, or `None` if all are present. Cached across calls.
+fn first_missing_cudarc_culib() -> Option<&'static str> {
+    *CULIBS_MISSING.get_or_init(|| {
+        // Names match the short labels cudarc uses in its dynamic-loading candidates.
+        // SAFETY: cudarc's `is_culib_present` functions are documented dlopen probes with no
+        // side effects beyond the library handle cache.
+        let probe = |name: &'static str, ok: bool| -> Option<&'static str> {
+            if ok {
+                log::debug!("tract-cuda: cudarc probe for {name:?} succeeded");
+                None
+            } else {
+                log::debug!("tract-cuda: cudarc probe for {name:?} failed");
+                Some(name)
+            }
+        };
+        probe("cuda (driver)", unsafe { cudarc::driver::sys::is_culib_present() })
+            .or_else(|| {
+                probe("cudart (runtime)", unsafe { cudarc::runtime::sys::is_culib_present() })
+            })
+            .or_else(|| probe("nvrtc", unsafe { cudarc::nvrtc::sys::is_culib_present() }))
+            .or_else(|| probe("cublas", unsafe { cudarc::cublas::sys::is_culib_present() }))
+            .or_else(|| probe("cudnn", unsafe { cudarc::cudnn::sys::is_culib_present() }))
     })
 }
 
 pub fn ensure_cuda_runtime_dependencies(context_msg: &'static str) -> TractResult<()> {
+    // Fast path: if a previous call already validated the full chain, skip the whole probe.
+    // CudaRuntime wires this into both `check()` and `prepare_with_options()`, so the second
+    // caller would otherwise re-dlopen libcuda and re-log the init narrative.
+    if DEPENDENCIES_OK.get().is_some() {
+        return Ok(());
+    }
+
     ensure_cuda_driver_compatible()
         .context("CUDA driver validation failed")
         .context(context_msg)?;
 
-    ensure!(
-        are_cudarc_required_culibs_present(),
-        "{}: CUDA runtime sub-libraries missing/missaligned with cudarc (nvrtc,cublas,cudart).",
-        context_msg
+    if let Some(missing) = first_missing_cudarc_culib() {
+        bail!(
+            "{context_msg}: CUDA runtime sub-library {missing:?} could not be dlopen'd. \
+             cudarc searches standard library names derived from the build-time CUDA \
+             version; install the matching package or set LD_LIBRARY_PATH so the \
+             loader can find it. Enable RUST_LOG=tract_cuda=debug to see each probe."
+        );
+    }
+
+    log::info!(
+        "tract-cuda: all required cudarc sub-libraries present (driver, cudart, nvrtc, cublas, cudnn)"
     );
 
+    let _ = DEPENDENCIES_OK.set(());
     Ok(())
 }
 

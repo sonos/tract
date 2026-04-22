@@ -65,6 +65,27 @@ impl TractCudaContext {
             CudaContext::new(0).with_context(|| "Could not find system default CUDA device")?;
 
         let prop = get_device_prop(0)?;
+
+        // Log device identity so users diagnosing a bad deploy can tell what their code actually
+        // found. cudaDeviceProp::name is a C char array; be defensive about odd bytes.
+        let name_bytes: Vec<u8> =
+            prop.name.iter().take_while(|c| **c != 0).map(|c| *c as u8).collect();
+        let device_name = String::from_utf8_lossy(&name_bytes);
+        log::info!(
+            "tract-cuda: device 0 = {:?}, compute capability {}.{}, {} MiB global mem",
+            device_name,
+            prop.major,
+            prop.minor,
+            prop.totalGlobalMem / (1024 * 1024),
+        );
+
+        if let Ok(rt) = cudarc::runtime::result::version::get_runtime_version() {
+            let (ma, mi) = (rt / 1000, (rt % 1000) / 10);
+            log::info!("tract-cuda: CUDA runtime (cudart) version {ma}.{mi}");
+        } else {
+            log::warn!("tract-cuda: cudaRuntimeGetVersion failed");
+        }
+
         let ctxt = Self {
             inner: context,
             device_properties: prop,
@@ -142,37 +163,43 @@ impl TractCudaContext {
         Ok(())
     }
 
-    /// Build NVRTC options: include paths + GPU arch.
+    /// Build NVRTC options: GPU arch + include paths for the CUDA toolkit's host/device
+    /// headers and the CCCL (libcudacxx) tree. Both are required because NVRTC in
+    /// CUDA 13 does not intercept `<cuda_fp16.h>`, `<math_constants.h>`, or any of
+    /// the libcudacxx headers — they have to be reachable on disk via `-I`. On
+    /// Debian/Ubuntu the matching packages are `cuda-cccl-<ver>` and
+    /// `cuda-cudart-dev-<ver>`.
     fn build_nvrtc_opts(&self) -> TractResult<Vec<String>> {
-        let cuda_home = std::env::var_os("CUDA_HOME")
-            .map(PathBuf::from)
-            .or_else(|| std::env::var_os("CUDA_PATH").map(PathBuf::from)) // Windows
-            .or_else(|| {
-                let p = Path::new("/usr/local/cuda");
-                if p.exists() { Some(p.to_path_buf()) } else { None }
-            })
-            .or_else(|| {
-                // Last resort: infer from nvcc location
-                 std::process::Command::new("which").arg("nvcc").output().ok()
-                    .and_then(|nvcc| Path::new(&String::from_utf8(nvcc.stdout).unwrap()).parent().and_then(|bin| bin.parent()).map(|p| p.to_path_buf()))
-            });
-
-        let cuda_inc = cuda_home.unwrap().join("include");
-        if !cuda_inc.exists() {
-            return Err(anyhow!("CUDA include dir not found at {:?}", cuda_inc));
-        }
-
         let arch = format!(
             "--gpu-architecture=sm_{}{}",
             self.device_properties.major, self.device_properties.minor
         );
+        log::info!("tract-cuda: NVRTC target architecture {arch}");
 
-        let mut opts = vec!["--std=c++17".into(), arch, format!("-I{}", cuda_inc.display())];
-        // CUDA 13 moved libcudacxx (`cuda/std/*`) under `include/cccl/`.
-        let cccl_inc = cuda_inc.join("cccl");
-        if cccl_inc.exists() {
-            opts.push(format!("-I{}", cccl_inc.display()));
+        let cuda_inc = resolve_toolkit_include_dir()?;
+        log::info!("tract-cuda: toolkit include dir {}", cuda_inc.display());
+
+        let cccl_root = find_cccl_root(&cuda_inc)?;
+        log::info!("tract-cuda: CCCL root {}", cccl_root.display());
+
+        // `cuda_fp16.h` is already checked as the sentinel in resolve_toolkit_include_dir.
+        // Check the other non-CCCL header we rely on for the same fail-fast reason.
+        let math_hdr = cuda_inc.join("math_constants.h");
+        if !math_hdr.exists() {
+            bail!(
+                "Required header {} not found. Install cuda-cudart-dev-{}.",
+                math_hdr.display(),
+                cuda_pkg_suffix(),
+            );
         }
+
+        let opts = vec![
+            "--std=c++17".into(),
+            arch,
+            format!("-I{}", cuda_inc.display()),
+            format!("-I{}", cccl_root.display()),
+        ];
+        log::info!("tract-cuda: NVRTC opts = {opts:?}");
         Ok(opts)
     }
 
@@ -342,8 +369,18 @@ pub struct TractCudaStream {
 impl TractCudaStream {
     fn new() -> TractResult<TractCudaStream> {
         let stream = cuda_context().default_stream();
-        let cublas = CudaBlas::new(stream.clone())?;
-        let cudnn = Cudnn::new(stream.clone())?;
+        let cublas = CudaBlas::new(stream.clone()).context(
+            "CudaBlas::new failed: libcublas loaded but the handle could not be created",
+        )?;
+        let cudnn = Cudnn::new(stream.clone()).context(
+            "Cudnn::new failed: libcudnn loaded but the handle could not be created. \
+             Version mismatch between libcudnn and the CUDA runtime is the most common cause.",
+        )?;
+
+        // Log once per stream — typically one per thread. Debug-level because the first stream's
+        // INFO-level summary already captured the versions via info_once below.
+        log_library_versions_once();
+
         Ok(TractCudaStream {
             inner: stream,
             cublas,
@@ -411,4 +448,150 @@ impl Deref for TractCudaStream {
     fn deref(&self) -> &Self::Target {
         &self.inner
     }
+}
+
+/// Resolve a CUDA toolkit root containing an `include/` directory, if any is available.
+/// Returns `None` on runtime-only deploys where the toolkit isn't installed — callers are
+/// expected to rely on NVRTC's built-in headers in that case and may still succeed.
+fn resolve_cuda_home() -> Option<(&'static str, PathBuf)> {
+    if let Some(v) = std::env::var_os("CUDA_HOME") {
+        let p = PathBuf::from(v);
+        log::debug!("tract-cuda: CUDA_HOME env var set, using {}", p.display());
+        return Some(("CUDA_HOME env", p));
+    }
+    if let Some(v) = std::env::var_os("CUDA_PATH") {
+        let p = PathBuf::from(v);
+        log::debug!("tract-cuda: CUDA_PATH env var set, using {}", p.display());
+        return Some(("CUDA_PATH env", p));
+    }
+    let default = Path::new("/usr/local/cuda");
+    if default.exists() {
+        log::debug!("tract-cuda: /usr/local/cuda exists, using that as CUDA_HOME");
+        return Some(("default /usr/local/cuda", default.to_path_buf()));
+    }
+    if let Ok(nvcc) = std::process::Command::new("which").arg("nvcc").output()
+        && nvcc.status.success()
+    {
+        let stdout = String::from_utf8_lossy(&nvcc.stdout);
+        let p = Path::new(stdout.trim());
+        if let Some(root) = p.parent().and_then(|bin| bin.parent()) {
+            log::debug!(
+                "tract-cuda: inferred CUDA_HOME {} from nvcc at {}",
+                root.display(),
+                p.display()
+            );
+            return Some(("inferred from `which nvcc`", root.to_path_buf()));
+        }
+    }
+    log::debug!(
+        "tract-cuda: no CUDA_HOME found (env vars unset, /usr/local/cuda absent, nvcc not in PATH)"
+    );
+    None
+}
+
+/// Resolve the toolkit include dir — the directory that holds `cuda_fp16.h`. CUDA 13
+/// ships headers under `<root>/targets/<arch>-<os>/include/` and usually symlinks
+/// `<root>/include/` to it, but minimal installs can skip that symlink; probe both.
+fn resolve_toolkit_include_dir() -> TractResult<PathBuf> {
+    let Some((_, cuda_home)) = resolve_cuda_home() else {
+        let ver = cuda_pkg_suffix();
+        bail!(
+            "No CUDA toolkit root found. Tract's NVRTC kernels need the toolkit's \
+             host/device headers (apt: cuda-cudart-dev-{ver}) plus CCCL (apt: \
+             cuda-cccl-{ver}). Set CUDA_HOME if the toolkit is installed somewhere \
+             other than /usr/local/cuda."
+        );
+    };
+
+    let sentinel = "cuda_fp16.h";
+    let mut candidates = vec![cuda_home.join("include")];
+    let targets = cuda_home.join("targets");
+    if targets.exists() {
+        if let Ok(entries) = std::fs::read_dir(&targets) {
+            for entry in entries.flatten() {
+                candidates.push(entry.path().join("include"));
+            }
+        }
+    }
+
+    let mut tried: Vec<PathBuf> = Vec::new();
+    for cand in &candidates {
+        let probe = cand.join(sentinel);
+        let found = probe.exists();
+        log::debug!("tract-cuda: toolkit-inc probe {} exists={found}", probe.display());
+        tried.push(probe);
+        if found {
+            return Ok(cand.clone());
+        }
+    }
+
+    bail!(
+        "Could not find a toolkit include dir containing {sentinel}. Tried:\n  - {}\nInstall \
+         cuda-cudart-dev-{}.",
+        tried.iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join("\n  - "),
+        cuda_pkg_suffix(),
+    )
+}
+
+/// Locate the CCCL (libcudacxx) include root that contains `cuda/std/cstdint`. Probes
+/// under the given toolkit include dir: `cccl/`, `libcudacxx/include/`, then the dir
+/// itself (pre-13 layout).
+fn find_cccl_root(cuda_inc: &Path) -> TractResult<PathBuf> {
+    let sentinel = Path::new("cuda").join("std").join("cstdint");
+    let mut tried: Vec<PathBuf> = Vec::new();
+
+    for cand in
+        [cuda_inc.join("cccl"), cuda_inc.join("libcudacxx").join("include"), cuda_inc.to_path_buf()]
+    {
+        let probe_path = cand.join(&sentinel);
+        let found = probe_path.exists();
+        log::debug!("tract-cuda: CCCL probe {} exists={found}", probe_path.display());
+        tried.push(probe_path);
+        if found {
+            return Ok(cand);
+        }
+    }
+
+    bail!(
+        "CCCL/libcudacxx headers not found. Tract's NVRTC kernels need <cuda/std/cstdint> and \
+         <cuda/std/type_traits>. Tried:\n  - {}\nInstall the CCCL headers (apt: cuda-cccl-{}).",
+        tried.iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join("\n  - "),
+        cuda_pkg_suffix(),
+    )
+}
+
+/// Package suffix used by the NVIDIA apt repo, e.g. `13-0` for cudart 13.0. We prefer the
+/// runtime's actual cudart version when it's already loaded (via cudarc) — that aligns with
+/// whatever is installed on this host — and fall back to the feature-gated minimum
+/// (`REQUIRED_CUDA_API`) otherwise.
+fn cuda_pkg_suffix() -> String {
+    let v = cudarc::runtime::result::version::get_runtime_version()
+        .unwrap_or(crate::utils::REQUIRED_CUDA_API);
+    format!("{}-{}", v / 1000, (v % 1000) / 10)
+}
+
+/// Log cuBLAS / cuDNN / cudart versions and device property summary at INFO level, exactly once
+/// per process. Called from every `TractCudaStream::new`, but the `OnceLock` guard ensures we
+/// don't spam the log when user code creates one stream per thread.
+fn log_library_versions_once() {
+    static ONCE: OnceLock<()> = OnceLock::new();
+    ONCE.get_or_init(|| {
+        let cudnn_v = cudarc::cudnn::result::get_version();
+        log::info!(
+            "tract-cuda: cuDNN version {}.{}.{} (raw {cudnn_v})",
+            cudnn_v / 1000,
+            (cudnn_v % 1000) / 100,
+            cudnn_v % 100,
+        );
+
+        // cuBLAS exposes cublasGetVersion_v2(handle, *int). We don't plumb a handle here, but
+        // cublasGetCudartVersion is no-arg and reports the cudart version cuBLAS was built
+        // against — which is the interesting diagnostic when debugging a cuBLAS/cudart mismatch.
+        let cublas_cudart = unsafe { cudarc::cublas::sys::cublasGetCudartVersion() };
+        log::info!(
+            "tract-cuda: cuBLAS was built against cudart {}.{}",
+            cublas_cudart / 1000,
+            (cublas_cudart % 1000) / 10,
+        );
+    });
 }
