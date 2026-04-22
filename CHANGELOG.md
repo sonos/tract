@@ -1,8 +1,30 @@
-# 0.23.0-dev.5 (unreleased)
+# 0.23.0-dev.5 - 2026-04-22
 
 ### API — breaking
 
 - **`ndarray` removed from the `tract` and `tract-proxy` public APIs.** `tract::prelude::tract_ndarray`, the `Tensor::view*()` methods, and the automatic `TryFrom<ndarray::Array> for Tensor` impls are gone; neither crate drags an `ndarray` version into its public surface. Downstream crates that want `ndarray` ergonomics invoke **`tract::impl_ndarray_interop!()`** (or **`tract_proxy::impl_ndarray_interop!()`** for the FFI-backed API) at their crate root — the macro expands in the user's scope, so the `ndarray::*` types it references resolve against the *user's* `ndarray` dependency. It generates a `Tract` trait (`arr.tract()? -> tract::Tensor`) and an `Ndarray` trait (`tensor.ndarray::<T>()?` for dynamic-rank view, plus `ndarray0..ndarray6` for rank-specialised views — `ndarray0` is new and covers scalars). The macro also accepts an optional path argument — `tract::impl_ndarray_interop!(ndarray_017)` — for Cargo renames or multi-version setups. Migration: replace `view()` with `ndarray()`, `view1..view6` with `ndarray1..ndarray6`, `tensor(arr)?` / `arr.try_into()?` with `arr.tract()?`.
+
+ ### Examples
+
+  - **Examples migrated to the `tract` facade and reorganised.**
+  - **TensorFlow and TFLite examples moved to a dedicated Legacy section** — the `tract` facade intentionally doesn't expose those formats.
+
+  ### GPU runtimes
+
+  - **CUDA setup diagnostics.** `tract-cuda` now logs the CUDA driver library path + API version, resolved `CUDA_HOME`, CCCL
+  root, NVRTC target arch, full NVRTC opts, device name + compute capability + global memory, cudart / cuBLAS / cuDNN versions —
+  all at INFO level (`RUST_LOG=tract_cuda=info`). Per-library cudarc presence probe names the missing sub-library (driver,
+  cudart, nvrtc, cublas, cudnn) on failure, and cuDNN is now covered (was previously deferred to first op). The initial
+  driver+probe check is cached so `Runtime::check()` and `Runtime::prepare_with_options()` don't re-run it. The toolkit
+  include-dir resolver also probes `<cuda_home>/targets/<arch>-<os>/include/` so CUDA 13 installs without the legacy `include/`
+  symlink resolve. Error messages name the matching NVIDIA apt package at the host's actual runtime version (e.g.
+  `cuda-cccl-13-0`, `cuda-cudart-dev-13-0`).
+  - **CUDA** locked runtime dependency:`cuda-cccl-13-0`, `cuda-cudart-dev-13-0`, `libcudnn9-cuda-13`, on top of "standard" nvidia/cuda `runtime` base ships)
+
+  ### TDim
+
+  - **TDim: distribute division over `Add` when every term divides.** Simplification now pushes `(a + b + c) / d` through to `a/d
+   + b/d + c/d` when each term is divisible, catching shapes that previously stayed as opaque `Div` nodes.
 
 # 0.23.0-dev.4 — 2026-04-20
 
