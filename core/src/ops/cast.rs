@@ -98,7 +98,11 @@ impl TypedOp for Cast {
         if model.outlet_fact(node.inputs[0])?.datum_type == self.to {
             return TypedModelPatch::shunt_one_op(model, node);
         }
-        if let Some(prec) = model.single_prec(node.id)?
+        // linear_prec (fan-in=1, fan-out=1) rather than single_prec: swapping
+        // through a fan-out predecessor clones it, and the clone breaks
+        // downstream pattern detectors (e.g. Square+Reduce<Sum>+Mul fusion into
+        // Reduce<MeanOfSquares>, which then feeds RmsNorm detection).
+        if let Some(prec) = model.linear_prec(node.id)?
             && (prec.op_is::<AxisOp>()
                 || prec.op_is::<IntoShape>()
                 || prec.op_is::<MultiBroadcastTo>())
