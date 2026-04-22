@@ -164,7 +164,11 @@ impl TypedOp for ElementWiseOp {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        if let Some(prec) = model.single_prec(node.id)?
+        // linear_prec (fan-in=1, fan-out=1) rather than single_prec: swapping
+        // through a fan-out predecessor clones it, and the clone can break
+        // downstream pattern detectors (e.g. Square+Reduce<Sum>+Mul fusion
+        // into Reduce<MeanOfSquares> feeding RmsNorm detection).
+        if let Some(prec) = model.linear_prec(node.id)?
             && (prec.op_is::<AxisOp>()
                 || prec.op_is::<IntoShape>()
                 || prec.op_is::<MultiBroadcastTo>())
