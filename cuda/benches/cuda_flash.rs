@@ -3,52 +3,8 @@ use criterion::*;
 
 use tract_core::internal::*;
 use tract_cuda::kernels::flash_attn::CudaFlashAttn;
-use tract_cuda::kernels::ggml_flash_attn::GgmlFlashAttn;
 use tract_cuda::with_cuda_stream;
 use tract_gpu::tensor::IntoDevice;
-
-pub fn cuda_ggml_flash(
-    crit: &mut BenchmarkGroup<WallTime>,
-    batch: usize,
-    q_heads: usize,
-    kv_heads: usize,
-    past_seq_len: usize,
-    seq_len: usize,
-    out_dim: usize,
-) {
-    with_cuda_stream(|stream| {
-        let q = Tensor::zero_dt(DatumType::F32, &[batch, q_heads, seq_len, out_dim]).unwrap();
-        let k = Tensor::zero_dt(
-            DatumType::F16,
-            &[batch, kv_heads, (past_seq_len + seq_len).next_multiple_of(256), out_dim],
-        )
-        .unwrap();
-        let v = Tensor::zero_dt(
-            DatumType::F16,
-            &[batch, kv_heads, (past_seq_len + seq_len).next_multiple_of(256), out_dim],
-        )
-        .unwrap();
-        let mask = Tensor::zero_dt(
-            DatumType::F16,
-            &[1, 1, seq_len.next_multiple_of(16), (past_seq_len + seq_len).next_multiple_of(256)],
-        )
-        .unwrap();
-
-        let cuda_q = q.into_device().unwrap();
-        let cuda_k = k.into_device().unwrap();
-        let cuda_v = v.into_device().unwrap();
-        let cuda_mask = mask.into_device().unwrap();
-
-        crit.bench_function(&format!("tract_cuda_ggml_flash"), |be| {
-            be.iter(|| {
-                let _ =
-                    GgmlFlashAttn.eval(stream, &cuda_q, &cuda_k, &cuda_v, &cuda_mask, 1.0).unwrap();
-            });
-        });
-        Ok(())
-    })
-    .unwrap()
-}
 
 pub fn cuda_minimal_flash(
     crit: &mut BenchmarkGroup<WallTime>,
@@ -101,7 +57,6 @@ fn flash_attn(
     ));
     c.throughput(Throughput::Elements((4 * b * qh * s * (s + p) * out_dim) as _));
 
-    cuda_ggml_flash(&mut c, b, qh, kh, p, s, out_dim);
     cuda_minimal_flash(&mut c, b, qh, kh, p, s, out_dim);
     c.finish();
 }
