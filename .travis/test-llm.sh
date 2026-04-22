@@ -93,7 +93,9 @@ then
     fi
 fi
 
-$TRACT_RUN -v --nnef-tract-transformers $MODELS/$nnef -O --readings  --assert-maximal-mm-quality-cost 0 $TRACT_EXTRA_ARGS dump -q
+$TRACT_RUN -v --nnef-tract-transformers $MODELS/$nnef -O --readings  --assert-maximal-mm-quality-cost 0 $TRACT_EXTRA_ARGS dump -q \
+    --assert-op-count Rsqrt 0 \
+    --assert-op-count MeanOfSquares 0
 alloc_max=$(cat readings.out | tail -n +2 | awk '{print $10-$11}' | sort -n | tail -1)
 ratio=$((alloc_max * 100 / size))
 
