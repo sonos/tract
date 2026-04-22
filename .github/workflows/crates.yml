@@ -70,6 +70,20 @@ jobs:
     - name: Cargo test
       run: cargo test -p tract-cuda -p test-cuda
 
+  cuda-minimum-deploy:
+    # Validates the BOM documented in cuda/src/context.rs. Builds tract-cli
+    # on the runner (full toolkit available) then runs it against a tiny
+    # model inside a container that only has the minimum runtime packages
+    # pinned in harness/cuda-minimum-deploy/Dockerfile.
+    runs-on: cuda-lovelace
+    needs: prepare-matrix
+    env:
+      RUSTUP_TOOLCHAIN: "1.91.0"
+    steps:
+    - uses: actions/checkout@v6
+    - name: Minimum-BOM GPU smoke
+      run: harness/cuda-minimum-deploy/gpu-ci.sh
+
   metal:
     runs-on: macOS
     needs: prepare-matrix
