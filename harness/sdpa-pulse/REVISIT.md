@@ -10,7 +10,7 @@ the current harnesses but may need generalization before the real encoder lands.
 **Location:** `core/src/ops/logic.rs`
 
 **Current state:** Recognises the specific pattern produced by the
-`block-left-1-mask` NNEF graph:
+`ex04-block-left-1-mask` NNEF graph:
 ```
 Mul([Ge(Val(L), diff), Ge(diff, Val(0))])
 where diff = Add([MulInt(-1, Div(🎯1, P)), Div(🎯0, P)])
@@ -80,6 +80,35 @@ encoder has rank 4 (`[B, H, T, D]`).
 - Extend to arbitrary rank; the token axis is not necessarily 0.
 - The reshape must fold/unfold only the token axis, leaving batch/head axes
   untouched.
+
+---
+
+## 6. `FoldUniformTDim` — dummy-input hack for symbol resolution ordering
+
+**Location:** `core/src/optim/fold_uniform_tdim.rs`
+
+**Current state:** When `FoldUniformTDim` replaces a wire with a `UniformTDim` node
+(zero inputs), it wires `model.inputs[0]` as a dummy dependency when the shape
+contains model symbols (e.g. S).  This forces `UniformTDim` to be topologically
+ordered after the Source node so that S is resolved in `session.resolved_symbols`
+before `eval_with_session` tries to evaluate the shape.
+
+**Why it's a hack:**
+- It assumes `model.inputs[0]` carries the relevant symbol(s) — true for current
+  harnesses but not guaranteed in general (a model may have S derived from input 1,
+  or from a shape input that is not `inputs[0]`).
+- The right fix is to let `UniformTDim` take the *shape inputs* it actually depends
+  on (i.e. the nodes that concretely provide the symbol values), determined by
+  tracing which symbols appear in `self.shape` and which source nodes resolve them.
+- Alternatively, symbol resolution could be done eagerly at model-load time rather
+  than lazily from node outputs, but that would require broader changes to `plan.rs`.
+
+**What to do properly:**
+- In `FoldUniformTDim`, collect the symbols appearing in `shape`, find which model
+  input outlets (or `ShapeOf` outputs) resolve those symbols, and wire those
+  specific outlets as shape-hint inputs to `UniformTDim`.
+- Or redesign `UniformTDim` to accept an explicit shape-tensor input (concrete
+  at runtime) rather than a symbolic `ShapeFact`.
 
 ---
 

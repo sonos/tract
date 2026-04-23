@@ -9,7 +9,7 @@ that passes proves one more piece of the pulsification machinery works.
 
 ---
 
-## block-l-eq-p ✓
+## ex01-block-l-eq-p ✓
 
 Chunk-level bidirectional attention with no lookback.  Input `qkv [S, 3P, Dh]`
 where S is the chunk count.  Each chunk of P tokens attends only to the other
@@ -29,7 +29,7 @@ self-attention.  Left-chunk lookback = 0.
 
 ---
 
-## block-left-1 ✓
+## ex03-block-left-1 ✓
 
 Same chunk-level layout, but each chunk's Q attends to K/V from the previous
 chunk as well (left-chunk lookback = 1).  The K/V history is modelled explicitly:
@@ -48,9 +48,9 @@ be carried across pulses.  Left-chunk lookback = 1 via explicit windowing.
 
 ---
 
-## block-l-eq-p-mask (batch ✓, streaming blocked)
+## ex02-block-l-eq-p-mask (batch ✓, streaming blocked)
 
-Block-diagonal attention as in `block-l-eq-p`, but now an explicit boolean mask
+Block-diagonal attention as in `ex01-block-l-eq-p`, but now an explicit boolean mask
 tensor `[S, P, P]` (all-true) is wired through `select + softmax`.  No lookback.
 
 **Proves (batch only):**
@@ -71,7 +71,7 @@ CLI bug to fix.
 
 ---
 
-## block-left-1-mask ✓
+## ex04-block-left-1-mask ✓
 
 Flat-token sliding-window attention.  Input `qkv [S, 3Dh]` where S is the
 **token** count (not chunk count).  The full T×T attention matrix is computed,
@@ -110,10 +110,10 @@ inserts Delay ops for K/V lookback.
 ## The arc
 
 ```
-block-l-eq-p        attention pulsifies (trivial, no state)
-block-left-1        K/V lookback pulsifies (Delay ops, explicit window)
-block-l-eq-p-mask   Iff+softmax pulsifies (external mask, raw op test)
-block-left-1-mask   FoldWindowAttention + token fold/unfold pulsifiers  ✓
+ex01-block-l-eq-p        attention pulsifies (trivial, no state)
+ex03-block-left-1        K/V lookback pulsifies (Delay ops, explicit window)
+ex02-block-l-eq-p-mask   Iff+softmax pulsifies (external mask, raw op test)
+ex04-block-left-1-mask   FoldWindowAttention + token fold/unfold pulsifiers  ✓
 ```
 
 Every passing test proves one more piece of the machinery works.  The failing
