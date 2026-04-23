@@ -293,7 +293,13 @@ impl TDim {
 
     pub fn eval(&self, values: &SymbolValues) -> TDim {
         match self {
-            Sym(sym) => values.get(sym).map(Val).unwrap_or_else(|| Sym(sym.clone())),
+            Sym(sym) => {
+                if let Some(v) = values.get(sym) {
+                    Val(v)
+                } else {
+                    Sym(sym.clone())
+                }
+            }
             Val(v) => Val(*v),
             Add(terms) => terms.iter().fold(Val(0), |acc, it| -> TDim { acc + it.eval(values) }),
             Mul(terms) => terms.iter().fold(Val(1), |acc, it| -> TDim { acc * it.eval(values) }),

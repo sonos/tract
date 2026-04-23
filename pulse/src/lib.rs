@@ -22,6 +22,7 @@ pub mod internal {
 use std::ops::ControlFlow;
 
 use internal::*;
+use tract_core::optim::TypedPass;
 use tract_core::transform::ModelTransform;
 use tract_pulse_opl::tract_nnef::tract_core;
 
@@ -44,6 +45,13 @@ impl ModelTransform for PulseTransform {
         let symbol = self.0.symbol.as_deref().unwrap_or("S");
         let sym = model.symbols.sym(symbol);
         let pulse_dim = parse_tdim(&model.symbols, &self.0.pulse)?;
+        // Pre-pulsification: fold skew-trick chains into DiagGather.
+        if ops::diag_gather::fold_diag_gather(model)? {
+            // Re-run ROI propagation: the fold replaces Slice nodes that
+            // carried ROI annotations, so the new DiagGather node needs
+            // its own ROI annotation re-derived from downstream consumers.
+            tract_core::optim::propagate_roi::PropagateRoi.run_direct(model)?;
+        }
         // Pulsification (which calls Blockify internally) consumes the
         // model and produces a typed pulsed graph.
         let pulsed = model::PulsedModel::new(model, sym, &pulse_dim)?;
