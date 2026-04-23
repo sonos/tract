@@ -775,8 +775,6 @@ impl TypedOp for AxisOp {
         Ok(tvec!(fact))
     }
 
-
-
     fn axes_mapping(
         &self,
         inputs: &[&TypedFact],
