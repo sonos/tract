@@ -182,6 +182,24 @@ pub fn peel_negated_chunk_window_expr(expr: &TDim) -> Option<TDim> {
     None
 }
 
+/// Build a chunk-window TDim expression with explicit row/col axes.
+pub fn build_chunk_window_roi(
+    symbols: &SymbolScope,
+    p: u64,
+    left_chunks: i64,
+    row_axis: usize,
+    col_axis: usize,
+) -> TDim {
+    let row = TDim::Sym(symbols.coord_sym(row_axis));
+    let col = TDim::Sym(symbols.coord_sym(col_axis));
+    let div_row = TDim::Div(Box::new(row), p);
+    let div_col = TDim::Div(Box::new(col), p);
+    let diff = (div_row - div_col).simplify();
+    let ge_upper = TDim::Ge(Box::new(TDim::Val(left_chunks)), Box::new(diff.clone()));
+    let ge_lower = TDim::Ge(Box::new(diff), Box::new(TDim::Val(0)));
+    TDim::Mul(vec![ge_upper, ge_lower])
+}
+
 pub fn classify_chunk_window(expr: &TDim) -> Option<ChunkWindowParams> {
     let TDim::Mul(factors) = expr else { return None };
     let n = factors.len();

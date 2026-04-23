@@ -98,12 +98,11 @@ fn pulsify_qk(
                 }
             }
         }
-        ensure!(
-            q_ix.is_some() && k_ix.is_some(),
-            "ROI-aware EinSum pulsifier: could not identify Q (row_axis={}) and K (col_axis={}) inputs via AxesMapping",
-            roi.row_axis,
-            roi.col_axis
-        );
+        // If either Q or K couldn't be identified as streaming (e.g. Q@R^T where R is a
+        // fixed position-encoding table), decline and let the generic pulsifier handle it.
+        if q_ix.is_none() || k_ix.is_none() {
+            return Ok(None);
+        }
         (q_ix.unwrap(), k_ix.unwrap())
     };
 
