@@ -5,8 +5,10 @@ use std::time::{Duration, Instant};
 use anyhow::*;
 use float_ord::FloatOrd;
 use itertools::Itertools;
-use tract::prelude::tract_ndarray::prelude::*;
+use ndarray::prelude::*;
 use tract::prelude::*;
+
+tract::impl_ndarray_interop!();
 
 fn argmax(slice: &[f32]) -> Option<usize> {
     slice.into_iter().position_max_by_key(|x| FloatOrd(**x))
@@ -50,9 +52,9 @@ fn main() -> anyhow::Result<()> {
     preprocessor.transform(Pulse::new(PREPROC_PULSE.to_string()).symbol("INPUT_SIGNAL__TIME"))?;
     // Read pulse metadata before GPU preparation (GPU runtime may not report
     // streaming dim sizes through the Fact interface).
-    let pp_delay = preprocessor.property("pulse.delay")?.view::<i64>()?[0].to_owned() as usize;
+    let pp_delay = preprocessor.property("pulse.delay")?.ndarray::<i64>()?[0].to_owned() as usize;
     let pp_out_axis =
-        preprocessor.property("pulse.output_axes")?.view::<i64>()?[0].to_owned() as usize;
+        preprocessor.property("pulse.output_axes")?.ndarray::<i64>()?[0].to_owned() as usize;
     let pp_out_pulse = preprocessor.output_fact(0)?.dim(pp_out_axis)?.to_int64()? as usize;
     let pp_input_shape: Vec<usize> = {
         let f = preprocessor.input_fact(0)?;
@@ -76,9 +78,9 @@ fn main() -> anyhow::Result<()> {
     eprintln!(" done.");
 
     let enc_output_axis =
-        encoder.property("pulse.output_axes")?.view::<i64>()?[0].to_owned() as usize;
+        encoder.property("pulse.output_axes")?.ndarray::<i64>()?[0].to_owned() as usize;
     let enc_output_pulse = encoder.output_fact(0)?.dim(enc_output_axis)?.to_int64()? as usize;
-    let enc_delay = encoder.property("pulse.delay")?.view::<i64>()?[0].to_owned() as usize;
+    let enc_delay = encoder.property("pulse.delay")?.ndarray::<i64>()?[0].to_owned() as usize;
     let enc_fact = encoder.input_fact(0)?;
     let enc_input_shape: Vec<usize> = (0..enc_fact.rank()?)
         .map(|a| enc_fact.dim(a).and_then(|d| d.to_int64()).map(|v| v as usize))
@@ -154,8 +156,8 @@ fn main() -> anyhow::Result<()> {
 
     // Warm-up decoder.
     let blank_tok = Tensor::from_slice(&[1, 1], &[blank_id as i32])?;
-    let mut state_0 = tensor(Array3::<f32>::zeros([2, 1, 640]))?;
-    let mut state_1 = tensor(Array3::<f32>::zeros([2, 1, 640]))?;
+    let mut state_0 = Array3::<f32>::zeros([2, 1, 640]).tract()?;
+    let mut state_1 = Array3::<f32>::zeros([2, 1, 640]).tract()?;
     let [_out, s0, s1] = decoder.run([blank_tok.clone(), state_0, state_1])?.try_into().unwrap();
     state_0 = s0;
     state_1 = s1;
@@ -176,7 +178,7 @@ fn main() -> anyhow::Result<()> {
                 let [logits] = joint.run([frame.clone(), dec_token.clone()])?.try_into().unwrap();
                 total_joint += t.elapsed();
                 n_joint += 1;
-                let logits_view = logits.view::<f32>()?;
+                let logits_view = logits.ndarray::<f32>()?;
                 let token_id = argmax(logits_view.as_slice().unwrap()).unwrap();
                 if token_id == blank_id {
                     break;
@@ -202,11 +204,11 @@ fn main() -> anyhow::Result<()> {
         ($features:expr) => {{
             show(&hyp, &vocab, "[enc]");
             let t = Instant::now();
-            let pulse_tensor: Tensor = tensor($features)?;
+            let pulse_tensor: Tensor = $features.tract()?;
             let enc_results = encoder_state.run([pulse_tensor])?;
             total_encoder += t.elapsed();
             n_encoder += 1;
-            let enc_out: ArrayD<f32> = enc_results[0].view()?.into_owned();
+            let enc_out: ArrayD<f32> = enc_results[0].ndarray()?.into_owned();
             pulse_count += 1;
             for f in 0..enc_output_pulse {
                 if enc_delay_remaining > 0 {
@@ -214,7 +216,7 @@ fn main() -> anyhow::Result<()> {
                     continue;
                 }
                 let frame: Tensor =
-                    tensor(enc_out.slice_axis(Axis(enc_output_axis), (f..f + 1).into()))?;
+                    enc_out.slice_axis(Axis(enc_output_axis), (f..f + 1).into()).tract()?;
                 decode_frame!(frame);
             }
         }};
@@ -234,7 +236,7 @@ fn main() -> anyhow::Result<()> {
                 feat_buf_frames += usable.shape()[pp_out_axis];
                 while feat_buf_frames >= ENCODER_PULSE {
                     let refs: Vec<_> = feat_buf.iter().map(|a| a.view()).collect();
-                    let all = tract::prelude::tract_ndarray::concatenate(Axis(pp_out_axis), &refs)?;
+                    let all = ndarray::concatenate(Axis(pp_out_axis), &refs)?;
                     let enc_feat = all.slice_axis(Axis(pp_out_axis), (..ENCODER_PULSE).into());
                     encoder_pulse!(enc_feat.to_owned());
                     let leftover = all.slice_axis(Axis(pp_out_axis), (ENCODER_PULSE..).into());
@@ -256,7 +258,7 @@ fn main() -> anyhow::Result<()> {
             let pp_results = preproc_state.run([$input])?;
             total_preproc += t.elapsed();
             n_preproc += 1;
-            let features: ArrayD<f32> = pp_results[0].view()?.into_owned();
+            let features: ArrayD<f32> = pp_results[0].ndarray()?.into_owned();
             feed_features!(features);
         }};
     }
@@ -289,7 +291,7 @@ fn main() -> anyhow::Result<()> {
     // Flush remaining buffered features.
     if feat_buf_frames > 0 {
         let refs: Vec<_> = feat_buf.iter().map(|a| a.view()).collect();
-        let leftover = tract::prelude::tract_ndarray::concatenate(Axis(pp_out_axis), &refs)?;
+        let leftover = ndarray::concatenate(Axis(pp_out_axis), &refs)?;
         let mut enc_input =
             Array3::<f32>::zeros((enc_input_shape[0], enc_input_shape[1], enc_input_shape[2]));
         let n = leftover.shape()[pp_out_axis].min(enc_input_shape[2]);
