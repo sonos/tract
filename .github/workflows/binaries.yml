@@ -41,11 +41,17 @@ jobs:
           - os: macOS-latest
             arch: aarch64
             target: aarch64-apple-darwin
+          - os: ubuntu-latest
+            arch: x86_64-cuda13
+            target: x86_64-unknown-linux-gnu
+            container: quay.io/pypa/manylinux_2_28_x86_64
+            name_prefix: cuda13-
         exclude:
           - os: macOS-latest
             arch: armv7
 
     runs-on: ${{ matrix.os }}
+    container: ${{ matrix.container }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -64,9 +70,15 @@ jobs:
           set -ex
           target=${{matrix.target}}
           version=${{steps.version.outputs.value}}
-          name=${target}-${version}
+          name=${{matrix.name_prefix}}${target}-${version}
 
-          rustup update
+          if [ -n "${{matrix.container}}" ]
+          then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable
+            . "$HOME/.cargo/env"
+          else
+            rustup update
+          fi
           rustup target add ${target}
 
           if [ -n "${{matrix.musl}}" ]
@@ -92,7 +104,7 @@ jobs:
       - name: Upload asset
         uses: softprops/action-gh-release@v3
         with:
-          files: tract-${{matrix.target}}-${{ steps.version.outputs.value }}.tgz
+          files: tract-${{matrix.name_prefix}}${{matrix.target}}-${{ steps.version.outputs.value }}.tgz
           name: ${{ steps.version.outputs.value }}
           tag_name: v${{ steps.version.outputs.value }}
         env:
