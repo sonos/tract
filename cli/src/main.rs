@@ -721,9 +721,15 @@ fn output_options(command: clap::Command) -> clap::Command {
 fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
     match matches.subcommand() {
         Some(("list-runtimes", _)) => {
-            tract_core::runtime::runtimes().for_each(|ir| {
-                println!(" * {}", ir.name());
-            });
+            for rt in tract_core::runtime::all_runtimes() {
+                match rt.check() {
+                    Ok(()) => println!(" {} {}", Green.paint("✓"), rt.name()),
+                    Err(e) => {
+                        let msg = format!("{:#}", e).replace('\n', " ");
+                        println!(" {} {}: {}", Red.paint("✗"), rt.name(), msg);
+                    }
+                }
+            }
             return Ok(());
         }
         Some(("list-ops", _)) => {

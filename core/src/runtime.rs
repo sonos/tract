@@ -215,6 +215,12 @@ pub fn runtimes() -> impl Iterator<Item = &'static dyn Runtime> {
     inventory::iter::<InventorizedRuntime>().filter(|rt| rt.check().is_ok()).map(|ir| ir.0)
 }
 
+/// Like [`runtimes`], but does not filter out runtimes whose [`Runtime::check`] fails.
+/// The caller is expected to invoke `check()` itself and decide what to do.
+pub fn all_runtimes() -> impl Iterator<Item = &'static dyn Runtime> {
+    inventory::iter::<InventorizedRuntime>().map(|ir| ir.0)
+}
+
 pub fn runtime_for_name(s: &str) -> TractResult<Option<&'static dyn Runtime>> {
     let Some(rt) = inventory::iter::<InventorizedRuntime>().find(|rt| rt.name() == s) else {
         return Ok(None);
