@@ -190,8 +190,26 @@ pub fn ensure_cuda_runtime_dependencies(context_msg: &'static str) -> TractResul
         "tract-cuda: all required cudarc sub-libraries present (driver, cudart, nvrtc, cublas, cudnn)"
     );
 
+    probe_nvrtc_trivial().context(context_msg)?;
+
     let _ = DEPENDENCIES_OK.set(());
     Ok(())
+}
+
+/// Catches "libs load but nvrtc is unusable" — e.g. a driver/toolkit version skew
+/// that broke the CUDA-13 rollout. We compile a kernel with no includes and no arch
+/// override; NVRTC falls back to its default target. Failure here is a strong
+/// signal that tract's real kernels will fail to compile later in `CudaTransform`.
+fn probe_nvrtc_trivial() -> TractResult<()> {
+    cudarc::nvrtc::compile_ptx("extern \"C\" __global__ void tract_nvrtc_probe() {}")
+        .map(|_| ())
+        .map_err(|e| {
+            format_err!(
+                "NVRTC trivial-kernel probe failed. The cuda libs load but nvrtc cannot \
+                 compile even a no-op kernel — typically a driver/toolkit version skew or \
+                 missing NVRTC stdlib headers. Details: {e}"
+            )
+        })
 }
 
 pub fn get_ggml_q81_fact(t: &DeviceTensor) -> Option<GgmlQuantQ81Fact> {
