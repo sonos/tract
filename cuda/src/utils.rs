@@ -190,26 +190,35 @@ pub fn ensure_cuda_runtime_dependencies(context_msg: &'static str) -> TractResul
         "tract-cuda: all required cudarc sub-libraries present (driver, cudart, nvrtc, cublas, cudnn)"
     );
 
-    probe_nvrtc_trivial().context(context_msg)?;
+    probe_nvrtc_fp16().context(context_msg)?;
 
     let _ = DEPENDENCIES_OK.set(());
     Ok(())
 }
 
-/// Catches "libs load but nvrtc is unusable" — e.g. a driver/toolkit version skew
-/// that broke the CUDA-13 rollout. We compile a kernel with no includes and no arch
-/// override; NVRTC falls back to its default target. Failure here is a strong
-/// signal that tract's real kernels will fail to compile later in `CudaTransform`.
-fn probe_nvrtc_trivial() -> TractResult<()> {
-    cudarc::nvrtc::compile_ptx("extern \"C\" __global__ void tract_nvrtc_probe() {}")
-        .map(|_| ())
-        .map_err(|e| {
-            format_err!(
-                "NVRTC trivial-kernel probe failed. The cuda libs load but nvrtc cannot \
-                 compile even a no-op kernel — typically a driver/toolkit version skew or \
-                 missing NVRTC stdlib headers. Details: {e}"
-            )
-        })
+/// Catches "libs load but tract's kernels will still fail to compile" by driving NVRTC
+/// with the same class of input tract's real kernels use: `<cuda_fp16.h>` and a `__half`
+/// round-trip. This exercises both nvrtc itself and the toolkit header tree (so a
+/// missing `cuda-cudart-dev` is caught here rather than in `CudaTransform`).
+fn probe_nvrtc_fp16() -> TractResult<()> {
+    let cuda_inc = crate::context::resolve_toolkit_include_dir()
+        .context("Locating toolkit include dir for nvrtc probe")?;
+    let src = "#include <cuda_fp16.h>\n\
+               extern \"C\" __global__ void tract_nvrtc_probe(__half *x) {\n\
+               \t*x = __float2half(1.0f);\n\
+               }\n";
+    let opts = cudarc::nvrtc::CompileOptions {
+        include_paths: vec![cuda_inc.display().to_string()],
+        ..Default::default()
+    };
+    cudarc::nvrtc::compile_ptx_with_opts(src, opts).map(|_| ()).map_err(|e| {
+        format_err!(
+            "NVRTC fp16 probe failed. The cuda libs load but nvrtc could not compile a \
+             trivial kernel including <cuda_fp16.h> and using __half — typically a \
+             driver/toolkit version skew or a broken/missing cuda-cudart-dev install. \
+             Details: {e}"
+        )
+    })
 }
 
 pub fn get_ggml_q81_fact(t: &DeviceTensor) -> Option<GgmlQuantQ81Fact> {

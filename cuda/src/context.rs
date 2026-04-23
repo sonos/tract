@@ -492,7 +492,7 @@ fn resolve_cuda_home() -> Option<(&'static str, PathBuf)> {
 /// Resolve the toolkit include dir — the directory that holds `cuda_fp16.h`. CUDA 13
 /// ships headers under `<root>/targets/<arch>-<os>/include/` and usually symlinks
 /// `<root>/include/` to it, but minimal installs can skip that symlink; probe both.
-fn resolve_toolkit_include_dir() -> TractResult<PathBuf> {
+pub(crate) fn resolve_toolkit_include_dir() -> TractResult<PathBuf> {
     let Some((_, cuda_home)) = resolve_cuda_home() else {
         let ver = cuda_pkg_suffix();
         bail!(
