@@ -1,10 +1,10 @@
 direction: down
 
-# block-left-1-mask  —  pulsed graph  (pulse = P = 2 tokens = 1 chunk)
-# The token-fold Reshape becomes PulsedTokenFold (≡ Add(0) at pulse time).
-# The token-unfold Reshape becomes PulsedTokenUnfold (≡ Rm(0) at pulse time).
-# The Pad+Slice pair collapses to a Delay op, same as block-left-1.
-# Streaming axis = 0 throughout.  No mask — eliminated by FoldWindowAttention.
+# HISTORICAL: block-left-1-mask  —  pulsed graph as it would look when the (now deleted)
+# FoldWindowAttention pass had already rewritten the batch graph to chunk-layout attention.
+# The actual pulsed graph for ex04 now retains the flat T×T attention structure and uses
+# ChunkWindowMask + binary pulsifier instead of fold/unfold/delay/concat.
+# Kept for historical reference only.  (pulse = P = 2 tokens = 1 chunk)
 
 qkv: "qkv  [2, 12]\nstream axis=0  dim=S  pulse=2" { shape: oval }
 

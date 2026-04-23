@@ -1,9 +1,10 @@
 direction: down
 
-# block-left-1-mask  —  after FoldWindowAttention  (batch, before pulsify)
-# FoldWindowAttention detects Iff(chunk_window_mask) → Softmax → EinSum
-# and rewrites to bounded-window chunk-layout attention.
-# The entire mask subgraph (Range/cast/div/floor/sub/le/ge/and/Iff) is eliminated.
+# HISTORICAL: block-left-1-mask  —  graph as it would look after the (now deleted)
+# FoldWindowAttention rewrite pass.  FoldWindowAttention detected Iff(chunk_window_mask)
+# → Softmax → EinSum and rewrote to bounded-window chunk-layout attention, eliminating
+# the entire mask subgraph.  This pass has been removed; ex04 now uses ChunkWindowMask
+# + binary pulsifier instead.  This diagram is kept for historical reference only.
 # S = total tokens, C = S/P chunks, P=2, Dh=4, left_chunks=1.
 
 qkv: "qkv  [S, 12]" { shape: oval }
