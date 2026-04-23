@@ -3,7 +3,7 @@ use parking_lot::ReentrantMutex;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt::{self, Display};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Weak};
 use string_interner::DefaultStringInterner;
 use string_interner::Symbol as _;
@@ -15,8 +15,32 @@ use super::{Assertion, TDim, parse_tdim};
 
 static SCOPE_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
+/// Wrapper with lock-free hot-path flags alongside the scope data lock.
+/// Derefs to the inner mutex so existing `scope.0.lock()` call sites keep
+/// working.
+pub struct SymbolScopeInner {
+    /// Lock-free: true iff `scenarios` is non-empty. Maintained by
+    /// `add_scenario` / `add_scenario_assertion`. Lets `guess_scenario` skip
+    /// the lock entirely on the common no-scenarios path.
+    has_scenarios: AtomicBool,
+    data: ReentrantMutex<RefCell<SymbolScopeData>>,
+}
+
+impl Default for SymbolScopeInner {
+    fn default() -> Self {
+        SymbolScopeInner { has_scenarios: AtomicBool::new(false), data: Default::default() }
+    }
+}
+
+impl std::ops::Deref for SymbolScopeInner {
+    type Target = ReentrantMutex<RefCell<SymbolScopeData>>;
+    fn deref(&self) -> &Self::Target {
+        &self.data
+    }
+}
+
 #[derive(Clone, Default)]
-pub struct SymbolScope(pub Arc<ReentrantMutex<RefCell<SymbolScopeData>>>);
+pub struct SymbolScope(pub Arc<SymbolScopeInner>);
 
 impl PartialEq for SymbolScope {
     fn eq(&self, other: &Self) -> bool {
@@ -127,6 +151,7 @@ impl SymbolScope {
         let s = scenario.into();
         if !locked.scenarios.iter().any(|sc| sc.0 == s) {
             locked.scenarios.push((s, vec![]));
+            self.0.has_scenarios.store(true, Ordering::Relaxed);
         }
         Ok(())
     }
@@ -144,6 +169,7 @@ impl SymbolScope {
             s.1.push(assert);
         } else {
             locked.scenarios.push((s, vec![assert]));
+            self.0.has_scenarios.store(true, Ordering::Relaxed);
         }
         Ok(())
     }
@@ -173,9 +199,13 @@ impl SymbolScope {
     }
 
     pub fn guess_scenario(&self, values: &SymbolValues) -> TractResult<Option<usize>> {
+        // Hot path: most scopes have no scenarios. Skip the lock entirely.
+        if !self.0.has_scenarios.load(Ordering::Relaxed) {
+            return Ok(None);
+        }
         let locked = self.0.lock();
         let locked = locked.borrow();
-        if locked.scenarios.len() == 0 {
+        if locked.scenarios.is_empty() {
             return Ok(None);
         }
         let mut maybe = None;
@@ -391,7 +421,7 @@ impl fmt::Debug for SymbolScope {
 }
 
 #[derive(Clone)]
-pub struct Symbol(Weak<ReentrantMutex<RefCell<SymbolScopeData>>>, string_interner::DefaultSymbol);
+pub struct Symbol(Weak<SymbolScopeInner>, string_interner::DefaultSymbol);
 
 impl Eq for Symbol {}
 
