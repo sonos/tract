@@ -332,20 +332,6 @@
         <span class="k">return</span> <span class="n">Fact</span><span class="p">(</span><span class="n">fact</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="Model.set_output_names">
-<a class="viewcode-back" href="../../docs/model.html#tract.model.Model.set_output_names">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">set_output_names</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">names</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Change the output nodes of the model&quot;&quot;&quot;</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
-        <span class="n">nb</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">names</span><span class="p">)</span>
-        <span class="n">names_str</span> <span class="o">=</span> <span class="p">[]</span>
-        <span class="n">names_ptr</span> <span class="o">=</span> <span class="p">(</span><span class="n">c_char_p</span> <span class="o">*</span> <span class="n">nb</span><span class="p">)()</span>
-        <span class="k">for</span> <span class="n">ix</span><span class="p">,</span> <span class="n">n</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">names</span><span class="p">):</span>
-            <span class="n">names_str</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">n</span><span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">&quot;utf-8&quot;</span><span class="p">))</span>
-            <span class="n">names_ptr</span><span class="p">[</span><span class="n">ix</span><span class="p">]</span> <span class="o">=</span> <span class="n">names_str</span><span class="p">[</span><span class="n">ix</span><span class="p">]</span>
-        <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_model_set_output_names</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">nb</span><span class="p">,</span> <span class="n">names_ptr</span><span class="p">))</span></div>
-
-
 <div class="viewcode-block" id="Model.output_name">
 <a class="viewcode-back" href="../../docs/model.html#tract.model.Model.output_name">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">output_name</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">output_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
