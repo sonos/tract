@@ -455,7 +455,7 @@ where
 
     fn resolve(state: &mut TurnState, expression: &TDim, provided: i64) -> TractResult<()> {
         let expected = expression.eval(&state.resolved_symbols);
-        if let Ok(x) = expected.to_i64()
+        if let Some(x) = expected.as_i64()
             && x != provided
         {
             bail!("Clashing resolution for expression. {expression}={x} != {provided}. ({state:?})")
