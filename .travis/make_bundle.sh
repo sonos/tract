@@ -2,9 +2,9 @@
 
 set -ex
 
-TRAVIS_COMMIT=${GITHUB_SHA:-dummy-commit-id}
-BRANCH=$(echo $GITHUB_HEAD_REF | tr '/' '_')
-BRANCH=${BRANCH:-main}
+TRAVIS_COMMIT=${GITHUB_SHA:-$(git rev-parse HEAD 2>/dev/null || echo dummy-commit-id)}
+BRANCH=${GITHUB_HEAD_REF:-$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)}
+BRANCH=$(echo $BRANCH | tr '/' '_')
 PLATFORM=${PLATFORM:-dummy-platform}
 
 dates=`date -u +"%Y%m%dT%H%M%S %s"`
