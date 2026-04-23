@@ -183,6 +183,7 @@ num-integer = "0.1.44"
 num-traits = "0.2.14"
 num_cpus = "1"
 openblas-src = { version = "0.10", features = ["static"] }
+parking_lot = "0.12.3"
 pastey = "0.2"
 proptest = "1.0.0"
 prost = "0.14"
