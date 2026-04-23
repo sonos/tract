@@ -1,0 +1,108 @@
+version 1.0;
+
+extension tract_registry tract_core;
+extension tract_registry tract_transformers;
+extension tract_symbol S;
+extension tract_assert S>=0;
+
+# Transformer-XL relative-position attention with the skew trick.
+#
+# Purpose: verify that the "relative-shift" skew chain
+#
+#     Q @ R^T [T, 2T-1]  →  Pad [T, 2T]  →  Reshape [2T, T]
+#     →  Slice rows 1..T  →  Reshape [T, 2T-1]  →  Slice [:, :T]
+#
+# pulsifies correctly via PulsedSkewReshape (case 3 in pulse/src/ops/array/reshape.rs).
+#
+# The positional encoding table r_full [max_rel, Dh] is a model variable (fixed at
+# load time).  A dynamic slice extracts the window [center-T : center+T-1] so that
+# r has shape [2T-1, Dh] — a shape that contains the streaming symbol — matching
+# the encoder's posEnc_posEmb pattern exactly.
+#
+# Parameters: T=8, P=2, left_chunks=0, Dh=4, H=1, B=1
+#
+# left_chunks=0: each chunk only attends to itself, so key_window=P and
+# pos_scores[P,P] matches content_scores[P,P] in pulsed mode.
+# max_rel = 2*T_max-1 = 15
+# center  = max_rel // 2 + 1 = 8
+#
+# Input:  qkv    [1, S, 3*Dh] = [1, S, 12]   streaming on axis 1 (token axis)
+#         r_full [max_rel, Dh] = [15, 4]      static variable
+# Output: [1, S, Dh] = [1, S, 4]
+
+graph network(qkv) -> (output)
+{
+    qkv    = tract_core_external(shape = [1, S, 12], datum_type = 'f32');
+    r_full = variable<scalar>(label = 'r_full', shape = [15, 4]);
+
+    # ── Split Q, K, V ───────────────────────────────────────────────────────
+    q = slice(qkv, axes = [2], begin = [0],  end = [4]);   # [1, S, 4]
+    k = slice(qkv, axes = [2], begin = [4],  end = [8]);
+    v = slice(qkv, axes = [2], begin = [8],  end = [12]);
+
+    # ── Content scores: Q @ K^T → [1, S, S] ─────────────────────────────────
+    content_scores = tract_core_einsum([q, k], expr = "bid,bjd->bij", acc = "f32");
+
+    # ── Scalar T (= S at runtime) ─────────────────────────────────────────────
+    qkv_shape = tract_core_shape_of(qkv);
+    T_sl      = slice(qkv_shape, axes = [0], begin = [1], end = [2], stride = [1]);
+    T         = squeeze(T_sl, axes = [0]);                  # scalar i64: S
+
+    # ── Dynamic positional-encoding slice: R [2S-1, 4] ────────────────────────
+    # r_full[center-T : center+T-1]  where  center=8, end is exclusive
+    # begin = 8 - S,  end = 8 + S - 1 = S + 7,  len = 2S - 1
+    center  = tract_core_cast(8, to = 'i64');
+    r_begin = sub(center, T);                               # 8 - S
+    r_end   = sub(add(center, T), 1);                       # S + 7 (exclusive)
+
+    r = tract_core_dyn_slice(r_full, r_begin, r_end, axis = 0, len = 2 * S - 1);   # [2S-1, 4]
+
+    # ── Position scores: Q @ R^T → [1, S, 2S-1] ─────────────────────────────
+    pos_raw = tract_core_einsum([q, r], expr = "bid,jd->bij", acc = "f32");
+
+    # ── Skew trick ───────────────────────────────────────────────────────────
+    # Step 1: pad left on last axis → [1, S, 2S]
+    pos_padded = pad(pos_raw, padding = [[0, 0], [0, 0], [1, 0]], value = 0.0);
+
+    # Step 2: reshape [1, S, 2S] → [1, 2S, S]
+    pos_view = reshape(pos_padded, shape = [1, -1, T]);     # [1, 2S, S]
+
+    # Step 3: slice off the first row → [1, 2S-1, S]
+    # begin=1 (static), end=2S (dynamic), len=2S-1
+    one_i64 = tract_core_cast(1, to = 'i64');
+    two_S   = add(T, T);                                    # 2S
+    pos_sliced = tract_core_dyn_slice(pos_view, one_i64, two_S, axis = 1, len = 2 * S - 1);
+
+    # Step 4: reshape back [1, 2S-1, S] → [1, S, 2S-1]
+    pos_bd = reshape(pos_sliced, shape = [1, T, -1]);       # [1, S, 2S-1]
+
+    # Step 5: slice last T columns → [1, S, S]  (relative positions within window)
+    zero_i64 = tract_core_cast(0, to = 'i64');
+    pos_scores = tract_core_dyn_slice(pos_bd, zero_i64, T, axis = 2, len = S);
+
+    # ── Combined scores and chunk-window mask ─────────────────────────────────
+    scores = add(content_scores, pos_scores);               # [1, S, S]
+
+    positions          = tract_core_range(0, T, step = 1);
+    positions_f32      = tract_core_cast(positions, to = 'f32');
+    chunk_size_f32     = tract_core_cast(2, to = 'f32');
+    chunkIdx_f32       = div(positions_f32, chunk_size_f32);
+    chunkIdx_f32_floor = floor(chunkIdx_f32);
+    chunkIdx           = tract_core_cast(chunkIdx_f32_floor, to = 'i64');
+
+    ci_row     = unsqueeze(chunkIdx, axes = [1]);
+    ci_col     = unsqueeze(chunkIdx, axes = [0]);
+    diffChunks = sub(ci_row, ci_col);                       # [S, S]
+
+    left_chunks_i64 = tract_core_cast(0, to = 'i64');
+    zero_i64b       = tract_core_cast(0, to = 'i64');
+    le_mask         = le(diffChunks, left_chunks_i64);
+    ge_mask         = ge(diffChunks, zero_i64b);
+    window_mask_2d  = and(le_mask, ge_mask);                # [S, S]
+    window_mask     = unsqueeze(window_mask_2d, axes = [0]); # [1, S, S]
+
+    masked_scores = select(window_mask, scores, scores * 0.0 + -inf);
+    attn          = softmax(masked_scores, axes = [2]);
+
+    output = tract_core_einsum([attn, v], expr = "bij,bjd->bid", acc = "f32");  # [1, S, 4]
+}
