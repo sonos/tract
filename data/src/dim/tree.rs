@@ -107,40 +107,46 @@ pub fn as_pulse_ramp_3(t: &TDim, p_sym: &Symbol, t_sym: &Symbol) -> Option<(TDim
     }
     let mid = inner.iter().find(|x| !matches!(x, TDim::Val(0)))?;
     let TDim::Add(add_terms) = mid else { return None };
-    if add_terms.len() != 2 {
-        return None;
-    }
-    let (mut end, mut overlap) = (None, None);
-    for term in add_terms {
-        match term {
-            // Truncated: inner Min carries the real `end`.
-            TDim::Min(ms) if ms.len() == 2 => {
-                if ms[0] == tp_plus_p {
-                    end = Some(ms[1].clone());
-                } else if ms[1] == tp_plus_p {
-                    end = Some(ms[0].clone());
-                }
-            }
-            // No-truncation form: bare `(T+1)·P`. Simplifier collapsed
-            // `min((T+1)·P, MAX)` away. Treat `end` as the MAX sentinel.
-            term if *term == tp_plus_p => {
-                end = Some(TDim::Val(i64::MAX));
-            }
-            TDim::MulInt(-1, inner) => {
-                if let TDim::Max(es) = &**inner {
-                    if es.len() == 2 {
-                        if es[0] == tp {
-                            overlap = Some(es[1].clone());
-                        } else if es[1] == tp {
-                            overlap = Some(es[0].clone());
-                        }
-                    }
-                }
-            }
-            _ => {}
+    // Locate the `-1 * Max([T*P, overlap])` term — that pins down `overlap` and
+    // tells us which terms are the "input span" residue. The simplifier may have
+    // flattened `Add(Min(...), -Max(...))` into `Add(T*P, P, -Max(...))` (3 terms,
+    // no-truncation form) or kept it as `Add(Min(...), -Max(...))` (2 terms,
+    // truncated form). Either way, the `-1 * Max` term is unique.
+    let neg_idx = add_terms.iter().position(
+        |t| matches!(t, TDim::MulInt(-1, inner) if matches!(&**inner, TDim::Max(es) if es.len() == 2 && es.iter().any(|e| *e == tp))),
+    )?;
+    let TDim::MulInt(-1, neg_inner) = &add_terms[neg_idx] else { return None };
+    let TDim::Max(neg_max) = &**neg_inner else { return None };
+    let overlap = if neg_max[0] == tp { neg_max[1].clone() } else { neg_max[0].clone() };
+
+    // Sum of the remaining terms must equal `(T+1)·P` (no-truncation) or
+    // `min((T+1)·P, end)` (truncated). Compare on the simplified residue so
+    // either flattened or nested forms match.
+    let residue: Vec<TDim> = add_terms
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| *i != neg_idx)
+        .map(|(_, t)| t.clone())
+        .collect();
+    let residue_sum = if residue.len() == 1 {
+        residue.into_iter().next().unwrap()
+    } else {
+        TDim::Add(residue).simplify()
+    };
+    let end = if residue_sum == tp_plus_p {
+        TDim::Val(i64::MAX)
+    } else if let TDim::Min(ms) = &residue_sum {
+        if ms.len() == 2 && ms[0] == tp_plus_p {
+            ms[1].clone()
+        } else if ms.len() == 2 && ms[1] == tp_plus_p {
+            ms[0].clone()
+        } else {
+            return None;
         }
-    }
-    Some((cap, overlap?, end?))
+    } else {
+        return None;
+    };
+    Some((cap, overlap, end))
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
