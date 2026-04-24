@@ -395,15 +395,22 @@ impl PulseV2Model {
                 if let Some(region) = &source_region {
                     wire_regions.insert(new_outlet, region.clone());
                 }
-                // Clamp any streaming dim that could go negative (e.g. conv
-                // with P < K at T=0) to max(0, dim).
-                Self::clamp_negative_streaming_dims(&mut typed, new_outlet, &t_sym, &p_sym)?;
+                // Intermediates stay in flat symbolic form; clamp only at sinks
+                // (below) to avoid nested Max trees blowing up the TDim simplifier
+                // on deep conv chains.
             }
         }
 
         let batch_outputs = batch_model.output_outlets()?.to_vec();
         let pulsed_outputs: TVec<OutletId> = batch_outputs.iter().map(|o| mapping[o]).collect();
         typed.select_output_outlets(&pulsed_outputs)?;
+        // Clamp each final pulsed output's streaming dim against going negative
+        // during startup pulses (e.g. conv with P < K at T=0). Intermediates
+        // were intentionally left flat — nesting `max(0, …)` per node triggers
+        // exponential blowup in the TDim simplifier on deep conv chains.
+        for &outlet in &pulsed_outputs {
+            Self::clamp_negative_streaming_dims(&mut typed, outlet, &t_sym, &p_sym)?;
+        }
 
         Ok(PulseV2Model { typed, symbols })
     }
