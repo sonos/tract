@@ -228,10 +228,15 @@ impl PulseV2Model {
         t_sym: &Symbol,
     ) -> TractResult<()> {
         use crate::v2_buffer::PulseV2Buffer;
+        use crate::v2_pad::PulseV2Pad;
         use crate::v2_slice::PulseV2Slice;
         use tract_pulse_opl::tract_core::ops::cnn::Conv;
 
-        if op.downcast_ref::<PulseV2Buffer>().is_some() {
+        // Both ops carry custom per-pulse output_facts that capture
+        // ramp/transient semantics not expressible in the 3-param form.
+        // Don't override their declared shapes.
+        if op.downcast_ref::<PulseV2Buffer>().is_some() || op.downcast_ref::<PulseV2Pad>().is_some()
+        {
             return Ok(());
         }
 
