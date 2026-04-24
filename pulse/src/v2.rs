@@ -20,7 +20,6 @@ use crate::internal::*;
 /// paths arriving at an Add merge with equal `(cap, overlap, end)` produce
 /// identical TDim trees — broadcast's `.dedup()` then collapses them
 /// trivially, avoiding exponential nesting of `Max` in the simplifier.
-#[allow(dead_code)]
 pub(crate) fn pulse_ramp_3_dim(
     p_sym: &Symbol,
     t_sym: &Symbol,
@@ -48,7 +47,6 @@ pub(crate) fn pulse_ramp_3_dim(
 /// downstream Conv looking at `Source → Buffer → Conv` extracts the triple
 /// that represents "buffer's output as if it were canonical", which is what
 /// Conv's own rule composes onto.
-#[allow(dead_code)]
 pub(crate) fn extract_stream_descriptor(
     typed: &TypedModel,
     outlet: OutletId,
@@ -62,11 +60,18 @@ pub(crate) fn extract_stream_descriptor(
     let fact = typed.outlet_fact(outlet).ok()?;
     let shape_dim = fact.shape.get(streaming_axis)?;
     if let Some((cap, overlap, end)) = as_pulse_ramp_3(shape_dim, p_sym, t_sym) {
-        return Some((cap.clone(), overlap.clone(), end.clone()));
+        return Some((cap, overlap, end));
     }
     // Plain `P` (e.g., a Source we haven't rewritten) → seed descriptor.
+    // `end = i64::MAX` is the "no-truncation" sentinel: the runner zero-pads
+    // past the stream end, so Source's runtime is always `P` (not `min(P, S-T*P)`).
+    // The simplifier filters Val(i64::MAX) out of Min terms (tree.rs:785), so the
+    // canonical form collapses to a 2-param ramp matching runtime. Slice's rule
+    // `end = min(end_in, slice.end)` introduces the real `S` truncation only
+    // where it's semantically warranted — slice's runtime *does* truncate.
+    let _ = stream_sym; // kept on signature for future use
     if shape_dim == &TDim::Sym(p_sym.clone()) {
-        return Some((TDim::Sym(p_sym.clone()), TDim::Val(0), TDim::Sym(stream_sym.clone())));
+        return Some((TDim::Sym(p_sym.clone()), TDim::Val(0), TDim::Val(i64::MAX)));
     }
     // Walk past a PulseV2Buffer, applying buffer's rule (cap += lookback).
     let node = &typed.nodes()[outlet.node];
@@ -193,32 +198,21 @@ impl PulseV2Model {
     /// Rewrite the streaming-axis dim of `new_outlet` into canonical 3-param
     /// pulse-ramp form.
     ///
-    /// NOT CALLED YET — scaffolded. The 3-param canonical form represents
-    /// *semantic* per-pulse output (accounting for end-of-stream truncation),
-    /// but tract's shape resolver compares declared vs *runtime* shapes. The
-    /// proptest runner zero-pads past stream end, so Source's runtime is
-    /// always `P` (not the `min(P, S-T*P)` the 3-param form produces). Wiring
-    /// this as-is fails `proptest_v2_single_conv` with a Clashing-resolution
-    /// error at the last pulse. Open design question: represent "no-
-    /// truncation" as `Val(i64::MAX)` (which the Min simplifier filters out,
-    /// collapsing to a different canonical form) and teach the recogniser to
-    /// handle both; or keep the runtime shape separate from the semantic
-    /// shape. See the in-session notes before resuming.
-    ///
-    /// The function itself is correct-by-construction against *semantic*
-    /// shapes; it's the runtime mismatch that blocks activation.
-    ///
     /// Pulls `(cap, overlap, end)` from the first streaming input (via
     /// [`extract_stream_descriptor`], which walks past `PulseV2Buffer`
     /// nodes) and applies a per-op rule:
-    #[allow(dead_code)]
     ///
     /// * [`PulseV2Buffer`]: left alone (its natural shape is
     ///   `input + H_i`, which captures the per-pulse semantics accurately
     ///   including end-of-stream history carryover).
     /// * [`PulseV2Slice`] on the streaming axis: `overlap += slice.start`,
     ///   `end = min(end, slice.end)`.
-    /// * `Conv` (stride 1): `cap -= (K-1)·D`, `overlap += (K-1)·D`.
+    /// * `Conv` (stride 1): `cap -= (K-1)·D`, `overlap += (K-1)·D`, `end` unchanged.
+    ///   The Buffer+Conv pair is net-zero on cap (Buffer adds lookback,
+    ///   Conv subtracts it back); these two terms cancel only because
+    ///   `extract_stream_descriptor` walking past `PulseV2Buffer` adds
+    ///   `+lookback` to `cap`. Removing one without removing the other
+    ///   double-counts the cap shift.
     /// * Anything else: pass-through (default).
     ///
     /// Returns silently when the op isn't on a streaming axis or when no
@@ -402,6 +396,7 @@ impl PulseV2Model {
             if let Some(PulseV2Action::ReplaceOp(replacement)) = action {
                 let inputs: TVec<OutletId> =
                     node.inputs.iter().map(|i| mapping.get(i).copied().unwrap_or(*i)).collect();
+                let replacement_for_canon = replacement.clone();
                 let new_outlets = typed.wire_node(&node.name, replacement, &inputs)?;
                 for (slot, &new_outlet) in new_outlets.iter().enumerate() {
                     mapping.insert(OutletId::new(node_id, slot), new_outlet);
@@ -410,6 +405,18 @@ impl PulseV2Model {
                     for &new_outlet in &new_outlets {
                         wire_regions.insert(new_outlet, region.clone());
                     }
+                }
+                for &new_outlet in &new_outlets {
+                    Self::canonicalize_outlet(
+                        &mut typed,
+                        new_outlet,
+                        replacement_for_canon.as_ref(),
+                        &inputs,
+                        &wire_regions,
+                        &stream_sym,
+                        &p_sym,
+                        &t_sym,
+                    )?;
                 }
                 continue;
             }
@@ -483,6 +490,9 @@ impl PulseV2Model {
                                     buffer,
                                     &[inputs[0]],
                                 )?;
+                                if let Some(src) = &source_region {
+                                    wire_regions.insert(buffered[0], src.clone());
+                                }
                                 inputs[0] = buffered[0];
                             }
                         }
@@ -562,6 +572,9 @@ impl PulseV2Model {
                             buffer,
                             &[pulsed_input],
                         )?;
+                        if let Some(src) = &source_region {
+                            wire_regions.insert(buffered[0], src.clone());
+                        }
                         inputs.push(buffered[0]);
                     } else {
                         inputs.push(pulsed_input);
@@ -577,10 +590,18 @@ impl PulseV2Model {
                 if let Some(region) = &source_region {
                     wire_regions.insert(new_outlet, region.clone());
                 }
-                // canonicalize_outlet is scaffolded (not called) — the 3-param
-                // form it emits conflicts with runtime shapes because the
-                // proptest runner zero-pads past the stream end. See top-of-file
-                // doc on canonicalize_outlet for the unresolved design question.
+            }
+            for &new_outlet in &new_outlets {
+                Self::canonicalize_outlet(
+                    &mut typed,
+                    new_outlet,
+                    node.op.as_ref(),
+                    &inputs,
+                    &wire_regions,
+                    &stream_sym,
+                    &p_sym,
+                    &t_sym,
+                )?;
             }
         }
 
