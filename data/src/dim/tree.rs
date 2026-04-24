@@ -74,6 +74,75 @@ pub(crate) fn as_max_zero(t: &TDim) -> Option<&TDim> {
     terms.iter().find(|t| !matches!(t, TDim::Val(0)))
 }
 
+/// 3-parameter pulse-ramp form: the per-pulse streaming-axis shape when the
+/// stream has a known cumulative end `E` (not just cap-and-startup, as in
+/// [`as_pulse_ramp`]):
+///
+///   min(cap, max(0, min((T+1)·P, end) − max(T·P, overlap)))
+///
+/// Captures startup *and* end-of-stream truncation in a single closed form.
+/// Used by PulseV2 so wires downstream of a Slice (which narrows the end)
+/// stay in a form the simplifier can dedup across parallel-path merges.
+///
+/// Returns `(cap, overlap, end)` when `t` matches.
+///
+/// Collapse at merges happens through `.dedup()` on identical trees (when the
+/// two paths produce equal triples, which PulseV2 arranges by construction).
+/// This helper is a building block for cases where that's not enough.
+#[allow(dead_code)]
+pub(crate) fn as_pulse_ramp_3<'a>(
+    t: &'a TDim,
+    p_sym: &Symbol,
+    t_sym: &Symbol,
+) -> Option<(&'a TDim, &'a TDim, &'a TDim)> {
+    // Sentinel sub-expressions, canonicalised so we can compare by equality.
+    let tp = (TDim::Sym(p_sym.clone()) * TDim::Sym(t_sym.clone())).simplify();
+    let tp_plus_p =
+        ((TDim::Sym(t_sym.clone()) + TDim::Val(1)) * TDim::Sym(p_sym.clone())).simplify();
+
+    let TDim::Min(outer) = t else { return None };
+    if outer.len() != 2 {
+        return None;
+    }
+    let max_idx = outer.iter().position(|x| matches!(x, TDim::Max(_)))?;
+    let cap = &outer[1 - max_idx];
+    let TDim::Max(inner) = &outer[max_idx] else { return None };
+    if inner.len() != 2 || !inner.iter().any(|x| matches!(x, TDim::Val(0))) {
+        return None;
+    }
+    let mid = inner.iter().find(|x| !matches!(x, TDim::Val(0)))?;
+    let TDim::Add(add_terms) = mid else { return None };
+    if add_terms.len() != 2 {
+        return None;
+    }
+    let (mut end, mut overlap) = (None, None);
+    for term in add_terms {
+        match term {
+            TDim::Min(ms) if ms.len() == 2 => {
+                // one side is `(T+1)·P`, other is `end`.
+                if ms[0] == tp_plus_p {
+                    end = Some(&ms[1]);
+                } else if ms[1] == tp_plus_p {
+                    end = Some(&ms[0]);
+                }
+            }
+            TDim::MulInt(-1, inner) => {
+                if let TDim::Max(es) = &**inner {
+                    if es.len() == 2 {
+                        if es[0] == tp {
+                            overlap = Some(&es[1]);
+                        } else if es[1] == tp {
+                            overlap = Some(&es[0]);
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    Some((cap, overlap?, end?))
+}
+
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub enum TDim {
     Val(i64),
@@ -2017,6 +2086,49 @@ mod tests {
             a.simplify(),
             "Max should drop the larger-overlap (smaller-value) pulse-ramp"
         );
+    }
+
+    /// Build the canonical 3-param pulse-ramp TDim: the helper PulseV2 will
+    /// use to rewrite streaming-axis shapes.
+    fn pulse_ramp_3(p: &Symbol, t: &Symbol, cap: TDim, overlap: TDim, end: TDim) -> TDim {
+        let tp_plus_p = (Sym(t.clone()) + Val(1)) * Sym(p.clone());
+        let tp = Sym(p.clone()) * Sym(t.clone());
+        let inner = Min(vec![tp_plus_p, end]) - Max(vec![tp, overlap]);
+        Min(vec![cap, Max(vec![Val(0), inner])])
+    }
+
+    /// Identical 3-param ramps collapse in a Broadcast (what Add's output_facts
+    /// produces at a parallel-path merge).
+    #[test]
+    fn pulse_ramp_3_identical_collapse_in_broadcast() {
+        let s = SymbolScope::default();
+        let p = s.sym("P");
+        let t = s.sym("T");
+        let stream = s.sym("S");
+        s.add_assertion("S >= P").ok();
+        s.add_assertion("P >= 1").ok();
+        s.add_assertion("T >= 0").ok();
+        let ramp = pulse_ramp_3(&p, &t, Sym(p.clone()), Val(4), Sym(stream));
+        let bc = Broadcast(vec![ramp.clone(), ramp.clone()]).simplify();
+        assert_eq!(bc, ramp.simplify(), "broadcast of identical 3-param ramps should collapse");
+    }
+
+    /// The as_pulse_ramp_3 recogniser extracts (cap, overlap, end) from a
+    /// simplified canonical TDim.
+    #[test]
+    fn as_pulse_ramp_3_roundtrip() {
+        let s = SymbolScope::default();
+        let p = s.sym("P");
+        let t = s.sym("T");
+        let stream = s.sym("S");
+        let cap = Sym(p.clone());
+        let overlap = Val(4);
+        let end = Sym(stream);
+        let ramp = pulse_ramp_3(&p, &t, cap.clone(), overlap.clone(), end.clone()).simplify();
+        let (c, o, e) = super::as_pulse_ramp_3(&ramp, &p, &t).expect("recogniser fired");
+        assert_eq!(c, &cap);
+        assert_eq!(o, &overlap);
+        assert_eq!(e, &end);
     }
 
     /// Dual: inside Min, the larger-overlap (smaller-value) pulse-ramp dominates.
