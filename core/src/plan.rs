@@ -66,6 +66,7 @@ where
     order: Vec<usize>,
     flush_lists: Vec<TVec<usize>>,
     has_unresolved_symbols: bool,
+    symbols: Vec<Symbol>,
     executor: Option<Executor>,
     session_handler: Option<Arc<dyn SessionStateHandler + 'static>>,
 }
@@ -173,6 +174,7 @@ where
             flush_lists,
             outputs: outputs.to_vec(),
             has_unresolved_symbols: !symbols.is_empty(),
+            symbols: symbols.into_iter().collect(),
             executor: options.executor.clone(),
             session_handler: None,
         })
@@ -340,6 +342,13 @@ where
                 .map(|it| it.before_plan_eval(&mut self.turn_state))
                 .transpose()?;
 
+            let mut syms_done = !self.plan.has_unresolved_symbols
+                || self
+                    .plan
+                    .symbols
+                    .iter()
+                    .all(|s| self.turn_state.resolved_symbols.get(s).is_some());
+
             for (step, n) in self.plan.order.iter().enumerate() {
                 let node = self.plan.model.node(*n);
                 trace!("Running step {step}, node {node}");
@@ -389,7 +398,7 @@ where
                 )
                 .map_err(|e| e.into())?;
 
-                if self.plan.has_unresolved_symbols {
+                if !syms_done && self.plan.has_unresolved_symbols {
                     for (o, v) in node.outputs.iter().zip(vs.iter()) {
                         if let Ok(f) = o.fact.to_typed_fact() {
                             for (dim_abstract, dim_concrete) in f.shape.iter().zip(v.shape()) {
@@ -400,6 +409,14 @@ where
                                 )?;
                             }
                         }
+                    }
+                    if self
+                        .plan
+                        .symbols
+                        .iter()
+                        .all(|s| self.turn_state.resolved_symbols.get(s).is_some())
+                    {
+                        syms_done = true;
                     }
                 }
                 if cfg!(debug_assertions) {
