@@ -5,6 +5,7 @@ pub struct OpenAICompletionQuery {
     pub prompt: String,
     pub model: String,
     pub max_tokens: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub temperature: Option<f32>,
     pub stop: Vec<String>,
 }
@@ -38,4 +39,6 @@ pub struct OllamaCompletionQuery {
 #[derive(Serialize, Debug, Clone)]
 pub struct OllamaCompletionOptions {
     pub num_predict: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub temperature: Option<f32>,
 }
