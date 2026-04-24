@@ -50,26 +50,19 @@ fn bench_linear_classifier(c: &mut Criterion) {
 
     let runnable = Arc::new(model.clone().into_runnable().unwrap());
 
-    let iteration_counts = vec![1_000, 10_000, 100_000, 1_000_000];
+    group.bench_function(BenchmarkId::new("load_opt_run_parallel", "per_call"), |b| {
+        let runnable = Arc::clone(&runnable);
+        let tensors = Arc::clone(&input_tensors);
 
-    for &iterations in &iteration_counts {
-        group.bench_function(BenchmarkId::new("load_opt_run_parallel", iterations), |b| {
-            let runnable = Arc::clone(&runnable);
-            let tensors = Arc::clone(&input_tensors);
-
-            b.iter_custom(|_| {
-                let start = Instant::now();
-
-                (0..iterations).into_par_iter().for_each(|i| {
-                    let runnable = Arc::clone(&runnable);
-                    let input_val = tensors[i % 1_000_000].clone().into_tvalue();
-                    let _ = runnable.run(tvec!(input_val)).unwrap();
-                });
-
-                start.elapsed()
+        b.iter_custom(|iters| {
+            let start = Instant::now();
+            (0..iters as usize).into_par_iter().for_each(|i| {
+                let input_val = tensors[i % 1_000_000].clone().into_tvalue();
+                let _ = runnable.run(tvec!(input_val)).unwrap();
             });
+            start.elapsed()
         });
-    }
+    });
 
     group.finish();
 }
