@@ -40,7 +40,9 @@ pub mod prelude {
 
 pub mod internal {
     pub use crate::datum::ClampCast;
-    pub use crate::dim::{DimLike, parse_tdim, solve_for};
+    pub use crate::dim::{
+        DimLike, as_max_zero, as_pulse_ramp, as_pulse_ramp_3, parse_tdim, solve_for,
+    };
     pub use crate::exotic::ExoticFact;
     pub use crate::prelude::*;
     pub use crate::tensor::Approximation;

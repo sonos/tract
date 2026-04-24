@@ -14,7 +14,7 @@ pub use self::assertion::Assertion;
 pub use self::parse::parse_tdim;
 pub use self::resolve::solve_for;
 pub use self::sym::{Symbol, SymbolScope, SymbolValues};
-pub use self::tree::{TDim, TooEarly};
+pub use self::tree::{TDim, TooEarly, as_max_zero, as_pulse_ramp, as_pulse_ramp_3};
 
 use crate::{TractError, TractResult};
 

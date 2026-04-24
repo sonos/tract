@@ -42,7 +42,7 @@ macro_rules! b( ($e:expr) => { Box::new($e) } );
 /// Note: this matcher only fires when the outer op is *not* Min (which would
 /// flatten the pattern). For the Min case, [`as_max_zero`] catches the inner
 /// `max(0, expr)` directly after flattening.
-pub(crate) fn as_pulse_ramp(t: &TDim) -> Option<(&TDim, &TDim)> {
+pub fn as_pulse_ramp(t: &TDim) -> Option<(&TDim, &TDim)> {
     let TDim::Min(outer) = t else { return None };
     if outer.len() != 2 {
         return None;
@@ -66,7 +66,7 @@ pub(crate) fn as_pulse_ramp(t: &TDim) -> Option<(&TDim, &TDim)> {
 ///
 /// `max(0, X)` is monotonic in `X`, so two such terms inside a Min or Max can
 /// be pairwise compared by their inner exprs.
-pub(crate) fn as_max_zero(t: &TDim) -> Option<&TDim> {
+pub fn as_max_zero(t: &TDim) -> Option<&TDim> {
     let TDim::Max(terms) = t else { return None };
     if terms.len() != 2 || !terms.iter().any(|t| matches!(t, TDim::Val(0))) {
         return None;
@@ -90,7 +90,7 @@ pub(crate) fn as_max_zero(t: &TDim) -> Option<&TDim> {
 /// two paths produce equal triples, which PulseV2 arranges by construction).
 /// This helper is a building block for cases where that's not enough.
 #[allow(dead_code)]
-pub(crate) fn as_pulse_ramp_3<'a>(
+pub fn as_pulse_ramp_3<'a>(
     t: &'a TDim,
     p_sym: &Symbol,
     t_sym: &Symbol,
