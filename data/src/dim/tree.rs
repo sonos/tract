@@ -89,12 +89,7 @@ pub fn as_max_zero(t: &TDim) -> Option<&TDim> {
 /// Collapse at merges happens through `.dedup()` on identical trees (when the
 /// two paths produce equal triples, which PulseV2 arranges by construction).
 /// This helper is a building block for cases where that's not enough.
-#[allow(dead_code)]
-pub fn as_pulse_ramp_3<'a>(
-    t: &'a TDim,
-    p_sym: &Symbol,
-    t_sym: &Symbol,
-) -> Option<(&'a TDim, &'a TDim, &'a TDim)> {
+pub fn as_pulse_ramp_3(t: &TDim, p_sym: &Symbol, t_sym: &Symbol) -> Option<(TDim, TDim, TDim)> {
     // Sentinel sub-expressions, canonicalised so we can compare by equality.
     let tp = (TDim::Sym(p_sym.clone()) * TDim::Sym(t_sym.clone())).simplify();
     let tp_plus_p =
@@ -105,7 +100,7 @@ pub fn as_pulse_ramp_3<'a>(
         return None;
     }
     let max_idx = outer.iter().position(|x| matches!(x, TDim::Max(_)))?;
-    let cap = &outer[1 - max_idx];
+    let cap = outer[1 - max_idx].clone();
     let TDim::Max(inner) = &outer[max_idx] else { return None };
     if inner.len() != 2 || !inner.iter().any(|x| matches!(x, TDim::Val(0))) {
         return None;
@@ -118,21 +113,26 @@ pub fn as_pulse_ramp_3<'a>(
     let (mut end, mut overlap) = (None, None);
     for term in add_terms {
         match term {
+            // Truncated: inner Min carries the real `end`.
             TDim::Min(ms) if ms.len() == 2 => {
-                // one side is `(T+1)·P`, other is `end`.
                 if ms[0] == tp_plus_p {
-                    end = Some(&ms[1]);
+                    end = Some(ms[1].clone());
                 } else if ms[1] == tp_plus_p {
-                    end = Some(&ms[0]);
+                    end = Some(ms[0].clone());
                 }
+            }
+            // No-truncation form: bare `(T+1)·P`. Simplifier collapsed
+            // `min((T+1)·P, MAX)` away. Treat `end` as the MAX sentinel.
+            term if *term == tp_plus_p => {
+                end = Some(TDim::Val(i64::MAX));
             }
             TDim::MulInt(-1, inner) => {
                 if let TDim::Max(es) = &**inner {
                     if es.len() == 2 {
                         if es[0] == tp {
-                            overlap = Some(&es[1]);
+                            overlap = Some(es[1].clone());
                         } else if es[1] == tp {
-                            overlap = Some(&es[0]);
+                            overlap = Some(es[0].clone());
                         }
                     }
                 }
@@ -2126,9 +2126,9 @@ mod tests {
         let end = Sym(stream);
         let ramp = pulse_ramp_3(&p, &t, cap.clone(), overlap.clone(), end.clone()).simplify();
         let (c, o, e) = super::as_pulse_ramp_3(&ramp, &p, &t).expect("recogniser fired");
-        assert_eq!(c, &cap);
-        assert_eq!(o, &overlap);
-        assert_eq!(e, &end);
+        assert_eq!(c, cap);
+        assert_eq!(o, overlap);
+        assert_eq!(e, end);
     }
 
     /// Dual: inside Min, the larger-overlap (smaller-value) pulse-ramp dominates.
