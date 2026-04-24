@@ -454,6 +454,21 @@ where
     }
 
     fn resolve(state: &mut TurnState, expression: &TDim, provided: i64) -> TractResult<()> {
+        if let TDim::Sym(sym) = expression
+            && state.resolved_symbols.get(sym).is_none()
+        {
+            state.resolved_symbols.set(sym, provided);
+            if state.scenario.is_none() {
+                let scope = sym.scope().with_context(|| {
+                    format!(
+                        "Symbol {sym:?} points to an invalid (dead ?) SymbolScope. \
+                         Make sure to create symbols using the model-managed SymbolScope."
+                    )
+                })?;
+                state.scenario = scope.guess_scenario(&state.resolved_symbols)?;
+            }
+            return Ok(());
+        }
         let expected = expression.eval(&state.resolved_symbols);
         if let Some(x) = expected.as_i64()
             && x != provided
