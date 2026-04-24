@@ -90,7 +90,7 @@ impl Api {
                 let query = OllamaCompletionQuery {
                     prompt: prompt.into(),
                     model: model.to_string(),
-                    options: OllamaCompletionOptions { num_predict: max_tokens },
+                    options: OllamaCompletionOptions { num_predict: max_tokens, temperature },
                 };
 
                 let response = client
