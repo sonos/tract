@@ -1,4 +1,4 @@
-use crate::model::{optional_inputs, OnnxOpRegister, ParsingContext};
+use crate::model::{OnnxOpRegister, ParsingContext, optional_inputs};
 use crate::pb::NodeProto;
 use tract_hir::internal::*;
 use tract_hir::ops::array::Pad;
@@ -27,7 +27,7 @@ fn dft(ctx: &ParsingContext, node: &NodeProto) -> TractResult<(Box<dyn Inference
             vec![],
         ))
     } else {
-        Ok((expand(dbg!(Dft { axis_input, inverse, onesided, length_input })), vec![]))
+        Ok((expand(Dft { axis_input, inverse, onesided, length_input }), vec![]))
     }
 }
 
@@ -240,7 +240,7 @@ fn dft_rules<'r, 'p: 'r>(
         Ok(())
     })?;
     if let Some(len_input) = length_input {
-        s.given(&inputs[1].value[len_input], move |s, len| {
+        s.given(&inputs[len_input].value[0], move |s, len| {
             s.equals(len.to_dim(), &outputs[0].shape[axis])
         })?;
     } else {
