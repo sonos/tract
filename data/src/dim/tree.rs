@@ -30,6 +30,50 @@ impl std::error::Error for TooEarly {}
 
 macro_rules! b( ($e:expr) => { Box::new($e) } );
 
+/// Recognise the canonical pulse-ramp form `min(cap, max(0, expr))`.
+///
+/// PulseV2 emits per-pulse streaming-axis shapes in this form (cap is typically
+/// `P` or `P+δ`; expr is `(T+1)·P − overlap`). The Max simplifier uses this to
+/// short-circuit dominance checks on these patterns: once `cap` matches, we only
+/// need to compare the inner exprs. Without this the simplifier has to crack
+/// the min/max trees from scratch on every call, which scales badly when many
+/// such expressions land in one broadcast at a parallel-path merge.
+///
+/// Note: this matcher only fires when the outer op is *not* Min (which would
+/// flatten the pattern). For the Min case, [`as_max_zero`] catches the inner
+/// `max(0, expr)` directly after flattening.
+pub(crate) fn as_pulse_ramp(t: &TDim) -> Option<(&TDim, &TDim)> {
+    let TDim::Min(outer) = t else { return None };
+    if outer.len() != 2 {
+        return None;
+    }
+    for (i, inner) in outer.iter().enumerate() {
+        let TDim::Max(inner_terms) = inner else { continue };
+        if inner_terms.len() != 2 {
+            continue;
+        }
+        if !inner_terms.iter().any(|t| matches!(t, TDim::Val(0))) {
+            continue;
+        }
+        let cap = &outer[1 - i];
+        let expr = inner_terms.iter().find(|t| !matches!(t, TDim::Val(0))).unwrap();
+        return Some((cap, expr));
+    }
+    None
+}
+
+/// Recognise `max(0, expr)` and return `expr`.
+///
+/// `max(0, X)` is monotonic in `X`, so two such terms inside a Min or Max can
+/// be pairwise compared by their inner exprs.
+pub(crate) fn as_max_zero(t: &TDim) -> Option<&TDim> {
+    let TDim::Max(terms) = t else { return None };
+    if terms.len() != 2 || !terms.iter().any(|t| matches!(t, TDim::Val(0))) {
+        return None;
+    }
+    terms.iter().find(|t| !matches!(t, TDim::Val(0)))
+}
+
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub enum TDim {
     Val(i64),
@@ -685,6 +729,18 @@ impl TDim {
                         || scope.prove_positive_or_zero_with_extra(&diff, extra)
                     {
                         redundant.insert(a.clone());
+                        continue;
+                    }
+                    // Monotonicity: max(0, X) ≥ max(0, Y) when X ≥ Y.
+                    // Inside Min we drop the larger one (a). Catches the case
+                    // where two pulse-ramps got flattened apart by Min.
+                    if let (Some(x_a), Some(x_b)) = (as_max_zero(a), as_max_zero(b)) {
+                        let inner_diff = x_a.clone() - x_b.clone();
+                        if inner_diff.as_i64().is_some_and(|i| i >= 0)
+                            || scope.prove_positive_or_zero_with_extra(&inner_diff, extra)
+                        {
+                            redundant.insert(a.clone());
+                        }
                     }
                 }
                 flatten.retain(|t| !redundant.contains(t));
@@ -717,6 +773,33 @@ impl TDim {
                         || scope.prove_positive_or_zero_with_extra(&diff, extra)
                     {
                         redundant.insert(b.clone());
+                        continue;
+                    }
+                    // Pulse-ramp dominance: min(cap, max(0, X)) ≥ min(cap, max(0, Y)) when X ≥ Y.
+                    // The plain `diff ≥ 0` check fails on this pattern because the inner
+                    // max-clamps prevent it from collapsing. Cracking the pattern open
+                    // and comparing the inner expressions rescues it.
+                    if let (Some((cap_a, x_a)), Some((cap_b, x_b))) =
+                        (as_pulse_ramp(a), as_pulse_ramp(b))
+                    {
+                        if cap_a == cap_b {
+                            let inner_diff = x_a.clone() - x_b.clone();
+                            if inner_diff.as_i64().is_some_and(|i| i >= 0)
+                                || scope.prove_positive_or_zero_with_extra(&inner_diff, extra)
+                            {
+                                redundant.insert(b.clone());
+                                continue;
+                            }
+                        }
+                    }
+                    // Monotonicity: max(0, X) ≥ max(0, Y) when X ≥ Y; drop b inside Max.
+                    if let (Some(x_a), Some(x_b)) = (as_max_zero(a), as_max_zero(b)) {
+                        let inner_diff = x_a.clone() - x_b.clone();
+                        if inner_diff.as_i64().is_some_and(|i| i >= 0)
+                            || scope.prove_positive_or_zero_with_extra(&inner_diff, extra)
+                        {
+                            redundant.insert(b.clone());
+                        }
                     }
                 }
                 flatten.retain(|t| !redundant.contains(t));
@@ -1900,6 +1983,60 @@ mod tests {
         let a_s = a.simplify();
         let c_s = c.simplify();
         assert_eq!(a_s, c_s, "8*(-1*B) should simplify the same as -8*B");
+    }
+
+    /// Two pulse-ramp expressions sharing cap and inner expr collapse via dedup.
+    #[test]
+    fn pulse_ramp_identical_collapse_in_max() {
+        let s = SymbolScope::default();
+        let p = s.sym("P");
+        let t = s.sym("T");
+        let cap = Sym(p.clone());
+        let x = (Sym(t) + Val(1)) * Sym(p) - Val(4);
+        let ramp = Min(vec![cap, Max(vec![Val(0), x])]);
+        let m = Max(vec![ramp.clone(), ramp.clone()]).simplify();
+        assert_eq!(m, ramp.simplify(), "Max of two identical pulse-ramps should be one of them");
+    }
+
+    /// Pulse-ramp with smaller overlap dominates the one with larger overlap inside Max.
+    #[test]
+    fn pulse_ramp_dominance_in_max() {
+        let s = SymbolScope::default();
+        let p = s.sym("P");
+        let t = s.sym("T");
+        let cap = Sym(p.clone());
+        // a has smaller overlap (4) → a >= b at every (T, P)
+        let a = Min(vec![
+            cap.clone(),
+            Max(vec![Val(0), (Sym(t.clone()) + Val(1)) * Sym(p.clone()) - Val(4)]),
+        ]);
+        let b = Min(vec![cap, Max(vec![Val(0), (Sym(t) + Val(1)) * Sym(p) - Val(8)])]);
+        let m = Max(vec![a.clone(), b]).simplify();
+        assert_eq!(
+            m,
+            a.simplify(),
+            "Max should drop the larger-overlap (smaller-value) pulse-ramp"
+        );
+    }
+
+    /// Dual: inside Min, the larger-overlap (smaller-value) pulse-ramp dominates.
+    #[test]
+    fn pulse_ramp_dominance_in_min() {
+        let s = SymbolScope::default();
+        let p = s.sym("P");
+        let t = s.sym("T");
+        let cap = Sym(p.clone());
+        let a = Min(vec![
+            cap.clone(),
+            Max(vec![Val(0), (Sym(t.clone()) + Val(1)) * Sym(p.clone()) - Val(4)]),
+        ]);
+        let b = Min(vec![cap, Max(vec![Val(0), (Sym(t) + Val(1)) * Sym(p) - Val(8)])]);
+        let m = Min(vec![a, b.clone()]).simplify();
+        assert_eq!(
+            m,
+            b.simplify(),
+            "Min should drop the smaller-overlap (larger-value) pulse-ramp"
+        );
     }
 }
 
