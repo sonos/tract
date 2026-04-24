@@ -490,6 +490,7 @@ test_resize_downsample_scales_cubic_align_corners                               
 test_resize_downsample_scales_cubic_A_n0p5_exclude_outside                          input:X
 test_resize_downsample_scales_linear                                                input:X
 test_resize_downsample_sizes_cubic                                                  input:X
+test_resize_downsample_sizes_linear_pytorch_half_pixel                              input:X
 test_resize_upsample_scales_cubic                                                   input:X
 test_resize_upsample_scales_cubic_align_corners                                     input:X
 test_resize_upsample_scales_cubic_asymmetric                                        input:X

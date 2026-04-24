@@ -5,10 +5,11 @@ pub enum CoordTransformer {
     HalfPixel,
     AlignCorners,
     Asymmetric,
+    PytorchHalfPixel,
 }
 
 impl CoordTransformer {
-    pub fn transform(&self, x_out: usize, scale: f32, len_in: usize, _len_out: usize) -> f32 {
+    pub fn transform(&self, x_out: usize, scale: f32, len_in: usize, len_out: usize) -> f32 {
         match self {
             CoordTransformer::HalfPixel => (x_out as f32 + 0.5) / scale - 0.5,
             CoordTransformer::AlignCorners => {
@@ -20,6 +21,13 @@ impl CoordTransformer {
                 }
             }
             CoordTransformer::Asymmetric => (x_out as f32) / scale,
+            CoordTransformer::PytorchHalfPixel => {
+                if len_out > 1 {
+                    (x_out as f32 + 0.5) / scale - 0.5
+                } else {
+                    0.0
+                }
+            }
         }
     }
 
@@ -28,6 +36,7 @@ impl CoordTransformer {
             CoordTransformer::HalfPixel => "half_pixel",
             CoordTransformer::AlignCorners => "align_corners",
             CoordTransformer::Asymmetric => "asymmetric",
+            CoordTransformer::PytorchHalfPixel => "pytorch_half_pixel",
         }
     }
 
@@ -36,6 +45,7 @@ impl CoordTransformer {
             "half_pixel" => CoordTransformer::HalfPixel,
             "align_corners" => CoordTransformer::AlignCorners,
             "asymmetric" => CoordTransformer::Asymmetric,
+            "pytorch_half_pixel" => CoordTransformer::PytorchHalfPixel,
             s => bail!("coordinate_transformation_mode: {s}"),
         })
     }
