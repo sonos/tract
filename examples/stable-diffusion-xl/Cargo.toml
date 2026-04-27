@@ -11,5 +11,5 @@ kdam = "0.6"
 ndarray.workspace = true
 rand = "0.10"
 rand_distr = "0.6"
-tokenizers = { version = "0.22", default-features = false, features = ["onig"] }
+tokenizers = { version = "0.23", default-features = false, features = ["onig"] }
 tract.workspace = true
