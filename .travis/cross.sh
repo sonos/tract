@@ -29,6 +29,9 @@ then
     PLATFORM=$1
 fi
 
+export JEMALLOC_SYS_WITH_MALLOC_CONF="retain:false"
+
+
 case "$PLATFORM" in
     "raspbian")
         [ -e $HOME/cached/raspitools ] || git clone --depth 1 https://github.com/raspberrypi/tools $HOME/cached/raspitools
