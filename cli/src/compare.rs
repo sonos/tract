@@ -299,19 +299,14 @@ pub fn handle_stream(
     run_params: &RunParams,
     sub_matches: &clap::ArgMatches,
 ) -> TractResult<()> {
-    // Detect pulse-v2 by looking for the pulse symbol `P` somewhere on the
-    // post-pulse model's input fact shape — v2 keeps `P` symbolic, v1 bakes
-    // a concrete usize. v1 also publishes the `pulse.input_axes` property,
-    // so its absence is a stronger signal.
+    // Detect pulse-v2 by inspecting the post-pulse input fact. v1 bakes the
+    // pulse size as a concrete usize on the streaming axis; v2 keeps it
+    // symbolic (the `P` pulse symbol). So: if any input fact dim is still
+    // symbolic, this is a v2 model.
     let model: Arc<TypedModel> =
         params.typed_model().context("Post-pulse TypedModel not available")?;
-    let is_v2 = model.properties.get("pulse.input_axes").is_none()
-        && model.symbols.get("P").is_some_and(|p_sym| {
-            model
-                .input_fact(0)
-                .map(|f| f.shape.iter().any(|d| d.symbols().contains(&p_sym)))
-                .unwrap_or(false)
-        });
+    let is_v2 =
+        model.input_fact(0).map(|f| f.shape.iter().any(|d| d.to_usize().is_err())).unwrap_or(false);
     if is_v2 {
         return handle_stream_v2(params, output_params, run_params, sub_matches);
     }
@@ -561,9 +556,28 @@ pub fn handle_stream_v2(
         .iter()
         .position(|d| d.symbols().contains(&stream_symbol))
         .context("No streaming axis on reference input")?;
-    // Pulse / pulse_id symbols live in the post-pulse model's scope.
-    let p_sym = model.symbols.get("P").context("Pulse-v2 model lacks P symbol")?;
-    let t_sym = model.symbols.get("T").context("Pulse-v2 model lacks T symbol")?;
+    // Pulse-v2 created `P` and `T` in the original (batch) model's scope, so
+    // they may not resolve via `model.symbols.get(...)`. Recover them by
+    // collecting every symbol referenced on any node's output and matching by
+    // their Display name ("P" for pulse size, "T" for pulse index).
+    let mut p_sym: Option<Symbol> = None;
+    let mut t_sym: Option<Symbol> = None;
+    for node in model.nodes() {
+        for output in &node.outputs {
+            for d in output.fact.shape.iter() {
+                for s in d.symbols() {
+                    let name = format!("{s}");
+                    if name == "P" && p_sym.is_none() {
+                        p_sym = Some(s);
+                    } else if name == "T" && t_sym.is_none() {
+                        t_sym = Some(s);
+                    }
+                }
+            }
+        }
+    }
+    let p_sym = p_sym.context("Pulse-v2 model has no symbol named P")?;
+    let t_sym = t_sym.context("Pulse-v2 model has no symbol named T")?;
 
     // Pick a stream length large enough to exercise the receptive field
     // plus a few clean steady-state pulses. Keep it modest to stay quick.
