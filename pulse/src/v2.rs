@@ -123,6 +123,67 @@ pub struct PulseV2Region {
 }
 
 impl PulseV2Region {
+    /// Translate a region across an [`AxisOp`].
+    ///
+    /// `Rm(i)` drops `axes[i]`. `Add(i)` inserts a `Fixed(1)` at `i`.
+    /// `Move(from, to)` permutes. `Reshape(at, from_shape, to_shape)` is
+    /// supported only when the streaming axis (if any) lies entirely outside
+    /// `[at, at + from_shape.len())`; in that case axes inside the reshape
+    /// range are replaced with one `Fixed` per dim of `to_shape`. If the
+    /// streaming axis falls inside the reshape, returns `None` — strict-B
+    /// has no way to describe a streaming axis split across multiple output
+    /// axes (or the reverse).
+    pub fn translate(
+        &self,
+        op: &tract_pulse_opl::tract_core::ops::change_axes::AxisOp,
+    ) -> Option<PulseV2Region> {
+        use tract_pulse_opl::tract_core::ops::change_axes::AxisOp;
+        let mut axes = self.axes.clone();
+        match op {
+            AxisOp::Add(i) => {
+                if *i > axes.len() {
+                    return None;
+                }
+                axes.insert(*i, AxisRegion::Fixed(TDim::Val(1)));
+            }
+            AxisOp::Rm(i) => {
+                if *i >= axes.len() {
+                    return None;
+                }
+                // Refuse to remove a streaming axis silently — that would
+                // hide pulsification correctness from the rest of the pass.
+                if matches!(axes[*i], AxisRegion::Streaming { .. }) {
+                    return None;
+                }
+                axes.remove(*i);
+            }
+            AxisOp::Move(from, to) => {
+                if *from >= axes.len() || *to >= axes.len() {
+                    return None;
+                }
+                let a = axes.remove(*from);
+                axes.insert(*to, a);
+            }
+            AxisOp::Reshape(at, from_shape, to_shape) => {
+                let start = *at;
+                let end = at + from_shape.len();
+                if end > axes.len() {
+                    return None;
+                }
+                if axes[start..end].iter().any(|a| matches!(a, AxisRegion::Streaming { .. })) {
+                    return None;
+                }
+                for _ in start..end {
+                    axes.remove(start);
+                }
+                for (i, d) in to_shape.iter().enumerate() {
+                    axes.insert(start + i, AxisRegion::Fixed(d.clone()));
+                }
+            }
+        }
+        Some(PulseV2Region { axes })
+    }
+
     pub fn rank(&self) -> usize {
         self.axes.len()
     }
@@ -240,22 +301,43 @@ impl PulseV2Model {
             return Ok(());
         }
 
-        let Some(streaming_axis) = wire_regions
-            .get(&new_outlet)
-            .and_then(|r| r.axes.iter().position(|a| a.is_streaming()))
-        else {
-            return Ok(());
-        };
-
-        let Some(in_outlet) = input_outlets
+        // Find the streaming axis directly from the fact's shape rather than
+        // trusting `wire_regions` — the latter doesn't survive optimised-form
+        // ops (Im2col, OptMatMul, Reshape) that radically alter axis layout.
+        // The streaming axis is the unique one whose dim mentions the pulse
+        // symbol `P`. If there's no such axis (op stripped the streaming
+        // dimension) or more than one, we have nothing to canonicalise.
+        let fact = typed.outlet_fact(new_outlet)?;
+        let mut streaming_axes = fact
+            .shape
             .iter()
-            .find(|o| wire_regions.get(o).is_some_and(|r| r.axes.iter().any(|a| a.is_streaming())))
-        else {
+            .enumerate()
+            .filter(|(_, d)| d.symbols().contains(p_sym))
+            .map(|(i, _)| i);
+        let Some(streaming_axis) = streaming_axes.next() else {
             return Ok(());
         };
-        let Some((cap_in, overlap_in, end_in)) =
-            extract_stream_descriptor(typed, *in_outlet, streaming_axis, stream_sym, p_sym, t_sym)
-        else {
+        if streaming_axes.next().is_some() {
+            return Ok(());
+        }
+
+        // Same axis-by-symbol scheme on inputs: pick any input whose fact
+        // already carries the pulse symbol on some axis.
+        let Some((in_outlet, in_streaming_axis)) = input_outlets.iter().find_map(|o| {
+            let f = typed.outlet_fact(*o).ok()?;
+            f.shape.iter().position(|d| d.symbols().contains(p_sym)).map(|ix| (*o, ix))
+        }) else {
+            return Ok(());
+        };
+        let _ = wire_regions; // wire_regions kept on signature for symmetry; no longer consulted here.
+        let Some((cap_in, overlap_in, end_in)) = extract_stream_descriptor(
+            typed,
+            in_outlet,
+            in_streaming_axis,
+            stream_sym,
+            p_sym,
+            t_sym,
+        ) else {
             return Ok(());
         };
 
@@ -590,9 +672,22 @@ impl PulseV2Model {
             }
 
             let new_outlets = typed.wire_node(&node.name, node.op.clone(), &inputs)?;
+            // For axis-shuffling ops (Conv2D for 1D conv wraps with Add(0)+Rm(0),
+            // and the same family is used for Reshape/Move): translate the region
+            // so its streaming-axis index stays aligned with the actual fact
+            // shape. Without this, canonicalize_outlet writes to the wrong axis
+            // on the post-AxisOp wire and downstream ops trip over a "trivial"
+            // axis that's no longer 1.
+            let output_region = if let Some(axis_op) =
+                node.op.downcast_ref::<tract_pulse_opl::tract_core::ops::change_axes::AxisOp>()
+            {
+                source_region.as_ref().and_then(|r| r.translate(axis_op))
+            } else {
+                source_region.clone()
+            };
             for (slot, &new_outlet) in new_outlets.iter().enumerate() {
                 mapping.insert(OutletId::new(node_id, slot), new_outlet);
-                if let Some(region) = &source_region {
+                if let Some(region) = &output_region {
                     wire_regions.insert(new_outlet, region.clone());
                 }
             }
