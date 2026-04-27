@@ -2,7 +2,7 @@
 requires = [
     "setuptools >=80, <83",
     "setuptools_rust >=1.12, <1.13",
-    "wheel >=0.46.3, <0.47",
+    "wheel >=0.47.0, <0.48",
     "toml >=0.10, <0.11"
 ]
 
