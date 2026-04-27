@@ -13,7 +13,9 @@ use crate::{Ops, Scaler};
 
 pub fn plug(ops: &mut Ops) {
     ops.mmm_impls.push(wasm_f32_4x4.mmm());
+    ops.mmm_impls.push(wasm_f32_4x1.mmm());
     ops.mmm_f32 = Box::new(|_m, _k, _n| wasm_f32_4x4.mmm());
+    ops.mmv_f32 = Box::new(|_m, _k| wasm_f32_4x1.mmm());
 }
 
 unsafe fn kernel_f32_4x4(mut pnl: *const FusedKerSpec<f32>) -> isize {
@@ -299,3 +301,154 @@ unsafe fn kernel_f32_4x4(mut pnl: *const FusedKerSpec<f32>) -> isize {
 }
 
 MMMRustKernel!(kernel_f32_4x4 => wasm_f32_4x4<f32>(4,4)@(4,4) quality(ImplementationQuality::TargetOptimized));
+
+/// WASM SIMD f32 4x1 kernel — GEMV-shaped variant for matrix-vector products
+/// (single-column outputs, e.g., streaming-RNN inference where each frame's
+/// activation is a single column). Mirrors the 4x4 kernel's FusedKerSpec
+/// match arms but collapses the column dimension from 4 to 1: a single
+/// f32x4 accumulator holds 4 output rows × 1 output column packed as
+/// [ab[0], ab[1], ab[2], ab[3]].
+///
+/// Selection: tract-core's einsum kernel_selection::strategize() prefers
+/// kernels with nr() == 1 when op.n.is_one(), so this kernel is
+/// automatically picked for N=1 cases once registered.
+unsafe fn kernel_f32_4x1(mut pnl: *const FusedKerSpec<f32>) -> isize {
+    use std::arch::wasm32::*;
+
+    unsafe {
+        // Single accumulator: 4 rows × 1 col, packed into one f32x4.
+        // lane[i] holds ab[i] = the output value for row i (col 0).
+        let mut ab = f32x4_splat(0.0);
+
+        while !pnl.is_null() {
+            match *pnl {
+                FusedKerSpec::Done => break,
+                FusedKerSpec::Clear => {
+                    ab = f32x4_splat(0.0);
+                }
+                FusedKerSpec::LoadTile(_cols, rows) => {
+                    // Tile is 4 rows × 1 col = 4 contiguous f32s = 1 v128
+                    ab = v128_load(rows as *const v128);
+                }
+                FusedKerSpec::ScalarMin(a) => {
+                    ab = f32x4_min(f32x4_splat(a), ab);
+                }
+                FusedKerSpec::ScalarMax(a) => {
+                    ab = f32x4_max(f32x4_splat(a), ab);
+                }
+                FusedKerSpec::ScalarAdd(a) => {
+                    ab = f32x4_add(f32x4_splat(a), ab);
+                }
+                FusedKerSpec::ScalarMul(a) => {
+                    ab = f32x4_mul(f32x4_splat(a), ab);
+                }
+                FusedKerSpec::ScalarSub(a) => {
+                    ab = f32x4_sub(f32x4_splat(a), ab);
+                }
+                FusedKerSpec::ScalarSubF(a) => {
+                    ab = f32x4_sub(ab, f32x4_splat(a));
+                }
+                FusedKerSpec::LeakyRelu(a) => {
+                    let zero = f32x4_splat(0.0);
+                    let mask = f32x4_gt(ab, zero);
+                    ab = v128_bitselect(ab, f32x4_mul(f32x4_splat(a), ab), mask);
+                }
+                FusedKerSpec::PerRowMin(row) => {
+                    let r = v128_load(row as *const v128);
+                    ab = f32x4_min(r, ab);
+                }
+                FusedKerSpec::PerRowMax(row) => {
+                    let r = v128_load(row as *const v128);
+                    ab = f32x4_max(r, ab);
+                }
+                FusedKerSpec::PerRowAdd(row) => {
+                    let r = v128_load(row as *const v128);
+                    ab = f32x4_add(r, ab);
+                }
+                FusedKerSpec::PerRowMul(row) => {
+                    let r = v128_load(row as *const v128);
+                    ab = f32x4_mul(r, ab);
+                }
+                FusedKerSpec::PerRowSub(row) => {
+                    let r = v128_load(row as *const v128);
+                    ab = f32x4_sub(r, ab);
+                }
+                FusedKerSpec::PerRowSubF(row) => {
+                    let r = v128_load(row as *const v128);
+                    ab = f32x4_sub(ab, r);
+                }
+                FusedKerSpec::PerColMin(cols) => {
+                    ab = f32x4_min(f32x4_splat(*cols), ab);
+                }
+                FusedKerSpec::PerColMax(cols) => {
+                    ab = f32x4_max(f32x4_splat(*cols), ab);
+                }
+                FusedKerSpec::PerColAdd(cols) => {
+                    ab = f32x4_add(f32x4_splat(*cols), ab);
+                }
+                FusedKerSpec::PerColMul(cols) => {
+                    ab = f32x4_mul(f32x4_splat(*cols), ab);
+                }
+                FusedKerSpec::PerColSub(cols) => {
+                    ab = f32x4_sub(f32x4_splat(*cols), ab);
+                }
+                FusedKerSpec::PerColSubF(cols) => {
+                    ab = f32x4_sub(ab, f32x4_splat(*cols));
+                }
+                FusedKerSpec::QScale(shift, rp, mult) => {
+                    let scaler = Scaler::from_fuse_params(shift, rp, mult);
+                    ab = f32x4_mul(f32x4_splat(scaler.scale), ab);
+                }
+                FusedKerSpec::RoundingShiftRight(shift, _rp) => {
+                    let s = f32x4_splat(2f32.powi(-(shift as i32)));
+                    ab = f32x4_mul(s, ab);
+                }
+                FusedKerSpec::ShiftLeft(shift) => {
+                    let s = f32x4_splat(2f32.powi(shift as i32));
+                    ab = f32x4_mul(s, ab);
+                }
+                FusedKerSpec::AddUnicast(tile) => {
+                    let mut ptr: *const u8 = tile.ptr;
+                    let m0 = *(ptr as *const f32);
+                    ptr = ptr.add(tile.row_byte_stride as usize);
+                    let m1 = *(ptr as *const f32);
+                    ptr = ptr.add(tile.row_byte_stride as usize);
+                    let m2 = *(ptr as *const f32);
+                    ptr = ptr.add(tile.row_byte_stride as usize);
+                    let m3 = *(ptr as *const f32);
+                    ab = f32x4_add(ab, f32x4(m0, m1, m2, m3));
+                }
+                FusedKerSpec::AddRowColProducts(rows, cols) => {
+                    let r = v128_load(rows as *const v128);
+                    let c = f32x4_splat(*cols);
+                    ab = f32x4_add(ab, f32x4_mul(r, c));
+                }
+                FusedKerSpec::Store(tile) => {
+                    let mut ptr: *mut u8 = tile.ptr;
+                    *(ptr as *mut f32) = f32x4_extract_lane::<0>(ab);
+                    ptr = ptr.add(tile.row_byte_stride as usize);
+                    *(ptr as *mut f32) = f32x4_extract_lane::<1>(ab);
+                    ptr = ptr.add(tile.row_byte_stride as usize);
+                    *(ptr as *mut f32) = f32x4_extract_lane::<2>(ab);
+                    ptr = ptr.add(tile.row_byte_stride as usize);
+                    *(ptr as *mut f32) = f32x4_extract_lane::<3>(ab);
+                }
+                FusedKerSpec::AddMatMul { k, pa, pb, packing: _ } => {
+                    // A: packed [k][MR=4] = each k iter loads 4 f32s as 1 v128
+                    // B: packed [k][NR=1] = each k iter loads 1 scalar f32, broadcast
+                    let a = pa as *const v128;
+                    let b = pb as *const f32;
+                    for i in 0..k {
+                        let a_vec = v128_load(a.offset(i as isize));
+                        let b_splat = f32x4_splat(*b.offset(i as isize));
+                        ab = f32x4_add(ab, f32x4_mul(a_vec, b_splat));
+                    }
+                }
+            }
+            pnl = pnl.add(1);
+        }
+        0
+    }
+}
+
+MMMRustKernel!(kernel_f32_4x1 => wasm_f32_4x1<f32>(4,1)@(4,1) quality(ImplementationQuality::TargetOptimized));
