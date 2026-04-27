@@ -78,10 +78,15 @@ cudarc.workspace = true
 tract-cuda.workspace = true
 
 # Jemalloc as the global allocator on platforms where it builds. Wrapped
-# through `readings_probe::wrap_global_allocator!` so the existing alloc/free
-# instrumentation keeps working. Windows doesn't support jemalloc — fall back
-# to the standard System allocator there.
-[target.'cfg(unix)'.dependencies]
+# through `readings_probe::wrap_global_allocator!` so the existing
+# alloc/free instrumentation keeps working. Excluded on 32-bit musl —
+# `tikv-jemalloc-sys`'s background-thread code refers to 64-bit time
+# symbols (`__gettimeofday64`, `__pthread_cond_timedwait64`) and
+# `decay.c` pulls in `__ffsdi2`, none of which the
+# `armv7-unknown-linux-musleabihf` / `armv7-unknown-linux-musl`
+# toolchains in CI satisfy. 32-bit GNU and Android targets keep
+# jemalloc; Windows and wasm are excluded by `cfg(unix)`.
+[target.'cfg(all(unix, not(all(target_env = "musl", target_pointer_width = "32"))))'.dependencies]
 tikv-jemallocator = { version = "0.6", optional = true }
 
 [features]

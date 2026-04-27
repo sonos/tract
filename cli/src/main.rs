@@ -42,14 +42,24 @@ use tract_linalg::WeightType;
 use tract_linalg::block_quant::Q4_0;
 use tract_linalg::mmm::MatMatMul;
 
-// Pick the global allocator. When the `jemalloc` feature is enabled (default
-// on Unix), wrap jemalloc with the readings-probe instrumentation. Otherwise
-// instrument the System allocator as before. Windows hits the `else` branch
-// because tikv-jemallocator can't build there. Either way, the alloc/free
-// counters in `info_usage` keep working.
-#[cfg(all(feature = "jemalloc", unix))]
+// Pick the global allocator. When the `jemalloc` feature is enabled
+// (default on every unix except 32-bit musl), wrap jemalloc with the
+// readings-probe instrumentation. Otherwise instrument the System
+// allocator as before. 32-bit musl, Windows, and wasm hit the `else`
+// branch — see Cargo.toml for the target-gating rationale on the
+// dependency itself. Either way, the alloc/free counters in
+// `info_usage` keep working.
+#[cfg(all(
+    feature = "jemalloc",
+    unix,
+    not(all(target_env = "musl", target_pointer_width = "32"))
+))]
 readings_probe::wrap_global_allocator!(tikv_jemallocator::Jemalloc);
-#[cfg(not(all(feature = "jemalloc", unix)))]
+#[cfg(not(all(
+    feature = "jemalloc",
+    unix,
+    not(all(target_env = "musl", target_pointer_width = "32"))
+)))]
 readings_probe::instrumented_allocator!();
 
 pub const QUALITY_COLORS: [nu_ansi_term::Color; 5] = [LightGreen, Green, White, Yellow, LightRed];
