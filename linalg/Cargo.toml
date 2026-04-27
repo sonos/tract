@@ -119,3 +119,7 @@ harness = false
 bench = false
 name = "leaky_relu"
 harness = false
+
+[[bench]]
+name = "avx512_zombies"
+harness = false
