@@ -27,8 +27,6 @@ fn cached_hey_snips() -> Option<PathBuf> {
 }
 
 #[test]
-#[ignore = "hangs at skip-Add: broadcast emits Max of two H-chains that differ per path; \
-            needs sync-at-merge or a pre-pass canonicalising H symbols across parallel paths"]
 fn hey_snips_pulsify_v2() -> TractResult<()> {
     let Some(path) = cached_hey_snips() else {
         eprintln!("hey_snips_v4_model17.pb not cached — skipping");
@@ -38,7 +36,10 @@ fn hey_snips_pulsify_v2() -> TractResult<()> {
     let mut model = tensorflow().model_for_path(&path)?;
     let s = model.symbols.sym("S");
     model.set_input_fact(0, f32::fact([s.to_dim(), 20.to_dim()]).into())?;
-    let model = model.into_optimized()?;
+    // Pulsification operates on the typed model. Don't call `into_optimized()`
+    // here — that decomposes Conv into Im2col + OptMatMul and inserts AxisOp
+    // wrappers that pulse-v2's RegionTransform inventory doesn't handle.
+    let model = model.into_typed()?.into_decluttered()?;
 
     match PulseV2Model::new(&model, s.clone()) {
         Ok(_) => {
