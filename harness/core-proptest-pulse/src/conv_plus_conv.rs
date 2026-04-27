@@ -320,3 +320,34 @@ fn three_stride() {
     };
     cpc.run().unwrap();
 }
+
+/// Minimal repro shrunk from `proptest_v2_conv_full`: stream length S=1 is
+/// shorter than the pulse size P=6, the first Conv has `pad_before=1`, and the
+/// second Conv has stride=2 with `pad_after=2`. PulseV2Pad's `output_facts`
+/// formula for the after-pad branch goes negative for T≥1 (the pulse runs past
+/// the stream end with non-zero history symbol H), declared streaming-axis dim
+/// resolves to -1 while runtime is 0 → tract emits Clashing-resolution. Pre-
+/// existing v2 gap, surfaced here once strict-B canonicalisation is wired.
+#[test]
+#[ignore]
+fn prob_v2_pad_negative_shape_when_s_lt_p() {
+    let cpc = ConvPlusConvProblem {
+        input: t(1),
+        pulse: 6,
+        convs: vec![
+            ConvOp {
+                stride: 1,
+                dilation: 1,
+                ker: t(2),
+                padding: PaddingSpec::ExplicitOnnxPool(tvec!(1), tvec!(0), false),
+            },
+            ConvOp {
+                stride: 2,
+                dilation: 1,
+                ker: t(3),
+                padding: PaddingSpec::ExplicitOnnxPool(tvec!(0), tvec!(2), false),
+            },
+        ],
+    };
+    cpc.run_v2().unwrap();
+}
