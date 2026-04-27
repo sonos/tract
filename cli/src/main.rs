@@ -211,6 +211,13 @@ fn main() -> TractResult<()> {
                 .action(ArgAction::SetTrue)
                 .help("Compare pulsed execution against non-pulsed reference"),
         )
+        .arg(
+            Arg::new("pulse-size")
+                .long("pulse-size")
+                .num_args(1)
+                .value_parser(clap::value_parser!(usize))
+                .help("Concrete pulse size for --stream comparison of pulse-v2 models"),
+        )
         .group(
             ArgGroup::new("reference")
                 .args(&["npz", "pbdir", "stage", "tf", "twice", "stream"])

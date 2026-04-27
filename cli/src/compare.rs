@@ -22,7 +22,7 @@ pub fn handle(
     let run_params = crate::tensor::run_params_from_subcommand(params, sub_matches)?;
 
     if sub_matches.get_flag("stream") {
-        return handle_stream(params, &output_params, &run_params);
+        return handle_stream(params, &output_params, &run_params, sub_matches);
     }
 
     let cumulative = sub_matches.get_flag("cumulative");
@@ -287,12 +287,39 @@ pub fn handle_stream(
     _params: &Parameters,
     _output_params: &DisplayParams,
     _run_params: &RunParams,
+    _sub_matches: &clap::ArgMatches,
 ) -> TractResult<()> {
     bail!("`pulse` feature is required for --stream to work");
 }
 
 #[cfg(feature = "pulse")]
 pub fn handle_stream(
+    params: &Parameters,
+    output_params: &DisplayParams,
+    run_params: &RunParams,
+    sub_matches: &clap::ArgMatches,
+) -> TractResult<()> {
+    // Detect pulse-v2 by looking for the pulse symbol `P` somewhere on the
+    // post-pulse model's input fact shape — v2 keeps `P` symbolic, v1 bakes
+    // a concrete usize. v1 also publishes the `pulse.input_axes` property,
+    // so its absence is a stronger signal.
+    let model: Arc<TypedModel> =
+        params.typed_model().context("Post-pulse TypedModel not available")?;
+    let is_v2 = model.properties.get("pulse.input_axes").is_none()
+        && model.symbols.get("P").is_some_and(|p_sym| {
+            model
+                .input_fact(0)
+                .map(|f| f.shape.iter().any(|d| d.symbols().contains(&p_sym)))
+                .unwrap_or(false)
+        });
+    if is_v2 {
+        return handle_stream_v2(params, output_params, run_params, sub_matches);
+    }
+    handle_stream_v1(params, output_params, run_params)
+}
+
+#[cfg(feature = "pulse")]
+pub fn handle_stream_v1(
     params: &Parameters,
     output_params: &DisplayParams,
     run_params: &RunParams,
@@ -482,6 +509,173 @@ pub fn handle_stream(
         output_params,
         run_params,
         ("reference", "pulsed"),
+    )
+}
+
+// handle_stream_v2: per-pulse driver for pulse-v2 typed models.
+//
+// Differences from v1:
+// - No `pulse.input_axes` property and no `PulsedModel` — work directly off the
+//   v2 typed model.
+// - No per-node `delay`. Each output's streaming-axis dim is the 3-param
+//   canonical form (or PulseV2Buffer/Pad's custom form). Per-pulse "valid
+//   sample count" is just the dim's evaluated value at concrete (T, P, S);
+//   slice [0, count) along the streaming axis.
+// - Symbols set per pulse: `T`, `P`, `S` via `state.turn_state.resolved_symbols`.
+//   `H_i` accumulators stay implicit (resolved from runtime tensor shapes).
+// - Concrete `P` comes from `--pulse-size N`.
+#[cfg(feature = "pulse")]
+pub fn handle_stream_v2(
+    params: &Parameters,
+    output_params: &DisplayParams,
+    run_params: &RunParams,
+    sub_matches: &clap::ArgMatches,
+) -> TractResult<()> {
+    use tract_core::ndarray::{ArrayD, Axis};
+    use tract_core::plan::SimpleState;
+
+    let reference: &TypedModel = params
+        .reference_model
+        .as_ref()
+        .context("Reference (pre-pulse) model not available")?
+        .downcast_ref::<TypedModel>()
+        .context("Reference model is not a TypedModel")?;
+    let model: Arc<TypedModel> =
+        params.typed_model().context("Post-pulse TypedModel not available")?;
+
+    let pulse_size = *sub_matches
+        .get_one::<usize>("pulse-size")
+        .context("--pulse-size N is required for pulse-v2 --stream comparison")?;
+
+    // Streaming symbol = the unique symbol on the reference's input fact shape.
+    let ref_input_fact = reference.input_fact(0)?;
+    let stream_symbol = ref_input_fact
+        .shape
+        .iter()
+        .flat_map(|d| d.symbols())
+        .next()
+        .context("No streaming symbol on reference input")?;
+    // Streaming axis on the reference (where the stream symbol appears).
+    let input_axis = ref_input_fact
+        .shape
+        .iter()
+        .position(|d| d.symbols().contains(&stream_symbol))
+        .context("No streaming axis on reference input")?;
+    // Pulse / pulse_id symbols live in the post-pulse model's scope.
+    let p_sym = model.symbols.get("P").context("Pulse-v2 model lacks P symbol")?;
+    let t_sym = model.symbols.get("T").context("Pulse-v2 model lacks T symbol")?;
+
+    // Pick a stream length large enough to exercise the receptive field
+    // plus a few clean steady-state pulses. Keep it modest to stay quick.
+    let stream_dim = pulse_size * 8;
+    let concrete_sym_values = SymbolValues::default()
+        .with(&stream_symbol, stream_dim as i64)
+        .with(&p_sym, pulse_size as i64);
+
+    // Generate fixed input matching the reference's batch shape.
+    let concrete_shape: Vec<usize> =
+        ref_input_fact.shape.eval_to_usize(&concrete_sym_values)?.into_owned().into_vec();
+    let concrete_input_fact = ref_input_fact.datum_type.fact(&*concrete_shape);
+    let fixed_input = tract_libcli::tensor::tensor_for_fact(&concrete_input_fact, None, None)?;
+
+    // The pulsed model's input has shape ... P ... (one axis is symbolic P).
+    let model_input_fact = model.input_fact(0)?;
+    let model_input_axis = model_input_fact
+        .shape
+        .iter()
+        .position(|d| d.symbols().contains(&p_sym))
+        .context("Pulse-v2 input fact has no axis carrying P")?;
+    let mut pulsed_shape: Vec<usize> = model_input_fact
+        .shape
+        .iter()
+        .map(|d| d.eval_to_i64(&concrete_sym_values).map(|v| v as usize))
+        .collect::<TractResult<Vec<_>>>()?;
+    pulsed_shape[model_input_axis] = pulse_size;
+
+    // Loop over pulses; capture per-node output (whole tensor — strict-B
+    // declares the right size). Streaming nodes get stitched along their
+    // streaming axis; non-streaming nodes captured on first pulse.
+    let plan = Arc::new(model.as_ref().clone().into_runnable()?);
+    let mut state = SimpleState::new(&plan)?;
+
+    let mut node_slices: HashMap<String, Vec<Tensor>> = HashMap::new();
+    let mut node_axes: HashMap<String, usize> = HashMap::new();
+    let num_pulses = stream_dim.div_ceil(pulse_size) + 1;
+    let p_sym_for_axis = p_sym.clone();
+
+    for i in 0..num_pulses {
+        let mut pulsed_input = ArrayD::from_elem(&*pulsed_shape, 0f32);
+        let offset = i * pulse_size;
+        if offset < stream_dim {
+            let count = pulse_size.min(stream_dim - offset);
+            pulsed_input.slice_axis_mut(Axis(input_axis), (0..count).into()).assign(
+                &fixed_input
+                    .to_plain_array_view::<f32>()?
+                    .slice_axis(Axis(input_axis), (offset..offset + count).into()),
+            );
+        }
+        state.turn_state.resolved_symbols.set(&t_sym, i as i64);
+        state.turn_state.resolved_symbols.set(&p_sym, pulse_size as i64);
+        state.turn_state.resolved_symbols.set(&stream_symbol, stream_dim as i64);
+
+        state.run_plan_with_eval(
+            tvec!(pulsed_input.into_tensor().into()),
+            |session, op_state, node, input| -> TractResult<TVec<TValue>> {
+                let result = tract_core::plan::eval(session, op_state, node, input)?;
+                if result.is_empty() {
+                    return Ok(result);
+                }
+                let out = &result[0];
+                // Find the streaming axis of this output by looking for `P`
+                // in its declared dim. (Out tensor's runtime shape already
+                // reflects the per-pulse valid count under strict-B.)
+                let declared = node.outputs.first().map(|o| &o.fact.shape).and_then(|s| {
+                    s.iter().enumerate().find_map(|(ax, d)| {
+                        if d.symbols().contains(&p_sym_for_axis) { Some(ax) } else { None }
+                    })
+                });
+                if let Some(axis) = declared {
+                    if out.rank() > axis && out.shape()[axis] > 0 {
+                        node_slices
+                            .entry(node.name.clone())
+                            .or_default()
+                            .push(out.clone().into_tensor());
+                        node_axes.insert(node.name.clone(), axis);
+                    }
+                } else if i == 0 {
+                    // Non-streaming node: capture on first pulse.
+                    node_slices
+                        .entry(node.name.clone())
+                        .or_default()
+                        .push(out.clone().into_tensor());
+                }
+                Ok(result)
+            },
+        )?;
+    }
+
+    // Stitch streaming nodes along their streaming axis; pass through
+    // non-streaming nodes (single tensor captured on first pulse).
+    let mut all_values: HashMap<String, Vec<TractResult<TValue>>> = HashMap::new();
+    for (name, slices) in &node_slices {
+        if let Some(&axis) = node_axes.get(name) {
+            let stitched = Tensor::stack_tensors(axis, slices)?;
+            all_values.insert(name.clone(), vec![Ok(stitched.into_tvalue())]);
+        } else if let Some(first) = slices.first() {
+            all_values.insert(name.clone(), vec![Ok(first.clone().into_tvalue())]);
+        }
+    }
+
+    // Concretize reference and delegate to compare().
+    let concrete_ref = Arc::new(reference.clone().concretize_dims(&concrete_sym_values)?);
+    compare(
+        false,
+        &concrete_ref,
+        &all_values,
+        params,
+        output_params,
+        run_params,
+        ("reference", "pulsed-v2"),
     )
 }
 
