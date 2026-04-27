@@ -1,9 +1,52 @@
 use crate::Ops;
 use crate::block_quant::*;
 use crate::mmm::ImplementationQuality::ManuallyOptimized;
+use crate::mmm::MatMatMul;
 use crate::pack::PackedFormat;
 
 use super::*;
+
+/// One candidate kernel in a dispatcher's pool, with its tile geometry
+/// and a relative-throughput scale (1.0 = baseline, used to break
+/// near-ties between kernels with similar tile waste).
+#[derive(Clone, Copy)]
+struct KernelChoice {
+    mr: usize,
+    nr: usize,
+    scale: f32,
+    ctor: fn() -> Box<dyn MatMatMul>,
+}
+
+/// Fraction of the M-or-N axis covered by useful work after rounding up
+/// to the kernel's tile size. 1.0 = exact fit; smaller is worse.
+/// Empty axis (d == 0) is treated as "no waste" — no work to misallocate.
+fn tile_util(d: usize, tile: usize) -> f32 {
+    if d == 0 {
+        return 1.0;
+    }
+    let batches = d.div_ceil(tile);
+    d as f32 / (batches * tile) as f32
+}
+
+/// Pick the kernel that maximises `scale * m_util * n_util`. Ties are
+/// broken first in favour of fewer total tile passes (less loop
+/// overhead), then in favour of larger `nr` (more K-loop amortisation
+/// per inner iteration). An unknown M or N is treated as
+/// "large enough" — its utilisation contribution is 1.0.
+fn pick_mmm(candidates: &[KernelChoice], m: Option<usize>, n: Option<usize>) -> Box<dyn MatMatMul> {
+    let key = |c: &KernelChoice| -> (f32, i32, i32) {
+        let m_u = m.map(|m| tile_util(m, c.mr)).unwrap_or(1.0);
+        let n_u = n.map(|n| tile_util(n, c.nr)).unwrap_or(1.0);
+        let m_b = m.map(|m| m.div_ceil(c.mr)).unwrap_or(1) as i32;
+        let n_b = n.map(|n| n.div_ceil(c.nr)).unwrap_or(1) as i32;
+        (c.scale * m_u * n_u, -(m_b * n_b), c.nr as i32)
+    };
+    let best = candidates
+        .iter()
+        .max_by(|a, b| key(a).partial_cmp(&key(b)).unwrap())
+        .expect("non-empty kernel pool");
+    (best.ctor)()
+}
 
 MMMExternKernel!(fma_mmm_f32_8x8 <f32>(8, 8)@(256,4) where(FMA) quality(ManuallyOptimized));
 MMMExternKernel!(fma_mmm_f32_16x6<f32>(16,6)@(256,4) where(FMA) quality(ManuallyOptimized));
@@ -79,67 +122,28 @@ pub fn plug_fma(ops: &mut Ops) {
 
     ops.mmv_f32 = Box::new(|_, _| fma_mmm_f32_64x1.mmm());
 
-    ops.mmm_f32 = Box::new(|_, _, n| {
-        if n.is_none() {
-            return fma_mmm_f32_16x6.mmm();
-        }
+    // Hand-tuned for low N; calibration came from past measurements.
+    // For other N, fall back to a generic (M, N)-aware tile-utilisation
+    // picker over the same kernel pool.
+    const FMA_CHOICES: &[KernelChoice] = &[
+        KernelChoice { mr: 8, nr: 8, scale: 44.0 / 60.0, ctor: || fma_mmm_f32_8x8.mmm() },
+        KernelChoice { mr: 16, nr: 6, scale: 54.0 / 60.0, ctor: || fma_mmm_f32_16x6.mmm() },
+        KernelChoice { mr: 16, nr: 5, scale: 54.0 / 60.0, ctor: || fma_mmm_f32_16x5.mmm() },
+        KernelChoice { mr: 24, nr: 4, scale: 54.0 / 60.0, ctor: || fma_mmm_f32_24x4.mmm() },
+        KernelChoice { mr: 32, nr: 3, scale: 54.0 / 60.0, ctor: || fma_mmm_f32_32x3.mmm() },
+        KernelChoice { mr: 40, nr: 2, scale: 54.0 / 60.0, ctor: || fma_mmm_f32_40x2.mmm() },
+    ];
 
-        let n = n.unwrap();
-
-        match n {
-            1 => unreachable!("should've been mmv"),
-            2 => return fma_mmm_f32_40x2.mmm(),
-            3 => return fma_mmm_f32_32x3.mmm(),
-            4 => return fma_mmm_f32_24x4.mmm(),
-            5 => return fma_mmm_f32_16x5.mmm(),
-            6 => return fma_mmm_f32_16x6.mmm(),
-            8 => return fma_mmm_f32_8x8.mmm(),
-            _ => {}
-        };
-
-        let scaling_baseline = 60.0;
-        let kernel_normalized_perf = [
-            44.0 / scaling_baseline, // 8x8
-            54.0 / scaling_baseline, // 2x6
-            54.0 / scaling_baseline, // 2x5
-            54.0 / scaling_baseline, // 3x4
-            54.0 / scaling_baseline, // 4x3
-            54.0 / scaling_baseline, // 5x2
-        ];
-
-        fn compute_efficiency(n: usize, kernel_width: usize, scale: f32) -> f32 {
-            let kernel_width = kernel_width as f32;
-            let n = n as f32;
-            let batch_count = (n / kernel_width).ceil();
-            let actual_count = batch_count * kernel_width;
-            let multi_batch_penalty = 1.0 - batch_count / 100.0;
-            n / actual_count * scale * multi_batch_penalty
-        }
-
-        let efficiencies = [
-            compute_efficiency(n, 8, kernel_normalized_perf[0]),
-            compute_efficiency(n, 6, kernel_normalized_perf[1]),
-            compute_efficiency(n, 5, kernel_normalized_perf[2]),
-            compute_efficiency(n, 4, kernel_normalized_perf[3]),
-            compute_efficiency(n, 3, kernel_normalized_perf[4]),
-            compute_efficiency(n, 2, kernel_normalized_perf[5]),
-        ];
-
-        let best_idx = efficiencies
-            .iter()
-            .copied()
-            .enumerate()
-            .fold((0, 0.0), |max, val| if val.1 > max.1 { val } else { max });
-
-        match best_idx.0 {
-            0 => fma_mmm_f32_8x8.mmm(),
-            1 => fma_mmm_f32_16x6.mmm(),
-            2 => fma_mmm_f32_16x5.mmm(),
-            3 => fma_mmm_f32_24x4.mmm(),
-            4 => fma_mmm_f32_32x3.mmm(),
-            5 => fma_mmm_f32_40x2.mmm(),
-            _ => unreachable!("not a valid index"),
-        }
+    ops.mmm_f32 = Box::new(|m, _, n| match n {
+        None => fma_mmm_f32_16x6.mmm(),
+        Some(1) => unreachable!("should've been mmv"),
+        Some(2) => fma_mmm_f32_40x2.mmm(),
+        Some(3) => fma_mmm_f32_32x3.mmm(),
+        Some(4) => fma_mmm_f32_24x4.mmm(),
+        Some(5) => fma_mmm_f32_16x5.mmm(),
+        Some(6) => fma_mmm_f32_16x6.mmm(),
+        Some(8) => fma_mmm_f32_8x8.mmm(),
+        Some(_) => pick_mmm(FMA_CHOICES, m, n),
     });
     log::info!("mmm_f32, mmv_f32: x86_64/fma activated");
 
@@ -163,16 +167,24 @@ pub fn plug_avx512f(ops: &mut Ops) {
         _ => avx512_mmm_f32_128x1.mmm(),
     });
 
-    ops.mmm_f32 = Box::new(|m, _, n| match (m, n) {
-        (_, Some(1)) => unreachable!("should've been mmv"),
-        (_, Some(2)) => avx512_mmm_f32_80x2.mmm(),
-        (Some(m), _) if m <= 16 => mmm::avx512_mmm_f32_16x12.mmm(),
-        (_, Some(5)) => avx512_mmm_f32_32x5.mmm(),
-        (_, Some(6)) => avx512_mmm_f32_32x6.mmm(),
-        (_, Some(8)) => avx512_mmm_f32_16x8.mmm(),
-        (_, Some(n)) if n % 4 == 0 && n % 3 != 0 && n < 32 => avx512_mmm_f32_48x4.mmm(),
-        (_, Some(n)) if n < 32 => avx512_mmm_f32_64x3.mmm(),
-        _ => avx512_mmm_f32_16x12.mmm(),
+    // No measured per-kernel scaling on AVX-512 yet; all kernels start
+    // at 1.0 and the picker decides on (M, N) tile waste alone.
+    const AVX512_CHOICES: &[KernelChoice] = &[
+        KernelChoice { mr: 16, nr: 8, scale: 1.0, ctor: || avx512_mmm_f32_16x8.mmm() },
+        KernelChoice { mr: 16, nr: 12, scale: 1.0, ctor: || avx512_mmm_f32_16x12.mmm() },
+        KernelChoice { mr: 32, nr: 5, scale: 1.0, ctor: || avx512_mmm_f32_32x5.mmm() },
+        KernelChoice { mr: 32, nr: 6, scale: 1.0, ctor: || avx512_mmm_f32_32x6.mmm() },
+        KernelChoice { mr: 48, nr: 4, scale: 1.0, ctor: || avx512_mmm_f32_48x4.mmm() },
+        KernelChoice { mr: 64, nr: 3, scale: 1.0, ctor: || avx512_mmm_f32_64x3.mmm() },
+        KernelChoice { mr: 80, nr: 2, scale: 1.0, ctor: || avx512_mmm_f32_80x2.mmm() },
+        KernelChoice { mr: 128, nr: 1, scale: 1.0, ctor: || avx512_mmm_f32_128x1.mmm() },
+    ];
+
+    ops.mmm_f32 = Box::new(|m, _, n| {
+        if let Some(1) = n {
+            unreachable!("should've been mmv");
+        }
+        pick_mmm(AVX512_CHOICES, m, n)
     });
     log::info!("mmm_f32, mmv_f32: x86_64/avx512f activated");
 }
