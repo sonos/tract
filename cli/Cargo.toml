@@ -77,6 +77,13 @@ tract-metal.workspace = true
 cudarc.workspace = true
 tract-cuda.workspace = true
 
+# Jemalloc as the global allocator on platforms where it builds. Wrapped
+# through `readings_probe::wrap_global_allocator!` so the existing alloc/free
+# instrumentation keeps working. Windows doesn't support jemalloc — fall back
+# to the standard System allocator there.
+[target.'cfg(unix)'.dependencies]
+tikv-jemallocator = { version = "0.6", optional = true }
+
 [features]
 default = [
   "onnx",
@@ -86,7 +93,9 @@ default = [
   "tflite",
   "transformers",
   "extra",
+  "jemalloc",
 ]
+jemalloc = ["dep:tikv-jemallocator"]
 apple-amx-ios = ["tract-linalg/apple-amx-ios"]
 onnx = ["tract-onnx", "tract-libcli/hir", "tract-libcli/onnx"]
 extra = ["tract-extra"]
