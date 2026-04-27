@@ -154,7 +154,10 @@ pub fn plug_avx512f(ops: &mut Ops) {
     ops.mmm_impls.push(avx512_mmm_f32_80x2.mmm());
     ops.mmm_impls.push(avx512_mmm_f32_48x4.mmm());
     ops.mmm_impls.push(avx512_mmm_f32_64x3.mmm());
+    ops.mmm_impls.push(avx512_mmm_f32_32x6.mmm());
+    ops.mmm_impls.push(avx512_mmm_f32_32x5.mmm());
     ops.mmm_impls.push(avx512_mmm_f32_16x12.mmm());
+    ops.mmm_impls.push(avx512_mmm_f32_16x8.mmm());
     ops.mmv_f32 = Box::new(|m, _k| match m {
         Some(m) if m < 31 => avx512_mmm_f32_16x1.mmm(),
         _ => avx512_mmm_f32_128x1.mmm(),
@@ -164,6 +167,9 @@ pub fn plug_avx512f(ops: &mut Ops) {
         (_, Some(1)) => unreachable!("should've been mmv"),
         (_, Some(2)) => avx512_mmm_f32_80x2.mmm(),
         (Some(m), _) if m <= 16 => mmm::avx512_mmm_f32_16x12.mmm(),
+        (_, Some(5)) => avx512_mmm_f32_32x5.mmm(),
+        (_, Some(6)) => avx512_mmm_f32_32x6.mmm(),
+        (_, Some(8)) => avx512_mmm_f32_16x8.mmm(),
         (_, Some(n)) if n % 4 == 0 && n % 3 != 0 && n < 32 => avx512_mmm_f32_48x4.mmm(),
         (_, Some(n)) if n < 32 => avx512_mmm_f32_64x3.mmm(),
         _ => avx512_mmm_f32_16x12.mmm(),
