@@ -400,68 +400,8 @@ impl PulseV2Model {
         let batch_outputs = batch_model.output_outlets()?.to_vec();
         let pulsed_outputs: TVec<OutletId> = batch_outputs.iter().map(|o| mapping[o]).collect();
         typed.select_output_outlets(&pulsed_outputs)?;
-        // Clamp each final pulsed output's streaming dim against going negative
-        // during startup pulses (e.g. conv with P < K at T=0). Intermediates
-        // were intentionally left flat — nesting `max(0, …)` per node triggers
-        // exponential blowup in the TDim simplifier on deep conv chains.
-        for &outlet in &pulsed_outputs {
-            Self::clamp_negative_streaming_dims(&mut typed, outlet, &t_sym, &p_sym)?;
-        }
 
         Ok(PulseV2Model { typed, symbols })
-    }
-
-    /// Clamp any output dimension that depends on T and could evaluate to
-    /// negative (e.g. conv output when P < K). Wraps the dim in Max(0, dim).
-    fn clamp_negative_streaming_dims(
-        model: &mut TypedModel,
-        outlet: OutletId,
-        pulse_id: &Symbol,
-        pulse_sym: &Symbol,
-    ) -> TractResult<()> {
-        let fact = model.outlet_fact(outlet)?.clone();
-        let mut changed = false;
-        let mut new_shape = fact.shape.to_tvec();
-        for (ax, dim) in fact.shape.iter().enumerate() {
-            // Probe multiple worst cases. If ANY evaluates negative, clamp.
-            let syms = dim.symbols();
-            if !syms.is_empty() {
-                // Probe worst cases: various T, P, H values.
-                // Any negative result → clamp.
-                let probes: &[(i64, i64, i64)] = &[
-                    (0, 1, 0),   // T=0, P=1, H=0: startup
-                    (0, 100, 0), // T=0, large pulse, H=0
-                    (100, 1, 0), // T=large, P=1, H=0: past end, no history
-                    (100, 1, 1), // T=large, P=1, H=1: past end, some history
-                ];
-                let mut needs_clamp = false;
-                for &(t_val, p_val, h_val) in probes {
-                    let mut sv =
-                        SymbolValues::default().with(pulse_id, t_val).with(pulse_sym, p_val);
-                    for s in &syms {
-                        if format!("{s}").starts_with("H") {
-                            sv.set(s, h_val);
-                        }
-                        if format!("{s}").starts_with("S") {
-                            sv.set(s, p_val); // S >= P
-                        }
-                    }
-                    if dim.eval(&sv).to_i64().is_ok_and(|v| v < 0) {
-                        needs_clamp = true;
-                        break;
-                    }
-                }
-                if needs_clamp {
-                    new_shape[ax] = TDim::Max(vec![TDim::Val(0), dim.clone()]);
-                    changed = true;
-                }
-            }
-        }
-        if changed {
-            let node = &mut model.nodes_mut()[outlet.node];
-            node.outputs[outlet.slot].fact.shape = new_shape.into();
-        }
-        Ok(())
     }
 
     /// Decompose Conv/MaxPool with non-valid padding on streaming axes
