@@ -76,6 +76,7 @@ pub const STAGES: &[&str] = &[
     "pulse-declutter",
     "pulse-v2",
     "pulse-v2-to-type",
+    "pulse-v2-declutter",
     "set",
     "set-declutter",
     "nnef-cycle",

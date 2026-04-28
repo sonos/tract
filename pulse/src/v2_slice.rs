@@ -5,21 +5,31 @@
 /// the data passes through unchanged. The slice's `start` is the v2-flavoured
 /// equivalent of v1's `delay` — it shifts the output stream's effective
 /// position relative to the input stream — and it's tracked at sink/merge
-/// time, not in per-pulse tensor sizes.
+/// time, not in per-pulse tensor sizes. The op exists at all so consumers
+/// (e.g. test harness, downstream merges) can read the `start`/`end`
+/// metadata off the graph; it shunts itself out at declutter time.
 ///
-/// The slice's `end` bounds the total output stream length, which the
-/// fixed-pulse runtime ignores per pulse (we run with garbage past end and
-/// truncate at the sink against the symbol-resolved stream length).
+/// Slice on a non-streaming axis is left alone — the original `Slice` op
+/// runs normally there.
 use crate::internal::*;
-use crate::v2::{PulseV2Action, PulseV2Region, PulseV2Symbols, RegionTransform};
+use crate::v2::{AxisRegion, PulseV2Action, PulseV2Region, PulseV2Symbols, RegionTransform};
 use tract_pulse_opl::tract_core::ops::array::Slice;
 
 fn slice_transform(
     op: &dyn TypedOp,
-    _source_region: &PulseV2Region,
+    source_region: &PulseV2Region,
     _symbols: &PulseV2Symbols,
 ) -> TractResult<Option<PulseV2Action>> {
     let slice = op.downcast_ref::<Slice>().unwrap();
+    let on_streaming_axis = source_region
+        .axes
+        .get(slice.axis)
+        .is_some_and(|a| matches!(a, AxisRegion::Streaming { .. }));
+    if !on_streaming_axis {
+        // Non-streaming axis: original Slice op behaves correctly under
+        // fixed-pulse, no replacement needed.
+        return Ok(None);
+    }
     Ok(Some(PulseV2Action::ReplaceOp(Box::new(PulseV2Slice {
         axis: slice.axis,
         start: slice.start.clone(),
@@ -72,5 +82,17 @@ impl TypedOp for PulseV2Slice {
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(inputs[0].clone()))
+    }
+
+    /// At declutter time the metadata role is over (any consumer that needed
+    /// to read `start`/`end` already had its chance during pulsification);
+    /// shunt the op so the resulting graph matches v1's topology — Buffer/
+    /// Delay only, no streaming-axis Slice nodes.
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        TypedModelPatch::shunt_one_op(model, node)
     }
 }
