@@ -3,6 +3,7 @@ use proptest::test_runner::TestCaseResult;
 use tract_core::plan::SimplePlan;
 use tract_core::prelude::*;
 use tract_pulse::v2::PulseV2Model;
+use tract_pulse::v2_buffer::PulseV2Buffer;
 
 /// Pulsify a model via PulseV2, run pulse by pulse, stitch output,
 /// and compare against batch reference.
@@ -36,6 +37,17 @@ pub fn run_and_compare_v2(
         .unwrap_or(axis);
 
     let typed = pv2.into_typed().unwrap();
+    // Cumulative pulse-axis delay = sum of buffer lookbacks on the output's
+    // streaming axis. Each PulseV2Buffer in the chain pre-fills `lookback`
+    // zeros at session start, so the pulsed output's first `total_delay`
+    // samples on the streaming axis are garbage and must be skipped before
+    // comparing against the batch reference.
+    let total_delay: usize = typed
+        .nodes()
+        .iter()
+        .filter_map(|n| n.op.downcast_ref::<PulseV2Buffer>())
+        .map(|b| b.lookback.iter().copied().max().unwrap_or(0))
+        .sum();
     let plan = SimplePlan::new(typed).unwrap();
     let mut state = plan.spawn().unwrap();
 
@@ -76,7 +88,7 @@ pub fn run_and_compare_v2(
         pulse_idx += 1;
 
         let total_out: usize = output_chunks.iter().map(|t| t.shape()[output_axis]).sum();
-        if total_out >= batch_len {
+        if total_out >= batch_len + total_delay {
             break;
         }
         if pulse_idx > 1000 {
@@ -88,10 +100,16 @@ pub fn run_and_compare_v2(
 
     let batch_output = &batch[0];
     let pulsed_len = pulsed_output.shape()[output_axis];
-    let compare_len = batch_len.min(pulsed_len);
+    prop_assert!(
+        pulsed_len >= total_delay,
+        "Pulsed output ({pulsed_len}) shorter than total_delay ({total_delay})"
+    );
+    let pulsed_valid = pulsed_output.slice(output_axis, total_delay, pulsed_len).unwrap();
+    let pulsed_valid_len = pulsed_valid.shape()[output_axis];
+    let compare_len = batch_len.min(pulsed_valid_len);
     prop_assert!(compare_len > 0, "No output produced");
     let batch_slice = batch_output.slice(output_axis, 0, compare_len).unwrap();
-    let pulsed_slice = pulsed_output.slice(output_axis, 0, compare_len).unwrap();
+    let pulsed_slice = pulsed_valid.slice(output_axis, 0, compare_len).unwrap();
     prop_assert!(
         pulsed_slice.close_enough(&batch_slice, true).is_ok(),
         "Mismatch:\nbatch:  {:?}\npulsed: {:?}",

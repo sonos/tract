@@ -288,11 +288,9 @@ impl PulseV2Model {
                                 }
                             }
                             if needs_buffer {
-                                let depth = *lookback.iter().max().unwrap_or(&1);
                                 let buffer = PulseV2Buffer {
                                     overlap: lookback.clone(),
                                     lookback,
-                                    depth,
                                     pulse_id: t_sym.clone(),
                                     pulse_sym: p_sym.clone(),
                                 };
@@ -362,7 +360,6 @@ impl PulseV2Model {
                     }
 
                     if needs_buffer {
-                        let depth = *lookback.iter().max().unwrap_or(&1);
                         let overlap = overlap_hints
                             .as_ref()
                             .and_then(|h| h.get(ix))
@@ -371,7 +368,6 @@ impl PulseV2Model {
                         let buffer = PulseV2Buffer {
                             overlap,
                             lookback,
-                            depth,
                             pulse_id: t_sym.clone(),
                             pulse_sym: p_sym.clone(),
                         };
