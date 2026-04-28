@@ -13,84 +13,6 @@
 /// region propagation needed on the forward path.
 use crate::internal::*;
 
-/// Build the 3-parameter canonical pulse-ramp shape:
-/// `min(cap, max(0, min((T+1)·P, end) − max(T·P, overlap)))`.
-///
-/// PulseV2 emits streaming-axis shapes in this form so that two parallel
-/// paths arriving at an Add merge with equal `(cap, overlap, end)` produce
-/// identical TDim trees — broadcast's `.dedup()` then collapses them
-/// trivially, avoiding exponential nesting of `Max` in the simplifier.
-pub(crate) fn pulse_ramp_3_dim(
-    p_sym: &Symbol,
-    t_sym: &Symbol,
-    cap: TDim,
-    overlap: TDim,
-    end: TDim,
-) -> TDim {
-    let p = TDim::Sym(p_sym.clone());
-    let t = TDim::Sym(t_sym.clone());
-    let tp = p.clone() * t.clone();
-    let tp_plus_p = (t + 1) * p;
-    let inner_min = TDim::Min(vec![tp_plus_p, end]);
-    let inner_max = TDim::Max(vec![tp, overlap]);
-    let diff = inner_min - inner_max;
-    TDim::Min(vec![cap, TDim::Max(vec![TDim::Val(0), diff])])
-}
-
-/// Extract `(cap, overlap, end)` from a wire's streaming-axis shape.
-///
-/// If the wire's shape is canonical 3-param, read it directly. Otherwise the
-/// only non-canonical op we know how to see through is `PulseV2Buffer`:
-/// buffer's output is `input + H_i` (not a pulse-ramp), but *conceptually*
-/// buffer extends cap by its lookback without touching overlap or end.
-/// We compose that rule into the upstream descriptor as we recurse — so a
-/// downstream Conv looking at `Source → Buffer → Conv` extracts the triple
-/// that represents "buffer's output as if it were canonical", which is what
-/// Conv's own rule composes onto.
-pub(crate) fn extract_stream_descriptor(
-    typed: &TypedModel,
-    outlet: OutletId,
-    streaming_axis: usize,
-    stream_sym: &Symbol,
-    p_sym: &Symbol,
-    t_sym: &Symbol,
-) -> Option<(TDim, TDim, TDim)> {
-    use crate::v2_buffer::PulseV2Buffer;
-
-    let fact = typed.outlet_fact(outlet).ok()?;
-    let shape_dim = fact.shape.get(streaming_axis)?;
-    if let Some((cap, overlap, end)) = as_pulse_ramp_3(shape_dim, p_sym, t_sym) {
-        return Some((cap, overlap, end));
-    }
-    // Plain `P` (e.g., a Source we haven't rewritten) → seed descriptor.
-    // `end = i64::MAX` is the "no-truncation" sentinel: the runner zero-pads
-    // past the stream end, so Source's runtime is always `P` (not `min(P, S-T*P)`).
-    // The simplifier filters Val(i64::MAX) out of Min terms (tree.rs:785), so the
-    // canonical form collapses to a 2-param ramp matching runtime. Slice's rule
-    // `end = min(end_in, slice.end)` introduces the real `S` truncation only
-    // where it's semantically warranted — slice's runtime *does* truncate.
-    let _ = stream_sym; // kept on signature for future use
-    if shape_dim == &TDim::Sym(p_sym.clone()) {
-        return Some((TDim::Sym(p_sym.clone()), TDim::Val(0), TDim::Val(i64::MAX)));
-    }
-    // Walk past a PulseV2Buffer, applying buffer's rule (cap += lookback).
-    let node = &typed.nodes()[outlet.node];
-    if let Some(buffer) = node.op.downcast_ref::<PulseV2Buffer>() {
-        let buffer_input = node.inputs.first().copied()?;
-        let (cap_in, overlap_in, end_in) = extract_stream_descriptor(
-            typed,
-            buffer_input,
-            streaming_axis,
-            stream_sym,
-            p_sym,
-            t_sym,
-        )?;
-        let delta = buffer.lookback.get(streaming_axis).copied().unwrap_or(0);
-        return Some((cap_in + TDim::Val(delta as i64), overlap_in, end_in));
-    }
-    None
-}
-
 // ── Per-axis region ────────────────────────────────────────────────────
 
 /// Per-axis specification at pulse T.
@@ -256,130 +178,6 @@ pub struct PulseV2Model {
 }
 
 impl PulseV2Model {
-    /// Rewrite the streaming-axis dim of `new_outlet` into canonical 3-param
-    /// pulse-ramp form.
-    ///
-    /// Pulls `(cap, overlap, end)` from the first streaming input (via
-    /// [`extract_stream_descriptor`], which walks past `PulseV2Buffer`
-    /// nodes) and applies a per-op rule:
-    ///
-    /// * [`PulseV2Buffer`]: left alone (its natural shape is
-    ///   `input + H_i`, which captures the per-pulse semantics accurately
-    ///   including end-of-stream history carryover).
-    /// * [`PulseV2Slice`] on the streaming axis: `overlap += slice.start`,
-    ///   `end = min(end, slice.end)`.
-    /// * `Conv` (stride 1): `cap -= (K-1)·D`, `overlap += (K-1)·D`, `end` unchanged.
-    ///   The Buffer+Conv pair is net-zero on cap (Buffer adds lookback,
-    ///   Conv subtracts it back); these two terms cancel only because
-    ///   `extract_stream_descriptor` walking past `PulseV2Buffer` adds
-    ///   `+lookback` to `cap`. Removing one without removing the other
-    ///   double-counts the cap shift.
-    /// * Anything else: pass-through (default).
-    ///
-    /// Returns silently when the op isn't on a streaming axis or when no
-    /// canonical descriptor can be extracted from any input.
-    fn canonicalize_outlet(
-        typed: &mut TypedModel,
-        new_outlet: OutletId,
-        op: &dyn TypedOp,
-        input_outlets: &[OutletId],
-        wire_regions: &HashMap<OutletId, PulseV2Region>,
-        stream_sym: &Symbol,
-        p_sym: &Symbol,
-        t_sym: &Symbol,
-    ) -> TractResult<()> {
-        use crate::v2_buffer::PulseV2Buffer;
-        use crate::v2_pad::PulseV2Pad;
-        use crate::v2_slice::PulseV2Slice;
-        use tract_pulse_opl::tract_core::ops::cnn::Conv;
-
-        // Both ops carry custom per-pulse output_facts that capture
-        // ramp/transient semantics not expressible in the 3-param form.
-        // Don't override their declared shapes.
-        if op.downcast_ref::<PulseV2Buffer>().is_some() || op.downcast_ref::<PulseV2Pad>().is_some()
-        {
-            return Ok(());
-        }
-
-        // Find the streaming axis directly from the fact's shape rather than
-        // trusting `wire_regions` — the latter doesn't survive optimised-form
-        // ops (Im2col, OptMatMul, Reshape) that radically alter axis layout.
-        // The streaming axis is the unique one whose dim mentions the pulse
-        // symbol `P`. If there's no such axis (op stripped the streaming
-        // dimension) or more than one, we have nothing to canonicalise.
-        let fact = typed.outlet_fact(new_outlet)?;
-        let mut streaming_axes = fact
-            .shape
-            .iter()
-            .enumerate()
-            .filter(|(_, d)| d.symbols().contains(p_sym))
-            .map(|(i, _)| i);
-        let Some(streaming_axis) = streaming_axes.next() else {
-            return Ok(());
-        };
-        if streaming_axes.next().is_some() {
-            return Ok(());
-        }
-
-        // Same axis-by-symbol scheme on inputs: pick any input whose fact
-        // already carries the pulse symbol on some axis.
-        let Some((in_outlet, in_streaming_axis)) = input_outlets.iter().find_map(|o| {
-            let f = typed.outlet_fact(*o).ok()?;
-            f.shape.iter().position(|d| d.symbols().contains(p_sym)).map(|ix| (*o, ix))
-        }) else {
-            return Ok(());
-        };
-        let _ = wire_regions; // wire_regions kept on signature for symmetry; no longer consulted here.
-        let Some((cap_in, overlap_in, end_in)) = extract_stream_descriptor(
-            typed,
-            in_outlet,
-            in_streaming_axis,
-            stream_sym,
-            p_sym,
-            t_sym,
-        ) else {
-            return Ok(());
-        };
-
-        let (cap_out, overlap_out, end_out) = if let Some(slice) = op.downcast_ref::<PulseV2Slice>()
-        {
-            if slice.axis == streaming_axis {
-                let end = TDim::Min(vec![end_in, slice.end.clone()]).simplify();
-                (cap_in, (overlap_in + slice.start.clone()).simplify(), end)
-            } else {
-                (cap_in, overlap_in, end_in)
-            }
-        } else if let Some(conv) = op.downcast_ref::<Conv>() {
-            let h_axis = conv.pool_spec.data_format.h_axis();
-            if streaming_axis < h_axis {
-                return Ok(());
-            }
-            let geo_ix = streaming_axis - h_axis;
-            let Some(k) = conv.pool_spec.kernel_shape.get(geo_ix).copied() else {
-                return Ok(());
-            };
-            let d =
-                conv.pool_spec.dilations.as_ref().and_then(|d| d.get(geo_ix).copied()).unwrap_or(1);
-            let s =
-                conv.pool_spec.strides.as_ref().and_then(|s| s.get(geo_ix).copied()).unwrap_or(1);
-            if s != 1 {
-                return Ok(());
-            }
-            let delta = TDim::Val(((k - 1) * d) as i64);
-            ((cap_in - delta.clone()).simplify(), (overlap_in + delta).simplify(), end_in)
-        } else {
-            // Default: pass-through (elementwise / pointwise / shape-preserving).
-            (cap_in, overlap_in, end_in)
-        };
-
-        let canonical = pulse_ramp_3_dim(p_sym, t_sym, cap_out, overlap_out, end_out).simplify();
-        let node = &mut typed.nodes_mut()[new_outlet.node];
-        let mut shape = node.outputs[new_outlet.slot].fact.shape.to_tvec();
-        shape[streaming_axis] = canonical;
-        node.outputs[new_outlet.slot].fact.shape = shape.into();
-        Ok(())
-    }
-
     /// Pulsify a batch model.
     ///
     /// For each Source, substitute S → P. For each op, ask its RegionTransform
@@ -483,7 +281,6 @@ impl PulseV2Model {
             if let Some(PulseV2Action::ReplaceOp(replacement)) = action {
                 let inputs: TVec<OutletId> =
                     node.inputs.iter().map(|i| mapping.get(i).copied().unwrap_or(*i)).collect();
-                let replacement_for_canon = replacement.clone();
                 let new_outlets = typed.wire_node(&node.name, replacement, &inputs)?;
                 for (slot, &new_outlet) in new_outlets.iter().enumerate() {
                     mapping.insert(OutletId::new(node_id, slot), new_outlet);
@@ -492,18 +289,6 @@ impl PulseV2Model {
                     for &new_outlet in &new_outlets {
                         wire_regions.insert(new_outlet, region.clone());
                     }
-                }
-                for &new_outlet in &new_outlets {
-                    Self::canonicalize_outlet(
-                        &mut typed,
-                        new_outlet,
-                        replacement_for_canon.as_ref(),
-                        &inputs,
-                        &wire_regions,
-                        &stream_sym,
-                        &p_sym,
-                        &t_sym,
-                    )?;
                 }
                 continue;
             }
@@ -675,9 +460,9 @@ impl PulseV2Model {
             // For axis-shuffling ops (Conv2D for 1D conv wraps with Add(0)+Rm(0),
             // and the same family is used for Reshape/Move): translate the region
             // so its streaming-axis index stays aligned with the actual fact
-            // shape. Without this, canonicalize_outlet writes to the wrong axis
-            // on the post-AxisOp wire and downstream ops trip over a "trivial"
-            // axis that's no longer 1.
+            // shape. Without this, downstream consumers reading the region's
+            // streaming-axis index would point at the wrong axis on the
+            // post-AxisOp wire.
             let output_region = if let Some(axis_op) =
                 node.op.downcast_ref::<tract_pulse_opl::tract_core::ops::change_axes::AxisOp>()
             {
@@ -690,18 +475,6 @@ impl PulseV2Model {
                 if let Some(region) = &output_region {
                     wire_regions.insert(new_outlet, region.clone());
                 }
-            }
-            for &new_outlet in &new_outlets {
-                Self::canonicalize_outlet(
-                    &mut typed,
-                    new_outlet,
-                    node.op.as_ref(),
-                    &inputs,
-                    &wire_regions,
-                    &stream_sym,
-                    &p_sym,
-                    &t_sym,
-                )?;
             }
         }
 
