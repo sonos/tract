@@ -27,9 +27,6 @@ fn cached_hey_snips() -> Option<PathBuf> {
 }
 
 #[test]
-#[ignore = "hangs at skip-Add: PulseV2Slice still emits variable-pulse output, \
-            doesn't unify with the constant-P conv side; needs Slice rewrite \
-            for fixed-pulse semantics"]
 fn hey_snips_pulsify_v2() -> TractResult<()> {
     let Some(path) = cached_hey_snips() else {
         eprintln!("hey_snips_v4_model17.pb not cached — skipping");

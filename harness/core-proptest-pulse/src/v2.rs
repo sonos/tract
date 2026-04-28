@@ -5,6 +5,7 @@ use tract_core::plan::SimplePlan;
 use tract_core::prelude::*;
 use tract_pulse::v2::PulseV2Model;
 use tract_pulse::v2_buffer::PulseV2Buffer;
+use tract_pulse::v2_slice::PulseV2Slice;
 
 /// Pulsify a model via PulseV2, run pulse by pulse, stitch output,
 /// and compare against batch reference.
@@ -50,6 +51,7 @@ pub fn run_and_compare_v2(
     // accumulated downstream stride.
     let mut total_lookback = 0usize;
     let mut total_stride = 1usize;
+    let mut total_slice_start: i64 = 0;
     for node in typed.nodes() {
         if let Some(buf) = node.op.downcast_ref::<PulseV2Buffer>() {
             total_lookback += buf.lookback.iter().copied().max().unwrap_or(0);
@@ -67,8 +69,15 @@ pub fn run_and_compare_v2(
                 total_stride *= s;
             }
         }
+        if let Some(slice) = node.op.downcast_ref::<PulseV2Slice>() {
+            if slice.axis == axis {
+                if let Ok(s) = slice.start.to_i64() {
+                    total_slice_start += s;
+                }
+            }
+        }
     }
-    let total_delay = total_lookback / total_stride.max(1);
+    let total_delay = total_lookback / total_stride.max(1) + total_slice_start as usize;
     let plan = SimplePlan::new(typed).unwrap();
     let mut state = plan.spawn().unwrap();
 
