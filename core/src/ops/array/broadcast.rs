@@ -46,12 +46,38 @@ impl TypedOp for MultiBroadcastTo {
         &self,
         model: &TypedModel,
         node: &TypedNode,
-        io: InOut,
+        _io: InOut,
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
+        // Only propagate axis changes that touch passthrough axes — those
+        // where the input and output shapes agree. Touching a broadcast
+        // axis (input=1, output=N) would make the input and output rank
+        // diverge through the change and break the broadcast relationship,
+        // and propagating Rm of a non-trivial axis into a Source produces
+        // the "Removing non-trivial axis" hard error from change_shape.
+        let input_shape = &model.outlet_fact(node.inputs[0])?.shape;
+        let canonical = change.canonical();
+        let touched: TVec<usize> = match canonical.as_ref() {
+            AxisOp::Add(ix) | AxisOp::Rm(ix) => tvec![*ix],
+            AxisOp::Move(from, to) => {
+                if input_shape.rank() != self.shape.rank() {
+                    return Ok(None);
+                }
+                tvec![*from, *to]
+            }
+            _ => return Ok(None),
+        };
+        for &ix in &touched {
+            if ix < self.shape.rank()
+                && ix < input_shape.rank()
+                && input_shape[ix] != self.shape[ix]
+            {
+                return Ok(None);
+            }
+        }
+
         let mut shape = self.shape.clone();
-        let actual_change = if io.is_input() { change.recip() } else { change.clone() };
-        if actual_change.change_shape(&mut shape, false).is_ok() {
+        if change.change_shape(&mut shape, false).is_ok() {
             return Ok(Some(AxisChangeConsequence::new(
                 model,
                 node,
