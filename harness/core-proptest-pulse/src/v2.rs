@@ -1,5 +1,6 @@
 use proptest::prelude::*;
 use proptest::test_runner::TestCaseResult;
+use tract_core::ops::cnn::Conv;
 use tract_core::plan::SimplePlan;
 use tract_core::prelude::*;
 use tract_pulse::v2::PulseV2Model;
@@ -37,17 +38,37 @@ pub fn run_and_compare_v2(
         .unwrap_or(axis);
 
     let typed = pv2.into_typed().unwrap();
-    // Cumulative pulse-axis delay = sum of buffer lookbacks on the output's
-    // streaming axis. Each PulseV2Buffer in the chain pre-fills `lookback`
-    // zeros at session start, so the pulsed output's first `total_delay`
-    // samples on the streaming axis are garbage and must be skipped before
-    // comparing against the batch reference.
-    let total_delay: usize = typed
-        .nodes()
-        .iter()
-        .filter_map(|n| n.op.downcast_ref::<PulseV2Buffer>())
-        .map(|b| b.lookback.iter().copied().max().unwrap_or(0))
-        .sum();
+    // Output-axis delay: each PulseV2Buffer pre-fills `lookback` zeros on the
+    // input axis; the corresponding garbage shows up at the OUTPUT axis after
+    // being divided by every stride applied between the buffer and the output.
+    // For `Source → Buffer(L) → Conv(stride=s) → output`, output garbage =
+    // L/s. For chained ops, the stride compounds. Approximation here: walk
+    // the model once, accumulate `total_lookback` from all buffers and
+    // `total_stride` from all Conv nodes that touch the streaming axis,
+    // delay = total_lookback / total_stride. Holds for the proptest models
+    // (single linear streaming path) — real graphs would need per-buffer
+    // accumulated downstream stride.
+    let mut total_lookback = 0usize;
+    let mut total_stride = 1usize;
+    for node in typed.nodes() {
+        if let Some(buf) = node.op.downcast_ref::<PulseV2Buffer>() {
+            total_lookback += buf.lookback.iter().copied().max().unwrap_or(0);
+        }
+        if let Some(conv) = node.op.downcast_ref::<Conv>() {
+            let h_axis = conv.pool_spec.data_format.h_axis();
+            if axis >= h_axis {
+                let geo_ix = axis - h_axis;
+                let s = conv
+                    .pool_spec
+                    .strides
+                    .as_ref()
+                    .and_then(|st| st.get(geo_ix).copied())
+                    .unwrap_or(1);
+                total_stride *= s;
+            }
+        }
+    }
+    let total_delay = total_lookback / total_stride.max(1);
     let plan = SimplePlan::new(typed).unwrap();
     let mut state = plan.spawn().unwrap();
 
