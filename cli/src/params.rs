@@ -733,6 +733,7 @@ impl Parameters {
                     pv2.into_typed()
                 });
                 stage!("pulse-v2-to-type", typed_model -> typed_model, |m:TypedModel| Ok(m));
+                stage!("pulse-v2-declutter", typed_model -> typed_model, |m:TypedModel| m.into_decluttered());
             }
         }
         let mut transforms: Vec<&str> = matches
