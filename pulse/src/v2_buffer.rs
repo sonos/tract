@@ -79,6 +79,30 @@ impl TypedOp for PulseV2Buffer {
         }
         Ok(tvec!(fact))
     }
+
+    /// At declutter time, lower the trivial single-axis case to v1's `Delay`,
+    /// which has the in-place memmove fast path and NNEF round-tripping. The
+    /// semantic equivalence is exact: PulseV2Buffer { lookback: […N…] } with
+    /// a single axis matches Delay { axis, delay: 0, overlap: N } — same
+    /// state size, same per-pulse output (`input + N`), zero-initialised
+    /// history on first eval.
+    ///
+    /// Only fires when exactly one axis has non-zero lookback. Multi-axis
+    /// cases (none today, but the data structure leaves room) keep the v2
+    /// op until a multi-axis Delay equivalent exists.
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        let Some((axis, lookback)) = self.buffered_axis() else {
+            // No buffered axis at all → identity, shunt entirely.
+            return TypedModelPatch::shunt_one_op(model, node);
+        };
+        let input_fact = model.outlet_fact(node.inputs[0])?;
+        let delay = tract_pulse_opl::ops::Delay::new_typed(input_fact, axis, 0, lookback);
+        Ok(Some(TypedModelPatch::replace_single_op(model, node, &node.inputs, delay)?))
+    }
 }
 
 #[derive(Debug, Clone)]
