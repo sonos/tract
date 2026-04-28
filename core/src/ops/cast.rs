@@ -102,10 +102,13 @@ impl TypedOp for Cast {
         // through a fan-out predecessor clones it, and the clone breaks
         // downstream pattern detectors (e.g. Square+Reduce<Sum>+Mul fusion into
         // Reduce<MeanOfSquares>, which then feeds RmsNorm detection).
+        //
+        // AxisOp is intentionally NOT in the predicate: pulling Cast above an
+        // AxisOp (Reshape/Move/Add/Rm) prevents the CUDA conversion from
+        // fusing the post-AxisOp Cast into the downstream GEMM-class kernel,
+        // leaving ~64 standalone CudaCast ops on OpenELM-270M (TG128 -4%).
         if let Some(prec) = model.linear_prec(node.id)?
-            && (prec.op_is::<AxisOp>()
-                || prec.op_is::<IntoShape>()
-                || prec.op_is::<MultiBroadcastTo>())
+            && (prec.op_is::<IntoShape>() || prec.op_is::<MultiBroadcastTo>())
         {
             let mut patch = TypedModelPatch::default();
             let mut wire = tvec!(patch.tap_model(model, prec.inputs[0])?);
