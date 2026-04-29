@@ -2,19 +2,22 @@
 //! into the graph topology, so the result has a single streaming axis
 //! everywhere and pulsifies under v1's existing machinery.
 //!
-//! Phase B POC scope: recognise a single block-diagonal pattern.
+//! Recogniser scope: a single block-diagonal pattern.
 //!
 //!   EinSum([a, b]) producing scores[T, T]
 //!   → Mul(scores, mask) where mask has uniform_tdim `(coord_a/k == coord_b/k)`
-//!   → Reduce<Sum> on one of the streaming axes
+//!   → Reduce<Sum> on a streaming axis  OR  contracting EinSum (ex02)
 //!
-//! Rewrite: introduce a chunk symbol, factor the streaming dim into
-//! [chunks, k], rewrite the einsum subscript with a chunk batch axis,
-//! delete the mask construction, adjust downstream axis indices,
-//! flatten back at the model boundary.
+//! Implementation layout: detect quadratic sections globally, substitute
+//! the streaming symbol T → k·S via core's `substitute_symbols`, then
+//! build one TypedModelPatch per section that does the chunkification
+//! locally and shunts the boundary outlet to the chunked-then-merged
+//! output.  Sections are independent, so patches apply in sequence.
 
 use crate::internal::*;
+use std::collections::HashMap;
 use tract_core::axes::AxesMapping;
+use tract_core::model::TypedModelPatch;
 use tract_core::ops::binary::TypedBinOp;
 use tract_core::ops::change_axes::AxisOp;
 use tract_core::ops::einsum::EinSum;
@@ -23,7 +26,7 @@ use tract_core::ops::nn::{Reduce, Reducer};
 
 /// Result of running Blockify: the (possibly-rewritten) model, plus the
 /// streaming symbol and pulse value to use downstream.  Blockify substitutes
-/// the user's stream symbol `T` with `P*S` in the rewritten subgraph;
+/// the user's stream symbol `T` with `k*S` in the rewritten subgraph;
 /// downstream pulsification must use `S` and a translated pulse value.
 pub struct BlockifyResult {
     pub model: TypedModel,
@@ -31,25 +34,45 @@ pub struct BlockifyResult {
     pub pulse: TDim,
 }
 
-/// Find the block-diagonal pattern + rewrite it.  Returns the (possibly
-/// unchanged) model and the symbol/pulse to use for pulsification.
+/// Find every quadratic section in `model`, substitute T → k·S globally,
+/// then apply one TypedModelPatch per section that chunkifies it.  No-op
+/// if no recognisable section is found.
 pub fn blockify(model: TypedModel, stream_sym: Symbol, pulse: TDim) -> TractResult<BlockifyResult> {
     let sections = find_quadratic_sections(&model, &stream_sym)?;
-    let section = match sections.len() {
-        0 => return Ok(BlockifyResult { model, stream_sym, pulse }),
-        1 => sections.into_iter().next().unwrap(),
-        n => bail!(
-            "Blockify found {n} independent quadratic sections; multi-section \
-             rewriting is not yet implemented.  Refusing to blockify rather \
-             than produce a partial rewrite."
-        ),
-    };
-    match rewrite(&model, &stream_sym, &section, &pulse)? {
-        Some((new_model, chunk_sym, translated_pulse)) => {
-            Ok(BlockifyResult { model: new_model, stream_sym: chunk_sym, pulse: translated_pulse })
-        }
-        None => Ok(BlockifyResult { model, stream_sym, pulse }),
+    if sections.is_empty() {
+        return Ok(BlockifyResult { model, stream_sym, pulse });
     }
+    let k = sections[0].chunk_size;
+    if !sections.iter().all(|s| s.chunk_size == k) {
+        bail!(
+            "Blockify found multiple quadratic sections with mismatched chunk sizes; \
+             a single global symbol substitution cannot cover them.  Refusing to \
+             blockify rather than produce a partial rewrite."
+        );
+    }
+
+    // Phase 1: introduce S, substitute T → k·S globally via core.
+    let chunk_sym = model.symbols.new_with_prefix("S");
+    let subs: HashMap<Symbol, TDim> = HashMap::from([(stream_sym.clone(), chunk_sym.to_dim() * k)]);
+    let mut model = model.substitute_symbols(&subs)?;
+
+    // Phase 2: one TypedModelPatch per section.  Section node ids are
+    // stable across `substitute_symbols` (1-to-1 model copy), so we can
+    // reuse the sections we detected on the original.
+    for sec in &sections {
+        let Some(patch) = build_section_patch(&model, sec, &chunk_sym, k)? else {
+            // Op-types in this section aren't handled; leave it.  Pulsification
+            // will fail downstream with a recoverable error if this matters.
+            continue;
+        };
+        patch.apply(&mut model)?;
+    }
+
+    let translated_pulse =
+        pulse.clone().maybe_div(&k.to_dim()).map(|(d, _)| d).map_err(|e| {
+            format_err!("Blockify: pulse {pulse} not divisible by chunk size {k}: {e}")
+        })?;
+    Ok(BlockifyResult { model, stream_sym: chunk_sym, pulse: translated_pulse })
 }
 
 /// Streaming-axis positions on a typed fact.
@@ -269,444 +292,300 @@ fn decode_coord_div(expr: &TDim) -> Option<(usize, u64)> {
 ///
 /// Returns `Ok(None)` if any role hits an op-type the per-op-type
 /// dispatchers don't know how to translate; Blockify is a no-op upstream.
-fn rewrite(
-    model: &TypedModel,
-    stream_sym: &Symbol,
-    sec: &QuadraticSection,
-    pulse: &TDim,
-) -> TractResult<Option<(TypedModel, Symbol, TDim)>> {
-    let mut out = TypedModel::default();
-    out.symbols = model.symbols.clone();
-    let chunk_sym = out.symbols.new_with_prefix("S");
-    let k = sec.chunk_size;
-    let chunk_dim: TDim = chunk_sym.to_dim() * k;
-    let mut mapping: HashMap<OutletId, OutletId> = HashMap::default();
 
-    let dead = collect_dead_nodes(model, sec);
-    let init_set: std::collections::HashSet<usize> = sec.initiators.iter().copied().collect();
-    let term_set: std::collections::HashSet<usize> = sec.terminators.iter().copied().collect();
-
-    for &nid in &model.eval_order()? {
-        if dead.contains(&nid) {
-            continue;
-        }
-        let node = &model.nodes[nid];
-        let translated = if node.op_is::<tract_core::ops::source::TypedSource>() {
-            translate_source(node, stream_sym, &chunk_dim, &mut out, &mut mapping)?
-        } else if init_set.contains(&nid) {
-            translate_initiator(node, model, stream_sym, &chunk_sym, k, &mut out, &mut mapping)?
-        } else if term_set.contains(&nid) {
-            translate_terminator(node, model, stream_sym, &chunk_sym, k, &mut out, &mut mapping)?
-        } else if sec.section.contains(&nid) {
-            translate_body(node, model, &mut mapping)?
-        } else {
-            translate_outside(node, model, &chunk_sym, &mut out, &mut mapping)?
-        };
-        if !translated {
-            return Ok(None);
-        }
-    }
-
-    let new_outputs = boundary_merge(model, &chunk_sym, k, &mut out, &mapping)?;
-    out.select_output_outlets(&new_outputs)?;
-
-    let translated_pulse =
-        pulse.clone().maybe_div(&k.to_dim()).map(|(d, _)| d).map_err(|e| {
-            format_err!("Blockify: pulse {pulse} not divisible by chunk size {k}: {e}")
-        })?;
-    Ok(Some((out, chunk_sym, translated_pulse)))
-}
-
-/// Op-agnostic dead-node identification.  A section node whose output has
-/// `uniform_tdim` is mask construction (becomes the constant 1 in chunked
-/// form, hence dead).  Any node whose only consumers are dead is also dead.
-fn collect_dead_nodes(
+/// Build a TypedModelPatch that chunkifies one quadratic section.  Returns
+/// `Ok(None)` if the section's op-types aren't handled (the section is
+/// left alone; downstream pulsification will fail with a clear error).
+fn build_section_patch(
     model: &TypedModel,
     sec: &QuadraticSection,
-) -> std::collections::HashSet<usize> {
-    let mut dead: std::collections::HashSet<usize> = sec
-        .section
-        .iter()
-        .copied()
-        .filter(|&nid| model.nodes[nid].outputs[0].fact.uniform_tdim.is_some())
-        .collect();
-    loop {
-        let mut changed = false;
-        for n in &model.nodes {
-            if dead.contains(&n.id) {
-                continue;
-            }
-            let mut consumers = vec![];
-            for s in 0..n.outputs.len() {
-                for c in model.outlet_successors(OutletId::new(n.id, s)) {
-                    consumers.push(c.node);
-                }
-            }
-            if consumers.is_empty() {
-                continue; // model output, not dead
-            }
-            if consumers.iter().all(|c| dead.contains(c)) {
-                dead.insert(n.id);
-                changed = true;
-            }
-        }
-        if !changed {
-            break;
-        }
-    }
-    dead
-}
-
-// ── Per-role translators ────────────────────────────────────────────────────
-//
-// Each returns `Ok(true)` on a successful translation, `Ok(false)` if the
-// op-type isn't one the dispatcher knows (Blockify becomes a no-op upstream),
-// or `Err` on a hard failure.
-
-fn translate_source(
-    node: &TypedNode,
-    stream_sym: &Symbol,
-    chunk_dim: &TDim,
-    out: &mut TypedModel,
-    mapping: &mut HashMap<OutletId, OutletId>,
-) -> TractResult<bool> {
-    let fact = &node.outputs[0].fact;
-    let new_shape: TVec<TDim> = fact
-        .shape
-        .iter()
-        .map(|d| d.substitute(stream_sym, chunk_dim))
-        .collect::<TractResult<_>>()?;
-    let new_fact =
-        TypedFact { datum_type: fact.datum_type, shape: new_shape.into(), ..fact.clone() };
-    let new_id = out.add_source(node.name.clone(), new_fact)?;
-    mapping.insert(OutletId::new(node.id, 0), new_id);
-    Ok(true)
-}
-
-fn translate_outside(
-    node: &TypedNode,
-    model: &TypedModel,
     chunk_sym: &Symbol,
-    out: &mut TypedModel,
-    mapping: &mut HashMap<OutletId, OutletId>,
-) -> TractResult<bool> {
-    // AxisOp's axis parameters refer to positions in its input.  If the
-    // input was chunkified upstream (rank grew by 1, chunk symbol inserted),
-    // shift those parameters through the chunk insertion.
-    if let Some(axis_op) = node.op_as::<AxisOp>()
-        && let Some(shifted) =
-            shift_axisop_through_chunk(axis_op, &node.inputs[0], model, chunk_sym, out, mapping)?
+    k: i64,
+) -> TractResult<Option<TypedModelPatch>> {
+    // ── Identify the section's per-role nodes ─────────────────────────────
+    //
+    // Compute initiator: an EinSum in `sec.initiators` whose output has no
+    // uniform_tdim (mask-construction initiators are dead, not chunkified).
+    let einsum_node_id = sec.initiators.iter().copied().find(|&nid| {
+        let n = &model.nodes[nid];
+        n.outputs[0].fact.uniform_tdim.is_none() && n.op_is::<EinSum>()
+    });
+    let Some(einsum_node_id) = einsum_node_id else {
+        return Ok(None);
+    };
+    let einsum_node = &model.nodes[einsum_node_id];
+    let einsum_op = einsum_node.op_as::<EinSum>().unwrap();
+
+    let einsum_out_streaming_axes = streaming_positions(&einsum_node.outputs[0].fact, chunk_sym);
+    if einsum_out_streaming_axes.len() != 2
+        || einsum_out_streaming_axes[1] != einsum_out_streaming_axes[0] + 1
     {
-        let mapped = mapping[&node.inputs[0]];
-        let new_out = out.wire_node(node.name.clone(), shifted, &[mapped])?[0];
-        mapping.insert(OutletId::new(node.id, 0), new_out);
-        return Ok(true);
-    }
-
-    // Default: copy verbatim.
-    let inputs: TVec<OutletId> =
-        node.inputs
-            .iter()
-            .map(|i| {
-                mapping.get(i).copied().ok_or_else(|| {
-                    format_err!("Missing mapping for input {i:?} of node {}", node.name)
-                })
-            })
-            .collect::<TractResult<_>>()?;
-    let new_outputs = out.wire_node(node.name.clone(), node.op.clone(), &inputs)?;
-    for (slot, &out_id) in new_outputs.iter().enumerate() {
-        mapping.insert(OutletId::new(node.id, slot), out_id);
-    }
-    Ok(true)
-}
-
-/// Translate an AxisOp's axis index when its input was chunkified.  Returns
-/// `None` when no shift is needed (input rank unchanged), `Some(shifted)`
-/// when the chunk axis was inserted into the input upstream and the
-/// original axis index needs to slide past it.
-fn shift_axisop_through_chunk(
-    axis_op: &AxisOp,
-    input: &OutletId,
-    model: &TypedModel,
-    chunk_sym: &Symbol,
-    out: &TypedModel,
-    mapping: &HashMap<OutletId, OutletId>,
-) -> TractResult<Option<AxisOp>> {
-    let mapped =
-        *mapping.get(input).ok_or_else(|| format_err!("AxisOp input {input:?} not in mapping"))?;
-    let mapped_rank = out.outlet_fact(mapped)?.rank();
-    let orig_rank = model.outlet_fact(*input)?.rank();
-    if mapped_rank <= orig_rank {
         return Ok(None);
     }
-    let chunk_pos = out
-        .outlet_fact(mapped)?
-        .shape
-        .iter()
-        .position(|d| d == &chunk_sym.to_dim())
-        .ok_or_else(|| format_err!("chunked input has no chunk_sym in its shape"))?;
-    let shifted = match axis_op {
-        AxisOp::Rm(a) => AxisOp::Rm(chunked_axis_index(*a, chunk_pos)),
-        AxisOp::Add(a) => AxisOp::Add(chunked_axis_index(*a, chunk_pos)),
-        AxisOp::Move(from, to) => {
-            AxisOp::Move(chunked_axis_index(*from, chunk_pos), chunked_axis_index(*to, chunk_pos))
-        }
-        AxisOp::Reshape(at, from, to) => {
-            // POC: just shift the `at` index.  Splitting the chunk axis
-            // itself is out of scope.
-            AxisOp::Reshape(chunked_axis_index(*at, chunk_pos), from.clone(), to.clone())
-        }
-    };
-    Ok(Some(shifted))
-}
-
-fn translate_initiator(
-    node: &TypedNode,
-    model: &TypedModel,
-    stream_sym: &Symbol,
-    chunk_sym: &Symbol,
-    k: i64,
-    out: &mut TypedModel,
-    mapping: &mut HashMap<OutletId, OutletId>,
-) -> TractResult<bool> {
-    if node.outputs[0].fact.uniform_tdim.is_some() {
-        // Mask-construction initiator (Eq, etc.): handled as dead earlier.
-        // Defensive no-op in case this lands here.
-        return Ok(true);
-    }
-    if let Some(es) = node.op_as::<EinSum>() {
-        translate_initiator_einsum(node, es, model, stream_sym, chunk_sym, k, out, mapping)?;
-        return Ok(true);
-    }
-    Ok(false)
-}
-
-fn translate_initiator_einsum(
-    node: &TypedNode,
-    op: &EinSum,
-    model: &TypedModel,
-    stream_sym: &Symbol,
-    chunk_sym: &Symbol,
-    k: i64,
-    out: &mut TypedModel,
-    mapping: &mut HashMap<OutletId, OutletId>,
-) -> TractResult<()> {
-    let mut in_axes: TVec<usize> = tvec!();
-    for &input in &node.inputs {
-        let positions = streaming_positions(model.outlet_fact(input)?, stream_sym);
+    let mut einsum_in_streaming_axes: TVec<usize> = tvec!();
+    for &input in &einsum_node.inputs {
+        let positions = streaming_positions(model.outlet_fact(input)?, chunk_sym);
         if positions.len() != 1 {
-            bail!(
-                "Blockify: initiator EinSum input must have exactly one streaming axis (got {})",
-                positions.len()
-            );
+            return Ok(None);
         }
-        in_axes.push(positions[0]);
-    }
-    let out_axes = streaming_positions(&node.outputs[0].fact, stream_sym);
-    if out_axes.len() != 2 || out_axes[1] != out_axes[0] + 1 {
-        bail!("Blockify: initiator EinSum output must have two contiguous streaming axes");
+        einsum_in_streaming_axes.push(positions[0]);
     }
 
-    let mut chunked_inputs: TVec<OutletId> = tvec!();
-    for (ix, &input) in node.inputs.iter().enumerate() {
-        let mapped = *mapping
-            .get(&input)
-            .ok_or_else(|| format_err!("initiator input {input:?} not in mapping"))?;
-        let mapped_fact = out.outlet_fact(mapped)?.clone();
-        let stream_axis =
-            mapped_fact.shape.iter().position(|d| d.symbols().contains(chunk_sym)).ok_or_else(
-                || format_err!("initiator input {ix} lost streaming axis after substitute"),
-            )?;
-        let from = tvec!(mapped_fact.shape[stream_axis].clone());
+    // Body Mul-by-mask: the EinSum's single consumer must be a Mul with
+    // a uniform_tdim auxiliary input.
+    let einsum_consumers = model.outlet_successors(OutletId::new(einsum_node_id, 0));
+    if einsum_consumers.len() != 1 {
+        return Ok(None);
+    }
+    let mul_node_id = einsum_consumers[0].node;
+    let mul_node = &model.nodes[mul_node_id];
+    let Some(bin) = mul_node.op_as::<TypedBinOp>() else {
+        return Ok(None);
+    };
+    if !bin.0.is::<Mul>() {
+        return Ok(None);
+    }
+    let Some(mask_outlet) = mul_node
+        .inputs
+        .iter()
+        .copied()
+        .find(|i| model.outlet_fact(*i).map(|f| f.uniform_tdim.is_some()).unwrap_or(false))
+    else {
+        return Ok(None);
+    };
+
+    // Terminator: Reduce<Sum> on a streaming axis, or contracting EinSum.
+    let terminator_node_id = sec.terminators.iter().copied().find(|&nid| {
+        let n = &model.nodes[nid];
+        if let Some(r) = n.op_as::<Reduce>() {
+            return r.reducer == Reducer::Sum
+                && r.axes.len() == 1
+                && einsum_out_streaming_axes.contains(&r.axes[0]);
+        }
+        if let Some(es) = n.op_as::<EinSum>() {
+            let Some(mt_slot) = n.inputs.iter().position(|i| i.node == mul_node_id) else {
+                return false;
+            };
+            let (in_strs, out_strs) = es.axes.to_strs();
+            let Some(mt_subscript) = in_strs.get(mt_slot) else {
+                return false;
+            };
+            let stream_chars: Vec<char> = einsum_out_streaming_axes
+                .iter()
+                .map(|&pos| mt_subscript.chars().nth(pos))
+                .collect::<Option<Vec<_>>>()
+                .unwrap_or_default();
+            if stream_chars.is_empty() {
+                return false;
+            }
+            return stream_chars.iter().any(|c| !out_strs[0].contains(*c));
+        }
+        false
+    });
+    let Some(terminator_node_id) = terminator_node_id else {
+        return Ok(None);
+    };
+    let term_node = &model.nodes[terminator_node_id];
+    let chunk_axis_in_einsum_output = einsum_out_streaming_axes[0];
+
+    // ── Build the patch ───────────────────────────────────────────────────
+
+    let mut patch = TypedModelPatch::default();
+
+    // 1. Tap each EinSum input from the model and split it via reshape.
+    let mut chunked_einsum_inputs: TVec<OutletId> = tvec!();
+    for (ix, (&input, &stream_axis)) in
+        einsum_node.inputs.iter().zip(einsum_in_streaming_axes.iter()).enumerate()
+    {
+        let tapped = patch.tap_model(model, input)?;
+        let in_fact = patch.outlet_fact(tapped)?.clone();
+        let from = tvec!(in_fact.shape[stream_axis].clone());
         let to = tvec!(chunk_sym.to_dim(), k.to_dim());
         let reshape = AxisOp::Reshape(stream_axis, from, to);
-        let chunked =
-            out.wire_node(format!("{}.blockify_split.{ix}", node.name), reshape, &[mapped])?[0];
-        chunked_inputs.push(chunked);
+        let chunked = patch.wire_node(
+            format!("{}.blockify_split.{ix}", einsum_node.name),
+            reshape,
+            &[tapped],
+        )?[0];
+        chunked_einsum_inputs.push(chunked);
     }
 
-    let in_starts: Vec<Option<usize>> = in_axes.iter().map(|&p| Some(p)).collect();
-    let new_einsum = chunkify_einsum(op, &in_starts, Some(out_axes[0]))?;
-    let new_out = out.wire_node(node.name.clone(), new_einsum, &chunked_inputs)?[0];
-    mapping.insert(OutletId::new(node.id, 0), new_out);
-    Ok(())
-}
+    // 2. Wire the chunked initiator EinSum.
+    let in_starts: Vec<Option<usize>> = einsum_in_streaming_axes.iter().map(|&p| Some(p)).collect();
+    let chunked_einsum_op =
+        chunkify_einsum(einsum_op, &in_starts, Some(chunk_axis_in_einsum_output))?;
+    let chunked_einsum_out = patch.wire_node(
+        format!("{}.blockified", einsum_node.name),
+        chunked_einsum_op,
+        &chunked_einsum_inputs,
+    )?[0];
 
-fn translate_body(
-    node: &TypedNode,
-    model: &TypedModel,
-    mapping: &mut HashMap<OutletId, OutletId>,
-) -> TractResult<bool> {
-    // Mul-by-mask: the body Mul where one input is uniform_tdim (the mask).
-    // The chunked graph multiplies by 1, so the output IS the chunked compute
-    // input.  We don't emit a node — just record the alias in `mapping`.
-    if let Some(bin) = node.op_as::<TypedBinOp>()
-        && bin.0.is::<Mul>()
-    {
-        let compute_input = node
+    // 3. Wire the chunked terminator.  The body Mul-by-mask's chunked
+    //    output is the chunked initiator output (mask is all-1 in chunked form).
+    let chunked_term_out = if let Some(reduce_op) = term_node.op_as::<Reduce>() {
+        let new_axis = chunked_axis_index(reduce_op.axes[0], chunk_axis_in_einsum_output);
+        let new_reduce = Reduce { axes: tvec!(new_axis), reducer: reduce_op.reducer };
+        patch.wire_node(
+            format!("{}.blockified", term_node.name),
+            new_reduce,
+            &[chunked_einsum_out],
+        )?[0]
+    } else if let Some(es_op) = term_node.op_as::<EinSum>() {
+        let mt_slot = term_node
             .inputs
             .iter()
-            .copied()
-            .find(|i| model.outlet_fact(*i).map(|f| f.uniform_tdim.is_none()).unwrap_or(true));
-        if let Some(compute_input) = compute_input
-            && let Some(&chunked) = mapping.get(&compute_input)
-        {
-            mapping.insert(OutletId::new(node.id, 0), chunked);
-            return Ok(true);
-        }
-    }
-    Ok(false)
-}
-
-fn translate_terminator(
-    node: &TypedNode,
-    model: &TypedModel,
-    stream_sym: &Symbol,
-    chunk_sym: &Symbol,
-    k: i64,
-    out: &mut TypedModel,
-    mapping: &mut HashMap<OutletId, OutletId>,
-) -> TractResult<bool> {
-    if let Some(reduce_op) = node.op_as::<Reduce>() {
-        translate_terminator_reduce(node, reduce_op, model, stream_sym, out, mapping)?;
-        return Ok(true);
-    }
-    if let Some(es) = node.op_as::<EinSum>() {
-        translate_terminator_einsum(node, es, model, stream_sym, chunk_sym, k, out, mapping)?;
-        return Ok(true);
-    }
-    Ok(false)
-}
-
-fn translate_terminator_reduce(
-    node: &TypedNode,
-    op: &Reduce,
-    model: &TypedModel,
-    stream_sym: &Symbol,
-    out: &mut TypedModel,
-    mapping: &mut HashMap<OutletId, OutletId>,
-) -> TractResult<()> {
-    if op.reducer != Reducer::Sum || op.axes.len() != 1 {
-        bail!("Blockify: only Reduce<Sum> on a single axis is supported as terminator");
-    }
-    // Chunk insertion position is the first streaming axis of the input
-    // (the multi-T-axis wire from the body Mul).  Derived from the original
-    // input fact, applied through `chunked_axis_index` to the reduce axis.
-    let in_streaming = streaming_positions(model.outlet_fact(node.inputs[0])?, stream_sym);
-    let chunk_pos = *in_streaming
-        .first()
-        .ok_or_else(|| format_err!("Reduce terminator input has no streaming axis"))?;
-    let mapped_input = *mapping
-        .get(&node.inputs[0])
-        .ok_or_else(|| format_err!("Reduce terminator input not in mapping"))?;
-    let new_axis = chunked_axis_index(op.axes[0], chunk_pos);
-    let new_reduce = Reduce { axes: tvec!(new_axis), reducer: op.reducer };
-    let new_out = out.wire_node(node.name.clone(), new_reduce, &[mapped_input])?[0];
-    mapping.insert(OutletId::new(node.id, 0), new_out);
-    Ok(())
-}
-
-fn translate_terminator_einsum(
-    node: &TypedNode,
-    op: &EinSum,
-    model: &TypedModel,
-    stream_sym: &Symbol,
-    chunk_sym: &Symbol,
-    k: i64,
-    out: &mut TypedModel,
-    mapping: &mut HashMap<OutletId, OutletId>,
-) -> TractResult<()> {
-    let mut chunked_inputs: TVec<OutletId> = tvec!();
-    let mut input_starts: Vec<Option<usize>> = vec![];
-    for (slot, &input) in node.inputs.iter().enumerate() {
-        let positions = streaming_positions(model.outlet_fact(input)?, stream_sym);
-        let mapped = *mapping
-            .get(&input)
-            .ok_or_else(|| format_err!("EinSum terminator input {input:?} not in mapping"))?;
-        match positions.len() {
-            0 => {
-                chunked_inputs.push(mapped);
-                input_starts.push(None);
-            }
-            1 => {
-                // Single-T-axis auxiliary: chunkify via a Reshape on the streaming axis.
-                let mapped_fact = out.outlet_fact(mapped)?.clone();
-                let stream_axis = mapped_fact
+            .position(|i| i.node == mul_node_id)
+            .ok_or_else(|| format_err!("EinSum terminator must consume the masked wire"))?;
+        let mut chunked_inputs: TVec<OutletId> = tvec!();
+        let mut input_starts: Vec<Option<usize>> = vec![];
+        for (slot, &input) in term_node.inputs.iter().enumerate() {
+            let positions = streaming_positions(model.outlet_fact(input)?, chunk_sym);
+            if slot == mt_slot {
+                chunked_inputs.push(chunked_einsum_out);
+                input_starts.push(positions.first().copied());
+            } else if positions.len() == 1 {
+                let tapped = patch.tap_model(model, input)?;
+                let in_fact = patch.outlet_fact(tapped)?.clone();
+                let stream_axis = in_fact
                     .shape
                     .iter()
                     .position(|d| d.symbols().contains(chunk_sym))
-                    .ok_or_else(|| {
-                        format_err!("Single-T-axis input lost streaming axis after substitute")
-                    })?;
-                let from = tvec!(mapped_fact.shape[stream_axis].clone());
+                    .ok_or_else(|| format_err!("auxiliary input lost streaming axis"))?;
+                let from = tvec!(in_fact.shape[stream_axis].clone());
                 let to = tvec!(chunk_sym.to_dim(), k.to_dim());
                 let reshape = AxisOp::Reshape(stream_axis, from, to);
-                let chunked = out.wire_node(
-                    format!("{}.blockify_split.in{slot}", node.name),
+                let chunked = patch.wire_node(
+                    format!("{}.blockify_split.in{slot}", term_node.name),
                     reshape,
-                    &[mapped],
+                    &[tapped],
                 )?[0];
                 chunked_inputs.push(chunked);
                 input_starts.push(Some(positions[0]));
+            } else if positions.is_empty() {
+                let tapped = patch.tap_model(model, input)?;
+                chunked_inputs.push(tapped);
+                input_starts.push(None);
+            } else {
+                bail!(
+                    "Blockify: EinSum terminator input {slot} has {} streaming axes (max 2)",
+                    positions.len()
+                );
             }
-            2 => {
-                // Multi-T-axis input: already in chunked form via mapping
-                // (the body Mul-by-mask was shunted to alias the chunked
-                // initiator output).
-                chunked_inputs.push(mapped);
-                input_starts.push(Some(positions[0]));
-            }
-            _ => bail!(
-                "Blockify: EinSum terminator input with {} streaming axes is unsupported",
-                positions.len()
-            ),
         }
-    }
+        let out_streaming = streaming_positions(&term_node.outputs[0].fact, chunk_sym);
+        let chunked_term_op =
+            chunkify_einsum(es_op, &input_starts, out_streaming.first().copied())?;
+        patch.wire_node(
+            format!("{}.blockified", term_node.name),
+            chunked_term_op,
+            &chunked_inputs,
+        )?[0]
+    } else {
+        return Ok(None);
+    };
 
-    let out_streaming = streaming_positions(&node.outputs[0].fact, stream_sym);
-    let new_einsum = chunkify_einsum(op, &input_starts, out_streaming.first().copied())?;
-    let new_out = out.wire_node(node.name.clone(), new_einsum, &chunked_inputs)?[0];
-    mapping.insert(OutletId::new(node.id, 0), new_out);
-    Ok(())
-}
+    // 4. Identify the boundary outlet (where shapes match for shunt) and
+    //    wire any post-terminator op (e.g. RmAxis on the reduce axis) plus
+    //    the merge reshape.
+    let (boundary_outlet, chunked_form) = if let Some(reduce_op) = term_node.op_as::<Reduce>() {
+        let term_consumers = model.outlet_successors(OutletId::new(terminator_node_id, 0));
+        if term_consumers.len() == 1 {
+            let consumer = &model.nodes[term_consumers[0].node];
+            if let Some(AxisOp::Rm(axis)) = consumer.op_as::<AxisOp>()
+                && *axis == reduce_op.axes[0]
+            {
+                let new_axis = chunked_axis_index(reduce_op.axes[0], chunk_axis_in_einsum_output);
+                let chunked_rm = patch.wire_node(
+                    format!("{}.blockified", consumer.name),
+                    AxisOp::Rm(new_axis),
+                    &[chunked_term_out],
+                )?[0];
+                (OutletId::new(consumer.id, 0), chunked_rm)
+            } else {
+                (OutletId::new(terminator_node_id, 0), chunked_term_out)
+            }
+        } else {
+            (OutletId::new(terminator_node_id, 0), chunked_term_out)
+        }
+    } else {
+        (OutletId::new(terminator_node_id, 0), chunked_term_out)
+    };
 
-/// Boundary merge: at each model output, if the wire still has the chunk
-/// axis exposed followed by the within-chunk axis of size k, flatten them
-/// back into a single k·S axis at the same position — restores the
-/// original streaming-axis layout without changing the model interface.
-fn boundary_merge(
-    model: &TypedModel,
-    chunk_sym: &Symbol,
-    k: i64,
-    out: &mut TypedModel,
-    mapping: &HashMap<OutletId, OutletId>,
-) -> TractResult<TVec<OutletId>> {
-    let mut new_outputs: TVec<OutletId> = tvec!();
-    for &orig in model.output_outlets()? {
-        let mut wire = mapping
-            .get(&orig)
-            .copied()
-            .ok_or_else(|| format_err!("Missing mapping for output {orig:?}"))?;
-        let fact = out.outlet_fact(wire)?.clone();
-        let chunk_pos = fact.shape.iter().position(|d| d == &chunk_sym.to_dim());
+    // 5. Merge reshape: collapse [..., S, k, ...] back to [..., k·S, ...].
+    let merged = {
+        let chunked_fact = patch.outlet_fact(chunked_form)?.clone();
+        let chunk_pos = chunked_fact.shape.iter().position(|d| d == &chunk_sym.to_dim());
         if let Some(pos) = chunk_pos
-            && pos + 1 < fact.shape.len()
-            && fact.shape[pos + 1] == k.to_dim()
+            && pos + 1 < chunked_fact.shape.len()
+            && chunked_fact.shape[pos + 1] == k.to_dim()
         {
             let from = tvec!(chunk_sym.to_dim(), k.to_dim());
             let to = tvec!(chunk_sym.to_dim() * k);
             let reshape = AxisOp::Reshape(pos, from, to);
-            wire = out.wire_node(
-                format!("{}.blockify_merge", model.nodes[orig.node].name),
+            patch.wire_node(
+                format!("{}.blockify_merge", model.nodes[boundary_outlet.node].name),
                 reshape,
-                &[wire],
-            )?[0];
+                &[chunked_form],
+            )?[0]
+        } else {
+            chunked_form
         }
-        new_outputs.push(wire);
+    };
+
+    // 6. Shunt the boundary outlet to the merged result.  Compatibility
+    //    holds because the merge brought the chunked form back to the same
+    //    [k·S, ...] shape the original outlet has post-substitution.
+    patch.shunt_outside(model, boundary_outlet, merged)?;
+
+    // 7. Obliterate the original section nodes that are no longer reachable
+    //    from any model output.  The mask-construction subgraph plus the
+    //    original initiator / body / terminator (and the post-terminator op
+    //    that was rerouted) are dead post-shunt.
+    patch.obliterate(einsum_node_id)?;
+    patch.obliterate(mul_node_id)?;
+    patch.obliterate(terminator_node_id)?;
+    if boundary_outlet.node != terminator_node_id {
+        patch.obliterate(boundary_outlet.node)?;
     }
-    Ok(new_outputs)
+    let mut mask_dead = std::collections::HashSet::<usize>::new();
+    collect_dead_mask_nodes(model, mask_outlet.node, einsum_node_id, mul_node_id, &mut mask_dead);
+    for nid in mask_dead {
+        patch.obliterate(nid)?;
+    }
+
+    Ok(Some(patch))
 }
 
+fn collect_dead_mask_nodes(
+    model: &TypedModel,
+    mask_outlet_node: usize,
+    einsum_node_id: usize,
+    mul_node_id: usize,
+    dead: &mut std::collections::HashSet<usize>,
+) {
+    let mut stack = vec![mask_outlet_node];
+    while let Some(nid) = stack.pop() {
+        if dead.contains(&nid) {
+            continue;
+        }
+        if nid == einsum_node_id {
+            continue;
+        }
+        let all_consumers_dead_or_mul = (0..model.nodes[nid].outputs.len()).all(|slot| {
+            model
+                .outlet_successors(OutletId::new(nid, slot))
+                .iter()
+                .all(|c| c.node == mul_node_id || dead.contains(&c.node))
+        });
+        if !all_consumers_dead_or_mul {
+            continue;
+        }
+        dead.insert(nid);
+        for inp in &model.nodes[nid].inputs {
+            stack.push(inp.node);
+        }
+    }
+}
 fn chunked_axis_index(orig_axis: usize, chunk_pos: usize) -> usize {
     // The chunk batch axis is inserted at `chunk_pos` (the position of the
     // first streaming output axis).  Every original axis at or after that
