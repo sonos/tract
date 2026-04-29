@@ -2,6 +2,7 @@
 #[macro_use]
 pub mod macros;
 
+pub mod blockify;
 pub mod fact;
 pub mod model;
 pub mod ops;
@@ -43,6 +44,8 @@ impl ModelTransform for PulseTransform {
         let symbol = self.0.symbol.as_deref().unwrap_or("S");
         let sym = model.symbols.sym(symbol);
         let pulse_dim = parse_tdim(&model.symbols, &self.0.pulse)?;
+        // Pulsification (which calls Blockify internally) consumes the
+        // model and produces a typed pulsed graph.
         let pulsed = model::PulsedModel::new(model, sym, &pulse_dim)?;
         *model = pulsed.into_typed()?;
         Ok(())
