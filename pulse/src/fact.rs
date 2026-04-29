@@ -42,7 +42,7 @@ impl PulsedFact {
             .stream_info(symbol)
             .ok_or_else(|| format_err!("Can not pulse a tensor with no streaming dim"))?;
         let mut shape: TVec<TDim> = tf.shape.to_tvec();
-        shape[axis] = pulse.clone();
+        shape[axis] = shape[axis].substitute(symbol, pulse)?;
         Ok(PulsedFact {
             datum_type,
             shape: shape.into(),
@@ -119,5 +119,34 @@ impl From<PulsedFact> for TypedFact {
 impl<'a> From<&'a PulsedFact> for TypedFact {
     fn from(fact: &'a PulsedFact) -> TypedFact {
         fact.datum_type.fact(fact.shape.clone())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pulsed_fact_from_pure_symbol() {
+        let symbols = SymbolScope::default();
+        let s = symbols.sym("S");
+        let tf = f32::fact(tvec!(s.to_dim(), 4.to_dim()));
+        let pulse = PulsedFact::from_tensor_fact_pulse(&tf, &s, &2.to_dim()).unwrap();
+        assert_eq!(&*pulse.shape, &[2.to_dim(), 4.to_dim()]);
+        let stream = pulse.stream.unwrap();
+        assert_eq!(stream.axis, 0);
+        assert_eq!(stream.dim, s.to_dim());
+    }
+
+    #[test]
+    fn pulsed_fact_from_symbol_multiple() {
+        let symbols = SymbolScope::default();
+        let s = symbols.sym("S");
+        let tf = f32::fact(tvec!(s.to_dim() * 2, 4.to_dim()));
+        let pulse = PulsedFact::from_tensor_fact_pulse(&tf, &s, &1.to_dim()).unwrap();
+        assert_eq!(&*pulse.shape, &[2.to_dim(), 4.to_dim()]);
+        let stream = pulse.stream.unwrap();
+        assert_eq!(stream.axis, 0);
+        assert_eq!(stream.dim, s.to_dim() * 2);
     }
 }
