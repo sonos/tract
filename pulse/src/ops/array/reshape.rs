@@ -1,0 +1,112 @@
+use crate::fact::StreamInfo;
+use crate::internal::*;
+use tract_core::ops::change_axes::AxisOp;
+
+register_all!(AxisOp: pulsify);
+
+fn pulsify(
+    op: &AxisOp,
+    _source: &TypedModel,
+    node: &TypedNode,
+    target: &mut PulsedModel,
+    mapping: &HashMap<OutletId, OutletId>,
+    symbol: &Symbol,
+    pulse: &TDim,
+) -> TractResult<Option<TVec<OutletId>>> {
+    let AxisOp::Reshape(at, from, to) = op else {
+        return Ok(None);
+    };
+    let input = mapping[&node.inputs[0]];
+    let fact = target.outlet_fact(input)?.clone();
+    let Some(stream) = &fact.stream else {
+        return Ok(None);
+    };
+    if stream.axis < *at || stream.axis >= *at + from.len() {
+        return Ok(None);
+    }
+    let from_pos = stream.axis - *at;
+    if !from[from_pos].symbols().contains(symbol) {
+        return Ok(None);
+    }
+    if from.iter().enumerate().any(|(i, d)| i != from_pos && d.symbols().contains(symbol)) {
+        return Ok(None);
+    }
+    let to_streaming: TVec<usize> = to
+        .iter()
+        .enumerate()
+        .filter(|(_, d)| d.symbols().contains(symbol))
+        .map(|(i, _)| i)
+        .collect();
+    if to_streaming.len() != 1 {
+        return Ok(None);
+    }
+    let to_pos = to_streaming[0];
+
+    let from_pulsed: TVec<TDim> =
+        from.iter().map(|d| d.substitute(symbol, pulse)).collect::<TractResult<_>>()?;
+    let to_pulsed: TVec<TDim> =
+        to.iter().map(|d| d.substitute(symbol, pulse)).collect::<TractResult<_>>()?;
+
+    let pulsed = PulsedReshape {
+        op: AxisOp::Reshape(*at, from_pulsed, to_pulsed),
+        new_stream_axis: *at + to_pos,
+        new_stream_dim: to[to_pos].clone(),
+    };
+    target.wire_node(&*node.name, pulsed, &[input]).map(Some)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct PulsedReshape {
+    pub op: AxisOp,
+    pub new_stream_axis: usize,
+    pub new_stream_dim: TDim,
+}
+
+impl Op for PulsedReshape {
+    fn name(&self) -> StaticName {
+        "PulsedReshape".into()
+    }
+
+    fn info(&self) -> TractResult<Vec<String>> {
+        Ok(vec![format!(
+            "op:{:?} stream_axis:{} stream_dim:{}",
+            self.op, self.new_stream_axis, self.new_stream_dim
+        )])
+    }
+
+    not_a_typed_op!();
+}
+
+impl EvalOp for PulsedReshape {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+        self.op.eval(inputs)
+    }
+}
+
+impl PulsedOp for PulsedReshape {
+    fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
+        let input_typed: TypedFact = inputs[0].into();
+        let outs = self.op.output_facts(&[&input_typed])?;
+        let stream = inputs[0].stream.as_ref().unwrap();
+        let out_fact = outs.into_iter().next().context("Reshape produced no output fact")?;
+        Ok(tvec!(PulsedFact {
+            datum_type: out_fact.datum_type,
+            shape: out_fact.shape,
+            stream: Some(StreamInfo {
+                axis: self.new_stream_axis,
+                dim: self.new_stream_dim.clone(),
+                delay: stream.delay,
+            }),
+        }))
+    }
+
+    fn to_typed(&self) -> Box<dyn TypedOp> {
+        Box::new(self.op.clone())
+    }
+
+    as_op!();
+}

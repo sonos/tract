@@ -120,4 +120,74 @@ mod tests {
         assert_eq!(*pulse.input_fact(0).unwrap().to_typed_fact().unwrap(), f32::fact([4, 2, 3]));
         assert_eq!(*pulse.output_fact(0).unwrap().to_typed_fact().unwrap(), f32::fact([4, 2, 3]));
     }
+
+    #[test]
+    fn test_reshape_split_streaming_axis() {
+        use tract_core::ops::change_axes::AxisOp;
+        let mut model = TypedModel::default();
+        let s = model.symbols.sym("S");
+        let a = model.add_source("a", f32::fact(dims![s.to_dim() * 2, 4].as_ref())).unwrap();
+        let split = model
+            .wire_node(
+                "split",
+                AxisOp::Reshape(0, tvec!(s.to_dim() * 2), tvec!(s.to_dim(), 2.to_dim())),
+                &[a],
+            )
+            .unwrap();
+        model.select_output_outlets(&split).unwrap();
+        let pulse = PulsedModel::new(&model, s.clone(), &1.to_dim()).unwrap();
+        assert_eq!(*pulse.input_fact(0).unwrap().to_typed_fact().unwrap(), f32::fact([2, 4]));
+        assert_eq!(*pulse.output_fact(0).unwrap().to_typed_fact().unwrap(), f32::fact([1, 2, 4]));
+        let out_stream = pulse.output_fact(0).unwrap().stream.as_ref().unwrap();
+        assert_eq!(out_stream.axis, 0);
+        assert_eq!(out_stream.dim, s.to_dim());
+    }
+
+    #[test]
+    fn test_reshape_merge_streaming_axis() {
+        use tract_core::ops::change_axes::AxisOp;
+        let mut model = TypedModel::default();
+        let s = model.symbols.sym("S");
+        let a = model.add_source("a", f32::fact(dims![s, 2, 4].as_ref())).unwrap();
+        let merged = model
+            .wire_node(
+                "merge",
+                AxisOp::Reshape(0, tvec!(s.to_dim(), 2.to_dim()), tvec!(s.to_dim() * 2)),
+                &[a],
+            )
+            .unwrap();
+        model.select_output_outlets(&merged).unwrap();
+        let pulse = PulsedModel::new(&model, s.clone(), &1.to_dim()).unwrap();
+        assert_eq!(*pulse.input_fact(0).unwrap().to_typed_fact().unwrap(), f32::fact([1, 2, 4]));
+        assert_eq!(*pulse.output_fact(0).unwrap().to_typed_fact().unwrap(), f32::fact([2, 4]));
+        let out_stream = pulse.output_fact(0).unwrap().stream.as_ref().unwrap();
+        assert_eq!(out_stream.axis, 0);
+        assert_eq!(out_stream.dim, s.to_dim() * 2);
+    }
+
+    #[test]
+    fn test_reshape_split_then_run() {
+        use tract_core::ops::change_axes::AxisOp;
+        let mut model = TypedModel::default();
+        let s = model.symbols.sym("S");
+        let a = model.add_source("a", f32::fact(dims![s.to_dim() * 2].as_ref())).unwrap();
+        let split = model
+            .wire_node(
+                "split",
+                AxisOp::Reshape(0, tvec!(s.to_dim() * 2), tvec!(s.to_dim(), 2.to_dim())),
+                &[a],
+            )
+            .unwrap();
+        model.select_output_outlets(&split).unwrap();
+
+        let pulse = PulsedModel::new(&model, s, &1.to_dim()).unwrap();
+        let plan = SimplePlan::new(pulse.into_typed().unwrap()).unwrap();
+        let mut state = SimpleState::new(&plan).unwrap();
+        let chunk1 = tensor1(&[1f32, 2.0]);
+        let out1 = state.run(tvec!(chunk1.into_tvalue())).unwrap();
+        assert_eq!(*out1[0], tensor2(&[[1f32, 2.0]]).into());
+        let chunk2 = tensor1(&[3f32, 4.0]);
+        let out2 = state.run(tvec!(chunk2.into_tvalue())).unwrap();
+        assert_eq!(*out2[0], tensor2(&[[3f32, 4.0]]).into());
+    }
 }
