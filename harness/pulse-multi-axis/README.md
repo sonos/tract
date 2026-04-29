@@ -26,3 +26,20 @@ Streaming-axis: 0 on both inputs and on the output.  Pulse size P=2.
 `blockified/` contains a hand-written reference of what the post-Blockify
 typed graph should look like — model interface preserved (inputs `[2*S, 4]`,
 output `[2*S]`), internal reshape factors the streaming axis into chunks.
+
+## ex02-block-diag-bilinear
+
+Same block-diagonal structure as ex01, but the row-axis Reduce<Sum> is
+replaced by a second EinSum against a third stream `c [T, D]`:
+
+    output[i, d] = sum_j masked[i, j] * c[j, d]            # [T, D]
+
+This is the SDPA structure (Q·Kᵀ → mask → attn·V) without softmax.
+Smallest synthetic that exercises a downstream second EinSum after the
+masked score matrix.
+
+**Current Blockify status**: the recogniser only matches Mul-by-mask
+followed by `Reduce<Sum>`, so on this graph it does not fire.  The v1
+pulsifier silently muddles through to a model that fails at runtime
+(`Undetermined symbol in expression`).  Extending Blockify to recognise
+the `Mul-by-mask → second EinSum` pattern is the next concrete target.
