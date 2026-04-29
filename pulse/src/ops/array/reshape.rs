@@ -13,33 +13,21 @@ fn pulsify(
     symbol: &Symbol,
     pulse: &TDim,
 ) -> TractResult<Option<TVec<OutletId>>> {
-    let AxisOp::Reshape(at, from, to) = op else {
-        return Ok(None);
-    };
+    rule_if_let!(AxisOp::Reshape(at, from, to) = op);
     let input = mapping[&node.inputs[0]];
     let fact = target.outlet_fact(input)?.clone();
-    let Some(stream) = &fact.stream else {
-        return Ok(None);
-    };
-    if stream.axis < *at || stream.axis >= *at + from.len() {
-        return Ok(None);
-    }
+    rule_if_some!(stream = &fact.stream);
+    rule_if!(stream.axis >= *at && stream.axis < *at + from.len());
     let from_pos = stream.axis - *at;
-    if !from[from_pos].symbols().contains(symbol) {
-        return Ok(None);
-    }
-    if from.iter().enumerate().any(|(i, d)| i != from_pos && d.symbols().contains(symbol)) {
-        return Ok(None);
-    }
+    rule_if!(from[from_pos].symbols().contains(symbol));
+    rule_if!(from.iter().enumerate().all(|(i, d)| i == from_pos || !d.symbols().contains(symbol)));
     let to_streaming: TVec<usize> = to
         .iter()
         .enumerate()
         .filter(|(_, d)| d.symbols().contains(symbol))
         .map(|(i, _)| i)
         .collect();
-    if to_streaming.len() != 1 {
-        return Ok(None);
-    }
+    rule_if!(to_streaming.len() == 1);
     let to_pos = to_streaming[0];
 
     let from_pulsed: TVec<TDim> =
