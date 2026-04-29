@@ -33,8 +33,15 @@ impl PulsedModelExt for PulsedModel {
         symbol: Symbol,
         pulse: &TDim,
     ) -> TractResult<(PulsedModel, HashMap<OutletId, OutletId>)> {
+        // Blockify rewrites multi-streaming-axis subgraphs (block-diagonal
+        // attention-like patterns) into single-streaming-axis chunked form
+        // before pulsification.  When it fires, it rebinds the streaming
+        // symbol from T (token count) to S (chunk count); the user's pulse
+        // value is translated by /chunk_size.  No-op if no such pattern.
+        let result = crate::blockify::blockify(source.clone(), symbol, pulse.clone())?;
         let pulsifiers = crate::ops::OpPulsifier::inventory();
-        Pulsifier(symbol, pulse.to_owned(), pulsifiers).translate_model_with_mappings(source)
+        Pulsifier(result.stream_sym, result.pulse, pulsifiers)
+            .translate_model_with_mappings(&result.model)
     }
 
     fn into_typed(self) -> TractResult<TypedModel> {
