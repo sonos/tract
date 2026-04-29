@@ -38,8 +38,8 @@ This is the SDPA structure (Q·Kᵀ → mask → attn·V) without softmax.
 Smallest synthetic that exercises a downstream second EinSum after the
 masked score matrix.
 
-**Current Blockify status**: the recogniser only matches Mul-by-mask
-followed by `Reduce<Sum>`, so on this graph it does not fire.  The v1
-pulsifier silently muddles through to a model that fails at runtime
-(`Undetermined symbol in expression`).  Extending Blockify to recognise
-the `Mul-by-mask → second EinSum` pattern is the next concrete target.
+Blockify recognises this pattern (the recogniser matches Mul-by-mask
+followed by either `Reduce<Sum>` or a contracting `EinSum`) and rewrites
+the second EinSum the same way as the first, with the chunk batch axis
+prepended to its subscripts.  Numerical match is verified end-to-end in
+`harness/core-proptest-pulse/tests/blockify_ex01.rs`.
