@@ -106,17 +106,17 @@ impl TypedOp for DeconvSum {
         Ok(tvec!(inputs[0].datum_type.fact(shape)))
     }
 
-    fn concretize_dims(
+    fn substitute_symbols(
         &self,
         _source: &TypedModel,
         node: &TypedNode,
         target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
-        values: &SymbolValues,
+        subs: &HashMap<Symbol, TDim>,
     ) -> TractResult<TVec<OutletId>> {
         target.wire_node(
             &node.name,
-            Self { input_shape: self.input_shape.eval(values)?.into_owned(), ..self.clone() },
+            Self { input_shape: self.input_shape.substitute(subs)?.into_owned(), ..self.clone() },
             &[mapping[&node.inputs[0]], mapping[&node.inputs[1]]],
         )
     }

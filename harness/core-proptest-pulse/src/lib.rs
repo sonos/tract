@@ -44,9 +44,10 @@ fn proptest_regular_against_pulse(
     let model = model.into_decluttered().unwrap();
     // dbg!(&model);
     let s = model.symbols.sym("S");
-    let symbols = SymbolValues::default().with(&s, len as i64);
+    let subs =
+        std::collections::HashMap::from([(s.clone(), tract_data::prelude::TDim::Val(len as i64))]);
 
-    let concrete = model.clone().concretize_dims(&symbols).unwrap();
+    let concrete = model.clone().substitute_symbols(&subs).unwrap();
     if concrete.nodes.iter().any(|n| n.outputs.iter().any(|o| o.fact.shape.volume().is_zero())) {
         return Err(TestCaseError::reject("too short input"));
     }
@@ -62,6 +63,7 @@ fn proptest_regular_against_pulse(
     let output_fact = pulsed.output_fact(0).unwrap().clone();
 
     let stream_info = output_fact.stream.as_ref().unwrap();
+    let symbols = SymbolValues::default().with(&s, len as i64);
     prop_assert!(stream_info.dim.eval(&symbols) == outputs[0].shape()[stream_info.axis].to_dim());
     let output_stream_axis = stream_info.axis;
     let delay = stream_info.delay;

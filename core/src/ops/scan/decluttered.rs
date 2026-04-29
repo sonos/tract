@@ -864,22 +864,22 @@ impl TypedOp for Scan {
         Ok(None)
     }
 
-    fn concretize_dims(
+    fn substitute_symbols(
         &self,
         _source: &TypedModel,
         node: &TypedNode,
         target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
-        values: &SymbolValues,
+        subs: &HashMap<Symbol, TDim>,
     ) -> TractResult<TVec<OutletId>> {
         let inputs = node.inputs.iter().map(|o| mapping[o]).collect::<TVec<_>>();
         let op = Self {
             output_mapping: self
                 .output_mapping
                 .iter()
-                .map(|om| om.concretize_dims(values))
+                .map(|om| om.substitute_symbols(subs))
                 .collect::<TractResult<Vec<_>>>()?,
-            body: self.body.concretize_dims(values)?,
+            body: self.body.substitute_symbols(subs)?,
             ..self.clone()
         };
         target.wire_node(&node.name, op, &inputs)

@@ -291,15 +291,17 @@ pub trait TypedOp:
         Ok(None)
     }
 
-    /// Transform the op into by providing a value to one or more symbols.
+    /// Transform the op by substituting one or more symbols with TDim
+    /// expressions (a concrete integer is `TDim::Val(v)`; an expression
+    /// can be any other TDim, including symbolic ones).
     #[allow(unused_variables)]
-    fn concretize_dims(
+    fn substitute_symbols(
         &self,
         source: &TypedModel,
         node: &TypedNode,
         target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
-        values: &SymbolValues,
+        subs: &HashMap<Symbol, TDim>,
     ) -> TractResult<TVec<OutletId>> {
         let inputs = node.inputs.iter().map(|i| mapping[i]).collect::<TVec<_>>();
         target.wire_node(&node.name, node.op.clone(), &inputs)

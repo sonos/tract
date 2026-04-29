@@ -94,19 +94,19 @@ impl TypedOp for GpuSlice {
             .with_context(|| format!("Error while computing facts for {:?}", self.name()))
     }
 
-    fn concretize_dims(
+    fn substitute_symbols(
         &self,
         _source: &TypedModel,
         node: &TypedNode,
         target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
-        values: &SymbolValues,
+        subs: &HashMap<Symbol, TDim>,
     ) -> TractResult<TVec<OutletId>> {
         let op = GpuSlice {
             inner: Slice {
                 axis: self.inner.axis,
-                start: self.inner.start.eval(values),
-                end: self.inner.end.eval(values),
+                start: self.inner.start.substitute_all(subs)?,
+                end: self.inner.end.substitute_all(subs)?,
             },
         };
         let inputs = node.inputs.iter().map(|i| mapping[i]).collect::<TVec<_>>();

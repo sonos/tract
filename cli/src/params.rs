@@ -775,7 +775,7 @@ impl Parameters {
                         }
                     }
                 }
-                m.concretize_dims(&values)
+                m.substitute_symbols(&values.to_dim_map())
             });
             stage!("set-declutter", typed_model -> typed_model, |mut m| {
                 let mut dec = tract_core::optim::Optimizer::declutter();

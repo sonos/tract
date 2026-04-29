@@ -162,19 +162,19 @@ impl TypedOp for GpuAxisOp {
         self.inner.axes_mapping(&ref_inputs, &ref_outputs)
     }
 
-    fn concretize_dims(
+    fn substitute_symbols(
         &self,
         _source: &TypedModel,
         node: &TypedNode,
         target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
-        values: &SymbolValues,
+        subs: &HashMap<Symbol, TDim>,
     ) -> TractResult<TVec<OutletId>> {
         let inner = if let AxisOp::Reshape(axis, from, to) = &self.inner {
             AxisOp::Reshape(
                 *axis,
-                from.iter().map(|d| d.eval(values)).collect(),
-                to.iter().map(|d| d.eval(values)).collect(),
+                from.iter().map(|d| d.substitute_all(subs)).collect::<TractResult<_>>()?,
+                to.iter().map(|d| d.substitute_all(subs)).collect::<TractResult<_>>()?,
             )
         } else {
             self.inner.clone()
