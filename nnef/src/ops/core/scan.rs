@@ -43,6 +43,7 @@ pub fn register(registry: &mut Registry) {
             .named("output"),
             TypeName::Integer.spec().named("skip").default(0), // needed for pulse
             TypeName::Integer.spec().named("reset_every_turn").default(0), // needed for pulse
+            TypeName::Integer.spec().named("external_state").default(0),
         ],
         &[("outputs", TypeName::Scalar.tensor().array())],
         de_scan,
@@ -129,6 +130,7 @@ fn ser_scan(ast: &mut IntoAst, node: &TypedNode, op: &Scan) -> TractResult<Optio
             ("output", array(outputs)),
             ("skip", numeric(op.skip)),
             ("reset_every_turn", numeric(op.reset_every_turn)),
+            ("external_state", numeric(op.external_state)),
         ],
     );
     ast.fragments.insert(body.decl.id.clone(), body);
@@ -248,6 +250,7 @@ fn de_scan(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tract
     let skip: usize = invocation.named_arg_as(builder, "skip")?;
     let mut op = Scan::new(body.model, input_mapping, output_mapping, skip)?;
     op.reset_every_turn = invocation.named_arg_as(builder, "reset_every_turn")?;
+    op.external_state = invocation.named_arg_as(builder, "external_state")?;
     builder.wire(op, &outer_inputs)
 }
 

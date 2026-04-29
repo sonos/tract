@@ -14,6 +14,17 @@ use super::*;
 pub struct Scan {
     pub skip: usize,
     pub reset_every_turn: bool,
+    /// True iff the caller manages State inputs externally — they supply a
+    /// fresh value every run (typically reading the Scan's last_value_slot
+    /// output and feeding it back into the next call's State input). This
+    /// is set explicitly at construction time, e.g. by the ONNX LSTM/GRU/
+    /// RNN importer when both `initial_h` and `Y_h` are exposed (parakeet
+    /// decoder). When true, declutter_single_loop can safely inline a
+    /// stateful single-iter Scan because the caller's per-call value
+    /// reaches the body directly. When false (default), tract carries
+    /// State across calls internally and inlining would break recurrence
+    /// (issue #2157).
+    pub external_state: bool,
     pub body: TypedModel,
     pub decluttered: bool,
     pub input_mapping: Vec<InputMapping>,
@@ -56,6 +67,7 @@ impl Scan {
         Ok(Scan {
             skip,
             reset_every_turn: false,
+            external_state: false,
             body,
             decluttered: false,
             input_mapping,
@@ -92,6 +104,24 @@ impl Scan {
         let iters =
             super::iteration_count(&self.input_mapping, &inputs).context("No scan input")?;
         rule_if!(iters.is_one());
+        // Inlining wires the body's State input directly from the outer
+        // initial-state input on every call. At runtime (optimized.rs
+        // OpState::eval), the State input is only seeded from inputs[slot]
+        // on the first call or when reset_every_turn is set; otherwise the
+        // body input is fed from the carried hidden_state.
+        //
+        // Inlining is therefore safe iff the caller does not rely on
+        // tract's across-call carry, which we encode as one of:
+        //   - reset_every_turn (carry is cleared every turn anyway), or
+        //   - external_state (caller plumbs the State input every call,
+        //     e.g. parakeet decoder).
+        // Otherwise (internal-managed state, e.g. DFN3 GRU under pulse),
+        // bail. See issue #2157.
+        rule_if!(
+            self.reset_every_turn
+                || self.external_state
+                || !self.input_mapping.iter().any(InputMapping::is_state)
+        );
         let mut patch = TypedModelPatch::new("Inline single loop scan");
         patch.model = self.body.clone();
         for (outer_wire, inner_wire) in izip!(&node.inputs, &self.body.inputs) {
