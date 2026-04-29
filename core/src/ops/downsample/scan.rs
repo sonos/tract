@@ -81,10 +81,10 @@ pub fn pull_downsample_over_scan(
                 inputs.push(ds);
             }
             InputMapping::Scan(info) => {
-                if info.chunk > 0 && !(info.chunk as usize).is_multiple_of(down_op.stride as usize)
-                {
-                    return Ok(None);
-                }
+                rule_if!(
+                    info.chunk <= 0
+                        || (info.chunk as usize).is_multiple_of(down_op.stride as usize)
+                );
                 info.chunk = info.chunk.unsigned_abs().divceil(down_op.stride as usize) as isize
                     * info.chunk.signum();
                 let tap = patch.tap_model(model, scan_node.inputs[slot])?;

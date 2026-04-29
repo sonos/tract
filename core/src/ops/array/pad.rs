@@ -127,7 +127,7 @@ impl TypedOp for Pad {
         node: &TypedNode,
     ) -> TractResult<Option<TVec<Option<TDim>>>> {
         let output_fact = model.outlet_fact(OutletId::new(node.id, 0))?;
-        let Some(roi) = &output_fact.region_of_interest else { return Ok(None) };
+        rule_if_some!(roi = &output_fact.region_of_interest);
         // For each padded axis, substitute 🎯axis → 🎯axis - before
         let mut input_roi = roi.clone();
         for (axis, &(before, _)) in self.pads.iter().enumerate() {

@@ -34,7 +34,7 @@ fn roi_union(a: &TDim, b: &TDim) -> TDim {
 /// broadcast from dim=1, or absent), returns None for that input.
 pub fn bubble_roi(model: &TypedModel, node: &TypedNode) -> TractResult<Option<TVec<Option<TDim>>>> {
     let output_fact = model.outlet_fact(OutletId::new(node.id, 0))?;
-    let Some(roi) = &output_fact.region_of_interest else { return Ok(None) };
+    rule_if_some!(roi = &output_fact.region_of_interest);
 
     let input_facts: TVec<&TypedFact> =
         node.inputs.iter().map(|i| model.outlet_fact(*i)).collect::<TractResult<_>>()?;

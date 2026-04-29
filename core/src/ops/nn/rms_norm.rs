@@ -101,9 +101,7 @@ impl TypedOp for RmsNorm {
         _start: &TDim,
         _end: &TDim,
     ) -> TractResult<Option<TVec<OutletId>>> {
-        if output_axis == self.axis {
-            return Ok(None);
-        }
+        rule_if!(output_axis != self.axis);
         patch.wire_node(&node.name, self.clone(), inputs).map(Some)
     }
 

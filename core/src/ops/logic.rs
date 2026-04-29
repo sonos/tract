@@ -238,7 +238,7 @@ impl TypedOp for Iff {
         // which injects a concrete Const(0/1) that this rule then folds.
         let cond_fact = model.outlet_fact(node.inputs[0])?;
         rule_if_some!(uniform = &cond_fact.uniform);
-        let Ok(cond_val) = uniform.cast_to_scalar::<bool>() else { return Ok(None) };
+        rule_if_let!(Ok(cond_val) = uniform.cast_to_scalar::<bool>());
         let branch = if cond_val { node.inputs[1] } else { node.inputs[2] };
         let mut patch = TypedModelPatch::default();
         let wire = patch.tap_model(model, branch)?;

@@ -1092,9 +1092,7 @@ impl TypedOp for Conv {
         io: InOut,
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
-        if io == InOut::In(1) {
-            return Ok(None);
-        }
+        rule_if!(io != InOut::In(1));
         if io == InOut::In(2)
             && let &AxisOp::Rm(_) = change
         {
@@ -1118,9 +1116,7 @@ impl TypedOp for Conv {
                     ),
                 }));
             }
-            if change.transform_axis(n).map(|axis| axis > 0).unwrap_or(true) {
-                return Ok(None);
-            }
+            rule_if!(change.transform_axis(n).map(|axis| axis == 0).unwrap_or(false));
         }
         // format swap: chw <-> hwc
         let (new_format, axis_move) = match self.pool_spec.data_format {
@@ -1145,9 +1141,7 @@ impl TypedOp for Conv {
             }));
         }
         // geo axis manips
-        if model.node_input_facts(node.id)?[1].is_exotic() {
-            return Ok(None);
-        }
+        rule_if!(!model.node_input_facts(node.id)?[1].is_exotic());
         use AxisOp::*;
         let h_axis = shape.h_axis();
         let hw_axes = shape.hw_axes();
