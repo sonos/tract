@@ -91,9 +91,7 @@ impl Scan {
         let inputs = model.node_input_facts(node.id)?;
         let iters =
             super::iteration_count(&self.input_mapping, &inputs).context("No scan input")?;
-        if !iters.is_one() {
-            return Ok(None);
-        }
+        rule_if!(iters.is_one());
         let mut patch = TypedModelPatch::new("Inline single loop scan");
         patch.model = self.body.clone();
         for (outer_wire, inner_wire) in izip!(&node.inputs, &self.body.inputs) {

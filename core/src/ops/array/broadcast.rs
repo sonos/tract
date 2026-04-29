@@ -60,9 +60,7 @@ impl TypedOp for MultiBroadcastTo {
         let touched: TVec<usize> = match canonical.as_ref() {
             AxisOp::Add(ix) | AxisOp::Rm(ix) => tvec![*ix],
             AxisOp::Move(from, to) => {
-                if input_shape.rank() != self.shape.rank() {
-                    return Ok(None);
-                }
+                rule_if!(input_shape.rank() == self.shape.rank());
                 tvec![*from, *to]
             }
             _ => return Ok(None),

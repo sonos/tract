@@ -879,9 +879,7 @@ impl TypedOp for AxisOp {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        if node.outputs[0].fact.exotic_fact.is_some() {
-            return Ok(None);
-        }
+        rule_if!(node.outputs[0].fact.exotic_fact.is_none());
         if let Some(shape) = node.outputs[0].fact.shape.as_concrete()
             && !matches!(self, AxisOp::Move(_, _))
         {

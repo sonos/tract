@@ -89,9 +89,8 @@ impl EinSum {
         let mut taps = tvec!();
         for (ix, input) in node.inputs.iter().enumerate() {
             let mut tap = patch.tap_model(model, *input)?;
-            if new_axis.inputs[ix].len() > 1 {
-                return Ok(None); // FIXME maybe
-            } else if new_axis.inputs[ix].is_empty() {
+            rule_if!(new_axis.inputs[ix].len() <= 1); // FIXME maybe
+            if new_axis.inputs[ix].is_empty() {
                 let insert_at = self.axes.rank(InOut::In(ix));
                 tap = patch.wire_node(
                     format!("{}.prop_axis.{}.input_{}", &node.name, new_axis.repr, ix),
@@ -379,18 +378,14 @@ fn declutter_reshape_folding_input_axis(
             axes = axes.with_extra_axis(*label, InOut::In(extra_input), 0)?;
         }
         let folded_axis = op.axes.axis((InOut::In(slot), at))?;
-        if folded_axis.outputs[0].len() > 1 {
-            return Ok(None);
-        };
+        rule_if!(folded_axis.outputs[0].len() <= 1);
         let mut patch = TypedModelPatch::default();
         let mut taps = patch.taps(model, &node.inputs)?;
         for (input, tap) in taps.iter_mut().enumerate() {
             if folded_axis.inputs[input].len() == 0 {
                 continue;
             };
-            if folded_axis.inputs[input].len() > 1 {
-                return Ok(None);
-            };
+            rule_if!(folded_axis.inputs[input].len() <= 1);
             let pos = folded_axis.inputs[input][0];
             for label in &extra_labels {
                 axes = axes.with_extra_axis_occurency(*label, InOut::In(input), pos)?;

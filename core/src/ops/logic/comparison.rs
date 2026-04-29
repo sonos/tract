@@ -27,9 +27,7 @@ fn eval_tdim_symbolic(
     inputs: &TVec<TValue>,
     prove: impl Fn(&TDim, &TDim) -> TractResult<bool>,
 ) -> TractResult<Option<TVec<TValue>>> {
-    if inputs[0].datum_type() != TDim::datum_type() {
-        return Ok(None);
-    }
+    rule_if!(inputs[0].datum_type() == TDim::datum_type());
     let mut a = inputs[0].clone().into_tensor();
     let mut b = inputs[1].clone().into_tensor();
     for a in a.try_as_plain_mut()?.as_slice_mut::<TDim>()? {

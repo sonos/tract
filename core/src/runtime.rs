@@ -216,9 +216,7 @@ pub fn runtimes() -> impl Iterator<Item = &'static dyn Runtime> {
 }
 
 pub fn runtime_for_name(s: &str) -> TractResult<Option<&'static dyn Runtime>> {
-    let Some(rt) = inventory::iter::<InventorizedRuntime>().find(|rt| rt.name() == s) else {
-        return Ok(None);
-    };
+    rule_if_some!(rt = inventory::iter::<InventorizedRuntime>().find(|rt| rt.name() == s));
     rt.check()?;
     Ok(Some(rt.0))
 }

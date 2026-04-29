@@ -499,9 +499,7 @@ impl TypedOp for OptMatMul {
                 || self.mmm.iter().all(|m| m.stores().contains(&cast_to)))
             && let Some(ProtoFusedSpec::Store(stores)) = self.micro_ops.last()
         {
-            if stores.iter().any(|s| matches!(s, OutputStoreSpec::Strides { .. })) {
-                return Ok(None);
-            }
+            rule_if!(stores.iter().all(|s| !matches!(s, OutputStoreSpec::Strides { .. })));
             let c_fact = cast_to.fact(self.c_fact.shape.clone());
             let mut patch =
                 TypedModelPatch::fuse_with_next(model, node, Self { c_fact, ..self.clone() })?;
