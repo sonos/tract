@@ -54,11 +54,13 @@ struct Pattern {
     /// The wire that's the mask (Mul's other input).
     mask_outlet: OutletId,
     reduce_node: usize,
-    /// Which input slot of the Mul carries the EinSum output (0 or 1).
-    einsum_side_in_mul: usize,
     /// Block size extracted from the mask's uniform_tdim.
     chunk_size: i64,
-    /// Streaming axes on the EinSum's output.
+    /// Position of the streaming axis on each EinSum input, in input order.
+    einsum_in_streaming_axes: TVec<usize>,
+    /// Positions of the streaming axes on the EinSum's output.  Required to
+    /// be contiguous (the chunk batch axis is inserted at the first one and
+    /// the second one becomes within-chunk on the next slot).
     einsum_out_streaming_axes: TVec<usize>,
     /// Reduce axis (on Mul/EinSum output).
     reduce_axis: usize,
@@ -70,14 +72,41 @@ fn find_pattern(model: &TypedModel, stream_sym: &Symbol) -> TractResult<Option<P
             continue;
         };
         let out_fact = model.outlet_fact(OutletId::new(node.id, 0))?;
-        let streaming_axes: TVec<usize> = out_fact
+        let out_streaming_axes: TVec<usize> = out_fact
             .shape
             .iter()
             .enumerate()
             .filter(|(_, d)| d.symbols().contains(stream_sym))
             .map(|(i, _)| i)
             .collect();
-        if streaming_axes.len() < 2 {
+        // Require exactly two streaming output axes, and require them to be
+        // contiguous — the chunk batch axis lives at the first one's slot,
+        // the within-chunk row/col land at the next two.
+        if out_streaming_axes.len() != 2 {
+            continue;
+        }
+        if out_streaming_axes[1] != out_streaming_axes[0] + 1 {
+            continue;
+        }
+        // Each EinSum input must have exactly one streaming axis.
+        let mut in_streaming_axes: TVec<usize> = tvec!();
+        let mut all_inputs_have_one_stream_axis = true;
+        for &input in &node.inputs {
+            let in_fact = model.outlet_fact(input)?;
+            let stream_positions: TVec<usize> = in_fact
+                .shape
+                .iter()
+                .enumerate()
+                .filter(|(_, d)| d.symbols().contains(stream_sym))
+                .map(|(i, _)| i)
+                .collect();
+            if stream_positions.len() != 1 {
+                all_inputs_have_one_stream_axis = false;
+                break;
+            }
+            in_streaming_axes.push(stream_positions[0]);
+        }
+        if !all_inputs_have_one_stream_axis {
             continue;
         }
         let consumers = model.outlet_successors(OutletId::new(node.id, 0));
@@ -99,7 +128,7 @@ fn find_pattern(model: &TypedModel, stream_sym: &Symbol) -> TractResult<Option<P
         let Some(uniform) = mask_fact.uniform_tdim.clone() else {
             continue;
         };
-        let Some(chunk_size) = decode_block_diag_mask(&uniform, &streaming_axes) else {
+        let Some(chunk_size) = decode_block_diag_mask(&uniform, &out_streaming_axes) else {
             continue;
         };
         let mul_consumers = model.outlet_successors(OutletId::new(mul_node_id, 0));
@@ -115,7 +144,7 @@ fn find_pattern(model: &TypedModel, stream_sym: &Symbol) -> TractResult<Option<P
             continue;
         }
         let reduce_axis = reduce.axes[0];
-        if !streaming_axes.contains(&reduce_axis) {
+        if !out_streaming_axes.contains(&reduce_axis) {
             continue;
         }
         return Ok(Some(Pattern {
@@ -123,9 +152,9 @@ fn find_pattern(model: &TypedModel, stream_sym: &Symbol) -> TractResult<Option<P
             mul_node: mul_node_id,
             mask_outlet,
             reduce_node: reduce_node_id,
-            einsum_side_in_mul: einsum_side,
             chunk_size,
-            einsum_out_streaming_axes: streaming_axes,
+            einsum_in_streaming_axes: in_streaming_axes,
+            einsum_out_streaming_axes: out_streaming_axes,
             reduce_axis,
         }));
     }
@@ -279,7 +308,7 @@ fn rewrite(
     // Rewrite Reduce axis through the inserted chunk batch axis.
     let reduce_node = &model.nodes[pat.reduce_node];
     let reduce_op = reduce_node.op_as::<Reduce>().unwrap();
-    let new_reduce_axis = chunked_axis_index(reduce_op.axes[0], pat, einsum_op)?;
+    let new_reduce_axis = chunked_axis_index(reduce_op.axes[0], pat)?;
     let new_reduce = Reduce { axes: tvec!(new_reduce_axis), reducer: reduce_op.reducer };
     let reduce_out = out.wire_node(reduce_node.name.clone(), new_reduce, &[new_einsum_out])?[0];
     mapping.insert(OutletId::new(pat.reduce_node, 0), reduce_out);
@@ -312,11 +341,10 @@ fn rewrite(
         }
     }
 
-    // After all the consumers of reduce, if the resulting wire has a
-    // streaming axis still present and the *model output* expects flat
-    // [k·S, …] form, insert a final reshape that flattens [S, k, …] back.
-    // Simplest implementation: walk model.outputs(); for each, find the
-    // mapped wire; if its shape has axis 0 = S and axis 1 = k, flatten.
+    // For each model output: if its shape contains the chunk axis followed
+    // immediately by a within-chunk axis of size k, flatten them back into
+    // a single k·S axis at the same position.  This restores the original
+    // streaming-axis layout without changing the model's external interface.
     let mut new_outputs: TVec<OutletId> = tvec!();
     for &orig in model.output_outlets()? {
         let mut wire = mapping
@@ -324,14 +352,14 @@ fn rewrite(
             .copied()
             .ok_or_else(|| format_err!("Missing mapping for output {orig:?}"))?;
         let fact = out.outlet_fact(wire)?.clone();
-        // If the shape starts with [S, k, …], flatten into [k·S, …].
-        if fact.shape.len() >= 2
-            && fact.shape[0] == chunk_sym.to_dim()
-            && fact.shape[1] == k.to_dim()
+        let chunk_pos = fact.shape.iter().position(|d| d == &chunk_sym.to_dim());
+        if let Some(pos) = chunk_pos
+            && pos + 1 < fact.shape.len()
+            && fact.shape[pos + 1] == k.to_dim()
         {
             let from = tvec!(chunk_sym.to_dim(), k.to_dim());
             let to = tvec!(chunk_sym.to_dim() * k);
-            let reshape = AxisOp::Reshape(0, from, to);
+            let reshape = AxisOp::Reshape(pos, from, to);
             wire = out.wire_node(
                 format!("{}.blockify_merge", model.nodes[orig.node].name),
                 reshape,
@@ -385,32 +413,39 @@ fn collect_dead_mask_nodes(
     }
 }
 
-fn chunked_axis_index(orig_axis: usize, pat: &Pattern, _einsum_op: &EinSum) -> TractResult<usize> {
-    // Original einsum output had streaming_axes[0] and streaming_axes[1]
-    // (in our case 0 and 1 of the [T,T] output).  Chunked output inserts
-    // a chunk batch axis at position 0, then has within-chunk axes after.
-    // Mapping: orig axis i (for i in streaming_axes) → chunked axis
-    // 1 + (position of i in streaming_axes).
-    if let Some(pos) = pat.einsum_out_streaming_axes.iter().position(|&a| a == orig_axis) {
-        Ok(1 + pos)
-    } else {
-        // Non-streaming axis: same index, but everything has shifted by 1
-        // (chunk batch axis inserted at front).
-        Ok(orig_axis + 1)
-    }
+fn chunked_axis_index(orig_axis: usize, pat: &Pattern) -> TractResult<usize> {
+    // The chunk batch axis is inserted at the position of the first
+    // streaming output axis; every original axis at or after that position
+    // shifts right by one.  Streaming axes themselves (the within-chunk
+    // versions) are no exception — they shift by one too, because the
+    // chunk axis lives where they used to start.
+    let chunk_pos = pat.einsum_out_streaming_axes[0];
+    if orig_axis < chunk_pos { Ok(orig_axis) } else { Ok(orig_axis + 1) }
 }
 
-fn chunkify_einsum(op: &EinSum, _pat: &Pattern) -> TractResult<EinSum> {
+/// Insert the new chunk axis character at the streaming-axis position in
+/// every input subscript and at the first streaming-axis position in the
+/// output subscript.  Within-chunk versions of the formerly-streaming axes
+/// keep their original chars (now sitting at position+1 after the insert).
+fn chunkify_einsum(op: &EinSum, pat: &Pattern) -> TractResult<EinSum> {
     let (inputs, outputs) = op.axes.to_strs();
     let new_repr = pick_free_axis_repr(&op.axes);
-    let prepend = |s: &String| {
-        let mut t = String::new();
-        t.push(new_repr);
-        t.push_str(s);
-        t
+    let insert_at = |s: &String, pos: usize| -> String {
+        let mut chars: Vec<char> = s.chars().collect();
+        chars.insert(pos, new_repr);
+        chars.into_iter().collect()
     };
-    let new_inputs: Vec<String> = inputs.iter().map(prepend).collect();
-    let new_outputs: Vec<String> = outputs.iter().map(prepend).collect();
+    let new_inputs: Vec<String> = inputs
+        .iter()
+        .zip(pat.einsum_in_streaming_axes.iter())
+        .map(|(s, &pos)| insert_at(s, pos))
+        .collect();
+    let chunk_pos = pat.einsum_out_streaming_axes[0];
+    let new_outputs: Vec<String> = outputs
+        .iter()
+        .enumerate()
+        .map(|(i, s)| if i == 0 { insert_at(s, chunk_pos) } else { s.clone() })
+        .collect();
     let new_mapping = AxesMapping::from_strs(&new_inputs, &new_outputs)?;
     Ok(EinSum { axes: new_mapping, operating_dt: op.operating_dt, q_params: op.q_params.clone() })
 }
@@ -502,5 +537,92 @@ mod tests {
             Box::new(TDim::Div(Box::new(TDim::Add(vec![coord(&scope, 1), TDim::Val(1)])), 2)),
         );
         assert_eq!(decode_block_diag_mask(&expr, &[0, 1]), None);
+    }
+
+    fn make_pattern(in_axes: &[usize], out_axes: &[usize]) -> Pattern {
+        Pattern {
+            einsum_node: 0,
+            mul_node: 0,
+            mask_outlet: OutletId::new(0, 0),
+            reduce_node: 0,
+            chunk_size: 2,
+            einsum_in_streaming_axes: in_axes.iter().copied().collect(),
+            einsum_out_streaming_axes: out_axes.iter().copied().collect(),
+            reduce_axis: 0,
+        }
+    }
+
+    fn einsum_for(inputs: &[&str], output: &str) -> EinSum {
+        EinSum {
+            axes: AxesMapping::from_strs(inputs, &[output]).unwrap(),
+            operating_dt: f32::datum_type(),
+            q_params: None,
+        }
+    }
+
+    fn axes_to_strings(op: &EinSum) -> (Vec<String>, Vec<String>) {
+        let (ins, outs) = op.axes.to_strs();
+        (ins.into_iter().collect(), outs.into_iter().collect())
+    }
+
+    #[test]
+    fn chunkify_einsum_handles_streaming_at_position_zero() {
+        // The ex01 case: "id,jd->ij" with streaming at position 0 on both
+        // inputs and on output positions 0 and 1.
+        let op = einsum_for(&["id", "jd"], "ij");
+        let pat = make_pattern(&[0, 0], &[0, 1]);
+        let chunked = chunkify_einsum(&op, &pat).unwrap();
+        let (ins, outs) = axes_to_strings(&chunked);
+        // The free char picked is the lowest unused letter.
+        let chunk_char = pick_free_axis_repr(&op.axes);
+        assert_eq!(ins[0], format!("{chunk_char}id"));
+        assert_eq!(ins[1], format!("{chunk_char}jd"));
+        assert_eq!(outs[0], format!("{chunk_char}ij"));
+    }
+
+    #[test]
+    fn chunkify_einsum_handles_streaming_at_inner_position() {
+        // Multi-head-like: "bid,bjd->bij" — streaming at position 1 on
+        // inputs, positions 1 and 2 on output, batch axis b at 0.
+        let op = einsum_for(&["bid", "bjd"], "bij");
+        let pat = make_pattern(&[1, 1], &[1, 2]);
+        let chunked = chunkify_einsum(&op, &pat).unwrap();
+        let (ins, outs) = axes_to_strings(&chunked);
+        let chunk_char = pick_free_axis_repr(&op.axes);
+        assert_eq!(ins[0], format!("b{chunk_char}id"));
+        assert_eq!(ins[1], format!("b{chunk_char}jd"));
+        assert_eq!(outs[0], format!("b{chunk_char}ij"));
+    }
+
+    #[test]
+    fn chunkify_einsum_handles_mixed_input_positions() {
+        // Streaming at different positions on the two inputs:
+        // "id,bjd->bij" — input 0 has streaming at pos 0,
+        // input 1 has streaming at pos 1.  (Output i, j at pos 1, 2.)
+        let op = einsum_for(&["id", "bjd"], "bij");
+        let pat = make_pattern(&[0, 1], &[1, 2]);
+        let chunked = chunkify_einsum(&op, &pat).unwrap();
+        let (ins, outs) = axes_to_strings(&chunked);
+        let chunk_char = pick_free_axis_repr(&op.axes);
+        assert_eq!(ins[0], format!("{chunk_char}id"));
+        assert_eq!(ins[1], format!("b{chunk_char}jd"));
+        assert_eq!(outs[0], format!("b{chunk_char}ij"));
+    }
+
+    #[test]
+    fn chunked_axis_index_zero_chunk_position() {
+        let pat = make_pattern(&[0, 0], &[0, 1]);
+        // Chunk at output pos 0; everything shifts right by 1.
+        assert_eq!(chunked_axis_index(0, &pat).unwrap(), 1);
+        assert_eq!(chunked_axis_index(1, &pat).unwrap(), 2);
+    }
+
+    #[test]
+    fn chunked_axis_index_inner_chunk_position() {
+        // Chunk at output pos 1; axis 0 stays, axes 1+ shift right.
+        let pat = make_pattern(&[1, 1], &[1, 2]);
+        assert_eq!(chunked_axis_index(0, &pat).unwrap(), 0);
+        assert_eq!(chunked_axis_index(1, &pat).unwrap(), 2);
+        assert_eq!(chunked_axis_index(2, &pat).unwrap(), 3);
     }
 }
