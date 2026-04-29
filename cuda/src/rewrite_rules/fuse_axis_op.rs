@@ -113,9 +113,7 @@ pub fn fuse_axis_op(
 
     let node_name = &node.name;
 
-    let Some(in_nodes) = model.all_prec(node.id)? else {
-        return Ok(None);
-    };
+    rule_if_some!(in_nodes = model.all_prec(node.id)?);
 
     let mut grouped_axis_ops: TVec<TVec<GpuAxisOp>> = tvec![];
     let mut tap_inputs = tvec![];
@@ -205,7 +203,7 @@ pub fn fuse_move_axis(
     }
 
     // Fuse consecutive MoveAxis if possible
-    let Some(cursor) = model.single_succ(axis_node.id)? else { return Ok(None) };
+    rule_if_some!(cursor = model.single_succ(axis_node.id)?);
     if let (AxisOp::Move(from_1, to_1), AxisOp::Move(from_2, to_2)) = (
         axis_op.inner.clone(),
         cursor.op_as::<GpuAxisOp>().map(|ax_op| ax_op.inner.clone()).unwrap_or(AxisOp::Add(0)),
@@ -230,7 +228,7 @@ pub fn fuse_move_axis(
     }
 
     // Add(x) -> Move(x, y)
-    let Some(cursor) = model.single_prec(axis_node.id)? else { return Ok(None) };
+    rule_if_some!(cursor = model.single_prec(axis_node.id)?);
     if let (AxisOp::Move(from_1, to_1), AxisOp::Add(ax)) = (
         axis_op.inner.clone(),
         cursor.op_as::<GpuAxisOp>().map(|ax_op| ax_op.inner.clone()).unwrap_or(AxisOp::Rm(0)),

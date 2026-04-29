@@ -470,9 +470,7 @@ pub fn softmax(
     node: &TypedNode,
     op: &ops::nn::Softmax,
 ) -> TractResult<Option<Arc<RValue>>> {
-    if op.kind != SoftmaxKind::default() {
-        return Ok(None);
-    }
+    rule_if!(op.kind == SoftmaxKind::default());
     let litteral_axes: Vec<_> = op.axes.iter().map(|&it| (it as i64).into()).collect();
     Ok(Some(invocation(
         "softmax",
@@ -502,9 +500,7 @@ pub fn rewrite_matmul_to_same_rank(
 ) -> TractResult<Option<TypedModelPatch>> {
     let a_rank = block_quant_aware_input_shape(model.outlet_fact(node.inputs[0])?)?.len();
     let b_rank = block_quant_aware_input_shape(model.outlet_fact(node.inputs[1])?)?.len();
-    if a_rank == b_rank {
-        return Ok(None);
-    }
+    rule_if!(a_rank != b_rank);
     let mut patch = TypedModelPatch::default();
     let mut inputs = patch.taps(model, &node.inputs)?;
     for i in a_rank..a_rank.max(b_rank) {

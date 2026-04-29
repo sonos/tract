@@ -112,9 +112,7 @@ pub fn pulsify_pooled_input(
     let input_fact: PulsedFact = target.outlet_fact(wire)?.clone();
     let input_stream = input_fact.stream.as_ref().unwrap();
     let input_shape = spec.data_format.shape(input_fact.shape.clone())?;
-    if Some(input_stream.axis) == input_shape.n_axis() {
-        return Ok(None);
-    }
+    rule_if!(Some(input_stream.axis) != input_shape.n_axis());
     if input_stream.axis == input_shape.c_axis() {
         bail!("Can not pulsify cnn pooling ops along the input channel axis");
     }

@@ -23,16 +23,14 @@ fn pulsify(
     if c_axis == stream.axis {
         bail!("Pulsification on C axis is not supported");
     }
-    if op
-        .axes_mapping(&source.node_input_facts(node.id)?, &source.node_output_facts(node.id)?)?
-        .axis((InOut::In(0), stream.axis))?
-        .outputs[0]
-        .len()
-        == 1
-    {
-        // general case for invariants will manage
-        return Ok(None);
-    }
+    // general case for invariants will manage
+    rule_if!(
+        op.axes_mapping(&source.node_input_facts(node.id)?, &source.node_output_facts(node.id)?)?
+            .axis((InOut::In(0), stream.axis))?
+            .outputs[0]
+            .len()
+            != 1
+    );
     let geo_axis = stream.axis - op.pool_spec.data_format.h_axis();
     let stride = op.pool_spec.stride(geo_axis);
     let mut pulse_op = op.clone();

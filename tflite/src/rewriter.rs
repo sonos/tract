@@ -37,9 +37,7 @@ fn trivial_axes_around_matmul(
 ) -> TractResult<Option<TypedModelPatch>> {
     let facts = model.node_input_facts(node.id)?;
     let rank = facts[0].rank();
-    if rank <= 4 {
-        return Ok(None);
-    }
+    rule_if!(rank > 4);
     let trivial_axes = (0..rank - 2)
         .filter(|axis| facts[0].shape[*axis].is_one() && facts[1].shape[*axis].is_one())
         .collect_vec();
@@ -68,9 +66,7 @@ fn kernel_in_ohwi(
     name: &str,
     conv: &Conv,
 ) -> TractResult<Option<TypedModelPatch>> {
-    if conv.kernel_fmt == KernelFormat::OHWI {
-        return Ok(None);
-    }
+    rule_if!(conv.kernel_fmt != KernelFormat::OHWI);
     if conv.group != 1 && conv.group != conv.output_channels() {
         bail!("Arbitrary grouping is not supported in tflite")
     }
@@ -116,9 +112,7 @@ fn bias_as_vector(
 ) -> TractResult<Option<TypedModelPatch>> {
     let bias_fact = model.outlet_fact(node.inputs[2])?;
     let co = conv.output_channels();
-    if *bias_fact.shape == [co.to_dim()] {
-        return Ok(None);
-    }
+    rule_if!(*bias_fact.shape != [co.to_dim()]);
     let mut patch = TypedModelPatch::default();
     let mut wire = patch.taps(model, &node.inputs)?;
     wire[2] = tract_core::ops::cnn::wire_reshape_bias_as_vector(
@@ -144,12 +138,8 @@ let input_fact = model.outlet_fact(node.inputs[0])?;
 let idt = input_fact.datum_type;
 let kernel_fact = model.outlet_fact(node.inputs[1])?;
 let kdt = kernel_fact.datum_type;
-if idt.is_float() || model.outlet_fact(node.inputs[6])?.shape.len() > 1 {
-return Ok(None);
-}
-if idt.unquantized() == u8::datum_type() && kdt.unquantized() == u8::datum_type() {
-return Ok(None);
-}
+rule_if!(!idt.is_float() && model.outlet_fact(node.inputs[6])?.shape.len() <= 1);
+rule_if!(idt.unquantized() != u8::datum_type() || kdt.unquantized() != u8::datum_type());
 let mut patch = TypedModelPatch::default();
 let wire = patch.taps(model, &node.inputs)?;
 let [mut i, mut k, b, mut i0, is, mut k0, ks, o0, os] = &*wire else {

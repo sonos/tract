@@ -329,25 +329,21 @@ impl TypedOp for Resize {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         // Lower nearest-neighbor integer-scale upsamples to Reshape → Tile → Reshape
-        if !matches!(self.interpolator, Interpolator::Nearest) {
-            return Ok(None);
-        }
-        let Some(scales_input) = self.optional_scales_input else { return Ok(None) };
+        rule_if!(matches!(self.interpolator, Interpolator::Nearest));
+        rule_if_some!(scales_input = self.optional_scales_input);
         let input_fact = model.outlet_fact(node.inputs[0])?;
         let scales_fact = model.outlet_fact(node.inputs[scales_input])?;
-        let Some(scales_tensor) = &scales_fact.konst else { return Ok(None) };
+        rule_if_some!(scales_tensor = &scales_fact.konst);
         let scales: Vec<f32> =
             scales_tensor.cast_to::<f32>()?.try_as_plain()?.as_slice::<f32>()?.to_vec();
 
         // Check all scales are positive integers
         let int_scales: Vec<usize> = scales.iter().map(|&s| s.round() as usize).collect();
-        if scales.iter().zip(&int_scales).any(|(&s, &i)| (s - i as f32).abs() > 1e-5 || i == 0) {
-            return Ok(None);
-        }
+        rule_if!(
+            scales.iter().zip(&int_scales).all(|(&s, &i)| (s - i as f32).abs() <= 1e-5 && i != 0)
+        );
         // Only if at least one axis actually upsamples
-        if int_scales.iter().all(|&s| s == 1) {
-            return Ok(None);
-        }
+        rule_if!(int_scales.iter().any(|&s| s != 1));
 
         let input_shape = &input_fact.shape;
 

@@ -167,9 +167,7 @@ fn try_make_metal_op(
     });
 
     let input_facts = source.node_input_facts(node.id)?;
-    if !input_facts.iter().all(|f| DeviceTensor::is_supported_dt(f.datum_type)) {
-        return Ok(None);
-    }
+    rule_if!(input_facts.iter().all(|f| DeviceTensor::is_supported_dt(f.datum_type)));
 
     // Copy-based ops are fully generic (no backend-specific dispatch needed).
     if let Some(op) = tract_gpu::ops::copy_based::try_make_copy_based_op(source, node)? {

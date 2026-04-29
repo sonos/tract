@@ -416,9 +416,7 @@ impl TractCudaStream {
     /// Record a start/end event pair around a kernel launch.
     /// Call this from `TractLaunchArgs::launch()` when profiling is active.
     pub fn record_profile_events(&self) -> TractResult<Option<(CudaEvent, CudaEvent)>> {
-        if !self.is_profiling() {
-            return Ok(None);
-        }
+        rule_if!(self.is_profiling());
         let flags = Some(cudarc::driver::sys::CUevent_flags::CU_EVENT_DEFAULT);
         let start = self.inner.record_event(flags)?;
         Ok(Some((start, self.inner.context().new_event(flags)?)))
