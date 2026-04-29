@@ -248,9 +248,18 @@ pub fn get_transform_with_params(
     Ok(None)
 }
 
+/// Per-symbol substitution: either a concrete integer or a TDim
+/// expression string parsed against the model's symbol scope.
+#[derive(Debug, serde::Deserialize)]
+#[serde(untagged)]
+pub enum SymbolValueSpec {
+    Int(i64),
+    Expr(String),
+}
+
 #[derive(Debug, Default, serde::Deserialize)]
 pub struct ConcretizeSymbolsConfig {
-    pub values: std::collections::HashMap<String, i64>,
+    pub values: std::collections::HashMap<String, SymbolValueSpec>,
 }
 
 #[derive(Debug)]
@@ -262,11 +271,19 @@ impl ModelTransform for ConcretizeSymbolsTransform {
     }
 
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
-        let mut table = SymbolValues::default();
-        for (k, v) in &self.0.values {
-            table = table.with(&model.symbols.sym(k), *v);
+        let mut subs = std::collections::HashMap::new();
+        for (k, spec) in &self.0.values {
+            let sym = model.symbols.sym(k);
+            let dim = match spec {
+                SymbolValueSpec::Int(v) => TDim::Val(*v),
+                SymbolValueSpec::Expr(s) => model
+                    .symbols
+                    .parse_tdim(s)
+                    .with_context(|| format!("Parsing TDim expression {s:?} for symbol {k}"))?,
+            };
+            subs.insert(sym, dim);
         }
-        *model = model.concretize_dims(&table)?;
+        *model = model.substitute_symbols(&subs)?;
         Ok(())
     }
 }

@@ -104,15 +104,15 @@ impl TypedOp for CudaGgmlQuantQ81 {
         .with_context(|| format!("Error while computing facts for {:?}", self.name()))
     }
 
-    fn concretize_dims(
+    fn substitute_symbols(
         &self,
         _source: &TypedModel,
         node: &TypedNode,
         target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
-        values: &SymbolValues,
+        subs: &HashMap<Symbol, TDim>,
     ) -> TractResult<TVec<OutletId>> {
-        let op = Self::new(self.io_facts.in_fact.eval(values)?.into_owned())?;
+        let op = Self::new(self.io_facts.in_fact.substitute(subs)?.into_owned())?;
         target.wire_node(&node.name, op, &[mapping[&node.inputs[0]]])
     }
     as_op!();

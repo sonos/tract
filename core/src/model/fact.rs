@@ -56,6 +56,22 @@ impl ShapeFact {
         }
     }
 
+    /// Substitute symbols by TDim expressions in every dim of the shape.
+    /// Concrete shapes pass through unchanged.
+    #[inline]
+    pub fn substitute(
+        &self,
+        subs: &std::collections::HashMap<Symbol, TDim>,
+    ) -> TractResult<Cow<'_, ShapeFact>> {
+        if self.is_concrete() {
+            Ok(Cow::Borrowed(self))
+        } else {
+            Ok(Cow::Owned(
+                self.iter().map(|d| d.substitute_all(subs)).collect::<TractResult<ShapeFact>>()?,
+            ))
+        }
+    }
+
     #[inline]
     pub fn eval_to_usize(&self, values: &SymbolValues) -> TractResult<Cow<'_, TVec<usize>>> {
         if let Some(c) = &self.concrete {

@@ -45,15 +45,16 @@ impl EvalOp for Tile {
 impl TypedOp for Tile {
     as_op!();
 
-    fn concretize_dims(
+    fn substitute_symbols(
         &self,
         _source: &TypedModel,
         node: &TypedNode,
         target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
-        values: &SymbolValues,
+        subs: &HashMap<Symbol, TDim>,
     ) -> TractResult<TVec<OutletId>> {
-        let multipliers = self.multipliers.iter().map(|m| m.eval(values)).collect();
+        let multipliers =
+            self.multipliers.iter().map(|m| m.substitute_all(subs)).collect::<TractResult<_>>()?;
         target.wire_node(&node.name, Self { multipliers }, &[mapping[&node.inputs[0]]])
     }
 

@@ -256,8 +256,8 @@ impl TypedModel {
         Ok(())
     }
 
-    pub fn concretize_dims(&self, values: &SymbolValues) -> TractResult<TypedModel> {
-        values.translate_model(self)
+    pub fn substitute_symbols(&self, subs: &HashMap<Symbol, TDim>) -> TractResult<TypedModel> {
+        crate::model::translator::Translate::translate_model(subs, self)
     }
 
     pub fn prop_consts(&mut self) -> TractResult<()> {
@@ -311,7 +311,7 @@ impl TypedModel {
 }
 
 use crate::model::translator::Translate;
-impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for SymbolValues {
+impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for HashMap<Symbol, TDim> {
     fn translate_node(
         &self,
         source: &TypedModel,
@@ -320,7 +320,7 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Sym
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
         target.check_consistency()?;
-        let outlets = node.op.concretize_dims(source, node, target, mapping, self)?;
+        let outlets = node.op.substitute_symbols(source, node, target, mapping, self)?;
         for &outlet in &outlets {
             let fact = &mut target.nodes[outlet.node].outputs[outlet.slot].fact;
             if fact.shape.volume().is_zero()

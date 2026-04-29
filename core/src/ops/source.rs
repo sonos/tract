@@ -66,15 +66,16 @@ impl TypedOp for TypedSource {
         )))
     }
 
-    fn concretize_dims(
+    fn substitute_symbols(
         &self,
         _source: &TypedModel,
         node: &TypedNode,
         target: &mut TypedModel,
         _mapping: &HashMap<OutletId, OutletId>,
-        values: &SymbolValues,
+        subs: &HashMap<Symbol, TDim>,
     ) -> TractResult<TVec<OutletId>> {
-        let shape: TVec<_> = self.fact.shape.iter().map(|d| d.eval(values)).collect();
+        let shape: TVec<_> =
+            self.fact.shape.iter().map(|d| d.substitute_all(subs)).collect::<TractResult<_>>()?;
         target.wire_node(&node.name, Self { fact: self.fact.datum_type.fact(&*shape) }, &[])
     }
 

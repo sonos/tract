@@ -102,17 +102,18 @@ impl TypedOp for MultiBroadcastTo {
         crate::optim::propagate_roi::bubble_roi(model, node)
     }
 
-    fn concretize_dims(
+    fn substitute_symbols(
         &self,
         _source: &TypedModel,
         node: &TypedNode,
         target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
-        values: &SymbolValues,
+        subs: &HashMap<Symbol, TDim>,
     ) -> TractResult<TVec<OutletId>> {
         let input = mapping[&node.inputs[0]];
-        let op =
-            Self { shape: self.shape.iter().map(|d| d.eval(values)).collect::<TVec<_>>().into() };
+        let shape: TVec<_> =
+            self.shape.iter().map(|d| d.substitute_all(subs)).collect::<TractResult<_>>()?;
+        let op = Self { shape: shape.into() };
         target.wire_node(&node.name, op, &[input])
     }
 

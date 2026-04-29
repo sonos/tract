@@ -178,16 +178,19 @@ impl TypedOp for Slice {
         }
     }
 
-    fn concretize_dims(
+    fn substitute_symbols(
         &self,
         _source: &TypedModel,
         node: &TypedNode,
         target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
-        values: &SymbolValues,
+        subs: &HashMap<Symbol, TDim>,
     ) -> TractResult<TVec<OutletId>> {
-        let op =
-            Slice { axis: self.axis, start: self.start.eval(values), end: self.end.eval(values) };
+        let op = Slice {
+            axis: self.axis,
+            start: self.start.substitute_all(subs)?,
+            end: self.end.substitute_all(subs)?,
+        };
         let inputs = node.inputs.iter().map(|i| mapping[i]).collect::<TVec<_>>();
         target.wire_node(&node.name, op, &inputs)
     }

@@ -76,18 +76,18 @@ impl TypedOp for Const {
         Ok(tvec!((Cost::Params(self.0.datum_type().unquantized()), self.0.len().into())))
     }
 
-    fn concretize_dims(
+    fn substitute_symbols(
         &self,
         _source: &TypedModel,
         node: &TypedNode,
         target: &mut TypedModel,
         _mapping: &HashMap<OutletId, OutletId>,
-        values: &SymbolValues,
+        subs: &HashMap<Symbol, TDim>,
     ) -> TractResult<TVec<OutletId>> {
         let op = if self.0.datum_type() == TDim::datum_type() {
             let mut tensor = self.0.clone().into_tensor();
             for d in tensor.try_as_plain_mut()?.as_slice_mut::<TDim>()? {
-                *d = d.eval(values);
+                *d = d.substitute_all(subs)?;
             }
             Const(tensor.into_arc_tensor(), self.1.clone())
         } else {

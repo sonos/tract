@@ -492,6 +492,12 @@ impl SymbolValues {
     pub fn get(&self, s: &Symbol) -> Option<i64> {
         self.values.get(s).copied()
     }
+
+    /// View the bindings as `Symbol → TDim` (each `i64` lifted to `TDim::Val`),
+    /// for callers that need to plug into APIs taking `HashMap<Symbol, TDim>`.
+    pub fn to_dim_map(&self) -> HashMap<Symbol, TDim> {
+        self.values.iter().map(|(s, v)| (s.clone(), TDim::Val(*v))).collect()
+    }
 }
 
 #[cfg(test)]
