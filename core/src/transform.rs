@@ -290,6 +290,32 @@ register_model_transform!("concretize_symbols", ConcretizeSymbolsConfig, |config
     ConcretizeSymbolsTransform(config)
 )));
 
+/// Ad-hoc fix-up for NNEF artifacts exported before Scan grew the
+/// `external_state` flag (issue #2157). Forces every Scan in the model to
+/// `external_state = true`, opting them into the single-loop inlining path.
+/// Apply only when the loaded model is known to use external state
+/// management (caller plumbs initial state and reads final state every
+/// call), e.g. the parakeet decoder. Cheaper than re-exporting cached NNEF.
+#[derive(Debug)]
+struct ForceScanExternalState;
+
+impl ModelTransform for ForceScanExternalState {
+    fn name(&self) -> StaticName {
+        "force_scan_external_state".into()
+    }
+
+    fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
+        for node in &mut model.nodes {
+            if let Some(scan) = node.op_as_mut::<crate::ops::scan::Scan>() {
+                scan.external_state = true;
+            }
+        }
+        Ok(())
+    }
+}
+
+register_simple_model_transform!("force_scan_external_state", ForceScanExternalState);
+
 register_simple_model_transform!("softmax_fast_compact", SoftmaxFastCompact);
 register_simple_model_transform!("block_quant", BlockQuantTransform);
 
