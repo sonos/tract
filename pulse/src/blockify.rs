@@ -46,7 +46,118 @@ pub fn blockify(
     Ok(BlockifyResult { model, stream_sym: chunk_sym, pulse: translated_pulse })
 }
 
+/// A connected subgraph of the typed model where every wire has multi-T-axis
+/// shape (≥2 streaming-symbol axes), bracketed by single-T-axis wires.
+///
+/// Phase 1+2+3 of Blockify recognition produces this structure op-agnostically.
+/// Phase 4 (the rewrite) consumes it and dispatches per op-type.
+#[derive(Debug)]
+struct QuadraticSection {
+    /// All nodes whose output wire has multi-T-axis shape.  Today the bridge
+    /// to `Pattern` walks initiators/terminators only; the full set is here
+    /// because phase 4 generalisation (body-chain handling) will need it.
+    #[allow(dead_code)]
+    section: std::collections::BTreeSet<usize>,
+    /// Subset of `section` whose inputs are all outside it (= "rise to quadratic").
+    initiators: Vec<usize>,
+    /// Nodes outside `section` consuming an in-section wire (= "drop back to linear").
+    terminators: Vec<usize>,
+    /// Block size extracted from a recognisable mask in the section.
+    chunk_size: i64,
+}
+
+/// Phase 1+2+3: detect a section of the graph where wires go multi-T-axis,
+/// verify every wire there has structural justification (uniform_tdim or
+/// region_of_interest), and confirm at least one wire has a recognisable
+/// mask form so we know the chunk size.
+fn find_quadratic_section(
+    model: &TypedModel,
+    stream_sym: &Symbol,
+) -> TractResult<Option<QuadraticSection>> {
+    use std::collections::BTreeSet;
+
+    let is_multi_t_axis = |fact: &TypedFact| {
+        fact.shape.iter().filter(|d| d.symbols().contains(stream_sym)).count() >= 2
+    };
+
+    // Phase 1 — topology.
+    let mut section: BTreeSet<usize> = BTreeSet::new();
+    for node in &model.nodes {
+        if node.outputs.len() != 1 {
+            continue;
+        }
+        if is_multi_t_axis(&node.outputs[0].fact) {
+            section.insert(node.id);
+        }
+    }
+    if section.is_empty() {
+        return Ok(None);
+    }
+
+    let initiators: Vec<usize> = section
+        .iter()
+        .copied()
+        .filter(|&nid| !model.nodes[nid].inputs.iter().any(|i| section.contains(&i.node)))
+        .collect();
+
+    let mut terminators_set: BTreeSet<usize> = BTreeSet::new();
+    for &nid in &section {
+        for cons in model.outlet_successors(OutletId::new(nid, 0)) {
+            if !section.contains(&cons.node) {
+                terminators_set.insert(cons.node);
+            }
+        }
+    }
+    let terminators: Vec<usize> = terminators_set.into_iter().collect();
+
+    // Phase 2 — structural-justification coverage.  At least one wire in the
+    // section must carry uniform_tdim or region_of_interest; that's the
+    // anchor we'll use in phase 3 to find the chunk size.  Wires without
+    // either are tolerated as long as their effective values are bounded
+    // by an upstream mask multiplication (the typical case for the score
+    // matrix wire post-Mul).
+    let any_annotated = section.iter().any(|&nid| {
+        let fact = &model.nodes[nid].outputs[0].fact;
+        fact.uniform_tdim.is_some() || fact.region_of_interest.is_some()
+    });
+    if !any_annotated {
+        return Ok(None);
+    }
+
+    // Phase 3 — form recognition.  Find at least one wire whose uniform_tdim
+    // matches the block-diagonal form `chunk(i) == chunk(j)`; chunk size
+    // determines the per-chunk dimension.
+    let mut chunk_size: Option<i64> = None;
+    for &nid in &section {
+        let fact = &model.nodes[nid].outputs[0].fact;
+        let Some(uniform) = &fact.uniform_tdim else {
+            continue;
+        };
+        let streaming_axes: TVec<usize> = fact
+            .shape
+            .iter()
+            .enumerate()
+            .filter(|(_, d)| d.symbols().contains(stream_sym))
+            .map(|(i, _)| i)
+            .collect();
+        if let Some(k) = decode_block_diag_mask(uniform, &streaming_axes) {
+            chunk_size = Some(k);
+            break;
+        }
+    }
+    let Some(chunk_size) = chunk_size else {
+        return Ok(None);
+    };
+
+    Ok(Some(QuadraticSection { section, initiators, terminators, chunk_size }))
+}
+
 /// Wires identified by the recogniser as the rewrite target.
+///
+/// Op-aware bridge from a `QuadraticSection` (phase 1+2+3) to the rewriter
+/// (phase 4).  Identifies which initiator is the compute EinSum, which body
+/// node is the Mul-by-mask, and which terminator is the Reduce<Sum>, plus
+/// the streaming-axis positions the rewriter needs.
 #[derive(Debug)]
 struct Pattern {
     einsum_node: usize,
@@ -66,99 +177,115 @@ struct Pattern {
     reduce_axis: usize,
 }
 
-fn find_pattern(model: &TypedModel, stream_sym: &Symbol) -> TractResult<Option<Pattern>> {
-    for node in &model.nodes {
-        let Some(_) = node.op_as::<EinSum>() else {
-            continue;
+impl Pattern {
+    /// Phase 4 prep: derive op-specific rewrite info from a topological
+    /// section.  Returns None if the section's op-types aren't ones the
+    /// current rewriter handles.
+    fn from_section(
+        model: &TypedModel,
+        sec: &QuadraticSection,
+        stream_sym: &Symbol,
+    ) -> TractResult<Option<Pattern>> {
+        // Initiator: a section node that's a compute EinSum (output has no
+        // uniform_tdim, op is EinSum).  Mask-construction initiators (Eq,
+        // etc.) have uniform_tdim outputs — they get deleted, not rewritten.
+        let einsum_node = sec.initiators.iter().copied().find(|&nid| {
+            let n = &model.nodes[nid];
+            n.outputs[0].fact.uniform_tdim.is_none() && n.op_is::<EinSum>()
+        });
+        let Some(einsum_node) = einsum_node else {
+            return Ok(None);
         };
-        let out_fact = model.outlet_fact(OutletId::new(node.id, 0))?;
-        let out_streaming_axes: TVec<usize> = out_fact
+        let einsum_n = &model.nodes[einsum_node];
+        let einsum_out_fact = &einsum_n.outputs[0].fact;
+        let einsum_out_streaming_axes: TVec<usize> = einsum_out_fact
             .shape
             .iter()
             .enumerate()
             .filter(|(_, d)| d.symbols().contains(stream_sym))
             .map(|(i, _)| i)
             .collect();
-        // Require exactly two streaming output axes, and require them to be
-        // contiguous — the chunk batch axis lives at the first one's slot,
-        // the within-chunk row/col land at the next two.
-        if out_streaming_axes.len() != 2 {
-            continue;
+        if einsum_out_streaming_axes.len() != 2
+            || einsum_out_streaming_axes[1] != einsum_out_streaming_axes[0] + 1
+        {
+            return Ok(None);
         }
-        if out_streaming_axes[1] != out_streaming_axes[0] + 1 {
-            continue;
-        }
-        // Each EinSum input must have exactly one streaming axis.
-        let mut in_streaming_axes: TVec<usize> = tvec!();
-        let mut all_inputs_have_one_stream_axis = true;
-        for &input in &node.inputs {
-            let in_fact = model.outlet_fact(input)?;
-            let stream_positions: TVec<usize> = in_fact
+        let mut einsum_in_streaming_axes: TVec<usize> = tvec!();
+        for &input in &einsum_n.inputs {
+            let f = model.outlet_fact(input)?;
+            let positions: TVec<usize> = f
                 .shape
                 .iter()
                 .enumerate()
                 .filter(|(_, d)| d.symbols().contains(stream_sym))
                 .map(|(i, _)| i)
                 .collect();
-            if stream_positions.len() != 1 {
-                all_inputs_have_one_stream_axis = false;
-                break;
+            if positions.len() != 1 {
+                return Ok(None);
             }
-            in_streaming_axes.push(stream_positions[0]);
+            einsum_in_streaming_axes.push(positions[0]);
         }
-        if !all_inputs_have_one_stream_axis {
-            continue;
+
+        // Body Mul-by-mask: a section node consuming the EinSum's output and
+        // a uniform_tdim wire.  Identify the mask_outlet as the uniform_tdim
+        // input of that Mul.
+        let einsum_consumers = model.outlet_successors(OutletId::new(einsum_node, 0));
+        if einsum_consumers.len() != 1 {
+            return Ok(None);
         }
-        let consumers = model.outlet_successors(OutletId::new(node.id, 0));
-        if consumers.len() != 1 {
-            continue;
-        }
-        let mul_node_id = consumers[0].node;
-        let mul_node = &model.nodes[mul_node_id];
-        let Some(bin) = mul_node.op_as::<TypedBinOp>() else {
-            continue;
+        let mul_node = einsum_consumers[0].node;
+        let mul_n = &model.nodes[mul_node];
+        let Some(bin) = mul_n.op_as::<TypedBinOp>() else {
+            return Ok(None);
         };
         if !bin.0.is::<Mul>() {
-            continue;
+            return Ok(None);
         }
-        let einsum_side = consumers[0].slot;
-        let mask_side = 1 - einsum_side;
-        let mask_outlet = mul_node.inputs[mask_side];
-        let mask_fact = model.outlet_fact(mask_outlet)?;
-        let Some(uniform) = mask_fact.uniform_tdim.clone() else {
-            continue;
+        let mask_outlet = mul_n
+            .inputs
+            .iter()
+            .copied()
+            .find(|i| model.outlet_fact(*i).map(|f| f.uniform_tdim.is_some()).unwrap_or(false))
+            .ok_or_else(|| format_err!("Mul body node has no uniform_tdim input"))?;
+
+        // Terminator Reduce<Sum>: a terminator op whose op is Reduce<Sum>
+        // on a streaming axis.
+        let reduce_node = sec.terminators.iter().copied().find(|&nid| {
+            let n = &model.nodes[nid];
+            if let Some(r) = n.op_as::<Reduce>() {
+                r.reducer == Reducer::Sum
+                    && r.axes.len() == 1
+                    && einsum_out_streaming_axes.contains(&r.axes[0])
+            } else {
+                false
+            }
+        });
+        let Some(reduce_node) = reduce_node else {
+            return Ok(None);
         };
-        let Some(chunk_size) = decode_block_diag_mask(&uniform, &out_streaming_axes) else {
-            continue;
-        };
-        let mul_consumers = model.outlet_successors(OutletId::new(mul_node_id, 0));
-        if mul_consumers.len() != 1 {
-            continue;
-        }
-        let reduce_node_id = mul_consumers[0].node;
-        let reduce_node = &model.nodes[reduce_node_id];
-        let Some(reduce) = reduce_node.op_as::<Reduce>() else {
-            continue;
-        };
-        if reduce.reducer != Reducer::Sum || reduce.axes.len() != 1 {
-            continue;
-        }
-        let reduce_axis = reduce.axes[0];
-        if !out_streaming_axes.contains(&reduce_axis) {
-            continue;
-        }
-        return Ok(Some(Pattern {
-            einsum_node: node.id,
-            mul_node: mul_node_id,
+        let reduce_axis = model.nodes[reduce_node]
+            .op_as::<Reduce>()
+            .ok_or_else(|| format_err!("expected Reduce"))?
+            .axes[0];
+
+        Ok(Some(Pattern {
+            einsum_node,
+            mul_node,
             mask_outlet,
-            reduce_node: reduce_node_id,
-            chunk_size,
-            einsum_in_streaming_axes: in_streaming_axes,
-            einsum_out_streaming_axes: out_streaming_axes,
+            reduce_node,
+            chunk_size: sec.chunk_size,
+            einsum_in_streaming_axes,
+            einsum_out_streaming_axes,
             reduce_axis,
-        }));
+        }))
     }
-    Ok(None)
+}
+
+fn find_pattern(model: &TypedModel, stream_sym: &Symbol) -> TractResult<Option<Pattern>> {
+    let Some(sec) = find_quadratic_section(model, stream_sym)? else {
+        return Ok(None);
+    };
+    Pattern::from_section(model, &sec, stream_sym)
 }
 
 /// If `expr` matches `(coord_i / k) == (coord_j / k)` for the same `k`
