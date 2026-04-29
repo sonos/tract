@@ -295,18 +295,36 @@ impl Pattern {
             .find(|i| model.outlet_fact(*i).map(|f| f.uniform_tdim.is_some()).unwrap_or(false))
             .ok_or_else(|| format_err!("Mul body node has no uniform_tdim input"))?;
 
-        // Terminator: a terminator op that's a Reduce<Sum> on a streaming
-        // axis.  In a follow-up commit we'll also accept a contracting
-        // EinSum here.
+        // Terminator: either a Reduce<Sum> on a streaming axis, or a
+        // contracting EinSum that drops at least one of the streaming
+        // subscripts from its multi-T-axis input.
         let terminator_node = sec.terminators.iter().copied().find(|&nid| {
             let n = &model.nodes[nid];
             if let Some(r) = n.op_as::<Reduce>() {
-                r.reducer == Reducer::Sum
+                return r.reducer == Reducer::Sum
                     && r.axes.len() == 1
-                    && einsum_out_streaming_axes.contains(&r.axes[0])
-            } else {
-                false
+                    && einsum_out_streaming_axes.contains(&r.axes[0]);
             }
+            if let Some(es) = n.op_as::<EinSum>() {
+                let Some(mt_slot) = n.inputs.iter().position(|i| i.node == mul_node) else {
+                    return false;
+                };
+                let (in_strs, out_strs) = es.axes.to_strs();
+                let Some(mt_subscript) = in_strs.get(mt_slot) else {
+                    return false;
+                };
+                let stream_chars: Vec<char> = einsum_out_streaming_axes
+                    .iter()
+                    .map(|&pos| mt_subscript.chars().nth(pos))
+                    .collect::<Option<Vec<_>>>()
+                    .unwrap_or_default();
+                if stream_chars.is_empty() {
+                    return false;
+                }
+                let out_subscript = &out_strs[0];
+                return stream_chars.iter().any(|c| !out_subscript.contains(*c));
+            }
+            false
         });
         let Some(terminator_node) = terminator_node else {
             return Ok(None);
@@ -478,7 +496,10 @@ fn rewrite(
     // of the original streaming axis on each input, plus on the output for
     // each surviving streaming axis.
     let _ = stream_sym;
-    let new_einsum = chunkify_einsum(einsum_op, pat)?;
+    let in_starts: Vec<Option<usize>> =
+        pat.einsum_in_streaming_axes.iter().map(|&p| Some(p)).collect();
+    let out_start = Some(pat.einsum_out_streaming_axes[0]);
+    let new_einsum = chunkify_einsum(einsum_op, &in_starts, out_start)?;
     let new_einsum_out = out.wire_node(einsum_node.name.clone(), new_einsum, &chunked_inputs)?[0];
 
     // Skip the Mul: its "result" (under the chunk batch axis) is just the
@@ -488,6 +509,19 @@ fn rewrite(
     let term_node = &model.nodes[pat.terminator_node];
     let term_out = if let Some(reduce_op) = term_node.op_as::<Reduce>() {
         rewrite_reduce_terminator(&mut out, term_node, reduce_op, new_einsum_out, pat)?
+    } else if let Some(es_op) = term_node.op_as::<EinSum>() {
+        rewrite_einsum_terminator(
+            &mut out,
+            model,
+            term_node,
+            es_op,
+            new_einsum_out,
+            pat,
+            &mapping,
+            &chunk_sym,
+            k,
+            stream_sym,
+        )?
     } else {
         bail!(
             "Blockify: unsupported terminator op-type `{}` on node {}",
@@ -608,6 +642,101 @@ fn rewrite_reduce_terminator(
     Ok(out.wire_node(term_node.name.clone(), new_reduce, &[chunked_einsum_out])?[0])
 }
 
+/// Per-op-type rewrite for an EinSum terminator: chunkify the second EinSum
+/// the same way as the initiator (insert chunk char at each streaming axis
+/// position on each input/output subscript), but wire the multi-T-axis
+/// input from the chunked initiator output (Mul-by-mask is shunted) and
+/// chunkify each remaining input via a Reshape that splits its streaming
+/// axis.
+#[allow(clippy::too_many_arguments)]
+fn rewrite_einsum_terminator(
+    out: &mut TypedModel,
+    model: &TypedModel,
+    term_node: &TypedNode,
+    es_op: &EinSum,
+    chunked_multi_t_input: OutletId,
+    pat: &Pattern,
+    mapping: &HashMap<OutletId, OutletId>,
+    chunk_sym: &Symbol,
+    k: i64,
+    stream_sym: &Symbol,
+) -> TractResult<OutletId> {
+    let mt_slot = term_node
+        .inputs
+        .iter()
+        .position(|i| i.node == pat.mul_node)
+        .ok_or_else(|| format_err!("EinSum terminator must consume the masked wire"))?;
+
+    let mut chunked_inputs: TVec<OutletId> = tvec!();
+    let mut input_starts: Vec<Option<usize>> = vec![];
+    for (slot, &inp) in term_node.inputs.iter().enumerate() {
+        let in_fact = model.outlet_fact(inp)?;
+        let stream_positions: Vec<usize> = in_fact
+            .shape
+            .iter()
+            .enumerate()
+            .filter(|(_, d)| d.symbols().contains(stream_sym))
+            .map(|(i, _)| i)
+            .collect();
+
+        if slot == mt_slot {
+            // Multi-T-axis input: already in chunked form upstream.
+            chunked_inputs.push(chunked_multi_t_input);
+            input_starts.push(stream_positions.first().copied());
+        } else if stream_positions.len() == 1 {
+            // Single-T-axis auxiliary input: chunkify with a Reshape on the
+            // streaming axis (equivalent to the initiator's split).
+            let mapped = mapping
+                .get(&inp)
+                .copied()
+                .ok_or_else(|| format_err!("Missing mapping for terminator input {inp:?}"))?;
+            let mapped_fact = out.outlet_fact(mapped)?.clone();
+            let stream_axis =
+                mapped_fact.shape.iter().position(|d| d.symbols().contains(chunk_sym)).ok_or_else(
+                    || format_err!("Single-T-axis input lost streaming axis after substitute"),
+                )?;
+            let from = tvec!(mapped_fact.shape[stream_axis].clone());
+            let to = tvec!(chunk_sym.to_dim(), k.to_dim());
+            let reshape = AxisOp::Reshape(stream_axis, from, to);
+            let chunked = out.wire_node(
+                format!("{}.blockify_split.in{slot}", term_node.name),
+                reshape,
+                &[mapped],
+            )?[0];
+            chunked_inputs.push(chunked);
+            input_starts.push(Some(stream_positions[0]));
+        } else if stream_positions.is_empty() {
+            // Pure non-streaming auxiliary (e.g. a constant scale).
+            chunked_inputs.push(
+                mapping
+                    .get(&inp)
+                    .copied()
+                    .ok_or_else(|| format_err!("Missing mapping for non-streaming input"))?,
+            );
+            input_starts.push(None);
+        } else {
+            bail!(
+                "Blockify: terminator EinSum auxiliary input has >1 streaming axis at {:?} \
+                 (only the multi-T-axis input may have two streaming subscripts)",
+                stream_positions
+            );
+        }
+    }
+
+    let term_out_fact = &term_node.outputs[0].fact;
+    let out_stream_positions: Vec<usize> = term_out_fact
+        .shape
+        .iter()
+        .enumerate()
+        .filter(|(_, d)| d.symbols().contains(stream_sym))
+        .map(|(i, _)| i)
+        .collect();
+    let output_streaming_start = out_stream_positions.first().copied();
+
+    let new_einsum = chunkify_einsum(es_op, &input_starts, output_streaming_start)?;
+    Ok(out.wire_node(term_node.name.clone(), new_einsum, &chunked_inputs)?[0])
+}
+
 fn chunked_axis_index(orig_axis: usize, pat: &Pattern) -> TractResult<usize> {
     // The chunk batch axis is inserted at the position of the first
     // streaming output axis; every original axis at or after that position
@@ -622,24 +751,34 @@ fn chunked_axis_index(orig_axis: usize, pat: &Pattern) -> TractResult<usize> {
 /// every input subscript and at the first streaming-axis position in the
 /// output subscript.  Within-chunk versions of the formerly-streaming axes
 /// keep their original chars (now sitting at position+1 after the insert).
-fn chunkify_einsum(op: &EinSum, pat: &Pattern) -> TractResult<EinSum> {
+/// Insert the chunk-axis char at the streaming-axis position on each input
+/// and output.  `None` for an input/output skips the insertion (no streaming
+/// axis there, so no chunk axis on that side).  Within-chunk versions of
+/// formerly-streaming axes keep their original chars and shift right by 1.
+fn chunkify_einsum(
+    op: &EinSum,
+    input_streaming_starts: &[Option<usize>],
+    output_streaming_start: Option<usize>,
+) -> TractResult<EinSum> {
     let (inputs, outputs) = op.axes.to_strs();
     let new_repr = pick_free_axis_repr(&op.axes);
-    let insert_at = |s: &String, pos: usize| -> String {
+    let insert_at = |s: &String, pos: Option<usize>| -> String {
+        let Some(p) = pos else {
+            return s.clone();
+        };
         let mut chars: Vec<char> = s.chars().collect();
-        chars.insert(pos, new_repr);
+        chars.insert(p, new_repr);
         chars.into_iter().collect()
     };
     let new_inputs: Vec<String> = inputs
         .iter()
-        .zip(pat.einsum_in_streaming_axes.iter())
+        .zip(input_streaming_starts.iter())
         .map(|(s, &pos)| insert_at(s, pos))
         .collect();
-    let chunk_pos = pat.einsum_out_streaming_axes[0];
     let new_outputs: Vec<String> = outputs
         .iter()
         .enumerate()
-        .map(|(i, s)| if i == 0 { insert_at(s, chunk_pos) } else { s.clone() })
+        .map(|(i, s)| if i == 0 { insert_at(s, output_streaming_start) } else { s.clone() })
         .collect();
     let new_mapping = AxesMapping::from_strs(&new_inputs, &new_outputs)?;
     Ok(EinSum { axes: new_mapping, operating_dt: op.operating_dt, q_params: op.q_params.clone() })
@@ -759,15 +898,16 @@ mod tests {
         (ins.into_iter().collect(), outs.into_iter().collect())
     }
 
+    fn ck(op: &EinSum, ins: &[usize], out: usize) -> EinSum {
+        let in_starts: Vec<Option<usize>> = ins.iter().map(|&p| Some(p)).collect();
+        chunkify_einsum(op, &in_starts, Some(out)).unwrap()
+    }
+
     #[test]
     fn chunkify_einsum_handles_streaming_at_position_zero() {
-        // The ex01 case: "id,jd->ij" with streaming at position 0 on both
-        // inputs and on output positions 0 and 1.
         let op = einsum_for(&["id", "jd"], "ij");
-        let pat = make_pattern(&[0, 0], &[0, 1]);
-        let chunked = chunkify_einsum(&op, &pat).unwrap();
+        let chunked = ck(&op, &[0, 0], 0);
         let (ins, outs) = axes_to_strings(&chunked);
-        // The free char picked is the lowest unused letter.
         let chunk_char = pick_free_axis_repr(&op.axes);
         assert_eq!(ins[0], format!("{chunk_char}id"));
         assert_eq!(ins[1], format!("{chunk_char}jd"));
@@ -776,11 +916,8 @@ mod tests {
 
     #[test]
     fn chunkify_einsum_handles_streaming_at_inner_position() {
-        // Multi-head-like: "bid,bjd->bij" — streaming at position 1 on
-        // inputs, positions 1 and 2 on output, batch axis b at 0.
         let op = einsum_for(&["bid", "bjd"], "bij");
-        let pat = make_pattern(&[1, 1], &[1, 2]);
-        let chunked = chunkify_einsum(&op, &pat).unwrap();
+        let chunked = ck(&op, &[1, 1], 1);
         let (ins, outs) = axes_to_strings(&chunked);
         let chunk_char = pick_free_axis_repr(&op.axes);
         assert_eq!(ins[0], format!("b{chunk_char}id"));
@@ -790,17 +927,27 @@ mod tests {
 
     #[test]
     fn chunkify_einsum_handles_mixed_input_positions() {
-        // Streaming at different positions on the two inputs:
-        // "id,bjd->bij" — input 0 has streaming at pos 0,
-        // input 1 has streaming at pos 1.  (Output i, j at pos 1, 2.)
         let op = einsum_for(&["id", "bjd"], "bij");
-        let pat = make_pattern(&[0, 1], &[1, 2]);
-        let chunked = chunkify_einsum(&op, &pat).unwrap();
+        let chunked = ck(&op, &[0, 1], 1);
         let (ins, outs) = axes_to_strings(&chunked);
         let chunk_char = pick_free_axis_repr(&op.axes);
         assert_eq!(ins[0], format!("{chunk_char}id"));
         assert_eq!(ins[1], format!("b{chunk_char}jd"));
         assert_eq!(outs[0], format!("b{chunk_char}ij"));
+    }
+
+    #[test]
+    fn chunkify_einsum_for_terminator_with_two_streaming_input() {
+        // ex02 terminator: "ij,jd->id".  Input 0 (masked) has streaming at
+        // positions 0 and 1 — chunk char goes before position 0.  Input 1
+        // (c) has streaming at position 0.  Output has streaming at 0.
+        let op = einsum_for(&["ij", "jd"], "id");
+        let chunked = ck(&op, &[0, 0], 0);
+        let (ins, outs) = axes_to_strings(&chunked);
+        let chunk_char = pick_free_axis_repr(&op.axes);
+        assert_eq!(ins[0], format!("{chunk_char}ij"));
+        assert_eq!(ins[1], format!("{chunk_char}jd"));
+        assert_eq!(outs[0], format!("{chunk_char}id"));
     }
 
     #[test]
