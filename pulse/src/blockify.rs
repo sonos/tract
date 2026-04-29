@@ -134,20 +134,40 @@ fn find_pattern(model: &TypedModel, stream_sym: &Symbol) -> TractResult<Option<P
 
 /// If `expr` matches `(coord_i / k) == (coord_j / k)` for the same `k`
 /// on the two streaming axes, return `k`.
+///
+/// The recogniser destructures the TDim AST directly so it's robust to
+/// `Display` formatting changes and to arbitrary chunk sizes.
 fn decode_block_diag_mask(expr: &TDim, streaming_axes: &[usize]) -> Option<i64> {
     if streaming_axes.len() != 2 {
         return None;
     }
-    let s = format!("{expr}");
-    // Cheap, robust enough for the POC: parse "((🎯i)/k==(🎯j)/k)" by string match.
-    // Generalisation: walk the TDim AST.
-    for k in 2..=64 {
-        let candidate = format!("((🎯{})/{k}==(🎯{})/{k})", streaming_axes[0], streaming_axes[1]);
-        if s == candidate {
-            return Some(k);
-        }
+    let TDim::Eq(lhs, rhs) = expr else {
+        return None;
+    };
+    let (axis_a, k_a) = decode_coord_div(lhs)?;
+    let (axis_b, k_b) = decode_coord_div(rhs)?;
+    if k_a != k_b {
+        return None;
     }
-    None
+    // The two coord axes must be exactly the streaming axes (in either order).
+    let want: std::collections::BTreeSet<usize> = streaming_axes.iter().copied().collect();
+    let got: std::collections::BTreeSet<usize> = [axis_a, axis_b].into_iter().collect();
+    if want != got {
+        return None;
+    }
+    Some(k_a as i64)
+}
+
+/// Match `Div(Sym(🎯<axis>), k)` and return `(axis, k)`.
+fn decode_coord_div(expr: &TDim) -> Option<(usize, u64)> {
+    let TDim::Div(num, k) = expr else {
+        return None;
+    };
+    let TDim::Sym(sym) = num.as_ref() else {
+        return None;
+    };
+    let axis = tract_core::ops::logic::sym_to_coord_axis(sym)?;
+    Some((axis, *k))
 }
 
 /// Rebuild the model: substitute T → k·S throughout, replace the rewrite
@@ -407,10 +427,80 @@ fn pick_free_axis_repr(axes: &AxesMapping) -> char {
 
 #[cfg(test)]
 mod tests {
-    // End-to-end coverage lives in
-    // `harness/core-proptest-pulse/tests/blockify_ex01.rs` — it loads
-    // the NNEF graph, runs batch and pulsified, and compares numerically.
-    // No unit tests here because the recogniser's input is a propagated
-    // `uniform_tdim` annotation that's hard to construct without going
-    // through declutter on a real graph.
+    use super::*;
+
+    fn coord(scope: &SymbolScope, axis: usize) -> TDim {
+        TDim::Sym(scope.sym(&format!("🎯{axis}")))
+    }
+
+    fn make_block_diag(scope: &SymbolScope, i: usize, j: usize, k: u64) -> TDim {
+        TDim::Eq(
+            Box::new(TDim::Div(Box::new(coord(scope, i)), k)),
+            Box::new(TDim::Div(Box::new(coord(scope, j)), k)),
+        )
+    }
+
+    #[test]
+    fn decode_block_diag_mask_recognises_canonical_form() {
+        let scope = SymbolScope::default();
+        let expr = make_block_diag(&scope, 0, 1, 2);
+        assert_eq!(decode_block_diag_mask(&expr, &[0, 1]), Some(2));
+    }
+
+    #[test]
+    fn decode_block_diag_mask_recognises_arbitrary_chunk_size() {
+        let scope = SymbolScope::default();
+        let expr = make_block_diag(&scope, 0, 1, 137);
+        assert_eq!(decode_block_diag_mask(&expr, &[0, 1]), Some(137));
+    }
+
+    #[test]
+    fn decode_block_diag_mask_recognises_swapped_axes() {
+        let scope = SymbolScope::default();
+        // (🎯1)/2 == (🎯0)/2 — same relation, syms in opposite order.
+        let expr = make_block_diag(&scope, 1, 0, 2);
+        assert_eq!(decode_block_diag_mask(&expr, &[0, 1]), Some(2));
+    }
+
+    #[test]
+    fn decode_block_diag_mask_rejects_mismatched_chunk_sizes() {
+        let scope = SymbolScope::default();
+        let expr = TDim::Eq(
+            Box::new(TDim::Div(Box::new(coord(&scope, 0)), 2)),
+            Box::new(TDim::Div(Box::new(coord(&scope, 1)), 3)),
+        );
+        assert_eq!(decode_block_diag_mask(&expr, &[0, 1]), None);
+    }
+
+    #[test]
+    fn decode_block_diag_mask_rejects_non_streaming_axis() {
+        let scope = SymbolScope::default();
+        // Mask references coord 2 instead of one of the streaming axes [0, 1].
+        let expr = make_block_diag(&scope, 0, 2, 2);
+        assert_eq!(decode_block_diag_mask(&expr, &[0, 1]), None);
+    }
+
+    #[test]
+    fn decode_block_diag_mask_rejects_non_eq_root() {
+        let scope = SymbolScope::default();
+        let expr = TDim::Ge(
+            Box::new(TDim::Div(Box::new(coord(&scope, 0)), 2)),
+            Box::new(TDim::Div(Box::new(coord(&scope, 1)), 2)),
+        );
+        assert_eq!(decode_block_diag_mask(&expr, &[0, 1]), None);
+    }
+
+    #[test]
+    fn decode_block_diag_mask_rejects_offset_in_numerator() {
+        let scope = SymbolScope::default();
+        // ((🎯0 + 1) / 2 == (🎯1 + 1) / 2) — algebraically the same chunk-shift
+        // pattern, but our recogniser intentionally requires the canonical
+        // post-declutter form.  If declutter starts producing this variant we
+        // will need to extend the recogniser.
+        let expr = TDim::Eq(
+            Box::new(TDim::Div(Box::new(TDim::Add(vec![coord(&scope, 0), TDim::Val(1)])), 2)),
+            Box::new(TDim::Div(Box::new(TDim::Add(vec![coord(&scope, 1), TDim::Val(1)])), 2)),
+        );
+        assert_eq!(decode_block_diag_mask(&expr, &[0, 1]), None);
+    }
 }
