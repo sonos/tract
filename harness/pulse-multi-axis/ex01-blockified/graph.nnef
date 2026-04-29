@@ -1,0 +1,28 @@
+version 1.0;
+
+extension tract_registry tract_core;
+extension tract_symbol S;
+extension tract_assert S>=0;
+
+# Hand-written "post-Blockify" form of ex01-block-diag-reduce.
+# Phase A POC reference: model interface preserved (inputs [2*S, 4],
+# output [2*S]).  Internally the graph factors the streaming axis into
+# [S, P], does the chunk-batched EinSum, reduces, and re-flattens.
+# The block-diagonal mask is gone — folded into the chunk batch axis 's'
+# on the EinSum.
+
+graph network(a, b) -> (output)
+{
+    a = tract_core_external(shape = [2*S, 4], datum_type = 'f32');
+    b = tract_core_external(shape = [2*S, 4], datum_type = 'f32');
+
+    a_blk = reshape(a, shape = [S, 2, 4]);
+    b_blk = reshape(b, shape = [S, 2, 4]);
+
+    block_scores = tract_core_einsum([a_blk, b_blk], expr = "spd,sqd->spq", acc = "f32");
+
+    reduced     = sum_reduce(block_scores, axes = [1]);
+    reduced_2d  = squeeze(reduced, axes = [1]);
+
+    output = reshape(reduced_2d, shape = [2*S]);
+}
