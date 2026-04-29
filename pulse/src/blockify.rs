@@ -66,90 +66,137 @@ struct QuadraticSection {
     chunk_size: i64,
 }
 
-/// Phase 1+2+3: detect a section of the graph where wires go multi-T-axis,
-/// verify every wire there has structural justification (uniform_tdim or
-/// region_of_interest), and confirm at least one wire has a recognisable
-/// mask form so we know the chunk size.
-fn find_quadratic_section(
+/// Connected components over the subgraph induced by `nodes` on the model's
+/// dataflow.  Two nodes in `nodes` are in the same component iff one's
+/// output is consumed by the other.  Returns one `BTreeSet` per component,
+/// ordered by smallest node id.
+fn connected_components(
+    model: &TypedModel,
+    nodes: &std::collections::BTreeSet<usize>,
+) -> Vec<std::collections::BTreeSet<usize>> {
+    use std::collections::BTreeSet;
+    let mut parent: HashMap<usize, usize> = nodes.iter().map(|&n| (n, n)).collect();
+    fn uf_find(p: &mut HashMap<usize, usize>, x: usize) -> usize {
+        let px = p[&x];
+        if px == x {
+            return x;
+        }
+        let r = uf_find(p, px);
+        p.insert(x, r);
+        r
+    }
+    fn uf_union(p: &mut HashMap<usize, usize>, x: usize, y: usize) {
+        let rx = uf_find(p, x);
+        let ry = uf_find(p, y);
+        if rx != ry {
+            p.insert(rx, ry);
+        }
+    }
+    for &nid in nodes {
+        for cons in model.outlet_successors(OutletId::new(nid, 0)) {
+            if nodes.contains(&cons.node) {
+                uf_union(&mut parent, nid, cons.node);
+            }
+        }
+    }
+    let mut groups: HashMap<usize, BTreeSet<usize>> = HashMap::default();
+    for &nid in nodes {
+        let root = uf_find(&mut parent, nid);
+        groups.entry(root).or_default().insert(nid);
+    }
+    let mut out: Vec<BTreeSet<usize>> = groups.into_values().collect();
+    out.sort_by_key(|g| *g.iter().next().unwrap_or(&usize::MAX));
+    out
+}
+
+/// Phase 1+2+3: detect every section of the graph where wires go multi-T-axis.
+///
+/// The graph may contain several independent quadratic subgraphs (e.g. two
+/// attention layers in parallel); each comes back as its own section.  For
+/// each candidate section we verify that at least one wire carries
+/// `uniform_tdim` or `region_of_interest` (phase 2) and that some wire has a
+/// recognisable mask form (phase 3); sections that fail either check are
+/// dropped from the result.
+fn find_quadratic_sections(
     model: &TypedModel,
     stream_sym: &Symbol,
-) -> TractResult<Option<QuadraticSection>> {
+) -> TractResult<Vec<QuadraticSection>> {
     use std::collections::BTreeSet;
 
     let is_multi_t_axis = |fact: &TypedFact| {
         fact.shape.iter().filter(|d| d.symbols().contains(stream_sym)).count() >= 2
     };
 
-    // Phase 1 — topology.
-    let mut section: BTreeSet<usize> = BTreeSet::new();
-    for node in &model.nodes {
-        if node.outputs.len() != 1 {
-            continue;
-        }
-        if is_multi_t_axis(&node.outputs[0].fact) {
-            section.insert(node.id);
-        }
-    }
-    if section.is_empty() {
-        return Ok(None);
-    }
-
-    let initiators: Vec<usize> = section
+    // Phase 1a — collect all multi-T-axis nodes.
+    let multi_nodes: BTreeSet<usize> = model
+        .nodes
         .iter()
-        .copied()
-        .filter(|&nid| !model.nodes[nid].inputs.iter().any(|i| section.contains(&i.node)))
+        .filter(|n| n.outputs.len() == 1 && is_multi_t_axis(&n.outputs[0].fact))
+        .map(|n| n.id)
         .collect();
+    if multi_nodes.is_empty() {
+        return Ok(vec![]);
+    }
 
-    let mut terminators_set: BTreeSet<usize> = BTreeSet::new();
-    for &nid in &section {
-        for cons in model.outlet_successors(OutletId::new(nid, 0)) {
-            if !section.contains(&cons.node) {
-                terminators_set.insert(cons.node);
+    // Phase 1b — connected components over the multi-T-axis subgraph.
+    let groups = connected_components(model, &multi_nodes);
+
+    // For each component, run phase 2 + 3.  Drop components that don't have
+    // a recognisable mask anchoring them.
+    let mut sections: Vec<QuadraticSection> = vec![];
+    for section in groups {
+        let initiators: Vec<usize> = section
+            .iter()
+            .copied()
+            .filter(|&nid| !model.nodes[nid].inputs.iter().any(|i| section.contains(&i.node)))
+            .collect();
+
+        let mut terminators_set: BTreeSet<usize> = BTreeSet::new();
+        for &nid in &section {
+            for cons in model.outlet_successors(OutletId::new(nid, 0)) {
+                if !section.contains(&cons.node) {
+                    terminators_set.insert(cons.node);
+                }
             }
         }
-    }
-    let terminators: Vec<usize> = terminators_set.into_iter().collect();
+        let terminators: Vec<usize> = terminators_set.into_iter().collect();
 
-    // Phase 2 — structural-justification coverage.  At least one wire in the
-    // section must carry uniform_tdim or region_of_interest; that's the
-    // anchor we'll use in phase 3 to find the chunk size.  Wires without
-    // either are tolerated as long as their effective values are bounded
-    // by an upstream mask multiplication (the typical case for the score
-    // matrix wire post-Mul).
-    let any_annotated = section.iter().any(|&nid| {
-        let fact = &model.nodes[nid].outputs[0].fact;
-        fact.uniform_tdim.is_some() || fact.region_of_interest.is_some()
-    });
-    if !any_annotated {
-        return Ok(None);
-    }
+        // Phase 2 — at least one annotated wire.
+        let any_annotated = section.iter().any(|&nid| {
+            let fact = &model.nodes[nid].outputs[0].fact;
+            fact.uniform_tdim.is_some() || fact.region_of_interest.is_some()
+        });
+        if !any_annotated {
+            continue;
+        }
 
-    // Phase 3 — form recognition.  Find at least one wire whose uniform_tdim
-    // matches the block-diagonal form `chunk(i) == chunk(j)`; chunk size
-    // determines the per-chunk dimension.
-    let mut chunk_size: Option<i64> = None;
-    for &nid in &section {
-        let fact = &model.nodes[nid].outputs[0].fact;
-        let Some(uniform) = &fact.uniform_tdim else {
+        // Phase 3 — recognise a mask form.
+        let mut chunk_size: Option<i64> = None;
+        for &nid in &section {
+            let fact = &model.nodes[nid].outputs[0].fact;
+            let Some(uniform) = &fact.uniform_tdim else {
+                continue;
+            };
+            let streaming_axes: TVec<usize> = fact
+                .shape
+                .iter()
+                .enumerate()
+                .filter(|(_, d)| d.symbols().contains(stream_sym))
+                .map(|(i, _)| i)
+                .collect();
+            if let Some(k) = decode_block_diag_mask(uniform, &streaming_axes) {
+                chunk_size = Some(k);
+                break;
+            }
+        }
+        let Some(chunk_size) = chunk_size else {
             continue;
         };
-        let streaming_axes: TVec<usize> = fact
-            .shape
-            .iter()
-            .enumerate()
-            .filter(|(_, d)| d.symbols().contains(stream_sym))
-            .map(|(i, _)| i)
-            .collect();
-        if let Some(k) = decode_block_diag_mask(uniform, &streaming_axes) {
-            chunk_size = Some(k);
-            break;
-        }
-    }
-    let Some(chunk_size) = chunk_size else {
-        return Ok(None);
-    };
 
-    Ok(Some(QuadraticSection { section, initiators, terminators, chunk_size }))
+        sections.push(QuadraticSection { section, initiators, terminators, chunk_size });
+    }
+
+    Ok(sections)
 }
 
 /// Wires identified by the recogniser as the rewrite target.
@@ -282,10 +329,16 @@ impl Pattern {
 }
 
 fn find_pattern(model: &TypedModel, stream_sym: &Symbol) -> TractResult<Option<Pattern>> {
-    let Some(sec) = find_quadratic_section(model, stream_sym)? else {
-        return Ok(None);
-    };
-    Pattern::from_section(model, &sec, stream_sym)
+    let sections = find_quadratic_sections(model, stream_sym)?;
+    match sections.len() {
+        0 => Ok(None),
+        1 => Pattern::from_section(model, &sections[0], stream_sym),
+        n => bail!(
+            "Blockify found {n} independent quadratic sections; multi-section \
+             rewriting is not yet implemented.  Refusing to blockify rather \
+             than produce a partial rewrite."
+        ),
+    }
 }
 
 /// If `expr` matches `(coord_i / k) == (coord_j / k)` for the same `k`
@@ -751,5 +804,45 @@ mod tests {
         assert_eq!(chunked_axis_index(0, &pat).unwrap(), 0);
         assert_eq!(chunked_axis_index(1, &pat).unwrap(), 2);
         assert_eq!(chunked_axis_index(2, &pat).unwrap(), 3);
+    }
+
+    /// Build a tiny model with two parallel chains of identity ops, all
+    /// claiming multi-T-axis shape via hand-crafted facts, and check that
+    /// the connected-components walker splits them.
+    #[test]
+    fn connected_components_splits_independent_subgraphs() {
+        use std::collections::BTreeSet;
+        // Build the model topologically by hand: two parallel pairs of
+        // sources, each consumed by an identity-ish op (we use AxisOp::Add
+        // to add a unit axis — its output shape doesn't actually matter for
+        // this test; we only edit the fact afterwards to make the walker
+        // see multi-T-axis on selected nodes).
+        let mut model = TypedModel::default();
+        let t = model.symbols.sym("T");
+
+        let a1 = model.add_source("a1", f32::fact(dims![t.clone(), 4_usize].as_ref())).unwrap();
+        let b1 =
+            model.wire_node("b1", tract_core::ops::change_axes::AxisOp::Add(0), &[a1]).unwrap()[0];
+        let c1 =
+            model.wire_node("c1", tract_core::ops::change_axes::AxisOp::Add(0), &[b1]).unwrap()[0];
+
+        let a2 = model.add_source("a2", f32::fact(dims![t.clone(), 4_usize].as_ref())).unwrap();
+        let b2 =
+            model.wire_node("b2", tract_core::ops::change_axes::AxisOp::Add(0), &[a2]).unwrap()[0];
+        let c2 =
+            model.wire_node("c2", tract_core::ops::change_axes::AxisOp::Add(0), &[b2]).unwrap()[0];
+
+        model.select_output_outlets(&[c1, c2]).unwrap();
+
+        // Pretend nodes b1, c1, b2, c2 are multi-T-axis (the function we're
+        // testing only inspects connectivity; it doesn't look at facts).
+        let multi: BTreeSet<usize> = [b1.node, c1.node, b2.node, c2.node].into_iter().collect();
+        let groups = connected_components(&model, &multi);
+        assert_eq!(groups.len(), 2, "expected two independent components: {groups:?}");
+        // Each component must contain exactly its two nodes.
+        let g0: BTreeSet<usize> = [b1.node, c1.node].into_iter().collect();
+        let g1: BTreeSet<usize> = [b2.node, c2.node].into_iter().collect();
+        assert!(groups.iter().any(|g| *g == g0), "expected component {g0:?} in {groups:?}");
+        assert!(groups.iter().any(|g| *g == g1), "expected component {g1:?} in {groups:?}");
     }
 }
