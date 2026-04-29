@@ -54,6 +54,10 @@ impl ModelTransform for PulseTransform {
 
 register_model_transform!("pulse", PulseConfig, |config| Ok(Box::new(PulseTransform(config))));
 
+register_model_transform!("blockify", blockify::BlockifyConfig, |config| Ok(Box::new(
+    blockify::BlockifyTransform(config)
+)));
+
 pub trait WithPulse {
     fn enable_pulse(&mut self);
     fn with_pulse(self) -> Self;

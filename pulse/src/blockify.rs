@@ -15,7 +15,7 @@
 //! output.  Sections are independent, so patches apply in sequence.
 
 use crate::internal::*;
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap, HashSet};
 use tract_core::axes::AxesMapping;
 use tract_core::model::TypedModelPatch;
 use tract_core::ops::binary::TypedBinOp;
@@ -23,56 +23,95 @@ use tract_core::ops::change_axes::AxisOp;
 use tract_core::ops::einsum::EinSum;
 use tract_core::ops::math::Mul;
 use tract_core::ops::nn::{Reduce, Reducer};
+use tract_core::transform::ModelTransform;
 
-/// Result of running Blockify: the (possibly-rewritten) model, plus the
-/// streaming symbol and pulse value to use downstream.  Blockify substitutes
-/// the user's stream symbol `T` with `k*S` in the rewritten subgraph;
-/// downstream pulsification must use `S` and a translated pulse value.
-pub struct BlockifyResult {
-    pub model: TypedModel,
-    pub stream_sym: Symbol,
-    pub pulse: TDim,
+/// Configuration for the Blockify ModelTransform.
+#[derive(Debug, Default, Clone, serde::Deserialize)]
+pub struct BlockifyConfig {
+    /// Streaming symbol the model's quadratic sections are quadratic in.
+    /// Defaults to "S" (matches the convention used by the pulse transform).
+    pub symbol: Option<String>,
 }
 
-/// Find every quadratic section in `model`, substitute T → k·S globally,
-/// then apply one TypedModelPatch per section that chunkifies it.  No-op
-/// if no recognisable section is found.
-pub fn blockify(model: TypedModel, stream_sym: Symbol, pulse: TDim) -> TractResult<BlockifyResult> {
-    let sections = find_quadratic_sections(&model, &stream_sym)?;
-    if sections.is_empty() {
-        return Ok(BlockifyResult { model, stream_sym, pulse });
+/// Property key holding the symbol introduced by a Blockify rewrite — the
+/// new (chunk-counting) streaming symbol that downstream consumers (e.g.
+/// the pulse transform) should use.  Stored as a 1-element string tensor.
+pub const BLOCKIFY_CHUNK_SYMBOL: &str = "blockify.chunk_symbol";
+
+/// Property key holding the chunk size `k`.  Pulse values originally
+/// expressed in token-units must be divided by this to convert to
+/// chunk-units after Blockify runs.  Stored as a scalar i64 tensor.
+pub const BLOCKIFY_CHUNK_SIZE: &str = "blockify.chunk_size";
+
+/// Property key holding the original (pre-substitution) streaming symbol
+/// name.  Mostly informational.  Stored as a 1-element string tensor.
+pub const BLOCKIFY_ORIGINAL_SYMBOL: &str = "blockify.original_symbol";
+
+#[derive(Debug)]
+pub struct BlockifyTransform(pub BlockifyConfig);
+
+impl ModelTransform for BlockifyTransform {
+    fn name(&self) -> std::borrow::Cow<'static, str> {
+        "blockify".into()
     }
-    let k = sections[0].chunk_size;
-    if !sections.iter().all(|s| s.chunk_size == k) {
-        bail!(
-            "Blockify found multiple quadratic sections with mismatched chunk sizes; \
-             a single global symbol substitution cannot cover them.  Refusing to \
-             blockify rather than produce a partial rewrite."
+
+    fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
+        let symbol_name = self.0.symbol.as_deref().unwrap_or("S");
+        let stream_sym = model.symbols.sym(symbol_name);
+        let sections = find_quadratic_sections(model, &stream_sym)?;
+        if sections.is_empty() {
+            return Ok(());
+        }
+        let k = sections[0].chunk_size;
+        if !sections.iter().all(|s| s.chunk_size == k) {
+            bail!(
+                "Blockify found multiple quadratic sections with mismatched chunk \
+                 sizes; a single global symbol substitution cannot cover them.  \
+                 Refusing to blockify rather than produce a partial rewrite."
+            );
+        }
+
+        // Phase 1: introduce S, substitute T → k·S globally via core.
+        let chunk_sym = model.symbols.new_with_prefix("S");
+        let subs: HashMap<Symbol, TDim> =
+            HashMap::from([(stream_sym.clone(), chunk_sym.to_dim() * k)]);
+        let mut new_model = model.substitute_symbols(&subs)?;
+
+        // Phase 2: one TypedModelPatch per section.
+        for sec in &sections {
+            let Some(patch) = build_section_patch(&new_model, sec, &chunk_sym, k)? else {
+                continue;
+            };
+            patch.apply(&mut new_model)?;
+        }
+
+        // Ancillary outputs — describe the substitution for downstream
+        // consumers (e.g. the pulse transform that needs to translate its
+        // pulse value from token-units to chunk-units).
+        new_model.properties.insert(
+            BLOCKIFY_CHUNK_SYMBOL.to_string(),
+            tensor1(&[format!("{chunk_sym}")]).into_arc_tensor(),
         );
+        new_model.properties.insert(BLOCKIFY_CHUNK_SIZE.to_string(), tensor0(k).into_arc_tensor());
+        new_model.properties.insert(
+            BLOCKIFY_ORIGINAL_SYMBOL.to_string(),
+            tensor1(&[symbol_name.to_string()]).into_arc_tensor(),
+        );
+
+        *model = new_model;
+        Ok(())
     }
+}
 
-    // Phase 1: introduce S, substitute T → k·S globally via core.
-    let chunk_sym = model.symbols.new_with_prefix("S");
-    let subs: HashMap<Symbol, TDim> = HashMap::from([(stream_sym.clone(), chunk_sym.to_dim() * k)]);
-    let mut model = model.substitute_symbols(&subs)?;
-
-    // Phase 2: one TypedModelPatch per section.  Section node ids are
-    // stable across `substitute_symbols` (1-to-1 model copy), so we can
-    // reuse the sections we detected on the original.
-    for sec in &sections {
-        let Some(patch) = build_section_patch(&model, sec, &chunk_sym, k)? else {
-            // Op-types in this section aren't handled; leave it.  Pulsification
-            // will fail downstream with a recoverable error if this matters.
-            continue;
-        };
-        patch.apply(&mut model)?;
-    }
-
-    let translated_pulse =
-        pulse.clone().maybe_div(&k.to_dim()).map(|(d, _)| d).map_err(|e| {
-            format_err!("Blockify: pulse {pulse} not divisible by chunk size {k}: {e}")
-        })?;
-    Ok(BlockifyResult { model, stream_sym: chunk_sym, pulse: translated_pulse })
+/// Read back the `(chunk_symbol, chunk_size)` ancillary outputs that
+/// `BlockifyTransform` writes to model properties.  Returns `None` if the
+/// model wasn't blockified (or those properties aren't present).
+pub fn blockify_output(model: &TypedModel) -> Option<(Symbol, i64)> {
+    let k = model.properties.get(BLOCKIFY_CHUNK_SIZE)?.cast_to_scalar::<i64>().ok()?;
+    let name_tensor = model.properties.get(BLOCKIFY_CHUNK_SYMBOL)?;
+    let view = name_tensor.to_plain_array_view::<String>().ok()?;
+    let name = view.iter().next()?;
+    Some((model.symbols.sym(name), k))
 }
 
 /// Streaming-axis positions on a typed fact.
@@ -97,7 +136,7 @@ struct QuadraticSection {
     /// kept here because phase 4 body-chain handling (Softmax, Add, etc.)
     /// will need to walk it.
     #[allow(dead_code)]
-    section: std::collections::BTreeSet<usize>,
+    section: BTreeSet<usize>,
     /// Subset of `section` whose inputs are all outside it (= "rise to quadratic").
     initiators: Vec<usize>,
     /// Nodes outside `section` consuming an in-section wire (= "drop back to linear").
@@ -110,11 +149,7 @@ struct QuadraticSection {
 /// dataflow.  Two nodes in `nodes` are in the same component iff one's
 /// output is consumed by the other.  Returns one `BTreeSet` per component,
 /// ordered by smallest node id.
-fn connected_components(
-    model: &TypedModel,
-    nodes: &std::collections::BTreeSet<usize>,
-) -> Vec<std::collections::BTreeSet<usize>> {
-    use std::collections::BTreeSet;
+fn connected_components(model: &TypedModel, nodes: &BTreeSet<usize>) -> Vec<BTreeSet<usize>> {
     let mut parent: HashMap<usize, usize> = nodes.iter().map(|&n| (n, n)).collect();
     fn uf_find(p: &mut HashMap<usize, usize>, x: usize) -> usize {
         let px = p[&x];
@@ -161,8 +196,6 @@ fn find_quadratic_sections(
     model: &TypedModel,
     stream_sym: &Symbol,
 ) -> TractResult<Vec<QuadraticSection>> {
-    use std::collections::BTreeSet;
-
     let is_multi_t_axis = |fact: &TypedFact| {
         fact.shape.iter().filter(|d| d.symbols().contains(stream_sym)).count() >= 2
     };
@@ -260,8 +293,8 @@ fn decode_block_diag_mask(expr: &TDim, streaming_axes: &[usize]) -> Option<i64> 
         return None;
     }
     // The two coord axes must be exactly the streaming axes (in either order).
-    let want: std::collections::BTreeSet<usize> = streaming_axes.iter().copied().collect();
-    let got: std::collections::BTreeSet<usize> = [axis_a, axis_b].into_iter().collect();
+    let want: BTreeSet<usize> = streaming_axes.iter().copied().collect();
+    let got: BTreeSet<usize> = [axis_a, axis_b].into_iter().collect();
     if want != got {
         return None;
     }
@@ -306,85 +339,73 @@ fn build_section_patch(
     //
     // Compute initiator: an EinSum in `sec.initiators` whose output has no
     // uniform_tdim (mask-construction initiators are dead, not chunkified).
-    let einsum_node_id = sec.initiators.iter().copied().find(|&nid| {
-        let n = &model.nodes[nid];
-        n.outputs[0].fact.uniform_tdim.is_none() && n.op_is::<EinSum>()
-    });
-    let Some(einsum_node_id) = einsum_node_id else {
-        return Ok(None);
-    };
+    rule_if_some!(
+        einsum_node_id = sec.initiators.iter().copied().find(|&nid| {
+            let n = &model.nodes[nid];
+            n.outputs[0].fact.uniform_tdim.is_none() && n.op_is::<EinSum>()
+        })
+    );
     let einsum_node = &model.nodes[einsum_node_id];
     let einsum_op = einsum_node.op_as::<EinSum>().unwrap();
 
     let einsum_out_streaming_axes = streaming_positions(&einsum_node.outputs[0].fact, chunk_sym);
-    if einsum_out_streaming_axes.len() != 2
-        || einsum_out_streaming_axes[1] != einsum_out_streaming_axes[0] + 1
-    {
-        return Ok(None);
-    }
+    rule_if!(
+        einsum_out_streaming_axes.len() == 2
+            && einsum_out_streaming_axes[1] == einsum_out_streaming_axes[0] + 1
+    );
     let mut einsum_in_streaming_axes: TVec<usize> = tvec!();
     for &input in &einsum_node.inputs {
         let positions = streaming_positions(model.outlet_fact(input)?, chunk_sym);
-        if positions.len() != 1 {
-            return Ok(None);
-        }
+        rule_if!(positions.len() == 1);
         einsum_in_streaming_axes.push(positions[0]);
     }
 
     // Body Mul-by-mask: the EinSum's single consumer must be a Mul with
     // a uniform_tdim auxiliary input.
     let einsum_consumers = model.outlet_successors(OutletId::new(einsum_node_id, 0));
-    if einsum_consumers.len() != 1 {
-        return Ok(None);
-    }
+    rule_if!(einsum_consumers.len() == 1);
     let mul_node_id = einsum_consumers[0].node;
     let mul_node = &model.nodes[mul_node_id];
-    let Some(bin) = mul_node.op_as::<TypedBinOp>() else {
-        return Ok(None);
-    };
-    if !bin.0.is::<Mul>() {
-        return Ok(None);
-    }
-    let Some(mask_outlet) = mul_node
-        .inputs
-        .iter()
-        .copied()
-        .find(|i| model.outlet_fact(*i).map(|f| f.uniform_tdim.is_some()).unwrap_or(false))
-    else {
-        return Ok(None);
-    };
+    rule_if_some!(bin = mul_node.op_as::<TypedBinOp>());
+    rule_if!(bin.0.is::<Mul>());
+    rule_if_some!(
+        mask_outlet = mul_node
+            .inputs
+            .iter()
+            .copied()
+            .find(|i| model.outlet_fact(*i).map(|f| f.uniform_tdim.is_some()).unwrap_or(false))
+    );
 
     // Terminator: Reduce<Sum> on a streaming axis, or contracting EinSum.
-    let terminator_node_id = sec.terminators.iter().copied().find(|&nid| {
-        let n = &model.nodes[nid];
-        if let Some(r) = n.op_as::<Reduce>() {
-            return r.reducer == Reducer::Sum
-                && r.axes.len() == 1
-                && einsum_out_streaming_axes.contains(&r.axes[0]);
-        }
-        if let Some(es) = n.op_as::<EinSum>() {
-            let Some(mt_slot) = n.inputs.iter().position(|i| i.node == mul_node_id) else {
-                return false;
-            };
-            let (in_strs, out_strs) = es.axes.to_strs();
-            let Some(mt_subscript) = in_strs.get(mt_slot) else {
-                return false;
-            };
-            let stream_chars: Vec<char> = einsum_out_streaming_axes
-                .iter()
-                .map(|&pos| mt_subscript.chars().nth(pos))
-                .collect::<Option<Vec<_>>>()
-                .unwrap_or_default();
-            if stream_chars.is_empty() {
-                return false;
+    rule_if_some!(
+        terminator_node_id = sec.terminators.iter().copied().find(|&nid| {
+            let n = &model.nodes[nid];
+            if let Some(r) = n.op_as::<Reduce>() {
+                return r.reducer == Reducer::Sum
+                    && r.axes.len() == 1
+                    && einsum_out_streaming_axes.contains(&r.axes[0]);
             }
-            return stream_chars.iter().any(|c| !out_strs[0].contains(*c));
-        }
-        false
-    });
-    let Some(terminator_node_id) = terminator_node_id else {
-        return Ok(None);
-    };
+            if let Some(es) = n.op_as::<EinSum>() {
+                let Some(mt_slot) = n.inputs.iter().position(|i| i.node == mul_node_id) else {
+                    return false;
+                };
+                let (in_strs, out_strs) = es.axes.to_strs();
+                let Some(mt_subscript) = in_strs.get(mt_slot) else {
+                    return false;
+                };
+                let stream_chars: Vec<char> = einsum_out_streaming_axes
+                    .iter()
+                    .map(|&pos| mt_subscript.chars().nth(pos))
+                    .collect::<Option<Vec<_>>>()
+                    .unwrap_or_default();
+                if stream_chars.is_empty() {
+                    return false;
+                }
+                return stream_chars.iter().any(|c| !out_strs[0].contains(*c));
+            }
+            false
+        })
+    );
     let term_node = &model.nodes[terminator_node_id];
     let chunk_axis_in_einsum_output = einsum_out_streaming_axes[0];
 
@@ -547,7 +568,7 @@ fn build_section_patch(
     if boundary_outlet.node != terminator_node_id {
         patch.obliterate(boundary_outlet.node)?;
     }
-    let mut mask_dead = std::collections::HashSet::<usize>::new();
+    let mut mask_dead = HashSet::<usize>::new();
     collect_dead_mask_nodes(model, mask_outlet.node, einsum_node_id, mul_node_id, &mut mask_dead);
     for nid in mask_dead {
         patch.obliterate(nid)?;
@@ -561,7 +582,7 @@ fn collect_dead_mask_nodes(
     mask_outlet_node: usize,
     einsum_node_id: usize,
     mul_node_id: usize,
-    dead: &mut std::collections::HashSet<usize>,
+    dead: &mut HashSet<usize>,
 ) {
     let mut stack = vec![mask_outlet_node];
     while let Some(nid) = stack.pop() {
@@ -605,7 +626,7 @@ fn chunkify_einsum(
     output_streaming_start: Option<usize>,
 ) -> TractResult<EinSum> {
     let (inputs, outputs) = op.axes.to_strs();
-    let new_repr = pick_free_axis_repr(&op.axes);
+    let new_repr = op.axes.available_label();
     let insert_at = |s: &String, pos: Option<usize>| -> String {
         let Some(p) = pos else {
             return s.clone();
@@ -626,16 +647,6 @@ fn chunkify_einsum(
         .collect();
     let new_mapping = AxesMapping::from_strs(&new_inputs, &new_outputs)?;
     Ok(EinSum { axes: new_mapping, operating_dt: op.operating_dt, q_params: op.q_params.clone() })
-}
-
-fn pick_free_axis_repr(axes: &AxesMapping) -> char {
-    let used: std::collections::HashSet<char> = axes.iter_all_axes().map(|a| a.repr).collect();
-    for c in 'a'..='z' {
-        if !used.contains(&c) {
-            return c;
-        }
-    }
-    'Z'
 }
 
 #[cfg(test)]
@@ -740,7 +751,7 @@ mod tests {
         let op = einsum_for(&["id", "jd"], "ij");
         let chunked = ck(&op, &[0, 0], 0);
         let (ins, outs) = axes_to_strings(&chunked);
-        let chunk_char = pick_free_axis_repr(&op.axes);
+        let chunk_char = op.axes.available_label();
         assert_eq!(ins[0], format!("{chunk_char}id"));
         assert_eq!(ins[1], format!("{chunk_char}jd"));
         assert_eq!(outs[0], format!("{chunk_char}ij"));
@@ -751,7 +762,7 @@ mod tests {
         let op = einsum_for(&["bid", "bjd"], "bij");
         let chunked = ck(&op, &[1, 1], 1);
         let (ins, outs) = axes_to_strings(&chunked);
-        let chunk_char = pick_free_axis_repr(&op.axes);
+        let chunk_char = op.axes.available_label();
         assert_eq!(ins[0], format!("b{chunk_char}id"));
         assert_eq!(ins[1], format!("b{chunk_char}jd"));
         assert_eq!(outs[0], format!("b{chunk_char}ij"));
@@ -762,7 +773,7 @@ mod tests {
         let op = einsum_for(&["id", "bjd"], "bij");
         let chunked = ck(&op, &[0, 1], 1);
         let (ins, outs) = axes_to_strings(&chunked);
-        let chunk_char = pick_free_axis_repr(&op.axes);
+        let chunk_char = op.axes.available_label();
         assert_eq!(ins[0], format!("{chunk_char}id"));
         assert_eq!(ins[1], format!("b{chunk_char}jd"));
         assert_eq!(outs[0], format!("b{chunk_char}ij"));
@@ -776,7 +787,7 @@ mod tests {
         let op = einsum_for(&["ij", "jd"], "id");
         let chunked = ck(&op, &[0, 0], 0);
         let (ins, outs) = axes_to_strings(&chunked);
-        let chunk_char = pick_free_axis_repr(&op.axes);
+        let chunk_char = op.axes.available_label();
         assert_eq!(ins[0], format!("{chunk_char}ij"));
         assert_eq!(ins[1], format!("{chunk_char}jd"));
         assert_eq!(outs[0], format!("{chunk_char}id"));
@@ -802,7 +813,6 @@ mod tests {
     /// the connected-components walker splits them.
     #[test]
     fn connected_components_splits_independent_subgraphs() {
-        use std::collections::BTreeSet;
         // Build the model topologically by hand: two parallel pairs of
         // sources, each consumed by an identity-ish op (we use AxisOp::Add
         // to add a unit axis — its output shape doesn't actually matter for

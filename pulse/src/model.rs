@@ -36,12 +36,27 @@ impl PulsedModelExt for PulsedModel {
         // Blockify rewrites multi-streaming-axis subgraphs (block-diagonal
         // attention-like patterns) into single-streaming-axis chunked form
         // before pulsification.  When it fires, it rebinds the streaming
-        // symbol from T (token count) to S (chunk count); the user's pulse
-        // value is translated by /chunk_size.  No-op if no such pattern.
-        let result = crate::blockify::blockify(source.clone(), symbol, pulse.clone())?;
+        // symbol from T (token count) to S (chunk count) and stashes
+        // (chunk_symbol, chunk_size) in model.properties; we read those
+        // back to translate the pulse value.  No-op if no such pattern.
+        use tract_core::transform::ModelTransform;
+        let mut blockified = source.clone();
+        crate::blockify::BlockifyTransform(crate::blockify::BlockifyConfig {
+            symbol: Some(format!("{symbol}")),
+        })
+        .transform(&mut blockified)?;
+        let (stream_sym, pulse_dim) = match crate::blockify::blockify_output(&blockified) {
+            Some((chunk_sym, k)) => {
+                let translated =
+                    pulse.clone().maybe_div(&k.to_dim()).map(|(d, _)| d).map_err(|e| {
+                        format_err!("Blockify: pulse {pulse} not divisible by chunk size {k}: {e}")
+                    })?;
+                (chunk_sym, translated)
+            }
+            None => (symbol, pulse.clone()),
+        };
         let pulsifiers = crate::ops::OpPulsifier::inventory();
-        Pulsifier(result.stream_sym, result.pulse, pulsifiers)
-            .translate_model_with_mappings(&result.model)
+        Pulsifier(stream_sym, pulse_dim, pulsifiers).translate_model_with_mappings(&blockified)
     }
 
     fn into_typed(self) -> TractResult<TypedModel> {
