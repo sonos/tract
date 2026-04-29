@@ -24,12 +24,8 @@ pub fn rewire_back_and_forth_sync(
     rule_ensure!(op.kind == DeviceSyncKind::ToDevice);
 
     // Identify precessor ToHost
-    let Some(sync_to_host_prec) = model.single_prec(node.id)? else {
-        return Ok(None);
-    };
-    let Some(sync_to_host_prec_op) = sync_to_host_prec.op_as::<DeviceSync>() else {
-        return Ok(None);
-    };
+    rule_if_some!(sync_to_host_prec = model.single_prec(node.id)?);
+    rule_if_some!(sync_to_host_prec_op = sync_to_host_prec.op_as::<DeviceSync>());
     rule_ensure!(sync_to_host_prec_op.kind == DeviceSyncKind::ToHost);
 
     let patch =
@@ -48,23 +44,17 @@ pub fn rewire_sync_after_const(
 ) -> TractResult<Option<TypedModelPatch>> {
     // Search pattern => Const => ToHost
 
-    let Some(device_const) = op.val().as_device_tensor() else {
-        return Ok(None);
-    };
+    rule_if_some!(device_const = op.val().as_device_tensor());
 
     // Identify successors ToHost
-    let Some(next_nodes) = model.all_succ(node.id)? else {
-        return Ok(None);
-    };
+    rule_if_some!(next_nodes = model.all_succ(node.id)?);
 
     let sync_to_hosts = next_nodes
         .into_iter()
         .filter(|n| n.op_as::<DeviceSync>().is_some_and(|sync| sync.kind == DeviceSyncKind::ToHost))
         .collect_vec();
 
-    if sync_to_hosts.is_empty() {
-        return Ok(None);
-    };
+    rule_if!(!sync_to_hosts.is_empty());
 
     let host_const = device_const.to_host()?;
     let exotic_fact: Option<Box<dyn ExoticFact>> =

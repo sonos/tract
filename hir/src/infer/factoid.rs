@@ -205,9 +205,7 @@ impl ShapeFactoid {
     }
 
     pub fn as_concrete_finite(&self) -> TractResult<Option<TVec<usize>>> {
-        if self.open {
-            return Ok(None);
-        }
+        rule_if!(!self.open);
         Ok(self.dims.iter().map(|d| d.concretize().and_then(|d| d.to_usize().ok())).collect())
     }
 

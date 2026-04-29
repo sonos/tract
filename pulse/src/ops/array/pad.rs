@@ -20,9 +20,7 @@ fn pulsify(
     // Non-constant mode can't handle non-stream-axis padding
     let has_non_stream_axis_padding =
         op.pads.iter().enumerate().any(|(ax, &(a, b))| ax != stream.axis && (a != 0 || b != 0));
-    if has_non_stream_axis_padding && !matches!(op.mode, PadMode::Constant(_)) {
-        return Ok(None);
-    }
+    rule_if!(!has_non_stream_axis_padding || matches!(op.mode, PadMode::Constant(_)));
     let (before, after) = op.pads[stream.axis];
     let pulse = fact.pulse().unwrap();
     let mut extra_delay = before.saturating_sub(stream.delay);

@@ -215,15 +215,14 @@ pub fn apply_rope_rule(
     // If cos and rotate half don't share the same input, we check if they don't
     // input node that are the same.
     let (apply_rope_in, cos) = if !cos_mul.inputs.contains(&rotate_half.inputs[0]) {
-        let Some(rotate_half_prev) = model.previous_node(rotate_half) else { return Ok(None) };
-        let Some((cos_common_input_idx, _)) = model
-            .previous_nodes(cos_mul)
-            .iter()
-            .enumerate()
-            .find(|(_, n)| n.same_as(rotate_half_prev))
-        else {
-            return Ok(None);
-        };
+        rule_if_some!(rotate_half_prev = model.previous_node(rotate_half));
+        rule_if_some!(
+            (cos_common_input_idx, _) = model
+                .previous_nodes(cos_mul)
+                .iter()
+                .enumerate()
+                .find(|(_, n)| n.same_as(rotate_half_prev))
+        );
         (rotate_half.inputs[0], cos_mul.inputs[1 - cos_common_input_idx])
     } else {
         let apply_rope_in = rotate_half.inputs[0];

@@ -55,16 +55,10 @@ pub fn pad_q40_weights(
     _node_name: &str,
     op: &Const,
 ) -> TractResult<Option<TypedModelPatch>> {
-    let Some(dev_tensor) = op.val().to_device_tensor().ok() else {
-        return Ok(None);
-    };
+    rule_if_some!(dev_tensor = op.val().to_device_tensor().ok());
 
-    let DeviceTensor::Owned(t) = dev_tensor else {
-        return Ok(None);
-    };
-    let Some(cuda_tensor) = t.downcast_ref::<CudaTensor>() else {
-        return Ok(None);
-    };
+    rule_if_let!(DeviceTensor::Owned(t) = dev_tensor);
+    rule_if_some!(cuda_tensor = t.downcast_ref::<CudaTensor>());
 
     let bqf = cuda_tensor
         .exotic_fact()
@@ -77,9 +71,7 @@ pub fn pad_q40_weights(
     // all axis ops and CudaFusedAxisOp internal reshapes).  The raw tensor
     // may have a per-head shape like [m, num_heads, head_dim] that gets
     // collapsed before the GEMM.
-    let Some(effective_shape) = effective_gemm_shape(model, node, bqf.shape())? else {
-        return Ok(None);
-    };
+    rule_if_some!(effective_shape = effective_gemm_shape(model, node, bqf.shape())?);
     let effective_k = *effective_shape.last().unwrap();
     rule_ensure!(effective_k % Q40_ROW_PADDING != 0);
 

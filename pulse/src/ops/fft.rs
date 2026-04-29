@@ -22,9 +22,7 @@ fn pulsify(
         None => return Ok(None),
     };
 
-    if stream.axis != op.axis {
-        return Ok(None);
-    }
+    rule_if!(stream.axis == op.axis);
 
     let overlap = op.frame - op.stride;
 

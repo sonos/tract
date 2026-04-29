@@ -358,7 +358,7 @@ impl ResolvedInvocation<'_> {
     where
         T: CoerceFrom<Value>,
     {
-        let Some(rv) = self.get_named_arg(name) else { return Ok(None) };
+        rule_if_some!(rv = self.get_named_arg(name));
         let v = rv
             .resolve(builder, &[])
             .with_context(|| format!("Resolving argument `{name}' ({rv:?})"))?;
@@ -419,7 +419,7 @@ impl ResolvedInvocation<'_> {
     where
         T: CoerceFrom<Value>,
     {
-        let Some(rv) = self.get_named_arg(name) else { return Ok(None) };
+        rule_if_some!(rv = self.get_named_arg(name));
         let v = rv
             .resolve(builder, &[])
             .with_context(|| format!("Resolving argument `{name}' ({rv:?})"))?;
