@@ -8,12 +8,17 @@ use tract_core::ndarray::{Array, Array2, Axis};
 use tract_core::prelude::*;
 use tract_pulse::internal::*;
 
-fn ex01_path() -> std::path::PathBuf {
+fn ex_path(name: &str) -> std::path::PathBuf {
     let manifest = std::env::var("CARGO_MANIFEST_DIR").unwrap();
     std::path::Path::new(&manifest)
-        .join("../../harness/pulse-multi-axis/ex01-block-diag-reduce")
+        .join("../../harness/pulse-multi-axis")
+        .join(name)
         .canonicalize()
         .unwrap()
+}
+
+fn ex01_path() -> std::path::PathBuf {
+    ex_path("ex01-block-diag-reduce")
 }
 
 #[test]
@@ -56,4 +61,46 @@ fn ex01_block_diag_reduce_blockified_pulse_matches_batch() {
     for (i, (b_val, p_val)) in batch_arr.iter().zip(pulsed_arr.iter()).enumerate() {
         assert!((b_val - p_val).abs() < 1e-4, "mismatch at {i}: batch={b_val} pulsed={p_val}");
     }
+}
+
+/// Probe the failure mode for ex02-block-diag-bilinear: where exactly
+/// does the pulse pipeline give up, and is it an Err or a panic?
+///
+/// Currently expected to fail somewhere — this test asserts where so we
+/// notice if the boundary moves (better or worse) as Blockify evolves.
+#[test]
+fn ex02_block_diag_bilinear_currently_fails_at_run_time_with_recoverable_error() {
+    let nnef = tract_nnef::nnef().with_tract_core();
+    let model = nnef
+        .model_for_path(ex_path("ex02-block-diag-bilinear"))
+        .unwrap()
+        .into_decluttered()
+        .unwrap();
+    let t = model.symbols.sym("T");
+
+    // Blockify (no-op for ex02 today) + pulsifier — both succeed even
+    // though the resulting graph has unresolved symbols ("range").
+    // Pulsification's inability to refuse here is the silent-garbage
+    // failure mode that motivates strict-gating.
+    let pulsed = PulsedModel::new(&model, t, &2.to_dim()).expect("PulsedModel::new succeeds");
+    let typed = pulsed.into_typed().expect("into_typed succeeds");
+    let plan = SimplePlan::new(typed).expect("SimplePlan::new succeeds with unresolved symbols");
+
+    // The error surfaces only when we try to actually run the plan with
+    // concrete inputs.  It's a clean Result::Err — recoverable, no panic.
+    let mut state = SimpleState::new(&plan).expect("SimpleState::new succeeds");
+    let a = tract_core::ndarray::Array2::<f32>::zeros((2, 4));
+    let b = tract_core::ndarray::Array2::<f32>::zeros((2, 4));
+    let c = tract_core::ndarray::Array2::<f32>::zeros((2, 4));
+    let res = state.run(tvec!(
+        a.into_dyn().into_tvalue(),
+        b.into_dyn().into_tvalue(),
+        c.into_dyn().into_tvalue()
+    ));
+    let err = res.expect_err("ex02 plan-run should fail with a recoverable Err");
+    let chain = format!("{err:?}\n{:?}", err.root_cause());
+    assert!(
+        chain.contains("symbol") || chain.contains("range") || chain.contains("Undetermined"),
+        "unexpected error: {chain}"
+    );
 }
