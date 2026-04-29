@@ -1,0 +1,50 @@
+version 1.0;
+
+extension tract_registry tract_core;
+extension tract_symbol T;
+extension tract_assert T>=0;
+
+# Block-diagonal-by-P pairwise interaction with a value tensor.
+#
+# This is the SDPA structure Q·Kᵀ → mask → attn·V, *without* softmax —
+# the simplest synthetic that exercises a downstream second EinSum
+# instead of a Reduce<Sum> after the masked score matrix.
+#
+# Inputs:  a, b, c  all [T, 4]
+#
+# scores[i, j] = sum_d a[i, d] * b[j, d]                      [T, T]
+# mask[i, j]   = (floor(i / P) == floor(j / P))   P = 2       [T, T] f32
+# masked       = scores * mask                                [T, T]
+# output[i, d] = sum_j masked[i, j] * c[j, d]                 [T, 4]
+#
+# The block-diagonal mask zeroes out cross-chunk score contributions,
+# so output[i in chunk c] only depends on c[j in chunk c].  Per pulse:
+# P new samples on each input -> P new output rows of size D.
+
+graph network(a, b, c) -> (output)
+{
+    a = tract_core_external(shape = [T, 4], datum_type = 'f32');
+    b = tract_core_external(shape = [T, 4], datum_type = 'f32');
+    c = tract_core_external(shape = [T, 4], datum_type = 'f32');
+
+    scores = tract_core_einsum([a, b], expr = "id,jd->ij", acc = "f32");
+
+    a_shape = tract_core_shape_of(a);
+    T_slice = slice(a_shape, axes = [0], begin = [0], end = [1], stride = [1]);
+    T_dim   = squeeze(T_slice, axes = [0]);
+
+    pos      = tract_core_range(0, T_dim, step = 1);
+    pos_f32  = tract_core_cast(pos, to = 'f32');
+    p_f32    = tract_core_cast(2, to = 'f32');
+    chunk_f  = floor(div(pos_f32, p_f32));
+    chunk_id = tract_core_cast(chunk_f, to = 'i64');
+
+    chunk_row  = unsqueeze(chunk_id, axes = [1]);
+    chunk_col  = unsqueeze(chunk_id, axes = [0]);
+    same_chunk = eq(chunk_row, chunk_col);
+
+    mask_f32 = tract_core_cast(same_chunk, to = 'f32');
+    masked   = mul(scores, mask_f32);
+
+    output = tract_core_einsum([masked, c], expr = "ij,jd->id", acc = "f32");
+}
