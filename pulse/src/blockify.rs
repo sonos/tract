@@ -211,7 +211,9 @@ struct Pattern {
     mul_node: usize,
     /// The wire that's the mask (Mul's other input).
     mask_outlet: OutletId,
-    reduce_node: usize,
+    /// Node that contracts at least one streaming axis from the masked wire.
+    /// Today: Reduce<Sum>.  Future: a contracting EinSum (ex02).
+    terminator_node: usize,
     /// Block size extracted from the mask's uniform_tdim.
     chunk_size: i64,
     /// Position of the streaming axis on each EinSum input, in input order.
@@ -220,8 +222,6 @@ struct Pattern {
     /// be contiguous (the chunk batch axis is inserted at the first one and
     /// the second one becomes within-chunk on the next slot).
     einsum_out_streaming_axes: TVec<usize>,
-    /// Reduce axis (on Mul/EinSum output).
-    reduce_axis: usize,
 }
 
 impl Pattern {
@@ -295,9 +295,10 @@ impl Pattern {
             .find(|i| model.outlet_fact(*i).map(|f| f.uniform_tdim.is_some()).unwrap_or(false))
             .ok_or_else(|| format_err!("Mul body node has no uniform_tdim input"))?;
 
-        // Terminator Reduce<Sum>: a terminator op whose op is Reduce<Sum>
-        // on a streaming axis.
-        let reduce_node = sec.terminators.iter().copied().find(|&nid| {
+        // Terminator: a terminator op that's a Reduce<Sum> on a streaming
+        // axis.  In a follow-up commit we'll also accept a contracting
+        // EinSum here.
+        let terminator_node = sec.terminators.iter().copied().find(|&nid| {
             let n = &model.nodes[nid];
             if let Some(r) = n.op_as::<Reduce>() {
                 r.reducer == Reducer::Sum
@@ -307,23 +308,18 @@ impl Pattern {
                 false
             }
         });
-        let Some(reduce_node) = reduce_node else {
+        let Some(terminator_node) = terminator_node else {
             return Ok(None);
         };
-        let reduce_axis = model.nodes[reduce_node]
-            .op_as::<Reduce>()
-            .ok_or_else(|| format_err!("expected Reduce"))?
-            .axes[0];
 
         Ok(Some(Pattern {
             einsum_node,
             mul_node,
             mask_outlet,
-            reduce_node,
+            terminator_node,
             chunk_size: sec.chunk_size,
             einsum_in_streaming_axes,
             einsum_out_streaming_axes,
-            reduce_axis,
         }))
     }
 }
@@ -407,10 +403,11 @@ fn rewrite(
     let mut dead = std::collections::HashSet::<usize>::new();
     collect_dead_mask_nodes(model, pat, &mut dead);
     let mut skipped: std::collections::HashSet<usize> =
-        [pat.einsum_node, pat.mul_node, pat.reduce_node].into_iter().collect();
-    // Reduce's direct consumers depend on `reduce_out`, which we wire only
-    // after the topological pass.  Skip them here; we'll wire them then.
-    for cons in model.outlet_successors(OutletId::new(pat.reduce_node, 0)) {
+        [pat.einsum_node, pat.mul_node, pat.terminator_node].into_iter().collect();
+    // The terminator's direct consumers depend on `terminator_out`, which we
+    // wire only after the topological pass.  Skip them here; we'll wire them
+    // when we dispatch on the terminator's op-type.
+    for cons in model.outlet_successors(OutletId::new(pat.terminator_node, 0)) {
         skipped.insert(cons.node);
     }
 
@@ -484,36 +481,40 @@ fn rewrite(
     let new_einsum = chunkify_einsum(einsum_op, pat)?;
     let new_einsum_out = out.wire_node(einsum_node.name.clone(), new_einsum, &chunked_inputs)?[0];
 
-    // Skip the Mul: its "result" (under the chunk batch axis) is just the EinSum.
-    // Rewrite Reduce axis through the inserted chunk batch axis.
-    let reduce_node = &model.nodes[pat.reduce_node];
-    let reduce_op = reduce_node.op_as::<Reduce>().unwrap();
-    let new_reduce_axis = chunked_axis_index(reduce_op.axes[0], pat)?;
-    let new_reduce = Reduce { axes: tvec!(new_reduce_axis), reducer: reduce_op.reducer };
-    let reduce_out = out.wire_node(reduce_node.name.clone(), new_reduce, &[new_einsum_out])?[0];
-    mapping.insert(OutletId::new(pat.reduce_node, 0), reduce_out);
+    // Skip the Mul: its "result" (under the chunk batch axis) is just the
+    // chunked EinSum (mask was all-1 in chunked form).
+    //
+    // Then dispatch on the terminator's op-type.
+    let term_node = &model.nodes[pat.terminator_node];
+    let term_out = if let Some(reduce_op) = term_node.op_as::<Reduce>() {
+        rewrite_reduce_terminator(&mut out, term_node, reduce_op, new_einsum_out, pat)?
+    } else {
+        bail!(
+            "Blockify: unsupported terminator op-type `{}` on node {}",
+            term_node.op.name(),
+            term_node.name
+        );
+    };
+    mapping.insert(OutletId::new(pat.terminator_node, 0), term_out);
 
-    // Wire any nodes that consumed the Reduce output (e.g. Squeeze axis 0).
-    // We already skipped reduce; everything depending on it must now be
-    // routed through reduce_out, with its axis indices possibly shifted.
-    // For the POC: we lazily emit any direct consumer of reduce that's a
-    // Squeeze/RmAxis on the original reduce_axis, shifting it.
-    // Otherwise we fall back to copying as-is (shape will be wrong → caught
-    // by output_facts).
-    let reduce_consumers: TVec<_> =
-        model.outlet_successors(OutletId::new(pat.reduce_node, 0)).iter().copied().collect();
-    for cons in &reduce_consumers {
+    // Wire any nodes that consumed the terminator's output.  We skipped them
+    // during the topological pass; emit them now.  For the special case
+    // where a consumer is `AxisOp::Rm` on the (former) reduce axis, shift
+    // its axis through the chunk insertion.  Other ops are copied verbatim
+    // and rely on their output_facts to work post-rewrite.
+    let term_consumers: TVec<_> =
+        model.outlet_successors(OutletId::new(pat.terminator_node, 0)).iter().copied().collect();
+    for cons in &term_consumers {
         let cons_node = &model.nodes[cons.node];
-        if let Some(AxisOp::Rm(axis)) = cons_node.op_as::<AxisOp>() {
-            if *axis == pat.reduce_axis {
-                let shifted = AxisOp::Rm(new_reduce_axis);
-                let new_out = out.wire_node(cons_node.name.clone(), shifted, &[reduce_out])?[0];
-                mapping.insert(OutletId::new(cons.node, 0), new_out);
-                continue;
-            }
+        if let Some(reduce_op) = term_node.op_as::<Reduce>()
+            && let Some(AxisOp::Rm(axis)) = cons_node.op_as::<AxisOp>()
+            && *axis == reduce_op.axes[0]
+        {
+            let shifted = AxisOp::Rm(chunked_axis_index(reduce_op.axes[0], pat)?);
+            let new_out = out.wire_node(cons_node.name.clone(), shifted, &[term_out])?[0];
+            mapping.insert(OutletId::new(cons.node, 0), new_out);
+            continue;
         }
-        // Fallback: copy op verbatim, hope its output_facts work after
-        // shape changes.  POC limitation; will be revisited.
         let inputs: TVec<OutletId> = cons_node.inputs.iter().map(|i| mapping[i]).collect();
         let new_outputs = out.wire_node(cons_node.name.clone(), cons_node.op.clone(), &inputs)?;
         for (slot, &out_id) in new_outputs.iter().enumerate() {
@@ -591,6 +592,20 @@ fn collect_dead_mask_nodes(
             stack.push(inp.node);
         }
     }
+}
+
+/// Per-op-type rewrite for a Reduce<Sum> terminator: chunked Reduce on the
+/// within-chunk version of the original reduce axis.
+fn rewrite_reduce_terminator(
+    out: &mut TypedModel,
+    term_node: &TypedNode,
+    reduce_op: &Reduce,
+    chunked_einsum_out: OutletId,
+    pat: &Pattern,
+) -> TractResult<OutletId> {
+    let new_axis = chunked_axis_index(reduce_op.axes[0], pat)?;
+    let new_reduce = Reduce { axes: tvec!(new_axis), reducer: reduce_op.reducer };
+    Ok(out.wire_node(term_node.name.clone(), new_reduce, &[chunked_einsum_out])?[0])
 }
 
 fn chunked_axis_index(orig_axis: usize, pat: &Pattern) -> TractResult<usize> {
@@ -724,11 +739,10 @@ mod tests {
             einsum_node: 0,
             mul_node: 0,
             mask_outlet: OutletId::new(0, 0),
-            reduce_node: 0,
+            terminator_node: 0,
             chunk_size: 2,
             einsum_in_streaming_axes: in_axes.iter().copied().collect(),
             einsum_out_streaming_axes: out_axes.iter().copied().collect(),
-            reduce_axis: 0,
         }
     }
 
