@@ -2228,7 +2228,7 @@ mod microbench_32x1 {
                     ],
                 ).unwrap();
             }
-            c.as_slice::<f32>().unwrap().to_vec()
+            c.try_as_plain().unwrap().as_slice::<f32>().unwrap().to_vec()
         };
 
         let c16 = run("wasm_f32_16x1");
