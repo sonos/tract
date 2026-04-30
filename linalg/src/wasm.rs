@@ -1302,8 +1302,7 @@ unsafe fn kernel_f32_32x1(mut pnl: *const FusedKerSpec<f32>) -> isize {
                 FusedKerSpec::Store(tile) => {
                     // 32 rows × 1 col, write each lane to a separate row
                     let mut ptr: *mut u8 = tile.ptr;
-                    for ab in [ab_q0, ab_q1, ab_q2, ab_q3, ab_q4, ab_q5, ab_q6, ab_q7].iter()
-                    {
+                    for ab in [ab_q0, ab_q1, ab_q2, ab_q3, ab_q4, ab_q5, ab_q6, ab_q7].iter() {
                         *(ptr as *mut f32) = f32x4_extract_lane::<0>(*ab);
                         ptr = ptr.add(tile.row_byte_stride as usize);
                         *(ptr as *mut f32) = f32x4_extract_lane::<1>(*ab);
@@ -2093,10 +2092,10 @@ mod microbench_32x1 {
     //!     cargo test --release --target=wasm32-wasip1 -p tract-linalg \
     //!     wasm::microbench_32x1::microbench -- --nocapture --ignored
 
+    use crate::mmm::{AsInputValue, FusedSpec};
     use std::time::Instant;
     use tract_data::internal::*;
     use tract_data::prelude::*;
-    use crate::mmm::{AsInputValue, FusedSpec};
 
     fn run_one(kernel: &dyn crate::mmm::MatMatMul, m: usize, k: usize, iters: usize) -> f64 {
         // Pack A (m,k) and B (k,1)
@@ -2110,18 +2109,20 @@ mod microbench_32x1 {
         // Warmup
         for _ in 0..50 {
             unsafe {
-                kernel.run(
-                    m,
-                    1,
-                    &[
-                        FusedSpec::AddMatMul {
-                            a: AsInputValue::Borrowed(&*pa),
-                            b: AsInputValue::Borrowed(&*pb),
-                            packing: 0,
-                        },
-                        FusedSpec::Store(kernel.c_view(Some(0), Some(0)).wrap(&c.view_mut())),
-                    ],
-                ).unwrap();
+                kernel
+                    .run(
+                        m,
+                        1,
+                        &[
+                            FusedSpec::AddMatMul {
+                                a: AsInputValue::Borrowed(&*pa),
+                                b: AsInputValue::Borrowed(&*pb),
+                                packing: 0,
+                            },
+                            FusedSpec::Store(kernel.c_view(Some(0), Some(0)).wrap(&c.view_mut())),
+                        ],
+                    )
+                    .unwrap();
             }
         }
 
@@ -2129,18 +2130,20 @@ mod microbench_32x1 {
         let t0 = Instant::now();
         for _ in 0..iters {
             unsafe {
-                kernel.run(
-                    m,
-                    1,
-                    &[
-                        FusedSpec::AddMatMul {
-                            a: AsInputValue::Borrowed(&*pa),
-                            b: AsInputValue::Borrowed(&*pb),
-                            packing: 0,
-                        },
-                        FusedSpec::Store(kernel.c_view(Some(0), Some(0)).wrap(&c.view_mut())),
-                    ],
-                ).unwrap();
+                kernel
+                    .run(
+                        m,
+                        1,
+                        &[
+                            FusedSpec::AddMatMul {
+                                a: AsInputValue::Borrowed(&*pa),
+                                b: AsInputValue::Borrowed(&*pb),
+                                packing: 0,
+                            },
+                            FusedSpec::Store(kernel.c_view(Some(0), Some(0)).wrap(&c.view_mut())),
+                        ],
+                    )
+                    .unwrap();
             }
         }
         let elapsed = t0.elapsed();
@@ -2213,18 +2216,20 @@ mod microbench_32x1 {
             let pb = packing.1.prepare_one(&b, 0, 1).unwrap();
             let mut c = Tensor::zero::<f32>(&[m, 1]).unwrap();
             unsafe {
-                kernel.run(
-                    m,
-                    1,
-                    &[
-                        FusedSpec::AddMatMul {
-                            a: AsInputValue::Borrowed(&*pa),
-                            b: AsInputValue::Borrowed(&*pb),
-                            packing: 0,
-                        },
-                        FusedSpec::Store(kernel.c_view(Some(0), Some(0)).wrap(&c.view_mut())),
-                    ],
-                ).unwrap();
+                kernel
+                    .run(
+                        m,
+                        1,
+                        &[
+                            FusedSpec::AddMatMul {
+                                a: AsInputValue::Borrowed(&*pa),
+                                b: AsInputValue::Borrowed(&*pb),
+                                packing: 0,
+                            },
+                            FusedSpec::Store(kernel.c_view(Some(0), Some(0)).wrap(&c.view_mut())),
+                        ],
+                    )
+                    .unwrap();
             }
             c.try_as_plain().unwrap().as_slice::<f32>().unwrap().to_vec()
         };
