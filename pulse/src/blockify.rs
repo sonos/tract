@@ -17,18 +17,31 @@
 //! locally and shunts the boundary outlet to the chunked-then-merged
 //! output.  Sections are independent, so patches apply in sequence.
 //!
-//! Banded sections wrap the contracted-axis input with
-//! `WindowOnAxis { window = upper - lower + 1, start = lower }` followed by
-//! a flatten reshape so the chunked einsum's contracted within-chunk axis
-//! carries `W·k` rather than `k` elements.  Both directions are supported:
+//! Banded sections wrap any input on the contracted-axis side with
+//! `WindowOnAxis(W) + flatten(W, k) → W·k` so the chunked einsum's
+//! contracted within-chunk axis carries `W·k` rather than `k` elements.
+//! "Contracted axis" = the score-matrix axis the terminator op contracts
+//! (Reduce<Sum>'s reduced axis, or the EinSum axis missing from the
+//! output).  Detected by `detect_contracted_score_axis`.
 //!
-//! * `lower = 0, upper > 0`: future window (ex03), output stream.delay = upper.
-//! * `lower < 0, upper = 0`: past window (ex04), output stream.delay = 0 (causal).
-//! * `lower < 0, upper > 0`: symmetric/mixed window, output stream.delay = upper.
+//! Window slot offset:
+//! * `contracted_axis == mask.axis_a`: `start = mask.lower` (consumer
+//!   logical chunk c on the kept axis = axis_b, window covers
+//!   `chunk(axis_a) ∈ [c + lower, c + upper]`).
+//! * `contracted_axis == mask.axis_b`: `start = -mask.upper` (kept axis =
+//!   axis_a, window covers `chunk(axis_b) ∈ [c - upper, c - lower]`).
 //!
-//! `lower > 0` (purely-future, skipping current) and `upper < 0` (purely-past)
-//! are rejected: they don't appear in attention masks and would need
-//! different pulsifier wiring.
+//! Output `stream.delay` = `max(0, end_of_window)` chunks (positive when
+//! the window extends past `c`, zero when fully causal).
+//!
+//! For ex02-style EinSum terminators, auxiliary inputs whose stream axis
+//! tracks (through the terminator einsum) to the contracted score axis
+//! are also windowed, so all inputs to the terminator share the same
+//! W·k contracted-axis size.
+//!
+//! `mask.lower > 0` (purely-future, skipping current) and `mask.upper < 0`
+//! (purely-past) are rejected: they don't appear in attention masks and
+//! would need different pulsifier wiring.
 
 use crate::internal::*;
 use std::collections::{BTreeSet, HashMap};
@@ -164,6 +177,12 @@ struct QuadraticSection {
     /// Mask form extracted from the section.  Determines the rewrite shape
     /// (block-diagonal vs banded) and carries the chunk size.
     mask: MaskForm,
+    /// Score-matrix axis (in the mask's frame, 0 or 1) that is contracted
+    /// by the terminator op.  For Reduce<Sum>, that's the reduced axis.
+    /// For an EinSum terminator, it's the streaming axis of input 0 that
+    /// doesn't appear in the output.  The windowed input(s) are those
+    /// whose stream axis maps to this score axis.
+    contracted_axis: usize,
 }
 
 /// Closed enum of mask forms the recogniser handles today.  All forms are a
@@ -307,10 +326,71 @@ fn find_quadratic_sections(
             continue;
         };
 
-        sections.push(QuadraticSection { section, initiators, terminators, mask });
+        // Phase 3b — find the score-matrix axis the terminator contracts.
+        // All terminators of one section must agree (otherwise the section
+        // would have inconsistent structure).
+        let mut contracted_axis: Option<usize> = None;
+        let mut contracted_ok = true;
+        for &t_id in &terminators {
+            let t_node = &model.nodes[t_id];
+            let Ok(ax) = detect_contracted_score_axis(model, t_node, stream_sym) else {
+                contracted_ok = false;
+                break;
+            };
+            if let Some(prev) = contracted_axis
+                && prev != ax
+            {
+                contracted_ok = false;
+                break;
+            }
+            contracted_axis = Some(ax);
+        }
+        let Some(contracted_axis) = (if contracted_ok { contracted_axis } else { None }) else {
+            continue;
+        };
+
+        sections.push(QuadraticSection { section, initiators, terminators, mask, contracted_axis });
     }
 
     Ok(sections)
+}
+
+/// Find the score-matrix axis (one of the two streaming axes of the
+/// terminator's input 0) that is contracted away by the terminator op.
+///
+/// * Reduce<Sum>: it's the reduced axis (must be one of the streaming axes).
+/// * EinSum: it's the streaming axis of input 0 that doesn't track to a
+///   unique output axis (i.e. is summed over).
+fn detect_contracted_score_axis(
+    model: &TypedModel,
+    terminator: &TypedNode,
+    stream_sym: &Symbol,
+) -> TractResult<usize> {
+    let input_fact = model.outlet_fact(terminator.inputs[0])?;
+    let streaming_axes = streaming_positions(input_fact, stream_sym);
+    ensure!(
+        streaming_axes.len() == 2,
+        "Terminator score input has {} streaming axes, expected 2",
+        streaming_axes.len()
+    );
+    if let Some(reduce) = terminator.op_as::<Reduce>() {
+        for &ax in &streaming_axes {
+            if reduce.axes.contains(&ax) {
+                return Ok(ax);
+            }
+        }
+        bail!("Reduce terminator doesn't reduce a streaming axis of the score input");
+    }
+    if let Some(einsum) = terminator.op_as::<EinSum>() {
+        for &ax in &streaming_axes {
+            let mapped = einsum.axes.track_axis((InOut::In(0), ax), InOut::Out(0))?;
+            if mapped.is_none() {
+                return Ok(ax);
+            }
+        }
+        bail!("EinSum terminator doesn't contract any streaming axis of input 0");
+    }
+    bail!("Unsupported terminator op for contracted-axis detection: {}", terminator.op.name())
 }
 
 // Pattern is gone — see `rewrite` below, which derives the same per-op
@@ -458,7 +538,17 @@ fn build_section_patch(
         if node.outputs[0].fact.uniform_tdim.is_some() {
             continue;
         }
-        rule_if_some!(out = wire_initiator(&mut patch, model, node, &sec.mask, chunk_sym, k)?);
+        rule_if_some!(
+            out = wire_initiator(
+                &mut patch,
+                model,
+                node,
+                &sec.mask,
+                sec.contracted_axis,
+                chunk_sym,
+                k,
+            )?
+        );
         chunked.insert(OutletId::new(nid, 0), out);
     }
     rule_if!(!chunked.is_empty());
@@ -486,8 +576,16 @@ fn build_section_patch(
     for &nid in &sec.terminators {
         let node = &model.nodes[nid];
         rule_if_some!(
-            (boundary, chunked_form) =
-                wire_terminator(&mut patch, model, node, &chunked, chunk_sym, k)?
+            (boundary, chunked_form) = wire_terminator(
+                &mut patch,
+                model,
+                node,
+                &chunked,
+                &sec.mask,
+                sec.contracted_axis,
+                chunk_sym,
+                k,
+            )?
         );
         shunts.push((boundary, chunked_form));
     }
@@ -525,11 +623,21 @@ fn wire_initiator(
     model: &TypedModel,
     node: &TypedNode,
     mask: &MaskForm,
+    contracted_axis: usize,
     chunk_sym: &Symbol,
     k: i64,
 ) -> TractResult<Option<OutletId>> {
     if let Some(op) = node.op_as::<EinSum>() {
-        return Ok(Some(wire_initiator_einsum(patch, model, node, op, mask, chunk_sym, k)?));
+        return Ok(Some(wire_initiator_einsum(
+            patch,
+            model,
+            node,
+            op,
+            mask,
+            contracted_axis,
+            chunk_sym,
+            k,
+        )?));
     }
     Ok(None)
 }
@@ -552,6 +660,8 @@ fn wire_terminator(
     model: &TypedModel,
     node: &TypedNode,
     chunked: &HashMap<OutletId, OutletId>,
+    mask: &MaskForm,
+    contracted_axis: usize,
     chunk_sym: &Symbol,
     k: i64,
 ) -> TractResult<Option<(OutletId, OutletId)>> {
@@ -559,7 +669,17 @@ fn wire_terminator(
         return wire_terminator_reduce(patch, model, node, op, chunked);
     }
     if let Some(op) = node.op_as::<EinSum>() {
-        return wire_terminator_einsum(patch, model, node, op, chunked, chunk_sym, k);
+        return wire_terminator_einsum(
+            patch,
+            model,
+            node,
+            op,
+            chunked,
+            mask,
+            contracted_axis,
+            chunk_sym,
+            k,
+        );
     }
     Ok(None)
 }
@@ -568,7 +688,8 @@ fn wire_terminator(
 
 /// Initiator EinSum: tap each input from the model, wire a split reshape
 /// for it, then wire the chunked EinSum.  For banded masks, additionally
-/// wrap the input whose streaming axis tracks to `mask.axis_a` with a
+/// wrap the input whose streaming axis tracks to `contracted_axis` (the
+/// score-matrix axis the section's terminator contracts) with a
 /// `WindowOnAxis(W)` + flatten reshape, so the within-chunk contracted
 /// axis on that input has size `W·k` instead of `k`.  Returns the chunked
 /// output.
@@ -578,6 +699,7 @@ fn wire_initiator_einsum(
     node: &TypedNode,
     op: &EinSum,
     mask: &MaskForm,
+    contracted_axis: usize,
     chunk_sym: &Symbol,
     k: i64,
 ) -> TractResult<OutletId> {
@@ -596,7 +718,6 @@ fn wire_initiator_einsum(
         in_streaming_axes.push(positions[0]);
     }
 
-    let window: usize = (mask.upper - mask.lower + 1) as usize;
     let mut chunked_inputs: TVec<OutletId> = tvec!();
     for (ix, (&input, &stream_axis)) in node.inputs.iter().zip(in_streaming_axes.iter()).enumerate()
     {
@@ -608,41 +729,77 @@ fn wire_initiator_einsum(
         let chunked =
             patch.wire_node(format!("{}.blockify_split.{ix}", node.name), reshape, &[tapped])?[0];
 
-        // Banded path: if this input's stream axis tracks to einsum output
-        // axis = mask.axis_a, this is the contracted-side input whose chunks
-        // need to expose a window of size W.  Wrap with WindowOnAxis then
-        // flatten (W, k) → W·k so the einsum subscripts stay unchanged.
-        let chunked = if !mask.is_block_diag() && {
-            let tracked = op
-                .axes
-                .track_axis((InOut::In(ix), stream_axis), InOut::Out(0))?
-                .ok_or_else(|| {
-                    format_err!(
-                        "EinSum stream axis on input {ix} doesn't track to a unique output axis"
-                    )
-                })?;
-            tracked == mask.axis_a
-        } {
-            let windowed = patch.wire_node(
-                format!("{}.window.{ix}", node.name),
-                tract_pulse_opl::ops::WindowOnAxis { axis: stream_axis, window, start: mask.lower },
-                &[chunked],
-            )?[0];
-            // Shape after WindowOnAxis: [..., S, W, k, ...]
-            // Flatten the (W, k) pair at position stream_axis + 1.
-            let from = tvec!(window.to_dim(), k.to_dim());
-            let to = tvec!(((window as i64) * k).to_dim());
-            let flatten = AxisOp::Reshape(stream_axis + 1, from, to);
-            patch.wire_node(format!("{}.window_flat.{ix}", node.name), flatten, &[windowed])?[0]
-        } else {
-            chunked
-        };
+        // Banded path: if this input's stream axis is on the contracted
+        // side of the section, expose `W` chunks per pulse on it.
+        let tracked_in_score =
+            op.axes.track_axis((InOut::In(ix), stream_axis), InOut::Out(0))?.ok_or_else(|| {
+                format_err!(
+                    "EinSum stream axis on input {ix} doesn't track to a unique output axis"
+                )
+            })?;
+        let chunked = wrap_with_window_if_needed(
+            patch,
+            chunked,
+            stream_axis,
+            tracked_in_score,
+            &format!("{}.{ix}", node.name),
+            mask,
+            contracted_axis,
+            k,
+        )?;
         chunked_inputs.push(chunked);
     }
 
     let in_starts: Vec<Option<usize>> = in_streaming_axes.iter().map(|&p| Some(p)).collect();
     let chunked_op = chunkify_einsum(op, &in_starts, Some(out_streaming_axes[0]))?;
     Ok(patch.wire_node(format!("{}.blockified", node.name), chunked_op, &chunked_inputs)?[0])
+}
+
+/// Wrap `chunked` (shape `[..., S, k, ...]` with the streaming dim at
+/// `stream_axis`) with `WindowOnAxis(W) + flatten(W, k) → W·k` if the
+/// section requires it: the mask is banded AND the input's stream axis
+/// maps to the contracted score axis.  Otherwise pass through unchanged.
+///
+/// `score_axis` is where this input's stream axis lands on the score
+/// matrix (= input 0 of the terminator).  `window_start_for(mask,
+/// contracted_axis)` picks the slot offset so the W chunks cover the
+/// in-band range relative to the consumer's logical chunk index.
+fn wrap_with_window_if_needed(
+    patch: &mut TypedModelPatch,
+    chunked: OutletId,
+    stream_axis: usize,
+    score_axis: usize,
+    name_prefix: &str,
+    mask: &MaskForm,
+    contracted_axis: usize,
+    k: i64,
+) -> TractResult<OutletId> {
+    if mask.is_block_diag() || score_axis != contracted_axis {
+        return Ok(chunked);
+    }
+    let window: usize = (mask.upper - mask.lower + 1) as usize;
+    let start = window_start_for(mask, contracted_axis);
+    let windowed = patch.wire_node(
+        format!("{name_prefix}.window"),
+        tract_pulse_opl::ops::WindowOnAxis { axis: stream_axis, window, start },
+        &[chunked],
+    )?[0];
+    let from = tvec!(window.to_dim(), k.to_dim());
+    let to = tvec!(((window as i64) * k).to_dim());
+    let flatten = AxisOp::Reshape(stream_axis + 1, from, to);
+    Ok(patch.wire_node(format!("{name_prefix}.window_flat"), flatten, &[windowed])?[0])
+}
+
+/// Slot-0 offset for a window that covers the in-band range:
+///
+/// * `contracted_axis == mask.axis_a`: at consumer logical chunk c on
+///   the kept axis (= axis_b), we want `chunk(axis_a) ∈ [c + lower,
+///   c + upper]` → slot 0 is at `c + lower`, so `start = lower`.
+/// * `contracted_axis == mask.axis_b`: at consumer logical chunk c on
+///   the kept axis (= axis_a), we want `chunk(axis_b) ∈ [c - upper,
+///   c - lower]` → slot 0 is at `c - upper`, so `start = -upper`.
+fn window_start_for(mask: &MaskForm, contracted_axis: usize) -> i64 {
+    if contracted_axis == mask.axis_a { mask.lower } else { -mask.upper }
 }
 
 /// Body Mul-by-mask: aliases the chunked compute input as the chunked
@@ -709,13 +866,19 @@ fn wire_terminator_reduce(
 /// EinSum terminator (e.g. ex02's `attn @ V`): chunkifies the second
 /// EinSum the same way as the initiator.  Inputs already in `chunked`
 /// (the multi-T-axis input from the body) are reused as-is; auxiliary
-/// inputs (single-T-axis) get a tap + split reshape inserted.
+/// inputs (single-T-axis) get a tap + split reshape inserted.  For
+/// banded masks, an auxiliary input whose stream axis maps (through
+/// this einsum) to the section's `contracted_axis` of the score matrix
+/// (= input 0 here) also gets `WindowOnAxis + flatten` so its
+/// within-chunk axis matches the W·k size of the windowed score.
 fn wire_terminator_einsum(
     patch: &mut TypedModelPatch,
     model: &TypedModel,
     node: &TypedNode,
     op: &EinSum,
     chunked: &HashMap<OutletId, OutletId>,
+    mask: &MaskForm,
+    contracted_axis: usize,
     chunk_sym: &Symbol,
     k: i64,
 ) -> TractResult<Option<(OutletId, OutletId)>> {
@@ -724,7 +887,8 @@ fn wire_terminator_einsum(
     for (slot, &input) in node.inputs.iter().enumerate() {
         let positions = streaming_positions(model.outlet_fact(input)?, chunk_sym);
         if let Some(&already_chunked) = chunked.get(&input) {
-            // Multi-T-axis input from the body — already in chunked form.
+            // Multi-T-axis input from the body — already in chunked form
+            // (windowed if needed by the initiator).
             chunked_inputs.push(already_chunked);
             input_starts.push(positions.first().copied());
         } else if positions.len() == 1 {
@@ -743,6 +907,26 @@ fn wire_terminator_einsum(
                 reshape,
                 &[tapped],
             )?[0];
+
+            // Where does this auxiliary's stream axis sit on the score
+            // matrix (= input 0 of this einsum)?  If it's the contracted
+            // side, window it so its within-chunk axis matches the
+            // already-windowed score input.
+            let aux_in_score = op.axes.track_axis((InOut::In(slot), stream_axis), InOut::In(0))?;
+            let new_chunked = if let Some(score_axis) = aux_in_score {
+                wrap_with_window_if_needed(
+                    patch,
+                    new_chunked,
+                    stream_axis,
+                    score_axis,
+                    &format!("{}.in{slot}", node.name),
+                    mask,
+                    contracted_axis,
+                    k,
+                )?
+            } else {
+                new_chunked
+            };
             chunked_inputs.push(new_chunked);
             input_starts.push(Some(positions[0]));
         } else if positions.is_empty() {
