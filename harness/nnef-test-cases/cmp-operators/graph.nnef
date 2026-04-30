@@ -1,0 +1,12 @@
+version 1.0;
+
+graph cmp_operators(input) -> (lt, le, gt, ge, eq, ne)
+{
+    input = external<scalar>(shape = [4]);
+    lt = input < 0.5;
+    le = input <= 0.5;
+    gt = input > 0.5;
+    ge = input >= 0.5;
+    eq = input == 0.5;
+    ne = input != 0.5;
+}
