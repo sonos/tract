@@ -31,7 +31,7 @@
 //! different pulsifier wiring.
 
 use crate::internal::*;
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap};
 use tract_core::axes::AxesMapping;
 use tract_core::model::TypedModelPatch;
 use tract_core::ops::binary::TypedBinOp;
@@ -504,15 +504,11 @@ fn build_section_patch(
         patch.shunt_outside(model, boundary, merged)?;
     }
 
-    // ── 5. Obliterate dead nodes ─────────────────────────────────────────
-    // A node is dead iff its output (a) has uniform_tdim and is in the
-    // section (= mask construction), or (b) all its consumers are dead
-    // (transitively).  Plus the initiators / body / terminators / post-
-    // terminator boundary nodes we just rewired.
-    let dead = collect_dead_nodes(model, sec, &patch.shunts);
-    for nid in dead {
-        patch.obliterate(nid)?;
-    }
+    // Dead-node cleanup is handled by `TypedModelPatch::apply`: it walks
+    // back from each shunted outlet, replacing nodes whose successors are
+    // now all dead with Dummy and propagating upstream.  That sweeps the
+    // original section (initiator EinSum, mask construction, mul-by-mask,
+    // terminator) and any feeder chain that only fed it.
 
     Ok(Some(patch))
 }
@@ -801,56 +797,6 @@ fn wire_merge_reshape(
 /// input fact, op-agnostically.
 fn first_streaming_symbol(fact: &TypedFact) -> Option<Symbol> {
     fact.shape.iter().find_map(|d| d.symbols().into_iter().next())
-}
-
-/// Op-agnostic dead-node identification: section nodes whose output has
-/// `uniform_tdim` (mask construction), plus any node whose outlets are
-/// either obliterated by an existing shunt or whose only consumers are
-/// dead.  Shunted boundary nodes are also dead (their original output
-/// is no longer reachable from any model output).
-fn collect_dead_nodes(
-    model: &TypedModel,
-    sec: &QuadraticSection,
-    shunts: &HashMap<OutletId, OutletId>,
-) -> Vec<usize> {
-    // Model inputs are never marked dead — they're still produced by
-    // upstream code and may feed nodes outside the section.
-    let inputs: HashSet<usize> =
-        model.input_outlets().map(|outs| outs.iter().map(|o| o.node).collect()).unwrap_or_default();
-    // Seed: every section node (initiators, body, mask-construction
-    // wires whose only consumers are body Mul-by-mask) — they're all
-    // replaced by chunked patch nodes.
-    let mut dead: HashSet<usize> = sec.section.iter().copied().collect();
-    // Boundary nodes (shunted outlets' source nodes) are dead.
-    for shunted in shunts.keys() {
-        dead.insert(shunted.node);
-    }
-    // Walk back: any node whose only consumers are dead is also dead.
-    loop {
-        let mut changed = false;
-        for n in &model.nodes {
-            if dead.contains(&n.id) || inputs.contains(&n.id) {
-                continue;
-            }
-            let mut consumers = vec![];
-            for s in 0..n.outputs.len() {
-                for c in model.outlet_successors(OutletId::new(n.id, s)) {
-                    consumers.push(c.node);
-                }
-            }
-            if consumers.is_empty() {
-                continue; // model output, not dead
-            }
-            if consumers.iter().all(|c| dead.contains(c)) {
-                dead.insert(n.id);
-                changed = true;
-            }
-        }
-        if !changed {
-            break;
-        }
-    }
-    dead.into_iter().collect()
 }
 
 fn chunked_axis_index(orig_axis: usize, chunk_pos: usize) -> usize {
