@@ -246,16 +246,7 @@ impl CommonRec {
             });
         }
 
-        // External state management: caller plumbs initial state in and reads
-        // final state out. Strong signal that the model is invoked once per
-        // timestep with state carried by the caller (parakeet decoder
-        // pattern), letting declutter_single_loop safely inline the LSTM/GRU.
-        let external_state = self.optional_initial_h_input.is_some()
-            && self.optional_y_h_output.is_some()
-            && (!self.body.have_extra_c_state()
-                || (self.optional_initial_c_input.is_some() && self.optional_y_c_output.is_some()));
-        let mut scan = tract_core::ops::scan::Scan::new(body, input_mapping, output_mapping, 0)?;
-        scan.external_state = external_state;
+        let scan = tract_core::ops::scan::Scan::new(body, input_mapping, output_mapping, 0)?;
         let scan_outputs = target.wire_node(prefix, scan, &outer_inputs)?;
 
         let mut result = tvec!();
