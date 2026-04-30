@@ -1,10 +1,4 @@
 #![allow(non_snake_case)]
-#[cfg(feature = "accelerate")]
-extern crate accelerate_src;
-#[cfg(feature = "blis")]
-extern crate blis_src;
-#[cfg(feature = "blis")]
-extern crate cblas;
 
 pub fn naive(m: usize, k: usize, n: usize, a: &[f32], b: &[f32], c: &mut [f32]) {
     for row in 0..m {
@@ -375,29 +369,6 @@ pub fn matrixmultiply(m: usize, k: usize, n: usize, a: &[f32], b: &[f32], c: &mu
             c.as_mut_ptr(),
             n as _,
             1,
-        )
-    }
-}
-
-#[allow(unused_variables, unused_mut)]
-pub fn cblas(m: usize, k: usize, n: usize, a: &[f32], b: &[f32], c: &mut [f32]) {
-    #[cfg(feature = "blas")]
-    unsafe {
-        cblas::sgemm(
-            cblas::Layout::RowMajor,
-            cblas::Transpose::None,
-            cblas::Transpose::None,
-            m as _,
-            n as _,
-            k as _,
-            1.0,
-            &a,
-            k as _,
-            &b,
-            n as _,
-            0.0,
-            c,
-            n as _,
         )
     }
 }

@@ -1,8 +1,6 @@
 use std::borrow::Cow;
 
 use crate::internal::*;
-#[cfg(feature = "blas")]
-use crate::ops::einsum::as_blas::AsBlas;
 use crate::ops::matmul::de_block_quant::BlockQuantTransform;
 use std::fmt::Debug;
 
@@ -293,8 +291,6 @@ register_model_transform!("concretize_symbols", ConcretizeSymbolsConfig, |config
 )));
 
 register_simple_model_transform!("softmax_fast_compact", SoftmaxFastCompact);
-#[cfg(feature = "blas")]
-register_simple_model_transform!("as_blas", AsBlas);
 register_simple_model_transform!("block_quant", BlockQuantTransform);
 
 #[derive(Debug, serde::Deserialize, Default)]

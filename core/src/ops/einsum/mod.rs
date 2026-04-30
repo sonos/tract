@@ -7,8 +7,6 @@ use crate::tract_data::itertools::Itertools;
 
 mod eval;
 
-#[cfg(feature = "blas")]
-pub mod as_blas;
 pub mod einsum_matmul;
 pub mod kernel_selection;
 pub mod prefix_matmul;

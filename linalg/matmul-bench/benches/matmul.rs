@@ -1,10 +1,4 @@
 #![allow(non_snake_case)]
-#[cfg(feature = "accelerate")]
-extern crate accelerate_src;
-#[cfg(feature = "blis")]
-extern crate blis_src;
-#[cfg(feature = "blis")]
-extern crate cblas;
 
 use criterion::measurement::WallTime;
 use criterion::*;
@@ -34,7 +28,6 @@ b!(tile_8x8);
 b!(ctile_8x8);
 b!(cpacked_tile_8x8);
 b!(matrixmultiply);
-b!(cblas);
 b!(tract);
 
 pub fn tract_blaslike(
@@ -93,7 +86,6 @@ fn matmul(c: &mut Criterion, m: usize, k: usize, n: usize) {
     ctile_8x8(&mut c, m, k, n);
     cpacked_tile_8x8(&mut c, m, k, n);
     matrixmultiply(&mut c, m, k, n);
-    cblas(&mut c, m, k, n);
     tract(&mut c, m, k, n);
     tract_blaslike(&mut c, m, k, n, f32::datum_type());
     tract_blaslike(&mut c, m, k, n, f16::datum_type());

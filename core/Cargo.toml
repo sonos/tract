@@ -15,12 +15,9 @@ rust-version.workspace = true
 maintenance = { status = "actively-developed" }
 
 [dependencies]
-accelerate-src = { workspace = true, optional = true }
 anyhow.workspace = true
 anymap3.workspace = true
 bit-set.workspace = true
-blis-src = { version = "0.2", features = ["static", "pthreads"], optional = true }
-cblas = { version = "0.5", optional = true }
 derive-new.workspace = true
 downcast-rs.workspace = true
 erased-serde.workspace = true
@@ -33,7 +30,6 @@ ndarray.workspace = true
 num-integer.workspace = true
 num-traits.workspace = true
 num-complex.workspace = true
-openblas-src = { workspace=true, optional = true }
 pastey.workspace = true
 rustfft.workspace = true
 smallvec.workspace = true
@@ -45,10 +41,6 @@ inventory.workspace = true
 [features]
 default = [ ]
 complex = [ "tract-data/complex", "tract-linalg/complex" ]
-blas = [ "cblas" ]
-accelerate = [ "blas", "accelerate-src" ]
-blis = [ "blas", "blis-src" ]
-openblas = [ "blas", "openblas-src" ]
 paranoid_assertions = []
 
 [dev-dependencies]
