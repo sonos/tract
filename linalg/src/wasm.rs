@@ -11,8 +11,6 @@ use crate::mmm::FusedKerSpec;
 use crate::mmm::ImplementationQuality;
 use crate::{Ops, Scaler};
 
-pub mod gru_fused;
-
 pub fn plug(ops: &mut Ops) {
     ops.mmm_impls.push(wasm_f32_4x4.mmm());
     ops.mmm_impls.push(wasm_f32_4x1.mmm());
