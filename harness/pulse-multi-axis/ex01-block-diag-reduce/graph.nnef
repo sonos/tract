@@ -1,0 +1,44 @@
+version 1.0;
+
+extension tract_registry tract_core;
+extension tract_symbol T;
+extension tract_assert T>=0;
+
+# Block-diagonal-by-P pairwise interaction between two streams.
+#
+# Inputs:  a, b  both [T, 4]
+#
+# scores[i, j] = sum_d a[i, d] * b[j, d]                      [T, T]
+# mask[i, j]   = (floor(i / P) == floor(j / P))   P = 2       [T, T] f32
+# masked       = scores * mask                                [T, T]
+# output[j]    = sum_i masked[i, j]                           [T]
+#
+# Streaming axis: 0 on both inputs and on the output.
+# Pulse size P = 2.  Per pulse: P new samples each on a, b -> P new
+# samples on output.  The block-diagonal mask annihilates everything
+# except the current diagonal P×P block, so the per-pulse computation
+# is bounded.
+#
+# Deliberately avoids attention-specific shape: no pre-chunking in the
+# input, no softmax, no value tensor, generic input names.
+
+graph network(a, b) -> (output)
+{
+    a = tract_core_external(shape = [T, 4], datum_type = 'f32');
+    b = tract_core_external(shape = [T, 4], datum_type = 'f32');
+
+    scores = tract_core_einsum([a, b], expr = "id,jd->ij", acc = "f32");
+
+    pos      = tract_core_range(0, tract_core_shape_of(a)[0], step = 1);
+    chunk_id = pos / 2;
+
+    chunk_row  = unsqueeze(chunk_id, axes = [1]);
+    chunk_col  = unsqueeze(chunk_id, axes = [0]);
+    same_chunk = eq(chunk_row, chunk_col);
+
+    mask_f32 = tract_core_cast(same_chunk, to = 'f32');
+    masked   = mul(scores, mask_f32);
+
+    reduced = sum_reduce(masked, axes = [0]);
+    output  = squeeze(reduced, axes = [0]);
+}

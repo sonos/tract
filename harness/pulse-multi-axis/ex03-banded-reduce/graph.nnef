@@ -1,0 +1,63 @@
+version 1.0;
+
+extension tract_registry tract_core;
+extension tract_symbol T;
+extension tract_assert T>=0;
+
+# Banded-by-P pairwise interaction between two streams.
+#
+# Mimics the geometry of multi-chunk attention with left-context L:
+# every row at chunk c attends to chunks {c, c-1, ..., c-L}.  For
+# L = 1 and P = 2 the mask is a P-block lower bidiagonal:
+#
+#       j-chunk:    0   1   2
+#                 +---+---+---+
+#       i-chunk 0 | 1 | 0 | 0 |
+#               1 | 1 | 1 | 0 |
+#               2 | 0 | 1 | 1 |
+#                 +---+---+---+
+#
+# Inputs:  a, b  both [T, 4]
+#
+# scores[i, j] = sum_d a[i, d] * b[j, d]                      [T, T]
+# diff[i, j]   = floor(i / P) - floor(j / P)                   P = 2
+# mask[i, j]   = (0 <= diff[i, j]) and (diff[i, j] <= L)       L = 1
+# masked       = scores * mask                                [T, T]
+# output[j]    = sum_i masked[i, j]                           [T]
+#
+# Streaming axis: 0 on both inputs and on the output.
+# Pulse size P = 2.  Per pulse: P new samples each on a, b -> P new
+# samples on output.  The banded mask annihilates everything outside
+# the (L+1) diagonal P×P band, so the per-pulse computation is
+# bounded by (L+1)·P past samples plus the current P-block.
+#
+# Blockify's current recogniser only matches the symmetric block-
+# diagonal form (eq(chunk_row, chunk_col)).  The banded form here is
+# the next target: the structural justification (per-pulse bounded
+# work after a chunk reshape) is the same, only the mask predicate
+# differs.
+
+graph network(a, b) -> (output)
+{
+    a = tract_core_external(shape = [T, 4], datum_type = 'f32');
+    b = tract_core_external(shape = [T, 4], datum_type = 'f32');
+
+    scores = tract_core_einsum([a, b], expr = "id,jd->ij", acc = "f32");
+
+    pos      = tract_core_range(0, tract_core_shape_of(a)[0], step = 1);
+    chunk_id = pos / 2;
+
+    chunk_row = unsqueeze(chunk_id, axes = [1]);
+    chunk_col = unsqueeze(chunk_id, axes = [0]);
+    diff      = chunk_row - chunk_col;
+
+    left_ok  = ge(diff, 0);
+    right_ok = le(diff, 1);
+    in_band  = and(left_ok, right_ok);
+
+    mask_f32 = tract_core_cast(in_band, to = 'f32');
+    masked   = mul(scores, mask_f32);
+
+    reduced = sum_reduce(masked, axes = [0]);
+    output  = squeeze(reduced, axes = [0]);
+}

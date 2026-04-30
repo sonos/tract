@@ -81,13 +81,35 @@ impl PulsedOp for PulsedReshape {
         let outs = self.op.output_facts(&[&input_typed])?;
         let stream = inputs[0].stream.as_ref().unwrap();
         let out_fact = outs.into_iter().next().context("Reshape produced no output fact")?;
+        // `stream.delay` counts elements on the streaming axis.  When the
+        // reshape changes the per-pulse size on that axis (e.g. merging
+        // `(S, k) → S·k` at a Blockify section boundary), the delay must
+        // rescale by `new_per_pulse / old_per_pulse` so the same physical
+        // lag is preserved in the new units.
+        let AxisOp::Reshape(at, from, to) = &self.op else {
+            unreachable!("PulsedReshape only built from AxisOp::Reshape (see pulsify above)");
+        };
+        let from_pos = stream.axis - at;
+        let to_pos = self.new_stream_axis - at;
+        let old_per_pulse = from[from_pos].to_usize()?;
+        let new_per_pulse = to[to_pos].to_usize()?;
+        let scaled = stream.delay * new_per_pulse;
+        ensure!(
+            scaled % old_per_pulse == 0,
+            "PulsedReshape: stream.delay {} can't be rescaled from per-pulse {} \
+             to per-pulse {} (would lose precision)",
+            stream.delay,
+            old_per_pulse,
+            new_per_pulse,
+        );
+        let new_delay = scaled / old_per_pulse;
         Ok(tvec!(PulsedFact {
             datum_type: out_fact.datum_type,
             shape: out_fact.shape,
             stream: Some(StreamInfo {
                 axis: self.new_stream_axis,
                 dim: self.new_stream_dim.clone(),
-                delay: stream.delay,
+                delay: new_delay,
             }),
         }))
     }

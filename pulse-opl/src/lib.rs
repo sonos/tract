@@ -7,6 +7,7 @@ mod delay;
 mod mask;
 mod pad;
 mod slice;
+mod window;
 
 pub use tract_nnef;
 pub use tract_nnef::tract_core;
@@ -22,6 +23,7 @@ pub mod ops {
     pub use super::mask::PulseMask;
     pub use super::pad::PulsePad;
     pub use super::slice::PulsedAxisSlice;
+    pub use super::window::WindowOnAxis;
 }
 
 pub trait WithPulse {
