@@ -1,0 +1,53 @@
+version 1.0;
+
+extension tract_registry tract_core;
+extension tract_symbol T;
+extension tract_assert T>=0;
+
+# Banded pairwise interaction with a value tensor (ex02 + ex03 mask).
+#
+# Q·Kᵀ → banded mask → attn·V, no softmax.  Same SDPA-without-softmax
+# shape as ex02, but with a banded mask `0 ≤ chunk(i) - chunk(j) ≤ 1`
+# instead of a block-diagonal one.  Combined with the ex02-style EinSum
+# terminator (which contracts j), the per-output-row dependency is on
+# j-chunks `[chunk(i) - 1, chunk(i)]` — a causal-in-i past+current
+# window.
+#
+# Inputs:  a, b, c  all [T, 4]
+#
+# scores[i, j] = sum_d a[i, d] * b[j, d]                      [T, T]
+# diff[i, j]   = floor(i / P) - floor(j / P)                   P = 2
+# mask[i, j]   = (0 <= diff[i, j]) and (diff[i, j] <= 1)
+# masked       = scores * mask                                [T, T]
+# output[i, d] = sum_j masked[i, j] * c[j, d]                 [T, 4]
+#
+# Streaming axis: 0 on all inputs and on the output.
+# Pulse size P = 2.  Per pulse: P new samples each on a, b, c -> P new
+# output rows of size D.  Output stream.delay = 0 (causal in i: per
+# i-chunk we only need j-chunks at chunk(i) - 1 and chunk(i), both of
+# which have already arrived).
+
+graph network(a, b, c) -> (output)
+{
+    a = tract_core_external(shape = [T, 4], datum_type = 'f32');
+    b = tract_core_external(shape = [T, 4], datum_type = 'f32');
+    c = tract_core_external(shape = [T, 4], datum_type = 'f32');
+
+    scores = tract_core_einsum([a, b], expr = "id,jd->ij", acc = "f32");
+
+    pos      = tract_core_range(0, tract_core_shape_of(a)[0], step = 1);
+    chunk_id = pos / 2;
+
+    chunk_row = unsqueeze(chunk_id, axes = [1]);
+    chunk_col = unsqueeze(chunk_id, axes = [0]);
+    diff      = chunk_row - chunk_col;
+
+    left_ok  = ge(diff, 0);
+    right_ok = le(diff, 1);
+    in_band  = and(left_ok, right_ok);
+
+    mask_f32 = tract_core_cast(in_band, to = 'f32');
+    masked   = mul(scores, mask_f32);
+
+    output = tract_core_einsum([masked, c], expr = "ij,jd->id", acc = "f32");
+}

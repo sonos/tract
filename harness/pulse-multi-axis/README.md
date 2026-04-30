@@ -87,3 +87,19 @@ chunks of the post-Delay buffer (matching the out-of-stream zero
 semantics of the batch reference) and shifts `stream.delay` back so
 the final output has `stream.delay = 0` — fully causal, no trailing
 flush.  Numerical match in `ex04_*`.
+
+## ex05-banded-bilinear
+
+ex02 + ex03 mask: the SDPA-without-softmax shape (Q·Kᵀ → mask → attn·V)
+with a banded mask `0 ≤ chunk(i) - chunk(j) ≤ 1`.  The terminator
+EinSum `"ij,jd→id"` contracts `j` (= `mask.axis_b`), which means the
+windowed input is on the *j-side*: `b` (initiator input 1) AND `c`
+(terminator auxiliary).  Both get `WindowOnAxis(W, start = -upper)`
+followed by a flatten reshape, so the contracted axis on the score
+matrix and on `c` both carry `W·k` elements per chunk.  Output
+`stream.delay = 0` (causal in i: per output i-chunk, the j-window
+covers `[chunk(i) - 1, chunk(i)]` — past+current).
+
+This exercises the contracted-axis-detection logic in
+`detect_contracted_score_axis` and the auxiliary-input windowing in
+`wire_terminator_einsum` — paths that ex01–ex04 don't reach.
