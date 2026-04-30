@@ -892,6 +892,26 @@ pub fn unstack(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> T
         .map(Value::from)
 }
 
+// fragment copy<?>( x: tensor<?> ) -> ( y: tensor<?> );
+//
+// Identity on the value, but graph.quant may declare a different
+// quantization for the output named tensor, in which case the operator is
+// the spec-compliant way to express a requantization. If declared output
+// type matches the input, return the input outlet unchanged (no node
+// added); otherwise wire a `Cast`, which performs real byte-level
+// requantization for any (zp, scale) change between two quantized
+// variants of the same physical type.
+pub fn copy(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
+    let input: OutletId = invocation.named_arg_as(builder, "x")?;
+    if let Some(Some(to)) = invocation.dt_from_quant_file.first().copied() {
+        let in_dt = builder.model.outlet_fact(input)?.datum_type;
+        if to != in_dt {
+            return builder.wire(cast(to), &[input]);
+        }
+    }
+    Ok(Value::Wire(input))
+}
+
 /*
  * fragment softmax( x: tensor<scalar>, axes: integer[] = [1] ) -> ( y: tensor<scalar> )
  * {

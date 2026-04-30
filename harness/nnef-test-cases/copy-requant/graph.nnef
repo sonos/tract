@@ -1,0 +1,7 @@
+version 1.0;
+
+graph main(input) -> (output)
+{
+    input = external<scalar>(shape = [1, 4]);
+    output = copy(input);
+}
