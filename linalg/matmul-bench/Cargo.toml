@@ -8,19 +8,9 @@ edition = "2024"
 members = []
 
 [dependencies]
-cblas = { version = "0.3", optional = true }
-accelerate-src = { version = "0.3", optional = true }
-blis-src = { version = "0.2", features = ["static"], optional = true }
 matrixmultiply = "*"
 tract-data.workspace = true
 tract-linalg.workspace = true
-
-
-[features]
-default = []
-blas = ["cblas"]
-blis = ["blis-src", "blas"]
-accelerate = ["accelerate-src", "blas"]
 
 [build-dependencies]
 cc = "1.0"

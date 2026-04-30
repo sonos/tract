@@ -55,7 +55,6 @@ members = [
     "test-rt/suite-unit",
     "test-rt/suite-onnx",
     "test-rt/test-f16",
-    "test-rt/test-blas",
     "test-rt/test-metal",
     "test-rt/test-cuda",
     "test-rt/test-unit-core",
@@ -109,7 +108,6 @@ default-members = [
     "test-rt/suite-unit",
     "test-rt/suite-onnx",
     "test-rt/test-f16",
-    "test-rt/test-blas",
     "test-rt/test-unit-core",
     "test-rt/test-onnx-core",
     "test-rt/test-nnef-cycle",
@@ -119,7 +117,6 @@ default-members = [
 rust-version = "1.91"
 
 [workspace.dependencies]
-accelerate-src = "0.3"
 anstyle = "1.0.2"
 anstyle-parse = "1.0.0"
 anstyle-query = "1.0.0"
@@ -182,7 +179,6 @@ num-complex = "0.4.0"
 num-integer = "0.1.44"
 num-traits = "0.2.14"
 num_cpus = "1"
-openblas-src = { version = "0.10", features = ["static"] }
 parking_lot = "0.12.3"
 pastey = "0.2"
 proptest = "1.0.0"
