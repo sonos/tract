@@ -16,6 +16,7 @@ pub mod mask;
 pub mod scan;
 pub mod slice;
 pub mod source;
+pub mod window;
 
 pub(crate) fn sync_inputs(
     node: &TypedNode,
@@ -49,7 +50,7 @@ pub(crate) fn sync_inputs(
     Ok(inputs)
 }
 
-register_all_mod!(array, cnn, downsample, fft, scan, source);
+register_all_mod!(array, cnn, downsample, fft, scan, source, window);
 
 type PulsifierFn = fn(
     &TypedModel,
