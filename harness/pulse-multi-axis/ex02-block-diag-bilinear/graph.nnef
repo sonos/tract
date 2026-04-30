@@ -29,11 +29,7 @@ graph network(a, b, c) -> (output)
 
     scores = tract_core_einsum([a, b], expr = "id,jd->ij", acc = "f32");
 
-    a_shape = tract_core_shape_of(a);
-    T_slice = slice(a_shape, axes = [0], begin = [0], end = [1], stride = [1]);
-    T_dim   = squeeze(T_slice, axes = [0]);
-
-    pos      = tract_core_range(0, T_dim, step = 1);
+    pos      = tract_core_range(0, tract_core_shape_of(a)[0], step = 1);
     pos_f32  = tract_core_cast(pos, to = 'f32');
     p_f32    = tract_core_cast(2, to = 'f32');
     chunk_f  = floor(div(pos_f32, p_f32));
