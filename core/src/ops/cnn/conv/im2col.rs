@@ -328,12 +328,26 @@ impl Patcher {
                 geometry.b_pack.write_with_k_outer(pack.as_mut_ptr(), geometry.k, geometry.n);
             let iptr = input.as_ptr_unchecked::<T>();
             let iptr = iptr.add(g * geometry.ci_per_group * geometry.input_shape_with_n.c_stride());
+            let output_x = *geometry.pool.patch.output_shape.get_unchecked(0);
+            // Fast path: stride-1 contiguous read along x. Replaces the
+            // per-element pointer-arithmetic loop with a single write_slice
+            // (memcpy when the slice fits in the current panel).
+            // Byte-identical to the slow path (write_slice's contract).
+            let contiguous_x = x_stride == 1;
             for ci in 0..geometry.ci_per_group {
                 let iptr = iptr.offset(ci as isize * c_stride);
                 for koffset in &geometry.pool.patch.standard_layout_data_field {
                     let iptr = iptr.offset(*koffset);
-                    for x in 0..*geometry.pool.patch.output_shape.get_unchecked(0) {
-                        writer.write(*iptr.offset(x as isize * x_stride));
+                    if contiguous_x {
+                        let row = std::slice::from_raw_parts(iptr, output_x);
+                        writer.write_slice(row);
+                    } else {
+                        // Hoist multiplication out of inner loop.
+                        let mut iptr_x = iptr;
+                        for _ in 0..output_x {
+                            writer.write(*iptr_x);
+                            iptr_x = iptr_x.offset(x_stride);
+                        }
                     }
                 }
             }
@@ -431,8 +445,21 @@ impl Patcher {
         iptr: *const T,
         writer: &mut tract_linalg::pack::KOutWriter<T>,
     ) {
-        for x in x_min..x_max {
-            writer.write(unsafe { *iptr.offset(x * x_stride_ptr) });
+        // Fast path: x_stride_ptr == 1 means consecutive x values are at
+        // consecutive memory addresses, so the inner loop is a contiguous
+        // slice write — byte-identical to the per-element loop.
+        if x_stride_ptr == 1 && x_max > x_min {
+            unsafe {
+                let row = std::slice::from_raw_parts(
+                    iptr.offset(x_min),
+                    (x_max - x_min) as usize,
+                );
+                writer.write_slice(row);
+            }
+        } else {
+            for x in x_min..x_max {
+                writer.write(unsafe { *iptr.offset(x * x_stride_ptr) });
+            }
         }
     }
 
@@ -455,15 +482,30 @@ impl Patcher {
                 geometry.b_pack.write_with_k_outer(pack.as_mut_ptr(), geometry.k, geometry.n);
             let iptr = input.as_ptr_unchecked::<T>();
             let iptr = iptr.add(g * geometry.ci_per_group * shape.c_stride());
+            let output_y = *geometry.pool.patch.output_shape.get_unchecked(0);
+            let output_x = *geometry.pool.patch.output_shape.get_unchecked(1);
+            // Fast path: stride-1 contiguous reads along x within each y-row.
+            // Each y-row becomes a single write_slice (memcpy when the slice
+            // fits in the current panel). Byte-identical to the slow path.
+            let contiguous_x = x_stride_ptr == 1;
             for ci in 0..geometry.ci_per_group {
                 let iptr = iptr.offset(ci as isize * c_stride_ptr);
                 for koffset in &geometry.pool.patch.standard_layout_data_field {
                     let iptr = iptr.offset(*koffset);
-                    for y in 0..*geometry.pool.patch.output_shape.get_unchecked(0) {
-                        let iptr = iptr.offset(y as isize * y_stride_ptr);
-                        for x in 0..*geometry.pool.patch.output_shape.get_unchecked(1) {
-                            writer.write(*iptr.offset(x as isize * x_stride_ptr));
+                    let mut iptr_y = iptr;
+                    for _ in 0..output_y {
+                        if contiguous_x {
+                            let row = std::slice::from_raw_parts(iptr_y, output_x);
+                            writer.write_slice(row);
+                        } else {
+                            // Hoist x multiplication out of inner loop.
+                            let mut iptr_x = iptr_y;
+                            for _ in 0..output_x {
+                                writer.write(*iptr_x);
+                                iptr_x = iptr_x.offset(x_stride_ptr);
+                            }
                         }
+                        iptr_y = iptr_y.offset(y_stride_ptr);
                     }
                 }
             }

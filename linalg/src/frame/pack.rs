@@ -403,6 +403,19 @@ impl PackedFormat {
 
 pub trait PackingWriter<T: Copy> {
     fn write(&mut self, t: T);
+
+    /// Write a contiguous slice of values. The default implementation falls
+    /// back to per-element `write`; concrete writers may override with a
+    /// `memcpy`-class fast path when the destination layout permits it.
+    ///
+    /// The output produced by `write_slice(s)` must be byte-identical to
+    /// `for &t in s { self.write(t); }` for any input.
+    #[inline]
+    fn write_slice(&mut self, ts: &[T]) {
+        for t in ts {
+            self.write(*t);
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -432,6 +445,17 @@ where
         unsafe {
             *self.ptr = t;
             self.ptr = self.ptr.offset(1);
+        }
+    }
+
+    #[inline]
+    fn write_slice(&mut self, ts: &[T]) {
+        // KOutSinglePanelWriter writes elements consecutively with no panel
+        // boundaries. A direct `copy_nonoverlapping` is byte-identical to the
+        // per-element loop.
+        unsafe {
+            std::ptr::copy_nonoverlapping(ts.as_ptr(), self.ptr, ts.len());
+            self.ptr = self.ptr.add(ts.len());
         }
     }
 }
@@ -503,6 +527,57 @@ where
                 } else {
                     self.remain = self.panel_width;
                 }
+            }
+        }
+    }
+
+    #[inline]
+    fn write_slice(&mut self, ts: &[T]) {
+        // Fast path: the slice fits entirely within the current panel. Writes
+        // are then guaranteed to be `ts.len()` consecutive memory locations
+        // followed by the same panel/lane bookkeeping the per-element path
+        // performs. This produces byte-identical output to a per-element loop.
+        //
+        // When the slice would cross a panel boundary, fall back to the
+        // per-element path so all transition logic stays in one place.
+        let n = ts.len();
+        if n == 0 {
+            return;
+        }
+        if n < self.remain {
+            // Strictly inside the current panel: bulk copy, then advance.
+            unsafe {
+                std::ptr::copy_nonoverlapping(ts.as_ptr(), self.ptr, n);
+                self.ptr = self.ptr.add(n);
+            }
+            self.remain -= n;
+        } else if n == self.remain {
+            // Exactly fills the current panel: bulk copy, then run the same
+            // panel-transition bookkeeping that `write` does on its final
+            // element. The transition is performed unconditionally here
+            // (rather than calling `write` for the last element) to keep the
+            // semantics identical even when the trait is inlined separately.
+            unsafe {
+                std::ptr::copy_nonoverlapping(ts.as_ptr(), self.ptr, n);
+                self.ptr = self.ptr.add(n);
+                self.current_panel += 1;
+                if self.current_panel == self.panels {
+                    self.ptr = self.ptr.offset(self.next_lane);
+                    self.current_panel = 0;
+                } else {
+                    self.ptr = self.ptr.offset(self.next_panel);
+                }
+                if self.current_panel == self.panels - 1 {
+                    self.remain = self.last_panel_width;
+                } else {
+                    self.remain = self.panel_width;
+                }
+            }
+        } else {
+            // Spans a panel boundary. Fall back to per-element writes so the
+            // panel-transition state machine handles every step.
+            for t in ts {
+                self.write(*t);
             }
         }
     }
