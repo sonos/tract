@@ -1,11 +1,14 @@
-//! Blockify — typed-model rewrite that factors block-diagonal structure
-//! into the graph topology, so the result has a single streaming axis
-//! everywhere and pulsifies under v1's existing machinery.
+//! Blockify — typed-model rewrite that factors block-diagonal / banded
+//! structure into the graph topology, so the result has a single streaming
+//! axis everywhere and pulsifies under v1's existing machinery.
 //!
-//! Recogniser scope: a single block-diagonal pattern.
+//! Recogniser scope: banded masks `chunk(axis_a) − chunk(axis_b) ∈ [lower, upper]`
+//! (block-diagonal is the special case `lower == upper == 0`).
 //!
 //!   EinSum([a, b]) producing scores[T, T]
-//!   → Mul(scores, mask) where mask has uniform_tdim `(coord_a/k == coord_b/k)`
+//!   → Mul(scores, mask) where mask has uniform_tdim of either form
+//!     `(coord_a/k == coord_b/k)` or `Mul([Ge(upper, D), Ge(D, lower)])`
+//!     with `D = coord_a/k − coord_b/k`
 //!   → Reduce<Sum> on a streaming axis  OR  contracting EinSum (ex02)
 //!
 //! Implementation layout: detect quadratic sections globally, substitute
@@ -13,6 +16,19 @@
 //! build one TypedModelPatch per section that does the chunkification
 //! locally and shunts the boundary outlet to the chunked-then-merged
 //! output.  Sections are independent, so patches apply in sequence.
+//!
+//! Banded sections wrap the contracted-axis input with
+//! `WindowOnAxis { window = upper - lower + 1, start = lower }` followed by
+//! a flatten reshape so the chunked einsum's contracted within-chunk axis
+//! carries `W·k` rather than `k` elements.  Both directions are supported:
+//!
+//! * `lower = 0, upper > 0`: future window (ex03), output stream.delay = upper.
+//! * `lower < 0, upper = 0`: past window (ex04), output stream.delay = 0 (causal).
+//! * `lower < 0, upper > 0`: symmetric/mixed window, output stream.delay = upper.
+//!
+//! `lower > 0` (purely-future, skipping current) and `upper < 0` (purely-past)
+//! are rejected: they don't appear in attention masks and would need
+//! different pulsifier wiring.
 
 use crate::internal::*;
 use std::collections::{BTreeSet, HashMap, HashSet};
@@ -62,8 +78,8 @@ impl ModelTransform for BlockifyTransform {
         if sections.is_empty() {
             return Ok(());
         }
-        let k = sections[0].chunk_size;
-        if !sections.iter().all(|s| s.chunk_size == k) {
+        let k = sections[0].mask.chunk_size;
+        if !sections.iter().all(|s| s.mask.chunk_size == k) {
             bail!(
                 "Blockify found multiple quadratic sections with mismatched chunk \
                  sizes; a single global symbol substitution cannot cover them.  \
@@ -77,7 +93,11 @@ impl ModelTransform for BlockifyTransform {
             HashMap::from([(stream_sym.clone(), chunk_sym.to_dim() * k)]);
         let mut new_model = model.substitute_symbols(&subs)?;
 
-        // Phase 2: one TypedModelPatch per section.
+        // Phase 2: one TypedModelPatch per section.  Banded sections that the
+        // rewriter doesn't yet handle are skipped (downstream pulsification
+        // will surface a clear error) rather than failing the whole pass —
+        // a section that returns `Ok(None)` from `build_section_patch` is
+        // simply left untouched.
         for sec in &sections {
             let Some(patch) = build_section_patch(&new_model, sec, &chunk_sym, k)? else {
                 continue;
@@ -141,8 +161,29 @@ struct QuadraticSection {
     initiators: Vec<usize>,
     /// Nodes outside `section` consuming an in-section wire (= "drop back to linear").
     terminators: Vec<usize>,
-    /// Block size extracted from a recognisable mask in the section.
+    /// Mask form extracted from the section.  Determines the rewrite shape
+    /// (block-diagonal vs banded) and carries the chunk size.
+    mask: MaskForm,
+}
+
+/// Closed enum of mask forms the recogniser handles today.  All forms are a
+/// banded predicate on `chunk(axis_a) - chunk(axis_b) ∈ [lower, upper]`;
+/// the canonical block-diagonal mask is the special case `lower == upper == 0`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct MaskForm {
     chunk_size: i64,
+    lower: i64,
+    upper: i64,
+    /// Axis whose chunk index appears with positive sign in the diff.
+    axis_a: usize,
+    /// Axis whose chunk index appears negated in the diff.
+    axis_b: usize,
+}
+
+impl MaskForm {
+    fn is_block_diag(&self) -> bool {
+        self.lower == 0 && self.upper == 0
+    }
 }
 
 /// Connected components over the subgraph induced by `nodes` on the model's
@@ -244,7 +285,7 @@ fn find_quadratic_sections(
         }
 
         // Phase 3 — recognise a mask form.
-        let mut chunk_size: Option<i64> = None;
+        let mut mask: Option<MaskForm> = None;
         for &nid in &section {
             let fact = &model.nodes[nid].outputs[0].fact;
             let Some(uniform) = &fact.uniform_tdim else {
@@ -257,16 +298,16 @@ fn find_quadratic_sections(
                 .filter(|(_, d)| d.symbols().contains(stream_sym))
                 .map(|(i, _)| i)
                 .collect();
-            if let Some(k) = decode_block_diag_mask(uniform, &streaming_axes) {
-                chunk_size = Some(k);
+            if let Some(form) = decode_mask(uniform, &streaming_axes) {
+                mask = Some(form);
                 break;
             }
         }
-        let Some(chunk_size) = chunk_size else {
+        let Some(mask) = mask else {
             continue;
         };
 
-        sections.push(QuadraticSection { section, initiators, terminators, chunk_size });
+        sections.push(QuadraticSection { section, initiators, terminators, mask });
     }
 
     Ok(sections)
@@ -275,30 +316,98 @@ fn find_quadratic_sections(
 // Pattern is gone — see `rewrite` below, which derives the same per-op
 // data from the QuadraticSection on the fly.
 
-/// If `expr` matches `(coord_i / k) == (coord_j / k)` for the same `k`
-/// on the two streaming axes, return `k`.
+/// Recognise a mask `uniform_tdim` expression.  Returns the closed-enum
+/// `MaskForm` description on success, `None` otherwise.
 ///
-/// The recogniser destructures the TDim AST directly so it's robust to
-/// `Display` formatting changes and to arbitrary chunk sizes.
-fn decode_block_diag_mask(expr: &TDim, streaming_axes: &[usize]) -> Option<i64> {
+/// Today's recogniser handles two AST shapes, both reducing to the same
+/// banded structure `chunk(axis_a) - chunk(axis_b) ∈ [lower, upper]`:
+///
+/// 1. `Eq(coord_a/k, coord_b/k)`              — block-diagonal (lower=upper=0)
+/// 2. `Mul([Ge(upper, D), Ge(D, lower)])`     — banded, `D = coord_a/k - coord_b/k`
+///
+/// Both forms are produced by `core` after `reduce()` (see comparison.rs and
+/// the And-of-Ge propagation in binary.rs).  Other AST shapes are rejected.
+fn decode_mask(expr: &TDim, streaming_axes: &[usize]) -> Option<MaskForm> {
     if streaming_axes.len() != 2 {
         return None;
     }
-    let TDim::Eq(lhs, rhs) = expr else {
+    let want: BTreeSet<usize> = streaming_axes.iter().copied().collect();
+
+    // Form 1 — block-diagonal Eq.
+    if let TDim::Eq(lhs, rhs) = expr {
+        let (axis_a, k_a) = decode_coord_div(lhs)?;
+        let (axis_b, k_b) = decode_coord_div(rhs)?;
+        if k_a != k_b {
+            return None;
+        }
+        let got: BTreeSet<usize> = [axis_a, axis_b].into_iter().collect();
+        if want != got {
+            return None;
+        }
+        return Some(MaskForm { chunk_size: k_a as i64, lower: 0, upper: 0, axis_a, axis_b });
+    }
+
+    // Form 2 — banded Mul of two Ge's.
+    if let TDim::Mul(terms) = expr
+        && terms.len() == 2
+    {
+        for (a, b) in [(&terms[0], &terms[1]), (&terms[1], &terms[0])] {
+            if let Some(form) = decode_banded_terms(a, b)
+                && want == [form.axis_a, form.axis_b].into_iter().collect()
+            {
+                return Some(form);
+            }
+        }
+    }
+    None
+}
+
+/// `upper_term = Ge(Val(upper), D)` and `lower_term = Ge(D, Val(lower))`.
+/// `D = coord_a/k - coord_b/k`.
+fn decode_banded_terms(upper_term: &TDim, lower_term: &TDim) -> Option<MaskForm> {
+    let TDim::Ge(u_val, d_upper) = upper_term else {
         return None;
     };
-    let (axis_a, k_a) = decode_coord_div(lhs)?;
-    let (axis_b, k_b) = decode_coord_div(rhs)?;
-    if k_a != k_b {
+    let TDim::Val(upper) = **u_val else {
+        return None;
+    };
+    let TDim::Ge(d_lower, l_val) = lower_term else {
+        return None;
+    };
+    let TDim::Val(lower) = **l_val else {
+        return None;
+    };
+    if d_lower != d_upper {
         return None;
     }
-    // The two coord axes must be exactly the streaming axes (in either order).
-    let want: BTreeSet<usize> = streaming_axes.iter().copied().collect();
-    let got: BTreeSet<usize> = [axis_a, axis_b].into_iter().collect();
-    if want != got {
+    let (axis_a, axis_b, k) = decode_diff(d_lower)?;
+    Some(MaskForm { chunk_size: k as i64, lower, upper, axis_a, axis_b })
+}
+
+/// Match `Add([MulInt(-1, Div(Sym(🎯b), k)), Div(Sym(🎯a), k)])` (the canonical
+/// `coord_a/k - coord_b/k` after `reduce()`) and return `(axis_a, axis_b, k)`.
+fn decode_diff(expr: &TDim) -> Option<(usize, usize, u64)> {
+    let TDim::Add(terms) = expr else {
+        return None;
+    };
+    if terms.len() != 2 {
         return None;
     }
-    Some(k_a as i64)
+    for (pos, neg) in [(&terms[0], &terms[1]), (&terms[1], &terms[0])] {
+        let Some((axis_a, k_a)) = decode_coord_div(pos) else {
+            continue;
+        };
+        let TDim::MulInt(-1, neg_inner) = neg else {
+            continue;
+        };
+        let Some((axis_b, k_b)) = decode_coord_div(neg_inner) else {
+            continue;
+        };
+        if k_a == k_b {
+            return Some((axis_a, axis_b, k_a));
+        }
+    }
+    None
 }
 
 /// Match `Div(Sym(🎯<axis>), k)` and return `(axis, k)`.
@@ -327,6 +436,13 @@ fn build_section_patch(
     chunk_sym: &Symbol,
     k: i64,
 ) -> TractResult<Option<TypedModelPatch>> {
+    // Rewriter handles `Banded { lower ≤ 0 ≤ upper }` — windows that straddle
+    // the current chunk.  Purely-future (`lower > 0`, skip current) and
+    // purely-past (`upper < 0`) windows aren't seen in practice and would
+    // need different pulsifier wiring; bail on them.
+    if sec.mask.lower > 0 || sec.mask.upper < 0 {
+        return Ok(None);
+    }
     let mut patch = TypedModelPatch::default();
     // Map from original outlet to its chunked equivalent inside the patch.
     let mut chunked: HashMap<OutletId, OutletId> = HashMap::default();
@@ -342,7 +458,7 @@ fn build_section_patch(
         if node.outputs[0].fact.uniform_tdim.is_some() {
             continue;
         }
-        rule_if_some!(out = wire_initiator(&mut patch, model, node, chunk_sym, k)?);
+        rule_if_some!(out = wire_initiator(&mut patch, model, node, &sec.mask, chunk_sym, k)?);
         chunked.insert(OutletId::new(nid, 0), out);
     }
     rule_if!(!chunked.is_empty());
@@ -412,11 +528,12 @@ fn wire_initiator(
     patch: &mut TypedModelPatch,
     model: &TypedModel,
     node: &TypedNode,
+    mask: &MaskForm,
     chunk_sym: &Symbol,
     k: i64,
 ) -> TractResult<Option<OutletId>> {
     if let Some(op) = node.op_as::<EinSum>() {
-        return Ok(Some(wire_initiator_einsum(patch, model, node, op, chunk_sym, k)?));
+        return Ok(Some(wire_initiator_einsum(patch, model, node, op, mask, chunk_sym, k)?));
     }
     Ok(None)
 }
@@ -454,12 +571,17 @@ fn wire_terminator(
 // ── Per-op-type implementations ─────────────────────────────────────────
 
 /// Initiator EinSum: tap each input from the model, wire a split reshape
-/// for it, then wire the chunked EinSum.  Returns the chunked output.
+/// for it, then wire the chunked EinSum.  For banded masks, additionally
+/// wrap the input whose streaming axis tracks to `mask.axis_a` with a
+/// `WindowOnAxis(W)` + flatten reshape, so the within-chunk contracted
+/// axis on that input has size `W·k` instead of `k`.  Returns the chunked
+/// output.
 fn wire_initiator_einsum(
     patch: &mut TypedModelPatch,
     model: &TypedModel,
     node: &TypedNode,
     op: &EinSum,
+    mask: &MaskForm,
     chunk_sym: &Symbol,
     k: i64,
 ) -> TractResult<OutletId> {
@@ -478,6 +600,7 @@ fn wire_initiator_einsum(
         in_streaming_axes.push(positions[0]);
     }
 
+    let window: usize = (mask.upper - mask.lower + 1) as usize;
     let mut chunked_inputs: TVec<OutletId> = tvec!();
     for (ix, (&input, &stream_axis)) in node.inputs.iter().zip(in_streaming_axes.iter()).enumerate()
     {
@@ -488,6 +611,36 @@ fn wire_initiator_einsum(
         let reshape = AxisOp::Reshape(stream_axis, from, to);
         let chunked =
             patch.wire_node(format!("{}.blockify_split.{ix}", node.name), reshape, &[tapped])?[0];
+
+        // Banded path: if this input's stream axis tracks to einsum output
+        // axis = mask.axis_a, this is the contracted-side input whose chunks
+        // need to expose a window of size W.  Wrap with WindowOnAxis then
+        // flatten (W, k) → W·k so the einsum subscripts stay unchanged.
+        let chunked = if !mask.is_block_diag() && {
+            let tracked = op
+                .axes
+                .track_axis((InOut::In(ix), stream_axis), InOut::Out(0))?
+                .ok_or_else(|| {
+                    format_err!(
+                        "EinSum stream axis on input {ix} doesn't track to a unique output axis"
+                    )
+                })?;
+            tracked == mask.axis_a
+        } {
+            let windowed = patch.wire_node(
+                format!("{}.window.{ix}", node.name),
+                tract_pulse_opl::ops::WindowOnAxis { axis: stream_axis, window, start: mask.lower },
+                &[chunked],
+            )?[0];
+            // Shape after WindowOnAxis: [..., S, W, k, ...]
+            // Flatten the (W, k) pair at position stream_axis + 1.
+            let from = tvec!(window.to_dim(), k.to_dim());
+            let to = tvec!(((window as i64) * k).to_dim());
+            let flatten = AxisOp::Reshape(stream_axis + 1, from, to);
+            patch.wire_node(format!("{}.window_flat.{ix}", node.name), flatten, &[windowed])?[0]
+        } else {
+            chunked
+        };
         chunked_inputs.push(chunked);
     }
 
@@ -757,68 +910,112 @@ mod tests {
         )
     }
 
+    fn make_banded(scope: &SymbolScope, a: usize, b: usize, k: u64, lo: i64, up: i64) -> TDim {
+        // Build the canonical form: Mul([Ge(Val(up), D), Ge(D, Val(lo))]).
+        let div_a = TDim::Div(Box::new(coord(scope, a)), k);
+        let div_b = TDim::Div(Box::new(coord(scope, b)), k);
+        let diff = (div_a - div_b).reduce();
+        let ge_upper = TDim::Ge(Box::new(TDim::Val(up)), Box::new(diff.clone())).reduce();
+        let ge_lower = TDim::Ge(Box::new(diff), Box::new(TDim::Val(lo))).reduce();
+        TDim::Mul(vec![ge_upper, ge_lower]).reduce()
+    }
+
     #[test]
-    fn decode_block_diag_mask_recognises_canonical_form() {
+    fn decode_mask_recognises_block_diag_canonical_form() {
         let scope = SymbolScope::default();
         let expr = make_block_diag(&scope, 0, 1, 2);
-        assert_eq!(decode_block_diag_mask(&expr, &[0, 1]), Some(2));
+        let m = decode_mask(&expr, &[0, 1]).unwrap();
+        assert_eq!((m.chunk_size, m.lower, m.upper), (2, 0, 0));
     }
 
     #[test]
-    fn decode_block_diag_mask_recognises_arbitrary_chunk_size() {
+    fn decode_mask_recognises_block_diag_arbitrary_chunk_size() {
         let scope = SymbolScope::default();
         let expr = make_block_diag(&scope, 0, 1, 137);
-        assert_eq!(decode_block_diag_mask(&expr, &[0, 1]), Some(137));
+        let m = decode_mask(&expr, &[0, 1]).unwrap();
+        assert_eq!(m.chunk_size, 137);
     }
 
     #[test]
-    fn decode_block_diag_mask_recognises_swapped_axes() {
+    fn decode_mask_recognises_block_diag_swapped_axes() {
         let scope = SymbolScope::default();
-        // (🎯1)/2 == (🎯0)/2 — same relation, syms in opposite order.
         let expr = make_block_diag(&scope, 1, 0, 2);
-        assert_eq!(decode_block_diag_mask(&expr, &[0, 1]), Some(2));
+        let m = decode_mask(&expr, &[0, 1]).unwrap();
+        assert_eq!(m.chunk_size, 2);
     }
 
     #[test]
-    fn decode_block_diag_mask_rejects_mismatched_chunk_sizes() {
+    fn decode_mask_recognises_banded_form() {
+        // Mimics ex03: `0 ≤ chunk(0) - chunk(1) ≤ 1` with k=2.
+        let scope = SymbolScope::default();
+        let expr = make_banded(&scope, 0, 1, 2, 0, 1);
+        let m = decode_mask(&expr, &[0, 1]).unwrap();
+        assert_eq!((m.chunk_size, m.lower, m.upper, m.axis_a, m.axis_b), (2, 0, 1, 0, 1));
+    }
+
+    #[test]
+    fn decode_mask_recognises_banded_form_negative_lower() {
+        let scope = SymbolScope::default();
+        let expr = make_banded(&scope, 0, 1, 2, -1, 1);
+        let m = decode_mask(&expr, &[0, 1]).unwrap();
+        assert_eq!((m.chunk_size, m.lower, m.upper), (2, -1, 1));
+    }
+
+    #[test]
+    fn decode_mask_rejects_mismatched_chunk_sizes() {
         let scope = SymbolScope::default();
         let expr = TDim::Eq(
             Box::new(TDim::Div(Box::new(coord(&scope, 0)), 2)),
             Box::new(TDim::Div(Box::new(coord(&scope, 1)), 3)),
         );
-        assert_eq!(decode_block_diag_mask(&expr, &[0, 1]), None);
+        assert_eq!(decode_mask(&expr, &[0, 1]), None);
     }
 
     #[test]
-    fn decode_block_diag_mask_rejects_non_streaming_axis() {
+    fn decode_mask_rejects_non_streaming_axis() {
         let scope = SymbolScope::default();
-        // Mask references coord 2 instead of one of the streaming axes [0, 1].
         let expr = make_block_diag(&scope, 0, 2, 2);
-        assert_eq!(decode_block_diag_mask(&expr, &[0, 1]), None);
+        assert_eq!(decode_mask(&expr, &[0, 1]), None);
     }
 
     #[test]
-    fn decode_block_diag_mask_rejects_non_eq_root() {
+    fn decode_mask_rejects_bare_ge() {
         let scope = SymbolScope::default();
+        // A single Ge isn't a complete band — both bounds must be present.
         let expr = TDim::Ge(
             Box::new(TDim::Div(Box::new(coord(&scope, 0)), 2)),
             Box::new(TDim::Div(Box::new(coord(&scope, 1)), 2)),
         );
-        assert_eq!(decode_block_diag_mask(&expr, &[0, 1]), None);
+        assert_eq!(decode_mask(&expr, &[0, 1]), None);
+    }
+
+    /// Exploratory probe: confirm what the `(0 <= diff <= L) ∧ (mask)` form looks
+    /// like at the TDim level after `reduce()`.  Kept as a regression on the
+    /// canonical form the recogniser expects.
+    #[test]
+    fn decode_banded_probe_canonical_form() {
+        let scope = SymbolScope::default();
+        let coord_a = coord(&scope, 0);
+        let coord_b = coord(&scope, 1);
+        let div_a = TDim::Div(Box::new(coord_a), 2);
+        let div_b = TDim::Div(Box::new(coord_b), 2);
+        let diff = (div_a.clone() - div_b.clone()).reduce();
+        let ge_lower = TDim::Ge(Box::new(diff.clone()), Box::new(TDim::Val(0))).reduce();
+        let ge_upper = TDim::Ge(Box::new(TDim::Val(1)), Box::new(diff.clone())).reduce();
+        let mask = TDim::Mul(vec![ge_upper, ge_lower]).reduce();
+        println!("PROBE diff = {diff:?}");
+        println!("PROBE mask = {mask:?}");
+        println!("PROBE mask display = {mask}");
     }
 
     #[test]
-    fn decode_block_diag_mask_rejects_offset_in_numerator() {
+    fn decode_mask_rejects_offset_in_numerator() {
         let scope = SymbolScope::default();
-        // ((🎯0 + 1) / 2 == (🎯1 + 1) / 2) — algebraically the same chunk-shift
-        // pattern, but our recogniser intentionally requires the canonical
-        // post-declutter form.  If declutter starts producing this variant we
-        // will need to extend the recogniser.
         let expr = TDim::Eq(
             Box::new(TDim::Div(Box::new(TDim::Add(vec![coord(&scope, 0), TDim::Val(1)])), 2)),
             Box::new(TDim::Div(Box::new(TDim::Add(vec![coord(&scope, 1), TDim::Val(1)])), 2)),
         );
-        assert_eq!(decode_block_diag_mask(&expr, &[0, 1]), None);
+        assert_eq!(decode_mask(&expr, &[0, 1]), None);
     }
 
     fn einsum_for(inputs: &[&str], output: &str) -> EinSum {
