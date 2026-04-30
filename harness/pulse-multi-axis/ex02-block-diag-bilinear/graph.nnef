@@ -30,10 +30,7 @@ graph network(a, b, c) -> (output)
     scores = tract_core_einsum([a, b], expr = "id,jd->ij", acc = "f32");
 
     pos      = tract_core_range(0, tract_core_shape_of(a)[0], step = 1);
-    pos_f32  = tract_core_cast(pos, to = 'f32');
-    p_f32    = tract_core_cast(2, to = 'f32');
-    chunk_f  = floor(div(pos_f32, p_f32));
-    chunk_id = tract_core_cast(chunk_f, to = 'i64');
+    chunk_id = pos / 2;
 
     chunk_row  = unsqueeze(chunk_id, axes = [1]);
     chunk_col  = unsqueeze(chunk_id, axes = [0]);
