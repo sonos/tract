@@ -348,7 +348,7 @@ fn rvalue(i: &str) -> R<'_, RValue> {
     bin!(exp, sub, tag("^"));
     bin!(mul, exp, one_of("*/"));
     bin!(add, mul, one_of("+-"));
-    bin!(comp, add, alt((tag("=="), tag("!="), tag("<"), tag(">"), tag("<="), tag(">="))));
+    bin!(comp, add, alt((tag("=="), tag("!="), tag("<="), tag(">="), tag("<"), tag(">"))));
     bin!(boolean, comp, alt((tag("||"), tag("&&"))));
     bin!(in_for, boolean, tag("in"));
 
@@ -792,6 +792,20 @@ mod test {
         p(rvalue, "1 + sqrt(var + eps)");
         p(rvalue, "[for i in range_of(output_size) yield output_size[i] * sampling_rate[i]]");
         p(rvalue, "scalar(2 ^ (bits - 1) - integer(symmetric) if signed else 0)");
+    }
+
+    #[test]
+    fn test_rvalue_comparison_operators() {
+        p(rvalue, "a == b");
+        p(rvalue, "a != b");
+        p(rvalue, "a < b");
+        p(rvalue, "a > b");
+        p(rvalue, "a <= b");
+        p(rvalue, "a >= b");
+        p(rvalue, "a<=b");
+        p(rvalue, "a>=b");
+        p(rvalue, "(a + b) <= (c + d)");
+        p(rvalue, "a >= b && c <= d");
     }
 
     #[test]
