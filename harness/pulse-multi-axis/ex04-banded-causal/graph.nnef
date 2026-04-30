@@ -1,0 +1,60 @@
+version 1.0;
+
+extension tract_registry tract_core;
+extension tract_symbol T;
+extension tract_assert T>=0;
+
+# Banded-causal pairwise interaction between two streams.
+#
+# Same shape as ex03 but with a *causal* mask: every row at chunk c
+# attends only to chunks {c, c-1, ..., c-L} (no future lookahead).
+# For L = 1 and P = 2 the mask is the upper bidiagonal P-block:
+#
+#       j-chunk:    0   1   2
+#                 +---+---+---+
+#       i-chunk 0 | 1 | 1 | 0 |
+#               1 | 0 | 1 | 1 |
+#               2 | 0 | 0 | 1 |
+#                 +---+---+---+
+#
+# Inputs:  a, b  both [T, 4]
+#
+# scores[i, j] = sum_d a[i, d] * b[j, d]                      [T, T]
+# diff[i, j]   = floor(i / P) - floor(j / P)                   P = 2
+# mask[i, j]   = (-L <= diff[i, j]) and (diff[i, j] <= 0)      L = 1
+# masked       = scores * mask                                [T, T]
+# output[j]    = sum_i masked[i, j]                           [T]
+#
+# Streaming axis: 0 on both inputs and on the output.
+# Pulse size P = 2.  Per pulse: P new samples each on a, b -> P new
+# samples on output.  No output delay (the band is causal: at j-time
+# c_j we only need a-chunks {c_j, c_j-1, ..., c_j-L} which are all in
+# the past or current).  Blockify recognises the banded form via the
+# `Mul([Ge(0, diff), Ge(diff, -1)])` AST, wraps the contracted-axis
+# input with `WindowOnAxis(W=2, start=-1)` (past-window flavour), and
+# the resulting graph pulsifies on the chunk axis.
+
+graph network(a, b) -> (output)
+{
+    a = tract_core_external(shape = [T, 4], datum_type = 'f32');
+    b = tract_core_external(shape = [T, 4], datum_type = 'f32');
+
+    scores = tract_core_einsum([a, b], expr = "id,jd->ij", acc = "f32");
+
+    pos      = tract_core_range(0, tract_core_shape_of(a)[0], step = 1);
+    chunk_id = pos / 2;
+
+    chunk_row = unsqueeze(chunk_id, axes = [1]);
+    chunk_col = unsqueeze(chunk_id, axes = [0]);
+    diff      = chunk_row - chunk_col;
+
+    left_ok  = ge(diff, -1);
+    right_ok = le(diff, 0);
+    in_band  = and(left_ok, right_ok);
+
+    mask_f32 = tract_core_cast(in_band, to = 'f32');
+    masked   = mul(scores, mask_f32);
+
+    reduced = sum_reduce(masked, axes = [0]);
+    output  = squeeze(reduced, axes = [0]);
+}

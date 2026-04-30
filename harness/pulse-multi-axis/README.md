@@ -7,8 +7,12 @@ These are deliberately written *without* attention-specific framing
 so the pulsifier has to discover any per-pulse window structure from the
 graph alone.
 
-Each example is two-step: a batch reference run, then a streaming compare
-(`compare --stream`).
+Each example pairs a `graph.nnef`, a `gen-inputs.py` that emits an
+`io.npz` (batch reference), and a `runme.sh` that runs batch and
+pulsified via the CLI and asserts both against `io.npz`.  The CLI's
+`--assert-output-bundle` path automatically skips `pulse.delay` warmup
+tokens, so cases with non-zero output delay (ex03 future-window) align
+their streamed output to the batch reference without bespoke Rust glue.
 
 ## ex01-block-diag-reduce
 
@@ -43,3 +47,43 @@ followed by either `Reduce<Sum>` or a contracting `EinSum`) and rewrites
 the second EinSum the same way as the first, with the chunk batch axis
 prepended to its subscripts.  Numerical match is verified end-to-end in
 `harness/core-proptest-pulse/tests/blockify_ex01.rs`.
+
+## ex03-banded-reduce
+
+Same shape as ex01, but with an **asymmetric** mask — every row at chunk
+`c` attends to chunks `{c, c-1, ..., c-L}` (here `L = 1`).  The mask
+matrix is a P-block lower bidiagonal, mimicking the geometry of
+multi-chunk attention with left-context.
+
+The structural justification for chunked pulsification is identical to
+ex01 (per-pulse work bounded by `(L+1)·P` past samples plus the current
+P-block).  Only the mask predicate differs: `eq(chunk_row, chunk_col)`
+in ex01 becomes `0 ≤ chunk_row - chunk_col ≤ L` here.
+
+Blockify recognises the banded form `(diff >= L1) && (diff <= L2)` —
+parametrised by `MaskForm::Banded { lower, upper, k }` — and rewrites
+the contracted-axis input by wrapping it with `WindowOnAxis(W)` (where
+`W = upper − lower + 1`) followed by a flatten reshape, so the chunked
+einsum's contracted axis carries `W·k` elements per chunk instead of
+`k`.  Pulsification is non-causal: the streamed output is delayed by
+`L = upper − lower` chunks (the future-lookahead the band requires),
+flushed by feeding zero-chunks at the end of the stream.  Numerical
+match is verified end-to-end in
+`harness/core-proptest-pulse/tests/blockify_ex01.rs::ex03_*`.
+
+## ex04-banded-causal
+
+Same shape as ex03 but with a *causal* mask: every row at chunk `c`
+attends only to chunks `{c, c-1, ..., c-L}` (no future lookahead).
+Mask form: `-L ≤ diff ≤ 0` with `diff = chunk(i) - chunk(j)`.  For
+`L = 1, P = 2` the mask is the upper P-block bidiagonal (mirror of
+ex03).
+
+Blockify dispatches the same banded recogniser, but `WindowOnAxis` is
+parameterised with `start = lower < 0` (past-window flavour).  The
+pulsifier wires `Delay(0, W-1) → PulsePad(before = -start) →
+PulsedExposeWindow`: the `PulsePad` zero-fills the leading `-start`
+chunks of the post-Delay buffer (matching the out-of-stream zero
+semantics of the batch reference) and shifts `stream.delay` back so
+the final output has `stream.delay = 0` — fully causal, no trailing
+flush.  Numerical match in `ex04_*`.

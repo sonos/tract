@@ -27,6 +27,16 @@ do
 done
 
 echo
+echo $WHITE • harness/pulse-multi-axis $NC
+echo
+
+for t in `find harness/pulse-multi-axis -name runme.sh`
+do
+    echo $WHITE$t$NC
+    $t
+done
+
+echo
 echo $WHITE • onnx/test_cases $NC
 echo
 
