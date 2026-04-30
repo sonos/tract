@@ -68,7 +68,7 @@ impl Arbitrary for DeconvOp {
 }
 
 #[derive(Debug, Clone)]
-struct DeconvProblem {
+pub(crate) struct DeconvProblem {
     input: Array3<f32>,
     pulse: usize,
     deconv: DeconvOp,
@@ -94,6 +94,17 @@ impl Arbitrary for DeconvProblem {
 }
 
 impl DeconvProblem {
+    pub fn run_v2(&self) -> TestCaseResult {
+        let mut model = TypedModel::default();
+        let mut fact = f32::fact(self.input.shape());
+        let s = model.symbols.sym("S");
+        fact.shape.set(2, s.to_dim());
+        let input = model.add_source("a", fact).unwrap();
+        let id = self.deconv.chain("deconv1", &mut model, input);
+        model.select_output_outlets(&[id]).unwrap();
+        crate::v2::run_and_compare_v2(model, self.pulse, &self.input.clone().into_tensor(), 2)
+    }
+
     pub fn run(&self) -> TestCaseResult {
         let mut model = TypedModel::default();
         let mut fact = f32::fact(self.input.shape());

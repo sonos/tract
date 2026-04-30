@@ -63,7 +63,7 @@ impl Arbitrary for ConvOp {
 }
 
 #[derive(Debug, Clone)]
-struct ConvPlusConvProblem {
+pub(crate) struct ConvPlusConvProblem {
     input: Tensor,
     pulse: usize,
     convs: Vec<ConvOp>,
@@ -122,6 +122,10 @@ impl ConvPlusConvProblem {
             self.input.to_plain_array_view::<f32>().unwrap().to_owned(),
             2,
         )
+    }
+
+    pub fn run_v2(&self) -> TestCaseResult {
+        crate::v2::run_and_compare_v2(Self::model(&self.convs), self.pulse, &self.input, 2)
     }
 }
 

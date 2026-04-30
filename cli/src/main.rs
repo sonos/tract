@@ -74,6 +74,9 @@ pub const STAGES: &[&str] = &[
     "pulse",
     "pulse-to-type",
     "pulse-declutter",
+    "pulse-v2",
+    "pulse-v2-to-type",
+    "pulse-v2-declutter",
     "set",
     "set-declutter",
     "nnef-cycle",
@@ -169,6 +172,7 @@ fn main() -> TractResult<()> {
         .arg(arg!(-O --optimize "Optimize before running"))
         .arg(arg!(--"assert-maximal-mm-quality-cost" [MAX] "Maximum value for quality category (0=assembly, 4=dreadful rust code)"))
         .arg(arg!(--pulse [PULSE] "Translate to pulse network"))
+        .arg(arg!(--"pulse-v2" [SYM] "Translate to pulse-v2 network (streaming axis symbol, default S)"))
 
         .arg(arg!(--"machine-friendly" "Machine friendly output"))
         .arg(arg!(--"timeout" [SECONDS] "Kill the process after this many seconds"))

@@ -5,6 +5,12 @@ pub mod macros;
 pub mod fact;
 pub mod model;
 pub mod ops;
+pub mod v2;
+pub mod v2_buffer;
+pub mod v2_conv;
+pub mod v2_deconv;
+pub mod v2_pad;
+pub mod v2_slice;
 
 pub mod internal {
     pub use std::fmt;

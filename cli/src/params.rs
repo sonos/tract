@@ -725,6 +725,16 @@ impl Parameters {
                 stage!("pulse-to-type", pulsed_model -> typed_model, |m:PulsedModel| m.into_typed());
                 stage!("pulse-declutter", typed_model -> typed_model, |m:TypedModel| m.into_decluttered());
             }
+            if let Some(spec) = matches.get_one::<String>("pulse-v2") {
+                stage!("pulse-v2", typed_model -> typed_model, |m:TypedModel| {
+                    use tract_pulse::v2::PulseV2Model;
+                    let stream_sym = m.symbols.sym(spec);
+                    let pv2 = PulseV2Model::new(&m, stream_sym)?;
+                    pv2.into_typed()
+                });
+                stage!("pulse-v2-to-type", typed_model -> typed_model, |m:TypedModel| Ok(m));
+                stage!("pulse-v2-declutter", typed_model -> typed_model, |m:TypedModel| m.into_decluttered());
+            }
         }
         let mut transforms: Vec<&str> = matches
             .get_many::<String>("transform")

@@ -20,12 +20,13 @@ use tract_core::ops::nn::DataFormat;
 use tract_ndarray::prelude::*;
 use tract_pulse::internal::*;
 
-mod conv_plus_conv;
-mod deconv;
-mod delay_plus_downsample;
-mod delay_plus_pool;
+pub(crate) mod conv_plus_conv;
+pub(crate) mod deconv;
+pub(crate) mod delay_plus_downsample;
+pub(crate) mod delay_plus_pool;
 mod einsum;
-mod pad_plus_conv;
+pub(crate) mod pad_plus_conv;
+mod v2;
 
 #[allow(dead_code)]
 fn setup_test_logger() {
