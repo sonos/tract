@@ -39,7 +39,29 @@ impl TypedOp for MultiBroadcastTo {
         inputs: &[&TypedFact],
         outputs: &[&TypedFact],
     ) -> TractResult<AxesMapping> {
-        AxesMapping::natural_for_rank(inputs.len(), outputs.len(), inputs[0].rank())
+        // ONNX-style broadcasting right-aligns input over output, so when
+        // output_rank > input_rank the leading output axes are pure
+        // broadcast axes with no input correspondence. natural_for_rank's
+        // square shape would skip them and trip the optimizer's axes-mapping
+        // check (caught under paranoid_assertions).
+        let in_rank = inputs[0].rank();
+        let out_rank = outputs[0].rank();
+        let leading = out_rank.saturating_sub(in_rank);
+        let mut axes = tvec!();
+        let mut alphabet = 'a'..;
+        for o in 0..leading {
+            axes.push(
+                Axis::new(alphabet.next().unwrap(), inputs.len(), outputs.len()).output(0, o),
+            );
+        }
+        for i in 0..in_rank.min(out_rank) {
+            axes.push(
+                Axis::new(alphabet.next().unwrap(), inputs.len(), outputs.len())
+                    .input(0, i)
+                    .output(0, leading + i),
+            );
+        }
+        AxesMapping::new(inputs.len(), outputs.len(), axes)
     }
 
     fn change_axes(
