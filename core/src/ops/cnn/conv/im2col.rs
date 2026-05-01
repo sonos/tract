@@ -450,10 +450,7 @@ impl Patcher {
         // slice write — byte-identical to the per-element loop.
         if x_stride_ptr == 1 && x_max > x_min {
             unsafe {
-                let row = std::slice::from_raw_parts(
-                    iptr.offset(x_min),
-                    (x_max - x_min) as usize,
-                );
+                let row = std::slice::from_raw_parts(iptr.offset(x_min), (x_max - x_min) as usize);
                 writer.write_slice(row);
             }
         } else {
