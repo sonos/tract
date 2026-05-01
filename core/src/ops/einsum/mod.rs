@@ -338,6 +338,9 @@ impl TypedOp for EinSum {
         if let Some(patch) = declutter_broadcast(self, session, model, node)? {
             return Ok(Some(patch));
         }
+        if let Some(patch) = unit_k_to_broadcast_mul(self, model, node)? {
+            return Ok(Some(patch));
+        }
         Ok(None)
     }
 
@@ -350,6 +353,14 @@ impl TypedOp for EinSum {
             (self.q_params.is_none() && node.inputs.len() == 2)
                 || (self.q_params.is_some() && node.inputs.len() == 9)
         );
+        // Some EinSums are introduced during codegen itself (e.g. ConvTranspose lowering
+        // emits an EinSum + DeconvSum pair). Those don't get a chance to go through declutter
+        // before being lowered, so we re-check the unit-K → broadcast-Mul rule here as a
+        // fast path. For EinSums that already existed at declutter time, this is a no-op
+        // (the declutter pass would already have rewritten them).
+        if let Some(patch) = unit_k_to_broadcast_mul(self, model, node)? {
+            return Ok(Some(patch));
+        }
         einsum_matmul::detect_rule(&(), model, node, &node.name, self)
     }
 
@@ -434,4 +445,153 @@ fn declutter_broadcast(
         }
     }
     Ok(None)
+}
+
+/// Rewrite an EinSum whose contraction product is statically 1 as a broadcast Mul.
+///
+/// Triggers when:
+/// - All "k-like" axes (present in both inputs, absent from output) have shape 1 in both inputs, OR
+/// - There are no k-like axes at all (Hadamard products like `mn,mn->mn`, outer products like
+///   `m,n->mn`, or any pure broadcast pattern).
+///
+/// In both cases the einsum has no real contraction work — it's a broadcast multiplication
+/// dressed up as an einsum. Lowering it as a matmul leaves the GEMM kernel running per-tile
+/// setup (clear, panel-load, store) for at most one FMA, so a direct broadcast Mul is much
+/// faster on Native (and a net semantic simplification regardless of perf).
+///
+/// Quantized einsums are left untouched: the existing `dequant` path in `EinSumMatMul::codegen`
+/// produces a non-q einsum that this rule then catches naturally on the next declutter pass.
+fn unit_k_to_broadcast_mul(
+    op: &EinSum,
+    model: &TypedModel,
+    node: &TypedNode,
+) -> TractResult<Option<TypedModelPatch>> {
+    if op.q_params.is_some() || node.inputs.len() != 2 {
+        return Ok(None);
+    }
+    let input_facts = model.node_input_facts(node.id)?;
+    let input_shapes = op.actual_input_shapes_from_facts(&input_facts)?;
+    let k_axes: TVec<&Axis> = op
+        .axes
+        .iter_all_axes()
+        .filter(|a| a.inputs[0].len() == 1 && a.inputs[1].len() == 1 && a.outputs[0].is_empty())
+        .collect();
+    // Bail if any k-axis is non-trivial — that's a real contraction, leave it to matmul lowering.
+    let any_nontrivial_k = k_axes.iter().any(|a| {
+        !input_shapes[0][a.inputs[0][0]].is_one() || !input_shapes[1][a.inputs[1][0]].is_one()
+    });
+    if any_nontrivial_k {
+        return Ok(None);
+    }
+    // Scope: only fire when this einsum's output is consumed by a DeconvSum (i.e. it was
+    // emitted by the ConvTranspose lowering pipeline in `Deconv::wire_with_deconv_sum`).
+    // That's the original target case (DFN3 / GTCRN depthwise ConvTranspose with 1×N kernel
+    // collapsing to K=1 — see PR #2183). Other K=1 einsums (e.g. degenerate Q@K^T inside
+    // SDPA when head_dim=1, random-shape proptests with K=1) are intentionally left alone:
+    // backend-specific pipelines (Metal SDPA fusion, MetalMul rank-4 broadcast-segment limit,
+    // …) pattern-match on the matmul shape and break when we substitute a Mul.
+    let has_deconv_sum_consumer = node.outputs.first().map_or(false, |o| {
+        o.successors.iter().any(|inlet| model.node(inlet.node).op.name() == "DeconvSum")
+    });
+    if !has_deconv_sum_consumer {
+        return Ok(None);
+    }
+
+    let one = TDim::one();
+    // Reject "non-trivial single-side disappearing" axes — those need a real reduction.
+    for axis in op.axes.iter_all_axes() {
+        let in_left =
+            axis.inputs[0].first().map(|pos| &input_shapes[0][*pos]).unwrap_or(&one) != &one;
+        let in_right =
+            axis.inputs[1].first().map(|pos| &input_shapes[1][*pos]).unwrap_or(&one) != &one;
+        let in_out = !axis.outputs[0].is_empty();
+        if (in_left ^ in_right) && !in_out {
+            return Ok(None);
+        }
+    }
+
+    let c_axes: Vec<char> = op.axes.axes(InOut::Out(0)).map(|a| a.repr).collect();
+    if c_axes.is_empty() {
+        return Ok(None);
+    }
+
+    let k_reprs: TVec<char> = k_axes.iter().map(|a| a.repr).collect();
+    let mut patch = TypedModelPatch::new("EinSum unit-K → broadcast Mul");
+    let mut wires: TVec<OutletId> = patch.taps(model, &node.inputs)?;
+    let name = &node.name;
+
+    for (slot, wire) in wires.iter_mut().enumerate() {
+        // Promote inputs to operating_dt so the result type matches EinSum::output_facts
+        // (e.g. i8 inputs with i32 operating_dt for an integer matmul that has been dequantized).
+        let cur_dt = patch.outlet_fact(*wire)?.datum_type;
+        if cur_dt != op.operating_dt {
+            *wire = patch.wire_node(
+                format!("{name}.cast_in{slot}"),
+                crate::ops::cast::cast(op.operating_dt),
+                &[*wire],
+            )?[0];
+        }
+
+        // Drop k axes (sorted descending so positions stay valid).
+        let mut k_positions: Vec<usize> = k_axes.iter().map(|a| a.inputs[slot][0]).collect();
+        k_positions.sort_by(|a, b| b.cmp(a));
+        for (i, pos) in k_positions.into_iter().enumerate() {
+            *wire =
+                patch.wire_node(format!("{name}.rm_k_in{slot}.{i}"), AxisOp::Rm(pos), &[*wire])?[0];
+        }
+
+        let mut current: Vec<char> = op
+            .axes
+            .axes(InOut::In(slot))
+            .map(|a| a.repr)
+            .filter(|c| !k_reprs.contains(c))
+            .collect();
+
+        // Drop any remaining axes not in output (must be size 1 by precondition above).
+        let mut to_drop: Vec<(usize, char)> = current
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| !c_axes.contains(c))
+            .map(|(i, c)| (i, *c))
+            .collect();
+        to_drop.sort_by(|a, b| b.0.cmp(&a.0));
+        for (pos, c) in to_drop {
+            *wire = patch.wire_node(
+                format!("{name}.rm_extra_in{slot}_{c}"),
+                AxisOp::Rm(pos),
+                &[*wire],
+            )?[0];
+            current.remove(pos);
+        }
+
+        // Insert unit axes for output axes missing from this input.
+        for (target_pos, &t) in c_axes.iter().enumerate() {
+            if !current.contains(&t) {
+                *wire = patch.wire_node(
+                    format!("{name}.add_in{slot}_{t}"),
+                    AxisOp::Add(target_pos),
+                    &[*wire],
+                )?[0];
+                current.insert(target_pos, t);
+            }
+        }
+
+        // Permute to match output axis order.
+        for (target_pos, &t) in c_axes.iter().enumerate() {
+            let cur_pos = current.iter().position(|&c| c == t).unwrap();
+            if cur_pos != target_pos {
+                *wire = patch.wire_node(
+                    format!("{name}.move_in{slot}_{t}"),
+                    AxisOp::Move(cur_pos, target_pos),
+                    &[*wire],
+                )?[0];
+                let removed = current.remove(cur_pos);
+                current.insert(target_pos, removed);
+            }
+        }
+    }
+
+    let result = patch.wire_node(name, crate::ops::math::mul(), &wires)?;
+    patch.shunt_outside(model, node.id.into(), result[0])?;
+    Ok(Some(patch))
 }

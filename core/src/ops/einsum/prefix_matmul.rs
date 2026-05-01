@@ -529,6 +529,62 @@ mod test {
         .check()
     }
 
+    fn check_k1(expr: &str, a_shape: &[usize], b_shape: &[usize]) -> TractResult<()> {
+        let a_len = a_shape.iter().product::<usize>();
+        let b_len = b_shape.iter().product::<usize>();
+        let a =
+            tensor1(&(0..a_len).map(|i| (i + 1) as f32).collect_vec()).into_shape(a_shape).unwrap();
+        let b = tensor1(&(0..b_len).map(|i| (i + 7) as f32 * 0.5).collect_vec())
+            .into_shape(b_shape)
+            .unwrap();
+        EinSumProblem { expr: expr.to_string(), a, b }.check()
+    }
+
+    // K=1 means the einsum's contraction degenerates to broadcast-mul. detect_rule
+    // short-circuits to a Mul op rather than dispatching the GEMM kernel for a single
+    // FMA per tile. The gmk,Ngnk->Ngmn pattern with k=1 is what depthwise ConvTranspose
+    // lowers to, and the per-tile GEMM overhead dominates in that case.
+    #[test]
+    fn k1_amk_akn_amn() -> TractResult<()> {
+        check_k1("amk,akn->amn", &[2, 3, 1], &[2, 1, 4])
+    }
+
+    #[test]
+    fn k1_gmk_ngnk_ngmn() -> TractResult<()> {
+        check_k1("gmk,Ngnk->Ngmn", &[3, 2, 1], &[1, 3, 4, 1])
+    }
+
+    #[test]
+    fn k1_mk_kn_mn() -> TractResult<()> {
+        check_k1("mk,kn->mn", &[2, 1], &[1, 3])
+    }
+
+    // The unit_k_to_broadcast_mul declutter rule is scoped to einsums whose output is
+    // consumed by DeconvSum (the original ConvTranspose-K=1 target). For these isolated
+    // einsum tests the rule won't fire — outputs still go through OptMatMul correctly,
+    // just slower than a broadcast Mul would be. The end-to-end ConvTranspose case is
+    // covered by integration tests (DFN3 erb_dec, GTCRN) and verified bit-exact in the
+    // PR description.
+    #[test]
+    fn k1_no_k_axis_outer() -> TractResult<()> {
+        check_k1("m,n->mn", &[3], &[4])
+    }
+
+    #[test]
+    fn k1_high_rank_no_decov_sum() -> TractResult<()> {
+        // From a CI proptest failure: a high-rank einsum with K=1, no DeconvSum
+        // downstream → rule must not fire, OptMatMul handles it correctly.
+        check_k1("wmexk,wxnk->ewnxm", &[2, 1, 2, 2, 1], &[2, 2, 1, 1])
+    }
+
+    #[test]
+    fn k1_sdpa_shape_no_deconv_sum() -> TractResult<()> {
+        // Regression for SDPA failure mode: when head_dim=1, SDPA's score einsum
+        // looks like a K=1 case structurally, but it's followed by Softmax (not
+        // DeconvSum). Rule must NOT fire — Metal's SDPA fusion would otherwise break.
+        check_k1("bhmk,bhnk->bhmn", &[1, 3, 4, 1], &[1, 3, 4, 1])
+    }
+
     #[test]
     fn q() -> TractResult<()> {
         let qp = QParams::ZpScale { zero_point: 0, scale: 0.1 };
