@@ -11,6 +11,16 @@ pub enum Executor {
     SingleThread,
     #[cfg(feature = "multithread-mm")]
     MultiThread(Arc<ThreadPool>),
+    /// Use rayon's GLOBAL thread pool — the one set up by
+    /// `wasm_bindgen_rayon::init_thread_pool` on `wasm32-unknown-unknown`,
+    /// or rayon's auto-initialised default on native.
+    ///
+    /// Exists because `Arc<rayon::ThreadPool>` cannot be constructed on
+    /// `wasm32-unknown-unknown`: rayon's default `spawn_handler` calls
+    /// `std::thread::spawn`, which is unsupported there. The only working
+    /// route is rayon's global pool, accessed via `into_par_iter` directly.
+    #[cfg(feature = "multithread-mm")]
+    RayonGlobal,
 }
 
 impl Executor {
