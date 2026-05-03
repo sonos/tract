@@ -16,8 +16,6 @@ mod storage;
 pub mod tests;
 
 use crate::multithread::Executor;
-#[cfg(feature = "multithread-mm")]
-use rayon::prelude::*;
 use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::fmt::Debug;
@@ -236,11 +234,17 @@ unsafe fn run_with_scratch_space_vec<K: MatMatMulKer>(
                 Ok(())
             }
             #[cfg(feature = "multithread-mm")]
-            Executor::MultiThread(pool) => pool.install(|| {
-                (0..m.div_ceil(ker.mr()))
-                    .into_par_iter()
-                    .try_for_each(|ia| scratch.run(ker, non_linear, ia, 0))
-            }),
+            Executor::MultiThread(pool) => {
+                chunked_dispatch_rayon(Some(&pool), m.divceil(ker.mr()), 1, |ia, _| {
+                    scratch.run(ker, non_linear, ia, 0)
+                })
+            }
+            #[cfg(feature = "multithread-mm")]
+            Executor::RayonGlobal => {
+                chunked_dispatch_rayon(None, m.divceil(ker.mr()), 1, |ia, _| {
+                    scratch.run(ker, non_linear, ia, 0)
+                })
+            }
         }
     }
 }
@@ -263,14 +267,18 @@ unsafe fn run_with_scratch_space_col_outer<K: MatMatMulKer>(
                 Ok(())
             }
             #[cfg(feature = "multithread-mm")]
-            Executor::MultiThread(pool) => pool.install(|| {
-                (0..n.div_ceil(ker.nr())).into_par_iter().try_for_each(|ib| {
-                    for ia in 0..m.divceil(ker.mr()) {
-                        scratch.run(ker, non_linear, ia, ib)?;
-                    }
-                    Ok(())
+            Executor::MultiThread(pool) => chunked_dispatch_rayon(
+                Some(&pool),
+                m.divceil(ker.mr()),
+                n.divceil(ker.nr()),
+                |ia, ib| scratch.run(ker, non_linear, ia, ib),
+            ),
+            #[cfg(feature = "multithread-mm")]
+            Executor::RayonGlobal => {
+                chunked_dispatch_rayon(None, m.divceil(ker.mr()), n.divceil(ker.nr()), |ia, ib| {
+                    scratch.run(ker, non_linear, ia, ib)
                 })
-            }),
+            }
         }
     }
 }
@@ -293,16 +301,114 @@ unsafe fn run_with_scratch_space_row_outer<K: MatMatMulKer>(
                 Ok(())
             }
             #[cfg(feature = "multithread-mm")]
-            Executor::MultiThread(pool) => pool.install(|| {
-                pool.install(|| {
-                    (0..m.div_ceil(ker.mr())).into_par_iter().try_for_each(|ia| {
-                        for ib in 0..n.divceil(ker.nr()) {
-                            scratch.run(ker, non_linear, ia, ib)?;
-                        }
-                        Ok(())
-                    })
+            Executor::MultiThread(pool) => chunked_dispatch_rayon(
+                Some(&pool),
+                m.divceil(ker.mr()),
+                n.divceil(ker.nr()),
+                |ia, ib| scratch.run(ker, non_linear, ia, ib),
+            ),
+            #[cfg(feature = "multithread-mm")]
+            Executor::RayonGlobal => {
+                chunked_dispatch_rayon(None, m.divceil(ker.mr()), n.divceil(ker.nr()), |ia, ib| {
+                    scratch.run(ker, non_linear, ia, ib)
                 })
-            }),
+            }
         }
     }
+}
+
+/// Below this many output panels (m_panels × n_panels), skip parallel
+/// dispatch and run inline single-threaded. Per-MMM kickoff cost (rayon
+/// scheduling, web-worker postMessage, atomic-instruction tax) dominates
+/// the kernel runtime for tiny MMMs; threading them is a net loss.
+///
+/// 64 panels is empirically tuned: above the rayon native overhead (~5 µs
+/// per dispatch) and the wasm-bindgen-rayon worker dispatch overhead
+/// (~50 µs), well within "still big enough to win."
+#[cfg(feature = "multithread-mm")]
+const THREADING_PANEL_THRESHOLD: usize = 64;
+
+/// Chunk grid for the 2D dispatch.
+///
+/// Mirrors ggml's `mul_mat` heuristic (`ggml/src/ggml-cpu/ggml-cpu.c:1378-1398`):
+///  * 16-tile panel chunks by default;
+///  * 64-tile chunks when one dimension is 1 (vec / vec-mat);
+///  * fallback to "block-per-thread along the longer axis" when the natural
+///    grid would have fewer than `4·nth` chunks.
+///
+/// Returns `(nchunks_m, nchunks_n, dr_m, dr_n)`.
+#[cfg(feature = "multithread-mm")]
+fn chunk_grid(n_panels_m: usize, n_panels_n: usize, nth: usize) -> (usize, usize, usize, usize) {
+    let chunk_size = if n_panels_m == 1 || n_panels_n == 1 { 64 } else { 16 };
+    let mut nchunks_m = n_panels_m.div_ceil(chunk_size);
+    let mut nchunks_n = n_panels_n.div_ceil(chunk_size);
+    if nchunks_m * nchunks_n < 4 * nth {
+        if n_panels_m > n_panels_n {
+            nchunks_m = nth;
+            nchunks_n = 1;
+        } else {
+            nchunks_m = 1;
+            nchunks_n = nth;
+        }
+    }
+    let dr_m = n_panels_m.div_ceil(nchunks_m).max(1);
+    let dr_n = n_panels_n.div_ceil(nchunks_n).max(1);
+    (nchunks_m, nchunks_n, dr_m, dr_n)
+}
+
+/// 2D chunked dispatcher across the (m_panels × n_panels) grid for the
+/// rayon path. Replaces a 1D `into_par_iter` over a single panel axis.
+/// Better-utilises threads on small/skewed shapes where one dimension has
+/// fewer panels than there are workers.
+///
+/// `pool`:
+///   * `Some(p)` with `p.current_num_threads() > 1` → scoped via `p.install`
+///     (native, custom pool path).
+///   * `Some(p)` with single-thread pool, or `None` → dispatched via
+///     `into_par_iter` directly, which uses rayon's GLOBAL pool. This is
+///     the only working path on `wasm32-unknown-unknown` via
+///     `wasm_bindgen_rayon::init_thread_pool`.
+#[cfg(feature = "multithread-mm")]
+unsafe fn chunked_dispatch_rayon<F>(
+    pool: Option<&rayon::ThreadPool>,
+    n_panels_m: usize,
+    n_panels_n: usize,
+    run_one: F,
+) -> TractResult<()>
+where
+    F: Fn(usize, usize) -> TractResult<()> + Sync,
+{
+    use rayon::prelude::*;
+    if n_panels_m == 0 || n_panels_n == 0 {
+        return Ok(());
+    }
+    if n_panels_m * n_panels_n < THREADING_PANEL_THRESHOLD {
+        for ia in 0..n_panels_m {
+            for ib in 0..n_panels_n {
+                run_one(ia, ib)?;
+            }
+        }
+        return Ok(());
+    }
+    let use_global = pool.is_none_or(|p| p.current_num_threads() <= 1);
+    let body = || {
+        let nth = rayon::current_num_threads();
+        let (nchunks_m, nchunks_n, dr_m, dr_n) = chunk_grid(n_panels_m, n_panels_n, nth);
+        let total = nchunks_m * nchunks_n;
+        (0..total).into_par_iter().try_for_each(|idx| {
+            let im = idx % nchunks_m;
+            let in_ = idx / nchunks_m;
+            let ia_start = im * dr_m;
+            let ia_end = (ia_start + dr_m).min(n_panels_m);
+            let ib_start = in_ * dr_n;
+            let ib_end = (ib_start + dr_n).min(n_panels_n);
+            for ia in ia_start..ia_end {
+                for ib in ib_start..ib_end {
+                    run_one(ia, ib)?;
+                }
+            }
+            TractResult::Ok(())
+        })
+    };
+    if use_global { body() } else { pool.unwrap().install(body) }
 }
