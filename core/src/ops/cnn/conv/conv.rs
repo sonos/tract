@@ -1244,8 +1244,30 @@ impl TypedOp for Conv {
     as_op!();
 }
 
+/// Default minimum kernel volume for picking LazyIm2col over eager Im2col.
+///
+/// LazyIm2col has per-output-position gather indirection overhead; eager Im2col has
+/// materialisation overhead (one big alloc + strided memcpy). For tiny kernels the
+/// indirection wins; for bigger kernels the materialisation cost dominates. This default
+/// is conservative — empirically lazy already wins for kernel volumes ≥ 4 on Apple AMX
+/// (and likely lower on memory-constrained targets like embedded ARM). Override via
+/// `TRACT_LAZY_IM2COL_MIN_KERNEL` env var to experiment with lower thresholds.
+const DEFAULT_LAZY_IM2COL_MIN_KERNEL: usize = 6;
+
+fn lazy_im2col_min_kernel() -> usize {
+    use std::sync::OnceLock;
+    static V: OnceLock<usize> = OnceLock::new();
+    *V.get_or_init(|| {
+        std::env::var("TRACT_LAZY_IM2COL_MIN_KERNEL")
+            .ok()
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or(DEFAULT_LAZY_IM2COL_MIN_KERNEL)
+    })
+}
+
 fn should_use_lazy(input_shape: &DataShape, pool_spec: &PoolSpec, _group: usize) -> bool {
-    input_shape.n().unwrap_or(&1) == &1 && pool_spec.kernel_shape.iter().product::<usize>() > 5
+    input_shape.n().unwrap_or(&1) == &1
+        && pool_spec.kernel_shape.iter().product::<usize>() >= lazy_im2col_min_kernel()
 }
 
 #[allow(non_snake_case)]
