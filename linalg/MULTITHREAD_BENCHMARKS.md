@@ -83,6 +83,31 @@ Across all measured cells (synthetic + DFN3, 3 engines, 1/2/3/4 threads):
 - **Native**: existing tract proptests (3524 lib tests) pass with this
   PR's `multithread-mm` enabled.
 
+## Tuning the threshold
+
+The default `THREADING_PANEL_THRESHOLD` is `64` panels (m_panels ×
+n_panels). Adjust at runtime via:
+
+```rust
+use tract_linalg::multithread::set_threading_panel_threshold;
+
+set_threading_panel_threshold(0);    // thread every size, no gate
+set_threading_panel_threshold(256);  // gate harder — transformer-only
+set_threading_panel_threshold(64);   // default
+```
+
+Useful when profiling or specialising the build for a known workload class:
+
+| Workload class | Suggested threshold |
+|---|---|
+| Streaming RNN / mobile vision (many small MMMs) | 64 (default) or higher |
+| Mid-size dense (BERT-class) | 32–64 |
+| Large dense only (transformer FFN, LLM) | 16 or lower |
+
+The constant lives in `linalg/src/multithread.rs`; readers go through
+`current_threading_panel_threshold()` (`AtomicUsize::Relaxed`, no lock on
+the dispatch hot path).
+
 ## Reproduction
 
 The harness uses [Vonage's libDF fork](https://github.com/czoli1976/DeepFilterNet)
