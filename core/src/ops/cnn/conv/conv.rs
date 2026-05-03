@@ -465,7 +465,10 @@ impl Conv {
         let size_of_b = x_fact.datum_type.size_of() as isize;
         let n_byte_offsets: Vec<isize> =
             geo.patch.centers_offsets().into_iter().map(|x| x * size_of_b).collect();
-        let k_byte_offsets: Vec<isize> = (0..self.input_channels())
+        // For grouped convs, k offsets cover one group's input slice (ci_per_group channels);
+        // each group reads from a different base offset (group_stride_bytes apart).
+        let ci_per_group = self.input_channels() / self.group;
+        let k_byte_offsets: Vec<isize> = (0..ci_per_group)
             .flat_map(|ici| {
                 geo.patch
                     .standard_layout_data_field
@@ -473,6 +476,7 @@ impl Conv {
                     .map(move |x| (x + (ici * c_stride) as isize) * size_of_b)
             })
             .collect();
+        let group_stride_bytes = (ci_per_group * c_stride) as isize * size_of_b;
         let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&geo.output_shape)?;
         let packer = mmm.packings()[packing]
             .1
@@ -487,7 +491,7 @@ impl Conv {
         let params = LazyIm2colParams { packer, n_byte_offsets, k_byte_offsets };
         let x = model.wire_node(
             format!("{name}.lazyIm2col"),
-            LazyIm2Col { params: Arc::new(params) },
+            LazyIm2Col { params: Arc::new(params), group: self.group, group_stride_bytes },
             &[x],
         )?[0];
 
@@ -1240,10 +1244,8 @@ impl TypedOp for Conv {
     as_op!();
 }
 
-fn should_use_lazy(input_shape: &DataShape, pool_spec: &PoolSpec, group: usize) -> bool {
-    input_shape.n().unwrap_or(&1) == &1
-        && group == 1
-        && pool_spec.kernel_shape.iter().product::<usize>() > 5
+fn should_use_lazy(input_shape: &DataShape, pool_spec: &PoolSpec, _group: usize) -> bool {
+    input_shape.n().unwrap_or(&1) == &1 && pool_spec.kernel_shape.iter().product::<usize>() > 5
 }
 
 #[allow(non_snake_case)]

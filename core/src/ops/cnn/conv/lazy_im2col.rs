@@ -80,6 +80,13 @@ impl ExoticFact for LazyIm2colParams {
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct LazyIm2Col {
     pub params: Arc<LazyIm2colParams>,
+    /// Number of groups for grouped convolution (1 if ungrouped). The output is then a
+    /// `[1, group]`-batched packed tensor; each group reads from a different slice of the
+    /// input via a per-group offset of `g * ci_per_group * c_stride * size_of`.
+    pub group: usize,
+    /// Byte stride between consecutive groups in the input tensor's flat byte buffer.
+    /// Equal to `ci_per_group * c_stride * size_of(input)`. Unused (0) when `group == 1`.
+    pub group_stride_bytes: isize,
 }
 
 impl Op for LazyIm2Col {
@@ -98,9 +105,16 @@ impl EvalOp for LazyIm2Col {
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let tensor = args_1!(inputs);
         let dt = tensor.datum_type();
-        let input: Box<dyn MMMInputValue> =
-            Box::new(LazyIm2colInput { tensor, im2col: self.params.clone() });
-        let output = PackedMatrixStorage::new_batched(&[1, 1], vec![input]).into_tensor(dt);
+        let mut values: Vec<Box<dyn MMMInputValue>> = Vec::with_capacity(self.group);
+        for g in 0..self.group {
+            let group_offset_bytes = g as isize * self.group_stride_bytes;
+            values.push(Box::new(LazyIm2colInput {
+                tensor: tensor.clone(),
+                im2col: self.params.clone(),
+                group_offset_bytes,
+            }));
+        }
+        let output = PackedMatrixStorage::new_batched(&[1, self.group], values).into_tensor(dt);
         Ok(tvec!(output.into_tvalue()))
     }
 }
@@ -112,7 +126,7 @@ impl TypedOp for LazyIm2Col {
             mn: self.params.n_byte_offsets.len().to_dim(),
             packers: vec![self.params.packer.clone()],
         };
-        Ok(tvec!(inputs[0].datum_type.fact([1, 1]).with_exotic_fact(exotic_fact)))
+        Ok(tvec!(inputs[0].datum_type.fact([1, self.group]).with_exotic_fact(exotic_fact)))
     }
 
     as_op!();
@@ -122,6 +136,9 @@ impl TypedOp for LazyIm2Col {
 struct LazyIm2colInput {
     tensor: TValue,
     im2col: Arc<LazyIm2colParams>,
+    /// Per-group base byte offset added to every gather. For group g this is
+    /// `g * ci_per_group * c_stride * size_of(input)`. Zero for ungrouped convs.
+    group_offset_bytes: isize,
 }
 
 impl Display for LazyIm2colInput {
@@ -132,7 +149,7 @@ impl Display for LazyIm2colInput {
 
 impl Hash for LazyIm2colInput {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        (self.tensor.as_bytes(), &self.im2col).hash(state);
+        (self.tensor.as_bytes(), &self.im2col, self.group_offset_bytes).hash(state);
     }
 }
 
@@ -149,7 +166,7 @@ impl LazyIm2colInput {
         let k_byte_offsets = self.im2col.k_byte_offsets.as_ptr();
         let n_byte_offsets = self.im2col.n_byte_offsets.as_ptr();
         unsafe {
-            let ptr = self.tensor.as_ptr_unchecked::<u8>();
+            let ptr = self.tensor.as_ptr_unchecked::<u8>().offset(self.group_offset_bytes);
             let o1 = *n_byte_offsets.offset(n);
             let o2 = *n_byte_offsets.offset(n + 1);
             let o3 = *n_byte_offsets.offset(n + 2);
@@ -187,7 +204,7 @@ impl LazyIm2colInput {
         n: isize,
     ) {
         unsafe {
-            let ptr = self.tensor.as_ptr_unchecked::<u8>();
+            let ptr = self.tensor.as_ptr_unchecked::<u8>().offset(self.group_offset_bytes);
             let k_byte_offsets = self.im2col.k_byte_offsets.as_ptr();
             let n_byte_offsets = self.im2col.n_byte_offsets.as_ptr();
             let o1 = *n_byte_offsets.offset(n);
@@ -221,7 +238,7 @@ impl LazyIm2colInput {
         n: isize,
     ) {
         unsafe {
-            let ptr = self.tensor.as_ptr_unchecked::<u8>();
+            let ptr = self.tensor.as_ptr_unchecked::<u8>().offset(self.group_offset_bytes);
             let k_byte_offsets = self.im2col.k_byte_offsets.as_ptr();
             let n_byte_offsets = self.im2col.n_byte_offsets.as_ptr();
             let o1 = *n_byte_offsets.offset(n);
@@ -249,7 +266,7 @@ impl LazyIm2colInput {
         n: isize,
     ) {
         unsafe {
-            let ptr = self.tensor.as_ptr_unchecked::<u8>();
+            let ptr = self.tensor.as_ptr_unchecked::<u8>().offset(self.group_offset_bytes);
             let k_byte_offsets = self.im2col.k_byte_offsets.as_ptr();
             let n_byte_offsets = self.im2col.n_byte_offsets.as_ptr();
             let o1 = *n_byte_offsets.offset(n);
@@ -280,7 +297,7 @@ impl LazyIm2colInput {
             _ => (),
         }
         unsafe {
-            let ptr = self.tensor.as_ptr_unchecked::<u8>();
+            let ptr = self.tensor.as_ptr_unchecked::<u8>().offset(self.group_offset_bytes);
             let k_byte_offsets = self.im2col.k_byte_offsets.as_ptr();
             let n_byte_offsets = self.im2col.n_byte_offsets.as_ptr();
             for k in k_range.start..k_range.end {
