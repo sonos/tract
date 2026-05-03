@@ -317,17 +317,6 @@ unsafe fn run_with_scratch_space_row_outer<K: MatMatMulKer>(
     }
 }
 
-/// Below this many output panels (m_panels × n_panels), skip parallel
-/// dispatch and run inline single-threaded. Per-MMM kickoff cost (rayon
-/// scheduling, web-worker postMessage, atomic-instruction tax) dominates
-/// the kernel runtime for tiny MMMs; threading them is a net loss.
-///
-/// 64 panels is empirically tuned: above the rayon native overhead (~5 µs
-/// per dispatch) and the wasm-bindgen-rayon worker dispatch overhead
-/// (~50 µs), well within "still big enough to win."
-#[cfg(feature = "multithread-mm")]
-const THREADING_PANEL_THRESHOLD: usize = 64;
-
 /// Chunk grid for the 2D dispatch.
 ///
 /// Mirrors ggml's `mul_mat` heuristic (`ggml/src/ggml-cpu/ggml-cpu.c:1378-1398`):
@@ -382,7 +371,7 @@ where
     if n_panels_m == 0 || n_panels_n == 0 {
         return Ok(());
     }
-    if n_panels_m * n_panels_n < THREADING_PANEL_THRESHOLD {
+    if n_panels_m * n_panels_n < crate::multithread::current_threading_panel_threshold() {
         for ia in 0..n_panels_m {
             for ib in 0..n_panels_n {
                 run_one(ia, ib)?;
