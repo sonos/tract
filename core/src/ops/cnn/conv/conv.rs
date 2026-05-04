@@ -1265,7 +1265,16 @@ fn lazy_im2col_min_kernel() -> usize {
     })
 }
 
-fn should_use_lazy(input_shape: &DataShape, pool_spec: &PoolSpec, _group: usize) -> bool {
+fn should_use_lazy(input_shape: &DataShape, pool_spec: &PoolSpec, group: usize) -> bool {
+    // Depthwise convs (group == in_channels == out_channels) have a specialised
+    // `DepthWise` op downstream that's much faster than the generic im2col + matmul
+    // path on every backend we measured (Apple AMX, x64, aarch64). Don't intercept
+    // them here — let the dispatch in `conv.rs` reach `wire_as_depth_wise`.
+    let is_depthwise =
+        group > 1 && group == pool_spec.input_channels && group == pool_spec.output_channels;
+    if is_depthwise {
+        return false;
+    }
     input_shape.n().unwrap_or(&1) == &1
         && pool_spec.kernel_shape.iter().product::<usize>() >= lazy_im2col_min_kernel()
 }
