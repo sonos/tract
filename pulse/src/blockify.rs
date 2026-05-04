@@ -671,7 +671,44 @@ fn wire_initiator(
     if let Some(op) = node.op_as::<EinSum>() {
         return wire_initiator_einsum(patch, model, node, op, mask, contracted_axis, chunk_sym, k);
     }
+    if node.op_as::<tract_core::ops::array::MultiBroadcastTo>().is_some() {
+        return wire_initiator_multibroadcastto(patch, model, node, chunk_sym);
+    }
     bail!("Unsupported initiator {node}")
+}
+
+/// Initiator for `MultiBroadcastTo` — the `select(mask, scores, -inf)`
+/// false-branch pattern, where declutter folds `scores * 0.0 + -inf`
+/// down to a `MultiBroadcastTo` of a small const (typically scalar) up
+/// to the score's `[T, T]` shape.  The op's input is non-streaming
+/// (otherwise `MultiBroadcastTo` would be in the middle of the section,
+/// not its boundary), so we just tap and rank-bump it to the chunked-
+/// frame rank `score_rank + 1`.  Subsequent body-op broadcasting fills
+/// in the chunked dimensions with the (constant) input value.
+fn wire_initiator_multibroadcastto(
+    patch: &mut TypedModelPatch,
+    model: &TypedModel,
+    node: &TypedNode,
+    chunk_sym: &Symbol,
+) -> TractResult<OutletId> {
+    ensure!(node.inputs.len() == 1, "MultiBroadcastTo expects 1 input, got {}", node.inputs.len());
+    let input = node.inputs[0];
+    let in_fact = model.outlet_fact(input)?;
+    ensure!(
+        streaming_positions(in_fact, chunk_sym).is_empty(),
+        "MultiBroadcastTo initiator with streaming input not supported (input has \
+         {} streaming axes)",
+        streaming_positions(in_fact, chunk_sym).len(),
+    );
+    let target_rank = node.outputs[0].fact.rank() + 1;
+    let mut wire = patch.tap_model(model, input)?;
+    let mut step = 0;
+    while patch.outlet_fact(wire)?.rank() < target_rank {
+        wire =
+            patch.wire_node(format!("{}.bump_rank.{step}", node.name), AxisOp::Add(0), &[wire])?[0];
+        step += 1;
+    }
+    Ok(wire)
 }
 
 /// Initiator for a multi-T-axis `uniform_tdim` node — typically the
@@ -876,6 +913,11 @@ fn wire_body(
     _k: i64,
 ) -> TractResult<OutletId> {
     // Pass 1: collect chunked inputs and discover the rank we'll work in.
+    // A chunked input may have 1 streaming axis (the usual case — this
+    // input contributes a chunk axis we need to track through `op`'s
+    // axes_mapping), or 0 streaming axes (rank-bumped broadcast constant
+    // produced by `wire_initiator_multibroadcastto` — its value is
+    // independent of the chunk index, so no axis-mapping check needed).
     let n = node.inputs.len();
     let mut new_inputs: TVec<Option<OutletId>> = tvec![None; n];
     let mut chunk_input_axes: Vec<(usize, usize)> = vec![];
@@ -885,12 +927,14 @@ fn wire_body(
             let cf = patch.outlet_fact(c)?;
             let positions = streaming_positions(cf, chunk_sym);
             ensure!(
-                positions.len() == 1,
-                "Body op {node}: chunked input slot {slot} has {} streaming axes, expected 1",
+                positions.len() <= 1,
+                "Body op {node}: chunked input slot {slot} has {} streaming axes, expected ≤ 1",
                 positions.len()
             );
-            chunk_input_axes.push((slot, positions[0]));
-            chunked_rank = Some(cf.rank());
+            if let Some(&ax) = positions.first() {
+                chunk_input_axes.push((slot, ax));
+            }
+            chunked_rank = Some(cf.rank().max(chunked_rank.unwrap_or(0)));
             new_inputs[slot] = Some(c);
         }
     }
@@ -931,7 +975,33 @@ fn wire_body(
         );
     }
 
-    Ok(patch.wire_node(&*node.name, node.op.clone(), &new_inputs)?[0])
+    // Some body ops carry an explicit axis or axes parameter (Softmax,
+    // Reduce, …) whose values are positions in the *original* rank.
+    // The chunk axis is inserted at position 0 in the chunked frame, so
+    // every original axis shifts right by one.  Translate accordingly.
+    let chunked_op = translate_body_op_axes(&node.op);
+    Ok(patch.wire_node(&*node.name, chunked_op, &new_inputs)?[0])
+}
+
+/// Rewrite an op's axis/axes parameters for the chunked frame, where
+/// the chunk axis sits at position 0 and every original axis has
+/// shifted right by one.  Currently handles `Softmax`; other axis-
+/// bearing ops fall through unchanged.
+fn translate_body_op_axes(op: &Box<dyn TypedOp>) -> Box<dyn TypedOp> {
+    use tract_core::ops::nn::{Softmax, SoftmaxKind};
+    if let Some(softmax) = op.downcast_ref::<Softmax>() {
+        let new_axes: TVec<usize> = softmax.axes.iter().map(|&a| a + 1).collect();
+        let new_softmax = match &softmax.kind {
+            SoftmaxKind::Softmax(exp) => {
+                Softmax::new(new_axes, softmax.quant_output_dt, SoftmaxKind::Softmax(exp.clone()))
+            }
+            SoftmaxKind::LogSoftmax => {
+                Softmax::new(new_axes, softmax.quant_output_dt, SoftmaxKind::LogSoftmax)
+            }
+        };
+        return Box::new(new_softmax);
+    }
+    op.clone()
 }
 
 /// Insert `AddAxis(0)`s until the wire's rank reaches `target`.  Used to
