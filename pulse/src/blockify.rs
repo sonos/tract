@@ -913,9 +913,11 @@ fn wrap_with_window_if_needed(
     }
     let window: usize = (mask.upper - mask.lower + 1) as usize;
     let start = window_start_for(mask, contracted_axis);
+    let dt = patch.outlet_fact(chunked)?.datum_type;
+    let pad_value = Tensor::zero_scalar_dt(dt)?.into_arc_tensor();
     let windowed = patch.wire_node(
         format!("{name_prefix}.window"),
-        tract_pulse_opl::ops::WindowOnAxis { axis: stream_axis, window, start },
+        tract_pulse_opl::ops::WindowOnAxis { axis: stream_axis, window, start, pad_value },
         &[chunked],
     )?[0];
     let from = tvec!(window.to_dim(), k.to_dim());

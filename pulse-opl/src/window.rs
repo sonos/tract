@@ -33,23 +33,36 @@ pub struct WindowOnAxis {
     /// Negative values shift the window into the past (slot 0 looks
     /// backward); positive values shift into the future (skipping current).
     pub start: i64,
+    /// Value used to fill window slots that read past the input bounds —
+    /// the leading `-start` slots of pulse 0 (past window), the trailing
+    /// slots after the stream ends (future window).  Defaults to a
+    /// scalar zero of the input dtype.  For chunk-index wires the
+    /// caller passes a sentinel value that makes downstream band-mask
+    /// predicates evaluate to "out of band" at the boundary.
+    pub pad_value: Arc<Tensor>,
 }
 
 impl WindowOnAxis {
-    /// Convenience constructor for the future-window form (slot 0 = current).
-    pub fn future(axis: usize, window: usize) -> Self {
-        Self { axis, window, start: 0 }
+    /// Convenience constructor for the future-window form (slot 0 =
+    /// current) with default zero pad of the given dtype.
+    pub fn future(axis: usize, window: usize, dt: DatumType) -> TractResult<Self> {
+        let pad_value = Tensor::zero_scalar_dt(dt)?.into_arc_tensor();
+        Ok(Self { axis, window, start: 0, pad_value })
     }
 
     fn eval_t<T>(&self, input: TValue) -> TractResult<TValue>
     where
-        T: Datum + Copy + Default,
+        T: Datum + Copy,
     {
         let input = input.to_plain_array_view::<T>()?;
         let s = input.shape()[self.axis] as i64;
         let mut out_shape: Vec<usize> = input.shape().to_vec();
         out_shape.insert(self.axis + 1, self.window);
-        let mut output: ArrayD<T> = ArrayD::from_elem(out_shape, T::default());
+        // Fill out-of-bounds slots with pad_value (scalar) so the caller
+        // can pick boundary semantics — zero for data wires, sentinel for
+        // chunk-index wires that drive a downstream band predicate.
+        let pad: T = self.pad_value.cast_to_scalar::<T>()?;
+        let mut output: ArrayD<T> = ArrayD::from_elem(out_shape, pad);
         for w in 0..self.window {
             let shift = self.start + w as i64;
             // For each w: output[s, w, …] = input[s + shift, …] when in
