@@ -657,7 +657,8 @@ impl EvalOp for AxisOp {
 }
 
 /// Remap coordinate symbols in a TDim expression according to an AxisOp.
-/// Returns None if the remapping cannot be determined (e.g. general reshape).
+/// Returns None if the remapping cannot be determined (e.g. general reshape
+/// with both ends > 1).
 fn remap_uniform_tdim(expr: &TDim, axis_op: &AxisOp) -> Option<TDim> {
     let syms = expr.symbols();
     let coord_syms: Vec<(usize, Symbol)> = syms
@@ -673,13 +674,76 @@ fn remap_uniform_tdim(expr: &TDim, axis_op: &AxisOp) -> Option<TDim> {
         return Some(expr.clone());
     }
 
-    // Reshape: only handle trivial all-ones case.
-    if let AxisOp::Reshape(_, from_dims, to_dims) = axis_op.canonical().as_ref() {
-        return if from_dims.iter().all(|d| d.is_one()) && to_dims.iter().all(|d| d.is_one()) {
-            Some(expr.clone())
-        } else {
-            None
-        };
+    if let AxisOp::Reshape(at, from_dims, to_dims) = axis_op.canonical().as_ref() {
+        // Trivial all-ones case: shape change is purely cosmetic, value is unaffected.
+        if from_dims.iter().all(|d| d.is_one()) && to_dims.iter().all(|d| d.is_one()) {
+            return Some(expr.clone());
+        }
+        // Pure split: from = [D], to = [d_0, …, d_{k-1}], Π = D.  The input
+        // axis-`at` position decomposes as
+        //     pos[at] = Σ_i pos[at+i]_new · stride_i
+        // with `stride_i = Π_{j>i} to_dims[j]` (last stride is 1).  Other
+        // input axes shift right by `k-1` (the net rank change).
+        if from_dims.len() == 1 {
+            let from_dim = from_dims[0].clone();
+            let to_product: TDim = to_dims.iter().fold(TDim::Val(1), |acc, d| acc * d.clone());
+            if to_product == from_dim {
+                let k_to = to_dims.len();
+                let mut map: HashMap<Symbol, TDim> = HashMap::default();
+                for (k, sym) in &coord_syms {
+                    let scope = sym.scope()?;
+                    let new_expr = if *k < *at {
+                        TDim::Sym(sym.clone())
+                    } else if *k == *at {
+                        let mut sum = TDim::Val(0);
+                        let mut stride = TDim::Val(1);
+                        for i in (0..k_to).rev() {
+                            let new_sym = scope.coord_sym(*at + i);
+                            sum = sum + TDim::Sym(new_sym) * stride.clone();
+                            stride = stride * to_dims[i].clone();
+                        }
+                        sum
+                    } else {
+                        TDim::Sym(scope.coord_sym(*k + k_to - 1))
+                    };
+                    map.insert(sym.clone(), new_expr);
+                }
+                return expr.substitute_all(&map).ok().map(|e| e.reduce());
+            }
+        }
+        // Pure merge: from = [d_0, …, d_{k-1}], to = [D].  We can express
+        // `pos[at+i]_old` from `pos[at]_new` only via integer division and
+        // modulo, which TDim doesn't carry.  Special-case the easy form
+        // where all but one of the merged dims is 1 — then the lone
+        // non-trivial sub-axis just maps to the new merged axis.
+        if to_dims.len() == 1 {
+            let to_dim = to_dims[0].clone();
+            let from_product: TDim = from_dims.iter().fold(TDim::Val(1), |acc, d| acc * d.clone());
+            if from_product == to_dim {
+                let k_from = from_dims.len();
+                let mut map: HashMap<Symbol, TDim> = HashMap::default();
+                for (k, sym) in &coord_syms {
+                    let scope = sym.scope()?;
+                    let new_expr = if *k < *at {
+                        TDim::Sym(sym.clone())
+                    } else if *k < *at + k_from {
+                        let i = *k - *at;
+                        let only_nontrivial =
+                            from_dims.iter().enumerate().all(|(j, d)| j == i || d.is_one());
+                        if only_nontrivial {
+                            TDim::Sym(scope.coord_sym(*at))
+                        } else {
+                            return None;
+                        }
+                    } else {
+                        TDim::Sym(scope.coord_sym(*k - (k_from - 1)))
+                    };
+                    map.insert(sym.clone(), new_expr);
+                }
+                return expr.substitute_all(&map).ok().map(|e| e.reduce());
+            }
+        }
+        return None;
     }
 
     // For Add/Rm/Move: use transform_axis and substitute all at once to avoid
