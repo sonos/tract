@@ -356,7 +356,25 @@ pub fn handle_stream(
     }
 
     let stream_dim = max_delay + 3 * input_pulse + input_pulse / 2;
-    let concrete_sym_values = SymbolValues::default().with(&stream_symbol, stream_dim as _);
+    let mut concrete_sym_values = SymbolValues::default().with(&stream_symbol, stream_dim as _);
+    // If Blockify rewrote the model (T → k·S), it stashes the new chunk
+    // symbol and chunk size in pulsed properties.  Bind the chunk symbol
+    // to `stream_dim / k` so per-fact `stream.dim.eval_to_i64` calls below
+    // resolve through it.  (Each `PulsedModel::new` mints a fresh chunk
+    // symbol, so we read from *this* pulsed instance.)
+    if let (Some(chunk_sym_t), Some(chunk_size_t)) = (
+        pulsed.properties.get(tract_pulse::blockify::BLOCKIFY_CHUNK_SYMBOL),
+        pulsed.properties.get(tract_pulse::blockify::BLOCKIFY_CHUNK_SIZE),
+    ) {
+        let chunk_sym_name = chunk_sym_t.to_plain_array_view::<String>()?[[0]].clone();
+        let chunk_sym = pulsed.symbols.sym(&chunk_sym_name);
+        let chunk_size = chunk_size_t.cast_to_scalar::<i64>()? as usize;
+        ensure!(
+            stream_dim % chunk_size == 0,
+            "stream_dim {stream_dim} not divisible by Blockify chunk size {chunk_size}"
+        );
+        concrete_sym_values = concrete_sym_values.with(&chunk_sym, (stream_dim / chunk_size) as _);
+    }
 
     // Second pass: build full metadata with fixed_output_len
     for pulsed_node in pulsed.nodes() {
