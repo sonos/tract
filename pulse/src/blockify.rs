@@ -375,7 +375,11 @@ fn find_quadratic_sections(
 }
 
 /// Find the score-matrix axis (one of the two streaming axes of the
-/// terminator's input 0) that is contracted away by the terminator op.
+/// terminator's input 0) that is contracted away by the terminator op,
+/// **translated into mask frame** (so it's directly comparable to
+/// `mask.axis_a` / `mask.axis_b`).  Score and mask align via right-
+/// aligned broadcasting; mask is always rank-2 in the recogniser scope,
+/// so the translation is `axis - (score_rank - 2)`.
 ///
 /// * Reduce<Sum>: it's the reduced axis (must be one of the streaming axes).
 /// * EinSum: it's the streaming axis of input 0 that doesn't track to a
@@ -392,10 +396,22 @@ fn detect_contracted_score_axis(
         "Terminator score input has {} streaming axes, expected 2",
         streaming_axes.len()
     );
+    let score_rank = input_fact.rank();
+    let rank_diff = score_rank
+        .checked_sub(2)
+        .ok_or_else(|| format_err!("Terminator score input rank {score_rank} < 2; expected ≥ 2"))?;
+    let to_mask_frame = |score_axis: usize| -> TractResult<usize> {
+        score_axis.checked_sub(rank_diff).ok_or_else(|| {
+            format_err!(
+                "Terminator score axis {score_axis} doesn't map to mask frame \
+                 (rank_diff={rank_diff})"
+            )
+        })
+    };
     if let Some(reduce) = terminator.op_as::<Reduce>() {
         for &ax in &streaming_axes {
             if reduce.axes.contains(&ax) {
-                return Ok(ax);
+                return to_mask_frame(ax);
             }
         }
         bail!("Reduce terminator doesn't reduce a streaming axis of the score input");
@@ -404,7 +420,7 @@ fn detect_contracted_score_axis(
         for &ax in &streaming_axes {
             let mapped = einsum.axes.track_axis((InOut::In(0), ax), InOut::Out(0))?;
             if mapped.is_none() {
-                return Ok(ax);
+                return to_mask_frame(ax);
             }
         }
         bail!("EinSum terminator doesn't contract any streaming axis of input 0");
@@ -996,6 +1012,10 @@ fn wire_initiator_einsum(
         out_streaming_axes.len() == 2 && out_streaming_axes[1] == out_streaming_axes[0] + 1,
         "Initiator EinSum output must have two contiguous streaming axes"
     );
+    let score_rank = node.outputs[0].fact.rank();
+    let rank_diff = score_rank.checked_sub(2).ok_or_else(|| {
+        format_err!("Score rank {score_rank} < 2; cannot translate to mask frame")
+    })?;
     let mut in_streaming_axes: TVec<usize> = tvec!();
     for &input in &node.inputs {
         let positions = streaming_positions(model.outlet_fact(input)?, chunk_sym);
@@ -1019,17 +1039,25 @@ fn wire_initiator_einsum(
 
         // Banded path: if this input's stream axis is on the contracted
         // side of the section, expose `W` chunks per pulse on it.
+        // Translate the tracked score axis to mask frame for the
+        // comparison with `contracted_axis` (also mask frame).
         let tracked_in_score =
             op.axes.track_axis((InOut::In(ix), stream_axis), InOut::Out(0))?.ok_or_else(|| {
                 format_err!(
                     "EinSum stream axis on input {ix} doesn't track to a unique output axis"
                 )
             })?;
+        let tracked_in_mask = tracked_in_score.checked_sub(rank_diff).ok_or_else(|| {
+            format_err!(
+                "Tracked score axis {tracked_in_score} doesn't map to mask frame \
+                 (rank_diff={rank_diff})"
+            )
+        })?;
         let chunked = wrap_with_window_if_needed(
             patch,
             chunked,
             stream_axis,
-            tracked_in_score,
+            tracked_in_mask,
             &format!("{}.{ix}", node.name),
             mask,
             contracted_axis,
@@ -1156,6 +1184,10 @@ fn wire_terminator_einsum(
     chunk_sym: &Symbol,
     k: i64,
 ) -> TractResult<(OutletId, OutletId)> {
+    let score_rank = model.outlet_fact(node.inputs[0])?.rank();
+    let rank_diff = score_rank.checked_sub(2).ok_or_else(|| {
+        format_err!("Terminator score rank {score_rank} < 2; cannot translate to mask frame")
+    })?;
     let mut chunked_inputs: TVec<OutletId> = tvec!();
     let mut input_starts: Vec<Option<usize>> = vec![];
     for (slot, &input) in node.inputs.iter().enumerate() {
@@ -1185,14 +1217,17 @@ fn wire_terminator_einsum(
             // Where does this auxiliary's stream axis sit on the score
             // matrix (= input 0 of this einsum)?  If it's the contracted
             // side, window it so its within-chunk axis matches the
-            // already-windowed score input.
+            // already-windowed score input.  Translate the score axis
+            // to mask frame for the comparison with `contracted_axis`.
             let aux_in_score = op.axes.track_axis((InOut::In(slot), stream_axis), InOut::In(0))?;
-            let new_chunked = if let Some(score_axis) = aux_in_score {
+            let new_chunked = if let Some(score_axis) = aux_in_score
+                && let Some(mask_axis) = score_axis.checked_sub(rank_diff)
+            {
                 wrap_with_window_if_needed(
                     patch,
                     new_chunked,
                     stream_axis,
-                    score_axis,
+                    mask_axis,
                     &format!("{}.in{slot}", node.name),
                     mask,
                     contracted_axis,
