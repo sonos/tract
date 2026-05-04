@@ -68,13 +68,14 @@ fn pulsify(
         &[input],
     )?[0];
 
-    // For `start < 0` (past-window): zero-fill the leading `before` chunks
+    // For `start < 0` (past-window): pad-fill the leading `before` chunks
     // of the post-delay buffer and shift `stream.delay` back by `before`,
     // so the consumer's logical time anchors to the *latest* chunk in the
     // window rather than the oldest.  For `start = 0` we still wire the
     // pad with `before = 0`: it's a runtime no-op (no fill, no delay
-    // change) but keeps the pulsifier's structure uniform.
-    let zero = Tensor::zero_scalar_dt(fact.datum_type)?;
+    // change) but keeps the pulsifier's structure uniform.  The fill
+    // value comes from `op.pad_value` — zero for data wires, sentinel
+    // for chunk-index wires whose downstream band predicate keys off it.
     let post_delay_fact = target.outlet_fact(delayed)?.clone();
     let post_delay_stream = post_delay_fact.stream.as_ref().unwrap();
     let begin_input = post_delay_stream.delay;
@@ -87,7 +88,7 @@ fn pulsify(
             after: 0.to_dim(),
             begin_input,
             end_input,
-            mode: PadMode::Constant(zero.into_arc_tensor()),
+            mode: PadMode::Constant(op.pad_value.clone()),
             overlap,
         },
         &[delayed],
@@ -192,7 +193,7 @@ mod tests {
     /// fill at the trailing edge.
     #[test]
     fn window_on_axis_typed_eval() {
-        let op = WindowOnAxis::future(0, 2);
+        let op = WindowOnAxis::future(0, 2, f32::datum_type()).unwrap();
         let input =
             tract_core::ndarray::Array2::<f32>::from_shape_fn((4, 2), |(i, j)| (i * 10 + j) as f32);
         let result = op.eval(tvec!(input.clone().into_dyn().into_tvalue())).unwrap();
@@ -226,7 +227,9 @@ mod tests {
         let mut model = TypedModel::default();
         let s = model.symbols.sym("S");
         let a = model.add_source("a", f32::fact(dims![s.clone(), 2_usize].as_ref())).unwrap();
-        let win = model.wire_node("win", WindowOnAxis::future(0, 2), &[a]).unwrap();
+        let win = model
+            .wire_node("win", WindowOnAxis::future(0, 2, f32::datum_type()).unwrap(), &[a])
+            .unwrap();
         model.select_output_outlets(&win).unwrap();
 
         let pulsed = PulsedModel::new(&model, s.clone(), &1.to_dim()).unwrap();
@@ -278,8 +281,18 @@ mod tests {
         let mut model = TypedModel::default();
         let s = model.symbols.sym("S");
         let a = model.add_source("a", f32::fact(dims![s.clone(), 2_usize].as_ref())).unwrap();
-        let win =
-            model.wire_node("win", WindowOnAxis { axis: 0, window: 2, start: -1 }, &[a]).unwrap();
+        let win = model
+            .wire_node(
+                "win",
+                WindowOnAxis {
+                    axis: 0,
+                    window: 2,
+                    start: -1,
+                    pad_value: tensor0(0f32).into_arc_tensor(),
+                },
+                &[a],
+            )
+            .unwrap();
         model.select_output_outlets(&win).unwrap();
 
         let pulsed = PulsedModel::new(&model, s.clone(), &1.to_dim()).unwrap();

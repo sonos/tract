@@ -1,0 +1,47 @@
+version 1.0;
+
+extension tract_registry tract_core;
+extension tract_registry tract_transformers;
+extension tract_symbol T;
+extension tract_assert T>=0;
+
+# Banded causal SDPA — the conformer/whisper-style attention shape.
+#
+# Q·Kᵀ → ScaledMaskedSoftmax(banded mask, scale=0.5) → attn·V.
+#
+# Mask: `0 ≤ chunk(i) - chunk(j) ≤ 1`.  Combined with the terminator
+# EinSum contracting `j`, the per-output-i-chunk dependency is on
+# j-chunks `[chunk(i) - 1, chunk(i)]` — causal in `i` with one chunk
+# of left context.
+#
+# Boundary case: at chunk(i) = 0 the past j-chunk doesn't exist; the
+# softmax should normalise only over chunk(j) = 0.  Mul-by-mask +
+# Reduce/EinSum bodies (ex01-ex05) shrug this off because zero-data
+# annihilates the masked-out positions naturally.  SMS does NOT —
+# `exp(0·scale) = 1` leaks into the denominator.  Today's blockify
+# substitutes the mask with a constant all-true block, which is the
+# wrong answer at this boundary.  This synthetic surfaces the bug.
+
+graph network(a, b, c) -> (output)
+{
+    a = tract_core_external(shape = [T, 4], datum_type = 'f32');
+    b = tract_core_external(shape = [T, 4], datum_type = 'f32');
+    c = tract_core_external(shape = [T, 4], datum_type = 'f32');
+
+    scores = tract_core_einsum([a, b], expr = "id,jd->ij", acc = "f32");
+
+    pos      = tract_core_range(0, tract_core_shape_of(a)[0], step = 1);
+    chunk_id = pos / 2;
+
+    chunk_row = unsqueeze(chunk_id, axes = [1]);
+    chunk_col = unsqueeze(chunk_id, axes = [0]);
+    diff      = chunk_row - chunk_col;
+
+    left_ok  = ge(diff, 0);
+    right_ok = le(diff, 1);
+    in_band  = and(left_ok, right_ok);
+
+    attn = tract_transformers_scaled_masked_softmax(scores, in_band, scale = 0.5, post_softmax_mask = false);
+
+    output = tract_core_einsum([attn, c], expr = "ij,jd->id", acc = "f32");
+}
