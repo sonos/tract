@@ -1,0 +1,46 @@
+version 1.0;
+
+extension tract_registry tract_core;
+extension tract_registry tract_transformers;
+extension tract_symbol T;
+extension tract_assert T>=0;
+
+# Two chained block-diagonal SDPA blocks.  The first block produces
+# `[T, D]`, which feeds as the queries of the second.  Each block has
+# its own (K, V) inputs.  Same chunk axis and mask construction across
+# both blocks (single chunk_id wire, shared between the two Eq nodes).
+#
+# Why this matters: the recogniser detects independent quadratic
+# sections via connected components of multi-T-axis nodes; this test
+# exercises *two* sections in the same model, each ChunkSize = 2,
+# block-diagonal mask.  Each section is rewritten by its own
+# TypedModelPatch and applied in sequence.
+#
+# Streaming axis: 0 on all inputs and on the output.  Pulse size P = 2.
+
+graph network(q, k1, v1, k2, v2) -> (output)
+{
+    q  = tract_core_external(shape = [T, 4], datum_type = 'f32');
+    k1 = tract_core_external(shape = [T, 4], datum_type = 'f32');
+    v1 = tract_core_external(shape = [T, 4], datum_type = 'f32');
+    k2 = tract_core_external(shape = [T, 4], datum_type = 'f32');
+    v2 = tract_core_external(shape = [T, 4], datum_type = 'f32');
+
+    # Shared chunk-id wire (T → chunk_id = pos / 2).
+    pos      = tract_core_range(0, tract_core_shape_of(q)[0], step = 1);
+    chunk_id = pos / 2;
+
+    chunk_row = unsqueeze(chunk_id, axes = [1]);
+    chunk_col = unsqueeze(chunk_id, axes = [0]);
+    in_block  = eq(chunk_row, chunk_col);
+
+    # Block 1: SDPA(q, k1, v1).
+    scores1 = tract_core_einsum([q, k1], expr = "id,jd->ij", acc = "f32");
+    attn1   = tract_transformers_scaled_masked_softmax(scores1, in_block, scale = 0.5, post_softmax_mask = false);
+    block1  = tract_core_einsum([attn1, v1], expr = "ij,jd->id", acc = "f32");
+
+    # Block 2: SDPA(block1, k2, v2) — block1 acts as the queries here.
+    scores2 = tract_core_einsum([block1, k2], expr = "id,jd->ij", acc = "f32");
+    attn2   = tract_transformers_scaled_masked_softmax(scores2, in_block, scale = 0.5, post_softmax_mask = false);
+    output  = tract_core_einsum([attn2, v2], expr = "ij,jd->id", acc = "f32");
+}
