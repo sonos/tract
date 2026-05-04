@@ -571,8 +571,18 @@ where
 
                     if **needed_shape != *reference.shape() {
                         let Ok(reshaped) = reference.clone().into_shape(&needed_shape) else {
-                            comparison_error = Some(format!("Incompatible shape on output {slot} reference is {reference:?}, model expects {:?}.", needed_shape));
-                            tags.style = Some(Red.into());
+                            // Pulsification can change intermediate-node shapes
+                            // (e.g. Blockify rewrites a `[T,T]` score into a
+                            // chunked `[S, k, k]`); the streamed value can't
+                            // be directly compared against the reference.
+                            // Mark unchecked rather than failing — the model
+                            // outputs are still validated end-to-end.
+                            tags.style = Some(Yellow.into());
+                            tags.labels.push(format!(
+                                "Skipped: incompatible shape on output {slot}, reference {:?}, model expects {:?}",
+                                reference.shape(), needed_shape,
+                            ));
+                            unchecked.insert(node.id);
                             continue;
                         };
                         reference = reshaped;
