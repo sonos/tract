@@ -390,16 +390,10 @@ impl TDim {
                 }
             }
             MulInt(c, inner) => MulInt(c, Box::new(inner.expand_polynomial())).simplify(),
-            Add(terms) => {
-                Add(terms.into_iter().map(Self::expand_polynomial).collect()).simplify()
-            }
+            Add(terms) => Add(terms.into_iter().map(Self::expand_polynomial).collect()).simplify(),
             Div(a, q) => Div(Box::new(a.expand_polynomial()), q).simplify(),
-            Min(terms) => {
-                Min(terms.into_iter().map(Self::expand_polynomial).collect()).simplify()
-            }
-            Max(terms) => {
-                Max(terms.into_iter().map(Self::expand_polynomial).collect()).simplify()
-            }
+            Min(terms) => Min(terms.into_iter().map(Self::expand_polynomial).collect()).simplify(),
+            Max(terms) => Max(terms.into_iter().map(Self::expand_polynomial).collect()).simplify(),
             Broadcast(terms) => {
                 Broadcast(terms.into_iter().map(Self::expand_polynomial).collect()).simplify()
             }
