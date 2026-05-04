@@ -6,6 +6,7 @@ mod deconv_delay;
 mod delay;
 mod mask;
 mod pad;
+mod range;
 mod slice;
 mod window;
 
@@ -22,6 +23,7 @@ pub mod ops {
     pub use super::delay::{Delay, DelayState};
     pub use super::mask::PulseMask;
     pub use super::pad::PulsePad;
+    pub use super::range::PulsedRange;
     pub use super::slice::PulsedAxisSlice;
     pub use super::window::WindowOnAxis;
 }
