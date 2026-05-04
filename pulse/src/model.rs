@@ -56,7 +56,22 @@ impl PulsedModelExt for PulsedModel {
             None => (symbol, pulse.clone()),
         };
         let pulsifiers = crate::ops::OpPulsifier::inventory();
-        Pulsifier(stream_sym, pulse_dim, pulsifiers).translate_model_with_mappings(&blockified)
+        let (mut pulsed, mapping) = Pulsifier(stream_sym, pulse_dim, pulsifiers)
+            .translate_model_with_mappings(&blockified)?;
+        // Forward Blockify's bookkeeping (chunk_symbol/chunk_size/original
+        // symbol) onto the pulsed model so downstream consumers — notably
+        // the CLI's `compare --stream` symbol-binding — can see what the
+        // stream symbol got translated to.
+        for key in [
+            crate::blockify::BLOCKIFY_CHUNK_SYMBOL,
+            crate::blockify::BLOCKIFY_CHUNK_SIZE,
+            crate::blockify::BLOCKIFY_ORIGINAL_SYMBOL,
+        ] {
+            if let Some(v) = blockified.properties.get(key) {
+                pulsed.properties.insert(key.to_string(), v.clone());
+            }
+        }
+        Ok((pulsed, mapping))
     }
 
     fn into_typed(self) -> TractResult<TypedModel> {
