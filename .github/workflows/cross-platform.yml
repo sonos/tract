@@ -5,6 +5,11 @@ on:
   schedule:
     - cron:  '0 5 * * *'
   workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "Optional PR number to test (from fork ok). Leave empty to run on selected branch."
+        required: false
+        type: number
 
 env:
   CARGO_INCREMENTAL: false
@@ -12,7 +17,37 @@ env:
   RUSTUP_TOOLCHAIN: 1.91.0
 
 jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      test_ref: ${{ steps.set.outputs.test_ref }}
+      test_branch: ${{ steps.set.outputs.test_branch }}
+    steps:
+      - id: set
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const prInput = context.payload.inputs?.pr_number;
+            core.info(`Fetching PR ${prInput}`);
+            if (!prInput) {
+              core.setOutput('test_ref', process.env.GITHUB_SHA);
+              core.setOutput('test_branch', '');
+              return;
+            }
+            const pr = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: Number(prInput),
+            });
+            core.info(pr.data.head.sha);
+            core.setOutput('test_ref', pr.data.head.sha);
+            // Tag bundles with pr-NNNN-<head ref> so graphite can find
+            // the metrics by PR number and forks with same branch name
+            // don't collide.
+            core.setOutput('test_branch', `pr-${prInput}-${pr.data.head.ref}`);
+
   linux:
+    needs: prepare
     strategy:
       fail-fast: false
       matrix:
@@ -41,6 +76,9 @@ jobs:
 
     steps:
     - uses: actions/checkout@v6
+      with:
+        ref: ${{ needs.prepare.outputs.test_ref }}
+        fetch-depth: 0
 
     - name: Get current date
       id: date
@@ -72,9 +110,12 @@ jobs:
       env:
         PLATFORM: ${{matrix.platform}}
         AWS_EC2_METADATA_DISABLED: true
+        GITHUB_HEAD_REF: ${{ needs.prepare.outputs.test_branch }}
+        GITHUB_SHA: ${{ needs.prepare.outputs.test_ref }}
       run: .travis/cross.sh
 
   apple:
+    needs: prepare
     strategy:
       fail-fast: false
       matrix:
@@ -89,6 +130,9 @@ jobs:
 
     steps:
     - uses: actions/checkout@v6
+      with:
+        ref: ${{ needs.prepare.outputs.test_ref }}
+        fetch-depth: 0
 
     - name: Configure AWS Credentials
       continue-on-error: true
@@ -104,4 +148,6 @@ jobs:
     - name: Cross script
       env:
         PLATFORM: ${{matrix.platform}}
+        GITHUB_HEAD_REF: ${{ needs.prepare.outputs.test_branch }}
+        GITHUB_SHA: ${{ needs.prepare.outputs.test_ref }}
       run: .travis/cross.sh
