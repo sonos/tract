@@ -10,8 +10,10 @@ use clap::Parser;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use float_ord::FloatOrd;
 use itertools::Itertools;
-use tract::prelude::tract_ndarray::prelude::*;
+use ndarray::prelude::*;
 use tract::prelude::*;
+
+tract::impl_ndarray_interop!();
 
 /// Streaming ASR demo using nvidia/nemotron-speech-streaming-en-0.6b.
 ///
@@ -108,8 +110,8 @@ impl NemotronModels {
         )?;
         pp.transform(r#"{"name":"select_outputs","outputs":["processed_signal"]}"#)?;
         pp.transform(Pulse::new(config.preproc_pulse.to_string()).symbol("INPUT_SIGNAL__TIME"))?;
-        let pp_delay = pp.property("pulse.delay")?.view::<i64>()?[0].to_owned() as usize;
-        let pp_out_axis = pp.property("pulse.output_axes")?.view::<i64>()?[0].to_owned() as usize;
+        let pp_delay = pp.property("pulse.delay")?.as_slice::<i64>()?[0].to_owned() as usize;
+        let pp_out_axis = pp.property("pulse.output_axes")?.as_slice::<i64>()?[0].to_owned() as usize;
         let pp_out_pulse = pp.output_fact(0)?.dim(pp_out_axis)?.to_int64()? as usize;
         let pp_input_shape = fact_shape(&pp.input_fact(0)?)?;
         let preprocessor = runtime.prepare(pp)?;
@@ -124,9 +126,9 @@ impl NemotronModels {
         )?;
         enc.transform(r#"{"name":"select_outputs","outputs":["outputs"]}"#)?;
         enc.transform(Pulse::new(config.encoder_pulse.to_string()).symbol("AUDIO_SIGNAL__TIME"))?;
-        let enc_delay = enc.property("pulse.delay")?.view::<i64>()?[0].to_owned() as usize;
+        let enc_delay = enc.property("pulse.delay")?.as_slice::<i64>()?[0].to_owned() as usize;
         let enc_output_axis =
-            enc.property("pulse.output_axes")?.view::<i64>()?[0].to_owned() as usize;
+            enc.property("pulse.output_axes")?.as_slice::<i64>()?[0].to_owned() as usize;
         let enc_output_pulse = enc.output_fact(0)?.dim(enc_output_axis)?.to_int64()? as usize;
         let enc_input_shape = fact_shape(&enc.input_fact(0)?)?;
         let encoder = runtime.prepare(enc)?;
@@ -212,8 +214,8 @@ impl StreamState {
         let encoder = models.encoder.spawn_state()?;
 
         let blank_tok = Tensor::from_slice(&[1, 1], &[models.blank_id as i32])?;
-        let s0 = tensor(Array3::<f32>::zeros([2, 1, 640]))?;
-        let s1 = tensor(Array3::<f32>::zeros([2, 1, 640]))?;
+        let s0 = Array3::<f32>::zeros([2, 1, 640]).tract()?;
+        let s1 = Array3::<f32>::zeros([2, 1, 640]).tract()?;
         let [_out, s0, s1] = models.decoder.run([blank_tok.clone(), s0, s1])?.try_into().unwrap();
         let [dec_token, dec_state_0, dec_state_1] =
             models.decoder.run([blank_tok, s0, s1])?.try_into().unwrap();
@@ -277,7 +279,7 @@ impl StreamState {
         if self.feat_buf_frames > 0 {
             let refs: Vec<_> = self.feat_buf.iter().map(|a| a.view()).collect();
             let leftover =
-                tract::prelude::tract_ndarray::concatenate(Axis(self.models.pp_out_axis), &refs)?;
+                ndarray::concatenate(Axis(self.models.pp_out_axis), &refs)?;
             let s = &self.models.enc_input_shape;
             let mut enc_input = Array3::<f32>::zeros((s[0], s[1], s[2]));
             let n = leftover.shape()[self.models.pp_out_axis].min(s[2]);
@@ -298,7 +300,7 @@ impl StreamState {
         let results = self.preproc.run([input])?;
         self.total_preproc += t.elapsed();
         self.n_preproc += 1;
-        let features: ArrayD<f32> = results[0].view()?.into_owned();
+        let features: ArrayD<f32> = results[0].ndarray()?.into_owned();
         self.feed_features(features)
     }
 
@@ -317,7 +319,7 @@ impl StreamState {
 
         while self.feat_buf_frames >= encoder_pulse {
             let refs: Vec<_> = self.feat_buf.iter().map(|a| a.view()).collect();
-            let all = tract::prelude::tract_ndarray::concatenate(Axis(pp_out_axis), &refs)?;
+            let all = ndarray::concatenate(Axis(pp_out_axis), &refs)?;
             let enc_feat = all.slice_axis(Axis(pp_out_axis), (..encoder_pulse).into()).to_owned();
             self.run_encoder_pulse(enc_feat)?;
             let leftover = all.slice_axis(Axis(pp_out_axis), (encoder_pulse..).into());
@@ -333,19 +335,20 @@ impl StreamState {
     fn run_encoder_pulse(&mut self, features: ArrayD<f32>) -> anyhow::Result<()> {
         self.show("[enc]");
         let t = Instant::now();
-        let pulse_tensor: Tensor = tensor(features)?;
+        let pulse_tensor: Tensor = features.tract()?;
         let results = self.encoder.run([pulse_tensor])?;
         self.total_encoder += t.elapsed();
         self.n_encoder += 1;
-        let enc_out: ArrayD<f32> = results[0].view()?.into_owned();
+        let enc_out: ArrayD<f32> = results[0].ndarray()?.into_owned();
         self.pulse_count += 1;
         for f in 0..self.models.enc_output_pulse {
             if self.enc_delay_remaining > 0 {
                 self.enc_delay_remaining -= 1;
                 continue;
             }
-            let frame: Tensor =
-                tensor(enc_out.slice_axis(Axis(self.models.enc_output_axis), (f..f + 1).into()))?;
+            let frame: Tensor = enc_out
+                .slice_axis(Axis(self.models.enc_output_axis), (f..f + 1).into())
+                .tract()?;
             self.decode_frame(frame)?;
         }
         Ok(())
@@ -360,8 +363,8 @@ impl StreamState {
                 self.models.joint.run([frame.clone(), self.dec_token.clone()])?.try_into().unwrap();
             self.total_joint += t.elapsed();
             self.n_joint += 1;
-            let logits_view = logits.view::<f32>()?;
-            let token_id = argmax(logits_view.as_slice().unwrap()).unwrap();
+            let logits_slice = logits.as_slice::<f32>()?;
+            let token_id = argmax(logits_slice).unwrap();
             if token_id == self.models.blank_id {
                 break;
             }
