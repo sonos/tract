@@ -1,70 +1,132 @@
 //! Blockify — typed-model rewrite that factors block-diagonal / banded
-//! structure into the graph topology, so the result has a single streaming
-//! axis everywhere and pulsifies under v1's existing machinery.
+//! attention structure into the graph topology, so the result has a
+//! single streaming axis everywhere and pulsifies under v1's existing
+//! machinery.
 //!
-//! Recogniser scope: banded masks `chunk(axis_a) − chunk(axis_b) ∈ [lower, upper]`
-//! (block-diagonal is the special case `lower == upper == 0`).
+//! # Recogniser scope
 //!
-//!   EinSum([a, b]) producing scores[T, T]
-//!   → body op(s) consuming scores and the mask wire (whose
-//!     `uniform_tdim` carries one of the recognised forms,
-//!     `Eq(coord_a/k, coord_b/k)` or `Mul([Ge(upper, D), Ge(D, lower)])`
-//!     with `D = coord_a/k − coord_b/k`)
-//!   → Reduce<Sum> on a streaming axis  OR  contracting EinSum (ex02)
+//! Banded masks `chunk(axis_a) − chunk(axis_b) ∈ [lower, upper]`
+//! (block-diagonal is the special case `lower == upper == 0`):
 //!
-//! Body ops are replayed in the chunked frame.  Each input is one of:
+//!   EinSum([a, b]) producing a multi-T-axis score
+//!   → body op(s) consuming scores and a mask wire whose
+//!     `uniform_tdim` carries one of the recognised AST shapes
+//!     (`Eq(coord_a/k, coord_b/k)` for block-diagonal, or
+//!     `Mul([Ge(upper, D), Ge(D, lower)])` with `D = coord_a/k −
+//!     coord_b/k` for banded — both forms are produced by core
+//!     `reduce()` after Eq/And/Ge propagation)
+//!   → Reduce<Sum> on a streaming axis, contracting EinSum, or
+//!     ScaledMaskedSoftmax + downstream contracting EinSum
 //!
-//! * **chunked data** (in the `chunked` map): pass through.
-//! * **other external** (taps): rank-bumped with `AddAxis(0)` to
-//!   match the chunked frame so rank-strict consumers (TypedBinOp, …)
-//!   accept them.
+//! `mask.lower > 0` (purely-future, skipping current) and `mask.upper < 0`
+//! (purely-past) are rejected — they don't appear in attention masks and
+//! would need different pulsifier wiring.
 //!
-//! The mask-construction chain (Sub/Ge/Le/And/Cast on chunk-index wires
-//! — `chunk_row`, `chunk_col`, `diff`, `in_band`) is chunkified
-//! faithfully like any other body op: the multi-T-axis Sub/Eq head is
-//! handled as a uniform_tdim *initiator* (`wire_uniform_tdim_initiator`)
-//! that taps each single-T-axis chunk-index input, splits its T-axis,
-//! moves the chunk axis to position 0, and (on the contracted side)
-//! wraps with `WindowOnAxis` using a **sentinel pad value** so out-of-
-//! stream boundary slots produce values way outside the band; downstream
-//! Ge/Le evaluate to `false` there.  The sentinel is bounded by
-//! `i32::MAX/4` because tract's `i64 → TDim` cast routes through `i32`
-//! (see `data/src/tensor.rs:1250`), which would truncate larger values.
+//! # Pipeline
+//!
+//! 1. **Detect** quadratic sections globally (`find_quadratic_sections`):
+//!    connected components of multi-T-axis nodes, with at least one
+//!    `uniform_tdim`-annotated wire whose AST decodes to a `MaskForm`.
+//!    Determine the score axis the terminator contracts and translate
+//!    it to mask frame.
+//! 2. **Substitute** the streaming symbol globally `T → k·S` via core's
+//!    `substitute_symbols`.
+//! 3. **Rewrite** one `TypedModelPatch` per section
+//!    (`build_section_patch`).  Sections are independent so patches
+//!    apply in sequence.  A recognised section gets fully rewritten or
+//!    Blockify bails — no partial rewrites silently left for downstream
+//!    pulsification to choke on.
+//!
+//! # Section rewrite
+//!
+//! Three initiator flavours (`wire_initiator` dispatches by op type):
+//!
+//! * **Data EinSum** (`wire_initiator_einsum`): the score-matrix
+//!   producer.  Tap each input, split its T-axis at `k`, and on the
+//!   contracted side wrap with `WindowOnAxis(W) + flatten(W, k) → W·k`
+//!   so the chunked einsum's contracted within-chunk axis carries `W·k`
+//!   rather than `k` elements.
+//! * **uniform_tdim mask head** (`wire_uniform_tdim_initiator`): the
+//!   multi-T-axis Sub/Eq at the top of the mask-construction chain.
+//!   Each input is a single-T-axis chunk-id wire (`chunk_row`,
+//!   `chunk_col`); `chunkify_uniform_tdim_input` taps it, casts TDim →
+//!   I64 (PulsePad's `dispatch_copy_by_size!` fill needs `Copy`), splits
+//!   the T-axis, moves the chunk axis to position 0, and on the
+//!   contracted side wraps with `WindowOnAxis` using a **sentinel pad
+//!   value** so out-of-stream boundary slots produce values way outside
+//!   the band; downstream Ge/Le evaluate to `false` there.  After Sub,
+//!   the result is cast back to the source dtype so downstream body ops
+//!   that tap external constants (e.g. the `0` in `ge(diff, 0)`) match.
+//! * **MultiBroadcastTo** (`wire_initiator_multibroadcastto`): the
+//!   `select(mask, scores, scores * 0.0 + -inf)` false-branch pattern,
+//!   where declutter folds the chain to a `MultiBroadcastTo` of a small
+//!   const up to score's `[T, T]` shape.  The op's input is non-
+//!   streaming, so we tap and rank-bump it to the chunked-frame rank;
+//!   subsequent body-op broadcasting fills in the chunked dims with the
+//!   constant value.
+//!
+//! Body ops (`wire_body`) are replayed op-cloned in the chunked frame.
+//! Each input is one of:
+//!
+//! * **chunked** (in the `chunked` map): pass through.  May or may not
+//!   carry a streaming axis — broadcast constants from the
+//!   MultiBroadcastTo initiator have rank-bumped shape with no streaming
+//!   axis, and that's fine.
+//! * **other external** (taps): rank-bumped with `AddAxis(0)` to match
+//!   the chunked frame so rank-strict consumers (TypedBinOp, …) accept
+//!   them.
 //!
 //! `axes_mapping::track_axis` asserts each chunked input's chunk axis
-//! reaches a unique output axis — bails if the op would disconnect it.
+//! reaches a unique output axis position — bails if the op would
+//! disconnect it.  Body ops with explicit axis params (currently
+//! `Softmax`) get axis indices shifted by `+1` via
+//! `translate_body_op_axes` to account for the chunk axis inserted at
+//! position 0.
 //!
-//! Implementation layout: detect quadratic sections globally, substitute
-//! the streaming symbol T → k·S via core's `substitute_symbols`, then
-//! build one TypedModelPatch per section that does the chunkification
-//! locally and shunts the boundary outlet to the chunked-then-merged
-//! output.  Sections are independent, so patches apply in sequence.
+//! # Window-slot offsets
 //!
-//! Banded sections wrap any input on the contracted-axis side with
-//! `WindowOnAxis(W) + flatten(W, k) → W·k` so the chunked einsum's
-//! contracted within-chunk axis carries `W·k` rather than `k` elements.
-//! "Contracted axis" = the score-matrix axis the terminator op contracts
-//! (Reduce<Sum>'s reduced axis, or the EinSum axis missing from the
-//! output).  Detected by `detect_contracted_score_axis`.
+//! * `contracted_axis == mask.axis_a`: `start = mask.lower` — consumer
+//!   logical chunk `c` on the kept axis (= axis_b), window covers
+//!   `chunk(axis_a) ∈ [c + lower, c + upper]`.
+//! * `contracted_axis == mask.axis_b`: `start = -mask.upper` — kept
+//!   axis = axis_a, window covers `chunk(axis_b) ∈ [c - upper, c -
+//!   lower]`.
 //!
-//! Window slot offset:
-//! * `contracted_axis == mask.axis_a`: `start = mask.lower` (consumer
-//!   logical chunk c on the kept axis = axis_b, window covers
-//!   `chunk(axis_a) ∈ [c + lower, c + upper]`).
-//! * `contracted_axis == mask.axis_b`: `start = -mask.upper` (kept axis =
-//!   axis_a, window covers `chunk(axis_b) ∈ [c - upper, c - lower]`).
+//! `contracted_axis` lives in mask frame (0 or 1).  Score and mask align
+//! via right-aligned broadcasting; the recogniser translates score-
+//! frame axes from `axes_mapping::track_axis` to mask frame via
+//! `axis - (score_rank - 2)`.
 //!
 //! Output `stream.delay` = `max(0, end_of_window)` chunks (positive when
 //! the window extends past `c`, zero when fully causal).
 //!
-//! For ex02-style EinSum terminators, auxiliary inputs whose stream axis
-//! tracks (through the terminator einsum) to the contracted score axis
-//! are also windowed, so all inputs to the terminator share the same
-//! W·k contracted-axis size.
+//! For EinSum terminators (e.g. attention's `attn @ V`), auxiliary
+//! inputs whose stream axis tracks through the terminator einsum to the
+//! contracted score axis are also windowed, so all inputs to the
+//! terminator share the same W·k contracted-axis size.
 //!
-//! `mask.lower > 0` (purely-future, skipping current) and `mask.upper < 0`
-//! (purely-past) are rejected: they don't appear in attention masks and
-//! would need different pulsifier wiring.
+//! # Runtime dependencies
+//!
+//! * `tract_pulse_opl::ops::PulsedRange` — pulsifies the source's
+//!   `Range(0, T)` chunk-id chain that
+//!   `chunkify_uniform_tdim_input` taps.  Without it, `Range` falls
+//!   through `NonPulsingWrappingOp` and produces a fresh symbolic shape
+//!   the rest of pulsification can't match.
+//! * `WindowOnAxis::pad_value` — set per-input to either `zero` (data
+//!   wires) or a sentinel (chunk-id wires), depending on the initiator.
+//!
+//! # Known workarounds
+//!
+//! * Sentinel pad value bounded by `i32::MAX/4`: tract's `i64 → TDim`
+//!   tensor cast routes through `i32` (`data/src/tensor.rs:1250`), so
+//!   larger sentinels truncate to small junk and the band predicate
+//!   evaluates true on boundary slots.  REVISIT: fix the cast upstream
+//!   and lift the cap.
+//! * TDim → I64 cast on chunk-id wires before windowing, then back to
+//!   TDim after the chunked Sub: `PulsePad`'s fill uses
+//!   `dispatch_copy_by_size!` which doesn't include TDim (not `Copy`).
+//!   REVISIT: add a clone-fill arm to `PulsePad` for TDim and drop the
+//!   round-trip.
 
 use crate::internal::*;
 use std::collections::{BTreeSet, HashMap};
@@ -794,6 +856,9 @@ fn chunkify_uniform_tdim_input(
     // panics on non-Copy datum types like TDim.  Body ops downstream are
     // Sub/Ge/Le/And — they don't care whether their numeric inputs are
     // TDim or I64 (the final mask comes out as Bool either way).
+    //
+    // REVISIT: add a TDim arm to `pulse-opl/src/pad.rs` (clone-fill instead
+    // of `dispatch_copy_by_size`) and drop this round-trip.
     let mut wire = tapped;
     if patch.outlet_fact(wire)?.datum_type == TDim::datum_type() {
         wire = patch.wire_node(
@@ -885,6 +950,9 @@ fn chunkify_uniform_tdim_input(
 /// `i64 → TDim` through `i32` (see `data/src/tensor.rs:1250`), which
 /// would truncate a larger sentinel.  Half a billion is comfortably
 /// above any plausible chunk count yet safe under that cast.
+///
+/// REVISIT: route `i64 → TDim` directly in `data/src/tensor.rs:1250`
+/// (no `i32` middle step) and lift the cap to `i64::MAX / 4`.
 fn sentinel_pad_value(dt: DatumType) -> TractResult<Tensor> {
     if dt == bool::datum_type() {
         bail!("uniform_tdim wire of bool dtype not expected as initiator-side input");
@@ -958,10 +1026,8 @@ fn wire_body(
 
     // Chunkability: for every chunked input, its chunk axis must track
     // through to a unique output axis position.
-    let input_facts: TVec<TypedFact> = new_inputs
-        .iter()
-        .map(|o| patch.outlet_fact(*o).map(|f| f.clone()))
-        .collect::<TractResult<_>>()?;
+    let input_facts: TVec<TypedFact> =
+        new_inputs.iter().map(|o| patch.outlet_fact(*o).cloned()).collect::<TractResult<_>>()?;
     let in_refs: TVec<&TypedFact> = input_facts.iter().collect();
     let output_facts = node.op.output_facts(&in_refs)?;
     let out_refs: TVec<&TypedFact> = output_facts.iter().collect();
@@ -979,7 +1045,7 @@ fn wire_body(
     // Reduce, …) whose values are positions in the *original* rank.
     // The chunk axis is inserted at position 0 in the chunked frame, so
     // every original axis shifts right by one.  Translate accordingly.
-    let chunked_op = translate_body_op_axes(&node.op);
+    let chunked_op = translate_body_op_axes(node.op.as_ref());
     Ok(patch.wire_node(&*node.name, chunked_op, &new_inputs)?[0])
 }
 
@@ -987,13 +1053,13 @@ fn wire_body(
 /// the chunk axis sits at position 0 and every original axis has
 /// shifted right by one.  Currently handles `Softmax`; other axis-
 /// bearing ops fall through unchanged.
-fn translate_body_op_axes(op: &Box<dyn TypedOp>) -> Box<dyn TypedOp> {
+fn translate_body_op_axes(op: &dyn TypedOp) -> Box<dyn TypedOp> {
     use tract_core::ops::nn::{Softmax, SoftmaxKind};
     if let Some(softmax) = op.downcast_ref::<Softmax>() {
         let new_axes: TVec<usize> = softmax.axes.iter().map(|&a| a + 1).collect();
         let new_softmax = match &softmax.kind {
             SoftmaxKind::Softmax(exp) => {
-                Softmax::new(new_axes, softmax.quant_output_dt, SoftmaxKind::Softmax(exp.clone()))
+                Softmax::new(new_axes, softmax.quant_output_dt, SoftmaxKind::Softmax(*exp))
             }
             SoftmaxKind::LogSoftmax => {
                 Softmax::new(new_axes, softmax.quant_output_dt, SoftmaxKind::LogSoftmax)
@@ -1001,7 +1067,7 @@ fn translate_body_op_axes(op: &Box<dyn TypedOp>) -> Box<dyn TypedOp> {
         };
         return Box::new(new_softmax);
     }
-    op.clone()
+    tract_core::dyn_clone::clone_box(op)
 }
 
 /// Insert `AddAxis(0)`s until the wire's rank reaches `target`.  Used to
