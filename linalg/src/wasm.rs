@@ -18,14 +18,26 @@ pub fn plug(ops: &mut Ops) {
     ops.mmm_impls.push(wasm_f32_16x1.mmm());
     ops.mmm_impls.push(wasm_f32_32x1.mmm());
     ops.mmm_impls.push(wasm_f32_8x8.mmm());
-    // Selection: max(nr*mr) for N>1, max(mr) for N=1.
-    //   - N>1 ops: 8x8 (nr*mr=64) wins over 4x4 (16)
-    //   - N=1 ops: 32x1 (mr=32) wins
+    // Selection paths:
+    //   - N>1 (GEMM): mmm_f32 returns 8x8. 8x8 stays TargetOptimized so
+    //     kernel_selection::strategize falls through to list_impls and picks
+    //     by max(nr*mr) — 8x8 still wins (4x4 would be the only alternative).
+    //   - N=1 (GEMV): mmv_f32 routes by M-band to the kernel whose MR fits.
+    //     The four GEMV kernels are tagged ManuallyOptimized so strategize
+    //     hits its early-return at kernel_selection.rs:35 and honours the
+    //     callback's choice. Without that tag, strategize would discard the
+    //     callback and pick max(mr)=32x1 for every M, leaving up to ~37% on
+    //     the table for small-M GEMV.
     ops.mmm_f32 = Box::new(|_m, _k, _n| wasm_f32_8x8.mmm());
+    // Bands derived from microbench_dispatch_gemv. At each band edge, using
+    // the next-larger kernel beats halving outer iterations of the smaller
+    // one (1 outer with ILP-absorbed padding > 2 outer with kernel preamble
+    // doubled). M=4/8/16 are exact tile fits at the lower edges; M=17/9/5
+    // are the first values where the next-larger kernel wins.
     ops.mmv_f32 = Box::new(|m, _k| match m.unwrap_or(0) {
-        0..=7 => wasm_f32_4x1.mmm(),
-        8..=15 => wasm_f32_8x1.mmm(),
-        16..=31 => wasm_f32_16x1.mmm(),
+        0..=4 => wasm_f32_4x1.mmm(),
+        5..=8 => wasm_f32_8x1.mmm(),
+        9..=16 => wasm_f32_16x1.mmm(),
         _ => wasm_f32_32x1.mmm(),
     });
 }
@@ -469,7 +481,9 @@ unsafe fn kernel_f32_4x1(mut pnl: *const FusedKerSpec<f32>) -> isize {
     }
 }
 
-MMMRustKernel!(kernel_f32_4x1 => wasm_f32_4x1<f32>(4,1)@(4,1) quality(ImplementationQuality::TargetOptimized));
+// ManuallyOptimized so kernel_selection::strategize honours the M-band
+// dispatch in mmv_f32 below. See module-level comment on plug().
+MMMRustKernel!(kernel_f32_4x1 => wasm_f32_4x1<f32>(4,1)@(4,1) quality(ImplementationQuality::ManuallyOptimized));
 
 /// WASM SIMD f32 8x1 kernel — wider GEMV variant for matrix-vector products
 /// on large M. Uses TWO independent f32x4 accumulators (rows 0-3 in ab_top,
@@ -706,7 +720,7 @@ unsafe fn kernel_f32_8x1(mut pnl: *const FusedKerSpec<f32>) -> isize {
     }
 }
 
-MMMRustKernel!(kernel_f32_8x1 => wasm_f32_8x1<f32>(8,1)@(8,1) quality(ImplementationQuality::TargetOptimized));
+MMMRustKernel!(kernel_f32_8x1 => wasm_f32_8x1<f32>(8,1)@(8,1) quality(ImplementationQuality::ManuallyOptimized));
 
 /// WASM SIMD f32 16x1 kernel — wider GEMV variant for matrix-vector products
 /// on very large M. Uses FOUR independent f32x4 accumulators (rows 0-3,
@@ -963,7 +977,7 @@ unsafe fn kernel_f32_16x1(mut pnl: *const FusedKerSpec<f32>) -> isize {
     }
 }
 
-MMMRustKernel!(kernel_f32_16x1 => wasm_f32_16x1<f32>(16,1)@(16,1) quality(ImplementationQuality::TargetOptimized));
+MMMRustKernel!(kernel_f32_16x1 => wasm_f32_16x1<f32>(16,1)@(16,1) quality(ImplementationQuality::ManuallyOptimized));
 
 /// WASM SIMD f32 32x1 kernel — widest GEMV variant for matrix-vector products
 /// on very large M. Uses EIGHT independent f32x4 accumulators (rows 0-3, 4-7,
@@ -1346,7 +1360,7 @@ unsafe fn kernel_f32_32x1(mut pnl: *const FusedKerSpec<f32>) -> isize {
     }
 }
 
-MMMRustKernel!(kernel_f32_32x1 => wasm_f32_32x1<f32>(32,1)@(32,1) quality(ImplementationQuality::TargetOptimized));
+MMMRustKernel!(kernel_f32_32x1 => wasm_f32_32x1<f32>(32,1)@(32,1) quality(ImplementationQuality::ManuallyOptimized));
 
 /// WASM SIMD f32 8x8 kernel — wide MM tile (8 rows × 8 cols, 16 v128 accumulators).
 /// Each row uses 2 v128: cols 0-3 in `_lo`, cols 4-7 in `_hi`. 16 accumulators
@@ -2078,6 +2092,25 @@ mod dispatch_trace {
         // N>1 sanity: should hit 8x8
         trace_one("MM m=64 k=64 n=8", Some(64), Some(64), Some(8));
     }
+
+    /// Exercise every M-band edge of mmv_f32 to lock in the dispatch.
+    /// Lower edge of each band = perfect-tile size; upper edge = last
+    /// M before crossover to the next kernel.
+    #[test]
+    fn band_edges() {
+        // 4x1 band: M ∈ 0..=4
+        trace_one("band 4x1 lo m=1", Some(1), Some(64), Some(1));
+        trace_one("band 4x1 hi m=4", Some(4), Some(64), Some(1));
+        // 8x1 band: M ∈ 5..=8
+        trace_one("band 8x1 lo m=5", Some(5), Some(64), Some(1));
+        trace_one("band 8x1 hi m=8", Some(8), Some(64), Some(1));
+        // 16x1 band: M ∈ 9..=16
+        trace_one("band 16x1 lo m=9", Some(9), Some(64), Some(1));
+        trace_one("band 16x1 hi m=16", Some(16), Some(64), Some(1));
+        // 32x1 band: M ≥ 17
+        trace_one("band 32x1 lo m=17", Some(17), Some(64), Some(1));
+        trace_one("band 32x1 hi m=512", Some(512), Some(64), Some(1));
+    }
 }
 
 #[cfg(test)]
@@ -2247,5 +2280,126 @@ mod microbench_32x1 {
             );
         }
         eprintln!("bit-identity OK over m={m} k={k} ({} rows)", m);
+    }
+}
+
+#[cfg(test)]
+mod microbench_dispatch_gemv {
+    //! Microbench: 4x1 vs 8x1 vs 16x1 vs 32x1 GEMV kernels across the M
+    //! range. Drives the dispatch-fix decision — the M-band callback in
+    //! plug() routes small-M to smaller kernels, but only takes effect
+    //! once the kernels are tagged ManuallyOptimized (otherwise
+    //! kernel_selection::strategize bypasses the callback and always
+    //! picks max(mr) = 32x1).
+    //!
+    //! Run with:
+    //!   RUSTFLAGS='-C target-feature=+simd128' \
+    //!     CARGO_TARGET_WASM32_WASIP1_RUNNER='wasmtime --env RUST_TEST_NOCAPTURE=1 --' \
+    //!     cargo test --release --target=wasm32-wasip1 -p tract-linalg \
+    //!     wasm::microbench_dispatch_gemv::microbench -- --nocapture --ignored
+
+    use crate::mmm::{AsInputValue, FusedSpec};
+    use std::time::Instant;
+    use tract_data::internal::*;
+    use tract_data::prelude::*;
+
+    fn run_one(kernel: &dyn crate::mmm::MatMatMul, m: usize, k: usize, iters: usize) -> f64 {
+        let packing = &kernel.packings()[0];
+        let a = Tensor::zero::<f32>(&[m, k]).unwrap();
+        let pa = packing.0.prepare_one(&a, 1, 0).unwrap();
+        let b = Tensor::zero::<f32>(&[k, 1]).unwrap();
+        let pb = packing.1.prepare_one(&b, 0, 1).unwrap();
+        let mut c = Tensor::zero::<f32>(&[m, 1]).unwrap();
+
+        for _ in 0..50 {
+            unsafe {
+                kernel
+                    .run(
+                        m,
+                        1,
+                        &[
+                            FusedSpec::AddMatMul {
+                                a: AsInputValue::Borrowed(&*pa),
+                                b: AsInputValue::Borrowed(&*pb),
+                                packing: 0,
+                            },
+                            FusedSpec::Store(kernel.c_view(Some(0), Some(0)).wrap(&c.view_mut())),
+                        ],
+                    )
+                    .unwrap();
+            }
+        }
+
+        let t0 = Instant::now();
+        for _ in 0..iters {
+            unsafe {
+                kernel
+                    .run(
+                        m,
+                        1,
+                        &[
+                            FusedSpec::AddMatMul {
+                                a: AsInputValue::Borrowed(&*pa),
+                                b: AsInputValue::Borrowed(&*pb),
+                                packing: 0,
+                            },
+                            FusedSpec::Store(kernel.c_view(Some(0), Some(0)).wrap(&c.view_mut())),
+                        ],
+                    )
+                    .unwrap();
+            }
+        }
+        let elapsed = t0.elapsed();
+        elapsed.as_secs_f64() / iters as f64 * 1e9
+    }
+
+    fn pick(name: &str) -> Box<dyn crate::mmm::MatMatMul> {
+        let mut ops = crate::generic();
+        super::plug(&mut ops);
+        for impl_ in ops.mmm_impls() {
+            if impl_.name() == name {
+                return impl_.clone();
+            }
+        }
+        panic!("kernel {name} not registered")
+    }
+
+    fn bench_shape(label: &str, m: usize, k: usize, iters: usize) {
+        let k4 = pick("wasm_f32_4x1");
+        let k8 = pick("wasm_f32_8x1");
+        let k16 = pick("wasm_f32_16x1");
+        let k32 = pick("wasm_f32_32x1");
+        let n4 = run_one(&*k4, m, k, iters);
+        let n8 = run_one(&*k8, m, k, iters);
+        let n16 = run_one(&*k16, m, k, iters);
+        let n32 = run_one(&*k32, m, k, iters);
+        let entries = [("4x1", n4), ("8x1", n8), ("16x1", n16), ("32x1", n32)];
+        let winner = entries.iter().min_by(|a, b| a.1.partial_cmp(&b.1).unwrap()).unwrap();
+        let delta_vs_32 = (winner.1 - n32) / n32 * 100.0;
+        eprintln!(
+            "{label} (m={m} k={k}): 4x1={n4:.0} 8x1={n8:.0} 16x1={n16:.0} 32x1={n32:.0} ns; \
+             winner={} ({:.0} ns, Δ vs 32x1: {delta_vs_32:+.1}%)",
+            winner.0, winner.1
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn microbench() {
+        eprintln!("=== WASM GEMV dispatch microbench: 4x1 vs 8x1 vs 16x1 vs 32x1 ===");
+        // M ≤ 16 — small-M region; the M-band callback's choices win clearly.
+        bench_shape("M=1   k=512", 1, 512, 50_000);
+        bench_shape("M=8   k=64 ", 8, 64, 50_000);
+        bench_shape("M=8   k=512", 8, 512, 20_000);
+        bench_shape("M=12  k=256", 12, 256, 50_000);
+        bench_shape("M=16  k=96 ", 16, 96, 50_000);
+        bench_shape("M=16  k=256", 16, 256, 30_000);
+        // M ≥ 17 — 32x1 wins (16x1 needs 2 outer iters, 32x1 single iter
+        // with ILP absorbing the row padding).
+        bench_shape("M=24  k=256", 24, 256, 30_000);
+        bench_shape("M=32  k=256", 32, 256, 20_000);
+        bench_shape("M=64  k=96 ", 64, 96, 20_000);
+        bench_shape("M=100 k=256", 100, 256, 10_000);
+        bench_shape("M=256 k=256", 256, 256, 5_000);
     }
 }
