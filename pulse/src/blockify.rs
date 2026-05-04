@@ -15,18 +15,21 @@
 //! Body ops are replayed in the chunked frame.  Each input is one of:
 //!
 //! * **chunked data** (in the `chunked` map): pass through.
-//! * **mask wire** (source has `uniform_tdim` set): substitute a
-//!   `[1, k_a, k_b]` constant block — the mask's value on the in-band
-//!   region of every chunk.  For the recogniser's current scope the
-//!   in-band value is uniformly `true`/`1`/`1.0` of the source dtype,
-//!   so the const is a tile of that.  No per-op "mask role" knowledge:
-//!   the body op just sees a regular tensor input it broadcasts over
-//!   the chunk axis.  This is the user's "the score is a stream of
-//!   constant-size blocks; the mask is a constant of the size of the
-//!   block" reframing.
 //! * **other external** (taps): rank-bumped with `AddAxis(0)` to
 //!   match the chunked frame so rank-strict consumers (TypedBinOp, …)
 //!   accept them.
+//!
+//! The mask-construction chain (Sub/Ge/Le/And/Cast on chunk-index wires
+//! — `chunk_row`, `chunk_col`, `diff`, `in_band`) is chunkified
+//! faithfully like any other body op: the multi-T-axis Sub/Eq head is
+//! handled as a uniform_tdim *initiator* (`wire_uniform_tdim_initiator`)
+//! that taps each single-T-axis chunk-index input, splits its T-axis,
+//! moves the chunk axis to position 0, and (on the contracted side)
+//! wraps with `WindowOnAxis` using a **sentinel pad value** so out-of-
+//! stream boundary slots produce values way outside the band; downstream
+//! Ge/Le evaluate to `false` there.  The sentinel is bounded by
+//! `i32::MAX/4` because tract's `i64 → TDim` cast routes through `i32`
+//! (see `data/src/tensor.rs:1250`), which would truncate larger values.
 //!
 //! `axes_mapping::track_axis` asserts each chunked input's chunk axis
 //! reaches a unique output axis — bails if the op would disconnect it.
@@ -543,28 +546,43 @@ fn build_section_patch(
     let mut shunts: Vec<(OutletId, OutletId)> = vec![];
 
     // ── 1. Initiators ────────────────────────────────────────────────────
-    // Mask-construction initiators (multi-T-axis with uniform_tdim) are
-    // *skipped* — they're metadata the recogniser already consumed into
-    // `MaskForm`, with no role in the chunked data flow.  At the body op
-    // that consumes the mask wire, we'll substitute a constant block of
-    // shape [1, k_a, k_b] (all-true/all-1 of the source dtype) — the
-    // mask's value on the in-band region of every chunk.
+    // Two flavours:
+    //   - Data initiators (e.g. score-matrix EinSum): tap, split, optional
+    //     WindowOnAxis on the contracted side, wire chunked op.
+    //   - Mask-construction initiators (multi-T-axis with uniform_tdim,
+    //     typically Eq/Sub of two single-T-axis chunk-index wires): tap
+    //     each input, split its T-axis, move the chunk axis to position
+    //     0, optionally WindowOnAxis on the contracted side with a
+    //     **sentinel pad value** so the band predicate on out-of-stream
+    //     boundary slots evaluates to false.  Wire the binop with the
+    //     chunked inputs.  The result lives in `chunked` like any other
+    //     section wire.
     for &nid in &sec.initiators {
         let node = &model.nodes[nid];
-        if node.outputs[0].fact.uniform_tdim.is_some() {
-            continue;
-        }
-        let out =
-            wire_initiator(&mut patch, model, node, &sec.mask, sec.contracted_axis, chunk_sym, k)?;
+        let out = if node.outputs[0].fact.uniform_tdim.is_some() {
+            wire_uniform_tdim_initiator(
+                &mut patch,
+                model,
+                node,
+                &sec.mask,
+                sec.contracted_axis,
+                chunk_sym,
+                k,
+            )?
+        } else {
+            wire_initiator(&mut patch, model, node, &sec.mask, sec.contracted_axis, chunk_sym, k)?
+        };
         chunked.insert(OutletId::new(nid, 0), out);
     }
     ensure!(!chunked.is_empty());
 
     // ── 2. Body ──────────────────────────────────────────────────────────
     // Walk the section in topological order, skipping initiators (already
-    // wired), terminators (out-of-section by definition), and the
-    // uniform_tdim mask-construction chain (handled at the body-op
-    // boundary, see `wire_body`).
+    // wired) and terminators (out-of-section by definition).  Multi-T-axis
+    // uniform_tdim body ops (e.g. Ge/Le/And/Cast on the chunked mask
+    // chain) are processed like any other body op now: their inputs come
+    // from `chunked` (the upstream chunked mask outlet), their outputs
+    // feed back into `chunked` for downstream consumers.
     for &nid in &model.eval_order()? {
         if !sec.section.contains(&nid) {
             continue;
@@ -573,9 +591,6 @@ fn build_section_patch(
             continue;
         }
         let node = &model.nodes[nid];
-        if node.outputs[0].fact.uniform_tdim.is_some() {
-            continue;
-        }
         let out = wire_body(
             &mut patch,
             model,
@@ -643,20 +658,193 @@ fn wire_initiator(
     bail!("Unsupported initiator {node}")
 }
 
+/// Initiator for a multi-T-axis `uniform_tdim` node — typically the
+/// `Eq`/`Sub` head of the mask-construction chain whose two inputs are
+/// single-T-axis chunk-index wires (`chunk_row` at axis 0, `chunk_col`
+/// at axis 1).  Tap each input, split its T-axis into `[..., S, k, ...]`,
+/// move the chunk axis to position 0 to align with the rest of the
+/// section, and (if its source T-axis equals the section's contracted
+/// axis) wrap with `WindowOnAxis` using a **sentinel pad value** so the
+/// downstream band predicate evaluates to false on out-of-stream
+/// boundary slots.  Then wire the same op (Eq/Sub/…) with the chunked
+/// inputs.
+fn wire_uniform_tdim_initiator(
+    patch: &mut TypedModelPatch,
+    model: &TypedModel,
+    node: &TypedNode,
+    mask: &MaskForm,
+    contracted_axis: usize,
+    chunk_sym: &Symbol,
+    k: i64,
+) -> TractResult<OutletId> {
+    let mut chunked_inputs: TVec<OutletId> = tvec!();
+    for (ix, &input) in node.inputs.iter().enumerate() {
+        let chunked = chunkify_uniform_tdim_input(
+            patch,
+            model,
+            input,
+            &format!("{}.in{ix}", node.name),
+            mask,
+            contracted_axis,
+            chunk_sym,
+            k,
+        )?;
+        chunked_inputs.push(chunked);
+    }
+    let mut out =
+        patch.wire_node(format!("{}.blockified", node.name), node.op.clone(), &chunked_inputs)?[0];
+    // Match the source's output dtype: `chunkify_uniform_tdim_input` may
+    // have cast TDim → I64 to satisfy `PulsePad`'s Copy-based fill, so
+    // body ops downstream that tap external constants (e.g. the `0` in
+    // `ge(diff, 0)`) need the chunked outlet to carry the original dtype.
+    let source_dt = node.outputs[0].fact.datum_type;
+    let cur_dt = patch.outlet_fact(out)?.datum_type;
+    if cur_dt != source_dt {
+        out = patch.wire_node(
+            format!("{}.blockified.cast_back", node.name),
+            tract_core::ops::cast::cast(source_dt),
+            &[out],
+        )?[0];
+    }
+    Ok(out)
+}
+
+/// Tap a single-T-axis `uniform_tdim` wire (e.g. `chunk_row [T, 1]` or
+/// `chunk_col [1, T]`), split its T-axis at `k`, move the chunk axis to
+/// position 0, and — for the contracted side — `WindowOnAxis` with a
+/// sentinel pad so out-of-stream boundary slots produce out-of-band
+/// values for the downstream predicate.  Returns the chunked outlet.
+fn chunkify_uniform_tdim_input(
+    patch: &mut TypedModelPatch,
+    model: &TypedModel,
+    input: OutletId,
+    name_prefix: &str,
+    mask: &MaskForm,
+    contracted_axis: usize,
+    chunk_sym: &Symbol,
+    k: i64,
+) -> TractResult<OutletId> {
+    let in_fact = model.outlet_fact(input)?;
+    let positions = streaming_positions(in_fact, chunk_sym);
+    ensure!(
+        positions.len() == 1,
+        "uniform_tdim initiator input must have exactly one streaming axis (got {})",
+        positions.len(),
+    );
+    let stream_axis = positions[0];
+
+    let tapped = patch.tap_model(model, input)?;
+    let in_fact = patch.outlet_fact(tapped)?.clone();
+
+    // Cast TDim → I64 up-front: PulsePad (used by WindowOnAxis pulsifier
+    // for the contracted side) fills with `dispatch_copy_by_size!`, which
+    // panics on non-Copy datum types like TDim.  Body ops downstream are
+    // Sub/Ge/Le/And — they don't care whether their numeric inputs are
+    // TDim or I64 (the final mask comes out as Bool either way).
+    let mut wire = tapped;
+    if patch.outlet_fact(wire)?.datum_type == TDim::datum_type() {
+        wire = patch.wire_node(
+            format!("{name_prefix}.cast_i64"),
+            tract_core::ops::cast::cast(i64::datum_type()),
+            &[wire],
+        )?[0];
+    }
+    let dt = patch.outlet_fact(wire)?.datum_type;
+
+    // Split the T-axis at `k`.  Output rank = input rank + 1, with the
+    // chunk axis at `stream_axis` and the within-block axis at
+    // `stream_axis + 1`.
+    let from = tvec!(in_fact.shape[stream_axis].clone());
+    let to = tvec!(chunk_sym.to_dim(), k.to_dim());
+    wire = patch.wire_node(
+        format!("{name_prefix}.split"),
+        AxisOp::Reshape(stream_axis, from, to),
+        &[wire],
+    )?[0];
+
+    // Move chunk axis to position 0 if it isn't already, so the section
+    // frame uniformly carries the chunk axis at 0.
+    if stream_axis != 0 {
+        wire = patch.wire_node(
+            format!("{name_prefix}.move_chunk"),
+            AxisOp::Move(stream_axis, 0),
+            &[wire],
+        )?[0];
+    }
+
+    // If this input's source T-axis is the contracted side, window the
+    // chunk axis (now at position 0) and flatten the W slot back into the
+    // within-block axis so downstream consumers see W·k along that axis.
+    let needs_window = !mask.is_block_diag() && stream_axis == contracted_axis;
+    if needs_window {
+        let window_size: usize = (mask.upper - mask.lower + 1) as usize;
+        let start = window_start_for(mask, contracted_axis);
+        // Sentinel pad: a value far outside any sane chunk-index range,
+        // so the downstream band predicate `chunk_a − chunk_b ∈ [lower,
+        // upper]` is false on out-of-stream boundary slots.
+        let sentinel = sentinel_pad_value(dt)?.into_arc_tensor();
+        wire = patch.wire_node(
+            format!("{name_prefix}.window"),
+            tract_pulse_opl::ops::WindowOnAxis {
+                axis: 0,
+                window: window_size,
+                start,
+                pad_value: sentinel,
+            },
+            &[wire],
+        )?[0];
+
+        // Post-window shape: chunk at 0, W at 1, then the original axes
+        // (the within-block axis is at `stream_axis + 1` post-window:
+        // chunk was at 0 pre-window, W gets inserted at 1, so axes shift
+        // right by 1).  Flatten W (slice index 0) and within-block (slice
+        // index `stream_axis`) into a single (W·k) axis.
+        let post_window = patch.outlet_fact(wire)?.clone();
+        let rank_after = post_window.rank();
+        let from: TVec<TDim> = (1..rank_after).map(|i| post_window.shape[i].clone()).collect();
+        let within_slice_idx = stream_axis;
+        let mut to: TVec<TDim> = tvec!();
+        for (i, dim) in from.iter().enumerate() {
+            if i == 0 {
+                continue;
+            }
+            if i == within_slice_idx + 1 {
+                let merged = from[0].clone() * dim.clone();
+                to.push(merged);
+            } else {
+                to.push(dim.clone());
+            }
+        }
+        wire = patch.wire_node(
+            format!("{name_prefix}.flatten_window"),
+            AxisOp::Reshape(1, from, to),
+            &[wire],
+        )?[0];
+    }
+
+    Ok(wire)
+}
+
+/// Pad value for windowing a chunk-index wire: any value outside any
+/// reasonable `[lower, upper]` band so the downstream `Ge`/`Le`
+/// comparisons on `chunk_a − chunk_b` evaluate to false at boundary
+/// slots.  Bounded by `i32::MAX / 4` because tract's tensor cast routes
+/// `i64 → TDim` through `i32` (see `data/src/tensor.rs:1250`), which
+/// would truncate a larger sentinel.  Half a billion is comfortably
+/// above any plausible chunk count yet safe under that cast.
+fn sentinel_pad_value(dt: DatumType) -> TractResult<Tensor> {
+    if dt == bool::datum_type() {
+        bail!("uniform_tdim wire of bool dtype not expected as initiator-side input");
+    }
+    Ok(tensor0((i32::MAX / 4) as i64).cast_to_dt(dt)?.into_owned())
+}
+
 /// Replay a body op in the chunked frame.
 ///
-/// * Inputs from `chunked` (= data wires produced by the initiator path):
-///   passed through as-is.
-/// * Inputs whose source is a `uniform_tdim` wire (= the mask wire at
-///   the boundary between the metadata chain and the data computation):
-///   substituted with a `[1, k_a, k_b]` constant block — the mask's
-///   value on the in-band region of every chunk.  For the recogniser's
-///   current scope every position in the chunked block is in-band, so
-///   the const is uniformly `true`/`1`/`1.0` of the source dtype.  No
-///   per-op "mask role" knowledge needed; the body op sees a regular
-///   tensor input it broadcasts over the chunk axis just like any const.
-/// * Other external inputs: tapped, with `AddAxis(0)` bumping any
-///   rank deficit so rank-strict ops (TypedBinOp, …) accept them.
+/// * Inputs from `chunked` (= chunked wires produced by the initiator path
+///   for both the data side and the mask-construction chain): pass through.
+/// * Other external inputs: tapped, with `AddAxis(0)` bumping any rank
+///   deficit so rank-strict consumers (TypedBinOp, …) accept them.
 ///
 /// `axes_mapping::track_axis` asserts each chunked input's chunk axis
 /// reaches a unique output axis — bails with a precise error if the op
@@ -665,11 +853,11 @@ fn wire_body(
     patch: &mut TypedModelPatch,
     model: &TypedModel,
     node: &TypedNode,
-    mask: &MaskForm,
-    contracted_axis: usize,
+    _mask: &MaskForm,
+    _contracted_axis: usize,
     chunked: &HashMap<OutletId, OutletId>,
     chunk_sym: &Symbol,
-    k: i64,
+    _k: i64,
 ) -> TractResult<OutletId> {
     // Pass 1: collect chunked inputs and discover the rank we'll work in.
     let n = node.inputs.len();
@@ -694,20 +882,17 @@ fn wire_body(
         format_err!("Body op {node} has no chunked input — at least one is required")
     })?;
 
-    // Pass 2: mask-wire substitutions (block const) and external taps
-    // (rank-bumped to match the chunked frame).
+    // Pass 2: external taps, rank-bumped to match the chunked frame.
+    // (uniform_tdim mask wires are now in `chunked` already, courtesy of
+    // the uniform_tdim initiator + faithful body chunking — no per-op
+    // mask-substitute logic.)
     for (slot, &input) in node.inputs.iter().enumerate() {
         if new_inputs[slot].is_some() {
             continue;
         }
-        let fact = model.outlet_fact(input)?;
-        let in_outlet = if fact.uniform_tdim.is_some() {
-            block_mask_const(patch, &node.name, slot, fact.datum_type, mask, contracted_axis, k)?
-        } else {
-            let tapped = patch.tap_model(model, input)?;
-            bump_rank_to(patch, &node.name, slot, tapped, chunked_rank)?
-        };
-        new_inputs[slot] = Some(in_outlet);
+        let tapped = patch.tap_model(model, input)?;
+        let bumped = bump_rank_to(patch, &node.name, slot, tapped, chunked_rank)?;
+        new_inputs[slot] = Some(bumped);
     }
     let new_inputs: TVec<OutletId> = new_inputs.into_iter().map(|o| o.unwrap()).collect();
 
@@ -731,37 +916,6 @@ fn wire_body(
     }
 
     Ok(patch.wire_node(&*node.name, node.op.clone(), &new_inputs)?[0])
-}
-
-/// `[1, k_a, k_b]` constant of the source mask wire's in-band value
-/// (`true` for bool, `1`/`1.0` for numeric).  `k_a`/`k_b` are widened to
-/// `W·k` on whichever side is the contracted (= windowed) axis.
-fn block_mask_const(
-    patch: &mut TypedModelPatch,
-    node_name: &str,
-    slot: usize,
-    dt: DatumType,
-    mask: &MaskForm,
-    contracted_axis: usize,
-    k: i64,
-) -> TractResult<OutletId> {
-    let window: i64 = mask.upper - mask.lower + 1;
-    let k_a = if contracted_axis == mask.axis_a { window * k } else { k };
-    let k_b = if contracted_axis == mask.axis_b { window * k } else { k };
-    // Preserve the original axis order on the mask wire (axis_a < axis_b
-    // means within-axis_a comes before within-axis_b in the block).
-    let (within_first, within_second) =
-        if mask.axis_a < mask.axis_b { (k_a, k_b) } else { (k_b, k_a) };
-    let const_shape = [1usize, within_first as usize, within_second as usize];
-
-    let const_tensor = if dt == bool::datum_type() {
-        let count: usize = const_shape.iter().product();
-        Tensor::from_shape(&const_shape, &vec![true; count])?
-    } else {
-        let scalar = tensor0(1i64).cast_to_dt(dt)?.into_owned();
-        scalar.broadcast_to_shape(&const_shape)?
-    };
-    patch.add_const(format!("{node_name}.block_mask.{slot}"), const_tensor)
 }
 
 /// Insert `AddAxis(0)`s until the wire's rank reaches `target`.  Used to
