@@ -494,16 +494,56 @@ impl TDim {
                     }
                 }
 
+                // Pull the integer GCD of all term coefficients out as a
+                // common factor: e.g. Add([Val(6), MulInt(14, S)]) becomes
+                // MulInt(2, Add([Val(3), MulInt(7, S)])).  The downstream
+                // Div(MulInt(p, a), q) arm then cancels (p, q) gcd, so
+                // (6 + 14·S) / 8 reduces to (3 + 7·S) / 4 with no special
+                // Div-over-Add rule needed.
+                //
+                // Only consider entries with non-zero counts — zero-count
+                // entries (canceled-out factors) get filtered later, but
+                // would otherwise drag the gcd to spurious values.  Only
+                // factor when at least one surviving entry has a
+                // non-constant key, otherwise the Add reduces to a single
+                // `Val` and wrapping it in `MulInt(g, Val(c/g))` is a
+                // strict regression in canonical form.
+                let has_non_const =
+                    simplified_terms.iter().any(|(k, &c)| c != 0 && !matches!(k, Val(_)));
+                let coef_gcd = if has_non_const {
+                    simplified_terms
+                        .values()
+                        .filter(|&&c| c != 0)
+                        .map(|c| c.unsigned_abs() as i64)
+                        .reduce(|a, b| a.gcd(&b))
+                        .unwrap_or(0)
+                } else {
+                    0
+                };
+                let outer_factor = if coef_gcd > 1 {
+                    for v in simplified_terms.values_mut() {
+                        *v /= coef_gcd;
+                    }
+                    Some(coef_gcd)
+                } else {
+                    None
+                };
+
                 let mut members: Vec<TDim> = simplified_terms
                     .into_iter()
                     .filter_map(|(term, count)| evaluate_count(term, count))
                     .collect();
                 members.sort_by(tdim_lexi_order);
 
-                match members.len() {
+                let inner = match members.len() {
                     0 => TDim::Val(0),
                     1 => members.into_iter().next().unwrap(),
                     _ => TDim::Add(members),
+                };
+                match outer_factor {
+                    None => inner,
+                    Some(_) if matches!(inner, TDim::Val(0)) => TDim::Val(0),
+                    Some(g) => TDim::MulInt(g, Box::new(inner)),
                 }
             }
             Mul(terms) => {
@@ -658,25 +698,24 @@ impl TDim {
                                 q
                             )),
                         )
-                    } else if let Some(v) =
-                        terms.iter().find_map(|t| if let Val(v) = t { Some(*v) } else { None })
+                    } else if let Some(val) = terms
+                        .iter()
+                        .find_map(|t| if let Val(v) = t { Some(*v) } else { None })
+                        .and_then(|v| {
+                            if v >= q as i64 {
+                                Some(v / q as i64)
+                            } else if v < 0 {
+                                Some(-Integer::div_ceil(&-v, &(q as i64)))
+                            } else {
+                                None
+                            }
+                        })
                     {
-                        let offset = if v >= q as i64 {
-                            Some(v / q as i64)
-                        } else if v < 0 {
-                            Some(-Integer::div_ceil(&-v, &(q as i64)))
-                        } else {
-                            None
-                        };
-                        if let Some(val) = offset {
-                            terms.push(Val(-val * q as i64));
-                            Add(vec![
-                                Val(val),
-                                Div(b!(Add(terms).simplify_rec(scope, scenario, extra)), q),
-                            ])
-                        } else {
-                            Div(b!(Add(terms)), q)
-                        }
+                        terms.push(Val(-val * q as i64));
+                        Add(vec![
+                            Val(val),
+                            Div(b!(Add(terms).simplify_rec(scope, scenario, extra)), q),
+                        ])
                     } else {
                         Div(b!(Add(terms)), q)
                     }
@@ -1973,5 +2012,52 @@ mod tests {
         let a_s = a.simplify();
         let c_s = c.simplify();
         assert_eq!(a_s, c_s, "8*(-1*B) should simplify the same as -8*B");
+    }
+
+    /// Encoder-pulse case: (6 + 14·S) / 8 == (3 + 7·S) / 4.
+    /// Both Add terms (Val(6) and MulInt(14, S)) share factor 2 with
+    /// divisor 8, so the simplifier should reduce both sides by 2.
+    #[test]
+    fn reduce_div_by_common_factor_with_divisor() {
+        let lhs = (A.to_dim() * 14 + 6) / 8;
+        let rhs = (A.to_dim() * 7 + 3) / 4;
+        assert_eq!(lhs, rhs);
+    }
+
+    /// Common factor that fully divides the divisor → drop the divisor.
+    /// (4·a + 8) / 4  ==  a + 2.
+    #[test]
+    fn reduce_div_when_factor_equals_divisor() {
+        let lhs = (A.to_dim() * 4 + 8) / 4;
+        let rhs = A.to_dim() + 2;
+        assert_eq!(lhs, rhs);
+    }
+
+    /// No common factor → no reduction (identity check).
+    /// (3 + 7·a) / 4 stays as-is (gcd(3, 7, 4) = 1).
+    #[test]
+    fn no_reduce_when_terms_coprime_with_divisor() {
+        let e = (A.to_dim() * 7 + 3) / 4;
+        // We just check it didn't reduce to something weird; the
+        // canonical form is `Div(Add(...), 4)`.
+        match &e {
+            Div(_, q) => assert_eq!(*q, 4),
+            other => panic!("expected Div(_, 4), got {other:?}"),
+        }
+    }
+
+    /// Sym without an explicit `MulInt` wrapper has implicit coefficient
+    /// 1.  Any common factor gcd including 1 collapses to 1, so the
+    /// reduction does nothing — the rule must not silently drop the Sym.
+    #[test]
+    fn no_reduce_when_sym_has_implicit_unit_coefficient() {
+        // (a + 4) / 2 must stay non-trivial — gcd(1, 4, 2) = 1.
+        let e = (A.to_dim() + 4) / 2;
+        // It can simplify to other forms but it should still depend on `a`.
+        // Eval at a=2 → (2+4)/2 = 3.  Eval at a=4 → (4+4)/2 = 4.
+        let sv2 = SymbolValues::default().with(&A, 2);
+        let sv4 = SymbolValues::default().with(&A, 4);
+        assert_eq!(e.eval_to_i64(&sv2).unwrap(), 3);
+        assert_eq!(e.eval_to_i64(&sv4).unwrap(), 4);
     }
 }
