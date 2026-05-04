@@ -6,10 +6,17 @@
 //! (block-diagonal is the special case `lower == upper == 0`).
 //!
 //!   EinSum([a, b]) producing scores[T, T]
-//!   → Mul(scores, mask) where mask has uniform_tdim of either form
-//!     `(coord_a/k == coord_b/k)` or `Mul([Ge(upper, D), Ge(D, lower)])`
-//!     with `D = coord_a/k − coord_b/k`
+//!   → body op(s) consuming scores and the mask wire (whose
+//!     `uniform_tdim` carries one of the recognised forms,
+//!     `Eq(coord_a/k, coord_b/k)` or `Mul([Ge(upper, D), Ge(D, lower)])`
+//!     with `D = coord_a/k − coord_b/k`)
 //!   → Reduce<Sum> on a streaming axis  OR  contracting EinSum (ex02)
+//!
+//! Body ops are replayed in the chunked frame: their mask input is
+//! substituted with the op's neutral element (Mul → 1, Add → 0, …),
+//! their data inputs come from the `chunked` map, and the op's
+//! `axes_mapping` is asserted to preserve the chunk axis through to
+//! the output.
 //!
 //! Implementation layout: detect quadratic sections globally, substitute
 //! the streaming symbol T → k·S via core's `substitute_symbols`, then
@@ -50,7 +57,6 @@ use tract_core::model::TypedModelPatch;
 use tract_core::ops::binary::TypedBinOp;
 use tract_core::ops::change_axes::AxisOp;
 use tract_core::ops::einsum::EinSum;
-use tract_core::ops::math::Mul;
 use tract_core::ops::nn::{Reduce, Reducer};
 use tract_core::transform::ModelTransform;
 
@@ -553,7 +559,7 @@ fn build_section_patch(
         if node.outputs[0].fact.uniform_tdim.is_some() {
             continue;
         }
-        let out = wire_body(model, node, &chunked)?;
+        let out = wire_body(&mut patch, model, node, &chunked, chunk_sym)?;
         chunked.insert(OutletId::new(nid, 0), out);
     }
 
@@ -611,17 +617,113 @@ fn wire_initiator(
     bail!("Unsupported initiator {node}")
 }
 
+/// Replay a body op in the chunked frame.  Strategy:
+///
+/// * Each input is one of:
+///   - **chunked data wire** (already in `chunked`): use the chunked outlet.
+///   - **mask wire** (`uniform_tdim` set on the source fact): replace with
+///     a scalar constant equal to the op's *neutral element* for that
+///     input, so the resulting expression collapses to "data path
+///     unchanged" in the chunked frame.  Within each chunk every position
+///     is in-band (that's why we chunkified); a neutral const masks that
+///     fact out cleanly without us having to materialise an all-true
+///     chunked mask.
+///   - **external** (constant or sourced from outside the section): tap.
+/// * Use the op's `axes_mapping` to assert the chunk axis on every
+///   chunked input maps to a unique output axis — i.e. the op preserves
+///   the chunk-batch structure.  If it doesn't, the op needs explicit
+///   support; bail with the offending node so the message is actionable.
+/// * Wire the op as-is with the substituted inputs.
 fn wire_body(
+    patch: &mut TypedModelPatch,
     model: &TypedModel,
     node: &TypedNode,
     chunked: &HashMap<OutletId, OutletId>,
+    chunk_sym: &Symbol,
 ) -> TractResult<OutletId> {
-    if let Some(bin) = node.op_as::<TypedBinOp>()
-        && bin.0.is::<Mul>()
-    {
-        return wire_body_mul_by_mask(model, node, chunked);
+    // Pass 1: collect chunked data inputs (and their chunk-axis positions
+    // and rank).  The neutral-const substitution needs the chunked rank
+    // for rank-matching binary ops to broadcast cleanly.
+    let n = node.inputs.len();
+    let mut new_inputs: TVec<Option<OutletId>> = tvec![None; n];
+    let mut chunk_input_axes: Vec<(usize, usize)> = vec![];
+    let mut chunked_rank: Option<usize> = None;
+    for (slot, &input) in node.inputs.iter().enumerate() {
+        if let Some(&c) = chunked.get(&input) {
+            let cf = patch.outlet_fact(c)?;
+            let positions = streaming_positions(cf, chunk_sym);
+            ensure!(
+                positions.len() == 1,
+                "Body op {node}: chunked input slot {slot} has {} streaming axes, expected 1",
+                positions.len()
+            );
+            chunk_input_axes.push((slot, positions[0]));
+            chunked_rank = Some(cf.rank());
+            new_inputs[slot] = Some(c);
+        }
     }
-    bail!("Unsupported op for wire_body: {node}");
+    let chunked_rank = chunked_rank.ok_or_else(|| {
+        format_err!("Body op {node} has no chunked input — at least one is required")
+    })?;
+
+    // Pass 2: mask wires and external taps now that we know the rank to
+    // broadcast neutral constants to.
+    for (slot, &input) in node.inputs.iter().enumerate() {
+        if new_inputs[slot].is_some() {
+            continue;
+        }
+        let fact = model.outlet_fact(input)?;
+        let in_outlet = if fact.uniform_tdim.is_some() {
+            let neutral = neutral_for_mask_input(node.op.as_ref(), fact.datum_type, chunked_rank)?;
+            patch.add_const(format!("{}.mask_neutral.{slot}", node.name), neutral)?
+        } else {
+            patch.tap_model(model, input)?
+        };
+        new_inputs[slot] = Some(in_outlet);
+    }
+    let new_inputs: TVec<OutletId> = new_inputs.into_iter().map(|o| o.unwrap()).collect();
+
+    // Chunkability: for every chunked input, its chunk axis must track
+    // through to a unique output axis position.
+    let input_facts: TVec<TypedFact> = new_inputs
+        .iter()
+        .map(|o| patch.outlet_fact(*o).map(|f| f.clone()))
+        .collect::<TractResult<_>>()?;
+    let in_refs: TVec<&TypedFact> = input_facts.iter().collect();
+    let output_facts = node.op.output_facts(&in_refs)?;
+    let out_refs: TVec<&TypedFact> = output_facts.iter().collect();
+    let am = node.op.axes_mapping(&in_refs, &out_refs)?;
+    for (slot, axis) in chunk_input_axes {
+        let tracked = am.track_axis((InOut::In(slot), axis), InOut::Out(0))?;
+        ensure!(
+            tracked.is_some(),
+            "Body op {node} doesn't preserve the chunk axis (input slot {slot}, axis {axis}) \
+             through to the output — its axes_mapping disconnects it"
+        );
+    }
+
+    Ok(patch.wire_node(&*node.name, node.op.clone(), &new_inputs)?[0])
+}
+
+/// Neutral-element constant the section's mask wire is replaced with at
+/// the body op's input.  For `TypedBinOp` we read the op's
+/// `BinMiniOp::neutral_element` directly (Mul → 1, Add → 0, …).  The
+/// returned tensor has rank `rank` (filled with 1s in shape) so it
+/// broadcasts cleanly against the data path through any rank-matching
+/// binary op.
+fn neutral_for_mask_input(op: &dyn TypedOp, dt: DatumType, rank: usize) -> TractResult<Tensor> {
+    if let Some(bin) = op.downcast_ref::<TypedBinOp>() {
+        if let Some(n) = bin.0.neutral_element() {
+            let mut t = tensor0(n).cast_to_dt(dt)?.into_owned();
+            t.broadcast_to_rank(rank)?;
+            return Ok(t);
+        }
+        bail!(
+            "Body BinOp {} has no declared neutral element to substitute for the mask input",
+            op.name()
+        );
+    }
+    bail!("No neutral-element rule for body op {} — needs explicit support", op.name())
 }
 
 fn wire_terminator(
@@ -769,23 +871,6 @@ fn wrap_with_window_if_needed(
 ///   c - lower]` → slot 0 is at `c - upper`, so `start = -upper`.
 fn window_start_for(mask: &MaskForm, contracted_axis: usize) -> i64 {
     if contracted_axis == mask.axis_a { mask.lower } else { -mask.upper }
-}
-
-/// Body Mul-by-mask: aliases the chunked compute input as the chunked
-/// output (mask is all-1 in chunked form, Mul disappears).  No node is
-/// added to the patch; the alias lives in the `chunked` map.
-fn wire_body_mul_by_mask(
-    model: &TypedModel,
-    node: &TypedNode,
-    chunked: &HashMap<OutletId, OutletId>,
-) -> TractResult<OutletId> {
-    let compute_input = node
-        .inputs
-        .iter()
-        .copied()
-        .find(|i| model.outlet_fact(*i).map(|f| f.uniform_tdim.is_none()).unwrap_or(true))
-        .unwrap();
-    Ok(chunked.get(&compute_input).copied().unwrap())
 }
 
 /// Reduce<Sum> terminator: wires a chunked Reduce on the within-chunk
