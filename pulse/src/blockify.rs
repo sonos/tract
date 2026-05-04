@@ -12,11 +12,24 @@
 //!     with `D = coord_a/k − coord_b/k`)
 //!   → Reduce<Sum> on a streaming axis  OR  contracting EinSum (ex02)
 //!
-//! Body ops are replayed in the chunked frame: their mask input is
-//! substituted with the op's neutral element (Mul → 1, Add → 0, …),
-//! their data inputs come from the `chunked` map, and the op's
-//! `axes_mapping` is asserted to preserve the chunk axis through to
-//! the output.
+//! Body ops are replayed in the chunked frame.  Each input is one of:
+//!
+//! * **chunked data** (in the `chunked` map): pass through.
+//! * **mask wire** (source has `uniform_tdim` set): substitute a
+//!   `[1, k_a, k_b]` constant block — the mask's value on the in-band
+//!   region of every chunk.  For the recogniser's current scope the
+//!   in-band value is uniformly `true`/`1`/`1.0` of the source dtype,
+//!   so the const is a tile of that.  No per-op "mask role" knowledge:
+//!   the body op just sees a regular tensor input it broadcasts over
+//!   the chunk axis.  This is the user's "the score is a stream of
+//!   constant-size blocks; the mask is a constant of the size of the
+//!   block" reframing.
+//! * **other external** (taps): rank-bumped with `AddAxis(0)` to
+//!   match the chunked frame so rank-strict consumers (TypedBinOp, …)
+//!   accept them.
+//!
+//! `axes_mapping::track_axis` asserts each chunked input's chunk axis
+//! reaches a unique output axis — bails if the op would disconnect it.
 //!
 //! Implementation layout: detect quadratic sections globally, substitute
 //! the streaming symbol T → k·S via core's `substitute_symbols`, then
@@ -54,7 +67,6 @@ use crate::internal::*;
 use std::collections::{BTreeSet, HashMap};
 use tract_core::axes::AxesMapping;
 use tract_core::model::TypedModelPatch;
-use tract_core::ops::binary::TypedBinOp;
 use tract_core::ops::change_axes::AxisOp;
 use tract_core::ops::einsum::EinSum;
 use tract_core::ops::nn::{Reduce, Reducer};
@@ -531,10 +543,14 @@ fn build_section_patch(
     let mut shunts: Vec<(OutletId, OutletId)> = vec![];
 
     // ── 1. Initiators ────────────────────────────────────────────────────
+    // Mask-construction initiators (multi-T-axis with uniform_tdim) are
+    // *skipped* — they're metadata the recogniser already consumed into
+    // `MaskForm`, with no role in the chunked data flow.  At the body op
+    // that consumes the mask wire, we'll substitute a constant block of
+    // shape [1, k_a, k_b] (all-true/all-1 of the source dtype) — the
+    // mask's value on the in-band region of every chunk.
     for &nid in &sec.initiators {
         let node = &model.nodes[nid];
-        // Mask-construction initiators (uniform_tdim outputs) are dead
-        // post-rewrite; they're handled by the obliterate pass at the end.
         if node.outputs[0].fact.uniform_tdim.is_some() {
             continue;
         }
@@ -546,8 +562,9 @@ fn build_section_patch(
 
     // ── 2. Body ──────────────────────────────────────────────────────────
     // Walk the section in topological order, skipping initiators (already
-    // wired), terminators (out-of-section by definition), and uniform_tdim
-    // wires (dead).
+    // wired), terminators (out-of-section by definition), and the
+    // uniform_tdim mask-construction chain (handled at the body-op
+    // boundary, see `wire_body`).
     for &nid in &model.eval_order()? {
         if !sec.section.contains(&nid) {
             continue;
@@ -559,7 +576,16 @@ fn build_section_patch(
         if node.outputs[0].fact.uniform_tdim.is_some() {
             continue;
         }
-        let out = wire_body(&mut patch, model, node, &chunked, chunk_sym)?;
+        let out = wire_body(
+            &mut patch,
+            model,
+            node,
+            &sec.mask,
+            sec.contracted_axis,
+            &chunked,
+            chunk_sym,
+            k,
+        )?;
         chunked.insert(OutletId::new(nid, 0), out);
     }
 
@@ -617,33 +643,35 @@ fn wire_initiator(
     bail!("Unsupported initiator {node}")
 }
 
-/// Replay a body op in the chunked frame.  Strategy:
+/// Replay a body op in the chunked frame.
 ///
-/// * Each input is one of:
-///   - **chunked data wire** (already in `chunked`): use the chunked outlet.
-///   - **mask wire** (`uniform_tdim` set on the source fact): replace with
-///     a scalar constant equal to the op's *neutral element* for that
-///     input, so the resulting expression collapses to "data path
-///     unchanged" in the chunked frame.  Within each chunk every position
-///     is in-band (that's why we chunkified); a neutral const masks that
-///     fact out cleanly without us having to materialise an all-true
-///     chunked mask.
-///   - **external** (constant or sourced from outside the section): tap.
-/// * Use the op's `axes_mapping` to assert the chunk axis on every
-///   chunked input maps to a unique output axis — i.e. the op preserves
-///   the chunk-batch structure.  If it doesn't, the op needs explicit
-///   support; bail with the offending node so the message is actionable.
-/// * Wire the op as-is with the substituted inputs.
+/// * Inputs from `chunked` (= data wires produced by the initiator path):
+///   passed through as-is.
+/// * Inputs whose source is a `uniform_tdim` wire (= the mask wire at
+///   the boundary between the metadata chain and the data computation):
+///   substituted with a `[1, k_a, k_b]` constant block — the mask's
+///   value on the in-band region of every chunk.  For the recogniser's
+///   current scope every position in the chunked block is in-band, so
+///   the const is uniformly `true`/`1`/`1.0` of the source dtype.  No
+///   per-op "mask role" knowledge needed; the body op sees a regular
+///   tensor input it broadcasts over the chunk axis just like any const.
+/// * Other external inputs: tapped, with `AddAxis(0)` bumping any
+///   rank deficit so rank-strict ops (TypedBinOp, …) accept them.
+///
+/// `axes_mapping::track_axis` asserts each chunked input's chunk axis
+/// reaches a unique output axis — bails with a precise error if the op
+/// would disconnect the chunk axis (e.g. softmax over it).
 fn wire_body(
     patch: &mut TypedModelPatch,
     model: &TypedModel,
     node: &TypedNode,
+    mask: &MaskForm,
+    contracted_axis: usize,
     chunked: &HashMap<OutletId, OutletId>,
     chunk_sym: &Symbol,
+    k: i64,
 ) -> TractResult<OutletId> {
-    // Pass 1: collect chunked data inputs (and their chunk-axis positions
-    // and rank).  The neutral-const substitution needs the chunked rank
-    // for rank-matching binary ops to broadcast cleanly.
+    // Pass 1: collect chunked inputs and discover the rank we'll work in.
     let n = node.inputs.len();
     let mut new_inputs: TVec<Option<OutletId>> = tvec![None; n];
     let mut chunk_input_axes: Vec<(usize, usize)> = vec![];
@@ -666,18 +694,18 @@ fn wire_body(
         format_err!("Body op {node} has no chunked input — at least one is required")
     })?;
 
-    // Pass 2: mask wires and external taps now that we know the rank to
-    // broadcast neutral constants to.
+    // Pass 2: mask-wire substitutions (block const) and external taps
+    // (rank-bumped to match the chunked frame).
     for (slot, &input) in node.inputs.iter().enumerate() {
         if new_inputs[slot].is_some() {
             continue;
         }
         let fact = model.outlet_fact(input)?;
         let in_outlet = if fact.uniform_tdim.is_some() {
-            let neutral = neutral_for_mask_input(node.op.as_ref(), fact.datum_type, chunked_rank)?;
-            patch.add_const(format!("{}.mask_neutral.{slot}", node.name), neutral)?
+            block_mask_const(patch, &node.name, slot, fact.datum_type, mask, contracted_axis, k)?
         } else {
-            patch.tap_model(model, input)?
+            let tapped = patch.tap_model(model, input)?;
+            bump_rank_to(patch, &node.name, slot, tapped, chunked_rank)?
         };
         new_inputs[slot] = Some(in_outlet);
     }
@@ -705,25 +733,60 @@ fn wire_body(
     Ok(patch.wire_node(&*node.name, node.op.clone(), &new_inputs)?[0])
 }
 
-/// Neutral-element constant the section's mask wire is replaced with at
-/// the body op's input.  For `TypedBinOp` we read the op's
-/// `BinMiniOp::neutral_element` directly (Mul → 1, Add → 0, …).  The
-/// returned tensor has rank `rank` (filled with 1s in shape) so it
-/// broadcasts cleanly against the data path through any rank-matching
-/// binary op.
-fn neutral_for_mask_input(op: &dyn TypedOp, dt: DatumType, rank: usize) -> TractResult<Tensor> {
-    if let Some(bin) = op.downcast_ref::<TypedBinOp>() {
-        if let Some(n) = bin.0.neutral_element() {
-            let mut t = tensor0(n).cast_to_dt(dt)?.into_owned();
-            t.broadcast_to_rank(rank)?;
-            return Ok(t);
-        }
-        bail!(
-            "Body BinOp {} has no declared neutral element to substitute for the mask input",
-            op.name()
-        );
+/// `[1, k_a, k_b]` constant of the source mask wire's in-band value
+/// (`true` for bool, `1`/`1.0` for numeric).  `k_a`/`k_b` are widened to
+/// `W·k` on whichever side is the contracted (= windowed) axis.
+fn block_mask_const(
+    patch: &mut TypedModelPatch,
+    node_name: &str,
+    slot: usize,
+    dt: DatumType,
+    mask: &MaskForm,
+    contracted_axis: usize,
+    k: i64,
+) -> TractResult<OutletId> {
+    let window: i64 = mask.upper - mask.lower + 1;
+    let k_a = if contracted_axis == mask.axis_a { window * k } else { k };
+    let k_b = if contracted_axis == mask.axis_b { window * k } else { k };
+    // Preserve the original axis order on the mask wire (axis_a < axis_b
+    // means within-axis_a comes before within-axis_b in the block).
+    let (within_first, within_second) =
+        if mask.axis_a < mask.axis_b { (k_a, k_b) } else { (k_b, k_a) };
+    let const_shape = [1usize, within_first as usize, within_second as usize];
+
+    let const_tensor = if dt == bool::datum_type() {
+        let count: usize = const_shape.iter().product();
+        Tensor::from_shape(&const_shape, &vec![true; count])?
+    } else {
+        let scalar = tensor0(1i64).cast_to_dt(dt)?.into_owned();
+        scalar.broadcast_to_shape(&const_shape)?
+    };
+    patch.add_const(format!("{node_name}.block_mask.{slot}"), const_tensor)
+}
+
+/// Insert `AddAxis(0)`s until the wire's rank reaches `target`.  Used to
+/// rank-bump tapped external constants (e.g. a rank-2 broadcast literal
+/// like the `0` in `ge(diff, 0)`) so they match the chunked-frame rank
+/// for rank-strict consumer ops.
+fn bump_rank_to(
+    patch: &mut TypedModelPatch,
+    node_name: &str,
+    slot: usize,
+    mut outlet: OutletId,
+    target: usize,
+) -> TractResult<OutletId> {
+    let mut rank = patch.outlet_fact(outlet)?.rank();
+    let mut step = 0;
+    while rank < target {
+        outlet = patch.wire_node(
+            format!("{node_name}.bump_rank.{slot}.{step}"),
+            AxisOp::Add(0),
+            &[outlet],
+        )?[0];
+        rank += 1;
+        step += 1;
     }
-    bail!("No neutral-element rule for body op {} — needs explicit support", op.name())
+    Ok(outlet)
 }
 
 fn wire_terminator(

@@ -1,0 +1,43 @@
+version 1.0;
+
+extension tract_registry tract_core;
+extension tract_registry tract_transformers;
+extension tract_symbol T;
+extension tract_assert T>=0;
+
+# Block-diagonal SDPA without softmax-free shortcut: the real shape.
+#
+# Q·Kᵀ → ScaledMaskedSoftmax(scale, bool block-diag mask) → attn·V.
+#
+# The body op (ScaledMaskedSoftmax) is non-trivial — unlike ex02's
+# `Mul(scores, mask_f32)` which collapses to identity in the chunked
+# form, this op actually does compute work (scale + softmax over the
+# last axis).  When the mask is block-diagonal, the chunked equivalent
+# is `softmax(scores * scale, axis=-1)` over the per-chunk [k, k] score
+# matrix — equivalent to `ScaledMaskedSoftmax` with an all-true bool
+# mask, since within each chunk every (i, j) pair is in-band.
+#
+# Inputs:  a (queries), b (keys), c (values)  all [T, 4]
+# Output: [T, 4]
+#
+# Streaming axis: 0 on all inputs and on the output.  Pulse size P = 2.
+
+graph network(a, b, c) -> (output)
+{
+    a = tract_core_external(shape = [T, 4], datum_type = 'f32');
+    b = tract_core_external(shape = [T, 4], datum_type = 'f32');
+    c = tract_core_external(shape = [T, 4], datum_type = 'f32');
+
+    scores = tract_core_einsum([a, b], expr = "id,jd->ij", acc = "f32");
+
+    pos      = tract_core_range(0, tract_core_shape_of(a)[0], step = 1);
+    chunk_id = pos / 2;
+
+    chunk_row = unsqueeze(chunk_id, axes = [1]);
+    chunk_col = unsqueeze(chunk_id, axes = [0]);
+    in_block  = eq(chunk_row, chunk_col);
+
+    attn = tract_transformers_scaled_masked_softmax(scores, in_block, scale = 0.5, post_softmax_mask = false);
+
+    output = tract_core_einsum([attn, c], expr = "ij,jd->id", acc = "f32");
+}
