@@ -355,6 +355,64 @@ impl TDim {
         Self::find_any_sym(self).and_then(|s| s.scope().clone())
     }
 
+    /// Fully distribute every `Mul` of `Add`s in `self` into a flat sum of
+    /// products, then `simplify`.  Used to compare two algebraically equal
+    /// but differently-factored TDims for equality (e.g. Reshape volume
+    /// checks on graphs where the same dimension is built two ways).
+    ///
+    /// Cost can blow up combinatorially on very deeply factored expressions
+    /// — call this only at boundaries where structural equality is needed,
+    /// not as a general-purpose simplifier.
+    pub fn expand_polynomial(self) -> TDim {
+        use self::TDim::*;
+        match self {
+            Mul(terms) => {
+                let terms: Vec<TDim> = terms.into_iter().map(Self::expand_polynomial).collect();
+                if let Some(add_idx) = terms.iter().position(|t| matches!(t, Add(_))) {
+                    let Add(add_terms) = terms[add_idx].clone() else { unreachable!() };
+                    let others: Vec<TDim> = terms
+                        .iter()
+                        .enumerate()
+                        .filter(|(i, _)| *i != add_idx)
+                        .map(|(_, t)| t.clone())
+                        .collect();
+                    Add(add_terms
+                        .into_iter()
+                        .map(|t| {
+                            let mut product = others.clone();
+                            product.push(t);
+                            Mul(product).expand_polynomial()
+                        })
+                        .collect())
+                    .simplify()
+                } else {
+                    Mul(terms).simplify()
+                }
+            }
+            MulInt(c, inner) => MulInt(c, Box::new(inner.expand_polynomial())).simplify(),
+            Add(terms) => {
+                Add(terms.into_iter().map(Self::expand_polynomial).collect()).simplify()
+            }
+            Div(a, q) => Div(Box::new(a.expand_polynomial()), q).simplify(),
+            Min(terms) => {
+                Min(terms.into_iter().map(Self::expand_polynomial).collect()).simplify()
+            }
+            Max(terms) => {
+                Max(terms.into_iter().map(Self::expand_polynomial).collect()).simplify()
+            }
+            Broadcast(terms) => {
+                Broadcast(terms.into_iter().map(Self::expand_polynomial).collect()).simplify()
+            }
+            Ge(a, b) => {
+                Ge(Box::new(a.expand_polynomial()), Box::new(b.expand_polynomial())).simplify()
+            }
+            Eq(a, b) => {
+                Eq(Box::new(a.expand_polynomial()), Box::new(b.expand_polynomial())).simplify()
+            }
+            it @ (Sym(_) | Val(_)) => it,
+        }
+    }
+
     pub fn simplify(self) -> TDim {
         use self::TDim::*;
         if let Ok(v) = self.eval_to_i64(&SymbolValues::default()) {
@@ -459,6 +517,14 @@ impl TDim {
                 // expand Mul([a, Add([b, c])]) => Add([Mul([a, b]), Mul([a, c])]).
                 // This lets (T+1)*P simplify to T*P + P, which is needed for
                 // cancellation in expressions like (T+1)*P - T*P.
+                //
+                // Multi-Add Muls are *not* eagerly expanded here — keeping them
+                // factored matters for `maybe_div`'s bag-of-factors path, which
+                // cancels common Add factors symbolically (e.g. dividing
+                // 16B·(1+Y)² by 8B·(1+Y) needs the (1+Y)s to be visible as
+                // factors, not melted into a polynomial sum).  Use
+                // `expand_polynomial` if you need a fully distributed canonical
+                // form for equality comparisons (see Reshape volume check).
                 {
                     let add_indices: Vec<usize> = terms
                         .iter()
@@ -1513,6 +1579,19 @@ mod tests {
     fn reduce_mul_div() {
         let e: TDim = A.to_dim() * 2 / 2;
         assert_eq!(e, A.to_dim());
+    }
+
+    #[test]
+    fn expand_polynomial_two_add_factors() {
+        // (a + 2*a*b) * (1 + b)  ==poly==  a * (1 + b) * (1 + 2*b)
+        // Both fully expand to a + 3*a*b + 2*a*b*b.  We don't auto-expand in
+        // simplify (it would block maybe_div on factored-form denominators),
+        // but expand_polynomial does, and Reshape uses it for volume checks.
+        let a = A.to_dim();
+        let b = B.to_dim();
+        let lhs = (a.clone() + a.clone() * &b * 2) * (TDim::from(1) + &b);
+        let rhs = a.clone() * (TDim::from(1) + &b) * (TDim::from(1) + b.clone() * 2);
+        assert_eq!(lhs.expand_polynomial(), rhs.expand_polynomial());
     }
 
     #[test]

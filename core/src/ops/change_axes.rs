@@ -326,7 +326,17 @@ impl AxisOp {
             Reshape(at, from, to) => {
                 let from_volume = from.iter().product::<TDim>();
                 let to_volume = to.iter().product::<TDim>();
-                ensure!(from_volume == to_volume, "{from_volume} should be equal to {to_volume}");
+                // Two algebraically equal volumes can land in different
+                // factored forms when the same dimension is built two ways
+                // (e.g. (B+2BY)·(1+Y) vs B·(1+Y)·(1+2Y) on Conformer-style
+                // streaming attention).  Compare polynomial expansions so
+                // structural mismatch on factor ordering doesn't fail the
+                // check.
+                ensure!(
+                    from_volume.clone().expand_polynomial()
+                        == to_volume.clone().expand_polynomial(),
+                    "{from_volume} should be equal to {to_volume}"
+                );
                 ensure!(*at + from.len() <= shape.len());
                 if shape.len() >= from.len() + *at
                     && tract_itertools::izip!(shape.iter().skip(*at), from)
