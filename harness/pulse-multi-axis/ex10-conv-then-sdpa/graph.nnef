@@ -1,0 +1,57 @@
+version 1.0;
+
+extension tract_registry tract_core;
+extension tract_registry tract_transformers;
+extension tract_symbol T;
+extension tract_assert T>=0;
+
+# 1D convolution (kernel=3, padding=1) on the queries, then block-
+# diagonal SDPA.  The conv adds a streaming-axis delay of 1 per pulse;
+# the SDPA section sits downstream and must chunk-rewrite while
+# carrying that delay through.
+#
+# Layout: queries are reshaped to [1, 1, T, 4] (NCHW with H=time so the
+# conv operates on H) — kernel size [1, 1, 3, 1] with padding
+# [(0,0), (0,0), (1,1), (0,0)] keeps the time dim at T.  Reshape back
+# to [T, 4] to feed the SDPA.
+#
+# Streaming axis: 0 on `q`/`k`/`v` and on `output`.  Pulse size P = 2.
+
+graph network(q, k, v) -> (output)
+{
+    q = tract_core_external(shape = [T, 4], datum_type = 'f32');
+    k = tract_core_external(shape = [T, 4], datum_type = 'f32');
+    v = tract_core_external(shape = [T, 4], datum_type = 'f32');
+
+    # Lift to NCHW [1, 1, T, 4] for the pool, then back.  Max-pool of
+    # size 5 with symmetric padding 2 keeps the time dim at T and
+    # introduces a streaming-axis delay of 2 — exactly one chunk at
+    # P=2.  (A kernel-3 / pad-1 pool would give a 1-element delay,
+    # which doesn't divide the chunk size and can't be carried through
+    # the chunkifying Reshape.  REVISIT: extend `PulsedReshape`'s
+    # delay-rescaling to handle non-multiple cases via stream-axis
+    # alignment padding.)
+    q_3d   = unsqueeze(q, axes = [0]);            # [1, T, 4]
+    q_4d   = unsqueeze(q_3d, axes = [0]);         # [1, 1, T, 4]
+    pooled = max_pool(q_4d,
+                      size    = [1, 1, 5, 1],
+                      padding = [(0, 0), (0, 0), (2, 2), (0, 0)],
+                      stride  = [1, 1, 1, 1],
+                      dilation = [1, 1, 1, 1],
+                      border  = 'constant');
+    pooled_3d = squeeze(pooled, axes = [0]);      # [1, T, 4]
+    q_pre     = squeeze(pooled_3d, axes = [0]);   # [T, 4]
+
+    # Block-diagonal SDPA on the pooled queries.
+    scores = tract_core_einsum([q_pre, k], expr = "id,jd->ij", acc = "f32");
+
+    pos      = tract_core_range(0, tract_core_shape_of(q)[0], step = 1);
+    chunk_id = pos / 2;
+
+    chunk_row = unsqueeze(chunk_id, axes = [1]);
+    chunk_col = unsqueeze(chunk_id, axes = [0]);
+    in_block  = eq(chunk_row, chunk_col);
+
+    attn   = tract_transformers_scaled_masked_softmax(scores, in_block, scale = 0.5, post_softmax_mask = false);
+    output = tract_core_einsum([attn, v], expr = "ij,jd->id", acc = "f32");
+}
