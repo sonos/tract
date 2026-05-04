@@ -95,10 +95,8 @@ impl OpState for PulsedRangeState {
                 .to_scalar::<TDim>()?
                 .eval(&session.resolved_symbols)
                 .to_i64()?;
-            let mut data = vec![0i64; pulse];
-            for i in 0..pulse {
-                data[i] = start + step * (base as i64 + i as i64);
-            }
+            let data: Vec<i64> =
+                (0..pulse).map(|i| start + step * (base as i64 + i as i64)).collect();
             tract_nnef::tract_core::ndarray::Array1::from_vec(data).into_dyn().into_tensor()
         } else {
             dispatch_numbers!(make_pulse(op.datum_type)(&op.start, &op.step, base, pulse))?
