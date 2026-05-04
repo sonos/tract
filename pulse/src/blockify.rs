@@ -106,15 +106,13 @@ impl ModelTransform for BlockifyTransform {
             HashMap::from([(stream_sym.clone(), chunk_sym.to_dim() * k)]);
         let mut new_model = model.substitute_symbols(&subs)?;
 
-        // Phase 2: one TypedModelPatch per section.  Banded sections that the
-        // rewriter doesn't yet handle are skipped (downstream pulsification
-        // will surface a clear error) rather than failing the whole pass —
-        // a section that returns `Ok(None)` from `build_section_patch` is
-        // simply left untouched.
+        // Phase 2: one TypedModelPatch per section.  Sections the rewriter
+        // can't fully handle (unknown body op, out-of-range mask form, …)
+        // bail out of `build_section_patch` with a specific error: better
+        // a clear Blockify failure here than a confusing pulsification
+        // error a few stages later.
         for sec in &sections {
-            let Some(patch) = build_section_patch(&new_model, sec, &chunk_sym, k)? else {
-                continue;
-            };
+            let patch = build_section_patch(&new_model, sec, &chunk_sym, k)?;
             patch.apply(&mut new_model)?;
         }
 
@@ -507,22 +505,18 @@ fn decode_coord_div(expr: &TDim) -> Option<(usize, u64)> {
 /// Reads as "iterate initiators, walk the body, iterate terminators" — each
 /// role iterates op-agnostically over `sec.initiators` / section nodes /
 /// `sec.terminators` and dispatches to per-op-type sub-functions that wire
-/// the chunked equivalent into the patch.  Returns `Ok(None)` if any role
-/// hits an op-type the dispatchers don't handle (the section is left alone;
-/// downstream pulsification will fail with a clear error).
+/// the chunked equivalent into the patch.  Unhandled op-types bubble up as
+/// `Err` from the per-role dispatcher: a recognised section either gets
+/// fully rewritten or fails loudly (no partial rewrites silently left for
+/// downstream pulsification to trip over).
 fn build_section_patch(
     model: &TypedModel,
     sec: &QuadraticSection,
     chunk_sym: &Symbol,
     k: i64,
-) -> TractResult<Option<TypedModelPatch>> {
-    // Rewriter handles `Banded { lower ≤ 0 ≤ upper }` — windows that straddle
-    // the current chunk.  Purely-future (`lower > 0`, skip current) and
-    // purely-past (`upper < 0`) windows aren't seen in practice and would
-    // need different pulsifier wiring; bail on them.
-    if sec.mask.lower > 0 || sec.mask.upper < 0 {
-        return Ok(None);
-    }
+) -> TractResult<TypedModelPatch> {
+    ensure!(sec.mask.lower <= 0);
+    ensure!(sec.mask.upper >= 0);
     let mut patch = TypedModelPatch::default();
     // Map from original outlet to its chunked equivalent inside the patch.
     let mut chunked: HashMap<OutletId, OutletId> = HashMap::default();
@@ -538,20 +532,11 @@ fn build_section_patch(
         if node.outputs[0].fact.uniform_tdim.is_some() {
             continue;
         }
-        rule_if_some!(
-            out = wire_initiator(
-                &mut patch,
-                model,
-                node,
-                &sec.mask,
-                sec.contracted_axis,
-                chunk_sym,
-                k,
-            )?
-        );
+        let out =
+            wire_initiator(&mut patch, model, node, &sec.mask, sec.contracted_axis, chunk_sym, k)?;
         chunked.insert(OutletId::new(nid, 0), out);
     }
-    rule_if!(!chunked.is_empty());
+    ensure!(!chunked.is_empty());
 
     // ── 2. Body ──────────────────────────────────────────────────────────
     // Walk the section in topological order, skipping initiators (already
@@ -568,25 +553,23 @@ fn build_section_patch(
         if node.outputs[0].fact.uniform_tdim.is_some() {
             continue;
         }
-        rule_if_some!(out = wire_body(model, node, &chunked)?);
+        let out = wire_body(model, node, &chunked)?;
         chunked.insert(OutletId::new(nid, 0), out);
     }
 
     // ── 3. Terminators ───────────────────────────────────────────────────
     for &nid in &sec.terminators {
         let node = &model.nodes[nid];
-        rule_if_some!(
-            (boundary, chunked_form) = wire_terminator(
-                &mut patch,
-                model,
-                node,
-                &chunked,
-                &sec.mask,
-                sec.contracted_axis,
-                chunk_sym,
-                k,
-            )?
-        );
+        let (boundary, chunked_form) = wire_terminator(
+            &mut patch,
+            model,
+            node,
+            &chunked,
+            &sec.mask,
+            sec.contracted_axis,
+            chunk_sym,
+            k,
+        )?;
         shunts.push((boundary, chunked_form));
     }
 
@@ -602,21 +585,16 @@ fn build_section_patch(
         patch.shunt_outside(model, boundary, merged)?;
     }
 
-    // Dead-node cleanup is handled by `TypedModelPatch::apply`: it walks
-    // back from each shunted outlet, replacing nodes whose successors are
-    // now all dead with Dummy and propagating upstream.  That sweeps the
-    // original section (initiator EinSum, mask construction, mul-by-mask,
-    // terminator) and any feeder chain that only fed it.
-
-    Ok(Some(patch))
+    Ok(patch)
 }
 
 // ── Per-role dispatchers ────────────────────────────────────────────────
 //
 // Each `wire_*` helper takes a section node + the patch-in-progress and
-// dispatches to a per-op-type implementation.  Returning `Ok(None)` means
-// "I don't know how to handle this op-type"; the caller bubbles that up
-// to the section-patch level which then refuses the rewrite.
+// dispatches to a per-op-type implementation.  Unhandled op-types `bail!`
+// with a clear "Unsupported …" message — Blockify either fully rewrites
+// a detected section or errors loudly, never silently leaves a half-
+// rewritten graph for downstream pulsification to choke on.
 
 fn wire_initiator(
     patch: &mut TypedModelPatch,
@@ -626,33 +604,24 @@ fn wire_initiator(
     contracted_axis: usize,
     chunk_sym: &Symbol,
     k: i64,
-) -> TractResult<Option<OutletId>> {
+) -> TractResult<OutletId> {
     if let Some(op) = node.op_as::<EinSum>() {
-        return Ok(Some(wire_initiator_einsum(
-            patch,
-            model,
-            node,
-            op,
-            mask,
-            contracted_axis,
-            chunk_sym,
-            k,
-        )?));
+        return wire_initiator_einsum(patch, model, node, op, mask, contracted_axis, chunk_sym, k);
     }
-    Ok(None)
+    bail!("Unsupported initiator {node}")
 }
 
 fn wire_body(
     model: &TypedModel,
     node: &TypedNode,
     chunked: &HashMap<OutletId, OutletId>,
-) -> TractResult<Option<OutletId>> {
+) -> TractResult<OutletId> {
     if let Some(bin) = node.op_as::<TypedBinOp>()
         && bin.0.is::<Mul>()
     {
-        return Ok(wire_body_mul_by_mask(model, node, chunked));
+        return wire_body_mul_by_mask(model, node, chunked);
     }
-    Ok(None)
+    bail!("Unsupported op for wire_body: {node}");
 }
 
 fn wire_terminator(
@@ -664,7 +633,7 @@ fn wire_terminator(
     contracted_axis: usize,
     chunk_sym: &Symbol,
     k: i64,
-) -> TractResult<Option<(OutletId, OutletId)>> {
+) -> TractResult<(OutletId, OutletId)> {
     if let Some(op) = node.op_as::<Reduce>() {
         return wire_terminator_reduce(patch, model, node, op, chunked);
     }
@@ -681,7 +650,7 @@ fn wire_terminator(
             k,
         );
     }
-    Ok(None)
+    bail!("Unsupported operator {node}")
 }
 
 // ── Per-op-type implementations ─────────────────────────────────────────
@@ -809,13 +778,14 @@ fn wire_body_mul_by_mask(
     model: &TypedModel,
     node: &TypedNode,
     chunked: &HashMap<OutletId, OutletId>,
-) -> Option<OutletId> {
+) -> TractResult<OutletId> {
     let compute_input = node
         .inputs
         .iter()
         .copied()
-        .find(|i| model.outlet_fact(*i).map(|f| f.uniform_tdim.is_none()).unwrap_or(true))?;
-    chunked.get(&compute_input).copied()
+        .find(|i| model.outlet_fact(*i).map(|f| f.uniform_tdim.is_none()).unwrap_or(true))
+        .unwrap();
+    Ok(chunked.get(&compute_input).copied().unwrap())
 }
 
 /// Reduce<Sum> terminator: wires a chunked Reduce on the within-chunk
@@ -828,14 +798,14 @@ fn wire_terminator_reduce(
     node: &TypedNode,
     op: &Reduce,
     chunked: &HashMap<OutletId, OutletId>,
-) -> TractResult<Option<(OutletId, OutletId)>> {
-    rule_if!(op.reducer == Reducer::Sum && op.axes.len() == 1);
-    rule_if_some!(chunked_input = chunked.get(&node.inputs[0]).copied());
+) -> TractResult<(OutletId, OutletId)> {
+    ensure!(op.reducer == Reducer::Sum && op.axes.len() == 1);
+    let chunked_input = chunked[&node.inputs[0]];
     // Chunk insertion position: the first streaming axis of the input fact.
     let in_fact = model.outlet_fact(node.inputs[0])?;
-    rule_if_some!(stream_sym = first_streaming_symbol(in_fact));
+    let stream_sym = first_streaming_symbol(in_fact)?;
     let in_streaming = streaming_positions(in_fact, &stream_sym);
-    rule_if!(!in_streaming.is_empty());
+    ensure!(!in_streaming.is_empty());
     let chunk_pos = in_streaming[0];
     let new_axis = chunked_axis_index(op.axes[0], chunk_pos);
     let new_reduce = Reduce { axes: tvec!(new_axis), reducer: op.reducer };
@@ -857,10 +827,10 @@ fn wire_terminator_reduce(
                 AxisOp::Rm(new_axis),
                 &[chunked_term],
             )?[0];
-            return Ok(Some((OutletId::new(consumer.id, 0), chunked_rm)));
+            return Ok((OutletId::new(consumer.id, 0), chunked_rm));
         }
     }
-    Ok(Some((OutletId::new(node.id, 0), chunked_term)))
+    Ok((OutletId::new(node.id, 0), chunked_term))
 }
 
 /// EinSum terminator (e.g. ex02's `attn @ V`): chunkifies the second
@@ -881,7 +851,7 @@ fn wire_terminator_einsum(
     contracted_axis: usize,
     chunk_sym: &Symbol,
     k: i64,
-) -> TractResult<Option<(OutletId, OutletId)>> {
+) -> TractResult<(OutletId, OutletId)> {
     let mut chunked_inputs: TVec<OutletId> = tvec!();
     let mut input_starts: Vec<Option<usize>> = vec![];
     for (slot, &input) in node.inputs.iter().enumerate() {
@@ -944,7 +914,7 @@ fn wire_terminator_einsum(
     let chunked_op = chunkify_einsum(op, &input_starts, out_streaming.first().copied())?;
     let chunked_term =
         patch.wire_node(format!("{}.blockified", node.name), chunked_op, &chunked_inputs)?[0];
-    Ok(Some((OutletId::new(node.id, 0), chunked_term)))
+    Ok((OutletId::new(node.id, 0), chunked_term))
 }
 
 /// Wire the boundary merge reshape: collapses [..., S, k, ...] back to
@@ -979,8 +949,11 @@ fn wire_merge_reshape(
 /// First streaming-symbol-bearing symbol on a fact's shape.  Used by
 /// terminator wiring to derive the chunk insertion position from the
 /// input fact, op-agnostically.
-fn first_streaming_symbol(fact: &TypedFact) -> Option<Symbol> {
-    fact.shape.iter().find_map(|d| d.symbols().into_iter().next())
+fn first_streaming_symbol(fact: &TypedFact) -> TractResult<Symbol> {
+    fact.shape
+        .iter()
+        .find_map(|d| d.symbols().into_iter().next())
+        .context("No streaming axis found")
 }
 
 fn chunked_axis_index(orig_axis: usize, chunk_pos: usize) -> usize {
