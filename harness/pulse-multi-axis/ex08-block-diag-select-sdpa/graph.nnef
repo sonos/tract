@@ -1,0 +1,46 @@
+version 1.0;
+
+extension tract_registry tract_core;
+extension tract_registry tract_transformers;
+extension tract_symbol T;
+extension tract_assert T>=0;
+
+# Block-diagonal SDPA via `select(mask, scores, -inf)` + softmax (the
+# explicit batch form of `ScaledMaskedSoftmax`).  Same semantics as
+# ex06, but the masking step is `select` instead of SMS.
+#
+# Why this matters: encoder-style attention graphs (e.g. the Nemotron
+# encoder, harness/sdpa-pulse/ex04+) write the mask-apply step as
+# `masked = select(bool_mask, scores, scores * 0.0 + -inf)`.  Declutter
+# folds `scores * 0.0 + -inf` into a `MultiBroadcastTo` of a scalar
+# `-inf` constant up to `scores`'s `[T, T]` shape, which lands inside
+# the multi-T-axis section as a non-EinSum, non-uniform_tdim initiator
+# — a third initiator flavour Blockify needs to handle.
+#
+# Inputs:  a (queries), b (keys), c (values)  all [T, 4]
+# Output: [T, 4]
+#
+# Streaming axis: 0 on all inputs and on the output.  Pulse size P = 2.
+
+graph network(a, b, c) -> (output)
+{
+    a = tract_core_external(shape = [T, 4], datum_type = 'f32');
+    b = tract_core_external(shape = [T, 4], datum_type = 'f32');
+    c = tract_core_external(shape = [T, 4], datum_type = 'f32');
+
+    scores = tract_core_einsum([a, b], expr = "id,jd->ij", acc = "f32");
+
+    pos      = tract_core_range(0, tract_core_shape_of(a)[0], step = 1);
+    chunk_id = pos / 2;
+
+    chunk_row = unsqueeze(chunk_id, axes = [1]);
+    chunk_col = unsqueeze(chunk_id, axes = [0]);
+    in_block  = eq(chunk_row, chunk_col);
+
+    # Apply mask: keep scores where mask=true, -inf elsewhere.
+    # `scores * 0.0 + -inf` declutters to a const broadcast (-inf, [T,T]).
+    masked_scores = select(in_block, scores, scores * 0.0 + -inf);
+
+    attn   = softmax(masked_scores, axes = [1]);
+    output = tract_core_einsum([attn, c], expr = "ij,jd->id", acc = "f32");
+}
