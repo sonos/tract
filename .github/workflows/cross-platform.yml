@@ -44,11 +44,12 @@ jobs:
               return;
             }
             core.setOutput('test_ref', process.env.GITHUB_SHA);
-            // For internal pull_request triggers, GH Actions auto-sets
-            // GITHUB_HEAD_REF to the source branch. Pass it through so
-            // bundles get tagged with the branch name. For cron/push
-            // it is empty, leaving make_bundle.sh to fall back to 'main'.
-            core.setOutput('test_branch', process.env.GITHUB_HEAD_REF || '');
+            // Prefer GITHUB_HEAD_REF (auto-set by GH Actions on
+            // internal pull_request triggers, gives the PR source
+            // branch). Fall back to GITHUB_REF_NAME (the branch the
+            // workflow was triggered on) for cron and for manual
+            // workflow_dispatch runs without a pr_number input.
+            core.setOutput('test_branch', process.env.GITHUB_HEAD_REF || process.env.GITHUB_REF_NAME || '');
 
   linux:
     needs: prepare
