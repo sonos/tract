@@ -29,22 +29,26 @@ jobs:
           script: |
             const prInput = context.payload.inputs?.pr_number;
             core.info(`Fetching PR ${prInput}`);
-            if (!prInput) {
-              core.setOutput('test_ref', process.env.GITHUB_SHA);
-              core.setOutput('test_branch', '');
+            if (prInput) {
+              const pr = await github.rest.pulls.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: Number(prInput),
+              });
+              core.info(pr.data.head.sha);
+              core.setOutput('test_ref', pr.data.head.sha);
+              // Tag bundles with pr-NNNN-<head ref> so graphite can find
+              // the metrics by PR number and forks with same branch name
+              // don't collide.
+              core.setOutput('test_branch', `pr-${prInput}-${pr.data.head.ref}`);
               return;
             }
-            const pr = await github.rest.pulls.get({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              pull_number: Number(prInput),
-            });
-            core.info(pr.data.head.sha);
-            core.setOutput('test_ref', pr.data.head.sha);
-            // Tag bundles with pr-NNNN-<head ref> so graphite can find
-            // the metrics by PR number and forks with same branch name
-            // don't collide.
-            core.setOutput('test_branch', `pr-${prInput}-${pr.data.head.ref}`);
+            core.setOutput('test_ref', process.env.GITHUB_SHA);
+            // For internal pull_request triggers, GH Actions auto-sets
+            // GITHUB_HEAD_REF to the source branch. Pass it through so
+            // bundles get tagged with the branch name. For cron/push
+            // it is empty, leaving make_bundle.sh to fall back to 'main'.
+            core.setOutput('test_branch', process.env.GITHUB_HEAD_REF || '');
 
   linux:
     needs: prepare
