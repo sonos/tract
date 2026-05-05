@@ -2,8 +2,14 @@
 
 set -ex
 
-TRAVIS_COMMIT=${GITHUB_SHA:-$(git rev-parse HEAD 2>/dev/null || echo dummy-commit-id)}
-BRANCH=${GITHUB_HEAD_REF:-$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)}
+if [ -n "$GITHUB_ACTIONS" ]
+then
+    TRAVIS_COMMIT=${GITHUB_SHA:-dummy-commit-id}
+    BRANCH=${GITHUB_HEAD_REF:-main}
+else
+    TRAVIS_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo dummy-commit-id)
+    BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)
+fi
 BRANCH=$(echo $BRANCH | tr '/' '_')
 PLATFORM=${PLATFORM:-dummy-platform}
 
