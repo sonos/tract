@@ -30,7 +30,7 @@ impl std::error::Error for TooEarly {}
 
 macro_rules! b( ($e:expr) => { Box::new($e) } );
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, Eq, Hash, Debug)]
 pub enum TDim {
     Val(i64),
     Sym(Symbol),
@@ -48,6 +48,72 @@ pub enum TDim {
 }
 
 use TDim::*;
+
+/// Structural equality on the TDim tree — what `#[derive(PartialEq)]` would
+/// produce.  Used as the fast-path inside `PartialEq` (and by the simplifier's
+/// internal `HashMap<TDim, _>`, which compares within same-hash buckets where
+/// structural equality is the only thing that matters).
+fn eq_structural(a: &TDim, b: &TDim) -> bool {
+    match (a, b) {
+        (Val(x), Val(y)) => x == y,
+        (Sym(x), Sym(y)) => x == y,
+        (Add(x), Add(y))
+        | (Mul(x), Mul(y))
+        | (Broadcast(x), Broadcast(y))
+        | (Min(x), Min(y))
+        | (Max(x), Max(y)) => {
+            x.len() == y.len() && x.iter().zip(y).all(|(a, b)| eq_structural(a, b))
+        }
+        (MulInt(p, x), MulInt(q, y)) => p == q && eq_structural(x, y),
+        (Div(x, p), Div(y, q)) => p == q && eq_structural(x, y),
+        (Ge(a, b), Ge(c, d)) | (Eq(a, b), Eq(c, d)) => eq_structural(a, c) && eq_structural(b, d),
+        _ => false,
+    }
+}
+
+// Thread-local guard: while simplifying the difference inside `eq`, fall back
+// to the structural-only path for any nested `==` calls.  Without this guard
+// the simplifier's internal `HashMap<TDim, i64>` would re-enter `eq` from
+// inside `(self - other).simplify()`, recursing without bound on
+// non-structurally-equal inputs.
+std::thread_local! {
+    static EQ_GUARD: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+impl PartialEq for TDim {
+    fn eq(&self, other: &Self) -> bool {
+        // Fast path: structural tree equality.
+        if eq_structural(self, other) {
+            return true;
+        }
+        // Inside an enclosing simplification triggered by a previous
+        // second-chance call, fall back to structural equality only.
+        if EQ_GUARD.with(|g| g.get()) {
+            return false;
+        }
+        // Skip second-chance when either side is a leaf (`Val` or `Sym`).
+        // For `Val(c)` vs anything non-`Val`: if they were semantically
+        // equal, the simplifier should already have folded the other side
+        // to `Val(c)`; running a diff-and-simplify here just risks
+        // arithmetic overflow on extreme constants (e.g. the simplifier
+        // filters against `Val(i64::MAX)`/`Val(i64::MIN)` sentinels).
+        // For `Sym(x)` leaves, assertion-driven equality belongs in
+        // `simplify`, not in `eq`.
+        if matches!(self, Val(_) | Sym(_)) || matches!(other, Val(_) | Sym(_)) {
+            return false;
+        }
+        // Second chance: prove the difference simplifies to zero.  Two
+        // algebraically equal TDims often arrive at different canonical
+        // forms via different construction paths (e.g. `1 + (7S+3)/4` and
+        // `((S+1)*7)/4` after blockify substitutes T → k·S in encoder
+        // shapes).  Subtracting and simplifying lets the existing
+        // simplifier rules cancel them out.
+        EQ_GUARD.with(|g| g.set(true));
+        let diff = (self.clone() - other.clone()).simplify();
+        EQ_GUARD.with(|g| g.set(false));
+        matches!(diff, Val(0))
+    }
+}
 
 fn tdim_lexi_order(a: &TDim, b: &TDim) -> Ordering {
     match (a, b) {
