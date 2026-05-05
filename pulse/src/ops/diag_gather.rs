@@ -121,6 +121,22 @@ impl TypedOp for DiagGather {
         Ok(Some(tvec![Some(roi.clone())]))
     }
 
+    fn substitute_symbols(
+        &self,
+        _source: &TypedModel,
+        node: &TypedNode,
+        target: &mut TypedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+        subs: &HashMap<Symbol, TDim>,
+    ) -> TractResult<TVec<OutletId>> {
+        let inputs = node.inputs.iter().map(|i| mapping[i]).collect::<TVec<_>>();
+        let op = DiagGather {
+            offset: self.offset.substitute_all(subs)?,
+            out_len: self.out_len.substitute_all(subs)?,
+        };
+        target.wire_node(&node.name, op, &inputs)
+    }
+
     as_op!();
 }
 
