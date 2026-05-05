@@ -66,6 +66,28 @@ register_model_transform!("blockify", blockify::BlockifyConfig, |config| Ok(Box:
     blockify::BlockifyTransform(config)
 )));
 
+#[derive(Debug, Default, serde::Deserialize)]
+pub struct DiagGatherFoldConfig {}
+
+#[derive(Debug)]
+struct DiagGatherFoldTransform;
+
+impl ModelTransform for DiagGatherFoldTransform {
+    fn name(&self) -> std::borrow::Cow<'static, str> {
+        "diag_gather_fold".into()
+    }
+    fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
+        if ops::diag_gather::fold_diag_gather(model)? {
+            tract_core::optim::propagate_roi::PropagateRoi.run_direct(model)?;
+        }
+        Ok(())
+    }
+}
+
+register_model_transform!("diag_gather_fold", DiagGatherFoldConfig, |_config| Ok(Box::new(
+    DiagGatherFoldTransform
+)));
+
 pub trait WithPulse {
     fn enable_pulse(&mut self);
     fn with_pulse(self) -> Self;
