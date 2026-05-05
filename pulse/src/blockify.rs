@@ -129,6 +129,7 @@
 //!   round-trip.
 
 use crate::internal::*;
+use crate::ops::diag_gather::DiagGather;
 use std::collections::{BTreeSet, HashMap};
 use tract_core::axes::AxesMapping;
 use tract_core::model::TypedModelPatch;
@@ -736,7 +737,69 @@ fn wire_initiator(
     if node.op_as::<tract_core::ops::array::MultiBroadcastTo>().is_some() {
         return wire_initiator_multibroadcastto(patch, model, node, chunk_sym);
     }
+    if let Some(op) = node.op_as::<DiagGather>() {
+        return wire_initiator_diag_gather(patch, model, node, op, mask, chunk_sym, k);
+    }
     bail!("Unsupported initiator {node}")
+}
+
+/// Initiator for `DiagGather` — the folded skew trick at the section
+/// boundary.  Input is single-T-axis (the relative-position pre-skew
+/// scores `[..., S, 2T_max-1]`), output is multi-T-axis (`[..., S, S]`,
+/// the absolute-position scores).  In the chunked frame both wires
+/// become single-T-axis with constant inner shape:
+///
+///   input  [..., chunks, k, 2T_max-1]
+///   output [..., chunks, k, W]    where W = (mask.upper-mask.lower+1)·k
+///
+/// The chunked DiagGather has fixed `offset = k-1` (= P-1, the relative-
+/// position-zero entry within the per-pulse window) and `out_len = W`.
+fn wire_initiator_diag_gather(
+    patch: &mut TypedModelPatch,
+    model: &TypedModel,
+    node: &TypedNode,
+    _op: &DiagGather,
+    mask: &MaskForm,
+    chunk_sym: &Symbol,
+    k: i64,
+) -> TractResult<OutletId> {
+    let out_streaming = streaming_positions(&node.outputs[0].fact, chunk_sym);
+    ensure!(
+        out_streaming.len() == 2 && out_streaming[1] == out_streaming[0] + 1,
+        "Initiator DiagGather output must have two contiguous streaming axes, \
+         got {out_streaming:?}"
+    );
+    ensure!(node.inputs.len() == 1, "DiagGather has 1 input, got {}", node.inputs.len());
+
+    let in_fact = model.outlet_fact(node.inputs[0])?;
+    let in_streaming = streaming_positions(in_fact, chunk_sym);
+    ensure!(
+        in_streaming.len() == 1,
+        "Initiator DiagGather input must have exactly one streaming axis, got {in_streaming:?}"
+    );
+    let stream_axis = in_streaming[0];
+
+    let tapped = patch.tap_model(model, node.inputs[0])?;
+    let in_fact_patch = patch.outlet_fact(tapped)?.clone();
+    let from = tvec!(in_fact_patch.shape[stream_axis].clone());
+    let to = tvec!(chunk_sym.to_dim(), k.to_dim());
+    let reshape = AxisOp::Reshape(stream_axis, from, to);
+    let chunked = patch.wire_node(format!("{}.blockify_split", node.name), reshape, &[tapped])?[0];
+
+    // The R (relative-position) axis of pos_raw is the last axis: a constant
+    // 2*T_max-1 from the original skew construction.  In batch the DiagGather's
+    // centre is at column T_max-1 = (R-1)/2.  The chunked formula picks
+    //   pos_raw[c·P+δi, T_max-1 + (j-i)]   with j = (c-L)·P + δj
+    // → in[c, δi, (T_max-1) - L·P + δj − δi]
+    // so the chunked DiagGather offset is (T_max-1) - L·P, with out_len = W.
+    let r_axis = in_fact_patch.shape.last().context("DiagGather input has no last axis")?;
+    let r = r_axis.to_i64().context("DiagGather R axis must be a constant integer")?;
+    let t_max = (r + 1) / 2;
+    let l = mask.upper - mask.lower;
+    let w = (l + 1) * k;
+    let offset = t_max - 1 - l * k;
+    let chunked_op = DiagGather { offset: offset.to_dim(), out_len: w.to_dim() };
+    Ok(patch.wire_node(format!("{}.blockified", node.name), chunked_op, &[chunked])?[0])
 }
 
 /// Initiator for `MultiBroadcastTo` — the `select(mask, scores, -inf)`
