@@ -118,7 +118,13 @@ impl PulsedModelExt for PulsedModel {
         pulse: &TDim,
     ) -> TractResult<(PulsedModel, HashMap<OutletId, OutletId>)> {
         check_no_unannotated_superlinear_wires(source, &symbol)?;
+        use tract_core::optim::TypedPass;
         let mut blockified = source.clone();
+        // Mirror PulseTransform's pre-fold so callers entering through
+        // PulsedModel::new (or `--pulse`) get the same treatment.
+        crate::ops::diag_gather::detect_diag_gather(&mut blockified)?;
+        tract_core::optim::propagate_roi::PropagateRoi.run_direct(&mut blockified)?;
+        blockified.declutter()?;
         let (stream_sym, pulse_dim) = match pulse.as_i64() {
             Some(pv) if crate::blockify::has_quadratic_sections(&blockified, &symbol)? => {
                 pulse_driven_blockify(&mut blockified, &symbol, pv)?

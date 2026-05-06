@@ -253,6 +253,37 @@ pub fn blockify_output(model: &TypedModel) -> Option<(Symbol, i64)> {
 }
 
 /// Streaming-axis positions on a typed fact.
+/// If `einsum_node` is the upstream half of the Transformer-XL "rel-pos
+/// einsum + skew trick" pattern (now folded by `diag_gather_fold` into a
+/// DiagGather), returns the DiagGather node id.
+///
+/// Pattern: the einsum's only multi-T-axis successor in `sec.section` is
+/// a single DiagGather.  The DiagGather collapses the einsum's `2·T-1`
+/// rel-pos axis to a constant `out_len`, so the einsum + DiagGather pair
+/// should be wired as a fused initiator (DiagGather drives the chunked
+/// rewrite; the einsum is tapped through it).  Otherwise blockify would
+/// treat the einsum as a normal initiator and choke on the slope-2k
+/// rel-pos axis at chunk-split time.
+fn section_only_diag_gather_consumer(
+    model: &TypedModel,
+    einsum_node: &TypedNode,
+    sec: &QuadraticSection,
+) -> Option<usize> {
+    let consumers: Vec<_> = model
+        .outlet_successors(OutletId::new(einsum_node.id, 0))
+        .iter()
+        .filter(|s| sec.section.contains(&s.node))
+        .collect();
+    if consumers.len() != 1 {
+        return None;
+    }
+    let dg_id = consumers[0].node;
+    if !model.nodes[dg_id].op_is::<DiagGather>() {
+        return None;
+    }
+    Some(dg_id)
+}
+
 fn streaming_positions(fact: &TypedFact, stream_sym: &Symbol) -> TVec<usize> {
     fact.shape
         .iter()
@@ -643,9 +674,45 @@ fn build_section_patch(
     let mut patch = TypedModelPatch::default();
     // Map from original outlet to its chunked equivalent inside the patch.
     let mut chunked: HashMap<OutletId, OutletId> = HashMap::default();
+    // Nodes wired as part of a fused initiator (e.g. einsum → DiagGather
+    // for the Transformer-XL relative-position pattern).  These should be
+    // skipped by the regular initiator and body loops since their
+    // chunked equivalent is already in `chunked`.
+    let mut already_wired: BTreeSet<usize> = BTreeSet::new();
     // Boundary outlets to redirect via `shunt_outside` after wiring the
     // merge reshape: (original outlet, chunked-form outlet inside patch).
     let mut shunts: Vec<(OutletId, OutletId)> = vec![];
+
+    // ── 0. Fused initiators ──────────────────────────────────────────────
+    // Recognize the rel-pos skew pattern: an EinSum with multi-T-axis
+    // output `[..., T, 2·T-1]` that's consumed by a single DiagGather in
+    // the same section (i.e. the einsum's only multi-T-axis successor is
+    // the DiagGather that collapses the `2·T-1` axis to a constant
+    // `out_len`).  Treat the pair as one fused initiator: route through
+    // `wire_initiator_diag_gather` on the DiagGather (which knows how to
+    // chunk the rel-pos axis correctly), and mark BOTH the einsum and
+    // the DiagGather as already wired so neither the regular initiator
+    // loop nor the body loop touches them.
+    for &nid in &sec.initiators {
+        let einsum_node = &model.nodes[nid];
+        if !einsum_node.op_is::<EinSum>() {
+            continue;
+        }
+        let Some(dg_id) = section_only_diag_gather_consumer(model, einsum_node, sec) else {
+            continue;
+        };
+        let dg_node = &model.nodes[dg_id];
+        let dg_op = dg_node.op_as::<DiagGather>().unwrap();
+        let dg_chunked =
+            wire_initiator_diag_gather(&mut patch, model, dg_node, dg_op, &sec.mask, chunk_sym, k)?;
+        // Both the einsum's outlet and the DiagGather's outlet now point
+        // at the same chunked outlet.  Downstream consumers in the
+        // section will pick whichever they actually consume.
+        chunked.insert(OutletId::new(nid, 0), dg_chunked);
+        chunked.insert(OutletId::new(dg_id, 0), dg_chunked);
+        already_wired.insert(nid);
+        already_wired.insert(dg_id);
+    }
 
     // ── 1. Initiators ────────────────────────────────────────────────────
     // Two flavours:
@@ -660,6 +727,9 @@ fn build_section_patch(
     //     chunked inputs.  The result lives in `chunked` like any other
     //     section wire.
     for &nid in &sec.initiators {
+        if already_wired.contains(&nid) {
+            continue;
+        }
         let node = &model.nodes[nid];
         let out = if node.outputs[0].fact.uniform_tdim.is_some() {
             wire_uniform_tdim_initiator(
@@ -690,6 +760,9 @@ fn build_section_patch(
             continue;
         }
         if sec.initiators.contains(&nid) {
+            continue;
+        }
+        if already_wired.contains(&nid) {
             continue;
         }
         let node = &model.nodes[nid];
