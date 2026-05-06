@@ -306,6 +306,13 @@ pub struct RunParams {
 
 pub struct RunTensors {
     pub sources: Vec<TVec<TValue>>,
+    /// In pulse mode, the *real* input length on the streaming axis
+    /// (i.e. before the trailing turns of zero-padding that
+    /// `get_or_make_tensors` adds to flush the pipeline).  Used by the
+    /// runner to bind the streaming symbol so PulsePad and friends
+    /// resolve `end_input` correctly at end-of-stream.  `None` for
+    /// non-pulse runs.
+    pub streaming_input_len: Option<usize>,
 }
 
 #[cfg(feature = "transformers")]
@@ -402,6 +409,7 @@ fn get_or_make_tensors(
     name: &str,
     input_idx: usize,
     target: &mut TVec<Vec<TValue>>,
+    streaming_input_len: &mut Option<usize>,
 ) -> TractResult<()> {
     if let Some(mut value) = params
         .tensors_values
@@ -467,6 +475,14 @@ fn get_or_make_tensors(
                     input_len,
                     input_pulse_axis
                 );
+            }
+            // Record the real streaming-axis length on the *first* input we
+            // see; downstream uses it to bind the streaming symbol so that
+            // PulsePad's `end_input` resolves to the correct end-of-stream.
+            // (All inputs share the same streaming dim, so picking the first
+            // is fine.)
+            if streaming_input_len.is_none() {
+                *streaming_input_len = Some(input_len);
             }
 
             // how many pulses do we need to push full result out ?
@@ -540,10 +556,19 @@ fn get_or_make_tensors(
 pub fn get_or_make_inputs(tract: &Arc<dyn Model>, params: &RunParams) -> TractResult<RunTensors> {
     // Resolve source inputs
     let mut tmp_inputs = tvec![];
+    let mut streaming_input_len = None;
     for (ix, input) in tract.input_outlets().iter().enumerate() {
         let fact = tract.outlet_typedfact(*input)?;
         let name = tract.node_name(input.node);
-        get_or_make_tensors(tract, params, fact, name, ix, &mut tmp_inputs)?;
+        get_or_make_tensors(
+            tract,
+            params,
+            fact,
+            name,
+            ix,
+            &mut tmp_inputs,
+            &mut streaming_input_len,
+        )?;
     }
 
     let n_turns = tmp_inputs.iter().map(|t| t.len()).max().unwrap_or(0);
@@ -556,7 +581,7 @@ pub fn get_or_make_inputs(tract: &Arc<dyn Model>, params: &RunParams) -> TractRe
         })
         .collect::<Vec<_>>();
 
-    Ok(RunTensors { sources })
+    Ok(RunTensors { sources, streaming_input_len })
 }
 
 fn make_inputs(values: &[impl std::borrow::Borrow<TypedFact>]) -> TractResult<TVec<TValue>> {
