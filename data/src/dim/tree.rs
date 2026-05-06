@@ -30,6 +30,12 @@ impl std::error::Error for TooEarly {}
 
 macro_rules! b( ($e:expr) => { Box::new($e) } );
 
+// `Hash` stays structural while `PartialEq` accepts an algebraic second chance:
+// see the `PartialEq` impl below for the rationale (the simplifier's internal
+// `HashMap<TDim, _>` only ever compares within same-canonical-form buckets, so
+// the standard `a == b => hash(a) == hash(b)` contract being violated outside
+// that path is acceptable here).
+#[allow(clippy::derived_hash_with_manual_eq)]
 #[derive(Clone, Eq, Hash, Debug)]
 pub enum TDim {
     Val(i64),
