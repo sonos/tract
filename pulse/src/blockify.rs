@@ -185,10 +185,44 @@ impl ModelTransform for BlockifyTransform {
         }
 
         // Phase 1: introduce S, substitute T → k·S globally via core.
+        // `substitute_symbols_with_mapping` returns the source-outlet →
+        // target-outlet mapping because `translate_model_with_mappings`
+        // walks `eval_order` and may reassign node IDs — we need the
+        // mapping to translate the section's source-IDs into target-IDs.
         let chunk_sym = model.symbols.new_with_prefix("S");
         let subs: HashMap<Symbol, TDim> =
             HashMap::from([(stream_sym.clone(), chunk_sym.to_dim() * k)]);
-        let mut new_model = model.substitute_symbols(&subs)?;
+        let (mut new_model, id_mapping) = model.substitute_symbols_with_mapping(&subs)?;
+
+        let translate_section = |sec: &QuadraticSection| -> TractResult<QuadraticSection> {
+            let translate_id = |old: usize| -> TractResult<usize> {
+                Ok(id_mapping
+                    .get(&OutletId::new(old, 0))
+                    .ok_or_else(|| {
+                        format_err!("Blockify: source node #{old} has no mapping after substitute")
+                    })?
+                    .node)
+            };
+            Ok(QuadraticSection {
+                section: sec
+                    .section
+                    .iter()
+                    .map(|&n| translate_id(n))
+                    .collect::<TractResult<_>>()?,
+                initiators: sec
+                    .initiators
+                    .iter()
+                    .map(|&n| translate_id(n))
+                    .collect::<TractResult<_>>()?,
+                terminators: sec
+                    .terminators
+                    .iter()
+                    .map(|&n| translate_id(n))
+                    .collect::<TractResult<_>>()?,
+                mask: sec.mask,
+                contracted_axis: sec.contracted_axis,
+            })
+        };
 
         // Phase 2: one TypedModelPatch per section.  Sections the rewriter
         // can't fully handle (unknown body op, out-of-range mask form, …)
@@ -196,7 +230,8 @@ impl ModelTransform for BlockifyTransform {
         // a clear Blockify failure here than a confusing pulsification
         // error a few stages later.
         for sec in &sections {
-            let patch = build_section_patch(&new_model, sec, &chunk_sym, k)?;
+            let translated = translate_section(sec)?;
+            let patch = build_section_patch(&new_model, &translated, &chunk_sym, k)?;
             patch.apply(&mut new_model)?;
         }
 

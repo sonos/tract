@@ -260,6 +260,15 @@ impl TypedModel {
         crate::model::translator::Translate::translate_model(subs, self)
     }
 
+    /// Like `substitute_symbols`, but also returns the source-outlet → target-outlet
+    /// mapping, since `Translate` walks `eval_order` and may reassign node IDs.
+    pub fn substitute_symbols_with_mapping(
+        &self,
+        subs: &HashMap<Symbol, TDim>,
+    ) -> TractResult<(TypedModel, HashMap<OutletId, OutletId>)> {
+        crate::model::translator::Translate::translate_model_with_mappings(subs, self)
+    }
+
     pub fn prop_consts(&mut self) -> TractResult<()> {
         crate::optim::Optimizer::prop_consts().optimize(self)
     }
