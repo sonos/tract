@@ -89,7 +89,6 @@ pub const STAGES: &[&str] = &[
 fn main() -> TractResult<()> {
     use clap::*;
     let mut app = command!()
-        .allow_hyphen_values(true)
         .arg(arg!(--readings "Start readings instrumentation"))
         .arg(arg!(--"readings-heartbeat" [MS] "Heartbeat for readings background collector").default_value("5"))
         .arg(arg!(verbose: -v ... "Sets the level of verbosity.").action(clap::ArgAction::Count))
@@ -153,6 +152,8 @@ fn main() -> TractResult<()> {
         .arg(arg!(--"tflite-cycle" "Perform TFLITE dump and reload before optimizing"))
 
         .arg(arg!(--"no-nnef-tract-core" "Disable usage of tract-core extension in NNEF dump and load"))
+        // deprecated: tract-core is now enabled by default
+        .arg(arg!(--"nnef-tract-core" "no-op, kept for backward compatibility").hide(true))
         .arg(arg!(--"nnef-tract-resource" "Allow usage of tract-resource extension in NNEF dump and load"))
         .arg(arg!(--"nnef-tract-onnx" "Allow usage of tract-onnx extension in NNEF dump and load"))
         .arg(arg!(--"nnef-tract-pulse" "Allow usage of tract-pulse extension in NNEF dump and load"))
