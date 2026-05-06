@@ -1,23 +1,15 @@
 #!/usr/bin/env python3
 """ex11-subsampled-section — io.npz generator.
 
-T must be chosen so that T is divisible by the audio-frame chunk size
-(stride · transformer_chunk = 2 · 2 = 4) and the post-pool dim
-1 + (T-3)/2 is divisible by transformer_chunk (= 2).  T=8 works:
-post-pool dim = 1 + 5/2 = 1 + 2 = 3 ... actually 3 is odd, doesn't
-divide by 2.  T=12: post-pool = 1 + 9/2 = 1+4 = 5, also odd.
-
-The post-subsample dim is `1 + (T-3)/2 = (T-1)/2` (integer div).  For
-this to be a multiple of 2 (the transformer chunk), T must be ≡ 1 (mod
-4) — but T must also satisfy the audio-frame divisibility.  The
-arithmetic doesn't line up, which is itself part of why the substitute
-is unclean.  We pick T=12 (post-pool dim = 5) and accept that the
-batch reference is the only number we check; pulse fails before
-producing output.
+T = 4·s + 1 = 9 (s=2): the smallest audio length for which the
+post-pool dim Tc = (T-1)/2 = 4 divides cleanly into s=2 chunks of
+P=2 transformer tokens.  ex11-blockified (the hand-written reference
+of the post-blockify form of this section) reuses this same io.npz —
+both models compute the same thing on the same audio inputs.
 """
 import numpy as np
 
-T, D = 12, 4
+T, D = 9, 4
 rng = np.random.default_rng(11)
 q = rng.standard_normal((T, D)).astype(np.float32)
 k = rng.standard_normal((T, D)).astype(np.float32)

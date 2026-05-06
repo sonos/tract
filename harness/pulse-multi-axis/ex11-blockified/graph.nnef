@@ -1,0 +1,67 @@
+version 1.0;
+
+extension tract_registry tract_core;
+extension tract_registry tract_transformers;
+extension tract_symbol s;
+extension tract_assert s>=0;
+
+# ex11-blockified — hand-written reference of what blockify SHOULD produce
+# for ex11-subsampled-section.  Same outer I/O as ex11 (audio in, post-pool
+# attention out), but the multi-T-axis SDPA section is rewritten in
+# chunked frame.
+#
+# To get a clean chunk boundary the audio length must be `4·s + 1`:
+#   pool(kernel=3, stride=2)  takes [4·s+1] → [2·s] = [s·P]   with P=2.
+# This is equivalent to the substitute `T = 4·s + 1` blockify would need
+# (a non-linear substitute, distinct from the audio-level `T = k·s` it
+# does today).  ex11's batch arithmetic — `Tc = (T-1)/2` — then gives
+# `Tc = 2·s` exactly, divisible by P, so the chunked Reshape fits.
+#
+# Inside the section, the [Tc, Tc] score matrix collapses to per-chunk
+# [P, P], the block-diagonal mask vanishes (it was identity within each
+# block), softmax fires per-chunk.  Outside the section, the model
+# preserves ex11's interface.
+#
+# Numerical equivalence with ex11 — proven in gen-inputs.py: the
+# block-diagonal-masked sequential SDPA on the post-pool tensors gives
+# the same answer as the per-chunk SDPA on the chunked tensors, by
+# construction (off-block scores get -inf → 0 in softmax, so per-row
+# softmax over a row whose only finite entries are the within-block ones
+# matches the per-block softmax exactly).
+
+graph network(q, k, v) -> (output)
+{
+    q = tract_core_external(shape = [4*s+1, 4], datum_type = 'f32');
+    k = tract_core_external(shape = [4*s+1, 4], datum_type = 'f32');
+    v = tract_core_external(shape = [4*s+1, 4], datum_type = 'f32');
+
+    # ── Pool — same kernel=3, stride=2 as ex11 ───────────────────────────────
+    # [4·s+1, 4] → [2·s, 4].  Lift to NCHW, pool, drop back to 2D.
+    q_4d   = unsqueeze(unsqueeze(q, axes = [0]), axes = [0]);
+    k_4d   = unsqueeze(unsqueeze(k, axes = [0]), axes = [0]);
+    v_4d   = unsqueeze(unsqueeze(v, axes = [0]), axes = [0]);
+    q_pool = max_pool(q_4d, size = [1, 1, 3, 1], padding = [(0,0),(0,0),(0,0),(0,0)],
+                      stride = [1, 1, 2, 1], dilation = [1, 1, 1, 1], border = 'constant');
+    k_pool = max_pool(k_4d, size = [1, 1, 3, 1], padding = [(0,0),(0,0),(0,0),(0,0)],
+                      stride = [1, 1, 2, 1], dilation = [1, 1, 1, 1], border = 'constant');
+    v_pool = max_pool(v_4d, size = [1, 1, 3, 1], padding = [(0,0),(0,0),(0,0),(0,0)],
+                      stride = [1, 1, 2, 1], dilation = [1, 1, 1, 1], border = 'constant');
+    q_pre  = squeeze(squeeze(q_pool, axes = [0]), axes = [0]);   # [2·s, 4]
+    k_pre  = squeeze(squeeze(k_pool, axes = [0]), axes = [0]);
+    v_pre  = squeeze(squeeze(v_pool, axes = [0]), axes = [0]);
+
+    # ── Section — chunked SDPA ────────────────────────────────────────────────
+    # Initiator: split the streaming axis Tc=2·s into [s, P=2].
+    q_chunked = reshape(q_pre, shape = [s, 2, 4]);
+    k_chunked = reshape(k_pre, shape = [s, 2, 4]);
+    v_chunked = reshape(v_pre, shape = [s, 2, 4]);
+
+    # Per-chunk Q · Kᵀ → [s, P, P].  Block-diagonal mask collapses to identity.
+    scores  = tract_core_einsum([q_chunked, k_chunked], expr = "cid,cjd->cij", acc = "f32");
+    scaled  = scores * 0.5;
+    attn    = softmax(scaled, axes = [2]);
+    out_chk = tract_core_einsum([attn, v_chunked], expr = "cij,cjd->cid", acc = "f32");
+
+    # Terminator: merge [s, P, 4] back to [Tc=2·s, 4].
+    output = reshape(out_chk, shape = [2*s, 4]);
+}

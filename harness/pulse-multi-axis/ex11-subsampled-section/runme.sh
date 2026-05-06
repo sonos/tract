@@ -14,7 +14,7 @@ set -ex
 python3 gen-inputs.py
 
 # Batch — passes (verifies the graph compiles + computes correctly).
-$TRACT_RUN --nnef-tract-core --nnef-tract-transformers --set T=12 . run \
+$TRACT_RUN --nnef-tract-core --nnef-tract-transformers --set T=9 . run \
     --approx approximate \
     --input-from-bundle io.npz --assert-output-bundle io.npz
 

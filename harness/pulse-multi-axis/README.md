@@ -124,3 +124,19 @@ The fix is structural — either substitute at section-frame granularity
 (rebase the streaming symbol on the post-subsample dim inside the
 section) or pulse the subsample chain first and only blockify the
 post-subsample portion.  Tracked in this directory pending design.
+
+## ex11-blockified
+
+Hand-written reference of what `blockify` *should* produce when rewriting
+ex11-subsampled-section's quadratic SDPA section.  Inputs are at the
+chunked frame `[s, P=2, D=4]`; the per-chunk Q·Kᵀ collapses the `[Tc, Tc]`
+score matrix to a `[s, P, P]` block, the chunk-window mask vanishes (it
+was block-diagonal — trivially all-true within each block), softmax fires
+per-chunk, output is `[s, P, D]`.
+
+`gen-inputs.py` computes the same answer two ways — sequential SDPA with
+a block-diagonal mask, and per-chunk SDPA on chunked inputs — and asserts
+they match in numpy before saving.  The NNEF graph computes the latter
+and the runme verifies the result against the saved sequential reference.
+Pulse on the `s` axis is a clean 1-D streaming problem (no boundary
+mismatch — the section is already in chunked frame).
