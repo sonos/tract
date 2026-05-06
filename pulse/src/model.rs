@@ -67,27 +67,50 @@ impl PulsedModelExt for PulsedModel {
         pulse: &TDim,
     ) -> TractResult<(PulsedModel, HashMap<OutletId, OutletId>)> {
         check_no_unannotated_superlinear_wires(source, &symbol)?;
-        // Blockify rewrites multi-streaming-axis subgraphs (block-diagonal
-        // attention-like patterns) into single-streaming-axis chunked form
-        // before pulsification.  When it fires, it rebinds the streaming
-        // symbol from T (token count) to S (chunk count) and stashes
-        // (chunk_symbol, chunk_size) in model.properties; we read those
-        // back to translate the pulse value.  No-op if no such pattern.
+        // Pulse-driven blockify: when the user's pulse value is concrete,
+        // pulse owns the substitute `T → pulse · S` itself and hands the
+        // post-substitute model + chunk symbol to blockify, which only
+        // rewrites the sections (no second substitute).  This makes the
+        // audio-side chunk size user-driven rather than mask-derived,
+        // which matters whenever there's subsampling between the
+        // streaming source and the section's mask wire (e.g. ex11's
+        // stride-2 pool: audio chunk = 2 × mask's post-pool chunk).
+        // Symbolic-pulse callers fall through to the standalone
+        // BlockifyTransform path below, which still derives the
+        // multiplier from the mask.
         use tract_core::transform::ModelTransform;
+        let pulse_value = pulse.to_i64().ok();
         let mut blockified = source.clone();
-        crate::blockify::BlockifyTransform(crate::blockify::BlockifyConfig {
-            symbol: Some(format!("{symbol}")),
-        })
-        .transform(&mut blockified)?;
-        let (stream_sym, pulse_dim) = match crate::blockify::blockify_output(&blockified) {
-            Some((chunk_sym, k)) => {
-                let translated =
-                    pulse.clone().maybe_div(&k.to_dim()).map(|(d, _)| d).map_err(|e| {
-                        format_err!("Blockify: pulse {pulse} not divisible by chunk size {k}: {e}")
-                    })?;
-                (chunk_sym, translated)
+        let (stream_sym, pulse_dim) = if let Some(pv) = pulse_value
+            && crate::blockify::has_quadratic_sections(&blockified, &symbol)?
+        {
+            let chunk_sym = blockified.symbols.new_with_prefix("S");
+            let subs: HashMap<Symbol, TDim> =
+                HashMap::from([(symbol.clone(), chunk_sym.to_dim() * pv)]);
+            blockified = blockified.substitute_symbols(&subs)?;
+            crate::blockify::rewrite_sections(&mut blockified, &chunk_sym, pv)?;
+            blockified.properties.insert(
+                crate::blockify::BLOCKIFY_ORIGINAL_SYMBOL.to_string(),
+                tensor1(&[format!("{symbol}")]).into_arc_tensor(),
+            );
+            (chunk_sym, 1.to_dim())
+        } else {
+            crate::blockify::BlockifyTransform(crate::blockify::BlockifyConfig {
+                symbol: Some(format!("{symbol}")),
+            })
+            .transform(&mut blockified)?;
+            match crate::blockify::blockify_output(&blockified) {
+                Some((chunk_sym, k)) => {
+                    let translated =
+                        pulse.clone().maybe_div(&k.to_dim()).map(|(d, _)| d).map_err(|e| {
+                            format_err!(
+                                "Blockify: pulse {pulse} not divisible by chunk size {k}: {e}"
+                            )
+                        })?;
+                    (chunk_sym, translated)
+                }
+                None => (symbol, pulse.clone()),
             }
-            None => (symbol, pulse.clone()),
         };
         let pulsifiers = crate::ops::OpPulsifier::inventory();
         let (mut pulsed, mapping) = Pulsifier(stream_sym, pulse_dim, pulsifiers)

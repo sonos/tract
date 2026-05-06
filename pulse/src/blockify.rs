@@ -179,78 +179,91 @@ impl ModelTransform for BlockifyTransform {
         if !sections.iter().all(|s| s.mask.chunk_size == k) {
             bail!(
                 "Blockify found multiple quadratic sections with mismatched chunk \
-                 sizes; a single global symbol substitution cannot cover them.  \
+                 sizes; a single global substitution cannot cover them.  \
                  Refusing to blockify rather than produce a partial rewrite."
             );
         }
 
-        // Phase 1: introduce S, substitute T → k·S globally via core.
-        // `substitute_symbols_with_mapping` returns the source-outlet →
-        // target-outlet mapping because `translate_model_with_mappings`
-        // walks `eval_order` and may reassign node IDs — we need the
-        // mapping to translate the section's source-IDs into target-IDs.
+        // Standalone-blockify path: the substitute multiplier is the mask's
+        // own chunk_size.  This is correct when the streaming axis on which
+        // the model is sourced equals the axis on which the mask wire
+        // operates (no subsampling between source and section).  When that
+        // doesn't hold (e.g. ex11 has a stride-2 pool between source and
+        // mask), the pulse path supplies the audio-side multiplier
+        // explicitly via `rewrite_sections` — see `PulsedModel::new`.
         let chunk_sym = model.symbols.new_with_prefix("S");
         let subs: HashMap<Symbol, TDim> =
             HashMap::from([(stream_sym.clone(), chunk_sym.to_dim() * k)]);
-        let (mut new_model, id_mapping) = model.substitute_symbols_with_mapping(&subs)?;
-
-        let translate_section = |sec: &QuadraticSection| -> TractResult<QuadraticSection> {
-            let translate_id = |old: usize| -> TractResult<usize> {
-                Ok(id_mapping
-                    .get(&OutletId::new(old, 0))
-                    .ok_or_else(|| {
-                        format_err!("Blockify: source node #{old} has no mapping after substitute")
-                    })?
-                    .node)
-            };
-            Ok(QuadraticSection {
-                section: sec
-                    .section
-                    .iter()
-                    .map(|&n| translate_id(n))
-                    .collect::<TractResult<_>>()?,
-                initiators: sec
-                    .initiators
-                    .iter()
-                    .map(|&n| translate_id(n))
-                    .collect::<TractResult<_>>()?,
-                terminators: sec
-                    .terminators
-                    .iter()
-                    .map(|&n| translate_id(n))
-                    .collect::<TractResult<_>>()?,
-                mask: sec.mask,
-                contracted_axis: sec.contracted_axis,
-            })
-        };
-
-        // Phase 2: one TypedModelPatch per section.  Sections the rewriter
-        // can't fully handle (unknown body op, out-of-range mask form, …)
-        // bail out of `build_section_patch` with a specific error: better
-        // a clear Blockify failure here than a confusing pulsification
-        // error a few stages later.
-        for sec in &sections {
-            let translated = translate_section(sec)?;
-            let patch = build_section_patch(&new_model, &translated, &chunk_sym, k)?;
-            patch.apply(&mut new_model)?;
-        }
-
-        // Ancillary outputs — describe the substitution for downstream
-        // consumers (e.g. the pulse transform that needs to translate its
-        // pulse value from token-units to chunk-units).
-        new_model.properties.insert(
-            BLOCKIFY_CHUNK_SYMBOL.to_string(),
-            tensor1(&[format!("{chunk_sym}")]).into_arc_tensor(),
-        );
-        new_model.properties.insert(BLOCKIFY_CHUNK_SIZE.to_string(), tensor0(k).into_arc_tensor());
-        new_model.properties.insert(
+        let new_model = model.substitute_symbols(&subs)?;
+        *model = new_model;
+        rewrite_sections(model, &chunk_sym, k)?;
+        model.properties.insert(
             BLOCKIFY_ORIGINAL_SYMBOL.to_string(),
             tensor1(&[symbol_name.to_string()]).into_arc_tensor(),
         );
-
-        *model = new_model;
         Ok(())
     }
+}
+
+/// Are there any quadratic sections in `model`?  Cheap detector for the
+/// pulse path to decide whether to mint a chunk symbol and pre-substitute
+/// before handing off to `rewrite_sections`.
+pub fn has_quadratic_sections(model: &TypedModel, stream_sym: &Symbol) -> TractResult<bool> {
+    Ok(!find_quadratic_sections(model, stream_sym)?.is_empty())
+}
+
+/// Rewrite every quadratic section in `model` using `chunk_sym` as the
+/// streaming symbol.  The model is expected to already be in
+/// post-substitute form (i.e. the streaming dim is `multiplier · chunk_sym`
+/// for some upstream-chosen multiplier — for standalone blockify that's
+/// `mask.chunk_size`, for the pulse-driven path it's the user's pulse
+/// value, which can differ from `mask.chunk_size` when there's
+/// subsampling on the path).
+///
+/// `substitute_multiplier` is recorded as `BLOCKIFY_CHUNK_SIZE` so
+/// downstream consumers (notably the pulse transform's pulse-value
+/// translation) know what the substitute was — this is the only place
+/// the multiplier matters here; the section rewrite itself uses each
+/// section's own `mask.chunk_size` for its chunked Reshape.
+///
+/// Returns `Ok(true)` if any section was rewritten, `Ok(false)` if no
+/// quadratic sections were found (no-op).
+pub fn rewrite_sections(
+    model: &mut TypedModel,
+    chunk_sym: &Symbol,
+    substitute_multiplier: i64,
+) -> TractResult<bool> {
+    let sections = find_quadratic_sections(model, chunk_sym)?;
+    if sections.is_empty() {
+        return Ok(false);
+    }
+    let k = sections[0].mask.chunk_size;
+    if !sections.iter().all(|s| s.mask.chunk_size == k) {
+        bail!(
+            "Blockify found multiple quadratic sections with mismatched chunk \
+             sizes; a single global substitution cannot cover them.  \
+             Refusing to blockify rather than produce a partial rewrite."
+        );
+    }
+
+    // One TypedModelPatch per section.  Sections the rewriter can't
+    // fully handle (unknown body op, out-of-range mask form, …) bail
+    // out of `build_section_patch` with a specific error: better a
+    // clear Blockify failure here than a confusing pulsification
+    // error a few stages later.
+    for sec in &sections {
+        let patch = build_section_patch(model, sec, chunk_sym, sec.mask.chunk_size)?;
+        patch.apply(model)?;
+    }
+
+    model.properties.insert(
+        BLOCKIFY_CHUNK_SYMBOL.to_string(),
+        tensor1(&[format!("{chunk_sym}")]).into_arc_tensor(),
+    );
+    model
+        .properties
+        .insert(BLOCKIFY_CHUNK_SIZE.to_string(), tensor0(substitute_multiplier).into_arc_tensor());
+    Ok(true)
 }
 
 /// Read back the `(chunk_symbol, chunk_size)` ancillary outputs that
@@ -832,8 +845,7 @@ fn wire_initiator_diag_gather(
     let from = tvec!(in_fact_patch.shape[stream_axis].clone());
     let to = tvec!(chunk_sym.to_dim(), k.to_dim());
     let reshape = AxisOp::Reshape(stream_axis, from, to);
-    let chunked =
-        patch.wire_node(format!("{}.blockify_split", node.name), reshape, &[tapped])?[0];
+    let chunked = patch.wire_node(format!("{}.blockify_split", node.name), reshape, &[tapped])?[0];
 
     // The R (relative-position) axis of pos_raw is the last axis: a constant
     // 2*T_max-1 from the original skew construction.  In batch the DiagGather's
@@ -990,12 +1002,7 @@ fn wire_initiator_multibroadcastto_streaming(
     let pad_value = Tensor::zero_scalar_dt(dt)?.into_arc_tensor();
     let windowed = patch.wire_node(
         format!("{}.window", node.name),
-        tract_pulse_opl::ops::WindowOnAxis {
-            axis: in_stream_axis,
-            window,
-            start,
-            pad_value,
-        },
+        tract_pulse_opl::ops::WindowOnAxis { axis: in_stream_axis, window, start, pad_value },
         &[split],
     )?[0];
     // Window dim is inserted at in_stream_axis + 1; k shifts to in_stream_axis + 2.
