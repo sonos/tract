@@ -163,6 +163,22 @@ impl PulsedModelExt for PulsedModel {
                 .collect::<TractResult<TVec<i64>>>()?,
         );
         typed.properties.insert("pulse.output_axes".to_string(), output_axes.into_arc_tensor());
+        // Stash the streaming symbol's name so downstream consumers (CLI run
+        // path, etc.) can resolve `op.end_input.eval(...)` and other symbolic
+        // dims at runtime.  The symbol lives in TDims like a PulsePad's
+        // `end_input = stream.dim + …`; without binding it, those evals hit
+        // `usize::MAX` fallbacks and end-of-stream padding silently misfires.
+        let stream_syms: Vec<String> = self
+            .input_outlets()?
+            .iter()
+            .flat_map(|oo| self.outlet_fact(*oo).unwrap().stream.as_ref().unwrap().dim.symbols())
+            .map(|s| s.to_string())
+            .collect();
+        if let Some(name) = stream_syms.into_iter().next() {
+            typed
+                .properties
+                .insert("pulse.streaming_symbol".to_string(), tensor1(&[name]).into_arc_tensor());
+        }
         Ok(typed)
     }
 }
