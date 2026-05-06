@@ -1,6 +1,7 @@
 use crate::fact::StreamInfo;
 use crate::internal::*;
 use tract_core::ops::change_axes::AxisOp;
+use tract_pulse_opl::ops::Delay;
 
 register_all!(AxisOp: pulsify);
 
@@ -14,7 +15,7 @@ fn pulsify(
     pulse: &TDim,
 ) -> TractResult<Option<TVec<OutletId>>> {
     rule_if_let!(AxisOp::Reshape(at, from, to) = op);
-    let input = mapping[&node.inputs[0]];
+    let mut input = mapping[&node.inputs[0]];
     let fact = target.outlet_fact(input)?.clone();
     rule_if_some!(stream = &fact.stream);
     rule_if!(stream.axis >= *at && stream.axis < *at + from.len());
@@ -35,12 +36,41 @@ fn pulsify(
     let to_pulsed: TVec<TDim> =
         to.iter().map(|d| d.substitute(symbol, pulse)).collect::<TractResult<_>>()?;
 
+    // PulsedReshape requires `stream.delay * new_per_pulse % old_per_pulse == 0`
+    // so the lag rescales cleanly into the new units.  When the upstream
+    // ops left a non-aligned delay (e.g. a kernel-stride pool feeding a
+    // chunk Reshape: 1-token carryover into a P-token chunk), insert an
+    // alignment Delay that bumps `stream.delay` up to the next multiple
+    // of `old_per_pulse / gcd(old_per_pulse, new_per_pulse)`.  Costs
+    // exactly the slack needed to land on a chunk boundary.
+    let old_per_pulse = from_pulsed[from_pos].to_usize()?;
+    let new_per_pulse = to_pulsed[to_pos].to_usize()?;
+    if (stream.delay * new_per_pulse) % old_per_pulse != 0 {
+        let g = gcd(old_per_pulse, new_per_pulse);
+        let align = old_per_pulse / g;
+        let extra = align - (stream.delay % align);
+        input = target.wire_node(
+            format!("{}.delay-align", node.name),
+            Delay::new_typed(&(&fact).into(), stream.axis, extra, 0),
+            &[input],
+        )?[0];
+    }
+
     let pulsed = PulsedReshape {
         op: AxisOp::Reshape(*at, from_pulsed, to_pulsed),
         new_stream_axis: *at + to_pos,
         new_stream_dim: to[to_pos].clone(),
     };
     target.wire_node(&*node.name, pulsed, &[input]).map(Some)
+}
+
+fn gcd(mut a: usize, mut b: usize) -> usize {
+    while b != 0 {
+        let t = b;
+        b = a % b;
+        a = t;
+    }
+    a
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
