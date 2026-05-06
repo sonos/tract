@@ -66,6 +66,34 @@ pub fn stream_axis_lcm(inputs: &[&PulsedFact]) -> Option<TDim> {
     dims.try_fold(first, |acc, d| acc.lcm(d))
 }
 
+/// Pulse-driven path: the pulse value is concrete, so we mint S, substitute
+/// `T → pulse_value · S` ourselves, and call blockify just for the section
+/// rewrites.  The audio-side multiplier is user-driven — required when
+/// there's subsampling between the streaming source and the section's mask
+/// wire (e.g. a stride-2 pool: audio chunk = 2 × post-pool chunk).
+fn pulse_driven_blockify(
+    model: &mut TypedModel,
+    symbol: &Symbol,
+    pulse_value: i64,
+) -> TractResult<(Symbol, TDim)> {
+    let chunk_sym = model.symbols.new_with_prefix("S");
+    // `S >= 0` is the precondition for the `Div(Add([k·X, …, c]), k) → X`
+    // simplification (commit 11b310622).  Without it, post-substitute shapes
+    // like `1 + (3 + 56·S)/4` stay unreduced and blockify's chunked Reshape
+    // volume check fails comparing them to `14·S`.
+    model.symbols.add_assertion(format!("{chunk_sym} >= 0"))?;
+    let subs: HashMap<Symbol, TDim> =
+        HashMap::from([(symbol.clone(), chunk_sym.to_dim() * pulse_value)]);
+    *model = model.substitute_symbols(&subs)?;
+    crate::blockify::rewrite_sections(model, &chunk_sym, pulse_value)?;
+    model.properties.insert(
+        crate::blockify::BLOCKIFY_ORIGINAL_SYMBOL.to_string(),
+        tensor1(&[format!("{symbol}")]).into_arc_tensor(),
+    );
+    // Streaming dim is now `pulse_value · S`, so one pulse covers exactly one S.
+    Ok((chunk_sym, 1.to_dim()))
+}
+
 #[allow(clippy::new_ret_no_self)]
 pub trait PulsedModelExt {
     fn new(source: &TypedModel, symbol: Symbol, pulse: &TDim) -> TractResult<PulsedModel>;
@@ -90,35 +118,16 @@ impl PulsedModelExt for PulsedModel {
         pulse: &TDim,
     ) -> TractResult<(PulsedModel, HashMap<OutletId, OutletId>)> {
         check_no_unannotated_superlinear_wires(source, &symbol)?;
-        // Blockify rewrites multi-streaming-axis subgraphs (block-diagonal
-        // attention-like patterns) into single-streaming-axis chunked form
-        // before pulsification.  When it fires, it rebinds the streaming
-        // symbol from T (token count) to S (chunk count) and stashes
-        // (chunk_symbol, chunk_size) in model.properties; we read those
-        // back to translate the pulse value.  No-op if no such pattern.
-        use tract_core::transform::ModelTransform;
         let mut blockified = source.clone();
-        crate::blockify::BlockifyTransform(crate::blockify::BlockifyConfig {
-            symbol: Some(format!("{symbol}")),
-        })
-        .transform(&mut blockified)?;
-        let (stream_sym, pulse_dim) = match crate::blockify::blockify_output(&blockified) {
-            Some((chunk_sym, k)) => {
-                let translated =
-                    pulse.clone().maybe_div(&k.to_dim()).map(|(d, _)| d).map_err(|e| {
-                        format_err!("Blockify: pulse {pulse} not divisible by chunk size {k}: {e}")
-                    })?;
-                (chunk_sym, translated)
+        let (stream_sym, pulse_dim) = match pulse.as_i64() {
+            Some(pv) if crate::blockify::has_quadratic_sections(&blockified, &symbol)? => {
+                pulse_driven_blockify(&mut blockified, &symbol, pv)?
             }
-            None => (symbol, pulse.clone()),
+            _ => (symbol, pulse.clone()),
         };
         let pulsifiers = crate::ops::OpPulsifier::inventory();
         let (mut pulsed, mapping) = Pulsifier(stream_sym, pulse_dim, pulsifiers)
             .translate_model_with_mappings(&blockified)?;
-        // Forward Blockify's bookkeeping (chunk_symbol/chunk_size/original
-        // symbol) onto the pulsed model so downstream consumers — notably
-        // the CLI's `compare --stream` symbol-binding — can see what the
-        // stream symbol got translated to.
         for key in [
             crate::blockify::BLOCKIFY_CHUNK_SYMBOL,
             crate::blockify::BLOCKIFY_CHUNK_SIZE,
