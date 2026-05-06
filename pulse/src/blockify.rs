@@ -133,6 +133,7 @@ use crate::ops::diag_gather::DiagGather;
 use std::collections::{BTreeSet, HashMap};
 use tract_core::axes::AxesMapping;
 use tract_core::model::TypedModelPatch;
+use tract_core::ops::array::Slice;
 use tract_core::ops::change_axes::AxisOp;
 use tract_core::ops::einsum::EinSum;
 use tract_core::ops::nn::{Reduce, Reducer};
@@ -842,10 +843,7 @@ fn wire_initiator_diag_gather(
 
     let tapped = patch.tap_model(model, node.inputs[0])?;
     let in_fact_patch = patch.outlet_fact(tapped)?.clone();
-    let from = tvec!(in_fact_patch.shape[stream_axis].clone());
-    let to = tvec!(chunk_sym.to_dim(), k.to_dim());
-    let reshape = AxisOp::Reshape(stream_axis, from, to);
-    let chunked = patch.wire_node(format!("{}.blockify_split", node.name), reshape, &[tapped])?[0];
+    let chunked = wire_chunk_split(patch, &node.name, tapped, stream_axis, chunk_sym, k)?;
 
     // The R (relative-position) axis of pos_raw is the last axis: a constant
     // 2*T_max-1 from the original skew construction.  In batch the DiagGather's
@@ -982,14 +980,7 @@ fn wire_initiator_multibroadcastto_streaming(
     let tapped = patch.tap_model(model, input)?;
 
     // Step 2: split T → [S_0, k] on the streaming axis.
-    let in_fact_patch = patch.outlet_fact(tapped)?.clone();
-    let from = tvec!(in_fact_patch.shape[in_stream_axis].clone());
-    let to = tvec!(chunk_sym.to_dim(), k.to_dim());
-    let split = patch.wire_node(
-        format!("{}.blockify_split", node.name),
-        AxisOp::Reshape(in_stream_axis, from, to),
-        &[tapped],
-    )?[0];
+    let split = wire_chunk_split(patch, &node.name, tapped, in_stream_axis, chunk_sym, k)?;
     // Shape now has chunk axis at `in_stream_axis`, k at `in_stream_axis + 1`.
     // The bcast_axis was either before or after in_stream_axis; if after, it shifted +1.
     let bcast_axis_post_split =
@@ -1142,7 +1133,6 @@ fn chunkify_uniform_tdim_input(
     let stream_axis = positions[0];
 
     let tapped = patch.tap_model(model, input)?;
-    let in_fact = patch.outlet_fact(tapped)?.clone();
 
     // Cast TDim → I64 up-front: PulsePad (used by WindowOnAxis pulsifier
     // for the contracted side) fills with `dispatch_copy_by_size!`, which
@@ -1165,13 +1155,7 @@ fn chunkify_uniform_tdim_input(
     // Split the T-axis at `k`.  Output rank = input rank + 1, with the
     // chunk axis at `stream_axis` and the within-block axis at
     // `stream_axis + 1`.
-    let from = tvec!(in_fact.shape[stream_axis].clone());
-    let to = tvec!(chunk_sym.to_dim(), k.to_dim());
-    wire = patch.wire_node(
-        format!("{name_prefix}.split"),
-        AxisOp::Reshape(stream_axis, from, to),
-        &[wire],
-    )?[0];
+    wire = wire_chunk_split(patch, name_prefix, wire, stream_axis, chunk_sym, k)?;
 
     // Move chunk axis to position 0 if it isn't already, so the section
     // frame uniformly carries the chunk axis at 0.
@@ -1459,12 +1443,14 @@ fn wire_initiator_einsum(
     for (ix, (&input, &stream_axis)) in node.inputs.iter().zip(in_streaming_axes.iter()).enumerate()
     {
         let tapped = patch.tap_model(model, input)?;
-        let in_fact = patch.outlet_fact(tapped)?.clone();
-        let from = tvec!(in_fact.shape[stream_axis].clone());
-        let to = tvec!(chunk_sym.to_dim(), k.to_dim());
-        let reshape = AxisOp::Reshape(stream_axis, from, to);
-        let chunked =
-            patch.wire_node(format!("{}.blockify_split.{ix}", node.name), reshape, &[tapped])?[0];
+        let chunked = wire_chunk_split(
+            patch,
+            &format!("{}.{ix}", node.name),
+            tapped,
+            stream_axis,
+            chunk_sym,
+            k,
+        )?;
 
         // Banded path: if this input's stream axis is on the contracted
         // side of the section, expose `W` chunks per pulse on it.
@@ -1634,14 +1620,14 @@ fn wire_terminator_einsum(
                 .iter()
                 .position(|d| d.symbols().contains(chunk_sym))
                 .ok_or_else(|| format_err!("auxiliary input lost streaming axis"))?;
-            let from = tvec!(in_fact.shape[stream_axis].clone());
-            let to = tvec!(chunk_sym.to_dim(), k.to_dim());
-            let reshape = AxisOp::Reshape(stream_axis, from, to);
-            let new_chunked = patch.wire_node(
-                format!("{}.blockify_split.in{slot}", node.name),
-                reshape,
-                &[tapped],
-            )?[0];
+            let new_chunked = wire_chunk_split(
+                patch,
+                &format!("{}.in{slot}", node.name),
+                tapped,
+                stream_axis,
+                chunk_sym,
+                k,
+            )?;
 
             // Where does this auxiliary's stream axis sit on the score
             // matrix (= input 0 of this einsum)?  If it's the contracted
@@ -1712,6 +1698,62 @@ fn wire_merge_reshape(
     } else {
         Ok(chunked_form)
     }
+}
+
+/// Compute the constant `c` such that `dim == c + k · chunk_sym`, when one
+/// exists.  Encoder-style conv stacks emit dims like `1 + (T+6)/8` which,
+/// after the `T → P · S` substitute, become `1 + 14·S` — affine in `S`
+/// with constant `c = 1`.  Blockify's chunked Reshape can't directly
+/// reshape `c + k·S → [S, k]`; we slice off the trailing `c` tokens
+/// first so the chunkable region is exactly `k·S`.
+///
+/// Returns `Some(c)` only when `c` is a non-negative integer constant.
+/// `c = 0` is the clean case (no slice needed).
+fn affine_chunk_offset(dim: &TDim, chunk_sym: &Symbol, k: i64) -> Option<i64> {
+    let target = chunk_sym.to_dim() * k;
+    let diff = dim.clone() - target;
+    let c = diff.to_i64().ok()?;
+    (c >= 0).then_some(c)
+}
+
+/// Wrap a chunked `Reshape(stream_axis, [dim], [chunk_sym, k])` with an
+/// optional leading Slice that trims a trailing affine constant from the
+/// streaming dim.  When `dim == k · chunk_sym` exactly, returns the
+/// Reshape only (current behavior).  When `dim == c + k · chunk_sym`
+/// for `c > 0`, inserts `Slice(stream_axis, 0, k·chunk_sym)` first so
+/// the Reshape sees a chunkable input.  In streaming this is a no-op
+/// per pulse (each pulse delivers exactly `k` tokens within `k·chunk_sym`
+/// region); the trimmed `c` tokens correspond to a post-flush tail that
+/// pulse runs don't emit.
+fn wire_chunk_split(
+    patch: &mut TypedModelPatch,
+    name: &str,
+    input: OutletId,
+    stream_axis: usize,
+    chunk_sym: &Symbol,
+    k: i64,
+) -> TractResult<OutletId> {
+    let in_fact = patch.outlet_fact(input)?.clone();
+    let dim = in_fact.shape[stream_axis].clone();
+    let target = chunk_sym.to_dim() * k;
+    let mut wire = input;
+    if dim != target
+        && let Some(c) = affine_chunk_offset(&dim, chunk_sym, k)
+        && c > 0
+    {
+        wire = patch.wire_node(
+            format!("{name}.affine_trim"),
+            Slice::new(stream_axis, 0i64.to_dim(), target.clone()),
+            &[wire],
+        )?[0];
+    }
+    let from = tvec!(patch.outlet_fact(wire)?.shape[stream_axis].clone());
+    let to = tvec!(chunk_sym.to_dim(), k.to_dim());
+    Ok(patch.wire_node(
+        format!("{name}.blockify_split"),
+        AxisOp::Reshape(stream_axis, from, to),
+        &[wire],
+    )?[0])
 }
 
 /// First streaming-symbol-bearing symbol on a fact's shape.  Used by
