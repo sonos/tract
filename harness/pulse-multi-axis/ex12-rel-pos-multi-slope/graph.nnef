@@ -1,0 +1,66 @@
+version 1.0;
+
+extension tract_registry tract_core;
+extension tract_registry tract_transformers;
+extension tract_symbol T;
+extension tract_assert T>=0;
+
+# ex12-rel-pos-multi-slope — minimal repro of encoder.p1's blockify failure
+# at the relative-position einsum.
+#
+# Same skeleton as ex06 (block-diagonal SDPA on `[T, T]` score matrix)
+# plus a Transformer-XL-style relative-position bias path:
+#
+#     pos_raw    = a · posᵀ          # [T, 2·T-1]   ← multi-slope einsum
+#     pos_scores = skew(pos_raw)     # [T, T]
+#     scores     = content + pos_scores
+#
+# The `pos_raw` matmul has two streaming axes with *different* chunk
+# slopes: `T` (slope k = mask.chunk_size = 2) on the first input,
+# `2·T-1` (slope 2k = 4) on the second input (the rel-pos table).
+#
+# Blockify's chunked-Reshape `[dim] → [chunks, k]` assumes uniform slope
+# `k` on every chunked input.  When it walks the section and tries to
+# chunk-split the rel-pos input, it bails:
+#
+#     "-1+4*S should be equal to 2*S"
+#
+# Same shape as encoder.p1's `_0_selfAttn_xMatmul1` failure
+# (`1+28*S should be equal to 14*S`), at the smallest possible scale.
+
+graph network(a, b, c, pos) -> (output)
+{
+    a   = tract_core_external(shape = [T, 4], datum_type = 'f32');
+    b   = tract_core_external(shape = [T, 4], datum_type = 'f32');
+    c   = tract_core_external(shape = [T, 4], datum_type = 'f32');
+    pos = tract_core_external(shape = [2*T-1, 4], datum_type = 'f32');
+
+    # ── Content scores: a · bᵀ → [T, T] ────────────────────────────────────
+    content = matmul(a, b, transposeB = true);
+
+    # ── Position scores: a · posᵀ → [T, 2T-1]  ← multi-slope ───────────────
+    pos_raw = matmul(a, pos, transposeB = true);
+
+    # ── Skew trick: [T, 2T-1] → [T, T] ──────────────────────────────────────
+    # Standard Transformer-XL: pad+reshape+slice+reshape+slice.
+    pos_padded = pad(pos_raw, padding = [[0, 0], [1, 0]], value = 0.0);   # [T, 2T]
+    pos_view   = reshape(pos_padded, shape = [-1, T]);                    # [2T, T]
+    pos_sliced = slice(pos_view, axes = [0], begin = [1], end = [2*T]);   # [2T-1, T]
+    pos_bd     = reshape(pos_sliced, shape = [T, -1]);                    # [T, 2T-1]
+    pos_scores = slice(pos_bd, axes = [1], begin = [0], end = [T]);       # [T, T]
+
+    # ── Combined scores ────────────────────────────────────────────────────
+    scores = (content + pos_scores) * 0.5;
+
+    # ── Block-diagonal mask (P = 2 tokens per chunk) ───────────────────────
+    pos_t     = tract_core_range(0, T, step = 1);
+    chunk_id  = pos_t / 2;
+    chunk_row = unsqueeze(chunk_id, axes = [1]);
+    chunk_col = unsqueeze(chunk_id, axes = [0]);
+    in_block  = eq(chunk_row, chunk_col);
+
+    masked = select(in_block, scores, scores * 0.0 + -inf);
+    attn   = softmax(masked, axes = [1]);
+
+    output = matmul(attn, c);
+}
