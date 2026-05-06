@@ -770,7 +770,20 @@ fn wire_initiator(
         return wire_initiator_einsum(patch, model, node, op, mask, contracted_axis, chunk_sym, k);
     }
     if node.op_as::<tract_core::ops::array::MultiBroadcastTo>().is_some() {
-        return wire_initiator_multibroadcastto(patch, model, node, chunk_sym);
+        let in_fact = model.outlet_fact(node.inputs[0])?;
+        if streaming_positions(in_fact, chunk_sym).is_empty() {
+            return wire_initiator_multibroadcastto(patch, model, node, chunk_sym);
+        } else {
+            return wire_initiator_multibroadcastto_streaming(
+                patch,
+                model,
+                node,
+                mask,
+                contracted_axis,
+                chunk_sym,
+                k,
+            );
+        }
     }
     if let Some(op) = node.op_as::<DiagGather>() {
         return wire_initiator_diag_gather(patch, model, node, op, mask, chunk_sym, k);
@@ -870,6 +883,180 @@ fn wire_initiator_multibroadcastto(
         step += 1;
     }
     Ok(wire)
+}
+
+/// Initiator for `MultiBroadcastTo` whose input is **streaming**.
+///
+/// The encoder.p1 padMask pattern: a `[..., 1, T]` boolean (per-key-position
+/// mask, replicated over the row axis to make a 2-D attention mask).  After
+/// the broadcast the output is `[..., T, T]`, multi-T-axis.
+///
+/// The input's streaming axis must track to the section's `contracted_axis`
+/// (i.e. the col axis after the broadcast).  In the chunked frame each
+/// chunk gets a W-wide slice of the padMask, replicated over the row dim
+/// (now of size `k = P`):
+///
+///   tap         [..., 1, T]
+///   split T → [S_0, k]    [..., 1, S_0, k]
+///   WindowOnAxis(window=L+1, start=window_start_for, axis=S_0)
+///                          [..., 1, S_0, L+1, k]
+///   flatten [L+1, k] → W   [..., 1, S_0, W]
+///   move S_0 to position before the broadcast-from-1 axis
+///                          [..., S_0, 1, W]
+///   broadcast 1 → k        [..., S_0, k, W]
+fn wire_initiator_multibroadcastto_streaming(
+    patch: &mut TypedModelPatch,
+    model: &TypedModel,
+    node: &TypedNode,
+    mask: &MaskForm,
+    contracted_axis: usize,
+    chunk_sym: &Symbol,
+    k: i64,
+) -> TractResult<OutletId> {
+    ensure!(node.inputs.len() == 1, "MultiBroadcastTo expects 1 input, got {}", node.inputs.len());
+    let input = node.inputs[0];
+    let in_fact = model.outlet_fact(input)?;
+    let in_streaming = streaming_positions(in_fact, chunk_sym);
+    ensure!(
+        in_streaming.len() == 1,
+        "MultiBroadcastTo streaming initiator: input must have exactly one streaming axis, \
+         got {in_streaming:?}"
+    );
+    let in_stream_axis = in_streaming[0];
+
+    let out_streaming = streaming_positions(&node.outputs[0].fact, chunk_sym);
+    ensure!(
+        out_streaming.len() == 2 && out_streaming[1] == out_streaming[0] + 1,
+        "Initiator MultiBroadcastTo output must have two contiguous streaming axes, \
+         got {out_streaming:?}"
+    );
+
+    // The input axis that gets broadcast from 1 to a streaming dim.
+    let bcast_axis = if out_streaming[0] == in_stream_axis {
+        out_streaming[1]
+    } else if out_streaming[1] == in_stream_axis {
+        out_streaming[0]
+    } else {
+        bail!(
+            "MultiBroadcastTo streaming initiator: input stream axis {in_stream_axis} not in \
+             output streaming axes {out_streaming:?}"
+        );
+    };
+    ensure!(
+        in_fact.shape[bcast_axis].is_one(),
+        "MultiBroadcastTo streaming initiator: broadcast-from axis {bcast_axis} must be 1, \
+         got {}",
+        in_fact.shape[bcast_axis]
+    );
+
+    // Translate the score-frame stream axis to mask frame and check it's the
+    // contracted side.  `score_rank - 2` is the leading-batch-dims offset.
+    let score_rank = node.outputs[0].fact.rank();
+    let rank_diff = score_rank.checked_sub(2).ok_or_else(|| {
+        format_err!("Score rank {score_rank} < 2; cannot translate to mask frame")
+    })?;
+    let tracked_in_mask = in_stream_axis.checked_sub(rank_diff).ok_or_else(|| {
+        format_err!(
+            "Tracked score axis {in_stream_axis} doesn't map to mask frame (rank_diff={rank_diff})"
+        )
+    })?;
+    ensure!(
+        tracked_in_mask == contracted_axis,
+        "MultiBroadcastTo streaming initiator: input stream axis must track to the \
+         contracted axis ({contracted_axis}), got {tracked_in_mask}"
+    );
+
+    // Step 1: tap.
+    let tapped = patch.tap_model(model, input)?;
+
+    // Step 2: split T → [S_0, k] on the streaming axis.
+    let in_fact_patch = patch.outlet_fact(tapped)?.clone();
+    let from = tvec!(in_fact_patch.shape[in_stream_axis].clone());
+    let to = tvec!(chunk_sym.to_dim(), k.to_dim());
+    let split = patch.wire_node(
+        format!("{}.blockify_split", node.name),
+        AxisOp::Reshape(in_stream_axis, from, to),
+        &[tapped],
+    )?[0];
+    // Shape now has chunk axis at `in_stream_axis`, k at `in_stream_axis + 1`.
+    // The bcast_axis was either before or after in_stream_axis; if after, it shifted +1.
+    let bcast_axis_post_split =
+        if bcast_axis > in_stream_axis { bcast_axis + 1 } else { bcast_axis };
+
+    // Step 3: WindowOnAxis on the chunk axis.
+    let window: usize = (mask.upper - mask.lower + 1) as usize;
+    let start = window_start_for(mask, contracted_axis);
+    let dt = patch.outlet_fact(split)?.datum_type;
+    let pad_value = Tensor::zero_scalar_dt(dt)?.into_arc_tensor();
+    let windowed = patch.wire_node(
+        format!("{}.window", node.name),
+        tract_pulse_opl::ops::WindowOnAxis {
+            axis: in_stream_axis,
+            window,
+            start,
+            pad_value,
+        },
+        &[split],
+    )?[0];
+    // Window dim is inserted at in_stream_axis + 1; k shifts to in_stream_axis + 2.
+    // bcast_axis shifts +1 if it was at or after in_stream_axis + 1.
+    let bcast_axis_post_window = if bcast_axis_post_split > in_stream_axis {
+        bcast_axis_post_split + 1
+    } else {
+        bcast_axis_post_split
+    };
+
+    // Step 4: flatten [L+1, k] back to a single W = (L+1)·k axis.
+    let from = tvec!(window.to_dim(), k.to_dim());
+    let to = tvec!(((window as i64) * k).to_dim());
+    let flat = patch.wire_node(
+        format!("{}.window_flat", node.name),
+        AxisOp::Reshape(in_stream_axis + 1, from, to),
+        &[windowed],
+    )?[0];
+    // The two axes [L+1, k] collapsed at in_stream_axis+1; bcast_axis shifts -1
+    // if it was strictly after in_stream_axis + 1.
+    let bcast_axis_post_flat = if bcast_axis_post_window > in_stream_axis + 1 {
+        bcast_axis_post_window - 1
+    } else {
+        bcast_axis_post_window
+    };
+
+    // Step 5: move chunk axis (currently at `in_stream_axis`) so that the
+    // chunked output has chunks at the position where the original output's
+    // streaming dims started — convention shared with `chunkify_einsum`.
+    let chunks_target_axis = out_streaming[0];
+    let mut chunks_axis = in_stream_axis;
+    let mut bcast_axis_now = bcast_axis_post_flat;
+    let mut wire = flat;
+    if chunks_axis != chunks_target_axis {
+        wire = patch.wire_node(
+            format!("{}.move_chunks", node.name),
+            AxisOp::Move(chunks_axis, chunks_target_axis),
+            &[wire],
+        )?[0];
+        // Update tracked positions after the move.  AxisOp::Move(from, to)
+        // moves the dim from `from` to `to`; intermediate positions shift.
+        if chunks_target_axis < chunks_axis {
+            // moved leftward: positions in (target, source] shifted +1
+            if bcast_axis_now > chunks_target_axis && bcast_axis_now <= chunks_axis {
+                bcast_axis_now += 1;
+            }
+        } else {
+            // moved rightward
+            if bcast_axis_now >= chunks_axis && bcast_axis_now < chunks_target_axis {
+                bcast_axis_now = bcast_axis_now.saturating_sub(1);
+            }
+        }
+        chunks_axis = chunks_target_axis;
+        let _ = chunks_axis;
+    }
+
+    // Step 6: broadcast the original size-1 axis up to k.
+    let mut target_shape: TVec<TDim> = patch.outlet_fact(wire)?.shape.to_tvec();
+    target_shape[bcast_axis_now] = k.to_dim();
+    let bcast = tract_core::ops::array::MultiBroadcastTo { shape: target_shape.into() };
+    Ok(patch.wire_node(format!("{}.blockified", node.name), bcast, &[wire])?[0])
 }
 
 /// Initiator for a multi-T-axis `uniform_tdim` node — typically the
