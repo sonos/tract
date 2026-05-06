@@ -103,3 +103,24 @@ covers `[chunk(i) - 1, chunk(i)]` — past+current).
 This exercises the contracted-axis-detection logic in
 `detect_contracted_score_axis` and the auxiliary-input windowing in
 `wire_terminator_einsum` — paths that ex01–ex04 don't reach.
+
+## ex11-subsampled-section (known-failing)
+
+Block-diagonal SDPA where the section's wires sit *after* a stride-2
+max_pool on the streaming axis.  Post-pool time dim is `1 + (T-3)/2 =
+(T-1)/2` — a non-clean-multiple expression of `T`.  Blockify substitutes
+`T → k·S_0` globally where `k` = audio-frame chunk size, but inside the
+section the wire dim becomes `(k·S_0 - 1)/2 = S_0 - …` — not a clean
+`S_0` multiple, so the chunked `Reshape T → [S_0, k]` bails with
+"… should be equal to k·S_0".
+
+This is the minimal repro of the encoder.p1 substitute-granularity
+issue: the streaming source is at the audio-frame level (T) but the
+section's natural chunking is at the post-subsample level (T_chunk),
+and the boundary `+1` from the conv/pool doesn't vanish under
+`T → k·S_0`.
+
+The fix is structural — either substitute at section-frame granularity
+(rebase the streaming symbol on the post-subsample dim inside the
+section) or pulse the subsample chain first and only blockify the
+post-subsample portion.  Tracked in this directory pending design.

@@ -1,0 +1,82 @@
+version 1.0;
+
+extension tract_registry tract_core;
+extension tract_registry tract_transformers;
+extension tract_symbol T;
+extension tract_assert T>=0;
+
+# ex11-subsampled-section — blockify substitute-granularity reproducer.
+#
+# Why this fails today:
+# A stride-2 max_pool (kernel=3, no padding) on the time axis produces
+# an output whose time dim is `1 + (T-3)/2` — a non-clean-multiple
+# expression of T.  The block-diagonal SDPA section then operates on
+# that post-subsample dim.  Blockify substitutes T → k·S_0 globally
+# (where k = mask.chunk_size · subsample_stride is the audio-frame
+# chunk size), but the section's wires use shapes like
+# `1 + (k·S_0 - 3)/2` — not a clean multiple of S_0, so the chunked
+# `Reshape T → [S_0, k]` inside the section bails with
+# "(...) should be equal to k·S".
+#
+# The fundamental issue: blockify's substitution is at the streaming-
+# source granularity (T = audio frames) but the section's natural
+# chunking is at the post-subsample granularity (T_chunk = ~T/2).
+# The +1 boundary contribution in the post-subsample shape doesn't
+# vanish under T → k·S_0.
+#
+# Encoder.p1 has the same shape: a 3×stride-2 conv chain producing
+# `1 + (T+6)/8` chunk-T dim, which substitutes to `1 + (k·S_0+6)/8`
+# under blockify.
+
+graph network(q, k, v) -> (output)
+{
+    q = tract_core_external(shape = [T, 4], datum_type = 'f32');
+    k = tract_core_external(shape = [T, 4], datum_type = 'f32');
+    v = tract_core_external(shape = [T, 4], datum_type = 'f32');
+
+    # Lift to NCHW for max_pool, run stride-2 kernel-3 (no padding) on
+    # the time axis, drop back to 2D.  Post-pool time dim: 1+(T-3)/2.
+    q_4d   = unsqueeze(unsqueeze(q, axes = [0]), axes = [0]);
+    pooled = max_pool(q_4d,
+                      size    = [1, 1, 3, 1],
+                      padding = [(0, 0), (0, 0), (0, 0), (0, 0)],
+                      stride  = [1, 1, 2, 1],
+                      dilation = [1, 1, 1, 1],
+                      border  = 'constant');
+    q_pre  = squeeze(squeeze(pooled, axes = [0]), axes = [0]);  # [1+(T-3)/2, 4]
+
+    # Same subsample on k and v so they share the post-pool axis.
+    k_4d   = unsqueeze(unsqueeze(k, axes = [0]), axes = [0]);
+    pooled_k = max_pool(k_4d,
+                       size    = [1, 1, 3, 1],
+                       padding = [(0, 0), (0, 0), (0, 0), (0, 0)],
+                       stride  = [1, 1, 2, 1],
+                       dilation = [1, 1, 1, 1],
+                       border  = 'constant');
+    k_pre  = squeeze(squeeze(pooled_k, axes = [0]), axes = [0]);
+
+    v_4d   = unsqueeze(unsqueeze(v, axes = [0]), axes = [0]);
+    pooled_v = max_pool(v_4d,
+                       size    = [1, 1, 3, 1],
+                       padding = [(0, 0), (0, 0), (0, 0), (0, 0)],
+                       stride  = [1, 1, 2, 1],
+                       dilation = [1, 1, 1, 1],
+                       border  = 'constant');
+    v_pre  = squeeze(squeeze(pooled_v, axes = [0]), axes = [0]);
+
+    # Block-diagonal SDPA on the post-subsample axis.  Mask chunk_size = 2
+    # (post-subsample tokens per chunk).  At pulse time, the audio-frame
+    # chunk is 4 frames (2 transformer chunks × stride-2).
+    scores = tract_core_einsum([q_pre, k_pre], expr = "id,jd->ij", acc = "f32");
+
+    Tc       = tract_core_shape_of(q_pre)[0];
+    pos      = tract_core_range(0, Tc, step = 1);
+    chunk_id = pos / 2;
+
+    chunk_row = unsqueeze(chunk_id, axes = [1]);
+    chunk_col = unsqueeze(chunk_id, axes = [0]);
+    in_block  = eq(chunk_row, chunk_col);
+
+    attn   = tract_transformers_scaled_masked_softmax(scores, in_block, scale = 0.5, post_softmax_mask = false);
+    output = tract_core_einsum([attn, v_pre], expr = "ij,jd->id", acc = "f32");
+}
