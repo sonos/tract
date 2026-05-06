@@ -468,9 +468,9 @@ impl Parameters {
         let mut subs = std::collections::HashMap::new();
         for set in set {
             let set = set.as_ref();
-            let (key, value) = set.split_once('=').with_context(|| {
-                format!("--set must be in the X=value form, got {set}")
-            })?;
+            let (key, value) = set
+                .split_once('=')
+                .with_context(|| format!("--set must be in the X=value form, got {set}"))?;
             let dim = tract_core::internal::parse_tdim(&typed_model.symbols, value)
                 .with_context(|| format!("--set: parsing TDim expression for {key}={value}"))?;
             let sym = typed_model.get_or_intern_symbol(key);
