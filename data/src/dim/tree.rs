@@ -379,11 +379,24 @@ impl TDim {
                     if let Add(terms) = &num {
                         let (integer, non_integer): (Vec<_>, Vec<_>) =
                             terms.iter().cloned().partition(|a| a.gcd() % q == 0);
-                        let mut new_terms = integer.iter().map(|i| i.div(*q)).collect::<Vec<_>>();
-                        if non_integer.len() > 0 {
-                            new_terms.push(Div(b!(Add(non_integer)), *q));
+                        // Skip when the non-integer bucket holds a constant:
+                        // under tract's truncating `/`, splitting (k·X+c)/k →
+                        // X + c/k is unsound for negative X (X=-1, k=2, c=1:
+                        // (-1)/2 = 0 ≠ X). The sound version, gated on
+                        // prove_positive_or_zero, lives in simplify_rec::Div
+                        // via try_divide_multiple_plus_remainder. Cases where
+                        // the remainder is purely symbolic (e.g. A%2 → /2
+                        // lowers to (A − 2·(A/2))/2, non_integer=[A]) stay
+                        // here: the emitted Div(non_integer, q) cancels with
+                        // the extracted quotient and reduces to zero.
+                        if !non_integer.iter().any(|t| matches!(t, Val(_))) {
+                            let mut new_terms =
+                                integer.iter().map(|i| i.div(*q)).collect::<Vec<_>>();
+                            if non_integer.len() > 0 {
+                                new_terms.push(Div(b!(Add(non_integer)), *q));
+                            }
+                            forms.push(Add(new_terms))
                         }
-                        forms.push(Add(new_terms))
                     }
                     forms.push(Div(b!(num), *q))
                 }
@@ -768,11 +781,8 @@ impl TDim {
                         // simplify_rec the inner Div too so that follow-up rules
                         // (e.g. divide-multiple-plus-remainder below) can collapse
                         // it once the Val extraction has tidied up the residual.
-                        let inner = Div(
-                            b!(Add(terms).simplify_rec(scope, scenario, extra)),
-                            q,
-                        )
-                        .simplify_rec(scope, scenario, extra);
+                        let inner = Div(b!(Add(terms).simplify_rec(scope, scenario, extra)), q)
+                            .simplify_rec(scope, scenario, extra);
                         Add(vec![Val(val), inner])
                     } else if let Some(simplified) =
                         try_divide_multiple_plus_remainder(&terms, q, scope, extra)
@@ -1694,6 +1704,19 @@ mod tests {
         assert_eq!(e.simplify(), s.to_dim() * 2 + 1);
     }
 
+    #[test]
+    fn divide_multiple_plus_remainder_no_assertion() {
+        // Without an X≥0 assertion the (k·X+c)/k → X identity does NOT hold
+        // (X=-1, k=2, c=1 gives -1/2=0 ≠ X under truncating division). The
+        // wiggle Div arm used to emit that variant unconditionally; reduce()
+        // would then pick it on cost. Now wiggle skips the variant when the
+        // remainder bucket contains a Val, leaving only the sound rule
+        // gated on prove_positive_or_zero in simplify_rec.
+        let scope = SymbolScope::default();
+        let s = scope.sym("S");
+        let e: TDim = (s.to_dim() * 2 + 1) / 2;
+        assert_ne!(e.simplify(), s.to_dim());
+    }
 
     #[test]
     fn reduce_div_bug_3() {
