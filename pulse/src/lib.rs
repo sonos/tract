@@ -51,6 +51,12 @@ impl ModelTransform for PulseTransform {
             // carried ROI annotations, so the new DiagGather node needs
             // its own ROI annotation re-derived from downstream consumers.
             tract_core::optim::propagate_roi::PropagateRoi.run_direct(model)?;
+            // Re-declutter: the fold leaves the original Pad/Reshape/Slice
+            // nodes shunted-out but still in the graph, where blockify's
+            // section recogniser would see them as multi-T-axis dead nodes
+            // and bail.  Mirrors the post-`-t` declutter the CLI runs
+            // between explicit transform stages.
+            model.declutter()?;
         }
         // Pulsification (which calls Blockify internally) consumes the
         // model and produces a typed pulsed graph.
