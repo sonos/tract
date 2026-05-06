@@ -179,43 +179,65 @@ impl ModelTransform for BlockifyTransform {
         if !sections.iter().all(|s| s.mask.chunk_size == k) {
             bail!(
                 "Blockify found multiple quadratic sections with mismatched chunk \
-                 sizes; a single global symbol substitution cannot cover them.  \
+                 sizes; a single global substitution cannot cover them.  \
                  Refusing to blockify rather than produce a partial rewrite."
             );
         }
 
-        // Phase 1: introduce S, substitute T → k·S globally via core.
         let chunk_sym = model.symbols.new_with_prefix("S");
         let subs: HashMap<Symbol, TDim> =
             HashMap::from([(stream_sym.clone(), chunk_sym.to_dim() * k)]);
-        let mut new_model = model.substitute_symbols(&subs)?;
-
-        // Phase 2: one TypedModelPatch per section.  Sections the rewriter
-        // can't fully handle (unknown body op, out-of-range mask form, …)
-        // bail out of `build_section_patch` with a specific error: better
-        // a clear Blockify failure here than a confusing pulsification
-        // error a few stages later.
-        for sec in &sections {
-            let patch = build_section_patch(&new_model, sec, &chunk_sym, k)?;
-            patch.apply(&mut new_model)?;
-        }
-
-        // Ancillary outputs — describe the substitution for downstream
-        // consumers (e.g. the pulse transform that needs to translate its
-        // pulse value from token-units to chunk-units).
-        new_model.properties.insert(
-            BLOCKIFY_CHUNK_SYMBOL.to_string(),
-            tensor1(&[format!("{chunk_sym}")]).into_arc_tensor(),
-        );
-        new_model.properties.insert(BLOCKIFY_CHUNK_SIZE.to_string(), tensor0(k).into_arc_tensor());
-        new_model.properties.insert(
+        let new_model = model.substitute_symbols(&subs)?;
+        *model = new_model;
+        rewrite_sections(model, &chunk_sym, k)?;
+        model.properties.insert(
             BLOCKIFY_ORIGINAL_SYMBOL.to_string(),
             tensor1(&[symbol_name.to_string()]).into_arc_tensor(),
         );
-
-        *model = new_model;
         Ok(())
     }
+}
+
+pub fn has_quadratic_sections(model: &TypedModel, stream_sym: &Symbol) -> TractResult<bool> {
+    Ok(!find_quadratic_sections(model, stream_sym)?.is_empty())
+}
+
+/// Rewrite every quadratic section in `model`.  The model is expected to
+/// already be in post-substitute form (streaming dim = `multiplier · chunk_sym`).
+/// `substitute_multiplier` is recorded as `BLOCKIFY_CHUNK_SIZE` for downstream
+/// pulse-value translation; the section rewrite itself uses each section's
+/// own `mask.chunk_size` for its chunked Reshape.
+pub fn rewrite_sections(
+    model: &mut TypedModel,
+    chunk_sym: &Symbol,
+    substitute_multiplier: i64,
+) -> TractResult<bool> {
+    let sections = find_quadratic_sections(model, chunk_sym)?;
+    if sections.is_empty() {
+        return Ok(false);
+    }
+    let k = sections[0].mask.chunk_size;
+    if !sections.iter().all(|s| s.mask.chunk_size == k) {
+        bail!(
+            "Blockify found multiple quadratic sections with mismatched chunk \
+             sizes; a single global substitution cannot cover them.  \
+             Refusing to blockify rather than produce a partial rewrite."
+        );
+    }
+
+    for sec in &sections {
+        let patch = build_section_patch(model, sec, chunk_sym, sec.mask.chunk_size)?;
+        patch.apply(model)?;
+    }
+
+    model.properties.insert(
+        BLOCKIFY_CHUNK_SYMBOL.to_string(),
+        tensor1(&[format!("{chunk_sym}")]).into_arc_tensor(),
+    );
+    model
+        .properties
+        .insert(BLOCKIFY_CHUNK_SIZE.to_string(), tensor0(substitute_multiplier).into_arc_tensor());
+    Ok(true)
 }
 
 /// Read back the `(chunk_symbol, chunk_size)` ancillary outputs that
