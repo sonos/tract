@@ -9,7 +9,6 @@ pub trait WithTractExtra {
 
 impl WithTractExtra for tract_nnef::framework::Nnef {
     fn enable_tract_extra(&mut self) {
-        self.enable_tract_core();
         self.registries.push(tract_extra_registry());
     }
 

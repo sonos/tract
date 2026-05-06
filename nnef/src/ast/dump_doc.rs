@@ -82,7 +82,7 @@ mod test {
     #[test]
     fn doc_example() -> TractResult<()> {
         let d = TempDir::new()?;
-        let nnef = crate::nnef().with_tract_core().with_tract_resource();
+        let nnef = crate::nnef().with_tract_resource();
         DocDumper::to_directory(d.path(), &nnef)?;
         Ok(())
     }

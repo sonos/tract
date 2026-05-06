@@ -97,7 +97,7 @@ void tract_free_cstring(char *ptr);
  */
 enum TRACT_RESULT tract_nnef_create(struct TractNnef **nnef);
 
-enum TRACT_RESULT tract_nnef_enable_tract_core(struct TractNnef *nnef);
+enum TRACT_RESULT tract_nnef_disable_tract_core(struct TractNnef *nnef);
 
 enum TRACT_RESULT tract_nnef_enable_tract_extra(struct TractNnef *nnef);
 

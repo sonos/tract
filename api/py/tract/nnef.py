@@ -47,12 +47,14 @@ class Nnef:
         check(lib.tract_nnef_load(self.ptr, path, byref(model)))
         return Model(model)
 
-    def with_tract_core(self) -> "Nnef":
+    def without_tract_core(self) -> "Nnef":
         """
-        Enable tract-opl extensions to NNEF to covers tract-core operator set
+        Force the framework to emit strict NNEF instead of using the tract_core
+        extension. The tract_core extension is enabled by default; call this to
+        opt out.
         """
         self._valid()
-        check(lib.tract_nnef_enable_tract_core(self.ptr))
+        check(lib.tract_nnef_disable_tract_core(self.ptr))
         return self
 
     def with_tract_extra(self) -> "Nnef":

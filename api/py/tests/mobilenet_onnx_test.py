@@ -48,7 +48,7 @@ def test_state():
     assert numpy.argmax(confidences) == 652
 
 def test_nnef_register():
-    tract.nnef().with_tract_core().with_onnx().with_pulse().with_tract_extra()
+    tract.nnef().with_onnx().with_pulse().with_tract_extra()
 
 def test_nnef():
     model = (
@@ -222,7 +222,7 @@ def test_typed_model_to_nnef_and_back():
     typed = model.into_model()
     with tempfile.TemporaryDirectory() as tmpdirname:
         tmpdirname = Path(tmpdirname)
-        nnef = tract.nnef().with_tract_core()
+        nnef = tract.nnef()
 
         path = tmpdirname / "nnef-dir"
         nnef.write_model_to_dir(typed, path)
@@ -271,7 +271,7 @@ def test_profile():
     assert next(filter(lambda node: "cost" in node and "FMA(F32)" in node["cost"], profile["nodes"]), None) != None
 
 def test_transform_registry():
-    nnef = tract.nnef().with_tract_core()
+    nnef = tract.nnef()
     model = nnef.load("mobilenet_v2_1.0.onnx.nnef.tgz")
 
     #Convert model to half
@@ -284,7 +284,7 @@ def test_transform_registry():
     assert str(model.input_fact(0)) == "1,3,224,224,f32"
 
 def test_fact_and_dims():
-    nnef = tract.nnef().with_tract_core()
+    nnef = tract.nnef()
     model = nnef.load("mobilenet_v2_1.0.onnx.nnef.tgz")
     fact = model.parse_fact("B,S+P,64,f32")
     assert fact.datum_type() == tract.DatumType.F32
@@ -298,7 +298,7 @@ def test_fact_and_dims():
     assert int(fourteen) == 14
 
 def test_fact_and_dims_iterators():
-    nnef = tract.nnef().with_tract_core()
+    nnef = tract.nnef()
     model = nnef.load("mobilenet_v2_1.0.onnx.nnef.tgz")
     facts = model.input_facts()
     assert len(facts) == 1
@@ -310,7 +310,7 @@ def test_fact_and_dims_iterators():
     assert int(dims[3]) == 224
 
 def test_runtime_fact_iterator():
-    nnef = tract.nnef().with_tract_core()
+    nnef = tract.nnef()
     runnable = nnef.load("mobilenet_v2_1.0.onnx.nnef.tgz").into_runnable()
     inputs = runnable.input_facts();
     assert len(inputs) == 1

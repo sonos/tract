@@ -87,8 +87,8 @@ impl NnefInterface for Nnef {
         Ok(Model(model))
     }
 
-    fn enable_tract_core(&mut self) -> Result<()> {
-        check!(sys::tract_nnef_enable_tract_core(self.0))
+    fn disable_tract_core(&mut self) -> Result<()> {
+        check!(sys::tract_nnef_disable_tract_core(self.0))
     }
 
     fn enable_tract_extra(&mut self) -> Result<()> {

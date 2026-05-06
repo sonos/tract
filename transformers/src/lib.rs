@@ -29,7 +29,6 @@ pub trait WithTractTransformers {
 
 impl WithTractTransformers for tract_nnef::framework::Nnef {
     fn enable_tract_transformers(&mut self) {
-        self.enable_tract_core();
         self.registries.push(tract_transformers_registry());
     }
 

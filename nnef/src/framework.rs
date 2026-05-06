@@ -27,7 +27,7 @@ impl Default for Nnef {
     fn default() -> Nnef {
         Nnef {
             stdlib: stdlib(),
-            registries: vec![crate::ops::tract_nnef()],
+            registries: vec![crate::ops::tract_nnef(), crate::ops::tract_core()],
             resource_loaders: vec![
                 GraphNnefLoader.into_boxed(),
                 DatLoader.into_boxed(),
@@ -52,12 +52,12 @@ impl Nnef {
         self
     }
 
-    pub fn enable_tract_core(&mut self) {
-        self.registries.push(crate::ops::tract_core());
+    pub fn disable_tract_core(&mut self) {
+        self.registries.retain(|r| r.id.0 != "tract_core");
     }
 
-    pub fn with_tract_core(mut self) -> Self {
-        self.registries.push(crate::ops::tract_core());
+    pub fn without_tract_core(mut self) -> Self {
+        self.disable_tract_core();
         self
     }
 

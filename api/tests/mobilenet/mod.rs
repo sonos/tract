@@ -276,7 +276,7 @@ fn test_typed_model_to_nnef_and_back() -> anyhow::Result<()> {
     model.analyse()?;
     let typed = model.into_model()?;
     let dir = tempfile::tempdir()?;
-    let nnef = nnef()?.with_tract_core()?;
+    let nnef = nnef()?;
 
     let path = dir.path().join("nnef-dir");
     nnef.write_model_to_dir(&path, &typed)?;
@@ -336,7 +336,7 @@ fn test_profile() -> anyhow::Result<()> {
 fn test_transform_registry() -> anyhow::Result<()> {
     ensure_models()?;
 
-    let nnef = nnef()?.with_tract_core()?;
+    let nnef = nnef()?;
     let mut model = nnef.load("mobilenet_v2_1.0.onnx.nnef.tgz")?;
 
     // Convert model to half
@@ -354,7 +354,7 @@ fn test_transform_registry() -> anyhow::Result<()> {
 #[test]
 fn test_fact_and_dims() -> anyhow::Result<()> {
     ensure_models()?;
-    let nnef = nnef()?.with_tract_core()?;
+    let nnef = nnef()?;
     let model = nnef.load("mobilenet_v2_1.0.onnx.nnef.tgz")?;
     let fact = model.parse_fact("B,S+P,64,f32")?;
     assert_eq!(fact.datum_type()?, f32::datum_type());
@@ -371,7 +371,7 @@ fn test_fact_and_dims() -> anyhow::Result<()> {
 #[test]
 fn test_fact_and_dims_iterators() -> anyhow::Result<()> {
     ensure_models()?;
-    let nnef = nnef()?.with_tract_core()?;
+    let nnef = nnef()?;
     let model = nnef.load("mobilenet_v2_1.0.onnx.nnef.tgz")?;
     let fact = model.input_facts()?.collect::<Vec<_>>();
     assert!(fact.len() == 1);
@@ -387,7 +387,7 @@ fn test_fact_and_dims_iterators() -> anyhow::Result<()> {
 #[test]
 fn test_runtime_fact_iterator() -> anyhow::Result<()> {
     ensure_models()?;
-    let nnef = nnef()?.with_tract_core()?;
+    let nnef = nnef()?;
     let runnable = nnef.load("mobilenet_v2_1.0.onnx.nnef.tgz")?.into_runnable()?;
     let inputs = runnable.input_facts()?.collect::<Vec<_>>();
     assert!(inputs.len() == 1);

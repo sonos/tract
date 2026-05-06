@@ -4,7 +4,7 @@ use tract_core::ops::cast::Cast;
 use tract_nnef::internal::*;
 
 fn round_trip(model: &TypedModel) -> TractResult<TypedModel> {
-    let nnef = tract_nnef::nnef().with_tract_core();
+    let nnef = tract_nnef::nnef();
     let mut buffer = vec![];
     nnef.write_to_tar(model, &mut buffer)?;
     nnef.model_for_read(&mut &*buffer)
