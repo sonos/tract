@@ -118,10 +118,10 @@ pub unsafe extern "C" fn tract_nnef_create(nnef: *mut *mut TractNnef) -> TRACT_R
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn tract_nnef_enable_tract_core(nnef: *mut TractNnef) -> TRACT_RESULT {
+pub unsafe extern "C" fn tract_nnef_disable_tract_core(nnef: *mut TractNnef) -> TRACT_RESULT {
     wrap(|| unsafe {
         check_not_null!(nnef);
-        (*nnef).0.enable_tract_core()
+        (*nnef).0.disable_tract_core()
     })
 }
 

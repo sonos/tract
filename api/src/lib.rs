@@ -24,8 +24,9 @@ pub trait NnefInterface: Debug + Sized {
     /// data is the content of a NNEF model, as a `tar` file or a `tar.gz` file.
     fn load_buffer(&self, data: &[u8]) -> Result<Self::Model>;
 
-    /// Allow the framework to use tract_core extensions instead of a stricter NNEF definition.
-    fn enable_tract_core(&mut self) -> Result<()>;
+    /// Force the framework to emit strict NNEF instead of using the tract_core extension.
+    /// The tract_core extension is enabled by default; call this to opt out.
+    fn disable_tract_core(&mut self) -> Result<()>;
 
     /// Allow the framework to use tract_extra extensions.
     fn enable_tract_extra(&mut self) -> Result<()>;
@@ -46,13 +47,13 @@ pub trait NnefInterface: Debug + Sized {
     /// the node names in serialized form.
     fn enable_extended_identifier_syntax(&mut self) -> Result<()>;
 
-    /// Convenience function, similar with enable_tract_core but allowing method chaining.
-    fn with_tract_core(mut self) -> Result<Self> {
-        self.enable_tract_core()?;
+    /// Convenience function, similar to disable_tract_core but allowing method chaining.
+    fn without_tract_core(mut self) -> Result<Self> {
+        self.disable_tract_core()?;
         Ok(self)
     }
 
-    /// Convenience function, similar with enable_tract_core but allowing method chaining.
+    /// Convenience function, similar with enable_tract_extra but allowing method chaining.
     fn with_tract_extra(mut self) -> Result<Self> {
         self.enable_tract_extra()?;
         Ok(self)

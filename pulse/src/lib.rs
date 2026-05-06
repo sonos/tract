@@ -65,7 +65,6 @@ pub trait WithPulse {
 
 impl WithPulse for tract_nnef::framework::Nnef {
     fn enable_pulse(&mut self) {
-        self.enable_tract_core();
         self.registries.push(tract_nnef_registry());
     }
     fn with_pulse(mut self) -> Self {

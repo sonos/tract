@@ -17,7 +17,6 @@ pub trait WithOnnx {
 
 impl WithOnnx for tract_nnef::framework::Nnef {
     fn enable_onnx(&mut self) {
-        self.enable_tract_core();
         self.registries.push(onnx_opl_registry());
     }
     fn with_onnx(mut self) -> Self {

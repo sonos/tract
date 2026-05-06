@@ -34,7 +34,7 @@ impl ModelTransform for PatchTransform {
 
         // Run the builder in a block so it (and its borrow of model) is dropped before we mutate model
         let (patch_model, taps, scope) = {
-            let framework = crate::nnef().with_tract_core();
+            let framework = crate::nnef();
 
             let doc = Document {
                 version: "1.0".into(),
