@@ -182,9 +182,49 @@ where
         Vec::new()
     };
 
+    // Pre-compute the streaming-symbol binding so we can re-apply it every
+    // turn (run_plan_with_eval calls reset_turn at the end, wiping
+    // resolved_symbols).  Without this, PulsePad's `end_input.eval(...)`
+    // hits the `usize::MAX` fallback and the tail-pad fill silently never
+    // triggers — pulse output then disagrees with batch on the boundary.
+    let pulse_sym_binding: Option<(Symbol, i64)> =
+        if let (Some(sym_name), Some(stream_len), Some(first_input)) = (
+            state
+                .model()
+                .properties
+                .get("pulse.streaming_symbol")
+                .and_then(|t| t.to_plain_array_view::<String>().ok())
+                .and_then(|a| a.first().cloned()),
+            inputs.streaming_input_len,
+            inputs.sources.first().and_then(|t| t.first()),
+        ) {
+            let input_axes = state
+                .model()
+                .properties
+                .get("pulse.input_axes")
+                .context("Expect pulse.input_axes when pulse.streaming_symbol is set")?
+                .cast_to::<i64>()?;
+            let input_axis = input_axes.try_as_plain()?.as_slice::<i64>()?[0] as usize;
+            let pulse_value = first_input.shape()[input_axis];
+            // Linear case: stream.dim = pulse_value · symbol.  For non-linear
+            // dims (e.g. `4·s + 1`) this would be wrong, but blockified models
+            // arrive here with a chunk-aligned linear dim by construction.
+            if pulse_value > 0 && stream_len % pulse_value == 0 {
+                let sym = state.model().symbols.sym(&sym_name);
+                Some((sym, (stream_len / pulse_value) as i64))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
     let mut sources = inputs.sources;
     for turn in 0..sources.len() {
         let inputs = std::mem::replace(&mut sources[turn], TVec::new());
+        if let Some((sym, val)) = &pulse_sym_binding {
+            state.turn_state.resolved_symbols.set(sym, *val);
+        }
         let turn_results =
             state.run_plan_with_eval(inputs, |session_state, state, node, input| {
                 if steps {
