@@ -67,6 +67,21 @@ impl PulsedModelExt for PulsedModel {
         pulse: &TDim,
     ) -> TractResult<(PulsedModel, HashMap<OutletId, OutletId>)> {
         check_no_unannotated_superlinear_wires(source, &symbol)?;
+        use tract_core::optim::TypedPass;
+        use tract_core::transform::ModelTransform;
+        let mut blockified = source.clone();
+        // Fold the Transformer-XL skew trick (Pad + Reshape + Slice
+        // chain on the relative-position scores) into a single
+        // DiagGather op.  Blockify's fused-initiator dispatch matches
+        // on `einsum → DiagGather`, so the fold has to have run first.
+        // Idempotent if there's no skew chain to fold.  Higher-level
+        // callers (PulseTransform) also run this; doing it here means
+        // the bare `PulsedModel::new` / CLI `--pulse` paths get the
+        // same treatment.
+        if crate::ops::diag_gather::fold_diag_gather(&mut blockified)? {
+            tract_core::optim::propagate_roi::PropagateRoi.run_direct(&mut blockified)?;
+            blockified.declutter()?;
+        }
         // Pulse-driven blockify: when the user's pulse value is concrete,
         // pulse owns the substitute `T → pulse · S` itself and hands the
         // post-substitute model + chunk symbol to blockify, which only
@@ -78,9 +93,7 @@ impl PulsedModelExt for PulsedModel {
         // Symbolic-pulse callers fall through to the standalone
         // BlockifyTransform path below, which still derives the
         // multiplier from the mask.
-        use tract_core::transform::ModelTransform;
         let pulse_value = pulse.to_i64().ok();
-        let mut blockified = source.clone();
         let (stream_sym, pulse_dim) = if let Some(pv) = pulse_value
             && crate::blockify::has_quadratic_sections(&blockified, &symbol)?
         {
