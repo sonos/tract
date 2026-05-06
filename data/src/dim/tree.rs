@@ -160,6 +160,59 @@ fn tdim_lexi_order(a: &TDim, b: &TDim) -> Ordering {
     }
 }
 
+/// `Div(Add(terms), q)` — try to extract every `MulInt(c, X)` where `c % q == 0`
+/// out of the Div, leaving only a constant remainder in `[0, q)`.
+///
+/// Returns `Some(simplified)` when the residual constant is in `[0, q)` and
+/// every extracted symbolic factor `X` is provably non-negative — both
+/// conditions are required for soundness under tract's truncating
+/// division (`Rust i64 /`):
+///
+/// * the constant being in `[0, q)` makes `c/q_trunc = 0`;
+/// * `X ≥ 0` makes the identity `(k·X + c)/k_trunc = X` hold (it fails
+///   at e.g. `X = -1, k = 2, c = 0` because truncation rounds toward zero).
+///
+/// The `Val` arm above already handles constants outside `[0, q)`, so by
+/// the time we get here `terms` contains at most one `Val` and any number
+/// of `MulInt(c, X)` / other shapes.
+fn try_divide_multiple_plus_remainder(
+    terms: &[TDim],
+    q: u64,
+    scope: &SymbolScopeData,
+    extra: &[Assertion],
+) -> Option<TDim> {
+    let mut quotients: Vec<TDim> = vec![];
+    let mut const_rem: i64 = 0;
+    let mut any_extracted = false;
+    for term in terms {
+        match term {
+            MulInt(c, x) if *c != 0 && c.rem_euclid(q as i64) == 0 => {
+                if !scope.prove_positive_or_zero_with_extra(x, extra) {
+                    return None;
+                }
+                let new_coeff = c / (q as i64);
+                quotients.push(if new_coeff == 1 {
+                    (**x).clone()
+                } else if new_coeff == -1 {
+                    MulInt(-1, x.clone())
+                } else {
+                    MulInt(new_coeff, x.clone())
+                });
+                any_extracted = true;
+            }
+            Val(v) => const_rem += v,
+            _ => return None,
+        }
+    }
+    if !any_extracted {
+        return None;
+    }
+    if !(0..q as i64).contains(&const_rem) {
+        return None;
+    }
+    Some(if quotients.len() == 1 { quotients.remove(0) } else { Add(quotients) })
+}
+
 impl fmt::Display for TDim {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match &self {
@@ -784,10 +837,27 @@ impl TDim {
                         })
                     {
                         terms.push(Val(-val * q as i64));
-                        Add(vec![
-                            Val(val),
-                            Div(b!(Add(terms).simplify_rec(scope, scenario, extra)), q),
-                        ])
+                        // simplify_rec the inner Div too so that follow-up rules
+                        // (e.g. divide-multiple-plus-remainder below) can collapse
+                        // it once the Val extraction has tidied up the residual.
+                        let inner = Div(
+                            b!(Add(terms).simplify_rec(scope, scenario, extra)),
+                            q,
+                        )
+                        .simplify_rec(scope, scenario, extra);
+                        Add(vec![Val(val), inner])
+                    } else if let Some(simplified) =
+                        try_divide_multiple_plus_remainder(&terms, q, scope, extra)
+                    {
+                        // Match `Div(Add([k·X, …, c]), k)` where:
+                        //   - one or more terms have a coefficient that is a multiple of q,
+                        //   - the rest sum to a constant in [0, q),
+                        //   - every extracted X is provably non-negative.
+                        // Then `(k·X + c)/k = X + 0 = X` under tract's truncating
+                        // division.  This is sound for X ≥ 0 only — at X = -1
+                        // the truncation rounds toward zero, not floor, breaking
+                        // the identity.  We use prove_positive_or_zero to gate.
+                        simplified.simplify_rec(scope, scenario, extra)
                     } else {
                         Div(b!(Add(terms)), q)
                     }
@@ -1672,6 +1742,30 @@ mod tests {
         let e2: TDim = (A.to_dim() + 3) / 4;
         assert_eq!(e1, e2);
     }
+
+    #[test]
+    fn divide_multiple_plus_remainder() {
+        // (k·X + r)/k → X under truncating division when 0 ≤ r < k AND X ≥ 0.
+        let scope = SymbolScope::default().with_assertion("S>=0").unwrap();
+        let s = scope.sym("S");
+
+        // (2S+1)/2 → S
+        let e: TDim = (s.to_dim() * 2 + 1) / 2;
+        assert_eq!(e.simplify(), s.to_dim());
+
+        // -1 + (2S+1)/2 → S - 1
+        let e: TDim = (s.to_dim() * 2 + 1) / 2 - 1;
+        assert_eq!(e.simplify(), s.to_dim() - 1);
+
+        // (2S-1)/2 → S - 1   (Val rule extracts -1 first, then our rule)
+        let e: TDim = (s.to_dim() * 2 - 1) / 2;
+        assert_eq!(e.simplify(), s.to_dim() - 1);
+
+        // (4S+3)/2 → 2S + 1   (Val rule extracts 1 = 3/2, then our rule on (4S+1)/2 → 2S)
+        let e: TDim = (s.to_dim() * 4 + 3) / 2;
+        assert_eq!(e.simplify(), s.to_dim() * 2 + 1);
+    }
+
 
     #[test]
     fn reduce_div_bug_3() {
