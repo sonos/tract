@@ -1265,15 +1265,16 @@ fn wire_initiator_multibroadcastto_streaming(
             &[wire],
         )?[0];
         // Update tracked positions after the move.  AxisOp::Move(from, to)
-        // moves the dim from `from` to `to`; intermediate positions shift.
+        // removes the dim at `from` and re-inserts it at `to`; the dims
+        // strictly between source and target shift one slot to fill the gap.
         if chunks_target_axis < chunks_axis {
-            // moved leftward: positions in (target, source] shifted +1
-            if bcast_axis_now > chunks_target_axis && bcast_axis_now <= chunks_axis {
+            // moved leftward: positions in [target, source) shift +1
+            if bcast_axis_now >= chunks_target_axis && bcast_axis_now < chunks_axis {
                 bcast_axis_now += 1;
             }
         } else {
-            // moved rightward
-            if bcast_axis_now >= chunks_axis && bcast_axis_now < chunks_target_axis {
+            // moved rightward: positions in (source, target] shift -1
+            if bcast_axis_now > chunks_axis && bcast_axis_now <= chunks_target_axis {
                 bcast_axis_now = bcast_axis_now.saturating_sub(1);
             }
         }
