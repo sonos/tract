@@ -1,0 +1,83 @@
+version 1.0;
+
+extension tract_registry tract_core;
+extension tract_symbol T;
+extension tract_assert T>=0;
+
+# ex16-affine-residual-then-conv — known-failing repro of the
+# Broadcast-TDim-in-pulse-value issue.
+#
+# Pattern: a streaming axis whose typed dim is affine in the pulse
+# count (`1 + k·S` after `T → k·S` substitute) ends up with two
+# *different* per-pulse values reaching the same op:
+#
+#   * From a stride-2 convolution stack: the conv pulsifier divides
+#     pulse by stride (per-pulse = k).
+#   * From a `tract_core_range(0, 1+(T-1)/2, 1)`: the Range pulsifier
+#     substitutes `S → pulse=1` directly on the typed dim
+#     (per-pulse = 1+k).
+#
+# Combining them via an `iff(mask, then, else)` (or `mul`, etc.)
+# reconciles the per-pulse values into a Broadcast TDim
+# `(k)#(1+k)`.  Any downstream pulsifier that uses
+# `input_fact.pulse()` as a concrete value (e.g. `pulsify_pooled_input`'s
+# stride-multiple check) then sees a Broadcast and bails:
+#
+#     Pulsification requires pulse ((1)#(2)) to be a stride (1) multiple
+#
+# Same shape as encoder.p1's failure at
+# `_0_conv_depthwiseConv_xConvolution0` after my fixes unblocked the
+# rel-pos `pos_slice` issue:
+#
+#     Pulsification requires pulse (((15)#(14))#(14)) to be a stride (1) multiple
+
+graph network(x) -> (y)
+{
+    x = tract_core_external(shape = [T], datum_type = 'f32');
+
+    # Pad with 1 leading zero.  In pulse mode the Pad pulsifier
+    # absorbs the leading 1 into Delay state and emits per-pulse
+    # exactly `pulse` on the streaming axis (the typed `1 + T` is the
+    # streaming view; per-pulse delivery is `pulse`).
+    x_pad = pad(x, padding = [[1, 0]], value = 0.0);             # [1+T]
+
+    # Range over the same affine dim.  The Range pulsifier
+    # substitutes the streaming symbol on the typed dim directly:
+    #   per-pulse = (1+T).substitute(T, pulse) = 1 + pulse
+    # — the leading 1 is materialised every pulse rather than absorbed
+    # into state, so per-pulse is one larger than the Pad path.
+    rng_idx = tract_core_range(0, tract_core_shape_of(x_pad)[0], step = 1);
+    rng_f32 = tract_core_cast(rng_idx, to = 'f32');
+
+    # Combining the two paths reconciles per-pulse `pulse` (Pad) and
+    # per-pulse `1 + pulse` (Range) into a Broadcast TDim
+    # `(pulse)#(1+pulse)`.
+    combined = x_pad + rng_f32;
+
+    # Stride-1 max_pool downstream.  Its pulsifier reads
+    # `input_fact.pulse()` to validate `pulse % stride == 0`; the
+    # Broadcast TDim isn't reducible to an integer, so the modulo
+    # bails:
+    #
+    #   Pulsification requires pulse ((2)#(3)) to be a stride (1) multiple
+    #
+    # Same pattern as encoder.p1's
+    # `_0_conv_depthwiseConv_xConvolution0` failure where the
+    # padmask's `Range(0, 1+(T+6)/8, 1)` produces per-pulse 15 while
+    # the parallel conv-stack output produces per-pulse 14, and the
+    # stride-1 depthwise conv downstream rejects the reconciled
+    # `(15)#(14)#(14)` pulse value.
+    combined_3d  = unsqueeze(combined,    axes = [0]);
+    combined_3d2 = unsqueeze(combined_3d, axes = [0]);
+    combined_3d3 = unsqueeze(combined_3d2, axes = [0]);          # [1, 1, 1, 1+T]
+    out = max_pool(combined_3d3,
+                   size    = [1, 1, 1, 3],
+                   padding = [(0, 0), (0, 0), (0, 0), (1, 1)],
+                   stride  = [1, 1, 1, 1],
+                   dilation = [1, 1, 1, 1],
+                   border  = 'constant');
+
+    out_3d = squeeze(out, axes = [0]);
+    out_2d = squeeze(out_3d, axes = [0]);
+    y = squeeze(out_2d, axes = [0]);
+}
