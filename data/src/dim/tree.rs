@@ -1236,6 +1236,27 @@ impl TDim {
         self.clone().neg().prove_strict_positive()
     }
 
+    /// Pulse-divisibility merge: smallest scalar dim that is a multiple of
+    /// both `self` and `other`.  Used at pulse meet-points (elementwise
+    /// ops where parallel paths produced different per-pulse sizes — e.g.
+    /// stride and kernel of a ConvTranspose surfacing as `(K_steady,
+    /// K_initial)` on the two phases of the pulse cycle).
+    ///
+    /// For pure positive integers, returns the exact LCM as `Val(.)`.
+    /// For symbolic TDims, returns `None` -- the caller can fall back to
+    /// the existing `Broadcast` semantics or use a safe upper bound.
+    pub fn pulse_lcm(&self, other: &TDim) -> Option<TDim> {
+        match (self.as_i64(), other.as_i64()) {
+            (Some(a), Some(b)) if a > 0 && b > 0 => {
+                let g = (a as u64).gcd(&(b as u64));
+                let l = (a as u64 / g).saturating_mul(b as u64);
+                if l > i64::MAX as u64 { None } else { Some(TDim::Val(l as i64)) }
+            }
+            (Some(0), _) | (_, Some(0)) => Some(TDim::Val(0)),
+            _ => None,
+        }
+    }
+
     pub fn gcd(&self) -> u64 {
         use self::TDim::*;
         match self {
@@ -1291,7 +1312,7 @@ impl TDim {
         TDim::Div(Box::new(Add(vec![self, Val(rhs as i64 - 1)])), rhs).reduce()
     }
 
-    pub(super) fn guess_slope(&self, sym: &Symbol) -> (i64, u64) {
+    pub fn guess_slope(&self, sym: &Symbol) -> (i64, u64) {
         fn slope_rec(d: &TDim, sym: &Symbol) -> (i64, i64) {
             match d {
                 Val(_) => (0, 1),
@@ -1655,6 +1676,19 @@ mod tests {
     #[test]
     fn reduce_add() {
         assert_eq!(add(&A.to_dim(), &neg(&A.to_dim())).reduce(), Val(0))
+    }
+
+    #[test]
+    fn pulse_lcm_basic() {
+        // Two pulse-cycle phases of an upsample (stride=16, kernel=32):
+        // steady-state output = 16, initial-state with overlap = 32.
+        // Merged pulse-divisibility constraint = LCM = 32.
+        assert_eq!(Val(16).pulse_lcm(&Val(32)), Some(Val(32)));
+        assert_eq!(Val(32).pulse_lcm(&Val(16)), Some(Val(32)));
+        assert_eq!(Val(6).pulse_lcm(&Val(8)), Some(Val(24)));
+        assert_eq!(Val(7).pulse_lcm(&Val(7)), Some(Val(7)));
+        // Symbolic: not computable, return None for the fallback path.
+        assert_eq!(Val(16).pulse_lcm(&A.to_dim()), None);
     }
 
     #[test]

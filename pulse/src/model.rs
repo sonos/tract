@@ -43,6 +43,23 @@ fn check_no_unannotated_superlinear_wires(model: &TypedModel, symbol: &Symbol) -
     Ok(())
 }
 
+/// LCM of the stream-axis dims across all stream-bearing inputs.  Used at
+/// elementwise meet points where parallel pulse paths emit different
+/// per-pulse sizes (steady-state vs initial-state phases).  Returns
+/// `None` when the LCM isn't computable (any input has a non-integer
+/// symbolic stream dim) -- the caller falls back to the unmodified shape
+/// that `multi_broadcast` produced.
+pub fn stream_axis_lcm(inputs: &[&PulsedFact]) -> Option<TDim> {
+    let dims: Vec<&TDim> =
+        inputs.iter().filter_map(|f| f.stream.as_ref().map(|s| &f.shape[s.axis])).collect();
+    let (first, rest) = dims.split_first()?;
+    let mut acc = (*first).clone();
+    for d in rest {
+        acc = acc.pulse_lcm(d)?;
+    }
+    Some(acc)
+}
+
 #[allow(clippy::new_ret_no_self)]
 pub trait PulsedModelExt {
     fn new(source: &TypedModel, symbol: Symbol, pulse: &TDim) -> TractResult<PulsedModel>;
@@ -322,13 +339,31 @@ impl PulsedOp for PulseWrappingOp {
         let axes_mapping = self.0.axes_mapping(&input_facts_ref, &output_facts_ref)?;
         let axis_info = axes_mapping.axis((InOut::In(pulsing_input), stream.axis))?;
         std::mem::drop(output_facts_ref);
+        // When parallel pulse paths converge at an elementwise op, the
+        // typed `output_facts` falls through to `multi_broadcast` for shape
+        // merging, which produces `Broadcast([K_a, K_b])` on the stream
+        // axis when the inputs have different per-pulse sizes (e.g.
+        // steady-state `stride` vs initial-state `kernel` of a
+        // streaming convtr surfacing on two phases of the cycle).
+        // `Broadcast` is the right semantic for non-stream axes (shape
+        // compatibility at runtime) but a category error for the stream
+        // axis: there the merged constraint is *scalar pulse-divisibility*
+        // and the right answer is LCM. Compute it post-hoc and override
+        // the offending dim before it propagates downstream.
+        let merged_stream_dim = stream_axis_lcm(inputs);
         output_facts
             .into_iter()
             .enumerate()
             .map(|(ix, tf)| {
                 if let &[axis] = &*axis_info.outputs[ix] {
+                    let mut shape = tf.shape;
+                    if let Some(merged) = merged_stream_dim.as_ref() {
+                        if matches!(shape[axis], TDim::Broadcast(_)) {
+                            shape.set(axis, merged.clone());
+                        }
+                    }
                     Ok(PulsedFact {
-                        shape: tf.shape,
+                        shape,
                         datum_type: tf.datum_type,
                         stream: Some(StreamInfo {
                             delay: stream.delay,
