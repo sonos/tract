@@ -14,6 +14,29 @@ use crate::{Ops, Scaler};
 #[cfg(target_feature = "relaxed-simd")]
 use crate::frame::element_wise::ElementWiseKer;
 
+// f32x4 mul+add → relaxed FMA when the build has +relaxed-simd, else explicit
+// mul+add. Lets the MMM kernels emit f32x4.relaxed_madd without duplicating
+// kernel source. Per PR #2195: LLVM does not auto-emit relaxed_madd from
+// f32x4_add(f32x4_mul(...)) even with +relaxed-simd — hand emission is needed.
+//
+// Caller must have `use std::arch::wasm32::*;` in scope (every kernel does).
+// Args are passed (acc, a, b); evaluation order differs between the two arms
+// (acc-first in baseline, acc-last in FMA), so callers must pass simple
+// variable names rather than expressions with side effects.
+#[cfg(target_feature = "relaxed-simd")]
+macro_rules! madd_f32x4 {
+    ($acc:expr, $a:expr, $b:expr) => {
+        f32x4_relaxed_madd($a, $b, $acc)
+    };
+}
+
+#[cfg(not(target_feature = "relaxed-simd"))]
+macro_rules! madd_f32x4 {
+    ($acc:expr, $a:expr, $b:expr) => {
+        f32x4_add($acc, f32x4_mul($a, $b))
+    };
+}
+
 pub fn plug(ops: &mut Ops) {
     ops.mmm_impls.push(wasm_f32_4x4.mmm());
     ops.mmm_impls.push(wasm_f32_4x1.mmm());
@@ -277,10 +300,10 @@ unsafe fn kernel_f32_4x4(mut pnl: *const FusedKerSpec<f32>) -> isize {
                 }
                 FusedKerSpec::AddRowColProducts(rows, cols) => {
                     let cols = v128_load(cols as *const v128);
-                    ab0 = f32x4_add(ab0, f32x4_mul(f32x4_splat(*rows.add(0)), cols));
-                    ab1 = f32x4_add(ab1, f32x4_mul(f32x4_splat(*rows.add(1)), cols));
-                    ab2 = f32x4_add(ab2, f32x4_mul(f32x4_splat(*rows.add(2)), cols));
-                    ab3 = f32x4_add(ab3, f32x4_mul(f32x4_splat(*rows.add(3)), cols));
+                    ab0 = madd_f32x4!(ab0, f32x4_splat(*rows.add(0)), cols);
+                    ab1 = madd_f32x4!(ab1, f32x4_splat(*rows.add(1)), cols);
+                    ab2 = madd_f32x4!(ab2, f32x4_splat(*rows.add(2)), cols);
+                    ab3 = madd_f32x4!(ab3, f32x4_splat(*rows.add(3)), cols);
                 }
                 FusedKerSpec::Store(tile) => {
                     let mut ptr: *mut u8 = tile.ptr;
@@ -322,10 +345,10 @@ unsafe fn kernel_f32_4x4(mut pnl: *const FusedKerSpec<f32>) -> isize {
                     for i in 0..k {
                         let a = std::slice::from_raw_parts(a.offset(4 * i as isize), 4);
                         let b = v128_load(b.offset(i as isize));
-                        ab0 = f32x4_add(ab0, f32x4_mul(f32x4_splat(a[0]), b));
-                        ab1 = f32x4_add(ab1, f32x4_mul(f32x4_splat(a[1]), b));
-                        ab2 = f32x4_add(ab2, f32x4_mul(f32x4_splat(a[2]), b));
-                        ab3 = f32x4_add(ab3, f32x4_mul(f32x4_splat(a[3]), b));
+                        ab0 = madd_f32x4!(ab0, f32x4_splat(a[0]), b);
+                        ab1 = madd_f32x4!(ab1, f32x4_splat(a[1]), b);
+                        ab2 = madd_f32x4!(ab2, f32x4_splat(a[2]), b);
+                        ab3 = madd_f32x4!(ab3, f32x4_splat(a[3]), b);
                     }
                 }
             }
@@ -460,7 +483,7 @@ unsafe fn kernel_f32_4x1(mut pnl: *const FusedKerSpec<f32>) -> isize {
                     // ab[i] += rows[i] * cols[0]  (cols[0] is the single col)
                     let r = v128_load(rows as *const v128);
                     let c = f32x4_splat(*cols);
-                    ab = f32x4_add(ab, f32x4_mul(r, c));
+                    ab = madd_f32x4!(ab, r, c);
                 }
                 FusedKerSpec::Store(tile) => {
                     // 4 rows × 1 col, write each lane to a separate row
@@ -482,7 +505,7 @@ unsafe fn kernel_f32_4x1(mut pnl: *const FusedKerSpec<f32>) -> isize {
                     for i in 0..k {
                         let a_vec = v128_load(a.offset(i as isize));
                         let b_splat = f32x4_splat(*b.offset(i as isize));
-                        ab = f32x4_add(ab, f32x4_mul(a_vec, b_splat));
+                        ab = madd_f32x4!(ab, a_vec, b_splat);
                     }
                 }
             }
@@ -688,8 +711,8 @@ unsafe fn kernel_f32_8x1(mut pnl: *const FusedKerSpec<f32>) -> isize {
                     let r_t = v128_load(p);
                     let r_b = v128_load(p.add(1));
                     let c = f32x4_splat(*cols);
-                    ab_top = f32x4_add(ab_top, f32x4_mul(r_t, c));
-                    ab_bot = f32x4_add(ab_bot, f32x4_mul(r_b, c));
+                    ab_top = madd_f32x4!(ab_top, r_t, c);
+                    ab_bot = madd_f32x4!(ab_bot, r_b, c);
                 }
                 FusedKerSpec::Store(tile) => {
                     // 8 rows × 1 col, write each lane to a separate row
@@ -720,8 +743,8 @@ unsafe fn kernel_f32_8x1(mut pnl: *const FusedKerSpec<f32>) -> isize {
                         let a_t = v128_load(a.offset((2 * i) as isize));
                         let a_b = v128_load(a.offset((2 * i + 1) as isize));
                         let b_splat = f32x4_splat(*b.offset(i as isize));
-                        ab_top = f32x4_add(ab_top, f32x4_mul(a_t, b_splat));
-                        ab_bot = f32x4_add(ab_bot, f32x4_mul(a_b, b_splat));
+                        ab_top = madd_f32x4!(ab_top, a_t, b_splat);
+                        ab_bot = madd_f32x4!(ab_bot, a_b, b_splat);
                     }
                 }
             }
@@ -944,10 +967,10 @@ unsafe fn kernel_f32_16x1(mut pnl: *const FusedKerSpec<f32>) -> isize {
                 FusedKerSpec::AddRowColProducts(rows, cols) => {
                     let p = rows as *const v128;
                     let c = f32x4_splat(*cols);
-                    ab_q0 = f32x4_add(ab_q0, f32x4_mul(v128_load(p), c));
-                    ab_q1 = f32x4_add(ab_q1, f32x4_mul(v128_load(p.add(1)), c));
-                    ab_q2 = f32x4_add(ab_q2, f32x4_mul(v128_load(p.add(2)), c));
-                    ab_q3 = f32x4_add(ab_q3, f32x4_mul(v128_load(p.add(3)), c));
+                    ab_q0 = madd_f32x4!(ab_q0, v128_load(p), c);
+                    ab_q1 = madd_f32x4!(ab_q1, v128_load(p.add(1)), c);
+                    ab_q2 = madd_f32x4!(ab_q2, v128_load(p.add(2)), c);
+                    ab_q3 = madd_f32x4!(ab_q3, v128_load(p.add(3)), c);
                 }
                 FusedKerSpec::Store(tile) => {
                     // 16 rows × 1 col, write each lane to a separate row
@@ -975,10 +998,10 @@ unsafe fn kernel_f32_16x1(mut pnl: *const FusedKerSpec<f32>) -> isize {
                         let a2 = v128_load(a.offset((4 * i + 2) as isize));
                         let a3 = v128_load(a.offset((4 * i + 3) as isize));
                         let bs = f32x4_splat(*b.offset(i as isize));
-                        ab_q0 = f32x4_add(ab_q0, f32x4_mul(a0, bs));
-                        ab_q1 = f32x4_add(ab_q1, f32x4_mul(a1, bs));
-                        ab_q2 = f32x4_add(ab_q2, f32x4_mul(a2, bs));
-                        ab_q3 = f32x4_add(ab_q3, f32x4_mul(a3, bs));
+                        ab_q0 = madd_f32x4!(ab_q0, a0, bs);
+                        ab_q1 = madd_f32x4!(ab_q1, a1, bs);
+                        ab_q2 = madd_f32x4!(ab_q2, a2, bs);
+                        ab_q3 = madd_f32x4!(ab_q3, a3, bs);
                     }
                 }
             }
@@ -1315,14 +1338,14 @@ unsafe fn kernel_f32_32x1(mut pnl: *const FusedKerSpec<f32>) -> isize {
                 FusedKerSpec::AddRowColProducts(rows, cols) => {
                     let p = rows as *const v128;
                     let c = f32x4_splat(*cols);
-                    ab_q0 = f32x4_add(ab_q0, f32x4_mul(v128_load(p), c));
-                    ab_q1 = f32x4_add(ab_q1, f32x4_mul(v128_load(p.add(1)), c));
-                    ab_q2 = f32x4_add(ab_q2, f32x4_mul(v128_load(p.add(2)), c));
-                    ab_q3 = f32x4_add(ab_q3, f32x4_mul(v128_load(p.add(3)), c));
-                    ab_q4 = f32x4_add(ab_q4, f32x4_mul(v128_load(p.add(4)), c));
-                    ab_q5 = f32x4_add(ab_q5, f32x4_mul(v128_load(p.add(5)), c));
-                    ab_q6 = f32x4_add(ab_q6, f32x4_mul(v128_load(p.add(6)), c));
-                    ab_q7 = f32x4_add(ab_q7, f32x4_mul(v128_load(p.add(7)), c));
+                    ab_q0 = madd_f32x4!(ab_q0, v128_load(p), c);
+                    ab_q1 = madd_f32x4!(ab_q1, v128_load(p.add(1)), c);
+                    ab_q2 = madd_f32x4!(ab_q2, v128_load(p.add(2)), c);
+                    ab_q3 = madd_f32x4!(ab_q3, v128_load(p.add(3)), c);
+                    ab_q4 = madd_f32x4!(ab_q4, v128_load(p.add(4)), c);
+                    ab_q5 = madd_f32x4!(ab_q5, v128_load(p.add(5)), c);
+                    ab_q6 = madd_f32x4!(ab_q6, v128_load(p.add(6)), c);
+                    ab_q7 = madd_f32x4!(ab_q7, v128_load(p.add(7)), c);
                 }
                 FusedKerSpec::Store(tile) => {
                     // 32 rows × 1 col, write each lane to a separate row
@@ -1354,14 +1377,14 @@ unsafe fn kernel_f32_32x1(mut pnl: *const FusedKerSpec<f32>) -> isize {
                         let a6 = v128_load(a.offset((8 * i + 6) as isize));
                         let a7 = v128_load(a.offset((8 * i + 7) as isize));
                         let bs = f32x4_splat(*b.offset(i as isize));
-                        ab_q0 = f32x4_add(ab_q0, f32x4_mul(a0, bs));
-                        ab_q1 = f32x4_add(ab_q1, f32x4_mul(a1, bs));
-                        ab_q2 = f32x4_add(ab_q2, f32x4_mul(a2, bs));
-                        ab_q3 = f32x4_add(ab_q3, f32x4_mul(a3, bs));
-                        ab_q4 = f32x4_add(ab_q4, f32x4_mul(a4, bs));
-                        ab_q5 = f32x4_add(ab_q5, f32x4_mul(a5, bs));
-                        ab_q6 = f32x4_add(ab_q6, f32x4_mul(a6, bs));
-                        ab_q7 = f32x4_add(ab_q7, f32x4_mul(a7, bs));
+                        ab_q0 = madd_f32x4!(ab_q0, a0, bs);
+                        ab_q1 = madd_f32x4!(ab_q1, a1, bs);
+                        ab_q2 = madd_f32x4!(ab_q2, a2, bs);
+                        ab_q3 = madd_f32x4!(ab_q3, a3, bs);
+                        ab_q4 = madd_f32x4!(ab_q4, a4, bs);
+                        ab_q5 = madd_f32x4!(ab_q5, a5, bs);
+                        ab_q6 = madd_f32x4!(ab_q6, a6, bs);
+                        ab_q7 = madd_f32x4!(ab_q7, a7, bs);
                     }
                 }
             }
@@ -1972,29 +1995,29 @@ unsafe fn kernel_f32_8x8(mut pnl: *const FusedKerSpec<f32>) -> isize {
                     let clo = v128_load(p);
                     let chi = v128_load(p.add(1));
                     let r0 = f32x4_splat(*rows.add(0));
-                    a0lo = f32x4_add(a0lo, f32x4_mul(r0, clo));
-                    a0hi = f32x4_add(a0hi, f32x4_mul(r0, chi));
+                    a0lo = madd_f32x4!(a0lo, r0, clo);
+                    a0hi = madd_f32x4!(a0hi, r0, chi);
                     let r1 = f32x4_splat(*rows.add(1));
-                    a1lo = f32x4_add(a1lo, f32x4_mul(r1, clo));
-                    a1hi = f32x4_add(a1hi, f32x4_mul(r1, chi));
+                    a1lo = madd_f32x4!(a1lo, r1, clo);
+                    a1hi = madd_f32x4!(a1hi, r1, chi);
                     let r2 = f32x4_splat(*rows.add(2));
-                    a2lo = f32x4_add(a2lo, f32x4_mul(r2, clo));
-                    a2hi = f32x4_add(a2hi, f32x4_mul(r2, chi));
+                    a2lo = madd_f32x4!(a2lo, r2, clo);
+                    a2hi = madd_f32x4!(a2hi, r2, chi);
                     let r3 = f32x4_splat(*rows.add(3));
-                    a3lo = f32x4_add(a3lo, f32x4_mul(r3, clo));
-                    a3hi = f32x4_add(a3hi, f32x4_mul(r3, chi));
+                    a3lo = madd_f32x4!(a3lo, r3, clo);
+                    a3hi = madd_f32x4!(a3hi, r3, chi);
                     let r4 = f32x4_splat(*rows.add(4));
-                    a4lo = f32x4_add(a4lo, f32x4_mul(r4, clo));
-                    a4hi = f32x4_add(a4hi, f32x4_mul(r4, chi));
+                    a4lo = madd_f32x4!(a4lo, r4, clo);
+                    a4hi = madd_f32x4!(a4hi, r4, chi);
                     let r5 = f32x4_splat(*rows.add(5));
-                    a5lo = f32x4_add(a5lo, f32x4_mul(r5, clo));
-                    a5hi = f32x4_add(a5hi, f32x4_mul(r5, chi));
+                    a5lo = madd_f32x4!(a5lo, r5, clo);
+                    a5hi = madd_f32x4!(a5hi, r5, chi);
                     let r6 = f32x4_splat(*rows.add(6));
-                    a6lo = f32x4_add(a6lo, f32x4_mul(r6, clo));
-                    a6hi = f32x4_add(a6hi, f32x4_mul(r6, chi));
+                    a6lo = madd_f32x4!(a6lo, r6, clo);
+                    a6hi = madd_f32x4!(a6hi, r6, chi);
                     let r7 = f32x4_splat(*rows.add(7));
-                    a7lo = f32x4_add(a7lo, f32x4_mul(r7, clo));
-                    a7hi = f32x4_add(a7hi, f32x4_mul(r7, chi));
+                    a7lo = madd_f32x4!(a7lo, r7, clo);
+                    a7hi = madd_f32x4!(a7hi, r7, chi);
                 }
                 FusedKerSpec::Store(tile) => {
                     // 8 rows × 8 cols stores
@@ -2039,29 +2062,29 @@ unsafe fn kernel_f32_8x8(mut pnl: *const FusedKerSpec<f32>) -> isize {
                         let blo = v128_load(b.offset((2 * i) as isize));
                         let bhi = v128_load(b.offset((2 * i + 1) as isize));
                         let s = f32x4_splat(arow[0]);
-                        a0lo = f32x4_add(a0lo, f32x4_mul(s, blo));
-                        a0hi = f32x4_add(a0hi, f32x4_mul(s, bhi));
+                        a0lo = madd_f32x4!(a0lo, s, blo);
+                        a0hi = madd_f32x4!(a0hi, s, bhi);
                         let s = f32x4_splat(arow[1]);
-                        a1lo = f32x4_add(a1lo, f32x4_mul(s, blo));
-                        a1hi = f32x4_add(a1hi, f32x4_mul(s, bhi));
+                        a1lo = madd_f32x4!(a1lo, s, blo);
+                        a1hi = madd_f32x4!(a1hi, s, bhi);
                         let s = f32x4_splat(arow[2]);
-                        a2lo = f32x4_add(a2lo, f32x4_mul(s, blo));
-                        a2hi = f32x4_add(a2hi, f32x4_mul(s, bhi));
+                        a2lo = madd_f32x4!(a2lo, s, blo);
+                        a2hi = madd_f32x4!(a2hi, s, bhi);
                         let s = f32x4_splat(arow[3]);
-                        a3lo = f32x4_add(a3lo, f32x4_mul(s, blo));
-                        a3hi = f32x4_add(a3hi, f32x4_mul(s, bhi));
+                        a3lo = madd_f32x4!(a3lo, s, blo);
+                        a3hi = madd_f32x4!(a3hi, s, bhi);
                         let s = f32x4_splat(arow[4]);
-                        a4lo = f32x4_add(a4lo, f32x4_mul(s, blo));
-                        a4hi = f32x4_add(a4hi, f32x4_mul(s, bhi));
+                        a4lo = madd_f32x4!(a4lo, s, blo);
+                        a4hi = madd_f32x4!(a4hi, s, bhi);
                         let s = f32x4_splat(arow[5]);
-                        a5lo = f32x4_add(a5lo, f32x4_mul(s, blo));
-                        a5hi = f32x4_add(a5hi, f32x4_mul(s, bhi));
+                        a5lo = madd_f32x4!(a5lo, s, blo);
+                        a5hi = madd_f32x4!(a5hi, s, bhi);
                         let s = f32x4_splat(arow[6]);
-                        a6lo = f32x4_add(a6lo, f32x4_mul(s, blo));
-                        a6hi = f32x4_add(a6hi, f32x4_mul(s, bhi));
+                        a6lo = madd_f32x4!(a6lo, s, blo);
+                        a6hi = madd_f32x4!(a6hi, s, bhi);
                         let s = f32x4_splat(arow[7]);
-                        a7lo = f32x4_add(a7lo, f32x4_mul(s, blo));
-                        a7hi = f32x4_add(a7hi, f32x4_mul(s, bhi));
+                        a7lo = madd_f32x4!(a7lo, s, blo);
+                        a7hi = madd_f32x4!(a7hi, s, bhi);
                     }
                 }
             }
@@ -2414,6 +2437,7 @@ mod microbench_dispatch_gemv {
         bench_shape("M=256 k=256", 256, 256, 5_000);
     }
 }
+
 // Relaxed-SIMD activation kernels (f32, FMA path).
 //
 // `f32x4_relaxed_madd(a, b, c)` computes `a * b + c`. On hosts with hardware

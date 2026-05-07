@@ -44,6 +44,7 @@ members = [
     "examples/stable-diffusion",
     "examples/stable-diffusion-3",
     "examples/stable-diffusion-xl",
+    "examples/wasm-model-bench",
 
     "harness/core-proptest-pulse",
     "harness/nnef-inceptionv3",

@@ -1,0 +1,21 @@
+[package]
+name = "wasm-model-bench"
+version = "0.1.0"
+license = "MIT OR Apache-2.0"
+edition = "2024"
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "bench-onnx"
+path = "src/bench_onnx.rs"
+
+[[bin]]
+name = "bench-nnef"
+path = "src/bench_nnef.rs"
+
+[dependencies]
+anyhow.workspace = true
+tract-nnef.workspace = true
+tract-onnx.workspace = true
