@@ -1,0 +1,89 @@
+version 1.0;
+
+extension tract_registry tract_core;
+extension tract_registry tract_transformers;
+extension tract_symbol T;
+extension tract_assert T>=0;
+
+# ex15-streaming-pos-via-matmul — known-failing repro of the
+# blockify rel-pos chunked rewrite when the pos source reaches the
+# rel-pos einsum through a multi-input op instead of a direct
+# `tract_core_external`.  Mimics encoder.p1's pos chain
+# (`pos_table_slice → linearPos → pView0 → xMatmul1`) where
+# `linearPos` is a multi-input matmul.
+#
+# Banded mask (P=2, L=1) so the chunked `pos_slice` start
+# `k·S − (L+1)·k` actually goes negative at `S = 1` (`= −2`).
+#
+# Blockify's `wire_initiator_einsum_streaming_pos` uses
+# `trace_to_source` (single-input chain walk) to find a
+# `tract_core_external` and add it to `PULSE_SESSION_BUFFERED_INPUTS`.
+# When the chain hits a multi-input node the trace bails and the
+# source stays unmarked, so its pulsifier produces a streaming pulse
+# fact (stream=Some, per-pulse `(2T−1).substitute(T, k·S=2)` = 3) for
+# `pos_raw`.  The patch's `pos_slice = Slice(0, 2·S − 4, 2·S + 1)`
+# then routes through the slice pulsifier's streaming-axis branch:
+#
+#     skip = start.substitute(S, 1).to_usize()
+#          = (−2 as i64) cast to usize → 18446744073709551614
+#
+# `PulsedAxisSlice` records that as the per-pulse skip; the model
+# compiles, but `tract run`'s input shape computation panics with an
+# index-out-of-bounds on the wrapped value (libcli/tensor.rs).
+#
+# The encoder.p1 chain hits the same negative-start root cause but on
+# a different downstream path (compile-time `start <= end` failure in
+# `Slice::output_facts` because the upstream `dyn_slice` concretizes
+# `S → 1` first, leaving `pView0` with stream=None instead of
+# stream=Some).  Both manifestations share: the pos chain isn't
+# session-buffered when reached through a multi-input op.
+
+graph network(a, b, c, pos_raw, pos_w) -> (output)
+{
+    a       = tract_core_external(shape = [T, 4],     datum_type = 'f32');
+    b       = tract_core_external(shape = [T, 4],     datum_type = 'f32');
+    c       = tract_core_external(shape = [T, 4],     datum_type = 'f32');
+    pos_raw = tract_core_external(shape = [2*T-1, 4], datum_type = 'f32');
+    # `pos_w` is logically a constant weight, but expressed here as an
+    # external (fed from io.npz) so the test harness stays self-contained
+    # without an on-disk weights file.  The matmul below is what actually
+    # matters: it's a multi-input op blockify's `trace_to_source` can't
+    # walk through.
+    pos_w   = tract_core_external(shape = [4, 4],     datum_type = 'f32');
+
+    pos = matmul(pos_raw, pos_w);   # [2*T-1, 4]
+
+    # ── Content scores: a · bᵀ → [T, T] ────────────────────────────────────
+    content = matmul(a, b, transposeB = true);
+
+    # ── Position scores: a · posᵀ → [T, 2T-1] ──────────────────────────────
+    pos_einsum = matmul(a, pos, transposeB = true);
+
+    # ── Skew trick: [T, 2T-1] → [T, T] ─────────────────────────────────────
+    pos_padded = pad(pos_einsum, padding = [[0, 0], [1, 0]], value = 0.0);
+    pos_view   = reshape(pos_padded, shape = [-1, T]);
+    pos_sliced = slice(pos_view, axes = [0], begin = [1], end = [2*T]);
+    pos_bd     = reshape(pos_sliced, shape = [T, -1]);
+    pos_scores = slice(pos_bd, axes = [1], begin = [0], end = [T]);
+
+    # ── Combined scores ────────────────────────────────────────────────────
+    scores = (content + pos_scores) * 0.5;
+
+    # ── Banded-causal mask (P = 2, L = 1) ──────────────────────────────────
+    # Banding (L > 0) makes the chunked rel-pos slice's `start = k·S − (L+1)·k`
+    # actually go negative at S = 1, exposing the underflow in the slice
+    # pulsifier when the pos source isn't session-buffered.
+    pos_t     = tract_core_range(0, T, step = 1);
+    chunk_id  = pos_t / 2;
+    chunk_row = unsqueeze(chunk_id, axes = [1]);
+    chunk_col = unsqueeze(chunk_id, axes = [0]);
+    diff      = chunk_row - chunk_col;
+    left_ok   = ge(diff, 0);
+    right_ok  = le(diff, 1);
+    in_block  = and(left_ok, right_ok);
+
+    masked = select(in_block, scores, scores * 0.0 + -inf);
+    attn   = softmax(masked, axes = [1]);
+
+    output = matmul(attn, c);
+}
