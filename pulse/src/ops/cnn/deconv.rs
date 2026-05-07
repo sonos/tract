@@ -45,7 +45,19 @@ fn pulsify(
     };
     wire = target.wire_node(format!("{}.mask", node.name), mask, &wire)?;
     wire.push(mapping[&node.inputs[1]]);
-    wire.push(mapping[&node.inputs[2]]);
+    // Feed a zero bias to the per-pulse Deconv. With kernel > stride the
+    // per-pulse output has overlap slots that the bulk Deconv would never
+    // emit; DeconvDelay's overlap-add then double-counts the bias on
+    // those slots. Adding the original bias back after DeconvDelay
+    // guarantees it's added exactly once per output position.
+    let source_bias_fact = source.outlet_fact(node.inputs[2])?.clone();
+    let bias_tensor = source_bias_fact
+        .konst
+        .clone()
+        .context("Deconv bias must be a constant for pulsification")?;
+    let zero_bias = Tensor::zero_dt(bias_tensor.datum_type(), bias_tensor.shape())?;
+    let zero_bias = target.add_const(format!("{}.zero_bias", node.name), zero_bias)?;
+    wire.push(zero_bias);
     wire = target.wire_node(format!("{}.deconv", node.name), pulse_op, &wire)?;
     let overlap = overlap(stream.axis, op);
     let deconv_input_dim = (stream.dim.clone() - 1) * stride + 1;
@@ -91,6 +103,38 @@ fn pulsify(
             wire = target.wire_node(format!("{}.padding.{}", node.name, geo_axis), op, &wire)?;
         }
     }
+
+    // Add the original bias to the now-merged output. See the zero-bias
+    // comment above pulse_op wiring for why this can't be done inside
+    // per-pulse Deconv.
+    let out_shape = target.outlet_fact(wire[0])?.shape.clone();
+    let out_rank = out_shape.rank();
+    let c_axis = op.pool_spec.data_format.shape(out_shape.to_tvec())?.c_axis();
+    let mut reshaped_bias_shape: TVec<usize> = tvec![1; out_rank];
+    reshaped_bias_shape[c_axis] = op.pool_spec.output_channels;
+    // Broadcast the bias to ``(1, ..., C, ..., 1)`` so the post-Deconv
+    // Add is a clean elementwise op. Bulk Deconv accepts both scalar and
+    // rank-1 ``(C,)`` biases (handled by ``wire_reshape_bias_for_bin``);
+    // we mirror that here at build time.
+    let bias_const = if bias_tensor.rank() == 0 {
+        bias_tensor.broadcast_scalar_to_shape(&reshaped_bias_shape)?.into_arc_tensor()
+    } else if bias_tensor.shape() == [op.pool_spec.output_channels] {
+        bias_tensor.clone().into_tensor().into_shape(&reshaped_bias_shape)?.into_arc_tensor()
+    } else if bias_tensor.shape() == &*reshaped_bias_shape {
+        bias_tensor.clone()
+    } else {
+        bail!(
+            "Unexpected Deconv bias shape {:?} for {} output channels",
+            bias_tensor.shape(),
+            op.pool_spec.output_channels
+        );
+    };
+    let bias = target.add_const(format!("{}.bias", node.name), bias_const)?;
+    wire = target.wire_node(
+        format!("{}.add_bias", node.name),
+        crate::model::PulseWrappingOp(Box::new(tract_core::ops::math::add())),
+        &[wire[0], bias],
+    )?;
 
     Ok(Some(wire))
 }
