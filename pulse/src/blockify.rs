@@ -1037,12 +1037,14 @@ fn wire_initiator_multibroadcastto_streaming(
             AxisOp::Move(chunks_axis, chunks_target_axis),
             &[wire],
         )?[0];
-        // Track the broadcast-from-1 axis through the Move.
+        // Track the broadcast-from-1 axis through the Move: dims STRICTLY
+        // between source and target shift by one slot — [target, source)
+        // leftward, (source, target] rightward.
         if chunks_target_axis < chunks_axis {
-            if bcast_axis_now > chunks_target_axis && bcast_axis_now <= chunks_axis {
+            if bcast_axis_now >= chunks_target_axis && bcast_axis_now < chunks_axis {
                 bcast_axis_now += 1;
             }
-        } else if bcast_axis_now >= chunks_axis && bcast_axis_now < chunks_target_axis {
+        } else if bcast_axis_now > chunks_axis && bcast_axis_now <= chunks_target_axis {
             bcast_axis_now = bcast_axis_now.saturating_sub(1);
         }
         chunks_axis = chunks_target_axis;
