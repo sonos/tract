@@ -133,9 +133,11 @@ use crate::ops::diag_gather::DiagGather;
 use std::collections::{BTreeSet, HashMap};
 use tract_core::axes::AxesMapping;
 use tract_core::model::TypedModelPatch;
-use tract_core::ops::array::Slice;
+use tract_core::ops::array::{MultiBroadcastTo, Slice};
+use tract_core::ops::binary::TypedBinOp;
 use tract_core::ops::change_axes::AxisOp;
 use tract_core::ops::einsum::EinSum;
+use tract_core::ops::logic::And;
 use tract_core::ops::nn::{Reduce, Reducer};
 use tract_core::transform::ModelTransform;
 
@@ -359,6 +361,132 @@ fn streaming_positions(fact: &TypedFact, stream_sym: &Symbol) -> TVec<usize> {
         .filter(|(_, d)| d.symbols().contains(stream_sym))
         .map(|(i, _)| i)
         .collect()
+}
+
+/// Detected pad-mask outer-AND pattern, fused at the section level so the
+/// chunked rewrite can side-step the broadcast/transpose entirely.
+///
+/// Source pattern (as emitted by the encoder.p1 export, post-declutter):
+///
+/// ```text
+///     unsqueeze(pad, [a]) → broadcast([..., T_q, T_k]) →─┐
+///                                       │               AND → pad_2d
+///                                       └─ Move(a, b) ──┘
+/// ```
+///
+/// where `pad` is a 1D-or-more tensor with exactly one streaming axis,
+/// the unsqueeze adds the broadcast slot at position `a`, and the
+/// transpose swaps axes `a` and `b` so the AND combines a per-key mask
+/// with a per-query one — yielding `pad_2d[i, j] = pad[i] AND pad[j]`.
+///
+/// The naïve chunked rewrite of this triple breaks on the body AND: the
+/// broadcast and its transpose chunkify with different within-chunk
+/// sizes (broadcast-from-1 → `k`, windowed-streaming → `W = (L+1)·k`),
+/// so the AND can't broadcast-reconcile in the chunked frame.  Treating
+/// the four nodes as a single fused initiator that consumes the 1D
+/// `pad` source directly avoids the issue: split the pad once, take
+/// two views (q-side split-only, k-side windowed), and AND them at the
+/// chunked rank with auto-broadcast.
+struct PadmaskOuterAndPattern {
+    broadcast_id: usize,
+    transpose_id: usize,
+    and_id: usize,
+    pad_source_outlet: OutletId,
+}
+
+fn recognize_padmask_outer_and(
+    model: &TypedModel,
+    sec: &QuadraticSection,
+    broadcast_id: usize,
+    chunk_sym: &Symbol,
+) -> Option<PadmaskOuterAndPattern> {
+    let bcast_node = &model.nodes[broadcast_id];
+    bcast_node.op_as::<MultiBroadcastTo>()?;
+    if bcast_node.inputs.len() != 1 {
+        return None;
+    }
+    let bcast_in_outlet = bcast_node.inputs[0];
+
+    // The broadcast's input must be an unsqueeze (Add) of a non-section,
+    // single-streaming-axis tensor.
+    let unsqueeze_node = &model.nodes[bcast_in_outlet.node];
+    let unsqueeze_axis = match unsqueeze_node.op_as::<AxisOp>()? {
+        AxisOp::Add(at) => *at,
+        _ => return None,
+    };
+    if unsqueeze_node.inputs.len() != 1 {
+        return None;
+    }
+    let pad_source_outlet = unsqueeze_node.inputs[0];
+    let pad_fact = model.outlet_fact(pad_source_outlet).ok()?;
+    if streaming_positions(pad_fact, chunk_sym).len() != 1 {
+        return None;
+    }
+
+    // The broadcast's output streaming axes must be exactly two contiguous
+    // positions, one of which is `unsqueeze_axis` (the broadcast-from-1 slot
+    // that just became streaming).  The OTHER is where the original
+    // streaming axis lands in the broadcast's output.
+    let bcast_out_streaming = streaming_positions(&bcast_node.outputs[0].fact, chunk_sym);
+    if bcast_out_streaming.len() != 2 {
+        return None;
+    }
+    if !bcast_out_streaming.contains(&unsqueeze_axis) {
+        return None;
+    }
+    let stream_axis_in_bcast_out =
+        *bcast_out_streaming.iter().find(|&&p| p != unsqueeze_axis)?;
+
+    // Find the in-section transpose consuming the broadcast.  It must be a
+    // `Move` swapping `unsqueeze_axis` and `stream_axis_in_bcast_out`.
+    let bcast_outlet = OutletId::new(broadcast_id, 0);
+    let mut transpose_id: Option<usize> = None;
+    for s in model.outlet_successors(bcast_outlet) {
+        if !sec.section.contains(&s.node) {
+            continue;
+        }
+        let n = &model.nodes[s.node];
+        if let Some(AxisOp::Move(from, to)) = n.op_as::<AxisOp>() {
+            let pair = ([*from, *to], [unsqueeze_axis, stream_axis_in_bcast_out]);
+            let same = (pair.0[0] == pair.1[0] && pair.0[1] == pair.1[1])
+                || (pair.0[0] == pair.1[1] && pair.0[1] == pair.1[0]);
+            if same {
+                transpose_id = Some(s.node);
+                break;
+            }
+        }
+    }
+    let transpose_id = transpose_id?;
+    let transpose_outlet = OutletId::new(transpose_id, 0);
+
+    // Find the in-section AND that consumes both the broadcast and the
+    // transpose as its two inputs.
+    for s in model.outlet_successors(transpose_outlet) {
+        if !sec.section.contains(&s.node) {
+            continue;
+        }
+        let n = &model.nodes[s.node];
+        let Some(binop) = n.op_as::<TypedBinOp>() else {
+            continue;
+        };
+        if !binop.0.is::<And>() {
+            continue;
+        }
+        if n.inputs.len() != 2 {
+            continue;
+        }
+        let has_bcast = n.inputs.contains(&bcast_outlet);
+        let has_trans = n.inputs.contains(&transpose_outlet);
+        if has_bcast && has_trans {
+            return Some(PadmaskOuterAndPattern {
+                broadcast_id,
+                transpose_id,
+                and_id: s.node,
+                pad_source_outlet,
+            });
+        }
+    }
+    None
 }
 
 /// A connected subgraph of the typed model where every wire has multi-T-axis
@@ -803,6 +931,36 @@ fn build_section_patch(
         chunked.insert(OutletId::new(dg_id, 0), dg_chunked);
         already_wired.insert(nid);
         already_wired.insert(dg_id);
+    }
+
+    // Recognize the pad-mask outer-AND pattern: a streaming
+    // `MultiBroadcastTo` initiator whose output is consumed by both a
+    // `Move` (transpose) and an `And`, with the Move's output also
+    // feeding the same And.  Bypass the broadcast/transpose entirely and
+    // build the chunked pad-2D directly from the 1D pad source — see
+    // `wire_initiator_padmask_outer_and`.
+    for &nid in &sec.initiators {
+        if already_wired.contains(&nid) {
+            continue;
+        }
+        let Some(pat) = recognize_padmask_outer_and(model, sec, nid, chunk_sym) else {
+            continue;
+        };
+        let fused_chunked = wire_initiator_padmask_outer_and(
+            &mut patch,
+            model,
+            &pat,
+            &sec.mask,
+            sec.contracted_axis,
+            chunk_sym,
+            k,
+        )?;
+        chunked.insert(OutletId::new(pat.broadcast_id, 0), fused_chunked);
+        chunked.insert(OutletId::new(pat.transpose_id, 0), fused_chunked);
+        chunked.insert(OutletId::new(pat.and_id, 0), fused_chunked);
+        already_wired.insert(pat.broadcast_id);
+        already_wired.insert(pat.transpose_id);
+        already_wired.insert(pat.and_id);
     }
 
     // ── 1. Initiators ────────────────────────────────────────────────────
@@ -1335,6 +1493,138 @@ fn wire_initiator_multibroadcastto_streaming(
     target_shape[bcast_axis_now] = k.to_dim();
     let bcast = tract_core::ops::array::MultiBroadcastTo { shape: target_shape.into() };
     Ok(patch.wire_node(format!("{}.blockified", node.name), bcast, &[wire])?[0])
+}
+
+/// Fused initiator for the pad-mask outer-AND pattern (see
+/// [`recognize_padmask_outer_and`]).  Skips the broadcast/transpose
+/// entirely and builds the chunked 2D pad-mask directly from the 1D
+/// `pad` source via two views of the same chunk-split — q-side
+/// split-only, k-side windowed — combined with auto-broadcast AND.
+///
+///     tap                           [..., T]              (1D pad — pre-section)
+///     split T → [S, k]              [..., S, k]
+///     ┬── q-side: stays as          [..., S, k]
+///     │              add axis at the bcast output's k-axis position to
+///     │              align broadcast with the AND output frame:
+///     │                              [..., S, k, 1]
+///     └── k-side: WindowOnAxis(L+1, start) + flatten
+///                                    [..., S, k → W=(L+1)·k]
+///                  add axis to align:
+///                                    [..., S, 1, W]
+///     AND(q-side, k-side)            [..., S, k, W]
+///
+/// Where `[..., S, k, W]` matches the chunked frame downstream body ops
+/// expect from a "broadcast + transpose + AND" 2D mask.
+fn wire_initiator_padmask_outer_and(
+    patch: &mut TypedModelPatch,
+    model: &TypedModel,
+    pat: &PadmaskOuterAndPattern,
+    mask: &MaskForm,
+    contracted_axis: usize,
+    chunk_sym: &Symbol,
+    k: i64,
+) -> TractResult<OutletId> {
+    let pad_fact = model.outlet_fact(pat.pad_source_outlet)?;
+    let pad_streaming = streaming_positions(pad_fact, chunk_sym);
+    ensure!(
+        pad_streaming.len() == 1,
+        "padmask outer-AND fused initiator: pad source must have exactly 1 streaming axis"
+    );
+    let pad_stream_axis = pad_streaming[0];
+
+    // The AND's output is what downstream body ops consume; its rank
+    // equals the broadcast's output rank (= unsqueeze rank = pad rank + 1).
+    let and_node = &model.nodes[pat.and_id];
+    let and_out_streaming = streaming_positions(&and_node.outputs[0].fact, chunk_sym);
+    ensure!(
+        and_out_streaming.len() == 2 && and_out_streaming[1] == and_out_streaming[0] + 1,
+        "padmask outer-AND fused initiator: AND output must have two contiguous streaming axes"
+    );
+    // Target chunked-frame layout (matches what the regular path would
+    // emit for the broadcast initiator):
+    //   chunks at and_out_streaming[0]
+    //   k_q   at and_out_streaming[0] + 1   (within-chunk T_q)
+    //   W     at and_out_streaming[0] + 2   (within-chunk T_k, windowed)
+    let chunks_target_axis = and_out_streaming[0];
+
+    // Step 1: tap the 1D pad source.
+    let tapped = patch.tap_model(model, pat.pad_source_outlet)?;
+
+    // Step 2: split the streaming axis into [S, k].  Chunks land at
+    // `pad_stream_axis`, k at `pad_stream_axis + 1`.
+    let split = wire_chunk_split(
+        patch,
+        &format!("{}.padmask_fused", and_node.name),
+        tapped,
+        pad_stream_axis,
+        chunk_sym,
+        k,
+    )?;
+
+    // Step 3: move chunks to `chunks_target_axis` if they aren't already.
+    // After the split the rank is (pad_rank + 1); the target rank for the
+    // q-side wire (before adding the W broadcast slot) is also pad_rank + 1.
+    let q_wire = if pad_stream_axis != chunks_target_axis {
+        patch.wire_node(
+            format!("{}.padmask_fused.q.move_chunks", and_node.name),
+            AxisOp::Move(pad_stream_axis, chunks_target_axis),
+            &[split],
+        )?[0]
+    } else {
+        split
+    };
+
+    // Step 4 (q-side): add the W broadcast slot at chunks_target_axis + 2
+    // (right after the k axis).  Auto-broadcast at the AND will fill it.
+    let q_unsq = patch.wire_node(
+        format!("{}.padmask_fused.q.add_w", and_node.name),
+        AxisOp::Add(chunks_target_axis + 2),
+        &[q_wire],
+    )?[0];
+
+    // Step 5 (k-side): window the chunk axis on the same split tensor.
+    //   [..., S, k, ...] →W→ [..., S, L+1, k, ...] →flatten→ [..., S, W, ...]
+    let window: usize = (mask.upper - mask.lower + 1) as usize;
+    let start = window_start_for(mask, contracted_axis);
+    let dt = patch.outlet_fact(split)?.datum_type;
+    let pad_value = Tensor::zero_scalar_dt(dt)?.into_arc_tensor();
+    let k_windowed = patch.wire_node(
+        format!("{}.padmask_fused.k.window", and_node.name),
+        tract_pulse_opl::ops::WindowOnAxis { axis: pad_stream_axis, window, start, pad_value },
+        &[split],
+    )?[0];
+    // Flatten [L+1, k] (now at pad_stream_axis + 1 .. + 3) to a single W.
+    let from = tvec!(window.to_dim(), k.to_dim());
+    let to = tvec!(((window as i64) * k).to_dim());
+    let k_flat = patch.wire_node(
+        format!("{}.padmask_fused.k.flatten", and_node.name),
+        AxisOp::Reshape(pad_stream_axis + 1, from, to),
+        &[k_windowed],
+    )?[0];
+
+    // Step 6 (k-side): move chunks to chunks_target_axis if needed, then
+    // insert the k_q broadcast slot at chunks_target_axis + 1.
+    let k_moved = if pad_stream_axis != chunks_target_axis {
+        patch.wire_node(
+            format!("{}.padmask_fused.k.move_chunks", and_node.name),
+            AxisOp::Move(pad_stream_axis, chunks_target_axis),
+            &[k_flat],
+        )?[0]
+    } else {
+        k_flat
+    };
+    let k_unsq = patch.wire_node(
+        format!("{}.padmask_fused.k.add_kq", and_node.name),
+        AxisOp::Add(chunks_target_axis + 1),
+        &[k_moved],
+    )?[0];
+
+    // Step 7: AND with auto-broadcast.  Shapes:
+    //   q_unsq: [..., S, k, 1]
+    //   k_unsq: [..., S, 1, W]
+    // → AND broadcasts to [..., S, k, W].
+    let and_op = and_node.op.clone();
+    Ok(patch.wire_node(format!("{}.blockified", and_node.name), and_op, &[q_unsq, k_unsq])?[0])
 }
 
 /// Initiator for a multi-T-axis `uniform_tdim` node — typically the
