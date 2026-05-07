@@ -1045,6 +1045,15 @@ fn build_section_patch(
     }
 
     // ── 4. Boundary merges + shunts ──────────────────────────────────────
+    // The merge collapses [..., S, k, ...] back to [..., k·S, ...].  When
+    // the original outlet's streaming dim is affine in S (e.g. the conv
+    // stack's `1 + (T+6)/8` becomes `1 + k·S` after substitute), an
+    // upstream `affine_chunk_offset` slice trimmed the trailing `c` tokens
+    // before the chunked Reshape; restore them here with a constant-zero
+    // Pad so the post-merge shape matches the original outlet for
+    // `shunt_outside`.  The padded slot is a tail frame pulse couldn't
+    // compute per-pulse anyway and downstream `--drop-partial-pulse`
+    // discards it.
     for (boundary, chunked_form) in shunts {
         let merged = wire_merge_reshape(
             &mut patch,
@@ -1053,10 +1062,65 @@ fn build_section_patch(
             chunk_sym,
             k,
         )?;
+        let merged = wire_affine_tail_pad(&mut patch, model, boundary, merged, chunk_sym, k)?;
         patch.shunt_outside(model, boundary, merged)?;
     }
 
     Ok(patch)
+}
+
+/// If the original boundary outlet's streaming axis is `c + k·S` for some
+/// `c > 0` and the post-merge chunked outlet is `k·S` on the same axis,
+/// pad the chunked outlet with `c` constant-zero frames at the end of the
+/// streaming axis so its shape matches the boundary outlet exactly.  Used
+/// to undo the `affine_chunk_offset` slice the input-side helper inserts
+/// for affine-tail dims (e.g. conv-stack `1 + (T+6)/8`).
+fn wire_affine_tail_pad(
+    patch: &mut TypedModelPatch,
+    model: &TypedModel,
+    boundary: OutletId,
+    merged: OutletId,
+    chunk_sym: &Symbol,
+    k: i64,
+) -> TractResult<OutletId> {
+    let boundary_fact = model.outlet_fact(boundary)?;
+    let merged_fact = patch.outlet_fact(merged)?.clone();
+    if boundary_fact.shape.len() != merged_fact.shape.len() {
+        return Ok(merged);
+    }
+    let mut pad_axis: Option<(usize, i64)> = None;
+    for (axis, (b, m)) in boundary_fact.shape.iter().zip(merged_fact.shape.iter()).enumerate() {
+        if b == m {
+            continue;
+        }
+        // Both must be affine in chunk_sym with the same slope k; the
+        // boundary is `c + k·S`, the merged is `k·S` (= c=0).
+        let b_off = affine_chunk_offset(b, chunk_sym, k);
+        let m_off = affine_chunk_offset(m, chunk_sym, k);
+        match (b_off, m_off) {
+            (Some(bc), Some(0)) if bc > 0 => {
+                if pad_axis.is_some() {
+                    // More than one axis differs in an affine-tail way —
+                    // bail out rather than guess.
+                    return Ok(merged);
+                }
+                pad_axis = Some((axis, bc));
+            }
+            _ => return Ok(merged),
+        }
+    }
+    let Some((axis, c)) = pad_axis else {
+        return Ok(merged);
+    };
+    let mut pads = vec![(0usize, 0usize); merged_fact.shape.len()];
+    pads[axis] = (0, c as usize);
+    let pad_value = Tensor::zero_scalar_dt(merged_fact.datum_type)?.into_arc_tensor();
+    let pad_op = tract_core::ops::array::Pad {
+        pads,
+        mode: tract_core::ops::array::PadMode::Constant(pad_value),
+    };
+    let name = format!("{}.affine_tail_pad", &model.nodes[boundary.node].name);
+    Ok(patch.wire_node(name, pad_op, &[merged])?[0])
 }
 
 // ── Per-role dispatchers ────────────────────────────────────────────────
