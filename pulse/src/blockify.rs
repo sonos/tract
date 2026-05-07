@@ -994,12 +994,6 @@ fn wire_initiator_einsum_streaming_pos(
     let pos_outlet = einsum_node.inputs[1];
     let q_fact = model.outlet_fact(q_outlet)?.clone();
     let pos_fact = model.outlet_fact(pos_outlet)?.clone();
-    ensure!(
-        q_fact.rank() == 2 && pos_fact.rank() == 2,
-        "Streaming rel-pos rewrite only supports rank-2 inputs (got q rank {} pos rank {})",
-        q_fact.rank(),
-        pos_fact.rank()
-    );
 
     let q_streaming = streaming_positions(&q_fact, chunk_sym);
     ensure!(
@@ -1054,11 +1048,30 @@ fn wire_initiator_einsum_streaming_pos(
         &[pos_tapped],
     )?[0];
 
-    // Chunked einsum: [S, k, D] · [(L+2)·k-1, D] → [S, k, (L+2)·k-1]
-    // using "cid, jd -> cij" — pos_slice broadcasts across the chunk axis.
-    let chunked_axes = AxesMapping::from_strs(&["cid", "jd"], &["cij"])?;
-    let chunked_einsum_op =
-        EinSum { axes: chunked_axes, operating_dt: f32::datum_type(), q_params: None };
+    // Chunked einsum: insert a chunk axis 'C' on input 0 (q) at the
+    // streaming-axis position, and on the output at the position
+    // tracked through the original mapping.  Other axes (batch, head,
+    // contracted) keep their letters and shift as needed.  For ex12's
+    // `"id, jd -> ij"` this builds `"Cid, jd -> Cij"`; for encoder.p1's
+    // `"mbk, nbk -> abmn"` it builds `"Cmbk, nbk -> abCmn"`.  Pos
+    // (input 1) is unchanged — its streaming axis just shrunk after
+    // `Slice` and the einsum infers the new length from the input fact.
+    let einsum_op = einsum_node.op_as::<EinSum>().unwrap();
+    let q_stream_axis_in_out = einsum_op
+        .axes
+        .track_axis((InOut::In(0), q_stream_axis), InOut::Out(0))?
+        .context("Streaming rel-pos: q's stream axis doesn't map to a unique output axis")?;
+    let chunk_letter = einsum_op.axes.available_label();
+    let chunked_axes = einsum_op
+        .axes
+        .clone()
+        .with_extra_axis(chunk_letter, InOut::In(0), q_stream_axis)?
+        .with_extra_axis_occurency(chunk_letter, InOut::Out(0), q_stream_axis_in_out)?;
+    let chunked_einsum_op = EinSum {
+        axes: chunked_axes,
+        operating_dt: einsum_op.operating_dt,
+        q_params: einsum_op.q_params.clone(),
+    };
     let chunked_einsum_out = patch.wire_node(
         format!("{}.chunked", einsum_node.name),
         chunked_einsum_op,
