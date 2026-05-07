@@ -434,8 +434,7 @@ fn recognize_padmask_outer_and(
     if !bcast_out_streaming.contains(&unsqueeze_axis) {
         return None;
     }
-    let stream_axis_in_bcast_out =
-        *bcast_out_streaming.iter().find(|&&p| p != unsqueeze_axis)?;
+    let stream_axis_in_bcast_out = *bcast_out_streaming.iter().find(|&&p| p != unsqueeze_axis)?;
 
     // Find the in-section transpose consuming the broadcast.  It must be a
     // `Move` swapping `unsqueeze_axis` and `stream_axis_in_bcast_out`.
@@ -2386,14 +2385,15 @@ fn affine_chunk_offset(dim: &TDim, chunk_sym: &Symbol, k: i64) -> Option<i64> {
 }
 
 /// Wrap a chunked `Reshape(stream_axis, [dim], [chunk_sym, k])` with an
-/// optional leading Slice that trims a trailing affine constant from the
+/// optional leading trim that drops a trailing affine constant from the
 /// streaming dim.  When `dim == k · chunk_sym` exactly, returns the
-/// Reshape only (current behavior).  When `dim == c + k · chunk_sym`
-/// for `c > 0`, inserts `Slice(stream_axis, 0, k·chunk_sym)` first so
-/// the Reshape sees a chunkable input.  In streaming this is a no-op
-/// per pulse (each pulse delivers exactly `k` tokens within `k·chunk_sym`
-/// region); the trimmed `c` tokens correspond to a post-flush tail that
-/// pulse runs don't emit.
+/// Reshape only.  When `dim == c + k · chunk_sym` for `c > 0`, inserts
+/// `AffineChunkTrim(stream_axis, c)` first so both the typed shape
+/// (`[k·chunk_sym]`) and the per-pulse buffer (`[k]`) feeding the
+/// Reshape are clean — a plain `Slice(0, k·chunk_sym)` would handle
+/// the typed side correctly but pulsifies to an identity
+/// `PulsedAxisSlice`, leaving the per-pulse buffer at `c+k` and the
+/// chunked Reshape's pulsifier failing on the size mismatch.
 fn wire_chunk_split(
     patch: &mut TypedModelPatch,
     name: &str,
@@ -2412,7 +2412,11 @@ fn wire_chunk_split(
     {
         wire = patch.wire_node(
             format!("{name}.affine_trim"),
-            Slice::new(stream_axis, 0i64.to_dim(), target.clone()),
+            crate::ops::array::AffineChunkTrim {
+                axis: stream_axis,
+                typed_trim: c as usize,
+                target_per_pulse: k as usize,
+            },
             &[wire],
         )?[0];
     }

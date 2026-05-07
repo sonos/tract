@@ -1,5 +1,6 @@
 use crate::internal::*;
 
+mod affine_trim;
 mod broadcast;
 mod concat;
 mod gather;
@@ -9,4 +10,6 @@ mod range;
 mod reshape;
 mod slice;
 
-register_all_mod!(broadcast, concat, gather, pad, range, reshape, slice);
+pub use affine_trim::AffineChunkTrim;
+
+register_all_mod!(affine_trim, broadcast, concat, gather, pad, range, reshape, slice);
