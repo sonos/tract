@@ -300,3 +300,78 @@ fn deconv2d() {
         .for_each(|(ix, x)| *x = ix as f32);
     proptest_regular_against_pulse(model, 1, input.into_plain_array().unwrap(), 2).unwrap()
 }
+
+// Issue #2203: pulse-mode Deconv with non-zero bias and kernel > stride
+// double-counts the bias in the overlap region. Bulk adds bias once per
+// output slot; the per-pulse Deconv also adds bias to its full
+// ``P*S + (K-1)`` output, and the DeconvDelay overlap-add then sums
+// pulse N's bias-included tail into pulse N+1's bias-included head.
+// Surfaced by Pocket-TTS / Mimi (depthwise ConvTranspose1d, K=32, S=16).
+// Existing ``proptest`` and ``example_*`` cases all use ``bias=0`` (see
+// ``DeconvOp::chain``), which masks the bug.
+
+fn run_issue_2203(group: usize, output_channels: usize, bias: tract_ndarray::Array1<f32>) {
+    let ker_len = 32usize;
+    let stride = 16usize;
+    let pulse = 2usize;
+    let input_len = 8usize;
+    let in_channels_per_group = output_channels / group;
+
+    let mut model = TypedModel::default();
+    let mut fact = f32::fact(&[1, output_channels, input_len]);
+    let s = model.symbols.sym("S");
+    fact.shape.set(2, s.to_dim());
+    let input = model.add_source("a", fact).unwrap();
+    let kernel = tract_ndarray::Array3::from_shape_vec(
+        (output_channels, in_channels_per_group, ker_len),
+        (0..output_channels * in_channels_per_group * ker_len)
+            .map(|i| 0.001_f32 * (i as f32 + 1.0))
+            .collect(),
+    )
+    .unwrap();
+    let deconv = tract_core::ops::cnn::Deconv {
+        pool_spec: PoolSpec {
+            data_format: DataFormat::NCHW,
+            kernel_shape: tvec!(ker_len),
+            padding: PaddingSpec::Explicit(tvec!(0), tvec!(0)),
+            strides: Some(tvec!(stride)),
+            dilations: None,
+            input_channels: output_channels,
+            output_channels,
+        },
+        kernel_format: tract_core::ops::cnn::KernelFormat::OIHW,
+        adjustments: tvec!(0),
+        group,
+    };
+    let kernel_node = model.add_const("kernel", kernel).unwrap();
+    let bias_node = model.add_const("bias", bias).unwrap();
+    let id = model.wire_node("deconv1", deconv, &[input, kernel_node, bias_node]).unwrap()[0];
+    model.select_output_outlets(&[id]).unwrap();
+
+    let input = tract_ndarray::Array3::from_shape_vec(
+        (1, output_channels, input_len),
+        (0..output_channels * input_len).map(|i| 0.1_f32 * (i as f32 + 1.0)).collect(),
+    )
+    .unwrap();
+    proptest_regular_against_pulse(model, pulse as _, input.into_dyn(), 2).unwrap()
+}
+
+#[test]
+fn issue_2203_dense_with_bias_kernel_32_stride_16() {
+    run_issue_2203(1, 8, tract_ndarray::Array1::<f32>::from_elem((8,), 0.5_f32))
+}
+
+#[test]
+fn issue_2203_depthwise_with_bias_kernel_32_stride_16() {
+    // Mimi's actual configuration: depthwise (groups = output_channels),
+    // kernel (G, 1, K) in OIHW.
+    run_issue_2203(
+        8,
+        8,
+        tract_ndarray::Array1::<f32>::from_shape_vec(
+            (8,),
+            (0..8).map(|i| 0.001_f32 * (i as f32 + 1.0)).collect(),
+        )
+        .unwrap(),
+    )
+}
