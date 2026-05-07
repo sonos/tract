@@ -4,8 +4,12 @@ extension tract_registry tract_core;
 extension tract_symbol T;
 extension tract_assert T>=0;
 
-# ex16-affine-residual-then-conv — known-failing repro of the
-# Broadcast-TDim-in-pulse-value issue.
+# ex16-affine-residual-then-conv — was the known-failing repro of
+# the Broadcast-TDim-in-pulse-value issue; now compiles cleanly
+# after Range pulsifier became affine-aware.  Stays as a regression
+# guard for the per-pulse alignment between Pad and Range; pulse
+# numerical output still drops the trailing affine offset element
+# (a separate "trim semantics" issue identical to ex14's).
 #
 # Pattern: a streaming axis whose typed dim is affine in the pulse
 # count (`1 + k·S` after `T → k·S` substitute) ends up with two

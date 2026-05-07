@@ -40,10 +40,44 @@ fn pulsify(
     let start = start.clone().into_tensor();
     let step = step.clone().into_tensor();
 
-    // Per-pulse element count on the stream axis: substitute the stream
-    // symbol in the (full) stream dim by the pulse value.  Matches Source's
-    // pulsification for `[c·S, …]` shapes (per-pulse on axis = `c·pulse`).
-    let per_pulse: usize = stream_dim.clone().substitute(symbol, pulse)?.to_usize()?;
+    // Per-pulse element count on the stream axis.  Two flavours:
+    //
+    //   * Linear `k·S` stream dim:    per_pulse = k · pulse
+    //   * Affine `c + k·S` stream dim with c > 0:
+    //                                 per_pulse = k · pulse
+    //     (drops the leading `c` from the per-pulse view, matching the
+    //     stride-conv-pulsifier convention that absorbs the `c` initial
+    //     frames into Delay state rather than emitting them per pulse —
+    //     see ex16-affine-residual-then-conv for why this matters: a
+    //     stride-conv-stack output with the same affine typed dim would
+    //     otherwise pulsify to `k` while a parallel Range pulsified to
+    //     `c + k`, and any downstream op reconciling the two paths would
+    //     see a `(k)#(c+k)` Broadcast pulse fact that `pulsify_pooled_input`
+    //     and friends can't divide by stride).
+    //
+    // Detect affine offset by extracting the constant term of the stream
+    // dim (substitute symbol → 0).  Slope `k` then comes from
+    // substituting symbol → 1 minus the offset.
+    let zero_dim = 0i64.to_dim();
+    let one_dim = 1i64.to_dim();
+    let offset = stream_dim
+        .clone()
+        .substitute(symbol, &zero_dim)
+        .ok()
+        .and_then(|d| d.to_i64().ok())
+        .unwrap_or(0);
+    let unit_extent =
+        stream_dim.clone().substitute(symbol, &one_dim).ok().and_then(|d| d.to_i64().ok());
+    let pulse_concrete = pulse.to_i64()?;
+    let per_pulse: usize = if offset > 0
+        && let Some(unit_extent) = unit_extent
+        && unit_extent > offset
+    {
+        let slope = unit_extent - offset;
+        (slope * pulse_concrete) as usize
+    } else {
+        stream_dim.clone().substitute(symbol, pulse)?.to_usize()?
+    };
     let pulsed =
         PulsedRange { datum_type, start, step, stream_dim: stream_dim.clone(), pulse: per_pulse };
     target.wire_node(&*node.name, pulsed, &[]).map(Some)

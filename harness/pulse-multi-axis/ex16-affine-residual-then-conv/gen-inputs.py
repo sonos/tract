@@ -14,7 +14,13 @@ rng = np.random.default_rng(16)
 x = rng.standard_normal((T,)).astype(np.float32)
 
 # Reference: pad x with 1 leading zero, add arange(0, 1+T), then
-# stride-1 max_pool with symmetric (1, 1) padding.
+# stride-1 max_pool with symmetric (1, 1) padding.  Full typed
+# output is `1+T` elements; pulse mode emits only `T` of them
+# (drops the trailing affine offset, matching the conv-stack
+# pulse convention) — see the Range pulsifier's affine-aware
+# `per_pulse = slope · pulse` rule.  We compute the full typed
+# reference and slice off the trailing element so the pulse
+# assertion matches.
 x_pad    = np.concatenate([np.zeros(1, dtype=np.float32), x])     # [1+T]
 rng_f32  = np.arange(1 + T, dtype=np.float32)
 combined = x_pad + rng_f32                                        # [1+T]
