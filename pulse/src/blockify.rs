@@ -323,6 +323,35 @@ fn trace_to_source(model: &TypedModel, outlet: OutletId) -> Option<&str> {
     }
 }
 
+/// Collect every `TypedSource` reachable upstream from `outlet` by walking
+/// all input edges (recursively, through multi-input ops too).  Used by
+/// blockify to mark every external feeding a session-buffered subgraph
+/// (e.g. encoder.p1's `pos_table_slice → linearPos → pView0` chain where
+/// the multi-input `linearPos` defeats `trace_to_source`'s single-input
+/// walk).
+fn collect_upstream_sources(model: &TypedModel, outlet: OutletId) -> Vec<&str> {
+    use tract_pulse_opl::tract_core::ops::source::TypedSource;
+    let mut found: Vec<&str> = vec![];
+    let mut stack: Vec<usize> = vec![outlet.node];
+    let mut seen: BTreeSet<usize> = BTreeSet::new();
+    while let Some(nid) = stack.pop() {
+        if !seen.insert(nid) {
+            continue;
+        }
+        let node = &model.nodes[nid];
+        if node.op_is::<TypedSource>() {
+            if !found.iter().any(|s| *s == node.name) {
+                found.push(&node.name);
+            }
+            continue;
+        }
+        for input in &node.inputs {
+            stack.push(input.node);
+        }
+    }
+    found
+}
+
 /// If `einsum_node` is the upstream half of the Transformer-XL "rel-pos
 /// einsum + skew trick" pattern (now folded by `diag_gather_fold` into a
 /// DiagGather), returns the DiagGather node id.
@@ -1281,12 +1310,15 @@ fn wire_initiator_einsum_streaming_pos(
     let q_tapped = patch.tap_model(model, q_outlet)?;
     let pos_tapped = patch.tap_model(model, pos_outlet)?;
 
-    // Mark pos's source as session-buffered.  In pulse mode the rel-pos
-    // table must be fed in full at session start (the static slice we
-    // take below references symbolic absolute pos rows that wouldn't
-    // have arrived under a forward stream).  See
+    // Mark every external feeding the pos chain as session-buffered.
+    // In pulse mode the rel-pos table must be fed in full at session
+    // start (the static slice we take below references symbolic
+    // absolute pos rows that wouldn't have arrived under a forward
+    // stream).  Walk all inputs recursively so multi-input ops in the
+    // pos chain (e.g. encoder.p1's `linearPos = matmul(pos_dyn_slice,
+    // weight)`) don't break the marking.  See
     // `PULSE_SESSION_BUFFERED_INPUTS` for the rationale.
-    if let Some(src_name) = trace_to_source(model, pos_outlet) {
+    for src_name in collect_upstream_sources(model, pos_outlet) {
         if !session_buffered.iter().any(|s| s == src_name) {
             session_buffered.push(src_name.to_string());
         }
