@@ -793,10 +793,58 @@ fn build_section_patch(
             chunk_sym,
             k,
         )?;
+        let merged = wire_affine_tail_pad(&mut patch, model, boundary, merged, chunk_sym, k)?;
         patch.shunt_outside(model, boundary, merged)?;
     }
 
     Ok(patch)
+}
+
+/// Pad the chunked outlet with `c` constant-zero frames to match a
+/// boundary outlet with streaming dim `c + k·S` (vs the merged `k·S`).
+/// Restores the tail `wire_chunk_split` trimmed pre-section.
+fn wire_affine_tail_pad(
+    patch: &mut TypedModelPatch,
+    model: &TypedModel,
+    boundary: OutletId,
+    merged: OutletId,
+    chunk_sym: &Symbol,
+    k: i64,
+) -> TractResult<OutletId> {
+    let boundary_fact = model.outlet_fact(boundary)?;
+    let merged_fact = patch.outlet_fact(merged)?.clone();
+    if boundary_fact.shape.len() != merged_fact.shape.len() {
+        return Ok(merged);
+    }
+    let mut pad_axis: Option<(usize, i64)> = None;
+    for (axis, (b, m)) in boundary_fact.shape.iter().zip(merged_fact.shape.iter()).enumerate() {
+        if b == m {
+            continue;
+        }
+        let b_off = affine_chunk_offset(b, chunk_sym, k);
+        let m_off = affine_chunk_offset(m, chunk_sym, k);
+        match (b_off, m_off) {
+            (Some(bc), Some(0)) if bc > 0 => {
+                if pad_axis.is_some() {
+                    return Ok(merged);
+                }
+                pad_axis = Some((axis, bc));
+            }
+            _ => return Ok(merged),
+        }
+    }
+    let Some((axis, c)) = pad_axis else {
+        return Ok(merged);
+    };
+    let mut pads = vec![(0usize, 0usize); merged_fact.shape.len()];
+    pads[axis] = (0, c as usize);
+    let pad_value = Tensor::zero_scalar_dt(merged_fact.datum_type)?.into_arc_tensor();
+    let pad_op = tract_core::ops::array::Pad {
+        pads,
+        mode: tract_core::ops::array::PadMode::Constant(pad_value),
+    };
+    let name = format!("{}.affine_tail_pad", &model.nodes[boundary.node].name);
+    Ok(patch.wire_node(name, pad_op, &[merged])?[0])
 }
 
 // ── Per-role dispatchers ────────────────────────────────────────────────
