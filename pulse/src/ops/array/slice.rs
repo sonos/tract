@@ -15,10 +15,28 @@ fn pulsify(
     let input = mapping[&node.inputs[0]];
     let fact = target.outlet_fact(input)?.clone();
 
-    // Non-streaming input: the streaming symbol appears only in start/end
-    // (e.g. a static PE table sliced to the current frame count).
-    // Substitute S→pulse to get a concrete slice, wired as a static op.
+    // Non-streaming input: two sub-cases.
+    //
+    //  - Session-buffered input (rel-pos table sliced to the current
+    //    frame count): the input fact's shape *itself* contains the
+    //    streaming symbol, signalling that this tensor is bound once
+    //    per session with concretely-resolved `S`.  Keep the Slice's
+    //    `start`/`end` *symbolic* — they'll evaluate against
+    //    `session.resolved_symbols` at runtime, picking the right
+    //    window for the resolved S.  Substituting S→pulse here would
+    //    pin the slice to the per-pulse chunk count (= 1), which is
+    //    wrong.
+    //
+    //  - Genuinely-static slice (e.g. a precomputed PE table whose
+    //    *value* depends on S only through start/end): same as before,
+    //    substitute S→pulse to concretize.
     if fact.stream.is_none() {
+        let session_buffered = fact.shape.iter().any(|d| d.symbols().contains(symbol));
+        if session_buffered {
+            use crate::model::NonPulsingWrappingOp;
+            let symbolic_op = NonPulsingWrappingOp(Box::new(op.clone()));
+            return target.wire_node(&*node.name, symbolic_op, &[input]).map(Some);
+        }
         let start = op.start.substitute(symbol, pulse)?;
         let end = op.end.substitute(symbol, pulse)?;
         if start.symbols().is_empty() && end.symbols().is_empty() {
