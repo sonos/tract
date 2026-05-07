@@ -251,9 +251,13 @@ pub fn rewrite_sections(
     // fully handle (unknown body op, out-of-range mask form, …) bail
     // out of `build_section_patch` with a specific error: better a
     // clear Blockify failure here than a confusing pulsification
-    // error a few stages later.
+    // error a few stages later.  Each section may also discover
+    // session-buffered inputs (rel-pos tables); aggregate names for the
+    // model property below.
+    let mut session_buffered: Vec<String> = vec![];
     for sec in &sections {
-        let patch = build_section_patch(model, sec, chunk_sym, sec.mask.chunk_size)?;
+        let patch =
+            build_section_patch(model, sec, chunk_sym, sec.mask.chunk_size, &mut session_buffered)?;
         patch.apply(model)?;
     }
 
@@ -264,6 +268,23 @@ pub fn rewrite_sections(
     model
         .properties
         .insert(BLOCKIFY_CHUNK_SIZE.to_string(), tensor0(substitute_multiplier).into_arc_tensor());
+    if !session_buffered.is_empty() {
+        // Merge with any existing list (in case multiple blockify passes run).
+        let mut all = session_buffered;
+        if let Some(prev) = model.properties.get(crate::PULSE_SESSION_BUFFERED_INPUTS)
+            && let Ok(view) = prev.to_plain_array_view::<String>()
+        {
+            for s in view.iter() {
+                if !all.contains(s) {
+                    all.push(s.clone());
+                }
+            }
+        }
+        model.properties.insert(
+            crate::PULSE_SESSION_BUFFERED_INPUTS.to_string(),
+            tensor1(&all).into_arc_tensor(),
+        );
+    }
     Ok(true)
 }
 
@@ -279,6 +300,27 @@ pub fn blockify_output(model: &TypedModel) -> Option<(Symbol, i64)> {
 }
 
 /// Streaming-axis positions on a typed fact.
+/// Walk back through single-input no-op-ish links from `outlet` until we
+/// hit a `TypedSource`, returning its name.  Used by the rel-pos rewrite
+/// to identify the rel-pos table's input name so it can be marked
+/// session-buffered.  Returns None if the outlet doesn't trace to a
+/// single Source (e.g. it comes from a multi-input op or a constant).
+fn trace_to_source(model: &TypedModel, outlet: OutletId) -> Option<&str> {
+    use tract_pulse_opl::tract_core::ops::source::TypedSource;
+    let mut cur = outlet;
+    loop {
+        let node = &model.nodes[cur.node];
+        if node.op_is::<TypedSource>() {
+            return Some(&node.name);
+        }
+        if node.inputs.len() == 1 {
+            cur = node.inputs[0];
+        } else {
+            return None;
+        }
+    }
+}
+
 /// If `einsum_node` is the upstream half of the Transformer-XL "rel-pos
 /// einsum + skew trick" pattern (now folded by `diag_gather_fold` into a
 /// DiagGather), returns the DiagGather node id.
@@ -694,6 +736,7 @@ fn build_section_patch(
     sec: &QuadraticSection,
     chunk_sym: &Symbol,
     k: i64,
+    session_buffered: &mut Vec<String>,
 ) -> TractResult<TypedModelPatch> {
     ensure!(sec.mask.lower <= 0);
     ensure!(sec.mask.upper >= 0);
@@ -750,6 +793,7 @@ fn build_section_patch(
                 &sec.mask,
                 chunk_sym,
                 k,
+                session_buffered,
             )?
         };
         // Both the einsum's outlet and the DiagGather's outlet now point
@@ -984,15 +1028,10 @@ fn wire_initiator_einsum_streaming_pos(
     mask: &MaskForm,
     chunk_sym: &Symbol,
     k: i64,
+    session_buffered: &mut Vec<String>,
 ) -> TractResult<OutletId> {
-    use tract_core::ops::array::{Gather, Range};
-    use tract_core::ops::math;
-
     let l = mask.upper - mask.lower;
-    ensure!(
-        l == 0,
-        "Streaming rel-pos chunked rewrite only supports L=0 (block-diag) for now, got L={l}"
-    );
+    ensure!(l >= 0, "Streaming rel-pos: mask.lower > mask.upper, got {l}");
     ensure!(
         einsum_node.inputs.len() == 2,
         "Streaming rel-pos einsum must have 2 inputs, got {}",
@@ -1027,95 +1066,59 @@ fn wire_initiator_einsum_streaming_pos(
     let q_tapped = patch.tap_model(model, q_outlet)?;
     let pos_tapped = patch.tap_model(model, pos_outlet)?;
 
+    // Mark pos's source as session-buffered.  In pulse mode the rel-pos
+    // table must be fed in full at session start (the static slice we
+    // take below references symbolic absolute pos rows that wouldn't
+    // have arrived under a forward stream).  See
+    // `PULSE_SESSION_BUFFERED_INPUTS` for the rationale.
+    if let Some(src_name) = trace_to_source(model, pos_outlet) {
+        if !session_buffered.iter().any(|s| s == src_name) {
+            session_buffered.push(src_name.to_string());
+        }
+    }
+
     // Chunk-split q on its streaming axis: [T, D] → [S, k, D].
     let q_chunked =
         wire_chunk_split(patch, &einsum_node.name, q_tapped, q_stream_axis, chunk_sym, k)?;
 
-    // Build per-chunk pos indices.  indices[c, j] = (T - k) - c·k + j.
+    // Slice pos to a single static window covering the union of pos rows
+    // any chunk may need.  Per the chunked-DG derivation (extended for
+    // banded masks with L = `mask.upper - mask.lower` left chunks):
+    //
+    //   key absolute = (c - δ)·k + dk'   for δ ∈ [0, L], dk' ∈ [0, k)
+    //   pos index = T - 1 + key - i
+    //             = T - 1 - δ·k + dk' - di
+    //
+    // The per-chunk shift cancels (no `c` in the formula), so all chunks
+    // read from the *same* pos slice `pos[T - (L+1)·k : T + k - 1]` of
+    // length `(L+2)·k - 1`.  The chunked DG below picks the right
+    // diagonal within this slice with constant offset `k-1`.
     let chunks_dim = chunk_sym.to_dim();
-    let t_minus_k = chunks_dim.clone() * k - k;
-    let zero = patch.add_const(
-        format!("{}.idx_zero", einsum_node.name),
-        tensor0(TDim::Val(0)).into_arc_tensor(),
-    )?;
-    let one = patch.add_const(
-        format!("{}.idx_one", einsum_node.name),
-        tensor0(TDim::Val(1)).into_arc_tensor(),
-    )?;
-    let chunks_end = patch.add_const(
-        format!("{}.idx_chunks_end", einsum_node.name),
-        tensor0(chunks_dim.clone()).into_arc_tensor(),
-    )?;
-    let chunks_range_tdim = patch.wire_node(
-        format!("{}.chunks_range", einsum_node.name),
-        Range::new(chunks_dim.clone()),
-        &[zero, chunks_end, one],
-    )?[0];
-    let chunks_range = patch.wire_node(
-        format!("{}.chunks_range_i64", einsum_node.name),
-        tract_core::ops::cast::cast(i64::datum_type()),
-        &[chunks_range_tdim],
-    )?[0];
-    let neg_k =
-        patch.add_const(format!("{}.neg_k", einsum_node.name), tensor0(-k).into_arc_tensor())?;
-    let chunks_neg_k = tract_core::ops::change_axes::wire_with_rank_broadcast(
-        format!("{}.chunks_neg_k", einsum_node.name),
-        &mut *patch,
-        math::mul(),
-        &[chunks_range, neg_k],
-    )?[0];
-    let t_minus_k_tdim = patch.add_const(
-        format!("{}.t_minus_k_tdim", einsum_node.name),
-        tensor0(t_minus_k).into_arc_tensor(),
-    )?;
-    let t_minus_k_i64 = patch.wire_node(
-        format!("{}.t_minus_k_i64", einsum_node.name),
-        tract_core::ops::cast::cast(i64::datum_type()),
-        &[t_minus_k_tdim],
-    )?[0];
-    let chunks_offset = tract_core::ops::change_axes::wire_with_rank_broadcast(
-        format!("{}.chunks_offset", einsum_node.name),
-        &mut *patch,
-        math::add(),
-        &[chunks_neg_k, t_minus_k_i64],
-    )?[0];
-    // [S] → [S, 1] for broadcast.
-    let chunks_offset_2d = patch.wire_node(
-        format!("{}.chunks_offset_2d", einsum_node.name),
-        AxisOp::Add(1),
-        &[chunks_offset],
+    let pos_slice_begin = chunks_dim.clone() * k - (l + 1) * k;
+    let pos_slice_end = chunks_dim * k + (k - 1);
+    let pos_slice = patch.wire_node(
+        format!("{}.pos_slice", einsum_node.name),
+        Slice::new(pos_stream_axis, pos_slice_begin, pos_slice_end),
+        &[pos_tapped],
     )?[0];
 
-    let j_range_vec: Vec<i64> = (0..(2 * k - 1)).collect();
-    let j_range =
-        patch.add_const(format!("{}.j_range", einsum_node.name), rctensor1(&j_range_vec))?;
-    let indices = tract_core::ops::change_axes::wire_with_rank_broadcast(
-        format!("{}.pos_indices", einsum_node.name),
-        &mut *patch,
-        math::add(),
-        &[chunks_offset_2d, j_range],
-    )?[0];
-
-    // Gather per-chunk pos slices: [S, 2k-1, D].
-    let pos_chunked = patch.wire_node(
-        format!("{}.pos_chunked", einsum_node.name),
-        Gather::new(pos_stream_axis),
-        &[pos_tapped, indices],
-    )?[0];
-
-    // Chunked einsum: [S, k, D] · [S, 2k-1, D] → [S, k, 2k-1] using "cid, cjd -> cij".
-    let chunked_axes = AxesMapping::from_strs(&["cid", "cjd"], &["cij"])?;
+    // Chunked einsum: [S, k, D] · [(L+2)·k-1, D] → [S, k, (L+2)·k-1]
+    // using "cid, jd -> cij" — pos_slice broadcasts across the chunk axis.
+    let chunked_axes = AxesMapping::from_strs(&["cid", "jd"], &["cij"])?;
     let chunked_einsum_op =
         EinSum { axes: chunked_axes, operating_dt: f32::datum_type(), q_params: None };
     let chunked_einsum_out = patch.wire_node(
         format!("{}.chunked", einsum_node.name),
         chunked_einsum_op,
-        &[q_chunked, pos_chunked],
+        &[q_chunked, pos_slice],
     )?[0];
 
-    // Chunked DiagGather: offset = k-1, out_len = k. Operates on the last
-    // two axes [k, 2k-1] → [k, k]; result is [S, k, k].
-    let chunked_dg_op = DiagGather { offset: (k - 1).to_dim(), out_len: k.to_dim() };
+    // Chunked DiagGather: offset = k-1 (constant; the Slice already
+    // shifted the absolute pos coordinates), out_len = (L+1)·k (= W,
+    // the attended-key window).  Operates on the last two axes
+    // [k, (L+2)·k-1] → [k, (L+1)·k]; result is [S, k, (L+1)·k].
+    let w = (l + 1) * k;
+    let chunked_dg_op = DiagGather { offset: (k - 1).to_dim(), out_len: w.to_dim() };
     let dg_output = patch.wire_node(
         format!("{}.chunked_dg", dg_node.name),
         chunked_dg_op,

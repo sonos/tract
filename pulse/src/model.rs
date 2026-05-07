@@ -146,25 +146,35 @@ impl PulsedModelExt for PulsedModel {
 
     fn into_typed(self) -> TractResult<TypedModel> {
         let mut typed = tract_core::model::translator::IntoTranslator.translate_model(&self)?;
+        // At least one input must be streaming; auxiliary non-streaming
+        // inputs (sequence-length tensors, session-buffered rel-pos
+        // tables) are allowed and pass through with stream = None.
         ensure!(
-            self.input_outlets()?.iter().all(|o| self.outlet_fact(*o).unwrap().stream.is_some())
+            self.input_outlets()?.iter().any(|o| self.outlet_fact(*o).unwrap().stream.is_some())
         );
+        // Same for outputs: at least one streaming, but allow
+        // auxiliary non-streaming outputs.
         ensure!(
-            self.output_outlets()?.iter().all(|o| self.outlet_fact(*o).unwrap().stream.is_some())
+            self.output_outlets()?.iter().any(|o| self.outlet_fact(*o).unwrap().stream.is_some())
         );
         let delays = tensor1(
             &self
                 .output_outlets()?
                 .iter()
-                .map(|oo| Ok(self.outlet_fact(*oo)?.stream.as_ref().unwrap().delay as _))
+                .map(|oo| {
+                    Ok(self.outlet_fact(*oo)?.stream.as_ref().map(|s| s.delay as i64).unwrap_or(0))
+                })
                 .collect::<TractResult<TVec<i64>>>()?,
         );
         typed.properties.insert("pulse.delay".to_string(), delays.into_arc_tensor());
+        // -1 axis = sentinel for auxiliary (non-streaming) inputs/outputs.
         let input_axes = tensor1(
             &self
                 .input_outlets()?
                 .iter()
-                .map(|oo| Ok(self.outlet_fact(*oo)?.stream.as_ref().unwrap().axis as _))
+                .map(|oo| {
+                    Ok(self.outlet_fact(*oo)?.stream.as_ref().map(|s| s.axis as i64).unwrap_or(-1))
+                })
                 .collect::<TractResult<TVec<i64>>>()?,
         );
         typed.properties.insert("pulse.input_axes".to_string(), input_axes.into_arc_tensor());
@@ -172,7 +182,9 @@ impl PulsedModelExt for PulsedModel {
             &self
                 .output_outlets()?
                 .iter()
-                .map(|oo| Ok(self.outlet_fact(*oo)?.stream.as_ref().unwrap().axis as _))
+                .map(|oo| {
+                    Ok(self.outlet_fact(*oo)?.stream.as_ref().map(|s| s.axis as i64).unwrap_or(-1))
+                })
                 .collect::<TractResult<TVec<i64>>>()?,
         );
         typed.properties.insert("pulse.output_axes".to_string(), output_axes.into_arc_tensor());
@@ -184,7 +196,8 @@ impl PulsedModelExt for PulsedModel {
         let stream_syms: Vec<String> = self
             .input_outlets()?
             .iter()
-            .flat_map(|oo| self.outlet_fact(*oo).unwrap().stream.as_ref().unwrap().dim.symbols())
+            .filter_map(|oo| self.outlet_fact(*oo).unwrap().stream.as_ref())
+            .flat_map(|s| s.dim.symbols())
             .map(|s| s.to_string())
             .collect();
         if let Some(name) = stream_syms.into_iter().next() {
