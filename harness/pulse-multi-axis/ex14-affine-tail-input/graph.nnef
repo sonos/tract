@@ -1,0 +1,57 @@
+version 1.0;
+
+extension tract_registry tract_core;
+extension tract_symbol T;
+extension tract_assert T>=0;
+
+# ex14-affine-tail-input — known-failing repro of pulse-mode handling
+# of affine-tail streaming inputs (encoder.p1's `1 + (T+6)/8`
+# post-conv-stack pattern).
+#
+# A streaming source with shape `1 + T` (affine offset c=1, slope k=2)
+# feeds into a block-diagonal section (ex01-style reduce).  After
+# `T → 2·S` substitute, the streaming dim becomes `1 + 2·S`, whose
+# per-pulse value computed by `from_tensor_fact_pulse` is
+# `(1 + 2·S).substitute(S, 1) = 3` (not 2).
+#
+# Blockify's `wire_chunk_split` inserts an `affine_trim Slice(0, 2·S)`
+# at typed level so the chunked Reshape `[2·S] → [S, 2]` sees a clean
+# `2·S` input.  At pulse-fact level the slice pulsifies to
+# `PulsedAxisSlice` (identity at runtime — only updates `stream.dim`),
+# leaving the per-pulse buffer at 3.  The chunked Reshape then
+# operates on the wrong per-pulse element count, and the resulting
+# block-diag section computes incorrect outputs at the chunk
+# boundary.  Pulse compilation succeeds; numerical output diverges
+# from the batch reference.
+#
+# Same root cause as encoder.p1's q/k/v/pad chunk-split per-pulse
+# mismatch (where a similar chain bottoms out as a compile-time
+# `Incompatible reshape` rather than a numerical divergence,
+# depending on op layout).  Smallest possible scale (T=4, k=2, c=1).
+
+graph network(a, b) -> (output)
+{
+    # External inputs sized to the post-affine streaming dim so the
+    # source's pulse fact comes from `from_tensor_fact_pulse`
+    # (per-pulse = typed.substitute(stream_sym, pulse) = 1+2*1 = 3),
+    # matching the encoder's Range/LT-derived padmask source rather
+    # than a Pad-derived one (which would absorb the offset into
+    # Delay+state and break the parallel path with Broadcast TDims).
+    a = tract_core_external(shape = [1+T, 4], datum_type = 'f32');
+    b = tract_core_external(shape = [1+T, 4], datum_type = 'f32');
+
+    scores = tract_core_einsum([a, b], expr = "id,jd->ij", acc = "f32");
+
+    # Block-diagonal mask over the [1+T, 1+T] score matrix.
+    pos      = tract_core_range(0, tract_core_shape_of(a)[0], step = 1);
+    chunk_id = pos / 2;
+    chunk_r  = unsqueeze(chunk_id, axes = [1]);
+    chunk_c  = unsqueeze(chunk_id, axes = [0]);
+    same_ch  = eq(chunk_r, chunk_c);
+
+    mask_f32 = tract_core_cast(same_ch, to = 'f32');
+    masked   = mul(scores, mask_f32);
+
+    reduced = sum_reduce(masked, axes = [0]);
+    output  = squeeze(reduced, axes = [0]);
+}
