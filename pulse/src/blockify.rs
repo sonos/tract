@@ -1589,7 +1589,7 @@ fn wire_body(
     let output_facts = node.op.output_facts(&in_refs)?;
     let out_refs: TVec<&TypedFact> = output_facts.iter().collect();
     let am = node.op.axes_mapping(&in_refs, &out_refs)?;
-    for (slot, axis) in chunk_input_axes {
+    for &(slot, axis) in &chunk_input_axes {
         let tracked = am.track_axis((InOut::In(slot), axis), InOut::Out(0))?;
         ensure!(
             tracked.is_some(),
@@ -1599,21 +1599,37 @@ fn wire_body(
     }
 
     // Some body ops carry an explicit axis or axes parameter (Softmax,
-    // Reduce, …) whose values are positions in the *original* rank.
-    // The chunk axis is inserted at position 0 in the chunked frame, so
-    // every original axis shifts right by one.  Translate accordingly.
-    let chunked_op = translate_body_op_axes(node.op.as_ref());
+    // AxisOp::Move/Add/Rm, …) whose values are positions in the *original*
+    // rank.  The chunk axis is inserted at the chunked input's chunk
+    // position; every original axis at or beyond that position shifts
+    // right by one.  Translate accordingly.  When inputs disagree on the
+    // chunk position we punt (no consistent chunk_pos to translate
+    // against); that case shouldn't arise in a valid section.
+    let chunk_pos = chunk_input_axes.iter().map(|&(_, ax)| ax).next();
+    if let Some(cp) = chunk_pos {
+        ensure!(
+            chunk_input_axes.iter().all(|&(_, ax)| ax == cp),
+            "Body op {node}: chunked inputs disagree on chunk axis position {chunk_input_axes:?}"
+        );
+    }
+    let chunked_op = translate_body_op_axes(node.op.as_ref(), chunk_pos);
     Ok(patch.wire_node(&*node.name, chunked_op, &new_inputs)?[0])
 }
 
 /// Rewrite an op's axis/axes parameters for the chunked frame, where
-/// the chunk axis sits at position 0 and every original axis has
-/// shifted right by one.  Currently handles `Softmax`; other axis-
-/// bearing ops fall through unchanged.
-fn translate_body_op_axes(op: &dyn TypedOp) -> Box<dyn TypedOp> {
+/// the chunk axis was inserted at `chunk_pos` (taken from the chunked
+/// input's streaming axis position).  Original axes at or beyond
+/// `chunk_pos` shift right by one; axes strictly before it stay put.
+/// Handles `Softmax`, `AxisOp::Move/Add/Rm`; other axis-bearing ops
+/// fall through unchanged.
+fn translate_body_op_axes(op: &dyn TypedOp, chunk_pos: Option<usize>) -> Box<dyn TypedOp> {
     use tract_core::ops::nn::{Softmax, SoftmaxKind};
+    let shift = |a: usize| match chunk_pos {
+        Some(cp) => chunked_axis_index(a, cp),
+        None => a,
+    };
     if let Some(softmax) = op.downcast_ref::<Softmax>() {
-        let new_axes: TVec<usize> = softmax.axes.iter().map(|&a| a + 1).collect();
+        let new_axes: TVec<usize> = softmax.axes.iter().map(|&a| shift(a)).collect();
         let new_softmax = match &softmax.kind {
             SoftmaxKind::Softmax(exp) => {
                 Softmax::new(new_axes, softmax.quant_output_dt, SoftmaxKind::Softmax(*exp))
@@ -1623,6 +1639,25 @@ fn translate_body_op_axes(op: &dyn TypedOp) -> Box<dyn TypedOp> {
             }
         };
         return Box::new(new_softmax);
+    }
+    if let Some(ax_op) = op.downcast_ref::<AxisOp>() {
+        // `Add(at)` inserts a new axis *before* the original position `at`.
+        // We want the new axis to land in the same broadcast slot relative
+        // to the original tensor, which means it stays at `at` when
+        // `at <= chunk_pos` (placed before the chunk axis) and shifts +1
+        // otherwise.  Move/Rm name existing axes, so their parameters
+        // translate via `chunked_axis_index` like any other label.
+        let add_shift = |a: usize| match chunk_pos {
+            Some(cp) if a > cp => a + 1,
+            _ => a,
+        };
+        let translated = match ax_op {
+            AxisOp::Move(from, to) => AxisOp::Move(shift(*from), shift(*to)),
+            AxisOp::Add(at) => AxisOp::Add(add_shift(*at)),
+            AxisOp::Rm(at) => AxisOp::Rm(shift(*at)),
+            other => other.clone(),
+        };
+        return Box::new(translated);
     }
     tract_core::dyn_clone::clone_box(op)
 }
