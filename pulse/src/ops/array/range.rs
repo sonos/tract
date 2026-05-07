@@ -40,10 +40,26 @@ fn pulsify(
     let start = start.clone().into_tensor();
     let step = step.clone().into_tensor();
 
-    // Per-pulse element count on the stream axis: substitute the stream
-    // symbol in the (full) stream dim by the pulse value.  Matches Source's
-    // pulsification for `[c·S, …]` shapes (per-pulse on axis = `c·pulse`).
-    let per_pulse: usize = stream_dim.clone().substitute(symbol, pulse)?.to_usize()?;
+    // Per-pulse element count on the stream axis = slope (coefficient of
+    // the streaming symbol) × pulse, NOT the full evaluated length at the
+    // first pulse. For `stream_dim = c·S + k` (e.g. an arange over the
+    // post-upsample length where the convtr's kernel-stride window
+    // adds a constant tail `k`), the data path downstream emits `c·pulse`
+    // new frames per pulse with the constant `k` absorbed into the
+    // streaming state. Range must match that to keep the stream-axis dim
+    // consistent at elementwise meet points (otherwise the constant `k`
+    // surfaces as `Broadcast(c·pulse, c·pulse + k)` and downstream
+    // pulse-divisibility checks bail).
+    //
+    // `guess_slope` returns `(num, den)` for the rational slope; we
+    // require integer slopes (den == 1) — Range over a fractional-slope
+    // stream dim doesn't have a single per-pulse count.
+    let (slope_num, slope_den) = stream_dim.guess_slope(symbol);
+    rule_if!(slope_num > 0 && slope_den == 1);
+    let pulse_int = pulse.to_usize()?;
+    let per_pulse: usize = (slope_num as usize).checked_mul(pulse_int).ok_or_else(|| {
+        format_err!("Range pulsification: per-pulse overflow ({}*{})", slope_num, pulse_int)
+    })?;
     let pulsed =
         PulsedRange { datum_type, start, step, stream_dim: stream_dim.clone(), pulse: per_pulse };
     target.wire_node(&*node.name, pulsed, &[]).map(Some)
