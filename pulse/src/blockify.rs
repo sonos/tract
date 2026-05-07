@@ -728,9 +728,30 @@ fn build_section_patch(
             continue;
         };
         let dg_node = &model.nodes[dg_id];
-        let dg_op = dg_node.op_as::<DiagGather>().unwrap();
-        let dg_chunked =
-            wire_initiator_diag_gather(&mut patch, model, dg_node, dg_op, &sec.mask, chunk_sym, k)?;
+        // Two flavours of the einsum→DiagGather pattern:
+        //   - Constant rel-pos table (e.g. ex14): the einsum's output
+        //     `[T, R]` has only the T axis streaming (R is a fixed
+        //     constant from the model export).  `wire_initiator_diag_gather`
+        //     handles this case directly.
+        //   - Streaming rel-pos table (ex12, encoder.p1): the einsum's
+        //     output `[T, 2T-1]` has both axes streaming.  Needs per-chunk
+        //     pos slicing — `wire_initiator_einsum_streaming_pos`.
+        let dg_in_fact = model.outlet_fact(dg_node.inputs[0])?;
+        let dg_in_streaming = streaming_positions(dg_in_fact, chunk_sym);
+        let dg_chunked = if dg_in_streaming.len() == 1 {
+            let dg_op = dg_node.op_as::<DiagGather>().unwrap();
+            wire_initiator_diag_gather(&mut patch, model, dg_node, dg_op, &sec.mask, chunk_sym, k)?
+        } else {
+            wire_initiator_einsum_streaming_pos(
+                &mut patch,
+                model,
+                einsum_node,
+                dg_node,
+                &sec.mask,
+                chunk_sym,
+                k,
+            )?
+        };
         // Both the einsum's outlet and the DiagGather's outlet now point
         // at the same chunked outlet.  Downstream consumers in the
         // section will pick whichever they actually consume.
@@ -932,6 +953,175 @@ fn wire_initiator_diag_gather(
     let offset = t_max - 1 - l * k;
     let chunked_op = DiagGather { offset: offset.to_dim(), out_len: w.to_dim() };
     Ok(patch.wire_node(format!("{}.blockified", node.name), chunked_op, &[chunked])?[0])
+}
+
+/// Fused initiator for the streaming-rel-pos case: `pos_raw = einsum(q, pos)`
+/// followed by `DiagGather`, where `pos` itself has a streaming axis (the
+/// `2T-1` rel-pos table).  The constant-pos variant
+/// (`wire_initiator_diag_gather`) doesn't apply here — its `r.to_i64()`
+/// check fails because the rel-pos axis is symbolic.  Instead we:
+///
+///   1. Tap `q` and `pos` from outside the section.
+///   2. Chunk-split `q` on its (single) streaming axis: `[..., T, D] → [..., S, k, D]`.
+///   3. Build per-chunk pos indices `[S, 2k-1]` of values `T - (c+1)·k + j`
+///      using `Range + arithmetic`.
+///   4. `Gather(pos, indices, axis=0)` → per-chunk pos slices `[S, 2k-1, D]`.
+///   5. Chunked einsum `q_chunked · pos_chunked → [S, k, 2k-1]`.
+///   6. Chunked DiagGather (constant offset `k-1`, `out_len = k`)
+///      → `[S, k, k]`, the chunked equivalent of the original DG output.
+///
+/// Only block-diagonal masks (`L = 0`) are supported here for now;
+/// banded variants need a wider per-chunk window (`(L+2)·k - 1` instead
+/// of `2·k - 1`) and a slightly different DG offset.  Only 2D einsum
+/// signatures (`"id, jd -> ij"`) are supported; encoder.p1's higher-rank
+/// `"bnid, bnjd -> bnij"` (with batch + head dims) needs the same code
+/// generalised over the leading non-streaming axes.
+fn wire_initiator_einsum_streaming_pos(
+    patch: &mut TypedModelPatch,
+    model: &TypedModel,
+    einsum_node: &TypedNode,
+    dg_node: &TypedNode,
+    mask: &MaskForm,
+    chunk_sym: &Symbol,
+    k: i64,
+) -> TractResult<OutletId> {
+    use tract_core::ops::array::{Gather, Range};
+    use tract_core::ops::math;
+
+    let l = mask.upper - mask.lower;
+    ensure!(
+        l == 0,
+        "Streaming rel-pos chunked rewrite only supports L=0 (block-diag) for now, got L={l}"
+    );
+    ensure!(
+        einsum_node.inputs.len() == 2,
+        "Streaming rel-pos einsum must have 2 inputs, got {}",
+        einsum_node.inputs.len()
+    );
+
+    let q_outlet = einsum_node.inputs[0];
+    let pos_outlet = einsum_node.inputs[1];
+    let q_fact = model.outlet_fact(q_outlet)?.clone();
+    let pos_fact = model.outlet_fact(pos_outlet)?.clone();
+    ensure!(
+        q_fact.rank() == 2 && pos_fact.rank() == 2,
+        "Streaming rel-pos rewrite only supports rank-2 inputs (got q rank {} pos rank {})",
+        q_fact.rank(),
+        pos_fact.rank()
+    );
+
+    let q_streaming = streaming_positions(&q_fact, chunk_sym);
+    ensure!(
+        q_streaming.len() == 1,
+        "Streaming rel-pos: q-side must have a single streaming axis, got {q_streaming:?}"
+    );
+    let q_stream_axis = q_streaming[0];
+
+    let pos_streaming = streaming_positions(&pos_fact, chunk_sym);
+    ensure!(
+        pos_streaming.len() == 1,
+        "Streaming rel-pos: pos-side must have a single streaming axis, got {pos_streaming:?}"
+    );
+    let pos_stream_axis = pos_streaming[0];
+
+    let q_tapped = patch.tap_model(model, q_outlet)?;
+    let pos_tapped = patch.tap_model(model, pos_outlet)?;
+
+    // Chunk-split q on its streaming axis: [T, D] → [S, k, D].
+    let q_chunked =
+        wire_chunk_split(patch, &einsum_node.name, q_tapped, q_stream_axis, chunk_sym, k)?;
+
+    // Build per-chunk pos indices.  indices[c, j] = (T - k) - c·k + j.
+    let chunks_dim = chunk_sym.to_dim();
+    let t_minus_k = chunks_dim.clone() * k - k;
+    let zero = patch.add_const(
+        format!("{}.idx_zero", einsum_node.name),
+        tensor0(TDim::Val(0)).into_arc_tensor(),
+    )?;
+    let one = patch.add_const(
+        format!("{}.idx_one", einsum_node.name),
+        tensor0(TDim::Val(1)).into_arc_tensor(),
+    )?;
+    let chunks_end = patch.add_const(
+        format!("{}.idx_chunks_end", einsum_node.name),
+        tensor0(chunks_dim.clone()).into_arc_tensor(),
+    )?;
+    let chunks_range_tdim = patch.wire_node(
+        format!("{}.chunks_range", einsum_node.name),
+        Range::new(chunks_dim.clone()),
+        &[zero, chunks_end, one],
+    )?[0];
+    let chunks_range = patch.wire_node(
+        format!("{}.chunks_range_i64", einsum_node.name),
+        tract_core::ops::cast::cast(i64::datum_type()),
+        &[chunks_range_tdim],
+    )?[0];
+    let neg_k =
+        patch.add_const(format!("{}.neg_k", einsum_node.name), tensor0(-k).into_arc_tensor())?;
+    let chunks_neg_k = tract_core::ops::change_axes::wire_with_rank_broadcast(
+        format!("{}.chunks_neg_k", einsum_node.name),
+        &mut *patch,
+        math::mul(),
+        &[chunks_range, neg_k],
+    )?[0];
+    let t_minus_k_tdim = patch.add_const(
+        format!("{}.t_minus_k_tdim", einsum_node.name),
+        tensor0(t_minus_k).into_arc_tensor(),
+    )?;
+    let t_minus_k_i64 = patch.wire_node(
+        format!("{}.t_minus_k_i64", einsum_node.name),
+        tract_core::ops::cast::cast(i64::datum_type()),
+        &[t_minus_k_tdim],
+    )?[0];
+    let chunks_offset = tract_core::ops::change_axes::wire_with_rank_broadcast(
+        format!("{}.chunks_offset", einsum_node.name),
+        &mut *patch,
+        math::add(),
+        &[chunks_neg_k, t_minus_k_i64],
+    )?[0];
+    // [S] → [S, 1] for broadcast.
+    let chunks_offset_2d = patch.wire_node(
+        format!("{}.chunks_offset_2d", einsum_node.name),
+        AxisOp::Add(1),
+        &[chunks_offset],
+    )?[0];
+
+    let j_range_vec: Vec<i64> = (0..(2 * k - 1)).collect();
+    let j_range =
+        patch.add_const(format!("{}.j_range", einsum_node.name), rctensor1(&j_range_vec))?;
+    let indices = tract_core::ops::change_axes::wire_with_rank_broadcast(
+        format!("{}.pos_indices", einsum_node.name),
+        &mut *patch,
+        math::add(),
+        &[chunks_offset_2d, j_range],
+    )?[0];
+
+    // Gather per-chunk pos slices: [S, 2k-1, D].
+    let pos_chunked = patch.wire_node(
+        format!("{}.pos_chunked", einsum_node.name),
+        Gather::new(pos_stream_axis),
+        &[pos_tapped, indices],
+    )?[0];
+
+    // Chunked einsum: [S, k, D] · [S, 2k-1, D] → [S, k, 2k-1] using "cid, cjd -> cij".
+    let chunked_axes = AxesMapping::from_strs(&["cid", "cjd"], &["cij"])?;
+    let chunked_einsum_op =
+        EinSum { axes: chunked_axes, operating_dt: f32::datum_type(), q_params: None };
+    let chunked_einsum_out = patch.wire_node(
+        format!("{}.chunked", einsum_node.name),
+        chunked_einsum_op,
+        &[q_chunked, pos_chunked],
+    )?[0];
+
+    // Chunked DiagGather: offset = k-1, out_len = k. Operates on the last
+    // two axes [k, 2k-1] → [k, k]; result is [S, k, k].
+    let chunked_dg_op = DiagGather { offset: (k - 1).to_dim(), out_len: k.to_dim() };
+    let dg_output = patch.wire_node(
+        format!("{}.chunked_dg", dg_node.name),
+        chunked_dg_op,
+        &[chunked_einsum_out],
+    )?[0];
+    Ok(dg_output)
 }
 
 /// Initiator for `MultiBroadcastTo` — the `select(mask, scores, -inf)`
