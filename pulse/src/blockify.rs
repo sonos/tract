@@ -132,7 +132,6 @@ use crate::internal::*;
 use std::collections::{BTreeSet, HashMap};
 use tract_core::axes::AxesMapping;
 use tract_core::model::TypedModelPatch;
-use tract_core::ops::array::Slice;
 use tract_core::ops::binary::TypedBinOp;
 use tract_core::ops::change_axes::AxisOp;
 use tract_core::ops::einsum::EinSum;
@@ -1954,14 +1953,8 @@ fn affine_chunk_offset(dim: &TDim, chunk_sym: &Symbol, k: i64) -> Option<i64> {
 }
 
 /// Wrap a chunked `Reshape(stream_axis, [dim], [chunk_sym, k])` with an
-/// optional leading Slice that trims a trailing affine constant from the
-/// streaming dim.  When `dim == k · chunk_sym` exactly, returns the
-/// Reshape only (current behavior).  When `dim == c + k · chunk_sym`
-/// for `c > 0`, inserts `Slice(stream_axis, 0, k·chunk_sym)` first so
-/// the Reshape sees a chunkable input.  In streaming this is a no-op
-/// per pulse (each pulse delivers exactly `k` tokens within `k·chunk_sym`
-/// region); the trimmed `c` tokens correspond to a post-flush tail that
-/// pulse runs don't emit.
+/// `AffineChunkTrim` when the input dim is `c + k · chunk_sym` for
+/// `c > 0`, dropping the trailing `c` tokens so the Reshape sees `k·S`.
 fn wire_chunk_split(
     patch: &mut TypedModelPatch,
     name: &str,
@@ -1980,7 +1973,11 @@ fn wire_chunk_split(
     {
         wire = patch.wire_node(
             format!("{name}.affine_trim"),
-            Slice::new(stream_axis, 0i64.to_dim(), target.clone()),
+            crate::ops::array::AffineChunkTrim {
+                axis: stream_axis,
+                typed_trim: c as usize,
+                target_per_pulse: k as usize,
+            },
             &[wire],
         )?[0];
     }
