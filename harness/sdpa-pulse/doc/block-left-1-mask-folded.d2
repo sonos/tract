@@ -1,0 +1,56 @@
+direction: down
+
+# HISTORICAL: block-left-1-mask  —  graph as it would look after the (now deleted)
+# FoldWindowAttention rewrite pass.  FoldWindowAttention detected Iff(chunk_window_mask)
+# → Softmax → EinSum and rewrote to bounded-window chunk-layout attention, eliminating
+# the entire mask subgraph.  This pass has been removed; ex04 now uses ChunkWindowMask
+# + binary pulsifier instead.  This diagram is kept for historical reference only.
+# S = total tokens, C = S/P chunks, P=2, Dh=4, left_chunks=1.
+
+qkv: "qkv  [S, 12]" { shape: oval }
+
+q: "Slice  q\n[S, 4]" { shape: rectangle }
+k: "Slice  k\n[S, 4]" { shape: rectangle }
+v: "Slice  v\n[S, 4]" { shape: rectangle }
+
+qkv -> q
+qkv -> k
+qkv -> v
+
+q_c: "Reshape  [S] → [S/P, P]\nq_c  [C, 2, 4]" { shape: rectangle }
+k_c: "Reshape  [S] → [S/P, P]\nk_c  [C, 2, 4]" { shape: rectangle }
+v_c: "Reshape  [S] → [S/P, P]\nv_c  [C, 2, 4]" { shape: rectangle }
+
+q -> q_c
+k -> k_c
+v -> v_c
+
+k_pad:  "Pad  axis=0, before=1\n[C+1, 2, 4]" { shape: rectangle }
+k_prev: "Slice  end=C\nk_prev  [C, 2, 4]" { shape: rectangle }
+k_c -> k_pad -> k_prev
+
+v_pad:  "Pad  axis=0, before=1\n[C+1, 2, 4]" { shape: rectangle }
+v_prev: "Slice  end=C\nv_prev  [C, 2, 4]" { shape: rectangle }
+v_c -> v_pad -> v_prev
+
+k_ctx: "Concat  axis=1\nk_ctx  [C, 4, 4]" { shape: rectangle }
+k_prev -> k_ctx
+k_c    -> k_ctx
+
+v_ctx: "Concat  axis=1\nv_ctx  [C, 4, 4]" { shape: rectangle }
+v_prev -> v_ctx
+v_c    -> v_ctx
+
+scores_c: "EinSum  cpd,cld->cpl\nscores_c  [C, 2, 4]" { shape: rectangle }
+q_c   -> scores_c
+k_ctx -> scores_c
+
+attn_c: "Softmax  axis=2\nattn_c  [C, 2, 4]" { shape: rectangle }
+scores_c -> attn_c
+
+out_c: "EinSum  cpl,cld->cpd\nout_c  [C, 2, 4]" { shape: rectangle }
+attn_c -> out_c
+v_ctx  -> out_c
+
+output: "Reshape  [S/P, P] → [S]\noutput  [S, 4]" { shape: rectangle }
+out_c -> output

@@ -1,0 +1,26 @@
+direction: down
+
+# block-l-eq-p  —  pulsed graph  (pulse = 1 chunk)
+# Each pulse is one independent chunk.  No cross-pulse state — no Delay ops.
+# All ops are PulseWrappingOp.  Streaming axis = 0 throughout.
+
+qkv: "qkv  [1, 6, 8]\nstream axis=0  dim=S" { shape: oval }
+
+q: "Slice  q\n[1, 2, 8]" { shape: rectangle }
+k: "Slice  k\n[1, 2, 8]" { shape: rectangle }
+v: "Slice  v\n[1, 2, 8]" { shape: rectangle }
+
+qkv -> q: "chunk c"
+qkv -> k: "chunk c"
+qkv -> v: "chunk c"
+
+scores: "EinSum  cpd,cqd->cpq\nscores  [1, 2, 2]" { shape: rectangle }
+q -> scores: "chunk c"
+k -> scores: "chunk c"
+
+attn: "Softmax  axis=2\nattn  [1, 2, 2]" { shape: rectangle }
+scores -> attn: "chunk c"
+
+output: "EinSum  cpq,cqd->cpd\noutput  [1, 2, 8]" { shape: rectangle }
+attn -> output: "chunk c"
+v    -> output: "chunk c"

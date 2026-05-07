@@ -1,0 +1,53 @@
+direction: down
+
+# HISTORICAL: block-left-1-mask  —  pulsed graph as it would look when the (now deleted)
+# FoldWindowAttention pass had already rewritten the batch graph to chunk-layout attention.
+# The actual pulsed graph for ex04 now retains the flat T×T attention structure and uses
+# ChunkWindowMask + binary pulsifier instead of fold/unfold/delay/concat.
+# Kept for historical reference only.  (pulse = P = 2 tokens = 1 chunk)
+
+qkv: "qkv  [2, 12]\nstream axis=0  dim=S  pulse=2" { shape: oval }
+
+q: "Slice  q\n[2, 4]" { shape: rectangle }
+k: "Slice  k\n[2, 4]" { shape: rectangle }
+v: "Slice  v\n[2, 4]" { shape: rectangle }
+
+qkv -> q: "tokens t, t+1"
+qkv -> k: "tokens t, t+1"
+qkv -> v: "tokens t, t+1"
+
+q_c: "PulsedTokenFold  (Add(0))\nq_c  [1, 2, 4]\nstream axis=0  dim=C  pulse=1" { shape: rectangle }
+k_c: "PulsedTokenFold  (Add(0))\nk_c  [1, 2, 4]" { shape: rectangle }
+v_c: "PulsedTokenFold  (Add(0))\nv_c  [1, 2, 4]" { shape: rectangle }
+
+q -> q_c: "chunk c"
+k -> k_c: "chunk c"
+v -> v_c: "chunk c"
+
+k_prev: "Delay  axis=0  delay=1\nk_prev  [1, 2, 4]" { shape: rectangle }
+k_c -> k_prev: "chunk c"
+
+v_prev: "Delay  axis=0  delay=1\nv_prev  [1, 2, 4]" { shape: rectangle }
+v_c -> v_prev: "chunk c"
+
+k_ctx: "Concat  axis=1\nk_ctx  [1, 4, 4]" { shape: rectangle }
+k_prev -> k_ctx: "chunk c-1"
+k_c    -> k_ctx: "chunk c"
+
+v_ctx: "Concat  axis=1\nv_ctx  [1, 4, 4]" { shape: rectangle }
+v_prev -> v_ctx: "chunk c-1"
+v_c    -> v_ctx: "chunk c"
+
+scores_c: "EinSum  cpd,cld->cpl\nscores_c  [1, 2, 4]" { shape: rectangle }
+q_c   -> scores_c: "chunk c"
+k_ctx -> scores_c: "chunks c-1..c"
+
+attn_c: "Softmax  axis=2\nattn_c  [1, 2, 4]" { shape: rectangle }
+scores_c -> attn_c
+
+out_c: "EinSum  cpl,cld->cpd\nout_c  [1, 2, 4]" { shape: rectangle }
+attn_c -> out_c
+v_ctx  -> out_c: "chunks c-1..c"
+
+output: "PulsedTokenUnfold  (Rm(0))\noutput  [2, 4]\nstream axis=0  dim=S  pulse=2" { shape: rectangle }
+out_c -> output: "chunk c"

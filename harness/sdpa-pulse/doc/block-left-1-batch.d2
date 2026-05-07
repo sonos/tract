@@ -1,0 +1,43 @@
+direction: down
+
+# block-left-1  —  batch graph
+# S = chunk count (streaming), P=2 tokens/chunk, Dh=8, left_chunks=1
+# Each chunk attends to its own tokens and the previous chunk's tokens.
+# The pad+slice pattern is the explicit expansion of a 1-step sliding-window unfold.
+
+qkv: "qkv  [S, 6, 8]" { shape: oval }
+
+q: "Slice  q\n[S, 2, 8]" { shape: rectangle }
+k: "Slice  k\n[S, 2, 8]" { shape: rectangle }
+v: "Slice  v\n[S, 2, 8]" { shape: rectangle }
+
+qkv -> q
+qkv -> k
+qkv -> v
+
+k_pad:  "Pad  axis=0, before=1\n[S+1, 2, 8]" { shape: rectangle }
+k_prev: "Slice  end=S\nk_prev  [S, 2, 8]" { shape: rectangle }
+k -> k_pad -> k_prev
+
+v_pad:  "Pad  axis=0, before=1\n[S+1, 2, 8]" { shape: rectangle }
+v_prev: "Slice  end=S\nv_prev  [S, 2, 8]" { shape: rectangle }
+v -> v_pad -> v_prev
+
+k_ctx: "Concat  axis=1\nk_ctx  [S, 4, 8]" { shape: rectangle }
+k_prev -> k_ctx
+k      -> k_ctx
+
+v_ctx: "Concat  axis=1\nv_ctx  [S, 4, 8]" { shape: rectangle }
+v_prev -> v_ctx
+v      -> v_ctx
+
+scores: "EinSum  cpd,cld->cpl\nscores  [S, 2, 4]" { shape: rectangle }
+q     -> scores
+k_ctx -> scores
+
+attn: "Softmax  axis=2\nattn  [S, 2, 4]" { shape: rectangle }
+scores -> attn
+
+output: "EinSum  cpl,cld->cpd\noutput  [S, 2, 8]" { shape: rectangle }
+attn  -> output
+v_ctx -> output
