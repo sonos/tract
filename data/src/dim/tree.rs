@@ -868,6 +868,32 @@ impl TDim {
                         // the truncation rounds toward zero, not floor, breaking
                         // the identity.  We use prove_positive_or_zero to gate.
                         simplified.simplify_rec(scope, scenario, extra)
+                    } else if let Some(found_idx) = terms.iter().position(|term| {
+                        // Rule: (Y − q·(Y/q)) / q = 0  [i.e. (Y mod q) / q = 0]
+                        // Always sound: |Y mod q| < q so (Y mod q)/q = 0 under
+                        // truncating division regardless of sign of Y.
+                        matches!(term, MulInt(p, inner)
+                            if *p == -(q as i64)
+                            && matches!(inner.as_ref(), Div(_, q2) if *q2 == q))
+                    }) {
+                        let MulInt(_, inner) = &terms[found_idx] else { unreachable!() };
+                        let Div(y, _) = inner.as_ref() else { unreachable!() };
+                        let remaining: Vec<TDim> = terms
+                            .iter()
+                            .enumerate()
+                            .filter(|&(i, _)| i != found_idx)
+                            .map(|(_, t)| t.clone())
+                            .collect();
+                        let remaining_sum = match remaining.len() {
+                            0 => Val(0),
+                            1 => remaining.into_iter().next().unwrap(),
+                            _ => Add(remaining),
+                        };
+                        if eq_structural(&remaining_sum, y) {
+                            Val(0)
+                        } else {
+                            Div(b!(Add(terms)), q)
+                        }
                     } else {
                         Div(b!(Add(terms)), q)
                     }
@@ -1788,6 +1814,22 @@ mod tests {
         let s = scope.sym("S");
         let e: TDim = (s.to_dim() * 2 + 1) / 2;
         assert_ne!(e.simplify(), s.to_dim());
+    }
+
+    #[test]
+    fn modulo_div_is_zero() {
+        // (Y − q·(Y/q)) / q = 0 for any Y and any q — the modulo remainder
+        // divided by the modulus is always zero under truncating division.
+        let scope = SymbolScope::default();
+        let s = scope.sym("S");
+        // Simple case: (S - 2*(S/2)) / 2 = (S mod 2) / 2 = 0
+        let e: TDim = (s.to_dim() - s.to_dim() / 2 * 2) / 2;
+        assert_eq!(e.simplify(), TDim::Val(0));
+        // Composite case: ((S+1) - 2*((S+1)/2)) / 2 = 0
+        // This is the exact pattern from SameUpper conv padding.
+        let a = s.to_dim() + 1;
+        let e2: TDim = (a.clone() - a.clone() / 2 * 2) / 2;
+        assert_eq!(e2.simplify(), TDim::Val(0));
     }
 
     #[test]
