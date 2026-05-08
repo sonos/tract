@@ -227,12 +227,12 @@ unsafe fn run_with_scratch_space_vec<K: MatMatMulKer>(
 ) -> TractResult<()> {
     unsafe {
         match crate::multithread::current_tract_executor() {
-            Executor::SingleThread => {
+            Executor::SingleThread => scratch.run_in_tls_scope(|scratch, tls| {
                 for ia in 0..m.divceil(ker.mr()) {
-                    scratch.run(ker, non_linear, ia, 0)?;
+                    scratch.run_one_tile(ker, non_linear, tls, ia, 0)?;
                 }
-                Ok(())
-            }
+                TractResult::Ok(())
+            }),
             #[cfg(feature = "multithread-mm")]
             Executor::MultiThread(pool) => {
                 chunked_dispatch_rayon(Some(&pool), m.divceil(ker.mr()), 1, |ia, _| {
@@ -258,14 +258,14 @@ unsafe fn run_with_scratch_space_col_outer<K: MatMatMulKer>(
 ) -> TractResult<()> {
     unsafe {
         match crate::multithread::current_tract_executor() {
-            Executor::SingleThread => {
+            Executor::SingleThread => scratch.run_in_tls_scope(|scratch, tls| {
                 for ib in 0..n.divceil(ker.nr()) {
                     for ia in 0..m.divceil(ker.mr()) {
-                        scratch.run(ker, non_linear, ia, ib)?;
+                        scratch.run_one_tile(ker, non_linear, tls, ia, ib)?;
                     }
                 }
-                Ok(())
-            }
+                TractResult::Ok(())
+            }),
             #[cfg(feature = "multithread-mm")]
             Executor::MultiThread(pool) => chunked_dispatch_rayon(
                 Some(&pool),
@@ -292,14 +292,14 @@ unsafe fn run_with_scratch_space_row_outer<K: MatMatMulKer>(
 ) -> TractResult<()> {
     unsafe {
         match crate::multithread::current_tract_executor() {
-            Executor::SingleThread => {
+            Executor::SingleThread => scratch.run_in_tls_scope(|scratch, tls| {
                 for ia in 0..m.divceil(ker.mr()) {
                     for ib in 0..n.divceil(ker.nr()) {
-                        scratch.run(ker, non_linear, ia, ib)?;
+                        scratch.run_one_tile(ker, non_linear, tls, ia, ib)?;
                     }
                 }
-                Ok(())
-            }
+                TractResult::Ok(())
+            }),
             #[cfg(feature = "multithread-mm")]
             Executor::MultiThread(pool) => chunked_dispatch_rayon(
                 Some(&pool),
