@@ -14,7 +14,7 @@ thread_local! {
 }
 
 #[derive(Default, Debug)]
-struct TLSScratch {
+pub(crate) struct TLSScratch {
     generation: usize,
     blob: Blob,
     ker_specs_16: Vec<FusedKerSpec<f16>>,
@@ -204,33 +204,55 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
         down: usize,
         right: usize,
     ) -> TractResult<()> {
+        // Per-tile entry: enter the TLS scope (does sync once) then run a single
+        // tile. Single-threaded callers should prefer `run_in_tls_scope`+
+        // `run_one_tile` to amortise the TLS borrow + sync over many tiles.
         unsafe {
-            TLS.with_borrow_mut(|tls| {
-                tls.sync(self);
-                if down < self.valid_down_tiles && right < self.valid_right_tiles {
-                    self.for_valid_tile(ker, specs, tls, down, right)?;
-                    let err = ker.kernel(tls.ker_specs());
-                    debug_assert_eq!(err, 0, "Kernel return error {err}");
-                } else {
-                    let remnant_down =
-                        if down < self.valid_down_tiles { ker.mr() } else { self.remnant_down };
-                    let remnant_right =
-                        if right < self.valid_right_tiles { ker.nr() } else { self.remnant_right };
-                    self.for_border_tile(
-                        ker,
-                        specs,
-                        tls,
-                        down,
-                        right,
-                        remnant_down,
-                        remnant_right,
-                    )?;
-                    let err = ker.kernel(tls.ker_specs());
-                    debug_assert_eq!(err, 0, "Kernel return error {err}");
-                    self.postprocess_tile(specs, tls, down, right, remnant_down, remnant_right)?;
-                }
-                Ok(())
-            })
+            self.run_in_tls_scope(|this, tls| this.run_one_tile(ker, specs, tls, down, right))
+        }
+    }
+
+    /// Borrow the per-thread scratch blob for a single MMM call and `sync` it
+    /// once. The closure is invoked once with a mutable reference to the TLS
+    /// scratch and to `self`. Used by single-threaded matmul drivers to avoid
+    /// re-entering TLS / re-running `sync` per tile.
+    pub(crate) unsafe fn run_in_tls_scope<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(&Self, &mut TLSScratch) -> R,
+    {
+        TLS.with_borrow_mut(|tls| {
+            tls.sync(self);
+            f(self, tls)
+        })
+    }
+
+    /// Run a single tile against an already-borrowed TLS scratch. Caller is
+    /// responsible for entering `run_in_tls_scope` first (so `sync` has run).
+    #[inline(always)]
+    pub(crate) unsafe fn run_one_tile(
+        &self,
+        ker: &impl MatMatMulKer<Acc = TI>,
+        specs: &[FusedSpec],
+        tls: &mut TLSScratch,
+        down: usize,
+        right: usize,
+    ) -> TractResult<()> {
+        unsafe {
+            if down < self.valid_down_tiles && right < self.valid_right_tiles {
+                self.for_valid_tile(ker, specs, tls, down, right)?;
+                let err = ker.kernel(tls.ker_specs());
+                debug_assert_eq!(err, 0, "Kernel return error {err}");
+            } else {
+                let remnant_down =
+                    if down < self.valid_down_tiles { ker.mr() } else { self.remnant_down };
+                let remnant_right =
+                    if right < self.valid_right_tiles { ker.nr() } else { self.remnant_right };
+                self.for_border_tile(ker, specs, tls, down, right, remnant_down, remnant_right)?;
+                let err = ker.kernel(tls.ker_specs());
+                debug_assert_eq!(err, 0, "Kernel return error {err}");
+                self.postprocess_tile(specs, tls, down, right, remnant_down, remnant_right)?;
+            }
+            Ok(())
         }
     }
 
