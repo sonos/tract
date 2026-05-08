@@ -46,18 +46,26 @@ pub trait BinMiniOp:
 
     fn generic_eval(&self, a: TValue, b: TValue, c_dt: DatumType) -> TractResult<Tensor> {
         if let Some(tensor) = self.maybe_eval_qbinary_as_float_op(&a, &b, &c_dt)? {
-            Ok(tensor)
+            return Ok(tensor);
+        }
+        // Same-shape fast path: skip `multi_broadcast` allocation when shapes
+        // are already equal (very common: residuals, mask application, etc.).
+        // Correctness: equal shapes imply broadcast shape == a.shape() and the
+        // existing slow path would have taken this same branch.
+        if c_dt == a.datum_type() && a.shape() == b.shape() {
+            let mut a = a.into_tensor();
+            self.eval_in_a(&mut a, &b)?;
+            return Ok(a);
+        }
+        let c_shape = crate::broadcast::multi_broadcast(&[a.shape(), b.shape()])?;
+        if &*c_shape == a.shape() && c_dt == a.datum_type() {
+            let mut a = a.into_tensor();
+            self.eval_in_a(&mut a, &b)?;
+            Ok(a)
         } else {
-            let c_shape = crate::broadcast::multi_broadcast(&[a.shape(), b.shape()])?;
-            if &*c_shape == a.shape() && c_dt == a.datum_type() {
-                let mut a = a.into_tensor();
-                self.eval_in_a(&mut a, &b)?;
-                Ok(a)
-            } else {
-                let mut c = unsafe { Tensor::uninitialized_dt(c_dt, &c_shape)? };
-                self.eval_out_of_place(&mut c, &a, &b)?;
-                Ok(c)
-            }
+            let mut c = unsafe { Tensor::uninitialized_dt(c_dt, &c_shape)? };
+            self.eval_out_of_place(&mut c, &a, &b)?;
+            Ok(c)
         }
     }
     fn eval(&self, a: TValue, b: TValue, c_dt: DatumType) -> TractResult<Tensor> {
@@ -832,6 +840,46 @@ macro_rules! bin_to_super_type {
 
             fn eval_out_of_place(&self, c: &mut Tensor, a: &Tensor, b: &Tensor) -> TractResult<()> {
                 $(if $out_of_place(c, a, b)? { return Ok(()) } )?
+                    // Same-shape fast path: bypass ndarray Zip when c, a, b
+                    // share the same shape (and hence same len for plain
+                    // storage). Iterate over slices directly.
+                    if c.shape() == a.shape() && a.shape() == b.shape() {
+                        $(
+                            $(if c.datum_type() == $typ::datum_type() {
+                                let cab: fn(&mut $typ, &$typ, &$typ) -> () = $cab;
+                                let a_plain = a.try_as_plain()?;
+                                let a_slice = a_plain.as_slice::<$typ>()?;
+                                let b_plain = b.try_as_plain()?;
+                                let b_slice = b_plain.as_slice::<$typ>()?;
+                                let mut c_plain = c.try_as_plain_mut()?;
+                                let c_slice = c_plain.as_slice_mut::<$typ>()?;
+                                debug_assert_eq!(c_slice.len(), a_slice.len());
+                                debug_assert_eq!(c_slice.len(), b_slice.len());
+                                for ((cv, av), bv) in c_slice.iter_mut().zip(a_slice.iter()).zip(b_slice.iter()) {
+                                    cab(cv, av, bv);
+                                }
+                                return Ok(())
+                            })*
+                        )*
+                        $(
+                            $(
+                                $(if a.datum_type().unquantized() == <$typ_dt>::datum_type().unquantized() {
+                                    let cab: fn(&mut $typ_dt, &$typ_dt, &$typ_dt, i32, f32) -> () = $cab_dt;
+                                    let (zp, scale) = a.datum_type().qparams().map(|q| q.zp_scale()).unwrap_or((0, 1.));
+                                    let a_plain = a.try_as_plain()?;
+                                    let a_slice = a_plain.as_slice::<$typ_dt>()?;
+                                    let b_plain = b.try_as_plain()?;
+                                    let b_slice = b_plain.as_slice::<$typ_dt>()?;
+                                    let mut c_plain = c.try_as_plain_mut()?;
+                                    let c_slice = c_plain.as_slice_mut::<$typ_dt>()?;
+                                    for ((cv, av), bv) in c_slice.iter_mut().zip(a_slice.iter()).zip(b_slice.iter()) {
+                                        cab(cv, av, bv, zp, scale);
+                                    }
+                                    return Ok(())
+                                })*
+                            )*
+                        )?
+                    }
                     $(
                         $(if c.datum_type() == $typ::datum_type() {
                             let a = a.to_plain_array_view::<$typ>()?;
@@ -872,6 +920,40 @@ macro_rules! bin_to_super_type {
             fn eval_in_a(&self, a: &mut Tensor, b: &Tensor) -> TractResult<()> {
                 // c and a are same type
                 $(if $eval_in_a(a, b)? { return Ok(()) } )?
+                // Same-shape fast path: bypass ndarray Zip when a and b share
+                // the same shape (and hence same len for plain storage).
+                if a.shape() == b.shape() {
+                    $(
+                        $(if b.datum_type() == $typ::datum_type() {
+                            let cab: fn(&mut $typ, &$typ, &$typ) -> () = $cab;
+                            let b_plain = b.try_as_plain()?;
+                            let b_slice = b_plain.as_slice::<$typ>()?;
+                            let mut a_plain = a.try_as_plain_mut()?;
+                            let a_slice = a_plain.as_slice_mut::<$typ>()?;
+                            debug_assert_eq!(a_slice.len(), b_slice.len());
+                            for (av, bv) in a_slice.iter_mut().zip(b_slice.iter()) {
+                                cab(av, &av.clone(), bv);
+                            }
+                            return Ok(())
+                        })*
+                    )*
+                    $(
+                        $(
+                            $(if a.datum_type().unquantized() == <$typ_dt>::datum_type().unquantized() {
+                                let cab: fn(&mut $typ_dt, &$typ_dt, &$typ_dt, i32, f32) -> () = $cab_dt;
+                                let (zp, scale) = a.datum_type().qparams().map(|q| q.zp_scale()).unwrap_or((0, 1.));
+                                let b_plain = b.try_as_plain()?;
+                                let b_slice = b_plain.as_slice::<$typ_dt>()?;
+                                let mut a_plain = a.try_as_plain_mut()?;
+                                let a_slice = a_plain.as_slice_mut::<$typ_dt>()?;
+                                for (av, bv) in a_slice.iter_mut().zip(b_slice.iter()) {
+                                    cab(av, &(av.clone()), bv, zp, scale);
+                                }
+                                return Ok(())
+                            })*
+                        )*
+                    )?
+                }
                 $(
                     $(if b.datum_type() == $typ::datum_type() {
                         let cab: fn(&mut $typ, &$typ, &$typ) -> () = $cab;
