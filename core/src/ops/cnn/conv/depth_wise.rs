@@ -151,29 +151,27 @@ macro_rules! impl_eval {
                    zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr,
                    )
                    } else */
-                if zone.values_offsets.len() == 4 {
-                    [<process_zone_n_ $suffix>]::<T, 4, 4>(
+                match zone.values_offsets.len() {
+                    1 => [<process_zone_n_ $suffix>]::<T, 1, 4>(
                         dw, zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr, add, mul,
-                        )
-                        /*
-                           } else if zone.values_offsets.len() == 5 {
-                           dw.process_zone_n::<T, 5, 2>(
-                           zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr,
-                           )
-                           } else if zone.values_offsets.len() == 9 {
-                           dw.process_zone_n::<T, 9, 1>(
-                           zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr,
-                           )
-                           */
-                } else {
-                    zone.visit_output(&dw.patch, |visitor| {
+                    ),
+                    2 => [<process_zone_n_ $suffix>]::<T, 2, 4>(
+                        dw, zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr, add, mul,
+                    ),
+                    3 => [<process_zone_n_ $suffix>]::<T, 3, 4>(
+                        dw, zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr, add, mul,
+                    ),
+                    4 => [<process_zone_n_ $suffix>]::<T, 4, 4>(
+                        dw, zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr, add, mul,
+                    ),
+                    _ => zone.visit_output(&dw.patch, |visitor| {
                         for c in 0..*dw.input_shape.c() as isize {
                             let iptr = iptr.offset(c_stride_i * c);
                             let optr = optr.offset(c_stride_o * c);
                             let kptr = kptr.offset(k_stride_i * c);
                             [<inner_loop_ $suffix>]::<T>(iptr, kptr, bias, optr, c, visitor, add, mul)
                         }
-                    })
+                    }),
                 }
             }}
 
