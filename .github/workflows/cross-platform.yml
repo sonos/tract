@@ -118,9 +118,10 @@ jobs:
       env:
         PLATFORM: ${{matrix.platform}}
         AWS_EC2_METADATA_DISABLED: true
-        GITHUB_HEAD_REF: ${{ needs.prepare.outputs.test_branch }}
-        GITHUB_SHA: ${{ needs.prepare.outputs.test_ref }}
-      run: .travis/cross.sh
+      run: |
+        export GITHUB_HEAD_REF="${{ needs.prepare.outputs.test_branch }}"
+        export GITHUB_SHA="${{ needs.prepare.outputs.test_ref }}"
+        .travis/cross.sh
 
   apple:
     needs: prepare
@@ -156,6 +157,7 @@ jobs:
     - name: Cross script
       env:
         PLATFORM: ${{matrix.platform}}
-        GITHUB_HEAD_REF: ${{ needs.prepare.outputs.test_branch }}
-        GITHUB_SHA: ${{ needs.prepare.outputs.test_ref }}
-      run: .travis/cross.sh
+      run: |
+        export GITHUB_HEAD_REF="${{ needs.prepare.outputs.test_branch }}"
+        export GITHUB_SHA="${{ needs.prepare.outputs.test_ref }}"
+        .travis/cross.sh
