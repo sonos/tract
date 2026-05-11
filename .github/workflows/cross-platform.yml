@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       test_ref: ${{ steps.set.outputs.test_ref }}
-      test_branch: ${{ steps.set.outputs.test_branch }}
+      tract_bench_branch_name: ${{ steps.set.outputs.tract_bench_branch_name }}
     steps:
       - id: set
         uses: actions/github-script@v9
@@ -32,27 +32,24 @@ jobs:
             core.info(`payload.pull_request.number: ${context.payload.pull_request?.number}`);
             const prInput = context.payload.inputs?.pr_number ?? context.payload.pull_request?.number;
             core.info(`prInput: ${prInput} (type: ${typeof prInput})`);
+            let ref, branch;
             if (prInput) {
               const pr = await github.rest.pulls.get({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 pull_number: Number(prInput),
               });
-              core.info(pr.data.head.sha);
-              core.setOutput('test_ref', pr.data.head.sha);
-              // Tag bundles with pr-NNNN-<head ref> so graphite can find
-              // the metrics by PR number and forks with same branch name
-              // don't collide.
-              core.setOutput('test_branch', `pr-${prInput}-${pr.data.head.ref}`);
-              return;
+              ref = pr.data.head.sha;
+              branch = `pr-${prInput}-${pr.data.head.ref}`;
+            } else {
+              ref = process.env.GITHUB_SHA;
+              branch = process.env.GITHUB_HEAD_REF || process.env.GITHUB_REF_NAME || 'main';
             }
-            core.setOutput('test_ref', process.env.GITHUB_SHA);
-            // Prefer GITHUB_HEAD_REF (auto-set by GH Actions on
-            // internal pull_request triggers, gives the PR source
-            // branch). Fall back to GITHUB_REF_NAME (the branch the
-            // workflow was triggered on) for cron and for manual
-            // workflow_dispatch runs without a pr_number input.
-            core.setOutput('test_branch', process.env.GITHUB_HEAD_REF || process.env.GITHUB_REF_NAME || '');
+            const benchBranch = branch.replace(/\//g, '_');
+            core.info(`test_ref: ${ref}`);
+            core.info(`tract_bench_branch_name: ${benchBranch}`);
+            core.setOutput('test_ref', ref);
+            core.setOutput('tract_bench_branch_name', benchBranch);
 
   linux:
     needs: prepare
@@ -119,7 +116,7 @@ jobs:
         PLATFORM: ${{matrix.platform}}
         AWS_EC2_METADATA_DISABLED: true
       run: |
-        export GITHUB_HEAD_REF="${{ needs.prepare.outputs.test_branch }}"
+        export TRACT_BENCH_BRANCH_NAME="${{ needs.prepare.outputs.tract_bench_branch_name }}"
         export GITHUB_SHA="${{ needs.prepare.outputs.test_ref }}"
         .travis/cross.sh
 
@@ -158,6 +155,6 @@ jobs:
       env:
         PLATFORM: ${{matrix.platform}}
       run: |
-        export GITHUB_HEAD_REF="${{ needs.prepare.outputs.test_branch }}"
+        export TRACT_BENCH_BRANCH_NAME="${{ needs.prepare.outputs.tract_bench_branch_name }}"
         export GITHUB_SHA="${{ needs.prepare.outputs.test_ref }}"
         .travis/cross.sh
