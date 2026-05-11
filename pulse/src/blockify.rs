@@ -129,7 +129,6 @@
 //!   round-trip.
 
 use crate::internal::*;
-use crate::ops::diag_gather::DiagGather;
 use std::collections::{BTreeSet, HashMap};
 use tract_core::axes::AxesMapping;
 use tract_core::model::TypedModelPatch;
@@ -137,6 +136,7 @@ use tract_core::ops::change_axes::AxisOp;
 use tract_core::ops::einsum::EinSum;
 use tract_core::ops::nn::{Reduce, Reducer};
 use tract_core::transform::ModelTransform;
+use tract_transformers::ops::DiagGather;
 
 /// Configuration for the Blockify ModelTransform.
 #[derive(Debug, Default, Clone, serde::Deserialize)]

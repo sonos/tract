@@ -89,6 +89,21 @@ impl ModelTransform for UnfoldKeyValueCacheTransform {
     }
 }
 
+#[derive(Debug, Default)]
+pub struct DetectDiagGatherTransform;
+
+impl ModelTransform for DetectDiagGatherTransform {
+    fn name(&self) -> StaticName {
+        "detect_diag_gather".into()
+    }
+
+    fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
+        Rewriter::default()
+            .with_rule_for("detect-diag-gather", ops::diag_gather_rule)
+            .rewrite(&(), model)
+    }
+}
+
 // TODO: This is why Transform should be renamed to Remodel
 #[derive(Debug, Default)]
 pub struct TransformersTransform;
@@ -106,6 +121,7 @@ impl ModelTransform for TransformersTransform {
             .with_rule_for("detect-apply-rope", ops::apply_rope_rule)
             .with_rule_for("detect-scaled-masked-softmax", ops::scaled_masked_softmax_rule)
             .with_rule_for("detect-sdpa-kv-cache-broadcast", ops::fuse_kv_cache_broadcast_rule)
+            .with_rule_for("detect-diag-gather", ops::diag_gather_rule)
             .rewrite(&(), model)
     }
 }
