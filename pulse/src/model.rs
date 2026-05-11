@@ -43,21 +43,28 @@ fn check_no_unannotated_superlinear_wires(model: &TypedModel, symbol: &Symbol) -
     Ok(())
 }
 
-/// LCM of the stream-axis dims across all stream-bearing inputs.  Used at
-/// elementwise meet points where parallel pulse paths emit different
-/// per-pulse sizes (steady-state vs initial-state phases).  Returns
-/// `None` when the LCM isn't computable (any input has a non-integer
-/// symbolic stream dim) -- the caller falls back to the unmodified shape
-/// that `multi_broadcast` produced.
+/// LCM of the stream-axis dims across all stream-bearing inputs.
+///
+/// Used at elementwise pulse meet-points where parallel paths emit
+/// different per-pulse sizes (e.g. ConvTranspose with kernel > stride
+/// surfacing as `(K_steady, K_initial)` on the two phases of the pulse
+/// cycle). Two semantics get conflated otherwise:
+///
+/// * Tensor shape compatibility (must match at runtime): non-stream
+///   axes use NumPy `Broadcast` -- equal or one is 1, anything else
+///   fails.
+/// * Pulse-divisibility (a scalar constraint on per-pulse cycle): on
+///   the stream axis, two paths with steady-state size `K_a` and `K_b`
+///   are compatible at any pulse that is a multiple of
+///   `LCM(K_a, K_b)`.
+///
+/// Returns `None` if any stream-axis dim is symbolic; the caller falls
+/// back to the unmodified shape `multi_broadcast` produced.
 pub fn stream_axis_lcm(inputs: &[&PulsedFact]) -> Option<TDim> {
-    let dims: Vec<&TDim> =
-        inputs.iter().filter_map(|f| f.stream.as_ref().map(|s| &f.shape[s.axis])).collect();
-    let (first, rest) = dims.split_first()?;
-    let mut acc = (*first).clone();
-    for d in rest {
-        acc = acc.pulse_lcm(d)?;
-    }
-    Some(acc)
+    let mut dims =
+        inputs.iter().filter_map(|f| f.stream.as_ref().map(|s| &f.shape[s.axis]));
+    let first = dims.next()?.clone();
+    dims.try_fold(first, |acc, d| acc.lcm(d))
 }
 
 #[allow(clippy::new_ret_no_self)]

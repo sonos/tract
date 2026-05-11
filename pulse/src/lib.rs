@@ -1,32 +1,3 @@
-//! Pulsification: rewrite a TypedModel that processes a full stream into a
-//! PulsedModel that processes one chunk (`pulse`) at a time, preserving
-//! state (lookback buffers, KV caches) across calls.
-//!
-//! ## Stream-axis dim merging at meet points
-//!
-//! When two parallel pulse paths converge at an elementwise op (Add,
-//! residual, etc.), the merged tensor's *stream-axis* dim is the **LCM**
-//! of the inputs' per-pulse stream dims, not the NumPy-style broadcast.
-//! Two semantics get conflated otherwise:
-//!
-//! * Tensor shape compatibility (must match at runtime): non-stream axes
-//!   use NumPy `Broadcast` -- equal or one is 1, anything else fails.
-//! * Pulse-divisibility (a scalar constraint on per-pulse cycle): on the
-//!   stream axis, two paths with steady-state size `K_a` and `K_b` are
-//!   compatible at any pulse that is a multiple of `LCM(K_a, K_b)`.
-//!
-//! Conflating the two surfaces as `Broadcast(K_a, K_b)` on the stream axis
-//! when paths produce different per-pulse sizes (e.g. ConvTranspose with
-//! kernel > stride at steady-state vs initial-state phases). The merge
-//! lives in [`crate::model::stream_axis_lcm`] called from
-//! `PulseWrappingOp::pulsed_output_facts`.
-//!
-//! Op-specific pulsifiers (cnn, range, deconv, …) compute stream-axis
-//! sizes in their own pulsify functions; they should follow the same
-//! "slope × pulse" convention -- the *coefficient* of the streaming
-//! symbol times the pulse value, NOT `stream_dim.substitute(symbol,
-//! pulse)` (which includes any constant tail produced by overlap-add).
-
 #![allow(clippy::len_zero)]
 #[macro_use]
 pub mod macros;

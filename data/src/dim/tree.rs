@@ -1236,16 +1236,14 @@ impl TDim {
         self.clone().neg().prove_strict_positive()
     }
 
-    /// Pulse-divisibility merge: smallest scalar dim that is a multiple of
-    /// both `self` and `other`.  Used at pulse meet-points (elementwise
-    /// ops where parallel paths produced different per-pulse sizes — e.g.
-    /// stride and kernel of a ConvTranspose surfacing as `(K_steady,
-    /// K_initial)` on the two phases of the pulse cycle).
+    /// Least common multiple of two `TDim`s when both reduce to positive
+    /// integers.
     ///
-    /// For pure positive integers, returns the exact LCM as `Val(.)`.
-    /// For symbolic TDims, returns `None` -- the caller can fall back to
-    /// the existing `Broadcast` semantics or use a safe upper bound.
-    pub fn pulse_lcm(&self, other: &TDim) -> Option<TDim> {
+    /// Returns `Val(0)` if either operand is `0`, and `None` if either is
+    /// symbolic, negative, or if the LCM would overflow `i64`. Callers
+    /// that need a safe answer for symbolic operands should fall back at
+    /// the call site.
+    pub fn lcm(&self, other: &TDim) -> Option<TDim> {
         match (self.as_i64(), other.as_i64()) {
             (Some(a), Some(b)) if a > 0 && b > 0 => {
                 let g = (a as u64).gcd(&(b as u64));
@@ -1679,16 +1677,13 @@ mod tests {
     }
 
     #[test]
-    fn pulse_lcm_basic() {
-        // Two pulse-cycle phases of an upsample (stride=16, kernel=32):
-        // steady-state output = 16, initial-state with overlap = 32.
-        // Merged pulse-divisibility constraint = LCM = 32.
-        assert_eq!(Val(16).pulse_lcm(&Val(32)), Some(Val(32)));
-        assert_eq!(Val(32).pulse_lcm(&Val(16)), Some(Val(32)));
-        assert_eq!(Val(6).pulse_lcm(&Val(8)), Some(Val(24)));
-        assert_eq!(Val(7).pulse_lcm(&Val(7)), Some(Val(7)));
-        // Symbolic: not computable, return None for the fallback path.
-        assert_eq!(Val(16).pulse_lcm(&A.to_dim()), None);
+    fn lcm_basic() {
+        assert_eq!(Val(16).lcm(&Val(32)), Some(Val(32)));
+        assert_eq!(Val(32).lcm(&Val(16)), Some(Val(32)));
+        assert_eq!(Val(6).lcm(&Val(8)), Some(Val(24)));
+        assert_eq!(Val(7).lcm(&Val(7)), Some(Val(7)));
+        // Symbolic: not computable; callers fall back.
+        assert_eq!(Val(16).lcm(&A.to_dim()), None);
     }
 
     #[test]
