@@ -27,8 +27,11 @@ jobs:
         uses: actions/github-script@v9
         with:
           script: |
-            const prInput = context.payload.inputs?.pr_number;
-            core.info(`Fetching PR ${prInput}`);
+            core.info(`event: ${context.eventName}`);
+            core.info(`payload.inputs: ${JSON.stringify(context.payload.inputs)}`);
+            core.info(`payload.pull_request.number: ${context.payload.pull_request?.number}`);
+            const prInput = context.payload.inputs?.pr_number ?? context.payload.pull_request?.number;
+            core.info(`prInput: ${prInput} (type: ${typeof prInput})`);
             if (prInput) {
               const pr = await github.rest.pulls.get({
                 owner: context.repo.owner,
