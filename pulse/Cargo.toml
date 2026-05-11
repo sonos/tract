@@ -21,4 +21,5 @@ lazy_static.workspace = true
 log.workspace = true
 serde.workspace = true
 tract-pulse-opl.workspace = true
+tract-transformers.workspace = true
 

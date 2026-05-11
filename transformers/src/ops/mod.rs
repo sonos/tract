@@ -1,4 +1,5 @@
 pub mod apply_rope;
+pub mod diag_gather;
 pub mod dyn_kv_cache;
 pub mod flash_sdpa;
 pub mod scaled_masked_softmax;
@@ -20,6 +21,7 @@ pub mod gelu_approximate {
 }
 
 pub use apply_rope::{apply_rope_rule, rotate_half_rule};
+pub use diag_gather::{DiagGather, detect_diag_gather, diag_gather_rule};
 pub use dyn_kv_cache::{DynKeyValueCache, replace_kv_cache, unfold_kv_cache};
 pub use scaled_masked_softmax::scaled_masked_softmax_rule;
 pub use sdpa::fuse_kv_cache_broadcast_rule;

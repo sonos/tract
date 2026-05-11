@@ -6,6 +6,7 @@ use rewriter::*;
 use tract_nnef::internal::*;
 
 register_simple_model_transform!("detect_apply_rope", ApplyRopeTransform);
+register_simple_model_transform!("detect_diag_gather", DetectDiagGatherTransform);
 register_simple_model_transform!("detect_scaled_masked_softmax", ScaledMaskedSoftmaxTransform);
 register_simple_model_transform!("detect_kv_cache", KeyValueCacheTransform);
 register_simple_model_transform!(
