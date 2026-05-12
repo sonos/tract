@@ -1,0 +1,23 @@
+[package]
+name = "tract-coreml-demo-rs"
+version = "0.1.0"
+edition = "2024"
+publish = false
+rust-version.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# Backends.
+tract-onnx.workspace = true
+tract-core.workspace = true
+tract-metal.workspace = true
+tract-coreml.workspace = true
+
+# CoreML compute-unit enum (re-exported through the FFI).
+objc2-core-ml = "0.3"
+
+# Numerics + error.
+half.workspace = true
+anyhow.workspace = true

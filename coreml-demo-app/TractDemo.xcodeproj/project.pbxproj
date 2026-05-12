@@ -1,0 +1,343 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		3A0F4B36B43CE9DE5211D91B /* ImageConversion.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1FB9EF54B15FBB68700D8B /* ImageConversion.swift */; };
+		3BE0EA5BE1340EC348358071 /* CameraSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71C4295E40077C862E453D19 /* CameraSession.swift */; };
+		4CC9DC1F233A5F8E142F1878 /* CameraPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEF505B49FBCA6E88C60F4DD /* CameraPreview.swift */; };
+		63AFB7C23772BA2C7963C1D3 /* InferencePipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82D401BCB1998436F9CD896F /* InferencePipeline.swift */; };
+		917F26DE9B0211C7DCC93528 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 640AFE86816A0E107428A24D /* ContentView.swift */; };
+		984889F85E0F0616A863B542 /* TractDemoApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FAB3EC363DA9D92EAB1793F /* TractDemoApp.swift */; };
+		B9F3441B5BA3386E89999BEA /* Inference.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFC1C12735E0E48AF1562DBE /* Inference.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		640AFE86816A0E107428A24D /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		71C4295E40077C862E453D19 /* CameraSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraSession.swift; sourceTree = "<group>"; };
+		82D401BCB1998436F9CD896F /* InferencePipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InferencePipeline.swift; sourceTree = "<group>"; };
+		8FAB3EC363DA9D92EAB1793F /* TractDemoApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TractDemoApp.swift; sourceTree = "<group>"; };
+		AFC1C12735E0E48AF1562DBE /* Inference.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Inference.swift; sourceTree = "<group>"; };
+		CA1FB9EF54B15FBB68700D8B /* ImageConversion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageConversion.swift; sourceTree = "<group>"; };
+		F4C04D44D9422A60930DE4E4 /* TractDemo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TractDemo.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		FEF505B49FBCA6E88C60F4DD /* CameraPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraPreview.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		315D47A9174EE7D6C27B369B = {
+			isa = PBXGroup;
+			children = (
+				AE90E3F1790B08377941C504 /* TractDemo */,
+				434EF433B931D459A31C8E71 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		434EF433B931D459A31C8E71 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				F4C04D44D9422A60930DE4E4 /* TractDemo.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		AE90E3F1790B08377941C504 /* TractDemo */ = {
+			isa = PBXGroup;
+			children = (
+				FEF505B49FBCA6E88C60F4DD /* CameraPreview.swift */,
+				71C4295E40077C862E453D19 /* CameraSession.swift */,
+				640AFE86816A0E107428A24D /* ContentView.swift */,
+				CA1FB9EF54B15FBB68700D8B /* ImageConversion.swift */,
+				AFC1C12735E0E48AF1562DBE /* Inference.swift */,
+				82D401BCB1998436F9CD896F /* InferencePipeline.swift */,
+				8FAB3EC363DA9D92EAB1793F /* TractDemoApp.swift */,
+			);
+			path = TractDemo;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		92B1EE4A91E035FD1AF79417 /* TractDemo */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 8681D0A27427F23045DC8CC1 /* Build configuration list for PBXNativeTarget "TractDemo" */;
+			buildPhases = (
+				707643F07E4BFAD6A8EE50AD /* Sources */,
+				10F7BD7F40251E8552069DBE /* Embed Rust dylib with @rpath fixup */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = TractDemo;
+			packageProductDependencies = (
+			);
+			productName = TractDemo;
+			productReference = F4C04D44D9422A60930DE4E4 /* TractDemo.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		9A909C49D0F8B81DC64FDFAF /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					92B1EE4A91E035FD1AF79417 = {
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = E526D78ECF713A32E7BE497E /* Build configuration list for PBXProject "TractDemo" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 315D47A9174EE7D6C27B369B;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 434EF433B931D459A31C8E71 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				92B1EE4A91E035FD1AF79417 /* TractDemo */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		10F7BD7F40251E8552069DBE /* Embed Rust dylib with @rpath fixup */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Embed Rust dylib with @rpath fixup";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -euo pipefail\nNAME=\"libtract_coreml_demo_rs.dylib\"\nDYLIB_SRC=\"$SRCROOT/../target/release/$NAME\"\nDYLIB_DST_DIR=\"$BUILT_PRODUCTS_DIR/$FRAMEWORKS_FOLDER_PATH\"\nDYLIB_DST=\"$DYLIB_DST_DIR/$NAME\"\nAPP_BIN=\"$BUILT_PRODUCTS_DIR/$EXECUTABLE_PATH\"\n\nmkdir -p \"$DYLIB_DST_DIR\"\ncp -f \"$DYLIB_SRC\" \"$DYLIB_DST\"\n\n# Discover what install_name the linker actually recorded in the app\n# binary (cargo's default points at target/release/deps/<name>) and\n# rewrite both ends to use @rpath.\nOLD_ID=$(otool -D \"$DYLIB_SRC\" | tail -1)\ninstall_name_tool -id \"@rpath/$NAME\" \"$DYLIB_DST\"\ninstall_name_tool -change \"$OLD_ID\" \"@rpath/$NAME\" \"$APP_BIN\" || true\n\ncodesign --force --sign - --timestamp=none \"$DYLIB_DST\"\ncodesign --force --sign - --timestamp=none \"$APP_BIN\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		707643F07E4BFAD6A8EE50AD /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4CC9DC1F233A5F8E142F1878 /* CameraPreview.swift in Sources */,
+				3BE0EA5BE1340EC348358071 /* CameraSession.swift in Sources */,
+				917F26DE9B0211C7DCC93528 /* ContentView.swift in Sources */,
+				3A0F4B36B43CE9DE5211D91B /* ImageConversion.swift in Sources */,
+				B9F3441B5BA3386E89999BEA /* Inference.swift in Sources */,
+				63AFB7C23772BA2C7963C1D3 /* InferencePipeline.swift in Sources */,
+				984889F85E0F0616A863B542 /* TractDemoApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		3F6DEF7487E9763553DBC964 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		40F3338679D45C1E2624D51A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		5CA0BD4E00F864CD2A48F3D4 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_HARDENED_RUNTIME = NO;
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/../coreml-demo-rs/include";
+				INFOPLIST_FILE = TractDemo/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
+				LIBRARY_SEARCH_PATHS = "$(SRCROOT)/../target/release";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 0.1.0;
+				OTHER_LDFLAGS = "-ltract_coreml_demo_rs";
+				PRODUCT_BUNDLE_IDENTIFIER = "com.tract-coreml-ane.TractDemo";
+				SDKROOT = macosx;
+				SWIFT_OBJC_BRIDGING_HEADER = "TractDemo/Bridging-Header.h";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		D3F01D4AAE6540EDC13F72EC /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_HARDENED_RUNTIME = NO;
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/../coreml-demo-rs/include";
+				INFOPLIST_FILE = TractDemo/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
+				LIBRARY_SEARCH_PATHS = "$(SRCROOT)/../target/release";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 0.1.0;
+				OTHER_LDFLAGS = "-ltract_coreml_demo_rs";
+				PRODUCT_BUNDLE_IDENTIFIER = "com.tract-coreml-ane.TractDemo";
+				SDKROOT = macosx;
+				SWIFT_OBJC_BRIDGING_HEADER = "TractDemo/Bridging-Header.h";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		8681D0A27427F23045DC8CC1 /* Build configuration list for PBXNativeTarget "TractDemo" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5CA0BD4E00F864CD2A48F3D4 /* Debug */,
+				D3F01D4AAE6540EDC13F72EC /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		E526D78ECF713A32E7BE497E /* Build configuration list for PBXProject "TractDemo" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3F6DEF7487E9763553DBC964 /* Debug */,
+				40F3338679D45C1E2624D51A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 9A909C49D0F8B81DC64FDFAF /* Project object */;
+}

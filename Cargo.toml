@@ -22,6 +22,7 @@ members = [
     "transformers",
     "cuda",
     "coreml",
+    "coreml-demo-rs",
 
     "api",
     "api/rs",

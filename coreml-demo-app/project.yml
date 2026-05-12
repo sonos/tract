@@ -1,0 +1,68 @@
+name: TractDemo
+options:
+  deploymentTarget:
+    macOS: "14.0"
+  bundleIdPrefix: com.tract-coreml-ane
+  createIntermediateGroups: true
+
+targets:
+  TractDemo:
+    type: application
+    platform: macOS
+    sources:
+      - path: TractDemo
+        excludes:
+          - Info.plist
+          - Bridging-Header.h
+    info:
+      path: TractDemo/Info.plist
+      properties:
+        NSCameraUsageDescription: "Used to demonstrate live tract-coreml inference on webcam frames."
+        LSMinimumSystemVersion: "$(MACOSX_DEPLOYMENT_TARGET)"
+        CFBundleExecutable: "$(EXECUTABLE_NAME)"
+        CFBundleIdentifier: "$(PRODUCT_BUNDLE_IDENTIFIER)"
+        CFBundleName: "$(PRODUCT_NAME)"
+        CFBundleDisplayName: "tract-coreml demo"
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        CFBundlePackageType: APPL
+        NSPrincipalClass: NSApplication
+        NSHighResolutionCapable: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.tract-coreml-ane.TractDemo
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_STYLE: Automatic
+        ENABLE_HARDENED_RUNTIME: NO
+        SWIFT_VERSION: "6.0"
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        # Link the Rust cdylib.
+        SWIFT_OBJC_BRIDGING_HEADER: TractDemo/Bridging-Header.h
+        HEADER_SEARCH_PATHS: "$(SRCROOT)/../coreml-demo-rs/include"
+        LIBRARY_SEARCH_PATHS: "$(SRCROOT)/../target/release"
+        OTHER_LDFLAGS: -ltract_coreml_demo_rs
+        LD_RUNPATH_SEARCH_PATHS: "@executable_path/../Frameworks"
+    postCompileScripts:
+      - name: Embed Rust dylib with @rpath fixup
+        script: |
+          set -euo pipefail
+          NAME="libtract_coreml_demo_rs.dylib"
+          DYLIB_SRC="$SRCROOT/../target/release/$NAME"
+          DYLIB_DST_DIR="$BUILT_PRODUCTS_DIR/$FRAMEWORKS_FOLDER_PATH"
+          DYLIB_DST="$DYLIB_DST_DIR/$NAME"
+          APP_BIN="$BUILT_PRODUCTS_DIR/$EXECUTABLE_PATH"
+
+          mkdir -p "$DYLIB_DST_DIR"
+          cp -f "$DYLIB_SRC" "$DYLIB_DST"
+
+          # Discover what install_name the linker actually recorded in the app
+          # binary (cargo's default points at target/release/deps/<name>) and
+          # rewrite both ends to use @rpath.
+          OLD_ID=$(otool -D "$DYLIB_SRC" | tail -1)
+          install_name_tool -id "@rpath/$NAME" "$DYLIB_DST"
+          install_name_tool -change "$OLD_ID" "@rpath/$NAME" "$APP_BIN" || true
+
+          codesign --force --sign - --timestamp=none "$DYLIB_DST"
+          codesign --force --sign - --timestamp=none "$APP_BIN"
