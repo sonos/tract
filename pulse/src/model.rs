@@ -61,8 +61,7 @@ fn check_no_unannotated_superlinear_wires(model: &TypedModel, symbol: &Symbol) -
 /// Returns `None` if any stream-axis dim is symbolic; the caller falls
 /// back to the unmodified shape `multi_broadcast` produced.
 pub fn stream_axis_lcm(inputs: &[&PulsedFact]) -> Option<TDim> {
-    let mut dims =
-        inputs.iter().filter_map(|f| f.stream.as_ref().map(|s| &f.shape[s.axis]));
+    let mut dims = inputs.iter().filter_map(|f| f.stream.as_ref().map(|s| &f.shape[s.axis]));
     let first = dims.next()?.clone();
     dims.try_fold(first, |acc, d| acc.lcm(d))
 }
