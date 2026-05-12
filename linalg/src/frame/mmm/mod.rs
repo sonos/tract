@@ -234,15 +234,28 @@ unsafe fn run_with_scratch_space_vec<K: MatMatMulKer>(
                 TractResult::Ok(())
             }),
             #[cfg(feature = "multithread-mm")]
-            Executor::MultiThread(pool) => {
-                chunked_dispatch_rayon(Some(&pool), m.divceil(ker.mr()), 1, |ia, _| {
-                    scratch.run(ker, non_linear, ia, 0)
-                })
-            }
+            Executor::MultiThread(pool) => chunked_dispatch_rayon(
+                Some(&pool),
+                m.divceil(ker.mr()),
+                1,
+                |ia_start, ia_end, _, _| {
+                    scratch.run_in_tls_scope(|scratch, tls| {
+                        for ia in ia_start..ia_end {
+                            scratch.run_one_tile(ker, non_linear, tls, ia, 0)?;
+                        }
+                        TractResult::Ok(())
+                    })
+                },
+            ),
             #[cfg(feature = "multithread-mm")]
             Executor::RayonGlobal => {
-                chunked_dispatch_rayon(None, m.divceil(ker.mr()), 1, |ia, _| {
-                    scratch.run(ker, non_linear, ia, 0)
+                chunked_dispatch_rayon(None, m.divceil(ker.mr()), 1, |ia_start, ia_end, _, _| {
+                    scratch.run_in_tls_scope(|scratch, tls| {
+                        for ia in ia_start..ia_end {
+                            scratch.run_one_tile(ker, non_linear, tls, ia, 0)?;
+                        }
+                        TractResult::Ok(())
+                    })
                 })
             }
         }
@@ -271,14 +284,33 @@ unsafe fn run_with_scratch_space_col_outer<K: MatMatMulKer>(
                 Some(&pool),
                 m.divceil(ker.mr()),
                 n.divceil(ker.nr()),
-                |ia, ib| scratch.run(ker, non_linear, ia, ib),
+                |ia_start, ia_end, ib_start, ib_end| {
+                    scratch.run_in_tls_scope(|scratch, tls| {
+                        for ib in ib_start..ib_end {
+                            for ia in ia_start..ia_end {
+                                scratch.run_one_tile(ker, non_linear, tls, ia, ib)?;
+                            }
+                        }
+                        TractResult::Ok(())
+                    })
+                },
             ),
             #[cfg(feature = "multithread-mm")]
-            Executor::RayonGlobal => {
-                chunked_dispatch_rayon(None, m.divceil(ker.mr()), n.divceil(ker.nr()), |ia, ib| {
-                    scratch.run(ker, non_linear, ia, ib)
-                })
-            }
+            Executor::RayonGlobal => chunked_dispatch_rayon(
+                None,
+                m.divceil(ker.mr()),
+                n.divceil(ker.nr()),
+                |ia_start, ia_end, ib_start, ib_end| {
+                    scratch.run_in_tls_scope(|scratch, tls| {
+                        for ib in ib_start..ib_end {
+                            for ia in ia_start..ia_end {
+                                scratch.run_one_tile(ker, non_linear, tls, ia, ib)?;
+                            }
+                        }
+                        TractResult::Ok(())
+                    })
+                },
+            ),
         }
     }
 }
@@ -305,14 +337,33 @@ unsafe fn run_with_scratch_space_row_outer<K: MatMatMulKer>(
                 Some(&pool),
                 m.divceil(ker.mr()),
                 n.divceil(ker.nr()),
-                |ia, ib| scratch.run(ker, non_linear, ia, ib),
+                |ia_start, ia_end, ib_start, ib_end| {
+                    scratch.run_in_tls_scope(|scratch, tls| {
+                        for ia in ia_start..ia_end {
+                            for ib in ib_start..ib_end {
+                                scratch.run_one_tile(ker, non_linear, tls, ia, ib)?;
+                            }
+                        }
+                        TractResult::Ok(())
+                    })
+                },
             ),
             #[cfg(feature = "multithread-mm")]
-            Executor::RayonGlobal => {
-                chunked_dispatch_rayon(None, m.divceil(ker.mr()), n.divceil(ker.nr()), |ia, ib| {
-                    scratch.run(ker, non_linear, ia, ib)
-                })
-            }
+            Executor::RayonGlobal => chunked_dispatch_rayon(
+                None,
+                m.divceil(ker.mr()),
+                n.divceil(ker.nr()),
+                |ia_start, ia_end, ib_start, ib_end| {
+                    scratch.run_in_tls_scope(|scratch, tls| {
+                        for ia in ia_start..ia_end {
+                            for ib in ib_start..ib_end {
+                                scratch.run_one_tile(ker, non_linear, tls, ia, ib)?;
+                            }
+                        }
+                        TractResult::Ok(())
+                    })
+                },
+            ),
         }
     }
 }
@@ -350,6 +401,13 @@ fn chunk_grid(n_panels_m: usize, n_panels_n: usize, nth: usize) -> (usize, usize
 /// Better-utilises threads on small/skewed shapes where one dimension has
 /// fewer panels than there are workers.
 ///
+/// The closure receives **chunk bounds** (`ia_start, ia_end, ib_start, ib_end`),
+/// not per-tile indices. This lets the caller amortise per-worker setup
+/// (e.g. `ScratchSpaceImpl::run_in_tls_scope`) across all tiles in the
+/// chunk, mirroring #2206 for the multi-threaded path. The closure is
+/// invoked exactly once per rayon work item (and once total when the
+/// small-graph fallback path is taken).
+///
 /// `pool`:
 ///   * `Some(p)` with `p.current_num_threads() > 1` → scoped via `p.install`
 ///     (native, custom pool path).
@@ -362,22 +420,19 @@ unsafe fn chunked_dispatch_rayon<F>(
     pool: Option<&rayon::ThreadPool>,
     n_panels_m: usize,
     n_panels_n: usize,
-    run_one: F,
+    run_chunk: F,
 ) -> TractResult<()>
 where
-    F: Fn(usize, usize) -> TractResult<()> + Sync,
+    F: Fn(usize, usize, usize, usize) -> TractResult<()> + Sync,
 {
     use rayon::prelude::*;
     if n_panels_m == 0 || n_panels_n == 0 {
         return Ok(());
     }
     if n_panels_m * n_panels_n < crate::multithread::current_threading_panel_threshold() {
-        for ia in 0..n_panels_m {
-            for ib in 0..n_panels_n {
-                run_one(ia, ib)?;
-            }
-        }
-        return Ok(());
+        // Below the threading threshold: run the whole grid as a single chunk
+        // on the calling thread. Closure handles its own TLS scope.
+        return run_chunk(0, n_panels_m, 0, n_panels_n);
     }
     let use_global = pool.is_none_or(|p| p.current_num_threads() <= 1);
     let body = || {
@@ -391,12 +446,7 @@ where
             let ia_end = (ia_start + dr_m).min(n_panels_m);
             let ib_start = in_ * dr_n;
             let ib_end = (ib_start + dr_n).min(n_panels_n);
-            for ia in ia_start..ia_end {
-                for ib in ib_start..ib_end {
-                    run_one(ia, ib)?;
-                }
-            }
-            TractResult::Ok(())
+            run_chunk(ia_start, ia_end, ib_start, ib_end)
         })
     };
     if use_global { body() } else { pool.unwrap().install(body) }
