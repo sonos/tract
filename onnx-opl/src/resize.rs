@@ -239,11 +239,23 @@ impl EvalOp for Resize {
         )?;
         let scales: TVec<f32> = if let Some(scales) = scales.filter(|s| s.len() == inputs[0].rank())
         {
-            scales.try_as_plain()?.as_slice::<f32>()?.into()
+            // `scales` may arrive as F16 if the model went through `f32_to_f16` —
+            // cast to F32 unconditionally; cheap on a length-rank slice.
+            scales.cast_to::<f32>()?.try_as_plain()?.as_slice::<f32>()?.into()
         } else {
             output_shape.iter().zip(inputs[0].shape()).map(|(o, i)| *o as f32 / *i as f32).collect()
         };
-        let mut data = inputs.remove(0).into_tensor().into_plain_array::<f32>()?;
+        // Interpolation arithmetic is fundamentally floating-point; do all
+        // resampling in F32 internally, casting at the boundary to support
+        // F16 (and other narrower float types) without per-dtype eval bodies.
+        let input_tensor = inputs.remove(0).into_tensor();
+        let original_dt = input_tensor.datum_type();
+        let f32_tensor = if original_dt == DatumType::F32 {
+            input_tensor
+        } else {
+            input_tensor.cast_to::<f32>()?.into_owned()
+        };
+        let mut data = f32_tensor.into_plain_array::<f32>()?;
         for (axis, scale) in scales.into_iter().enumerate().filter(|(_, s)| *s != 1.0) {
             let mut new_shape: TVec<usize> = data.shape().into();
             new_shape[axis] = output_shape[axis];
@@ -304,7 +316,14 @@ impl EvalOp for Resize {
                 }),
             }
         }
-        Ok(tvec!(data.into_tvalue()))
+        // Cast back to the input's dtype (no-op for F32, F32 → F16 etc. otherwise).
+        let out_tensor = data.into_tensor();
+        let out_tensor = if original_dt == DatumType::F32 {
+            out_tensor
+        } else {
+            out_tensor.cast_to_dt(original_dt)?.into_owned()
+        };
+        Ok(tvec!(out_tensor.into_tvalue()))
     }
 }
 
@@ -566,5 +585,71 @@ mod tests {
         let result = op.eval(tvec!(input_tensor, scales_tensor)).unwrap();
         let shape = result[0].shape();
         assert_eq!(shape, &[4, 4]);
+    }
+
+    /// F16 input → F16 output, internal interpolation arithmetic in F32.
+    /// Verifies the cast-at-boundary path that unblocks F16 CPU baselines for
+    /// segmentation / SR / matting models with Resize in their graphs.
+    #[test]
+    fn linear_resize_2d_f16_upsample() {
+        let input_f32 = tract_ndarray::arr2(&[[1.0f32, 2.0], [3.0, 4.0]]).into_tensor();
+        let input_f16 = input_f32.cast_to::<f16>().unwrap().into_owned().into_tvalue();
+        let scales = tract_ndarray::arr1(&[2.0f32, 2.0]).into_tensor().into_tvalue();
+        let op = Resize {
+            axes: None,
+            coord_transformer: CoordTransformer::HalfPixel,
+            interpolator: Interpolator::Linear,
+            nearest: Nearest::Floor,
+            cubic_coeff_a_bits: (-0.75f32).to_bits(),
+            exclude_outside: false,
+            optional_roi_input: None,
+            optional_scales_input: Some(1),
+            optional_sizes_input: None,
+        };
+        // Run the same op on the F32 input so we can compare numerics with a
+        // tolerance rather than hard-coding HalfPixel-interpolation values.
+        let input_f32_tv = input_f32.clone().into_tvalue();
+        let scales_f32 = tract_ndarray::arr1(&[2.0f32, 2.0]).into_tensor().into_tvalue();
+        let out_ref = op.eval(tvec!(input_f32_tv, scales_f32)).unwrap();
+        assert_eq!(out_ref[0].datum_type(), DatumType::F32);
+
+        let out = op.eval(tvec!(input_f16, scales)).unwrap();
+        assert_eq!(out[0].datum_type(), DatumType::F16);
+        assert_eq!(out[0].shape(), &[4, 4]);
+
+        let out_f32 = out[0].cast_to::<f32>().unwrap().into_owned();
+        let out_plain = out_f32.try_as_plain().unwrap();
+        let out_slice = out_plain.as_slice::<f32>().unwrap();
+        let ref_plain = out_ref[0].try_as_plain().unwrap();
+        let ref_slice = ref_plain.as_slice::<f32>().unwrap();
+        // F16 round-trip noise on values ~[1,4] is bounded ~6e-4 relative.
+        for (i, (got, exp)) in out_slice.iter().zip(ref_slice.iter()).enumerate() {
+            assert!(got.is_finite(), "non-finite at {i}: {got}");
+            assert!(
+                (got - exp).abs() < 5e-3,
+                "F16 vs F32 path diverged at {i}: F16={got} F32={exp}"
+            );
+        }
+    }
+
+    #[test]
+    fn nearest_resize_1d_f16_downsample() {
+        let input_f32 = tract_ndarray::arr1(&[0.0f32, 1.0, 2.0, 3.0, 4.0, 5.0]).into_tensor();
+        let input_f16 = input_f32.cast_to::<f16>().unwrap().into_owned().into_tvalue();
+        let scales = tract_ndarray::arr1(&[0.5f32]).into_tensor().into_tvalue();
+        let op = Resize {
+            axes: None,
+            coord_transformer: CoordTransformer::HalfPixel,
+            interpolator: Interpolator::Nearest,
+            nearest: Nearest::RoundPreferFloor,
+            cubic_coeff_a_bits: (-0.75f32).to_bits(),
+            exclude_outside: false,
+            optional_roi_input: None,
+            optional_scales_input: Some(1),
+            optional_sizes_input: None,
+        };
+        let out = op.eval(tvec!(input_f16, scales)).unwrap();
+        assert_eq!(out[0].datum_type(), DatumType::F16);
+        assert_eq!(out[0].shape(), &[3]);
     }
 }
