@@ -1,0 +1,57 @@
+[package]
+name = "tract-coreml"
+version = "0.23.0-pre"
+license = "MIT OR Apache-2.0"
+authors = [
+	"Mathieu Poumeyrol <kali@zoy.org>",
+]
+description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
+repository = "https://github.com/sonos/tract"
+keywords = [ "TensorFlow", "NeuralNetworks", "CoreML", "ANE" ]
+categories = [ "science" ]
+autobenches = false
+edition = "2024"
+rust-version.workspace = true
+
+[badges]
+maintenance = { status = "actively-developed" }
+
+[dependencies]
+anyhow.workspace = true
+half.workspace = true
+inventory.workspace = true
+log.workspace = true
+prost.workspace = true
+serde_json.workspace = true
+tract-core.workspace = true
+# Phase 3: Resize op lives in tract-onnx-opl (the ONNX-specific op library).
+# Lightweight pure-Rust dep, already in the workspace.
+tract-onnx-opl.workspace = true
+# Phase 3: SHA-256 for the persistent compile cache key. Pure-Rust, tiny.
+sha2 = "0.10"
+
+# Apple framework bindings (no workspace entries — the only consumer is tract-coreml).
+objc2 = "0.6"
+objc2-core-ml = "0.3"
+objc2-foundation = "0.3"
+uuid = { version = "1", features = ["v4"] }
+
+[build-dependencies]
+prost-build = "0.14"
+protox = "0.9"
+
+[features]
+default = []
+
+[dev-dependencies]
+proptest.workspace = true
+rand.workspace = true
+# The big-model ignore-by-default tests load real ONNX files via tract-onnx.
+tract-onnx.workspace = true
+tract-hir.workspace = true
+# DFN3 streaming-audio canary loads tract-NNEF format archives via tract-nnef.
+tract-nnef.workspace = true
+# The MobileNet test imports MLComputeUnits to compare All vs CPUAndNeuralEngine.
+objc2-core-ml = "0.3"
+# MODNet cpu-vs-coreml correctness test loads a real JPEG / writes alpha-matte PNGs.
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }

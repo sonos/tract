@@ -21,6 +21,7 @@ members = [
     "extra",
     "transformers",
     "cuda",
+    "coreml",
 
     "api",
     "api/rs",
@@ -213,6 +214,7 @@ walkdir = "2.3.2"
 zerofrom = "0.1.5"
 tract-api = { version = "=0.23.0-dev.4", path = 'api' }
 tract-core = { version = "0.23.0-pre", path = 'core' }
+tract-coreml = { version = "0.23.0-pre", path = 'coreml' }
 tract-cuda = { version = "0.23.0-pre", path = 'cuda' }
 tract-data = { version = "0.23.0-pre", path = 'data' }
 tract-extra = { version = "0.23.0-pre", path = 'extra' }
