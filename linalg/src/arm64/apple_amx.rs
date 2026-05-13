@@ -4,9 +4,7 @@ use crate::mmm::*;
 use tract_data::prelude::*;
 
 use super::has_amx;
-use super::{
-    arm64fp16_mmm_f16_16x8_gen, arm64simd_mmm_f32_8x8_gen, arm64simd_mmm_f32_64x1_gen,
-};
+use super::{arm64fp16_mmm_f16_16x8_gen, arm64simd_mmm_f32_8x8_gen, arm64simd_mmm_f32_64x1_gen};
 
 const AMX: fn() -> bool = crate::arm64::has_amx;
 const CAN_FUSE: fn(&FusedSpec) -> bool = |f| !matches!(f, &FusedSpec::LeakyRelu(_));
@@ -41,11 +39,7 @@ pub fn plug(ops: &mut Ops) {
         // (Inception, YOLO, SAM2) while routing small shapes to NEON.
         ops.mmm_f32 = Box::new(|m, _, n| {
             let big_enough = m.is_some_and(|m| m >= 32) && n.is_some_and(|n| n >= 32);
-            if big_enough {
-                apple_amx_mmm_f32_32x32.mmm()
-            } else {
-                arm64simd_mmm_f32_8x8_gen.mmm()
-            }
+            if big_enough { apple_amx_mmm_f32_32x32.mmm() } else { arm64simd_mmm_f32_8x8_gen.mmm() }
         });
         // mmv (n=1) f32: AMX 32x1 is dominated by NEON 64x1 across the entire
         // shape sweep — confirmed by canary deltas on DFN3 (which is mmv-heavy).
