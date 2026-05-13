@@ -30,8 +30,15 @@ impl EvalOp for RmsNorm {
         let input = args_1!(inputs);
 
         let input_f32 = input.cast_to::<f32>()?.into_owned();
+        // eps inherits the input dtype from the declutter pattern (F16 when the
+        // surrounding LayerNorm chain is F16). The MeanOfSquares + Add + Rsqrt
+        // + Mul chain below all runs at F32, so eps must be cast to match —
+        // otherwise the Add::eval call below panics with
+        //   "tensor is F32, accessed as F16"
+        // when input is F16.
+        let eps = self.eps.cast_to::<f32>()?.into_owned();
         let a1 = Reducer::MeanOfSquares.reduce(&[self.axis], &input_f32)?;
-        let mut a2 = Add.eval(a1.into_tvalue(), self.eps.clone().into_tvalue(), DatumType::F32)?;
+        let mut a2 = Add.eval(a1.into_tvalue(), eps.into_tvalue(), DatumType::F32)?;
         Rsqrt {}.eval_in_place(&mut a2, None)?;
         let a3 = Mul.eval(a2.into_tvalue(), input_f32.into_tvalue(), DatumType::F32)?;
         Ok(tvec![a3.cast_to_dt(input.datum_type())?.into_owned().into()])
@@ -167,4 +174,35 @@ pub fn detect_rms_norm(
 
     patch.shunt_outside(model, mul_succ.id.into(), out[0])?;
     Ok(Some(patch))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ops::nn::RmsNorm;
+
+    /// Regression: the declutter pattern (`detect_rms_norm`) stores `eps` with
+    /// the input dtype (F16 when the surrounding LayerNorm chain is F16) — see
+    /// `rule_if!(eps.datum_type() == dt)` above. The eval path runs at F32, so
+    /// it must cast `self.eps` to F32 before using it. Without the cast in
+    /// `RmsNorm::eval`, this test panics with "tensor is F32, accessed as F16".
+    #[test]
+    fn eval_with_f16_eps_and_f16_input() {
+        let to_h = |x: f32| f16::from_f32(x);
+        let input = tensor1(&[to_h(1.0), to_h(2.0), to_h(3.0), to_h(4.0)]);
+        let eps = tensor0(to_h(1e-5)).into_arc_tensor();
+        let op = RmsNorm { axis: 0, eps };
+        let out = op.eval(tvec!(input.clone().into())).expect("eval should not panic");
+        let out = out.into_iter().next().unwrap().into_tensor();
+        assert_eq!(out.datum_type(), DatumType::F16);
+        assert_eq!(out.shape(), &[4]);
+        // Reference: rms = sqrt((1+4+9+16)/4 + eps) = sqrt(7.5 + 1e-5) ≈ 2.7386
+        // normalised: [1, 2, 3, 4] / 2.7386 ≈ [0.365, 0.730, 1.095, 1.461]
+        let got = unsafe { out.as_slice_unchecked::<f16>() };
+        let expected = [0.365_f32, 0.730, 1.095, 1.461];
+        for (i, (g, e)) in got.iter().zip(expected.iter()).enumerate() {
+            let diff = (g.to_f32() - e).abs();
+            assert!(diff < 0.01, "lane {i}: got {} expected {}", g.to_f32(), e);
+        }
+    }
 }
