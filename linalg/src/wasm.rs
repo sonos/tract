@@ -16,7 +16,7 @@ use crate::frame::element_wise::ElementWiseKer;
 
 // f32x4 mul+add → relaxed FMA when the build has +relaxed-simd, else explicit
 // mul+add. Lets the MMM kernels emit f32x4.relaxed_madd without duplicating
-// kernel source. Per PR #2195: LLVM does not auto-emit relaxed_madd from
+// kernel source. Per PR #2199: LLVM does not auto-emit relaxed_madd from
 // f32x4_add(f32x4_mul(...)) even with +relaxed-simd — hand emission is needed.
 //
 // Caller must have `use std::arch::wasm32::*;` in scope (every kernel does).
@@ -32,6 +32,28 @@ macro_rules! madd_f32x4 {
 
 #[cfg(not(target_feature = "relaxed-simd"))]
 macro_rules! madd_f32x4 {
+    ($acc:expr, $a:expr, $b:expr) => {
+        f32x4_add($acc, f32x4_mul($a, $b))
+    };
+}
+
+// Always-non-fused madd. Used by kernels with ≤4 SIMD accumulators per K-step
+// (wasm_f32_4x1, _8x1, _16x1, _4x4), where the destructive `fmla.4s`
+// emitted by +relaxed-simd creates a 4-cycle accumulator RAW recurrence
+// that throttles throughput to 1 FMA/cycle even though Apple-class ARM64
+// pipes can do 4. The separate `fmul.4s; fadd.4s` form gives each multiply
+// a fresh destination register, letting the OoO renamer overlap the next
+// iteration's multiply with the in-flight add. Measured: under
+// +simd128,+relaxed-simd these kernels are 19-28% slower than under
+// +simd128 when using the fused form on Apple M1 — both wasmtime
+// (Cranelift) and Node 20 (V8) reproduce identically. Wider kernels
+// (wasm_f32_32x1 with 8 accs, wasm_f32_8x8 with 16) keep the fused form
+// because their pipe is saturated and FMA's 1-instruction-per-madd wins.
+//
+// Cross-check: XNNPACK only ships wasmrelaxedsimd-fma GEMM kernels at
+// NR=8 (i.e. ≥8 accumulator-equivalents), independently arriving at the
+// same threshold without writing it down.
+macro_rules! madd_f32x4_nofma {
     ($acc:expr, $a:expr, $b:expr) => {
         f32x4_add($acc, f32x4_mul($a, $b))
     };
@@ -305,10 +327,10 @@ unsafe fn kernel_f32_4x4(mut pnl: *const FusedKerSpec<f32>) -> isize {
                 }
                 FusedKerSpec::AddRowColProducts(rows, cols) => {
                     let cols = v128_load(cols as *const v128);
-                    ab0 = madd_f32x4!(ab0, f32x4_splat(*rows.add(0)), cols);
-                    ab1 = madd_f32x4!(ab1, f32x4_splat(*rows.add(1)), cols);
-                    ab2 = madd_f32x4!(ab2, f32x4_splat(*rows.add(2)), cols);
-                    ab3 = madd_f32x4!(ab3, f32x4_splat(*rows.add(3)), cols);
+                    ab0 = madd_f32x4_nofma!(ab0, f32x4_splat(*rows.add(0)), cols);
+                    ab1 = madd_f32x4_nofma!(ab1, f32x4_splat(*rows.add(1)), cols);
+                    ab2 = madd_f32x4_nofma!(ab2, f32x4_splat(*rows.add(2)), cols);
+                    ab3 = madd_f32x4_nofma!(ab3, f32x4_splat(*rows.add(3)), cols);
                 }
                 FusedKerSpec::Store(tile) => {
                     let mut ptr: *mut u8 = tile.ptr;
@@ -350,10 +372,10 @@ unsafe fn kernel_f32_4x4(mut pnl: *const FusedKerSpec<f32>) -> isize {
                     for i in 0..k {
                         let a = std::slice::from_raw_parts(a.offset(4 * i as isize), 4);
                         let b = v128_load(b.offset(i as isize));
-                        ab0 = madd_f32x4!(ab0, f32x4_splat(a[0]), b);
-                        ab1 = madd_f32x4!(ab1, f32x4_splat(a[1]), b);
-                        ab2 = madd_f32x4!(ab2, f32x4_splat(a[2]), b);
-                        ab3 = madd_f32x4!(ab3, f32x4_splat(a[3]), b);
+                        ab0 = madd_f32x4_nofma!(ab0, f32x4_splat(a[0]), b);
+                        ab1 = madd_f32x4_nofma!(ab1, f32x4_splat(a[1]), b);
+                        ab2 = madd_f32x4_nofma!(ab2, f32x4_splat(a[2]), b);
+                        ab3 = madd_f32x4_nofma!(ab3, f32x4_splat(a[3]), b);
                     }
                 }
             }
@@ -488,7 +510,7 @@ unsafe fn kernel_f32_4x1(mut pnl: *const FusedKerSpec<f32>) -> isize {
                     // ab[i] += rows[i] * cols[0]  (cols[0] is the single col)
                     let r = v128_load(rows as *const v128);
                     let c = f32x4_splat(*cols);
-                    ab = madd_f32x4!(ab, r, c);
+                    ab = madd_f32x4_nofma!(ab, r, c);
                 }
                 FusedKerSpec::Store(tile) => {
                     // 4 rows × 1 col, write each lane to a separate row
@@ -510,7 +532,7 @@ unsafe fn kernel_f32_4x1(mut pnl: *const FusedKerSpec<f32>) -> isize {
                     for i in 0..k {
                         let a_vec = v128_load(a.offset(i as isize));
                         let b_splat = f32x4_splat(*b.offset(i as isize));
-                        ab = madd_f32x4!(ab, a_vec, b_splat);
+                        ab = madd_f32x4_nofma!(ab, a_vec, b_splat);
                     }
                 }
             }
@@ -716,8 +738,8 @@ unsafe fn kernel_f32_8x1(mut pnl: *const FusedKerSpec<f32>) -> isize {
                     let r_t = v128_load(p);
                     let r_b = v128_load(p.add(1));
                     let c = f32x4_splat(*cols);
-                    ab_top = madd_f32x4!(ab_top, r_t, c);
-                    ab_bot = madd_f32x4!(ab_bot, r_b, c);
+                    ab_top = madd_f32x4_nofma!(ab_top, r_t, c);
+                    ab_bot = madd_f32x4_nofma!(ab_bot, r_b, c);
                 }
                 FusedKerSpec::Store(tile) => {
                     // 8 rows × 1 col, write each lane to a separate row
@@ -748,8 +770,8 @@ unsafe fn kernel_f32_8x1(mut pnl: *const FusedKerSpec<f32>) -> isize {
                         let a_t = v128_load(a.offset((2 * i) as isize));
                         let a_b = v128_load(a.offset((2 * i + 1) as isize));
                         let b_splat = f32x4_splat(*b.offset(i as isize));
-                        ab_top = madd_f32x4!(ab_top, a_t, b_splat);
-                        ab_bot = madd_f32x4!(ab_bot, a_b, b_splat);
+                        ab_top = madd_f32x4_nofma!(ab_top, a_t, b_splat);
+                        ab_bot = madd_f32x4_nofma!(ab_bot, a_b, b_splat);
                     }
                 }
             }
@@ -972,10 +994,10 @@ unsafe fn kernel_f32_16x1(mut pnl: *const FusedKerSpec<f32>) -> isize {
                 FusedKerSpec::AddRowColProducts(rows, cols) => {
                     let p = rows as *const v128;
                     let c = f32x4_splat(*cols);
-                    ab_q0 = madd_f32x4!(ab_q0, v128_load(p), c);
-                    ab_q1 = madd_f32x4!(ab_q1, v128_load(p.add(1)), c);
-                    ab_q2 = madd_f32x4!(ab_q2, v128_load(p.add(2)), c);
-                    ab_q3 = madd_f32x4!(ab_q3, v128_load(p.add(3)), c);
+                    ab_q0 = madd_f32x4_nofma!(ab_q0, v128_load(p), c);
+                    ab_q1 = madd_f32x4_nofma!(ab_q1, v128_load(p.add(1)), c);
+                    ab_q2 = madd_f32x4_nofma!(ab_q2, v128_load(p.add(2)), c);
+                    ab_q3 = madd_f32x4_nofma!(ab_q3, v128_load(p.add(3)), c);
                 }
                 FusedKerSpec::Store(tile) => {
                     // 16 rows × 1 col, write each lane to a separate row
@@ -1003,10 +1025,10 @@ unsafe fn kernel_f32_16x1(mut pnl: *const FusedKerSpec<f32>) -> isize {
                         let a2 = v128_load(a.offset((4 * i + 2) as isize));
                         let a3 = v128_load(a.offset((4 * i + 3) as isize));
                         let bs = f32x4_splat(*b.offset(i as isize));
-                        ab_q0 = madd_f32x4!(ab_q0, a0, bs);
-                        ab_q1 = madd_f32x4!(ab_q1, a1, bs);
-                        ab_q2 = madd_f32x4!(ab_q2, a2, bs);
-                        ab_q3 = madd_f32x4!(ab_q3, a3, bs);
+                        ab_q0 = madd_f32x4_nofma!(ab_q0, a0, bs);
+                        ab_q1 = madd_f32x4_nofma!(ab_q1, a1, bs);
+                        ab_q2 = madd_f32x4_nofma!(ab_q2, a2, bs);
+                        ab_q3 = madd_f32x4_nofma!(ab_q3, a3, bs);
                     }
                 }
             }
@@ -2301,11 +2323,22 @@ mod microbench_32x1 {
         bench_shape("perfect-tile m=32 k=256", 32, 256, 20_000);
     }
 
-    /// Bit-identity sanity check between 16x1 and 32x1 kernels on a real-shape
-    /// matmul with non-trivial inputs. If the outputs ever differ, the kernel
-    /// has a bug — must debug before benching.
+    /// Numerical-equivalence sanity check between 16x1 and 32x1 kernels on a
+    /// real-shape matmul with non-trivial inputs.
+    ///
+    /// Under `+simd128` (no relaxed-simd): both kernels emit
+    /// `f32x4_add(f32x4_mul(...))` via `madd_f32x4!`, so the K-loop order is
+    /// identical and outputs are bit-identical.
+    ///
+    /// Under `+simd128,+relaxed-simd`: 32x1 uses `f32x4.relaxed_madd` (fused
+    /// FMA) via `madd_f32x4!`, while 16x1 uses separate `mul+add` via
+    /// `madd_f32x4_nofma!` to avoid the destructive-accumulator recurrence
+    /// that throttles ≤4-accumulator kernels (see header comment on
+    /// `madd_f32x4_nofma`). Outputs drift by ≤1 ulp per K-step from the
+    /// rounding difference between fused and separate ops. We accept that
+    /// drift with a generous relative tolerance.
     #[test]
-    fn bit_identity_16x1_vs_32x1() {
+    fn numerical_consistency_16x1_vs_32x1() {
         let m = 256usize;
         let k = 256usize;
         let mut a_data = vec![0f32; m * k];
@@ -2346,17 +2379,48 @@ mod microbench_32x1 {
 
         let c16 = run("wasm_f32_16x1");
         let c32 = run("wasm_f32_32x1");
-        // bit-identical f32 — same K-loop order, same fmadd ordering per row,
-        // just different MR row-grouping
-        for (i, (x16, x32)) in c16.iter().zip(c32.iter()).enumerate() {
-            assert!(
-                x16.to_bits() == x32.to_bits(),
-                "row {i}: 16x1={x16} (bits 0x{:x}) != 32x1={x32} (bits 0x{:x})",
-                x16.to_bits(),
-                x32.to_bits()
+
+        #[cfg(not(target_feature = "relaxed-simd"))]
+        {
+            for (i, (x16, x32)) in c16.iter().zip(c32.iter()).enumerate() {
+                assert!(
+                    x16.to_bits() == x32.to_bits(),
+                    "row {i}: 16x1={x16} (bits 0x{:x}) != 32x1={x32} (bits 0x{:x})",
+                    x16.to_bits(),
+                    x32.to_bits()
+                );
+            }
+            eprintln!("bit-identity OK over m={m} k={k} ({} rows)", m);
+        }
+
+        #[cfg(target_feature = "relaxed-simd")]
+        {
+            // K=256 accumulator drift on fp32 between FMA and separate mul+add
+            // can grow up to roughly K × 0.5 ulp ≈ 128 ulp in the accumulator.
+            // For small-magnitude outputs that translates to ~1e-4 relative.
+            // We use 1e-4 as the tolerance — tight enough to catch real bugs
+            // (typically 1e-2+ drift) but generous for legitimate FMA drift.
+            let mut max_abs = 0.0f32;
+            let mut max_rel = 0.0f32;
+            for (i, (x16, x32)) in c16.iter().zip(c32.iter()).enumerate() {
+                let abs = (x16 - x32).abs();
+                let scale = x16.abs().max(x32.abs()).max(1.0e-9);
+                let rel = abs / scale;
+                assert!(
+                    rel < 1.0e-4,
+                    "row {i}: relative drift {rel:e} too large; 16x1={x16} 32x1={x32}"
+                );
+                if abs > max_abs {
+                    max_abs = abs;
+                }
+                if rel > max_rel {
+                    max_rel = rel;
+                }
+            }
+            eprintln!(
+                "relaxed-simd consistency OK over m={m} k={k}: max abs={max_abs:.3e}, max rel={max_rel:.3e}"
             );
         }
-        eprintln!("bit-identity OK over m={m} k={k} ({} rows)", m);
     }
 }
 

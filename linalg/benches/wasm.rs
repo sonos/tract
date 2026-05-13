@@ -26,6 +26,10 @@ fn main() {
     eprintln!();
     eprintln!("=== Isolated 32x1 GEMV microbench ({target}) ===");
     bench_32x1::run();
+
+    eprintln!();
+    eprintln!("=== Isolated 16x1 GEMV microbench ({target}) ===");
+    bench_16x1::run();
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -231,5 +235,107 @@ mod bench_32x1 {
         // Reference shapes (showed clean speedup before):
         bench_min_of_n("M=24 k=256", 24, 256, 30_000, 10);
         bench_min_of_n("M=64 k=96", 64, 96, 20_000, 10);
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+mod bench_16x1 {
+    //! Isolated 16x1 GEMV microbench — same methodology as bench_32x1.
+    //! 16x1 has 4 SIMD accumulators per K-step, which under +relaxed-simd
+    //! exposes the destructive-fmla accumulator recurrence (4-cycle latency
+    //! throttling throughput to 1 FMA/cycle even though Apple Silicon pipes
+    //! can do 4). Used to validate that the fix in linalg/src/wasm.rs (which
+    //! routes 16x1 through `madd_f32x4_nofma!` to use separate mul+add)
+    //! recovers the regression PR #2199 missed.
+    use std::time::Instant;
+    use tract_data::internal::*;
+    use tract_linalg::mmm::{AsInputValue, FusedSpec};
+
+    fn run_one(kernel: &dyn tract_linalg::mmm::MatMatMul, m: usize, k: usize, iters: usize) -> f64 {
+        let packing = &kernel.packings()[0];
+        let a = Tensor::zero::<f32>(&[m, k]).unwrap();
+        let pa = packing.0.prepare_one(&a, 1, 0).unwrap();
+        let b = Tensor::zero::<f32>(&[k, 1]).unwrap();
+        let pb = packing.1.prepare_one(&b, 0, 1).unwrap();
+        let mut c = Tensor::zero::<f32>(&[m, 1]).unwrap();
+
+        for _ in 0..200 {
+            unsafe {
+                kernel
+                    .run(
+                        m,
+                        1,
+                        &[
+                            FusedSpec::AddMatMul {
+                                a: AsInputValue::Borrowed(&*pa),
+                                b: AsInputValue::Borrowed(&*pb),
+                                packing: 0,
+                            },
+                            FusedSpec::Store(kernel.c_view(Some(0), Some(0)).wrap(&c.view_mut())),
+                        ],
+                    )
+                    .unwrap();
+            }
+        }
+
+        let t0 = Instant::now();
+        for _ in 0..iters {
+            unsafe {
+                kernel
+                    .run(
+                        m,
+                        1,
+                        &[
+                            FusedSpec::AddMatMul {
+                                a: AsInputValue::Borrowed(&*pa),
+                                b: AsInputValue::Borrowed(&*pb),
+                                packing: 0,
+                            },
+                            FusedSpec::Store(kernel.c_view(Some(0), Some(0)).wrap(&c.view_mut())),
+                        ],
+                    )
+                    .unwrap();
+            }
+        }
+        let elapsed = t0.elapsed();
+        elapsed.as_secs_f64() / iters as f64 * 1e9
+    }
+
+    fn pick(name: &str) -> Box<dyn tract_linalg::mmm::MatMatMul> {
+        let mut ops = tract_linalg::generic();
+        tract_linalg::wasm::plug(&mut ops);
+        for impl_ in ops.mmm_impls() {
+            if impl_.name() == name {
+                return impl_.clone();
+            }
+        }
+        panic!("kernel {name} not registered")
+    }
+
+    fn bench_min_of_n(label: &str, m: usize, k: usize, iters: usize, repetitions: usize) {
+        let kernel = pick("wasm_f32_16x1");
+        let mut samples: Vec<f64> = Vec::with_capacity(repetitions);
+        for _ in 0..repetitions {
+            samples.push(run_one(&*kernel, m, k, iters));
+        }
+        samples.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let min = samples[0];
+        let median = samples[samples.len() / 2];
+        let max = samples[samples.len() - 1];
+        let pct_spread = (max - min) / min * 100.0;
+        eprintln!(
+            "{label} (m={m} k={k}, {iters} iters × {repetitions} reps): \
+             min={min:.0} median={median:.0} max={max:.0} ns/call (spread {pct_spread:.0}%)"
+        );
+    }
+
+    pub fn run() {
+        // 16x1's natural band per plug()'s mmv_f32 closure: M ∈ 9..=16
+        bench_min_of_n("M=9 k=256", 9, 256, 30_000, 10);
+        bench_min_of_n("M=12 k=256", 12, 256, 30_000, 10);
+        bench_min_of_n("M=16 k=96", 16, 96, 30_000, 10);
+        bench_min_of_n("M=16 k=256", 16, 256, 20_000, 10);
+        bench_min_of_n("M=16 k=512", 16, 512, 10_000, 10);
+        bench_min_of_n("M=16 k=1024", 16, 1024, 5_000, 10);
     }
 }
