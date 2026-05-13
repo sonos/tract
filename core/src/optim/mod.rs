@@ -8,6 +8,7 @@ mod concat_then_einsum;
 mod op_optim;
 mod prop_const;
 pub mod propagate_roi;
+pub mod propagate_uniform_tdim;
 mod push_split_down;
 mod slice;
 mod uniform_mask;
@@ -15,6 +16,7 @@ mod uniform_mask;
 use self::change_axes::ChangeAxes;
 use self::prop_const::PropConst;
 use self::propagate_roi::PropagateRoi;
+use self::propagate_uniform_tdim::PropagateUniformTdim;
 use self::push_split_down::PushSplitDown;
 use self::slice::PushSliceUp;
 use self::uniform_mask::FoldUniformMask;
@@ -69,6 +71,7 @@ impl Optimizer {
     pub fn declutter() -> Optimizer {
         Optimizer::passes(vec![
             Box::<PropConst>::default(),
+            Box::<PropagateUniformTdim>::default(),
             Box::<PropagateRoi>::default(),
             Box::<FoldUniformMask>::default(),
             Box::new(OpOptim("declutter", TypedOp::declutter_with_session, 0)),
