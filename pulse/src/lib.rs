@@ -28,18 +28,10 @@ use tract_pulse_opl::tract_nnef::tract_core;
 
 pub use ops::PulsedOp;
 
-/// Model property listing input names whose value is fed once per session
-/// (rather than chunked over pulses), even if their shape contains the
-/// streaming symbol.  Used for things like Transformer-XL relative-position
-/// tables: they're indexed dynamically per chunk, and chunk c reads from
-/// pos rows that wouldn't have arrived yet under a forward stream.  The
-/// resolution is to bind the full pos tensor at session start (when the
-/// streaming symbol is concretely known).
-///
-/// Stored as a list-of-strings tensor of input node names.  The Source
-/// pulsifier consults this list and forces `stream: None` for matching
-/// inputs.  Blockify populates it when its rel-pos einsum→DiagGather
-/// rewrite identifies a streaming-rel-pos input.
+/// Model property: list-of-strings tensor of input names whose source
+/// is treated as non-streaming despite a shape that contains the
+/// streaming symbol — fed in full at session start when S resolves.
+/// Source pulsifier reads it; blockify populates it for rel-pos inputs.
 pub const PULSE_SESSION_BUFFERED_INPUTS: &str = "pulse.session_buffered_inputs";
 
 #[derive(Debug, Default, serde::Deserialize)]

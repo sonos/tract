@@ -14,11 +14,6 @@ pub fn pulsify(
     pulse: &TDim,
 ) -> TractResult<Option<TVec<OutletId>>> {
     let fact = &node.outputs[0].fact;
-    // Check the `pulse.session_buffered_inputs` model property — when this
-    // source's name appears there, treat it as session-buffered (fed once
-    // at session start, not chunked over pulses) even though its shape
-    // contains the streaming symbol.  See `PULSE_SESSION_BUFFERED_INPUTS`
-    // for the rationale (used by blockify's rel-pos rewrite).
     let session_buffered = source
         .properties
         .get(crate::PULSE_SESSION_BUFFERED_INPUTS)

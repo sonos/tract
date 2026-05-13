@@ -271,14 +271,8 @@ pub fn blockify_output(model: &TypedModel) -> Option<(Symbol, i64)> {
     Some((model.symbols.sym(name), k))
 }
 
-/// Streaming-axis positions on a typed fact.
-
-/// Collect every `TypedSource` reachable upstream from `outlet` by walking
-/// all input edges (recursively, through multi-input ops too).  Used by
-/// blockify to mark every external feeding a session-buffered subgraph
-/// (e.g. encoder.p1's `pos_table_slice → linearPos → pView0` chain where
-/// the multi-input `linearPos` defeats `trace_to_source`'s single-input
-/// walk).
+/// Every `TypedSource` reachable from `outlet` by walking all input
+/// edges (including through multi-input ops).
 fn collect_upstream_sources(model: &TypedModel, outlet: OutletId) -> Vec<&str> {
     use tract_pulse_opl::tract_core::ops::source::TypedSource;
     let mut found: Vec<&str> = vec![];
@@ -302,17 +296,9 @@ fn collect_upstream_sources(model: &TypedModel, outlet: OutletId) -> Vec<&str> {
     found
 }
 
-/// If `einsum_node` is the upstream half of the Transformer-XL "rel-pos
-/// einsum + skew trick" pattern (now folded by `diag_gather_fold` into a
-/// DiagGather), returns the DiagGather node id.
-///
-/// Pattern: the einsum's only multi-T-axis successor in `sec.section` is
-/// a single DiagGather.  The DiagGather collapses the einsum's `2·T-1`
-/// rel-pos axis to a constant `out_len`, so the einsum + DiagGather pair
-/// should be wired as a fused initiator (DiagGather drives the chunked
-/// rewrite; the einsum is tapped through it).  Otherwise blockify would
-/// treat the einsum as a normal initiator and choke on the slope-2k
-/// rel-pos axis at chunk-split time.
+/// If `einsum_node`'s only multi-T-axis successor in `sec` is a single
+/// DiagGather, return its node id — the pair forms a fused initiator
+/// (DiagGather drives the chunked rewrite; the einsum is tapped through).
 fn section_only_diag_gather_consumer(
     model: &TypedModel,
     einsum_node: &TypedNode,
@@ -733,16 +719,10 @@ fn build_section_patch(
     // merge reshape: (original outlet, chunked-form outlet inside patch).
     let mut shunts: Vec<(OutletId, OutletId)> = vec![];
 
-    // ── 0. Fused initiators ──────────────────────────────────────────────
-    // Recognize the rel-pos skew pattern: an EinSum with multi-T-axis
-    // output `[..., T, 2·T-1]` that's consumed by a single DiagGather in
-    // the same section (i.e. the einsum's only multi-T-axis successor is
-    // the DiagGather that collapses the `2·T-1` axis to a constant
-    // `out_len`).  Treat the pair as one fused initiator: route through
-    // `wire_initiator_diag_gather` on the DiagGather (which knows how to
-    // chunk the rel-pos axis correctly), and mark BOTH the einsum and
-    // the DiagGather as already wired so neither the regular initiator
-    // loop nor the body loop touches them.
+    // Fused EinSum + DiagGather initiator: when an EinSum's only
+    // multi-T-axis section consumer is a DiagGather (the post-fold
+    // skew-trick shape), route the pair through DiagGather's chunker
+    // and mark both as already-wired.
     for &nid in &sec.initiators {
         let einsum_node = &model.nodes[nid];
         if !einsum_node.op_is::<EinSum>() {
@@ -752,14 +732,8 @@ fn build_section_patch(
             continue;
         };
         let dg_node = &model.nodes[dg_id];
-        // Two flavours of the einsum→DiagGather pattern:
-        //   - Constant rel-pos table (e.g. ex14): the einsum's output
-        //     `[T, R]` has only the T axis streaming (R is a fixed
-        //     constant from the model export).  `wire_initiator_diag_gather`
-        //     handles this case directly.
-        //   - Streaming rel-pos table (ex12, encoder.p1): the einsum's
-        //     output `[T, 2T-1]` has both axes streaming.  Needs per-chunk
-        //     pos slicing — `wire_initiator_einsum_streaming_pos`.
+        // Streaming-axis count selects the variant: 1 = constant rel-pos
+        // table (ex14), 2 = streaming rel-pos table (ex12, encoder.p1).
         let dg_in_fact = model.outlet_fact(dg_node.inputs[0])?;
         let dg_in_streaming = streaming_positions(dg_in_fact, chunk_sym);
         let dg_chunked = if dg_in_streaming.len() == 1 {
@@ -777,27 +751,12 @@ fn build_section_patch(
                 session_buffered,
             )?
         };
-        // Both the einsum's outlet and the DiagGather's outlet now point
-        // at the same chunked outlet.  Downstream consumers in the
-        // section will pick whichever they actually consume.
         chunked.insert(OutletId::new(nid, 0), dg_chunked);
         chunked.insert(OutletId::new(dg_id, 0), dg_chunked);
         already_wired.insert(nid);
         already_wired.insert(dg_id);
     }
 
-    // ── 1. Initiators ────────────────────────────────────────────────────
-    // Two flavours:
-    //   - Data initiators (e.g. score-matrix EinSum): tap, split, optional
-    //     WindowOnAxis on the contracted side, wire chunked op.
-    //   - Mask-construction initiators (multi-T-axis with uniform_tdim,
-    //     typically Eq/Sub of two single-T-axis chunk-index wires): tap
-    //     each input, split its T-axis, move the chunk axis to position
-    //     0, optionally WindowOnAxis on the contracted side with a
-    //     **sentinel pad value** so the band predicate on out-of-stream
-    //     boundary slots evaluates to false.  Wire the binop with the
-    //     chunked inputs.  The result lives in `chunked` like any other
-    //     section wire.
     for &nid in &sec.initiators {
         if already_wired.contains(&nid) {
             continue;
@@ -980,27 +939,11 @@ fn wire_initiator_diag_gather(
     Ok(patch.wire_node(format!("{}.blockified", node.name), chunked_op, &[chunked])?[0])
 }
 
-/// Fused initiator for the streaming-rel-pos case: `pos_raw = einsum(q, pos)`
-/// followed by `DiagGather`, where `pos` itself has a streaming axis (the
-/// `2T-1` rel-pos table).  The constant-pos variant
-/// (`wire_initiator_diag_gather`) doesn't apply here — its `r.to_i64()`
-/// check fails because the rel-pos axis is symbolic.  Instead we:
-///
-///   1. Tap `q` and `pos` from outside the section.
-///   2. Chunk-split `q` on its (single) streaming axis: `[..., T, D] → [..., S, k, D]`.
-///   3. Build per-chunk pos indices `[S, 2k-1]` of values `T - (c+1)·k + j`
-///      using `Range + arithmetic`.
-///   4. `Gather(pos, indices, axis=0)` → per-chunk pos slices `[S, 2k-1, D]`.
-///   5. Chunked einsum `q_chunked · pos_chunked → [S, k, 2k-1]`.
-///   6. Chunked DiagGather (constant offset `k-1`, `out_len = k`)
-///      → `[S, k, k]`, the chunked equivalent of the original DG output.
-///
-/// Only block-diagonal masks (`L = 0`) are supported here for now;
-/// banded variants need a wider per-chunk window (`(L+2)·k - 1` instead
-/// of `2·k - 1`) and a slightly different DG offset.  Only 2D einsum
-/// signatures (`"id, jd -> ij"`) are supported; encoder.p1's higher-rank
-/// `"bnid, bnjd -> bnij"` (with batch + head dims) needs the same code
-/// generalised over the leading non-streaming axes.
+/// Fused initiator for `einsum(q, pos)` → `DiagGather` when pos itself
+/// has a streaming axis (the `2T-1` rel-pos table).  All chunks read
+/// from the same static pos slice `pos[T - (L+1)·k : T + k - 1]`;
+/// chunked einsum + chunked DiagGather (offset `k-1`, out_len `(L+1)·k`)
+/// produces the per-chunk attended-key window.
 fn wire_initiator_einsum_streaming_pos(
     patch: &mut TypedModelPatch,
     model: &TypedModel,
@@ -1041,36 +984,21 @@ fn wire_initiator_einsum_streaming_pos(
     let q_tapped = patch.tap_model(model, q_outlet)?;
     let pos_tapped = patch.tap_model(model, pos_outlet)?;
 
-    // Mark every external feeding the pos chain as session-buffered.
-    // In pulse mode the rel-pos table must be fed in full at session
-    // start (the static slice we take below references symbolic
-    // absolute pos rows that wouldn't have arrived under a forward
-    // stream).  Walk all inputs recursively so multi-input ops in the
-    // pos chain (e.g. encoder.p1's `linearPos = matmul(pos_dyn_slice,
-    // weight)`) don't break the marking.  See
-    // `PULSE_SESSION_BUFFERED_INPUTS` for the rationale.
+    // Every external feeding pos must be session-buffered: the static
+    // pos slice below references symbolic absolute rows that wouldn't
+    // have arrived under a forward stream.  See PULSE_SESSION_BUFFERED_INPUTS.
     for src_name in collect_upstream_sources(model, pos_outlet) {
         if !session_buffered.iter().any(|s| s == src_name) {
             session_buffered.push(src_name.to_string());
         }
     }
 
-    // Chunk-split q on its streaming axis: [T, D] → [S, k, D].
     let q_chunked =
         wire_chunk_split(patch, &einsum_node.name, q_tapped, q_stream_axis, chunk_sym, k)?;
 
-    // Slice pos to a single static window covering the union of pos rows
-    // any chunk may need.  Per the chunked-DG derivation (extended for
-    // banded masks with L = `mask.upper - mask.lower` left chunks):
-    //
-    //   key absolute = (c - δ)·k + dk'   for δ ∈ [0, L], dk' ∈ [0, k)
-    //   pos index = T - 1 + key - i
-    //             = T - 1 - δ·k + dk' - di
-    //
-    // The per-chunk shift cancels (no `c` in the formula), so all chunks
-    // read from the *same* pos slice `pos[T - (L+1)·k : T + k - 1]` of
-    // length `(L+2)·k - 1`.  The chunked DG below picks the right
-    // diagonal within this slice with constant offset `k-1`.
+    // All chunks read from the same pos slice `pos[T - (L+1)·k : T + k - 1]`
+    // of length `(L+2)·k - 1`: per-chunk shifts cancel under the
+    // chunked-DG derivation (key = (c - δ)·k + dk' for δ ∈ [0, L]).
     let chunks_dim = chunk_sym.to_dim();
     let pos_slice_begin = chunks_dim.clone() * k - (l + 1) * k;
     let pos_slice_end = chunks_dim * k + (k - 1);
@@ -1080,14 +1008,9 @@ fn wire_initiator_einsum_streaming_pos(
         &[pos_tapped],
     )?[0];
 
-    // Chunked einsum: insert a chunk axis 'C' on input 0 (q) at the
-    // streaming-axis position, and on the output at the position
-    // tracked through the original mapping.  Other axes (batch, head,
-    // contracted) keep their letters and shift as needed.  For ex12's
-    // `"id, jd -> ij"` this builds `"Cid, jd -> Cij"`; for encoder.p1's
-    // `"mbk, nbk -> abmn"` it builds `"Cmbk, nbk -> abCmn"`.  Pos
-    // (input 1) is unchanged — its streaming axis just shrunk after
-    // `Slice` and the einsum infers the new length from the input fact.
+    // Insert a chunk axis 'C' on input 0 (q) at its streaming-axis
+    // position and on the output at the tracked position; pos is left
+    // unchanged (its streaming axis just shrunk after Slice).
     let einsum_op = einsum_node.op_as::<EinSum>().unwrap();
     let q_stream_axis_in_out = einsum_op
         .axes
@@ -1110,10 +1033,8 @@ fn wire_initiator_einsum_streaming_pos(
         &[q_chunked, pos_slice],
     )?[0];
 
-    // Chunked DiagGather: offset = k-1 (constant; the Slice already
-    // shifted the absolute pos coordinates), out_len = (L+1)·k (= W,
-    // the attended-key window).  Operates on the last two axes
-    // [k, (L+2)·k-1] → [k, (L+1)·k]; result is [S, k, (L+1)·k].
+    // Constant offset k-1 (the Slice already shifted the absolute pos
+    // coordinates); out_len = (L+1)·k = W (the attended-key window).
     let w = (l + 1) * k;
     let chunked_dg_op = DiagGather { offset: (k - 1).to_dim(), out_len: w.to_dim() };
     let dg_output = patch.wire_node(
@@ -1239,17 +1160,11 @@ fn wire_initiator_multibroadcastto_streaming(
          contracted axis ({contracted_axis}), got {tracked_in_mask}"
     );
 
-    // Step 1: tap.
     let tapped = patch.tap_model(model, input)?;
-
-    // Step 2: split T → [S_0, k] on the streaming axis.
     let split = wire_chunk_split(patch, &node.name, tapped, in_stream_axis, chunk_sym, k)?;
-    // Shape now has chunk axis at `in_stream_axis`, k at `in_stream_axis + 1`.
-    // The bcast_axis was either before or after in_stream_axis; if after, it shifted +1.
     let bcast_axis_post_split =
         if bcast_axis > in_stream_axis { bcast_axis + 1 } else { bcast_axis };
 
-    // Step 3: WindowOnAxis on the chunk axis.
     let window: usize = (mask.upper - mask.lower + 1) as usize;
     let start = window_start_for(mask, contracted_axis);
     let dt = patch.outlet_fact(split)?.datum_type;
@@ -1259,15 +1174,13 @@ fn wire_initiator_multibroadcastto_streaming(
         tract_pulse_opl::ops::WindowOnAxis { axis: in_stream_axis, window, start, pad_value },
         &[split],
     )?[0];
-    // Window dim is inserted at in_stream_axis + 1; k shifts to in_stream_axis + 2.
-    // bcast_axis shifts +1 if it was at or after in_stream_axis + 1.
     let bcast_axis_post_window = if bcast_axis_post_split > in_stream_axis {
         bcast_axis_post_split + 1
     } else {
         bcast_axis_post_split
     };
 
-    // Step 4: flatten [L+1, k] back to a single W = (L+1)·k axis.
+    // Flatten [L+1, k] back to a single W = (L+1)·k axis.
     let from = tvec!(window.to_dim(), k.to_dim());
     let to = tvec!(((window as i64) * k).to_dim());
     let flat = patch.wire_node(
@@ -1275,17 +1188,14 @@ fn wire_initiator_multibroadcastto_streaming(
         AxisOp::Reshape(in_stream_axis + 1, from, to),
         &[windowed],
     )?[0];
-    // The two axes [L+1, k] collapsed at in_stream_axis+1; bcast_axis shifts -1
-    // if it was strictly after in_stream_axis + 1.
     let bcast_axis_post_flat = if bcast_axis_post_window > in_stream_axis + 1 {
         bcast_axis_post_window - 1
     } else {
         bcast_axis_post_window
     };
 
-    // Step 5: move chunk axis (currently at `in_stream_axis`) so that the
-    // chunked output has chunks at the position where the original output's
-    // streaming dims started — convention shared with `chunkify_einsum`.
+    // Move chunk axis to the original first-streaming output position
+    // (convention shared with `chunkify_einsum`).
     let chunks_target_axis = out_streaming[0];
     let mut chunks_axis = in_stream_axis;
     let mut bcast_axis_now = bcast_axis_post_flat;
@@ -1296,25 +1206,19 @@ fn wire_initiator_multibroadcastto_streaming(
             AxisOp::Move(chunks_axis, chunks_target_axis),
             &[wire],
         )?[0];
-        // Update tracked positions after the move.  AxisOp::Move(from, to)
-        // removes the dim at `from` and re-inserts it at `to`; the dims
-        // strictly between source and target shift one slot to fill the gap.
+        // Move(from, to): dims STRICTLY between source and target shift
+        // by one slot — [target, source) leftward, (source, target] rightward.
         if chunks_target_axis < chunks_axis {
-            // moved leftward: positions in [target, source) shift +1
             if bcast_axis_now >= chunks_target_axis && bcast_axis_now < chunks_axis {
                 bcast_axis_now += 1;
             }
-        } else {
-            // moved rightward: positions in (source, target] shift -1
-            if bcast_axis_now > chunks_axis && bcast_axis_now <= chunks_target_axis {
-                bcast_axis_now = bcast_axis_now.saturating_sub(1);
-            }
+        } else if bcast_axis_now > chunks_axis && bcast_axis_now <= chunks_target_axis {
+            bcast_axis_now = bcast_axis_now.saturating_sub(1);
         }
         chunks_axis = chunks_target_axis;
         let _ = chunks_axis;
     }
 
-    // Step 6: broadcast the original size-1 axis up to k.
     let mut target_shape: TVec<TDim> = patch.outlet_fact(wire)?.shape.to_tvec();
     target_shape[bcast_axis_now] = k.to_dim();
     let bcast = tract_core::ops::array::MultiBroadcastTo { shape: target_shape.into() };
