@@ -156,7 +156,7 @@ fn test_pulse() -> anyhow::Result<()> {
     assert_eq!(typed.output_fact(0)?.to_string(), "5,1000,f32");
     let mut properties = typed.property_keys()?;
     properties.sort();
-    assert_eq!(&properties, &["pulse.delay", "pulse.input_axes", "pulse.output_axes"]);
+    assert_eq!(&properties, &["pulse.delay", "pulse.input_axes", "pulse.output_axes", "pulse.streaming_symbol"]);
     assert_eq!(typed.property("pulse.delay")?.as_slice::<i64>()?, &[0i64]);
     Ok(())
 }
@@ -194,7 +194,7 @@ fn test_runtime_properties() -> anyhow::Result<()> {
     let runnable = typed.into_runnable()?;
     let mut properties = runnable.property_keys()?;
     properties.sort();
-    assert_eq!(&properties, &["pulse.delay", "pulse.input_axes", "pulse.output_axes"]);
+    assert_eq!(&properties, &["pulse.delay", "pulse.input_axes", "pulse.output_axes", "pulse.streaming_symbol"]);
     assert_eq!(runnable.property("pulse.delay")?.as_slice::<i64>()?, &[0i64]);
     Ok(())
 }
