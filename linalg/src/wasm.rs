@@ -44,16 +44,21 @@ pub fn plug(ops: &mut Ops) {
     ops.mmm_impls.push(wasm_f32_16x1.mmm());
     ops.mmm_impls.push(wasm_f32_32x1.mmm());
     ops.mmm_impls.push(wasm_f32_8x8.mmm());
-    // Selection paths:
-    //   - N>1 (GEMM): mmm_f32 returns 8x8. 8x8 stays TargetOptimized so
-    //     kernel_selection::strategize falls through to list_impls and picks
-    //     by max(nr*mr) — 8x8 still wins (4x4 would be the only alternative).
+    // Selection paths. Both rely on kernel_selection::strategize honouring
+    // the mmm_f32 / mmv_f32 callback, which it only does when the callback's
+    // kernel is tagged ManuallyOptimized. Otherwise strategize falls through
+    // to list_impls, whose retain() keeps only the top ImplementationQuality
+    // and drops every TargetOptimized kernel.
+    //   - N>1 (GEMM): mmm_f32 returns 8x8, so 8x8 MUST be ManuallyOptimized.
+    //     If it were TargetOptimized it would be dropped by retain(), and the
+    //     N>1 branch's max(nr*mr) over the surviving (ManuallyOptimized) GEMV
+    //     kernels would pick wasm_f32_32x1 — a matrix×vector kernel — for
+    //     every GEMM.
     //   - N=1 (GEMV): mmv_f32 routes by M-band to the kernel whose MR fits.
-    //     The four GEMV kernels are tagged ManuallyOptimized so strategize
-    //     hits its early-return at kernel_selection.rs:35 and honours the
-    //     callback's choice. Without that tag, strategize would discard the
-    //     callback and pick max(mr)=32x1 for every M, leaving up to ~37% on
-    //     the table for small-M GEMV.
+    //     The four GEMV kernels are ManuallyOptimized for the same reason —
+    //     without the tag strategize discards the callback and picks
+    //     max(mr)=32x1 for every M, leaving up to ~37% on the table for
+    //     small-M GEMV.
     ops.mmm_f32 = Box::new(|_m, _k, _n| wasm_f32_8x8.mmm());
     // Bands derived from microbench_dispatch_gemv. At each band edge, using
     // the next-larger kernel beats halving outer iterations of the smaller
@@ -2094,7 +2099,10 @@ unsafe fn kernel_f32_8x8(mut pnl: *const FusedKerSpec<f32>) -> isize {
     }
 }
 
-MMMRustKernel!(kernel_f32_8x8 => wasm_f32_8x8<f32>(8,8)@(8,8) quality(ImplementationQuality::TargetOptimized));
+// ManuallyOptimized so kernel_selection::strategize honours the mmm_f32
+// callback that returns it for N>1 GEMM (see the `plug` comment) — otherwise
+// strategize drops it and routes every GEMM onto the 32x1 GEMV kernel.
+MMMRustKernel!(kernel_f32_8x8 => wasm_f32_8x8<f32>(8,8)@(8,8) quality(ImplementationQuality::ManuallyOptimized));
 
 #[cfg(test)]
 mod dispatch_trace {
@@ -2144,6 +2152,41 @@ mod dispatch_trace {
         // 32x1 band: M ≥ 17
         trace_one("band 32x1 lo m=17", Some(17), Some(64), Some(1));
         trace_one("band 32x1 hi m=512", Some(512), Some(64), Some(1));
+    }
+
+    /// Regression guard for the GEMM/GEMV dispatch.
+    ///
+    /// `kernel_selection::strategize` honours the `mmm_f32` / `mmv_f32`
+    /// callback only when the returned kernel is `ManuallyOptimized`;
+    /// otherwise it falls through to `list_impls`, whose `retain()` drops
+    /// every `TargetOptimized` kernel, and for N>1 then picks `max(nr*mr)`
+    /// over the surviving `ManuallyOptimized` GEMV kernels — i.e.
+    /// `wasm_f32_32x1`, a matrix×vector kernel, for every GEMM. So every
+    /// kernel reachable through the dispatch callbacks must be
+    /// `ManuallyOptimized`.
+    #[test]
+    fn dispatch_kernels_are_manually_optimized() {
+        use crate::mmm::ImplementationQuality::ManuallyOptimized;
+        let mut ops = crate::generic();
+        super::plug(&mut ops);
+        for (label, m, k, n) in [
+            ("GEMM m=64 k=64 n=8", 64, 64, 8),
+            ("GEMM m=256 k=256 n=256", 256, 256, 256),
+            ("GEMM m=1024 k=576 n=10", 1024, 576, 10),
+            ("GEMV m=1 k=512 n=1", 1, 512, 1),
+            ("GEMV m=256 k=256 n=1", 256, 256, 1),
+        ] {
+            let mmm =
+                ops.mmm(tract_data::prelude::DatumType::F32, Some(m), Some(k), Some(n)).unwrap();
+            assert_eq!(
+                mmm.quality(),
+                ManuallyOptimized,
+                "{label}: dispatch returned {} tagged {:?} — strategize would \
+                 discard it and reroute onto a GEMV kernel",
+                mmm.name(),
+                mmm.quality(),
+            );
+        }
     }
 }
 
