@@ -1198,13 +1198,7 @@ impl TypedOp for Conv {
             } else if input_fact
                 .shape
                 .as_concrete()
-                .map(|s| {
-                    should_use_lazy(
-                        &self.pool_spec.data_format.shape(s.into()).unwrap(),
-                        &self.pool_spec,
-                        self.group,
-                    )
-                })
+                .map(|s| should_use_lazy(&self.pool_spec, self.group, s, input_fact.datum_type))
                 .unwrap_or(false)
             {
                 let mut patch = TypedModelPatch::new("lazy-im2col");
@@ -1265,7 +1259,45 @@ fn lazy_im2col_min_kernel() -> usize {
     })
 }
 
-fn should_use_lazy(input_shape: &DataShape, pool_spec: &PoolSpec, group: usize) -> bool {
+/// Default eager-Im2col scratch-size ceiling, in bytes, above which LazyIm2col is
+/// preferred regardless of kernel volume.
+///
+/// Eager Im2col materialises a `[k, n]` packed scratch of `k·n·sizeof` bytes — it is
+/// allocated, written, then read back by the matmul. While that scratch is small it
+/// stays hot in cache and the round-trip is cheap, so the kernel-volume rule above
+/// governs. Once it is large, the materialisation becomes a pure memory-bandwidth tax
+/// (write + read of multiple MB every inference) that outweighs LazyIm2col's per-panel
+/// gather indirection — so prefer lazy. The kernel-volume rule alone misses this case:
+/// a *small* kernel over a *large* output (big `n`) still materialises multiple MB.
+///
+/// The crossover is target-dependent. On WASM the materialisation tax bites harder
+/// (no hardware-prefetch help, bounds-checked stores), so lazy wins from ~1 MiB of
+/// scratch upward. On native CPUs the caches and prefetchers absorb a few MB, so the
+/// crossover sits higher (~4 MiB, measured on Apple Silicon). Hence the per-family
+/// defaults below. Override on either target via `TRACT_LAZY_IM2COL_MAX_EAGER_BYTES`;
+/// this value is the key knob for the canary-model regression gate.
+#[cfg(target_family = "wasm")]
+const DEFAULT_LAZY_IM2COL_MAX_EAGER_BYTES: usize = 1024 * 1024;
+#[cfg(not(target_family = "wasm"))]
+const DEFAULT_LAZY_IM2COL_MAX_EAGER_BYTES: usize = 4 * 1024 * 1024;
+
+fn lazy_im2col_max_eager_bytes() -> usize {
+    use std::sync::OnceLock;
+    static V: OnceLock<usize> = OnceLock::new();
+    *V.get_or_init(|| {
+        std::env::var("TRACT_LAZY_IM2COL_MAX_EAGER_BYTES")
+            .ok()
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or(DEFAULT_LAZY_IM2COL_MAX_EAGER_BYTES)
+    })
+}
+
+fn should_use_lazy(
+    pool_spec: &PoolSpec,
+    group: usize,
+    input_shape: &[usize],
+    dt: DatumType,
+) -> bool {
     // Depthwise convs (group == in_channels == out_channels) have a specialised
     // `DepthWise` op downstream that's much faster than the generic im2col + matmul
     // path on every backend we measured (Apple AMX, x64, aarch64). Don't intercept
@@ -1275,8 +1307,24 @@ fn should_use_lazy(input_shape: &DataShape, pool_spec: &PoolSpec, group: usize) 
     if is_depthwise {
         return false;
     }
-    input_shape.n().unwrap_or(&1) == &1
-        && pool_spec.kernel_shape.iter().product::<usize>() >= lazy_im2col_min_kernel()
+    let Ok(output_shape) = pool_spec.output_shape(input_shape) else { return false };
+    // LazyIm2col's offset tables are built for a single batch.
+    if output_shape.n().unwrap_or(&1) != &1 {
+        return false;
+    }
+    let kernel_volume = pool_spec.kernel_shape.iter().product::<usize>();
+    // Primary rule: kernel volume. LazyIm2col's per-output-position gather indirection
+    // is cheap relative to materialising the scratch for a sizeable kernel.
+    if kernel_volume >= lazy_im2col_min_kernel() {
+        return true;
+    }
+    // Shape-aware rule: prefer lazy when the eager scratch (`k·n·sizeof`) is large,
+    // even for a small kernel. `n` is the output spatial volume — the dimension the
+    // kernel-volume rule ignores but which actually drives the materialisation cost.
+    let n: usize = output_shape.hw_dims().iter().product();
+    let k = pool_spec.input_channels * kernel_volume / group;
+    let eager_scratch_bytes = k.saturating_mul(n).saturating_mul(dt.size_of());
+    eager_scratch_bytes >= lazy_im2col_max_eager_bytes()
 }
 
 #[allow(non_snake_case)]
