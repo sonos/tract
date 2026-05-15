@@ -35,6 +35,27 @@ pub trait TypedPass: Debug + Send + Sync + dyn_clone::DynClone {
     }
 }
 
+#[derive(Clone, Debug, Default)]
+struct MergeConsecutiveSameRoleAxes;
+
+impl TypedPass for MergeConsecutiveSameRoleAxes {
+    fn reset(&mut self) -> TractResult<()> {
+        Ok(())
+    }
+    fn next(
+        &mut self,
+        _session: &mut OptimizerSession,
+        _model: &TypedModel,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        Ok(None)
+    }
+    fn run_direct(&mut self, model: &mut TypedModel) -> TractResult<bool> {
+        let before = model.nodes.len();
+        crate::ops::einsum::einsum_matmul::merge_consecutive_same_role_axes(model)?;
+        Ok(model.nodes.len() != before)
+    }
+}
+
 dyn_clone::clone_trait_object!(TypedPass);
 
 #[derive(Debug)]
@@ -85,6 +106,7 @@ impl Optimizer {
     pub fn codegen() -> Optimizer {
         Optimizer::passes(vec![
             Box::<PropConst>::default(),
+            Box::<MergeConsecutiveSameRoleAxes>::default(),
             Box::new(OpOptim(
                 "codegen",
                 |op, _session, model, node| TypedOp::codegen(op, model, node),
