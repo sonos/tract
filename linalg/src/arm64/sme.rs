@@ -1,0 +1,181 @@
+use crate::Ops;
+use crate::frame::mmm::ImplementationQuality::ManuallyOptimized;
+use crate::mmm::*;
+
+// CAN_FUSE: everything except LeakyRelu / QScale / RoundingShiftRight /
+// ShiftLeft. LoadTile, AddUnicast, AddRowColProducts, per-row/col/scalar
+// arithmetic, Clear, Store, AddMatMul are all in. (Matches AMX
+// `apple_amx.rs` CAN_FUSE, minus the i32-only quantization ops.)
+const CAN_FUSE: fn(&FusedSpec) -> bool = |f| {
+    !matches!(
+        f,
+        FusedSpec::LeakyRelu(_)
+            | FusedSpec::QScale(_, _, _)
+            | FusedSpec::RoundingShiftRight(_, _)
+            | FusedSpec::ShiftLeft(_)
+    )
+};
+
+const SME: fn() -> bool = has_sme;
+
+MMMExternKernel!(
+    sme_mmm_f32_32x32<f32>(32, 32)@(128, 128)
+    where(SME)
+    can_fuse(CAN_FUSE)
+    quality(ManuallyOptimized)
+);
+
+#[cfg(target_os = "macos")]
+pub fn has_sme() -> bool {
+    // TRACT_SME_DISABLE=1 forces the SME path off so callers can A/B
+    // against the AMX path on the same binary.
+    if std::env::var_os("TRACT_SME_DISABLE").is_some() {
+        return false;
+    }
+    // hw.optional.arm.FEAT_SME is an INTEGER sysctl, not a string. The
+    // generic apple_get_syscall reads bytes-as-C-string which fails here
+    // (`\x01\x00\x00\x00` would compare against the ASCII "1"), so we
+    // read it as a u64 directly.
+    use std::ffi::{CString, c_char, c_int, c_void};
+    use std::ptr::null_mut;
+    unsafe extern "C" {
+        fn sysctlbyname(
+            name: *const c_char,
+            oldp: *mut c_void,
+            oldlenp: *mut usize,
+            newp: *mut c_void,
+            newlen: usize,
+        ) -> c_int;
+    }
+    let Ok(name) = CString::new("hw.optional.arm.FEAT_SME") else {
+        return false;
+    };
+    let mut value: u64 = 0;
+    let mut len: usize = std::mem::size_of::<u64>();
+    unsafe {
+        if sysctlbyname(name.as_ptr(), &mut value as *mut _ as *mut c_void, &mut len, null_mut(), 0)
+            != 0
+        {
+            return false;
+        }
+    }
+    value != 0
+}
+
+#[cfg(target_os = "linux")]
+pub fn has_sme() -> bool {
+    // HWCAP2_SME = 1 << 23 on aarch64 (kernel ABI).
+    const HWCAP2_SME: u64 = 1 << 23;
+    unsafe extern "C" {
+        fn getauxval(t: u64) -> u64;
+    }
+    const AT_HWCAP2: u64 = 26;
+    unsafe { (getauxval(AT_HWCAP2) & HWCAP2_SME) != 0 }
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+pub fn has_sme() -> bool {
+    false
+}
+
+pub fn plug(ops: &mut Ops) {
+    if has_sme() {
+        log::info!("SME optimisation activated");
+        ops.mmm_f32 = Box::new(|_, _, _| sme_mmm_f32_32x32.mmm());
+        ops.mmm_impls.extend_from_slice(&[sme_mmm_f32_32x32.mmm()]);
+        // mmv_f32 stays on the AMX/arm64simd path until Phase 2 adds a
+        // streaming-SVE GEMV kernel (no SME MR=N x NR=1 form yet).
+    } else {
+        log::info!("No SME optimisation");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::frame::mmm::tests::packed_packed::PackedPackedProblem;
+    use tract_data::internal::Approximation;
+
+    // Phase 1A correctness: AddMatMul + Clear + Store + Done on a few
+    // shapes. Bypasses auto-tests (SME_OFF) by calling run/reference
+    // directly. Skipped if hardware lacks SME.
+    fn check_shape(m_tile: usize, k: usize, n_tile: usize) {
+        const MR: usize = 32;
+        const NR: usize = 32;
+        let m = m_tile * MR;
+        let n = n_tile * NR;
+        let a: Vec<f32> = (0..m * k).map(|i| (i as f32 * 0.013) - 1.5).collect();
+        let b: Vec<f32> = (0..k * n).map(|i| (i as f32 * 0.017) + 0.25).collect();
+        let pb = PackedPackedProblem::kernel(&*sme_mmm_f32_32x32, 0, a, b);
+        let expected = pb.reference().expect("scalar reference");
+        let found = pb.run().expect("SME kernel run");
+        found
+            .close_enough(&expected, Approximation::Approximate)
+            .unwrap_or_else(|e| panic!("SME mmm mismatch at k={k}: {e}"));
+    }
+
+    #[test]
+    fn sme_mmm_f32_32x32_k1() {
+        if !has_sme() {
+            eprintln!("SME not present, skipping");
+            return;
+        }
+        check_shape(1, 1, 1);
+    }
+
+    #[test]
+    fn sme_mmm_f32_32x32_k8() {
+        if !has_sme() {
+            return;
+        }
+        check_shape(1, 8, 1);
+    }
+
+    #[test]
+    fn sme_mmm_f32_32x32_k128() {
+        if !has_sme() {
+            return;
+        }
+        check_shape(1, 128, 1);
+    }
+
+    #[test]
+    fn sme_mmm_f32_32x32_multi_tile() {
+        if !has_sme() {
+            return;
+        }
+        // 64x64 output (2x2 tiles), K=64 — exercises the framework
+        // iterating across multiple kernel calls.
+        check_shape(2, 64, 2);
+    }
+
+    // Strided store path: hand-built Clear + Store chain with non-contig C.
+    #[test]
+    fn sme_store_non_contiguous() {
+        if !has_sme() {
+            return;
+        }
+        use crate::frame::mmm::{FusedKerSpec, OutputStoreKer};
+        const MR: usize = 32;
+        const NR: usize = 32;
+        let mut v: Vec<f32> = vec![f32::MAX; MR * 5 * NR * 3];
+        let c = OutputStoreKer {
+            ptr: v.as_mut_ptr() as _,
+            row_byte_stride: (4 * 3 * NR * 5) as isize,
+            col_byte_stride: 4 * 3,
+            item_size: 4,
+        };
+        let non_linear = [FusedKerSpec::<f32>::Clear, FusedKerSpec::Store(c), FusedKerSpec::Done];
+        let err = unsafe { (sme_mmm_f32_32x32.kernel)(&non_linear) };
+        assert_eq!(err, 0, "kernel returned non-zero error code");
+        let mut expected = vec![f32::MAX; v.len()];
+        for col in 0..NR {
+            for row in 0..MR {
+                expected[col * 3 + row * 3 * 5 * NR] = 0.0;
+            }
+        }
+        for (i, (got, exp)) in v.iter().zip(expected.iter()).enumerate() {
+            assert_eq!(got, exp, "mismatch at idx {i}: got {got} expected {exp}");
+        }
+    }
+}

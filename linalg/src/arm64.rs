@@ -4,6 +4,8 @@ mod apple_amx;
 mod arm64simd;
 pub mod cortex_a53;
 mod cortex_a55;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+mod sme;
 //mod cortex_a72;
 //mod cortex_a73;
 pub use arm64simd::*;
@@ -424,5 +426,9 @@ pub fn plug(ops: &mut Ops) {
     #[cfg(any(target_os = "macos", all(target_os = "ios", feature = "apple-amx-ios")))]
     {
         apple_amx::plug(ops);
+    }
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    {
+        sme::plug(ops);
     }
 }
