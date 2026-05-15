@@ -15,6 +15,12 @@ fn include_amx() -> bool {
         || (env::var("CARGO_FEATURE_APPLE_AMX_IOS").is_ok() && os == "ios" && arch == "aarch64")
 }
 
+fn include_sme() -> bool {
+    let arch = var("CARGO_CFG_TARGET_ARCH");
+    let os = var("CARGO_CFG_TARGET_OS");
+    arch == "aarch64" && (os == "macos" || os == "linux")
+}
+
 fn jump_table() -> Vec<String> {
     println!("cargo:rerun-if-changed=src/frame/mmm/fuse.rs");
     std::fs::read_to_string("src/frame/mmm/fuse.rs")
@@ -155,6 +161,10 @@ fn main() {
             if include_amx() {
                 let files = preprocess_files("arm64/apple_amx", &[], &suffix, false);
                 cc::Build::new().files(files).compile("appleamx");
+            }
+            if include_sme() {
+                let files = preprocess_files("arm64/sme", &[], &suffix, false);
+                cc::Build::new().files(files).compile("sme");
             }
             if std::env::var("CARGO_FEATURE_NO_FP16").is_err() {
                 let config =
