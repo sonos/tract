@@ -17,10 +17,18 @@ const CAN_FUSE: fn(&FusedSpec) -> bool = |f| {
 };
 
 const SME: fn() -> bool = has_sme;
+const SME2: fn() -> bool = has_sme2;
 
 MMMExternKernel!(
     sme_mmm_f32_32x32<f32>(32, 32)@(128, 128)
     where(SME)
+    can_fuse(CAN_FUSE)
+    quality(ManuallyOptimized)
+);
+
+MMMExternKernel!(
+    sme_mmv_f32_64x1<f32>(64, 1)@(128, 128)
+    where(SME2)
     can_fuse(CAN_FUSE)
     quality(ManuallyOptimized)
 );
@@ -78,14 +86,67 @@ pub fn has_sme() -> bool {
     false
 }
 
+#[cfg(target_os = "macos")]
+pub fn has_sme2() -> bool {
+    // TRACT_SME_DISABLE=1 disables both SME and SME2 dispatch on the same
+    // binary so end users can A/B the entire SME backend.
+    if std::env::var_os("TRACT_SME_DISABLE").is_some() {
+        return false;
+    }
+    use std::ffi::{CString, c_char, c_int, c_void};
+    use std::ptr::null_mut;
+    unsafe extern "C" {
+        fn sysctlbyname(
+            name: *const c_char,
+            oldp: *mut c_void,
+            oldlenp: *mut usize,
+            newp: *mut c_void,
+            newlen: usize,
+        ) -> c_int;
+    }
+    let Ok(name) = CString::new("hw.optional.arm.FEAT_SME2") else {
+        return false;
+    };
+    let mut value: u64 = 0;
+    let mut len: usize = std::mem::size_of::<u64>();
+    unsafe {
+        if sysctlbyname(name.as_ptr(), &mut value as *mut _ as *mut c_void, &mut len, null_mut(), 0)
+            != 0
+        {
+            return false;
+        }
+    }
+    value != 0
+}
+
+#[cfg(target_os = "linux")]
+pub fn has_sme2() -> bool {
+    // HWCAP2_SME2 = 1 << 37 on aarch64 (kernel ABI).
+    const HWCAP2_SME2: u64 = 1 << 37;
+    unsafe extern "C" {
+        fn getauxval(t: u64) -> u64;
+    }
+    const AT_HWCAP2: u64 = 26;
+    unsafe { (getauxval(AT_HWCAP2) & HWCAP2_SME2) != 0 }
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+pub fn has_sme2() -> bool {
+    false
+}
+
 pub fn plug(ops: &mut Ops) {
     if has_sme() {
         log::info!("SME optimisation activated");
         ops.mmm_f32 = Box::new(|_, _, _| sme_mmm_f32_32x32.mmm());
         ops.mmm_impls.extend_from_slice(&[sme_mmm_f32_32x32.mmm()]);
-        // mmv_f32 stays on the AMX/arm64simd path until Phase 2 adds a
-        // streaming-SVE GEMV kernel (no SME MR=N x NR=1 form yet).
-    } else {
+    }
+    if has_sme2() {
+        log::info!("SME2 GEMV optimisation activated");
+        ops.mmv_f32 = Box::new(|_, _| sme_mmv_f32_64x1.mmm());
+        ops.mmm_impls.extend_from_slice(&[sme_mmv_f32_64x1.mmm()]);
+    }
+    if !has_sme() && !has_sme2() {
         log::info!("No SME optimisation");
     }
 }
