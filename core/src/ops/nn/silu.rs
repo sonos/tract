@@ -13,12 +13,7 @@ element_wise!(silu, Silu,
         });
         Ok(())
     },
-    [f32] => |_, xs| {
-        let mut sigmoid = xs.to_vec();
-        (tract_linalg::ops().sigmoid_f32)().run(&mut sigmoid)?;
-        xs.iter_mut().zip(sigmoid).for_each(|(x, s)| *x *= s);
-        Ok(())
-    };
+    [f32] => |_, xs| { (tract_linalg::ops().silu_f32)().run(xs) };
     cost: |dt| {tvec!((Cost::FMA(dt), 12), (Cost::Div(dt), 1))};
     declutter: detect_silu
 );

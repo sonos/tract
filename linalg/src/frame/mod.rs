@@ -8,6 +8,10 @@ pub mod unicast;
 #[macro_use]
 pub mod by_scalar;
 #[macro_use]
+pub mod gelu;
+#[macro_use]
+pub mod hardswish;
+#[macro_use]
 pub mod leaky_relu;
 #[macro_use]
 pub mod lut;
@@ -19,6 +23,8 @@ pub mod pack;
 pub mod reduce;
 #[macro_use]
 pub mod sigmoid;
+#[macro_use]
+pub mod silu;
 #[macro_use]
 pub mod tanh;
 #[macro_use]

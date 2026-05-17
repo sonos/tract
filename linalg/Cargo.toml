@@ -84,6 +84,18 @@ name = "mm_for_asr_am"
 harness = false
 
 [[bench]]
+name = "hardswish"
+harness = false
+
+[[bench]]
+name = "silu"
+harness = false
+
+[[bench]]
+name = "gelu"
+harness = false
+
+[[bench]]
 name = "sigmoid"
 harness = false
 

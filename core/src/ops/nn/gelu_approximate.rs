@@ -19,11 +19,16 @@ element_wise!(gelu_approximate, GeluApproximate { fast_impl: bool },
         Ok(())
     },
     [f32] => |op, xs| {
-        let pow = if op.fast_impl { 2 } else { 3 };
-        xs.iter_mut().for_each(|x| {
-            *x = gelu_approx_f32(*x, pow);
-        });
-        Ok(())
+        if op.fast_impl {
+            // pow=2 fast path: no linalg kernel yet, scalar fallback.
+            xs.iter_mut().for_each(|x| {
+                *x = gelu_approx_f32(*x, 2);
+            });
+            Ok(())
+        } else {
+            // pow=3 canonical path: linalg NEON kernel composes with tanh.
+            (tract_linalg::ops().gelu_f32)().run(xs)
+        }
     };
     cost: |dt| {tvec!((Cost::FMA(dt), 15))}
 );
