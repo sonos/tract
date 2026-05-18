@@ -7,7 +7,7 @@ extension tract_symbol S;
 fragment tract_core_properties(
 ) -> (properties: (string, tensor<scalar>)[])
 {
-  properties = [("pulse.delay", tract_core_cast([182], to = "i64")), ("pulse.input_axes", tract_core_cast([0], to = "i64")), ("pulse.output_axes", tract_core_cast([0], to = "i64")), ("tract_nnef_ser_version", "0.19.3-pre"), ("tract_nnef_format_version", "beta1")];
+  properties = [("pulse.delay", tract_core_cast([182], to = "i64")), ("pulse.input_axes", tract_core_cast([0], to = "i64")), ("pulse.output_axes", tract_core_cast([0], to = "i64")), ("pulse.streaming_symbol", ["S"]), ("tract_nnef_ser_version", "0.19.3-pre"), ("tract_nnef_format_version", "beta1")];
 }
 
 graph network(input_node) -> (i"wavenet_2/post_proc_2-1x1_conv-conv1d/convolution/Conv2D") {
