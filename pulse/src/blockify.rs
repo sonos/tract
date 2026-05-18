@@ -686,6 +686,13 @@ fn build_section_patch(
             continue;
         };
         let dg_node = &model.nodes[dg_id];
+        let dg_in_fact = model.outlet_fact(dg_node.inputs[0])?;
+        let dg_in_streaming = streaming_positions(dg_in_fact, chunk_sym);
+        if dg_in_streaming.len() != 1 {
+            bail!(
+                "EinSum+DiagGather initiator: DG input must have a single streaming axis, got {dg_in_streaming:?}"
+            );
+        }
         let dg_op = dg_node.op_as::<DiagGather>().unwrap();
         let dg_chunked =
             wire_initiator_diag_gather(&mut patch, model, dg_node, dg_op, &sec.mask, chunk_sym, k)?;
