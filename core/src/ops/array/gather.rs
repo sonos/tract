@@ -208,6 +208,53 @@ impl TypedOp for Gather {
         }
     }
 
+    fn axes_mapping(
+        &self,
+        inputs: &[&TypedFact],
+        _outputs: &[&TypedFact],
+    ) -> TractResult<AxesMapping> {
+        // Output = data[..axis] ++ indices ++ data[axis+1..].  Track:
+        // - data axes [0..axis)        → output [0..axis)
+        // - data axis  self.axis       consumed (no output)
+        // - data axes (axis..data_rank)→ output [axis + indices_rank..)
+        // - indices axes [0..ir)       → output [axis..axis + ir)
+        // Fall back to disconnected for exotic data (block-quant): the
+        // storage rank can differ from the logical rank.
+        if !inputs[0].is_plain() {
+            return AxesMapping::disconnected(
+                inputs,
+                &[&inputs[0].datum_type.fact(&[0i64.to_dim()])],
+            );
+        }
+        let data_rank = inputs[0].rank();
+        let indices_rank = inputs[1].rank();
+        let mut axes: TVec<crate::axes::Axis> = tvec!();
+        let mut alphabet = 'a'..;
+        for k in 0..self.axis {
+            axes.push(
+                crate::axes::Axis::new(alphabet.next().unwrap(), 2, 1).input(0, k).output(0, k),
+            );
+        }
+        axes.push(crate::axes::Axis::new(alphabet.next().unwrap(), 2, 1).input(0, self.axis));
+        for k in self.axis + 1..data_rank {
+            let out_pos = k - 1 + indices_rank;
+            axes.push(
+                crate::axes::Axis::new(alphabet.next().unwrap(), 2, 1)
+                    .input(0, k)
+                    .output(0, out_pos),
+            );
+        }
+        for k in 0..indices_rank {
+            let out_pos = self.axis + k;
+            axes.push(
+                crate::axes::Axis::new(alphabet.next().unwrap(), 2, 1)
+                    .input(1, k)
+                    .output(0, out_pos),
+            );
+        }
+        AxesMapping::new(2, 1, axes)
+    }
+
     fn declutter(
         &self,
         model: &TypedModel,
