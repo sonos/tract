@@ -33,6 +33,8 @@ ins         v8.d[1], x8
 fmla        v30.8h, v2.8h, v4.h[3]
 ins         v9.d[1], x9
 fmla        v31.8h, v3.8h, v4.h[3]
+prfm        pldl1keep, [x1, #256]
+prfm        pldl1keep, [x2, #256]
 
 // mul a: v5, v6, v7, v8 b: v9
 // load a: v0(d0/x5), v1(d1,x6), v2(d2,x7), v3(d3, x8)
@@ -69,3 +71,5 @@ ins         v3.d[1], x8
 fmla        v30.8h, v7.8h, v9.h[3]
 ins         v4.d[1], x9
 fmla        v31.8h, v8.8h, v9.h[3]
+prfm        pldl1keep, [x1, #320]
+prfm        pldl1keep, [x2, #320]

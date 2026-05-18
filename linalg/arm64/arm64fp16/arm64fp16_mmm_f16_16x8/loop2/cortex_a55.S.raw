@@ -14,9 +14,13 @@ ldr         x6, [x1], #8
 fmla        v23.8h, v1.8h, v4.h[3]
 
 fmla        v24.8h, v0.8h, v4.h[4]
+prfm        pldl1keep, [x1, #256]
 fmla        v25.8h, v1.8h, v4.h[4]
+prfm        pldl1keep, [x1, #320]
 fmla        v26.8h, v0.8h, v4.h[5]
+prfm        pldl1keep, [x2, #256]
 fmla        v27.8h, v1.8h, v4.h[5]
+prfm        pldl1keep, [x2, #320]
 fmla        v28.8h, v0.8h, v4.h[6]
 ins         v2.d[1], x5
 fmla        v29.8h, v1.8h, v4.h[6]
@@ -41,9 +45,13 @@ ldr         x6, [x1], #8
 fmla        v23.8h, v3.8h, v6.h[3]
 
 fmla        v24.8h, v2.8h, v6.h[4]
+prfm        pldl1keep, [x1, #384]
 fmla        v25.8h, v3.8h, v6.h[4]
+prfm        pldl1keep, [x1, #448]
 fmla        v26.8h, v2.8h, v6.h[5]
+prfm        pldl1keep, [x2, #384]
 fmla        v27.8h, v3.8h, v6.h[5]
+prfm        pldl1keep, [x2, #448]
 fmla        v28.8h, v2.8h, v6.h[6]
 ins         v0.d[1], x5
 fmla        v29.8h, v3.8h, v6.h[6]
