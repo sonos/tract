@@ -148,7 +148,7 @@ net_bench voicecom_float 2sec $CACHEDIR/snips-voice-commands-cnn-float.pb -i 200
 net_bench trunet pulse1_f32 $CACHEDIR/trunet_dummy.nnef.tgz --nnef-tract-core --pulse 1
 net_bench trunet pulse1_f16 $CACHEDIR/trunet_dummy.nnef.tgz --nnef-tract-core -t f32_to_f16 --pulse 1
 
-. $PRIVATE
+[ -f "$PRIVATE" ] && . "$PRIVATE"
 
 if [ $(uname) = "Darwin" ]
 then
