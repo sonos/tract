@@ -1,4 +1,4 @@
-# tract — Agent Guide
+# tract -- Agent Guide
 
 tract is Sonos' neural-network inference engine written in Rust.
 It reads ONNX, NNEF, TensorFlow Lite, and TensorFlow models, optimises them,
@@ -21,18 +21,18 @@ and runs them on CPU (x86/ARM), GPU (Metal, CUDA), embedded targets, and WASM.
 | `tensorflow` | TensorFlow importer | `hir`, `pulse` |
 | `pulse-opl` | Streaming op primitives | `nnef` |
 | `pulse` | Streaming / causal inference | `pulse-opl`, `transformers` |
-| `transformers` | Transformer-specific ops (RmsNorm, Silu, GeluApproximate, …) | `nnef` |
+| `transformers` | Transformer-specific ops (RmsNorm, Silu, GeluApproximate, ...) | `nnef` |
 | `gpu` | Shared GPU abstractions | `core`, `pulse-opl`, `transformers` |
 | `metal` | Apple Metal backend | `gpu`, `core`, `pulse-opl`, `transformers` |
 | `cuda` | NVIDIA CUDA backend | `gpu`, `core`, `pulse-opl`, `transformers` |
 | `extra` | Miscellaneous ops not yet in core | `nnef`, `pulse` |
 | `cli` / `libcli` | `tract` command-line tool | most of the above |
-| `api/rs` | High-level stable public Rust API | `nnef`, `onnx`, `pulse`, `transformers`, `metal`, `cuda`, … |
+| `api/rs` | High-level stable public Rust API | `nnef`, `onnx`, `pulse`, `transformers`, `metal`, `cuda`, ... |
 | `api/ffi` | C FFI over `api/rs` | `api/rs` |
 
 **Important:** `transformers` does **not** directly depend on `tract-core`.
 It accesses core types via `tract_nnef::tract_core`. Use that path in imports,
-not `tract_core::…` directly.
+not `tract_core::...` directly.
 
 ---
 
@@ -55,20 +55,43 @@ cargo +1.91.0 fmt --all
 cargo clippy --workspace
 ```
 
-The NNEF round-trip test is the gold standard for op correctness: if an op
-serialises to NNEF and deserialises back to an identical graph it is correct by
-construction.
+The `harness/` directory contains integration tests that run against real
+models. `.travis/native.sh` runs the full native Linux CI suite; running it
+locally requires `libssl-dev` (needed by the `tflite` step).
 
-The `harness/` and `test-rt/` directories contain integration tests that run
-against real models. `.travis/native.sh` runs the full native Linux CI suite;
-running it locally requires `libssl-dev` (needed by the `tflite` step).
+### test-rt
+
+`test-rt` is the cross-backend test framework. It separates test suites from
+runtimes: a suite (e.g. `suite-unit`, `suite-onnx`) defines a set of
+`Test`-trait objects; a runner crate (e.g. `test-unit-core`, `test-metal`,
+`test-cuda`) picks a `Runtime` implementation and runs a subset of those
+suites against it, with its own ignore list.
+
+Layout:
+
+| Crate | Role |
+|---|---|
+| `test-rt/infra` | `Test`, `TestSuite`, `Runtime` traits and test-runner harness |
+| `test-rt/suite-unit` | Unit tests for core ops (conv, einsum, matmul, ...) |
+| `test-rt/suite-onnx` | ONNX backend test suite |
+| `test-rt/test-unit-core` | Runs `suite-unit` on the default CPU runtime |
+| `test-rt/test-onnx-core` | Runs `suite-onnx` on the default CPU runtime |
+| `test-rt/test-metal` | Runs unit + onnx suites on the Metal backend |
+| `test-rt/test-cuda` | Runs unit + onnx suites on the CUDA backend |
+| `test-rt/test-f16` | Runs f16-specific cases |
+| `test-rt/test-tflite` | Runs suite against the TFLite runtime |
+| `test-rt/test-nnef-cycle` | Verifies NNEF round-trip for all suite cases |
+
+To add a new op test: add a case to the relevant `suite-*` crate. The runner
+crates pick it up automatically; add an ignore entry in the runner only if the
+backend genuinely cannot support the case.
 
 ---
 
 ## Core abstractions
 
 > **Client code** (applications, examples, language bindings) should use `api/rs`
-> only. The internal crates (`core`, `nnef`, `onnx`, …) are not stable API surface.
+> only. The internal crates (`core`, `nnef`, `onnx`, ...) are not stable API surface.
 
 ### TypedModel / TypedNode / TypedFact
 
@@ -79,16 +102,16 @@ The main IR. A `TypedModel` is a DAG of `TypedNode`s. Each node holds a boxed
 
 Every op implements `Op` and usually `TypedOp`. Key methods:
 
-- `eval` — eager execution
-- `output_facts` — shape/type inference
-- `declutter` — return a `TypedModelPatch` to simplify the op or replace it
-- `codegen` — return a patch targeting a specific backend/platform
+- `eval` -- eager execution
+- `output_facts` -- shape/type inference
+- `declutter` -- return a `TypedModelPatch` to simplify the op or replace it
+- `codegen` -- return a patch targeting a specific backend/platform
 
 ## Model rewriting
 
 `TypedModelPatch` is the **preferred** way to modify a model. Direct mutation of
 `TypedModel` nodes or edges is an exception reserved for construction and
-well-understood bulk transforms — in almost every other case, implement rule
+well-understood bulk transforms -- in almost every other case, implement rule
 functions that return `TypedModelPatch`es, and wrap them in a `Rewriter` to
 define a `ModelTransform`.
 
@@ -131,7 +154,7 @@ rather than react to individual op types.
 | Situation | Tool |
 |---|---|
 | Simplify / fuse one op type | `Op::declutter` + `TypedModelPatch` |
-| Cross-op pattern (N ops → M ops) | `Rewriter` rule |
+| Cross-op pattern (N ops -> M ops) | `Rewriter` rule |
 | Whole-model structural change | `ModelTransform` |
 | Backend lowering for one op | `Op::codegen` + `TypedModelPatch` |
 
@@ -142,9 +165,9 @@ rather than react to individual op types.
 Tract detects and fuses transformer ops during the declutter pass, not in a
 separate recognition pass:
 
-- `RmsNorm` — detected in `Reduce::declutter`
-- `Silu` — detected in `Sigmoid::declutter` (via `element_wise!` `; declutter:` param)
-- `GeluApproximate` — detected in `Pow::declutter` (chained `declutter_pow`)
+- `RmsNorm` -- detected in `Reduce::declutter`
+- `Silu` -- detected in `Sigmoid::declutter` (via `element_wise!` `; declutter:` param)
+- `GeluApproximate` -- detected in `Pow::declutter` (chained `declutter_pow`)
 
 ---
 
@@ -170,7 +193,7 @@ git checkout -b my-feature origin/main --no-track
   too, even when building on Linux.
 - Do not add "Co-Authored-By" or similar trailer lines to commit messages.
 - Do not push or fetch; the human handles all remote operations.
-- Commit at natural checkpoints during large multi-crate refactors — commits
+- Commit at natural checkpoints during large multi-crate refactors -- commits
   are cheap and make bisection easy.
 
 ---
@@ -178,29 +201,29 @@ git checkout -b my-feature origin/main --no-track
 ## Style
 
   Commit messages:
-  - State what was wrong and the fix — no consequence chains ("X broke Y broke Z").
+  - State what was wrong and the fix -- no consequence chains ("X broke Y broke Z").
   - One short paragraph; skip "Result:/Consequence:/Symptom:" sections and laundry-lists of every place the bug surfaced.
 
   Inline code comments:
   - Default to none. Code MUST be self-explanatory via variable and function naming.
-  - In tract, an inline comment is a signal that something implicit is happening — hidden constraint, non-obvious invariant, bug workaround.
+  - In tract, an inline comment is a signal that something implicit is happening -- hidden constraint, non-obvious invariant, bug workaround.
   - (This has not been enforced consistently since codebots became a thing.)
-  - Avoid section banners (// ── Step 2: Pad → Reshape ──), prefer split in functions. It's ok to have long function prototype in private function (within reason) #[allow(clippy::too_many_arguments)] authorized in such case.
+  - Avoid section banners (// -- Step 2: Pad -> Reshape --), prefer split in functions. It's ok to have long function prototype in private function (within reason) #[allow(clippy::too_many_arguments)] authorized in such case.
 
   Formatting:
-  - Always run `cargo +1.91.0 fmt --all` before committing — bare `cargo fmt` uses a newer rustfmt and produces spurious diffs CI rejects.
+  - Always run `cargo +1.91.0 fmt --all` before committing -- bare `cargo fmt` uses a newer rustfmt and produces spurious diffs CI rejects.
 
   PR comments and review replies:
-  - Open PR with a short, crystal-clear summary paragraph — one or two sentences stating what the PR is about and why it matters, before details if necessary.
-  - Follow-up questions and comments on a PR must be handled by humans only, bots and LLM are forbidden after the PR opening message post.
+  - Open PR with a short, crystal-clear summary paragraph -- one or two sentences stating what the PR is about and why it matters, before details if necessary.
+  - Follow-up questions and comments on a PR must be handled by humans only, the maintainer is a human, they want to talk to an PR author, not prompt somebody's else LLM.
 
 ## Things to avoid
 
-- **Clap extension traits** — use the clap API directly, even with turbofish.
-- **Mocking internals in tests** — prefer real model round-trips.
-- **Hand-rolling model-walk loops** — reach for `Rewriter`, `ModelTransform`,
+- **Clap extension traits** -- use the clap API directly, even with turbofish.
+- **Mocking internals in tests** -- prefer real model round-trips.
+- **Hand-rolling model-walk loops** -- reach for `Rewriter`, `ModelTransform`,
   or `TypedModelPatch` instead.
-- **Adding abstraction beyond the task** — three similar lines beat a premature
+- **Adding abstraction beyond the task** -- three similar lines beat a premature
   helper.
-- **Touching `pulse`/`pulse-opl` without understanding causal inference** —
+- **Touching `pulse`/`pulse-opl` without understanding causal inference** --
   the streaming model has subtle invariants around axis tracking and delay.
