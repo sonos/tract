@@ -55,7 +55,7 @@ b           .non_linear_loop
 {%if cols == 1 %}
         ld1         {v0.s}[0], [ x2 ]
 {% elif cols == 3 %}
-        ld1         {v0.d}[0], [ x2 ], #8
+        ldr         d0, [ x2 ], #8
         ld1         {v0.s}[2], [ x2 ]
 {% else %}
     {% for reg in range(1, loads + 1) %}
