@@ -535,11 +535,13 @@ fn declutter_absorbing(
             .map(|absorb| tensor0(absorb).close_enough(&uniform.uni, false).is_ok())
             .unwrap_or(false);
         if is_absorbing {
-            let output_shape = model.outlet_fact(node.id.into())?.shape.clone();
+            let output_fact = model.outlet_fact(node.id.into())?;
+            let output_dt = output_fact.datum_type;
+            let output_shape = output_fact.shape.clone();
             let uni_inlet = if uniform.left_is_uniform { 0 } else { 1 };
             let uni_input_shape = &model.outlet_fact(node.inputs[uni_inlet])?.shape;
-            if uni_input_shape == &output_shape {
-                // Uniform input's shape already matches the output — shunt it.
+            // Fast path: shapes and types match — shunt the absorbing input directly.
+            if uni_input_shape == &output_shape && uniform.uni.datum_type() == output_dt {
                 return Ok(Some(TypedModelPatch::rewire(
                     model,
                     &[node.inputs[uni_inlet]],
@@ -547,14 +549,15 @@ fn declutter_absorbing(
                     &|_, inputs| Ok(inputs.into()),
                 )?));
             }
-            // Uniform input is lower-rank or has broadcast-from-1 dims that
-            // don't match the op's output shape.  Wire a `MultiBroadcastTo`
-            // to materialise the absorbing tensor at the output shape;
-            // subsequent declutter folds it to a pure constant when the
-            // shape is fully concrete.
+            // General path: create a constant encoded in the output type.
+            // This handles both shape mismatches and quantization mismatches
+            // (e.g. absorbing input is QU8(Z:61 S:1) but output is QU8(Z:0 S:0.5)).
+            let absorb_val = mini_op.absorbing_element().unwrap();
+            let absorbing_const =
+                tensor0(absorb_val as f32).cast_to_dt(output_dt)?.into_owned().into_arc_tensor();
             let mut patch = TypedModelPatch::default();
             let uni_const =
-                patch.add_const(format!("{}.absorbing_const", node.name), uniform.uni.clone())?;
+                patch.add_const(format!("{}.absorbing_const", node.name), absorbing_const)?;
             let bcast = patch.wire_node(
                 format!("{}.absorbing_bcast", node.name),
                 crate::ops::array::MultiBroadcastTo { shape: output_shape },
