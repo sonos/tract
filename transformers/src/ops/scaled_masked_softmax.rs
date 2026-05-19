@@ -144,6 +144,45 @@ impl TypedOp for ScaledMaskedSoftmax {
         tract_nnef::tract_core::optim::propagate_roi::bubble_roi(model, node)
     }
 
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        // Anchored band-ROI materialisation: mirrors the Iff::declutter pattern.
+        // When the mask's `uniform_tdim` is a single-axis band, only the
+        // band rows/cols of the scores actually matter — emit
+        // `Concat([zeros, Slice(scores, axis, [lo, hi)), zeros])` on the
+        // scores input so the inserted Slice can bubble up via PushSliceUp
+        // through the rel-pos chain (DiagGather is transparent on axes).
+        // Cycle prevention via patch.dont_apply_twice inside the helper.
+        let mask_fact = model.outlet_fact(node.inputs[1])?;
+        if let Some(utdim) = &mask_fact.uniform_tdim {
+            // The mask's axes are right-aligned with the scores; an axis k in
+            // the mask corresponds to scores axis `k + rank_diff`.
+            let scores_fact = model.outlet_fact(node.inputs[0])?;
+            let rank_diff = scores_fact.shape.rank().saturating_sub(mask_fact.shape.rank());
+            for mask_axis in 0..mask_fact.shape.rank() {
+                let axis_sym = model.symbols.coord_sym(mask_axis);
+                if let Some((lo, hi)) =
+                    tract_nnef::tract_core::ops::array::slice::bounds_on_axis(utdim, &axis_sym)
+                    && let Some(patch) =
+                        tract_nnef::tract_core::ops::array::slice::materialise_band_roi_on_input(
+                            model,
+                            node,
+                            0,
+                            mask_axis + rank_diff,
+                            lo,
+                            hi,
+                        )?
+                {
+                    return Ok(Some(patch));
+                }
+            }
+        }
+        Ok(None)
+    }
+
     /// Axes layout: every non-reducing axis is identity-mapped between
     /// inputs and the output (with the bool mask right-aligned and
     /// possibly missing leading axes).  The softmax-reducing axis (last)
