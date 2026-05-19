@@ -100,6 +100,25 @@ fn merge_same_role_axes_rule(
         }
     }
 
+    // Reject the group if any axis has mismatched per-input dims. This catches
+    // broadcasting cases — e.g. GQA `bhgmk,bhgnk->bhgmn` where g has dim 2 in
+    // input[0] and dim 1 in input[1]. Merging would collapse the broadcast
+    // structure into a non-broadcast dim mismatch that downstream OptMatMul
+    // codegen / kernels cannot handle.
+    if let Some(ref group) = best_group {
+        let input_facts = model.node_input_facts(node.id)?;
+        let input_shapes = op.actual_input_shapes_from_facts(&input_facts)?;
+        let dims_match = group.iter().all(|c| {
+            match (a_order.iter().position(|x| x == c), b_order.iter().position(|x| x == c)) {
+                (Some(p0), Some(p1)) => input_shapes[0][p0] == input_shapes[1][p1],
+                _ => true,
+            }
+        });
+        if !dims_match {
+            best_group = None;
+        }
+    }
+
     if let Some(group) = best_group {
         // Found a mergeable group. Emit the patch.
         let input_facts = model.node_input_facts(node.id)?;
