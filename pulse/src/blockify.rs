@@ -227,6 +227,17 @@ pub fn rewrite_sections(
         );
     }
 
+    // Pre-pass: rewrite streaming Transformer-XL relative-position chains so
+    // each DiagGather initiator's input has a single streaming axis (the query
+    // row T) and a constant R axis.  Necessary on encoder exports where the
+    // rel-pos table is built by `Slice(pos_enc_pe, begin=f(T), end=g(T))` and
+    // therefore carries the streaming symbol on its R axis.
+    rewrite_streaming_relpos_chains(model, &sections, chunk_sym)?;
+    // Re-discover sections after the rewrite: the DiagGather's input topology
+    // changed (R axis lost its streaming dependency), and `find_quadratic_sections`
+    // walks `multi_t_axis_node` membership that may have shifted as a result.
+    let sections = find_quadratic_sections(model, chunk_sym)?;
+
     for sec in &sections {
         let patch = build_section_patch(model, sec, chunk_sym, sec.mask.chunk_size)?;
         patch.apply(model)?;
@@ -240,6 +251,189 @@ pub fn rewrite_sections(
         .properties
         .insert(BLOCKIFY_CHUNK_SIZE.to_string(), tensor0(substitute_multiplier).into_arc_tensor());
     Ok(true)
+}
+
+/// Traced rel-pos chain: a streaming-T axis is reached by walking back from
+/// `start` (typically a DiagGather's input on its R axis) through linear,
+/// axis-preserving ops until a `Slice` on a non-streaming source is found.
+struct RelPosTrace {
+    slice_id: usize,
+    /// `(node_id, path_input_index)` ordered upstream-most to downstream-most:
+    /// each pair is an intermediate node and the input index that carries the
+    /// rel-pos axis path.  Empty if the slice's output flows straight into
+    /// `start`.
+    intermediate: Vec<(usize, usize)>,
+}
+
+/// Walk back along a streaming axis through axes-mapping-preserving ops until
+/// the producing Slice is reached.  Stops when the same axis on the slice's
+/// input is no longer streaming (= the const-table side of the rel-pos chain).
+fn trace_back_relpos_axis(
+    model: &TypedModel,
+    start: OutletId,
+    start_axis: usize,
+    chunk_sym: &Symbol,
+) -> TractResult<Option<RelPosTrace>> {
+    let mut current_outlet = start;
+    let mut current_axis = start_axis;
+    let mut intermediate: Vec<(usize, usize)> = vec![];
+
+    for _ in 0..32 {
+        let node = &model.nodes[current_outlet.node];
+        if let Some(slice_op) = node.op_as::<Slice>()
+            && slice_op.axis == current_axis
+        {
+            let src_fact = model.outlet_fact(node.inputs[0])?;
+            if !src_fact.shape[slice_op.axis].symbols().contains(chunk_sym) {
+                intermediate.reverse();
+                return Ok(Some(RelPosTrace { slice_id: node.id, intermediate }));
+            }
+        }
+        let input_facts: TVec<&TypedFact> =
+            node.inputs.iter().map(|inp| model.outlet_fact(*inp)).collect::<TractResult<_>>()?;
+        let output_facts: TVec<&TypedFact> = node.outputs.iter().map(|o| &o.fact).collect();
+        let Ok(mapping) = node.op.axes_mapping(&input_facts, &output_facts) else {
+            return Ok(None);
+        };
+        let mut advanced: Option<(usize, usize)> = None;
+        for (i, inp) in node.inputs.iter().enumerate() {
+            let Some(in_axis) = mapping
+                .track_axis((InOut::Out(current_outlet.slot), current_axis), InOut::In(i))?
+            else {
+                continue;
+            };
+            let in_fact = model.outlet_fact(*inp)?;
+            if in_fact.shape[in_axis].symbols().contains(chunk_sym) {
+                advanced = Some((i, in_axis));
+                break;
+            }
+        }
+        let Some((idx, ax)) = advanced else { return Ok(None) };
+        intermediate.push((current_outlet.node, idx));
+        current_outlet = node.inputs[idx];
+        current_axis = ax;
+    }
+    Ok(None)
+}
+
+/// Pre-blockify rewrite for the streaming Transformer-XL relative-position
+/// chain.  Targets the pattern:
+///
+///   `Slice(pos_enc_pe, axis=A, begin=f(T), end=g(T))`
+///     → axis-preserving chain (linear projection / reshape / einsum)
+///     → `DiagGather { offset = T_s − 1, out_len = T_s }`
+///
+/// where the slice produces a streaming-width (`2·T_s − 1`) rel-pos table.
+/// Pulsifying this lands at the DiagGather initiator's "input must have
+/// exactly one streaming axis" guard because the R axis carries the chunk
+/// symbol.
+///
+/// We replace the slice with a constant-width window of `W = (L+1)·k` rows
+/// centred on rel-pos zero, replay the intermediate chain with the narrower
+/// wire, and adjust the DiagGather's `offset` to point at the new centre
+/// (`L·k` in the W-numbering).  The DiagGather output shape is preserved
+/// (still `[…, T_s, T_s]`), so the section's downstream score path is
+/// unaffected.
+fn rewrite_streaming_relpos_chains(
+    model: &mut TypedModel,
+    sections: &[QuadraticSection],
+    chunk_sym: &Symbol,
+) -> TractResult<()> {
+    // (DG node id, MaskForm, contracted_axis) tuples.
+    let mut targets: Vec<(usize, MaskForm, usize)> = vec![];
+    for sec in sections {
+        for &nid in &sec.section {
+            if model.nodes[nid].op_is::<DiagGather>() {
+                targets.push((nid, sec.mask, sec.contracted_axis));
+            }
+        }
+    }
+
+    for (dg_nid, mask, contracted_axis) in targets {
+        let dg_node = &model.nodes[dg_nid];
+        let Some(dg_op) = dg_node.op_as::<DiagGather>() else { continue };
+        let dg_op = dg_op.clone();
+        let dg_in = dg_node.inputs[0];
+        let dg_in_fact = model.outlet_fact(dg_in)?;
+        let rank = dg_in_fact.rank();
+        let streaming = streaming_positions(dg_in_fact, chunk_sym);
+        if streaming.len() < 2 || !streaming.contains(&(rank - 1)) {
+            continue;
+        }
+
+        let k = mask.chunk_size;
+        let l = mask.upper - mask.lower;
+        if l < 0 {
+            continue;
+        }
+        // Rel-pos vocabulary width per chunk: covers rel-pos values from
+        // window_start·k − (k−1) up through window_start·k + W − 1 = window_start·k + (L+1)·k − 1.
+        // Number of distinct values = (L+1)·k + (k − 1) = (L+2)·k − 1.
+        let w_relpos = (l + 2) * k - 1;
+        let window_start = window_start_for(&mask, contracted_axis);
+
+        let Some(trace) = trace_back_relpos_axis(model, dg_in, rank - 1, chunk_sym)? else {
+            continue;
+        };
+        let slice_node = &model.nodes[trace.slice_id];
+        let slice_op = slice_node.op_as::<Slice>().context("trace returned non-Slice")?.clone();
+
+        // Absolute pos_enc_pe row of rel-pos zero.
+        let centre = (slice_op.start.clone() + &dg_op.offset)
+            .to_i64()
+            .context("rel-pos centre must simplify to a concrete integer")?;
+
+        // New constant slice positioned so column k−1 holds rel-pos zero +
+        // window_start·k (i.e. rel-pos of the leftmost in-window key for
+        // δi = 0).  This makes the chunked DiagGather's `offset = k − 1`
+        // satisfy in-bounds for every (δi, δj) ∈ [0, k) × [0, W).
+        let new_slice_start = centre + window_start * k - (k - 1);
+        let new_slice = Slice {
+            axis: slice_op.axis,
+            start: new_slice_start.to_dim(),
+            end: (new_slice_start + w_relpos).to_dim(),
+        };
+
+        let mut patch = TypedModelPatch::new(format!("relpos_dyn_slice@{}", dg_node.name));
+
+        let src_in_patch = patch.tap_model(model, slice_node.inputs[0])?;
+        let mut current = patch.wire_node(
+            format!("{}.relpos_fixed", slice_node.name),
+            new_slice,
+            &[src_in_patch],
+        )?[0];
+
+        for (chain_nid, path_input_idx) in &trace.intermediate {
+            let chain_node = &model.nodes[*chain_nid];
+            let mut new_inputs: TVec<OutletId> = tvec!();
+            for (i, inp) in chain_node.inputs.iter().enumerate() {
+                if i == *path_input_idx {
+                    new_inputs.push(current);
+                } else {
+                    new_inputs.push(patch.tap_model(model, *inp)?);
+                }
+            }
+            current = patch.wire_node(
+                format!("{}.relpos_thread", chain_node.name),
+                chain_node.op.clone(),
+                &new_inputs,
+            )?[0];
+        }
+
+        // op.offset records the column of rel-pos zero in the R-axis numbering.
+        // After the rewrite, rel-pos zero lives at `centre − new_slice_start`
+        // of the new W-wide slice (which, by construction, equals
+        // `(k − 1) − window_start·k`).
+        let new_dg_offset = centre - new_slice_start;
+        let new_dg = DiagGather { offset: new_dg_offset.to_dim(), out_len: dg_op.out_len.clone() };
+        let new_dg_out =
+            patch.wire_node(format!("{}.relpos_offset", dg_node.name), new_dg, &[current])?[0];
+
+        patch.shunt_outside(model, OutletId::new(dg_nid, 0), new_dg_out)?;
+
+        patch.apply(model)?;
+    }
+    Ok(())
 }
 
 /// Read back the `(chunk_symbol, chunk_size)` ancillary outputs that
