@@ -1,0 +1,69 @@
+version 1.0;
+
+extension tract_registry tract_core;
+extension tract_registry tract_transformers;
+extension tract_symbol T;
+extension tract_assert T>=0;
+
+# ex13-padmask-broadcast-transpose — minimal repro of encoder.p1's
+# blockify failure on the pad-mask construction.
+#
+# The encoder builds its 2D pad-mask from a 1D per-frame validity mask
+# `pad [T]` via:
+#
+#     pad_2d_in   = unsqueeze(pad, [0])              # [1, T]
+#     pad_repeat  = MultiBroadcastTo(pad_2d_in,
+#                                    shape = [T, T]) # [T, T]
+#     pad_T       = transpose(pad_repeat, [1, 0])    # [T, T]
+#     pad_2d      = and(pad_repeat, pad_T)           # [T, T]
+#
+# Semantically: pad_2d[i, j] = pad[i] AND pad[j].
+#
+# Blockify treats `pad_repeat` as a streaming-MultiBroadcastTo
+# initiator (broadcast-from-1 slot becomes the within-chunk axis,
+# streaming axis becomes [chunks, k] split with windowing).  The body
+# transpose then has to swap two within-chunk axes that were chunked
+# differently (broadcast-from-1 → k, vs. windowed-streaming → W = L·k).
+# These have different sizes, so the AND of (chunked, transposed)
+# can't broadcast — same shape mismatch as encoder.p1's
+# `padMaskForAttMask_1` body op, at the smallest possible scale.
+
+graph network(q, k, c, pad) -> (output)
+{
+    q   = tract_core_external(shape = [T, 4], datum_type = 'f32');
+    k   = tract_core_external(shape = [T, 4], datum_type = 'f32');
+    c   = tract_core_external(shape = [T, 4], datum_type = 'f32');
+    pad = tract_core_external(shape = [T],    datum_type = 'bool');
+
+    # Content scores.
+    scores = matmul(q, k, transposeB = true);          # [T, T]
+
+    # Pad-mask 2D construction (encoder pattern).
+    pad_2d_in  = unsqueeze(pad, axes = [0]);           # [1, T]
+    pad_repeat = tract_core_broadcast(pad_2d_in, shape = [T, T]);
+    pad_T      = transpose(pad_repeat, axes = [1, 0]); # [T, T]
+    pad_2d     = and(pad_repeat, pad_T);               # [T, T]
+
+    # Banded-causal mask (P = 2 tokens per chunk, look-back L = 1):
+    # at chunk c we attend to chunks {c-1, c}.  W = 2·k = 4 keys.
+    # This makes the within-chunk T_q axis (size k=2, broadcast-from-1
+    # in the pad construction) and the within-chunk T_k axis (size W=4,
+    # windowed) different sizes — so the body AND between
+    # `pad_repeat` and `pad_T` shape-mismatches in the chunked frame.
+    pos      = tract_core_range(0, T, step = 1);
+    chunk_id = pos / 2;
+    chunk_r  = unsqueeze(chunk_id, axes = [1]);
+    chunk_c  = unsqueeze(chunk_id, axes = [0]);
+    diff     = chunk_r - chunk_c;
+    left_ok  = ge(diff, 0);
+    right_ok = le(diff, 1);
+    in_block = and(left_ok, right_ok);
+
+    # Combined mask: in-chunk AND both frames valid.
+    full_mask = and(in_block, pad_2d);
+
+    masked = select(full_mask, scores, scores * 0.0 + -inf);
+    attn   = softmax(masked, axes = [1]);
+
+    output = matmul(attn, c);
+}
