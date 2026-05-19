@@ -169,6 +169,17 @@ pub fn suite() -> TractResult<TestSuite> {
             c_dt: qu8_dt(0, 1.),
         },
     );
+    // declutter_absorbing was shunting the absorbing input (QU8(Z:61 S:1)) directly
+    // to the output (QU8(Z:0 S:0.5)), causing a type mismatch.
+    suite.add(
+        "bug_absorbing_quant_type_mismatch",
+        QBinaryOpProblem {
+            operator: tract_core::ops::math::mul(),
+            tensor_a: qu8_tensor0(0u8, 0, 1.5)?,
+            tensor_b: qu8_tensor0(61u8, 61, 1.)?,
+            c_dt: qu8_dt(0, 0.5),
+        },
+    );
 
     suite.add(
         "trivial_mul_as_qu8_overflow_clamp",
