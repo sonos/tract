@@ -1,0 +1,115 @@
+version 1.0;
+
+extension tract_registry tract_core;
+extension tract_registry tract_transformers;
+extension tract_symbol T;
+extension tract_assert T>=0;
+
+# ex14-relpos-dyn-slice — minimal repro of encoder.p1's blockify failure
+# on the Transformer-XL relative-position chain.
+#
+# The encoder builds rel-pos scores as:
+#
+#   pos_slice = slice(pos_enc_pe, axis=0, begin=4 - (T-1), end=5 + (T-1))   # [2T-1, D]
+#   rel_pos   = einsum("id,jd->ij", q, pos_slice)                           # [T, 2T-1]
+#   skewed    = pad → reshape → slice → reshape → slice (the skew trick)    # [T, T]
+#   scores    = content_scores + skewed
+#   attn      = softmax(mask, scores * scale, post=false)
+#   output    = einsum("ij,jd->id", attn, v)                                # [T, D]
+#
+# The `pos_enc_pe` const is constant-shape ([9, D] here, mirroring nemotron's
+# [9999, 1024]).  The slice's begin/end are affine in T, so the slice OUTPUT
+# is symbolic-width 2T-1.  Detect_diag_gather folds the skew trick into a
+# single DiagGather op; its input then has *two* streaming axes (the query
+# row T and the rel-pos R-axis 2T-1), which blockify's existing initiator
+# can't handle:
+#
+#     Initiator DiagGather input must have exactly one streaming axis,
+#     got [0, 1]
+#
+# Batch passes; pulsified fails until the pre-blockify rel-pos rewrite is
+# in place.
+
+graph network(q, k, v) -> (output)
+{
+    q = tract_core_external(shape = [T, 4], datum_type = 'f32');
+    k = tract_core_external(shape = [T, 4], datum_type = 'f32');
+    v = tract_core_external(shape = [T, 4], datum_type = 'f32');
+
+    # Positional-encoding table — small, constant shape [9, 4], centred at
+    # row 4 (= T_max - 1 for T_max = 5).  Loaded from `pos_enc_pe.dat`
+    # alongside `graph.nnef`; the rewrite under test treats it as the
+    # canonical Const source for the rel-pos chain.
+    pos_enc_pe = variable<scalar>(label = 'pos_enc_pe', shape = [9, 4]);
+
+    # Dynamic slice: 2T-1 rows centred at row 4.  begin = 5 - T, end = 4 + T.
+    pos_slice = slice(
+        pos_enc_pe,
+        axes  = [0],
+        begin = [5 - T],
+        end   = [4 + T],
+        stride = [1]
+    );  # [2T-1, 4]
+
+    # Rel-pos contribution.  einsum subscripts mirror nemotron's xMatmul1
+    # at minimal rank (no batch / no heads): q is the query (index `i`),
+    # pos_slice is the rel-pos table (index `j`), shared contraction `d`.
+    rel_pos = tract_core_einsum([q, pos_slice], expr = "id,jd->ij", acc = "f32");
+    # Shape: [T, 2T-1]
+
+    # ── Skew trick — pad → reshape → slice → reshape → slice ───────────────
+    #
+    # Pulled in inline so detect_diag_gather can fold the whole chain into
+    # a single DiagGather.  Same five-op shape as transformers/src/ops/diag_gather.rs::diag_gather_rule expects.
+
+    # Step 1 — Pad last axis pre=1: [T, 2T-1] → [T, 2T]
+    padded = pad(rel_pos, padding = [[0, 0], [1, 0]], value = 0.0);
+
+    # Steps 2-5 use shape_of+squeeze to thread the symbolic T dim through
+    # the reshape attributes (same idiom as torch_to_nnef-exported graphs).
+    q_shape       = tract_core_shape_of(q);
+    T_dim_sliced  = slice(q_shape, axes = [0], begin = [0], end = [1], stride = [1]);
+    T_dim         = squeeze(T_dim_sliced, axes = [0]);    # = T (i64 wire)
+    two_T         = 2 * T_dim;
+    two_T_minus_1 = two_T - 1;
+
+    # Step 2 — Reshape [T, 2T] → [2T, T]   (the transpose-via-reshape).
+    reshape1 = reshape(padded, shape = [two_T, T_dim]);
+
+    # Step 3 — Slice axis=0, [1, 2T):  [2T, T] → [2T-1, T]
+    slice1 = slice(reshape1, axes = [0], begin = [1], end = [two_T], stride = [1]);
+
+    # Step 4 — Reshape [2T-1, T] → [T, 2T-1]
+    reshape2 = reshape(slice1, shape = [T_dim, two_T_minus_1]);
+
+    # Step 5 — Slice axis=1, [0, T):  [T, 2T-1] → [T, T]
+    skewed = slice(reshape2, axes = [1], begin = [0], end = [T_dim], stride = [1]);
+
+    # ── Content scores + rel-pos contribution ─────────────────────────────
+    content = tract_core_einsum([q, k], expr = "id,jd->ij", acc = "f32");
+    scores  = add(content, skewed);   # [T, T]
+
+    # ── Banded-causal mask (P = 2, L = 1) — lookback flavour, matching the
+    # Conformer/Nemotron streaming-encoder convention (`chunk(i) − chunk(j)
+    # ∈ [0, L]`).  Combined with the rel-pos chain above, the chunk window
+    # size is W = (L+1)·P = 4 and the chunked sentinel-pad mechanism on the
+    # chunk_col Range handles the start-of-stream boundary correctly.
+    pos       = tract_core_range(0, T, step = 1);
+    chunk_id  = pos / 2;
+    chunk_row = unsqueeze(chunk_id, axes = [1]);
+    chunk_col = unsqueeze(chunk_id, axes = [0]);
+    diff      = chunk_row - chunk_col;
+    left_ok   = ge(diff, 0);
+    right_ok  = le(diff, 1);
+    in_band   = and(left_ok, right_ok);
+
+    # Mask-and-softmax: ScaledMaskedSoftmax exists pre-pulse via
+    # transformers_detect_all, so we use it directly to keep the section
+    # shape obvious to blockify (same as ex06+).
+    attn = tract_transformers_scaled_masked_softmax(
+        scores, in_band, scale = 1.0, post_softmax_mask = false
+    );
+
+    # V matmul — second section of the SDPA pattern.
+    output = tract_core_einsum([attn, v], expr = "ij,jd->id", acc = "f32");
+}
