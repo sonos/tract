@@ -148,23 +148,30 @@ impl TypedOp for MultiBroadcastTo {
         if input_fact.shape == self.shape {
             return TypedModelPatch::shunt_one_op(model, node);
         }
+        // Swap with an AxisOp successor: `Broadcast(x, S) → AxisOp` becomes
+        // `AxisOp(x) → Broadcast(σ(S))` whenever the AxisOp transforms every
+        // axis the broadcast actually expanded.  Fires per-successor, so this
+        // works under fan-out (the original broadcast stays in place for
+        // siblings; only the matched AxisOp branch is rerouted).
+        for succ in &*node.outputs[0].successors {
+            let succ = model.node(succ.node);
+            let Some(op) = succ.op_as::<AxisOp>() else { continue };
+            let mut shape = self.shape.clone();
+            if izip!(0.., &*input_fact.shape, &*self.shape)
+                .filter(|(_, l, r)| l != r)
+                .all(|(axis, _, _)| op.transform_axis(axis).is_some())
+                && op.change_shape(&mut shape, false).is_ok()
+            {
+                let mut patch = TypedModelPatch::default();
+                let mut wire = patch.tap_model(model, node.inputs[0])?;
+                wire = patch.wire_node(&succ.name, op.clone(), &[wire])?[0];
+                wire = patch.wire_node(&node.name, MultiBroadcastTo { shape }, &[wire])?[0];
+                patch.shunt_outside(model, succ.id.into(), wire)?;
+                return Ok(Some(patch));
+            }
+        }
         if let [succ] = &*node.outputs[0].successors {
             let succ = model.node(succ.node);
-            if let Some(op) = succ.op_as::<AxisOp>() {
-                let mut shape = self.shape.clone();
-                if izip!(0.., &*input_fact.shape, &*self.shape)
-                    .filter(|(_, l, r)| l != r)
-                    .all(|(axis, _, _)| op.transform_axis(axis).is_some())
-                    && op.change_shape(&mut shape, false).is_ok()
-                {
-                    let mut patch = TypedModelPatch::default();
-                    let mut wire = patch.tap_model(model, node.inputs[0])?;
-                    wire = patch.wire_node(&succ.name, op.clone(), &[wire])?[0];
-                    wire = patch.wire_node(&node.name, MultiBroadcastTo { shape }, &[wire])?[0];
-                    patch.shunt_outside(model, succ.id.into(), wire)?;
-                    return Ok(Some(patch));
-                }
-            }
             if succ.op_is::<TypedBinOp>() {
                 let our_slot = node.outputs[0].successors[0].slot;
                 let other_slot = 1 - our_slot;
@@ -193,4 +200,87 @@ impl TypedOp for MultiBroadcastTo {
     }
 
     as_op!();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ops::change_axes::AxisOp;
+    use crate::ops::logic::And;
+
+    /// `Broadcast → Move` with the broadcast feeding a SINGLE successor.
+    /// Pre-existing path: the swap rewrite kicks in.
+    #[test]
+    fn broadcast_move_single_successor_swaps() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let t = model.symbols.sym("T");
+        let pad = model.add_source("pad", bool::fact(&[t.to_dim()]))?;
+        let unsq = model.wire_node("unsq", AxisOp::Add(0), &[pad])?[0];
+        let bcast = model.wire_node(
+            "bcast",
+            MultiBroadcastTo { shape: ShapeFact::from_dims([t.to_dim(), t.to_dim()]) },
+            &[unsq],
+        )?[0];
+        let mv = model.wire_node("move", AxisOp::Move(0, 1), &[bcast])?[0];
+        model.select_output_outlets(&[mv])?;
+
+        let model = model.into_decluttered()?;
+
+        let move_count = model
+            .nodes()
+            .iter()
+            .filter(|n| matches!(n.op_as::<AxisOp>(), Some(AxisOp::Move(0, 1))))
+            .count();
+        assert_eq!(move_count, 0, "Move should have been pushed through Broadcast and absorbed");
+        Ok(())
+    }
+
+    /// `Broadcast → {Move, And-direct}` — the encoder-style pad-mask outer-AND
+    /// pattern.  Pre-fix: declutter bailed because broadcast had > 1 successor;
+    /// the Move stayed.  Post-fix: the Move-branch gets its own swapped
+    /// chain, the direct-AND branch still consumes the original broadcast.
+    #[test]
+    fn broadcast_move_fanout_pushes_through_one_branch() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let t = model.symbols.sym("T");
+        let pad = model.add_source("pad", bool::fact(&[t.to_dim()]))?;
+        let unsq = model.wire_node("unsq", AxisOp::Add(0), &[pad])?[0];
+        let bcast = model.wire_node(
+            "bcast",
+            MultiBroadcastTo { shape: ShapeFact::from_dims([t.to_dim(), t.to_dim()]) },
+            &[unsq],
+        )?[0];
+        let mv = model.wire_node("move", AxisOp::Move(0, 1), &[bcast])?[0];
+        let and = model.wire_node("and", TypedBinOp(Box::new(And), None), &[bcast, mv])?[0];
+        model.select_output_outlets(&[and])?;
+
+        let model = model.into_decluttered()?;
+
+        // Expected: fan-out swap-through fires on the Move branch, then the
+        // existing Broadcast→TypedBinOp rule fires on each (now single-
+        // successor) broadcast, eliminating both — the AND ends up
+        // broadcasting [1, T] and [T, 1] implicitly.
+        let bcast_count = model.nodes().iter().filter(|n| n.op_is::<MultiBroadcastTo>()).count();
+        assert_eq!(
+            bcast_count, 0,
+            "Both broadcasts should be subsumed into AND's implicit broadcasting"
+        );
+
+        let and_node =
+            model.nodes().iter().find(|n| n.op_is::<TypedBinOp>()).expect("AND should survive");
+        assert_eq!(and_node.inputs.len(), 2);
+        let and_input_shapes: Vec<_> = and_node
+            .inputs
+            .iter()
+            .map(|i| model.outlet_fact(*i).unwrap().shape.to_tvec())
+            .collect();
+        let expected_a = tvec![1.to_dim(), t.to_dim()];
+        let expected_b = tvec![t.to_dim(), 1.to_dim()];
+        let (a, b) = (&and_input_shapes[0], &and_input_shapes[1]);
+        assert!(
+            (a == &expected_a && b == &expected_b) || (a == &expected_b && b == &expected_a),
+            "AND should receive [1, T] and [T, 1]; got {a:?} and {b:?}"
+        );
+        Ok(())
+    }
 }
