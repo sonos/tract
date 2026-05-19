@@ -106,7 +106,7 @@ impl Slice {
 
 /// Try to read `[lo, hi)` bounds on `axis_sym` out of an ROI of the canonical
 /// indicator shape `Mul(Ge(axis, lo), Ge(hi-1, axis))`.
-fn bounds_on_axis(roi: &TDim, axis_sym: &Symbol) -> Option<(i64, i64)> {
+pub fn bounds_on_axis(roi: &TDim, axis_sym: &Symbol) -> Option<(i64, i64)> {
     let TDim::Mul(terms) = roi else { return None };
     if terms.len() != 2 {
         return None;
@@ -138,13 +138,12 @@ fn bounds_on_axis(roi: &TDim, axis_sym: &Symbol) -> Option<(i64, i64)> {
 /// single-axis band ROIs, and materialises each one by inserting
 /// `Concat([zeros, Slice, zeros])` on the corresponding input.
 ///
-/// **Currently NOT wired into the declutter pipeline** — confirmed to cause
-/// an infinite loop with `PushSliceUp` (Mathieu's prior warning).  The
-/// cycle-prevention check below (skip nodes that are part of a materialised
-/// Concat-with-zero-Const structure) is inadequate: after a materialisation,
-/// `PushSliceUp` pushes the inserted Slice further upstream, creating new
-/// Concat/Slice structures that re-trigger materialisation.  Preserved as
-/// `#[allow(dead_code)]` for the writeup discussion.
+/// **Currently NOT wired into the declutter pipeline.**  Cycle prevention now
+/// flows through `materialise_band_roi_on_input`'s `dont_apply_twice`
+/// watchdog (so the generic walker would no longer infinite-loop), but we
+/// prefer per-op anchoring: `Iff::declutter` calls the helper directly so
+/// fire sites are explicit.  Preserved as `#[allow(dead_code)]` so a future
+/// extension can wire the generic walker without reinventing the helper.
 #[derive(Clone, Debug)]
 #[allow(dead_code)]
 pub struct MaterialiseBandRoi;
@@ -257,20 +256,17 @@ pub fn materialise_band_roi_on_input(
         return Ok(None);
     }
 
-    // Cycle prevention: skip if the input's producer is already a
-    // TypedConcat with a zero-Const segment (= we already materialised).
-    let producer = model.node(input_outlet.node);
-    if let Some(_) = producer.op_as::<crate::ops::array::TypedConcat>() {
-        for &inp in &producer.inputs {
-            let f = model.outlet_fact(inp)?;
-            if f.konst.as_ref().map(|t| t.is_zero().unwrap_or(false)).unwrap_or(false) {
-                return Ok(None);
-            }
-        }
-    }
-
     let mut patch =
         TypedModelPatch::new(format!("materialise_band_roi@{}.in{}", node.name, input_idx));
+    // Cycle prevention: this rule is fire-once per (node, input_idx, axis,
+    // [lo, hi)) site.  After firing, the optimizer's `seen` set drops repeat
+    // patches with the same watchdog — even after compaction renames the
+    // node, the (input_idx, axis, lo, hi) tuple distinguishes legitimate new
+    // sites from the just-materialised one.
+    patch.dont_apply_twice = Some(format!(
+        "materialise_band_roi:{}:in{}:axis{}:[{},{}]",
+        node.name, input_idx, axis, lo, hi
+    ));
 
     // Tap each of N's inputs.  For input_idx, replace with Concat-wrapped Slice.
     let mut new_inputs: TVec<OutletId> = tvec!();
@@ -767,8 +763,6 @@ mod tests {
     /// works.  Marked `#[ignore]` until the generic-materialization
     /// mechanism lands.
     #[test]
-    #[ignore = "MaterialiseBandRoi pass causes infinite loop with PushSliceUp; \
-                cycle prevention not yet adequate (Mathieu's prior warning confirmed)"]
     fn iff_with_axisop_between_slice_and_iff() -> TractResult<()> {
         use crate::ops::change_axes::AxisOp;
         use crate::ops::logic::Iff;

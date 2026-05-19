@@ -11,7 +11,7 @@ mod range;
 mod reshape;
 mod scatter_elements;
 mod scatter_nd;
-mod slice;
+pub mod slice;
 pub mod strided_slice;
 mod tile;
 mod topk;

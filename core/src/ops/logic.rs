@@ -237,13 +237,37 @@ impl TypedOp for Iff {
         // Symbolic uniform_tdim cases are handled upstream by FoldUniformMask,
         // which injects a concrete Const(0/1) that this rule then folds.
         let cond_fact = model.outlet_fact(node.inputs[0])?;
-        rule_if_some!(uniform = &cond_fact.uniform);
-        rule_if_let!(Ok(cond_val) = uniform.cast_to_scalar::<bool>());
-        let branch = if cond_val { node.inputs[1] } else { node.inputs[2] };
-        let mut patch = TypedModelPatch::default();
-        let wire = patch.tap_model(model, branch)?;
-        patch.shunt_outside(model, node.id.into(), wire)?;
-        Ok(Some(patch))
+        if let Some(uniform) = &cond_fact.uniform
+            && let Ok(cond_val) = uniform.cast_to_scalar::<bool>()
+        {
+            let branch = if cond_val { node.inputs[1] } else { node.inputs[2] };
+            let mut patch = TypedModelPatch::default();
+            let wire = patch.tap_model(model, branch)?;
+            patch.shunt_outside(model, node.id.into(), wire)?;
+            return Ok(Some(patch));
+        }
+
+        // Anchored band-ROI materialisation: when cond's `uniform_tdim` is a
+        // single-axis band predicate `Mul(Ge(🎯k, lo), Ge(hi-1, 🎯k))`, the
+        // then-branch is only consumed in the band region — emit
+        // `Concat([zeros, Slice(then, k, [lo, hi)), zeros])` directly so the
+        // inserted Slice can bubble up via `PushSliceUp`, composing with any
+        // upstream Slice / passing through axes-preserving ops on its way.
+        // Fires once per (node, input, axis, band) site: the helper sets
+        // `patch.dont_apply_twice` so the optimizer's `seen` set drops repeats.
+        if let Some(utdim) = &cond_fact.uniform_tdim {
+            for axis in 0..cond_fact.shape.rank() {
+                let axis_sym = model.symbols.coord_sym(axis);
+                if let Some((lo, hi)) = crate::ops::array::slice::bounds_on_axis(utdim, &axis_sym)
+                    && let Some(patch) = crate::ops::array::slice::materialise_band_roi_on_input(
+                        model, node, 1, axis, lo, hi,
+                    )?
+                {
+                    return Ok(Some(patch));
+                }
+            }
+        }
+        Ok(None)
     }
 
     fn axes_mapping(
