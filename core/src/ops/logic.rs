@@ -572,4 +572,37 @@ mod tests {
 
         Ok(())
     }
+
+    /// Encoder.p1 mask pattern: `And(banded_mask, runtime_pad_mask)` — the
+    /// banded side has uniform_tdim, the runtime side doesn't.  We want the
+    /// AND result to carry the banded uniform_tdim as an upper-bound
+    /// predicate: outside the band, the result is provably 0 (band=0
+    /// dominates); inside the band, it's whatever the runtime pad mask says.
+    /// That's exactly what SMS::declutter / FoldUniformMask need.
+    #[test]
+    fn and_band_with_unknown_keeps_band_uniform_tdim() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        // Side A: a bool [10] with a band uniform_tdim (3 ≤ 🎯0 ≤ 8).
+        let sym = model.symbols.coord_sym(0);
+        let band = TDim::Mul(vec![
+            TDim::Ge(Box::new(TDim::Sym(sym.clone())), Box::new(TDim::Val(3))),
+            TDim::Ge(Box::new(TDim::Val(8)), Box::new(TDim::Sym(sym))),
+        ]);
+        let mut a_fact = bool::fact(&[10]);
+        a_fact.uniform_tdim = Some(band.clone());
+        let a = model.add_source("banded", a_fact)?;
+
+        // Side B: a bool [10] runtime input with no uniform_tdim.
+        let b = model.add_source("runtime_pad", bool::fact(&[10]))?;
+
+        let and = model.wire_node("and", crate::ops::logic::and(), &[a, b])?[0];
+
+        let and_fact = model.outlet_fact(and)?;
+        assert!(
+            and_fact.uniform_tdim.is_some(),
+            "And(banded, runtime) should retain the band as uniform_tdim, got {:?}",
+            and_fact.uniform_tdim
+        );
+        Ok(())
+    }
 }
