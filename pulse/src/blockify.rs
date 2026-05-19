@@ -687,8 +687,16 @@ fn build_section_patch(
         };
         let dg_node = &model.nodes[dg_id];
         let dg_op = dg_node.op_as::<DiagGather>().unwrap();
-        let dg_chunked =
-            wire_initiator_diag_gather(&mut patch, model, dg_node, dg_op, &sec.mask, chunk_sym, k)?;
+        let dg_chunked = wire_initiator_diag_gather(
+            &mut patch,
+            model,
+            dg_node,
+            dg_op,
+            &sec.mask,
+            sec.contracted_axis,
+            chunk_sym,
+            k,
+        )?;
         chunked.insert(OutletId::new(nid, 0), dg_chunked);
         chunked.insert(OutletId::new(dg_id, 0), dg_chunked);
         already_wired.insert(nid);
@@ -828,7 +836,16 @@ fn wire_initiator(
         }
     }
     if let Some(op) = node.op_as::<DiagGather>() {
-        return wire_initiator_diag_gather(patch, model, node, op, mask, chunk_sym, k);
+        return wire_initiator_diag_gather(
+            patch,
+            model,
+            node,
+            op,
+            mask,
+            contracted_axis,
+            chunk_sym,
+            k,
+        );
     }
     bail!("Unsupported initiator {node}")
 }
@@ -848,8 +865,9 @@ fn wire_initiator_diag_gather(
     patch: &mut TypedModelPatch,
     model: &TypedModel,
     node: &TypedNode,
-    _op: &DiagGather,
+    op: &DiagGather,
     mask: &MaskForm,
+    contracted_axis: usize,
     chunk_sym: &Symbol,
     k: i64,
 ) -> TractResult<OutletId> {
@@ -874,18 +892,24 @@ fn wire_initiator_diag_gather(
     let chunked = wire_chunk_split(patch, &node.name, tapped, stream_axis, chunk_sym, k)?;
 
     // The R (relative-position) axis of pos_raw is the last axis: a constant
-    // 2*T_max-1 from the original skew construction.  In batch the DiagGather's
-    // centre is at column T_max-1 = (R-1)/2.  The chunked formula picks
-    //   pos_raw[c·P+δi, T_max-1 + (j-i)]   with j = (c-L)·P + δj
-    // → in[c, δi, (T_max-1) - L·P + δj − δi]
-    // so the chunked DiagGather offset is (T_max-1) - L·P, with out_len = W.
+    // width carrying the rel-pos table.  The DiagGather op's `offset` field
+    // points to the column where rel-pos = 0 lives in the R-axis numbering.
+    // Per chunk c, the W = (L+1)·k key-window starts at chunk
+    // `c + window_start` (= `c − L` for lookback, `c` for lookahead), so the
+    // (δi, δj)-th in-window key has rel-pos `δj − δi + window_start·k`.
+    // Solving `chunked_offset + δj − δi = (op.offset) + (δj − δi + window_start·k)`
+    // gives `chunked_offset = op.offset + window_start·k`.
     let r_axis = in_fact_patch.shape.last().context("DiagGather input has no last axis")?;
-    let r = r_axis.to_i64().context("DiagGather R axis must be a constant integer")?;
-    let t_max = (r + 1) / 2;
+    r_axis.to_i64().context("DiagGather R axis must be a constant integer")?;
+    let centre = op
+        .offset
+        .to_i64()
+        .context("DiagGather offset must simplify to a concrete integer (= rel-pos-zero column)")?;
     let l = mask.upper - mask.lower;
     let w = (l + 1) * k;
-    let offset = t_max - 1 - l * k;
-    let chunked_op = DiagGather { offset: offset.to_dim(), out_len: w.to_dim() };
+    let window_start = window_start_for(mask, contracted_axis);
+    let chunked_offset = centre + window_start * k;
+    let chunked_op = DiagGather { offset: chunked_offset.to_dim(), out_len: w.to_dim() };
     Ok(patch.wire_node(format!("{}.blockified", node.name), chunked_op, &[chunked])?[0])
 }
 
