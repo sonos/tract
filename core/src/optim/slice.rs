@@ -182,6 +182,11 @@ fn should_slice_output(
     rule_if_let!(Ok(mut boundaries) =
         boundaries.iter().map(|x| x.to_usize()).collect::<TractResult<TVec<usize>>>());
     rule_if_let!(Ok(end) = node.outputs[0].fact.shape[axis].to_usize());
+    // op_slices_to_slice_op requires boundaries to cover the full
+    // [0..full_len] range. When every slicing successor starts at
+    // some offset > 0, the collected boundaries miss the leading 0;
+    // sort+dedup handles the case where a slicer already starts at 0.
+    boundaries.push(0);
     boundaries.push(end);
     boundaries.sort();
     boundaries.dedup();
@@ -246,4 +251,35 @@ pub fn rewire_sliced_outputs(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ops::math;
+
+    /// Two slice successors that both start at > 0. None covers the
+    /// prefix [0..2]. Before the fix, `should_slice_output` returned
+    /// boundaries `[2, 4, 5, 8]` (start at 2, not 0), and
+    /// `op_slices_to_slice_op` failed `boundaries[0] == 0.to_dim()`.
+    #[test]
+    fn push_slice_up_multi_succ_no_prefix() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let a = model.add_source("a", f32::fact([8]))?;
+        let b = model.add_source("b", f32::fact([8]))?;
+        let sum = model.wire_node("sum", math::add(), &[a, b])?[0];
+        let s1 = model.wire_node(
+            "s1",
+            Slice { axis: 0, start: 2.to_dim(), end: 4.to_dim() },
+            &[sum],
+        )?[0];
+        let s2 = model.wire_node(
+            "s2",
+            Slice { axis: 0, start: 5.to_dim(), end: 8.to_dim() },
+            &[sum],
+        )?[0];
+        model.select_output_outlets(&[s1, s2])?;
+        let _ = model.into_decluttered()?;
+        Ok(())
+    }
 }
