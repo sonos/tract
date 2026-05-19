@@ -96,6 +96,7 @@ bin_to_super_type!(mul, Mul,
                     },
                    linalg: Mul,
                    neutral_element: 1,
+                   absorbing_element: 0,
                    out_of_place: |c:&mut Tensor, a:&Tensor, b: &Tensor| -> TractResult<bool> {
                        if c.datum_type() == TDim::datum_type() &&
                            a.datum_type() == TDim::datum_type() && b.datum_type() == TDim::datum_type() {
