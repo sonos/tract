@@ -248,6 +248,20 @@ impl TypedOp for TypedBinOp {
                 }
             }
         }
+        // And(known_band, runtime_unknown) → the band acts as an upper bound:
+        // outside the band, the band is 0 and AND is provably 0; inside the
+        // band, AND = runtime_unknown.  The band is therefore a valid upper
+        // bound on where the AND result can be true — sufficient for ROI-
+        // bubbling and FoldUniformMask region-splitting consumers, which
+        // both treat uniform_tdim as "where the result can be nonzero".
+        if fact.uniform_tdim.is_none() && self.0.is::<crate::ops::logic::And>() {
+            for src in [&inputs[0].uniform_tdim, &inputs[1].uniform_tdim] {
+                if let Some(known) = src {
+                    fact.uniform_tdim = Some(known.clone());
+                    break;
+                }
+            }
+        }
         Ok(tvec!(fact))
     }
 
