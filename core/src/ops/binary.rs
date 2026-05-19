@@ -516,7 +516,14 @@ fn declutter_neutral(
 }
 
 /// When one input is the absorbing element (e.g. 0 for Mul, false for And),
-/// replace the entire op with the uniform (absorbing) input.
+/// replace the entire op with a uniform-value tensor of the output shape.
+///
+/// We can't shunt the uniform input directly: it may be lower-rank or have
+/// broadcast-from-1 dims that don't match the op's output shape (e.g.
+/// `Mul([4, 1], scalar-0)` outputs `[4, 1]`, not `[1]`).  Wire a
+/// `MultiBroadcastTo` from the uniform constant to the output shape;
+/// subsequent declutter folds it into a pure constant when the shape is
+/// fully concrete.
 fn declutter_absorbing(
     model: &TypedModel,
     node: &TypedNode,
@@ -528,13 +535,33 @@ fn declutter_absorbing(
             .map(|absorb| tensor0(absorb).close_enough(&uniform.uni, false).is_ok())
             .unwrap_or(false);
         if is_absorbing {
+            let output_shape = model.outlet_fact(node.id.into())?.shape.clone();
             let uni_inlet = if uniform.left_is_uniform { 0 } else { 1 };
-            return Ok(Some(TypedModelPatch::rewire(
-                model,
-                &[node.inputs[uni_inlet]],
-                &[node.id.into()],
-                &|_, inputs| Ok(inputs.into()),
-            )?));
+            let uni_input_shape = &model.outlet_fact(node.inputs[uni_inlet])?.shape;
+            if uni_input_shape == &output_shape {
+                // Uniform input's shape already matches the output — shunt it.
+                return Ok(Some(TypedModelPatch::rewire(
+                    model,
+                    &[node.inputs[uni_inlet]],
+                    &[node.id.into()],
+                    &|_, inputs| Ok(inputs.into()),
+                )?));
+            }
+            // Uniform input is lower-rank or has broadcast-from-1 dims that
+            // don't match the op's output shape.  Wire a `MultiBroadcastTo`
+            // to materialise the absorbing tensor at the output shape;
+            // subsequent declutter folds it to a pure constant when the
+            // shape is fully concrete.
+            let mut patch = TypedModelPatch::default();
+            let uni_const =
+                patch.add_const(format!("{}.absorbing_const", node.name), uniform.uni.clone())?;
+            let bcast = patch.wire_node(
+                format!("{}.absorbing_bcast", node.name),
+                crate::ops::array::MultiBroadcastTo { shape: output_shape },
+                &[uni_const],
+            )?[0];
+            patch.shunt_outside(model, node.id.into(), bcast)?;
+            return Ok(Some(patch));
         }
     }
     Ok(None)
