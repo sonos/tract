@@ -133,6 +133,7 @@ use std::collections::{BTreeSet, HashMap};
 use tract_core::axes::AxesMapping;
 use tract_core::model::TypedModelPatch;
 use tract_core::ops::array::Slice;
+use tract_core::ops::binary::TypedBinOp;
 use tract_core::ops::change_axes::AxisOp;
 use tract_core::ops::einsum::EinSum;
 use tract_core::ops::nn::{Reduce, Reducer};
@@ -837,6 +838,18 @@ fn wire_initiator(
     if let Some(op) = node.op_as::<DiagGather>() {
         return wire_initiator_diag_gather(patch, model, node, op, mask, chunk_sym, k);
     }
+    if let Some(op) = node.op_as::<TypedBinOp>() {
+        return wire_initiator_typed_binop(
+            patch,
+            model,
+            node,
+            op,
+            mask,
+            contracted_axis,
+            chunk_sym,
+            k,
+        );
+    }
     bail!("Unsupported initiator {node}")
 }
 
@@ -894,6 +907,140 @@ fn wire_initiator_diag_gather(
     let offset = t_max - 1 - l * k;
     let chunked_op = DiagGather { offset: offset.to_dim(), out_len: w.to_dim() };
     Ok(patch.wire_node(format!("{}.blockified", node.name), chunked_op, &[chunked])?[0])
+}
+
+/// Generic initiator for a `TypedBinOp` lifting two single-T-axis inputs
+/// into a multi-T-axis score-shape output via implicit broadcasting (post-
+/// declutter spelling of the pad-mask outer-AND pattern: `Add(at=0)(pad)` AND
+/// `Add(at=1)(pad)` → `[T, T]`).
+///
+/// Per input, the streaming axis tracks via the op's axes_mapping to one of
+/// the section's score axes.  If that score axis lands on the contracted (K)
+/// side of the mask, the input is windowed by `WindowOnAxis(W) + flatten`;
+/// otherwise it's just chunk-split.  Each input's chunks axis is then moved
+/// to the section's `chunks_target_axis` so the chunked op aligns them.
+///
+/// `WindowOnAxis` pads boundary slots with the op's `absorbing_element` (0
+/// for And/Mul/BitAnd, 1 for Or), so the chunked op produces "definitely
+/// excluded" at out-of-stream positions.  Bails if the op has no absorbing
+/// element (e.g. Add, Xor) — we can't safely window-pad those.
+///
+/// Non-streaming inputs are tapped and rank-bumped to the chunked-frame rank
+/// (= score_rank + 1).  The chunked op's own broadcasting fills in the
+/// streaming dims.
+fn wire_initiator_typed_binop(
+    patch: &mut TypedModelPatch,
+    model: &TypedModel,
+    node: &TypedNode,
+    op: &TypedBinOp,
+    mask: &MaskForm,
+    contracted_axis: usize,
+    chunk_sym: &Symbol,
+    k: i64,
+) -> TractResult<OutletId> {
+    let out_streaming_axes = streaming_positions(&node.outputs[0].fact, chunk_sym);
+    ensure!(
+        out_streaming_axes.len() == 2 && out_streaming_axes[1] == out_streaming_axes[0] + 1,
+        "Initiator TypedBinOp output must have two contiguous streaming axes"
+    );
+    let chunks_target_axis = out_streaming_axes[0];
+    let score_rank = node.outputs[0].fact.rank();
+    let rank_diff = score_rank.checked_sub(2).ok_or_else(|| {
+        format_err!("Score rank {score_rank} < 2; cannot translate to mask frame")
+    })?;
+
+    let input_facts: TVec<&TypedFact> =
+        node.inputs.iter().map(|inp| model.outlet_fact(*inp)).collect::<TractResult<_>>()?;
+    let output_facts: TVec<&TypedFact> = node.outputs.iter().map(|o| &o.fact).collect();
+    let mapping = op.axes_mapping(&input_facts, &output_facts)?;
+
+    let mut chunked_inputs: TVec<OutletId> = tvec!();
+    for (ix, &input) in node.inputs.iter().enumerate() {
+        let in_fact = model.outlet_fact(input)?;
+        let streaming = streaming_positions(in_fact, chunk_sym);
+        ensure!(
+            streaming.len() <= 1,
+            "Initiator TypedBinOp input {ix} has {} streaming axes, expected 0 or 1",
+            streaming.len()
+        );
+
+        let tapped = patch.tap_model(model, input)?;
+        let wire = if streaming.is_empty() {
+            let target_rank = score_rank + 1;
+            bump_rank_to(patch, &node.name, ix, tapped, target_rank)?
+        } else {
+            let stream_axis = streaming[0];
+            let split = wire_chunk_split(
+                patch,
+                &format!("{}.{ix}", node.name),
+                tapped,
+                stream_axis,
+                chunk_sym,
+                k,
+            )?;
+
+            let tracked_in_score = mapping
+                .track_axis((InOut::In(ix), stream_axis), InOut::Out(0))?
+                .ok_or_else(|| {
+                    format_err!(
+                        "TypedBinOp stream axis on input {ix} doesn't track to a unique output axis"
+                    )
+                })?;
+            let tracked_in_mask = tracked_in_score.checked_sub(rank_diff).ok_or_else(|| {
+                format_err!(
+                    "Tracked score axis {tracked_in_score} doesn't map to mask frame \
+                     (rank_diff={rank_diff})"
+                )
+            })?;
+
+            let needs_window = !mask.is_block_diag() && tracked_in_mask == contracted_axis;
+            let after_window = if needs_window {
+                let window: usize = (mask.upper - mask.lower + 1) as usize;
+                let start = window_start_for(mask, contracted_axis);
+                let dt = patch.outlet_fact(split)?.datum_type;
+                let absorbing = op.0.absorbing_element().ok_or_else(|| {
+                    format_err!(
+                        "TypedBinOp '{}' has no absorbing_element; cannot safely window-pad \
+                         a section-initiator input",
+                        op.0.name()
+                    )
+                })?;
+                let pad_value = tensor0(absorbing).cast_to_dt(dt)?.into_owned().into_arc_tensor();
+                let windowed = patch.wire_node(
+                    format!("{}.{ix}.window", node.name),
+                    tract_pulse_opl::ops::WindowOnAxis {
+                        axis: stream_axis,
+                        window,
+                        start,
+                        pad_value,
+                    },
+                    &[split],
+                )?[0];
+                let from = tvec!(window.to_dim(), k.to_dim());
+                let to = tvec!(((window as i64) * k).to_dim());
+                patch.wire_node(
+                    format!("{}.{ix}.window_flat", node.name),
+                    AxisOp::Reshape(stream_axis + 1, from, to),
+                    &[windowed],
+                )?[0]
+            } else {
+                split
+            };
+
+            if stream_axis != chunks_target_axis {
+                patch.wire_node(
+                    format!("{}.{ix}.move_chunks", node.name),
+                    AxisOp::Move(stream_axis, chunks_target_axis),
+                    &[after_window],
+                )?[0]
+            } else {
+                after_window
+            }
+        };
+        chunked_inputs.push(wire);
+    }
+
+    Ok(patch.wire_node(format!("{}.blockified", node.name), op.clone(), &chunked_inputs)?[0])
 }
 
 /// Initiator for `MultiBroadcastTo` — the `select(mask, scores, -inf)`
