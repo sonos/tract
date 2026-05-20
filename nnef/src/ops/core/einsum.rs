@@ -1,10 +1,12 @@
 use crate::internal::*;
 use crate::ser::*;
 use tract_core::ops::einsum::EinSum;
+use tract_core::ops::einsum::einsum_matmul::EinSumMatMul;
 use tract_core::tract_data::itertools::Itertools;
 
 pub fn register(registry: &mut Registry) {
     registry.register_dumper(ser);
+    registry.register_dumper(ser_matmul);
     registry.register_primitive(
         "tract_core_einsum",
         &parameters(),
@@ -45,11 +47,26 @@ pub fn parameters_q() -> Vec<Parameter> {
 }
 
 pub fn ser(ast: &mut IntoAst, node: &TypedNode, op: &EinSum) -> TractResult<Option<Arc<RValue>>> {
-    if op.q_params.is_some() { ser_einsum_q(ast, node) } else { ser_einsum(ast, node) }
+    if op.q_params.is_some() { ser_einsum_q(ast, node, op) } else { ser_einsum(ast, node, op) }
 }
 
-pub fn ser_einsum(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
-    let einsum = node.op_as::<EinSum>().unwrap();
+pub fn ser_matmul(
+    ast: &mut IntoAst,
+    node: &TypedNode,
+    op: &EinSumMatMul,
+) -> TractResult<Option<Arc<RValue>>> {
+    if op.op.q_params.is_some() {
+        ser_einsum_q(ast, node, &op.op)
+    } else {
+        ser_einsum(ast, node, &op.op)
+    }
+}
+
+pub fn ser_einsum(
+    ast: &mut IntoAst,
+    node: &TypedNode,
+    einsum: &EinSum,
+) -> TractResult<Option<Arc<RValue>>> {
     let inputs: Vec<_> = node.inputs.iter().map(|i| (*ast.mapping[i]).clone()).collect();
     Ok(Some(invocation(
         "tract_core_einsum",
@@ -62,8 +79,11 @@ pub fn ser_einsum(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc
     )))
 }
 
-pub fn ser_einsum_q(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
-    let einsum = node.op_as::<EinSum>().unwrap();
+pub fn ser_einsum_q(
+    ast: &mut IntoAst,
+    node: &TypedNode,
+    einsum: &EinSum,
+) -> TractResult<Option<Arc<RValue>>> {
     let inputs = node.inputs.iter().map(|i| (*ast.mapping[i]).clone()).collect_vec();
     Ok(Some(invocation(
         "tract_core_einsum_q",
