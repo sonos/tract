@@ -29,6 +29,7 @@ pub mod matmul;
 // pub mod memory;
 pub mod nn;
 pub mod quant;
+pub mod rec;
 pub mod scan;
 pub mod source;
 pub mod submodel;

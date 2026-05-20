@@ -10,6 +10,25 @@ pub trait WireBody: Debug + DynClone + Send + Sync {
     fn wire_body(&self, prefix: &str, body: &mut TypedModel) -> TractResult<()>;
     fn w_b_multipliers(&self) -> (usize, usize);
     fn have_extra_c_state(&self) -> bool;
+
+    /// Try to lower this recurrent op directly to a fused single-op
+    /// implementation (e.g. `core::ops::rec::OptGru`) emitted into `target`
+    /// for the given direction. Returns `Some(per_direction_outputs)` in the
+    /// ONNX output layout (matching what `wire_one_side` would have returned),
+    /// or `None` to fall back to the Scan-with-decomposed-body lowering.
+    ///
+    /// Default: returns `None` (no fused path).
+    #[allow(unused_variables)]
+    fn try_wire_fused(
+        &self,
+        prefix: &str,
+        target: &mut TypedModel,
+        common: &CommonRec,
+        inputs: &[OutletId],
+        dir: usize,
+    ) -> TractResult<Option<TVec<OutletId>>> {
+        Ok(None)
+    }
 }
 
 clone_trait_object!(WireBody);
@@ -61,6 +80,13 @@ impl CommonRec {
         inputs: &[OutletId],
         dir: usize,
     ) -> TractResult<TVec<OutletId>> {
+        // Try the fused single-op lowering first (e.g. OptGru). Falls
+        // through to the Scan-based decomposition if the body doesn't
+        // support it or the attribute combo is out of scope.
+        if let Some(outputs) = self.body.try_wire_fused(prefix, target, self, inputs, dir)? {
+            return Ok(outputs);
+        }
+
         use tract_hir::ops::{array, scan};
 
         let x_fact = target.outlet_fact(inputs[0])?.clone();

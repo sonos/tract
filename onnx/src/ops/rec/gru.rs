@@ -2,7 +2,9 @@ use crate::model::ParsingContext;
 use crate::pb::*;
 use tract_hir::internal::*;
 use tract_hir::ops;
+use tract_hir::tract_core::ops::array::Slice;
 use tract_hir::tract_core::ops::einsum::EinSum;
+use tract_hir::tract_core::ops::rec::OptGru;
 
 use super::common::CommonRec;
 use super::common::WireBody;
@@ -39,6 +41,189 @@ impl WireBody for GRU {
 
     fn have_extra_c_state(&self) -> bool {
         false
+    }
+
+    /// Lower this GRU directly to a fused `OptGru` op when the attribute
+    /// combination is supported (Phase 1: f32 only, concrete hidden_size,
+    /// concrete input_size, no peepholes, no sequence_lens, no extra C state
+    /// — all of which hold for DFN3's GRU layers).
+    fn try_wire_fused(
+        &self,
+        prefix: &str,
+        target: &mut TypedModel,
+        common: &CommonRec,
+        inputs: &[OutletId],
+        dir: usize,
+    ) -> TractResult<Option<TVec<OutletId>>> {
+        // OPT-IN until the perf work lands. The current OptGru eval uses
+        // ndarray matmuls and is ~4x slower than the Scan path (the fused-op
+        // win requires swapping in tract-linalg MMM/MMV kernels — Phase 2).
+        // Correctness is proven (see onnx/tests/opt_gru_vs_scan.rs + the
+        // df_dec reference comparison), so the op is enabled explicitly via
+        // TRACT_ENABLE_OPT_GRU=1 for benchmarking / further development.
+        // Do NOT default-enable until OptGru is at least as fast as Scan.
+        if std::env::var("TRACT_ENABLE_OPT_GRU").is_err() {
+            return Ok(None);
+        }
+
+        // Phase 1 support gate. Bail to Scan path for anything outside scope.
+        let x_fact = target.outlet_fact(inputs[0])?.clone();
+        if x_fact.datum_type != f32::datum_type() {
+            return Ok(None);
+        }
+        if common.optional_sequence_lens_input.is_some() {
+            // Non-trivial seq_lens not supported in fused path.
+            return Ok(None);
+        }
+        if common.optional_p_input.is_some() {
+            return Ok(None);
+        }
+
+        let r_fact = target.outlet_fact(inputs[2])?.clone();
+        let Ok(hidden_size) = r_fact.shape[2].to_usize() else {
+            return Ok(None);
+        };
+        let Ok(input_size) = x_fact.shape[2].to_usize() else {
+            return Ok(None);
+        };
+
+        // Batch axis index (in raw ONNX input X layout).
+        let batch_axis_in_x = if common.batch_first { 0 } else { 1 };
+        let batch_dim = x_fact.shape[batch_axis_in_x].clone();
+
+        // ── Prepare OptGru inputs ──────────────────────────────────────
+
+        // X: [seq_len, batch, input_size] (transpose if batch_first).
+        let x = if common.batch_first {
+            // [batch, seq, input] → [seq, batch, input]
+            target.wire_node(
+                format!("{prefix}.opt_gru.x_seq_first"),
+                AxisOp::Move(0, 1),
+                &[inputs[0]],
+            )?[0]
+        } else {
+            inputs[0]
+        };
+
+        // W: [num_dir, 3*hidden, input_size] → [3*hidden, input_size]
+        let w_dir = target.wire_node(
+            format!("{prefix}.opt_gru.w_dir"),
+            Slice::new(0, dir, dir + 1),
+            &[inputs[1]],
+        )?[0];
+        let w = target.wire_node(format!("{prefix}.opt_gru.w"), AxisOp::Rm(0), &[w_dir])?[0];
+
+        // R: [num_dir, 3*hidden, hidden] → [3*hidden, hidden]
+        let r_dir = target.wire_node(
+            format!("{prefix}.opt_gru.r_dir"),
+            Slice::new(0, dir, dir + 1),
+            &[inputs[2]],
+        )?[0];
+        let r = target.wire_node(format!("{prefix}.opt_gru.r"), AxisOp::Rm(0), &[r_dir])?[0];
+
+        // B: optional [num_dir, 6*hidden] → [6*hidden]; else zeros.
+        let b = if let Some(slot) = common.optional_bias_input {
+            let b_dir = target.wire_node(
+                format!("{prefix}.opt_gru.b_dir"),
+                Slice::new(0, dir, dir + 1),
+                &[inputs[slot]],
+            )?[0];
+            target.wire_node(format!("{prefix}.opt_gru.b"), AxisOp::Rm(0), &[b_dir])?[0]
+        } else {
+            target.add_const(
+                format!("{prefix}.opt_gru.b_zero"),
+                Tensor::zero::<f32>(&[6 * hidden_size])?,
+            )?
+        };
+
+        // h0: optional [num_dir, batch, hidden] → [batch, hidden]; else zeros.
+        let h0 = if let Some(slot) = common.optional_initial_h_input {
+            let mut input = inputs[slot];
+            if common.batch_first {
+                // [batch, num_dir, hidden] → [num_dir, batch, hidden]
+                input = target.wire_node(
+                    format!("{prefix}.opt_gru.h0_dir_first"),
+                    AxisOp::Move(1, 0),
+                    &[input],
+                )?[0];
+            }
+            let h_dir = target.wire_node(
+                format!("{prefix}.opt_gru.h0_dir"),
+                Slice::new(0, dir, dir + 1),
+                &[input],
+            )?[0];
+            target.wire_node(format!("{prefix}.opt_gru.h0"), AxisOp::Rm(0), &[h_dir])?[0]
+        } else {
+            // Need concrete batch for the zero const. If symbolic, fall back to Scan.
+            let Ok(batch) = batch_dim.to_usize() else {
+                return Ok(None);
+            };
+            target.add_const(
+                format!("{prefix}.opt_gru.h0_zero"),
+                Tensor::zero::<f32>(&[batch, hidden_size])?,
+            )?
+        };
+
+        // ── Emit OptGru ────────────────────────────────────────────────
+
+        let opt_gru =
+            OptGru { hidden_size, input_size, linear_before_reset: self.linear_before_reset };
+        let gru_outputs =
+            target.wire_node(format!("{prefix}.opt_gru"), opt_gru, &[x, w, r, b, h0])?;
+        // OptGru emits Y in [batch, seq, hidden] (Scan-accumulator layout)
+        // and Y_h in [batch, 1, hidden] (Scan-body-output layout). Apply the
+        // SAME post-Scan wire ops as `common.rs`'s Scan flow, so the optimizer
+        // sees identical downstream-op chains for both lowerings.
+        let y_scan_layout = gru_outputs[0];
+        let y_h_scan_layout = gru_outputs[1];
+
+        // ── Wire outputs into ONNX layout (mirrors common.rs Scan branch) ──
+
+        let mut result = tvec!();
+        if let Some(_slot) = common.optional_y_output {
+            let y = if common.batch_first {
+                // ONNX: Y.shape = [batch, seq, num_directions, hidden]
+                // OptGru emits [batch, seq, hidden]; insert num_dir at axis 2.
+                target.wire_node(
+                    format!("{prefix}.opt_gru.y_add_dir"),
+                    AxisOp::Add(2),
+                    &[y_scan_layout],
+                )?[0]
+            } else {
+                // ONNX: Y.shape = [seq, num_directions, batch, hidden]
+                // OptGru emits [batch, seq, hidden]; Move(1,0) → [seq, batch, hidden],
+                // Add(1) → [seq, 1, batch, hidden]. Same ops as Scan path.
+                let y_batch_middle = target.wire_node(
+                    format!("{prefix}.opt_gru.y_batch_middle"),
+                    AxisOp::Move(1, 0),
+                    &[y_scan_layout],
+                )?[0];
+                target.wire_node(
+                    format!("{prefix}.opt_gru.y_add_dir"),
+                    AxisOp::Add(1),
+                    &[y_batch_middle],
+                )?[0]
+            };
+            result.push(y);
+        }
+        if let Some(_slot) = common.optional_y_h_output {
+            let y_h = if common.batch_first {
+                // ONNX Y_h: [batch, num_dir, hidden]. OptGru emits [batch, 1, hidden].
+                // Already in batch_first layout — no transform needed.
+                y_h_scan_layout
+            } else {
+                // ONNX Y_h: [num_dir, batch, hidden]. OptGru emits [batch, 1, hidden].
+                // Move(1, 0) → [1, batch, hidden]. Same as Scan path.
+                target.wire_node(
+                    format!("{prefix}.opt_gru.y_h_swap"),
+                    AxisOp::Move(1, 0),
+                    &[y_h_scan_layout],
+                )?[0]
+            };
+            result.push(y_h);
+        }
+
+        Ok(Some(result))
     }
 
     #[allow(non_snake_case)]
