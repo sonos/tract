@@ -21,6 +21,22 @@ fn include_sme() -> bool {
     arch == "aarch64" && (os == "macos" || os == "linux")
 }
 
+// Probe whether the target assembler can actually assemble SME instructions.
+// Old binutils (e.g. the Debian stretch aarch64 cross-toolchain used in CI)
+// predate SME and reject the mnemonics even with `.arch armv9-a+sme2`, which
+// breaks the build. When the probe fails we skip the SME kernels entirely;
+// the matching `tract_sme` cfg keeps the Rust side from referencing the
+// (now absent) kernel symbols, and dispatch falls back to the portable path.
+fn assembler_supports_sme() -> bool {
+    cc::Build::new()
+        .file("arm64/sme/dummy_sme.S")
+        .cargo_metadata(false)
+        .cargo_warnings(false)
+        .warnings(false)
+        .try_compile("tract_sme_probe")
+        .is_ok()
+}
+
 fn jump_table() -> Vec<String> {
     println!("cargo:rerun-if-changed=src/frame/mmm/fuse.rs");
     std::fs::read_to_string("src/frame/mmm/fuse.rs")
@@ -84,6 +100,10 @@ fn main() {
 
     let suffix = env!("CARGO_PKG_VERSION").replace(['-', '.'], "_");
     make_extern_kernel_decl_macro(&out_dir, &suffix);
+
+    // `tract_sme` is set below only when both include_sme() and the assembler
+    // SME probe succeed; declare it so rustc's unexpected-cfg lint stays quiet.
+    println!("cargo:rustc-check-cfg=cfg(tract_sme)");
 
     match arch.as_ref() {
         "x86_64" => {
@@ -162,9 +182,10 @@ fn main() {
                 let files = preprocess_files("arm64/apple_amx", &[], &suffix, false);
                 cc::Build::new().files(files).compile("appleamx");
             }
-            if include_sme() {
+            if include_sme() && assembler_supports_sme() {
                 let files = preprocess_files("arm64/sme", &[], &suffix, false);
                 cc::Build::new().files(files).compile("sme");
+                println!("cargo:rustc-cfg=tract_sme");
             }
             if std::env::var("CARGO_FEATURE_NO_FP16").is_err() {
                 let config =

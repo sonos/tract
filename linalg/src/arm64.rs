@@ -4,7 +4,9 @@ mod apple_amx;
 mod arm64simd;
 pub mod cortex_a53;
 mod cortex_a55;
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+// `tract_sme` is set by build.rs only when the assembler can assemble SME
+// (gates out e.g. the old Debian stretch aarch64 toolchain).
+#[cfg(all(any(target_os = "macos", target_os = "linux"), tract_sme))]
 mod sme;
 //mod cortex_a72;
 //mod cortex_a73;
@@ -430,7 +432,7 @@ pub fn plug(ops: &mut Ops) {
     {
         apple_amx::plug(ops);
     }
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(all(any(target_os = "macos", target_os = "linux"), tract_sme))]
     {
         sme::plug(ops);
     }
