@@ -130,7 +130,7 @@ jobs:
         export TRACT_RUN=$GITHUB_WORKSPACE/tract-cli-${{env.uname}}/tract
         ./harness/parakeet-tdt-600m-v3/ci.sh
 
-  nemotron-speech-streaming-en-0.6b:
+  nemotron-speech-streaming-en-06b:
     name: ${{matrix.os}} / Nemotron speech streaming en 0.6b
     needs: [ cli ]
     strategy:
