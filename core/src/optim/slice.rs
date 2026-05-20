@@ -268,16 +268,12 @@ mod tests {
         let a = model.add_source("a", f32::fact([8]))?;
         let b = model.add_source("b", f32::fact([8]))?;
         let sum = model.wire_node("sum", math::add(), &[a, b])?[0];
-        let s1 = model.wire_node(
-            "s1",
-            Slice { axis: 0, start: 2.to_dim(), end: 4.to_dim() },
-            &[sum],
-        )?[0];
-        let s2 = model.wire_node(
-            "s2",
-            Slice { axis: 0, start: 5.to_dim(), end: 8.to_dim() },
-            &[sum],
-        )?[0];
+        let s1 =
+            model.wire_node("s1", Slice { axis: 0, start: 2.to_dim(), end: 4.to_dim() }, &[sum])?
+                [0];
+        let s2 =
+            model.wire_node("s2", Slice { axis: 0, start: 5.to_dim(), end: 8.to_dim() }, &[sum])?
+                [0];
         model.select_output_outlets(&[s1, s2])?;
         let _ = model.into_decluttered()?;
         Ok(())
