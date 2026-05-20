@@ -4,6 +4,16 @@ tract is Sonos' neural-network inference engine written in Rust.
 It reads ONNX, NNEF, TensorFlow Lite, and TensorFlow models, optimises them,
 and runs them on CPU (x86/ARM), GPU (Metal, CUDA), embedded targets, and WASM.
 
+This file is the operational quick reference. For conceptual background not
+derivable from the source, see [`doc/`](doc/):
+
+- [`doc/intro.md`](doc/intro.md) — tract-OPL design, translate-time vs runtime split
+- [`doc/graph.md`](doc/graph.md) — Graph, Node, Outlet, Fact, model pipeline
+- [`doc/op.md`](doc/op.md) — anatomy of an Op (`Op` / `EvalOp` / `TypedOp` / `InferenceOp`)
+- [`doc/cli-recipe.md`](doc/cli-recipe.md) — `tract` command-line cookbook
+- [`doc/kernel-notes.md`](doc/kernel-notes.md) — tract-linalg kernels and debugging
+- [`doc/nnef/`](doc/nnef/) — reference schemas for the `tract_*` NNEF extensions
+
 ---
 
 ## Crate map
