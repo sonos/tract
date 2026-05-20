@@ -220,7 +220,9 @@ impl fmt::Display for TDim {
             Val(it) => write!(fmt, "{it}"),
             Add(it) => write!(fmt, "{}", it.iter().map(|x| format!("{x}")).join("+")),
             Mul(it) => write!(fmt, "{}", it.iter().map(|x| format!("({x})")).join("*")),
-            Broadcast(it) => write!(fmt, "{}", it.iter().map(|x| format!("({x})")).join("#")),
+            Broadcast(it) => {
+                write!(fmt, "broadcast({})", it.iter().map(|x| format!("({x})")).join(", "))
+            }
             Min(it) => write!(fmt, "min({})", it.iter().map(|x| format!("{x}")).join(",")),
             Max(it) => write!(fmt, "max({})", it.iter().map(|x| format!("{x}")).join(",")),
             MulInt(a, b) => write!(fmt, "{a}*{b}"),
