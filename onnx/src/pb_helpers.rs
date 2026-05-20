@@ -98,7 +98,11 @@ pub trait AttrScalarType<'a>: 'a + Sized {
 impl<'a> AttrScalarType<'a> for DatumType {
     fn get_attr_opt_scalar(node: &'a NodeProto, name: &str) -> TractResult<Option<Self>> {
         i32::get_attr_opt_scalar(node, name)?
-            .map(|d| tensor_proto::DataType::try_from(d).unwrap().try_into())
+            .map(|d| {
+                tensor_proto::DataType::try_from(d)
+                    .map_err(|e| format_err!("unknown ONNX TensorProto.DataType ({d}): {e}"))?
+                    .try_into()
+            })
             .transpose()
     }
 }
@@ -318,9 +322,13 @@ impl NodeProto {
             Some(attr) => attr,
             _ => return Ok(None),
         };
-        self.expect_attr(name, AttributeType::try_from(attr.r#type).unwrap() == ty, || {
-            format!("{}, got {}", ty, attr.r#type)
+        let attr_ty = AttributeType::try_from(attr.r#type).map_err(|e| {
+            format_err!(
+                "attribute {name} declares unknown ONNX AttributeType ({}): {e}",
+                attr.r#type
+            )
         })?;
+        self.expect_attr(name, attr_ty == ty, || format!("{}, got {}", ty, attr.r#type))?;
         Ok(Some(attr))
     }
 

@@ -507,6 +507,17 @@ message TensorProto {
     // floating-point number truncated to 16 bits.
     // This format has 1 sign bit, 8 exponent bits, and 7 mantissa bits.
     BFLOAT16 = 16;
+
+    // 8-bit floating-point variants (introduced in ONNX opset 19).
+    FLOAT8E4M3FN = 17;
+    FLOAT8E4M3FNUZ = 18;
+    FLOAT8E5M2 = 19;
+    FLOAT8E5M2FNUZ = 20;
+
+    // 4-bit integer and float variants (introduced in ONNX opset 21+).
+    UINT4 = 21;
+    INT4 = 22;
+    FLOAT4E2M1 = 23;
   }
 
   // The shape of the tensor.

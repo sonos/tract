@@ -84,7 +84,13 @@ impl ParsingContext<'_> {
                 let id = model.add_const(input.name.to_owned(), init)?;
                 outlets_by_name.insert(input.name.to_owned(), id);
             } else {
-                let fact = input.r#type.as_ref().unwrap().value.as_ref().unwrap();
+                let fact = input
+                    .r#type
+                    .as_ref()
+                    .with_context(|| format!("graph input `{}` has no type", input.name))?
+                    .value
+                    .as_ref()
+                    .with_context(|| format!("graph input `{}` has no type value", input.name))?;
                 #[allow(irrefutable_let_patterns)]
                 let fact: InferenceFact = if let pb::type_proto::Value::TensorType(fact) = fact {
                     translate_inference_fact(&ctx, fact, true)

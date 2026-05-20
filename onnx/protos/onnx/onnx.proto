@@ -297,7 +297,21 @@ message TensorProto {
     UINT64 = 13;
     COMPLEX64 = 14;     // complex with float32 real and imaginary components
     COMPLEX128 = 15;    // complex with float64 real and imaginary components
-    // Future extensions go here.
+
+    // Non-IEEE floating-point format based on IEEE754 single-precision
+    // floating-point number truncated to 16 bits. 1 sign, 8 exp, 7 mantissa.
+    BFLOAT16 = 16;
+
+    // 8-bit floating-point variants (ONNX opset 19+).
+    FLOAT8E4M3FN = 17;
+    FLOAT8E4M3FNUZ = 18;
+    FLOAT8E5M2 = 19;
+    FLOAT8E5M2FNUZ = 20;
+
+    // 4-bit integer and float variants (ONNX opset 21+).
+    UINT4 = 21;
+    INT4 = 22;
+    FLOAT4E2M1 = 23;
   }
 
   // The shape of the tensor.
