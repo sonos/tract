@@ -233,6 +233,20 @@ impl OpState for State {
         outputs.sort_by_key(|a| a.0);
         let mut outputs: TVec<Tensor> = outputs.into_iter().map(|(_slot, v)| v).collect();
 
+        // The body runs the SAME plan with the SAME shapes every iteration, so
+        // resolve its symbols once and keep them across iters (light per-iter
+        // reset), and reuse one drained input buffer. This avoids the per-timestep
+        // symbol re-resolution + reallocation a plain `model_state.run()` would do.
+        // Cleared up front since the body state persists across outer Scan calls.
+        // Opt-out for A/B and safety: TRACT_DISABLE_SCAN_ITER_REUSE falls back to a
+        // plain `model_state.run()` per timestep (the pre-change behaviour).
+        let iter_reuse = std::env::var("TRACT_DISABLE_SCAN_ITER_REUSE").is_err();
+        if iter_reuse {
+            model_state.clear_resolved_symbols();
+        }
+        let mut iter_inputs: TVec<TValue> = tvec!();
+        let mut symbols_resolved = false;
+
         for i in 0..iters {
             *position += 1;
             if *position <= op.skip {
@@ -240,28 +254,36 @@ impl OpState for State {
             }
             hidden_state.reverse();
 
-            let iter_inputs: TVec<TValue> = op
-                .input_mapping
-                .iter()
-                .enumerate()
-                .map(|(slot, m)| {
-                    Ok(match m {
-                        InputMapping::State => Some(hidden_state.pop().unwrap()),
-                        InputMapping::Scan(info) => Some(
-                            Self::slice_input(&inputs[slot], info.axis, i, info.chunk)?
-                                .into_tvalue(),
-                        ),
-                        InputMapping::Full => Some(inputs[slot].clone()),
-                    })
-                })
-                .collect::<TractResult<Vec<_>>>()?
-                .into_iter()
-                .flatten()
-                .collect();
-
+            iter_inputs.clear();
+            for (slot, m) in op.input_mapping.iter().enumerate() {
+                iter_inputs.push(match m {
+                    InputMapping::State => hidden_state.pop().unwrap(),
+                    InputMapping::Scan(info) => {
+                        Self::slice_input(&inputs[slot], info.axis, i, info.chunk)?.into_tvalue()
+                    }
+                    InputMapping::Full => inputs[slot].clone(),
+                });
+            }
             trace!("iter_inputs #{i}: {iter_inputs:?}");
-            let iter_outputs =
-                model_state.run(iter_inputs).with_context(|| "Evaluating inner body")?;
+
+            // Lighter equivalent of `model_state.run(iter_inputs)`: resolve body
+            // symbols only on the first iteration, and reset between iters without
+            // discarding them.
+            let iter_outputs = if iter_reuse {
+                model_state.set_inputs_drain(&mut iter_inputs).context("Setting body inputs")?;
+                if !symbols_resolved {
+                    model_state.resolve_symbols_with_states()?;
+                    symbols_resolved = true;
+                }
+                model_state.exec().with_context(|| "Evaluating inner body")?;
+                let o = model_state.outputs()?;
+                model_state.reset_turn_keep_symbols();
+                o
+            } else {
+                model_state
+                    .run(std::mem::take(&mut iter_inputs))
+                    .with_context(|| "Evaluating inner body")?
+            };
             trace!("iter_outputs #{i}: {iter_outputs:?}");
 
             for (v, mapping) in iter_outputs.into_iter().zip(&op.output_mapping) {

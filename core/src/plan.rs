@@ -247,11 +247,27 @@ where
     }
     /// Reset wires state.
     pub fn reset_turn(&mut self) -> TractResult<()> {
+        self.reset_turn_keep_symbols();
+        self.turn_state.resolved_symbols = SymbolValues::default();
+        Ok(())
+    }
+
+    /// Like [`reset_turn`] but keeps the resolved symbols (and scenario). Used by
+    /// `Scan`/`Loop` bodies, whose shapes are constant across iterations: it lets
+    /// the body resolve its symbols once and skip the per-iteration re-resolution
+    /// the full `reset_turn` + `run` cycle would otherwise force.
+    pub(crate) fn reset_turn_keep_symbols(&mut self) {
         for node in &self.plan.order {
             self.turn_state.values[*node] = None;
         }
+    }
+
+    /// Clear resolved symbols (and scenario) without touching node values. Used at
+    /// the start of a fresh `Scan` evaluation, since the body state persists across
+    /// outer calls and a previous call may have left stale symbol resolutions.
+    pub(crate) fn clear_resolved_symbols(&mut self) {
         self.turn_state.resolved_symbols = SymbolValues::default();
-        Ok(())
+        self.turn_state.scenario = None;
     }
 
     /// Reset op inner state.
@@ -263,7 +279,7 @@ where
         Ok(())
     }
 
-    fn resolve_symbols_with_states(&mut self) -> TractResult<()> {
+    pub(crate) fn resolve_symbols_with_states(&mut self) -> TractResult<()> {
         for state in self
             .op_states
             .iter_mut()
@@ -465,6 +481,22 @@ where
         );
 
         for (ix, t) in inputs.into_iter().enumerate() {
+            self.set_input(ix, t)?
+        }
+        Ok(())
+    }
+
+    /// Like [`set_inputs`] but drains the caller's buffer (leaving it empty with
+    /// its capacity intact) instead of consuming it, so a repeated caller (a
+    /// `Scan` body loop) can reuse one allocation across iterations.
+    pub(crate) fn set_inputs_drain(&mut self, inputs: &mut TVec<TValue>) -> TractResult<()> {
+        ensure!(
+            inputs.len() == self.model().inputs.len(),
+            "Wrong number of inputs for model. Expected {} got {}",
+            self.model().inputs.len(),
+            inputs.len()
+        );
+        for (ix, t) in inputs.drain(..).enumerate() {
             self.set_input(ix, t)?
         }
         Ok(())
