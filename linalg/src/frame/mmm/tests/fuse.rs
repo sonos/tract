@@ -29,6 +29,11 @@ macro_rules! mmm_kernel_fuse_tests {
             fn store_non_contiguous() {
                 test::store_non_contiguous::<_, $tc, $ti>($ker)
             }
+
+            #[test]
+            fn add_unicast_non_contiguous() {
+                test::add_unicast_non_contiguous::<_, $ti>($ker)
+            }
             proptest::proptest! {
                 #[test]
                 fn return_c_prop(c in tile::<_, $ti>($ker)) {
@@ -149,6 +154,57 @@ where
         }
     }
     assert_eq!(v, expected);
+}
+
+/// `Clear` + `AddUnicast(strided)` + `Store(contiguous)` and check the
+/// source pattern reaches the destination. Counterpart of
+/// `store_non_contiguous` on the read side; `return_c_plus_d` uses
+/// `mmm_stride_storage` (tightly packed) and so doesn't exercise this.
+pub fn add_unicast_non_contiguous<K, TI>(ker: &K)
+where
+    K: MatMatMulKer<Acc = TI>,
+    TI: LADatum + AsPrimitive<TI>,
+    usize: AsPrimitive<TI>,
+{
+    if !ker.is_supported_here() {
+        return;
+    }
+    let item = std::mem::size_of::<TI>();
+    let row_stride_items = 3 * ker.nr() * 5;
+    let col_stride_items = 3;
+    // Source: a non-contiguous buffer with distinct values at the used
+    // (r, c) cells and sentinel garbage everywhere else.
+    let mut src: Vec<TI> = vec![TI::max_value(); ker.mr() * row_stride_items];
+    for r in 0..ker.mr() {
+        for c in 0..ker.nr() {
+            src[r * row_stride_items + c * col_stride_items] = (1 + c + r * ker.nr()).as_();
+        }
+    }
+    let src_store = OutputStoreKer {
+        ptr: src.as_ptr() as _,
+        row_byte_stride: (item * row_stride_items) as isize,
+        col_byte_stride: (item * col_stride_items) as isize,
+        item_size: item,
+    };
+    // Destination: tightly-packed output for easy comparison.
+    let mut dst: Vec<TI> = vec![TI::min_value(); ker.mr() * ker.nr()];
+    let dst_store = OutputStoreKer {
+        ptr: dst.as_ptr() as _,
+        row_byte_stride: (item * ker.nr()) as isize,
+        col_byte_stride: item as isize,
+        item_size: item,
+    };
+    let non_linear = tvec![
+        FusedKerSpec::Clear,
+        FusedKerSpec::AddUnicast(src_store),
+        FusedKerSpec::Store(dst_store),
+        FusedKerSpec::Done,
+    ];
+    let err = ker.kernel(&non_linear);
+    assert_eq!(err, 0);
+    let expected: Vec<TI> = (0..ker.mr() * ker.nr()).map(|i| (1 + i).as_()).collect();
+    display_error(&dst, &expected, ker.mr(), ker.nr());
+    assert_eq!(dst, expected);
 }
 
 pub fn fused_ops<K, TI, E>(ker: &K, c: &[TI], ops: &[FusedKerSpec<TI>], expect: E)

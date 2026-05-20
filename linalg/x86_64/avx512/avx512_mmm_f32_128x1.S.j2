@@ -54,8 +54,49 @@ Windows ABI:
     mov     r10,    [rdi + 8]           // c ptr
     mov     rsi,    [rdi + 16]          // row stride
 
+    cmp     rsi, 4
+    jne     {{L}}add_unicast_generic
+
     {% for row in range(0, 8) %}
         vaddps zmm{{row}}, zmm{{row}}, [ r10 + {{ row * 64 }} ]
+    {% endfor %}
+
+    jmp    {{L}}non_linear_loop
+
+{{L}}add_unicast_generic:
+    mov     eax,    0
+    {% for i in range(0, 4) %}
+        pinsrd  xmm14, eax, {{i}}
+        add     eax,    esi
+    {% endfor %}
+    {% for i in range(0, 4) %}
+        pinsrd  xmm15, eax, {{i}}
+        add     eax,    esi
+    {% endfor %}
+    {% for i in range(0, 4) %}
+        pinsrd  xmm12, eax, {{i}}
+        add     eax,    esi
+    {% endfor %}
+    {% for i in range(0, 4) %}
+        pinsrd  xmm13, eax, {{i}}
+        add     eax,    esi
+    {% endfor %}
+    vperm2f128      ymm14, ymm14, ymm15, 32
+    vperm2f128      ymm13, ymm12, ymm13, 32
+    vinsertf32x8    zmm14, zmm14, ymm13, 1
+
+    kxnorw          k1, k1, k1
+    vgatherdps      zmm12{k1}, [r10 + zmm14]
+    vaddps          zmm0, zmm0, zmm12
+
+    imul    esi,    16
+    vpbroadcastd    zmm15, esi
+
+    {% for j in range(1, 8) %}
+        vpaddd      zmm14, zmm14, zmm15
+        kxnorw      k1, k1, k1
+        vgatherdps  zmm12{k1}, [r10 + zmm14]
+        vaddps      zmm{{j}}, zmm{{j}}, zmm12
     {% endfor %}
 
     jmp    {{L}}non_linear_loop
