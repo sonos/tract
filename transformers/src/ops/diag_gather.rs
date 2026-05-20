@@ -116,10 +116,30 @@ impl TypedOp for DiagGather {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TVec<Option<TDim>>>> {
+        // Output indexing: out[..., q, c] = in[..., q, offset + c - q]
+        // So input position (q, r) is read for output position (q, r + q - offset).
+        // To translate output ROI to input ROI, substitute the c symbol with
+        // (r + q - offset) where r is the input's last axis and q is the
+        // shared axis at rank-2.
         let output_fact = model.outlet_fact(OutletId::new(node.id, 0))?;
         let Some(roi) = &output_fact.region_of_interest else { return Ok(None) };
-        // Pass the output ROI to the input (same coordinate structure for query axis).
-        Ok(Some(tvec![Some(roi.clone())]))
+        let rank = output_fact.shape.rank();
+        if rank < 2 {
+            return Ok(Some(tvec![Some(roi.clone())]));
+        }
+        let c_sym = roi
+            .symbols()
+            .into_iter()
+            .find(|s| tract_nnef::tract_core::ops::logic::sym_to_coord_axis(s) == Some(rank - 1));
+        let Some(c_sym) = c_sym else {
+            // No mention of the column axis — pass through unchanged.
+            return Ok(Some(tvec![Some(roi.clone())]));
+        };
+        let Some(scope) = c_sym.scope() else { return Ok(Some(tvec![Some(roi.clone())])) };
+        let q_sym = TDim::Sym(scope.coord_sym(rank - 2));
+        let r_expr = TDim::Sym(c_sym.clone()) + q_sym - self.offset.clone();
+        let input_roi = roi.substitute(&c_sym, &r_expr).map(|d| d.reduce()).unwrap_or(roi.clone());
+        Ok(Some(tvec![Some(input_roi)]))
     }
 
     fn substitute_symbols(
@@ -300,6 +320,58 @@ mod tests {
         for (a, b) in orig.iter().zip(fold.iter()) {
             assert!((*a - *b).abs() < 1e-6, "Mismatch: original={a}, folded={b}");
         }
+        Ok(())
+    }
+
+    /// DiagGather's `input_roi` should substitute the column axis `c` with
+    /// `r + q - offset`: the output index `(q, c)` reads input index
+    /// `(q, offset + c - q)`, so input position `(q, r)` matters iff there's
+    /// some output `(q, c)` with `r = offset + c - q`, i.e. `c = r + q - offset`.
+    ///
+    /// Test case: a diagonal-of-width-3 band on the output `(q, c)` —
+    /// `Mul(Ge(c, q-1), Ge(q+1, c))` — should translate to a CONSTANT band
+    /// `2 ≤ r ≤ 4` on the input (q drops out), because the bandwidth is the
+    /// same offset around the diagonal.
+    #[test]
+    fn diag_gather_input_roi_substitutes_diagonal_coord() -> TractResult<()> {
+        let t: usize = 4;
+        let r = 2 * t - 1; // 7
+
+        let mut model = TypedModel::default();
+        let src = model.add_source("src", f32::fact(&[1, t, r]))?;
+        let dg = model.wire_node(
+            "dg",
+            DiagGather { offset: (t as i64 - 1).to_dim(), out_len: t.to_dim() },
+            &[src],
+        )?[0];
+        model.select_output_outlets(&[dg])?;
+
+        // Plant a diagonal band ROI on dg's output: |q - c| <= 1.
+        // That is: Ge(c, q - 1) AND Ge(q + 1, c).
+        let q_sym = model.symbols.coord_sym(1);
+        let c_sym = model.symbols.coord_sym(2);
+        let q = TDim::Sym(q_sym);
+        let c = TDim::Sym(c_sym);
+        let band = TDim::Mul(vec![
+            TDim::Ge(Box::new(c.clone()), Box::new(q.clone() - TDim::Val(1))),
+            TDim::Ge(Box::new(q + TDim::Val(1)), Box::new(c)),
+        ]);
+        model.nodes_mut()[dg.node].outputs[0].fact.region_of_interest = Some(band);
+
+        // Call input_roi on the DG node and inspect what gets planted on input 0.
+        let dg_node = &model.nodes()[dg.node];
+        let input_rois = dg_node.op.as_typed().unwrap().input_roi(&model, dg_node)?;
+        let input_rois = input_rois.expect("DG should return Some");
+        let input_roi = input_rois[0].as_ref().expect("DG should plant on input 0");
+
+        // Verify the substitution actually happened: `c` (🎯2) should now
+        // appear as the sum `🎯1 + 🎯2 - 3` in both Ge terms.
+        let printed = format!("{input_roi}");
+        eprintln!("DG input ROI: {printed}");
+        assert!(
+            printed.contains("🎯1+🎯2+-3") || printed.contains("🎯1+🎯2-3"),
+            "expected `c → r + q - offset` substitution, got {printed}"
+        );
         Ok(())
     }
 }
