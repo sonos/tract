@@ -94,6 +94,11 @@ for a working demo.
 | TensorFlow Lite (legacy) | ✓ | ✓ |
 | TensorFlow 1 frozen graph (legacy) | ✓ | — |
 
+PyTorch models can be exported directly to NNEF using
+[torch2nnef](https://github.com/sonos/torch2nnef), an open-source
+PyTorch-to-NNEF converter maintained alongside tract — useful when you want
+to skip the detour through ONNX.
+
 tract-OPL is an NNEF-compatible intermediate representation that extends
 NNEF with the operators needed to express a full tract-core model. The
 recommended deployment workflow is:
