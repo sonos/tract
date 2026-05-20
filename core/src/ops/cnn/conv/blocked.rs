@@ -133,6 +133,9 @@ impl BlockedConv {
     /// the standalone microbench). `get_unchecked` keeps the runtime-derived
     /// input/kernel/output indices bounds-check-free; all are provably in range
     /// from the shape invariants. The `w % WB` remainder uses a scalar tail.
+    // Index loops are deliberate here: const offsets into `acc` are what let SROA
+    // keep the accumulators register-resident; iterator forms regressed codegen.
+    #[allow(clippy::needless_range_loop)]
     fn run<const OCG: usize>(&self, x: &[f32], kernel: &[f32], bias: &[f32], out: &mut [f32]) {
         let (icg, w, h_in, h_out, kh) = (self.icg(), self.w, self.h_in, self.h_out, self.kh);
         let (sh, dh, pb) =
@@ -220,6 +223,7 @@ impl BlockedConv {
 
     /// Generic fallback for `ocg` outside the const-dispatched set. Correct but
     /// not register-blocked (heap accumulators). Rarely hit for the eligible class.
+    #[allow(clippy::needless_range_loop)]
     fn run_generic(&self, x: &[f32], kernel: &[f32], bias: &[f32], out: &mut [f32]) {
         let (icg, ocg, w, h_in, h_out, kh) =
             (self.icg(), self.ocg(), self.w, self.h_in, self.h_out, self.kh);
@@ -271,7 +275,7 @@ impl BlockedConv {
 impl TypedOp for BlockedConv {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         ensure!(inputs.len() == 3, "BlockedConv expects 3 inputs (X, kernel, bias)");
-        Ok(tvec!(f32::datum_type().fact(&[self.n, self.oc, self.h_out, self.w])))
+        Ok(tvec!(f32::datum_type().fact([self.n, self.oc, self.h_out, self.w])))
     }
 
     fn cost(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
