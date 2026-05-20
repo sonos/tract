@@ -3,6 +3,17 @@ use crate::ops::OpStateFreeze;
 use super::*;
 use tract_data::internal::*;
 
+/// Whether the per-iteration body-state reuse is enabled (default) or the loop
+/// falls back to a plain `model_state.run()` per timestep
+/// (`TRACT_DISABLE_SCAN_ITER_REUSE`). Read once and cached — a per-eval
+/// `env::var` would be pure overhead on single-iteration Scans (e.g. an
+/// autoregressive RNN-T decoder stepped one token per call).
+fn scan_iter_reuse_enabled() -> bool {
+    use std::sync::OnceLock;
+    static V: OnceLock<bool> = OnceLock::new();
+    *V.get_or_init(|| std::env::var("TRACT_DISABLE_SCAN_ITER_REUSE").is_err())
+}
+
 #[derive(Debug, Clone, new)]
 pub struct ScanOpParams {
     pub skip: usize,
@@ -240,7 +251,7 @@ impl OpState for State {
         // Cleared up front since the body state persists across outer Scan calls.
         // Opt-out for A/B and safety: TRACT_DISABLE_SCAN_ITER_REUSE falls back to a
         // plain `model_state.run()` per timestep (the pre-change behaviour).
-        let iter_reuse = std::env::var("TRACT_DISABLE_SCAN_ITER_REUSE").is_err();
+        let iter_reuse = scan_iter_reuse_enabled();
         if iter_reuse {
             model_state.clear_resolved_symbols();
         }
