@@ -21,7 +21,7 @@ and runs them on CPU (x86/ARM), GPU (Metal, CUDA), embedded targets, and WASM.
 | `tensorflow` | TensorFlow importer | `hir`, `pulse` |
 | `pulse-opl` | Streaming op primitives | `nnef` |
 | `pulse` | Streaming / causal inference | `pulse-opl`, `transformers` |
-| `transformers` | Transformer-specific ops (RmsNorm, Silu, GeluApproximate, ...) | `nnef` |
+| `transformers` | Transformer-specific ops (RmsNorm, Silu, GeluApproximate, ...) | `nnef`¹ |
 | `gpu` | Shared GPU abstractions | `core`, `pulse-opl`, `transformers` |
 | `metal` | Apple Metal backend | `gpu`, `core`, `pulse-opl`, `transformers` |
 | `cuda` | NVIDIA CUDA backend | `gpu`, `core`, `pulse-opl`, `transformers` |
@@ -30,9 +30,7 @@ and runs them on CPU (x86/ARM), GPU (Metal, CUDA), embedded targets, and WASM.
 | `api/rs` | High-level stable public Rust API | `nnef`, `onnx`, `pulse`, `transformers`, `metal`, `cuda`, ... |
 | `api/ffi` | C FFI over `api/rs` | `api/rs` |
 
-**Important:** `transformers` does **not** directly depend on `tract-core`.
-It accesses core types via `tract_nnef::tract_core`. Use that path in imports,
-not `tract_core::...` directly.
+¹ `transformers` has no direct `tract-core` dep; import core types via `tract_nnef::tract_core`.
 
 ---
 
@@ -58,6 +56,24 @@ cargo clippy --workspace
 The `harness/` directory contains integration tests that run against real
 models. `.travis/native.sh` runs the full native Linux CI suite; running it
 locally requires `libssl-dev` (needed by the `tflite` step).
+
+Synthetic NNEF tests under `harness/nnef-test-cases/` and `harness/pulse-multi-axis/`
+are driven by a `runme.sh` that calls the `tract` CLI with `--assert-output-bundle`
+against a reference `io.npz`. Add new cases there rather than as Rust integration
+tests. If the assertion you need isn't expressible through the CLI, extend the CLI.
+
+### Model inspection
+
+```sh
+# human-readable graph dump
+tract model.nnef.tgz dump
+
+# machine-readable — pipe to jq or python
+tract model.nnef.tgz dump --audit-json | jq '.nodes[] | select(.op_name == "Conv")'
+```
+
+Reach for `--audit-json` when scripting; the plain `dump` output is meant for
+humans and is awkward to parse.
 
 ### test-rt
 
@@ -92,6 +108,8 @@ backend genuinely cannot support the case.
 
 > **Client code** (applications, examples, language bindings) should use `api/rs`
 > only. The internal crates (`core`, `nnef`, `onnx`, ...) are not stable API surface.
+> When asked "is X part of the public API?", check `api/rs/src/lib.rs` — that is
+> the authoritative surface, not the internal crate's `pub` items.
 
 ### TypedModel / TypedNode / TypedFact
 
@@ -171,6 +189,34 @@ separate recognition pass:
 
 ---
 
+## Streaming and pulsification
+
+Streaming inference converts a `TypedModel` into a `PulsedModel`
+(`pulse/src/model.rs`) that processes a fixed-size chunk along one axis at each
+step.
+
+- **Streaming axis and pulse size.** Each op pulsifies through an impl in
+  `pulse/src/ops/`. The streaming axis is tracked node-by-node; an op that
+  reorders or merges axes must declare what the streaming axis becomes on its
+  output, otherwise pulsification fails or produces wrong delays.
+- **Delay.** Ops that need past context (conv, attention windows, banded masks)
+  insert a `Delay` op from `pulse-opl/src/delay.rs` to buffer earlier pulses.
+  The accumulated output delay is exposed as `pulse.delay` and used by the CLI
+  assertion path to skip warmup before comparing against a batch reference.
+- **ChangeAxes.** `core/src/optim/change_axes.rs` rewrites axis layout during
+  optimisation. Any change-axes interaction has to preserve the streaming axis
+  identity, so new ops that move axes around need a `change_axes` impl that
+  agrees with their pulsification.
+- **Validation reflex.** For "does this op pulsify correctly", the standard
+  workflow is a `runme.sh` under `harness/pulse-multi-axis/` that runs the
+  batch model and the pulsified model against the same `io.npz` and asserts
+  equality modulo `pulse.delay`.
+
+The streaming model has subtle invariants -- don't touch `pulse` / `pulse-opl`
+casually.
+
+---
+
 ## NNEF serialisation
 
 NNEF ser/de for core ops lives in `nnef/src/ops/core/`. Ops are registered
@@ -207,8 +253,13 @@ git checkout -b my-feature origin/main --no-track
   Inline code comments:
   - Default to none. Code MUST be self-explanatory via variable and function naming.
   - In tract, an inline comment is a signal that something implicit is happening -- hidden constraint, non-obvious invariant, bug workaround.
-  - (This has not been enforced consistently since codebots became a thing.)
+  - Existing files may carry stale or chatty comments; new contributions should not add to them.
   - Avoid section banners (// -- Step 2: Pad -> Reshape --), prefer split in functions. It's ok to have long function prototype in private function (within reason) #[allow(clippy::too_many_arguments)] authorized in such case.
+
+  Idioms:
+  - Prefer `as_X()` over `to_X().ok()` for cheap reference-style conversions.
+  - No new `unsafe` without explicit permission. `shunt_outside_unchecked` is a last resort for surgical patches whose safety is locally obvious; reach for safe alternatives first.
+  - Don't add abstraction beyond the task. Three similar lines beat a premature helper.
 
   Formatting:
   - Always run `cargo +1.91.0 fmt --all` before committing -- bare `cargo fmt` uses a newer rustfmt and produces spurious diffs CI rejects.
@@ -223,7 +274,3 @@ git checkout -b my-feature origin/main --no-track
 - **Mocking internals in tests** -- prefer real model round-trips.
 - **Hand-rolling model-walk loops** -- reach for `Rewriter`, `ModelTransform`,
   or `TypedModelPatch` instead.
-- **Adding abstraction beyond the task** -- three similar lines beat a premature
-  helper.
-- **Touching `pulse`/`pulse-opl` without understanding causal inference** --
-  the streaming model has subtle invariants around axis tracking and delay.
