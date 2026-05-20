@@ -130,3 +130,27 @@ jobs:
         export TRACT_RUN=$GITHUB_WORKSPACE/tract-cli-${{env.uname}}/tract
         ./harness/parakeet-tdt-600m-v3/ci.sh
 
+  nemotron-speech-streaming-en-0.6b:
+    name: ${{matrix.os}} / Nemotron speech streaming en 0.6b
+    needs: [ cli ]
+    strategy:
+      matrix:
+        os: [ macOS, cuda-lovelace ]
+      fail-fast: false
+    permissions:
+      id-token: write
+      contents: read
+    runs-on: ${{ matrix.os }}
+    steps:
+    - uses: actions/checkout@v6
+    - run: echo uname=$(uname) >> $GITHUB_ENV
+    - uses: actions/download-artifact@v8
+      with:
+        name: tract-cli-${{env.uname}}
+        path: tract-cli-${{env.uname}}
+
+    - name: Download and run
+      run: |
+        chmod +x tract-cli-${{env.uname}}/tract
+        export TRACT_RUN=$GITHUB_WORKSPACE/tract-cli-${{env.uname}}/tract
+        ./harness/nemotron-speech-streaming-en-0.6b/ci.sh
