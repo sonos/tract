@@ -73,13 +73,13 @@ business side of things.
 
 ```rust
 pub trait EvalOp {
-     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
          bail!("stateless evaluation not implemented")
      }
 
      fn state(
          &self,
-         session: &mut SessionState,
+         session: &mut TurnState,
          node_id: usize,
      ) -> TractResult<Option<Box<dyn OpState>>> {
          Ok(None)
@@ -89,21 +89,23 @@ pub trait EvalOp {
 }
 ```
 
-The EvalOp realize the actual computation the Operator is supposed to perform. It
-supports both *stateful* and *stateless* operators. Most of them are stateless:
-they should just implement `eval` method and say so in `is_stateless()`. The
-handful of stateful operators will implements `state()` instead and return
-`false` is is_stateless: the framework will call `state()` during the network
-initialization, then will call `eval()` on the obtained `OpState` instead:
+The EvalOp realises the actual computation the Operator is supposed to
+perform. It supports both *stateful* and *stateless* operators. Most are
+stateless: they implement `eval` and return `true` from `is_stateless()`.
+The handful of stateful operators implement `state()` instead and return
+`false` from `is_stateless()`; the framework calls `state()` during
+network initialisation, then calls `eval()` on the obtained `OpState`
+instead:
 
 ```rust
-pub trait OpState: fmt::Debug + Send + dyn_clone::DynClone {
+pub trait OpState: fmt::Debug + dyn_clone::DynClone + OpStateFreeze + Downcast {
     fn eval(
         &mut self,
-        session: &mut SessionState,
+        session: &mut TurnState,
         op: &dyn Op,
-        inputs: TVec<Arc<Tensor>>,
-    ) -> TractResult<TVec<Arc<Tensor>>>;
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>>;
+    /* [...] */
 }
 ```
 
@@ -310,4 +312,3 @@ representation of the Op. The callback can add NNEF fragments (NNEF lingo for
 functions) to the NNEF document but its main responsibility is to translate 
 the node and its op to some NNEF ast nodes.
 
-## Expansions, and rules wrapper

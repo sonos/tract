@@ -8,7 +8,9 @@ fragment tract_onnx_isinf(
     input: tensor<scalar>,
     detect_positive: logical = true,
     detect_negative: logical = true
-) -> (output: tensor<?>)fragment tract_onnx_lrn(
+) -> (output: tensor<?>);
+
+fragment tract_onnx_lrn(
     input: tensor<scalar>,
     alpha: scalar = 0.0001,
     beta: scalar = 0.75,

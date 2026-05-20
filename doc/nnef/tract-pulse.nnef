@@ -1,6 +1,6 @@
-# Extension `tract_resource` extends NNEF with operators
+# Extension `tract_pulse` extends NNEF with operators
 # for pulsified networks.
-# 
+#
 # Add `extension tract_pulse` to `graph.nnef`
 
 

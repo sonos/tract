@@ -77,6 +77,32 @@ Several other intermediate network "stages" can be reached by using `--pass XXX`
 `--pass load` and `--pass analyse` are interesting as they can dump a network for which inputs are
 unknown (maybe to try and figure out what they could be).
 
+For machine-readable output, pass `--audit-json` to `dump`:
+
+```bash
+tract -O mobilenetv2-7.onnx -i 1,3,224,224,f32 dump --audit-json | jq '.nodes[0]'
+```
+
+The default `dump` text output is meant for humans and is awkward to parse;
+prefer `--audit-json` from scripts. (Same advice applies to `--profile`,
+see below.)
+
+## NNEF round-trip
+
+To convert a loaded network into the tract-OPL (NNEF) form on disk:
+
+```bash
+tract mobilenetv2-7.onnx -i 1,3,224,224,f32 dump --nnef model.nnef.tgz
+```
+
+To load it back, pass `--nnef-tract-core` (and `--nnef-tract-onnx` if the
+network uses ONNX-only extensions) so the parser registers the right
+operator set:
+
+```bash
+tract --nnef-tract-core model.nnef.tgz dump
+```
+
 ## Benching a network
 
 We can get a reading of tract performance on a model by running the `bench` or`criterion`
@@ -109,6 +135,21 @@ to double tract Flops number before comparing with, say, BLAS implementations.
 
 Please do not parse this output. At least use the `--json` output. We do not commit on its stability
 but it's less susceptible to changes.
+
+## Pulsified networks
+
+The CLI can turn a streaming-friendly network into a pulsified one and run
+the assertion path against a batch reference (see also AGENTS.md §Streaming
+and pulsification):
+
+```bash
+tract --nnef-tract-core model.nnef.tgz --pulse 'T=2' run \
+    --input-from-bundle io.npz --assert-output-bundle io.npz
+```
+
+The CLI accounts for the accumulated `pulse.delay` when comparing against
+the batch reference. Synthetic test cases under `harness/pulse-multi-axis/`
+follow this pattern via a `runme.sh` driver.
 
 ## Running a test case
 
