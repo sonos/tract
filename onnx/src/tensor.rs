@@ -35,7 +35,10 @@ pub fn translate_inference_fact(
     include_unknown_symbols: bool,
 ) -> TractResult<InferenceFact> {
     let mut fact = InferenceFact::default();
-    fact = fact.with_datum_type(DataType::try_from(t.elem_type).unwrap().try_into()?);
+    let dt: DatumType = DataType::try_from(t.elem_type)
+        .map_err(|e| format_err!("unknown ONNX TensorProto.DataType ({}): {e}", t.elem_type))?
+        .try_into()?;
+    fact = fact.with_datum_type(dt);
     if let Some(shape) = &t.shape {
         let shape: TVec<DimFact> = shape
             .dim
@@ -135,7 +138,9 @@ pub fn load_tensor(
     t: &TensorProto,
     path: Option<&str>,
 ) -> TractResult<Tensor> {
-    let dt = DataType::try_from(t.data_type).unwrap().try_into()?;
+    let dt = DataType::try_from(t.data_type)
+        .map_err(|e| format_err!("unknown ONNX TensorProto.DataType ({}): {e}", t.data_type))?
+        .try_into()?;
     let shape: Vec<usize> = t.dims.iter().map(|&i| i as usize).collect();
     // detect if the tensor is rather in an external file than inside the onnx file directly
     let is_external = t.data_location.is_some()
@@ -207,4 +212,38 @@ pub fn proto_from_reader<R: ::std::io::Read>(mut r: R) -> TractResult<TensorProt
     r.read_to_end(&mut v)?;
     let b = bytes::Bytes::from(v);
     TensorProto::decode(b).context("Can not parse protobuf input")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Regression: an ONNX TensorProto with a DataType value that prost
+    // doesn't recognise used to abort the process via `unwrap()` on the
+    // `try_from` error. Now it must produce a normal TractError.
+    #[test]
+    fn unknown_elem_type_does_not_panic() {
+        assert!(DataType::try_from(9999_i32).is_err());
+    }
+
+    // Post-BF16 dtypes (FLOAT8E4M3FN .. FLOAT4E2M1) are now decoded by prost.
+    // tract still doesn't support them in DatumType, but the conversion error
+    // should name the dtype rather than fall through a `_` arm with `Unknown`.
+    #[test]
+    fn newer_dtypes_decode_then_error_cleanly() {
+        for elem_type in 17..=23 {
+            let dt = DataType::try_from(elem_type)
+                .unwrap_or_else(|e| panic!("dtype {elem_type} not decoded by prost: {e}"));
+            let err = DatumType::try_from(dt)
+                .expect_err("tract should not claim support for FLOAT8/INT4/FLOAT4 dtypes yet");
+            let msg = format!("{err:?}");
+            assert!(
+                msg.contains("Float8")
+                    || msg.contains("Uint4")
+                    || msg.contains("Int4")
+                    || msg.contains("Float4"),
+                "DatumType conversion error for {dt:?} did not name the dtype: {msg}",
+            );
+        }
+    }
 }

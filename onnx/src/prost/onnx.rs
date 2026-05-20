@@ -592,6 +592,20 @@ pub mod tensor_proto {
         /// floating-point number truncated to 16 bits.
         /// This format has 1 sign bit, 8 exponent bits, and 7 mantissa bits.
         Bfloat16 = 16,
+        /// 8-bit floating point, with 4 exponent bits and 3 mantissa bits, NaN only on `S.1111.111`.
+        Float8e4m3fn = 17,
+        /// 8-bit floating point, with 4 exponent bits and 3 mantissa bits, no NaN, no infinities.
+        Float8e4m3fnuz = 18,
+        /// 8-bit floating point, with 5 exponent bits and 2 mantissa bits.
+        Float8e5m2 = 19,
+        /// 8-bit floating point, with 5 exponent bits and 2 mantissa bits, no NaN, no infinities.
+        Float8e5m2fnuz = 20,
+        /// 4-bit unsigned integer.
+        Uint4 = 21,
+        /// 4-bit signed integer (two's complement).
+        Int4 = 22,
+        /// 4-bit floating point, 2 exponent bits and 1 mantissa bit.
+        Float4e2m1 = 23,
     }
     impl DataType {
         /// String value of the enum field names used in the ProtoBuf definition.
@@ -617,6 +631,13 @@ pub mod tensor_proto {
                 DataType::Complex64 => "COMPLEX64",
                 DataType::Complex128 => "COMPLEX128",
                 DataType::Bfloat16 => "BFLOAT16",
+                DataType::Float8e4m3fn => "FLOAT8E4M3FN",
+                DataType::Float8e4m3fnuz => "FLOAT8E4M3FNUZ",
+                DataType::Float8e5m2 => "FLOAT8E5M2",
+                DataType::Float8e5m2fnuz => "FLOAT8E5M2FNUZ",
+                DataType::Uint4 => "UINT4",
+                DataType::Int4 => "INT4",
+                DataType::Float4e2m1 => "FLOAT4E2M1",
             }
         }
     }
