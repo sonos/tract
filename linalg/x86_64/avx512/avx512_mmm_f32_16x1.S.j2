@@ -78,27 +78,31 @@ Windows ABI:
     jmp    {{L}}non_linear_loop
 
 {{L}}add_unicast_generic:
-    mov r8, [0]
-//     mov     eax,    0
-// {% for i in range(0, 4) %}
-//     pinsrd  xmm14, eax, {{i}}
-//     add     eax,    esi
-// {% endfor %}
-// {% for i in range(0, 4) %}
-//     pinsrd  xmm15, eax, {{i}}
-//     add     eax,    esi
-// {% endfor %}
-//
-//     vperm2f128      zmm14,  zmm14, zmm15,         32 // zmm14 <- xmm14::xmm15
-//
-// {% for i in range(0, 8) %}
-//     vpcmpeqd        zmm15,  zmm15, zmm15
-//     vgatherdps      zmm12,  [ r10 + zmm14 ], zmm15
-//
-//     vaddps          zmm{{i}},   zmm{{i}},   zmm12
-//     lea             r10, [ r10 + rsi * 8 ]
-// {% endfor %}
-//
+    mov     eax,    0
+    {% for i in range(0, 4) %}
+        pinsrd  xmm14, eax, {{i}}
+        add     eax,    esi
+    {% endfor %}
+    {% for i in range(0, 4) %}
+        pinsrd  xmm15, eax, {{i}}
+        add     eax,    esi
+    {% endfor %}
+    {% for i in range(0, 4) %}
+        pinsrd  xmm12, eax, {{i}}
+        add     eax,    esi
+    {% endfor %}
+    {% for i in range(0, 4) %}
+        pinsrd  xmm13, eax, {{i}}
+        add     eax,    esi
+    {% endfor %}
+    vperm2f128      ymm14, ymm14, ymm15, 32
+    vperm2f128      ymm13, ymm12, ymm13, 32
+    vinsertf32x8    zmm14, zmm14, ymm13, 1
+
+    kxnorw          k1, k1, k1
+    vgatherdps      zmm12{k1}, [r10 + zmm14]
+    vaddps          zmm0, zmm0, zmm12
+
     jmp    {{L}}non_linear_loop
 
 {{L}}add_row_col_products:

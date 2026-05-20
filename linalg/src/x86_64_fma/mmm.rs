@@ -188,3 +188,105 @@ pub fn plug_avx512f(ops: &mut Ops) {
     });
     log::info!("mmm_f32, mmv_f32: x86_64/avx512f activated");
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::frame::mmm::{AsInputValue, FusedSpec};
+    use tract_data::internal::*;
+
+    #[test]
+    fn avx512_128x1_add_unicast_with_strided_c() -> TractResult<()> {
+        if !is_x86_feature_detected!("avx512f") {
+            return Ok(());
+        }
+        let (m, k_each, n) = (1000usize, 256usize, 13usize);
+        let a0: Vec<f32> = (0..m * k_each).map(|i| ((i % 17) as f32 - 8.0) / 16.0).collect();
+        let a1: Vec<f32> = (0..m * k_each).map(|i| ((i % 19) as f32 - 9.0) / 18.0).collect();
+        let b0: Vec<f32> = (0..k_each * n).map(|i| ((i % 13) as f32 - 6.0) / 13.0).collect();
+        let b1: Vec<f32> = (0..k_each * n).map(|i| ((i % 11) as f32 - 5.0) / 10.0).collect();
+
+        let mut expected = vec![0.0f32; m * n];
+        for r in 0..m {
+            for c in 0..n {
+                let mut acc = 0.0f32;
+                for kk in 0..k_each {
+                    acc += a0[r * k_each + kk] * b0[kk * n + c];
+                    acc += a1[r * k_each + kk] * b1[kk * n + c];
+                }
+                expected[r * n + c] = acc;
+            }
+        }
+
+        let ker = avx512_mmm_f32_128x1.mmm();
+        let (pack_a, pack_b) = &ker.packings()[0];
+        let pack_one =
+            |buf: Vec<f32>, rows, cols, m_axis, k_axis, pack: &dyn crate::mmm::MMMInputFormat| {
+                let t =
+                    tract_ndarray::Array2::from_shape_vec((rows, cols), buf).unwrap().into_tensor();
+                pack.prepare_one(&t, k_axis, m_axis).unwrap()
+            };
+        let pa0 = pack_one(a0, m, k_each, 0, 1, &**pack_a);
+        let pa1 = pack_one(a1, m, k_each, 0, 1, &**pack_a);
+        let pb0 = pack_one(b0, k_each, n, 1, 0, &**pack_b);
+        let pb1 = pack_one(b1, k_each, n, 1, 0, &**pack_b);
+
+        // C-buffer layout with row stride > nr*sizeof, matching squeezenet conv10's
+        // (M=1000, spatial=13, N=13) view: M-stride is 169 floats, not nr=1.
+        let spatial = 13usize;
+        let mut c_backing = Tensor::zero::<f32>(&[m, spatial, n])?;
+        let c_spec = unsafe { ker.c_from_data_and_strides(4, (spatial * n) as isize, 1) };
+
+        unsafe {
+            let c_view = c_backing.view_mut();
+            let c = c_spec.wrap(&c_view);
+            let ops: TVec<FusedSpec> = tvec!(
+                FusedSpec::AddMatMul {
+                    a: AsInputValue::Borrowed(&*pa0),
+                    b: AsInputValue::Borrowed(&*pb0),
+                    packing: 0,
+                },
+                FusedSpec::Store(c),
+            );
+            ker.run(m, n, &ops)?;
+        }
+
+        unsafe {
+            let c_view = c_backing.view_mut();
+            let c_for_unicast = c_spec.wrap(&c_view);
+            let c_for_store = c_spec.wrap(&c_view);
+            let ops: TVec<FusedSpec> = tvec!(
+                FusedSpec::AddMatMul {
+                    a: AsInputValue::Borrowed(&*pa1),
+                    b: AsInputValue::Borrowed(&*pb1),
+                    packing: 0,
+                },
+                FusedSpec::AddUnicast(c_for_unicast),
+                FusedSpec::Store(c_for_store),
+            );
+            ker.run(m, n, &ops)?;
+        }
+
+        let c_slice = c_backing.to_plain_array_view::<f32>()?;
+        let mut max_err = 0.0f32;
+        let mut wrong_cells = 0;
+        for r in 0..m {
+            for cc in 0..n {
+                let got = c_slice[[r, 0, cc]];
+                let exp = expected[r * n + cc];
+                let e = (got - exp).abs();
+                if e > 1e-3 {
+                    wrong_cells += 1;
+                }
+                max_err = max_err.max(e);
+            }
+        }
+        assert!(
+            max_err < 1e-3,
+            "avx512_mmm_f32_128x1 wrong output at squeezenet shape: \
+             max_err={max_err}, {wrong_cells}/{} cells off",
+            m * n,
+        );
+        Ok(())
+    }
+}
