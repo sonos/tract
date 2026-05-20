@@ -95,7 +95,8 @@ for a working demo.
 | TensorFlow 1 frozen graph (legacy) | ✓ | — |
 
 PyTorch models can be exported directly to NNEF using
-[torch-to-nnef](https://github.com/sonos/torch-to-nnef), an open-source
+[torch-to-nnef](https://sonos.github.io/torch-to-nnef/latest/)
+([source](https://github.com/sonos/torch-to-nnef)), an open-source
 PyTorch-to-NNEF converter maintained alongside tract — useful when you want
 to skip the detour through ONNX.
 
