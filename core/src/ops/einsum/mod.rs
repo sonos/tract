@@ -220,7 +220,84 @@ impl TypedOp for EinSum {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TVec<Option<TDim>>>> {
-        crate::optim::propagate_roi::bubble_roi(model, node)
+        // First try bubble_roi: works for inputs that cover all ROI coord
+        // axes mentioned in the output ROI.  For inputs that DON'T cover
+        // every coord axis (= contracted/projected-out axes from this
+        // input's perspective), try the closed-form chunked-band recogniser
+        // which yields a constant band on the input's kept axis after
+        // existentially quantifying the projected axes.
+        let output_fact = model.outlet_fact(OutletId::new(node.id, 0))?;
+        let Some(roi) = &output_fact.region_of_interest else { return Ok(None) };
+        let input_facts: TVec<&TypedFact> =
+            node.inputs.iter().map(|i| model.outlet_fact(*i)).collect::<TractResult<_>>()?;
+        let output_facts = tvec![output_fact];
+        let inputs_ref: Vec<&TypedFact> = input_facts.iter().copied().collect();
+        let outputs_ref: Vec<&TypedFact> = output_facts.iter().copied().collect();
+        let mapping = self.axes_mapping(&inputs_ref, &outputs_ref)?;
+        let roi_coord_axes: Vec<(usize, Symbol)> = roi
+            .symbols()
+            .into_iter()
+            .filter_map(|s| crate::ops::logic::sym_to_coord_axis(&s).map(|k| (k, s)))
+            .collect();
+
+        let project_for_input = |input_ix: usize| -> Option<TDim> {
+            // Classify each output ROI coord axis: projected (no input axis)
+            // or preserved (maps to input).
+            let mut projected: Vec<Symbol> = vec![];
+            let mut preserved: Vec<(Symbol, usize)> = vec![];
+            for (out_pos, sym) in &roi_coord_axes {
+                let logical = mapping
+                    .iter_all_axes()
+                    .find(|a| a.outputs.first().is_some_and(|o| o.contains(out_pos)))?;
+                match logical.inputs[input_ix].first() {
+                    None => projected.push(sym.clone()),
+                    Some(&in_pos) => {
+                        if input_facts[input_ix].shape[in_pos] != output_fact.shape[*out_pos] {
+                            return None;
+                        }
+                        preserved.push((sym.clone(), in_pos));
+                    }
+                }
+            }
+            if projected.is_empty() {
+                // All axes preserved — fall through to standard remap.
+                let mut sub_map: HashMap<Symbol, TDim> = HashMap::new();
+                for (sym, in_pos) in &preserved {
+                    if crate::ops::logic::sym_to_coord_axis(sym) != Some(*in_pos) {
+                        let scope = sym.scope()?;
+                        sub_map.insert(sym.clone(), TDim::Sym(scope.coord_sym(*in_pos)));
+                    }
+                }
+                return if sub_map.is_empty() {
+                    Some(roi.clone())
+                } else {
+                    roi.substitute_all(&sub_map).ok()
+                };
+            }
+            // Try the chunked-band recogniser: one projected axis × one
+            // preserved axis at a time.
+            for p_sym in &projected {
+                for (k_sym, k_in_pos) in &preserved {
+                    if let Some(band) = crate::optim::propagate_roi::recognise_chunked_band_project(
+                        roi, p_sym, k_sym,
+                    ) {
+                        // Result mentions k_sym (output frame).  Remap to
+                        // input axis position.
+                        if crate::ops::logic::sym_to_coord_axis(k_sym) != Some(*k_in_pos) {
+                            let scope = k_sym.scope()?;
+                            let mut m: HashMap<Symbol, TDim> = HashMap::new();
+                            m.insert(k_sym.clone(), TDim::Sym(scope.coord_sym(*k_in_pos)));
+                            return band.substitute_all(&m).ok();
+                        }
+                        return Some(band);
+                    }
+                }
+            }
+            None
+        };
+        let result: TVec<Option<TDim>> =
+            (0..node.inputs.len()).map(|ix| project_for_input(ix)).collect();
+        Ok(Some(result))
     }
 
     fn axes_mapping(
