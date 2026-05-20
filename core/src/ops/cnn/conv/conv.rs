@@ -704,7 +704,7 @@ impl Conv {
         let group = self.group;
         let oc = self.output_channels();
         let c_in = self.input_channels();
-        if group == 0 || oc % group != 0 || c_in % group != 0 {
+        if group == 0 || !oc.is_multiple_of(group) || !c_in.is_multiple_of(group) {
             return None;
         }
         let ocg = oc / group;
