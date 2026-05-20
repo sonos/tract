@@ -210,9 +210,13 @@ trait InferenceOp /* [...] */ {
         &mut self,
         inputs: TVec<&InferenceFact>,
         outputs: TVec<&InferenceFact>,
-    ) -> TractResult<(Vec<InferenceFact>, Vec<InferenceFact>)> {
+        observed: TVec<&InferenceFact>,
+    ) -> TractResult<(TVec<InferenceFact>, TVec<InferenceFact>, TVec<InferenceFact>)>;
 }
 ```
+
+The third `observed` parameter and return slot is used by control-flow ops
+(e.g. scan) — ignore it for normal ops.
 
 Here, the analyser will call the `infer` method providing all the known
 information accumulated, and the op must do its best to return more determined
@@ -231,7 +235,7 @@ already computed, handing them over to the successor ops.
 
 ```rust
 pub trait EvalOp {
-    fn eval(&self, inputs: Vec<Arc<Tensor>>) -> TractResult<Vec<Arc<Tensor>>>;
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>>;
     /* .. */
 }
 ```
