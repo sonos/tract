@@ -3,193 +3,151 @@
 ![Rust](https://img.shields.io/badge/rust-%23000000.svg?style=for-the-badge&logo=rust&logoColor=white)
 ![rustc >= 1.91.0](https://img.shields.io/badge/rustc-%3E%3D1.91.0-brightgreen)
 ![MIT/Apache 2](https://img.shields.io/crates/l/tract)
-[![Native Linux test status](https://github.com/snipsco/tract/workflows/Native%20Linux/badge.svg)](https://github.com/snipsco/tract/actions)
-[![Embedded targets status](https://github.com/snipsco/tract/workflows/Embedded%20targets/badge.svg)](https://github.com/snipsco/tract/actions)
+[![Native Linux test status](https://github.com/sonos/tract/workflows/Native%20Linux/badge.svg)](https://github.com/sonos/tract/actions)
+[![Embedded targets status](https://github.com/sonos/tract/workflows/Embedded%20targets/badge.svg)](https://github.com/sonos/tract/actions)
 [![Doc](https://docs.rs/tract-core/badge.svg)](https://docs.rs/tract-core)
-
 [![Python](https://img.shields.io/badge/python-3670A0?style=for-the-badge&logo=python&logoColor=ffdd54)](https://pypi.org/project/tract/)
 
+Sonos' neural-network inference engine.
 
-Sonos' Neural Network inference engine.
+tract loads ONNX and NNEF models, optimises them, and runs them anywhere —
+from embedded ARM CPUs to NVIDIA / Apple GPUs, in the browser via
+WebAssembly, or on a Linux / macOS / Windows workstation. It is used in
+production at Sonos for wake-word and streaming speech-recognition
+workloads, and also runs LLM, text-to-image, and classical CV models with
+a particular focus on the *translate-once / ship-tiny-runtime* story
+enabled by its NNEF-based intermediate format (tract-OPL).
 
-_This project used to be called tfdeploy, or Tensorflow-deploy-rust._
+## Quick start
 
-## What ?
+From [`examples/onnx-mobilenet-v2`](examples/onnx-mobilenet-v2):
 
-`tract` is a Neural Network inference toolkit. It can read ONNX or NNEF, optimize them and run them.
+```rust
+use tract::prelude::*;
+tract::impl_ndarray_interop!();
 
-## Quick start, examples
+let model = tract::onnx()?
+    .load("mobilenetv2-7.onnx")?
+    .into_model()?
+    .into_runnable()?;
 
-* [MobileNet v2 with ONNX](examples/onnx-mobilenet-v2)
-* [BERT example with ONNX](examples/pytorch-albert-v2)
-* [MobileNet v2 with TensorFlow](examples/tensorflow-mobilenet-v2)
-* [From Keras and TensorFlow 2 to tract](examples/keras-tract-tf2)
-* [ResNet with PyTorch](examples/pytorch-resnet)
+let result = model.run([input.tract()?])?;
+```
 
-There is also [some technical documentation](doc/) and [blog](https://tech-blog.sonos.com/posts/optimising-a-neural-network-for-inference/) posts.
+The `tract` crate (`api/rs/src/lib.rs`) is the authoritative public API. The
+internal crates (`tract-core`, `tract-nnef`, `tract-onnx`, ...) are not
+stable surface and shouldn't be depended on directly.
 
-## Tract in the landscape
+## Examples
 
-### ONNX
+[`examples/`](examples/) has runnable demos covering the workloads tract
+targets today:
 
-As of today, `tract` passes successfully about 85% of ONNX backends
-tests. All "real life" integration tests in ONNX test suite are passing: 
-bvlc_alexnet, densenet121, inception_v1, inception_v2, resnet50, shufflenet,
-squeezenet, vgg19, zfnet512.
+| Example | What |
+|---|---|
+| [`onnx-mobilenet-v2`](examples/onnx-mobilenet-v2) | Minimal CV starter |
+| [`tflite-mobilenet-v3`](examples/tflite-mobilenet-v3) | TFLite import path |
+| [`causal_llm`](examples/causal_llm) | Transformer text generation |
+| [`nemo-parakeet-asr`](examples/nemo-parakeet-asr) / [`nemo-nemotron-streaming-asr`](examples/nemo-nemotron-streaming-asr) | Speech recognition, including streaming via pulsification |
+| [`stable-diffusion`](examples/stable-diffusion) / [`stable-diffusion-3`](examples/stable-diffusion-3) / [`stable-diffusion-xl`](examples/stable-diffusion-xl) | Text-to-image |
+| [`face_detection_yolov8onnx_example`](examples/face_detection_yolov8onnx_example) / [`face_similarity_arcface_onnx`](examples/face_similarity_arcface_onnx) | Modern object detection / face recognition |
+| [`wasm-model-bench`](examples/wasm-model-bench) | Running tract in the browser |
 
-Notable missing parts are operators dealing with Tensor Sequences and Optional Tensors : tract /really/ wants to flow Tensors and nothing else.
-This is structural. Changing it would be pretty difficult, and it's unclear whether it can be done without impairing performance or maintainability.
-We are not convinced these features have shown their interest in the wild yet, so we prefer to leave them aside.
+Deeper technical material lives under [`doc/`](doc/) (start at
+[`doc/intro.md`](doc/intro.md)). The Sonos engineering
+[blog](https://tech-blog.sonos.com/posts/optimising-a-neural-network-for-inference/)
+has a long-form post on tract internals.
 
-Other dark corners are specific operators like "Resize" which fit perfectly in the framework but need a complex internal logic that is far
-from our core business. In these cases, we are happy to accept contributions and to help. 
+## Backends
 
-The following operators are implemented and tested.
+| Backend | Crate | Notes |
+|---|---|---|
+| CPU (x86, ARMv6/7/8, ARM SVE) | `tract-linalg` | Default. Hand-rolled SIMD micro-kernels. |
+| Apple Metal | `tract-metal` | Apple GPUs. |
+| NVIDIA CUDA | `tract-cuda` | NVIDIA GPUs. |
+| WebAssembly | _via standard wasm32 targets_ | Browser / WASI deployment. |
 
-Abs, Acos, Acosh, Add, And, ArgMax, ArgMin, ArrayFeatureExtractor, Asin, Asinh, Atan, Atanh, AveragePool, BatchNormalization, BitShift, BitwiseAnd, BitwiseNot, BitwiseOr, BitwiseXor, BlackmanWindow, Cast, CastLike, CategoryMapper, Ceil, Clip, Compress, Concat, Constant, ConstantLike, ConstantOfShape, Conv, ConvInteger, ConvTranspose, Cos, Cosh, CumSum, DFT, DepthToSpace, DequantizeLinear, Div, Dropout, DynamicQuantizeLinear, Einsum, Elu, Equal, Erf, Exp, Expand, EyeLike, Flatten, Floor, GRU, Gather, GatherElements, GatherND, Gemm, GlobalAveragePool, GlobalLpPool, GlobalMaxPool, Greater, GreaterOrEqual, HammingWindow, HannWindow, HardSigmoid, Hardmax, Identity, If, InstanceNormalization, IsInf, IsNaN, LRN, LSTM, LeakyRelu, Less, LessOrEqual, Log, LogSoftmax, MatMul, MatMulInteger, Max, MaxPool, Mean, MelWeightMatrix, Min, Mod, Mul, Multinomial, Neg, NonMaxSuppression, NonZero, Not, OneHot, Or, PRelu, Pad, ParametricSoftplus, Pow, QLinearConv, QLinearMatMul, QuantizeLinear, RNN, RandomNormal, RandomNormalLike, RandomUniform, RandomUniformLike, Range, Reciprocal, ReduceL1, ReduceL2, ReduceLogSum, ReduceLogSumExp, ReduceMax, ReduceMean, ReduceMin, ReduceProd, ReduceSum, ReduceSumSquare, Relu, Reshape, Resize, Round, Rsqrt, STFT, ScaledTanh, Scan, Scatter, ScatterElements, ScatterND, Selu, Shape, Shrink, Sigmoid, Sign, Sin, Sinh, Size, Slice, Softmax, Softplus, Softsign, SpaceToDepth, Split, Sqrt, Squeeze, Sub, Sum, Tan, Tanh, ThresholdedRelu, Tile, Transpose, TreeEnsembleClassifier, Unsqueeze, Where, Xor
+All backends share the `TypedModel` IR and the same loaders, so a model
+optimised on one platform can be moved to another.
 
-We test these operators against from ONNX 1.4.1 (operator set 9), up to ONNX 1.13.0 (operator set 18).
+## Streaming and pulsification
 
-We are using ONNX test suite, but it does not cover everything.
-We also deliberately ignore some tests, or restricting their scope depending on what we feel is realistic.
-Sometimes these decisions are just wrong, and sometimes they become wrong as time goes by and the fields moves in unexpected directions.
-So if you are puzzled by an ONNX model that does not work in tract, we are happy to take a look.
+tract has first-class support for *pulsified* inference: a network that
+operates on full sequences during training is translated into one that
+processes a fixed-size pulse along its streaming axis at each step. This
+lets the same model serve both batch evaluation and low-latency real-time
+inference (wake-word, streaming ASR, ...).
 
-### NNEF
+The translate-time logic lives in `tract-pulse`; runtime ships only the
+small `tract-pulse-opl` crate. See
+[`AGENTS.md` § Streaming and pulsification](AGENTS.md#streaming-and-pulsification)
+for the engineering view, and
+[`examples/nemo-nemotron-streaming-asr`](examples/nemo-nemotron-streaming-asr)
+for a working demo.
 
-Long story short, TensorFlow and ONNX formats are good for designing and
-training networks. They need to move fast to follow the research field, tend to
-integrate new features and operators greedily. They also exhibit a high level
-of expressivity to facilitate network design.
+## Formats and tract-OPL
 
-On the other hand, only a subset of operators and network features actually
-reach production, so systems running production network do not have to deal
-with so many operators. Furthermore, some information required for training can
-be stripped from the network before going to production for prediction.
+| Format | Load | Save |
+|---|---|---|
+| ONNX | ✓ | — |
+| NNEF (+ tract-OPL extensions) | ✓ | ✓ |
+| TensorFlow Lite (legacy) | ✓ | ✓ |
+| TensorFlow 1 frozen graph (legacy) | ✓ | — |
 
-NNEF tries to bridge the gap between training frameworks and inference by
-proposing a format dedicated to production and prediction.
+tract-OPL is an NNEF-compatible intermediate representation that extends
+NNEF with the operators needed to express a full tract-core model. The
+recommended deployment workflow is:
 
-Tract supports NNEF:
+1. **Once, at build time:** convert from ONNX / TF / TFLite to NNEF using
+   the `tract` CLI:
+   ```sh
+   tract model.onnx dump --nnef model.nnef.tgz
+   ```
+2. **At runtime:** ship only `tract-core` + `tract-nnef`, plus
+   `tract-onnx-opl` if the model uses ONNX-only operators, and
+   `tract-pulse-opl` if it is pulsified.
 
-* tract_nnef can load and execute NNEF networks
-* tract supports most of the NNEF specification, the most notable exception
-    being the ROI operators
-* tract introduces tract-OPL, a series of NNEF extensions to support other
-    operators (or extend some operators semantics) in order to represent the
-    full range of tract-core neural network support: any network understood by
-    tract should be serializable to tract-OPL. This is a work in progress.
-* tract command line can translate networks from TensorFlow or ONNX to NNEF/OPL.
+This keeps the runtime footprint small (no protobuf, no training-framework
+loaders). See [`doc/intro.md`](doc/intro.md) for the full design rationale.
 
-### tract-opl version compatibility
+### tract-OPL stability
 
-A remainder: NNEF is not expressive enough to represent all ONNX. tract-OPL extends
-NNEF using proprietary to support what is missing. Notable extensions are pulse
-operators, recurring operators (as Scan) and symbolic extensions.
+NNEF parts are tied to the NNEF specification and very stable. tract-OPL
+extensions are a bit more in flux, but we observe the rule:
 
-There is no strict check in place here, so... implementation is not bullet proof.
-* NNEF part aims at being very stable. It is strongly constrained with compatibility
-with NNEF specification.
-* tract-opl is a bit more in flux. Nevertheless we try to maintain the following
-golden rule:
+> A model serialised with tract `0.x.y` should work with tract `0.x.z` where `z >= y`.
 
-     `models serialized with tract 0.x.y should work with tract 0.x.z where z >= y`
+Models embed a `tract_nnef_ser_version` property identifying the generating
+tract version; tract itself does not enforce a version check, so it is up
+to the application to do so if needed. See [`CHANGELOG.md`](CHANGELOG.md)
+for the running list of notable serialisation-format changes.
 
-* in practice, breaking changes have been relatively rare so far. Most models are
-forward and retro compatible from when tract has acquired NNEF support.
+## TensorFlow 1 (legacy)
 
-Notable breakage occurred:
-* 0.16.3 (forward compatible) on Scan operator
-* 0.17.0 for binary decision tree classifier
+tract still loads TF1 frozen graphs and supports the operator set needed
+for the classical CV and wake-word models that originally drove its design
+(Inception v3, Snips wake words, ...). TensorFlow 2 is not directly
+supported — convert to ONNX first.
 
-Starting with `0.17.0`, a model property is injected in tract-opl files (`tract_nnef_ser_version`)
-to tag which version of tract generated the file. As most models will remain compatible,
-tract will not do any version check. It is up to the application developer to do so.
+## License
 
-A softer version tag exists as `tract_nnef_format_version`. pre-0.17.0 version set it to
-`alpha1`, post-0.17.0 set it `beta1`. Don't put too much emphasis into the "alpha-ness" naming 
-of versions here.
+Files in `tensorflow/protos` are copied from the
+[TensorFlow](https://github.com/tensorflow/tensorflow) project and files in
+`onnx/protos` from the [ONNX](https://github.com/onnx/onnx) project; neither
+is covered by the licence statement below.
 
-### Note: support for TensorFlow 1.x
+### Apache 2.0 / MIT
 
-Even if `tract` is very far from supporting any arbitrary model, it can run
-Google Inception v3 and Snips wake word models. Missing operators are relatively 
-easy to add. The lack of easy to reuse test suite, and the wide diversity of 
-operators in Tensorflow make it difficult to target a full support.
+All original work is licensed under either of
 
-The following operators are implemented and tested:
+* Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
+* MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
 
-Abs, Add, AddN, AddV2, Assign, AvgPool, BatchToSpaceND, BiasAdd, BlockLSTM, Cast, Ceil, ConcatV2, Const, Conv2D, DepthwiseConv2dNative, Div, Enter, Equal, Exit, ExpandDims, FakeQuantWithMinMaxVars, Fill, FloorMod, FusedBatchNorm, GatherNd, GatherV2, Greater, GreaterEqual, Identity, Less, LessEqual, Log, LogicalAnd, LogicalOr, LoopCond, MatMul, Max, MaxPool, Maximum, Mean, Merge, Min, Minimum, Mul, Neg, NoOp, Pack, Pad, Placeholder, Pow, Prod, RandomUniform, RandomUniformInt, Range, RealDiv, Relu, Relu6, Reshape, Rsqrt, Shape, Sigmoid, Slice, Softmax, SpaceToBatchND, Squeeze, StridedSlice, Sub, Sum, Switch, Tanh, Tile, Transpose, VariableV2
-
-Additionally, the complexity of TensorFlow 2 make it very unlikely that a direct
-support will ever exist in tract. But many TensorFlow 2 models can be
-converted to ONNX and then loaded in tract.
-
-## Example of supported networks
-
-These models among others, are used to track tract performance evolution as
-part of the Continuous Integration jobs. See [.travis/README.md](readme) and 
-[.travis/bundle-entrypoint.sh](.travis/bundle-entrypoint.sh) for more
-information.
-
-### Keyword spotting on Arm Cortex-M Microcontrollers
-
-https://github.com/ARM-software/ML-KWS-for-MCU
-
-ARM demonstrated the capabilities of the Cortex-M family by providing
-tutorials and pre-trained models for keyword spotting. While the exercise
-is ultimately meant for micro-controllers, `tract` can run the intermediate
-TensorFlow models.
-
-For instance, on a Raspberry Pi Zero, the "CNN M" model runs in about 70
-micro-seconds, and 11 micro-seconds on a Raspberry Pi 3.
-
-### Snips wake word models
-
-https://arxiv.org/abs/1811.07684
-
-Snips uses `tract` to run the wake word detectors. While earlier models were
-class-based and did not require any special treatment, `tract` pulsing
-capabilities made it possible to run WaveNet models efficiently enough for a
-Raspberry Pi Zero.
-
-### Inception v3
-
-|      Device         |      Family    |  TensorFlow-lite  |  tract  |
-|---------------------|----------------|-------------------|---------|
-|  Raspberry Pi Zero  |    Armv6 VFP   |        113s       |   39s   |
-|  Raspberry Pi 2     |    Armv7 NEON  |         25s       |    7s   |
-|  Raspberry Pi 3     |  aarch32 NEON  |          5s       |    5s   |
-
-Notes:
-
- * while the Raspberry Pi 3 is an Armv8 device, this bench is running
-     on Raspbian, an armv6 operating system, crippling the performance
-     of both benches
- * there exists other benches on the internet that show better
-     performance results for TensorFlow (not -Lite) on the Pi 3.
-     They use all four cores of the device. Both TensorFlow-Lite and tract
-     here have been made to run on a single-core.
-
-# License
-
-Note: files in the `tensorflow/protos` directory are copied from the
-[TensorFlow](https://github.com/tensorflow/tensorflow) project and are not
-covered by the following licence statement.
-
-Note: files in the `onnx/protos` directory are copied from the
-[ONNX](https://github.com/onnx/onnx) project and are not
-covered by the following license statement.
-
-## Apache 2.0/MIT
-
-All original work licensed under either of
- * Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
- * MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
 at your option.
 
-## Contribution
+### Contribution
 
-Unless you explicitly state otherwise, any Contribution intentionally submitted
-for inclusion in the work by you, as defined in the Apache-2.0 license, shall
-be dual licensed as above, without any additional terms or conditions.
+Unless you explicitly state otherwise, any Contribution intentionally
+submitted for inclusion in the work by you, as defined in the Apache-2.0
+license, shall be dual licensed as above, without any additional terms or
+conditions.
