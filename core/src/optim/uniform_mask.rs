@@ -16,6 +16,19 @@ use crate::optim::OptimizerSession;
 /// The per-op logic is limited to `try_fold_node` (which input indices may carry a bool
 /// `uniform_tdim`). All transformation logic in `try_fold_uniform_bool_input` and
 /// `split_op_two_regions` is op-agnostic.
+///
+/// # Interaction with `ScaledMaskedSoftmax`
+///
+/// SMS is intentionally opaque to this pass.  Its band-mask handling lives in
+/// `ScaledMaskedSoftmax::input_roi` (plants band ROI on the scores input) and
+/// `::declutter` (materialises the band via `materialise_band_roi_on_input`).
+/// Both fire before pulse and require no `FoldUniformMask` participation.
+///
+/// Practical consequence: the relative order of `detect_scaled_masked_softmax`
+/// (in tract-transformers) and this pass doesn't matter for correctness — once
+/// SMS exists, FoldUniformMask just skips it, and the ROI path handles the
+/// band.  If SMS isn't yet detected (plain `Iff + softmax`), FoldUniformMask
+/// still folds the Iff mask region by region as usual.
 #[derive(Clone, Debug, Default)]
 pub struct FoldUniformMask(usize);
 
