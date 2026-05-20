@@ -136,9 +136,36 @@ impl TypedOp for ScaledMaskedSoftmax {
         node: &TypedNode,
     ) -> TractResult<Option<TVec<Option<TDim>>>> {
         // Introduction: mask's uniform_tdim defines which positions matter for scores.
+        // When the mask has lower rank than the scores, its coord symbols are
+        // expressed in mask-frame (🎯0 = mask axis 0).  Scores broadcasting
+        // right-aligns the mask, so mask axis K corresponds to scores axis
+        // K + rank_diff — remap each coord symbol accordingly before planting.
         let mask_fact = model.outlet_fact(node.inputs[1])?;
         if let Some(mask_expr) = &mask_fact.uniform_tdim {
-            return Ok(Some(tvec![Some(mask_expr.clone()), None]));
+            let scores_fact = model.outlet_fact(node.inputs[0])?;
+            let rank_diff = scores_fact.shape.rank().saturating_sub(mask_fact.shape.rank());
+            let remapped = if rank_diff == 0 {
+                mask_expr.clone()
+            } else {
+                let mut sub_map: HashMap<Symbol, TDim> = Default::default();
+                for sym in mask_expr.symbols() {
+                    let Some(k) = tract_nnef::tract_core::ops::logic::sym_to_coord_axis(&sym)
+                    else {
+                        continue;
+                    };
+                    let Some(scope) = sym.scope() else { continue };
+                    sub_map.insert(sym, TDim::Sym(scope.coord_sym(k + rank_diff)));
+                }
+                if sub_map.is_empty() {
+                    mask_expr.clone()
+                } else {
+                    mask_expr
+                        .substitute_all(&sub_map)
+                        .map(|d| d.reduce())
+                        .unwrap_or_else(|_| mask_expr.clone())
+                }
+            };
+            return Ok(Some(tvec![Some(remapped), None]));
         }
         // Bubbling: delegate to the natural blanket implementation.
         tract_nnef::tract_core::optim::propagate_roi::bubble_roi(model, node)
@@ -502,5 +529,56 @@ mod tests {
         assert_eq!(am.track_axis((InOut::In(0), 0), InOut::Out(0)).unwrap(), Some(0));
         assert_eq!(am.track_axis((InOut::In(0), 1), InOut::Out(0)).unwrap(), Some(1));
         assert_eq!(am.track_axis((InOut::In(0), 2), InOut::Out(0)).unwrap(), None);
+    }
+
+    /// SMS::input_roi planted from mask uniform_tdim must remap coord
+    /// symbols across the rank gap.  Mask axis K corresponds to scores
+    /// axis K + rank_diff (right-align broadcast).  Without the remap,
+    /// the planted ROI uses mask-frame indices on a scores-frame fact
+    /// (a silent semantic bug that PropagateRoi then bubbles forward).
+    #[test]
+    fn input_roi_remaps_coord_syms_across_rank_diff() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        // Scores: rank 4 — [B=2, H=8, T_q=4, T_k=4]
+        let scores = model.add_source("scores", f32::fact(&[2usize, 8, 4, 4]))?;
+        // Mask: rank 3 — [B=2, T_q=4, T_k=4], with band uniform_tdim on its
+        // own axis 2 (T_k axis): `Mul(Ge(🎯2, 1), Ge(2, 🎯2))` = `1 ≤ k ≤ 2`.
+        let mask_axis_k = model.symbols.coord_sym(2);
+        let band = TDim::Mul(vec![
+            TDim::Ge(Box::new(TDim::Sym(mask_axis_k.clone())), Box::new(TDim::Val(1))),
+            TDim::Ge(Box::new(TDim::Val(2)), Box::new(TDim::Sym(mask_axis_k))),
+        ]);
+        let mut mask_fact = bool::fact(&[2usize, 4, 4]);
+        mask_fact.uniform_tdim = Some(band);
+        let mask = model.add_source("mask", mask_fact)?;
+        let sms = model.wire_node("sms", smsoftmax(), &[scores, mask])?[0];
+        model.select_output_outlets(&[sms])?;
+
+        let sms_node = &model.nodes()[sms.node];
+        let input_rois = sms_node.op.as_typed().unwrap().input_roi(&model, sms_node)?;
+        let input_rois = input_rois.expect("SMS should return Some");
+        let scores_roi = input_rois[0].as_ref().expect("SMS should plant ROI on scores");
+
+        // After remap, mask axis 2 → scores axis 3 (rank_diff = 1).  The
+        // planted ROI on scores must use 🎯3, not 🎯2.
+        let printed = format!("{scores_roi}");
+        eprintln!("SMS scores ROI: {printed}");
+        let uses_axis_3 = scores_roi
+            .symbols()
+            .iter()
+            .any(|s| tract_nnef::tract_core::ops::logic::sym_to_coord_axis(s) == Some(3));
+        let uses_axis_2 = scores_roi
+            .symbols()
+            .iter()
+            .any(|s| tract_nnef::tract_core::ops::logic::sym_to_coord_axis(s) == Some(2));
+        assert!(
+            uses_axis_3,
+            "expected planted ROI to mention scores axis 3 (= mask axis 2 + rank_diff 1), got {printed}"
+        );
+        assert!(
+            !uses_axis_2,
+            "expected planted ROI to NOT mention scores axis 2 (the un-shifted mask axis 2), got {printed}"
+        );
+        Ok(())
     }
 }
