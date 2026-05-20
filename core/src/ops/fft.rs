@@ -93,6 +93,18 @@ impl TypedOp for Fft {
         Ok(tvec!(inputs[0].without_value()))
     }
 
+    fn axes_mapping(
+        &self,
+        inputs: &[&TypedFact],
+        outputs: &[&TypedFact],
+    ) -> TractResult<AxesMapping> {
+        // Output has the same rank/shape as the input; every axis is
+        // 1-to-1 passthrough. The FFT axis stays at the same position
+        // (only its values change), so streaming on any non-FFT axis
+        // can be handled by the generic per-pulse wrapper.
+        AxesMapping::natural(inputs, outputs)
+    }
+
     as_op!();
 }
 

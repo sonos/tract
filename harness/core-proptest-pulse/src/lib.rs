@@ -25,6 +25,7 @@ mod deconv;
 mod delay_plus_downsample;
 mod delay_plus_pool;
 mod einsum;
+mod fft;
 mod pad_plus_conv;
 
 #[allow(dead_code)]
