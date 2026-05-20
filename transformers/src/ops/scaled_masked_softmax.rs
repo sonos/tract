@@ -130,6 +130,38 @@ impl TypedOp for ScaledMaskedSoftmax {
         Ok(tvec!(fact))
     }
 
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        // Insert leading `AddAxis` ops on the mask to bring it to the same
+        // rank as the scores.  SMS already broadcast-aligns right when the
+        // mask has lower rank (see `output_facts`), but downstream consumers
+        // like blockify require the chunked input axes to be at matched
+        // positions across all of SMS's inputs.  Pre-aligning ranks at
+        // declutter time satisfies both.
+        let scores_fact = model.outlet_fact(node.inputs[0])?;
+        let mask_fact = model.outlet_fact(node.inputs[1])?;
+        let rank_diff = scores_fact.shape.rank().saturating_sub(mask_fact.shape.rank());
+        if rank_diff > 0 && mask_fact.datum_type == bool::datum_type() {
+            let mut patch = TypedModelPatch::new(format!("sms_align_mask_rank@{}", node.name));
+            let scores = patch.tap_model(model, node.inputs[0])?;
+            let mut mask = patch.tap_model(model, node.inputs[1])?;
+            for i in 0..rank_diff {
+                mask = patch.wire_node(
+                    format!("{}.mask_unsqueeze_{i}", node.name),
+                    tract_nnef::tract_core::ops::change_axes::AxisOp::Add(0),
+                    &[mask],
+                )?[0];
+            }
+            let out = patch.wire_node(&node.name, self.clone(), &[scores, mask])?[0];
+            patch.shunt_outside(model, node.id.into(), out)?;
+            return Ok(Some(patch));
+        }
+        Ok(None)
+    }
+
     fn input_roi(
         &self,
         model: &TypedModel,
