@@ -264,6 +264,7 @@ git checkout -b my-feature origin/main --no-track
   - Default to none. Code MUST be self-explanatory via variable and function naming.
   - In tract, an inline comment is a signal that something implicit is happening -- hidden constraint, non-obvious invariant, bug workaround.
   - Existing files may carry stale or chatty comments; new contributions should not add to them.
+  - Comments describe the **current** code only. Don't narrate the diff ("the previous code did X", "this used to be Y", "was a copy-paste of the 32x1 kernel") -- that history belongs in the commit message and will be wrong after the next refactor.
   - Avoid section banners (// -- Step 2: Pad -> Reshape --), prefer split in functions. It's ok to have long function prototype in private function (within reason) #[allow(clippy::too_many_arguments)] authorized in such case.
 
   Idioms:
