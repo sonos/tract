@@ -380,8 +380,33 @@ pub fn handle_stream(
     for pulsed_node in pulsed.nodes() {
         if let Ok(fact) = pulsed.outlet_fact(OutletId::new(pulsed_node.id, 0)) {
             if let Some(stream) = &fact.stream {
-                let output_pulse = fact.pulse().context("no pulse")?.to_usize()?;
-                let fixed_output_len = stream.dim.eval_to_i64(&concrete_sym_values)? as usize;
+                let output_pulse = fact
+                    .pulse()
+                    .with_context(|| {
+                        format!(
+                            "evaluating pulse on node #{} {} (slot 0)",
+                            pulsed_node.id, pulsed_node.name
+                        )
+                    })?
+                    .to_usize()
+                    .with_context(|| {
+                        format!(
+                            "evaluating pulse to usize on node #{} {} (slot 0), shape {:?}",
+                            pulsed_node.id, pulsed_node.name, fact.shape
+                        )
+                    })?;
+                let fixed_output_len = stream
+                    .dim
+                    .eval_to_i64(&concrete_sym_values)
+                    .with_context(|| {
+                        format!(
+                            "evaluating stream.dim {:?} on node #{} {} (slot 0); known symbols: {:?}",
+                            stream.dim,
+                            pulsed_node.id,
+                            pulsed_node.name,
+                            concrete_sym_values,
+                        )
+                    })? as usize;
                 pulse_meta.insert(
                     pulsed_node.name.clone(),
                     PulseInfo {
@@ -566,8 +591,19 @@ where
                         node.outputs[slot].fact.to_typed_fact().unwrap(),
                     );
                     let needed_type = clarified_fact.datum_type;
-                    let needed_shape =
-                        clarified_fact.shape.eval_to_usize(&session_state.resolved_symbols)?;
+                    let needed_shape = clarified_fact
+                        .shape
+                        .eval_to_usize(&session_state.resolved_symbols)
+                        .with_context(|| {
+                            format!(
+                                "evaluating shape {:?} on node #{} {} (slot {}); known symbols: {:?}",
+                                clarified_fact.shape,
+                                node.id,
+                                node.name,
+                                slot,
+                                session_state.resolved_symbols,
+                            )
+                        })?;
 
                     if **needed_shape != *reference.shape() {
                         let Ok(reshaped) = reference.clone().into_shape(&needed_shape) else {
