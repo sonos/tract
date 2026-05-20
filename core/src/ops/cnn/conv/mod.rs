@@ -1,4 +1,5 @@
 mod block_quant;
+mod blocked;
 #[allow(clippy::module_inception)]
 mod conv;
 mod depth_wise;
@@ -9,6 +10,7 @@ mod q_sum_b;
 use crate::internal::*;
 use crate::ops::cnn::Deconv;
 
+pub use self::blocked::BlockedConv;
 pub use self::conv::Conv;
 pub use self::im2col::Im2Col;
 pub(crate) use self::q_sum_b::QSumB;
