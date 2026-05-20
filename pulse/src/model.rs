@@ -21,23 +21,41 @@ fn check_no_unannotated_superlinear_wires(model: &TypedModel, symbol: &Symbol) -
         for (slot, output) in node.outputs.iter().enumerate() {
             let streaming_dims: usize =
                 output.fact.shape.iter().filter(|d| d.symbols().contains(symbol)).count();
-            if streaming_dims > 1
-                && output.fact.region_of_interest.is_none()
-                && output.fact.uniform_tdim.is_none()
-                && output.fact.konst.is_none()
+            if streaming_dims <= 1
+                || output.fact.region_of_interest.is_some()
+                || output.fact.uniform_tdim.is_some()
+                || output.fact.konst.is_some()
             {
-                log::warn!(
-                    "Wire {}/{} ({:?}) has shape {:?} which is superlinear in streaming \
-                     symbol {} ({} dimensions depend on it) but carries no region_of_interest \
-                     annotation. Pulsification may fail.",
-                    node.name,
-                    slot,
-                    OutletId::new(node.id, slot),
-                    output.fact.shape,
-                    symbol,
-                    streaming_dims,
-                );
+                continue;
             }
+            // Avoid false positives: if any input to this node already carries
+            // an ROI or uniform_tdim that mentions the streaming symbol, the
+            // consumer pulsifier can typically derive what it needs from that
+            // annotation without one on this wire (e.g. Iff outputs inherit
+            // the cond/scores ROI structurally; Softmax output inherits its
+            // input's ROI; MultiBroadcastTo fills inherit the broadcast target
+            // ROI).  Only ops whose *inputs* are all unannotated are genuine
+            // ROI-propagation gaps.
+            let any_input_annotated = node.inputs.iter().any(|inp| {
+                model
+                    .outlet_fact(*inp)
+                    .map(|f| f.region_of_interest.is_some() || f.uniform_tdim.is_some())
+                    .unwrap_or(false)
+            });
+            if any_input_annotated {
+                continue;
+            }
+            log::warn!(
+                "Wire {}/{} ({:?}) has shape {:?} which is superlinear in streaming \
+                 symbol {} ({} dimensions depend on it) but carries no region_of_interest \
+                 annotation, and none of its inputs do either. Pulsification may fail.",
+                node.name,
+                slot,
+                OutletId::new(node.id, slot),
+                output.fact.shape,
+                symbol,
+                streaming_dims,
+            );
         }
     }
     Ok(())
