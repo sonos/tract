@@ -266,6 +266,9 @@ pub fn conv(
     node: &TypedNode,
     op: &ops::cnn::conv::Conv,
 ) -> TractResult<Option<Arc<RValue>>> {
+    if op.q_params.is_some() && !node.outputs[0].fact.datum_type.is_quantized() {
+        return Ok(None);
+    }
     conv_like(ast, node, &op.pool_spec, op.group, false, None)
 }
 
@@ -525,7 +528,7 @@ pub fn rewrite_consistent_quantized_conv(
 ) -> TractResult<Option<TypedModelPatch>> {
     let facts = model.node_input_facts(node.id)?;
     if facts.len() > 3 {
-        ensure!(facts[3..9].iter().all(|fact| fact.konst.is_some()));
+        rule_if!(facts[3..9].iter().all(|fact| fact.konst.is_some()));
         for ix in [0, 1] {
             let fact = model.outlet_fact(node.inputs[ix])?;
             if !fact.datum_type.is_quantized() {
@@ -548,4 +551,38 @@ pub fn rewrite_consistent_quantized_conv(
         }
     }
     Ok(None)
+}
+
+pub fn rewrite_same_lower_conv_to_explicit(
+    _ctx: &(),
+    model: &TypedModel,
+    node: &TypedNode,
+    _name: &str,
+    op: &Conv,
+) -> TractResult<Option<TypedModelPatch>> {
+    use tract_core::ops::cnn::PaddingSpec;
+    rule_if!(op.pool_spec.padding == PaddingSpec::SameLower);
+    let input_fact = model.outlet_fact(node.inputs[0])?;
+    let input_shape = op.pool_spec.data_format.shape(input_fact.shape.to_tvec())?;
+    let spatial_dims = input_shape.hw_dims();
+    let rank = op.pool_spec.rank();
+    let mut before = TVec::new();
+    let mut after = TVec::new();
+    for i in 0..rank {
+        let input_dim = spatial_dims[i]
+            .to_usize()
+            .with_context(|| format!("SameLower conv input dim {i} is not concrete"))?;
+        let computed = PaddingSpec::SameLower.compute_one(
+            i,
+            &input_dim,
+            op.pool_spec.kernel_shape[i],
+            op.pool_spec.dilation(i),
+            op.pool_spec.stride(i),
+        );
+        before.push(computed.pad_before);
+        after.push(computed.pad_after);
+    }
+    let mut new_op = op.clone();
+    new_op.pool_spec.padding = PaddingSpec::Explicit(before, after);
+    TypedModelPatch::replace_single_op(model, node, &node.inputs, new_op).map(Some)
 }

@@ -34,6 +34,7 @@ fn qconv_parameters() -> Vec<Parameter> {
         TypeName::Scalar.spec().named("b_scale"),
         TypeName::Integer.spec().named("c0"),
         TypeName::Scalar.spec().named("c_scale"),
+        TypeName::String.spec().named("output_dt").default(""),
     ]
 }
 
@@ -50,6 +51,7 @@ fn qconv_unary_dump(
     for (ix, name) in ["b0", "b_scale", "a0", "a_scale", "c0", "c_scale"].iter().enumerate() {
         named_args.push((name, (*ast.mapping[&node.inputs[3 + ix]]).clone()));
     }
+    named_args.push(("output_dt", crate::ser::datum_type(node.outputs[0].fact.datum_type)));
 
     let wire = ast.mapping[&node.inputs[0]].clone();
     ensure!(op.kernel_fmt == KernelFormat::OIHW);
@@ -88,16 +90,22 @@ fn qconv_load(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tr
     qparams.swap(1, 3);
     inputs.extend(qparams.iter().cloned());
 
-    let Some(c0) = &builder.model.outlet_fact(qparams[4])?.konst else {
-        bail!("For quantized convolution, output quantization must be static");
+    let output_dt = if let Ok(s) = invocation.named_arg_as::<String>(builder, "output_dt")
+        && !s.is_empty()
+    {
+        s.parse::<DatumType>()?
+    } else {
+        let Some(c0) = &builder.model.outlet_fact(qparams[4])?.konst else {
+            bail!("For quantized convolution, output quantization must be static");
+        };
+        let Some(c_scale) = &builder.model.outlet_fact(qparams[5])?.konst else {
+            bail!("For quantized convolution, output quantization must be static");
+        };
+        input_fact.datum_type.with_qparams(QParams::ZpScale {
+            zero_point: c0.cast_to_scalar()?,
+            scale: c_scale.cast_to_scalar()?,
+        })
     };
-    let Some(c_scale) = &builder.model.outlet_fact(qparams[5])?.konst else {
-        bail!("For quantized convolution, output quantization must be static");
-    };
-    let output_dt = input_fact.datum_type.with_qparams(QParams::ZpScale {
-        zero_point: c0.cast_to_scalar()?,
-        scale: c_scale.cast_to_scalar()?,
-    });
 
     let op: Box<dyn TypedOp> =
         Box::new(Conv::new(pool_spec, KernelFormat::OIHW, group, Some(output_dt)));

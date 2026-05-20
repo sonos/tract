@@ -25,6 +25,10 @@ pub fn rewrite_model(model: &mut TypedModel) -> TractResult<()> {
         .with_rule_for("rewrite_kernel_conv_in_oihw", rewrite_kernel_conv_in_oihw)
         .with_rule_for("rewrite_kernel_deconv_in_oihw", rewrite_kernel_deconv_in_oihw)
         .with_rule_for(
+            "rewrite_same_lower_conv_to_explicit",
+            crate::ops::nnef::ser::rewrite_same_lower_conv_to_explicit,
+        )
+        .with_rule_for(
             "rewrite_consistent_quantized_conv",
             crate::ops::nnef::ser::rewrite_consistent_quantized_conv,
         )
