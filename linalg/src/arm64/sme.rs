@@ -19,6 +19,38 @@ const CAN_FUSE: fn(&FusedSpec) -> bool = |f| {
 const SME: fn() -> bool = has_sme;
 const SME2: fn() -> bool = has_sme2;
 
+// Streaming vector length in bytes, read via `RDSVL x0, #1` (encoding
+// 0x04bf5820). RDSVL is legal in non-streaming mode, but is UNDEFINED
+// unless FEAT_SME is implemented — callers MUST confirm FEAT_SME first
+// (sysctl on macOS, HWCAP2 on Linux) or this SIGILLs.
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+unsafe fn streaming_vector_bytes() -> u64 {
+    let svl: u64;
+    unsafe {
+        std::arch::asm!(
+            ".inst 0x04bf5820", // rdsvl x0, #1
+            out("x0") svl,
+            options(nomem, nostack, preserves_flags),
+        );
+    }
+    svl
+}
+
+// Our SME kernels hardcode a 512-bit streaming vector length (16 f32 lanes
+// per ZA.S slice — the 32x32 and 64x1 tile geometries depend on it). A host
+// that advertises FEAT_SME with a different SVL would run the kernels with
+// mismatched geometry and produce silently-wrong results. The prime offender
+// is qemu-aarch64 user-mode emulation, which sets HWCAP2_SME / HWCAP2_SME2
+// but uses a non-512 SVL — that is exactly what makes the cross-compiled
+// aarch64 CI jobs (run under QEMU) fail. Reject any non-512 SVL here so we
+// fall back to the portable path. MUST only be called once FEAT_SME is known
+// present.
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+fn sme_geometry_supported() -> bool {
+    // SVL = 512 bits = 64 bytes.
+    unsafe { streaming_vector_bytes() == 64 }
+}
+
 MMMExternKernel!(
     sme_mmm_f32_32x32<f32>(32, 32)@(128, 128)
     where(SME)
@@ -67,7 +99,9 @@ pub fn has_sme() -> bool {
             return false;
         }
     }
-    value != 0
+    // FEAT_SME present AND the streaming vector length matches our kernels'
+    // hardcoded 512-bit geometry.
+    value != 0 && sme_geometry_supported()
 }
 
 #[cfg(target_os = "linux")]
@@ -78,7 +112,11 @@ pub fn has_sme() -> bool {
         fn getauxval(t: u64) -> u64;
     }
     const AT_HWCAP2: u64 = 26;
-    unsafe { (getauxval(AT_HWCAP2) & HWCAP2_SME) != 0 }
+    let feat = unsafe { (getauxval(AT_HWCAP2) & HWCAP2_SME) != 0 };
+    // FEAT_SME present AND the streaming vector length matches our kernels'
+    // hardcoded 512-bit geometry (rejects qemu-user, which advertises SME
+    // with a non-512 SVL — the cause of the cross-compiled CI failures).
+    feat && sme_geometry_supported()
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "linux")))]
@@ -116,7 +154,9 @@ pub fn has_sme2() -> bool {
             return false;
         }
     }
-    value != 0
+    // FEAT_SME2 present AND the streaming vector length matches our kernels'
+    // hardcoded 512-bit geometry.
+    value != 0 && sme_geometry_supported()
 }
 
 #[cfg(target_os = "linux")]
@@ -127,7 +167,11 @@ pub fn has_sme2() -> bool {
         fn getauxval(t: u64) -> u64;
     }
     const AT_HWCAP2: u64 = 26;
-    unsafe { (getauxval(AT_HWCAP2) & HWCAP2_SME2) != 0 }
+    let feat = unsafe { (getauxval(AT_HWCAP2) & HWCAP2_SME2) != 0 };
+    // FEAT_SME2 present AND the streaming vector length matches our kernels'
+    // hardcoded 512-bit geometry (rejects qemu-user, which advertises SME2
+    // with a non-512 SVL — the cause of the cross-compiled CI failures).
+    feat && sme_geometry_supported()
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "linux")))]
