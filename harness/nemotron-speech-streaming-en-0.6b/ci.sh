@@ -59,6 +59,9 @@ $TRACT_RUN $model_prefix.preprocessor.nnef.tgz \
 # must be 14 * 8 = 112 audio frames.
 $TRACT_RUN $model_prefix.encoder.p1.nnef.tgz \
 	--nnef-tract-transformers \
+	-t 'concretize_symbols(values: {"BATCH": 1})' \
+	-t 'patch(body: "length = tract_core_shape_of(audio_signal)[2];")' \
+	-t 'select_outputs(outputs: ["outputs"])' \
 	-t 'pulse(symbol: Some("AUDIO_SIGNAL__TIME"), pulse: "112")' \
 	dump -q
 
