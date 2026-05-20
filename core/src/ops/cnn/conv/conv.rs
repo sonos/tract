@@ -668,6 +668,86 @@ impl Conv {
         Ok(model.wire_node(name, op, &[x, kernel[0], bias])?[0])
     }
 
+    /// Eligibility for the direct register-blocked conv (see `blocked.rs`):
+    /// f32 NCHW, kernel width 1 (extent on H only), unit stride/dilation on the
+    /// contiguous W axis, grouped with a *small* number of out-channels per group
+    /// (where the im2col matmul's M-tile would be mostly wasted). Concrete shape
+    /// required. Returns the fully-parameterised op, or None to fall back.
+    fn try_blocked_conv(&self, input_fact: &TypedFact) -> Option<super::BlockedConv> {
+        // The direct blocked conv beats im2col on wasm (no AMX; the gather +
+        // wasted-M-tile matmul is slow) but LOSES on native, where shape-aware
+        // AMX dispatch already handles the tiny-M matmul well. So: on by default
+        // on wasm, opt-in on native. Env overrides either way for A/B.
+        let enabled = if cfg!(target_family = "wasm") {
+            std::env::var("TRACT_DISABLE_BLOCKED_CONV").is_err()
+        } else {
+            std::env::var("TRACT_ENABLE_BLOCKED_CONV").is_ok()
+        };
+        if !enabled {
+            return None;
+        }
+        if self.q_params.is_some() {
+            return None;
+        }
+        if input_fact.datum_type != f32::datum_type() {
+            return None;
+        }
+        if self.pool_spec.data_format != crate::ops::nn::DataFormat::NCHW {
+            return None;
+        }
+        if self.pool_spec.rank() != 2 || self.pool_spec.kernel_shape[1] != 1 {
+            return None;
+        }
+        if self.pool_spec.stride(1) != 1 || self.pool_spec.dilation(1) != 1 {
+            return None;
+        }
+        let group = self.group;
+        let oc = self.output_channels();
+        let c_in = self.input_channels();
+        if group == 0 || oc % group != 0 || c_in % group != 0 {
+            return None;
+        }
+        let ocg = oc / group;
+        // Win condition: tiny per-group output count makes the im2col matmul's
+        // m-tile wasteful. Large ocg packs the tile fine — leave it to im2col.
+        if ocg == 0 || ocg > 8 {
+            return None;
+        }
+        let concrete = input_fact.shape.as_concrete()?;
+        let shape = self.pool_spec.data_format.shape(concrete).ok()?;
+        let h_axis = shape.h_axis();
+        let h_in = concrete[h_axis];
+        let w = concrete[h_axis + 1];
+        let pads = self.pool_spec.computed_padding(shape.hw_dims());
+        Some(super::BlockedConv {
+            n: *shape.n().unwrap_or(&1),
+            c_in,
+            h_in,
+            w,
+            oc,
+            group,
+            kh: self.pool_spec.kernel_shape[0],
+            stride_h: self.pool_spec.stride(0),
+            dil_h: self.pool_spec.dilation(0),
+            pad_before_h: pads[0].pad_before,
+            h_out: pads[0].convoluted,
+        })
+    }
+
+    fn wire_as_blocked_conv(
+        &self,
+        model: &mut TypedModel,
+        name: &str,
+        wire: &[OutletId],
+        op: super::BlockedConv,
+    ) -> TractResult<OutletId> {
+        let &[x, kernel, bias] = wire else { bail!("Wrong number of inputs") };
+        // Kernel → [group, ocg, icg·kh] (group-major, i-major/h-minor); its flat
+        // layout is exactly the [oc, icg·kh] the op indexes.
+        let g_o_ihw = self.wire_kernel_as_g_o_ihw(model, name, kernel)?;
+        Ok(model.wire_node(name, op, &[x, g_o_ihw[0], bias])?[0])
+    }
+
     fn declutter_stride_slice_to_downsample(
         &self,
         model: &TypedModel,
@@ -1195,6 +1275,17 @@ impl TypedOp for Conv {
                     .wire_as_quant_im2col(&mut patch, &node.name, &inputs)
                     .context("in wire_as_quant_im2col")?;
                 patch.shunt_outside(model, node.id.into(), wire[0])?;
+                patch.obliterate(node.id)?;
+                Ok(Some(patch))
+            } else if let Some(op) = self.try_blocked_conv(input_fact) {
+                // Direct register-blocked conv for the small-ocg NCHW kw=1 class;
+                // beats lazy im2col by avoiding the gather + wasted M-tile matmul.
+                let mut patch = TypedModelPatch::new("blocked-conv");
+                let inputs = patch.taps(model, &node.inputs)?;
+                let wire = self
+                    .wire_as_blocked_conv(&mut patch, &node.name, &inputs, op)
+                    .context("wire_as_blocked_conv")?;
+                patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
                 patch.obliterate(node.id)?;
                 Ok(Some(patch))
             } else if input_fact
