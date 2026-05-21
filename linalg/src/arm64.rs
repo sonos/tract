@@ -8,6 +8,7 @@ mod cortex_a55;
 // (gates out e.g. the old Debian stretch aarch64 toolchain).
 #[cfg(all(any(target_os = "macos", target_os = "linux"), tract_sme))]
 mod sme;
+mod sve;
 //mod cortex_a72;
 //mod cortex_a73;
 pub use arm64simd::*;
@@ -436,4 +437,5 @@ pub fn plug(ops: &mut Ops) {
     {
         sme::plug(ops);
     }
+    sve::plug(ops);
 }

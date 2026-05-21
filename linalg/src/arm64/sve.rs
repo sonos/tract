@@ -1,0 +1,135 @@
+use crate::Ops;
+
+// `tract_sve` is set by build.rs only on aarch64-linux when the C compiler
+// supports SVE intrinsics. The kernel registration + extern live behind it so
+// non-SVE builds never reference the (absent) C symbol.
+#[cfg(tract_sve)]
+use crate::frame::mmm::ImplementationQuality::ManuallyOptimized;
+#[cfg(tract_sve)]
+use crate::mmm::*;
+
+// f32 SVE kernel can't do LeakyRelu or the i32 quantization ops (matches the
+// arm64simd / SME f32 CAN_FUSE).
+#[cfg(tract_sve)]
+const CAN_FUSE: fn(&FusedSpec) -> bool = |f| {
+    !matches!(
+        f,
+        FusedSpec::LeakyRelu(_)
+            | FusedSpec::QScale(_, _, _)
+            | FusedSpec::RoundingShiftRight(_, _)
+            | FusedSpec::ShiftLeft(_)
+    )
+};
+
+#[cfg(tract_sve)]
+const SVE2: fn() -> bool = has_sve2;
+
+// The VLA SVE f32 GEMM kernel, implemented in C (arm64/sve/sve_mmm_f32.c) since
+// Rust has no stable SVE intrinsics. Broadcast-A rank-1 update, N-tile walked in
+// svcntw() chunks → correct and full-width at any VL.
+#[cfg(tract_sve)]
+mod sve_sys {
+    use crate::frame::mmm::FusedKerSpec;
+    unsafe extern "C" {
+        pub fn sve_mmm_f32_kernel(ops: *const FusedKerSpec<f32>) -> isize;
+    }
+}
+
+#[cfg(tract_sve)]
+MMMRustKernel!(sve_sys::sve_mmm_f32_kernel => sve_mmm_f32_8x8<f32>(8, 8)
+    where(SVE2)
+    can_fuse(CAN_FUSE)
+    quality(ManuallyOptimized)
+);
+
+// SVE / SVE2 backend.
+//
+// Unlike SME (Apple M4) and AMX (Apple), SVE/SVE2 is NOT present on any Apple
+// silicon — it lives on ARMv9 server/mobile cores (Neoverse V1+/N2+, Cortex-X2+
+// / A510+, Graviton 3/4). So detection is Linux-only in practice; macOS always
+// returns false.
+//
+// The kernels are vector-length-agnostic (VLA): they read the vector width at
+// runtime via `whilelt` predication and `svcntw()`, so a single kernel is
+// correct at every VL (128..2048-bit). That means — unlike the SME kernels,
+// which hardcoded SVL=512 and needed an RDSVL gate — the SVE kernels need NO
+// vector-length gate for correctness. `rdvl_bytes()` is provided only for
+// optional VL-matched dispatch (selecting a wider-tiled variant when the
+// hardware VL is large), not for correctness.
+
+#[cfg(target_os = "linux")]
+pub fn has_sve() -> bool {
+    if std::env::var_os("TRACT_SVE_DISABLE").is_some() {
+        return false;
+    }
+    // HWCAP_SVE = 1 << 22 on aarch64 (kernel ABI).
+    const HWCAP_SVE: u64 = 1 << 22;
+    unsafe extern "C" {
+        fn getauxval(t: u64) -> u64;
+    }
+    const AT_HWCAP: u64 = 16;
+    unsafe { (getauxval(AT_HWCAP) & HWCAP_SVE) != 0 }
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn has_sve() -> bool {
+    // No Apple silicon implements SVE; no SVE on non-Linux targets we support.
+    false
+}
+
+#[cfg(target_os = "linux")]
+pub fn has_sve2() -> bool {
+    if std::env::var_os("TRACT_SVE_DISABLE").is_some() {
+        return false;
+    }
+    // HWCAP2_SVE2 = 1 << 1 on aarch64 (kernel ABI).
+    const HWCAP2_SVE2: u64 = 1 << 1;
+    unsafe extern "C" {
+        fn getauxval(t: u64) -> u64;
+    }
+    const AT_HWCAP2: u64 = 26;
+    unsafe { (getauxval(AT_HWCAP2) & HWCAP2_SVE2) != 0 }
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn has_sve2() -> bool {
+    false
+}
+
+/// SVE vector length in bytes, via `RDVL x0, #1` (encoding 0x04bf5020).
+/// Legal whenever FEAT_SVE is implemented; callers MUST confirm `has_sve()`
+/// first (RDVL is UNDEFINED without SVE and would SIGILL). Used only for
+/// optional VL-matched kernel selection — VLA kernels do not need it.
+#[cfg(target_os = "linux")]
+#[allow(dead_code)]
+pub fn rdvl_bytes() -> u64 {
+    let vl: u64;
+    unsafe {
+        std::arch::asm!(
+            ".inst 0x04bf5020", // rdvl x0, #1
+            out("x0") vl,
+            options(nomem, nostack, preserves_flags),
+        );
+    }
+    vl
+}
+
+pub fn plug(ops: &mut Ops) {
+    let _ = ops;
+    if has_sve2() {
+        #[cfg(target_os = "linux")]
+        log::info!("SVE2 optimisation available (VL = {} bytes)", rdvl_bytes());
+        #[cfg(tract_sve)]
+        {
+            // Force the SVE kernel for f32 mmm (mirrors the SME backend) and also
+            // register it as a candidate. TRACT_SVE_DISABLE=1 already turns the
+            // whole thing off via has_sve2().
+            ops.mmm_f32 = Box::new(|_, _, _| sve_mmm_f32_8x8.mmm());
+            ops.mmm_impls.extend_from_slice(&[sve_mmm_f32_8x8.mmm()]);
+        }
+    } else if has_sve() {
+        log::info!("SVE (v1) present; SVE2 kernels not enabled");
+    } else {
+        log::info!("No SVE optimisation");
+    }
+}
