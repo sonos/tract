@@ -50,11 +50,7 @@ fn include_sve() -> bool {
 fn compiler_supports_sve() -> bool {
     let out_dir = path::PathBuf::from(var("OUT_DIR"));
     let probe = out_dir.join("sve_probe.c");
-    fs::write(
-        &probe,
-        "#include <arm_sve.h>\nint p(void){ return (int)svcntw(); }\n",
-    )
-    .unwrap();
+    fs::write(&probe, "#include <arm_sve.h>\nint p(void){ return (int)svcntw(); }\n").unwrap();
     cc::Build::new()
         .file(&probe)
         .flag("-march=armv8.2-a+sve")
@@ -218,9 +214,10 @@ fn main() {
                 println!("cargo:rustc-cfg=tract_sme");
             }
             if include_sve() && compiler_supports_sve() {
-                // VLA SVE kernels (C intrinsics, fixed symbol — not suffix-templated).
+                // VLA SVE kernels (C intrinsics, fixed symbols — not suffix-templated).
                 cc::Build::new()
                     .file("arm64/sve/sve_mmm_f32.c")
+                    .file("arm64/sve/sve_mmm_i32.c")
                     .flag("-march=armv8.2-a+sve")
                     .compile("tract_sve_kernels");
                 println!("cargo:rustc-cfg=tract_sve");

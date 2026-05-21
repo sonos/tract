@@ -7,6 +7,8 @@ use crate::Ops;
 use crate::frame::mmm::ImplementationQuality::ManuallyOptimized;
 #[cfg(tract_sve)]
 use crate::mmm::*;
+#[cfg(tract_sve)]
+use crate::pack::PackedFormat;
 
 // f32 SVE kernel can't do LeakyRelu or the i32 quantization ops (matches the
 // arm64simd / SME f32 CAN_FUSE).
@@ -21,6 +23,13 @@ const CAN_FUSE: fn(&FusedSpec) -> bool = |f| {
     )
 };
 
+// The i32 quantized kernel keeps the quantization fuse ops (QScale /
+// RoundingShiftRight / ShiftLeft) — they are the whole point of a quantized
+// kernel — and excludes only LeakyRelu (matches arm64simd's i32 surface; i32
+// LeakyRelu has no practical use and the C kernel does not implement it).
+#[cfg(tract_sve)]
+const CAN_FUSE_I32: fn(&FusedSpec) -> bool = |f| !matches!(f, FusedSpec::LeakyRelu(_));
+
 #[cfg(tract_sve)]
 const SVE2: fn() -> bool = has_sve2;
 
@@ -32,6 +41,7 @@ mod sve_sys {
     use crate::frame::mmm::FusedKerSpec;
     unsafe extern "C" {
         pub fn sve_mmm_f32_kernel(ops: *const FusedKerSpec<f32>) -> isize;
+        pub fn sve_mmm_i32_kernel(ops: *const FusedKerSpec<i32>) -> isize;
     }
 }
 
@@ -40,6 +50,21 @@ MMMRustKernel!(sve_sys::sve_mmm_f32_kernel => sve_mmm_f32_8x8<f32>(8, 8)
     where(SVE2)
     can_fuse(CAN_FUSE)
     quality(ManuallyOptimized)
+);
+
+// The VLA SVE int8 -> int32 GEMM kernel (arm64/sve/sve_mmm_i32.c). Consumes
+// tract's native i8i8 K-major packing via the widening rank-1 update (svld1sb +
+// svmla), and supports the i32 quantization fuse ops. Wired to ops.qmmm_i32.
+#[cfg(tract_sve)]
+MMMRustKernel!(sve_sys::sve_mmm_i32_kernel => sve_mmm_i32_8x8<i32>(8, 8)
+    where(SVE2)
+    can_fuse(CAN_FUSE_I32)
+    packing[1] = i8i8 => |k| k.with_packing(
+        PackedFormat::new(DatumType::I8, 8, 16),
+        PackedFormat::new(DatumType::I8, 8, 16),
+    );
+    quality(ManuallyOptimized)
+    store(i8)
 );
 
 // SVE / SVE2 backend.
@@ -121,11 +146,12 @@ pub fn plug(ops: &mut Ops) {
         log::info!("SVE2 optimisation available (VL = {} bytes)", rdvl_bytes());
         #[cfg(tract_sve)]
         {
-            // Force the SVE kernel for f32 mmm (mirrors the SME backend) and also
-            // register it as a candidate. TRACT_SVE_DISABLE=1 already turns the
-            // whole thing off via has_sve2().
+            // Force the SVE kernels for f32 mmm and i32 quantized mmm (mirrors the
+            // SME backend) and also register them as candidates. TRACT_SVE_DISABLE=1
+            // already turns the whole thing off via has_sve2().
             ops.mmm_f32 = Box::new(|_, _, _| sve_mmm_f32_8x8.mmm());
-            ops.mmm_impls.extend_from_slice(&[sve_mmm_f32_8x8.mmm()]);
+            ops.qmmm_i32 = Box::new(|_, _, _| sve_mmm_i32_8x8.mmm());
+            ops.mmm_impls.extend_from_slice(&[sve_mmm_f32_8x8.mmm(), sve_mmm_i32_8x8.mmm()]);
         }
     } else if has_sve() {
         log::info!("SVE (v1) present; SVE2 kernels not enabled");
