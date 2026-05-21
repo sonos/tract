@@ -167,6 +167,28 @@ between-graph comparisons.
   hot code with TurboFan. First-pass numbers can be 2-4× off steady state;
   warm generously and read steady-state.
 
+## Environment variables
+
+A small set of `TRACT_*` env vars override defaults that are normally fine
+out of the box. Most are codegen or CPU-detection knobs you only reach for
+when chasing a perf regression or working around an exotic platform; they
+apply equally to the library and the CLI.
+
+| Variable | Effect |
+|---|---|
+| `TRACT_LOG` | `env_logger` filter (e.g. `tract=debug`, `cli=info,tract=warn`). The CLI also derives a default level from `-v` / `-vv`. |
+| `TRACT_LAZY_IM2COL_MIN_KERNEL` | Minimum convolution kernel volume before lazy im2col is preferred over eager. Default: 6. Lower it to experiment on memory-constrained targets. |
+| `TRACT_LAZY_IM2COL_MAX_EAGER_BYTES` | Scratch-buffer ceiling above which `Conv` switches from eager to lazy im2col. Per-family default (~1 MiB on WASM, ~4 MiB on native). Key knob for the canary-model regression gate. |
+| `TRACT_CPU_AARCH64_KIND` | Force aarch64 CPU family detection (`a53`, `a55`, `a72`, `applem`, `generic`, …). Useful for QEMU runs that misreport. |
+| `TRACT_CPU_AARCH64_OVERRIDE_CPU_PART` | Force the raw CPU part hex (`0xd03`, …) before the kind-lookup table runs. Lower-level escape hatch when `TRACT_CPU_AARCH64_KIND` doesn't cover the target. |
+| `TRACT_CPU_ARM32_NEON` | Force armv7 NEON detection on/off (`true`/`1` or `false`/`0`). |
+| `TRACT_CPU_EXPECT_ARM32_NEON` | Used by the test suite to assert the detection result matches what the platform should expose. CI-only. |
+
+The two `LAZY_IM2COL_*` knobs are documented inline next to the constants in
+`core/src/ops/cnn/conv/conv.rs`; the CPU-detect knobs in `linalg/src/arm32.rs`
+and `linalg/src/arm64.rs`. See [`kernel-notes.md`](kernel-notes.md) for
+context on the kernel selection that `LAZY_IM2COL_*` is steering.
+
 ## Pulsified networks
 
 The CLI can turn a streaming-friendly network into a pulsified one and run
