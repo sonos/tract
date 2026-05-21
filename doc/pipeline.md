@@ -156,10 +156,20 @@ the source of the "tract is silently slow" trap.
 
 ## Example rewrites
 
+Two distinct pipeline stages rewrite the graph: **declutter** is
+target-independent (same regardless of which `Runtime` is going to
+run the result) and **lowering** is the per-target `codegen` step that
+turns high-level ops into the primitives a specific machine actually
+runs. The subsections below give a small, non-exhaustive sampling of
+each; the source of truth is the `*::declutter` and `*::codegen`
+methods on the relevant ops.
+
+### Declutter
+
 Decluttering goes in two directions at once: it **decomposes** some
-high-level ops into primitives, and it **fuses** recognisable chains of
-primitives back into one high-level op. The op set after declutter is
-different from the framework's source op set in both directions —
+high-level ops into primitives, and it **fuses** recognisable chains
+of primitives back into one high-level op. The op set after declutter
+is different from the framework's source op set in both directions —
 worth knowing when reading a `dump`, because *"my model had N
 `LayerNorm` and I see zero of them"* is not a bug.
 
@@ -174,11 +184,12 @@ optimisations the wrapping op would have hidden. The same
 dedicated kernel, and the surrounding mean-subtract and γ/β affine are
 left as primitives that downstream rewrites can pick up.
 
-A small, non-exhaustive sampling; the source of truth is the
-`*::declutter` methods on the relevant ops.
-
 Decompositions (one upstream op → several primitives):
 
+- `MatMul` and `Gemm` → `EinSum`. tract has no first-class matmul op;
+  every framework-side matrix-multiply lands as an `EinSum` with an
+  axes spec (carried since `to_typed`, so by the time you see the
+  typed graph there is no `MatMul` node left).
 - `LayerNormalization` → `Sub(mean)` + `RmsNorm` (the inner
   `rsqrt(mean(x²) + ε)` chain) + `Mul(γ)` + `Add(β)`. A transformer
   with N `LayerNorm` shows *0 `LayerNorm` + N `RmsNorm`* in the dump,
@@ -188,8 +199,8 @@ Decompositions (one upstream op → several primitives):
 - `HardSigmoid` → a `Clip` / `Min` / `Max` chain.
 - `Resize` (nearest, integer scales) → `Reshape` → `AddAxis` →
   `MultiBroadcastTo` → `Reshape` tile chain.
-- `Conv` on unit-batch input → the batch dim is peeled, inner convs end
-  up rank-3 `CHW` rather than rank-4 `NCHW`.
+- `Conv` on unit-batch input → the batch dim is peeled, inner convs
+  end up rank-3 `CHW` rather than rank-4 `NCHW`.
 
 Fusions (a primitive chain → one high-level op):
 
@@ -199,8 +210,33 @@ Fusions (a primitive chain → one high-level op):
 - The GELU-approximate polynomial → `GeluApproximate` — chained
   `declutter_pow` in `Pow::declutter`.
 
-Optimisation (`codegen`, not declutter) goes one step further and
-lowers the high-level ops into target-specific primitives — `EinSum`
-and `Conv` become `OptMatMul` over the machine's micro-kernels, `Scan`
-becomes `OptScan`, and so on. That layer is per-target and not normally
-something you audit from a `dump`.
+### Lowering
+
+These run during `optimize()` and are per-target: the active `Runtime`
+decides what fires. The examples below are what `DefaultRuntime`
+(CPU) produces. Not material you usually audit from `dump`, but
+useful context when reading a profile or chasing a perf surprise.
+
+- `EinSum` lowers to one or more `OptMatMul`s once axis identities
+  resolve to concrete `M, K, N` patterns; the same `EinSum` op can
+  surface as several different shape signatures depending on the
+  surrounding declutter. This is the path every framework-side
+  matmul-shaped op (`MatMul`, `Gemm`, the linear inside `Conv`'s
+  im2col branches) eventually goes through.
+- `Conv` codegen (`core/src/ops/cnn/conv/conv.rs::codegen`) tries
+  four lowerings in order:
+  1. quantised im2col + matmul, if the op has `q_params`;
+  2. lazy im2col + matmul, if the input shape is concrete and the
+     kernel volume / scratch ceiling favour it (see
+     `TRACT_LAZY_IM2COL_*`);
+  3. direct depthwise, if `group != 1 && group == in_channels == out_channels`;
+  4. eager im2col + matmul otherwise.
+  Branches 1, 2, 4 all produce an `OptMatMul` over an im2col buffer;
+  branch 3 is the only non-im2col convolution.
+- `Scan` → `OptScan` keeps a persistent inner-body plan
+  (`model_state: TypedSimpleState`) across iterations, but each
+  iteration is a full `model_state.run(inputs)`: `set_inputs` →
+  `resolve_symbols_with_states` → `exec_plan` → `outputs` →
+  `reset_turn`. `reset_turn` clears `resolved_symbols`, so any
+  loop-invariant symbol is re-resolved on every step. Worth knowing
+  when profiling tight RNN / decoder loops.
