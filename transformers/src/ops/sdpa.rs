@@ -365,9 +365,18 @@ impl TypedOp for Sdpa {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         if self.acc_datum_type.is::<f32>() {
-            let scale = self.scale.as_ref().map(|t| t.cast_to_scalar()).transpose()?;
-            let op = FlashSdpaOp { causal: self.is_causal, scale };
-            TypedModelPatch::replace_single_op(model, node, &node.inputs, op).map(Some)
+            // FlashSdpaOp requires Q and V to share the same head dim (last axis).
+            // When they differ (MLA / diff-head-sizes attention), fall back to the
+            // generic SDPA expansion instead.
+            let q_head_dim = model.outlet_fact(node.inputs[0])?.shape.last().cloned();
+            let v_head_dim = model.outlet_fact(node.inputs[2])?.shape.last().cloned();
+            if q_head_dim == v_head_dim {
+                let scale = self.scale.as_ref().map(|t| t.cast_to_scalar()).transpose()?;
+                let op = FlashSdpaOp { causal: self.is_causal, scale };
+                TypedModelPatch::replace_single_op(model, node, &node.inputs, op).map(Some)
+            } else {
+                self.patch_sdpa(model, node).context("Wiring fallback SDPA (diff head dims)")
+            }
         } else {
             self.patch_sdpa(model, node).context("Wiring fallback SDPA")
         }

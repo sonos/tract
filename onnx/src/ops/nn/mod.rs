@@ -7,6 +7,7 @@ use crate::model::{OnnxOpRegister, ParsingContext};
 use crate::pb::NodeProto;
 use crate::pb_helpers::OptionExt;
 
+mod attention;
 mod batch_norm;
 mod conv_transpose;
 mod dropout;
@@ -74,6 +75,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("ThresholdedRelu", thresholded_relu);
     reg.insert("Selu", selu);
     reg.insert("Sigmoid", |_, _| Ok((ops::nn::sigmoid().into_hir(), vec![])));
+    reg.insert("Attention", attention::attention);
     reg.insert("Gelu", gelu::gelu);
     reg.insert("HardSwish", |_, _| Ok((ops::nn::hard_swish().into_hir(), vec![])));
     reg.insert("Mish", |_, _| Ok((expand(mish::Mish), vec![])));
