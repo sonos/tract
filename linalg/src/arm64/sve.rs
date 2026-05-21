@@ -41,6 +41,7 @@ mod sve_sys {
     use crate::frame::mmm::FusedKerSpec;
     unsafe extern "C" {
         pub fn sve_mmm_f32_kernel(ops: *const FusedKerSpec<f32>) -> isize;
+        pub fn sve_mmv_f32_64x1_kernel(ops: *const FusedKerSpec<f32>) -> isize;
         pub fn sve_mmm_i32_kernel(ops: *const FusedKerSpec<i32>) -> isize;
         pub fn sve_mmm_i32_64x1_kernel(ops: *const FusedKerSpec<i32>) -> isize;
     }
@@ -48,6 +49,15 @@ mod sve_sys {
 
 #[cfg(tract_sve)]
 MMMRustKernel!(sve_sys::sve_mmm_f32_kernel => sve_mmm_f32_8x8<f32>(8, 8)
+    where(SVE2)
+    can_fuse(CAN_FUSE)
+    quality(ManuallyOptimized)
+);
+
+// The VLA SVE f32 GEMV kernel (arm64/sve/sve_mmv_f32_64x1.c), MR=64 NR=1,
+// dispatched when N == 1 (matrix x f32 column vector). Wired to ops.mmv_f32.
+#[cfg(tract_sve)]
+MMMRustKernel!(sve_sys::sve_mmv_f32_64x1_kernel => sve_mmv_f32_64x1<f32>(64, 1)
     where(SVE2)
     can_fuse(CAN_FUSE)
     quality(ManuallyOptimized)
@@ -166,10 +176,12 @@ pub fn plug(ops: &mut Ops) {
             // SME backend) and also register them as candidates. TRACT_SVE_DISABLE=1
             // already turns the whole thing off via has_sve2().
             ops.mmm_f32 = Box::new(|_, _, _| sve_mmm_f32_8x8.mmm());
+            ops.mmv_f32 = Box::new(|_, _| sve_mmv_f32_64x1.mmm());
             ops.qmmm_i32 = Box::new(|_, _, _| sve_mmm_i32_8x8.mmm());
             ops.qmmv_i32 = Box::new(|_, _| sve_mmm_i32_64x1.mmm());
             ops.mmm_impls.extend_from_slice(&[
                 sve_mmm_f32_8x8.mmm(),
+                sve_mmv_f32_64x1.mmm(),
                 sve_mmm_i32_8x8.mmm(),
                 sve_mmm_i32_64x1.mmm(),
             ]);
