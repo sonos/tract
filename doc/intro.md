@@ -11,6 +11,7 @@ CLI inspection) see [`AGENTS.md`](../AGENTS.md). The notes in this directory
 cover material that is harder to derive from reading the source:
 
 * this file — the tract-OPL philosophy and the translate-time / runtime split
+* [`pipeline.md`](pipeline.md) — load → optimise → run, and the `Runtime` trait
 * [`graph.md`](graph.md) — Graph, Node, Fact, Op concepts
 * [`op.md`](op.md) — anatomy of an Op (Op / EvalOp / TypedOp / InferenceOp)
 * [`cli-recipe.md`](cli-recipe.md) — `tract` command-line cookbook
@@ -49,7 +50,10 @@ and only the much smaller `tract-pulse-opl` is needed at runtime.
 The tract-OPL format is machine-independent. Calling `into_optimized()` on a
 loaded NNEF network produces the most efficient form for the current
 machine; this is much cheaper than the full decluttering pass that runs
-when loading directly from a training format.
+when loading directly from a training format. For the full pipeline
+mechanics — what `into_optimized` actually runs, how the `Runtime` trait
+fits in, and what `MetalRuntime`/`CudaRuntime` do differently — see
+[`pipeline.md`](pipeline.md).
 
 The NNEF extensions are documented as reference schemas in
 [`nnef/`](nnef/) — `tract_core`, `tract_onnx`, `tract_pulse`, and

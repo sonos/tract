@@ -116,6 +116,16 @@ tract -O mobilenetv2-7.onnx -i 1,3,224,224,f32 criterion
 The first one is a simple bench runner customized for tract specific needs, the second one
 uses the [criterion](https://docs.rs/criterion) crate.
 
+**`-O` is required for any meaningful number.** Without it, `bench` runs the
+decluttered-but-not-optimised graph: generic `Scan` instead of `OptScan`,
+`EinSum` / `Conv` instead of lowered `OptMatMul`, no codegen. The result
+runs and is numerically correct, but it is several times slower than what
+you would actually ship — the dump's op histogram is the tell. The library
+equivalent is `model.into_optimized()`; calling `into_runnable()` on a
+decluttered model is also valid but measures the same un-optimised graph.
+See [`pipeline.md`](pipeline.md) for the full stage breakdown and the
+per-runtime variations (`DefaultRuntime` / `MetalRuntime` / `CudaRuntime`).
+
 ## Profiling a network
 
 Getting a raw performance number is a first step, but tract can also profile a network execution.
@@ -135,6 +145,27 @@ to double tract Flops number before comparing with, say, BLAS implementations.
 
 Please do not parse this output. At least use the `--json` output. We do not commit on its stability
 but it's less susceptible to changes.
+
+**`--profile` finds hot ops within one graph; it is not a valid A/B between
+two graph shapes.** Per-node timing accrues per-node dispatch overhead
+(~tens of ns per op on commodity hardware): a path of many small nodes
+pays it many times; a single fused op pays it once. Summing per-node
+times to compare a fused rewrite against the unfused original
+systematically over-credits the fused side. Use `bench` wall-clock for
+between-graph comparisons.
+
+## Common timing pitfalls
+
+- **Thermal bias on sustained workloads.** Apple Silicon throttles after
+  a few minutes of continuous bench load. Alternating OFF / ON runs
+  systematically bias the second half. Batch N OFF runs then N ON runs
+  (or insert cooldowns) before trusting a 1-2% delta.
+- **WASM benches don't transfer between engines.** Wasmtime/Cranelift
+  and V8/TurboFan disagree at the 10-20% level on the same SIMD kernel.
+  Measure in the engine you ship to.
+- **WASM tier-up.** V8 runs the Liftoff baseline JIT first, then re-JITs
+  hot code with TurboFan. First-pass numbers can be 2-4× off steady state;
+  warm generously and read steady-state.
 
 ## Pulsified networks
 
