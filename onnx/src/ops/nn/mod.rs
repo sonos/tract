@@ -10,10 +10,13 @@ use crate::pb_helpers::OptionExt;
 mod batch_norm;
 mod conv_transpose;
 mod dropout;
+mod gelu;
 mod instance_norm;
 mod layer_norm;
 mod lrn;
+mod mish;
 mod reduce;
+mod rms_norm;
 
 pub fn arg_max_min(
     _ctx: &ParsingContext,
@@ -71,8 +74,12 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("ThresholdedRelu", thresholded_relu);
     reg.insert("Selu", selu);
     reg.insert("Sigmoid", |_, _| Ok((ops::nn::sigmoid().into_hir(), vec![])));
+    reg.insert("Gelu", gelu::gelu);
     reg.insert("HardSwish", |_, _| Ok((ops::nn::hard_swish().into_hir(), vec![])));
+    reg.insert("Mish", |_, _| Ok((expand(mish::Mish), vec![])));
+    reg.insert("RMSNormalization", rms_norm::rms_normalization);
     reg.insert("Softmax", layer_soft_max);
+    reg.insert("Swish", |_, _| Ok((tract_core::ops::nn::silu::silu().into_hir(), vec![])));
     reg.insert("Softplus", |_, _| Ok((expand(ops::activations::Softplus), vec![])));
     reg.insert("Softsign", |_, _| Ok((expand(ops::activations::Softsign), vec![])));
 }
