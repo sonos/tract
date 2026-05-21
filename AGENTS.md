@@ -9,6 +9,7 @@ derivable from the source, see [`doc/`](doc/):
 
 - [`doc/intro.md`](doc/intro.md) — tract-OPL design, translate-time vs runtime split
 - [`doc/pipeline.md`](doc/pipeline.md) — load → optimise → run, and the `Runtime` trait
+- [`doc/symbolic-shapes.md`](doc/symbolic-shapes.md) — `TDim`, `Symbol`, and how to bind them
 - [`doc/graph.md`](doc/graph.md) — Graph, Node, Outlet, Fact, model pipeline
 - [`doc/op.md`](doc/op.md) — anatomy of an Op (`Op` / `EvalOp` / `TypedOp` / `InferenceOp`)
 - [`doc/cli-recipe.md`](doc/cli-recipe.md) — `tract` command-line cookbook
