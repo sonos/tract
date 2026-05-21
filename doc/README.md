@@ -6,6 +6,7 @@ streaming, CLI inspection); the documents here cover conceptual material
 that is harder to derive from reading the source.
 
 * [`intro.md`](intro.md) — what tract is and the tract-OPL design
+* [`pipeline.md`](pipeline.md) — load → optimise → run, and the `Runtime` trait
 * [`graph.md`](graph.md) — Graph, Node, Outlet, Fact, model pipeline
 * [`op.md`](op.md) — anatomy of an Op (`Op` / `EvalOp` / `TypedOp` / `InferenceOp`)
 * [`cli-recipe.md`](cli-recipe.md) — `tract` command-line cookbook

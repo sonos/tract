@@ -8,6 +8,7 @@ This file is the operational quick reference. For conceptual background not
 derivable from the source, see [`doc/`](doc/):
 
 - [`doc/intro.md`](doc/intro.md) — tract-OPL design, translate-time vs runtime split
+- [`doc/pipeline.md`](doc/pipeline.md) — load → optimise → run, and the `Runtime` trait
 - [`doc/graph.md`](doc/graph.md) — Graph, Node, Outlet, Fact, model pipeline
 - [`doc/op.md`](doc/op.md) — anatomy of an Op (`Op` / `EvalOp` / `TypedOp` / `InferenceOp`)
 - [`doc/cli-recipe.md`](doc/cli-recipe.md) — `tract` command-line cookbook
