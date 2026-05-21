@@ -20,6 +20,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v6
+      with:
+        persist-credentials: false
     - name: Rustup update
       run: rustup update
     - name: Run sanitized tests

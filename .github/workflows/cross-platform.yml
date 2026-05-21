@@ -84,6 +84,7 @@ jobs:
       with:
         ref: ${{ needs.prepare.outputs.test_ref }}
         fetch-depth: 0
+        persist-credentials: false
 
     - name: Get current date
       id: date
@@ -115,9 +116,11 @@ jobs:
       env:
         PLATFORM: ${{matrix.platform}}
         AWS_EC2_METADATA_DISABLED: true
+        NEEDS_PREPARE_OUTPUTS_TRACT_BENCH_BRANCH_NAME: ${{ needs.prepare.outputs.tract_bench_branch_name }}
+        NEEDS_PREPARE_OUTPUTS_TEST_REF: ${{ needs.prepare.outputs.test_ref }}
       run: |
-        export TRACT_BENCH_BRANCH_NAME="${{ needs.prepare.outputs.tract_bench_branch_name }}"
-        export GITHUB_SHA="${{ needs.prepare.outputs.test_ref }}"
+        export TRACT_BENCH_BRANCH_NAME="${NEEDS_PREPARE_OUTPUTS_TRACT_BENCH_BRANCH_NAME}"
+        export GITHUB_SHA="${NEEDS_PREPARE_OUTPUTS_TEST_REF}"
         .travis/cross.sh
 
   apple:
@@ -139,6 +142,7 @@ jobs:
       with:
         ref: ${{ needs.prepare.outputs.test_ref }}
         fetch-depth: 0
+        persist-credentials: false
 
     - name: Configure AWS Credentials
       continue-on-error: true
@@ -154,7 +158,9 @@ jobs:
     - name: Cross script
       env:
         PLATFORM: ${{matrix.platform}}
+        NEEDS_PREPARE_OUTPUTS_TRACT_BENCH_BRANCH_NAME: ${{ needs.prepare.outputs.tract_bench_branch_name }}
+        NEEDS_PREPARE_OUTPUTS_TEST_REF: ${{ needs.prepare.outputs.test_ref }}
       run: |
-        export TRACT_BENCH_BRANCH_NAME="${{ needs.prepare.outputs.tract_bench_branch_name }}"
-        export GITHUB_SHA="${{ needs.prepare.outputs.test_ref }}"
+        export TRACT_BENCH_BRANCH_NAME="${NEEDS_PREPARE_OUTPUTS_TRACT_BENCH_BRANCH_NAME}"
+        export GITHUB_SHA="${NEEDS_PREPARE_OUTPUTS_TEST_REF}"
         .travis/cross.sh

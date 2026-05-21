@@ -18,6 +18,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - id: set-matrix
         run: |
           echo examples=`find examples -name ci.sh | cut -d/ -f 2 | jq -Rsc '. / "\n" - [""]'` >> "$GITHUB_OUTPUT"
@@ -33,6 +35,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v6
+      with:
+        persist-credentials: false
 
     - name: Configure AWS Credentials
       # if: github.repository == 'sonos/tract'
@@ -45,15 +49,18 @@ jobs:
     - name: example tests
       env:
         AWS_EC2_METADATA_DISABLED: true
+        MATRIX_EX: ${{matrix.ex}}
       timeout-minutes: 30
       run: |
-        cd examples/${{matrix.ex}}
+        cd examples/${MATRIX_EX}
         ./ci.sh
 
   build-tract-cli:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - run: cargo build -p tract-cli --profile opt-no-lto
       - uses: actions/upload-artifact@v7
         with:
@@ -64,6 +71,8 @@ jobs:
     runs-on: macOS
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - run: cargo build -p tract-cli --profile opt-no-lto
       - uses: actions/upload-artifact@v7
         with:
@@ -77,6 +86,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - id: set-matrix
         run: |
           echo examples=`find examples -name ci-gpu.sh | cut -d/ -f 2 | jq -Rsc '. / "\n" - [""]'` >> "$GITHUB_OUTPUT"
@@ -92,6 +103,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v6
+      with:
+        persist-credentials: false
 
     - uses: actions/download-artifact@v8
       with:
@@ -117,6 +130,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v6
+      with:
+        persist-credentials: false
 
     - uses: actions/download-artifact@v8
       with:
@@ -128,5 +143,7 @@ jobs:
     - name: Metal GPU example tests
       timeout-minutes: 60
       run: |
-        cd examples/${{matrix.ex}}
+        cd examples/${MATRIX_EX}
         ./ci-gpu.sh
+      env:
+        MATRIX_EX: ${{matrix.ex}}

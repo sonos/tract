@@ -23,10 +23,13 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Build and upload
-        run: ./.travis/cost_model_task_build.sh ${{matrix.target}} ${{github.event.inputs.dataset_id}}
+        run: ./.travis/cost_model_task_build.sh ${{matrix.target}} ${GITHUB_EVENT_INPUTS_DATASET_ID}
         env:
           AWS_ACCESS_KEY_ID: ${{secrets.TRACT_CI_AWS_ACCESS_KEY_ID}}
           AWS_SECRET_ACCESS_KEY: ${{secrets.TRACT_CI_AWS_SECRET_ACCESS_KEY}}
           AWS_EC2_METADATA_DISABLED: true
+          GITHUB_EVENT_INPUTS_DATASET_ID: ${{github.event.inputs.dataset_id}}

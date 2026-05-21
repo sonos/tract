@@ -51,6 +51,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v6
+      with:
+        persist-credentials: false
 
     - name: Cargo test
       run: cargo test -p ${{matrix.crate}}
@@ -66,6 +68,8 @@ jobs:
       RUSTUP_TOOLCHAIN: ${{matrix.rust}}
     steps:
     - uses: actions/checkout@v6
+      with:
+        persist-credentials: false
 
     - name: Cargo test
       run: cargo test -p tract-cuda -p test-cuda
@@ -81,6 +85,8 @@ jobs:
       RUSTUP_TOOLCHAIN: "1.91.0"
     steps:
     - uses: actions/checkout@v6
+      with:
+        persist-credentials: false
     - name: Minimum-BOM GPU smoke
       run: harness/cuda-minimum-deploy/gpu-ci.sh
 
@@ -95,6 +101,8 @@ jobs:
       RUSTUP_TOOLCHAIN: ${{matrix.rust}}
     steps:
     - uses: actions/checkout@v6
+      with:
+        persist-credentials: false
 
     - name: Cargo test
       run: cargo test -p tract-metal -p test-metal
@@ -112,6 +120,8 @@ jobs:
       RUSTUP_TOOLCHAIN: ${{matrix.rust}}
     steps:
     - uses: actions/checkout@v6
+      with:
+        persist-credentials: false
     - run: rustup component add clippy && cargo clippy
     - name: fmt
       run: rustup component add rustfmt && cargo fmt --check
@@ -128,6 +138,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v6
+      with:
+        persist-credentials: false
     - name: Install cargo-deny
       run: |
         curl -L https://github.com/EmbarkStudios/cargo-deny/releases/download/$VERSION/cargo-deny-$VERSION-x86_64-unknown-linux-musl.tar.gz \
