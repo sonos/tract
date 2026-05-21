@@ -12,6 +12,7 @@ cover material that is harder to derive from reading the source:
 
 * this file — the tract-OPL philosophy and the translate-time / runtime split
 * [`pipeline.md`](pipeline.md) — load → optimise → run, and the `Runtime` trait
+* [`symbolic-shapes.md`](symbolic-shapes.md) — `TDim`, `Symbol`, and how to bind them
 * [`graph.md`](graph.md) — Graph, Node, Fact, Op concepts
 * [`op.md`](op.md) — anatomy of an Op (Op / EvalOp / TypedOp / InferenceOp)
 * [`cli-recipe.md`](cli-recipe.md) — `tract` command-line cookbook
