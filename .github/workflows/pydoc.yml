@@ -16,6 +16,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -28,7 +30,7 @@ jobs:
       - name: Extract version tag
         id: version
         if: github.event_name == 'release' && github.event.action == 'published'
-        run: echo value=$(echo ${{ github.ref }} | cut -f 3 -d / | sed 's/^v//' ) >> $GITHUB_OUTPUT
+        run: echo value=$(echo ${GITHUB_REF} | cut -f 3 -d / | sed 's/^v//' ) >> $GITHUB_OUTPUT
 
       - name: Build doc
         run: |
@@ -48,7 +50,7 @@ jobs:
           git config user.name "CI bot"
           git config user.email ci-bot@tract.rs
 
-          version="${{ steps.version.outputs.value }}"
+          version="${STEPS_VERSION_OUTPUTS_VALUE}"
           if [ -z "$version" ]; then
             version="dev"
           fi
@@ -86,3 +88,5 @@ jobs:
           # clean up worktree
           cd -
           git worktree remove "$workdir"
+        env:
+          STEPS_VERSION_OUTPUTS_VALUE: ${{ steps.version.outputs.value }}

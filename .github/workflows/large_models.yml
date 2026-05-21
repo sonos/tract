@@ -18,6 +18,8 @@ jobs:
         os: [ macos-latest, ubuntu-latest ]
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - run: |
           ROOT=. ./.travis/ci-system-setup.sh
           cargo build -p tract-cli --profile opt-no-lto --no-default-features --features transformers,pulse
@@ -80,6 +82,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v6
+      with:
+        persist-credentials: false
     - name: Configure AWS Credentials
       continue-on-error: true
       uses: aws-actions/configure-aws-credentials@v6
@@ -118,6 +122,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
     - uses: actions/checkout@v6
+      with:
+        persist-credentials: false
     - run: echo uname=$(uname) >> $GITHUB_ENV
     - uses: actions/download-artifact@v8
       with:
@@ -143,6 +149,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
     - uses: actions/checkout@v6
+      with:
+        persist-credentials: false
     - run: echo uname=$(uname) >> $GITHUB_ENV
     - uses: actions/download-artifact@v8
       with:

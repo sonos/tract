@@ -52,6 +52,7 @@ jobs:
       with:
         ref: ${{ needs.prepare.outputs.test_ref }}
         fetch-depth: 0
+        persist-credentials: false
 
     - name: Configure AWS Credentials
       continue-on-error: true
@@ -72,6 +73,7 @@ jobs:
       with:
         ref: ${{ needs.prepare.outputs.test_ref }}
         fetch-depth: 0
+        persist-credentials: false
     - name: Full test 
       env:
         AWS_EC2_METADATA_DISABLED: true
@@ -89,6 +91,7 @@ jobs:
       with:
         ref: ${{ needs.prepare.outputs.test_ref }}
         fetch-depth: 0
+        persist-credentials: false
     - name: Full test
       run: .travis/onnx-tests.sh ${{ matrix.opset }}
 
@@ -101,6 +104,7 @@ jobs:
       with:
         ref: ${{ needs.prepare.outputs.test_ref }}
         fetch-depth: 0
+        persist-credentials: false
     - name: Full test
       run: .travis/tflite.sh
 
@@ -113,6 +117,7 @@ jobs:
       with:
         ref: ${{ needs.prepare.outputs.test_ref }}
         fetch-depth: 0
+        persist-credentials: false
 
     - name: With assertions
       run: |
@@ -128,6 +133,7 @@ jobs:
       with:
         ref: ${{ needs.prepare.outputs.test_ref }}
         fetch-depth: 0
+        persist-credentials: false
     - name: Without default features
       run: |
         rustup update
@@ -142,6 +148,7 @@ jobs:
       with:
         ref: ${{ needs.prepare.outputs.test_ref }}
         fetch-depth: 0
+        persist-credentials: false
     - name: With complexes
       run: |
         rustup update
@@ -156,6 +163,7 @@ jobs:
       with:
         ref: ${{ needs.prepare.outputs.test_ref }}
         fetch-depth: 0
+        persist-credentials: false
     - name: Check all targets
       run: |
         ROOT=$(pwd) ./.travis/ci-system-setup.sh
@@ -170,6 +178,7 @@ jobs:
       with:
         ref: ${{ needs.prepare.outputs.test_ref }}
         fetch-depth: 0
+        persist-credentials: false
     - name: C smoke tests
       run: |
         cd api/c
@@ -185,6 +194,7 @@ jobs:
       with:
         ref: ${{ needs.prepare.outputs.test_ref }}
         fetch-depth: 0
+        persist-credentials: false
     - name: Setup Python
       uses: actions/setup-python@v6
       with:

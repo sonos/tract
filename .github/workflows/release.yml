@@ -16,9 +16,11 @@ jobs:
     steps:
       - name: Extract version tag
         id: version
-        run: echo value=$(echo ${{ github.ref }} | cut -f 3 -d / | sed 's/^v//' ) >> $GITHUB_OUTPUT
+        run: echo value=$(echo ${GITHUB_REF} | cut -f 3 -d / | sed 's/^v//' ) >> $GITHUB_OUTPUT
 
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Create Release
         uses: softprops/action-gh-release@v3
