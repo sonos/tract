@@ -84,6 +84,7 @@ fn atom<'i>(symbol_table: &SymbolScope, i: &'i str) -> R<'i, TDim> {
         map(numeric, TDim::Val),
         map(|i| func(symbol_table, "min", i), TDim::Min),
         map(|i| func(symbol_table, "max", i), TDim::Max),
+        map(|i| func(symbol_table, "broadcast", i), TDim::Broadcast),
         map(|i| func(symbol_table, "floor", i), |xs| xs[0].clone()),
         map(|i| identifier(symbol_table, i), TDim::Sym),
         map(pair(recognize(stag("-")), |i| atom(symbol_table, i)), |(_, dim)| dim * -1),
@@ -173,6 +174,24 @@ mod test {
             parse_tdim(&table, "min(P,S)").unwrap(),
             TDim::Min(vec!(table.sym("P").into(), table.sym("S").into()))
         );
+    }
+
+    #[test]
+    fn parse_broadcast_func() {
+        let table = SymbolScope::default();
+        assert_eq!(
+            parse_tdim(&table, "broadcast(P,S)").unwrap(),
+            TDim::Broadcast(vec!(table.sym("P").into(), table.sym("S").into()))
+        );
+    }
+
+    #[test]
+    fn parse_broadcast_display_roundtrip() {
+        let table = SymbolScope::default();
+        let original = TDim::Broadcast(vec![table.sym("P").into(), table.sym("S").into()]);
+        let printed = format!("{original}");
+        let reparsed = parse_tdim(&table, &printed).unwrap();
+        assert_eq!(reparsed, original);
     }
 
     #[test]
