@@ -10,6 +10,9 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE20: true
   RUSTUP_TOOLCHAIN: 1.91.0
 
+permissions:
+  contents: read
+
 jobs:
   examples:
     runs-on: ubuntu-latest
@@ -17,7 +20,7 @@ jobs:
       examples: ${{steps.set-matrix.outputs.examples}}
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           persist-credentials: false
       - id: set-matrix
@@ -28,20 +31,23 @@ jobs:
     name: ${{ matrix.ex }}
     runs-on: ubuntu-latest
     needs: examples
+    permissions:
+      id-token: write
+      contents: read
     strategy:
       fail-fast: false
       matrix:
         ex: ${{fromJSON(needs.examples.outputs.examples)}}
 
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       with:
         persist-credentials: false
 
     - name: Configure AWS Credentials
       # if: github.repository == 'sonos/tract'
       continue-on-error: true
-      uses: aws-actions/configure-aws-credentials@v6
+      uses: aws-actions/configure-aws-credentials@d979d5b3a71173a29b74b5b88418bfda9437d885 # v6
       with:
         role-to-assume: arn:aws:iam::567805100031:role/github-runner-tract-ci
         aws-region: us-east-2
@@ -58,11 +64,11 @@ jobs:
   build-tract-cli:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           persist-credentials: false
       - run: cargo build -p tract-cli --profile opt-no-lto
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: tract-cli-x86_64
           path: ./target/opt-no-lto/tract
@@ -70,11 +76,11 @@ jobs:
   build-tract-cli-macos:
     runs-on: macOS
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           persist-credentials: false
       - run: cargo build -p tract-cli --profile opt-no-lto
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: tract-cli-aarch64-apple
           path: ./target/opt-no-lto/tract
@@ -85,7 +91,7 @@ jobs:
       examples: ${{steps.set-matrix.outputs.examples}}
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           persist-credentials: false
       - id: set-matrix
@@ -102,11 +108,11 @@ jobs:
         ex: ${{fromJSON(needs.gpu-examples.outputs.examples)}}
 
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       with:
         persist-credentials: false
 
-    - uses: actions/download-artifact@v8
+    - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
       with:
         name: tract-cli-x86_64
         path: target/opt-no-lto
@@ -115,8 +121,10 @@ jobs:
 
     - name: GPU example tests
       timeout-minutes: 60
+      env:
+        EX: ${{ matrix.ex }}
       run: |
-        cd examples/${{matrix.ex}}
+        cd "examples/$EX"
         ./ci-gpu.sh
 
   gpu-example-metal:
@@ -129,11 +137,11 @@ jobs:
         ex: ${{fromJSON(needs.gpu-examples.outputs.examples)}}
 
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       with:
         persist-credentials: false
 
-    - uses: actions/download-artifact@v8
+    - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
       with:
         name: tract-cli-aarch64-apple
         path: target/opt-no-lto

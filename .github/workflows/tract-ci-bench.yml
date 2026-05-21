@@ -5,6 +5,9 @@ on:
     - cron:  '1 * * * *' # every hour at minute 1
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   minion:
     strategy:
