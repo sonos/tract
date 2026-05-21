@@ -67,7 +67,7 @@ The `harness/` directory contains integration tests that run against real
 models. `.travis/native.sh` runs the full native Linux CI suite; running it
 locally requires `libssl-dev` (needed by the `tflite` step).
 
-Synthetic NNEF tests under `harness/nnef-test-cases/` and `harness/pulse-multi-axis/`
+Synthetic NNEF tests under `harness/nnef-test-cases/`
 are driven by a `runme.sh` that calls the `tract` CLI with `--assert-output-bundle`
 against a reference `io.npz`. Add new cases there rather than as Rust integration
 tests. If the assertion you need isn't expressible through the CLI, extend the CLI.
@@ -120,6 +120,13 @@ backend genuinely cannot support the case.
 > only. The internal crates (`core`, `nnef`, `onnx`, ...) are not stable API surface.
 > When asked "is X part of the public API?", check `api/rs/src/lib.rs` — that is
 > the authoritative surface, not the internal crate's `pub` items.
+
+### key principle
+
+tract avoid specializing for one model or an application. Model-wide behaviours or
+optimisations should emerge from op-scoped manipulation composing together. There are
+pragmatic compromises: sometimes introducing "big" primitives than could be implemented 
+with atomic operators (Convolution, Attention, RmsNorm, ...) is unlocking optimisations.
 
 ### TypedModel / TypedNode / TypedFact
 
@@ -217,10 +224,6 @@ step.
   optimisation. Any change-axes interaction has to preserve the streaming axis
   identity, so new ops that move axes around need a `change_axes` impl that
   agrees with their pulsification.
-- **Validation reflex.** For "does this op pulsify correctly", the standard
-  workflow is a `runme.sh` under `harness/pulse-multi-axis/` that runs the
-  batch model and the pulsified model against the same `io.npz` and asserts
-  equality modulo `pulse.delay`.
 
 The streaming model has subtle invariants -- don't touch `pulse` / `pulse-opl`
 casually.
@@ -238,19 +241,10 @@ Re-export shims in `transformers/src/ops/mod.rs` keep downstream crates
 
 ---
 
-## Branch and commit hygiene
-
-```sh
-# always branch off origin/main without setting upstream
-git checkout -b my-feature origin/main --no-track
-```
+## Commit hygiene
 
 - Run `cargo fmt --all` before every commit. Metal source files need formatting
   too, even when building on Linux.
-- Do not add "Co-Authored-By" or similar trailer lines to commit messages.
-- Do not push or fetch; the human handles all remote operations.
-- Commit at natural checkpoints during large multi-crate refactors -- commits
-  are cheap and make bisection easy.
 
 ---
 
