@@ -22,3 +22,13 @@ If one needs to debug a kernel a useful workflow is to simply insert a
 `mov rNN, [0]` at the appropriate point, and configure GDB with
 `handle SIGSEGV stop nopass`. This'll pause in GDB but not send the
 signal to the program.
+
+## Tuning knobs
+
+A handful of `TRACT_*` env vars steer kernel selection and CPU detection
+without recompiling — most usefully `TRACT_LAZY_IM2COL_MIN_KERNEL` /
+`TRACT_LAZY_IM2COL_MAX_EAGER_BYTES` for the `Conv` codegen crossover, and
+`TRACT_CPU_AARCH64_KIND` / `TRACT_CPU_ARM32_NEON` for forcing detection on
+emulated or misreporting targets. See
+[`cli-recipe.md` § Environment variables](cli-recipe.md#environment-variables)
+for the full list.
