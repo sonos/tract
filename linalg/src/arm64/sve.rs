@@ -42,6 +42,7 @@ mod sve_sys {
     unsafe extern "C" {
         pub fn sve_mmm_f32_kernel(ops: *const FusedKerSpec<f32>) -> isize;
         pub fn sve_mmm_i32_kernel(ops: *const FusedKerSpec<i32>) -> isize;
+        pub fn sve_mmm_i32_64x1_kernel(ops: *const FusedKerSpec<i32>) -> isize;
     }
 }
 
@@ -62,6 +63,21 @@ MMMRustKernel!(sve_sys::sve_mmm_i32_kernel => sve_mmm_i32_8x8<i32>(8, 8)
     packing[1] = i8i8 => |k| k.with_packing(
         PackedFormat::new(DatumType::I8, 8, 16),
         PackedFormat::new(DatumType::I8, 8, 16),
+    );
+    quality(ManuallyOptimized)
+    store(i8)
+);
+
+// The VLA SVE int8 -> int32 GEMV kernel (arm64/sve/sve_mmm_i32_64x1.c), MR=64
+// NR=1, dispatched when N == 1. Same widening update vectorized over M. Wired to
+// ops.qmmv_i32.
+#[cfg(tract_sve)]
+MMMRustKernel!(sve_sys::sve_mmm_i32_64x1_kernel => sve_mmm_i32_64x1<i32>(64, 1)
+    where(SVE2)
+    can_fuse(CAN_FUSE_I32)
+    packing[1] = i8i8 => |k| k.with_packing(
+        PackedFormat::new(DatumType::I8, 64, 16),
+        PackedFormat::new(DatumType::I8, 1, 1),
     );
     quality(ManuallyOptimized)
     store(i8)
@@ -151,7 +167,12 @@ pub fn plug(ops: &mut Ops) {
             // already turns the whole thing off via has_sve2().
             ops.mmm_f32 = Box::new(|_, _, _| sve_mmm_f32_8x8.mmm());
             ops.qmmm_i32 = Box::new(|_, _, _| sve_mmm_i32_8x8.mmm());
-            ops.mmm_impls.extend_from_slice(&[sve_mmm_f32_8x8.mmm(), sve_mmm_i32_8x8.mmm()]);
+            ops.qmmv_i32 = Box::new(|_, _| sve_mmm_i32_64x1.mmm());
+            ops.mmm_impls.extend_from_slice(&[
+                sve_mmm_f32_8x8.mmm(),
+                sve_mmm_i32_8x8.mmm(),
+                sve_mmm_i32_64x1.mmm(),
+            ]);
         }
     } else if has_sve() {
         log::info!("SVE (v1) present; SVE2 kernels not enabled");

@@ -218,6 +218,7 @@ fn main() {
                 cc::Build::new()
                     .file("arm64/sve/sve_mmm_f32.c")
                     .file("arm64/sve/sve_mmm_i32.c")
+                    .file("arm64/sve/sve_mmm_i32_64x1.c")
                     .flag("-march=armv8.2-a+sve")
                     .compile("tract_sve_kernels");
                 println!("cargo:rustc-cfg=tract_sve");
