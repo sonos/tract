@@ -9,21 +9,26 @@ env:
   CARGO_INCREMENTAL: false
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE20: true
 
+permissions:
+  contents: read
+
 jobs:
   release:
     name: Create release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Extract version tag
         id: version
         run: echo value=$(echo ${GITHUB_REF} | cut -f 3 -d / | sed 's/^v//' ) >> $GITHUB_OUTPUT
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           persist-credentials: false
 
       - name: Create Release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3
         with:
           name: tract ${{ steps.version.outputs.value }}
         env:

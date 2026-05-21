@@ -14,9 +14,14 @@ env:
   CARGO_INCREMENTAL: false
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE20: true
 
+permissions:
+  contents: read
+
 jobs:
   assets:
     name: Upload Release Binaries
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
@@ -48,32 +53,39 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           persist-credentials: false
 
       - name: Extract version tag
         id: version
+        env:
+          VERSION_OVERRIDE: ${{ inputs.version_override }}
+          GH_REF: ${{ github.ref }}
         run: |
-          if [ -n "${{ inputs.version_override }}" ]; then
-            echo "value=${{ inputs.version_override }}" >> $GITHUB_OUTPUT
+          if [ -n "$VERSION_OVERRIDE" ]; then
+            echo "value=$VERSION_OVERRIDE" >> "$GITHUB_OUTPUT"
           else
-            echo "value=$(echo ${{ github.ref }} | cut -f 3 -d / | sed 's/^v//' )" >> $GITHUB_OUTPUT
+            echo "value=$(echo "$GH_REF" | cut -f 3 -d / | sed 's/^v//' )" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Build tract
+        env:
+          TARGET: ${{ matrix.target }}
+          MUSL: ${{ matrix.musl }}
+          VERSION: ${{ steps.version.outputs.value }}
         run: |
           set -ex
-          target=${{matrix.target}}
-          version=${{steps.version.outputs.value}}
+          target="$TARGET"
+          version="$VERSION"
           name=${target}-${version}
 
           rustup update
           rustup target add ${target}
 
-          if [ -n "${{matrix.musl}}" ]
+          if [ -n "$MUSL" ]
           then
-            MUSL_TRIPLE=${{matrix.musl}}
+            MUSL_TRIPLE="$MUSL"
             curl -s https://s3.amazonaws.com/tract-ci-builds/toolchains/${MUSL_TRIPLE}-cross.tgz | tar zx
 
             MUSL_BIN=`pwd`/${MUSL_TRIPLE}-cross/bin
@@ -92,7 +104,7 @@ jobs:
           tar czf tract-${name}.tgz tract-${name}
 
       - name: Upload asset
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3
         with:
           files: tract-${{matrix.target}}-${{ steps.version.outputs.value }}.tgz
           name: ${{ steps.version.outputs.value }}

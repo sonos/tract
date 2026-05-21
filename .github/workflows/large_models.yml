@@ -8,7 +8,10 @@ on:
 
 env:
   LARGE_MODELS: true
-  
+
+permissions:
+  contents: read
+
 jobs:
   cli: 
     name: Build tract on ${{ matrix.os }}
@@ -17,14 +20,14 @@ jobs:
       matrix:
         os: [ macos-latest, ubuntu-latest ]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           persist-credentials: false
       - run: |
           ROOT=. ./.travis/ci-system-setup.sh
           cargo build -p tract-cli --profile opt-no-lto --no-default-features --features transformers,pulse
       - run: echo uname=$(uname) >> $GITHUB_ENV
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: tract-cli-${{env.uname}}
           path: ./target/opt-no-lto/tract
@@ -81,33 +84,38 @@ jobs:
       contents: read
 
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       with:
         persist-credentials: false
     - name: Configure AWS Credentials
       continue-on-error: true
-      uses: aws-actions/configure-aws-credentials@v6
+      uses: aws-actions/configure-aws-credentials@d979d5b3a71173a29b74b5b88418bfda9437d885 # v6
       with:
         role-to-assume: arn:aws:iam::567805100031:role/github-runner-tract-ci
         aws-region: us-east-2
     - run: echo uname=$(uname) >> $GITHUB_ENV
-    - uses: actions/download-artifact@v8
+    - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
       with:
         name: tract-cli-${{env.uname}}
         path: tract-cli-${{env.uname}}
 
     - name: Download and run
+      env:
+        UNAME: ${{ env.uname }}
+        RT_MATRIX: ${{ matrix.rt }}
+        MODEL: ${{ matrix.model }}
+        Q: ${{ matrix.q }}
       run: |
-        chmod +x tract-cli-${{env.uname}}/tract
-        export TRACT_RUN=$GITHUB_WORKSPACE/tract-cli-${{env.uname}}/tract
-        if [ "${{matrix.rt}}" = "gpu" ]
+        chmod +x "tract-cli-${UNAME}/tract"
+        export TRACT_RUN="$GITHUB_WORKSPACE/tract-cli-${UNAME}/tract"
+        if [ "$RT_MATRIX" = "gpu" ]
         then
           case $(uname) in
             Darwin) RT=metal;;
             Linux) RT=cuda;;
           esac
         fi
-        .travis/test-llm.sh ${{matrix.model}} ${{matrix.q}} $RT
+        .travis/test-llm.sh "$MODEL" "$Q" "$RT"
 
   parakeet-tdt-600m-v3:
     name: ${{matrix.os}} / Parakeet TDT 600m v3
@@ -121,19 +129,21 @@ jobs:
       contents: read
     runs-on: ${{ matrix.os }}
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       with:
         persist-credentials: false
     - run: echo uname=$(uname) >> $GITHUB_ENV
-    - uses: actions/download-artifact@v8
+    - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
       with:
         name: tract-cli-${{env.uname}}
         path: tract-cli-${{env.uname}}
 
     - name: Download and run
+      env:
+        UNAME: ${{ env.uname }}
       run: |
-        chmod +x tract-cli-${{env.uname}}/tract
-        export TRACT_RUN=$GITHUB_WORKSPACE/tract-cli-${{env.uname}}/tract
+        chmod +x "tract-cli-${UNAME}/tract"
+        export TRACT_RUN="$GITHUB_WORKSPACE/tract-cli-${UNAME}/tract"
         ./harness/parakeet-tdt-600m-v3/ci.sh
 
   nemotron-speech-streaming-en-06b:
@@ -148,17 +158,19 @@ jobs:
       contents: read
     runs-on: ${{ matrix.os }}
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       with:
         persist-credentials: false
     - run: echo uname=$(uname) >> $GITHUB_ENV
-    - uses: actions/download-artifact@v8
+    - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
       with:
         name: tract-cli-${{env.uname}}
         path: tract-cli-${{env.uname}}
 
     - name: Download and run
+      env:
+        UNAME: ${{ env.uname }}
       run: |
-        chmod +x tract-cli-${{env.uname}}/tract
-        export TRACT_RUN=$GITHUB_WORKSPACE/tract-cli-${{env.uname}}/tract
+        chmod +x "tract-cli-${UNAME}/tract"
+        export TRACT_RUN="$GITHUB_WORKSPACE/tract-cli-${UNAME}/tract"
         ./harness/nemotron-speech-streaming-en-0.6b/ci.sh

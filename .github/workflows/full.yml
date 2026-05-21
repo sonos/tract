@@ -14,6 +14,9 @@ env:
   CARGO_INCREMENTAL: false
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE20: true
 
+permissions:
+  contents: read
+
 jobs:
   prepare:
     runs-on: ubuntu-latest
@@ -21,7 +24,7 @@ jobs:
       test_ref: ${{ steps.set.outputs.test_ref }}
     steps:
       - id: set
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         with:
           script: |
             const prInput = context.payload.inputs?.pr_number;
@@ -48,7 +51,7 @@ jobs:
       contents: read
     needs: prepare
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       with:
         ref: ${{ needs.prepare.outputs.test_ref }}
         fetch-depth: 0
@@ -56,7 +59,7 @@ jobs:
 
     - name: Configure AWS Credentials
       continue-on-error: true
-      uses: aws-actions/configure-aws-credentials@v6
+      uses: aws-actions/configure-aws-credentials@d979d5b3a71173a29b74b5b88418bfda9437d885 # v6
       with:
         role-to-assume: arn:aws:iam::567805100031:role/github-runner-tract-ci
         aws-region: us-east-2
@@ -69,7 +72,7 @@ jobs:
     needs: prepare
 
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       with:
         ref: ${{ needs.prepare.outputs.test_ref }}
         fetch-depth: 0
@@ -87,7 +90,7 @@ jobs:
         opset: [1_4_1, 1_5_0, 1_6_0, 1_7_0, 1_8_1, 1_9_0, 1_10_2, 1_11_0, 1_12_0, 1_13_0, 1_14_1, 1_15_0, 1_16_2, 1_17_0, 1_18_0, 1_19_1]
 
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       with:
         ref: ${{ needs.prepare.outputs.test_ref }}
         fetch-depth: 0
@@ -100,7 +103,7 @@ jobs:
     needs: prepare
 
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       with:
         ref: ${{ needs.prepare.outputs.test_ref }}
         fetch-depth: 0
@@ -113,7 +116,7 @@ jobs:
     needs: prepare
 
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       with:
         ref: ${{ needs.prepare.outputs.test_ref }}
         fetch-depth: 0
@@ -129,7 +132,7 @@ jobs:
     needs: prepare
 
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       with:
         ref: ${{ needs.prepare.outputs.test_ref }}
         fetch-depth: 0
@@ -144,7 +147,7 @@ jobs:
     needs: prepare
 
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       with:
         ref: ${{ needs.prepare.outputs.test_ref }}
         fetch-depth: 0
@@ -159,7 +162,7 @@ jobs:
     needs: prepare
 
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       with:
         ref: ${{ needs.prepare.outputs.test_ref }}
         fetch-depth: 0
@@ -174,7 +177,7 @@ jobs:
     needs: prepare
 
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       with:
         ref: ${{ needs.prepare.outputs.test_ref }}
         fetch-depth: 0
@@ -190,18 +193,18 @@ jobs:
     needs: prepare
 
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       with:
         ref: ${{ needs.prepare.outputs.test_ref }}
         fetch-depth: 0
         persist-credentials: false
     - name: Setup Python
-      uses: actions/setup-python@v6
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
       with:
         python-version: "3.13"
 
     - name: Install uv
-      uses: astral-sh/setup-uv@v7
+      uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
 
     - name: Pytest bindings
       timeout-minutes: 60
