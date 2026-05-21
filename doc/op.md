@@ -114,6 +114,53 @@ required, or access the `SessionState`.
 
 But most operators are stateless anyway.
 
+## Working with a Tensor's data
+
+A `Tensor` is fully dynamically typed: shape, datum type, and storage
+layout are all carried at runtime, none of them in the Rust type. Every
+typed access goes through a turbofish (`::<T>()`) and a runtime dtype
+check (or an `_unchecked` variant that skips the check).
+
+Inside `eval`, you receive `TVec<TValue>` (each `TValue` is essentially
+an `Arc<Tensor>`). The inventory of `Tensor` access methods:
+
+Reading the data:
+
+- `t.to_plain_array_view::<T>()?` / `_mut` — safe `ndarray::ArrayView`
+  with dtype + storage checks; call `.as_slice()` on it for a slice.
+- `t.as_ptr::<T>()?` / `as_ptr_mut::<T>()?` — safe, dtype-checked raw
+  pointer (useful at FFI boundaries).
+- For rank-0 tensors: `t.try_as_plain()?.to_scalar::<T>()?` for a safe
+  read, `t.to_scalar_mut::<T>()?` for the mutable side.
+- `t.as_bytes()` / `as_bytes_mut()` — typeless byte view.
+- `t.as_slice_unchecked::<T>()` / `as_slice_mut_unchecked::<T>()` — the
+  hot-path slice. `unsafe` only because nothing re-checks that the
+  dtype is `T`; once `output_facts` has asserted it, the call is
+  effectively safe.
+
+Constructors:
+
+- `tensor0(x)` … `tensor4(&[[[[…]; N]; M]; T])` — rank-0..rank-4 tensor
+  literals from Rust array/slice literals. `tensor0` is the canonical
+  way to spell a scalar constant; the higher-rank ones are the
+  convenient option for unit-test fixtures. `rctensor0` … `rctensor4`
+  for an `Arc<Tensor>` instead.
+- `Tensor::from_shape::<T>(&shape, &data)?` — copies the slice in.
+- `Tensor::zero::<T>(&shape)?` / `zero_dt(dt, &shape)?` — zero-initialised.
+- `unsafe { Tensor::uninitialized::<T>(&shape)? }` — for the
+  fill-it-yourself output path; pair with `as_slice_mut_unchecked` to
+  write.
+
+Conversions:
+
+- `t.cast_to::<T>()?` / `cast_to_dt(dt)?` — element-wise cast, returns
+  a `Cow<Tensor>` (no-op if already the right dtype).
+- `t.into_shape(&shape)?` — reshape, consumes self.
+
+There is no safe `as_slice::<T>()` shortcut: either drop into
+`_unchecked` once the dtype is established, or go through
+`to_plain_array_view`.
+
 ## tract-core TypedOp trait
 
 `Op` is metadata, `EvalOp` is runtime, `TypedOp` is about reasoning on the
