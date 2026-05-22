@@ -37,6 +37,21 @@ fn assembler_supports_sme() -> bool {
         .is_ok()
 }
 
+// Probe whether the assembler additionally supports FEAT_SME_F16F16 (the
+// non-widening `fmopa za.h`). This is a SEPARATE probe from assembler_supports_sme
+// so that a toolchain with base SME but not +sme-f16f16 still builds the f32 SME
+// kernels — only the experimental f16 unit + the `tract_sme_f16f16` cfg are gated
+// off. (FEAT_SME_F16F16 is, as of 2025-26 silicon, effectively Apple M5/A19-only.)
+fn assembler_supports_sme_f16f16() -> bool {
+    cc::Build::new()
+        .file("arm64/sme/dummy_sme_f16f16.S")
+        .cargo_metadata(false)
+        .cargo_warnings(false)
+        .warnings(false)
+        .try_compile("tract_sme_f16f16_probe")
+        .is_ok()
+}
+
 fn jump_table() -> Vec<String> {
     println!("cargo:rerun-if-changed=src/frame/mmm/fuse.rs");
     std::fs::read_to_string("src/frame/mmm/fuse.rs")
@@ -104,6 +119,8 @@ fn main() {
     // `tract_sme` is set below only when both include_sme() and the assembler
     // SME probe succeed; declare it so rustc's unexpected-cfg lint stays quiet.
     println!("cargo:rustc-check-cfg=cfg(tract_sme)");
+    // Set below only when the f16 SME unit compiles (assembler has +sme-f16f16).
+    println!("cargo:rustc-check-cfg=cfg(tract_sme_f16f16)");
 
     match arch.as_ref() {
         "x86_64" => {
@@ -184,8 +201,18 @@ fn main() {
             }
             if include_sme() && assembler_supports_sme() {
                 let files = preprocess_files("arm64/sme", &[], &suffix, false);
-                cc::Build::new().files(files).compile("sme");
+                // The experimental f16 kernels use `fmopa za.h` (+sme-f16f16),
+                // which an assembler may lack even when base SME assembles.
+                // Build them as a separate unit gated on a dedicated probe so the
+                // f32 SME kernels still build on f16f16-less toolchains.
+                let (f16_files, base_files): (Vec<_>, Vec<_>) =
+                    files.into_iter().partition(|f| f.to_string_lossy().contains("f16"));
+                cc::Build::new().files(base_files).compile("sme");
                 println!("cargo:rustc-cfg=tract_sme");
+                if !f16_files.is_empty() && assembler_supports_sme_f16f16() {
+                    cc::Build::new().files(f16_files).compile("sme_f16f16");
+                    println!("cargo:rustc-cfg=tract_sme_f16f16");
+                }
             }
             if std::env::var("CARGO_FEATURE_NO_FP16").is_err() {
                 let config =

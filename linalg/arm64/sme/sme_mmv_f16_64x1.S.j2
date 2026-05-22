@@ -1,0 +1,220 @@
+// vim: ft=arm
+//
+// SME2 f16 64x1 GEMV kernel (FEAT_SME2 + FEAT_SME_F16F16).
+//
+// Mirrors the f32 64x1 GEMV but in half precision: the 64-element f16 output
+// column maps to a vgx2 group of 2 ZA.H slices (2 x 32 f16 at SVL=512). The
+// inner K-step loads 64 f16 of A's column via one multi-vec LD1H, broadcasts
+// B[k] with LD1RH, and issues one multi-vec vgx2 FMLA-into-ZA.H. f16 accumulate.
+//
+// Calling convention (extern "C", AAPCS64):
+//   x0 = const *FusedKerSpec<f16>, advanced 40 B per dispatcher iteration.
+//   x1 = stack-resident 128 B scratch buffer (strided-store / AddUnicast).
+//   w8 = 0 throughout (vgx-group base index).
+
+.arch armv9-a+sme2+sme-f16f16
+.text
+.align 4
+
+.global {{G}}sme_mmv_f16_64x1_{{suffix}}
+{{G}}sme_mmv_f16_64x1_{{suffix}}:
+
+    stp     q8,  q9,  [sp, #-128]!
+    stp     q10, q11, [sp, #32]
+    stp     q12, q13, [sp, #64]
+    stp     q14, q15, [sp, #96]
+
+    // 128 B = 64 f16 spill buffer.
+    sub     sp, sp, #128
+    mov     x1, sp
+
+    smstart
+    ptrue   p0.h
+    ptrue   pn8.b
+    mov     w8, #0
+
+{% include "dispatcher.j2" %}
+
+// -------- supported fuse ops -----------------------------------------------
+
+.add_mat_mul:
+    ldr     x2, [x0, #24]       // b ptr
+    ldp     x3, x4, [x0, #8]    // k, a ptr
+    cmp     x3, #0
+    b.eq    .non_linear_loop
+
+.Lmmv_loop:
+    ld1h    {z0.h-z1.h}, pn8/z, [x4]
+    add     x4, x4, #128            // 64 f16 = 128 B
+    ld1rh   {z4.h}, p0/z, [x2]
+    add     x2, x2, #2
+    fmla    za.h[w8, 0, vgx2], {z0.h-z1.h}, z4.h[0]
+    subs    x3, x3, #1
+    b.ne    .Lmmv_loop
+    b       .non_linear_loop
+
+.clear:
+    zero    {za}
+    b       .non_linear_loop
+
+.store:
+    // FusedKerSpec::Store(OutputStoreKer { ptr, row_byte_stride,
+    //                                      col_byte_stride, item_size })
+    ldp     x5, x6, [x0, #8]    // ptr, row_byte_stride
+    ldp     x7, x9, [x0, #24]   // col_byte_stride, item_size
+
+    // Fast path: 64 outputs contiguous (row_byte_stride==2 AND item_size==2).
+    cmp     x6, #2
+    b.ne    .Lstore_generic
+    cmp     x9, #2
+    b.ne    .Lstore_generic
+
+    mov     {z0.h-z1.h}, za.h[w8, 0, vgx2]
+    st1h    {z0.h}, p0, [x5]
+    st1h    {z1.h}, p0, [x5, #1, mul vl]
+    b       .non_linear_loop
+
+.Lstore_generic:
+    mov     {z0.h-z1.h}, za.h[w8, 0, vgx2]
+    st1h    {z0.h}, p0, [x1]
+    st1h    {z1.h}, p0, [x1, #1, mul vl]
+
+    mov     x3, #0
+    mov     x9, x1
+.Lstore_scatter:
+    ldrh    w10, [x9], #2
+    strh    w10, [x5]
+    add     x5, x5, x6
+    add     x3, x3, #1
+    cmp     x3, #64
+    b.lt    .Lstore_scatter
+    b       .non_linear_loop
+
+// -------- LoadTile: ZA := 64-element f16 vec from row-major source ---------
+
+.load_tile:
+    ldr     x2, [x0, #16]
+    ld1h    {z0.h-z1.h}, pn8/z, [x2]
+    mov     za.h[w8, 0, vgx2], {z0.h-z1.h}
+    b       .non_linear_loop
+
+// -------- AddRowColProducts: ZA += rows ⊗ cols (rank-1 K=1) ---------------
+
+.add_row_col_products:
+    ldp     x2, x3, [x0, #8]           // rows ptr, cols ptr
+    ld1h    {z0.h-z1.h}, pn8/z, [x2]
+    ld1rh   {z4.h}, p0/z, [x3]
+    fmla    za.h[w8, 0, vgx2], {z0.h-z1.h}, z4.h[0]
+    b       .non_linear_loop
+
+// -------- AddUnicast: ZA += C from strided buffer --------------------------
+
+.add_unicast:
+    ldp     x5, x6, [x0, #8]    // ptr, row_byte_stride
+    ldp     x7, x9, [x0, #24]   // col_byte_stride, item_size
+
+    cmp     x6, #2
+    b.ne    .Laddu_generic
+    cmp     x9, #2
+    b.ne    .Laddu_generic
+
+    ld1h    {z16.h-z17.h}, pn8/z, [x5]
+    mov     {z0.h-z1.h}, za.h[w8, 0, vgx2]
+    fadd    z0.h, p0/m, z0.h, z16.h
+    fadd    z1.h, p0/m, z1.h, z17.h
+    mov     za.h[w8, 0, vgx2], {z0.h-z1.h}
+    b       .non_linear_loop
+
+.Laddu_generic:
+    mov     x3, #0
+    mov     x9, x1
+.Laddu_gather:
+    ldrh    w10, [x5]
+    strh    w10, [x9], #2
+    add     x5, x5, x6
+    add     x3, x3, #1
+    cmp     x3, #64
+    b.lt    .Laddu_gather
+    ld1h    {z16.h-z17.h}, pn8/z, [x1]
+    mov     {z0.h-z1.h}, za.h[w8, 0, vgx2]
+    fadd    z0.h, p0/m, z0.h, z16.h
+    fadd    z1.h, p0/m, z1.h, z17.h
+    mov     za.h[w8, 0, vgx2], {z0.h-z1.h}
+    b       .non_linear_loop
+
+// -------- scalar / per_col ops (degenerate at NR=1) ------------------------
+
+{% macro scalar_op(label, op) %}
+{{label}}:
+    ldrh    w2, [x0, #8]
+    dup     z4.h, w2
+    mov     {z0.h-z1.h}, za.h[w8, 0, vgx2]
+    {{op}}  z0.h, p0/m, z0.h, z4.h
+    {{op}}  z1.h, p0/m, z1.h, z4.h
+    mov     za.h[w8, 0, vgx2], {z0.h-z1.h}
+    b       .non_linear_loop
+{% endmacro %}
+
+{{ scalar_op('.scalar_add', 'fadd') }}
+{{ scalar_op('.scalar_mul', 'fmul') }}
+{{ scalar_op('.scalar_sub', 'fsubr') }}
+{{ scalar_op('.scalar_sub_flipped', 'fsub') }}
+{{ scalar_op('.scalar_min', 'fmin') }}
+{{ scalar_op('.scalar_max', 'fmax') }}
+
+{% macro per_col_op(label, op) %}
+{{label}}:
+    ldr     x2, [x0, #8]
+    ld1rh   {z4.h}, p0/z, [x2]
+    mov     {z0.h-z1.h}, za.h[w8, 0, vgx2]
+    {{op}}  z0.h, p0/m, z0.h, z4.h
+    {{op}}  z1.h, p0/m, z1.h, z4.h
+    mov     za.h[w8, 0, vgx2], {z0.h-z1.h}
+    b       .non_linear_loop
+{% endmacro %}
+
+{{ per_col_op('.per_col_add', 'fadd') }}
+{{ per_col_op('.per_col_mul', 'fmul') }}
+{{ per_col_op('.per_col_sub', 'fsubr') }}
+{{ per_col_op('.per_col_sub_flipped', 'fsub') }}
+{{ per_col_op('.per_col_min', 'fmin') }}
+{{ per_col_op('.per_col_max', 'fmax') }}
+
+// -------- per_row ops: 64-element f16 bias, lane-wise -----------------------
+
+{% macro per_row_op(label, op) %}
+{{label}}:
+    ldr     x2, [x0, #8]
+    ld1h    {z16.h-z17.h}, pn8/z, [x2]
+    mov     {z0.h-z1.h}, za.h[w8, 0, vgx2]
+    {{op}}  z0.h, p0/m, z0.h, z16.h
+    {{op}}  z1.h, p0/m, z1.h, z17.h
+    mov     za.h[w8, 0, vgx2], {z0.h-z1.h}
+    b       .non_linear_loop
+{% endmacro %}
+
+{{ per_row_op('.per_row_add', 'fadd') }}
+{{ per_row_op('.per_row_mul', 'fmul') }}
+{{ per_row_op('.per_row_sub', 'fsubr') }}
+{{ per_row_op('.per_row_sub_flipped', 'fsub') }}
+{{ per_row_op('.per_row_min', 'fmin') }}
+{{ per_row_op('.per_row_max', 'fmax') }}
+
+// -------- not implemented --------------------------------------------------
+
+.leaky_relu:
+.q_scale:
+.q_shl:
+.q_shr:
+    b       .unsupported
+
+// -------- epilogue ---------------------------------------------------------
+
+.return:
+    smstop
+    add     sp, sp, #128
+    ldp     q14, q15, [sp, #96]
+    ldp     q12, q13, [sp, #64]
+    ldp     q10, q11, [sp, #32]
+    ldp     q8,  q9,  [sp], #128
+    ret

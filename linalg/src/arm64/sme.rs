@@ -1,6 +1,11 @@
 use crate::Ops;
 use crate::frame::mmm::ImplementationQuality::ManuallyOptimized;
 use crate::mmm::*;
+// rustc has a builtin primitive `f16` that a `use crate::mmm::*` glob does not
+// shadow; without this explicit import `<f16>` resolves to the primitive (which
+// is not a LADatum) and the f16 kernel registration fails to compile.
+#[cfg(tract_sme_f16f16)]
+use tract_data::prelude::f16;
 
 // CAN_FUSE: everything except LeakyRelu / QScale / RoundingShiftRight /
 // ShiftLeft. LoadTile, AddUnicast, AddRowColProducts, per-row/col/scalar
@@ -18,6 +23,12 @@ const CAN_FUSE: fn(&FusedSpec) -> bool = |f| {
 
 const SME: fn() -> bool = has_sme;
 const SME2: fn() -> bool = has_sme2;
+#[cfg(tract_sme_f16f16)]
+const SME_F16F16: fn() -> bool = has_sme_f16f16;
+// The f16 GEMV uses an SME2 multi-vec FMLA into a ZA.H group, so it needs both
+// FEAT_SME2 and FEAT_SME_F16F16.
+#[cfg(tract_sme_f16f16)]
+const SME2_F16F16: fn() -> bool = || has_sme2() && has_sme_f16f16();
 
 // Streaming vector length in bytes, read via `RDSVL x0, #1` (encoding
 // 0x04bf5820). RDSVL is legal in non-streaming mode, but is UNDEFINED
@@ -61,6 +72,27 @@ MMMExternKernel!(
 MMMExternKernel!(
     sme_mmv_f32_64x1<f32>(64, 1)@(128, 128)
     where(SME2)
+    can_fuse(CAN_FUSE)
+    quality(ManuallyOptimized)
+);
+
+// f16 GEMM via the non-widening half-precision outer product `fmopa za.h`
+// (FEAT_SME_F16F16): one 32x32 ZA.H tile, f16 accumulate, gated on
+// FEAT_SME_F16F16 + the 512-bit SVL geometry. Compiled only when the assembler
+// supports +sme-f16f16 (the `tract_sme_f16f16` cfg from build.rs).
+#[cfg(tract_sme_f16f16)]
+MMMExternKernel!(
+    sme_mmm_f16_32x32<f16>(32, 32)@(128, 128)
+    where(SME_F16F16)
+    can_fuse(CAN_FUSE)
+    quality(ManuallyOptimized)
+);
+
+// f16 GEMV (N==1) via the SME2 multi-vec FMLA into a vgx2 ZA.H group.
+#[cfg(tract_sme_f16f16)]
+MMMExternKernel!(
+    sme_mmv_f16_64x1<f16>(64, 1)@(128, 128)
+    where(SME2_F16F16)
     can_fuse(CAN_FUSE)
     quality(ManuallyOptimized)
 );
@@ -179,6 +211,58 @@ pub fn has_sme2() -> bool {
     false
 }
 
+#[cfg(all(target_os = "macos", tract_sme_f16f16))]
+pub fn has_sme_f16f16() -> bool {
+    if std::env::var_os("TRACT_SME_DISABLE").is_some() {
+        return false;
+    }
+    use std::ffi::{CString, c_char, c_int, c_void};
+    use std::ptr::null_mut;
+    unsafe extern "C" {
+        fn sysctlbyname(
+            name: *const c_char,
+            oldp: *mut c_void,
+            oldlenp: *mut usize,
+            newp: *mut c_void,
+            newlen: usize,
+        ) -> c_int;
+    }
+    let Ok(name) = CString::new("hw.optional.arm.FEAT_SME_F16F16") else {
+        return false;
+    };
+    let mut value: u64 = 0;
+    let mut len: usize = std::mem::size_of::<u64>();
+    unsafe {
+        if sysctlbyname(name.as_ptr(), &mut value as *mut _ as *mut c_void, &mut len, null_mut(), 0)
+            != 0
+        {
+            return false;
+        }
+    }
+    // FEAT_SME_F16F16 present AND the 512-bit streaming geometry our f16 kernel
+    // assumes. (M4 may lack the sysctl, in which case we fall back to AMX f16.)
+    value != 0 && sme_geometry_supported()
+}
+
+#[cfg(all(target_os = "linux", tract_sme_f16f16))]
+pub fn has_sme_f16f16() -> bool {
+    // HWCAP2_SME_F16F16 = 1 << 42 on aarch64 (kernel ABI).
+    const HWCAP2_SME_F16F16: u64 = 1 << 42;
+    unsafe extern "C" {
+        fn getauxval(t: u64) -> u64;
+    }
+    const AT_HWCAP2: u64 = 26;
+    let feat = unsafe { (getauxval(AT_HWCAP2) & HWCAP2_SME_F16F16) != 0 };
+    // FEAT_SME_F16F16 present AND the 512-bit streaming geometry (rejects
+    // qemu-user unless run with -cpu max,sme512=on).
+    feat && sme_geometry_supported()
+}
+
+#[cfg(all(not(any(target_os = "macos", target_os = "linux")), tract_sme_f16f16))]
+pub fn has_sme_f16f16() -> bool {
+    false
+}
+
 pub fn plug(ops: &mut Ops) {
     if has_sme() {
         log::info!("SME optimisation activated");
@@ -189,6 +273,18 @@ pub fn plug(ops: &mut Ops) {
         log::info!("SME2 GEMV optimisation activated");
         ops.mmv_f32 = Box::new(|_, _| sme_mmv_f32_64x1.mmm());
         ops.mmm_impls.extend_from_slice(&[sme_mmv_f32_64x1.mmm()]);
+    }
+    #[cfg(tract_sme_f16f16)]
+    if has_sme_f16f16() {
+        log::info!("SME f16 optimisation activated (experimental, M5/A19)");
+        ops.mmm_f16 = Box::new(|_, _, _| sme_mmm_f16_32x32.mmm());
+        ops.mmm_impls.extend_from_slice(&[sme_mmm_f16_32x32.mmm()]);
+    }
+    #[cfg(tract_sme_f16f16)]
+    if has_sme2() && has_sme_f16f16() {
+        log::info!("SME2 f16 GEMV optimisation activated (experimental, M5/A19)");
+        ops.mmv_f16 = Box::new(|_, _| sme_mmv_f16_64x1.mmm());
+        ops.mmm_impls.extend_from_slice(&[sme_mmv_f16_64x1.mmm()]);
     }
     if !has_sme() && !has_sme2() {
         log::info!("No SME optimisation");
