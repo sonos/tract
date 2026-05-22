@@ -803,36 +803,56 @@ impl EvalOp for OptBinUnicast {
         let first_non_unary_axis =
             b_shape.iter().enumerate().take_while(|&(_, &dim)| dim == 1).map(|(i, _)| i + 1).last();
 
+        // [optbin-instr] entry trace — always print so we know which OptBinUnicast invocation
+        // is running. Cheap, fires once per eval, lets us correlate with [unicast-instr].
+        eprintln!(
+            "[optbin-instr] OptBinUnicast::eval ENTRY binop={} a.shape={:?} b.shape={:?} \
+             first_non_unary_axis={:?}",
+            self.binop.name(),
+            a.shape(),
+            b_view.shape(),
+            first_non_unary_axis,
+        );
+
         if let Some(first_non_unary_axis) = first_non_unary_axis {
             // Iterate on outter dimensions and evaluate with unicast subviews
             let iterating_shape = a.shape()[..first_non_unary_axis].to_vec();
             for it_coords in tract_ndarray::indices(iterating_shape) {
                 let mut view = TensorView::at_prefix(&a, it_coords.slice())?;
-                if view.shape() != &b_view.shape()[it_coords.slice().len()..] {
+                let view_len: usize = view.shape().iter().product();
+                let b_view_len: usize = b_view.shape().iter().product();
+                if view.shape() != &b_view.shape()[it_coords.slice().len()..]
+                    || view_len != b_view_len
+                {
                     eprintln!(
-                        "[optbin-instr] OptBinUnicast::eval shape mismatch: binop={} \
-                         a.shape={:?} b.shape={:?} first_non_unary_axis={} \
-                         it_coords={:?} view.shape={:?} b_inner={:?}",
+                        "[optbin-instr] iter-mismatch: binop={} a.shape={:?} b.shape={:?} \
+                         K={} it_coords={:?} view.shape={:?} view_len={} b_inner={:?} b_view_len={}",
                         self.binop.name(),
                         a.shape(),
                         b_view.shape(),
                         first_non_unary_axis,
                         it_coords.slice(),
                         view.shape(),
+                        view_len,
                         &b_view.shape()[it_coords.slice().len()..],
+                        b_view_len,
                     );
                 }
                 (self.eval_fn)(&mut view, &b_view)?;
             }
         } else {
             let mut view = a.view();
-            if view.shape() != b_view.shape() {
+            let view_len: usize = view.shape().iter().product();
+            let b_view_len: usize = b_view.shape().iter().product();
+            if view.shape() != b_view.shape() || view_len != b_view_len {
                 eprintln!(
-                    "[optbin-instr] OptBinUnicast::eval (no-iter) shape mismatch: binop={} \
-                     a.shape={:?} b.shape={:?}",
+                    "[optbin-instr] no-iter-mismatch: binop={} a.shape={:?} b.shape={:?} \
+                     view_len={} b_view_len={}",
                     self.binop.name(),
                     a.shape(),
                     b_view.shape(),
+                    view_len,
+                    b_view_len,
                 );
             }
             (self.eval_fn)(&mut view, &b_view)?;
