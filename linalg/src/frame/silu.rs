@@ -34,10 +34,8 @@ pub mod test {
             #[test]
             fn trivial() {
                 if $cond {
-                    $crate::frame::silu::test::test_silu::<$ker, $t>(
-                        &[-5f32, -1.0, 0.0, 1.0, 5.0],
-                    )
-                    .unwrap();
+                    $crate::frame::silu::test::test_silu::<$ker, $t>(&[-5f32, -1.0, 0.0, 1.0, 5.0])
+                        .unwrap();
                 }
             }
         };

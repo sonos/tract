@@ -34,9 +34,9 @@ pub mod test {
             #[test]
             fn trivial() {
                 if $cond {
-                    $crate::frame::hardswish::test::test_hardswish::<$ker, $t>(
-                        &[-10f32, -3.0, -1.0, 0.0, 1.0, 3.0, 6.0, 10.0],
-                    )
+                    $crate::frame::hardswish::test::test_hardswish::<$ker, $t>(&[
+                        -10f32, -3.0, -1.0, 0.0, 1.0, 3.0, 6.0, 10.0,
+                    ])
                     .unwrap();
                 }
             }
