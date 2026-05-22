@@ -795,6 +795,18 @@ impl EvalOp for OptBinUnicast {
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (a, b) = args_2!(inputs);
+        // The unicast fast path indexes `a`'s storage as a contiguous slice
+        // sized to ∏(a.shape()); same for `b`. Upstream ops can produce
+        // tensors where `tensor.len() != ∏(tensor.shape())` (custom strides
+        // / virtual broadcast). Fall back to the generic broadcasting eval
+        // when that invariant doesn't hold.
+        let a_regular = a.len() == a.shape().iter().product::<usize>();
+        let b_regular = b.len() == b.shape().iter().product::<usize>();
+        if !a_regular || !b_regular {
+            let c_dt = self.binop.result_datum_type(a.datum_type(), b.datum_type())?;
+            return Ok(tvec!(self.binop.eval(a, b, c_dt)?.into_tvalue()));
+        }
+
         // Not a requirement as TensorView doesn't require a owned tensor but in reality
         // "a "should be mutable (it's omitted here as Rust compiler advise to remove it)
         let a = a.into_tensor();
