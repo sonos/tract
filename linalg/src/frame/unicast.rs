@@ -67,6 +67,17 @@ where
         K::name()
     }
     fn run(&self, a: &mut [T], b: &[T]) -> TractResult<()> {
+        if a.len() != b.len() {
+            eprintln!(
+                "[unicast-instr] LEN MISMATCH at Unicast::run kernel={} a.len={} b.len={} nr={} alignment_bytes={}",
+                K::name(),
+                a.len(),
+                b.len(),
+                K::nr(),
+                K::alignment_bytes(),
+            );
+            eprintln!("[unicast-instr] backtrace:\n{}", std::backtrace::Backtrace::force_capture());
+        }
         unicast_with_alignment(a, b, |a, b| K::run(a, b), K::nr(), K::alignment_bytes())
     }
 }
@@ -115,7 +126,25 @@ where
             buffers.1.ensure(nr * T::datum_type().size_of(), alignment_bytes);
             let tmp_a = std::slice::from_raw_parts_mut(buffers.0.buffer as *mut T, nr);
             let tmp_b = std::slice::from_raw_parts_mut(buffers.1.buffer as *mut T, nr);
+            let outer_a_len = a.len();
+            let outer_b_len = b.len();
             let mut compute_via_temp_buffer = |a: &mut [T], b: &[T]| {
+                if a.len() > tmp_a.len() || b.len() > tmp_b.len() {
+                    eprintln!(
+                        "[unicast-instr] OOB IMMINENT in compute_via_temp_buffer: \
+                         sub_a.len={} sub_b.len={} tmp.len={} (nr) outer_a.len={} outer_b.len={} alignment_bytes={}",
+                        a.len(),
+                        b.len(),
+                        nr,
+                        outer_a_len,
+                        outer_b_len,
+                        alignment_bytes,
+                    );
+                    eprintln!(
+                        "[unicast-instr] backtrace:\n{}",
+                        std::backtrace::Backtrace::force_capture()
+                    );
+                }
                 tmp_a[..a.len()].copy_from_slice(a);
                 tmp_b[..b.len()].copy_from_slice(b);
                 f(tmp_a, tmp_b);
