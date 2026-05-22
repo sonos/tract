@@ -665,6 +665,20 @@ impl EvalOp for OptBinByScalar {
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (a, b) = args_2!(inputs);
+        // Same as OptBinUnicast: the fast path uses at_prefix + as_slice_mut
+        // and relies on natural C-order strides for the slice math. Fall back
+        // to the generic eval if either operand has non-natural strides or a
+        // storage size that doesn't match its declared shape (e.g. after
+        // Tensor::insert_axis which leaves non-natural strides behind).
+        let a_natural = a.len() == a.shape().iter().product::<usize>()
+            && a.strides() == &*Tensor::natural_strides(a.shape());
+        let b_natural = b.len() == b.shape().iter().product::<usize>()
+            && b.strides() == &*Tensor::natural_strides(b.shape());
+        if !a_natural || !b_natural {
+            let c_dt = self.binop.result_datum_type(a.datum_type(), b.datum_type())?;
+            return Ok(tvec!(self.binop.eval(a, b, c_dt)?.into_tvalue()));
+        }
+
         // Not a requirement as TensorView doesn't require a owned tensor but in reality
         // "a "should be mutable (it's omitted here as Rust compiler advise to remove it)
         let a = a.into_tensor();
