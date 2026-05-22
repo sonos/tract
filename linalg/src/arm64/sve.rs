@@ -9,6 +9,10 @@ use crate::frame::mmm::ImplementationQuality::ManuallyOptimized;
 use crate::mmm::*;
 #[cfg(tract_sve)]
 use crate::pack::PackedFormat;
+// Explicit import so `f16` is tract's half::f16 (LADatum), not rustc's builtin
+// primitive f16 — a glob import would not shadow the primitive.
+#[cfg(tract_sve)]
+use tract_data::prelude::f16;
 
 // f32 SVE kernel can't do LeakyRelu or the i32 quantization ops (matches the
 // arm64simd / SME f32 CAN_FUSE).
@@ -33,17 +37,23 @@ const CAN_FUSE_I32: fn(&FusedSpec) -> bool = |f| !matches!(f, FusedSpec::LeakyRe
 #[cfg(tract_sve)]
 const SVE2: fn() -> bool = has_sve2;
 
+// The f16 kernels need FEAT_SVE2 AND FEAT_FP16 (native f16 arithmetic).
+#[cfg(tract_sve)]
+const SVE2_FP16: fn() -> bool = || has_sve2() && crate::arm64::has_fp16();
+
 // The VLA SVE f32 GEMM kernel, implemented in C (arm64/sve/sve_mmm_f32.c) since
 // Rust has no stable SVE intrinsics. Broadcast-A rank-1 update, N-tile walked in
 // svcntw() chunks → correct and full-width at any VL.
 #[cfg(tract_sve)]
 mod sve_sys {
     use crate::frame::mmm::FusedKerSpec;
+    use tract_data::prelude::f16;
     unsafe extern "C" {
         pub fn sve_mmm_f32_kernel(ops: *const FusedKerSpec<f32>) -> isize;
         pub fn sve_mmv_f32_64x1_kernel(ops: *const FusedKerSpec<f32>) -> isize;
         pub fn sve_mmm_i32_kernel(ops: *const FusedKerSpec<i32>) -> isize;
         pub fn sve_mmm_i32_64x1_kernel(ops: *const FusedKerSpec<i32>) -> isize;
+        pub fn sve_mmm_f16_kernel(ops: *const FusedKerSpec<f16>) -> isize;
     }
 }
 
@@ -91,6 +101,15 @@ MMMRustKernel!(sve_sys::sve_mmm_i32_64x1_kernel => sve_mmm_i32_64x1<i32>(64, 1)
     );
     quality(ManuallyOptimized)
     store(i8)
+);
+
+// The VLA SVE f16 GEMM kernel (arm64/sve/sve_mmm_f16.c), native f16 FMA, gated on
+// SVE2 + FP16. Wired to ops.mmm_f16 when has_fp16().
+#[cfg(tract_sve)]
+MMMRustKernel!(sve_sys::sve_mmm_f16_kernel => sve_mmm_f16_8x8<f16>(8, 8)
+    where(SVE2_FP16)
+    can_fuse(CAN_FUSE)
+    quality(ManuallyOptimized)
 );
 
 // SVE / SVE2 backend.
@@ -185,6 +204,11 @@ pub fn plug(ops: &mut Ops) {
                 sve_mmm_i32_8x8.mmm(),
                 sve_mmm_i32_64x1.mmm(),
             ]);
+            // f16 kernels additionally require FEAT_FP16.
+            if crate::arm64::has_fp16() {
+                ops.mmm_f16 = Box::new(|_, _, _| sve_mmm_f16_8x8.mmm());
+                ops.mmm_impls.extend_from_slice(&[sve_mmm_f16_8x8.mmm()]);
+            }
         }
     } else if has_sve() {
         log::info!("SVE (v1) present; SVE2 kernels not enabled");
