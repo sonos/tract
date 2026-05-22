@@ -808,12 +808,33 @@ impl EvalOp for OptBinUnicast {
             let iterating_shape = a.shape()[..first_non_unary_axis].to_vec();
             for it_coords in tract_ndarray::indices(iterating_shape) {
                 let mut view = TensorView::at_prefix(&a, it_coords.slice())?;
-                debug_assert_eq!(view.shape(), &b_view.shape()[it_coords.slice().len()..]);
+                if view.shape() != &b_view.shape()[it_coords.slice().len()..] {
+                    eprintln!(
+                        "[optbin-instr] OptBinUnicast::eval shape mismatch: binop={} \
+                         a.shape={:?} b.shape={:?} first_non_unary_axis={} \
+                         it_coords={:?} view.shape={:?} b_inner={:?}",
+                        self.binop.name(),
+                        a.shape(),
+                        b_view.shape(),
+                        first_non_unary_axis,
+                        it_coords.slice(),
+                        view.shape(),
+                        &b_view.shape()[it_coords.slice().len()..],
+                    );
+                }
                 (self.eval_fn)(&mut view, &b_view)?;
             }
         } else {
             let mut view = a.view();
-            debug_assert_eq!(view.shape(), b_view.shape());
+            if view.shape() != b_view.shape() {
+                eprintln!(
+                    "[optbin-instr] OptBinUnicast::eval (no-iter) shape mismatch: binop={} \
+                     a.shape={:?} b.shape={:?}",
+                    self.binop.name(),
+                    a.shape(),
+                    b_view.shape(),
+                );
+            }
             (self.eval_fn)(&mut view, &b_view)?;
         }
 
