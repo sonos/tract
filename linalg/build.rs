@@ -227,6 +227,7 @@ fn main() {
                 // codegen. Runtime-gated on has_fp16() as well as SVE2.
                 cc::Build::new()
                     .file("arm64/sve/sve_mmm_f16.c")
+                    .file("arm64/sve/sve_mmv_f16_64x1.c")
                     .flag("-march=armv8.2-a+sve+fp16")
                     .compile("tract_sve_f16_kernels");
                 println!("cargo:rustc-cfg=tract_sve");
