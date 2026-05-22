@@ -34,9 +34,11 @@ let model = tract::onnx()?
 let result = model.run([input.tract()?])?;
 ```
 
-The `tract` crate (`api/rs/src/lib.rs`) is the authoritative public API. The
+The [`tract`](https://crates.io/crates/tract) crate (`api/rs/src/lib.rs`) is the authoritative public API. The
 internal crates (`tract-core`, `tract-nnef`, `tract-onnx`, ...) are not
 stable surface and shouldn't be depended on directly.
+
+For Python, see the [`tract`](https://pypi.org/project/tract/) package on PyPI.
 
 ## Examples
 
@@ -53,10 +55,24 @@ targets today:
 | [`face_detection_yolov8onnx_example`](examples/face_detection_yolov8onnx_example) / [`face_similarity_arcface_onnx`](examples/face_similarity_arcface_onnx) | Modern object detection / face recognition |
 | [`wasm-model-bench`](examples/wasm-model-bench) | Running tract in the browser |
 
-Deeper technical material lives under [`doc/`](doc/) (start at
-[`doc/intro.md`](doc/intro.md)). The Sonos engineering
-[blog](https://tech-blog.sonos.com/posts/optimising-a-neural-network-for-inference/)
+## Resources
+
+Technical documentation lives under [`doc/`](doc/) (start at [`doc/intro.md`](doc/intro.md));
+the [`doc/cli-recipe.md`](doc/cli-recipe.md) page collects practical CLI recipes.
+The Sonos engineering [blog](https://tech-blog.sonos.com/posts/optimising-a-neural-network-for-inference/)
 has a long-form post on tract internals.
+
+## Python
+
+tract is also available as the [`tract`](https://pypi.org/project/tract/) package on PyPI,
+built on top of the same Rust core:
+
+```sh
+pip install tract
+```
+
+The API mirrors the Rust pipeline: load a model, set input facts, optimise, then run.
+Documentation: [sonos.github.io/tract](https://sonos.github.io/tract). Source lives in [`api/py/`](api/py/).
 
 ## Backends
 

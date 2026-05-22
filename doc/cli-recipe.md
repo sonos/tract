@@ -237,3 +237,22 @@ The log displays "Checked output #0, ok." (among other information).
 
 [generate_io.py here](/onnx/test_cases/transformer-mlm/generate_io.py) contains an example building a
 testcase for a BERT model from huggingface for inspiration.
+
+## Saving outputs
+
+The `--save-outputs` (long form `--save-outputs-npz`) flag on the `run` subcommand writes the
+model outputs to an `.npz` file after execution. This is the easiest way to capture a reference
+output for a given input, which can then be used with `--assert-output-bundle` in a later run.
+
+```sh
+# capture outputs from a first run
+tract -O model.onnx run --input-from-bundle inputs.npz --save-outputs reference.npz
+
+# replay and assert on a subsequent run (e.g. after a code change)
+tract -O model.onnx run --input-from-bundle inputs.npz --assert-output-bundle reference.npz
+```
+
+Output tensors are keyed by their model output name (or `output_N` if unnamed).
+
+There is also `--save-outputs-nnef` which writes each output tensor as a separate `.dat` file
+in a folder, in NNEF layout — useful for inspecting individual tensors with external tools.
