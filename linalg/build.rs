@@ -222,6 +222,13 @@ fn main() {
                     .file("arm64/sve/sve_mmm_i32_64x1.c")
                     .flag("-march=armv8.2-a+sve")
                     .compile("tract_sve_kernels");
+                // f16 kernels need native FP16 arithmetic (+fp16); compiled
+                // separately so the +sve-only kernels above never gain fp16
+                // codegen. Runtime-gated on has_fp16() as well as SVE2.
+                cc::Build::new()
+                    .file("arm64/sve/sve_mmm_f16.c")
+                    .flag("-march=armv8.2-a+sve+fp16")
+                    .compile("tract_sve_f16_kernels");
                 println!("cargo:rustc-cfg=tract_sve");
             }
             if std::env::var("CARGO_FEATURE_NO_FP16").is_err() {
