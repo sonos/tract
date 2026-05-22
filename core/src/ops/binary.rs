@@ -795,14 +795,21 @@ impl EvalOp for OptBinUnicast {
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (a, b) = args_2!(inputs);
-        // The unicast fast path indexes `a`'s storage as a contiguous slice
-        // sized to ∏(a.shape()); same for `b`. Upstream ops can produce
-        // tensors where `tensor.len() != ∏(tensor.shape())` (custom strides
-        // / virtual broadcast). Fall back to the generic broadcasting eval
-        // when that invariant doesn't hold.
-        let a_regular = a.len() == a.shape().iter().product::<usize>();
-        let b_regular = b.len() == b.shape().iter().product::<usize>();
-        if !a_regular || !b_regular {
+        // The unicast fast path indexes each input's storage via at_prefix +
+        // as_slice_mut, which uses `strides[i-1]` to size the resulting slice
+        // (data/src/tensor/view.rs:99). That formula only matches ∏(shape[i..])
+        // when the tensor has natural C-order strides. Producers like
+        // Tensor::insert_axis leave non-natural strides on a tensor (e.g.
+        // shape `[1, 1, 640]` with strides `[1, 1, 1]` after two insert_axis
+        // on a `[640]` tensor), which silently breaks the slice math. Fall
+        // back to the generic broadcasting eval when either operand is not in
+        // natural strides (or has a storage size that doesn't match the
+        // declared shape).
+        let a_natural = a.len() == a.shape().iter().product::<usize>()
+            && a.strides() == &*Tensor::natural_strides(a.shape());
+        let b_natural = b.len() == b.shape().iter().product::<usize>()
+            && b.strides() == &*Tensor::natural_strides(b.shape());
+        if !a_natural || !b_natural {
             let c_dt = self.binop.result_datum_type(a.datum_type(), b.datum_type())?;
             return Ok(tvec!(self.binop.eval(a, b, c_dt)?.into_tvalue()));
         }
@@ -1197,4 +1204,55 @@ pub(crate) fn one_input_is_uniform(
         }
     }
     Ok(None)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Reproducer for the OptBinUnicast panic seen on Nemotron decoder CI
+    /// (cuda-lovelace + Darwin). A 1-D tensor that goes through `insert_axis`
+    /// twice ends up with declared shape `[1, 1, 640]` but strides `[1, 1, 1]`
+    /// instead of the natural `[640, 640, 1]`. TensorView::at_prefix then
+    /// returns a view whose `len()` reads `strides[1] = 1`, so the unicast
+    /// kernel sees `a.len = 1, b.len = 640` and OOBs into the tile buffer.
+    ///
+    /// Pre-fix this test panics inside `linalg/src/frame/unicast.rs` with
+    /// "range end index 640 out of range for slice of length …". With the
+    /// natural-strides guard in `OptBinUnicast::eval`, the call falls back to
+    /// `BinMiniOp::eval` and produces correct output.
+    #[test]
+    fn opt_bin_unicast_falls_back_on_non_natural_strides() {
+        // Construct `a` the way the LSTM bias path does: build a 640-element
+        // 1-D tensor, then insert two leading unit dims.
+        let a_data: Vec<f32> = (0..640).map(|i| i as f32).collect();
+        let mut a = tensor1(&a_data);
+        a.insert_axis(0).unwrap();
+        a.insert_axis(0).unwrap();
+        assert_eq!(a.shape(), &[1, 1, 640]);
+        assert_eq!(a.strides(), &[1, 1, 1]);
+        assert_ne!(a.strides(), &*Tensor::natural_strides(a.shape()));
+
+        // `b` is a normal contiguous tensor of the same declared shape.
+        let b_data: Vec<f32> = vec![1.0; 640];
+        let mut b = tensor1(&b_data);
+        b.insert_axis(0).unwrap();
+        b.insert_axis(0).unwrap();
+        // Reset b to natural strides so we exercise only the a-broken path
+        // and let the b-side go through cleanly.
+        b = b.into_shape(&[1, 1, 640]).unwrap();
+
+        let linalg_fn = tract_linalg::bin_unicast(f32::datum_type(), BinOp::Add)
+            .expect("f32 unicast Add kernel available");
+        let op = OptBinUnicast { binop: Box::new(Add), eval_fn: Arc::from(linalg_fn) };
+
+        let out = op.eval(tvec!(a.into_tvalue(), b.into_tvalue())).unwrap();
+        let out = &out[0];
+        assert_eq!(out.shape(), &[1, 1, 640]);
+        let plain = out.try_as_plain().unwrap();
+        let out_slice = plain.as_slice::<f32>().unwrap();
+        for (i, v) in out_slice.iter().enumerate() {
+            assert_eq!(*v, i as f32 + 1.0, "mismatch at {i}");
+        }
+    }
 }
