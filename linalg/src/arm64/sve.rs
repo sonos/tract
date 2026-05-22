@@ -54,6 +54,7 @@ mod sve_sys {
         pub fn sve_mmm_i32_kernel(ops: *const FusedKerSpec<i32>) -> isize;
         pub fn sve_mmm_i32_64x1_kernel(ops: *const FusedKerSpec<i32>) -> isize;
         pub fn sve_mmm_f16_kernel(ops: *const FusedKerSpec<f16>) -> isize;
+        pub fn sve_mmv_f16_64x1_kernel(ops: *const FusedKerSpec<f16>) -> isize;
     }
 }
 
@@ -107,6 +108,15 @@ MMMRustKernel!(sve_sys::sve_mmm_i32_64x1_kernel => sve_mmm_i32_64x1<i32>(64, 1)
 // SVE2 + FP16. Wired to ops.mmm_f16 when has_fp16().
 #[cfg(tract_sve)]
 MMMRustKernel!(sve_sys::sve_mmm_f16_kernel => sve_mmm_f16_8x8<f16>(8, 8)
+    where(SVE2_FP16)
+    can_fuse(CAN_FUSE)
+    quality(ManuallyOptimized)
+);
+
+// The VLA SVE f16 GEMV kernel (arm64/sve/sve_mmv_f16_64x1.c), MR=64 NR=1,
+// dispatched when N == 1. Wired to ops.mmv_f16 when has_fp16().
+#[cfg(tract_sve)]
+MMMRustKernel!(sve_sys::sve_mmv_f16_64x1_kernel => sve_mmv_f16_64x1<f16>(64, 1)
     where(SVE2_FP16)
     can_fuse(CAN_FUSE)
     quality(ManuallyOptimized)
@@ -207,7 +217,8 @@ pub fn plug(ops: &mut Ops) {
             // f16 kernels additionally require FEAT_FP16.
             if crate::arm64::has_fp16() {
                 ops.mmm_f16 = Box::new(|_, _, _| sve_mmm_f16_8x8.mmm());
-                ops.mmm_impls.extend_from_slice(&[sve_mmm_f16_8x8.mmm()]);
+                ops.mmv_f16 = Box::new(|_, _| sve_mmv_f16_64x1.mmm());
+                ops.mmm_impls.extend_from_slice(&[sve_mmm_f16_8x8.mmm(), sve_mmv_f16_64x1.mmm()]);
             }
         }
     } else if has_sve() {
