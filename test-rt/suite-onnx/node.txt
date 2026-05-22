@@ -728,7 +728,7 @@ test_attention_4d_with_qk_matmul_softmax_expanded since:24
 test_averagepool_2d_ceil_last_window_starts_on_pad since:24
 test_conv_with_autopad_same
 test_convinteger_without_padding
-test_convtranspose_autopad_same
+test_convtranspose_autopad_same since:18
 test_convtranspose_group_2 since:24
 test_convtranspose_group_2_image_3 since:24
 test_gelu_default_1_expanded since:24
