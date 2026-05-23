@@ -379,3 +379,43 @@ impl<K: MatMatMulKer> PackedPackedProblem<K> {
         result
     }
 }
+
+// Large-shape frame tests that exercise the single-thread 2D-blocked tile walk
+// (`run_single_thread_blocked`): the existing `arbitrary_problem` frame proptests
+// only reach 3 panels per dim (m,n < 3·mr), below the ST_BLK=16 blocking
+// threshold, so the blocked path was otherwise uncovered. generic_f32_4x4 has
+// mr=nr=4, so m,n=80 → 20×20 panels → multiple blocks. Compares the frame
+// output against the naive reference (must be bit/approx-exact).
+#[cfg(test)]
+mod single_thread_blocking {
+    use super::PackedPackedProblem;
+    use crate::generic::mmm::generic_f32_4x4;
+    use tract_data::internal::TractResult;
+
+    fn check_large(m: usize, n: usize, k: usize) -> TractResult<()> {
+        let a: Vec<f32> = (0..m * k).map(|i| ((i * 7 + 3) % 13) as f32 - 6.0).collect();
+        let b: Vec<f32> = (0..k * n).map(|i| ((i * 5 + 1) % 11) as f32 - 5.0).collect();
+        PackedPackedProblem::frame(&*generic_f32_4x4, 0, m, n, a, b).check()
+    }
+
+    #[test]
+    fn blocked_80x80() -> TractResult<()> {
+        check_large(80, 80, 24) // 20×20 panels, multiple ST_BLK blocks
+    }
+    #[test]
+    fn blocked_skew_200x40() -> TractResult<()> {
+        check_large(200, 40, 8) // 50×10 panels (m-axis chunked)
+    }
+    #[test]
+    fn blocked_40x200() -> TractResult<()> {
+        check_large(40, 200, 8) // 10×50 panels (n-axis chunked)
+    }
+    #[test]
+    fn blocked_64x64_exact() -> TractResult<()> {
+        check_large(64, 64, 16) // exactly 16×16 panels (block boundary)
+    }
+    #[test]
+    fn blocked_68x68_offset() -> TractResult<()> {
+        check_large(68, 68, 10) // 17×17 panels (one full block + a 1-panel remainder)
+    }
+}
