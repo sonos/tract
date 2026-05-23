@@ -217,10 +217,19 @@ impl<K: MatMatMulKer> MatMatMul for K {
                         prefer_row = (!col) as usize;
                     }
                 }
+                // k drives the single-thread cache-block size; read it from the
+                // first AddMatMul's packed input (0 if none → max block).
+                let k = non_linear
+                    .iter()
+                    .find_map(|f| match f {
+                        FusedSpec::AddMatMul { a, .. } => Some(a.k()),
+                        _ => None,
+                    })
+                    .unwrap_or(0);
                 if prefer_col > prefer_row {
-                    run_with_scratch_space_col_outer(self, m, n, scratch, non_linear)
+                    run_with_scratch_space_col_outer(self, m, n, k, scratch, non_linear)
                 } else {
-                    run_with_scratch_space_row_outer(self, m, n, scratch, non_linear)
+                    run_with_scratch_space_row_outer(self, m, n, k, scratch, non_linear)
                 }
             }
         }
@@ -270,23 +279,153 @@ unsafe fn run_with_scratch_space_vec<K: MatMatMulKer>(
     }
 }
 
+/// Upper bound on the single-thread panel-block edge (matches the multithread
+/// `chunk_grid` default).
+const ST_BLK_MAX: usize = 16;
+
+#[cfg(target_os = "linux")]
+fn parse_cache_size(s: &str) -> usize {
+    let s = s.trim();
+    let (num, mult) = if let Some(n) = s.strip_suffix(['K', 'k']) {
+        (n, 1024)
+    } else if let Some(n) = s.strip_suffix(['M', 'm']) {
+        (n, 1024 * 1024)
+    } else {
+        (s, 1)
+    };
+    num.trim().parse::<usize>().unwrap_or(0) * mult
+}
+
+/// Best-effort L2 data-cache size in bytes (per perf-core / cluster); 0 if
+/// unknown. Cached. Used to size the single-thread cache-block budget so it is
+/// correct across hardware instead of a hard-coded constant.
+fn detect_l2_bytes() -> usize {
+    static L2: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
+    *L2.get_or_init(|| {
+        #[cfg(target_os = "macos")]
+        {
+            let sysctl = |k: &str| -> Option<usize> {
+                let o = std::process::Command::new("sysctl").arg("-n").arg(k).output().ok()?;
+                if !o.status.success() {
+                    return None;
+                }
+                String::from_utf8_lossy(&o.stdout).trim().parse().ok()
+            };
+            // Prefer the performance-core L2 on hybrid Apple Silicon.
+            sysctl("hw.perflevel0.l2cachesize").or_else(|| sysctl("hw.l2cachesize")).unwrap_or(0)
+        }
+        #[cfg(target_os = "linux")]
+        {
+            // index2/index3 is typically the unified L2 (index0/1 are L1 d/i).
+            for idx in [2usize, 3] {
+                if let Ok(s) =
+                    std::fs::read_to_string(format!("/sys/devices/system/cpu/cpu0/cache/index{idx}/size"))
+                {
+                    let b = parse_cache_size(s.trim());
+                    if b > 0 {
+                        return b;
+                    }
+                }
+            }
+            0
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+        {
+            0
+        }
+    })
+}
+
+/// Working-set budget (bytes) for the single-thread cache-block: ~a third of L2
+/// (leaving room for the C accumulator tile + packing metadata). Conservative
+/// 256 KiB fallback when L2 is unknown (WASM/Windows/BSD) ⇒ small blocks ≈ the
+/// naive loop, so it can never over-block a cache it can't see.
+fn block_budget_bytes() -> usize {
+    let l2 = detect_l2_bytes();
+    if l2 == 0 { 256 * 1024 } else { (l2 / 3).clamp(64 * 1024, 8 * 1024 * 1024) }
+}
+
+/// Cache-adaptive panel-block edge: large enough to amortise streaming, small
+/// enough that the block's A+B sub-panels (`~blk·(mr+nr)·k·elem_bytes`) stay
+/// L2-resident at the given `k`. Capped at [`ST_BLK_MAX`]; the floor of 1
+/// degrades exactly to the naive loop, so an unknown/small cache can never
+/// over-block (regression-safe). The budget is **cache-size derived** (not a
+/// hard-coded constant), so it is correct across hardware.
+#[inline]
+fn st_block_edge(mr: usize, nr: usize, k: usize, elem_bytes: usize) -> usize {
+    if k == 0 {
+        return ST_BLK_MAX;
+    }
+    let per_blk = ((mr + nr) * k * elem_bytes.max(1)).max(1);
+    (block_budget_bytes() / per_blk).clamp(1, ST_BLK_MAX)
+}
+
+/// Single-thread tile walk over the `m_panels × n_panels` grid, blocked into
+/// cache-sized panel blocks for locality (the naive nested loop re-streams the
+/// whole inner operand per outer panel at large k; the multithread path already
+/// blocks this way via `chunk_grid`). `col_outer` selects the within-block inner
+/// order (B-reuse vs A-reuse). Reordering independent tiles changes no result —
+/// bit-exact with the naive loop.
+#[inline]
+unsafe fn run_single_thread_blocked<K: MatMatMulKer>(
+    ker: &K,
+    m_panels: usize,
+    n_panels: usize,
+    k: usize,
+    col_outer: bool,
+    scratch: &mut ScratchSpaceImpl<K::Acc>,
+    non_linear: &[FusedSpec],
+) -> TractResult<()> {
+    unsafe {
+        let blk = st_block_edge(ker.mr(), ker.nr(), k, K::Acc::datum_type().size_of());
+        scratch.run_in_tls_scope(|scratch, tls| {
+            let mut jb = 0;
+            while jb < n_panels {
+                let jb_end = (jb + blk).min(n_panels);
+                let mut ja = 0;
+                while ja < m_panels {
+                    let ja_end = (ja + blk).min(m_panels);
+                    if col_outer {
+                        for ib in jb..jb_end {
+                            for ia in ja..ja_end {
+                                scratch.run_one_tile(ker, non_linear, tls, ia, ib)?;
+                            }
+                        }
+                    } else {
+                        for ia in ja..ja_end {
+                            for ib in jb..jb_end {
+                                scratch.run_one_tile(ker, non_linear, tls, ia, ib)?;
+                            }
+                        }
+                    }
+                    ja = ja_end;
+                }
+                jb = jb_end;
+            }
+            TractResult::Ok(())
+        })
+    }
+}
+
 unsafe fn run_with_scratch_space_col_outer<K: MatMatMulKer>(
     ker: &K,
     m: usize,
     n: usize,
+    k: usize,
     scratch: &mut ScratchSpaceImpl<K::Acc>,
     non_linear: &[FusedSpec],
 ) -> TractResult<()> {
     unsafe {
         match crate::multithread::current_tract_executor() {
-            Executor::SingleThread => scratch.run_in_tls_scope(|scratch, tls| {
-                for ib in 0..n.divceil(ker.nr()) {
-                    for ia in 0..m.divceil(ker.mr()) {
-                        scratch.run_one_tile(ker, non_linear, tls, ia, ib)?;
-                    }
-                }
-                TractResult::Ok(())
-            }),
+            Executor::SingleThread => run_single_thread_blocked(
+                ker,
+                m.divceil(ker.mr()),
+                n.divceil(ker.nr()),
+                k,
+                true,
+                scratch,
+                non_linear,
+            ),
             #[cfg(feature = "multithread-mm")]
             Executor::MultiThread(pool) => chunked_dispatch_rayon(
                 Some(&pool),
@@ -327,19 +466,21 @@ unsafe fn run_with_scratch_space_row_outer<K: MatMatMulKer>(
     ker: &K,
     m: usize,
     n: usize,
+    k: usize,
     scratch: &mut ScratchSpaceImpl<K::Acc>,
     non_linear: &[FusedSpec],
 ) -> TractResult<()> {
     unsafe {
         match crate::multithread::current_tract_executor() {
-            Executor::SingleThread => scratch.run_in_tls_scope(|scratch, tls| {
-                for ia in 0..m.divceil(ker.mr()) {
-                    for ib in 0..n.divceil(ker.nr()) {
-                        scratch.run_one_tile(ker, non_linear, tls, ia, ib)?;
-                    }
-                }
-                TractResult::Ok(())
-            }),
+            Executor::SingleThread => run_single_thread_blocked(
+                ker,
+                m.divceil(ker.mr()),
+                n.divceil(ker.nr()),
+                k,
+                false,
+                scratch,
+                non_linear,
+            ),
             #[cfg(feature = "multithread-mm")]
             Executor::MultiThread(pool) => chunked_dispatch_rayon(
                 Some(&pool),
