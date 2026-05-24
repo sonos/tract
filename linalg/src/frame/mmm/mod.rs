@@ -318,9 +318,9 @@ fn detect_l2_bytes() -> usize {
         {
             // index2/index3 is typically the unified L2 (index0/1 are L1 d/i).
             for idx in [2usize, 3] {
-                if let Ok(s) =
-                    std::fs::read_to_string(format!("/sys/devices/system/cpu/cpu0/cache/index{idx}/size"))
-                {
+                if let Ok(s) = std::fs::read_to_string(format!(
+                    "/sys/devices/system/cpu/cpu0/cache/index{idx}/size"
+                )) {
                     let b = parse_cache_size(s.trim());
                     if b > 0 {
                         return b;
