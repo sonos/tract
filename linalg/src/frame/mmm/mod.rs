@@ -76,6 +76,10 @@ pub trait MatMatMul: Debug + dyn_clone::DynClone + Send + Sync + std::any::Any {
     fn quality(&self) -> ImplementationQuality;
     fn dynamic_boost(&self) -> isize;
 
+    /// Whether this kernel is runnable on the current CPU (platform feature
+    /// gate, e.g. FEAT_DotProd for the SDOT i8 kernel).
+    fn is_supported_here(&self) -> bool;
+
     #[allow(clippy::type_complexity)]
     fn packings(&self) -> &[(Box<dyn MMMInputFormat>, Box<dyn MMMInputFormat>)];
 
@@ -143,6 +147,10 @@ impl<K: MatMatMulKer> MatMatMul for K {
 
     fn dynamic_boost(&self) -> isize {
         MatMatMulKer::dynamic_boost(self)
+    }
+
+    fn is_supported_here(&self) -> bool {
+        MatMatMulKer::is_supported_here(self)
     }
 
     fn packings(&self) -> &[(Box<dyn MMMInputFormat>, Box<dyn MMMInputFormat>)] {
