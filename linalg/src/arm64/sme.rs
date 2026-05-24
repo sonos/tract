@@ -18,6 +18,13 @@ const CAN_FUSE: fn(&FusedSpec) -> bool = |f| {
 
 const SME: fn() -> bool = has_sme;
 const SME2: fn() -> bool = has_sme2;
+// The SMOPA i32 kernel implements the quant fuse ops (QScale / RoundingShiftRight
+// / ShiftLeft) bit-exactly; only LeakyRelu is unsupported (kernel returns 1).
+const CAN_FUSE_I32: fn(&FusedSpec) -> bool = |f| !matches!(f, FusedSpec::LeakyRelu(_));
+
+MMMExternKernel!(sme_qmmm_i32_32x32<i32>(32,32)@(128,128) where(SME2) can_fuse(CAN_FUSE_I32)
+    packing[1] = i8i8 => |k| k.with_packing(crate::pack::PackedI8K4::new(32), crate::pack::PackedI8K4::new(32));
+    quality(ManuallyOptimized) store(i8));
 
 // Streaming vector length in bytes, read via `RDSVL x0, #1` (encoding
 // 0x04bf5820). RDSVL is legal in non-streaming mode, but is UNDEFINED
@@ -188,7 +195,8 @@ pub fn plug(ops: &mut Ops) {
     if has_sme2() {
         log::info!("SME2 GEMV optimisation activated");
         ops.mmv_f32 = Box::new(|_, _| sme_mmv_f32_64x1.mmm());
-        ops.mmm_impls.extend_from_slice(&[sme_mmv_f32_64x1.mmm()]);
+        ops.qmmm_i32 = Box::new(|_, _, _| sme_qmmm_i32_32x32.mmm());
+        ops.mmm_impls.extend_from_slice(&[sme_mmv_f32_64x1.mmm(), sme_qmmm_i32_32x32.mmm()]);
     }
     if !has_sme() && !has_sme2() {
         log::info!("No SME optimisation");
