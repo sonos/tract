@@ -53,8 +53,14 @@ pub fn strategize(model: &TypedModel, node: &TypedNode, op: &EinSumMatMul) -> Tr
         return Ok(single_strat(it));
     }
     if op.n.as_i64().is_some_and(|n| n > 1) {
-        let it =
-            impls.into_iter().max_by_key(|(m, _, pe)| (pe.is_none(), m.nr() * m.mr())).unwrap();
+        // For a 2D matmul (n > 1) a GEMV kernel (nr == 1) is a poor fit: it
+        // processes one output column per pass. Demote nr == 1 so it never wins
+        // the `nr * mr` tie against a square tile (e.g. i8 64x1 vs 8x8 both have
+        // nr*mr == 64). Ordering among nr > 1 kernels is left untouched.
+        let it = impls
+            .into_iter()
+            .max_by_key(|(m, _, pe)| (pe.is_none(), m.nr() > 1, m.nr() * m.mr()))
+            .unwrap();
         return Ok(single_strat(it));
     }
     let mut grouped_by_left_packing = Vec::<(&dyn MMMInputFormat, Vec<_>)>::new();
@@ -79,7 +85,21 @@ pub fn strategize(model: &TypedModel, node: &TypedNode, op: &EinSumMatMul) -> Tr
             (p, best_for_mmv, best_for_mmm)
         })
         .max_by_key(|(_, mmv, mmm)| {
-            (mmv.0.nr() == 1 && mmm.0.nr() > 1, mmv.2.is_none(), mmm.0.mr(), mmm.0.nr())
+            // When no group offers the ideal (true GEMV nr==1 + true matrix nr>1)
+            // pair, still prefer a group whose matrix-role kernel is a real matrix
+            // (nr > 1) over a GEMV-only group. Without this, int8 — whose GEMV
+            // (64x1), SMLAL (8x8) and SDOT (8x8_dot) kernels each use a different
+            // packing, so no single group is ideal — falls through to `mmm.mr` and
+            // picks the 64x1 GEMV even for symbolic (dynamic) n. f32/f16/block-quant
+            // are unaffected: they have a packing group that IS ideal (e.g. f32
+            // 32x1/32x3, q40 32x1/32x3), so the first key already decides.
+            (
+                mmv.0.nr() == 1 && mmm.0.nr() > 1,
+                mmv.2.is_none(),
+                mmm.0.nr() > 1,
+                mmm.0.mr(),
+                mmm.0.nr(),
+            )
         })
         .unwrap();
 
@@ -117,7 +137,11 @@ pub fn list_impls(
         .mmm_impls()
         .iter()
         .filter(|mmm| {
-            op.acceptable_accumulators().contains(&mmm.internal_type())
+            // Only consider kernels runnable on this CPU: e.g. the SDOT i8 kernel
+            // carries a FEAT_DotProd platform predicate, and must not be selected on
+            // a CPU that would trap on the instruction.
+            mmm.is_supported_here()
+                && op.acceptable_accumulators().contains(&mmm.internal_type())
                 && mmm.stores().contains(&op.operating_dt.unquantized())
         })
         .flat_map(move |mmm| {
