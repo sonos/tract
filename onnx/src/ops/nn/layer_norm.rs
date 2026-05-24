@@ -161,20 +161,20 @@ impl Expansion for LayerNorm {
         let normalized =
             model.wire_node(format!("{prefix}.normalized"), mul(), &[d[0], inv_std_dev[0]])?;
         // NormalizedScaled = Mul(Normalized, Scale) Y = Add(NormalizedScaled, B)
-        let cast_normalized = model.wire_node(
-            format!("{prefix}.cast_normalized"),
-            cast(fact.datum_type),
-            &normalized,
-        )?;
+        // Keep `normalized` in self.datum_type (typically F32) through the
+        // scale/bias application, then cast back to fact.datum_type at the
+        // very end. Casting back too early causes a type mismatch with
+        // `cast_scale` / `cast_bias` (which are in self.datum_type), which
+        // breaks F16-input LayerNorm (output is F32 but fact says F16).
         let normalized_scaled = wire_with_rank_broadcast(
             format!("{prefix}.normalized_scaled"),
             model,
             mul(),
-            &[cast_normalized[0], cast_scale[0]],
+            &[normalized[0], cast_scale[0]],
         )?;
-        let y = if let Some(bias) = cast_bias {
+        let y_internal = if let Some(bias) = cast_bias {
             wire_with_rank_broadcast(
-                format!("{prefix}.y"),
+                format!("{prefix}.y_internal"),
                 model,
                 add(),
                 &[normalized_scaled[0], bias[0]],
@@ -182,6 +182,11 @@ impl Expansion for LayerNorm {
         } else {
             normalized_scaled
         };
+        let y = model.wire_node(
+            format!("{prefix}.cast_y"),
+            cast(fact.datum_type),
+            &y_internal,
+        )?;
         let mut outputs = tvec!(y[0]);
         if self.mean_output.is_some() {
             outputs.push(reduced_mean_x[0]);
