@@ -3,7 +3,6 @@ use std::ops::Deref;
 
 use tract_itertools::{izip, multiunzip};
 use tract_linalg::block_quant::PackedBlockQuantFormat;
-use tract_linalg::pack::PackedFormat;
 
 use super::*;
 use crate::ops::cast::cast;
@@ -864,23 +863,21 @@ fn optimized_mat_mul(
     let name = &node.name;
 
     let pack_a: Box<dyn TypedOp> = if input_facts[0].konst.is_some() {
-        if let Some(pf) = left_pack.downcast_ref::<PackedFormat>() {
-            Box::new(OptMatMulPack {
-                packers: vec![pf.clone()],
-                mode_picker: ModePicker::Single,
-                k_axis: op.a_k(),
-                mn_axis: op.a_m(),
-            })
-        } else if let Some(packed_format) =
-            left_pack.downcast_ref::<PackedBlockQuantFormat>().cloned()
-        {
+        if let Some(packed_format) = left_pack.downcast_ref::<PackedBlockQuantFormat>().cloned() {
             Box::new(OptSimpleMatMulPack {
                 packed_format,
                 k: input_shapes[0][op.a_k()].to_usize().unwrap(),
                 m: input_shapes[0][op.a_m()].to_usize().unwrap(),
             })
         } else {
-            bail!("Unexpected static input format {left_pack:?}");
+            // PackedFormat or a custom packer (e.g. PackedI8K4); OptMatMulPack
+            // dispatches on the concrete format at pack time.
+            Box::new(OptMatMulPack {
+                packers: vec![left_pack],
+                mode_picker: ModePicker::Single,
+                k_axis: op.a_k(),
+                mn_axis: op.a_m(),
+            })
         }
     } else {
         Box::new(OptMatMulPack {
@@ -888,11 +885,8 @@ fn optimized_mat_mul(
                 .iter()
                 .map(|(mmm, p, pe)| {
                     pe.as_ref()
-                        .map(|pe| &pe.from)
-                        .unwrap_or(&mmm.packings()[*p].0)
-                        .downcast_ref::<PackedFormat>()
-                        .unwrap()
-                        .clone()
+                        .map(|pe| pe.from.clone())
+                        .unwrap_or_else(|| mmm.packings()[*p].0.clone())
                 })
                 .collect(),
             mode_picker: mode_picker.clone(),
@@ -907,12 +901,7 @@ fn optimized_mat_mul(
         OptMatMulPack {
             k_axis: op.b_k(),
             mn_axis: op.b_n(),
-            packers: impls
-                .iter()
-                .map(|(mmm, p, _)| {
-                    mmm.packings()[*p].1.downcast_ref::<PackedFormat>().unwrap().clone()
-                })
-                .collect(),
+            packers: impls.iter().map(|(mmm, p, _)| mmm.packings()[*p].1.clone()).collect(),
             mode_picker: mode_picker.clone(),
         },
         &[taps[1]],
