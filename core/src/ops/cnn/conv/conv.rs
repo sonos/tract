@@ -33,7 +33,7 @@ use crate::ops::matmul::optimized::{OptMatMul, ProtoFusedSpec};
 use crate::ops::nn::{BaseDataShape, DataFormat, DataShape};
 
 use tract_linalg::mmm::{MMMInputFormat, MatMatMul};
-use tract_linalg::pack::PackedFormat;
+use tract_linalg::pack::{PackedFormat, PackedI8K4};
 
 #[derive(Debug, Clone, new, Hash, PartialEq, Eq)]
 pub struct Conv {
@@ -123,13 +123,11 @@ impl Conv {
                 &[kernel],
             )?
         } else {
-            let format = format
-                .downcast_ref::<PackedFormat>()
-                .context("Expect regular packing for numeric weights")?;
+            // PackedFormat or a custom numeric packer (e.g. PackedI8K4).
             model.wire_node(
                 format!("{name}.prep_kernel.pack"),
                 OptMatMulPack {
-                    packers: vec![format.clone()],
+                    packers: vec![dyn_clone::clone_box(format)],
                     k_axis: 2,
                     mn_axis: 1,
                     mode_picker: ModePicker::Single,
@@ -240,7 +238,11 @@ impl Conv {
             &sum_ker_n_g_c,
         )?;
 
-        ensure!(mmm.packings()[packing].1.downcast_ref::<PackedFormat>().is_some());
+        ensure!(
+            mmm.packings()[packing].1.downcast_ref::<PackedFormat>().is_some()
+                || mmm.packings()[packing].1.downcast_ref::<PackedI8K4>().is_some(),
+            "Im2Col/QSumB support PackedFormat or PackedI8K4 activation packings"
+        );
         let mut sum_x = model.wire_node(
             format!("{name}.sum_x"),
             super::QSumB { dt: b_fact.datum_type, n, r: mmm.nr(), k },

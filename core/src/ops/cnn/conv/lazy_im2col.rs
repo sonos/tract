@@ -124,7 +124,7 @@ impl TypedOp for LazyIm2Col {
         let exotic_fact = DynPackedExoticFact {
             k: self.params.k_byte_offsets.len().to_dim(),
             mn: self.params.n_byte_offsets.len().to_dim(),
-            packers: vec![self.params.packer.clone()],
+            packers: vec![Box::new(self.params.packer.clone()) as Box<dyn MMMInputFormat>],
         };
         Ok(tvec!(inputs[0].datum_type.fact([1, self.group]).with_exotic_fact(exotic_fact)))
     }

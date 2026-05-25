@@ -1,5 +1,6 @@
 use crate::internal::*;
 use tract_linalg::mmm::{MMMInputValue, PackedMatrixStorage};
+use tract_linalg::pack::PackedI8K4;
 use tract_ndarray::prelude::*;
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -80,14 +81,27 @@ impl QSumB {
         output: &mut [i32],
     ) -> TractResult<()> {
         let (r, k, n) = (input.format().r(), input.k(), input.mn());
+        // PackedI8K4 is K=4-inner: element (ik, ir) at (ik/4)*r*4 + ir*4 + ik%4,
+        // and the panel is k padded up to a multiple of 4. PackedFormat is K-major.
+        let is_k4 = input.format().downcast_ref::<PackedI8K4>().is_some();
+        let panel_len = if is_k4 { r * k.div_ceil(4) * 4 } else { r * k };
         let panels = n.divceil(r);
         for ipanel in 0..panels {
             let panel = input.panel_bytes(ipanel, None)?;
-            let panel: &[T] = unsafe { std::slice::from_raw_parts(panel as *const T, r * k) };
+            let panel: &[T] = unsafe { std::slice::from_raw_parts(panel as *const T, panel_len) };
             let mut vec = vec![0i32; r];
-            for ik in 0..k {
-                for ir in 0..r {
-                    vec[ir] += panel[ik * r + ir].as_();
+            if is_k4 {
+                for ik in 0..k {
+                    let kbase = (ik / 4) * r * 4 + ik % 4;
+                    for ir in 0..r {
+                        vec[ir] += panel[kbase + ir * 4].as_();
+                    }
+                }
+            } else {
+                for ik in 0..k {
+                    for ir in 0..r {
+                        vec[ir] += panel[ik * r + ir].as_();
+                    }
                 }
             }
             let len = r.min(n - r * ipanel);

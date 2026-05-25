@@ -692,6 +692,235 @@ unsafe fn pack_mn_major<Chunk: Copy>(
     }
 }
 
+// K=4-inner packing writer (PackedI8K4 layout), fed in K-OUTER order (same feed
+// as KOutWriter, used by the im2col patchers): for each k, all mn. Within a panel,
+// element (k, local_mn) lands at (k/4)*r*4 + local_mn*4 + (k%4), so consecutive mn
+// for a fixed k are stride-4 stores.
+#[derive(Debug)]
+pub struct KOut4Writer<'p, T>
+where
+    T: Copy + std::fmt::Debug,
+{
+    base: *mut T,
+    r4: usize,        // r * 4
+    panel_len: usize, // k_aligned * r
+    panels: usize,
+    panel_width: usize,
+    last_panel_width: usize,
+    kb: usize, // k / 4
+    kr: usize, // k % 4
+    panel: usize,
+    local_mn: usize,
+    _phantom: PhantomData<&'p T>,
+}
+
+impl<'p, T> KOut4Writer<'p, T>
+where
+    T: Copy + std::fmt::Debug,
+{
+    pub fn new(base: *mut T, r: usize, panel_len: usize, mn: usize) -> KOut4Writer<'p, T> {
+        let panels = mn.divceil(r).max(1);
+        let last_panel_width = mn - (panels - 1) * r;
+        KOut4Writer {
+            base,
+            r4: r * 4,
+            panel_len,
+            panels,
+            panel_width: r,
+            last_panel_width,
+            kb: 0,
+            kr: 0,
+            panel: 0,
+            local_mn: 0,
+            _phantom: PhantomData,
+        }
+    }
+    #[inline(always)]
+    fn panel_width(&self) -> usize {
+        if self.panel == self.panels - 1 { self.last_panel_width } else { self.panel_width }
+    }
+    #[inline(always)]
+    fn advance(&mut self, by: usize) {
+        self.local_mn += by;
+        if self.local_mn >= self.panel_width() {
+            self.local_mn = 0;
+            self.panel += 1;
+            if self.panel == self.panels {
+                self.panel = 0;
+                self.kr += 1;
+                if self.kr == 4 {
+                    self.kr = 0;
+                    self.kb += 1;
+                }
+            }
+        }
+    }
+}
+
+impl<T> PackingWriter<T> for KOut4Writer<'_, T>
+where
+    T: Copy + std::fmt::Debug,
+{
+    #[inline(always)]
+    fn write(&mut self, t: T) {
+        unsafe {
+            let off = self.panel * self.panel_len + self.kb * self.r4 + self.local_mn * 4 + self.kr;
+            *self.base.add(off) = t;
+        }
+        self.advance(1);
+    }
+
+    #[inline]
+    fn write_slice(&mut self, ts: &[T]) {
+        let n = ts.len();
+        if n == 0 {
+            return;
+        }
+        let pw = self.panel_width();
+        if self.local_mn + n <= pw {
+            // Whole slice stays inside the current (panel, k): tight stride-4 store.
+            unsafe {
+                let mut d = self.base.add(
+                    self.panel * self.panel_len + self.kb * self.r4 + self.local_mn * 4 + self.kr,
+                );
+                for &t in ts {
+                    *d = t;
+                    d = d.add(4);
+                }
+            }
+            self.advance(n);
+        } else {
+            for &t in ts {
+                self.write(t);
+            }
+        }
+    }
+}
+
+// K=4-inner packing for SDOT/relaxed-dot int8 matmul: 4 contiguous K per mn-lane.
+// Layout: out[(k/4)*r*4 + m*4 + (k%4)] = src[m,k]. k_alignment=4. Matmul path uses
+// pack_view; the conv im2col patchers feed write_with_k_outer in K-outer order.
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct PackedI8K4 {
+    pub r: usize,
+    pub align: usize,
+}
+impl PackedI8K4 {
+    pub fn new(r: usize) -> Self {
+        PackedI8K4 { r, align: 16 }
+    }
+    fn panel(&self, k: usize) -> usize {
+        (k.div_ceil(4) * 4) * self.r
+    }
+    pub fn single_panel_len(&self, k: usize) -> usize {
+        self.panel(k)
+    }
+    pub fn len(&self, k: usize, mn: usize) -> usize {
+        mn.divceil(self.r) * self.panel(k)
+    }
+    pub fn alignment(&self) -> usize {
+        self.align
+    }
+    // One-pass K-outer writer for the conv im2col patchers (fed: for each k, all mn).
+    pub fn write_with_k_outer<'p, T: Copy + std::fmt::Debug>(
+        &self,
+        pb: *mut T,
+        k: usize,
+        mn: usize,
+    ) -> KOut4Writer<'p, T> {
+        KOut4Writer::new(pb, self.r, self.panel(k), mn)
+    }
+    // K=4-inner pack from a (possibly strided) view: out[(k/4)*r*4 + m*4 + (k%4)] = src[m,k].
+    pub fn pack_view(
+        &self,
+        t: &TensorView,
+        k_axis: usize,
+        mn_axis: usize,
+    ) -> TractResult<Box<dyn MMMInputValue>> {
+        let k = t.shape()[k_axis];
+        let mn = t.shape()[mn_axis];
+        let kp = k.div_ceil(4) * 4;
+        let pl = kp * self.r;
+        let panels = mn.div_ceil(self.r);
+        let st = t.strides();
+        let mut blob = unsafe { Blob::new_for_size_and_align(panels * pl, self.align) };
+        blob.as_bytes_mut().fill(0);
+        let (ks, ms) = (st[k_axis], st[mn_axis]);
+        let kblocks = kp / 4;
+        unsafe {
+            let src = t.as_ptr_unchecked::<i8>();
+            let dst = blob.as_mut_ptr() as *mut i8;
+            for p in 0..panels {
+                let pw = self.r.min(mn - p * self.r);
+                let panel = dst.add(p * pl);
+                let mn0 = (p * self.r) as isize;
+                for kb in 0..kblocks {
+                    for kr in 0..4 {
+                        let kk = kb * 4 + kr;
+                        if kk >= k {
+                            break;
+                        }
+                        let srow = src.offset(kk as isize * ks + mn0 * ms);
+                        let dcol = panel.add(kb * self.r * 4 + kr);
+                        for lm in 0..pw {
+                            *dcol.add(lm * 4) = *srow.offset(lm as isize * ms);
+                        }
+                    }
+                }
+            }
+        }
+        Ok(Box::new(EagerPackedInput {
+            fact: PackedExoticFact { format: Box::new(self.clone()), mn: mn.to_dim(), k },
+            packed: blob.into(),
+            panel_bytes: pl,
+            mn,
+        }))
+    }
+}
+impl std::fmt::Display for PackedI8K4 {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "I8K4[{}]", self.r)
+    }
+}
+impl MMMInputFormat for PackedI8K4 {
+    fn prepare_tensor(&self, t: &Tensor, k_axis: usize, mn_axis: usize) -> TractResult<Tensor> {
+        Ok(PackedMatrixStorage::new(self.prepare_one(t, k_axis, mn_axis)?)
+            .into_tensor(t.datum_type()))
+    }
+    fn prepare_one(
+        &self,
+        t: &Tensor,
+        k_axis: usize,
+        mn_axis: usize,
+    ) -> TractResult<Box<dyn MMMInputValue>> {
+        self.pack_view(&t.view(), k_axis, mn_axis)
+    }
+    fn precursor(&self) -> WeightType {
+        WeightType::Plain(i8::datum_type())
+    }
+    fn r(&self) -> usize {
+        self.r
+    }
+    fn k_alignment(&self) -> usize {
+        4
+    }
+    fn merge_with<'o, 'a: 'o, 'b: 'o>(
+        &'a self,
+        o: &'b dyn MMMInputFormat,
+    ) -> Option<&'o dyn MMMInputFormat> {
+        o.downcast_ref::<PackedI8K4>().filter(|x| x.r == self.r).map(|_| self as _)
+    }
+    fn mem_size(&self, k: TDim, mn: TDim) -> TDim {
+        mn.divceil(self.r) * self.panel(k.to_usize().unwrap_or(0))
+    }
+    fn extract_at_mn_f16(&self, _: &EagerPackedInput, _: usize, _: &mut [f16]) -> TractResult<()> {
+        bail!("no f16 extract")
+    }
+    fn extract_at_mn_f32(&self, _: &EagerPackedInput, _: usize, _: &mut [f32]) -> TractResult<()> {
+        bail!("no f32 extract")
+    }
+}
+
 pub trait Packing {
     fn packing(r: usize) -> PackedFormat;
 }
@@ -837,6 +1066,188 @@ mod test {
         fn subrange_prop(_range in sub_range_strat(0..20)) {
         }
 
+    }
+    // ---- PackedI8K4 (K=4-inner SMOPA/SDOT layout) dedicated tests ----------
+    //
+    // PackedI8K4 has two independent producers that MUST agree byte-for-byte:
+    //   * `pack_view`           — the matmul path, reads a (possibly strided)
+    //                             TensorView and packs in one shot.
+    //   * `write_with_k_outer`  — the conv/im2col path, fed element-by-element
+    //                             in K-OUTER order (for each k, all mn).
+    // Both must equal the canonical layout
+    //     out[panel*pl + (k/4)*r*4 + local_mn*4 + (k%4)] = src[k, panel*r+local_mn]
+    // with pl = ceil(K/4)*4 * r, and every padding byte (K%4 tail, partial last
+    // mn panel) left at zero.
+    #[derive(Debug, Clone)]
+    struct PackI8K4Problem {
+        k: usize,
+        mn: usize,
+        r: usize,
+        // false: input tensor is [k, mn] (k_axis=0, mn_axis=1) — contiguous read.
+        // true : input tensor is [mn, k] (k_axis=1, mn_axis=0) — strided read,
+        //        mirroring how the "A" operand is fed.
+        is_a: bool,
+    }
+
+    impl PackI8K4Problem {
+        // Canonical logical matrix, always indexed [k, mn].
+        fn logical(&self) -> Array2<i8> {
+            Array2::from_shape_fn((self.k, self.mn), |(kk, m)| {
+                (kk.wrapping_mul(31).wrapping_add(m.wrapping_mul(17)).wrapping_add(1)) as i8
+            })
+        }
+
+        fn panel_len(&self) -> usize {
+            (self.k.div_ceil(4) * 4) * self.r
+        }
+
+        // The layout every producer must reproduce.
+        fn reference(&self) -> Vec<i8> {
+            let logical = self.logical();
+            let r = self.r;
+            let pl = self.panel_len();
+            let panels = self.mn.div_ceil(r);
+            let mut out = vec![0i8; panels * pl];
+            for p in 0..panels {
+                let pw = r.min(self.mn - p * r);
+                for kk in 0..self.k {
+                    for lm in 0..pw {
+                        let m = p * r + lm;
+                        let off = p * pl + (kk / 4) * r * 4 + lm * 4 + (kk % 4);
+                        out[off] = logical[[kk, m]];
+                    }
+                }
+            }
+            out
+        }
+
+        // The matmul path: pack a TensorView, then read it back panel by panel.
+        fn pack_view_bytes(&self) -> Vec<i8> {
+            let logical = self.logical();
+            let packer = super::PackedI8K4::new(self.r);
+            let (tensor, k_axis, mn_axis) = if self.is_a {
+                // [mn, k] with entry [m, kk] == logical[kk, m]; reads are strided.
+                let a = Array2::from_shape_fn((self.mn, self.k), |(m, kk)| logical[[kk, m]]);
+                (a.into_tensor(), 1usize, 0usize)
+            } else {
+                (logical.clone().into_tensor(), 0usize, 1usize)
+            };
+            let packed = packer.pack_view(&tensor.view(), k_axis, mn_axis).unwrap();
+            let pl = self.panel_len();
+            let panels = self.mn.div_ceil(self.r);
+            assert_eq!(packed.panels_count(), panels);
+            assert_eq!(packed.k(), self.k);
+            assert_eq!(packed.mn(), self.mn);
+            let mut out = vec![0i8; panels * pl];
+            unsafe {
+                for p in 0..panels {
+                    let ptr = packed.panel_bytes(p, None).unwrap() as *const i8;
+                    std::ptr::copy_nonoverlapping(ptr, out.as_mut_ptr().add(p * pl), pl);
+                }
+            }
+            out
+        }
+
+        // The conv path: feed the writer in K-outer order (for each k, all mn).
+        fn writer_bytes(&self) -> Vec<i8> {
+            let logical = self.logical();
+            let packer = super::PackedI8K4::new(self.r);
+            let total = packer.len(self.k, self.mn);
+            assert_eq!(total, self.mn.div_ceil(self.r) * self.panel_len());
+            let mut buf = vec![0i8; total];
+            {
+                let mut w = packer.write_with_k_outer(buf.as_mut_ptr(), self.k, self.mn);
+                for kk in 0..self.k {
+                    for m in 0..self.mn {
+                        super::PackingWriter::write(&mut w, logical[[kk, m]]);
+                    }
+                }
+            }
+            buf
+        }
+
+        fn check(&self) {
+            let reference = self.reference();
+            assert_eq!(
+                self.pack_view_bytes(),
+                reference,
+                "pack_view disagrees with reference for {self:?}"
+            );
+            assert_eq!(
+                self.writer_bytes(),
+                reference,
+                "write_with_k_outer disagrees with reference for {self:?}"
+            );
+        }
+    }
+
+    impl Arbitrary for PackI8K4Problem {
+        type Parameters = ();
+        type Strategy = BoxedStrategy<PackI8K4Problem>;
+        fn arbitrary_with(_: ()) -> Self::Strategy {
+            // r is the tile width used by the int8 kernels (SMOPA 32, SDOT 8, ...).
+            (any::<bool>(), prop::sample::select(vec![4usize, 8, 16, 32]), 1usize..40, 1usize..40)
+                .prop_map(|(is_a, r, k, mn)| PackI8K4Problem { k, mn, r, is_a })
+                .boxed()
+        }
+    }
+
+    proptest::proptest! {
+        #[test]
+        fn pack_i8k4_prop(pb in any::<PackI8K4Problem>()) {
+            pb.check();
+        }
+    }
+
+    fn k4(k: usize, mn: usize, r: usize, is_a: bool) -> PackI8K4Problem {
+        PackI8K4Problem { k, mn, r, is_a }
+    }
+
+    #[test]
+    fn i8k4_smallest() {
+        k4(1, 1, 4, false).check();
+        k4(1, 1, 4, true).check();
+    }
+
+    #[test]
+    fn i8k4_exact_tile() {
+        // K and mn land exactly on the 4 / r boundaries: no padding anywhere.
+        k4(4, 4, 4, false).check();
+        k4(8, 32, 32, false).check();
+        k4(8, 32, 32, true).check();
+    }
+
+    #[test]
+    fn i8k4_k_not_multiple_of_4() {
+        // K%4 tail must be zero-padded inside each panel.
+        for k in [1, 2, 3, 5, 6, 7, 9] {
+            k4(k, 4, 4, false).check();
+            k4(k, 7, 8, true).check();
+        }
+    }
+
+    #[test]
+    fn i8k4_partial_last_panel() {
+        // mn not a multiple of r: last panel is narrower, tail lanes are zero.
+        k4(5, 7, 4, false).check();
+        k4(5, 7, 4, true).check();
+        k4(4, 33, 32, false).check();
+        k4(4, 33, 32, true).check();
+        k4(3, 1, 32, false).check();
+    }
+
+    #[test]
+    fn i8k4_single_wide_tile() {
+        // One narrow panel inside a wide (r=32) tile.
+        k4(7, 1, 32, false).check();
+        k4(7, 5, 16, true).check();
+    }
+
+    #[test]
+    fn i8k4_many_panels() {
+        k4(13, 100, 8, false).check();
+        k4(13, 100, 8, true).check();
+        k4(17, 65, 16, false).check();
     }
 
     #[test]
