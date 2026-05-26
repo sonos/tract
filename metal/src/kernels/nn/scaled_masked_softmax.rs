@@ -14,14 +14,23 @@ impl ScaledMaskedSoftmax {
         matches!(dt, DatumType::F32 | DatumType::F16)
     }
 
-    pub fn kernel_name(&self, dt: DatumType) -> TractResult<String> {
+    pub fn is_supported_mask_dt(input_dt: DatumType, mask_dt: DatumType) -> bool {
+        mask_dt == input_dt || mask_dt == bool::datum_type()
+    }
+
+    pub fn kernel_name(&self, dt: DatumType, mask_is_bool: bool) -> TractResult<String> {
         ensure!(
             Self::is_supported_dt(dt),
-            "Unsupported dt {:?} for metal scaled masked softmaxop",
+            "Unsupported dt {:?} for metal scaled masked softmax op",
             dt
         );
         let tname = DeviceTensor::tname(dt)?;
-        Ok(format!("nn_ops::scaled_masked_softmax_nd5_{tname}"))
+        let stem = if mask_is_bool {
+            "scaled_bool_masked_softmax_nd5"
+        } else {
+            "scaled_masked_softmax_nd5"
+        };
+        Ok(format!("nn_ops::{stem}_{tname}"))
     }
 
     pub fn eval(
@@ -30,9 +39,10 @@ impl ScaledMaskedSoftmax {
         input: &DeviceTensor,
         scale: &Tensor,
         mask: &DeviceTensor,
+        post_softmax_mask: bool,
     ) -> TractResult<DeviceTensor> {
         let output = unsafe { DeviceTensor::uninitialized_dt(input.datum_type(), input.shape())? };
-        self.dispatch_eval(stream, input, scale, mask, &output)?;
+        self.dispatch_eval(stream, input, scale, mask, post_softmax_mask, &output)?;
         stream.wait_until_completed()?;
         Ok(output)
     }
@@ -43,6 +53,7 @@ impl ScaledMaskedSoftmax {
         input: &DeviceTensor,
         scale: &Tensor,
         mask: &DeviceTensor,
+        post_softmax_mask: bool,
         output: &DeviceTensor,
     ) -> TractResult<()> {
         stream.retain_tensor(input);
@@ -54,7 +65,10 @@ impl ScaledMaskedSoftmax {
         ensure!(input.rank() <= 5);
         ensure!(mask.rank() == input.rank());
         ensure!(output.datum_type() == input.datum_type());
-        ensure!(mask.datum_type() == input.datum_type());
+        let mask_is_bool = mask.datum_type() == bool::datum_type();
+        ensure!(Self::is_supported_mask_dt(input.datum_type(), mask.datum_type()));
+        // post_softmax_mask is meaningful only with a bool mask (CPU contract).
+        ensure!(!post_softmax_mask || mask_is_bool);
         let scale = scale.cast_to::<f32>()?;
 
         let shape = pad(input.shape(), 1);
@@ -72,8 +86,10 @@ impl ScaledMaskedSoftmax {
         let tg_floats = 32 + inner_len;
         let tg_bytes = tg_floats * f32::datum_type().size_of();
 
-        let pipeline =
-            stream.load_pipeline(LibraryName::NNOps, &self.kernel_name(input.datum_type())?)?;
+        let pipeline = stream.load_pipeline(
+            LibraryName::NNOps,
+            &self.kernel_name(input.datum_type(), mask_is_bool)?,
+        )?;
 
         let command_buffer = stream.command_buffer();
         command_buffer.encode(|encoder| {
@@ -82,10 +98,18 @@ impl ScaledMaskedSoftmax {
             encoder.set_metal_tensor(1, mask, metal::MTLResourceUsage::Read);
             encoder.set_tensor(2, &scale);
             encoder.set_metal_tensor(3, output, metal::MTLResourceUsage::Write);
-            encoder.set_slice(4, &shape);
-            encoder.set_slice(5, &strides);
-            encoder.set_slice(6, &mask_strides);
-            encoder.set_slice(7, &out_strides);
+            // Bool-mask kernel takes a `post_mask` flag at slot 4; the
+            // float-mask kernel doesn't, so slots shift down by one.
+            let next_slot = if mask_is_bool {
+                encoder.set_slice(4, &[post_softmax_mask as u32]);
+                5
+            } else {
+                4
+            };
+            encoder.set_slice(next_slot, &shape);
+            encoder.set_slice(next_slot + 1, &strides);
+            encoder.set_slice(next_slot + 2, &mask_strides);
+            encoder.set_slice(next_slot + 3, &out_strides);
             encoder.set_threadgroup_memory_length(0, tg_bytes as _);
             let grid_size = MTLSize {
                 width: shape[3] as _,
@@ -111,22 +135,27 @@ pub fn metal_scaled_masked_softmax_dispatch(
     input: &DeviceTensor,
     scale: &Tensor,
     mask: &DeviceTensor,
+    post_softmax_mask: bool,
     output: &DeviceTensor,
 ) -> TractResult<()> {
     crate::with_metal_stream(|stream| {
-        ScaledMaskedSoftmax.dispatch_eval(stream, input, scale, mask, output)
+        ScaledMaskedSoftmax.dispatch_eval(stream, input, scale, mask, post_softmax_mask, output)
     })
 }
 
 crate::register_metal_op!(
     tract_transformers::ops::scaled_masked_softmax::ScaledMaskedSoftmax,
     |source, node, op| {
-        rule_if!(!op.post_softmax_mask);
-        rule_if!(ScaledMaskedSoftmax::is_supported_dt(
-            source.node_input_facts(node.id)?[0].datum_type
+        let facts = source.node_input_facts(node.id)?;
+        rule_if!(ScaledMaskedSoftmax::is_supported_dt(facts[0].datum_type));
+        rule_if!(ScaledMaskedSoftmax::is_supported_mask_dt(
+            facts[0].datum_type,
+            facts[1].datum_type,
         ));
+        rule_if!(!op.post_softmax_mask || facts[1].datum_type == bool::datum_type());
         Ok(Some(Box::new(tract_gpu::ops::scaled_masked_softmax::GpuScaledMaskedSoftmax::new(
             op.scale.clone(),
+            op.post_softmax_mask,
             "Metal",
             metal_scaled_masked_softmax_dispatch,
         ))))
@@ -171,7 +200,7 @@ mod tests {
                 .eval(tvec![a.to_host()?.into_tvalue(), mask.to_host()?.into_tvalue()])?[0]
                 .clone()
                 .into_tensor();
-            let metal_output = ScaledMaskedSoftmax.eval(stream, &a, &scale, &mask)?;
+            let metal_output = ScaledMaskedSoftmax.eval(stream, &a, &scale, &mask, false)?;
             cpu_output
                 .close_enough(&metal_output.to_host()?.into_tensor(), Approximation::Approximate)?;
             Ok(())
@@ -201,9 +230,59 @@ mod tests {
                 .eval(tvec![a.to_host()?.into_tvalue(), mask.to_host()?.into_tvalue()])?[0]
                 .clone()
                 .into_tensor();
-            let metal_output = ScaledMaskedSoftmax.eval(stream, &a, &scale, &mask)?;
+            let metal_output = ScaledMaskedSoftmax.eval(stream, &a, &scale, &mask, false)?;
             cpu_output
                 .close_enough(&metal_output.to_host()?.into_tensor(), Approximation::Approximate)?;
+            Ok(())
+        })
+    }
+
+    /// Bool-mask path with a fully-masked row.  Without post_softmax_mask
+    /// the output is NaN (matches CPU); with it on, the NaN is scrubbed to 0.
+    #[test]
+    fn test_scaled_bool_masked_softmax_post_mask_scrubs_nan() -> TractResult<()> {
+        with_borrowed_metal_stream(|stream| {
+            let m = 3;
+            let n = 5;
+            let scale: Arc<_> = tensor0(0.125f32).into();
+            // Row 0: fully masked.  Row 1: partially masked.  Row 2: fully unmasked.
+            let mask_data: Vec<bool> = (0..m)
+                .flat_map(|r| {
+                    (0..n).map(move |c| match r {
+                        0 => false,
+                        1 => c >= 2,
+                        _ => true,
+                    })
+                })
+                .collect();
+            let mask = Tensor::from_shape(&[1, 1, m, n], &mask_data)?.into_device()?;
+            let a = Tensor::from_shape(
+                &[1, 1, m, n],
+                &(0..m * n).map(|f| f as f32).collect::<Vec<_>>(),
+            )?
+            .into_device()?;
+
+            for post in [false, true] {
+                let cpu = scaled_masked_softmax::ScaledMaskedSoftmax {
+                    scale: scale.clone(),
+                    post_softmax_mask: post,
+                };
+                let cpu_out = cpu
+                    .eval(tvec![a.to_host()?.into_tvalue(), mask.to_host()?.into_tvalue()])?[0]
+                    .clone()
+                    .into_tensor();
+                let metal_out = ScaledMaskedSoftmax.eval(stream, &a, &scale, &mask, post)?;
+                let metal_host = metal_out.to_host()?.into_tensor();
+                let cpu_slice = cpu_out.view().as_slice::<f32>().unwrap();
+                let metal_slice = metal_host.view().as_slice::<f32>().unwrap();
+                for (i, (c, g)) in cpu_slice.iter().zip(metal_slice.iter()).enumerate() {
+                    if c.is_nan() {
+                        assert!(g.is_nan(), "post={post} idx={i}: cpu NaN, metal {g}");
+                    } else {
+                        assert!((c - g).abs() < 1e-5, "post={post} idx={i}: cpu {c} metal {g}");
+                    }
+                }
+            }
             Ok(())
         })
     }
@@ -300,7 +379,7 @@ mod tests {
                 let mask =
                     Tensor::from_shape(self.mask_shape.as_slice(), &self.mask)?.into_device()?;
                 let scale: Arc<_> = tensor0::<F>(0.125f32.as_()).into();
-                let metal_output = ScaledMaskedSoftmax.eval(stream, &a, &scale, &mask)?;
+                let metal_output = ScaledMaskedSoftmax.eval(stream, &a, &scale, &mask, false)?;
                 Ok(metal_output.to_host()?.into_tensor())
             })
         }

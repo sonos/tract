@@ -588,6 +588,136 @@ __device__ void scaled_masked_softmax(
             out_stride_4);                                                     \
     }
 
+// Bool-mask variant: mask is char (0/1), substitutes -inf at masked positions
+// before the softmax.  When post_mask is non-zero, fully-masked rows (all
+// inputs -inf) are written as 0 instead of the NaN the naive softmax would
+// emit.  Partially-masked rows are unaffected: exp(-inf) = 0 already zeros
+// masked positions in the output.
+template <typename T, int BLOCK_SIZE>
+__device__ void scaled_bool_masked_softmax(
+    const T *x, const char *mask, const float scale, T *dst,
+    const int32_t post_mask, const int32_t shape_0, const int32_t shape_1,
+    const int32_t shape_2, const int32_t shape_3, const int32_t shape_4,
+    const int32_t stride_0, const int32_t stride_1, const int32_t stride_2,
+    const int32_t stride_3, const int32_t stride_4,
+    const int32_t mask_stride_0, const int32_t mask_stride_1,
+    const int32_t mask_stride_2, const int32_t mask_stride_3,
+    const int32_t mask_stride_4, const int32_t out_stride_0,
+    const int32_t out_stride_1, const int32_t out_stride_2,
+    const int32_t out_stride_3, const int32_t out_stride_4) {
+    int32_t z0 = blockIdx.z / shape_1;
+    int32_t z1 = blockIdx.z % shape_1;
+    x += blockIdx.x * stride_3 + blockIdx.y * stride_2 + z1 * stride_1 +
+         z0 * stride_0;
+    mask += blockIdx.x * mask_stride_3 + blockIdx.y * mask_stride_2 +
+            z1 * mask_stride_1 + z0 * mask_stride_0;
+    dst += blockIdx.x * out_stride_3 + blockIdx.y * out_stride_2 +
+           z1 * out_stride_1 + z0 * out_stride_0;
+
+    const int block_size = BLOCK_SIZE == 0 ? blockDim.x : BLOCK_SIZE;
+
+    const int warp_id = threadIdx.x / WARP_SIZE;
+    const int lane_id = threadIdx.x % WARP_SIZE;
+
+    extern __shared__ float data_soft_max_f32[];
+    float *buf_iw = data_soft_max_f32;
+    float *vals = buf_iw + WARP_SIZE;
+
+    float max_val = -CUDART_INF_F;
+    _Pragma("unroll") for (int col0 = 0; col0 < shape_4; col0 += block_size) {
+        const int col = col0 + threadIdx.x;
+        if (col >= shape_4) {
+            break;
+        }
+
+        const bool m = mask[col * mask_stride_4] != 0;
+        const float val = m ? ((float)x[col * stride_4]) * scale : -CUDART_INF_F;
+        vals[col] = val;
+        max_val = max(max_val, val);
+    }
+
+    max_val = warp_reduce_max(max_val);
+    if (block_size > WARP_SIZE) {
+        if (warp_id == 0) {
+            buf_iw[lane_id] = -CUDART_INF_F;
+        }
+        __syncthreads();
+
+        if (lane_id == 0) {
+            buf_iw[warp_id] = max_val;
+        }
+        __syncthreads();
+
+        max_val = buf_iw[lane_id];
+        max_val = warp_reduce_max(max_val);
+    }
+
+    float tmp = 0.0f;
+    _Pragma("unroll") for (int col0 = 0; col0 < shape_4; col0 += block_size) {
+        const int col = col0 + threadIdx.x;
+        if (col >= shape_4) {
+            break;
+        }
+
+        const float val = expf(vals[col] - max_val);
+        tmp += val;
+        vals[col] = val;
+    }
+
+    tmp = warp_reduce_sum(tmp);
+    if (block_size > WARP_SIZE) {
+        __syncthreads();
+        if (warp_id == 0) {
+            buf_iw[lane_id] = 0.0f;
+        }
+        __syncthreads();
+
+        if (lane_id == 0) {
+            buf_iw[warp_id] = tmp;
+        }
+        __syncthreads();
+
+        tmp = buf_iw[lane_id];
+        tmp = warp_reduce_sum(tmp);
+    }
+
+    // Row-uniform: tmp <= 0 (or NaN) iff every position was masked.  When
+    // post_mask is set we write 0 in that case to scrub the NaN; otherwise
+    // we fall through to the normal 1/sum path and let it propagate.
+    const bool zero_row = post_mask && !(tmp > 0.0f);
+    const float inv_sum = 1.0f / tmp;
+
+    _Pragma("unroll") for (int col0 = 0; col0 < shape_4; col0 += block_size) {
+        const int col = col0 + threadIdx.x;
+        if (col >= shape_4) {
+            return;
+        }
+        dst[col * out_stride_4] = zero_row ? (T)0.0f : (T)(vals[col] * inv_sum);
+    }
+}
+
+#define INSTANTIATE_SCALED_BOOL_MASKED_SOFTMAX(name, T, bname,                 \
+                                               block_size_template)            \
+    extern "C" __global__ void scaled_bool_masked_softmax_##bname##name(       \
+        const T *x, const char *mask, const float scale, T *dst,               \
+        const int32_t post_mask, const int32_t shape_0,                        \
+        const int32_t shape_1, const int32_t shape_2, const int32_t shape_3,   \
+        const int32_t shape_4, const int32_t stride_0,                         \
+        const int32_t stride_1, const int32_t stride_2,                        \
+        const int32_t stride_3, const int32_t stride_4,                        \
+        const int32_t mask_stride_0, const int32_t mask_stride_1,              \
+        const int32_t mask_stride_2, const int32_t mask_stride_3,              \
+        const int32_t mask_stride_4, const int32_t out_stride_0,               \
+        const int32_t out_stride_1, const int32_t out_stride_2,                \
+        const int32_t out_stride_3, const int32_t out_stride_4) {              \
+        scaled_bool_masked_softmax<T, block_size_template>(                    \
+            x, mask, scale, dst, post_mask, shape_0, shape_1, shape_2,         \
+            shape_3, shape_4, stride_0, stride_1, stride_2, stride_3,          \
+            stride_4, mask_stride_0, mask_stride_1, mask_stride_2,             \
+            mask_stride_3, mask_stride_4, out_stride_0, out_stride_1,          \
+            out_stride_2, out_stride_3, out_stride_4);                         \
+    }
+
 #define INSTANTIATE_RMS_NORM(name, T, bname, block_size)                       \
     extern "C" __global__ void rms_norm_##bname##name(                         \
         const T *x, T *dst, const int32_t shape_0, const int32_t shape_1,      \
@@ -652,8 +782,24 @@ INSTANTIATE_SOFTMAX(f16, __half, , 1024)
     INSTANTIATE_SCALED_MASKED_SOFTMAX(name, T, 32768_, 1024)                   \
     INSTANTIATE_SCALED_MASKED_SOFTMAX(name, T, 0_, 0)
 
+#define INSTANTIATE_SCALED_BOOL_MASKED_SOFTMAX_FOR_T(name, T)                  \
+    INSTANTIATE_SCALED_BOOL_MASKED_SOFTMAX(name, T, 32_, 32)                   \
+    INSTANTIATE_SCALED_BOOL_MASKED_SOFTMAX(name, T, 64_, 64)                   \
+    INSTANTIATE_SCALED_BOOL_MASKED_SOFTMAX(name, T, 128_, 126)                 \
+    INSTANTIATE_SCALED_BOOL_MASKED_SOFTMAX(name, T, 256_, 256)                 \
+    INSTANTIATE_SCALED_BOOL_MASKED_SOFTMAX(name, T, 512_, 512)                 \
+    INSTANTIATE_SCALED_BOOL_MASKED_SOFTMAX(name, T, 1024_, 1024)               \
+    INSTANTIATE_SCALED_BOOL_MASKED_SOFTMAX(name, T, 2048_, 1024)               \
+    INSTANTIATE_SCALED_BOOL_MASKED_SOFTMAX(name, T, 4096_, 1024)               \
+    INSTANTIATE_SCALED_BOOL_MASKED_SOFTMAX(name, T, 8192_, 1024)               \
+    INSTANTIATE_SCALED_BOOL_MASKED_SOFTMAX(name, T, 16384_, 1024)              \
+    INSTANTIATE_SCALED_BOOL_MASKED_SOFTMAX(name, T, 32768_, 1024)              \
+    INSTANTIATE_SCALED_BOOL_MASKED_SOFTMAX(name, T, 0_, 0)
+
 INSTANTIATE_SCALED_MASKED_SOFTMAX_FOR_T(f32, float)
 INSTANTIATE_SCALED_MASKED_SOFTMAX_FOR_T(f16, __half)
+INSTANTIATE_SCALED_BOOL_MASKED_SOFTMAX_FOR_T(f32, float)
+INSTANTIATE_SCALED_BOOL_MASKED_SOFTMAX_FOR_T(f16, __half)
 
 INSTANTIATE_REDUCE(f32, float, small_, 32)
 INSTANTIATE_REDUCE(f32, float, , 1024)

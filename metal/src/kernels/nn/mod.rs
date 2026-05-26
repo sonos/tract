@@ -40,11 +40,11 @@ pub fn all_functions() -> Vec<String> {
             .flat_map(|dt| Softmax.kernel_name(dt).into_iter()),
     );
 
-    functions.extend(
-        tract_gpu::tensor::DeviceTensor::SUPPORTED_DT
+    functions.extend(tract_gpu::tensor::DeviceTensor::SUPPORTED_DT.into_iter().flat_map(|dt| {
+        [false, true]
             .into_iter()
-            .flat_map(|dt| ScaledMaskedSoftmax.kernel_name(dt).into_iter()),
-    );
+            .flat_map(move |mb| ScaledMaskedSoftmax.kernel_name(dt, mb).into_iter())
+    }));
 
     functions.extend(
         tract_gpu::tensor::DeviceTensor::SUPPORTED_DT
