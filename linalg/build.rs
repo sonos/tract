@@ -37,6 +37,22 @@ fn assembler_supports_sme() -> bool {
         .is_ok()
 }
 
+// Probe whether the target assembler can encode FEAT_DotProd `sdot` (the
+// indexed int8 form used by arm64simd_mmm_i32_8x8_dot). Old binutils — notably
+// the Debian stretch aarch64 cross-toolchain in CI — predate FEAT_DotProd and
+// reject `.cpu ...+dotprod` / `sdot` outright. When the probe fails we skip the
+// SDOT kernel and the `tract_arm64_dotprod` cfg; the runtime falls back to the
+// SMLAL 8x8 i32 kernel.
+fn assembler_supports_dotprod() -> bool {
+    cc::Build::new()
+        .file("arm64/arm64simd/dummy_dotprod.S")
+        .cargo_metadata(false)
+        .cargo_warnings(false)
+        .warnings(false)
+        .try_compile("tract_dotprod_probe")
+        .is_ok()
+}
+
 fn include_sve() -> bool {
     // SVE/SVE2 lives on ARMv9 server/mobile cores (Neoverse V1+/N2+, Cortex-X2+,
     // Graviton 3/4) — Linux aarch64. No Apple silicon has SVE.
@@ -130,6 +146,8 @@ fn main() {
     println!("cargo:rustc-check-cfg=cfg(tract_sme)");
     // Set below only when include_sve() and the SVE compiler probe both pass.
     println!("cargo:rustc-check-cfg=cfg(tract_sve)");
+    // Set below only when the aarch64 assembler probe for `sdot` passes.
+    println!("cargo:rustc-check-cfg=cfg(tract_arm64_dotprod)");
 
     match arch.as_ref() {
         "x86_64" => {
@@ -197,13 +215,30 @@ fn main() {
             cc::Build::new().files(files).flag("-marm").flag("-mfpu=neon").compile("armv7neon");
         }
         "aarch64" => {
-            let files = preprocess_files(
+            let mut files = preprocess_files(
                 "arm64/arm64simd",
                 &[("core", vec!["a53", "a55", "gen"])],
                 &suffix,
                 false,
             );
+            // The SDOT kernel is compiled separately (conditional on a probe) so
+            // old assemblers (binutils < 2.30, e.g. Debian stretch) that can't
+            // encode `sdot` don't break the whole arm64simd build. Remove it
+            // from the main file list.
+            files.retain(|f| {
+                !f.file_name().and_then(|n| n.to_str()).map_or(false, |n| n.contains("_dot"))
+            });
             cc::Build::new().files(files).compile("arm64simd");
+            // The template stays in arm64/arm64simd/ (alongside the jinja partials
+            // it includes) so the env can resolve its includes. The
+            // `tract_arm64_dotprod` cfg gates the matching Rust extern + dispatch.
+            if assembler_supports_dotprod() {
+                let tmpl = path::Path::new("arm64/arm64simd/arm64simd_mmm_i32_8x8_dot.S.j2");
+                let out = out_dir.join(format!("arm64simd_mmm_i32_8x8_dot_{suffix}.S"));
+                preprocess_file(tmpl, &out, &[], &suffix, false);
+                cc::Build::new().file(&out).compile("arm64simd_dot");
+                println!("cargo:rustc-cfg=tract_arm64_dotprod");
+            }
             if include_amx() {
                 let files = preprocess_files("arm64/apple_amx", &[], &suffix, false);
                 cc::Build::new().files(files).compile("appleamx");

@@ -189,6 +189,40 @@ pub fn has_fp16() -> bool {
         || *HAS_FP16
 }
 
+// FEAT_DotProd (SDOT/UDOT), ARMv8.2. TRACT_DOTPROD_DISABLE=1 forces it off so
+// callers can A/B the SDOT kernel against the SMLAL 8x8 fallback on one binary.
+#[cfg(target_os = "macos")]
+pub fn has_dotprod() -> bool {
+    // Every Apple arm64 CPU (M1+/A11+) implements FEAT_DotProd.
+    std::env::var_os("TRACT_DOTPROD_DISABLE").is_none()
+}
+
+#[cfg(target_os = "linux")]
+pub fn has_dotprod() -> bool {
+    if std::env::var_os("TRACT_DOTPROD_DISABLE").is_some() {
+        return false;
+    }
+    // HWCAP_ASIMDDP = 1 << 20 on aarch64.
+    const HWCAP_ASIMDDP: u64 = 1 << 20;
+    const AT_HWCAP: u64 = 16;
+    unsafe extern "C" {
+        fn getauxval(t: u64) -> u64;
+    }
+    unsafe { (getauxval(AT_HWCAP) & HWCAP_ASIMDDP) != 0 }
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "ios")))]
+pub fn has_dotprod() -> bool {
+    false
+}
+
+#[cfg(target_os = "ios")]
+pub fn has_dotprod() -> bool {
+    // A11+ (iPhone10,1+) implement FEAT_DotProd.
+    std::env::var_os("TRACT_DOTPROD_DISABLE").is_none()
+        && IPHONE_MODEL_MAJOR.map(|it| it >= 10).unwrap_or(false)
+}
+
 #[target_feature(enable = "fp16")]
 #[inline]
 pub unsafe fn add_f16(a: f16, b: f16) -> f16 {
@@ -351,7 +385,19 @@ pub fn plug(ops: &mut Ops) {
         arm64fp16::plug(ops);
     }
 
-    ops.qmmm_i32 = Box::new(|_, _, _| arm64simd_mmm_i32_8x8.mmm());
+    // SDOT (~4x the SMLAL 8x8) when FEAT_DotProd is present, else the SMLAL 8x8 fallback.
+    // The SDOT kernel only exists when the assembler could encode `sdot`
+    // (`tract_arm64_dotprod`, set by build.rs); otherwise always use the SMLAL 8x8.
+    #[cfg(tract_arm64_dotprod)]
+    if has_dotprod() {
+        ops.qmmm_i32 = Box::new(|_, _, _| arm64simd_mmm_i32_8x8_dot.mmm());
+    } else {
+        ops.qmmm_i32 = Box::new(|_, _, _| arm64simd_mmm_i32_8x8.mmm());
+    }
+    #[cfg(not(tract_arm64_dotprod))]
+    {
+        ops.qmmm_i32 = Box::new(|_, _, _| arm64simd_mmm_i32_8x8.mmm());
+    }
     ops.qmmv_i32 = Box::new(|_, _| arm64simd_mmm_i32_64x1.mmm());
     ops.mmv_f32 = match *KIND {
         Kind::CortexA53 => Box::new(|_, _| arm64simd_mmm_f32_64x1_a53.mmm()),

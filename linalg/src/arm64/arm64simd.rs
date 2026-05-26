@@ -84,6 +84,21 @@ MMMExternKernel!(arm64simd_mmm_i32_8x8<i32>(8, 8)@(16, 16)
    store(i8)
 );
 
+// SDOT (FEAT_DotProd) variant: 4-K reduction per instruction (~4x the SMLAL
+// 8x8 above). Uses the K=4-inner PackedI8K4 packing; identical v16..v31 tile
+// layout, so it reuses all the i32 fuse/store/q_scale machinery.
+//
+// Gated on `tract_arm64_dotprod` (set by build.rs when the assembler can encode
+// `sdot`; binutils < 2.30 cannot). On old toolchains the kernel is omitted and
+// dispatch falls back to the SMLAL 8x8 i32 kernel.
+#[cfg(tract_arm64_dotprod)]
+MMMExternKernel!(arm64simd_mmm_i32_8x8_dot<i32>(8, 8)@(16, 16)
+   where(super::has_dotprod)
+   packing[1] = i8i8 => |k| k.with_packing(crate::pack::PackedI8K4::new(8), crate::pack::PackedI8K4::new(8));
+   quality(ManuallyOptimized)
+   store(i8)
+);
+
 MMMExternKernel!(arm64simd_mmm_i32_64x1<i32>(64, 1)@(16, 1)
    packing[1] = i8i8 => |k| k.with_packing(PackedFormat::new(DatumType::I8, 64,16), PackedFormat::new(DatumType::I8, 1, 1));
    quality(ManuallyOptimized)
@@ -112,6 +127,8 @@ pub fn plug(ops: &mut Ops) {
         arm64simd_mmm_i32_8x8.mmm(),
         arm64simd_mmm_i32_64x1.mmm(),
     ]);
+    #[cfg(tract_arm64_dotprod)]
+    ops.mmm_impls.push(arm64simd_mmm_i32_8x8_dot.mmm());
     panel_extract::plug(ops);
 }
 
