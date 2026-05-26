@@ -86,11 +86,19 @@ case "$PLATFORM" in
 
     "aarch64-unknown-linux-gnu-stretch" | "armv7-unknown-linux-gnueabihf-stretch" | "x86_64-unknown-linux-gnu-stretch")
         INNER_PLATFORM=${PLATFORM%-stretch}
+        # aarch64 stretch bench targets Jetson-class boxes that ship with CUDA 12;
+        # the default CUDA 13 cudarc binding wouldn't run there (cudart symbol
+        # rename across the 12/13 boundary).  Force cuda-12000 for that build only.
+        CUDA_FEATURE_ENV=""
+        if [ "$PLATFORM" = "aarch64-unknown-linux-gnu-stretch" ]
+        then
+            CUDA_FEATURE_ENV="-e TRACT_CUDA_FEATURE=cuda-12000"
+        fi
         (cd .travis/docker-debian-stretch; docker build --tag debian-stretch .)
         docker run -v `pwd`:/tract -w /tract \
             -e CI=true \
             -e SKIP_QEMU_TEST=skip \
-            -e PLATFORM=$INNER_PLATFORM debian-stretch \
+            -e PLATFORM=$INNER_PLATFORM $CUDA_FEATURE_ENV debian-stretch \
             ./.travis/cross.sh
         sudo chown -R `whoami` .
         export RUSTC_TRIPLE=$INNER_PLATFORM
@@ -196,7 +204,16 @@ case "$PLATFORM" in
 
         cargo dinghy --platform $PLATFORM $DINGHY_TEST_ARGS check -p tract-ffi
         # keep lto for these two are they're going to devices.
-        cargo dinghy --platform $PLATFORM build --release -p tract-cli -p example-tensorflow-mobilenet-v2
+        if [ -n "$TRACT_CUDA_FEATURE" ]
+        then
+            cargo dinghy --platform $PLATFORM build --release \
+                --no-default-features \
+                --features "onnx,tf,pulse,pulse-opl,tflite,transformers,extra,$TRACT_CUDA_FEATURE" \
+                -p tract-cli
+            cargo dinghy --platform $PLATFORM build --release -p example-tensorflow-mobilenet-v2
+        else
+            cargo dinghy --platform $PLATFORM build --release -p tract-cli -p example-tensorflow-mobilenet-v2
+        fi
         ;;
 
     wasm32-wasi)

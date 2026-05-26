@@ -215,7 +215,7 @@ walkdir = "2.3.2"
 zerofrom = "0.1.5"
 tract-api = { version = "=0.23.0-dev.4", path = 'api' }
 tract-core = { version = "0.23.0-pre", path = 'core' }
-tract-cuda = { version = "0.23.0-pre", path = 'cuda' }
+tract-cuda = { version = "0.23.0-pre", path = 'cuda', default-features = false }
 tract-data = { version = "0.23.0-pre", path = 'data' }
 tract-extra = { version = "0.23.0-pre", path = 'extra' }
 tract-gpu = { version = "0.23.0-pre", path = 'gpu' }
