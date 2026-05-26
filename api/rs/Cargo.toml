@@ -34,7 +34,7 @@ serde_json.workspace = true
 tract-metal.workspace = true
 
 [target.'cfg(any(target_os = "linux", target_os = "windows"))'.dependencies]
-tract-cuda.workspace = true
+tract-cuda = { workspace = true, default-features = false }
 
 
 [dev-dependencies]
@@ -44,7 +44,23 @@ tempfile.workspace = true
 serde_json.workspace = true
 
 [features]
+default = ["cuda-13000"]
 complex = []
 # default = [ "dylib" ]
 # dylib = []
 # staticlib = []
+
+# CUDA driver-API selectors (linux/windows targets only). Pass-through to
+# tract-cuda. Exactly one must be active; the default pulls cuda-13000.
+cuda-12000 = ["tract-cuda/cuda-12000"]
+cuda-12010 = ["tract-cuda/cuda-12010"]
+cuda-12020 = ["tract-cuda/cuda-12020"]
+cuda-12030 = ["tract-cuda/cuda-12030"]
+cuda-12040 = ["tract-cuda/cuda-12040"]
+cuda-12050 = ["tract-cuda/cuda-12050"]
+cuda-12060 = ["tract-cuda/cuda-12060"]
+cuda-12080 = ["tract-cuda/cuda-12080"]
+cuda-12090 = ["tract-cuda/cuda-12090"]
+cuda-13000 = ["tract-cuda/cuda-13000"]
+cuda-13010 = ["tract-cuda/cuda-13010"]
+cuda-13020 = ["tract-cuda/cuda-13020"]
