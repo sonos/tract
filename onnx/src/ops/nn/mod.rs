@@ -20,6 +20,7 @@ mod lp_norm;
 mod lrn;
 mod mat_mul_nbits;
 mod mish;
+mod multi_head_attention;
 mod mvn;
 mod reduce;
 mod rms_norm;
@@ -93,6 +94,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("QuickGelu", gelu_contrib::quick_gelu);
     reg.insert("HardSwish", |_, _| Ok((ops::nn::hard_swish().into_hir(), vec![])));
     reg.insert("Mish", |_, _| Ok((expand(mish::Mish), vec![])));
+    reg.insert("MultiHeadAttention", multi_head_attention::multi_head_attention);
     reg.insert("RMSNormalization", rms_norm::rms_normalization);
     reg.insert("RotaryEmbedding", rotary_embedding::rotary_embedding);
     reg.insert("SimplifiedLayerNormalization", rms_norm::rms_normalization);
