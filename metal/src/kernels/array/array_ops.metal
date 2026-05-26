@@ -241,6 +241,57 @@ typedef decltype(rotate_half_nd2<float>) rotate_half_nd2_t;
         "array_ops::rotate_half_nd2_" #tname)]] [[kernel]] rotate_half_nd2_t   \
         rotate_half_nd2<type>;
 
+// Diagonal gather (Transformer-XL rel-pos skew, folded):
+//   out[..., i, k] = in[..., i, offset + k - i], 0 on out-of-bounds.
+// Leading axes are flattened by the host into one batch axis.  Each thread
+// owns one (b, i, k) output element.
+//
+// params layout: [offset, t_q, r_in, out_len,
+//                 in_stride_b, in_stride_i, in_stride_r,
+//                 out_stride_b, out_stride_i, out_stride_k]
+template <typename T>
+[[kernel]] void diag_gather(device const void *input_b [[buffer(0)]],
+                            device void *output_b [[buffer(1)]],
+                            constant const int32_t *params [[buffer(2)]],
+                            uint3 tpig [[thread_position_in_grid]]) {
+    const int32_t k = (int32_t)tpig.x;
+    const int32_t i = (int32_t)tpig.y;
+    const int32_t b = (int32_t)tpig.z;
+
+    const int32_t offset = params[0];
+    const int32_t t_q = params[1];
+    const int32_t r_in = params[2];
+    const int32_t out_len = params[3];
+    const int32_t in_stride_b = params[4];
+    const int32_t in_stride_i = params[5];
+    const int32_t in_stride_r = params[6];
+    const int32_t out_stride_b = params[7];
+    const int32_t out_stride_i = params[8];
+    const int32_t out_stride_k = params[9];
+
+    if (k >= out_len || i >= t_q)
+        return;
+
+    device const T *input = (device const T *)input_b;
+    device T *output = (device T *)output_b;
+
+    const int32_t out_idx = b * out_stride_b + i * out_stride_i + k * out_stride_k;
+    const int32_t r = offset + k - i;
+    if (r >= 0 && r < r_in) {
+        const int32_t in_idx = b * in_stride_b + i * in_stride_i + r * in_stride_r;
+        output[out_idx] = input[in_idx];
+    } else {
+        output[out_idx] = (T)0;
+    }
+}
+
+typedef decltype(diag_gather<float>) diag_gather_t;
+
+#define INSTANTIATE_DIAG_GATHER(tname, type)                                   \
+    template [[host_name(                                                      \
+        "array_ops::diag_gather_" #tname)]] [[kernel]] diag_gather_t           \
+        diag_gather<type>;
+
 // Copy kernels: only u8/u16/u32/u64 (copy is type-size based)
 INSTANTIATE_COPY(u8, uint8_t)
 INSTANTIATE_COPY(u16, uint16_t)
@@ -276,3 +327,7 @@ INSTANTIATE_CAST_FROM(u64, uint64_t)
 // Rotate half: only float types
 INSTANTIATE_ROTATE_HALF_OP(f32, float)
 INSTANTIATE_ROTATE_HALF_OP(f16, half)
+
+// Diagonal gather: f32 and f16 only.
+INSTANTIATE_DIAG_GATHER(f32, float)
+INSTANTIATE_DIAG_GATHER(f16, half)
