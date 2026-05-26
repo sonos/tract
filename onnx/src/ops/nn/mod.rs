@@ -21,6 +21,7 @@ mod mish;
 mod mvn;
 mod reduce;
 mod rms_norm;
+mod rms_norm_contrib;
 mod rotary_embedding;
 
 pub fn arg_max_min(
@@ -88,6 +89,11 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Mish", |_, _| Ok((expand(mish::Mish), vec![])));
     reg.insert("RMSNormalization", rms_norm::rms_normalization);
     reg.insert("RotaryEmbedding", rotary_embedding::rotary_embedding);
+    reg.insert("SimplifiedLayerNormalization", rms_norm::rms_normalization);
+    reg.insert(
+        "SkipSimplifiedLayerNormalization",
+        rms_norm_contrib::skip_simplified_layer_normalization,
+    );
     reg.insert("Softmax", layer_soft_max);
     reg.insert("Swish", |_, _| Ok((tract_core::ops::nn::silu::silu().into_hir(), vec![])));
     reg.insert("Softplus", |_, _| Ok((expand(ops::activations::Softplus), vec![])));
