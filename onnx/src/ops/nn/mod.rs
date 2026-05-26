@@ -12,6 +12,7 @@ mod batch_norm;
 mod conv_transpose;
 mod dropout;
 mod gelu;
+mod gelu_contrib;
 mod group_norm;
 mod instance_norm;
 mod layer_norm;
@@ -84,6 +85,9 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Sigmoid", |_, _| Ok((ops::nn::sigmoid().into_hir(), vec![])));
     reg.insert("Attention", attention::attention);
     reg.insert("Gelu", gelu::gelu);
+    reg.insert("BiasGelu", gelu_contrib::bias_gelu);
+    reg.insert("FastGelu", gelu_contrib::fast_gelu);
+    reg.insert("QuickGelu", gelu_contrib::quick_gelu);
     reg.insert("HardSwish", |_, _| Ok((ops::nn::hard_swish().into_hir(), vec![])));
     reg.insert("Mish", |_, _| Ok((expand(mish::Mish), vec![])));
     reg.insert("RMSNormalization", rms_norm::rms_normalization);
