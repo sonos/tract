@@ -12,12 +12,16 @@ mod batch_norm;
 mod conv_transpose;
 mod dropout;
 mod gelu;
+mod group_norm;
 mod instance_norm;
 mod layer_norm;
+mod lp_norm;
 mod lrn;
 mod mish;
+mod mvn;
 mod reduce;
 mod rms_norm;
+mod rotary_embedding;
 
 pub fn arg_max_min(
     _ctx: &ParsingContext,
@@ -48,14 +52,17 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("GlobalAveragePool", |_, _| Ok((expand(ops::nn::GlobalAvgPool), vec![])));
     reg.insert("GlobalLpPool", global_lp_pool);
     reg.insert("GlobalMaxPool", |_, _| Ok((expand(ops::nn::GlobalMaxPool), vec![])));
+    reg.insert("GroupNormalization", group_norm::group_normalization);
     reg.insert("Hardmax", layer_hard_max);
     reg.insert("HardSigmoid", hard_sigmoid);
     reg.insert("InstanceNormalization", instance_norm::instance_normalization);
     reg.insert("LayerNormalization", layer_norm::layer_norm);
     reg.insert("LeakyRelu", leaky_relu);
+    reg.insert("LpNormalization", lp_norm::lp_normalization);
     reg.insert("LogSoftmax", layer_log_soft_max);
     reg.insert("LRN", lrn::lrn);
     reg.insert("MaxPool", max_pool);
+    reg.insert("MeanVarianceNormalization", mvn::mean_variance_normalization);
     reg.insert("ParametricSoftplus", parametric_softplus);
     reg.insert("QLinearConv", conv_qlinear);
     reg.insert("PRelu", |_, _| Ok((expand(Prelu), vec![])));
@@ -80,6 +87,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("HardSwish", |_, _| Ok((ops::nn::hard_swish().into_hir(), vec![])));
     reg.insert("Mish", |_, _| Ok((expand(mish::Mish), vec![])));
     reg.insert("RMSNormalization", rms_norm::rms_normalization);
+    reg.insert("RotaryEmbedding", rotary_embedding::rotary_embedding);
     reg.insert("Softmax", layer_soft_max);
     reg.insert("Swish", |_, _| Ok((tract_core::ops::nn::silu::silu().into_hir(), vec![])));
     reg.insert("Softplus", |_, _| Ok((expand(ops::activations::Softplus), vec![])));

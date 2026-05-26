@@ -231,6 +231,9 @@ test_less.*
 test_log
 test_log_example
 test_logsoftmax.*
+test_l1normalization.*
+test_l2normalization.*
+test_lpnormalization.*
 test_lrn
 test_lrn_default
 test_lstm_batchwise
@@ -276,6 +279,7 @@ test_mod_uint32 not-nnef
 test_mod_uint64 not-nnef
 test_mod_uint8 not-nnef
 test_mul.*
+test_mvn
 test_mvn_expanded
 test_neg
 test_negative_log_likelihood_loss_input_shape_is_NCd1d2d3d4d5_none_no_weight_expanded
@@ -778,7 +782,9 @@ test_gelu_tanh_1 since:24
 test_gelu_tanh_1_expanded since:24
 test_gelu_tanh_2 since:24
 test_gelu_tanh_2_expanded since:24
+test_group_normalization_epsilon
 test_group_normalization_epsilon_expanded
+test_group_normalization_example
 test_group_normalization_example_expanded
 test_isnan_float16 since:24
 test_maxpool_2d_ceil_output_size_reduce_by_one since:24
@@ -825,14 +831,7 @@ test_rms_normalization_4d_axis_negative_4 since:24
 test_rms_normalization_4d_axis_negative_4_expanded since:24
 test_rms_normalization_default_axis since:24
 test_rms_normalization_default_axis_expanded since:24
-test_rotary_embedding_3d_input_expanded since:24
-test_rotary_embedding_expanded since:24
-test_rotary_embedding_interleaved_expanded since:24
-test_rotary_embedding_no_position_ids_expanded since:24
-test_rotary_embedding_no_position_ids_interleaved_expanded since:24
-test_rotary_embedding_no_position_ids_rotary_dim_expanded since:24
-test_rotary_embedding_with_interleaved_rotary_dim_expanded since:24
-test_rotary_embedding_with_rotary_dim_expanded since:24
+test_rotary_embedding.* since:24
 test_scatter_elements_with_duplicate_indices
 test_swish since:24
 test_swish_expanded since:24
