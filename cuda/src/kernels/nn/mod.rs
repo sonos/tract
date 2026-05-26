@@ -54,7 +54,11 @@ pub fn all_functions() -> Vec<String> {
         tract_gpu::tensor::DeviceTensor::SUPPORTED_DT
             .into_iter()
             .flat_map(|dt| sms_block_sizes().into_iter().map(move |bs| (dt, bs as usize)))
-            .flat_map(|(dt, bs)| ScaledMaskedSoftmax.kernel_name(dt, bs).into_iter()),
+            .flat_map(|(dt, bs)| {
+                [false, true]
+                    .into_iter()
+                    .flat_map(move |mb| ScaledMaskedSoftmax.kernel_name(dt, mb, bs).into_iter())
+            }),
     );
 
     functions.extend(

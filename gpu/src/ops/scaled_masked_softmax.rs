@@ -2,14 +2,25 @@ use crate::tensor::{DeviceTensor, DeviceTensorExt};
 use derive_new::new;
 use tract_core::internal::*;
 
-/// A = SOFTMAX(INPUT * SCALE + MASK, AXIS=2)
-/// Only input of rank of 3 is supported
-pub type DispatchScaledMaskedSoftmaxFn =
-    fn(&DeviceTensor, &Tensor, &DeviceTensor, &DeviceTensor) -> TractResult<()>;
+/// Fused scale + mask + softmax over the last axis.  When the mask is float
+/// it is added in log-space (`out = softmax(x*scale + mask)`); when it is
+/// bool, masked positions are substituted with `-inf` before softmax.
+///
+/// If `post_softmax_mask` is true (bool mask only), fully-masked rows — whose
+/// softmax would otherwise be NaN — are written as `0` instead.  Partially-
+/// masked rows are unaffected.
+pub type DispatchScaledMaskedSoftmaxFn = fn(
+    input: &DeviceTensor,
+    scale: &Tensor,
+    mask: &DeviceTensor,
+    post_softmax_mask: bool,
+    output: &DeviceTensor,
+) -> TractResult<()>;
 
 #[derive(Clone, new)]
 pub struct GpuScaledMaskedSoftmax {
     pub scale: Arc<Tensor>,
+    pub post_softmax_mask: bool,
     pub backend_name: &'static str,
     pub dispatch: DispatchScaledMaskedSoftmaxFn,
 }
@@ -22,7 +33,9 @@ impl std::fmt::Debug for GpuScaledMaskedSoftmax {
 
 impl PartialEq for GpuScaledMaskedSoftmax {
     fn eq(&self, other: &Self) -> bool {
-        self.backend_name == other.backend_name && self.scale == other.scale
+        self.backend_name == other.backend_name
+            && self.scale == other.scale
+            && self.post_softmax_mask == other.post_softmax_mask
     }
 }
 impl Eq for GpuScaledMaskedSoftmax {}
@@ -31,6 +44,7 @@ impl std::hash::Hash for GpuScaledMaskedSoftmax {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.backend_name.hash(state);
         self.scale.hash(state);
+        self.post_softmax_mask.hash(state);
     }
 }
 
@@ -61,7 +75,7 @@ impl EvalOp for GpuScaledMaskedSoftmax {
             input.datum_type(),
             input.shape(),
         )?;
-        (self.dispatch)(input, &self.scale, mask, &output)?;
+        (self.dispatch)(input, &self.scale, mask, self.post_softmax_mask, &output)?;
         Ok(tvec!(output.into_tensor().into_tvalue()))
     }
 }
@@ -71,7 +85,10 @@ impl TypedOp for GpuScaledMaskedSoftmax {
         crate::utils::facts_to_device_facts(inputs, |facts| {
             ensure!(facts.len() == 2);
             let dt = facts[0].datum_type;
-            ensure!(dt == facts[1].datum_type);
+            let mask_dt = facts[1].datum_type;
+            ensure!(mask_dt == dt || mask_dt == bool::datum_type());
+            // post_softmax_mask is bool-mask-only per the CPU contract.
+            ensure!(!self.post_softmax_mask || mask_dt == bool::datum_type());
             ensure!(facts[0].rank() <= 5);
             ensure!(facts[0].rank() >= 2);
             ensure!(facts[0].rank() == facts[1].rank());

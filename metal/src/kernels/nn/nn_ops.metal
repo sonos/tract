@@ -495,6 +495,126 @@ template [[host_name("nn_ops::scaled_masked_softmax_nd5_"
                      "f16")]] [[kernel]] scaled_masked_softmax_nd5_t
     scaled_masked_softmax_nd5<half>;
 
+// Bool-mask variant: mask is uchar (0/1).  Masked positions are substituted
+// with -inf before softmax (so exp(-inf)=0 naturally zeroes them in the
+// output).  When post_mask is non-zero, fully-masked rows — whose softmax
+// would otherwise be NaN — are written as 0 instead.
+template <typename F>
+[[kernel]] void scaled_bool_masked_softmax_nd5(
+    device const void *input_b, device const void *mask_b,
+    constant float *scale_b, device void *output_b,
+    constant uint *post_mask_b, constant const size_t shape[5],
+    constant const size_t strides[5],
+    constant const size_t mask_strides[5],
+    constant const size_t out_strides[5],
+
+    uint3 tgpig [[threadgroup_position_in_grid]],
+    uint tiisg [[thread_index_in_simdgroup]],
+    uint tpsg [[threads_per_simdgroup]],
+    uint3 tptg [[thread_position_in_threadgroup]],
+    uint3 tptgN [[threads_per_threadgroup]],
+
+    threadgroup float *tgmem [[threadgroup(0)]]) {
+
+    const uint tid = tptg.x;
+    const uint tg_sz = tptgN.x;
+    const uint sg_id = tid / tpsg;
+    const uint lane = tiisg;
+
+    const size_t row = (size_t)tgpig.x;
+    const size_t h = (size_t)tgpig.y;
+    const size_t z = (size_t)tgpig.z;
+    const size_t z0 = z / shape[1];
+    const size_t z1 = z % shape[1];
+
+    device const F *x = (device const F *)input_b;
+    device const uchar *mask = (device const uchar *)mask_b;
+    device F *out = (device F *)output_b;
+
+    const float scale = *scale_b;
+    const bool post_mask = *post_mask_b != 0;
+
+    x += row * strides[3] + h * strides[2] + z1 * strides[1] + z0 * strides[0];
+    mask += row * mask_strides[3] + h * mask_strides[2] +
+            z1 * mask_strides[1] + z0 * mask_strides[0];
+    out += row * out_strides[3] + h * out_strides[2] + z1 * out_strides[1] +
+           z0 * out_strides[0];
+
+    threadgroup float *buf_iw = tgmem;
+    threadgroup float *vals = tgmem + 32;
+
+    const uint simd_size = tpsg;
+    const uint num_sg = (tg_sz + simd_size - 1u) / simd_size;
+    const size_t cols = shape[4];
+
+    // 1) Substitute -inf at masked positions, then take row max
+    float max_val = -INFINITY;
+    for (size_t col = (size_t)tid; col < cols; col += (size_t)tg_sz) {
+        const bool m = mask[col * mask_strides[4]] != 0;
+        const float xv = (float)x[col * strides[4]] * scale;
+        const float v = m ? xv : -INFINITY;
+        vals[col] = v;
+        max_val = metal::max(max_val, v);
+    }
+
+    float sg_max = simd_max(max_val);
+    if (lane == 0) {
+        buf_iw[sg_id] = sg_max;
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    if (sg_id == 0) {
+        float x0 = (lane < num_sg) ? buf_iw[lane] : -INFINITY;
+        float block_max = simd_max(x0);
+        if (lane == 0)
+            buf_iw[0] = block_max;
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    max_val = buf_iw[0];
+
+    // 2) exp(vals - max) and row sum
+    float sum = 0.0f;
+    for (size_t col = (size_t)tid; col < cols; col += (size_t)tg_sz) {
+        float e = exp(vals[col] - max_val);
+        vals[col] = e;
+        sum += e;
+    }
+
+    float sg_sum = simd_sum(sum);
+    if (lane == 0) {
+        buf_iw[sg_id] = sg_sum;
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    if (sg_id == 0) {
+        float x0 = (lane < num_sg) ? buf_iw[lane] : 0.0f;
+        float block_sum = simd_sum(x0);
+        if (lane == 0)
+            buf_iw[0] = block_sum;
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    sum = buf_iw[0];
+
+    // Row-uniform: sum <= 0 (or NaN) iff every position was masked.  With
+    // post_mask we write 0 in that case to scrub the NaN; otherwise we let
+    // 1/sum propagate.
+    const bool zero_row = post_mask && !(sum > 0.0f);
+    const float inv_sum = 1.0f / sum;
+
+    for (size_t col = (size_t)tid; col < cols; col += (size_t)tg_sz) {
+        float y = zero_row ? 0.0f : vals[col] * inv_sum;
+        out[col * out_strides[4]] = (F)y;
+    }
+}
+
+typedef decltype(scaled_bool_masked_softmax_nd5<float>)
+    scaled_bool_masked_softmax_nd5_t;
+
+template [[host_name("nn_ops::scaled_bool_masked_softmax_nd5_"
+                     "f32")]] [[kernel]] scaled_bool_masked_softmax_nd5_t
+    scaled_bool_masked_softmax_nd5<float>;
+template [[host_name("nn_ops::scaled_bool_masked_softmax_nd5_"
+                     "f16")]] [[kernel]] scaled_bool_masked_softmax_nd5_t
+    scaled_bool_masked_softmax_nd5<half>;
+
 constant float GELU_COEF_A = 0.044715f;
 constant float SQRT_2_OVER_PI = 0.79788456080286535587989211986876f;
 
