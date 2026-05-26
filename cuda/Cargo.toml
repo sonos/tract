@@ -41,7 +41,22 @@ proptest.workspace = true
 rand.workspace = true
 
 [features]
+# Pick exactly one cuda-XXXXX to bind cudarc against. Higher minor versions
+# bind more symbols; the resulting binary still runs against any CUDA driver
+# whose API version is >= the chosen one (the runtime check in utils.rs
+# enforces this).
+cuda-12000 = ["cudarc/cuda-12000"]
+cuda-12010 = ["cudarc/cuda-12010"]
+cuda-12020 = ["cudarc/cuda-12020"]
+cuda-12030 = ["cudarc/cuda-12030"]
+cuda-12040 = ["cudarc/cuda-12040"]
+cuda-12050 = ["cudarc/cuda-12050"]
+cuda-12060 = ["cudarc/cuda-12060"]
+cuda-12080 = ["cudarc/cuda-12080"]
+cuda-12090 = ["cudarc/cuda-12090"]
 cuda-13000 = ["cudarc/cuda-13000"]
+cuda-13010 = ["cudarc/cuda-13010"]
+cuda-13020 = ["cudarc/cuda-13020"]
 default = ["cuda-13000"]
 
 [[bench]]

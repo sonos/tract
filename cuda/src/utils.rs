@@ -14,15 +14,60 @@ use crate::ops::GgmlQuantQ81Fact;
 static CULIBS_MISSING: OnceLock<Option<&'static str>> = OnceLock::new();
 static DEPENDENCIES_OK: OnceLock<()> = OnceLock::new();
 
-// Ensure exactly cuda-13000 is enabled.
-// Prevent accidental change of feature gate without
-// updating this required API version used for compatibility check.
-// please update the 3 references bellow if cudarc gate is updated to a newer version.
+/// CUDA Driver API version this build of tract-cuda is bound against. Used both
+/// for the runtime driver-version check (in `ensure_cuda_driver_compatible`)
+/// and for the per-version cubin cache path. Derived at compile time from the
+/// active `cuda-XXXXX` feature; cudarc binds to that same enum/struct layout,
+/// so the two must agree. Adding a new minor here means adding the matching
+/// cargo feature too.
+#[cfg(feature = "cuda-12000")]
+pub const REQUIRED_CUDA_API: i32 = 12000;
+#[cfg(feature = "cuda-12010")]
+pub const REQUIRED_CUDA_API: i32 = 12010;
+#[cfg(feature = "cuda-12020")]
+pub const REQUIRED_CUDA_API: i32 = 12020;
+#[cfg(feature = "cuda-12030")]
+pub const REQUIRED_CUDA_API: i32 = 12030;
+#[cfg(feature = "cuda-12040")]
+pub const REQUIRED_CUDA_API: i32 = 12040;
+#[cfg(feature = "cuda-12050")]
+pub const REQUIRED_CUDA_API: i32 = 12050;
+#[cfg(feature = "cuda-12060")]
+pub const REQUIRED_CUDA_API: i32 = 12060;
+#[cfg(feature = "cuda-12080")]
+pub const REQUIRED_CUDA_API: i32 = 12080;
+#[cfg(feature = "cuda-12090")]
+pub const REQUIRED_CUDA_API: i32 = 12090;
+#[cfg(feature = "cuda-13000")]
 pub const REQUIRED_CUDA_API: i32 = 13000;
-#[cfg(not(feature = "cuda-13000"))]
+#[cfg(feature = "cuda-13010")]
+pub const REQUIRED_CUDA_API: i32 = 13010;
+#[cfg(feature = "cuda-13020")]
+pub const REQUIRED_CUDA_API: i32 = 13020;
+
+// Exactly one cuda-XXXXX feature must be enabled. cudarc itself panics at its
+// build script if zero are enabled, but it does not catch the case of two
+// being enabled simultaneously — and a mismatch between REQUIRED_CUDA_API and
+// cudarc's actual binding would be a silent ABI hazard. Enumerate the
+// supported set explicitly so a duplicate triggers `REQUIRED_CUDA_API` re-def
+// at compile time.
+#[cfg(not(any(
+    feature = "cuda-12000",
+    feature = "cuda-12010",
+    feature = "cuda-12020",
+    feature = "cuda-12030",
+    feature = "cuda-12040",
+    feature = "cuda-12050",
+    feature = "cuda-12060",
+    feature = "cuda-12080",
+    feature = "cuda-12090",
+    feature = "cuda-13000",
+    feature = "cuda-13010",
+    feature = "cuda-13020",
+)))]
 compile_error!(
-    "Tract CUDA backend currently supports only cudarc feature 'cuda-13000'. \
-        Enabled in Cargo features.",
+    "Tract CUDA backend requires exactly one of the cuda-XXXXX features \
+     (cuda-12000..cuda-13020) to be enabled. Enable it in Cargo features.",
 );
 
 /// CUDA Driver API status code type (CUresult is an enum, but it's ABI-compatible with int).
