@@ -18,6 +18,7 @@ mod layer_norm;
 mod lp_norm;
 mod lrn;
 mod mish;
+mod multi_head_attention;
 mod mvn;
 mod reduce;
 mod rms_norm;
@@ -86,6 +87,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Gelu", gelu::gelu);
     reg.insert("HardSwish", |_, _| Ok((ops::nn::hard_swish().into_hir(), vec![])));
     reg.insert("Mish", |_, _| Ok((expand(mish::Mish), vec![])));
+    reg.insert("MultiHeadAttention", multi_head_attention::multi_head_attention);
     reg.insert("RMSNormalization", rms_norm::rms_normalization);
     reg.insert("RotaryEmbedding", rotary_embedding::rotary_embedding);
     reg.insert("Softmax", layer_soft_max);
