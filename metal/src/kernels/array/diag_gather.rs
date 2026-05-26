@@ -103,11 +103,7 @@ impl DiagGather {
             encoder.set_metal_tensor(0, input, metal::MTLResourceUsage::Read);
             encoder.set_metal_tensor(1, output, metal::MTLResourceUsage::Write);
             encoder.set_slice(2, &params);
-            let grid_size = MTLSize {
-                width: out_len as _,
-                height: t_q as _,
-                depth: batch as _,
-            };
+            let grid_size = MTLSize { width: out_len as _, height: t_q as _, depth: batch as _ };
             let group_size = MTLSize { width: 1, height: 1, depth: 1 };
             encoder.dispatch_thread_groups(grid_size, group_size);
         });
@@ -126,18 +122,15 @@ pub fn metal_diag_gather_dispatch(
     })
 }
 
-crate::register_metal_op!(
-    tract_transformers::ops::diag_gather::DiagGather,
-    |source, node, op| {
-        rule_if!(DiagGather::is_supported_dt(source.node_input_facts(node.id)?[0].datum_type));
-        Ok(Some(Box::new(tract_gpu::ops::diag_gather::GpuDiagGather::new(
-            op.offset.clone(),
-            op.out_len.clone(),
-            "Metal",
-            metal_diag_gather_dispatch,
-        ))))
-    }
-);
+crate::register_metal_op!(tract_transformers::ops::diag_gather::DiagGather, |source, node, op| {
+    rule_if!(DiagGather::is_supported_dt(source.node_input_facts(node.id)?[0].datum_type));
+    Ok(Some(Box::new(tract_gpu::ops::diag_gather::GpuDiagGather::new(
+        op.offset.clone(),
+        op.out_len.clone(),
+        "Metal",
+        metal_diag_gather_dispatch,
+    ))))
+});
 
 #[cfg(test)]
 mod tests {
