@@ -25,6 +25,7 @@ mod reduce;
 mod rms_norm;
 mod rms_norm_contrib;
 mod rotary_embedding;
+mod skip_layer_norm;
 
 pub fn arg_max_min(
     _ctx: &ParsingContext,
@@ -100,6 +101,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
         "SkipSimplifiedLayerNormalization",
         rms_norm_contrib::skip_simplified_layer_normalization,
     );
+    reg.insert("SkipLayerNormalization", skip_layer_norm::skip_layer_normalization);
     reg.insert("Softmax", layer_soft_max);
     reg.insert("Swish", |_, _| Ok((tract_core::ops::nn::silu::silu().into_hir(), vec![])));
     reg.insert("Softplus", |_, _| Ok((expand(ops::activations::Softplus), vec![])));
