@@ -18,7 +18,22 @@ pub fn rotary_embedding(
     let num_heads = node.get_attr_opt::<i64>("num_heads")?.unwrap_or(0) as usize;
     let rotary_embedding_dim =
         node.get_attr_opt::<i64>("rotary_embedding_dim")?.unwrap_or(0) as usize;
-    Ok((expand(RotaryEmbedding { interleaved, num_heads, rotary_embedding_dim }), vec![]))
+    // The com.microsoft contrib op is identical math but orders its inputs
+    // (input, position_ids, cos, sin) and adds `scale`/`is_packed_batching` attributes.
+    let microsoft = node.domain == "com.microsoft";
+    if microsoft {
+        let scale = node.get_attr_opt::<f32>("scale")?.unwrap_or(1.0);
+        ensure!(
+            scale == 1.0,
+            "com.microsoft RotaryEmbedding: scale={scale} (!= 1.0) is unsupported"
+        );
+        let packed = node.get_attr_opt::<i64>("is_packed_batching")?.unwrap_or(0);
+        ensure!(packed == 0, "com.microsoft RotaryEmbedding: is_packed_batching=1 is unsupported");
+    }
+    Ok((
+        expand(RotaryEmbedding { interleaved, num_heads, rotary_embedding_dim, microsoft }),
+        vec![],
+    ))
 }
 
 #[derive(Debug, Clone, new)]
@@ -26,6 +41,8 @@ struct RotaryEmbedding {
     interleaved: bool,
     num_heads: usize,
     rotary_embedding_dim: usize,
+    /// com.microsoft contrib variant: inputs are (input, position_ids, cos, sin).
+    microsoft: bool,
 }
 
 impl Expansion for RotaryEmbedding {
@@ -60,7 +77,14 @@ impl Expansion for RotaryEmbedding {
         let in_fact = model.outlet_fact(inputs[0])?.clone();
         let in_rank = in_fact.rank();
         ensure!(in_rank == 3 || in_rank == 4, "RotaryEmbedding expects rank 3 or 4, got {in_rank}");
-        let has_position_ids = inputs.len() == 4;
+        // Input layout differs by domain:
+        //   ai.onnx:       input, cos, sin, position_ids?   (position_ids optional, index 3)
+        //   com.microsoft: input, position_ids, cos, sin    (position_ids at index 1)
+        let (cos_idx, sin_idx, pos_idx) = if self.microsoft {
+            (2usize, 3usize, Some(1usize))
+        } else {
+            (1usize, 2usize, (inputs.len() == 4).then_some(3usize))
+        };
         let two = 2usize.to_dim();
 
         // 1. Normalize input to [batch, seq, heads, head_size].
@@ -107,11 +131,11 @@ impl Expansion for RotaryEmbedding {
 
         // 3. Prepare cos/sin as [B, S, 1, half] (gathering by position_ids if present).
         let mut prep = |tag: &str, cache: usize| -> TractResult<OutletId> {
-            let gathered = if has_position_ids {
+            let gathered = if let Some(pi) = pos_idx {
                 model.wire_node(
                     format!("{prefix}.{tag}_gather"),
                     Gather::new(0),
-                    &[inputs[cache], inputs[3]],
+                    &[inputs[cache], inputs[pi]],
                 )?[0]
             } else {
                 inputs[cache]
@@ -119,8 +143,8 @@ impl Expansion for RotaryEmbedding {
             Ok(model.wire_node(format!("{prefix}.{tag}_unsqueeze"), AxisOp::Add(2), &[gathered])?
                 [0])
         };
-        let cos = prep("cos", 1)?;
-        let sin = prep("sin", 2)?;
+        let cos = prep("cos", cos_idx)?;
+        let sin = prep("sin", sin_idx)?;
 
         // 4. Extract the two rotated components.
         let (x1, x2) = if self.interleaved {
