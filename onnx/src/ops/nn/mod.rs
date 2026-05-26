@@ -18,6 +18,7 @@ mod instance_norm;
 mod layer_norm;
 mod lp_norm;
 mod lrn;
+mod mat_mul_nbits;
 mod mish;
 mod mvn;
 mod reduce;
@@ -63,6 +64,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("LpNormalization", lp_norm::lp_normalization);
     reg.insert("LogSoftmax", layer_log_soft_max);
     reg.insert("LRN", lrn::lrn);
+    reg.insert("MatMulNBits", mat_mul_nbits::mat_mul_nbits);
     reg.insert("MaxPool", max_pool);
     reg.insert("MeanVarianceNormalization", mvn::mean_variance_normalization);
     reg.insert("ParametricSoftplus", parametric_softplus);
