@@ -219,3 +219,35 @@ INSTANTIATE_CAST_FROM(u64, uint64_t)
 // Rotate half: only float types
 INSTANTIATE_ROTATE_HALF(f32, float)
 INSTANTIATE_ROTATE_HALF(f16, __half)
+
+// Diagonal gather (Transformer-XL rel-pos skew, folded):
+//   out[..., i, k] = in[..., i, offset + k - i], 0 on out-of-bounds.
+// Leading axes are flattened by the host into one batch axis.  Each thread
+// owns one (b, i, k) output element — bandwidth-bound, no shared memory.
+#define INSTANTIATE_DIAG_GATHER(name, T)                                       \
+    extern "C" __global__ void diag_gather_##name(                             \
+        const T *input, T *output, const int32_t offset,                       \
+        const int32_t batch, const int32_t t_q, const int32_t r_in,            \
+        const int32_t out_len, const int32_t in_stride_b,                      \
+        const int32_t in_stride_i, const int32_t in_stride_r,                  \
+        const int32_t out_stride_b, const int32_t out_stride_i,                \
+        const int32_t out_stride_k) {                                          \
+        const int32_t k = blockIdx.x * blockDim.x + threadIdx.x;               \
+        if (k >= out_len)                                                      \
+            return;                                                            \
+        const int32_t i = blockIdx.y;                                          \
+        const int32_t b = blockIdx.z;                                          \
+        const int32_t r = offset + k - i;                                      \
+        T *out_ptr = output + b * out_stride_b + i * out_stride_i +            \
+                     k * out_stride_k;                                         \
+        if (r >= 0 && r < r_in) {                                              \
+            const T *in_ptr =                                                  \
+                input + b * in_stride_b + i * in_stride_i + r * in_stride_r;   \
+            *out_ptr = *in_ptr;                                                \
+        } else {                                                               \
+            *out_ptr = (T)0;                                                   \
+        }                                                                      \
+    }
+
+INSTANTIATE_DIAG_GATHER(f32, float)
+INSTANTIATE_DIAG_GATHER(f16, __half)
