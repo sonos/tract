@@ -28,10 +28,13 @@ tract::impl_ndarray_interop!();
 
 let model = tract::onnx()?
     .load("mobilenetv2-7.onnx")?
-    .into_model()?
-    .into_runnable()?;
+    .into_model()?;
 
-let result = model.run([input.tract()?])?;
+// prepare() optimises and compiles the model for the chosen runtime
+let runtime = tract::runtime_for_name("default")?;
+let runnable = runtime.prepare(model)?;
+
+let result = runnable.run([input.tract()?])?;
 ```
 
 The [`tract`](https://crates.io/crates/tract) crate (`api/rs/src/lib.rs`) is the authoritative public API. The
@@ -74,16 +77,16 @@ pip install tract
 The API mirrors the Rust pipeline: load a model, set input facts, optimise, then run.
 Documentation: [sonos.github.io/tract](https://sonos.github.io/tract). Source lives in [`api/py/`](api/py/).
 
-## Backends
+## Runtimes
 
-| Backend | Crate | Notes |
-|---|---|---|
-| CPU (x86, ARMv6/7/8, ARM SVE) | `tract-linalg` | Default. Hand-rolled SIMD micro-kernels. |
-| Apple Metal | `tract-metal` | Apple GPUs. |
-| NVIDIA CUDA | `tract-cuda` | NVIDIA GPUs. |
-| WebAssembly | _via standard wasm32 targets_ | Browser / WASI deployment. |
+| Runtime | Name | Crate | Notes |
+|---|---|---|---|
+| CPU (x86, ARMv6/7/8, ARM SVE) | `"default"` | `tract-linalg` | Default. Hand-rolled SIMD micro-kernels. |
+| Apple Metal | `"metal"` | `tract-metal` | Apple GPUs. |
+| NVIDIA CUDA | `"cuda"` | `tract-cuda` | NVIDIA GPUs. |
+| WebAssembly | `"default"` | _via standard wasm32 targets_ | Browser / WASI deployment. |
 
-All backends share the `TypedModel` IR and the same loaders, so a model
+All runtimes share the `TypedModel` IR and the same loaders, so a model
 optimised on one platform can be moved to another.
 
 ## Streaming and pulsification
