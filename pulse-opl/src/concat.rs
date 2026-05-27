@@ -38,7 +38,16 @@ impl TypedOp for PulsedSameAxisConcat {
     as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(inputs[0].clone()))
+        // Inputs are (pre_prefix, stream, post_suffix); the streaming output
+        // has the same shape as `stream` (input 1).  The pulsed-op version
+        // builds its PulsedFact from the same input.  Previously this
+        // returned `inputs[0]` — the small constant pre-buffer — which broke
+        // any pass that re-derived the typed shape post-pulsification (e.g.
+        // CUDA/Metal translation walking the pulsified preprocessor: every
+        // downstream op saw the pre-buffer shape instead of the pulse-axis
+        // size and produced collapsed outputs).
+        ensure!(inputs.len() == 3, "Expect 3 inputs");
+        Ok(tvec!(inputs[1].clone()))
     }
 }
 
