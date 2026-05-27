@@ -24,6 +24,7 @@ pub mod fft;
 pub mod identity;
 pub mod konst;
 pub mod logic;
+pub mod lstm_cell;
 pub mod math;
 pub mod matmul;
 // pub mod memory;
