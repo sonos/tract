@@ -232,8 +232,20 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
             }
         }
 
-        // Single-op translation
-        if let Some(gpu_op) = try_make_metal_op(source, node)? {
+        // Single-op translation.  See the matching CUDA path for rationale:
+        // pre-check the gpu_op's output_facts against the already-translated
+        // target-side input shapes before wiring, so a stale Reshape (e.g.
+        // after pulsification has changed an upstream axis size) falls back
+        // to CPU rather than aborting the whole Metal transform.
+        let target_inputs: TVec<TypedFact> = node
+            .inputs
+            .iter()
+            .map(|i| target.outlet_fact(mapping[i]).map(|f| f.clone()))
+            .collect::<TractResult<_>>()?;
+        let target_input_refs: TVec<&TypedFact> = target_inputs.iter().collect();
+        if let Some(gpu_op) = try_make_metal_op(source, node)?
+            && gpu_op.output_facts(&target_input_refs).is_ok()
+        {
             let device_inputs =
                 sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
             let outlet_ids = target.wire_node(node.name.clone(), gpu_op, &device_inputs)?;

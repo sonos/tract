@@ -446,8 +446,27 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
             }
         }
 
-        // Single-op translation
-        if let Some(gpu_op) = try_make_cuda_op(source, node)? {
+        // Single-op translation.  Pre-check that the gpu_op accepts the
+        // already-translated target-side input facts: some translators
+        // (notably the AxisOp path: GpuAxisOp can carry a `Reshape(from,
+        // to)` whose dims were synthesised from the source shape, but an
+        // upstream node may have been translated into a different shape
+        // — e.g. pulsification of an upstream matmul producing a smaller
+        // axis).  Without the pre-check, those stale reshapes pass
+        // try_make_cuda_op and then bail inside `wire_node`'s output_facts
+        // call, aborting the entire CUDA transform.  Fall back to the CPU
+        // op so the model stays runnable.
+        // Snapshot target-side input facts before any further mutation; clone
+        // out so we release the borrow on `target` before wiring below.
+        let target_inputs: TVec<TypedFact> = node
+            .inputs
+            .iter()
+            .map(|i| target.outlet_fact(mapping[i]).map(|f| f.clone()))
+            .collect::<TractResult<_>>()?;
+        let target_input_refs: TVec<&TypedFact> = target_inputs.iter().collect();
+        if let Some(gpu_op) = try_make_cuda_op(source, node)?
+            && gpu_op.output_facts(&target_input_refs).is_ok()
+        {
             let device_inputs =
                 sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
             let outlet_ids = target.wire_node(node.name.clone(), gpu_op, &device_inputs)?;
