@@ -67,7 +67,7 @@ impl Registry {
         mapping: &mut HashMap<i32, OutletId>,
     ) -> TractResult<()> {
         let inputs: TVec<OutletId> =
-            flat_op.inputs().unwrap().iter().map(|o| mapping[&o]).collect();
+            flat_op.inputs().unwrap().iter().filter(|&o| o >= 0).map(|o| mapping[&o]).collect();
         let tensors = subgraph.tensors().unwrap();
         let prefix = tensors.get(flat_op.outputs().unwrap().get(0) as usize).name().unwrap();
         let opcode_index = flat_op.opcode_index();

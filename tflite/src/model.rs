@@ -94,6 +94,9 @@ impl Framework<TfliteProtoModel, TypedModel> for Tflite {
         }
         for op in main.operators().context("No operators in Tflite model")? {
             for input in op.inputs().context("No input in Tflite  operator")? {
+                if input == -1 {
+                    continue; // tflite uses -1 as the "no tensor" sentinel for absent optional inputs
+                }
                 if let Entry::Vacant(slot) = mapping.entry(input) {
                     let (fact, name) = flat_tensor_to_tract_fact(&root, main, input)?;
                     let value = fact.konst.with_context(|| format!("Error in TF file for operator {op:?}. No prior computation nor constant for input {input}"))?;

@@ -26,14 +26,17 @@ pub fn register_all(reg: &mut Registry) {
     reg.reg_to_tract(BuiltinOperator::BROADCAST_TO, de_broadcast_to);
     reg.reg_to_tract(BuiltinOperator::CONCATENATION, de_concat);
     reg.reg_to_tract(BuiltinOperator::EXPAND_DIMS, de_expand_dims);
+    reg.reg_to_tract(BuiltinOperator::PACK, de_pack);
     reg.reg_to_tract(BuiltinOperator::PAD, de_pad);
     reg.reg_to_tract(BuiltinOperator::PADV2, de_padv2);
     reg.reg_to_tract(BuiltinOperator::RESHAPE, de_reshape);
     reg.reg_to_tract(BuiltinOperator::SHAPE, de_shape);
     reg.reg_to_tract(BuiltinOperator::SLICE, de_slice);
     reg.reg_to_tract(BuiltinOperator::SQUEEZE, de_squeeze);
+    reg.reg_to_tract(BuiltinOperator::SPLIT, de_split);
     reg.reg_to_tract(BuiltinOperator::STRIDED_SLICE, de_strided_slice);
     reg.reg_to_tract(BuiltinOperator::TRANSPOSE, de_transpose);
+    reg.reg_to_tract(BuiltinOperator::UNPACK, de_unpack);
 }
 
 fn de_broadcast_to(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
@@ -153,7 +156,9 @@ fn de_squeeze(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
 
 fn de_strided_slice(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     let options = builtin!(op, builtin_options_as_strided_slice_options);
-    ensure!(options.new_axis_mask() == 0 && options.shrink_axis_mask() == 0);
+    // shrink_axis_mask is honoured by tract's StridedSlice (passed through below);
+    // only new_axis_mask (inserting new size-1 dims) is unsupported.
+    ensure!(options.new_axis_mask() == 0, "tflite STRIDED_SLICE: new_axis_mask unsupported");
     let slice = tract_core::ops::array::StridedSlice {
         begin_mask: options.begin_mask() as _,
         end_mask: options.end_mask() as _,
@@ -162,6 +167,63 @@ fn de_strided_slice(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
         optional_steps_input: Some(3),
     };
     op.ctx.target.wire_node(op.prefix, slice, op.inputs)
+}
+
+// TFLite PACK: stack `values_count` tensors along a new `axis` (inverse of UNPACK).
+// Lowered to AxisOp::Add(axis) on each input + a concat along that new axis.
+fn de_pack(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
+    let options = builtin!(op, builtin_options_as_pack_options);
+    let out_rank = op.facts()?[0].rank() + 1;
+    let axis =
+        if options.axis() < 0 { options.axis() + out_rank as i32 } else { options.axis() } as usize;
+    let prefix = op.prefix;
+    let inputs: TVec<OutletId> = op.inputs.into();
+    let mut unsqueezed = tvec!();
+    for (i, inp) in inputs.iter().enumerate() {
+        let u = op.ctx.target.wire_node(
+            format!("{prefix}.unsqueeze_{i}"),
+            AxisOp::Add(axis),
+            &[*inp],
+        )?;
+        unsqueezed.push(u[0]);
+    }
+    op.ctx.target.wire_node(prefix, TypedConcat::new(axis), &unsqueezed)
+}
+
+// TFLite SPLIT: inputs [axis (const scalar), value]; SplitOptions.num_splits.
+// Splits `value` into num_splits equal slices along `axis` (axis preserved).
+fn de_split(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
+    let options = builtin!(op, builtin_options_as_split_options);
+    let num = options.num_splits() as usize;
+    let facts = op.facts()?;
+    let value = &facts[1];
+    let rank = value.rank() as i32;
+    let mut axis = *facts[0]
+        .konst
+        .as_ref()
+        .context("SPLIT axis must be constant")?
+        .try_as_plain()?
+        .as_slice::<i32>()?
+        .first()
+        .context("empty SPLIT axis")?;
+    if axis < 0 {
+        axis += rank;
+    }
+    let axis = axis as usize;
+    let dim = value.shape[axis].to_usize().context("SPLIT requires a concrete split dim")?;
+    ensure!(dim % num == 0, "SPLIT: dim {dim} not divisible by num_splits {num}");
+    let chunk = dim / num;
+    let prefix = op.prefix;
+    let mut outputs = tvec!();
+    for i in 0..num {
+        let s = op.ctx.target.wire_node(
+            format!("{prefix}.split_{i}"),
+            Slice { axis, start: (i * chunk).to_dim(), end: ((i + 1) * chunk).to_dim() },
+            &op.inputs[1..2],
+        )?;
+        outputs.push(s[0]);
+    }
+    Ok(outputs)
 }
 
 fn de_transpose(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
@@ -179,6 +241,31 @@ fn de_transpose(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
         wire = op.ctx.target.wire_node(format!("{prefix}.{ix}"), axis_op, &wire)?;
     }
     Ok(wire)
+}
+
+// TFLite UNPACK: split `input` along `axis` into `num` tensors of size 1 along
+// that axis, removing the axis (inverse of PACK). Lowered to Slice + RmAxis per
+// output. Enables loading models (e.g. DTLN) whose LSTM state is split via UNPACK.
+fn de_unpack(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
+    let options = builtin!(op, builtin_options_as_unpack_options);
+    let input = args_1!(op.facts()?);
+    let rank = input.rank();
+    let axis =
+        if options.axis() < 0 { rank as i32 + options.axis() } else { options.axis() } as usize;
+    let num = options.num() as usize;
+    let prefix = op.prefix;
+    let mut outputs = tvec!();
+    for i in 0..num {
+        let sliced = op.ctx.target.wire_node(
+            format!("{prefix}.slice_{i}"),
+            Slice { axis, start: i.to_dim(), end: (i + 1).to_dim() },
+            &op.inputs[0..1],
+        )?;
+        let squeezed =
+            op.ctx.target.wire_node(format!("{prefix}.rm_{i}"), AxisOp::Rm(axis), &sliced)?;
+        outputs.push(squeezed[0]);
+    }
+    Ok(outputs)
 }
 
 fn ser_axisop(

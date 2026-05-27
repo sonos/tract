@@ -69,13 +69,18 @@ fn de_batch_matmul(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
 }
 
 fn de_fully_connected(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
-    let (input, weights, bias) = args_3!(op.facts()?);
+    let facts = op.facts()?;
+    let input = facts[0].clone();
+    let weights = facts[1].clone();
     let options = builtin!(op, builtin_options_as_fully_connected_options);
     ensure!(options.weights_format() == FullyConnectedOptionsWeightsFormat::DEFAULT);
     ensure!(!options.asymmetric_quantize_inputs());
     ensure!(input.rank() == 2);
     ensure!(weights.rank() == 2);
-    ensure!(bias.rank() == 1);
+    // bias is optional in tflite (absent => -1 input, filtered out before deser)
+    if let Some(bias) = facts.get(2) {
+        ensure!(bias.rank() == 1);
+    }
     let mut inputs: TVec<OutletId> = op.inputs.into();
     let wires = if input.datum_type.is_float() {
         let axes = "BI,OI->BO".parse()?;
@@ -104,16 +109,18 @@ fn de_fully_connected(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
 }
 
 fn de_reduce(op: &mut DeserOp, reducer: Reducer) -> TractResult<TVec<OutletId>> {
-    let (_, axes) = args_2!(op.facts()?);
+    let (input, axes) = args_2!(op.facts()?);
     let options = builtin!(op, builtin_options_as_reducer_options);
+    let rank = input.shape.rank() as i32;
     let axes: TVec<usize> = axes
         .konst
         .as_ref()
-        .unwrap()
+        .context("reduce expects constant axes")?
         .try_as_plain()?
         .as_slice::<i32>()?
         .iter()
-        .map(|d| *d as usize)
+        // normalise negative axes (e.g. -1 = last dim) before indexing
+        .map(|d| if *d < 0 { (*d + rank) as usize } else { *d as usize })
         .sorted()
         .collect();
     let p = &op.prefix;
@@ -133,14 +140,16 @@ fn de_reduce(op: &mut DeserOp, reducer: Reducer) -> TractResult<TVec<OutletId>> 
 
 fn de_reduce_mean(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     let (input, axes) = args_2!(op.facts()?);
+    let rank = input.shape.rank() as i32;
     let axes: TVec<usize> = axes
         .konst
         .as_ref()
-        .unwrap()
+        .context("reduce_mean expects constant axes")?
         .try_as_plain()?
         .as_slice::<i32>()?
         .iter()
-        .map(|d| *d as usize)
+        // normalise negative axes (e.g. -1 = last dim) before indexing
+        .map(|d| if *d < 0 { (*d + rank) as usize } else { *d as usize })
         .sorted()
         .collect();
     let norm: TDim = axes.iter().map(|d| &input.shape[*d]).product();
@@ -153,7 +162,9 @@ fn de_reduce_mean(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
         &[norm],
     )?;
     let norm = op.ctx.target.wire_node(format!("{p}.recip"), core::math::recip(), &norm)?;
-    wire_with_rank_broadcast(op.prefix, op.ctx.target, core::quant::scale(), &[norm[0], wire[0]])
+    // Plain float multiply: sum * (1/count). (core::quant::scale rounds to an
+    // integer, which silently corrupted non-integer means, e.g. layer norm.)
+    wire_with_rank_broadcast(op.prefix, op.ctx.target, core::math::mul(), &[norm[0], wire[0]])
 }
 
 fn de_softmax(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {

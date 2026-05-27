@@ -110,7 +110,12 @@ pub fn flat_tensor_to_tract_fact<'m>(
     let mut dt: DatumType = flat.type_().try_into()?;
     if let Some(qp) = flat.quantization() {
         if let (Some(scale), Some(zp)) = (qp.scale(), qp.zero_point()) {
-            dt = dt.quantize(QParams::ZpScale { zero_point: zp.get(0) as _, scale: scale.get(0) })
+            // Float tensors often carry an empty quantization struct; only treat
+            // as quantized when scale/zero_point actually have entries.
+            if !scale.is_empty() && !zp.is_empty() {
+                dt = dt
+                    .quantize(QParams::ZpScale { zero_point: zp.get(0) as _, scale: scale.get(0) })
+            }
         }
     }
     let mut fact = dt.fact(flat.shape().unwrap().iter().map(|d| d as usize).collect_vec());
