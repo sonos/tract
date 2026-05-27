@@ -575,10 +575,16 @@ where
                             .and_then(|r| r.as_ref().ok())
                             .cloned()
                     };
+                    // The GPU translator wraps nodes that absorb adjacent
+                    // axis ops with a `.fused_axis_op` suffix.  Strip it for
+                    // lookup so per-node bisection lines up GPU outputs with
+                    // the CPU reference.
+                    let stripped_name =
+                        node.name.strip_suffix(".fused_axis_op").unwrap_or(&node.name);
                     let reference: Option<TValue> = tract
                         .outlet_label((node.id, slot).into())
                         .and_then(get_value)
-                        .or_else(|| get_value(&node.name).filter(|_| slot == 0));
+                        .or_else(|| get_value(stripped_name).filter(|_| slot == 0));
 
                     let Some(reference) = reference else {
                         tags.style = Some(Yellow.into());
