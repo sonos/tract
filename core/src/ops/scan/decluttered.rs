@@ -110,18 +110,27 @@ impl Scan {
         // on the first call or when reset_every_turn is set; otherwise the
         // body input is fed from the carried hidden_state.
         //
-        // Inlining is therefore safe iff the caller does not rely on
-        // tract's across-call carry, which we encode as one of:
+        // Inlining is safe iff the caller does not rely on tract's across-call
+        // carry. We accept it when:
         //   - reset_every_turn (carry is cleared every turn anyway), or
-        //   - external_state (caller plumbs the State input every call,
-        //     e.g. parakeet decoder).
-        // Otherwise (internal-managed state, e.g. DFN3 GRU under pulse),
-        // bail. See issue #2157.
-        rule_if!(
-            self.reset_every_turn
-                || self.external_state
-                || !self.input_mapping.iter().any(InputMapping::is_state)
-        );
+        //   - external_state (explicitly asserted, e.g. force_scan_external_state), or
+        //   - there is no State at all, or
+        //   - the caller manages the state: every recurrent state has a
+        //     last-value output that reaches a model output, so the caller can
+        //     read the updated state and feed it back across calls (e.g. DTLN /
+        //     parakeet decoders). A pulse model with tract-managed state (e.g.
+        //     DFN3 GRU) does NOT export its state, so it is not inlined.
+        // See issue #2157.
+        let has_state = self.input_mapping.iter().any(InputMapping::is_state);
+        let state_outputs: Vec<_> = self.output_mapping.iter().filter(|m| m.state).collect();
+        let state_exported = has_state
+            && !state_outputs.is_empty()
+            && state_outputs.iter().all(|m| {
+                m.last_value_slot.is_some_and(|slot| {
+                    Self::outlet_reaches_model_output(model, OutletId::new(node.id, slot))
+                })
+            });
+        rule_if!(self.reset_every_turn || self.external_state || !has_state || state_exported);
         let mut patch = TypedModelPatch::new("Inline single loop scan");
         patch.model = self.body.clone();
         for (outer_wire, inner_wire) in izip!(&node.inputs, &self.body.inputs) {
@@ -136,6 +145,31 @@ impl Scan {
             }
         }
         Ok(Some(patch))
+    }
+
+    /// True if `start` (an outlet of this Scan, e.g. a state's last-value
+    /// output) is, or transitively feeds, a model output — i.e. the caller can
+    /// observe the updated state and thread it back across calls. Used to tell a
+    /// caller-managed-state model (safe to inline a single-iteration Scan) from
+    /// a pulse model whose state tract carries internally (must not inline).
+    fn outlet_reaches_model_output(model: &TypedModel, start: OutletId) -> bool {
+        let outputs: std::collections::HashSet<OutletId> = model.outputs.iter().copied().collect();
+        let mut seen: std::collections::HashSet<OutletId> = Default::default();
+        let mut stack = vec![start];
+        while let Some(o) = stack.pop() {
+            if outputs.contains(&o) {
+                return true;
+            }
+            if !seen.insert(o) {
+                continue;
+            }
+            for succ in &model.node(o.node).outputs[o.slot].successors {
+                for slot in 0..model.node(succ.node).outputs.len() {
+                    stack.push(OutletId::new(succ.node, slot));
+                }
+            }
+        }
+        false
     }
 
     fn declutter_body_axes(
