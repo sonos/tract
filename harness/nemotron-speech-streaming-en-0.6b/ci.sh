@@ -53,6 +53,25 @@ $TRACT_RUN $model_prefix.preprocessor.nnef.tgz \
 	-t 'pulse(symbol: Some("INPUT_SIGNAL__TIME"), pulse: "4800")' \
 	dump -q
 
+# Check that pulsified preprocessor translates cleanly on each GPU runtime
+# (the GPU translator must fall back to CPU for ops it can't lower, not abort
+# the whole transform).  Allowlist what currently falls back so a regression
+# spilling another op to CPU fails CI.
+for rt in $TRACT_RUNTIMES
+do
+	case "$rt" in
+		--cuda) pulse_assert="--assert-op-only Cuda*,Gpu*,DeviceSync*,Const,Source,STFT,Pad,MoveAxis,PulsedSameAxisConcat,OptMulByScalar,OptSubUnicast";;
+		--metal) pulse_assert="--assert-op-only Metal*,Gpu*,DeviceSync*,Const,Source,STFT,Pad,MoveAxis,PulsedSameAxisConcat,OptMulByScalar,OptSubUnicast";;
+		*) continue;;
+	esac
+	$TRACT_RUN $model_prefix.preprocessor.nnef.tgz $rt \
+		-t 'concretize_symbols(values: {"BATCH": 1})' \
+		-t 'patch(body: "length = tract_core_shape_of(input_signal)[1];")' \
+		-t 'select_outputs(outputs: ["processed_signal"])' \
+		-t 'pulse(symbol: Some("INPUT_SIGNAL__TIME"), pulse: "4800")' \
+		dump -q $pulse_assert
+done
+
 # Check that the encoder can be pulsified.
 # The encoder subsamples by 8x (three stride-2 convolutions) before the transformer.
 # The chunk-window mask has P=14 transformer tokens per chunk, so the input pulse
