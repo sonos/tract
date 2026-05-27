@@ -464,7 +464,12 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
             .map(|i| target.outlet_fact(mapping[i]).map(|f| f.clone()))
             .collect::<TractResult<_>>()?;
         let target_input_refs: TVec<&TypedFact> = target_inputs.iter().collect();
-        if let Some(gpu_op) = try_make_cuda_op(source, node)?
+        let force_cpu = std::env::var("TRACT_CUDA_FORCE_CPU")
+            .ok()
+            .map(|s| s.split(',').any(|pat| !pat.is_empty() && node.name.contains(pat)))
+            .unwrap_or(false);
+        if !force_cpu
+            && let Some(gpu_op) = try_make_cuda_op(source, node)?
             && gpu_op.output_facts(&target_input_refs).is_ok()
         {
             let device_inputs =
