@@ -12,8 +12,8 @@ for rt in $TRACT_RUNTIMES
 do
 	gpu_assert=""
 	case "$rt" in
-		--cuda) gpu_assert="--assert-op-only Cuda*,Gpu*,DeviceSync*,Const,Source,STFT,Pad,Add,Range,Cast,Eq,Div,Sub,Scan,Gather";;
-		--metal) gpu_assert="--assert-op-only Metal*,Gpu*,DeviceSync*,Const,Source,STFT,Pad,Add,Range,Cast,Eq,Div,Sub,Scan,Gather";;
+		--cuda) gpu_assert="--assert-op-only Cuda*,Gpu*,DeviceSync*,Const,Source,STFT,Pad,Add,Range,Cast,Eq,Div,Sub,Gather";;
+		--metal) gpu_assert="--assert-op-only Metal*,Gpu*,DeviceSync*,Const,Source,STFT,Pad,Add,Range,Cast,Eq,Div,Sub,Gather";;
 	esac
 
 	for m in preprocessor encoder decoder joint
@@ -24,11 +24,18 @@ do
 		else
 			nnef_file=$MODEL.$m.nnef.tgz
 		fi
+		# Decoder is stepped one token per call by the caller (external state
+		# carry); force the Scan op into single-iter inlining so the LSTM body
+		# lands on the GPU instead of bouncing through CPU each step.
+		extra_transforms=""
+		if [ "$m" = "decoder" ]; then
+			extra_transforms="-t force_scan_external_state"
+		fi
 		$CACHE_FILE \
 			$S3DIR/$nnef_file \
 			$S3DIR/$MODEL.$m.io.npz
 
-		$TRACT_RUN $MODELS/$S3DIR/$nnef_file $rt --nnef-tract-transformers -t transformers_detect_all run \
+		$TRACT_RUN $MODELS/$S3DIR/$nnef_file $rt --nnef-tract-transformers -t transformers_detect_all $extra_transforms run \
 			--input-from-bundle $MODELS/$S3DIR/$MODEL.$m.io.npz --assert-output-bundle $MODELS/$S3DIR/$MODEL.$m.io.npz \
 			--approx very $gpu_assert
 	done
