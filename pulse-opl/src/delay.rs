@@ -91,7 +91,12 @@ impl OpState for DelayState {
             if self.buffer.is_none() {
                 let mut shape = input.shape().to_owned();
                 shape[op.axis] = buffered;
-                self.buffer = Some(Tensor::uninitialized_dt(input.datum_type(), &shape)?);
+                // Zero-init: the buffer holds the streaming context preceding the
+                // first pulse, and silence (zero) is the only sensible default.
+                // Uninitialized memory leaks into the first `delay` output frames
+                // and diverges from the GPU op (which zero-inits), making any
+                // per-node comparison meaningless on the warmup region.
+                self.buffer = Some(Tensor::zero_dt(input.datum_type(), &shape)?);
             };
             let mut output = Tensor::uninitialized_dt(input.datum_type(), &output_shape)?;
             self.apply_delay_unchecked(op, &input, &mut output);
