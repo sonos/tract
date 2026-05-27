@@ -301,11 +301,13 @@ impl GpuPulsePadState {
             self.save_frame(&*ctx, op, input, latest_valid_frame)?;
         }
 
-        // Start with a copy of input
+        // Start with a copy of input.  The fused-axis-op chain may have
+        // installed a non-contiguous view (Move only permutes strides,
+        // never materialises), so a flat memcpy would read the buffer in
+        // pre-Move order; copy_nd honours `input.strides()` instead.
         let mut output =
             make_tensor_for_node(session, self.node_id, input.datum_type(), input.shape())?;
-        let flat_len = input.len() * input.datum_type().size_of();
-        ctx.flat_copy(input, 0, &output, 0, flat_len)?;
+        ctx.copy_nd(input, 0, input.strides(), &output, 0, input.shape(), output.strides())?;
 
         // Quick return if entirely in valid or invalid range
         if (pulse_begin >= op.begin_input && pulse_end <= end_input)
