@@ -62,15 +62,24 @@ impl WireBody for LSTM {
         let h_size = body.outlet_fact(R)?.shape[1].clone();
         let dt = body.outlet_fact(R)?.datum_type;
 
-        wire!(Wi = array::Slice::new(0, 0.to_dim() * &h_size, 1.to_dim() * &h_size), W);
-        wire!(Wo = array::Slice::new(0, 1.to_dim() * &h_size, 2.to_dim() * &h_size), W);
-        wire!(Wf = array::Slice::new(0, 2.to_dim() * &h_size, 3.to_dim() * &h_size), W);
-        wire!(Wc = array::Slice::new(0, 3.to_dim() * &h_size, 4.to_dim() * &h_size), W);
-
-        wire!(Ri = array::Slice::new(0, 0.to_dim() * &h_size, 1.to_dim() * &h_size), R);
-        wire!(Ro = array::Slice::new(0, 1.to_dim() * &h_size, 2.to_dim() * &h_size), R);
-        wire!(Rf = array::Slice::new(0, 2.to_dim() * &h_size, 3.to_dim() * &h_size), R);
-        wire!(Rc = array::Slice::new(0, 3.to_dim() * &h_size, 4.to_dim() * &h_size), R);
+        // Gate fusion: compute all four gate pre-activations with a SINGLE matmul
+        // per side (Xt·Wᵀ → [batch, 4*h], Ht-1·Rᵀ → [batch, 4*h]) and slice the
+        // result per gate, instead of slicing the weights into 4 and doing 4
+        // separate matmuls. This gives fewer + larger kernel invocations, one B
+        // pack instead of four, and a contiguous weight stream — mirroring how
+        // TFLite/XNNPACK run an LSTM as one FC per gate group. ONNX gate order
+        // in W/R is i, o, f, c.
+        let matmul_t = EinSum::new("mk,nk->mn".parse()?, dt);
+        wire!(Xt_WT = matmul_t.clone(), Xt, W);
+        wire!(Ht_1_RT = matmul_t.clone(), Ht_1, R);
+        wire!(Xt_WiT = array::Slice::new(1, 0.to_dim() * &h_size, 1.to_dim() * &h_size), Xt_WT);
+        wire!(Xt_WoT = array::Slice::new(1, 1.to_dim() * &h_size, 2.to_dim() * &h_size), Xt_WT);
+        wire!(Xt_WfT = array::Slice::new(1, 2.to_dim() * &h_size, 3.to_dim() * &h_size), Xt_WT);
+        wire!(Xt_WcT = array::Slice::new(1, 3.to_dim() * &h_size, 4.to_dim() * &h_size), Xt_WT);
+        wire!(Ht_1_RiT = array::Slice::new(1, 0.to_dim() * &h_size, 1.to_dim() * &h_size), Ht_1_RT);
+        wire!(Ht_1_RoT = array::Slice::new(1, 1.to_dim() * &h_size, 2.to_dim() * &h_size), Ht_1_RT);
+        wire!(Ht_1_RfT = array::Slice::new(1, 2.to_dim() * &h_size, 3.to_dim() * &h_size), Ht_1_RT);
+        wire!(Ht_1_RcT = array::Slice::new(1, 3.to_dim() * &h_size, 4.to_dim() * &h_size), Ht_1_RT);
 
         let biases = if let Some(b) = b {
             wire!(Wbi = array::Slice::new(1, 0.to_dim() * &h_size, 1.to_dim() * &h_size), b);
@@ -102,11 +111,39 @@ impl WireBody for LSTM {
             None
         };
 
-        let matmul_t = EinSum::new("mk,nk->mn".parse()?, dt);
+        // Fused-epilogue fast path: tract's ONNX LSTM always uses standard
+        // activations (f = sigmoid, g = h = tanh), so whenever there are no
+        // peepholes and the hidden size is concrete we collapse the per-gate
+        // sigmoid/tanh + cell/hidden elementwise chain (~15 separately
+        // dispatched ops, each materialising an intermediate) into a single
+        // LstmEpilogue op. Numerically identical (same activation kernels);
+        // peephole / symbolic-hidden LSTMs fall through to the decomposed form.
+        if peepholes.is_none()
+            && let Ok(hidden) = h_size.to_usize()
+        {
+            use tract_hir::tract_core::ops::lstm_cell::LstmEpilogue;
+            wire!(preact0 = math::add(), Xt_WT, Ht_1_RT);
+            let preact = if let Some(b) = b {
+                wire!(Wb_all = array::Slice::new(1, 0.to_dim() * &h_size, 4.to_dim() * &h_size), b);
+                wire!(Rb_all = array::Slice::new(1, 4.to_dim() * &h_size, 8.to_dim() * &h_size), b);
+                wire!(bias_all = math::add(), Wb_all, Rb_all);
+                wire!(preact = math::add(), preact0, bias_all);
+                preact
+            } else {
+                preact0
+            };
+            let outs = body.wire_node(
+                format!("{prefix}.lstm_cell"),
+                LstmEpilogue { hidden },
+                &[preact, Ct_1],
+            )?;
+            wire!(Ht_fixed = AxisOp::Add(1), outs[0]);
+            wire!(Ct_fixed = AxisOp::Add(1), outs[1]);
+            body.select_output_outlets(&[Ht_fixed, Ct_fixed])?;
+            return Ok(());
+        }
 
         // it = f(Xt*(Wi^T) + Ht-1*(Ri^T) + Pi (.) Ct-1 + Wbi + Rbi)
-        wire!(Xt_WiT = matmul_t.clone(), Xt, Wi);
-        wire!(Ht_1_RiT = matmul_t.clone(), Ht_1, Ri);
         wire!(it0 = math::add(), Xt_WiT, Ht_1_RiT);
         let mut it0 = it0;
         if let Some(biases) = biases {
@@ -121,8 +158,6 @@ impl WireBody for LSTM {
         wire!(it = self.f.clone(), it0);
 
         // ft = f(Xt*(Wf^T) + Ht-1*(Rf^T) + Pf (.) Ct-1 + Wbf + Rbf)
-        wire!(Xt_WfT = matmul_t.clone(), Xt, Wf);
-        wire!(Ht_1_RfT = matmul_t.clone(), Ht_1, Rf);
         wire!(ft0 = math::add(), Xt_WfT, Ht_1_RfT);
         let mut ft0 = ft0;
         if let Some(biases) = biases {
@@ -137,8 +172,6 @@ impl WireBody for LSTM {
         wire!(ft = self.f.clone(), ft0);
 
         // ct = g(Xt*(Wc^T) + Ht-1*(Rc^T) + Wbc + Rbc)
-        wire!(Xt_WcT = matmul_t.clone(), Xt, Wc);
-        wire!(Ht_1_RcT = matmul_t.clone(), Ht_1, Rc);
         wire!(ct0 = math::add(), Xt_WcT, Ht_1_RcT);
         let mut ct0 = ct0;
         if let Some(biases) = biases {
@@ -153,8 +186,6 @@ impl WireBody for LSTM {
         wire!(Ct = math::add(), ft_Ct_1, it_ct);
 
         // ot = f(Xt*(Wo^T) + Ht-1*(Ro^T) + Po (.) Ct + Wbo + Rbo)
-        wire!(Xt_WoT = matmul_t.clone(), Xt, Wo);
-        wire!(Ht_1_RoT = matmul_t, Ht_1, Ro);
         wire!(ot0 = math::add(), Xt_WoT, Ht_1_RoT);
         let mut ot0 = ot0;
         if let Some(biases) = biases {
