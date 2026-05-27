@@ -659,8 +659,19 @@ where
                         )
                     }
 
-                    if !cumulative && returning[slot].is_plain() {
-                        returning[slot] = reference.into_tvalue();
+                    if !cumulative {
+                        use tract_gpu::tensor::{DeviceTensorExt, IntoDevice};
+                        if returning[slot].is_plain() {
+                            returning[slot] = reference.into_tvalue();
+                        } else if returning[slot].as_device_tensor().is_some() {
+                            // Device-resident output: stage the CPU reference
+                            // back onto the device so downstream device ops can
+                            // consume it.  Without this, cumulative=off would
+                            // silently keep tract's (potentially-drifted) value
+                            // and per-node bisection becomes useless on GPU.
+                            returning[slot] =
+                                reference.into_device()?.into_tensor().into_tvalue();
+                        }
                     }
                 }
                 if let Some(e) = comparison_error {

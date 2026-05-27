@@ -119,6 +119,13 @@ pub fn check_inferred(got: &[InferenceFact], expected: &[InferenceFact]) -> Trac
 }
 
 pub fn clarify_tvalue(t: &TValue) -> TractResult<TValue> {
+    use tract_gpu::tensor::DeviceTensorExt;
+    if let Some(device_tensor) = t.as_device_tensor() {
+        // Pull the device-resident tensor back to host so the comparison
+        // machinery (close_enough, cast_to_dt) can read it as plain storage.
+        let host = device_tensor.to_host()?;
+        return Ok(host.into_tensor().into_tvalue());
+    }
     Ok((*t).clone())
 }
 
