@@ -8,6 +8,7 @@ pub mod copy_based;
 pub mod diag_gather;
 pub mod dyn_kv_cache;
 pub mod element_wise;
+pub mod gather;
 pub mod gelu_approximate;
 pub mod iff;
 pub mod leaky_relu;

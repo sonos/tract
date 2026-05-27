@@ -251,3 +251,31 @@ INSTANTIATE_ROTATE_HALF(f16, __half)
 
 INSTANTIATE_DIAG_GATHER(f32, float)
 INSTANTIATE_DIAG_GATHER(f16, __half)
+
+// Gather along one axis:
+//   out[i_pre, i_n, i_post] = data[i_pre, indices[i_n], i_post]
+// where the host flattens to (pre × a_size × post) for data and
+// (pre × n_indices × post) for output.  `n_indices` here is the *flat*
+// indices count (product of the indices tensor's shape).  Negative indices
+// wrap with `a_size`, matching the CPU contract.
+#define INSTANTIATE_GATHER(name, T)                                            \
+    extern "C" __global__ void gather_##name(                                  \
+        const T *data, const int64_t *indices, T *output, const int32_t pre,   \
+        const int32_t a_size, const int32_t post, const int32_t n_indices) {   \
+        const int32_t i_post = blockIdx.x * blockDim.x + threadIdx.x;          \
+        if (i_post >= post)                                                    \
+            return;                                                            \
+        const int32_t i_n = blockIdx.y;                                        \
+        const int32_t i_pre = blockIdx.z;                                      \
+        int64_t k = indices[i_n];                                              \
+        if (k < 0)                                                             \
+            k += a_size;                                                       \
+        const int64_t in_off =                                                 \
+            ((int64_t)i_pre * a_size + k) * post + i_post;                     \
+        const int64_t out_off =                                                \
+            ((int64_t)i_pre * n_indices + i_n) * post + i_post;                \
+        output[out_off] = data[in_off];                                        \
+    }
+
+INSTANTIATE_GATHER(f32, float)
+INSTANTIATE_GATHER(f16, __half)
