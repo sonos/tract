@@ -77,7 +77,24 @@ impl TypedOp for AffineChunkTrim {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut fact = inputs[0].without_value();
         let dim = fact.shape[self.axis].clone();
-        fact.shape.set(self.axis, dim - self.typed_trim.to_dim());
+        // Mirror `eval` / `pulsed_output_facts`: trim only when the input
+        // axis is concrete *and* strictly exceeds `target_per_pulse`.  Two
+        // cases this handles:
+        //   - pre-pulse typed model with symbolic input `c + k·S`: dim is
+        //     not concretely sized → subtract `typed_trim` (`c`) as before.
+        //   - pulsified model where the upstream emits `target_per_pulse`
+        //     directly (e.g. Delay absorbed `c`): dim is concrete and equal
+        //     to `target_per_pulse` → no trim, matching eval.  Previously
+        //     this branch returned `dim - typed_trim` which lied about the
+        //     output shape and broke downstream consumers (e.g. a Reshape
+        //     keyed off `target_per_pulse`) — visible when --cuda translates
+        //     the pulsified encoder.
+        let new_dim = if let Ok(cur) = dim.to_usize() {
+            if cur > self.target_per_pulse { self.target_per_pulse.to_dim() } else { cur.to_dim() }
+        } else {
+            dim - self.typed_trim.to_dim()
+        };
+        fact.shape.set(self.axis, new_dim);
         Ok(tvec!(fact))
     }
 }
