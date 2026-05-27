@@ -53,15 +53,22 @@ $TRACT_RUN $model_prefix.preprocessor.nnef.tgz \
 	-t 'pulse(symbol: Some("INPUT_SIGNAL__TIME"), pulse: "4800")' \
 	dump -q
 
-# Check that pulsified preprocessor translates cleanly on each GPU runtime
-# (the GPU translator must fall back to CPU for ops it can't lower, not abort
-# the whole transform).  Allowlist what currently falls back so a regression
-# spilling another op to CPU fails CI.
+# Check that pulsified preprocessor and encoder translate cleanly on each GPU
+# runtime (the GPU translator must fall back to CPU for ops it can't lower, not
+# abort the whole transform).  Allowlist what currently falls back so a
+# regression spilling another op to CPU fails CI.  Runtime numeric checks are
+# deferred; only the translation is asserted here.
 for rt in $TRACT_RUNTIMES
 do
 	case "$rt" in
-		--cuda) pulse_assert="--assert-op-only Cuda*,Gpu*,DeviceSync*,Const,Source,STFT,Pad,MoveAxis,PulsedSameAxisConcat,OptMulByScalar,OptSubUnicast";;
-		--metal) pulse_assert="--assert-op-only Metal*,Gpu*,DeviceSync*,Const,Source,STFT,Pad,MoveAxis,PulsedSameAxisConcat,OptMulByScalar,OptSubUnicast";;
+		--cuda)
+			pp_assert="--assert-op-only Cuda*,Gpu*,DeviceSync*,Const,Source,STFT,Pad,PulsedSameAxisConcat,OptMulByScalar,OptSubUnicast"
+			enc_assert="--assert-op-only Cuda*,Gpu*,DeviceSync*,Const,Source,AffineChunkTrim,PulsedRange"
+			;;
+		--metal)
+			pp_assert="--assert-op-only Metal*,Gpu*,DeviceSync*,Const,Source,STFT,Pad,PulsedSameAxisConcat,OptMulByScalar,OptSubUnicast"
+			enc_assert="--assert-op-only Metal*,Gpu*,DeviceSync*,Const,Source,AffineChunkTrim,PulsedRange"
+			;;
 		*) continue;;
 	esac
 	$TRACT_RUN $model_prefix.preprocessor.nnef.tgz $rt \
@@ -69,7 +76,14 @@ do
 		-t 'patch(body: "length = tract_core_shape_of(input_signal)[1];")' \
 		-t 'select_outputs(outputs: ["processed_signal"])' \
 		-t 'pulse(symbol: Some("INPUT_SIGNAL__TIME"), pulse: "4800")' \
-		dump -q $pulse_assert
+		dump -q $pp_assert
+	$TRACT_RUN $model_prefix.encoder.p1.nnef.tgz $rt \
+		--nnef-tract-transformers \
+		-t 'concretize_symbols(values: {"BATCH": 1})' \
+		-t 'patch(body: "length = tract_core_shape_of(audio_signal)[2];")' \
+		-t 'select_outputs(outputs: ["outputs"])' \
+		-t 'pulse(symbol: Some("AUDIO_SIGNAL__TIME"), pulse: "112")' \
+		dump -q $enc_assert
 done
 
 # Check that the encoder can be pulsified.
