@@ -246,7 +246,19 @@ impl CommonRec {
             });
         }
 
-        let scan = tract_core::ops::scan::Scan::new(body, input_mapping, output_mapping, 0)?;
+        let mut scan = tract_core::ops::scan::Scan::new(body, input_mapping, output_mapping, 0)?;
+        // When the caller plumbs the full recurrent state both in and out
+        // (initial_h + Y_h, plus initial_c + Y_c for LSTM), the state is managed
+        // externally on every call. That lets a single-iteration Scan (seq_len
+        // == 1 — e.g. streaming / autoregressive decoders) be inlined safely:
+        // the body's State input is fed directly from the outer input each call
+        // instead of from tract's internal across-call carry. See
+        // Scan::declutter_single_loop and issue #2157.
+        let h_exposed =
+            self.optional_initial_h_input.is_some() && self.optional_y_h_output.is_some();
+        let c_exposed = !self.body.have_extra_c_state()
+            || (self.optional_initial_c_input.is_some() && self.optional_y_c_output.is_some());
+        scan.external_state = h_exposed && c_exposed;
         let scan_outputs = target.wire_node(prefix, scan, &outer_inputs)?;
 
         let mut result = tvec!();
