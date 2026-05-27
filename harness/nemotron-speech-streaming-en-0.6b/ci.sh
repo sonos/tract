@@ -12,8 +12,8 @@ for rt in $TRACT_RUNTIMES
 do
 	gpu_assert=""
 	case "$rt" in
-		--cuda) gpu_assert="--assert-op-only Cuda*,Gpu*,DeviceSync*,Const,Source,STFT,Pad,Add,Range,Cast,Eq,Div,Sub,Gather";;
-		--metal) gpu_assert="--assert-op-only Metal*,Gpu*,DeviceSync*,Const,Source,STFT,Pad,Add,Range,Cast,Eq,Div,Sub,Gather";;
+		--cuda) gpu_assert="--assert-op-only Cuda*,Gpu*,DeviceSync*,Const,Source,STFT,Pad,Add,Range,Cast,Eq,Div,Sub";;
+		--metal) gpu_assert="--assert-op-only Metal*,Gpu*,DeviceSync*,Const,Source,STFT,Pad,Add,Range,Cast,Eq,Div,Sub";;
 	esac
 
 	for m in preprocessor encoder decoder joint
