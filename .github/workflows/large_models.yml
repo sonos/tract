@@ -25,7 +25,7 @@ jobs:
           persist-credentials: false
       - run: |
           ROOT=. ./.travis/ci-system-setup.sh
-          cargo build -p tract-cli --profile opt-no-lto --no-default-features --features transformers,pulse
+          cargo build -p tract-cli --profile opt-no-lto --no-default-features --features transformers,pulse,cuda-13000
       - run: echo uname=$(uname) >> $GITHUB_ENV
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
