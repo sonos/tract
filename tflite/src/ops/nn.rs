@@ -328,3 +328,132 @@ fn ser_softmax(
         options.as_union_value(),
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::tflite::{
+        Buffer, BufferArgs, BuiltinOperator, BuiltinOptions, CustomOptionsFormat, Model, ModelArgs,
+        Operator, OperatorArgs, OperatorCode, OperatorCodeArgs, ReducerOptions, ReducerOptionsArgs,
+        SubGraph, SubGraphArgs, Tensor as FbTensor, TensorArgs, TensorType,
+    };
+    use flatbuffers::FlatBufferBuilder;
+    use tract_core::internal::*;
+    use tract_core::prelude::Framework;
+
+    // Regression for the REDUCE_MEAN integer-rounding bug: de_reduce_mean used
+    // core::quant::scale (which rounds to an integer), turning a true mean of
+    // 2.5 into 2. Hand-builds a minimal `MEAN([1,2,3,4], axis=1)` tflite and
+    // checks the loaded model returns 2.5, not a rounded value.
+    #[test]
+    fn reduce_mean_is_float_not_rounded() {
+        let mut fb = FlatBufferBuilder::new();
+
+        // buffers: [0] sentinel (inputs/outputs), [1] axes const = [1]
+        let ab = 1i32.to_le_bytes();
+        let axes_data = fb.create_vector::<u8>(&ab);
+        let buf0 = Buffer::create(&mut fb, &BufferArgs { data: None });
+        let buf1 = Buffer::create(&mut fb, &BufferArgs { data: Some(axes_data) });
+        let buffers = fb.create_vector(&[buf0, buf1]);
+
+        macro_rules! tensor {
+            ($name:expr, $shape:expr, $ty:expr, $buffer:expr) => {{
+                let name = fb.create_string($name);
+                let shape = fb.create_vector::<i32>($shape);
+                FbTensor::create(
+                    &mut fb,
+                    &TensorArgs {
+                        name: Some(name),
+                        buffer: $buffer,
+                        is_variable: false,
+                        quantization: None,
+                        shape: Some(shape),
+                        type_: $ty,
+                        sparsity: None,
+                        shape_signature: None,
+                        has_rank: true,
+                        variant_tensors: None,
+                    },
+                )
+            }};
+        }
+        let t_in = tensor!("in", &[1, 4], TensorType::FLOAT32, 0);
+        let t_ax = tensor!("axes", &[1], TensorType::INT32, 1);
+        let t_out = tensor!("out", &[1, 1], TensorType::FLOAT32, 0);
+        let tensors = fb.create_vector(&[t_in, t_ax, t_out]);
+
+        let opts = ReducerOptions::create(&mut fb, &ReducerOptionsArgs { keep_dims: true });
+        let oi = fb.create_vector::<i32>(&[0, 1]);
+        let oo = fb.create_vector::<i32>(&[2]);
+        let operator = Operator::create(
+            &mut fb,
+            &OperatorArgs {
+                inputs: Some(oi),
+                outputs: Some(oo),
+                opcode_index: 0,
+                builtin_options: Some(opts.as_union_value()),
+                builtin_options_type: BuiltinOptions::ReducerOptions,
+                custom_options: None,
+                custom_options_format: CustomOptionsFormat::FLEXBUFFERS,
+                mutating_variable_inputs: None,
+                intermediates: None,
+            },
+        );
+        let operators = fb.create_vector(&[operator]);
+
+        let si = fb.create_vector::<i32>(&[0]);
+        let so = fb.create_vector::<i32>(&[2]);
+        let subgraph = SubGraph::create(
+            &mut fb,
+            &SubGraphArgs {
+                name: None,
+                tensors: Some(tensors),
+                inputs: Some(si),
+                outputs: Some(so),
+                operators: Some(operators),
+            },
+        );
+        let subgraphs = fb.create_vector(&[subgraph]);
+
+        let opcode = OperatorCode::create(
+            &mut fb,
+            &OperatorCodeArgs {
+                deprecated_builtin_code: 40, // MEAN
+                custom_code: None,
+                version: 1,
+                builtin_code: BuiltinOperator::MEAN,
+            },
+        );
+        let operator_codes = fb.create_vector(&[opcode]);
+
+        let model = Model::create(
+            &mut fb,
+            &ModelArgs {
+                version: 3,
+                operator_codes: Some(operator_codes),
+                subgraphs: Some(subgraphs),
+                description: None,
+                buffers: Some(buffers),
+                metadata_buffer: None,
+                metadata: None,
+                signature_defs: None,
+            },
+        );
+        fb.finish(model, Some("TFL3"));
+        let bytes = fb.finished_data().to_vec();
+
+        let runnable = crate::tflite()
+            .model_for_read(&mut std::io::Cursor::new(bytes))
+            .unwrap()
+            .into_optimized()
+            .unwrap()
+            .into_runnable()
+            .unwrap();
+        let input = Tensor::from_shape(&[1usize, 4], &[1f32, 2., 3., 4.]).unwrap();
+        let out = runnable.run(tvec!(input.into())).unwrap();
+        let mean = unsafe { out[0].as_slice_unchecked::<f32>() }[0];
+        assert!(
+            (mean - 2.5).abs() < 1e-4,
+            "REDUCE_MEAN must be 2.5, got {mean} (integer-rounded?)"
+        );
+    }
+}
