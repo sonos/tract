@@ -292,6 +292,50 @@ typedef decltype(diag_gather<float>) diag_gather_t;
         "array_ops::diag_gather_" #tname)]] [[kernel]] diag_gather_t           \
         diag_gather<type>;
 
+// Gather along one axis:
+//   out[i_pre, i_n, i_post] = data[i_pre, indices[i_n], i_post]
+// where the host flattens to (pre × a_size × post) for data and
+// (pre × n_indices × post) for output.  Negative indices wrap with `a_size`,
+// matching the CPU contract.
+//
+// params layout: [pre, a_size, post, n_indices]
+template <typename T>
+[[kernel]] void gather(device const void *data_b [[buffer(0)]],
+                       device const void *indices_b [[buffer(1)]],
+                       device void *output_b [[buffer(2)]],
+                       constant const int32_t *params [[buffer(3)]],
+                       uint3 tpig [[thread_position_in_grid]]) {
+    const int32_t i_post = (int32_t)tpig.x;
+    const int32_t i_n = (int32_t)tpig.y;
+    const int32_t i_pre = (int32_t)tpig.z;
+
+    const int32_t pre = params[0];
+    const int32_t a_size = params[1];
+    const int32_t post = params[2];
+    const int32_t n_indices = params[3];
+
+    if (i_post >= post || i_n >= n_indices || i_pre >= pre)
+        return;
+
+    device const T *data = (device const T *)data_b;
+    device const long *indices = (device const long *)indices_b;
+    device T *output = (device T *)output_b;
+
+    long k = indices[i_n];
+    if (k < 0)
+        k += a_size;
+
+    const long in_off = ((long)i_pre * a_size + k) * post + i_post;
+    const long out_off = ((long)i_pre * n_indices + i_n) * post + i_post;
+    output[out_off] = data[in_off];
+}
+
+typedef decltype(gather<float>) gather_t;
+
+#define INSTANTIATE_GATHER(tname, type)                                        \
+    template [[host_name(                                                      \
+        "array_ops::gather_" #tname)]] [[kernel]] gather_t gather<type>;
+
 // Copy kernels: only u8/u16/u32/u64 (copy is type-size based)
 INSTANTIATE_COPY(u8, uint8_t)
 INSTANTIATE_COPY(u16, uint16_t)
@@ -331,3 +375,7 @@ INSTANTIATE_ROTATE_HALF_OP(f16, half)
 // Diagonal gather: f32 and f16 only.
 INSTANTIATE_DIAG_GATHER(f32, float)
 INSTANTIATE_DIAG_GATHER(f16, half)
+
+// Axis Gather: f32 and f16 only (indices are int64).
+INSTANTIATE_GATHER(f32, float)
+INSTANTIATE_GATHER(f16, half)
