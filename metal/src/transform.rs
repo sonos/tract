@@ -242,9 +242,26 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
             .iter()
             .map(|i| target.outlet_fact(mapping[i]).map(|f| f.clone()))
             .collect::<TractResult<_>>()?;
-        let target_input_refs: TVec<&TypedFact> = target_inputs.iter().collect();
+        // Mirror sync_inputs_if_required(ToDevice): wrap non-device facts as
+        // device facts so the GPU op's `output_facts` sees uniform device
+        // inputs, matching what it'll receive after sync nodes are wired.
+        // Mixed inputs (e.g. host kv-cache + device current activation) make
+        // `output_facts` bail with "Inconsistent facts", wrongly tripping CPU
+        // fallback.
+        let target_inputs_post_sync: TVec<TypedFact> = target_inputs
+            .iter()
+            .map(|f| -> TractResult<TypedFact> {
+                if f.as_device_fact().is_some() {
+                    Ok(f.clone())
+                } else {
+                    Ok(tract_gpu::fact::DeviceFact::from_host(f.clone())?.into_exotic_fact())
+                }
+            })
+            .collect::<TractResult<_>>()?;
+        let target_input_post_sync_refs: TVec<&TypedFact> =
+            target_inputs_post_sync.iter().collect();
         if let Some(gpu_op) = try_make_metal_op(source, node)?
-            && gpu_op.output_facts(&target_input_refs).is_ok()
+            && gpu_op.output_facts(&target_input_post_sync_refs).is_ok()
         {
             let device_inputs =
                 sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
