@@ -119,3 +119,133 @@ mod test_x86_64_fma_softmax2_fastcompact_f32_32n {
         x86_64_fma_softmax2_fastcompact_f32_32n
     );
 }
+
+// AVX-512 version: processes 64 f32 per loop iteration (4 zmm registers of 16
+// lanes each). Same fast-compact-exp algorithm as the FMA kernel above:
+//   y = bitcast_u32(max(0, SLOPE*(x-max) + OFFSET))   (via vcvttps2dq)
+// then writes y back and accumulates sum(y). Runtime-gated on avx512f (see
+// x86_64_fma.rs::plug_avx512f); non-AVX512 CPUs keep using the FMA kernel.
+// nr=64, 64-byte (16xf32) alignment.
+map_reduce_impl_wrap!(
+    f32,
+    x86_64_avx512_softmax2_fastcompact_f32_64n,
+    64,
+    16,
+    f32,
+    f32::MIN,
+    0f32,
+    #[inline(never)]
+    fn run(buf: &mut [f32], max: f32) -> f32 {
+        assert!(buf.len() % 64 == 0);
+        assert!(buf.len() > 0);
+        unsafe { x86_64_avx512_softmax2_fastcompact_f32_64n_run(buf, max) }
+    },
+    #[inline(never)]
+    fn reduce_two(a: f32, b: f32) -> f32 {
+        a + b
+    }
+);
+
+#[target_feature(enable = "avx512f")]
+unsafe fn x86_64_avx512_softmax2_fastcompact_f32_64n_run(buf: &mut [f32], max: f32) -> f32 {
+    unsafe {
+        let len = buf.len();
+        let ptr = buf.as_ptr();
+        let mut acc = 0f32;
+        const MLN2: f32 = 0.6931471805f32;
+        const A: f32 = 8388608.0f32;
+        const B: f32 = 1065353216.0f32;
+        const C: f32 = 60801.0f32;
+        const SLOPE: f32 = A / MLN2;
+        const OFFSET: f32 = B - C;
+        std::arch::asm!("
+            vbroadcastss zmm0, xmm0
+            vmovaps zmm1, zmm0
+            vmovaps zmm2, zmm0
+            vmovaps zmm3, zmm0
+
+            vpxord  zmm28, zmm28, zmm28          // zero (clamp floor)
+            vbroadcastss zmm29, xmm29            // max
+            vbroadcastss zmm30, xmm30            // slope
+            vbroadcastss zmm31, xmm31            // offset
+            2:
+                vmovaps zmm4, [{ptr}]
+                vmovaps zmm5, [{ptr} + 64]
+                vmovaps zmm6, [{ptr} + 128]
+                vmovaps zmm7, [{ptr} + 192]
+
+                vsubps zmm4, zmm4, zmm29
+                vsubps zmm5, zmm5, zmm29
+                vsubps zmm6, zmm6, zmm29
+                vsubps zmm7, zmm7, zmm29
+
+                vmovaps zmm8, zmm31
+                vmovaps zmm9, zmm31
+                vmovaps zmm10, zmm31
+                vmovaps zmm11, zmm31
+
+                vfmadd231ps zmm8, zmm4, zmm30
+                vfmadd231ps zmm9, zmm5, zmm30
+                vfmadd231ps zmm10, zmm6, zmm30
+                vfmadd231ps zmm11, zmm7, zmm30
+
+                vmaxps zmm8, zmm8, zmm28
+                vmaxps zmm9, zmm9, zmm28
+                vmaxps zmm10, zmm10, zmm28
+                vmaxps zmm11, zmm11, zmm28
+
+                vcvttps2dq zmm8, zmm8
+                vcvttps2dq zmm9, zmm9
+                vcvttps2dq zmm10, zmm10
+                vcvttps2dq zmm11, zmm11
+
+                vmovaps [{ptr}]      , zmm8
+                vmovaps [{ptr} + 64] , zmm9
+                vmovaps [{ptr} + 128], zmm10
+                vmovaps [{ptr} + 192], zmm11
+
+                vaddps zmm0, zmm0, zmm8
+                vaddps zmm1, zmm1, zmm9
+                vaddps zmm2, zmm2, zmm10
+                vaddps zmm3, zmm3, zmm11
+
+                add {ptr}, 256
+                sub {len}, 64
+                jnz 2b
+
+            vaddps zmm0, zmm0, zmm1
+            vaddps zmm2, zmm2, zmm3
+            vaddps zmm0, zmm0, zmm2             // zmm0 holds 16 partial sums
+            vextractf64x4 ymm1, zmm0, 1         // upper 256 bits (8xf32) -> ymm1 (avx512f)
+            vaddps ymm0, ymm0, ymm1            // ymm0 holds 8 values
+            vextractf128 xmm1, ymm0, 1          // upper 4xf32 -> xmm1
+            vaddps xmm0, xmm0, xmm1            // xmm0 holds 4 values
+            vpermilps xmm1, xmm0, 2 + (3 << 2)
+            vaddps xmm0, xmm0, xmm1            // xmm0 holds 2 values
+            vpermilps xmm1, xmm0, 1
+            vaddps xmm0, xmm0, xmm1
+            ",
+        len = inout(reg) len => _,
+        ptr = inout(reg) ptr => _,
+        inout("zmm0") acc,
+        out("zmm1") _, out("zmm2") _, out("zmm3") _,
+        out("zmm4") _, out("zmm5") _, out("zmm6") _, out("zmm7") _,
+        out("zmm8") _, out("zmm9") _, out("zmm10") _, out("zmm11") _,
+        out("zmm28") _,
+        inout("zmm29") max => _,
+        inout("zmm30") SLOPE => _,
+        inout("zmm31") OFFSET => _,
+        );
+        acc
+    }
+}
+
+#[cfg(test)]
+mod test_x86_64_avx512_softmax2_fastcompact_f32_64n {
+    use super::*;
+    crate::softmax_l2_frame_tests!(
+        is_x86_feature_detected!("avx512f"),
+        f32,
+        x86_64_avx512_softmax2_fastcompact_f32_64n
+    );
+}
