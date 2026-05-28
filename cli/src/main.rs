@@ -187,9 +187,6 @@ fn main() -> TractResult<()> {
                 .help("Loading pipeline stage to compare with"),
         )
         .arg(
-            Arg::new("tf").long("tf").action(ArgAction::SetTrue).help("Compare against tensorflow"),
-        )
-        .arg(
             Arg::new("twice")
                 .long("twice")
                 .action(ArgAction::SetTrue)
@@ -210,7 +207,7 @@ fn main() -> TractResult<()> {
         )
         .group(
             ArgGroup::new("reference")
-                .args(&["npz", "pbdir", "stage", "tf", "twice", "stream"])
+                .args(&["npz", "pbdir", "stage", "twice", "stream"])
                 .required(true),
         )
         .arg(

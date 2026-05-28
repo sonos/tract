@@ -22,16 +22,12 @@ log.workspace = true
 memmap2.workspace = true
 prost.workspace = true
 prost-types.workspace = true
-tensorflow = { workspace = true, optional = true }
 tract-hir.workspace = true
 tract-pulse.workspace = true
 
 # [build-dependencies]
 # protobuf-src = "1.0.5+3.19.3"
 # prost-build = "0.14"
-
-[features]
-conform = [ "tensorflow" ]
 
 [dev-dependencies]
 criterion.workspace = true

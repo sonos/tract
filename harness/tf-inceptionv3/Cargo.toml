@@ -9,9 +9,6 @@ edition = "2024"
 image.workspace = true
 tract-tensorflow.workspace = true
 
-[features]
-conform = [ "tract-tensorflow/conform" ]
-
 [dev-dependencies]
 criterion.workspace = true
 dinghy-test.workspace = true
