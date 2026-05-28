@@ -72,13 +72,20 @@ pub fn run_params_from_subcommand(
     }
 
     if let Some(set) = sub_matches.get_many::<String>("set") {
+        // Right-hand side is a TDim expression (e.g. `--set T=2*S`).  Parse
+        // against the model's symbol scope, then reduce to `i64` with the
+        // symbols already set so far (CLI argument order matters when
+        // expressions reference other symbols).
+        let symbol_scope = params.tract_model.symbols();
         for set in set {
             let set = set.as_str();
-            let (sym, value) = set.split_once('=').context("--set expect S=12 form")?;
+            let (sym, value) = set.split_once('=').context("--set expects S=value form")?;
+            let dim = tract_core::internal::parse_tdim(symbol_scope, value)
+                .with_context(|| format!("--set: parsing TDim expression for {sym}={value}"))?;
+            let value: i64 = dim.eval_to_i64(&symbols).with_context(|| {
+                format!("--set {sym}={value}: resolving with current symbol values {symbols:?}")
+            })?;
             let sym = params.tract_model.get_or_intern_symbol(sym);
-            let value: i64 = value
-                .parse()
-                .with_context(|| format!("Can not parse symbol value in set {set}"))?;
             symbols.set(&sym, value);
         }
     }
