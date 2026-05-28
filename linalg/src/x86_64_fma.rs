@@ -13,6 +13,7 @@ pub mod erf;
 mod intel;
 pub mod max;
 pub mod panel_extract;
+pub mod rms_norm;
 pub mod softmax;
 
 const AVX2: fn() -> bool = || is_x86_feature_detected!("avx2");
@@ -67,13 +68,15 @@ fn plug_avx512f(ops: &mut Ops) {
 
     ops.erf_f32 = Box::new(|| erf::x86_64_avx512_erf_f32_64n::ew());
 
+    ops.rms_norm_f32 = Box::new(rms_norm::rms_norm_f32);
+
     log::info!(
         "sigmoid_f32, tanh_f32, hardswish_f32, leaky_relu_f32, \
          silu_f32, gelu_f32, \
          sigmoid_f16, tanh_f16, hardswish_f16, leaky_relu_f16, \
          silu_f16, gelu_f16, \
-         max_f32, softmax2_fastcompact_f32, softmax2_fastcompact_f16, erf_f32: \
-         x86_64/avx512f activated"
+         max_f32, softmax2_fastcompact_f32, softmax2_fastcompact_f16, erf_f32, \
+         rms_norm_f32: x86_64/avx512f activated"
     );
 }
 
