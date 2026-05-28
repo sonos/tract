@@ -1,3 +1,5 @@
+use std::io::IsTerminal;
+
 use nu_ansi_term::Color::*;
 use tract_core::prelude::*;
 use tract_core::tract_data::itertools::Itertools;
@@ -107,7 +109,7 @@ fn mmm(dt: DatumType, m: usize, k: usize, n: usize) -> TractResult<()> {
                 pa.precursor().as_dt() == Some(dt) && pb.precursor().as_dt() == Some(dt)
             })
             .map(|(mmm, pix, pa, pb)| {
-                if atty::is(atty::Stream::Stderr) {
+                if std::io::stderr().is_terminal() {
                     eprint!("Benching {} ({pix})", mmm.name());
                 }
                 let a = pa.prepare_one(&a, 1, 0).unwrap();
@@ -132,7 +134,7 @@ fn mmm(dt: DatumType, m: usize, k: usize, n: usize) -> TractResult<()> {
                         .unwrap();
                     }
                 });
-                if atty::is(atty::Stream::Stderr) {
+                if std::io::stderr().is_terminal() {
                     eprint!("\x1B[2K\r"); // clear current line + CR
                 }
                 let flops = (m * k * n) as f64 / time;

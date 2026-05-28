@@ -22,7 +22,6 @@ path = "src/main.rs"
 maintenance = { status = "actively-developed" }
 
 [dependencies]
-atty.workspace = true
 box_drawing.workspace = true
 clap.workspace = true
 erased-serde.workspace = true
