@@ -6,6 +6,7 @@ pub mod leaky_relu;
 pub mod lut;
 pub mod mmm;
 pub mod reduce;
+pub mod rms_norm;
 pub mod rounding;
 pub mod sigmoid;
 pub mod silu;
