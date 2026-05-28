@@ -1,7 +1,7 @@
 use criterion::*;
 use tract_data::prelude::*;
 use tract_linalg::element_wise::ElementWiseKer;
-use tract_linalg::generic::reduce::softmax_l2::SSoftMaxL2;
+use tract_linalg::generic::reduce::softmax_l2::{HSoftMaxL2, SSoftMaxL2};
 use tract_linalg::reduce::{MapReduceKer, ReduceKer};
 
 #[inline(never)]
@@ -134,5 +134,31 @@ fn softmax_f32(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, softmax_f32);
+fn softmax_f16(c: &mut Criterion) {
+    let mut group = c.benchmark_group("softmax_f16");
+    // 1536 = 64*24 (multiple of avx512 f16 nr=64 and generic h nr=8).
+    const N: usize = 1536;
+    group.throughput(Throughput::Elements(N as u64));
+    let mut input = unsafe { Tensor::uninitialized_aligned::<f16>(&[N], 64).unwrap() };
+    let mut plain = input.try_as_plain_mut().unwrap();
+    let input = plain.as_slice_mut::<f16>().unwrap();
+    for (i, x) in input.iter_mut().enumerate() {
+        *x = f16::from_f32((i as f32 / 10.0).sin() * 5.0);
+    }
+    group.bench_function("loop2/generic", |b| {
+        b.iter(|| HSoftMaxL2::red().run_with_params(input, f16::from_f32(10.0)))
+    });
+    #[cfg(target_arch = "x86_64")]
+    if std::is_x86_feature_detected!("avx512f") {
+        group.bench_function("loop2/avx512", |b| {
+            b.iter(|| {
+                tract_linalg::x86_64_fma::softmax::x86_64_avx512_softmax2_fastcompact_f16_64n::red()
+                    .run_with_params(input, f16::from_f32(10.0))
+                    .unwrap()
+            });
+        });
+    }
+}
+
+criterion_group!(benches, softmax_f32, softmax_f16);
 criterion_main!(benches);
