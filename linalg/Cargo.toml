@@ -137,5 +137,9 @@ name = "avx512_zombies"
 harness = false
 
 [[bench]]
+name = "activations_avx512"
+harness = false
+
+[[bench]]
 name = "wasm"
 harness = false

@@ -1,7 +1,9 @@
 {#
 // vim: set syntax=asm :
 
-// TODO[TSolberg] : Not validated.
+// AVX-512 (zmm, 16-wide) tanh. Polynomial-numerator / polynomial-denominator
+// rational approximation of tanh clamped to [-9, 9]. Validated against the
+// generic scalar reference via tanh_frame_tests! (see x86_64_fma.rs).
 
 System V ABI:
     args: rdi, rsi, rdx, rcx, r8, r9
@@ -88,7 +90,7 @@ avx512_tanh_f32_{{suffix}} proc
     cmp     rsi, 0
     je      {{L}}done
 
-    cmp     rsi, 32
+    cmp     rsi, 64
     jl      {{L}}loop_1
 
 {{L}}loop_4:
@@ -188,8 +190,8 @@ avx512_tanh_f32_{{suffix}} proc
     vmovaps [rdi + 192], zmm7
 
     add     rdi, 256
-    sub     rsi, 32
-    cmp     rsi, 32
+    sub     rsi, 64
+    cmp     rsi, 64
     jg      {{L}}loop_4
 
     cmp     rsi, 0
@@ -235,8 +237,8 @@ avx512_tanh_f32_{{suffix}} proc
     vdivps          zmm4, zmm4, zmm12
 
     vmovaps [rdi], zmm4
-    add     rdi, 32
-    sub     rsi, 8
+    add     rdi, 64
+    sub     rsi, 16
     jnz     {{L}}loop_1
 
 {{L}}done:
