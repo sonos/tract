@@ -26,7 +26,6 @@ pub fn handle(
     }
 
     let cumulative = sub_matches.get_flag("cumulative");
-    let resilent = sub_matches.get_flag("resilient");
     if sub_matches.get_one::<String>("stage").is_some() {
         // --with is by pipeline and put in params
         return handle_reference_stage(cumulative, params, &output_params, &run_params);
@@ -38,98 +37,7 @@ pub fn handle(
     if let Some(pbdir) = sub_matches.get_one::<String>("pbdir") {
         return handle_pbdir(cumulative, pbdir, params, &output_params, &run_params);
     }
-    if sub_matches.get_flag("tf") {
-        return handle_tensorflow(cumulative, resilent, params, &output_params, &run_params);
-    }
     bail!("No comparison target found")
-}
-
-#[cfg(not(feature = "conform"))]
-pub fn handle_tensorflow(
-    _cumulative: bool,
-    _resilient: bool,
-    _params: &mut Parameters,
-    _output_params: &DisplayParams,
-    _run_params: &RunParams,
-) -> TractResult<()> {
-    bail!("`tf` feature is required for this to work");
-}
-
-#[cfg(feature = "conform")]
-pub fn handle_tensorflow(
-    cumulative: bool,
-    resilient: bool,
-    params: &mut Parameters,
-    output_params: &DisplayParams,
-    run_params: &RunParams,
-) -> TractResult<()> {
-    let tract = &params.tract_model;
-    let mut tf = params.tf_model.take().unwrap();
-    // First generate random values for the inputs.
-    let input_facts = tract
-        .input_outlets()
-        .iter()
-        .map(|&i| tract.outlet_typedfact(i))
-        .collect::<TractResult<Vec<_>>>()?;
-    let generated = crate::tensor::make_inputs(&*input_facts)?;
-
-    // Execute the model on tensorflow first.
-    info!("Running the model on tensorflow.");
-    trace!("Inject inputs in tensorflow graph.");
-    let pairs: Vec<_> = tract
-        .input_outlets()
-        .iter()
-        .map(|s| &*tract.node_name(s.node))
-        .zip(generated.iter().cloned())
-        .collect();
-
-    trace!("Execute the model on tensorflow.");
-    let eval_order = tract.eval_order()?;
-
-    let mut wanted_outputs: Vec<&str> = eval_order
-        .iter()
-        .filter(|&n| !tract.input_outlets().contains(&OutletId::new(*n, 0)))
-        .map(|&n| tract.node_name(n))
-        .collect();
-
-    for o in tract.output_outlets() {
-        let name = &*tract.node_name(o.node);
-        if !wanted_outputs.contains(&name) {
-            wanted_outputs.push(name);
-        }
-    }
-
-    let mut all_values: HashMap<String, Vec<TractResult<TValue>>> = HashMap::new();
-    if resilient {
-        for name in wanted_outputs {
-            all_values.insert(
-                name.to_string(),
-                vec![
-                    tf.run(pairs.clone(), &name)
-                        .map(|t| Arc::new(t[0].clone().into()))
-                        .map_err(|e| e.into()),
-                ],
-            );
-        }
-    } else {
-        tf.run_get_many(pairs, wanted_outputs)?.into_iter().for_each(|(k, v)| {
-            all_values.insert(k.to_string(), vec![Ok(v[0].clone().into())]);
-        });
-    };
-
-    for (ix, input) in tract.input_outlets().iter().enumerate() {
-        let name = tract.node_name(input.node);
-        all_values.insert(name.to_string(), vec![Ok(generated[ix].clone().into_arc_tensor())]);
-    }
-    dispatch_model_no_pulse!(params.tract_model, |m| compare(
-        cumulative,
-        m,
-        &all_values,
-        &params,
-        &output_params,
-        run_params,
-        ("tract", "tf"),
-    ))
 }
 
 pub fn handle_npz(

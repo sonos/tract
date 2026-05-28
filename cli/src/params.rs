@@ -134,13 +134,6 @@ pub struct Parameters {
     pub tract_model: Arc<dyn Model>,
     pub reference_model: Option<Arc<dyn Model>>,
 
-    #[cfg(feature = "conform")]
-    pub tf_model: Option<tract_tensorflow::conform::tf::Tensorflow>,
-
-    #[cfg(not(feature = "conform"))]
-    #[allow(dead_code)]
-    pub tf_model: (),
-
     pub tensors_values: TensorsValues,
     pub assertions: Assertions,
 
@@ -859,36 +852,17 @@ impl Parameters {
         info!("Model {filename:?} loaded");
         info_usage("model loaded", probe);
 
-        let (need_tensorflow_model, need_reference_model) = match matches.subcommand() {
+        let need_reference_model = match matches.subcommand() {
             Some(("compare", sm)) => {
                 if let Some(with) = sm.get_one::<String>("stage").map(String::as_str) {
-                    (false, Some(with))
+                    Some(with)
                 } else if sm.get_flag("stream") {
-                    (false, Some("declutter"))
+                    Some("declutter")
                 } else {
-                    (true, None)
+                    None
                 }
             }
-            _ => (false, None),
-        };
-
-        #[cfg(not(feature = "conform"))]
-        let tf_model = ();
-        #[cfg(feature = "conform")]
-        let tf_model = if need_tensorflow_model {
-            info!("Tensorflow version: {}", tract_tensorflow::conform::tf::version());
-            if matches.get_flag("determinize") {
-                if let SomeGraphDef::Tf(ref graph) = graph {
-                    let graph = graph.write_to_bytes().unwrap();
-                    Some(tract_tensorflow::conform::tf::for_slice(&graph)?)
-                } else {
-                    unreachable!()
-                }
-            } else {
-                Some(tract_tensorflow::conform::tf::for_path(&filename)?)
-            }
-        } else {
-            None
+            _ => None,
         };
 
         let need_proto = matches.get_flag("proto")
@@ -1062,7 +1036,6 @@ impl Parameters {
             runnable,
             tract_model,
             reference_model,
-            tf_model,
             tensors_values,
             assertions,
             machine_friendly: matches.get_flag("machine-friendly"),
