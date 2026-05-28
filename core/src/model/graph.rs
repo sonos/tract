@@ -172,6 +172,24 @@ where
         Ok(self)
     }
 
+    /// Set model inputs by node name — mirror of [`Self::select_outputs_by_name`].
+    /// Removed inputs become dangling Source nodes; declutter prunes them.
+    pub fn select_inputs_by_name(
+        &mut self,
+        inputs: impl IntoIterator<Item = impl AsRef<str>>,
+    ) -> TractResult<()> {
+        self.set_input_names(inputs)
+    }
+
+    /// Set model inputs by node name and return `self`.
+    pub fn with_inputs_by_name(
+        mut self,
+        inputs: impl IntoIterator<Item = impl AsRef<str>>,
+    ) -> TractResult<Self> {
+        self.select_inputs_by_name(inputs)?;
+        Ok(self)
+    }
+
     /// Get the `ix`-th input tensor type information.
     pub fn input_fact(&self, ix: usize) -> TractResult<&F> {
         let input = self.input_outlets()?[ix];

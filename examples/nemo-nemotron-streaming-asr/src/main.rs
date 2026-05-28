@@ -108,6 +108,7 @@ impl NemotronModels {
         pp.transform(
             r#"{"name":"patch","body":"length = tract_core_shape_of(input_signal)[1];"}"#,
         )?;
+        pp.transform(r#"{"name":"select_inputs","inputs":["input_signal"]}"#)?;
         pp.transform(r#"{"name":"select_outputs","outputs":["processed_signal"]}"#)?;
         pp.transform(Pulse::new(config.preproc_pulse.to_string()).symbol("INPUT_SIGNAL__TIME"))?;
         let pp_delay = pp.property("pulse.delay")?.as_slice::<i64>()?[0].to_owned() as usize;
@@ -125,6 +126,7 @@ impl NemotronModels {
         enc.transform(
             r#"{"name":"patch","body":"length = tract_core_shape_of(audio_signal)[2];"}"#,
         )?;
+        enc.transform(r#"{"name":"select_inputs","inputs":["audio_signal"]}"#)?;
         enc.transform(r#"{"name":"select_outputs","outputs":["outputs"]}"#)?;
         enc.transform(Pulse::new(config.encoder_pulse.to_string()).symbol("AUDIO_SIGNAL__TIME"))?;
         let enc_delay = enc.property("pulse.delay")?.as_slice::<i64>()?[0].to_owned() as usize;

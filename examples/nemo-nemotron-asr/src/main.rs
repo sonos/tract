@@ -20,6 +20,7 @@ fn concretize_batch(mut model: Model) -> anyhow::Result<Model> {
 fn remove_length_input(mut model: Model) -> anyhow::Result<Model> {
     model
         .transform(r#"{"name":"patch","body":"length = tract_core_shape_of(input_signal)[1];"}"#)?;
+    model.transform(r#"{"name":"select_inputs","inputs":["input_signal"]}"#)?;
     Ok(model)
 }
 
