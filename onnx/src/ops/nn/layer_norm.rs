@@ -182,11 +182,7 @@ impl Expansion for LayerNorm {
         } else {
             normalized_scaled
         };
-        let y = model.wire_node(
-            format!("{prefix}.cast_y"),
-            cast(fact.datum_type),
-            &y_internal,
-        )?;
+        let y = model.wire_node(format!("{prefix}.cast_y"), cast(fact.datum_type), &y_internal)?;
         let mut outputs = tvec!(y[0]);
         if self.mean_output.is_some() {
             outputs.push(reduced_mean_x[0]);
