@@ -3,10 +3,12 @@
 ### CPU / linalg
 
 - **ARM SME backend (ARMv9.2-A).** New `linalg/arm64/sme` module provides SME GEMM (Phase 1) and SME2 GEMV (`sme_mmv_f32_64x1`, Phase 2A) micro-kernels for Apple M4+, Cortex-X4, and other ARMv9.2-A+ chips. Dispatch is gated on a 512-bit streaming vector length at runtime; SME2 assembler detection skips kernels when the assembler lacks support. Force via `TRACT_CPU_AARCH64_KIND=applem` (or `generic` to disable).
+- **ARMv9 SVE**: f32/f16 GEMM+GEMV and int8→i32 GEMM+GEMV kernels
 - **Apple AMX: shape-aware dispatch.** AMX kernel selection is now M/N/K-aware at runtime, yielding 5–43% wins across canary models.
 - **NEON element-wise kernels.** `HardSwish`, `SiLU`, and `GELU` get dedicated aarch64 NEON kernels wired as single graph ops.
 - **x86_64.** M-aware kernel picker; AVX-512 GEMM routed to the 16×8 / 32×5 / 32×6 kernels.
 - **WASM SIMD.** Relaxed-SIMD FMA in all MMM kernels; 32×1 GEMV kernel (8 v128 accumulators, 8-way ILP); vectorised sigmoid and tanh; `rustfft wasm_simd` enabled. Low-accumulator MMM paths recover 8–23% under `+relaxed-simd`; M-band GEMV dispatch woken up (30–37% on small-M). `Executor::RayonGlobal` for `wasm-bindgen-rayon`.
+- **WASM**: relaxed-dot int8 fast path + PackedI8K4 + SIMD int8 matmul.
 - **Multithreaded GEMM.** TLS borrow and sync hoisted out of the per-tile inner loop; 2D chunked dispatch with a small-MMM threshold avoids rayon overhead on small operands.
 - **im2col.** Contiguous-x fast path for valid (zero-padding, unit stride) convolutions; grouped lazy im2col extended; depthwise convolutions excluded from lazy im2col path; N=1/2/3 zone dispatch for depthwise.
 - **General.** Same-shape fast path in `BinMiniOp::generic_eval`; `rbytes=96/128` fast paths for mn-major packing.
@@ -17,6 +19,8 @@
 
 - `Resize`: `pytorch_half_pixel` coordinate transformer.
 - `Reshape` with 0-dims and rank change fixed (issue #2104).
+-  Support for GroupQueryAttention, MultiHeadAttention, MatMulNBits (4-bit), SkipLayerNormalization, SimplifiedLayerNormalization, BiasGelu / FastGelu /
+  QuickGelu, LpNormalization, MeanVarianceNormalization, GroupNormalization, RotaryEmbedding, opset-24 Attention, Swish, Mish, Gelu, RMSNormalization.
 
 ### NNEF
 
@@ -26,7 +30,7 @@
 ### Pulse for chunked attention layers (experimental)
 
 - **`pulse::Blockify` rewrite pass.** Translates block-diagonal multi-time-axis subgraphs into chunk-parallel form: recognises quadratic sections (EinSum terminators, `DiagGather` initiators, banded masks, Softmax body chains) and rewrites each into a per-chunk section. Covered by ex01–ex10 synthetic harness cases.
-- **`DiagGather` op** (moved from `transformers` into `core`): causal skew-trick gather with ROI-driven narrowing and re-anchoring.
+- **`DiagGather` op**: causal skew-trick gather with ROI-driven narrowing and re-anchoring.
 - **`WindowOnAxis` op**: windowed gather over the streaming axis with configurable pad value.
 - **`AxisOp::Reshape` pulsifier**: auto-inserts alignment `Delay` on streaming-axis size change.
 - Stream-axis LCM merge + slope-based per-pulse sizing for `Range`.
@@ -53,7 +57,7 @@
 - `doc/symbolic-shapes.md`: TDim, Symbol, and how to bind them.
 - `doc/op.md`: working with a `Tensor`'s data.
 - `doc/cli-recipe.md`: `--audit-json`, `--save-outputs`, timing pitfalls, environment-variable table.
-- `README.md`: refreshed — current backends, modern examples table, Python bindings section, torch-to-nnef pointer.
+- `README.md`: refreshed — current runtimes, modern examples table, Python bindings section, torch-to-nnef pointer.
 
 # 0.23.0-dev.5 - 2026-04-22
 
