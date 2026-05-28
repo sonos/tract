@@ -8,6 +8,7 @@ pub mod mmm;
 pub mod act;
 pub mod act_f16;
 pub mod by_scalar;
+pub mod erf;
 mod intel;
 pub mod max;
 pub mod panel_extract;
@@ -62,12 +63,14 @@ fn plug_avx512f(ops: &mut Ops) {
     ops.softmax2_fastcompact_f32 =
         Box::new(|| softmax::x86_64_avx512_softmax2_fastcompact_f32_64n::red());
 
+    ops.erf_f32 = Box::new(|| erf::x86_64_avx512_erf_f32_64n::ew());
+
     log::info!(
         "sigmoid_f32, tanh_f32, hardswish_f32, leaky_relu_f32, \
          silu_f32, gelu_f32, \
          sigmoid_f16, tanh_f16, hardswish_f16, leaky_relu_f16, \
          silu_f16, gelu_f16, \
-         max_f32, softmax2_fastcompact_f32: x86_64/avx512f activated"
+         max_f32, softmax2_fastcompact_f32, erf_f32: x86_64/avx512f activated"
     );
 }
 

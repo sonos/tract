@@ -49,3 +49,9 @@ impl ElementWiseKer<f32> for SErf4 {
         x.iter_mut().for_each(serf)
     }
 }
+
+#[cfg(test)]
+mod test_serf4 {
+    use super::*;
+    crate::erf_frame_tests!(true, f32, SErf4);
+}
