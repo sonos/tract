@@ -109,7 +109,7 @@ class Model:
 
         - a plain string name (e.g. ``"f32_to_f16"``)
         - a JSON string with a ``"name"`` key and parameters
-        - a :class:`TransformSpec` subclass such as :class:`ConcretizeSymbols`
+        - a :class:`TransformSpec` subclass such as :class:`SetSymbols`
           or :class:`Pulse`
         """
         self._valid()

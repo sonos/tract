@@ -74,32 +74,60 @@ macro_rules! transform_config {
     };
 }
 
-/// Typed config for the `concretize_symbols` transform.
+/// Typed config for the `set_symbols` transform.
 ///
-/// Replaces symbolic dimensions with concrete integer values.
+/// Binds symbolic dimensions to concrete integers (or `TDim` expressions
+/// via [`Self::expr`]).
 ///
 /// # Example
 /// ```ignore
-/// model.transform(ConcretizeSymbols::new().value("B", 1))?;
+/// model.transform(SetSymbols::new().value("B", 1).value("T", 16))?;
 /// ```
 #[derive(Debug, Clone, Default, serde::Serialize)]
-pub struct ConcretizeSymbols {
-    values: HashMap<String, i64>,
+pub struct SetSymbols {
+    #[serde(serialize_with = "serialize_values")]
+    values: HashMap<String, SetSymbolValue>,
 }
 
-impl ConcretizeSymbols {
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(untagged)]
+enum SetSymbolValue {
+    Int(i64),
+    Expr(String),
+}
+
+fn serialize_values<S: serde::Serializer>(
+    values: &HashMap<String, SetSymbolValue>,
+    s: S,
+) -> Result<S::Ok, S::Error> {
+    use serde::ser::SerializeMap;
+    let mut map = s.serialize_map(Some(values.len()))?;
+    for (k, v) in values {
+        map.serialize_entry(k, v)?;
+    }
+    map.end()
+}
+
+impl SetSymbols {
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Set a symbol to a concrete value.
+    /// Bind a symbol to a concrete integer value.
     pub fn value(mut self, symbol: impl Into<String>, val: i64) -> Self {
-        self.values.insert(symbol.into(), val);
+        self.values.insert(symbol.into(), SetSymbolValue::Int(val));
+        self
+    }
+
+    /// Bind a symbol to a `TDim` expression (e.g. `"2*S"`) parsed against
+    /// the model's symbol scope at transform time.
+    pub fn expr(mut self, symbol: impl Into<String>, expr: impl Into<String>) -> Self {
+        self.values.insert(symbol.into(), SetSymbolValue::Expr(expr.into()));
         self
     }
 }
 
-transform_config!(ConcretizeSymbols, "concretize_symbols");
+transform_config!(SetSymbols, "set_symbols");
 
 /// Typed config for the `pulse` transform.
 ///

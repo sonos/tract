@@ -49,7 +49,7 @@ fn main() -> Result<()> {
     let symbols_env = std::env::var("TRACT_BENCH_SYMBOLS").ok().filter(|s| !s.is_empty());
 
     // When symbols are provided, the model is symbolic-shaped and we go straight
-    // to TypedModel → substitute_symbols, ignoring shape_spec (input shapes will
+    // to TypedModel → set_symbols, ignoring shape_spec (input shapes will
     // be derived from the symbol substitution). When no symbols, we use the
     // shape_spec to pin input facts on the InferenceModel before into_typed.
     let typed = if let Some(symbols_str) = symbols_env {
@@ -60,7 +60,7 @@ fn main() -> Result<()> {
             let sym = typed.symbols.sym(k);
             subs.insert(sym, TDim::Val(v.parse::<i64>()?));
         }
-        typed.substitute_symbols(&subs)?
+        typed.set_symbols(&subs)?
     } else {
         if let Some(spec) = shape_spec.as_deref().filter(|s| *s != "-") {
             for (i, one) in spec.split(';').enumerate() {

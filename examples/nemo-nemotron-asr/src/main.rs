@@ -13,7 +13,7 @@ fn argmax(slice: &[f32]) -> Option<usize> {
 }
 
 fn concretize_batch(mut model: Model) -> anyhow::Result<Model> {
-    model.transform(ConcretizeSymbols::new().value("BATCH", 1))?;
+    model.transform(SetSymbols::new().value("BATCH", 1))?;
     Ok(model)
 }
 

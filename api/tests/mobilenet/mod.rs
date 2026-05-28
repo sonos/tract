@@ -123,7 +123,7 @@ fn test_concretize() -> anyhow::Result<()> {
     let mut typed = model.into_model()?;
     assert_eq!(typed.input_fact(0)?.to_string(), "B,3,224,224,f32");
     assert_eq!(typed.output_fact(0)?.to_string(), "B,1000,f32");
-    typed.transform(ConcretizeSymbols::new().value("B", 1))?;
+    typed.transform(SetSymbols::new().value("B", 1))?;
     assert_eq!(typed.input_fact(0)?.to_string(), "1,3,224,224,f32");
     assert_eq!(typed.output_fact(0)?.to_string(), "1,1000,f32");
     Ok(())
@@ -136,7 +136,7 @@ fn test_concretize_raw_string() -> anyhow::Result<()> {
     model.set_input_fact(0, "B,3,224,224,f32")?;
     model.analyse()?;
     let mut typed = model.into_model()?;
-    typed.transform(r#"{"name":"concretize_symbols","values":{"B":1}}"#)?;
+    typed.transform(r#"{"name":"set_symbols","values":{"B":1}}"#)?;
     assert_eq!(typed.input_fact(0)?.to_string(), "1,3,224,224,f32");
     assert_eq!(typed.output_fact(0)?.to_string(), "1,1000,f32");
     Ok(())

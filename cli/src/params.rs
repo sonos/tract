@@ -460,7 +460,7 @@ impl Parameters {
     /// `value` may be a plain integer or any TDim expression parseable
     /// against the model's symbol scope (e.g. `2*S` to rebase the
     /// streaming symbol onto a finer-grained chunk symbol before
-    /// pulsification).  Feeds straight into `model.substitute_symbols`.
+    /// pulsification).  Feeds straight into `model.set_symbols`.
     pub fn parse_set_subs(
         typed_model: &TypedModel,
         set: impl Iterator<Item = impl AsRef<str>>,
@@ -778,15 +778,15 @@ impl Parameters {
         }
 
         if let Some(set) = matches.get_many::<String>("set") {
-            // --set delegates to model.substitute_symbols with a
-            // Symbol → TDim map (same path the `concretize_symbols`
+            // --set delegates to model.set_symbols with a
+            // Symbol → TDim map (same path the `set_symbols`
             // model transform takes).  Values may be plain integers or
             // TDim expressions (e.g. `--set T=2*S` to rebase the
             // streaming symbol).  Const TDim tensors are rewritten
-            // through Const's own substitute_symbols hook.
+            // through Const's own set_symbols hook.
             let subs = Self::parse_set_subs(typed_model.as_ref().unwrap(), set)?;
             stage!("set", typed_model -> typed_model, move |m: TypedModel| {
-                m.substitute_symbols(&subs)
+                m.set_symbols(&subs)
             });
             stage!("set-declutter", typed_model -> typed_model, |mut m| {
                 let mut dec = tract_core::optim::Optimizer::declutter();

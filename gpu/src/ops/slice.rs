@@ -94,7 +94,7 @@ impl TypedOp for GpuSlice {
             .with_context(|| format!("Error while computing facts for {:?}", self.name()))
     }
 
-    fn substitute_symbols(
+    fn set_symbols(
         &self,
         _source: &TypedModel,
         node: &TypedNode,

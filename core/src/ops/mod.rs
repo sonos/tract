@@ -295,7 +295,7 @@ pub trait TypedOp:
     /// expressions (a concrete integer is `TDim::Val(v)`; an expression
     /// can be any other TDim, including symbolic ones).
     #[allow(unused_variables)]
-    fn substitute_symbols(
+    fn set_symbols(
         &self,
         source: &TypedModel,
         node: &TypedNode,

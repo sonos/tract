@@ -39,7 +39,7 @@ pub mod prelude {
 
     // User-facing API types
     pub use tract_api::{
-        ConcretizeSymbols, Datum, DatumType, FloatPrecision, Pulse, TransformSpec, tensor,
+        Datum, DatumType, FloatPrecision, Pulse, SetSymbols, TransformSpec, tensor,
     };
 
     // Traits needed for method resolution — hidden from namespace

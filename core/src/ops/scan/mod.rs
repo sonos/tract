@@ -52,7 +52,7 @@ impl<F: Clone> OutputMapping<F> {
 }
 
 impl<F: Clone + DimLike> OutputMapping<F> {
-    pub fn substitute_symbols(
+    pub fn set_symbols(
         &self,
         subs: &std::collections::HashMap<Symbol, F>,
     ) -> TractResult<OutputMapping<F>> {

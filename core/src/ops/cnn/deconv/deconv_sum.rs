@@ -106,7 +106,7 @@ impl TypedOp for DeconvSum {
         Ok(tvec!(inputs[0].datum_type.fact(shape)))
     }
 
-    fn substitute_symbols(
+    fn set_symbols(
         &self,
         _source: &TypedModel,
         node: &TypedNode,
