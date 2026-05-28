@@ -63,6 +63,18 @@ jobs:
           timeout_seconds: 54000 # 15 hours :/
           command: uvx cibuildwheel --output-dir wheelhouse api/py
 
+      - name: Install syft
+        uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+
+      - name: Inject CycloneDX + SPDX SBOMs into wheels (PEP 770)
+        shell: bash
+        run: |
+          set -ex
+          uv pip install --system wheel
+          for w in wheelhouse/*.whl ; do
+            python .github/scripts/inject_wheel_sboms.py "$w"
+          done
+
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: wheels-${{github.run_id}}-${{matrix.os}}

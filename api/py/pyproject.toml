@@ -21,13 +21,27 @@ cargo --version || (curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minim
 . $HOME/.cargo/env
 rustup toolchain add stable
 rustup default stable)
-[ -e $HOME/.local/bin/sccache ] || ./.travis/setup-sccache.sh ]
+[ -e $HOME/.local/bin/sccache ] || ./.travis/setup-sccache.sh ]
+# cargo-auditable embeds the resolved Rust dep graph into the .so the
+# wheel ships.  setuptools_rust honours $CARGO (build.py:97); point it
+# at a shim that prefixes `auditable` for build/rustc.
+cargo install --locked cargo-auditable --version 0.7.0
+mkdir -p "$HOME/cargo-shim"
+cat > "$HOME/cargo-shim/cargo" <<'EOSHIM'
+#!/usr/bin/env bash
+# `cargo auditable <anything>` forwards transparently to cargo, so an
+# unconditional prefix is safe for the version/metadata/build calls
+# setuptools_rust makes.
+exec cargo auditable "$@"
+EOSHIM
+chmod +x "$HOME/cargo-shim/cargo"
 """
 environment = """
 PATH=$HOME/.local/bin:$HOME/.cargo/bin:$PATH
 SCCACHE_DIR=$HOME/.cache/sccache
 SCCACHE_CACHE_SIZE=2G
 RUSTC_WRAPPER=sccache
+CARGO=$HOME/cargo-shim/cargo
 """
 
 [tool.cibuildwheel.macos]
@@ -36,10 +50,27 @@ skip = "pp* cp???t-*"
 before-build = """
 uv pip install --system "numpy>=2,<3" --config-settings=setup-args="-Dallow-noblas=true"
 rustup target add aarch64-apple-darwin
-[ -e $HOME/.local/bin/sccache ] || ./.travis/setup-sccache.sh ]
+[ -e $HOME/.local/bin/sccache ] || ./.travis/setup-sccache.sh ]
+# Same cargo-auditable shim as Linux (see comment there).
+cargo install --locked cargo-auditable --version 0.7.0
+mkdir -p "$HOME/cargo-shim"
+cat > "$HOME/cargo-shim/cargo" <<'EOSHIM'
+#!/usr/bin/env bash
+# `cargo auditable <anything>` forwards transparently to cargo, so an
+# unconditional prefix is safe for the version/metadata/build calls
+# setuptools_rust makes.
+exec cargo auditable "$@"
+EOSHIM
+chmod +x "$HOME/cargo-shim/cargo"
+"""
+environment = """
+CARGO=$HOME/cargo-shim/cargo
 """
 
 [tool.cibuildwheel.windows]
+# TODO: add a .cmd shim equivalent of the Linux/macOS bash shim above to
+# enable cargo-auditable here too.  Windows wheels currently ship without
+# the embedded Rust dep graph.
 before-build = """
 choco install mingw --version=8.1.0
 uv pip install --system "numpy==1.25.2"
