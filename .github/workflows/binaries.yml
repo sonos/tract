@@ -103,7 +103,11 @@ jobs:
             export CARGO_TARGET_${RUST_TRIPLE_ENV}_LINKER=$TARGET_CC
           fi
 
-          cargo build --target ${target} --release -p tract-cli --locked
+          # cargo-auditable wraps `cargo build` to embed the resolved
+          # dependency graph into the binary so consumers can recover
+          # the SBOM directly from the binary via `cargo audit bin`.
+          cargo install --locked cargo-auditable --version 0.7.0
+          cargo auditable build --target ${target} --release -p tract-cli --locked
           mkdir tract-$name
           cp target/${target}/release/tract tract-${name}
           tar czf tract-${name}.tgz tract-${name}
@@ -127,6 +131,11 @@ jobs:
           output-file: tract-${{ matrix.target }}-${{ steps.version.outputs.value }}.spdx.json
           upload-artifact: false
           upload-release-assets: false
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: tract-${{ matrix.target }}-${{ steps.version.outputs.value }}.tgz
 
       - name: Attest release tarball with CycloneDX SBOM
         uses: actions/attest-sbom@v2
