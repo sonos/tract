@@ -105,7 +105,7 @@ pub struct DefaultRuntime;
 
 impl Runtime for DefaultRuntime {
     fn name(&self) -> StaticName {
-        Cow::Borrowed("default")
+        Cow::Borrowed("cpu")
     }
 
     fn prepare_with_options(
@@ -220,6 +220,9 @@ pub fn runtimes() -> impl Iterator<Item = &'static dyn Runtime> {
 const GPU_RUNTIME_NAMES: &[&str] = &["metal", "cuda"];
 
 pub fn runtime_for_name(s: &str) -> TractResult<Option<&'static dyn Runtime>> {
+    // Back-compat: `default` was the original name for the CPU runtime
+    // before it was renamed.  Keep it working as a plain alias.
+    let s = if s == "default" { "cpu" } else { s };
     if s == "gpu" || s == "gpu-or-cpu" {
         let mut last_check_err: Option<TractError> = None;
         for name in GPU_RUNTIME_NAMES {
@@ -238,8 +241,8 @@ pub fn runtime_for_name(s: &str) -> TractResult<Option<&'static dyn Runtime>> {
                 .unwrap_or_default();
             bail!("Runtime `gpu` requested but no GPU backend is available{detail}");
         }
-        // gpu-or-cpu: fall back to the default CPU runtime.
-        return runtime_for_name("default");
+        // gpu-or-cpu: fall through to the cpu runtime.
+        return runtime_for_name("cpu");
     }
     rule_if_some!(rt = inventory::iter::<InventorizedRuntime>().find(|rt| rt.name() == s));
     rt.check()?;
