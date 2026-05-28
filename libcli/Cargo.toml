@@ -35,8 +35,8 @@ tract-transformers = { workspace = true, optional = true }
 tract-metal = { workspace = true }
 
 [target.'cfg(any(target_os = "linux", target_os = "windows"))'.dependencies]
-cudarc.workspace = true
-tract-cuda.workspace = true
+cudarc = { workspace = true, optional = true }
+tract-cuda = { workspace = true, optional = true }
 
 [features]
 default = ["transformers"]
@@ -45,3 +45,8 @@ hir = []
 onnx = ["tract-onnx"]
 complex = ["tract-core/complex"]
 transformers = ["tract-transformers"]
+# Marker / dependency selector for cudarc-backed code paths
+# (`--cuda-gpu-trace`).  Enabled transitively by tract-cli's cuda-XXXXX
+# features.  Always pulled together — picking one selects the cudarc API
+# binding; this feature wires the optional dep in.
+cuda = ["dep:cudarc", "dep:tract-cuda"]

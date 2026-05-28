@@ -14,7 +14,7 @@ pub mod time;
 
 use tract_core::internal::*;
 #[allow(unused_imports)]
-#[cfg(any(target_os = "linux", target_os = "windows"))]
+#[cfg(all(any(target_os = "linux", target_os = "windows"), feature = "cuda"))]
 use tract_cuda::utils::ensure_cuda_runtime_dependencies;
 
 pub fn capture_gpu_trace<F>(matches: &clap::ArgMatches, func: F) -> TractResult<()>
@@ -45,7 +45,7 @@ where
             bail!("`--metal-gpu-trace` present but it is only available on MacOS and iOS")
         }
     } else if matches.get_flag("cuda-gpu-trace") {
-        #[cfg(any(target_os = "linux", target_os = "windows"))]
+        #[cfg(all(any(target_os = "linux", target_os = "windows"), feature = "cuda"))]
         {
             ensure_cuda_runtime_dependencies(
                 "`--cuda-gpu-trace` present but no CUDA installation has been found",
@@ -53,9 +53,12 @@ where
             let _prof = cudarc::driver::safe::Profiler::new()?;
             func()
         }
-        #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+        #[cfg(not(all(any(target_os = "linux", target_os = "windows"), feature = "cuda")))]
         {
-            bail!("`--cuda-gpu-trace` present but it is only available on Linux and Windows")
+            bail!(
+                "`--cuda-gpu-trace` present but tract was not built with CUDA support \
+                 (re-build on Linux/Windows with one of the cuda-XXXXX features)"
+            )
         }
     } else {
         func()

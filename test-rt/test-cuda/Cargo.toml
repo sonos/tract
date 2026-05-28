@@ -27,7 +27,7 @@ log.workspace = true
 tract-core.workspace = true
 tract-onnx-opl.workspace = true
 infra = { path = "../infra" }
-tract-cuda.workspace = true
+tract-cuda = { workspace = true, features = ["cuda-13000"] }
 tract-gpu.workspace = true
 suite-onnx = { path = "../suite-onnx" }
 suite-unit = { path = "../suite-unit" }
