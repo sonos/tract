@@ -22,6 +22,11 @@ jobs:
     name: Upload Release Binaries
     permissions:
       contents: write
+      # OIDC + attestations: cryptographically sign each released .tgz
+      # against its SBOMs via GitHub's attestation store.  Anyone can
+      # then verify with `gh attestation verify <tgz> --owner sonos`.
+      id-token: write
+      attestations: write
     strategy:
       fail-fast: false
       matrix:
@@ -122,6 +127,18 @@ jobs:
           output-file: tract-${{ matrix.target }}-${{ steps.version.outputs.value }}.spdx.json
           upload-artifact: false
           upload-release-assets: false
+
+      - name: Attest release tarball with CycloneDX SBOM
+        uses: actions/attest-sbom@v2
+        with:
+          subject-path: tract-${{ matrix.target }}-${{ steps.version.outputs.value }}.tgz
+          sbom-path: tract-${{ matrix.target }}-${{ steps.version.outputs.value }}.cdx.json
+
+      - name: Attest release tarball with SPDX SBOM
+        uses: actions/attest-sbom@v2
+        with:
+          subject-path: tract-${{ matrix.target }}-${{ steps.version.outputs.value }}.tgz
+          sbom-path: tract-${{ matrix.target }}-${{ steps.version.outputs.value }}.spdx.json
 
       - name: Upload asset
         uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3
