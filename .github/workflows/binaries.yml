@@ -113,7 +113,7 @@ jobs:
           tar czf tract-${name}.tgz tract-${name}
 
       - name: Generate CycloneDX SBOM
-        uses: anchore/sbom-action@v0.18.0
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
         with:
           path: .
           format: cyclonedx-json
@@ -123,7 +123,7 @@ jobs:
           upload-release-assets: false
 
       - name: Generate SPDX SBOM
-        uses: anchore/sbom-action@v0.18.0
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
         with:
           path: .
           format: spdx-json
@@ -133,18 +133,18 @@ jobs:
           upload-release-assets: false
 
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         with:
           subject-path: tract-${{ matrix.target }}-${{ steps.version.outputs.value }}.tgz
 
       - name: Attest release tarball with CycloneDX SBOM
-        uses: actions/attest-sbom@v2
+        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
         with:
           subject-path: tract-${{ matrix.target }}-${{ steps.version.outputs.value }}.tgz
           sbom-path: tract-${{ matrix.target }}-${{ steps.version.outputs.value }}.cdx.json
 
       - name: Attest release tarball with SPDX SBOM
-        uses: actions/attest-sbom@v2
+        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
         with:
           subject-path: tract-${{ matrix.target }}-${{ steps.version.outputs.value }}.tgz
           sbom-path: tract-${{ matrix.target }}-${{ steps.version.outputs.value }}.spdx.json
