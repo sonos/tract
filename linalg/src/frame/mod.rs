@@ -8,6 +8,8 @@ pub mod unicast;
 #[macro_use]
 pub mod by_scalar;
 #[macro_use]
+pub mod erf;
+#[macro_use]
 pub mod gelu;
 #[macro_use]
 pub mod hardswish;
