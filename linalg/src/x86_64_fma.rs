@@ -58,11 +58,16 @@ fn plug_avx512f(ops: &mut Ops) {
     ops.silu_f16 = Box::new(|| act_f16::x86_64_avx512_silu_f16_16n::ew());
     ops.gelu_f16 = Box::new(|| act_f16::x86_64_avx512_gelu_f16_16n::ew());
 
+    ops.max_f32 = Box::new(|| max::x86_64_avx512_max_f32_64n::red());
+    ops.softmax2_fastcompact_f32 =
+        Box::new(|| softmax::x86_64_avx512_softmax2_fastcompact_f32_64n::red());
+
     log::info!(
         "sigmoid_f32, tanh_f32, hardswish_f32, leaky_relu_f32, \
          silu_f32, gelu_f32, \
          sigmoid_f16, tanh_f16, hardswish_f16, leaky_relu_f16, \
-         silu_f16, gelu_f16: x86_64/avx512f activated"
+         silu_f16, gelu_f16, \
+         max_f32, softmax2_fastcompact_f32: x86_64/avx512f activated"
     );
 }
 
