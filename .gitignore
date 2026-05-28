@@ -2,7 +2,6 @@ target
 **/*.rs.bk
 *.rustfmt
 *.back
-Cargo.lock
 examples/data
 .idea
 .cached/**
