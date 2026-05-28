@@ -108,6 +108,10 @@ name = "softmax"
 harness = false
 
 [[bench]]
+name = "activations_avx512_f16"
+harness = false
+
+[[bench]]
 bench = false
 name = "arm64simd"
 harness = false

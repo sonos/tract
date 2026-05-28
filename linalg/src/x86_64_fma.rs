@@ -6,6 +6,7 @@ use crate::x86_64_fma::softmax::x86_64_fma_softmax2_fastcompact_f32_32n;
 pub mod mmm;
 
 pub mod act;
+pub mod act_f16;
 pub mod by_scalar;
 mod intel;
 pub mod max;
@@ -50,9 +51,18 @@ fn plug_avx512f(ops: &mut Ops) {
     ops.silu_f32 = Box::new(|| act::x86_64_avx512_silu_f32_16n::ew());
     ops.gelu_f32 = Box::new(|| act::x86_64_avx512_gelu_f32_16n::ew());
 
+    ops.sigmoid_f16 = Box::new(|| act_f16::x86_64_avx512_sigmoid_f16_16n::ew());
+    ops.tanh_f16 = Box::new(|| act_f16::x86_64_avx512_tanh_f16_16n::ew());
+    ops.hardswish_f16 = Box::new(|| act_f16::x86_64_avx512_hardswish_f16_64n::ew());
+    ops.leaky_relu_f16 = Box::new(|| act_f16::x86_64_avx512_leaky_relu_f16_64n::ew());
+    ops.silu_f16 = Box::new(|| act_f16::x86_64_avx512_silu_f16_16n::ew());
+    ops.gelu_f16 = Box::new(|| act_f16::x86_64_avx512_gelu_f16_16n::ew());
+
     log::info!(
         "sigmoid_f32, tanh_f32, hardswish_f32, leaky_relu_f32, \
-         silu_f32, gelu_f32: x86_64/avx512f activated"
+         silu_f32, gelu_f32, \
+         sigmoid_f16, tanh_f16, hardswish_f16, leaky_relu_f16, \
+         silu_f16, gelu_f16: x86_64/avx512f activated"
     );
 }
 
