@@ -139,3 +139,7 @@ harness = false
 [[bench]]
 name = "wasm"
 harness = false
+
+[[bench]]
+name = "vnni_i32"
+harness = false

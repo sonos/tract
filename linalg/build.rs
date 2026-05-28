@@ -37,6 +37,21 @@ fn assembler_supports_sme() -> bool {
         .is_ok()
 }
 
+// Probe whether the target assembler can encode `vpdpbusd ymm` (AVX-512 VNNI
+// with AVX-512 VL, i.e. the 256-bit form). binutils gained this in ~2.30
+// (2018); the Debian stretch toolchain ships 2.28 and rejects the mnemonic.
+// When the probe fails we skip the VNNI kernel and the `tract_avx512vnni` cfg;
+// the runtime falls back to the AVX2 i32 path.
+fn assembler_supports_avx512vnni() -> bool {
+    cc::Build::new()
+        .file("x86_64/avx512vnni/dummy_vnni.S")
+        .cargo_metadata(false)
+        .cargo_warnings(false)
+        .warnings(false)
+        .try_compile("tract_avx512vnni_probe")
+        .is_ok()
+}
+
 fn include_sve() -> bool {
     // SVE/SVE2 lives on ARMv9 server/mobile cores (Neoverse V1+/N2+, Cortex-X2+,
     // Graviton 3/4) — Linux aarch64. No Apple silicon has SVE.
@@ -130,10 +145,17 @@ fn main() {
     println!("cargo:rustc-check-cfg=cfg(tract_sme)");
     // Set below only when include_sve() and the SVE compiler probe both pass.
     println!("cargo:rustc-check-cfg=cfg(tract_sve)");
+    // Set below only when the x86_64 assembler probe for vpdpbusd ymm passes.
+    println!("cargo:rustc-check-cfg=cfg(tract_avx512vnni)");
 
     match arch.as_ref() {
         "x86_64" => {
             let mut files = preprocess_files("x86_64/fma", &[], &suffix, false);
+            // The VNNI kernel is compiled separately (conditional on a probe) to
+            // avoid breaking old assemblers. Remove it from the main file list.
+            files.retain(|f| {
+                !f.file_name().and_then(|n| n.to_str()).map_or(false, |n| n.contains("avx512vnni"))
+            });
             files.extend(preprocess_files("x86_64/avx512", &[], &suffix, false));
 
             if os == "windows" {
@@ -183,6 +205,20 @@ fn main() {
                 }
             } else {
                 cc::Build::new().files(files).flag("-mfma").compile("x86_64_fma");
+            }
+            // VNNI kernel compiled separately so old assemblers (binutils < 2.30,
+            // e.g. Debian stretch) that can't encode `vpdpbusd ymm` don't break
+            // the whole x86_64 build. The `tract_avx512vnni` cfg gates the
+            // matching Rust extern declarations and dispatch registration.
+            //
+            // The template stays in x86_64/fma/ (alongside dispatcher.j2 and the
+            // other partials it includes) so the jinja env can resolve its includes.
+            if assembler_supports_avx512vnni() {
+                let tmpl = path::Path::new("x86_64/fma/avx512vnni_mmm_i32_8x8.S.j2");
+                let out = out_dir.join(format!("avx512vnni_mmm_i32_8x8_{suffix}.S"));
+                preprocess_file(tmpl, &out, &[], &suffix, false);
+                cc::Build::new().file(&out).flag("-mfma").compile("x86_64_avx512vnni");
+                println!("cargo:rustc-cfg=tract_avx512vnni");
             }
         }
         "arm" | "armv7" => {
