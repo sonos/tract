@@ -11,7 +11,7 @@ use tract_core::ops::matmul::optimized::{OptMatMul, ProtoFusedSpec};
 use tract_core::ops::matmul::pack::DynPackedExoticFact;
 use tract_core::ops::scan::OptScan;
 #[allow(unused_imports)]
-#[cfg(any(target_os = "linux", target_os = "windows"))]
+#[cfg(all(any(target_os = "linux", target_os = "windows"), feature = "cuda"))]
 use tract_cuda::utils::ensure_cuda_runtime_dependencies;
 use tract_hir::internal::*;
 use tract_itertools::Itertools;
@@ -146,17 +146,17 @@ pub fn handle(
 
             #[cfg(not(any(target_os = "macos", target_os = "ios")))]
             {
-                #[cfg(any(target_os = "linux", target_os = "windows"))]
+                #[cfg(all(any(target_os = "linux", target_os = "windows"), feature = "cuda"))]
                 ensure_cuda_runtime_dependencies("GPU profiling called on non-GPU device")?;
             }
 
-            #[cfg(any(target_os = "linux", target_os = "windows"))]
+            #[cfg(all(any(target_os = "linux", target_os = "windows"), feature = "cuda"))]
             let is_cuda = matches.get_flag("cuda");
-            #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+            #[cfg(not(all(any(target_os = "linux", target_os = "windows"), feature = "cuda")))]
             let is_cuda = false;
 
             if is_cuda {
-                #[cfg(any(target_os = "linux", target_os = "windows"))]
+                #[cfg(all(any(target_os = "linux", target_os = "windows"), feature = "cuda"))]
                 tract_cuda::with_cuda_stream(|s| {
                     s.enable_profiling();
                     Ok(())
@@ -164,7 +164,7 @@ pub fn handle(
             }
 
             let before_node: Box<dyn Fn(usize)> = if is_cuda {
-                #[cfg(any(target_os = "linux", target_os = "windows"))]
+                #[cfg(all(any(target_os = "linux", target_os = "windows"), feature = "cuda"))]
                 {
                     Box::new(|node_id| {
                         tract_cuda::with_cuda_stream(|s| {
@@ -174,7 +174,10 @@ pub fn handle(
                         .ok();
                     })
                 }
-                #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+                #[cfg(not(all(
+                    any(target_os = "linux", target_os = "windows"),
+                    feature = "cuda"
+                )))]
                 Box::new(|_| {})
             } else {
                 Box::new(|_| {})
@@ -186,7 +189,7 @@ pub fn handle(
                     &[(usize, String)],
                 ) -> TractResult<()>,
             > = if is_cuda {
-                #[cfg(any(target_os = "linux", target_os = "windows"))]
+                #[cfg(all(any(target_os = "linux", target_os = "windows"), feature = "cuda"))]
                 {
                     Box::new(|dg, prefix| {
                         tract_cuda::with_cuda_stream(|s| {
@@ -209,7 +212,10 @@ pub fn handle(
                         })
                     })
                 }
-                #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+                #[cfg(not(all(
+                    any(target_os = "linux", target_os = "windows"),
+                    feature = "cuda"
+                )))]
                 Box::new(|_, _| Ok(()))
             } else {
                 Box::new(|_, _| Ok(()))
@@ -254,12 +260,20 @@ pub fn handle(
     }
 
     if sub_matches.contains_id("memory-arena") {
-        #[cfg(not(any(target_os = "macos", target_os = "ios")))]
+        #[cfg(all(any(target_os = "linux", target_os = "windows"), feature = "cuda"))]
         {
             ensure_cuda_runtime_dependencies(
                 "Memory arena is only enabled for MacOS / iOS devices or CUDA devices",
             )?;
         }
+        #[cfg(not(any(
+            target_os = "macos",
+            target_os = "ios",
+            all(any(target_os = "linux", target_os = "windows"), feature = "cuda")
+        )))]
+        bail!(
+            "Memory arena requires CUDA (Linux/Windows with cuda-* feature) or Metal (macOS/iOS)"
+        );
         crate::memory_arena::dump_metrics(
             &params.req_typed_model(),
             &plan_options_from_subcommand(sub_matches)?,

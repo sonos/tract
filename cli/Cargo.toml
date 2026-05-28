@@ -74,8 +74,8 @@ float-ord.workspace = true
 tract-metal.workspace = true
 
 [target.'cfg(any(target_os = "linux", target_os = "windows"))'.dependencies]
-cudarc.workspace = true
-tract-cuda = { workspace = true, default-features = false }
+cudarc = { workspace = true, optional = true }
+tract-cuda = { workspace = true, optional = true }
 
 [features]
 default = [
@@ -99,20 +99,27 @@ transformers = ["tract-transformers", "tract-libcli/transformers"]
 conform = ["tract-tensorflow/conform"]
 multithread-mm = ["tract-linalg/multithread-mm"]
 
+# Marker feature implicitly enabled by every cuda-XXXXX selector below.
+# Use to gate cudarc-specific code paths in tract-cli. Not meant to be
+# enabled directly — always pick a concrete cuda-XXXXX so cudarc has an
+# API version to bind against.
+cuda = []
+
 # CUDA driver-API selectors (linux/windows targets only). Picking one binds
 # cudarc against the matching CUDA enum/struct layout; the resulting binary
 # runs on any driver whose API is >= the chosen one. Exactly one must be
 # active. The default pulls cuda-13000 in; cross-compiles aimed at older
-# drivers (e.g. aarch64 with CUDA 12) override with `--no-default-features`.
-cuda-12000 = ["tract-cuda/cuda-12000"]
-cuda-12010 = ["tract-cuda/cuda-12010"]
-cuda-12020 = ["tract-cuda/cuda-12020"]
-cuda-12030 = ["tract-cuda/cuda-12030"]
-cuda-12040 = ["tract-cuda/cuda-12040"]
-cuda-12050 = ["tract-cuda/cuda-12050"]
-cuda-12060 = ["tract-cuda/cuda-12060"]
-cuda-12080 = ["tract-cuda/cuda-12080"]
-cuda-12090 = ["tract-cuda/cuda-12090"]
-cuda-13000 = ["tract-cuda/cuda-13000"]
-cuda-13010 = ["tract-cuda/cuda-13010"]
-cuda-13020 = ["tract-cuda/cuda-13020"]
+# drivers (e.g. aarch64 with CUDA 12) override with `--no-default-features`
+# plus an explicit cuda-12XXX.
+cuda-12000 = ["cuda", "dep:cudarc", "dep:tract-cuda", "tract-libcli/cuda", "tract-cuda/cuda-12000"]
+cuda-12010 = ["cuda", "dep:cudarc", "dep:tract-cuda", "tract-libcli/cuda", "tract-cuda/cuda-12010"]
+cuda-12020 = ["cuda", "dep:cudarc", "dep:tract-cuda", "tract-libcli/cuda", "tract-cuda/cuda-12020"]
+cuda-12030 = ["cuda", "dep:cudarc", "dep:tract-cuda", "tract-libcli/cuda", "tract-cuda/cuda-12030"]
+cuda-12040 = ["cuda", "dep:cudarc", "dep:tract-cuda", "tract-libcli/cuda", "tract-cuda/cuda-12040"]
+cuda-12050 = ["cuda", "dep:cudarc", "dep:tract-cuda", "tract-libcli/cuda", "tract-cuda/cuda-12050"]
+cuda-12060 = ["cuda", "dep:cudarc", "dep:tract-cuda", "tract-libcli/cuda", "tract-cuda/cuda-12060"]
+cuda-12080 = ["cuda", "dep:cudarc", "dep:tract-cuda", "tract-libcli/cuda", "tract-cuda/cuda-12080"]
+cuda-12090 = ["cuda", "dep:cudarc", "dep:tract-cuda", "tract-libcli/cuda", "tract-cuda/cuda-12090"]
+cuda-13000 = ["cuda", "dep:cudarc", "dep:tract-cuda", "tract-libcli/cuda", "tract-cuda/cuda-13000"]
+cuda-13010 = ["cuda", "dep:cudarc", "dep:tract-cuda", "tract-libcli/cuda", "tract-cuda/cuda-13010"]
+cuda-13020 = ["cuda", "dep:cudarc", "dep:tract-cuda", "tract-libcli/cuda", "tract-cuda/cuda-13020"]
