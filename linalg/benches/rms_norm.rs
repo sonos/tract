@@ -42,9 +42,16 @@ fn rms_norm(c: &mut Criterion) {
         g.bench_function("generic", |b| {
             b.iter(|| tract_linalg::generic::rms_norm::rms_norm_f32(s, 1e-5))
         });
+        #[cfg(target_arch = "x86_64")]
         if std::is_x86_feature_detected!("avx512f") {
             g.bench_function("avx512", |b| {
                 b.iter(|| tract_linalg::x86_64_fma::rms_norm::rms_norm_f32(s, 1e-5))
+            });
+        }
+        #[cfg(target_arch = "aarch64")]
+        {
+            g.bench_function("neon", |b| {
+                b.iter(|| tract_linalg::arm64::arm64simd_rms_norm_f32(s, 1e-5))
             });
         }
         g.finish();
