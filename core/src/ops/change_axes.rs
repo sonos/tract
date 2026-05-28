@@ -906,7 +906,7 @@ impl TypedOp for AxisOp {
         Ok(Some(op))
     }
 
-    fn substitute_symbols(
+    fn set_symbols(
         &self,
         _source: &TypedModel,
         node: &TypedNode,

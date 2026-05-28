@@ -118,7 +118,7 @@ let b = model.symbols.sym("B");
 let mut subs = HashMap::new();
 subs.insert(s, 224.into());           // S = 224
 subs.insert(b, 1.into());             // B = 1
-let model = model.substitute_symbols(&subs)?;
+let model = model.set_symbols(&subs)?;
 ```
 
 After this, the shapes are pure `Val(_)` and downstream passes treat
@@ -175,11 +175,11 @@ The CLI does the same things via flags:
 
 - `-i N,3,224,224,f32` — set an input fact (per-input).
 - `--set S=224 --set B=1` — bind symbols to constants. Equivalent to
-  `substitute_symbols` on the library side.
+  `set_symbols` on the library side.
 - `--input-from-bundle io.npz` — derive concrete input shapes from
   the tensors actually present in the bundle; runs both "set input
   facts" and "concretise symbols" in one step. The library equivalent
-  is the `set_input_fact` + `substitute_symbols` pair above.
+  is the `set_input_fact` + `set_symbols` pair above.
 
 ## ONNX gotchas
 

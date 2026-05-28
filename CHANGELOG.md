@@ -146,7 +146,7 @@
 - **`into_tract()` renamed to `into_model()`** in all API layers.
 - **`DatumType` variant names shortened** — the `TRACT_DATUM_TYPE_` prefix is dropped (C API).
 - **Deprecated state methods removed**: `init_states()`, `state_initializers`, and the `n_states` parameter are gone from `State` trait and `RunTensors`.
-- **Python**: `concretize_symbols` and `pulse` methods replaced by typed transform classes; `TransformSpec` is now an abstract base class.
+- **Python**: `set_symbols` and `pulse` methods replaced by typed transform classes; `TransformSpec` is now an abstract base class.
 
 ### Improvements
 

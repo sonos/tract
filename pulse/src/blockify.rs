@@ -30,7 +30,7 @@
 //!    Determine the score axis the terminator contracts and translate
 //!    it to mask frame.
 //! 2. **Substitute** the streaming symbol globally `T → k·S` via core's
-//!    `substitute_symbols`.
+//!    `set_symbols`.
 //! 3. **Rewrite** one `TypedModelPatch` per section
 //!    (`build_section_patch`).  Sections are independent so patches
 //!    apply in sequence.  A recognised section gets fully rewritten or
@@ -188,7 +188,7 @@ impl ModelTransform for BlockifyTransform {
         let chunk_sym = model.symbols.new_with_prefix("S");
         let subs: HashMap<Symbol, TDim> =
             HashMap::from([(stream_sym.clone(), chunk_sym.to_dim() * k)]);
-        let new_model = model.substitute_symbols(&subs)?;
+        let new_model = model.set_symbols(&subs)?;
         *model = new_model;
         rewrite_sections(model, &chunk_sym, k)?;
         model.properties.insert(

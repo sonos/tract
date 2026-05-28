@@ -124,7 +124,7 @@ impl TypedOp for MultiBroadcastTo {
         crate::optim::propagate_roi::bubble_roi(model, node)
     }
 
-    fn substitute_symbols(
+    fn set_symbols(
         &self,
         _source: &TypedModel,
         node: &TypedNode,

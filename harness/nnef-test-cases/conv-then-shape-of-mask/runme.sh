@@ -7,7 +7,7 @@ set -ex
 
 # Batch mode: S=8 -> conv output T = 1 + 8/2 = 5 frames; the add is fine.
 $TRACT_RUN --nnef-tract-core . \
-    -t 'concretize_symbols(values: {"S": 8})' \
+    -t 'set_symbols(values: {"S": 8})' \
     run --allow-random-input -q
 
 # Streaming compare: pulse=4 -> conv produces 2 frames/step.  The

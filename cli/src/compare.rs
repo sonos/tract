@@ -516,8 +516,7 @@ pub fn handle_stream(
     }
 
     // Concretize the reference model and delegate to compare()
-    let concrete_ref =
-        Arc::new(reference.clone().substitute_symbols(&concrete_sym_values.to_dim_map())?);
+    let concrete_ref = Arc::new(reference.clone().set_symbols(&concrete_sym_values.to_dim_map())?);
     compare(
         false,
         &concrete_ref,

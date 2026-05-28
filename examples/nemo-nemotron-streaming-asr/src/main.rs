@@ -104,7 +104,7 @@ impl NemotronModels {
 
         eprint!("Loading preprocessor to {}...", runtime.name()?);
         let mut pp = nnef.load(format!("{assets}/model/preprocessor.nnef.tgz"))?;
-        pp.transform(ConcretizeSymbols::new().value("BATCH", 1))?;
+        pp.transform(SetSymbols::new().value("BATCH", 1))?;
         pp.transform(
             r#"{"name":"patch","body":"length = tract_core_shape_of(input_signal)[1];"}"#,
         )?;
@@ -121,7 +121,7 @@ impl NemotronModels {
 
         eprint!("Loading encoder to {}...", runtime.name()?);
         let mut enc = nnef.load(format!("{assets}/model/encoder.p1.nnef.tgz"))?;
-        enc.transform(ConcretizeSymbols::new().value("BATCH", 1))?;
+        enc.transform(SetSymbols::new().value("BATCH", 1))?;
         enc.transform("transformers_detect_all")?;
         enc.transform(
             r#"{"name":"patch","body":"length = tract_core_shape_of(audio_signal)[2];"}"#,
@@ -139,14 +139,14 @@ impl NemotronModels {
 
         eprint!("Loading decoder to {}...", runtime.name()?);
         let mut dec = nnef.load(format!("{assets}/model/decoder.nnef.tgz"))?;
-        dec.transform(ConcretizeSymbols::new().value("BATCH", 1).value("TARGETS__TIME", 1))?;
+        dec.transform(SetSymbols::new().value("BATCH", 1).value("TARGETS__TIME", 1))?;
         let decoder = runtime.prepare(dec)?;
         eprintln!(" done.");
 
         eprint!("Loading joint to {}...", runtime.name()?);
         let mut jnt = nnef.load(format!("{assets}/model/joint.nnef.tgz"))?;
         jnt.transform(
-            ConcretizeSymbols::new()
+            SetSymbols::new()
                 .value("BATCH", 1)
                 .value("ENCODER_OUTPUTS__TIME", 1)
                 .value("DECODER_OUTPUTS__TIME", 1),

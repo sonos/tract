@@ -99,7 +99,7 @@ def test_concretize():
     typed = model.into_model()
     assert str(typed.input_fact(0)) == "B,3,224,224,f32"
     assert str(typed.output_fact(0)) == "B,1000,f32"
-    typed.transform(tract.ConcretizeSymbols({"B": 1}))
+    typed.transform(tract.SetSymbols({"B": 1}))
     assert str(typed.input_fact(0)) == "1,3,224,224,f32"
     assert str(typed.output_fact(0)) == "1,1000,f32"
 
@@ -108,7 +108,7 @@ def test_concretize_builder():
     model.set_input_fact(0, "B,3,224,224,f32")
     model.analyse()
     typed = model.into_model()
-    typed.transform(tract.ConcretizeSymbols().value("B", 1))
+    typed.transform(tract.SetSymbols().value("B", 1))
     assert str(typed.input_fact(0)) == "1,3,224,224,f32"
     assert str(typed.output_fact(0)) == "1,1000,f32"
 
@@ -117,7 +117,7 @@ def test_concretize_raw_string():
     model.set_input_fact(0, "B,3,224,224,f32")
     model.analyse()
     typed = model.into_model()
-    typed.transform('{"name":"concretize_symbols","values":{"B":1}}')
+    typed.transform('{"name":"set_symbols","values":{"B":1}}')
     assert str(typed.input_fact(0)) == "1,3,224,224,f32"
     assert str(typed.output_fact(0)) == "1,1000,f32"
 

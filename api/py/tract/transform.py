@@ -18,26 +18,28 @@ class TransformSpec(ABC):
         ...
 
 
-class ConcretizeSymbols(TransformSpec):
-    """Replace symbolic dimensions with concrete integer values.
+class SetSymbols(TransformSpec):
+    """Bind symbolic dimensions to concrete integer values (or TDim expressions).
 
     Example::
 
-        model.transform(ConcretizeSymbols({"B": 1}))
+        model.transform(SetSymbols({"B": 1}))
         # or with builder pattern:
-        model.transform(ConcretizeSymbols().value("B", 1))
+        model.transform(SetSymbols().value("B", 1))
+        # for symbolic TDim expressions, pass a string:
+        model.transform(SetSymbols().value("B", "2*S"))
     """
 
-    def __init__(self, values: Optional[Dict[str, int]] = None):
-        self._values: Dict[str, int] = dict(values) if values else {}
+    def __init__(self, values: Optional[Dict[str, Union[int, str]]] = None):
+        self._values: Dict[str, Union[int, str]] = dict(values) if values else {}
 
-    def value(self, symbol: str, val: int) -> "ConcretizeSymbols":
-        """Set a symbol to a concrete value. Returns self for chaining."""
+    def value(self, symbol: str, val: Union[int, str]) -> "SetSymbols":
+        """Bind a symbol to an int or TDim expression string. Returns self for chaining."""
         self._values[symbol] = val
         return self
 
     def to_json(self) -> str:
-        return json.dumps({"name": "concretize_symbols", "values": self._values})
+        return json.dumps({"name": "set_symbols", "values": self._values})
 
 
 class Pulse(TransformSpec):

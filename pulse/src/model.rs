@@ -102,7 +102,7 @@ fn pulse_driven_blockify(
     model.symbols.add_assertion(format!("{chunk_sym} >= 0"))?;
     let subs: HashMap<Symbol, TDim> =
         HashMap::from([(symbol.clone(), chunk_sym.to_dim() * pulse_value)]);
-    *model = model.substitute_symbols(&subs)?;
+    *model = model.set_symbols(&subs)?;
     crate::blockify::rewrite_sections(model, &chunk_sym, pulse_value)?;
     model.properties.insert(
         crate::blockify::BLOCKIFY_ORIGINAL_SYMBOL.to_string(),

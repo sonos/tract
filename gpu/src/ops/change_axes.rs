@@ -162,7 +162,7 @@ impl TypedOp for GpuAxisOp {
         self.inner.axes_mapping(&ref_inputs, &ref_outputs)
     }
 
-    fn substitute_symbols(
+    fn set_symbols(
         &self,
         _source: &TypedModel,
         node: &TypedNode,

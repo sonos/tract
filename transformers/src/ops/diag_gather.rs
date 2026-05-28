@@ -142,7 +142,7 @@ impl TypedOp for DiagGather {
         Ok(Some(tvec![Some(input_roi)]))
     }
 
-    fn substitute_symbols(
+    fn set_symbols(
         &self,
         _source: &TypedModel,
         node: &TypedNode,

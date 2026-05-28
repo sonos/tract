@@ -256,16 +256,16 @@ pub enum SymbolValueSpec {
 }
 
 #[derive(Debug, Default, serde::Deserialize)]
-pub struct ConcretizeSymbolsConfig {
+pub struct SetSymbolsConfig {
     pub values: std::collections::HashMap<String, SymbolValueSpec>,
 }
 
 #[derive(Debug)]
-struct ConcretizeSymbolsTransform(ConcretizeSymbolsConfig);
+struct SetSymbolsTransform(SetSymbolsConfig);
 
-impl ModelTransform for ConcretizeSymbolsTransform {
+impl ModelTransform for SetSymbolsTransform {
     fn name(&self) -> StaticName {
-        "concretize_symbols".into()
+        "set_symbols".into()
     }
 
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
@@ -281,13 +281,13 @@ impl ModelTransform for ConcretizeSymbolsTransform {
             };
             subs.insert(sym, dim);
         }
-        *model = model.substitute_symbols(&subs)?;
+        *model = model.set_symbols(&subs)?;
         Ok(())
     }
 }
 
-register_model_transform!("concretize_symbols", ConcretizeSymbolsConfig, |config| Ok(Box::new(
-    ConcretizeSymbolsTransform(config)
+register_model_transform!("set_symbols", SetSymbolsConfig, |config| Ok(Box::new(
+    SetSymbolsTransform(config)
 )));
 
 /// Ad-hoc fix-up for NNEF artifacts exported before Scan grew the
@@ -324,7 +324,7 @@ impl ModelTransform for ForceScanExternalState {
             }
         }
         if !subs.is_empty() {
-            *model = model.substitute_symbols(&subs)?;
+            *model = model.set_symbols(&subs)?;
         }
         for node in &mut model.nodes {
             if let Some(scan) = node.op_as_mut::<Scan>() {

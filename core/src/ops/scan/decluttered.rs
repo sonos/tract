@@ -894,7 +894,7 @@ impl TypedOp for Scan {
         Ok(None)
     }
 
-    fn substitute_symbols(
+    fn set_symbols(
         &self,
         _source: &TypedModel,
         node: &TypedNode,
@@ -907,9 +907,9 @@ impl TypedOp for Scan {
             output_mapping: self
                 .output_mapping
                 .iter()
-                .map(|om| om.substitute_symbols(subs))
+                .map(|om| om.set_symbols(subs))
                 .collect::<TractResult<Vec<_>>>()?,
-            body: self.body.substitute_symbols(subs)?,
+            body: self.body.set_symbols(subs)?,
             ..self.clone()
         };
         target.wire_node(&node.name, op, &inputs)

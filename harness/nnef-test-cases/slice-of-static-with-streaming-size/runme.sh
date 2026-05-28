@@ -7,7 +7,7 @@ set -ex
 
 # Batch mode: concretize S=8 -> pe_table[0:8, :] + input[0:8, :]
 $TRACT_RUN --nnef-tract-core . \
-    -t 'concretize_symbols(values: {"S": 8})' \
+    -t 'set_symbols(values: {"S": 8})' \
     run --allow-random-input -q
 
 # Streaming compare: pulse=4.  Each step slices pe_table[0:4, :] (constant

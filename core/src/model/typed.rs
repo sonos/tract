@@ -256,7 +256,9 @@ impl TypedModel {
         Ok(())
     }
 
-    pub fn substitute_symbols(&self, subs: &HashMap<Symbol, TDim>) -> TractResult<TypedModel> {
+    /// Bind one or more symbols to concrete values or TDim expressions across
+    /// the whole graph.
+    pub fn set_symbols(&self, subs: &HashMap<Symbol, TDim>) -> TractResult<TypedModel> {
         crate::model::translator::Translate::translate_model(subs, self)
     }
 
@@ -320,7 +322,7 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Has
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
         target.check_consistency()?;
-        let outlets = node.op.substitute_symbols(source, node, target, mapping, self)?;
+        let outlets = node.op.set_symbols(source, node, target, mapping, self)?;
         for &outlet in &outlets {
             let fact = &mut target.nodes[outlet.node].outputs[outlet.slot].fact;
             if fact.shape.volume().is_zero()
