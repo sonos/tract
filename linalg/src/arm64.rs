@@ -463,6 +463,7 @@ pub fn plug(ops: &mut Ops) {
     ops.sum_f32 = Box::new(|| arm64simd_sum_f32_16n::red());
     ops.mul_by_scalar_f32 = Box::new(|| arm64simd_mul_by_scalar_f32_16n::ew());
     ops.softmax2_fastcompact_f32 = Box::new(|| arm64simd_softmax2_fastcompact_f32_16n::red());
+    ops.rms_norm_f32 = Box::new(arm64simd_rms_norm_f32);
     #[cfg(not(feature = "no_fp16"))]
     if has_fp16() {
         log::info!("ARMv8.2 tanh_f16 and sigmoid_f16 activated");
