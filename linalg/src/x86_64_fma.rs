@@ -8,6 +8,7 @@ pub mod mmm;
 
 pub mod act;
 pub mod act_f16;
+pub mod act_f16_fp16;
 pub mod by_scalar;
 pub mod erf;
 mod intel;
@@ -44,6 +45,24 @@ fn plug_fma(ops: &mut Ops) {
     ops.softmax2_fastcompact_f32 = Box::new(|| x86_64_fma_softmax2_fastcompact_f32_32n::red());
 
     log::info!("sigmoid_f32, tanh_f32: x86_64/fma activated");
+}
+
+/// On hosts that also support AVX-512_FP16 (Sapphire Rapids / Granite Rapids /
+/// later, and recent Xeon-D / consumer parts), upgrade the f16 element-wise
+/// kernels from the f32-roundtrip implementations in `act_f16.rs` to the
+/// native f16 implementations in `act_f16_fp16.rs` where the native path is
+/// actually faster on this uarch. We benched each op against its f32-roundtrip
+/// equivalent on Sapphire Rapids and only plug in the ones that win:
+///
+///   hardswish_f16:  8.71 → 31.6 Gelem/s  (3.62× native) — plug in
+///   leaky_relu_f16: 9.44 →  5.85 Gelem/s (0.62× native — regression) — keep
+///                   the f32-roundtrip version from act_f16.rs. The native
+///                   kernel exists in act_f16_fp16.rs for future revisits but
+///                   is not wired here.
+fn plug_avx512fp16(ops: &mut Ops) {
+    ops.hardswish_f16 = Box::new(|| act_f16_fp16::x86_64_avx512fp16_hardswish_f16_128n::ew());
+
+    log::info!("hardswish_f16: x86_64/avx512fp16 native activated");
 }
 
 fn plug_avx512f(ops: &mut Ops) {
@@ -88,6 +107,9 @@ pub fn plug(ops: &mut Ops) {
             plug_fma(ops);
             if is_x86_feature_detected!("avx512f") {
                 plug_avx512f(ops);
+                if is_x86_feature_detected!("avx512fp16") {
+                    plug_avx512fp16(ops);
+                }
             }
         }
     }

@@ -120,6 +120,10 @@ name = "rms_norm"
 harness = false
 
 [[bench]]
+name = "activations_avx512_fp16"
+harness = false
+
+[[bench]]
 bench = false
 name = "arm64simd"
 harness = false
