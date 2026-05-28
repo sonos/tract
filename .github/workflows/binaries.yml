@@ -98,15 +98,38 @@ jobs:
             export CARGO_TARGET_${RUST_TRIPLE_ENV}_LINKER=$TARGET_CC
           fi
 
-          cargo build --target ${target} --release -p tract-cli
+          cargo build --target ${target} --release -p tract-cli --locked
           mkdir tract-$name
           cp target/${target}/release/tract tract-${name}
           tar czf tract-${name}.tgz tract-${name}
 
+      - name: Generate CycloneDX SBOM
+        uses: anchore/sbom-action@v0.18.0
+        with:
+          path: .
+          format: cyclonedx-json
+          artifact-name: tract-${{ matrix.target }}-${{ steps.version.outputs.value }}.cdx.json
+          output-file: tract-${{ matrix.target }}-${{ steps.version.outputs.value }}.cdx.json
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: Generate SPDX SBOM
+        uses: anchore/sbom-action@v0.18.0
+        with:
+          path: .
+          format: spdx-json
+          artifact-name: tract-${{ matrix.target }}-${{ steps.version.outputs.value }}.spdx.json
+          output-file: tract-${{ matrix.target }}-${{ steps.version.outputs.value }}.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+
       - name: Upload asset
         uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3
         with:
-          files: tract-${{matrix.target}}-${{ steps.version.outputs.value }}.tgz
+          files: |
+            tract-${{matrix.target}}-${{ steps.version.outputs.value }}.tgz
+            tract-${{matrix.target}}-${{ steps.version.outputs.value }}.cdx.json
+            tract-${{matrix.target}}-${{ steps.version.outputs.value }}.spdx.json
           name: ${{ steps.version.outputs.value }}
           tag_name: v${{ steps.version.outputs.value }}
         env:
