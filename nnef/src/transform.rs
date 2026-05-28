@@ -87,7 +87,6 @@ impl ModelTransform for PatchTransform {
         // Build the TypedModelPatch
         let mut patch = TypedModelPatch { model: patch_model, taps, ..TypedModelPatch::default() };
 
-        let mut inputs_to_remove = vec![];
         let mut new_output_names = vec![];
 
         for (i, lhs_name) in lhs_names.iter().enumerate() {
@@ -124,15 +123,19 @@ impl ModelTransform for PatchTransform {
                         &[wire],
                     )?[0];
                 }
+                // Shunt consumers of the input outlet to the new wire.  Like
+                // `TypedModelPatch::shunt_outside` we do NOT touch
+                // `model.inputs` — the original input stays in the list as
+                // a disconnected Source.  Use `select_inputs(...)` after the
+                // patch to drop it explicitly.
                 patch.shunt_outside(model, input_outlet, wire)?;
-                inputs_to_remove.push(input_outlet);
             } else if self.0.new_outputs.contains(lhs_name) {
                 new_output_names.push(lhs_name.clone());
             } else {
                 let is_intermediate = i < lhs_names.len() - 1;
                 if !is_intermediate {
                     bail!(
-                        "Wire '{}' is not a model input and not declared in new_outputs",
+                        "Wire '{}' is not a model input/intermediate and not declared in new_outputs",
                         lhs_name
                     );
                 }
@@ -141,9 +144,6 @@ impl ModelTransform for PatchTransform {
 
         patch.apply(model)?;
 
-        for inp in &inputs_to_remove {
-            model.inputs.retain(|o| o != inp);
-        }
         for name in &new_output_names {
             let node_id = model.node_id_by_name(name)?;
             model.outputs.push(OutletId::new(node_id, 0));
