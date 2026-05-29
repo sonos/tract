@@ -55,7 +55,22 @@ mod sve_sys {
         pub fn sve_mmm_i32_64x1_kernel(ops: *const FusedKerSpec<i32>) -> isize;
         pub fn sve_mmm_f16_kernel(ops: *const FusedKerSpec<f16>) -> isize;
         pub fn sve_mmv_f16_64x1_kernel(ops: *const FusedKerSpec<f16>) -> isize;
+        // VLA SVE2 fused row-wise RmsNorm (arm64/sve/sve_rms_norm.c). Plugged
+        // into Ops::rms_norm_f32 when FEAT_SVE2 is present, overriding the
+        // NEON 4-lane kernel with wider lanes (vl-dependent) and a predicated
+        // tail (no scalar epilogue).
+        pub fn sve_rms_norm_f32_kernel(buf: *mut f32, n: i64, eps: f32);
     }
+}
+
+/// Public Rust wrapper for the VLA SVE2 RmsNorm kernel. Matches the
+/// `Box<dyn Fn(&mut [f32], f32)>` shape of `Ops::rms_norm_f32`.
+#[cfg(tract_sve)]
+pub fn sve_rms_norm_f32(buf: &mut [f32], eps: f32) {
+    if buf.is_empty() {
+        return;
+    }
+    unsafe { sve_sys::sve_rms_norm_f32_kernel(buf.as_mut_ptr(), buf.len() as i64, eps) }
 }
 
 #[cfg(tract_sve)]
@@ -208,6 +223,9 @@ pub fn plug(ops: &mut Ops) {
             ops.mmv_f32 = Box::new(|_, _| sve_mmv_f32_64x1.mmm());
             ops.qmmm_i32 = Box::new(|_, _, _| sve_mmm_i32_8x8.mmm());
             ops.qmmv_i32 = Box::new(|_, _| sve_mmm_i32_64x1.mmm());
+            // RmsNorm: override the NEON-default plug from arm64::plug() with
+            // the wider VLA SVE2 kernel. Same Box<Fn> shape as the linalg slot.
+            ops.rms_norm_f32 = Box::new(sve_rms_norm_f32);
             ops.mmm_impls.extend_from_slice(&[
                 sve_mmm_f32_8x8.mmm(),
                 sve_mmv_f32_64x1.mmm(),
@@ -225,5 +243,95 @@ pub fn plug(ops: &mut Ops) {
         log::info!("SVE (v1) present; SVE2 kernels not enabled");
     } else {
         log::info!("No SVE optimisation");
+    }
+}
+
+#[cfg(all(test, tract_sve))]
+mod rms_norm_tests {
+    use super::*;
+
+    fn scalar_ref(buf: &mut [f32], eps: f32) {
+        let n = buf.len() as f32;
+        let s: f32 = buf.iter().map(|x| x * x).sum();
+        let inv_std = (s / n + eps).sqrt().recip();
+        for x in buf.iter_mut() {
+            *x *= inv_std;
+        }
+    }
+
+    fn close_enough(got: &[f32], want: &[f32], n: usize) {
+        // Tolerance scaled by sqrt(n) for FMA-reorder error in the sum_sq
+        // reduction (different lane groupings vs scalar sequential add).
+        let rel = 1e-5 + (n as f32).sqrt() * 1e-7;
+        let abs = 1e-5;
+        for (i, (g, w)) in got.iter().zip(want.iter()).enumerate() {
+            let tol = (rel * w.abs().max(1.0)).max(abs);
+            let diff = (g - w).abs();
+            assert!(diff <= tol, "idx {i}: got {g} want {w} diff {diff} tol {tol}");
+        }
+    }
+
+    fn check(n: usize, f: impl Fn(usize) -> f32) {
+        if !has_sve2() {
+            eprintln!("SVE2 not present, skipping (n={n})");
+            return;
+        }
+        let mut sve_buf: Vec<f32> = (0..n).map(&f).collect();
+        let mut ref_buf = sve_buf.clone();
+        sve_rms_norm_f32(&mut sve_buf, 1e-5);
+        scalar_ref(&mut ref_buf, 1e-5);
+        close_enough(&sve_buf, &ref_buf, n);
+    }
+
+    #[test]
+    fn empty_is_noop() {
+        let mut x: Vec<f32> = vec![];
+        sve_rms_norm_f32(&mut x, 1e-5);
+        assert!(x.is_empty());
+    }
+
+    #[test]
+    fn short_below_step() {
+        // n < 4*vl on any vl (vl >= 4 lanes always) — exercise the predicated
+        // tail entirely.
+        for n in [1usize, 3, 7, 8, 15, 16, 17, 31, 32, 33] {
+            check(n, |i| ((i as f32 * 0.13).sin() * 5.0) - 0.5);
+        }
+    }
+
+    #[test]
+    fn matches_reference_1024_with_tail() {
+        check(1024 + 7, |i| (i as f32 * 0.07).cos() * 3.0);
+    }
+
+    #[test]
+    fn matches_reference_4096() {
+        check(4096, |i| ((i as f32 * 0.001).sin() * 4.0) + ((i as f32 * 0.013).cos() * 0.5));
+    }
+
+    #[test]
+    fn all_zero() {
+        // inv_std = 1/sqrt(eps), output = 0.
+        let n = 256;
+        let mut sve = vec![0.0_f32; n];
+        let mut refb = vec![0.0_f32; n];
+        sve_rms_norm_f32(&mut sve, 1e-5);
+        scalar_ref(&mut refb, 1e-5);
+        close_enough(&sve, &refb, n);
+    }
+
+    #[test]
+    fn matches_neon_bit_close() {
+        // Cross-check: SVE kernel ≈ NEON kernel (both should match scalar).
+        // Reductions in different SIMD widths reorder differently, so not
+        // bit-exact; close-enough tolerance.
+        for n in [16usize, 64, 1024, 1024 + 7, 4096, 8192] {
+            let x: Vec<f32> = (0..n).map(|i| (i as f32 * 0.11).sin() * 2.5).collect();
+            let mut sve_out = x.clone();
+            let mut neon_out = x.clone();
+            sve_rms_norm_f32(&mut sve_out, 1e-5);
+            crate::arm64::arm64simd_rms_norm_f32(&mut neon_out, 1e-5);
+            close_enough(&sve_out, &neon_out, n);
+        }
     }
 }
