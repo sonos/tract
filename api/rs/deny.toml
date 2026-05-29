@@ -34,7 +34,6 @@ deny = [
 # Skip some multiple-versions checks, until they can be fixed.
 skip = [
     { name = "hashbrown", version="<0.17" },
-    { name = "foldhash", version="<0.2" },
     { name = "cpufeatures", version="<0.3" },
     { name = "cfg-if", version="<1" },
     { name = "getrandom", version="<0.4" },
