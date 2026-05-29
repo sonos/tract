@@ -7,4 +7,7 @@ else
     CARGO_DENY="cargo deny"
 fi
 
-(cd api/rs ; $CARGO_DENY check)
+set -e
+
+(cd api/rs ; $CARGO_DENY check -c deny.toml)
+(cd cli ; $CARGO_DENY check -c deny.toml)

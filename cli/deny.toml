@@ -1,0 +1,53 @@
+
+# add whatever else we support.
+[graph]
+targets = [
+    { triple = "x86_64-unknown-linux-gnu" },
+    { triple = "x86_64-unknown-linux-musl" },
+    { triple = "x86_64-apple-darwin" },
+    { triple = "x86_64-pc-windows-msvc" },
+    { triple = "aarch64-linux-android" },
+    { triple = "aarch64-unknown-linux-gnu" },
+    { triple = "aarch64-unknown-linux-musl" },
+    { triple = "aarch64-apple-ios" },
+    { triple = "aarch64-apple-darwin" },
+    { triple = "armv7-unknown-linux-gnueabihf" },
+    { triple = "armv7-unknown-linux-musleabi" },
+    { triple = "arm-unknown-linux-gnueabihf" },
+    { triple = "wasm32-unknown-unknown" },
+]
+
+[advisories]
+git-fetch-with-cli = true
+yanked = "deny"
+ignore = [
+    "RUSTSEC-2024-0436", # paste unmaintained — transitive dep from metal, tokenizers, rav1e
+]
+
+[bans]
+multiple-versions = "allow"
+wildcards = "allow"
+deny = [
+    # List crates we don't want in our dependency tree here.
+]
+
+[sources]
+# trusted git sources.
+allow-git = [
+    "https://github.com/rustformers/llm.git",
+]
+
+[licenses]
+allow = [
+    "Apache-2.0",                     # https://tldrlegal.com/license/apache-license-2.0-(apache-2.0)
+    "MIT",                            # https://tldrlegal.com/license/mit-license
+    "Unicode-3.0",                    # https://spdx.org/licenses/Unicode-3.0.html
+    "Zlib",                           # https://tldrlegal.com/license/zlib-libpng-license
+    "ISC",                            # https://tldrlegal.com/license/isc-license
+    "MPL-2.0",                        # https://tldrlegal.com/license/mozilla-public-license-2.0-(mpl-2)
+    "BSD-3-Clause",                   # https://www.tldrlegal.com/license/bsd-3-clause-license-revised
+    "CDLA-Permissive-2.0",            # https://cdla.dev/permissive-2-0/
+]
+
+clarify = [
+]
