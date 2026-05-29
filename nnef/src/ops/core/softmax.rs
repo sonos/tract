@@ -39,6 +39,7 @@ pub fn deser_softmax(
     let exp: Option<String> = invocation.get_named_arg_as(builder, "exp")?;
     let exp = match exp.as_deref() {
         Some("fast_compact") => SoftmaxExp::FastCompact,
+        Some("accurate") => SoftmaxExp::Accurate,
         _ => SoftmaxExp::Libc,
     };
 
@@ -71,10 +72,10 @@ fn ser_softmax(
     let mut args = vec![("axes", ints(&op.axes))];
     let op_name = match op.kind {
         SoftmaxKind::Softmax(exp) => {
-            if exp == SoftmaxExp::FastCompact {
-                args.push(("exp", string("fast_compact")))
-            } else {
-                return Ok(None);
+            match exp {
+                SoftmaxExp::FastCompact => args.push(("exp", string("fast_compact"))),
+                SoftmaxExp::Accurate => args.push(("exp", string("accurate"))),
+                SoftmaxExp::Libc => return Ok(None),
             };
             "tract_core_softmax"
         }
