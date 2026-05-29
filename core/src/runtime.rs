@@ -236,9 +236,8 @@ pub fn runtime_for_name(s: &str) -> TractResult<Option<&'static dyn Runtime>> {
             }
         }
         if s == "gpu" {
-            let detail = last_check_err
-                .map(|e| format!(" (last backend error: {e:#})"))
-                .unwrap_or_default();
+            let detail =
+                last_check_err.map(|e| format!(" (last backend error: {e:#})")).unwrap_or_default();
             bail!("Runtime `gpu` requested but no GPU backend is available{detail}");
         }
         // gpu-or-cpu: fall through to the cpu runtime.
