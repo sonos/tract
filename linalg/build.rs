@@ -291,6 +291,7 @@ fn main() {
                     .file("arm64/sve/sve_mmv_f32_64x1.c")
                     .file("arm64/sve/sve_mmm_i32.c")
                     .file("arm64/sve/sve_mmm_i32_64x1.c")
+                    .file("arm64/sve/sve_rms_norm.c")
                     .flag("-march=armv8.2-a+sve")
                     .compile("tract_sve_kernels");
                 // f16 kernels need native FP16 arithmetic (+fp16); compiled
