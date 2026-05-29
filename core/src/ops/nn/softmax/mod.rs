@@ -31,6 +31,10 @@ pub enum SoftmaxExp {
     Libc,
     // https://nic.schraudolph.org/pubs/Schraudolph99.pdf
     FastCompact,
+    /// Accurate (~1-2 ulp) vectorized exp via the linalg `softmax2_accurate`
+    /// kernels: SIMD speed like FastCompact but true-softmax accuracy, and it
+    /// yields NaN (not a spurious 0) on fully-masked rows, matching libc.
+    Accurate,
 }
 
 #[derive(Debug, Clone, new, Hash, Default, PartialEq, Eq)]
@@ -239,6 +243,9 @@ impl Softmax {
                     }
                     SoftmaxExp::FastCompact => (tract_linalg::ops().softmax2_fastcompact_f16)()
                         .run_with_params(slice, max)?,
+                    SoftmaxExp::Accurate => {
+                        (tract_linalg::ops().softmax2_accurate_f16)().run_with_params(slice, max)?
+                    }
                 };
                 let rsum = sum.recip();
                 (tract_linalg::ops().mul_by_scalar_f16)().run_with_params(slice, rsum)?;
@@ -271,6 +278,9 @@ impl Softmax {
                     }
                     SoftmaxExp::FastCompact => (tract_linalg::ops().softmax2_fastcompact_f32)()
                         .run_with_params(slice, max)?,
+                    SoftmaxExp::Accurate => {
+                        (tract_linalg::ops().softmax2_accurate_f32)().run_with_params(slice, max)?
+                    }
                 };
                 let rsum = sum.recip();
                 (tract_linalg::ops().mul_by_scalar_f32)().run_with_params(slice, rsum)?;
