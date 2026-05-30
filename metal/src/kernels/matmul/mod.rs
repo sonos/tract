@@ -1,6 +1,6 @@
 mod basic;
 mod ggml_gemm;
-mod mfa;
+pub mod mfa;
 mod mlx_gemm;
 
 pub use basic::BasicMatMul;
