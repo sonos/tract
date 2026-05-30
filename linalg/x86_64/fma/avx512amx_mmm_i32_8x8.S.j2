@@ -1,0 +1,748 @@
+{#
+// vim: set syntax=asm :
+
+/* mmm 8x8:
+
+    ymm0 ymm1 ymm2 ymm3 ymm4 ymm5 ymm6 ymm7
+
+System V ABI:
+    args: rdi, rsi, rdx, rcx, r8, r9
+    preserve: rbx, rsp, rbp, r12, r13, r14, r15
+    scratch: rax, rdi, rsi, rdx, rcx, r8, r9, r10, r11
+    return: rax (+rdx)
+
+Windows ABI:
+    args: RCX, RDX, R8, R9
+    preserve: RBX, RBP, RDI, RSI, RSP, R12, R13, R14, R15, and XMM6-15
+    scratch: RAX, RCX, RDX, R8, R9, R10, R11, XMM0-5, and the upper portions of YMM0-15 and ZMM0-15
+    return: rax (+rdx)
+*/
+#}
+
+{% if msvc %}
+
+_text segment
+avx512amx_mmm_i32_8x8_{{suffix}} proc
+
+{% else %}
+
+.intel_syntax noprefix
+.text
+.p2align 5
+.globl {{G}}avx512amx_mmm_i32_8x8_{{suffix}}
+{{G}}avx512amx_mmm_i32_8x8_{{suffix}}:
+.cfi_startproc
+
+{% endif %}
+
+    push        rbp
+    mov         rbp, rsp
+
+{% if family == "windows" %}
+// https://www.agner.org/optimize/calling_conventions.pdf xmm6-15 are not scratch
+// https://stackoverflow.com/questions/43358429/save-value-of-xmm-registers
+    and rsp,-16
+    lea rsp,[rsp-160]
+    vmovaps [rsp], xmm6
+    vmovaps [rsp+16*1],xmm7
+    vmovaps [rsp+16*2],xmm8
+    vmovaps [rsp+16*3],xmm9
+    vmovaps [rsp+16*4],xmm10
+    vmovaps [rsp+16*5],xmm11
+    vmovaps [rsp+16*6],xmm12
+    vmovaps [rsp+16*7],xmm13
+    vmovaps [rsp+16*8],xmm14
+    vmovaps [rsp+16*9],xmm15
+
+    push        rdi
+    push        rsi
+
+    mov         rdi, rcx
+
+{% endif %}
+
+    push        rbx
+    push        r12
+    push        r13
+    push        r14
+    push        r15
+
+    sub         rsp, 8
+
+{% if family == "unix" %}
+.cfi_def_cfa_offset 64
+{% endif %}
+
+    stmxcsr     [rsp + 4]
+{% if msvc %}
+    mov         rax, 1FC0h
+{% else %}
+    mov         rax, 0x1FC0
+{% endif %}
+    mov         [rsp], eax
+    ldmxcsr     [rsp]
+
+    // Reserve 64 bytes of stack for the AMX tile-config block, zero it,
+    // populate palette + tile dimensions, then ldtilecfg. The tile config
+    // stays live for the whole function; tilerelease is emitted at return.
+    //
+    // tmm0 = C accumulator: 8 rows x 32 colsb (8 M-rows x 8 N-cols of i32)
+    // tmm1 = A tile: 8 rows x 64 colsb (8 M-rows x 64 K-bytes per inner iter)
+    // tmm2 = B tile: 16 rows x 32 colsb (16 K-pair-rows x 8 N-cols * 4 K-bytes)
+    sub         rsp, 64
+    vpxor       xmm15, xmm15, xmm15
+    vmovdqu     [rsp     ], xmm15
+    vmovdqu     [rsp + 16], xmm15
+    vmovdqu     [rsp + 32], xmm15
+    vmovdqu     [rsp + 48], xmm15
+    mov         byte ptr  [rsp + 0 ], 1   // palette = 1
+    mov         word ptr  [rsp + 16], 32  // colsb[0] = 32 (tmm0)
+    mov         word ptr  [rsp + 18], 64  // colsb[1] = 64 (tmm1)
+    mov         word ptr  [rsp + 20], 32  // colsb[2] = 32 (tmm2)
+    mov         byte ptr  [rsp + 48], 8   // rows[0]  = 8  (tmm0)
+    mov         byte ptr  [rsp + 49], 8   // rows[1]  = 8  (tmm1)
+    mov         byte ptr  [rsp + 50], 16  // rows[2]  = 16 (tmm2)
+    ldtilecfg   [rsp]
+
+{% include "dispatcher.j2" %}
+
+{{L}}clear:
+    vzeroall
+    jmp     {{L}}non_linear_loop
+
+{{L}}add_mat_mul:
+    mov     r12,    [rdi + 32]   // packing
+    mov     rbx,    [rdi + 24]   // B
+    mov     rax,    [rdi + 16]   // A
+
+    mov     rcx,    [rdi + 8]    // k
+    test    rcx,    rcx
+    jz      {{L}}non_linear_loop
+
+    cmp     r12, 1
+    je      {{L}}main_loop_packed_packed_i8i8
+
+{{L}}main_loop_packed_packed:
+    vmovaps         ymm12,  [rax]
+
+    {% for i in range(0, 8) %}
+        vbroadcastss    ymm14, dword ptr [rbx + {{i}} * 4]
+        vpmulld         ymm13, ymm12, ymm14
+        vpaddd          ymm{{i}}, ymm{{i}}, ymm13
+    {% endfor %}
+
+    add             rax,    32
+    add             rbx,    32
+    dec             rcx
+    jnz             {{L}}main_loop_packed_packed
+
+    jmp             {{L}}non_linear_loop
+
+{{L}}main_loop_packed_packed_i8i8:
+    // AMX i8 layout: A panel is 8 M-rows x K_padded K-bytes ROW-major within
+    // each 8-row panel (PackedAmxA8); B panel reuses the existing VNNI K=4-
+    // inner format (8 N-cols x 4 K-bytes per K-block, 16 such blocks per
+    // K=64 AMX tile).  K is padded to a multiple of 64 by the packer.
+    //
+    // tdpbssd is s8 x s8 -> i32 (Sapphire Rapids+), so no +128 trick is needed:
+    // the i32 accumulators are bit-identical to the AVX2 / VNNI paths.
+    //
+    // Per tdpbssd: tmm0[m, n] += sum_{k=0..63} A[m, k] * B[k, n]
+    //   (16 M-rows x 16 N-i32-lanes x 64 K = 16384 mul-acc per instruction)
+
+    // r8 <- K_padded = ceil(k/64) * 64 = byte-stride between A's M-rows.
+    mov             r8,     rcx
+    add             r8,     63
+    and             r8,     -64
+
+    // rcx <- ceil(k/64) = number of K=64 AMX inner iterations.
+    add             rcx,    63
+    shr             rcx,    6
+
+    // r9 <- 32 = byte-stride between B's K-pair-rows.
+    mov             r9,     32
+
+    tilezero        tmm0
+
+{{L}}loop_64k_amx_i8i8:
+    tileloadd       tmm1,   [rax + r8 * 1]         // A tile: stride r8 = K_padded
+    tileloadd       tmm2,   [rbx + r9 * 1]         // B tile: stride r9 = 32
+    tdpbssd         tmm0,   tmm1,   tmm2
+    add             rax,    64                     // +64 K-bytes in A row 0
+    add             rbx,    512                    // +16 K-pairs * 32 = 512 B bytes
+    dec             rcx
+    jnz             {{L}}loop_64k_amx_i8i8
+
+    // tmm0 -> ymm0..ymm7 via 256-byte stack scratch (8 rows x 32 bytes).
+    // After tilestored, the layout is row-major i32: byte (m*32 + n*4) = C[m, n].
+    // We need ymm{n} = column n of C with 8 i32 lanes (rows m=0..7) — the
+    // dispatcher epilogue convention.  So we (a) load 8 ymms = 8 rows of C,
+    // then (b) transpose 8x8 i32 in place.
+    sub             rsp,    256
+    mov             r10,    rsp
+    mov             r11,    32
+    tilestored      [r10 + r11 * 1], tmm0
+
+    {% for r in range(0, 8) %}
+    vmovdqu         ymm{{r}}, [r10 + {{ r * 32 }}]
+    {% endfor %}
+
+    add             rsp,    256
+
+    // 8x8 i32 transpose: ymm0..ymm7 row-major -> column-major in place.
+    // Stage 1: interleave 32-bit dwords pairwise (ymm0..ymm7 -> ymm8..ymm15).
+    vpunpckldq      ymm8,   ymm0, ymm1     // [r0[0], r1[0], r0[1], r1[1], r0[4], r1[4], r0[5], r1[5]]
+    vpunpckhdq      ymm9,   ymm0, ymm1
+    vpunpckldq      ymm10,  ymm2, ymm3
+    vpunpckhdq      ymm11,  ymm2, ymm3
+    vpunpckldq      ymm12,  ymm4, ymm5
+    vpunpckhdq      ymm13,  ymm4, ymm5
+    vpunpckldq      ymm14,  ymm6, ymm7
+    vpunpckhdq      ymm15,  ymm6, ymm7
+
+    // Stage 2: interleave 64-bit quads (ymm8..ymm15 -> ymm0..ymm7).
+    vpunpcklqdq     ymm0,   ymm8,  ymm10   // [r0[0], r1[0], r2[0], r3[0], r0[4], r1[4], r2[4], r3[4]]
+    vpunpckhqdq     ymm1,   ymm8,  ymm10
+    vpunpcklqdq     ymm2,   ymm9,  ymm11
+    vpunpckhqdq     ymm3,   ymm9,  ymm11
+    vpunpcklqdq     ymm4,   ymm12, ymm14
+    vpunpckhqdq     ymm5,   ymm12, ymm14
+    vpunpcklqdq     ymm6,   ymm13, ymm15
+    vpunpckhqdq     ymm7,   ymm13, ymm15
+
+    // Stage 3: cross-lane permute (128-bit halves). Two phases so we can
+    // overwrite the inputs incrementally without clobbering needed data.
+    vperm2i128      ymm8,   ymm0, ymm4, 0x20    // col 0: low(y0) | low(y4)
+    vperm2i128      ymm9,   ymm1, ymm5, 0x20    // col 1
+    vperm2i128      ymm10,  ymm2, ymm6, 0x20    // col 2
+    vperm2i128      ymm11,  ymm3, ymm7, 0x20    // col 3
+    vperm2i128      ymm12,  ymm0, ymm4, 0x31    // col 4: high(y0) | high(y4)
+    vperm2i128      ymm13,  ymm1, ymm5, 0x31    // col 5
+    vperm2i128      ymm14,  ymm2, ymm6, 0x31    // col 6
+    vperm2i128      ymm15,  ymm3, ymm7, 0x31    // col 7
+
+    vmovdqa         ymm0,   ymm8
+    vmovdqa         ymm1,   ymm9
+    vmovdqa         ymm2,   ymm10
+    vmovdqa         ymm3,   ymm11
+    vmovdqa         ymm4,   ymm12
+    vmovdqa         ymm5,   ymm13
+    vmovdqa         ymm6,   ymm14
+    vmovdqa         ymm7,   ymm15
+
+    jmp             {{L}}non_linear_loop
+
+{% set from = 0 %}{% set to = 7 %}{% include "fma_mmm_i32_scalars.j2" %}
+{% set mr = 8 %}{% set from = 0 %}{% set to = 7 %}{% include "fma_mmm_i32_per_rows.j2" %}
+{% set mr = 8 %}{% set from = 0 %}{% set to = 7 %}{% include "fma_mmm_i32_per_cols.j2" %}
+{% set from = 0 %}{% set to = 7 %}{% include "fma_mmm_load_tile.j2" %}
+
+{{L}}add_unicast:
+
+    mov     r10,    [rdi + 8]           // c ptr
+    mov     rsi,    [rdi + 16]          // row stride
+    mov     rbx,    [rdi + 24]          // col stride
+    mov     r8,     [rdi + 32]          // item size
+
+    cmp     r8,    4
+    je      {{L}}non_linear_addc_i32
+
+{#
+// This is not great as vgatherdps reads 32-bits values and goes beyond our buffer. Probably harmless though.
+// Commented and replaced with the "mov al" loop beyond to pacify valgrind.
+// ymm14 and ymm15 are the same as in the non_linear_addc_i32 case (compute them before the test right above here.
+// {% for i in range(0, 8) %}
+//     vpcmpeqd        ymm15, ymm15, ymm15
+//     vgatherdps      ymm12, [ r10 + ymm14 ], ymm15   // 0xxx 1xxx 2xxx 3xxx 4xxx 5xxx 6xxx 7xxx
+//
+//     // we need to go through vpmovsxbd, shuffling naively erases signs
+//     vpshufb         ymm12, ymm12, ymm10             // 0123 0123 0123 0123 4567 4567 4567 4567
+//
+//     vpermd          ymm12, ymm11, ymm12             // 0123 4567
+//     vpmovsxbd       ymm12, xmm12                    // sign extend
+//
+//     vpaddd          ymm{{i}},   ymm{{i}},   ymm12
+//     add             r10, rbx
+// {% endfor %}
+#}
+
+    {% for col in range(0, 8) %}
+        mov r8, r10
+        {% for half in range(0, 2) %}
+            {% for lane in range(0, 4) %}
+                mov al, [ r8 ]
+                add r8, rsi
+                movsx eax, al
+                pinsrd xmm10, eax, {{lane}}
+            {% endfor %}
+            vperm2f128  ymm10,   ymm10,   ymm10,  1
+        {% endfor %}
+        vpaddd ymm{{col}}, ymm{{col}}, ymm10
+        add r10, rbx
+    {% endfor %}
+
+    jmp    {{L}}non_linear_loop
+
+{{L}}non_linear_addc_i32:
+
+    mov     eax,    0
+{% for i in range(0, 4) %}
+    pinsrd  xmm14, eax, {{i}}
+    add     eax,    esi
+{% endfor %}
+    vpermq          ymm14, ymm14, 78 // 0b01001110
+{% for i in range(0, 4) %}
+    pinsrd  xmm14, eax, {{i}}
+    add     eax,    esi
+{% endfor %}
+    vpermq          ymm14, ymm14, 78 // 0b01001110
+
+
+{% if msvc %}
+    vpbroadcastd    ymm10, dword ptr [ offset byte_shuffle ]
+    vmovups         ymm11, dword ptr [ offset i128_shuffle ]
+{% else %}
+    vpbroadcastd    ymm10, [ rip + {{L}}byte_shuffle ]
+    vmovups         ymm11, [ rip + {{L}}i128_shuffle ]
+{% endif %}
+
+{% for i in range(0, 8) %}
+    vpcmpeqd        ymm15, ymm15, ymm15
+    vgatherdps      ymm12, [ r10 + ymm14 ], ymm15
+    vpaddd          ymm{{i}},   ymm{{i}},   ymm12
+    add             r10, rbx
+{% endfor %}
+
+    jmp    {{L}}non_linear_loop
+
+{% if msvc %}
+.data
+byte_shuffle dd              201851904 // 0x0c080400
+i128_shuffle dd              0, 4
+.code
+{% else %}
+{{L}}byte_shuffle: .int            201851904 // 0x0c080400
+{{L}}i128_shuffle: .int            0, 4
+{% endif %}
+
+{{L}}add_row_col_products:
+    mov             rax, [ rdi + 8 ]
+    mov             rbx, [ rdi + 16 ]
+
+    vmovups         ymm12,  [rax]
+
+{% for i in range(0, 8) %}
+    vbroadcastss    ymm14, dword ptr [rbx + {{ i * 4 }} ]
+    vpmulld         ymm15, ymm12, ymm14
+    vpaddd          ymm{{i}}, ymm{{i}}, ymm15
+{% endfor %}
+    jmp    {{L}}non_linear_loop
+
+{{L}}q_scale:
+    mov             r8, [ rdi + 16 ]        // policy
+    vbroadcastss    ymm8, dword ptr [rdi + 24] // multi
+
+    mov             rax, 1
+    movq            xmm9, rax
+    vpbroadcastq    ymm9, xmm9              // ymm9 <- 1
+
+    mov             rax, [ rdi + 8 ]        // xmm10 <- shift + 31
+    add             rax, 31
+    movq            xmm10, rax
+    vpbroadcastq    ymm10, xmm10
+
+    mov             rax, 1
+    movq            xmm11, rax
+    vpsubq          ymm12, ymm10, ymm9      // shift+31 - 1
+    vpsllq          ymm11, ymm9, xmm12      // ymm11 <- 1 << (shift + 31 - 1)
+
+    cmp     r8, 1
+    je      {{L}}q_scale_rounding_zero
+    cmp     r8, 2
+    je      {{L}}q_scale_rounding_away
+    cmp     r8, 3
+    je      {{L}}q_scale_rounding_minus_inf
+    cmp     r8, 4
+    je      {{L}}q_scale_rounding_plus_inf
+    cmp     r8, 5
+    je      {{L}}q_scale_rounding_even
+    cmp     r8, 6
+    je      {{L}}q_scale_rounding_odd
+
+    jmp    {{L}}unsupported
+
+{{L}}q_scale_rounding_zero:           // signum * ( (abs + nudge) >> shift )
+{% for i in range(0, 8) %}
+    vpabsd      ymm14, ymm{{i}}
+    vpsrldq     ymm15, ymm14, 4             // ymm15 <- a1, a2, a3, a4, a5, a6, a7, 0
+    vpmuldq     ymm14, ymm14, ymm8          // ymm14  <- a0*c, a2*c, a4*c, a6*c
+    vpmuldq     ymm15, ymm15, ymm8          // ymm15 <- a1*c, a3*c, a5*c, a7*c
+
+    vpaddq      ymm14, ymm14, ymm11
+    vpaddq      ymm15, ymm15, ymm11
+
+    vpsubq      ymm14, ymm14, ymm9
+    vpsubq      ymm15, ymm15, ymm9
+
+    vpsrlq      ymm14, ymm14, xmm10
+    vpsrlq      ymm15, ymm15, xmm10
+
+    vpslldq     ymm15, ymm15, 4
+    vpblendd    ymm14, ymm15, ymm14, 85     // 0x55
+    vpsignd     ymm{{i}}, ymm14, ymm{{i}}
+{% endfor %}
+
+    jmp    {{L}}non_linear_loop
+
+{{L}}q_scale_rounding_away:           // signum * ( (abs + nudge) >> shift )
+{% for i in range(0, 8) %}
+    vpabsd      ymm14, ymm{{i}}
+    vpsrldq     ymm15, ymm14, 4             // ymm15 <- a1, a2, a3, a4, a5, a6, a7, 0
+    vpmuldq     ymm14, ymm14, ymm8          // ymm14  <- a0*c, a2*c, a4*c, a6*c
+    vpmuldq     ymm15, ymm15, ymm8          // ymm15 <- a1*c, a3*c, a5*c, a7*c
+
+    vpaddq      ymm14, ymm14, ymm11
+    vpaddq      ymm15, ymm15, ymm11
+
+    vpsrlq      ymm14, ymm14, xmm10
+    vpsrlq      ymm15, ymm15, xmm10
+
+    vpslldq     ymm15, ymm15, 4
+    vpblendd    ymm14, ymm15, ymm14, 85     // 0x55
+    vpsignd     ymm{{i}}, ymm14, ymm{{i}}
+{% endfor %}
+
+    jmp    {{L}}non_linear_loop
+
+{{L}}q_scale_rounding_minus_inf:           // signum * ( (abs << 32 + 1<<30+shift) >> shift )
+{% for i in range(0, 8) %}
+    vpabsd      ymm14, ymm{{i}}
+    // sign extract for nudging in the right direction
+    vpxor       ymm13, ymm13, ymm13
+    vpcmpgtd    ymm13, ymm{{i}}, ymm13      // ymm13 <- s0, s1, ..s8 (signums, as all ones or all zeros)
+    vpsrld      ymm13, ymm13, 31            // then just 0 or 1
+
+    vpsrldq     ymm15, ymm14, 4             // ymm15 <- a1, a2, a3, a4, a5, a6, a7, 0
+    vpmuldq     ymm14, ymm14, ymm8          // ymm14  <- a0*c, a2*c, a4*c, a6*c
+    vpmuldq     ymm15, ymm15, ymm8          // ymm15 <- a1*c, a3*c, a5*c, a7*c
+
+    vpaddq      ymm14, ymm14, ymm11
+    vpaddq      ymm15, ymm15, ymm11
+
+    // reinterpret ymm13=s0i32..s7 as i64 and blend with zero to pick the even ones as i64
+    vpxor       ymm12, ymm12, ymm12
+    vpblendd    ymm12, ymm12, ymm13, 85     // 0x55
+    vpsubq      ymm14, ymm14, ymm12
+
+    vpsrldq     ymm13, ymm13, 4             // ymm13 <- s1, s2, .., s7, 0
+    vpxor       ymm12, ymm12, ymm12
+    vpblendd    ymm12, ymm12, ymm13, 85     // 0x55
+    vpsubq      ymm15, ymm15, ymm12
+
+    vpsrlq      ymm14, ymm14, xmm10
+    vpsrlq      ymm15, ymm15, xmm10
+
+    vpslldq     ymm15, ymm15, 4
+    vpblendd    ymm14, ymm15, ymm14, 85     // 0x55
+    vpsignd     ymm{{i}}, ymm14, ymm{{i}}
+{% endfor %}
+
+    jmp    {{L}}non_linear_loop
+
+{{L}}q_scale_rounding_plus_inf:           // signum * ( (abs << 32 + 1<<30+shift) >> shift )
+
+    vpbroadcastd ymm9, xmm9
+
+{% for i in range(0, 8) %}
+    vpabsd      ymm14, ymm{{i}}
+    vpxor       ymm13, ymm13, ymm13
+
+    // sign extract for nudging in the right direction
+    vpcmpgtd    ymm13, ymm{{i}}, ymm13      // ymm13 <- s0, s1, ..s8 (signums, as all ones or all zeros)
+    vpaddd      ymm13, ymm13, ymm9          // if val >= 0 { 0i32 } else { 1i32 }
+
+    vpsrldq     ymm15, ymm14, 4             // ymm15 <- a1, a2, a3, a4, a5, a6, a7, 0
+    vpmuldq     ymm14, ymm14, ymm8          // ymm14  <- a0*c, a2*c, a4*c, a6*c
+    vpmuldq     ymm15, ymm15, ymm8          // ymm15 <- a1*c, a3*c, a5*c, a7*c
+
+    vpaddq      ymm14, ymm14, ymm11
+    vpaddq      ymm15, ymm15, ymm11
+
+    // reinterpret ymm13=s0i32..s7 as i64 and blend with zero to pick the even ones as i64
+    vpxor       ymm12, ymm12, ymm12
+    vpblendd    ymm12, ymm12, ymm13, 85     // 0x55
+    vpsubq      ymm14, ymm14, ymm12
+
+    vpsrldq     ymm13, ymm13, 4             // ymm13 <- s1, s2, .., s7, 0
+    vpxor       ymm12, ymm12, ymm12
+    vpblendd    ymm12, ymm12, ymm13, 85     // 0x55
+    vpsubq      ymm15, ymm15, ymm12
+
+    vpsrlq      ymm14, ymm14, xmm10
+    vpsrlq      ymm15, ymm15, xmm10
+
+    vpslldq     ymm15, ymm15, 4
+    vpblendd    ymm14, ymm15, ymm14, 85     // 0x55
+    vpsignd     ymm{{i}}, ymm14, ymm{{i}}
+{% endfor %}
+
+    jmp    {{L}}non_linear_loop
+
+{{L}}q_scale_rounding_even:           // signum * ( (abs + nudge) >> shift )
+{% for i in range(0, 8) %}
+    vpabsd      ymm14, ymm{{i}}
+    vpsrldq     ymm15, ymm14, 4             // ymm15 <- a1, a2, a3, a4, a5, a6, a7, 0
+    vpmuldq     ymm14, ymm14, ymm8          // ymm14  <- a0*c, a2*c, a4*c, a6*c
+    vpmuldq     ymm15, ymm15, ymm8          // ymm15 <- a1*c, a3*c, a5*c, a7*c
+
+    vpsrlq      ymm12, ymm14, xmm10
+    vpand       ymm12, ymm12, ymm9
+    vpaddq      ymm14, ymm14, ymm12
+    vpsubq      ymm14, ymm14, ymm9
+
+    vpsrlq      ymm12, ymm15, xmm10
+    vpand       ymm12, ymm12, ymm9
+    vpaddq      ymm15, ymm15, ymm12
+    vpsubq      ymm15, ymm15, ymm9
+
+    vpaddq      ymm14, ymm14, ymm11
+    vpaddq      ymm15, ymm15, ymm11
+
+    vpsrlq      ymm14, ymm14, xmm10
+    vpsrlq      ymm15, ymm15, xmm10
+
+    vpslldq     ymm15, ymm15, 4
+    vpblendd    ymm14, ymm15, ymm14, 85     // 0x55
+    vpsignd     ymm{{i}}, ymm14, ymm{{i}}
+{% endfor %}
+    jmp    {{L}}non_linear_loop
+
+{{L}}q_scale_rounding_odd:           // signum * ( (abs + nudge) >> shift )
+{% for i in range(0, 8) %}
+    vpabsd      ymm14, ymm{{i}}
+    vpsrldq     ymm15, ymm14, 4             // ymm15 <- a1, a2, a3, a4, a5, a6, a7, 0
+    vpmuldq     ymm14, ymm14, ymm8          // ymm14  <- a0*c, a2*c, a4*c, a6*c
+    vpmuldq     ymm15, ymm15, ymm8          // ymm15 <- a1*c, a3*c, a5*c, a7*c
+
+    vpsrlq      ymm12, ymm14, xmm10
+    vpand       ymm12, ymm12, ymm9
+    vpsubq      ymm14, ymm14, ymm12
+
+    vpsrlq      ymm12, ymm15, xmm10
+    vpand       ymm12, ymm12, ymm9
+    vpsubq      ymm15, ymm15, ymm12
+
+    vpaddq      ymm14, ymm14, ymm11
+    vpaddq      ymm15, ymm15, ymm11
+
+    vpsrlq      ymm14, ymm14, xmm10
+    vpsrlq      ymm15, ymm15, xmm10
+
+    vpslldq     ymm15, ymm15, 4
+    vpblendd    ymm14, ymm15, ymm14, 85     // 0x55
+    vpsignd     ymm{{i}}, ymm14, ymm{{i}}
+{% endfor %}
+
+    jmp    {{L}}non_linear_loop
+
+{{L}}q_shl:
+    mov             eax, [ rdi + 8 ]        // xmm10 <- -shift (8 times)
+    movd            xmm10, eax
+    vpbroadcastd    ymm10, xmm10
+
+{% for i in range(0, 8) %}
+    vpsllvd     ymm{{i}}, ymm{{i}}, ymm10
+{% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}q_shr:
+    mov             r8, [ rdi + 16 ]        // policy
+
+    mov             eax, 1
+    movd            xmm9, eax
+    vpbroadcastd    ymm9, xmm9              // ymm9 <- 1u32 (8 times)
+
+    mov             eax, [ rdi + 8 ]        // xmm10 <- shift (8 times)
+    movd            xmm10, eax
+    vpbroadcastd    ymm10, xmm10
+
+    mov             ebx, 1
+    mov             cl, al
+    sub             cl, 1                  // rcx <- shift -1
+    sal             ebx, cl                // rbx <- (1 << (shift - 1))
+    movd            xmm11, ebx
+    vpbroadcastd    ymm11, xmm11            // ymm11 <- "half"
+
+    vpxor           ymm12, ymm12, ymm12     // ymm12 <- zeroes
+
+    cmp     r8, 1
+    je      {{L}}q_shr_rounding_zero
+    cmp     r8, 2
+    je      {{L}}q_shr_rounding_away
+    cmp     r8, 3
+    je      {{L}}q_shr_rounding_minus_inf
+    cmp     r8, 4
+    je      {{L}}q_shr_rounding_plus_inf
+    cmp     r8, 5
+    je      {{L}}q_shr_rounding_even
+    cmp     r8, 6
+    je      {{L}}q_shr_rounding_odd
+
+    jmp    {{L}}unsupported
+
+{{L}}q_shr_rounding_zero:
+{% for i in range(0, 8) %}
+    vpabsd      ymm14, ymm{{i}}
+    vpsubd      ymm14, ymm14, ymm9
+    vpaddd      ymm14, ymm14, ymm11
+    vpsravd     ymm14, ymm14, ymm10
+    vpsignd     ymm{{i}}, ymm14, ymm{{i}}
+{% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}q_shr_rounding_away:
+{% for i in range(0, 8) %}
+    vpabsd      ymm14, ymm{{i}}
+    vpaddd      ymm14, ymm14, ymm11
+    vpsravd     ymm14, ymm14, ymm10
+    vpsignd     ymm{{i}}, ymm14, ymm{{i}}
+{% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}q_shr_rounding_minus_inf:
+{% for i in range(0, 8) %}
+    vpsubd  ymm{{i}}, ymm{{i}}, ymm9
+    vpaddd  ymm{{i}}, ymm{{i}}, ymm11
+    vpsravd ymm{{i}}, ymm{{i}}, ymm10
+{% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}q_shr_rounding_plus_inf:
+{% for i in range(0, 8) %}
+    vpaddd  ymm{{i}}, ymm{{i}}, ymm11
+    vpsravd ymm{{i}}, ymm{{i}}, ymm10
+{% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}q_shr_rounding_even:
+{% for i in range(0, 8) %}
+    vpabsd      ymm14, ymm{{i}}
+    vpsravd ymm13, ymm14, ymm10
+    vpand   ymm13, ymm13, ymm9
+    vpsubd  ymm13, ymm13, ymm9          // nudge = ((abs >>l shift) & 0x01) - 1
+    vpaddd  ymm14, ymm14, ymm13         // add nudge
+    vpaddd  ymm14, ymm14, ymm11         // add half
+    vpsravd ymm14, ymm14, ymm10
+    vpsignd     ymm{{i}}, ymm14, ymm{{i}}
+{% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}q_shr_rounding_odd:
+{% for i in range(0, 8) %}
+    vpabsd      ymm14, ymm{{i}}
+    vpsravd ymm13, ymm14, ymm10
+    vpand   ymm13, ymm13, ymm9
+    vpsubd  ymm13, ymm12, ymm13          // nudge = - ((abs >>l shift) & 0x01)
+    vpaddd  ymm14, ymm14, ymm13         // add nudge
+    vpaddd  ymm14, ymm14, ymm11         // add half
+    vpsravd ymm14, ymm14, ymm10
+    vpsignd     ymm{{i}}, ymm14, ymm{{i}}
+{% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}store:
+    mov     r8,     [rdi + 8]           // c ptr
+    mov     rsi,    [rdi + 16]          // row stride
+    mov     rdx,    [rdi + 24]          // col stride
+    mov     rcx,    [rdi + 32]          // item size
+
+    cmp     rcx,    4
+    je      {{L}}store_strides_i32
+
+    {% for col in range(0, 8) %}
+        mov r10, r8
+        {% for row in range(0, 4) %}
+            extractps   ebx, xmm{{col}}, {{row}}
+            mov         byte ptr [r10], bl
+            add         r10, rsi
+        {% endfor %}
+        vperm2f128  ymm{{col}},   ymm{{col}},   ymm{{col}},  1
+        {% for row in range(0, 4) %}
+            extractps   ebx, xmm{{col}}, {{row}}
+            mov         byte ptr [r10], bl
+            add         r10, rsi
+        {% endfor %}
+        add r8, rdx
+    {% endfor %}
+
+    jmp     {{L}}non_linear_loop
+
+{{L}}store_strides_i32:
+    {% for col in range(0, 8) %}
+        mov r10,    r8
+        {% for row in range(0, 4) %}
+            extractps   ebx, xmm{{col}}, {{row}}
+            mov         dword ptr [r10], ebx
+            add         r10, rsi
+        {% endfor %}
+        vperm2f128  ymm{{col}},   ymm{{col}},   ymm{{col}},  1
+        {% for row in range(0, 4) %}
+            extractps   ebx, xmm{{col}}, {{row}}
+            mov         dword ptr [r10], ebx
+            add         r10, rsi
+        {% endfor %}
+        add r8, rdx
+    {% endfor %}
+
+    jmp     {{L}}non_linear_loop
+
+{{L}}return:
+    // Tear down AMX state: release tile registers and reclaim the tile-config
+    // stack space we allocated right after the standard prologue.
+    tilerelease
+    add         rsp, 64
+
+    ldmxcsr     [rsp + 4]
+    add         rsp, 8
+
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop rbx
+
+{% if family == "windows" %}
+    pop rsi
+    pop rdi
+
+    vmovaps xmm15, [rsp+16*9]
+    vmovaps xmm14, [rsp+16*8]
+    vmovaps xmm13, [rsp+16*7]
+    vmovaps xmm12, [rsp+16*6]
+    vmovaps xmm11, [rsp+16*5]
+    vmovaps xmm10, [rsp+16*4]
+    vmovaps xmm9, [rsp+16*3]
+    vmovaps xmm8, [rsp+16*2]
+    vmovaps xmm7, [rsp+16*1]
+    vmovaps xmm6, [rsp]
+{% endif %}
+
+    mov rsp, rbp
+    pop rbp
+    ret
+
+
+{{L}}one_32bit:
+{% if msvc %}
+    dd      1
+{% else %}
+    .int    1
+{% endif %}
+
+{% if msvc %}
+avx512amx_mmm_i32_8x8_{{suffix}} endp
+_text ends
+end
+{% else %}
+.cfi_endproc
+{% endif %}
