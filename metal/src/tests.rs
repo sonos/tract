@@ -250,4 +250,221 @@ mod tests {
 
         Ok(())
     }
+
+    // Slice C e2e: a real `Sdpa` op routes to MetalMfaSdpa via the metal transform
+    // and matches the CPU explode path.
+    #[test]
+    fn sdpa_routes_to_mfa_and_matches_cpu() -> TractResult<()> {
+        use crate::kernels::matmul::mfa::MetalMfaSdpa;
+        let (h, s, d) = (4usize, 32usize, 64usize); // B=1, D%8 -> fusable
+        let fact = f32::fact(tvec![
+            TDim::from(1i64),
+            TDim::from(h as i64),
+            TDim::from(s as i64),
+            TDim::from(d as i64)
+        ]);
+        let mut model = TypedModel::default();
+        let q = model.add_source("q", fact.clone())?;
+        let k = model.add_source("k", fact.clone())?;
+        let v = model.add_source("v", fact.clone())?;
+        let out = model.wire_node(
+            "sdpa",
+            tract_transformers::ops::sdpa::Sdpa {
+                scale: None,
+                datum_type: f32::datum_type(),
+                acc_datum_type: f32::datum_type(),
+                is_causal: false,
+            },
+            &[q, k, v],
+        )?;
+        model.select_output_outlets(&out)?;
+
+        let mk = |seed: i64| -> TractResult<TValue> {
+            let n = h * s * d;
+            let data: Vec<f32> = (0..n)
+                .map(|i| (((i as i64 * 2654435761 + seed).rem_euclid(1000)) as f32 / 1000.0) - 0.5)
+                .collect();
+            Ok(Tensor::from_shape(&[1, h, s, d], &data)?.into_tvalue())
+        };
+        let (qt, kt, vt) = (mk(1)?, mk(2)?, mk(3)?);
+
+        let cpu = model.clone().into_runnable()?;
+        let cpu_out = cpu.run(tvec![qt.clone(), kt.clone(), vt.clone()])?;
+
+        let metal = MetalTransform::default().transform_into(model)?;
+        assert!(
+            metal.nodes().iter().any(|n| n.op_is::<MetalMfaSdpa>()),
+            "expected the Sdpa node to route to MetalMfaSdpa"
+        );
+
+        let metal_out = metal.into_runnable()?.run(tvec![qt, kt, vt])?;
+        cpu_out[0]
+            .clone()
+            .into_tensor()
+            .close_enough(&metal_out[0].clone().into_tensor(), Approximation::Approximate)?;
+        Ok(())
+    }
+
+    // Model-level A/B through the metal transform: a fused Sdpa (3 inputs ->
+    // MetalMfaSdpa) vs the explode path (4-input Sdpa w/ neutral zero mask ->
+    // gemm+softmax+gemm). The zero mask is neutral so both compute the same attn.
+    //   cargo test -p tract-metal bench_sdpa_model_fused_vs_explode -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn bench_sdpa_model_fused_vs_explode() -> TractResult<()> {
+        use crate::kernels::matmul::mfa::MetalMfaSdpa;
+        use std::time::Instant;
+        let (h, s, d) = (8usize, 1024usize, 64usize);
+        let dim = |x: usize| TDim::from(x as i64);
+        let qf = f32::fact(tvec![dim(1), dim(h), dim(s), dim(d)]);
+        let mk = |with_mask: bool| -> TractResult<TypedModel> {
+            let mut m = TypedModel::default();
+            let q = m.add_source("q", qf.clone())?;
+            let k = m.add_source("k", qf.clone())?;
+            let v = m.add_source("v", qf.clone())?;
+            let mut ins = vec![q, k, v];
+            if with_mask {
+                ins.push(m.add_source("mask", f32::fact(tvec![dim(1), dim(1), dim(s), dim(s)]))?);
+            }
+            let out = m.wire_node(
+                "sdpa",
+                tract_transformers::ops::sdpa::Sdpa {
+                    scale: None,
+                    datum_type: f32::datum_type(),
+                    acc_datum_type: f32::datum_type(),
+                    is_causal: false,
+                },
+                &ins,
+            )?;
+            m.select_output_outlets(&out)?;
+            MetalTransform::default().transform_into(m)
+        };
+        let fused_m = mk(false)?;
+        let explode_m = mk(true)?;
+        assert!(
+            fused_m.nodes().iter().any(|n| n.op_is::<MetalMfaSdpa>()),
+            "3-input Sdpa should fuse to MetalMfaSdpa"
+        );
+        assert!(
+            !explode_m.nodes().iter().any(|n| n.op_is::<MetalMfaSdpa>()),
+            "4-input Sdpa should take the explode path"
+        );
+        let fused = fused_m.into_runnable()?;
+        let explode = explode_m.into_runnable()?;
+        let z =
+            |sh: &[usize]| -> TractResult<TValue> { Ok(Tensor::zero::<f32>(sh)?.into_tvalue()) };
+        let qkv: TVec<TValue> = tvec![z(&[1, h, s, d])?, z(&[1, h, s, d])?, z(&[1, h, s, d])?];
+        let qkvm: TVec<TValue> =
+            tvec![z(&[1, h, s, d])?, z(&[1, h, s, d])?, z(&[1, h, s, d])?, z(&[1, 1, s, s])?];
+        let bench = |f: &dyn Fn() -> TractResult<()>| -> TractResult<f64> {
+            for _ in 0..3 {
+                f()?;
+            }
+            let mut best = f64::MAX;
+            for _ in 0..5 {
+                let t = Instant::now();
+                for _ in 0..20 {
+                    f()?;
+                }
+                best = best.min(t.elapsed().as_secs_f64() / 20.0);
+            }
+            Ok(best)
+        };
+        let ft = bench(&|| {
+            fused.run(qkv.clone())?;
+            Ok(())
+        })?;
+        let et = bench(&|| {
+            explode.run(qkvm.clone())?;
+            Ok(())
+        })?;
+        println!("\n  model-level Sdpa through the metal transform, f32, B=1 H={h} S={s} D={d}:");
+        println!("  fused  (MetalMfaSdpa)        : {:.3} ms/run", ft * 1e3);
+        println!("  explode (gemm+softmax+gemm)  : {:.3} ms/run", et * 1e3);
+        println!("  end-to-end GAIN explode/fused = {:.2}x", et / ft);
+        Ok(())
+    }
+
+    // Multi-layer A/B: N stacked Sdpa layers so input/output sync amortizes across
+    // them -> isolates the real per-attention end-to-end gain (the single-op bench is
+    // dominated by per-run sync/alloc overhead). All-attention, so this measures the
+    // ATTENTION-portion gain (a real model dilutes it by the FFN share).
+    //   cargo test -p tract-metal bench_sdpa_multilayer_fused_vs_explode -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn bench_sdpa_multilayer_fused_vs_explode() -> TractResult<()> {
+        use crate::kernels::matmul::mfa::MetalMfaSdpa;
+        use std::time::Instant;
+        let (n, h, s, d) = (8usize, 8usize, 512usize, 64usize);
+        let dim = |x: usize| TDim::from(x as i64);
+        let qf = f32::fact(tvec![dim(1), dim(h), dim(s), dim(d)]);
+        let mk = |with_mask: bool| -> TractResult<TypedModel> {
+            let mut m = TypedModel::default();
+            let mut cur = m.add_source("q", qf.clone())?;
+            let k = m.add_source("k", qf.clone())?;
+            let v = m.add_source("v", qf.clone())?;
+            let mask = if with_mask {
+                Some(m.add_source("mask", f32::fact(tvec![dim(1), dim(1), dim(s), dim(s)]))?)
+            } else {
+                None
+            };
+            for i in 0..n {
+                let mut ins = vec![cur, k, v];
+                if let Some(msk) = mask {
+                    ins.push(msk);
+                }
+                cur = m.wire_node(
+                    format!("sdpa{i}"),
+                    tract_transformers::ops::sdpa::Sdpa {
+                        scale: None,
+                        datum_type: f32::datum_type(),
+                        acc_datum_type: f32::datum_type(),
+                        is_causal: false,
+                    },
+                    &ins,
+                )?[0];
+            }
+            m.select_output_outlets(&[cur])?;
+            MetalTransform::default().transform_into(m)
+        };
+        let fused_m = mk(false)?;
+        let explode_m = mk(true)?;
+        let n_fused = fused_m.nodes().iter().filter(|x| x.op_is::<MetalMfaSdpa>()).count();
+        assert_eq!(n_fused, n, "all {n} layers should fuse");
+        assert_eq!(explode_m.nodes().iter().filter(|x| x.op_is::<MetalMfaSdpa>()).count(), 0);
+        let fused = fused_m.into_runnable()?;
+        let explode = explode_m.into_runnable()?;
+        let z =
+            |sh: &[usize]| -> TractResult<TValue> { Ok(Tensor::zero::<f32>(sh)?.into_tvalue()) };
+        let qkv: TVec<TValue> = tvec![z(&[1, h, s, d])?, z(&[1, h, s, d])?, z(&[1, h, s, d])?];
+        let qkvm: TVec<TValue> =
+            tvec![z(&[1, h, s, d])?, z(&[1, h, s, d])?, z(&[1, h, s, d])?, z(&[1, 1, s, s])?];
+        let bench = |f: &dyn Fn() -> TractResult<()>| -> TractResult<f64> {
+            for _ in 0..3 {
+                f()?;
+            }
+            let mut best = f64::MAX;
+            for _ in 0..5 {
+                let t = Instant::now();
+                for _ in 0..10 {
+                    f()?;
+                }
+                best = best.min(t.elapsed().as_secs_f64() / 10.0);
+            }
+            Ok(best)
+        };
+        let ft = bench(&|| {
+            fused.run(qkv.clone())?;
+            Ok(())
+        })?;
+        let et = bench(&|| {
+            explode.run(qkvm.clone())?;
+            Ok(())
+        })?;
+        println!("\n  {n}-layer Sdpa stack, f32, B=1 H={h} S={s} D={d}:");
+        println!("  fused  : {:.3} ms/run  ({:.3} ms/layer)", ft * 1e3, ft * 1e3 / n as f64);
+        println!("  explode: {:.3} ms/run  ({:.3} ms/layer)", et * 1e3, et * 1e3 / n as f64);
+        println!("  attention-portion GAIN explode/fused = {:.2}x", et / ft);
+        Ok(())
+    }
 }
