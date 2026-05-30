@@ -197,6 +197,26 @@ fn main() {
             });
             files.extend(preprocess_files("x86_64/avx512", &[], &suffix, false));
 
+            // Pull the AMX kernel template out of the generic fma bulk-compile
+            // so it can be gated behind the assembler probe below. Its
+            // mnemonics (`ldtilecfg`, `tdpbssd`, `tilezero`, `tilerelease`)
+            // require gas >= 2.34; old toolchains (Debian stretch's binutils
+            // 2.28) would otherwise fail the whole build. The kernel template
+            // lives next to its Jinja partials (`dispatcher.j2`, the i32
+            // epilogue includes); only the compile of the rendered .S is
+            // moved.
+            let amx_int8_files: Vec<path::PathBuf> = files
+                .iter()
+                .filter(|f| {
+                    f.file_name()
+                        .and_then(|n| n.to_str())
+                        .map(|n| n.starts_with("avx512amx_"))
+                        .unwrap_or(false)
+                })
+                .cloned()
+                .collect();
+            files.retain(|f| !amx_int8_files.contains(f));
+
             if os == "windows" {
                 if use_masm() {
                     let mut lib_exe = cc::windows_registry::find(&target, "lib.exe")
@@ -260,22 +280,21 @@ fn main() {
                 println!("cargo:rustc-cfg=tract_avx512vnni");
             }
 
-            // AMX int8 kernel lives in its own subdirectory so it can be
-            // gated behind a build-time assembler probe. Unix only for now;
-            // the kernel uses the GAS intel-syntax path. The `tract_amx_int8`
-            // cfg gates the Rust-side symbol reference: when the probe fails
-            // on old toolchains (e.g. Debian stretch's binutils 2.28), the
-            // kernel is omitted and `qmmm_i32` dispatch falls back to VNNI
-            // or AVX2 with no build error.
-            if os != "windows" && assembler_supports_amx_int8() {
-                let amx_files =
-                    preprocess_files("x86_64/avx512amx", &[], &suffix, false);
-                if !amx_files.is_empty() {
-                    cc::Build::new()
-                        .files(&amx_files)
-                        .compile("x86_64_avx512amx");
-                    println!("cargo:rustc-cfg=tract_amx_int8");
-                }
+            // AMX int8 kernel: compile only when the assembler accepts the
+            // mnemonics, and the kernel template was actually pulled aside
+            // above. Unix only for now (the .S uses the GAS intel-syntax
+            // path). The `tract_amx_int8` cfg gates the Rust-side symbol
+            // reference: when the probe fails on old toolchains (e.g. Debian
+            // stretch's binutils 2.28), the kernel is omitted and `qmmm_i32`
+            // dispatch falls back to VNNI or AVX2 with no build error.
+            if os != "windows"
+                && !amx_int8_files.is_empty()
+                && assembler_supports_amx_int8()
+            {
+                cc::Build::new()
+                    .files(&amx_int8_files)
+                    .compile("x86_64_avx512amx");
+                println!("cargo:rustc-cfg=tract_amx_int8");
             }
         }
         "arm" | "armv7" => {

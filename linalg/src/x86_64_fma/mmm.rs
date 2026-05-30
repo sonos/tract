@@ -4,7 +4,12 @@ use crate::mmm::ImplementationQuality::ManuallyOptimized;
 use crate::mmm::MatMatMul;
 use crate::pack::{PackedFormat, PackedI8K4};
 
+#[cfg(tract_amx_int8)]
+use super::amx::{PackedAmxA, has_amx_int8};
 use super::*;
+
+#[cfg(tract_amx_int8)]
+const AVX512AMX: fn() -> bool = has_amx_int8;
 
 /// One candidate kernel in a dispatcher's pool, with its tile geometry
 /// and a relative-throughput scale (1.0 = baseline, used to break
@@ -107,6 +112,20 @@ MMMExternKernel! { avx512vnni_mmm_i32_8x8<i32>(8,8)@(256,4) where(AVX512VNNI)
     store(i8)
 }
 
+// Same epilogue as avx512vnni_mmm_i32_8x8 (8x8 ymm accumulators), but the i8i8
+// matmul inner loop uses TDPBSSD (16-M x 16-N x 64-K mul-acc per instruction)
+// over AMX tiles. A's packing is novel (PackedAmxA, M-major-within-panel,
+// K-padded to multiples of 64); B reuses VNNI's K=4-inner PackedI8K4 layout
+// unchanged. TDPBSSD is s8 x s8 so no +128 bias trick — accumulators are
+// bit-identical to AVX2/VNNI. Gated by `where(AVX512AMX)` (= CPUID amx-int8
+// AND Linux XSAVE permission via arch_prctl).
+#[cfg(tract_amx_int8)]
+MMMExternKernel! { avx512amx_mmm_i32_8x8<i32>(8,8)@(64,4) where(AVX512AMX)
+    packing[1] = i8i8 => |k| k.with_packing(PackedAmxA::new(8), PackedI8K4::new(8));
+    quality(ManuallyOptimized)
+    store(i8)
+}
+
 pub fn plug(ops: &mut Ops) {
     if is_x86_feature_detected!("avx2") {
         plug_avx2(ops);
@@ -117,6 +136,12 @@ pub fn plug(ops: &mut Ops) {
                 #[cfg(tract_avx512vnni)]
                 if is_x86_feature_detected!("avx512vnni") {
                     plug_avx512vnni(ops);
+                    // AMX int8 preferred over VNNI when both available AND the OS
+                    // has granted XSAVE tile-data permission (see `has_amx_int8`).
+                    #[cfg(tract_amx_int8)]
+                    if has_amx_int8() {
+                        plug_avx512amx_int8(ops);
+                    }
                 }
             }
         }
@@ -128,6 +153,13 @@ pub fn plug_avx512vnni(ops: &mut Ops) {
     ops.mmm_impls.push(avx512vnni_mmm_i32_8x8.mmm());
     ops.qmmm_i32 = Box::new(|_, _, _| avx512vnni_mmm_i32_8x8.mmm());
     log::info!("qmmm_i32: x86_64/avx512vnni activated");
+}
+
+#[cfg(tract_amx_int8)]
+pub fn plug_avx512amx_int8(ops: &mut Ops) {
+    ops.mmm_impls.push(avx512amx_mmm_i32_8x8.mmm());
+    ops.qmmm_i32 = Box::new(|_, _, _| avx512amx_mmm_i32_8x8.mmm());
+    log::info!("qmmm_i32: x86_64/avx512amx_int8 activated");
 }
 
 pub fn plug_avx2(ops: &mut Ops) {

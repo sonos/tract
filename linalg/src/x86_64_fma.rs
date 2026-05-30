@@ -9,6 +9,9 @@ pub mod mmm;
 pub mod act;
 pub mod act_f16;
 pub mod act_f16_fp16;
+
+#[cfg(tract_amx_int8)]
+pub mod amx;
 pub mod by_scalar;
 pub mod erf;
 mod intel;
