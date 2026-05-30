@@ -17,3 +17,9 @@ maintenance = { status = "actively-developed" }
 [dependencies]
 float-ord.workspace = true
 tract-nnef.workspace = true
+
+# Used to spread FlashSDPA's independent attention heads across cores (rayon's
+# global pool). Not available on wasm32-unknown-unknown (no thread spawn), where
+# the op stays single-threaded.
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+rayon.workspace = true

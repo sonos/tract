@@ -5052,6 +5052,7 @@ name = "tract-transformers"
 version = "0.23.1-pre"
 dependencies = [
  "float-ord",
+ "rayon",
  "tract-nnef",
 ]
 

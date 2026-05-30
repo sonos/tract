@@ -249,6 +249,15 @@ impl Sdpa {
     }
 }
 
+/// Minimum K/V sequence length at which an f32 `Sdpa` lowers to the (head-parallel)
+/// `FlashSdpaOp` on CPU. Shorter sequences fall back to the decomposed matmul+softmax
+/// path. Override with `TRACT_FLASH_SDPA_MIN_SEQ_LEN`; default `0` = always flash
+/// (head-parallel flash beat the decomposed path at every sequence length measured on
+/// Apple M1, 128–4096; raise this on low-core hosts where short-seq decompose wins).
+fn flash_min_seq_len() -> usize {
+    std::env::var("TRACT_FLASH_SDPA_MIN_SEQ_LEN").ok().and_then(|s| s.parse().ok()).unwrap_or(0)
+}
+
 impl Op for Sdpa {
     fn name(&self) -> StaticName {
         "SDPA".into()
@@ -370,12 +379,21 @@ impl TypedOp for Sdpa {
             // generic SDPA expansion instead.
             let q_head_dim = model.outlet_fact(node.inputs[0])?.shape.last().cloned();
             let v_head_dim = model.outlet_fact(node.inputs[2])?.shape.last().cloned();
-            if q_head_dim == v_head_dim {
+            // Heuristic: very short K/V sequences are faster through the decomposed
+            // matmul+softmax path (tract's optimized multipliers) than through the
+            // block-wise flash kernel. The head-parallel FlashSdpaOp wins at longer
+            // sequences (and always on memory). Threshold is tunable; default 0 keeps
+            // flash for every sequence — see `flash_min_seq_len`.
+            let k_fact = model.outlet_fact(node.inputs[1])?;
+            let kv_len = k_fact.shape.get(k_fact.rank() - 2).and_then(|d| d.to_usize().ok());
+            let too_short = kv_len.is_some_and(|n| n < flash_min_seq_len());
+            if q_head_dim == v_head_dim && !too_short {
                 let scale = self.scale.as_ref().map(|t| t.cast_to_scalar()).transpose()?;
                 let op = FlashSdpaOp { causal: self.is_causal, scale };
                 TypedModelPatch::replace_single_op(model, node, &node.inputs, op).map(Some)
             } else {
-                self.patch_sdpa(model, node).context("Wiring fallback SDPA (diff head dims)")
+                self.patch_sdpa(model, node)
+                    .context("Wiring fallback SDPA (short seq / diff head dims)")
             }
         } else {
             self.patch_sdpa(model, node).context("Wiring fallback SDPA")
