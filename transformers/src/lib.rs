@@ -14,6 +14,10 @@ register_simple_model_transform!(
     SdpaFuseKvCacheBroadcastTransform
 );
 register_simple_model_transform!("unfold_kv_cache", UnfoldKeyValueCacheTransform);
+register_simple_model_transform!(
+    "fuse_inplace_kv_sdpa",
+    ops::inplace_kv_cache::InPlaceKvSdpaTransform
+);
 register_simple_model_transform!("transformers_detect_all", TransformersTransform);
 
 pub fn register(registry: &mut Registry) {
