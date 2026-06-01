@@ -9,7 +9,8 @@ use tract_transformers::ops::sdpa::Sdpa;
 //   outputs: output(0), present_key(1), present_value(2)
 // Scoped to the prefill case (no past KV cache): query/key/value are [B, S, heads*head_size],
 // attention is causal with q_seq == kv_seq, and present_key/value are the reshaped K/V.
-// Decode-step KV cache, internal rotary (do_rotary) and local-window attention are rejected.
+// Sliding-window attention (local_window_size) is applied as a banded causal mask.
+// Decode-step KV cache and internal rotary (do_rotary) are still rejected.
 pub fn group_query_attention(
     _ctx: &ParsingContext,
     node: &NodeProto,
@@ -21,10 +22,12 @@ pub fn group_query_attention(
         node.get_attr_opt::<i64>("do_rotary")?.unwrap_or(0) == 0,
         "GroupQueryAttention: internal rotary (do_rotary) is unsupported; apply RotaryEmbedding separately"
     );
-    ensure!(
-        node.get_attr_opt::<i64>("local_window_size")?.unwrap_or(-1) < 0,
-        "GroupQueryAttention: local_window_size is unsupported"
-    );
+    // Sliding-window attention: a query attends only to the last `window` keys (in
+    // addition to causal). <0 means no window (full causal). Applied as a banded mask.
+    let window = match node.get_attr_opt::<i64>("local_window_size")?.unwrap_or(-1) {
+        w if w < 0 => 0usize,
+        w => w as usize,
+    };
     ensure!(
         node.get_attr_opt::<f32>("softcap")?.unwrap_or(0.0) == 0.0,
         "GroupQueryAttention: softcap is unsupported"
@@ -35,7 +38,7 @@ pub fn group_query_attention(
         !have_past,
         "GroupQueryAttention: past KV cache (decode step) is unsupported; only prefill is handled"
     );
-    Ok((expand(GroupQueryAttention { num_heads, kv_num_heads, scale }), vec![]))
+    Ok((expand(GroupQueryAttention { num_heads, kv_num_heads, scale, window }), vec![]))
 }
 
 #[derive(Debug, Clone)]
@@ -43,6 +46,17 @@ struct GroupQueryAttention {
     num_heads: usize,
     kv_num_heads: usize,
     scale: Option<f32>,
+    /// Sliding-window size; 0 = full causal (no window).
+    window: usize,
+}
+
+/// Additive attention mask for causal + optional sliding window: entry `(i, j)` is `0`
+/// when query `i` may attend to key `j` (`j <= i`, and `i - j < window` when `window > 0`),
+/// else `-inf`. `window == 0` is plain causal.
+fn windowed_causal_mask(qs: usize, ks: usize, window: usize) -> tract_ndarray::Array2<f32> {
+    tract_ndarray::Array2::<f32>::from_shape_fn((qs, ks), |(i, j)| {
+        if j <= i && (window == 0 || i - j < window) { 0.0f32 } else { f32::NEG_INFINITY }
+    })
 }
 
 // [B, S, heads*head_size] -> [B, heads, S, head_size]
@@ -116,15 +130,16 @@ impl Expansion for GroupQueryAttention {
         let k4 = to_4d(model, &format!("{prefix}.k"), inputs[1], k_hidden, self.kv_num_heads)?;
         let v4 = to_4d(model, &format!("{prefix}.v"), inputs[2], v_hidden, self.kv_num_heads)?;
 
-        // Causal mask: materialise an explicit additive lower-triangular mask for concrete
-        // shapes (exact ONNX semantics: query i attends to keys j <= i); fall back to Sdpa's
-        // own is_causal for symbolic shapes. Sdpa handles GQA head grouping (kv heads < q heads).
+        // Causal (+ optional sliding-window) mask: materialise an explicit additive band
+        // for concrete shapes — query i attends to keys j with `j <= i` (causal) and, if a
+        // window is set, `i - j < window` (the last `window` keys). Fall back to Sdpa's own
+        // is_causal for symbolic shapes (a static window can't be built there). Sdpa handles
+        // GQA head grouping (kv heads < q heads).
         let q_seq = model.outlet_fact(q4)?.shape[2].to_usize().ok();
         let kv_seq = model.outlet_fact(k4)?.shape[2].to_usize().ok();
+        let window = self.window;
         let (mask, is_causal) = if let (Some(qs), Some(ks)) = (q_seq, kv_seq) {
-            let arr = tract_ndarray::Array2::<f32>::from_shape_fn((qs, ks), |(i, j)| {
-                if j <= i { 0.0f32 } else { f32::NEG_INFINITY }
-            });
+            let arr = windowed_causal_mask(qs, ks, window);
             let mask_tensor: Tensor = arr.into();
             let mut m = model.add_const(format!("{prefix}.causal_mask"), mask_tensor)?;
             for i in 0..2 {
@@ -136,6 +151,11 @@ impl Expansion for GroupQueryAttention {
             }
             (Some(m), false)
         } else {
+            ensure!(
+                window == 0,
+                "GroupQueryAttention: sliding window (local_window_size) requires static \
+                 sequence lengths to materialise the banded mask"
+            );
             (None, true)
         };
         let mut sdpa_inputs = tvec![q4, k4, v4];
@@ -165,5 +185,29 @@ impl Expansion for GroupQueryAttention {
         )?[0];
 
         Ok(tvec!(y, k4, v4))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::windowed_causal_mask;
+
+    #[test]
+    fn band_mask_causal_and_window() {
+        // window 3 on a 5x5: query i attends to key j iff causal (j<=i) AND i-j<3
+        let m = windowed_causal_mask(5, 5, 3);
+        for i in 0..5 {
+            for j in 0..5 {
+                let want_open = j <= i && i - j < 3;
+                assert_eq!(m[(i, j)] == 0.0, want_open, "window=3 at (i={i}, j={j})");
+            }
+        }
+        // window 0 == plain causal
+        let c = windowed_causal_mask(4, 4, 0);
+        for i in 0..4 {
+            for j in 0..4 {
+                assert_eq!(c[(i, j)] == 0.0, j <= i, "causal at (i={i}, j={j})");
+            }
+        }
     }
 }
