@@ -1,0 +1,508 @@
+// vim: set syntax=asm :
+//
+// Intel AMX bf16 GEMM kernel, 16 M-rows x 16 N-cols f32 accumulator output.
+//
+// One `tdpbf16ps tmm0, tmm1, tmm2` instruction performs:
+//   tmm0[m, n] += sum_{k=0..31} A[m, k] * B[k, n]   (multiplies in bf16,
+//                                                    accumulates in f32)
+// for m=0..15, n=0..15: 16 * 16 * 32 = 8192 fma per single instruction --
+// the same throughput as TDPBSSD on the same hardware. Accelerates f32
+// matmul on Sapphire Rapids+ at the cost of bf16 input truncation
+// (~1/256 relative error per multiply; sqrt(K) compounded by FMA chain).
+//
+// Tile geometry (palette 1, the maximum-bytes AMX tile shape):
+//   tmm0 = C accumulator: 16 rows x 64 colsb = 16 M-rows x 16 N-cols of f32
+//   tmm1 = A tile:        16 rows x 64 colsb = 16 M-rows x 32 K-bf16 / iter
+//   tmm2 = B tile:        16 rows x 64 colsb = 16 K-pair-rows x 16 N x 2 bf16
+//
+// A is packed via PackedAmxBf16A(16): per panel of 16 M-rows, row-major
+// within the panel, K-bf16 contiguous along the row, K_padded =
+// ceil(K/32)*32 bf16. Source f32 is truncated to bf16 at pack time using
+// round-to-nearest-even (matches VCVTNEPS2BF16 semantics).
+//
+// B is packed via PackedBf16K2(16): per K=2 block, 16 N-cols x 2 K-bf16 =
+// 64 bytes; 16 K-blocks per tmm2 tile. Source f32 -> bf16 same as A.
+//
+// REGISTER LAYOUT (mirrors the i32 16x16 sibling):
+//   zmm0..zmm15 = accumulators, ROW-MAJOR: zmm{m} = row m of C as 16 f32
+//                 lanes [C[m, 0], C[m, 1], ..., C[m, 15]].
+
+{% if msvc %}
+
+_text segment
+avx512amx_mmm_f32_16x16_{{suffix}} proc
+
+{% else %}
+
+.intel_syntax noprefix
+.text
+.p2align 5
+.globl {{G}}avx512amx_mmm_f32_16x16_{{suffix}}
+{{G}}avx512amx_mmm_f32_16x16_{{suffix}}:
+.cfi_startproc
+
+{% endif %}
+
+    push        rbp
+    mov         rbp, rsp
+
+{% if family == "windows" %}
+    and rsp,-16
+    lea rsp,[rsp-160]
+    vmovaps [rsp], xmm6
+    vmovaps [rsp+16*1],xmm7
+    vmovaps [rsp+16*2],xmm8
+    vmovaps [rsp+16*3],xmm9
+    vmovaps [rsp+16*4],xmm10
+    vmovaps [rsp+16*5],xmm11
+    vmovaps [rsp+16*6],xmm12
+    vmovaps [rsp+16*7],xmm13
+    vmovaps [rsp+16*8],xmm14
+    vmovaps [rsp+16*9],xmm15
+
+    push        rdi
+    push        rsi
+
+    mov         rdi, rcx
+
+{% endif %}
+
+    push        rbx
+    push        r12
+    push        r13
+    push        r14
+    push        r15
+
+    sub         rsp, 8
+
+{% if family == "unix" %}
+.cfi_def_cfa_offset 64
+{% endif %}
+
+    stmxcsr     [rsp + 4]
+{% if msvc %}
+    mov         rax, 1FC0h
+{% else %}
+    mov         rax, 0x1FC0
+{% endif %}
+    mov         [rsp], eax
+    ldmxcsr     [rsp]
+
+    // Reserve 64 bytes for the AMX tile-config block, zero it, populate
+    // palette + dims (all three tiles are 16 rows x 64 colsb). Same shape
+    // as the i32 16x16 sibling.
+    sub         rsp, 64
+    vpxor       xmm15, xmm15, xmm15
+    vmovdqu     [rsp     ], xmm15
+    vmovdqu     [rsp + 16], xmm15
+    vmovdqu     [rsp + 32], xmm15
+    vmovdqu     [rsp + 48], xmm15
+    mov         byte ptr  [rsp + 0 ], 1    // palette = 1
+    mov         word ptr  [rsp + 16], 64   // colsb[0] = 64 (tmm0)
+    mov         word ptr  [rsp + 18], 64   // colsb[1] = 64 (tmm1)
+    mov         word ptr  [rsp + 20], 64   // colsb[2] = 64 (tmm2)
+    mov         byte ptr  [rsp + 48], 16   // rows[0]  = 16 (tmm0)
+    mov         byte ptr  [rsp + 49], 16   // rows[1]  = 16 (tmm1)
+    mov         byte ptr  [rsp + 50], 16   // rows[2]  = 16 (tmm2)
+    ldtilecfg   [rsp]
+
+{% include "dispatcher.j2" %}
+
+{{L}}clear:
+    {% for r in range(0, 16) %}
+    vpxorq      zmm{{r}}, zmm{{r}}, zmm{{r}}
+    {% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}add_mat_mul:
+    mov     r12,    [rdi + 32]   // packing
+    mov     rbx,    [rdi + 24]   // B
+    mov     rax,    [rdi + 16]   // A
+
+    mov     rcx,    [rdi + 8]    // k
+    test    rcx,    rcx
+    jz      {{L}}non_linear_loop
+
+    cmp     r12, 1
+    je      {{L}}main_loop_packed_packed_bf16
+
+{{L}}main_loop_packed_packed:
+    // Generic f32 x f32 fallback path (non-AMX). For row-major
+    // accumulators zmm{m} = row m of C, accumulating C[m, n] += A[m, k] *
+    // B[k, n]: load 16 B values for this K row into zmm16, then for each
+    // m broadcast A[m, k] and FMA add to zmm{m}.
+    vmovups         zmm16, [rbx]               // 16 f32 of B at this K row
+
+    {% for m in range(0, 16) %}
+        vbroadcastss    zmm17, dword ptr [rax + {{m}} * 4]
+        vfmadd231ps     zmm{{m}}, zmm16, zmm17
+    {% endfor %}
+
+    add             rax,    64                 // 16 f32 lanes per K step
+    add             rbx,    64
+    dec             rcx
+    jnz             {{L}}main_loop_packed_packed
+
+    jmp             {{L}}non_linear_loop
+
+{{L}}main_loop_packed_packed_bf16:
+    // AMX bf16 layout:
+    //   A panel: 16 M-rows x K_padded bf16 ROW-major within the panel
+    //            (PackedAmxBf16A, K_padded = ceil(K/32)*32 bf16 =
+    //            ceil(K/32)*64 bytes per row).
+    //   B panel: PackedBf16K2(16) -- 16 N-cols x 2 K-bf16 per K=2 block,
+    //            with 16 K-blocks per tdpbf16ps iter (16 K-pair-rows x
+    //            64 colsb).
+    //
+    // Per tdpbf16ps: tmm0[m, n] += sum_{k=0..31} A[m, k] * B[k, n]
+    // with multiplies in bf16 and accumulation in f32. Inner loop steps
+    // along K in 32-bf16 chunks (= 64 bytes per A row).
+
+    // r8 <- K_padded_in_bytes = ceil(k/32)*64 = byte-stride between A's
+    // M-rows. (Each bf16 is 2 bytes, so K_padded_bf16 * 2.)
+    mov             r8,     rcx
+    add             r8,     31
+    and             r8,     -32
+    shl             r8,     1                  // *2 (bf16 = 2 bytes)
+
+    // rcx <- ceil(k/32) = number of K=32 AMX inner iterations.
+    add             rcx,    31
+    shr             rcx,    5
+
+    // r9 <- 64 = byte-stride between B's K-pair-rows (16 N-cols * 4 bytes
+    // per K-pair = 16 * 4 = 64).
+    mov             r9,     64
+
+    tilezero        tmm0
+
+{{L}}loop_32k_amx_bf16_16x16:
+    // oneDNN-aligned cache strategy (same as the i32 sibling):
+    //   A -> cached (tileloadd + prefetcht0 to L1), reused across N-tiles.
+    //   B -> non-temporal (tileloaddt1 + prefetcht1 to L2), streams once.
+    // Each iter advances A by 64 bytes and B by 1024 bytes; we prime the
+    // first 6 of next-iter's 16 B cache lines and let the SPR HW stream
+    // prefetcher cover the remaining 10.
+    prefetcht0      [rax + 64]
+    prefetcht1      [rbx + 1024]
+    prefetcht1      [rbx + 1088]
+    prefetcht1      [rbx + 1152]
+    prefetcht1      [rbx + 1216]
+    prefetcht1      [rbx + 1280]
+    prefetcht1      [rbx + 1344]
+    tileloadd       tmm1,   [rax + r8 * 1]     // A tile (cached): stride = K_padded_bytes
+    tileloaddt1     tmm2,   [rbx + r9 * 1]     // B tile (non-temporal): stride = 64
+    tdpbf16ps       tmm0,   tmm1,   tmm2
+    add             rax,    64                 // +32 bf16 in A row 0
+    add             rbx,    1024               // 16 K-pairs * 64 = 1024 B
+    dec             rcx
+    jnz             {{L}}loop_32k_amx_bf16_16x16
+
+    // tmm0 -> stack scratch (16 rows x 64 bytes = 1024 B row-major f32).
+    // Each row's 16 f32 are contiguous, so one 64-byte load per row.
+    sub             rsp,    1024
+    mov             r10,    rsp
+    mov             r11,    64
+    tilestored      [r10 + r11 * 1], tmm0
+
+    {% for m in range(0, 16) %}
+    vmovups         zmm{{m}}, [r10 + {{ m * 64 }}]
+    {% endfor %}
+
+    add             rsp,    1024
+
+    jmp             {{L}}non_linear_loop
+
+// ---- Scalar / per-row / per-col f32 epilogues ----------------------------
+
+{{L}}scalar_min:
+    vbroadcastss    zmm16, dword ptr [rdi + 8]
+    {% for r in range(0, 16) %}vminps zmm{{r}}, zmm{{r}}, zmm16
+    {% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}scalar_max:
+    vbroadcastss    zmm16, dword ptr [rdi + 8]
+    {% for r in range(0, 16) %}vmaxps zmm{{r}}, zmm{{r}}, zmm16
+    {% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}scalar_add:
+    vbroadcastss    zmm16, dword ptr [rdi + 8]
+    {% for r in range(0, 16) %}vaddps zmm{{r}}, zmm{{r}}, zmm16
+    {% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}scalar_mul:
+    vbroadcastss    zmm16, dword ptr [rdi + 8]
+    {% for r in range(0, 16) %}vmulps zmm{{r}}, zmm{{r}}, zmm16
+    {% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}scalar_sub:
+    vbroadcastss    zmm16, dword ptr [rdi + 8]
+    {% for r in range(0, 16) %}vsubps zmm{{r}}, zmm{{r}}, zmm16
+    {% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}scalar_sub_flipped:
+    vbroadcastss    zmm16, dword ptr [rdi + 8]
+    {% for r in range(0, 16) %}vsubps zmm{{r}}, zmm16, zmm{{r}}
+    {% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}leaky_relu:
+    // C[m, n] = (C[m, n] >= 0) ? C[m, n] : alpha * C[m, n]
+    vbroadcastss    zmm17, dword ptr [rdi + 8]      // alpha
+    vpxorq          zmm16, zmm16, zmm16             // 0.0
+    {% for r in range(0, 16) %}
+    vmulps          zmm18, zmm{{r}}, zmm17          // alpha * x
+    vcmpps          k1, zmm{{r}}, zmm16, 1          // imm 1 = LT (signed): 1 where x < 0
+    vblendmps       zmm{{r}}{k1}, zmm{{r}}, zmm18
+    {% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}per_row_min:
+    mov rax, [rdi + 8]
+    {% for m in range(0, 16) %}vbroadcastss    zmm16, dword ptr [rax + {{m * 4}}]
+    vminps          zmm{{m}}, zmm{{m}}, zmm16
+    {% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}per_row_max:
+    mov rax, [rdi + 8]
+    {% for m in range(0, 16) %}vbroadcastss    zmm16, dword ptr [rax + {{m * 4}}]
+    vmaxps          zmm{{m}}, zmm{{m}}, zmm16
+    {% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}per_row_add:
+    mov rax, [rdi + 8]
+    {% for m in range(0, 16) %}vbroadcastss    zmm16, dword ptr [rax + {{m * 4}}]
+    vaddps          zmm{{m}}, zmm{{m}}, zmm16
+    {% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}per_row_mul:
+    mov rax, [rdi + 8]
+    {% for m in range(0, 16) %}vbroadcastss    zmm16, dword ptr [rax + {{m * 4}}]
+    vmulps          zmm{{m}}, zmm{{m}}, zmm16
+    {% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}per_row_sub:
+    mov rax, [rdi + 8]
+    {% for m in range(0, 16) %}vbroadcastss    zmm16, dword ptr [rax + {{m * 4}}]
+    vsubps          zmm{{m}}, zmm{{m}}, zmm16
+    {% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}per_row_sub_flipped:
+    mov rax, [rdi + 8]
+    {% for m in range(0, 16) %}vbroadcastss    zmm16, dword ptr [rax + {{m * 4}}]
+    vsubps          zmm{{m}}, zmm16, zmm{{m}}
+    {% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}per_col_min:
+    mov     rax, [rdi + 8]
+    vmovups         zmm16, [rax]
+    {% for r in range(0, 16) %}vminps zmm{{r}}, zmm{{r}}, zmm16
+    {% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}per_col_max:
+    mov     rax, [rdi + 8]
+    vmovups         zmm16, [rax]
+    {% for r in range(0, 16) %}vmaxps zmm{{r}}, zmm{{r}}, zmm16
+    {% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}per_col_add:
+    mov     rax, [rdi + 8]
+    vmovups         zmm16, [rax]
+    {% for r in range(0, 16) %}vaddps zmm{{r}}, zmm{{r}}, zmm16
+    {% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}per_col_mul:
+    mov     rax, [rdi + 8]
+    vmovups         zmm16, [rax]
+    {% for r in range(0, 16) %}vmulps zmm{{r}}, zmm{{r}}, zmm16
+    {% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}per_col_sub:
+    mov     rax, [rdi + 8]
+    vmovups         zmm16, [rax]
+    {% for r in range(0, 16) %}vsubps zmm{{r}}, zmm{{r}}, zmm16
+    {% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}per_col_sub_flipped:
+    mov     rax, [rdi + 8]
+    vmovups         zmm16, [rax]
+    {% for r in range(0, 16) %}vsubps zmm{{r}}, zmm16, zmm{{r}}
+    {% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}load_tile:
+    // Scratch layout is COL-MAJOR f32 (col_byte_stride = item_size * MR =
+    // 4 * 16 = 64): tile[col][row] at offset col*64 + row*4. Gather row m's
+    // 16 cols at index step 64.
+    mov         r8, [rdi + 8]
+    vmovdqa32   zmm16, [rip + {{L}}lane_offsets_64]
+    {% for m in range(0, 16) %}
+    mov         eax, 0xFFFF
+    kmovw       k1, eax
+    vpgatherdd  zmm{{m}}{k1}, [r8 + zmm16 + {{m * 4}}]
+    {% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}add_unicast:
+    mov     r10,    [rdi + 8]           // c ptr (base)
+    mov     rsi,    [rdi + 16]          // row stride
+    mov     rbx,    [rdi + 24]          // col stride
+    mov     r8,     [rdi + 32]          // item size (4 for f32)
+
+    cmp     r8, 4
+    jne     {{L}}unsupported            // f32 kernel: only item_size=4
+
+    // i32-strided gather (f32 same bit-width: vpgatherdd is correct).
+    mov             eax, ebx
+    vmovd           xmm16, eax
+    vpbroadcastd    zmm16, xmm16
+    vpmulld         zmm16, zmm16, [rip + {{L}}lane_indices]
+
+    {% for m in range(0, 16) %}
+    mov             eax, 0xFFFF
+    kmovw           k1, eax
+    vpgatherdd      zmm17{k1}, [r10 + zmm16]
+    vaddps          zmm{{m}}, zmm{{m}}, zmm17
+    add             r10, rsi
+    {% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}add_row_col_products:
+    // bias[m, n] = row_data[m] * col_data[n], FMA-add to C[m, n].
+    mov             rax, [rdi + 8]
+    mov             rbx, [rdi + 16]
+
+    vmovups         zmm16, [rbx]                          // 16 col_data values
+
+    {% for m in range(0, 16) %}
+    vbroadcastss    zmm17, dword ptr [rax + {{m * 4}}]    // splat row_data[m]
+    vfmadd231ps     zmm{{m}}, zmm17, zmm16
+    {% endfor %}
+    jmp     {{L}}non_linear_loop
+
+// ---- q_scale / q_shr / q_shl: not meaningful for f32, stub to unsupported.
+{{L}}q_scale:
+{{L}}q_shl:
+{{L}}q_shr:
+    jmp     {{L}}unsupported
+
+// ---- Store ---------------------------------------------------------------
+
+{{L}}store:
+    mov     r8,     [rdi + 8]               // c ptr
+    mov     rsi,    [rdi + 16]              // row stride
+    mov     rdx,    [rdi + 24]              // col stride
+    mov     rcx,    [rdi + 32]              // item size
+
+    cmp     rcx, 4
+    jne     {{L}}unsupported                // f32 kernel: only item_size=4
+
+    cmp     rdx, 4
+    je      {{L}}store_strides_f32_row_contig
+
+    // Generic f32 strided store
+    {% for m in range(0, 16) %}
+    mov     r10, r8
+    vextracti32x4   xmm20, zmm{{m}}, 0
+    {% for n in range(0, 4) %}
+    vpextrd     ebx, xmm20, {{n}}
+    mov         dword ptr [r10], ebx
+    add         r10, rdx
+    {% endfor %}
+    vextracti32x4   xmm20, zmm{{m}}, 1
+    {% for n in range(0, 4) %}
+    vpextrd     ebx, xmm20, {{n}}
+    mov         dword ptr [r10], ebx
+    add         r10, rdx
+    {% endfor %}
+    vextracti32x4   xmm20, zmm{{m}}, 2
+    {% for n in range(0, 4) %}
+    vpextrd     ebx, xmm20, {{n}}
+    mov         dword ptr [r10], ebx
+    add         r10, rdx
+    {% endfor %}
+    vextracti32x4   xmm20, zmm{{m}}, 3
+    {% for n in range(0, 4) %}
+    vpextrd     ebx, xmm20, {{n}}
+    mov         dword ptr [r10], ebx
+    add         r10, rdx
+    {% endfor %}
+    add     r8, rsi
+    {% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}store_strides_f32_row_contig:
+    // C is row-major in memory: each row's 16 f32 are contiguous; one
+    // 64-byte vmovups per row.
+    {% for m in range(0, 16) %}
+    vmovups     [r8], zmm{{m}}
+    add         r8, rsi
+    {% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}return:
+    tilerelease
+    add         rsp, 64
+
+    ldmxcsr     [rsp + 4]
+    add         rsp, 8
+
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop rbx
+
+{% if family == "windows" %}
+    pop rsi
+    pop rdi
+
+    vmovaps xmm15, [rsp+16*9]
+    vmovaps xmm14, [rsp+16*8]
+    vmovaps xmm13, [rsp+16*7]
+    vmovaps xmm12, [rsp+16*6]
+    vmovaps xmm11, [rsp+16*5]
+    vmovaps xmm10, [rsp+16*4]
+    vmovaps xmm9, [rsp+16*3]
+    vmovaps xmm8, [rsp+16*2]
+    vmovaps xmm7, [rsp+16*1]
+    vmovaps xmm6, [rsp]
+{% endif %}
+
+    mov rsp, rbp
+    pop rbp
+    ret
+
+// ---- Read-only data (RIP-relative) ---------------------------------------
+
+.p2align 6
+{{L}}lane_offsets_64:
+    .int  0,  64, 128, 192, 256, 320, 384, 448
+    .int  512, 576, 640, 704, 768, 832, 896, 960
+
+.p2align 6
+{{L}}lane_indices:
+    .int  0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15
+
+{% if msvc %}
+avx512amx_mmm_f32_16x16_{{suffix}} endp
+_text ends
+end
+{% else %}
+.cfi_endproc
+{% endif %}

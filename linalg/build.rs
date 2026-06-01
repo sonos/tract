@@ -86,6 +86,21 @@ fn assembler_supports_amx_int8() -> bool {
         .is_ok()
 }
 
+// Probe whether the target assembler can assemble AMX bf16 instructions
+// (`tdpbf16ps`). Both int8 and bf16 AMX mnemonics require binutils >= 2.34,
+// so in practice this probe succeeds whenever `assembler_supports_amx_int8`
+// does. Provided separately so the two cfgs are independently controlled
+// and users on exotic toolchains can opt-out of just the bf16 kernel.
+fn assembler_supports_amx_bf16() -> bool {
+    cc::Build::new()
+        .file("x86_64/avx512amx/dummy_bf16.S")
+        .cargo_metadata(false)
+        .cargo_warnings(false)
+        .warnings(false)
+        .try_compile("tract_amx_bf16_probe")
+        .is_ok()
+}
+
 fn include_sve() -> bool {
     // SVE/SVE2 lives on ARMv9 server/mobile cores (Neoverse V1+/N2+, Cortex-X2+,
     // Graviton 3/4) — Linux aarch64. No Apple silicon has SVE.
@@ -186,6 +201,8 @@ fn main() {
     // Set below only when the x86_64 assembler accepts AMX int8 mnemonics
     // (avoids breaking the build on toolchains predating AMX).
     println!("cargo:rustc-check-cfg=cfg(tract_amx_int8)");
+    // Set below only when the assembler accepts AMX bf16 mnemonics (tdpbf16ps).
+    println!("cargo:rustc-check-cfg=cfg(tract_amx_bf16)");
 
     match arch.as_ref() {
         "x86_64" => {
@@ -197,25 +214,35 @@ fn main() {
             });
             files.extend(preprocess_files("x86_64/avx512", &[], &suffix, false));
 
-            // Pull the AMX kernel template out of the generic fma bulk-compile
-            // so it can be gated behind the assembler probe below. Its
-            // mnemonics (`ldtilecfg`, `tdpbssd`, `tilezero`, `tilerelease`)
-            // require gas >= 2.34; old toolchains (Debian stretch's binutils
-            // 2.28) would otherwise fail the whole build. The kernel template
-            // lives next to its Jinja partials (`dispatcher.j2`, the i32
-            // epilogue includes); only the compile of the rendered .S is
-            // moved.
+            // Pull the AMX kernel templates out of the generic fma bulk-compile
+            // so they can be gated behind assembler probes below. All AMX
+            // mnemonics require gas >= 2.34; old toolchains (Debian stretch's
+            // binutils 2.28) would otherwise fail the whole build.
+            //
+            // Split by accumulator type:
+            //   avx512amx_*_i32_* → tdpbssd   → gated on tract_amx_int8
+            //   avx512amx_*_f32_* → tdpbf16ps → gated on tract_amx_bf16
             let amx_int8_files: Vec<path::PathBuf> = files
                 .iter()
                 .filter(|f| {
                     f.file_name()
                         .and_then(|n| n.to_str())
-                        .map(|n| n.starts_with("avx512amx_"))
+                        .map(|n| n.starts_with("avx512amx_") && n.contains("_i32_"))
                         .unwrap_or(false)
                 })
                 .cloned()
                 .collect();
-            files.retain(|f| !amx_int8_files.contains(f));
+            let amx_bf16_files: Vec<path::PathBuf> = files
+                .iter()
+                .filter(|f| {
+                    f.file_name()
+                        .and_then(|n| n.to_str())
+                        .map(|n| n.starts_with("avx512amx_") && n.contains("_f32_"))
+                        .unwrap_or(false)
+                })
+                .cloned()
+                .collect();
+            files.retain(|f| !amx_int8_files.contains(f) && !amx_bf16_files.contains(f));
 
             if os == "windows" {
                 if use_masm() {
@@ -295,6 +322,21 @@ fn main() {
                     .files(&amx_int8_files)
                     .compile("x86_64_avx512amx");
                 println!("cargo:rustc-cfg=tract_amx_int8");
+            }
+
+            // AMX bf16 kernel for f32 matmul (tdpbf16ps). Same toolchain
+            // requirement and Unix-only constraint as the int8 path. When the
+            // probe fails, the `tract_amx_bf16` cfg stays unset and
+            // `plug_avx512amx_bf16` is compiled out — `mmm_f32` then falls
+            // back to AVX-512 / FMA without any build error.
+            if os != "windows"
+                && !amx_bf16_files.is_empty()
+                && assembler_supports_amx_bf16()
+            {
+                cc::Build::new()
+                    .files(&amx_bf16_files)
+                    .compile("x86_64_avx512amx_bf16");
+                println!("cargo:rustc-cfg=tract_amx_bf16");
             }
         }
         "arm" | "armv7" => {
