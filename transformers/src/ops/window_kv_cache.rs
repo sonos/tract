@@ -19,9 +19,58 @@
 
 use tract_nnef::internal::*;
 use tract_nnef::tract_core::ops::{FrozenOpState, OpStateFreeze};
+use tract_nnef::tract_core::transform::ModelTransform;
 use tract_nnef::tract_ndarray::Ix4;
 
+use crate::ops::dyn_kv_cache::DynKeyValueCache;
 use crate::ops::flash_sdpa::FlashSdpaOp;
+use crate::ops::sdpa::Sdpa;
+
+/// NNEF (de)serialization for the fused `WindowKvSdpa` op.
+pub fn register(registry: &mut Registry) {
+    registry.register_dumper(ser_window_kv_sdpa);
+    registry.register_primitive(
+        "tract_transformers_window_kv_sdpa",
+        &[
+            TypeName::Scalar.tensor().named("q"),
+            TypeName::Scalar.tensor().named("k"),
+            TypeName::Scalar.tensor().named("v"),
+            TypeName::Integer.named("axis"),
+            TypeName::Integer.named("window"),
+            TypeName::Scalar.named("scale"),
+        ],
+        &[("output", TypeName::Scalar.tensor())],
+        de_window_kv_sdpa,
+    );
+}
+
+fn ser_window_kv_sdpa(
+    ast: &mut IntoAst,
+    node: &TypedNode,
+    op: &WindowKvSdpa,
+) -> TractResult<Option<Arc<RValue>>> {
+    let q = ast.mapping[&node.inputs[0]].clone();
+    let k = ast.mapping[&node.inputs[1]].clone();
+    let v = ast.mapping[&node.inputs[2]].clone();
+    let mut attrs = vec![("axis", numeric(op.axis)), ("window", numeric(op.window))];
+    if let Some(scale) = op.scale {
+        attrs.push(("scale", numeric(scale)));
+    }
+    Ok(Some(invocation("tract_transformers_window_kv_sdpa", &[q, k, v], &attrs)))
+}
+
+fn de_window_kv_sdpa(
+    builder: &mut ModelBuilder,
+    invocation: &ResolvedInvocation,
+) -> TractResult<Value> {
+    let q = invocation.named_arg_as(builder, "q")?;
+    let k = invocation.named_arg_as(builder, "k")?;
+    let v = invocation.named_arg_as(builder, "v")?;
+    let axis: usize = invocation.named_arg_as(builder, "axis")?;
+    let window: usize = invocation.named_arg_as(builder, "window")?;
+    let scale: Option<f32> = invocation.get_named_arg_as(builder, "scale")?;
+    builder.wire(WindowKvSdpa { axis, window, scale }, &[q, k, v])
+}
 
 /// Fixed-capacity sliding-window KV cache (ring buffer) along `axis`.
 #[derive(Clone, Debug)]
@@ -212,6 +261,71 @@ impl FrozenOpState for FrozenWindowKvSdpaState {
             k: self.k.clone(),
             v: self.v.clone(),
         })
+    }
+}
+
+/// Rewrite rule: fuse `{DynKeyValueCache(K), DynKeyValueCache(V), Sdpa(Q,K,V)}` into a
+/// `WindowKvSdpa` with the window supplied via the Rewriter context — so an imported
+/// decode model uses a bounded sliding-window cache. The window comes from the model
+/// (the GQA `local_window_size` / config), passed to `WindowKvSdpaTransform`.
+pub fn fuse_window_kv_sdpa_rule(
+    window: &usize,
+    model: &TypedModel,
+    node: &TypedNode,
+    node_name: &str,
+    op: &Sdpa,
+) -> TractResult<Option<TypedModelPatch>> {
+    if node.inputs.len() != 3 {
+        return Ok(None);
+    }
+    let k_node = model.node(node.inputs[1].node);
+    let v_node = model.node(node.inputs[2].node);
+    let (Some(kc), Some(vc)) =
+        (k_node.op_as::<DynKeyValueCache>(), v_node.op_as::<DynKeyValueCache>())
+    else {
+        return Ok(None);
+    };
+    if kc.axis != vc.axis {
+        return Ok(None);
+    }
+    if k_node.outputs[0].successors.len() != 1 || v_node.outputs[0].successors.len() != 1 {
+        return Ok(None);
+    }
+    let scale = op.scale.as_ref().map(|t| t.cast_to_scalar::<f32>()).transpose()?;
+    let q_outlet = node.inputs[0];
+    let k_new = k_node.inputs[0];
+    let v_new = v_node.inputs[0];
+
+    let mut patch = TypedModelPatch::default();
+    let taps = patch.taps(model, &[q_outlet, k_new, v_new])?;
+    let fused = patch.wire_node(
+        format!("{node_name}.window_kv_sdpa"),
+        WindowKvSdpa { axis: kc.axis, window: *window, scale },
+        &taps,
+    )?;
+    patch.shunt_outside(model, node.id.into(), fused[0])?;
+    Ok(Some(patch))
+}
+
+/// Strip the GQA broadcast chain, then fuse `cache -> Sdpa` into `WindowKvSdpa` with
+/// `window` — making an imported decode model use the bounded sliding-window cache.
+#[derive(Debug, Clone)]
+pub struct WindowKvSdpaTransform {
+    pub window: usize,
+}
+
+impl ModelTransform for WindowKvSdpaTransform {
+    fn name(&self) -> StaticName {
+        "fuse_window_kv_sdpa".into()
+    }
+    fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
+        Rewriter::default()
+            .with_rule_for("fuse-kv-broadcast", crate::ops::sdpa::fuse_kv_cache_broadcast_rule)
+            .rewrite(&(), model)?;
+        Rewriter::default()
+            .with_rule_for("fuse-window-kv-sdpa", fuse_window_kv_sdpa_rule)
+            .rewrite(&self.window, model)?;
+        model.compact()
     }
 }
 
@@ -412,6 +526,131 @@ mod tests {
                 .close_enough(&Tensor::from(o_ref), Approximation::Approximate)
                 .with_context(|| format!("window decode != last-{w} at step {t}"))?;
         }
+        Ok(())
+    }
+
+    // Auto-wiring: a {DynKeyValueCache(K), DynKeyValueCache(V), Sdpa} decode subgraph is
+    // fused to WindowKvSdpa{window} by the transform, and the rewritten model then does
+    // correct windowed decode (vs the un-windowed full attention it had before).
+    #[test]
+    fn transform_fuses_cache_sdpa_to_windowed_decode() -> TractResult<()> {
+        use crate::ops::dyn_kv_cache::DynKeyValueCache;
+        use crate::ops::sdpa::Sdpa;
+        use tract_nnef::tract_core::ops::array::TypedConcat;
+        let (b, h, d, w) = (1usize, 2usize, 16usize, 5usize);
+        let scale = 1.0 / (d as f32).sqrt();
+        let mut model = TypedModel::default();
+        let s = model.sym("S");
+        let p = model.sym("P");
+        let dim = |x: usize| x.to_dim();
+        let newf: TVec<TDim> = tvec![dim(b), dim(h), s.clone().into(), dim(d)];
+        let qf: TVec<TDim> = tvec![dim(b), dim(h), s.into(), dim(d)];
+        let pastf: TVec<TDim> = tvec![dim(b), dim(h), p.into(), dim(d)];
+        let q = model.add_source("q", f32::fact(&qf))?;
+        let knew = model.add_source("k", f32::fact(&newf))?;
+        let vnew = model.add_source("v", f32::fact(&newf))?;
+        let mkc = |nm: &str| DynKeyValueCache {
+            name: nm.to_string(),
+            axis: 2,
+            past_sequence_fact: f32::fact(&pastf),
+            input_sequence_fact: f32::fact(&newf),
+        };
+        let kc = model.wire_node("kc", mkc("kc"), &[knew])?;
+        let vc = model.wire_node("vc", mkc("vc"), &[vnew])?;
+        let o = model.wire_node(
+            "sdpa",
+            Sdpa {
+                scale: None,
+                datum_type: f32::datum_type(),
+                acc_datum_type: f32::datum_type(),
+                is_causal: true,
+            },
+            &[q, kc[0], vc[0]],
+        )?;
+        model.select_output_outlets(&o)?;
+
+        WindowKvSdpaTransform { window: w }.transform(&mut model)?;
+
+        assert!(model.nodes().iter().any(|n| n.op_is::<WindowKvSdpa>()), "fused to WindowKvSdpa");
+        assert!(!model.nodes().iter().any(|n| n.op_is::<DynKeyValueCache>()), "caches removed");
+        assert!(!model.nodes().iter().any(|n| n.op_is::<Sdpa>()), "sdpa removed");
+
+        let mut rt = model.into_runnable()?.spawn()?;
+        let mk = |base: f32| -> Tensor {
+            let data: Vec<f32> = (0..b * h * d).map(|i| base + (i as f32 * 0.013).sin()).collect();
+            Tensor::from_shape(&[b, h, 1, d], &data).unwrap()
+        };
+        let grow = |acc: Option<Tensor>, x: Tensor| -> TractResult<Tensor> {
+            Ok(match acc {
+                None => x,
+                Some(a) => {
+                    TypedConcat { axis: 2 }.eval(tvec![a.into(), x.into()])?.remove(0).into_tensor()
+                }
+            })
+        };
+        let (mut kf, mut vf): (Option<Tensor>, Option<Tensor>) = (None, None);
+        for t in 0..15 {
+            let qi = mk(9.0 + t as f32 * 0.1);
+            let ki = mk(1.0 + t as f32 * 0.07);
+            let vi = mk(5.0 - t as f32 * 0.05);
+            let o_model = rt
+                .run(tvec![qi.clone().into(), ki.clone().into(), vi.clone().into()])?
+                .remove(0)
+                .into_tensor();
+            kf = Some(grow(kf.take(), ki)?);
+            vf = Some(grow(vf.take(), vi)?);
+            let fk = kf.as_ref().unwrap();
+            let sk = fk.shape()[2];
+            let len = sk.min(w);
+            let kslice = fk.slice(2, sk - len, sk)?;
+            let vslice = vf.as_ref().unwrap().slice(2, sk - len, sk)?;
+            let qv = qi.to_plain_array_view::<f32>()?.into_dimensionality()?;
+            let o_ref = attention(
+                qv,
+                kslice.to_plain_array_view::<f32>()?.into_dimensionality()?,
+                vslice.to_plain_array_view::<f32>()?.into_dimensionality()?,
+                scale,
+            );
+            o_model
+                .close_enough(&Tensor::from(o_ref), Approximation::Approximate)
+                .with_context(|| format!("rewritten windowed decode != last-{w} at step {t}"))?;
+        }
+        Ok(())
+    }
+
+    // NNEF ser/de round-trip: WindowKvSdpa survives write_to_tar -> model_for_read.
+    #[test]
+    fn window_kv_sdpa_nnef_round_trip() -> TractResult<()> {
+        use crate::WithTractTransformers;
+        let (b, h, d) = (1usize, 2usize, 16usize);
+        let mut model = TypedModel::default();
+        let s = model.sym("S");
+        let dim = |x: usize| x.to_dim();
+        let f: TVec<TDim> = tvec![dim(b), dim(h), s.into(), dim(d)];
+        let q = model.add_source("q", f32::fact(&f))?;
+        let k = model.add_source("k", f32::fact(&f))?;
+        let v = model.add_source("v", f32::fact(&f))?;
+        let o = model.wire_node(
+            "win",
+            WindowKvSdpa { axis: 2, window: 4096, scale: Some(0.125) },
+            &[q, k, v],
+        )?;
+        model.select_output_outlets(&o)?;
+
+        let nnef = tract_nnef::nnef().with_tract_transformers();
+        let mut buffer = vec![];
+        nnef.write_to_tar(&model, &mut buffer)?;
+        let reloaded = nnef.model_for_read(&mut &*buffer)?;
+
+        let n = reloaded
+            .nodes()
+            .iter()
+            .find(|n| n.op_is::<WindowKvSdpa>())
+            .context("WindowKvSdpa survived the round-trip")?;
+        let op = n.op_as::<WindowKvSdpa>().unwrap();
+        assert_eq!(op.axis, 2);
+        assert_eq!(op.window, 4096);
+        assert_eq!(op.scale, Some(0.125));
         Ok(())
     }
 }
