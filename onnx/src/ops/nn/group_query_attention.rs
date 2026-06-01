@@ -23,11 +23,8 @@ pub fn group_query_attention(
         "GroupQueryAttention: internal rotary (do_rotary) is unsupported; apply RotaryEmbedding separately"
     );
     // Sliding-window attention: a query attends only to the last `window` keys (in
-    // addition to causal). <0 means no window (full causal). Applied as a banded mask.
-    let window = match node.get_attr_opt::<i64>("local_window_size")?.unwrap_or(-1) {
-        w if w < 0 => 0usize,
-        w => w as usize,
-    };
+    // addition to causal). <0 / absent means no window (full causal). Applied as a band.
+    let window = node.get_attr_opt::<i64>("local_window_size")?.unwrap_or(0).max(0) as usize;
     ensure!(
         node.get_attr_opt::<f32>("softcap")?.unwrap_or(0.0) == 0.0,
         "GroupQueryAttention: softcap is unsupported"
