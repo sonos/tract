@@ -23,6 +23,51 @@ use crate::ops::dyn_kv_cache::DynKeyValueCache;
 use crate::ops::flash_sdpa::FlashSdpaOp;
 use crate::ops::sdpa::Sdpa;
 
+// ── NNEF ser/de ───────────────────────────────────────────────────────────────────────────────
+
+pub fn register(registry: &mut Registry) {
+    registry.register_dumper(ser_quantized_kv_sdpa);
+    registry.register_primitive(
+        "tract_transformers_quantized_kv_sdpa",
+        &[
+            TypeName::Scalar.tensor().named("q"),
+            TypeName::Scalar.tensor().named("k"),
+            TypeName::Scalar.tensor().named("v"),
+            TypeName::Integer.named("axis"),
+            TypeName::Scalar.named("scale"),
+        ],
+        &[("output", TypeName::Scalar.tensor())],
+        de_quantized_kv_sdpa,
+    );
+}
+
+fn ser_quantized_kv_sdpa(
+    ast: &mut IntoAst,
+    node: &TypedNode,
+    op: &QuantizedKvSdpa,
+) -> TractResult<Option<Arc<RValue>>> {
+    let q = ast.mapping[&node.inputs[0]].clone();
+    let k = ast.mapping[&node.inputs[1]].clone();
+    let v = ast.mapping[&node.inputs[2]].clone();
+    let mut attrs = vec![("axis", numeric(op.axis))];
+    if let Some(scale) = op.scale {
+        attrs.push(("scale", numeric(scale)));
+    }
+    Ok(Some(invocation("tract_transformers_quantized_kv_sdpa", &[q, k, v], &attrs)))
+}
+
+fn de_quantized_kv_sdpa(
+    builder: &mut ModelBuilder,
+    invocation: &ResolvedInvocation,
+) -> TractResult<Value> {
+    let q = invocation.named_arg_as(builder, "q")?;
+    let k = invocation.named_arg_as(builder, "k")?;
+    let v = invocation.named_arg_as(builder, "v")?;
+    let axis: usize = invocation.named_arg_as(builder, "axis")?;
+    let scale: Option<f32> = invocation.get_named_arg_as(builder, "scale")?;
+    builder.wire(QuantizedKvSdpa { axis, scale }, &[q, k, v])
+}
+
 /// Affine quantize→dequantize a `[rows, cols]` matrix at `bits` bits, returning the
 /// reconstructed (lossy) values. `by_row = true` gives each ROW its own scale (per-token,
 /// for Values); `by_row = false` gives each COLUMN its own scale (per-channel, for Keys).
@@ -656,5 +701,37 @@ mod tests {
             let int8_mb = ((kc.memory_bytes() + vc.memory_bytes()) * heads) as f32 / 1e6;
             println!("  {t:>6}  {f32_mb:>9.2}  {int8_mb:>9.2}  {:>6.2}x", f32_mb / int8_mb);
         }
+    }
+
+    // NNEF round-trip: QuantizedKvSdpa survives write_to_tar -> model_for_read.
+    #[test]
+    fn quantized_kv_sdpa_nnef_round_trip() -> TractResult<()> {
+        use crate::WithTractTransformers;
+        let (b, h, d) = (1usize, 2usize, 16usize);
+        let mut model = TypedModel::default();
+        let s = model.sym("S");
+        let dim = |x: usize| x.to_dim();
+        let f: TVec<TDim> = tvec![dim(b), dim(h), s.into(), dim(d)];
+        let q = model.add_source("q", f32::fact(&f))?;
+        let k = model.add_source("k", f32::fact(&f))?;
+        let v = model.add_source("v", f32::fact(&f))?;
+        let o =
+            model.wire_node("qkv", QuantizedKvSdpa { axis: 2, scale: Some(0.125) }, &[q, k, v])?;
+        model.select_output_outlets(&o)?;
+
+        let nnef = tract_nnef::nnef().with_tract_transformers();
+        let mut buffer = vec![];
+        nnef.write_to_tar(&model, &mut buffer)?;
+        let reloaded = nnef.model_for_read(&mut &*buffer)?;
+
+        let n = reloaded
+            .nodes()
+            .iter()
+            .find(|n| n.op_is::<QuantizedKvSdpa>())
+            .context("QuantizedKvSdpa not found after round-trip")?;
+        let op = n.op_as::<QuantizedKvSdpa>().unwrap();
+        assert_eq!(op.axis, 2);
+        assert_eq!(op.scale, Some(0.125));
+        Ok(())
     }
 }

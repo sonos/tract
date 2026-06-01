@@ -22,6 +22,7 @@ pub fn register(registry: &mut Registry) {
     ops::sdpa::register(registry);
     ops::dyn_kv_cache::register(registry);
     ops::window_kv_cache::register(registry);
+    ops::kv_quant::register(registry);
 }
 
 pub trait WithTractTransformers {
