@@ -23,6 +23,59 @@ use crate::frame::mmm::{
     EagerPackedInput, MMMInputFormat, MMMInputValue, PackedExoticFact, PackedMatrixStorage,
 };
 
+/// Per-cache geometry from CPUID leaf 4 deterministic cache parameters
+/// (the mechanism oneDNN's `platform::get_per_core_cache_size` ultimately
+/// reads). Used here for runtime adaptive choices that depend on the
+/// hardware -- e.g. picking `tileloadd` vs `tileloaddt1` based on whether
+/// the matmul working set fits in L1d (oneDNN's `try_load_nt` heuristic).
+#[derive(Clone, Copy, Debug, Default)]
+pub struct CacheSizes {
+    pub l1d_bytes: usize,
+    pub l2_bytes: usize,
+    pub l3_bytes: usize,
+}
+
+/// Probe per-core L1d/L2/L3 cache sizes via CPUID leaf 4 deterministic
+/// cache parameters. Iterates sub-leaves 0, 1, 2, ... until cache type = 0
+/// (no more caches). Each cache is described by:
+///   EAX[4:0]  = cache type (0=null, 1=data, 2=instr, 3=unified)
+///   EAX[7:5]  = cache level (1, 2, 3, ...)
+///   EBX[11:0] = ways - 1
+///   EBX[21:12]= partitions - 1
+///   EBX[31:22]= line_size_bytes - 1
+///   ECX       = sets - 1
+///   cache_bytes = (ways+1) * (partitions+1) * (line_size+1) * (sets+1)
+/// Returns zeros for unknown levels (e.g. on a CPU without an L3, or if
+/// the CPUID interface is unavailable). Memoised; called at most once.
+pub fn cache_sizes() -> CacheSizes {
+    static CACHE: OnceLock<CacheSizes> = OnceLock::new();
+    *CACHE.get_or_init(|| {
+        let mut out = CacheSizes::default();
+        for sub in 0..16 {
+            let r = std::arch::x86_64::__cpuid_count(4, sub);
+            let cache_type = r.eax & 0x1F;
+            if cache_type == 0 {
+                break;
+            }
+            let level = (r.eax >> 5) & 0x7;
+            let ways = ((r.ebx >> 22) & 0x3FF) + 1;
+            let partitions = ((r.ebx >> 12) & 0x3FF) + 1;
+            let line_size = (r.ebx & 0xFFF) + 1;
+            let sets = r.ecx + 1;
+            let bytes = (ways as usize) * (partitions as usize)
+                * (line_size as usize) * (sets as usize);
+            // type=1 (data), type=3 (unified) for L1d / L2 / L3
+            match (level, cache_type) {
+                (1, 1) => out.l1d_bytes = bytes,
+                (2, 1 | 3) => out.l2_bytes = bytes,
+                (3, 1 | 3) => out.l3_bytes = bytes,
+                _ => {}
+            }
+        }
+        out
+    })
+}
+
 /// Detect AMX-INT8 + AMX-TILE via CPUID leaf 7 sub-leaf 0 (EDX bits 24-25).
 /// Stable-Rust friendly: `is_x86_feature_detected!("amx-int8")` is gated on
 /// the nightly `x86_amx_intrinsics` feature, so we read CPUID by hand.

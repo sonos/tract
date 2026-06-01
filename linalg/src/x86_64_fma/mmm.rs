@@ -190,7 +190,14 @@ pub fn plug_avx512amx_int8(ops: &mut Ops) {
             avx512amx_mmm_i32_8x8.mmm()
         }
     });
-    log::info!("qmmm_i32: x86_64/avx512amx_int8 (16x16 + 8x8 adaptive) activated");
+    let c = super::amx::cache_sizes();
+    log::info!(
+        "qmmm_i32: x86_64/avx512amx_int8 (16x16 + 8x8 adaptive) activated; \
+         L1d={} KB, L2={} KB, L3={} KB",
+        c.l1d_bytes / 1024,
+        c.l2_bytes / 1024,
+        c.l3_bytes / 1024,
+    );
 }
 
 pub fn plug_avx2(ops: &mut Ops) {
