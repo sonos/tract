@@ -64,8 +64,11 @@ fn benches(c: &mut Criterion) {
                     |b, &(m, k, n)| run_kernel(b, &*avx512vnni_mmm_i32_8x8.mmm(), m, k, n),
                 );
             }
-            g.bench_with_input(BenchmarkId::new("avx512amx", &id), &(m, k, n), |b, &(m, k, n)| {
+            g.bench_with_input(BenchmarkId::new("avx512amx_8x8", &id), &(m, k, n), |b, &(m, k, n)| {
                 run_kernel(b, &*avx512amx_mmm_i32_8x8.mmm(), m, k, n)
+            });
+            g.bench_with_input(BenchmarkId::new("avx512amx_16x16", &id), &(m, k, n), |b, &(m, k, n)| {
+                run_kernel(b, &*avx512amx_mmm_i32_16x16.mmm(), m, k, n)
             });
             g.finish();
         }
