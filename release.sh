@@ -13,8 +13,14 @@ VERSION=$2
 
 if [ -z "$VERSION" ]
 then
-    echo "Usage: $0 <crate> <version>" 
+    echo "Usage: $0 <crate> <version>"
     echo crates order is: $ALL_CRATES_PATH
+    exit 1
+fi
+
+if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$'
+then
+    echo "Refusing version '$VERSION': must look like 0.23.0 or 0.23.0-pre (no leading 'v')." >&2
     exit 1
 fi
 
