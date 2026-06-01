@@ -18,6 +18,10 @@
 //! that lives on the attention op, not here.
 
 use tract_nnef::internal::*;
+use tract_nnef::tract_core::ops::{FrozenOpState, OpStateFreeze};
+use tract_nnef::tract_ndarray::Ix4;
+
+use crate::ops::flash_sdpa::FlashSdpaOp;
 
 /// Fixed-capacity sliding-window KV cache (ring buffer) along `axis`.
 #[derive(Clone, Debug)]
@@ -96,6 +100,118 @@ impl WindowKvCache {
         let mut v = buf.to_plain_array_view::<T>()?;
         v.slice_axis_inplace(tract_ndarray::Axis(self.axis), (0..self.len).into());
         Ok(v)
+    }
+}
+
+/// Fused sliding-window KV-cache + attention (decode). Owns K/V ring buffers of size
+/// `window`; each step appends `K_new`/`V_new` and attends `Q` over the (≤window) cache.
+/// The bounded cache *is* the sliding window — attending over it equals windowed
+/// attention — so decode runs at constant memory + per-step cost, losslessly. Inputs
+/// `[Q, K_new, V_new]`, each `[B, H, S, D]`; output has Q's shape.
+#[derive(Clone, Debug, PartialEq)]
+pub struct WindowKvSdpa {
+    pub axis: usize,
+    pub window: usize,
+    pub scale: Option<f32>,
+}
+impl Eq for WindowKvSdpa {}
+
+impl Op for WindowKvSdpa {
+    fn name(&self) -> StaticName {
+        "WindowKvSdpa".into()
+    }
+    fn info(&self) -> TractResult<Vec<String>> {
+        Ok(vec![format!("axis={}, window={}, scale={:?}", self.axis, self.window, self.scale)])
+    }
+    op_as_typed_op!();
+}
+
+impl EvalOp for WindowKvSdpa {
+    fn is_stateless(&self) -> bool {
+        false
+    }
+    fn state(
+        &self,
+        _session: &TurnState,
+        _node_id: usize,
+    ) -> TractResult<Option<Box<dyn OpState>>> {
+        Ok(Some(Box::new(WindowKvSdpaState {
+            window: self.window,
+            scale: self.scale,
+            k: WindowKvCache::new(self.axis, self.window),
+            v: WindowKvCache::new(self.axis, self.window),
+        })))
+    }
+}
+
+impl TypedOp for WindowKvSdpa {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        ensure!(inputs.len() == 3, "WindowKvSdpa expects [Q, K_new, V_new]");
+        Ok(tvec!(inputs[0].without_value()))
+    }
+    as_op!();
+}
+
+#[derive(Clone, Debug)]
+pub struct WindowKvSdpaState {
+    window: usize,
+    scale: Option<f32>,
+    k: WindowKvCache,
+    v: WindowKvCache,
+}
+
+impl OpState for WindowKvSdpaState {
+    fn eval(
+        &mut self,
+        _state: &mut TurnState,
+        _op: &dyn Op,
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
+        ensure!(inputs.len() == 3, "WindowKvSdpa expects [Q, K_new, V_new]");
+        let input_dt = inputs[0].datum_type();
+        let k_new = inputs[1].cast_to::<f32>()?;
+        let v_new = inputs[2].cast_to::<f32>()?;
+        self.k.push(k_new.as_ref())?;
+        self.v.push(v_new.as_ref())?;
+
+        let q = inputs[0].cast_to::<f32>()?;
+        let qv = q.to_plain_array_view::<f32>()?.into_dimensionality::<Ix4>()?;
+        let kview = self.k.valid_view::<f32>()?.into_dimensionality::<Ix4>()?;
+        let vview = self.v.valid_view::<f32>()?.into_dimensionality::<Ix4>()?;
+
+        // The ring buffer already bounds which keys are visible (the last `window`), so
+        // attention is "attend all" — every cached key is within the current query's window.
+        let flash = FlashSdpaOp { causal: false, scale: self.scale };
+        let o = flash.flash_attention_gqa(qv, kview, vview, None);
+        Ok(tvec!(o.into_tensor().cast_to_dt(input_dt)?.into_owned().into_tvalue()))
+    }
+}
+
+#[derive(Clone, Debug)]
+struct FrozenWindowKvSdpaState {
+    window: usize,
+    scale: Option<f32>,
+    k: WindowKvCache,
+    v: WindowKvCache,
+}
+impl OpStateFreeze for WindowKvSdpaState {
+    fn freeze(&self) -> Box<dyn FrozenOpState> {
+        Box::new(FrozenWindowKvSdpaState {
+            window: self.window,
+            scale: self.scale,
+            k: self.k.clone(),
+            v: self.v.clone(),
+        })
+    }
+}
+impl FrozenOpState for FrozenWindowKvSdpaState {
+    fn unfreeze(&self) -> Box<dyn OpState> {
+        Box::new(WindowKvSdpaState {
+            window: self.window,
+            scale: self.scale,
+            k: self.k.clone(),
+            v: self.v.clone(),
+        })
     }
 }
 
@@ -233,6 +349,68 @@ mod tests {
             let b = Tensor::from(o_ref);
             a.close_enough(&b, Approximation::Approximate)
                 .with_context(|| format!("windowed != last-W at step {t}"))?;
+        }
+        Ok(())
+    }
+
+    // The fused decode op, run through tract's engine over a long sequence with a small
+    // window, equals full attention over the last-W each step — i.e. correct sliding-window
+    // decode, with the cache bounded to `window` regardless of how long we decode.
+    #[test]
+    fn window_sdpa_decode_matches_last_w_in_model() -> TractResult<()> {
+        use tract_nnef::tract_core::ops::array::TypedConcat;
+        let (b, h, d, w) = (1usize, 2usize, 16usize, 5usize);
+        let scale = 1.0 / (d as f32).sqrt();
+        let mut model = TypedModel::default();
+        let s = model.sym("S");
+        let dim = |x: usize| x.to_dim();
+        let f: TVec<TDim> = tvec![dim(b), dim(h), s.into(), dim(d)];
+        let q = model.add_source("q", f32::fact(&f))?;
+        let k = model.add_source("k", f32::fact(&f))?;
+        let v = model.add_source("v", f32::fact(&f))?;
+        let o =
+            model.wire_node("win", WindowKvSdpa { axis: 2, window: w, scale: None }, &[q, k, v])?;
+        model.select_output_outlets(&o)?;
+        let mut rt = model.into_runnable()?.spawn()?;
+
+        let mk = |base: f32| -> Tensor {
+            let data: Vec<f32> = (0..b * h * d).map(|i| base + (i as f32 * 0.013).sin()).collect();
+            Tensor::from_shape(&[b, h, 1, d], &data).unwrap()
+        };
+        let grow = |acc: Option<Tensor>, x: Tensor| -> TractResult<Tensor> {
+            Ok(match acc {
+                None => x,
+                Some(a) => {
+                    TypedConcat { axis: 2 }.eval(tvec![a.into(), x.into()])?.remove(0).into_tensor()
+                }
+            })
+        };
+        let (mut kf, mut vf): (Option<Tensor>, Option<Tensor>) = (None, None);
+        for t in 0..15 {
+            let qi = mk(9.0 + t as f32 * 0.1);
+            let ki = mk(1.0 + t as f32 * 0.07);
+            let vi = mk(5.0 - t as f32 * 0.05);
+            let o_model = rt
+                .run(tvec![qi.clone().into(), ki.clone().into(), vi.clone().into()])?
+                .remove(0)
+                .into_tensor();
+            kf = Some(grow(kf.take(), ki)?);
+            vf = Some(grow(vf.take(), vi)?);
+            let fk = kf.as_ref().unwrap();
+            let sk = fk.shape()[2];
+            let len = sk.min(w);
+            let kslice = fk.slice(2, sk - len, sk)?;
+            let vslice = vf.as_ref().unwrap().slice(2, sk - len, sk)?;
+            let qv = qi.to_plain_array_view::<f32>()?.into_dimensionality()?;
+            let o_ref = attention(
+                qv,
+                kslice.to_plain_array_view::<f32>()?.into_dimensionality()?,
+                vslice.to_plain_array_view::<f32>()?.into_dimensionality()?,
+                scale,
+            );
+            o_model
+                .close_enough(&Tensor::from(o_ref), Approximation::Approximate)
+                .with_context(|| format!("window decode != last-{w} at step {t}"))?;
         }
         Ok(())
     }
