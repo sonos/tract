@@ -1,4 +1,24 @@
-# 0.23.0 — soon
+
+# 0.22.x → 0.23 in a nutshell
+
+- **`tract` facade is now the recommended public API.** Renamed from `tract-rs`; sole crate under semver, one curated surface (`Model`/`Runnable`/`State`/`Tensor`/`TDim` + `nnef()`/`onnx()`/`runtime_for_name`). `ndarray` removed from public types in favour of opt-in `impl_ndarray_interop!()`. Most other API renames in this release fall out of this consolidation (`Value`→`Tensor`, `concretize_symbols`→`set_symbols`, `default` runtime → `cpu`, …).
+- **GPU is first-class.** `cuda` + `metal` `Runtime` impls with f16 conv + cuDNN, CUDA 13 (CUDA 12 dropped), automatic per-node CPU fallback when GPU rejects a shape; virtual `gpu` / `gpu-or-cpu` names for portable downstream code.
+- **Supply-chain hardening.** ` Cargo.lock` tracked; CDX + SPDX SBOMs on release binaries plus PEP 770 SBOMs in wheels (`cargo-auditable` + GitHub attestations);
+
+## Migrating from 0.22.x to 0.23
+
+For normal usage we recommend adopting the **`tract` facade crate** (the public API at `api/rs`) instead of wiring `tract-core`, `tract-nnef`, `tract-onnx`, `tract-pulse`, `tract-cuda`, `tract-metal`, etc. directly. The facade exposes one stable surface — `nnef()`, `onnx()`, `runtime_for_name("cpu" | "gpu" | "gpu-or-cpu" | "cuda" | "metal" | ...)`, plus `Model`, `Runnable`, `State`, `Tensor`, `TDim`, and a `SetSymbols` transform builder — with all the backends curated behind it. `impl_ndarray_interop!()` (0.23.0-dev.5) keeps `ndarray` interop opt-in without leaking an `ndarray` version into the public API. Downstream code that pinned `tract-core` + `tract-onnx` directly can usually drop those deps in favour of `tract = "0.23"` and `use tract::prelude::*;`. Examples are now organised around this facade — see `examples/onnx-mobilenet-v2`, `examples/nnef-mobilenet-v2`, and `examples/causal_llm`.
+
+# 0.23.0 - 2026-05-1
+
+This section lists changes since 0.23.0-dev.5 only; the dev.2…dev.5 sections below cover the rest of the 0.22.x→0.23.0 delta.
+
+### API — breaking
+
+- **`concretize_symbols` / `substitute_symbols` renamed to `set_symbols`.** Affects `TypedModel::set_symbols`, the `SetSymbols` transform (was `ConcretizeSymbols`), and the `--transform set_symbols=...` CLI form. No deprecation aliases — call sites must be updated.
+- **`default` runtime renamed to `cpu`.** `runtime_for_name("default")` still resolves to the CPU runtime (ad-hoc alias), but `Runtime::name()` returns `"cpu"`. JSON loading configs and `--loading-config-path` payloads that pin `"default"` keep working.
+- **`nnef().with_tract_core()` removed.** The `tract_core` extension is opt-out since 0.23.0-pre — call `disable_tract_core()` instead, or just drop the `with_tract_core()?` line.
+
 
 ### CPU / linalg
 
@@ -14,6 +34,7 @@
 - **General.** Same-shape fast path in `BinMiniOp::generic_eval`; `rbytes=96/128` fast paths for mn-major packing.
 - **EinSum** Fold contiguous same-role axes in standard codegen.
 - **BLAS / SGemm integration dropped.**
+- **Cache-adaptive 2D-blocking** for the single-thread MMM tile walk; per-OS L2-size detection on Linux.
 
 ### ONNX
 
@@ -21,6 +42,7 @@
 - `Reshape` with 0-dims and rank change fixed (issue #2104).
 -  Support for GroupQueryAttention, MultiHeadAttention, MatMulNBits (4-bit), SkipLayerNormalization, SimplifiedLayerNormalization, BiasGelu / FastGelu /
   QuickGelu, LpNormalization, MeanVarianceNormalization, GroupNormalization, RotaryEmbedding, opset-24 Attention, Swish, Mish, Gelu, RMSNormalization.
+- LayerNorm: fixed output dtype mismatch with F16 inputs.
 
 ### NNEF
 
@@ -34,12 +56,16 @@
 - **`WindowOnAxis` op**: windowed gather over the streaming axis with configurable pad value.
 - **`AxisOp::Reshape` pulsifier**: auto-inserts alignment `Delay` on streaming-axis size change.
 - Stream-axis LCM merge + slope-based per-pulse sizing for `Range`.
+- **Scan body state reused across iterations** instead of reallocated per step.
+- **`scaled_masked_softmax`** gains a `bool`-mask variant and a `post_softmax_mask` variant on both cuda and metal.
+- **`GpuPulsePad`**: stride-aware initial copy fixes 26% drift on pulsified encoders where a fused move axis fed a non-contiguous view to the pad.
 
 ### Runtime / plan
 
 - Per-node shape resolve skipped once all symbols are bound.
 - `TDim::Sym` fast-path in shape resolve; lock-free `guess_scenario` on empty scope.
 - `PropagateRoi` iterates to fixed point and simplifies.
+- **Virtual runtime names `gpu` and `gpu-or-cpu`.** `runtime_for_name("gpu")` returns the first available GPU backend (cuda or metal) or errors; `"gpu-or-cpu"` falls back to CPU if none is present.
 
 ### Scan
 
@@ -58,6 +84,16 @@
 - `doc/op.md`: working with a `Tensor`'s data.
 - `doc/cli-recipe.md`: `--audit-json`, `--save-outputs`, timing pitfalls, environment-variable table.
 - `README.md`: refreshed — current runtimes, modern examples table, Python bindings section, torch-to-nnef pointer.
+
+### Supply chain / build / CI
+
+- **`Cargo.lock` tracked.** All workspace + binary builds are now reproducible against the same dependency snapshot.
+- **SBOMs on release binaries (CycloneDX + SPDX).** `tract-cli` release binaries are built with `cargo-auditable` (Rust dep tree embedded in the `.dep-v0` section) and shipped alongside CDX + SPDX SBOMs generated by `syft`. Both SBOMs are signed via GitHub attestations (`actions/attest-sbom` + `actions/attest-build-provenance`).
+- **PEP 770 SBOMs in Python wheels.** Wheels are built with `cargo-auditable` and have `sbom.cdx.json` + `sbom.spdx.json` injected into `.dist-info/sboms/` per PEP 770.
+- **Release builds pinned to current stable rustc** via `dtolnay/rust-toolchain@stable`.
+- **`cargo-deny` lints wired up for `tract-cli`.**
+- **zizmor SARIF upload** to GitHub's security tab.
+
 
 # 0.23.0-dev.5 - 2026-04-22
 
