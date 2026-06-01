@@ -1,0 +1,920 @@
+// vim: set syntax=asm :
+//
+// Intel AMX int8 GEMM kernel, 16 M-rows x 16 N-cols i32 accumulator output.
+//
+// One `tdpbssd tmm0, tmm1, tmm2` instruction performs:
+//   tmm0[m, n] += sum_{k=0..63} A[m, k] * B[k, n]
+// for m=0..15, n=0..15: 16 * 16 * 64 = 16384 mul-adds per single instruction.
+// That's 4x the work-per-instruction of the 8x8 sibling kernel, hitting the
+// full AMX i8 tile geometry (max colsb=64, max rows=16, max bytes=1024).
+//
+// Tile geometry (palette 1):
+//   tmm0 = C accumulator: 16 rows x 64 colsb = 16 M-rows x 16 N-cols of i32
+//   tmm1 = A tile:        16 rows x 64 colsb = 16 M-rows x 64 K-bytes per iter
+//   tmm2 = B tile:        16 rows x 64 colsb = 16 K-pair-rows x 16 N-cols * 4 K
+//
+// `tdpbssd` is signed-signed, so no +128 trick is needed; the i32 accumulators
+// are bit-identical to the AVX2 / VNNI / 8x8-AMX reference paths.
+//
+// A is packed via PackedAmxA(16): per panel of 16 M-rows, row-major within the
+// panel, K-bytes contiguous along the row, K_padded = ceil(K/64)*64.
+// B reuses PackedI8K4(16): per K=4 block, 16 N-cols * 4 K-bytes = 64 bytes;
+// 16 such K-blocks per tmm2 tile = 1024 bytes = one tileloadd.
+//
+// REGISTER LAYOUT
+//   zmm0..zmm15 = accumulators, ROW-MAJOR: zmm{m} holds the 16 i32 lanes
+//                 [C[m, 0], C[m, 1], ..., C[m, 15]] for row m.
+// This matches the row-major i32 layout that `tilestored` writes directly,
+// so the hot path (Clear -> AddMatMul -> Store) needs no transpose.
+
+{% if msvc %}
+
+_text segment
+avx512amx_mmm_i32_16x16_{{suffix}} proc
+
+{% else %}
+
+.intel_syntax noprefix
+.text
+.p2align 5
+.globl {{G}}avx512amx_mmm_i32_16x16_{{suffix}}
+{{G}}avx512amx_mmm_i32_16x16_{{suffix}}:
+.cfi_startproc
+
+{% endif %}
+
+    push        rbp
+    mov         rbp, rsp
+
+{% if family == "windows" %}
+    and rsp,-16
+    lea rsp,[rsp-160]
+    vmovaps [rsp], xmm6
+    vmovaps [rsp+16*1],xmm7
+    vmovaps [rsp+16*2],xmm8
+    vmovaps [rsp+16*3],xmm9
+    vmovaps [rsp+16*4],xmm10
+    vmovaps [rsp+16*5],xmm11
+    vmovaps [rsp+16*6],xmm12
+    vmovaps [rsp+16*7],xmm13
+    vmovaps [rsp+16*8],xmm14
+    vmovaps [rsp+16*9],xmm15
+
+    push        rdi
+    push        rsi
+
+    mov         rdi, rcx
+
+{% endif %}
+
+    push        rbx
+    push        r12
+    push        r13
+    push        r14
+    push        r15
+
+    sub         rsp, 8
+
+{% if family == "unix" %}
+.cfi_def_cfa_offset 64
+{% endif %}
+
+    stmxcsr     [rsp + 4]
+{% if msvc %}
+    mov         rax, 1FC0h
+{% else %}
+    mov         rax, 0x1FC0
+{% endif %}
+    mov         [rsp], eax
+    ldmxcsr     [rsp]
+
+    // Reserve 64 bytes for the AMX tile-config block, zero it, populate
+    // palette + dims (all three tiles are 16 rows x 64 colsb, the maximum
+    // i8 tile geometry on Sapphire Rapids / Emerald Rapids / Granite Rapids).
+    sub         rsp, 64
+    vpxor       xmm15, xmm15, xmm15
+    vmovdqu     [rsp     ], xmm15
+    vmovdqu     [rsp + 16], xmm15
+    vmovdqu     [rsp + 32], xmm15
+    vmovdqu     [rsp + 48], xmm15
+    mov         byte ptr  [rsp + 0 ], 1    // palette = 1
+    mov         word ptr  [rsp + 16], 64   // colsb[0] = 64 (tmm0)
+    mov         word ptr  [rsp + 18], 64   // colsb[1] = 64 (tmm1)
+    mov         word ptr  [rsp + 20], 64   // colsb[2] = 64 (tmm2)
+    mov         byte ptr  [rsp + 48], 16   // rows[0]  = 16 (tmm0)
+    mov         byte ptr  [rsp + 49], 16   // rows[1]  = 16 (tmm1)
+    mov         byte ptr  [rsp + 50], 16   // rows[2]  = 16 (tmm2)
+    ldtilecfg   [rsp]
+
+{% include "dispatcher.j2" %}
+
+{{L}}clear:
+    // vzeroall only zeros lower-256 of zmm0..15; explicitly zero the full
+    // accumulators (zmm0..zmm15) for AMX.
+    {% for r in range(0, 16) %}
+    vpxorq      zmm{{r}}, zmm{{r}}, zmm{{r}}
+    {% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}add_mat_mul:
+    mov     r12,    [rdi + 32]   // packing
+    mov     rbx,    [rdi + 24]   // B
+    mov     rax,    [rdi + 16]   // A
+
+    mov     rcx,    [rdi + 8]    // k
+    test    rcx,    rcx
+    jz      {{L}}non_linear_loop
+
+    cmp     r12, 1
+    je      {{L}}main_loop_packed_packed_i8i8
+
+{{L}}main_loop_packed_packed:
+    // Generic i32 x i32 fallback path (not AMX). For row-major accumulators
+    // with zmm{m} = row m of C, accumulating C[m, n] += A[m, k] * B[k, n]:
+    //   - load 16 B values for this K row into zmm16 (row of B)
+    //   - for each m: broadcast A[m, k], multiply by zmm16, add to zmm{m}
+    vmovups         zmm16, [rbx]               // 16 i32 of B at this K row
+
+    {% for m in range(0, 16) %}
+        vpbroadcastd    zmm17, dword ptr [rax + {{m}} * 4]
+        vpmulld         zmm18, zmm16, zmm17
+        vpaddd          zmm{{m}}, zmm{{m}}, zmm18
+    {% endfor %}
+
+    add             rax,    64                 // 16 i32 lanes per K step
+    add             rbx,    64
+    dec             rcx
+    jnz             {{L}}main_loop_packed_packed
+
+    jmp             {{L}}non_linear_loop
+
+{{L}}main_loop_packed_packed_i8i8:
+    // AMX i8 layout:
+    //   A panel: 16 M-rows x K_padded K-bytes ROW-major within the panel
+    //            (PackedAmxA, K_padded = ceil(K/64)*64).
+    //   B panel: PackedI8K4(16) -- 16 N-cols x 4 K-bytes per K=4 block, with
+    //            16 K-blocks per tileloadd (16 K-pair-rows x 64 colsb).
+    //
+    // Per tdpbssd: tmm0[m, n] += sum_{k=0..63} A[m, k] * B[k, n].
+    // Inner loop steps along K in 64-K chunks.
+
+    // r8 <- K_padded = ceil(k/64) * 64 = byte-stride between A's M-rows.
+    mov             r8,     rcx
+    add             r8,     63
+    and             r8,     -64
+
+    // rcx <- ceil(k/64) = number of K=64 AMX inner iterations.
+    add             rcx,    63
+    shr             rcx,    6
+
+    // r9 <- 64 = byte-stride between B's K-pair-rows (each row = 16 N-cols * 4 K).
+    mov             r9,     64
+
+    tilezero        tmm0
+
+{{L}}loop_64k_amx_i8i8_16x16:
+    // Hint the prefetcher one iter ahead. A's row 0 advances by 64 bytes;
+    // B's panel advances by 16 cache lines (64 * 16 = 1024 B per iter).
+    prefetcht0      [rax + 64]
+    prefetcht0      [rbx + 1024]
+    prefetcht0      [rbx + 1088]
+    prefetcht0      [rbx + 1152]
+    prefetcht0      [rbx + 1216]
+    prefetcht0      [rbx + 1280]
+    prefetcht0      [rbx + 1344]
+    prefetcht0      [rbx + 1408]
+    prefetcht0      [rbx + 1472]
+    prefetcht0      [rbx + 1536]
+    prefetcht0      [rbx + 1600]
+    prefetcht0      [rbx + 1664]
+    prefetcht0      [rbx + 1728]
+    prefetcht0      [rbx + 1792]
+    prefetcht0      [rbx + 1856]
+    prefetcht0      [rbx + 1920]
+    prefetcht0      [rbx + 1984]
+    tileloadd       tmm1,   [rax + r8 * 1]     // A tile: stride = K_padded
+    tileloadd       tmm2,   [rbx + r9 * 1]     // B tile: stride = 64
+    tdpbssd         tmm0,   tmm1,   tmm2
+    add             rax,    64                 // +64 K-bytes in A row 0
+    add             rbx,    1024               // 16 K-pairs * 64 = 1024 bytes
+    dec             rcx
+    jnz             {{L}}loop_64k_amx_i8i8_16x16
+
+    // tmm0 -> stack scratch (16 rows x 64 bytes = 1024 B row-major i32).
+    // Then load each row into zmm0..zmm15.  Row m's 16 i32 are contiguous
+    // in memory, so each load is a single 64-byte vmovdqu32.
+    sub             rsp,    1024
+    mov             r10,    rsp
+    mov             r11,    64
+    tilestored      [r10 + r11 * 1], tmm0
+
+    {% for m in range(0, 16) %}
+    vmovdqu32       zmm{{m}}, [r10 + {{ m * 64 }}]
+    {% endfor %}
+
+    add             rsp,    1024
+
+    jmp             {{L}}non_linear_loop
+
+// ---- Scalar / per-row / per-col elementwise epilogues -------------------
+
+{{L}}scalar_min:
+    vpbroadcastd    zmm16, dword ptr [rdi + 8]
+    {% for r in range(0, 16) %}vpminsd zmm{{r}}, zmm{{r}}, zmm16
+    {% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}scalar_max:
+    vpbroadcastd    zmm16, dword ptr [rdi + 8]
+    {% for r in range(0, 16) %}vpmaxsd zmm{{r}}, zmm{{r}}, zmm16
+    {% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}scalar_add:
+    vpbroadcastd    zmm16, dword ptr [rdi + 8]
+    {% for r in range(0, 16) %}vpaddd zmm{{r}}, zmm{{r}}, zmm16
+    {% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}scalar_mul:
+    vpbroadcastd    zmm16, dword ptr [rdi + 8]
+    {% for r in range(0, 16) %}vpmulld zmm{{r}}, zmm{{r}}, zmm16
+    {% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}scalar_sub:
+    vpbroadcastd    zmm16, dword ptr [rdi + 8]
+    {% for r in range(0, 16) %}vpsubd zmm{{r}}, zmm{{r}}, zmm16
+    {% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}scalar_sub_flipped:
+    vpbroadcastd    zmm16, dword ptr [rdi + 8]
+    {% for r in range(0, 16) %}vpsubd zmm{{r}}, zmm16, zmm{{r}}
+    {% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}leaky_relu:
+    // C[m, n] = (C[m, n] >= 0) ? C[m, n] : alpha * C[m, n]
+    vpbroadcastd    zmm17, dword ptr [rdi + 8]    // alpha as i32 scale factor
+    vpxorq          zmm16, zmm16, zmm16
+    {% for r in range(0, 16) %}
+    vpmulld         zmm18, zmm{{r}}, zmm17
+    vpcmpgtd        k1,    zmm16, zmm{{r}}        // 1 where C < 0
+    vpblendmd       zmm{{r}}{k1}, zmm{{r}}, zmm18
+    {% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}per_row_min:
+    mov rax, [rdi + 8]
+    {% for m in range(0, 16) %}vpbroadcastd    zmm16, dword ptr [rax + {{m * 4}}]
+    vpminsd         zmm{{m}}, zmm{{m}}, zmm16
+    {% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}per_row_max:
+    mov rax, [rdi + 8]
+    {% for m in range(0, 16) %}vpbroadcastd    zmm16, dword ptr [rax + {{m * 4}}]
+    vpmaxsd         zmm{{m}}, zmm{{m}}, zmm16
+    {% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}per_row_add:
+    mov rax, [rdi + 8]
+    {% for m in range(0, 16) %}vpbroadcastd    zmm16, dword ptr [rax + {{m * 4}}]
+    vpaddd          zmm{{m}}, zmm{{m}}, zmm16
+    {% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}per_row_mul:
+    mov rax, [rdi + 8]
+    {% for m in range(0, 16) %}vpbroadcastd    zmm16, dword ptr [rax + {{m * 4}}]
+    vpmulld         zmm{{m}}, zmm{{m}}, zmm16
+    {% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}per_row_sub:
+    mov rax, [rdi + 8]
+    {% for m in range(0, 16) %}vpbroadcastd    zmm16, dword ptr [rax + {{m * 4}}]
+    vpsubd          zmm{{m}}, zmm{{m}}, zmm16
+    {% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}per_row_sub_flipped:
+    mov rax, [rdi + 8]
+    {% for m in range(0, 16) %}vpbroadcastd    zmm16, dword ptr [rax + {{m * 4}}]
+    vpsubd          zmm{{m}}, zmm16, zmm{{m}}
+    {% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}per_col_min:
+    mov     rax, [rdi + 8]
+    vmovdqu32       zmm16, [rax]
+    {% for r in range(0, 16) %}vpminsd zmm{{r}}, zmm{{r}}, zmm16
+    {% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}per_col_max:
+    mov     rax, [rdi + 8]
+    vmovdqu32       zmm16, [rax]
+    {% for r in range(0, 16) %}vpmaxsd zmm{{r}}, zmm{{r}}, zmm16
+    {% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}per_col_add:
+    mov     rax, [rdi + 8]
+    vmovdqu32       zmm16, [rax]
+    {% for r in range(0, 16) %}vpaddd zmm{{r}}, zmm{{r}}, zmm16
+    {% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}per_col_mul:
+    mov     rax, [rdi + 8]
+    vmovdqu32       zmm16, [rax]
+    {% for r in range(0, 16) %}vpmulld zmm{{r}}, zmm{{r}}, zmm16
+    {% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}per_col_sub:
+    mov     rax, [rdi + 8]
+    vmovdqu32       zmm16, [rax]
+    {% for r in range(0, 16) %}vpsubd zmm{{r}}, zmm{{r}}, zmm16
+    {% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}per_col_sub_flipped:
+    mov     rax, [rdi + 8]
+    vmovdqu32       zmm16, [rax]
+    {% for r in range(0, 16) %}vpsubd zmm{{r}}, zmm16, zmm{{r}}
+    {% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}load_tile:
+    // Scratch layout is COL-MAJOR i32 from scratch.rs Store/AddUnicast remnant:
+    //   tile[col][row] at offset (col*MR + row)*4 with MR=16
+    //   = offset col*64 + row*4
+    // For row-major accumulators we gather row m's 16 cols at index step 64.
+    mov         r8, [rdi + 8]
+    vmovdqa32   zmm16, [rip + {{L}}lane_offsets_64]    // [0, 64, 128, ..., 15*64]
+    {% for m in range(0, 16) %}
+    mov         eax, 0xFFFF
+    kmovw       k1, eax
+    vpgatherdd  zmm{{m}}{k1}, [r8 + zmm16 + {{m * 4}}]
+    {% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}add_unicast:
+    mov     r10,    [rdi + 8]           // c ptr (base)
+    mov     rsi,    [rdi + 16]          // row stride
+    mov     rbx,    [rdi + 24]          // col stride
+    mov     r8,     [rdi + 32]          // item size
+
+    cmp     r8,    4
+    je      {{L}}non_linear_addc_i32
+
+    // i8 path: read 16 i8 from [r10 + m*rsi + n*rbx] for n=0..15, sign-extend
+    // to i32, add to zmm{m}. Use a stack scratch buffer (16 bytes per row).
+    sub     rsp, 16
+    {% for m in range(0, 16) %}
+    mov     r8, r10
+    {% for n in range(0, 16) %}
+    mov     al, [r8]
+    mov     byte ptr [rsp + {{n}}], al
+    add     r8, rbx
+    {% endfor %}
+    vpmovsxbd       zmm16, [rsp]
+    vpaddd          zmm{{m}}, zmm{{m}}, zmm16
+    add     r10, rsi
+    {% endfor %}
+    add     rsp, 16
+    jmp     {{L}}non_linear_loop
+
+{{L}}non_linear_addc_i32:
+    // i32 strided read of external (or scratch) tile. Build per-lane index
+    // vector [0, rbx, 2*rbx, ..., 15*rbx] once, then gather row by row.
+    mov             eax, ebx
+    vmovd xmm16, eax
+    vpbroadcastd    zmm16, xmm16
+    vpmulld         zmm16, zmm16, [rip + {{L}}lane_indices]    // [0, rbx, 2*rbx, ...]
+
+    {% for m in range(0, 16) %}
+    mov             eax, 0xFFFF
+    kmovw           k1, eax
+    vpgatherdd      zmm17{k1}, [r10 + zmm16]
+    vpaddd          zmm{{m}}, zmm{{m}}, zmm17
+    add             r10, rsi
+    {% endfor %}
+    jmp    {{L}}non_linear_loop
+
+{{L}}add_row_col_products:
+    // bias[m, n] = row_data[m] * col_data[n], add to C[m, n].
+    // For row-major regs: load 16 col_data values once into zmm16,
+    //                     for each m: broadcast row_data[m], FMA add.
+    mov             rax, [rdi + 8]
+    mov             rbx, [rdi + 16]
+
+    vmovdqu32       zmm16, [rax]                          // 16 row_data values
+    vmovdqu32       zmm17, [rbx]                          // 16 col_data values
+
+    {% for m in range(0, 16) %}
+    vpbroadcastd    zmm18, dword ptr [rax + {{m * 4}}]    // splat row_data[m]
+    vpmulld         zmm19, zmm18, zmm17
+    vpaddd          zmm{{m}}, zmm{{m}}, zmm19
+    {% endfor %}
+    jmp     {{L}}non_linear_loop
+
+// ---- Q-scale (mult-shift with rounding) ---------------------------------
+
+{{L}}q_scale:
+    mov             r8, [rdi + 16]                  // policy
+    vpbroadcastd    zmm16, dword ptr [rdi + 24]     // multi (broadcast i32)
+
+    mov             rax, 1
+    vmovq xmm17, rax
+    vpbroadcastq    zmm17, xmm17                    // zmm17 <- 1 (i64 lanes)
+
+    mov             rax, [rdi + 8]                  // shift
+    add             rax, 31
+    vmovq xmm18, rax
+    vpbroadcastq    zmm18, xmm18                    // zmm18 <- (shift+31) (i64 lanes)
+
+    vpsubq          zmm19, zmm18, zmm17
+    vpsllvq         zmm19, zmm17, zmm19             // zmm19 <- 1 << (shift+31-1)  (i64)
+
+    // Per-lane interleave mask for blending evens / shifted-odds.
+    // bit i = 1 means take from "evens" source in vpblendmd; bit 0,2,4,...,14 set.
+    mov             eax, 0x5555
+    kmovw           k7, eax
+
+    cmp     r8, 1
+    je      {{L}}q_scale_rounding_zero
+    cmp     r8, 2
+    je      {{L}}q_scale_rounding_away
+    cmp     r8, 3
+    je      {{L}}q_scale_rounding_minus_inf
+    cmp     r8, 4
+    je      {{L}}q_scale_rounding_plus_inf
+    cmp     r8, 5
+    je      {{L}}q_scale_rounding_even
+    cmp     r8, 6
+    je      {{L}}q_scale_rounding_odd
+
+    jmp     {{L}}unsupported
+
+{{L}}q_scale_rounding_zero:           // signum * ( (abs + nudge - 1) >> shift )
+{% for i in range(0, 16) %}
+    vpabsd      zmm20, zmm{{i}}
+    vpsrldq     zmm21, zmm20, 4
+    vpmuldq     zmm20, zmm20, zmm16                 // even-lane i32 -> i64 mul
+    vpmuldq     zmm21, zmm21, zmm16                 // odd-lane  i32 -> i64 mul
+
+    vpaddq      zmm20, zmm20, zmm19
+    vpaddq      zmm21, zmm21, zmm19
+
+    vpsubq      zmm20, zmm20, zmm17
+    vpsubq      zmm21, zmm21, zmm17
+
+    vpsrlq      zmm20, zmm20, xmm18
+    vpsrlq      zmm21, zmm21, xmm18
+
+    vpslldq     zmm21, zmm21, 4
+    vpblendmd   zmm20{k7}, zmm21, zmm20             // k7=0x5555: evens from zmm20
+    // emulate AVX2 vpsignd (no AVX-512 form): apply sign of original acc.
+    vpxorq      zmm26, zmm26, zmm26
+    vpcmpgtd    k1, zmm26, zmm{{i}}                 // k1 = 1 where acc < 0
+    vpsubd      zmm27, zmm26, zmm20                 // zmm27 = -zmm20
+    vpblendmd   zmm{{i}}{k1}, zmm20, zmm27
+{% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}q_scale_rounding_away:           // signum * ( (abs + nudge) >> shift )
+{% for i in range(0, 16) %}
+    vpabsd      zmm20, zmm{{i}}
+    vpsrldq     zmm21, zmm20, 4
+    vpmuldq     zmm20, zmm20, zmm16
+    vpmuldq     zmm21, zmm21, zmm16
+
+    vpaddq      zmm20, zmm20, zmm19
+    vpaddq      zmm21, zmm21, zmm19
+
+    vpsrlq      zmm20, zmm20, xmm18
+    vpsrlq      zmm21, zmm21, xmm18
+
+    vpslldq     zmm21, zmm21, 4
+    vpblendmd   zmm20{k7}, zmm21, zmm20
+    // emulate AVX2 vpsignd (no AVX-512 form): apply sign of original acc.
+    vpxorq      zmm26, zmm26, zmm26
+    vpcmpgtd    k1, zmm26, zmm{{i}}                 // k1 = 1 where acc < 0
+    vpsubd      zmm27, zmm26, zmm20                 // zmm27 = -zmm20
+    vpblendmd   zmm{{i}}{k1}, zmm20, zmm27
+{% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}q_scale_rounding_minus_inf:      // nudge by -1 where input was negative
+{% for i in range(0, 16) %}
+    vpabsd      zmm20, zmm{{i}}
+    vpxorq      zmm22, zmm22, zmm22
+    vpcmpgtd    k1,    zmm{{i}}, zmm22              // k1: 1 where input > 0 (we want the inverse, see below)
+    knotw       k1,    k1                           // 1 where input <= 0  -- we want "input was negative => subtract 1"
+    // For "<0": use compare against 0 with vpcmpltd
+    vpxorq      zmm22, zmm22, zmm22
+    vpcmpltd    k1,    zmm{{i}}, zmm22              // 1 where input < 0
+    vmovdqa32   zmm23{k1}{z}, [rip + {{L}}all_ones_i32] // (1 << 0) per neg lane, 0 elsewhere
+
+    vpsrldq     zmm21, zmm20, 4
+    vpmuldq     zmm20, zmm20, zmm16
+    vpmuldq     zmm21, zmm21, zmm16
+
+    vpaddq      zmm20, zmm20, zmm19
+    vpaddq      zmm21, zmm21, zmm19
+
+    // Subtract 1 from i64-evens / i64-odds where the original i32 input was < 0.
+    vpsrldq     zmm24, zmm23, 4
+    vpmovsxdq   zmm25, ymm23
+    vpmovsxdq   zmm26, ymm24
+    vpsubq      zmm20, zmm20, zmm25
+    vpsubq      zmm21, zmm21, zmm26
+
+    vpsrlq      zmm20, zmm20, xmm18
+    vpsrlq      zmm21, zmm21, xmm18
+
+    vpslldq     zmm21, zmm21, 4
+    vpblendmd   zmm20{k7}, zmm21, zmm20
+    // emulate AVX2 vpsignd (no AVX-512 form): apply sign of original acc.
+    vpxorq      zmm26, zmm26, zmm26
+    vpcmpgtd    k1, zmm26, zmm{{i}}                 // k1 = 1 where acc < 0
+    vpsubd      zmm27, zmm26, zmm20                 // zmm27 = -zmm20
+    vpblendmd   zmm{{i}}{k1}, zmm20, zmm27
+{% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}q_scale_rounding_plus_inf:       // nudge by +1 where input was non-negative
+{% for i in range(0, 16) %}
+    vpabsd      zmm20, zmm{{i}}
+    vpxorq      zmm22, zmm22, zmm22
+    vpcmpled    k1,    zmm22, zmm{{i}}              // 1 where input >= 0
+    vmovdqa32   zmm23{k1}{z}, [rip + {{L}}all_ones_i32]
+
+    vpsrldq     zmm21, zmm20, 4
+    vpmuldq     zmm20, zmm20, zmm16
+    vpmuldq     zmm21, zmm21, zmm16
+
+    vpaddq      zmm20, zmm20, zmm19
+    vpaddq      zmm21, zmm21, zmm19
+
+    vpsrldq     zmm24, zmm23, 4
+    vpmovsxdq   zmm25, ymm23
+    vpmovsxdq   zmm26, ymm24
+    vpsubq      zmm20, zmm20, zmm25
+    vpsubq      zmm21, zmm21, zmm26
+
+    vpsrlq      zmm20, zmm20, xmm18
+    vpsrlq      zmm21, zmm21, xmm18
+
+    vpslldq     zmm21, zmm21, 4
+    vpblendmd   zmm20{k7}, zmm21, zmm20
+    // emulate AVX2 vpsignd (no AVX-512 form): apply sign of original acc.
+    vpxorq      zmm26, zmm26, zmm26
+    vpcmpgtd    k1, zmm26, zmm{{i}}                 // k1 = 1 where acc < 0
+    vpsubd      zmm27, zmm26, zmm20                 // zmm27 = -zmm20
+    vpblendmd   zmm{{i}}{k1}, zmm20, zmm27
+{% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}q_scale_rounding_even:           // banker's: round half to even
+{% for i in range(0, 16) %}
+    vpabsd      zmm20, zmm{{i}}
+    vpsrldq     zmm21, zmm20, 4
+    vpmuldq     zmm20, zmm20, zmm16
+    vpmuldq     zmm21, zmm21, zmm16
+
+    vpsrlq      zmm22, zmm20, xmm18
+    vpandq      zmm22, zmm22, zmm17
+    vpaddq      zmm20, zmm20, zmm22
+    vpsubq      zmm20, zmm20, zmm17
+
+    vpsrlq      zmm22, zmm21, xmm18
+    vpandq      zmm22, zmm22, zmm17
+    vpaddq      zmm21, zmm21, zmm22
+    vpsubq      zmm21, zmm21, zmm17
+
+    vpaddq      zmm20, zmm20, zmm19
+    vpaddq      zmm21, zmm21, zmm19
+
+    vpsrlq      zmm20, zmm20, xmm18
+    vpsrlq      zmm21, zmm21, xmm18
+
+    vpslldq     zmm21, zmm21, 4
+    vpblendmd   zmm20{k7}, zmm21, zmm20
+    // emulate AVX2 vpsignd (no AVX-512 form): apply sign of original acc.
+    vpxorq      zmm26, zmm26, zmm26
+    vpcmpgtd    k1, zmm26, zmm{{i}}                 // k1 = 1 where acc < 0
+    vpsubd      zmm27, zmm26, zmm20                 // zmm27 = -zmm20
+    vpblendmd   zmm{{i}}{k1}, zmm20, zmm27
+{% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}q_scale_rounding_odd:            // round half to odd
+{% for i in range(0, 16) %}
+    vpabsd      zmm20, zmm{{i}}
+    vpsrldq     zmm21, zmm20, 4
+    vpmuldq     zmm20, zmm20, zmm16
+    vpmuldq     zmm21, zmm21, zmm16
+
+    vpsrlq      zmm22, zmm20, xmm18
+    vpandq      zmm22, zmm22, zmm17
+    vpsubq      zmm20, zmm20, zmm22
+
+    vpsrlq      zmm22, zmm21, xmm18
+    vpandq      zmm22, zmm22, zmm17
+    vpsubq      zmm21, zmm21, zmm22
+
+    vpaddq      zmm20, zmm20, zmm19
+    vpaddq      zmm21, zmm21, zmm19
+
+    vpsrlq      zmm20, zmm20, xmm18
+    vpsrlq      zmm21, zmm21, xmm18
+
+    vpslldq     zmm21, zmm21, 4
+    vpblendmd   zmm20{k7}, zmm21, zmm20
+    // emulate AVX2 vpsignd (no AVX-512 form): apply sign of original acc.
+    vpxorq      zmm26, zmm26, zmm26
+    vpcmpgtd    k1, zmm26, zmm{{i}}                 // k1 = 1 where acc < 0
+    vpsubd      zmm27, zmm26, zmm20                 // zmm27 = -zmm20
+    vpblendmd   zmm{{i}}{k1}, zmm20, zmm27
+{% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}q_shl:
+    mov             eax, [rdi + 8]                  // -shift (count: i32)
+    vmovd xmm16, eax
+    vpbroadcastd    zmm16, xmm16
+    {% for i in range(0, 16) %}vpsllvd zmm{{i}}, zmm{{i}}, zmm16
+    {% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}q_shr:
+    mov             r8,  [rdi + 16]                 // policy
+
+    mov             eax, 1
+    vmovd xmm16, eax
+    vpbroadcastd    zmm16, xmm16                    // zmm16 <- 1 (i32 lanes)
+
+    mov             eax, [rdi + 8]                  // shift
+    vmovd xmm17, eax
+    vpbroadcastd    zmm17, xmm17                    // zmm17 <- shift (i32 lanes)
+
+    mov             ebx, 1
+    mov             cl,  al
+    sub             cl,  1
+    sal             ebx, cl                         // ebx <- 1 << (shift - 1)
+    vmovd xmm18, ebx
+    vpbroadcastd    zmm18, xmm18                    // zmm18 <- "half"
+
+    vpxorq          zmm19, zmm19, zmm19             // zeroes
+
+    cmp     r8, 1
+    je      {{L}}q_shr_rounding_zero
+    cmp     r8, 2
+    je      {{L}}q_shr_rounding_away
+    cmp     r8, 3
+    je      {{L}}q_shr_rounding_minus_inf
+    cmp     r8, 4
+    je      {{L}}q_shr_rounding_plus_inf
+    cmp     r8, 5
+    je      {{L}}q_shr_rounding_even
+    cmp     r8, 6
+    je      {{L}}q_shr_rounding_odd
+
+    jmp     {{L}}unsupported
+
+{{L}}q_shr_rounding_zero:
+{% for i in range(0, 16) %}
+    vpabsd      zmm20, zmm{{i}}
+    vpsubd      zmm20, zmm20, zmm16
+    vpaddd      zmm20, zmm20, zmm18
+    vpsravd     zmm20, zmm20, zmm17
+    // emulate AVX2 vpsignd (no AVX-512 form): apply sign of original acc.
+    vpxorq      zmm26, zmm26, zmm26
+    vpcmpgtd    k1, zmm26, zmm{{i}}                 // k1 = 1 where acc < 0
+    vpsubd      zmm27, zmm26, zmm20                 // zmm27 = -zmm20
+    vpblendmd   zmm{{i}}{k1}, zmm20, zmm27
+{% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}q_shr_rounding_away:
+{% for i in range(0, 16) %}
+    vpabsd      zmm20, zmm{{i}}
+    vpaddd      zmm20, zmm20, zmm18
+    vpsravd     zmm20, zmm20, zmm17
+    // emulate AVX2 vpsignd (no AVX-512 form): apply sign of original acc.
+    vpxorq      zmm26, zmm26, zmm26
+    vpcmpgtd    k1, zmm26, zmm{{i}}                 // k1 = 1 where acc < 0
+    vpsubd      zmm27, zmm26, zmm20                 // zmm27 = -zmm20
+    vpblendmd   zmm{{i}}{k1}, zmm20, zmm27
+{% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}q_shr_rounding_minus_inf:
+{% for i in range(0, 16) %}
+    vpsubd      zmm{{i}}, zmm{{i}}, zmm16
+    vpaddd      zmm{{i}}, zmm{{i}}, zmm18
+    vpsravd     zmm{{i}}, zmm{{i}}, zmm17
+{% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}q_shr_rounding_plus_inf:
+{% for i in range(0, 16) %}
+    vpaddd      zmm{{i}}, zmm{{i}}, zmm18
+    vpsravd     zmm{{i}}, zmm{{i}}, zmm17
+{% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}q_shr_rounding_even:
+{% for i in range(0, 16) %}
+    vpabsd      zmm20, zmm{{i}}
+    vpsravd     zmm21, zmm20, zmm17
+    vpandq      zmm21, zmm21, zmm16
+    vpsubd      zmm21, zmm21, zmm16             // nudge = ((abs >>l shift) & 1) - 1
+    vpaddd      zmm20, zmm20, zmm21
+    vpaddd      zmm20, zmm20, zmm18
+    vpsravd     zmm20, zmm20, zmm17
+    // emulate AVX2 vpsignd (no AVX-512 form): apply sign of original acc.
+    vpxorq      zmm26, zmm26, zmm26
+    vpcmpgtd    k1, zmm26, zmm{{i}}                 // k1 = 1 where acc < 0
+    vpsubd      zmm27, zmm26, zmm20                 // zmm27 = -zmm20
+    vpblendmd   zmm{{i}}{k1}, zmm20, zmm27
+{% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}q_shr_rounding_odd:
+{% for i in range(0, 16) %}
+    vpabsd      zmm20, zmm{{i}}
+    vpsravd     zmm21, zmm20, zmm17
+    vpandq      zmm21, zmm21, zmm16
+    vpsubd      zmm21, zmm19, zmm21             // nudge = -((abs >>l shift) & 1)
+    vpaddd      zmm20, zmm20, zmm21
+    vpaddd      zmm20, zmm20, zmm18
+    vpsravd     zmm20, zmm20, zmm17
+    // emulate AVX2 vpsignd (no AVX-512 form): apply sign of original acc.
+    vpxorq      zmm26, zmm26, zmm26
+    vpcmpgtd    k1, zmm26, zmm{{i}}                 // k1 = 1 where acc < 0
+    vpsubd      zmm27, zmm26, zmm20                 // zmm27 = -zmm20
+    vpblendmd   zmm{{i}}{k1}, zmm20, zmm27
+{% endfor %}
+    jmp     {{L}}non_linear_loop
+
+// ---- Store ---------------------------------------------------------------
+
+{{L}}store:
+    mov     r8,     [rdi + 8]               // c ptr
+    mov     rsi,    [rdi + 16]              // row stride
+    mov     rdx,    [rdi + 24]              // col stride
+    mov     rcx,    [rdi + 32]              // item size
+
+    cmp     rcx, 4
+    je      {{L}}store_strides_i32
+    // else: i8 fallthrough
+
+    cmp     rdx, 1
+    je      {{L}}store_strides_i8_row_contig
+
+    // Generic i8 strided store: per row, per lane scalar byte stores
+    {% for m in range(0, 16) %}
+    mov     r10, r8
+    // Extract from each 128-bit slice of zmm{{m}}
+    vextracti32x4   xmm20, zmm{{m}}, 0
+    {% for n in range(0, 4) %}
+    vpextrd     ebx, xmm20, {{n}}
+    mov         byte ptr [r10], bl
+    add         r10, rdx
+    {% endfor %}
+    vextracti32x4   xmm20, zmm{{m}}, 1
+    {% for n in range(0, 4) %}
+    vpextrd     ebx, xmm20, {{n}}
+    mov         byte ptr [r10], bl
+    add         r10, rdx
+    {% endfor %}
+    vextracti32x4   xmm20, zmm{{m}}, 2
+    {% for n in range(0, 4) %}
+    vpextrd     ebx, xmm20, {{n}}
+    mov         byte ptr [r10], bl
+    add         r10, rdx
+    {% endfor %}
+    vextracti32x4   xmm20, zmm{{m}}, 3
+    {% for n in range(0, 4) %}
+    vpextrd     ebx, xmm20, {{n}}
+    mov         byte ptr [r10], bl
+    add         r10, rdx
+    {% endfor %}
+    add     r8, rsi
+    {% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}store_strides_i8_row_contig:
+    // Each row is 16 i8 contiguous; one vpmovdb per row.
+    {% for m in range(0, 16) %}
+    vpmovdb     [r8], zmm{{m}}
+    add         r8, rsi
+    {% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}store_strides_i32:
+    cmp     rdx, 4
+    je      {{L}}store_strides_i32_row_contig
+
+    // Generic i32 strided store
+    {% for m in range(0, 16) %}
+    mov     r10, r8
+    vextracti32x4   xmm20, zmm{{m}}, 0
+    {% for n in range(0, 4) %}
+    vpextrd     ebx, xmm20, {{n}}
+    mov         dword ptr [r10], ebx
+    add         r10, rdx
+    {% endfor %}
+    vextracti32x4   xmm20, zmm{{m}}, 1
+    {% for n in range(0, 4) %}
+    vpextrd     ebx, xmm20, {{n}}
+    mov         dword ptr [r10], ebx
+    add         r10, rdx
+    {% endfor %}
+    vextracti32x4   xmm20, zmm{{m}}, 2
+    {% for n in range(0, 4) %}
+    vpextrd     ebx, xmm20, {{n}}
+    mov         dword ptr [r10], ebx
+    add         r10, rdx
+    {% endfor %}
+    vextracti32x4   xmm20, zmm{{m}}, 3
+    {% for n in range(0, 4) %}
+    vpextrd     ebx, xmm20, {{n}}
+    mov         dword ptr [r10], ebx
+    add         r10, rdx
+    {% endfor %}
+    add     r8, rsi
+    {% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}store_strides_i32_row_contig:
+    // C is row-major in memory: each row's 16 i32 are contiguous; one
+    // 64-byte aligned-or-unaligned store per row.
+    {% for m in range(0, 16) %}
+    vmovdqu32   [r8], zmm{{m}}
+    add         r8, rsi
+    {% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}return:
+    tilerelease
+    add         rsp, 64
+
+    ldmxcsr     [rsp + 4]
+    add         rsp, 8
+
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop rbx
+
+{% if family == "windows" %}
+    pop rsi
+    pop rdi
+
+    vmovaps xmm15, [rsp+16*9]
+    vmovaps xmm14, [rsp+16*8]
+    vmovaps xmm13, [rsp+16*7]
+    vmovaps xmm12, [rsp+16*6]
+    vmovaps xmm11, [rsp+16*5]
+    vmovaps xmm10, [rsp+16*4]
+    vmovaps xmm9, [rsp+16*3]
+    vmovaps xmm8, [rsp+16*2]
+    vmovaps xmm7, [rsp+16*1]
+    vmovaps xmm6, [rsp]
+{% endif %}
+
+    mov rsp, rbp
+    pop rbp
+    ret
+
+// ---- Read-only data (RIP-relative) ---------------------------------------
+
+.p2align 6
+{{L}}lane_offsets_64:
+    .int  0,  64, 128, 192, 256, 320, 384, 448
+    .int  512, 576, 640, 704, 768, 832, 896, 960
+
+.p2align 6
+{{L}}lane_indices:
+    .int  0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15
+
+.p2align 6
+{{L}}all_ones_i32:
+    .int  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1
+
+{% if msvc %}
+avx512amx_mmm_i32_16x16_{{suffix}} endp
+_text ends
+end
+{% else %}
+.cfi_endproc
+{% endif %}
