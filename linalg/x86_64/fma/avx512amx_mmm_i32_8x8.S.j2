@@ -165,6 +165,22 @@ avx512amx_mmm_i32_8x8_{{suffix}} proc
     tilezero        tmm0
 
 {{L}}loop_64k_amx_i8i8:
+    // Prefetch the data we'll need ONE iteration ahead. tileloadd brings
+    // the active tile data into L1 on demand; the prefetcht0 hints below
+    // ask the hardware prefetcher to start the L2->L1 fill for the next
+    // iter's A row (64 B further along the K axis) and the next iter's
+    // B panel (512 B = 8 cache lines further). For the long K loops
+    // (K>=256) the B-side prefetch matters most since each iter consumes
+    // 8 cache lines of B vs 1 cache line of A row 0.
+    prefetcht0      [rax + 64]
+    prefetcht0      [rbx + 512]
+    prefetcht0      [rbx + 576]
+    prefetcht0      [rbx + 640]
+    prefetcht0      [rbx + 704]
+    prefetcht0      [rbx + 768]
+    prefetcht0      [rbx + 832]
+    prefetcht0      [rbx + 896]
+    prefetcht0      [rbx + 960]
     tileloadd       tmm1,   [rax + r8 * 1]         // A tile: stride r8 = K_padded
     tileloadd       tmm2,   [rbx + r9 * 1]         // B tile: stride r9 = 32
     tdpbssd         tmm0,   tmm1,   tmm2
