@@ -85,13 +85,16 @@ jobs:
               json.dump(versions, f, indent=2)
           "
 
-          # commit and push
+          # commit and push. actions/checkout ran with persist-credentials:
+          # false, so no auth is wired into .git/config — push via an
+          # explicit token URL instead.
           git add -A
           git commit -m "Update Python docs ($version)" || true
-          git push origin gh-pages
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages
 
           # clean up worktree
           cd -
           git worktree remove "$workdir"
         env:
           STEPS_VERSION_OUTPUTS_VALUE: ${{ steps.version.outputs.value }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
