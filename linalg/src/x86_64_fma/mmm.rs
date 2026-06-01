@@ -5,10 +5,14 @@ use crate::mmm::MatMatMul;
 use crate::pack::{PackedFormat, PackedI8K4};
 
 use super::amx::{PackedAmxA, has_amx_int8};
+#[cfg(tract_amx_bf16)]
+use super::amx_bf16::{PackedAmxBf16A, PackedBf16K2, has_amx_bf16};
 use super::*;
 
 #[cfg(tract_amx_int8)]
 const AVX512AMX: fn() -> bool = has_amx_int8;
+#[cfg(tract_amx_bf16)]
+const AVX512AMX_BF16: fn() -> bool = has_amx_bf16;
 
 /// One candidate kernel in a dispatcher's pool, with its tile geometry
 /// and a relative-throughput scale (1.0 = baseline, used to break
@@ -136,6 +140,23 @@ MMMExternKernel! { avx512amx_mmm_i32_16x16<i32>(16,16)@(64,4) where(AVX512AMX)
     store(i8)
 }
 
+// AMX bf16 16x16 kernel for f32 matmul: uses TDPBF16PS (bf16 x bf16 -> f32).
+// f32 inputs are truncated to bf16 at pack time (round-to-nearest-even, matching
+// Intel VCVTNEPS2BF16). One tdpbf16ps consumes 16M x 16N x 32K bf16 = 8192 fma
+// per instruction. f32 accumulators differ from a pure-f32 reference by ~1/2^8
+// relative per multiply (bf16 = 8 mantissa bits vs f32's 23) -- same precision
+// loss profile as oneDNN "fast-math" f32 matmul on AMX, acceptable for
+// inference workloads (LLMs, CNNs) that already tolerate bf16.
+//
+// Default packing[0] (the framework's PackedFormat<f32>) is retained so the
+// kernel can still be selected for f32 paths even when the BF16 packer
+// isn't a precursor match; packing[1] is the fast bf16-from-f32 path.
+#[cfg(tract_amx_bf16)]
+MMMExternKernel! { avx512amx_mmm_f32_16x16<f32>(16,16)@(64,4) where(AVX512AMX_BF16)
+    packing[1] = f32f32_bf16 => |k| k.with_packing(PackedAmxBf16A::new(16), PackedBf16K2::new(16));
+    quality(ManuallyOptimized)
+}
+
 pub fn plug(ops: &mut Ops) {
     if is_x86_feature_detected!("avx2") {
         plug_avx2(ops);
@@ -153,6 +174,13 @@ pub fn plug(ops: &mut Ops) {
                         plug_avx512amx_int8(ops);
                     }
                 }
+                // AMX bf16 for f32 matmul is independent of int8/VNNI gates:
+                // a future Xeon SKU could ship AMX-BF16 without VNNI, and the
+                // permission gate is shared with the int8 path inside has_amx_bf16().
+                #[cfg(tract_amx_bf16)]
+                if has_amx_bf16() {
+                    plug_avx512amx_bf16(ops);
+                }
             }
         }
     }
@@ -163,6 +191,39 @@ pub fn plug_avx512vnni(ops: &mut Ops) {
     ops.mmm_impls.push(avx512vnni_mmm_i32_8x8.mmm());
     ops.qmmm_i32 = Box::new(|_, _, _| avx512vnni_mmm_i32_8x8.mmm());
     log::info!("qmmm_i32: x86_64/avx512vnni activated");
+}
+
+#[cfg(tract_amx_bf16)]
+pub fn plug_avx512amx_bf16(ops: &mut Ops) {
+    ops.mmm_impls.push(avx512amx_mmm_f32_16x16.mmm());
+    // Save the previously-installed f32 picker so we can defer to it when
+    // the AMX kernel isn't a good fit (small M/N, or K < 32 -- one TDPBF16PS
+    // consumes 32 bf16 K-lanes so the panel must have at least one full step).
+    let prev: crate::MMMImpl = std::mem::replace(
+        &mut ops.mmm_f32,
+        Box::new(|_, _, _| unreachable!()),
+    );
+    ops.mmm_f32 = Box::new(move |m, k, n| {
+        let big = |o: Option<usize>, t: usize| o.is_none_or(|v| v >= t);
+        // Same dispatch shape as the int8 16x16/8x8 split: hand off to AMX
+        // only when each axis comfortably fills at least one tile. The 32-K
+        // threshold matches PackedAmxBf16A::k_alignment() (one tdpbf16ps =
+        // 32 bf16 K-lanes); below that, the AVX-512 / FMA path's smaller
+        // tiles waste less work.
+        if big(m, 16) && big(n, 16) && big(k, 32) {
+            avx512amx_mmm_f32_16x16.mmm()
+        } else {
+            prev(m, k, n)
+        }
+    });
+    let c = super::amx::cache_sizes();
+    log::info!(
+        "mmm_f32: x86_64/avx512amx_bf16 (16x16) overlay activated; \
+         L1d={} KB, L2={} KB, L3={} KB",
+        c.l1d_bytes / 1024,
+        c.l2_bytes / 1024,
+        c.l3_bytes / 1024,
+    );
 }
 
 #[cfg(tract_amx_int8)]

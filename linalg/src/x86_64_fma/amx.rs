@@ -93,6 +93,8 @@ fn cpu_has_amx_int8() -> bool {
 /// Linux only: ask the kernel for permission to use the AMX tile-data XSAVE
 /// state via `arch_prctl(ARCH_REQ_XCOMP_PERM, XFEATURE_XTILEDATA)`. Returns
 /// true if the kernel grants permission (or if the process already has it).
+/// Exposed via `request_amx_tile_xcomp_perm()` below so the bf16 path can
+/// share the same OS-level gate.
 #[cfg(target_os = "linux")]
 unsafe fn request_amx_xcomp_perm() -> bool {
     // x86_64 syscall: rax=158 (arch_prctl), rdi=0x1023 (REQ_XCOMP_PERM),
@@ -113,16 +115,14 @@ unsafe fn request_amx_xcomp_perm() -> bool {
     rc == 0
 }
 
-/// Returns true iff Intel AMX int8 is available AND the OS has granted this
-/// process permission to use the AMX tile-data XSAVE state. Result is
-/// memoised — the arch_prctl call has process-wide effect and only needs to
-/// run once.
-pub fn has_amx_int8() -> bool {
+/// Memoised wrapper around `request_amx_xcomp_perm` -- arch_prctl has a
+/// process-wide effect and only needs to be called once for the whole
+/// lifetime of the process. Returns true iff the OS has granted permission
+/// for XFEATURE_XTILEDATA (and hence enables both AMX int8 AND AMX bf16
+/// kernels). Returns false on non-Linux.
+pub fn request_amx_tile_xcomp_perm() -> bool {
     static GATE: OnceLock<bool> = OnceLock::new();
     *GATE.get_or_init(|| {
-        if !cpu_has_amx_int8() {
-            return false;
-        }
         #[cfg(target_os = "linux")]
         {
             unsafe { request_amx_xcomp_perm() }
@@ -132,6 +132,15 @@ pub fn has_amx_int8() -> bool {
             false
         }
     })
+}
+
+/// Returns true iff Intel AMX int8 is available AND the OS has granted this
+/// process permission to use the AMX tile-data XSAVE state. Result is
+/// memoised — the arch_prctl call has process-wide effect and only needs to
+/// run once.
+pub fn has_amx_int8() -> bool {
+    static GATE: OnceLock<bool> = OnceLock::new();
+    *GATE.get_or_init(|| cpu_has_amx_int8() && request_amx_tile_xcomp_perm())
 }
 
 /// AMX-friendly A packing: per `r`-row panel, M-rows are laid out row-major

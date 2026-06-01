@@ -11,6 +11,7 @@ pub mod act_f16;
 pub mod act_f16_fp16;
 
 pub mod amx;
+pub mod amx_bf16;
 pub mod by_scalar;
 pub mod erf;
 mod intel;
