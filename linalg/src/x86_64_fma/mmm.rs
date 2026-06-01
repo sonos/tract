@@ -125,6 +125,17 @@ MMMExternKernel! { avx512amx_mmm_i32_8x8<i32>(8,8)@(64,4) where(AVX512AMX)
     store(i8)
 }
 
+// 16x16 i32 sibling. One tdpbssd does 16*16*64 = 16384 mul-adds (4x the 8x8).
+// Same A/B packing (PackedAmxA, PackedI8K4) just with r=16. Row-major
+// accumulators (zmm{m} = row m of C) so the hot path (Clear -> AddMatMul ->
+// Store) needs no transpose.
+#[cfg(tract_amx_int8)]
+MMMExternKernel! { avx512amx_mmm_i32_16x16<i32>(16,16)@(64,4) where(AVX512AMX)
+    packing[1] = i8i8 => |k| k.with_packing(PackedAmxA::new(16), PackedI8K4::new(16));
+    quality(ManuallyOptimized)
+    store(i8)
+}
+
 pub fn plug(ops: &mut Ops) {
     if is_x86_feature_detected!("avx2") {
         plug_avx2(ops);
@@ -157,8 +168,11 @@ pub fn plug_avx512vnni(ops: &mut Ops) {
 #[cfg(tract_amx_int8)]
 pub fn plug_avx512amx_int8(ops: &mut Ops) {
     ops.mmm_impls.push(avx512amx_mmm_i32_8x8.mmm());
-    ops.qmmm_i32 = Box::new(|_, _, _| avx512amx_mmm_i32_8x8.mmm());
-    log::info!("qmmm_i32: x86_64/avx512amx_int8 activated");
+    ops.mmm_impls.push(avx512amx_mmm_i32_16x16.mmm());
+    // 16x16 hits the full AMX tile (1024 B per tile) and is ~4x the mul-adds
+    // per tdpbssd; use it as the primary qmmm_i32 dispatch target.
+    ops.qmmm_i32 = Box::new(|_, _, _| avx512amx_mmm_i32_16x16.mmm());
+    log::info!("qmmm_i32: x86_64/avx512amx_int8 (16x16) activated");
 }
 
 pub fn plug_avx2(ops: &mut Ops) {
