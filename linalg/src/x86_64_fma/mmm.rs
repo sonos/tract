@@ -4,7 +4,6 @@ use crate::mmm::ImplementationQuality::ManuallyOptimized;
 use crate::mmm::MatMatMul;
 use crate::pack::{PackedFormat, PackedI8K4};
 
-#[cfg(tract_amx_int8)]
 use super::amx::{PackedAmxA, has_amx_int8};
 use super::*;
 
