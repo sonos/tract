@@ -284,14 +284,16 @@
         <span class="k">return</span> <span class="n">Model</span><span class="p">(</span><span class="n">model</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="Nnef.with_tract_core">
-<a class="viewcode-back" href="../../docs/nnef.html#tract.nnef.Nnef.with_tract_core">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">with_tract_core</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;Nnef&quot;</span><span class="p">:</span>
+<div class="viewcode-block" id="Nnef.without_tract_core">
+<a class="viewcode-back" href="../../docs/nnef.html#tract.nnef.Nnef.without_tract_core">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">without_tract_core</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;Nnef&quot;</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Enable tract-opl extensions to NNEF to covers tract-core operator set</span>
+<span class="sd">        Force the framework to emit strict NNEF instead of using the tract_core</span>
+<span class="sd">        extension. The tract_core extension is enabled by default; call this to</span>
+<span class="sd">        opt out.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
-        <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_nnef_enable_tract_core</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">))</span>
+        <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_nnef_disable_tract_core</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">))</span>
         <span class="k">return</span> <span class="bp">self</span></div>
 
 

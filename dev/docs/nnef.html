@@ -262,9 +262,11 @@ the <code class="docutils literal notranslate"><span class="pre">with_*()</span>
 </dd></dl>
 
 <dl class="py method">
-<dt class="sig sig-object py" id="tract.nnef.Nnef.with_tract_core">
-<span class="sig-name descname"><span class="pre">with_tract_core</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#tract.nnef.Nnef" title="tract.nnef.Nnef"><span class="pre">Nnef</span></a></span></span><a class="reference internal" href="../_modules/tract/nnef.html#Nnef.with_tract_core"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#tract.nnef.Nnef.with_tract_core" title="Link to this definition">¶</a></dt>
-<dd><p>Enable tract-opl extensions to NNEF to covers tract-core operator set</p>
+<dt class="sig sig-object py" id="tract.nnef.Nnef.without_tract_core">
+<span class="sig-name descname"><span class="pre">without_tract_core</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#tract.nnef.Nnef" title="tract.nnef.Nnef"><span class="pre">Nnef</span></a></span></span><a class="reference internal" href="../_modules/tract/nnef.html#Nnef.without_tract_core"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#tract.nnef.Nnef.without_tract_core" title="Link to this definition">¶</a></dt>
+<dd><p>Force the framework to emit strict NNEF instead of using the tract_core
+extension. The tract_core extension is enabled by default; call this to
+opt out.</p>
 </dd></dl>
 
 <dl class="py method">
@@ -380,7 +382,7 @@ the <code class="docutils literal notranslate"><span class="pre">with_*()</span>
 <li><a class="reference internal" href="#">NNEF</a><ul>
 <li><a class="reference internal" href="#tract.nnef.Nnef"><code class="docutils literal notranslate"><span class="pre">Nnef</span></code></a><ul>
 <li><a class="reference internal" href="#tract.nnef.Nnef.load"><code class="docutils literal notranslate"><span class="pre">Nnef.load()</span></code></a></li>
-<li><a class="reference internal" href="#tract.nnef.Nnef.with_tract_core"><code class="docutils literal notranslate"><span class="pre">Nnef.with_tract_core()</span></code></a></li>
+<li><a class="reference internal" href="#tract.nnef.Nnef.without_tract_core"><code class="docutils literal notranslate"><span class="pre">Nnef.without_tract_core()</span></code></a></li>
 <li><a class="reference internal" href="#tract.nnef.Nnef.with_tract_extra"><code class="docutils literal notranslate"><span class="pre">Nnef.with_tract_extra()</span></code></a></li>
 <li><a class="reference internal" href="#tract.nnef.Nnef.with_tract_transformers"><code class="docutils literal notranslate"><span class="pre">Nnef.with_tract_transformers()</span></code></a></li>
 <li><a class="reference internal" href="#tract.nnef.Nnef.with_onnx"><code class="docutils literal notranslate"><span class="pre">Nnef.with_onnx()</span></code></a></li>
