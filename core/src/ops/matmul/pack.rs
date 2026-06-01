@@ -7,12 +7,15 @@ use tract_linalg::block_quant::{
 };
 use tract_linalg::mmm::{MMMInputFormat, MMMInputValue, PackedMatrixStorage};
 use tract_linalg::pack::{PackedFormat, PackedI8K4};
+#[cfg(target_arch = "x86_64")]
+use tract_linalg::x86_64_fma::amx::PackedAmxA;
 
 use super::ModePicker;
 
 // Pack one (possibly strided) view with a dynamic packing format. Keeps the
 // PackedFormat fast path byte-identical; routes the K=4-inner SMOPA packer
-// (PackedI8K4) through its view packer. Other formats are unsupported here.
+// (PackedI8K4) and the AMX A-side packer (PackedAmxA) through their view
+// packers. Other formats are unsupported here.
 fn pack_view_with(
     packer: &dyn MMMInputFormat,
     t: &TensorView,
@@ -20,12 +23,16 @@ fn pack_view_with(
     mn_axis: usize,
 ) -> TractResult<Box<dyn MMMInputValue>> {
     if let Some(pf) = packer.downcast_ref::<PackedFormat>() {
-        pf.pack_tensor_view(t, k_axis, mn_axis)
-    } else if let Some(p4) = packer.downcast_ref::<PackedI8K4>() {
-        p4.pack_view(t, k_axis, mn_axis)
-    } else {
-        bail!("OptMatMulPack does not support packing format {packer:?}")
+        return pf.pack_tensor_view(t, k_axis, mn_axis);
     }
+    if let Some(p4) = packer.downcast_ref::<PackedI8K4>() {
+        return p4.pack_view(t, k_axis, mn_axis);
+    }
+    #[cfg(target_arch = "x86_64")]
+    if let Some(pa) = packer.downcast_ref::<PackedAmxA>() {
+        return pa.pack_view(t, k_axis, mn_axis);
+    }
+    bail!("OptMatMulPack does not support packing format {packer:?}")
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
