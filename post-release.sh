@@ -12,7 +12,13 @@ fi
 
 if [ -z "$VERSION" ]
 then
-    echo "Usage: $0 <version>" 
+    echo "Usage: $0 <version>"
+    exit 1
+fi
+
+if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$'
+then
+    echo "Refusing version '$VERSION': must look like 0.23.0 or 0.23.0-pre (no leading 'v')." >&2
     exit 1
 fi
 
