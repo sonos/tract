@@ -173,27 +173,33 @@ avx512amx_mmm_i32_16x16_{{suffix}} proc
     tilezero        tmm0
 
 {{L}}loop_64k_amx_i8i8_16x16:
-    // Hint the prefetcher one iter ahead. A's row 0 advances by 64 bytes;
-    // B's panel advances by 16 cache lines (64 * 16 = 1024 B per iter).
-    prefetcht0      [rax + 64]
-    prefetcht0      [rbx + 1024]
-    prefetcht0      [rbx + 1088]
-    prefetcht0      [rbx + 1152]
-    prefetcht0      [rbx + 1216]
-    prefetcht0      [rbx + 1280]
-    prefetcht0      [rbx + 1344]
-    prefetcht0      [rbx + 1408]
-    prefetcht0      [rbx + 1472]
-    prefetcht0      [rbx + 1536]
-    prefetcht0      [rbx + 1600]
-    prefetcht0      [rbx + 1664]
-    prefetcht0      [rbx + 1728]
-    prefetcht0      [rbx + 1792]
-    prefetcht0      [rbx + 1856]
-    prefetcht0      [rbx + 1920]
-    prefetcht0      [rbx + 1984]
-    tileloadd       tmm1,   [rax + r8 * 1]     // A tile: stride = K_padded
-    tileloadd       tmm2,   [rbx + r9 * 1]     // B tile: stride = 64
+    // Cache strategy follows oneDNN's AMX BRGEMM heuristics (Intel-backed):
+    //   - A is reused across N-tiles in tract's outer matmul loop, so we use
+    //     `tileloadd` (cached, brings into L1) and `prefetcht0` (to L1) for A.
+    //   - B streams through once per kernel call (one B-panel per N-tile), and
+    //     for the AMX-typical large-matmul case the B working set exceeds the
+    //     32 KB L1d on Sapphire Rapids+. We use `tileloaddt1` (non-temporal,
+    //     bypasses L1) and `prefetcht1` (to L2) for B -- the same pattern
+    //     oneDNN picks when its footprint heuristic crosses the L1 threshold.
+    //   - Sapphire Rapids has 16 L1d Fill Buffers (LFBs); each in-flight
+    //     prefetch/load consumes one. The previous version's 17 prefetches +
+    //     2 active tileloadds overflowed the LFB budget. The reduced count
+    //     below leaves headroom and lets the HW streaming prefetcher cover
+    //     the remaining B-panel lines.
+    //
+    // A advances 64 B / iter (one cache line). B advances 1024 B / iter
+    // (16 cache lines). We prime 6 of the next 16 B-lines at +1024..+1344,
+    // then trust the HW stream prefetcher (very aggressive on SPR/EMR/GNR)
+    // to cover lines +1408..+1984.
+    prefetcht0      [rax + 64]                 // next A-row K-block (to L1)
+    prefetcht1      [rbx + 1024]               // next B-panel head (to L2)
+    prefetcht1      [rbx + 1088]
+    prefetcht1      [rbx + 1152]
+    prefetcht1      [rbx + 1216]
+    prefetcht1      [rbx + 1280]
+    prefetcht1      [rbx + 1344]
+    tileloadd       tmm1,   [rax + r8 * 1]     // A tile (cached): stride = K_padded
+    tileloaddt1     tmm2,   [rbx + r9 * 1]     // B tile (non-temporal): stride = 64
     tdpbssd         tmm0,   tmm1,   tmm2
     add             rax,    64                 // +64 K-bytes in A row 0
     add             rbx,    1024               // 16 K-pairs * 64 = 1024 bytes
