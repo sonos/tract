@@ -169,10 +169,28 @@ pub fn plug_avx512vnni(ops: &mut Ops) {
 pub fn plug_avx512amx_int8(ops: &mut Ops) {
     ops.mmm_impls.push(avx512amx_mmm_i32_8x8.mmm());
     ops.mmm_impls.push(avx512amx_mmm_i32_16x16.mmm());
-    // 16x16 hits the full AMX tile (1024 B per tile) and is ~4x the mul-adds
-    // per tdpbssd; use it as the primary qmmm_i32 dispatch target.
-    ops.qmmm_i32 = Box::new(|_, _, _| avx512amx_mmm_i32_16x16.mmm());
-    log::info!("qmmm_i32: x86_64/avx512amx_int8 (16x16) activated");
+    // Shape-adaptive dispatch:
+    //   - 16x16 hits the full AMX tile (1024 B/tile, 16384 mul-adds per
+    //     tdpbssd) and is the throughput champion when at least one tile
+    //     of each dim is fully utilised.
+    //   - 8x8 has lower per-call setup cost (1/4 the tile-store scratch,
+    //     half the prefetch budget, smaller epilogue) and beats 16x16 on
+    //     small problems where the framework's tile-padding overhead
+    //     dominates.
+    // The exact crossover should be re-validated on AMX HW; oneDNN uses
+    // similar shape-based MR/NR selection for its BRGEMM ukernel variants.
+    ops.qmmm_i32 = Box::new(|m, k, n| {
+        // m, k, n are Option<usize> -- None means "unknown / streaming dim".
+        // For unknown dims default to the throughput champion (16x16); only
+        // fall back to 8x8 when a static dim is known to be tiny.
+        let big = |o: Option<usize>, t: usize| o.is_none_or(|v| v >= t);
+        if big(m, 16) && big(n, 16) && big(k, 64) {
+            avx512amx_mmm_i32_16x16.mmm()
+        } else {
+            avx512amx_mmm_i32_8x8.mmm()
+        }
+    });
+    log::info!("qmmm_i32: x86_64/avx512amx_int8 (16x16 + 8x8 adaptive) activated");
 }
 
 pub fn plug_avx2(ops: &mut Ops) {
