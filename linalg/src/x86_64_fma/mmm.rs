@@ -151,10 +151,17 @@ MMMExternKernel! { avx512amx_mmm_i32_8x8<i32>(8,8)@(64,4) where(AVX512AMX)
 // Same A/B packing (PackedAmxA, PackedI8K4) just with r=16. Row-major
 // accumulators (zmm{m} = row m of C) so the hot path (Clear -> AddMatMul ->
 // Store) needs no transpose.
+//
+// boost(100) pushes this kernel above the equally-ManuallyOptimized AVX-512-VNNI
+// and AMX 8x8 candidates in the einsum kernel-selection scorer (which uses
+// `-quality_cost*1000 + boost` per kernel). When more than one dim is symbolic
+// the shape-adaptive `qmmm_i32` picker isn't invoked, so the boost is what
+// causes the optimizer to prefer the 16x16 tile for unknown-shape matmuls.
 #[cfg(tract_amx_int8)]
 MMMExternKernel! { avx512amx_mmm_i32_16x16<i32>(16,16)@(64,4) where(AVX512AMX)
     packing[1] = i8i8 => |k| k.with_packing(PackedAmxA::new(16), PackedI8K4::new(16));
     quality(ManuallyOptimized)
+    boost(|| 100)
     store(i8)
 }
 
@@ -169,10 +176,16 @@ MMMExternKernel! { avx512amx_mmm_i32_16x16<i32>(16,16)@(64,4) where(AVX512AMX)
 // Default packing[0] (the framework's PackedFormat<f32>) is retained so the
 // kernel can still be selected for f32 paths even when the BF16 packer
 // isn't a precursor match; packing[1] is the fast bf16-from-f32 path.
+// boost(100) puts this AMX kernel above the AVX-512 f32 / FMA f32 kernels at
+// the same ManuallyOptimized tier so the einsum scorer prefers it whenever
+// supported, mirroring the i32 16x16 behaviour. The bf16 vs f32 precision
+// trade is intentional and amortised over the same call sites that already
+// use bf16-via-`dotbf16ps`-style fast-math elsewhere in the stack.
 #[cfg(tract_amx_bf16)]
 MMMExternKernel! { avx512amx_mmm_f32_16x16<f32>(16,16)@(64,4) where(AVX512AMX_BF16)
     packing[1] = f32f32_bf16 => |k| k.with_packing(PackedAmxBf16A::new(16), PackedBf16K2::new(16));
     quality(ManuallyOptimized)
+    boost(|| 100)
 }
 
 pub fn plug(ops: &mut Ops) {
