@@ -321,6 +321,33 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Has
     ) -> TractResult<TVec<OutletId>> {
         target.check_consistency()?;
         let outlets = node.op.substitute_symbols(source, node, target, mapping, self)?;
+        // Diagnostic (enabled via `TRACT_SYMBOL_SUBST_DEBUG=1`): after
+        // an op's `substitute_symbols` has run, check whether any of
+        // the new output facts still reference a symbol the caller
+        // asked to substitute away. If so, the op's impl forgot to
+        // touch one of its TDim-bearing attrs. Used to pinpoint missing
+        // `#[derive(SubstituteSymbols)]` (or manual override) sites.
+        if std::env::var_os("TRACT_SYMBOL_SUBST_DEBUG").is_some() {
+            for &outlet in &outlets {
+                let fact = &target.nodes[outlet.node].outputs[outlet.slot].fact;
+                let leaked: Vec<&Symbol> = self
+                    .keys()
+                    .filter(|s| fact.shape.iter().any(|d| d.symbols().contains(s)))
+                    .collect();
+                if !leaked.is_empty() {
+                    let leaked_names: Vec<String> = leaked.iter().map(|s| format!("{s}")).collect();
+                    eprintln!(
+                        "[symbol_subst_debug] LEAK at node #{} {:?} op={} -- output fact still \
+                         references {:?} in shape {:?}",
+                        outlet.node,
+                        target.nodes[outlet.node].name,
+                        target.nodes[outlet.node].op.name(),
+                        leaked_names,
+                        fact.shape,
+                    );
+                }
+            }
+        }
         for &outlet in &outlets {
             let fact = &mut target.nodes[outlet.node].outputs[outlet.slot].fact;
             if fact.shape.volume().is_zero()
