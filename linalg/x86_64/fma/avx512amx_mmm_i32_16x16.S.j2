@@ -249,14 +249,16 @@ avx512amx_mmm_i32_16x16_{{suffix}} proc
     jmp     {{L}}non_linear_loop
 
 {{L}}scalar_sub:
+    // non-flipped sub = operand - acc (matches fma_mmm_ymm_ops.j2 scalar macro)
     vpbroadcastd    zmm16, dword ptr [rdi + 8]
-    {% for r in range(0, 16) %}vpsubd zmm{{r}}, zmm{{r}}, zmm16
+    {% for r in range(0, 16) %}vpsubd zmm{{r}}, zmm16, zmm{{r}}
     {% endfor %}
     jmp     {{L}}non_linear_loop
 
 {{L}}scalar_sub_flipped:
+    // flipped sub = acc - operand
     vpbroadcastd    zmm16, dword ptr [rdi + 8]
-    {% for r in range(0, 16) %}vpsubd zmm{{r}}, zmm16, zmm{{r}}
+    {% for r in range(0, 16) %}vpsubd zmm{{r}}, zmm{{r}}, zmm16
     {% endfor %}
     jmp     {{L}}non_linear_loop
 
@@ -300,16 +302,18 @@ avx512amx_mmm_i32_16x16_{{suffix}} proc
     jmp     {{L}}non_linear_loop
 
 {{L}}per_row_sub:
+    // non-flipped sub = operand - acc
     mov rax, [rdi + 8]
     {% for m in range(0, 16) %}vpbroadcastd    zmm16, dword ptr [rax + {{m * 4}}]
-    vpsubd          zmm{{m}}, zmm{{m}}, zmm16
+    vpsubd          zmm{{m}}, zmm16, zmm{{m}}
     {% endfor %}
     jmp     {{L}}non_linear_loop
 
 {{L}}per_row_sub_flipped:
+    // flipped sub = acc - operand
     mov rax, [rdi + 8]
     {% for m in range(0, 16) %}vpbroadcastd    zmm16, dword ptr [rax + {{m * 4}}]
-    vpsubd          zmm{{m}}, zmm16, zmm{{m}}
+    vpsubd          zmm{{m}}, zmm{{m}}, zmm16
     {% endfor %}
     jmp     {{L}}non_linear_loop
 
@@ -342,16 +346,18 @@ avx512amx_mmm_i32_16x16_{{suffix}} proc
     jmp     {{L}}non_linear_loop
 
 {{L}}per_col_sub:
+    // non-flipped sub = operand - acc
     mov     rax, [rdi + 8]
     vmovdqu32       zmm16, [rax]
-    {% for r in range(0, 16) %}vpsubd zmm{{r}}, zmm{{r}}, zmm16
+    {% for r in range(0, 16) %}vpsubd zmm{{r}}, zmm16, zmm{{r}}
     {% endfor %}
     jmp     {{L}}non_linear_loop
 
 {{L}}per_col_sub_flipped:
+    // flipped sub = acc - operand
     mov     rax, [rdi + 8]
     vmovdqu32       zmm16, [rax]
-    {% for r in range(0, 16) %}vpsubd zmm{{r}}, zmm16, zmm{{r}}
+    {% for r in range(0, 16) %}vpsubd zmm{{r}}, zmm{{r}}, zmm16
     {% endfor %}
     jmp     {{L}}non_linear_loop
 
