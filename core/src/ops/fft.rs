@@ -223,5 +223,42 @@ impl TypedOp for Stft {
         Ok(tvec!(inputs[0].datum_type.fact(shape)))
     }
 
+    fn axes_mapping(
+        &self,
+        inputs: &[&TypedFact],
+        _outputs: &[&TypedFact],
+    ) -> TractResult<crate::axes::AxesMapping> {
+        // Stft is NOT rank-preserving: it inserts a frame axis at
+        // `axis + 1`. The mapping is:
+        //   - axes 0..self.axis (leading dims): 1-to-1 input <-> output.
+        //   - input axis `self.axis` (the time axis) <-> output axis
+        //     `self.axis` (now the n_frames axis -- same position, the
+        //     dim shrinks from `T` to `(T - frame) / stride + 1`).
+        //   - output axis `self.axis + 1` (the inserted frame axis):
+        //     output-only, no input correspondence.
+        //   - input axes `self.axis + 1..rank` (trailing dims incl.
+        //     the complex pair) <-> output axes `self.axis + 2..rank+1`
+        //     (shifted right by 1 to make room for the frame axis).
+        //
+        // Without this mapping the generic `PulseWrappingOp` fallback
+        // bails with "could not track pulsing axis" the moment a user
+        // streams a non-time axis through STFT (typical pattern: a
+        // batched STFT pipeline that streams the batch axis).
+        let in_rank = inputs[0].rank();
+        let mut axes = tvec!();
+        let mut alphabet = 'a'..;
+        for i in 0..in_rank {
+            let out_axis = if i <= self.axis { i } else { i + 1 };
+            axes.push(
+                crate::axes::Axis::new(alphabet.next().unwrap(), 1, 1)
+                    .input(0, i)
+                    .output(0, out_axis),
+            );
+        }
+        // Inserted frame axis (output-only).
+        axes.push(crate::axes::Axis::new(alphabet.next().unwrap(), 1, 1).output(0, self.axis + 1));
+        crate::axes::AxesMapping::new(1, 1, axes)
+    }
+
     as_op!();
 }
