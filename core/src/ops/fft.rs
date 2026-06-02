@@ -3,7 +3,7 @@ use num_complex::Complex;
 use rustfft::num_traits::{Float, FromPrimitive};
 use rustfft::{FftDirection, FftNum};
 use tract_data::itertools::Itertools;
-use tract_ndarray::Axis;
+use tract_ndarray::Axis as NdAxis;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Fft {
@@ -180,7 +180,7 @@ impl Stft {
                 }
                 fft.process(&mut v);
                 oslice
-                    .index_axis_mut(Axis(self.axis), f)
+                    .index_axis_mut(NdAxis(self.axis), f)
                     .iter_mut()
                     .zip(v.iter().flat_map(|cmpl| [cmpl.re, cmpl.im].into_iter()))
                     .for_each(|(s, v)| *s = v);
