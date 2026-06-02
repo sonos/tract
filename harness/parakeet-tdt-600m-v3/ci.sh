@@ -22,13 +22,15 @@ do
 			nnef_file=nvidia--parakeet-tdt-0.6b-v3-f32f32.$m.nnef.tgz
 		fi
 		# decoder LSTM is externally state-managed (caller plumbs state_0/
-		# state_1 every run): force the external_state flag on Scans
-		# pre-optimisation so declutter_single_loop inlines them, and assert
-		# no Scan survives. Cached NNEF predates the flag — see #2157.
+		# state_1 every run) and stepped one token per call: assert the
+		# external_state flag on Scans (cached NNEF predates it — see #2157)
+		# and concretize the seq symbol to 1, so declutter_single_loop inlines
+		# them. Assert no Scan survives. set_symbols RON must stay space-free
+		# ($extra_transform is passed unquoted).
 		extra_transform=""
 		extra_assert=""
 		if [ "$m" = "decoder" ]; then
-			extra_transform="-t force_scan_external_state"
+			extra_transform='-t force_scan_external_state -t set_symbols(values:{"T":1})'
 			extra_assert="--assert-op-count Scan 0"
 		fi
 		$CACHE_FILE \

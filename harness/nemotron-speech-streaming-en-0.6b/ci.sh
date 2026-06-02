@@ -25,11 +25,13 @@ do
 			nnef_file=$MODEL.$m.nnef.tgz
 		fi
 		# Decoder is stepped one token per call by the caller (external state
-		# carry); force the Scan op into single-iter inlining so the LSTM body
-		# lands on the GPU instead of bouncing through CPU each step.
+		# carry): assert the external_state flag and concretize the seq symbol
+		# to 1 so the Scan inlines and the LSTM body lands on the GPU instead of
+		# bouncing through CPU each step. set_symbols RON must stay space-free
+		# ($extra_transforms is passed unquoted).
 		extra_transforms=""
 		if [ "$m" = "decoder" ]; then
-			extra_transforms="-t force_scan_external_state"
+			extra_transforms='-t force_scan_external_state -t set_symbols(values:{"TARGETS__TIME":1})'
 		fi
 		$CACHE_FILE \
 			$S3DIR/$nnef_file \
