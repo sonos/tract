@@ -329,18 +329,27 @@ fn main() {
             } else {
                 cc::Build::new().files(files).flag("-mfma").compile("x86_64_fma");
             }
-            // VNNI kernel compiled separately so old assemblers (binutils < 2.30,
+            // VNNI kernels compiled separately so old assemblers (binutils < 2.30,
             // e.g. Debian stretch) that can't encode `vpdpbusd ymm` don't break
             // the whole x86_64 build. The `tract_avx512vnni` cfg gates the
             // matching Rust extern declarations and dispatch registration.
             //
-            // The template stays in x86_64/fma/ (alongside dispatcher.j2 and the
-            // other partials it includes) so the jinja env can resolve its includes.
+            // The templates stay in x86_64/fma/ (alongside dispatcher.j2 and the
+            // other partials they include) so the jinja env can resolve its includes.
             if assembler_supports_avx512vnni() {
                 let tmpl = path::Path::new("x86_64/fma/avx512vnni_mmm_i32_8x8.S.j2");
                 let out = out_dir.join(format!("avx512vnni_mmm_i32_8x8_{suffix}.S"));
                 preprocess_file(tmpl, &out, &[], &suffix, false);
-                cc::Build::new().file(&out).flag("-mfma").compile("x86_64_avx512vnni");
+                // The zmm 16x16 sibling shares the VPDPBUSD probe; compile it into
+                // the same object so `tract_avx512vnni` gates both kernels together.
+                let tmpl16 = path::Path::new("x86_64/fma/avx512vnni_mmm_i32_16x16.S.j2");
+                let out16 = out_dir.join(format!("avx512vnni_mmm_i32_16x16_{suffix}.S"));
+                preprocess_file(tmpl16, &out16, &[], &suffix, false);
+                cc::Build::new()
+                    .file(&out)
+                    .file(&out16)
+                    .flag("-mfma")
+                    .compile("x86_64_avx512vnni");
                 println!("cargo:rustc-cfg=tract_avx512vnni");
             }
 

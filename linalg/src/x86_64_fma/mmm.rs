@@ -119,6 +119,26 @@ MMMExternKernel! { avx512vnni_mmm_i32_8x8<i32>(8,8)@(256,4) where(AVX512VNNI)
     store(i8)
 }
 
+// AVX-512 VNNI int8 GEMM, zmm-wide 16x16 sibling of avx512vnni_mmm_i32_8x8.
+// Accumulators are ROW-MAJOR (zmm{m} = row m of C, 16 columns per zmm), so one
+// VPDPBUSD covers 16 columns x 4 K and the K=4 inner step issues 16 of them
+// (one per row) = 1024 mul-adds/block, 2x the 8x8 ymm kernel's work per
+// iteration. Same +128 A-bias / per-column correction as the 8x8 kernel, and
+// the same PackedI8K4 layout (r=16 for both A and B). This is the int8
+// throughput tier of qmmm_i32 for big cores with AVX-512-VNNI but no AMX
+// (Cascade Lake / Ice Lake / Tiger Lake server + client).
+//
+// boost(50) lifts it above the 8x8 VNNI candidate in the einsum kernel-selection
+// scorer for unknown shapes, while staying below the AMX 16x16 kernels' boost(100)
+// so AMX still wins when both are present.
+#[cfg(tract_avx512vnni)]
+MMMExternKernel! { avx512vnni_mmm_i32_16x16<i32>(16,16)@(64,4) where(AVX512VNNI)
+    packing[1] = i8i8 => |k| k.with_packing(PackedI8K4::new(16), PackedI8K4::new(16));
+    quality(ManuallyOptimized)
+    boost(|| 50)
+    store(i8)
+}
+
 // AVX-VNNI ymm int8 GEMM: byte-for-byte the same body as avx512vnni_mmm_i32_8x8
 // (8x8 ymm accumulators, PackedI8K4 inner-K, +128 bias trick), but the
 // VPDPBUSD instructions are forced to the VEX (AVX-VNNI) encoding via the
@@ -227,8 +247,23 @@ pub fn plug(ops: &mut Ops) {
 #[cfg(tract_avx512vnni)]
 pub fn plug_avx512vnni(ops: &mut Ops) {
     ops.mmm_impls.push(avx512vnni_mmm_i32_8x8.mmm());
-    ops.qmmm_i32 = Box::new(|_, _, _| avx512vnni_mmm_i32_8x8.mmm());
-    log::info!("qmmm_i32: x86_64/avx512vnni activated");
+    ops.mmm_impls.push(avx512vnni_mmm_i32_16x16.mmm());
+    // Shape-adaptive dispatch mirroring the AMX int8 path: the zmm 16x16 tile is
+    // the throughput champion when each of M and N fills at least one tile; the
+    // 8x8 ymm kernel has lower per-call setup (smaller epilogue, half the
+    // accumulator file) and wins on small problems where the 16x16 tile-padding
+    // overhead dominates. Unknown dims default to the 16x16 champion. (No K gate:
+    // one VPDPBUSD step is only 4 K-bytes, so any K is fine; the choice is about
+    // filling the 16-wide M/N tile.)
+    ops.qmmm_i32 = Box::new(|m, _, n| {
+        let big = |o: Option<usize>, t: usize| o.is_none_or(|v| v >= t);
+        if big(m, 16) && big(n, 16) {
+            avx512vnni_mmm_i32_16x16.mmm()
+        } else {
+            avx512vnni_mmm_i32_8x8.mmm()
+        }
+    });
+    log::info!("qmmm_i32: x86_64/avx512vnni (16x16 + 8x8 adaptive) activated");
 }
 
 #[cfg(tract_avxvnni)]

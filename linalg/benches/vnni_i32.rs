@@ -1,8 +1,10 @@
 #![allow(dead_code)]
-// Kernel-level benchmark: AVX-512 VNNI int8 GEMM (avx512vnni_mmm_i32_8x8, VPDPBUSD
-// over the K=4-inner PackedI8K4 layout) vs the AVX2 int8 path (avx2_mmm_i32_8x8,
-// vpmaddubsw-style widening). Both run the i8i8 packing (index 1) over the same
-// M/K/N so the only difference is the matmul inner loop.
+// Kernel-level benchmark: AVX-512 VNNI int8 GEMM over the K=4-inner PackedI8K4
+// layout (VPDPBUSD) vs the AVX2 int8 path (avx2_mmm_i32_8x8, vpmaddubsw-style
+// widening). Three columns: the AVX2 baseline, the 8x8 ymm VNNI kernel, and the
+// 16x16 zmm VNNI kernel (twice the columns per accumulator). All run the i8i8
+// packing (index 1) over the same M/K/N so the only difference is the matmul
+// inner loop and tile geometry.
 use criterion::*;
 use tract_data::internal::*;
 use tract_linalg::mmm::{AsInputValue, FusedSpec, MatMatMul};
@@ -55,6 +57,11 @@ fn benches(c: &mut Criterion) {
         g.bench_with_input(BenchmarkId::new("avx512vnni", &id), &(m, k, n), |b, &(m, k, n)| {
             run_kernel(b, &*avx512vnni_mmm_i32_8x8.mmm(), m, k, n)
         });
+        g.bench_with_input(
+            BenchmarkId::new("avx512vnni_16x16", &id),
+            &(m, k, n),
+            |b, &(m, k, n)| run_kernel(b, &*avx512vnni_mmm_i32_16x16.mmm(), m, k, n),
+        );
         g.finish();
     }
 }
