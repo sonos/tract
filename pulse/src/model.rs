@@ -84,6 +84,48 @@ pub fn stream_axis_lcm(inputs: &[&PulsedFact]) -> Option<TDim> {
     dims.try_fold(first, |acc, d| acc.lcm(d))
 }
 
+/// Walk the model (and any `Scan` body recursively) looking for `Scan`
+/// ops whose body input facts contain dims that depend on `stream_sym`.
+///
+/// Background: at NNEF load time `tract_core_shape_of` becomes a const
+/// tensor of `TDim`s, and `declutter` may propagate concrete dims along
+/// the derived chain. When the streaming axis later gets substituted to
+/// the concrete pulse value during pulsification, any chain that traced
+/// back to `shape_of(stream)` collapses to literals. If a `Scan` body's
+/// source fact inherits one of these literal dims (typical for a GRU /
+/// LSTM fed from a stream-derived intermediate), the runtime warmup
+/// turn -- where the upstream tensor is genuinely 0-length -- clashes
+/// against the body's literal source fact and `plan.rs::resolve` bails
+/// with `Clashing resolution for expression. 2=2 != 0`.
+///
+/// Returning `true` here triggers the `pulse_driven_blockify` symbol
+/// substitution (mint a chunk symbol `S`, substitute the streaming
+/// symbol with `S · pulse`) which keeps every stream-derived dim
+/// symbolic across pulsification. That switches the body's source fact
+/// from `Val(N)` to `S · N / pulse` (or similar), so `S = 0` at warmup
+/// matches the 0-length runtime tensors cleanly.
+pub(crate) fn has_scan_body_with_stream_derived_dims(
+    model: &TypedModel,
+    stream_sym: &Symbol,
+) -> TractResult<bool> {
+    use tract_core::ops::scan::Scan;
+    for node in model.nodes() {
+        let Some(scan) = node.op_as::<Scan>() else { continue };
+        for ix in 0..scan.body.inputs.len() {
+            let fact = scan.body.input_fact(ix)?;
+            if fact.shape.iter().any(|d| d.symbols().contains(stream_sym)) {
+                return Ok(true);
+            }
+        }
+        // Nested Scans inside the body: recurse with the same stream
+        // symbol since the outer pulse rewrites the whole graph.
+        if has_scan_body_with_stream_derived_dims(&scan.body, stream_sym)? {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 /// Pulse-driven path: the pulse value is concrete, so we mint S, substitute
 /// `T → pulse_value · S` ourselves, and call blockify just for the section
 /// rewrites.  The audio-side multiplier is user-driven — required when
@@ -143,11 +185,35 @@ impl PulsedModelExt for PulsedModel {
         crate::ops::diag_gather::detect_diag_gather(&mut blockified)?;
         tract_core::optim::propagate_roi::PropagateRoi.run_direct(&mut blockified)?;
         blockified.declutter()?;
-        let (stream_sym, pulse_dim) = match pulse.as_i64() {
-            Some(pv) if crate::blockify::has_quadratic_sections(&blockified, &symbol)? => {
-                pulse_driven_blockify(&mut blockified, &symbol, pv)?
+        // Lift the streaming symbol to `chunk_sym · pulse` when either
+        //
+        //  - the model has attention-style quadratic sections that
+        //    need the blockify section rewrite, or
+        //  - any `Scan` op in the graph has a body whose internal
+        //    source facts depend on the streaming symbol (e.g. a GRU
+        //    fed from a `shape_of(stream)`-derived intermediate, as
+        //    in DPDFNet's DPRNN path).
+        //
+        // The second case is what fails today: the body inherits a
+        // literal source-fact (`shape_of` is a NNEF load-time const,
+        // declutter propagates concrete values through), then the
+        // 0-length pulse-warmup turn trips `plan.rs::resolve` with
+        // "Clashing resolution for expression".
+        //
+        // Keeping the gate narrow (rather than always blockifying)
+        // preserves the existing contract for simple models where the
+        // caller binds the original streaming symbol directly.
+        let needs_blockify = match pulse.as_i64() {
+            Some(_) => {
+                crate::blockify::has_quadratic_sections(&blockified, &symbol)?
+                    || has_scan_body_with_stream_derived_dims(&blockified, &symbol)?
             }
-            _ => (symbol, pulse.clone()),
+            None => false,
+        };
+        let (stream_sym, pulse_dim) = if needs_blockify {
+            pulse_driven_blockify(&mut blockified, &symbol, pulse.as_i64().unwrap())?
+        } else {
+            (symbol, pulse.clone())
         };
         let pulsifiers = crate::ops::OpPulsifier::inventory();
         let (mut pulsed, mapping) = Pulsifier(stream_sym, pulse_dim, pulsifiers)

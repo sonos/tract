@@ -173,6 +173,86 @@ mod tests {
         assert_eq!(out_stream.dim, s.to_dim() * 2);
     }
 
+    /// A `Scan` whose body has an input fact depending on the stream
+    /// symbol must trigger the chunk-symbol substitution path so the
+    /// body's source fact stays symbolic across pulse rewrite. Without
+    /// this, the body inherits a literal source fact (the steady-state
+    /// pulse value) and the 0-length warmup turn at runtime trips
+    /// `plan.rs::resolve` with `Clashing resolution for expression`.
+    /// Surfaced first by DPDFNet's DPRNN path.
+    #[test]
+    fn test_scan_body_with_stream_derived_dim_uses_chunk_symbol() {
+        use tract_core::ops::scan::{InputMapping, OutputMapping, Scan, ScanInfo};
+
+        // Outer model: source (S, 4) and a `Full` input with shape
+        // derived from S (`S, 4`) flowing into a Scan body.
+        let mut model = TypedModel::default();
+        let s = model.symbols.sym("S");
+        let scan_src =
+            model.add_source("scan_src", f32::fact(dims![s.clone(), 4].as_ref())).unwrap();
+        let full_src =
+            model.add_source("full_src", f32::fact(dims![s.clone(), 4].as_ref())).unwrap();
+
+        // Body model: per-iter slice of `scan_src` is (1, 4), and the
+        // `Full` input keeps its stream-dependent shape (S, 4). Slice
+        // the first row of the Full input to keep it actually consumed
+        // by the body output -- otherwise declutter would drop the
+        // input and erase the stream dependency before our detector
+        // runs.
+        let mut body = TypedModel::default();
+        let body_scan_in = body.add_source("body_scan_in", f32::fact([1usize, 4])).unwrap();
+        let body_full_in =
+            body.add_source("body_full_in", f32::fact(dims![s.clone(), 4].as_ref())).unwrap();
+        let body_slice = body
+            .wire_node(
+                "slice_full",
+                tract_core::ops::array::Slice { axis: 0, start: 0.to_dim(), end: 1.to_dim() },
+                &[body_full_in],
+            )
+            .unwrap()[0];
+        let body_out = body
+            .wire_node(
+                "add_scan_to_slice",
+                tract_core::ops::math::add(),
+                &[body_scan_in, body_slice],
+            )
+            .unwrap();
+        body.select_output_outlets(&body_out).unwrap();
+
+        let scan_op = Scan {
+            skip: 0,
+            reset_every_turn: false,
+            external_state: false,
+            body,
+            decluttered: false,
+            input_mapping: vec![
+                InputMapping::Scan(ScanInfo { axis: 0, chunk: 1 }),
+                InputMapping::Full,
+            ],
+            output_mapping: vec![OutputMapping {
+                scan: Some((0, ScanInfo { axis: 0, chunk: 1 })),
+                full_dim_hint: None,
+                last_value_slot: None,
+                state: false,
+            }],
+        };
+        let scan_out = model.wire_node("scan", scan_op, &[scan_src, full_src]).unwrap();
+        model.select_output_outlets(&scan_out).unwrap();
+
+        // Detection should fire.
+        assert!(crate::model::has_scan_body_with_stream_derived_dims(&model, &s).unwrap());
+
+        // Pulsification should succeed; with the chunk substitution
+        // path, the pulsed model records `BLOCKIFY_ORIGINAL_SYMBOL`
+        // and the streaming variable becomes the chunk symbol.
+        let pulsed = PulsedModel::new(&model, s.clone(), &2.to_dim()).unwrap();
+        assert!(
+            pulsed.properties.contains_key(crate::blockify::BLOCKIFY_ORIGINAL_SYMBOL),
+            "chunk-symbol substitution should have run -- model should record \
+             BLOCKIFY_ORIGINAL_SYMBOL = {s}"
+        );
+    }
+
     #[test]
     fn test_reshape_split_then_run() {
         use tract_core::ops::change_axes::AxisOp;
