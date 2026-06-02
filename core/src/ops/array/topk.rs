@@ -5,7 +5,7 @@ use tract_ndarray::{ArrayViewMutD, Axis, Dimension};
 
 use crate::internal::*;
 
-#[derive(Debug, Clone, new, Default, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, new, Default, Hash, PartialEq, Eq, SubstituteSymbols)]
 pub struct Topk {
     pub axis: usize,
     pub largest: bool,
@@ -101,6 +101,17 @@ impl TypedOp for Topk {
         fact_indices.shape.set(self.axis, k);
         fact_indices.datum_type = i64::datum_type();
         Ok(tvec!(fact_values, fact_indices))
+    }
+
+    fn substitute_symbols(
+        &self,
+        _source: &TypedModel,
+        node: &TypedNode,
+        target: &mut TypedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+        subs: &HashMap<Symbol, TDim>,
+    ) -> TractResult<TVec<OutletId>> {
+        substitute_symbols_default!(self, node, target, mapping, subs)
     }
 
     as_op!();
