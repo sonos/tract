@@ -86,6 +86,22 @@ fn assembler_supports_amx_int8() -> bool {
         .is_ok()
 }
 
+// Probe whether the assembler accepts the `{vex}` prefix on VPDPBUSD --
+// needed to force the AVX-VNNI (VEX) form instead of the AVX-512-VNNI
+// (EVEX) form gas defaults to. `{vex}` / `{evex}` instruction prefixes
+// were added in binutils 2.36; older toolchains reject them. When the
+// probe fails the avxvnni_mmm_i32_8x8 kernel is skipped and dispatch
+// falls back to the AVX2 emulation kernel on AVX-VNNI-only hardware.
+fn assembler_supports_avxvnni() -> bool {
+    cc::Build::new()
+        .file("x86_64/avx512amx/dummy_avxvnni.S")
+        .cargo_metadata(false)
+        .cargo_warnings(false)
+        .warnings(false)
+        .try_compile("tract_avxvnni_probe")
+        .is_ok()
+}
+
 // Probe whether the target assembler can assemble AMX bf16 instructions
 // (`tdpbf16ps`). Both int8 and bf16 AMX mnemonics require binutils >= 2.34,
 // so in practice this probe succeeds whenever `assembler_supports_amx_int8`
@@ -203,6 +219,9 @@ fn main() {
     println!("cargo:rustc-check-cfg=cfg(tract_amx_int8)");
     // Set below only when the assembler accepts AMX bf16 mnemonics (tdpbf16ps).
     println!("cargo:rustc-check-cfg=cfg(tract_amx_bf16)");
+    // Set below only when the assembler accepts the `{vex}` prefix on
+    // VPDPBUSD (binutils >= 2.36) -- needed for the AVX-VNNI ymm kernel.
+    println!("cargo:rustc-check-cfg=cfg(tract_avxvnni)");
 
     match arch.as_ref() {
         "x86_64" => {
@@ -242,7 +261,25 @@ fn main() {
                 })
                 .cloned()
                 .collect();
-            files.retain(|f| !amx_int8_files.contains(f) && !amx_bf16_files.contains(f));
+            // AVX-VNNI ymm kernel: gas requires the `{vex}` instruction prefix
+            // (binutils 2.36+) -- pulled aside so the bulk -mfma compile, which
+            // is fine on older binutils, isn't broken when the AVX-VNNI cfg is
+            // disabled.
+            let avxvnni_files: Vec<path::PathBuf> = files
+                .iter()
+                .filter(|f| {
+                    f.file_name()
+                        .and_then(|n| n.to_str())
+                        .map(|n| n.starts_with("avxvnni_"))
+                        .unwrap_or(false)
+                })
+                .cloned()
+                .collect();
+            files.retain(|f| {
+                !amx_int8_files.contains(f)
+                    && !amx_bf16_files.contains(f)
+                    && !avxvnni_files.contains(f)
+            });
 
             if os == "windows" {
                 if use_masm() {
@@ -337,6 +374,21 @@ fn main() {
                     .files(&amx_bf16_files)
                     .compile("x86_64_avx512amx_bf16");
                 println!("cargo:rustc-cfg=tract_amx_bf16");
+            }
+
+            // AVX-VNNI ymm int8 kernel. Independent of the AMX gates: this
+            // kernel ships VPDPBUSD-accelerated i8 GEMM to Atom-class cores
+            // (Alder Lake-E, Sierra Forest, Clearwater Forest / Darkmont)
+            // that have AVX-VNNI but no AVX-512, falling back to AVX2
+            // emulation when the runtime CPUID detection misses.
+            if os != "windows"
+                && !avxvnni_files.is_empty()
+                && assembler_supports_avxvnni()
+            {
+                cc::Build::new()
+                    .files(&avxvnni_files)
+                    .compile("x86_64_avxvnni");
+                println!("cargo:rustc-cfg=tract_avxvnni");
             }
         }
         "arm" | "armv7" => {

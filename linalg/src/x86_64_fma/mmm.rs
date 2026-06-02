@@ -7,12 +7,16 @@ use crate::pack::{PackedFormat, PackedI8K4};
 use super::amx::{PackedAmxA, has_amx_int8};
 #[cfg(tract_amx_bf16)]
 use super::amx_bf16::{PackedAmxBf16A, PackedBf16K2, has_amx_bf16};
+#[cfg(tract_avxvnni)]
+use super::avxvnni::has_avxvnni;
 use super::*;
 
 #[cfg(tract_amx_int8)]
 const AVX512AMX: fn() -> bool = has_amx_int8;
 #[cfg(tract_amx_bf16)]
 const AVX512AMX_BF16: fn() -> bool = has_amx_bf16;
+#[cfg(tract_avxvnni)]
+const AVXVNNI: fn() -> bool = has_avxvnni;
 
 /// One candidate kernel in a dispatcher's pool, with its tile geometry
 /// and a relative-throughput scale (1.0 = baseline, used to break
@@ -115,6 +119,20 @@ MMMExternKernel! { avx512vnni_mmm_i32_8x8<i32>(8,8)@(256,4) where(AVX512VNNI)
     store(i8)
 }
 
+// AVX-VNNI ymm int8 GEMM: byte-for-byte the same body as avx512vnni_mmm_i32_8x8
+// (8x8 ymm accumulators, PackedI8K4 inner-K, +128 bias trick), but the
+// VPDPBUSD instructions are forced to the VEX (AVX-VNNI) encoding via the
+// `{vex}` prefix. Runs on Atom-class cores (Alder Lake-E, Sierra Forest,
+// Clearwater Forest / Darkmont) which have AVX-VNNI but no AVX-512. On big
+// cores with both AVX-512-VNNI and AVX-VNNI (Sapphire Rapids+, some Alder
+// Lake P-core SKUs) dispatch prefers the EVEX-encoded kernel above.
+#[cfg(tract_avxvnni)]
+MMMExternKernel! { avxvnni_mmm_i32_8x8<i32>(8,8)@(256,4) where(AVXVNNI)
+    packing[1] = i8i8 => |k| k.with_packing(PackedI8K4::new(8), PackedI8K4::new(8));
+    quality(ManuallyOptimized)
+    store(i8)
+}
+
 // Same epilogue as avx512vnni_mmm_i32_8x8 (8x8 ymm accumulators), but the i8i8
 // matmul inner loop uses TDPBSSD (16-M x 16-N x 64-K mul-acc per instruction)
 // over AMX tiles. A's packing is novel (PackedAmxA, M-major-within-panel,
@@ -160,6 +178,13 @@ MMMExternKernel! { avx512amx_mmm_f32_16x16<f32>(16,16)@(64,4) where(AVX512AMX_BF
 pub fn plug(ops: &mut Ops) {
     if is_x86_feature_detected!("avx2") {
         plug_avx2(ops);
+        // AVX-VNNI runs on AVX2-only Atom-class cores (Alder Lake-E, Sierra
+        // Forest, Clearwater Forest / Darkmont). Plug it here so big cores
+        // can overlay AVX-512-VNNI / AMX on top below.
+        #[cfg(tract_avxvnni)]
+        if has_avxvnni() {
+            plug_avxvnni(ops);
+        }
         if is_x86_feature_detected!("fma") {
             plug_fma(ops);
             if is_x86_feature_detected!("avx512f") {
@@ -191,6 +216,17 @@ pub fn plug_avx512vnni(ops: &mut Ops) {
     ops.mmm_impls.push(avx512vnni_mmm_i32_8x8.mmm());
     ops.qmmm_i32 = Box::new(|_, _, _| avx512vnni_mmm_i32_8x8.mmm());
     log::info!("qmmm_i32: x86_64/avx512vnni activated");
+}
+
+#[cfg(tract_avxvnni)]
+pub fn plug_avxvnni(ops: &mut Ops) {
+    ops.mmm_impls.push(avxvnni_mmm_i32_8x8.mmm());
+    // On AVX-VNNI-only cores (no AVX-512) this is the int8 throughput champion;
+    // replace the AVX2 emulation default. On big cores that also have
+    // AVX-512-VNNI, plug_avx512vnni below runs after this and clobbers
+    // qmmm_i32 again with the EVEX kernel.
+    ops.qmmm_i32 = Box::new(|_, _, _| avxvnni_mmm_i32_8x8.mmm());
+    log::info!("qmmm_i32: x86_64/avxvnni (VEX-encoded VPDPBUSD) activated");
 }
 
 #[cfg(tract_amx_bf16)]
