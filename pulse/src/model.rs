@@ -184,34 +184,46 @@ impl PulsedModelExt for PulsedModel {
         // PulsedModel::new (or `--pulse`) get the same treatment.
         crate::ops::diag_gather::detect_diag_gather(&mut blockified)?;
         tract_core::optim::propagate_roi::PropagateRoi.run_direct(&mut blockified)?;
-        blockified.declutter()?;
-        // Lift the streaming symbol to `chunk_sym · pulse` when either
+        // The Scan-body / stream-derived-dim detection looks for source
+        // facts on the body whose shape contains the streaming symbol.
+        // Those facts trace back to `shape_of(stream)` which is a NNEF
+        // load-time `Const(tensor1([STREAM_sym, ...]))`. The check must
+        // run *before* declutter -- declutter aggressively folds any
+        // STREAM-derived chain into literals once it has enough static
+        // context, after which the symbol is gone and the detection
+        // can't see it any more.
         //
-        //  - the model has attention-style quadratic sections that
-        //    need the blockify section rewrite, or
-        //  - any `Scan` op in the graph has a body whose internal
-        //    source facts depend on the streaming symbol (e.g. a GRU
-        //    fed from a `shape_of(stream)`-derived intermediate, as
-        //    in DPDFNet's DPRNN path).
-        //
-        // The second case is what fails today: the body inherits a
-        // literal source-fact (`shape_of` is a NNEF load-time const,
-        // declutter propagates concrete values through), then the
-        // 0-length pulse-warmup turn trips `plan.rs::resolve` with
-        // "Clashing resolution for expression".
-        //
-        // Keeping the gate narrow (rather than always blockifying)
-        // preserves the existing contract for simple models where the
-        // caller binds the original streaming symbol directly.
-        let needs_blockify = match pulse.as_i64() {
-            Some(_) => {
-                crate::blockify::has_quadratic_sections(&blockified, &symbol)?
-                    || has_scan_body_with_stream_derived_dims(&blockified, &symbol)?
-            }
+        // If the detection fires we ALSO have to substitute before
+        // declutter: declutter folds `(STREAM - n_fft) / hop + 1` to
+        // a `Val(2)` literal as soon as STREAM is concrete-ish, and
+        // a post-declutter `set_symbols` has no symbols left to
+        // substitute -- the literal is baked. Substituting first turns
+        // the same expression into `(chunk_sym * pulse - n_fft) / hop
+        // + 1` which declutter folds to `2 * chunk_sym - 1` (still
+        // symbolic), so the body's source fact stays expression-of-
+        // chunk_sym and binds correctly at runtime warmup (chunk_sym
+        // = 0 → 0 frames, no clash).
+        let scan_body_needs_blockify = match pulse.as_i64() {
+            Some(_) => has_scan_body_with_stream_derived_dims(&blockified, &symbol)?,
             None => false,
         };
-        let (stream_sym, pulse_dim) = if needs_blockify {
-            pulse_driven_blockify(&mut blockified, &symbol, pulse.as_i64().unwrap())?
+        let mut deferred_substitution: Option<(Symbol, TDim)> = None;
+        if scan_body_needs_blockify {
+            let pv = pulse.as_i64().unwrap();
+            deferred_substitution = Some(pulse_driven_blockify(&mut blockified, &symbol, pv)?);
+        }
+        blockified.declutter()?;
+        // Attention-style quadratic sections only become detectable
+        // after declutter consolidates the section structure; their
+        // path remains "declutter first, then substitute".
+        let (stream_sym, pulse_dim) = if let Some(deferred) = deferred_substitution {
+            deferred
+        } else if let Some(pv) = pulse.as_i64() {
+            if crate::blockify::has_quadratic_sections(&blockified, &symbol)? {
+                pulse_driven_blockify(&mut blockified, &symbol, pv)?
+            } else {
+                (symbol, pulse.clone())
+            }
         } else {
             (symbol, pulse.clone())
         };
