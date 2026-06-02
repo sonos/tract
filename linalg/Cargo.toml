@@ -84,6 +84,10 @@ name = "mm_for_asr_am"
 harness = false
 
 [[bench]]
+name = "qmmm_i8"
+harness = false
+
+[[bench]]
 name = "hardswish"
 harness = false
 
