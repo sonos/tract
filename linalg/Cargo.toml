@@ -175,3 +175,7 @@ harness = false
 [[bench]]
 name = "amx_f32"
 harness = false
+
+[[bench]]
+name = "avxvnni_i32"
+harness = false
