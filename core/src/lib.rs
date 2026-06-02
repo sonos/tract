@@ -128,10 +128,12 @@ pub mod internal {
     pub use std::collections::HashMap;
     pub use std::hash::Hash;
     pub use std::marker::PhantomData;
+    pub use substitute_symbols_default;
     pub use tract_data::internal::*;
     pub use tract_data::{
         dispatch_copy, dispatch_datum, dispatch_datum_by_size, dispatch_floatlike, dispatch_numbers,
     };
+    pub use tract_derive::SubstituteSymbols;
     pub use tvec;
     pub use {args_1, args_2, args_3, args_4, args_5, args_6, args_7, args_8};
     pub use {as_op, not_a_typed_op, op_as_typed_op};

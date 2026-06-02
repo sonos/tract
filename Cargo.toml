@@ -4,6 +4,7 @@ members = [
     "data",
     "linalg",
     "core",
+    "core/derive",
     "pulse",
     "pulse-opl",
     "hir",

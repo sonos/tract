@@ -1,6 +1,6 @@
 use crate::internal::*;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, new)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, new, SubstituteSymbols)]
 pub struct DynSlice {
     pub axis: usize,
     pub len: TDim,
@@ -112,6 +112,17 @@ impl TypedOp for DynSlice {
             &[node.inputs[0]],
             crate::ops::array::Slice { axis: self.axis, start, end },
         )?))
+    }
+
+    fn substitute_symbols(
+        &self,
+        _source: &TypedModel,
+        node: &TypedNode,
+        target: &mut TypedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+        subs: &HashMap<Symbol, TDim>,
+    ) -> TractResult<TVec<OutletId>> {
+        substitute_symbols_default!(self, node, target, mapping, subs)
     }
 
     as_op!();

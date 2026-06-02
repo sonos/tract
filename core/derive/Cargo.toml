@@ -1,0 +1,17 @@
+[package]
+name = "tract-derive"
+version = "0.23.0-pre"
+license = "MIT OR Apache-2.0"
+description = "Derive macros for tract-core (#[derive(SubstituteSymbols)] etc)."
+repository = "https://github.com/snipsco/tract"
+edition = "2024"
+rust-version.workspace = true
+publish = false
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = { version = "2", features = ["full"] }
+quote = "1"
+proc-macro2 = "1"
