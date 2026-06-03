@@ -103,5 +103,22 @@ impl TypedOp for Topk {
         Ok(tvec!(fact_values, fact_indices))
     }
 
+    fn set_symbols(
+        &self,
+        _source: &TypedModel,
+        node: &TypedNode,
+        target: &mut TypedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+        subs: &HashMap<Symbol, TDim>,
+    ) -> TractResult<TVec<OutletId>> {
+        let op = Topk {
+            axis: self.axis,
+            largest: self.largest,
+            fallback_k: self.fallback_k.substitute_all(subs)?,
+        };
+        let inputs = node.inputs.iter().map(|i| mapping[i]).collect::<TVec<_>>();
+        target.wire_node(&node.name, op, &inputs)
+    }
+
     as_op!();
 }
