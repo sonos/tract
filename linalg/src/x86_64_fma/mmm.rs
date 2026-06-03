@@ -283,10 +283,8 @@ pub fn plug_avx512amx_bf16(ops: &mut Ops) {
     // Save the previously-installed f32 picker so we can defer to it when
     // the AMX kernel isn't a good fit (small M/N, or K < 32 -- one TDPBF16PS
     // consumes 32 bf16 K-lanes so the panel must have at least one full step).
-    let prev: crate::MMMImpl = std::mem::replace(
-        &mut ops.mmm_f32,
-        Box::new(|_, _, _| unreachable!()),
-    );
+    let prev: crate::MMMImpl =
+        std::mem::replace(&mut ops.mmm_f32, Box::new(|_, _, _| unreachable!()));
     ops.mmm_f32 = Box::new(move |m, k, n| {
         let big = |o: Option<usize>, t: usize| o.is_none_or(|v| v >= t);
         // Same dispatch shape as the int8 16x16/8x8 split: hand off to AMX

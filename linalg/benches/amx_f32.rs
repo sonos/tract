@@ -17,14 +17,7 @@ use criterion::*;
 use tract_data::internal::*;
 use tract_linalg::mmm::{AsInputValue, FusedSpec, MatMatMul};
 
-fn run_kernel(
-    be: &mut Bencher,
-    mmm: &dyn MatMatMul,
-    packing: usize,
-    m: usize,
-    k: usize,
-    n: usize,
-) {
+fn run_kernel(be: &mut Bencher, mmm: &dyn MatMatMul, packing: usize, m: usize, k: usize, n: usize) {
     let a = Tensor::zero_dt(DatumType::F32, &[m, k]).unwrap();
     let b = Tensor::zero_dt(DatumType::F32, &[k, n]).unwrap();
     let (pack_a, pack_b) = &mmm.packings()[packing];
