@@ -94,6 +94,199 @@ impl Scan {
         Ok(Some(TypedModelPatch::replace_single_op(model, node, &node.inputs, new)?))
     }
 
+    /// Re-synchronize the Scan body's Source facts with the current
+    /// outer input facts.
+    ///
+    /// The Scan body is a separate `TypedModel` whose Source nodes were
+    /// given fixed facts at construction time (typically derived from
+    /// the outer Scan-input facts as they stood at NNEF / ONNX load).
+    /// When the outer graph runs through declutter or axis-change
+    /// passes that mutate the upstream wires (canonical example: an
+    /// EinSum `NIHW,OI->OHW` projecting a literal-1 batch axis on the
+    /// chain feeding the Scan), the body's source facts can drift out
+    /// of sync. `Scan::output_facts` reads back from
+    /// `body.output_fact(...)` which traces to the body source, so the
+    /// drift is silent until a runtime warmup or downstream invariant
+    /// check trips on it. The canonical symptom is `Clashing
+    /// resolution for expression. 2=2 != 0` on the first turn.
+    ///
+    /// ## Strategy
+    ///
+    /// Rebuild the body from scratch by re-creating each Source node
+    /// with the freshly-computed expected fact, then re-running every
+    /// non-source op via `wire_node` so its `output_facts` propagates
+    /// the new shapes. This is invasive: any body-internal optimization
+    /// that wasn't expressible through `output_facts` alone is
+    /// discarded and has to be re-derived on the next declutter cycle.
+    /// In practice the body is re-decluttered immediately afterwards by
+    /// the surrounding `declutter_body` pass, so the cost is bounded.
+    ///
+    /// ## Bail-outs (return `Ok(None)`)
+    ///
+    /// 1. Expected shapes all match current body source shapes -- no
+    ///    drift, no rebuild needed.
+    /// 2. A non-source body op refuses the new shape (e.g. a Reshape
+    ///    pinned to a specific volume). The rebuild aborts and we keep
+    ///    the original body; downstream consumers will still see the
+    ///    drift but at least declutter completes.
+    ///
+    /// ## Hard errors (`bail!`)
+    ///
+    /// - Any expected shape is concrete with 0 volume. This signals an
+    ///   upstream defect (an outer fact collapsed to 0 on a
+    ///   non-streaming axis -- see e.g. the `MultiBroadcastTo`-pulsifier
+    ///   boundary-subtract trick when applied to a non-linear
+    ///   expression, fixed in #2336). Rebuilding with the degenerate
+    ///   shape would auto-konst-fold body outputs via `wire_node`'s
+    ///   0-volume rule while leaving the Source input konst-less,
+    ///   tripping `Scan::output_facts`' state-equality check on the
+    ///   next pass. Failing here surfaces the upstream bug at its
+    ///   origin instead of letting it propagate as a confusing
+    ///   downstream symptom.
+    fn declutter_resync_body_source_facts(
+        &self,
+        _session: &mut OptimizerSession,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        let outer_inputs: TVec<&TypedFact> =
+            node.inputs.iter().map(|i| model.outlet_fact(*i)).collect::<TractResult<_>>()?;
+        ensure!(outer_inputs.len() == self.body.inputs.len());
+
+        // Expected body source shape per slot:
+        //   - Scan(info): outer shape with `info.axis` replaced by the chunk size.
+        //   - State / Full: outer shape unchanged.
+        let expected_shapes: Vec<TVec<TDim>> = self
+            .input_mapping
+            .iter()
+            .enumerate()
+            .map(|(slot, mapping)| {
+                let outer = outer_inputs[slot];
+                match mapping {
+                    InputMapping::Scan(info) => {
+                        let mut shape = outer.shape.to_tvec();
+                        shape[info.axis] = (info.chunk.unsigned_abs() as i64).to_dim();
+                        shape
+                    }
+                    InputMapping::State | InputMapping::Full => outer.shape.to_tvec(),
+                }
+            })
+            .collect();
+
+        // Bail-out (1): no drift.
+        let any_drift = (0..self.body.inputs.len()).any(|slot| {
+            let body_src_fact = match self.body.outlet_fact(self.body.inputs[slot]) {
+                Ok(f) => f,
+                Err(_) => return false,
+            };
+            body_src_fact.shape.to_tvec() != expected_shapes[slot]
+        });
+        if !any_drift {
+            return Ok(None);
+        }
+
+        // Hard error: a 0-volume expected shape on a non-streaming axis
+        // is an upstream invariant violation, not something the resync
+        // rule can paper over. Rebuilding the body with a degenerate
+        // source fact would auto-konst-fold body outputs via
+        // `wire_node`'s 0-volume rule while leaving the Source input
+        // konst-less, and the next call to `Scan::output_facts` would
+        // trip its state-equality check.
+        if let Some((slot, shape)) = expected_shapes.iter().enumerate().find(|(_, s)| {
+            let concrete: Option<TVec<usize>> = s.iter().map(|d| d.to_usize().ok()).collect();
+            concrete.is_some_and(|c| c.iter().product::<usize>() == 0)
+        }) {
+            bail!(
+                "Scan {:?}: cannot resync body source for slot {slot}: outer fact collapsed to \
+                 0 volume on a non-streaming axis (expected shape = {shape:?}). This indicates \
+                 an upstream pulse / declutter defect.",
+                node.name,
+            );
+        }
+
+        // Rebuild the body. Sources first (slot-aligned so
+        // `new_body.inputs` stays correct), then every non-source op in
+        // the old eval order via `wire_node`, which re-runs
+        // `output_facts` and re-derives internal shapes.
+        let mut new_body = TypedModel::default();
+        new_body.symbols = self.body.symbols.clone();
+        new_body.properties = self.body.properties.clone();
+        let mut mapping: HashMap<OutletId, OutletId> = HashMap::new();
+
+        for (slot, body_input) in self.body.inputs.iter().enumerate() {
+            let old_node = self.body.node(body_input.node);
+            let outer = outer_inputs[slot];
+            let new_fact = outer.datum_type.fact(&*expected_shapes[slot]);
+            let new_outlet = new_body.add_source(old_node.name.clone(), new_fact)?;
+            mapping.insert(*body_input, new_outlet);
+        }
+
+        for old_id in self.body.eval_order()? {
+            let old_node = self.body.node(old_id);
+            if self.body.inputs.iter().any(|o| o.node == old_id) {
+                continue;
+            }
+            let inputs: TVec<OutletId> = old_node
+                .inputs
+                .iter()
+                .map(|i| mapping.get(i).copied().context("Body input not yet mapped"))
+                .collect::<TractResult<_>>()?;
+            // Bail-out (2): a body op rejects the new fact shape.
+            let outlets = match new_body.wire_node(&old_node.name, old_node.op.clone(), &inputs) {
+                Ok(o) => o,
+                Err(e) => {
+                    log::warn!(
+                        "Scan {:?}: body resync rebuild failed at body node {:?}: {e}. Keeping \
+                         the original body source facts.",
+                        node.name,
+                        old_node.name,
+                    );
+                    return Ok(None);
+                }
+            };
+            for (ix, o) in outlets.into_iter().enumerate() {
+                mapping.insert(OutletId::new(old_id, ix), o);
+            }
+        }
+
+        new_body.inputs =
+            self.body.inputs.iter().map(|o| mapping[o]).collect::<TVec<OutletId>>().to_vec();
+        new_body.outputs =
+            self.body.outputs.iter().map(|o| mapping[o]).collect::<TVec<OutletId>>().to_vec();
+
+        // The rebuild changed body source facts. If it ALSO changed any
+        // body output fact -- e.g. a single-input body where the source
+        // is also the output, or an op chain that propagates the source
+        // shape unchanged -- the Scan's own output fact changes too,
+        // which `TypedModelPatch::replace_single_op` rejects. Bail
+        // rather than poison `replace_single_op` with an incompatible
+        // patch; the most useful case in practice is a multi-input
+        // body where broadcasting against unchanged slots absorbs the
+        // resync (e.g. the dpdfnet-2 GRU body adds State + Scan inputs:
+        // resyncing the Scan slot from `(1, 2, F)` to `(1, 1, F)` is
+        // absorbed by the State `(1, 2, F)`, and the body output stays
+        // `(1, 2, F)`).
+        let output_facts_unchanged =
+            self.body.outputs.iter().zip(new_body.outputs.iter()).all(|(old_o, new_o)| {
+                match (self.body.outlet_fact(*old_o), new_body.outlet_fact(*new_o)) {
+                    (Ok(old_f), Ok(new_f)) => old_f.shape == new_f.shape,
+                    _ => false,
+                }
+            });
+        if !output_facts_unchanged {
+            log::warn!(
+                "Scan {:?}: body source resync would change a body output shape, which the \
+                 outer patch machinery cannot propagate. Keeping the original body and \
+                 leaving the drift in place for a later pass to handle.",
+                node.name,
+            );
+            return Ok(None);
+        }
+
+        let new_op = Scan { body: new_body, decluttered: false, ..self.clone() };
+        Ok(Some(TypedModelPatch::replace_single_op(model, node, &node.inputs, new_op)?))
+    }
+
     fn declutter_single_loop(
         &self,
         _session: &mut OptimizerSession,
@@ -915,6 +1108,7 @@ impl TypedOp for Scan {
                 }
             };
         }
+        pass!(declutter_resync_body_source_facts);
         pass!(declutter_single_loop);
         pass!(declutter_const_input);
         pass!(declutter_discard_unused_input);
@@ -960,5 +1154,156 @@ impl TypedOp for Scan {
             &node.inputs,
             self.to_codegen_op(true)?,
         )?))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::optim::Optimizer;
+
+    /// Reproduces the dpdfnet-2 GRU body shape in miniature: a Scan
+    /// body with one State input `(1, 2, 4)` (matching the outer
+    /// h_0-init wire, unchanged) and one Scan input that drifted to
+    /// `(1, 2, 4)` while the outer chain feeding it collapsed to
+    /// axis 1 = 1 (an EinSum NIHW->OHW projecting a literal-1 batch
+    /// axis upstream). The body adds them, so broadcasting against the
+    /// unchanged State slot absorbs the resync: the body output stays
+    /// `(1, 2, 4)` and `replace_single_op` accepts the patch.
+    ///
+    /// Asserts that calling `declutter_resync_body_source_facts`
+    /// directly produces a patch that rebuilds the Scan slot's source
+    /// to `(1, 1, 4)` while leaving the State slot at `(1, 2, 4)`.
+    #[test]
+    fn test_declutter_resync_body_source_facts() {
+        use crate::ops::math;
+
+        let mut outer = TypedModel::default();
+        let t = outer.symbols.sym("T");
+        // Outer State init: a (1, 2, 4) const (unchanged across the
+        // declutter cycle).
+        let h_init =
+            outer.add_const("h_init", crate::ndarray::Array3::<f32>::zeros((1, 2, 4))).unwrap();
+        // Outer Scan input wire: collapsed to axis 1 = 1 upstream.
+        let scan_wire = outer
+            .add_source("x", f32::fact(dims![t.to_dim(), 1.to_dim(), 4.to_dim()].as_ref()))
+            .unwrap();
+
+        // Body: State input `(1, 2, 4)` and Scan input `(1, 2, 4)`
+        // (DRIFTED -- should be `(1, 1, 4)` to match the outer
+        // chunk-sliced shape). The Add broadcasts.
+        let mut body = TypedModel::default();
+        let body_state = body.add_source("h_t_prev", f32::fact([1usize, 2, 4])).unwrap();
+        let body_scan = body.add_source("scan_in", f32::fact([1usize, 2, 4])).unwrap();
+        let body_sum = body.wire_node("body_add", math::add(), &[body_state, body_scan]).unwrap();
+        // Two outputs: scan slot (full h_t history) and state slot
+        // (last h_t = body output, threaded back into the State input).
+        body.outputs = vec![body_sum[0], body_sum[0]];
+
+        let scan_op = Scan {
+            skip: 0,
+            reset_every_turn: false,
+            external_state: false,
+            body,
+            decluttered: false,
+            input_mapping: vec![
+                InputMapping::State,
+                InputMapping::Scan(ScanInfo { axis: 0, chunk: 1 }),
+            ],
+            output_mapping: vec![
+                OutputMapping {
+                    scan: Some((0, ScanInfo { axis: 0, chunk: 1 })),
+                    full_dim_hint: None,
+                    last_value_slot: None,
+                    state: false,
+                },
+                OutputMapping {
+                    scan: None,
+                    full_dim_hint: None,
+                    last_value_slot: Some(1),
+                    state: true,
+                },
+            ],
+        };
+        let scan_outlets = outer.wire_node("scan", scan_op, &[h_init, scan_wire]).unwrap();
+        outer.select_output_outlets(&[scan_outlets[0]]).unwrap();
+
+        let optimizer = Optimizer::declutter();
+        let mut session = optimizer.session();
+        let scan_node = outer.nodes.iter().find(|n| n.op_is::<Scan>()).expect("scan present");
+        let scan_ref = scan_node.op.downcast_ref::<Scan>().expect("typed as Scan");
+        let patch_opt = scan_ref
+            .declutter_resync_body_source_facts(&mut session, &outer, scan_node)
+            .unwrap_or_else(|e| panic!("rule errored: {e:#?}"));
+        let patch = patch_opt
+            .unwrap_or_else(|| panic!("rule should produce a patch (body source drifted)"));
+
+        let mut after = outer.clone();
+        patch.apply(&mut after).unwrap_or_else(|e| panic!("patch apply failed: {e:#}"));
+
+        let scan_after =
+            after.nodes.iter().find(|n| n.op_is::<Scan>()).expect("scan still present");
+        let scan_after_op = scan_after.op.downcast_ref::<Scan>().unwrap();
+        let state_src =
+            scan_after_op.body.outlet_fact(scan_after_op.body.inputs[0]).unwrap().shape.to_tvec();
+        let scan_src =
+            scan_after_op.body.outlet_fact(scan_after_op.body.inputs[1]).unwrap().shape.to_tvec();
+        // State slot was already consistent with the outer h_init
+        // const; should stay (1, 2, 4).
+        assert_eq!(
+            state_src,
+            tvec![1.to_dim(), 2.to_dim(), 4.to_dim()],
+            "State source must keep matching the outer h_init (1, 2, 4)",
+        );
+        // Scan slot was drifted; rebuild should sync it to the
+        // chunk-sliced outer wire (1, 1, 4).
+        assert_eq!(
+            scan_src,
+            tvec![1.to_dim(), 1.to_dim(), 4.to_dim()],
+            "Scan source must be resynced to (1, 1, 4) matching the outer Scan-input wire \
+             sliced on axis 0 chunk 1",
+        );
+    }
+
+    /// When the body source already matches the outer-derived expected
+    /// shape, the rule must be a no-op (return `Ok(None)`). This keeps
+    /// declutter from spinning on resync patches that don't change
+    /// anything.
+    #[test]
+    fn test_declutter_resync_no_drift_no_patch() {
+        let mut outer = TypedModel::default();
+        let t = outer.symbols.sym("T");
+        let outer_in = outer
+            .add_source("x", f32::fact(dims![t.to_dim(), 1.to_dim(), 4.to_dim()].as_ref()))
+            .unwrap();
+
+        let mut body = TypedModel::default();
+        let body_in = body.add_source("body_in", f32::fact([1usize, 1, 4])).unwrap();
+        body.select_output_outlets(&[body_in]).unwrap();
+
+        let scan_op = Scan {
+            skip: 0,
+            reset_every_turn: false,
+            external_state: false,
+            body,
+            decluttered: false,
+            input_mapping: vec![InputMapping::Scan(ScanInfo { axis: 0, chunk: 1 })],
+            output_mapping: vec![OutputMapping {
+                scan: Some((0, ScanInfo { axis: 0, chunk: 1 })),
+                full_dim_hint: None,
+                last_value_slot: None,
+                state: false,
+            }],
+        };
+        let scan_outlets = outer.wire_node("scan", scan_op, &[outer_in]).unwrap();
+        outer.select_output_outlets(&scan_outlets).unwrap();
+
+        let optimizer = Optimizer::declutter();
+        let mut session = optimizer.session();
+        let scan_node = outer.nodes.iter().find(|n| n.op_is::<Scan>()).unwrap();
+        let scan_ref = scan_node.op.downcast_ref::<Scan>().unwrap();
+        let result =
+            scan_ref.declutter_resync_body_source_facts(&mut session, &outer, scan_node).unwrap();
+        assert!(result.is_none(), "no-drift case must return Ok(None), got {result:?}");
     }
 }
