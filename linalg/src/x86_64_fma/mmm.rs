@@ -2,8 +2,11 @@ use crate::Ops;
 use crate::block_quant::*;
 use crate::mmm::ImplementationQuality::ManuallyOptimized;
 use crate::mmm::MatMatMul;
-use crate::pack::{PackedFormat, PackedI8K4};
+use crate::pack::PackedFormat;
+#[cfg(any(tract_avx512vnni, tract_avxvnni, tract_amx_int8))]
+use crate::pack::PackedI8K4;
 
+#[cfg(tract_amx_int8)]
 use super::amx::{PackedAmxA, has_amx_int8};
 #[cfg(tract_amx_bf16)]
 use super::amx_bf16::{PackedAmxBf16A, PackedBf16K2, has_amx_bf16};

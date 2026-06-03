@@ -26,11 +26,13 @@ fn cpu_has_avxvnni() -> bool {
     if !std::is_x86_feature_detected!("avx2") {
         return false;
     }
-    let max_sub = std::arch::x86_64::__cpuid_count(7, 0).eax;
+    #[allow(unused_unsafe)]
+    let max_sub = unsafe { std::arch::x86_64::__cpuid_count(7, 0) }.eax;
     if max_sub < 1 {
         return false;
     }
-    let r = std::arch::x86_64::__cpuid_count(7, 1);
+    #[allow(unused_unsafe)]
+    let r = unsafe { std::arch::x86_64::__cpuid_count(7, 1) };
     (r.eax & (1 << 4)) != 0
 }
 
