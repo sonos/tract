@@ -114,5 +114,18 @@ impl TypedOp for DynSlice {
         )?))
     }
 
+    fn set_symbols(
+        &self,
+        _source: &TypedModel,
+        node: &TypedNode,
+        target: &mut TypedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+        subs: &HashMap<Symbol, TDim>,
+    ) -> TractResult<TVec<OutletId>> {
+        let op = DynSlice { axis: self.axis, len: self.len.substitute_all(subs)? };
+        let inputs = node.inputs.iter().map(|i| mapping[i]).collect::<TVec<_>>();
+        target.wire_node(&node.name, op, &inputs)
+    }
+
     as_op!();
 }
