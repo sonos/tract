@@ -263,6 +263,10 @@ Re-export shims in `transformers/src/ops/mod.rs` keep downstream crates
   - Comments describe the **current** code only. Don't narrate the diff ("the previous code did X", "this used to be Y", "was a copy-paste of the 32x1 kernel") -- that history belongs in the commit message and will be wrong after the next refactor.
   - Avoid section banners (// -- Step 2: Pad -> Reshape --), prefer split in functions. It's ok to have long function prototype in private function (within reason) #[allow(clippy::too_many_arguments)] authorized in such case.
 
+  Doc comments (`///` / `//!`):
+  - Unlike inline comments, these are encouraged. tract has historically under-documented its items -- do add a concise doc comment on public / non-trivial items (ops, declutter & codegen passes, public fns) stating what it is, its contract, valid inputs, and which rules it interacts with.
+  - Same anti-narration rule as inline: document the **current** contract, not benchmarks, perf numbers ("0.77 ms vs ORT's 1.13 ms"), issue numbers, or change history ("Measured on...", "Regression:...").
+
   Idioms:
   - Prefer `as_X()` over `to_X().ok()` for cheap reference-style conversions.
   - No new `unsafe` without explicit permission. `shunt_outside_unchecked` is a last resort for surgical patches whose safety is locally obvious; reach for safe alternatives first.
