@@ -293,4 +293,66 @@ mod tests {
         // downstream meet point.  Now it should pulsify without error.
         let _pulse = PulsedModel::new(&model, t, &2.to_dim()).expect("pulsification");
     }
+
+    /// `MultiBroadcastTo` pulsifier baseline: a target shape that grows
+    /// linearly with the streaming symbol (`1 + S/2` -- the canonical
+    /// `shape_of(stride-2 conv)` pattern) gets the per-pulse increment
+    /// `P/2` after the boundary-subtract trick. Locks in the existing
+    /// linear contract so the non-linear fallback below cannot regress
+    /// it.
+    #[test]
+    fn test_multi_broadcast_to_pulsifier_linear_axis() {
+        use tract_pulse_opl::tract_core::ops::array::MultiBroadcastTo;
+
+        let mut model = TypedModel::default();
+        let s = model.symbols.sym("S");
+        let linear: TDim = 1.to_dim() + s.to_dim() / 2;
+        let target_shape: ShapeFact = tvec![1.to_dim(), linear, 4.to_dim()].into();
+
+        let a = model.add_source("a", f32::fact(dims![1, s.to_dim(), 4].as_ref())).unwrap();
+        let out = model.wire_node("bc", MultiBroadcastTo::new(target_shape), &[a]).unwrap();
+        model.select_output_outlets(&out).unwrap();
+
+        let pulse = PulsedModel::new(&model, s, &4.to_dim()).expect("pulsification");
+        let out_fact = pulse.output_fact(0).unwrap();
+        // `1 + S/2` at S=P=4 is 3, at S=0 it is 1. The trick yields
+        // `3 - 1 = 2` per pulse; the linearity probe at S=8 gives delta
+        // 4, matching `2 * 2`, so we stay on the linear path.
+        assert_eq!(
+            out_fact.shape[1],
+            2.to_dim(),
+            "linear streaming axis must keep the boundary-subtract delta; got fact: {out_fact:?}",
+        );
+    }
+
+    /// Non-linear target shape (`min(2, S + 2)`, which equals 2 for every
+    /// `S >= 0`): the boundary-subtract collapses `full - base` to 0 even
+    /// though the full per-pulse shape is 2. Pre-fix that produced a
+    /// 0-volume PulsedFact that poisoned every downstream consumer (most
+    /// visibly: a Scan body's State input reading the GRU `h_0` tile,
+    /// surfacing as `Clashing resolution for expression. 2=2 != 0` on the
+    /// runtime warmup turn). The fallback keeps the full value when the
+    /// `substitute(S→0) == substitute(S→P) == substitute(S→2P)` probe
+    /// confirms the axis is not actually streaming.
+    #[test]
+    fn test_multi_broadcast_to_pulsifier_non_linear_axis() {
+        use tract_pulse_opl::tract_core::ops::array::MultiBroadcastTo;
+
+        let mut model = TypedModel::default();
+        let s = model.symbols.sym("S");
+        let non_linear: TDim = (s.to_dim() + 2.to_dim()).mini(2.to_dim());
+        let target_shape: ShapeFact = tvec![1.to_dim(), non_linear, 1.to_dim()].into();
+
+        let a = model.add_source("a", f32::fact(dims![1, s.to_dim(), 1].as_ref())).unwrap();
+        let out = model.wire_node("bc", MultiBroadcastTo::new(target_shape), &[a]).unwrap();
+        model.select_output_outlets(&out).unwrap();
+
+        let pulse = PulsedModel::new(&model, s, &4.to_dim()).expect("pulsification");
+        let out_fact = pulse.output_fact(0).unwrap();
+        assert_eq!(
+            out_fact.shape[1],
+            2.to_dim(),
+            "non-linear streaming axis must keep the full value, not the collapsed delta; got fact: {out_fact:?}",
+        );
+    }
 }
