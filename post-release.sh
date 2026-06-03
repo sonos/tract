@@ -30,5 +30,9 @@ do
     tomato set workspace.dependencies.$crate.version $VERSION Cargo.toml
 done
 
+# tomato edits the manifests only; sync Cargo.lock to the bumped workspace
+# versions so the committed lock matches (otherwise the next build rewrites it).
+cargo update --workspace --offline
+
 git commit . -m "post-release $VERSION"
 git push
