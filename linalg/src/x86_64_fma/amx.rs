@@ -52,7 +52,8 @@ pub fn cache_sizes() -> CacheSizes {
     *CACHE.get_or_init(|| {
         let mut out = CacheSizes::default();
         for sub in 0..16 {
-            let r = std::arch::x86_64::__cpuid_count(4, sub);
+            #[allow(unused_unsafe)]
+            let r = unsafe { std::arch::x86_64::__cpuid_count(4, sub) };
             let cache_type = r.eax & 0x1F;
             if cache_type == 0 {
                 break;
@@ -83,7 +84,8 @@ fn cpu_has_amx_int8() -> bool {
     if !std::is_x86_feature_detected!("avx512f") {
         return false;
     }
-    let r = std::arch::x86_64::__cpuid_count(7, 0);
+    #[allow(unused_unsafe)]
+    let r = unsafe { std::arch::x86_64::__cpuid_count(7, 0) };
     // bit 24 = AMX-TILE, bit 25 = AMX-INT8 in EDX.
     const AMX_TILE: u32 = 1 << 24;
     const AMX_INT8: u32 = 1 << 25;

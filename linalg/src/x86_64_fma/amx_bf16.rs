@@ -30,7 +30,8 @@ fn cpu_has_amx_bf16() -> bool {
     if !std::is_x86_feature_detected!("avx512f") {
         return false;
     }
-    let r = std::arch::x86_64::__cpuid_count(7, 0);
+    #[allow(unused_unsafe)]
+    let r = unsafe { std::arch::x86_64::__cpuid_count(7, 0) };
     const AMX_BF16: u32 = 1 << 22;
     const AMX_TILE: u32 = 1 << 24;
     (r.edx & AMX_BF16) != 0 && (r.edx & AMX_TILE) != 0
