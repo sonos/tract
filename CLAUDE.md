@@ -13,12 +13,19 @@ reference: doc/. This file is the rules an agent must follow to contribute clean
 - No consequence chains ("X broke Y broke Z"), no "Result:/Symptom:" sections,
   no bullet lists of every place the bug surfaced.
 
-## Code comments
+## Inline comments
 - Default to NONE. Names carry the meaning. A comment signals a hidden
   constraint / invariant / workaround — not narration.
 - Never describe the diff or history ("used to be X", "previously…"). Comments
   describe current code only.
 - No section-banner comments; split into functions instead.
+
+## Doc comments (`///` / `//!`)
+- DO add a concise one on public / non-trivial items — ops, declutter & codegen
+  passes, public fns. State what it is, its contract, valid inputs, and which
+  rules it interacts with. This is the one place to be more generous than before.
+- Same anti-narration rule: document the *current contract*, not benchmarks,
+  perf numbers, issue numbers, or history ("Measured on…", "Regression:…").
 
 ## How to change a model
 - Use `TypedModelPatch` / `Rewriter` / `ModelTransform`. Do NOT hand-roll
