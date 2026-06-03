@@ -345,11 +345,7 @@ fn main() {
                 let tmpl16 = path::Path::new("x86_64/fma/avx512vnni_mmm_i32_16x16.S.j2");
                 let out16 = out_dir.join(format!("avx512vnni_mmm_i32_16x16_{suffix}.S"));
                 preprocess_file(tmpl16, &out16, &[], &suffix, false);
-                cc::Build::new()
-                    .file(&out)
-                    .file(&out16)
-                    .flag("-mfma")
-                    .compile("x86_64_avx512vnni");
+                cc::Build::new().file(&out).file(&out16).flag("-mfma").compile("x86_64_avx512vnni");
                 println!("cargo:rustc-cfg=tract_avx512vnni");
             }
 
@@ -360,13 +356,8 @@ fn main() {
             // reference: when the probe fails on old toolchains (e.g. Debian
             // stretch's binutils 2.28), the kernel is omitted and `qmmm_i32`
             // dispatch falls back to VNNI or AVX2 with no build error.
-            if os != "windows"
-                && !amx_int8_files.is_empty()
-                && assembler_supports_amx_int8()
-            {
-                cc::Build::new()
-                    .files(&amx_int8_files)
-                    .compile("x86_64_avx512amx");
+            if os != "windows" && !amx_int8_files.is_empty() && assembler_supports_amx_int8() {
+                cc::Build::new().files(&amx_int8_files).compile("x86_64_avx512amx");
                 println!("cargo:rustc-cfg=tract_amx_int8");
             }
 
@@ -375,13 +366,8 @@ fn main() {
             // probe fails, the `tract_amx_bf16` cfg stays unset and
             // `plug_avx512amx_bf16` is compiled out — `mmm_f32` then falls
             // back to AVX-512 / FMA without any build error.
-            if os != "windows"
-                && !amx_bf16_files.is_empty()
-                && assembler_supports_amx_bf16()
-            {
-                cc::Build::new()
-                    .files(&amx_bf16_files)
-                    .compile("x86_64_avx512amx_bf16");
+            if os != "windows" && !amx_bf16_files.is_empty() && assembler_supports_amx_bf16() {
+                cc::Build::new().files(&amx_bf16_files).compile("x86_64_avx512amx_bf16");
                 println!("cargo:rustc-cfg=tract_amx_bf16");
             }
 
@@ -390,13 +376,8 @@ fn main() {
             // (Alder Lake-E, Sierra Forest, Clearwater Forest / Darkmont)
             // that have AVX-VNNI but no AVX-512, falling back to AVX2
             // emulation when the runtime CPUID detection misses.
-            if os != "windows"
-                && !avxvnni_files.is_empty()
-                && assembler_supports_avxvnni()
-            {
-                cc::Build::new()
-                    .files(&avxvnni_files)
-                    .compile("x86_64_avxvnni");
+            if os != "windows" && !avxvnni_files.is_empty() && assembler_supports_avxvnni() {
+                cc::Build::new().files(&avxvnni_files).compile("x86_64_avxvnni");
                 println!("cargo:rustc-cfg=tract_avxvnni");
             }
         }

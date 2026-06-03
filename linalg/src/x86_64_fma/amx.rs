@@ -62,8 +62,8 @@ pub fn cache_sizes() -> CacheSizes {
             let partitions = ((r.ebx >> 12) & 0x3FF) + 1;
             let line_size = (r.ebx & 0xFFF) + 1;
             let sets = r.ecx + 1;
-            let bytes = (ways as usize) * (partitions as usize)
-                * (line_size as usize) * (sets as usize);
+            let bytes =
+                (ways as usize) * (partitions as usize) * (line_size as usize) * (sets as usize);
             // type=1 (data), type=3 (unified) for L1d / L2 / L3
             match (level, cache_type) {
                 (1, 1) => out.l1d_bytes = bytes,
