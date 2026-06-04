@@ -2,9 +2,11 @@ use crate::model::ParsingContext;
 use crate::pb::NodeProto;
 use tract_core::ops::cast::cast;
 use tract_core::ops::einsum::EinSum;
+use tract_core::ops::konst::Const;
 use tract_core::ops::math::add;
 use tract_hir::internal::*;
 use tract_hir::ops::logic::wire_with_rank_broadcast;
+use tract_linalg::block_quant::{BlockQuant, BlockQuantFact, BlockQuantStorage, Q4_0};
 
 // com.microsoft MatMulNBits: Y = A @ dequant(B)^T (+ bias)
 //   A:           float [.., K]
@@ -12,8 +14,9 @@ use tract_hir::ops::logic::wire_with_rank_broadcast;
 //   scales:      float [N * n_blocks]
 //   zero_points: uint8 [N * ceil(n_blocks/2)] packed (optional; default 8)
 //   bias:        float [N] (optional)
-// The quantized weight is constant, so we dequantize it to a float [N, K] weight in Rust and
-// emit a plain matmul (EinSum). A fused int4 kernel would be a follow-up perf optimization.
+// block_size 32 + symmetric + K a multiple of 32 keeps the weight as a Q4_0 block-quant
+// constant (dequantized inside the matmul packer); any other shape dequantizes the constant
+// to a plain float [N, K] weight and emits a plain matmul (EinSum).
 pub fn mat_mul_nbits(
     _ctx: &ParsingContext,
     node: &NodeProto,
@@ -112,8 +115,10 @@ impl Expansion for MatMulNBits {
             None => None,
         };
 
-        // Dequantize to a [N, K] float weight.
+        // Dequantize to a [N, K] float weight; also keep the raw nibbles (logical row-major)
+        // so the block-quant path can reuse the original int4 values without re-quantizing.
         let mut w = vec![0f32; n * k];
+        let mut q_logical = vec![0u8; n * k];
         for col in 0..n {
             for blk in 0..n_blocks {
                 let scale = scales[col * n_blocks + blk];
@@ -131,26 +136,57 @@ impl Expansion for MatMulNBits {
                         break;
                     }
                     let byte = b[base + i / 2];
-                    let q = if i % 2 == 0 { byte & 0x0F } else { byte >> 4 } as f32;
-                    w[col * k + kk] = (q - zero) * scale;
+                    let nib = if i % 2 == 0 { byte & 0x0F } else { byte >> 4 };
+                    q_logical[col * k + kk] = nib;
+                    w[col * k + kk] = (nib as f32 - zero) * scale;
                 }
             }
         }
-        let w = model.add_const(format!("{prefix}.weight"), Tensor::from_shape(&[n, k], &w)?)?;
-
         // Y = A @ W^T, contracting K. Computed in f32, then cast to the input dtype.
         let dt = model.outlet_fact(inputs[0])?.datum_type;
         let rank = model.outlet_fact(inputs[0])?.rank();
         let a =
             model.wire_node(format!("{prefix}.cast_a"), cast(f32::datum_type()), &[inputs[0]])?[0];
         let lead: String = "abcdefgh".chars().take(rank - 1).collect();
-        let axes =
-            AxesMapping::from_strs(&[format!("{lead}k"), "nk".to_string()], &[format!("{lead}n")])?;
-        let y = model.wire_node(
-            format!("{prefix}.matmul"),
-            EinSum::new(axes, f32::datum_type()),
-            &[a, w],
-        )?[0];
+
+        // block_size 32 + symmetric (no zero points) + K a multiple of 32 maps onto tract's
+        // Q4_0 block-quant format: the weight stays int4 in memory and is dequantized inside the
+        // matmul packer, instead of materializing a full f32 weight. Anything else (other block
+        // sizes, asymmetric zero points, a partial last block) falls back to the f32 weight.
+        let y = if block_size == 32 && self.zp_input.is_none() && k % 32 == 0 {
+            let weights = Q4_0.pack_prequantized(&q_logical, scales, n, k)?;
+            let bqs = BlockQuantStorage::new(Box::new(Q4_0), n, k, Arc::new(weights))?;
+            let fact = Box::new(BlockQuantFact::new(Box::new(Q4_0), tvec!(1, n, k)));
+            let wq = model.wire_node(
+                format!("{prefix}.weight_bq"),
+                Const::new_with_exotic_fact(
+                    Arc::new(bqs.into_tensor_with_shape(f32::datum_type(), &[1, n, k])),
+                    fact,
+                )?,
+                &[],
+            )?[0];
+            let axes = AxesMapping::from_strs(
+                &[format!("{lead}k"), "gnk".to_string()],
+                &[format!("{lead}n")],
+            )?;
+            model.wire_node(
+                format!("{prefix}.matmul"),
+                EinSum::new(axes, f32::datum_type()),
+                &[a, wq],
+            )?[0]
+        } else {
+            let w =
+                model.add_const(format!("{prefix}.weight"), Tensor::from_shape(&[n, k], &w)?)?;
+            let axes = AxesMapping::from_strs(
+                &[format!("{lead}k"), "nk".to_string()],
+                &[format!("{lead}n")],
+            )?;
+            model.wire_node(
+                format!("{prefix}.matmul"),
+                EinSum::new(axes, f32::datum_type()),
+                &[a, w],
+            )?[0]
+        };
         let mut y = model.wire_node(format!("{prefix}.cast_y"), cast(dt), &[y])?[0];
 
         if let Some(i) = self.bias_input {
