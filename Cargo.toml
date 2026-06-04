@@ -116,6 +116,8 @@ default-members = [
 ]
 
 [workspace.package]
+# MSRV source of truth: CI derives the tested toolchain from this. Keep the
+# README rustc badge in sync when bumping.
 rust-version = "1.91"
 
 [workspace.dependencies]
