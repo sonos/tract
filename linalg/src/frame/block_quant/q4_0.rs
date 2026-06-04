@@ -44,6 +44,41 @@ impl<const QK: usize> BaseQ4_0<QK> {
         }
     }
 
+    /// Build Q4_0 storage from values that are already 4-bit quantized, without re-quantizing.
+    /// `q` holds `m * k` nibbles in logical row-major order, each in `0..16` with implicit
+    /// zero-point 8 (dequant is `(nibble - 8) * scale`); `scales` holds one f32 per block,
+    /// row-major `[m, k / QK]`. Lets an importer (e.g. ONNX MatMulNBits) reuse the fused
+    /// block-quant matmul while keeping its own int4 values — only the f16 scale is rounded.
+    /// `k` must be a multiple of `QK`.
+    pub fn pack_prequantized(
+        &self,
+        q: &[u8],
+        scales: &[f32],
+        m: usize,
+        k: usize,
+    ) -> TractResult<Blob> {
+        ensure!(k % QK == 0, "Q4_0 needs K a multiple of {QK}, got {k}");
+        let n_blocks = k / QK;
+        ensure!(q.len() == m * k && scales.len() == m * n_blocks);
+        let mut blob = unsafe {
+            Blob::for_layout(Layout::from_size_align(m * n_blocks * self.block_bytes(), 128)?)
+        };
+        for row in 0..m {
+            for blk in 0..n_blocks {
+                let bidx = row * n_blocks + blk;
+                let qblock = &mut blob[bidx * self.block_bytes()..][..self.block_bytes()];
+                let mut writer = NibbleWriter::for_slice(qblock);
+                writer.write_f16(f16::from_f32(scales[bidx]));
+                let base = row * k + blk * QK;
+                for idx in 0..QK {
+                    let ggml_idx = (QK / 2) * (idx % 2) + (idx / 2);
+                    writer.write_i4((q[base + ggml_idx] & 0x0F) as i8);
+                }
+            }
+        }
+        Ok(blob)
+    }
+
     fn dequant_block<T: Float + 'static>(&self, quant: &[u8], block: &mut [T])
     where
         f16: AsPrimitive<T>,
@@ -499,5 +534,24 @@ mod tests {
     #[test]
     fn pack_then_extract_row_with_scales_at_end() -> TractResult<()> {
         test_pack_then_extract_row(BaseQ4_0::<2>, 2, 4, 4, 0, true)
+    }
+
+    #[test]
+    fn pack_prequantized_round_trips() {
+        // 2 rows × 2 blocks of 32; nibbles cover 0..16; scales exactly f16-representable.
+        let (m, k) = (2usize, 64usize);
+        let q: Vec<u8> = (0..m * k).map(|i| (i % 16) as u8).collect();
+        let scales: Vec<f32> = vec![0.5, 0.25, 1.0, 2.0]; // [m, k/32]
+        let blob = Q4_0.pack_prequantized(&q, &scales, m, k).unwrap();
+        let deq = Q4_0.dequant_f32(&blob).unwrap();
+        let deq = deq.try_as_plain().unwrap();
+        let got = deq.as_slice::<f32>().unwrap();
+        for row in 0..m {
+            for kk in 0..k {
+                let scale = scales[row * (k / 32) + kk / 32];
+                let expect = (q[row * k + kk] as f32 - 8.0) * scale;
+                assert_eq!(got[row * k + kk], expect, "mismatch row {row} k {kk}");
+            }
+        }
     }
 }
