@@ -127,7 +127,7 @@ jobs:
         persist-credentials: false
     - run: rustup component add clippy && cargo clippy
     - name: fmt
-      run: rustup component add rustfmt && cargo fmt --check
+      run: rustup component add rustfmt --toolchain stable && cargo +stable fmt --check
     - name: Warnings
       env:
         RUSTFLAGS: -D warnings

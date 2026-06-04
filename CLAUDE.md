@@ -4,8 +4,9 @@ tract is Sonos' Rust NN inference engine. Full guide: AGENTS.md. Architecture/
 reference: doc/. This file is the rules an agent must follow to contribute cleanly.
 
 ## Before you commit
-- Format with the PINNED toolchain: `cargo +1.91.0 fmt --all`. Never bare
-  `cargo fmt` — a newer rustfmt makes diffs CI rejects. Metal files too, on Linux.
+- Format with stable rustfmt: `cargo fmt --all`. The repo's `rust-toolchain.toml`
+  pins the stable channel, so bare `cargo fmt` picks the same rustfmt CI checks
+  against — don't override the toolchain. Metal files too, on Linux.
 - `cargo clippy --workspace` clean.
 
 ## Commit messages
