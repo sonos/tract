@@ -8,7 +8,6 @@ on:
 env:
   CARGO_INCREMENTAL: false
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE20: true
-  RUSTUP_TOOLCHAIN: 1.91.0
 
 permissions:
   contents: read
