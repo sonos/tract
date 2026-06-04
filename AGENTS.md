@@ -58,8 +58,8 @@ cargo test -p tract-core
 # test the whole workspace
 cargo test --workspace
 
-# format (always repo-wide, never per-crate; pin the toolchain to avoid spurious diffs)
-cargo +1.91.0 fmt --all
+# format (always repo-wide, never per-crate; rust-toolchain.toml pins stable, so bare cargo fmt is correct)
+cargo fmt --all
 
 # lint
 cargo clippy --workspace
@@ -273,7 +273,7 @@ Re-export shims in `transformers/src/ops/mod.rs` keep downstream crates
   - Don't add abstraction beyond the task. Three similar lines beat a premature helper.
 
   Formatting:
-  - Always run `cargo +1.91.0 fmt --all` before committing -- bare `cargo fmt` uses a newer rustfmt and produces spurious diffs CI rejects.
+  - Always run `cargo fmt --all` before committing. The repo's `rust-toolchain.toml` pins the stable channel, so bare `cargo fmt` uses the same rustfmt CI checks against -- don't override the toolchain.
 
   PR comments and review replies:
   - Open PR with a short, crystal-clear summary paragraph -- one or two sentences stating what the PR is about and why it matters, before details if necessary.
