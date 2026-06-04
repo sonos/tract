@@ -2,11 +2,6 @@
 
 set -ex
 
-if [ -z "$RUSTUP_TOOLCHAIN" ]
-then
-    export RUSTUP_TOOLCHAIN=1.91.0
-fi
-
 rustup update
 
 cargo update

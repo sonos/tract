@@ -3,11 +3,6 @@ set -e
 
 [ -d $ROOT/.travis ] || exit 1 "\$ROOT not set correctly '$ROOT'"
 
-if [ -z "$RUSTUP_TOOLCHAIN" ]
-then
-    export RUSTUP_TOOLCHAIN=1.91.0
-fi
-
 export RUSTUP_TOOLCHAIN
 PATH=$PATH:$HOME/.cargo/bin
 
