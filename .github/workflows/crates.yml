@@ -19,20 +19,26 @@ jobs:
     outputs:
       os: ${{steps.set-matrix.outputs.os}}
       rust: ${{steps.set-matrix.outputs.rust}}
+      msrv: ${{steps.set-matrix.outputs.msrv}}
 
     steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
       - id: set-matrix
         env:
           FULL: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' }}
         run: |
+          msrv=$(grep -m1 '^rust-version' Cargo.toml | sed -E 's/.*"([^"]+)".*/\1/')
+          echo "msrv=$msrv" >> $GITHUB_OUTPUT
           if [ "$FULL" == "true" ]
           then
             echo 'os=["ubuntu-latest", "macos-latest"]' >> $GITHUB_OUTPUT
-            echo 'rust=["1.91.0", "stable", "beta", "nightly"]' >> $GITHUB_OUTPUT
+            echo "rust=[\"$msrv\", \"stable\", \"beta\", \"nightly\"]" >> $GITHUB_OUTPUT
           else
             echo ::notice::Skipping macOS checks on PR and commit. Dispatch workflow manually if needed.
             echo 'os=["ubuntu-latest"]' >> $GITHUB_OUTPUT
-            echo 'rust=["1.91.0"]' >> $GITHUB_OUTPUT
+            echo "rust=[\"$msrv\"]" >> $GITHUB_OUTPUT
           fi
 
   crates:
@@ -85,7 +91,7 @@ jobs:
     runs-on: cuda-lovelace
     needs: prepare-matrix
     env:
-      RUSTUP_TOOLCHAIN: "1.91.0"
+      RUSTUP_TOOLCHAIN: ${{ needs.prepare-matrix.outputs.msrv }}
     steps:
     - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       with:
