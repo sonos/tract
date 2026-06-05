@@ -3,7 +3,7 @@ use num_complex::Complex;
 use rustfft::num_traits::{Float, FromPrimitive};
 use rustfft::{FftDirection, FftNum};
 use tract_data::itertools::Itertools;
-use tract_ndarray::Axis;
+use tract_ndarray::Axis as NdAxis;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Fft {
@@ -93,6 +93,43 @@ impl TypedOp for Fft {
         Ok(tvec!(inputs[0].without_value()))
     }
 
+    fn axes_mapping(
+        &self,
+        inputs: &[&TypedFact],
+        _outputs: &[&TypedFact],
+    ) -> TractResult<AxesMapping> {
+        // Fft is rank-preserving but it is NOT axes-natural: two axes do
+        // not map 1-to-1 from input to output and must be declared as a
+        // separate input-only and output-only axis.
+        //
+        //   - the FFT axis (`self.axis`): every output sample along it
+        //     depends on every input sample, so the axis cannot be
+        //     sliced or streamed.
+        //   - the trailing complex axis (`rank - 1`): the FFT mixes the
+        //     real and imaginary parts, so re/im do not map 1-to-1.
+        //
+        // Splitting them is exactly what makes the generic pulse fallback
+        // bail when asked to track a streaming axis through the FFT or
+        // complex axis, while every genuine batch axis stays 1-to-1 and
+        // is handled by the per-pulse `PulseWrappingOp`. No dedicated
+        // `Fft` pulsifier is needed.
+        let rank = inputs[0].rank();
+        let complex_axis = rank - 1;
+        let mut axes = tvec!();
+        let mut alphabet = 'a'..;
+        for i in 0..rank {
+            if i == self.axis || i == complex_axis {
+                axes.push(crate::axes::Axis::new(alphabet.next().unwrap(), 1, 1).input(0, i));
+                axes.push(crate::axes::Axis::new(alphabet.next().unwrap(), 1, 1).output(0, i));
+            } else {
+                axes.push(
+                    crate::axes::Axis::new(alphabet.next().unwrap(), 1, 1).input(0, i).output(0, i),
+                );
+            }
+        }
+        AxesMapping::new(1, 1, axes)
+    }
+
     as_op!();
 }
 
@@ -168,7 +205,7 @@ impl Stft {
                 }
                 fft.process(&mut v);
                 oslice
-                    .index_axis_mut(Axis(self.axis), f)
+                    .index_axis_mut(NdAxis(self.axis), f)
                     .iter_mut()
                     .zip(v.iter().flat_map(|cmpl| [cmpl.re, cmpl.im].into_iter()))
                     .for_each(|(s, v)| *s = v);
