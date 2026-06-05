@@ -1,0 +1,35 @@
+version 1.0;
+
+extension tract_registry tract_core;
+extension tract_symbol S;
+
+# Path 1 construction (scan axis == streaming axis), with the streaming
+# symbol on a Full body source. The Scan iterates the streaming input on
+# axis 0 (chunk 1). A second Full body slot receives an internally
+# constructed zero-valued tensor whose shape mirrors the streaming
+# input ([S, 4]); the Pulsifier walks both wires and substitutes
+# `S -> pulse` in the outer scan op. The fix in pulse/ops/scan.rs
+# substitutes the same symbol inside the body so the Full slot's body
+# source goes from [S, 4] to [pulse, 4]; without the fix the body's
+# source fact stays symbolic in S.
+
+fragment scan_body_fn(
+    scan_x: tensor<scalar>,
+    full_y: tensor<scalar>
+) -> ( y_out: tensor<scalar> ) {
+    full_first = slice(full_y, axes = [0], begin = [0], end = [1]);
+    y_out      = add(scan_x, full_first);
+}
+
+graph scan_body_stream_drift(input) -> (output)
+{
+    input      = external<scalar>(shape = [S, 4]);
+    full_zeros = mul(input, 0.0);
+    output     = tract_core_scan(
+        body   = "scan_body_fn",
+        scan   = [("scan_x", input, 0, 1)],
+        full   = [("full_y", full_zeros)],
+        state  = [],
+        output = [("y_out", "full", 0, 1)]
+    );
+}
