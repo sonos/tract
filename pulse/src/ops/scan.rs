@@ -40,6 +40,13 @@ fn pulsify(
     let first_scan_axis =
         target.outlet_fact(pulse_inputs[first_scan_slot])?.stream.as_ref().unwrap().axis;
     let scan_axis = axes_mapping.axis((InOut::In(first_scan_slot), first_scan_axis))?;
+    // Bake the same `symbol -> pulse` substitution the outer pulsifier just
+    // applied to the wire facts into the Scan body and output_mapping. Without
+    // it, post-pulse declutter folds outer and body shape expressions in
+    // independent scopes and lands on different literals, producing a silent
+    // drift between outer-input facts and body source facts on every dim
+    // that mentioned the stream symbol.
+    let subs: HashMap<Symbol, TDim> = HashMap::from([(symbol.clone(), pulse.clone())]);
     if first_scan_axis == op.input_mapping[first_scan_slot].as_scan().unwrap().axis {
         let mut op = op.clone();
         op.skip = target.outlet_fact(pulse_inputs[first_scan_slot])?.stream.as_ref().unwrap().delay;
@@ -48,10 +55,19 @@ fn pulsify(
                 om.full_dim_hint = None;
             }
         }
+        op.body = op.body.set_symbols(&subs)?;
+        for om in op.output_mapping.iter_mut() {
+            *om = om.set_symbols(&subs)?;
+        }
         Ok(Some(target.wire_node(&*node.name, op, &pulse_inputs)?))
     } else if scan_axis.outputs.iter().all(|x| x.len() == 1) {
         let body = PulsedModel::new(&op.body, symbol.clone(), pulse)?.into_typed()?;
-        let mut new_op = Scan::new(body, op.input_mapping.clone(), op.output_mapping.clone(), 0)?;
+        let output_mapping = op
+            .output_mapping
+            .iter()
+            .map(|om| om.set_symbols(&subs))
+            .collect::<TractResult<Vec<_>>>()?;
+        let mut new_op = Scan::new(body, op.input_mapping.clone(), output_mapping, 0)?;
         new_op.reset_every_turn = true;
         target.wire_node(&node.name, new_op, &pulse_inputs).map(Some)
     } else {
