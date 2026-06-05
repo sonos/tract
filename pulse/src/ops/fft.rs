@@ -3,9 +3,15 @@ use crate::internal::*;
 use tract_core::ops::fft::Stft;
 use tract_pulse_opl::ops::Delay;
 
-register_all!(Stft: pulsify);
+register_all!(Stft: stft_pulsify);
 
-fn pulsify(
+// `Fft` needs no dedicated pulsifier. Its `axes_mapping` declares the
+// FFT axis and the trailing complex axis as input-only / output-only
+// (they do not map 1-to-1), so the generic pulse fallback in `model.rs`
+// automatically refuses to track a streaming axis through them and
+// handles streaming on any genuine batch axis with `PulseWrappingOp`.
+
+fn stft_pulsify(
     op: &Stft,
     _source: &TypedModel,
     node: &TypedNode,
