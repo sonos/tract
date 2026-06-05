@@ -33,6 +33,11 @@ reference: doc/. This file is the rules an agent must follow to contribute clean
   model-walk loops or rebuild a fresh TypedModel.
 - Don't touch `pulse` / `pulse-opl` casually — subtle streaming invariants.
 
+## Inspecting a model
+- To inspect the op graph programmatically, use `tract <model> [--cuda|--metal]
+  dump --audit-json` (JSON node list to stdout) rather than scraping the colored
+  `dump` output. Handy for checking which ops landed on which backend.
+
 ## Public API
 - The public surface is `api/rs/src/lib.rs`. Check there, not internal `pub`
   items. Apps/examples/bindings use `api/rs` only.
