@@ -3,7 +3,7 @@
 //! any backend-specific arguments.
 
 use tract_core::internal::*;
-use tract_core::ops::array::{MultiBroadcastTo, Slice, TypedConcat};
+use tract_core::ops::array::{MultiBroadcastTo, Pad, Slice, TypedConcat};
 use tract_pulse_opl::ops::{Delay, PulsePad};
 use tract_transformers::ops::dyn_kv_cache::DynKeyValueCache;
 
@@ -37,6 +37,11 @@ pub fn try_make_copy_based_op(
     }
     if let Some(op) = node.op_as::<PulsePad>() {
         return Ok(Some(Box::new(super::pulse::GpuPulsePad::new(op)?)));
+    }
+    if let Some(op) = node.op_as::<Pad>()
+        && let Some(gpu) = super::pad::GpuPad::from_core(op)
+    {
+        return Ok(Some(Box::new(gpu)));
     }
     Ok(None)
 }
