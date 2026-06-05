@@ -39,6 +39,8 @@ libloading.workspace = true
 criterion.workspace = true
 proptest.workspace = true
 rand.workspace = true
+rustfft.workspace = true
+num-complex.workspace = true
 
 [features]
 # Pick exactly one cuda-XXXXX to bind cudarc against. Higher minor versions
