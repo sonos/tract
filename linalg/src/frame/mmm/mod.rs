@@ -309,11 +309,16 @@ fn l2_block_budget_bytes() -> usize {
 /// larger than L2 (otherwise an outer tier just duplicates the inner one).
 /// `None` ⇒ no outer tier; the walk stays single-level (identical to before).
 fn l3_block_budget_bytes() -> Option<usize> {
-    let ci = crate::cache::cache_info();
-    if ci.l3 == 0 || ci.l3 <= ci.l2 {
-        return None;
-    }
-    Some(tier_budget_bytes(ci.l3, 1, 2, 0))
+    use crate::cache::LlcKind;
+    let (bytes, kind) = crate::cache::last_level_cache()?;
+    // Dedicated cluster L3: ~half. A shared System-Level Cache is contended by the
+    // GPU/NPU/display, so we can't assume residency of lines they keep evicting —
+    // budget it to ~a quarter.
+    let (num, den) = match kind {
+        LlcKind::Dedicated => (1, 2),
+        LlcKind::SystemLevel => (1, 4),
+    };
+    Some(tier_budget_bytes(bytes, num, den, 0))
 }
 
 /// Cache-adaptive panel-block edge for a given byte budget: large enough to
