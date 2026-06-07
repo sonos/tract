@@ -157,6 +157,62 @@ impl<const QK: usize> BaseQ4_0<QK> {
         }
         Ok(())
     }
+
+    /// Quantize one activation row to symmetric int8 with a per-block f32 scale (block length
+    /// `QK`): `scale_b = max(|a| in block) / 127`, `q[i] = round(a[i] / scale_b)`. Returns
+    /// `(q, scales)` with `q.len() == a.len()` and `scales.len() == a.len() / QK`.
+    fn quantize_row_q8(&self, a: &[f32]) -> (Vec<i8>, Vec<f32>) {
+        let nb = a.len() / QK;
+        let mut q = vec![0i8; a.len()];
+        let mut scales = vec![0f32; nb];
+        for b in 0..nb {
+            let blk = &a[b * QK..][..QK];
+            let amax = blk.iter().fold(0f32, |m, &v| m.max(v.abs()));
+            let scale = if amax > 0.0 { amax / 127.0 } else { 1.0 };
+            scales[b] = scale;
+            let r = scale.recip();
+            for i in 0..QK {
+                q[b * QK + i] = (blk[i] * r).round().clamp(-127.0, 127.0) as i8;
+            }
+        }
+        (q, scales)
+    }
+
+    /// W4A8 GEMV (`M == 1`): `y[n] = Σ_k dequant(W[n, k]) · a[k]`, computed as per-block int8 dot
+    /// products of the unpacked 4-bit weights with an int8-quantized activation, each scaled by
+    /// `w_block_scale · a_block_scale`. `weight` is this format's storage for a `[n, k]` matrix
+    /// (row-major blocks, `k % QK == 0`); `a` is the length-`k` activation, quantized to int8 on
+    /// the fly, so the result is near- but not bit-exact against the f32-dequant path.
+    pub fn w4a8_gemv(&self, weight: &[u8], n: usize, k: usize, a: &[f32]) -> TractResult<Vec<f32>> {
+        ensure!(k % QK == 0, "W4A8 GEMV needs K a multiple of {QK}, got {k}");
+        ensure!(a.len() == k && weight.len() == n * (k / QK) * self.block_bytes());
+        let nb = k / QK;
+        let (aq, asc) = self.quantize_row_q8(a);
+        let bb = self.block_bytes();
+        let mut y = vec![0f32; n];
+        let mut wi8 = [0i8; QK];
+        for ni in 0..n {
+            let mut acc = 0f32;
+            for b in 0..nb {
+                let blk = &weight[(ni * nb + b) * bb..][..bb];
+                let wscale = f16::from_bits(u16::from_le_bytes([blk[0], blk[1]])).to_f32();
+                for idx in 0..QK {
+                    let byte = blk[2 + idx / 2];
+                    let nib = if idx % 2 == 0 { byte & 0x0F } else { byte >> 4 } as i8;
+                    wi8[(QK / 2) * (idx % 2) + idx / 2] = nib - 8;
+                }
+                let aqb = &aq[b * QK..][..QK];
+                // Keep this contiguous so LLVM lowers the i8->i32 MAC to a NEON int8 dot.
+                let mut dot = 0i32;
+                for i in 0..QK {
+                    dot += wi8[i] as i32 * aqb[i] as i32;
+                }
+                acc += dot as f32 * wscale * asc[b];
+            }
+            y[ni] = acc;
+        }
+        Ok(y)
+    }
 }
 
 fn zipped_order(r: usize, zip: usize) -> Vec<usize> {
@@ -499,5 +555,31 @@ mod tests {
     #[test]
     fn pack_then_extract_row_with_scales_at_end() -> TractResult<()> {
         test_pack_then_extract_row(BaseQ4_0::<2>, 2, 4, 4, 0, true)
+    }
+
+    #[test]
+    fn w4a8_gemv_near_f32_dequant() {
+        let (n, k) = (8usize, 64usize);
+        let mut rng = 1u64;
+        let mut rnd = || {
+            rng = rng.wrapping_mul(6364136223846793005).wrapping_add(1);
+            ((rng >> 40) as f32 / (1u64 << 24) as f32) - 0.5
+        };
+        let w: Vec<f32> = (0..n * k).map(|_| rnd()).collect();
+        let a: Vec<f32> = (0..k).map(|_| rnd()).collect();
+        let blob = Q4_0.quant_f32(&w).unwrap();
+        let deq = Q4_0.dequant_f32(&blob).unwrap();
+        let deq = deq.try_as_plain().unwrap();
+        let deq = deq.as_slice::<f32>().unwrap();
+        let mut y_ref = vec![0f32; n];
+        for ni in 0..n {
+            for kk in 0..k {
+                y_ref[ni] += deq[ni * k + kk] * a[kk];
+            }
+        }
+        let y = Q4_0.w4a8_gemv(&blob, n, k, &a).unwrap();
+        let num: f32 = y.iter().zip(&y_ref).map(|(x, r)| (x - r).powi(2)).sum::<f32>().sqrt();
+        let den: f32 = y_ref.iter().map(|r| r * r).sum::<f32>().sqrt();
+        assert!(num / den.max(1e-9) < 0.02, "W4A8 vs f32-dequant GEMV deviation too large");
     }
 }
