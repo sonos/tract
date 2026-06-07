@@ -13,12 +13,14 @@ use std::hash::Hash;
 use std::sync::Arc;
 
 mod helpers;
+mod q1_58;
 mod q4_0;
 mod q8_1;
 mod storage;
 mod value;
 
-pub use helpers::{NibbleReader, NibbleWriter};
+pub use helpers::{CrumbReader, CrumbWriter, NibbleReader, NibbleWriter};
+pub use q1_58::{BaseQ1_58, Q1_58};
 pub use q4_0::Q4_0;
 pub use q8_1::Q8_1;
 pub use storage::{BlockQuantStorage, block_quant_slice};

@@ -71,3 +71,75 @@ impl<W: Write> NibbleWriter<W> {
         self.writer.write_i8(q).unwrap()
     }
 }
+
+/// Reads/writes 2-bit values ("crumbs"), four per byte, least-significant pair first.
+/// Used by the ternary (Q1_58 / BitNet b1.58) block-quant format. f16 reads/writes are
+/// only legal on a crumb (byte) boundary, which the ternary layouts always respect.
+pub struct CrumbReader<R> {
+    acc: u8,
+    remaining: u8,
+    reader: R,
+}
+
+impl<'s> CrumbReader<Cursor<&'s [u8]>> {
+    pub fn for_slice(slice: &'s [u8]) -> Self {
+        CrumbReader::new(Cursor::new(slice))
+    }
+}
+
+impl<R: Read> CrumbReader<R> {
+    pub fn new(reader: R) -> CrumbReader<R> {
+        CrumbReader { reader, acc: 0, remaining: 0 }
+    }
+
+    pub fn read_f16(&mut self) -> f16 {
+        assert!(self.remaining == 0);
+        f16::from_bits(self.reader.read_u16::<LE>().unwrap())
+    }
+
+    /// Returns the 2-bit code (0..=3).
+    pub fn read_crumb(&mut self) -> u8 {
+        if self.remaining == 0 {
+            self.acc = self.reader.read_u8().unwrap();
+            self.remaining = 4;
+        }
+        let c = self.acc & 0x3;
+        self.acc >>= 2;
+        self.remaining -= 1;
+        c
+    }
+}
+
+pub struct CrumbWriter<W> {
+    acc: u8,
+    filled: u8,
+    writer: W,
+}
+
+impl<'s> CrumbWriter<Cursor<&'s mut [u8]>> {
+    pub fn for_slice(slice: &'s mut [u8]) -> Self {
+        CrumbWriter::new(Cursor::new(slice))
+    }
+}
+
+impl<W: Write> CrumbWriter<W> {
+    pub fn new(writer: W) -> CrumbWriter<W> {
+        CrumbWriter { writer, acc: 0, filled: 0 }
+    }
+
+    pub fn write_f16(&mut self, f: f16) {
+        assert!(self.filled == 0);
+        self.writer.write_u16::<LE>(f.to_bits()).unwrap()
+    }
+
+    /// Writes a 2-bit code (only the low two bits of `c` are used).
+    pub fn write_crumb(&mut self, c: u8) {
+        self.acc |= (c & 0x3) << (2 * self.filled);
+        self.filled += 1;
+        if self.filled == 4 {
+            self.writer.write_u8(self.acc).unwrap();
+            self.acc = 0;
+            self.filled = 0;
+        }
+    }
+}
