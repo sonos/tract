@@ -4,13 +4,147 @@ use crate::pack::{PackedFormat, Packing};
 use tract_data::internal::*;
 
 pub fn plug(ops: &mut Ops) {
-    ops.panel_extractors.extend([packed_32_q40_to_f32.clone(), packed_32_f16_to_f32.clone()]);
+    ops.panel_extractors.extend([
+        packed_32_q40_to_f32.clone(),
+        packed_32_q1_58_to_f32.clone(),
+        packed_32_f16_to_f32.clone(),
+    ]);
 }
 
 panel_extractor!(kernel_packed_32_q40_to_f32 as packed_32_q40_to_f32(
     Box::new(super::mmm::pq40_r32()),
     f32::packing(32).align(32)
 ) where(AVX2));
+
+panel_extractor!(kernel_packed_32_q1_58_to_f32 as packed_32_q1_58_to_f32(
+    Box::new(super::mmm::pq1_58_r32()),
+    f32::packing(32).align(32)
+) where(AVX2));
+
+// AVX2 unpack of a ternary (Q1_58) r=32, zip=0 panel into an f32 packing(32) panel.
+// Per 32-block: 32 f16 row-scales then 32 k-positions, each with 32 rows of 2-bit codes
+// (8 bytes). For a position, lane `row` wants `(byte[row/4] >> 2*(row%4)) & 3` which the
+// per-lane variable shift (vpsrlvd) computes directly after spreading each byte across
+// four lanes; then `(code - 1) * scale`.
+#[target_feature(enable = "avx2,f16c")]
+unsafe fn kernel_packed_32_q1_58_to_f32(input: *const u8, output: *mut u8, k: usize) {
+    use std::arch::x86_64::*;
+    unsafe {
+        if k == 0 {
+            return;
+        }
+        debug_assert!(k % 32 == 0);
+        let shift = _mm256_setr_epi32(0, 2, 4, 6, 0, 2, 4, 6);
+        let three = _mm256_set1_epi32(3);
+        let one = _mm256_set1_epi32(1);
+        // For group g (rows 8g..8g+7): spread bytes 2g, 2g+1 across 4 lanes each.
+        let m = |b: i8| b;
+        let masks = [
+            _mm_setr_epi8(
+                m(0),
+                0,
+                0,
+                0,
+                1,
+                1,
+                1,
+                1,
+                -128,
+                -128,
+                -128,
+                -128,
+                -128,
+                -128,
+                -128,
+                -128,
+            ),
+            _mm_setr_epi8(
+                m(2),
+                2,
+                2,
+                2,
+                3,
+                3,
+                3,
+                3,
+                -128,
+                -128,
+                -128,
+                -128,
+                -128,
+                -128,
+                -128,
+                -128,
+            ),
+            _mm_setr_epi8(
+                m(4),
+                4,
+                4,
+                4,
+                5,
+                5,
+                5,
+                5,
+                -128,
+                -128,
+                -128,
+                -128,
+                -128,
+                -128,
+                -128,
+                -128,
+            ),
+            _mm_setr_epi8(
+                m(6),
+                6,
+                6,
+                6,
+                7,
+                7,
+                7,
+                7,
+                -128,
+                -128,
+                -128,
+                -128,
+                -128,
+                -128,
+                -128,
+                -128,
+            ),
+        ];
+        let mut inp = input;
+        let mut out = output as *mut f32;
+        let mut kk = k;
+        while kk > 0 {
+            // 32 f16 row scales -> 4 ymm of 8 f32
+            let scales = [
+                _mm256_cvtph_ps(_mm_loadu_si128(inp as *const __m128i)),
+                _mm256_cvtph_ps(_mm_loadu_si128(inp.add(16) as *const __m128i)),
+                _mm256_cvtph_ps(_mm_loadu_si128(inp.add(32) as *const __m128i)),
+                _mm256_cvtph_ps(_mm_loadu_si128(inp.add(48) as *const __m128i)),
+            ];
+            let mut w = inp.add(64);
+            for _ in 0..32 {
+                let codes = _mm_loadl_epi64(w as *const __m128i);
+                for g in 0..4 {
+                    let sh = _mm_shuffle_epi8(codes, masks[g]);
+                    let mut v = _mm256_cvtepu8_epi32(sh);
+                    v = _mm256_srlv_epi32(v, shift);
+                    v = _mm256_and_si256(v, three);
+                    v = _mm256_sub_epi32(v, one);
+                    let f = _mm256_cvtepi32_ps(v);
+                    let r = _mm256_mul_ps(f, scales[g]);
+                    _mm256_storeu_ps(out.add(g * 8), r);
+                }
+                out = out.add(32);
+                w = w.add(8);
+            }
+            inp = inp.add(320); // 32 * block_bytes(=10)
+            kk -= 32;
+        }
+    }
+}
 
 panel_extractor!(kernel_packed_32_f16_to_f32 as packed_32_f16_to_f32(
     Box::new(PackedFormat::new(f16::datum_type(), 32, 32)),
