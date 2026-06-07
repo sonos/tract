@@ -283,65 +283,13 @@ unsafe fn run_with_scratch_space_vec<K: MatMatMulKer>(
 /// `chunk_grid` default).
 const ST_BLK_MAX: usize = 16;
 
-#[cfg(target_os = "linux")]
-fn parse_cache_size(s: &str) -> usize {
-    let s = s.trim();
-    let (num, mult) = if let Some(n) = s.strip_suffix(['K', 'k']) {
-        (n, 1024)
-    } else if let Some(n) = s.strip_suffix(['M', 'm']) {
-        (n, 1024 * 1024)
-    } else {
-        (s, 1)
-    };
-    num.trim().parse::<usize>().unwrap_or(0) * mult
-}
-
-/// Best-effort L2 data-cache size in bytes (per perf-core / cluster); 0 if
-/// unknown. Cached. Used to size the single-thread cache-block budget so it is
-/// correct across hardware instead of a hard-coded constant.
-fn detect_l2_bytes() -> usize {
-    static L2: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
-    *L2.get_or_init(|| {
-        #[cfg(target_os = "macos")]
-        {
-            let sysctl = |k: &str| -> Option<usize> {
-                let o = std::process::Command::new("sysctl").arg("-n").arg(k).output().ok()?;
-                if !o.status.success() {
-                    return None;
-                }
-                String::from_utf8_lossy(&o.stdout).trim().parse().ok()
-            };
-            // Prefer the performance-core L2 on hybrid Apple Silicon.
-            sysctl("hw.perflevel0.l2cachesize").or_else(|| sysctl("hw.l2cachesize")).unwrap_or(0)
-        }
-        #[cfg(target_os = "linux")]
-        {
-            // index2/index3 is typically the unified L2 (index0/1 are L1 d/i).
-            for idx in [2usize, 3] {
-                if let Ok(s) = std::fs::read_to_string(format!(
-                    "/sys/devices/system/cpu/cpu0/cache/index{idx}/size"
-                )) {
-                    let b = parse_cache_size(s.trim());
-                    if b > 0 {
-                        return b;
-                    }
-                }
-            }
-            0
-        }
-        #[cfg(not(any(target_os = "macos", target_os = "linux")))]
-        {
-            0
-        }
-    })
-}
-
 /// Working-set budget (bytes) for the single-thread cache-block: ~a third of L2
 /// (leaving room for the C accumulator tile + packing metadata). Conservative
 /// 256 KiB fallback when L2 is unknown (WASM/Windows/BSD) ⇒ small blocks ≈ the
-/// naive loop, so it can never over-block a cache it can't see.
+/// naive loop, so it can never over-block a cache it can't see. L2 geometry
+/// comes from the shared [`crate::cache`] probe.
 fn block_budget_bytes() -> usize {
-    let l2 = detect_l2_bytes();
+    let l2 = crate::cache::cache_info().l2;
     if l2 == 0 { 256 * 1024 } else { (l2 / 3).clamp(64 * 1024, 8 * 1024 * 1024) }
 }
 
