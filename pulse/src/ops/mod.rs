@@ -32,15 +32,20 @@ pub(crate) fn sync_inputs(
         }
     }
     let mut inputs = tvec!();
-    for input in &node.inputs {
+    for (input_ix, input) in node.inputs.iter().enumerate() {
         let mut input = mapping[input];
         let fact = target.outlet_fact(input)?.clone();
         if let Some(stream) = &fact.stream {
             if stream.delay < max_delay {
                 let add_delay = max_delay - stream.delay;
                 let delay_axis = stream.axis;
+                // Suffix with the input slot: a node with more than one
+                // under-delayed streaming input would otherwise mint several
+                // Delay nodes all named "{node}.Delay" and collide at graph
+                // compaction (e.g. a Concat fed by two differently-delayed
+                // pulse paths).
                 input = target.wire_node(
-                    format!("{}.Delay", &*node.name),
+                    format!("{}.Delay-{}", &*node.name, input_ix),
                     Delay::new_typed(&fact.into(), delay_axis, add_delay, 0),
                     &[input],
                 )?[0];
