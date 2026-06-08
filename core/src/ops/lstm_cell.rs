@@ -1,4 +1,5 @@
 use crate::internal::*;
+use tract_linalg::element_wise::ElementWise;
 
 /// Fused LSTM cell epilogue.
 ///
@@ -13,10 +14,11 @@ use crate::internal::*;
 /// inference. Standard activations only (`f = sigmoid`, `g = h = tanh`) and no
 /// peepholes; the importer falls back to the decomposed form otherwise.
 ///
-/// Activations use tract's vectorised `sigmoid_f32`/`tanh_f32` linalg kernels
+/// Activations use tract's vectorised `sigmoid`/`tanh` linalg kernels
 /// (NEON on aarch64) applied to contiguous gate slices, so the output is
 /// numerically identical to the decomposed Sigmoid/Tanh path while collapsing
-/// the per-gate dispatch into one op.
+/// the per-gate dispatch into one op. Runs in either `f32` or `f16`, matching
+/// the dtype the precision transform settled the surrounding graph on.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct LstmEpilogue {
     pub hidden: usize,
@@ -40,20 +42,42 @@ impl EvalOp for LstmEpilogue {
     }
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+        // Dispatch on the dtype the precision transform left the graph in. The
+        // ONNX LSTM is f32-native, but `FloatPrecisionTranslator` rewrites the
+        // whole float graph (including this op's inputs) to f16, so we must run
+        // in whichever float type actually arrives — reading an f16 buffer as
+        // f32 would walk off the end of the allocation.
+        let ops = tract_linalg::ops();
+        match inputs[0].datum_type().unquantized() {
+            DatumType::F32 => self.eval_t::<f32>(inputs, (ops.sigmoid_f32)(), (ops.tanh_f32)()),
+            DatumType::F16 => self.eval_t::<f16>(inputs, (ops.sigmoid_f16)(), (ops.tanh_f16)()),
+            dt => bail!("LstmEpilogue only supports f32 and f16 preactivations, got {dt:?}"),
+        }
+    }
+}
+
+impl LstmEpilogue {
+    fn eval_t<T>(
+        &self,
+        inputs: TVec<TValue>,
+        sigmoid: Box<dyn ElementWise<T>>,
+        tanh: Box<dyn ElementWise<T>>,
+    ) -> TractResult<TVec<TValue>>
+    where
+        T: Datum + Copy + std::ops::Mul<Output = T> + std::ops::Add<Output = T>,
+    {
         let h = self.hidden;
         let c_prev = &inputs[1]; // [.., h]
-        let cp = unsafe { c_prev.as_slice_unchecked::<f32>() };
+        let cp = unsafe { c_prev.as_slice_unchecked::<T>() };
         let rows = inputs[0].len() / (4 * h); // any leading-dim layout, row-major
         // Mutable copy of preact so the activation kernels run in place.
         let mut pre_t = inputs[0].clone().into_tensor();
-        let pre = unsafe { pre_t.as_slice_mut_unchecked::<f32>() };
-        let sigmoid = (tract_linalg::ops().sigmoid_f32)();
-        let tanh = (tract_linalg::ops().tanh_f32)();
-        let mut ht = unsafe { Tensor::uninitialized_dt(f32::datum_type(), c_prev.shape())? };
-        let mut ct = unsafe { Tensor::uninitialized_dt(f32::datum_type(), c_prev.shape())? };
+        let pre = unsafe { pre_t.as_slice_mut_unchecked::<T>() };
+        let mut ht = unsafe { Tensor::uninitialized_dt(T::datum_type(), c_prev.shape())? };
+        let mut ct = unsafe { Tensor::uninitialized_dt(T::datum_type(), c_prev.shape())? };
         {
-            let hs = unsafe { ht.as_slice_mut_unchecked::<f32>() };
-            let cs = unsafe { ct.as_slice_mut_unchecked::<f32>() };
+            let hs = unsafe { ht.as_slice_mut_unchecked::<T>() };
+            let cs = unsafe { ct.as_slice_mut_unchecked::<T>() };
             for r in 0..rows {
                 let pb = r * 4 * h;
                 let cb = r * h;
@@ -69,7 +93,7 @@ impl EvalOp for LstmEpilogue {
                 hs[cb..cb + h].copy_from_slice(&cs[cb..cb + h]);
                 tanh.run(&mut hs[cb..cb + h])?;
                 for j in 0..h {
-                    hs[cb + j] *= row[h + j];
+                    hs[cb + j] = hs[cb + j] * row[h + j];
                 }
             }
         }

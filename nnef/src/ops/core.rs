@@ -12,6 +12,7 @@ mod fft;
 mod gather;
 mod gelu_approximate;
 mod is_inf;
+mod lstm_cell;
 mod matmul;
 mod one_hot;
 mod qconv;
@@ -54,6 +55,7 @@ pub fn register(registry: &mut Registry) {
     fft::register(registry);
     gather::register(registry);
     gelu_approximate::register(registry);
+    lstm_cell::register(registry);
     matmul::register(registry);
     one_hot::register(registry);
     qconv::register(registry);
