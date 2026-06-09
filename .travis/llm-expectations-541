@@ -1,4 +1,4 @@
-Qwen--Qwen3-1.7B-f16f16.p0s100.arm64.cpu 0.96
+Qwen--Qwen3-1.7B-f16f16.p0s100.arm64.cpu 0.95
 Qwen--Qwen3-1.7B-f16f16.p0s100.arm64.metal 0.96
 Qwen--Qwen3-1.7B-f16f16.p0s100.x86_64.cpu 0.99
 Qwen--Qwen3-1.7B-f16f16.p0s100.x86_64.cuda 0.99
@@ -14,7 +14,7 @@ Qwen--Qwen3-1.7B-q40ef16.p0s100.arm64.cpu 0.92
 Qwen--Qwen3-1.7B-q40ef16.p0s100.arm64.metal 0.98
 Qwen--Qwen3-1.7B-q40ef16.p0s100.x86_64.cpu 0.99
 Qwen--Qwen3-1.7B-q40ef16.p0s100.x86_64.cuda 0.92
-Qwen--Qwen3-1.7B-q40ef16.p50s50.arm64.cpu 0.96
+Qwen--Qwen3-1.7B-q40ef16.p50s50.arm64.cpu 0.95
 Qwen--Qwen3-1.7B-q40ef16.p50s50.arm64.metal 0.99
 Qwen--Qwen3-1.7B-q40ef16.p50s50.x86_64.cpu 0.99
 Qwen--Qwen3-1.7B-q40ef16.p50s50.x86_64.cuda 0.98
@@ -30,7 +30,7 @@ Qwen--Qwen3-8B-f16f16.p50s50.arm64.cpu 0.94
 Qwen--Qwen3-8B-f16f16.p50s50.arm64.metal 0.95
 Qwen--Qwen3-8B-f16f16.p50s50.x86_64.cpu 0.99
 Qwen--Qwen3-8B-f16f16.p50s50.x86_64.cuda 0.99
-Qwen--Qwen3-8B-f16f16.p99s1.arm64.cpu 0.96
+Qwen--Qwen3-8B-f16f16.p99s1.arm64.cpu 0.95
 Qwen--Qwen3-8B-f16f16.p99s1.arm64.metal 0.99
 Qwen--Qwen3-8B-f16f16.p99s1.x86_64.cpu 0.99
 Qwen--Qwen3-8B-f16f16.p99s1.x86_64.cuda 0.99
@@ -38,7 +38,7 @@ Qwen--Qwen3-8B-q40ef16.p0s100.arm64.cpu 0.86
 Qwen--Qwen3-8B-q40ef16.p0s100.arm64.metal 0.97
 Qwen--Qwen3-8B-q40ef16.p0s100.x86_64.cpu 0.99
 Qwen--Qwen3-8B-q40ef16.p0s100.x86_64.cuda 0.96
-Qwen--Qwen3-8B-q40ef16.p50s50.arm64.cpu 0.98
+Qwen--Qwen3-8B-q40ef16.p50s50.arm64.cpu 0.95
 Qwen--Qwen3-8B-q40ef16.p50s50.arm64.metal 0.99
 Qwen--Qwen3-8B-q40ef16.p50s50.x86_64.cpu 0.99
 Qwen--Qwen3-8B-q40ef16.p50s50.x86_64.cuda 0.99
@@ -58,7 +58,7 @@ apple--OpenELM-270M-f16f16.p99s1.arm64.cpu 0.97
 apple--OpenELM-270M-f16f16.p99s1.arm64.metal 0.99
 apple--OpenELM-270M-f16f16.p99s1.x86_64.cpu 0.99
 apple--OpenELM-270M-f16f16.p99s1.x86_64.cuda 0.99
-apple--OpenELM-270M-q40ef16.p0s100.arm64.cpu 0.99
+apple--OpenELM-270M-q40ef16.p0s100.arm64.cpu 0.98
 apple--OpenELM-270M-q40ef16.p0s100.arm64.metal 0.99
 apple--OpenELM-270M-q40ef16.p0s100.x86_64.cpu 0.99
 apple--OpenELM-270M-q40ef16.p0s100.x86_64.cuda 0.95
@@ -70,7 +70,7 @@ apple--OpenELM-270M-q40ef16.p99s1.arm64.cpu 0.99
 apple--OpenELM-270M-q40ef16.p99s1.arm64.metal 0.99
 apple--OpenELM-270M-q40ef16.p99s1.x86_64.cpu 0.99
 apple--OpenELM-270M-q40ef16.p99s1.x86_64.cuda 0.89
-meta-llama--Llama-3.1-8B-Instruct-f16f16.p0s100.arm64.cpu 0.96
+meta-llama--Llama-3.1-8B-Instruct-f16f16.p0s100.arm64.cpu 0.93
 meta-llama--Llama-3.1-8B-Instruct-f16f16.p0s100.arm64.metal 0.92
 meta-llama--Llama-3.1-8B-Instruct-f16f16.p0s100.x86_64.cpu 0.99
 meta-llama--Llama-3.1-8B-Instruct-f16f16.p0s100.x86_64.cuda 0.99
@@ -90,11 +90,11 @@ meta-llama--Llama-3.1-8B-Instruct-q40ef16.p50s50.arm64.cpu 0.93
 meta-llama--Llama-3.1-8B-Instruct-q40ef16.p50s50.arm64.metal 0.98
 meta-llama--Llama-3.1-8B-Instruct-q40ef16.p50s50.x86_64.cpu 0.99
 meta-llama--Llama-3.1-8B-Instruct-q40ef16.p50s50.x86_64.cuda 0.99
-meta-llama--Llama-3.1-8B-Instruct-q40ef16.p99s1.arm64.cpu 0.97
+meta-llama--Llama-3.1-8B-Instruct-q40ef16.p99s1.arm64.cpu 0.96
 meta-llama--Llama-3.1-8B-Instruct-q40ef16.p99s1.arm64.metal 0.99
 meta-llama--Llama-3.1-8B-Instruct-q40ef16.p99s1.x86_64.cpu 0.99
 meta-llama--Llama-3.1-8B-Instruct-q40ef16.p99s1.x86_64.cuda 0.97
-meta-llama--Llama-3.2-1B-Instruct-f16f16.p0s100.arm64.cpu 0.99
+meta-llama--Llama-3.2-1B-Instruct-f16f16.p0s100.arm64.cpu 0.98
 meta-llama--Llama-3.2-1B-Instruct-f16f16.p0s100.arm64.metal 0.99
 meta-llama--Llama-3.2-1B-Instruct-f16f16.p0s100.x86_64.cpu 0.99
 meta-llama--Llama-3.2-1B-Instruct-f16f16.p0s100.x86_64.cuda 0.99
@@ -130,7 +130,7 @@ meta-llama--Llama-3.2-1B-Instruct-q40ef16.p99s1.arm64.cpu 0.98
 meta-llama--Llama-3.2-1B-Instruct-q40ef16.p99s1.arm64.metal 0.99
 meta-llama--Llama-3.2-1B-Instruct-q40ef16.p99s1.x86_64.cpu 0.99
 meta-llama--Llama-3.2-1B-Instruct-q40ef16.p99s1.x86_64.cuda 0.99
-meta-llama--Llama-3.2-3B-Instruct-f16f16.p0s100.arm64.cpu 0.98
+meta-llama--Llama-3.2-3B-Instruct-f16f16.p0s100.arm64.cpu 0.97
 meta-llama--Llama-3.2-3B-Instruct-f16f16.p0s100.arm64.metal 0.97
 meta-llama--Llama-3.2-3B-Instruct-f16f16.p0s100.x86_64.cpu 0.99
 meta-llama--Llama-3.2-3B-Instruct-f16f16.p0s100.x86_64.cuda 0.99
@@ -142,7 +142,7 @@ meta-llama--Llama-3.2-3B-Instruct-f16f16.p99s1.arm64.cpu 0.96
 meta-llama--Llama-3.2-3B-Instruct-f16f16.p99s1.arm64.metal 0.98
 meta-llama--Llama-3.2-3B-Instruct-f16f16.p99s1.x86_64.cpu 0.99
 meta-llama--Llama-3.2-3B-Instruct-f16f16.p99s1.x86_64.cuda 0.99
-meta-llama--Llama-3.2-3B-Instruct-q40ef16.p0s100.arm64.cpu 0.96
+meta-llama--Llama-3.2-3B-Instruct-q40ef16.p0s100.arm64.cpu 0.94
 meta-llama--Llama-3.2-3B-Instruct-q40ef16.p0s100.arm64.metal 0.99
 meta-llama--Llama-3.2-3B-Instruct-q40ef16.p0s100.x86_64.cpu 0.99
 meta-llama--Llama-3.2-3B-Instruct-q40ef16.p0s100.x86_64.cuda 0.99
