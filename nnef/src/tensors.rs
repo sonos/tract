@@ -61,12 +61,14 @@ impl Header {
 pub fn read_tensor(mut reader: impl Read) -> TractResult<Tensor> {
     let header = Header::read(&mut reader)?;
     let shape: TVec<usize> = header.dims[0..header.rank as usize].iter().map(|d| *d as _).collect();
-    let len = shape.iter().product::<usize>();
+    let Some(len) = shape.iter().try_fold(1usize, |acc, &d| acc.checked_mul(d)) else {
+        bail!("Tensor shape product overflows usize: {:?}", shape);
+    };
 
     if header.item_type == 5 {
-        let expected_bit_size = len * header.bits_per_item as usize;
+        let expected_bit_size = len.checked_mul(header.bits_per_item as usize);
         let real_bit_size = header.data_size_bytes as usize * 8;
-        if !(real_bit_size - 8 <= expected_bit_size && expected_bit_size <= real_bit_size) {
+        if expected_bit_size.map_or(true, |e| !(real_bit_size - 8 <= e && e <= real_bit_size)) {
             bail!(
                 "Shape and len mismatch: shape:{:?}, bits_per_item:{}, bytes:{} ",
                 shape,
@@ -75,7 +77,7 @@ pub fn read_tensor(mut reader: impl Read) -> TractResult<Tensor> {
             );
         }
     } else if header.bits_per_item != u32::MAX
-        && len * (header.bits_per_item as usize / 8) != header.data_size_bytes as usize
+        && len.checked_mul(header.bits_per_item as usize / 8) != Some(header.data_size_bytes as usize)
     {
         bail!(
             "Shape and len mismatch: shape:{:?}, bits_per_item:{}, bytes:{} ",
