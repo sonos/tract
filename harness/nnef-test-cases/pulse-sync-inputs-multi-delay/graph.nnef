@@ -1,0 +1,31 @@
+version 1.0;
+
+extension tract_registry tract_core;
+
+# Reproducer for the duplicate Delay-node name minted by `sync_inputs`.
+#
+# Three causal convs over the streaming axis give the same per-pulse length but
+# pulse delays 1, 2 and 3. `select` is elementwise with no dedicated pulse
+# pulsifier, so it goes through the generic PulseWrappingOp path, whose
+# `sync_inputs` inserts a Delay on every streaming input below the max delay.
+# Here two inputs (the value tensors, delays 1 and 2) sit below the condition's
+# delay 3, so two Delays are minted on the same node. Before the fix both were
+# named `<node>.Delay` and collided at graph compaction ("duplicate name for
+# node"). Constant kernels keep batch and streaming outputs equal element-wise
+# so `compare --stream` is a valid check.
+
+graph multi_delay_select(input) -> (output)
+{
+    input = external<scalar>(shape = [1, 1, S]);
+
+    ka = [[[0.5, 0.5]]];
+    kb = [[[0.3, 0.3, 0.3]]];
+    kc = [[[0.25, 0.25, 0.25, 0.25]]];
+
+    a    = conv(input, ka, padding = [(0, 1)], border = 'constant', stride = [1], dilation = [1]);
+    b    = conv(input, kb, padding = [(0, 2)], border = 'constant', stride = [1], dilation = [1]);
+    cdrv = conv(input, kc, padding = [(0, 3)], border = 'constant', stride = [1], dilation = [1]);
+
+    cond   = gt(cdrv, 0.0);
+    output = select(cond, a, b);
+}
