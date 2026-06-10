@@ -282,9 +282,14 @@ fn read_block_quant_value(r: &mut impl Read, header: &Header) -> TractResult<Ten
     let shape: TVec<_> =
         header.dims.iter().take(header.rank as usize).map(|d| *d as usize).collect();
     let q_m = shape[0];
-    let q_k = shape.iter().skip(1).product::<usize>();
+    let Some(q_k) = shape.iter().skip(1).try_fold(1usize, |acc, &d| acc.checked_mul(d)) else {
+        bail!("Block-quant shape product overflows usize: {:?}", shape);
+    };
     ensure!(q_k % format.block_len() == 0);
-    let expected_len = (q_m * q_k) / format.block_len() * format.block_bytes();
+    let Some(elements) = q_m.checked_mul(q_k) else {
+        bail!("Block-quant element count overflows usize: {:?}", shape);
+    };
+    let expected_len = elements / format.block_len() * format.block_bytes();
     ensure!(expected_len == header.data_size_bytes as _);
     let mut blob = unsafe { Blob::new_for_size_and_align(expected_len, 128) };
     r.read_exact(&mut blob)?;
