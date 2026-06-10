@@ -9,6 +9,55 @@
 
 For normal usage we recommend adopting the **`tract` facade crate** (the public API at `api/rs`) instead of wiring `tract-core`, `tract-nnef`, `tract-onnx`, `tract-pulse`, `tract-cuda`, `tract-metal`, etc. directly. The facade exposes one stable surface — `nnef()`, `onnx()`, `runtime_for_name("cpu" | "gpu" | "gpu-or-cpu" | "cuda" | "metal" | ...)`, plus `Model`, `Runnable`, `State`, `Tensor`, `TDim`, and a `SetSymbols` transform builder — with all the backends curated behind it. `impl_ndarray_interop!()` (0.23.0-dev.5) keeps `ndarray` interop opt-in without leaking an `ndarray` version into the public API. Downstream code that pinned `tract-core` + `tract-onnx` directly can usually drop those deps in favour of `tract = "0.23"` and `use tract::prelude::*;`. Examples are now organised around this facade — see `examples/onnx-mobilenet-v2`, `examples/nnef-mobilenet-v2`, and `examples/causal_llm`.
 
+# 0.23.1 - 2026-06-10
+
+### CPU / linalg
+
+- **int8 GEMM kernels across backends.** aarch64 SDOT (`FEAT_DotProd`), x86_64
+  AVX-512-VNNI (`avx512vnni_mmm_i32_8x8`), and ARM SME2 SMOPA
+  (`sme_qmmm_i32_32x32`) int8→i32 matmul micro-kernels.
+- **AVX-512 element-wise + reduction kernels.** Dedicated AVX-512 kernels for the
+  f32 and f16 activations (sigmoid, tanh, hardswish, silu, gelu, leaky_relu),
+  `erf`, `max`, and fastcompact `softmax` (f32 + f16). On AVX-512-FP16 hosts, a
+  native-f16 `hardswish` kernel is plugged in where it wins.
+- **Fused RmsNorm.** A single 2-pass kernel replaces the
+  MeanOfSquares+Add+Rsqrt+Mul composition for trailing-axis f32/f16 RmsNorm —
+  AVX-512 on x86_64, NEON on aarch64, scalar generic elsewhere.
+
+### GPU
+
+- **Constant `Pad` on GPU.** Backend-agnostic `GpuPad` (CUDA + Metal) via the
+  generic `copy_nd` path; constant mode only (Reflect/Edge stay on host).
+
+### Transformers / LLM
+
+- **Sliding-window attention.** Bounded sliding-window KV cache (ring buffer) and
+  a fused `WindowKvSdpa` op for windowed decode, with an auto-wiring transform
+  and NNEF ser/de.
+- **CPU FlashSdpa**: contiguous P·V GEMM, head-parallel execution, and a
+  sequence-length lowering heuristic.
+
+### ONNX
+
+- **GroupQueryAttention**: accept `local_window_size` (banded mask).
+- **RotaryEmbedding**: handle the `com.microsoft` contrib op.
+
+### Pulse / streaming
+
+- **FFT/STFT pulsification on non-FFT axes** via `Fft::axes_mapping` /
+  `Stft::axes_mapping` (dedicated pulsifier dropped).
+- **Scan**: caller-managed recurrent state is now detected by graph reachability
+  (and auto-enabled from ONNX) rather than an import flag;
+  `force_scan_external_state` decoupled from sequence concretization; stream
+  symbol substituted in the Scan body during pulsification.
+- **MultiBroadcastTo**: linearity-checked per-pulse size on the stream axis.
+
+### Build / CI
+
+- Toolchain consolidated on `rust-toolchain.toml` (stable channel); MSRV derived
+  from `Cargo.toml` `rust-version`; `cargo fmt` checked with stable.
+- Contributor docs added (`CLAUDE.md` / `AGENTS.md`).
+
 # 0.23.0 - 2026-05-1
 
 This section lists changes since 0.23.0-dev.5 only; the dev.2…dev.5 sections below cover the rest of the 0.22.x→0.23.0 delta.
