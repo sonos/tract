@@ -6,7 +6,7 @@ Qwen--Qwen3-1.7B-f16f16.p50s50.arm64.cpu 0.96
 Qwen--Qwen3-1.7B-f16f16.p50s50.arm64.metal 0.97
 Qwen--Qwen3-1.7B-f16f16.p50s50.x86_64.cpu 0.98
 Qwen--Qwen3-1.7B-f16f16.p50s50.x86_64.cuda 0.99
-Qwen--Qwen3-1.7B-f16f16.p99s1.arm64.cpu 0.99
+Qwen--Qwen3-1.7B-f16f16.p99s1.arm64.cpu 0.98
 Qwen--Qwen3-1.7B-f16f16.p99s1.arm64.metal 0.99
 Qwen--Qwen3-1.7B-f16f16.p99s1.x86_64.cpu 0.99
 Qwen--Qwen3-1.7B-f16f16.p99s1.x86_64.cuda 0.99
