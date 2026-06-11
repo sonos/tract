@@ -77,7 +77,8 @@ pub fn read_tensor(mut reader: impl Read) -> TractResult<Tensor> {
             );
         }
     } else if header.bits_per_item != u32::MAX
-        && len.checked_mul(header.bits_per_item as usize / 8) != Some(header.data_size_bytes as usize)
+        && len.checked_mul(header.bits_per_item as usize / 8)
+            != Some(header.data_size_bytes as usize)
     {
         bail!(
             "Shape and len mismatch: shape:{:?}, bits_per_item:{}, bytes:{} ",
