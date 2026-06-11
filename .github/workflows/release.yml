@@ -28,9 +28,11 @@ jobs:
           persist-credentials: false
 
       - name: Create Release
-        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3
-        with:
-          name: tract ${{ steps.version.outputs.value }}
         env:
-          GITHUB_TOKEN: ${{ secrets.ACCESS_TOKEN_RELEASE }}
+          GH_TOKEN: ${{ secrets.ACCESS_TOKEN_RELEASE }}
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          tag="v$VERSION"
+          gh release create "$tag" --title "tract $VERSION" --notes "" --verify-tag \
+            || gh release edit "$tag" --title "tract $VERSION"
 
