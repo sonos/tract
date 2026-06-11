@@ -150,14 +150,16 @@ jobs:
           sbom-path: tract-${{ matrix.target }}-${{ steps.version.outputs.value }}.spdx.json
 
       - name: Upload asset
-        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3
-        with:
-          files: |
-            tract-${{matrix.target}}-${{ steps.version.outputs.value }}.tgz
-            tract-${{matrix.target}}-${{ steps.version.outputs.value }}.cdx.json
-            tract-${{matrix.target}}-${{ steps.version.outputs.value }}.spdx.json
-          name: ${{ steps.version.outputs.value }}
-          tag_name: v${{ steps.version.outputs.value }}
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.value }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          tag="v$VERSION"
+          gh release create "$tag" --target "$GITHUB_SHA" --title "$VERSION" --notes "" 2>/dev/null || true
+          gh release upload "$tag" \
+            "tract-${TARGET}-${VERSION}.tgz" \
+            "tract-${TARGET}-${VERSION}.cdx.json" \
+            "tract-${TARGET}-${VERSION}.spdx.json" \
+            --clobber
 
