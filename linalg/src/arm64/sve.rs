@@ -311,13 +311,10 @@ mod rms_norm_tests {
 
     #[test]
     fn all_zero() {
-        // inv_std = 1/sqrt(eps), output = 0.
-        let n = 256;
-        let mut sve = vec![0.0_f32; n];
-        let mut refb = vec![0.0_f32; n];
-        sve_rms_norm_f32(&mut sve, 1e-5);
-        scalar_ref(&mut refb, 1e-5);
-        close_enough(&sve, &refb, n);
+        // inv_std = 1/sqrt(eps), output = 0. Goes through check() for the
+        // has_sve2() gate: calling the kernel directly SIGILLs on non-SVE2
+        // hardware (e.g. the cortex-a53 qemu CI runner).
+        check(256, |_| 0.0);
     }
 
     #[test]
@@ -325,6 +322,10 @@ mod rms_norm_tests {
         // Cross-check: SVE kernel ≈ NEON kernel (both should match scalar).
         // Reductions in different SIMD widths reorder differently, so not
         // bit-exact; close-enough tolerance.
+        if !has_sve2() {
+            eprintln!("SVE2 not present, skipping");
+            return;
+        }
         for n in [16usize, 64, 1024, 1024 + 7, 4096, 8192] {
             let x: Vec<f32> = (0..n).map(|i| (i as f32 * 0.11).sin() * 2.5).collect();
             let mut sve_out = x.clone();
