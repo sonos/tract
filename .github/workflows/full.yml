@@ -20,15 +20,22 @@ permissions:
 jobs:
   prepare:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      statuses: write
     outputs:
       test_ref: ${{ steps.set.outputs.test_ref }}
+      pr_number: ${{ steps.set.outputs.pr_number }}
     steps:
       - id: set
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        env:
+          STATUS_CONTEXT: "CI / full"
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         with:
           script: |
             const prInput = context.payload.inputs?.pr_number;
-            core.info(`Fetching PR ${prInput}`);
+            core.setOutput('pr_number', prInput ? String(prInput) : '');
             if (!prInput) {
               // Use the ref the workflow was triggered on (branch/tag/SHA in base repo)
               core.setOutput('test_ref', process.env.GITHUB_SHA);
@@ -39,8 +46,17 @@ jobs:
               repo: context.repo.repo,
               pull_number: Number(prInput),
             });
-            core.info(pr.data.head.sha);
-            core.setOutput('test_ref', pr.data.head.sha);
+            const sha = pr.data.head.sha;
+            core.setOutput('test_ref', sha);
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha,
+              state: 'pending',
+              context: process.env.STATUS_CONTEXT,
+              target_url: process.env.RUN_URL,
+              description: 'Running',
+            });
 
   old-harness:
     runs-on: ubuntu-latest
@@ -214,3 +230,55 @@ jobs:
         source .venv/bin/activate
         uv pip install -e ".[dev]"
         pytest .
+
+  report:
+    name: Report result to PR
+    needs: [ prepare, old-harness, cli-tests, onnx-tests, tflite, some-tests-with-paranoid-asserts, without-default-features, complexes, check-all-targets, C, python ]
+    if: ${{ always() && needs.prepare.outputs.pr_number != '' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      statuses: write
+      pull-requests: write
+    steps:
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+          PR_NUMBER: ${{ needs.prepare.outputs.pr_number }}
+          HEAD_SHA: ${{ needs.prepare.outputs.test_ref }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          STATUS_CONTEXT: "CI / full"
+        with:
+          script: |
+            const needs = JSON.parse(process.env.NEEDS);
+            const prNumber = Number(process.env.PR_NUMBER);
+            const sha = process.env.HEAD_SHA;
+            const runUrl = process.env.RUN_URL;
+            const statusContext = process.env.STATUS_CONTEXT;
+            const icon = r => r === 'success' ? '✅' : r === 'skipped' ? '⏭️' : '❌';
+            const jobs = Object.entries(needs).filter(([k]) => k !== 'prepare');
+            const failed = jobs.filter(([, v]) => v.result !== 'success' && v.result !== 'skipped');
+            const state = failed.length ? 'failure' : 'success';
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner, repo: context.repo.repo, sha, state,
+              context: statusContext, target_url: runUrl,
+              description: failed.length ? `${failed.length} job(s) failed` : 'All jobs passed',
+            });
+            const marker = `<!-- ${statusContext} -->`;
+            const body = [
+              marker,
+              `### ${icon(state)} ${statusContext}: ${state}`,
+              '',
+              ...jobs.map(([k, v]) => `- ${icon(v.result)} \`${k}\`: ${v.result}`),
+              '',
+              `[View workflow run](${runUrl})`,
+            ].join('\n');
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner, repo: context.repo.repo, issue_number: prNumber, per_page: 100,
+            });
+            const prev = comments.find(c => c.body?.includes(marker));
+            if (prev) {
+              await github.rest.issues.updateComment({ owner: context.repo.owner, repo: context.repo.repo, comment_id: prev.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number: prNumber, body });
+            }

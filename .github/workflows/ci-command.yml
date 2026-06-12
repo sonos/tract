@@ -1,0 +1,75 @@
+name: CI slash command
+
+# Lets maintainers trigger heavy CI on a PR by commenting:
+#   /ci full           -> Full test harness        (full.yml)
+#   /ci large-models   -> Large models             (large_models.yml)
+#   /ci large          -> alias of large-models
+#   /ci llm            -> alias of large-models
+# Only commenters with write access can trigger (enforced by slash-command-dispatch).
+
+on:
+  issue_comment:
+    types: [created]
+  repository_dispatch:
+    types: [ci-command]
+
+permissions:
+  contents: read
+
+jobs:
+  dispatch:
+    name: Dispatch /ci comment
+    if: ${{ github.event_name == 'issue_comment' && github.event.issue.pull_request }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Slash command dispatch
+        uses: peter-evans/slash-command-dispatch@9bdcd7914ec1b75590b790b844aa3b8eee7c683a # v5.0.2
+        with:
+          token: ${{ secrets.CI_DISPATCH_TOKEN }}
+          commands: ci
+          permission: write
+          issue-type: pull-request
+
+  route:
+    name: Route /ci target
+    if: ${{ github.event_name == 'repository_dispatch' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Route /ci target to its workflow
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        with:
+          github-token: ${{ secrets.CI_DISPATCH_TOKEN }}
+          script: |
+            const cp = context.payload.client_payload;
+            const target = (cp.slash_command.args.unnamed.arg1 || '').toLowerCase();
+            const pr = cp.pull_request.number;
+            const map = {
+              'full': 'full.yml',
+              'large-models': 'large_models.yml',
+              'large': 'large_models.yml',
+              'llm': 'large_models.yml',
+            };
+            const workflow = map[target];
+            if (!workflow) {
+              const usage = [
+                `Unknown \`/ci\` target: \`${target || '(none)'}\`.`,
+                '',
+                'Usage: `/ci full` or `/ci large-models` (aliases: `large`, `llm`).',
+              ].join('\n');
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr,
+                body: usage,
+              });
+              core.setFailed(usage);
+              return;
+            }
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: workflow,
+              ref: context.payload.repository.default_branch,
+              inputs: { pr_number: String(pr) },
+            });
+            core.info(`Dispatched ${workflow} for PR #${pr}`);
