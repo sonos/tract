@@ -305,6 +305,62 @@ mod tests {
         Ok(())
     }
 
+    // GQA (H_kv < H_q) predates the MFA kernel: the translator must decline and
+    // the explode fallback must still match the CPU reference.
+    #[test]
+    fn gqa_sdpa_declines_mfa_and_matches_cpu() -> TractResult<()> {
+        use crate::kernels::matmul::mfa::MetalMfaSdpa;
+        let (hq, hkv, s, d) = (4usize, 2usize, 32usize, 64usize);
+        let fact = |h: usize| {
+            f32::fact(tvec![
+                TDim::from(1i64),
+                TDim::from(h as i64),
+                TDim::from(s as i64),
+                TDim::from(d as i64)
+            ])
+        };
+        let mut model = TypedModel::default();
+        let q = model.add_source("q", fact(hq))?;
+        let k = model.add_source("k", fact(hkv))?;
+        let v = model.add_source("v", fact(hkv))?;
+        let out = model.wire_node(
+            "sdpa",
+            tract_transformers::ops::sdpa::Sdpa {
+                scale: None,
+                datum_type: f32::datum_type(),
+                acc_datum_type: f32::datum_type(),
+                is_causal: false,
+            },
+            &[q, k, v],
+        )?;
+        model.select_output_outlets(&out)?;
+
+        let mk = |h: usize, seed: i64| -> TractResult<TValue> {
+            let n = h * s * d;
+            let data: Vec<f32> = (0..n)
+                .map(|i| (((i as i64 * 2654435761 + seed).rem_euclid(1000)) as f32 / 1000.0) - 0.5)
+                .collect();
+            Ok(Tensor::from_shape(&[1, h, s, d], &data)?.into_tvalue())
+        };
+        let (qt, kt, vt) = (mk(hq, 1)?, mk(hkv, 2)?, mk(hkv, 3)?);
+
+        let cpu = model.clone().into_runnable()?;
+        let cpu_out = cpu.run(tvec![qt.clone(), kt.clone(), vt.clone()])?;
+
+        let metal = MetalTransform::default().transform_into(model)?;
+        assert!(
+            !metal.nodes().iter().any(|n| n.op_is::<MetalMfaSdpa>()),
+            "GQA Sdpa must not route to MetalMfaSdpa"
+        );
+
+        let metal_out = metal.into_runnable()?.run(tvec![qt, kt, vt])?;
+        cpu_out[0]
+            .clone()
+            .into_tensor()
+            .close_enough(&metal_out[0].clone().into_tensor(), Approximation::Approximate)?;
+        Ok(())
+    }
+
     // Model-level A/B through the metal transform: a fused Sdpa (3 inputs ->
     // MetalMfaSdpa) vs the explode path (4-input Sdpa w/ neutral zero mask ->
     // gemm+softmax+gemm). The zero mask is neutral so both compute the same attn.
