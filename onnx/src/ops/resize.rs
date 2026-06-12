@@ -1,8 +1,9 @@
 use crate::model::ParsingContext;
 use crate::pb::*;
 use tract_hir::internal::*;
+use tract_nnef::tract_core::ops::nn::resize::{CoordTransformer, Interpolator};
 use tract_nnef::tract_num_traits::Zero as _;
-use tract_onnx_opl::resize::{CoordTransformer, Interpolator, Nearest, Resize};
+use tract_onnx_opl::resize::{Nearest, Resize};
 
 pub fn resize(
     ctx: &ParsingContext,

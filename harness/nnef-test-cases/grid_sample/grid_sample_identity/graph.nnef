@@ -1,0 +1,10 @@
+version 1.0;
+
+extension tract_registry tract_core;
+
+graph network(input_0) -> (output_0)
+{
+    input_0 = tract_core_external(shape = [1, 1, 2, 2], datum_type = 'f32');
+    grid = [[[[-1.0, -1.0], [1.0, -1.0]], [[-1.0, 1.0], [1.0, 1.0]]]];
+    output_0 = tract_core_grid_sample(input_0, grid, mode = 'bilinear', padding_mode = 'zeros', align_corners = true);
+}

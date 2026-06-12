@@ -1,13 +1,17 @@
 mod data_formats;
 pub mod gelu_approximate;
+pub mod grid_sample;
 mod reduce;
+pub mod resize;
 pub mod rms_norm;
 pub mod silu;
 mod softmax;
 
 pub use self::data_formats::{BaseDataShape, DataFormat, DataShape, SymDataShape};
 pub use self::gelu_approximate::GeluApproximate;
+pub use self::grid_sample::{GridSample, InterpolationMode, PaddingMode};
 pub use self::reduce::{Reduce, Reducer, expand_mean_of_squares};
+pub use self::resize::{CoordTransformer, Interpolator, Nearest, Resize};
 pub use self::rms_norm::RmsNorm;
 pub use self::silu::Silu;
 pub use self::softmax::{Softmax, SoftmaxExp, SoftmaxKind};
