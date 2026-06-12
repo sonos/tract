@@ -496,6 +496,12 @@ impl EvalOp for MetalMfaSdpa {
         let qs = q.shape();
         ensure!(qs.len() == 4, "expects rank-4 [B,H,Sq,D], got {qs:?}");
         let (b, nh, sq, dd) = (qs[0], qs[1], qs[2], qs[3]);
+        ensure!(
+            k.shape()[1] == nh && v.shape()[1] == nh,
+            "MFA attention needs equal Q/K/V head counts, got Q={nh} K={} V={}",
+            k.shape()[1],
+            v.shape()[1]
+        );
         let sk = k.shape()[2];
         let h = b * nh;
         let dt = q.datum_type();
@@ -545,8 +551,9 @@ impl TypedOp for MetalMfaSdpa {
 }
 
 /// Whether an `Sdpa` node can be fused by the MFA kernel: exactly Q,K,V (causal
-/// or no external mask), f16/f32, rank-4 `[B,H,S,D]`, equal & concrete Q/V head
-/// dim (multiple of 8, ≤256). Unsupported → `None` → explode/CPU fallback.
+/// or no external mask), f16/f32, rank-4 `[B,H,S,D]`, equal & concrete Q/K/V
+/// head count (the 2023 kernel predates GQA), equal & concrete Q/V head dim
+/// (multiple of 8, ≤256). Unsupported → `None` → explode/CPU fallback.
 pub fn mfa_sdpa_supported(
     op: &tract_transformers::ops::sdpa::Sdpa,
     in_facts: &[&TypedFact],
@@ -554,12 +561,16 @@ pub fn mfa_sdpa_supported(
     if in_facts.len() != 3 {
         return false; // 4th input = external mask: not wired yet
     }
-    let (q, v) = (in_facts[0], in_facts[2]);
+    let (q, k, v) = (in_facts[0], in_facts[1], in_facts[2]);
     if !matches!(q.datum_type, DatumType::F16 | DatumType::F32) || !op.acc_datum_type.is_float() {
         return false;
     }
-    if q.rank() != 4 || v.rank() != 4 {
+    if q.rank() != 4 || k.rank() != 4 || v.rank() != 4 {
         return false;
+    }
+    match (q.shape[1].to_usize().ok(), k.shape[1].to_usize().ok(), v.shape[1].to_usize().ok()) {
+        (Some(qh), Some(kh), Some(vh)) if qh == kh && kh == vh => {}
+        _ => return false, // GQA (H_kv < H_q) or symbolic head count
     }
     match (q.shape[3].to_usize().ok(), v.shape[3].to_usize().ok()) {
         (Some(qd), Some(vd)) => qd == vd && qd % 8 == 0 && qd <= 256,
