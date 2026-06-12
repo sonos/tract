@@ -2,7 +2,6 @@
 
 use tract_nnef::internal::*;
 
-pub mod grid_sample;
 pub mod lrn;
 pub mod ml;
 pub mod multinomial;
@@ -32,7 +31,6 @@ pub fn onnx_opl_registry() -> Registry {
         )
         .with_doc("")
         .with_doc("Add `extension tract_onnx` to `graph.nnef`");
-    grid_sample::register(&mut registry);
     ml::register(&mut registry);
     non_max_suppression::register(&mut registry);
     multinomial::register(&mut registry);

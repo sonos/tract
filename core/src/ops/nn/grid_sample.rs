@@ -1,16 +1,7 @@
-use tract_nnef::internal::*;
-use tract_nnef::tract_core::ops::math::round_ties_to_even;
+use crate::internal::*;
+use crate::ops::math::round_ties_to_even;
 
-pub fn register(registry: &mut Registry) {
-    registry.register_primitive(
-        "tract_onnx_grid_sample",
-        &parameters(),
-        &[("output", TypeName::Scalar.tensor())],
-        load,
-    );
-    registry.register_dumper(dump);
-}
-
+/// Interpolation mode for [`GridSample`].
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum InterpolationMode {
     Bilinear,
@@ -19,7 +10,7 @@ pub enum InterpolationMode {
 }
 
 impl InterpolationMode {
-    fn as_str(&self) -> &'static str {
+    pub fn as_str(&self) -> &'static str {
         match self {
             InterpolationMode::Bilinear => "bilinear",
             InterpolationMode::Nearest => "nearest",
@@ -27,7 +18,7 @@ impl InterpolationMode {
         }
     }
 
-    fn from_str(s: &str) -> TractResult<Self> {
+    pub fn parse(s: &str) -> TractResult<Self> {
         Ok(match s {
             "bilinear" => InterpolationMode::Bilinear,
             "nearest" => InterpolationMode::Nearest,
@@ -37,6 +28,7 @@ impl InterpolationMode {
     }
 }
 
+/// Out-of-bounds padding policy for [`GridSample`].
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PaddingMode {
     Zeros,
@@ -45,7 +37,7 @@ pub enum PaddingMode {
 }
 
 impl PaddingMode {
-    fn as_str(&self) -> &'static str {
+    pub fn as_str(&self) -> &'static str {
         match self {
             PaddingMode::Zeros => "zeros",
             PaddingMode::Border => "border",
@@ -53,7 +45,7 @@ impl PaddingMode {
         }
     }
 
-    fn from_str(s: &str) -> TractResult<Self> {
+    pub fn parse(s: &str) -> TractResult<Self> {
         Ok(match s {
             "zeros" => PaddingMode::Zeros,
             "border" => PaddingMode::Border,
@@ -63,6 +55,9 @@ impl PaddingMode {
     }
 }
 
+/// Samples `input` (N, C, D1..Dk) at the normalized coordinates carried by
+/// `grid` (N, O1..Ok, k), following the ONNX/PyTorch GridSample contract:
+/// k spatial dims, `mode` × `padding_mode` × `align_corners`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct GridSample {
     pub mode: InterpolationMode,
@@ -329,42 +324,4 @@ impl TypedOp for GridSample {
 
         Ok(tvec!(inputs[0].datum_type.fact(&output_shape)))
     }
-}
-
-fn parameters() -> Vec<Parameter> {
-    vec![
-        TypeName::Scalar.tensor().named("input"),
-        TypeName::Scalar.tensor().named("grid"),
-        TypeName::String.named("mode").default("bilinear"),
-        TypeName::String.named("padding_mode").default("zeros"),
-        TypeName::Logical.named("align_corners").default(false),
-    ]
-}
-
-fn dump(ast: &mut IntoAst, node: &TypedNode, op: &GridSample) -> TractResult<Option<Arc<RValue>>> {
-    let input = ast.mapping[&node.inputs[0]].clone();
-    let grid = ast.mapping[&node.inputs[1]].clone();
-    Ok(Some(invocation(
-        "tract_onnx_grid_sample",
-        &[input, grid],
-        &[
-            ("mode", string(op.mode.as_str())),
-            ("padding_mode", string(op.padding_mode.as_str())),
-            ("align_corners", logical(op.align_corners)),
-        ],
-    )))
-}
-
-fn load(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
-    let input = invocation.named_arg_as(builder, "input")?;
-    let grid = invocation.named_arg_as(builder, "grid")?;
-    let mode: String = invocation.named_arg_as(builder, "mode")?;
-    let padding_mode: String = invocation.named_arg_as(builder, "padding_mode")?;
-    let align_corners: bool = invocation.named_arg_as(builder, "align_corners")?;
-    let op = GridSample {
-        mode: InterpolationMode::from_str(&mode)?,
-        padding_mode: PaddingMode::from_str(&padding_mode)?,
-        align_corners,
-    };
-    builder.wire(op, &[input, grid])
 }

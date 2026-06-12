@@ -1,7 +1,7 @@
 use crate::model::ParsingContext;
 use crate::pb::*;
 use tract_hir::internal::*;
-use tract_onnx_opl::grid_sample::{InterpolationMode, PaddingMode};
+use tract_nnef::tract_core::ops::nn::grid_sample::{GridSample, InterpolationMode, PaddingMode};
 
 pub fn grid_sample(
     ctx: &ParsingContext,
@@ -79,7 +79,7 @@ impl Expansion for GridSampleInference {
     ) -> TractResult<TVec<OutletId>> {
         model.wire_node(
             name,
-            tract_onnx_opl::grid_sample::GridSample {
+            GridSample {
                 mode: self.mode.clone(),
                 padding_mode: self.padding_mode.clone(),
                 align_corners: self.align_corners,
