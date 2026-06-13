@@ -777,6 +777,17 @@ mod tests {
             let output = pb.run().unwrap();
             prop_assert!(output.close_enough(&pb.reference().unwrap(), Approximation::Approximate).is_ok())
         }
+
+        #[test]
+        fn mmm_ggml_prop_q4_f16(pb in <MmmProblem<GgmlGemm, f16>>::arbitrary_with(
+            MmmProblemParams {
+                force_k_as_inner_axis: true,
+                q4_0_weights: true,
+            }
+        )) {
+            let output = pb.run().unwrap();
+            prop_assert!(output.close_enough(&pb.reference().unwrap(), Approximation::VeryApproximate).is_ok())
+        }
     }
 
     #[derive(Default, Debug, Clone)]

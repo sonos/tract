@@ -366,11 +366,9 @@ fn convert_matmul_to_metal(
                 inputs[a_pos] = target.wire_node(perm_a_name, perm_a_op, &[inputs[a_pos]])?[0];
             }
 
-            if input_facts[0].datum_type == DatumType::F16 {
-                let in_cast_op = metal_cast_new(DatumType::F32).unwrap();
-                inputs[0] =
-                    target.wire_node(node.name.clone() + ".in_cast", in_cast_op, &[inputs[0]])?[0];
-            }
+            // The GGML kernels now consume f16 activations directly (and emit
+            // f16 output via output_dt), so no f16->f32 activation upcast is
+            // inserted here anymore.
 
             if !op.transpose_b {
                 ensure!(
