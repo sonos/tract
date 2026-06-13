@@ -295,9 +295,12 @@ where
 {
     if T::datum_type() == f32::datum_type()
         && let Some(slice) = v.as_slice()
+        && !slice.is_empty()
     {
         let slice = unsafe { transmute::<&[T], &[f32]>(slice) };
-        (tract_linalg::ops().max_f32)().run(slice).unwrap();
+        let max = (tract_linalg::ops().max_f32)().run(slice).unwrap();
+        // SAFETY: T is f32 in this branch (checked above).
+        return unsafe { std::mem::transmute_copy::<f32, T>(&max) };
     }
     v.fold(T::min_value(), |acc, &v| if acc > v { acc } else { v })
 }
@@ -627,4 +630,40 @@ pub fn expand_mean_of_squares(
     }
     patch.shunt_outside(model, node.id.into(), wire[0])?;
     Ok(Some(patch))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Guards the f32 max reduction (max_t): the SIMD `max_f32` kernel result must
+    // be returned (contiguous path), with the scalar fold used only for strided
+    // slices. Checked against explicit per-row / per-col references.
+    #[test]
+    fn reduce_max_f32_contiguous_and_strided() {
+        let (r, c) = (5usize, 37usize); // c not a multiple of the SIMD width (tail)
+        let data: Vec<f32> = (0..r * c).map(|i| ((i * 31 % 97) as f32) - 48.0).collect();
+        let t = Tensor::from_shape(&[r, c], &data).unwrap();
+
+        // axis 1: per-row max — contiguous slices -> SIMD path.
+        let got = Reducer::Max.reduce(&[1], &t).unwrap();
+        assert_eq!(got.shape(), &[r, 1]);
+        for (i, &g) in unsafe { got.as_slice_unchecked::<f32>() }.iter().enumerate() {
+            let want = data[i * c..(i + 1) * c].iter().copied().fold(f32::MIN, f32::max);
+            assert_eq!(g, want, "row {i}");
+        }
+
+        // axis 0: per-col max — strided slices -> scalar fold.
+        let got = Reducer::Max.reduce(&[0], &t).unwrap();
+        assert_eq!(got.shape(), &[1, c]);
+        for (j, &g) in unsafe { got.as_slice_unchecked::<f32>() }.iter().enumerate() {
+            let want = (0..r).map(|i| data[i * c + j]).fold(f32::MIN, f32::max);
+            assert_eq!(g, want, "col {j}");
+        }
+
+        // k == 1 (single-element reduction) exercises the SIMD-path length guard.
+        let t1 = Tensor::from_shape(&[3, 1], &[1.0f32, -2.0, 3.0]).unwrap();
+        let got = Reducer::Max.reduce(&[1], &t1).unwrap();
+        assert_eq!(unsafe { got.as_slice_unchecked::<f32>() }, &[1.0, -2.0, 3.0]);
+    }
 }
