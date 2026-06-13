@@ -4,7 +4,6 @@ use crate::encoder::EncoderExt;
 use crate::kernels::utils::compute_broadcast_strides;
 use crate::{LibraryName, MetalStream};
 use anyhow::ensure;
-use metal::{MTLSize, NSUInteger};
 use std::ffi::c_void;
 use tract_core::internal::tract_smallvec::SmallVec;
 use tract_core::internal::*;
@@ -176,10 +175,7 @@ pub fn dispatch_eval(
                 &b.len() as *const usize as *const c_void,
             );
 
-            let grid_size =
-                MTLSize { width: (output.len() / 4) as NSUInteger, height: 1, depth: 1 };
-            let group_size = MTLSize { width: 1, height: 1, depth: 1 };
-            encoder.dispatch_thread_groups(grid_size, group_size);
+            crate::kernels::utils::dispatch_threads_1d(encoder, &pipeline, output.len() / 4);
         });
     } else {
         let (lhs_shape, rhs_shape, out_shape) = reshape_to_rank_4_with_broadcast(lhs, rhs, output)?;
@@ -278,9 +274,7 @@ pub fn metal_iff_dispatch(
             encoder.set_slice(7, &else_strides_usize);
             encoder.set_slice(8, &out_strides_usize);
 
-            let grid_size = MTLSize { width: total_elems as NSUInteger, height: 1, depth: 1 };
-            let group_size = MTLSize { width: 1, height: 1, depth: 1 };
-            encoder.dispatch_thread_groups(grid_size, group_size);
+            crate::kernels::utils::dispatch_threads_1d(encoder, &pipeline, total_elems);
         });
         Ok(())
     })
