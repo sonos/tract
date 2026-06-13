@@ -13,6 +13,7 @@ pub mod by_scalar;
 pub mod erf;
 mod intel;
 pub mod max;
+pub mod min;
 pub mod panel_extract;
 pub mod rms_norm;
 pub mod softmax;
@@ -42,6 +43,7 @@ fn plug_fma(ops: &mut Ops) {
 
     ops.mul_by_scalar_f32 = Box::new(|| by_scalar::x86_64_avx_f32_mul_by_scalar_32n::ew());
     ops.max_f32 = Box::new(|| max::x86_64_fma_max_f32_32n::red());
+    ops.min_f32 = Box::new(|| min::x86_64_fma_min_f32_32n::red());
     ops.softmax2_fastcompact_f32 = Box::new(|| x86_64_fma_softmax2_fastcompact_f32_32n::red());
 
     log::info!("sigmoid_f32, tanh_f32: x86_64/fma activated");

@@ -1,4 +1,5 @@
 pub mod max;
+pub mod min;
 pub mod softmax;
 pub mod sum;
 
