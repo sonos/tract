@@ -50,6 +50,34 @@ pub mod max {
     }
 }
 
+// Reduce<min> generic implementation
+pub mod min {
+    pub use tract_data::internal::f16;
+
+    reduce_impl_wrap!(
+        f32,
+        SMin4,
+        4,
+        4,
+        (),
+        f32::MAX,
+        fn run(x: &[f32], _: ()) -> f32 {
+            debug_assert!(x.len() % Self::nr() == 0);
+            debug_assert!(x.as_ptr() as usize % Self::alignment_bytes() == 0);
+            *x.iter().min_by(|a, b| a.total_cmp(b)).unwrap()
+        },
+        fn reduce_two(a: f32, b: f32) -> f32 {
+            a.min(b)
+        }
+    );
+
+    #[cfg(test)]
+    #[macro_use]
+    pub mod s {
+        crate::min_frame_tests!(true, f32, crate::generic::reduce::min::SMin4);
+    }
+}
+
 // Reduce<sum> generic implementation
 pub mod sum {
     use crate::num_traits::Zero;

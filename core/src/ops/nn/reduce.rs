@@ -309,6 +309,15 @@ fn min_t<T>(v: ArrayViewD<T>, _: ()) -> T
 where
     T: Copy + Datum + num_traits::Bounded + ::std::cmp::PartialOrd,
 {
+    if T::datum_type() == f32::datum_type()
+        && let Some(slice) = v.as_slice()
+        && !slice.is_empty()
+    {
+        let slice = unsafe { transmute::<&[T], &[f32]>(slice) };
+        let min = (tract_linalg::ops().min_f32)().run(slice).unwrap();
+        // SAFETY: T is f32 in this branch (checked above).
+        return unsafe { std::mem::transmute_copy::<f32, T>(&min) };
+    }
     v.fold(T::max_value(), |acc, &v| if acc < v { acc } else { v })
 }
 
@@ -665,5 +674,29 @@ mod tests {
         let t1 = Tensor::from_shape(&[3, 1], &[1.0f32, -2.0, 3.0]).unwrap();
         let got = Reducer::Max.reduce(&[1], &t1).unwrap();
         assert_eq!(unsafe { got.as_slice_unchecked::<f32>() }, &[1.0, -2.0, 3.0]);
+    }
+
+    // Same coverage for the f32 min reduction (min_t -> SIMD min_f32 / scalar fold).
+    #[test]
+    fn reduce_min_f32_contiguous_and_strided() {
+        let (r, c) = (5usize, 37usize); // c not a multiple of the SIMD width (tail)
+        let data: Vec<f32> = (0..r * c).map(|i| ((i * 31 % 97) as f32) - 48.0).collect();
+        let t = Tensor::from_shape(&[r, c], &data).unwrap();
+
+        // axis 1: per-row min — contiguous slices -> SIMD path.
+        let got = Reducer::Min.reduce(&[1], &t).unwrap();
+        assert_eq!(got.shape(), &[r, 1]);
+        for (i, &g) in unsafe { got.as_slice_unchecked::<f32>() }.iter().enumerate() {
+            let want = data[i * c..(i + 1) * c].iter().copied().fold(f32::MAX, f32::min);
+            assert_eq!(g, want, "row {i}");
+        }
+
+        // axis 0: per-col min — strided slices -> scalar fold.
+        let got = Reducer::Min.reduce(&[0], &t).unwrap();
+        assert_eq!(got.shape(), &[1, c]);
+        for (j, &g) in unsafe { got.as_slice_unchecked::<f32>() }.iter().enumerate() {
+            let want = (0..r).map(|i| data[i * c + j]).fold(f32::MAX, f32::min);
+            assert_eq!(g, want, "col {j}");
+        }
     }
 }
