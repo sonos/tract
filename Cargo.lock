@@ -532,6 +532,7 @@ dependencies = [
  "axum",
  "axum-macros",
  "clap",
+ "criterion",
  "env_logger",
  "float-ord",
  "log",

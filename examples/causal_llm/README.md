@@ -62,3 +62,41 @@ for _ in 0..20 {
     state.generate_next_token()?;
 }
 ```
+
+## Speculative decoding
+
+A cheap *drafter* proposes several tokens; the target verifies them in one
+forward pass and accepts the longest greedy-matching prefix plus its own next
+token. Output is identical to plain greedy decoding (`generate_next_token`).
+
+The target must expose logits for every input position. Export it with
+all-position logits — torch2nnef `--num-logits-to-keep 0` (matching
+transformers' `logits_to_keep == 0`) — so there is no last-token slice in the
+graph, then load it with `from_paths_speculative`. Two drafters are provided:
+`NgramDrafter` (prompt-lookup, no second model) and `ModelDrafter` (a smaller
+causal LM).
+
+```rust
+let llm = CausalLlmModel::from_paths_speculative("tokenizer.json", "model.nnef.tgz", Default::default())?;
+let mut state = llm.spawn()?;
+state.append_text("The capital of France is")?;
+let mut drafter = NgramDrafter::default();
+while state.seq.len() < target_len {
+    let stats = state.generate_speculative(&mut drafter, 4)?; // k = 4
+}
+```
+
+Benchmarks:
+
+- `cargo run --release --bin bench_spec -- -t tok.json -m model.nnef.tgz` —
+  decode throughput, acceptance, and speedup of greedy vs n-gram speculation
+  across prompt types and draft lengths (checks losslessness each run).
+- `cargo run --release --bin bench_micro -- -t tok.json -m model.nnef.tgz` —
+  forward latency vs tokens-per-pass, showing how much speculation a model can
+  absorb before per-pass cost grows.
+
+Notes: speculation helps most at high acceptance (repetitive / structured text)
+and small `k`; a large vocabulary makes the all-position projection grow with
+`k`, capping the useful draft length. Greedy speculation is lossless in exact
+arithmetic; rare divergences on high-entropy text come from floating-point
+differences between batched verification and single-token decode.
