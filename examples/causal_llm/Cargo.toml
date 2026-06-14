@@ -22,6 +22,13 @@ tokio-scoped = "0.2.0"
 rand.workspace = true
 
 
+[dev-dependencies]
+criterion.workspace = true
+
+[[bench]]
+name = "spec_host"
+harness = false
+
 # tokenizer special handle for wasm
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 tokenizers.workspace = true

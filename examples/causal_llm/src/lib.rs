@@ -9,6 +9,9 @@ use log::{info, trace};
 use tokenizers::Tokenizer;
 use tract::prelude::*;
 
+pub mod speculative;
+pub use speculative::{Drafter, NgramDrafter};
+
 tract::impl_ndarray_interop!();
 
 #[derive(Clone, Debug)]
@@ -31,6 +34,10 @@ pub struct CausalLlmModel {
     pub conf: CausalLlmModelConfig,
     kv_caches: Vec<KvCacheInfo>,
     n_regular_outputs: usize,
+    /// When true the logits output carries the full sequence axis (one row per
+    /// input position) instead of just the last token; required for speculative
+    /// decoding. Set by [`CausalLlmModel::from_paths_speculative`].
+    all_position_logits: bool,
 }
 
 impl CausalLlmModel {
@@ -38,6 +45,7 @@ impl CausalLlmModel {
         tokenizer: tokenizers::Tokenizer,
         nn: Model,
         conf: CausalLlmModelConfig,
+        all_position_logits: bool,
     ) -> anyhow::Result<Arc<CausalLlmModel>> {
         let mut nn = nn;
 
@@ -109,7 +117,14 @@ impl CausalLlmModel {
             }
         }
         let nn = runnable.context("No suitable runtime")?;
-        Ok(Arc::new(CausalLlmModel { tokenizer, nn, conf, kv_caches: kv_infos, n_regular_outputs }))
+        Ok(Arc::new(CausalLlmModel {
+            tokenizer,
+            nn,
+            conf,
+            kv_caches: kv_infos,
+            n_regular_outputs,
+            all_position_logits,
+        }))
     }
 
     pub fn from_paths_and_conf(
@@ -121,7 +136,28 @@ impl CausalLlmModel {
         let tokenizer =
             tokenizers::Tokenizer::from_file(tokenizer).map_err(|e| anyhow::anyhow!(e))?;
         let nn = nnef.load(nn)?;
-        CausalLlmModel::from_tokenizer_and_model(tokenizer, nn, conf)
+        CausalLlmModel::from_tokenizer_and_model(tokenizer, nn, conf, false)
+    }
+
+    /// Like [`Self::from_paths_and_conf`] but flags the model as exposing logits
+    /// for every input position, as required by
+    /// [`CausalLlmState::generate_speculative`].
+    ///
+    /// The model must be **exported with all-position logits** (torch2nnef
+    /// `--num-logits-to-keep 0`, matching transformers' `logits_to_keep == 0`
+    /// convention). With no last-token slice in the graph it loads through the
+    /// normal fully-decluttered path; `generate_speculative` validates the logit
+    /// row count at runtime.
+    pub fn from_paths_speculative(
+        tokenizer: impl AsRef<Path>,
+        nn: impl AsRef<Path>,
+        conf: CausalLlmModelConfig,
+    ) -> anyhow::Result<Arc<CausalLlmModel>> {
+        let nnef = tract::nnef()?.with_tract_transformers()?;
+        let tokenizer =
+            tokenizers::Tokenizer::from_file(tokenizer).map_err(|e| anyhow::anyhow!(e))?;
+        let nn = nnef.load(nn)?;
+        CausalLlmModel::from_tokenizer_and_model(tokenizer, nn, conf, true)
     }
 
     pub fn from_paths(
@@ -139,7 +175,7 @@ impl CausalLlmModel {
         let nnef = tract::nnef()?.with_tract_transformers()?;
         let tokenizer = Tokenizer::from_bytes(tokenizer_bytes).map_err(|e| anyhow::anyhow!(e))?;
         let nn = nnef.load_buffer(llm_model_bytes.as_ref())?;
-        CausalLlmModel::from_tokenizer_and_model(tokenizer, nn, conf)
+        CausalLlmModel::from_tokenizer_and_model(tokenizer, nn, conf, false)
     }
 
     pub fn from_bytes(
@@ -234,6 +270,17 @@ pub struct CausalLlmState {
     pub config: CausalLlmStateConfig,
 }
 
+/// Accounting for one [`CausalLlmState::generate_speculative`] step.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct SpecStats {
+    /// Draft tokens proposed by the drafter.
+    pub proposed: usize,
+    /// Draft tokens the target accepted.
+    pub accepted: usize,
+    /// Tokens appended to the sequence this step (`accepted + 1`).
+    pub emitted: usize,
+}
+
 impl CausalLlmState {
     pub fn append_text(&mut self, prompt: &str) -> anyhow::Result<()> {
         self.seq.extend(self.encode(prompt, true)?);
@@ -241,44 +288,20 @@ impl CausalLlmState {
     }
 
     pub fn generate_next_token(&mut self) -> anyhow::Result<()> {
-        let tokens = &self.seq[self.processed_tokens..];
-        ensure!(tokens.len() > 0);
+        let tokens: Vec<u32> = self.seq[self.processed_tokens..].to_vec();
+        ensure!(!tokens.is_empty());
         let chunk_size = self.config.prompt_chunk_size.unwrap_or(usize::MAX);
-        let output = tokens
-            .chunks(chunk_size)
-            .map(|chunk| -> anyhow::Result<Tensor> {
-                let start = Instant::now();
-                let token_data: Vec<i64> = chunk.iter().map(|t| *t as i64).collect();
-                let input =
-                    ndarray::Array2::from_shape_vec((1, chunk.len()), token_data)?.tract()?;
-                // Build inputs: token_ids + current kv caches
-                let mut inputs: Vec<Tensor> = vec![input];
-                inputs.extend(self.kv_caches.iter().cloned());
-                let mut results = self.model.nn.run(inputs)?;
-                // Extract updated KV caches from outputs
-                // outputs layout: [regular_outputs..., kv_cache_0, kv_cache_1, ...]
-                let n_regular = self.model.n_regular_outputs;
-                for (i, kv) in results.drain(n_regular..).enumerate() {
-                    self.kv_caches[i] = kv;
-                }
-                trace!("Processed {} tokens in {:?}", chunk.len(), start.elapsed());
-                Ok(results.remove(0))
-            })
-            .last()
-            .unwrap()?;
+        let mut output = None;
+        for chunk in tokens.chunks(chunk_size) {
+            output = Some(self.forward(chunk)?);
+        }
+        let output = output.unwrap();
 
         let start_at = self.seq.len().saturating_sub(self.config.repeat_last_n);
+        let mut logits = Self::last_logits_row(&output)?;
+        apply_repeat_penalty(&mut logits, self.config.repeat_penalty, &self.seq[start_at..]);
 
-        let output_f32 = output.convert_to(DatumType::F32)?;
-        let mut last_token_logits: Vec<f32> = output_f32.as_slice::<f32>()?.to_vec();
-
-        apply_repeat_penalty(
-            last_token_logits.as_mut_slice(),
-            self.config.repeat_penalty,
-            &self.seq[start_at..],
-        );
-
-        let next_tok = last_token_logits
+        let next_tok = logits
             .iter()
             .enumerate()
             .max_by_key(|(_ix, v)| FloatOrd(**v))
@@ -288,6 +311,129 @@ impl CausalLlmState {
         self.processed_tokens += tokens.len();
         self.seq.push(next_tok);
         Ok(())
+    }
+
+    /// One speculative-decoding step. Asks `drafter` for up to `k` candidate
+    /// tokens, verifies them against the target in a single forward pass,
+    /// accepts the longest greedy-matching prefix plus the target's own next
+    /// token, and rolls the KV cache back to the accepted length. The tokens it
+    /// appends are identical to what [`Self::generate_next_token`] would emit.
+    ///
+    /// Requires a model built with [`CausalLlmModel::from_paths_speculative`]
+    /// (all-position logits) and `repeat_penalty == 1.0` — a per-position
+    /// penalty under speculation is not supported.
+    pub fn generate_speculative(
+        &mut self,
+        drafter: &mut dyn Drafter,
+        k: usize,
+    ) -> anyhow::Result<SpecStats> {
+        ensure!(
+            self.model.all_position_logits,
+            "speculative decoding requires a model built with from_paths_speculative"
+        );
+        ensure!(
+            self.config.repeat_penalty == 1.0,
+            "speculative decoding requires repeat_penalty == 1.0"
+        );
+        let l = self.seq.len();
+        ensure!(l > self.processed_tokens, "nothing to process");
+        let tail_len = l - self.processed_tokens;
+
+        let drafts = drafter.draft(&self.seq, k)?;
+        if drafts.is_empty() {
+            self.generate_next_token()?;
+            return Ok(SpecStats { proposed: 0, accepted: 0, emitted: 1 });
+        }
+
+        let mut input: Vec<u32> = self.seq[self.processed_tokens..].to_vec();
+        input.extend_from_slice(&drafts);
+        let output = self.forward(&input)?;
+
+        let rows = Self::logit_rows(&output)?;
+        ensure!(
+            rows == input.len(),
+            "speculative decoding needs an all-position-logits model \
+             (build with from_paths_speculative); got {rows} logit rows for {} tokens",
+            input.len()
+        );
+
+        let d = drafts.len();
+        let base = tail_len - 1;
+        let v = Self::vocab_size(&output)?;
+        let out_f32 = output.convert_to(DatumType::F32)?;
+        let data = out_f32.as_slice::<f32>()?;
+        let preds: Vec<u32> = (0..=d)
+            .map(|j| speculative::argmax(&data[(base + j) * v..(base + j + 1) * v]))
+            .collect();
+
+        let verdict = speculative::greedy_verify(&drafts, &preds);
+
+        self.truncate_kv_to(l + verdict.accepted)?;
+        self.seq.extend_from_slice(&drafts[..verdict.accepted]);
+        self.seq.push(verdict.correction);
+        drafter.commit(&self.seq)?;
+
+        Ok(SpecStats { proposed: d, accepted: verdict.accepted, emitted: verdict.accepted + 1 })
+    }
+
+    /// Run one forward pass over `tokens` (a contiguous continuation of the
+    /// processed prefix), appending their K/V to the caches and returning the
+    /// logits output: `[1, tokens.len(), vocab]` for an all-position model,
+    /// `[1, 1, vocab]` otherwise.
+    fn forward(&mut self, tokens: &[u32]) -> anyhow::Result<Tensor> {
+        let start = Instant::now();
+        let token_data: Vec<i64> = tokens.iter().map(|&t| t as i64).collect();
+        let input = ndarray::Array2::from_shape_vec((1, tokens.len()), token_data)?.tract()?;
+        let mut inputs: Vec<Tensor> = vec![input];
+        inputs.extend(self.kv_caches.iter().cloned());
+        let mut results = self.model.nn.run(inputs)?;
+        let n_regular = self.model.n_regular_outputs;
+        for (i, kv) in results.drain(n_regular..).enumerate() {
+            self.kv_caches[i] = kv;
+        }
+        trace!("Processed {} tokens in {:?}", tokens.len(), start.elapsed());
+        Ok(results.remove(0))
+    }
+
+    /// Slice every KV cache to its first `cols` positions and mark them
+    /// processed, dropping the K/V of rejected draft tokens.
+    fn truncate_kv_to(&mut self, cols: usize) -> anyhow::Result<()> {
+        for (kv, info) in self.kv_caches.iter_mut().zip(&self.model.kv_caches) {
+            if cols < kv.shape()?[info.axis] {
+                *kv = slice_value(kv, info.axis, 0, cols)?;
+            }
+        }
+        self.processed_tokens = cols;
+        Ok(())
+    }
+
+    /// Benchmark helper: run one forward over `tokens` with the current past,
+    /// then roll the KV cache back so the call leaves state unchanged and can be
+    /// timed repeatedly.
+    pub fn bench_forward(&mut self, tokens: &[u32]) -> anyhow::Result<()> {
+        let processed = self.processed_tokens;
+        self.forward(tokens)?;
+        self.truncate_kv_to(processed)?;
+        Ok(())
+    }
+
+    fn vocab_size(output: &Tensor) -> anyhow::Result<usize> {
+        Ok(*output.shape()?.last().context("empty logits shape")?)
+    }
+
+    fn logit_rows(output: &Tensor) -> anyhow::Result<usize> {
+        let shape = output.shape()?;
+        Ok(shape[..shape.len() - 1].iter().product::<usize>().max(1))
+    }
+
+    fn logits_row(output: &Tensor, row: usize) -> anyhow::Result<Vec<f32>> {
+        let v = Self::vocab_size(output)?;
+        let f32 = output.convert_to(DatumType::F32)?;
+        Ok(f32.as_slice::<f32>()?[row * v..(row + 1) * v].to_vec())
+    }
+
+    fn last_logits_row(output: &Tensor) -> anyhow::Result<Vec<f32>> {
+        Self::logits_row(output, Self::logit_rows(output)? - 1)
     }
 
     pub fn tokenizer(&self) -> &Tokenizer {
@@ -375,6 +521,52 @@ impl FrozenCausalLlmState {
     }
 }
 
+/// Drafter backed by a second, typically smaller, causal LM that greedily
+/// proposes the next tokens. Its KV cache advances as it drafts and rolls back
+/// to the agreed prefix on [`Drafter::commit`], so successive calls stay
+/// incremental. The draft model only needs last-token logits, so load it with
+/// [`CausalLlmModel::from_paths`].
+pub struct ModelDrafter {
+    draft: CausalLlmState,
+}
+
+impl ModelDrafter {
+    pub fn new(model: &Arc<CausalLlmModel>) -> anyhow::Result<Self> {
+        Ok(Self { draft: model.spawn()? })
+    }
+
+    /// Roll the draft state back to the longest prefix it shares with `target`.
+    fn sync_to_prefix(&mut self, target: &[u32]) -> anyhow::Result<()> {
+        let common = self.draft.seq.iter().zip(target).take_while(|(a, b)| a == b).count();
+        if common > 0 && common < self.draft.seq.len() {
+            self.draft.truncate(common)?;
+        }
+        Ok(())
+    }
+}
+
+impl Drafter for ModelDrafter {
+    fn draft(&mut self, context: &[u32], k: usize) -> anyhow::Result<Vec<u32>> {
+        if k == 0 {
+            return Ok(vec![]);
+        }
+        self.sync_to_prefix(context)?;
+        if self.draft.seq.len() < context.len() {
+            let new = context[self.draft.seq.len()..].to_vec();
+            self.draft.seq.extend_from_slice(&new);
+        }
+        let base = self.draft.seq.len();
+        for _ in 0..k {
+            self.draft.generate_next_token()?;
+        }
+        Ok(self.draft.seq[base..].to_vec())
+    }
+
+    fn commit(&mut self, confirmed: &[u32]) -> anyhow::Result<()> {
+        self.sync_to_prefix(confirmed)
+    }
+}
+
 /// Cheap way to avoid repeating model (mostly usefull for tiny models)
 pub fn apply_repeat_penalty(logits: &mut [f32], penalty: f32, context: &[u32]) {
     if penalty == 1.0 {
@@ -398,6 +590,123 @@ mod tests {
     #[test]
     fn frozen_state_is_send() {
         is_send::<FrozenCausalLlmState>();
+    }
+
+    fn qwen_paths() -> Option<(std::path::PathBuf, std::path::PathBuf)> {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../.cached/llm/541/Qwen--Qwen3-1.7B-q40ef16");
+        let model = dir.join("model.nnef.tgz");
+        let tok = dir.join("tokenizer.json");
+        (model.exists() && tok.exists()).then_some((tok, model))
+    }
+
+    /// Whether `model` emits logits for every input position (exported with
+    /// `--num-logits-to-keep 0`). The speculative tests need such an export; on a
+    /// last-token-only model they skip instead of failing.
+    fn is_all_position(model: &std::sync::Arc<crate::CausalLlmModel>) -> anyhow::Result<bool> {
+        let mut s = model.spawn()?;
+        s.append_text("one two three")?;
+        let toks: Vec<u32> = s.seq.clone();
+        let out = s.forward(&toks)?;
+        Ok(crate::CausalLlmState::logit_rows(&out)? == toks.len())
+    }
+
+    #[test]
+    fn speculative_matches_greedy() -> anyhow::Result<()> {
+        let Some((tok, model)) = qwen_paths() else {
+            eprintln!("Skipping: Qwen model not found");
+            return Ok(());
+        };
+        let llm = crate::CausalLlmModel::from_paths_speculative(tok, model, Default::default())?;
+        if !is_all_position(&llm)? {
+            eprintln!(
+                "Skipping: model not exported with all-position logits (--num-logits-to-keep 0)"
+            );
+            return Ok(());
+        }
+        let prompt = "The capital of France is Paris. The capital of Germany is Berlin. \
+                      The capital of Italy is Rome. The capital of Spain is";
+        let n = 48;
+
+        let mut plain = llm.spawn()?;
+        plain.append_text(prompt)?;
+        let prompt_len = plain.seq.len();
+        for _ in 0..n {
+            plain.generate_next_token()?;
+        }
+
+        let mut spec = llm.spawn()?;
+        spec.append_text(prompt)?;
+        let mut drafter = crate::NgramDrafter::default();
+        let (mut proposed, mut accepted, mut steps) = (0usize, 0usize, 0usize);
+        while spec.seq.len() < prompt_len + n {
+            let st = spec.generate_speculative(&mut drafter, 4)?;
+            proposed += st.proposed;
+            accepted += st.accepted;
+            steps += 1;
+        }
+
+        assert_eq!(
+            plain.seq[..prompt_len + n],
+            spec.seq[..prompt_len + n],
+            "speculative greedy must be identical to plain greedy"
+        );
+        assert!(accepted > 0, "expected accepted drafts on a repetitive prompt");
+        eprintln!(
+            "speculative: {steps} steps, {proposed} proposed, {accepted} accepted \
+             ({:.0}% acceptance, {:.2} tokens/step)",
+            100.0 * accepted as f64 / proposed.max(1) as f64,
+            n as f64 / steps as f64
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn model_drafter_matches_greedy() -> anyhow::Result<()> {
+        let Some((tok, model)) = qwen_paths() else {
+            eprintln!("Skipping: Qwen model not found");
+            return Ok(());
+        };
+        let target =
+            crate::CausalLlmModel::from_paths_speculative(&tok, &model, Default::default())?;
+        if !is_all_position(&target)? {
+            eprintln!(
+                "Skipping: model not exported with all-position logits (--num-logits-to-keep 0)"
+            );
+            return Ok(());
+        }
+        let draft = crate::CausalLlmModel::from_paths(&tok, &model)?;
+        let prompt = "The capital of France is";
+        let n = 24;
+
+        let mut greedy = target.spawn()?;
+        greedy.append_text(prompt)?;
+        let prompt_len = greedy.seq.len();
+        for _ in 0..n {
+            greedy.generate_next_token()?;
+        }
+
+        let mut spec = target.spawn()?;
+        spec.append_text(prompt)?;
+        let mut drafter = crate::ModelDrafter::new(&draft)?;
+        let (mut proposed, mut accepted) = (0usize, 0usize);
+        while spec.seq.len() < prompt_len + n {
+            let st = spec.generate_speculative(&mut drafter, 4)?;
+            proposed += st.proposed;
+            accepted += st.accepted;
+        }
+
+        assert_eq!(
+            greedy.seq[..prompt_len + n],
+            spec.seq[..prompt_len + n],
+            "model-drafter speculative must be identical to plain greedy"
+        );
+        assert!(accepted > 0, "self-draft should accept most tokens");
+        eprintln!(
+            "model-drafter (self): {accepted}/{proposed} accepted ({:.0}%)",
+            100.0 * accepted as f64 / proposed.max(1) as f64
+        );
+        Ok(())
     }
 
     #[test]
