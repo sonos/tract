@@ -183,10 +183,14 @@ impl GemmKernel for GgmlGemm {
 
         ensure!(!transpose_a && transpose_b);
 
+        // The q4_0 matrix-vector kernel stays bandwidth-bound (one weight read)
+        // for several activation rows, so it beats the tiled GEMM until ~8 rows;
+        // the f16/f32 mat-vec kernels are tuned for 4.
+        let gemv_max_rows = if q40_b { 8 } else { 4 };
         if matches!(dts[0], F32 | F16)
             && (k % 32 == 0)
             && (k >= 64)
-            && ((m > 4) || (q40_b && a_batch > 1))
+            && ((m > gemv_max_rows) || (q40_b && a_batch > 1))
         {
             dispatch_metal_ggml_gemm(
                 stream, params, a_offset, a_buffer, b_offset, b_buffer, c_buffer, c_offset,
