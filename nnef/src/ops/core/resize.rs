@@ -104,6 +104,11 @@ fn upsample_scales(
     factor: &[i64],
 ) -> TractResult<OutletId> {
     let rank = builder.model.outlet_fact(*input)?.rank();
+    ensure!(
+        factor.len() <= rank,
+        "upsample factor has {} entries but input rank is {rank}",
+        factor.len()
+    );
     let mut scales = vec![1.0f32; rank - factor.len()];
     scales.extend(factor.iter().map(|&f| f as f32));
     builder.add_const(tract_ndarray::Array1::from(scales))

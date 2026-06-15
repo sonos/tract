@@ -203,6 +203,7 @@ impl EvalOp for Resize {
     }
 
     fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+        let input_dt = inputs[0].datum_type();
         let scales = self.optional_scales_input.and_then(|ix| inputs.get(ix));
         let sizes = self.optional_sizes_input.and_then(|ix| inputs.get(ix));
         let output_shape = self.compute_output_shape(
@@ -216,7 +217,12 @@ impl EvalOp for Resize {
         } else {
             output_shape.iter().zip(inputs[0].shape()).map(|(o, i)| *o as f32 / *i as f32).collect()
         };
-        let mut data = inputs.remove(0).into_tensor().into_plain_array::<f32>()?;
+        let input = inputs.remove(0).into_tensor();
+        let mut data = if input.datum_type() == f32::datum_type() {
+            input.into_plain_array::<f32>()?
+        } else {
+            input.cast_to::<f32>()?.into_owned().into_plain_array::<f32>()?
+        };
         for (axis, scale) in scales.into_iter().enumerate().filter(|(_, s)| *s != 1.0) {
             let mut new_shape: TVec<usize> = data.shape().into();
             new_shape[axis] = output_shape[axis];
@@ -272,7 +278,10 @@ impl EvalOp for Resize {
                 }),
             }
         }
-        Ok(tvec!(data.into_tvalue()))
+        let out = data.into_tensor();
+        let out =
+            if out.datum_type() == input_dt { out } else { out.cast_to_dt(input_dt)?.into_owned() };
+        Ok(tvec!(out.into_tvalue()))
     }
 }
 
