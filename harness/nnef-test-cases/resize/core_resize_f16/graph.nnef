@@ -1,0 +1,11 @@
+version 1.0;
+
+extension tract_registry tract_core;
+
+graph network(input_0) -> (output_0)
+{
+    input_0 = tract_core_external(shape = [1, 1, 2, 2], datum_type = 'f32');
+    x16 = tract_core_cast(input_0, to = 'f16');
+    y16 = tract_core_resize(x16, scales = [1.0, 1.0, 2.0, 2.0], interpolator = 'nearest', coord_transformer = 'asymmetric', nearest_mode = 'floor');
+    output_0 = tract_core_cast(y16, to = 'f32');
+}
