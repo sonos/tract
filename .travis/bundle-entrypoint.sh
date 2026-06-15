@@ -18,22 +18,13 @@ else
 fi
 
 CACHEDIR=${CACHEDIR:-$HOME/.cache/tract-ci-minion-models}
-case $CACHEDIR in
-    "http"*)
-        wget $CACHEDIR/private/private-benches.sh
-        PRIVATE=`pwd`/private-benches.sh
-    ;;
-    *)
-        [ -d $CACHEDIR ] || mkdir $CACHEDIR
-        PATH=$PATH:/usr/local/bin # for aws command on darwin
-        aws s3 sync s3://tract-ci-builds/model $CACHEDIR || echo "Warning: aws s3 sync failed, continuing with cached models"
-        (cd $CACHEDIR
-            [ -d en_libri_real ] || tar zxf en_libri_real.tar.gz
-            [ -d en_tdnn_lstm_bn_q7 ] || tar zxf en_tdnn_lstm_bn_q7.tar.gz
-        )
-        PRIVATE=$CACHEDIR/private/private-benches.sh
-    ;;
-esac
+[ -d $CACHEDIR ] || mkdir $CACHEDIR
+PATH=$PATH:/usr/local/bin # for aws command on darwin
+aws s3 sync s3://tract-ci-builds/model $CACHEDIR || echo "Warning: aws s3 sync failed, continuing with cached models"
+(cd $CACHEDIR
+    [ -d en_libri_real ] || tar zxf en_libri_real.tar.gz
+    [ -d en_tdnn_lstm_bn_q7 ] || tar zxf en_tdnn_lstm_bn_q7.tar.gz
+)
 
 
 
@@ -147,8 +138,6 @@ net_bench voicecom_float 2sec $CACHEDIR/snips-voice-commands-cnn-float.pb -i 200
 
 net_bench trunet pulse1_f32 $CACHEDIR/trunet_dummy.nnef.tgz --nnef-tract-core --pulse 1
 net_bench trunet pulse1_f16 $CACHEDIR/trunet_dummy.nnef.tgz --nnef-tract-core -t f32_to_f16 --pulse 1
-
-[ -f "$PRIVATE" ] && . "$PRIVATE"
 
 if [ $(uname) = "Darwin" ]
 then
