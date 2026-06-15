@@ -134,7 +134,6 @@ impl Nearest {
 /// the remaining edge cases and decltters into this op when it fits the subset.
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Resize {
-    pub axes: Option<Vec<i64>>,
     pub coord_transformer: CoordTransformer,
     pub interpolator: Interpolator,
     pub nearest: Nearest,
@@ -421,7 +420,6 @@ mod tests {
     fn cubic_resize(input: Tensor, scales: &[f32]) -> Tensor {
         let scales = tract_ndarray::Array1::from(scales.to_vec()).into_tensor();
         let op = Resize {
-            axes: None,
             coord_transformer: CoordTransformer::HalfPixel,
             interpolator: Interpolator::Cubic,
             nearest: Nearest::Floor,
