@@ -85,6 +85,18 @@ fn get_external_resources(
         .map(|it| it.value.as_str())
         .context("Could not find external data location")?;
 
+    // `location` comes from the untrusted model file; confine it to the model
+    // directory so it cannot escape via an absolute path or `..`.
+    let location_path = std::path::Path::new(location);
+    if location_path
+        .components()
+        .any(|c| !matches!(c, std::path::Component::Normal(_) | std::path::Component::CurDir))
+    {
+        bail!(
+            "external data location must be a relative path inside the model directory, got {location:?}"
+        );
+    }
+
     let offset: usize = t
         .external_data
         .iter()
@@ -102,7 +114,7 @@ fn get_external_resources(
         .transpose()
         .context("Error while parsing length value on external data description")?;
 
-    let p = PathBuf::from(path).join(location);
+    let p = PathBuf::from(path).join(location_path);
 
     trace!("external file detected: {p:?}, offset {offset:?}, length: {length:?}");
     provider.read_bytes_from_path(&mut tensor_data, &p, offset, length)?;

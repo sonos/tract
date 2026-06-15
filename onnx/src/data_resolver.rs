@@ -37,7 +37,15 @@ impl ModelDataResolver for FopenDataResolver {
     ) -> TractResult<()> {
         let file = File::open(p).with_context(|| format!("Opening {p:?}"))?;
         let file_size = file.metadata()?.len() as usize;
+        ensure!(
+            offset <= file_size,
+            "external data offset {offset} is past end of file ({file_size} bytes)"
+        );
         let length = length.unwrap_or(file_size - offset);
+        ensure!(
+            length <= file_size - offset,
+            "external data length {length} from offset {offset} exceeds file size {file_size}"
+        );
         buf.reserve(length);
 
         let mut reader = BufReader::new(file);
@@ -66,10 +74,18 @@ impl ModelDataResolver for MmapDataResolver {
     ) -> TractResult<()> {
         let file = File::open(p).with_context(|| format!("Opening {p:?}"))?;
         let mmap = unsafe { memmap2::Mmap::map(&file)? };
-        match length {
-            Some(length) => buf.extend_from_slice(&mmap[offset..offset + length]),
-            None => buf.extend_from_slice(&mmap[offset..]),
-        }
+        let end = match length {
+            Some(length) => {
+                offset.checked_add(length).context("external data offset + length overflows")?
+            }
+            None => mmap.len(),
+        };
+        ensure!(
+            offset <= end && end <= mmap.len(),
+            "external data range {offset}..{end} is out of bounds ({} bytes)",
+            mmap.len()
+        );
+        buf.extend_from_slice(&mmap[offset..end]);
         Ok(())
     }
 }
