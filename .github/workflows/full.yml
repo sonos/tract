@@ -67,7 +67,7 @@ jobs:
       contents: read
     needs: prepare
     steps:
-    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+    - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       with:
         ref: ${{ needs.prepare.outputs.test_ref }}
         fetch-depth: 0
@@ -88,7 +88,7 @@ jobs:
     needs: prepare
 
     steps:
-    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+    - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       with:
         ref: ${{ needs.prepare.outputs.test_ref }}
         fetch-depth: 0
@@ -106,7 +106,7 @@ jobs:
         opset: [1_4_1, 1_5_0, 1_6_0, 1_7_0, 1_8_1, 1_9_0, 1_10_2, 1_11_0, 1_12_0, 1_13_0, 1_14_1, 1_15_0, 1_16_2, 1_17_0, 1_18_0, 1_19_1]
 
     steps:
-    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+    - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       with:
         ref: ${{ needs.prepare.outputs.test_ref }}
         fetch-depth: 0
@@ -119,7 +119,7 @@ jobs:
     needs: prepare
 
     steps:
-    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+    - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       with:
         ref: ${{ needs.prepare.outputs.test_ref }}
         fetch-depth: 0
@@ -132,7 +132,7 @@ jobs:
     needs: prepare
 
     steps:
-    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+    - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       with:
         ref: ${{ needs.prepare.outputs.test_ref }}
         fetch-depth: 0
@@ -148,7 +148,7 @@ jobs:
     needs: prepare
 
     steps:
-    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+    - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       with:
         ref: ${{ needs.prepare.outputs.test_ref }}
         fetch-depth: 0
@@ -163,7 +163,7 @@ jobs:
     needs: prepare
 
     steps:
-    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+    - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       with:
         ref: ${{ needs.prepare.outputs.test_ref }}
         fetch-depth: 0
@@ -178,7 +178,7 @@ jobs:
     needs: prepare
 
     steps:
-    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+    - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       with:
         ref: ${{ needs.prepare.outputs.test_ref }}
         fetch-depth: 0
@@ -193,7 +193,7 @@ jobs:
     needs: prepare
 
     steps:
-    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+    - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       with:
         ref: ${{ needs.prepare.outputs.test_ref }}
         fetch-depth: 0
@@ -209,7 +209,7 @@ jobs:
     needs: prepare
 
     steps:
-    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+    - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       with:
         ref: ${{ needs.prepare.outputs.test_ref }}
         fetch-depth: 0
@@ -220,7 +220,7 @@ jobs:
         python-version: "3.13"
 
     - name: Install uv
-      uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
 
     - name: Pytest bindings
       timeout-minutes: 60
