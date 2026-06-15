@@ -1,0 +1,122 @@
+name: Nightly bench
+
+# Builds tract on GitHub-hosted runners (release/LTO), then runs the bench suite on
+# the self-hosted big machines and appends one row per run to the `bench-data` branch.
+# Building off the contended self-hosted boxes keeps the LTO build off the bench machine.
+
+on:
+  schedule:
+    - cron: '0 4 * * *'   # after large-models (3am) so they don't fight for the self-hosted boxes
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.gate.outputs.enabled }}
+      ref: ${{ steps.gate.outputs.ref }}
+      day: ${{ steps.gate.outputs.day }}
+    steps:
+      - id: gate
+        run: |
+          if [ "${{ vars.BENCH_ENABLED }}" = "false" ]; then
+            echo "::notice::bench disabled via BENCH_ENABLED repo variable"
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+          echo "ref=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+          echo "day=$(date -u +%F)" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: prepare
+    if: needs.prepare.outputs.enabled == 'true'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ macos-latest, ubuntu-latest ]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ needs.prepare.outputs.ref }}
+          persist-credentials: false
+      - run: |
+          ROOT=. ./.travis/ci-system-setup.sh
+          cargo build -p tract-cli --release
+      - run: echo uname=$(uname) >> "$GITHUB_ENV"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: tract-cli-${{ env.uname }}
+          path: ./target/release/tract
+
+  bench:
+    needs: [ prepare, build ]
+    if: needs.prepare.outputs.enabled == 'true'
+    runs-on: ${{ matrix.os }}
+    permissions:
+      id-token: write     # AWS OIDC for S3 model fetch
+      contents: write     # push to bench-data
+    concurrency:
+      group: bench-${{ matrix.os }}   # serialize against itself; never fight a running bench
+      cancel-in-progress: false
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macOS
+            device: apple-m1-max
+            triple: aarch64-apple-darwin
+          - os: cuda-lovelace
+            device: i9-11900kb_rtx-4060
+            triple: x86_64-unknown-linux-gnu
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ needs.prepare.outputs.ref }}
+          persist-credentials: false
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@e7f100cf4c008499ea8adda475de1042d6975c7b # v6.2.0
+        with:
+          role-to-assume: arn:aws:iam::567805100031:role/github-runner-tract-ci
+          aws-region: us-east-2
+      - run: echo uname=$(uname) >> "$GITHUB_ENV"
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: tract-cli-${{ env.uname }}
+          path: tract-cli-${{ env.uname }}
+      - name: Run bench suite
+        env:
+          UNAME: ${{ env.uname }}
+        run: |
+          chmod +x "tract-cli-${UNAME}/tract"
+          export TRACT_RUN="$GITHUB_WORKSPACE/tract-cli-${UNAME}/tract"
+          ./.travis/bundle-entrypoint.sh        # produces ./metrics
+      - name: Checkout bench-data
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: bench-data
+          path: bench-data
+          fetch-depth: 1
+      - name: Append and push
+        env:
+          DEVICE: ${{ matrix.device }}
+          TRIPLE: ${{ matrix.triple }}
+          REF: ${{ needs.prepare.outputs.ref }}
+          DAY: ${{ needs.prepare.outputs.day }}
+        run: |
+          python3 .travis/bench-append.py --metrics metrics --out bench-data \
+            --triple "$TRIPLE" --device "$DEVICE" --commit "$REF" --day "$DAY"
+          cd bench-data
+          git config user.name "tract-ci"
+          git config user.email "kali@zoy.org"
+          git add -A
+          git commit -m "bench: $DEVICE $DAY"
+          for i in 1 2 3 4 5; do
+            git push origin HEAD:bench-data && exit 0
+            git fetch origin bench-data
+            git rebase origin/bench-data || git rebase --abort
+          done
+          echo "push failed after retries" >&2; exit 1
