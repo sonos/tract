@@ -1,0 +1,14 @@
+{
+  "_comment": "Percent thresholds for the PR-vs-main bench comparison. A metric moves the report only when |Δ| >= the threshold for its class (first substring match wins, else default). Single-shot data, so this is the noise guard until repeat dispersion lands.",
+  "default": 5,
+  "classes": {
+    "tg": 3,
+    "pp": 3,
+    "evaltime": 5,
+    "rsz_at": 5,
+    "active_at": 5,
+    "time_to": 5,
+    "bench_runtime": 10,
+    "binary_size": 1
+  }
+}

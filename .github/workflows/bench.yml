@@ -1,18 +1,27 @@
 name: Nightly bench
 
 # Build tract on GitHub-hosted runners, run the bench suite on the self-hosted bench
-# machines, and append one row per run to the bench-data branch. Building off the
-# contended self-hosted boxes keeps the LTO build off the bench machine. The Jetson
-# (aarch64 + CUDA 12) can't be built on a hosted runner natively, so it reuses cross.sh's
-# debian-stretch cross-build (no AWS creds here, so cross.sh's S3-push tail stays off).
+# machines, and either (nightly) append one row per run to the bench-data branch, or
+# (PR) compare against that reference and post a single fan-in comment.
+# The Jetson (aarch64 + CUDA 12) can't be built on a hosted runner natively, so it
+# reuses cross.sh's debian-stretch cross-build (no AWS creds, so the S3-push tail stays off).
 
 on:
   schedule:
     - cron: '0 4 * * *'   # after large-models (3am) so they don't fight for the self-hosted boxes
   workflow_dispatch:
+  pull_request:
+    paths-ignore:
+      - '**/*.md'
+      - 'doc/**'
 
 permissions:
   contents: read
+
+concurrency:
+  # cancel superseded PR pushes (escape hatch); nightly keys on run_id so it never cancels
+  group: bench-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   prepare:
@@ -72,9 +81,9 @@ jobs:
     runs-on: ${{ matrix.runner }}
     permissions:
       id-token: write     # AWS OIDC for S3 model fetch
-      contents: write     # push to bench-data
+      contents: write     # push to bench-data (nightly only)
     concurrency:
-      group: bench-${{ matrix.runner }}   # serialize against itself; never fight a running bench
+      group: bench-runner-${{ matrix.runner }}   # one bench per box at a time; never fight a running bench
       cancel-in-progress: false
     strategy:
       fail-fast: false
@@ -108,7 +117,10 @@ jobs:
           chmod +x tract-cli/tract
           export TRACT_RUN="$GITHUB_WORKSPACE/tract-cli/tract"
           ./.travis/bundle-entrypoint.sh        # produces ./metrics
+
+      # --- nightly / dispatch: append the row to bench-data ---
       - name: Checkout bench-data
+        if: github.event_name != 'pull_request'
         # zizmor: ignore[artipacked] credentials are needed to push the row back to
         # bench-data; this checkout is never uploaded as an artifact.
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -117,6 +129,7 @@ jobs:
           path: bench-data
           fetch-depth: 1
       - name: Append and push
+        if: github.event_name != 'pull_request'
         env:
           DEVICE: ${{ matrix.target }}
           TRIPLE: ${{ matrix.triple }}
@@ -136,3 +149,66 @@ jobs:
             git rebase origin/bench-data || git rebase --abort
           done
           echo "push failed after retries" >&2; exit 1
+
+      # --- PR: emit this device's result for the fan-in report job ---
+      - name: Stage PR result
+        if: github.event_name == 'pull_request'
+        env:
+          DEVICE: ${{ matrix.target }}
+          TRIPLE: ${{ matrix.triple }}
+        run: |
+          mkdir -p result
+          cp metrics result/metrics
+          printf '{"device":"%s","triple":"%s"}\n' "$DEVICE" "$TRIPLE" > result/meta.json
+      - name: Upload PR result
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: bench-result-${{ matrix.target }}
+          path: result
+
+  report:
+    needs: [ prepare, bench ]
+    if: ${{ always() && github.event_name == 'pull_request' && needs.prepare.outputs.enabled == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ needs.prepare.outputs.ref }}
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: bench-result-*
+          path: results
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: bench-data
+          path: bench-data
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Render comparison
+        env:
+          PR_SHA: ${{ needs.prepare.outputs.ref }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python3 .travis/bench-report.py --results results --bench-data bench-data \
+            --thresholds .travis/bench-thresholds.json --pr-sha "$PR_SHA" --out pr-comment.md
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('pr-comment.md', 'utf8');
+            const marker = '<!-- bench-vs-main -->';
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: context.issue.number, per_page: 100,
+            });
+            const prev = comments.find(c => c.body?.includes(marker));
+            if (prev) {
+              await github.rest.issues.updateComment({ owner: context.repo.owner, repo: context.repo.repo, comment_id: prev.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number, body });
+            }
