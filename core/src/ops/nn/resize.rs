@@ -250,13 +250,14 @@ impl EvalOp for Resize {
                     let x_in =
                         self.coord_transformer.transform(x_out, scale, input_len, new_shape[axis]);
                     let mut co_i = co_o;
-                    let x_left = (x_in as usize).clamp(0, input_len - 1);
+                    let x_floor = x_in.floor() as isize;
+                    let x_left = x_floor.clamp(0, input_len as isize - 1) as usize;
                     co_i[axis] = x_left;
                     let y_left = data[&co_i];
-                    let x_right = (x_left + 1).min(input_len - 1);
+                    let x_right = (x_floor + 1).clamp(0, input_len as isize - 1) as usize;
                     co_i[axis] = x_right;
                     let y_right = data[&co_i];
-                    let x_frac = x_in - x_left as f32;
+                    let x_frac = x_in - x_floor as f32;
                     match self.interpolator {
                         Interpolator::Linear => y_left * (1.0 - x_frac) + y_right * x_frac,
                         Interpolator::Nearest => {
