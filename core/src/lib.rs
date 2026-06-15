@@ -92,7 +92,7 @@ pub mod prelude {
     pub use crate::framework::Framework;
     pub use crate::model::*;
     pub use crate::runtime::{
-        FrozenState, RunOptions, Runnable, Runtime, State, runtime_for_name, runtimes,
+        runtime_for_name, runtimes, FrozenState, RunOptions, Runnable, Runtime, State,
     };
     pub use crate::value::{IntoTValue, TValue};
     pub use std::sync::Arc;
@@ -110,14 +110,13 @@ pub mod internal {
     pub extern crate inventory;
     pub use crate::axes::{AxesMapping, Axis};
     pub use crate::late_bind::*;
-    pub use crate::model::*;
     pub use crate::ops::change_axes::*;
     pub use crate::ops::element_wise::ElementWiseMiniOp;
     pub use crate::ops::{Cost, EvalOp, FrozenOpState, Op, OpState, Validation};
     pub use crate::plan::{SessionStateHandler, SimplePlan, SimpleState, TurnState};
     pub use crate::prelude::*;
     pub use crate::runtime::{
-        DefaultRuntime, Runnable, Runtime, State, runtime_for_name, runtimes,
+        runtime_for_name, runtimes, DefaultRuntime, Runnable, Runtime, State,
     };
     pub use dims;
     pub use downcast_rs as tract_downcast_rs;
