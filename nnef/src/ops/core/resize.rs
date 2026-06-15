@@ -73,7 +73,6 @@ fn load(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractRes
     };
 
     let op = Resize {
-        axes: None,
         coord_transformer: CoordTransformer::parse(&coord_transformer)?,
         interpolator: Interpolator::parse(&interpolator)?,
         nearest: Nearest::parse(&nearest_mode)?,
@@ -122,7 +121,6 @@ fn load_nearest_upsample(
     let factor: TVec<i64> = invocation.named_arg_as(builder, "factor")?;
     let scales = upsample_scales(builder, &input, &factor)?;
     let op = Resize {
-        axes: None,
         coord_transformer: CoordTransformer::Asymmetric,
         interpolator: Interpolator::Nearest,
         nearest: Nearest::Floor,
@@ -151,7 +149,6 @@ fn load_multilinear_upsample(
     }
     let scales = upsample_scales(builder, &input, &factor)?;
     let op = Resize {
-        axes: None,
         coord_transformer,
         interpolator: Interpolator::Linear,
         nearest: Nearest::Floor,

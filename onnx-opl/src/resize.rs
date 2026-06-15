@@ -128,7 +128,6 @@ impl Resize {
             _ => return None,
         };
         Some(resize::Resize {
-            axes: self.axes.clone(),
             coord_transformer: self.coord_transformer.clone(),
             interpolator: self.interpolator.clone(),
             nearest,
