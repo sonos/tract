@@ -26,7 +26,8 @@ pub fn register(registry: &mut Registry) {
 fn parameters() -> Vec<Parameter> {
     vec![
         TypeName::Scalar.tensor().named("input"),
-        TypeName::Scalar.tensor().named("scales"),
+        TypeName::Scalar.tensor().named("scales").default(false),
+        TypeName::Scalar.tensor().named("sizes").default(false),
         TypeName::String.named("coord_transformer").default("half_pixel"),
         TypeName::String.named("interpolator").default("nearest"),
         TypeName::String.named("nearest_mode").default("floor"),
@@ -35,29 +36,18 @@ fn parameters() -> Vec<Parameter> {
 
 fn dump(ast: &mut IntoAst, node: &TypedNode, op: &Resize) -> TractResult<Option<Arc<RValue>>> {
     let input = ast.mapping[&node.inputs[0]].clone();
-    let scales = if let Some(scales_ix) = op.optional_scales_input {
-        ast.mapping[&node.inputs[scales_ix]].clone()
+    let (arg_name, aux) = if let Some(scales_ix) = op.optional_scales_input {
+        ("scales", ast.mapping[&node.inputs[scales_ix]].clone())
     } else if let Some(sizes_ix) = op.optional_sizes_input {
-        let input_shape = ast.model.outlet_fact(node.inputs[0])?.shape.to_tvec();
-        let sizes_fact = ast.model.outlet_fact(node.inputs[sizes_ix])?;
-        let sizes =
-            sizes_fact.konst.as_ref().context("sizes must be a constant for NNEF export")?;
-        let sizes = sizes.cast_to::<f32>()?;
-        let sizes = sizes.try_as_plain()?.as_slice::<f32>()?;
-        let scales: Vec<f32> = input_shape
-            .iter()
-            .zip(sizes.iter())
-            .map(|(i, s)| i.to_usize().map(|i| *s / i as f32).unwrap_or(1.0))
-            .collect();
-        let scales_tensor = tract_ndarray::arr1(&scales).into_arc_tensor();
-        ast.konst_variable(format!("{}.scales", node.name), &scales_tensor)?
+        ("sizes", ast.mapping[&node.inputs[sizes_ix]].clone())
     } else {
         bail!("Resize op has neither scales nor sizes input")
     };
     Ok(Some(invocation(
         "tract_core_resize",
-        &[input, scales],
+        &[input],
         &[
+            (arg_name, (*aux).clone()),
             ("coord_transformer", string(op.coord_transformer.as_str())),
             ("interpolator", string(op.interpolator.as_str())),
             ("nearest_mode", string(op.nearest.as_str())),
@@ -67,20 +57,30 @@ fn dump(ast: &mut IntoAst, node: &TypedNode, op: &Resize) -> TractResult<Option<
 
 fn load(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
     let input = invocation.named_arg_as(builder, "input")?;
-    let scales = invocation.named_arg_as(builder, "scales")?;
+    let scales = invocation.optional_named_arg_as::<OutletId>(builder, "scales")?;
+    let sizes = invocation.optional_named_arg_as::<OutletId>(builder, "sizes")?;
     let coord_transformer: String = invocation.named_arg_as(builder, "coord_transformer")?;
     let interpolator: String = invocation.named_arg_as(builder, "interpolator")?;
     let nearest_mode: String = invocation.named_arg_as(builder, "nearest_mode")?;
+
+    let (aux, optional_scales_input, optional_sizes_input) = match (scales, sizes) {
+        (Some(scales), None) => (scales, Some(1), None),
+        (None, Some(sizes)) => (sizes, None, Some(1)),
+        (Some(_), Some(_)) => {
+            bail!("tract_core_resize: provide either scales or sizes, not both")
+        }
+        (None, None) => bail!("tract_core_resize: needs either scales or sizes"),
+    };
 
     let op = Resize {
         axes: None,
         coord_transformer: CoordTransformer::parse(&coord_transformer)?,
         interpolator: Interpolator::parse(&interpolator)?,
         nearest: Nearest::parse(&nearest_mode)?,
-        optional_scales_input: Some(1),
-        optional_sizes_input: None,
+        optional_scales_input,
+        optional_sizes_input,
     };
-    builder.wire(op, &[input, scales])
+    builder.wire(op, &[input, aux])
 }
 
 fn upsample_parameters() -> Vec<Parameter> {
