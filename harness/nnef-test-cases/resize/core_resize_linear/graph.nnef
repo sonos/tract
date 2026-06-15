@@ -1,0 +1,10 @@
+version 1.0;
+
+extension tract_registry tract_core;
+
+graph network(input_0) -> (output_0)
+{
+    input_0 = tract_core_external(shape = [1, 1, 4], datum_type = 'f32');
+    scales = [1.0, 1.0, 2.0];
+    output_0 = tract_core_resize(input_0, scales, interpolator = 'linear', coord_transformer = 'half_pixel');
+}
