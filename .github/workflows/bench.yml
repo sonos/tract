@@ -1,8 +1,10 @@
 name: Nightly bench
 
-# Builds tract on GitHub-hosted runners (release/LTO), then runs the bench suite on
-# the self-hosted big machines and appends one row per run to the `bench-data` branch.
-# Building off the contended self-hosted boxes keeps the LTO build off the bench machine.
+# Build tract on GitHub-hosted runners, run the bench suite on the self-hosted bench
+# machines, and append one row per run to the bench-data branch. Building off the
+# contended self-hosted boxes keeps the LTO build off the bench machine. The Jetson
+# (aarch64 + CUDA 12) can't be built on a hosted runner natively, so it reuses cross.sh's
+# debian-stretch cross-build (no AWS creds here, so cross.sh's S3-push tail stays off).
 
 on:
   schedule:
@@ -21,8 +23,10 @@ jobs:
       day: ${{ steps.gate.outputs.day }}
     steps:
       - id: gate
+        env:
+          BENCH_ENABLED: ${{ vars.BENCH_ENABLED }}
         run: |
-          if [ "${{ vars.BENCH_ENABLED }}" = "false" ]; then
+          if [ "$BENCH_ENABLED" = "false" ]; then
             echo "::notice::bench disabled via BENCH_ENABLED repo variable"
             echo "enabled=false" >> "$GITHUB_OUTPUT"
           else
@@ -34,44 +38,57 @@ jobs:
   build:
     needs: prepare
     if: needs.prepare.outputs.enabled == 'true'
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.host }}
     strategy:
+      fail-fast: false
       matrix:
-        os: [ macos-latest, ubuntu-latest ]
+        include:
+          - target: apple-m1-max
+            host: macos-latest
+            build: ROOT=. ./.travis/ci-system-setup.sh && cargo build -p tract-cli --release
+            bin: target/release/tract
+          - target: i9-11900kb_rtx-4060
+            host: ubuntu-latest
+            build: ROOT=. ./.travis/ci-system-setup.sh && cargo build -p tract-cli --release
+            bin: target/release/tract
+          - target: jetson-orin-nx
+            host: ubuntu-latest
+            build: PLATFORM=aarch64-unknown-linux-gnu-stretch ./.travis/cross.sh
+            bin: target/aarch64-unknown-linux-gnu/release/tract
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ needs.prepare.outputs.ref }}
           persist-credentials: false
-      - run: |
-          ROOT=. ./.travis/ci-system-setup.sh
-          cargo build -p tract-cli --release
-      - run: echo uname=$(uname) >> "$GITHUB_ENV"
+      - run: ${{ matrix.build }}
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: tract-cli-${{ env.uname }}
-          path: ./target/release/tract
+          name: tract-cli-${{ matrix.target }}
+          path: ${{ matrix.bin }}
 
   bench:
     needs: [ prepare, build ]
     if: needs.prepare.outputs.enabled == 'true'
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.runner }}
     permissions:
       id-token: write     # AWS OIDC for S3 model fetch
       contents: write     # push to bench-data
     concurrency:
-      group: bench-${{ matrix.os }}   # serialize against itself; never fight a running bench
+      group: bench-${{ matrix.runner }}   # serialize against itself; never fight a running bench
       cancel-in-progress: false
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: macOS
-            device: apple-m1-max
+          - target: apple-m1-max
+            runner: macOS
             triple: aarch64-apple-darwin
-          - os: cuda-lovelace
-            device: i9-11900kb_rtx-4060
+          - target: i9-11900kb_rtx-4060
+            runner: cuda-lovelace
             triple: x86_64-unknown-linux-gnu
+          - target: jetson-orin-nx
+            runner: orin-nx-16g
+            triple: aarch64-unknown-linux-gnu-stretch
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -82,19 +99,18 @@ jobs:
         with:
           role-to-assume: arn:aws:iam::567805100031:role/github-runner-tract-ci
           aws-region: us-east-2
-      - run: echo uname=$(uname) >> "$GITHUB_ENV"
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          name: tract-cli-${{ env.uname }}
-          path: tract-cli-${{ env.uname }}
+          name: tract-cli-${{ matrix.target }}
+          path: tract-cli
       - name: Run bench suite
-        env:
-          UNAME: ${{ env.uname }}
         run: |
-          chmod +x "tract-cli-${UNAME}/tract"
-          export TRACT_RUN="$GITHUB_WORKSPACE/tract-cli-${UNAME}/tract"
+          chmod +x tract-cli/tract
+          export TRACT_RUN="$GITHUB_WORKSPACE/tract-cli/tract"
           ./.travis/bundle-entrypoint.sh        # produces ./metrics
       - name: Checkout bench-data
+        # zizmor: ignore[artipacked] credentials are needed to push the row back to
+        # bench-data; this checkout is never uploaded as an artifact.
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: bench-data
@@ -102,18 +118,18 @@ jobs:
           fetch-depth: 1
       - name: Append and push
         env:
-          DEVICE: ${{ matrix.device }}
+          DEVICE: ${{ matrix.target }}
           TRIPLE: ${{ matrix.triple }}
           REF: ${{ needs.prepare.outputs.ref }}
           DAY: ${{ needs.prepare.outputs.day }}
         run: |
           python3 .travis/bench-append.py --metrics metrics --out bench-data \
-            --triple "$TRIPLE" --device "$DEVICE" --commit "$REF" --day "$DAY"
+            --triple "$TRIPLE" --device "$DEVICE" --day "$DAY"
           cd bench-data
           git config user.name "tract-ci"
           git config user.email "kali@zoy.org"
           git add -A
-          git commit -m "bench: $DEVICE $DAY"
+          git commit -m "bench: $DEVICE $DAY ${REF:0:9}"
           for i in 1 2 3 4 5; do
             git push origin HEAD:bench-data && exit 0
             git fetch origin bench-data
