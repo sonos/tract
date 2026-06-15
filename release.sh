@@ -44,6 +44,7 @@ fi
 if [ "$CRATE_PATH" = "cli" ]
 then
     git commit -m "release $VERSION" .
+    git push
     git tag -f v"$VERSION"
-    git push -f --tags
+    git push -f origin "v$VERSION"
 fi
