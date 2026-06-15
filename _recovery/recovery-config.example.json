@@ -1,0 +1,11 @@
+{
+  "graphite_host": "https://graphite.example.invalid",
+  "graphite_prefix": "tract",
+  "device_map": {
+    "<machine-id-1>": "cortex-a9",
+    "<machine-id-2>": "cortex-a55",
+    "<machine-id-3>": "x86_64-some-gpu"
+  },
+  "exclude_devices": ["<machine-to-never-publish>"],
+  "drop_devices": ["<throwaway-machine>"]
+}
