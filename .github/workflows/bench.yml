@@ -52,15 +52,15 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - target: apple-m1-max
+          - triple: aarch64-apple-darwin
             host: macos-latest
             build: ROOT=. ./.travis/ci-system-setup.sh && cargo build -p tract-cli --release
             bin: target/release/tract
-          - target: i9-11900kb_rtx-4060
+          - triple: x86_64-unknown-linux-gnu
             host: ubuntu-latest
             build: ROOT=. ./.travis/ci-system-setup.sh && cargo build -p tract-cli --release
             bin: target/release/tract
-          - target: jetson-orin-nx
+          - triple: aarch64-unknown-linux-gnu-stretch
             host: ubuntu-latest
             build: PLATFORM=aarch64-unknown-linux-gnu-stretch ./.travis/cross.sh
             bin: target/aarch64-unknown-linux-gnu/release/tract
@@ -72,7 +72,7 @@ jobs:
       - run: ${{ matrix.build }}
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: tract-cli-${{ matrix.target }}
+          name: tract-cli-${{ matrix.triple }}
           path: ${{ matrix.bin }}
 
   bench:
@@ -110,7 +110,7 @@ jobs:
           aws-region: us-east-2
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          name: tract-cli-${{ matrix.target }}
+          name: tract-cli-${{ matrix.triple }}
           path: tract-cli
       - name: Run bench suite
         run: |
