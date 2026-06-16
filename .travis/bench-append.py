@@ -25,7 +25,9 @@ def read_metrics(path):
         parts = line.split()
         if len(parts) == 2:
             try:
-                out[parts[0]] = sig(float(parts[1]))
+                # '-' -> '_' matches the recovered history: the old minion ran the
+                # metric names through `tr '-' '_'` before pushing them to graphite.
+                out[parts[0].replace("-", "_")] = sig(float(parts[1]))
             except ValueError:
                 pass
     return out
