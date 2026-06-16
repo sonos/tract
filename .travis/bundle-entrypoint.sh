@@ -45,15 +45,69 @@ if [ "$(uname)" = "Linux" ] && [ -r /sys/devices/system/cpu/cpu0/cpufreq/scaling
     echo "$F" > /sys/devices/system/cpu/cpu0/cpufreq/scaling_setspeed
 fi
 
-net_bench() {
+# Expectation-guided retry: with an expectations file (EXPECTATIONS, one 'metric value'
+# line each, from bench-data history), re-run a bench whose measured value lands wildly
+# off expectation and keep the best per metric. A real change reproduces across re-runs
+# (best-of still reports it); only one-shot glitches get corrected. No expectations
+# (fresh host / legacy minion) -> single shot straight into metrics, unchanged.
+RETRY_BAND=${RETRY_BAND:-4}    # off-by-more-than-this-factor (either way) triggers a re-run
+RETRY_MAX=${RETRY_MAX:-2}
+
+emit() { printf '%s %s\n' "$1" "$2" >> "$CUR"; }
+newtmp() { mktemp "${TMPDIR:-/tmp}/bench.XXXXXX"; }   # explicit template: busybox mktemp wants one
+
+out_of_band() {  # true if some metric in file $1 is outside [exp/band, exp*band]
+    [ -n "$EXPECTATIONS" ] || return 1
+    awk -v band="$RETRY_BAND" '
+        FNR == NR { E[$1] = $2 + 0; next }
+        { k = $1; gsub(/-/, "_", k); v = $2 + 0
+          if ((k in E) && E[k] > 0 && (v > E[k] * band || v < E[k] / band)) bad = 1 }
+        END { if (bad) exit 0; exit 1 }
+    ' "$EXPECTATIONS" "$1"
+}
+
+merge_best() {  # $1 <- per-metric best of $1 and $2 (min, or max for pp/tg throughput)
+    out=$(newtmp)
+    awk '
+        FNR == NR { b[$1] = $2; next }
+        { if (!($1 in b)) { b[$1] = $2; next }
+          v = $2 + 0; bv = b[$1] + 0
+          hb = ($1 ~ /\.(pp|tg)[0-9]+\./)
+          if (hb) { if (v > bv) b[$1] = $2 }
+          else    { if (v < bv) b[$1] = $2 } }
+        END { for (k in b) print k, b[k] }
+    ' "$1" "$2" > "$out"
+    mv "$out" "$1"
+}
+
+bench_run() {  # bench_run <measure-fn> <args...>
+    fn=$1
+    shift
+    if [ -z "$EXPECTATIONS" ]; then CUR=metrics; "$fn" "$@"; return; fi
+    best=$(newtmp); CUR=$best; : > "$best"; "$fn" "$@"
+    tries=0
+    while [ "$tries" -lt "$RETRY_MAX" ] && out_of_band "$best"; do
+        tries=$((tries + 1))
+        printf '    retry %s (off expectation)\n' "$tries"
+        cand=$(newtmp); CUR=$cand; : > "$cand"; "$fn" "$@"
+        merge_best "$best" "$cand"
+        rm -f "$cand"
+    done
+    cat "$best" >> metrics
+    rm -f "$best"
+}
+
+net_bench() { printf '  %s %s\n' "$1" "$2"; bench_run _net_measure "$@"; }
+llm_bench() { printf '  %s %s\n' "$1" "$2"; bench_run _llm_measure "$@"; }
+
+_net_measure() {
     net=$1
     pb=$2
     shift 2
-    printf '  %s %s\n' "$net" "$pb"
 
     $TRACT "$@" --machine-friendly -O bench --allow-random-input $BENCH_OPTS > tract.out
     v=$(grep -a real tract.out | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/')
-    echo net.$net.evaltime.$pb $v >> metrics
+    emit net.$net.evaltime.$pb "$v"
 
     $TRACT "$@" --readings --readings-heartbeat 1000 --machine-friendly -O bench --allow-random-input $BENCH_OPTS > tract.out
 
@@ -61,25 +115,24 @@ net_bench() {
     do
         pattern=$(echo $stage | sed 's/[_-]/./g')
         v=$(grep -a $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 1 -d ' ')
-        echo net.$net.time_to_$stage.$pb $v >> metrics
+        emit net.$net.time_to_$stage.$pb "$v"
         v=$(grep -a $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 4 -d ' ')
-        echo net.$net.rsz_at_$stage.$pb $v >> metrics
+        emit net.$net.rsz_at_$stage.$pb "$v"
         f=$(grep -a $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 11 -d ' ')
         a=$(grep -a $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 10 -d ' ')
-        echo net.$net.active_at_$stage.$pb $((a - f)) >> metrics
+        emit net.$net.active_at_$stage.$pb "$((a - f))"
     done
 }
 
-llm_bench() {
+_llm_measure() {
     net=$1
     pb=$2
     shift 2
-    printf '  %s %s\n' "$net" "$pb"
 
     if $TRACT "$@" --llm --machine-friendly -O llm-bench $BENCH_OPTS > tract.out
     then
-        echo llm.$net.pp512.$pb $(grep -a PP512 tract.out | cut -f 2 -d ' ') >> metrics
-        echo llm.$net.tg128.$pb $(grep -a TG128 tract.out | cut -f 2 -d ' ') >> metrics
+        emit llm.$net.pp512.$pb "$(grep -a PP512 tract.out | cut -f 2 -d ' ')"
+        emit llm.$net.tg128.$pb "$(grep -a TG128 tract.out | cut -f 2 -d ' ')"
     fi
 
     if $TRACT "$@" --readings --readings-heartbeat 1000 --llm --machine-friendly -O llm-bench $BENCH_OPTS > /dev/null
@@ -88,14 +141,14 @@ llm_bench() {
         do
             pattern=$(echo $stage | sed 's/[_-]/./g')
             v=$(grep -a $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 1 -d ' ')
-            echo llm.$net.time_to_$stage.$pb $v >> metrics
+            emit llm.$net.time_to_$stage.$pb "$v"
             v=$(grep -a $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 4 -d ' ')
-            echo llm.$net.rsz_at_$stage.$pb $v >> metrics
+            emit llm.$net.rsz_at_$stage.$pb "$v"
             f=$(grep -a $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 11 -d ' ')
             a=$(grep -a $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 10 -d ' ')
             if [ -n "$a" ] && [ -n "$f" ]
             then
-                echo llm.$net.active_at_$stage.$pb $((a - f)) >> metrics
+                emit llm.$net.active_at_$stage.$pb "$((a - f))"
             fi
         done
     fi

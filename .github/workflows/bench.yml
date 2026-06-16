@@ -112,6 +112,21 @@ jobs:
         with:
           name: tract-cli-${{ matrix.triple }}
           path: tract-cli
+      - name: Checkout bench-data (expectations reference)
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: bench-data
+          path: bench-ref
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Build expectations
+        env:
+          DEVICE: ${{ matrix.target }}
+          TRIPLE: ${{ matrix.triple }}
+        run: |
+          python3 .travis/bench-expectations.py --bench-data bench-ref \
+            --triple "$TRIPLE" --device "$DEVICE" --out "$GITHUB_WORKSPACE/expectations.txt"
+          echo "EXPECTATIONS=$GITHUB_WORKSPACE/expectations.txt" >> "$GITHUB_ENV"
       - name: Run bench suite
         run: |
           chmod +x tract-cli/tract
