@@ -24,5 +24,5 @@ do
     tomato set workspace.dependencies.$crate.version $VERSION Cargo.toml
 done
 
-git commit . -m "post-release $VERSION"
+git -c user.name="tract-ci" -c user.email="tract-ci@users.noreply.github.com" commit . -m "post-release $VERSION"
 git push
