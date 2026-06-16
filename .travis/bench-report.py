@@ -14,58 +14,11 @@ dispersion in the reference — so a noisy (host, model) self-widens and a clean
 stays tight, with no metric named or excluded by hand. Direction-aware: tok/s up is
 good, times/sizes/memory up is bad.
 """
-import argparse, datetime, glob, json, os, re, tomllib
+import argparse, datetime, glob, json, os, re
+import bench_common as bc
 
-HIGHER_BETTER = re.compile(r"\.(pp\d+|tg\d+)\.")   # llm throughput; everything else lower-is-better
+HIGHER_BETTER = bc.HIGHER_BETTER
 SPEED = re.compile(r"\.(evaltime|pp\d+|tg\d+)\.")  # the merge signal: inference speed, shown first
-
-
-def read_metrics(path):
-    out = {}
-    for line in open(path):
-        p = line.split()
-        if len(p) == 2:
-            try:
-                # '-' -> '_' to match the recovered history and the nightly references
-                # (the old minion ran metric names through `tr '-' '_'` for graphite).
-                out[p[0].replace("-", "_")] = float(p[1])
-            except ValueError:
-                pass
-    return out
-
-
-def floor_for(metric, floors):
-    for cls, t in floors.items():
-        if cls != "default" and cls in metric:
-            return t
-    return floors.get("default", 5)
-
-
-def threshold_for(metric, cfg, noise_pct):
-    """Adaptive: max(class floor, k * the series' own historical noise). Falls back to
-    the floor alone when there's too little history to estimate noise."""
-    floor = floor_for(metric, cfg["floors"])
-    if noise_pct is None:
-        return floor
-    return max(floor, cfg.get("k", 3.0) * noise_pct)
-
-
-def series_noise(arr, window=40, min_pairs=8):
-    """p90 of recent day-to-day |Δ%| for a metric series — its intrinsic run-to-run
-    dispersion. p90 (not max) so a stray real-change spike doesn't inflate it; None
-    when there isn't enough history to judge."""
-    d, prev = [], None
-    for v in arr[-window:]:
-        if v is None:
-            prev = None
-            continue
-        if prev not in (None, 0):
-            d.append(abs(v - prev) / abs(prev) * 100.0)
-        prev = v
-    if len(d) < min_pairs:
-        return None
-    d.sort()
-    return d[min(len(d) - 1, int(0.9 * len(d)))]
 
 
 def reference(bench_data, triple, device):
@@ -78,7 +31,7 @@ def reference(bench_data, triple, device):
     start = datetime.date.fromisoformat(d["start_day"])
     vals, noise, last_idx = {}, {}, -1
     for m, arr in d["metrics"].items():
-        noise[m] = series_noise(arr)
+        noise[m] = bc.series_noise(arr)
         for i in range(len(arr) - 1, -1, -1):
             if arr[i] is not None:
                 vals[m] = arr[i]
@@ -146,15 +99,14 @@ def main():
     ap.add_argument("--out", required=True, help="PR comment markdown path")
     args = ap.parse_args()
 
-    cfg = tomllib.load(open(args.thresholds, "rb"))
-    min_load = cfg.get("min_load_seconds", 0.0)
+    cfg = bc.load_cfg(args.thresholds)
     rows, devices, ref_days = [], [], []
     for meta_path in sorted(glob.glob(os.path.join(args.results, "*", "meta.json"))):
         d = os.path.dirname(meta_path)
         meta = json.load(open(meta_path))
         device, triple = meta["device"], meta["triple"]
         devices.append(device)
-        pr = read_metrics(os.path.join(d, "metrics"))
+        pr = bc.read_metrics(os.path.join(d, "metrics"))
         ref, noise, ref_day = reference(args.bench_data, triple, device)
         if ref_day:
             ref_days.append(ref_day)
@@ -165,18 +117,8 @@ def main():
             delta = (prv - rv) / rv * 100.0
             higher_better = bool(HIGHER_BETTER.search(metric))
             worse = (delta < 0) if higher_better else (delta > 0)
-            n = noise.get(metric)
-            thr = threshold_for(metric, cfg, n)
-            mover = abs(delta) >= thr
-            # operational metrics (harness wall-time, ...) are recorded but never gated
-            if any(c in metric for c in cfg.get("ignore", [])):
-                mover = False
-            # noisy classes can't be judged on one shot without a measured baseline
-            if n is None and any(c in metric for c in cfg.get("needs_history", [])):
-                mover = False
-            # sub-resolution loads carry no signal; drop them as movers (still shown)
-            if "time_to" in metric and rv < min_load:
-                mover = False
+            thr = bc.red_threshold(metric, cfg, noise.get(metric), rv)
+            mover = thr is not None and abs(delta) >= thr
             rows.append({"device": device, "metric": metric, "ref": rv, "pr": prv,
                          "delta": delta, "worse": worse, "mover": mover})
 

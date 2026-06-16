@@ -45,23 +45,28 @@ if [ "$(uname)" = "Linux" ] && [ -r /sys/devices/system/cpu/cpu0/cpufreq/scaling
     echo "$F" > /sys/devices/system/cpu/cpu0/cpufreq/scaling_setspeed
 fi
 
-# Expectation-guided retry: with an expectations file (EXPECTATIONS, one 'metric value'
-# line each, from bench-data history), re-run a bench whose measured value lands wildly
-# off expectation and keep the best per metric. A real change reproduces across re-runs
-# (best-of still reports it); only one-shot glitches get corrected. No expectations
-# (fresh host / legacy minion) -> single shot straight into metrics, unchanged.
-RETRY_BAND=${RETRY_BAND:-4}    # off-by-more-than-this-factor (either way) triggers a re-run
-RETRY_MAX=${RETRY_MAX:-2}
+# Expectation-guided retry: with an expectations file (EXPECTATIONS, 'metric expected
+# threshold' lines from bench-data history), re-run a bench whose measured value moved
+# worse-than-expected by at least its threshold — i.e. far enough to show as a PR red —
+# and keep the best per metric. Same bar as the report's reds, so every red has been
+# measured RETRY_MAX+1 times; a real change reproduces (best-of still reports it), a
+# one-shot glitch does not. No expectations (fresh host / legacy minion) -> single shot,
+# unchanged.
+RETRY_MAX=${RETRY_MAX:-2}    # re-runs on a miss; total tries = RETRY_MAX + 1
 
 emit() { printf '%s %s\n' "$1" "$2" >> "$CUR"; }
 newtmp() { mktemp "${TMPDIR:-/tmp}/bench.XXXXXX"; }   # explicit template: busybox mktemp wants one
 
-out_of_band() {  # true if some metric in file $1 is outside [exp/band, exp*band]
+out_of_threshold() {  # true if some metric in file $1 moved worse-than-expected by >= its threshold
     [ -n "$EXPECTATIONS" ] || return 1
-    awk -v band="$RETRY_BAND" '
-        FNR == NR { E[$1] = $2 + 0; next }
+    awk '
+        FNR == NR { E[$1] = $2 + 0; T[$1] = $3 + 0; next }
         { k = $1; gsub(/-/, "_", k); v = $2 + 0
-          if ((k in E) && E[k] > 0 && (v > E[k] * band || v < E[k] / band)) bad = 1 }
+          if ((k in E) && E[k] > 0) {
+              pct = (v - E[k]) / E[k] * 100
+              if (k ~ /\.(pp|tg)[0-9]+\./) worse = -pct; else worse = pct
+              if (worse >= T[k]) bad = 1
+          } }
         END { if (bad) exit 0; exit 1 }
     ' "$EXPECTATIONS" "$1"
 }
@@ -86,7 +91,7 @@ bench_run() {  # bench_run <measure-fn> <args...>
     if [ -z "$EXPECTATIONS" ]; then CUR=metrics; "$fn" "$@"; return; fi
     best=$(newtmp); CUR=$best; : > "$best"; "$fn" "$@"
     tries=0
-    while [ "$tries" -lt "$RETRY_MAX" ] && out_of_band "$best"; do
+    while [ "$tries" -lt "$RETRY_MAX" ] && out_of_threshold "$best"; do
         tries=$((tries + 1))
         printf '    retry %s (off expectation)\n' "$tries"
         cand=$(newtmp); CUR=$cand; : > "$cand"; "$fn" "$@"
