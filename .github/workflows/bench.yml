@@ -125,6 +125,7 @@ jobs:
           TRIPLE: ${{ matrix.triple }}
         run: |
           python3 .travis/bench-expectations.py --bench-data bench-ref \
+            --thresholds .travis/bench-thresholds.toml \
             --triple "$TRIPLE" --device "$DEVICE" --out "$GITHUB_WORKSPACE/expectations.txt"
           echo "EXPECTATIONS=$GITHUB_WORKSPACE/expectations.txt" >> "$GITHUB_ENV"
       - name: Run bench suite
