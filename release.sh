@@ -49,7 +49,7 @@ fi
 
 if [ "$CRATE_PATH" = "cli" ]
 then
-    git commit -m "release $VERSION" .
+    git -c user.name="tract-ci" -c user.email="tract-ci@users.noreply.github.com" commit -m "release $VERSION" .
     git tag -f v"$VERSION"
     git push -f origin "v$VERSION"
 fi
