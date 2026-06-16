@@ -22,7 +22,9 @@ def read_metrics(path):
         p = line.split()
         if len(p) == 2:
             try:
-                out[p[0]] = float(p[1])
+                # '-' -> '_' to match the recovered history and the nightly references
+                # (the old minion ran metric names through `tr '-' '_'` for graphite).
+                out[p[0].replace("-", "_")] = float(p[1])
             except ValueError:
                 pass
     return out
