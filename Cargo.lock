@@ -4565,7 +4565,7 @@ dependencies = [
 
 [[package]]
 name = "tract"
-version = "0.23.2-pre"
+version = "0.23.2"
 dependencies = [
  "anyhow",
  "boow",
@@ -4592,7 +4592,7 @@ dependencies = [
 
 [[package]]
 name = "tract-api"
-version = "0.23.2-pre"
+version = "0.23.2"
 dependencies = [
  "anyhow",
  "boow",
@@ -4662,7 +4662,7 @@ dependencies = [
 
 [[package]]
 name = "tract-core"
-version = "0.23.2-pre"
+version = "0.23.2"
 dependencies = [
  "anyhow",
  "anymap3",
@@ -4694,7 +4694,7 @@ dependencies = [
 
 [[package]]
 name = "tract-cuda"
-version = "0.23.2-pre"
+version = "0.23.2"
 dependencies = [
  "anyhow",
  "criterion",
@@ -4718,7 +4718,7 @@ dependencies = [
 
 [[package]]
 name = "tract-data"
-version = "0.23.2-pre"
+version = "0.23.2"
 dependencies = [
  "anyhow",
  "criterion",
@@ -4746,7 +4746,7 @@ dependencies = [
 
 [[package]]
 name = "tract-extra"
-version = "0.23.2-pre"
+version = "0.23.2"
 dependencies = [
  "approx",
  "criterion",
@@ -4771,7 +4771,7 @@ dependencies = [
 
 [[package]]
 name = "tract-gpu"
-version = "0.23.2-pre"
+version = "0.23.2"
 dependencies = [
  "anyhow",
  "derive-new",
@@ -4786,7 +4786,7 @@ dependencies = [
 
 [[package]]
 name = "tract-hir"
-version = "0.23.2-pre"
+version = "0.23.2"
 dependencies = [
  "derive-new",
  "env_logger",
@@ -4796,7 +4796,7 @@ dependencies = [
 
 [[package]]
 name = "tract-libcli"
-version = "0.23.2-pre"
+version = "0.23.2"
 dependencies = [
  "box_drawing",
  "clap",
@@ -4822,7 +4822,7 @@ dependencies = [
 
 [[package]]
 name = "tract-linalg"
-version = "0.23.2-pre"
+version = "0.23.2"
 dependencies = [
  "byteorder",
  "cc",
@@ -4851,7 +4851,7 @@ dependencies = [
 
 [[package]]
 name = "tract-metal"
-version = "0.23.2-pre"
+version = "0.23.2"
 dependencies = [
  "anyhow",
  "criterion",
@@ -4873,7 +4873,7 @@ dependencies = [
 
 [[package]]
 name = "tract-nnef"
-version = "0.23.2-pre"
+version = "0.23.2"
 dependencies = [
  "byteorder",
  "erased-serde",
@@ -4907,7 +4907,7 @@ dependencies = [
 
 [[package]]
 name = "tract-nnef-resources"
-version = "0.23.2-pre"
+version = "0.23.2"
 dependencies = [
  "anyhow",
  "nom 8.0.0",
@@ -4919,7 +4919,7 @@ dependencies = [
 
 [[package]]
 name = "tract-onnx"
-version = "0.23.2-pre"
+version = "0.23.2"
 dependencies = [
  "bytes",
  "criterion",
@@ -4942,7 +4942,7 @@ dependencies = [
 
 [[package]]
 name = "tract-onnx-opl"
-version = "0.23.2-pre"
+version = "0.23.2"
 dependencies = [
  "dyn-eq",
  "env_logger",
@@ -4980,7 +4980,7 @@ dependencies = [
 
 [[package]]
 name = "tract-pulse"
-version = "0.23.2-pre"
+version = "0.23.2"
 dependencies = [
  "downcast-rs",
  "dyn-eq",
@@ -4994,7 +4994,7 @@ dependencies = [
 
 [[package]]
 name = "tract-pulse-opl"
-version = "0.23.2-pre"
+version = "0.23.2"
 dependencies = [
  "downcast-rs",
  "dyn-eq",
@@ -5004,7 +5004,7 @@ dependencies = [
 
 [[package]]
 name = "tract-tensorflow"
-version = "0.23.2-pre"
+version = "0.23.2"
 dependencies = [
  "bytes",
  "criterion",
@@ -5022,7 +5022,7 @@ dependencies = [
 
 [[package]]
 name = "tract-tflite"
-version = "0.23.2-pre"
+version = "0.23.2"
 dependencies = [
  "derive-new",
  "flatbuffers",
@@ -5031,7 +5031,7 @@ dependencies = [
 
 [[package]]
 name = "tract-transformers"
-version = "0.23.2-pre"
+version = "0.23.2"
 dependencies = [
  "float-ord",
  "rayon",
