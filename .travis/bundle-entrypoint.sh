@@ -88,7 +88,7 @@ merge_best() {  # $1 <- per-metric best of $1 and $2 (min, or max for pp/tg thro
 bench_run() {  # bench_run <measure-fn> <args...>
     fn=$1
     shift
-    if [ -z "$EXPECTATIONS" ]; then CUR=metrics; "$fn" "$@"; return; fi
+    if [ ! -s "$EXPECTATIONS" ]; then CUR=metrics; "$fn" "$@"; return; fi
     best=$(newtmp); CUR=$best; : > "$best"; "$fn" "$@"
     tries=0
     while [ "$tries" -lt "$RETRY_MAX" ] && out_of_threshold "$best"; do
