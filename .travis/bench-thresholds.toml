@@ -14,7 +14,12 @@ min_load_seconds = 0.03  # ignore time_to_* below this load: sub-resolution jitt
 # silent until the reference series is long enough to estimate noise (e.g. a freshly
 # added host). Intrinsically-clean classes (evaltime, tok/s, active_at) still gate at
 # their floor with no history.
-needs_history = ["time_to", "rsz", "bench_runtime"]
+needs_history = ["time_to", "rsz"]
+
+# Operational metrics: recorded for trend / CI-health but never gated in the PR comment.
+# bundle.bench_runtime is the whole suite's wall-clock — it tracks machine load and the
+# retry count (the outlier-retry adds runs), not tract.
+ignore = ["bench_runtime"]
 
 # Percent; the minimum that applies when a series is essentially noiseless (or has
 # too little history to estimate noise). First substring match wins, else `default`.
