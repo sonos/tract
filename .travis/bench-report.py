@@ -168,6 +168,9 @@ def main():
             n = noise.get(metric)
             thr = threshold_for(metric, cfg, n)
             mover = abs(delta) >= thr
+            # operational metrics (harness wall-time, ...) are recorded but never gated
+            if any(c in metric for c in cfg.get("ignore", [])):
+                mover = False
             # noisy classes can't be judged on one shot without a measured baseline
             if n is None and any(c in metric for c in cfg.get("needs_history", [])):
                 mover = False
