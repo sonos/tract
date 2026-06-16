@@ -54,18 +54,21 @@ fi
 # unchanged.
 RETRY_MAX=${RETRY_MAX:-2}    # re-runs on a miss; total tries = RETRY_MAX + 1
 
-emit() { printf '%s %s\n' "$1" "$2" >> "$CUR"; }
+# Canonicalize '-' -> '_' at the source so metric keys match the expectations and
+# bench-data (the old minion did this via `tr`); keeps the awk match free of gsub,
+# which the macOS BWK awk handled differently from gawk/mawk/busybox.
+emit() { printf '%s %s\n' "$(echo "$1" | sed 's/-/_/g')" "$2" >> "$CUR"; }
 newtmp() { mktemp "${TMPDIR:-/tmp}/bench.XXXXXX"; }   # explicit template: busybox mktemp wants one
 
 out_of_threshold() {  # true if some metric in file $1 moved worse-than-expected by >= its threshold
     [ -n "$EXPECTATIONS" ] || return 1
     awk '
         FNR == NR { E[$1] = $2 + 0; T[$1] = $3 + 0; next }
-        { k = $1; gsub(/-/, "_", k); v = $2 + 0
-          if ((k in E) && E[k] > 0) {
-              pct = (v - E[k]) / E[k] * 100
-              if (k ~ /\.(pp|tg)[0-9]+\./) worse = -pct; else worse = pct
-              if (worse >= T[k]) bad = 1
+        { v = $2 + 0
+          if (($1 in E) && E[$1] > 0) {
+              pct = (v - E[$1]) / E[$1] * 100
+              if ($1 ~ /\.(pp|tg)[0-9]+\./) worse = -pct; else worse = pct
+              if (worse >= T[$1]) bad = 1
           } }
         END { if (bad) exit 0; exit 1 }
     ' "$EXPECTATIONS" "$1"
@@ -249,4 +252,4 @@ fi
 
 end=$(date +%s)
 
-echo bundle.bench-runtime $((end - start)) >> metrics
+echo bundle.bench_runtime $((end - start)) >> metrics
