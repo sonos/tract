@@ -225,6 +225,35 @@ impl CausalLlmStateConfig {
     }
 }
 
+/// Hook to adjust the next-token logits before selection — the generic
+/// mechanism for constrained decoding / guidance (masking tokens that would
+/// break a grammar or JSON schema, biasing, etc.).
+///
+/// Called once per generated token by
+/// [`CausalLlmState::generate_next_token_with`], after the repeat penalty and
+/// just before the token is picked.
+pub trait LogitsProcessor {
+    /// `logits` holds the score for every vocabulary token of the next
+    /// position; `tokens` is the full sequence generated so far (prompt +
+    /// output). Mutate `logits` in place — e.g. set disallowed entries to
+    /// `f32::NEG_INFINITY` to forbid them.
+    fn process(&mut self, logits: &mut [f32], tokens: &[u32]);
+}
+
+/// Any `FnMut(&mut [f32], &[u32])` is a [`LogitsProcessor`], so callers can pass
+/// a closure without defining a type.
+impl<F: FnMut(&mut [f32], &[u32])> LogitsProcessor for F {
+    fn process(&mut self, logits: &mut [f32], tokens: &[u32]) {
+        self(logits, tokens)
+    }
+}
+
+/// Default [`LogitsProcessor`] that leaves the logits unchanged.
+pub struct NoLogitsProcessor;
+impl LogitsProcessor for NoLogitsProcessor {
+    fn process(&mut self, _logits: &mut [f32], _tokens: &[u32]) {}
+}
+
 #[derive(Debug)]
 pub struct CausalLlmState {
     pub model: Arc<CausalLlmModel>,
@@ -241,6 +270,16 @@ impl CausalLlmState {
     }
 
     pub fn generate_next_token(&mut self) -> anyhow::Result<()> {
+        self.generate_next_token_with(&mut NoLogitsProcessor)
+    }
+
+    /// Like [`generate_next_token`], but runs `logits_processor` over the
+    /// next-token logits before selection — the entry point for constrained
+    /// decoding / guidance (grammar/JSON masking, biasing, …).
+    pub fn generate_next_token_with(
+        &mut self,
+        logits_processor: &mut dyn LogitsProcessor,
+    ) -> anyhow::Result<()> {
         let tokens = &self.seq[self.processed_tokens..];
         ensure!(tokens.len() > 0);
         let chunk_size = self.config.prompt_chunk_size.unwrap_or(usize::MAX);
@@ -277,6 +316,10 @@ impl CausalLlmState {
             self.config.repeat_penalty,
             &self.seq[start_at..],
         );
+
+        // guidance / constrained-decoding hook: lets the caller mask or bias
+        // the logits (e.g. forbid tokens that would break a grammar/JSON schema)
+        logits_processor.process(last_token_logits.as_mut_slice(), &self.seq);
 
         let next_tok = last_token_logits
             .iter()
@@ -398,6 +441,27 @@ mod tests {
     #[test]
     fn frozen_state_is_send() {
         is_send::<FrozenCausalLlmState>();
+    }
+
+    #[test]
+    fn logits_processor_closure_can_mask() {
+        use crate::LogitsProcessor;
+        let mut logits = vec![1.0f32, 2.0, 3.0];
+        // a closure is a LogitsProcessor; forbid the last token
+        let mut mask_last = |l: &mut [f32], _toks: &[u32]| {
+            *l.last_mut().unwrap() = f32::NEG_INFINITY;
+        };
+        mask_last.process(&mut logits, &[]);
+        assert_eq!(logits, vec![1.0, 2.0, f32::NEG_INFINITY]);
+    }
+
+    #[test]
+    fn no_logits_processor_is_noop() {
+        use crate::{LogitsProcessor, NoLogitsProcessor};
+        let mut logits = vec![1.0f32, -0.5, 4.0];
+        let before = logits.clone();
+        NoLogitsProcessor.process(&mut logits, &[1, 2, 3]);
+        assert_eq!(logits, before);
     }
 
     #[test]
