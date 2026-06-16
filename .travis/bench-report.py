@@ -87,13 +87,51 @@ def reference(bench_data, triple, device):
     return vals, noise, ref_day
 
 
-def humanize(metric):
+# metric type-token -> (human label, unit); first substring match wins.
+TYPE_INFO = [
+    ("evaltime",                 ("inference",     "s")),
+    ("time_to_model_ready",      ("load+optimize", "s")),
+    ("time_to_before_optimize",  ("load",          "s")),
+    ("rsz_at_model_ready",       ("RSS @ ready",   "mem")),
+    ("rsz_at_before_optimize",   ("RSS @ load",    "mem")),
+    ("active_at_model_ready",    ("heap @ ready",  "mem")),
+    ("active_at_before_optimize",("heap @ load",   "mem")),
+    ("pp512",                    ("prefill",       "tok")),
+    ("tg128",                    ("decode",        "tok")),
+    ("bench_runtime",            ("bench wall",    "s")),
+    ("binary_size",              ("binary size",   "mem")),
+]
+
+
+def describe(metric):
+    """(model, label, variant, unit) for a metric key kind.model.type.variant."""
     p = metric.split(".")
-    if p[0] in ("net", "llm") and len(p) >= 4:
-        return f"{p[1]} {p[2]} ({p[-1]})"
-    if p[0] in ("net", "llm") and len(p) == 3:
-        return f"{p[1]} {p[2]}"
-    return metric
+    label, unit = None, "raw"
+    for key, (lbl, u) in TYPE_INFO:
+        if key in metric:
+            label, unit = lbl, u
+            break
+    if p[0] in ("net", "llm"):
+        model = p[1] if len(p) > 1 else p[0]
+        return model, label or (p[2] if len(p) >= 3 else metric), (p[-1] if len(p) >= 4 else ""), unit
+    return p[0], label or (p[1] if len(p) > 1 else metric), "", unit
+
+
+def fmt_val(v, unit):
+    if unit == "s":
+        return f"{v * 1000:.3g} ms" if v < 1 else f"{v:.3g} s"
+    if unit == "mem":
+        return f"{v / 1e6:.3g} MB" if v >= 1e6 else f"{v / 1e3:.3g} kB"
+    if unit == "tok":
+        return f"{v:.4g} tok/s"
+    return f"{v:.4g}"
+
+
+def cell(metric):
+    """two-line table cell: model on top, 'label · variant' below in small text."""
+    model, label, variant, _ = describe(metric)
+    sub = f"{label} · {variant}" if variant else label
+    return f"{model}<br><sub>{sub}</sub>"
 
 
 def main():
@@ -145,15 +183,13 @@ def main():
     n_metrics = len(rows)
     devs = ", ".join(f"`{d}`" for d in sorted(set(devices)))
 
-    def fmt(v):
-        return f"{v:.4g}"
-
     def table(items):
         lines = ["| Δ | metric | device | main → PR |", "|---|---|---|---|"]
         for r in items:
             icon = "🔴" if r["worse"] else "🟢"
-            lines.append(f"| {icon} **{r['delta']:+.1f}%** | {humanize(r['metric'])} "
-                         f"| `{r['device']}` | {fmt(r['ref'])} → {fmt(r['pr'])} |")
+            unit = describe(r["metric"])[3]
+            lines.append(f"| {icon} **{r['delta']:+.1f}%** | {cell(r['metric'])} "
+                         f"| `{r['device']}` | {fmt_val(r['ref'], unit)} → {fmt_val(r['pr'], unit)} |")
         return "\n".join(lines)
 
     marker = "<!-- bench-vs-main -->"
@@ -168,9 +204,9 @@ def main():
         parts += ["**Regressions** (worst first)", "", table(regr), ""]
     if impr:
         parts += [f"<details><summary>🟢 {len(impr)} improvement(s)</summary>\n\n{table(impr)}\n</details>", ""]
-    parts += [f"_advisory · adaptive thresholds (max(floor, k×noise) vs the series' own "
-              f"history) · single-shot vs nightly reference · "
-              f"full table → [run summary]({os.environ.get('RUN_URL', '#')})_"]
+    parts += [f"_lower is better except prefill/decode (tok/s) · adaptive thresholds "
+              f"(max(floor, k×noise) vs the series' own history) · single-shot vs nightly "
+              f"reference · full table → [run summary]({os.environ.get('RUN_URL', '#')})_"]
     open(args.out, "w").write("\n".join(parts) + "\n")
 
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
@@ -182,7 +218,9 @@ def main():
                 fh.write(f"## {dev} ({len(drows)} metrics)\n\n| Δ | metric | main → PR |\n|---|---|---|\n")
                 for r in drows:
                     flag = "🔴" if (r["worse"] and r["mover"]) else "🟢" if (r["mover"]) else ""
-                    fh.write(f"| {flag} {r['delta']:+.1f}% | {humanize(r['metric'])} | {fmt(r['ref'])} → {fmt(r['pr'])} |\n")
+                    unit = describe(r["metric"])[3]
+                    fh.write(f"| {flag} {r['delta']:+.1f}% | {cell(r['metric'])} | "
+                             f"{fmt_val(r['ref'], unit)} → {fmt_val(r['pr'], unit)} |\n")
                 fh.write("\n")
     print(f"regressions={len(regr)} improvements={len(impr)} metrics={n_metrics}")
 
