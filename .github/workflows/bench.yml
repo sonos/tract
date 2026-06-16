@@ -140,7 +140,7 @@ jobs:
             --triple "$TRIPLE" --device "$DEVICE" --day "$DAY"
           cd bench-data
           git config user.name "tract-ci"
-          git config user.email "kali@zoy.org"
+          git config user.email "tract-ci@users.noreply.github.com"
           git add -A
           git commit -m "bench: $DEVICE $DAY ${REF:0:9}"
           for i in 1 2 3 4 5; do
