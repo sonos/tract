@@ -17,6 +17,7 @@ good, times/sizes/memory up is bad.
 import argparse, datetime, glob, json, os, re, tomllib
 
 HIGHER_BETTER = re.compile(r"\.(pp\d+|tg\d+)\.")   # llm throughput; everything else lower-is-better
+SPEED = re.compile(r"\.(evaltime|pp\d+|tg\d+)\.")  # the merge signal: inference speed, shown first
 
 
 def read_metrics(path):
@@ -89,7 +90,7 @@ def reference(bench_data, triple, device):
 
 # metric type-token -> (human label, unit); first substring match wins.
 TYPE_INFO = [
-    ("evaltime",                 ("inference",     "s")),
+    ("evaltime",                 ("evaltime",      "s")),
     ("time_to_model_ready",      ("load+optimize", "s")),
     ("time_to_before_optimize",  ("load",          "s")),
     ("rsz_at_model_ready",       ("RSS @ ready",   "mem")),
@@ -121,6 +122,8 @@ def fmt_val(v, unit):
     if unit == "s":
         return f"{v * 1000:.3g} ms" if v < 1 else f"{v:.3g} s"
     if unit == "mem":
+        if v >= 1e9:
+            return f"{v / 1e9:.3g} GB"
         return f"{v / 1e6:.3g} MB" if v >= 1e6 else f"{v / 1e3:.3g} kB"
     if unit == "tok":
         return f"{v:.4g} tok/s"
@@ -176,7 +179,8 @@ def main():
 
     movers = [r for r in rows if r["mover"]]
     regr = sorted([r for r in movers if r["worse"]], key=lambda r: -abs(r["delta"]))
-    impr = sorted([r for r in movers if not r["worse"]], key=lambda r: -abs(r["delta"]))
+    impr = sorted([r for r in movers if not r["worse"]],
+                  key=lambda r: (not SPEED.search(r["metric"]), -abs(r["delta"])))
 
     ref_day = max(ref_days).isoformat() if ref_days else "n/a"
     age = (datetime.date.today() - max(ref_days)).days if ref_days else "?"
@@ -192,16 +196,26 @@ def main():
                          f"| `{r['device']}` | {fmt_val(r['ref'], unit)} → {fmt_val(r['pr'], unit)} |")
         return "\n".join(lines)
 
+    speed_regr = [r for r in regr if SPEED.search(r["metric"])]
+    other_regr = [r for r in regr if not SPEED.search(r["metric"])]
+
     marker = "<!-- bench-vs-main -->"
-    if regr:
-        head = f"🔴 **Bench vs main — {len(regr)} regression(s)**"
+    if speed_regr:
+        head = f"🔴 **Bench vs main — {len(speed_regr)} speed regression(s)**"
+        if other_regr:
+            head += f" · {len(other_regr)} load/memory"
+    elif other_regr:
+        head = f"🟡 **Bench vs main — no speed regressions** · {len(other_regr)} load/memory mover(s)"
     else:
         head = "✅ **Bench vs main — no regressions**"
     parts = [marker, head, "",
              f"Reference: main nightly, latest **{ref_day}** ({age}d old) · "
              f"PR `{args.pr_sha[:9]}` · ran on {devs} · {n_metrics} metrics compared", ""]
-    if regr:
-        parts += ["**Regressions** (worst first)", "", table(regr), ""]
+    # speed is the merge signal — always its own section, with explicit reassurance when clean
+    parts += ["**Speed** — evaltime · prefill · decode", ""]
+    parts += [table(speed_regr) if speed_regr else "_no inference-speed regressions_", ""]
+    if other_regr:
+        parts += ["**Load & memory** (worst first)", "", table(other_regr), ""]
     if impr:
         parts += [f"<details><summary>🟢 {len(impr)} improvement(s)</summary>\n\n{table(impr)}\n</details>", ""]
     parts += [f"_lower is better except prefill/decode (tok/s) · adaptive thresholds "
