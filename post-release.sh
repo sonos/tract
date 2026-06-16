@@ -34,5 +34,5 @@ done
 # versions so the committed lock matches (otherwise the next build rewrites it).
 cargo update --workspace --offline
 
-git commit . -m "post-release $VERSION"
+git -c user.name="tract-ci" -c user.email="tract-ci@users.noreply.github.com" commit . -m "post-release $VERSION"
 git push
