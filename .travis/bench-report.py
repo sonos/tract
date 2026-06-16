@@ -7,11 +7,14 @@ checkout (the nightly-main reference), and emits:
   - <out>           : the PR comment markdown (movers only, worst first)
   - $GITHUB_STEP_SUMMARY : the full delta table, grouped by device
 
-Single-shot vs the committed nightly reference; |Δ| must reach the per-class threshold
-(.travis/bench-thresholds.json) to count as a mover. Direction-aware: tok/s up is good,
-times/sizes/memory up is bad.
+Single-shot vs the committed nightly reference; |Δ| must reach an adaptive threshold
+(.travis/bench-thresholds.toml) to count as a mover. The threshold is
+max(class_floor, k * noise), where `noise` is the series' own recent day-to-day
+dispersion in the reference — so a noisy (host, model) self-widens and a clean one
+stays tight, with no metric named or excluded by hand. Direction-aware: tok/s up is
+good, times/sizes/memory up is bad.
 """
-import argparse, datetime, glob, json, math, os, re
+import argparse, datetime, glob, json, os, re, tomllib
 
 HIGHER_BETTER = re.compile(r"\.(pp\d+|tg\d+)\.")   # llm throughput; everything else lower-is-better
 
@@ -30,29 +33,58 @@ def read_metrics(path):
     return out
 
 
-def threshold_for(metric, cfg):
-    for cls, t in cfg["classes"].items():
-        if cls in metric:
+def floor_for(metric, floors):
+    for cls, t in floors.items():
+        if cls != "default" and cls in metric:
             return t
-    return cfg["default"]
+    return floors.get("default", 5)
+
+
+def threshold_for(metric, cfg, noise_pct):
+    """Adaptive: max(class floor, k * the series' own historical noise). Falls back to
+    the floor alone when there's too little history to estimate noise."""
+    floor = floor_for(metric, cfg["floors"])
+    if noise_pct is None:
+        return floor
+    return max(floor, cfg.get("k", 3.0) * noise_pct)
+
+
+def series_noise(arr, window=40, min_pairs=8):
+    """p90 of recent day-to-day |Δ%| for a metric series — its intrinsic run-to-run
+    dispersion. p90 (not max) so a stray real-change spike doesn't inflate it; None
+    when there isn't enough history to judge."""
+    d, prev = [], None
+    for v in arr[-window:]:
+        if v is None:
+            prev = None
+            continue
+        if prev not in (None, 0):
+            d.append(abs(v - prev) / abs(prev) * 100.0)
+        prev = v
+    if len(d) < min_pairs:
+        return None
+    d.sort()
+    return d[min(len(d) - 1, int(0.9 * len(d)))]
 
 
 def reference(bench_data, triple, device):
-    """latest non-null value per metric from bench-data/<triple>/<device>.json, + its date."""
+    """latest non-null value + recent noise (p90 day-to-day |Δ%|) per metric from
+    bench-data/<triple>/<device>.json, plus the reference date."""
     path = os.path.join(bench_data, triple, f"{device}.json")
     if not os.path.exists(path):
-        return {}, None
+        return {}, {}, None
     d = json.load(open(path))
     start = datetime.date.fromisoformat(d["start_day"])
-    vals, last_idx = {}, -1
+    vals, noise, last_idx = {}, {}, -1
     for m, arr in d["metrics"].items():
+        noise[m] = series_noise(arr)
         for i in range(len(arr) - 1, -1, -1):
             if arr[i] is not None:
                 vals[m] = arr[i]
                 last_idx = max(last_idx, i)
                 break
     ref_day = start + datetime.timedelta(last_idx) if last_idx >= 0 else None
-    return vals, ref_day
+    return vals, noise, ref_day
 
 
 def humanize(metric):
@@ -73,7 +105,8 @@ def main():
     ap.add_argument("--out", required=True, help="PR comment markdown path")
     args = ap.parse_args()
 
-    cfg = json.load(open(args.thresholds))
+    cfg = tomllib.load(open(args.thresholds, "rb"))
+    min_load = cfg.get("min_load_seconds", 0.0)
     rows, devices, ref_days = [], [], []
     for meta_path in sorted(glob.glob(os.path.join(args.results, "*", "meta.json"))):
         d = os.path.dirname(meta_path)
@@ -81,7 +114,7 @@ def main():
         device, triple = meta["device"], meta["triple"]
         devices.append(device)
         pr = read_metrics(os.path.join(d, "metrics"))
-        ref, ref_day = reference(args.bench_data, triple, device)
+        ref, noise, ref_day = reference(args.bench_data, triple, device)
         if ref_day:
             ref_days.append(ref_day)
         for metric, prv in pr.items():
@@ -91,9 +124,17 @@ def main():
             delta = (prv - rv) / rv * 100.0
             higher_better = bool(HIGHER_BETTER.search(metric))
             worse = (delta < 0) if higher_better else (delta > 0)
-            thr = threshold_for(metric, cfg)
+            n = noise.get(metric)
+            thr = threshold_for(metric, cfg, n)
+            mover = abs(delta) >= thr
+            # noisy classes can't be judged on one shot without a measured baseline
+            if n is None and any(c in metric for c in cfg.get("needs_history", [])):
+                mover = False
+            # sub-resolution loads carry no signal; drop them as movers (still shown)
+            if "time_to" in metric and rv < min_load:
+                mover = False
             rows.append({"device": device, "metric": metric, "ref": rv, "pr": prv,
-                         "delta": delta, "worse": worse, "mover": abs(delta) >= thr})
+                         "delta": delta, "worse": worse, "mover": mover})
 
     movers = [r for r in rows if r["mover"]]
     regr = sorted([r for r in movers if r["worse"]], key=lambda r: -abs(r["delta"]))
@@ -127,7 +168,8 @@ def main():
         parts += ["**Regressions** (worst first)", "", table(regr), ""]
     if impr:
         parts += [f"<details><summary>🟢 {len(impr)} improvement(s)</summary>\n\n{table(impr)}\n</details>", ""]
-    parts += [f"_advisory · per-class thresholds · single-shot vs nightly reference · "
+    parts += [f"_advisory · adaptive thresholds (max(floor, k×noise) vs the series' own "
+              f"history) · single-shot vs nightly reference · "
               f"full table → [run summary]({os.environ.get('RUN_URL', '#')})_"]
     open(args.out, "w").write("\n".join(parts) + "\n")
 

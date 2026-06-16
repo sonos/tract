@@ -195,7 +195,7 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           python3 .travis/bench-report.py --results results --bench-data bench-data \
-            --thresholds .travis/bench-thresholds.json --pr-sha "$PR_SHA" --out pr-comment.md
+            --thresholds .travis/bench-thresholds.toml --pr-sha "$PR_SHA" --out pr-comment.md
       - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         with:
           script: |

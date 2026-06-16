@@ -1,0 +1,30 @@
+# Noise guards for the PR-vs-main bench comparison.
+#
+# A metric flags only when |Δ%| >= max(floor, k * noise), where `noise` is that
+# series' own recent day-to-day dispersion (p90) in the nightly reference. A noisy
+# host/model self-widens; a clean one stays at its floor. So no metric needs to be
+# named or excluded by hand: each (host, model) earns its threshold from its own
+# history. This file is magnitudes only — direction (higher-is-better for tok/s) is
+# handled in code.
+
+k = 3.0                  # a flag must beat k x the series' own historical noise
+min_load_seconds = 0.03  # ignore time_to_* below this load: sub-resolution jitter
+
+# Classes too noisy to gate on a single shot without a measured baseline: they stay
+# silent until the reference series is long enough to estimate noise (e.g. a freshly
+# added host). Intrinsically-clean classes (evaltime, tok/s, active_at) still gate at
+# their floor with no history.
+needs_history = ["time_to", "rsz", "bench_runtime"]
+
+# Percent; the minimum that applies when a series is essentially noiseless (or has
+# too little history to estimate noise). First substring match wins, else `default`.
+[floors]
+default       = 5
+tg            = 3
+pp            = 3
+evaltime      = 5
+active_at     = 2
+time_to       = 5
+rsz           = 5   # matches rsz_at and rszmax; k*noise auto-widens it on noisy hosts
+bench_runtime = 10
+binary_size   = 1
