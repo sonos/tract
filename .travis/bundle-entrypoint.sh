@@ -1,55 +1,58 @@
 #!/bin/sh
 
-set -ex
+set -e
+
+# Foldable log sections: real groups under GitHub Actions, plain headers elsewhere.
+# This script also runs on busybox devices, where the ::group:: commands are just noise.
+group() {
+    if [ -n "$GITHUB_ACTIONS" ]; then printf '::group::%s\n' "$1"; else printf '== %s ==\n' "$1"; fi
+}
+endgroup() {
+    if [ -n "$GITHUB_ACTIONS" ]; then printf '::endgroup::\n'; fi
+}
 
 start=$(date +%s)
 
-ROOT=`pwd`
+ROOT=$(pwd)
 
-if [ -n "$TRACT_RUN" ]
-then
+if [ -n "$TRACT_RUN" ]; then
     TRACT=$TRACT_RUN
-elif [ -x tract ]
-then
+elif [ -x tract ]; then
     TRACT="./tract"
 else
+    group "build tract-cli"
     cargo build -p tract-cli -q --release
+    endgroup
     TRACT="./target/release/tract"
 fi
 
+group "fetch models"
 CACHEDIR=${CACHEDIR:-$HOME/.cache/tract-ci-minion-models}
-[ -d $CACHEDIR ] || mkdir $CACHEDIR
+[ -d "$CACHEDIR" ] || mkdir "$CACHEDIR"
 PATH=$PATH:/usr/local/bin # for aws command on darwin
-aws s3 sync s3://tract-ci-builds/model $CACHEDIR || echo "Warning: aws s3 sync failed, continuing with cached models"
-(cd $CACHEDIR
+aws s3 sync s3://tract-ci-builds/model "$CACHEDIR" --only-show-errors || echo "Warning: aws s3 sync failed, continuing with cached models"
+(cd "$CACHEDIR"
     [ -d en_libri_real ] || tar zxf en_libri_real.tar.gz
     [ -d en_tdnn_lstm_bn_q7 ] || tar zxf en_tdnn_lstm_bn_q7.tar.gz
 )
-
-
+endgroup
 
 touch metrics
-if [ -e sizes ]
-then
-    cat sizes >> metrics
-fi
+[ -e sizes ] && cat sizes >> metrics
 
-if [ $(uname) = "Linux" ]
-then
-    if [ -r /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor -a `cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor` = "userspace" ]
-    then
-            F=$(printf "%s\n" `cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_available_frequencies` | sort -n | tail -1)
-            echo $F > /sys/devices/system/cpu/cpu0/cpufreq/scaling_setspeed
-    fi
+if [ "$(uname)" = "Linux" ] && [ -r /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor ] && [ "$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor)" = "userspace" ]; then
+    F=$(printf '%s\n' $(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_available_frequencies) | sort -n | tail -1)
+    echo "$F" > /sys/devices/system/cpu/cpu0/cpufreq/scaling_setspeed
 fi
 
 net_bench() {
     net=$1
     pb=$2
     shift 2
+    printf '  %s %s\n' "$net" "$pb"
 
     $TRACT "$@" --machine-friendly -O bench --allow-random-input $BENCH_OPTS > tract.out
-    v=`cat tract.out | grep -a real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
+    v=$(grep -a real tract.out | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/')
     echo net.$net.evaltime.$pb $v >> metrics
 
     $TRACT "$@" --readings --readings-heartbeat 1000 --machine-friendly -O bench --allow-random-input $BENCH_OPTS > tract.out
@@ -63,7 +66,7 @@ net_bench() {
         echo net.$net.rsz_at_$stage.$pb $v >> metrics
         f=$(grep -a $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 11 -d ' ')
         a=$(grep -a $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 10 -d ' ')
-        echo net.$net.active_at_$stage.$pb $(($a-$f)) >> metrics
+        echo net.$net.active_at_$stage.$pb $((a - f)) >> metrics
     done
 }
 
@@ -71,13 +74,13 @@ llm_bench() {
     net=$1
     pb=$2
     shift 2
+    printf '  %s %s\n' "$net" "$pb"
 
-    if  $TRACT "$@"  --llm --machine-friendly -O llm-bench $BENCH_OPTS > tract.out
+    if $TRACT "$@" --llm --machine-friendly -O llm-bench $BENCH_OPTS > tract.out
     then
-        cat tract.out
-        echo llm.$net.pp512.$pb $(cat tract.out | grep -a PP512 | cut -f 2 -d ' ') >> metrics
-        echo llm.$net.tg128.$pb $(cat tract.out | grep -a TG128 | cut -f 2 -d ' ') >> metrics
-    fi 
+        echo llm.$net.pp512.$pb $(grep -a PP512 tract.out | cut -f 2 -d ' ') >> metrics
+        echo llm.$net.tg128.$pb $(grep -a TG128 tract.out | cut -f 2 -d ' ') >> metrics
+    fi
 
     if $TRACT "$@" --readings --readings-heartbeat 1000 --llm --machine-friendly -O llm-bench $BENCH_OPTS > /dev/null
     then
@@ -90,14 +93,15 @@ llm_bench() {
             echo llm.$net.rsz_at_$stage.$pb $v >> metrics
             f=$(grep -a $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 11 -d ' ')
             a=$(grep -a $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 10 -d ' ')
-            if [ -n "$a" -a -n "$f" ]
+            if [ -n "$a" ] && [ -n "$f" ]
             then
-                 echo llm.$net.active_at_$stage.$pb $(($a-$f)) >> metrics
+                echo llm.$net.active_at_$stage.$pb $((a - f)) >> metrics
             fi
         done
     fi
 }
 
+group "net benches"
 net_bench arm_ml_kws_cnn_m pass $CACHEDIR/ARM-ML-KWS-CNN-M.pb -i 49,10,f32 --partial --input-node Mfcc
 
 net_bench hey_snips_v1 400ms $CACHEDIR/hey_snips_v1.pb -i 80,40,f32
@@ -138,21 +142,20 @@ net_bench voicecom_float 2sec $CACHEDIR/snips-voice-commands-cnn-float.pb -i 200
 
 net_bench trunet pulse1_f32 $CACHEDIR/trunet_dummy.nnef.tgz --nnef-tract-core --pulse 1
 net_bench trunet pulse1_f16 $CACHEDIR/trunet_dummy.nnef.tgz --nnef-tract-core -t f32_to_f16 --pulse 1
+endgroup
 
-if [ $(uname) = "Darwin" ]
-then
+if [ "$(uname)" = "Darwin" ]; then
     LLM_BACKENDS="cpu metal"
 fi
 
-if which nvidia-smi 
-then 
+if which nvidia-smi > /dev/null 2>&1; then
     LLM_BACKENDS="cpu cuda"
 fi
 
-if [ -n "$LLM_BACKENDS" ]
-then
+if [ -n "$LLM_BACKENDS" ]; then
     for backend in $LLM_BACKENDS
     do
+        group "llm benches: $backend"
         case $backend in
             cpu) extra="--timeout 180";;
             metal) extra="--metal --timeout 60"
@@ -182,10 +185,10 @@ then
             llm_bench llama-3_2-3B-instruct-q40ef16-541 $backend $CACHEDIR/Llama-3.2-3B-Instruct-q40ef16.541.nnef.tgz $extra
             llm_bench qwen3-1_7B-q40ef16-541 $backend $CACHEDIR/Qwen3-1.7B-q40ef16.541.nnef.tgz $extra
         fi
+        endgroup
     done
 fi
 
 end=$(date +%s)
 
-echo bundle.bench-runtime  $(($end - $start)) >> metrics
-
+echo bundle.bench-runtime $((end - start)) >> metrics
