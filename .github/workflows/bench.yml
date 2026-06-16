@@ -1,4 +1,4 @@
-name: Nightly bench
+name: Bench
 
 # Build tract on GitHub-hosted runners, run the bench suite on the self-hosted bench
 # machines, and either (nightly) append one row per run to the bench-data branch, or
