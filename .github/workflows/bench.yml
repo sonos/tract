@@ -75,8 +75,42 @@ jobs:
           name: tract-cli-${{ matrix.triple }}
           path: ${{ matrix.bin }}
 
+  # Build the per-device retry expectations here, on a modern Python (tomllib), not on
+  # the bench runners — the Jetson's python3 predates tomllib. The runners only consume
+  # the resulting text file (via awk in the bundle), no Python needed there.
+  expectations:
+    needs: prepare
+    if: needs.prepare.outputs.enabled == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ needs.prepare.outputs.ref }}
+          persist-credentials: false
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: bench-data
+          path: bench-ref
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Build per-device expectations
+        run: |
+          mkdir -p expectations
+          gen() {   # gen <device> <triple>; mirrors the bench matrix
+            python3 .travis/bench-expectations.py --bench-data bench-ref \
+              --thresholds .travis/bench-thresholds.toml \
+              --triple "$2" --device "$1" --out "expectations/$1.txt"
+          }
+          gen apple-m1-max        aarch64-apple-darwin
+          gen i9-11900kb_rtx-4060 x86_64-unknown-linux-gnu
+          gen jetson-orin-nx      aarch64-unknown-linux-gnu-stretch
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: expectations
+          path: expectations
+
   bench:
-    needs: [ prepare, build ]
+    needs: [ prepare, build, expectations ]
     if: needs.prepare.outputs.enabled == 'true'
     runs-on: ${{ matrix.runner }}
     permissions:
@@ -112,26 +146,15 @@ jobs:
         with:
           name: tract-cli-${{ matrix.triple }}
           path: tract-cli
-      - name: Checkout bench-data (expectations reference)
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          ref: bench-data
-          path: bench-ref
-          fetch-depth: 1
-          persist-credentials: false
-      - name: Build expectations
-        env:
-          DEVICE: ${{ matrix.target }}
-          TRIPLE: ${{ matrix.triple }}
-        run: |
-          python3 .travis/bench-expectations.py --bench-data bench-ref \
-            --thresholds .travis/bench-thresholds.toml \
-            --triple "$TRIPLE" --device "$DEVICE" --out "$GITHUB_WORKSPACE/expectations.txt"
-          echo "EXPECTATIONS=$GITHUB_WORKSPACE/expectations.txt" >> "$GITHUB_ENV"
+          name: expectations
+          path: expectations
       - name: Run bench suite
         run: |
           chmod +x tract-cli/tract
           export TRACT_RUN="$GITHUB_WORKSPACE/tract-cli/tract"
+          export EXPECTATIONS="$GITHUB_WORKSPACE/expectations/${{ matrix.target }}.txt"
           ./.travis/bundle-entrypoint.sh        # produces ./metrics
 
       # --- nightly / dispatch: append the row to bench-data ---
