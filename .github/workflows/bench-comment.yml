@@ -1,0 +1,66 @@
+name: Bench comment
+
+# Trampoline for the Bench report. The Bench workflow runs on `pull_request`, which gets
+# a read-only token on fork PRs and so cannot comment. It instead uploads the rendered
+# comparison as the `bench-comment` artifact; this workflow runs on `workflow_run` (base
+# context, write token) and posts it — working for fork and same-repo PRs alike.
+#
+# Security: the target PR is resolved from the triggering run's head SHA, never from
+# artifact contents, so a fork cannot redirect the comment at another issue. The artifact
+# only carries the comment body (a bench table rendered by our own tooling).
+
+# Hardened: no fork code is checked out or run here; the target PR comes from the run's
+# head SHA (not the artifact), and the token only posts a comment. workflow_run is the only
+# way to get a write token for fork-PR comments.
+on:  # zizmor: ignore[dangerous-triggers]
+  workflow_run:
+    workflows: ["Bench"]
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: read           # download the artifact from the triggering run
+  pull-requests: write    # post the comment
+
+jobs:
+  comment:
+    if: ${{ github.event.workflow_run.event == 'pull_request' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        continue-on-error: true   # no artifact => nothing comparable => nothing to post
+        with:
+          name: bench-comment
+          path: bench-comment
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        with:
+          script: |
+            const fs = require('fs');
+            if (!fs.existsSync('bench-comment/pr-comment.md')) {
+              core.info('no comment artifact; nothing to post');
+              return;
+            }
+            const body = fs.readFileSync('bench-comment/pr-comment.md', 'utf8');
+            // Resolve the PR from the run's head SHA — never trust artifact-supplied targets.
+            const sha = context.payload.workflow_run.head_sha;
+            const { data: prs } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+              owner: context.repo.owner, repo: context.repo.repo, commit_sha: sha,
+            });
+            const pr = prs.find(p => p.state === 'open');
+            if (!pr) {
+              core.info(`no open PR for ${sha}; nothing to post`);
+              return;
+            }
+            const issue_number = pr.number;
+            const marker = '<!-- bench-vs-main -->';
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner, repo: context.repo.repo, issue_number, per_page: 100,
+            });
+            const prev = comments.find(c => c.body?.includes(marker));
+            if (prev) {
+              await github.rest.issues.updateComment({ owner: context.repo.owner, repo: context.repo.repo, comment_id: prev.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number, body });
+            }
