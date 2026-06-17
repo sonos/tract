@@ -928,6 +928,7 @@ fn wire_initiator(
 ///
 /// The chunked DiagGather has fixed `offset = k-1` (= P-1, the relative-
 /// position-zero entry within the per-pulse window) and `out_len = W`.
+#[allow(clippy::too_many_arguments)]
 fn wire_initiator_diag_gather(
     patch: &mut TypedModelPatch,
     model: &TypedModel,
@@ -1002,6 +1003,7 @@ fn wire_initiator_diag_gather(
 /// Non-streaming inputs are tapped and rank-bumped to the chunked-frame rank
 /// (= score_rank + 1).  The chunked op's own broadcasting fills in the
 /// streaming dims.
+#[allow(clippy::too_many_arguments)]
 fn wire_initiator_typed_binop(
     patch: &mut TypedModelPatch,
     model: &TypedModel,
@@ -1341,6 +1343,7 @@ fn wire_uniform_tdim_initiator(
 /// position 0, and — for the contracted side — `WindowOnAxis` with a
 /// sentinel pad so out-of-stream boundary slots produce out-of-band
 /// values for the downstream predicate.  Returns the chunked outlet.
+#[allow(clippy::too_many_arguments)]
 fn chunkify_uniform_tdim_input(
     patch: &mut TypedModelPatch,
     model: &TypedModel,
@@ -1475,6 +1478,7 @@ fn sentinel_pad_value(dt: DatumType) -> TractResult<Tensor> {
 /// `axes_mapping::track_axis` asserts each chunked input's chunk axis
 /// reaches a unique output axis — bails with a precise error if the op
 /// would disconnect the chunk axis (e.g. softmax over it).
+#[allow(clippy::too_many_arguments)]
 fn wire_body(
     patch: &mut TypedModelPatch,
     model: &TypedModel,
@@ -1635,6 +1639,7 @@ fn bump_rank_to(
     Ok(outlet)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn wire_terminator(
     patch: &mut TypedModelPatch,
     model: &TypedModel,
@@ -1673,6 +1678,7 @@ fn wire_terminator(
 /// `WindowOnAxis(W)` + flatten reshape, so the within-chunk contracted
 /// axis on that input has size `W·k` instead of `k`.  Returns the chunked
 /// output.
+#[allow(clippy::too_many_arguments)]
 fn wire_initiator_einsum(
     patch: &mut TypedModelPatch,
     model: &TypedModel,
@@ -1758,6 +1764,7 @@ fn wire_initiator_einsum(
 /// matrix (= input 0 of the terminator).  `window_start_for(mask,
 /// contracted_axis)` picks the slot offset so the W chunks cover the
 /// in-band range relative to the consumer's logical chunk index.
+#[allow(clippy::too_many_arguments)]
 fn wrap_with_window_if_needed(
     patch: &mut TypedModelPatch,
     chunked: OutletId,
@@ -1851,6 +1858,7 @@ fn wire_terminator_reduce(
 /// this einsum) to the section's `contracted_axis` of the score matrix
 /// (= input 0 here) also gets `WindowOnAxis + flatten` so its
 /// within-chunk axis matches the W·k size of the windowed score.
+#[allow(clippy::too_many_arguments)]
 fn wire_terminator_einsum(
     patch: &mut TypedModelPatch,
     model: &TypedModel,

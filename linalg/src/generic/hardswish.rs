@@ -28,7 +28,7 @@ impl ElementWiseKer<f32> for SHardSwish4 {
         debug_assert!(x.as_ptr() as usize % Self::alignment_bytes() == 0);
         const INV6: f32 = 1.0 / 6.0;
         x.iter_mut().for_each(|px| {
-            let relu6 = ((*px + 3.0).min(6.0)).max(0.0);
+            let relu6 = (*px + 3.0).clamp(0.0, 6.0);
             *px = *px * relu6 * INV6;
         });
     }

@@ -125,6 +125,7 @@ impl Iff {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn cuda_iff_dispatch(
     cond: &DeviceTensor,
     then_value: &DeviceTensor,

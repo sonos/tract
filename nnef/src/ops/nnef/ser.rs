@@ -568,6 +568,8 @@ pub fn rewrite_same_lower_conv_to_explicit(
     let rank = op.pool_spec.rank();
     let mut before = TVec::new();
     let mut after = TVec::new();
+    // range is the pool_spec rank, not necessarily spatial_dims.len()
+    #[allow(clippy::needless_range_loop)]
     for i in 0..rank {
         let input_dim = spatial_dims[i]
             .to_usize()

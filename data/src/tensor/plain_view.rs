@@ -67,6 +67,11 @@ impl<'a> PlainView<'a> {
         self.tensor.len()
     }
 
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     // -- Plain-specific (direct storage access, no dispatch) --
 
     #[inline]
@@ -185,6 +190,11 @@ impl<'a> PlainViewMut<'a> {
     #[inline]
     pub fn len(&self) -> usize {
         self.len
+    }
+
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     // -- Read access (same as PlainView, self.storage reborrows as &PlainStorage) --

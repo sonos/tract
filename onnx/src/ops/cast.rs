@@ -66,9 +66,7 @@ impl ElementWiseMiniOp for Cast {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         let from = model.outlet_fact(node.inputs[0])?.datum_type;
-        if from == self.to {
-            Ok(Some(TypedModelPatch::replace_single_op(model, node, &node.inputs, Identity)?))
-        } else if from == TDim::datum_type() && self.to == i32::datum_type() {
+        if from == self.to || (from == TDim::datum_type() && self.to == i32::datum_type()) {
             Ok(Some(TypedModelPatch::replace_single_op(model, node, &node.inputs, Identity)?))
         } else if from == String::datum_type() && self.to == f32::datum_type() {
             Ok(None)

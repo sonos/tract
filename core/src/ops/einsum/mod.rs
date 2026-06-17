@@ -630,7 +630,7 @@ fn unit_k_to_broadcast_mul(
             .filter(|(_, c)| !c_axes.contains(c))
             .map(|(i, c)| (i, *c))
             .collect();
-        to_drop.sort_by(|a, b| b.0.cmp(&a.0));
+        to_drop.sort_by_key(|a| std::cmp::Reverse(a.0));
         for (pos, c) in to_drop {
             *wire = patch.wire_node(
                 format!("{name}.rm_extra_in{slot}_{c}"),

@@ -169,6 +169,7 @@ pub fn profile(
     Ok(())
 }
 
+#[allow(clippy::type_complexity)]
 pub fn profile_gpu(
     runnable: &Arc<dyn Runnable>,
     bench_limits: &BenchLimits,

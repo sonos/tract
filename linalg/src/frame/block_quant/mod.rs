@@ -139,7 +139,6 @@ pub trait BlockQuant:
                 self.quant_block_f32(block, &mut scratch);
                 self.dequant_block_f32(&scratch, block);
             }
-            drop(tensor_plain);
             Ok(tensor)
         } else if tensor.datum_type() == f16::datum_type() {
             let mut tensor_plain = tensor.try_as_plain_mut()?;
@@ -147,7 +146,6 @@ pub trait BlockQuant:
                 self.quant_block_f16(block, &mut scratch);
                 self.dequant_block_f16(&scratch, block);
             }
-            drop(tensor_plain);
             Ok(tensor)
         } else {
             todo!()
