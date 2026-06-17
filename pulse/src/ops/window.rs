@@ -53,7 +53,7 @@ fn pulsify(
     // `start + window - 1 < 0` (purely-past) — neither is needed yet.
     ensure!(op.start <= 0, "WindowOnAxis pulsifier: start > 0 not supported (got {})", op.start);
     ensure!(
-        op.start + op.window as i64 - 1 >= 0,
+        op.start + op.window as i64 > 0,
         "WindowOnAxis pulsifier: window must straddle current (start={}, window={})",
         op.start,
         op.window

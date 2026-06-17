@@ -28,15 +28,15 @@ fn declutter_xor(
     node: &TypedNode,
 ) -> TractResult<Option<TypedModelPatch>> {
     // Xor(x, 1) = Not(x)
-    if let Some(uniform) = crate::ops::binary::one_input_is_uniform(model, node)? {
-        if tensor0(1i64).close_enough(&uniform.uni, false).is_ok() {
-            return Ok(Some(TypedModelPatch::replace_single_op(
-                model,
-                node,
-                &[uniform.var],
-                crate::ops::element_wise::ElementWiseOp(Box::new(Not {}), None),
-            )?));
-        }
+    if let Some(uniform) = crate::ops::binary::one_input_is_uniform(model, node)?
+        && tensor0(1i64).close_enough(&uniform.uni, false).is_ok()
+    {
+        return Ok(Some(TypedModelPatch::replace_single_op(
+            model,
+            node,
+            &[uniform.var],
+            crate::ops::element_wise::ElementWiseOp(Box::new(Not {}), None),
+        )?));
     }
     Ok(None)
 }
@@ -153,12 +153,12 @@ impl TrueRange {
 
 pub(crate) fn classify_true_range(expr: &TDim, shape: &ShapeFact) -> Option<TrueRange> {
     fn try_ge(ge: &TDim, shape: &ShapeFact) -> Option<(usize, TDim)> {
-        if let TDim::Ge(lhs, rhs) = ge {
-            if let TDim::Sym(sym) = &**lhs {
-                let k = sym_to_coord_axis(sym)?;
-                if k < shape.rank() && !rhs.symbols().contains(sym) {
-                    return Some((k, *rhs.clone()));
-                }
+        if let TDim::Ge(lhs, rhs) = ge
+            && let TDim::Sym(sym) = &**lhs
+        {
+            let k = sym_to_coord_axis(sym)?;
+            if k < shape.rank() && !rhs.symbols().contains(sym) {
+                return Some((k, *rhs.clone()));
             }
         }
         None

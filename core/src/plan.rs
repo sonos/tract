@@ -587,7 +587,7 @@ where
         let mut v = tvec![];
         for o in plan.outputs.iter() {
             let vs = turn_state.values[o.node].as_mut().ok_or_else(|| {
-                format_err!("Outputs of {:?} are not computed", &plan.model.nodes()[o.node])
+                format_err!("Outputs of {:?} are not computed", plan.model.nodes()[o.node])
             })?;
             v.push(vs[o.slot].clone())
         }

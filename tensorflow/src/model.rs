@@ -177,7 +177,7 @@ impl Tensorflow {
 
         for pbnode in &graph.node {
             let node_id = if pbnode.op == "NextIteration" {
-                model.node_by_name(&*format!("{}-Sink", &pbnode.name))?.id
+                model.node_by_name(&*format!("{}-Sink", pbnode.name))?.id
             } else {
                 model.node_by_name(&pbnode.name)?.id
             };

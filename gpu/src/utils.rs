@@ -61,7 +61,7 @@ pub fn as_quant_fact<'a>(
     fact.exotic_fact
         .as_ref()
         .and_then(|of| of.downcast_ref::<BlockQuantFact>())
-        .and_then(|bqf| if bqf.format.dyn_eq(format) { Some(bqf) } else { None })
+        .filter(|&bqf| bqf.format.dyn_eq(format))
 }
 
 pub fn as_q40_tensor(a: &Tensor) -> Option<&BlockQuantStorage> {

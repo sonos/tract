@@ -425,25 +425,24 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
                 convert_sdpa_to_cuda_flash_attn(source, node, target, &mut device_inputs, op)?;
             return sync_model_outputs_if_required(source, node, target, outlet_ids);
         }
-        if let Some(conv) = node.op_as::<Conv>() {
-            if input_facts.iter().all(|f| DeviceTensor::is_supported_dt(f.datum_type))
-                && matches!(input_facts[0].datum_type, F16 | F32)
-            {
-                let device_inputs =
-                    sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
-                let outlet_ids = wire_cuda_conv(source, node, target, &device_inputs, conv)?;
-                return sync_model_outputs_if_required(source, node, target, outlet_ids);
-            }
+        if let Some(conv) = node.op_as::<Conv>()
+            && input_facts.iter().all(|f| DeviceTensor::is_supported_dt(f.datum_type))
+            && matches!(input_facts[0].datum_type, F16 | F32)
+        {
+            let device_inputs =
+                sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
+            let outlet_ids = wire_cuda_conv(source, node, target, &device_inputs, conv)?;
+            return sync_model_outputs_if_required(source, node, target, outlet_ids);
         }
         // Const: inline conversion, not a GPU op
-        if let Some(op) = node.op_as::<Const>() {
-            if DeviceTensor::is_supported_dt(op.val().datum_type()) {
-                let device_inputs =
-                    sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
-                let outlet_ids =
-                    target.wire_node(node.name.clone(), convert_const(op)?, &device_inputs)?;
-                return sync_model_outputs_if_required(source, node, target, outlet_ids);
-            }
+        if let Some(op) = node.op_as::<Const>()
+            && DeviceTensor::is_supported_dt(op.val().datum_type())
+        {
+            let device_inputs =
+                sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
+            let outlet_ids =
+                target.wire_node(node.name.clone(), convert_const(op)?, &device_inputs)?;
+            return sync_model_outputs_if_required(source, node, target, outlet_ids);
         }
 
         // Single-op translation.  Pre-check that the gpu_op accepts the
@@ -461,7 +460,7 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
         let target_inputs: TVec<TypedFact> = node
             .inputs
             .iter()
-            .map(|i| target.outlet_fact(mapping[i]).map(|f| f.clone()))
+            .map(|i| target.outlet_fact(mapping[i]).cloned())
             .collect::<TractResult<_>>()?;
         // Mirror what `sync_inputs_if_required(ToDevice)` will do at wire time:
         // wrap any non-device input as a device fact so the GPU op's

@@ -1056,19 +1056,18 @@ impl TDim {
                                 (Val(1), e) | (e, Val(1)) => Some((e, true)),
                                 _ => None,
                             };
-                            if let Some((expr, equals_one)) = boolean_case {
-                                if scope.prove_positive_or_zero_with_extra(expr, extra)
-                                    && scope.prove_positive_or_zero_with_extra(
-                                        &(Val(1) - expr.clone()),
-                                        extra,
-                                    )
-                                {
-                                    return if equals_one {
-                                        expr.clone()
-                                    } else {
-                                        (Val(1) - expr.clone()).simplify_rec(scope, scenario, extra)
-                                    };
-                                }
+                            if let Some((expr, equals_one)) = boolean_case
+                                && scope.prove_positive_or_zero_with_extra(expr, extra)
+                                && scope.prove_positive_or_zero_with_extra(
+                                    &(Val(1) - expr.clone()),
+                                    extra,
+                                )
+                            {
+                                return if equals_one {
+                                    expr.clone()
+                                } else {
+                                    (Val(1) - expr.clone()).simplify_rec(scope, scenario, extra)
+                                };
                             }
                             Eq(b!(a), b!(b))
                         }
@@ -1124,10 +1123,9 @@ impl TDim {
             Add(terms) => {
                 let mut bound: i64 = 0;
                 for t in terms {
-                    if let Some(b) = t.inclusive_bound(scope, upper) {
+                    {
+                        let b = t.inclusive_bound(scope, upper)?;
                         bound = bound.checked_add(b)?;
-                    } else {
-                        return None;
                     }
                 }
                 Some(bound)

@@ -328,12 +328,11 @@ impl TypedFact {
                 bail!("fact says {}, constant is {:?}", self.format_dt_shape_nocheck(), k);
             }
             if let Some(bqf) = self.exotic_fact().and_then(|of| of.downcast_ref::<BlockQuantFact>())
+                && let Some(bqs) = k.storage_as::<BlockQuantStorage>()
             {
-                if let Some(bqs) = k.storage_as::<BlockQuantStorage>() {
-                    let inner_bqf =
-                        BlockQuantFact::new(dyn_clone::clone_box(bqs.format()), k.shape().into());
-                    ensure!(&inner_bqf == bqf, "BlockQuantStorage fact mismatch");
-                }
+                let inner_bqf =
+                    BlockQuantFact::new(dyn_clone::clone_box(bqs.format()), k.shape().into());
+                ensure!(&inner_bqf == bqf, "BlockQuantStorage fact mismatch");
             }
         }
         if let Some(u) = &self.uniform

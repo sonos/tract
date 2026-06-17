@@ -67,7 +67,7 @@ pub fn bubble_roi(model: &TypedModel, node: &TypedNode) -> TractResult<Option<TV
         }
         if sub_map.is_empty() { Some(roi.clone()) } else { roi.substitute_all(&sub_map).ok() }
     };
-    let result: TVec<Option<TDim>> = (0..node.inputs.len()).map(|ix| remap_for_input(ix)).collect();
+    let result: TVec<Option<TDim>> = (0..node.inputs.len()).map(remap_for_input).collect();
     Ok(Some(result))
 }
 

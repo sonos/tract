@@ -130,20 +130,20 @@ pub(crate) fn compensate_zero_points(
             [0];
 
     let result = wire_with_rank_broadcast(
-        format!("{}.minus_a0_B", &name),
+        format!("{}.minus_a0_B", name),
         model,
         ops::math::sub(),
         &[result, a0_sum_b],
     )?[0];
     let result = wire_with_rank_broadcast(
-        format!("{}.minus_b0_A", &name),
+        format!("{}.minus_b0_A", name),
         model,
         ops::math::sub(),
         &[result, b0_sum_a],
     )?[0];
 
     let result = wire_with_rank_broadcast(
-        format!("{}.plus_a0_k_b0", &name),
+        format!("{}.plus_a0_k_b0", name),
         model,
         ops::math::add(),
         &[result, a0_k_b0],

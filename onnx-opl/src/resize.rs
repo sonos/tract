@@ -176,36 +176,36 @@ impl Resize {
         input_scale: Option<&Tensor>,
         input_sizes: Option<&Tensor>,
     ) -> TractResult<TVec<D>> {
-        if let Some(scale) = input_scale {
-            if scale.len() == input_shape.len() {
-                let mut shape = tvec!();
-                for (i, s) in input_shape
-                    .iter()
-                    .zip(scale.cast_to::<f32>()?.try_as_plain()?.as_slice::<f32>()?.iter())
-                {
-                    if s.round() == *s {
-                        shape.push(i.clone() * (*s as usize));
-                    } else if let Ok(i) = i.to_usize() {
-                        shape.push(((i as f32 * s) as usize).into());
-                    } else {
-                        bail!(
-                            "Can not compute output shape. inputs are {input_shape:?} and scale {scale:?}"
-                        )
-                    }
+        if let Some(scale) = input_scale
+            && scale.len() == input_shape.len()
+        {
+            let mut shape = tvec!();
+            for (i, s) in input_shape
+                .iter()
+                .zip(scale.cast_to::<f32>()?.try_as_plain()?.as_slice::<f32>()?.iter())
+            {
+                if s.round() == *s {
+                    shape.push(i.clone() * (*s as usize));
+                } else if let Ok(i) = i.to_usize() {
+                    shape.push(((i as f32 * s) as usize).into());
+                } else {
+                    bail!(
+                        "Can not compute output shape. inputs are {input_shape:?} and scale {scale:?}"
+                    )
                 }
-                return Ok(shape);
             }
+            return Ok(shape);
         }
-        if let Some(sizes) = input_sizes {
-            if sizes.len() == input_shape.len() {
-                return sizes
-                    .cast_to::<TDim>()?
-                    .try_as_plain()?
-                    .as_slice::<TDim>()?
-                    .iter()
-                    .map(|i| i.try_into())
-                    .collect();
-            }
+        if let Some(sizes) = input_sizes
+            && sizes.len() == input_shape.len()
+        {
+            return sizes
+                .cast_to::<TDim>()?
+                .try_as_plain()?
+                .as_slice::<TDim>()?
+                .iter()
+                .map(|i| i.try_into())
+                .collect();
         }
         bail!(
             "Neither sizes nor scales makes sense: input_shape: {:?}, scale: {:?}, sizes: {:?}",

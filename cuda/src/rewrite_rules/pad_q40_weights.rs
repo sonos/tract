@@ -27,15 +27,15 @@ fn effective_gemm_shape(
         if succ.op_is::<CudaGgmlGemm>() {
             return Ok(Some(effective_shape));
         }
-        if let Some(fao) = succ.op_as::<CudaFusedAxisOp>() {
-            if fao.op.is::<CudaGgmlGemm>() {
-                // Apply the fused axis ops for the weight input slot.
-                let weight_inlet = succ.inputs.iter().position(|i| i.node == cursor.id).unwrap();
-                for axis_op in &fao.grouped_axis_ops[weight_inlet] {
-                    axis_op.inner.change_shape_array(&mut effective_shape, false)?;
-                }
-                return Ok(Some(effective_shape));
+        if let Some(fao) = succ.op_as::<CudaFusedAxisOp>()
+            && fao.op.is::<CudaGgmlGemm>()
+        {
+            // Apply the fused axis ops for the weight input slot.
+            let weight_inlet = succ.inputs.iter().position(|i| i.node == cursor.id).unwrap();
+            for axis_op in &fao.grouped_axis_ops[weight_inlet] {
+                axis_op.inner.change_shape_array(&mut effective_shape, false)?;
             }
+            return Ok(Some(effective_shape));
         }
         if let Some(axis_op) = succ.op_as::<GpuAxisOp>() {
             axis_op.inner.change_shape_array(&mut effective_shape, false)?;

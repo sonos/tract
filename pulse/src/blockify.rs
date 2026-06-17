@@ -850,7 +850,7 @@ fn wire_affine_tail_pad(
         pads,
         mode: tract_core::ops::array::PadMode::Constant(pad_value),
     };
-    let name = format!("{}.affine_tail_pad", &model.nodes[boundary.node].name);
+    let name = format!("{}.affine_tail_pad", model.nodes[boundary.node].name);
     Ok(patch.wire_node(name, pad_op, &[merged])?[0])
 }
 
@@ -2066,7 +2066,7 @@ fn chunkify_einsum(
         .map(|(i, s)| if i == 0 { insert_at(s, output_streaming_start) } else { s.clone() })
         .collect();
     let new_mapping = AxesMapping::from_strs(&new_inputs, &new_outputs)?;
-    Ok(EinSum { axes: new_mapping, operating_dt: op.operating_dt, q_params: op.q_params.clone() })
+    Ok(EinSum { axes: new_mapping, operating_dt: op.operating_dt, q_params: op.q_params })
 }
 
 #[cfg(test)]

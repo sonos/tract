@@ -197,10 +197,10 @@ impl Sdpa {
 
         let scores_einsum = EinSum::new("bhgmk,bhgnk->bhgmn".parse().unwrap(), self.acc_datum_type);
         let scores = graph.wire_node("scores", scores_einsum, &[q, k])?[0];
-        if let Some(m) = &mut mask {
-            if graph.outlet_fact(*m)?.datum_type != self.acc_datum_type {
-                *m = graph.wire_node("cast_mask", Cast::new(self.acc_datum_type), &[*m])?[0];
-            }
+        if let Some(m) = &mut mask
+            && graph.outlet_fact(*m)?.datum_type != self.acc_datum_type
+        {
+            *m = graph.wire_node("cast_mask", Cast::new(self.acc_datum_type), &[*m])?[0];
         }
 
         let attention_weights =

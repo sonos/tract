@@ -63,7 +63,7 @@ fn linear_classifier(
     let (e_prime, binary_result_layout) = match intercepts_raw.as_ref() {
         Some(v) => {
             node.expect(
-                raw_coeffs.len() % v.len() == 0,
+                raw_coeffs.len().is_multiple_of(v.len()),
                 "coefficients length must be a multiple of intercepts length",
             )?;
             let e_prime = v.len();
@@ -71,7 +71,7 @@ fn linear_classifier(
             (e_prime, binary)
         }
         None if n_classes == 2 && multi_class == 0 => (1, true),
-        None if raw_coeffs.len() % n_classes == 0 => (n_classes, false),
+        None if raw_coeffs.len().is_multiple_of(n_classes) => (n_classes, false),
         None => bail!(
             "coefficients length {} not compatible with number of classes {}",
             raw_coeffs.len(),
@@ -80,7 +80,7 @@ fn linear_classifier(
     };
 
     node.expect(
-        raw_coeffs.len() % e_prime == 0,
+        raw_coeffs.len().is_multiple_of(e_prime),
         "coefficients length must be a multiple of number of models",
     )?;
 

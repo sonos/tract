@@ -356,10 +356,11 @@ impl SymbolScopeData {
                 return true;
             }
             // Div(a, q) with q >= 1 is non-negative whenever a is non-negative.
-            if let TDim::Div(a, q) = &t {
-                if *q >= 1 && self.prove_positive_or_zero_inner_with_extra(a, extra) {
-                    return true;
-                }
+            if let TDim::Div(a, q) = &t
+                && *q >= 1
+                && self.prove_positive_or_zero_inner_with_extra(a, extra)
+            {
+                return true;
             }
             let syms = t.symbols();
             for s in syms {

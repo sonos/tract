@@ -280,7 +280,7 @@ pub fn handle_stream(
         let chunk_sym = pulsed.symbols.sym(&chunk_sym_name);
         let chunk_size = chunk_size_t.cast_to_scalar::<i64>()? as usize;
         ensure!(
-            stream_dim % chunk_size == 0,
+            stream_dim.is_multiple_of(chunk_size),
             "stream_dim {stream_dim} not divisible by Blockify chunk size {chunk_size}"
         );
         concrete_sym_values = concrete_sym_values.with(&chunk_sym, (stream_dim / chunk_size) as _);

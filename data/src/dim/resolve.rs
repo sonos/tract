@@ -27,7 +27,7 @@ pub fn solve_for(sym: &Symbol, left: &TDim, right: &TDim) -> Option<TDim> {
         }
         TDim::MulInt(z, a) => {
             let gcd = right.gcd();
-            if gcd % z.unsigned_abs() == 0 {
+            if gcd.is_multiple_of(z.unsigned_abs()) {
                 solve_for(sym, a, &(right.clone() / *z))
             } else {
                 None

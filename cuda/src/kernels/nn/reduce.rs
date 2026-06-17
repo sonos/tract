@@ -75,10 +75,9 @@ crate::register_cuda_op!(tract_core::ops::nn::Reduce, |source, node, op| {
     let dt = source.node_input_facts(node.id)?[0].datum_type;
     if let Ok(gpu_op) =
         tract_gpu::ops::reduce::GpuReduce::from_tract_core(op, "Cuda", cuda_reduce_launch)
+        && cuda_reduce_is_supported_dt(&gpu_op.reducer, dt)
     {
-        if cuda_reduce_is_supported_dt(&gpu_op.reducer, dt) {
-            return Ok(Some(Box::new(gpu_op)));
-        }
+        return Ok(Some(Box::new(gpu_op)));
     }
     Ok(None)
 });

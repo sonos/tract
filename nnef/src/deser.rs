@@ -534,7 +534,7 @@ impl RValue {
                 };
                 builder
                     .wire_invocation(&inv, dt)
-                    .with_context(|| format!("Resolving invocation {:?}", &inv.id))
+                    .with_context(|| format!("Resolving invocation {:?}", inv.id))
             }
             RValue::Array(array) => Ok(Value::Array(
                 array

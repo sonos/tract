@@ -91,7 +91,7 @@ impl EinSum {
             if new_axis.inputs[ix].is_empty() {
                 let insert_at = self.axes.rank(InOut::In(ix));
                 tap = patch.wire_node(
-                    format!("{}.prop_axis.{}.input_{}", &node.name, new_axis.repr, ix),
+                    format!("{}.prop_axis.{}.input_{}", node.name, new_axis.repr, ix),
                     AxisOp::Add(insert_at),
                     &[tap],
                 )?[0];
@@ -115,7 +115,7 @@ impl EinSum {
         let mut wire = patch.wire_node(&node.name, Self { axes, ..self.clone() }, &taps)?;
         if let Some(position) = must_rm_axis {
             wire = patch.wire_node(
-                format!("{}.prop_axis.{}.output", &node.name, repr),
+                format!("{}.prop_axis.{}.output", node.name, repr),
                 AxisOp::Rm(position),
                 &wire,
             )?;
@@ -295,8 +295,7 @@ impl TypedOp for EinSum {
             }
             None
         };
-        let result: TVec<Option<TDim>> =
-            (0..node.inputs.len()).map(|ix| project_for_input(ix)).collect();
+        let result: TVec<Option<TDim>> = (0..node.inputs.len()).map(project_for_input).collect();
         Ok(Some(result))
     }
 
@@ -567,7 +566,7 @@ fn unit_k_to_broadcast_mul(
     // SDPA when head_dim=1, random-shape proptests with K=1) are intentionally left alone:
     // backend-specific pipelines (Metal SDPA fusion, MetalMul rank-4 broadcast-segment limit,
     // …) pattern-match on the matmul shape and break when we substitute a Mul.
-    let has_deconv_sum_consumer = node.outputs.first().map_or(false, |o| {
+    let has_deconv_sum_consumer = node.outputs.first().is_some_and(|o| {
         o.successors.iter().any(|inlet| model.node(inlet.node).op.name() == "DeconvSum")
     });
     if !has_deconv_sum_consumer {

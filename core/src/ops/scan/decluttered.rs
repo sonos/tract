@@ -519,7 +519,7 @@ impl Scan {
                 let inner_node = self.body.output_outlets()?[model_output_ix].node;
                 let inner_node = self.body.node(inner_node);
                 let mut patch = TypedModelPatch::new(format!("Extract const node {inner_node}"));
-                let cst = patch.add_const(format!("{}.{}", &node.name, &inner_node.name), k)?;
+                let cst = patch.add_const(format!("{}.{}", node.name, inner_node.name), k)?;
                 patch.shunt_outside(model, OutletId::new(node.id, slot), cst)?;
                 return Ok(Some(patch));
             }

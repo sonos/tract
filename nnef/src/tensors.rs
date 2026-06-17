@@ -68,7 +68,7 @@ pub fn read_tensor(mut reader: impl Read) -> TractResult<Tensor> {
     if header.item_type == 5 {
         let expected_bit_size = len.checked_mul(header.bits_per_item as usize);
         let real_bit_size = header.data_size_bytes as usize * 8;
-        if expected_bit_size.map_or(true, |e| !(real_bit_size - 8 <= e && e <= real_bit_size)) {
+        if expected_bit_size.is_none_or(|e| !(real_bit_size - 8 <= e && e <= real_bit_size)) {
             bail!(
                 "Shape and len mismatch: shape:{:?}, bits_per_item:{}, bytes:{} ",
                 shape,

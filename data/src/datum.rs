@@ -168,14 +168,14 @@ impl DatumType {
         i: impl IntoIterator<Item = impl std::borrow::Borrow<DatumType>>,
     ) -> Option<DatumType> {
         let mut iter = i.into_iter();
-        let mut current = match iter.next() {
-            None => return None,
-            Some(it) => *it.borrow(),
+        let mut current = {
+            let it = iter.next()?;
+            *it.borrow()
         };
         for n in iter {
-            match current.common_super_type(*n.borrow()) {
-                None => return None,
-                Some(it) => current = it,
+            {
+                let it = current.common_super_type(*n.borrow())?;
+                current = it
             }
         }
         Some(current)

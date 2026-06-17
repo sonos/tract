@@ -22,7 +22,7 @@ pub fn pull_downsample_over_scan(
         .enumerate()
         .map(|(ix, oo)| {
             Ok(downsampled_body.wire_node(
-                format!("{}-{}", &down_node.name, ix),
+                format!("{}-{}", down_node.name, ix),
                 down_op.clone(),
                 &[oo],
             )?[0])
