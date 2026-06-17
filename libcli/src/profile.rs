@@ -67,6 +67,37 @@ impl BenchResult {
     }
 }
 
+/// Load-pipeline checkpoints whose readings the bench suite tracks: the dotted
+/// pattern matched against a normalized event label, and the metric-name fragment.
+/// The probe writes spaces and dashes as underscores, so `model.ready` matches the
+/// `model_ready` line and `before.optimize` matches `after_"before-optimize"`.
+const READINGS_STAGES: &[(&str, &str)] =
+    &[("model.ready", "model_ready"), ("before.optimize", "before_optimize")];
+
+/// Extract the load-time readings the bench suite reports from a readings-probe
+/// output file. For each tracked checkpoint, emit `time_to_<stage>` (elapsed
+/// seconds), `rsz_at_<stage>` (resident bytes) and `active_at_<stage>` (alloc −
+/// free bytes). A missing file or absent checkpoint is skipped; the orchestrator
+/// decides which metrics are required.
+pub fn stage_metrics_from_readings(path: impl AsRef<std::path::Path>) -> Vec<(String, f64)> {
+    let Ok(content) = std::fs::read_to_string(path) else { return vec![] };
+    let normalize = |l: &str| l.replace(['_', '-'], ".");
+    let mut out = vec![];
+    for (pattern, name) in READINGS_STAGES {
+        let Some(line) = content.lines().find(|l| normalize(l).contains(pattern)) else { continue };
+        let f: Vec<&str> = line.split_whitespace().collect();
+        let parse = |i: usize| f.get(i).and_then(|s| s.parse::<f64>().ok());
+        if let (Some(time), Some(rsz), Some(alloc), Some(free)) =
+            (parse(0), parse(3), parse(9), parse(10))
+        {
+            out.push((format!("time_to_{name}"), time));
+            out.push((format!("rsz_at_{name}"), rsz));
+            out.push((format!("active_at_{name}"), alloc - free));
+        }
+    }
+    out
+}
+
 impl BenchLimits {
     pub fn warmup(&self, runnable: &Arc<dyn Runnable>, inputs: &RunTensors) -> TractResult<()> {
         if self.warmup_time.is_zero() && self.warmup_loops.is_zero() {
