@@ -45,6 +45,19 @@ if [ "$(uname)" = "Linux" ] && [ -r /sys/devices/system/cpu/cpu0/cpufreq/scaling
     echo "$F" > /sys/devices/system/cpu/cpu0/cpufreq/scaling_setspeed
 fi
 
+# Pin the GPU clock for the run, reset on exit. The cuda runner free-boosts from idle,
+# which adds session-to-session variance to evaltime (the metric we most want sharp);
+# pinning makes timing deterministic. Best-effort: needs privilege, no-op without
+# nvidia-smi. Override the clock with BENCH_GPU_CLOCK (MHz) if the default throttles.
+if command -v nvidia-smi > /dev/null 2>&1; then
+    GPU_CLOCK=${BENCH_GPU_CLOCK:-$(nvidia-smi --query-supported-clocks=graphics --format=csv,noheader,nounits 2>/dev/null | head -1)}
+    if [ -n "$GPU_CLOCK" ]; then
+        trap 'nvidia-smi --reset-gpu-clocks > /dev/null 2>&1 || true' EXIT
+        nvidia-smi -pm 1 > /dev/null 2>&1 || true
+        nvidia-smi --lock-gpu-clocks="$GPU_CLOCK" > /dev/null 2>&1 || echo "Warning: could not lock GPU clocks (need privilege?)"
+    fi
+fi
+
 # Expectation-guided retry: with an expectations file (EXPECTATIONS, 'metric expected
 # threshold' lines from bench-data history), re-run a bench whose measured value moved
 # worse-than-expected by at least its threshold — i.e. far enough to show as a PR red —
