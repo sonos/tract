@@ -22,6 +22,7 @@ pub trait DeviceContext: Downcast + dyn_clone::DynClone + Send + Sync {
         exotic_fact: Box<dyn ExoticFact>,
     ) -> TractResult<Box<dyn OwnedDeviceTensor>>;
     fn synchronize(&self) -> TractResult<()>;
+    #[allow(clippy::too_many_arguments)]
     fn copy_nd(
         &self,
         input: &DeviceTensor,
@@ -55,6 +56,7 @@ pub trait DeviceContext: Downcast + dyn_clone::DynClone + Send + Sync {
     }
 
     /// Copy from `src` into `dst` with given origins and strides.
+    #[allow(clippy::too_many_arguments)]
     fn copy_with_origins(
         &self,
         zone_shape: &[usize],

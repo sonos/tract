@@ -259,7 +259,7 @@ impl Expansion for Conv {
             pool_spec,
             self.kernel_fmt,
             group,
-            Some(output_type).filter(|_| quantized),
+            quantized.then_some(output_type),
         );
         model.wire_node(prefix, reduced, &wires)
     }

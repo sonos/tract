@@ -104,7 +104,7 @@ impl DiagGather {
 
         // Grid: x = out_len cols, y = T_q rows, z = batch.  Threads per block
         // along x = min(out_len, 256) rounded down to multiple of 32.
-        let block_x = out_len.min(MAX_THREADS).max(32);
+        let block_x = out_len.clamp(32, MAX_THREADS);
         let grid_x = out_len.div_ceil(block_x);
         let cfg = LaunchConfig {
             grid_dim: (grid_x as _, t_q as _, batch as _),

@@ -183,6 +183,7 @@ pub fn handle(
                 Box::new(|_| {})
             };
 
+            #[allow(clippy::type_complexity)]
             let after_iteration: Box<
                 dyn Fn(
                     &mut tract_libcli::annotations::Annotations,

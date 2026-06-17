@@ -234,8 +234,8 @@ fn merge_same_role_axes_rule(
                 }
             }
             // Find what moves are needed to get from unmerged_adj to c_order
-            for target_pos in 0..c_order.len() {
-                let cur_pos = unmerged_adj.iter().position(|&c| c == c_order[target_pos]).unwrap();
+            for (target_pos, &c_target) in c_order.iter().enumerate() {
+                let cur_pos = unmerged_adj.iter().position(|&c| c == c_target).unwrap();
                 if cur_pos != target_pos {
                     result[0] = patch.wire_node(
                         format!("{node_name}.restore_out_{target_pos}"),

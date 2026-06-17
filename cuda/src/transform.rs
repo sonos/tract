@@ -28,6 +28,7 @@ use tract_transformers::ops::sdpa::Sdpa;
 /// Each kernel module submits one (or more) of these via [`register_cuda_op!`].
 pub struct CudaOpTranslator {
     pub type_id: TypeId,
+    #[allow(clippy::type_complexity)]
     pub try_make: fn(&TypedModel, &TypedNode) -> TractResult<Option<Box<dyn TypedOp>>>,
 }
 
