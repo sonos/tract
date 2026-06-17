@@ -32,7 +32,12 @@ pub fn handle(
     limits: &BenchLimits,
     probe: Option<&Probe>,
 ) -> TractResult<()> {
-    for (k, v) in &run(params, matches, sub_matches, limits, probe)?.metrics {
+    let result = run(params, matches, sub_matches, limits, probe)?;
+    if params.emit_jsonl {
+        result.emit_jsonl();
+        return Ok(());
+    }
+    for (k, v) in &result.metrics {
         println!("{}: {v:.1} tokens/sec", k.to_uppercase());
     }
     Ok(())

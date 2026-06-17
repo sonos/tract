@@ -55,6 +55,18 @@ pub struct BenchResult {
     pub iters: usize,
 }
 
+impl BenchResult {
+    /// Emit each metric as a `{"metric":<name>,"value":<f64>}` JSON line on stdout.
+    /// This is the bench-suite child→orchestrator contract: stdout is pure JSONL
+    /// (logs go to stderr), so the orchestrator can validate every line and treat
+    /// anything that does not parse as a hard failure.
+    pub fn emit_jsonl(&self) {
+        for (k, v) in &self.metrics {
+            println!(r#"{{"metric":{k:?},"value":{v}}}"#);
+        }
+    }
+}
+
 impl BenchLimits {
     pub fn warmup(&self, runnable: &Arc<dyn Runnable>, inputs: &RunTensors) -> TractResult<()> {
         if self.warmup_time.is_zero() && self.warmup_loops.is_zero() {
