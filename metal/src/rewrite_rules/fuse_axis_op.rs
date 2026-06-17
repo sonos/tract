@@ -128,21 +128,22 @@ pub fn fuse_axis_op(
 
     // If the successor is a Move, we may fuse it now or defer.
     if let Some(op) = node.op_as::<GpuAxisOp>()
-        && matches!(op.inner, AxisOp::Move(..)) {
-            let should_defer_move = !grouped_axis_ops[0].is_empty() && !can_fuse_move(model, node);
-            if should_defer_move {
-                let out = patch.wire_node(
-                    format!("{node_name}.fused_axis_op"),
-                    MetalFusedAxisOp { grouped_axis_ops, op: Box::new(op.clone()) },
-                    &tap_inputs,
-                )?;
-                patch.shunt_outside(model, node.id.into(), out[0])?;
-                return Ok(Some(patch));
-            } else {
-                // Nothing to do right now; we’ll fuse on a later pass.
-                return Ok(None);
-            }
+        && matches!(op.inner, AxisOp::Move(..))
+    {
+        let should_defer_move = !grouped_axis_ops[0].is_empty() && !can_fuse_move(model, node);
+        if should_defer_move {
+            let out = patch.wire_node(
+                format!("{node_name}.fused_axis_op"),
+                MetalFusedAxisOp { grouped_axis_ops, op: Box::new(op.clone()) },
+                &tap_inputs,
+            )?;
+            patch.shunt_outside(model, node.id.into(), out[0])?;
+            return Ok(Some(patch));
+        } else {
+            // Nothing to do right now; we’ll fuse on a later pass.
+            return Ok(None);
         }
+    }
 
     // General case: fuse using the successor's op.
     let out = patch.wire_node(
@@ -175,14 +176,14 @@ pub fn fuse_move_axis(
     if in_shape == out_shape
         && let (Some(in_strides), AxisOp::Move(from, to)) =
             (in_shape.as_concrete().map(Tensor::natural_strides), axis_op.inner.clone())
-        {
-            let mut out_strides = in_strides.clone();
-            let remove_stride = out_strides.remove(from);
-            out_strides.insert(to, remove_stride);
-            if in_strides == out_strides {
-                return TypedModelPatch::shunt_one_op(model, axis_node);
-            }
+    {
+        let mut out_strides = in_strides.clone();
+        let remove_stride = out_strides.remove(from);
+        out_strides.insert(to, remove_stride);
+        if in_strides == out_strides {
+            return TypedModelPatch::shunt_one_op(model, axis_node);
         }
+    }
 
     // Reshape are always fusable. Change Move by Reshape if possible
     let simpl_op = GpuAxisOp::simplify_axis_op(axis_op.inner.clone(), in_shape.dims());
@@ -225,14 +226,14 @@ pub fn fuse_move_axis(
     if let (AxisOp::Move(from_1, to_1), AxisOp::Add(ax)) = (
         axis_op.inner.clone(),
         cursor.op_as::<GpuAxisOp>().map(|ax_op| ax_op.inner.clone()).unwrap_or(AxisOp::Rm(0)),
-    )
-        && ax == from_1 {
-            let mut patch = TypedModelPatch::default();
-            let inputs = patch.taps(model, &cursor.inputs)?;
-            let out =
-                patch.wire_node(cursor.name.clone(), GpuAxisOp::new(AxisOp::Add(to_1)), &inputs)?;
-            patch.shunt_outside(model, axis_node.id.into(), out[0])?;
-            return Ok(Some(patch));
-        }
+    ) && ax == from_1
+    {
+        let mut patch = TypedModelPatch::default();
+        let inputs = patch.taps(model, &cursor.inputs)?;
+        let out =
+            patch.wire_node(cursor.name.clone(), GpuAxisOp::new(AxisOp::Add(to_1)), &inputs)?;
+        patch.shunt_outside(model, axis_node.id.into(), out[0])?;
+        return Ok(Some(patch));
+    }
     Ok(None)
 }

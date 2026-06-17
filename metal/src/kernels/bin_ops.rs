@@ -1,5 +1,5 @@
-use super::utils::build_metal_grid_and_groups_for_el_wise_op;
 use super::BroadcastKind;
+use super::utils::build_metal_grid_and_groups_for_el_wise_op;
 use crate::encoder::EncoderExt;
 use crate::kernels::utils::compute_broadcast_strides;
 use crate::{LibraryName, MetalStream};
