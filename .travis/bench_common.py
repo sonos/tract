@@ -5,9 +5,19 @@ bench-report.py (to flag reds) and bench-expectations.py (so the bundle retries
 exactly the would-be reds). Keeping it single-sourced is what guarantees that every
 red the maintainer sees was measured more than once.
 """
-import re, tomllib
+import re, tomllib, statistics
 
 HIGHER_BETTER = re.compile(r"\.(pp\d+|tg\d+)\.")   # llm throughput; everything else lower-is-better
+
+
+def reference_value(arr, window=10):
+    """The baseline a metric is compared against: the median of its recent non-null
+    points. Used by BOTH the report (to compute the red) and bench-expectations (the
+    value shipped to the bundle) — so the bundle's retry and the report's red judge
+    against the same number. Median (not the latest single value) so a noisy last
+    nightly doesn't shift the reference. None if there's no data."""
+    vals = [v for v in arr[-window:] if v is not None]
+    return statistics.median(vals) if vals else None
 
 
 def load_cfg(path):

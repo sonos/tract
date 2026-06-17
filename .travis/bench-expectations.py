@@ -13,7 +13,7 @@ red the maintainer sees has been confirmed across re-runs. Metrics that are neve
 retried. Keys are underscored, as in bench-data; the bundle normalizes '-' -> '_'.
 A device with no history yields an empty file (retry disabled there, single-shot).
 """
-import argparse, json, os, statistics
+import argparse, json, os
 import bench_common as bc
 
 
@@ -33,10 +33,9 @@ def main():
     if os.path.exists(path):
         d = json.load(open(path))
         for m, arr in d.get("metrics", {}).items():
-            vals = [v for v in arr[-a.window:] if v is not None]
-            if not vals:
+            expected = bc.reference_value(arr, a.window)
+            if expected is None:
                 continue
-            expected = statistics.median(vals)
             thr = bc.red_threshold(m, cfg, bc.series_noise(arr), expected)
             if thr is not None:
                 lines.append(f"{m} {expected} {thr}")

@@ -22,8 +22,9 @@ SPEED = re.compile(r"\.(evaltime|pp\d+|tg\d+)\.")  # the merge signal: inference
 
 
 def reference(bench_data, triple, device):
-    """latest non-null value + recent noise (p90 day-to-day |Δ%|) per metric from
-    bench-data/<triple>/<device>.json, plus the reference date."""
+    """reference value (median of recent non-null, == what bench-expectations ships)
+    + recent noise (p90 day-to-day |Δ%|) per metric from bench-data/<triple>/<device>.json,
+    plus the reference date (latest non-null day, for display)."""
     path = os.path.join(bench_data, triple, f"{device}.json")
     if not os.path.exists(path):
         return {}, {}, None
@@ -31,10 +32,12 @@ def reference(bench_data, triple, device):
     start = datetime.date.fromisoformat(d["start_day"])
     vals, noise, last_idx = {}, {}, -1
     for m, arr in d["metrics"].items():
+        ref = bc.reference_value(arr)
+        if ref is not None:
+            vals[m] = ref
         noise[m] = bc.series_noise(arr)
         for i in range(len(arr) - 1, -1, -1):
             if arr[i] is not None:
-                vals[m] = arr[i]
                 last_idx = max(last_idx, i)
                 break
     ref_day = start + datetime.timedelta(last_idx) if last_idx >= 0 else None
