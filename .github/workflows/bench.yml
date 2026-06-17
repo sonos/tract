@@ -145,7 +145,7 @@ jobs:
           REF: ${{ needs.prepare.outputs.ref }}
           DAY: ${{ needs.prepare.outputs.day }}
         run: |
-          python3 .travis/bench-append.py --metrics metrics --out bench-data \
+          tract-cli/tract bench-append --metrics metrics --out bench-data \
             --triple "$TRIPLE" --device "$DEVICE" --day "$DAY"
           cd bench-data
           git config user.name "tract-ci"
@@ -177,7 +177,7 @@ jobs:
           path: result
 
   report:
-    needs: [ prepare, bench ]
+    needs: [ prepare, build, bench ]
     if: ${{ always() && github.event_name == 'pull_request' && needs.prepare.outputs.enabled == 'true' }}
     runs-on: ubuntu-latest
     permissions:
@@ -192,6 +192,10 @@ jobs:
         with:
           pattern: bench-result-*
           path: results
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: tract-cli-x86_64-unknown-linux-gnu
+          path: tract-cli
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: bench-data
@@ -200,11 +204,11 @@ jobs:
           persist-credentials: false
       - name: Render comparison
         env:
-          PR_SHA: ${{ needs.prepare.outputs.ref }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          python3 .travis/bench-report.py --results results --bench-data bench-data \
-            --thresholds .travis/bench-thresholds.toml --pr-sha "$PR_SHA" --out pr-comment.md
+          chmod +x tract-cli/tract
+          tract-cli/tract bench-report --results results --bench-data bench-data \
+            --thresholds .travis/bench-thresholds.toml --pr-sha "${{ needs.prepare.outputs.ref }}" --out pr-comment.md
       - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         with:
           script: |

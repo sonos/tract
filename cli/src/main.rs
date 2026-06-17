@@ -25,6 +25,8 @@ use readings_probe::*;
 
 mod bench;
 #[cfg(feature = "bench-suite")]
+mod bench_append;
+#[cfg(feature = "bench-suite")]
 mod bench_common;
 #[cfg(feature = "bench-suite")]
 mod bench_expectations;
@@ -275,6 +277,15 @@ fn main() -> TractResult<()> {
                 .arg(arg!(--device <DEVICE> "Device key"))
                 .arg(arg!(--out <PATH> "Output expectations file"))
                 .arg(arg!(--window [N] "Trailing nights to median over (default: 10)")),
+        );
+        app = app.subcommand(
+            clap::Command::new("bench-append")
+                .long_about("Append one nightly run to the columnar bench-data branch.")
+                .arg(arg!(--metrics <PATH> "Metrics file produced by bench-suite"))
+                .arg(arg!(--out <DIR> "bench-data checkout root"))
+                .arg(arg!(--triple <TRIPLE> "Target triple"))
+                .arg(arg!(--device <DEVICE> "Device key"))
+                .arg(arg!(--day [DATE] "Run day YYYY-MM-DD (default: today)")),
         );
         app = app.subcommand(
             clap::Command::new("bench-report")
@@ -796,6 +807,8 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
         Some(("hwbench", _)) => return hwbench::handle(),
         #[cfg(feature = "bench-suite")]
         Some(("bench-suite", m)) => return bench_suite::handle(m),
+        #[cfg(feature = "bench-suite")]
+        Some(("bench-append", m)) => return bench_append::handle(m),
         #[cfg(feature = "bench-suite")]
         Some(("bench-expectations", m)) => return bench_expectations::handle(m),
         #[cfg(feature = "bench-suite")]
