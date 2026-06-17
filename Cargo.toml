@@ -210,6 +210,7 @@ tempfile = "3.8"
 tflitec = { git = "https://github.com/kali/tflitec-rs.git", rev="9ceb838" }
 time = "0.3.23"
 tokenizers = "0.23"
+toml = "0.8"
 unicode-normalization = "0.1.19"
 walkdir = "2.3.2"
 zerofrom = "0.1.5"

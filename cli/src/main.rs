@@ -24,6 +24,8 @@ use fs_err as fs;
 use readings_probe::*;
 
 mod bench;
+#[cfg(feature = "bench-suite")]
+mod bench_suite;
 mod compare;
 mod cost;
 mod dump;
@@ -239,6 +241,19 @@ fn main() -> TractResult<()> {
         .long_about("Benchmarks tract on randomly generated input using criterion.");
     let criterion = run_options(criterion);
     app = app.subcommand(criterion);
+
+    #[cfg(feature = "bench-suite")]
+    {
+        app = app.subcommand(
+            clap::Command::new("bench-suite")
+                .long_about("Run a TOML manifest of benches, one fresh child process each.")
+                .arg(arg!(--manifest [PATH] "Bench manifest (default: benches.toml)"))
+                .arg(arg!(--"cache-dir" [PATH] "Model cache dir (default: $CACHEDIR or ~/.cache/tract-ci-minion-models)"))
+                .arg(arg!(--output [PATH] "Metrics output file (default: metrics)"))
+                .arg(arg!(--filter [SUBSTR] "Only run benches whose name contains SUBSTR"))
+                .arg(arg!(--"no-fetch" "Do not fetch models; use the cache as-is")),
+        );
+    }
 
     app = app.subcommand(dump_subcommand());
 
@@ -745,6 +760,8 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
             return Ok(());
         }
         Some(("hwbench", _)) => return hwbench::handle(),
+        #[cfg(feature = "bench-suite")]
+        Some(("bench-suite", m)) => return bench_suite::handle(m),
         Some(("kernels", _)) => {
             println!();
             fn colored_name(m: &dyn MatMatMul) -> String {

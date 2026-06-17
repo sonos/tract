@@ -52,6 +52,8 @@ webpki-roots.workspace = true
 scan_fmt.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+tar = { workspace = true, optional = true }
+toml = { workspace = true, optional = true }
 tract-linalg = { workspace = true, features = ["hwbench"] }
 tract-core.workspace = true
 tract-hir.workspace = true
@@ -96,6 +98,7 @@ tf = ["tract-tensorflow", "tract-libcli/hir"]
 tflite = ["tract-tflite"]
 transformers = ["tract-transformers", "tract-libcli/transformers"]
 multithread-mm = ["tract-linalg/multithread-mm"]
+bench-suite = ["dep:toml", "dep:tar"]
 
 # Marker feature implicitly enabled by every cuda-XXXXX selector below.
 # Use to gate cudarc-specific code paths in tract-cli. Not meant to be

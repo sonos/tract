@@ -1,0 +1,297 @@
+//! The bench-suite orchestrator (`tract bench-suite`). Reads a TOML manifest of
+//! benches and, for each one, spawns a fresh `tract` child in `--emit-jsonl` mode
+//! so every measurement gets the cold process the memory readings need. Each
+//! child's stdout is pure JSONL (logs go to stderr): the orchestrator parses every
+//! line, treats anything that is not a metric object as a hard failure, prefixes
+//! the metric names and writes them to the metrics file. This replaces the shell
+//! bundle (model fetch, governor pinning, scraping) with one cross-built binary.
+
+use serde::Deserialize;
+use std::io::Write;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+use std::time::Instant;
+use tract_hir::internal::*;
+
+#[derive(Deserialize)]
+struct Manifest {
+    /// HTTPS prefix the model files are fetched from (public-read bucket).
+    base_url: String,
+    #[serde(default, rename = "bench")]
+    benches: Vec<Bench>,
+}
+
+#[derive(Deserialize)]
+struct Bench {
+    kind: Kind,
+    name: String,
+    /// Series label when `backends` is empty (a single plain CPU run).
+    #[serde(default)]
+    variant: Option<String>,
+    /// Model path relative to the cache dir (and to `base_url` when fetched).
+    model: String,
+    /// Archive to fetch and unpack that yields `model`, for models shipped inside
+    /// a tarball. When unset, `model` is fetched as a plain file.
+    #[serde(default)]
+    archive: Option<String>,
+    /// Extra tract arguments (input facts, `--pulse`, loader flags, ...).
+    #[serde(default)]
+    args: Vec<String>,
+    /// Backends to sweep. Empty: one plain CPU run labelled `variant`. Non-empty:
+    /// one run per available backend, each labelled by the backend name.
+    #[serde(default)]
+    backends: Vec<Backend>,
+}
+
+#[derive(Deserialize, Clone, Copy, PartialEq)]
+#[serde(rename_all = "lowercase")]
+enum Kind {
+    Net,
+    Llm,
+}
+
+impl Kind {
+    fn label(&self) -> &'static str {
+        match self {
+            Kind::Net => "net",
+            Kind::Llm => "llm",
+        }
+    }
+    fn subcommand(&self) -> &'static str {
+        match self {
+            Kind::Net => "bench",
+            Kind::Llm => "llm-bench",
+        }
+    }
+}
+
+#[derive(Deserialize, Clone, Copy, PartialEq)]
+#[serde(rename_all = "lowercase")]
+enum Backend {
+    Cpu,
+    Metal,
+    Cuda,
+}
+
+impl Backend {
+    fn label(&self) -> &'static str {
+        match self {
+            Backend::Cpu => "cpu",
+            Backend::Metal => "metal",
+            Backend::Cuda => "cuda",
+        }
+    }
+
+    fn available(&self) -> bool {
+        match self {
+            Backend::Cpu => true,
+            Backend::Metal => cfg!(target_os = "macos"),
+            Backend::Cuda => Command::new("nvidia-smi")
+                .arg("-L")
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false),
+        }
+    }
+
+    /// `(global flags, subcommand flags)` for this backend.
+    fn flags(&self) -> (&'static [&'static str], &'static [&'static str]) {
+        match self {
+            Backend::Cpu => (&["--timeout", "180"], &[]),
+            Backend::Metal => (&["--metal", "--timeout", "60"], &["--warmup-loops", "1"]),
+            Backend::Cuda => (&["--cuda", "--timeout", "60"], &["--warmup-loops", "1"]),
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct MetricLine {
+    metric: String,
+    value: f64,
+}
+
+pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
+    let manifest_path =
+        matches.get_one::<String>("manifest").map(String::as_str).unwrap_or("benches.toml");
+    let manifest: Manifest = toml::from_str(
+        &std::fs::read_to_string(manifest_path)
+            .with_context(|| format!("reading manifest {manifest_path}"))?,
+    )
+    .with_context(|| format!("parsing manifest {manifest_path}"))?;
+
+    let cache_dir = PathBuf::from(
+        matches
+            .get_one::<String>("cache-dir")
+            .cloned()
+            .or_else(|| std::env::var("CACHEDIR").ok())
+            .unwrap_or_else(|| {
+                format!(
+                    "{}/.cache/tract-ci-minion-models",
+                    std::env::var("HOME").unwrap_or_default()
+                )
+            }),
+    );
+    std::fs::create_dir_all(&cache_dir)?;
+
+    let output = matches.get_one::<String>("output").map(String::as_str).unwrap_or("metrics");
+    let no_fetch = matches.get_flag("no-fetch");
+    let filter = matches.get_one::<String>("filter").map(String::as_str);
+
+    let exe = std::env::current_exe()?;
+    set_governor_max();
+
+    let start = Instant::now();
+    let mut metrics: Vec<(String, f64)> = vec![];
+
+    for bench in &manifest.benches {
+        if filter.is_some_and(|f| !bench.name.contains(f)) {
+            continue;
+        }
+
+        let runs: Vec<(Option<Backend>, String)> = if bench.backends.is_empty() {
+            let variant = bench
+                .variant
+                .clone()
+                .with_context(|| format!("{}: no variant and no backends", bench.name))?;
+            vec![(None, variant)]
+        } else {
+            bench
+                .backends
+                .iter()
+                .filter(|b| b.available())
+                .map(|b| (Some(*b), b.label().to_string()))
+                .collect()
+        };
+        if runs.is_empty() {
+            continue;
+        }
+
+        if !no_fetch {
+            if let Err(e) = fetch(&manifest.base_url, &cache_dir, bench) {
+                eprintln!("  !! {}: fetch failed: {e:#}", bench.name);
+                continue;
+            }
+        }
+
+        for (backend, variant) in runs {
+            println!("  {} {}", bench.name, variant);
+            match run_one(&exe, &cache_dir, bench, backend, &variant) {
+                Ok(m) => metrics.extend(m),
+                Err(e) => eprintln!("  !! {} {} failed: {e:#}", bench.name, variant),
+            }
+        }
+    }
+
+    metrics.push(("bundle.bench_runtime".to_string(), start.elapsed().as_secs() as f64));
+    write_metrics(output, &metrics)?;
+    println!("wrote {} metrics to {output}", metrics.len());
+    Ok(())
+}
+
+/// Spawn one child `tract` for a single (bench, backend) and collect its metrics.
+/// The child runs in `--emit-jsonl` mode, so its stdout must be pure JSONL; any
+/// line that is not a metric object, a non-zero exit, or an empty result is an
+/// error for this run (the caller logs it and moves on).
+fn run_one(
+    exe: &Path,
+    cache_dir: &Path,
+    bench: &Bench,
+    backend: Option<Backend>,
+    variant: &str,
+) -> TractResult<Vec<(String, f64)>> {
+    let (global_flags, sub_flags) = backend.map(|b| b.flags()).unwrap_or((&[], &[]));
+
+    let mut cmd = Command::new(exe);
+    cmd.arg(cache_dir.join(&bench.model));
+    cmd.args(&bench.args);
+    cmd.args(global_flags);
+    cmd.args(["--readings", "--readings-heartbeat", "1000", "--emit-jsonl"]);
+    if bench.kind == Kind::Llm {
+        cmd.arg("--llm");
+    }
+    cmd.args(["-O", bench.kind.subcommand()]);
+    if bench.kind == Kind::Net {
+        cmd.arg("--allow-random-input");
+    }
+    cmd.args(sub_flags);
+    cmd.stdout(Stdio::piped()).stderr(Stdio::inherit());
+
+    let output = cmd.output().context("spawning child tract")?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    let mut metrics = vec![];
+    for line in stdout.lines().filter(|l| !l.trim().is_empty()) {
+        let parsed: MetricLine = serde_json::from_str(line)
+            .with_context(|| format!("child wrote non-JSON on stdout: {line:?}"))?;
+        let key = format!("{}.{}.{}.{}", bench.kind.label(), bench.name, parsed.metric, variant)
+            .replace('-', "_");
+        metrics.push((key, parsed.value));
+    }
+    ensure!(output.status.success(), "child exited with {}", output.status);
+    ensure!(!metrics.is_empty(), "child produced no metrics");
+    Ok(metrics)
+}
+
+fn write_metrics(path: &str, metrics: &[(String, f64)]) -> TractResult<()> {
+    let mut file = std::fs::File::create(path)?;
+    for (k, v) in metrics {
+        writeln!(file, "{k} {v}")?;
+    }
+    Ok(())
+}
+
+/// Fetch `bench`'s model into the cache dir if missing, unpacking the archive
+/// first when the model ships inside one.
+fn fetch(base_url: &str, cache_dir: &Path, bench: &Bench) -> TractResult<()> {
+    if cache_dir.join(&bench.model).exists() {
+        return Ok(());
+    }
+    if let Some(archive) = &bench.archive {
+        let archive_path = cache_dir.join(archive);
+        download(base_url, archive, &archive_path)?;
+        let file = std::fs::File::open(&archive_path)?;
+        tar::Archive::new(flate2::read::GzDecoder::new(file))
+            .unpack(cache_dir)
+            .with_context(|| format!("unpacking {}", archive_path.display()))?;
+    } else {
+        download(base_url, &bench.model, &cache_dir.join(&bench.model))?;
+    }
+    Ok(())
+}
+
+fn download(base_url: &str, name: &str, dest: &Path) -> TractResult<()> {
+    let url = format!("{}/{}", base_url.trim_end_matches('/'), name);
+    println!("  fetching {url}");
+    let mut resp = crate::params::http_client()?.get(&url).send()?;
+    ensure!(resp.status().is_success(), "GET {url} -> {}", resp.status());
+    if let Some(parent) = dest.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let tmp = dest.with_extension("part");
+    let mut file = std::fs::File::create(&tmp)?;
+    std::io::copy(&mut resp, &mut file)?;
+    file.sync_all()?;
+    std::fs::rename(&tmp, dest)?;
+    Ok(())
+}
+
+/// On Linux with a `userspace` governor, pin cpu0 to its top available frequency
+/// (best effort; needs privilege). Mirrors the shell bundle's determinism step.
+fn set_governor_max() {
+    if !cfg!(target_os = "linux") {
+        return;
+    }
+    let base = "/sys/devices/system/cpu/cpu0/cpufreq";
+    let governor = std::fs::read_to_string(format!("{base}/scaling_governor"));
+    if governor.map(|g| g.trim() == "userspace").unwrap_or(false) {
+        if let Ok(freqs) = std::fs::read_to_string(format!("{base}/scaling_available_frequencies"))
+        {
+            if let Some(max) = freqs.split_whitespace().filter_map(|f| f.parse::<u64>().ok()).max()
+            {
+                let _ = std::fs::write(format!("{base}/scaling_setspeed"), max.to_string());
+            }
+        }
+    }
+}
