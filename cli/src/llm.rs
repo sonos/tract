@@ -32,8 +32,9 @@ pub fn handle(
     limits: &BenchLimits,
     probe: Option<&Probe>,
 ) -> TractResult<()> {
-    let result = run(params, matches, sub_matches, limits, probe)?;
+    let mut result = run(params, matches, sub_matches, limits, probe)?;
     if params.emit_jsonl {
+        result.metrics.extend(tract_libcli::profile::stage_metrics_from_readings("readings.out"));
         result.emit_jsonl();
         return Ok(());
     }
