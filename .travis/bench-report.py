@@ -125,6 +125,12 @@ def main():
             rows.append({"device": device, "metric": metric, "ref": rv, "pr": prv,
                          "delta": delta, "worse": worse, "mover": mover})
 
+    # No comparable metrics (no device results, or no reference) -> don't write a comment,
+    # so a cancelled/empty run can't overwrite a real one with a vacuous "no regressions".
+    if not rows:
+        print("no comparable metrics; not writing a comment")
+        return
+
     movers = [r for r in rows if r["mover"]]
     regr = sorted([r for r in movers if r["worse"]], key=lambda r: -abs(r["delta"]))
     impr = sorted([r for r in movers if not r["worse"]],
