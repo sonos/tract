@@ -27,7 +27,7 @@ impl ElementWiseKer<f32> for SSiLU4 {
         debug_assert!(x.as_ptr() as usize % Self::alignment_bytes() == 0);
         x.iter_mut().for_each(|px| {
             let sigmoid = 1.0 / (1.0 + (-*px).exp());
-            *px = *px * sigmoid;
+            *px *= sigmoid;
         });
     }
 }

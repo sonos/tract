@@ -94,9 +94,9 @@ pub trait DeviceContext: Downcast + dyn_clone::DynClone + Send + Sync {
         // so shape and strides are in elements, not bytes.
         let elem_size = src.datum_type().size_of();
         ensure!(
-            byte_len % elem_size == 0
-                && src_byte_offset % elem_size == 0
-                && dst_byte_offset % elem_size == 0,
+            byte_len.is_multiple_of(elem_size)
+                && src_byte_offset.is_multiple_of(elem_size)
+                && dst_byte_offset.is_multiple_of(elem_size),
             "flat_copy: byte_len {byte_len}, src_offset {src_byte_offset}, \
              dst_offset {dst_byte_offset} not aligned to element size {elem_size}"
         );

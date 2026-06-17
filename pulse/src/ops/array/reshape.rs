@@ -125,7 +125,7 @@ impl PulsedOp for PulsedReshape {
         let new_per_pulse = to[to_pos].to_usize()?;
         let scaled = stream.delay * new_per_pulse;
         ensure!(
-            scaled % old_per_pulse == 0,
+            scaled.is_multiple_of(old_per_pulse),
             "PulsedReshape: stream.delay {} can't be rescaled from per-pulse {} \
              to per-pulse {} (would lose precision)",
             stream.delay,

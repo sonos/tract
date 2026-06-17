@@ -207,7 +207,7 @@ fn main() -> TractResult<()> {
         )
         .group(
             ArgGroup::new("reference")
-                .args(&["npz", "pbdir", "stage", "twice", "stream"])
+                .args(["npz", "pbdir", "stage", "twice", "stream"])
                 .required(true),
         )
         .arg(
@@ -519,7 +519,7 @@ fn assertions_options(command: clap::Command) -> clap::Command {
             Arg::new("assert-op-count")
             .value_parser(clap::builder::NonEmptyStringValueParser::new())
             .number_of_values(2)
-            .value_names(&["operator", "count"])
+            .value_names(["operator", "count"])
             .action(clap::ArgAction::Append)
             .long("assert-op-count")
             .help("Specified operator must appear exactly the specified number of times. This argument can appear multiple times."),

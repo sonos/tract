@@ -40,7 +40,7 @@ fn block_quant_einsum_weights(
             let mut patch = TypedModelPatch::default();
             let mut taps = patch.taps(model, &node.inputs)?;
             taps[slot] = patch.wire_node(
-                format!("{}.t_{}", &node.name, slot),
+                format!("{}.t_{}", node.name, slot),
                 AxisOp::Move(1, 0),
                 &[taps[slot]],
             )?[0];

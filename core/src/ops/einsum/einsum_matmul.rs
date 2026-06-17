@@ -64,7 +64,7 @@ fn merge_same_role_axes_rule(
             .position(|x| x == c)
             .map(|p| &input_shapes[0][p])
             .or_else(|| b_order.iter().position(|x| x == c).map(|p| &input_shapes[1][p]));
-        dim.map_or(true, |d| d.as_i64() != Some(1))
+        dim.is_none_or(|d| d.as_i64() != Some(1))
     };
 
     // Find first group of 2+ same-role axes that are consecutive in all inputs.
@@ -111,7 +111,7 @@ fn merge_same_role_axes_rule(
                 group.push(candidate);
                 j += 1;
             }
-            if group.len() >= 2 && best_group.as_ref().map_or(true, |bg| group.len() > bg.len()) {
+            if group.len() >= 2 && best_group.as_ref().is_none_or(|bg| group.len() > bg.len()) {
                 best_group = Some(group);
             }
             i = j;
@@ -691,7 +691,7 @@ pub(super) fn regroup_k_axes(
                 AxesMapping::from_strs(&[&exprs[slot]], &[&after])?.translate_to_axis_ops()?;
             for (ix, op) in transpose.into_iter().enumerate() {
                 wires[slot] = patch.wire_node(
-                    format!("{}.transpose_input_{}.{}", &node.name, slot, ix),
+                    format!("{}.transpose_input_{}.{}", node.name, slot, ix),
                     op,
                     &[wires[slot]],
                 )?[0];
@@ -700,7 +700,7 @@ pub(super) fn regroup_k_axes(
         }
         let pos = exprs[slot].chars().position(|c| k_axes[0].repr == c).unwrap();
         wires[slot] = patch.wire_node(
-            format!("{}.fold_k_in_input_{}", &node.name, slot),
+            format!("{}.fold_k_in_input_{}", node.name, slot),
             AxisOp::Reshape(pos, k_dims.clone(), tvec!(k.clone())),
             &[wires[slot]],
         )?[0];

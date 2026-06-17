@@ -153,16 +153,16 @@ impl TypedOp for Range {
             }
         } else {
             let mut fact = start.datum_type.fact(std::slice::from_ref(&self.len));
-            if let (Some(s), Some(k)) = (&start.uniform_tdim, &step.uniform_tdim) {
-                if let Some(scope) = self.len.find_scope() {
-                    let x0 = TDim::Sym(scope.coord_sym(0));
-                    let term = match k {
-                        TDim::Val(1) => x0,
-                        TDim::Val(v) => TDim::MulInt(*v, Box::new(x0)),
-                        other => TDim::Mul(vec![other.clone(), x0]),
-                    };
-                    fact.uniform_tdim = Some((s.clone() + term).reduce());
-                }
+            if let (Some(s), Some(k)) = (&start.uniform_tdim, &step.uniform_tdim)
+                && let Some(scope) = self.len.find_scope()
+            {
+                let x0 = TDim::Sym(scope.coord_sym(0));
+                let term = match k {
+                    TDim::Val(1) => x0,
+                    TDim::Val(v) => TDim::MulInt(*v, Box::new(x0)),
+                    other => TDim::Mul(vec![other.clone(), x0]),
+                };
+                fact.uniform_tdim = Some((s.clone() + term).reduce());
             }
             Ok(tvec!(fact))
         }

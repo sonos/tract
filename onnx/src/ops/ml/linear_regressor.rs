@@ -44,7 +44,7 @@ fn linear_regressor(
     node.expect(!raw_coeffs.is_empty(), "coefficients not empty")?;
 
     node.expect(
-        raw_coeffs.len() % targets == 0,
+        raw_coeffs.len().is_multiple_of(targets),
         "coefficients length must be a multiple of targets",
     )?;
     let c = raw_coeffs.len() / targets;

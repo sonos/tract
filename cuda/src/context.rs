@@ -436,7 +436,7 @@ impl TractCudaStream {
 
     /// Drain all recorded profile entries. Caller should synchronize first.
     pub fn drain_profile(&self) -> Option<Vec<GpuProfileEntry>> {
-        self.profile_log.borrow_mut().as_mut().map(|log| std::mem::take(log))
+        self.profile_log.borrow_mut().as_mut().map(std::mem::take)
     }
 }
 
@@ -504,11 +504,11 @@ fn resolve_toolkit_include_dir() -> TractResult<PathBuf> {
     let sentinel = "cuda_fp16.h";
     let mut candidates = vec![cuda_home.join("include")];
     let targets = cuda_home.join("targets");
-    if targets.exists() {
-        if let Ok(entries) = std::fs::read_dir(&targets) {
-            for entry in entries.flatten() {
-                candidates.push(entry.path().join("include"));
-            }
+    if targets.exists()
+        && let Ok(entries) = std::fs::read_dir(&targets)
+    {
+        for entry in entries.flatten() {
+            candidates.push(entry.path().join("include"));
         }
     }
 

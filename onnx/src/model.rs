@@ -175,12 +175,12 @@ impl ParsingContext<'_> {
         let mut outputs = vec![];
         for output in graph.output.iter() {
             let mut fact = InferenceFact::default();
-            if self.framework.use_output_shapes {
-                if let Some(f) = output.r#type.as_ref().and_then(|t| t.value.as_ref()) {
-                    let pb::type_proto::Value::TensorType(f) = f;
-                    fact = translate_inference_fact(&ctx, f, false)?
-                };
-            }
+            if self.framework.use_output_shapes
+                && let Some(f) = output.r#type.as_ref().and_then(|t| t.value.as_ref())
+            {
+                let pb::type_proto::Value::TensorType(f) = f;
+                fact = translate_inference_fact(&ctx, f, false)?
+            };
             if self.framework.ignore_output_types {
                 fact = fact.without_datum_type();
             }
@@ -192,15 +192,15 @@ impl ParsingContext<'_> {
         model.select_output_outlets(&outputs)?;
         if !self.framework.ignore_value_info {
             for info in &graph.value_info {
-                if let Some(TypeProto { value: Some(Value::TensorType(t)), .. }) = &info.r#type {
-                    if let Some(outlet) = outlets_by_name.get(&info.name) {
-                        let mut pbfact = translate_inference_fact(&ctx, t, false)?;
-                        // be conservative, these are likely to be TDim
-                        if pbfact.datum_type() == Some(i64::datum_type()) {
-                            pbfact = pbfact.without_datum_type();
-                        }
-                        model.set_outlet_fact(*outlet, pbfact)?;
+                if let Some(TypeProto { value: Some(Value::TensorType(t)), .. }) = &info.r#type
+                    && let Some(outlet) = outlets_by_name.get(&info.name)
+                {
+                    let mut pbfact = translate_inference_fact(&ctx, t, false)?;
+                    // be conservative, these are likely to be TDim
+                    if pbfact.datum_type() == Some(i64::datum_type()) {
+                        pbfact = pbfact.without_datum_type();
                     }
+                    model.set_outlet_fact(*outlet, pbfact)?;
                 }
             }
         }
@@ -294,10 +294,10 @@ impl Onnx {
     pub fn determinize(model: &mut InferenceModel) -> TractResult<()> {
         use crate::ops::multinomial::Multinomial;
         for node in model.nodes_mut() {
-            if let Some(op) = node.op_as_mut::<Box<dyn Expansion>>() {
-                if let Some(op) = op.as_any_mut().downcast_mut::<Multinomial>() {
-                    op.seed.get_or_insert(1.0);
-                }
+            if let Some(op) = node.op_as_mut::<Box<dyn Expansion>>()
+                && let Some(op) = op.as_any_mut().downcast_mut::<Multinomial>()
+            {
+                op.seed.get_or_insert(1.0);
             }
         }
         Ok(())

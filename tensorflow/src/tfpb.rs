@@ -79,10 +79,10 @@ impl NodeDef {
     }
 
     pub fn get_attr_opt_raw_str(&self, name: &str) -> TractResult<Option<&[u8]>> {
-        if let Some(a) = self.attr.get(name) {
-            if let Value::S(bytes) = a.value.as_ref().unwrap() {
-                return Ok(Some(bytes));
-            }
+        if let Some(a) = self.attr.get(name)
+            && let Value::S(bytes) = a.value.as_ref().unwrap()
+        {
+            return Ok(Some(bytes));
         };
         Ok(None)
     }
@@ -115,10 +115,10 @@ impl NodeDef {
     }
 
     pub fn get_attr_opt_bool(&self, name: &str) -> TractResult<Option<bool>> {
-        if let Some(a) = self.attr.get(name) {
-            if let Value::B(v) = a.value.as_ref().unwrap() {
-                return Ok(Some(*v));
-            }
+        if let Some(a) = self.attr.get(name)
+            && let Value::B(v) = a.value.as_ref().unwrap()
+        {
+            return Ok(Some(*v));
         };
         Ok(None)
     }
@@ -130,10 +130,10 @@ impl NodeDef {
     }
 
     pub fn get_attr_opt_datum_type(&self, name: &str) -> TractResult<Option<DatumType>> {
-        if let Some(a) = self.attr.get(name) {
-            if let Value::Type(v) = a.value.as_ref().unwrap() {
-                return Ok(Some(DataType::try_from(*v).unwrap().try_into()?));
-            }
+        if let Some(a) = self.attr.get(name)
+            && let Value::Type(v) = a.value.as_ref().unwrap()
+        {
+            return Ok(Some(DataType::try_from(*v).unwrap().try_into()?));
         };
         Ok(None)
     }
@@ -145,10 +145,10 @@ impl NodeDef {
     }
 
     pub fn get_attr_opt_shape(&self, name: &str) -> TractResult<Option<TVec<isize>>> {
-        if let Some(a) = self.attr.get(name) {
-            if let Value::Shape(shape) = a.value.as_ref().unwrap() {
-                return Ok(Some(shape.try_into()?));
-            }
+        if let Some(a) = self.attr.get(name)
+            && let Value::Shape(shape) = a.value.as_ref().unwrap()
+        {
+            return Ok(Some(shape.try_into()?));
         };
         Ok(None)
     }
@@ -160,10 +160,10 @@ impl NodeDef {
     }
 
     pub fn get_attr_opt_tensor(&self, name: &str) -> TractResult<Option<Tensor>> {
-        if let Some(a) = self.attr.get(name) {
-            if let Value::Tensor(t) = a.value.as_ref().unwrap() {
-                return Ok(Some(t.try_into()?));
-            }
+        if let Some(a) = self.attr.get(name)
+            && let Value::Tensor(t) = a.value.as_ref().unwrap()
+        {
+            return Ok(Some(t.try_into()?));
         };
         Ok(None)
     }
@@ -178,10 +178,10 @@ impl NodeDef {
         &self,
         name: &str,
     ) -> TractResult<Option<T>> {
-        if let Some(a) = self.attr.get(name) {
-            if let Value::I(i) = a.value.as_ref().unwrap() {
-                return Ok(Some(T::from_i64(*i).unwrap()));
-            }
+        if let Some(a) = self.attr.get(name)
+            && let Value::I(i) = a.value.as_ref().unwrap()
+        {
+            return Ok(Some(T::from_i64(*i).unwrap()));
         };
         Ok(None)
     }
@@ -196,10 +196,10 @@ impl NodeDef {
         &self,
         name: &str,
     ) -> TractResult<Option<T>> {
-        if let Some(a) = self.attr.get(name) {
-            if let Value::F(i) = a.value.as_ref().unwrap() {
-                return Ok(Some(T::from_f32(*i).unwrap()));
-            }
+        if let Some(a) = self.attr.get(name)
+            && let Value::F(i) = a.value.as_ref().unwrap()
+        {
+            return Ok(Some(T::from_f32(*i).unwrap()));
         };
         Ok(None)
     }
@@ -217,10 +217,10 @@ impl NodeDef {
         &self,
         name: &str,
     ) -> TractResult<Option<Vec<T>>> {
-        if let Some(a) = self.attr.get(name) {
-            if let Value::List(list) = a.value.as_ref().unwrap() {
-                return Ok(Some(list.i.iter().map(|&i| T::from_i64(i).unwrap()).collect()));
-            }
+        if let Some(a) = self.attr.get(name)
+            && let Value::List(list) = a.value.as_ref().unwrap()
+        {
+            return Ok(Some(list.i.iter().map(|&i| T::from_i64(i).unwrap()).collect()));
         };
         Ok(None)
     }

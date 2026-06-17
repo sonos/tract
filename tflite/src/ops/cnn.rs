@@ -295,7 +295,7 @@ fn de_dw_conv2d(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     let mut inputs = tvec!(op.inputs[0], op.inputs[1], op.inputs[2]);
     if bias.datum_type.is_quantized() {
         inputs[2] = op.ctx.target.wire_node(
-            op.ctx.target.unique_name(format!("{}.bias", &op.prefix)),
+            op.ctx.target.unique_name(format!("{}.bias", op.prefix)),
             cast(bias.datum_type.unquantized()),
             &[inputs[2]],
         )?[0];

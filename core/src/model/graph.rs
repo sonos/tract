@@ -259,7 +259,7 @@ where
             self.outlet_labels.iter().map(|(o, s)| (Cow::Owned((*s).to_string()), *o)).collect();
         for n in self.nodes() {
             for ix in 0..n.outputs.len() {
-                labels.insert(Cow::Owned(format!("{}:{}", &n.name, ix)), OutletId::new(n.id, ix));
+                labels.insert(Cow::Owned(format!("{}:{}", n.name, ix)), OutletId::new(n.id, ix));
             }
         }
         let ids: Vec<OutletId> = outputs

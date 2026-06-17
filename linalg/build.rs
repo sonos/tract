@@ -172,7 +172,7 @@ fn main() {
             // The VNNI kernel is compiled separately (conditional on a probe) to
             // avoid breaking old assemblers. Remove it from the main file list.
             files.retain(|f| {
-                !f.file_name().and_then(|n| n.to_str()).map_or(false, |n| n.contains("avx512vnni"))
+                !f.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.contains("avx512vnni"))
             });
             files.extend(preprocess_files("x86_64/avx512", &[], &suffix, false));
 
@@ -262,7 +262,7 @@ fn main() {
             // encode `sdot` don't break the whole arm64simd build. Remove it
             // from the main file list.
             files.retain(|f| {
-                !f.file_name().and_then(|n| n.to_str()).map_or(false, |n| n.contains("_dot"))
+                !f.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.contains("_dot"))
             });
             cc::Build::new().files(files).compile("arm64simd");
             // The template stays in arm64/arm64simd/ (alongside the jinja partials
@@ -415,7 +415,7 @@ fn preprocess_file(
     ctx.insert("G".into(), g.into());
     ctx.insert("suffix".into(), suffix.into());
     ctx.insert("long".into(), long.into());
-    ctx.insert("jump_table".into(), minijinja::Value::from_serialize(&jump_table()));
+    ctx.insert("jump_table".into(), minijinja::Value::from_serialize(jump_table()));
     ctx.insert("align".into(), align.into());
     ctx.insert("offset".into(), offset.into());
 

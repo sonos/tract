@@ -708,8 +708,8 @@ fn remap_uniform_tdim(expr: &TDim, axis_op: &AxisOp) -> Option<TDim> {
                         let mut stride = TDim::Val(1);
                         for i in (0..k_to).rev() {
                             let new_sym = scope.coord_sym(*at + i);
-                            sum = sum + TDim::Sym(new_sym) * stride.clone();
-                            stride = stride * to_dims[i].clone();
+                            sum += TDim::Sym(new_sym) * stride.clone();
+                            stride *= to_dims[i].clone();
                         }
                         sum
                     } else {

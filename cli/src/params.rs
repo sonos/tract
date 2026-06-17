@@ -252,7 +252,7 @@ impl Parameters {
                             "Overriding model input shape named \"{}\". Replacing {} by {:?}.",
                             name.0,
                             String::from_utf8_lossy(&formatted),
-                            &shape
+                            shape
                         );
                         inv.arguments[0].rvalue = tract_nnef::ser::tdims(&shape);
                     }

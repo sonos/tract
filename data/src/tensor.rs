@@ -615,7 +615,7 @@ impl Tensor {
     }
 
     pub fn split_axis(mut self, axis: usize, outer_dim: usize) -> TractResult<Tensor> {
-        if self.shape[axis] % outer_dim != 0 {
+        if !self.shape[axis].is_multiple_of(outer_dim) {
             bail!(
                 "Invalid axis split, shape is {:?}, axis split at {}, outer {}",
                 self.shape,
