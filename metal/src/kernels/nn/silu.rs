@@ -43,7 +43,7 @@ impl Silu {
 
         let n_el = output.len();
 
-        let use_silu_4 = (n_el % 4 == 0) && (n_el as f32 > 2f32.powi(12));
+        let use_silu_4 = n_el.is_multiple_of(4) && (n_el as f32 > 2f32.powi(12));
         let kernel_name = self.kernel_name(input.datum_type(), use_silu_4)?;
 
         let n_threads = if use_silu_4 { n_el / 4 } else { n_el };

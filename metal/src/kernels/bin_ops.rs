@@ -1,5 +1,5 @@
-use super::BroadcastKind;
 use super::utils::build_metal_grid_and_groups_for_el_wise_op;
+use super::BroadcastKind;
 use crate::encoder::EncoderExt;
 use crate::kernels::utils::compute_broadcast_strides;
 use crate::{LibraryName, MetalStream};
@@ -64,8 +64,8 @@ fn can_use_row_kernel(mini_op: &dyn BinMiniOp, lhs: &DeviceTensor, rhs: &DeviceT
         && (rank > 0)
         && ((rhs.len() == rhs.shape()[rank - 1])
             || ((lhs.len() == lhs.shape()[rank - 1]) && matches!(mini_op.name(), "Mul" | "Add")))
-        && (lhs.shape()[rank - 1] % 4 == 0)
-        && (rhs.shape()[rank - 1] % 4 == 0)
+        && lhs.shape()[rank - 1].is_multiple_of(4)
+        && rhs.shape()[rank - 1].is_multiple_of(4)
 }
 
 fn reshape_to_rank_4_with_broadcast(
@@ -185,7 +185,7 @@ pub fn dispatch_eval(
         let (lhs_shape, rhs_shape, out_shape) = reshape_to_rank_4_with_broadcast(lhs, rhs, output)?;
 
         let lhs_strides =
-            compute_broadcast_strides::<usize>(&lhs_shape, &*natural_strides(&lhs_shape))?;
+            compute_broadcast_strides::<usize>(&lhs_shape, &natural_strides(&lhs_shape))?;
         let rhs_strides =
             compute_broadcast_strides::<usize>(&rhs_shape, &natural_strides(&rhs_shape))?;
         let out_strides =
@@ -237,6 +237,7 @@ crate::register_metal_op!(tract_core::ops::logic::Iff, |_source, _node, _op| {
     Ok(Some(Box::new(tract_gpu::ops::iff::GpuIff::new("Metal", metal_iff_dispatch))))
 });
 
+#[allow(clippy::too_many_arguments)]
 pub fn metal_iff_dispatch(
     cond: &DeviceTensor,
     then_value: &DeviceTensor,
