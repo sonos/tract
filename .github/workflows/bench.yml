@@ -204,11 +204,12 @@ jobs:
           persist-credentials: false
       - name: Render comparison
         env:
+          PR_SHA: ${{ needs.prepare.outputs.ref }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           chmod +x tract-cli/tract
           tract-cli/tract bench-report --results results --bench-data bench-data \
-            --thresholds .travis/bench-thresholds.toml --pr-sha "${{ needs.prepare.outputs.ref }}" --out pr-comment.md
+            --thresholds .travis/bench-thresholds.toml --pr-sha "$PR_SHA" --out pr-comment.md
       - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         with:
           script: |
