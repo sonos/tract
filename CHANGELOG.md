@@ -11,6 +11,9 @@ For normal usage we recommend adopting the **`tract` facade crate** (the public 
 
 # 0.23.1 - 2026-06-10
 
+### Security
+ * fix for [CVE-2026-55093](https://github.com/sonos/tract/security/advisories/GHSA-x5mv-8wgw-29hg) in tract-nnef (moderate): validation of tensor shapes in NNEF .dat files to prevent of multiplication overflow in buffer size computation.
+
 ### CPU / linalg
 
 - **int8 GEMM kernels across backends.** aarch64 SDOT (`FEAT_DotProd`), x86_64
