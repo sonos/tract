@@ -120,9 +120,10 @@ jobs:
           DEVICE: ${{ matrix.target }}
         run: |
           chmod +x tract-cli/tract
+          # no --cache-dir: honor each runner's CACHEDIR env (its curated model cache),
+          # falling back to ~/.cache/tract-ci-minion-models, like the old bundle did.
           tract-cli/tract bench-suite \
             --manifest .travis/benches.toml \
-            --cache-dir "$HOME/.cache/tract-ci-minion-models" \
             --bench-data bench-ref \
             --thresholds .travis/bench-thresholds.toml \
             --triple "$TRIPLE" --device "$DEVICE"        # produces ./metrics
