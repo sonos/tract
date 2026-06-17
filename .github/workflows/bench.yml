@@ -179,13 +179,12 @@ jobs:
 
   report:
     needs: [ prepare, build, bench ]
-    # !cancelled() (not always()) so a superseded/cancelled bench doesn't post a vacuous
-    # "no regressions" over a real result; the post step also skips when there's no comment.
+    # !cancelled() (not always()) so a superseded/cancelled bench doesn't produce a vacuous
+    # "no regressions" comment; bench-report writes no file when there's nothing to compare.
     if: ${{ !cancelled() && github.event_name == 'pull_request' && needs.prepare.outputs.enabled == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: write
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -213,23 +212,11 @@ jobs:
           chmod +x tract-cli/tract
           tract-cli/tract bench-report --results results --bench-data bench-data \
             --thresholds .travis/bench-thresholds.toml --pr-sha "$PR_SHA" --out pr-comment.md
-      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+      # Hand the rendered comment to the bench-comment workflow to post. Posting is split
+      # out via workflow_run because this pull_request run gets a read-only token on fork
+      # PRs and can't comment. No file => nothing comparable => no artifact => nothing posted.
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: ${{ hashFiles('pr-comment.md') != '' }}
         with:
-          script: |
-            const fs = require('fs');
-            if (!fs.existsSync('pr-comment.md')) {   // no results (cancelled/empty) -> leave any prior comment alone
-              core.info('no comparison produced; not posting');
-              return;
-            }
-            const body = fs.readFileSync('pr-comment.md', 'utf8');
-            const marker = '<!-- bench-vs-main -->';
-            const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner, repo: context.repo.repo,
-              issue_number: context.issue.number, per_page: 100,
-            });
-            const prev = comments.find(c => c.body?.includes(marker));
-            if (prev) {
-              await github.rest.issues.updateComment({ owner: context.repo.owner, repo: context.repo.repo, comment_id: prev.id, body });
-            } else {
-              await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number, body });
-            }
+          name: bench-comment
+          path: pr-comment.md
