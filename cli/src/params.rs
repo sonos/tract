@@ -1212,7 +1212,7 @@ impl Assertions {
     }
 }
 
-fn http_client() -> TractResult<reqwest::blocking::Client> {
+pub(crate) fn http_client() -> TractResult<reqwest::blocking::Client> {
     use rustls::{ClientConfig, RootCertStore};
     use std::sync::Arc;
 
