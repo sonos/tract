@@ -208,7 +208,7 @@ case "$PLATFORM" in
         then
             cargo dinghy --platform $PLATFORM build --release \
                 --no-default-features \
-                --features "onnx,tf,pulse,pulse-opl,tflite,transformers,extra,$TRACT_CUDA_FEATURE" \
+                --features "onnx,tf,pulse,pulse-opl,tflite,transformers,extra,bench-suite,$TRACT_CUDA_FEATURE" \
                 -p tract-cli
             cargo dinghy --platform $PLATFORM build --release -p example-tensorflow-mobilenet-v2
         else
