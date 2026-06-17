@@ -18,19 +18,20 @@ struct BenchData {
     metrics: BTreeMap<String, Vec<Option<f64>>>,
 }
 
-pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
-    let get = |k| matches.get_one::<String>(k).map(String::as_str);
-    let bench_data = get("bench-data").context("--bench-data is required")?;
-    let thresholds = get("thresholds").context("--thresholds is required")?;
-    let triple = get("triple").context("--triple is required")?;
-    let device = get("device").context("--device is required")?;
-    let out = get("out").context("--out is required")?;
-    let window: usize = get("window").map(str::parse).transpose()?.unwrap_or(10);
-
+/// Compute the gated `(metric, expected, threshold)` rows for one (triple, device)
+/// from bench-data history. Shared by the `bench-expectations` subcommand (which
+/// writes them to a file) and the orchestrator (which computes them inline on the
+/// bench host). A device with no history yields no rows (retry disabled there).
+pub fn compute(
+    bench_data: &str,
+    thresholds: &str,
+    triple: &str,
+    device: &str,
+    window: usize,
+) -> TractResult<Vec<(String, f64, f64)>> {
     let cfg = Thresholds::load(thresholds)?;
     let path = format!("{bench_data}/{triple}/{device}.json");
-
-    let mut lines = vec![];
+    let mut rows = vec![];
     if std::path::Path::new(&path).exists() {
         let data: BenchData = serde_json::from_str(&std::fs::read_to_string(&path)?)
             .with_context(|| format!("parsing {path}"))?;
@@ -43,12 +44,25 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
             let expected = median(&vals);
             if let Some(thr) = red_threshold(metric, &cfg, series_noise(arr, 40, 8), Some(expected))
             {
-                lines.push(format!("{metric} {expected} {thr}"));
+                rows.push((metric.clone(), expected, thr));
             }
         }
     }
+    Ok(rows)
+}
 
-    std::fs::write(out, lines.iter().map(|l| format!("{l}\n")).collect::<String>())?;
-    println!("expectations: {} gated metrics -> {out}", lines.len());
+pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
+    let get = |k| matches.get_one::<String>(k).map(String::as_str);
+    let bench_data = get("bench-data").context("--bench-data is required")?;
+    let thresholds = get("thresholds").context("--thresholds is required")?;
+    let triple = get("triple").context("--triple is required")?;
+    let device = get("device").context("--device is required")?;
+    let out = get("out").context("--out is required")?;
+    let window: usize = get("window").map(str::parse).transpose()?.unwrap_or(10);
+
+    let rows = compute(bench_data, thresholds, triple, device, window)?;
+    let body: String = rows.iter().map(|(m, e, t)| format!("{m} {e} {t}\n")).collect();
+    std::fs::write(out, body)?;
+    println!("expectations: {} gated metrics -> {out}", rows.len());
     Ok(())
 }

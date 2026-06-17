@@ -141,10 +141,7 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
     let no_fetch = matches.get_flag("no-fetch");
     let filter = matches.get_one::<String>("filter").map(String::as_str);
 
-    let expectations = match matches.get_one::<String>("expectations") {
-        Some(path) => load_expectations(path)?,
-        None => HashMap::new(),
-    };
+    let expectations = expectations(matches)?;
     let retry_max: usize =
         matches.get_one::<String>("retry-max").map(|s| s.parse()).transpose()?.unwrap_or(2);
 
@@ -297,6 +294,24 @@ fn merge_best(best: &mut BTreeMap<String, f64>, cand: Vec<(String, f64)>) {
             })
             .or_insert(v);
     }
+}
+
+/// Resolve the expectations that drive retry: an explicit `--expectations` file, or
+/// computed inline from bench-data history on the bench host (`--bench-data` plus
+/// `--thresholds`/`--triple`/`--device`). Neither given: empty (single shot).
+fn expectations(matches: &clap::ArgMatches) -> TractResult<HashMap<String, (f64, f64)>> {
+    let get = |k| matches.get_one::<String>(k).map(String::as_str);
+    if let Some(path) = get("expectations") {
+        return load_expectations(path);
+    }
+    let Some(bench_data) = get("bench-data") else { return Ok(HashMap::new()) };
+    let thresholds = get("thresholds").context("--thresholds is required with --bench-data")?;
+    let triple = get("triple").context("--triple is required with --bench-data")?;
+    let device = get("device").context("--device is required with --bench-data")?;
+    let window: usize = get("window").map(str::parse).transpose()?.unwrap_or(10);
+    let rows = crate::bench_expectations::compute(bench_data, thresholds, triple, device, window)?;
+    println!("expectations: {} gated metrics from {bench_data}/{triple}/{device}", rows.len());
+    Ok(rows.into_iter().map(|(m, e, t)| (m, (e, t))).collect())
 }
 
 /// Parse a `metric expected threshold` expectations file (keys underscored, as in
