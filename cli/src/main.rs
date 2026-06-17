@@ -29,6 +29,8 @@ mod bench_common;
 #[cfg(feature = "bench-suite")]
 mod bench_expectations;
 #[cfg(feature = "bench-suite")]
+mod bench_report;
+#[cfg(feature = "bench-suite")]
 mod bench_suite;
 mod compare;
 mod cost;
@@ -273,6 +275,17 @@ fn main() -> TractResult<()> {
                 .arg(arg!(--device <DEVICE> "Device key"))
                 .arg(arg!(--out <PATH> "Output expectations file"))
                 .arg(arg!(--window [N] "Trailing nights to median over (default: 10)")),
+        );
+        app = app.subcommand(
+            clap::Command::new("bench-report")
+                .long_about("Render the PR-vs-main bench comparison comment + job summary.")
+                .arg(arg!(--results <DIR> "Dir of per-device result subdirs (meta.json + metrics)"))
+                .arg(arg!(--"bench-data" <DIR> "bench-data checkout root (the nightly reference)"))
+                .arg(arg!(--thresholds <PATH> "Threshold config TOML"))
+                .arg(arg!(--"pr-sha" <SHA> "PR commit sha"))
+                .arg(arg!(--out <PATH> "PR comment markdown output path"))
+                .arg(arg!(--templates [DIR] "Template dir (default: .travis)"))
+                .arg(arg!(--today [DATE] "Override today's date YYYY-MM-DD (for reproducible output)")),
         );
     }
 
@@ -785,6 +798,8 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
         Some(("bench-suite", m)) => return bench_suite::handle(m),
         #[cfg(feature = "bench-suite")]
         Some(("bench-expectations", m)) => return bench_expectations::handle(m),
+        #[cfg(feature = "bench-suite")]
+        Some(("bench-report", m)) => return bench_report::handle(m),
         Some(("kernels", _)) => {
             println!();
             fn colored_name(m: &dyn MatMatMul) -> String {

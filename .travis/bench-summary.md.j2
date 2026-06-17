@@ -1,0 +1,16 @@
+{% macro table(rows) %}
+| Δ | metric | main → PR |
+|---|---|---|
+{% for r in rows %}
+| {{ r.flag }} {{ r.delta }} | {{ r.cell }} | {{ r.ref_fmt }} → {{ r.pr_fmt }} |
+{% endfor %}
+{% endmacro %}
+# Bench vs main — full comparison
+
+Reference {{ ref_day }} · PR {{ pr_sha9 }}
+
+{% for dev in devices %}
+## {{ dev.device }} ({{ dev.count }} metrics)
+
+{{ table(dev.rows) }}
+{% endfor %}
