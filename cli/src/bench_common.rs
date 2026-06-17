@@ -41,6 +41,28 @@ pub fn higher_better(metric: &str) -> bool {
     })
 }
 
+/// The inference-speed signal (evaltime / prefill / decode), shown first in the report.
+pub fn is_speed(metric: &str) -> bool {
+    metric.split('.').any(|seg| seg == "evaltime") || higher_better(metric)
+}
+
+/// Read a `metric value` file in file order, canonicalizing '-' -> '_' (the old minion
+/// pushed underscored names to graphite, and bench-data follows that). File order is
+/// kept so equal-Δ ties in the report sort the same way the values were emitted.
+pub fn read_metrics(path: &str) -> Vec<(String, f64)> {
+    let mut out = vec![];
+    let Ok(content) = std::fs::read_to_string(path) else { return out };
+    for line in content.lines() {
+        let p: Vec<&str> = line.split_whitespace().collect();
+        if p.len() >= 2 {
+            if let Ok(v) = p[1].parse::<f64>() {
+                out.push((p[0].replace('-', "_"), v));
+            }
+        }
+    }
+    out
+}
+
 fn floor_for(metric: &str, floors: &toml::Table) -> f64 {
     for (cls, t) in floors {
         if cls != "default" && metric.contains(cls.as_str()) {

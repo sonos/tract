@@ -1,0 +1,33 @@
+{% macro table(rows) %}
+| Δ | metric | device | main → PR |
+|---|---|---|---|
+{% for r in rows %}
+| {{ r.icon }} **{{ r.delta }}** | {{ r.cell }} | `{{ r.device }}` | {{ r.ref_fmt }} → {{ r.pr_fmt }} |
+{% endfor %}
+{% endmacro %}
+<!-- bench-vs-main -->
+{{ head }}
+
+Reference: main nightly, latest **{{ ref_day }}** ({{ age }}d old) · PR `{{ pr_sha9 }}` · ran on {{ devs }} · {{ n_metrics }} metrics compared
+
+**Speed** — evaltime · prefill · decode
+
+{% if speed_regr %}
+{{ table(speed_regr) }}
+{% else %}
+_no inference-speed regressions_
+{% endif %}
+
+{% if other_regr %}
+**Load & memory** (worst first)
+
+{{ table(other_regr) }}
+
+{% endif %}
+{% if impr %}
+<details><summary>🟢 {{ impr | length }} improvement(s)</summary>
+
+{{ table(impr) }}</details>
+
+{% endif %}
+_lower is better except prefill/decode (tok/s) · adaptive thresholds (max(floor, k×noise) vs the series' own history) · single-shot vs nightly reference · full table → [run summary]({{ run_url }})_
