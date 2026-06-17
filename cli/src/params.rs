@@ -660,11 +660,11 @@ impl Parameters {
                         }
                         Err(e) => {
                             if e.is::<ModelBuildingError>() {
-                                return Err(e)?;
+                                Err(e)?;
                             } else if let Some(last_model) = last_model.take() {
-                                return Err(ModelBuildingError(last_model, e.into()))?;
+                                Err(ModelBuildingError(last_model, e.into()))?;
                             } else {
-                                return Err(e)?;
+                                Err(e)?;
                             }
                         }
                     }
