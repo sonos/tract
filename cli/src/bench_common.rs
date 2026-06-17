@@ -124,6 +124,17 @@ pub fn red_threshold(
     Some(noise.map_or(floor, |n| floor.max(cfg.k * n)))
 }
 
+/// The baseline a metric is compared against: the median of its recent non-null
+/// points. Used by BOTH the report (to compute the red) and bench-expectations (the
+/// value shipped to the retry), so the retry and the report's red judge against the
+/// same number. Median (not the latest single value) so a noisy last nightly doesn't
+/// shift the reference. `None` if there's no data.
+pub fn reference_value(arr: &[Option<f64>], window: usize) -> Option<f64> {
+    let vals: Vec<f64> =
+        arr[arr.len().saturating_sub(window)..].iter().filter_map(|&v| v).collect();
+    (!vals.is_empty()).then(|| median(&vals))
+}
+
 /// Median of a non-empty slice (mean of the two middle points for even length),
 /// matching Python's `statistics.median`.
 pub fn median(vals: &[f64]) -> f64 {
@@ -131,4 +142,71 @@ pub fn median(vals: &[f64]) -> f64 {
     v.sort_by(|a, b| a.total_cmp(b));
     let n = v.len();
     if n % 2 == 1 { v[n / 2] } else { (v[n / 2 - 1] + v[n / 2]) / 2.0 }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn cfg() -> Thresholds {
+        toml::from_str(
+            r#"
+k = 3.0
+min_load_seconds = 0.03
+needs_history = ["time_to", "rsz"]
+ignore = ["bench_runtime"]
+[floors]
+default = 5
+evaltime = 5
+active_at = 2
+time_to = 5
+rsz = 5
+pp = 3
+tg = 3
+"#,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn median_odd_even() {
+        assert_eq!(median(&[3.0, 1.0, 2.0]), 2.0);
+        assert_eq!(median(&[1.0, 2.0, 3.0, 4.0]), 2.5);
+    }
+
+    #[test]
+    fn reference_value_is_windowed_median_skipping_nulls() {
+        let arr = [Some(1.0), None, Some(2.0), Some(100.0)];
+        assert_eq!(reference_value(&arr, 3), Some(51.0)); // median of {2,100} over last 3 (one null)
+        assert_eq!(reference_value(&[None, None], 10), None);
+    }
+
+    #[test]
+    fn direction_and_speed_signals() {
+        assert!(higher_better("llm.m.pp512.cpu"));
+        assert!(higher_better("llm.m.tg128.cpu"));
+        assert!(!higher_better("net.m.evaltime.pass"));
+        assert!(is_speed("net.m.evaltime.pass"));
+        assert!(is_speed("llm.m.pp512.cpu"));
+        assert!(!is_speed("net.m.rsz_at_model_ready.pass"));
+    }
+
+    #[test]
+    fn red_threshold_gating() {
+        let c = cfg();
+        // operational metric: never gated
+        assert_eq!(red_threshold("bundle.bench_runtime", &c, Some(1.0), Some(1.0)), None);
+        // sub-resolution load: not gated
+        assert_eq!(
+            red_threshold("net.m.time_to_before_optimize.v", &c, Some(1.0), Some(0.01)),
+            None
+        );
+        // needs_history class with no measured noise: not gated
+        assert_eq!(red_threshold("net.m.rsz_at_model_ready.v", &c, None, Some(1e8)), None);
+        // clean class without history still gates at its floor
+        assert_eq!(red_threshold("net.m.evaltime.v", &c, None, Some(0.05)), Some(5.0));
+        assert_eq!(red_threshold("net.m.active_at_model_ready.v", &c, None, Some(2e7)), Some(2.0));
+        // with noise: max(floor, k * noise)
+        assert_eq!(red_threshold("net.m.evaltime.v", &c, Some(4.0), Some(0.05)), Some(12.0));
+    }
 }

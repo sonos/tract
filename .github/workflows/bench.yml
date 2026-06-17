@@ -178,7 +178,9 @@ jobs:
 
   report:
     needs: [ prepare, build, bench ]
-    if: ${{ always() && github.event_name == 'pull_request' && needs.prepare.outputs.enabled == 'true' }}
+    # !cancelled() (not always()) so a superseded/cancelled bench doesn't post a vacuous
+    # "no regressions" over a real result; the post step also skips when there's no comment.
+    if: ${{ !cancelled() && github.event_name == 'pull_request' && needs.prepare.outputs.enabled == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -214,6 +216,10 @@ jobs:
         with:
           script: |
             const fs = require('fs');
+            if (!fs.existsSync('pr-comment.md')) {   // no results (cancelled/empty) -> leave any prior comment alone
+              core.info('no comparison produced; not posting');
+              return;
+            }
             const body = fs.readFileSync('pr-comment.md', 'utf8');
             const marker = '<!-- bench-vs-main -->';
             const { data: comments } = await github.rest.issues.listComments({

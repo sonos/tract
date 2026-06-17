@@ -132,6 +132,10 @@ jobs:
       with:
         persist-credentials: false
     - run: rustup component add clippy && cargo clippy
+    - name: clippy (bench-suite feature)
+      run: cargo clippy -p tract-cli --features bench-suite
+    - name: test (bench-suite feature)
+      run: cargo test -p tract-cli --features bench-suite --bin tract bench_
     - name: fmt
       run: rustup component add rustfmt --toolchain stable && cargo +stable fmt --check
     - name: Warnings

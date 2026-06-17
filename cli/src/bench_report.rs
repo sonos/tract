@@ -9,7 +9,7 @@
 //! (`bench_common::red_threshold`) to count as a mover. Direction-aware.
 
 use crate::bench_common::{
-    Thresholds, higher_better, is_speed, read_metrics, red_threshold, series_noise,
+    Thresholds, higher_better, is_speed, read_metrics, red_threshold, reference_value, series_noise,
 };
 use minijinja::{Environment, context};
 use serde::{Deserialize, Serialize};
@@ -87,9 +87,11 @@ fn reference(bench_data: &str, triple: &str, device: &str) -> TractResult<Refere
     let mut last_idx: i64 = -1;
     for (m, arr) in &d.metrics {
         noise.insert(m.clone(), series_noise(arr, 40, 8));
+        if let Some(v) = reference_value(arr, 10) {
+            vals.insert(m.clone(), v); // median baseline, == what bench-expectations ships
+        }
         if let Some(i) = arr.iter().rposition(Option::is_some) {
-            vals.insert(m.clone(), arr[i].unwrap());
-            last_idx = last_idx.max(i as i64);
+            last_idx = last_idx.max(i as i64); // latest non-null day, for ref-date display only
         }
     }
     let ref_day = (last_idx >= 0).then(|| start + Duration::days(last_idx));
@@ -258,6 +260,13 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
                 mover,
             });
         }
+    }
+
+    // No comparable metrics (no device results, or no reference) -> write nothing, so a
+    // cancelled/empty run can't overwrite a real comment with a vacuous "no regressions".
+    if rows.is_empty() {
+        println!("no comparable metrics; not writing a comment");
+        return Ok(());
     }
 
     let movers: Vec<&Row> = rows.iter().filter(|r| r.mover).collect();

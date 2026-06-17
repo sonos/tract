@@ -7,7 +7,7 @@
 //! metrics are omitted (not retried). A device with no history yields an empty file
 //! (retry disabled there, single-shot).
 
-use crate::bench_common::{Thresholds, median, red_threshold, series_noise};
+use crate::bench_common::{Thresholds, red_threshold, reference_value, series_noise};
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use tract_hir::internal::*;
@@ -36,12 +36,7 @@ pub fn compute(
         let data: BenchData = serde_json::from_str(&std::fs::read_to_string(&path)?)
             .with_context(|| format!("parsing {path}"))?;
         for (metric, arr) in &data.metrics {
-            let vals: Vec<f64> =
-                arr[arr.len().saturating_sub(window)..].iter().filter_map(|&v| v).collect();
-            if vals.is_empty() {
-                continue;
-            }
-            let expected = median(&vals);
+            let Some(expected) = reference_value(arr, window) else { continue };
             if let Some(thr) = red_threshold(metric, &cfg, series_noise(arr, 40, 8), Some(expected))
             {
                 rows.push((metric.clone(), expected, thr));

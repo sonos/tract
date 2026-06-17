@@ -147,6 +147,7 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
 
     let exe = std::env::current_exe()?;
     set_governor_max();
+    let _gpu_clock = GpuClock::pin(); // reset on drop, when the suite finishes
 
     let start = Instant::now();
     let mut metrics: Vec<(String, f64)> = vec![];
@@ -371,6 +372,58 @@ fn download(base_url: &str, name: &str, dest: &Path) -> TractResult<()> {
     file.sync_all()?;
     std::fs::rename(&tmp, dest)?;
     Ok(())
+}
+
+/// Pins the GPU graphics clock for the run and resets it on drop. The cuda runner
+/// free-boosts from idle, adding session-to-session variance to evaltime that the
+/// in-run retry can't damp. Best-effort: needs privilege, no-op without nvidia-smi.
+/// `BENCH_GPU_CLOCK` (MHz) overrides the default (the top supported clock).
+struct GpuClock {
+    locked: bool,
+}
+
+impl GpuClock {
+    fn pin() -> GpuClock {
+        let query = || {
+            let out = Command::new("nvidia-smi")
+                .args(["--query-supported-clocks=graphics", "--format=csv,noheader,nounits"])
+                .output()
+                .ok()?;
+            out.status.success().then(|| {
+                String::from_utf8_lossy(&out.stdout).lines().next().map(|l| l.trim().to_string())
+            })?
+        };
+        let clock = std::env::var("BENCH_GPU_CLOCK").ok().filter(|c| !c.is_empty()).or_else(query);
+        let Some(clock) = clock.filter(|c| !c.is_empty()) else {
+            return GpuClock { locked: false };
+        };
+        let nvidia = |args: &[String]| {
+            Command::new("nvidia-smi")
+                .args(args)
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+        };
+        let _ = nvidia(&["-pm".into(), "1".into()]);
+        let locked =
+            nvidia(&[format!("--lock-gpu-clocks={clock}")]).map(|s| s.success()).unwrap_or(false);
+        if !locked {
+            eprintln!("Warning: could not lock GPU clocks (need privilege?)");
+        }
+        GpuClock { locked }
+    }
+}
+
+impl Drop for GpuClock {
+    fn drop(&mut self) {
+        if self.locked {
+            let _ = Command::new("nvidia-smi")
+                .arg("--reset-gpu-clocks")
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status();
+        }
+    }
 }
 
 /// On Linux with a `userspace` governor, pin cpu0 to its top available frequency
