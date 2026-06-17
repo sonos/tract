@@ -91,7 +91,11 @@ merge_best() {  # $1 <- per-metric best of $1 and $2 (min, or max for pp/tg thro
 bench_run() {  # bench_run <measure-fn> <args...>
     fn=$1
     shift
-    if [ ! -s "$EXPECTATIONS" ]; then CUR=metrics; "$fn" "$@"; return; fi
+    if [ ! -s "$EXPECTATIONS" ]; then
+        [ -z "$_DBG_PATH" ] && { echo "DEBUG[bench]: bench_run -> SINGLE-SHOT (EXPECTATIONS not usable)"; _DBG_PATH=1; }
+        CUR=metrics; "$fn" "$@"; return
+    fi
+    [ -z "$_DBG_PATH" ] && { echo "DEBUG[bench]: bench_run -> RETRY path"; _DBG_PATH=1; }
     best=$(newtmp); CUR=$best; : > "$best"; "$fn" "$@"
     tries=0
     while [ "$tries" -lt "$RETRY_MAX" ] && out_of_threshold "$best"; do
@@ -161,6 +165,8 @@ _llm_measure() {
         done
     fi
 }
+
+printf 'DEBUG[bench]: EXPECTATIONS=[%s]  -s=%s  lines=%s  pwd=%s\n' "$EXPECTATIONS" "$([ -s "$EXPECTATIONS" ] && echo yes || echo no)" "$(wc -l < "$EXPECTATIONS" 2>/dev/null || echo NA)" "$(pwd)"
 
 group "net benches"
 net_bench arm_ml_kws_cnn_m pass $CACHEDIR/ARM-ML-KWS-CNN-M.pb -i 49,10,f32 --partial --input-node Mfcc
