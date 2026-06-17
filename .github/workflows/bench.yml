@@ -54,11 +54,11 @@ jobs:
         include:
           - triple: aarch64-apple-darwin
             host: macos-latest
-            build: ROOT=. ./.travis/ci-system-setup.sh && cargo build -p tract-cli --release
+            build: ROOT=. ./.travis/ci-system-setup.sh && cargo build -p tract-cli --release --features bench-suite
             bin: target/release/tract
           - triple: x86_64-unknown-linux-gnu
             host: ubuntu-latest
-            build: ROOT=. ./.travis/ci-system-setup.sh && cargo build -p tract-cli --release
+            build: ROOT=. ./.travis/ci-system-setup.sh && cargo build -p tract-cli --release --features bench-suite
             bin: target/release/tract
           - triple: aarch64-unknown-linux-gnu-stretch
             host: ubuntu-latest
@@ -75,46 +75,11 @@ jobs:
           name: tract-cli-${{ matrix.triple }}
           path: ${{ matrix.bin }}
 
-  # Build the per-device retry expectations here, on a modern Python (tomllib), not on
-  # the bench runners — the Jetson's python3 predates tomllib. The runners only consume
-  # the resulting text file (via awk in the bundle), no Python needed there.
-  expectations:
-    needs: prepare
-    if: needs.prepare.outputs.enabled == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        with:
-          ref: ${{ needs.prepare.outputs.ref }}
-          persist-credentials: false
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        with:
-          ref: bench-data
-          path: bench-ref
-          fetch-depth: 1
-          persist-credentials: false
-      - name: Build per-device expectations
-        run: |
-          mkdir -p expectations
-          gen() {   # gen <device> <triple>; mirrors the bench matrix
-            python3 .travis/bench-expectations.py --bench-data bench-ref \
-              --thresholds .travis/bench-thresholds.toml \
-              --triple "$2" --device "$1" --out "expectations/$1.txt"
-          }
-          gen apple-m1-max        aarch64-apple-darwin
-          gen i9-11900kb_rtx-4060 x86_64-unknown-linux-gnu
-          gen jetson-orin-nx      aarch64-unknown-linux-gnu-stretch
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: expectations
-          path: expectations
-
   bench:
-    needs: [ prepare, build, expectations ]
+    needs: [ prepare, build ]
     if: needs.prepare.outputs.enabled == 'true'
     runs-on: ${{ matrix.runner }}
     permissions:
-      id-token: write     # AWS OIDC for S3 model fetch
       contents: write     # push to bench-data (nightly only)
     concurrency:
       group: bench-runner-${{ matrix.runner }}   # one bench per box at a time; never fight a running bench
@@ -137,25 +102,30 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.ref }}
           persist-credentials: false
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@e7f100cf4c008499ea8adda475de1042d6975c7b # v6.2.0
-        with:
-          role-to-assume: arn:aws:iam::567805100031:role/github-runner-tract-ci
-          aws-region: us-east-2
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: tract-cli-${{ matrix.triple }}
           path: tract-cli
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      # Read-only bench-data checkout: the orchestrator builds this device's retry
+      # expectations from it inline (no separate job, no Python on the runner).
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
-          name: expectations
-          path: expectations
+          ref: bench-data
+          path: bench-ref
+          fetch-depth: 1
+          persist-credentials: false
       - name: Run bench suite
+        env:
+          TRIPLE: ${{ matrix.triple }}
+          DEVICE: ${{ matrix.target }}
         run: |
           chmod +x tract-cli/tract
-          export TRACT_RUN="$GITHUB_WORKSPACE/tract-cli/tract"
-          export EXPECTATIONS="$GITHUB_WORKSPACE/expectations/${{ matrix.target }}.txt"
-          ./.travis/bundle-entrypoint.sh        # produces ./metrics
+          tract-cli/tract bench-suite \
+            --manifest .travis/benches.toml \
+            --cache-dir "$HOME/.cache/tract-ci-minion-models" \
+            --bench-data bench-ref \
+            --thresholds .travis/bench-thresholds.toml \
+            --triple "$TRIPLE" --device "$DEVICE"        # produces ./metrics
 
       # --- nightly / dispatch: append the row to bench-data ---
       - name: Checkout bench-data
