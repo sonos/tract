@@ -12,70 +12,70 @@ kind = "net"
 name = "arm_ml_kws_cnn_m"
 variant = "pass"
 model = "ARM-ML-KWS-CNN-M.pb"
-args = ["-i", "49,10,f32", "--partial", "--input-node", "Mfcc"]
+args = "-i 49,10,f32 --partial --input-node Mfcc"
 
 [[bench]]
 kind = "net"
 name = "hey_snips_v1"
 variant = "400ms"
 model = "hey_snips_v1.pb"
-args = ["-i", "80,40,f32"]
+args = "-i 80,40,f32"
 
 [[bench]]
 kind = "net"
 name = "hey_snips_v31"
 variant = "400ms"
 model = "hey_snips_v3.1.pb"
-args = ["-i", "40,40,f32"]
+args = "-i 40,40,f32"
 
 [[bench]]
 kind = "net"
 name = "hey_snips_v4_model17"
 variant = "2sec"
 model = "hey_snips_v4_model17.pb"
-args = ["-i", "200,20,f32"]
+args = "-i 200,20,f32"
 
 [[bench]]
 kind = "net"
 name = "hey_snips_v4_model17"
 variant = "pulse8"
 model = "hey_snips_v4_model17.pb"
-args = ["-i", "S,20,f32", "--pulse", "8"]
+args = "-i S,20,f32 --pulse 8"
 
 [[bench]]
 kind = "net"
 name = "hey_snips_v4_model17_nnef"
 variant = "pulse8"
 model = "hey_snips_v4_model17.alpha1.tar"
-args = ["--nnef-tract-pulse"]
+args = "--nnef-tract-pulse"
 
 [[bench]]
 kind = "net"
 name = "mobilenet_v1_1"
 variant = "pass"
 model = "mobilenet_v1_1.0_224_frozen.pb"
-args = ["-i", "1,224,224,3,f32"]
+args = "-i 1,224,224,3,f32"
 
 [[bench]]
 kind = "net"
 name = "mobilenet_v2_1"
 variant = "pass"
 model = "mobilenet_v2_1.4_224_frozen.pb"
-args = ["-i", "1,224,224,3,f32"]
+args = "-i 1,224,224,3,f32"
 
 [[bench]]
 kind = "net"
 name = "inceptionv1q"
 variant = "pass"
 model = "inceptionv1_quant.nnef.tar.gz"
-args = ["--nnef-tract-core"]
+args = "--nnef-tract-core"
 
 [[bench]]
 kind = "net"
 name = "inceptionv3"
 variant = "pass"
 model = "inception_v3_2016_08_28_frozen.pb"
-args = ["-i", "1,299,299,3,f32"]
+args = "-i 1,299,299,3,f32"
 
 [[bench]]
 kind = "net"
@@ -83,7 +83,7 @@ name = "mdl-en-2019-Q3-librispeech_onnx"
 variant = "2600ms"
 model = "en_libri_real/model.onnx"
 archive = "en_libri_real.tar.gz"
-args = ["--output-node", "output", "-i", "264,40"]
+args = "--output-node output -i 264,40"
 
 [[bench]]
 kind = "net"
@@ -91,7 +91,7 @@ name = "mdl-en-2019-Q3-librispeech_onnx"
 variant = "pulse_240ms"
 model = "en_libri_real/model.onnx"
 archive = "en_libri_real.tar.gz"
-args = ["--output-node", "output", "-i", "S,40", "--pulse", "24"]
+args = "--output-node output -i S,40 --pulse 24"
 
 [[bench]]
 kind = "net"
@@ -99,7 +99,7 @@ name = "en_tdnn_lstm_bn_q7"
 variant = "2600ms"
 model = "en_tdnn_lstm_bn_q7/model.onnx"
 archive = "en_tdnn_lstm_bn_q7.tar.gz"
-args = ["--output-node", "output", "-i", "264,40"]
+args = "--output-node output -i 264,40"
 
 [[bench]]
 kind = "net"
@@ -107,119 +107,119 @@ name = "en_tdnn_lstm_bn_q7"
 variant = "pulse_240ms"
 model = "en_tdnn_lstm_bn_q7/model.onnx"
 archive = "en_tdnn_lstm_bn_q7.tar.gz"
-args = ["--output-node", "output", "-i", "S,40", "--pulse", "24"]
+args = "--output-node output -i S,40 --pulse 24"
 
 [[bench]]
 kind = "net"
 name = "en_tdnn_8M"
 variant = "2600ms"
 model = "mdl-en-2019-12-24-aho-corasick-18h01m33s.onnx"
-args = ["--output-node", "output", "-i", "264,40"]
+args = "--output-node output -i 264,40"
 
 [[bench]]
 kind = "net"
 name = "en_tdnn_8M"
 variant = "pulse_240ms"
 model = "mdl-en-2019-12-24-aho-corasick-18h01m33s.onnx"
-args = ["--output-node", "output", "-i", "S,40", "--pulse", "24"]
+args = "--output-node output -i S,40 --pulse 24"
 
 [[bench]]
 kind = "net"
 name = "en_tdnn_8M"
 variant = "pulse_180ms"
 model = "mdl-en-2019-12-24-aho-corasick-18h01m33s.onnx"
-args = ["--output-node", "output", "-i", "S,40", "--pulse", "18"]
+args = "--output-node output -i S,40 --pulse 18"
 
 [[bench]]
 kind = "net"
 name = "en_tdnn_8M"
 variant = "pulse_120ms"
 model = "mdl-en-2019-12-24-aho-corasick-18h01m33s.onnx"
-args = ["--output-node", "output", "-i", "S,40", "--pulse", "12"]
+args = "--output-node output -i S,40 --pulse 12"
 
 [[bench]]
 kind = "net"
 name = "en_tdnn_8M_nnef"
 variant = "pulse_240ms"
 model = "mdl-en-2019-12-24-aho-corasick-18h01m33s.alpha1.a.tar"
-args = ["--nnef-tract-pulse"]
+args = "--nnef-tract-pulse"
 
 [[bench]]
 kind = "net"
 name = "en_tdnn_15M"
 variant = "2600ms"
 model = "en_tdnn_15M.onnx"
-args = ["--output-node", "output", "-i", "264,40"]
+args = "--output-node output -i 264,40"
 
 [[bench]]
 kind = "net"
 name = "en_tdnn_15M"
 variant = "pulse_240ms"
 model = "en_tdnn_15M.onnx"
-args = ["--output-node", "output", "-i", "S,40", "--pulse", "24"]
+args = "--output-node output -i S,40 --pulse 24"
 
 [[bench]]
 kind = "net"
 name = "en_tdnn_15M"
 variant = "pulse_120ms"
 model = "en_tdnn_15M.onnx"
-args = ["--output-node", "output", "-i", "S,40", "--pulse", "12"]
+args = "--output-node output -i S,40 --pulse 12"
 
 [[bench]]
 kind = "net"
 name = "en_tdnn_15M_nnef"
 variant = "pulse_240ms"
 model = "en_tdnn_15M.alpha1.tar"
-args = ["--nnef-tract-pulse"]
+args = "--nnef-tract-pulse"
 
 [[bench]]
 kind = "net"
 name = "dummy-conmer-12M"
 variant = "pulse_120ms"
 model = "dummy-conmer-12M.nnef.tar"
-args = ["--nnef-tract-core", "--pulse", "12"]
+args = "--nnef-tract-core --pulse 12"
 
 [[bench]]
 kind = "net"
 name = "en_tdnn_pyt_15M"
 variant = "pulse_120ms"
 model = "mdl-en-2023-03-27-allen-17h11m50s.nnef.tar"
-args = ["--nnef-tract-core", "--pulse", "12"]
+args = "--nnef-tract-core --pulse 12"
 
 [[bench]]
 kind = "net"
 name = "speaker_id"
 variant = "pulse8"
 model = "speaker-id-2019-03.onnx"
-args = ["-i", "1,S,40,f32", "--output-node", "257", "--partial", "--pulse", "8"]
+args = "-i 1,S,40,f32 --output-node 257 --partial --pulse 8"
 
 [[bench]]
 kind = "net"
 name = "voicecom_fake_quant"
 variant = "2sec"
 model = "snips-voice-commands-cnn-fake-quant.pb"
-args = ["-i", "200,10,f32"]
+args = "-i 200,10,f32"
 
 [[bench]]
 kind = "net"
 name = "voicecom_float"
 variant = "2sec"
 model = "snips-voice-commands-cnn-float.pb"
-args = ["-i", "200,10,f32"]
+args = "-i 200,10,f32"
 
 [[bench]]
 kind = "net"
 name = "trunet"
 variant = "pulse1_f32"
 model = "trunet_dummy.nnef.tgz"
-args = ["--nnef-tract-core", "--pulse", "1"]
+args = "--nnef-tract-core --pulse 1"
 
 [[bench]]
 kind = "net"
 name = "trunet"
 variant = "pulse1_f16"
 model = "trunet_dummy.nnef.tgz"
-args = ["--nnef-tract-core", "-t", "f32_to_f16", "--pulse", "1"]
+args = "--nnef-tract-core -t f32_to_f16 --pulse 1"
 
 # --- LLM + transformer benches (per available backend) ---
 
@@ -251,28 +251,28 @@ backends = ["cpu", "metal", "cuda"]
 kind = "net"
 name = "parakeet-tdt-600m-v3-f32f32-preprocessor_1s"
 model = "parakeet-tdt-0.6b-v3-f32f32.608.preprocessor.nnef.tgz"
-args = ["-t", "transformers_detect_all", "--nnef-tract-transformers", "--set", "B=1", "--set", "A=16000"]
+args = "-t transformers_detect_all --nnef-tract-transformers --set B=1 --set A=16000"
 backends = ["cpu", "metal", "cuda"]
 
 [[bench]]
 kind = "net"
 name = "parakeet-tdt-600m-v3-f32f32-encoder_1s"
 model = "parakeet-tdt-0.6b-v3-f32f32.608.encoder.p1.nnef.tgz"
-args = ["-t", "transformers_detect_all", "--nnef-tract-transformers", "--set", "B=1", "--set", "S=100"]
+args = "-t transformers_detect_all --nnef-tract-transformers --set B=1 --set S=100"
 backends = ["cpu", "metal", "cuda"]
 
 [[bench]]
 kind = "net"
 name = "parakeet-tdt-600m-v3-f32f32-decoder_pass"
 model = "parakeet-tdt-0.6b-v3-f32f32.608.decoder.nnef.tgz"
-args = ["-t", "transformers_detect_all", "--nnef-tract-transformers", "--set", "B=1", "--set", "T=1"]
+args = "-t transformers_detect_all --nnef-tract-transformers --set B=1 --set T=1"
 backends = ["cpu", "metal", "cuda"]
 
 [[bench]]
 kind = "net"
 name = "parakeet-tdt-600m-v3-f32f32-joint_pass"
 model = "parakeet-tdt-0.6b-v3-f32f32.608.joint.nnef.tgz"
-args = ["-t", "transformers_detect_all", "--nnef-tract-transformers", "--set", "B=1", "--set", "R=1", "--set", "U=1"]
+args = "-t transformers_detect_all --nnef-tract-transformers --set B=1 --set R=1 --set U=1"
 backends = ["cpu", "metal", "cuda"]
 
 # GPU-only (no CPU run).
