@@ -36,8 +36,10 @@ struct Bench {
     /// a tarball. When unset, `model` is fetched as a plain file.
     #[serde(default)]
     archive: Option<String>,
-    /// Extra tract arguments (input facts, `--pulse`, loader flags, ...).
-    #[serde(default)]
+    /// Extra tract arguments (input facts, `--pulse`, loader flags, ...). Either a TOML
+    /// array (`["-i", "264,40"]`) or a plain string that is split on whitespace
+    /// (`"-i 264,40 --pulse 24"`), so a working argument line can be pasted as-is.
+    #[serde(default, deserialize_with = "de_args")]
     args: Vec<String>,
     /// Backends to sweep. Empty: one plain CPU run labelled `variant`. Non-empty:
     /// one run per available backend, each labelled by the backend name.
@@ -112,6 +114,20 @@ impl Backend {
 struct MetricLine {
     metric: String,
     value: f64,
+}
+
+/// Accept `args` as either a string (split on whitespace) or an array of strings.
+fn de_args<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<String>, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Args {
+        Line(String),
+        List(Vec<String>),
+    }
+    Ok(match Args::deserialize(d)? {
+        Args::Line(s) => s.split_whitespace().map(String::from).collect(),
+        Args::List(v) => v,
+    })
 }
 
 pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
