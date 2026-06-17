@@ -138,6 +138,7 @@ pub struct Parameters {
     pub assertions: Assertions,
 
     pub machine_friendly: bool,
+    pub emit_jsonl: bool,
     pub allow_random_input: bool,
     pub allow_float_casts: bool,
 }
@@ -1039,6 +1040,7 @@ impl Parameters {
             tensors_values,
             assertions,
             machine_friendly: matches.get_flag("machine-friendly"),
+            emit_jsonl: matches.get_flag("emit-jsonl"),
             allow_random_input,
             allow_float_casts,
         })

@@ -57,6 +57,10 @@ pub fn handle(
     limits: &BenchLimits,
 ) -> TractResult<()> {
     let result = run(params, sub_matches, limits)?;
+    if params.emit_jsonl {
+        result.emit_jsonl();
+        return Ok(());
+    }
     let evaltime = result.metrics.iter().find(|(k, _)| k == "evaltime").map_or(0.0, |(_, v)| *v);
 
     if params.machine_friendly {

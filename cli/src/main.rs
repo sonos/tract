@@ -171,6 +171,7 @@ fn main() -> TractResult<()> {
         .arg(arg!(--pulse [PULSE] "Translate to pulse network"))
 
         .arg(arg!(--"machine-friendly" "Machine friendly output"))
+        .arg(arg!(--"emit-jsonl" "Emit one JSON object per metric on stdout (bench-suite child contract)"))
         .arg(arg!(--"timeout" [SECONDS] "Kill the process after this many seconds"))
 
         .subcommand(Command::new("list-ops").about("List ops in TF/ONNX frameworks"))
