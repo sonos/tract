@@ -45,6 +45,16 @@ impl Default for BenchLimits {
     }
 }
 
+/// Structured output of a single bench run: named metrics (e.g. ("evaltime", secs),
+/// ("pp512", tok/s)) plus the loop iteration count for the human report line. The
+/// `bench`/`llm-bench` runners return this so callers — the interactive subcommand or
+/// the bench suite — consume data instead of parsing stdout.
+#[derive(Clone, Debug, Default)]
+pub struct BenchResult {
+    pub metrics: Vec<(String, f64)>,
+    pub iters: usize,
+}
+
 impl BenchLimits {
     pub fn warmup(&self, runnable: &Arc<dyn Runnable>, inputs: &RunTensors) -> TractResult<()> {
         if self.warmup_time.is_zero() && self.warmup_loops.is_zero() {

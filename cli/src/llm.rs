@@ -5,10 +5,25 @@ use std::time::{Duration, Instant};
 use tract_core::num_traits::Zero;
 use tract_core::tract_data::itertools::Itertools;
 use tract_hir::internal::*;
-use tract_libcli::profile::BenchLimits;
+use tract_libcli::profile::{BenchLimits, BenchResult};
 use tract_libcli::tensor::get_or_make_inputs;
 #[cfg(feature = "transformers")]
 use tract_transformers::figure_out_causal_llm_b_s_p;
+
+/// Measure pp512 + tg128 and return their metrics, without printing.
+pub fn run(
+    params: &Parameters,
+    matches: &clap::ArgMatches,
+    sub_matches: &clap::ArgMatches,
+    limits: &BenchLimits,
+    probe: Option<&Probe>,
+) -> TractResult<BenchResult> {
+    let metrics = vec![
+        bench_pp(params, matches, sub_matches, limits, 512, probe)?,
+        bench_tg(params, matches, sub_matches, limits, 128, probe)?,
+    ];
+    Ok(BenchResult { metrics, iters: 0 })
+}
 
 pub fn handle(
     params: &Parameters,
@@ -17,8 +32,9 @@ pub fn handle(
     limits: &BenchLimits,
     probe: Option<&Probe>,
 ) -> TractResult<()> {
-    bench_pp(params, matches, sub_matches, limits, 512, probe)?;
-    bench_tg(params, matches, sub_matches, limits, 128, probe)?;
+    for (k, v) in &run(params, matches, sub_matches, limits, probe)?.metrics {
+        println!("{}: {v:.1} tokens/sec", k.to_uppercase());
+    }
     Ok(())
 }
 
@@ -29,7 +45,7 @@ pub fn bench_pp(
     limits: &BenchLimits,
     pp: usize,
     _probe: Option<&Probe>,
-) -> TractResult<()> {
+) -> TractResult<(String, f64)> {
     let mut run_params = crate::tensor::run_params_from_subcommand(params, sub_matches)?;
     run_params.allow_random_input = true;
     let model = params.req_typed_model();
@@ -51,8 +67,7 @@ pub fn bench_pp(
 
     let (iters, dur) = limits.bench(&params.req_runnable()?, &inputs)?;
     let tokens = pp as f64 / dur.as_secs_f64() * iters as f64;
-    println!("PP{pp}: {tokens:.1} tokens/sec");
-    Ok(())
+    Ok((format!("pp{pp}"), tokens))
 }
 
 pub fn bench_tg(
@@ -62,7 +77,7 @@ pub fn bench_tg(
     limits: &BenchLimits,
     tg: usize,
     probe: Option<&Probe>,
-) -> TractResult<()> {
+) -> TractResult<(String, f64)> {
     let mut run_params = crate::tensor::run_params_from_subcommand(params, sub_matches)?;
     run_params.allow_random_input = true;
     let model = params.req_typed_model();
@@ -114,8 +129,7 @@ pub fn bench_tg(
         tot_dur += start.elapsed();
     }
     let tokens = tg as f64 / tot_dur.as_secs_f64();
-    println!("TG{tg}: {tokens:.1} tokens/sec");
-    Ok(())
+    Ok((format!("tg{tg}"), tokens))
 }
 
 pub fn top_logits_rbo(test: &Tensor, reference: &Tensor, p: f64, depth: usize) -> TractResult<f64> {
