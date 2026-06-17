@@ -207,7 +207,7 @@ fn mv_kernel_name_and_dispatch_params(
         if params.dts[0] == F32 {
             if (params.m * params.a_batch) < 4 {
                 Ok(("kernel_mul_mv_f16_f32_1row".to_string(), (32, 1, 1)))
-            } else if (params.k >= 128) && (params.k % 4 == 0) && (params.n >= 8) {
+            } else if (params.k >= 128) && params.k.is_multiple_of(4) && (params.n >= 8) {
                 Ok(("kernel_mul_mv_f16_f32_l4".to_string(), (32, 1, params.m as u64)))
             } else {
                 Ok(("kernel_mul_mv_f16_f32".to_string(), (32, 1, 4)))

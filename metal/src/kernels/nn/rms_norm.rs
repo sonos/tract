@@ -50,7 +50,7 @@ impl RmsNorm {
         ensure!(output.shape() == input.shape());
         ensure!(output.datum_type() == input.datum_type());
 
-        if (axis == (input.rank() - 1)) && (input.shape()[axis] % 4 == 0) {
+        if (axis == (input.rank() - 1)) && input.shape()[axis].is_multiple_of(4) {
             let shape = input.shape();
             let shape_nd2 = tvec![shape[..axis].iter().product::<usize>(), shape[axis]];
 
