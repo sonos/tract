@@ -25,6 +25,10 @@ use readings_probe::*;
 
 mod bench;
 #[cfg(feature = "bench-suite")]
+mod bench_common;
+#[cfg(feature = "bench-suite")]
+mod bench_expectations;
+#[cfg(feature = "bench-suite")]
 mod bench_suite;
 mod compare;
 mod cost;
@@ -251,7 +255,19 @@ fn main() -> TractResult<()> {
                 .arg(arg!(--"cache-dir" [PATH] "Model cache dir (default: $CACHEDIR or ~/.cache/tract-ci-minion-models)"))
                 .arg(arg!(--output [PATH] "Metrics output file (default: metrics)"))
                 .arg(arg!(--filter [SUBSTR] "Only run benches whose name contains SUBSTR"))
-                .arg(arg!(--"no-fetch" "Do not fetch models; use the cache as-is")),
+                .arg(arg!(--"no-fetch" "Do not fetch models; use the cache as-is"))
+                .arg(arg!(--expectations [PATH] "Expectations file: re-run benches that would show a PR red"))
+                .arg(arg!(--"retry-max" [N] "Max re-runs of an out-of-threshold bench (default: 2)")),
+        );
+        app = app.subcommand(
+            clap::Command::new("bench-expectations")
+                .long_about("Emit per-metric expectations for one (triple, device) from bench-data history.")
+                .arg(arg!(--"bench-data" <DIR> "bench-data checkout root"))
+                .arg(arg!(--thresholds <PATH> "Threshold config TOML"))
+                .arg(arg!(--triple <TRIPLE> "Target triple"))
+                .arg(arg!(--device <DEVICE> "Device key"))
+                .arg(arg!(--out <PATH> "Output expectations file"))
+                .arg(arg!(--window [N] "Trailing nights to median over (default: 10)")),
         );
     }
 
@@ -762,6 +778,8 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
         Some(("hwbench", _)) => return hwbench::handle(),
         #[cfg(feature = "bench-suite")]
         Some(("bench-suite", m)) => return bench_suite::handle(m),
+        #[cfg(feature = "bench-suite")]
+        Some(("bench-expectations", m)) => return bench_expectations::handle(m),
         Some(("kernels", _)) => {
             println!();
             fn colored_name(m: &dyn MatMatMul) -> String {
