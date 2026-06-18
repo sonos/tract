@@ -1,5 +1,7 @@
 use cudarc::driver::LaunchConfig;
 use tract_core::internal::*;
+use tract_core::ops::fft::Stft;
+use tract_gpu::ops::stft::GpuStft;
 use tract_gpu::tensor::DeviceTensor;
 
 use crate::context::{TractCudaStream, cuda_context};
@@ -101,6 +103,31 @@ impl CudaStft {
         args.launch(cfg)
     }
 }
+
+/// Launch the CUDA STFT kernel for the backend-agnostic [`GpuStft`].
+pub fn cuda_stft_dispatch(
+    stride: usize,
+    input: &DeviceTensor,
+    window: &DeviceTensor,
+    output: &DeviceTensor,
+) -> TractResult<()> {
+    crate::with_cuda_stream(|stream| {
+        CudaStft { stride }.dispatch_eval(stream, input, window, output)
+    })
+}
+
+fn cuda_stft_op(axis: usize, stride: usize, window: Arc<Tensor>) -> GpuStft {
+    GpuStft { axis, stride, window, backend_name: "Cuda", dispatch: cuda_stft_dispatch }
+}
+
+crate::register_cuda_op!(Stft, |source, node, op| {
+    let in_fact = &source.node_input_facts(node.id)?[0];
+    rule_if!(op.frame == tract_gpu::ops::stft::FFT_LEN);
+    rule_if!(in_fact.rank() >= 2 && op.axis == in_fact.rank() - 2);
+    rule_if!(in_fact.datum_type == DatumType::F32);
+    let window = tract_gpu::ops::stft::padded_window(op.window.as_ref())?;
+    Ok(Some(Box::new(cuda_stft_op(op.axis, op.stride, window))))
+});
 
 #[cfg(test)]
 mod tests {
@@ -207,6 +234,50 @@ mod tests {
             max_err = max_err.max((g - r).abs());
         }
         assert!(max_err < 1e-2, "max err {max_err} vs core Stft");
+        Ok(())
+    }
+
+    #[test]
+    fn stft_lowers_and_matches_cpu() -> TractResult<()> {
+        use crate::transform::CudaTransform;
+        use tract_core::transform::ModelTransform;
+
+        let (t, frame, stride, win_len) = (2000usize, FFT_LEN, 160usize, 400usize);
+        let win: Vec<f32> = (0..win_len)
+            .map(|k| 0.5 - 0.5 * (2.0 * std::f32::consts::PI * k as f32 / win_len as f32).cos())
+            .collect();
+
+        let build = || -> TractResult<TypedModel> {
+            let mut m = TypedModel::default();
+            let src = m.add_source("sig", f32::fact([1, t, 2]))?;
+            let stft = Stft { axis: 1, frame, stride, window: Some(Arc::new(tensor1(&win))) };
+            let out = m.wire_node("stft", stft, &[src])?;
+            m.select_output_outlets(&out)?;
+            Ok(m)
+        };
+
+        let mut sig = vec![0f32; t * 2];
+        for i in 0..t {
+            sig[i * 2] = (0.05 * i as f32).sin();
+        }
+        let input = Tensor::from_shape(&[1, t, 2], &sig)?;
+
+        let cpu = build()?.into_runnable()?.run(tvec!(input.clone().into_tvalue()))?;
+
+        let mut gpu_model = build()?;
+        CudaTransform.transform(&mut gpu_model)?;
+        assert!(
+            gpu_model.nodes().iter().any(|n| n.op_as::<GpuStft>().is_some()),
+            "transform did not lower Stft to GpuStft"
+        );
+        let gpu = gpu_model.into_runnable()?.run(tvec!(input.into_tvalue()))?;
+
+        let cpu = cpu[0].to_plain_array_view::<f32>()?;
+        let gpu = gpu[0].to_plain_array_view::<f32>()?;
+        let (cpu, gpu) = (cpu.as_slice().unwrap(), gpu.as_slice().unwrap());
+        assert_eq!(cpu.len(), gpu.len());
+        let max_err = cpu.iter().zip(gpu).map(|(a, b)| (a - b).abs()).fold(0f32, f32::max);
+        assert!(max_err < 1e-2, "max err {max_err} between CPU and GPU STFT");
         Ok(())
     }
 }
