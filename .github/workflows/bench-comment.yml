@@ -38,22 +38,30 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            if (!fs.existsSync('bench-comment/pr-comment.md')) {
+            if (!fs.existsSync('bench-comment/pr-comment.md') || !fs.existsSync('bench-comment/pr-number')) {
               core.info('no comment artifact; nothing to post');
               return;
             }
             const body = fs.readFileSync('bench-comment/pr-comment.md', 'utf8');
-            // Resolve the PR from the run's head SHA — never trust artifact-supplied targets.
+            // The artifact names the target PR (the only thing that survives for fork PRs —
+            // a fork commit isn't in this repo, so listPullRequestsAssociatedWithCommit finds
+            // nothing). Trust it only after verifying that PR's head SHA matches the run's, so
+            // a fork can name its own PR but never redirect the comment at another issue.
             const sha = context.payload.workflow_run.head_sha;
-            const { data: prs } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
-              owner: context.repo.owner, repo: context.repo.repo, commit_sha: sha,
-            });
-            const pr = prs.find(p => p.state === 'open');
-            if (!pr) {
-              core.info(`no open PR for ${sha}; nothing to post`);
+            const issue_number = parseInt(fs.readFileSync('bench-comment/pr-number', 'utf8').trim(), 10);
+            if (!Number.isInteger(issue_number)) {
+              core.info('no valid PR number in artifact; nothing to post');
               return;
             }
-            const issue_number = pr.number;
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner, repo: context.repo.repo, pull_number: issue_number,
+            });
+            if (pr.head.sha !== sha) {
+              // Either a stale run (the PR was re-pushed; a fresh run will post) or a forged
+              // target. Skip quietly either way — the security property is that we never post.
+              core.info(`PR #${issue_number} head ${pr.head.sha} != run head ${sha}; not posting`);
+              return;
+            }
             const marker = '<!-- bench-vs-main -->';
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner, repo: context.repo.repo, issue_number, per_page: 100,

@@ -212,11 +212,19 @@ jobs:
           chmod +x tract-cli/tract
           tract-cli/tract bench-report --results results --bench-data bench-data \
             --thresholds .travis/bench-thresholds.toml --pr-sha "$PR_SHA" --out pr-comment.md
-      # Hand the rendered comment to the bench-comment workflow to post. Posting is split
-      # out via workflow_run because this pull_request run gets a read-only token on fork
-      # PRs and can't comment. No file => nothing comparable => no artifact => nothing posted.
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      # Hand the rendered comment + target PR to the bench-comment workflow to post. Posting
+      # is split out via workflow_run because this pull_request run gets a read-only token on
+      # fork PRs and can't comment. No file => nothing comparable => no artifact => nothing posted.
+      - name: Stage comment for the trampoline
         if: ${{ hashFiles('pr-comment.md') != '' }}
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          mkdir -p bench-comment
+          mv pr-comment.md bench-comment/
+          printf '%s\n' "$PR_NUMBER" > bench-comment/pr-number
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: ${{ hashFiles('bench-comment/pr-comment.md') != '' }}
         with:
           name: bench-comment
-          path: pr-comment.md
+          path: bench-comment
