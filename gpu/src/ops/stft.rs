@@ -1,22 +1,31 @@
 use crate::tensor::{DeviceTensor, DeviceTensorExt, IntoDevice};
 use tract_core::internal::*;
 
-/// The only FFT length the GPU STFT kernels support (the Nemotron/Parakeet STFT frame).
-pub const FFT_LEN: usize = 512;
+/// The power-of-two FFT frame lengths the GPU STFT kernels support (the radix-2 kernel
+/// generalizes to any pow2; these cover Kaldi-style featurizers at 8/16/32/48 kHz).
+pub const SUPPORTED_FRAMES: [usize; 4] = [256, 512, 1024, 2048];
+
+/// Whether the GPU STFT kernels handle this frame length (a supported power of two).
+pub fn is_supported_frame(frame: usize) -> bool {
+    SUPPORTED_FRAMES.contains(&frame)
+}
 
 /// Per-backend STFT kernel launcher: `(stride, input, window, output)`. `input` is
 /// interleaved-complex f32 `[lead.., T, 2]`, `window` the pre-padded real window
-/// `[FFT_LEN]`, `output` `[lead.., frames, FFT_LEN, 2]`.
+/// `[frame]`, `output` `[lead.., frames, frame, 2]`. The kernel reads the frame length
+/// from the output shape (`output[axis + 1]`).
 pub type DispatchStftFn = fn(usize, &DeviceTensor, &DeviceTensor, &DeviceTensor) -> TractResult<()>;
 
-/// Backend-agnostic fused STFT (frame + window + forward FFT) with a fixed `FFT_LEN`
-/// frame. The window is pre-padded to `[FFT_LEN]` (all-ones when the source had none),
-/// matching `core::ops::fft::Stft`'s symmetric padding. The time axis must sit just
-/// before the trailing complex pair (`axis == rank - 2`). Each backend supplies its own
-/// `dispatch` kernel; everything else (facts, output allocation, window upload) is shared.
+/// Backend-agnostic fused STFT (frame + window + forward FFT). `frame` is a supported
+/// power of two ([`SUPPORTED_FRAMES`]); the window is pre-padded to `[frame]` (all-ones
+/// when the source had none), matching `core::ops::fft::Stft`'s symmetric padding. The
+/// time axis must sit just before the trailing complex pair (`axis == rank - 2`). Each
+/// backend supplies its own `dispatch` kernel; everything else (facts, output allocation,
+/// window upload) is shared.
 #[derive(Clone)]
 pub struct GpuStft {
     pub axis: usize,
+    pub frame: usize,
     pub stride: usize,
     pub window: Arc<Tensor>,
     pub backend_name: &'static str,
@@ -26,16 +35,16 @@ pub struct GpuStft {
 impl GpuStft {
     fn output_shape<D: DimLike>(&self, input: &[D]) -> TVec<D> {
         let mut shape: TVec<D> = input.into();
-        let frames = (input[self.axis].clone() - FFT_LEN) / self.stride + 1;
+        let frames = (input[self.axis].clone() - self.frame) / self.stride + 1;
         shape[self.axis] = frames;
-        shape.insert(self.axis + 1, FFT_LEN.into());
+        shape.insert(self.axis + 1, self.frame.into());
         shape
     }
 }
 
 impl std::fmt::Debug for GpuStft {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}Stft(stride={})", self.backend_name, self.stride)
+        write!(f, "{}Stft(frame={}, stride={})", self.backend_name, self.frame, self.stride)
     }
 }
 
@@ -43,6 +52,7 @@ impl PartialEq for GpuStft {
     fn eq(&self, other: &Self) -> bool {
         self.backend_name == other.backend_name
             && self.axis == other.axis
+            && self.frame == other.frame
             && self.stride == other.stride
             && self.window == other.window
     }
@@ -54,6 +64,7 @@ impl std::hash::Hash for GpuStft {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.backend_name.hash(state);
         self.axis.hash(state);
+        self.frame.hash(state);
         self.stride.hash(state);
         self.window.hash(state);
     }
@@ -109,17 +120,17 @@ impl TypedOp for GpuStft {
     as_op!();
 }
 
-/// Pre-pad `window` (or all-ones) to `[FFT_LEN]` exactly as core `Stft` does: symmetric
+/// Pre-pad `window` (or all-ones) to `[frame]` exactly as core `Stft` does: symmetric
 /// padding when shorter than the frame. Shared by every backend's lowering rule.
-pub fn padded_window(window: Option<&Arc<Tensor>>) -> TractResult<Arc<Tensor>> {
-    let mut win = vec![0f32; FFT_LEN];
+pub fn padded_window(window: Option<&Arc<Tensor>>, frame: usize) -> TractResult<Arc<Tensor>> {
+    let mut win = vec![0f32; frame];
     match window {
         Some(w) => {
             let w = w.cast_to::<f32>()?;
             let w = w.try_as_plain()?;
             let w = w.as_slice::<f32>()?;
-            ensure!(w.len() <= FFT_LEN, "STFT window longer than frame");
-            let pad_left = (FFT_LEN - w.len()) / 2;
+            ensure!(w.len() <= frame, "STFT window longer than frame");
+            let pad_left = (frame - w.len()) / 2;
             win[pad_left..pad_left + w.len()].copy_from_slice(w);
         }
         None => win.fill(1.0),
