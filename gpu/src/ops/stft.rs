@@ -120,6 +120,96 @@ impl TypedOp for GpuStft {
     as_op!();
 }
 
+/// Per-backend FFT kernel launcher: `(inverse, input, output)`, both interleaved-complex
+/// f32 `[lead.., N, 2]` (N a supported power of two, transformed axis at `rank-2`). The
+/// inverse is UNNORMALIZED, matching core `Fft` (rustfft). The kernel reads N from the
+/// input shape.
+pub type DispatchFftFn = fn(bool, &DeviceTensor, &DeviceTensor) -> TractResult<()>;
+
+/// Backend-agnostic complex FFT over the innermost-but-one axis (the trailing dim is the
+/// `[re, im]` pair); forward or `inverse`, shape-preserving. Mirrors `core::ops::fft::Fft`
+/// for a supported power-of-two length with `axis == rank - 2`.
+#[derive(Clone)]
+pub struct GpuFft {
+    pub axis: usize,
+    pub inverse: bool,
+    pub backend_name: &'static str,
+    pub dispatch: DispatchFftFn,
+}
+
+impl std::fmt::Debug for GpuFft {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}Fft({})", self.backend_name, if self.inverse { "inverse" } else { "forward" })
+    }
+}
+
+impl PartialEq for GpuFft {
+    fn eq(&self, other: &Self) -> bool {
+        self.backend_name == other.backend_name
+            && self.axis == other.axis
+            && self.inverse == other.inverse
+    }
+}
+
+impl Eq for GpuFft {}
+
+impl std::hash::Hash for GpuFft {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.backend_name.hash(state);
+        self.axis.hash(state);
+        self.inverse.hash(state);
+    }
+}
+
+impl Op for GpuFft {
+    fn name(&self) -> StaticName {
+        format!("{}Fft", self.backend_name).into()
+    }
+
+    op_as_typed_op!();
+}
+
+impl EvalOp for GpuFft {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
+    fn eval_with_session(
+        &self,
+        node_id: usize,
+        session: &TurnState,
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
+        let input = inputs[0].to_device_tensor()?;
+        let output = crate::session_handler::make_tensor_for_node(
+            session,
+            node_id,
+            input.datum_type(),
+            input.shape(),
+        )?;
+        (self.dispatch)(self.inverse, input, &output)
+            .with_context(|| format!("Error while dispatching eval for {}", self.name()))?;
+        Ok(tvec!(output.into_tensor().into_tvalue()))
+    }
+}
+
+impl TypedOp for GpuFft {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        crate::utils::facts_to_device_facts(inputs, |facts| {
+            let input = facts[0];
+            ensure!(
+                input.rank() >= 2 && input.shape[input.rank() - 1] == 2.to_dim(),
+                "{} expects a complex input [.., N, 2]",
+                self.name()
+            );
+            Ok(tvec!(input.datum_type.fact(input.shape.clone())))
+        })
+        .with_context(|| format!("Error while computing facts for {:?}", self.name()))
+    }
+
+    as_op!();
+}
+
 /// Pre-pad `window` (or all-ones) to `[frame]` exactly as core `Stft` does: symmetric
 /// padding when shorter than the frame. Shared by every backend's lowering rule.
 pub fn padded_window(window: Option<&Arc<Tensor>>, frame: usize) -> TractResult<Arc<Tensor>> {

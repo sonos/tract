@@ -1,7 +1,7 @@
 use cudarc::driver::LaunchConfig;
 use tract_core::internal::*;
-use tract_core::ops::fft::Stft;
-use tract_gpu::ops::stft::{GpuStft, is_supported_frame};
+use tract_core::ops::fft::{Fft, Stft};
+use tract_gpu::ops::stft::{GpuFft, GpuStft, is_supported_frame};
 use tract_gpu::tensor::DeviceTensor;
 
 use crate::context::{TractCudaStream, cuda_context};
@@ -18,6 +18,7 @@ impl CudaFft {
     pub fn dispatch_eval(
         &self,
         stream: &TractCudaStream,
+        inverse: bool,
         input: &DeviceTensor,
         output: &DeviceTensor,
     ) -> TractResult<()> {
@@ -29,7 +30,8 @@ impl CudaFft {
         ensure!(is_supported_frame(n), "CudaFft: unsupported FFT length {n}");
         let batch = input.len() / (n * 2);
 
-        let func = cuda_context().load_pipeline(LibraryName::Fft, format!("fft{n}_forward"))?;
+        let dir = if inverse { "inverse" } else { "forward" };
+        let func = cuda_context().load_pipeline(LibraryName::Fft, format!("fft{n}_{dir}"))?;
         let i_view = get_cuda_view(input);
         let o_view = get_cuda_view(output);
 
@@ -123,6 +125,28 @@ crate::register_cuda_op!(Stft, |source, node, op| {
     Ok(Some(Box::new(cuda_stft_op(op.axis, op.frame, op.stride, window))))
 });
 
+/// Launch the CUDA FFT kernel for the backend-agnostic [`GpuFft`].
+pub fn cuda_fft_dispatch(
+    inverse: bool,
+    input: &DeviceTensor,
+    output: &DeviceTensor,
+) -> TractResult<()> {
+    crate::with_cuda_stream(|stream| CudaFft.dispatch_eval(stream, inverse, input, output))
+}
+
+fn cuda_fft_op(axis: usize, inverse: bool) -> GpuFft {
+    GpuFft { axis, inverse, backend_name: "Cuda", dispatch: cuda_fft_dispatch }
+}
+
+crate::register_cuda_op!(Fft, |source, node, op| {
+    let in_fact = &source.node_input_facts(node.id)?[0];
+    let rank = in_fact.rank();
+    rule_if!(rank >= 2 && op.axis == rank - 2 && in_fact.shape[rank - 1] == 2.to_dim());
+    rule_if!(in_fact.shape[op.axis].to_usize().is_ok_and(is_supported_frame));
+    rule_if!(in_fact.datum_type == DatumType::F32);
+    Ok(Some(Box::new(cuda_fft_op(op.axis, op.inverse))))
+});
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -154,7 +178,7 @@ mod tests {
                 let input = Tensor::from_shape(&[batch, n, 2], &data)?.into_device()?;
                 let output =
                     unsafe { DeviceTensor::uninitialized_dt(DatumType::F32, &[batch, n, 2])? };
-                CudaFft.dispatch_eval(stream, &input, &output)?;
+                CudaFft.dispatch_eval(stream, false, &input, &output)?;
                 stream.synchronize()?;
                 Ok(output.to_host()?.into_tensor())
             })?;
@@ -175,6 +199,85 @@ mod tests {
                         fr[k].im
                     );
                 }
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn ifft_matches_rustfft() -> TractResult<()> {
+        for &n in &SUPPORTED_FRAMES {
+            let mut data = vec![0f32; n * 2];
+            let mut fr: Vec<Complex<f32>> = Vec::with_capacity(n);
+            for i in 0..n {
+                let (re, im) = ((0.1 * i as f32).sin(), (0.03 * i as f32 + 0.2).cos());
+                data[i * 2] = re;
+                data[i * 2 + 1] = im;
+                fr.push(Complex::new(re, im));
+            }
+            let got = with_cuda_stream(|stream| {
+                let input = Tensor::from_shape(&[n, 2], &data)?.into_device()?;
+                let output = unsafe { DeviceTensor::uninitialized_dt(DatumType::F32, &[n, 2])? };
+                CudaFft.dispatch_eval(stream, true, &input, &output)?;
+                stream.synchronize()?;
+                Ok(output.to_host()?.into_tensor())
+            })?;
+            let got = got.try_as_plain()?;
+            let got = got.as_slice::<f32>()?;
+
+            let ifft = FftPlanner::<f32>::new().plan_fft_inverse(n); // unnormalized, like ours
+            ifft.process(&mut fr);
+            let tol = 2e-2 * (n as f32).sqrt();
+            for k in 0..n {
+                assert!(
+                    (got[k * 2] - fr[k].re).abs() < tol && (got[k * 2 + 1] - fr[k].im).abs() < tol,
+                    "n{n} k{k}: gpu=({},{}) ref=({},{})",
+                    got[k * 2],
+                    got[k * 2 + 1],
+                    fr[k].re,
+                    fr[k].im
+                );
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn fft_lowers_and_matches_cpu() -> TractResult<()> {
+        use crate::transform::CudaTransform;
+        use tract_core::ops::fft::Fft;
+        use tract_core::transform::ModelTransform;
+
+        for &n in &[256usize, 512] {
+            for inverse in [false, true] {
+                let build = || -> TractResult<TypedModel> {
+                    let mut m = TypedModel::default();
+                    let src = m.add_source("x", f32::fact([1, n, 2]))?;
+                    let out = m.wire_node("fft", Fft { axis: 1, inverse }, &[src])?;
+                    m.select_output_outlets(&out)?;
+                    Ok(m)
+                };
+                let mut data = vec![0f32; n * 2];
+                for i in 0..n {
+                    data[i * 2] = (0.07 * i as f32).sin();
+                    data[i * 2 + 1] = (0.01 * i as f32).cos();
+                }
+                let input = Tensor::from_shape(&[1, n, 2], &data)?;
+
+                let cpu = build()?.into_runnable()?.run(tvec!(input.clone().into_tvalue()))?;
+                let mut gpu_model = build()?;
+                CudaTransform.transform(&mut gpu_model)?;
+                assert!(
+                    gpu_model.nodes().iter().any(|nd| nd.op_as::<GpuFft>().is_some()),
+                    "n{n} inverse={inverse}: did not lower Fft to GpuFft"
+                );
+                let gpu = gpu_model.into_runnable()?.run(tvec!(input.into_tvalue()))?;
+
+                let cpu = cpu[0].to_plain_array_view::<f32>()?;
+                let gpu = gpu[0].to_plain_array_view::<f32>()?;
+                let (cpu, gpu) = (cpu.as_slice().unwrap(), gpu.as_slice().unwrap());
+                let max_err = cpu.iter().zip(gpu).map(|(a, b)| (a - b).abs()).fold(0f32, f32::max);
+                assert!(max_err < 5e-2, "n{n} inverse={inverse}: max err {max_err}");
             }
         }
         Ok(())
