@@ -10,7 +10,7 @@ do
 	gpu_assert=""
 	case "$rt" in
 		--cuda) gpu_assert="--assert-op-only Cuda*,Gpu*,DeviceSync*,Const,Source,STFT,Pad,IsNan,Add,Range,Cast,Eq,Div,Sub,Scan,Gather,DiagGather";;
-		--metal) gpu_assert="--assert-op-only Metal*,Gpu*,DeviceSync*,Const,Source,STFT,Pad,IsNan,Add,Range,Cast,Eq,Div,Sub,Scan,Gather,Reduce*,DiagGather";;
+		--metal) gpu_assert="--assert-op-only Metal*,Gpu*,DeviceSync*,Const,Source,Pad,IsNan,Add,Range,Cast,Eq,Div,Sub,Scan,Gather,Reduce*,DiagGather";;
 	esac
 
 	for m in preprocessor encoder decoder joint
