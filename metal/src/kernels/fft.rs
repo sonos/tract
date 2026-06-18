@@ -2,8 +2,8 @@ use crate::encoder::EncoderExt;
 use crate::{LibraryName, MetalStream};
 use metal::{MTLSize, NSUInteger};
 use tract_core::internal::*;
-use tract_core::ops::fft::Stft;
-use tract_gpu::ops::stft::{GpuStft, is_supported_frame};
+use tract_core::ops::fft::{Fft, Stft};
+use tract_gpu::ops::stft::{GpuFft, GpuStft, is_supported_frame};
 use tract_gpu::tensor::DeviceTensor;
 
 /// Fused STFT on Metal: gather a strided frame, apply the pre-padded window, then a
@@ -76,6 +76,60 @@ crate::register_metal_op!(Stft, |source, node, op| {
     Ok(Some(Box::new(metal_stft_op(op.axis, op.frame, op.stride, window))))
 });
 
+/// Forward/inverse complex FFT on Metal; the frame is read from the input shape.
+fn dispatch_fft(
+    stream: &MetalStream,
+    inverse: bool,
+    input: &DeviceTensor,
+    output: &DeviceTensor,
+) -> TractResult<()> {
+    stream.retain_tensor(input);
+    stream.retain_tensor(output);
+
+    ensure!(input.datum_type() == DatumType::F32 && output.datum_type() == DatumType::F32);
+    ensure!(input.shape() == output.shape());
+    let rank = input.rank();
+    ensure!(rank >= 2 && input.shape()[rank - 1] == 2, "MetalFft expects [batch.., N, 2]");
+    let n = input.shape()[rank - 2];
+    ensure!(is_supported_frame(n), "MetalFft: unsupported FFT length {n}");
+    let batch = input.len() / (n * 2);
+
+    let dir = if inverse { "inverse" } else { "forward" };
+    let pipeline = stream.load_pipeline(LibraryName::Fft, &format!("fft{n}_{dir}"))?;
+    let command_buffer = stream.command_buffer();
+    command_buffer.encode(|encoder| {
+        encoder.set_compute_pipeline_state(&pipeline);
+        encoder.set_metal_tensor(0, input, metal::MTLResourceUsage::Read);
+        encoder.set_metal_tensor(1, output, metal::MTLResourceUsage::Write);
+        let grid_size = MTLSize { width: batch as NSUInteger, height: 1, depth: 1 };
+        let group_size = MTLSize { width: (n / 2) as NSUInteger, height: 1, depth: 1 };
+        encoder.dispatch_thread_groups(grid_size, group_size);
+    });
+    Ok(())
+}
+
+/// Launch the Metal FFT kernel for the backend-agnostic [`GpuFft`].
+pub fn metal_fft_dispatch(
+    inverse: bool,
+    input: &DeviceTensor,
+    output: &DeviceTensor,
+) -> TractResult<()> {
+    crate::with_metal_stream(|stream| dispatch_fft(stream, inverse, input, output))
+}
+
+fn metal_fft_op(axis: usize, inverse: bool) -> GpuFft {
+    GpuFft { axis, inverse, backend_name: "Metal", dispatch: metal_fft_dispatch }
+}
+
+crate::register_metal_op!(Fft, |source, node, op| {
+    let in_fact = &source.node_input_facts(node.id)?[0];
+    let rank = in_fact.rank();
+    rule_if!(rank >= 2 && op.axis == rank - 2 && in_fact.shape[rank - 1] == 2.to_dim());
+    rule_if!(in_fact.shape[op.axis].to_usize().is_ok_and(is_supported_frame));
+    rule_if!(in_fact.datum_type == DatumType::F32);
+    Ok(Some(Box::new(metal_fft_op(op.axis, op.inverse))))
+});
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -123,6 +177,43 @@ mod tests {
             assert_eq!(cpu.len(), gpu.len());
             let max_err = cpu.iter().zip(gpu).map(|(a, b)| (a - b).abs()).fold(0f32, f32::max);
             assert!(max_err < 5e-2, "frame {frame}: max err {max_err} CPU vs GPU STFT");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn fft_lowers_and_matches_cpu() -> TractResult<()> {
+        for &n in &[256usize, 512] {
+            for inverse in [false, true] {
+                let build = || -> TractResult<TypedModel> {
+                    let mut m = TypedModel::default();
+                    let src = m.add_source("x", f32::fact([1, n, 2]))?;
+                    let out = m.wire_node("fft", Fft { axis: 1, inverse }, &[src])?;
+                    m.select_output_outlets(&out)?;
+                    Ok(m)
+                };
+                let mut data = vec![0f32; n * 2];
+                for i in 0..n {
+                    data[i * 2] = (0.07 * i as f32).sin();
+                    data[i * 2 + 1] = (0.01 * i as f32).cos();
+                }
+                let input = Tensor::from_shape(&[1, n, 2], &data)?;
+
+                let cpu = build()?.into_runnable()?.run(tvec!(input.clone().into_tvalue()))?;
+                let mut gpu_model = build()?;
+                MetalTransform::default().transform(&mut gpu_model)?;
+                assert!(
+                    gpu_model.nodes().iter().any(|nd| nd.op_as::<GpuFft>().is_some()),
+                    "n{n} inverse={inverse}: did not lower Fft to GpuFft"
+                );
+                let gpu = gpu_model.into_runnable()?.run(tvec!(input.into_tvalue()))?;
+
+                let cpu = cpu[0].to_plain_array_view::<f32>()?;
+                let gpu = gpu[0].to_plain_array_view::<f32>()?;
+                let (cpu, gpu) = (cpu.as_slice().unwrap(), gpu.as_slice().unwrap());
+                let max_err = cpu.iter().zip(gpu).map(|(a, b)| (a - b).abs()).fold(0f32, f32::max);
+                assert!(max_err < 5e-2, "n{n} inverse={inverse}: max err {max_err}");
+            }
         }
         Ok(())
     }

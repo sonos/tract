@@ -7,10 +7,12 @@ static __device__ __forceinline__ float2 fft_cmul(float2 a, float2 b) {
     return make_float2(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x);
 }
 
-// In-place (ping-pong) N-point forward FFT over buf[0], N a power of two, N/2 threads,
-// one butterfly per thread. Returns the buffer index holding the natural-order result.
+// In-place (ping-pong) N-point FFT over buf[0], N a power of two, N/2 threads, one
+// butterfly per thread. `sign` is -1 for forward (W_N^k = exp(-2*pi*i*k/N)) and +1 for
+// inverse (conjugate twiddles, UNNORMALIZED to match rustfft / core Fft). Returns the
+// buffer index holding the natural-order result.
 template <int N>
-static __device__ int fft_stockham(float2 buf[2][N], int tid) {
+static __device__ int fft_stockham(float2 buf[2][N], int tid, float sign) {
     const int H = N / 2;
     int cur = 0;
     for (int pass = 0; (1 << pass) < N; ++pass) {
@@ -19,7 +21,7 @@ static __device__ int fft_stockham(float2 buf[2][N], int tid) {
         const int j = tid & (L - 1); // tid % L
 
         float s, c;
-        sincosf(-6.283185307179586f * (float)(j * (H >> pass)) / (float)N, &s, &c);
+        sincosf(sign * 6.283185307179586f * (float)(j * (H >> pass)) / (float)N, &s, &c);
         const float2 w = make_float2(c, s); // W_N^{j*(N/2)/L}
 
         const float2 a = buf[cur][tid];
@@ -35,7 +37,7 @@ static __device__ int fft_stockham(float2 buf[2][N], int tid) {
 }
 
 template <int N>
-static __device__ void fft_forward_impl(const float2 *in, float2 *out) {
+static __device__ void fft_impl(const float2 *in, float2 *out, float sign) {
     __shared__ float2 buf[2][N];
     const int H = N / 2;
     const int tid = threadIdx.x;
@@ -45,7 +47,7 @@ static __device__ void fft_forward_impl(const float2 *in, float2 *out) {
     buf[0][tid + H] = in[base + tid + H];
     __syncthreads();
 
-    const int cur = fft_stockham<N>(buf, tid);
+    const int cur = fft_stockham<N>(buf, tid, sign);
 
     out[base + tid] = buf[cur][tid];
     out[base + tid + H] = buf[cur][tid + H];
@@ -72,7 +74,7 @@ static __device__ void stft_forward_impl(const float2 *in, const float *win, flo
     }
     __syncthreads();
 
-    const int cur = fft_stockham<N>(buf, tid);
+    const int cur = fft_stockham<N>(buf, tid, -1.0f); // STFT analysis is always forward
 
     out[out_base + tid] = buf[cur][tid];
     out[out_base + tid + H] = buf[cur][tid + H];
@@ -80,7 +82,10 @@ static __device__ void stft_forward_impl(const float2 *in, const float *win, flo
 
 #define DEFINE_FFT(N)                                                                       \
     extern "C" __global__ void fft##N##_forward(const float2 *in, float2 *out) {            \
-        fft_forward_impl<N>(in, out);                                                       \
+        fft_impl<N>(in, out, -1.0f);                                                        \
+    }                                                                                       \
+    extern "C" __global__ void fft##N##_inverse(const float2 *in, float2 *out) {            \
+        fft_impl<N>(in, out, 1.0f);                                                         \
     }                                                                                       \
     extern "C" __global__ void stft##N##_forward(const float2 *in, const float *win,        \
                                                  float2 *out, int T, int frames,            \
