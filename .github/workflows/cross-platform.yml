@@ -91,10 +91,6 @@ jobs:
         fetch-depth: 0
         persist-credentials: false
 
-    - name: Get current date
-      id: date
-      run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
-
     - name: Configure AWS Credentials
       continue-on-error: true
       uses: aws-actions/configure-aws-credentials@e7f100cf4c008499ea8adda475de1042d6975c7b # v6.2.0
@@ -102,16 +98,9 @@ jobs:
         role-to-assume: arn:aws:iam::567805100031:role/github-runner-tract-ci
         aws-region: us-east-2
 
-    - uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+    - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
       with:
-        path: |
-          ~/.rustup
-          ~/.cargo/registry
-          ~/.cargo/git
-          #          ~/.cache/sccache
-          .cached
-          target
-        key: ${{ runner.os }}-${{matrix.platform}}-${{steps.date.outputs.date}}
+        key: ${{ matrix.platform }}
 
     - name: Setup wasmtime
       if: matrix.platform == 'wasm32-wasi'
@@ -156,9 +145,9 @@ jobs:
         role-to-assume: arn:aws:iam::567805100031:role/github-runner-tract-ci
         aws-region: us-east-2
 
-    - name: Get current date
-      id: date
-      run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+    - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      with:
+        key: ${{ matrix.platform }}
 
     - name: Cross script
       env:
