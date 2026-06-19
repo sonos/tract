@@ -263,13 +263,13 @@ fn star_type(metric: &str) -> Option<&'static str> {
     }
 }
 
-/// At-a-glance markdown: rows = models, columns = `device·{cpu,gpu}`. Each cell
-/// holds two "lamps" showing the bottleneck axis — nets: batch·pulse (non-pulse
-/// vs the worst of the pulse variants), llms: prefill·decode. A lamp is the worst
-/// glyph over every variant feeding it; `–` when that side has no run. Empty if
-/// nothing maps.
+/// At-a-glance markdown: rows = models, columns = `device` over `{cpu,gpu}` (backend on a
+/// second header line). The `[devices]` short-name map curates the table — only mapped hosts
+/// get a column. Each cell holds one lamp per axis the model exercises: llms always show
+/// prefill·decode; nets show whichever of batch / pulse they have. A row with two lamps names
+/// them under the model; a lamp is the worst glyph over every variant feeding it (`–` = no run).
 fn star_matrix_md(rows: &[Row], short_names: &toml::Table) -> String {
-    let short = |d: &str| short_names.get(d).and_then(|v| v.as_str()).unwrap_or(d).to_string();
+    let short = |d: &str| short_names.get(d).and_then(|v| v.as_str());
     struct P<'a> {
         row: &'a Row,
         dev: &'a str,
@@ -287,6 +287,7 @@ fn star_matrix_md(rows: &[Row], short_names: &toml::Table) -> String {
             if kind != "net" && kind != "llm" {
                 return None;
             }
+            short(&r.device)?; // unmapped host => not in the curated table
             let variant = r.metric.rsplit('.').next().unwrap_or("");
             Some(P {
                 row: r,
@@ -309,18 +310,38 @@ fn star_matrix_md(rows: &[Row], short_names: &toml::Table) -> String {
         parsed.iter().map(|p| (p.is_llm, p.model.as_str())).collect();
     models.sort_unstable();
     models.dedup();
-    let lamp = |d: &str, b: &str, model: &str, pred: &dyn Fn(&P) -> bool| {
+    // The lamp axes a model row shows: llm => prefill·decode; net => whichever of batch / pulse
+    // it actually has. `second` selects the axis when reading a lamp (tg vs pp; pulse vs batch).
+    let axes_for = |is_llm: bool, model: &str| -> Vec<(&'static str, bool)> {
+        if is_llm {
+            return vec![("prefill", false), ("decode", true)];
+        }
+        let mut v = vec![];
+        if parsed.iter().any(|p| !p.is_llm && p.model == model && !p.pulse) {
+            v.push(("batch", false));
+        }
+        if parsed.iter().any(|p| !p.is_llm && p.model == model && p.pulse) {
+            v.push(("pulse", true));
+        }
+        v
+    };
+    let lamp = |d: &str, b: &str, model: &str, is_llm: bool, second: bool| {
         worst_glyph(
             parsed
                 .iter()
-                .filter(|p| p.dev == d && p.backend == b && p.model == model && pred(p))
+                .filter(|p| {
+                    p.dev == d
+                        && p.backend == b
+                        && p.model == model
+                        && if is_llm { (p.ttype == "tg") == second } else { p.pulse == second }
+                })
                 .map(|p| p.row),
         )
     };
 
     let mut s = String::from("### Star metric — model × device\n\n| model |");
     for (d, b) in &cols {
-        s.push_str(&format!(" {}·{b} |", short(d)));
+        s.push_str(&format!(" {}<br>{b} |", short(d).unwrap_or(d)));
     }
     s.push_str("\n|---|");
     for _ in &cols {
@@ -328,20 +349,23 @@ fn star_matrix_md(rows: &[Row], short_names: &toml::Table) -> String {
     }
     s.push('\n');
     for (is_llm, model) in &models {
-        s.push_str(&format!("| {model} |"));
+        let axes = axes_for(*is_llm, model);
+        let label = if axes.len() == 2 {
+            format!("{model}<br><sub>{}·{}</sub>", axes[0].0, axes[1].0)
+        } else {
+            model.to_string()
+        };
+        s.push_str(&format!("| {label} |"));
         for (d, b) in &cols {
-            let (l, r) = if *is_llm {
-                (lamp(d, b, model, &|p| p.ttype == "pp"), lamp(d, b, model, &|p| p.ttype == "tg"))
-            } else {
-                (lamp(d, b, model, &|p| !p.pulse), lamp(d, b, model, &|p| p.pulse))
-            };
-            s.push_str(&format!(" {l}{r} |"));
+            let cell: String =
+                axes.iter().map(|(_, second)| lamp(d, b, model, *is_llm, *second)).collect();
+            s.push_str(&format!(" {cell} |"));
         }
         s.push('\n');
     }
     s.push_str(
         "\n_🟢 better · 🔴 worse · ⚪ within noise · – n/a · \
-         net cell = batch·pulse · LLM cell = prefill·decode · lamp = worst of its variants_\n",
+         lamp = worst of its variants (two lamps labelled under the model)_\n",
     );
     s
 }
@@ -599,21 +623,23 @@ mod tests {
             row("x64", "llm.qwen.pp512.cuda", 800.0, 790.0, true, true),
             row("x64", "llm.qwen.tg128.cuda", 50.0, 55.0, false, true),
         ];
-        let md = star_matrix_md(&rows, &toml::Table::new());
-        assert!(md.contains("x64·cpu"), "missing cpu column:\n{md}");
-        assert!(md.contains("x64·gpu"), "missing gpu column:\n{md}");
-        // short-name map rewrites the column header (display only).
+        // Unmapped host => empty table (the map curates which hosts show).
+        assert!(star_matrix_md(&rows, &toml::Table::new()).is_empty(), "unmapped host leaked");
         let short: toml::Table = toml::from_str("\"x64\" = \"i9\"").unwrap();
-        let md2 = star_matrix_md(&rows, &short);
+        let md = star_matrix_md(&rows, &short);
+        // short name + backend on a second header line.
+        assert!(md.contains("i9<br>cpu") && md.contains("i9<br>gpu"), "header:\n{md}");
+        // two-lamp net: batch·pulse labelled under the model; cpu has both, gpu has neither.
         assert!(
-            md2.contains("i9·cpu") && !md2.contains("x64·cpu"),
-            "short name not applied:\n{md2}"
+            md.contains("| en_tdnn_8M<br><sub>batch·pulse</sub> | 🟢🔴 | –– |"),
+            "en_tdnn lamps:\n{md}"
         );
-        // net: batch·pulse; cpu has both variants, gpu has none.
-        assert!(md.contains("| en_tdnn_8M | 🟢🔴 | –– |"), "en_tdnn lamps:\n{md}");
-        // pulse-only net: batch lamp absent.
-        assert!(md.contains("| trunet | –⚪ | –– |"), "trunet lamps:\n{md}");
-        // llm: prefill·decode on gpu, nothing on cpu.
-        assert!(md.contains("| qwen | –– | 🔴🟢 |"), "qwen lamps:\n{md}");
+        // pulse-only net: a single lamp, no sub-line.
+        assert!(md.contains("| trunet | ⚪ | – |"), "trunet single lamp:\n{md}");
+        // llm: prefill·decode labelled; gpu has both, cpu has neither.
+        assert!(
+            md.contains("| qwen<br><sub>prefill·decode</sub> | –– | 🔴🟢 |"),
+            "qwen lamps:\n{md}"
+        );
     }
 }
