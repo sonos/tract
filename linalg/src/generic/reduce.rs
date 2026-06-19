@@ -271,8 +271,10 @@ pub mod softmax_l2 {
         // 2ⁿ by exponent construction; n ∈ [-127, 127] thanks to the clamp.
         let pow2n = f32::from_bits((((n as i32) + 127) as u32) << 23);
         let e = y * pow2n;
-        // -inf / deep underflow → exact 0 (NaN propagates: `NaN < LO` is false).
-        if x < LO { 0.0 } else { e }
+        // Branchless underflow flush keeps the dataflow vectorizable:
+        // 0 when x < LO, else e (NaN propagates: `NaN < LO` is false).
+        let flush = -((x < LO) as i32) as u32;
+        f32::from_bits(e.to_bits() & !flush)
     }
 
     #[cfg(test)]
