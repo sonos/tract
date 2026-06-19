@@ -258,16 +258,16 @@ pub mod softmax_l2 {
         const P5: f32 = 5.0000001201e-1f32;
 
         let xc = x.clamp(LO, HI);
-        let n = (LOG2E * xc + 0.5).floor();
-        let g = xc - n * C1 - n * C2;
+        let n = xc.mul_add(LOG2E, 0.5).floor();
+        let g = (-n).mul_add(C2, (-n).mul_add(C1, xc));
         let z = g * g;
         let mut y = P0;
-        y = y * g + P1;
-        y = y * g + P2;
-        y = y * g + P3;
-        y = y * g + P4;
-        y = y * g + P5;
-        y = y * z + g + 1.0;
+        y = y.mul_add(g, P1);
+        y = y.mul_add(g, P2);
+        y = y.mul_add(g, P3);
+        y = y.mul_add(g, P4);
+        y = y.mul_add(g, P5);
+        y = y.mul_add(z, g + 1.0);
         // 2ⁿ by exponent construction; n ∈ [-127, 127] thanks to the clamp.
         let pow2n = f32::from_bits((((n as i32) + 127) as u32) << 23);
         let e = y * pow2n;
