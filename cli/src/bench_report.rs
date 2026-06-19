@@ -4,7 +4,7 @@
 //! (the nightly-main reference), and emits the PR-comment markdown (`--out`, movers
 //! only, worst first) and, if `$GITHUB_STEP_SUMMARY` is set, the full per-device
 //! table. Port of `.travis/bench-report.py`; the markdown layout lives in the
-//! `bench-comment.md.j2` / `bench-summary.md.j2` templates so it can be tuned without
+//! `bench-comment.md.j2` / `bench-report.md.j2` templates so it can be tuned without
 //! a rebuild. Single-shot vs the reference; |Δ| must reach the adaptive threshold
 //! (`bench_common::red_threshold`) to count as a mover. Direction-aware.
 
@@ -53,11 +53,21 @@ struct Cell {
     pr_fmt: String,
 }
 
+/// A named sub-table within a device's full listing (Speed / Load / Memory / …).
 #[derive(Serialize)]
-struct DeviceSummary {
-    device: String,
-    count: usize,
+struct Group {
+    title: String,
     rows: Vec<Cell>,
+}
+
+#[derive(Serialize)]
+struct DeviceReport {
+    device: String,
+    regr: usize,
+    impr: usize,
+    stable: usize,
+    total: usize,
+    groups: Vec<Group>,
 }
 
 fn parse_date(s: &str) -> TractResult<Date> {
@@ -209,6 +219,200 @@ fn to_cell(r: &Row) -> Cell {
     }
 }
 
+/// Collapse a metric's variant to the column axis: cpu vs gpu. The variant is
+/// overloaded — for `backends` benches it is the backend (`cpu`/`cuda`/`metal`),
+/// for backend-less benches it is a config label (`pass`, `pulse8`, `2600ms`, …)
+/// that always ran on CPU. Only cuda/metal/gpu count as gpu; everything else cpu.
+fn backend_norm(variant: &str) -> &str {
+    if variant.contains("cuda") || variant.contains("metal") || variant.contains("gpu") {
+        "gpu"
+    } else {
+        "cpu"
+    }
+}
+
+/// Worst glyph over a set of rows for one lamp: regression dominates, then
+/// improvement, then stable; `–` when no row maps to the cell at all.
+fn worst_glyph<'a>(rows: impl Iterator<Item = &'a Row>) -> &'static str {
+    let (mut seen, mut impr) = (false, false);
+    for r in rows {
+        seen = true;
+        if r.mover && r.worse {
+            return "🔴";
+        }
+        impr |= r.mover;
+    }
+    if !seen {
+        "–"
+    } else if impr {
+        "🟢"
+    } else {
+        "⚪"
+    }
+}
+
+fn star_type(metric: &str) -> Option<&'static str> {
+    if metric.contains("evaltime") {
+        Some("evaltime")
+    } else if metric.contains("pp512") {
+        Some("pp")
+    } else if metric.contains("tg128") {
+        Some("tg")
+    } else {
+        None
+    }
+}
+
+/// At-a-glance markdown: rows = models, columns = `device·{cpu,gpu}`. Each cell
+/// holds two "lamps" showing the bottleneck axis — nets: batch·pulse (non-pulse
+/// vs the worst of the pulse variants), llms: prefill·decode. A lamp is the worst
+/// glyph over every variant feeding it; `–` when that side has no run. Empty if
+/// nothing maps.
+fn star_matrix_md(rows: &[Row]) -> String {
+    struct P<'a> {
+        row: &'a Row,
+        dev: &'a str,
+        model: String,
+        is_llm: bool,
+        backend: &'a str,
+        ttype: &'static str,
+        pulse: bool,
+    }
+    let parsed: Vec<P> = rows
+        .iter()
+        .filter_map(|r| {
+            let kind = r.metric.split('.').next().unwrap_or("");
+            let ttype = star_type(&r.metric)?;
+            if kind != "net" && kind != "llm" {
+                return None;
+            }
+            let variant = r.metric.rsplit('.').next().unwrap_or("");
+            Some(P {
+                row: r,
+                dev: &r.device,
+                model: describe(&r.metric).0,
+                is_llm: kind == "llm",
+                backend: backend_norm(variant),
+                ttype,
+                pulse: variant.contains("pulse"),
+            })
+        })
+        .collect();
+    if parsed.is_empty() {
+        return String::new();
+    }
+    let mut cols: Vec<(&str, &str)> = parsed.iter().map(|p| (p.dev, p.backend)).collect();
+    cols.sort_unstable();
+    cols.dedup();
+    let mut models: Vec<(bool, &str)> =
+        parsed.iter().map(|p| (p.is_llm, p.model.as_str())).collect();
+    models.sort_unstable();
+    models.dedup();
+    let lamp = |d: &str, b: &str, model: &str, pred: &dyn Fn(&P) -> bool| {
+        worst_glyph(
+            parsed
+                .iter()
+                .filter(|p| p.dev == d && p.backend == b && p.model == model && pred(p))
+                .map(|p| p.row),
+        )
+    };
+
+    let mut s = String::from("### Star metric — model × device\n\n| model |");
+    for (d, b) in &cols {
+        s.push_str(&format!(" {d}·{b} |"));
+    }
+    s.push_str("\n|---|");
+    for _ in &cols {
+        s.push_str(":--:|");
+    }
+    s.push('\n');
+    for (is_llm, model) in &models {
+        s.push_str(&format!("| {model} |"));
+        for (d, b) in &cols {
+            let (l, r) = if *is_llm {
+                (lamp(d, b, model, &|p| p.ttype == "pp"), lamp(d, b, model, &|p| p.ttype == "tg"))
+            } else {
+                (lamp(d, b, model, &|p| !p.pulse), lamp(d, b, model, &|p| p.pulse))
+            };
+            s.push_str(&format!(" {l}{r} |"));
+        }
+        s.push('\n');
+    }
+    s.push_str(
+        "\n_🟢 better · 🔴 worse · ⚪ within noise · – n/a · \
+         net cell = batch·pulse · LLM cell = prefill·decode · lamp = worst of its variants_\n",
+    );
+    s
+}
+
+/// Coarse bucket for the full-report sub-tables, in display order.
+const GROUP_ORDER: &[&str] = &["Speed", "Load", "Memory", "Other"];
+
+fn group_of(metric: &str) -> &'static str {
+    if is_speed(metric) {
+        "Speed"
+    } else if describe(metric).3 == "mem" {
+        "Memory"
+    } else if describe(metric).3 == "s" {
+        "Load"
+    } else {
+        "Other"
+    }
+}
+
+/// One [`DeviceReport`] per device: regr/impr/stable counts plus rows bucketed
+/// into [`GROUP_ORDER`], each group movers-first then by largest move.
+fn build_device_reports(rows: &[Row], devices: &[String]) -> Vec<DeviceReport> {
+    devices
+        .iter()
+        .map(|dev| {
+            let drows: Vec<&Row> = rows.iter().filter(|r| &r.device == dev).collect();
+            let regr = drows.iter().filter(|r| r.mover && r.worse).count();
+            let impr = drows.iter().filter(|r| r.mover && !r.worse).count();
+            let mut groups = vec![];
+            for title in GROUP_ORDER {
+                let mut g: Vec<&Row> =
+                    drows.iter().copied().filter(|r| group_of(&r.metric) == *title).collect();
+                if g.is_empty() {
+                    continue;
+                }
+                g.sort_by(|a, b| {
+                    b.mover.cmp(&a.mover).then(b.delta.abs().total_cmp(&a.delta.abs()))
+                });
+                groups.push(Group {
+                    title: (*title).to_string(),
+                    rows: g.iter().map(|r| to_cell(r)).collect(),
+                });
+            }
+            DeviceReport {
+                device: dev.clone(),
+                regr,
+                impr,
+                stable: drows.len() - regr - impr,
+                total: drows.len(),
+                groups,
+            }
+        })
+        .collect()
+}
+
+fn render_report(
+    templates: &str,
+    ref_day: &str,
+    pr_sha9: &str,
+    star_matrix: &str,
+    devices: &[DeviceReport],
+) -> TractResult<String> {
+    let mut env = Environment::new();
+    env.set_trim_blocks(true);
+    env.set_lstrip_blocks(true);
+    let tpl = std::fs::read_to_string(format!("{templates}/bench-report.md.j2"))?;
+    env.add_template("report", &tpl)?;
+    let rendered =
+        env.get_template("report")?.render(context! { ref_day, pr_sha9, star_matrix, devices })?;
+    Ok(tidy(&rendered))
+}
+
 pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
     let get = |k| matches.get_one::<String>(k).map(String::as_str);
     let results = get("results").context("--results is required")?;
@@ -317,30 +521,86 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
     })?;
     std::fs::write(out, tidy(&rendered))?;
 
-    if let Ok(summary_path) = std::env::var("GITHUB_STEP_SUMMARY") {
-        let mut dev_summaries = vec![];
-        for dev in &uniq {
-            let mut drows: Vec<&Row> = rows.iter().filter(|r| &r.device == dev).collect();
-            drows.sort_by(by_delta);
-            dev_summaries.push(DeviceSummary {
-                device: dev.clone(),
-                count: drows.len(),
-                rows: drows.iter().map(|r| to_cell(r)).collect(),
-            });
-        }
-        let summary = std::fs::read_to_string(format!("{templates}/bench-summary.md.j2"))?;
-        env.add_template("summary", &summary)?;
-        let rendered = env.get_template("summary")?.render(context! {
-            ref_day, pr_sha9 => &pr_sha[..pr_sha.len().min(9)], devices => dev_summaries,
-        })?;
+    if let Ok(report_path) = std::env::var("GITHUB_STEP_SUMMARY") {
+        let dev_reports = build_device_reports(&rows, &uniq);
+        let rendered = render_report(
+            templates,
+            &ref_day,
+            &pr_sha[..pr_sha.len().min(9)],
+            &star_matrix_md(&rows),
+            &dev_reports,
+        )?;
         use std::io::Write;
         std::fs::OpenOptions::new()
             .append(true)
             .create(true)
-            .open(summary_path)?
-            .write_all(tidy(&rendered).as_bytes())?;
+            .open(report_path)?
+            .write_all(rendered.as_bytes())?;
     }
 
     println!("regressions={} improvements={} metrics={}", regr.len(), impr.len(), rows.len());
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn row(device: &str, metric: &str, refv: f64, prv: f64, worse: bool, mover: bool) -> Row {
+        Row {
+            device: device.into(),
+            metric: metric.into(),
+            refv,
+            prv,
+            delta: (prv - refv) / refv * 100.0,
+            worse,
+            mover,
+        }
+    }
+
+    #[test]
+    fn report_groups_counts_and_legend() {
+        let rows = vec![
+            row("gpu", "net.bert.evaltime", 100.0, 108.0, true, true),
+            row("gpu", "llm.qwen.tg128.q40", 50.0, 47.0, true, true),
+            row("gpu", "llm.qwen.pp512.q40", 800.0, 815.0, false, false),
+            row("gpu", "net.bert.rsz_at_model_ready", 1.0e9, 1.02e9, true, false),
+            row("gpu", "net.bert.time_to_model_ready", 2.0, 1.5, false, true),
+        ];
+        let devices = vec!["gpu".to_string()];
+        let ds = build_device_reports(&rows, &devices);
+        assert_eq!(ds[0].regr, 2);
+        assert_eq!(ds[0].impr, 1);
+        assert_eq!(ds[0].total, 5);
+        assert_eq!(ds[0].stable, 2);
+
+        let md =
+            render_report("../.travis", "2026-06-19", "abcdef123", &star_matrix_md(&rows), &ds)
+                .unwrap();
+        assert!(md.contains("### Speed"), "missing Speed group:\n{md}");
+        assert!(md.contains("### Load"), "missing Load group:\n{md}");
+        assert!(md.contains("### Memory"), "missing Memory group:\n{md}");
+        assert!(md.contains("| device |"), "missing overview table");
+        assert!(md.contains("lower is better"), "missing legend");
+    }
+
+    #[test]
+    fn star_matrix_lamps() {
+        let rows = vec![
+            row("x64", "net.en_tdnn_8M.evaltime.2600ms", 100.0, 90.0, false, true),
+            row("x64", "net.en_tdnn_8M.evaltime.pulse_240ms", 50.0, 56.0, true, true),
+            row("x64", "net.trunet.evaltime.pulse1_f16", 10.0, 10.05, false, false),
+            row("x64", "llm.qwen.pp512.cuda", 800.0, 790.0, true, true),
+            row("x64", "llm.qwen.tg128.cuda", 50.0, 55.0, false, true),
+        ];
+        let md = star_matrix_md(&rows);
+        assert!(md.contains("x64·cpu"), "missing cpu column:\n{md}");
+        assert!(md.contains("x64·gpu"), "missing gpu column:\n{md}");
+        // net: batch·pulse; cpu has both variants, gpu has none.
+        assert!(md.contains("| en_tdnn_8M | 🟢🔴 | –– |"), "en_tdnn lamps:\n{md}");
+        // pulse-only net: batch lamp absent.
+        assert!(md.contains("| trunet | –⚪ | –– |"), "trunet lamps:\n{md}");
+        // llm: prefill·decode on gpu, nothing on cpu.
+        assert!(md.contains("| qwen | –– | 🔴🟢 |"), "qwen lamps:\n{md}");
+    }
 }
