@@ -72,6 +72,7 @@ jobs:
           ref: ${{ needs.prepare.outputs.test_ref }}
           fetch-depth: 0
           persist-credentials: false
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
       - run: |
           ROOT=. ./.travis/ci-system-setup.sh
           cargo build -p tract-cli --profile opt-no-lto --no-default-features --features transformers,pulse,cuda-13000

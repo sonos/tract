@@ -76,6 +76,8 @@ jobs:
         fetch-depth: 0
         persist-credentials: false
 
+    - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+
     - name: Configure AWS Credentials
       continue-on-error: true
       uses: aws-actions/configure-aws-credentials@e7f100cf4c008499ea8adda475de1042d6975c7b # v6.2.0
@@ -96,6 +98,8 @@ jobs:
         ref: ${{ needs.prepare.outputs.test_ref }}
         fetch-depth: 0
         persist-credentials: false
+
+    - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
     - name: Full test 
       env:
         AWS_EC2_METADATA_DISABLED: true
@@ -114,6 +118,8 @@ jobs:
         ref: ${{ needs.prepare.outputs.test_ref }}
         fetch-depth: 0
         persist-credentials: false
+
+    - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
     - name: Full test
       run: .travis/onnx-tests.sh ${{ matrix.opset }}
 
@@ -127,6 +133,8 @@ jobs:
         ref: ${{ needs.prepare.outputs.test_ref }}
         fetch-depth: 0
         persist-credentials: false
+
+    - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
     - name: Full test
       run: .travis/tflite.sh
 
@@ -140,6 +148,8 @@ jobs:
         ref: ${{ needs.prepare.outputs.test_ref }}
         fetch-depth: 0
         persist-credentials: false
+
+    - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
 
     - name: With assertions
       run: |
@@ -156,6 +166,8 @@ jobs:
         ref: ${{ needs.prepare.outputs.test_ref }}
         fetch-depth: 0
         persist-credentials: false
+
+    - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
     - name: Without default features
       run: |
         rustup update
@@ -171,6 +183,8 @@ jobs:
         ref: ${{ needs.prepare.outputs.test_ref }}
         fetch-depth: 0
         persist-credentials: false
+
+    - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
     - name: With complexes
       run: |
         rustup update
@@ -186,6 +200,8 @@ jobs:
         ref: ${{ needs.prepare.outputs.test_ref }}
         fetch-depth: 0
         persist-credentials: false
+
+    - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
     - name: Check all targets
       run: |
         ROOT=$(pwd) ./.travis/ci-system-setup.sh
@@ -201,6 +217,8 @@ jobs:
         ref: ${{ needs.prepare.outputs.test_ref }}
         fetch-depth: 0
         persist-credentials: false
+
+    - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
     - name: C smoke tests
       run: |
         cd api/c
@@ -217,6 +235,8 @@ jobs:
         ref: ${{ needs.prepare.outputs.test_ref }}
         fetch-depth: 0
         persist-credentials: false
+
+    - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
     - name: Setup Python
       uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
       with:
