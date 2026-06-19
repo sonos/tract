@@ -33,3 +33,12 @@ time_to       = 5
 rsz           = 5   # matches rsz_at and rszmax; k*noise auto-widens it on noisy hosts
 bench_runtime = 10
 binary_size   = 1
+
+# Short labels for the star-metric matrix columns only; the per-device detail tables
+# keep the full name. Canonical device names are fixed (they key the bench-data
+# reference history), so add a line here per host rather than renaming it. Unmapped
+# hosts fall back to their full name.
+[devices]
+"apple-m1-max"        = "m1max"
+"i9-11900kb_rtx-4060" = "i9-4060"
+"jetson-orin-nx"      = "orin"
