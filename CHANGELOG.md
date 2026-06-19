@@ -9,6 +9,30 @@
 
 For normal usage we recommend adopting the **`tract` facade crate** (the public API at `api/rs`) instead of wiring `tract-core`, `tract-nnef`, `tract-onnx`, `tract-pulse`, `tract-cuda`, `tract-metal`, etc. directly. The facade exposes one stable surface — `nnef()`, `onnx()`, `runtime_for_name("cpu" | "gpu" | "gpu-or-cpu" | "cuda" | "metal" | ...)`, plus `Model`, `Runnable`, `State`, `Tensor`, `TDim`, and a `SetSymbols` transform builder — with all the backends curated behind it. `impl_ndarray_interop!()` (0.23.0-dev.5) keeps `ndarray` interop opt-in without leaking an `ndarray` version into the public API. Downstream code that pinned `tract-core` + `tract-onnx` directly can usually drop those deps in favour of `tract = "0.23"` and `use tract::prelude::*;`. Examples are now organised around this facade — see `examples/onnx-mobilenet-v2`, `examples/nnef-mobilenet-v2`, and `examples/causal_llm`.
 
+# 0.23.3 - 2026-06-19
+
+### GPU
+
+- **Native STFT / FFT on GPU.** Backend-agnostic `GpuStft` (CUDA + Metal) backed
+  by a 512-point Stockham FFT kernel, generalized to power-of-two frames
+  (256/512/1024/2048), plus inverse FFT and lowering of the standalone `Fft` op.
+
+### CPU / linalg
+
+- **SVE2 RmsNorm.** VLA SVE2 `rms_norm_f32` kernel for aarch64 SVE2 hosts.
+
+### Transformers / LLM
+
+- **KV-cache quantization (KIVI-style).** `QuantizedKvSdpa` op with packed u8
+  storage and configurable bit-width, an auto-wiring transform, and NNEF
+  de/serialization round-trip.
+
+### Core / NNEF / ONNX
+
+- **Resize / GridSample in core.** A clean `Resize` subset and `GridSample` moved
+  into `tract-core`: f16 resize, a `sizes` input on `tract_core_resize`, a clamped
+  resize floor for negative source coordinates, and a retained `grid_sample` alias.
+
 # 0.23.2 - 2026-06-16
 
 ### Security
