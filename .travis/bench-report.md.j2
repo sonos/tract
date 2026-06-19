@@ -1,0 +1,32 @@
+{% macro table(rows) %}
+| Δ | metric | main → PR |
+|---|---|---|
+{% for r in rows %}
+| {{ r.flag }} {{ r.delta }} | {{ r.cell }} | {{ r.ref_fmt }} → {{ r.pr_fmt }} |
+{% endfor %}
+{% endmacro %}
+# Bench vs main — full report
+
+Reference {{ ref_day }} · PR {{ pr_sha9 }}
+
+{{ star_matrix }}
+
+| device | 🔴 regr | 🟢 impr | stable |
+|---|---|---|---|
+{% for d in devices %}
+| `{{ d.device }}` | {{ d.regr }} | {{ d.impr }} | {{ d.stable }} |
+{% endfor %}
+
+{% for dev in devices %}
+<details{% if dev.regr > 0 %} open{% endif %}><summary><b>{{ dev.device }}</b> — 🔴 {{ dev.regr }} · 🟢 {{ dev.impr }} · {{ dev.total }} metrics</summary>
+
+{% for g in dev.groups %}
+### {{ g.title }}
+
+{{ table(g.rows) }}
+{% endfor %}
+</details>
+
+{% endfor %}
+---
+_lower is better except prefill/decode (tok/s) · 🔴/🟢 flag = mover past its adaptive threshold (max(floor, k×noise) vs the series' own history); blank = within noise · Δ = PR vs main-nightly, single-shot · times in ms/s · memory in kB/MB/GB · devices with regressions are expanded_
