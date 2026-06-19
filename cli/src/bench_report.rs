@@ -57,6 +57,7 @@ struct Cell {
 #[derive(Serialize)]
 struct Group {
     title: String,
+    regr: usize,
     rows: Vec<Cell>,
 }
 
@@ -406,6 +407,7 @@ fn build_device_reports(rows: &[Row], devices: &[String]) -> Vec<DeviceReport> {
                 });
                 groups.push(Group {
                     title: (*title).to_string(),
+                    regr: g.iter().filter(|r| r.mover && r.worse).count(),
                     rows: g.iter().map(|r| to_cell(r)).collect(),
                 });
             }
@@ -607,9 +609,12 @@ mod tests {
             &ds,
         )
         .unwrap();
-        assert!(md.contains("### Speed"), "missing Speed group:\n{md}");
-        assert!(md.contains("### Load"), "missing Load group:\n{md}");
-        assert!(md.contains("### Memory"), "missing Memory group:\n{md}");
+        // groups are nested <details> inside the device fold now.
+        assert!(md.contains("<summary>Speed"), "missing Speed group:\n{md}");
+        assert!(md.contains("<summary>Load"), "missing Load group:\n{md}");
+        assert!(md.contains("<summary>Memory"), "missing Memory group:\n{md}");
+        // the Speed group has a regression here, so its inner fold opens.
+        assert!(md.contains("<details open><summary>Speed — 🔴 2"), "Speed not auto-opened:\n{md}");
         assert!(md.contains("| device |"), "missing overview table");
         assert!(md.contains("lower is better"), "missing legend");
     }

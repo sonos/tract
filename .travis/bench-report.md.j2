@@ -21,9 +21,10 @@ Reference {{ ref_day }} · PR {{ pr_sha9 }}
 <details{% if dev.regr > 0 %} open{% endif %}><summary><b>{{ dev.device }}</b> — 🔴 {{ dev.regr }} · 🟢 {{ dev.impr }} · {{ dev.total }} metrics</summary>
 
 {% for g in dev.groups %}
-### {{ g.title }}
+<details{% if g.regr > 0 %} open{% endif %}><summary>{{ g.title }}{% if g.regr > 0 %} — 🔴 {{ g.regr }}{% endif %}</summary>
 
 {{ table(g.rows) }}
+</details>
 {% endfor %}
 </details>
 
