@@ -185,6 +185,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      pull-requests: write   # post the comment directly on same-repo PRs
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -212,11 +213,32 @@ jobs:
           chmod +x tract-cli/tract
           tract-cli/tract bench-report --results results --bench-data bench-data \
             --thresholds .travis/bench-thresholds.toml --pr-sha "$PR_SHA" --out pr-comment.md
-      # Hand the rendered comment + target PR to the bench-comment workflow to post. Posting
-      # is split out via workflow_run because this pull_request run gets a read-only token on
-      # fork PRs and can't comment. No file => nothing comparable => no artifact => nothing posted.
-      - name: Stage comment for the trampoline
-        if: ${{ hashFiles('pr-comment.md') != '' }}
+      # Same-repo PRs have a write token: post directly here so the comment refreshes on every
+      # run, including manual re-runs (a re-run does not re-fire the workflow_run trampoline).
+      - name: Comment on PR (same-repo)
+        if: ${{ hashFiles('pr-comment.md') != '' && github.event.pull_request.head.repo.full_name == github.repository }}
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('pr-comment.md', 'utf8');
+            const issue_number = parseInt(process.env.PR_NUMBER, 10);
+            const marker = '<!-- bench-vs-main -->';
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner, repo: context.repo.repo, issue_number, per_page: 100,
+            });
+            const prev = comments.find(c => c.body?.includes(marker));
+            if (prev) {
+              await github.rest.issues.updateComment({ owner: context.repo.owner, repo: context.repo.repo, comment_id: prev.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number, body });
+            }
+      # Fork PRs get a read-only token and can't comment, so hand the rendered comment + target PR
+      # to the bench-comment trampoline (workflow_run, base context, write token) to post instead.
+      - name: Stage comment for the trampoline (fork PRs)
+        if: ${{ hashFiles('pr-comment.md') != '' && github.event.pull_request.head.repo.full_name != github.repository }}
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |

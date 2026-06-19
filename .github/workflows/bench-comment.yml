@@ -16,6 +16,14 @@ on:  # zizmor: ignore[dangerous-triggers]
   workflow_run:
     workflows: ["Bench"]
     types: [completed]
+  # Re-runs of the Bench workflow do not re-fire workflow_run, so a re-run never posts. This
+  # lets a maintainer re-post from an already-finished Bench run (reusing its artifact) without
+  # re-running the bench or pushing a commit: `gh workflow run bench-comment.yml -f run_id=<id>`.
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Bench run id to (re)post the comment from"
+        required: true
 
 permissions:
   contents: read
@@ -24,7 +32,7 @@ permissions:
 
 jobs:
   comment:
-    if: ${{ github.event.workflow_run.event == 'pull_request' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.event == 'pull_request' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
@@ -32,9 +40,11 @@ jobs:
         with:
           name: bench-comment
           path: bench-comment
-          run-id: ${{ github.event.workflow_run.id }}
+          run-id: ${{ github.event.workflow_run.id || inputs.run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        env:
+          DISPATCH_RUN_ID: ${{ inputs.run_id }}
         with:
           script: |
             const fs = require('fs');
@@ -46,8 +56,16 @@ jobs:
             // The artifact names the target PR (the only thing that survives for fork PRs —
             // a fork commit isn't in this repo, so listPullRequestsAssociatedWithCommit finds
             // nothing). Trust it only after verifying that PR's head SHA matches the run's, so
-            // a fork can name its own PR but never redirect the comment at another issue.
-            const sha = context.payload.workflow_run.head_sha;
+            // a fork can name its own PR but never redirect the comment at another issue. On a
+            // manual dispatch there is no workflow_run payload, so fetch the run's head SHA.
+            let sha = context.payload.workflow_run?.head_sha;
+            if (!sha) {
+              const { data: run } = await github.rest.actions.getWorkflowRun({
+                owner: context.repo.owner, repo: context.repo.repo,
+                run_id: parseInt(process.env.DISPATCH_RUN_ID, 10),
+              });
+              sha = run.head_sha;
+            }
             const issue_number = parseInt(fs.readFileSync('bench-comment/pr-number', 'utf8').trim(), 10);
             if (!Number.isInteger(issue_number)) {
               core.info('no valid PR number in artifact; nothing to post');
