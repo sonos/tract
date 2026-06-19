@@ -16,9 +16,9 @@ reduce_impl_wrap!(
             let ptr = buf.as_ptr();
             let mut out: float32x4_t = vdupq_n_f32(f32::MIN);
             std::arch::asm!("
-            and v1.16b, v0.16b, v0.16b
-            and v2.16b, v0.16b, v0.16b
-            and v3.16b, v0.16b, v0.16b
+            mov v1.16b, v0.16b
+            mov v2.16b, v0.16b
+            mov v3.16b, v0.16b
             2:
                 ld1 {{v4.4s, v5.4s, v6.4s, v7.4s}}, [{ptr}], 64
                 fmax v0.4s, v0.4s, v4.4s
