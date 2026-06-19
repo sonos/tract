@@ -265,8 +265,7 @@ fn main() -> TractResult<()> {
                 .arg(arg!(--"bench-data" [DIR] "Compute expectations inline from this bench-data checkout (alternative to --expectations)"))
                 .arg(arg!(--thresholds [PATH] "Threshold config TOML (with --bench-data)"))
                 .arg(arg!(--triple [TRIPLE] "Target triple (with --bench-data)"))
-                .arg(arg!(--device [DEVICE] "Device key (with --bench-data)"))
-                .arg(arg!(--window [N] "Trailing nights to median over (with --bench-data; default: 10)")),
+                .arg(arg!(--device [DEVICE] "Device key (with --bench-data)")),
         );
         app = app.subcommand(
             clap::Command::new("bench-expectations")
@@ -275,8 +274,7 @@ fn main() -> TractResult<()> {
                 .arg(arg!(--thresholds <PATH> "Threshold config TOML"))
                 .arg(arg!(--triple <TRIPLE> "Target triple"))
                 .arg(arg!(--device <DEVICE> "Device key"))
-                .arg(arg!(--out <PATH> "Output expectations file"))
-                .arg(arg!(--window [N] "Trailing nights to median over (default: 10)")),
+                .arg(arg!(--out <PATH> "Output expectations file")),
         );
         app = app.subcommand(
             clap::Command::new("bench-append")

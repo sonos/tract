@@ -128,24 +128,13 @@ pub fn red_threshold(
     Some(noise.map_or(floor, |n| floor.max(cfg.k * n)))
 }
 
-/// The baseline a metric is compared against: the median of its recent non-null
-/// points. Used by BOTH the report (to compute the red) and bench-expectations (the
-/// value shipped to the retry), so the retry and the report's red judge against the
-/// same number. Median (not the latest single value) so a noisy last nightly doesn't
-/// shift the reference. `None` if there's no data.
-pub fn reference_value(arr: &[Option<f64>], window: usize) -> Option<f64> {
-    let vals: Vec<f64> =
-        arr[arr.len().saturating_sub(window)..].iter().filter_map(|&v| v).collect();
-    (!vals.is_empty()).then(|| median(&vals))
-}
-
-/// Median of a non-empty slice (mean of the two middle points for even length),
-/// matching Python's `statistics.median`.
-pub fn median(vals: &[f64]) -> f64 {
-    let mut v = vals.to_vec();
-    v.sort_by(|a, b| a.total_cmp(b));
-    let n = v.len();
-    if n % 2 == 1 { v[n / 2] } else { (v[n / 2 - 1] + v[n / 2]) / 2.0 }
+/// The baseline a metric is compared against: its latest non-null nightly-main value.
+/// Used by BOTH the report (to compute the red) and bench-expectations (the value
+/// shipped to the retry), so the retry and the report's red judge against the same
+/// number — one value a reader can point at, tracking a main-side change the day after
+/// it lands. `None` if there's no data.
+pub fn latest_value(arr: &[Option<f64>]) -> Option<f64> {
+    arr.iter().rev().flatten().copied().next()
 }
 
 #[cfg(test)]
@@ -173,16 +162,10 @@ tg = 3
     }
 
     #[test]
-    fn median_odd_even() {
-        assert_eq!(median(&[3.0, 1.0, 2.0]), 2.0);
-        assert_eq!(median(&[1.0, 2.0, 3.0, 4.0]), 2.5);
-    }
-
-    #[test]
-    fn reference_value_is_windowed_median_skipping_nulls() {
-        let arr = [Some(1.0), None, Some(2.0), Some(100.0)];
-        assert_eq!(reference_value(&arr, 3), Some(51.0)); // median of {2,100} over last 3 (one null)
-        assert_eq!(reference_value(&[None, None], 10), None);
+    fn latest_value_skips_trailing_nulls() {
+        assert_eq!(latest_value(&[Some(1.0), Some(2.0), None]), Some(2.0));
+        assert_eq!(latest_value(&[Some(1.0), None, Some(100.0)]), Some(100.0));
+        assert_eq!(latest_value(&[None, None]), None);
     }
 
     #[test]

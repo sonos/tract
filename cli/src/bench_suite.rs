@@ -325,8 +325,7 @@ fn expectations(matches: &clap::ArgMatches) -> TractResult<HashMap<String, (f64,
     let thresholds = get("thresholds").context("--thresholds is required with --bench-data")?;
     let triple = get("triple").context("--triple is required with --bench-data")?;
     let device = get("device").context("--device is required with --bench-data")?;
-    let window: usize = get("window").map(str::parse).transpose()?.unwrap_or(10);
-    let rows = crate::bench_expectations::compute(bench_data, thresholds, triple, device, window)?;
+    let rows = crate::bench_expectations::compute(bench_data, thresholds, triple, device)?;
     println!("expectations: {} gated metrics from {bench_data}/{triple}/{device}", rows.len());
     Ok(rows.into_iter().map(|(m, e, t)| (m, (e, t))).collect())
 }

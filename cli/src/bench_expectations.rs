@@ -2,12 +2,13 @@
 //! one (triple, device), so the suite retries exactly the benches whose value would
 //! show as a PR red. Port of `.travis/bench-expectations.py`.
 //!
-//! `expected` is the recent median of the non-null points; `threshold` is the |Δ%|
-//! that would make the metric a red (`bench_common::red_threshold`). Never-gated
-//! metrics are omitted (not retried). A device with no history yields an empty file
-//! (retry disabled there, single-shot).
+//! `expected` is the latest nightly-main value (the same baseline the report's red uses,
+//! so the retry and the red judge against the same number); `threshold` is the |Δ%| that
+//! would make the metric a red (`bench_common::red_threshold`). Never-gated metrics are
+//! omitted (not retried). A device with no history yields an empty file (retry disabled
+//! there, single-shot).
 
-use crate::bench_common::{Thresholds, red_threshold, reference_value, series_noise};
+use crate::bench_common::{Thresholds, latest_value, red_threshold, series_noise};
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use tract_hir::internal::*;
@@ -27,7 +28,6 @@ pub fn compute(
     thresholds: &str,
     triple: &str,
     device: &str,
-    window: usize,
 ) -> TractResult<Vec<(String, f64, f64)>> {
     let cfg = Thresholds::load(thresholds)?;
     let path = format!("{bench_data}/{triple}/{device}.json");
@@ -36,7 +36,7 @@ pub fn compute(
         let data: BenchData = serde_json::from_str(&std::fs::read_to_string(&path)?)
             .with_context(|| format!("parsing {path}"))?;
         for (metric, arr) in &data.metrics {
-            let Some(expected) = reference_value(arr, window) else { continue };
+            let Some(expected) = latest_value(arr) else { continue };
             if let Some(thr) = red_threshold(metric, &cfg, series_noise(arr, 40, 8), Some(expected))
             {
                 rows.push((metric.clone(), expected, thr));
@@ -53,9 +53,8 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
     let triple = get("triple").context("--triple is required")?;
     let device = get("device").context("--device is required")?;
     let out = get("out").context("--out is required")?;
-    let window: usize = get("window").map(str::parse).transpose()?.unwrap_or(10);
 
-    let rows = compute(bench_data, thresholds, triple, device, window)?;
+    let rows = compute(bench_data, thresholds, triple, device)?;
     let body: String = rows.iter().map(|(m, e, t)| format!("{m} {e} {t}\n")).collect();
     std::fs::write(out, body)?;
     println!("expectations: {} gated metrics -> {out}", rows.len());
