@@ -9,7 +9,7 @@
 //! (`bench_common::red_threshold`) to count as a mover. Direction-aware.
 
 use crate::bench_common::{
-    Thresholds, higher_better, is_speed, read_metrics, red_threshold, series_noise,
+    Thresholds, higher_better, is_speed, latest_value, read_metrics, red_threshold, series_noise,
 };
 use minijinja::{Environment, context};
 use serde::{Deserialize, Serialize};
@@ -98,11 +98,11 @@ fn reference(bench_data: &str, triple: &str, device: &str) -> TractResult<Refere
     let mut last_idx: i64 = -1;
     for (m, arr) in &d.metrics {
         noise.insert(m.clone(), series_noise(arr, 40, 8));
-        // Reference is the latest nightly-main value, not a windowed median: one number a
-        // reader can point at, and it tracks a main-side change the day after it lands.
+        if let Some(v) = latest_value(arr) {
+            vals.insert(m.clone(), v);
+        }
         if let Some(i) = arr.iter().rposition(Option::is_some) {
-            vals.insert(m.clone(), arr[i].unwrap());
-            last_idx = last_idx.max(i as i64);
+            last_idx = last_idx.max(i as i64); // latest non-null day, for ref-date display
         }
     }
     let ref_day = (last_idx >= 0).then(|| start + Duration::days(last_idx));
