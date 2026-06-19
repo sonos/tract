@@ -268,7 +268,8 @@ fn star_type(metric: &str) -> Option<&'static str> {
 /// vs the worst of the pulse variants), llms: prefill·decode. A lamp is the worst
 /// glyph over every variant feeding it; `–` when that side has no run. Empty if
 /// nothing maps.
-fn star_matrix_md(rows: &[Row]) -> String {
+fn star_matrix_md(rows: &[Row], short_names: &toml::Table) -> String {
+    let short = |d: &str| short_names.get(d).and_then(|v| v.as_str()).unwrap_or(d).to_string();
     struct P<'a> {
         row: &'a Row,
         dev: &'a str,
@@ -319,7 +320,7 @@ fn star_matrix_md(rows: &[Row]) -> String {
 
     let mut s = String::from("### Star metric — model × device\n\n| model |");
     for (d, b) in &cols {
-        s.push_str(&format!(" {d}·{b} |"));
+        s.push_str(&format!(" {}·{b} |", short(d)));
     }
     s.push_str("\n|---|");
     for _ in &cols {
@@ -527,7 +528,7 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
             templates,
             &ref_day,
             &pr_sha[..pr_sha.len().min(9)],
-            &star_matrix_md(&rows),
+            &star_matrix_md(&rows, &cfg.devices),
             &dev_reports,
         )?;
         use std::io::Write;
@@ -574,9 +575,14 @@ mod tests {
         assert_eq!(ds[0].total, 5);
         assert_eq!(ds[0].stable, 2);
 
-        let md =
-            render_report("../.travis", "2026-06-19", "abcdef123", &star_matrix_md(&rows), &ds)
-                .unwrap();
+        let md = render_report(
+            "../.travis",
+            "2026-06-19",
+            "abcdef123",
+            &star_matrix_md(&rows, &toml::Table::new()),
+            &ds,
+        )
+        .unwrap();
         assert!(md.contains("### Speed"), "missing Speed group:\n{md}");
         assert!(md.contains("### Load"), "missing Load group:\n{md}");
         assert!(md.contains("### Memory"), "missing Memory group:\n{md}");
@@ -593,9 +599,16 @@ mod tests {
             row("x64", "llm.qwen.pp512.cuda", 800.0, 790.0, true, true),
             row("x64", "llm.qwen.tg128.cuda", 50.0, 55.0, false, true),
         ];
-        let md = star_matrix_md(&rows);
+        let md = star_matrix_md(&rows, &toml::Table::new());
         assert!(md.contains("x64·cpu"), "missing cpu column:\n{md}");
         assert!(md.contains("x64·gpu"), "missing gpu column:\n{md}");
+        // short-name map rewrites the column header (display only).
+        let short: toml::Table = toml::from_str("\"x64\" = \"i9\"").unwrap();
+        let md2 = star_matrix_md(&rows, &short);
+        assert!(
+            md2.contains("i9·cpu") && !md2.contains("x64·cpu"),
+            "short name not applied:\n{md2}"
+        );
         // net: batch·pulse; cpu has both variants, gpu has none.
         assert!(md.contains("| en_tdnn_8M | 🟢🔴 | –– |"), "en_tdnn lamps:\n{md}");
         // pulse-only net: batch lamp absent.

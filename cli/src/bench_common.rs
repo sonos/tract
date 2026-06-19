@@ -18,6 +18,10 @@ pub struct Thresholds {
     pub ignore: Vec<String>,
     /// Per-class percent floors, in priority order (first substring match wins).
     pub floors: toml::Table,
+    /// Display-only short labels for the star-matrix columns (canonical device -> short).
+    /// Canonical names are fixed (they key the bench-data reference history); shorten here.
+    #[serde(default)]
+    pub devices: toml::Table,
 }
 
 fn default_k() -> f64 {
