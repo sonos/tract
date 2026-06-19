@@ -12,6 +12,9 @@ name: Upload Release Binaries
 
 env:
   CARGO_INCREMENTAL: false
+  CARGO_NET_RETRY: 10
+  CARGO_HTTP_MULTIPLEXING: false
+  CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE20: true
 
 permissions:

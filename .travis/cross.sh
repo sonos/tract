@@ -98,6 +98,9 @@ case "$PLATFORM" in
         docker run -v `pwd`:/tract -w /tract \
             -e CI=true \
             -e SKIP_QEMU_TEST=skip \
+            -e CARGO_NET_RETRY \
+            -e CARGO_HTTP_MULTIPLEXING \
+            -e CARGO_REGISTRIES_CRATES_IO_PROTOCOL \
             -e PLATFORM=$INNER_PLATFORM $CUDA_FEATURE_ENV debian-stretch \
             ./.travis/cross.sh
         sudo chown -R `whoami` .
