@@ -13,9 +13,28 @@ ew_impl_wrap!(
     (),
     #[inline(never)]
     fn run(buf: &mut [f32], _: ()) {
-        // Keep the composed symbol but route to the single-pass fused kernel:
-        // same approximation, less memory traffic (no scratch copy).
-        super::arm64simd_gelu_f32_4n_fused::run(buf, ());
+        const SQRT_2_OVER_PI: f32 = 0.7978845608028654;
+        const COEF: f32 = 0.044715;
+        const CHUNK: usize = 256;
+        let mut scratch = [0f32; CHUNK];
+        let mut start = 0;
+        while start < buf.len() {
+            let end = (start + CHUNK).min(buf.len());
+            let chunk = &mut buf[start..end];
+            let n = chunk.len();
+            // Save original x and pre-compute the tanh argument in place.
+            for i in 0..n {
+                let x = chunk[i];
+                scratch[i] = x;
+                chunk[i] = SQRT_2_OVER_PI * (x + COEF * x * x * x);
+            }
+            super::arm64simd_tanh_f32_4n::run(chunk, ());
+            // chunk now holds tanh(arg). Combine with saved x.
+            for i in 0..n {
+                chunk[i] = 0.5 * scratch[i] * (1.0 + chunk[i]);
+            }
+            start = end;
+        }
     }
 );
 
