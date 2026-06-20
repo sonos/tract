@@ -12,6 +12,8 @@ use super::amx::{PackedAmxA, has_amx_int8};
 use super::amx_bf16::{PackedAmxBf16A, PackedBf16K2, has_amx_bf16};
 #[cfg(tract_avxvnni)]
 use super::avxvnni::has_avxvnni;
+#[cfg(tract_avx512vnni)]
+use super::fma_width::has_dual_avx512_fma;
 use super::*;
 
 #[cfg(tract_amx_int8)]
@@ -128,12 +130,17 @@ MMMExternKernel! { avx512vnni_mmm_i32_8x8<i32>(8,8)@(256,4) where(AVX512VNNI)
 // (one per row) = 1024 mul-adds/block, 2x the 8x8 ymm kernel's work per
 // iteration. Same +128 A-bias / per-column correction as the 8x8 kernel, and
 // the same PackedI8K4 layout (r=16 for both A and B). This is the int8
-// throughput tier of qmmm_i32 for big cores with AVX-512-VNNI but no AMX
-// (Cascade Lake / Ice Lake / Tiger Lake server + client).
+// throughput tier of qmmm_i32 for cores with AVX-512-VNNI but no AMX *and two
+// 512-bit FMA ports* (Cascade Lake / Cooper Lake / Ice Lake-SP servers). The
+// 2x work/iteration only turns into 2x throughput when the core has two
+// 512-bit FMA units to retire two VPDPBUSD/zmm per cycle; single-512-FMA
+// client cores (Ice Lake-U / Tiger Lake / Rocket Lake) get no gain and stay on
+// the 8x8 ymm kernel -- see `has_dual_avx512_fma()` in `plug_avx512vnni`.
 //
 // boost(50) lifts it above the 8x8 VNNI candidate in the einsum kernel-selection
 // scorer for unknown shapes, while staying below the AMX 16x16 kernels' boost(100)
-// so AMX still wins when both are present.
+// so AMX still wins when both are present. The boost only applies on dual-FMA
+// cores because the kernel is only pushed into `mmm_impls` there.
 #[cfg(tract_avx512vnni)]
 MMMExternKernel! { avx512vnni_mmm_i32_16x16<i32>(16,16)@(64,4) where(AVX512VNNI)
     packing[1] = i8i8 => |k| k.with_packing(PackedI8K4::new(16), PackedI8K4::new(16));
@@ -250,23 +257,42 @@ pub fn plug(ops: &mut Ops) {
 #[cfg(tract_avx512vnni)]
 pub fn plug_avx512vnni(ops: &mut Ops) {
     ops.mmm_impls.push(avx512vnni_mmm_i32_8x8.mmm());
-    ops.mmm_impls.push(avx512vnni_mmm_i32_16x16.mmm());
-    // Shape-adaptive dispatch mirroring the AMX int8 path: the zmm 16x16 tile is
-    // the throughput champion when each of M and N fills at least one tile; the
-    // 8x8 ymm kernel has lower per-call setup (smaller epilogue, half the
-    // accumulator file) and wins on small problems where the 16x16 tile-padding
-    // overhead dominates. Unknown dims default to the 16x16 champion. (No K gate:
-    // one VPDPBUSD step is only 4 K-bytes, so any K is fine; the choice is about
-    // filling the 16-wide M/N tile.)
-    ops.qmmm_i32 = Box::new(|m, _, n| {
-        let big = |o: Option<usize>, t: usize| o.is_none_or(|v| v >= t);
-        if big(m, 16) && big(n, 16) {
-            avx512vnni_mmm_i32_16x16.mmm()
-        } else {
-            avx512vnni_mmm_i32_8x8.mmm()
-        }
-    });
-    log::info!("qmmm_i32: x86_64/avx512vnni (16x16 + 8x8 adaptive) activated");
+
+    // The zmm 16x16 kernel does 2x the work per inner iteration as the ymm 8x8,
+    // but that only becomes 2x the *throughput* on cores with two 512-bit FMA
+    // ports (Cascade Lake / Cooper Lake / Ice Lake-SP and later Xeons). On a
+    // single-512-FMA client core (Ice Lake-U / Tiger Lake / Rocket Lake) one
+    // 512-bit VPDPBUSD/cycle delivers the same MAC/s as two 256-bit
+    // VPDPBUSD/cycle, so the wider tile is pure overhead (extra A-packing, the
+    // 16-column +128 bias correction, a bigger epilogue) and regresses real
+    // matmuls -- e.g. -4..-11% on int8 LLM/TDNN prefill on an i9-11900KB.
+    //
+    // So gate the whole 16x16 candidate -- both the runtime `qmmm_i32` picker
+    // AND the einsum scorer (which only sees kernels pushed into `mmm_impls`,
+    // weighted by their boost) -- on `has_dual_avx512_fma()`. Single-FMA cores
+    // keep main's always-8x8 behaviour and cannot regress.
+    if has_dual_avx512_fma() {
+        ops.mmm_impls.push(avx512vnni_mmm_i32_16x16.mmm());
+        // Shape-adaptive dispatch mirroring the AMX int8 path: the zmm 16x16 tile
+        // is the throughput champion when each of M and N fills at least one tile;
+        // the 8x8 ymm kernel has lower per-call setup (smaller epilogue, half the
+        // accumulator file) and wins on small problems where the 16x16
+        // tile-padding overhead dominates. Unknown dims default to the 16x16
+        // champion. (No K gate: one VPDPBUSD step is only 4 K-bytes, so any K is
+        // fine; the choice is about filling the 16-wide M/N tile.)
+        ops.qmmm_i32 = Box::new(|m, _, n| {
+            let big = |o: Option<usize>, t: usize| o.is_none_or(|v| v >= t);
+            if big(m, 16) && big(n, 16) {
+                avx512vnni_mmm_i32_16x16.mmm()
+            } else {
+                avx512vnni_mmm_i32_8x8.mmm()
+            }
+        });
+        log::info!("qmmm_i32: x86_64/avx512vnni (16x16 + 8x8 adaptive, dual-FMA) activated");
+    } else {
+        ops.qmmm_i32 = Box::new(|_, _, _| avx512vnni_mmm_i32_8x8.mmm());
+        log::info!("qmmm_i32: x86_64/avx512vnni (8x8, single-512-FMA core) activated");
+    }
 }
 
 #[cfg(tract_avxvnni)]
