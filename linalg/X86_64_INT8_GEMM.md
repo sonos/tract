@@ -107,10 +107,20 @@ single-512-FMA client core, one 512-bit `vpdpbusd`/cycle equals two 256-bit
 real matmuls (measured: int8 LLM/TDNN prefill −4…−11% on an i9-11900KB). So
 `plug_avx512vnni` registers the 16×16 kernel — in both the `qmmm_i32` picker and
 `mmm_impls` (hence the einsum scorer) — only when `has_dual_avx512_fma()` is
-true. Single-FMA cores keep `main`'s always-8×8 behaviour. Detection is a CPUID
-DisplayFamily/DisplayModel allowlist (defaulting to the safe single-FMA answer
-for unlisted parts), overridable with `TRACT_AVX512_FMA_UNITS=1|2`. The AMX
-16×16 kernels need no such gate: AMX implies a 2-FMA server core.
+true. Single-FMA cores keep `main`'s always-8×8 behaviour.
+
+`has_dual_avx512_fma()` **measures** rather than guessing from a CPU model table:
+at first use it times a tight, dependency-free `vpdpbusd` loop at both widths and
+compares MAC/s (`mac_ratio = 2·t_ymm/t_zmm`, ≈2 on dual-FMA, ≲1 on single-FMA,
+split at 1.5; best-of-N rejects noise). This measures exactly what we optimise —
+achieved throughput on *this* core, including the AVX-512 frequency downclock and
+any hypervisor 512-bit throttling — so it also catches the 1-FMA Bronze/Silver
+server SKUs and unknown future parts that a model table can't. The one subtlety
+is the AVX-512 frequency license: heavy zmm leaves the core downclocked for ~2 ms,
+so ymm is measured first (high frequency) then zmm after a settle warmup. ~1–2 ms,
+memoised once. `TRACT_AVX512_FMA_UNITS=1|2` skips the probe (locked-down hosts,
+reproducible benchmarking). The AMX 16×16 kernels need no such gate: AMX implies a
+2-FMA server core.
 
 For paths that don't go through `qmmm_i32` (symbolic / unknown shapes via the
 einsum kernel scorer), selection among equal-quality kernels uses
