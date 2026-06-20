@@ -49,6 +49,11 @@ map_reduce_impl_wrap!(
                 fadd v10.4s, v10.4s, v6.4s
                 fadd v11.4s, v11.4s, v6.4s
 
+                fmax v8.4s, v8.4s, v7.4s
+                fmax v9.4s, v9.4s, v7.4s
+                fmax v10.4s, v10.4s, v7.4s
+                fmax v11.4s, v11.4s, v7.4s
+
                 fcvtnu v8.4s, v8.4s
                 fcvtnu v9.4s, v9.4s
                 fcvtnu v10.4s, v10.4s
