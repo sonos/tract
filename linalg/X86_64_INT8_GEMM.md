@@ -14,7 +14,7 @@ from CPUID + (for selection among ties) the einsum kernel scorer.
 |---|---|---|---|---|---|---|
 | `avx2_mmm_i32_8x8` | AVX2 | 8×8 (ymm) | `vpmaddubsw` emulation | `PackedFormat` i8 | `PackedFormat` i8 | always |
 | `avx512vnni_mmm_i32_8x8` | AVX-512-VNNI | 8×8 (ymm) | `vpdpbusd` | `PackedI8K4(8)` | `PackedI8K4(8)` | always |
-| `avx512vnni_mmm_i32_16x16` | AVX-512-VNNI | 16×16 (zmm) | `vpdpbusd` ×16 rows | `PackedI8K4(16)` | `PackedI8K4(16)` | always |
+| `avx512vnni_mmm_i32_16x16` | AVX-512-VNNI | 16×16 (zmm) | `vpdpbusd` ×16 rows | `PackedI8K4(16)` | `PackedI8K4(16)` | always* |
 | `avxvnni_mmm_i32_8x8` | AVX-VNNI (VEX) | 8×8 (ymm) | `{vex} vpdpbusd` | `PackedI8K4(8)` | `PackedI8K4(8)` | `tract_avxvnni` |
 | `avx512amx_mmm_i32_8x8` | AMX-INT8 | 8×8 | `tdpbssd` | `PackedAmxA(8)` | `PackedI8K4(8)` | `tract_amx_int8` |
 | `avx512amx_mmm_i32_16x16` | AMX-INT8 | 16×16 | `tdpbssd` (16384 MACs) | `PackedAmxA(16)` | `PackedI8K4(16)` | `tract_amx_int8` |
@@ -23,6 +23,13 @@ from CPUID + (for selection among ties) the einsum kernel scorer.
 The two AVX-512-VNNI kernels and the AVX2 one are always compiled (their
 mnemonics are in every supported binutils); the AMX and AVX-VNNI kernels are
 behind assembler-probe cfgs (see below).
+
+\* `avx512vnni_mmm_i32_16x16` is compiled whenever VNNI is, but only
+*registered and selectable* at runtime on cores with **two** 512-bit FMA units
+(`fma_width::has_dual_avx512_fma()`). On single-512-FMA client cores (Ice
+Lake-U / Tiger Lake / Rocket Lake) the wide zmm tile has no throughput
+advantage over the 8×8 ymm kernel and only adds overhead, so those cores use
+the 8×8 kernel exclusively. See **Dispatch** below.
 
 ## The u8×s8 `+128` bias trick (VNNI / AVX-VNNI)
 
@@ -92,6 +99,19 @@ throughput champion when both M and N fill at least one tile; the 8×8 kernel ha
 lower per-call setup and wins on small problems. (AMX additionally requires
 K ≥ 64; VNNI has no K gate since one `vpdpbusd` step is just 4 K-bytes.)
 
+**FMA-port gate (VNNI).** The zmm 16×16 kernel does 2× the work per inner
+iteration, but that only becomes 2× *throughput* on cores with **two** 512-bit
+FMA ports — Cascade Lake / Cooper Lake / Ice Lake-SP and later Xeons. On a
+single-512-FMA client core, one 512-bit `vpdpbusd`/cycle equals two 256-bit
+`vpdpbusd`/cycle in MAC/s, so the wider tile is pure overhead and *regresses*
+real matmuls (measured: int8 LLM/TDNN prefill −4…−11% on an i9-11900KB). So
+`plug_avx512vnni` registers the 16×16 kernel — in both the `qmmm_i32` picker and
+`mmm_impls` (hence the einsum scorer) — only when `has_dual_avx512_fma()` is
+true. Single-FMA cores keep `main`'s always-8×8 behaviour. Detection is a CPUID
+DisplayFamily/DisplayModel allowlist (defaulting to the safe single-FMA answer
+for unlisted parts), overridable with `TRACT_AVX512_FMA_UNITS=1|2`. The AMX
+16×16 kernels need no such gate: AMX implies a 2-FMA server core.
+
 For paths that don't go through `qmmm_i32` (symbolic / unknown shapes via the
 einsum kernel scorer), selection among equal-quality kernels uses
 `-quality_cost*1000 + boost`. All `ManuallyOptimized` kernels tie on quality, so
@@ -104,7 +124,9 @@ einsum kernel scorer), selection among equal-quality kernels uses
 | all 8×8 kernels | 0 |
 
 So for unknown shapes: AMX 16×16 ≻ VNNI 16×16 ≻ {VNNI/AMX 8×8}. When AMX is
-absent, VNNI 16×16 is the int8 champion.
+absent, VNNI 16×16 is the int8 champion **on dual-FMA cores** — on single-FMA
+cores it is not pushed into `mmm_impls`, so its boost never applies and the
+scorer falls back to the 8×8 kernel.
 
 ## Testing and a cautionary tale
 

@@ -15,6 +15,8 @@ pub mod amx_bf16;
 pub mod avxvnni;
 pub mod by_scalar;
 pub mod erf;
+#[cfg(tract_avx512vnni)]
+pub mod fma_width;
 mod intel;
 pub mod max;
 pub mod min;
