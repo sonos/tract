@@ -198,7 +198,7 @@ reqwest = { version = "0.13", features = [ "blocking", "rustls-no-provider" ], d
 rustfft = { version = "6.1", features = [ "neon", "wasm_simd" ] }
 rustls = { version = "0.23", default-features = false, features = [ "ring", "std", "tls12" ] }
 webpki-roots = "1"
-safetensors = "0.7"
+safetensors = "0.8"
 scan_fmt = "0.2.6"
 serde = { version = "1.0.127", features = [ "derive" ] }
 serde_json = "1.0"
@@ -210,7 +210,7 @@ tempfile = "3.8"
 tflitec = { git = "https://github.com/kali/tflitec-rs.git", rev="9ceb838" }
 time = "0.3.23"
 tokenizers = "0.23"
-toml = "0.8"
+toml = "1.1"
 unicode-normalization = "0.1.19"
 walkdir = "2.3.2"
 zerofrom = "0.1.5"
