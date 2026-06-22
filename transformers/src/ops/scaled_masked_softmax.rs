@@ -98,14 +98,9 @@ impl EvalOp for ScaledMaskedSoftmax {
             Add.eval(scaled.into(), mask.clone(), dt)?.into()
         };
 
-        // Accurate vectorized softmax: routes through the linalg SIMD
-        // `softmax2_accurate` kernels (true-softmax accuracy, unlike FastCompact)
-        // and yields NaN — not a spurious 0 — on fully-masked rows, matching the
-        // scalar libc path and the numpy reference.
-        let softmax_out =
-            Softmax::new(softmax_axis, None, SoftmaxKind::Softmax(SoftmaxExp::Accurate))
-                .eval(tvec![pre_softmax])?[0]
-                .clone();
+        let softmax_out = Softmax::new(softmax_axis, None, SoftmaxKind::Softmax(SoftmaxExp::Libc))
+            .eval(tvec![pre_softmax])?[0]
+            .clone();
 
         if self.post_softmax_mask {
             // Zero out positions where the bool mask is false.
