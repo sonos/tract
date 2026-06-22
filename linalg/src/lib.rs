@@ -113,8 +113,6 @@ pub struct Ops {
     /// a single 2-pass kernel. Called once per row by `core::ops::nn::RmsNorm`
     /// when the input is f32 and the axis is the last (contiguous) one.
     pub rms_norm_f32: Box<dyn Fn(&mut [f32], f32) + Send + Sync>,
-    pub softmax2_accurate_f16: Box<dyn Fn() -> Box<dyn reduce::MapReduce<f16, f16>> + Send + Sync>,
-    pub softmax2_accurate_f32: Box<dyn Fn() -> Box<dyn reduce::MapReduce<f32, f32>> + Send + Sync>,
 }
 
 impl Ops {
@@ -252,8 +250,6 @@ pub fn generic() -> Ops {
         softmax2_fastcompact_f16: Box::new(|| generic::reduce::softmax_l2::HSoftMaxL2::red()),
         softmax2_fastcompact_f32: Box::new(|| generic::reduce::softmax_l2::SSoftMaxL2::red()),
         rms_norm_f32: Box::new(generic::rms_norm::rms_norm_f32),
-        softmax2_accurate_f16: Box::new(|| generic::reduce::softmax_l2::HSoftMaxL2Accurate::red()),
-        softmax2_accurate_f32: Box::new(|| generic::reduce::softmax_l2::SSoftMaxL2Accurate::red()),
     };
     crate::generic::mmm::plug(&mut ops);
     ops
