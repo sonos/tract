@@ -20,6 +20,7 @@ include!(concat!(env!("OUT_DIR"), "/extern_kernel_macro.rs"));
 
 #[macro_use]
 mod frame;
+pub mod ace;
 pub mod generic;
 pub mod multithread;
 pub use frame::weights::WeightType;
