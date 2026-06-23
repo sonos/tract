@@ -787,7 +787,16 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
             return Ok(());
         }
         Some(("list-knobs", _)) => {
-            print!("{}", tract_core::knobs::list());
+            let bold = nu_ansi_term::Style::new().bold();
+            let shown = |s: String| if s.is_empty() { "(unset)".to_string() } else { s };
+            for k in tract_core::knobs::all() {
+                let current = shown((k.current)());
+                let default = shown((k.default)());
+                let suffix =
+                    if current != default { format!(", default {default}") } else { String::new() };
+                println!("{} = {current}  [{}{suffix}]", bold.paint(k.name), k.type_name);
+                println!("    {}\n", k.doc);
+            }
             return Ok(());
         }
         Some(("list-ops", _)) => {
