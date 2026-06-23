@@ -76,7 +76,7 @@ MMMExternKernel!(
 pub fn has_sme() -> bool {
     // TRACT_SME_DISABLE=1 forces the SME path off so callers can A/B
     // against the AMX path on the same binary.
-    if crate::knobs::SME_DISABLE.get() {
+    if crate::knobs::TRACT_SME_DISABLE.get() {
         return false;
     }
     // hw.optional.arm.FEAT_SME is an INTEGER sysctl, not a string. The
@@ -135,7 +135,7 @@ pub fn has_sme() -> bool {
 pub fn has_sme2() -> bool {
     // TRACT_SME_DISABLE=1 disables both SME and SME2 dispatch on the same
     // binary so end users can A/B the entire SME backend.
-    if crate::knobs::SME_DISABLE.get() {
+    if crate::knobs::TRACT_SME_DISABLE.get() {
         return false;
     }
     use std::ffi::{CString, c_char, c_int, c_void};

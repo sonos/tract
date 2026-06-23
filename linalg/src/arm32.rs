@@ -29,7 +29,7 @@ fn cpu_part() -> Option<usize> {
 }
 
 fn has_neon() -> bool {
-    if let Some(forced) = crate::knobs::CPU_ARM32_NEON.get() {
+    if let Some(forced) = crate::knobs::TRACT_CPU_ARM32_NEON.get() {
         return forced;
     }
     has_neon_cpuinfo().unwrap_or(false)
