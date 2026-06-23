@@ -13,6 +13,21 @@ use tract_core::ops::cnn::conv::rewrite_kernel_conv_in_oihw;
 use tract_core::ops::cnn::{Conv, rewrite_conv_with_n_axis};
 use tract_core::ops::einsum::prefix_matmul::{PrefixMatMul, rewrite_einsum_to_prefix_matmul};
 use tract_core::ops::konst::Const;
+
+tract_core::declare_knob!(
+    FORCE_CPU,
+    String,
+    String::new(),
+    "TRACT_CUDA_FORCE_CPU",
+    "Comma-separated node-name substrings forced onto the CPU instead of CUDA."
+);
+tract_core::declare_knob!(
+    CUDA_TRANSLATE_DEBUG,
+    bool,
+    false,
+    "TRACT_CUDA_TRANSLATE_DEBUG",
+    "Log nodes that fail output-fact validation during CUDA translation."
+);
 use tract_core::ops::nn::Reduce;
 use tract_core::tract_linalg::block_quant::Q4_0;
 use tract_core::transform::ModelTransform;
@@ -482,13 +497,11 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
             .collect::<TractResult<_>>()?;
         let target_input_post_sync_refs: TVec<&TypedFact> =
             target_inputs_post_sync.iter().collect();
-        let force_cpu = std::env::var("TRACT_CUDA_FORCE_CPU")
-            .ok()
-            .map(|s| s.split(',').any(|pat| !pat.is_empty() && node.name.contains(pat)))
-            .unwrap_or(false);
+        let force_cpu =
+            FORCE_CPU.get().split(',').any(|pat| !pat.is_empty() && node.name.contains(pat));
         let maybe_gpu_op = if force_cpu { None } else { try_make_cuda_op(source, node)? };
         if let Some(ref op) = maybe_gpu_op
-            && std::env::var("TRACT_CUDA_TRANSLATE_DEBUG").is_ok()
+            && CUDA_TRANSLATE_DEBUG.get()
             && let Err(e) = op.output_facts(&target_input_post_sync_refs)
         {
             eprintln!(
