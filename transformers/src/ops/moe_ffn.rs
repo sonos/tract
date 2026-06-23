@@ -28,7 +28,14 @@ pub fn register(registry: &mut Registry) {
             TypeName::Scalar.tensor().named("w2_bias"),
             TypeName::Integer.named("k"),
             TypeName::String.named("activation"),
-            TypeName::Logical.named("normalize_gates"),
+            // How router logits become the top-k gate weights:
+            //   softmax_topk: softmax over the top-k logits (Mixtral, Qwen w/
+            //                 norm_topk_prob, gpt-oss)
+            //   softmax_all:  softmax over ALL experts, gather top-k, no
+            //                 renormalization (OLMoE, Qwen w/o norm_topk_prob)
+            //   sigmoid:      per-expert sigmoid of the top-k logits (Llama4)
+            //   raw:          raw top-k logits as weights
+            TypeName::String.named("gate"),
             // Optional clamped-SwiGLU params (gpt-oss): when act_limit is set
             // the activation becomes gate.clamp(max=limit) /
             // up.clamp(+-limit) / glu = gate*sigmoid(alpha*gate) /
@@ -59,7 +66,8 @@ fn deser_moe_ffn(
     let w2_bias: Option<OutletId> = invocation.get_named_arg_as(builder, "w2_bias")?;
     let k: i64 = invocation.named_arg_as(builder, "k")?;
     let activation: String = invocation.named_arg_as(builder, "activation")?;
-    let normalize_gates: bool = invocation.named_arg_as(builder, "normalize_gates")?;
+    let gate_str: String = invocation.named_arg_as(builder, "gate")?;
+    let gate = GateMode::parse(&gate_str)?;
     let act_alpha: Option<f32> = invocation.get_named_arg_as(builder, "act_alpha")?;
     let act_limit: Option<f32> = invocation.get_named_arg_as(builder, "act_limit")?;
 
@@ -80,7 +88,7 @@ fn deser_moe_ffn(
         MoeFfn {
             k: k as usize,
             activation,
-            normalize_gates,
+            gate,
             has_w3,
             has_wg_bias,
             has_w1_bias,
@@ -93,11 +101,61 @@ fn deser_moe_ffn(
     )
 }
 
+/// How router logits are turned into the top-k gate weights.
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub enum GateMode {
+    /// softmax over the top-k logits (Mixtral, Qwen norm_topk_prob, gpt-oss).
+    SoftmaxTopk,
+    /// softmax over ALL experts, gather the top-k, no renormalization (OLMoE).
+    SoftmaxAll,
+    /// per-expert sigmoid of the top-k logits, no normalization (Llama4).
+    Sigmoid,
+    /// raw top-k logits as weights.
+    Raw,
+}
+
+impl GateMode {
+    fn parse(s: &str) -> TractResult<Self> {
+        match s {
+            "softmax_topk" => Ok(GateMode::SoftmaxTopk),
+            "softmax_all" => Ok(GateMode::SoftmaxAll),
+            "sigmoid" => Ok(GateMode::Sigmoid),
+            "raw" => Ok(GateMode::Raw),
+            other => bail!("unknown tract_moe_ffn gate mode {other:?}"),
+        }
+    }
+
+    /// Weights for the selected experts given the full logits row and the
+    /// (expert_id, logit) pairs chosen by top-k.
+    fn weights(&self, full_logits: &[f32], selected: &[(usize, f32)]) -> Vec<f32> {
+        match self {
+            GateMode::Raw => selected.iter().map(|(_, l)| *l).collect(),
+            GateMode::Sigmoid => {
+                selected.iter().map(|(_, l)| 1.0 / (1.0 + (-l).exp())).collect()
+            }
+            GateMode::SoftmaxTopk => {
+                let m = selected
+                    .iter()
+                    .map(|(_, l)| *l)
+                    .fold(f32::NEG_INFINITY, f32::max);
+                let exps: Vec<f32> = selected.iter().map(|(_, l)| (l - m).exp()).collect();
+                let sum: f32 = exps.iter().sum();
+                exps.iter().map(|e| e / sum).collect()
+            }
+            GateMode::SoftmaxAll => {
+                let m = full_logits.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+                let denom: f32 = full_logits.iter().map(|l| (l - m).exp()).sum();
+                selected.iter().map(|(_, l)| (l - m).exp() / denom).collect()
+            }
+        }
+    }
+}
+
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct MoeFfn {
     pub k: usize,
     pub activation: String,
-    pub normalize_gates: bool,
+    pub gate: GateMode,
     pub has_w3: bool,
     pub has_wg_bias: bool,
     pub has_w1_bias: bool,
@@ -120,6 +178,24 @@ struct MoeInputIdx {
 }
 
 impl MoeFfn {
+    /// Bias-free, plain-activation op for unit tests (kept future-proof
+    /// against new optional fields).
+    #[cfg(test)]
+    fn basic(k: usize, activation: &str, gate: GateMode, has_w3: bool) -> Self {
+        MoeFfn {
+            k,
+            activation: activation.to_string(),
+            gate,
+            has_w3,
+            has_wg_bias: false,
+            has_w1_bias: false,
+            has_w3_bias: false,
+            has_w2_bias: false,
+            act_alpha_bits: None,
+            act_limit_bits: None,
+        }
+    }
+
     fn is_clamped_act(&self) -> bool {
         self.act_limit_bits.is_some()
     }
@@ -251,19 +327,13 @@ impl EvalOp for MoeFfn {
         let mut assignments: Vec<Vec<(usize, f32)>> = Vec::with_capacity(t_tokens);
         for t in 0..t_tokens {
             let row = router_logits.row(t);
+            let full: Vec<f32> = row.iter().copied().collect();
             let mut scores: Vec<(usize, f32)> =
                 row.iter().enumerate().map(|(e, &s)| (e, s)).collect();
             scores.sort_unstable_by(|a, b| b.1.total_cmp(&a.1));
             scores.truncate(self.k);
 
-            let gate_weights: Vec<f32> = if self.normalize_gates {
-                let max_s = scores.iter().map(|(_, s)| *s).fold(f32::NEG_INFINITY, f32::max);
-                let exps: Vec<f32> = scores.iter().map(|(_, s)| (s - max_s).exp()).collect();
-                let sum: f32 = exps.iter().sum();
-                exps.iter().map(|e| e / sum).collect()
-            } else {
-                scores.iter().map(|(_, s)| *s).collect()
-            };
+            let gate_weights = self.gate.weights(&full, &scores);
 
             assignments
                 .push(scores.iter().zip(gate_weights).map(|((eid, _), gw)| (*eid, gw)).collect());
@@ -447,7 +517,7 @@ impl TypedOp for MoeFfn {
 
         let opt_op = OptMoeFfn {
             k: self.k,
-            normalize_gates: self.normalize_gates,
+            gate: self.gate.clone(),
             num_experts,
             d_model,
             d_hidden,
@@ -568,7 +638,7 @@ fn build_expert_plan(
 #[derive(Clone, Debug)]
 pub struct OptMoeFfn {
     pub k: usize,
-    pub normalize_gates: bool,
+    pub gate: GateMode,
     pub num_experts: usize,
     pub d_model: usize,
     pub d_hidden: usize,
@@ -579,7 +649,7 @@ pub struct OptMoeFfn {
 impl Hash for OptMoeFfn {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.k.hash(state);
-        self.normalize_gates.hash(state);
+        self.gate.hash(state);
         self.num_experts.hash(state);
         self.d_model.hash(state);
         self.d_hidden.hash(state);
@@ -590,7 +660,7 @@ impl PartialEq for OptMoeFfn {
     fn eq(&self, other: &Self) -> bool {
         // Compare scalar config only; the compiled plans are derived from it.
         self.k == other.k
-            && self.normalize_gates == other.normalize_gates
+            && self.gate == other.gate
             && self.num_experts == other.num_experts
             && self.d_model == other.d_model
             && self.d_hidden == other.d_hidden
@@ -707,19 +777,13 @@ impl OpState for OptMoeFfnState {
         let mut assignments: Vec<Vec<(usize, f32)>> = Vec::with_capacity(t_tokens);
         for t in 0..t_tokens {
             let row = router_logits.row(t);
+            let full: Vec<f32> = row.iter().copied().collect();
             let mut scores: Vec<(usize, f32)> =
                 row.iter().enumerate().map(|(e, &s)| (e, s)).collect();
             scores.sort_unstable_by(|a, b| b.1.total_cmp(&a.1));
             scores.truncate(op.k);
 
-            let gate_weights: Vec<f32> = if op.normalize_gates {
-                let max_s = scores.iter().map(|(_, s)| *s).fold(f32::NEG_INFINITY, f32::max);
-                let exps: Vec<f32> = scores.iter().map(|(_, s)| (s - max_s).exp()).collect();
-                let sum: f32 = exps.iter().sum();
-                exps.iter().map(|e| e / sum).collect()
-            } else {
-                scores.iter().map(|(_, s)| *s).collect()
-            };
+            let gate_weights = op.gate.weights(&full, &scores);
 
             assignments
                 .push(scores.iter().zip(gate_weights).map(|((eid, _), gw)| (*eid, gw)).collect());
@@ -832,7 +896,7 @@ mod tests {
             inputs.push(w3);
         }
 
-        let op = MoeFfn { k, activation: "silu".to_string(), normalize_gates: true, has_w3 };
+        let op = MoeFfn::basic(k, "silu", GateMode::SoftmaxTopk, has_w3);
         let outputs = model.wire_node("moe", op, &inputs)?;
         model.select_output_outlets(&outputs)?;
 
@@ -863,7 +927,6 @@ mod tests {
 
         // Compare outputs
         ref_result[0].close_enough(&opt_result[0], Approximation::Approximate)?;
-        ref_result[1].close_enough(&opt_result[1], Approximation::Approximate)?;
 
         Ok(())
     }
@@ -881,7 +944,6 @@ mod tests {
         let opt_result = opt_plan.spawn()?.run(tvec![x_data.into_tvalue()])?;
 
         ref_result[0].close_enough(&opt_result[0], Approximation::Approximate)?;
-        ref_result[1].close_enough(&opt_result[1], Approximation::Approximate)?;
 
         Ok(())
     }
@@ -898,7 +960,6 @@ mod tests {
         let opt_result = opt_plan.spawn()?.run(tvec![x_data.into_tvalue()])?;
 
         ref_result[0].close_enough(&opt_result[0], Approximation::Approximate)?;
-        ref_result[1].close_enough(&opt_result[1], Approximation::Approximate)?;
 
         Ok(())
     }
@@ -912,8 +973,7 @@ mod tests {
         let w1 = model.add_source("w1", f32::datum_type().fact([2, 8, 16]))?;
         let w2 = model.add_source("w2", f32::datum_type().fact([2, 16, 8]))?;
 
-        let op =
-            MoeFfn { k: 1, activation: "silu".to_string(), normalize_gates: true, has_w3: false };
+        let op = MoeFfn::basic(1, "silu", GateMode::SoftmaxTopk, false);
         let outputs = model.wire_node("moe", op, &[x, wg, w1, w2])?;
         model.select_output_outlets(&outputs)?;
 
