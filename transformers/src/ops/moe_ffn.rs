@@ -240,6 +240,37 @@ impl Op for MoeFfn {
     op_as_typed_op!();
 }
 
+/// Round an f32 value through f16 (matches PyTorch's f16 arithmetic so the
+/// exported MoE reproduces the source model rather than being more precise,
+/// which would compound into a growing mismatch across layers).
+#[inline]
+fn round_to_f16(v: f32) -> f32 {
+    f16::from_f32(v).to_f32()
+}
+
+/// Scatter-add expert outputs into `output`, weighted by the gate weights.
+/// When `f16_acc` is set, the gate weight, each product and each running sum
+/// are rounded through f16, mirroring PyTorch's f16 weighting + index_add.
+fn scatter_add_weighted(
+    output: &mut Array2<f32>,
+    y_view: &ArrayView2<f32>,
+    tokens: &[(usize, f32)],
+    f16_acc: bool,
+) {
+    for (i, &(t, gw)) in tokens.iter().enumerate() {
+        let y_row = y_view.row(i);
+        let mut out_row = output.row_mut(t);
+        if f16_acc {
+            let gw = round_to_f16(gw);
+            for (o, &y) in out_row.iter_mut().zip(y_row.iter()) {
+                *o = round_to_f16(*o + round_to_f16(gw * y));
+            }
+        } else {
+            out_row.scaled_add(gw, &y_row);
+        }
+    }
+}
+
 /// Add a per-expert bias row (`bias_full[eid]`, length H or D) to every row of
 /// `arr` ([n, H] or [n, D]).
 fn add_expert_bias(
@@ -265,30 +296,47 @@ impl EvalOp for MoeFfn {
         // then optionally w3 [E,D,H], wg_bias [E], w1_bias [E,H],
         // w3_bias [E,H], w2_bias [E,D] (order set in deser_moe_ffn).
         let idx = self.input_idx();
-        let x = inputs[0].to_plain_array_view::<f32>()?;
-        let wg_raw = inputs[1].to_plain_array_view::<f32>()?;
-        let w1 = inputs[2].to_plain_array_view::<f32>()?;
-        let w2 = inputs[3].to_plain_array_view::<f32>()?;
-        let w3 = match idx.w3 {
-            Some(i) => Some(inputs[i].to_plain_array_view::<f32>()?),
-            None => None,
+        let orig_dt = inputs[0].datum_type();
+        let f16_acc = orig_dt == f16::datum_type();
+        // The reference path computes in f32. Cast every input up front (this
+        // upcasts f16/bf16 weights, so it is the un-optimized fallback; the
+        // codegen optimized path keeps experts in their native dtype).
+        let cast = |i: usize| -> TractResult<Tensor> {
+            Ok(inputs[i].cast_to::<f32>()?.into_owned())
         };
-        let wg_bias = match idx.wg_bias {
-            Some(i) => Some(inputs[i].to_plain_array_view::<f32>()?),
-            None => None,
-        };
-        let w1_bias = match idx.w1_bias {
-            Some(i) => Some(inputs[i].to_plain_array_view::<f32>()?),
-            None => None,
-        };
-        let w3_bias = match idx.w3_bias {
-            Some(i) => Some(inputs[i].to_plain_array_view::<f32>()?),
-            None => None,
-        };
-        let w2_bias = match idx.w2_bias {
-            Some(i) => Some(inputs[i].to_plain_array_view::<f32>()?),
-            None => None,
-        };
+        let x_t = cast(0)?;
+        let wg_t = cast(1)?;
+        let w1_t = cast(2)?;
+        let w2_t = cast(3)?;
+        let w3_t = idx.w3.map(cast).transpose()?;
+        let wg_bias_t = idx.wg_bias.map(cast).transpose()?;
+        let w1_bias_t = idx.w1_bias.map(cast).transpose()?;
+        let w3_bias_t = idx.w3_bias.map(cast).transpose()?;
+        let w2_bias_t = idx.w2_bias.map(cast).transpose()?;
+        let x = x_t.to_plain_array_view::<f32>()?;
+        let wg_raw = wg_t.to_plain_array_view::<f32>()?;
+        let w1 = w1_t.to_plain_array_view::<f32>()?;
+        let w2 = w2_t.to_plain_array_view::<f32>()?;
+        let w3 = w3_t
+            .as_ref()
+            .map(|t| t.to_plain_array_view::<f32>())
+            .transpose()?;
+        let wg_bias = wg_bias_t
+            .as_ref()
+            .map(|t| t.to_plain_array_view::<f32>())
+            .transpose()?;
+        let w1_bias = w1_bias_t
+            .as_ref()
+            .map(|t| t.to_plain_array_view::<f32>())
+            .transpose()?;
+        let w3_bias = w3_bias_t
+            .as_ref()
+            .map(|t| t.to_plain_array_view::<f32>())
+            .transpose()?;
+        let w2_bias = w2_bias_t
+            .as_ref()
+            .map(|t| t.to_plain_array_view::<f32>())
+            .transpose()?;
 
         // Normalize wg to 2D [E, D] (may be [1, E, D] from unsqueeze)
         let wg: ArrayView2<f32> = if wg_raw.ndim() == 3 {
@@ -418,19 +466,16 @@ impl EvalOp for MoeFfn {
             }
 
             // ---- Step 5: Scatter-add weighted results back ----
-            for (i, &(t, gw)) in tokens.iter().enumerate() {
-                let y_row = y_expert.row(i);
-                let mut out_row = output.row_mut(t);
-                out_row.scaled_add(gw, &y_row);
-            }
+            scatter_add_weighted(&mut output, &y_expert.view(), tokens, f16_acc);
         }
 
-        // Restore original rank if input was 3D
+        // Restore original rank if input was 3D, and the original dtype.
         let output_tensor = if x_ndim == 3 {
             output.into_shape_with_order((x_orig_shape[0], x_orig_shape[1], d_model))?.into_tensor()
         } else {
             output.into_tensor()
         };
+        let output_tensor = output_tensor.cast_to_dt(orig_dt)?.into_owned();
         Ok(tvec![output_tensor.into_tvalue()])
     }
 }
@@ -490,7 +535,7 @@ impl TypedOp for MoeFfn {
 
         // Build router plan: x [T, D] @ wg.T -> [T, E]
         let router_plan =
-            build_router_plan(&wg_tensor, dt, &model.symbols).context("Building router plan")?;
+            build_router_plan(&wg_tensor, &model.symbols).context("Building router plan")?;
 
         // Build per-expert plans
         let mut expert_plans = Vec::with_capacity(num_experts);
@@ -556,21 +601,27 @@ fn activation_op(name: &str, has_w3: bool) -> Option<Box<dyn TypedOp>> {
 
 fn build_router_plan(
     wg: &Arc<Tensor>,
-    dt: DatumType,
     symbols: &SymbolScope,
 ) -> TractResult<Arc<TypedSimplePlan>> {
     let mut model = TypedModel { symbols: symbols.clone(), ..Default::default() };
     let n_sym = symbols.sym("moe_t");
 
-    // wg is [E, D] or [1, E, D] — normalize to [E, D]
+    // The router runs in f32 regardless of the model dtype: expert selection
+    // is a discrete top-k, so f16 rounding in the router matmul would flip
+    // which experts borderline tokens pick versus PyTorch (which upcasts f16
+    // matmuls to f32 on CPU), making a few tokens diverge completely and
+    // compound across layers. The router weight is tiny so f32 is cheap.
+    let dt = f32::datum_type();
+
+    // wg is [E, D] or [1, E, D] — normalize to [E, D], in f32.
     let wg_2d = if wg.rank() == 3 {
         wg.slice(0, 0, 1)?.into_shape(&[wg.shape()[1], wg.shape()[2]])?
     } else {
         (**wg).clone()
     };
+    let wg_2d = wg_2d.cast_to::<f32>()?.into_owned();
 
     let d_model = wg_2d.shape()[1];
-    let _num_experts = wg_2d.shape()[0];
 
     // x: [T, D]
     let x = model.add_source("x", dt.fact([n_sym.to_dim(), d_model.to_dim()]))?;
@@ -740,7 +791,13 @@ impl OpState for OptMoeFfnState {
     ) -> TractResult<TVec<TValue>> {
         let op = &self.op;
         let x_input = &inputs[0];
-        let x_view = x_input.to_plain_array_view::<f32>()?;
+        // The router/expert sub-plans run in the model dtype (e.g. f16) so the
+        // big expert weights stay un-upcast; only the small per-token glue
+        // (gather, top-k, gate weights, scatter) runs in f32.
+        let dt = x_input.datum_type();
+        let f16_acc = dt == f16::datum_type();
+        let x_f32 = x_input.cast_to::<f32>()?;
+        let x_view = x_f32.to_plain_array_view::<f32>()?;
         let x_ndim = x_view.ndim();
         let x_orig_shape: Vec<usize> = x_view.shape().to_vec();
 
@@ -755,23 +812,15 @@ impl OpState for OptMoeFfnState {
 
         let t_tokens = x.shape()[0];
         let d_model = x.shape()[1];
-        let dt = x_input.datum_type();
 
-        // ---- Step 1: Router via pre-spawned state ----
-        let x_2d_tensor = if x_ndim == 3 {
-            let mut t = Tensor::zero_dt(dt, &[t_tokens, d_model])?;
-            t.try_as_plain_mut()?
-                .as_slice_mut::<f32>()?
-                .copy_from_slice(x.as_slice().context("x not contiguous for router")?);
-            t
-        } else {
-            (*x_input).clone().into_tensor()
-        };
+        // ---- Step 1: Router via pre-spawned state (f32, see build_router_plan) ----
+        let x_2d_tensor =
+            x_f32.clone().into_owned().into_shape(&[t_tokens, d_model])?;
 
         let router_result = self.router_state.run(tvec![x_2d_tensor.into_tvalue()])?;
-        let router_logits_tv = &router_result[0];
-        let router_logits = router_logits_tv.to_plain_array_view::<f32>()?;
-        let router_logits: ArrayView2<f32> = router_logits.into_dimensionality()?;
+        let router_logits_f32 = router_result[0].cast_to::<f32>()?;
+        let router_logits: ArrayView2<f32> =
+            router_logits_f32.to_plain_array_view::<f32>()?.into_dimensionality()?;
 
         // ---- Step 2: Top-k selection + gate weights ----
         let mut assignments: Vec<Vec<(usize, f32)>> = Vec::with_capacity(t_tokens);
@@ -806,10 +855,10 @@ impl OpState for OptMoeFfnState {
             }
             let n = tokens.len();
 
-            // Gather: build x_batch [n, D]
-            let mut x_batch = Tensor::zero_dt(dt, &[n, d_model])?;
+            // Gather: build x_batch [n, D] in f32, then cast to the plan dtype.
+            let mut x_batch_f32 = Tensor::zero_dt(f32::datum_type(), &[n, d_model])?;
             {
-                let mut x_batch_plain = x_batch.try_as_plain_mut()?;
+                let mut x_batch_plain = x_batch_f32.try_as_plain_mut()?;
                 let x_batch_slice = x_batch_plain.as_slice_mut::<f32>()?;
                 for (i, &(t, _)) in tokens.iter().enumerate() {
                     let src = x.row(t);
@@ -817,26 +866,24 @@ impl OpState for OptMoeFfnState {
                         .copy_from_slice(src.as_slice().unwrap());
                 }
             }
+            let x_batch = x_batch_f32.cast_to_dt(dt)?.into_owned();
 
             // Run expert plan (reusing pre-spawned state)
             let y_expert = self.expert_states[eid].run(tvec![x_batch.into_tvalue()])?;
 
-            // Scatter-add weighted results
-            let y_view = y_expert[0].to_plain_array_view::<f32>()?;
-            let y_view: ArrayView2<f32> = y_view.into_dimensionality()?;
-            for (i, &(t, gw)) in tokens.iter().enumerate() {
-                let y_row = y_view.row(i);
-                let mut out_row = output.row_mut(t);
-                out_row.scaled_add(gw, &y_row);
-            }
+            // Scatter-add weighted results (cast expert output back to f32)
+            let y_f32 = y_expert[0].cast_to::<f32>()?;
+            let y_view: ArrayView2<f32> = y_f32.to_plain_array_view::<f32>()?.into_dimensionality()?;
+            scatter_add_weighted(&mut output, &y_view, tokens, f16_acc);
         }
 
-        // ---- Restore shapes ----
+        // ---- Restore shapes + dtype ----
         let output_tensor = if x_ndim == 3 {
             output.into_shape_with_order((x_orig_shape[0], x_orig_shape[1], d_model))?.into_tensor()
         } else {
             output.into_tensor()
         };
+        let output_tensor = output_tensor.cast_to_dt(dt)?.into_owned();
         Ok(tvec![output_tensor.into_tvalue()])
     }
 }
