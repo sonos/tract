@@ -52,3 +52,10 @@ tract_data::declare_knob!(
     None,
     "x86_64: force the 512-bit FMA-port count (1 or 2) instead of runtime-probing; gates the zmm VNNI 16x16 kernel."
 );
+
+tract_data::declare_knob!(
+    TRACT_AMX_BF16,
+    bool,
+    false,
+    "x86_64: opt in to the lossy AMX bf16 kernel for f32 matmul (operands truncated to bf16, ~1/2^8 relative error per multiply). Off by default."
+);
