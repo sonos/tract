@@ -1,53 +1,12 @@
 use crate::matmul::{BasicMatMul, GemmImpl, GemmKernel, MfaGemm, MlxGemm};
 use criterion::measurement::WallTime;
 use criterion::*;
-use ggml::Context;
 use tract_core::internal::*;
 use tract_gpu::tensor::IntoDevice;
 use tract_linalg::mmm::AsInputValue;
 use tract_metal::MetalStream;
 use tract_metal::kernels::matmul::GgmlGemm;
 use tract_metal::kernels::{LibraryName, matmul};
-
-pub fn ggml_matmul(
-    crit: &mut BenchmarkGroup<WallTime>,
-    m: usize,
-    k: usize,
-    n: usize,
-    dt: DatumType,
-) {
-    let ggml_dt = match dt {
-        DatumType::F32 => ggml::Type::F32,
-        DatumType::F16 => ggml::Type::F16,
-        _ => unimplemented!(),
-    };
-
-    let ctxt = Context::new_with_allocate(500_000_000);
-
-    let mut t = ctxt.new_tensor_3d(ggml_dt, 1, 2, 3);
-    t.zero_data();
-
-    let mut a = ctxt.new_tensor_2d(ggml_dt, k, m);
-    a.zero_data();
-    let mut b = ctxt.new_tensor_2d(ggml_dt, k, n); // intern transposition
-    b.zero_data();
-
-    crit.bench_function(&format!("ggml_{:?}", dt), |be| {
-        be.iter(|| {
-            let ctxt = Context::new_with_allocate(500_000_000);
-            let mut a = ctxt.new_tensor_2d(ggml_dt, k, m);
-            a.zero_data();
-            let mut b = ctxt.new_tensor_2d(ggml_dt, k, n); // intern transposition
-            b.zero_data();
-            let c = ctxt.op_mul_mat(&a, &b);
-            let mut graph = ctxt.create_compute_graph();
-            graph.build_forward_expand(&c);
-
-            let mut execution_plan = ggml::GraphExecutionPlan::new(&mut graph, 1);
-            execution_plan.execute(&ctxt);
-        });
-    });
-}
 
 pub fn tract_with_packing(
     crit: &mut BenchmarkGroup<WallTime>,
@@ -130,7 +89,6 @@ pub fn metal_gemm<K: GemmKernel>(
 fn matmul(c: &mut Criterion, b: usize, m: usize, k: usize, n: usize) {
     let mut c = c.benchmark_group(format!("{}x{}x{}x{}", b, m, k, n));
     c.throughput(Throughput::Elements((m * k * n) as _));
-    // ggml_matmul(&mut c, m, k, n, f32::datum_type());
 
     for dt in [f32::datum_type(), f16::datum_type()] {
         metal_gemm::<BasicMatMul>(&mut c, b, m, k, n, dt, false);
@@ -138,7 +96,6 @@ fn matmul(c: &mut Criterion, b: usize, m: usize, k: usize, n: usize) {
         metal_gemm::<MfaGemm>(&mut c, b, m, k, n, dt, false);
         metal_gemm::<GgmlGemm>(&mut c, b, m, k, n, dt, true);
     }
-    // ggml_matmul(&mut c, m, k, n, f16::datum_type());
     // tract_with_packing(&mut c, b, m, k, n, f32::datum_type());
     //tract_with_packing(&mut c, b, m, k, n, f16::datum_type());
     c.finish();
