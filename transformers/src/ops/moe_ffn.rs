@@ -1,7 +1,7 @@
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
-use tract_ndarray::{Array2, ArrayView2, Axis, s};
+use tract_ndarray::{Array2, ArrayView2, ArrayViewD, Axis, s};
 use tract_nnef::internal::*;
 use tract_nnef::tract_core::ops::einsum::EinSum;
 use tract_nnef::tract_core::ops::konst::Const;
@@ -20,11 +20,26 @@ pub fn register(registry: &mut Registry) {
             TypeName::Scalar.tensor().named("w1"),
             TypeName::Scalar.tensor().named("w2"),
             TypeName::Scalar.tensor().named("w3"),
+            // Optional biases (e.g. gpt-oss): router bias [E], gate bias
+            // (w1) [E, H], up bias (w3) [E, H], down bias (w2) [E, D].
+            TypeName::Scalar.tensor().named("wg_bias"),
+            TypeName::Scalar.tensor().named("w1_bias"),
+            TypeName::Scalar.tensor().named("w3_bias"),
+            TypeName::Scalar.tensor().named("w2_bias"),
             TypeName::Integer.named("k"),
             TypeName::String.named("activation"),
             TypeName::Logical.named("normalize_gates"),
+            // Optional clamped-SwiGLU params (gpt-oss): when act_limit is set
+            // the activation becomes gate.clamp(max=limit) /
+            // up.clamp(+-limit) / glu = gate*sigmoid(alpha*gate) /
+            // out = (up + 1) * glu.
+            TypeName::Scalar.named("act_alpha"),
+            TypeName::Scalar.named("act_limit"),
         ],
-        &[("output", TypeName::Scalar.tensor()), ("router_logits", TypeName::Scalar.tensor())],
+        // single output: tract is inference-only, so router_logits (a
+        // training-time load-balancing-loss signal) is computed internally for
+        // expert selection but never surfaced as an output.
+        &[("output", TypeName::Scalar.tensor())],
         deser_moe_ffn,
     );
 }
@@ -38,17 +53,44 @@ fn deser_moe_ffn(
     let w1 = invocation.named_arg_as(builder, "w1")?;
     let w2 = invocation.named_arg_as(builder, "w2")?;
     let w3: Option<OutletId> = invocation.get_named_arg_as(builder, "w3")?;
+    let wg_bias: Option<OutletId> = invocation.get_named_arg_as(builder, "wg_bias")?;
+    let w1_bias: Option<OutletId> = invocation.get_named_arg_as(builder, "w1_bias")?;
+    let w3_bias: Option<OutletId> = invocation.get_named_arg_as(builder, "w3_bias")?;
+    let w2_bias: Option<OutletId> = invocation.get_named_arg_as(builder, "w2_bias")?;
     let k: i64 = invocation.named_arg_as(builder, "k")?;
     let activation: String = invocation.named_arg_as(builder, "activation")?;
     let normalize_gates: bool = invocation.named_arg_as(builder, "normalize_gates")?;
+    let act_alpha: Option<f32> = invocation.get_named_arg_as(builder, "act_alpha")?;
+    let act_limit: Option<f32> = invocation.get_named_arg_as(builder, "act_limit")?;
 
+    // Inputs are pushed in a fixed order so eval can recover their positions
+    // from the has_* flags: x, wg, w1, w2, [w3], [wg_bias], [w1_bias],
+    // [w3_bias], [w2_bias].
     let mut inputs = vec![x, wg, w1, w2];
     let has_w3 = w3.is_some();
-    if let Some(w3) = w3 {
-        inputs.push(w3);
+    let has_wg_bias = wg_bias.is_some();
+    let has_w1_bias = w1_bias.is_some();
+    let has_w3_bias = w3_bias.is_some();
+    let has_w2_bias = w2_bias.is_some();
+    for opt in [w3, wg_bias, w1_bias, w3_bias, w2_bias].into_iter().flatten() {
+        inputs.push(opt);
     }
 
-    builder.wire(MoeFfn { k: k as usize, activation, normalize_gates, has_w3 }, &inputs)
+    builder.wire(
+        MoeFfn {
+            k: k as usize,
+            activation,
+            normalize_gates,
+            has_w3,
+            has_wg_bias,
+            has_w1_bias,
+            has_w3_bias,
+            has_w2_bias,
+            act_alpha_bits: act_alpha.map(f32::to_bits),
+            act_limit_bits: act_limit.map(f32::to_bits),
+        },
+        &inputs,
+    )
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -57,6 +99,62 @@ pub struct MoeFfn {
     pub activation: String,
     pub normalize_gates: bool,
     pub has_w3: bool,
+    pub has_wg_bias: bool,
+    pub has_w1_bias: bool,
+    pub has_w3_bias: bool,
+    pub has_w2_bias: bool,
+    // f32 has no Hash/Eq, so the clamped-SwiGLU params are stored as bit
+    // patterns; None means "use the plain activation_op path".
+    pub act_alpha_bits: Option<u32>,
+    pub act_limit_bits: Option<u32>,
+}
+
+/// Resolved positions of the optional inputs within the `inputs` slice,
+/// derived from the `has_*` flags (see `deser_moe_ffn` for the push order).
+struct MoeInputIdx {
+    w3: Option<usize>,
+    wg_bias: Option<usize>,
+    w1_bias: Option<usize>,
+    w3_bias: Option<usize>,
+    w2_bias: Option<usize>,
+}
+
+impl MoeFfn {
+    fn is_clamped_act(&self) -> bool {
+        self.act_limit_bits.is_some()
+    }
+
+    fn has_any_bias(&self) -> bool {
+        self.has_wg_bias || self.has_w1_bias || self.has_w3_bias || self.has_w2_bias
+    }
+
+    fn act_alpha(&self) -> f32 {
+        self.act_alpha_bits.map(f32::from_bits).unwrap_or(1.0)
+    }
+
+    fn act_limit(&self) -> f32 {
+        self.act_limit_bits.map(f32::from_bits).unwrap_or(f32::INFINITY)
+    }
+
+    fn input_idx(&self) -> MoeInputIdx {
+        let mut i = 4;
+        let mut next = |present: bool| {
+            if present {
+                let v = i;
+                i += 1;
+                Some(v)
+            } else {
+                None
+            }
+        };
+        MoeInputIdx {
+            w3: next(self.has_w3),
+            wg_bias: next(self.has_wg_bias),
+            w1_bias: next(self.has_w1_bias),
+            w3_bias: next(self.has_w3_bias),
+            w2_bias: next(self.has_w2_bias),
+        }
+    }
 }
 
 impl Op for MoeFfn {
@@ -66,18 +164,55 @@ impl Op for MoeFfn {
     op_as_typed_op!();
 }
 
+/// Add a per-expert bias row (`bias_full[eid]`, length H or D) to every row of
+/// `arr` ([n, H] or [n, D]).
+fn add_expert_bias(
+    arr: &mut Array2<f32>,
+    bias_full: &ArrayViewD<f32>,
+    eid: usize,
+) -> TractResult<()> {
+    let brow = bias_full.index_axis(Axis(0), eid);
+    let bslice = brow.as_slice().context("expert bias row not contiguous")?;
+    for mut row in arr.rows_mut() {
+        row.iter_mut().zip(bslice).for_each(|(v, &bv)| *v += bv);
+    }
+    Ok(())
+}
+
 impl EvalOp for MoeFfn {
     fn is_stateless(&self) -> bool {
         true
     }
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        // inputs: x [T,D], wg [E,D] or [1,E,D], w1 [E,D,H], w2 [E,H,D], [w3 [E,D,H]]
+        // inputs: x [T,D], wg [E,D] or [1,E,D], w1 [E,D,H], w2 [E,H,D],
+        // then optionally w3 [E,D,H], wg_bias [E], w1_bias [E,H],
+        // w3_bias [E,H], w2_bias [E,D] (order set in deser_moe_ffn).
+        let idx = self.input_idx();
         let x = inputs[0].to_plain_array_view::<f32>()?;
         let wg_raw = inputs[1].to_plain_array_view::<f32>()?;
         let w1 = inputs[2].to_plain_array_view::<f32>()?;
         let w2 = inputs[3].to_plain_array_view::<f32>()?;
-        let w3 = if self.has_w3 { Some(inputs[4].to_plain_array_view::<f32>()?) } else { None };
+        let w3 = match idx.w3 {
+            Some(i) => Some(inputs[i].to_plain_array_view::<f32>()?),
+            None => None,
+        };
+        let wg_bias = match idx.wg_bias {
+            Some(i) => Some(inputs[i].to_plain_array_view::<f32>()?),
+            None => None,
+        };
+        let w1_bias = match idx.w1_bias {
+            Some(i) => Some(inputs[i].to_plain_array_view::<f32>()?),
+            None => None,
+        };
+        let w3_bias = match idx.w3_bias {
+            Some(i) => Some(inputs[i].to_plain_array_view::<f32>()?),
+            None => None,
+        };
+        let w2_bias = match idx.w2_bias {
+            Some(i) => Some(inputs[i].to_plain_array_view::<f32>()?),
+            None => None,
+        };
 
         // Normalize wg to 2D [E, D] (may be [1, E, D] from unsqueeze)
         let wg: ArrayView2<f32> = if wg_raw.ndim() == 3 {
@@ -102,8 +237,14 @@ impl EvalOp for MoeFfn {
         let _d_hidden = w1.shape()[2];
 
         // ---- Step 1: Router ----
-        // logits = x @ wg.T  [T, D] @ [D, E] -> [T, E]
-        let router_logits: Array2<f32> = x.dot(&wg.t());
+        // logits = x @ wg.T  [T, D] @ [D, E] -> [T, E]  (+ optional bias [E])
+        let mut router_logits: Array2<f32> = x.dot(&wg.t());
+        if let Some(ref b) = wg_bias {
+            let bias = b.as_slice().context("wg_bias not contiguous")?;
+            for mut row in router_logits.rows_mut() {
+                row.iter_mut().zip(bias).for_each(|(v, &bv)| *v += bv);
+            }
+        }
 
         // ---- Step 2: Top-k selection + gate weights per token ----
         // assignments[token] = Vec<(expert_id, gate_weight)>
@@ -156,14 +297,39 @@ impl EvalOp for MoeFfn {
             let w1_e = w1.slice(s![eid, .., ..]); // [D, H]
             let w2_e = w2.slice(s![eid, .., ..]); // [H, D]
 
-            // h = x_batch @ w1_e  -> [n, H]  (BLAS-backed GEMM)
+            // gate branch: h = x_batch @ w1_e (+ w1_bias)  -> [n, H]
             let mut h: Array2<f32> = x_batch.dot(&w1_e);
+            if let Some(ref b) = w1_bias {
+                add_expert_bias(&mut h, b, eid)?;
+            }
 
-            if let Some(ref w3) = w3 {
-                // SwiGLU: h = silu(h) * (x_batch @ w3_e)
+            if self.is_clamped_act() {
+                // gpt-oss clamped SwiGLU: gate = w1 branch, up = w3 branch.
+                //   gate = clamp(gate, max=limit)
+                //   up   = clamp(up, -limit, limit)
+                //   glu  = gate * sigmoid(alpha * gate)
+                //   h    = (up + 1) * glu
+                let w3 = w3.as_ref().context("clamped activation requires w3 (up branch)")?;
                 let w3_e = w3.slice(s![eid, .., ..]); // [D, H]
-                let gate: Array2<f32> = x_batch.dot(&w3_e); // [n, H]
-
+                let mut up: Array2<f32> = x_batch.dot(&w3_e);
+                if let Some(ref b) = w3_bias {
+                    add_expert_bias(&mut up, b, eid)?;
+                }
+                let alpha = self.act_alpha();
+                let limit = self.act_limit();
+                h.iter_mut().zip(up.iter()).for_each(|(g, &u)| {
+                    let gate = g.min(limit);
+                    let up = u.clamp(-limit, limit);
+                    let glu = gate / (1.0 + (-alpha * gate).exp());
+                    *g = (up + 1.0) * glu;
+                });
+            } else if let Some(ref w3) = w3 {
+                // SwiGLU: h = silu(h) * (x_batch @ w3_e + w3_bias)
+                let w3_e = w3.slice(s![eid, .., ..]); // [D, H]
+                let mut gate: Array2<f32> = x_batch.dot(&w3_e); // [n, H]
+                if let Some(ref b) = w3_bias {
+                    add_expert_bias(&mut gate, b, eid)?;
+                }
                 h.iter_mut().zip(gate.iter()).for_each(|(h_val, &g_val)| {
                     let silu = *h_val / (1.0 + (-*h_val).exp());
                     *h_val = silu * g_val;
@@ -175,8 +341,11 @@ impl EvalOp for MoeFfn {
                 });
             }
 
-            // y_expert = h @ w2_e  -> [n, D]  (BLAS-backed GEMM)
-            let y_expert: Array2<f32> = h.dot(&w2_e);
+            // y_expert = h @ w2_e (+ w2_bias)  -> [n, D]  (BLAS-backed GEMM)
+            let mut y_expert: Array2<f32> = h.dot(&w2_e);
+            if let Some(ref b) = w2_bias {
+                add_expert_bias(&mut y_expert, b, eid)?;
+            }
 
             // ---- Step 5: Scatter-add weighted results back ----
             for (i, &(t, gw)) in tokens.iter().enumerate() {
@@ -192,35 +361,16 @@ impl EvalOp for MoeFfn {
         } else {
             output.into_tensor()
         };
-        let router_tensor = if x_ndim == 3 {
-            router_logits
-                .into_shape_with_order((x_orig_shape[0], x_orig_shape[1], num_experts))?
-                .into_tensor()
-        } else {
-            router_logits.into_tensor()
-        };
-        Ok(tvec![output_tensor.into_tvalue(), router_tensor.into_tvalue()])
+        Ok(tvec![output_tensor.into_tvalue()])
     }
 }
 
 impl TypedOp for MoeFfn {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        // Output 0: same shape as input x
+        // single output: same shape as input x
         let x_fact = inputs[0];
         let output_fact = x_fact.datum_type.fact(x_fact.shape.clone());
-
-        // Output 1: router_logits — same leading dims as x, last dim = E
-        let wg_fact = inputs[1];
-        let e_dim =
-            if wg_fact.rank() == 3 { wg_fact.shape[1].clone() } else { wg_fact.shape[0].clone() };
-        let mut router_shape: TVec<TDim> = x_fact.shape.iter().cloned().collect();
-        // Replace last dim (D) with E
-        if let Some(last) = router_shape.last_mut() {
-            *last = e_dim;
-        }
-        let router_fact = x_fact.datum_type.fact(router_shape);
-
-        Ok(tvec!(output_fact, router_fact))
+        Ok(tvec!(output_fact))
     }
 
     fn codegen(
@@ -228,6 +378,12 @@ impl TypedOp for MoeFfn {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
+        // The optimized plan-based path only models the bias-free, plain
+        // activation case. gpt-oss (biases + clamped SwiGLU) stays on the
+        // reference eval path, which is correct if slower.
+        if self.has_any_bias() || self.is_clamped_act() {
+            return Ok(None);
+        }
         // Only optimize if all weights are constants
         let wg_const = model.node(node.inputs[1].node).op_as::<Const>();
         let w1_const = model.node(node.inputs[2].node).op_as::<Const>();
@@ -303,7 +459,6 @@ impl TypedOp for MoeFfn {
         let x_tap = patch.tap_model(model, node.inputs[0])?;
         let wires = patch.wire_node(&node.name, opt_op, &[x_tap])?;
         patch.shunt_outside(model, OutletId::new(node.id, 0), wires[0])?;
-        patch.shunt_outside(model, OutletId::new(node.id, 1), wires[1])?;
         Ok(Some(patch))
     }
 
@@ -618,14 +773,7 @@ impl OpState for OptMoeFfnState {
         } else {
             output.into_tensor()
         };
-        let router_tensor = if x_ndim == 3 {
-            let rl = router_logits_tv.clone().into_tensor();
-            rl.into_shape(&[x_orig_shape[0], x_orig_shape[1], op.num_experts])?
-        } else {
-            router_logits_tv.clone().into_tensor()
-        };
-
-        Ok(tvec![output_tensor.into_tvalue(), router_tensor.into_tvalue()])
+        Ok(tvec![output_tensor.into_tvalue()])
     }
 }
 
@@ -633,14 +781,7 @@ impl TypedOp for OptMoeFfn {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let x_fact = inputs[0];
         let output_fact = x_fact.datum_type.fact(x_fact.shape.clone());
-
-        let mut router_shape: TVec<TDim> = x_fact.shape.iter().cloned().collect();
-        if let Some(last) = router_shape.last_mut() {
-            *last = self.num_experts.to_dim();
-        }
-        let router_fact = x_fact.datum_type.fact(router_shape);
-
-        Ok(tvec!(output_fact, router_fact))
+        Ok(tvec!(output_fact))
     }
 
     as_op!();
