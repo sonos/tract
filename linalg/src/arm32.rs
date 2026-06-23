@@ -1,4 +1,4 @@
-use std::{env, fs};
+use std::fs;
 pub mod armv7neon;
 mod armvfpv2;
 mod cortex_a7;
@@ -29,8 +29,8 @@ fn cpu_part() -> Option<usize> {
 }
 
 fn has_neon() -> bool {
-    if let Ok(v) = env::var("TRACT_CPU_ARM32_NEON") {
-        return v == "true" || v == "1";
+    if let Some(forced) = crate::knobs::CPU_ARM32_NEON.get() {
+        return forced;
     }
     has_neon_cpuinfo().unwrap_or(false)
 }
@@ -94,7 +94,7 @@ mod tests {
     #[test]
     fn may_have_neon() {
         println!("Has neon ? {:?}", has_neon());
-        if let Ok(neon) = env::var("TRACT_CPU_EXPECT_ARM32_NEON") {
+        if let Ok(neon) = std::env::var("TRACT_CPU_EXPECT_ARM32_NEON") {
             assert_eq!(neon == "true", has_neon());
         }
     }

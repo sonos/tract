@@ -21,6 +21,7 @@ include!(concat!(env!("OUT_DIR"), "/extern_kernel_macro.rs"));
 #[macro_use]
 mod frame;
 pub mod generic;
+pub mod knobs;
 pub mod multithread;
 pub use frame::weights::WeightType;
 pub use generic::{ScaleShiftAndRound, Scaler};
