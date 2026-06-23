@@ -154,7 +154,7 @@ MMMRustKernel!(sve_sys::sve_mmv_f16_64x1_kernel => sve_mmv_f16_64x1<f16>(64, 1)
 
 #[cfg(target_os = "linux")]
 pub fn has_sve() -> bool {
-    if crate::knobs::SVE_DISABLE.get() {
+    if crate::knobs::TRACT_SVE_DISABLE.get() {
         return false;
     }
     // HWCAP_SVE = 1 << 22 on aarch64 (kernel ABI).
@@ -174,7 +174,7 @@ pub fn has_sve() -> bool {
 
 #[cfg(target_os = "linux")]
 pub fn has_sve2() -> bool {
-    if crate::knobs::SVE_DISABLE.get() {
+    if crate::knobs::TRACT_SVE_DISABLE.get() {
         return false;
     }
     // HWCAP2_SVE2 = 1 << 1 on aarch64 (kernel ABI).

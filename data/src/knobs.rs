@@ -209,21 +209,26 @@ pub fn list() -> String {
 /// Declare a knob: a typed runtime setting resolved from override / environment
 /// / default, registered for listing.
 ///
+/// The static is named exactly like the environment variable (the `TRACT_`
+/// prefix included), so one grep finds both the declaration and any use, and
+/// the env-var name is derived from the identifier — there is no separate
+/// string to drift.
+///
 /// ```ignore
-/// declare_knob!(MY_FLAG, bool, false, "TRACT_MY_FLAG", "Enable the thing.");
+/// declare_knob!(TRACT_MY_FLAG, bool, false, "Enable the thing.");
 /// // ... later ...
-/// if MY_FLAG.get() { /* ... */ }
+/// if TRACT_MY_FLAG.get() { /* ... */ }
 /// ```
 #[macro_export]
 macro_rules! declare_knob {
-    ($ident:ident, $ty:ty, $default:expr, $name:literal, $doc:literal) => {
+    ($ident:ident, $ty:ty, $default:expr, $doc:literal) => {
         #[doc = $doc]
         pub static $ident: $crate::knobs::Knob<$ty> =
-            $crate::knobs::Knob::new($name, || $default, $doc);
+            $crate::knobs::Knob::new(stringify!($ident), || $default, $doc);
 
         $crate::knobs::inventory::submit! {
             $crate::knobs::KnobInfo {
-                name: $name,
+                name: stringify!($ident),
                 doc: $doc,
                 type_name: <$ty as $crate::knobs::KnobValue>::TYPE_NAME,
                 default: || $crate::knobs::KnobValue::render_knob(&$ident.default_value()),
@@ -237,26 +242,26 @@ macro_rules! declare_knob {
 mod tests {
     use super::*;
 
-    declare_knob!(TEST_BOOL, bool, false, "TRACT_TEST_KNOB_BOOL", "Test bool knob.");
-    declare_knob!(TEST_INT, usize, 7, "TRACT_TEST_KNOB_INT", "Test int knob.");
+    declare_knob!(TRACT_TEST_KNOB_BOOL, bool, false, "Test bool knob.");
+    declare_knob!(TRACT_TEST_KNOB_INT, usize, 7, "Test int knob.");
 
     #[test]
     fn default_then_override_then_clear() {
-        assert!(!TEST_BOOL.get());
-        assert_eq!(TEST_INT.get(), 7);
+        assert!(!TRACT_TEST_KNOB_BOOL.get());
+        assert_eq!(TRACT_TEST_KNOB_INT.get(), 7);
 
-        TEST_BOOL.set(true);
-        assert!(TEST_BOOL.get());
-        TEST_BOOL.clear();
-        assert!(!TEST_BOOL.get());
+        TRACT_TEST_KNOB_BOOL.set(true);
+        assert!(TRACT_TEST_KNOB_BOOL.get());
+        TRACT_TEST_KNOB_BOOL.clear();
+        assert!(!TRACT_TEST_KNOB_BOOL.get());
     }
 
     #[test]
     fn set_by_name() {
         assert!(set_str("TRACT_TEST_KNOB_INT", "42"));
-        assert_eq!(TEST_INT.get(), 42);
+        assert_eq!(TRACT_TEST_KNOB_INT.get(), 42);
         assert!(clear_str("TRACT_TEST_KNOB_INT"));
-        assert_eq!(TEST_INT.get(), 7);
+        assert_eq!(TRACT_TEST_KNOB_INT.get(), 7);
         assert!(!set_str("TRACT_TEST_KNOB_DOES_NOT_EXIST", "1"));
     }
 

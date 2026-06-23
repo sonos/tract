@@ -250,10 +250,9 @@ impl Sdpa {
 }
 
 tract_core::declare_knob!(
-    FLASH_SDPA_MIN_SEQ_LEN,
+    TRACT_FLASH_SDPA_MIN_SEQ_LEN,
     usize,
     0,
-    "TRACT_FLASH_SDPA_MIN_SEQ_LEN",
     "Minimum K/V sequence length for head-parallel flash SDPA on CPU; below it the decomposed matmul+softmax path is used."
 );
 
@@ -263,7 +262,7 @@ tract_core::declare_knob!(
 /// (head-parallel flash beat the decomposed path at every sequence length measured on
 /// Apple M1, 128–4096; raise this on low-core hosts where short-seq decompose wins).
 fn flash_min_seq_len() -> usize {
-    FLASH_SDPA_MIN_SEQ_LEN.get()
+    TRACT_FLASH_SDPA_MIN_SEQ_LEN.get()
 }
 
 impl Op for Sdpa {

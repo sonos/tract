@@ -3,10 +3,9 @@ use tract_nnef::prelude::tract_itertools::Itertools;
 use tract_nnef::tract_ndarray::{Array2, Array4, ArrayView2, ArrayView4, ArrayViewMut2, Ix4, s};
 
 tract_core::declare_knob!(
-    FLASH_SDPA_ST,
+    TRACT_FLASH_SDPA_ST,
     bool,
     false,
-    "TRACT_FLASH_SDPA_ST",
     "Force single-threaded flash SDPA (disable per-head rayon parallelism)."
 );
 
@@ -230,7 +229,7 @@ impl FlashSdpaOp {
     /// Whether to spread the per-head tasks across cores (rayon's global pool).
     /// Off for a single task, on wasm (no thread spawn), or when `TRACT_FLASH_SDPA_ST` is set.
     fn should_thread(num_tasks: usize) -> bool {
-        num_tasks > 1 && cfg!(not(target_family = "wasm")) && !FLASH_SDPA_ST.get()
+        num_tasks > 1 && cfg!(not(target_family = "wasm")) && !TRACT_FLASH_SDPA_ST.get()
     }
 
     /// Flash-attention for a single (batch, q-head) pair. Returns O of shape
