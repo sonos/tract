@@ -189,20 +189,19 @@ pub fn clear_str(name: &str) -> bool {
     }
 }
 
-/// Render all declared knobs as a human-readable table.
+/// Render all declared knobs as a human-readable list.
 pub fn list() -> String {
     use std::fmt::Write;
+    let shown = |s: String| if s.is_empty() { "(unset)".to_string() } else { s };
     let mut out = String::new();
     for k in all() {
-        let _ = writeln!(
-            out,
-            "{name} : {ty} = {current} (default {default})\n    {doc}",
-            name = k.name,
-            ty = k.type_name,
-            current = (k.current)(),
-            default = (k.default)(),
-            doc = k.doc,
-        );
+        let current = shown((k.current)());
+        let default = shown((k.default)());
+        write!(out, "{} = {}  [{}", k.name, current, k.type_name).unwrap();
+        if current != default {
+            write!(out, ", default {default}").unwrap();
+        }
+        writeln!(out, "]\n    {}\n", k.doc).unwrap();
     }
     out
 }
