@@ -242,11 +242,11 @@ pub fn plug(ops: &mut Ops) {
                         plug_avx512amx_int8(ops);
                     }
                 }
-                // AMX bf16 for f32 matmul is independent of int8/VNNI gates:
-                // a future Xeon SKU could ship AMX-BF16 without VNNI, and the
-                // permission gate is shared with the int8 path inside has_amx_bf16().
+                // AMX bf16 for f32 matmul truncates operands f32 -> bf16, so it is
+                // lossy (~1/2^8 relative error per multiply) and opt-in via
+                // TRACT_AMX_BF16, off by default even where the hardware supports it.
                 #[cfg(tract_amx_bf16)]
-                if has_amx_bf16() {
+                if crate::knobs::TRACT_AMX_BF16.get() && has_amx_bf16() {
                     plug_avx512amx_bf16(ops);
                 }
             }
