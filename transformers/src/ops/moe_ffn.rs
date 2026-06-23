@@ -240,34 +240,19 @@ impl Op for MoeFfn {
     op_as_typed_op!();
 }
 
-/// Round an f32 value through f16 (matches PyTorch's f16 arithmetic so the
-/// exported MoE reproduces the source model rather than being more precise,
-/// which would compound into a growing mismatch across layers).
-#[inline]
-fn round_to_f16(v: f32) -> f32 {
-    f16::from_f32(v).to_f32()
-}
-
 /// Scatter-add expert outputs into `output`, weighted by the gate weights.
-/// When `f16_acc` is set, the gate weight, each product and each running sum
-/// are rounded through f16, mirroring PyTorch's f16 weighting + index_add.
+/// Accumulation is in f32: the router and experts run in f32 (matching
+/// PyTorch's CPU f32-upcast of f16 matmuls), so the whole op is f32 internally
+/// and only the final output is cast back to the model dtype.
 fn scatter_add_weighted(
     output: &mut Array2<f32>,
     y_view: &ArrayView2<f32>,
     tokens: &[(usize, f32)],
-    f16_acc: bool,
 ) {
     for (i, &(t, gw)) in tokens.iter().enumerate() {
         let y_row = y_view.row(i);
         let mut out_row = output.row_mut(t);
-        if f16_acc {
-            let gw = round_to_f16(gw);
-            for (o, &y) in out_row.iter_mut().zip(y_row.iter()) {
-                *o = round_to_f16(*o + round_to_f16(gw * y));
-            }
-        } else {
-            out_row.scaled_add(gw, &y_row);
-        }
+        out_row.scaled_add(gw, &y_row);
     }
 }
 
@@ -297,7 +282,6 @@ impl EvalOp for MoeFfn {
         // w3_bias [E,H], w2_bias [E,D] (order set in deser_moe_ffn).
         let idx = self.input_idx();
         let orig_dt = inputs[0].datum_type();
-        let f16_acc = orig_dt == f16::datum_type();
         // The reference path computes in f32. Cast every input up front (this
         // upcasts f16/bf16 weights, so it is the un-optimized fallback; the
         // codegen optimized path keeps experts in their native dtype).
@@ -466,7 +450,7 @@ impl EvalOp for MoeFfn {
             }
 
             // ---- Step 5: Scatter-add weighted results back ----
-            scatter_add_weighted(&mut output, &y_expert.view(), tokens, f16_acc);
+            scatter_add_weighted(&mut output, &y_expert.view(), tokens);
         }
 
         // Restore original rank if input was 3D, and the original dtype.
@@ -522,8 +506,6 @@ impl TypedOp for MoeFfn {
         let w2_tensor = w2_const.unwrap().val().clone();
         let w3_tensor = w3_const.map(|c| c.val().clone());
 
-        let dt = model.outlet_fact(node.inputs[0])?.datum_type;
-
         // Bail if the activation is not supported by the optimized path
         if activation_op(&self.activation, self.has_w3).is_none() {
             return Ok(None);
@@ -553,7 +535,6 @@ impl TypedOp for MoeFfn {
                 &w2_e,
                 w3_e.as_ref(),
                 &self.activation,
-                dt,
                 &model.symbols,
             )
             .with_context(|| format!("Building expert plan for expert {eid}"))?;
@@ -642,20 +623,26 @@ fn build_expert_plan(
     w2: &Tensor,
     w3: Option<&Tensor>,
     activation: &str,
-    dt: DatumType,
     symbols: &SymbolScope,
 ) -> TractResult<Arc<TypedSimplePlan>> {
     let mut model = TypedModel { symbols: symbols.clone(), ..Default::default() };
     let n_sym = symbols.sym("moe_n");
 
+    // Experts run in f32 so the matmuls accumulate in f32, matching PyTorch's
+    // CPU behaviour (it upcasts f16 matmuls to f32). Native-f16 accumulation
+    // diverged enough to derail greedy decoding. Weights are upcast to f32
+    // const here; the NNEF file stays f16, so this is purely a runtime choice
+    // (it does roughly double the in-memory expert size).
+    let dt = f32::datum_type();
+    let to_f32 = |t: &Tensor| -> TractResult<Tensor> { Ok(t.cast_to::<f32>()?.into_owned()) };
+
     let d_model = w1.shape()[0]; // w1: [D, H]
-    let _d_hidden = w1.shape()[1];
 
     // Input: x_batch [n, D]
     let x = model.add_source("x", dt.fact([n_sym.to_dim(), d_model.to_dim()]))?;
 
     // w1 matmul: x_batch [n,D] @ w1 [D,H] -> [n,H]
-    let w1_const = model.add_const("w1", w1.clone())?;
+    let w1_const = model.add_const("w1", to_f32(w1)?)?;
     let axes_mm: AxesMapping = "ij,jk->ik".parse()?;
     let h = model.wire_node("w1_matmul", EinSum::new(axes_mm.clone(), dt), &[x, w1_const])?[0];
 
@@ -666,7 +653,7 @@ fn build_expert_plan(
 
     // Optional SwiGLU: gate = x @ w3, h = h * gate
     let h = if let Some(w3) = w3 {
-        let w3_const = model.add_const("w3", w3.clone())?;
+        let w3_const = model.add_const("w3", to_f32(w3)?)?;
         let gate =
             model.wire_node("w3_matmul", EinSum::new(axes_mm.clone(), dt), &[x, w3_const])?[0];
         model.wire_node("swiglu_mul", mul(), &[h, gate])?[0]
@@ -675,7 +662,7 @@ fn build_expert_plan(
     };
 
     // w2 matmul: h [n,H] @ w2 [H,D] -> [n,D]
-    let w2_const = model.add_const("w2", w2.clone())?;
+    let w2_const = model.add_const("w2", to_f32(w2)?)?;
     let y = model.wire_node("w2_matmul", EinSum::new(axes_mm, dt), &[h, w2_const])?[0];
 
     model.select_output_outlets(&[y])?;
@@ -795,7 +782,6 @@ impl OpState for OptMoeFfnState {
         // big expert weights stay un-upcast; only the small per-token glue
         // (gather, top-k, gate weights, scatter) runs in f32.
         let dt = x_input.datum_type();
-        let f16_acc = dt == f16::datum_type();
         let x_f32 = x_input.cast_to::<f32>()?;
         let x_view = x_f32.to_plain_array_view::<f32>()?;
         let x_ndim = x_view.ndim();
@@ -855,10 +841,10 @@ impl OpState for OptMoeFfnState {
             }
             let n = tokens.len();
 
-            // Gather: build x_batch [n, D] in f32, then cast to the plan dtype.
-            let mut x_batch_f32 = Tensor::zero_dt(f32::datum_type(), &[n, d_model])?;
+            // Gather: build x_batch [n, D] in f32 and feed the f32 expert plan.
+            let mut x_batch = Tensor::zero_dt(f32::datum_type(), &[n, d_model])?;
             {
-                let mut x_batch_plain = x_batch_f32.try_as_plain_mut()?;
+                let mut x_batch_plain = x_batch.try_as_plain_mut()?;
                 let x_batch_slice = x_batch_plain.as_slice_mut::<f32>()?;
                 for (i, &(t, _)) in tokens.iter().enumerate() {
                     let src = x.row(t);
@@ -866,15 +852,12 @@ impl OpState for OptMoeFfnState {
                         .copy_from_slice(src.as_slice().unwrap());
                 }
             }
-            let x_batch = x_batch_f32.cast_to_dt(dt)?.into_owned();
 
-            // Run expert plan (reusing pre-spawned state)
+            // Run expert plan (f32; reusing pre-spawned state)
             let y_expert = self.expert_states[eid].run(tvec![x_batch.into_tvalue()])?;
-
-            // Scatter-add weighted results (cast expert output back to f32)
-            let y_f32 = y_expert[0].cast_to::<f32>()?;
-            let y_view: ArrayView2<f32> = y_f32.to_plain_array_view::<f32>()?.into_dimensionality()?;
-            scatter_add_weighted(&mut output, &y_view, tokens, f16_acc);
+            let y_view: ArrayView2<f32> =
+                y_expert[0].to_plain_array_view::<f32>()?.into_dimensionality()?;
+            scatter_add_weighted(&mut output, &y_view, tokens);
         }
 
         // ---- Restore shapes + dtype ----
