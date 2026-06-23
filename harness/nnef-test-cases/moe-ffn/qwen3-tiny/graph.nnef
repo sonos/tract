@@ -1,7 +1,7 @@
 version 1.0;
 
-extension tract_registry tract_core;
 extension tract_registry tract_transformers;
+extension tract_registry tract_core;
 
 fragment tract_core_properties(
 ) -> (properties: (string, tensor<scalar>)[])
@@ -15,7 +15,7 @@ fragment tract_core_properties(
     ("hostname", "SNS009332"),
     ("user", "julien.balian"),
     ("py_version", "3.11.13 (main, Sep 18 2025, 19:53:58) [Clang 20.1.4 ] (64-bit runtime)"),
-    ("export_date", "2026-06-23 11:51:02.820136"),
+    ("export_date", "2026-06-23 14:24:11.387210"),
     ("exported_py_class", "Qwen3TinyMoE"),
     ("export_cmd", "/tmp/regen_moe_asset.py")
   ];
@@ -34,5 +34,5 @@ graph network(input_0) -> (output_0)
     output_0_w1 = variable<scalar>(label = 'output_0_w1', shape = [4, 16, 32]);
     output_0_w2 = variable<scalar>(label = 'output_0_w2', shape = [4, 32, 16]);
     output_0_w3 = variable<scalar>(label = 'output_0_w3', shape = [4, 16, 32]);
-    output_0 = tract_moe_ffn(input_0, moe_gate_weight, output_0_w1, output_0_w2, output_0_w3, k = 2, activation = 'swiglu', normalize_gates = true);
+    output_0 = tract_moe_ffn(input_0, moe_gate_weight, output_0_w1, output_0_w2, output_0_w3, k = 2, activation = 'swiglu', gate = 'softmax_topk');
 }
