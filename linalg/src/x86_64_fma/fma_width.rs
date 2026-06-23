@@ -50,7 +50,7 @@ pub fn has_dual_avx512_fma() -> bool {
 }
 
 fn detect_fma_units() -> u8 {
-    if let Ok(v) = std::env::var("TRACT_AVX512_FMA_UNITS") {
+    if let Some(v) = crate::knobs::TRACT_AVX512_FMA_UNITS.get() {
         match v.trim() {
             "1" => return 1,
             "2" => return 2,

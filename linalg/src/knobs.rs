@@ -45,3 +45,10 @@ tract_data::declare_knob!(
     None,
     "armv7: force NEON detection on/off instead of probing /proc/cpuinfo."
 );
+
+tract_data::declare_knob!(
+    TRACT_AVX512_FMA_UNITS,
+    Option<String>,
+    None,
+    "x86_64: force the 512-bit FMA-port count (1 or 2) instead of runtime-probing; gates the zmm VNNI 16x16 kernel."
+);
