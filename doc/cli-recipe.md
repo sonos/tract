@@ -167,12 +167,23 @@ between-graph comparisons.
   hot code with TurboFan. First-pass numbers can be 2-4× off steady state;
   warm generously and read steady-state.
 
-## Environment variables
+## Configuration knobs
 
-A small set of `TRACT_*` env vars override defaults that are normally fine
-out of the box. Most are codegen or CPU-detection knobs you only reach for
-when chasing a perf regression or working around an exotic platform; they
-apply equally to the library and the CLI.
+A small set of runtime *knobs* override defaults that are normally fine out of
+the box — codegen and CPU-detection settings you only reach for when chasing a
+perf regression or working around an exotic platform. Each resolves, in
+priority order, from a programmatic override (`tract_data::knobs`, e.g. on wasm
+where the environment is unavailable), a `TRACT_*` environment variable, then a
+compiled-in default; they apply equally to the library and the CLI.
+
+```bash
+tract list-knobs
+```
+
+lists every knob with its resolved value, default, type, and description — the
+authoritative, always-current source (including the platform-specific ones,
+which appear everywhere and are inert off their architecture). The table below
+highlights a few worth knowing; `list-knobs` is the complete set.
 
 | Variable | Effect |
 |---|---|
@@ -184,10 +195,12 @@ apply equally to the library and the CLI.
 | `TRACT_CPU_ARM32_NEON` | Force armv7 NEON detection on/off (`true`/`1` or `false`/`0`). |
 | `TRACT_CPU_EXPECT_ARM32_NEON` | Used by the test suite to assert the detection result matches what the platform should expose. CI-only. |
 
-The two `LAZY_IM2COL_*` knobs are documented inline next to the constants in
-`core/src/ops/cnn/conv/conv.rs`; the CPU-detect knobs in `linalg/src/arm32.rs`
-and `linalg/src/arm64.rs`. See [`kernel-notes.md`](kernel-notes.md) for
-context on the kernel selection that `LAZY_IM2COL_*` is steering.
+Knobs are declared with `declare_knob!`: the arch-detection ones in
+`linalg/src/knobs.rs`, the conv crossovers in `core/src/ops/cnn/conv/conv.rs`
+next to their default constants. `TRACT_LOG` (an `env_logger` filter) and the
+CI-only `TRACT_CPU_EXPECT_ARM32_NEON` are conventions, not registry knobs, so
+they do not appear in `list-knobs`. See [`kernel-notes.md`](kernel-notes.md)
+for context on the kernel selection that `LAZY_IM2COL_*` is steering.
 
 ## Pulsified networks
 
