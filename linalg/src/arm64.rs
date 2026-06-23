@@ -194,12 +194,12 @@ pub fn has_fp16() -> bool {
 #[cfg(target_os = "macos")]
 pub fn has_dotprod() -> bool {
     // Every Apple arm64 CPU (M1+/A11+) implements FEAT_DotProd.
-    std::env::var_os("TRACT_DOTPROD_DISABLE").is_none()
+    !crate::knobs::DOTPROD_DISABLE.get()
 }
 
 #[cfg(target_os = "linux")]
 pub fn has_dotprod() -> bool {
-    if std::env::var_os("TRACT_DOTPROD_DISABLE").is_some() {
+    if crate::knobs::DOTPROD_DISABLE.get() {
         return false;
     }
     // HWCAP_ASIMDDP = 1 << 20 on aarch64.
@@ -219,8 +219,7 @@ pub fn has_dotprod() -> bool {
 #[cfg(target_os = "ios")]
 pub fn has_dotprod() -> bool {
     // A11+ (iPhone10,1+) implement FEAT_DotProd.
-    std::env::var_os("TRACT_DOTPROD_DISABLE").is_none()
-        && IPHONE_MODEL_MAJOR.map(|it| it >= 10).unwrap_or(false)
+    !crate::knobs::DOTPROD_DISABLE.get() && IPHONE_MODEL_MAJOR.map(|it| it >= 10).unwrap_or(false)
 }
 
 #[target_feature(enable = "fp16")]
@@ -269,7 +268,7 @@ impl Kind {
     pub fn choose() -> Kind {
         #[cfg(test)]
         crate::setup_test_logger();
-        let kind = if let Ok(kind) = std::env::var("TRACT_CPU_AARCH64_KIND") {
+        let kind = if let Some(kind) = crate::knobs::CPU_AARCH64_KIND.get() {
             log::info!("CPU kind forced with TRACT_CPU_AARCH64_KIND: {}", kind);
             let kind = kind.to_lowercase();
             if kind.contains("a53") {
@@ -292,7 +291,7 @@ impl Kind {
         } else if cfg!(target_os = "macos") {
             Kind::AppleM
         } else {
-            let part = if let Ok(part) = std::env::var("TRACT_CPU_AARCH64_OVERRIDE_CPU_PART") {
+            let part = if let Some(part) = crate::knobs::CPU_AARCH64_OVERRIDE_CPU_PART.get() {
                 log::info!("CPU part forced with TRACT_CPU_AARCH64_OVERRIDE_CPU_PART: {}", part);
                 part
             } else if cfg!(target_os = "linux") {

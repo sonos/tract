@@ -72,6 +72,22 @@ impl KnobValue for String {
     }
 }
 
+/// Optional knob: `None` is the unset/default state (e.g. "autodetect"), `Some`
+/// is an explicit override. A source string that does not parse as `T` is
+/// treated as unset, so the resolver falls through to the next source.
+impl<T: KnobValue> KnobValue for Option<T> {
+    const TYPE_NAME: &'static str = "option";
+    fn parse_knob(s: &str) -> Option<Self> {
+        T::parse_knob(s).map(Some)
+    }
+    fn render_knob(&self) -> String {
+        match self {
+            Some(v) => v.render_knob(),
+            None => "(unset)".to_string(),
+        }
+    }
+}
+
 static OVERRIDES: RwLock<Option<HashMap<&'static str, String>>> = RwLock::new(None);
 
 fn with_override<R>(name: &str, f: impl FnOnce(Option<&String>) -> R) -> R {
