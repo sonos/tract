@@ -57,6 +57,8 @@ pub mod internal {
 pub use dim::TooEarly;
 pub use half;
 
+pub mod knobs;
+
 mod blob;
 mod datum;
 mod dim;

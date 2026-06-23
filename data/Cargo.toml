@@ -21,6 +21,7 @@ dyn-clone.workspace = true
 dyn-eq.workspace = true
 dyn-hash.workspace = true
 half.workspace = true
+inventory.workspace = true
 itertools.workspace = true
 libm.workspace = true
 maplit.workspace = true
