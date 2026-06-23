@@ -67,6 +67,12 @@ jobs:
         persist-credentials: false
 
     - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      # beta/nightly change too often to cache usefully and just evict the stable
+      # entries under the 10 GB/repo cap; and only main should save, so PR runs
+      # restore without adding transient caches that push main's out.
+      if: matrix.rust != 'beta' && matrix.rust != 'nightly'
+      with:
+        save-if: ${{ github.ref == 'refs/heads/main' }}
 
     - name: Cargo test
       run: cargo test -p ${{matrix.crate}}
@@ -138,6 +144,9 @@ jobs:
         persist-credentials: false
 
     - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      if: matrix.rust != 'beta' && matrix.rust != 'nightly'
+      with:
+        save-if: ${{ github.ref == 'refs/heads/main' }}
 
     - run: rustup component add clippy && cargo clippy
     - name: clippy (bench-suite feature)

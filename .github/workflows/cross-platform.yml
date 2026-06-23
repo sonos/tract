@@ -101,6 +101,8 @@ jobs:
     - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
       with:
         key: ${{ matrix.platform }}
+        # only main saves; PR runs restore without evicting main's caches.
+        save-if: ${{ github.ref == 'refs/heads/main' }}
 
     - name: Setup wasmtime
       if: matrix.platform == 'wasm32-wasi'
@@ -148,6 +150,8 @@ jobs:
     - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
       with:
         key: ${{ matrix.platform }}
+        # only main saves; PR runs restore without evicting main's caches.
+        save-if: ${{ github.ref == 'refs/heads/main' }}
 
     - name: Cross script
       env:
