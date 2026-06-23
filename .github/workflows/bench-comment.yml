@@ -80,13 +80,10 @@ jobs:
               core.info(`PR #${issue_number} head ${pr.head.sha} != run head ${sha}; not posting`);
               return;
             }
-            const marker = '<!-- bench-vs-main -->';
-            const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner, repo: context.repo.repo, issue_number, per_page: 100,
+            // Post a fresh comment for every bench run so the PR thread keeps the
+            // full history in chronological order instead of overwriting the previous
+            // result. Each comment names its PR commit and reference date, so the
+            // sequence tells the story of how the numbers moved across pushes.
+            await github.rest.issues.createComment({
+              owner: context.repo.owner, repo: context.repo.repo, issue_number, body,
             });
-            const prev = comments.find(c => c.body?.includes(marker));
-            if (prev) {
-              await github.rest.issues.updateComment({ owner: context.repo.owner, repo: context.repo.repo, comment_id: prev.id, body });
-            } else {
-              await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number, body });
-            }
