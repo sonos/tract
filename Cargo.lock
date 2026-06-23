@@ -1621,24 +1621,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ggml"
-version = "0.2.0-dev"
-source = "git+https://github.com/rustformers/llm.git?rev=9376078#9376078c12ea1990bd42e63432656819a056d379"
-dependencies = [
- "ggml-sys",
- "memmap2 0.5.10",
- "thiserror 1.0.69",
-]
-
-[[package]]
-name = "ggml-sys"
-version = "0.2.0-dev"
-source = "git+https://github.com/rustformers/llm.git?rev=9376078#9376078c12ea1990bd42e63432656819a056d379"
-dependencies = [
- "cc",
-]
-
-[[package]]
 name = "gif"
 version = "0.14.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2378,15 +2360,6 @@ name = "memchr"
 version = "2.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "88904434abc2901f197fe8cc55f0445e7ded921dba5911dad2e2b39b48e663c4"
-
-[[package]]
-name = "memmap2"
-version = "0.5.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "83faa42c0a078c393f6b29d5db232d8be22776a891f8f56e5284faee4a20b327"
-dependencies = [
- "libc",
-]
 
 [[package]]
 name = "memmap2"
@@ -4955,7 +4928,6 @@ dependencies = [
  "criterion",
  "derive-new",
  "downcast-rs",
- "ggml",
  "inventory",
  "log",
  "metal",
@@ -5025,7 +4997,7 @@ dependencies = [
  "dyn-eq",
  "env_logger",
  "log",
- "memmap2 0.9.11",
+ "memmap2",
  "num-integer",
  "prost",
  "rand 0.10.1",
@@ -5109,7 +5081,7 @@ dependencies = [
  "derive-new",
  "env_logger",
  "log",
- "memmap2 0.9.11",
+ "memmap2",
  "proptest",
  "prost",
  "prost-types",

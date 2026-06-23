@@ -38,7 +38,6 @@ default = [ ]
 criterion.workspace = true
 proptest.workspace = true
 rand.workspace = true
-ggml = { git = "https://github.com/rustformers/llm.git", rev="9376078", features = ["metal"] }
 
 [[bench]]
 name = "metal_gemm"
