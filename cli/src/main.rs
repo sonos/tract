@@ -187,7 +187,10 @@ fn main() -> TractResult<()> {
         .subcommand(Command::new("list-ops").about("List ops in TF/ONNX frameworks"))
         .subcommand(Command::new("list-runtimes").about("List runtimes"))
         .subcommand(Command::new("kernels").about("Print kernels for the current plaform"))
-        .subcommand(Command::new("hwbench").about("Print current hardware key metrics"));
+        .subcommand(Command::new("hwbench").about("Print current hardware key metrics"))
+        .subcommand(
+            Command::new("list-knobs").about("List runtime configuration knobs and their values"),
+        );
 
     let compare = clap::Command::new("compare")
         .long_about("Compares the output of tract and tensorflow on randomly generated input.")
@@ -781,6 +784,10 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
             tract_core::runtime::runtimes().for_each(|ir| {
                 println!(" * {}", ir.name());
             });
+            return Ok(());
+        }
+        Some(("list-knobs", _)) => {
+            print!("{}", tract_core::knobs::list());
             return Ok(());
         }
         Some(("list-ops", _)) => {
