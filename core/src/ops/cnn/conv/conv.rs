@@ -679,9 +679,9 @@ impl Conv {
         // AMX dispatch already handles the tiny-M matmul well. So: on by default
         // on wasm, opt-in on native. Env overrides either way for A/B.
         let enabled = if cfg!(target_family = "wasm") {
-            std::env::var("TRACT_DISABLE_BLOCKED_CONV").is_err()
+            !DISABLE_BLOCKED_CONV.get()
         } else {
-            std::env::var("TRACT_ENABLE_BLOCKED_CONV").is_ok()
+            ENABLE_BLOCKED_CONV.get()
         };
         if !enabled {
             return None;
@@ -1341,15 +1341,37 @@ impl TypedOp for Conv {
 /// `TRACT_LAZY_IM2COL_MIN_KERNEL` env var to experiment with lower thresholds.
 const DEFAULT_LAZY_IM2COL_MIN_KERNEL: usize = 6;
 
+crate::declare_knob!(
+    ENABLE_BLOCKED_CONV,
+    bool,
+    false,
+    "TRACT_ENABLE_BLOCKED_CONV",
+    "Force-enable the direct blocked convolution on native targets (on by default on wasm)."
+);
+crate::declare_knob!(
+    DISABLE_BLOCKED_CONV,
+    bool,
+    false,
+    "TRACT_DISABLE_BLOCKED_CONV",
+    "Force-disable the direct blocked convolution on wasm targets (off by default on native)."
+);
+crate::declare_knob!(
+    LAZY_IM2COL_MIN_KERNEL,
+    usize,
+    DEFAULT_LAZY_IM2COL_MIN_KERNEL,
+    "TRACT_LAZY_IM2COL_MIN_KERNEL",
+    "Minimum convolution kernel volume before lazy im2col is preferred over eager."
+);
+crate::declare_knob!(
+    LAZY_IM2COL_MAX_EAGER_BYTES,
+    usize,
+    DEFAULT_LAZY_IM2COL_MAX_EAGER_BYTES,
+    "TRACT_LAZY_IM2COL_MAX_EAGER_BYTES",
+    "Eager-im2col scratch-size ceiling, in bytes, above which lazy im2col is preferred."
+);
+
 fn lazy_im2col_min_kernel() -> usize {
-    use std::sync::OnceLock;
-    static V: OnceLock<usize> = OnceLock::new();
-    *V.get_or_init(|| {
-        std::env::var("TRACT_LAZY_IM2COL_MIN_KERNEL")
-            .ok()
-            .and_then(|s| s.parse::<usize>().ok())
-            .unwrap_or(DEFAULT_LAZY_IM2COL_MIN_KERNEL)
-    })
+    LAZY_IM2COL_MIN_KERNEL.get()
 }
 
 /// Default eager-Im2col scratch-size ceiling, in bytes, above which LazyIm2col is
@@ -1375,14 +1397,7 @@ const DEFAULT_LAZY_IM2COL_MAX_EAGER_BYTES: usize = 1024 * 1024;
 const DEFAULT_LAZY_IM2COL_MAX_EAGER_BYTES: usize = 4 * 1024 * 1024;
 
 fn lazy_im2col_max_eager_bytes() -> usize {
-    use std::sync::OnceLock;
-    static V: OnceLock<usize> = OnceLock::new();
-    *V.get_or_init(|| {
-        std::env::var("TRACT_LAZY_IM2COL_MAX_EAGER_BYTES")
-            .ok()
-            .and_then(|s| s.parse::<usize>().ok())
-            .unwrap_or(DEFAULT_LAZY_IM2COL_MAX_EAGER_BYTES)
-    })
+    LAZY_IM2COL_MAX_EAGER_BYTES.get()
 }
 
 fn should_use_lazy(

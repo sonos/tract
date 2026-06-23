@@ -65,6 +65,9 @@ extern crate proptest;
 pub extern crate tract_data;
 pub extern crate tract_linalg;
 
+pub use tract_data::declare_knob;
+pub use tract_data::knobs;
+
 #[macro_use]
 pub mod macros;
 #[macro_use]
