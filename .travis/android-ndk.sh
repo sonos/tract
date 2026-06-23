@@ -21,6 +21,9 @@ fi
 
 yes | $ANDROID_SDK/cmdline-tools/bin/sdkmanager --sdk_root=$ANDROID_SDK --licenses > /dev/null
 
+# No "tools" (the deprecated SDK Tools package): the android targets are
+# cross-built only (never run on an emulator), and "tools" drags in the
+# Android Emulator package, whose flaky download breaks CI with no upside.
 $ANDROID_SDK/cmdline-tools/bin/sdkmanager --sdk_root=$ANDROID_SDK \
-    "build-tools;30.0.0" "platform-tools" "platforms;android-31" "tools" "ndk-bundle" \
+    "build-tools;30.0.0" "platform-tools" "platforms;android-31" "ndk-bundle" \
     > /dev/null
