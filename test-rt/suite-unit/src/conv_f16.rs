@@ -68,9 +68,11 @@ impl Test for ConvProblemF16 {
         let input_f16 = self.0.data.mapv(f16::from_f32).into_tensor();
         let mut output = runtime.prepare(model)?.run(tvec![input_f16.into_tvalue()])?;
         let output = output.remove(0).into_tensor();
-        // Cast output back to f32 for comparison with f32 reference
-        let output_f32 = output.cast_to::<f32>()?.into_owned();
-        output_f32.close_enough(&reference, approx)
+        // Judge at f16 precision: the conv ran in f16, so compare against the reference
+        // rounded to f16 (this selects the F16 tolerance row). Casting the output up to
+        // f32 and comparing with f32 tolerances rejects legitimate ~1 f16-ULP differences.
+        let reference_f16 = reference.cast_to::<f16>()?.into_owned();
+        output.close_enough(&reference_f16, approx)
     }
 }
 
