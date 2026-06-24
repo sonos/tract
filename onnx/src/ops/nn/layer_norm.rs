@@ -33,6 +33,19 @@ pub struct LayerNorm {
     invstddev_output: Option<usize>,
 }
 
+impl LayerNorm {
+    pub fn new(axis: isize, epsilon: f32, datum_type: DatumType) -> Self {
+        LayerNorm {
+            axis,
+            epsilon,
+            datum_type,
+            have_bias: false,
+            mean_output: None,
+            invstddev_output: None,
+        }
+    }
+}
+
 impl Expansion for LayerNorm {
     fn name(&self) -> StaticName {
         "LayerNorm".into()
