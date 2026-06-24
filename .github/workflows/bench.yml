@@ -97,6 +97,9 @@ jobs:
           - target: jetson-orin-nx
             runner: orin-nx-16g
             triple: aarch64-unknown-linux-gnu-stretch
+            # GPU-only box: its arm64 CPU is redundant with apple-m1-max for the net
+            # suite, so skip CPU runs and bench only the Orin GPU (cuda).
+            bench_args: --skip-cpu
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
@@ -122,11 +125,13 @@ jobs:
           chmod +x tract-cli/tract
           # no --cache-dir: honor each runner's CACHEDIR env (its curated model cache),
           # falling back to ~/.cache/tract-ci-minion-models, like the old bundle did.
+          # ${{ matrix.bench_args }} is empty except on jetson (--skip-cpu).
           tract-cli/tract bench-suite \
             --manifest .travis/benches.toml \
             --bench-data bench-ref \
             --thresholds .travis/bench-thresholds.toml \
-            --triple "$TRIPLE" --device "$DEVICE"        # produces ./metrics
+            --triple "$TRIPLE" --device "$DEVICE" \
+            ${{ matrix.bench_args }}        # produces ./metrics
 
       # --- nightly / dispatch: append the row to bench-data ---
       - name: Checkout bench-data

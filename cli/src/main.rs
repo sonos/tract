@@ -263,6 +263,7 @@ fn main() -> TractResult<()> {
                 .arg(arg!(--output [PATH] "Metrics output file (default: metrics)"))
                 .arg(arg!(--filter [SUBSTR] "Only run benches whose name contains SUBSTR"))
                 .arg(arg!(--"no-fetch" "Do not fetch models; use the cache as-is"))
+                .arg(arg!(--"skip-cpu" "Skip CPU runs: drop backend-less (net) benches and the cpu backend of the rest. For GPU-only devices whose CPU is redundant with another arm64/x86 box."))
                 .arg(arg!(--expectations [PATH] "Pre-computed expectations file; re-run benches that would show a PR red"))
                 .arg(arg!(--"retry-max" [N] "Max re-runs of an out-of-threshold bench (default: 2)"))
                 .arg(arg!(--"bench-data" [DIR] "Compute expectations inline from this bench-data checkout (alternative to --expectations)"))
