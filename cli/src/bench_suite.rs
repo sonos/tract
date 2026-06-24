@@ -155,6 +155,7 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
 
     let output = matches.get_one::<String>("output").map(String::as_str).unwrap_or("metrics");
     let no_fetch = matches.get_flag("no-fetch");
+    let skip_cpu = matches.get_flag("skip-cpu");
     let filter = matches.get_one::<String>("filter").map(String::as_str);
 
     let expectations = expectations(matches)?;
@@ -174,16 +175,22 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
         }
 
         let runs: Vec<(Option<Backend>, String)> = if bench.backends.is_empty() {
-            let variant = bench
-                .variant
-                .clone()
-                .with_context(|| format!("{}: no variant and no backends", bench.name))?;
-            vec![(None, variant)]
+            // Backend-less benches are a plain CPU run; --skip-cpu drops them entirely.
+            if skip_cpu {
+                vec![]
+            } else {
+                let variant = bench
+                    .variant
+                    .clone()
+                    .with_context(|| format!("{}: no variant and no backends", bench.name))?;
+                vec![(None, variant)]
+            }
         } else {
             bench
                 .backends
                 .iter()
                 .filter(|b| b.available())
+                .filter(|b| !(skip_cpu && matches!(**b, Backend::Cpu)))
                 .map(|b| (Some(*b), b.label().to_string()))
                 .collect()
         };
