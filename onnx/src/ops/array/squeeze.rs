@@ -30,6 +30,7 @@ impl Expansion for Squeeze13 {
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
         check_output_arity(outputs, 1)?;
+        check_input_arity(inputs, 1)?;
         s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
         if inputs.len() == 2 {
             s.given_2(&inputs[0].shape, &inputs[1].value, move |s, shape, axes| {
