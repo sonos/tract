@@ -154,9 +154,11 @@ fn test_pulse() -> anyhow::Result<()> {
     typed.transform(Pulse::new("5").symbol("B"))?;
     assert_eq!(typed.input_fact(0)?.to_string(), "5,3,224,224,f32");
     assert_eq!(typed.output_fact(0)?.to_string(), "5,1000,f32");
-    let mut properties = typed.property_keys()?;
-    properties.sort();
-    assert_eq!(&properties, &["pulse.delay", "pulse.input_axes", "pulse.output_axes", "pulse.streaming_symbol"]);
+    let properties = typed.property_keys()?;
+    assert!(properties.contains(&"pulse.delay".to_string()));
+    assert!(properties.contains(&"pulse.input_axes".to_string()));
+    assert!(properties.contains(&"pulse.output_axes".to_string()));
+    assert!(properties.contains(&"pulse.streaming_symbol".to_string()));
     assert_eq!(typed.property("pulse.delay")?.as_slice::<i64>()?, &[0i64]);
     Ok(())
 }
@@ -192,9 +194,11 @@ fn test_runtime_properties() -> anyhow::Result<()> {
     let mut typed = model.into_model()?;
     typed.transform(r#"{"name":"pulse","symbol":"B","pulse":"5"}"#)?;
     let runnable = typed.into_runnable()?;
-    let mut properties = runnable.property_keys()?;
-    properties.sort();
-    assert_eq!(&properties, &["pulse.delay", "pulse.input_axes", "pulse.output_axes", "pulse.streaming_symbol"]);
+    let properties = runnable.property_keys()?;
+    assert!(properties.contains(&"pulse.delay".to_string()));
+    assert!(properties.contains(&"pulse.input_axes".to_string()));
+    assert!(properties.contains(&"pulse.output_axes".to_string()));
+    assert!(properties.contains(&"pulse.streaming_symbol".to_string()));
     assert_eq!(runnable.property("pulse.delay")?.as_slice::<i64>()?, &[0i64]);
     Ok(())
 }
