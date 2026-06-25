@@ -34,6 +34,7 @@ impl Expansion for Concat {
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
         check_output_arity(outputs, 1)?;
+        check_input_arity(inputs, 1)?;
         s.equals(&outputs[0].rank, &inputs[0].rank)?;
         let n = inputs.len();
         s.equals_all((0..n).map(|i| (&inputs[i].rank).bex()).collect())?;
