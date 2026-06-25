@@ -116,6 +116,17 @@ pub trait OpState: fmt::Debug + dyn_clone::DynClone + OpStateFreeze + Downcast {
         None
     }
 
+    /// Allocation-free predicate mirroring whether [`OpState::init_tensor_fact`]
+    /// returns `Some`. The per-run symbol-resolution path queries this once for
+    /// every stateful op on every `run`, so it must not call `init_tensor_fact`
+    /// (which clones a `String` and a `TypedFact`) merely to test for presence.
+    /// Any impl that overrides `init_tensor_fact` to return `Some` must override
+    /// this to return `true` (and delegate it wherever `init_tensor_fact` is
+    /// delegated), or its `resolve_symbols` will not run.
+    fn has_init_tensor_fact(&self) -> bool {
+        false
+    }
+
     fn resolve_symbols(&mut self, _: &mut TurnState) -> TractResult<()> {
         Ok(())
     }
