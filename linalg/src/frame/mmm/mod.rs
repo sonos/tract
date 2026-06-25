@@ -305,10 +305,13 @@ fn l2_block_budget_bytes() -> usize {
     tier_budget_bytes(crate::cache::cache_info().l2, 1, 3, 256 * 1024)
 }
 
-/// Outer tier: ~half of L3, but only when an L3 is detected and is meaningfully
-/// larger than L2 (otherwise an outer tier just duplicates the inner one).
-/// `None` ⇒ no outer tier; the walk stays single-level (identical to before).
-fn l3_block_budget_bytes() -> Option<usize> {
+/// Outer tier: `(llc_bytes, budget_bytes)` — the raw last-level-cache size and the
+/// fraction of it a single thread may budget for the outer super-block — but only
+/// when an L3/LLC larger than L2 is detected (otherwise an outer tier just
+/// duplicates the inner one). `None` ⇒ no outer tier; the walk stays single-level
+/// (identical to before). The raw size is returned alongside the budget so the
+/// caller can check whether the working set even spills the cache before blocking.
+fn l3_block_budget_bytes() -> Option<(usize, usize)> {
     use crate::cache::LlcKind;
     let (bytes, kind) = crate::cache::last_level_cache()?;
     // Dedicated cluster L3: ~half. A shared System-Level Cache is contended by the
@@ -318,7 +321,7 @@ fn l3_block_budget_bytes() -> Option<usize> {
         LlcKind::Dedicated => (1, 2),
         LlcKind::SystemLevel => (1, 4),
     };
-    Some(tier_budget_bytes(bytes, num, den, 0))
+    Some((bytes, tier_budget_bytes(bytes, num, den, 0)))
 }
 
 /// Cache-adaptive panel-block edge for a given byte budget: large enough to
@@ -349,15 +352,50 @@ fn st_block_edge(mr: usize, nr: usize, k: usize, elem_bytes: usize) -> usize {
     block_edge_for(l2_block_budget_bytes(), mr, nr, k, elem_bytes, ST_BLK_MAX)
 }
 
+/// Whether an L3 outer super-block can capture reuse the inner (L2) tier cannot.
+/// It only can when the packed working set (`A + B ≈ (m·mr + n·nr)·k·elem`)
+/// actually spills the last-level cache: if both operands already fit, they stay
+/// resident across the sweep regardless of traversal order, so the reorder buys
+/// no reuse and only disturbs the hardware prefetchers — a measured net loss on
+/// small models that never leave L3 (voicecom_float on jetson-orin-nx, +15.6%).
+/// This is exactly the precondition the outer tier was introduced for ("a grid
+/// that exceeds L2 still re-fetches A/B from DRAM"); without the check the tier
+/// also engages on grids that never leave the LLC.
+fn outer_tier_pays(
+    m_panels: usize,
+    n_panels: usize,
+    mr: usize,
+    nr: usize,
+    k: usize,
+    elem_bytes: usize,
+    llc_bytes: usize,
+) -> bool {
+    let working_set = m_panels
+        .saturating_mul(mr)
+        .saturating_add(n_panels.saturating_mul(nr))
+        .saturating_mul(k)
+        .saturating_mul(elem_bytes);
+    llc_bytes > 0 && working_set > llc_bytes
+}
+
 /// Outer (L3) super-block edge, or `usize::MAX` (one block over the whole grid,
-/// i.e. no outer tier) when no usable L3 is detected. Never smaller than the
-/// inner edge `inner`.
+/// i.e. no outer tier) when no usable L3 is detected or the working set already
+/// fits it (see [`outer_tier_pays`]). Never smaller than the inner edge `inner`.
 #[inline]
-fn st_outer_block_edge(mr: usize, nr: usize, k: usize, elem_bytes: usize, inner: usize) -> usize {
-    match l3_block_budget_bytes() {
-        Some(budget) => block_edge_for(budget, mr, nr, k, elem_bytes, ST_BLK_L3_MAX).max(inner),
-        None => usize::MAX,
+fn st_outer_block_edge(
+    mr: usize,
+    nr: usize,
+    k: usize,
+    elem_bytes: usize,
+    inner: usize,
+    m_panels: usize,
+    n_panels: usize,
+) -> usize {
+    let Some((llc, budget)) = l3_block_budget_bytes() else { return usize::MAX };
+    if !outer_tier_pays(m_panels, n_panels, mr, nr, k, elem_bytes, llc) {
+        return usize::MAX;
     }
+    block_edge_for(budget, mr, nr, k, elem_bytes, ST_BLK_L3_MAX).max(inner)
 }
 
 /// Visit every `(ia, ib)` tile of the `m_panels × n_panels` grid exactly once,
@@ -433,7 +471,7 @@ unsafe fn run_single_thread_blocked<K: MatMatMulKer>(
     unsafe {
         let elem = K::Acc::datum_type().size_of();
         let blk = st_block_edge(ker.mr(), ker.nr(), k, elem);
-        let blk_outer = st_outer_block_edge(ker.mr(), ker.nr(), k, elem, blk);
+        let blk_outer = st_outer_block_edge(ker.mr(), ker.nr(), k, elem, blk, m_panels, n_panels);
         scratch.run_in_tls_scope(|scratch, tls| {
             for_each_blocked_tile(m_panels, n_panels, blk, blk_outer, col_outer, |ia, ib| {
                 scratch.run_one_tile(ker, non_linear, tls, ia, ib)
@@ -723,5 +761,23 @@ mod blocked_walk_tests {
                 }
             }
         }
+    }
+
+    /// The outer tier engages only when the packed working set spills the LLC.
+    /// A grid that already fits stays single-level (the reorder buys no reuse and
+    /// only hurts prefetch — the voicecom_float/Orin regression).
+    #[test]
+    fn outer_tier_gated_on_working_set_spilling_llc() {
+        let llc = 2 * 1024 * 1024; // 2 MiB, f32 (elem = 4)
+        // Small grid: (64·8 + 8·8)·64·4 ≈ 144 KiB ⇒ fits ⇒ no outer tier.
+        assert!(!outer_tier_pays(64, 8, 8, 8, 64, 4, llc));
+        // Large grid: (256·8 + 256·8)·256·4 ≈ 4 MiB ⇒ spills ⇒ engage.
+        assert!(outer_tier_pays(256, 256, 8, 8, 256, 4, llc));
+        // A boundary working set equal to the LLC does not spill it.
+        assert!(!outer_tier_pays(1, 0, llc, 0, 1, 1, llc));
+        // Unknown LLC (0) never engages, whatever the grid.
+        assert!(!outer_tier_pays(4096, 4096, 8, 8, 4096, 4, 0));
+        // k = 0 (empty reduction) has no working set ⇒ never engages.
+        assert!(!outer_tier_pays(4096, 4096, 8, 8, 0, 4, llc));
     }
 }
