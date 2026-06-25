@@ -52,6 +52,135 @@ pub fn cache_info() -> CacheInfo {
     *CACHE.get_or_init(detect)
 }
 
+/// Where the last-level cache used for the outer GEMM blocking tier comes from,
+/// which implies how aggressively a single thread may budget it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LlcKind {
+    /// Architectural cluster L3 (or an operator-provided size) — effectively
+    /// private to the CPU, so a single thread can assume most of it.
+    Dedicated,
+    /// System-Level Cache: an interconnect cache shared with the GPU/NPU/display
+    /// (e.g. Qualcomm LLCC, Apple SLC). Contended — budget it conservatively.
+    SystemLevel,
+}
+
+/// Size (bytes) and kind of the last-level cache to size the outer GEMM blocking
+/// tier against, or `None` when nothing usefully larger than L2 is known.
+///
+/// Resolution order (first hit wins):
+///  1. `TRACT_LLC_BYTES` env override (e.g. `"8M"`, `"33554432"`) — for embedders
+///     who know their SoC's LLC/SLC when the OS doesn't expose it. Marked
+///     [`LlcKind::SystemLevel`] iff `TRACT_LLC_CONTENDED` is set, else `Dedicated`.
+///  2. architecturally-detected L3 ([`CacheInfo::l3`]) when it exceeds L2 — `Dedicated`.
+///  3. a System-Level Cache discovered via the Linux devicetree (`cache-level == 3`
+///     with a `cache-size`, outside `/cpus`) — `SystemLevel`.
+///
+/// The per-CPU `cpu/cache/index*` topology the L3 probe reads does **not** list an
+/// SLC (it's a separate interconnect IP), which is why an SLC needs a distinct
+/// source. Prior art — runtime cache sizing: Eigen `queryCacheSizes` (CPUID/sysctl),
+/// glibc `sysconf(_SC_LEVELx_CACHE_SIZE)`, ACPI PPTT, hwloc. SLC exposure: Qualcomm
+/// LLCC (`drivers/soc/qcom/llcc-qcom.c`, devicetree `qcom,llcc`) and the generic
+/// devicetree cache bindings.
+pub fn last_level_cache() -> Option<(usize, LlcKind)> {
+    // Memoised for the process lifetime: this sits on the per-matmul block-sizing
+    // path, and the inputs (env overrides + the devicetree SLC probe) are static.
+    // Recomputing per call cost an env lock + a full recursive devicetree walk on
+    // every GEMM — catastrophic on Arm SoCs with a large devicetree (orders of
+    // magnitude slowdown), negligible elsewhere. Detect once, like `cache_info`.
+    static LLC: OnceLock<Option<(usize, LlcKind)>> = OnceLock::new();
+    *LLC.get_or_init(|| {
+        let ci = cache_info();
+        let override_bytes = env_llc_override();
+        // Lazy: the devicetree walk only runs when neither an env override nor an
+        // architectural L3 (> L2) would already win below, so a normal-L3 part
+        // never pays for the recursive filesystem probe.
+        let slc =
+            if override_bytes.is_some() || ci.l3 > ci.l2 { 0 } else { system_level_cache_bytes() };
+        resolve_llc(
+            override_bytes,
+            std::env::var_os("TRACT_LLC_CONTENDED").is_some(),
+            ci.l2,
+            ci.l3,
+            slc,
+        )
+    })
+}
+
+/// Pure resolution of [`last_level_cache`] (factored out so it is testable without
+/// touching process-global env / hardware).
+fn resolve_llc(
+    override_bytes: Option<usize>,
+    override_contended: bool,
+    l2: usize,
+    l3: usize,
+    slc: usize,
+) -> Option<(usize, LlcKind)> {
+    if let Some(b) = override_bytes.filter(|b| *b > 0) {
+        let kind = if override_contended { LlcKind::SystemLevel } else { LlcKind::Dedicated };
+        return Some((b, kind));
+    }
+    if l3 > l2 {
+        return Some((l3, LlcKind::Dedicated));
+    }
+    if slc > l2 && slc > 0 {
+        return Some((slc, LlcKind::SystemLevel));
+    }
+    None
+}
+
+fn env_llc_override() -> Option<usize> {
+    let b = parse_cache_size(&std::env::var("TRACT_LLC_BYTES").ok()?);
+    (b > 0).then_some(b)
+}
+
+/// Best-effort System-Level Cache size (bytes) from the Linux devicetree: the
+/// largest node carrying `cache-level == 3` *and* a `cache-size`, outside the
+/// `/cpus` subtree (so it is an interconnect cache, not a CPU cache the L3 probe
+/// already saw). Returns `0` when unavailable — e.g. SLCs whose size is fixed in
+/// the controller (Qualcomm LLCC) carry no `cache-size` here, so those still rely
+/// on the `TRACT_LLC_BYTES` override.
+#[cfg(any(target_os = "linux", target_os = "android"))]
+fn system_level_cache_bytes() -> usize {
+    use std::path::Path;
+    fn be_u32(p: &Path) -> Option<u32> {
+        let b = std::fs::read(p).ok()?;
+        (b.len() >= 4).then(|| u32::from_be_bytes([b[0], b[1], b[2], b[3]]))
+    }
+    fn walk(dir: &Path, depth: usize, best: &mut usize) {
+        if depth == 0 {
+            return;
+        }
+        if be_u32(&dir.join("cache-level")) == Some(3) {
+            let sz = be_u32(&dir.join("cache-size")).unwrap_or(0) as usize;
+            *best = (*best).max(sz);
+        }
+        let Ok(rd) = std::fs::read_dir(dir) else { return };
+        for e in rd.flatten() {
+            let p = e.path();
+            // CPU caches are handled by the architectural L3 probe; skip them.
+            if p.is_dir() && p.file_name().and_then(|n| n.to_str()) != Some("cpus") {
+                walk(&p, depth - 1, best);
+            }
+        }
+    }
+    let mut best = 0;
+    for root in ["/proc/device-tree", "/sys/firmware/devicetree/base"] {
+        let p = Path::new(root);
+        if p.exists() {
+            walk(p, 4, &mut best);
+            if best > 0 {
+                break;
+            }
+        }
+    }
+    best
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "android")))]
+fn system_level_cache_bytes() -> usize {
+    0
+}
+
 /// Parse a Linux `/sys` cache `size` string (e.g. `"256K"`, `"8M"`, `"512"`).
 #[cfg_attr(not(any(target_os = "linux", target_os = "android")), allow(dead_code))]
 fn parse_cache_size(s: &str) -> usize {
@@ -189,6 +318,44 @@ fn detect() -> CacheInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn llc_resolution_priority() {
+        // override wins over everything; contended flag selects the kind.
+        assert_eq!(
+            resolve_llc(Some(8 << 20), false, 1 << 20, 4 << 20, 0),
+            Some((8 << 20, LlcKind::Dedicated))
+        );
+        assert_eq!(
+            resolve_llc(Some(8 << 20), true, 1 << 20, 0, 0),
+            Some((8 << 20, LlcKind::SystemLevel))
+        );
+        // no override: architectural L3 (> L2) is Dedicated.
+        assert_eq!(
+            resolve_llc(None, false, 1 << 20, 4 << 20, 0),
+            Some((4 << 20, LlcKind::Dedicated))
+        );
+        // no L3, but an SLC > L2 is reported: SystemLevel (contended).
+        assert_eq!(
+            resolve_llc(None, false, 512 << 10, 0, 4 << 20),
+            Some((4 << 20, LlcKind::SystemLevel))
+        );
+        // nothing larger than L2 known ⇒ no outer tier (regression-safe).
+        assert_eq!(resolve_llc(None, false, 1 << 20, 0, 0), None);
+        assert_eq!(resolve_llc(None, false, 1 << 20, 1 << 20, 512 << 10), None);
+        // a zero/garbage override is ignored, falling through to detection.
+        assert_eq!(
+            resolve_llc(Some(0), false, 1 << 20, 4 << 20, 0),
+            Some((4 << 20, LlcKind::Dedicated))
+        );
+    }
+
+    #[test]
+    fn slc_probe_never_panics() {
+        // On the test host this is typically 0 (no devicetree SLC); just exercise it.
+        let _ = system_level_cache_bytes();
+        let _ = last_level_cache();
+    }
 
     #[test]
     fn parse_cache_size_units() {

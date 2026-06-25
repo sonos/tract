@@ -279,41 +279,147 @@ unsafe fn run_with_scratch_space_vec<K: MatMatMulKer>(
     }
 }
 
-/// Upper bound on the single-thread panel-block edge (matches the multithread
-/// `chunk_grid` default).
+/// Upper bound on the inner (L2-resident) panel-block edge (matches the
+/// multithread `chunk_grid` default).
 const ST_BLK_MAX: usize = 16;
 
-/// Working-set budget (bytes) for the single-thread cache-block: ~a third of L2
-/// (leaving room for the C accumulator tile + packing metadata). Conservative
-/// 256 KiB fallback when L2 is unknown (WASM/Windows/BSD) ⇒ small blocks ≈ the
-/// naive loop, so it can never over-block a cache it can't see. L2 geometry
-/// comes from the shared [`crate::cache`] probe.
-fn block_budget_bytes() -> usize {
-    let l2 = crate::cache::cache_info().l2;
-    if l2 == 0 { 256 * 1024 } else { (l2 / 3).clamp(64 * 1024, 8 * 1024 * 1024) }
+/// Upper bound on the outer (L3-resident) super-block edge. 4× the inner cap so
+/// an L3 several times larger than L2 can hold a meaningfully bigger super-block.
+const ST_BLK_L3_MAX: usize = 64;
+
+/// Panel-block working-set budget (bytes) from a detected cache size: a fraction
+/// `num/den` of the cache (leaving room for the C accumulator tile + packing
+/// metadata), clamped to a sane range. `0` (cache unknown) ⇒ `fallback`, which
+/// is kept small so the block ≈ the naive loop and can never over-block a cache
+/// it can't see. Sizes come from the shared [`crate::cache`] probe.
+fn tier_budget_bytes(cache_bytes: usize, num: usize, den: usize, fallback: usize) -> usize {
+    if cache_bytes == 0 {
+        fallback
+    } else {
+        (cache_bytes * num / den).clamp(64 * 1024, 64 * 1024 * 1024)
+    }
 }
 
-/// Cache-adaptive panel-block edge: large enough to amortise streaming, small
-/// enough that the block's A+B sub-panels (`~blk·(mr+nr)·k·elem_bytes`) stay
-/// L2-resident at the given `k`. Capped at [`ST_BLK_MAX`]; the floor of 1
-/// degrades exactly to the naive loop, so an unknown/small cache can never
-/// over-block (regression-safe). The budget is **cache-size derived** (not a
+/// Inner tier: ~a third of L2 (private per perf-core), 256 KiB fallback.
+fn l2_block_budget_bytes() -> usize {
+    tier_budget_bytes(crate::cache::cache_info().l2, 1, 3, 256 * 1024)
+}
+
+/// Outer tier: ~half of L3, but only when an L3 is detected and is meaningfully
+/// larger than L2 (otherwise an outer tier just duplicates the inner one).
+/// `None` ⇒ no outer tier; the walk stays single-level (identical to before).
+fn l3_block_budget_bytes() -> Option<usize> {
+    use crate::cache::LlcKind;
+    let (bytes, kind) = crate::cache::last_level_cache()?;
+    // Dedicated cluster L3: ~half. A shared System-Level Cache is contended by the
+    // GPU/NPU/display, so we can't assume residency of lines they keep evicting —
+    // budget it to ~a quarter.
+    let (num, den) = match kind {
+        LlcKind::Dedicated => (1, 2),
+        LlcKind::SystemLevel => (1, 4),
+    };
+    Some(tier_budget_bytes(bytes, num, den, 0))
+}
+
+/// Cache-adaptive panel-block edge for a given byte budget: large enough to
+/// amortise streaming, small enough that the block's A+B sub-panels
+/// (`~blk·(mr+nr)·k·elem_bytes`) stay cache-resident at the given `k`. Capped at
+/// `cap`; the floor of 1 degrades exactly to the naive loop, so an unknown/small
+/// cache can never over-block (regression-safe).
+#[inline]
+fn block_edge_for(
+    budget: usize,
+    mr: usize,
+    nr: usize,
+    k: usize,
+    elem_bytes: usize,
+    cap: usize,
+) -> usize {
+    if k == 0 {
+        return cap;
+    }
+    let per_blk = ((mr + nr) * k * elem_bytes.max(1)).max(1);
+    (budget / per_blk).clamp(1, cap)
+}
+
+/// Inner (L2) panel-block edge. Budget is **cache-size derived** (not a
 /// hard-coded constant), so it is correct across hardware.
 #[inline]
 fn st_block_edge(mr: usize, nr: usize, k: usize, elem_bytes: usize) -> usize {
-    if k == 0 {
-        return ST_BLK_MAX;
+    block_edge_for(l2_block_budget_bytes(), mr, nr, k, elem_bytes, ST_BLK_MAX)
+}
+
+/// Outer (L3) super-block edge, or `usize::MAX` (one block over the whole grid,
+/// i.e. no outer tier) when no usable L3 is detected. Never smaller than the
+/// inner edge `inner`.
+#[inline]
+fn st_outer_block_edge(mr: usize, nr: usize, k: usize, elem_bytes: usize, inner: usize) -> usize {
+    match l3_block_budget_bytes() {
+        Some(budget) => block_edge_for(budget, mr, nr, k, elem_bytes, ST_BLK_L3_MAX).max(inner),
+        None => usize::MAX,
     }
-    let per_blk = ((mr + nr) * k * elem_bytes.max(1)).max(1);
-    (block_budget_bytes() / per_blk).clamp(1, ST_BLK_MAX)
+}
+
+/// Visit every `(ia, ib)` tile of the `m_panels × n_panels` grid exactly once,
+/// blocked two levels deep: an outer `blk_outer` super-block (L3-resident) holds
+/// inner `blk` blocks (L2-resident). `col_outer` selects the within-block inner
+/// order (B-reuse vs A-reuse). When `blk_outer >= max(m,n)` the outer loop runs
+/// once and this is exactly the single-level inner walk. Pure tile reordering ⇒
+/// no result changes; extracted so the nesting can be unit-tested independently
+/// of the kernel.
+#[inline]
+fn for_each_blocked_tile(
+    m_panels: usize,
+    n_panels: usize,
+    blk: usize,
+    blk_outer: usize,
+    col_outer: bool,
+    mut f: impl FnMut(usize, usize) -> TractResult<()>,
+) -> TractResult<()> {
+    let blk = blk.max(1);
+    let blk_outer = blk_outer.max(blk);
+    let mut jb3 = 0;
+    while jb3 < n_panels {
+        let jb3_end = jb3.saturating_add(blk_outer).min(n_panels);
+        let mut ja3 = 0;
+        while ja3 < m_panels {
+            let ja3_end = ja3.saturating_add(blk_outer).min(m_panels);
+            let mut jb = jb3;
+            while jb < jb3_end {
+                let jb_end = (jb + blk).min(jb3_end);
+                let mut ja = ja3;
+                while ja < ja3_end {
+                    let ja_end = (ja + blk).min(ja3_end);
+                    if col_outer {
+                        for ib in jb..jb_end {
+                            for ia in ja..ja_end {
+                                f(ia, ib)?;
+                            }
+                        }
+                    } else {
+                        for ia in ja..ja_end {
+                            for ib in jb..jb_end {
+                                f(ia, ib)?;
+                            }
+                        }
+                    }
+                    ja = ja_end;
+                }
+                jb = jb_end;
+            }
+            ja3 = ja3_end;
+        }
+        jb3 = jb3_end;
+    }
+    Ok(())
 }
 
 /// Single-thread tile walk over the `m_panels × n_panels` grid, blocked into
 /// cache-sized panel blocks for locality (the naive nested loop re-streams the
 /// whole inner operand per outer panel at large k; the multithread path already
-/// blocks this way via `chunk_grid`). `col_outer` selects the within-block inner
-/// order (B-reuse vs A-reuse). Reordering independent tiles changes no result —
-/// bit-exact with the naive loop.
+/// blocks this way via `chunk_grid`). Two tiers: an inner L2-resident block and,
+/// where an L3 is detected, an outer L3-resident super-block. Reordering
+/// independent tiles changes no result — bit-exact with the naive loop.
 #[inline]
 unsafe fn run_single_thread_blocked<K: MatMatMulKer>(
     ker: &K,
@@ -325,32 +431,13 @@ unsafe fn run_single_thread_blocked<K: MatMatMulKer>(
     non_linear: &[FusedSpec],
 ) -> TractResult<()> {
     unsafe {
-        let blk = st_block_edge(ker.mr(), ker.nr(), k, K::Acc::datum_type().size_of());
+        let elem = K::Acc::datum_type().size_of();
+        let blk = st_block_edge(ker.mr(), ker.nr(), k, elem);
+        let blk_outer = st_outer_block_edge(ker.mr(), ker.nr(), k, elem, blk);
         scratch.run_in_tls_scope(|scratch, tls| {
-            let mut jb = 0;
-            while jb < n_panels {
-                let jb_end = (jb + blk).min(n_panels);
-                let mut ja = 0;
-                while ja < m_panels {
-                    let ja_end = (ja + blk).min(m_panels);
-                    if col_outer {
-                        for ib in jb..jb_end {
-                            for ia in ja..ja_end {
-                                scratch.run_one_tile(ker, non_linear, tls, ia, ib)?;
-                            }
-                        }
-                    } else {
-                        for ia in ja..ja_end {
-                            for ib in jb..jb_end {
-                                scratch.run_one_tile(ker, non_linear, tls, ia, ib)?;
-                            }
-                        }
-                    }
-                    ja = ja_end;
-                }
-                jb = jb_end;
-            }
-            TractResult::Ok(())
+            for_each_blocked_tile(m_panels, n_panels, blk, blk_outer, col_outer, |ia, ib| {
+                scratch.run_one_tile(ker, non_linear, tls, ia, ib)
+            })
         })
     }
 }
@@ -547,4 +634,94 @@ where
         })
     };
     if use_global { body() } else { pool.unwrap().install(body) }
+}
+
+#[cfg(test)]
+mod blocked_walk_tests {
+    use super::*;
+    use std::collections::HashSet;
+
+    fn collect(
+        m: usize,
+        n: usize,
+        blk: usize,
+        blk_outer: usize,
+        col_outer: bool,
+    ) -> Vec<(usize, usize)> {
+        let mut v = Vec::new();
+        for_each_blocked_tile(m, n, blk, blk_outer, col_outer, |ia, ib| {
+            v.push((ia, ib));
+            Ok(())
+        })
+        .unwrap();
+        v
+    }
+
+    /// Every grid tile is visited exactly once, for both inner orders and a
+    /// range of (blk, blk_outer) — single-tier (outer = MAX), two-tier, and
+    /// degenerate edges. Coverage being a permutation is what makes the walk
+    /// bit-exact with the naive loop.
+    #[test]
+    fn covers_every_tile_once() {
+        for &(m, n) in &[(1, 1), (3, 5), (16, 16), (40, 7), (7, 40), (80, 80)] {
+            for &blk in &[1, 3, 16] {
+                for &blk_outer in &[blk, blk + 1, 64, usize::MAX] {
+                    for &col_outer in &[false, true] {
+                        let tiles = collect(m, n, blk, blk_outer, col_outer);
+                        assert_eq!(tiles.len(), m * n, "m={m} n={n} blk={blk} outer={blk_outer}");
+                        let set: HashSet<_> = tiles.iter().copied().collect();
+                        assert_eq!(
+                            set.len(),
+                            m * n,
+                            "duplicate tiles m={m} n={n} blk={blk} outer={blk_outer}"
+                        );
+                        for ia in 0..m {
+                            for ib in 0..n {
+                                assert!(set.contains(&(ia, ib)), "missing ({ia},{ib})");
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// With no outer tier (blk_outer = MAX) the two-tier walk must emit the exact
+    /// same order as the original single-level blocked loop — guarantees the L3
+    /// path is a pure no-op on hardware without a detectable L3.
+    #[test]
+    fn outer_max_matches_single_level() {
+        for &(m, n) in &[(40, 7), (80, 80), (13, 29)] {
+            for &blk in &[1, 4, 16] {
+                for &col_outer in &[false, true] {
+                    let two_tier = collect(m, n, blk, usize::MAX, col_outer);
+                    let mut single = Vec::new();
+                    let mut jb = 0;
+                    while jb < n {
+                        let jb_end = (jb + blk).min(n);
+                        let mut ja = 0;
+                        while ja < m {
+                            let ja_end = (ja + blk).min(m);
+                            if col_outer {
+                                for ib in jb..jb_end {
+                                    for ia in ja..ja_end {
+                                        single.push((ia, ib));
+                                    }
+                                }
+                            } else {
+                                for ia in ja..ja_end {
+                                    for ib in jb..jb_end {
+                                        single.push((ia, ib));
+                                    }
+                                }
+                            }
+                            ja = ja_end;
+                        }
+                        jb = jb_end;
+                    }
+                    assert_eq!(two_tier, single, "m={m} n={n} blk={blk} col_outer={col_outer}");
+                }
+            }
+        }
+    }
 }
