@@ -101,7 +101,6 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("MultiHeadAttention", multi_head_attention::multi_head_attention);
     reg.insert("RMSNormalization", rms_norm::rms_normalization);
     reg.insert("RotaryEmbedding", rotary_embedding::rotary_embedding);
-    reg.insert("SimplifiedLayerNormalization", rms_norm::rms_normalization);
     reg.insert("SimplifiedLayerNormalization", simplified_layer_norm::simplified_layer_norm);
     reg.insert(
         "SkipSimplifiedLayerNormalization",
