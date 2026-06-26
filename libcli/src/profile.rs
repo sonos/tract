@@ -327,24 +327,25 @@ pub fn rec_profiler(
     let r = state.run_plan_with_eval(
         inputs.clone(),
         |session_state, mut node_state, node, input| {
+            // Keep a copy of the inputs only when a nested submodel will need them
+            // for recursive profiling. Otherwise move them straight into eval: an
+            // extra clone here holds a second Arc ref to each input and forces
+            // in-place ops (reshape, by-scalar/unicast bias add, ...) down their
+            // copy-on-shared path, inflating their measured time versus production.
+            let saved_input = (!folded && node_state.is_some()).then(|| input.clone());
             // Profile node
             let start = crate::time::now();
-            let res = tract_core::plan::eval(
-                session_state,
-                node_state.as_deref_mut(),
-                node,
-                input.clone(),
-            );
+            let res = tract_core::plan::eval(session_state, node_state.as_deref_mut(), node, input);
             let elapsed = start.elapsed().mul_f32(multiplier.unwrap_or(1) as _);
             let node_id = NodeQId(prefix.into(), node.id);
             *dg.node_mut(node_id).profile.get_or_insert(Duration::default()) += elapsed;
 
-            if !folded {
+            if let Some(saved_input) = saved_input {
                 let start = crate::time::now();
                 profile_submodel(
                     node,
                     node_state,
-                    input,
+                    saved_input,
                     dg,
                     profilers,
                     prefix,
