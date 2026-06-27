@@ -133,7 +133,7 @@ def test_pulse():
     assert str(typed.output_fact(0)) == "5,1000,f32"
     properties = typed.property_keys()
     properties.sort()
-    assert properties == ["pulse.delay", "pulse.input_axes", "pulse.output_axes", "pulse.streaming_symbol"]
+    assert properties == ["onnx.ir_version", "pulse.delay", "pulse.input_axes", "pulse.output_axes", "pulse.streaming_symbol"]
     assert typed.property("pulse.delay").to_numpy() == [0]
 
 def test_pulse_builder():
@@ -168,7 +168,7 @@ def test_runtime_properties():
     runnable = typed.into_runnable()
     properties = runnable.property_keys()
     properties.sort()
-    assert properties == ["pulse.delay", "pulse.input_axes", "pulse.output_axes", "pulse.streaming_symbol"]
+    assert properties == ["onnx.ir_version", "pulse.delay", "pulse.input_axes", "pulse.output_axes", "pulse.streaming_symbol"]
     assert runnable.property("pulse.delay").to_numpy() == [0]
 
 def test_f32_to_f16():
