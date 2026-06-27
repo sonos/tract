@@ -275,6 +275,47 @@ inline float block_q_n_dot_y(device const block_q4_0 * qb_curr, float sumy, thre
 //      quantizations where the block size is 32. It also does not
 //      guard against the number of rows not being divisible by
 //      N_DST, so this is another explicit assumption of the implementation.
+// Accumulate the q4_0 GEMV partials for one activation type. Templated on the
+// activation type so each instantiation issues a direct typed load -- the f32
+// instantiation matches the original f32-only kernel byte for byte. The caller
+// selects the instantiation once via a uniform runtime branch, so this hot
+// inner loop carries no per-element dtype test.
+template<int nr, int nw, typename T_y>
+inline void mul_vec_q_n_accumulate(
+        thread device const block_q4_0 * const * ax,
+        device const T_y * yb,
+        int nb,
+        short ix,
+        short il,
+        thread float * sumf) {
+    float yl[16]; // src1 vector cache
+
+    // each thread in a SIMD group deals with half a block.
+    for (int ib = ix; ib < nb; ib += nw/2) {
+        float sumy[2] = { 0.f, 0.f };
+
+#pragma unroll
+        for (int i = 0; i < 8; i += 2) {
+            // Accumulate activations in f32 (yl is f32) so f16 activations match
+            // the f32 path's precision for the q4_0 zero-point (sumy) correction.
+            sumy[0]  += (float) yb[i +  0] + (float) yb[i +  1];
+            yl[i + 0] = (float) yb[i +  0];
+            yl[i + 1] = (float) yb[i +  1]/256.f;
+
+            sumy[1]  += (float) yb[i + 16] + (float) yb[i + 17];
+            yl[i + 8] = (float) yb[i + 16]/16.f;
+            yl[i + 9] = (float) yb[i + 17]/4096.f;
+        }
+
+#pragma unroll
+        for (int row = 0; row < nr; row++) {
+            sumf[row] += block_q_n_dot_y(ax[row] + ib, sumy[0] + sumy[1], yl, il);
+        }
+
+        yb += QK4_0 * 16;
+    }
+}
+
 template<typename block_q_type, int nr, int nsg, int nw, typename args_t>
 void mul_vec_q_n_f32_impl(
         args_t args,
@@ -309,44 +350,19 @@ void mul_vec_q_n_f32_impl(
         ax[row] = (device const block_q_type *) ((device char *) src0 + offset0);
     }
 
-    float yl[16]; // src1 vector cache
     float sumf[nr] = {0.f};
 
     const short ix = (tiisg/2);
     const short il = (tiisg%2)*8;
 
-    device const half  * ybh = (device const half  *) (src1 + offset1) + ix*QK4_0 + il;
-    device const float * ybf = (device const float *) (src1 + offset1) + ix*QK4_0 + il;
-
-    // each thread in a SIMD group deals with half a block.
-    for (int ib = ix; ib < nb; ib += nw/2) {
-        float sumy[2] = { 0.f, 0.f };
-
-#pragma unroll
-        for (int i = 0; i < 8; i += 2) {
-            // Accumulate activations in f32 (yl is f32) so f16 activations match
-            // the f32 path's precision for the q4_0 zero-point (sumy) correction.
-            const float y0  = out_f16 ? (float) ybh[i +  0] : ybf[i +  0];
-            const float y1  = out_f16 ? (float) ybh[i +  1] : ybf[i +  1];
-            const float y16 = out_f16 ? (float) ybh[i + 16] : ybf[i + 16];
-            const float y17 = out_f16 ? (float) ybh[i + 17] : ybf[i + 17];
-
-            sumy[0]  += y0 + y1;
-            yl[i + 0] = y0;
-            yl[i + 1] = y1/256.f;
-
-            sumy[1]  += y16 + y17;
-            yl[i + 8] = y16/16.f;
-            yl[i + 9] = y17/4096.f;
-        }
-
-#pragma unroll
-        for (int row = 0; row < nr; row++) {
-            sumf[row] += block_q_n_dot_y(ax[row] + ib, sumy[0] + sumy[1], yl, il);
-        }
-
-        ybh += QK4_0 * 16;
-        ybf += QK4_0 * 16;
+    // Branch once on the uniform activation dtype, then run a fully typed inner
+    // loop (no per-element dtype test on the hot path).
+    if (out_f16) {
+        device const half  * yb = (device const half  *) (src1 + offset1) + ix*QK4_0 + il;
+        mul_vec_q_n_accumulate<nr, nw>(ax, yb, nb, ix, il, sumf);
+    } else {
+        device const float * yb = (device const float *) (src1 + offset1) + ix*QK4_0 + il;
+        mul_vec_q_n_accumulate<nr, nw>(ax, yb, nb, ix, il, sumf);
     }
 
     device char * dst_o = dst
@@ -431,13 +447,16 @@ kernel void kernel_mul_mm(
         + args.nb01*(r0*BLOCK_SIZE_M + thread_row) + offset0) + offset1;
 
     const bool out_f16 = args.out_f16 != 0;
-    const uint y_elsz  = out_f16 ? sizeof(half) : sizeof(float);
 
-    device const char * y = src1
+    device const char * y_base = src1
         + args.nb13*i13
         + args.nb12*i12
         + args.nb11*(r1*BLOCK_SIZE_N + thread_col)
         + args.nb10*(BLOCK_SIZE_K / THREAD_PER_COL * (tiitg % THREAD_PER_COL));
+    // Typed activation pointers; only the matching one is advanced/read below,
+    // so the f32 path issues the same direct load as the f32-only kernel.
+    device const half  * yh = (device const half  *) y_base;
+    device const float * yf = (device const float *) y_base;
 
     for (int loop_k = 0; loop_k < args.ne00; loop_k += BLOCK_SIZE_K) {
         // load data and store to threadgroup memory
@@ -453,14 +472,17 @@ kernel void kernel_mul_mm(
             +                     (tiitg/THREAD_PER_ROW)%8  + (i&7)*8) = temp_a[i/4][i%4];
         }
 
-        // Activations are converted to f32 in shared memory for the simdgroup matmul.
-        const float2x4 yv = out_f16 ? float2x4(*((device matrix<half,  2, 4> *) y))
-                                    :          *((device matrix<float, 2, 4> *) y);
+        // Activations are converted to f32 in shared memory for the simdgroup
+        // matmul. The branch is uniform across the threadgroup.
+        float2x4 yv;
+        if (out_f16) yv = float2x4(*((device matrix<half,  2, 4> *) yh));
+        else         yv =         *((device matrix<float, 2, 4> *) yf);
         *(threadgroup float2x4 *)(sb + 32*8*(tiitg%THREAD_PER_COL) + 8*(tiitg/THREAD_PER_COL)) = yv;
 
         il = (il + 2 < nl) ? il + 2 : il % 2;
         x  = (il < 2) ? x + (2 + nl - 1)/nl : x;
-        y += BLOCK_SIZE_K * y_elsz;
+        yh += BLOCK_SIZE_K;
+        yf += BLOCK_SIZE_K;
 
         threadgroup_barrier(mem_flags::mem_threadgroup);
 
