@@ -27,7 +27,6 @@ typedef struct {
     int32_t  ne1;
     int16_t  r2;
     int16_t  r3;
-    int16_t  out_f16; // when set, src1 and dst are f16 rather than f32
 } ggml_metal_kargs_mul_mm;
 
 typedef struct {
@@ -401,7 +400,7 @@ kernel void kernel_mul_mv_q4_0(
 #define SG_MAT_ROW 8
 
 // each block_q contains 16*nl weights
-template<typename T, typename T4x4, typename simdgroup_T8x8, typename block_q, short nl, void (*dequantize_func)(device const block_q *, short, thread T4x4 &)>
+template<typename T, typename T4x4, typename simdgroup_T8x8, typename block_q, short nl, void (*dequantize_func)(device const block_q *, short, thread T4x4 &), typename T_y>
 kernel void kernel_mul_mm(
         constant ggml_metal_kargs_mul_mm & args,
         device const char * src0,
@@ -446,17 +445,11 @@ kernel void kernel_mul_mm(
     device const block_q * x = (device const block_q *)(src0
         + args.nb01*(r0*BLOCK_SIZE_M + thread_row) + offset0) + offset1;
 
-    const bool out_f16 = args.out_f16 != 0;
-
-    device const char * y_base = src1
+    device const T_y     * y = (device const T_y     *)(src1
         + args.nb13*i13
         + args.nb12*i12
         + args.nb11*(r1*BLOCK_SIZE_N + thread_col)
-        + args.nb10*(BLOCK_SIZE_K / THREAD_PER_COL * (tiitg % THREAD_PER_COL));
-    // Typed activation pointers; only the matching one is advanced/read below,
-    // so the f32 path issues the same direct load as the f32-only kernel.
-    device const half  * yh = (device const half  *) y_base;
-    device const float * yf = (device const float *) y_base;
+        + args.nb10*(BLOCK_SIZE_K / THREAD_PER_COL * (tiitg % THREAD_PER_COL)));
 
     for (int loop_k = 0; loop_k < args.ne00; loop_k += BLOCK_SIZE_K) {
         // load data and store to threadgroup memory
@@ -472,17 +465,13 @@ kernel void kernel_mul_mm(
             +                     (tiitg/THREAD_PER_ROW)%8  + (i&7)*8) = temp_a[i/4][i%4];
         }
 
-        // Activations are converted to f32 in shared memory for the simdgroup
-        // matmul. The branch is uniform across the threadgroup.
-        float2x4 yv;
-        if (out_f16) yv = float2x4(*((device matrix<half,  2, 4> *) yh));
-        else         yv =         *((device matrix<float, 2, 4> *) yf);
-        *(threadgroup float2x4 *)(sb + 32*8*(tiitg%THREAD_PER_COL) + 8*(tiitg/THREAD_PER_COL)) = yv;
+        // Activations are kept in f32 shared memory for the simdgroup matmul;
+        // convert on load so f16 activations need no separate upcast pass.
+        *(threadgroup float2x4 *)(sb + 32*8*(tiitg%THREAD_PER_COL) + 8*(tiitg/THREAD_PER_COL)) = float2x4(*((device matrix<T_y, 2, 4> *) y));
 
         il = (il + 2 < nl) ? il + 2 : il % 2;
         x  = (il < 2) ? x + (2 + nl - 1)/nl : x;
-        yh += BLOCK_SIZE_K;
-        yf += BLOCK_SIZE_K;
+        y += BLOCK_SIZE_K;
 
         threadgroup_barrier(mem_flags::mem_threadgroup);
 
@@ -515,9 +504,10 @@ kernel void kernel_mul_mm(
     }
 
     // `simdgroup_store` can only target a buffer of the accumulator's element
-    // type (float), so for f16 output we stage the tile in f32 threadgroup
-    // memory and convert on the device write.
-    if (out_f16) {
+    // type (float). For f16 output we route the tile through f32 threadgroup
+    // memory and convert on the device write, so the matmul output lands as f16
+    // directly (no f32->f16 cast pass after the matmul).
+    if (sizeof(T_y) != sizeof(float)) {
         threadgroup_barrier(mem_flags::mem_threadgroup);
         threadgroup float * temp_all = (threadgroup float *) shmem;
         threadgroup float * temp_str = temp_all + 32*(sgitg&1) + (16*(sgitg >> 1))*BLOCK_SIZE_M;
@@ -527,12 +517,12 @@ kernel void kernel_mul_mm(
         threadgroup_barrier(mem_flags::mem_threadgroup);
 
         // All threads cooperatively convert+write the n_rows x n_cols tile.
-        device half * D = (device half *) dst
+        device T_y * D = (device T_y *) dst
             + (r0*BLOCK_SIZE_M) + (r1*BLOCK_SIZE_N)*args.ne0 + im*args.ne1*args.ne0;
         for (int idx = tiitg; idx < n_rows * n_cols; idx += THREAD_PER_BLOCK) {
             const int col = idx / n_rows;
             const int row = idx % n_rows;
-            D[col*args.ne0 + row] = (half) temp_all[col*BLOCK_SIZE_M + row];
+            D[col*args.ne0 + row] = (T_y) temp_all[col*BLOCK_SIZE_M + row];
         }
     } else if ((r0 + 1) * BLOCK_SIZE_M <= args.ne0 && (r1 + 1) * BLOCK_SIZE_N <= args.ne1) {
         device float * C = (device float *) dst +
@@ -605,8 +595,10 @@ void dequantize_q4_0(device const block_q4_0 * xb, short il, thread type4x4 & re
     reg = (type4x4) reg_f;
 }
 
-typedef decltype(kernel_mul_mm<half, half4x4, simdgroup_half8x8, float4x4, 1, dequantize_f32>) mat_mm_t;
+typedef decltype(kernel_mul_mm<half, half4x4, simdgroup_half8x8, float4x4, 1, dequantize_f32, float>) mat_mm_t;
 
-template [[host_name("kernel_mul_mm_f32")]]     kernel mat_mm_t kernel_mul_mm<half,   half4x4,   simdgroup_half8x8,   float4x4,      1,     dequantize_f32>;
-template [[host_name("kernel_mul_mm_f16")]]     kernel mat_mm_t kernel_mul_mm<half,   half4x4,   simdgroup_half8x8,   half4x4,       1,     dequantize_f16>;
-template [[host_name("kernel_mul_mm_q4_0")]]    kernel mat_mm_t kernel_mul_mm<half,   half4x4,   simdgroup_half8x8,   block_q4_0,    2,     dequantize_q4_0>;
+template [[host_name("kernel_mul_mm_f32_f32")]]     kernel mat_mm_t kernel_mul_mm<half,   half4x4,   simdgroup_half8x8,   float4x4,      1,     dequantize_f32,  float>;
+template [[host_name("kernel_mul_mm_f16_f32")]]     kernel mat_mm_t kernel_mul_mm<half,   half4x4,   simdgroup_half8x8,   half4x4,       1,     dequantize_f16,  float>;
+template [[host_name("kernel_mul_mm_q4_0_f32")]]    kernel mat_mm_t kernel_mul_mm<half,   half4x4,   simdgroup_half8x8,   block_q4_0,    2,     dequantize_q4_0, float>;
+template [[host_name("kernel_mul_mm_f16_f16")]]     kernel mat_mm_t kernel_mul_mm<half,   half4x4,   simdgroup_half8x8,   half4x4,       1,     dequantize_f16,  half>;
+template [[host_name("kernel_mul_mm_q4_0_f16")]]    kernel mat_mm_t kernel_mul_mm<half,   half4x4,   simdgroup_half8x8,   block_q4_0,    2,     dequantize_q4_0, half>;

@@ -26,7 +26,6 @@ struct GgmlGemmParams {
     ne1: i32,
     r2: i16,
     r3: i16,
-    out_f16: i16,
 }
 
 impl From<GemmDispatchParams> for GgmlGemmParams {
@@ -57,7 +56,6 @@ impl From<GemmDispatchParams> for GgmlGemmParams {
             ne1: params.m as i32,
             r2: (params.a_batch / params.b_batch) as i16,
             r3: 1,
-            out_f16: (params.dts[0] == F16) as i16,
         }
     }
 }
@@ -298,11 +296,14 @@ fn dispatch_metal_ggml_gemm(
 
     ensure!((matches!(dts[1], F32 | F16) || q40_b) && matches!(dts[0], F32 | F16));
 
-    // Weight dtype selects the kernel; activation/output dtype is carried at
-    // runtime by GgmlGemmParams::out_f16.
+    // The GEMM is templated on both weight (i1) and activation/output (i2)
+    // dtype: a single fat runtime-branched kernel regressed prefill and PSO
+    // load on apple-m1-max (the dead f16-output path inflates the f32 kernel's
+    // footprint), so each combination gets its own specialized kernel.
     let i1_tname = if !q40_b { DeviceTensor::tname(dts[1])? } else { "q4_0" };
+    let i2_tname = DeviceTensor::tname(dts[0])?;
 
-    let name = format!("kernel_mul_mm_{i1_tname}");
+    let name = format!("kernel_mul_mm_{i1_tname}_{i2_tname}");
     //dbg!(&name);
     let pipeline = stream.load_pipeline(LibraryName::Ggml, &name)?;
 
