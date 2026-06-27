@@ -109,9 +109,12 @@ impl<'a> AttrScalarType<'a> for DatumType {
 
 impl<'a> AttrScalarType<'a> for &'a TensorProto {
     fn get_attr_opt_scalar(node: &'a NodeProto, name: &str) -> TractResult<Option<Self>> {
-        Ok(node
-            .get_attr_opt_with_type(name, AttributeType::Tensor)?
-            .map(|attr| attr.t.as_ref().unwrap()))
+        node.get_attr_opt_with_type(name, AttributeType::Tensor)?.and_try(|attr| {
+            match attr.t.as_ref() {
+                Some(t) => Ok(t),
+                None => node.bail_attr(name, "type is TENSOR but its tensor (t) field is absent"),
+            }
+        })
     }
 }
 
@@ -163,7 +166,10 @@ impl<'a> AttrScalarType<'a> for usize {
 
 impl<'a> AttrScalarType<'a> for &'a GraphProto {
     fn get_attr_opt_scalar(node: &'a NodeProto, name: &str) -> TractResult<Option<Self>> {
-        node.get_attr_opt_with_type(name, AttributeType::Graph)?.and_ok(|a| a.g.as_ref().unwrap())
+        node.get_attr_opt_with_type(name, AttributeType::Graph)?.and_try(|a| match a.g.as_ref() {
+            Some(g) => Ok(g),
+            None => node.bail_attr(name, "type is GRAPH but its graph (g) field is absent"),
+        })
     }
 }
 
@@ -393,5 +399,63 @@ impl NodeProto {
         T: AttrTVecType<'a>,
     {
         self.get_attr_tvec(name).map(TVec::into_vec)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn node_with_attr(attr: AttributeProto) -> NodeProto {
+        NodeProto {
+            name: "n".to_string(),
+            op_type: "Constant".to_string(),
+            attribute: vec![attr],
+            ..NodeProto::default()
+        }
+    }
+
+    // Regression for sonos/tract#2372: a Tensor-type attribute whose `t` field is
+    // absent used to abort the process via `.unwrap()` on the `None`. It must now
+    // produce a normal TractError naming the attribute.
+    #[test]
+    fn tensor_attr_with_absent_t_does_not_panic() {
+        let node = node_with_attr(AttributeProto {
+            name: "value".to_string(),
+            r#type: AttributeType::Tensor as i32,
+            t: None,
+            ..AttributeProto::default()
+        });
+        let err =
+            node.get_attr_opt::<&TensorProto>("value").expect_err("absent t must error, not panic");
+        let msg = err.to_string();
+        assert!(msg.contains("'value'") && msg.contains("absent"), "unexpected error: {msg}");
+    }
+
+    // Same defect class on the Graph-type attribute (`g` field).
+    #[test]
+    fn graph_attr_with_absent_g_does_not_panic() {
+        let node = node_with_attr(AttributeProto {
+            name: "body".to_string(),
+            r#type: AttributeType::Graph as i32,
+            g: None,
+            ..AttributeProto::default()
+        });
+        let err =
+            node.get_attr_opt::<&GraphProto>("body").expect_err("absent g must error, not panic");
+        let msg = err.to_string();
+        assert!(msg.contains("'body'") && msg.contains("absent"), "unexpected error: {msg}");
+    }
+
+    // A well-formed Tensor attribute still resolves to its tensor.
+    #[test]
+    fn tensor_attr_with_present_t_resolves() {
+        let node = node_with_attr(AttributeProto {
+            name: "value".to_string(),
+            r#type: AttributeType::Tensor as i32,
+            t: Some(TensorProto::default()),
+            ..AttributeProto::default()
+        });
+        assert!(node.get_attr_opt::<&TensorProto>("value").unwrap().is_some());
     }
 }
