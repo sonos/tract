@@ -152,8 +152,12 @@ impl GemmKernel for GgmlGemm {
                 && matches!(facts[0].datum_type, F16 | F32))
     }
 
-    fn output_dt(&self, _a_dt: DatumType, _b_dt: DatumType) -> TractResult<DatumType> {
-        Ok(F32)
+    fn output_dt(&self, a_dt: DatumType, _b_dt: DatumType) -> TractResult<DatumType> {
+        // Output follows the activation dtype (input[0]). The GGML kernels now
+        // write f16 directly when the activation is f16, so an f16 model no
+        // longer pays an activation upcast before, nor an output downcast after,
+        // each matmul.
+        Ok(a_dt)
     }
 
     fn dispatch_eval(
@@ -180,7 +184,15 @@ impl GemmKernel for GgmlGemm {
 
         ensure!(!transpose_a && transpose_b);
 
-        if (dts[0] == F32) && (k % 32 == 0) && (k >= 64) && ((m > 4) || (q40_b && a_batch > 1)) {
+        // The q4_0 matrix-vector kernel stays bandwidth-bound (one weight read)
+        // for several activation rows, so it beats the tiled GEMM until ~8 rows;
+        // the f16/f32 mat-vec kernels are tuned for 4.
+        let gemv_max_rows = if q40_b { 8 } else { 4 };
+        if matches!(dts[0], F32 | F16)
+            && (k % 32 == 0)
+            && (k >= 64)
+            && ((m > gemv_max_rows) || (q40_b && a_batch > 1))
+        {
             dispatch_metal_ggml_gemm(
                 stream, params, a_offset, a_buffer, b_offset, b_buffer, c_buffer, c_offset,
             )?;
@@ -198,8 +210,9 @@ fn mv_kernel_name_and_dispatch_params(
     params: &GemmDispatchParams,
 ) -> TractResult<(String, (u64, u64, u64))> {
     if params.q40_b {
-        ensure!(params.dts[0] == F32);
-        Ok(("kernel_mul_mv_q4_0_f32".to_string(), (8, 8, 1)))
+        ensure!(matches!(params.dts[0], F32 | F16));
+        let a_tname = DeviceTensor::tname(params.dts[0])?;
+        Ok((format!("kernel_mul_mv_q4_0_{a_tname}"), (8, 8, 1)))
     } else if params.dts[1] == F32 {
         ensure!(params.dts[0] == F32);
         Ok(("kernel_mul_mv_f32_f32".to_string(), (32, 1, 4)))
@@ -286,7 +299,7 @@ fn dispatch_metal_ggml_gemm(
 ) -> TractResult<()> {
     let GemmDispatchParams { dts, q40_b, .. } = params;
 
-    ensure!((matches!(dts[1], F32 | F16) || q40_b) && dts[0] == F32);
+    ensure!((matches!(dts[1], F32 | F16) || q40_b) && matches!(dts[0], F32 | F16));
 
     let i1_tname = if !q40_b { DeviceTensor::tname(dts[1])? } else { "q4_0" };
     let i2_tname = DeviceTensor::tname(dts[0])?;
