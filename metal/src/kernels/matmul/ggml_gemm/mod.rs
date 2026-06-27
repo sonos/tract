@@ -26,6 +26,7 @@ struct GgmlGemmParams {
     ne1: i32,
     r2: i16,
     r3: i16,
+    out_f16: i16,
 }
 
 impl From<GemmDispatchParams> for GgmlGemmParams {
@@ -56,6 +57,7 @@ impl From<GemmDispatchParams> for GgmlGemmParams {
             ne1: params.m as i32,
             r2: (params.a_batch / params.b_batch) as i16,
             r3: 1,
+            out_f16: (params.dts[0] == F16) as i16,
         }
     }
 }
@@ -81,6 +83,7 @@ struct GgmlGemvParams {
     ne1: i32,
     r2: i16,
     r3: i16,
+    out_f16: i16,
 }
 
 impl From<GemmDispatchParams> for GgmlGemvParams {
@@ -115,6 +118,7 @@ impl From<GemmDispatchParams> for GgmlGemvParams {
             ne1: params.m as i32,
             r2: (params.a_batch / params.b_batch) as i16,
             r3: 1,
+            out_f16: (params.dts[0] == F16) as i16,
         }
     }
 }
@@ -153,10 +157,7 @@ impl GemmKernel for GgmlGemm {
     }
 
     fn output_dt(&self, a_dt: DatumType, _b_dt: DatumType) -> TractResult<DatumType> {
-        // Output follows the activation dtype (input[0]). The GGML kernels now
-        // write f16 directly when the activation is f16, so an f16 model no
-        // longer pays an activation upcast before, nor an output downcast after,
-        // each matmul.
+        // Output dtype follows the activation (input[0]).
         Ok(a_dt)
     }
 
@@ -207,8 +208,8 @@ fn mv_kernel_name_and_dispatch_params(
 ) -> TractResult<(String, (u64, u64, u64))> {
     if params.q40_b {
         ensure!(matches!(params.dts[0], F32 | F16));
-        let a_tname = DeviceTensor::tname(params.dts[0])?;
-        Ok((format!("kernel_mul_mv_q4_0_{a_tname}"), (8, 8, 1)))
+        // Activation/output dtype is carried at runtime by GgmlGemvParams::out_f16.
+        Ok(("kernel_mul_mv_q4_0".to_string(), (8, 8, 1)))
     } else if params.dts[1] == F32 {
         ensure!(params.dts[0] == F32);
         Ok(("kernel_mul_mv_f32_f32".to_string(), (32, 1, 4)))
@@ -297,10 +298,11 @@ fn dispatch_metal_ggml_gemm(
 
     ensure!((matches!(dts[1], F32 | F16) || q40_b) && matches!(dts[0], F32 | F16));
 
+    // Weight dtype selects the kernel; activation/output dtype is carried at
+    // runtime by GgmlGemmParams::out_f16.
     let i1_tname = if !q40_b { DeviceTensor::tname(dts[1])? } else { "q4_0" };
-    let i2_tname = DeviceTensor::tname(dts[0])?;
 
-    let name = format!("kernel_mul_mm_{i1_tname}_{i2_tname}");
+    let name = format!("kernel_mul_mm_{i1_tname}");
     //dbg!(&name);
     let pipeline = stream.load_pipeline(LibraryName::Ggml, &name)?;
 
