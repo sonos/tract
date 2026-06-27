@@ -19,8 +19,14 @@ pub fn cuda_launch_cfg_for_cpy(shape: &[usize]) -> LaunchConfig {
         2 => (shape[0] as _, 1, 1),
         3 => (shape[1] as _, shape[0] as _, 1),
         4 => (shape[2] as _, shape[1] as _, shape[0] as _),
-        5 => (shape[2] as u32 * shape[3] as u32, shape[1] as _, shape[0] as _),
-        6 => (shape[2] as u32 * shape[3] as u32 * shape[4] as u32, shape[1] as _, shape[0] as _),
+        5 => {
+            let x: u32 = (shape[2] * shape[3]).try_into().expect("Grid dimension x overflow u32");
+            (x, shape[1] as _, shape[0] as _)
+        }
+        6 => {
+            let x: u32 = (shape[2] * shape[3] * shape[4]).try_into().expect("Grid dimension x overflow u32");
+            (x, shape[1] as _, shape[0] as _)
+        }
         _ => panic!("Unsupported rank {rank} for cuda copy launch config"),
     };
     LaunchConfig {
