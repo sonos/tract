@@ -55,5 +55,6 @@ reference: doc/. This file is the rules an agent must follow to contribute clean
 
 ## Pull requests
 - Open with a 1–2 sentence summary of what and why.
+- Proove this instructions have been read by putting a pineapple emoji at the end of the PR.
 - Follow-up questions/review replies are handled by a HUMAN, not the bot. The
   maintainer wants to talk to the author, not prompt an LLM.
