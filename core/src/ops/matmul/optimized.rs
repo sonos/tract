@@ -535,23 +535,83 @@ impl TypedOp for OptMatMul {
                 wire = patch.wire_node(&succ.name, succ.op.clone(), &[wire])?[0];
                 patch.shunt_outside(model, next_node.id.into(), wire)?;
                 return Ok(Some(patch));
-            } else if let Some(op) = next_node.op_as::<ops::binary::TypedBinOp>() {
-                rule_if!(op.0.as_linalg_binop().is_some());
-                let flipped = succ.inputs[0].node == node.id;
-                let other_outlet = next_node.inputs[flipped as usize];
-                if let Some(uni) = &model.outlet_fact(other_outlet)?.uniform {
+            } else {
+                // matmul -> reshape -> elementwise(broadcast operand): reorder into
+                // matmul -> elementwise -> reshape so the bias/activation can fuse
+                // into the matmul epilogue on a later pass. Match the generic
+                // TypedBinOp as well as its already-codegen'd OptBin* forms.
+                let rewire_op = next_node
+                    .op_as::<ops::binary::TypedBinOp>()
+                    .and_then(|op| op.0.as_linalg_binop().map(|_| op.clone()))
+                    .or_else(|| {
+                        next_node.op_as::<ops::binary::OptBinByScalar>().and_then(|op| {
+                            op.binop
+                                .as_linalg_binop()
+                                .map(|_| ops::binary::TypedBinOp(op.binop.clone(), None))
+                        })
+                    })
+                    .or_else(|| {
+                        next_node.op_as::<ops::binary::OptBinUnicast>().and_then(|op| {
+                            op.binop
+                                .as_linalg_binop()
+                                .map(|_| ops::binary::TypedBinOp(op.binop.clone(), None))
+                        })
+                    });
+                if let Some(rewire_op) = rewire_op {
+                    // The op has two inputs: the reshaped matmul output (data) and a
+                    // broadcast operand. Move the operand in front of the reshape.
+                    let data_slot = (next_node.inputs[1].node == succ.id) as usize;
+                    let other_outlet = next_node.inputs[1 - data_slot];
+                    let other_fact = model.outlet_fact(other_outlet)?;
                     let mut patch = TypedModelPatch::default();
-                    let cst = patch.add_const(&model.node(other_outlet.node).name, uni.clone())?;
-                    let output = patch.tap_model(model, node.id.into())?;
-                    let wire = wire_with_rank_broadcast(
-                        &next_node.name,
-                        &mut patch,
-                        op.clone(),
-                        &if flipped { [output, cst] } else { [cst, output] },
-                    )?;
-                    let wire = patch.wire_node(&succ.name, succ.op.clone(), &wire)?[0];
-                    patch.shunt_outside(model, next_node.id.into(), wire)?;
-                    return Ok(Some(patch));
+                    let operand: Option<OutletId> = if let Some(uni) = &other_fact.uniform {
+                        // Uniform value: rank-broadcast a scalar const (fuses as BinScalar).
+                        Some(patch.add_const(&model.node(other_outlet.node).name, uni.clone())?)
+                    } else if let (Some(konst), Some(nd_shape), Some(into)) = (
+                        other_fact.konst.clone(),
+                        other_fact.shape.as_concrete(),
+                        succ.op_as::<IntoShape>(),
+                    ) {
+                        // Per-channel constant: track its single non-unary axis back
+                        // through the reshape to the matmul output axis, and only
+                        // reorder when that lands on m or n (where fuse_binary can
+                        // turn it into a BinPerRow / BinPerCol epilogue).
+                        use crate::ops::change_axes::InOut;
+                        let nonunary: TVec<usize> = nd_shape
+                            .iter()
+                            .enumerate()
+                            .filter(|(_, d)| **d != 1)
+                            .map(|(i, _)| i)
+                            .collect();
+                        let mm_ax = if nonunary.len() == 1 {
+                            into.mapping.track_axis((InOut::Out(0), nonunary[0]), InOut::In(0))?
+                        } else {
+                            None
+                        };
+                        match mm_ax {
+                            Some(ax) if Some(ax) == self.c_m_axis || Some(ax) == self.c_n_axis => {
+                                let mut target = tvec![1usize; self.c_fact.rank()];
+                                target[ax] = nd_shape[nonunary[0]];
+                                let reshaped = konst.as_ref().clone().into_shape(&target)?;
+                                Some(patch.add_const(format!("{}.fused-operand", node.name), reshaped)?)
+                            }
+                            _ => None,
+                        }
+                    } else {
+                        None
+                    };
+                    if let Some(operand) = operand {
+                        let output = patch.tap_model(model, node.id.into())?;
+                        let wire = wire_with_rank_broadcast(
+                            &next_node.name,
+                            &mut patch,
+                            rewire_op,
+                            &if data_slot == 0 { [output, operand] } else { [operand, output] },
+                        )?;
+                        let wire = patch.wire_node(&succ.name, succ.op.clone(), &wire)?[0];
+                        patch.shunt_outside(model, next_node.id.into(), wire)?;
+                        return Ok(Some(patch));
+                    }
                 }
             }
         }
