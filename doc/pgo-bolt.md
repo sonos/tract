@@ -15,6 +15,13 @@ Both rely on a **training run** over a basket of models, and both produce
 profiles that are tied to one architecture and one toolchain — see
 [Portability](#portability) before committing anything.
 
+**Platform support:** PGO is cross-platform (LLVM's IR-level instrumentation
+works on ELF, Mach-O, and PE). BOLT is **Linux/ELF only** — it rewrites ELF
+binaries and collects profiles via `perf` (LBR) or a Linux-syscall
+instrumentation runtime, none of which exist for macOS (Mach-O) or Windows
+(PE). On Linux it covers both x86_64 and aarch64. So macOS/iOS and Windows
+builds get PGO only; BOLT is an extra layer for the Linux artifacts.
+
 This is a release-engineering recipe, not part of the normal build. The
 profiles are regenerated per target; tract does not ship profile blobs.
 
