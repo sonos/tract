@@ -61,11 +61,10 @@ unsafe fn x86_64_fma_softmax2_fastcompact_f32_32n_run(buf: &mut [f32], max: f32)
 
                 vfmadd231ps ymm8, ymm4, ymm14
                 vfmadd231ps ymm9, ymm5, ymm14
-                vfmadd231ps ymm10, ymm6, ymm14
-                vfmadd231ps ymm11, ymm7, ymm14
-
                 vmaxps ymm8, ymm8, ymm12
                 vmaxps ymm9, ymm9, ymm12
+                vfmadd231ps ymm10, ymm6, ymm14
+                vfmadd231ps ymm11, ymm7, ymm14
                 vmaxps ymm10, ymm10, ymm12
                 vmaxps ymm11, ymm11, ymm12
 
@@ -189,11 +188,10 @@ unsafe fn x86_64_avx512_softmax2_fastcompact_f32_64n_run(buf: &mut [f32], max: f
 
                 vfmadd231ps zmm8, zmm4, zmm30
                 vfmadd231ps zmm9, zmm5, zmm30
-                vfmadd231ps zmm10, zmm6, zmm30
-                vfmadd231ps zmm11, zmm7, zmm30
-
                 vmaxps zmm8, zmm8, zmm28
                 vmaxps zmm9, zmm9, zmm28
+                vfmadd231ps zmm10, zmm6, zmm30
+                vfmadd231ps zmm11, zmm7, zmm30
                 vmaxps zmm10, zmm10, zmm28
                 vmaxps zmm11, zmm11, zmm28
 
@@ -327,12 +325,10 @@ unsafe fn x86_64_avx512_softmax2_fastcompact_f16_64n_run(
                 vmovaps zmm11, zmm31
                 vfmadd231ps zmm8,  zmm4, zmm30
                 vfmadd231ps zmm9,  zmm5, zmm30
-                vfmadd231ps zmm10, zmm6, zmm30
-                vfmadd231ps zmm11, zmm7, zmm30
-
-                // max(0, ...)
                 vmaxps zmm8,  zmm8,  zmm28
                 vmaxps zmm9,  zmm9,  zmm28
+                vfmadd231ps zmm10, zmm6, zmm30
+                vfmadd231ps zmm11, zmm7, zmm30
                 vmaxps zmm10, zmm10, zmm28
                 vmaxps zmm11, zmm11, zmm28
 
