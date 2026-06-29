@@ -31,7 +31,7 @@ jobs:
     - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       with:
         persist-credentials: false
-    - uses: nick-fields/retry@ad984534de44a9489a53aefd81eb77f87c70dc60 # v4
+    - uses: nick-fields/retry@ad984534de44a9489a53aefd81eb77f87c70dc60 # v4.0.0
       name: Install Rustup using win.rustup.rs
       with:
         timeout_minutes: 10
@@ -42,7 +42,7 @@ jobs:
             $ProgressPreference = "SilentlyContinue"
             Invoke-WebRequest https://win.rustup.rs/ -OutFile rustup-init.exe
             .\rustup-init.exe -y --default-host=x86_64-pc-windows-msvc --profile=minimal
-    - uses: nick-fields/retry@ad984534de44a9489a53aefd81eb77f87c70dc60 # v4
+    - uses: nick-fields/retry@ad984534de44a9489a53aefd81eb77f87c70dc60 # v4.0.0
       name: Install the target
       with:
         timeout_minutes: 10
@@ -55,7 +55,7 @@ jobs:
       with:
         key: ${{ matrix.toolchain }}
     - name: Install LLVM and Clang
-      uses: KyleMayes/install-llvm-action@ebc0426251bc40c7cd31162802432c68818ab8f0 # v2
+      uses: KyleMayes/install-llvm-action@ebc0426251bc40c7cd31162802432c68818ab8f0 # v2.0.9
       with:
         version: "11.0"
     - name: debug
