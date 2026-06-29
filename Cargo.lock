@@ -4850,6 +4850,7 @@ dependencies = [
  "rustfft",
  "tract-core",
  "tract-gpu",
+ "tract-nnef",
  "tract-pulse-opl",
  "tract-transformers",
 ]
