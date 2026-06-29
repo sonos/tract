@@ -25,7 +25,7 @@ jobs:
       msrv: ${{steps.set-matrix.outputs.msrv}}
 
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
       - id: set-matrix
@@ -62,7 +62,7 @@ jobs:
       RUSTUP_TOOLCHAIN: ${{matrix.rust}}
 
     steps:
-    - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+    - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       with:
         persist-credentials: false
 
@@ -87,7 +87,7 @@ jobs:
     env:
       RUSTUP_TOOLCHAIN: ${{matrix.rust}}
     steps:
-    - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+    - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       with:
         persist-credentials: false
 
@@ -104,7 +104,7 @@ jobs:
     env:
       RUSTUP_TOOLCHAIN: ${{ needs.prepare-matrix.outputs.msrv }}
     steps:
-    - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+    - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       with:
         persist-credentials: false
     - name: Minimum-BOM GPU smoke
@@ -120,7 +120,7 @@ jobs:
     env:
       RUSTUP_TOOLCHAIN: ${{matrix.rust}}
     steps:
-    - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+    - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       with:
         persist-credentials: false
 
@@ -139,7 +139,7 @@ jobs:
     env:
       RUSTUP_TOOLCHAIN: ${{matrix.rust}}
     steps:
-    - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+    - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       with:
         persist-credentials: false
 
@@ -167,7 +167,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+    - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       with:
         persist-credentials: false
     - name: Install cargo-deny

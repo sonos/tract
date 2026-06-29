@@ -65,7 +65,7 @@ jobs:
             build: PLATFORM=aarch64-unknown-linux-gnu-stretch ./.travis/cross.sh
             bin: target/aarch64-unknown-linux-gnu/release/tract
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           ref: ${{ needs.prepare.outputs.ref }}
           persist-credentials: false
@@ -108,7 +108,7 @@ jobs:
             # suite, so skip CPU runs and bench only the Orin GPU (cuda).
             bench_args: --skip-cpu
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           ref: ${{ needs.prepare.outputs.ref }}
           persist-credentials: false
@@ -118,7 +118,7 @@ jobs:
           path: tract-cli
       # Read-only bench-data checkout: the orchestrator builds this device's retry
       # expectations from it inline (no separate job, no Python on the runner).
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           ref: bench-data
           path: bench-ref
@@ -145,7 +145,7 @@ jobs:
         if: github.event_name != 'pull_request'
         # zizmor: ignore[artipacked] credentials are needed to push the row back to
         # bench-data; this checkout is never uploaded as an artifact.
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           ref: bench-data
           path: bench-data
@@ -199,7 +199,7 @@ jobs:
       contents: read
       pull-requests: write   # post the comment directly on same-repo PRs
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           ref: ${{ needs.prepare.outputs.ref }}
           persist-credentials: false
@@ -211,7 +211,7 @@ jobs:
         with:
           name: tract-cli-x86_64-unknown-linux-gnu
           path: tract-cli
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           ref: bench-data
           path: bench-data
