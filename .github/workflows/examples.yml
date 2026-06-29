@@ -47,6 +47,8 @@ jobs:
         persist-credentials: false
 
     - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      with:
+        save-if: false # restore-only: schedule/dispatch job, never save (would evict the per-PR caches under the 10 GB cap)
 
     - name: Configure AWS Credentials
       # if: github.repository == 'sonos/tract'
@@ -72,6 +74,8 @@ jobs:
         with:
           persist-credentials: false
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          save-if: false # restore-only: schedule/dispatch job, never save (would evict the per-PR caches under the 10 GB cap)
       - run: cargo build -p tract-cli --profile opt-no-lto
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

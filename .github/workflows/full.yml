@@ -77,6 +77,8 @@ jobs:
         persist-credentials: false
 
     - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      with:
+        save-if: false # restore-only: schedule/dispatch job, never save (would evict the per-PR caches under the 10 GB cap)
 
     - name: Configure AWS Credentials
       continue-on-error: true
@@ -100,6 +102,8 @@ jobs:
         persist-credentials: false
 
     - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      with:
+        save-if: false # restore-only: schedule/dispatch job, never save (would evict the per-PR caches under the 10 GB cap)
     - name: Full test 
       env:
         AWS_EC2_METADATA_DISABLED: true
@@ -120,6 +124,8 @@ jobs:
         persist-credentials: false
 
     - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      with:
+        save-if: false # restore-only: schedule/dispatch job, never save (would evict the per-PR caches under the 10 GB cap)
     - name: Full test
       run: .travis/onnx-tests.sh ${{ matrix.opset }}
 
@@ -135,6 +141,8 @@ jobs:
         persist-credentials: false
 
     - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      with:
+        save-if: false # restore-only: schedule/dispatch job, never save (would evict the per-PR caches under the 10 GB cap)
     - name: Full test
       run: .travis/tflite.sh
 
@@ -150,6 +158,8 @@ jobs:
         persist-credentials: false
 
     - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      with:
+        save-if: false # restore-only: schedule/dispatch job, never save (would evict the per-PR caches under the 10 GB cap)
 
     - name: With assertions
       run: |
@@ -168,6 +178,8 @@ jobs:
         persist-credentials: false
 
     - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      with:
+        save-if: false # restore-only: schedule/dispatch job, never save (would evict the per-PR caches under the 10 GB cap)
     - name: Without default features
       run: |
         rustup update
@@ -185,6 +197,8 @@ jobs:
         persist-credentials: false
 
     - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      with:
+        save-if: false # restore-only: schedule/dispatch job, never save (would evict the per-PR caches under the 10 GB cap)
     - name: With complexes
       run: |
         rustup update
@@ -202,6 +216,8 @@ jobs:
         persist-credentials: false
 
     - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      with:
+        save-if: false # restore-only: schedule/dispatch job, never save (would evict the per-PR caches under the 10 GB cap)
     - name: Check all targets
       run: |
         ROOT=$(pwd) ./.travis/ci-system-setup.sh
@@ -219,6 +235,8 @@ jobs:
         persist-credentials: false
 
     - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      with:
+        save-if: false # restore-only: schedule/dispatch job, never save (would evict the per-PR caches under the 10 GB cap)
     - name: C smoke tests
       run: |
         cd api/c
@@ -237,6 +255,8 @@ jobs:
         persist-credentials: false
 
     - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      with:
+        save-if: false # restore-only: schedule/dispatch job, never save (would evict the per-PR caches under the 10 GB cap)
     - name: Setup Python
       uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
       with:

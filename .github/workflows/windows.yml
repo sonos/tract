@@ -54,6 +54,7 @@ jobs:
     - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
       with:
         key: ${{ matrix.toolchain }}
+        save-if: ${{ github.ref == 'refs/heads/main' }} # PR runs restore but don't save
     - name: Install LLVM and Clang
       uses: KyleMayes/install-llvm-action@ebc0426251bc40c7cd31162802432c68818ab8f0 # v2.0.9
       with:
