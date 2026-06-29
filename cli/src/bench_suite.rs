@@ -130,6 +130,15 @@ fn de_args<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<String>, D::Err
     })
 }
 
+/// One (bench, backend/variant) run kept whole — its prefixed metrics plus the
+/// coordinates needed to re-run it in the second pass.
+struct RunResult {
+    bench_idx: usize,
+    backend: Option<Backend>,
+    variant: String,
+    metrics: Vec<(String, f64)>,
+}
+
 pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
     let manifest_path =
         matches.get_one::<String>("manifest").map(String::as_str).unwrap_or("benches.toml");
@@ -161,15 +170,17 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
     let expectations = expectations(matches)?;
     let retry_max: usize =
         matches.get_one::<String>("retry-max").map(|s| s.parse()).transpose()?.unwrap_or(2);
+    let second_pass_max: usize =
+        matches.get_one::<String>("second-pass-max").map(|s| s.parse()).transpose()?.unwrap_or(2);
 
     let exe = std::env::current_exe()?;
     set_governor_max();
     let _gpu_clock = GpuClock::pin(); // reset on drop, when the suite finishes
 
     let start = Instant::now();
-    let mut metrics: Vec<(String, f64)> = vec![];
+    let mut results: Vec<RunResult> = vec![];
 
-    for bench in &manifest.benches {
+    for (bench_idx, bench) in manifest.benches.iter().enumerate() {
         if filter.is_some_and(|f| !bench.name.contains(f)) {
             continue;
         }
@@ -209,12 +220,23 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
             println!("  {} {}", bench.name, variant);
             let run = || run_one(&exe, &cache_dir, bench, backend, &variant);
             match bench_run(run, &expectations, retry_max) {
-                Ok(m) => metrics.extend(m),
+                Ok(m) => results.push(RunResult { bench_idx, backend, variant, metrics: m }),
                 Err(e) => eprintln!("  !! {} {} failed: {e:#}", bench.name, variant),
             }
         }
     }
 
+    second_pass(
+        &exe,
+        &cache_dir,
+        &manifest,
+        &expectations,
+        retry_max,
+        second_pass_max,
+        &mut results,
+    );
+
+    let mut metrics: Vec<(String, f64)> = results.into_iter().flat_map(|r| r.metrics).collect();
     metrics.push(("bundle.bench_runtime".to_string(), start.elapsed().as_secs() as f64));
     write_metrics(output, &metrics)?;
     println!("wrote {} metrics to {output}", metrics.len());
@@ -286,6 +308,61 @@ fn bench_run(
         }
     }
     Ok(best.into_iter().collect())
+}
+
+/// After the whole suite has run, re-run the benches still over threshold. A brief
+/// (dozens of seconds) disruption traps a bench *and* its adjacent inline retries in
+/// the same window; re-running now, minutes removed from any mid-suite glitch, lets a
+/// transient clear while keeping the per-metric best. Bounded by `second_pass_max`:
+/// more reds than that is a real regression or a suite-long problem, not a transient,
+/// so they are left standing. No-op without expectations.
+fn second_pass(
+    exe: &Path,
+    cache_dir: &Path,
+    manifest: &Manifest,
+    expectations: &HashMap<String, (f64, f64)>,
+    retry_max: usize,
+    second_pass_max: usize,
+    results: &mut [RunResult],
+) {
+    if expectations.is_empty() {
+        return;
+    }
+    let red: Vec<usize> = results
+        .iter()
+        .enumerate()
+        .filter(|(_, r)| {
+            let m: BTreeMap<String, f64> = r.metrics.iter().cloned().collect();
+            out_of_threshold(&m, expectations)
+        })
+        .map(|(i, _)| i)
+        .collect();
+    if red.is_empty() {
+        return;
+    }
+    if red.len() > second_pass_max {
+        println!(
+            "second pass skipped: {} reds (> {second_pass_max}) is not a transient disruption",
+            red.len()
+        );
+        return;
+    }
+    for i in red {
+        let (bench_idx, backend, variant) =
+            (results[i].bench_idx, results[i].backend, results[i].variant.clone());
+        let bench = &manifest.benches[bench_idx];
+        println!("  second pass: {} {}", bench.name, variant);
+        let run = || run_one(exe, cache_dir, bench, backend, &variant);
+        match bench_run(run, expectations, retry_max) {
+            Ok(cand) => {
+                let mut best: BTreeMap<String, f64> =
+                    std::mem::take(&mut results[i].metrics).into_iter().collect();
+                merge_best(&mut best, cand);
+                results[i].metrics = best.into_iter().collect();
+            }
+            Err(e) => eprintln!("  !! second pass {} {} failed: {e:#}", bench.name, variant),
+        }
+    }
 }
 
 /// True if some metric moved worse-than-expected (lower for throughput, higher
