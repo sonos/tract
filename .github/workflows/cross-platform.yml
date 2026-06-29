@@ -29,7 +29,7 @@ jobs:
       tract_bench_branch_name: ${{ steps.set.outputs.tract_bench_branch_name }}
     steps:
       - id: set
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
             core.info(`event: ${context.eventName}`);
@@ -106,7 +106,7 @@ jobs:
 
     - name: Setup wasmtime
       if: matrix.platform == 'wasm32-wasi'
-      uses: bytecodealliance/actions/wasmtime/setup@9152e710e9f7182e4c29ad218e4f335a7b203613 # v1
+      uses: bytecodealliance/actions/wasmtime/setup@9152e710e9f7182e4c29ad218e4f335a7b203613 # v1.1.3
 
     - name: Cross script
       env:
