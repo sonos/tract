@@ -69,6 +69,13 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.ref }}
           persist-credentials: false
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          # per-PR build on the developer feedback path; PR runs restore but only main saves.
+          # The stretch leg builds in a docker container: target/ is host-mounted (cached),
+          # its in-container cargo registry is not, and the key tracks host rustc not the container.
+          key: ${{ matrix.triple }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: ${{ matrix.build }}
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
