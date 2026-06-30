@@ -62,7 +62,8 @@ fn block_quant_einsum_weights(
         } else {
             format.quant_f32(a.cast_to::<f32>()?.try_as_plain()?.as_slice::<f32>()?)?
         };
-        let name = &model.node(node.inputs[0].node).name;
+        let act_slot = 1 - slot;
+        let name = &model.node(node.inputs[slot].node).name;
         let m = a.shape()[0];
         let k = a.shape()[1];
         let bqs = BlockQuantStorage::new(Box::new(format), m, k, Arc::new(weights))?;
@@ -76,13 +77,85 @@ fn block_quant_einsum_weights(
             )?,
             &[],
         )?;
-        let tap = patch.tap_model(model, node.inputs[1])?;
-        // Block-quant tensor is rank 3 [G=1, M, K]; add a group dim to the axes
+        let tap = patch.tap_model(model, node.inputs[act_slot])?;
+        // Block-quant tensor is rank 3 [G=1, M, K]; add a group dim to the weight's axes
         let mut new_op = op.op.clone();
         new_op.axes = new_op.axes.with_extra_axis('G', InOut::In(slot), 0)?;
-        let wire = patch.wire_node(prefix, new_op, &[weights[0], tap])?;
+        let inputs = if slot == 0 { [weights[0], tap] } else { [tap, weights[0]] };
+        let wire = patch.wire_node(prefix, new_op, &inputs)?;
         patch.shunt_outside(model, node.id.into(), wire[0])?;
         return Ok(Some(patch));
     }
     Ok(None)
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::ops::einsum::EinSum;
+
+    // Deterministic varied fill so quantization is actually exercised.
+    fn fill(shape: &[usize], seed: usize) -> Tensor {
+        let n: usize = shape.iter().product();
+        let data: Vec<f32> =
+            (0..n).map(|i| (((i * 13 + seed * 7) % 29) as f32 - 14.0) / 14.0).collect();
+        Tensor::from_shape(shape, &data).unwrap()
+    }
+
+    fn build(axes: &str, x_shape: &[usize], w: &Tensor) -> TractResult<TypedModel> {
+        let mut model = TypedModel::default();
+        let x = model.add_source("x", f32::fact(x_shape))?;
+        let w = model.wire_node("w", Const::new(w.clone().into_arc_tensor())?, &[])?[0];
+        let out = model.wire_node(
+            "mm",
+            EinSum { axes: axes.parse()?, operating_dt: f32::datum_type(), q_params: None },
+            &[x, w],
+        )?;
+        model.select_output_outlets(&out)?;
+        model.into_decluttered()
+    }
+
+    fn eval(model: TypedModel, x: &Tensor) -> TractResult<Tensor> {
+        let out = model.into_runnable()?.run(tvec!(x.clone().into_tvalue()))?;
+        Ok(out[0].clone().into_tensor())
+    }
+
+    // `X @ W` with W a rank-2 const (`w_k_axis` = contraction axis within W).
+    // Asserts BlockQuantTransform both applies AND computes `X @ Q4_0(W)` correctly:
+    // reference uses the same Q4_0-dequantized W, isolating operand wiring from quant error.
+    fn check(axes: &str, x_shape: &[usize], w_shape: &[usize], w_k_axis: usize) -> TractResult<()> {
+        let x = fill(x_shape, 1);
+        let w = fill(w_shape, 2);
+
+        // Q4_0 blocks along the last axis, so dequantize with k moved last, then back.
+        let last = w.rank() - 1;
+        let w_deq = Q4_0
+            .simulate_precision_loss(w.clone().move_axis(w_k_axis, last)?, last)?
+            .move_axis(last, w_k_axis)?;
+        let reference = eval(build(axes, x_shape, &w_deq)?, &x)?;
+
+        let mut quant = build(axes, x_shape, &w)?;
+        BlockQuantTransform.transform(&mut quant)?;
+        let got = eval(quant, &x)?;
+
+        got.close_enough(&reference, Approximation::Approximate)
+    }
+
+    #[test]
+    fn block_quant_xw_rank2() -> TractResult<()> {
+        // plain 2D, ONNX X@W orientation: X[m,k] @ W[k,n], k is W axis 0
+        check("mk,kn->mn", &[7, 256], &[256, 256], 0)
+    }
+
+    #[test]
+    fn block_quant_xw_batched() -> TractResult<()> {
+        // BERT-style: X[b,m,k] @ W[k,n] -> [b,m,n]
+        check("bmk,kn->bmn", &[2, 7, 256], &[256, 256], 0)
+    }
+
+    #[test]
+    fn block_quant_weights_already_nk() -> TractResult<()> {
+        // canonical orientation (k inner on W): X[m,k] @ W[n,k], k is W axis 1
+        check("mk,nk->mn", &[7, 256], &[256, 256], 1)
+    }
 }
