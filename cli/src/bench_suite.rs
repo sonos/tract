@@ -172,6 +172,8 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
         matches.get_one::<String>("retry-max").map(|s| s.parse()).transpose()?.unwrap_or(2);
     let second_pass_max: usize =
         matches.get_one::<String>("second-pass-max").map(|s| s.parse()).transpose()?.unwrap_or(2);
+    let samples: usize =
+        matches.get_one::<String>("samples").map(|s| s.parse()).transpose()?.unwrap_or(0);
 
     let exe = std::env::current_exe()?;
     set_governor_max();
@@ -219,22 +221,30 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
         for (backend, variant) in runs {
             println!("  {} {}", bench.name, variant);
             let run = || run_one(&exe, &cache_dir, bench, backend, &variant);
-            match bench_run(run, &expectations, retry_max) {
+            let outcome = if samples > 1 {
+                bench_median(run, samples)
+            } else {
+                bench_run(run, &expectations, retry_max)
+            };
+            match outcome {
                 Ok(m) => results.push(RunResult { bench_idx, backend, variant, metrics: m }),
                 Err(e) => eprintln!("  !! {} {} failed: {e:#}", bench.name, variant),
             }
         }
     }
 
-    second_pass(
-        &exe,
-        &cache_dir,
-        &manifest,
-        &expectations,
-        retry_max,
-        second_pass_max,
-        &mut results,
-    );
+    // Reference mode (median) is not a PR comparison, so it has no reds to chase.
+    if samples <= 1 {
+        second_pass(
+            &exe,
+            &cache_dir,
+            &manifest,
+            &expectations,
+            retry_max,
+            second_pass_max,
+            &mut results,
+        );
+    }
 
     let mut metrics: Vec<(String, f64)> = results.into_iter().flat_map(|r| r.metrics).collect();
     metrics.push(("bundle.bench_runtime".to_string(), start.elapsed().as_secs() as f64));
@@ -363,6 +373,40 @@ fn second_pass(
             Err(e) => eprintln!("  !! second pass {} {} failed: {e:#}", bench.name, variant),
         }
     }
+}
+
+/// Reference statistics: run the bench `samples` times (a fresh child each) and record
+/// the per-metric median. A median drops a lone clock-glitch outlier (spuriously fast /
+/// sub-floor time) that `bench_run`'s keep-best would instead latch onto — so the stored
+/// nightly reference can't be poisoned by a single bad draw. Used for the reference run;
+/// PR runs stay on `bench_run` (retry-until-good-enough).
+fn bench_median(
+    run: impl Fn() -> TractResult<Vec<(String, f64)>>,
+    samples: usize,
+) -> TractResult<Vec<(String, f64)>> {
+    let mut acc: BTreeMap<String, Vec<f64>> = BTreeMap::new();
+    let mut ok = 0;
+    for i in 0..samples {
+        match run() {
+            Ok(m) => {
+                ok += 1;
+                for (k, v) in m {
+                    acc.entry(k).or_default().push(v);
+                }
+            }
+            Err(e) => eprintln!("    sample {} failed: {e:#}", i + 1),
+        }
+    }
+    ensure!(ok > 0, "all {samples} samples failed");
+    Ok(acc.into_iter().map(|(k, v)| (k, median(&v))).collect())
+}
+
+/// Median of a non-empty slice (mean of the two middle values for an even count).
+fn median(values: &[f64]) -> f64 {
+    let mut v = values.to_vec();
+    v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let n = v.len();
+    if n % 2 == 1 { v[n / 2] } else { (v[n / 2 - 1] + v[n / 2]) / 2.0 }
 }
 
 /// True if some metric moved worse-than-expected (lower for throughput, higher

@@ -133,11 +133,14 @@ jobs:
           # no --cache-dir: honor each runner's CACHEDIR env (its curated model cache),
           # falling back to ~/.cache/tract-ci-minion-models, like the old bundle did.
           # ${{ matrix.bench_args }} is empty except on jetson (--skip-cpu).
+          # Reference (nightly/dispatch) records the per-metric median of N samples so a
+          # lone clock glitch can't poison it; PR runs omit --samples and retry-until-good.
           tract-cli/tract bench-suite \
             --manifest .travis/benches.toml \
             --bench-data bench-ref \
             --thresholds .travis/bench-thresholds.toml \
             --triple "$TRIPLE" --device "$DEVICE" \
+            ${{ github.event_name != 'pull_request' && '--samples 5' || '' }} \
             ${{ matrix.bench_args }}        # produces ./metrics
 
       # --- nightly / dispatch: append the row to bench-data ---
