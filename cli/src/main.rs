@@ -267,6 +267,7 @@ fn main() -> TractResult<()> {
                 .arg(arg!(--expectations [PATH] "Pre-computed expectations file; re-run benches that would show a PR red"))
                 .arg(arg!(--"retry-max" [N] "Max re-runs of an out-of-threshold bench (default: 2)"))
                 .arg(arg!(--"second-pass-max" [N] "Re-run survivors after the whole suite only when at most N remain red (default: 2)"))
+                .arg(arg!(--"samples" [N] "Reference mode: run each bench N times and record the per-metric median, instead of the PR retry-until-good-enough. Used for the nightly reference."))
                 .arg(arg!(--"bench-data" [DIR] "Compute expectations inline from this bench-data checkout (alternative to --expectations)"))
                 .arg(arg!(--thresholds [PATH] "Threshold config TOML (with --bench-data)"))
                 .arg(arg!(--triple [TRIPLE] "Target triple (with --bench-data)"))
