@@ -23,6 +23,19 @@ impl ModelTransform for BlockQuantTransform {
     }
 }
 
+/// Role-aware policy deciding whether a constant weight feeding an `EinSumMatMul`
+/// is block-quantized. Protects quant-sensitive tensors by name (embeddings,
+/// normalizations, output heads) and skips matmuls too small to benefit. `k` is
+/// the contraction dimension, `n` the weight's free dimension.
+fn should_block_quant(weight_name: &str, k: usize, n: usize) -> bool {
+    const PROTECTED: &[&str] =
+        &["embed", "Embed", "norm", "Norm", "pooler", "classifier", "lm_head", "logits"];
+    if PROTECTED.iter().any(|p| weight_name.contains(p)) {
+        return false;
+    }
+    k * n >= 1 << 14
+}
+
 fn block_quant_einsum_weights(
     _ctx: &(),
     model: &TypedModel,
@@ -36,7 +49,12 @@ fn block_quant_einsum_weights(
         if a.rank() != 2 {
             continue;
         };
-        if op.k_axis().inputs[slot][0] == 0 {
+        let weight_name = model.node(node.inputs[slot].node).name.clone();
+        let kpos = op.k_axis().inputs[slot][0];
+        if !should_block_quant(&weight_name, a.shape()[kpos], a.shape()[1 - kpos]) {
+            continue;
+        }
+        if kpos == 0 {
             let mut patch = TypedModelPatch::default();
             let mut taps = patch.taps(model, &node.inputs)?;
             taps[slot] = patch.wire_node(
@@ -63,7 +81,7 @@ fn block_quant_einsum_weights(
             format.quant_f32(a.cast_to::<f32>()?.try_as_plain()?.as_slice::<f32>()?)?
         };
         let act_slot = 1 - slot;
-        let name = &model.node(node.inputs[slot].node).name;
+        let name = &weight_name;
         let m = a.shape()[0];
         let k = a.shape()[1];
         let bqs = BlockQuantStorage::new(Box::new(format), m, k, Arc::new(weights))?;
@@ -157,5 +175,35 @@ mod test {
     fn block_quant_weights_already_nk() -> TractResult<()> {
         // canonical orientation (k inner on W): X[m,k] @ W[n,k], k is W axis 1
         check("mk,nk->mn", &[7, 256], &[256, 256], 1)
+    }
+
+    // The policy must skip protected/tiny weights and quantize the rest.
+    fn count_bq(weight_node: &str, w_shape: &[usize]) -> TractResult<usize> {
+        let mut model = TypedModel::default();
+        let x = model.add_source("x", f32::fact(&[7, w_shape[0]]))?;
+        let w =
+            model.wire_node(weight_node, Const::new(fill(w_shape, 3).into_arc_tensor())?, &[])?[0];
+        let out = model.wire_node(
+            "mm",
+            EinSum { axes: "mk,kn->mn".parse()?, operating_dt: f32::datum_type(), q_params: None },
+            &[x, w],
+        )?;
+        model.select_output_outlets(&out)?;
+        let mut model = model.into_decluttered()?;
+        BlockQuantTransform.transform(&mut model)?;
+        Ok(model.nodes().iter().filter(|n| n.name.ends_with(".bq")).count())
+    }
+
+    #[test]
+    fn policy_skips_protected_and_tiny() -> TractResult<()> {
+        // bulk weight, ordinary name -> quantized
+        assert_eq!(count_bq("encoder.layer.0.intermediate.dense.weight", &[256, 256])?, 1);
+        // protected by name (LayerNorm-ish / embeddings / head) -> skipped
+        assert_eq!(count_bq("embeddings.word_embeddings.weight", &[256, 256])?, 0);
+        assert_eq!(count_bq("encoder.LayerNorm.weight", &[256, 256])?, 0);
+        assert_eq!(count_bq("lm_head.dense.weight", &[256, 256])?, 0);
+        // too small to benefit -> skipped
+        assert_eq!(count_bq("encoder.layer.0.tiny.weight", &[64, 64])?, 0);
+        Ok(())
     }
 }
