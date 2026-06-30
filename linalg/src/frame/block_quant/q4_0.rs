@@ -245,9 +245,19 @@ impl<const QK: usize> BaseQ4_0<QK> {
             asc[mi * nb..][..nb].copy_from_slice(&s);
         }
 
+        #[cfg(target_arch = "aarch64")]
+        let n_done = if QK == 32 && std::arch::is_aarch64_feature_detected!("dotprod") {
+            // SAFETY: guarded by the FEAT_DotProd check; QK == 32.
+            unsafe { w4a8_gemm_sdot_4(weight, n, k, &aq, &asc, m, out) }
+        } else {
+            0
+        };
+        #[cfg(not(target_arch = "aarch64"))]
+        let n_done = 0usize;
+
         let mut wi8 = [0i8; QK];
         let mut accs = vec![0f32; m];
-        for ni in 0..n {
+        for ni in n_done..n {
             accs.iter_mut().for_each(|x| *x = 0.0);
             for b in 0..nb {
                 let blk = &weight[(ni * nb + b) * bb..][..bb];
@@ -273,6 +283,79 @@ impl<const QK: usize> BaseQ4_0<QK> {
         }
         Ok(())
     }
+}
+
+/// W4A8 GEMM fast path for `QK == 32` on FEAT_DotProd CPUs. Processes 4 output columns at a time:
+/// the 4 columns' k-values are packed so each by-element `SDOT` accumulates the four columns' dot
+/// products directly into the four accumulator lanes, so there is no per-block horizontal reduce.
+/// `aq`/`asc` are the pre-quantized activation (`[m, k]` int8) and its per-block scales. Returns
+/// the number of columns handled (a multiple of 4); the caller does the `n % 4` tail in scalar.
+///
+/// SAFETY: caller must guarantee the running CPU has FEAT_DotProd.
+#[cfg(target_arch = "aarch64")]
+#[target_feature(enable = "dotprod")]
+unsafe fn w4a8_gemm_sdot_4(
+    weight: &[u8],
+    n: usize,
+    k: usize,
+    aq: &[i8],
+    asc: &[f32],
+    m: usize,
+    out: &mut [f32],
+) -> usize {
+    use std::arch::aarch64::*;
+    const QK: usize = 32;
+    let nb = k / QK;
+    let bb = 18; // Q4_0 block: 2-byte f16 scale + 16 nibble bytes
+    let n4 = n & !3;
+    let mut wpack = [0i8; 8 * 16]; // 8 k-groups x [4 cols x 4 k]
+    let mut wsc = [0f32; 4];
+    let mut accs = vec![0f32; m * 4];
+    for nt in (0..n4).step_by(4) {
+        accs.iter_mut().for_each(|x| *x = 0.0);
+        for b in 0..nb {
+            for c in 0..4 {
+                let blk = &weight[((nt + c) * nb + b) * bb..][..bb];
+                wsc[c] = f16::from_bits(u16::from_le_bytes([blk[0], blk[1]])).to_f32();
+                for idx in 0..QK {
+                    let byte = blk[2 + idx / 2];
+                    let nib = if idx % 2 == 0 { byte & 0x0F } else { byte >> 4 } as i8;
+                    let elem = (QK / 2) * (idx % 2) + idx / 2;
+                    wpack[(elem / 4) * 16 + c * 4 + (elem % 4)] = nib - 8;
+                }
+            }
+            let wsc_v = vld1q_f32(wsc.as_ptr());
+            let w: [int8x16_t; 8] = core::array::from_fn(|i| vld1q_s8(wpack[i * 16..].as_ptr()));
+            for mi in 0..m {
+                let ap = aq[mi * k + b * QK..].as_ptr();
+                let a0 = vld1q_s8(ap);
+                let a1 = vld1q_s8(ap.add(16));
+                let mut acc = vdupq_n_s32(0);
+                std::arch::asm!(
+                    "sdot {acc:v}.4s, {w0:v}.16b, {a0:v}.4b[0]",
+                    "sdot {acc:v}.4s, {w1:v}.16b, {a0:v}.4b[1]",
+                    "sdot {acc:v}.4s, {w2:v}.16b, {a0:v}.4b[2]",
+                    "sdot {acc:v}.4s, {w3:v}.16b, {a0:v}.4b[3]",
+                    "sdot {acc:v}.4s, {w4:v}.16b, {a1:v}.4b[0]",
+                    "sdot {acc:v}.4s, {w5:v}.16b, {a1:v}.4b[1]",
+                    "sdot {acc:v}.4s, {w6:v}.16b, {a1:v}.4b[2]",
+                    "sdot {acc:v}.4s, {w7:v}.16b, {a1:v}.4b[3]",
+                    acc = inout(vreg) acc,
+                    w0 = in(vreg) w[0], w1 = in(vreg) w[1], w2 = in(vreg) w[2], w3 = in(vreg) w[3],
+                    w4 = in(vreg) w[4], w5 = in(vreg) w[5], w6 = in(vreg) w[6], w7 = in(vreg) w[7],
+                    a0 = in(vreg) a0, a1 = in(vreg) a1,
+                    options(pure, nomem, nostack),
+                );
+                let scaled = vmulq_n_f32(vmulq_f32(vcvtq_f32_s32(acc), wsc_v), asc[mi * nb + b]);
+                let cur = vld1q_f32(accs[mi * 4..].as_ptr());
+                vst1q_f32(accs[mi * 4..].as_mut_ptr(), vaddq_f32(cur, scaled));
+            }
+        }
+        for mi in 0..m {
+            out[mi * n + nt..mi * n + nt + 4].copy_from_slice(&accs[mi * 4..mi * 4 + 4]);
+        }
+    }
+    n4
 }
 
 fn zipped_order(r: usize, zip: usize) -> Vec<usize> {
@@ -497,6 +580,30 @@ mod tests {
     fn loop_q4_big_neg() {
         test_loop_f32(Q4_0, &[-1234.0]);
         test_loop_f16(Q4_0, &[-1234.0]);
+    }
+
+    #[test]
+    #[ignore = "perf: cargo test -p tract-linalg --release w4a8_gemm_bench -- --ignored --nocapture"]
+    fn w4a8_gemm_bench() -> TractResult<()> {
+        use std::time::Instant;
+        let (m, n, k) = (64usize, 1536usize, 384usize);
+        let w: Vec<f32> = (0..n * k).map(|i| ((i * 37 % 53) as f32 - 26.0) / 9.0).collect();
+        let a: Vec<f32> = (0..m * k).map(|i| ((i * 19 % 41) as f32 - 20.0) / 7.0).collect();
+        let q = Q4_0.quant_f32(&w)?;
+        let mut out = vec![0f32; m * n];
+        for _ in 0..5 {
+            Q4_0.w4a8_gemm(&q, n, k, &a, m, &mut out)?;
+        }
+        let iters = 300;
+        let t = Instant::now();
+        for _ in 0..iters {
+            Q4_0.w4a8_gemm(&q, n, k, &a, m, &mut out)?;
+        }
+        eprintln!(
+            "w4a8_gemm prefill m={m} n={n} k={k}: {} us/iter",
+            t.elapsed().as_micros() as usize / iters
+        );
+        Ok(())
     }
 
     #[test]
