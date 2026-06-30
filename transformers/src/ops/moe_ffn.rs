@@ -7,6 +7,7 @@ use tract_nnef::tract_core::ops::einsum::EinSum;
 use tract_nnef::tract_core::ops::konst::Const;
 use tract_nnef::tract_core::ops::math::mul;
 use tract_nnef::tract_core::ops::{FrozenOpState, OpStateFreeze};
+use tract_nnef::tract_core::tract_linalg::block_quant::{BlockQuantStorage, block_quant_slice};
 
 use super::gelu_approximate::gelu_approximate;
 use super::silu::silu;
@@ -286,7 +287,29 @@ impl EvalOp for MoeFfn {
         // upcasts f16/bf16 weights, so it is the un-optimized fallback; the
         // codegen optimized path keeps experts in their native dtype).
         let cast = |i: usize| -> TractResult<Tensor> {
-            Ok(inputs[i].cast_to::<f32>()?.into_owned())
+            let input = &inputs[i];
+            if input.is_plain() {
+                return Ok(input.cast_to::<f32>()?.into_owned());
+            }
+            let s = input.shape();
+            let k = *s.last().context("block-quant tensor has no last axis")?;
+            // Leading dims are group/batch dims; last two are [M, K].
+            let num_groups: usize = if s.len() > 2 { s[..s.len() - 2].iter().product() } else { 1 };
+            let m_per_group: usize = if s.len() >= 2 { s[s.len() - 2] } else { 1 };
+            let bqs = input.try_storage_as::<BlockQuantStorage>()?;
+            let mut unpacked = (0..num_groups)
+                .map(|g| {
+                    let slice = block_quant_slice(bqs.value(), bqs.format(), m_per_group, k, g);
+                    bqs.format().dequant_f32(slice)
+                })
+                .collect::<TractResult<Vec<_>>>()?;
+            unpacked.iter_mut().try_for_each(|t| t.insert_axis(0))?;
+            let stacked = if unpacked.len() > 1 {
+                Tensor::stack_tensors(0, &unpacked)?
+            } else {
+                unpacked.into_iter().next().unwrap()
+            };
+            stacked.into_shape(s)
         };
         let x_t = cast(0)?;
         let wg_t = cast(1)?;
@@ -505,6 +528,16 @@ impl TypedOp for MoeFfn {
         let w1_tensor = w1_const.unwrap().val().clone();
         let w2_tensor = w2_const.unwrap().val().clone();
         let w3_tensor = w3_const.map(|c| c.val().clone());
+
+        // Optimized sub-plans slice each expert tensor and build plain
+        // constants. Q40 NNEF variables use packed storage, so leave them on the
+        // reference eval path for now instead of rejecting the model at codegen.
+        if !w1_tensor.is_plain()
+            || !w2_tensor.is_plain()
+            || w3_tensor.as_ref().is_some_and(|t| !t.is_plain())
+        {
+            return Ok(None);
+        }
 
         // Bail if the activation is not supported by the optimized path
         if activation_op(&self.activation, self.has_w3).is_none() {
@@ -884,6 +917,9 @@ impl TypedOp for OptMoeFfn {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tract_nnef::tract_core::tract_linalg::block_quant::{
+        BlockQuant, BlockQuantFact, BlockQuantStorage, Q4_0,
+    };
 
     fn make_moe_model(
         t_tokens: usize,
@@ -934,6 +970,18 @@ mod tests {
         let x_data = make_tensor(&[t_tokens, d_model], &mut next_f32);
 
         Ok((model, x_data))
+    }
+
+    fn add_q40_const(model: &mut TypedModel, name: &str, tensor: Tensor) -> TractResult<OutletId> {
+        let shape = tensor.shape().to_vec();
+        let k = *shape.last().context("Q40 tensor has no last axis")?;
+        ensure!(k % Q4_0.block_len() == 0, "Q40 K axis must be a multiple of 32");
+        let m = shape[..shape.len() - 1].iter().product();
+        let quant = Q4_0.quant_f32(tensor.try_as_plain()?.as_slice::<f32>()?)?;
+        let storage = BlockQuantStorage::new(Box::new(Q4_0), m, k, Arc::new(quant))?;
+        let packed = Arc::new(storage.into_tensor_with_shape(f32::datum_type(), &shape));
+        let fact = BlockQuantFact::new(Box::new(Q4_0), shape.iter().copied().collect());
+        Ok(model.wire_node(name, Const::new_with_exotic_fact(packed, Box::new(fact))?, &[])?[0])
     }
 
     #[test]
@@ -1012,6 +1060,62 @@ mod tests {
         // Should still have MoeFfn (not OptMoeFfn)
         let has_moe = opt_model.nodes().iter().any(|n| n.op_is::<MoeFfn>());
         assert!(has_moe, "Expected MoeFfn to remain when weights are not constants");
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_moe_ffn_runs_with_q40_expert_constants() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let t_tokens = 4;
+        let d_model = 32;
+        let d_hidden = 64;
+        let num_experts = 4;
+
+        let x = model.add_source("x", f32::datum_type().fact([t_tokens, d_model]))?;
+
+        let mut rng_state: u64 = 1337;
+        let mut next_f32 = || -> f32 {
+            rng_state = rng_state.wrapping_mul(6364136223846793005).wrapping_add(1);
+            ((rng_state >> 33) as f32 / (1u64 << 31) as f32) - 1.0
+        };
+        let make_tensor = |shape: &[usize], rng: &mut dyn FnMut() -> f32| -> Tensor {
+            let n: usize = shape.iter().product();
+            let data: Vec<f32> = (0..n).map(|_| rng()).collect();
+            tract_ndarray::ArrayD::from_shape_vec(shape, data).unwrap().into_tensor()
+        };
+
+        let wg = model.add_const("wg", make_tensor(&[num_experts, d_model], &mut next_f32))?;
+        let w1 = add_q40_const(
+            &mut model,
+            "w1",
+            make_tensor(&[num_experts, d_model, d_hidden], &mut next_f32),
+        )?;
+        let w2 = add_q40_const(
+            &mut model,
+            "w2",
+            make_tensor(&[num_experts, d_hidden, d_model], &mut next_f32),
+        )?;
+        let w3 = add_q40_const(
+            &mut model,
+            "w3",
+            make_tensor(&[num_experts, d_model, d_hidden], &mut next_f32),
+        )?;
+
+        let op = MoeFfn::basic(2, "silu", GateMode::SoftmaxTopk, true);
+        let outputs = model.wire_node("moe", op, &[x, wg, w1, w2, w3])?;
+        model.select_output_outlets(&outputs)?;
+
+        let opt_model = model.into_optimized()?;
+        let has_moe = opt_model.nodes().iter().any(|n| n.op_is::<MoeFfn>());
+        let has_opt = opt_model.nodes().iter().any(|n| n.op_is::<OptMoeFfn>());
+        assert!(has_moe, "Expected Q40 experts to stay on MoeFfn reference eval");
+        assert!(!has_opt, "Q40 experts should not use OptMoeFfn yet");
+
+        let x_data = make_tensor(&[t_tokens, d_model], &mut next_f32);
+        let result = SimplePlan::new(opt_model)?.spawn()?.run(tvec![x_data.into_tvalue()])?;
+        let output = result[0].to_plain_array_view::<f32>()?;
+        assert!(output.iter().all(|v| v.is_finite()));
 
         Ok(())
     }
