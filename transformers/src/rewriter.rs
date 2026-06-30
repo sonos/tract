@@ -4,6 +4,21 @@ use tract_nnef::tract_core::transform::ModelTransform;
 use crate::ops;
 
 #[derive(Debug, Default)]
+pub struct BlockQuantW4A8Transform;
+
+impl ModelTransform for BlockQuantW4A8Transform {
+    fn name(&self) -> StaticName {
+        "block_quant_w4a8".into()
+    }
+
+    fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
+        Rewriter::default()
+            .with_rule_for("block-quant-w4a8", ops::w4a8::w4a8_rule)
+            .rewrite(&(), model)
+    }
+}
+
+#[derive(Debug, Default)]
 pub struct ApplyRopeTransform;
 
 impl ModelTransform for ApplyRopeTransform {
