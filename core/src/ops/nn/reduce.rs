@@ -392,7 +392,7 @@ impl TypedOp for Reduce {
     }
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        ensure!(self.axes.iter().tuple_windows().all(|(a, b)| a < b));
+        ensure!(self.axes.iter().array_windows().all(|[a, b]| a < b));
         if inputs[0].datum_type == TDim::datum_type() {
             bail!("Reduce input must be cast from TDim to i64 beforehand")
         }

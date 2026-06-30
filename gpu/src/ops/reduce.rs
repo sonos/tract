@@ -142,7 +142,7 @@ impl EvalOp for GpuReduce {
 
 impl TypedOp for GpuReduce {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        ensure!(self.axes.iter().tuple_windows().all(|(a, b)| a < b));
+        ensure!(self.axes.iter().array_windows().all(|[a, b]| a < b));
         crate::utils::facts_to_device_facts(inputs, |facts| {
             let mut shape: TVec<_> = facts[0].shape.to_tvec();
             for &ax in &self.axes {
