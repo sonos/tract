@@ -324,31 +324,36 @@ unsafe fn w4a8_gemm_sdot_4(
                     wpack[(elem / 4) * 16 + c * 4 + (elem % 4)] = nib - 8;
                 }
             }
-            let wsc_v = vld1q_f32(wsc.as_ptr());
-            let w: [int8x16_t; 8] = core::array::from_fn(|i| vld1q_s8(wpack[i * 16..].as_ptr()));
-            for mi in 0..m {
-                let ap = aq[mi * k + b * QK..].as_ptr();
-                let a0 = vld1q_s8(ap);
-                let a1 = vld1q_s8(ap.add(16));
-                let mut acc = vdupq_n_s32(0);
-                std::arch::asm!(
-                    "sdot {acc:v}.4s, {w0:v}.16b, {a0:v}.4b[0]",
-                    "sdot {acc:v}.4s, {w1:v}.16b, {a0:v}.4b[1]",
-                    "sdot {acc:v}.4s, {w2:v}.16b, {a0:v}.4b[2]",
-                    "sdot {acc:v}.4s, {w3:v}.16b, {a0:v}.4b[3]",
-                    "sdot {acc:v}.4s, {w4:v}.16b, {a1:v}.4b[0]",
-                    "sdot {acc:v}.4s, {w5:v}.16b, {a1:v}.4b[1]",
-                    "sdot {acc:v}.4s, {w6:v}.16b, {a1:v}.4b[2]",
-                    "sdot {acc:v}.4s, {w7:v}.16b, {a1:v}.4b[3]",
-                    acc = inout(vreg) acc,
-                    w0 = in(vreg) w[0], w1 = in(vreg) w[1], w2 = in(vreg) w[2], w3 = in(vreg) w[3],
-                    w4 = in(vreg) w[4], w5 = in(vreg) w[5], w6 = in(vreg) w[6], w7 = in(vreg) w[7],
-                    a0 = in(vreg) a0, a1 = in(vreg) a1,
-                    options(pure, nomem, nostack),
-                );
-                let scaled = vmulq_n_f32(vmulq_f32(vcvtq_f32_s32(acc), wsc_v), asc[mi * nb + b]);
-                let cur = vld1q_f32(accs[mi * 4..].as_ptr());
-                vst1q_f32(accs[mi * 4..].as_mut_ptr(), vaddq_f32(cur, scaled));
+            // SAFETY: FEAT_DotProd is guaranteed by the caller; all pointers are in-bounds.
+            unsafe {
+                let wsc_v = vld1q_f32(wsc.as_ptr());
+                let w: [int8x16_t; 8] =
+                    core::array::from_fn(|i| vld1q_s8(wpack[i * 16..].as_ptr()));
+                for mi in 0..m {
+                    let ap = aq[mi * k + b * QK..].as_ptr();
+                    let a0 = vld1q_s8(ap);
+                    let a1 = vld1q_s8(ap.add(16));
+                    let mut acc = vdupq_n_s32(0);
+                    std::arch::asm!(
+                        "sdot {acc:v}.4s, {w0:v}.16b, {a0:v}.4b[0]",
+                        "sdot {acc:v}.4s, {w1:v}.16b, {a0:v}.4b[1]",
+                        "sdot {acc:v}.4s, {w2:v}.16b, {a0:v}.4b[2]",
+                        "sdot {acc:v}.4s, {w3:v}.16b, {a0:v}.4b[3]",
+                        "sdot {acc:v}.4s, {w4:v}.16b, {a1:v}.4b[0]",
+                        "sdot {acc:v}.4s, {w5:v}.16b, {a1:v}.4b[1]",
+                        "sdot {acc:v}.4s, {w6:v}.16b, {a1:v}.4b[2]",
+                        "sdot {acc:v}.4s, {w7:v}.16b, {a1:v}.4b[3]",
+                        acc = inout(vreg) acc,
+                        w0 = in(vreg) w[0], w1 = in(vreg) w[1], w2 = in(vreg) w[2], w3 = in(vreg) w[3],
+                        w4 = in(vreg) w[4], w5 = in(vreg) w[5], w6 = in(vreg) w[6], w7 = in(vreg) w[7],
+                        a0 = in(vreg) a0, a1 = in(vreg) a1,
+                        options(pure, nomem, nostack),
+                    );
+                    let scaled =
+                        vmulq_n_f32(vmulq_f32(vcvtq_f32_s32(acc), wsc_v), asc[mi * nb + b]);
+                    let cur = vld1q_f32(accs[mi * 4..].as_ptr());
+                    vst1q_f32(accs[mi * 4..].as_mut_ptr(), vaddq_f32(cur, scaled));
+                }
             }
         }
         for mi in 0..m {
