@@ -5,6 +5,7 @@ use std::collections::HashSet;
 use rewriter::*;
 use tract_nnef::internal::*;
 
+register_simple_model_transform!("block_quant_w4a8", BlockQuantW4A8Transform);
 register_simple_model_transform!("detect_apply_rope", ApplyRopeTransform);
 register_simple_model_transform!("detect_diag_gather", DetectDiagGatherTransform);
 register_simple_model_transform!("detect_scaled_masked_softmax", ScaledMaskedSoftmaxTransform);
