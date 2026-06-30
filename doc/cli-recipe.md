@@ -190,6 +190,7 @@ highlights a few worth knowing; `list-knobs` is the complete set.
 | `TRACT_LOG` | `env_logger` filter (e.g. `tract=debug`, `cli=info,tract=warn`). The CLI also derives a default level from `-v` / `-vv`. |
 | `TRACT_LAZY_IM2COL_MIN_KERNEL` | Minimum convolution kernel volume before lazy im2col is preferred over eager. Default: 6. Lower it to experiment on memory-constrained targets. |
 | `TRACT_LAZY_IM2COL_MAX_EAGER_BYTES` | Scratch-buffer ceiling above which `Conv` switches from eager to lazy im2col. Per-family default (~1 MiB on WASM, ~4 MiB on native). Key knob for the canary-model regression gate. |
+| `TRACT_AVGPOOL_SEPARABLE` | Use the separable running-sum average-pool kernel (stride-1 NCHW), O(1) per output vs O(k²). Default: off. **Not bit-identical** — it reassociates the float sums (allowed by `SumPool`'s `Validation::Rounding`). ~2× on the avg-pool nodes; pool-heavy nets (Inception) see it E2E. |
 | `TRACT_CPU_AARCH64_KIND` | Force aarch64 CPU family detection (`a53`, `a55`, `a72`, `applem`, `generic`, …). Useful for QEMU runs that misreport. |
 | `TRACT_CPU_AARCH64_OVERRIDE_CPU_PART` | Force the raw CPU part hex (`0xd03`, …) before the kind-lookup table runs. Lower-level escape hatch when `TRACT_CPU_AARCH64_KIND` doesn't cover the target. |
 | `TRACT_CPU_ARM32_NEON` | Force armv7 NEON detection on/off (`true`/`1` or `false`/`0`). |
@@ -197,7 +198,8 @@ highlights a few worth knowing; `list-knobs` is the complete set.
 
 Knobs are declared with `declare_knob!`: the arch-detection ones in
 `linalg/src/knobs.rs`, the conv crossovers in `core/src/ops/cnn/conv/conv.rs`
-next to their default constants. `TRACT_LOG` (an `env_logger` filter) and the
+and the avg-pool kernel toggle in `core/src/ops/cnn/sumpool.rs`, each next to
+the code it steers. `TRACT_LOG` (an `env_logger` filter) and the
 CI-only `TRACT_CPU_EXPECT_ARM32_NEON` are conventions, not registry knobs, so
 they do not appear in `list-knobs`. See [`kernel-notes.md`](kernel-notes.md)
 for context on the kernel selection that `LAZY_IM2COL_*` is steering.
