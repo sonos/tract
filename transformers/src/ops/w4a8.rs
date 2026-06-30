@@ -92,17 +92,48 @@ impl EvalOp for W4A8MatMul {
     }
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+        use rayon::prelude::*;
         let a = inputs[0].cast_to::<f32>()?;
         let av = a.to_plain_array_view::<f32>()?;
         let af = av.as_slice().unwrap();
         let w = inputs[1].cast_to::<u8>()?;
         let wv = w.to_plain_array_view::<u8>()?;
         let wb = wv.as_slice().unwrap();
-        let rows = af.len() / self.k;
-        let mut out = vec![0f32; rows * self.n];
-        Q4_0.w4a8_gemm(wb, self.n, self.k, af, rows, &mut out)?;
+        let (n, k) = (self.n, self.k);
+        let rows = af.len() / k;
+        let mut out = vec![0f32; rows * n];
+        // Parallelize over output columns N: each task decodes its weight rows once and reuses
+        // them across all activation rows, so the per-block decode stays amortized.
+        let row_bytes = (k / Q4_0.block_len()) * Q4_0.block_bytes();
+        let nchunk = n.div_ceil(rayon::current_num_threads().max(1)).max(1);
+        if n <= nchunk {
+            Q4_0.w4a8_gemm(wb, n, k, af, rows, &mut out)?;
+        } else {
+            let parts: TractResult<Vec<(usize, usize, Vec<f32>)>> = (0..n)
+                .step_by(nchunk)
+                .par_bridge()
+                .map(|n0| {
+                    let nc = (n0 + nchunk).min(n) - n0;
+                    let mut oc = vec![0f32; rows * nc];
+                    Q4_0.w4a8_gemm(
+                        &wb[n0 * row_bytes..(n0 + nc) * row_bytes],
+                        nc,
+                        k,
+                        af,
+                        rows,
+                        &mut oc,
+                    )?;
+                    Ok((n0, nc, oc))
+                })
+                .collect();
+            for (n0, nc, oc) in parts? {
+                for mi in 0..rows {
+                    out[mi * n + n0..mi * n + n0 + nc].copy_from_slice(&oc[mi * nc..(mi + 1) * nc]);
+                }
+            }
+        }
         let mut shape: TVec<usize> = a.shape().into();
-        *shape.last_mut().unwrap() = self.n;
+        *shape.last_mut().unwrap() = n;
         Ok(tvec!(Tensor::from_shape(&shape, &out)?.into_tvalue()))
     }
 }
@@ -176,6 +207,36 @@ mod tests {
     #[test]
     fn w4a8_rule_wires_weight_nk() -> TractResult<()> {
         check_wiring("mk,nk->mn", &[256, 128])
+    }
+
+    #[test]
+    #[ignore = "perf: cargo test -p tract-transformers --release w4a8_op_bench -- --ignored --nocapture"]
+    fn w4a8_op_bench() -> TractResult<()> {
+        use std::time::Instant;
+        let (m, n, k) = (64usize, 1536usize, 384usize); // MiniLM intermediate, prefill
+        let wf: Vec<f32> = (0..n * k).map(|i| ((i * 37 % 53) as f32 - 26.0) / 9.0).collect();
+        let qbytes = Q4_0.quant_f32(&wf)?;
+        let a = Tensor::from_shape(
+            &[m, k],
+            &(0..m * k).map(|i| ((i * 19 % 41) as f32 - 20.0) / 7.0).collect::<Vec<f32>>(),
+        )?;
+        let w = Tensor::from_shape(&[qbytes.len()], &qbytes)?;
+        let op = W4A8MatMul { n, k };
+        let inputs = tvec!(a.into_tvalue(), w.into_tvalue());
+        for _ in 0..5 {
+            op.eval(inputs.clone())?;
+        }
+        let iters = 100;
+        let t = Instant::now();
+        for _ in 0..iters {
+            op.eval(inputs.clone())?;
+        }
+        eprintln!(
+            "w4a8 op prefill m={m} n={n} k={k} ({} threads): {} us/iter",
+            rayon::current_num_threads(),
+            t.elapsed().as_micros() as usize / iters
+        );
+        Ok(())
     }
 
     #[test]
