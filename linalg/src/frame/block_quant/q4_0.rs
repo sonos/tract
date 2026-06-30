@@ -248,6 +248,66 @@ impl<const QK: usize> BaseQ4_0<QK> {
         }
         Ok(y)
     }
+
+    /// W4A8 GEMM (`M >= 1`): `Y[m, n] = Σ_k dequant(W[n, k]) · A[m, k]`, computed as per-block
+    /// int8 dot products of the unpacked 4-bit weights with int8-quantized activations, each
+    /// scaled by `w_block_scale · a_block_scale`. `weight` is this format's storage for a `[n, k]`
+    /// matrix (row-major blocks, `k % QK == 0`); `a` is the `[m, k]` row-major activation,
+    /// quantized to int8 on the fly; `out` is the `[m, n]` row-major result, overwritten. Each
+    /// weight block is decoded once and reused across the `m` activation rows, so the result is
+    /// near- but not bit-exact against the f32-dequant path (and bit-exact against `w4a8_gemv`
+    /// run per row).
+    pub fn w4a8_gemm(
+        &self,
+        weight: &[u8],
+        n: usize,
+        k: usize,
+        a: &[f32],
+        m: usize,
+        out: &mut [f32],
+    ) -> TractResult<()> {
+        ensure!(k % QK == 0, "W4A8 GEMM needs K a multiple of {QK}, got {k}");
+        ensure!(a.len() == m * k && weight.len() == n * (k / QK) * self.block_bytes());
+        ensure!(out.len() == m * n);
+        let nb = k / QK;
+        let bb = self.block_bytes();
+
+        let mut aq = vec![0i8; m * k];
+        let mut asc = vec![0f32; m * nb];
+        for mi in 0..m {
+            let (q, s) = self.quantize_row_q8(&a[mi * k..][..k]);
+            aq[mi * k..][..k].copy_from_slice(&q);
+            asc[mi * nb..][..nb].copy_from_slice(&s);
+        }
+
+        let mut wi8 = [0i8; QK];
+        let mut accs = vec![0f32; m];
+        for ni in 0..n {
+            accs.iter_mut().for_each(|x| *x = 0.0);
+            for b in 0..nb {
+                let blk = &weight[(ni * nb + b) * bb..][..bb];
+                let wscale = f16::from_bits(u16::from_le_bytes([blk[0], blk[1]])).to_f32();
+                for idx in 0..QK {
+                    let byte = blk[2 + idx / 2];
+                    let nib = if idx % 2 == 0 { byte & 0x0F } else { byte >> 4 } as i8;
+                    wi8[(QK / 2) * (idx % 2) + idx / 2] = nib - 8;
+                }
+                for mi in 0..m {
+                    let aqb = &aq[mi * k + b * QK..][..QK];
+                    // Keep this contiguous so LLVM lowers the i8->i32 MAC to a NEON int8 dot.
+                    let mut dot = 0i32;
+                    for i in 0..QK {
+                        dot += wi8[i] as i32 * aqb[i] as i32;
+                    }
+                    accs[mi] += dot as f32 * wscale * asc[mi * nb + b];
+                }
+            }
+            for mi in 0..m {
+                out[mi * n + ni] = accs[mi];
+            }
+        }
+        Ok(())
+    }
 }
 
 fn zipped_order(r: usize, zip: usize) -> Vec<usize> {
@@ -472,6 +532,47 @@ mod tests {
     fn loop_q4_big_neg() {
         test_loop_f32(Q4_0, &[-1234.0]);
         test_loop_f16(Q4_0, &[-1234.0]);
+    }
+
+    #[test]
+    fn w4a8_gemm_matches_gemv() -> TractResult<()> {
+        let (m, n, k) = (5usize, 7usize, 64usize);
+        let wf: Vec<f32> = (0..n * k).map(|i| ((i * 37 % 53) as f32 - 26.0) / 9.0).collect();
+        let a: Vec<f32> = (0..m * k).map(|i| ((i * 19 % 41) as f32 - 20.0) / 7.0).collect();
+        let qbytes = Q4_0.quant_f32(&wf)?;
+        let mut out = vec![0f32; m * n];
+        Q4_0.w4a8_gemm(&qbytes, n, k, &a, m, &mut out)?;
+        for mi in 0..m {
+            let row = Q4_0.w4a8_gemv(&qbytes, n, k, &a[mi * k..][..k])?;
+            assert_eq!(&out[mi * n..][..n], &row[..], "row {mi}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn w4a8_gemm_approx_dequant_matmul() -> TractResult<()> {
+        let (m, n, k) = (4usize, 6usize, 96usize);
+        let wf: Vec<f32> = (0..n * k).map(|i| ((i * 31 % 47) as f32 - 23.0) / 11.0).collect();
+        let a: Vec<f32> = (0..m * k).map(|i| ((i * 23 % 43) as f32 - 21.0) / 8.0).collect();
+        let qbytes = Q4_0.quant_f32(&wf)?;
+        let mut out = vec![0f32; m * n];
+        Q4_0.w4a8_gemm(&qbytes, n, k, &a, m, &mut out)?;
+        let wdeq = Q4_0.dequant_f32(&qbytes)?;
+        let wdeq = wdeq.try_as_plain()?.as_slice::<f32>()?;
+        for mi in 0..m {
+            for ni in 0..n {
+                let mut acc = 0f32;
+                for ki in 0..k {
+                    acc += wdeq[ni * k + ki] * a[mi * k + ki];
+                }
+                let got = out[mi * n + ni];
+                assert!(
+                    (got - acc).abs() <= 0.15 * acc.abs() + 1.0,
+                    "[{mi},{ni}] got {got} ref {acc}"
+                );
+            }
+        }
+        Ok(())
     }
 
     fn test_extract_f32(b: impl BlockQuant, data: &[f32]) {
