@@ -39,8 +39,19 @@ pub fn w4a8_rule(
     if k % 32 != 0 {
         return Ok(None);
     }
-    // contraction must be the activation's last axis, output rank must match the activation's
-    if k_on_act + 1 != facts[aslot].rank() || node.outputs[0].fact.rank() != facts[aslot].rank() {
+    // The kernel contracts the activation's last axis and emits N last; the output may carry the
+    // remaining dims in a different (size-1-padded) rank, so require equal volume and reshape.
+    let a_shape = facts[aslot].shape.to_tvec();
+    let out_shape = node.outputs[0].fact.shape.to_tvec();
+    let nd = n.to_dim();
+    let a_free_vol = a_shape
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| *i != k_on_act)
+        .fold(1.to_dim(), |acc, (_, d)| acc * d);
+    let out_lead_vol = out_shape[..out_shape.len() - 1].iter().fold(1.to_dim(), |acc, d| acc * d);
+    if k_on_act + 1 != a_shape.len() || out_shape.last() != Some(&nd) || a_free_vol != out_lead_vol
+    {
         return Ok(None);
     }
 
@@ -63,8 +74,18 @@ pub fn w4a8_rule(
     let mut patch = TypedModelPatch::default();
     let a = patch.tap_model(model, node.inputs[aslot])?;
     let w = patch.add_const(format!("{prefix}.w4a8.weight"), tensor1(&bytes))?;
-    let out = patch.wire_node(prefix, W4A8MatMul { n, k }, &[a, w])?;
-    patch.shunt_outside(model, node.id.into(), out[0])?;
+    let mut out = patch.wire_node(prefix, W4A8MatMul { n, k }, &[a, w])?[0];
+    // The op keeps the activation's dims with N last; reshape to the einsum's output dims.
+    let mut op_shape = a_shape;
+    *op_shape.last_mut().unwrap() = nd;
+    if op_shape != out_shape {
+        out = patch.wire_node(
+            format!("{prefix}.w4a8.reshape"),
+            AxisOp::Reshape(0, op_shape, out_shape),
+            &[out],
+        )?[0];
+    }
+    patch.shunt_outside(model, node.id.into(), out)?;
     Ok(Some(patch))
 }
 
