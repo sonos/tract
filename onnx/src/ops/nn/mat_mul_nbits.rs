@@ -6,7 +6,7 @@ use tract_core::ops::konst::Const;
 use tract_core::ops::math::add;
 use tract_hir::internal::*;
 use tract_hir::ops::logic::wire_with_rank_broadcast;
-use tract_linalg::block_quant::{BlockQuant, BlockQuantFact, BlockQuantStorage, Q4_0};
+use tract_linalg::block_quant::{BlockQuantFact, BlockQuantStorage, Q4_0};
 
 // com.microsoft MatMulNBits: Y = A @ dequant(B)^T (+ bias)
 //   A:           float [.., K]
