@@ -5106,6 +5106,7 @@ name = "tract-transformers"
 version = "0.23.4-pre"
 dependencies = [
  "float-ord",
+ "ndarray-npy",
  "rayon",
  "tract-nnef",
 ]
