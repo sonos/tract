@@ -64,7 +64,7 @@ impl super::TypedPass for ConcatThenEinsum {
                         continue 'outer;
                     } else if axis_info.inputs[slot].len() == 1 {
                         let mut slices = tvec!();
-                        for (start, end) in offsets.iter().cloned().tuple_windows() {
+                        for [start, end] in offsets.iter().cloned().array_windows() {
                             let wire = patch.wire_node(
                                 format!(
                                     "{}.concat-einsum-slice-{}.{}.{}..{}",
@@ -81,7 +81,7 @@ impl super::TypedPass for ConcatThenEinsum {
                     };
                 }
                 let mut einsums = tvec!();
-                for (ix, (start, end)) in offsets.iter().tuple_windows().enumerate() {
+                for (ix, [start, end]) in offsets.iter().array_windows().enumerate() {
                     let mut einsum_inputs = tvec!();
                     for input_ix in 0..einsum_node.inputs.len() {
                         einsum_inputs

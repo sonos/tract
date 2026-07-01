@@ -125,7 +125,7 @@ impl TypedOp for TypedConcat {
             inputs.iter().map(|o| patch.outlet_fact(*o)).collect::<TractResult<TVec<_>>>()?;
         let offsets = self.offsets(&facts)?;
         std::mem::drop(facts);
-        for (ix, (slice_start, slice_end)) in offsets.iter().tuple_windows().enumerate() {
+        for (ix, [slice_start, slice_end]) in offsets.iter().array_windows().enumerate() {
             if (start.clone() - slice_start).prove_positive_or_zero()
                 && (slice_end.clone() - end).prove_positive_or_zero()
             {

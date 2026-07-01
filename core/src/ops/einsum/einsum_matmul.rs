@@ -664,8 +664,8 @@ pub(super) fn regroup_k_axes(
         .iter()
         .map(|axis| axis.inputs[0][0])
         .sorted()
-        .tuple_windows()
-        .all(|(a, b)| a + 1 == b);
+        .array_windows()
+        .all(|[a, b]| a + 1 == b);
     if contig_in_a {
         k_axes.sort_by_key(|ax| ax.inputs[0][0]);
     } else {
@@ -679,7 +679,7 @@ pub(super) fn regroup_k_axes(
     let mut exprs: Vec<String> =
         (0..2).map(|slot| op.axes.axes(InOut::In(slot)).map(|ax| ax.repr).join("")).collect();
     for slot in 0..2 {
-        if k_axes.iter().map(|ax| ax.inputs[slot][0]).tuple_windows().any(|(a, b)| a + 1 != b) {
+        if k_axes.iter().map(|ax| ax.inputs[slot][0]).array_windows().any(|[a, b]| a + 1 != b) {
             let after = op
                 .axes
                 .axes(InOut::In(slot))

@@ -100,7 +100,7 @@ fn op_slices_to_slice_op(
     ensure!(boundaries[0] == 0.to_dim());
     ensure!(boundaries.last().as_ref().unwrap() == &len);
     let axis_info = invariants.axis((InOut::Out(0), axis)).unwrap();
-    for (start, end) in boundaries.iter().tuple_windows() {
+    for [start, end] in boundaries.iter().array_windows() {
         let mut wires = tvec!();
         for input_ix in 0..inputs.len() {
             let mut wire = inputs[input_ix];
@@ -219,9 +219,9 @@ pub fn rewire_sliced_outputs(
             // example: boundaries: 2, 3, wanted: 0..2 -> [0]
             let slices: TVec<OutletId> = boundaries
                 .iter()
-                .tuple_windows()
+                .array_windows()
                 .zip(splits.iter())
-                .filter_map(|((_down, up), split)| {
+                .filter_map(|([_down, up], split)| {
                     if *up > slice.start.to_usize().unwrap() && *up <= slice.end.to_usize().unwrap()
                     {
                         Some(*split)

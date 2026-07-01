@@ -400,7 +400,7 @@ where
 
     /// Get multiple mutable tensor information for outlets.
     pub fn outlets_fact_mut(&mut self, outlets: &[OutletId]) -> TractResult<TVec<&mut F>> {
-        assert!(outlets.iter().tuple_combinations().all(|(a, b)| a != b));
+        assert!(outlets.iter().array_combinations().all(|[a, b]| a != b));
         unsafe {
             outlets
                 .iter()
