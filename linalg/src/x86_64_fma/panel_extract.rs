@@ -6,7 +6,7 @@ use tract_data::internal::*;
 pub fn plug(ops: &mut Ops) {
     ops.panel_extractors.extend([
         packed_32_q40_to_f32.clone(),
-        packed_32_q1_58_to_f32.clone(),
+        packed_32_q20t_to_f32.clone(),
         packed_32_f16_to_f32.clone(),
     ]);
 }
@@ -16,18 +16,18 @@ panel_extractor!(kernel_packed_32_q40_to_f32 as packed_32_q40_to_f32(
     f32::packing(32).align(32)
 ) where(AVX2));
 
-panel_extractor!(kernel_packed_32_q1_58_to_f32 as packed_32_q1_58_to_f32(
-    Box::new(super::mmm::pq1_58_r32()),
+panel_extractor!(kernel_packed_32_q20t_to_f32 as packed_32_q20t_to_f32(
+    Box::new(super::mmm::pq20t_r32()),
     f32::packing(32).align(32)
 ) where(AVX2));
 
-// AVX2 unpack of a ternary (Q1_58) r=32, zip=0 panel into an f32 packing(32) panel.
+// AVX2 unpack of a ternary (Q2_0_T) r=32, zip=0 panel into an f32 packing(32) panel.
 // Per 32-block: 32 f16 row-scales then 32 k-positions, each with 32 rows of 2-bit codes
 // (8 bytes). For a position, lane `row` wants `(byte[row/4] >> 2*(row%4)) & 3` which the
 // per-lane variable shift (vpsrlvd) computes directly after spreading each byte across
 // four lanes; then `(code - 1) * scale`.
 #[target_feature(enable = "avx2,f16c")]
-unsafe fn kernel_packed_32_q1_58_to_f32(input: *const u8, output: *mut u8, k: usize) {
+unsafe fn kernel_packed_32_q20t_to_f32(input: *const u8, output: *mut u8, k: usize) {
     use std::arch::x86_64::*;
     unsafe {
         if k == 0 {
