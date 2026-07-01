@@ -73,7 +73,7 @@ impl<W: Write> NibbleWriter<W> {
 }
 
 /// Reads/writes 2-bit values ("crumbs"), four per byte, least-significant pair first.
-/// Used by the ternary (Q1_58 / BitNet b1.58) block-quant format. f16 reads/writes are
+/// Used by the ternary (Q2_0_T / BitNet b1.58) block-quant format. f16 reads/writes are
 /// only legal on a crumb (byte) boundary, which the ternary layouts always respect.
 pub struct CrumbReader<R> {
     acc: u8,

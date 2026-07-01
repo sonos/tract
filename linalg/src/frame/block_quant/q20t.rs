@@ -8,6 +8,11 @@ use std::alloc::Layout;
 /// codes packed 2 bits each (four per byte). With the default block of 32 this is
 /// `2 + 32/4 = 10` bytes per 32 weights == 2.5 bits/weight (vs Q4_0's 4.5 and f16's 16).
 ///
+/// Named `Q2_0_T` after the on-disk layout (2 bits/code, variant 0, `_T` = ternary),
+/// following the `Q4_0` convention: it is the 2-bit-packed `TQ2_0`-family layout,
+/// distinct from `TQ1_0`'s base-3 packing. The `b1.58` in "BitNet b1.58" names the
+/// model/recipe, not the storage size.
+///
 /// Codes on the wire: `-1 -> 0`, `0 -> 1`, `+1 -> 2` (code 3 unused), so a code `c`
 /// dequantizes to `(c as i8 - 1) * scale`. Quantization uses abs-mean scaling
 /// (`scale = mean(|w|)`), the standard BitNet b1.58 recipe.
@@ -26,17 +31,18 @@ use std::alloc::Layout;
 /// - Microsoft `bitnet.cpp` ("1-bit AI Infra", arXiv:2410.16144) — `I2_S`/`TL1`/`TL2`
 ///   ternary CPU kernels — and `T-MAC` (arXiv:2407.00088) lookup-table low-bit mpGEMM.
 #[derive(Copy, Clone, Hash, PartialEq, Eq)]
-pub struct BaseQ1_58<const QK: usize = 32>;
+#[allow(non_camel_case_types)]
+pub struct BaseQ2_0_T<const QK: usize = 32>;
 
-pub const Q1_58: BaseQ1_58 = BaseQ1_58::<32>;
+pub const Q2_0_T: BaseQ2_0_T = BaseQ2_0_T::<32>;
 
-impl<const QK: usize> Debug for BaseQ1_58<QK> {
+impl<const QK: usize> Debug for BaseQ2_0_T<QK> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if QK == 32 { write!(f, "Q1_58") } else { write!(f, "BaseQ1_58<{QK}>") }
+        if QK == 32 { write!(f, "Q2_0_T") } else { write!(f, "BaseQ2_0_T<{QK}>") }
     }
 }
 
-impl<const QK: usize> BaseQ1_58<QK> {
+impl<const QK: usize> BaseQ2_0_T<QK> {
     fn quant_block<T>(&self, block: &[T], quant: &mut [u8])
     where
         f32: From<T>,
@@ -188,7 +194,7 @@ impl<const QK: usize> BaseQ1_58<QK> {
     }
 }
 
-impl<const QK: usize> BlockQuant for BaseQ1_58<QK> {
+impl<const QK: usize> BlockQuant for BaseQ2_0_T<QK> {
     fn block_len(&self) -> usize {
         QK
     }
@@ -231,7 +237,7 @@ impl<const QK: usize> BlockQuant for BaseQ1_58<QK> {
     ) -> TractResult<EagerPackedInput> {
         ensure!(input.len() % self.block_bytes() == 0);
         ensure!(k % self.block_len() == 0);
-        ensure!(zip == 0, "No zipping required for Q1_58");
+        ensure!(zip == 0, "No zipping required for Q2_0_T");
         let m = if input.len() == 0 {
             0
         } else {
@@ -324,9 +330,9 @@ impl<const QK: usize> BlockQuant for BaseQ1_58<QK> {
     }
 }
 
-impl<const QK: usize> Display for BaseQ1_58<QK> {
+impl<const QK: usize> Display for BaseQ2_0_T<QK> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Q1_58")
+        write!(f, "Q2_0_T")
     }
 }
 
@@ -364,29 +370,29 @@ mod tests {
     }
 
     #[test]
-    fn loop_q1_58_f32_alt() {
-        test_loop_exact_f32(Q1_58, &alt_block(2.0, 32));
+    fn loop_q20t_f32_alt() {
+        test_loop_exact_f32(Q2_0_T, &alt_block(2.0, 32));
     }
 
     #[test]
-    fn loop_q1_58_f16_alt() {
-        test_loop_exact_f16(Q1_58, &alt_block(2.0, 32));
+    fn loop_q20t_f16_alt() {
+        test_loop_exact_f16(Q2_0_T, &alt_block(2.0, 32));
     }
 
     #[test]
-    fn loop_q1_58_f32_zeros() {
-        test_loop_exact_f32(Q1_58, &vec![0.0; 32]);
+    fn loop_q20t_f32_zeros() {
+        test_loop_exact_f32(Q2_0_T, &vec![0.0; 32]);
     }
 
     #[test]
-    fn loop_q1_58_small_block() {
-        test_loop_exact_f32(BaseQ1_58::<4>, &[5.0, -5.0, 5.0, 5.0]);
+    fn loop_q20t_small_block() {
+        test_loop_exact_f32(BaseQ2_0_T::<4>, &[5.0, -5.0, 5.0, 5.0]);
     }
 
     // abs-mean reconstruction on a known mixed block (block_len 4, no padding).
     #[test]
     fn quant_absmean_known() {
-        let q = BaseQ1_58::<4>;
+        let q = BaseQ2_0_T::<4>;
         // block of 4: |.| mean = (3+1+0+2)/4 = 1.5 ; round(w/1.5) -> codes
         let data = [3.0f32, -1.0, 0.0, -2.0];
         let quant = q.quant_f32(&data).unwrap();
@@ -434,17 +440,17 @@ mod tests {
 
     #[test]
     fn pack_then_extract_panel() -> TractResult<()> {
-        test_pack_then_extract_panel(BaseQ1_58::<4>, 8, 4, 2, false)
+        test_pack_then_extract_panel(BaseQ2_0_T::<4>, 8, 4, 2, false)
     }
 
     #[test]
     fn pack_then_extract_panel_with_scales_at_end() -> TractResult<()> {
-        test_pack_then_extract_panel(BaseQ1_58::<4>, 8, 4, 4, true)
+        test_pack_then_extract_panel(BaseQ2_0_T::<4>, 8, 4, 4, true)
     }
 
     #[test]
     fn pack_then_extract_panel_r8() -> TractResult<()> {
-        test_pack_then_extract_panel(BaseQ1_58::<8>, 16, 8, 8, false)
+        test_pack_then_extract_panel(BaseQ2_0_T::<8>, 16, 8, 8, false)
     }
 
     fn test_pack_then_extract_row(
@@ -480,12 +486,12 @@ mod tests {
 
     #[test]
     fn pack_then_extract_row() -> TractResult<()> {
-        test_pack_then_extract_row(BaseQ1_58::<4>, 8, 4, 2, false)
+        test_pack_then_extract_row(BaseQ2_0_T::<4>, 8, 4, 2, false)
     }
 
     #[test]
     fn pack_then_extract_row_with_scales_at_end() -> TractResult<()> {
-        test_pack_then_extract_row(BaseQ1_58::<4>, 8, 4, 4, true)
+        test_pack_then_extract_row(BaseQ2_0_T::<4>, 8, 4, 4, true)
     }
 
     // ---- Phase B: integer (int8 x int8 -> i32) dot reproduces the f32 dequant path ----
@@ -504,7 +510,7 @@ mod tests {
     /// epilogue. Compares against the f32 dequant-then-matmul reference.
     #[test]
     fn phase_b_integer_gemv_matches_f32() -> TractResult<()> {
-        let q = BaseQ1_58::<32>;
+        let q = BaseQ2_0_T::<32>;
         let (m, k) = (6usize, 96usize);
         let bl = q.block_len();
         let blocks_for_k = k / bl;
@@ -571,12 +577,12 @@ mod tests {
     // NOTE on interpretation: the unpack here is *compute-bound* on the scalar bit-unpack,
     // and on a typical box the packed buffer fits in L3 — so this does NOT measure the
     // DRAM-bandwidth win. (Byte-aligned Q8_1 even unpacks faster per byte than the
-    // bit-packed Q1_58/Q4_0.) The Tier-A *speed* win only appears in a real decode GEMV
+    // bit-packed Q2_0_T/Q4_0.) The Tier-A *speed* win only appears in a real decode GEMV
     // whose weights exceed last-level cache AND with a vectorized unpack (or via the
     // Tier-B integer path that skips the f16 expansion). The footprint win, by contrast,
     // is unconditional. See doc/loom-ternary-blockquant.md.
     //
-    //   cargo test -p tract-linalg --lib block_quant::q1_58::tests::measure_unpack \
+    //   cargo test -p tract-linalg --lib block_quant::q20t::tests::measure_unpack \
     //       --release -- --ignored --nocapture
     #[test]
     #[ignore]
@@ -634,17 +640,17 @@ mod tests {
 
         let (m, k, r) = (4096, 4096, 8);
         println!("--- per-matmul weight unpack (stream packed weights -> f16 panel) ---");
-        run(Q1_58, "Q1_58", m, k, r)?;
+        run(Q2_0_T, "Q2_0_T", m, k, r)?;
         run(Q4_0, "Q4_0", m, k, r)?;
         run(Q8_1, "Q8_1", m, k, r)?;
         Ok(())
     }
 
     // Quantifies the SIMD unpack win: scalar `extract_packed_panel` vs the AVX2
-    // `packed_32_q1_58_to_f32` extractor, both turning a Q1_58 r=32 panel into an f32
+    // `packed_32_q20t_to_f32` extractor, both turning a Q2_0_T r=32 panel into an f32
     // panel. This is the step that dominated the scalar decode GEMV.
     //
-    //   cargo test -p tract-linalg --lib block_quant::q1_58::tests::measure_simd_unpack \
+    //   cargo test -p tract-linalg --lib block_quant::q20t::tests::measure_simd_unpack \
     //       --release -- --ignored --nocapture
     #[cfg(target_arch = "x86_64")]
     #[test]
@@ -657,7 +663,7 @@ mod tests {
             println!("avx2/f16c not available, skipping");
             return Ok(());
         }
-        let q = BaseQ1_58::<32>;
+        let q = BaseQ2_0_T::<32>;
         let (m, k) = (4096usize, 4096usize);
         let weights: Vec<f32> = (0..m * k).map(|i| ((i * 2654435761) % 7) as f32 - 3.0).collect();
         let quant = q.quant_f32(&weights)?;
@@ -665,7 +671,7 @@ mod tests {
         let panels = m / 32;
         let mut scratch = vec![0f32; k * 32];
         let packer = PackedFormat::new(f32::datum_type(), 32, 32);
-        let simd = crate::x86_64_fma::panel_extract::packed_32_q1_58_to_f32.kernel;
+        let simd = crate::x86_64_fma::panel_extract::packed_32_q20t_to_f32.kernel;
 
         let bytes = packed.packed.len() as f64;
         let iters = 50;
@@ -711,14 +717,14 @@ mod tests {
             }
         }
         let simd_s = t.elapsed().as_secs_f64() / iters as f64;
-        println!("--- Q1_58 unpack {m}x{k} ({:.1} MB packed) ---", bytes / 1e6);
+        println!("--- Q2_0_T unpack {m}x{k} ({:.1} MB packed) ---", bytes / 1e6);
         println!(
             "scalar extract_packed_panel: {:6.0} us, {:.1} GB/s",
             scalar * 1e6,
             bytes / scalar / 1e9
         );
         println!(
-            "AVX2  packed_32_q1_58_to_f32: {:6.0} us, {:.1} GB/s ({:.1}x faster)",
+            "AVX2  packed_32_q20t_to_f32: {:6.0} us, {:.1} GB/s ({:.1}x faster)",
             simd_s * 1e6,
             bytes / simd_s / 1e9,
             scalar / simd_s
@@ -727,10 +733,10 @@ mod tests {
     }
 
     // Decode-shaped (N=1) end-to-end GEMV through the *real* generic mmm kernel, weights
-    // sized to exceed this box's L3, comparing plain f32 weights vs Q4_0 vs Q1_58. This is
+    // sized to exceed this box's L3, comparing plain f32 weights vs Q4_0 vs Q2_0_T. This is
     // the honest end-to-end Tier-A measurement (kernel compute + weight streaming together).
     //
-    //   cargo test -p tract-linalg --lib block_quant::q1_58::tests::measure_decode_gemv \
+    //   cargo test -p tract-linalg --lib block_quant::q20t::tests::measure_decode_gemv \
     //       --release -- --ignored --nocapture
     #[test]
     #[ignore]
@@ -739,14 +745,15 @@ mod tests {
         use crate::mmm::{AsInputValue, FusedSpec};
         use std::time::Instant;
 
-        let (m, k) = (4096usize, 32768usize); // f32 512MB, Q4_0 72MB, Q1_58 40MB (all > 33MB L3)
+        let (m, k) = (4096usize, 32768usize); // f32 512MB, Q4_0 72MB, Q2_0_T 40MB (all > 33MB L3)
         let mmm = generic_f32_4x1.mmm();
 
         let w = Tensor::zero::<f32>(&[m, k])?; // values irrelevant to timing
         let x = Tensor::zero::<f32>(&[k, 1])?;
 
         // (label, packing index on generic_f32_4x1, bytes/weight)
-        let cases = [("f32 ", 2usize, 4.0f64), ("Q4_0", 7, 18.0 / 32.0), ("Q1_58", 9, 10.0 / 32.0)];
+        let cases =
+            [("f32 ", 2usize, 4.0f64), ("Q4_0", 7, 18.0 / 32.0), ("Q2_0_T", 9, 10.0 / 32.0)];
 
         println!("--- decode GEMV {m}x{k} x1 through generic_f32_4x1 (L3 = 33 MB) ---");
         for (name, packing, bpw) in cases {

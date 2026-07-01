@@ -58,8 +58,8 @@ MMMExternKernel!(fma_mmm_f32_64x1<f32>(64,1)@(256,4) where(FMA) quality(Manually
 pub fn pq40_r32() -> PackedBlockQuantFormat {
     PackedBlockQuantFormat::new(&Q4_0, 32, 16, false)
 }
-pub fn pq1_58_r32() -> PackedBlockQuantFormat {
-    PackedBlockQuantFormat::new(&Q1_58, 32, 0, false)
+pub fn pq20t_r32() -> PackedBlockQuantFormat {
+    PackedBlockQuantFormat::new(&Q2_0_T, 32, 0, false)
 }
 MMMExternKernel! {fma_mmm_f32_32x1<f32>(32,1)@(256,4) where(FMA)
     packing[1] = q40f32 => |k| k.with_packing_a(pq40_r32());
