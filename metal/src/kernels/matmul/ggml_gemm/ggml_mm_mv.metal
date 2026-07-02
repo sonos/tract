@@ -50,6 +50,17 @@ typedef struct {
     int16_t  r3;
 } ggml_metal_kargs_mul_mv;
 
+typedef struct {
+    int32_t  k;
+    int32_t  n;
+    int32_t  route_count;
+    int32_t  input_mode; // 0: route_token_ids indexes input rows, 1: route row == input row
+    uint64_t weight_expert_stride;
+    uint64_t weight_row_stride;
+    uint64_t input_row_stride;
+    uint64_t output_route_stride;
+} routed_q40_f32_args;
+
 #define N_MV_T_T 4
 
 template<typename T0, typename T04, typename T1, typename T14, typename args_t>
@@ -356,6 +367,81 @@ kernel void kernel_mul_mv_q4_0_f32(
         ushort tiisg[[thread_index_in_simdgroup]],
         ushort sgitg[[simdgroup_index_in_threadgroup]]) {
     mul_vec_q_n_f32_impl<block_q4_0, N_DST, N_SIMDGROUP, N_SIMDWIDTH, constant ggml_metal_kargs_mul_mv &>(args, src0, src1, dst, nullptr, tgpig, tiisg, sgitg);
+}
+
+kernel void kernel_routed_q4_0_f32(
+        constant routed_q40_f32_args & args,
+        device const char * weights,
+        device const float * input,
+        device const long * route_token_ids,
+        device const long * route_expert_ids,
+        device float * dst,
+        uint3  tgpig[[threadgroup_position_in_grid]],
+        ushort tiisg[[thread_index_in_simdgroup]],
+        ushort sgitg[[simdgroup_index_in_threadgroup]]) {
+    const int nb = args.k/QK4_0;
+
+    const int r0 = tgpig.x;
+    const int route = tgpig.y;
+    if (route >= args.route_count) {
+        return;
+    }
+
+    const int first_row = (r0 * N_SIMDGROUP + sgitg) * N_DST;
+    const long expert = route_expert_ids[route];
+    const long input_row = args.input_mode == 0 ? route_token_ids[route] : route;
+    if (expert < 0 || input_row < 0) {
+        return;
+    }
+
+    const uint64_t expert_offset = (uint64_t) expert * args.weight_expert_stride;
+    device const float * y = (device const float *) ((device const char *) input + (uint64_t) input_row * args.input_row_stride);
+
+    device const block_q4_0 * ax[N_DST];
+    for (int row = 0; row < N_DST; ++row) {
+        const int weight_row = first_row + row;
+        const uint64_t offset = expert_offset + (uint64_t) weight_row * args.weight_row_stride;
+        ax[row] = (device const block_q4_0 *) (weights + offset);
+    }
+
+    float yl[16];
+    float sumf[N_DST] = {0.f};
+
+    const short ix = tiisg/2;
+    const short il = (tiisg%2)*8;
+
+    device const float * yb = y + ix*QK4_0 + il;
+
+    for (int ib = ix; ib < nb; ib += N_SIMDWIDTH/2) {
+        float sumy[2] = { 0.f, 0.f };
+
+#pragma unroll
+        for (int i = 0; i < 8; i += 2) {
+            sumy[0]  += yb[i +  0] + yb[i +  1];
+            yl[i + 0] = yb[i +  0];
+            yl[i + 1] = yb[i +  1]/256.f;
+
+            sumy[1]  += yb[i + 16] + yb[i + 17];
+            yl[i + 8] = yb[i + 16]/16.f;
+            yl[i + 9] = yb[i + 17]/4096.f;
+        }
+
+#pragma unroll
+        for (int row = 0; row < N_DST; ++row) {
+            sumf[row] += block_q_n_dot_y(ax[row] + ib, sumy[0] + sumy[1], yl, il);
+        }
+
+        yb += QK4_0 * 16;
+    }
+
+    device float * dst_route = (device float *) ((device char *) dst + (uint64_t) route * args.output_route_stride);
+    for (int row = 0; row < N_DST; ++row) {
+        const int weight_row = first_row + row;
+        const float tot = simd_sum(sumf[row]);
+        if (tiisg == 0 && weight_row < args.n) {
+            dst_route[weight_row] = tot;
+        }
+    }
 }
 
 #define BLOCK_SIZE_M 64 // 8 simdgroup matrices from matrix A
