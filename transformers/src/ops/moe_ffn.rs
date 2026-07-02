@@ -415,6 +415,7 @@ impl EvalOp for RoutedMatMul {
         let route_count = route_token_ids.len();
         let k_dim = weights.shape()[1];
         let n_dim = weights.shape()[2];
+        let num_experts = weights.shape()[0];
         ensure!(
             input.shape()[1] == k_dim,
             "routed matmul input dim {} does not match weight dim {}",
@@ -430,34 +431,45 @@ impl EvalOp for RoutedMatMul {
             );
         }
 
-        let mut output = Array2::<f32>::zeros((route_count, n_dim));
+        let mut expert_routes = vec![Vec::new(); num_experts];
         for r in 0..route_count {
-            let src = match self.input_mode {
-                RoutedInputMode::TokenRows => {
-                    ensure!(route_token_ids[r] >= 0, "route {r} has negative token id");
-                    route_token_ids[r] as usize
-                }
-                RoutedInputMode::RouteRows => r,
-            };
             ensure!(route_expert_ids[r] >= 0, "route {r} has negative expert id");
             let eid = route_expert_ids[r] as usize;
             ensure!(
-                src < input.shape()[0],
-                "route {r} references token row {src}, but input has {} rows",
-                input.shape()[0]
+                eid < num_experts,
+                "route {r} references expert {eid}, but weights have {num_experts} experts"
             );
-            ensure!(
-                eid < weights.shape()[0],
-                "route {r} references expert {eid}, but weights have {} experts",
-                weights.shape()[0]
-            );
+            expert_routes[eid].push(r);
+        }
 
-            for n in 0..n_dim {
-                let mut acc = 0.0f32;
-                for k in 0..k_dim {
-                    acc += input[[src, k]] * weights[[eid, k, n]];
+        let mut output = Array2::<f32>::zeros((route_count, n_dim));
+        for (eid, routes) in expert_routes.iter().enumerate() {
+            if routes.is_empty() {
+                continue;
+            }
+
+            let mut gathered = Array2::<f32>::zeros((routes.len(), k_dim));
+            for (slot, &r) in routes.iter().enumerate() {
+                let src = match self.input_mode {
+                    RoutedInputMode::TokenRows => {
+                        ensure!(route_token_ids[r] >= 0, "route {r} has negative token id");
+                        route_token_ids[r] as usize
+                    }
+                    RoutedInputMode::RouteRows => r,
+                };
+                ensure!(
+                    src < input.shape()[0],
+                    "route {r} references input row {src}, but input has {} rows",
+                    input.shape()[0]
+                );
+                gathered.row_mut(slot).assign(&input.row(src));
+            }
+
+            let expert_output = gathered.dot(&weights.slice(s![eid, .., ..]));
+            for (slot, &r) in routes.iter().enumerate() {
+                for n in 0..n_dim {
+                    output[[r, n]] = expert_output[[slot, n]];
                 }
-                output[[r, n]] = acc;
             }
         }
 
@@ -985,6 +997,41 @@ mod tests {
         assert!(!has_moe, "Expected MoeFfn to lower even when weights are not constants");
         let has_routed = opt_model.nodes().iter().any(|n| n.op_is::<RoutedMatMul>());
         assert!(has_routed, "Expected RoutedMatMul in optimized model");
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_routed_matmul_groups_by_expert_and_preserves_route_order() -> TractResult<()> {
+        let input = Tensor::from_shape(&[3, 2], &[1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0])?;
+        let weights = Tensor::from_shape(
+            &[2, 2, 2],
+            &[
+                1.0f32, 0.0, 0.0, 1.0, // expert 0: identity
+                10.0, 0.0, 0.0, 100.0, // expert 1: scale columns differently
+            ],
+        )?;
+        let route_token_ids = Tensor::from_shape(&[4], &[2i64, 0, 1, 2])?;
+        let route_expert_ids = Tensor::from_shape(&[4], &[1i64, 0, 1, 0])?;
+
+        let op = RoutedMatMul { input_mode: RoutedInputMode::TokenRows };
+        let result = op.eval(tvec![
+            input.into_tvalue(),
+            weights.into_tvalue(),
+            route_token_ids.into_tvalue(),
+            route_expert_ids.into_tvalue(),
+        ])?;
+
+        let expected = Tensor::from_shape(
+            &[4, 2],
+            &[
+                50.0f32, 600.0, // route 0: token 2 through expert 1
+                1.0, 2.0, // route 1: token 0 through expert 0
+                30.0, 400.0, // route 2: token 1 through expert 1
+                5.0, 6.0, // route 3: token 2 through expert 0
+            ],
+        )?;
+        result[0].close_enough(&expected, Approximation::Approximate)?;
 
         Ok(())
     }
