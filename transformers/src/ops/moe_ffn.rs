@@ -1,8 +1,13 @@
 use std::hash::{Hash, Hasher};
+use std::sync::Arc;
 
 use tract_ndarray::{Array2, ArrayView2, ArrayView3, ArrayViewD, Axis, s};
 use tract_nnef::internal::*;
+use tract_nnef::tract_core::ops::einsum::EinSum;
+use tract_nnef::tract_core::ops::konst::Const;
 use tract_nnef::tract_core::ops::math::mul;
+use tract_nnef::tract_core::ops::{FrozenOpState, OpState, OpStateFreeze};
+use tract_nnef::tract_core::tract_linalg::block_quant::{BlockQuantStorage, block_quant_slice};
 use tract_nnef::tract_core::tract_linalg::mmm::{
     AsInputValue, FusedSpec, MMMInputFormat, MMMInputValue, PackedExoticFact,
 };
@@ -379,6 +384,29 @@ pub enum RoutedInputMode {
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct RoutedMatMul {
     pub input_mode: RoutedInputMode,
+    pub cache_weights: bool,
+}
+
+#[derive(Clone, Debug)]
+struct RoutedMatMulWeightsCache {
+    k_dim: usize,
+    n_dim: usize,
+    num_experts: usize,
+    packing: usize,
+    a_format: PackedFormat,
+    packed_by_expert: Vec<Box<dyn MMMInputValue>>,
+}
+
+#[derive(Clone, Debug)]
+struct RoutedMatMulState {
+    op: RoutedMatMul,
+    cache: Option<RoutedMatMulWeightsCache>,
+}
+
+#[derive(Clone, Debug)]
+struct FrozenRoutedMatMulState {
+    op: RoutedMatMul,
+    cache: Option<RoutedMatMulWeightsCache>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -632,6 +660,143 @@ impl RoutedMatMul {
         Ok(Some(output.into_tensor()))
     }
 
+    fn build_weights_cache(
+        &self,
+        weights_input: &Tensor,
+    ) -> TractResult<Option<RoutedMatMulWeightsCache>> {
+        let weights_t = weights_input.cast_to::<f32>()?.into_owned();
+        let weights: ArrayView3<f32> =
+            weights_t.to_plain_array_view::<f32>()?.into_dimensionality()?;
+        let num_experts = weights.shape()[0];
+        let k_dim = weights.shape()[1];
+        let n_dim = weights.shape()[2];
+        let Some(mmm) = tract_nnef::tract_core::tract_linalg::ops().mmm(
+            f32::datum_type(),
+            None,
+            Some(k_dim),
+            Some(n_dim),
+        ) else {
+            return Ok(None);
+        };
+        if !mmm.is_supported_here() {
+            return Ok(None);
+        }
+        let Some((packing, a_format, b_format)) =
+            mmm.packings().iter().enumerate().find_map(|(ix, (a, b))| {
+                let a = a.downcast_ref::<PackedFormat>()?;
+                let b = b.downcast_ref::<PackedFormat>()?;
+                Some((ix, a.clone(), b.clone()))
+            })
+        else {
+            return Ok(None);
+        };
+
+        let mut packed_by_expert = Vec::with_capacity(num_experts);
+        for eid in 0..num_experts {
+            let w_e = weights_t.view_at_prefix(&[eid])?;
+            packed_by_expert.push(b_format.pack_tensor_view(&w_e, 0, 1)?);
+        }
+
+        Ok(Some(RoutedMatMulWeightsCache {
+            k_dim,
+            n_dim,
+            num_experts,
+            packing,
+            a_format,
+            packed_by_expert,
+        }))
+    }
+
+    fn eval_with_cached_mmm(
+        &self,
+        input_t: &Tensor,
+        route_token_ids: &[i64],
+        route_expert_ids: &[i64],
+        cache: &RoutedMatMulWeightsCache,
+    ) -> TractResult<Tensor> {
+        let input = self.input_view(input_t)?;
+        let route_count = route_token_ids.len();
+        ensure!(route_count == route_expert_ids.len());
+        ensure!(
+            input.shape()[1] == cache.k_dim,
+            "routed matmul input dim {} does not match weight dim {}",
+            input.shape()[1],
+            cache.k_dim
+        );
+        if self.input_mode == RoutedInputMode::RouteRows {
+            ensure!(
+                input.shape()[0] == route_count,
+                "route-row input has {} rows but route metadata has {} rows",
+                input.shape()[0],
+                route_count
+            );
+        }
+        if route_count == 0 {
+            return Ok(Array2::<f32>::zeros((0, cache.n_dim)).into_tensor());
+        }
+
+        let Some(mmm) = tract_nnef::tract_core::tract_linalg::ops().mmm(
+            f32::datum_type(),
+            None,
+            Some(cache.k_dim),
+            Some(cache.n_dim),
+        ) else {
+            bail!("cached routed matmul MMM is no longer available");
+        };
+        ensure!(mmm.is_supported_here(), "cached routed matmul MMM is no longer supported here");
+
+        let expert_routes = self.group_routes(route_count, cache.num_experts, route_expert_ids)?;
+        let mut output = Array2::<f32>::zeros((route_count, cache.n_dim));
+        let item_size = f32::datum_type().size_of() as isize;
+        let base = input.as_ptr();
+        let row_stride_bytes = input.strides()[0] * item_size;
+        let k_stride_bytes = input.strides()[1] * item_size;
+
+        for (eid, routes) in expert_routes.iter().enumerate() {
+            if routes.is_empty() {
+                continue;
+            }
+
+            let mut row_byte_offsets = Vec::with_capacity(routes.len());
+            for &r in routes {
+                let src = self.source_row(r, route_token_ids)?;
+                ensure!(
+                    src < input.shape()[0],
+                    "route {r} references input row {src}, but input has {} rows",
+                    input.shape()[0]
+                );
+                row_byte_offsets.push(row_stride_bytes * src as isize);
+            }
+
+            let a = RoutedRowsInput::new(
+                base,
+                row_byte_offsets,
+                cache.k_dim,
+                k_stride_bytes,
+                cache.a_format.clone(),
+            );
+            let mut expert_output =
+                unsafe { Tensor::uninitialized::<f32>(&[routes.len(), cache.n_dim])? };
+            let store = unsafe { mmm.c_view(Some(0), Some(1)).wrap(&expert_output.view_mut()) };
+            let uops = tvec![
+                FusedSpec::AddMatMul {
+                    a: AsInputValue::Borrowed(&a),
+                    b: AsInputValue::Borrowed(&*cache.packed_by_expert[eid]),
+                    packing: cache.packing,
+                },
+                FusedSpec::Store(store),
+            ];
+            unsafe { mmm.run(routes.len(), cache.n_dim, &uops)? };
+            let expert_output: ArrayView2<f32> =
+                expert_output.to_plain_array_view::<f32>()?.into_dimensionality()?;
+            for (slot, &r) in routes.iter().enumerate() {
+                output.row_mut(r).assign(&expert_output.row(slot));
+            }
+        }
+
+        Ok(output.into_tensor())
+    }
+
     fn eval_grouped_ndarray(
         &self,
         input_t: &Tensor,
@@ -697,9 +862,58 @@ impl Op for RoutedMatMul {
     op_as_typed_op!();
 }
 
+impl OpStateFreeze for RoutedMatMulState {
+    fn freeze(&self) -> Box<dyn FrozenOpState> {
+        Box::new(FrozenRoutedMatMulState { op: self.op.clone(), cache: self.cache.clone() })
+    }
+}
+
+impl FrozenOpState for FrozenRoutedMatMulState {
+    fn unfreeze(&self) -> Box<dyn OpState> {
+        Box::new(RoutedMatMulState { op: self.op.clone(), cache: self.cache.clone() })
+    }
+}
+
+impl OpState for RoutedMatMulState {
+    fn eval(
+        &mut self,
+        _session: &mut TurnState,
+        _op: &dyn Op,
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
+        if self.cache.is_none() {
+            self.cache = self.op.build_weights_cache(&inputs[1])?;
+        }
+        let Some(cache) = self.cache.as_ref() else {
+            return self.op.eval(inputs);
+        };
+
+        let input_t = inputs[0].cast_to::<f32>()?.into_owned();
+        let route_token_ids_t = inputs[2].cast_to::<i64>()?.into_owned();
+        let route_expert_ids_t = inputs[3].cast_to::<i64>()?.into_owned();
+        let route_token_ids = plain_i64_slice(&route_token_ids_t, "route_token_ids")?;
+        let route_expert_ids = plain_i64_slice(&route_expert_ids_t, "route_expert_ids")?;
+        let output =
+            self.op.eval_with_cached_mmm(&input_t, route_token_ids, route_expert_ids, cache)?;
+        Ok(tvec![output.into_tvalue()])
+    }
+}
+
 impl EvalOp for RoutedMatMul {
     fn is_stateless(&self) -> bool {
-        true
+        !self.cache_weights
+    }
+
+    fn state(
+        &self,
+        _session: &TurnState,
+        _node_id: usize,
+    ) -> TractResult<Option<Box<dyn OpState>>> {
+        if self.cache_weights {
+            Ok(Some(Box::new(RoutedMatMulState { op: self.clone(), cache: None })))
+        } else {
+            Ok(None)
+        }
     }
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
@@ -853,11 +1067,32 @@ impl EvalOp for MoeFfn {
         // w3_bias [E,H], w2_bias [E,D] (order set in deser_moe_ffn).
         let idx = self.input_idx();
         let orig_dt = inputs[0].datum_type();
-        // The reference path computes in f32. Cast every input up front; the
-        // routed codegen path also uses f32 for its first CPU implementation,
-        // but exposes smaller primitives that backends can specialize.
-        let cast =
-            |i: usize| -> TractResult<Tensor> { Ok(inputs[i].cast_to::<f32>()?.into_owned()) };
+        // The reference path computes in f32. Cast every input up front; for
+        // block-quant tensors, explicitly dequantize each leading group.
+        let cast = |i: usize| -> TractResult<Tensor> {
+            let input = &inputs[i];
+            if input.is_plain() {
+                return Ok(input.cast_to::<f32>()?.into_owned());
+            }
+            let s = input.shape();
+            let k = *s.last().context("block-quant tensor has no last axis")?;
+            let num_groups: usize = if s.len() > 2 { s[..s.len() - 2].iter().product() } else { 1 };
+            let m_per_group: usize = if s.len() >= 2 { s[s.len() - 2] } else { 1 };
+            let bqs = input.try_storage_as::<BlockQuantStorage>()?;
+            let mut unpacked = (0..num_groups)
+                .map(|g| {
+                    let slice = block_quant_slice(bqs.value(), bqs.format(), m_per_group, k, g);
+                    bqs.format().dequant_f32(slice)
+                })
+                .collect::<TractResult<Vec<_>>>()?;
+            unpacked.iter_mut().try_for_each(|t| t.insert_axis(0))?;
+            let stacked = if unpacked.len() > 1 {
+                Tensor::stack_tensors(0, &unpacked)?
+            } else {
+                unpacked.into_iter().next().unwrap()
+            };
+            stacked.into_shape(s)
+        };
         let x_t = cast(0)?;
         let wg_t = cast(1)?;
         let w1_t = cast(2)?;
@@ -1042,6 +1277,91 @@ impl TypedOp for MoeFfn {
             return Ok(None);
         };
 
+        let wg_const = model.node(node.inputs[1].node).op_as::<Const>();
+        let w1_const = model.node(node.inputs[2].node).op_as::<Const>();
+        let w2_const = model.node(node.inputs[3].node).op_as::<Const>();
+        let w3_const =
+            if self.has_w3 { model.node(node.inputs[4].node).op_as::<Const>() } else { None };
+        if wg_const.is_some()
+            && w1_const.is_some()
+            && w2_const.is_some()
+            && (!self.has_w3 || w3_const.is_some())
+        {
+            let wg_tensor = wg_const.unwrap().val().clone();
+            let w1_tensor = w1_const.unwrap().val().clone();
+            let w2_tensor = w2_const.unwrap().val().clone();
+            let w3_tensor = w3_const.map(|c| c.val().clone());
+
+            if !w1_tensor.is_plain()
+                || !w2_tensor.is_plain()
+                || w3_tensor.as_ref().is_some_and(|t| !t.is_plain())
+            {
+                return Ok(None);
+            }
+
+            let num_experts = w1_tensor.shape()[0];
+            let d_model = w1_tensor.shape()[1];
+            let d_hidden = w1_tensor.shape()[2];
+
+            let router_plan =
+                build_router_plan(&wg_tensor, &model.symbols).context("Building router plan")?;
+
+            let mut expert_plans = Vec::with_capacity(num_experts);
+            for eid in 0..num_experts {
+                let w1_e = w1_tensor.slice(0, eid, eid + 1)?.into_shape(&[d_model, d_hidden])?;
+                let w2_e = w2_tensor.slice(0, eid, eid + 1)?.into_shape(&[d_hidden, d_model])?;
+                let w3_e = if let Some(ref w3) = w3_tensor {
+                    Some(w3.slice(0, eid, eid + 1)?.into_shape(&[d_model, d_hidden])?)
+                } else {
+                    None
+                };
+
+                let plan = build_expert_plan(
+                    &w1_e,
+                    &w2_e,
+                    w3_e.as_ref(),
+                    &self.activation,
+                    &model.symbols,
+                )
+                .with_context(|| format!("Building expert plan for expert {eid}"))?;
+                expert_plans.push(plan);
+            }
+
+            let opt_op = OptMoeFfn {
+                k: self.k,
+                gate: self.gate.clone(),
+                num_experts,
+                d_model,
+                d_hidden,
+                router_plan,
+                expert_plans,
+            };
+
+            let mut patch = TypedModelPatch::default();
+            let x_tap = patch.tap_model(model, node.inputs[0])?;
+            let wires = patch.wire_node(&node.name, opt_op, &[x_tap])?;
+            patch.shunt_outside(model, OutletId::new(node.id, 0), wires[0])?;
+            return Ok(Some(patch));
+        }
+
+        let expert_inputs: &[usize] = if self.has_w3 { &[2, 3, 4] } else { &[2, 3] };
+        for &input_ix in expert_inputs {
+            if let Some(konst) = model.node(node.inputs[input_ix].node).op_as::<Const>() {
+                if !konst.val().is_plain() {
+                    return Ok(None);
+                }
+            }
+        }
+        let cache_weights = |input_ix: usize| {
+            model
+                .node(node.inputs[input_ix].node)
+                .op_as::<Const>()
+                .is_some_and(|konst| konst.val().is_plain())
+        };
+        let cache_w1 = cache_weights(2);
+        let cache_w2 = cache_weights(3);
+        let cache_w3 = self.has_w3 && cache_weights(4);
+
         let mut patch = TypedModelPatch::default();
         let x = patch.tap_model(model, node.inputs[0])?;
         let wg = patch.tap_model(model, node.inputs[1])?;
@@ -1059,7 +1379,7 @@ impl TypedOp for MoeFfn {
 
         let h1 = patch.wire_node(
             format!("{}.w1", node.name),
-            RoutedMatMul { input_mode: RoutedInputMode::TokenRows },
+            RoutedMatMul { input_mode: RoutedInputMode::TokenRows, cache_weights: cache_w1 },
             &[x, w1, route_token_ids, route_expert_ids],
         )?[0];
         let activated = patch.wire_node(format!("{}.activation", node.name), act_op, &[h1])?[0];
@@ -1068,7 +1388,7 @@ impl TypedOp for MoeFfn {
             let w3 = patch.tap_model(model, node.inputs[4])?;
             let gate = patch.wire_node(
                 format!("{}.w3", node.name),
-                RoutedMatMul { input_mode: RoutedInputMode::TokenRows },
+                RoutedMatMul { input_mode: RoutedInputMode::TokenRows, cache_weights: cache_w3 },
                 &[x, w3, route_token_ids, route_expert_ids],
             )?[0];
             patch.wire_node(format!("{}.swiglu_mul", node.name), mul(), &[activated, gate])?[0]
@@ -1078,7 +1398,7 @@ impl TypedOp for MoeFfn {
 
         let route_values = patch.wire_node(
             format!("{}.w2", node.name),
-            RoutedMatMul { input_mode: RoutedInputMode::RouteRows },
+            RoutedMatMul { input_mode: RoutedInputMode::RouteRows, cache_weights: cache_w2 },
             &[hidden, w2, route_token_ids, route_expert_ids],
         )?[0];
         let output = patch.wire_node(
@@ -1108,9 +1428,261 @@ fn activation_op(name: &str, has_w3: bool) -> Option<Box<dyn TypedOp>> {
     }
 }
 
+fn build_router_plan(wg: &Arc<Tensor>, symbols: &SymbolScope) -> TractResult<Arc<TypedSimplePlan>> {
+    let mut model = TypedModel { symbols: symbols.clone(), ..Default::default() };
+    let n_sym = symbols.sym("moe_t");
+    let dt = f32::datum_type();
+
+    let wg_2d = if wg.rank() == 3 {
+        wg.slice(0, 0, 1)?.into_shape(&[wg.shape()[1], wg.shape()[2]])?
+    } else {
+        (**wg).clone()
+    };
+    let wg_2d = wg_2d.cast_to::<f32>()?.into_owned();
+    let d_model = wg_2d.shape()[1];
+
+    let x = model.add_source("x", dt.fact([n_sym.to_dim(), d_model.to_dim()]))?;
+    let wg_const = model.add_const("wg", wg_2d)?;
+    let axes: AxesMapping = "ij,kj->ik".parse()?;
+    let logits = model.wire_node("router_logits", EinSum::new(axes, dt), &[x, wg_const])?[0];
+
+    model.select_output_outlets(&[logits])?;
+    SimplePlan::new(model.into_optimized()?)
+}
+
+fn build_expert_plan(
+    w1: &Tensor,
+    w2: &Tensor,
+    w3: Option<&Tensor>,
+    activation: &str,
+    symbols: &SymbolScope,
+) -> TractResult<Arc<TypedSimplePlan>> {
+    let mut model = TypedModel { symbols: symbols.clone(), ..Default::default() };
+    let n_sym = symbols.sym("moe_n");
+    let dt = f32::datum_type();
+    let to_f32 = |t: &Tensor| -> TractResult<Tensor> { Ok(t.cast_to::<f32>()?.into_owned()) };
+
+    let d_model = w1.shape()[0];
+
+    let x = model.add_source("x", dt.fact([n_sym.to_dim(), d_model.to_dim()]))?;
+    let w1_const = model.add_const("w1", to_f32(w1)?)?;
+    let axes: AxesMapping = "ij,jk->ik".parse()?;
+    let h = model.wire_node("w1_matmul", EinSum::new(axes.clone(), dt), &[x, w1_const])?[0];
+
+    let act_op = activation_op(activation, w3.is_some())
+        .ok_or_else(|| format_err!("Unsupported activation: {activation}"))?;
+    let h = model.wire_node("activation", act_op, &[h])?[0];
+
+    let h = if let Some(w3) = w3 {
+        let w3_const = model.add_const("w3", to_f32(w3)?)?;
+        let gate = model.wire_node("w3_matmul", EinSum::new(axes.clone(), dt), &[x, w3_const])?[0];
+        model.wire_node("swiglu_mul", mul(), &[h, gate])?[0]
+    } else {
+        h
+    };
+
+    let w2_const = model.add_const("w2", to_f32(w2)?)?;
+    let y = model.wire_node("w2_matmul", EinSum::new(axes, dt), &[h, w2_const])?[0];
+
+    model.select_output_outlets(&[y])?;
+    SimplePlan::new(model.into_optimized()?)
+}
+
+#[derive(Clone, Debug)]
+pub struct OptMoeFfn {
+    pub k: usize,
+    pub gate: GateMode,
+    pub num_experts: usize,
+    pub d_model: usize,
+    pub d_hidden: usize,
+    pub router_plan: Arc<TypedSimplePlan>,
+    pub expert_plans: Vec<Arc<TypedSimplePlan>>,
+}
+
+impl Hash for OptMoeFfn {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.k.hash(state);
+        self.gate.hash(state);
+        self.num_experts.hash(state);
+        self.d_model.hash(state);
+        self.d_hidden.hash(state);
+    }
+}
+
+impl PartialEq for OptMoeFfn {
+    fn eq(&self, other: &Self) -> bool {
+        self.k == other.k
+            && self.gate == other.gate
+            && self.num_experts == other.num_experts
+            && self.d_model == other.d_model
+            && self.d_hidden == other.d_hidden
+    }
+}
+
+impl Eq for OptMoeFfn {}
+
+impl Op for OptMoeFfn {
+    fn name(&self) -> StaticName {
+        "OptMoeFfn".to_string().into()
+    }
+    op_as_typed_op!();
+}
+
+impl EvalOp for OptMoeFfn {
+    fn is_stateless(&self) -> bool {
+        false
+    }
+
+    fn state(
+        &self,
+        _session: &TurnState,
+        _node_id: usize,
+    ) -> TractResult<Option<Box<dyn OpState>>> {
+        let router_state = self.router_plan.spawn()?;
+        let expert_states =
+            self.expert_plans.iter().map(|p| p.spawn()).collect::<TractResult<Vec<_>>>()?;
+        Ok(Some(Box::new(OptMoeFfnState { op: self.clone(), router_state, expert_states })))
+    }
+}
+
+#[derive(Clone, Debug)]
+struct OptMoeFfnState {
+    op: OptMoeFfn,
+    router_state: TypedSimpleState,
+    expert_states: Vec<TypedSimpleState>,
+}
+
+#[derive(Clone, Debug)]
+struct FrozenOptMoeFfnState {
+    op: OptMoeFfn,
+    router_state: TypedFrozenSimpleState,
+    expert_states: Vec<TypedFrozenSimpleState>,
+}
+
+impl OpStateFreeze for OptMoeFfnState {
+    fn freeze(&self) -> Box<dyn FrozenOpState> {
+        Box::new(FrozenOptMoeFfnState {
+            op: self.op.clone(),
+            router_state: self.router_state.freeze(),
+            expert_states: self.expert_states.iter().map(|s| s.freeze()).collect(),
+        })
+    }
+}
+
+impl FrozenOpState for FrozenOptMoeFfnState {
+    fn unfreeze(&self) -> Box<dyn OpState> {
+        Box::new(OptMoeFfnState {
+            op: self.op.clone(),
+            router_state: self.router_state.unfreeze(),
+            expert_states: self.expert_states.iter().map(|s| s.unfreeze()).collect(),
+        })
+    }
+}
+
+impl OpState for OptMoeFfnState {
+    fn eval(
+        &mut self,
+        _session: &mut TurnState,
+        _op: &dyn Op,
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
+        let op = &self.op;
+        let x_input = &inputs[0];
+        let dt = x_input.datum_type();
+        let x_f32 = x_input.cast_to::<f32>()?;
+        let x_view = x_f32.to_plain_array_view::<f32>()?;
+        let x_ndim = x_view.ndim();
+        let x_orig_shape: Vec<usize> = x_view.shape().to_vec();
+
+        let x: ArrayView2<f32> = if x_ndim == 3 {
+            x_view
+                .into_shape_with_order((x_orig_shape[0] * x_orig_shape[1], x_orig_shape[2]))?
+                .into_dimensionality()?
+        } else {
+            x_view.into_dimensionality()?
+        };
+
+        let t_tokens = x.shape()[0];
+        let d_model = x.shape()[1];
+        let x_2d_tensor = x_f32.clone().into_owned().into_shape(&[t_tokens, d_model])?;
+
+        let router_result = self.router_state.run(tvec![x_2d_tensor.into_tvalue()])?;
+        let router_logits_f32 = router_result[0].cast_to::<f32>()?;
+        let router_logits: ArrayView2<f32> =
+            router_logits_f32.to_plain_array_view::<f32>()?.into_dimensionality()?;
+
+        let mut assignments: Vec<Vec<(usize, f32)>> = Vec::with_capacity(t_tokens);
+        for t in 0..t_tokens {
+            let row = router_logits.row(t);
+            let full: Vec<f32> = row.iter().copied().collect();
+            let mut scores: Vec<(usize, f32)> =
+                row.iter().enumerate().map(|(e, &s)| (e, s)).collect();
+            scores.sort_unstable_by(|a, b| b.1.total_cmp(&a.1));
+            scores.truncate(op.k);
+
+            let gate_weights = op.gate.weights(&full, &scores);
+            assignments
+                .push(scores.iter().zip(gate_weights).map(|((eid, _), gw)| (*eid, gw)).collect());
+        }
+
+        let mut expert_tokens: Vec<Vec<(usize, f32)>> = vec![Vec::new(); op.num_experts];
+        for (t, token_experts) in assignments.iter().enumerate() {
+            for &(eid, gw) in token_experts {
+                expert_tokens[eid].push((t, gw));
+            }
+        }
+
+        let mut output = Array2::<f32>::zeros((t_tokens, d_model));
+        for (eid, tokens) in expert_tokens.iter().enumerate() {
+            if tokens.is_empty() {
+                continue;
+            }
+            let n = tokens.len();
+            let mut x_batch = Tensor::zero_dt(f32::datum_type(), &[n, d_model])?;
+            {
+                let mut x_batch_plain = x_batch.try_as_plain_mut()?;
+                let x_batch_slice = x_batch_plain.as_slice_mut::<f32>()?;
+                for (i, &(t, _)) in tokens.iter().enumerate() {
+                    let src = x.row(t);
+                    x_batch_slice[i * d_model..(i + 1) * d_model]
+                        .copy_from_slice(src.as_slice().unwrap());
+                }
+            }
+
+            let y_expert = self.expert_states[eid].run(tvec![x_batch.into_tvalue()])?;
+            let y_view: ArrayView2<f32> =
+                y_expert[0].to_plain_array_view::<f32>()?.into_dimensionality()?;
+            scatter_add_weighted(&mut output, &y_view, tokens);
+        }
+
+        let output_tensor = if x_ndim == 3 {
+            output.into_shape_with_order((x_orig_shape[0], x_orig_shape[1], d_model))?.into_tensor()
+        } else {
+            output.into_tensor()
+        };
+        let output_tensor = output_tensor.cast_to_dt(dt)?.into_owned();
+        Ok(tvec![output_tensor.into_tvalue()])
+    }
+}
+
+impl TypedOp for OptMoeFfn {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        let x_fact = inputs[0];
+        let output_fact = x_fact.datum_type.fact(x_fact.shape.clone());
+        Ok(tvec!(output_fact))
+    }
+
+    as_op!();
+}
+
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::*;
+    use tract_nnef::tract_core::tract_linalg::block_quant::{
+        BlockQuant, BlockQuantFact, BlockQuantStorage, Q4_0,
+    };
 
     fn make_moe_model(
         t_tokens: usize,
@@ -1163,8 +1735,60 @@ mod tests {
         Ok((model, x_data))
     }
 
+    fn add_q40_const(model: &mut TypedModel, name: &str, tensor: Tensor) -> TractResult<OutletId> {
+        let shape = tensor.shape().to_vec();
+        let k = *shape.last().context("Q40 tensor has no last axis")?;
+        ensure!(k % Q4_0.block_len() == 0, "Q40 K axis must be a multiple of 32");
+        let m = shape[..shape.len() - 1].iter().product();
+        let quant = Q4_0.quant_f32(tensor.try_as_plain()?.as_slice::<f32>()?)?;
+        let storage = BlockQuantStorage::new(Box::new(Q4_0), m, k, Arc::new(quant))?;
+        let packed = Arc::new(storage.into_tensor_with_shape(f32::datum_type(), &shape));
+        let fact = BlockQuantFact::new(Box::new(Q4_0), shape.iter().copied().collect());
+        Ok(model.wire_node(name, Const::new_with_exotic_fact(packed, Box::new(fact))?, &[])?[0])
+    }
+
     #[test]
-    fn test_routed_moe_ffn_matches_reference() -> TractResult<()> {
+    fn test_codegen_keeps_q40_expert_constants_on_reference_eval() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let x = model.add_source("x", f32::datum_type().fact([2, 32]))?;
+
+        let mut rng_state: u64 = 77;
+        let mut next_f32 = || -> f32 {
+            rng_state = rng_state.wrapping_mul(6364136223846793005).wrapping_add(1);
+            ((rng_state >> 33) as f32 / (1u64 << 31) as f32) - 1.0
+        };
+        let make_tensor = |shape: &[usize], rng: &mut dyn FnMut() -> f32| -> Tensor {
+            let n: usize = shape.iter().product();
+            let data: Vec<f32> = (0..n).map(|_| rng()).collect();
+            tract_ndarray::ArrayD::from_shape_vec(shape, data).unwrap().into_tensor()
+        };
+
+        let wg = model.add_const("wg", make_tensor(&[2, 32], &mut next_f32))?;
+        let w1 = add_q40_const(&mut model, "w1", make_tensor(&[2, 32, 32], &mut next_f32))?;
+        let w2 = add_q40_const(&mut model, "w2", make_tensor(&[2, 32, 32], &mut next_f32))?;
+        let w3 = add_q40_const(&mut model, "w3", make_tensor(&[2, 32, 32], &mut next_f32))?;
+
+        let op = MoeFfn::basic(1, "silu", GateMode::SoftmaxTopk, true);
+        let outputs = model.wire_node("moe", op, &[x, wg, w1, w2, w3])?;
+        model.select_output_outlets(&outputs)?;
+
+        let opt_model = model.into_optimized()?;
+        let has_moe = opt_model.nodes().iter().any(|n| n.op_is::<MoeFfn>());
+        assert!(has_moe, "Expected Q40 experts to stay on MoeFfn reference eval");
+        let has_opt = opt_model.nodes().iter().any(|n| n.op_is::<OptMoeFfn>());
+        assert!(!has_opt, "Q40 experts should not lower to OptMoeFfn yet");
+        let has_routed = opt_model.nodes().iter().any(|n| n.op_is::<RoutedMatMul>());
+        assert!(!has_routed, "Q40 experts should not lower to RoutedMatMul yet");
+
+        let x_data = make_tensor(&[2, 32], &mut next_f32);
+        let plan = SimplePlan::new(opt_model)?;
+        plan.spawn()?.run(tvec![x_data.into_tvalue()])?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_opt_moe_ffn_matches_reference() -> TractResult<()> {
         // Test with SwiGLU (has_w3=true)
         let (model, x_data) = make_moe_model(8, 16, 32, 4, 2, true)?;
 
@@ -1175,11 +1799,11 @@ mod tests {
         // Run optimized
         let opt_model = model.into_optimized()?;
 
-        // Verify MoeFfn was replaced with routed primitives
+        // Verify constant expert weights keep the fast plan-based path.
+        let has_opt = opt_model.nodes().iter().any(|n| n.op_is::<OptMoeFfn>());
+        assert!(has_opt, "Expected OptMoeFfn in optimized model");
         let has_routed = opt_model.nodes().iter().any(|n| n.op_is::<RoutedMatMul>());
-        assert!(has_routed, "Expected RoutedMatMul in optimized model");
-        let has_combine = opt_model.nodes().iter().any(|n| n.op_is::<RoutedCombine>());
-        assert!(has_combine, "Expected RoutedCombine in optimized model");
+        assert!(!has_routed, "Constant expert weights should use OptMoeFfn");
 
         let opt_plan = SimplePlan::new(opt_model)?;
         let opt_result = opt_plan.spawn()?.run(tvec![x_data.into_tvalue()])?;
@@ -1191,7 +1815,7 @@ mod tests {
     }
 
     #[test]
-    fn test_routed_moe_ffn_no_w3() -> TractResult<()> {
+    fn test_opt_moe_ffn_no_w3() -> TractResult<()> {
         // Test without SwiGLU (has_w3=false)
         let (model, x_data) = make_moe_model(8, 16, 32, 4, 2, false)?;
 
@@ -1208,7 +1832,7 @@ mod tests {
     }
 
     #[test]
-    fn test_routed_moe_ffn_top1() -> TractResult<()> {
+    fn test_opt_moe_ffn_top1() -> TractResult<()> {
         let (model, x_data) = make_moe_model(16, 8, 16, 8, 1, true)?;
 
         let ref_plan = SimplePlan::new(model.clone())?;
@@ -1259,7 +1883,7 @@ mod tests {
         let route_token_ids = Tensor::from_shape(&[4], &[2i64, 0, 1, 2])?;
         let route_expert_ids = Tensor::from_shape(&[4], &[1i64, 0, 1, 0])?;
 
-        let op = RoutedMatMul { input_mode: RoutedInputMode::TokenRows };
+        let op = RoutedMatMul { input_mode: RoutedInputMode::TokenRows, cache_weights: false };
         let result = op.eval(tvec![
             input.into_tvalue(),
             weights.into_tvalue(),
@@ -1294,11 +1918,11 @@ mod tests {
         let model = nnef.model_for_path(&model_path)?;
         let model = model.into_optimized()?;
 
-        // Verify routed primitives are present after optimization
+        // Verify constant expert weights use the fast plan-based path.
+        let has_opt = model.nodes().iter().any(|n: &TypedNode| n.op_is::<OptMoeFfn>());
+        assert!(has_opt, "Expected OptMoeFfn in optimized model");
         let has_routed = model.nodes().iter().any(|n: &TypedNode| n.op_is::<RoutedMatMul>());
-        assert!(has_routed, "Expected RoutedMatMul in optimized model");
-        let has_combine = model.nodes().iter().any(|n: &TypedNode| n.op_is::<RoutedCombine>());
-        assert!(has_combine, "Expected RoutedCombine in optimized model");
+        assert!(!has_routed, "Constant expert weights should use OptMoeFfn");
 
         let plan = SimplePlan::new(model)?;
 
