@@ -118,7 +118,33 @@ impl<'mb> ModelBuilder<'mb> {
             self.model.set_outlet_label(outputs[ix], name.0.to_string())?;
         }
 
+        self.warn_useless_assertions();
+
         Ok(())
+    }
+
+    /// Warn about assertions whose symbols appear in no tensor shape: an inert
+    /// bound, usually a mislabeled symbol name.
+    fn warn_useless_assertions(&self) {
+        let used: std::collections::HashSet<Symbol> = self
+            .model
+            .nodes
+            .iter()
+            .flat_map(|n| n.outputs.iter())
+            .flat_map(|o| o.fact.shape.iter().flat_map(|d| d.symbols()))
+            .collect();
+        for assertion in self.model.symbols.all_assertions() {
+            let Some(syms) = assertion.as_known_positive().map(|e| e.symbols()) else { continue };
+            if !syms.is_empty() && syms.iter().all(|s| !used.contains(s)) {
+                let mut names = syms.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+                names.sort();
+                warn!(
+                    "Assertion `{assertion}` constrains symbol(s) absent from every tensor shape \
+                     ({}); it has no effect. This usually means a mislabeled symbol name.",
+                    names.join(", ")
+                );
+            }
+        }
     }
 
     #[allow(clippy::result_large_err)]
