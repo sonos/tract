@@ -1160,7 +1160,7 @@ impl EvalOp for RoutedCombine {
             shape
         );
         let t_tokens: usize = shape[..shape.len() - 1].iter().product();
-        let d_model = *shape.last().unwrap();
+        let d_model = *shape.last().context("RoutedCombine shape_like has no feature axis")?;
         let route_values: ArrayView2<f32> =
             route_values_t.to_plain_array_view::<f32>()?.into_dimensionality()?;
         let route_token_ids = plain_i64_slice(&route_token_ids_t, "route_token_ids")?;
@@ -1304,7 +1304,7 @@ impl EvalOp for MoeFfn {
             let stacked = if unpacked.len() > 1 {
                 Tensor::stack_tensors(0, &unpacked)?
             } else {
-                unpacked.into_iter().next().unwrap()
+                unpacked.into_iter().next().context("block-quant tensor has no groups to unpack")?
             };
             stacked.into_shape(s)
         };
