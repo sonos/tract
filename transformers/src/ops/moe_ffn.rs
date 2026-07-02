@@ -18,8 +18,10 @@ use tract_nnef::tract_core::tract_linalg::pack::PackedFormat;
 
 use super::gelu_approximate::gelu_approximate;
 use super::routed_matmul::{
-    PreparedRoutedMatMul, PreparedRoutedMatMulState, RoutedInputRows, RoutedRowsInput,
-    build_block_quant_routed_matmul, run_prepared_routed_matmul,
+    PreparedRoutedMatMul, PreparedRoutedMatMulState, RoutedInputRows, RoutedMatMulGroup,
+    RoutedRowsInput, build_block_quant_routed_matmul, pack_prepared_routed_matmul_rhs,
+    run_prepared_routed_matmul, run_prepared_routed_matmul_accumulate_one,
+    run_prepared_routed_matmul_many, run_prepared_routed_matmul_many_same_rhs,
 };
 use super::silu::silu;
 
@@ -1987,6 +1989,11 @@ struct Q40LinearExpertState {
     hidden: Option<Tensor>,
     expert_out: Option<Tensor>,
     expert_tokens: Vec<Vec<(usize, f32)>>,
+    route_groups: Vec<RoutedMatMulGroup>,
+    shared_rhs_groups: Vec<(usize, usize)>,
+    route_tokens: Vec<usize>,
+    route_weights: Vec<f32>,
+    combine_scale: Option<Tensor>,
     scores: Vec<(usize, f32)>,
 }
 
@@ -1998,6 +2005,8 @@ impl fmt::Debug for Q40LinearExpertState {
             .field("hidden_len", &self.hidden.as_ref().map(|t| t.len()).unwrap_or(0))
             .field("expert_out_len", &self.expert_out.as_ref().map(|t| t.len()).unwrap_or(0))
             .field("expert_tokens", &self.expert_tokens.len())
+            .field("route_groups", &self.route_groups.len())
+            .field("route_count", &self.route_tokens.len())
             .finish()
     }
 }
@@ -2015,6 +2024,16 @@ impl Q40LinearExpertState {
         } else {
             self.expert_tokens.iter_mut().for_each(Vec::clear);
         }
+    }
+
+    fn set_combine_scale(&mut self, value: f32) -> TractResult<()> {
+        if self.combine_scale.is_none() {
+            self.combine_scale = Some(Tensor::zero_dt(f32::datum_type(), &[])?);
+        }
+        let scale = self.combine_scale.as_mut().unwrap();
+        let mut plain = scale.try_as_plain_mut()?;
+        plain.as_slice_mut::<f32>()?[0] = value;
+        Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -2085,31 +2104,65 @@ impl Q40LinearExpertState {
         let mut active_experts = 0usize;
         let mut routed_rows = 0usize;
 
+        self.route_groups.clear();
+        self.shared_rhs_groups.clear();
+        self.route_tokens.clear();
+        self.route_weights.clear();
         for (eid, tokens) in self.expert_tokens.iter().enumerate() {
             if tokens.is_empty() {
                 continue;
             }
             active_experts += 1;
-            routed_rows += tokens.len();
+            let output_row_offset = routed_rows;
             let route_count = tokens.len();
+            routed_rows += route_count;
 
-            let row_offsets: Vec<isize> =
-                tokens.iter().map(|&(t, _)| x_row_stride_bytes * t as isize).collect();
+            self.route_tokens.extend(tokens.iter().map(|&(token, _)| token));
+            self.route_weights.extend(tokens.iter().map(|&(_, weight)| weight));
+
+            let rows = if route_count == 1 {
+                RoutedInputRows::single(
+                    x_base,
+                    x_row_stride_bytes * tokens[0].0 as isize,
+                    x_k_stride_bytes,
+                )
+            } else {
+                let row_offsets: Vec<isize> =
+                    tokens.iter().map(|&(t, _)| x_row_stride_bytes * t as isize).collect();
+                RoutedInputRows::explicit(x_base, row_offsets, x_k_stride_bytes)
+            };
+            self.route_groups.push(RoutedMatMulGroup { group: eid, rows, output_row_offset });
+            if t_tokens == 1 && route_count == 1 {
+                self.shared_rhs_groups.push((eid, output_row_offset));
+            }
+        }
+
+        if routed_rows > 0 {
             let hidden =
-                ensure_f32_tensor_capacity(&mut self.hidden, route_count * plan.gate_up_dim)?;
+                ensure_f32_tensor_capacity(&mut self.hidden, routed_rows * plan.gate_up_dim)?;
 
             let gate_up_start = profile_start(profile);
-            run_prepared_routed_matmul(
-                &plan.gate_up,
-                eid,
-                RoutedInputRows {
-                    base: x_base,
-                    row_byte_offsets: row_offsets,
-                    k_stride_bytes: x_k_stride_bytes,
-                },
-                hidden,
-                &mut self.gate_up_state,
-            )?;
+            if self.shared_rhs_groups.len() == self.route_groups.len() {
+                let rhs = pack_prepared_routed_matmul_rhs(
+                    &plan.gate_up,
+                    RoutedInputRows::single(x_base, 0, x_k_stride_bytes),
+                )?;
+                run_prepared_routed_matmul_many_same_rhs(
+                    &plan.gate_up,
+                    &self.shared_rhs_groups,
+                    &*rhs,
+                    1,
+                    hidden,
+                    &mut self.gate_up_state,
+                )?;
+            } else {
+                run_prepared_routed_matmul_many(
+                    &plan.gate_up,
+                    &self.route_groups,
+                    hidden,
+                    &mut self.gate_up_state,
+                )?;
+            }
             gate_up_elapsed += profile_elapsed(gate_up_start);
 
             let activation_start = profile_start(profile);
@@ -2117,8 +2170,8 @@ impl Q40LinearExpertState {
                 let mut hidden_plain = hidden.try_as_plain_mut()?;
                 let hidden_slice = hidden_plain.as_slice_mut::<f32>()?;
                 apply_silu_gate(
-                    &mut hidden_slice[..route_count * plan.gate_up_dim],
-                    route_count,
+                    &mut hidden_slice[..routed_rows * plan.gate_up_dim],
+                    routed_rows,
                     op.d_hidden,
                     plan.gate_up_dim,
                     has_w3,
@@ -2130,38 +2183,67 @@ impl Q40LinearExpertState {
             let hidden_slice = hidden_plain.as_slice::<f32>()?;
             let hidden_base = hidden_slice.as_ptr();
             let hidden_row_stride_bytes = plan.gate_up_dim as isize * item_size;
-            let hidden_offsets: Vec<isize> =
-                (0..route_count).map(|r| hidden_row_stride_bytes * r as isize).collect();
-            let expert_out =
-                ensure_f32_tensor_capacity(&mut self.expert_out, route_count * d_model)?;
 
-            let down_start = profile_start(profile);
-            run_prepared_routed_matmul(
-                &plan.down,
-                eid,
-                RoutedInputRows {
-                    base: hidden_base,
-                    row_byte_offsets: hidden_offsets,
-                    k_stride_bytes: item_size,
-                },
-                expert_out,
-                &mut self.down_state,
-            )?;
-            down_elapsed += profile_elapsed(down_start);
+            for route_group_index in 0..self.route_groups.len() {
+                let group_id = self.route_groups[route_group_index].group;
+                let output_row_offset = self.route_groups[route_group_index].output_row_offset;
+                let route_count = self.route_groups[route_group_index].rows.len();
+                if route_count == 1 {
+                    let route = output_row_offset;
+                    self.set_combine_scale(self.route_weights[route])?;
+                    let scale = self.combine_scale.as_ref().unwrap();
+                    let down_start = profile_start(profile);
+                    run_prepared_routed_matmul_accumulate_one(
+                        &plan.down,
+                        group_id,
+                        RoutedInputRows::single(
+                            hidden_base,
+                            hidden_row_stride_bytes * route as isize,
+                            item_size,
+                        ),
+                        &mut output_tensor,
+                        self.route_tokens[route],
+                        scale,
+                        &mut self.down_state,
+                    )?;
+                    down_elapsed += profile_elapsed(down_start);
+                } else {
+                    let expert_out =
+                        ensure_f32_tensor_capacity(&mut self.expert_out, route_count * d_model)?;
+                    let down_start = profile_start(profile);
+                    run_prepared_routed_matmul(
+                        &plan.down,
+                        group_id,
+                        RoutedInputRows::regular(
+                            hidden_base,
+                            hidden_row_stride_bytes * output_row_offset as isize,
+                            route_count,
+                            hidden_row_stride_bytes,
+                            item_size,
+                        ),
+                        expert_out,
+                        &mut self.down_state,
+                    )?;
+                    down_elapsed += profile_elapsed(down_start);
 
-            let scatter_start = profile_start(profile);
-            let y_plain = expert_out.try_as_plain()?;
-            let y = y_plain.as_slice::<f32>()?;
-            let mut output_plain = output_tensor.try_as_plain_mut()?;
-            let output = output_plain.as_slice_mut::<f32>()?;
-            for (route, &(token, weight)) in tokens.iter().enumerate() {
-                let y_row = &y[route * d_model..(route + 1) * d_model];
-                let out_row = &mut output[token * d_model..(token + 1) * d_model];
-                for (o, y) in out_row.iter_mut().zip(y_row) {
-                    *o += weight * *y;
+                    let scatter_start = profile_start(profile);
+                    let y_plain = expert_out.try_as_plain()?;
+                    let y = y_plain.as_slice::<f32>()?;
+                    let mut output_plain = output_tensor.try_as_plain_mut()?;
+                    let output = output_plain.as_slice_mut::<f32>()?;
+                    for route in 0..route_count {
+                        let flat_route = output_row_offset + route;
+                        let y_row = &y[route * d_model..(route + 1) * d_model];
+                        let token = self.route_tokens[flat_route];
+                        let weight = self.route_weights[flat_route];
+                        let out_row = &mut output[token * d_model..(token + 1) * d_model];
+                        for (o, y) in out_row.iter_mut().zip(y_row) {
+                            *o += weight * *y;
+                        }
+                    }
+                    scatter_elapsed += profile_elapsed(scatter_start);
                 }
             }
-            scatter_elapsed += profile_elapsed(scatter_start);
         }
 
         let output_tensor = output_tensor.cast_to_dt(dt)?.into_owned();
