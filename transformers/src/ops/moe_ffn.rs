@@ -7,7 +7,9 @@ use tract_nnef::tract_core::ops::einsum::EinSum;
 use tract_nnef::tract_core::ops::konst::Const;
 use tract_nnef::tract_core::ops::math::mul;
 use tract_nnef::tract_core::ops::{FrozenOpState, OpState, OpStateFreeze};
-use tract_nnef::tract_core::tract_linalg::block_quant::{BlockQuantStorage, block_quant_slice};
+use tract_nnef::tract_core::tract_linalg::block_quant::{
+    BlockQuantFact, BlockQuantStorage, block_quant_slice,
+};
 use tract_nnef::tract_core::tract_linalg::mmm::{
     AsInputValue, FusedSpec, MMMInputFormat, MMMInputValue, PackedExoticFact,
 };
@@ -47,6 +49,10 @@ pub fn register(registry: &mut Registry) {
             // out = (up + 1) * glu.
             TypeName::Scalar.named("act_alpha"),
             TypeName::Scalar.named("act_limit"),
+            // Expert tensor layout:
+            //   canonical: w1/w3 [E,D,H], w2 [E,H,D] (existing exports)
+            //   linear:    w1/w3 [E,H,D], w2 [E,D,H] (nn.Linear layout)
+            TypeName::String.named("expert_layout"),
         ],
         // single output: tract is inference-only, so router_logits (a
         // training-time load-balancing-loss signal) is computed internally for
@@ -75,6 +81,9 @@ fn deser_moe_ffn(
     let gate = GateMode::parse(&gate_str)?;
     let act_alpha: Option<f32> = invocation.get_named_arg_as(builder, "act_alpha")?;
     let act_limit: Option<f32> = invocation.get_named_arg_as(builder, "act_limit")?;
+    let expert_layout_str: Option<String> =
+        invocation.get_named_arg_as(builder, "expert_layout")?;
+    let expert_layout = ExpertLayout::parse(expert_layout_str.as_deref().unwrap_or("canonical"))?;
 
     // Inputs are pushed in a fixed order so eval can recover their positions
     // from the has_* flags: x, wg, w1, w2, [w3], [wg_bias], [w1_bias],
@@ -101,6 +110,7 @@ fn deser_moe_ffn(
             has_w2_bias,
             act_alpha_bits: act_alpha.map(f32::to_bits),
             act_limit_bits: act_limit.map(f32::to_bits),
+            expert_layout,
         },
         &inputs,
     )
@@ -151,6 +161,24 @@ impl GateMode {
     }
 }
 
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+pub enum ExpertLayout {
+    /// Existing tract_moe_ffn layout: w1/w3 [E,D,H], w2 [E,H,D].
+    Canonical,
+    /// Natural nn.Linear layout: w1/w3 [E,H,D], w2 [E,D,H].
+    Linear,
+}
+
+impl ExpertLayout {
+    fn parse(s: &str) -> TractResult<Self> {
+        match s {
+            "canonical" => Ok(ExpertLayout::Canonical),
+            "linear" => Ok(ExpertLayout::Linear),
+            other => bail!("unknown tract_moe_ffn expert layout {other:?}"),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct MoeFfn {
     pub k: usize,
@@ -165,6 +193,7 @@ pub struct MoeFfn {
     // patterns; None means "use the plain activation_op path".
     pub act_alpha_bits: Option<u32>,
     pub act_limit_bits: Option<u32>,
+    pub expert_layout: ExpertLayout,
 }
 
 /// Resolved positions of the optional inputs within the `inputs` slice,
@@ -182,6 +211,17 @@ impl MoeFfn {
     /// against new optional fields).
     #[cfg(test)]
     fn basic(k: usize, activation: &str, gate: GateMode, has_w3: bool) -> Self {
+        Self::basic_with_layout(k, activation, gate, has_w3, ExpertLayout::Canonical)
+    }
+
+    #[cfg(test)]
+    fn basic_with_layout(
+        k: usize,
+        activation: &str,
+        gate: GateMode,
+        has_w3: bool,
+        expert_layout: ExpertLayout,
+    ) -> Self {
         MoeFfn {
             k,
             activation: activation.to_string(),
@@ -193,6 +233,7 @@ impl MoeFfn {
             has_w2_bias: false,
             act_alpha_bits: None,
             act_limit_bits: None,
+            expert_layout,
         }
     }
 
@@ -313,14 +354,20 @@ impl MoeFfn {
             let w1_e_t = block_quant_group_as_2d(&inputs[2], eid)?;
             let w1_e: ArrayView2<f32> =
                 w1_e_t.to_plain_array_view::<f32>()?.into_dimensionality()?;
-            let mut h: Array2<f32> = x_batch.dot(&w1_e);
+            let mut h: Array2<f32> = match self.expert_layout {
+                ExpertLayout::Canonical => x_batch.dot(&w1_e),
+                ExpertLayout::Linear => x_batch.dot(&w1_e.t()),
+            };
 
             if self.is_clamped_act() {
                 let w3_ix = idx.w3.context("clamped activation requires w3 (up branch)")?;
                 let w3_e_t = block_quant_group_as_2d(&inputs[w3_ix], eid)?;
                 let w3_e: ArrayView2<f32> =
                     w3_e_t.to_plain_array_view::<f32>()?.into_dimensionality()?;
-                let up: Array2<f32> = x_batch.dot(&w3_e);
+                let up: Array2<f32> = match self.expert_layout {
+                    ExpertLayout::Canonical => x_batch.dot(&w3_e),
+                    ExpertLayout::Linear => x_batch.dot(&w3_e.t()),
+                };
                 let alpha = self.act_alpha();
                 let limit = self.act_limit();
                 h.iter_mut().zip(up.iter()).for_each(|(g, &u)| {
@@ -333,7 +380,10 @@ impl MoeFfn {
                 let w3_e_t = block_quant_group_as_2d(&inputs[w3_ix], eid)?;
                 let w3_e: ArrayView2<f32> =
                     w3_e_t.to_plain_array_view::<f32>()?.into_dimensionality()?;
-                let gate: Array2<f32> = x_batch.dot(&w3_e);
+                let gate: Array2<f32> = match self.expert_layout {
+                    ExpertLayout::Canonical => x_batch.dot(&w3_e),
+                    ExpertLayout::Linear => x_batch.dot(&w3_e.t()),
+                };
                 h.iter_mut().zip(gate.iter()).for_each(|(h_val, &g_val)| {
                     let silu = *h_val / (1.0 + (-*h_val).exp());
                     *h_val = silu * g_val;
@@ -347,7 +397,10 @@ impl MoeFfn {
             let w2_e_t = block_quant_group_as_2d(&inputs[3], eid)?;
             let w2_e: ArrayView2<f32> =
                 w2_e_t.to_plain_array_view::<f32>()?.into_dimensionality()?;
-            let y_expert: Array2<f32> = h.dot(&w2_e);
+            let y_expert: Array2<f32> = match self.expert_layout {
+                ExpertLayout::Canonical => h.dot(&w2_e),
+                ExpertLayout::Linear => h.dot(&w2_e.t()),
+            };
             scatter_add_weighted(&mut output, &y_expert.view(), tokens);
         }
 
@@ -1196,6 +1249,24 @@ fn block_quant_group_as_2d(input: &Tensor, group: usize) -> TractResult<Tensor> 
     bqs.format().dequant_f32(slice)?.into_shape(&[m, k])
 }
 
+fn block_quant_group_tensor(input: &Tensor, group: usize) -> TractResult<Tensor> {
+    let shape = input.shape();
+    ensure!(shape.len() >= 2, "block-quant expert tensor must have rank >= 2");
+    let k = *shape.last().context("block-quant tensor has no last axis")?;
+    let m = shape[shape.len() - 2];
+    let groups = if shape.len() > 2 { shape[..shape.len() - 2].iter().product() } else { 1 };
+    ensure!(group < groups, "block-quant group {group} is out of range for {groups} groups");
+    let bqs = input.try_storage_as::<BlockQuantStorage>()?;
+    let exotic_fact = input.exotic_fact()?.context("block-quant tensor has no exotic fact")?;
+    let bqf = exotic_fact
+        .downcast_ref::<BlockQuantFact>()
+        .context("block-quant tensor has no BlockQuantFact")?;
+    let slice = block_quant_slice(bqs.value(), bqs.format(), m, k, group);
+    let storage =
+        BlockQuantStorage::new(bqf.format.clone(), m, k, Arc::new(Blob::from_bytes(slice)?))?;
+    Ok(storage.into_tensor_with_shape(input.datum_type(), &[m, k]))
+}
+
 impl EvalOp for MoeFfn {
     fn is_stateless(&self) -> bool {
         true
@@ -1276,7 +1347,10 @@ impl EvalOp for MoeFfn {
         let t_tokens = x.shape()[0];
         let d_model = x.shape()[1];
         let num_experts = wg.shape()[0];
-        let _d_hidden = w1.shape()[2];
+        let _d_hidden = match self.expert_layout {
+            ExpertLayout::Canonical => w1.shape()[2],
+            ExpertLayout::Linear => w1.shape()[1],
+        };
 
         // ---- Step 1: Router ----
         // logits = x @ wg.T  [T, D] @ [D, E] -> [T, E]  (+ optional bias [E])
@@ -1329,12 +1403,17 @@ impl EvalOp for MoeFfn {
                 x_batch.row_mut(i).assign(&x.row(t));
             }
 
-            // Expert weight slices for this expert
-            let w1_e = w1.slice(s![eid, .., ..]); // [D, H]
-            let w2_e = w2.slice(s![eid, .., ..]); // [H, D]
+            // Expert weight slices for this expert.
+            // canonical: w1/w3 [D,H], w2 [H,D]
+            // linear:    w1/w3 [H,D], w2 [D,H]
+            let w1_e = w1.slice(s![eid, .., ..]);
+            let w2_e = w2.slice(s![eid, .., ..]);
 
-            // gate branch: h = x_batch @ w1_e (+ w1_bias)  -> [n, H]
-            let mut h: Array2<f32> = x_batch.dot(&w1_e);
+            // gate branch -> [n, H]
+            let mut h: Array2<f32> = match self.expert_layout {
+                ExpertLayout::Canonical => x_batch.dot(&w1_e),
+                ExpertLayout::Linear => x_batch.dot(&w1_e.t()),
+            };
             if let Some(ref b) = w1_bias {
                 add_expert_bias(&mut h, b, eid)?;
             }
@@ -1346,8 +1425,11 @@ impl EvalOp for MoeFfn {
                 //   glu  = gate * sigmoid(alpha * gate)
                 //   h    = (up + 1) * glu
                 let w3 = w3.as_ref().context("clamped activation requires w3 (up branch)")?;
-                let w3_e = w3.slice(s![eid, .., ..]); // [D, H]
-                let mut up: Array2<f32> = x_batch.dot(&w3_e);
+                let w3_e = w3.slice(s![eid, .., ..]);
+                let mut up: Array2<f32> = match self.expert_layout {
+                    ExpertLayout::Canonical => x_batch.dot(&w3_e),
+                    ExpertLayout::Linear => x_batch.dot(&w3_e.t()),
+                };
                 if let Some(ref b) = w3_bias {
                     add_expert_bias(&mut up, b, eid)?;
                 }
@@ -1361,8 +1443,11 @@ impl EvalOp for MoeFfn {
                 });
             } else if let Some(ref w3) = w3 {
                 // SwiGLU: h = silu(h) * (x_batch @ w3_e + w3_bias)
-                let w3_e = w3.slice(s![eid, .., ..]); // [D, H]
-                let mut gate: Array2<f32> = x_batch.dot(&w3_e); // [n, H]
+                let w3_e = w3.slice(s![eid, .., ..]);
+                let mut gate: Array2<f32> = match self.expert_layout {
+                    ExpertLayout::Canonical => x_batch.dot(&w3_e),
+                    ExpertLayout::Linear => x_batch.dot(&w3_e.t()),
+                };
                 if let Some(ref b) = w3_bias {
                     add_expert_bias(&mut gate, b, eid)?;
                 }
@@ -1377,8 +1462,11 @@ impl EvalOp for MoeFfn {
                 });
             }
 
-            // y_expert = h @ w2_e (+ w2_bias)  -> [n, D]  (BLAS-backed GEMM)
-            let mut y_expert: Array2<f32> = h.dot(&w2_e);
+            // y_expert -> [n, D]  (BLAS-backed GEMM)
+            let mut y_expert: Array2<f32> = match self.expert_layout {
+                ExpertLayout::Canonical => h.dot(&w2_e),
+                ExpertLayout::Linear => h.dot(&w2_e.t()),
+            };
             if let Some(ref b) = w2_bias {
                 add_expert_bias(&mut y_expert, b, eid)?;
             }
@@ -1436,26 +1524,69 @@ impl TypedOp for MoeFfn {
             let w2_tensor = w2_const.unwrap().val().clone();
             let w3_tensor = w3_const.map(|c| c.val().clone());
 
-            if !w1_tensor.is_plain()
-                || !w2_tensor.is_plain()
-                || w3_tensor.as_ref().is_some_and(|t| !t.is_plain())
-            {
+            let expert_tensors_are_plain = w1_tensor.is_plain()
+                && w2_tensor.is_plain()
+                && w3_tensor.as_ref().is_none_or(|t| t.is_plain());
+            let expert_tensors_are_linear_block_quant = self.expert_layout == ExpertLayout::Linear
+                && w1_tensor.storage_as::<BlockQuantStorage>().is_some()
+                && w2_tensor.storage_as::<BlockQuantStorage>().is_some()
+                && w3_tensor.as_ref().is_none_or(|t| t.storage_as::<BlockQuantStorage>().is_some());
+            if !expert_tensors_are_plain && !expert_tensors_are_linear_block_quant {
                 return Ok(None);
             }
 
             let num_experts = w1_tensor.shape()[0];
-            let d_model = w1_tensor.shape()[1];
-            let d_hidden = w1_tensor.shape()[2];
+            let d_model = match self.expert_layout {
+                ExpertLayout::Canonical => w1_tensor.shape()[1],
+                ExpertLayout::Linear => w1_tensor.shape()[2],
+            };
+            let d_hidden = match self.expert_layout {
+                ExpertLayout::Canonical => w1_tensor.shape()[2],
+                ExpertLayout::Linear => w1_tensor.shape()[1],
+            };
 
             let router_plan =
                 build_router_plan(&wg_tensor, &model.symbols).context("Building router plan")?;
 
             let mut expert_plans = Vec::with_capacity(num_experts);
             for eid in 0..num_experts {
-                let w1_e = w1_tensor.slice(0, eid, eid + 1)?.into_shape(&[d_model, d_hidden])?;
-                let w2_e = w2_tensor.slice(0, eid, eid + 1)?.into_shape(&[d_hidden, d_model])?;
+                let w1_e = if expert_tensors_are_linear_block_quant {
+                    block_quant_group_tensor(&w1_tensor, eid)?
+                } else {
+                    match self.expert_layout {
+                        ExpertLayout::Canonical => {
+                            w1_tensor.slice(0, eid, eid + 1)?.into_shape(&[d_model, d_hidden])?
+                        }
+                        ExpertLayout::Linear => {
+                            w1_tensor.slice(0, eid, eid + 1)?.into_shape(&[d_hidden, d_model])?
+                        }
+                    }
+                };
+                let w2_e = if expert_tensors_are_linear_block_quant {
+                    block_quant_group_tensor(&w2_tensor, eid)?
+                } else {
+                    match self.expert_layout {
+                        ExpertLayout::Canonical => {
+                            w2_tensor.slice(0, eid, eid + 1)?.into_shape(&[d_hidden, d_model])?
+                        }
+                        ExpertLayout::Linear => {
+                            w2_tensor.slice(0, eid, eid + 1)?.into_shape(&[d_model, d_hidden])?
+                        }
+                    }
+                };
                 let w3_e = if let Some(ref w3) = w3_tensor {
-                    Some(w3.slice(0, eid, eid + 1)?.into_shape(&[d_model, d_hidden])?)
+                    Some(if expert_tensors_are_linear_block_quant {
+                        block_quant_group_tensor(w3, eid)?
+                    } else {
+                        match self.expert_layout {
+                            ExpertLayout::Canonical => {
+                                w3.slice(0, eid, eid + 1)?.into_shape(&[d_model, d_hidden])?
+                            }
+                            ExpertLayout::Linear => {
+                                w3.slice(0, eid, eid + 1)?.into_shape(&[d_hidden, d_model])?
+                            }
+                        }
+                    })
                 } else {
                     None
                 };
@@ -1465,6 +1596,8 @@ impl TypedOp for MoeFfn {
                     &w2_e,
                     w3_e.as_ref(),
                     &self.activation,
+                    self.expert_layout,
+                    expert_tensors_are_linear_block_quant,
                     &model.symbols,
                 )
                 .with_context(|| format!("Building expert plan for expert {eid}"))?;
@@ -1486,6 +1619,10 @@ impl TypedOp for MoeFfn {
             let wires = patch.wire_node(&node.name, opt_op, &[x_tap])?;
             patch.shunt_outside(model, OutletId::new(node.id, 0), wires[0])?;
             return Ok(Some(patch));
+        }
+
+        if self.expert_layout == ExpertLayout::Linear {
+            return Ok(None);
         }
 
         let expert_inputs: &[usize] = if self.has_w3 { &[2, 3, 4] } else { &[2, 3] };
@@ -1599,34 +1736,54 @@ fn build_expert_plan(
     w2: &Tensor,
     w3: Option<&Tensor>,
     activation: &str,
+    expert_layout: ExpertLayout,
+    preserve_block_quant: bool,
     symbols: &SymbolScope,
 ) -> TractResult<Arc<TypedSimplePlan>> {
     let mut model = TypedModel { symbols: symbols.clone(), ..Default::default() };
     let n_sym = symbols.sym("moe_n");
     let dt = f32::datum_type();
-    let to_f32 = |t: &Tensor| -> TractResult<Tensor> { Ok(t.cast_to::<f32>()?.into_owned()) };
+    let expert_const = |t: &Tensor| -> TractResult<Tensor> {
+        if preserve_block_quant && t.storage_as::<BlockQuantStorage>().is_some() {
+            Ok(t.clone())
+        } else {
+            Ok(t.cast_to::<f32>()?.into_owned())
+        }
+    };
 
-    let d_model = w1.shape()[0];
+    let d_model = match expert_layout {
+        ExpertLayout::Canonical => w1.shape()[0],
+        ExpertLayout::Linear => w1.shape()[1],
+    };
 
     let x = model.add_source("x", dt.fact([n_sym.to_dim(), d_model.to_dim()]))?;
-    let w1_const = model.add_const("w1", to_f32(w1)?)?;
-    let axes: AxesMapping = "ij,jk->ik".parse()?;
-    let h = model.wire_node("w1_matmul", EinSum::new(axes.clone(), dt), &[x, w1_const])?[0];
+    let w1_const = model.add_const("w1", expert_const(w1)?)?;
+    let axes_canonical: AxesMapping = "ij,jk->ik".parse()?;
+    let axes_linear: AxesMapping = "ij,kj->ik".parse()?;
+    let axes_in = match expert_layout {
+        ExpertLayout::Canonical => axes_canonical.clone(),
+        ExpertLayout::Linear => axes_linear.clone(),
+    };
+    let h = model.wire_node("w1_matmul", EinSum::new(axes_in.clone(), dt), &[x, w1_const])?[0];
 
     let act_op = activation_op(activation, w3.is_some())
         .ok_or_else(|| format_err!("Unsupported activation: {activation}"))?;
     let h = model.wire_node("activation", act_op, &[h])?[0];
 
     let h = if let Some(w3) = w3 {
-        let w3_const = model.add_const("w3", to_f32(w3)?)?;
-        let gate = model.wire_node("w3_matmul", EinSum::new(axes.clone(), dt), &[x, w3_const])?[0];
+        let w3_const = model.add_const("w3", expert_const(w3)?)?;
+        let gate = model.wire_node("w3_matmul", EinSum::new(axes_in, dt), &[x, w3_const])?[0];
         model.wire_node("swiglu_mul", mul(), &[h, gate])?[0]
     } else {
         h
     };
 
-    let w2_const = model.add_const("w2", to_f32(w2)?)?;
-    let y = model.wire_node("w2_matmul", EinSum::new(axes, dt), &[h, w2_const])?[0];
+    let w2_const = model.add_const("w2", expert_const(w2)?)?;
+    let axes_out = match expert_layout {
+        ExpertLayout::Canonical => axes_canonical,
+        ExpertLayout::Linear => axes_linear,
+    };
+    let y = model.wire_node("w2_matmul", EinSum::new(axes_out, dt), &[h, w2_const])?[0];
 
     model.select_output_outlets(&[y])?;
     SimplePlan::new(model.into_optimized()?)
@@ -1899,6 +2056,76 @@ mod tests {
         Q4_0.dequant_f32(&quant)?.into_shape(&shape)
     }
 
+    fn transpose_expert_last2(tensor: &Tensor) -> TractResult<Tensor> {
+        let view = tensor.to_plain_array_view::<f32>()?;
+        let transposed = view.permuted_axes(tract_ndarray::IxDyn(&[0, 2, 1]));
+        Ok(transposed.into_owned().into_tensor())
+    }
+
+    #[test]
+    fn test_linear_expert_layout_matches_canonical_layout() -> TractResult<()> {
+        let mut rng_state: u64 = 9001;
+        let mut next_f32 = || -> f32 {
+            rng_state = rng_state.wrapping_mul(6364136223846793005).wrapping_add(1);
+            ((rng_state >> 33) as f32 / (1u64 << 31) as f32) - 1.0
+        };
+        let make_tensor = |shape: &[usize], rng: &mut dyn FnMut() -> f32| -> Tensor {
+            let n: usize = shape.iter().product();
+            let data: Vec<f32> = (0..n).map(|_| rng()).collect();
+            tract_ndarray::ArrayD::from_shape_vec(shape, data).unwrap().into_tensor()
+        };
+
+        let t_tokens = 8;
+        let d_model = 16;
+        let d_hidden = 32;
+        let num_experts = 4;
+        let wg_data = make_tensor(&[num_experts, d_model], &mut next_f32);
+        let w1_canonical = make_tensor(&[num_experts, d_model, d_hidden], &mut next_f32);
+        let w2_canonical = make_tensor(&[num_experts, d_hidden, d_model], &mut next_f32);
+        let w3_canonical = make_tensor(&[num_experts, d_model, d_hidden], &mut next_f32);
+        let x_data = make_tensor(&[t_tokens, d_model], &mut next_f32);
+
+        let build = |layout: ExpertLayout,
+                     wg_data: Tensor,
+                     w1_data: Tensor,
+                     w2_data: Tensor,
+                     w3_data: Tensor|
+         -> TractResult<TypedModel> {
+            let mut model = TypedModel::default();
+            let x = model.add_source("x", f32::datum_type().fact([t_tokens, d_model]))?;
+            let wg = model.add_const("wg", wg_data)?;
+            let w1 = model.add_const("w1", w1_data)?;
+            let w2 = model.add_const("w2", w2_data)?;
+            let w3 = model.add_const("w3", w3_data)?;
+            let op = MoeFfn::basic_with_layout(2, "silu", GateMode::SoftmaxTopk, true, layout);
+            let outputs = model.wire_node("moe", op, &[x, wg, w1, w2, w3])?;
+            model.select_output_outlets(&outputs)?;
+            model.into_optimized()
+        };
+
+        let canonical = build(
+            ExpertLayout::Canonical,
+            wg_data.clone(),
+            w1_canonical.clone(),
+            w2_canonical.clone(),
+            w3_canonical.clone(),
+        )?;
+        let linear = build(
+            ExpertLayout::Linear,
+            wg_data,
+            transpose_expert_last2(&w1_canonical)?,
+            transpose_expert_last2(&w2_canonical)?,
+            transpose_expert_last2(&w3_canonical)?,
+        )?;
+
+        let canonical_result =
+            SimplePlan::new(canonical)?.spawn()?.run(tvec![x_data.clone().into_tvalue()])?;
+        let linear_result = SimplePlan::new(linear)?.spawn()?.run(tvec![x_data.into_tvalue()])?;
+
+        canonical_result[0].close_enough(&linear_result[0], Approximation::Approximate)?;
+        Ok(())
+    }
+
     #[test]
     fn test_codegen_keeps_q40_expert_constants_on_reference_eval() -> TractResult<()> {
         let mut model = TypedModel::default();
@@ -1952,6 +2179,67 @@ mod tests {
         let plan = SimplePlan::new(opt_model)?;
         let result = plan.spawn()?.run(tvec![x_data.clone().into_tvalue()])?;
         let ref_result = SimplePlan::new(ref_model)?.spawn()?.run(tvec![x_data.into_tvalue()])?;
+        result[0].close_enough(&ref_result[0], Approximation::Approximate)?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_q40_linear_expert_layout_matches_dequantized_reference() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let x = model.add_source("x", f32::datum_type().fact([4, 32]))?;
+        let mut ref_model = TypedModel::default();
+        let ref_x = ref_model.add_source("x", f32::datum_type().fact([4, 32]))?;
+
+        let mut rng_state: u64 = 2026;
+        let mut next_f32 = || -> f32 {
+            rng_state = rng_state.wrapping_mul(6364136223846793005).wrapping_add(1);
+            ((rng_state >> 33) as f32 / (1u64 << 31) as f32) - 1.0
+        };
+        let make_tensor = |shape: &[usize], rng: &mut dyn FnMut() -> f32| -> Tensor {
+            let n: usize = shape.iter().product();
+            let data: Vec<f32> = (0..n).map(|_| rng()).collect();
+            tract_ndarray::ArrayD::from_shape_vec(shape, data).unwrap().into_tensor()
+        };
+
+        let wg_data = make_tensor(&[4, 32], &mut next_f32);
+        let w1_data = make_tensor(&[4, 64, 32], &mut next_f32);
+        let w2_data = make_tensor(&[4, 32, 64], &mut next_f32);
+        let w3_data = make_tensor(&[4, 64, 32], &mut next_f32);
+
+        let wg = model.add_const("wg", wg_data.clone())?;
+        let w1 = add_q40_const(&mut model, "w1", w1_data.clone())?;
+        let w2 = add_q40_const(&mut model, "w2", w2_data.clone())?;
+        let w3 = add_q40_const(&mut model, "w3", w3_data.clone())?;
+        let op =
+            MoeFfn::basic_with_layout(2, "silu", GateMode::SoftmaxTopk, true, ExpertLayout::Linear);
+        let outputs = model.wire_node("moe", op, &[x, wg, w1, w2, w3])?;
+        model.select_output_outlets(&outputs)?;
+
+        let ref_wg = ref_model.add_const("wg", wg_data)?;
+        let ref_w1 = ref_model.add_const("w1", q40_roundtrip(&w1_data)?)?;
+        let ref_w2 = ref_model.add_const("w2", q40_roundtrip(&w2_data)?)?;
+        let ref_w3 = ref_model.add_const("w3", q40_roundtrip(&w3_data)?)?;
+        let ref_op =
+            MoeFfn::basic_with_layout(2, "silu", GateMode::SoftmaxTopk, true, ExpertLayout::Linear);
+        let ref_outputs =
+            ref_model.wire_node("moe", ref_op, &[ref_x, ref_wg, ref_w1, ref_w2, ref_w3])?;
+        ref_model.select_output_outlets(&ref_outputs)?;
+
+        let opt_model = model.into_optimized()?;
+        let has_moe = opt_model.nodes().iter().any(|n| n.op_is::<MoeFfn>());
+        assert!(!has_moe, "Expected Q40 linear experts to lower to OptMoeFfn");
+        let has_opt = opt_model.nodes().iter().any(|n| n.op_is::<OptMoeFfn>());
+        assert!(has_opt, "Q40 linear experts should use OptMoeFfn");
+        let has_routed = opt_model.nodes().iter().any(|n| n.op_is::<RoutedMatMul>());
+        assert!(!has_routed, "Q40 linear constants should use per-expert optimized subplans");
+
+        let x_data = make_tensor(&[4, 32], &mut next_f32);
+        let result =
+            SimplePlan::new(opt_model)?.spawn()?.run(tvec![x_data.clone().into_tvalue()])?;
+        let ref_result = SimplePlan::new(ref_model.into_optimized()?)?
+            .spawn()?
+            .run(tvec![x_data.into_tvalue()])?;
         result[0].close_enough(&ref_result[0], Approximation::Approximate)?;
 
         Ok(())
@@ -2036,6 +2324,34 @@ mod tests {
         assert!(!has_moe, "Expected MoeFfn to lower even when weights are not constants");
         let has_routed = opt_model.nodes().iter().any(|n| n.op_is::<RoutedMatMul>());
         assert!(has_routed, "Expected RoutedMatMul in optimized model");
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_codegen_keeps_non_const_linear_layout_on_moe_ffn() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let x = model.add_source("x", f32::datum_type().fact([4, 8]))?;
+        let wg = model.add_source("wg", f32::datum_type().fact([2, 8]))?;
+        let w1 = model.add_source("w1", f32::datum_type().fact([2, 16, 8]))?;
+        let w2 = model.add_source("w2", f32::datum_type().fact([2, 8, 16]))?;
+
+        let op = MoeFfn::basic_with_layout(
+            1,
+            "silu",
+            GateMode::SoftmaxTopk,
+            false,
+            ExpertLayout::Linear,
+        );
+        let outputs = model.wire_node("moe", op, &[x, wg, w1, w2])?;
+        model.select_output_outlets(&outputs)?;
+
+        let opt_model = model.into_optimized()?;
+
+        let has_moe = opt_model.nodes().iter().any(|n| n.op_is::<MoeFfn>());
+        assert!(has_moe, "Expected linear-layout non-const experts to remain on MoeFfn");
+        let has_routed = opt_model.nodes().iter().any(|n| n.op_is::<RoutedMatMul>());
+        assert!(!has_routed, "RoutedMatMul currently models canonical expert layout");
 
         Ok(())
     }
