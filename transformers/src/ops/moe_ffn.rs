@@ -231,6 +231,134 @@ impl MoeFfn {
             w2_bias: next(self.has_w2_bias),
         }
     }
+
+    fn can_eval_lazy_block_quant(&self, inputs: &[TValue], idx: &MoeInputIdx) -> bool {
+        !self.has_w1_bias
+            && !self.has_w3_bias
+            && !self.has_w2_bias
+            && inputs[2].storage_as::<BlockQuantStorage>().is_some()
+            && inputs[3].storage_as::<BlockQuantStorage>().is_some()
+            && idx.w3.is_none_or(|w3| inputs[w3].storage_as::<BlockQuantStorage>().is_some())
+    }
+
+    fn eval_lazy_block_quant(
+        &self,
+        inputs: TVec<TValue>,
+        idx: MoeInputIdx,
+        orig_dt: DatumType,
+    ) -> TractResult<TVec<TValue>> {
+        let x_t = inputs[0].cast_to::<f32>()?.into_owned();
+        let wg_t = inputs[1].cast_to::<f32>()?.into_owned();
+        let wg_bias_t = idx
+            .wg_bias
+            .map(|i| inputs[i].cast_to::<f32>().map(|cow| cow.into_owned()))
+            .transpose()?;
+        let x = x_t.to_plain_array_view::<f32>()?;
+        let wg_raw = wg_t.to_plain_array_view::<f32>()?;
+        let wg_bias = wg_bias_t.as_ref().map(|t| t.to_plain_array_view::<f32>()).transpose()?;
+
+        let wg: ArrayView2<f32> = if wg_raw.ndim() == 3 {
+            wg_raw.index_axis(Axis(0), 0).into_dimensionality()?
+        } else {
+            wg_raw.into_dimensionality()?
+        };
+
+        let x_ndim = x.ndim();
+        let x_orig_shape: Vec<usize> = x.shape().to_vec();
+        let x: ArrayView2<f32> = if x_ndim == 3 {
+            x.into_shape_with_order((x_orig_shape[0] * x_orig_shape[1], x_orig_shape[2]))?
+                .into_dimensionality()?
+        } else {
+            x.into_dimensionality()?
+        };
+
+        let t_tokens = x.shape()[0];
+        let d_model = x.shape()[1];
+        let num_experts = wg.shape()[0];
+
+        let mut router_logits: Array2<f32> = x.dot(&wg.t());
+        if let Some(ref b) = wg_bias {
+            let bias = b.as_slice().context("wg_bias not contiguous")?;
+            for mut row in router_logits.rows_mut() {
+                row.iter_mut().zip(bias).for_each(|(v, &bv)| *v += bv);
+            }
+        }
+
+        let mut expert_tokens: Vec<Vec<(usize, f32)>> = vec![Vec::new(); num_experts];
+        for t in 0..t_tokens {
+            let row = router_logits.row(t);
+            let full: Vec<f32> = row.iter().copied().collect();
+            let mut scores: Vec<(usize, f32)> =
+                row.iter().enumerate().map(|(e, &s)| (e, s)).collect();
+            scores.sort_unstable_by(|a, b| b.1.total_cmp(&a.1));
+            scores.truncate(self.k);
+
+            let gate_weights = self.gate.weights(&full, &scores);
+            for ((eid, _), gw) in scores.iter().zip(gate_weights) {
+                expert_tokens[*eid].push((t, gw));
+            }
+        }
+
+        let mut output = Array2::<f32>::zeros((t_tokens, d_model));
+        for (eid, tokens) in expert_tokens.iter().enumerate() {
+            if tokens.is_empty() {
+                continue;
+            }
+
+            let mut x_batch = Array2::<f32>::zeros((tokens.len(), d_model));
+            for (i, &(t, _)) in tokens.iter().enumerate() {
+                x_batch.row_mut(i).assign(&x.row(t));
+            }
+
+            let w1_e_t = block_quant_group_as_2d(&inputs[2], eid)?;
+            let w1_e: ArrayView2<f32> =
+                w1_e_t.to_plain_array_view::<f32>()?.into_dimensionality()?;
+            let mut h: Array2<f32> = x_batch.dot(&w1_e);
+
+            if self.is_clamped_act() {
+                let w3_ix = idx.w3.context("clamped activation requires w3 (up branch)")?;
+                let w3_e_t = block_quant_group_as_2d(&inputs[w3_ix], eid)?;
+                let w3_e: ArrayView2<f32> =
+                    w3_e_t.to_plain_array_view::<f32>()?.into_dimensionality()?;
+                let up: Array2<f32> = x_batch.dot(&w3_e);
+                let alpha = self.act_alpha();
+                let limit = self.act_limit();
+                h.iter_mut().zip(up.iter()).for_each(|(g, &u)| {
+                    let gate = g.min(limit);
+                    let up = u.clamp(-limit, limit);
+                    let glu = gate / (1.0 + (-alpha * gate).exp());
+                    *g = (up + 1.0) * glu;
+                });
+            } else if let Some(w3_ix) = idx.w3 {
+                let w3_e_t = block_quant_group_as_2d(&inputs[w3_ix], eid)?;
+                let w3_e: ArrayView2<f32> =
+                    w3_e_t.to_plain_array_view::<f32>()?.into_dimensionality()?;
+                let gate: Array2<f32> = x_batch.dot(&w3_e);
+                h.iter_mut().zip(gate.iter()).for_each(|(h_val, &g_val)| {
+                    let silu = *h_val / (1.0 + (-*h_val).exp());
+                    *h_val = silu * g_val;
+                });
+            } else {
+                h.iter_mut().for_each(|h_val| {
+                    *h_val = *h_val / (1.0 + (-*h_val).exp());
+                });
+            }
+
+            let w2_e_t = block_quant_group_as_2d(&inputs[3], eid)?;
+            let w2_e: ArrayView2<f32> =
+                w2_e_t.to_plain_array_view::<f32>()?.into_dimensionality()?;
+            let y_expert: Array2<f32> = h.dot(&w2_e);
+            scatter_add_weighted(&mut output, &y_expert.view(), tokens);
+        }
+
+        let output_tensor = if x_ndim == 3 {
+            output.into_shape_with_order((x_orig_shape[0], x_orig_shape[1], d_model))?.into_tensor()
+        } else {
+            output.into_tensor()
+        };
+        let output_tensor = output_tensor.cast_to_dt(orig_dt)?.into_owned();
+        Ok(tvec![output_tensor.into_tvalue()])
+    }
 }
 
 impl Op for MoeFfn {
@@ -1056,6 +1184,18 @@ fn add_expert_bias(
     Ok(())
 }
 
+fn block_quant_group_as_2d(input: &Tensor, group: usize) -> TractResult<Tensor> {
+    let shape = input.shape();
+    ensure!(shape.len() >= 2, "block-quant expert tensor must have rank >= 2");
+    let k = *shape.last().context("block-quant tensor has no last axis")?;
+    let m = shape[shape.len() - 2];
+    let groups = if shape.len() > 2 { shape[..shape.len() - 2].iter().product() } else { 1 };
+    ensure!(group < groups, "block-quant group {group} is out of range for {groups} groups");
+    let bqs = input.try_storage_as::<BlockQuantStorage>()?;
+    let slice = block_quant_slice(bqs.value(), bqs.format(), m, k, group);
+    bqs.format().dequant_f32(slice)?.into_shape(&[m, k])
+}
+
 impl EvalOp for MoeFfn {
     fn is_stateless(&self) -> bool {
         true
@@ -1067,6 +1207,10 @@ impl EvalOp for MoeFfn {
         // w3_bias [E,H], w2_bias [E,D] (order set in deser_moe_ffn).
         let idx = self.input_idx();
         let orig_dt = inputs[0].datum_type();
+        if self.can_eval_lazy_block_quant(&inputs, &idx) {
+            return self.eval_lazy_block_quant(inputs, idx, orig_dt);
+        }
+
         // The reference path computes in f32. Cast every input up front; for
         // block-quant tensors, explicitly dequantize each leading group.
         let cast = |i: usize| -> TractResult<Tensor> {
@@ -1747,10 +1891,20 @@ mod tests {
         Ok(model.wire_node(name, Const::new_with_exotic_fact(packed, Box::new(fact))?, &[])?[0])
     }
 
+    fn q40_roundtrip(tensor: &Tensor) -> TractResult<Tensor> {
+        let shape = tensor.shape().to_vec();
+        let k = *shape.last().context("Q40 tensor has no last axis")?;
+        ensure!(k % Q4_0.block_len() == 0, "Q40 K axis must be a multiple of 32");
+        let quant = Q4_0.quant_f32(tensor.try_as_plain()?.as_slice::<f32>()?)?;
+        Q4_0.dequant_f32(&quant)?.into_shape(&shape)
+    }
+
     #[test]
     fn test_codegen_keeps_q40_expert_constants_on_reference_eval() -> TractResult<()> {
         let mut model = TypedModel::default();
         let x = model.add_source("x", f32::datum_type().fact([2, 32]))?;
+        let mut ref_model = TypedModel::default();
+        let ref_x = ref_model.add_source("x", f32::datum_type().fact([2, 32]))?;
 
         let mut rng_state: u64 = 77;
         let mut next_f32 = || -> f32 {
@@ -1763,14 +1917,28 @@ mod tests {
             tract_ndarray::ArrayD::from_shape_vec(shape, data).unwrap().into_tensor()
         };
 
-        let wg = model.add_const("wg", make_tensor(&[2, 32], &mut next_f32))?;
-        let w1 = add_q40_const(&mut model, "w1", make_tensor(&[2, 32, 32], &mut next_f32))?;
-        let w2 = add_q40_const(&mut model, "w2", make_tensor(&[2, 32, 32], &mut next_f32))?;
-        let w3 = add_q40_const(&mut model, "w3", make_tensor(&[2, 32, 32], &mut next_f32))?;
+        let wg_data = make_tensor(&[2, 32], &mut next_f32);
+        let w1_data = make_tensor(&[2, 32, 32], &mut next_f32);
+        let w2_data = make_tensor(&[2, 32, 32], &mut next_f32);
+        let w3_data = make_tensor(&[2, 32, 32], &mut next_f32);
+
+        let wg = model.add_const("wg", wg_data.clone())?;
+        let w1 = add_q40_const(&mut model, "w1", w1_data.clone())?;
+        let w2 = add_q40_const(&mut model, "w2", w2_data.clone())?;
+        let w3 = add_q40_const(&mut model, "w3", w3_data.clone())?;
 
         let op = MoeFfn::basic(1, "silu", GateMode::SoftmaxTopk, true);
         let outputs = model.wire_node("moe", op, &[x, wg, w1, w2, w3])?;
         model.select_output_outlets(&outputs)?;
+
+        let ref_wg = ref_model.add_const("wg", wg_data)?;
+        let ref_w1 = ref_model.add_const("w1", q40_roundtrip(&w1_data)?)?;
+        let ref_w2 = ref_model.add_const("w2", q40_roundtrip(&w2_data)?)?;
+        let ref_w3 = ref_model.add_const("w3", q40_roundtrip(&w3_data)?)?;
+        let ref_op = MoeFfn::basic(1, "silu", GateMode::SoftmaxTopk, true);
+        let ref_outputs =
+            ref_model.wire_node("moe", ref_op, &[ref_x, ref_wg, ref_w1, ref_w2, ref_w3])?;
+        ref_model.select_output_outlets(&ref_outputs)?;
 
         let opt_model = model.into_optimized()?;
         let has_moe = opt_model.nodes().iter().any(|n| n.op_is::<MoeFfn>());
@@ -1782,7 +1950,9 @@ mod tests {
 
         let x_data = make_tensor(&[2, 32], &mut next_f32);
         let plan = SimplePlan::new(opt_model)?;
-        plan.spawn()?.run(tvec![x_data.into_tvalue()])?;
+        let result = plan.spawn()?.run(tvec![x_data.clone().into_tvalue()])?;
+        let ref_result = SimplePlan::new(ref_model)?.spawn()?.run(tvec![x_data.into_tvalue()])?;
+        result[0].close_enough(&ref_result[0], Approximation::Approximate)?;
 
         Ok(())
     }
