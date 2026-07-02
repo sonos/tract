@@ -1,5 +1,7 @@
+use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use tract_ndarray::{Array2, ArrayView2, ArrayView3, ArrayViewD, Axis, s};
 use tract_nnef::internal::*;
@@ -9,10 +11,11 @@ use tract_nnef::tract_core::ops::konst::Const;
 use tract_nnef::tract_core::ops::math::mul;
 use tract_nnef::tract_core::ops::{FrozenOpState, OpState, OpStateFreeze};
 use tract_nnef::tract_core::tract_linalg::block_quant::{
-    BlockQuantFact, BlockQuantStorage, block_quant_slice,
+    BlockQuantFact, BlockQuantStorage, PackedBlockQuantFormat, block_quant_slice,
 };
 use tract_nnef::tract_core::tract_linalg::mmm::{
-    AsInputValue, FusedSpec, MMMInputFormat, MMMInputValue, PackedExoticFact,
+    AsInputValue, FusedSpec, MMMInputFormat, MMMInputValue, MatMatMul, PackedExoticFact,
+    ScratchSpace,
 };
 use tract_nnef::tract_core::tract_linalg::pack::{PackedFormat, PackingWriter};
 
@@ -1581,60 +1584,80 @@ impl TypedOp for MoeFfn {
             let router_plan =
                 build_router_plan(&wg_tensor, &model.symbols).context("Building router plan")?;
 
-            let mut expert_plans = Vec::with_capacity(num_experts);
-            for eid in 0..num_experts {
-                let w1_e = if expert_tensors_are_linear_block_quant {
-                    block_quant_group_tensor(&w1_tensor, eid)?
-                } else {
-                    match self.expert_layout {
-                        ExpertLayout::Canonical => {
-                            w1_tensor.slice(0, eid, eid + 1)?.into_shape(&[d_model, d_hidden])?
-                        }
-                        ExpertLayout::Linear => {
-                            w1_tensor.slice(0, eid, eid + 1)?.into_shape(&[d_hidden, d_model])?
-                        }
-                    }
-                };
-                let w2_e = if expert_tensors_are_linear_block_quant {
-                    block_quant_group_tensor(&w2_tensor, eid)?
-                } else {
-                    match self.expert_layout {
-                        ExpertLayout::Canonical => {
-                            w2_tensor.slice(0, eid, eid + 1)?.into_shape(&[d_hidden, d_model])?
-                        }
-                        ExpertLayout::Linear => {
-                            w2_tensor.slice(0, eid, eid + 1)?.into_shape(&[d_model, d_hidden])?
-                        }
-                    }
-                };
-                let w3_e = if let Some(ref w3) = w3_tensor {
-                    Some(if expert_tensors_are_linear_block_quant {
-                        block_quant_group_tensor(w3, eid)?
+            let q40_linear_plan = if expert_tensors_are_linear_block_quant
+                && q40_direct_activation_supported(&self.activation, self.has_w3)
+            {
+                Some(
+                    build_q40_linear_expert_plan(
+                        &w1_tensor,
+                        &w2_tensor,
+                        w3_tensor.as_deref(),
+                        &self.activation,
+                        num_experts,
+                    )
+                    .context("Building direct Q40 linear expert plan")?,
+                )
+            } else {
+                None
+            };
+
+            let mut expert_plans =
+                Vec::with_capacity(if q40_linear_plan.is_some() { 0 } else { num_experts });
+            if q40_linear_plan.is_none() {
+                for eid in 0..num_experts {
+                    let w1_e = if expert_tensors_are_linear_block_quant {
+                        block_quant_group_tensor(&w1_tensor, eid)?
                     } else {
                         match self.expert_layout {
-                            ExpertLayout::Canonical => {
-                                w3.slice(0, eid, eid + 1)?.into_shape(&[d_model, d_hidden])?
-                            }
-                            ExpertLayout::Linear => {
-                                w3.slice(0, eid, eid + 1)?.into_shape(&[d_hidden, d_model])?
-                            }
+                            ExpertLayout::Canonical => w1_tensor
+                                .slice(0, eid, eid + 1)?
+                                .into_shape(&[d_model, d_hidden])?,
+                            ExpertLayout::Linear => w1_tensor
+                                .slice(0, eid, eid + 1)?
+                                .into_shape(&[d_hidden, d_model])?,
                         }
-                    })
-                } else {
-                    None
-                };
+                    };
+                    let w2_e = if expert_tensors_are_linear_block_quant {
+                        block_quant_group_tensor(&w2_tensor, eid)?
+                    } else {
+                        match self.expert_layout {
+                            ExpertLayout::Canonical => w2_tensor
+                                .slice(0, eid, eid + 1)?
+                                .into_shape(&[d_hidden, d_model])?,
+                            ExpertLayout::Linear => w2_tensor
+                                .slice(0, eid, eid + 1)?
+                                .into_shape(&[d_model, d_hidden])?,
+                        }
+                    };
+                    let w3_e = if let Some(ref w3) = w3_tensor {
+                        Some(if expert_tensors_are_linear_block_quant {
+                            block_quant_group_tensor(w3, eid)?
+                        } else {
+                            match self.expert_layout {
+                                ExpertLayout::Canonical => {
+                                    w3.slice(0, eid, eid + 1)?.into_shape(&[d_model, d_hidden])?
+                                }
+                                ExpertLayout::Linear => {
+                                    w3.slice(0, eid, eid + 1)?.into_shape(&[d_hidden, d_model])?
+                                }
+                            }
+                        })
+                    } else {
+                        None
+                    };
 
-                let plan = build_expert_plan(
-                    &w1_e,
-                    &w2_e,
-                    w3_e.as_ref(),
-                    &self.activation,
-                    self.expert_layout,
-                    expert_tensors_are_linear_block_quant,
-                    &model.symbols,
-                )
-                .with_context(|| format!("Building expert plan for expert {eid}"))?;
-                expert_plans.push(plan);
+                    let plan = build_expert_plan(
+                        &w1_e,
+                        &w2_e,
+                        w3_e.as_ref(),
+                        &self.activation,
+                        self.expert_layout,
+                        expert_tensors_are_linear_block_quant,
+                        &model.symbols,
+                    )
+                    .with_context(|| format!("Building expert plan for expert {eid}"))?;
+                    expert_plans.push(plan);
+                }
             }
 
             let opt_op = OptMoeFfn {
@@ -1645,6 +1668,7 @@ impl TypedOp for MoeFfn {
                 d_hidden,
                 router_plan,
                 expert_plans,
+                q40_linear_plan,
             };
 
             let mut patch = TypedModelPatch::default();
@@ -1848,6 +1872,287 @@ fn build_expert_plan(
 }
 
 #[derive(Clone, Debug)]
+struct Q40MmmPlan {
+    mmm: Box<dyn MatMatMul>,
+    packing: usize,
+    b_format: PackedFormat,
+    a_format: PackedBlockQuantFormat,
+}
+
+#[derive(Clone, Debug)]
+struct Q40LinearExpertPlan {
+    activation: String,
+    gate_up: Q40MmmPlan,
+    down: Q40MmmPlan,
+    gate_up_by_expert: Vec<Box<dyn MMMInputValue>>,
+    down_by_expert: Vec<Box<dyn MMMInputValue>>,
+    gate_up_dim: usize,
+}
+
+fn q40_direct_activation_supported(activation: &str, has_w3: bool) -> bool {
+    matches!(activation, "silu") || (has_w3 && matches!(activation, "swiglu"))
+}
+
+fn select_q40_mmm(weight: &Tensor, out_dim: usize, k_dim: usize) -> TractResult<Q40MmmPlan> {
+    let bqs = weight.try_storage_as::<BlockQuantStorage>()?;
+    let mut best: Option<(
+        isize,
+        bool,
+        usize,
+        usize,
+        Box<dyn MatMatMul>,
+        usize,
+        PackedBlockQuantFormat,
+        PackedFormat,
+    )> = None;
+
+    for mmm in tract_nnef::tract_core::tract_linalg::ops().mmm_impls() {
+        if !mmm.is_supported_here()
+            || mmm.internal_type() != f32::datum_type()
+            || !mmm.stores().contains(&f32::datum_type())
+        {
+            continue;
+        }
+        for (packing, (a, b)) in mmm.packings().iter().enumerate() {
+            let Some(a_format) = a.downcast_ref::<PackedBlockQuantFormat>() else {
+                continue;
+            };
+            if !a_format.bq.dyn_eq(bqs.format()) {
+                continue;
+            }
+            let Some(b_format) = b.downcast_ref::<PackedFormat>() else {
+                continue;
+            };
+            if !b_format.precursor().as_dt().is_some_and(|dt| dt == f32::datum_type()) {
+                continue;
+            }
+            if k_dim % a_format.k_alignment() != 0 || k_dim % b_format.k_alignment() != 0 {
+                continue;
+            }
+
+            let score = -(mmm.quality().cost() as isize * 1000) + mmm.dynamic_boost();
+            let candidate = (
+                score,
+                mmm.nr() == 1,
+                mmm.mr().min(out_dim),
+                mmm.nr(),
+                mmm.clone(),
+                packing,
+                a_format.clone(),
+                b_format.clone(),
+            );
+            if best.as_ref().is_none_or(|current| {
+                (&candidate.0, &candidate.1, &candidate.2, &candidate.3)
+                    > (&current.0, &current.1, &current.2, &current.3)
+            }) {
+                best = Some(candidate);
+            }
+        }
+    }
+
+    let Some((_score, _is_gemv, _mr, _nr, mmm, packing, a_format, b_format)) = best else {
+        bail!("no runnable f32 Q40 MMM found for weight shape [{out_dim}, {k_dim}]");
+    };
+
+    Ok(Q40MmmPlan { mmm, packing, b_format, a_format })
+}
+
+fn pack_q40_rows(
+    t: &Tensor,
+    format: &PackedBlockQuantFormat,
+) -> TractResult<Box<dyn MMMInputValue>> {
+    ensure!(t.rank() == 2, "Q40 expert tensor must be rank 2, got {:?}", t.shape());
+    format.prepare_one(t, 1, 0)
+}
+
+fn build_q40_linear_expert_plan(
+    w1: &Tensor,
+    w2: &Tensor,
+    w3: Option<&Tensor>,
+    activation: &str,
+    num_experts: usize,
+) -> TractResult<Arc<Q40LinearExpertPlan>> {
+    ensure!(q40_direct_activation_supported(activation, w3.is_some()));
+
+    let sample_gate_up = {
+        let w1_e = block_quant_group_tensor(w1, 0)?;
+        if let Some(w3) = w3 {
+            let w3_e = block_quant_group_tensor(w3, 0)?;
+            concat_block_quant_rows(&w1_e, &w3_e)?
+        } else {
+            w1_e
+        }
+    };
+    let sample_down = block_quant_group_tensor(w2, 0)?;
+    let gate_up_dim = sample_gate_up.shape()[0];
+    let input_dim = sample_gate_up.shape()[1];
+    let down_out_dim = sample_down.shape()[0];
+    let hidden_dim = sample_down.shape()[1];
+    ensure!(
+        gate_up_dim == hidden_dim || gate_up_dim == hidden_dim * 2,
+        "Q40 direct MoE expected gate/up dim {gate_up_dim} to match hidden {hidden_dim} or 2x hidden"
+    );
+
+    let gate_up = select_q40_mmm(&sample_gate_up, gate_up_dim, input_dim)?;
+    let down = select_q40_mmm(&sample_down, down_out_dim, hidden_dim)?;
+
+    let mut gate_up_by_expert = Vec::with_capacity(num_experts);
+    let mut down_by_expert = Vec::with_capacity(num_experts);
+    for eid in 0..num_experts {
+        let w1_e = block_quant_group_tensor(w1, eid)?;
+        let gate_up_e = if let Some(w3) = w3 {
+            let w3_e = block_quant_group_tensor(w3, eid)?;
+            concat_block_quant_rows(&w1_e, &w3_e)?
+        } else {
+            w1_e
+        };
+        gate_up_by_expert.push(pack_q40_rows(&gate_up_e, &gate_up.a_format)?);
+
+        let w2_e = block_quant_group_tensor(w2, eid)?;
+        down_by_expert.push(pack_q40_rows(&w2_e, &down.a_format)?);
+    }
+
+    Ok(Arc::new(Q40LinearExpertPlan {
+        activation: activation.to_string(),
+        gate_up,
+        down,
+        gate_up_by_expert,
+        down_by_expert,
+        gate_up_dim,
+    }))
+}
+
+fn ensure_f32_tensor_capacity(slot: &mut Option<Tensor>, len: usize) -> TractResult<&mut Tensor> {
+    if slot.as_ref().is_none_or(|tensor| tensor.len() < len) {
+        *slot = Some(unsafe { Tensor::uninitialized::<f32>(&[len])? });
+    }
+    Ok(slot.as_mut().unwrap())
+}
+
+fn profile_start(enabled: bool) -> Option<Instant> {
+    enabled.then(Instant::now)
+}
+
+fn profile_elapsed(start: Option<Instant>) -> Duration {
+    start.map(|start| start.elapsed()).unwrap_or(Duration::ZERO)
+}
+
+fn run_q40_left_matmul(
+    plan: &Q40MmmPlan,
+    packed_weight: &dyn MMMInputValue,
+    input_base: *const f32,
+    row_byte_offsets: Vec<isize>,
+    k_dim: usize,
+    k_stride_bytes: isize,
+    route_count: usize,
+    out_dim: usize,
+    output: &mut Tensor,
+    scratch: &mut Option<Box<dyn ScratchSpace>>,
+) -> TractResult<()> {
+    if route_count == 0 {
+        return Ok(());
+    }
+    ensure!(
+        output.len() >= route_count * out_dim,
+        "Q40 matmul output scratch has {} values, needs {}",
+        output.len(),
+        route_count * out_dim
+    );
+
+    if scratch.as_ref().is_none_or(|s| !unsafe { plan.mmm.can_use_scratch_space(&**s) }) {
+        *scratch = Some(unsafe { plan.mmm.allocate_scratch_space() });
+    }
+    let scratch = scratch.as_mut().context("Q40 MMM scratch was not allocated")?;
+
+    let input = RoutedRowsInput::new(
+        input_base,
+        row_byte_offsets,
+        k_dim,
+        k_stride_bytes,
+        plan.b_format.clone(),
+    );
+    let shape = [route_count, out_dim];
+    let strides = [out_dim as isize, 1];
+    let view = unsafe { TensorView::from_bytes(output, 0, &shape, &strides) };
+    let store = unsafe {
+        plan.mmm
+            .c_from_data_and_strides(f32::datum_type().size_of(), 1, out_dim as isize)
+            .wrap(&view)
+    };
+    let uops = tvec![
+        FusedSpec::AddMatMul {
+            a: AsInputValue::Borrowed(packed_weight),
+            b: AsInputValue::Borrowed(&input),
+            packing: plan.packing,
+        },
+        FusedSpec::Store(store),
+    ];
+    unsafe { plan.mmm.run_with_scratch_space(out_dim, route_count, scratch.as_mut(), &uops) }
+}
+
+fn apply_silu_gate(
+    hidden: &mut [f32],
+    route_count: usize,
+    d_hidden: usize,
+    gate_up_dim: usize,
+    has_w3: bool,
+) {
+    if has_w3 {
+        for row in 0..route_count {
+            let base = row * gate_up_dim;
+            let gate_base = base + d_hidden;
+            for h in 0..d_hidden {
+                let v = hidden[base + h];
+                hidden[base + h] = (v / (1.0 + (-v).exp())) * hidden[gate_base + h];
+            }
+        }
+    } else {
+        for row in 0..route_count {
+            let base = row * gate_up_dim;
+            for h in 0..d_hidden {
+                let v = hidden[base + h];
+                hidden[base + h] = v / (1.0 + (-v).exp());
+            }
+        }
+    }
+}
+
+fn push_selected_routes(
+    gate: &GateMode,
+    full_logits: &[f32],
+    selected: &[(usize, f32)],
+    token: usize,
+    expert_tokens: &mut [Vec<(usize, f32)>],
+) {
+    match gate {
+        GateMode::Raw => {
+            for &(eid, logit) in selected {
+                expert_tokens[eid].push((token, logit));
+            }
+        }
+        GateMode::Sigmoid => {
+            for &(eid, logit) in selected {
+                expert_tokens[eid].push((token, 1.0 / (1.0 + (-logit).exp())));
+            }
+        }
+        GateMode::SoftmaxTopk => {
+            let max = selected.iter().map(|(_, l)| *l).fold(f32::NEG_INFINITY, f32::max);
+            let denom: f32 = selected.iter().map(|(_, l)| (*l - max).exp()).sum();
+            for &(eid, logit) in selected {
+                expert_tokens[eid].push((token, (logit - max).exp() / denom));
+            }
+        }
+        GateMode::SoftmaxAll => {
+            let max = full_logits.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+            let denom: f32 = full_logits.iter().map(|l| (*l - max).exp()).sum();
+            for &(eid, logit) in selected {
+                expert_tokens[eid].push((token, (logit - max).exp() / denom));
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct OptMoeFfn {
     pub k: usize,
     pub gate: GateMode,
@@ -1856,6 +2161,7 @@ pub struct OptMoeFfn {
     pub d_hidden: usize,
     pub router_plan: Arc<TypedSimplePlan>,
     pub expert_plans: Vec<Arc<TypedSimplePlan>>,
+    q40_linear_plan: Option<Arc<Q40LinearExpertPlan>>,
 }
 
 impl Hash for OptMoeFfn {
@@ -1865,6 +2171,7 @@ impl Hash for OptMoeFfn {
         self.num_experts.hash(state);
         self.d_model.hash(state);
         self.d_hidden.hash(state);
+        self.q40_linear_plan.is_some().hash(state);
     }
 }
 
@@ -1875,6 +2182,7 @@ impl PartialEq for OptMoeFfn {
             && self.num_experts == other.num_experts
             && self.d_model == other.d_model
             && self.d_hidden == other.d_hidden
+            && self.q40_linear_plan.is_some() == other.q40_linear_plan.is_some()
     }
 }
 
@@ -1898,17 +2206,235 @@ impl EvalOp for OptMoeFfn {
         _node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
         let router_state = self.router_plan.spawn()?;
-        let expert_states =
-            self.expert_plans.iter().map(|p| p.spawn()).collect::<TractResult<Vec<_>>>()?;
-        Ok(Some(Box::new(OptMoeFfnState { op: self.clone(), router_state, expert_states })))
+        let expert_states = if self.q40_linear_plan.is_some() {
+            Vec::new()
+        } else {
+            self.expert_plans.iter().map(|p| p.spawn()).collect::<TractResult<Vec<_>>>()?
+        };
+        let q40_state = self.q40_linear_plan.as_ref().map(|_| Q40LinearExpertState::default());
+        Ok(Some(Box::new(OptMoeFfnState {
+            op: self.clone(),
+            router_state,
+            expert_states,
+            q40_state,
+        })))
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Default)]
+struct Q40LinearExpertState {
+    gate_up_scratch: Option<Box<dyn ScratchSpace>>,
+    down_scratch: Option<Box<dyn ScratchSpace>>,
+    hidden: Option<Tensor>,
+    expert_out: Option<Tensor>,
+    expert_tokens: Vec<Vec<(usize, f32)>>,
+    scores: Vec<(usize, f32)>,
+}
+
+impl fmt::Debug for Q40LinearExpertState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Q40LinearExpertState")
+            .field("has_gate_up_scratch", &self.gate_up_scratch.is_some())
+            .field("has_down_scratch", &self.down_scratch.is_some())
+            .field("hidden_len", &self.hidden.as_ref().map(|t| t.len()).unwrap_or(0))
+            .field("expert_out_len", &self.expert_out.as_ref().map(|t| t.len()).unwrap_or(0))
+            .field("expert_tokens", &self.expert_tokens.len())
+            .finish()
+    }
+}
+
+impl Clone for Q40LinearExpertState {
+    fn clone(&self) -> Self {
+        Q40LinearExpertState::default()
+    }
+}
+
+impl Q40LinearExpertState {
+    fn ensure_expert_tokens(&mut self, num_experts: usize) {
+        if self.expert_tokens.len() != num_experts {
+            self.expert_tokens = vec![Vec::new(); num_experts];
+        } else {
+            self.expert_tokens.iter_mut().for_each(Vec::clear);
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn eval(
+        &mut self,
+        op: &OptMoeFfn,
+        plan: &Q40LinearExpertPlan,
+        x: ArrayView2<f32>,
+        router_logits: ArrayView2<f32>,
+        x_ndim: usize,
+        x_orig_shape: &[usize],
+        dt: DatumType,
+        router_elapsed: Duration,
+        profile: bool,
+    ) -> TractResult<TVec<TValue>> {
+        let total_start = profile_start(profile);
+        let topk_start = profile_start(profile);
+
+        let t_tokens = x.shape()[0];
+        let d_model = x.shape()[1];
+        ensure!(
+            d_model == op.d_model,
+            "Q40 direct MoE input dim {} does not match op dim {}",
+            d_model,
+            op.d_model
+        );
+        ensure!(
+            plan.gate_up_dim == op.d_hidden || plan.gate_up_dim == op.d_hidden * 2,
+            "Q40 direct MoE gate/up dim {} does not match hidden {}",
+            plan.gate_up_dim,
+            op.d_hidden
+        );
+        let has_w3 = plan.gate_up_dim == op.d_hidden * 2;
+        ensure!(
+            q40_direct_activation_supported(&plan.activation, has_w3),
+            "unsupported Q40 direct activation {}",
+            plan.activation
+        );
+
+        self.ensure_expert_tokens(op.num_experts);
+        for t in 0..t_tokens {
+            let row = router_logits.row(t);
+            let full = row.as_slice().context("router row is not contiguous")?;
+            self.scores.clear();
+            self.scores.extend(row.iter().enumerate().map(|(eid, &score)| (eid, score)));
+            self.scores.sort_unstable_by(|a, b| b.1.total_cmp(&a.1));
+            self.scores.truncate(op.k);
+            push_selected_routes(&op.gate, full, &self.scores, t, &mut self.expert_tokens);
+        }
+        let topk_elapsed = profile_elapsed(topk_start);
+
+        let output_shape: TVec<usize> = if x_ndim == 3 {
+            tvec!(x_orig_shape[0], x_orig_shape[1], d_model)
+        } else {
+            tvec!(t_tokens, d_model)
+        };
+        let mut output_tensor = Tensor::zero_dt(f32::datum_type(), &output_shape)?;
+
+        let item_size = f32::datum_type().size_of() as isize;
+        let x_base = x.as_ptr();
+        let x_row_stride_bytes = x.strides()[0] * item_size;
+        let x_k_stride_bytes = x.strides()[1] * item_size;
+
+        let mut gate_up_elapsed = Duration::ZERO;
+        let mut activation_elapsed = Duration::ZERO;
+        let mut down_elapsed = Duration::ZERO;
+        let mut scatter_elapsed = Duration::ZERO;
+        let mut active_experts = 0usize;
+        let mut routed_rows = 0usize;
+
+        for (eid, tokens) in self.expert_tokens.iter().enumerate() {
+            if tokens.is_empty() {
+                continue;
+            }
+            active_experts += 1;
+            routed_rows += tokens.len();
+            let route_count = tokens.len();
+
+            let row_offsets: Vec<isize> =
+                tokens.iter().map(|&(t, _)| x_row_stride_bytes * t as isize).collect();
+            let hidden =
+                ensure_f32_tensor_capacity(&mut self.hidden, route_count * plan.gate_up_dim)?;
+
+            let gate_up_start = profile_start(profile);
+            run_q40_left_matmul(
+                &plan.gate_up,
+                &*plan.gate_up_by_expert[eid],
+                x_base,
+                row_offsets,
+                d_model,
+                x_k_stride_bytes,
+                route_count,
+                plan.gate_up_dim,
+                hidden,
+                &mut self.gate_up_scratch,
+            )?;
+            gate_up_elapsed += profile_elapsed(gate_up_start);
+
+            let activation_start = profile_start(profile);
+            {
+                let mut hidden_plain = hidden.try_as_plain_mut()?;
+                let hidden_slice = hidden_plain.as_slice_mut::<f32>()?;
+                apply_silu_gate(
+                    &mut hidden_slice[..route_count * plan.gate_up_dim],
+                    route_count,
+                    op.d_hidden,
+                    plan.gate_up_dim,
+                    has_w3,
+                );
+            }
+            activation_elapsed += profile_elapsed(activation_start);
+
+            let hidden_plain = hidden.try_as_plain()?;
+            let hidden_slice = hidden_plain.as_slice::<f32>()?;
+            let hidden_base = hidden_slice.as_ptr();
+            let hidden_row_stride_bytes = plan.gate_up_dim as isize * item_size;
+            let hidden_offsets: Vec<isize> =
+                (0..route_count).map(|r| hidden_row_stride_bytes * r as isize).collect();
+            let expert_out =
+                ensure_f32_tensor_capacity(&mut self.expert_out, route_count * d_model)?;
+
+            let down_start = profile_start(profile);
+            run_q40_left_matmul(
+                &plan.down,
+                &*plan.down_by_expert[eid],
+                hidden_base,
+                hidden_offsets,
+                op.d_hidden,
+                item_size,
+                route_count,
+                d_model,
+                expert_out,
+                &mut self.down_scratch,
+            )?;
+            down_elapsed += profile_elapsed(down_start);
+
+            let scatter_start = profile_start(profile);
+            let y_plain = expert_out.try_as_plain()?;
+            let y = y_plain.as_slice::<f32>()?;
+            let mut output_plain = output_tensor.try_as_plain_mut()?;
+            let output = output_plain.as_slice_mut::<f32>()?;
+            for (route, &(token, weight)) in tokens.iter().enumerate() {
+                let y_row = &y[route * d_model..(route + 1) * d_model];
+                let out_row = &mut output[token * d_model..(token + 1) * d_model];
+                for (o, y) in out_row.iter_mut().zip(y_row) {
+                    *o += weight * *y;
+                }
+            }
+            scatter_elapsed += profile_elapsed(scatter_start);
+        }
+
+        let output_tensor = output_tensor.cast_to_dt(dt)?.into_owned();
+        if profile {
+            eprintln!(
+                "OptMoeFfn(Q40 direct) tokens={t_tokens} routes={routed_rows} experts={active_experts} router={router_elapsed:?} topk={topk_elapsed:?} gate_up={gate_up_elapsed:?} act={activation_elapsed:?} down={down_elapsed:?} scatter={scatter_elapsed:?} total={:?}",
+                profile_elapsed(total_start)
+            );
+        }
+        Ok(tvec![output_tensor.into_tvalue()])
+    }
+}
+
+#[derive(Clone)]
 struct OptMoeFfnState {
     op: OptMoeFfn,
     router_state: TypedSimpleState,
     expert_states: Vec<TypedSimpleState>,
+    q40_state: Option<Q40LinearExpertState>,
+}
+
+impl fmt::Debug for OptMoeFfnState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("OptMoeFfnState")
+            .field("op", &self.op)
+            .field("router_state", &self.router_state)
+            .field("expert_states", &self.expert_states.len())
+            .field("q40_state", &self.q40_state)
+            .finish()
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -1934,6 +2460,7 @@ impl FrozenOpState for FrozenOptMoeFfnState {
             op: self.op.clone(),
             router_state: self.router_state.unfreeze(),
             expert_states: self.expert_states.iter().map(|s| s.unfreeze()).collect(),
+            q40_state: self.op.q40_linear_plan.as_ref().map(|_| Q40LinearExpertState::default()),
         })
     }
 }
@@ -1945,7 +2472,8 @@ impl OpState for OptMoeFfnState {
         _op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        let op = &self.op;
+        let profile = std::env::var_os("TRACT_MOE_PROFILE").is_some();
+        let total_start = profile_start(profile);
         let x_input = &inputs[0];
         let dt = x_input.datum_type();
         let x_f32 = x_input.cast_to::<f32>()?;
@@ -1965,11 +2493,33 @@ impl OpState for OptMoeFfnState {
         let d_model = x.shape()[1];
         let x_2d_tensor = x_f32.clone().into_owned().into_shape(&[t_tokens, d_model])?;
 
+        let router_start = profile_start(profile);
         let router_result = self.router_state.run(tvec![x_2d_tensor.into_tvalue()])?;
+        let router_elapsed = profile_elapsed(router_start);
         let router_logits_f32 = router_result[0].cast_to::<f32>()?;
         let router_logits: ArrayView2<f32> =
             router_logits_f32.to_plain_array_view::<f32>()?.into_dimensionality()?;
 
+        if let Some(plan) = self.op.q40_linear_plan.clone() {
+            let q40_state = self
+                .q40_state
+                .as_mut()
+                .context("OptMoeFfn has a Q40 plan but no Q40 runtime state")?;
+            return q40_state.eval(
+                &self.op,
+                &plan,
+                x,
+                router_logits,
+                x_ndim,
+                &x_orig_shape,
+                dt,
+                router_elapsed,
+                profile,
+            );
+        }
+
+        let op = &self.op;
+        let topk_start = profile_start(profile);
         let mut assignments: Vec<Vec<(usize, f32)>> = Vec::with_capacity(t_tokens);
         for t in 0..t_tokens {
             let row = router_logits.row(t);
@@ -1983,6 +2533,7 @@ impl OpState for OptMoeFfnState {
             assignments
                 .push(scores.iter().zip(gate_weights).map(|((eid, _), gw)| (*eid, gw)).collect());
         }
+        let topk_elapsed = profile_elapsed(topk_start);
 
         let mut expert_tokens: Vec<Vec<(usize, f32)>> = vec![Vec::new(); op.num_experts];
         for (t, token_experts) in assignments.iter().enumerate() {
@@ -2020,6 +2571,12 @@ impl OpState for OptMoeFfnState {
             output.into_tensor()
         };
         let output_tensor = output_tensor.cast_to_dt(dt)?.into_owned();
+        if profile {
+            eprintln!(
+                "OptMoeFfn(plan) tokens={t_tokens} router={router_elapsed:?} topk={topk_elapsed:?} total={:?}",
+                profile_elapsed(total_start)
+            );
+        }
         Ok(tvec![output_tensor.into_tvalue()])
     }
 }
@@ -2320,8 +2877,14 @@ mod tests {
         assert!(!has_moe, "Expected Q40 linear experts to lower to OptMoeFfn");
         let has_opt = opt_model.nodes().iter().any(|n| n.op_is::<OptMoeFfn>());
         assert!(has_opt, "Q40 linear experts should use OptMoeFfn");
+        let uses_direct_q40 = opt_model
+            .nodes()
+            .iter()
+            .filter_map(|n| n.op_as::<OptMoeFfn>())
+            .any(|op| op.q40_linear_plan.is_some());
+        assert!(uses_direct_q40, "Q40 linear experts should use the direct Q40 plan");
         let has_routed = opt_model.nodes().iter().any(|n| n.op_is::<RoutedMatMul>());
-        assert!(!has_routed, "Q40 linear constants should use per-expert optimized subplans");
+        assert!(!has_routed, "Q40 linear constants should use the direct optimized plan");
 
         let x_data = make_tensor(&[4, 32], &mut next_f32);
         let result =
