@@ -1,12 +1,6 @@
-use std::hash::{Hash, Hasher};
-use std::sync::Arc;
-
-use tract_ndarray::{Array2, ArrayView2, ArrayViewD, Axis, s};
+use tract_ndarray::{Array2, ArrayView2, ArrayView3, ArrayViewD, Axis, s};
 use tract_nnef::internal::*;
-use tract_nnef::tract_core::ops::einsum::EinSum;
-use tract_nnef::tract_core::ops::konst::Const;
 use tract_nnef::tract_core::ops::math::mul;
-use tract_nnef::tract_core::ops::{FrozenOpState, OpStateFreeze};
 
 use super::gelu_approximate::gelu_approximate;
 use super::silu::silu;
@@ -130,14 +124,9 @@ impl GateMode {
     fn weights(&self, full_logits: &[f32], selected: &[(usize, f32)]) -> Vec<f32> {
         match self {
             GateMode::Raw => selected.iter().map(|(_, l)| *l).collect(),
-            GateMode::Sigmoid => {
-                selected.iter().map(|(_, l)| 1.0 / (1.0 + (-l).exp())).collect()
-            }
+            GateMode::Sigmoid => selected.iter().map(|(_, l)| 1.0 / (1.0 + (-l).exp())).collect(),
             GateMode::SoftmaxTopk => {
-                let m = selected
-                    .iter()
-                    .map(|(_, l)| *l)
-                    .fold(f32::NEG_INFINITY, f32::max);
+                let m = selected.iter().map(|(_, l)| *l).fold(f32::NEG_INFINITY, f32::max);
                 let exps: Vec<f32> = selected.iter().map(|(_, l)| (l - m).exp()).collect();
                 let sum: f32 = exps.iter().sum();
                 exps.iter().map(|e| e / sum).collect()
@@ -240,6 +229,331 @@ impl Op for MoeFfn {
     op_as_typed_op!();
 }
 
+fn token_count_dim(shape: &ShapeFact) -> TDim {
+    let dims = shape.to_tvec();
+    dims[..dims.len() - 1].iter().cloned().product()
+}
+
+fn as_2d_tokens<'a>(view: ArrayViewD<'a, f32>) -> TractResult<ArrayView2<'a, f32>> {
+    let shape = view.shape().to_vec();
+    match shape.len() {
+        2 => Ok(view.into_dimensionality()?),
+        3 => Ok(view
+            .into_shape_with_order((shape[0] * shape[1], shape[2]))?
+            .into_dimensionality()?),
+        _ => bail!("expected rank 2 or 3 token tensor, got {:?}", shape),
+    }
+}
+
+fn router_weights_as_2d(view: ArrayViewD<'_, f32>) -> TractResult<ArrayView2<'_, f32>> {
+    match view.ndim() {
+        2 => Ok(view.into_dimensionality()?),
+        3 => {
+            let shape = view.shape().to_vec();
+            ensure!(
+                shape[0] == 1,
+                "rank-3 router weights must have leading dimension 1, got {:?}",
+                shape
+            );
+            Ok(view.into_shape_with_order((shape[1], shape[2]))?.into_dimensionality()?)
+        }
+        _ => bail!("expected router weights rank 2 or 3, got {:?}", view.shape()),
+    }
+}
+
+fn plain_i64_slice<'a>(tensor: &'a Tensor, label: &str) -> TractResult<&'a [i64]> {
+    tensor
+        .try_as_plain()
+        .with_context(|| format!("{label} is not a plain tensor"))?
+        .as_slice::<i64>()
+        .with_context(|| format!("{label} is not an i64 slice"))
+}
+
+fn plain_f32_slice<'a>(tensor: &'a Tensor, label: &str) -> TractResult<&'a [f32]> {
+    tensor
+        .try_as_plain()
+        .with_context(|| format!("{label} is not a plain tensor"))?
+        .as_slice::<f32>()
+        .with_context(|| format!("{label} is not an f32 slice"))
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct RouteTopK {
+    pub k: usize,
+    pub gate: GateMode,
+}
+
+impl Op for RouteTopK {
+    fn name(&self) -> StaticName {
+        "RouteTopK".into()
+    }
+    op_as_typed_op!();
+}
+
+impl EvalOp for RouteTopK {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+        let x_t = inputs[0].cast_to::<f32>()?.into_owned();
+        let wg_t = inputs[1].cast_to::<f32>()?.into_owned();
+        let x = as_2d_tokens(x_t.to_plain_array_view::<f32>()?)?;
+        let wg = router_weights_as_2d(wg_t.to_plain_array_view::<f32>()?)?;
+
+        ensure!(
+            x.shape()[1] == wg.shape()[1],
+            "router dimension mismatch: x {:?}, wg {:?}",
+            x.shape(),
+            wg.shape()
+        );
+        ensure!(self.k <= wg.shape()[0], "top-k {} exceeds expert count {}", self.k, wg.shape()[0]);
+
+        let t_tokens = x.shape()[0];
+        let route_count = t_tokens * self.k;
+        let mut route_token_ids = Vec::with_capacity(route_count);
+        let mut route_expert_ids = Vec::with_capacity(route_count);
+        let mut route_weights = Vec::with_capacity(route_count);
+
+        let router_logits: Array2<f32> = x.dot(&wg.t());
+        for t in 0..t_tokens {
+            let row = router_logits.row(t);
+            let full: Vec<f32> = row.iter().copied().collect();
+            let mut scores: Vec<(usize, f32)> =
+                row.iter().enumerate().map(|(e, &s)| (e, s)).collect();
+            scores.sort_unstable_by(|a, b| b.1.total_cmp(&a.1));
+            scores.truncate(self.k);
+
+            let gate_weights = self.gate.weights(&full, &scores);
+            for ((eid, _), gw) in scores.iter().zip(gate_weights) {
+                route_token_ids.push(t as i64);
+                route_expert_ids.push(*eid as i64);
+                route_weights.push(gw);
+            }
+        }
+
+        Ok(tvec![
+            Tensor::from_shape(&[route_count], &route_token_ids)?.into_tvalue(),
+            Tensor::from_shape(&[route_count], &route_expert_ids)?.into_tvalue(),
+            Tensor::from_shape(&[route_count], &route_weights)?.into_tvalue(),
+        ])
+    }
+}
+
+impl TypedOp for RouteTopK {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        ensure!(inputs.len() == 2);
+        ensure!(
+            inputs[0].rank() == 2 || inputs[0].rank() == 3,
+            "RouteTopK expects rank-2 or rank-3 x, got {}",
+            inputs[0].rank()
+        );
+        ensure!(
+            inputs[1].rank() == 2 || inputs[1].rank() == 3,
+            "RouteTopK expects rank-2 or rank-3 router weights, got {}",
+            inputs[1].rank()
+        );
+        let route_count = token_count_dim(&inputs[0].shape) * self.k;
+        Ok(tvec![
+            i64::datum_type().fact(&[route_count.clone()]),
+            i64::datum_type().fact(&[route_count.clone()]),
+            f32::datum_type().fact(&[route_count]),
+        ])
+    }
+
+    as_op!();
+}
+
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+pub enum RoutedInputMode {
+    TokenRows,
+    RouteRows,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct RoutedMatMul {
+    pub input_mode: RoutedInputMode,
+}
+
+impl Op for RoutedMatMul {
+    fn name(&self) -> StaticName {
+        "RoutedMatMul".into()
+    }
+    op_as_typed_op!();
+}
+
+impl EvalOp for RoutedMatMul {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+        // inputs: data, weights [E,K,N], route_token_ids [R], route_expert_ids [R].
+        let input_t = inputs[0].cast_to::<f32>()?.into_owned();
+        let weights_t = inputs[1].cast_to::<f32>()?.into_owned();
+        let route_token_ids_t = inputs[2].cast_to::<i64>()?.into_owned();
+        let route_expert_ids_t = inputs[3].cast_to::<i64>()?.into_owned();
+
+        let input: ArrayView2<f32> = match self.input_mode {
+            RoutedInputMode::TokenRows => as_2d_tokens(input_t.to_plain_array_view::<f32>()?)?,
+            RoutedInputMode::RouteRows => {
+                let input = input_t.to_plain_array_view::<f32>()?;
+                ensure!(
+                    input.ndim() == 2,
+                    "route-row input must be rank 2, got {:?}",
+                    input.shape()
+                );
+                input.into_dimensionality()?
+            }
+        };
+        let weights: ArrayView3<f32> =
+            weights_t.to_plain_array_view::<f32>()?.into_dimensionality()?;
+        let route_token_ids = plain_i64_slice(&route_token_ids_t, "route_token_ids")?;
+        let route_expert_ids = plain_i64_slice(&route_expert_ids_t, "route_expert_ids")?;
+        ensure!(route_token_ids.len() == route_expert_ids.len());
+
+        let route_count = route_token_ids.len();
+        let k_dim = weights.shape()[1];
+        let n_dim = weights.shape()[2];
+        ensure!(
+            input.shape()[1] == k_dim,
+            "routed matmul input dim {} does not match weight dim {}",
+            input.shape()[1],
+            k_dim
+        );
+        if self.input_mode == RoutedInputMode::RouteRows {
+            ensure!(
+                input.shape()[0] == route_count,
+                "route-row input has {} rows but route metadata has {} rows",
+                input.shape()[0],
+                route_count
+            );
+        }
+
+        let mut output = Array2::<f32>::zeros((route_count, n_dim));
+        for r in 0..route_count {
+            let src = match self.input_mode {
+                RoutedInputMode::TokenRows => {
+                    ensure!(route_token_ids[r] >= 0, "route {r} has negative token id");
+                    route_token_ids[r] as usize
+                }
+                RoutedInputMode::RouteRows => r,
+            };
+            ensure!(route_expert_ids[r] >= 0, "route {r} has negative expert id");
+            let eid = route_expert_ids[r] as usize;
+            ensure!(
+                src < input.shape()[0],
+                "route {r} references token row {src}, but input has {} rows",
+                input.shape()[0]
+            );
+            ensure!(
+                eid < weights.shape()[0],
+                "route {r} references expert {eid}, but weights have {} experts",
+                weights.shape()[0]
+            );
+
+            for n in 0..n_dim {
+                let mut acc = 0.0f32;
+                for k in 0..k_dim {
+                    acc += input[[src, k]] * weights[[eid, k, n]];
+                }
+                output[[r, n]] = acc;
+            }
+        }
+
+        Ok(tvec![output.into_tensor().into_tvalue()])
+    }
+}
+
+impl TypedOp for RoutedMatMul {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        ensure!(inputs.len() == 4);
+        ensure!(inputs[1].rank() == 3, "RoutedMatMul weights must be rank 3");
+        ensure!(inputs[2].rank() == 1, "RoutedMatMul route_token_ids must be rank 1");
+        ensure!(inputs[3].rank() == 1, "RoutedMatMul route_expert_ids must be rank 1");
+        let route_count = inputs[2].shape.to_tvec()[0].clone();
+        let out_dim = inputs[1].shape.to_tvec()[2].clone();
+        Ok(tvec![f32::datum_type().fact(&[route_count, out_dim])])
+    }
+
+    as_op!();
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct RoutedCombine;
+
+impl Op for RoutedCombine {
+    fn name(&self) -> StaticName {
+        "RoutedCombine".into()
+    }
+    op_as_typed_op!();
+}
+
+impl EvalOp for RoutedCombine {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+        // inputs: shape_like, route_values [R,D], route_token_ids [R], route_weights [R].
+        let output_dt = inputs[0].datum_type();
+        let route_values_t = inputs[1].cast_to::<f32>()?.into_owned();
+        let route_token_ids_t = inputs[2].cast_to::<i64>()?.into_owned();
+        let route_weights_t = inputs[3].cast_to::<f32>()?.into_owned();
+
+        let shape = inputs[0].shape().to_vec();
+        ensure!(
+            shape.len() == 2 || shape.len() == 3,
+            "RoutedCombine shape_like must be rank 2 or 3, got {:?}",
+            shape
+        );
+        let t_tokens: usize = shape[..shape.len() - 1].iter().product();
+        let d_model = *shape.last().unwrap();
+        let route_values: ArrayView2<f32> =
+            route_values_t.to_plain_array_view::<f32>()?.into_dimensionality()?;
+        let route_token_ids = plain_i64_slice(&route_token_ids_t, "route_token_ids")?;
+        let route_weights = plain_f32_slice(&route_weights_t, "route_weights")?;
+        ensure!(route_values.shape()[0] == route_token_ids.len());
+        ensure!(route_token_ids.len() == route_weights.len());
+        ensure!(
+            route_values.shape()[1] == d_model,
+            "route value dim {} does not match output dim {}",
+            route_values.shape()[1],
+            d_model
+        );
+
+        let mut output = Array2::<f32>::zeros((t_tokens, d_model));
+        for r in 0..route_token_ids.len() {
+            ensure!(route_token_ids[r] >= 0, "route {r} has negative token id");
+            let token = route_token_ids[r] as usize;
+            ensure!(
+                token < t_tokens,
+                "route {r} references token {token}, but output has {t_tokens} tokens"
+            );
+            let route = route_values.row(r);
+            let mut out = output.row_mut(token);
+            out.scaled_add(route_weights[r], &route);
+        }
+
+        let output_tensor = if shape.len() == 3 {
+            output.into_shape_with_order((shape[0], shape[1], d_model))?.into_tensor()
+        } else {
+            output.into_tensor()
+        };
+        let output_tensor = output_tensor.cast_to_dt(output_dt)?.into_owned();
+        Ok(tvec![output_tensor.into_tvalue()])
+    }
+}
+
+impl TypedOp for RoutedCombine {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        ensure!(inputs.len() == 4);
+        Ok(tvec![inputs[0].datum_type.fact(inputs[0].shape.clone())])
+    }
+
+    as_op!();
+}
+
 /// Scatter-add expert outputs into `output`, weighted by the gate weights.
 /// Accumulation is in f32: the router and experts run in f32 (matching
 /// PyTorch's CPU f32-upcast of f16 matmuls), so the whole op is f32 internally
@@ -282,12 +596,11 @@ impl EvalOp for MoeFfn {
         // w3_bias [E,H], w2_bias [E,D] (order set in deser_moe_ffn).
         let idx = self.input_idx();
         let orig_dt = inputs[0].datum_type();
-        // The reference path computes in f32. Cast every input up front (this
-        // upcasts f16/bf16 weights, so it is the un-optimized fallback; the
-        // codegen optimized path keeps experts in their native dtype).
-        let cast = |i: usize| -> TractResult<Tensor> {
-            Ok(inputs[i].cast_to::<f32>()?.into_owned())
-        };
+        // The reference path computes in f32. Cast every input up front; the
+        // routed codegen path also uses f32 for its first CPU implementation,
+        // but exposes smaller primitives that backends can specialize.
+        let cast =
+            |i: usize| -> TractResult<Tensor> { Ok(inputs[i].cast_to::<f32>()?.into_owned()) };
         let x_t = cast(0)?;
         let wg_t = cast(1)?;
         let w1_t = cast(2)?;
@@ -301,26 +614,11 @@ impl EvalOp for MoeFfn {
         let wg_raw = wg_t.to_plain_array_view::<f32>()?;
         let w1 = w1_t.to_plain_array_view::<f32>()?;
         let w2 = w2_t.to_plain_array_view::<f32>()?;
-        let w3 = w3_t
-            .as_ref()
-            .map(|t| t.to_plain_array_view::<f32>())
-            .transpose()?;
-        let wg_bias = wg_bias_t
-            .as_ref()
-            .map(|t| t.to_plain_array_view::<f32>())
-            .transpose()?;
-        let w1_bias = w1_bias_t
-            .as_ref()
-            .map(|t| t.to_plain_array_view::<f32>())
-            .transpose()?;
-        let w3_bias = w3_bias_t
-            .as_ref()
-            .map(|t| t.to_plain_array_view::<f32>())
-            .transpose()?;
-        let w2_bias = w2_bias_t
-            .as_ref()
-            .map(|t| t.to_plain_array_view::<f32>())
-            .transpose()?;
+        let w3 = w3_t.as_ref().map(|t| t.to_plain_array_view::<f32>()).transpose()?;
+        let wg_bias = wg_bias_t.as_ref().map(|t| t.to_plain_array_view::<f32>()).transpose()?;
+        let w1_bias = w1_bias_t.as_ref().map(|t| t.to_plain_array_view::<f32>()).transpose()?;
+        let w3_bias = w3_bias_t.as_ref().map(|t| t.to_plain_array_view::<f32>()).transpose()?;
+        let w2_bias = w2_bias_t.as_ref().map(|t| t.to_plain_array_view::<f32>()).transpose()?;
 
         // Normalize wg to 2D [E, D] (may be [1, E, D] from unsqueeze)
         let wg: ArrayView2<f32> = if wg_raw.ndim() == 3 {
@@ -477,84 +775,61 @@ impl TypedOp for MoeFfn {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        // The optimized plan-based path only models the bias-free, plain
+        // The routed primitive lowering only models the bias-free, plain
         // activation case. gpt-oss (biases + clamped SwiGLU) stays on the
         // reference eval path, which is correct if slower.
         if self.has_any_bias() || self.is_clamped_act() {
             return Ok(None);
         }
-        // Only optimize if all weights are constants
-        let wg_const = model.node(node.inputs[1].node).op_as::<Const>();
-        let w1_const = model.node(node.inputs[2].node).op_as::<Const>();
-        let w2_const = model.node(node.inputs[3].node).op_as::<Const>();
-        let w3_const = if self.has_w3 {
-            let c = model.node(node.inputs[4].node).op_as::<Const>();
-            if c.is_none() {
-                return Ok(None);
-            }
-            c
-        } else {
-            None
-        };
-
-        if wg_const.is_none() || w1_const.is_none() || w2_const.is_none() {
+        let Some(act_op) = activation_op(&self.activation, self.has_w3) else {
             return Ok(None);
-        }
-
-        let wg_tensor = wg_const.unwrap().val().clone();
-        let w1_tensor = w1_const.unwrap().val().clone();
-        let w2_tensor = w2_const.unwrap().val().clone();
-        let w3_tensor = w3_const.map(|c| c.val().clone());
-
-        // Bail if the activation is not supported by the optimized path
-        if activation_op(&self.activation, self.has_w3).is_none() {
-            return Ok(None);
-        }
-
-        let num_experts = w1_tensor.shape()[0];
-        let d_model = w1_tensor.shape()[1];
-        let d_hidden = w1_tensor.shape()[2];
-
-        // Build router plan: x [T, D] @ wg.T -> [T, E]
-        let router_plan =
-            build_router_plan(&wg_tensor, &model.symbols).context("Building router plan")?;
-
-        // Build per-expert plans
-        let mut expert_plans = Vec::with_capacity(num_experts);
-        for eid in 0..num_experts {
-            let w1_e = w1_tensor.slice(0, eid, eid + 1)?.into_shape(&[d_model, d_hidden])?;
-            let w2_e = w2_tensor.slice(0, eid, eid + 1)?.into_shape(&[d_hidden, d_model])?;
-            let w3_e = if let Some(ref w3) = w3_tensor {
-                Some(w3.slice(0, eid, eid + 1)?.into_shape(&[d_model, d_hidden])?)
-            } else {
-                None
-            };
-
-            let plan = build_expert_plan(
-                &w1_e,
-                &w2_e,
-                w3_e.as_ref(),
-                &self.activation,
-                &model.symbols,
-            )
-            .with_context(|| format!("Building expert plan for expert {eid}"))?;
-            expert_plans.push(plan);
-        }
-
-        let opt_op = OptMoeFfn {
-            k: self.k,
-            gate: self.gate.clone(),
-            num_experts,
-            d_model,
-            d_hidden,
-            router_plan,
-            expert_plans,
         };
 
         let mut patch = TypedModelPatch::default();
-        let x_tap = patch.tap_model(model, node.inputs[0])?;
-        let wires = patch.wire_node(&node.name, opt_op, &[x_tap])?;
-        patch.shunt_outside(model, OutletId::new(node.id, 0), wires[0])?;
+        let x = patch.tap_model(model, node.inputs[0])?;
+        let wg = patch.tap_model(model, node.inputs[1])?;
+        let w1 = patch.tap_model(model, node.inputs[2])?;
+        let w2 = patch.tap_model(model, node.inputs[3])?;
+
+        let routes = patch.wire_node(
+            format!("{}.route_topk", node.name),
+            RouteTopK { k: self.k, gate: self.gate.clone() },
+            &[x, wg],
+        )?;
+        let route_token_ids = routes[0];
+        let route_expert_ids = routes[1];
+        let route_weights = routes[2];
+
+        let h1 = patch.wire_node(
+            format!("{}.w1", node.name),
+            RoutedMatMul { input_mode: RoutedInputMode::TokenRows },
+            &[x, w1, route_token_ids, route_expert_ids],
+        )?[0];
+        let activated = patch.wire_node(format!("{}.activation", node.name), act_op, &[h1])?[0];
+
+        let hidden = if self.has_w3 {
+            let w3 = patch.tap_model(model, node.inputs[4])?;
+            let gate = patch.wire_node(
+                format!("{}.w3", node.name),
+                RoutedMatMul { input_mode: RoutedInputMode::TokenRows },
+                &[x, w3, route_token_ids, route_expert_ids],
+            )?[0];
+            patch.wire_node(format!("{}.swiglu_mul", node.name), mul(), &[activated, gate])?[0]
+        } else {
+            activated
+        };
+
+        let route_values = patch.wire_node(
+            format!("{}.w2", node.name),
+            RoutedMatMul { input_mode: RoutedInputMode::RouteRows },
+            &[hidden, w2, route_token_ids, route_expert_ids],
+        )?[0];
+        let output = patch.wire_node(
+            format!("{}.combine", node.name),
+            RoutedCombine,
+            &[x, route_values, route_token_ids, route_weights],
+        )?[0];
+        patch.shunt_outside(model, OutletId::new(node.id, 0), output)?;
         Ok(Some(patch))
     }
 
@@ -574,311 +849,6 @@ fn activation_op(name: &str, has_w3: bool) -> Option<Box<dyn TypedOp>> {
         "relu" => Some(Box::new(tract_nnef::tract_core::ops::nn::leaky_relu(0.0))),
         _ => None,
     }
-}
-
-// ---------------------------------------------------------------------------
-// Sub-model builders
-// ---------------------------------------------------------------------------
-
-fn build_router_plan(
-    wg: &Arc<Tensor>,
-    symbols: &SymbolScope,
-) -> TractResult<Arc<TypedSimplePlan>> {
-    let mut model = TypedModel { symbols: symbols.clone(), ..Default::default() };
-    let n_sym = symbols.sym("moe_t");
-
-    // The router runs in f32 regardless of the model dtype: expert selection
-    // is a discrete top-k, so f16 rounding in the router matmul would flip
-    // which experts borderline tokens pick versus PyTorch (which upcasts f16
-    // matmuls to f32 on CPU), making a few tokens diverge completely and
-    // compound across layers. The router weight is tiny so f32 is cheap.
-    let dt = f32::datum_type();
-
-    // wg is [E, D] or [1, E, D] — normalize to [E, D], in f32.
-    let wg_2d = if wg.rank() == 3 {
-        wg.slice(0, 0, 1)?.into_shape(&[wg.shape()[1], wg.shape()[2]])?
-    } else {
-        (**wg).clone()
-    };
-    let wg_2d = wg_2d.cast_to::<f32>()?.into_owned();
-
-    let d_model = wg_2d.shape()[1];
-
-    // x: [T, D]
-    let x = model.add_source("x", dt.fact([n_sym.to_dim(), d_model.to_dim()]))?;
-    // wg: [E, D] as constant
-    let wg_const = model.add_const("wg", wg_2d)?;
-
-    // router_logits = x @ wg.T  -> [T, E]
-    // EinSum: "ij,kj->ik" means i=T, j=D (contracted), k=E
-    let axes: AxesMapping = "ij,kj->ik".parse()?;
-    let logits = model.wire_node("router_logits", EinSum::new(axes, dt), &[x, wg_const])?[0];
-
-    model.select_output_outlets(&[logits])?;
-    SimplePlan::new(model.into_optimized()?)
-}
-
-fn build_expert_plan(
-    w1: &Tensor,
-    w2: &Tensor,
-    w3: Option<&Tensor>,
-    activation: &str,
-    symbols: &SymbolScope,
-) -> TractResult<Arc<TypedSimplePlan>> {
-    let mut model = TypedModel { symbols: symbols.clone(), ..Default::default() };
-    let n_sym = symbols.sym("moe_n");
-
-    // Experts run in f32 so the matmuls accumulate in f32, matching PyTorch's
-    // CPU behaviour (it upcasts f16 matmuls to f32). Native-f16 accumulation
-    // diverged enough to derail greedy decoding. Weights are upcast to f32
-    // const here; the NNEF file stays f16, so this is purely a runtime choice
-    // (it does roughly double the in-memory expert size).
-    let dt = f32::datum_type();
-    let to_f32 = |t: &Tensor| -> TractResult<Tensor> { Ok(t.cast_to::<f32>()?.into_owned()) };
-
-    let d_model = w1.shape()[0]; // w1: [D, H]
-
-    // Input: x_batch [n, D]
-    let x = model.add_source("x", dt.fact([n_sym.to_dim(), d_model.to_dim()]))?;
-
-    // w1 matmul: x_batch [n,D] @ w1 [D,H] -> [n,H]
-    let w1_const = model.add_const("w1", to_f32(w1)?)?;
-    let axes_mm: AxesMapping = "ij,jk->ik".parse()?;
-    let h = model.wire_node("w1_matmul", EinSum::new(axes_mm.clone(), dt), &[x, w1_const])?[0];
-
-    // Activation (caller guarantees activation_op returns Some via codegen check)
-    let act_op = activation_op(activation, w3.is_some())
-        .ok_or_else(|| format_err!("Unsupported activation: {activation}"))?;
-    let h = model.wire_node("activation", act_op, &[h])?[0];
-
-    // Optional SwiGLU: gate = x @ w3, h = h * gate
-    let h = if let Some(w3) = w3 {
-        let w3_const = model.add_const("w3", to_f32(w3)?)?;
-        let gate =
-            model.wire_node("w3_matmul", EinSum::new(axes_mm.clone(), dt), &[x, w3_const])?[0];
-        model.wire_node("swiglu_mul", mul(), &[h, gate])?[0]
-    } else {
-        h
-    };
-
-    // w2 matmul: h [n,H] @ w2 [H,D] -> [n,D]
-    let w2_const = model.add_const("w2", to_f32(w2)?)?;
-    let y = model.wire_node("w2_matmul", EinSum::new(axes_mm, dt), &[h, w2_const])?[0];
-
-    model.select_output_outlets(&[y])?;
-    SimplePlan::new(model.into_optimized()?)
-}
-
-// ---------------------------------------------------------------------------
-// OptMoeFfn — optimized MoE FFN with pre-compiled expert sub-plans
-// ---------------------------------------------------------------------------
-
-#[derive(Clone, Debug)]
-pub struct OptMoeFfn {
-    pub k: usize,
-    pub gate: GateMode,
-    pub num_experts: usize,
-    pub d_model: usize,
-    pub d_hidden: usize,
-    pub router_plan: Arc<TypedSimplePlan>,
-    pub expert_plans: Vec<Arc<TypedSimplePlan>>,
-}
-
-impl Hash for OptMoeFfn {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.k.hash(state);
-        self.gate.hash(state);
-        self.num_experts.hash(state);
-        self.d_model.hash(state);
-        self.d_hidden.hash(state);
-    }
-}
-
-impl PartialEq for OptMoeFfn {
-    fn eq(&self, other: &Self) -> bool {
-        // Compare scalar config only; the compiled plans are derived from it.
-        self.k == other.k
-            && self.gate == other.gate
-            && self.num_experts == other.num_experts
-            && self.d_model == other.d_model
-            && self.d_hidden == other.d_hidden
-    }
-}
-
-impl Eq for OptMoeFfn {}
-
-impl Op for OptMoeFfn {
-    fn name(&self) -> StaticName {
-        "OptMoeFfn".to_string().into()
-    }
-    op_as_typed_op!();
-}
-
-impl EvalOp for OptMoeFfn {
-    fn is_stateless(&self) -> bool {
-        false
-    }
-
-    fn state(
-        &self,
-        _session: &TurnState,
-        _node_id: usize,
-    ) -> TractResult<Option<Box<dyn OpState>>> {
-        let router_state = self.router_plan.spawn()?;
-        let expert_states =
-            self.expert_plans.iter().map(|p| p.spawn()).collect::<TractResult<Vec<_>>>()?;
-        Ok(Some(Box::new(OptMoeFfnState { op: self.clone(), router_state, expert_states })))
-    }
-}
-
-// ---------------------------------------------------------------------------
-// OptMoeFfnState — pre-spawned plan states, reused across eval calls
-// ---------------------------------------------------------------------------
-
-#[derive(Clone, Debug)]
-struct OptMoeFfnState {
-    op: OptMoeFfn,
-    router_state: TypedSimpleState,
-    expert_states: Vec<TypedSimpleState>,
-}
-
-#[derive(Clone, Debug)]
-struct FrozenOptMoeFfnState {
-    op: OptMoeFfn,
-    router_state: TypedFrozenSimpleState,
-    expert_states: Vec<TypedFrozenSimpleState>,
-}
-
-impl OpStateFreeze for OptMoeFfnState {
-    fn freeze(&self) -> Box<dyn FrozenOpState> {
-        Box::new(FrozenOptMoeFfnState {
-            op: self.op.clone(),
-            router_state: self.router_state.freeze(),
-            expert_states: self.expert_states.iter().map(|s| s.freeze()).collect(),
-        })
-    }
-}
-
-impl FrozenOpState for FrozenOptMoeFfnState {
-    fn unfreeze(&self) -> Box<dyn OpState> {
-        Box::new(OptMoeFfnState {
-            op: self.op.clone(),
-            router_state: self.router_state.unfreeze(),
-            expert_states: self.expert_states.iter().map(|s| s.unfreeze()).collect(),
-        })
-    }
-}
-
-impl OpState for OptMoeFfnState {
-    fn eval(
-        &mut self,
-        _session: &mut TurnState,
-        _op: &dyn Op,
-        inputs: TVec<TValue>,
-    ) -> TractResult<TVec<TValue>> {
-        let op = &self.op;
-        let x_input = &inputs[0];
-        // The router/expert sub-plans run in the model dtype (e.g. f16) so the
-        // big expert weights stay un-upcast; only the small per-token glue
-        // (gather, top-k, gate weights, scatter) runs in f32.
-        let dt = x_input.datum_type();
-        let x_f32 = x_input.cast_to::<f32>()?;
-        let x_view = x_f32.to_plain_array_view::<f32>()?;
-        let x_ndim = x_view.ndim();
-        let x_orig_shape: Vec<usize> = x_view.shape().to_vec();
-
-        // Normalize x to 2D [T, D]
-        let x: ArrayView2<f32> = if x_ndim == 3 {
-            x_view
-                .into_shape_with_order((x_orig_shape[0] * x_orig_shape[1], x_orig_shape[2]))?
-                .into_dimensionality()?
-        } else {
-            x_view.into_dimensionality()?
-        };
-
-        let t_tokens = x.shape()[0];
-        let d_model = x.shape()[1];
-
-        // ---- Step 1: Router via pre-spawned state (f32, see build_router_plan) ----
-        let x_2d_tensor =
-            x_f32.clone().into_owned().into_shape(&[t_tokens, d_model])?;
-
-        let router_result = self.router_state.run(tvec![x_2d_tensor.into_tvalue()])?;
-        let router_logits_f32 = router_result[0].cast_to::<f32>()?;
-        let router_logits: ArrayView2<f32> =
-            router_logits_f32.to_plain_array_view::<f32>()?.into_dimensionality()?;
-
-        // ---- Step 2: Top-k selection + gate weights ----
-        let mut assignments: Vec<Vec<(usize, f32)>> = Vec::with_capacity(t_tokens);
-        for t in 0..t_tokens {
-            let row = router_logits.row(t);
-            let full: Vec<f32> = row.iter().copied().collect();
-            let mut scores: Vec<(usize, f32)> =
-                row.iter().enumerate().map(|(e, &s)| (e, s)).collect();
-            scores.sort_unstable_by(|a, b| b.1.total_cmp(&a.1));
-            scores.truncate(op.k);
-
-            let gate_weights = op.gate.weights(&full, &scores);
-
-            assignments
-                .push(scores.iter().zip(gate_weights).map(|((eid, _), gw)| (*eid, gw)).collect());
-        }
-
-        // ---- Step 3: Group tokens per expert ----
-        let mut expert_tokens: Vec<Vec<(usize, f32)>> = vec![Vec::new(); op.num_experts];
-        for (t, token_experts) in assignments.iter().enumerate() {
-            for &(eid, gw) in token_experts {
-                expert_tokens[eid].push((t, gw));
-            }
-        }
-
-        // ---- Step 4: Per-expert computation via pre-spawned states ----
-        let mut output = Array2::<f32>::zeros((t_tokens, d_model));
-
-        for (eid, tokens) in expert_tokens.iter().enumerate() {
-            if tokens.is_empty() {
-                continue;
-            }
-            let n = tokens.len();
-
-            // Gather: build x_batch [n, D] in f32 and feed the f32 expert plan.
-            let mut x_batch = Tensor::zero_dt(f32::datum_type(), &[n, d_model])?;
-            {
-                let mut x_batch_plain = x_batch.try_as_plain_mut()?;
-                let x_batch_slice = x_batch_plain.as_slice_mut::<f32>()?;
-                for (i, &(t, _)) in tokens.iter().enumerate() {
-                    let src = x.row(t);
-                    x_batch_slice[i * d_model..(i + 1) * d_model]
-                        .copy_from_slice(src.as_slice().unwrap());
-                }
-            }
-
-            // Run expert plan (f32; reusing pre-spawned state)
-            let y_expert = self.expert_states[eid].run(tvec![x_batch.into_tvalue()])?;
-            let y_view: ArrayView2<f32> =
-                y_expert[0].to_plain_array_view::<f32>()?.into_dimensionality()?;
-            scatter_add_weighted(&mut output, &y_view, tokens);
-        }
-
-        // ---- Restore shapes + dtype ----
-        let output_tensor = if x_ndim == 3 {
-            output.into_shape_with_order((x_orig_shape[0], x_orig_shape[1], d_model))?.into_tensor()
-        } else {
-            output.into_tensor()
-        };
-        let output_tensor = output_tensor.cast_to_dt(dt)?.into_owned();
-        Ok(tvec![output_tensor.into_tvalue()])
-    }
-}
-
-impl TypedOp for OptMoeFfn {
-    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        let x_fact = inputs[0];
-        let output_fact = x_fact.datum_type.fact(x_fact.shape.clone());
-        Ok(tvec!(output_fact))
-    }
-
-    as_op!();
 }
 
 #[cfg(test)]
@@ -937,7 +907,7 @@ mod tests {
     }
 
     #[test]
-    fn test_opt_moe_ffn_matches_reference() -> TractResult<()> {
+    fn test_routed_moe_ffn_matches_reference() -> TractResult<()> {
         // Test with SwiGLU (has_w3=true)
         let (model, x_data) = make_moe_model(8, 16, 32, 4, 2, true)?;
 
@@ -948,9 +918,11 @@ mod tests {
         // Run optimized
         let opt_model = model.into_optimized()?;
 
-        // Verify MoeFfn was replaced with OptMoeFfn
-        let has_opt = opt_model.nodes().iter().any(|n| n.op_is::<OptMoeFfn>());
-        assert!(has_opt, "Expected OptMoeFfn in optimized model");
+        // Verify MoeFfn was replaced with routed primitives
+        let has_routed = opt_model.nodes().iter().any(|n| n.op_is::<RoutedMatMul>());
+        assert!(has_routed, "Expected RoutedMatMul in optimized model");
+        let has_combine = opt_model.nodes().iter().any(|n| n.op_is::<RoutedCombine>());
+        assert!(has_combine, "Expected RoutedCombine in optimized model");
 
         let opt_plan = SimplePlan::new(opt_model)?;
         let opt_result = opt_plan.spawn()?.run(tvec![x_data.into_tvalue()])?;
@@ -962,7 +934,7 @@ mod tests {
     }
 
     #[test]
-    fn test_opt_moe_ffn_no_w3() -> TractResult<()> {
+    fn test_routed_moe_ffn_no_w3() -> TractResult<()> {
         // Test without SwiGLU (has_w3=false)
         let (model, x_data) = make_moe_model(8, 16, 32, 4, 2, false)?;
 
@@ -979,7 +951,7 @@ mod tests {
     }
 
     #[test]
-    fn test_opt_moe_ffn_top1() -> TractResult<()> {
+    fn test_routed_moe_ffn_top1() -> TractResult<()> {
         let (model, x_data) = make_moe_model(16, 8, 16, 8, 1, true)?;
 
         let ref_plan = SimplePlan::new(model.clone())?;
@@ -995,8 +967,8 @@ mod tests {
     }
 
     #[test]
-    fn test_codegen_fallback_on_non_const_weights() -> TractResult<()> {
-        // When weights are inputs (not constants), codegen should not fire
+    fn test_codegen_lowers_non_const_weights() -> TractResult<()> {
+        // The routed primitive lowering does not require constant weights.
         let mut model = TypedModel::default();
         let x = model.add_source("x", f32::datum_type().fact([4, 8]))?;
         let wg = model.add_source("wg", f32::datum_type().fact([2, 8]))?;
@@ -1009,9 +981,10 @@ mod tests {
 
         let opt_model = model.into_optimized()?;
 
-        // Should still have MoeFfn (not OptMoeFfn)
         let has_moe = opt_model.nodes().iter().any(|n| n.op_is::<MoeFfn>());
-        assert!(has_moe, "Expected MoeFfn to remain when weights are not constants");
+        assert!(!has_moe, "Expected MoeFfn to lower even when weights are not constants");
+        let has_routed = opt_model.nodes().iter().any(|n| n.op_is::<RoutedMatMul>());
+        assert!(has_routed, "Expected RoutedMatMul in optimized model");
 
         Ok(())
     }
@@ -1029,9 +1002,11 @@ mod tests {
         let model = nnef.model_for_path(&model_path)?;
         let model = model.into_optimized()?;
 
-        // Verify OptMoeFfn is present after optimization
-        let has_opt = model.nodes().iter().any(|n: &TypedNode| n.op_is::<OptMoeFfn>());
-        assert!(has_opt, "Expected OptMoeFfn in optimized model");
+        // Verify routed primitives are present after optimization
+        let has_routed = model.nodes().iter().any(|n: &TypedNode| n.op_is::<RoutedMatMul>());
+        assert!(has_routed, "Expected RoutedMatMul in optimized model");
+        let has_combine = model.nodes().iter().any(|n: &TypedNode| n.op_is::<RoutedCombine>());
+        assert!(has_combine, "Expected RoutedCombine in optimized model");
 
         let plan = SimplePlan::new(model)?;
 
