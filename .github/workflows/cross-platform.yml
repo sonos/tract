@@ -83,6 +83,7 @@ jobs:
     permissions:
       id-token: write
       contents: read
+      packages: read      # pull the prebuilt cross-build image (ghcr, private)
 
     steps:
     - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -112,6 +113,7 @@ jobs:
       env:
         PLATFORM: ${{matrix.platform}}
         AWS_EC2_METADATA_DISABLED: true
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # ghcr login for the cross-build image
         NEEDS_PREPARE_OUTPUTS_TRACT_BENCH_BRANCH_NAME: ${{ needs.prepare.outputs.tract_bench_branch_name }}
         NEEDS_PREPARE_OUTPUTS_TEST_REF: ${{ needs.prepare.outputs.test_ref }}
       run: |

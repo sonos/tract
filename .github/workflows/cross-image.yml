@@ -1,0 +1,35 @@
+name: Cross-build image
+
+# Bakes the debian-stretch cross-build toolchain into a container so the -stretch bench and
+# embedded builds pull it instead of installing rustup + cross gcc + qemu every run. Weekly
+# so the pinned "stable" rust tracks the current release; also on Dockerfile changes.
+
+on:
+  push:
+    paths:
+      - '.travis/docker-debian-stretch/**'
+      - '.github/workflows/cross-image.yml'
+  schedule:
+    - cron: '0 6 * * 1'   # Monday, refresh stable rustc
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Build and push
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.actor }}
+          IMAGE: ghcr.io/${{ github.repository }}/cross-debian-stretch
+        run: |
+          echo "$TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
+          docker build -t "$IMAGE:latest" .travis/docker-debian-stretch
+          docker push "$IMAGE:latest"

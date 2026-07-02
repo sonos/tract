@@ -6,7 +6,7 @@ set -e
 export RUSTUP_TOOLCHAIN
 PATH=$PATH:$HOME/.cargo/bin
 
-if [ -n "$CI" -a ! -e /tmp/ci-setup-done ]
+if [ -n "$CI" -a ! -e /tmp/ci-setup-done -a -z "$TRACT_PREBUILT_CI" ]
 then
     if [ `uname` = "Darwin" ]
     then
