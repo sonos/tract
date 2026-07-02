@@ -95,15 +95,19 @@ case "$PLATFORM" in
             CUDA_FEATURE_ENV="-e TRACT_CUDA_FEATURE=cuda-12000"
         fi
         (cd .travis/docker-debian-stretch; docker build --tag debian-stretch .)
+        mkdir -p "$HOME/.cargo/registry" "$HOME/.cargo/git"
         docker run -v `pwd`:/tract -w /tract \
+            -v "$HOME/.cargo/registry":/root/.cargo/registry \
+            -v "$HOME/.cargo/git":/root/.cargo/git \
             -e CI=true \
             -e SKIP_QEMU_TEST=skip \
             -e CARGO_NET_RETRY \
             -e CARGO_HTTP_MULTIPLEXING \
             -e CARGO_REGISTRIES_CRATES_IO_PROTOCOL \
+            ${CARGO_TARGET_DIR:+-e CARGO_TARGET_DIR=$CARGO_TARGET_DIR} \
             -e PLATFORM=$INNER_PLATFORM $CUDA_FEATURE_ENV debian-stretch \
             ./.travis/cross.sh
-        sudo chown -R `whoami` .
+        sudo chown -R `whoami` "$HOME/.cargo" .
         export RUSTC_TRIPLE=$INNER_PLATFORM
         ;;
 
@@ -238,7 +242,7 @@ case "$PLATFORM" in
         ;;
 esac
 
-if [ -e "target/$RUSTC_TRIPLE/release/tract" ]
+if [ -e "${CARGO_TARGET_DIR:-target}/$RUSTC_TRIPLE/release/tract" ]
 then
     export RUSTC_TRIPLE
     TASK_NAME=`.travis/make_bundle.sh`

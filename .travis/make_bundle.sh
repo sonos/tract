@@ -12,6 +12,7 @@ else
 fi
 BRANCH=$(echo $BRANCH | tr '/' '_')
 PLATFORM=${PLATFORM:-dummy-platform}
+TARGET_DIR="${CARGO_TARGET_DIR:-target}"
 
 dates=`date -u +"%Y%m%dT%H%M%S %s"`
 date_iso=`echo $dates | cut -f 1 -d ' '`
@@ -36,10 +37,10 @@ fi
 touch sizes
 for bin in example-tensorflow-mobilenet-v2 tract
 do
-    if [ -e target/$RUSTC_TRIPLE/release/$bin ]
+    if [ -e $TARGET_DIR/$RUSTC_TRIPLE/release/$bin ]
     then
 
-        binary_size_cli=$($STAT -c "%s" target/$RUSTC_TRIPLE/release/$bin)
+        binary_size_cli=$($STAT -c "%s" $TARGET_DIR/$RUSTC_TRIPLE/release/$bin)
         token=$(echo $bin | tr '-' '_')
         if [ "$bin" = "tract" ]
         then
@@ -49,7 +50,7 @@ do
     fi
 done
 
-cp target/$RUSTC_TRIPLE/release/tract $TASK_NAME
+cp $TARGET_DIR/$RUSTC_TRIPLE/release/tract $TASK_NAME
 cp sizes $TASK_NAME
 cp .travis/bundle-entrypoint.sh $TASK_NAME/entrypoint.sh
 tar czf $TASK_NAME.tgz $TASK_NAME/

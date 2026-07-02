@@ -62,8 +62,8 @@ jobs:
             bin: target/release/tract
           - triple: aarch64-unknown-linux-gnu-stretch
             host: ubuntu-latest
-            build: PLATFORM=aarch64-unknown-linux-gnu-stretch ./.travis/cross.sh
-            bin: target/aarch64-unknown-linux-gnu/release/tract
+            build: CARGO_TARGET_DIR=.cross-cache/target PLATFORM=aarch64-unknown-linux-gnu-stretch ./.travis/cross.sh
+            bin: .cross-cache/target/aarch64-unknown-linux-gnu/release/tract
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -72,9 +72,12 @@ jobs:
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           # per-PR build on the developer feedback path; PR runs restore but only main saves.
-          # The stretch leg builds in a docker container: target/ is host-mounted (cached),
-          # its in-container cargo registry is not, and the key tracks host rustc not the container.
+          # The stretch leg cross-builds in a debian-stretch container into .cross-cache/target
+          # (CARGO_TARGET_DIR); cache that verbatim so the container's aarch64 artifacts survive —
+          # rust-cache's own target/ cleanup is host-target-only and would drop them. The container
+          # also bind-mounts the host cargo registry (see cross.sh) so crate downloads persist.
           key: ${{ matrix.triple }}
+          cache-directories: .cross-cache/target
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: ${{ matrix.build }}
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
