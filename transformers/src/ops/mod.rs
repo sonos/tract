@@ -3,6 +3,7 @@ pub mod diag_gather;
 pub mod dyn_kv_cache;
 pub mod flash_sdpa;
 pub mod moe_ffn;
+mod routed_matmul;
 pub mod scaled_masked_softmax;
 pub mod sdpa;
 pub mod streamed_sdpa;
