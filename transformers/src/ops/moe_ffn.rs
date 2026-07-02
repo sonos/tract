@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use tract_ndarray::{Array2, ArrayView2, ArrayView3, ArrayViewD, Axis, s};
 use tract_nnef::internal::*;
+use tract_nnef::tract_core::ops::array::Slice;
 use tract_nnef::tract_core::ops::einsum::EinSum;
 use tract_nnef::tract_core::ops::konst::Const;
 use tract_nnef::tract_core::ops::math::mul;
@@ -1267,6 +1268,38 @@ fn block_quant_group_tensor(input: &Tensor, group: usize) -> TractResult<Tensor>
     Ok(storage.into_tensor_with_shape(input.datum_type(), &[m, k]))
 }
 
+fn concat_block_quant_rows(lhs: &Tensor, rhs: &Tensor) -> TractResult<Tensor> {
+    let lhs_shape = lhs.shape();
+    let rhs_shape = rhs.shape();
+    ensure!(lhs_shape.len() == 2, "lhs block-quant tensor must be rank 2");
+    ensure!(rhs_shape.len() == 2, "rhs block-quant tensor must be rank 2");
+    ensure!(
+        lhs_shape[1] == rhs_shape[1],
+        "block-quant tensors must have the same K axis to concatenate rows"
+    );
+    let lhs_bqs = lhs.try_storage_as::<BlockQuantStorage>()?;
+    let rhs_bqs = rhs.try_storage_as::<BlockQuantStorage>()?;
+    ensure!(
+        lhs_bqs.format().dyn_eq(rhs_bqs.format()),
+        "block-quant tensors must use the same format to concatenate rows"
+    );
+    let lhs_exotic_fact =
+        lhs.exotic_fact()?.context("lhs block-quant tensor has no exotic fact")?;
+    let lhs_bqf = lhs_exotic_fact
+        .downcast_ref::<BlockQuantFact>()
+        .context("lhs block-quant tensor has no BlockQuantFact")?;
+
+    let mut bytes = Vec::with_capacity(lhs_bqs.value().len() + rhs_bqs.value().len());
+    bytes.extend_from_slice(lhs_bqs.value().as_bytes());
+    bytes.extend_from_slice(rhs_bqs.value().as_bytes());
+
+    let m = lhs_shape[0] + rhs_shape[0];
+    let k = lhs_shape[1];
+    let storage =
+        BlockQuantStorage::new(lhs_bqf.format.clone(), m, k, Arc::new(Blob::from_bytes(&bytes)?))?;
+    Ok(storage.into_tensor_with_shape(lhs.datum_type(), &[m, k]))
+}
+
 impl EvalOp for MoeFfn {
     fn is_stateless(&self) -> bool {
         true
@@ -1757,25 +1790,50 @@ fn build_expert_plan(
     };
 
     let x = model.add_source("x", dt.fact([n_sym.to_dim(), d_model.to_dim()]))?;
-    let w1_const = model.add_const("w1", expert_const(w1)?)?;
     let axes_canonical: AxesMapping = "ij,jk->ik".parse()?;
     let axes_linear: AxesMapping = "ij,kj->ik".parse()?;
     let axes_in = match expert_layout {
         ExpertLayout::Canonical => axes_canonical.clone(),
         ExpertLayout::Linear => axes_linear.clone(),
     };
-    let h = model.wire_node("w1_matmul", EinSum::new(axes_in.clone(), dt), &[x, w1_const])?[0];
 
     let act_op = activation_op(activation, w3.is_some())
         .ok_or_else(|| format_err!("Unsupported activation: {activation}"))?;
-    let h = model.wire_node("activation", act_op, &[h])?[0];
 
-    let h = if let Some(w3) = w3 {
-        let w3_const = model.add_const("w3", expert_const(w3)?)?;
-        let gate = model.wire_node("w3_matmul", EinSum::new(axes_in, dt), &[x, w3_const])?[0];
+    let h = if preserve_block_quant
+        && expert_layout == ExpertLayout::Linear
+        && w1.storage_as::<BlockQuantStorage>().is_some()
+        && w3.is_some_and(|w3| w3.storage_as::<BlockQuantStorage>().is_some())
+    {
+        let w3 = w3.context("w3 disappeared after fusion eligibility check")?;
+        ensure!(
+            w1.shape()[0] == w3.shape()[0],
+            "fused w1/w3 input matmul requires matching hidden dimensions"
+        );
+        let fused_w1_w3 = concat_block_quant_rows(w1, w3)?;
+        let hidden = w1.shape()[0];
+        let fused_const = model.add_const("w1_w3", fused_w1_w3)?;
+        let fused =
+            model.wire_node("w1_w3_matmul", EinSum::new(axes_in.clone(), dt), &[x, fused_const])?
+                [0];
+        let h = model.wire_node("w1_slice", Slice::new(1, 0, hidden), &[fused])?[0];
+        let gate =
+            model.wire_node("w3_slice", Slice::new(1, hidden, hidden + w3.shape()[0]), &[fused])?
+                [0];
+        let h = model.wire_node("activation", act_op, &[h])?[0];
         model.wire_node("swiglu_mul", mul(), &[h, gate])?[0]
     } else {
-        h
+        let w1_const = model.add_const("w1", expert_const(w1)?)?;
+        let h = model.wire_node("w1_matmul", EinSum::new(axes_in.clone(), dt), &[x, w1_const])?[0];
+        let h = model.wire_node("activation", act_op, &[h])?[0];
+
+        if let Some(w3) = w3 {
+            let w3_const = model.add_const("w3", expert_const(w3)?)?;
+            let gate = model.wire_node("w3_matmul", EinSum::new(axes_in, dt), &[x, w3_const])?[0];
+            model.wire_node("swiglu_mul", mul(), &[h, gate])?[0]
+        } else {
+            h
+        }
     };
 
     let w2_const = model.add_const("w2", expert_const(w2)?)?;
@@ -2048,6 +2106,16 @@ mod tests {
         Ok(model.wire_node(name, Const::new_with_exotic_fact(packed, Box::new(fact))?, &[])?[0])
     }
 
+    fn q40_tensor(tensor: Tensor) -> TractResult<Tensor> {
+        let shape = tensor.shape().to_vec();
+        let k = *shape.last().context("Q40 tensor has no last axis")?;
+        ensure!(k % Q4_0.block_len() == 0, "Q40 K axis must be a multiple of 32");
+        let m = shape[..shape.len() - 1].iter().product();
+        let quant = Q4_0.quant_f32(tensor.try_as_plain()?.as_slice::<f32>()?)?;
+        let storage = BlockQuantStorage::new(Box::new(Q4_0), m, k, Arc::new(quant))?;
+        Ok(storage.into_tensor_with_shape(f32::datum_type(), &shape))
+    }
+
     fn q40_roundtrip(tensor: &Tensor) -> TractResult<Tensor> {
         let shape = tensor.shape().to_vec();
         let k = *shape.last().context("Q40 tensor has no last axis")?;
@@ -2060,6 +2128,27 @@ mod tests {
         let view = tensor.to_plain_array_view::<f32>()?;
         let transposed = view.permuted_axes(tract_ndarray::IxDyn(&[0, 2, 1]));
         Ok(transposed.into_owned().into_tensor())
+    }
+
+    #[test]
+    fn test_concat_block_quant_rows_preserves_q40_storage() -> TractResult<()> {
+        let lhs_data: Vec<f32> = (0..64).map(|i| (i as f32 - 32.0) / 17.0).collect();
+        let rhs_data: Vec<f32> = (0..96).map(|i| (i as f32 - 48.0) / 19.0).collect();
+        let lhs_plain = Tensor::from_shape(&[2, 32], &lhs_data)?;
+        let rhs_plain = Tensor::from_shape(&[3, 32], &rhs_data)?;
+        let lhs_q40 = q40_tensor(lhs_plain)?;
+        let rhs_q40 = q40_tensor(rhs_plain)?;
+
+        let fused = concat_block_quant_rows(&lhs_q40, &rhs_q40)?;
+        assert_eq!(fused.shape(), &[5, 32]);
+        assert!(fused.storage_as::<BlockQuantStorage>().is_some());
+
+        let expected_plain =
+            Tensor::from_shape(&[5, 32], &[lhs_data.as_slice(), rhs_data.as_slice()].concat())?;
+        let expected = q40_roundtrip(&expected_plain)?;
+        let fused_dequant = block_quant_group_as_2d(&fused, 0)?;
+        fused_dequant.close_enough(&expected, Approximation::Approximate)?;
+        Ok(())
     }
 
     #[test]
