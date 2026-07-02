@@ -1,6 +1,12 @@
+use std::hash::{Hash, Hasher};
+
 use tract_ndarray::{Array2, ArrayView2, ArrayView3, ArrayViewD, Axis, s};
 use tract_nnef::internal::*;
 use tract_nnef::tract_core::ops::math::mul;
+use tract_nnef::tract_core::tract_linalg::mmm::{
+    AsInputValue, FusedSpec, MMMInputFormat, MMMInputValue, PackedExoticFact,
+};
+use tract_nnef::tract_core::tract_linalg::pack::{PackedFormat, PackingWriter};
 
 use super::gelu_approximate::gelu_approximate;
 use super::silu::silu;
@@ -375,27 +381,118 @@ pub struct RoutedMatMul {
     pub input_mode: RoutedInputMode,
 }
 
-impl Op for RoutedMatMul {
-    fn name(&self) -> StaticName {
-        "RoutedMatMul".into()
-    }
-    op_as_typed_op!();
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct RoutedRowsInput {
+    base: usize,
+    row_byte_offsets: Vec<isize>,
+    k: usize,
+    k_stride_bytes: isize,
+    format: PackedFormat,
+    fact: PackedExoticFact,
 }
 
-impl EvalOp for RoutedMatMul {
-    fn is_stateless(&self) -> bool {
-        true
+impl RoutedRowsInput {
+    fn new(
+        base: *const f32,
+        row_byte_offsets: Vec<isize>,
+        k: usize,
+        k_stride_bytes: isize,
+        format: PackedFormat,
+    ) -> Self {
+        let fact = PackedExoticFact {
+            format: Box::new(format.clone()),
+            mn: row_byte_offsets.len().to_dim(),
+            k,
+        };
+        RoutedRowsInput { base: base as usize, row_byte_offsets, k, k_stride_bytes, format, fact }
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        // inputs: data, weights [E,K,N], route_token_ids [R], route_expert_ids [R].
-        let input_t = inputs[0].cast_to::<f32>()?.into_owned();
-        let weights_t = inputs[1].cast_to::<f32>()?.into_owned();
-        let route_token_ids_t = inputs[2].cast_to::<i64>()?.into_owned();
-        let route_expert_ids_t = inputs[3].cast_to::<i64>()?.into_owned();
+    fn read(&self, mn: usize, k: usize) -> f32 {
+        unsafe {
+            let ptr = (self.base as *const u8)
+                .offset(self.row_byte_offsets[mn] + self.k_stride_bytes * k as isize);
+            *(ptr as *const f32)
+        }
+    }
+}
 
-        let input: ArrayView2<f32> = match self.input_mode {
-            RoutedInputMode::TokenRows => as_2d_tokens(input_t.to_plain_array_view::<f32>()?)?,
+impl Hash for RoutedRowsInput {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.base.hash(state);
+        self.row_byte_offsets.hash(state);
+        self.k.hash(state);
+        self.k_stride_bytes.hash(state);
+        self.format.hash(state);
+    }
+}
+
+impl std::fmt::Display for RoutedRowsInput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "RoutedRowsInput(mn={}, k={}, {})", self.mn(), self.k, self.format)
+    }
+}
+
+unsafe impl Send for RoutedRowsInput {}
+unsafe impl Sync for RoutedRowsInput {}
+
+impl MMMInputValue for RoutedRowsInput {
+    fn format(&self) -> &dyn MMMInputFormat {
+        &self.format
+    }
+
+    fn scratch_panel_buffer_layout(&self) -> Option<std::alloc::Layout> {
+        Some(self.format.single_panel_layout(self.k, f32::datum_type().size_of()))
+    }
+
+    fn panel_bytes(&self, i: usize, buffer: Option<*mut u8>) -> TractResult<*const u8> {
+        let buffer = buffer.context("RoutedRowsInput requires a scratch panel buffer")?;
+        let r = self.format.r();
+        let mn_start = i * r;
+        let mn_end = (mn_start + r).min(self.row_byte_offsets.len());
+        ensure!(mn_start < self.row_byte_offsets.len(), "panel {i} starts past routed rows");
+
+        unsafe {
+            std::ptr::write_bytes(buffer, 0, self.format.single_panel_layout(self.k, 4).size());
+            let mut writer = self.format.write_with_k_outer(buffer as *mut f32, self.k, r);
+            for k in 0..self.k {
+                for mn in mn_start..mn_start + r {
+                    writer.write(if mn < mn_end { self.read(mn, k) } else { 0.0 });
+                }
+            }
+        }
+        Ok(buffer)
+    }
+
+    fn mn(&self) -> usize {
+        self.row_byte_offsets.len()
+    }
+
+    fn k(&self) -> usize {
+        self.k
+    }
+
+    fn exotic_fact(&self) -> &dyn ExoticFact {
+        &self.fact
+    }
+
+    fn extract_at_mn_f16(&self, _mn: usize, _slice: &mut [f16]) -> TractResult<()> {
+        bail!("RoutedRowsInput only supports f32 extraction")
+    }
+
+    fn extract_at_mn_f32(&self, mn: usize, slice: &mut [f32]) -> TractResult<()> {
+        ensure!(slice.len() == self.k);
+        ensure!(mn < self.mn());
+        for (k, slot) in slice.iter_mut().enumerate() {
+            *slot = self.read(mn, k);
+        }
+        Ok(())
+    }
+}
+
+impl RoutedMatMul {
+    fn input_view<'a>(&self, input_t: &'a Tensor) -> TractResult<ArrayView2<'a, f32>> {
+        match self.input_mode {
+            RoutedInputMode::TokenRows => as_2d_tokens(input_t.to_plain_array_view::<f32>()?),
             RoutedInputMode::RouteRows => {
                 let input = input_t.to_plain_array_view::<f32>()?;
                 ensure!(
@@ -403,13 +500,148 @@ impl EvalOp for RoutedMatMul {
                     "route-row input must be rank 2, got {:?}",
                     input.shape()
                 );
-                input.into_dimensionality()?
+                Ok(input.into_dimensionality()?)
             }
-        };
+        }
+    }
+
+    fn group_routes(
+        &self,
+        route_count: usize,
+        num_experts: usize,
+        route_expert_ids: &[i64],
+    ) -> TractResult<Vec<Vec<usize>>> {
+        let mut expert_routes = vec![Vec::new(); num_experts];
+        for (r, &eid) in route_expert_ids.iter().enumerate().take(route_count) {
+            ensure!(eid >= 0, "route {r} has negative expert id");
+            let eid = eid as usize;
+            ensure!(
+                eid < num_experts,
+                "route {r} references expert {eid}, but weights have {num_experts} experts"
+            );
+            expert_routes[eid].push(r);
+        }
+        Ok(expert_routes)
+    }
+
+    fn source_row(&self, r: usize, route_token_ids: &[i64]) -> TractResult<usize> {
+        match self.input_mode {
+            RoutedInputMode::TokenRows => {
+                ensure!(route_token_ids[r] >= 0, "route {r} has negative token id");
+                Ok(route_token_ids[r] as usize)
+            }
+            RoutedInputMode::RouteRows => Ok(r),
+        }
+    }
+
+    fn eval_with_mmm(
+        &self,
+        input_t: &Tensor,
+        weights_t: &Tensor,
+        route_token_ids: &[i64],
+        route_expert_ids: &[i64],
+    ) -> TractResult<Option<Tensor>> {
+        let input = self.input_view(input_t)?;
         let weights: ArrayView3<f32> =
             weights_t.to_plain_array_view::<f32>()?.into_dimensionality()?;
-        let route_token_ids = plain_i64_slice(&route_token_ids_t, "route_token_ids")?;
-        let route_expert_ids = plain_i64_slice(&route_expert_ids_t, "route_expert_ids")?;
+        let route_count = route_token_ids.len();
+        let k_dim = weights.shape()[1];
+        let n_dim = weights.shape()[2];
+        let num_experts = weights.shape()[0];
+        ensure!(route_count == route_expert_ids.len());
+        ensure!(input.shape()[1] == k_dim);
+        if self.input_mode == RoutedInputMode::RouteRows {
+            ensure!(input.shape()[0] == route_count);
+        }
+        if route_count == 0 {
+            return Ok(Some(Array2::<f32>::zeros((0, n_dim)).into_tensor()));
+        }
+
+        let Some(mmm) = tract_nnef::tract_core::tract_linalg::ops().mmm(
+            f32::datum_type(),
+            None,
+            Some(k_dim),
+            Some(n_dim),
+        ) else {
+            return Ok(None);
+        };
+        if !mmm.is_supported_here() {
+            return Ok(None);
+        }
+        let Some((packing, a_format, b_format)) =
+            mmm.packings().iter().enumerate().find_map(|(ix, (a, b))| {
+                let a = a.downcast_ref::<PackedFormat>()?;
+                let b = b.downcast_ref::<PackedFormat>()?;
+                Some((ix, a.clone(), b.clone()))
+            })
+        else {
+            return Ok(None);
+        };
+
+        let expert_routes = self.group_routes(route_count, num_experts, route_expert_ids)?;
+        let mut output = Array2::<f32>::zeros((route_count, n_dim));
+        let item_size = f32::datum_type().size_of() as isize;
+        let base = input.as_ptr();
+        let row_stride_bytes = input.strides()[0] * item_size;
+        let k_stride_bytes = input.strides()[1] * item_size;
+
+        for (eid, routes) in expert_routes.iter().enumerate() {
+            if routes.is_empty() {
+                continue;
+            }
+
+            let mut row_byte_offsets = Vec::with_capacity(routes.len());
+            for &r in routes {
+                let src = self.source_row(r, route_token_ids)?;
+                ensure!(
+                    src < input.shape()[0],
+                    "route {r} references input row {src}, but input has {} rows",
+                    input.shape()[0]
+                );
+                row_byte_offsets.push(row_stride_bytes * src as isize);
+            }
+
+            let a = RoutedRowsInput::new(
+                base,
+                row_byte_offsets,
+                k_dim,
+                k_stride_bytes,
+                a_format.clone(),
+            );
+            let w_e = weights_t.view_at_prefix(&[eid])?;
+            let b = b_format.pack_tensor_view(&w_e, 0, 1)?;
+            let mut expert_output =
+                unsafe { Tensor::uninitialized::<f32>(&[routes.len(), n_dim])? };
+            let store = unsafe { mmm.c_view(Some(0), Some(1)).wrap(&expert_output.view_mut()) };
+            let uops = tvec![
+                FusedSpec::AddMatMul {
+                    a: AsInputValue::Borrowed(&a),
+                    b: AsInputValue::Borrowed(&*b),
+                    packing,
+                },
+                FusedSpec::Store(store),
+            ];
+            unsafe { mmm.run(routes.len(), n_dim, &uops)? };
+            let expert_output: ArrayView2<f32> =
+                expert_output.to_plain_array_view::<f32>()?.into_dimensionality()?;
+            for (slot, &r) in routes.iter().enumerate() {
+                output.row_mut(r).assign(&expert_output.row(slot));
+            }
+        }
+
+        Ok(Some(output.into_tensor()))
+    }
+
+    fn eval_grouped_ndarray(
+        &self,
+        input_t: &Tensor,
+        weights_t: &Tensor,
+        route_token_ids: &[i64],
+        route_expert_ids: &[i64],
+    ) -> TractResult<Tensor> {
+        let input = self.input_view(input_t)?;
+        let weights: ArrayView3<f32> =
+            weights_t.to_plain_array_view::<f32>()?.into_dimensionality()?;
         ensure!(route_token_ids.len() == route_expert_ids.len());
 
         let route_count = route_token_ids.len();
@@ -431,17 +663,7 @@ impl EvalOp for RoutedMatMul {
             );
         }
 
-        let mut expert_routes = vec![Vec::new(); num_experts];
-        for r in 0..route_count {
-            ensure!(route_expert_ids[r] >= 0, "route {r} has negative expert id");
-            let eid = route_expert_ids[r] as usize;
-            ensure!(
-                eid < num_experts,
-                "route {r} references expert {eid}, but weights have {num_experts} experts"
-            );
-            expert_routes[eid].push(r);
-        }
-
+        let expert_routes = self.group_routes(route_count, num_experts, route_expert_ids)?;
         let mut output = Array2::<f32>::zeros((route_count, n_dim));
         for (eid, routes) in expert_routes.iter().enumerate() {
             if routes.is_empty() {
@@ -450,13 +672,7 @@ impl EvalOp for RoutedMatMul {
 
             let mut gathered = Array2::<f32>::zeros((routes.len(), k_dim));
             for (slot, &r) in routes.iter().enumerate() {
-                let src = match self.input_mode {
-                    RoutedInputMode::TokenRows => {
-                        ensure!(route_token_ids[r] >= 0, "route {r} has negative token id");
-                        route_token_ids[r] as usize
-                    }
-                    RoutedInputMode::RouteRows => r,
-                };
+                let src = self.source_row(r, route_token_ids)?;
                 ensure!(
                     src < input.shape()[0],
                     "route {r} references input row {src}, but input has {} rows",
@@ -467,13 +683,42 @@ impl EvalOp for RoutedMatMul {
 
             let expert_output = gathered.dot(&weights.slice(s![eid, .., ..]));
             for (slot, &r) in routes.iter().enumerate() {
-                for n in 0..n_dim {
-                    output[[r, n]] = expert_output[[slot, n]];
-                }
+                output.row_mut(r).assign(&expert_output.row(slot));
             }
         }
+        Ok(output.into_tensor())
+    }
+}
 
-        Ok(tvec![output.into_tensor().into_tvalue()])
+impl Op for RoutedMatMul {
+    fn name(&self) -> StaticName {
+        "RoutedMatMul".into()
+    }
+    op_as_typed_op!();
+}
+
+impl EvalOp for RoutedMatMul {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+        // inputs: data, weights [E,K,N], route_token_ids [R], route_expert_ids [R].
+        let input_t = inputs[0].cast_to::<f32>()?.into_owned();
+        let weights_t = inputs[1].cast_to::<f32>()?.into_owned();
+        let route_token_ids_t = inputs[2].cast_to::<i64>()?.into_owned();
+        let route_expert_ids_t = inputs[3].cast_to::<i64>()?.into_owned();
+        let route_token_ids = plain_i64_slice(&route_token_ids_t, "route_token_ids")?;
+        let route_expert_ids = plain_i64_slice(&route_expert_ids_t, "route_expert_ids")?;
+
+        let output = if let Some(output) =
+            self.eval_with_mmm(&input_t, &weights_t, route_token_ids, route_expert_ids)?
+        {
+            output
+        } else {
+            self.eval_grouped_ndarray(&input_t, &weights_t, route_token_ids, route_expert_ids)?
+        };
+        Ok(tvec![output.into_tvalue()])
     }
 }
 
