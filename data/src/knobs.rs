@@ -244,6 +244,7 @@ mod tests {
 
     declare_knob!(TRACT_TEST_KNOB_BOOL, bool, false, "Test bool knob.");
     declare_knob!(TRACT_TEST_KNOB_INT, usize, 7, "Test int knob.");
+    declare_knob!(TRACT_TEST_KNOB_SET_INT, usize, 7, "Test int knob for set-by-name.");
 
     #[test]
     fn default_then_override_then_clear() {
@@ -258,10 +259,10 @@ mod tests {
 
     #[test]
     fn set_by_name() {
-        assert!(set_str("TRACT_TEST_KNOB_INT", "42"));
-        assert_eq!(TRACT_TEST_KNOB_INT.get(), 42);
-        assert!(clear_str("TRACT_TEST_KNOB_INT"));
-        assert_eq!(TRACT_TEST_KNOB_INT.get(), 7);
+        assert!(set_str("TRACT_TEST_KNOB_SET_INT", "42"));
+        assert_eq!(TRACT_TEST_KNOB_SET_INT.get(), 42);
+        assert!(clear_str("TRACT_TEST_KNOB_SET_INT"));
+        assert_eq!(TRACT_TEST_KNOB_SET_INT.get(), 7);
         assert!(!set_str("TRACT_TEST_KNOB_DOES_NOT_EXIST", "1"));
     }
 
