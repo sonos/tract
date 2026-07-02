@@ -94,7 +94,18 @@ case "$PLATFORM" in
         then
             CUDA_FEATURE_ENV="-e TRACT_CUDA_FEATURE=cuda-12000"
         fi
-        (cd .travis/docker-debian-stretch; docker build --tag debian-stretch .)
+        # Prefer the prebuilt toolchain image (private ghcr package); log in when a token is
+        # present (CI), otherwise build the bare image locally. A failed pull also falls back
+        # to a local build, so forks and offline runs still work.
+        STRETCH_IMAGE="${TRACT_CROSS_IMAGE:-ghcr.io/sonos/tract/cross-debian-stretch:latest}"
+        [ -n "$GITHUB_TOKEN" ] && echo "$GITHUB_TOKEN" | docker login ghcr.io -u "${GITHUB_ACTOR:-x}" --password-stdin
+        if docker pull "$STRETCH_IMAGE"
+        then
+            STRETCH_TAG="$STRETCH_IMAGE"
+        else
+            (cd .travis/docker-debian-stretch; docker build --tag debian-stretch .)
+            STRETCH_TAG=debian-stretch
+        fi
         mkdir -p "$HOME/.cargo/registry" "$HOME/.cargo/git"
         docker run -v `pwd`:/tract -w /tract \
             -v "$HOME/.cargo/registry":/root/.cargo/registry \
@@ -105,7 +116,7 @@ case "$PLATFORM" in
             -e CARGO_HTTP_MULTIPLEXING \
             -e CARGO_REGISTRIES_CRATES_IO_PROTOCOL \
             ${CARGO_TARGET_DIR:+-e CARGO_TARGET_DIR=$CARGO_TARGET_DIR} \
-            -e PLATFORM=$INNER_PLATFORM $CUDA_FEATURE_ENV debian-stretch \
+            -e PLATFORM=$INNER_PLATFORM $CUDA_FEATURE_ENV "$STRETCH_TAG" \
             ./.travis/cross.sh
         sudo chown -R `whoami` "$HOME/.cargo" .
         export RUSTC_TRIPLE=$INNER_PLATFORM
@@ -200,7 +211,11 @@ case "$PLATFORM" in
 
         DINGHY_TEST_ARGS="$DINGHY_TEST_ARGS --env PROPTEST_MAX_SHRINK_ITERS=100000000"
 
-        $SUDO apt-get -y install --no-install-recommends qemu-system-arm qemu-user libssl-dev pkg-config $PACKAGES
+        # The prebuilt image (TRACT_PREBUILT_CI) already carries qemu + the cross toolchains.
+        if [ -z "$TRACT_PREBUILT_CI" ]
+        then
+            $SUDO apt-get -y install --no-install-recommends qemu-system-arm qemu-user libssl-dev pkg-config $PACKAGES
+        fi
         rustup target add $RUSTC_TRIPLE
         if [ -z "$SKIP_QEMU_TEST" ]
         then
