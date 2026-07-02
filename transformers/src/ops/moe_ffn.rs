@@ -1872,20 +1872,54 @@ fn build_expert_plan(
 }
 
 #[derive(Clone, Debug)]
-struct Q40MmmPlan {
+struct PreparedPackedMatMul {
     mmm: Box<dyn MatMatMul>,
     packing: usize,
-    b_format: PackedFormat,
-    a_format: PackedBlockQuantFormat,
+    left_format: Box<dyn MMMInputFormat>,
+    right_format: PackedFormat,
+    k_dim: usize,
+    out_dim: usize,
+}
+
+// CPU implementation of the reusable routed-matmul contract: one prepared
+// packed-left matrix per group, plus an indirect list of runtime input rows.
+#[derive(Clone, Debug)]
+struct PreparedRoutedMatMul {
+    kernel: PreparedPackedMatMul,
+    left_by_group: Vec<Box<dyn MMMInputValue>>,
+}
+
+#[derive(Clone, Debug)]
+struct RoutedInputRows {
+    base: *const f32,
+    row_byte_offsets: Vec<isize>,
+    k_stride_bytes: isize,
+}
+
+#[derive(Default)]
+struct PreparedRoutedMatMulState {
+    scratch: Option<Box<dyn ScratchSpace>>,
+}
+
+impl Clone for PreparedRoutedMatMulState {
+    fn clone(&self) -> Self {
+        PreparedRoutedMatMulState::default()
+    }
+}
+
+impl fmt::Debug for PreparedRoutedMatMulState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PreparedRoutedMatMulState")
+            .field("has_scratch", &self.scratch.is_some())
+            .finish()
+    }
 }
 
 #[derive(Clone, Debug)]
 struct Q40LinearExpertPlan {
     activation: String,
-    gate_up: Q40MmmPlan,
-    down: Q40MmmPlan,
-    gate_up_by_expert: Vec<Box<dyn MMMInputValue>>,
-    down_by_expert: Vec<Box<dyn MMMInputValue>>,
+    gate_up: PreparedRoutedMatMul,
+    down: PreparedRoutedMatMul,
     gate_up_dim: usize,
 }
 
@@ -1893,7 +1927,11 @@ fn q40_direct_activation_supported(activation: &str, has_w3: bool) -> bool {
     matches!(activation, "silu") || (has_w3 && matches!(activation, "swiglu"))
 }
 
-fn select_q40_mmm(weight: &Tensor, out_dim: usize, k_dim: usize) -> TractResult<Q40MmmPlan> {
+fn select_block_quant_left_mmm(
+    weight: &Tensor,
+    out_dim: usize,
+    k_dim: usize,
+) -> TractResult<PreparedPackedMatMul> {
     let bqs = weight.try_storage_as::<BlockQuantStorage>()?;
     let mut best: Option<(
         isize,
@@ -1954,15 +1992,41 @@ fn select_q40_mmm(weight: &Tensor, out_dim: usize, k_dim: usize) -> TractResult<
         bail!("no runnable f32 Q40 MMM found for weight shape [{out_dim}, {k_dim}]");
     };
 
-    Ok(Q40MmmPlan { mmm, packing, b_format, a_format })
+    Ok(PreparedPackedMatMul {
+        mmm,
+        packing,
+        left_format: Box::new(a_format),
+        right_format: b_format,
+        k_dim,
+        out_dim,
+    })
 }
 
-fn pack_q40_rows(
-    t: &Tensor,
-    format: &PackedBlockQuantFormat,
-) -> TractResult<Box<dyn MMMInputValue>> {
-    ensure!(t.rank() == 2, "Q40 expert tensor must be rank 2, got {:?}", t.shape());
+fn pack_left_rows(t: &Tensor, format: &dyn MMMInputFormat) -> TractResult<Box<dyn MMMInputValue>> {
+    ensure!(t.rank() == 2, "packed-left tensor must be rank 2, got {:?}", t.shape());
     format.prepare_one(t, 1, 0)
+}
+
+fn build_prepared_routed_matmul(group_weights: Vec<Tensor>) -> TractResult<PreparedRoutedMatMul> {
+    let sample =
+        group_weights.first().context("prepared routed matmul needs at least one group")?;
+    ensure!(sample.rank() == 2, "prepared routed matmul weights must be rank 2");
+    let out_dim = sample.shape()[0];
+    let k_dim = sample.shape()[1];
+    let kernel = select_block_quant_left_mmm(sample, out_dim, k_dim)?;
+
+    let mut left_by_group = Vec::with_capacity(group_weights.len());
+    for (group, weight) in group_weights.iter().enumerate() {
+        ensure!(
+            weight.shape() == sample.shape(),
+            "prepared routed matmul group {group} shape {:?} does not match sample {:?}",
+            weight.shape(),
+            sample.shape()
+        );
+        left_by_group.push(pack_left_rows(weight, &*kernel.left_format)?);
+    }
+
+    Ok(PreparedRoutedMatMul { kernel, left_by_group })
 }
 
 fn build_q40_linear_expert_plan(
@@ -1985,20 +2049,20 @@ fn build_q40_linear_expert_plan(
     };
     let sample_down = block_quant_group_tensor(w2, 0)?;
     let gate_up_dim = sample_gate_up.shape()[0];
-    let input_dim = sample_gate_up.shape()[1];
-    let down_out_dim = sample_down.shape()[0];
     let hidden_dim = sample_down.shape()[1];
     ensure!(
         gate_up_dim == hidden_dim || gate_up_dim == hidden_dim * 2,
         "Q40 direct MoE expected gate/up dim {gate_up_dim} to match hidden {hidden_dim} or 2x hidden"
     );
 
-    let gate_up = select_q40_mmm(&sample_gate_up, gate_up_dim, input_dim)?;
-    let down = select_q40_mmm(&sample_down, down_out_dim, hidden_dim)?;
-
-    let mut gate_up_by_expert = Vec::with_capacity(num_experts);
-    let mut down_by_expert = Vec::with_capacity(num_experts);
+    let mut gate_up_weights = Vec::with_capacity(num_experts);
+    let mut down_weights = Vec::with_capacity(num_experts);
+    gate_up_weights.push(sample_gate_up);
+    down_weights.push(sample_down);
     for eid in 0..num_experts {
+        if eid == 0 {
+            continue;
+        }
         let w1_e = block_quant_group_tensor(w1, eid)?;
         let gate_up_e = if let Some(w3) = w3 {
             let w3_e = block_quant_group_tensor(w3, eid)?;
@@ -2006,18 +2070,19 @@ fn build_q40_linear_expert_plan(
         } else {
             w1_e
         };
-        gate_up_by_expert.push(pack_q40_rows(&gate_up_e, &gate_up.a_format)?);
+        gate_up_weights.push(gate_up_e);
 
         let w2_e = block_quant_group_tensor(w2, eid)?;
-        down_by_expert.push(pack_q40_rows(&w2_e, &down.a_format)?);
+        down_weights.push(w2_e);
     }
+
+    let gate_up = build_prepared_routed_matmul(gate_up_weights)?;
+    let down = build_prepared_routed_matmul(down_weights)?;
 
     Ok(Arc::new(Q40LinearExpertPlan {
         activation: activation.to_string(),
         gate_up,
         down,
-        gate_up_by_expert,
-        down_by_expert,
         gate_up_dim,
     }))
 }
@@ -2037,18 +2102,20 @@ fn profile_elapsed(start: Option<Instant>) -> Duration {
     start.map(|start| start.elapsed()).unwrap_or(Duration::ZERO)
 }
 
-fn run_q40_left_matmul(
-    plan: &Q40MmmPlan,
-    packed_weight: &dyn MMMInputValue,
-    input_base: *const f32,
-    row_byte_offsets: Vec<isize>,
-    k_dim: usize,
-    k_stride_bytes: isize,
-    route_count: usize,
-    out_dim: usize,
+fn run_prepared_routed_matmul(
+    plan: &PreparedRoutedMatMul,
+    group: usize,
+    rows: RoutedInputRows,
     output: &mut Tensor,
-    scratch: &mut Option<Box<dyn ScratchSpace>>,
+    state: &mut PreparedRoutedMatMulState,
 ) -> TractResult<()> {
+    ensure!(
+        group < plan.left_by_group.len(),
+        "prepared routed matmul group {group} out of range for {} groups",
+        plan.left_by_group.len()
+    );
+    let route_count = rows.row_byte_offsets.len();
+    let out_dim = plan.kernel.out_dim;
     if route_count == 0 {
         return Ok(());
     }
@@ -2059,35 +2126,40 @@ fn run_q40_left_matmul(
         route_count * out_dim
     );
 
-    if scratch.as_ref().is_none_or(|s| !unsafe { plan.mmm.can_use_scratch_space(&**s) }) {
-        *scratch = Some(unsafe { plan.mmm.allocate_scratch_space() });
+    if state
+        .scratch
+        .as_ref()
+        .is_none_or(|s| !unsafe { plan.kernel.mmm.can_use_scratch_space(&**s) })
+    {
+        state.scratch = Some(unsafe { plan.kernel.mmm.allocate_scratch_space() });
     }
-    let scratch = scratch.as_mut().context("Q40 MMM scratch was not allocated")?;
+    let scratch = state.scratch.as_mut().context("prepared MMM scratch was not allocated")?;
 
     let input = RoutedRowsInput::new(
-        input_base,
-        row_byte_offsets,
-        k_dim,
-        k_stride_bytes,
-        plan.b_format.clone(),
+        rows.base,
+        rows.row_byte_offsets,
+        plan.kernel.k_dim,
+        rows.k_stride_bytes,
+        plan.kernel.right_format.clone(),
     );
     let shape = [route_count, out_dim];
     let strides = [out_dim as isize, 1];
     let view = unsafe { TensorView::from_bytes(output, 0, &shape, &strides) };
     let store = unsafe {
-        plan.mmm
+        plan.kernel
+            .mmm
             .c_from_data_and_strides(f32::datum_type().size_of(), 1, out_dim as isize)
             .wrap(&view)
     };
     let uops = tvec![
         FusedSpec::AddMatMul {
-            a: AsInputValue::Borrowed(packed_weight),
+            a: AsInputValue::Borrowed(&*plan.left_by_group[group]),
             b: AsInputValue::Borrowed(&input),
-            packing: plan.packing,
+            packing: plan.kernel.packing,
         },
         FusedSpec::Store(store),
     ];
-    unsafe { plan.mmm.run_with_scratch_space(out_dim, route_count, scratch.as_mut(), &uops) }
+    unsafe { plan.kernel.mmm.run_with_scratch_space(out_dim, route_count, scratch.as_mut(), &uops) }
 }
 
 fn apply_silu_gate(
@@ -2223,8 +2295,8 @@ impl EvalOp for OptMoeFfn {
 
 #[derive(Default)]
 struct Q40LinearExpertState {
-    gate_up_scratch: Option<Box<dyn ScratchSpace>>,
-    down_scratch: Option<Box<dyn ScratchSpace>>,
+    gate_up_state: PreparedRoutedMatMulState,
+    down_state: PreparedRoutedMatMulState,
     hidden: Option<Tensor>,
     expert_out: Option<Tensor>,
     expert_tokens: Vec<Vec<(usize, f32)>>,
@@ -2234,8 +2306,8 @@ struct Q40LinearExpertState {
 impl fmt::Debug for Q40LinearExpertState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Q40LinearExpertState")
-            .field("has_gate_up_scratch", &self.gate_up_scratch.is_some())
-            .field("has_down_scratch", &self.down_scratch.is_some())
+            .field("gate_up_state", &self.gate_up_state)
+            .field("down_state", &self.down_state)
             .field("hidden_len", &self.hidden.as_ref().map(|t| t.len()).unwrap_or(0))
             .field("expert_out_len", &self.expert_out.as_ref().map(|t| t.len()).unwrap_or(0))
             .field("expert_tokens", &self.expert_tokens.len())
@@ -2340,17 +2412,16 @@ impl Q40LinearExpertState {
                 ensure_f32_tensor_capacity(&mut self.hidden, route_count * plan.gate_up_dim)?;
 
             let gate_up_start = profile_start(profile);
-            run_q40_left_matmul(
+            run_prepared_routed_matmul(
                 &plan.gate_up,
-                &*plan.gate_up_by_expert[eid],
-                x_base,
-                row_offsets,
-                d_model,
-                x_k_stride_bytes,
-                route_count,
-                plan.gate_up_dim,
+                eid,
+                RoutedInputRows {
+                    base: x_base,
+                    row_byte_offsets: row_offsets,
+                    k_stride_bytes: x_k_stride_bytes,
+                },
                 hidden,
-                &mut self.gate_up_scratch,
+                &mut self.gate_up_state,
             )?;
             gate_up_elapsed += profile_elapsed(gate_up_start);
 
@@ -2378,17 +2449,16 @@ impl Q40LinearExpertState {
                 ensure_f32_tensor_capacity(&mut self.expert_out, route_count * d_model)?;
 
             let down_start = profile_start(profile);
-            run_q40_left_matmul(
+            run_prepared_routed_matmul(
                 &plan.down,
-                &*plan.down_by_expert[eid],
-                hidden_base,
-                hidden_offsets,
-                op.d_hidden,
-                item_size,
-                route_count,
-                d_model,
+                eid,
+                RoutedInputRows {
+                    base: hidden_base,
+                    row_byte_offsets: hidden_offsets,
+                    k_stride_bytes: item_size,
+                },
                 expert_out,
-                &mut self.down_scratch,
+                &mut self.down_state,
             )?;
             down_elapsed += profile_elapsed(down_start);
 
