@@ -432,13 +432,7 @@ fn convert_q40_moe_ffn_to_metal(
         wg_device
     };
 
-    let routes = if env_flag("TRACT_METAL_ENABLE_ROUTE_TOPK") {
-        target.wire_node(
-            format!("{}.route_topk", node.name),
-            ops::MetalRouteTopK { k: op.k, gate: op.gate.clone() },
-            &[x_device, wg_device],
-        )?
-    } else {
+    let routes = if env_flag("TRACT_METAL_DISABLE_ROUTE_TOPK") {
         let x_host = sync_outlet_if_required(
             target,
             format!("{}.route-x-to-cpu", node.name),
@@ -455,6 +449,12 @@ fn convert_q40_moe_ffn_to_metal(
             format!("{}.route_topk", node.name),
             RouteTopK { k: op.k, gate: op.gate.clone() },
             &[x_host, wg_host],
+        )?
+    } else {
+        target.wire_node(
+            format!("{}.route_topk", node.name),
+            ops::MetalRouteTopK { k: op.k, gate: op.gate.clone() },
+            &[x_device, wg_device],
         )?
     };
     let route_token_ids = sync_outlet_if_required(
