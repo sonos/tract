@@ -64,6 +64,11 @@ impl TractCudaContext {
         let context =
             CudaContext::new(0).with_context(|| "Could not find system default CUDA device")?;
 
+        // Each thread runs its own stream over thread-local, per-run tensors; shared weights are
+        // read-only. cudarc's automatic cross-stream SyncOnDrop event tracking (a CudaEvent per
+        // buffer use) is therefore pure overhead — the caller owns synchronization.
+        unsafe { context.disable_event_tracking() };
+
         let prop = get_device_prop(0)?;
 
         // Log device identity so users diagnosing a bad deploy can tell what their code actually
