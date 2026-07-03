@@ -19,10 +19,27 @@ enum RouteGateMode : uint {
     constant uint &num_experts [[buffer(7)]],
     constant uint &k [[buffer(8)]],
     constant uint &gate_mode [[buffer(9)]],
-    uint token [[thread_position_in_grid]])
+    uint token [[threadgroup_position_in_grid]],
+    uint lane [[thread_index_in_threadgroup]])
 {
     constexpr uint MAX_TOPK = 16;
-    if (token >= token_count || k > MAX_TOPK) {
+    constexpr uint MAX_EXPERTS = 256;
+    threadgroup float scores[MAX_EXPERTS];
+
+    if (token >= token_count || k > MAX_TOPK || num_experts > MAX_EXPERTS) {
+        return;
+    }
+
+    if (lane < num_experts) {
+        float score = 0.0f;
+        for (uint d = 0; d < d_model; d++) {
+            score += x[token * d_model + d] * wg[lane * d_model + d];
+        }
+        scores[lane] = score;
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+
+    if (lane != 0) {
         return;
     }
 
@@ -35,10 +52,7 @@ enum RouteGateMode : uint {
 
     float max_all = -INFINITY;
     for (uint expert = 0; expert < num_experts; expert++) {
-        float score = 0.0f;
-        for (uint d = 0; d < d_model; d++) {
-            score += x[token * d_model + d] * wg[expert * d_model + d];
-        }
+        float score = scores[expert];
         max_all = max(max_all, score);
 
         for (uint slot = 0; slot < k; slot++) {
@@ -64,10 +78,7 @@ enum RouteGateMode : uint {
     } else if (gate_mode == RouteGateSoftmaxAll) {
         denom = 0.0f;
         for (uint expert = 0; expert < num_experts; expert++) {
-            float score = 0.0f;
-            for (uint d = 0; d < d_model; d++) {
-                score += x[token * d_model + d] * wg[expert * d_model + d];
-            }
+            float score = scores[expert];
             denom += exp(score - max_all);
         }
     }

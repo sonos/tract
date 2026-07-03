@@ -51,6 +51,7 @@ pub fn dispatch_route_topk_f32(
         _ => unreachable!(),
     };
     ensure!(wg_d_model == d_model);
+    ensure!(num_experts <= 256, "Metal RouteTopK supports at most 256 experts");
 
     let route_count = token_count * k;
     ensure!(route_token_ids.shape() == [route_count]);
@@ -64,6 +65,13 @@ pub fn dispatch_route_topk_f32(
     let gate_mode = gate_mode_code(gate);
 
     let pipeline = stream.load_pipeline(LibraryName::MoeOps, "route_topk_f32")?;
+    let max_group_width = pipeline.max_total_threads_per_threadgroup() as u32;
+    ensure!(
+        num_experts <= max_group_width,
+        "Metal RouteTopK requires at least one thread per expert: experts={num_experts}, max_threads={max_group_width}"
+    );
+    let group_width = num_experts.next_power_of_two().min(max_group_width).max(1);
+
     let command_buffer = stream.command_buffer();
     command_buffer.encode(|encoder| {
         encoder.set_compute_pipeline_state(&pipeline);
@@ -79,7 +87,7 @@ pub fn dispatch_route_topk_f32(
         encoder.set_slice(9, &[gate_mode]);
 
         let grid_size = MTLSize { width: token_count as NSUInteger, height: 1, depth: 1 };
-        let group_size = MTLSize { width: 1, height: 1, depth: 1 };
+        let group_size = MTLSize { width: group_width as NSUInteger, height: 1, depth: 1 };
         encoder.dispatch_thread_groups(grid_size, group_size);
     });
     Ok(())
