@@ -20,9 +20,12 @@ use tract_gpu::fact::{DeviceFact, DeviceTypedFactExt};
 use tract_gpu::rewrite_rules::rewire_sdpa::rewire_sdpa;
 use tract_gpu::rewrite_rules::rewire_syncs::rewire_syncs;
 use tract_gpu::rewrite_rules::rms_norm::remove_rms_norm_cast;
-use tract_gpu::sync::{DeviceSyncKind, sync_inputs_if_required, sync_model_outputs_if_required};
-use tract_gpu::tensor::{DeviceTensor, IntoDevice};
+use tract_gpu::sync::{
+    DeviceSync, DeviceSyncKind, sync_inputs_if_required, sync_model_outputs_if_required,
+};
+use tract_gpu::tensor::{DeviceTensor, DeviceTensorExt, IntoDevice};
 use tract_gpu::utils::as_quant_fact;
+use tract_transformers::ops::moe_ffn::{ExpertLayout, MoeFfn, RouteTopK, RoutedInputMode};
 
 use crate::rewrite_rules;
 
@@ -221,6 +224,12 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
                 return sync_model_outputs_if_required(source, node, target, outlet_ids);
             }
         }
+        if let Some(op) = node.op_as::<MoeFfn>()
+            && let Some(outlet_ids) =
+                convert_q40_moe_ffn_to_metal(source, node, target, mapping, op)?
+        {
+            return sync_model_outputs_if_required(source, node, target, outlet_ids);
+        }
         // Const: inline conversion, not a GPU op
         if let Some(op) = node.op_as::<Const>() {
             if DeviceTensor::is_supported_dt(op.val().datum_type()) {
@@ -273,6 +282,252 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
             target.wire_node(&node.name, node.op.clone(), &cpu_inputs)
         }
     }
+}
+
+fn sync_outlet_if_required(
+    target: &mut TypedModel,
+    name: impl Into<String>,
+    outlet: OutletId,
+    sync_kind: DeviceSyncKind,
+) -> TractResult<OutletId> {
+    let name = name.into();
+    match sync_kind {
+        DeviceSyncKind::ToHost if target.outlet_fact(outlet)?.as_device_fact().is_some() => {
+            Ok(target.wire_node(name, DeviceSync::new(sync_kind), &[outlet])?[0])
+        }
+        DeviceSyncKind::ToDevice if target.outlet_fact(outlet)?.as_device_fact().is_none() => {
+            let host_fact = target.outlet_fact(outlet)?.clone();
+            if let Some(konst) = host_fact.konst.as_ref()
+                && konst.as_device_tensor().is_none()
+            {
+                let device_konst = konst.as_ref().clone().into_device()?.into_tensor();
+                let device_fact = DeviceFact::from_host(host_fact)?;
+                let fact = target.outlet_fact_mut(outlet)?;
+                *fact = device_fact.into_exotic_fact();
+                fact.konst = Some(device_konst.into_arc_tensor());
+                return Ok(outlet);
+            }
+            ensure!(
+                host_fact.datum_type.is_copy(),
+                "Only copy DatumType can be synced to Device: {:?}",
+                host_fact.datum_type
+            );
+            Ok(target.wire_node(name, DeviceSync::new(sync_kind), &[outlet])?[0])
+        }
+        _ => Ok(outlet),
+    }
+}
+
+fn q40_moe_activation_supported(op: &MoeFfn) -> bool {
+    matches!(op.activation.as_str(), "silu")
+        || (op.has_w3 && matches!(op.activation.as_str(), "swiglu"))
+}
+
+fn env_flag(name: &str) -> bool {
+    std::env::var(name).is_ok_and(|v| v != "0" && !v.eq_ignore_ascii_case("false"))
+}
+
+fn convert_q40_moe_ffn_to_metal(
+    source: &TypedModel,
+    node: &TypedNode,
+    target: &mut TypedModel,
+    mapping: &HashMap<OutletId, OutletId>,
+    op: &MoeFfn,
+) -> TractResult<Option<TVec<OutletId>>> {
+    let log_lowering = env_flag("TRACT_METAL_LOG_Q40_MOE");
+    if env_flag("TRACT_METAL_DISABLE_Q40_MOE") {
+        return Ok(None);
+    }
+    if op.has_wg_bias
+        || op.has_w1_bias
+        || op.has_w3_bias
+        || op.has_w2_bias
+        || op.act_limit_bits.is_some()
+        || op.expert_layout != ExpertLayout::Linear
+        || !q40_moe_activation_supported(op)
+    {
+        if log_lowering {
+            eprintln!(
+                "Metal Q40 MoE skip {}: metadata layout={:?} activation={} has_w3={} biases=[wg:{} w1:{} w3:{} w2:{}] act_limit={}",
+                node.name,
+                op.expert_layout,
+                op.activation,
+                op.has_w3,
+                op.has_wg_bias,
+                op.has_w1_bias,
+                op.has_w3_bias,
+                op.has_w2_bias,
+                op.act_limit_bits.is_some()
+            );
+        }
+        return Ok(None);
+    }
+
+    let facts = source.node_input_facts(node.id)?;
+    let x_rank_ok =
+        facts[0].rank() == 2 || (facts[0].rank() == 3 && facts[0].shape.dims()[0] == 1.to_dim());
+    let x_dt_ok = matches!(facts[0].datum_type, DatumType::F32 | DatumType::F16);
+    let wg_dt_ok = matches!(facts[1].datum_type, DatumType::F32 | DatumType::F16);
+    let w1_q40 = as_quant_fact(facts[2], &Q4_0).is_some();
+    let w2_q40 = as_quant_fact(facts[3], &Q4_0).is_some();
+    let w3_q40 =
+        !op.has_w3 || facts.get(4).is_some_and(|fact| as_quant_fact(fact, &Q4_0).is_some());
+    let facts_supported = x_rank_ok && x_dt_ok && wg_dt_ok && w1_q40 && w2_q40 && w3_q40;
+    if log_lowering {
+        eprintln!(
+            "Metal Q40 MoE candidate {}: x_rank={} x_dt={:?} wg_dt={:?} w1_q40={} w2_q40={} w3_q40={} shapes x={:?} wg={:?} w1={:?} w2={:?}{}",
+            node.name,
+            facts[0].rank(),
+            facts[0].datum_type,
+            facts[1].datum_type,
+            w1_q40,
+            w2_q40,
+            w3_q40,
+            facts[0].shape,
+            facts[1].shape,
+            facts[2].shape,
+            facts[3].shape,
+            if op.has_w3 { format!(" w3={:?}", facts[4].shape) } else { String::new() }
+        );
+    }
+    if !facts_supported {
+        if log_lowering {
+            eprintln!("Metal Q40 MoE skip {}: unsupported facts", node.name);
+        }
+        return Ok(None);
+    }
+
+    if log_lowering {
+        eprintln!("Metal Q40 MoE lowering: {}", node.name);
+    }
+
+    let x_host = sync_outlet_if_required(
+        target,
+        format!("{}.route-x-to-cpu", node.name),
+        mapping[&node.inputs[0]],
+        DeviceSyncKind::ToHost,
+    )?;
+    let wg_host = sync_outlet_if_required(
+        target,
+        format!("{}.route-wg-to-cpu", node.name),
+        mapping[&node.inputs[1]],
+        DeviceSyncKind::ToHost,
+    )?;
+    let routes = target.wire_node(
+        format!("{}.route_topk", node.name),
+        RouteTopK { k: op.k, gate: op.gate.clone() },
+        &[x_host, wg_host],
+    )?;
+    let route_token_ids = sync_outlet_if_required(
+        target,
+        format!("{}.route_token_ids.to-device", node.name),
+        routes[0],
+        DeviceSyncKind::ToDevice,
+    )?;
+    let route_expert_ids = sync_outlet_if_required(
+        target,
+        format!("{}.route_expert_ids.to-device", node.name),
+        routes[1],
+        DeviceSyncKind::ToDevice,
+    )?;
+    let route_weights = sync_outlet_if_required(
+        target,
+        format!("{}.route_weights.to-device", node.name),
+        routes[2],
+        DeviceSyncKind::ToDevice,
+    )?;
+
+    let x_device = sync_outlet_if_required(
+        target,
+        format!("{}.x.to-device", node.name),
+        mapping[&node.inputs[0]],
+        DeviceSyncKind::ToDevice,
+    )?;
+    let x_device = if facts[0].datum_type != f32::datum_type() {
+        target.wire_node(
+            format!("{}.x.cast-f32", node.name),
+            metal_cast_new(f32::datum_type()).unwrap(),
+            &[x_device],
+        )?[0]
+    } else {
+        x_device
+    };
+    let x_shape_like = x_device;
+    let x_expert_input = if facts[0].rank() == 3 {
+        target.wire_node(
+            format!("{}.x.rm-batch", node.name),
+            tract_gpu::ops::change_axes::GpuAxisOp::new(AxisOp::Rm(0)),
+            &[x_device],
+        )?[0]
+    } else {
+        x_device
+    };
+    let w1_device = sync_outlet_if_required(
+        target,
+        format!("{}.w1.to-device", node.name),
+        mapping[&node.inputs[2]],
+        DeviceSyncKind::ToDevice,
+    )?;
+    let w2_device = sync_outlet_if_required(
+        target,
+        format!("{}.w2.to-device", node.name),
+        mapping[&node.inputs[3]],
+        DeviceSyncKind::ToDevice,
+    )?;
+
+    let h1 = target.wire_node(
+        format!("{}.w1", node.name),
+        ops::MetalRoutedQ40MatMul { input_mode: RoutedInputMode::TokenRows },
+        &[x_expert_input, w1_device, route_token_ids, route_expert_ids],
+    )?[0];
+    let activated = target.wire_node(
+        format!("{}.activation", node.name),
+        kernels::element_wise::metal_element_wise_op(Box::new(tract_core::ops::nn::Silu {})),
+        &[h1],
+    )?[0];
+
+    let hidden = if op.has_w3 {
+        let w3_device = sync_outlet_if_required(
+            target,
+            format!("{}.w3.to-device", node.name),
+            mapping[&node.inputs[4]],
+            DeviceSyncKind::ToDevice,
+        )?;
+        let gate = target.wire_node(
+            format!("{}.w3", node.name),
+            ops::MetalRoutedQ40MatMul { input_mode: RoutedInputMode::TokenRows },
+            &[x_expert_input, w3_device, route_token_ids, route_expert_ids],
+        )?[0];
+        target.wire_node(
+            format!("{}.swiglu_mul", node.name),
+            kernels::bin_ops::metal_bin_op(Box::new(tract_core::ops::math::Mul)),
+            &[activated, gate],
+        )?[0]
+    } else {
+        activated
+    };
+
+    let route_values = target.wire_node(
+        format!("{}.w2", node.name),
+        ops::MetalRoutedQ40MatMul { input_mode: RoutedInputMode::RouteRows },
+        &[hidden, w2_device, route_token_ids, route_expert_ids],
+    )?[0];
+    let output = target.wire_node(
+        format!("{}.combine", node.name),
+        ops::MetalRoutedCombine,
+        &[x_shape_like, route_values, route_token_ids, route_weights],
+    )?[0];
+    let output = if facts[0].datum_type != f32::datum_type() {
+        target.wire_node(
+            format!("{}.out.cast", node.name),
+            metal_cast_new(facts[0].datum_type).unwrap(),
+            &[output],
+        )?[0]
+    } else {
+        output
+    };
+
+    Ok(Some(tvec![output]))
 }
 
 pub(crate) fn metal_cast_new(to: DatumType) -> Option<tract_gpu::ops::cast::GpuCast> {

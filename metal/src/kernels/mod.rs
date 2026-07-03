@@ -5,6 +5,7 @@ pub mod bin_ops;
 pub mod conv;
 pub mod element_wise;
 pub mod matmul;
+pub mod moe;
 pub mod nn;
 mod utils;
 
@@ -30,6 +31,7 @@ const BIN_OPS: &str = include_str!("bin_ops.metal");
 const NN_OPS: &str = include_str!("nn/nn_ops.metal");
 const CONV_OPS: &str = include_str!("conv.metal");
 const ELEMENT_WISE_OPS: &str = include_str!("element_wise.metal");
+const MOE_OPS: &str = include_str!("moe.metal");
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum LibraryContent<'a> {
@@ -48,6 +50,7 @@ pub enum LibraryName {
     ConvOps,
     NNOps,
     ElementWiseOps,
+    MoeOps,
     Ggml,
 }
 
@@ -61,6 +64,7 @@ impl LibraryName {
             Self::ConvOps => LibraryContent::Source(CONV_OPS),
             Self::NNOps => LibraryContent::Source(NN_OPS),
             Self::ElementWiseOps => LibraryContent::Source(ELEMENT_WISE_OPS),
+            Self::MoeOps => LibraryContent::Source(MOE_OPS),
             Self::MlxGemm => LibraryContent::Source(MLX_GEMM),
             Self::MlxGemv => LibraryContent::Source(MLX_GEMV),
             Self::Ggml => LibraryContent::Source(GGML),

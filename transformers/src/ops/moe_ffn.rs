@@ -575,6 +575,11 @@ pub struct RoutedMatMul {
     pub cache_weights: bool,
 }
 
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct RoutedQ40MatMul {
+    pub input_mode: RoutedInputMode,
+}
+
 #[derive(Clone, Debug)]
 struct RoutedMatMulWeightsCache {
     k_dim: usize,
@@ -1024,6 +1029,154 @@ impl TypedOp for RoutedMatMul {
         ensure!(inputs[3].rank() == 1, "RoutedMatMul route_expert_ids must be rank 1");
         let route_count = inputs[2].shape.to_tvec()[0].clone();
         let out_dim = inputs[1].shape.to_tvec()[2].clone();
+        Ok(tvec![f32::datum_type().fact(&[route_count, out_dim])])
+    }
+
+    as_op!();
+}
+
+impl RoutedQ40MatMul {
+    fn source_row(&self, route: usize, route_token_ids: &[i64]) -> TractResult<usize> {
+        match self.input_mode {
+            RoutedInputMode::TokenRows => {
+                ensure!(route_token_ids[route] >= 0, "route {route} has negative token id");
+                Ok(route_token_ids[route] as usize)
+            }
+            RoutedInputMode::RouteRows => Ok(route),
+        }
+    }
+
+    fn group_routes(
+        route_count: usize,
+        num_experts: usize,
+        route_expert_ids: &[i64],
+    ) -> TractResult<Vec<Vec<usize>>> {
+        let mut expert_routes = vec![Vec::new(); num_experts];
+        for (route, &eid) in route_expert_ids.iter().enumerate().take(route_count) {
+            ensure!(eid >= 0, "route {route} has negative expert id");
+            let eid = eid as usize;
+            ensure!(
+                eid < num_experts,
+                "route {route} references expert {eid}, but weights have {num_experts} experts"
+            );
+            expert_routes[eid].push(route);
+        }
+        Ok(expert_routes)
+    }
+}
+
+impl Op for RoutedQ40MatMul {
+    fn name(&self) -> StaticName {
+        "RoutedQ40MatMul".into()
+    }
+    op_as_typed_op!();
+}
+
+impl EvalOp for RoutedQ40MatMul {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+        // inputs: data [rows,K], Q4_0 weights [E,N,K], route_token_ids [R],
+        // route_expert_ids [R]. Weights are in the linear layout consumed by
+        // the Q40 kernels, unlike RoutedMatMul's canonical [E,K,N] contract.
+        ensure!(inputs.len() == 4);
+        let input_t = inputs[0].cast_to::<f32>()?.into_owned();
+        let weights_t = inputs[1].clone().into_tensor();
+        let route_token_ids_t = inputs[2].cast_to::<i64>()?.into_owned();
+        let route_expert_ids_t = inputs[3].cast_to::<i64>()?.into_owned();
+        let route_token_ids = plain_i64_slice(&route_token_ids_t, "route_token_ids")?;
+        let route_expert_ids = plain_i64_slice(&route_expert_ids_t, "route_expert_ids")?;
+        ensure!(route_token_ids.len() == route_expert_ids.len());
+        ensure!(input_t.rank() == 2, "RoutedQ40MatMul input must be [rows,K]");
+        ensure!(weights_t.rank() == 3, "RoutedQ40MatMul weights must be [E,N,K]");
+        ensure!(
+            weights_t.storage_as::<BlockQuantStorage>().is_some(),
+            "RoutedQ40MatMul weights must use block-quant storage"
+        );
+
+        let route_count = route_token_ids.len();
+        let num_experts = weights_t.shape()[0];
+        let n_dim = weights_t.shape()[1];
+        let k_dim = weights_t.shape()[2];
+        ensure!(input_t.shape()[1] == k_dim);
+        if self.input_mode == RoutedInputMode::RouteRows {
+            ensure!(
+                input_t.shape()[0] == route_count,
+                "route-row input has {} rows but route metadata has {} rows",
+                input_t.shape()[0],
+                route_count
+            );
+        }
+        if route_count == 0 {
+            return Ok(tvec![Tensor::zero_dt(f32::datum_type(), &[0, n_dim])?.into_tvalue()]);
+        }
+
+        let group_weights = (0..num_experts)
+            .map(|eid| block_quant_group_tensor(&weights_t, eid))
+            .collect::<TractResult<Vec<_>>>()?;
+        let plan = build_block_quant_routed_matmul(group_weights)?;
+        let expert_routes = Self::group_routes(route_count, num_experts, route_expert_ids)?;
+        let mut state = PreparedRoutedMatMulState::default();
+        let mut output = Tensor::zero_dt(f32::datum_type(), &[route_count, n_dim])?;
+
+        let input_plain = input_t.try_as_plain()?;
+        let input = input_plain.as_slice::<f32>()?;
+        let base = input.as_ptr();
+        let item_size = f32::datum_type().size_of() as isize;
+        let row_stride_bytes = input_t.strides()[0] * item_size;
+        let k_stride_bytes = input_t.strides()[1] * item_size;
+
+        for (eid, routes) in expert_routes.iter().enumerate() {
+            if routes.is_empty() {
+                continue;
+            }
+
+            let mut row_byte_offsets = Vec::with_capacity(routes.len());
+            for &route in routes {
+                let src = self.source_row(route, route_token_ids)?;
+                ensure!(
+                    src < input_t.shape()[0],
+                    "route {route} references input row {src}, but input has {} rows",
+                    input_t.shape()[0]
+                );
+                row_byte_offsets.push(row_stride_bytes * src as isize);
+            }
+
+            let mut expert_output =
+                unsafe { Tensor::uninitialized::<f32>(&[routes.len(), n_dim])? };
+            run_prepared_routed_matmul(
+                &plan,
+                eid,
+                RoutedInputRows::explicit(base, row_byte_offsets, k_stride_bytes),
+                &mut expert_output,
+                &mut state,
+            )?;
+
+            let expert_plain = expert_output.try_as_plain()?;
+            let expert = expert_plain.as_slice::<f32>()?;
+            let mut output_plain = output.try_as_plain_mut()?;
+            let output = output_plain.as_slice_mut::<f32>()?;
+            for (slot, &route) in routes.iter().enumerate() {
+                output[route * n_dim..(route + 1) * n_dim]
+                    .copy_from_slice(&expert[slot * n_dim..(slot + 1) * n_dim]);
+            }
+        }
+
+        Ok(tvec![output.into_tvalue()])
+    }
+}
+
+impl TypedOp for RoutedQ40MatMul {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        ensure!(inputs.len() == 4);
+        ensure!(inputs[0].rank() == 2, "RoutedQ40MatMul input must be rank 2");
+        ensure!(inputs[1].rank() == 3, "RoutedQ40MatMul weights must be rank 3 [E,N,K]");
+        ensure!(inputs[2].rank() == 1, "RoutedQ40MatMul route_token_ids must be rank 1");
+        ensure!(inputs[3].rank() == 1, "RoutedQ40MatMul route_expert_ids must be rank 1");
+        let route_count = inputs[2].shape.to_tvec()[0].clone();
+        let out_dim = inputs[1].shape.to_tvec()[1].clone();
         Ok(tvec![f32::datum_type().fact(&[route_count, out_dim])])
     }
 
