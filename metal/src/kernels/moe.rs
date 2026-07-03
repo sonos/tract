@@ -130,6 +130,10 @@ pub fn dispatch_routed_combine_f32(
     let token_count = token_count as u32;
     let d_model = d_model as u32;
     let pipeline = stream.load_pipeline(LibraryName::MoeOps, "routed_combine_f32")?;
+    let total = output.len() as u64;
+    let group_width =
+        (pipeline.max_total_threads_per_threadgroup() as u64).min(256).min(total).max(1);
+    let grid_width = total.div_ceil(group_width);
     let command_buffer = stream.command_buffer();
     command_buffer.encode(|encoder| {
         encoder.set_compute_pipeline_state(&pipeline);
@@ -141,8 +145,8 @@ pub fn dispatch_routed_combine_f32(
         encoder.set_slice(5, &[token_count]);
         encoder.set_slice(6, &[d_model]);
 
-        let grid_size = MTLSize { width: output.len() as NSUInteger, height: 1, depth: 1 };
-        let group_size = MTLSize { width: 1, height: 1, depth: 1 };
+        let grid_size = MTLSize { width: grid_width as NSUInteger, height: 1, depth: 1 };
+        let group_size = MTLSize { width: group_width as NSUInteger, height: 1, depth: 1 };
         encoder.dispatch_thread_groups(grid_size, group_size);
     });
     Ok(())
