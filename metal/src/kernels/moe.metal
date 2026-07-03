@@ -1,6 +1,94 @@
 #include <metal_stdlib>
 using namespace metal;
 
+enum RouteGateMode : uint {
+    RouteGateSoftmaxTopk = 0,
+    RouteGateSoftmaxAll = 1,
+    RouteGateSigmoid = 2,
+    RouteGateRaw = 3,
+};
+
+[[kernel]] void route_topk_f32(
+    device const float *x [[buffer(0)]],
+    device const float *wg [[buffer(1)]],
+    device long *route_token_ids [[buffer(2)]],
+    device long *route_expert_ids [[buffer(3)]],
+    device float *route_weights [[buffer(4)]],
+    constant uint &token_count [[buffer(5)]],
+    constant uint &d_model [[buffer(6)]],
+    constant uint &num_experts [[buffer(7)]],
+    constant uint &k [[buffer(8)]],
+    constant uint &gate_mode [[buffer(9)]],
+    uint token [[thread_position_in_grid]])
+{
+    constexpr uint MAX_TOPK = 16;
+    if (token >= token_count || k > MAX_TOPK) {
+        return;
+    }
+
+    float best_scores[MAX_TOPK];
+    int best_experts[MAX_TOPK];
+    for (uint i = 0; i < MAX_TOPK; i++) {
+        best_scores[i] = -INFINITY;
+        best_experts[i] = -1;
+    }
+
+    float max_all = -INFINITY;
+    for (uint expert = 0; expert < num_experts; expert++) {
+        float score = 0.0f;
+        for (uint d = 0; d < d_model; d++) {
+            score += x[token * d_model + d] * wg[expert * d_model + d];
+        }
+        max_all = max(max_all, score);
+
+        for (uint slot = 0; slot < k; slot++) {
+            if (score > best_scores[slot]) {
+                for (uint move = k - 1; move > slot; move--) {
+                    best_scores[move] = best_scores[move - 1];
+                    best_experts[move] = best_experts[move - 1];
+                }
+                best_scores[slot] = score;
+                best_experts[slot] = int(expert);
+                break;
+            }
+        }
+    }
+
+    float denom = 1.0f;
+    if (gate_mode == RouteGateSoftmaxTopk) {
+        float max_selected = best_scores[0];
+        denom = 0.0f;
+        for (uint slot = 0; slot < k; slot++) {
+            denom += exp(best_scores[slot] - max_selected);
+        }
+    } else if (gate_mode == RouteGateSoftmaxAll) {
+        denom = 0.0f;
+        for (uint expert = 0; expert < num_experts; expert++) {
+            float score = 0.0f;
+            for (uint d = 0; d < d_model; d++) {
+                score += x[token * d_model + d] * wg[expert * d_model + d];
+            }
+            denom += exp(score - max_all);
+        }
+    }
+
+    for (uint slot = 0; slot < k; slot++) {
+        const uint route = token * k + slot;
+        const float score = best_scores[slot];
+        route_token_ids[route] = long(token);
+        route_expert_ids[route] = long(best_experts[slot]);
+        if (gate_mode == RouteGateRaw) {
+            route_weights[route] = score;
+        } else if (gate_mode == RouteGateSigmoid) {
+            route_weights[route] = 1.0f / (1.0f + exp(-score));
+        } else if (gate_mode == RouteGateSoftmaxAll) {
+            route_weights[route] = exp(score - max_all) / denom;
+        } else {
+            route_weights[route] = exp(score - best_scores[0]) / denom;
+        }
+    }
+}
+
 [[kernel]] void routed_combine_f32(
     device const float *route_values [[buffer(0)]],
     device const long *route_token_ids [[buffer(1)]],

@@ -401,23 +401,62 @@ fn convert_q40_moe_ffn_to_metal(
         eprintln!("Metal Q40 MoE lowering: {}", node.name);
     }
 
-    let x_host = sync_outlet_if_required(
+    let x_device = sync_outlet_if_required(
         target,
-        format!("{}.route-x-to-cpu", node.name),
+        format!("{}.x.to-device", node.name),
         mapping[&node.inputs[0]],
-        DeviceSyncKind::ToHost,
+        DeviceSyncKind::ToDevice,
     )?;
-    let wg_host = sync_outlet_if_required(
+    let x_device = if facts[0].datum_type != f32::datum_type() {
+        target.wire_node(
+            format!("{}.x.cast-f32", node.name),
+            metal_cast_new(f32::datum_type()).unwrap(),
+            &[x_device],
+        )?[0]
+    } else {
+        x_device
+    };
+    let wg_device = sync_outlet_if_required(
         target,
-        format!("{}.route-wg-to-cpu", node.name),
+        format!("{}.wg.to-device", node.name),
         mapping[&node.inputs[1]],
-        DeviceSyncKind::ToHost,
+        DeviceSyncKind::ToDevice,
     )?;
-    let routes = target.wire_node(
-        format!("{}.route_topk", node.name),
-        RouteTopK { k: op.k, gate: op.gate.clone() },
-        &[x_host, wg_host],
-    )?;
+    let wg_device = if facts[1].datum_type != f32::datum_type() {
+        target.wire_node(
+            format!("{}.wg.cast-f32", node.name),
+            metal_cast_new(f32::datum_type()).unwrap(),
+            &[wg_device],
+        )?[0]
+    } else {
+        wg_device
+    };
+
+    let routes = if env_flag("TRACT_METAL_ENABLE_ROUTE_TOPK") {
+        target.wire_node(
+            format!("{}.route_topk", node.name),
+            ops::MetalRouteTopK { k: op.k, gate: op.gate.clone() },
+            &[x_device, wg_device],
+        )?
+    } else {
+        let x_host = sync_outlet_if_required(
+            target,
+            format!("{}.route-x-to-cpu", node.name),
+            mapping[&node.inputs[0]],
+            DeviceSyncKind::ToHost,
+        )?;
+        let wg_host = sync_outlet_if_required(
+            target,
+            format!("{}.route-wg-to-cpu", node.name),
+            mapping[&node.inputs[1]],
+            DeviceSyncKind::ToHost,
+        )?;
+        target.wire_node(
+            format!("{}.route_topk", node.name),
+            RouteTopK { k: op.k, gate: op.gate.clone() },
+            &[x_host, wg_host],
+        )?
+    };
     let route_token_ids = sync_outlet_if_required(
         target,
         format!("{}.route_token_ids.to-device", node.name),
@@ -437,21 +476,6 @@ fn convert_q40_moe_ffn_to_metal(
         DeviceSyncKind::ToDevice,
     )?;
 
-    let x_device = sync_outlet_if_required(
-        target,
-        format!("{}.x.to-device", node.name),
-        mapping[&node.inputs[0]],
-        DeviceSyncKind::ToDevice,
-    )?;
-    let x_device = if facts[0].datum_type != f32::datum_type() {
-        target.wire_node(
-            format!("{}.x.cast-f32", node.name),
-            metal_cast_new(f32::datum_type()).unwrap(),
-            &[x_device],
-        )?[0]
-    } else {
-        x_device
-    };
     let x_shape_like = x_device;
     let x_expert_input = if facts[0].rank() == 3 {
         target.wire_node(
