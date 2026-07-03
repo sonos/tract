@@ -368,7 +368,8 @@ pub struct TractCudaStream {
 
 impl TractCudaStream {
     fn new() -> TractResult<TractCudaStream> {
-        let stream = cuda_context().default_stream();
+        let stream =
+            cuda_context().new_stream().context("Could not create a per-thread CUDA stream")?;
         let cublas = CudaBlas::new(stream.clone()).context(
             "CudaBlas::new failed: libcublas loaded but the handle could not be created",
         )?;
