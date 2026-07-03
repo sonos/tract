@@ -38,7 +38,6 @@ aws s3 sync s3://tract-ci-builds/model "$CACHEDIR" --only-show-errors || echo "W
 endgroup
 
 touch metrics
-[ -e sizes ] && cat sizes >> metrics
 
 if [ "$(uname)" = "Linux" ] && [ -r /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor ] && [ "$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor)" = "userspace" ]; then
     F=$(printf '%s\n' $(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_available_frequencies) | sort -n | tail -1)

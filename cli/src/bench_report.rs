@@ -121,7 +121,6 @@ const TYPE_INFO: &[(&str, &str, &str)] = &[
     ("pp512", "prefill", "tok"),
     ("tg128", "decode", "tok"),
     ("bench_runtime", "bench wall", "s"),
-    ("binary_size", "binary size", "mem"),
 ];
 
 /// (model, label, variant, unit) for a metric key `kind.model.type.variant`.

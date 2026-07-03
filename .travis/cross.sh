@@ -36,7 +36,7 @@ case "$PLATFORM" in
         export RUSTC_TRIPLE=arm-unknown-linux-gnueabihf
         rustup target add $RUSTC_TRIPLE
         echo "[platforms.$PLATFORM]\nrustc_triple='$RUSTC_TRIPLE'\ntoolchain='$TOOLCHAIN'" > .dinghy.toml
-        cargo dinghy --platform $PLATFORM build --release -p tract-cli -p example-tensorflow-mobilenet-v2 -p tract-ffi
+        cargo dinghy --platform $PLATFORM build --release -p tract-cli -p tract-ffi
         ;;
 
     "aarch64-linux-android"|"armv7-linux-androideabi"|"i686-linux-android"|"x86_64-linux-android")
@@ -217,9 +217,8 @@ case "$PLATFORM" in
                 --no-default-features \
                 --features "onnx,tf,pulse,pulse-opl,tflite,transformers,extra,bench-suite,$TRACT_CUDA_FEATURE" \
                 -p tract-cli
-            cargo dinghy --platform $PLATFORM build --release -p example-tensorflow-mobilenet-v2
         else
-            cargo dinghy --platform $PLATFORM build --release -p tract-cli -p example-tensorflow-mobilenet-v2
+            cargo dinghy --platform $PLATFORM build --release -p tract-cli
         fi
         ;;
 

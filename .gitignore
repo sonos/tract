@@ -3,6 +3,7 @@ target
 *.rustfmt
 *.back
 examples/data
+/*.tar.gz
 .idea
 .cached/**
 flamegraph.svg
