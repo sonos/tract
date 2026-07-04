@@ -99,10 +99,17 @@ impl Expansion for Dft17 {
         }
         let length_input = if self.has_length_input { Some(1) } else { None };
         if self.axis >= 0 {
-            dft_rules(s, inputs, outputs, 1, length_input)
+            dft_rules(s, inputs, outputs, 1, self.onesided, length_input)
         } else {
             s.given(&inputs[0].rank, move |s, rank| {
-                dft_rules(s, inputs, outputs, (self.axis + rank) as usize, length_input)
+                dft_rules(
+                    s,
+                    inputs,
+                    outputs,
+                    (self.axis + rank) as usize,
+                    self.onesided,
+                    length_input,
+                )
             })
         }
     }
@@ -143,7 +150,7 @@ impl Expansion for Dft17 {
             let frame = fact.shape[axis].clone() / 2 + 1;
             wire = model.wire_node(
                 format!("{prefix}.onesided"),
-                tract_core::ops::array::Slice::new(2, 0, frame),
+                tract_core::ops::array::Slice::new(axis, 0, frame),
                 &wire,
             )?;
         }
@@ -185,15 +192,22 @@ impl Expansion for Dft {
             s.given(&inputs[axis_input].value, move |s, axis| {
                 let axis = axis.cast_to_scalar::<i64>()?;
                 if axis >= 0 {
-                    dft_rules(s, inputs, outputs, axis as usize, self.length_input)
+                    dft_rules(s, inputs, outputs, axis as usize, self.onesided, self.length_input)
                 } else {
                     s.given(&inputs[0].rank, move |s, rank| {
-                        dft_rules(s, inputs, outputs, (axis + rank) as usize, self.length_input)
+                        dft_rules(
+                            s,
+                            inputs,
+                            outputs,
+                            (axis + rank) as usize,
+                            self.onesided,
+                            self.length_input,
+                        )
                     })
                 }
             })
         } else {
-            dft_rules(s, inputs, outputs, 1, self.length_input)
+            dft_rules(s, inputs, outputs, 1, self.onesided, self.length_input)
         }
     }
 
@@ -228,6 +242,7 @@ fn dft_rules<'r, 'p: 'r>(
     inputs: &'p [TensorProxy],
     outputs: &'p [TensorProxy],
     axis: usize,
+    onesided: bool,
     length_input: Option<usize>,
 ) -> InferenceResult {
     s.given(&inputs[0].rank, move |s, rank| {
@@ -241,7 +256,12 @@ fn dft_rules<'r, 'p: 'r>(
     })?;
     if let Some(len_input) = length_input {
         s.given(&inputs[len_input].value[0], move |s, len| {
-            s.equals(len.to_dim(), &outputs[0].shape[axis])
+            let len = len.to_dim();
+            s.equals(&outputs[0].shape[axis], if onesided { len / 2 + 1 } else { len })
+        })?;
+    } else if onesided {
+        s.given(&inputs[0].shape[axis], move |s, len| {
+            s.equals(&outputs[0].shape[axis], len / 2 + 1)
         })?;
     } else {
         s.equals(&inputs[0].shape[axis], &outputs[0].shape[axis])?;
@@ -553,5 +573,32 @@ impl Expansion for StftWindow {
             self.window.generate(len, self.periodic)?.cast_to_dt(self.datum_type)?.into_owned();
         let wire = model.add_const(prefix, window)?;
         Ok(tvec!(wire))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // A onesided real DFT returns the first floor(N/2)+1 frequency bins along the
+    // signal axis, matching numpy.fft.rfft.
+    #[test]
+    fn dft_onesided() -> TractResult<()> {
+        let mut model = InferenceModel::default();
+        let source = model.add_source("x", f32::fact([1, 4, 1]).into())?;
+        let dft = model.wire_node(
+            "dft",
+            expand(Dft17 { axis: 1, inverse: false, onesided: true, has_length_input: false }),
+            &[source],
+        )?;
+        model.select_output_outlets(&dft)?;
+        let runnable = model.into_optimized()?.into_runnable()?;
+
+        let signal = tensor3(&[[[0f32], [1.], [2.], [3.]]]);
+        let output = runnable.run(tvec!(signal.into_tvalue()))?;
+
+        // numpy.fft.rfft([0, 1, 2, 3]) = [6, -2+2j, -2]
+        let expected = tensor3(&[[[6f32, 0.], [-2., 2.], [-2., 0.]]]);
+        output[0].close_enough(&expected, Approximation::Approximate)
     }
 }
