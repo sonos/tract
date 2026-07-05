@@ -366,7 +366,12 @@ impl AxisOp {
 
     pub fn change_shape(&self, shape: &mut ShapeFact, broadcasting: bool) -> TractResult<()> {
         match self.canonical().as_ref() {
-            Add(ix) => shape.insert_axis(*ix),
+            Add(ix) => {
+                if *ix > shape.rank() {
+                    bail!("Attempt to insert axis #{} on shape {:?}", ix, shape);
+                }
+                shape.insert_axis(*ix)
+            }
             Rm(ix) => {
                 if shape.rank() <= *ix {
                     bail!("Attempt to remove axis #{} on shape {:?}", ix, shape);
