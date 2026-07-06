@@ -343,3 +343,46 @@ model = "pocket-tts-en/mimi_decoder.onnx"
 archive = "pocket-tts-en.tar.gz"
 args = """--onnx-ignore-output-shapes --onnx-ignore-output-types --onnx-ignore-value-info
   -i 1,12,32,f32 -i 1,bool -i 1,512,6,f32 -i 1,bool -i 1,64,2,f32 -i 1,256,6,f32 -i 1,bool -i 1,256,2,f32 -i 1,bool -i 1,128,0,f32 -i 1,128,5,f32 -i 1,bool -i 1,128,2,f32 -i 1,bool -i 1,64,0,f32 -i 1,64,4,f32 -i 1,bool -i 1,64,2,f32 -i 1,bool -i 1,32,0,f32 -i 2,1,8,1000,64,f32 -i 1,i64 -i 1,i64 -i 2,1,8,1000,64,f32 -i 1,i64 -i 1,i64 -i 1,bool -i 1,512,16,f32 -i 1,bool -i 1,1,6,f32 -i 1,bool -i 1,64,2,f32 -i 1,bool -i 1,32,0,f32 -i 1,bool -i 1,512,2,f32 -i 1,bool -i 1,64,4,f32 -i 1,bool -i 1,128,2,f32 -i 1,bool -i 1,64,0,f32 -i 1,bool -i 1,128,5,f32 -i 1,bool -i 1,256,2,f32 -i 1,bool -i 1,128,0,f32 -i 1,bool -i 1,256,6,f32 -i 2,1,8,1000,64,f32 -i 1,i64 -i 1,i64 -i 2,1,8,1000,64,f32 -i 1,i64 -i 1,i64 -i 1,512,16,f32"""
+
+# --- DeepFilterNet3 (Rikorose/DeepFilterNet, MIT/Apache-2.0) — speech enhancement.
+# The three streaming submodels, symbolic time pinned at export to 100 frames
+# (1 s of audio at the 10 ms hop): encoder, ERB-mask decoder, deep-filter decoder.
+
+[[bench]]
+kind = "net"
+name = "dfn3-enc"
+variant = "1s"
+model = "dfn3/enc.onnx"
+archive = "dfn3.tar.gz"
+
+[[bench]]
+kind = "net"
+name = "dfn3-erb-dec"
+variant = "1s"
+model = "dfn3/erb_dec.onnx"
+archive = "dfn3.tar.gz"
+
+[[bench]]
+kind = "net"
+name = "dfn3-df-dec"
+variant = "1s"
+model = "dfn3/df_dec.onnx"
+archive = "dfn3.tar.gz"
+
+# --- DTLN (breizhn/DTLN, MIT) — dual-stage LSTM speech denoiser, one 8 ms frame
+# per call with LSTM state threaded through graph I/O (external-state pattern).
+# model_2's free batch dim on outputs is pinned to 1 (tf2onnx export artifact).
+
+[[bench]]
+kind = "net"
+name = "dtln-stage1"
+variant = "frame"
+model = "dtln/model_1.onnx"
+archive = "dtln.tar.gz"
+
+[[bench]]
+kind = "net"
+name = "dtln-stage2"
+variant = "frame"
+model = "dtln/model_2_fixed.onnx"
+archive = "dtln.tar.gz"
