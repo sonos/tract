@@ -404,6 +404,36 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn flash_sdpa_eval_f16_matches_f32() -> TractResult<()> {
+        let (b, hq, hkv, sq, sk, d) = (1usize, 4, 2, 1, 33, 8);
+        let qv = rng(b * hq * sq * d, 4);
+        let kv = rng(b * hkv * sk * d, 5);
+        let vv = rng(b * hkv * sk * d, 6);
+        let q = Tensor::from_shape(&[b, hq, sq, d], &qv)?;
+        let k = Tensor::from_shape(&[b, hkv, sk, d], &kv)?;
+        let v = Tensor::from_shape(&[b, hkv, sk, d], &vv)?;
+        let op = FlashSdpaOp { causal: true, scale: None };
+        let f32_out = op
+            .eval(tvec!(q.clone().into_tvalue(), k.clone().into_tvalue(), v.clone().into_tvalue()))?
+            .remove(0);
+        let (q16, k16, v16) = (
+            q.cast_to::<f16>()?.into_owned(),
+            k.cast_to::<f16>()?.into_owned(),
+            v.cast_to::<f16>()?.into_owned(),
+        );
+        let f16_out =
+            op.eval(tvec!(q16.into_tvalue(), k16.into_tvalue(), v16.into_tvalue()))?.remove(0);
+        ensure!(f16_out.datum_type() == f16::datum_type());
+        let f16_as_f32 = f16_out.cast_to::<f32>()?;
+        let got = f32_out.to_plain_array_view::<f32>()?;
+        let via_f16 = f16_as_f32.to_plain_array_view::<f32>()?;
+        let max_abs =
+            got.iter().zip(via_f16.iter()).map(|(x, y)| (x - y).abs()).fold(0f32, f32::max);
+        ensure!(max_abs < 5e-3, "f16 flash eval diverges from f32: {max_abs}");
+        Ok(())
+    }
+
     // A/B the P·V step (tile GEMM vs strided per-column dot) across the microbench
     // shape AND the real Llama-3.2-1B PP512 prefill shape (causal, GQA 32q/8kv).
     //   cargo test -p tract-transformers --release bench_flash_sdpa_pv -- --ignored --nocapture
