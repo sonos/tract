@@ -299,3 +299,47 @@ kind = "llm"
 name = "qwen3-1_7B-q40ef16-541"
 model = "Qwen3-1.7B-q40ef16.541.nnef.tgz"
 runtimes = ["metal", "cuda"]
+
+# --- Pocket TTS (Kyutai, CC-BY-4.0; 100M-param CPU TTS, 24 kHz / 12.5 Hz frames).
+# ONNX export with explicit KV-cache states rewritten shape-static so the streaming
+# step position is a runtime input. decode = one 80 ms frame of the flow LM;
+# prefill25 = one 25-token text chunk; flow = one Euler step of the latent flow net;
+# mimi decoder = a 12-frame (960 ms) chunk. Random i64 inputs cast to 0: a valid
+# stream position, and the graphs are full-window so compute is position-independent.
+
+[[bench]]
+kind = "net"
+name = "pocket-tts-flow-lm"
+variant = "decode"
+model = "pocket-tts-en/flow_lm_main_static.onnx"
+archive = "pocket-tts-en.tar.gz"
+args = """--onnx-ignore-output-shapes --onnx-ignore-output-types --onnx-ignore-value-info
+  -i 1,1,32,f32 -i 1,0,1024,f32
+  -i 2,1,1000,16,64,f32 -i 0,f32 -i 1,i64 -i 2,1,1000,16,64,f32 -i 0,f32 -i 1,i64 -i 2,1,1000,16,64,f32 -i 0,f32 -i 1,i64 -i 2,1,1000,16,64,f32 -i 0,f32 -i 1,i64 -i 2,1,1000,16,64,f32 -i 0,f32 -i 1,i64 -i 2,1,1000,16,64,f32 -i 0,f32 -i 1,i64"""
+
+[[bench]]
+kind = "net"
+name = "pocket-tts-flow-lm"
+variant = "prefill25"
+model = "pocket-tts-en/flow_lm_main_static.onnx"
+archive = "pocket-tts-en.tar.gz"
+args = """--onnx-ignore-output-shapes --onnx-ignore-output-types --onnx-ignore-value-info
+  -i 1,0,32,f32 -i 1,25,1024,f32
+  -i 2,1,1000,16,64,f32 -i 0,f32 -i 1,i64 -i 2,1,1000,16,64,f32 -i 0,f32 -i 1,i64 -i 2,1,1000,16,64,f32 -i 0,f32 -i 1,i64 -i 2,1,1000,16,64,f32 -i 0,f32 -i 1,i64 -i 2,1,1000,16,64,f32 -i 0,f32 -i 1,i64 -i 2,1,1000,16,64,f32 -i 0,f32 -i 1,i64"""
+
+[[bench]]
+kind = "net"
+name = "pocket-tts-flow-net"
+variant = "euler1"
+model = "pocket-tts-en/flow_lm_flow.onnx"
+archive = "pocket-tts-en.tar.gz"
+args = "--onnx-ignore-output-shapes -i 1,1024,f32 -i 1,1,f32 -i 1,1,f32 -i 1,32,f32"
+
+[[bench]]
+kind = "net"
+name = "pocket-tts-mimi-decoder"
+variant = "chunk12"
+model = "pocket-tts-en/mimi_decoder.onnx"
+archive = "pocket-tts-en.tar.gz"
+args = """--onnx-ignore-output-shapes --onnx-ignore-output-types --onnx-ignore-value-info
+  -i 1,12,32,f32 -i 1,bool -i 1,512,6,f32 -i 1,bool -i 1,64,2,f32 -i 1,256,6,f32 -i 1,bool -i 1,256,2,f32 -i 1,bool -i 1,128,0,f32 -i 1,128,5,f32 -i 1,bool -i 1,128,2,f32 -i 1,bool -i 1,64,0,f32 -i 1,64,4,f32 -i 1,bool -i 1,64,2,f32 -i 1,bool -i 1,32,0,f32 -i 2,1,8,1000,64,f32 -i 1,i64 -i 1,i64 -i 2,1,8,1000,64,f32 -i 1,i64 -i 1,i64 -i 1,bool -i 1,512,16,f32 -i 1,bool -i 1,1,6,f32 -i 1,bool -i 1,64,2,f32 -i 1,bool -i 1,32,0,f32 -i 1,bool -i 1,512,2,f32 -i 1,bool -i 1,64,4,f32 -i 1,bool -i 1,128,2,f32 -i 1,bool -i 1,64,0,f32 -i 1,bool -i 1,128,5,f32 -i 1,bool -i 1,256,2,f32 -i 1,bool -i 1,128,0,f32 -i 1,bool -i 1,256,6,f32 -i 2,1,8,1000,64,f32 -i 1,i64 -i 1,i64 -i 2,1,8,1000,64,f32 -i 1,i64 -i 1,i64 -i 1,512,16,f32"""
