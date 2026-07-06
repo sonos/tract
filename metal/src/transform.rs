@@ -647,12 +647,8 @@ fn convert_matmul_to_metal(
         && matches!(resolved_gemm_impl, MetalGemmImplKind::Mlx | MetalGemmImplKind::Mfa)
         && input_facts.iter().any(|fact| fact.datum_type == DatumType::F16)
     {
-        if gemm_impl.is_some() {
-            bail!(
-                "{resolved_gemm_impl:?} cannot satisfy f32-output matmul from f16 inputs for {}",
-                node.name
-            );
-        }
+        // Mlx and Mfa only produce homogeneous f16 output here. Use Ggml for
+        // PrefixMatMul nodes that require f32 output from f16 inputs.
         resolved_gemm_impl = MetalGemmImplKind::Ggml;
     }
     if matches!(resolved_gemm_impl, MetalGemmImplKind::Mlx | MetalGemmImplKind::Mfa)
