@@ -28,11 +28,18 @@ pub trait InferenceOp: Op {
         let (infered_inputs, infered_outputs, observed) =
             self.infer_facts(inputs, outputs, observed).context("Infering facts")?;
 
-        if self.is_stateless() && infered_inputs.iter().all(|i| i.value.is_concrete()) {
-            let input_values = infered_inputs
+        if self.is_stateless()
+            && infered_inputs.len() > 0
+            && let Some(input_values) = infered_inputs
                 .iter()
-                .map(|i| i.value.concretize().unwrap().into_tvalue())
-                .collect(); // checked
+                .map(|i| {
+                    i.value
+                        .concretize()
+                        .filter(|t| t.volume() < 16 && t.is_plain())
+                        .map(|t| t.into_tvalue())
+                })
+                .collect::<Option<TVec<_>>>()
+        {
             match self.eval(input_values) {
                 Ok(values) => {
                     let output_values = values
