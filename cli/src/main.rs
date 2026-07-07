@@ -265,6 +265,8 @@ fn main() -> TractResult<()> {
                 .arg(arg!(--"no-fetch" "Do not fetch models; use the cache as-is"))
                 .arg(arg!(--"skip-cpu" "Skip CPU runs: drop backend-less (net) benches and the cpu backend of the rest. For GPU-only devices whose CPU is redundant with another arm64/x86 box."))
                 .arg(arg!(--"skip-backends" "Run only the plain-CPU (backend-less) net benches, dropping every bench that declares a backend sweep (the LLM + accelerator/large-model suite). For small embedded CPU targets."))
+                .arg(arg!(--"base-url" [URL] "Model base URL (sets the TRACT_BENCH_BASE_URL knob); overrides the manifest. Pass '${VAR}' to have a remote runner expand it from its own config, out of band."))
+                .arg(arg!(--"cpu-governor" [GOV] "CPU scaling governor to pin before benching (sets the TRACT_BENCH_CPU_GOVERNOR knob), e.g. performance."))
                 .arg(arg!(--expectations [PATH] "Pre-computed expectations file; re-run benches that would show a PR red"))
                 .arg(arg!(--"retry-max" [N] "Max re-runs of an out-of-threshold bench (default: 2)"))
                 .arg(arg!(--"second-pass-max" [N] "Re-run survivors after the whole suite only when at most N remain red (default: 2)"))

@@ -200,8 +200,156 @@ jobs:
           name: bench-result-${{ matrix.target }}
           path: result
 
+  # --- ARM embedded "dinghy target" fleet (opt-in via the BENCH_DINGHY_ENABLED repo variable) ---
+  # A dinghy target is an embedded board that cannot host a runner or build. A sidekick runner
+  # receives the static musl CLI, dispatches the run onto the board over dinghy's ssh transport, and
+  # captures every byte locally. Everything device-specific — address, working dir, OS, the model mirror
+  # URL and cpu governor — lives in the sidekick's own .dinghy.toml (ssh device coords + remote_shell_vars)
+  # and is expanded into the run out of band, so none of it reaches this file or the public run log.
+  # Gated off until a sidekick runner is registered, so a missing self-hosted runner cannot wedge PRs.
+
+  build-dinghy:
+    needs: prepare
+    if: ${{ needs.prepare.outputs.enabled == 'true' && vars.BENCH_DINGHY_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - triple: aarch64-unknown-linux-musl
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ needs.prepare.outputs.ref }}
+          persist-credentials: false
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          key: ${{ matrix.triple }}
+          cache-directories: .cross-cache/target
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      # Static musl CLI for the board: bench-suite on, cuda/tflite off; SKIP_QEMU_TEST builds only.
+      - run: >-
+          SKIP_QEMU_TEST=skip SUDO=sudo CARGO_TARGET_DIR=.cross-cache/target
+          TRACT_CLI_FEATURES=onnx,tf,pulse,pulse-opl,transformers,extra,bench-suite
+          PLATFORM=${{ matrix.triple }} ./.travis/cross.sh
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: tract-cli-${{ matrix.triple }}
+          path: .cross-cache/target/${{ matrix.triple }}/release/tract
+
+  bench-dinghy:
+    needs: [ prepare, build-dinghy ]
+    if: ${{ needs.prepare.outputs.enabled == 'true' && vars.BENCH_DINGHY_ENABLED == 'true' }}
+    # One sidekick runner per target (label per board), so boards bench in parallel.
+    runs-on: ${{ matrix.runner }}
+    # Bound the run so an offline/stuck target can't hang the PR report (which fans this in).
+    timeout-minutes: 120
+    concurrency:
+      group: bench-dinghy-${{ matrix.device }}
+      cancel-in-progress: false
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - device: cortex-a55
+            triple: aarch64-unknown-linux-musl
+            runner: dinghy-sidekick-a55   # the self-hosted runner that dispatches to this board
+            dinghy_target: dinghy-a55     # opaque alias -> the sidekick-local .dinghy.toml ssh_devices key
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ needs.prepare.outputs.ref }}
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: tract-cli-${{ matrix.triple }}
+          path: tract-cli
+      - name: Bench on the dinghy target
+        env:
+          DINGHY_TARGET: ${{ matrix.dinghy_target }}
+          DEVICE: ${{ matrix.device }}
+          TRIPLE: ${{ matrix.triple }}
+          SAMPLES: ${{ github.event_name != 'pull_request' && '--samples 5' || '' }}
+        run: |
+          chmod +x tract-cli/tract
+          mkdir -p result
+          # Everything the board / dinghy / ssh emit is captured to files here and never re-echoed:
+          # the public run log must not leak the board's address, working dir or OS. bench-suite emits
+          # metric JSONL on stdout and all progress on stderr. The single-quoted '${...}' args reach
+          # dinghy verbatim and are expanded from the ssh device's remote_shell_vars (sidekick-local),
+          # so the model mirror URL and governor stay local and never hit this file or the run log.
+          if CARGO_PKG_NAME=tract cargo-dinghy -d "$DINGHY_TARGET" dinghy runner \
+               ./tract-cli/tract bench-suite \
+               --manifest .travis/benches.toml --skip-backends --output - $SAMPLES \
+               --base-url '${TRACT_BENCH_BASE_URL}' --cpu-governor '${TRACT_BENCH_CPU_GOVERNOR}' \
+               >captured.out 2>captured.err
+          then
+            grep '"metric"' captured.out > result/metrics || true
+          else
+            echo "::error::bench-dinghy: run failed on the target (details in the sidekick-local log)"
+            exit 1
+          fi
+          test -s result/metrics || { echo "::error::bench-dinghy: no metrics captured"; exit 1; }
+          printf '{"device":"%s","triple":"%s"}\n' "$DEVICE" "$TRIPLE" > result/meta.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: bench-result-${{ matrix.device }}
+          path: result
+
+  # Nightly only: append the dinghy target's row to bench-data. The board can't run the append tool,
+  # so a hosted job does it with the x86 CLI (bench-append is arch-agnostic JSON) reading the JSONL result.
+  append-dinghy:
+    needs: [ prepare, build, bench-dinghy ]
+    if: ${{ github.event_name != 'pull_request' && needs.prepare.outputs.enabled == 'true' && vars.BENCH_DINGHY_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - device: cortex-a55
+            triple: aarch64-unknown-linux-musl
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: tract-cli-x86_64-unknown-linux-gnu
+          path: tract-cli
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: bench-result-${{ matrix.device }}
+          path: result
+      # zizmor: ignore[artipacked] credentials are needed to push the row back to bench-data;
+      # this checkout is never uploaded as an artifact.
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: bench-data
+          path: bench-data
+          fetch-depth: 1
+      - name: Append and push
+        env:
+          DEVICE: ${{ matrix.device }}
+          TRIPLE: ${{ matrix.triple }}
+          REF: ${{ needs.prepare.outputs.ref }}
+          DAY: ${{ needs.prepare.outputs.day }}
+        run: |
+          chmod +x tract-cli/tract
+          tract-cli/tract bench-append --metrics result/metrics --out bench-data \
+            --triple "$TRIPLE" --device "$DEVICE" --day "$DAY"
+          cd bench-data
+          git config user.name "tract-ci"
+          git config user.email "tract-ci@users.noreply.github.com"
+          git add -A
+          git commit -m "bench: $DEVICE $DAY ${REF:0:9}"
+          for i in 1 2 3 4 5; do
+            git push origin HEAD:bench-data && exit 0
+            git fetch origin bench-data
+            git rebase origin/bench-data || git rebase --abort
+          done
+          echo "push failed after retries" >&2; exit 1
+
   report:
-    needs: [ prepare, build, bench ]
+    needs: [ prepare, build, bench, bench-dinghy ]
     # !cancelled() (not always()) so a superseded/cancelled bench doesn't produce a vacuous
     # "no regressions" comment; bench-report writes no file when there's nothing to compare.
     if: ${{ !cancelled() && github.event_name == 'pull_request' && needs.prepare.outputs.enabled == 'true' }}

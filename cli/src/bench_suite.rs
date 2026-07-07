@@ -170,6 +170,16 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
     std::fs::create_dir_all(&cache_dir)?;
 
     let output = matches.get_one::<String>("output").map(String::as_str).unwrap_or("metrics");
+    // A --base-url / --cpu-governor flag sets its knob's override (highest priority). The flag is how
+    // a remote (dinghy) run feeds these in: passed as `${VAR}`, expanded from the device config on the
+    // dispatching host, so a private mirror URL never reaches the command line or the run log.
+    for (flag, knob) in
+        [("base-url", &TRACT_BENCH_BASE_URL), ("cpu-governor", &TRACT_BENCH_CPU_GOVERNOR)]
+    {
+        if let Some(v) = matches.get_one::<String>(flag).filter(|s| !s.is_empty()) {
+            knob.set(Some(v.clone()));
+        }
+    }
     let base_url = TRACT_BENCH_BASE_URL
         .get()
         .filter(|s| !s.is_empty())
