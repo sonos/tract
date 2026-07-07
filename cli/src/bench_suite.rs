@@ -163,6 +163,12 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
     std::fs::create_dir_all(&cache_dir)?;
 
     let output = matches.get_one::<String>("output").map(String::as_str).unwrap_or("metrics");
+    // Model source: the manifest's public bucket by default. `TRACT_BENCH_BASE_URL` overrides it
+    // (out of band, never on the command line) so a private mirror stays out of committed config.
+    let base_url = std::env::var("TRACT_BENCH_BASE_URL")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| manifest.base_url.clone());
     let no_fetch = matches.get_flag("no-fetch");
     let skip_cpu = matches.get_flag("skip-cpu");
     let filter = matches.get_one::<String>("filter").map(String::as_str);
@@ -212,14 +218,14 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
         }
 
         if !no_fetch {
-            if let Err(e) = fetch(&manifest.base_url, &cache_dir, bench) {
+            if let Err(e) = fetch(&base_url, &cache_dir, bench) {
                 eprintln!("  !! {}: fetch failed: {e:#}", bench.name);
                 continue;
             }
         }
 
         for (backend, variant) in runs {
-            println!("  {} {}", bench.name, variant);
+            eprintln!("  {} {}", bench.name, variant);
             let run = || run_one(&exe, &cache_dir, bench, backend, &variant);
             let outcome = if samples > 1 {
                 bench_median(run, samples)
@@ -249,7 +255,7 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
     let mut metrics: Vec<(String, f64)> = results.into_iter().flat_map(|r| r.metrics).collect();
     metrics.push(("bundle.bench_runtime".to_string(), start.elapsed().as_secs() as f64));
     write_metrics(output, &metrics)?;
-    println!("wrote {} metrics to {output}", metrics.len());
+    eprintln!("wrote {} metrics to {output}", metrics.len());
     Ok(())
 }
 
@@ -310,7 +316,7 @@ fn bench_run(
         let mut tries = 0;
         while tries < retry_max && out_of_threshold(&best, expectations) {
             tries += 1;
-            println!("    retry {tries} (off expectation)");
+            eprintln!("    retry {tries} (off expectation)");
             match run() {
                 Ok(cand) => merge_best(&mut best, cand),
                 Err(e) => eprintln!("    retry {tries} failed: {e:#}"),
@@ -351,7 +357,7 @@ fn second_pass(
         return;
     }
     if red.len() > second_pass_max {
-        println!(
+        eprintln!(
             "second pass skipped: {} reds (> {second_pass_max}) is not a transient disruption",
             red.len()
         );
@@ -361,7 +367,7 @@ fn second_pass(
         let (bench_idx, backend, variant) =
             (results[i].bench_idx, results[i].backend, results[i].variant.clone());
         let bench = &manifest.benches[bench_idx];
-        println!("  second pass: {} {}", bench.name, variant);
+        eprintln!("  second pass: {} {}", bench.name, variant);
         let run = || run_one(exe, cache_dir, bench, backend, &variant);
         match bench_run(run, expectations, retry_max) {
             Ok(cand) => {
@@ -454,7 +460,7 @@ fn expectations(matches: &clap::ArgMatches) -> TractResult<HashMap<String, (f64,
     let triple = get("triple").context("--triple is required with --bench-data")?;
     let device = get("device").context("--device is required with --bench-data")?;
     let rows = crate::bench_expectations::compute(bench_data, thresholds, triple, device)?;
-    println!("expectations: {} gated metrics from {bench_data}/{triple}/{device}", rows.len());
+    eprintln!("expectations: {} gated metrics from {bench_data}/{triple}/{device}", rows.len());
     Ok(rows.into_iter().map(|(m, e, t)| (m, (e, t))).collect())
 }
 
@@ -474,7 +480,17 @@ fn load_expectations(path: &str) -> TractResult<HashMap<String, (f64, f64)>> {
     Ok(out)
 }
 
+/// Write metrics as `key value` lines to `path`, or as one JSON object per line to stdout
+/// when `path` is `-`. The stdout form lets a run on a remote target return its metrics over
+/// the captured stdout stream (stderr carries all progress), with no file to pull back.
 fn write_metrics(path: &str, metrics: &[(String, f64)]) -> TractResult<()> {
+    if path == "-" {
+        let mut out = std::io::stdout().lock();
+        for (k, v) in metrics {
+            writeln!(out, "{}", serde_json::json!({ "metric": k, "value": v }))?;
+        }
+        return Ok(out.flush()?);
+    }
     let mut file = std::fs::File::create(path)?;
     for (k, v) in metrics {
         writeln!(file, "{k} {v}")?;
@@ -503,7 +519,8 @@ fn fetch(base_url: &str, cache_dir: &Path, bench: &Bench) -> TractResult<()> {
 
 fn download(base_url: &str, name: &str, dest: &Path) -> TractResult<()> {
     let url = format!("{}/{}", base_url.trim_end_matches('/'), name);
-    println!("  fetching {url}");
+    // Log the relative name only: the base URL may be a private mirror we keep out of logs.
+    eprintln!("  fetching {name}");
     let mut resp = crate::params::http_client()?.get(&url).send()?;
     ensure!(resp.status().is_success(), "GET {url} -> {}", resp.status());
     if let Some(parent) = dest.parent() {
