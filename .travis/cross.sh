@@ -232,6 +232,11 @@ case "$PLATFORM" in
                 --no-default-features \
                 --features "onnx,tf,pulse,pulse-opl,tflite,transformers,extra,bench-suite,$TRACT_CUDA_FEATURE" \
                 -p tract-cli
+        elif [ -n "$TRACT_CLI_FEATURES" ]
+        then
+            cargo dinghy --platform $PLATFORM build --release \
+                --no-default-features --features "$TRACT_CLI_FEATURES" \
+                -p tract-cli
         else
             cargo dinghy --platform $PLATFORM build --release -p tract-cli
         fi

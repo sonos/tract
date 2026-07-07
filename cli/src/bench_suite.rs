@@ -176,6 +176,7 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
         .unwrap_or_else(|| manifest.base_url.clone());
     let no_fetch = matches.get_flag("no-fetch");
     let skip_cpu = matches.get_flag("skip-cpu");
+    let skip_backends = matches.get_flag("skip-backends");
     let filter = matches.get_one::<String>("filter").map(String::as_str);
 
     let expectations = expectations(matches)?;
@@ -195,6 +196,9 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
 
     for (bench_idx, bench) in manifest.benches.iter().enumerate() {
         if filter.is_some_and(|f| !bench.name.contains(f)) {
+            continue;
+        }
+        if skip_backends && !bench.backends.is_empty() {
             continue;
         }
 
