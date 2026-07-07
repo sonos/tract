@@ -139,6 +139,13 @@ struct RunResult {
     metrics: Vec<(String, f64)>,
 }
 
+tract_core::declare_knob!(
+    TRACT_BENCH_BASE_URL,
+    Option<String>,
+    None,
+    "Override the manifest's model base URL (e.g. a private mirror), resolved out of band."
+);
+
 pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
     let manifest_path =
         matches.get_one::<String>("manifest").map(String::as_str).unwrap_or("benches.toml");
@@ -163,10 +170,8 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
     std::fs::create_dir_all(&cache_dir)?;
 
     let output = matches.get_one::<String>("output").map(String::as_str).unwrap_or("metrics");
-    // Model source: the manifest's public bucket by default. `TRACT_BENCH_BASE_URL` overrides it
-    // (out of band, never on the command line) so a private mirror stays out of committed config.
-    let base_url = std::env::var("TRACT_BENCH_BASE_URL")
-        .ok()
+    let base_url = TRACT_BENCH_BASE_URL
+        .get()
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| manifest.base_url.clone());
     let no_fetch = matches.get_flag("no-fetch");
@@ -534,10 +539,17 @@ fn download(base_url: &str, name: &str, dest: &Path) -> TractResult<()> {
     Ok(())
 }
 
+tract_core::declare_knob!(
+    TRACT_BENCH_GPU_CLOCK,
+    Option<String>,
+    None,
+    "GPU graphics clock (MHz) to lock before benching; unset locks the top supported clock."
+);
+
 /// Pins the GPU graphics clock for the run and resets it on drop. The cuda runner
 /// free-boosts from idle, adding session-to-session variance to evaltime that the
 /// in-run retry can't damp. Best-effort: needs privilege, no-op without nvidia-smi.
-/// `BENCH_GPU_CLOCK` (MHz) overrides the default (the top supported clock).
+/// `TRACT_BENCH_GPU_CLOCK` (MHz) overrides the default (the top supported clock).
 struct GpuClock {
     locked: bool,
 }
@@ -553,7 +565,7 @@ impl GpuClock {
                 String::from_utf8_lossy(&out.stdout).lines().next().map(|l| l.trim().to_string())
             })?
         };
-        let clock = std::env::var("BENCH_GPU_CLOCK").ok().filter(|c| !c.is_empty()).or_else(query);
+        let clock = TRACT_BENCH_GPU_CLOCK.get().filter(|c| !c.is_empty()).or_else(query);
         let Some(clock) = clock.filter(|c| !c.is_empty()) else {
             return GpuClock { locked: false };
         };
@@ -586,8 +598,15 @@ impl Drop for GpuClock {
     }
 }
 
-/// Opt-in CPU determinism pin, the governor twin of [`GpuClock`]. When `BENCH_CPU_GOVERNOR` names
-/// a governor (e.g. `performance`), set it on every CPU (best effort; needs privilege); for
+tract_core::declare_knob!(
+    TRACT_BENCH_CPU_GOVERNOR,
+    Option<String>,
+    None,
+    "CPU scaling governor to pin on every CPU before benching (e.g. `performance`); unset leaves the host untouched."
+);
+
+/// Opt-in CPU determinism pin, the governor twin of [`GpuClock`]. When `TRACT_BENCH_CPU_GOVERNOR`
+/// names a governor (e.g. `performance`), set it on every CPU (best effort; needs privilege); for
 /// `userspace`, also pin each CPU to its top available frequency. Unset/empty or non-Linux: no
 /// change, so a runner that does not request it (the hosted boxes) is left untouched. A bench
 /// target requests it out of band — via the dinghy device's `remote_shell_vars` — never in repo.
@@ -595,7 +614,7 @@ fn set_governor() {
     if !cfg!(target_os = "linux") {
         return;
     }
-    let Some(governor) = std::env::var("BENCH_CPU_GOVERNOR").ok().filter(|g| !g.is_empty()) else {
+    let Some(governor) = TRACT_BENCH_CPU_GOVERNOR.get().filter(|g| !g.is_empty()) else {
         return;
     };
     let Ok(cpus) = std::fs::read_dir("/sys/devices/system/cpu") else { return };
