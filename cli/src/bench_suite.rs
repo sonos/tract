@@ -182,7 +182,7 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
         matches.get_one::<String>("samples").map(|s| s.parse()).transpose()?.unwrap_or(0);
 
     let exe = std::env::current_exe()?;
-    set_governor_max();
+    set_governor();
     let _gpu_clock = GpuClock::pin(); // reset on drop, when the suite finishes
 
     let start = Instant::now();
@@ -586,20 +586,32 @@ impl Drop for GpuClock {
     }
 }
 
-/// On Linux with a `userspace` governor, pin cpu0 to its top available frequency
-/// (best effort; needs privilege). Mirrors the shell bundle's determinism step.
-fn set_governor_max() {
+/// Opt-in CPU determinism pin, the governor twin of [`GpuClock`]. When `BENCH_CPU_GOVERNOR` names
+/// a governor (e.g. `performance`), set it on every CPU (best effort; needs privilege); for
+/// `userspace`, also pin each CPU to its top available frequency. Unset/empty or non-Linux: no
+/// change, so a runner that does not request it (the hosted boxes) is left untouched. A bench
+/// target requests it out of band — via the dinghy device's `remote_shell_vars` — never in repo.
+fn set_governor() {
     if !cfg!(target_os = "linux") {
         return;
     }
-    let base = "/sys/devices/system/cpu/cpu0/cpufreq";
-    let governor = std::fs::read_to_string(format!("{base}/scaling_governor"));
-    if governor.map(|g| g.trim() == "userspace").unwrap_or(false) {
-        if let Ok(freqs) = std::fs::read_to_string(format!("{base}/scaling_available_frequencies"))
-        {
-            if let Some(max) = freqs.split_whitespace().filter_map(|f| f.parse::<u64>().ok()).max()
-            {
-                let _ = std::fs::write(format!("{base}/scaling_setspeed"), max.to_string());
+    let Some(governor) = std::env::var("BENCH_CPU_GOVERNOR").ok().filter(|g| !g.is_empty()) else {
+        return;
+    };
+    let Ok(cpus) = std::fs::read_dir("/sys/devices/system/cpu") else { return };
+    for cpu in cpus.flatten() {
+        let base = cpu.path().join("cpufreq");
+        if !base.join("scaling_governor").exists() {
+            continue;
+        }
+        let _ = std::fs::write(base.join("scaling_governor"), &governor);
+        if governor == "userspace" {
+            if let Ok(freqs) = std::fs::read_to_string(base.join("scaling_available_frequencies")) {
+                if let Some(max) =
+                    freqs.split_whitespace().filter_map(|f| f.parse::<u64>().ok()).max()
+                {
+                    let _ = std::fs::write(base.join("scaling_setspeed"), max.to_string());
+                }
             }
         }
     }
