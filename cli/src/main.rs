@@ -260,7 +260,7 @@ fn main() -> TractResult<()> {
                 .long_about("Run a TOML manifest of benches, one fresh child process each.")
                 .arg(arg!(--manifest [PATH] "Bench manifest (default: benches.toml)"))
                 .arg(arg!(--"cache-dir" [PATH] "Model cache dir (default: $CACHEDIR or ~/.cache/tract-ci-minion-models)"))
-                .arg(arg!(--output [PATH] "Metrics output file (default: metrics)"))
+                .arg(arg!(--output [PATH] "Metrics output file (default: metrics); '-' emits JSONL on stdout"))
                 .arg(arg!(--filter [SUBSTR] "Only run benches whose name contains SUBSTR"))
                 .arg(arg!(--"no-fetch" "Do not fetch models; use the cache as-is"))
                 .arg(arg!(--"skip-cpu" "Skip CPU runs: drop backend-less (net) benches and the cpu backend of the rest. For GPU-only devices whose CPU is redundant with another arm64/x86 box."))
