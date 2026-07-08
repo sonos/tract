@@ -306,6 +306,25 @@ impl TypedOp for QuantizedDynKeyValueCache {
         );
         Ok(tvec!(fact))
     }
+
+    fn cost(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
+        let values_per_token = self
+            .past_sequence_fact
+            .shape
+            .iter()
+            .enumerate()
+            .filter(|(axis, _)| *axis != self.axis)
+            .map(|(_, d)| d)
+            .product::<TDim>();
+        // Resident bytes per token: `bits/8` per value, plus small per-token (Values) or
+        // amortized per-block (Keys) scale params — reported as a fraction of the value count.
+        let resident_bytes = values_per_token.clone() * self.bits.max(1) as i64 / 8;
+        Ok(tvec!(
+            (Cost::Custom(false, "KVCacheValuesPerToken".to_string()), values_per_token),
+            (Cost::Custom(false, "KVCacheQuantBytesPerToken".to_string()), resident_bytes),
+        ))
+    }
+
     as_op!();
 }
 
