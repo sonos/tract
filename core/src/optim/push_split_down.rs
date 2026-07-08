@@ -18,7 +18,7 @@ impl super::TypedPass for PushSplitDown {
         let mut patch = TypedModelPatch::default();
         for node in model.eval_order()? {
             for output in &model.node(node).outputs {
-                for (a, b) in output.successors.iter().tuple_combinations() {
+                for [a, b] in output.successors.iter().array_combinations() {
                     if a.node == b.node {
                         // found where a square is implemented using a mul with duplicate input
                         continue;
