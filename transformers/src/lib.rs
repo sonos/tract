@@ -19,6 +19,14 @@ register_simple_model_transform!(
     ops::inplace_kv_cache::InPlaceKvSdpaTransform
 );
 register_simple_model_transform!("transformers_detect_all", TransformersTransform);
+register_simple_model_transform!(
+    "quantize_kv_storage",
+    ops::quant_dyn_kv_cache::QuantizeKvStorageTransform { bits: 8 }
+);
+register_simple_model_transform!(
+    "quantize_kv_storage_int4",
+    ops::quant_dyn_kv_cache::QuantizeKvStorageTransform { bits: 4 }
+);
 
 pub fn register(registry: &mut Registry) {
     ops::apply_rope::register(registry);
@@ -27,6 +35,7 @@ pub fn register(registry: &mut Registry) {
     ops::dyn_kv_cache::register(registry);
     ops::window_kv_cache::register(registry);
     ops::kv_quant::register(registry);
+    ops::quant_dyn_kv_cache::register(registry);
 }
 
 pub trait WithTractTransformers {
