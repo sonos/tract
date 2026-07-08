@@ -278,8 +278,8 @@ jobs:
           # metric JSONL on stdout and all progress on stderr. The single-quoted '${...}' args reach
           # dinghy verbatim and are expanded from the ssh device's remote_shell_vars (sidekick-local),
           # so the model mirror URL and governor stay local and never hit this file or the run log.
-          if CARGO_PKG_NAME=tract cargo-dinghy -d "$DINGHY_TARGET" dinghy runner \
-               ./tract-cli/tract bench-suite \
+          if CARGO_PKG_NAME=tract cargo-dinghy -d "$DINGHY_TARGET" runner \
+               ./tract-cli/tract -- bench-suite \
                --manifest .travis/benches.toml --skip-backends --output - $SAMPLES \
                --base-url '${TRACT_BENCH_BASE_URL}' --cpu-governor '${TRACT_BENCH_CPU_GOVERNOR}' \
                >captured.out 2>captured.err
