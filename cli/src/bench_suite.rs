@@ -155,6 +155,7 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
     )
     .with_context(|| format!("parsing manifest {manifest_path}"))?;
 
+    let no_cache = matches.get_flag("no-cache");
     let cache_dir = PathBuf::from(
         matches
             .get_one::<String>("cache-dir")
@@ -167,7 +168,9 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
                 )
             }),
     );
-    std::fs::create_dir_all(&cache_dir)?;
+    if !no_cache {
+        std::fs::create_dir_all(&cache_dir)?;
+    }
 
     let output = matches.get_one::<String>("output").map(String::as_str).unwrap_or("metrics");
     // A --base-url / --cpu-governor flag sets its knob's override (highest priority). The flag is how
@@ -184,6 +187,11 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
         .get()
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| manifest.base_url.clone());
+    let model_source = if no_cache {
+        ModelSource::Url(base_url.clone())
+    } else {
+        ModelSource::Cache(cache_dir.clone())
+    };
     let no_fetch = matches.get_flag("no-fetch");
     let skip_cpu = matches.get_flag("skip-cpu");
     let skip_backends = matches.get_flag("skip-backends");
@@ -236,7 +244,7 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
             continue;
         }
 
-        if !no_fetch {
+        if !no_cache && !no_fetch {
             if let Err(e) = fetch(&base_url, &cache_dir, bench) {
                 eprintln!("  !! {}: fetch failed: {e:#}", bench.name);
                 continue;
@@ -245,7 +253,7 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
 
         for (backend, variant) in runs {
             eprintln!("  {} {}", bench.name, variant);
-            let run = || run_one(&exe, &cache_dir, bench, backend, &variant);
+            let run = || run_one(&exe, &model_source, bench, backend, &variant);
             let outcome = if samples > 1 {
                 bench_median(run, samples)
             } else {
@@ -262,7 +270,7 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
     if samples <= 1 {
         second_pass(
             &exe,
-            &cache_dir,
+            &model_source,
             &manifest,
             &expectations,
             retry_max,
@@ -278,13 +286,29 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
     Ok(())
 }
 
+/// Where a child gets its model: a file under the local cache dir, or a URL under
+/// `base_url` streamed straight into tract (no disk), for read-only targets.
+enum ModelSource {
+    Cache(PathBuf),
+    Url(String),
+}
+
+impl ModelSource {
+    fn model_arg(&self, model: &str) -> String {
+        match self {
+            ModelSource::Cache(dir) => dir.join(model).to_string_lossy().into_owned(),
+            ModelSource::Url(base) => format!("{}/{}", base.trim_end_matches('/'), model),
+        }
+    }
+}
+
 /// Spawn one child `tract` for a single (bench, backend) and collect its metrics.
 /// The child runs in `--emit-jsonl` mode, so its stdout must be pure JSONL; any
 /// line that is not a metric object, a non-zero exit, or an empty result is an
 /// error for this run (the caller logs it and moves on).
 fn run_one(
     exe: &Path,
-    cache_dir: &Path,
+    source: &ModelSource,
     bench: &Bench,
     backend: Option<Backend>,
     variant: &str,
@@ -292,7 +316,7 @@ fn run_one(
     let (global_flags, sub_flags) = backend.map(|b| b.flags()).unwrap_or((&[], &[]));
 
     let mut cmd = Command::new(exe);
-    cmd.arg(cache_dir.join(&bench.model));
+    cmd.arg(source.model_arg(&bench.model));
     cmd.args(&bench.args);
     cmd.args(global_flags);
     cmd.args(["--readings", "--readings-heartbeat", "1000", "--emit-jsonl"]);
@@ -353,7 +377,7 @@ fn bench_run(
 /// so they are left standing. No-op without expectations.
 fn second_pass(
     exe: &Path,
-    cache_dir: &Path,
+    source: &ModelSource,
     manifest: &Manifest,
     expectations: &HashMap<String, (f64, f64)>,
     retry_max: usize,
@@ -387,7 +411,7 @@ fn second_pass(
             (results[i].bench_idx, results[i].backend, results[i].variant.clone());
         let bench = &manifest.benches[bench_idx];
         eprintln!("  second pass: {} {}", bench.name, variant);
-        let run = || run_one(exe, cache_dir, bench, backend, &variant);
+        let run = || run_one(exe, source, bench, backend, &variant);
         match bench_run(run, expectations, retry_max) {
             Ok(cand) => {
                 let mut best: BTreeMap<String, f64> =

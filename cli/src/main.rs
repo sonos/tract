@@ -263,6 +263,7 @@ fn main() -> TractResult<()> {
                 .arg(arg!(--output [PATH] "Metrics output file (default: metrics); '-' emits JSONL on stdout"))
                 .arg(arg!(--filter [SUBSTR] "Only run benches whose name contains SUBSTR"))
                 .arg(arg!(--"no-fetch" "Do not fetch models; use the cache as-is"))
+                .arg(arg!(--"no-cache" "Stream each model straight from base-url into tract (no on-disk cache); for read-only targets that pull from a model server."))
                 .arg(arg!(--"skip-cpu" "Skip CPU runs: drop backend-less (net) benches and the cpu backend of the rest. For GPU-only devices whose CPU is redundant with another arm64/x86 box."))
                 .arg(arg!(--"skip-backends" "Run only the plain-CPU (backend-less) net benches, dropping every bench that declares a backend sweep (the LLM + accelerator/large-model suite). For small embedded CPU targets."))
                 .arg(arg!(--"base-url" [URL] "Model base URL (sets the TRACT_BENCH_BASE_URL knob); overrides the manifest. Pass '${VAR}' to have a remote runner expand it from its own config, out of band."))
