@@ -1984,7 +1984,7 @@ dependencies = [
  "downcast-rs",
  "dyn-clone",
  "env_logger",
- "itertools 0.14.0",
+ "itertools 0.15.0",
  "lazy_static",
  "proptest",
  "tract-core",
@@ -2036,6 +2036,15 @@ name = "itertools"
 version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2b192c782037fadd9cfa75548310488aabdbf3d2da73885b31bd0abd03351285"
+dependencies = [
+ "either",
+]
+
+[[package]]
+name = "itertools"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8b4baf93f58d4425749ca49a51c50ebab072c5df6994d08fed93541c331481dc"
 dependencies = [
  "either",
 ]
@@ -2532,7 +2541,7 @@ dependencies = [
  "anyhow",
  "float-ord",
  "hound",
- "itertools 0.14.0",
+ "itertools 0.15.0",
  "ndarray",
  "serde_json",
  "tract",
@@ -2547,7 +2556,7 @@ dependencies = [
  "cpal",
  "float-ord",
  "hound",
- "itertools 0.14.0",
+ "itertools 0.15.0",
  "ndarray",
  "serde_json",
  "tract",
@@ -2560,7 +2569,7 @@ dependencies = [
  "anyhow",
  "float-ord",
  "hound",
- "itertools 0.14.0",
+ "itertools 0.15.0",
  "ndarray",
  "serde_json",
  "tract",
@@ -4091,7 +4100,7 @@ dependencies = [
  "env_logger",
  "fs2",
  "infra",
- "itertools 0.14.0",
+ "itertools 0.15.0",
  "lazy_static",
  "log",
  "prost",
@@ -4240,7 +4249,7 @@ name = "test-nnef-cycle"
 version = "0.1.0"
 dependencies = [
  "infra",
- "itertools 0.14.0",
+ "itertools 0.15.0",
  "lazy_static",
  "log",
  "suite-onnx",
@@ -4800,7 +4809,7 @@ dependencies = [
  "dyn-hash",
  "half",
  "inventory",
- "itertools 0.14.0",
+ "itertools 0.15.0",
  "lazy_static",
  "libm",
  "maplit",
