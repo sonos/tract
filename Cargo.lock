@@ -1205,9 +1205,9 @@ checksum = "34aa73646ffb006b8f5147f3dc182bd4bcb190227ce861fc4a4844bf8e3cb2c0"
 
 [[package]]
 name = "env_filter"
-version = "1.0.1"
+version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "32e90c2accc4b07a8456ea0debdc2e7587bdd890680d71173a15d4ae604f6eef"
+checksum = "900d271a03799a1ee8d1ca9b19893b48ca674a9284fefcfb85f05e74ed314217"
 dependencies = [
  "log",
  "regex",
@@ -1215,9 +1215,9 @@ dependencies = [
 
 [[package]]
 name = "env_logger"
-version = "0.11.10"
+version = "0.11.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0621c04f2196ac3f488dd583365b9c09be011a4ab8b9f37248ffcc8f6198b56a"
+checksum = "de671bd27a75a797dc9ae289ba1e77276e75e2026408aab65185384e2d5cd3f6"
 dependencies = [
  "anstream",
  "anstyle",
@@ -1984,7 +1984,7 @@ dependencies = [
  "downcast-rs",
  "dyn-clone",
  "env_logger",
- "itertools 0.14.0",
+ "itertools 0.15.0",
  "lazy_static",
  "proptest",
  "tract-core",
@@ -2036,6 +2036,15 @@ name = "itertools"
 version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2b192c782037fadd9cfa75548310488aabdbf3d2da73885b31bd0abd03351285"
+dependencies = [
+ "either",
+]
+
+[[package]]
+name = "itertools"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8b4baf93f58d4425749ca49a51c50ebab072c5df6994d08fed93541c331481dc"
 dependencies = [
  "either",
 ]
@@ -2532,7 +2541,7 @@ dependencies = [
  "anyhow",
  "float-ord",
  "hound",
- "itertools 0.14.0",
+ "itertools 0.15.0",
  "ndarray",
  "serde_json",
  "tract",
@@ -2547,7 +2556,7 @@ dependencies = [
  "cpal",
  "float-ord",
  "hound",
- "itertools 0.14.0",
+ "itertools 0.15.0",
  "ndarray",
  "serde_json",
  "tract",
@@ -2560,7 +2569,7 @@ dependencies = [
  "anyhow",
  "float-ord",
  "hound",
- "itertools 0.14.0",
+ "itertools 0.15.0",
  "ndarray",
  "serde_json",
  "tract",
@@ -3216,7 +3225,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b570b25f7617e43d59005d0990ccb79e950a423952cea19671b7a876da390adf"
 dependencies = [
  "anyhow",
- "itertools 0.14.0",
+ "itertools 0.13.0",
  "proc-macro2",
  "quote",
  "syn",
@@ -4091,7 +4100,7 @@ dependencies = [
  "env_logger",
  "fs2",
  "infra",
- "itertools 0.14.0",
+ "itertools 0.15.0",
  "lazy_static",
  "log",
  "prost",
@@ -4240,7 +4249,7 @@ name = "test-nnef-cycle"
 version = "0.1.0"
 dependencies = [
  "infra",
- "itertools 0.14.0",
+ "itertools 0.15.0",
  "lazy_static",
  "log",
  "suite-onnx",
@@ -4383,9 +4392,9 @@ dependencies = [
 
 [[package]]
 name = "time"
-version = "0.3.51"
+version = "0.3.53"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "85c17d80feb7334b40c484e45ed1a5273dfd8bfda537c3be2e74a06a6686f327"
+checksum = "18dfaaeddcb932337b5e7866ee7d0ce9b76d2fd092997146f187ec09b4558a50"
 dependencies = [
  "deranged",
  "num-conv",
@@ -4800,7 +4809,7 @@ dependencies = [
  "dyn-hash",
  "half",
  "inventory",
- "itertools 0.14.0",
+ "itertools 0.15.0",
  "lazy_static",
  "libm",
  "maplit",
