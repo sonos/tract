@@ -27,7 +27,7 @@ struct Manifest {
 struct Bench {
     kind: Kind,
     name: String,
-    /// Series label when `backends` is empty (a single plain CPU run).
+    /// Series label when `runtimes` is empty (a single plain CPU run).
     #[serde(default)]
     variant: Option<String>,
     /// Model path relative to the cache dir (and to `base_url` when fetched).
@@ -41,10 +41,10 @@ struct Bench {
     /// (`"-i 264,40 --pulse 24"`), so a working argument line can be pasted as-is.
     #[serde(default, deserialize_with = "de_args")]
     args: Vec<String>,
-    /// Backends to sweep. Empty: one plain CPU run labelled `variant`. Non-empty:
-    /// one run per available backend, each labelled by the backend name.
+    /// Runtimes to sweep. Empty: one plain CPU run labelled `variant`. Non-empty:
+    /// one run per available runtime, each labelled by the runtime name.
     #[serde(default)]
-    backends: Vec<Backend>,
+    runtimes: Vec<RuntimeKind>,
 }
 
 #[derive(Deserialize, Clone, Copy, PartialEq)]
@@ -71,26 +71,26 @@ impl Kind {
 
 #[derive(Deserialize, Clone, Copy, PartialEq)]
 #[serde(rename_all = "lowercase")]
-enum Backend {
+enum RuntimeKind {
     Cpu,
     Metal,
     Cuda,
 }
 
-impl Backend {
+impl RuntimeKind {
     fn label(&self) -> &'static str {
         match self {
-            Backend::Cpu => "cpu",
-            Backend::Metal => "metal",
-            Backend::Cuda => "cuda",
+            RuntimeKind::Cpu => "cpu",
+            RuntimeKind::Metal => "metal",
+            RuntimeKind::Cuda => "cuda",
         }
     }
 
     fn available(&self) -> bool {
         match self {
-            Backend::Cpu => true,
-            Backend::Metal => cfg!(target_os = "macos"),
-            Backend::Cuda => Command::new("nvidia-smi")
+            RuntimeKind::Cpu => true,
+            RuntimeKind::Metal => cfg!(target_os = "macos"),
+            RuntimeKind::Cuda => Command::new("nvidia-smi")
                 .arg("-L")
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
@@ -100,12 +100,12 @@ impl Backend {
         }
     }
 
-    /// `(global flags, subcommand flags)` for this backend.
+    /// `(global flags, subcommand flags)` for this runtime.
     fn flags(&self) -> (&'static [&'static str], &'static [&'static str]) {
         match self {
-            Backend::Cpu => (&["--timeout", "180"], &[]),
-            Backend::Metal => (&["--metal", "--timeout", "60"], &["--warmup-loops", "1"]),
-            Backend::Cuda => (&["--cuda", "--timeout", "60"], &["--warmup-loops", "1"]),
+            RuntimeKind::Cpu => (&["--timeout", "180"], &[]),
+            RuntimeKind::Metal => (&["--metal", "--timeout", "60"], &["--warmup-loops", "1"]),
+            RuntimeKind::Cuda => (&["--cuda", "--timeout", "60"], &["--warmup-loops", "1"]),
         }
     }
 }
@@ -130,11 +130,11 @@ fn de_args<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<String>, D::Err
     })
 }
 
-/// One (bench, backend/variant) run kept whole — its prefixed metrics plus the
+/// One (bench, runtime/variant) run kept whole — its prefixed metrics plus the
 /// coordinates needed to re-run it in the second pass.
 struct RunResult {
     bench_idx: usize,
-    backend: Option<Backend>,
+    runtime: Option<RuntimeKind>,
     variant: String,
     metrics: Vec<(String, f64)>,
 }
@@ -194,7 +194,7 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
     };
     let no_fetch = matches.get_flag("no-fetch");
     let skip_cpu = matches.get_flag("skip-cpu");
-    let skip_backends = matches.get_flag("skip-backends");
+    let skip_runtimes = matches.get_flag("skip-runtimes");
     let filter = matches.get_one::<String>("filter").map(String::as_str);
 
     let expectations = expectations(matches)?;
@@ -216,27 +216,27 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
         if filter.is_some_and(|f| !bench.name.contains(f)) {
             continue;
         }
-        if skip_backends && !bench.backends.is_empty() {
+        if skip_runtimes && !bench.runtimes.is_empty() {
             continue;
         }
 
-        let runs: Vec<(Option<Backend>, String)> = if bench.backends.is_empty() {
-            // Backend-less benches are a plain CPU run; --skip-cpu drops them entirely.
+        let runs: Vec<(Option<RuntimeKind>, String)> = if bench.runtimes.is_empty() {
+            // Runtime-less benches are a plain CPU run; --skip-cpu drops them entirely.
             if skip_cpu {
                 vec![]
             } else {
                 let variant = bench
                     .variant
                     .clone()
-                    .with_context(|| format!("{}: no variant and no backends", bench.name))?;
+                    .with_context(|| format!("{}: no variant and no runtimes", bench.name))?;
                 vec![(None, variant)]
             }
         } else {
             bench
-                .backends
+                .runtimes
                 .iter()
                 .filter(|b| b.available())
-                .filter(|b| !(skip_cpu && matches!(**b, Backend::Cpu)))
+                .filter(|b| !(skip_cpu && matches!(**b, RuntimeKind::Cpu)))
                 .map(|b| (Some(*b), b.label().to_string()))
                 .collect()
         };
@@ -251,16 +251,16 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
             }
         }
 
-        for (backend, variant) in runs {
+        for (runtime, variant) in runs {
             eprintln!("  {} {}", bench.name, variant);
-            let run = || run_one(&exe, &model_source, bench, backend, &variant);
+            let run = || run_one(&exe, &model_source, bench, runtime, &variant);
             let outcome = if samples > 1 {
                 bench_median(run, samples)
             } else {
                 bench_run(run, &expectations, retry_max)
             };
             match outcome {
-                Ok(m) => results.push(RunResult { bench_idx, backend, variant, metrics: m }),
+                Ok(m) => results.push(RunResult { bench_idx, runtime, variant, metrics: m }),
                 Err(e) => eprintln!("  !! {} {} failed: {e:#}", bench.name, variant),
             }
         }
@@ -302,7 +302,7 @@ impl ModelSource {
     }
 }
 
-/// Spawn one child `tract` for a single (bench, backend) and collect its metrics.
+/// Spawn one child `tract` for a single (bench, runtime) and collect its metrics.
 /// The child runs in `--emit-jsonl` mode, so its stdout must be pure JSONL; any
 /// line that is not a metric object, a non-zero exit, or an empty result is an
 /// error for this run (the caller logs it and moves on).
@@ -310,10 +310,10 @@ fn run_one(
     exe: &Path,
     source: &ModelSource,
     bench: &Bench,
-    backend: Option<Backend>,
+    runtime: Option<RuntimeKind>,
     variant: &str,
 ) -> TractResult<Vec<(String, f64)>> {
-    let (global_flags, sub_flags) = backend.map(|b| b.flags()).unwrap_or((&[], &[]));
+    let (global_flags, sub_flags) = runtime.map(|b| b.flags()).unwrap_or((&[], &[]));
 
     let mut cmd = Command::new(exe);
     cmd.arg(source.model_arg(&bench.model));
@@ -407,11 +407,11 @@ fn second_pass(
         return;
     }
     for i in red {
-        let (bench_idx, backend, variant) =
-            (results[i].bench_idx, results[i].backend, results[i].variant.clone());
+        let (bench_idx, runtime, variant) =
+            (results[i].bench_idx, results[i].runtime, results[i].variant.clone());
         let bench = &manifest.benches[bench_idx];
         eprintln!("  second pass: {} {}", bench.name, variant);
-        let run = || run_one(exe, source, bench, backend, &variant);
+        let run = || run_one(exe, source, bench, runtime, &variant);
         match bench_run(run, expectations, retry_max) {
             Ok(cand) => {
                 let mut best: BTreeMap<String, f64> =

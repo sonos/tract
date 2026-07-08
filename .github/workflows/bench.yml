@@ -282,7 +282,7 @@ jobs:
           # so there is no on-disk model cache.
           if CARGO_PKG_NAME=tract cargo-dinghy -d "$DINGHY_TARGET" runner \
                ./tract-cli/tract -- bench-suite \
-               --manifest .travis/benches.toml --skip-backends --no-cache --output - $SAMPLES \
+               --manifest .travis/benches.toml --skip-runtimes --no-cache --output - $SAMPLES \
                --base-url '${TRACT_BENCH_BASE_URL}' --cpu-governor '${TRACT_BENCH_CPU_GOVERNOR}' \
                >captured.out 2>captured.err
           then
