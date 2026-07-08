@@ -9,6 +9,73 @@
 
 For normal usage we recommend adopting the **`tract` facade crate** (the public API at `api/rs`) instead of wiring `tract-core`, `tract-nnef`, `tract-onnx`, `tract-pulse`, `tract-cuda`, `tract-metal`, etc. directly. The facade exposes one stable surface — `nnef()`, `onnx()`, `runtime_for_name("cpu" | "gpu" | "gpu-or-cpu" | "cuda" | "metal" | ...)`, plus `Model`, `Runnable`, `State`, `Tensor`, `TDim`, and a `SetSymbols` transform builder — with all the backends curated behind it. `impl_ndarray_interop!()` (0.23.0-dev.5) keeps `ndarray` interop opt-in without leaking an `ndarray` version into the public API. Downstream code that pinned `tract-core` + `tract-onnx` directly can usually drop those deps in favour of `tract = "0.23"` and `use tract::prelude::*;`. Examples are now organised around this facade — see `examples/onnx-mobilenet-v2`, `examples/nnef-mobilenet-v2`, and `examples/causal_llm`.
 
+# 0.23.4 - 2026-07-08
+
+### Security / deps
+
+* RUSTSEC-2026-0204: bump crossbeam-epoch to 0.9.20 (invalid pointer deref in
+  `fmt::Display` for `Atomic`/`Shared`) (#2454).
+* RUSTSEC-2026-0190: bump anyhow to 1.0.103.
+* RUSTSEC-2026-0186: dependency refresh.
+* Drop the `ggml` dev-dependency, removing the memmap2 0.5 RustSec advisory.
+
+### GPU
+
+- **CUDA per-thread streams.** Each thread gets its own non-blocking stream;
+  cudarc cross-stream event tracking is disabled and constant uploads are
+  drained at prepare, cutting cross-stream synchronization overhead.
+- **Metal GGML matmul runs in f16.** f16 activations/output for the GGML matmul
+  (no more f32 round-trips), with the f16/f32 branch hoisted out of the hot loop
+  and activation selection done at runtime rather than by template.
+
+### CPU / linalg
+
+- **Intel AMX GEMM kernels (x86_64).** int8 (`avx512amx_mmm_i32_8x8` / `16x16`)
+  and bf16→f32 (`avx512amx_mmm_f32_16x16`, TDPBF16PS) matmul micro-kernels with
+  shape-adaptive dispatch (16x16 for large, 8x8 for small), CPUID cache-size
+  detection, and oneDNN-style prefetch. The AMX bf16 f32 path is opt-in via
+  `TRACT_AMX_BF16`.
+- **AVX-VNNI int8 GEMM kernels.** `avxvnni_mmm_i32_8x8` (ymm) and a zmm 16x16
+  AVX-512-VNNI kernel, the latter gated on runtime-probed dual 512-bit FMA
+  presence (`TRACT_AVX512_FMA_UNITS`).
+- **Cache-aware L3 blocking.** LLC/SLC-aware budget for the L3 outer blocking
+  tier, gated on the working set actually spilling the LLC (#2352).
+- **Q1_58 ternary block-quant (BitNet b1.58)** and `Q4_0::w4a8_gemv` (W4A8
+  int8-dot decode GEMV). (The former Q1_58 label was renamed to `Q2_0_T`.)
+- **Separable average pool.** Concrete-geometry pool codegen plus an opt-in
+  separable avg-pool, with an NHWC kernel.
+- **SIMD ReduceMin** mirroring the existing max reducer.
+
+### Transformers / LLM
+
+- **In-place KV cache.** Opt-in runtime-fused `InPlaceKvSdpa` op.
+- **Fused int4 MatMulNBits.** ONNX `MatMulNBits` int4 now routes through the
+  fused Q4_0 block-quant matmul.
+- **Speculative decoding example.** `examples/causal_llm` gains n-gram + draft-
+  model speculative decoding.
+
+### Core / NNEF / ONNX
+
+- **NeMo FastConformer streaming.** ONNX loader support for cache-aware
+  streaming FastConformer graphs.
+- **ONNX model metadata** exposed in `Graph.properties` (#2408).
+- **ONNX DFT**: fix onesided DFT shape inference and slice axis
+- Fix: `SimplifiedLayerNormalization` now maps to RMSNorm instead of LayerNorm
+  (#2409).
+- Fix: `Iff` constant-condition declutter broadcasts the selected branch to the
+  op's output shape when it is narrower than the broadcast result.
+- Fix: `MultiBroadcastTo` swap-with-`AxisOp` declutter no longer panics when the
+  broadcast adds leading axes (rank-mismatch and out-of-range guards).
+- Fix: `ScatterNd::eval` mutates in place instead of round-tripping the
+  destination through an owned ndarray (two fewer full copies per eval).
+- NNEF: warn on assertions bounding symbols absent from every tensor shape.
+
+### CLI / diagnostics
+
+- **`list-knobs` subcommand** listing all tunable env-var knobs, backed by a new
+  central knob registry in `tract-data`; every knob static is now named after
+  its `TRACT_`-prefixed env var.
+
 # 0.23.3 - 2026-06-19
 
 ### GPU
