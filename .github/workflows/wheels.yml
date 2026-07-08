@@ -14,6 +14,10 @@ on:
       pypi_version_override:
         description: override version id detection
         type: string
+      pr_number:
+        description: "Optional PR number to build (from fork ok). Leave empty to build the selected branch."
+        required: false
+        type: number
 
 
 env:
@@ -27,8 +31,31 @@ permissions:
   contents: read
 
 jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      test_ref: ${{ steps.set.outputs.test_ref }}
+    steps:
+      - id: set
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const prInput = context.payload.inputs?.pr_number;
+            if (!prInput) {
+              // Build the ref the workflow was triggered on (branch/tag/SHA in base repo).
+              core.setOutput('test_ref', process.env.GITHUB_SHA);
+              return;
+            }
+            const pr = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: Number(prInput),
+            });
+            core.setOutput('test_ref', pr.data.head.sha);
+
   build_wheels:
     name: Build wheels on ${{ matrix.os }}
+    needs: prepare
     runs-on: ${{ matrix.os}}
     strategy:
       fail-fast: false
@@ -38,8 +65,9 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
+          ref: ${{ needs.prepare.outputs.test_ref }}
           persist-credentials: false
-        
+
       - name: Setup | Rust
         shell: bash
         run: rustup toolchain install # channel + components from rust-toolchain.toml
@@ -83,10 +111,12 @@ jobs:
 
   make_sdist:
     name: Make SDist
+    needs: prepare
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       with:
+        ref: ${{ needs.prepare.outputs.test_ref }}
         persist-credentials: false
 
     - name: Install uv
