@@ -1,6 +1,6 @@
 # Bench manifest for `tract bench-suite`. Each [[bench]] becomes one fresh child
-# process per run; backend-less benches run once on CPU labelled by `variant`,
-# benches with `backends` run once per available backend labelled by the backend.
+# process per run; runtime-less benches run once on CPU labelled by `variant`,
+# benches with `runtimes` run once per available runtime labelled by the runtime.
 # Ported from bundle-entrypoint.sh.
 
 base_url = "https://tract-ci-builds.s3.amazonaws.com/model"
@@ -221,59 +221,59 @@ variant = "pulse1_f16"
 model = "trunet_dummy.nnef.tgz"
 args = "--nnef-tract-core -t f32_to_f16 --pulse 1"
 
-# --- LLM + transformer benches (per available backend) ---
+# --- LLM + transformer benches (per available runtime) ---
 
 [[bench]]
 kind = "llm"
 name = "llama-3_2-1B-q40ef32-516"
 model = "Llama-3.2-1B-q40ef32.516.nnef.tgz"
-backends = ["cpu", "metal", "cuda"]
+runtimes = ["cpu", "metal", "cuda"]
 
 [[bench]]
 kind = "llm"
 name = "openelm-270M-q40ef16-516"
 model = "OpenELM-270M-q40ef16.516.nnef.tgz"
-backends = ["cpu", "metal", "cuda"]
+runtimes = ["cpu", "metal", "cuda"]
 
 [[bench]]
 kind = "llm"
 name = "llama-3_2-1B-instruct-q40ef16-541"
 model = "Llama-3.2-1B-Instruct-q40ef16.541.nnef.tgz"
-backends = ["cpu", "metal", "cuda"]
+runtimes = ["cpu", "metal", "cuda"]
 
 [[bench]]
 kind = "llm"
 name = "openelm-270M-q40ef16-541"
 model = "OpenELM-270M-q40ef16.541.nnef.tgz"
-backends = ["cpu", "metal", "cuda"]
+runtimes = ["cpu", "metal", "cuda"]
 
 [[bench]]
 kind = "net"
 name = "parakeet-tdt-600m-v3-f32f32-preprocessor_1s"
 model = "parakeet-tdt-0.6b-v3-f32f32.608.preprocessor.nnef.tgz"
 args = "-t transformers_detect_all --nnef-tract-transformers --set B=1 --set A=16000"
-backends = ["cpu", "metal", "cuda"]
+runtimes = ["cpu", "metal", "cuda"]
 
 [[bench]]
 kind = "net"
 name = "parakeet-tdt-600m-v3-f32f32-encoder_1s"
 model = "parakeet-tdt-0.6b-v3-f32f32.608.encoder.p1.nnef.tgz"
 args = "-t transformers_detect_all --nnef-tract-transformers --set B=1 --set S=100"
-backends = ["cpu", "metal", "cuda"]
+runtimes = ["cpu", "metal", "cuda"]
 
 [[bench]]
 kind = "net"
 name = "parakeet-tdt-600m-v3-f32f32-decoder_pass"
 model = "parakeet-tdt-0.6b-v3-f32f32.608.decoder.nnef.tgz"
 args = "-t transformers_detect_all --nnef-tract-transformers --set B=1 --set T=1"
-backends = ["cpu", "metal", "cuda"]
+runtimes = ["cpu", "metal", "cuda"]
 
 [[bench]]
 kind = "net"
 name = "parakeet-tdt-600m-v3-f32f32-joint_pass"
 model = "parakeet-tdt-0.6b-v3-f32f32.608.joint.nnef.tgz"
 args = "-t transformers_detect_all --nnef-tract-transformers --set B=1 --set R=1 --set U=1"
-backends = ["cpu", "metal", "cuda"]
+runtimes = ["cpu", "metal", "cuda"]
 
 # GPU-only (no CPU run).
 
@@ -281,22 +281,22 @@ backends = ["cpu", "metal", "cuda"]
 kind = "llm"
 name = "llama-3_2-3B-q40ef32-516"
 model = "Llama-3.2-3B-q40ef32.516.nnef.tgz"
-backends = ["metal", "cuda"]
+runtimes = ["metal", "cuda"]
 
 [[bench]]
 kind = "llm"
 name = "llama-3_1-8B-instruct-q40ef16-541"
 model = "Llama-3.1-8B-Instruct-q40ef16.541.nnef.tgz"
-backends = ["metal", "cuda"]
+runtimes = ["metal", "cuda"]
 
 [[bench]]
 kind = "llm"
 name = "llama-3_2-3B-instruct-q40ef16-541"
 model = "Llama-3.2-3B-Instruct-q40ef16.541.nnef.tgz"
-backends = ["metal", "cuda"]
+runtimes = ["metal", "cuda"]
 
 [[bench]]
 kind = "llm"
 name = "qwen3-1_7B-q40ef16-541"
 model = "Qwen3-1.7B-q40ef16.541.nnef.tgz"
-backends = ["metal", "cuda"]
+runtimes = ["metal", "cuda"]
