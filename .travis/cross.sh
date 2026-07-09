@@ -260,14 +260,3 @@ case "$PLATFORM" in
         exit 2
         ;;
 esac
-
-if [ -e "${CARGO_TARGET_DIR:-target}/$RUSTC_TRIPLE/release/tract" ]
-then
-    export RUSTC_TRIPLE
-    TASK_NAME=`.travis/make_bundle.sh`
-    echo bench task: $TASK_NAME 
-    if [ -n "$AWS_ACCESS_KEY_ID" ]
-    then
-        aws s3 cp $TASK_NAME.tgz s3://tract-ci-builds/tasks/$PLATFORM/$TASK_NAME.tgz
-    fi
-fi

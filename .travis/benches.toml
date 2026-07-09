@@ -1,7 +1,6 @@
 # Bench manifest for `tract bench-suite`. Each [[bench]] becomes one fresh child
 # process per run; runtime-less benches run once on CPU labelled by `variant`,
 # benches with `runtimes` run once per available runtime labelled by the runtime.
-# Ported from bundle-entrypoint.sh.
 
 base_url = "https://tract-ci-builds.s3.amazonaws.com/model"
 
