@@ -1,117 +1,45 @@
-# Travis & minions test infrastructure
+# CI bench infrastructure
 
 ## Principles
 
-* travis is triggered on each commit, it will run `./.travis/native.sh` to
-    perform x86_64 builds, plus a series of `./.travis/cross.sh` for as many
-    arm boards configurations.
-* `.travis/cross.sh` pushes a `.tgz` to a s3 bucket for each configuration. The
-    bundle contains a `entrypoint.sh` script and anything it depends on,
-    including the relevant `tract` cli executable. The script is actually names
-    `bundle-entrypoint.sh` in the repository.
-* devices are running `minion.sh` and will pick the new bundles from the s3 bucket,
-    untar and run the `entrypoint.sh`
+* `.github/workflows/bench.yml` builds the `tract` CLI on GitHub-hosted runners and
+  runs the bench suite on self-hosted bench machines. Nightly it appends one row per
+  run to the `bench-data` branch; on a pull request it compares against that reference
+  and posts a single fan-in comment (plus a full table in the run's job summary).
+* The suite is `tract bench-suite`, driven by the `.travis/benches.toml` manifest. Each
+  `[[bench]]` runs in a fresh child process so the memory readings get a cold process;
+  models are fetched over HTTP from the manifest's `base_url`.
+* Small embedded boards that can't host a runner or build are driven as *dinghy
+  targets*: a sidekick runner cross-runs the static CLI on the board over dinghy's ssh
+  transport (per-target coordinates live in the sidekick's `.dinghy.toml`). These jobs
+  are gated by the `BENCH_DINGHY_ENABLED` repository variable.
 
 ## Testing locally
 
-```
-cargo build --release -p tract-cli && cargo bench -p tract-linalg --no-run && .travis/run-bundle.sh `.travis/make_bundle.sh`
-```
-
-## minion setup
+Build the CLI with the `bench-suite` feature and run the manifest against the model
+mirror (default: the public bucket in `benches.toml`):
 
 ```
-MINION=user@hostname.local
-scp .travis/minionrc $MINION:.minionrc
-scp .travis/minion.sh $MINION:
+cargo run -p tract-cli --features bench-suite -- \
+    bench-suite --manifest .travis/benches.toml --skip-runtimes
 ```
 
-also setup aws credentials (.aws/credentials)
+`--skip-runtimes` keeps it to the plain-CPU net benches; drop it to also sweep the
+accelerator/LLM benches on whatever backends the machine has.
 
-```
-apt install wget curl perl awscli screen vim netcat
-```
+## Model mirror (http)
 
-On device: `.minioncrc` set a MINION_ID. At this point, running `./minion.sh`
-should work.
-
-## crontab
-
-`crontab -e`
-
-```
-*/10 * * * * $HOME/minion.sh
-```
-
-## systemd timers
-
-in /etc/systemd/system/minion.service
-
-```
-[Unit]
-Description=Travis ci bench minion
-
-[Service]
-User=root
-Type=oneshot
-ExecStart=/home/root/minion.sh
-```
-
-in /etc/systemd/system/minion.timer
-
-```
-[Unit]
-Description=Run minion.service every 5 minutes
-
-[Timer]
-OnCalendar=*:0/5
-
-[Install]
-WantedBy=timers.target
-
-```
-
-then
-
-```
-systemctl enable minion.timer
-systemctl start minion.timer
-```
-
-# Setup file server (http only)
-
-
-```
-sudo apt install nginx awscli vim
-```
-
-* setup aws credentials (.aws/credentials)
-* in $HOME/sync-data.sh:
-
-```
-
-```
-* chmod +x $HOME/sync-data.sh
-* run it: ./sync-data.sh
-* `crontab -e`
-
-```
-*/5 * * * * $HOME/sync-data.sh
-```
-
-
-* `sudo vi /etc/nginx/sites-available/models`
+Benches fetch each model over HTTP from `base_url`. To serve them from a local mirror,
+sync the model bucket to a directory and expose it with any static file server, e.g.
+nginx:
 
 ```
 server {
-    root /home/raspbian/models/;
-
-    location /models {
-    }
+    root /home/user/models/;
+    location / { }
 }
 ```
 
-* `sudo ln -s /etc/nginx/sites-available/models /etc/nginx/sites-enabled/`
-* `sudo rm /etc/nginx/sites-enabled/default`
-* `sudo /etc/init.d/nginx reload`
-* test : `curl -I http://localhost/hey_snips_v1.pb`
+Point a run at it with `--base-url http://<mirror>/` (or the `TRACT_BENCH_BASE_URL`
+knob). `--no-cache` streams each model straight from the mirror instead of caching it
+on disk, for read-only targets.
