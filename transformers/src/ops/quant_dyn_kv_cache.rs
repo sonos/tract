@@ -87,14 +87,20 @@ fn unpack_code(bytes: &[u8], c: usize, bits: u32) -> u8 {
     }
 }
 
+// The first tokens act as attention sinks and carry outsized weight, so they are kept in full
+// precision rather than quantized — a large accuracy gain for a constant, tiny cost.
+const SINK_TOKENS: usize = 4;
+
 // ── per-token Value store ───────────────────────────────────────────────────────────────────────
 
-/// Values quantized per token: each token gets one `(lo, scale)` pair over its `D` channels.
+/// Values quantized per token: each token gets one `(lo, scale)` pair over its `D` channels. The
+/// first `SINK_TOKENS` are kept in f32.
 #[derive(Clone, Debug, Default)]
 struct PerTokenStore {
     d: usize,
     bits: u32,
     row_bytes: usize,
+    sink: Vec<f32>, // first SINK_TOKENS rows, f32
     packed: Vec<u8>,
     params: Vec<(f32, f32)>,
 }
@@ -103,10 +109,17 @@ impl PerTokenStore {
     fn with_bits(d: usize, bits: u32) -> Self {
         PerTokenStore { d, bits, row_bytes: row_bytes(d, bits), ..Default::default() }
     }
+    fn n_sink(&self) -> usize {
+        self.sink.len() / self.d
+    }
     fn len(&self) -> usize {
-        self.params.len()
+        self.n_sink() + self.params.len()
     }
     fn push_token(&mut self, v: &[f32]) {
+        if self.n_sink() < SINK_TOKENS {
+            self.sink.extend_from_slice(v);
+            return;
+        }
         let lv = max_code(self.bits);
         let lo = v.iter().copied().fold(f32::INFINITY, f32::min);
         let hi = v.iter().copied().fold(f32::NEG_INFINITY, f32::max);
@@ -118,11 +131,17 @@ impl PerTokenStore {
     }
     fn dequant_all(&self) -> Array2<f32> {
         let (d, rb, bits) = (self.d, self.row_bytes, self.bits);
+        let ns = self.n_sink();
         let mut out = Array2::<f32>::zeros((self.len(), d));
-        for (t, &(lo, scale)) in self.params.iter().enumerate() {
-            let src = &self.packed[t * rb..t * rb + rb];
+        for t in 0..ns {
             for c in 0..d {
-                out[(t, c)] = lo + unpack_code(src, c, bits) as f32 * scale;
+                out[(t, c)] = self.sink[t * d + c];
+            }
+        }
+        for (i, &(lo, scale)) in self.params.iter().enumerate() {
+            let src = &self.packed[i * rb..i * rb + rb];
+            for c in 0..d {
+                out[(ns + i, c)] = lo + unpack_code(src, c, bits) as f32 * scale;
             }
         }
         out
@@ -135,12 +154,14 @@ const KEY_BLOCK: usize = 32;
 
 /// Keys quantized per channel in blocks of `KEY_BLOCK` tokens. Each finalized block stores `D`
 /// `lo`/`scale` values computed over that block and frozen, so every code dequantizes against the
-/// exact scale it was encoded with. The current partial block is held in f32 until it fills.
+/// exact scale it was encoded with. The first `SINK_TOKENS` and the current partial block are held
+/// in f32.
 #[derive(Clone, Debug, Default)]
 struct BlockChannelStore {
     d: usize,
     bits: u32,
     row_bytes: usize,
+    sink: Vec<f32>,        // first SINK_TOKENS rows, f32
     packed: Vec<u8>,       // finalized blocks, [n_finalized * KEY_BLOCK, row_bytes]
     block_lo: Vec<f32>,    // per finalized block: D lo values (block * D + c)
     block_scale: Vec<f32>, // per finalized block: D scale values
@@ -153,10 +174,17 @@ impl BlockChannelStore {
     fn with_bits(d: usize, bits: u32) -> Self {
         BlockChannelStore { d, bits, row_bytes: row_bytes(d, bits), ..Default::default() }
     }
+    fn n_sink(&self) -> usize {
+        self.sink.len() / self.d
+    }
     fn len(&self) -> usize {
-        self.n_finalized * KEY_BLOCK + self.n_res
+        self.n_sink() + self.n_finalized * KEY_BLOCK + self.n_res
     }
     fn push_token(&mut self, k: &[f32]) {
+        if self.n_sink() < SINK_TOKENS {
+            self.sink.extend_from_slice(k);
+            return;
+        }
         self.residual.extend_from_slice(k);
         self.n_res += 1;
         if self.n_res == KEY_BLOCK {
@@ -193,7 +221,13 @@ impl BlockChannelStore {
     }
     fn dequant_all(&self) -> Array2<f32> {
         let (d, rb, bits) = (self.d, self.row_bytes, self.bits);
+        let ns = self.n_sink();
         let mut out = Array2::<f32>::zeros((self.len(), d));
+        for t in 0..ns {
+            for c in 0..d {
+                out[(t, c)] = self.sink[t * d + c];
+            }
+        }
         for bi in 0..self.n_finalized {
             let lo = &self.block_lo[bi * d..bi * d + d];
             let sc = &self.block_scale[bi * d..bi * d + d];
@@ -201,11 +235,11 @@ impl BlockChannelStore {
                 let g = bi * KEY_BLOCK + ti;
                 let src = &self.packed[g * rb..g * rb + rb];
                 for c in 0..d {
-                    out[(g, c)] = lo[c] + unpack_code(src, c, bits) as f32 * sc[c];
+                    out[(ns + g, c)] = lo[c] + unpack_code(src, c, bits) as f32 * sc[c];
                 }
             }
         }
-        let base = self.n_finalized * KEY_BLOCK;
+        let base = ns + self.n_finalized * KEY_BLOCK;
         for ti in 0..self.n_res {
             for c in 0..d {
                 out[(base + ti, c)] = self.residual[ti * d + c];
