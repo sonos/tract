@@ -41,3 +41,7 @@ bench_runtime = 10
 "apple-m1-max"        = "m1max"
 "i9-11900kb_rtx-4060" = "i9-4060"
 "jetson-orin-nx"      = "orin"
+"cortex-a55"          = "a55"
+"cortex-a53"          = "a53"
+"cortex-a7"           = "a7"
+"cortex-a9"           = "a9"
