@@ -350,6 +350,83 @@ fn env_flag(name: &str) -> bool {
     std::env::var(name).is_ok_and(|v| v != "0" && !v.eq_ignore_ascii_case("false"))
 }
 
+#[derive(Default)]
+struct MoeInputIndexes {
+    w3: Option<usize>,
+    wg_bias: Option<usize>,
+    w1_bias: Option<usize>,
+    w3_bias: Option<usize>,
+    w2_bias: Option<usize>,
+}
+
+fn moe_input_indexes(op: &MoeFfn) -> MoeInputIndexes {
+    let mut next = 4;
+    let mut take = |present: bool| {
+        if present {
+            let ix = next;
+            next += 1;
+            Some(ix)
+        } else {
+            None
+        }
+    };
+    MoeInputIndexes {
+        w3: take(op.has_w3),
+        wg_bias: take(op.has_wg_bias),
+        w1_bias: take(op.has_w1_bias),
+        w3_bias: take(op.has_w3_bias),
+        w2_bias: take(op.has_w2_bias),
+    }
+}
+
+fn fact_is_f16_or_f32(fact: &TypedFact) -> bool {
+    matches!(fact.datum_type, DatumType::F16 | DatumType::F32)
+}
+
+fn sync_f32_input(
+    target: &mut TypedModel,
+    name: impl Into<String>,
+    outlet: OutletId,
+    fact: &TypedFact,
+) -> TractResult<OutletId> {
+    let name = name.into();
+    let device = sync_outlet_if_required(
+        target,
+        format!("{name}.to-device"),
+        outlet,
+        DeviceSyncKind::ToDevice,
+    )?;
+    if fact.datum_type == f32::datum_type() {
+        Ok(device)
+    } else {
+        Ok(target.wire_node(
+            format!("{name}.cast-f32"),
+            metal_cast_new(f32::datum_type()).unwrap(),
+            &[device],
+        )?[0])
+    }
+}
+
+fn add_routed_bias(
+    target: &mut TypedModel,
+    name: impl Into<String>,
+    value: OutletId,
+    bias: OutletId,
+    route_expert_ids: OutletId,
+) -> TractResult<OutletId> {
+    let name = name.into();
+    let gathered = target.wire_node(
+        format!("{name}.bias-gather"),
+        tract_gpu::ops::gather::GpuGather::new(0, "Metal", kernels::array::metal_gather_dispatch),
+        &[bias, route_expert_ids],
+    )?[0];
+    Ok(target.wire_node(
+        format!("{name}.bias-add"),
+        kernels::bin_ops::metal_bin_op(Box::new(tract_core::ops::math::Add)),
+        &[value, gathered],
+    )?[0])
+}
+
 fn convert_q40_moe_ffn_to_metal(
     source: &TypedModel,
     node: &TypedNode,
@@ -361,13 +438,9 @@ fn convert_q40_moe_ffn_to_metal(
     if env_flag("TRACT_METAL_DISABLE_Q40_MOE") {
         return Ok(None);
     }
-    if op.has_wg_bias
-        || op.has_w1_bias
-        || op.has_w3_bias
-        || op.has_w2_bias
-        || op.act_limit_bits.is_some()
-        || op.expert_layout != ExpertLayout::Linear
+    if op.expert_layout != ExpertLayout::Linear
         || !q40_moe_activation_supported(op)
+        || (op.act_limit_bits.is_some() && !op.has_w3)
     {
         if log_lowering {
             eprintln!(
@@ -387,6 +460,7 @@ fn convert_q40_moe_ffn_to_metal(
     }
 
     let facts = source.node_input_facts(node.id)?;
+    let indexes = moe_input_indexes(op);
     let x_rank_ok =
         facts[0].rank() == 2 || (facts[0].rank() == 3 && facts[0].shape.dims()[0] == 1.to_dim());
     let x_dt_ok = matches!(facts[0].datum_type, DatumType::F32 | DatumType::F16);
@@ -394,8 +468,41 @@ fn convert_q40_moe_ffn_to_metal(
     let w1_q40 = as_quant_fact(facts[2], &Q4_0).is_some();
     let w2_q40 = as_quant_fact(facts[3], &Q4_0).is_some();
     let w3_q40 =
-        !op.has_w3 || facts.get(4).is_some_and(|fact| as_quant_fact(fact, &Q4_0).is_some());
-    let facts_supported = x_rank_ok && x_dt_ok && wg_dt_ok && w1_q40 && w2_q40 && w3_q40;
+        !op.has_w3 || indexes.w3.is_some_and(|ix| as_quant_fact(facts[ix], &Q4_0).is_some());
+    let num_experts = facts[2].shape[0].clone();
+    let d_hidden = facts[2].shape[1].clone();
+    let d_model = facts[2].shape[2].clone();
+    let wg_bias_ok = indexes.wg_bias.is_none_or(|ix| {
+        fact_is_f16_or_f32(facts[ix]) && facts[ix].rank() == 1 && facts[ix].shape[0] == num_experts
+    });
+    let w1_bias_ok = indexes.w1_bias.is_none_or(|ix| {
+        fact_is_f16_or_f32(facts[ix])
+            && facts[ix].rank() == 2
+            && facts[ix].shape[0] == num_experts
+            && facts[ix].shape[1] == d_hidden
+    });
+    let w3_bias_ok = indexes.w3_bias.is_none_or(|ix| {
+        fact_is_f16_or_f32(facts[ix])
+            && facts[ix].rank() == 2
+            && facts[ix].shape[0] == num_experts
+            && facts[ix].shape[1] == d_hidden
+    });
+    let w2_bias_ok = indexes.w2_bias.is_none_or(|ix| {
+        fact_is_f16_or_f32(facts[ix])
+            && facts[ix].rank() == 2
+            && facts[ix].shape[0] == num_experts
+            && facts[ix].shape[1] == d_model
+    });
+    let facts_supported = x_rank_ok
+        && x_dt_ok
+        && wg_dt_ok
+        && w1_q40
+        && w2_q40
+        && w3_q40
+        && wg_bias_ok
+        && w1_bias_ok
+        && w3_bias_ok
+        && w2_bias_ok;
     if log_lowering {
         eprintln!(
             "Metal Q40 MoE candidate {}: x_rank={} x_dt={:?} wg_dt={:?} w1_q40={} w2_q40={} w3_q40={} shapes x={:?} wg={:?} w1={:?} w2={:?}{}",
@@ -410,7 +517,7 @@ fn convert_q40_moe_ffn_to_metal(
             facts[1].shape,
             facts[2].shape,
             facts[3].shape,
-            if op.has_w3 { format!(" w3={:?}", facts[4].shape) } else { String::new() }
+            indexes.w3.map(|ix| format!(" w3={:?}", facts[ix].shape)).unwrap_or_default()
         );
     }
     if !facts_supported {
@@ -454,8 +561,28 @@ fn convert_q40_moe_ffn_to_metal(
     } else {
         wg_device
     };
+    let wg_bias_device = indexes
+        .wg_bias
+        .map(|ix| {
+            sync_f32_input(
+                target,
+                format!("{}.wg_bias", node.name),
+                mapping[&node.inputs[ix]],
+                facts[ix],
+            )
+        })
+        .transpose()?;
 
     let routes = if env_flag("TRACT_METAL_DISABLE_ROUTE_TOPK") {
+        if indexes.wg_bias.is_some() {
+            if log_lowering {
+                eprintln!(
+                    "Metal Q40 MoE skip {}: CPU RouteTopK does not support wg_bias",
+                    node.name
+                );
+            }
+            return Ok(None);
+        }
         let x_host = sync_outlet_if_required(
             target,
             format!("{}.route-x-to-cpu", node.name),
@@ -474,10 +601,14 @@ fn convert_q40_moe_ffn_to_metal(
             &[x_host, wg_host],
         )?
     } else {
+        let mut route_inputs = tvec![x_device, wg_device];
+        if let Some(wg_bias_device) = wg_bias_device {
+            route_inputs.push(wg_bias_device);
+        }
         target.wire_node(
             format!("{}.route_topk", node.name),
             ops::MetalRouteTopK { k: op.k, gate: op.gate.clone() },
-            &[x_device, wg_device],
+            &route_inputs,
         )?
     };
     let route_token_ids = sync_outlet_if_required(
@@ -521,44 +652,119 @@ fn convert_q40_moe_ffn_to_metal(
         mapping[&node.inputs[3]],
         DeviceSyncKind::ToDevice,
     )?;
+    let w1_bias_device = indexes
+        .w1_bias
+        .map(|ix| {
+            sync_f32_input(
+                target,
+                format!("{}.w1_bias", node.name),
+                mapping[&node.inputs[ix]],
+                facts[ix],
+            )
+        })
+        .transpose()?;
+    let w3_bias_device = indexes
+        .w3_bias
+        .map(|ix| {
+            sync_f32_input(
+                target,
+                format!("{}.w3_bias", node.name),
+                mapping[&node.inputs[ix]],
+                facts[ix],
+            )
+        })
+        .transpose()?;
+    let w2_bias_device = indexes
+        .w2_bias
+        .map(|ix| {
+            sync_f32_input(
+                target,
+                format!("{}.w2_bias", node.name),
+                mapping[&node.inputs[ix]],
+                facts[ix],
+            )
+        })
+        .transpose()?;
 
-    let h1 = target.wire_node(
+    let mut h1 = target.wire_node(
         format!("{}.w1", node.name),
         ops::MetalRoutedQ40MatMul { input_mode: RoutedInputMode::TokenRows },
         &[x_expert_input, w1_device, route_token_ids, route_expert_ids],
     )?[0];
-    let activated = target.wire_node(
-        format!("{}.activation", node.name),
-        kernels::element_wise::metal_element_wise_op(Box::new(tract_core::ops::nn::Silu {})),
-        &[h1],
-    )?[0];
+    if let Some(w1_bias_device) = w1_bias_device {
+        h1 = add_routed_bias(
+            target,
+            format!("{}.w1", node.name),
+            h1,
+            w1_bias_device,
+            route_expert_ids,
+        )?;
+    }
 
     let hidden = if op.has_w3 {
         let w3_device = sync_outlet_if_required(
             target,
             format!("{}.w3.to-device", node.name),
-            mapping[&node.inputs[4]],
+            mapping[&node.inputs[indexes.w3.context("missing w3 input index")?]],
             DeviceSyncKind::ToDevice,
         )?;
-        let gate = target.wire_node(
+        let mut up = target.wire_node(
             format!("{}.w3", node.name),
             ops::MetalRoutedQ40MatMul { input_mode: RoutedInputMode::TokenRows },
             &[x_expert_input, w3_device, route_token_ids, route_expert_ids],
         )?[0];
-        target.wire_node(
-            format!("{}.swiglu_mul", node.name),
-            kernels::bin_ops::metal_bin_op(Box::new(tract_core::ops::math::Mul)),
-            &[activated, gate],
-        )?[0]
+        if let Some(w3_bias_device) = w3_bias_device {
+            up = add_routed_bias(
+                target,
+                format!("{}.w3", node.name),
+                up,
+                w3_bias_device,
+                route_expert_ids,
+            )?;
+        }
+        if let Some(limit_bits) = op.act_limit_bits {
+            let alpha = op.act_alpha_bits.map(f32::from_bits).unwrap_or(1.0);
+            target.wire_node(
+                format!("{}.clamped_swiglu", node.name),
+                ops::MetalClampedSwiGlu::new(alpha, f32::from_bits(limit_bits)),
+                &[h1, up],
+            )?[0]
+        } else {
+            let activated = target.wire_node(
+                format!("{}.activation", node.name),
+                kernels::element_wise::metal_element_wise_op(Box::new(
+                    tract_core::ops::nn::Silu {},
+                )),
+                &[h1],
+            )?[0];
+            target.wire_node(
+                format!("{}.swiglu_mul", node.name),
+                kernels::bin_ops::metal_bin_op(Box::new(tract_core::ops::math::Mul)),
+                &[activated, up],
+            )?[0]
+        }
     } else {
-        activated
+        target.wire_node(
+            format!("{}.activation", node.name),
+            kernels::element_wise::metal_element_wise_op(Box::new(tract_core::ops::nn::Silu {})),
+            &[h1],
+        )?[0]
     };
 
-    let route_values = target.wire_node(
+    let mut route_values = target.wire_node(
         format!("{}.w2", node.name),
         ops::MetalRoutedQ40MatMul { input_mode: RoutedInputMode::RouteRows },
         &[hidden, w2_device, route_token_ids, route_expert_ids],
     )?[0];
+    if let Some(w2_bias_device) = w2_bias_device {
+        route_values = add_routed_bias(
+            target,
+            format!("{}.w2", node.name),
+            route_values,
+            w2_bias_device,
+            route_expert_ids,
+        )?;
+    }
     let output = target.wire_node(
         format!("{}.combine", node.name),
         ops::MetalRoutedCombine,

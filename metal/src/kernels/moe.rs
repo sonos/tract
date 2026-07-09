@@ -19,6 +19,7 @@ pub fn dispatch_route_topk_f32(
     stream: &MetalStream,
     x: &DeviceTensor,
     wg: &DeviceTensor,
+    wg_bias: Option<&DeviceTensor>,
     k: usize,
     gate: &GateMode,
     route_token_ids: &DeviceTensor,
@@ -27,6 +28,9 @@ pub fn dispatch_route_topk_f32(
 ) -> TractResult<()> {
     stream.retain_tensor(x);
     stream.retain_tensor(wg);
+    if let Some(wg_bias) = wg_bias {
+        stream.retain_tensor(wg_bias);
+    }
     stream.retain_tensor(route_token_ids);
     stream.retain_tensor(route_expert_ids);
     stream.retain_tensor(route_weights);
@@ -35,6 +39,10 @@ pub fn dispatch_route_topk_f32(
     ensure!(wg.rank() == 2 || wg.rank() == 3, "wg must be rank 2 or 3");
     ensure!(x.datum_type() == f32::datum_type());
     ensure!(wg.datum_type() == f32::datum_type());
+    if let Some(wg_bias) = wg_bias {
+        ensure!(wg_bias.rank() == 1, "wg_bias must be rank 1");
+        ensure!(wg_bias.datum_type() == f32::datum_type());
+    }
     ensure!(route_token_ids.datum_type() == i64::datum_type());
     ensure!(route_expert_ids.datum_type() == i64::datum_type());
     ensure!(route_weights.datum_type() == f32::datum_type());
@@ -51,6 +59,13 @@ pub fn dispatch_route_topk_f32(
         _ => unreachable!(),
     };
     ensure!(wg_d_model == d_model);
+    if let Some(wg_bias) = wg_bias {
+        ensure!(
+            wg_bias.shape() == [num_experts],
+            "wg_bias shape {:?} does not match expert count {num_experts}",
+            wg_bias.shape()
+        );
+    }
     ensure!(num_experts <= 256, "Metal RouteTopK supports at most 256 experts");
 
     let route_count = token_count * k;
@@ -63,6 +78,8 @@ pub fn dispatch_route_topk_f32(
     let num_experts = num_experts as u32;
     let k = k as u32;
     let gate_mode = gate_mode_code(gate);
+    let has_wg_bias = u32::from(wg_bias.is_some());
+    let wg_bias = wg_bias.unwrap_or(wg);
 
     let pipeline = stream.load_pipeline(LibraryName::MoeOps, "route_topk_f32")?;
     let max_group_width = pipeline.max_total_threads_per_threadgroup() as u32;
@@ -85,8 +102,50 @@ pub fn dispatch_route_topk_f32(
         encoder.set_slice(7, &[num_experts]);
         encoder.set_slice(8, &[k]);
         encoder.set_slice(9, &[gate_mode]);
+        encoder.set_metal_tensor(10, wg_bias, metal::MTLResourceUsage::Read);
+        encoder.set_slice(11, &[has_wg_bias]);
 
         let grid_size = MTLSize { width: token_count as NSUInteger, height: 1, depth: 1 };
+        let group_size = MTLSize { width: group_width as NSUInteger, height: 1, depth: 1 };
+        encoder.dispatch_thread_groups(grid_size, group_size);
+    });
+    Ok(())
+}
+
+pub fn dispatch_clamped_swiglu_f32(
+    stream: &MetalStream,
+    gate: &DeviceTensor,
+    up: &DeviceTensor,
+    alpha: f32,
+    limit: f32,
+    output: &DeviceTensor,
+) -> TractResult<()> {
+    stream.retain_tensor(gate);
+    stream.retain_tensor(up);
+    stream.retain_tensor(output);
+
+    ensure!(gate.datum_type() == f32::datum_type());
+    ensure!(up.datum_type() == f32::datum_type());
+    ensure!(output.datum_type() == f32::datum_type());
+    ensure!(gate.shape() == up.shape());
+    ensure!(gate.shape() == output.shape());
+
+    let len = gate.len() as u32;
+    let pipeline = stream.load_pipeline(LibraryName::MoeOps, "clamped_swiglu_f32")?;
+    let group_width =
+        (pipeline.max_total_threads_per_threadgroup() as u64).min(256).min(len as u64).max(1);
+    let grid_width = (len as u64).div_ceil(group_width);
+    let command_buffer = stream.command_buffer();
+    command_buffer.encode(|encoder| {
+        encoder.set_compute_pipeline_state(&pipeline);
+        encoder.set_metal_tensor(0, gate, metal::MTLResourceUsage::Read);
+        encoder.set_metal_tensor(1, up, metal::MTLResourceUsage::Read);
+        encoder.set_metal_tensor(2, output, metal::MTLResourceUsage::Write);
+        encoder.set_slice(3, &[alpha]);
+        encoder.set_slice(4, &[limit]);
+        encoder.set_slice(5, &[len]);
+
+        let grid_size = MTLSize { width: grid_width as NSUInteger, height: 1, depth: 1 };
         let group_size = MTLSize { width: group_width as NSUInteger, height: 1, depth: 1 };
         encoder.dispatch_thread_groups(grid_size, group_size);
     });

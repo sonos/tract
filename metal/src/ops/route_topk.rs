@@ -17,12 +17,17 @@ impl MetalRouteTopK {
     }
 
     fn output_facts_inner(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        ensure!(inputs.len() == 2);
+        ensure!(inputs.len() == 2 || inputs.len() == 3);
         ensure!(self.k <= 16, "MetalRouteTopK supports k <= 16, got {}", self.k);
         ensure!(inputs[0].rank() == 2 || inputs[0].rank() == 3);
         ensure!(inputs[1].rank() == 2 || inputs[1].rank() == 3);
         ensure!(inputs[0].datum_type == f32::datum_type());
         ensure!(inputs[1].datum_type == f32::datum_type());
+        if inputs.len() == 3 {
+            ensure!(inputs[2].rank() == 1);
+            ensure!(inputs[2].datum_type == f32::datum_type());
+            ensure!(inputs[2].shape[0] == inputs[1].shape[inputs[1].rank() - 2]);
+        }
         let route_count = Self::token_count_dim(&inputs[0].shape) * self.k;
         Ok(tvec![
             i64::datum_type().fact(&[route_count.clone()]),
@@ -50,13 +55,25 @@ impl EvalOp for MetalRouteTopK {
         _session: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        let (x_raw, wg_raw) = args_2!(inputs);
+        ensure!(inputs.len() == 2 || inputs.len() == 3);
+        let x_raw = &inputs[0];
+        let wg_raw = &inputs[1];
         let x = x_raw
             .to_device_tensor()
             .with_context(|| format!("x is not a Metal tensor: {x_raw:?}"))?;
         let wg = wg_raw
             .to_device_tensor()
             .with_context(|| format!("wg is not a Metal tensor: {wg_raw:?}"))?;
+        let wg_bias = if inputs.len() == 3 {
+            let wg_bias_raw = &inputs[2];
+            Some(
+                wg_bias_raw
+                    .to_device_tensor()
+                    .with_context(|| format!("wg_bias is not a Metal tensor: {wg_bias_raw:?}"))?,
+            )
+        } else {
+            None
+        };
 
         let d_model = *x.shape().last().context("x has no feature axis")?;
         let token_count = x.len() / d_model;
@@ -70,6 +87,7 @@ impl EvalOp for MetalRouteTopK {
                 stream,
                 x,
                 wg,
+                wg_bias,
                 self.k,
                 &self.gate,
                 &route_token_ids,

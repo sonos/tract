@@ -19,6 +19,8 @@ enum RouteGateMode : uint {
     constant uint &num_experts [[buffer(7)]],
     constant uint &k [[buffer(8)]],
     constant uint &gate_mode [[buffer(9)]],
+    device const float *wg_bias [[buffer(10)]],
+    constant uint &has_wg_bias [[buffer(11)]],
     uint token [[threadgroup_position_in_grid]],
     uint lane [[thread_index_in_threadgroup]])
 {
@@ -34,6 +36,9 @@ enum RouteGateMode : uint {
         float score = 0.0f;
         for (uint d = 0; d < d_model; d++) {
             score += x[token * d_model + d] * wg[lane * d_model + d];
+        }
+        if (has_wg_bias != 0) {
+            score += wg_bias[lane];
         }
         scores[lane] = score;
     }
@@ -124,4 +129,23 @@ enum RouteGateMode : uint {
         }
     }
     output[gid] = acc;
+}
+
+[[kernel]] void clamped_swiglu_f32(
+    device const float *gate_in [[buffer(0)]],
+    device const float *up_in [[buffer(1)]],
+    device float *output [[buffer(2)]],
+    constant float &alpha [[buffer(3)]],
+    constant float &limit [[buffer(4)]],
+    constant uint &len [[buffer(5)]],
+    uint gid [[thread_position_in_grid]])
+{
+    if (gid >= len) {
+        return;
+    }
+
+    const float gate = min(gate_in[gid], limit);
+    const float up = clamp(up_in[gid], -limit, limit);
+    const float glu = gate / (1.0f + exp(-alpha * gate));
+    output[gid] = (up + 1.0f) * glu;
 }
