@@ -352,9 +352,13 @@ jobs:
 
   report:
     needs: [ prepare, build, bench, bench-dinghy ]
-    # !cancelled() (not always()) so a superseded/cancelled bench doesn't produce a vacuous
-    # "no regressions" comment; bench-report writes no file when there's nothing to compare.
-    if: ${{ !cancelled() && github.event_name == 'pull_request' && needs.prepare.outputs.enabled == 'true' }}
+    # always() so a single cancelled or failed device leg still yields a report from the
+    # devices that did finish (cancelling one flaky board must not suppress the whole comment).
+    # Safe against a vacuous "no regressions" comment: bench-report writes no file when there is
+    # nothing to compare and both post steps are gated on that file, so a fully-cancelled run
+    # (nothing uploaded) posts nothing. The prepare-enabled gate still skips report when the run
+    # was cancelled early enough to take out prepare.
+    if: ${{ always() && github.event_name == 'pull_request' && needs.prepare.outputs.enabled == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
