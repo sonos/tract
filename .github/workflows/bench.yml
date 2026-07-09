@@ -138,11 +138,6 @@ jobs:
           DEVICE: ${{ matrix.target }}
         run: |
           chmod +x tract-cli/tract
-          # no --cache-dir: honor each runner's CACHEDIR env (its curated model cache),
-          # falling back to ~/.cache/tract-ci-minion-models, like the old bundle did.
-          # ${{ matrix.bench_args }} is empty except on jetson (--skip-cpu).
-          # Reference (nightly/dispatch) records the per-metric median of N samples so a
-          # lone clock glitch can't poison it; PR runs omit --samples and retry-until-good.
           tract-cli/tract bench-suite \
             --manifest .travis/benches.toml \
             --bench-data bench-ref \
@@ -200,13 +195,9 @@ jobs:
           name: bench-result-${{ matrix.target }}
           path: result
 
-  # --- ARM embedded "dinghy target" fleet (opt-in via the BENCH_DINGHY_ENABLED repo variable) ---
-  # A dinghy target is an embedded board that cannot host a runner or build. A sidekick runner
-  # receives the static musl CLI, dispatches the run onto the board over dinghy's ssh transport, and
-  # captures every byte locally. Everything device-specific — address, working dir, OS, the model mirror
-  # URL and cpu governor — lives in the sidekick's own .dinghy.toml (ssh device coords + remote_shell_vars)
-  # and is expanded into the run out of band, so none of it reaches this file or the public run log.
-  # Gated off until a sidekick runner is registered, so a missing self-hosted runner cannot wedge PRs.
+  # --- dinghy target fleet (opt-in via BENCH_DINGHY_ENABLED). ---
+  # A sidekick runner cross-runs the CLI on each target over dinghy's ssh transport; per-target
+  # config lives in the sidekick's .dinghy.toml. Off by default so an absent runner can't wedge PRs.
 
   build-dinghy:
     needs: prepare
@@ -253,8 +244,8 @@ jobs:
         include:
           - device: cortex-a55
             triple: aarch64-unknown-linux-musl
-            runner: dinghy-sidekick-a55   # the self-hosted runner that dispatches to this board
-            dinghy_target: dinghy-a55     # opaque alias -> the sidekick-local .dinghy.toml ssh_devices key
+            runner: dinghy-sidekick-a55
+            dinghy_target: dinghy-a55
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -273,13 +264,6 @@ jobs:
         run: |
           chmod +x tract-cli/tract
           mkdir -p result
-          # Everything the board / dinghy / ssh emit is captured to files here and never re-echoed:
-          # the public run log must not leak the board's address, working dir or OS. bench-suite emits
-          # metric JSONL on stdout and all progress on stderr. The single-quoted '${...}' args reach
-          # dinghy verbatim and are expanded from the ssh device's remote_shell_vars (sidekick-local),
-          # so the model mirror URL and governor stay local and never hit this file or the run log.
-          # --no-cache streams each model straight from the mirror into tract: the board is read-only,
-          # so there is no on-disk model cache.
           if CARGO_PKG_NAME=tract cargo-dinghy -d "$DINGHY_TARGET" runner \
                ./tract-cli/tract -- bench-suite \
                --manifest .travis/benches.toml --skip-runtimes --no-cache --output - $SAMPLES \
@@ -288,7 +272,7 @@ jobs:
           then
             grep '"metric"' captured.out > result/metrics || true
           else
-            echo "::error::bench-dinghy: run failed on the target (details in the sidekick-local log)"
+            echo "::error::bench-dinghy: run failed"
             exit 1
           fi
           test -s result/metrics || { echo "::error::bench-dinghy: no metrics captured"; exit 1; }
@@ -352,12 +336,8 @@ jobs:
 
   report:
     needs: [ prepare, build, bench, bench-dinghy ]
-    # always() so a single cancelled or failed device leg still yields a report from the
-    # devices that did finish (cancelling one flaky board must not suppress the whole comment).
-    # Safe against a vacuous "no regressions" comment: bench-report writes no file when there is
-    # nothing to compare and both post steps are gated on that file, so a fully-cancelled run
-    # (nothing uploaded) posts nothing. The prepare-enabled gate still skips report when the run
-    # was cancelled early enough to take out prepare.
+    # always() (not !cancelled()) so a cancelled/failed device leg still reports from the rest;
+    # bench-report writes no file with nothing to compare, so a fully-cancelled run posts nothing.
     if: ${{ always() && github.event_name == 'pull_request' && needs.prepare.outputs.enabled == 'true' }}
     runs-on: ubuntu-latest
     permissions:
