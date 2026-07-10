@@ -253,6 +253,40 @@ impl TDim {
         if let Val(v) = self { Some(*v) } else { None }
     }
 
+    /// Non-erroring counterpart of `eval_to_i64`: returns `None` instead of
+    /// building an error when a symbol is undetermined or arithmetic overflows.
+    /// Use this on hot paths that only want the constant value and discard the
+    /// reason for failure, so no message string is formatted and (crucially,
+    /// when `RUST_BACKTRACE` is set) no backtrace is captured.
+    pub fn maybe_eval_to_i64(&self, values: &SymbolValues) -> Option<i64> {
+        match self {
+            Sym(sym) => values.get(sym),
+            Val(v) => Some(*v),
+            Add(terms) => terms
+                .iter()
+                .try_fold(0i64, |acc, it| acc.checked_add(it.maybe_eval_to_i64(values)?)),
+            Mul(terms) => terms
+                .iter()
+                .try_fold(1i64, |acc, it| acc.checked_mul(it.maybe_eval_to_i64(values)?)),
+            Min(terms) => terms
+                .iter()
+                .try_fold(i64::MAX, |acc, it| Some(acc.min(it.maybe_eval_to_i64(values)?))),
+            Max(terms) => terms
+                .iter()
+                .try_fold(i64::MIN, |acc, it| Some(acc.max(it.maybe_eval_to_i64(values)?))),
+            Broadcast(terms) => terms.iter().try_fold(1i64, |acc, it| {
+                (acc as usize)
+                    .broadcast(it.maybe_eval_to_i64(values)? as usize)
+                    .ok()
+                    .map(|x| x as i64)
+            }),
+            Div(a, q) => Some(a.maybe_eval_to_i64(values)? / *q as i64),
+            MulInt(p, a) => a.maybe_eval_to_i64(values)?.checked_mul(*p),
+            Ge(a, b) => Some((a.maybe_eval_to_i64(values)? >= b.maybe_eval_to_i64(values)?) as i64),
+            Eq(a, b) => Some((a.maybe_eval_to_i64(values)? == b.maybe_eval_to_i64(values)?) as i64),
+        }
+    }
+
     pub fn eval_to_i64(&self, values: &SymbolValues) -> TractResult<i64> {
         match self {
             Sym(sym) => {
@@ -549,7 +583,7 @@ impl TDim {
 
     pub fn simplify(self) -> TDim {
         use self::TDim::*;
-        if let Ok(v) = self.eval_to_i64(&SymbolValues::default()) {
+        if let Some(v) = self.maybe_eval_to_i64(&SymbolValues::default()) {
             return Val(v);
         }
         let Some(scope) = self.find_scope() else {
@@ -576,7 +610,7 @@ impl TDim {
         if extra.is_empty() {
             return self.simplify();
         }
-        if let Ok(v) = self.eval_to_i64(&SymbolValues::default()) {
+        if let Some(v) = self.maybe_eval_to_i64(&SymbolValues::default()) {
             return Val(v);
         }
         let Some(scope) = self.find_scope() else {
@@ -1363,7 +1397,7 @@ impl TDim {
     }
 
     pub fn compatible_with(&self, other: &TDim) -> bool {
-        if let Ok(x) = (self.clone() - other).to_i64() {
+        if let Some(x) = (self.clone() - other).as_i64() {
             return x == 0;
         }
         true // maybe ? :)

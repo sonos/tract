@@ -40,21 +40,11 @@ impl Assertion {
     pub fn check(&self, values: &SymbolValues) -> Option<bool> {
         use Assertion::*;
         match self {
-            Eq(left, right) => {
-                (left.eval(values) - right.eval(values)).to_i64().ok().map(|d| d == 0)
-            }
-            GTE(left, right) => {
-                (left.eval(values) - right.eval(values)).to_i64().ok().map(|d| d >= 0)
-            }
-            GT(left, right) => {
-                (left.eval(values) - right.eval(values)).to_i64().ok().map(|d| d > 0)
-            }
-            LTE(left, right) => {
-                (left.eval(values) - right.eval(values)).to_i64().ok().map(|d| d <= 0)
-            }
-            LT(left, right) => {
-                (left.eval(values) - right.eval(values)).to_i64().ok().map(|d| d < 0)
-            }
+            Eq(left, right) => (left.eval(values) - right.eval(values)).as_i64().map(|d| d == 0),
+            GTE(left, right) => (left.eval(values) - right.eval(values)).as_i64().map(|d| d >= 0),
+            GT(left, right) => (left.eval(values) - right.eval(values)).as_i64().map(|d| d > 0),
+            LTE(left, right) => (left.eval(values) - right.eval(values)).as_i64().map(|d| d <= 0),
+            LT(left, right) => (left.eval(values) - right.eval(values)).as_i64().map(|d| d < 0),
         }
     }
 }
