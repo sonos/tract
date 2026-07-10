@@ -66,6 +66,19 @@ pub fn f32_to_bf16_rne(x: f32) -> u16 {
     }
 }
 
+/// Round every f32 element of `tensor` through bf16 (round-to-nearest-even),
+/// matching what the bf16 packers do at pack time. Non-f32 tensors pass through
+/// unchanged. Lets a reference f32 matmul reproduce the kernel's bf16 rounding.
+fn truncate_to_bf16(mut tensor: Tensor) -> TractResult<Tensor> {
+    if tensor.datum_type() == f32::datum_type() {
+        let mut plain = tensor.try_as_plain_mut()?;
+        for x in plain.as_slice_mut::<f32>()? {
+            *x = f32::from_bits((f32_to_bf16_rne(*x) as u32) << 16);
+        }
+    }
+    Ok(tensor)
+}
+
 /// AMX-friendly A packing for f32 matmul via bf16. Per `r`-row panel, the
 /// M-rows are laid out row-major in bf16 across `K_padded` contiguous bf16
 /// per row (K_padded = ceil(K/32)*32, so each row is a whole number of
@@ -170,6 +183,9 @@ impl MMMInputFormat for PackedAmxBf16A {
     }
     fn precursor(&self) -> WeightType {
         WeightType::Plain(f32::datum_type())
+    }
+    fn simulate_precision_loss(&self, tensor: Tensor) -> TractResult<Tensor> {
+        truncate_to_bf16(tensor)
     }
     fn merge_with<'o, 'a: 'o, 'b: 'o>(
         &'a self,
@@ -297,6 +313,9 @@ impl MMMInputFormat for PackedBf16K2 {
     }
     fn precursor(&self) -> WeightType {
         WeightType::Plain(f32::datum_type())
+    }
+    fn simulate_precision_loss(&self, tensor: Tensor) -> TractResult<Tensor> {
+        truncate_to_bf16(tensor)
     }
     fn merge_with<'o, 'a: 'o, 'b: 'o>(
         &'a self,

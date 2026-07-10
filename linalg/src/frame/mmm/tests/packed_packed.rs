@@ -1,5 +1,4 @@
 use crate::WeightType;
-use crate::block_quant::PackedBlockQuantFormat;
 use crate::mmm::tests::display_error;
 use crate::mmm::{AsInputValue, FusedKerSpec, FusedSpec, MatMatMul, MatMatMulKer, OutputStoreKer};
 use proptest::collection::vec;
@@ -283,11 +282,10 @@ impl<K: MatMatMulKer> PackedPackedProblem<K> {
     pub fn reference(&self) -> TractResult<Tensor> {
         let (m, k, n) = self.mkn();
         let (pack_a, pack_b) = &self.ker.packings()[self.packing];
-        let (mut a, b) = self.padded_inputs()?;
+        let (mut a, mut b) = self.padded_inputs()?;
         let k_aligned = k.next_multiple_of(pack_a.k_alignment().max(pack_b.k_alignment()));
-        if let Some(pbqf) = pack_a.downcast_ref::<PackedBlockQuantFormat>() {
-            a = pbqf.simulate_precision_loss(a, 1)?;
-        };
+        a = pack_a.simulate_precision_loss(a)?;
+        b = pack_b.simulate_precision_loss(b)?;
         let mut c = Tensor::zero::<K::Acc>(&[m, n])?;
 
         let a = a.cast_to::<K::Acc>()?;
