@@ -877,7 +877,11 @@ mod tests {
                 transpose_b: self.transpose_rhs,
                 transpose_c: false,
                 quantize_output: None,
-                operating_dt: Some(F::datum_type()),
+                // The GGML/MLX/MFA kernels accumulate in f32 and only round the output to the
+                // activation dtype, so the golden must accumulate in f32 too: a f16 reference
+                // accumulator is noisier than the kernel it checks and flags spurious mismatches
+                // at large k.
+                operating_dt: Some(f32::datum_type()),
             };
 
             let lhs_tensor = if self.transpose_lhs {
