@@ -301,7 +301,10 @@ jobs:
   # so a hosted job does it with the x86 CLI (bench-append is arch-agnostic JSON) reading the JSONL result.
   append-dinghy:
     needs: [ prepare, build, bench-dinghy ]
-    if: ${{ github.event_name != 'pull_request' && needs.prepare.outputs.enabled == 'true' && vars.BENCH_DINGHY_ENABLED == 'true' }}
+    # always() (like the report job) so a cancelled/failed device leg (e.g. one board that
+    # timed out) still lets the boards that did finish append; each leg no-ops when its own
+    # result artifact is absent.
+    if: ${{ always() && github.event_name != 'pull_request' && needs.prepare.outputs.enabled == 'true' && vars.BENCH_DINGHY_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -323,17 +326,22 @@ jobs:
           name: tract-cli-x86_64-unknown-linux-gnu
           path: tract-cli
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        # A leg whose bench never produced a result (timed out / failed) has no artifact;
+        # tolerate that here and skip the append below rather than failing the whole job.
+        continue-on-error: true
         with:
           name: bench-result-${{ matrix.device }}
           path: result
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         # zizmor: ignore[artipacked] credentials are needed to push the row back to bench-data;
         # this checkout is never uploaded as an artifact.
+        if: ${{ hashFiles('result/metrics') != '' }}
         with:
           ref: bench-data
           path: bench-data
           fetch-depth: 1
       - name: Append and push
+        if: ${{ hashFiles('result/metrics') != '' }}
         env:
           DEVICE: ${{ matrix.device }}
           TRIPLE: ${{ matrix.triple }}
