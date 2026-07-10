@@ -326,9 +326,9 @@ jobs:
         with:
           name: bench-result-${{ matrix.device }}
           path: result
-      # zizmor: ignore[artipacked] credentials are needed to push the row back to bench-data;
-      # this checkout is never uploaded as an artifact.
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        # zizmor: ignore[artipacked] credentials are needed to push the row back to bench-data;
+        # this checkout is never uploaded as an artifact.
         with:
           ref: bench-data
           path: bench-data
