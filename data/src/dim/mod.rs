@@ -63,12 +63,27 @@ pub trait DimLike:
     /// Convert to regular integer.
     fn to_i64(&self) -> TractResult<i64>;
 
+    /// Non-erroring counterpart of `to_i64`: `Some` iff the dim is a plain
+    /// constant, `None` for a symbolic or undetermined dim. Unlike `to_i64`
+    /// it builds no error, so no message string and (under `RUST_BACKTRACE`)
+    /// no backtrace are produced on failure. Use it on hot paths that only
+    /// probe for a concrete value and discard the reason for failure.
+    fn as_i64(&self) -> Option<i64>;
+
     fn to_usize(&self) -> TractResult<usize> {
         self.to_i64().map(|d| d as usize)
     }
 
+    fn as_usize(&self) -> Option<usize> {
+        self.as_i64().map(|d| d as usize)
+    }
+
     fn to_isize(&self) -> TractResult<isize> {
         self.to_i64().map(|d| d as isize)
+    }
+
+    fn as_isize(&self) -> Option<isize> {
+        self.as_i64().map(|d| d as isize)
     }
 
     fn to_i32(&self) -> TractResult<i32> {
@@ -162,6 +177,10 @@ impl DimLike for TDim {
         TDim::to_i64(self)
     }
 
+    fn as_i64(&self) -> Option<i64> {
+        TDim::as_i64(self)
+    }
+
     fn eval(&self, values: &SymbolValues) -> Self {
         self.eval(values)
     }
@@ -217,6 +236,10 @@ impl DimLike for usize {
 
     fn to_i64(&self) -> TractResult<i64> {
         Ok(*self as i64)
+    }
+
+    fn as_i64(&self) -> Option<i64> {
+        Some(*self as i64)
     }
 
     fn eval(&self, _values: &SymbolValues) -> Self {

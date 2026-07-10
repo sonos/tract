@@ -18,9 +18,9 @@ impl ShapeFact {
     }
 
     fn compute_concrete(&mut self) {
-        assert!(self.dims.iter().all(|d| d.to_isize().map(|d| d >= 0).unwrap_or(true)));
+        assert!(self.dims.iter().all(|d| d.as_i64().map(|d| d >= 0).unwrap_or(true)));
         self.concrete =
-            self.dims.iter().map(|d| d.to_usize()).collect::<TractResult<TVec<_>>>().ok()
+            self.dims.iter().map(|d| d.as_i64().map(|d| d as usize)).collect::<Option<TVec<_>>>()
     }
 
     /// Shape of the tensor, unless it has symbolic dimensions.
@@ -396,8 +396,10 @@ impl Fact for TypedFact {
             return Ok(false);
         }
         for i in 0..t.rank() {
-            if let Ok(dim) =
-                self.shape[i].eval(symbols.unwrap_or(&SymbolValues::default())).to_usize()
+            if let Some(dim) = self.shape[i]
+                .eval(symbols.unwrap_or(&SymbolValues::default()))
+                .as_i64()
+                .map(|d| d as usize)
                 && dim != t.shape()[i]
             {
                 return Ok(false);

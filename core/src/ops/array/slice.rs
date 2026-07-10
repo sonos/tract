@@ -88,8 +88,8 @@ fn eval_slice(input: &Tensor, axis: usize, start: usize, end: usize) -> TractRes
 impl TypedOp for Slice {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         anyhow::ensure!(inputs.len() == 1, "Slice has one single input");
-        if let (Ok(start), Ok(end), Ok(len)) =
-            (self.start.to_usize(), self.end.to_usize(), inputs[0].shape[self.axis].to_usize())
+        if let (Some(start), Some(end), Some(len)) =
+            (self.start.as_usize(), self.end.as_usize(), inputs[0].shape[self.axis].as_usize())
         {
             ensure!(start <= end);
             ensure!(end <= len);

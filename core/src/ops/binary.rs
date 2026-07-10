@@ -614,7 +614,7 @@ fn find_most_efficient_config(
 }
 
 pub fn gt_tdim(x: TDim, min_val: i64) -> bool {
-    TDim::Val(min_val).mini(x).to_i64().is_ok_and(|v| v == min_val)
+    TDim::Val(min_val).mini(x).as_i64().is_some_and(|v| v == min_val)
 }
 
 #[derive(Clone)]

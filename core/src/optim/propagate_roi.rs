@@ -117,7 +117,7 @@ pub fn recognise_chunked_band_project(roi: &TDim, p_sym: &Symbol, k_sym: &Symbol
     if r_val != &TDim::Val(0) {
         return None;
     }
-    let big_l = l_val.to_i64().ok()?;
+    let big_l = l_val.as_i64()?;
     if big_l < 0 {
         return None;
     }
