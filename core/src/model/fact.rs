@@ -152,8 +152,7 @@ impl ShapeFact {
 
     pub fn consistent(&self) -> TractResult<()> {
         ensure!(
-            self.concrete
-                == self.dims.iter().map(|d| d.to_usize()).collect::<TractResult<TVec<_>>>().ok()
+            self.concrete == self.dims.iter().map(|d| d.as_usize()).collect::<Option<TVec<_>>>()
         );
         Ok(())
     }

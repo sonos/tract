@@ -791,7 +791,7 @@ impl CoerceFrom<Value> for u64 {
 impl CoerceFrom<Value> for i64 {
     fn coerce(builder: &mut ModelBuilder, from: &Value) -> TractResult<Self> {
         match from {
-            Value::Dim(d) => d.to_i64(),
+            Value::Dim(d) => Ok(d.to_i64()?),
             Value::Tensor(t) => Ok(*t.try_as_plain()?.to_scalar::<i64>()?),
             Value::Wire(_) => Ok(from.to::<Arc<Tensor>>(builder)?.cast_to_scalar::<i64>()?),
             _ => bail!("Can not build a i64 from {:?}", from),

@@ -165,7 +165,7 @@ impl Annotations {
         let peak_tmp_mem_usage = tmp_mem_usage
             .iter()
             .map(|(n, mem)| mem.to_usize().map(|m| (*n, m)))
-            .collect::<TractResult<TVec<_>>>()
+            .collect::<Result<TVec<_>, _>>()
             .ok()
             .and_then(|mems| {
                 mems.into_iter().map(|(n, mem)| (NodeQId(tvec![], n), mem)).max_by_key(|it| it.1)

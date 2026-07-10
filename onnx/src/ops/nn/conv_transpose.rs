@@ -66,8 +66,8 @@ impl Expansion for ConvTranspose {
 
         s.given_2(&inputs[0].shape, &inputs[1].shape, move |s, x_shape, w_shape| {
             if let (Ok(x_shape), Ok(w_shape)) = (
-                x_shape.iter().map(|d| d.to_usize()).collect::<TractResult<TVec<usize>>>(),
-                w_shape.iter().map(|d| d.to_usize()).collect::<TractResult<TVec<usize>>>(),
+                x_shape.iter().map(|d| d.to_usize()).collect::<Result<TVec<usize>, _>>(),
+                w_shape.iter().map(|d| d.to_usize()).collect::<Result<TVec<usize>, _>>(),
             ) {
                 let y_shape = if let Some(output_shape) = &self.output_shape {
                     let mut y_shape = x_shape;

@@ -70,13 +70,13 @@ fn pulsify_along_concat_axis(
     let before_len: usize = source_facts[..stream_input_ix]
         .iter()
         .map(|f| f.shape[axis].to_usize())
-        .collect::<TractResult<Vec<_>>>()?
+        .collect::<Result<Vec<_>, _>>()?
         .into_iter()
         .sum();
     let after_len: usize = source_facts[stream_input_ix + 1..]
         .iter()
         .map(|f| f.shape[axis].to_usize())
-        .collect::<TractResult<Vec<_>>>()?
+        .collect::<Result<Vec<_>, _>>()?
         .into_iter()
         .sum();
 

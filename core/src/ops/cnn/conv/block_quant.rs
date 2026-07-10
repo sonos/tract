@@ -105,7 +105,7 @@ impl TypedOp for SplitGroupBlockQuant {
         let o: usize = input.shape[0].to_usize()?;
         ensure!(o % self.group == 0);
         let mut new_shape: TVec<usize> =
-            input.shape.iter().map(|d| d.to_usize()).collect::<TractResult<_>>()?;
+            input.shape.iter().map(|d| d.to_usize()).collect::<Result<_, _>>()?;
         new_shape[0] = o / self.group;
         new_shape.insert(0, self.group);
         let exotic_fact = BlockQuantFact::new(bqf.format.clone(), new_shape.clone());
