@@ -209,11 +209,8 @@ pub fn make_conv_named_args<'a>(
         ("padding", padding),
     ];
     if deconv && adjustments.unwrap().iter().any(|a| *a != 0) {
-        let output_shape = output_shape
-            .hw_dims()
-            .iter()
-            .map(|d| d.to_usize())
-            .collect::<TractResult<TVec<_>>>()?;
+        let output_shape =
+            output_shape.hw_dims().iter().map(|d| d.to_usize()).collect::<Result<TVec<_>, _>>()?;
         named_args.push(("output_shape", ints(&output_shape)));
     };
     Ok(named_args)

@@ -240,12 +240,13 @@ impl TDim {
     }
 
     #[inline]
-    pub fn to_i64(&self) -> TractResult<i64> {
-        if let Val(v) = self {
-            Ok(*v)
-        } else {
-            Err(TooEarly::UndeterminedSymbol(self.to_string()))?
-        }
+    /// Concrete value of the dim, or a lightweight `TooEarly` for a symbolic
+    /// one. The error is a plain enum — no anyhow conversion, no message
+    /// formatting, and (crucially) no backtrace — so probing concreteness by
+    /// discarding the error (`.ok()`, `if let Ok`) is cheap. Use `?` in a
+    /// `TractResult` context to promote a genuine failure to a full error.
+    pub fn to_i64(&self) -> Result<i64, TooEarly> {
+        if let Val(v) = self { Ok(*v) } else { Err(TooEarly::UndeterminedSymbol(self.to_string())) }
     }
 
     #[inline]

@@ -180,7 +180,7 @@ fn should_slice_output(
         }
     }
     rule_if_let!(Ok(mut boundaries) =
-        boundaries.iter().map(|x| x.to_usize()).collect::<TractResult<TVec<usize>>>());
+        boundaries.iter().map(|x| x.to_usize()).collect::<Result<TVec<usize>, _>>());
     rule_if_let!(Ok(end) = node.outputs[0].fact.shape[axis].to_usize());
     // op_slices_to_slice_op requires boundaries to cover the full
     // [0..full_len] range. When every slicing successor starts at

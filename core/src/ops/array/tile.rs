@@ -35,7 +35,7 @@ impl EvalOp for Tile {
             .multipliers
             .iter()
             .map(|m| m.eval(&session.resolved_symbols).to_usize())
-            .collect::<TractResult<_>>()?;
+            .collect::<Result<_, _>>()?;
         let result =
             dispatch_datum_by_size!(eval_t(inputs[0].datum_type())(&inputs[0], &multipliers))?;
         Ok(tvec!(result))

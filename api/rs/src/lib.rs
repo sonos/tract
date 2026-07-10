@@ -606,7 +606,7 @@ impl DimInterface for Dim {
     }
 
     fn to_int64(&self) -> Result<i64> {
-        self.0.to_i64()
+        Ok(self.0.to_i64()?)
     }
 }
 
