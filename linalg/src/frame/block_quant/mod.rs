@@ -249,6 +249,11 @@ impl PackedBlockQuantFormat {
 }
 
 impl MMMInputFormat for PackedBlockQuantFormat {
+    fn simulate_precision_loss(&self, tensor: Tensor) -> TractResult<Tensor> {
+        let axis = tensor.rank() - 1;
+        self.bq.simulate_precision_loss(tensor, axis)
+    }
+
     fn prepare_tensor(&self, t: &Tensor, _k_axis: usize, _mn_axis: usize) -> TractResult<Tensor> {
         let bqs = t.try_storage_as::<BlockQuantStorage>()?;
         let num_groups: usize =
