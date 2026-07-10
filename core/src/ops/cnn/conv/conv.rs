@@ -570,7 +570,7 @@ impl Conv {
                 .context("Not matmu found")
         } else {
             let mmm = tract_linalg::ops()
-                .mmm(acc, Some(m), Some(k), n.to_usize().ok())
+                .mmm(acc, Some(m), Some(k), n.as_usize())
                 .context("No matmul found")?;
             let packing = mmm
                 .packings()

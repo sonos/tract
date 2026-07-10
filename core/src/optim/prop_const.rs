@@ -47,7 +47,7 @@ impl super::TypedPass for PropConst {
                 let input_mem: u64 = model
                     .node_input_facts(node.id)?
                     .iter()
-                    .map(|f| f.mem_size().to_i64().unwrap_or(i64::MAX) as u64)
+                    .map(|f| f.mem_size().as_i64().unwrap_or(i64::MAX) as u64)
                     .sum();
                 match node.op.eval_with_session(node.id, &TurnState::default(), inputs) {
                     Ok(mut res) => {

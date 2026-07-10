@@ -191,8 +191,8 @@ impl AxesMapping {
     pub fn renaming(mut self, axis: impl AxisPattern, name: char) -> TractResult<AxesMapping> {
         let position = self.search(axis)?;
         let old_label = self.axes[position].repr;
-        if let Ok(conflict) = self.axis_mut(name) {
-            conflict.repr = old_label
+        if let Some(conflict) = name.search(&self) {
+            self.axes[conflict].repr = old_label
         }
         self.axes[position].repr = name;
         self.sort();
