@@ -328,20 +328,19 @@ const ST_BLK_L3_MAX: usize = 64;
 
 /// Panel-block working-set budget (bytes) from a detected cache size: a fraction
 /// `num/den` of the cache (leaving room for the C accumulator tile + packing
-/// metadata), clamped to a sane range. `0` (cache unknown) ⇒ `fallback`, which
-/// is kept small so the block ≈ the naive loop and can never over-block a cache
-/// it can't see. Sizes come from the shared [`crate::cache`] probe.
-fn tier_budget_bytes(cache_bytes: usize, num: usize, den: usize, fallback: usize) -> usize {
-    if cache_bytes == 0 {
-        fallback
-    } else {
-        (cache_bytes * num / den).clamp(64 * 1024, 64 * 1024 * 1024)
-    }
+/// metadata), clamped to a sane range. `None` when the cache size is unknown:
+/// there is no size that is safe to assume, since the cores whose size the OS
+/// hides are the small in-order embedded parts a guessed budget would over-block
+/// (an L2-sized block blows their L1). Callers fall back to the naive loop.
+/// Sizes come from the shared [`crate::cache`] probe.
+fn tier_budget_bytes(cache_bytes: usize, num: usize, den: usize) -> Option<usize> {
+    (cache_bytes != 0).then(|| (cache_bytes * num / den).clamp(64 * 1024, 64 * 1024 * 1024))
 }
 
-/// Inner tier: ~a third of L2 (private per perf-core), 256 KiB fallback.
-fn l2_block_budget_bytes() -> usize {
-    tier_budget_bytes(crate::cache::cache_info().l2, 1, 3, 256 * 1024)
+/// Inner tier: ~a third of L2 (private per perf-core), or `None` when L2 is
+/// undetectable.
+fn l2_block_budget_bytes() -> Option<usize> {
+    tier_budget_bytes(crate::cache::cache_info().l2, 1, 3)
 }
 
 /// Outer tier: `(llc_bytes, budget_bytes)` — the raw last-level-cache size and the
@@ -360,7 +359,7 @@ fn l3_block_budget_bytes() -> Option<(usize, usize)> {
         LlcKind::Dedicated => (1, 2),
         LlcKind::SystemLevel => (1, 4),
     };
-    Some((bytes, tier_budget_bytes(bytes, num, den, 0)))
+    Some((bytes, tier_budget_bytes(bytes, num, den)?))
 }
 
 /// Cache-adaptive panel-block edge for a given byte budget: large enough to
@@ -385,10 +384,13 @@ fn block_edge_for(
 }
 
 /// Inner (L2) panel-block edge. Budget is **cache-size derived** (not a
-/// hard-coded constant), so it is correct across hardware.
+/// hard-coded constant), so it is correct across hardware. An undetectable L2
+/// yields the naive loop (edge 1) rather than a guessed budget, so a core whose
+/// cache the OS hides is never over-blocked.
 #[inline]
 fn st_block_edge(mr: usize, nr: usize, k: usize, elem_bytes: usize) -> usize {
-    block_edge_for(l2_block_budget_bytes(), mr, nr, k, elem_bytes, ST_BLK_MAX)
+    l2_block_budget_bytes()
+        .map_or(1, |budget| block_edge_for(budget, mr, nr, k, elem_bytes, ST_BLK_MAX))
 }
 
 /// Whether an L3 outer super-block can capture reuse the inner (L2) tier cannot.
