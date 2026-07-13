@@ -89,8 +89,11 @@ case "$PLATFORM" in
         # aarch64 stretch bench targets Jetson-class boxes that ship with CUDA 12;
         # the default CUDA 13 cudarc binding wouldn't run there (cudart symbol
         # rename across the 12/13 boundary).  Force cuda-12000 for that build only.
+        # The Jetson leg wants cuda-12000; the dinghy boards reuse the same aarch64 stretch
+        # platform but pass an explicit TRACT_CLI_FEATURES (no cuda), so only force cuda when
+        # the caller has not chosen its own feature set.
         CUDA_FEATURE_ENV=""
-        if [ "$PLATFORM" = "aarch64-unknown-linux-gnu-stretch" ]
+        if [ "$PLATFORM" = "aarch64-unknown-linux-gnu-stretch" ] && [ -z "$TRACT_CLI_FEATURES" ]
         then
             CUDA_FEATURE_ENV="-e TRACT_CUDA_FEATURE=cuda-12000"
         fi
@@ -115,6 +118,7 @@ case "$PLATFORM" in
             -e CARGO_NET_RETRY \
             -e CARGO_HTTP_MULTIPLEXING \
             -e CARGO_REGISTRIES_CRATES_IO_PROTOCOL \
+            -e TRACT_CLI_FEATURES \
             ${CARGO_TARGET_DIR:+-e CARGO_TARGET_DIR=$CARGO_TARGET_DIR} \
             -e PLATFORM=$INNER_PLATFORM $CUDA_FEATURE_ENV "$STRETCH_TAG" \
             ./.travis/cross.sh
