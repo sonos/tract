@@ -207,10 +207,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - triple: aarch64-unknown-linux-musl
-            rustc_triple: aarch64-unknown-linux-musl
-          - triple: armv7-unknown-linux-musl
-            rustc_triple: armv7-unknown-linux-musleabihf
+          - triple: aarch64-unknown-linux-gnu-stretch
+            rustc_triple: aarch64-unknown-linux-gnu
+          - triple: armv7-unknown-linux-gnueabihf-stretch
+            rustc_triple: armv7-unknown-linux-gnueabihf
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -221,7 +221,9 @@ jobs:
           key: ${{ matrix.triple }}
           cache-directories: .cross-cache/target
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      # Static musl CLI for the board: bench-suite on, cuda/tflite off; SKIP_QEMU_TEST builds only.
+      # glibc-stretch CLI for the board (matches the production devices), cross-built in the
+      # debian-stretch container: bench-suite on, cuda/tflite off; SKIP_QEMU_TEST builds only.
+      # TRACT_CLI_FEATURES suppresses the stretch leg's default cuda forcing (see cross.sh).
       - run: >-
           SKIP_QEMU_TEST=skip SUDO=sudo CARGO_TARGET_DIR=.cross-cache/target
           TRACT_CLI_FEATURES=onnx,tf,pulse,pulse-opl,transformers,extra,bench-suite
@@ -246,19 +248,19 @@ jobs:
       matrix:
         include:
           - device: cortex-a55
-            triple: aarch64-unknown-linux-musl
+            triple: aarch64-unknown-linux-gnu-stretch
             runner: dinghy-sidekick-a55
             dinghy_target: dinghy-a55
           - device: cortex-a53
-            triple: aarch64-unknown-linux-musl
+            triple: aarch64-unknown-linux-gnu-stretch
             runner: dinghy-sidekick-a53
             dinghy_target: dinghy-a53
           - device: cortex-a7
-            triple: armv7-unknown-linux-musl
+            triple: armv7-unknown-linux-gnueabihf-stretch
             runner: dinghy-sidekick-a7
             dinghy_target: dinghy-a7
           - device: cortex-a9
-            triple: armv7-unknown-linux-musl
+            triple: armv7-unknown-linux-gnueabihf-stretch
             runner: dinghy-sidekick-a9
             dinghy_target: dinghy-a9
     steps:
@@ -313,13 +315,13 @@ jobs:
       matrix:
         include:
           - device: cortex-a55
-            triple: aarch64-unknown-linux-musl
+            triple: aarch64-unknown-linux-gnu-stretch
           - device: cortex-a53
-            triple: aarch64-unknown-linux-musl
+            triple: aarch64-unknown-linux-gnu-stretch
           - device: cortex-a7
-            triple: armv7-unknown-linux-musl
+            triple: armv7-unknown-linux-gnueabihf-stretch
           - device: cortex-a9
-            triple: armv7-unknown-linux-musl
+            triple: armv7-unknown-linux-gnueabihf-stretch
     steps:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
