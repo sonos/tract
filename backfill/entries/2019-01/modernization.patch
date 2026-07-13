@@ -1,0 +1,126 @@
+diff --git a/cli/Cargo.toml b/cli/Cargo.toml
+index 2990c96e6..7b9d59688 100644
+--- a/cli/Cargo.toml
++++ b/cli/Cargo.toml
+@@ -29,7 +29,7 @@ terminal_size = "0.1.7"
+ textwrap = "0.10"
+ tract-core = "0.2.4"
+ tract-tensorflow = "0.2.4"
+-tract-onnx = "0.2.4"
++tract-onnx = { version = "0.2.4", path = "../onnx" }
+ pbr = "1.0"
+ atty = "0.2"
+ itertools = "0.7"
+diff --git a/onnx/Cargo.toml b/onnx/Cargo.toml
+index dc3eb2905..049a5f17a 100644
+--- a/onnx/Cargo.toml
++++ b/onnx/Cargo.toml
+@@ -24,10 +24,6 @@ protobuf = "2.0"
+ tract-linalg = "0.2.4"
+ tract-core = "0.2.4"
+ 
+-[build-dependencies]
+-git2 = "0.7"
+-tempdir = "0.3"
+-
+ [dev-dependencies]
+ flate2 = "1"
+ fs2 = "0.4"
+diff --git a/onnx/build.rs b/onnx/build.rs
+index 9d23e1bbd..23261911d 100644
+--- a/onnx/build.rs
++++ b/onnx/build.rs
+@@ -1,90 +1,3 @@
+-extern crate git2;
+-extern crate tempdir;
+-
+-use std::{fs, path};
+-
+-use tempdir::TempDir;
+-
+-pub fn dir() -> path::PathBuf {
+-    match ::std::env::var("TRAVIS_BUILD_DIR") {
+-        Ok(t) => path::Path::new(&t).join("cached").join("onnx-checkout"),
+-        _ => ".onnx".into(),
+-    }
+-}
+-
+-pub fn ensure_onnx_git_checkout() {
+-    use std::sync::Once;
+-    static START: Once = Once::new();
+-    START.call_once(|| {
+-        if !dir().exists() {
+-            println!("DEBUG ensure_onnx_git_checkout 1");
+-            let _ = fs::create_dir_all(dir().parent().unwrap());
+-            println!("DEBUG ensure_onnx_git_checkout 2");
+-            let tmp = TempDir::new("onnx").unwrap();
+-            println!("DEBUG ensure_onnx_git_checkout 3");
+-            let url = "https://github.com/onnx/onnx";
+-            println!("DEBUG ensure_onnx_git_checkout 4");
+-            ::git2::Repository::clone(url, &tmp).unwrap();
+-            println!("DEBUG ensure_onnx_git_checkout 5");
+-            fs::rename(tmp.into_path(), dir()).unwrap();
+-        }
+-    });
+-}
+-
+-pub fn make_test_file(tests_set: &str) {
+-    use std::io::Write;
+-    ensure_onnx_git_checkout();
+-    let node_tests = dir().join("onnx/backend/test/data").join(tests_set);
+-    assert!(node_tests.exists());
+-    let working_list_file = path::PathBuf::from("tests")
+-        .join(tests_set)
+-        .with_extension("txt");
+-    let working_list: Vec<String> = if let Ok(list) = fs::read_to_string(&working_list_file) {
+-        list.split("\n")
+-            .map(|s| s.to_string())
+-            .filter(|s| s.trim().len() > 1 && s.trim().as_bytes()[0] != b'#')
+-            .collect()
+-    } else {
+-        vec![]
+-    };
+-    let out_dir = std::env::var("OUT_DIR").unwrap();
+-    let out_dir = path::PathBuf::from(out_dir);
+-    let test_dir = out_dir.join("tests");
+-    fs::create_dir_all(&test_dir).unwrap();
+-    let test_file = test_dir.join(tests_set).with_extension("rs");
+-    let mut rs = fs::File::create(test_file).unwrap();
+-    let mut tests: Vec<String> = fs::read_dir(&node_tests)
+-        .unwrap()
+-        .map(|de| de.unwrap().file_name().to_str().unwrap().to_owned())
+-        .collect();
+-    tests.sort();
+-    writeln!(rs, "mod {} {{", tests_set.replace("-", "_")).unwrap();
+-    for (s, optim) in &[("plain", false), ("optim", true)] {
+-        writeln!(rs, "mod {} {{", s).unwrap();
+-        for t in &tests {
+-            writeln!(rs, "#[test]").unwrap();
+-            if !working_list.contains(&t) {
+-                writeln!(rs, "#[ignore]").unwrap();
+-            }
+-            writeln!(rs, "fn {}() {{", t).unwrap();
+-            writeln!(
+-                rs,
+-                "crate::onnx::run_one({:?}, {:?}, {:?})",
+-                node_tests, t, optim
+-            )
+-            .unwrap();
+-            writeln!(rs, "}}").unwrap();
+-        }
+-        writeln!(rs, "}}").unwrap();
+-    }
+-    writeln!(rs, "}}").unwrap();
+-}
+-
+-fn main() {
+-    ensure_onnx_git_checkout();
+-    make_test_file("node");
+-    make_test_file("real");
+-    make_test_file("simple");
+-    make_test_file("pytorch-operator");
+-    make_test_file("pytorch-converted");
+-}
++// SSL/git2 ablated for the backfill bench: this build script only generated
++// integration-test files from a cloned onnx repo (unused by the bench binary).
++fn main() {}

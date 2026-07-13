@@ -1,0 +1,32 @@
+diff --git a/Cargo.toml b/Cargo.toml
+index 540359504..1842f8dd3 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -9,7 +9,7 @@ keywords = [ "TensorFlow", "NeuralNetworks" ]
+ categories = [ "science" ]
+ 
+ [workspace]
+-members = [ "conform", "exs/inceptionv3", "cli" ]
++members = [ "cli" ]
+ 
+ [badges]
+ travis-ci = { repository = "kali/tensorflow-deploy-rust" }
+diff --git a/cli/Cargo.toml b/cli/Cargo.toml
+index d2670c154..a24233170 100644
+--- a/cli/Cargo.toml
++++ b/cli/Cargo.toml
+@@ -6,7 +6,7 @@ authors = ["Romain Liautaud <romain.liautaud@snips.ai>"]
+ [dependencies]
+ clap = "2.31"
+ colored = "1.6"
+-conform = { path = "../conform" }
++conform = { path = "../conform", optional = true }
+ error-chain = "0"
+ lazy_static = "1.0"
+ log = "0.4"
+@@ -19,4 +19,4 @@ tfdeploy = { path = ".." }
+ 
+ [features]
+ default = []
+-tensorflow = []
++tensorflow = ["conform"]

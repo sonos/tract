@@ -1,0 +1,10 @@
+id	date	base_ref	rustc	index_archive_branch	index_commit	run_recipe	result
+2017-09	2017-09-03	f95cd23c4	1.31.0	snapshot-2018-09-26	8f84bbc358c3addeac9011ac3771451c8e923fbf	lib example: cargo run --release --example inceptionv3 -- <model> (cold single, output consumed)	inceptionv3 ~610ms cold
+2019-01	2019-01-22	cli/0.2.4	1.41.0	snapshot-2019-10-17	65c11c296bf8e3a352680667ce7fce187db06c2b	tract <model> -i <WxHxf32> -O profile --bench (take Real: ms/i)	inceptionv3 775.3; hey_snips_v4 4.482
+2020-08	2020-08-28	0.10.10	1.46.0	snapshot-2020-11-20	93783fa58911af99ac7a6d58c2d900cf2ce9b0b2	tract <model> -i <shape> --allow-random-input -O bench	inceptionv3 152.8; hey_snips_v4 2.066
+2021-06	2021-06-24	0.15.0	1.56.0	snapshot-2021-07-02	9d6994c391b81f8f2eb4549c5dd0f10c32733497	tract <model> -i <shape> --allow-random-input -O bench	inceptionv3 154.8; hey_snips_v4 0.789; tdnn15M 45.8
+2022-06	2022-06-13	0.17.0	1.65.0	snapshot-2022-07-06	c9eaf25c49b76a3f6238d52641b908395c97cce4	tract <model> -i <shape> --allow-random-input -O bench	inceptionv3 144.1; hey_snips_v4 1.000; tdnn15M 47.5
+2023-04a	2023-04-20	0.19.12	1.68.0	snapshot-2023-06-30	692e56c90c82506d961fa44fcb5d1216944add61	tract <model> -i <shape> --allow-random-input -O bench	inceptionv3 139.7; hey_snips_v4 1.371; tdnn15M 49.3
+2023-04b	2023-04-25	0.20.0	1.68.0	snapshot-2023-06-30	590738cbce9831abb6505c52ee063971b1878329	tract <model> -i <shape> --allow-random-input -O bench	inceptionv3 165.8; hey_snips_v4 0.916; tdnn15M 48.6
+2024-09	2024-09-23	0.21.7	1.81.0	snapshot-2024-11-27	bc5ab799d9ab9c09ffe116c3705c72ea1c58c1a9	tract <model> -i <shape> --allow-random-input -O bench	inceptionv3 219.0; hey_snips_v4 0.889; tdnn15M 45.6
+2018-05	2018-05-21	1b62f8e80	1.31.0	snapshot-2018-09-26	2b11a924611a085724a16dbaf8eb34540c98f8b5	tract <model> -s <WxHxf32> profile (sum per-op ms; per-node profiler)	inceptionv3 ~638 (per-op sum)

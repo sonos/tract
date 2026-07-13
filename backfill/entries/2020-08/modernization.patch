@@ -1,0 +1,24 @@
+diff --git a/Cargo.toml b/Cargo.toml
+index c34c61cd6..690647730 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -8,19 +8,6 @@ members = [
+     "onnx",
+     "kaldi",
+     "cli",
+-    "examples/tensorflow-mobilenet-v2",
+-    "examples/jupyter-keras-tract",
+-    "examples/nnef-dump-mobilenet-v2",
+-    "examples/nnef-mobilenet-v2",
+-    "examples/onnx-mobilenet-v2",
+-    "examples/pytorch-resnet",
+-    "harness/core-proptest-pulse",
+-    "harness/lstm-proptest-onnx-vs-tf",
+-    "harness/nnef-inceptionv3",
+-    "harness/onnx-test-suite",
+-    "harness/tf-inceptionv3",
+-    "harness/tf-mobilenet-v2",
+-    "harness/tf-moz-deepspeech",
+ ]
+ 
+ [profile.release]
