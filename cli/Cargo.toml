@@ -12,6 +12,7 @@ keywords = ["TensorFlow", "NeuralNetworks"]
 categories = ["science"]
 autobenches = false
 edition = "2024"
+default-run = "tract"
 include = ["Cargo.toml", "src/**/*.rs", "LICENSE*"]
 
 [[bin]]
