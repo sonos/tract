@@ -498,19 +498,19 @@ jobs:
       matrix:
         include:
           - device: cortex-a55
-            triple: aarch64-unknown-linux-musl
+            triple: aarch64-unknown-linux-gnu-stretch
             runner: dinghy-sidekick-a55
             dinghy_target: dinghy-a55
           - device: cortex-a53
-            triple: aarch64-unknown-linux-musl
+            triple: aarch64-unknown-linux-gnu-stretch
             runner: dinghy-sidekick-a53
             dinghy_target: dinghy-a53
           - device: cortex-a7
-            triple: armv7-unknown-linux-musl
+            triple: armv7-unknown-linux-gnueabihf-stretch
             runner: dinghy-sidekick-a7
             dinghy_target: dinghy-a7
           - device: cortex-a9
-            triple: armv7-unknown-linux-musl
+            triple: armv7-unknown-linux-gnueabihf-stretch
             runner: dinghy-sidekick-a9
             dinghy_target: dinghy-a9
     steps:
