@@ -8,7 +8,194 @@ use tract_linalg::hwbench::bandwidth::{l1_bandwidth_seq, main_memory_bandwith_se
 use tract_linalg::hwbench::runner::run_bench;
 use tract_linalg::mmm::{AsInputValue, FusedSpec};
 
+#[derive(serde::Serialize)]
+struct Bandwidth {
+    threads: usize,
+    bytes_per_s: f64,
+}
+
+#[derive(serde::Serialize)]
+struct KernelResult {
+    kernel: String,
+    packing: usize,
+    layout: String,
+    flop_per_s: f64,
+    picked: bool,
+}
+
+/// One benched shape: every candidate kernel with its measured throughput,
+/// sorted fastest-first. `picked` flags the one the live dispatcher selects.
+#[derive(serde::Serialize)]
+struct ShapeResult {
+    m: usize,
+    k: usize,
+    n: usize,
+    dt: String,
+    kernels: Vec<KernelResult>,
+}
+
+impl ShapeResult {
+    fn title(&self) -> String {
+        format!("{}x{}x{}x{}", self.m, self.k, self.n, self.dt)
+    }
+    fn best(&self) -> Option<&KernelResult> {
+        self.kernels.first()
+    }
+    fn picked(&self) -> Option<&KernelResult> {
+        self.kernels.iter().find(|k| k.picked)
+    }
+    /// Picked kernel throughput as a fraction of the fastest measured kernel
+    /// (1.0 = the dispatcher picked the best). `None` if nothing was picked.
+    fn pick_ratio(&self) -> Option<f64> {
+        let best = self.best()?.flop_per_s;
+        let picked = self.picked()?.flop_per_s;
+        Some(if best > 0.0 { picked / best } else { 1.0 })
+    }
+}
+
+#[derive(serde::Serialize, Default)]
+struct Report {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cache: Option<Vec<Bandwidth>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    main_memory: Option<Vec<Bandwidth>>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    matmul: Vec<ShapeResult>,
+}
+
+fn parse_dt(s: &str) -> TractResult<DatumType> {
+    match s.to_lowercase().as_str() {
+        "f32" => Ok(f32::datum_type()),
+        "f16" => Ok(f16::datum_type()),
+        _ => bail!("unknown dt {s:?} in shape (want f32 or f16)"),
+    }
+}
+
+/// Expand `M,K,N` (both f32 and f16) or `M,K,N,dt` into concrete bench requests.
+fn parse_shape(spec: &str) -> TractResult<Vec<(DatumType, usize, usize, usize)>> {
+    let f = spec.split(',').collect_vec();
+    let dts = match f.len() {
+        3 => vec![f32::datum_type(), f16::datum_type()],
+        4 => vec![parse_dt(f[3])?],
+        _ => bail!("shape must be M,K,N or M,K,N,dt (got {spec:?})"),
+    };
+    let m = f[0].parse()?;
+    let k = f[1].parse()?;
+    let n = f[2].parse()?;
+    Ok(dts.into_iter().map(|dt| (dt, m, k, n)).collect())
+}
+
+fn default_battery() -> Vec<(DatumType, usize, usize, usize)> {
+    let big = if cfg!(target_arch = "arm") { 128 } else { 512 };
+    [f32::datum_type(), f16::datum_type()]
+        .into_iter()
+        .flat_map(|dt| [(dt, big, big, big), (dt, big, big, 1)])
+        .collect()
+}
+
 pub(crate) fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
+    let json = matches.get_flag("json");
+    let do_assert = matches.get_flag("assert");
+    let tolerance: f64 =
+        matches.get_one::<String>("tolerance").map(|s| s.parse()).transpose()?.unwrap_or(5.0);
+
+    if !json {
+        print_host();
+    }
+
+    let no_cache = matches.get_flag("no-cache");
+    let no_memory = matches.get_flag("no-memory");
+    let mut report = Report::default();
+    if !no_cache || !no_memory {
+        let mut threads = (1..=num_cpus::get()).collect_vec();
+        for extra in [1.25, 1.5, 1.75, 2.0, 2.5, 3.0, 4.0] {
+            let value = (num_cpus::get() * (extra * 4.) as usize) / 4;
+            if !threads.contains(&value) {
+                threads.push(value);
+            }
+        }
+        if !no_cache {
+            let bw = threads
+                .iter()
+                .map(|&t| Bandwidth { threads: t, bytes_per_s: l1_bandwidth_seq(t) })
+                .collect_vec();
+            if json {
+                report.cache = Some(bw);
+            } else {
+                print_bandwidth("# Cache", "L1", &bw);
+            }
+        }
+        if !no_memory {
+            let bw = threads
+                .iter()
+                .map(|&t| Bandwidth { threads: t, bytes_per_s: main_memory_bandwith_seq(t) })
+                .collect_vec();
+            if json {
+                report.main_memory = Some(bw);
+            } else {
+                print_bandwidth("# Main memory", "L∞", &bw);
+            }
+        }
+    }
+
+    if !matches.get_flag("no-matmul") {
+        let requests = match matches.get_many::<String>("shape") {
+            Some(specs) => {
+                specs.map(|s| parse_shape(s)).flatten_ok().collect::<TractResult<_>>()?
+            }
+            None => default_battery(),
+        };
+        for (dt, m, k, n) in requests {
+            let shape = bench_shape(dt, m, k, n)?;
+            if !json {
+                print_shape(&shape);
+            }
+            report.matmul.push(shape);
+        }
+    }
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+    }
+
+    if do_assert {
+        assert_picks(&report.matmul, tolerance)?;
+    }
+
+    Ok(())
+}
+
+fn assert_picks(shapes: &[ShapeResult], tolerance: f64) -> TractResult<()> {
+    let floor = 1.0 - tolerance / 100.0;
+    let mut failures = 0;
+    for shape in shapes {
+        match (shape.pick_ratio(), shape.picked(), shape.best()) {
+            (Some(ratio), Some(picked), Some(best)) if ratio < floor => {
+                failures += 1;
+                eprintln!(
+                    "PICK REGRESSION {}: picked {} at {:.1}% of best {} ({} vs {})",
+                    shape.title(),
+                    picked.kernel,
+                    ratio * 100.0,
+                    best.kernel,
+                    si_prefix(picked.flop_per_s, "flop/s"),
+                    si_prefix(best.flop_per_s, "flop/s"),
+                );
+            }
+            (None, _, _) => {
+                failures += 1;
+                eprintln!("PICK REGRESSION {}: no kernel selected", shape.title());
+            }
+            _ => {}
+        }
+    }
+    if failures > 0 {
+        bail!("{failures} kernel pick(s) lag the fastest by more than {tolerance}%");
+    }
+    Ok(())
+}
+
+fn print_host() {
     println!("# Cores");
     println!("cpus: {}", num_cpus::get());
     println!("physical cpus: {}", num_cpus::get_physical());
@@ -55,77 +242,48 @@ pub(crate) fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
             tract_linalg::arm64::Kind::choose()
         );
     }
-
-    let no_cache = matches.get_flag("no-cache");
-    let no_memory = matches.get_flag("no-memory");
-    if !no_cache || !no_memory {
-        let mut threads = (1..=num_cpus::get()).collect_vec();
-        for extra in [1.25, 1.5, 1.75, 2.0, 2.5, 3.0, 4.0] {
-            let value = (num_cpus::get() * (extra * 4.) as usize) / 4;
-            if !threads.contains(&value) {
-                threads.push(value);
-            }
-        }
-
-        if !no_cache {
-            println!("# Cache");
-            for &t in &threads {
-                let m = l1_bandwidth_seq(t);
-                println!(
-                    "{t:2}-thread L1 : {} — {}",
-                    si_prefix(m, "B/s"),
-                    si_prefix(m / t as f64, "B/s/thread"),
-                );
-            }
-            println!();
-        }
-
-        if !no_memory {
-            println!("# Main memory");
-            for &t in &threads {
-                let measured = main_memory_bandwith_seq(t);
-                println!(
-                    "{t:2}-thread L∞ : {} — {}",
-                    si_prefix(measured, "B/s"),
-                    si_prefix(measured / t as f64, "B/s/thread")
-                );
-            }
-            println!();
-        }
-    }
-
-    if !matches.get_flag("no-matmul") {
-        let dims = ["M", "K", "N"]
-            .iter()
-            .map(|name| matches.get_one::<String>(name).map(|s| s.parse::<usize>()).transpose())
-            .collect::<Result<Vec<Option<usize>>, _>>()?;
-        match dims[..] {
-            [Some(m), Some(k), Some(n)] => {
-                mmm(f32::datum_type(), m, k, n)?;
-                mmm(f16::datum_type(), m, k, n)?;
-            }
-            [None, None, None] => {
-                let big = if cfg!(target_arch = "arm") { 128 } else { 512 };
-                mmm(f32::datum_type(), big, big, big)?;
-                mmm(f32::datum_type(), big, big, 1)?;
-                mmm(f16::datum_type(), big, big, big)?;
-                mmm(f16::datum_type(), big, big, 1)?;
-            }
-            _ => bail!("hwbench matmul dims are all-or-nothing: pass M K N, or none"),
-        }
-    }
-
-    Ok(())
 }
 
-fn mmm(dt: DatumType, m: usize, k: usize, n: usize) -> TractResult<()> {
+fn print_bandwidth(header: &str, label: &str, bw: &[Bandwidth]) {
+    println!("{header}");
+    for b in bw {
+        println!(
+            "{:2}-thread {label} : {} — {}",
+            b.threads,
+            si_prefix(b.bytes_per_s, "B/s"),
+            si_prefix(b.bytes_per_s / b.threads as f64, "B/s/thread"),
+        );
+    }
+    println!();
+}
+
+fn print_shape(shape: &ShapeResult) {
+    println!("# Matmul {}\n", shape.title());
+    for k in &shape.kernels {
+        print!("{:>35} {:30}", format!("{} ({})", k.kernel, k.packing), k.layout);
+        let color = if k.flop_per_s.log10() > 9.0 {
+            Green
+        } else if k.flop_per_s.log10() > 6.0 {
+            Yellow
+        } else {
+            LightRed
+        };
+        println!(
+            " {} {}",
+            color.paint(si_prefix(k.flop_per_s, "flop/s")),
+            if k.picked { "<--" } else { "" }
+        );
+    }
+    println!();
+}
+
+fn bench_shape(dt: DatumType, m: usize, k: usize, n: usize) -> TractResult<ShapeResult> {
     let a = Tensor::zero_dt(dt, &[m, k])?;
     let b = Tensor::zero_dt(dt, &[k, n])?;
     let mut c = Tensor::zero_dt(dt, &[m, n])?;
     let selection = tract_linalg::ops().mmm(dt, Some(m), Some(k), Some(n));
-    println!("# Matmul {m}x{k}x{n}x{dt:?}\n");
     let mmms = tract_linalg::ops().mmm_impls();
-    unsafe {
+    let mut kernels: Vec<KernelResult> = unsafe {
         mmms.iter()
             .flat_map(|mmm| {
                 mmm.packings().iter().enumerate().map(move |(pix, (pa, pb))| (mmm, pix, pa, pb))
@@ -135,7 +293,7 @@ fn mmm(dt: DatumType, m: usize, k: usize, n: usize) -> TractResult<()> {
             })
             .map(|(mmm, pix, pa, pb)| {
                 if std::io::stderr().is_terminal() {
-                    eprint!("Benching {} ({pix})", mmm.name());
+                    eprint!("Benching {} ({pix}) at {m}x{k}x{n}x{dt:?}", mmm.name());
                 }
                 let a = pa.prepare_one(&a, 1, 0).unwrap();
                 let b = pb.prepare_one(&b, 0, 1).unwrap();
@@ -162,27 +320,16 @@ fn mmm(dt: DatumType, m: usize, k: usize, n: usize) -> TractResult<()> {
                 if std::io::stderr().is_terminal() {
                     eprint!("\x1B[2K\r"); // clear current line + CR
                 }
-                let flops = (m * k * n) as f64 / time;
-                (mmm, pix, pa, pb, flops)
+                KernelResult {
+                    kernel: mmm.name().to_string(),
+                    packing: pix,
+                    layout: format!("{pa} • {pb}"),
+                    flop_per_s: (m * k * n) as f64 / time,
+                    picked: pix == 0 && Some(mmm) == selection.as_ref(),
+                }
             })
-            .sorted_by_key(|(_mmm, _pix, _pa, _pb, flops)| -(*flops as i64))
-            .for_each(|(mmm, pix, pa, pb, flops)| {
-                print!("{:>35} {:30}", format!("{mmm:?} ({pix})"), format!("{pa} • {pb}"));
-                let color = if flops.log10() > 9.0 {
-                    Green
-                } else if flops.log10() > 6.0 {
-                    Yellow
-                } else {
-                    LightRed
-                };
-                println!(
-                    " {} {}",
-                    color.paint(si_prefix(flops, "flop/s")),
-                    if pix == 0 && Some(mmm) == selection.as_ref() { "<--" } else { "" }
-                );
-            });
-    }
-    println!();
-
-    Ok(())
+            .collect()
+    };
+    kernels.sort_by(|x, y| y.flop_per_s.total_cmp(&x.flop_per_s));
+    Ok(ShapeResult { m, k, n, dt: format!("{dt:?}"), kernels })
 }

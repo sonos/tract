@@ -189,13 +189,14 @@ fn main() -> TractResult<()> {
         .subcommand(Command::new("kernels").about("Print kernels for the current plaform"))
         .subcommand(
             Command::new("hwbench")
-                .about("Report hardware metrics and matmul kernel throughput (optionally at an explicit M K N)")
-                .arg(arg!([M] "Matmul M dim; with K and N, benches just this shape"))
-                .arg(arg!([K] "Matmul K dim"))
-                .arg(arg!([N] "Matmul N dim"))
+                .about("Report hardware metrics and matmul kernel throughput")
+                .arg(arg!([shape] ... "Matmul shape M,K,N[,dt] (dt f32|f16, default both); repeatable; omit for a default battery"))
                 .arg(arg!(--"no-cache" "Skip the cache (L1) bandwidth probe"))
                 .arg(arg!(--"no-memory" "Skip the main-memory bandwidth probe"))
-                .arg(arg!(--"no-matmul" "Skip the matmul kernel benchmarks")),
+                .arg(arg!(--"no-matmul" "Skip the matmul kernel benchmarks"))
+                .arg(arg!(--json "Emit results as JSON on stdout"))
+                .arg(arg!(--assert "Exit nonzero if a picked kernel lags the fastest by more than --tolerance"))
+                .arg(arg!(--tolerance [PERCENT] "Tolerance percent for --assert (default 5)")),
         )
         .subcommand(
             Command::new("list-knobs").about("List runtime configuration knobs and their values"),

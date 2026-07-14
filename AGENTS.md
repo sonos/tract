@@ -89,9 +89,10 @@ humans and is awkward to parse.
 
 ### Hardware and kernel benchmarking
 
-`tract hwbench [M K N]` reports the machine (cores, cache/memory bandwidth) and
-times every matmul micro-kernel at a shape, marking the dispatcher's pick with
-`<--` — the tool for diagnosing or calibrating kernel selection. See
+`tract hwbench <M,K,N[,dt]>...` reports the machine (cores, cache/memory
+bandwidth) and times every matmul micro-kernel at each shape, marking the
+dispatcher's pick with `<--` (`--json` to parse, `--assert` to gate on it) — the
+tool for diagnosing or calibrating kernel selection. See
 [`doc/kernel-notes.md`](doc/kernel-notes.md) and
 [`doc/cli-recipe.md`](doc/cli-recipe.md#hardware-and-kernel-benchmarking).
 

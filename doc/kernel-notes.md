@@ -25,10 +25,12 @@ signal to the program.
 
 ## Benchmarking a kernel
 
-`tract hwbench [M K N]` times every matmul micro-kernel in the pool at a given
-shape and prints their flop/s sorted fastest-first, marking the one the
+`tract hwbench <M,K,N[,dt]>...` times every matmul micro-kernel in the pool at
+each shape and prints their flop/s sorted fastest-first, marking the one the
 dispatcher currently picks with `<--`. This is the tool for both checking a
-dispatch decision and calibrating one.
+dispatch decision and calibrating one. Add `--json` to parse the results, or
+`--assert` (with `--tolerance <pct>`, default 5) to fail when a pick lags the
+fastest kernel — the basis for a CI that guards kernel selection.
 
 The x86 picker (`plug_avx512f` / `plug_fma` in `linalg/src/x86_64_fma/mmm.rs`)
 scores kernels by `scale * m_util * n_util`, where `scale` is each kernel's
@@ -37,7 +39,7 @@ relative throughput once tile-fill is equal. When those `scale`s are all left at
 kernels, which can route large-N / small-K GEMMs onto a narrower, slower tile.
 Populate `scale` from an `hwbench` run at a padding-neutral `N` (one divisible by
 every `nr`, e.g. `120` — the default `512` unfairly favours power-of-two `nr`):
-`tract hwbench 512 512 120`, then normalise the column to the fastest kernel.
+`tract hwbench 512,512,120`, then normalise the column to the fastest kernel.
 
 ## Tuning knobs
 
