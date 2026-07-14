@@ -213,6 +213,11 @@ fn assert_picks(shapes: &[ShapeResult], tolerance: f64) -> TractResult<()> {
     let floor = 1.0 - tolerance / 100.0;
     let mut failures = 0;
     for shape in shapes {
+        // No viable kernel for this dtype on this target (e.g. armv7 f16 has only the
+        // emulated Dreadful kernel, which the bench skips) — nothing to assert.
+        if shape.kernels.is_empty() {
+            continue;
+        }
         match (shape.pick_ratio(), shape.picked(), shape.best()) {
             (Some(ratio), Some(picked), Some(best)) if ratio < floor => {
                 failures += 1;
@@ -226,9 +231,13 @@ fn assert_picks(shapes: &[ShapeResult], tolerance: f64) -> TractResult<()> {
                     si_prefix(best.flop_per_s, "flop/s"),
                 );
             }
-            (None, _, _) => {
+            (None, _, Some(best)) => {
                 failures += 1;
-                eprintln!("PICK REGRESSION {}: no kernel selected", shape.title());
+                eprintln!(
+                    "PICK REGRESSION {}: dispatcher chose an emulated/skipped kernel over {}",
+                    shape.title(),
+                    best.kernel,
+                );
             }
             _ => {}
         }
