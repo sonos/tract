@@ -33,8 +33,13 @@ permissions:
 jobs:
   prepare:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+      statuses: write
     outputs:
       test_ref: ${{ steps.set.outputs.test_ref }}
+      pr_sha: ${{ steps.set.outputs.pr_sha }}
     steps:
       - id: set
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
@@ -44,6 +49,7 @@ jobs:
             if (!prInput) {
               // Build the ref the workflow was triggered on (branch/tag/SHA in base repo).
               core.setOutput('test_ref', process.env.GITHUB_SHA);
+              core.setOutput('pr_sha', '');
               return;
             }
             const pr = await github.rest.pulls.get({
@@ -51,7 +57,19 @@ jobs:
               repo: context.repo.repo,
               pull_number: Number(prInput),
             });
-            core.setOutput('test_ref', pr.data.head.sha);
+            const sha = pr.data.head.sha;
+            core.setOutput('test_ref', sha);
+            core.setOutput('pr_sha', sha);
+            const target_url = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha,
+              state: 'pending',
+              context: 'wheels (dispatched)',
+              target_url,
+              description: 'Wheel build running…',
+            });
 
   build_wheels:
     name: Build wheels on ${{ matrix.os }}
@@ -131,6 +149,35 @@ jobs:
       with:
         name: wheels-${{github.run_id}}-src
         path: api/py/dist/*.tar.gz
+
+  pr_status:
+    name: Report wheel status to PR
+    needs: [prepare, build_wheels, make_sdist]
+    if: ${{ always() && needs.prepare.outputs.pr_sha != '' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      statuses: write
+    steps:
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          PR_SHA: ${{ needs.prepare.outputs.pr_sha }}
+          WHEELS_RESULT: ${{ needs.build_wheels.result }}
+          SDIST_RESULT: ${{ needs.make_sdist.result }}
+        with:
+          script: |
+            const ok = process.env.WHEELS_RESULT === 'success'
+              && process.env.SDIST_RESULT === 'success';
+            const target_url = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: process.env.PR_SHA,
+              state: ok ? 'success' : 'failure',
+              context: 'wheels (dispatched)',
+              target_url,
+              description: ok ? 'Wheels built' : 'Wheel build failed',
+            });
 
   upload_all:
     needs: [build_wheels, make_sdist]
