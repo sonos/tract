@@ -1,14 +1,14 @@
 use std::io::IsTerminal;
 
 use nu_ansi_term::Color::*;
-use tract_core::prelude::*;
+use tract_core::internal::*;
 use tract_core::tract_data::itertools::Itertools;
 use tract_libcli::terminal::si_prefix;
 use tract_linalg::hwbench::bandwidth::{l1_bandwidth_seq, main_memory_bandwith_seq};
 use tract_linalg::hwbench::runner::run_bench;
 use tract_linalg::mmm::{AsInputValue, FusedSpec};
 
-pub(crate) fn handle() -> TractResult<()> {
+pub(crate) fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
     println!("# Cores");
     println!("cpus: {}", num_cpus::get());
     println!("physical cpus: {}", num_cpus::get_physical());
@@ -84,11 +84,24 @@ pub(crate) fn handle() -> TractResult<()> {
     }
     println!();
 
-    let big = if cfg!(target_arch = "arm") { 128 } else { 512 };
-    mmm(f32::datum_type(), big, big, big)?;
-    mmm(f32::datum_type(), big, big, 1)?;
-    mmm(f16::datum_type(), big, big, big)?;
-    mmm(f16::datum_type(), big, big, 1)?;
+    let dims = ["M", "K", "N"]
+        .iter()
+        .map(|name| matches.get_one::<String>(name).map(|s| s.parse::<usize>()).transpose())
+        .collect::<Result<Vec<Option<usize>>, _>>()?;
+    match dims[..] {
+        [Some(m), Some(k), Some(n)] => {
+            mmm(f32::datum_type(), m, k, n)?;
+            mmm(f16::datum_type(), m, k, n)?;
+        }
+        [None, None, None] => {
+            let big = if cfg!(target_arch = "arm") { 128 } else { 512 };
+            mmm(f32::datum_type(), big, big, big)?;
+            mmm(f32::datum_type(), big, big, 1)?;
+            mmm(f16::datum_type(), big, big, big)?;
+            mmm(f16::datum_type(), big, big, 1)?;
+        }
+        _ => bail!("hwbench matmul dims are all-or-nothing: pass M K N, or none"),
+    }
 
     Ok(())
 }
