@@ -439,24 +439,34 @@ pub fn plug_avx512f(ops: &mut Ops) {
         _ => avx512_mmm_f32_128x1.mmm(),
     });
 
-    // No measured per-kernel scaling on AVX-512 yet; all kernels start
-    // at 1.0 and the picker decides on (M, N) tile waste alone.
-    const AVX512_CHOICES: &[KernelChoice] = &[
-        KernelChoice { mr: 16, nr: 8, scale: 1.0, ctor: || avx512_mmm_f32_16x8.mmm() },
-        KernelChoice { mr: 16, nr: 12, scale: 1.0, ctor: || avx512_mmm_f32_16x12.mmm() },
-        KernelChoice { mr: 32, nr: 5, scale: 1.0, ctor: || avx512_mmm_f32_32x5.mmm() },
-        KernelChoice { mr: 32, nr: 6, scale: 1.0, ctor: || avx512_mmm_f32_32x6.mmm() },
-        KernelChoice { mr: 48, nr: 4, scale: 1.0, ctor: || avx512_mmm_f32_48x4.mmm() },
-        KernelChoice { mr: 64, nr: 3, scale: 1.0, ctor: || avx512_mmm_f32_64x3.mmm() },
-        KernelChoice { mr: 80, nr: 2, scale: 1.0, ctor: || avx512_mmm_f32_80x2.mmm() },
-        KernelChoice { mr: 128, nr: 1, scale: 1.0, ctor: || avx512_mmm_f32_128x1.mmm() },
+    // Pool spans both instruction sets: on avx512 hardware the 256-bit FMA
+    // kernels reach comparable f32 throughput and win the small-N tiles the
+    // avx512 kernels have no matching `nr` for (e.g. n=2 -> 40x2, n=4 -> 24x4).
+    // `scale` is relative throughput at full tile fill, measured together with
+    // `tract hwbench 3840,256,120,f32` (M,N divide every mr/nr) and normalised
+    // to the fastest kernel.
+    const X86_F32_CHOICES: &[KernelChoice] = &[
+        KernelChoice { mr: 16, nr: 12, scale: 1.000, ctor: || avx512_mmm_f32_16x12.mmm() },
+        KernelChoice { mr: 16, nr: 8, scale: 0.995, ctor: || avx512_mmm_f32_16x8.mmm() },
+        KernelChoice { mr: 32, nr: 5, scale: 0.992, ctor: || avx512_mmm_f32_32x5.mmm() },
+        KernelChoice { mr: 32, nr: 6, scale: 0.990, ctor: || avx512_mmm_f32_32x6.mmm() },
+        KernelChoice { mr: 48, nr: 4, scale: 0.978, ctor: || avx512_mmm_f32_48x4.mmm() },
+        KernelChoice { mr: 16, nr: 6, scale: 0.964, ctor: || fma_mmm_f32_16x6.mmm() },
+        KernelChoice { mr: 24, nr: 4, scale: 0.948, ctor: || fma_mmm_f32_24x4.mmm() },
+        KernelChoice { mr: 16, nr: 5, scale: 0.935, ctor: || fma_mmm_f32_16x5.mmm() },
+        KernelChoice { mr: 32, nr: 3, scale: 0.919, ctor: || fma_mmm_f32_32x3.mmm() },
+        KernelChoice { mr: 64, nr: 3, scale: 0.895, ctor: || avx512_mmm_f32_64x3.mmm() },
+        KernelChoice { mr: 40, nr: 2, scale: 0.842, ctor: || fma_mmm_f32_40x2.mmm() },
+        KernelChoice { mr: 8, nr: 8, scale: 0.788, ctor: || fma_mmm_f32_8x8.mmm() },
+        KernelChoice { mr: 80, nr: 2, scale: 0.766, ctor: || avx512_mmm_f32_80x2.mmm() },
+        KernelChoice { mr: 128, nr: 1, scale: 0.378, ctor: || avx512_mmm_f32_128x1.mmm() },
     ];
 
     ops.mmm_f32 = Box::new(|m, _, n| {
         if let Some(1) = n {
             unreachable!("should've been mmv");
         }
-        pick_mmm(AVX512_CHOICES, m, n)
+        pick_mmm(X86_F32_CHOICES, m, n)
     });
     log::info!("mmm_f32, mmv_f32: x86_64/avx512f activated");
 }
