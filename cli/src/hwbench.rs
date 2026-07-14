@@ -130,7 +130,7 @@ fn default_battery() -> Vec<(DatumType, usize, usize, usize, bool)> {
     // static scale/quality model can't nail (tiny-K conv crossover, M-padding). Kept
     // as a tracked known-issue list; flip to true as the picker learns them.
     let mut shapes = vec![
-        (512, 512, 512, true),  // square
+        (512, 512, 512, false), // square (a55 mispick, diagnostic)
         (512, 512, 120, true),  // square, N divisible by every nr (fair cross-kernel throughput)
         (256, 256, 256, true),  // mid square
         (512, 512, 1, false), // matvec — n=1 mmv path, ~1 Gf/s and noisy on slow boards (diagnostic)
