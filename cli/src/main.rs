@@ -192,7 +192,10 @@ fn main() -> TractResult<()> {
                 .about("Report hardware metrics and matmul kernel throughput (optionally at an explicit M K N)")
                 .arg(arg!([M] "Matmul M dim; with K and N, benches just this shape"))
                 .arg(arg!([K] "Matmul K dim"))
-                .arg(arg!([N] "Matmul N dim")),
+                .arg(arg!([N] "Matmul N dim"))
+                .arg(arg!(--"no-cache" "Skip the cache (L1) bandwidth probe"))
+                .arg(arg!(--"no-memory" "Skip the main-memory bandwidth probe"))
+                .arg(arg!(--"no-matmul" "Skip the matmul kernel benchmarks")),
         )
         .subcommand(
             Command::new("list-knobs").about("List runtime configuration knobs and their values"),
