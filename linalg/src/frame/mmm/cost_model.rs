@@ -72,11 +72,15 @@ impl CostModel<'_> {
         k: Option<usize>,
         n: Option<usize>,
     ) -> Box<dyn MatMatMul> {
-        if let (Some(m), Some(k), Some(n)) = (m, k, n) {
-            let choice = self.predict(m, k, n);
-            impls.iter().find(|k| k.name() == choice).unwrap().clone()
-        } else {
-            impls.iter().find(|k| k.name() == self.big_product_kernel_choice).unwrap().clone()
-        }
+        // Above the big-product threshold (and when dims are unknown) skip the DNN and
+        // take big_product_kernel_choice: for a large GEMM the widest tile always wins,
+        // and the learned model can mispredict there. Below it, use the DNN.
+        let choice = match (m, k, n) {
+            (Some(m), Some(k), Some(n)) if (m * k * n) as f32 <= self.big_product_mkn_threshold => {
+                self.predict(m, k, n)
+            }
+            _ => self.big_product_kernel_choice,
+        };
+        impls.iter().find(|k| k.name() == choice).unwrap().clone()
     }
 }
