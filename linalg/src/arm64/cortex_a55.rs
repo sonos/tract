@@ -1,7 +1,7 @@
 use crate::frame::mmm::CostModel;
 pub fn model() -> CostModel<'static> {
     CostModel {
-        big_product_mkn_threshold: 4193280.0,
+        big_product_mkn_threshold: 263214080.0,
         big_product_kernel_choice: "arm64simd_mmm_f32_12x8_a55",
         kernels: &[
             "arm64simd_mmm_f32_12x8_a53",
