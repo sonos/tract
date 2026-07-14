@@ -447,9 +447,7 @@ jobs:
   # only for now. Shares the per-box concurrency group so it never fights a running bench.
   hwbench:
     needs: [ prepare, build ]
-    # TEMP: runs on every bench trigger (incl. PR pushes) while we iterate.
-    # Restore `&& github.event_name == 'schedule'` to make it nightly-only.
-    if: ${{ needs.prepare.outputs.enabled == 'true' }}
+    if: ${{ needs.prepare.outputs.enabled == 'true' && github.event_name == 'schedule' }}
     runs-on: ${{ matrix.runner }}
     concurrency:
       group: bench-runner-${{ matrix.runner }}
@@ -479,9 +477,7 @@ jobs:
 
   hwbench-dinghy:
     needs: [ prepare, build-dinghy ]
-    # TEMP: runs on every bench trigger (incl. PR pushes) while we iterate.
-    # Restore `&& github.event_name == 'schedule'` to make it nightly-only.
-    if: ${{ needs.prepare.outputs.enabled == 'true' && vars.BENCH_DINGHY_ENABLED == 'true' }}
+    if: ${{ needs.prepare.outputs.enabled == 'true' && vars.BENCH_DINGHY_ENABLED == 'true' && github.event_name == 'schedule' }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     concurrency:
