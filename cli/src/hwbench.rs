@@ -7,7 +7,7 @@ use tract_core::tract_data::itertools::Itertools;
 use tract_libcli::terminal::si_prefix;
 use tract_linalg::hwbench::bandwidth::{l1_bandwidth_seq, main_memory_bandwith_seq};
 use tract_linalg::hwbench::runner::run_bench;
-use tract_linalg::mmm::{AsInputValue, FusedSpec};
+use tract_linalg::mmm::{AsInputValue, FusedSpec, ImplementationQuality};
 
 #[derive(serde::Serialize)]
 struct Bandwidth {
@@ -329,6 +329,10 @@ fn bench_shape(dt: DatumType, m: usize, k: usize, n: usize) -> TractResult<Shape
     let mmms = tract_linalg::ops().mmm_impls();
     let mut kernels: Vec<KernelResult> = unsafe {
         mmms.iter()
+            // Skip kernels that emulate the datatype op-by-op (f16->f32->f16): they
+            // are 100-500x slower, dominate bench time, and the planner never picks
+            // one when a real kernel exists.
+            .filter(|mmm| mmm.quality() != ImplementationQuality::Dreadful)
             .flat_map(|mmm| {
                 mmm.packings().iter().enumerate().map(move |(pix, (pa, pb))| (mmm, pix, pa, pb))
             })
