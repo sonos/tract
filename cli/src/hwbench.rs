@@ -325,7 +325,7 @@ fn bench_shape(dt: DatumType, m: usize, k: usize, n: usize) -> TractResult<Shape
     let a = Tensor::zero_dt(dt, &[m, k])?;
     let b = Tensor::zero_dt(dt, &[k, n])?;
     let mut c = Tensor::zero_dt(dt, &[m, n])?;
-    let selection = tract_linalg::ops().mmm(dt, Some(m), Some(k), Some(n));
+    let pick = planned_pick(dt, m, k, n)?;
     let mmms = tract_linalg::ops().mmm_impls();
     let mut kernels: Vec<KernelResult> = unsafe {
         mmms.iter()
@@ -369,11 +369,49 @@ fn bench_shape(dt: DatumType, m: usize, k: usize, n: usize) -> TractResult<Shape
                     packing: pix,
                     layout: format!("{pa} • {pb}"),
                     flop_per_s: (m * k * n) as f64 / time,
-                    picked: pix == 0 && Some(mmm) == selection.as_ref(),
+                    picked: false,
                 }
             })
             .collect()
     };
+    for kernel in &mut kernels {
+        kernel.picked = pick
+            .as_ref()
+            .is_some_and(|(name, packing)| kernel.kernel == *name && kernel.packing == *packing);
+    }
     kernels.sort_by(|x, y| y.flop_per_s.total_cmp(&x.flop_per_s));
     Ok(ShapeResult { m, k, n, dt: format!("{dt:?}"), kernels })
+}
+
+/// The (kernel name, packing index) the real planner picks for this shape,
+/// by building the matmul it would see (const weight × runtime activation) and
+/// optimizing it — the same path a model takes, not the `ops().mmm()` shortcut.
+fn planned_pick(
+    dt: DatumType,
+    m: usize,
+    k: usize,
+    n: usize,
+) -> TractResult<Option<(String, usize)>> {
+    use tract_core::ops::einsum::EinSum;
+    use tract_core::ops::matmul::optimized::{OptMatMul, ProtoFusedSpec};
+
+    let mut model = TypedModel::default();
+    let a = model.add_const("a", Tensor::zero_dt(dt, &[m, k])?)?;
+    let b = model.add_source("b", dt.fact([k, n]))?;
+    let mm = model.wire_node("mm", EinSum::new("mk,kn->mn".parse()?, dt), &[a, b])?;
+    model.select_output_outlets(&mm)?;
+    let model = model.into_optimized()?;
+
+    let Some(node) = model.nodes.iter().find(|n| n.op_is::<OptMatMul>()) else {
+        return Ok(None);
+    };
+    let op = node.op_as::<OptMatMul>().unwrap();
+    // Concrete n: the vector kernel (mode 0) runs for n==1, the matrix kernel otherwise.
+    let mode = if n == 1 { 0 } else { op.mmm.len() - 1 };
+    let kernel = op.mmm[mode].name().to_string();
+    let packing = op.micro_ops.iter().find_map(|micro_op| match micro_op {
+        ProtoFusedSpec::AddMatMul { packings, .. } => Some(packings[mode].0),
+        _ => None,
+    });
+    Ok(packing.map(|packing| (kernel, packing)))
 }
