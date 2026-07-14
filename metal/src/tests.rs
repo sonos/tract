@@ -523,4 +523,33 @@ mod tests {
         println!("  attention-portion GAIN explode/fused = {:.2}x", et / ft);
         Ok(())
     }
+
+    #[test]
+    fn bool_bitor_matches_cpu_on_metal() -> TractResult<()> {
+        use tract_core::ops::logic::bitor;
+        let fact = bool::fact(tvec![TDim::from(4i64), TDim::from(8i64)]);
+        let mut model = TypedModel::default();
+        let a = model.add_source("a", fact.clone())?;
+        let b = model.add_source("b", fact)?;
+        let out = model.wire_node("bitor", bitor(), &[a, b])?;
+        model.select_output_outlets(&out)?;
+
+        let mk = |seed: i64| -> TractResult<TValue> {
+            let data: Vec<bool> = (0..32).map(|i| (i + seed) % 2 == 0).collect();
+            Ok(Tensor::from_shape(&[4, 8], &data)?.into_tvalue())
+        };
+        let (at, bt) = (mk(0)?, mk(1)?);
+
+        let cpu = model.clone().into_runnable()?;
+        let cpu_out = cpu.run(tvec![at.clone(), bt.clone()])?;
+
+        let metal = MetalTransform::default().transform_into(model)?;
+        let metal_out = metal.into_runnable()?.run(tvec![at, bt])?;
+
+        cpu_out[0]
+            .clone()
+            .into_tensor()
+            .close_enough(&metal_out[0].clone().into_tensor(), Approximation::Exact)?;
+        Ok(())
+    }
 }
