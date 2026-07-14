@@ -338,10 +338,17 @@ fn bench_shape(dt: DatumType, m: usize, k: usize, n: usize) -> TractResult<Shape
     let mmms = tract_linalg::ops().mmm_impls();
     let mut kernels: Vec<KernelResult> = unsafe {
         mmms.iter()
-            // Skip kernels that emulate the datatype op-by-op (f16->f32->f16): they
-            // are 100-500x slower, dominate bench time, and the planner never picks
-            // one when a real kernel exists.
-            .filter(|mmm| mmm.quality() != ImplementationQuality::Dreadful)
+            // Skip fallback kernels: Dreadful emulates the datatype op-by-op
+            // (f16->f32->f16), Generic is unvectorised scalar. Both are last-resort,
+            // 100-500x off a real kernel, and only ever the pick when no real kernel
+            // exists for this dtype on this target (e.g. armv7 f16) — where the pick
+            // among equally-useless fallbacks is noise, not a regression to gate on.
+            .filter(|mmm| {
+                !matches!(
+                    mmm.quality(),
+                    ImplementationQuality::Dreadful | ImplementationQuality::Generic
+                )
+            })
             .flat_map(|mmm| {
                 mmm.packings().iter().enumerate().map(move |(pix, (pa, pb))| (mmm, pix, pa, pb))
             })
