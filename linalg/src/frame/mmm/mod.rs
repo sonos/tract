@@ -202,6 +202,39 @@ impl<K: MatMatMulKer> MatMatMul for K {
         scratch: &mut dyn ScratchSpace,
         non_linear: &[FusedSpec],
     ) -> TractResult<()> {
+        // Every AddMatMul must pass panels packed the way the named packing index
+        // expects; a mismatch reads the panels at the wrong stride and runs off the
+        // buffer. Guard it here so any caller — not just OptMatMul — is caught.
+        #[cfg(debug_assertions)]
+        {
+            use crate::pack::PackedFormat;
+            // Exact format, or same element type and row count (tolerating alignment
+            // / padding differences, but not an element-size mismatch like f16 vs f32).
+            fn compatible(expected: &dyn MMMInputFormat, got: &dyn MMMInputFormat) -> bool {
+                expected.dyn_eq(got)
+                    || matches!(
+                        (expected.downcast_ref::<PackedFormat>(), got.downcast_ref::<PackedFormat>()),
+                        (Some(e), Some(g)) if e.dt == g.dt && e.r == g.r
+                    )
+            }
+            for spec in non_linear {
+                if let FusedSpec::AddMatMul { a, b, packing } = spec {
+                    let (pa, pb) = &self.packings()[*packing];
+                    debug_assert!(
+                        compatible(&**pa, a.format()),
+                        "A packed as {:?} but {} packing {packing} expects {pa:?}",
+                        a.format(),
+                        self.name(),
+                    );
+                    debug_assert!(
+                        compatible(&**pb, b.format()),
+                        "B packed as {:?} but {} packing {packing} expects {pb:?}",
+                        b.format(),
+                        self.name(),
+                    );
+                }
+            }
+        }
         unsafe {
             let scratch = scratch
                 .downcast_mut::<ScratchSpaceImpl<K::Acc>>()
