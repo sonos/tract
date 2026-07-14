@@ -357,7 +357,7 @@ fn bench_shape(dt: DatumType, m: usize, k: usize, n: usize) -> TractResult<Shape
                                 FusedSpec::AddMatMul {
                                     a: AsInputValue::Borrowed(&*a),
                                     b: AsInputValue::Borrowed(&*b),
-                                    packing: 0,
+                                    packing: pix,
                                 },
                                 FusedSpec::Store(pc),
                             ],
