@@ -189,7 +189,7 @@ fn main() -> TractResult<()> {
         .subcommand(Command::new("kernels").about("Print kernels for the current plaform"))
         .subcommand(
             Command::new("hwbench")
-                .about("Print current hardware key metrics")
+                .about("Report hardware metrics and matmul kernel throughput (optionally at an explicit M K N)")
                 .arg(arg!([M] "Matmul M dim; with K and N, benches just this shape"))
                 .arg(arg!([K] "Matmul K dim"))
                 .arg(arg!([N] "Matmul N dim")),

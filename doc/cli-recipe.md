@@ -154,6 +154,29 @@ times to compare a fused rewrite against the unfused original
 systematically over-credits the fused side. Use `bench` wall-clock for
 between-graph comparisons.
 
+## Hardware and kernel benchmarking
+
+`bench` and `profile` measure a *model*. To measure the *machine* — and the
+matmul micro-kernels tract dispatches on it — use `hwbench`:
+
+```
+tract hwbench            # cores, cache/memory bandwidth, matmul kernel table
+tract hwbench 512 512 120  # same, but the matmul table at an explicit M K N
+```
+
+With no dimensions it benches a default 512×512×512 (and a mat·vec); pass all
+three of `M K N` to probe a specific shape. For each shape it lists every
+candidate kernel with its measured flop/s, sorted fastest-first, and marks the
+one the dispatcher actually picks with `<--`. If the `<--` is not near the top,
+the picker is mis-selecting for that shape. Because the kernel pool and the
+picked kernel both depend on the shape, an explicit `M K N` is the way to
+reproduce a suspicious pick from a real model (read the shape off `dump
+--audit-json`, e.g. an `OptMatMul`'s `m:… k:… n:…`).
+
+Note the default `N=512` is a power of two, which divides evenly only into
+power-of-two `nr` kernels; for a fair cross-kernel throughput comparison pick an
+`N` divisible by every `nr` (e.g. `120`).
+
 ## Common timing pitfalls
 
 - **Thermal bias on sustained workloads.** Apple Silicon throttles after
