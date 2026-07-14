@@ -208,14 +208,20 @@ impl<K: MatMatMulKer> MatMatMul for K {
         #[cfg(debug_assertions)]
         {
             use crate::pack::PackedFormat;
-            // Exact format, or same element type and row count (tolerating alignment
-            // / padding differences, but not an element-size mismatch like f16 vs f32).
+            // Only raw PackedFormat panels can be read at the wrong stride; exotic
+            // inputs (lazy im2col, block-quant) materialise panels in the kernel's
+            // format via panel_bytes, so a differing wrapper type is fine. When both
+            // sides are PackedFormat, require same element type and row count
+            // (tolerating alignment/padding, but not an f16-vs-f32 element-size swap).
             fn compatible(expected: &dyn MMMInputFormat, got: &dyn MMMInputFormat) -> bool {
-                expected.dyn_eq(got)
-                    || matches!(
-                        (expected.downcast_ref::<PackedFormat>(), got.downcast_ref::<PackedFormat>()),
-                        (Some(e), Some(g)) if e.dt == g.dt && e.r == g.r
-                    )
+                if expected.dyn_eq(got) {
+                    return true;
+                }
+                match (expected.downcast_ref::<PackedFormat>(), got.downcast_ref::<PackedFormat>())
+                {
+                    (Some(e), Some(g)) => e.dt == g.dt && e.r == g.r,
+                    _ => true,
+                }
             }
             for spec in non_linear {
                 if let FusedSpec::AddMatMul { a, b, packing } = spec {
