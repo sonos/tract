@@ -133,13 +133,13 @@ fn default_battery() -> Vec<(DatumType, usize, usize, usize, bool)> {
         (512, 512, 512, true),  // square
         (512, 512, 120, true),  // square, N divisible by every nr (fair cross-kernel throughput)
         (256, 256, 256, true),  // mid square
-        (512, 512, 1, true),    // matvec
-        (2048, 2048, 1, true),  // wide matvec (LLM decode)
+        (512, 512, 1, false), // matvec — n=1 mmv path, ~1 Gf/s and noisy on slow boards (diagnostic)
+        (2048, 2048, 1, false), // wide matvec / LLM decode — n=1 mmv, noisy (diagnostic)
         (32, 27, 22201, false), // inceptionv3 first conv: tiny K=27, kernel crossover (diagnostic)
         (192, 288, 1225, true), // inceptionv3 mid conv im2col
-        (64, 64, 64, true),     // small
-        (20, 256, 2, false),    // M-padding case, mr overshoot (diagnostic)
-        (50, 256, 4, false),    // M-padding case (diagnostic)
+        (64, 64, 64, true),   // small
+        (20, 256, 2, false),  // M-padding case, mr overshoot (diagnostic)
+        (50, 256, 4, false),  // M-padding case (diagnostic)
     ];
     // armv7 (a7/a9): slow in-order cores and a 32-bit space; keep only light problems.
     if cfg!(target_arch = "arm") {
