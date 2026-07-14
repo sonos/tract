@@ -187,7 +187,13 @@ fn main() -> TractResult<()> {
         .subcommand(Command::new("list-ops").about("List ops in TF/ONNX frameworks"))
         .subcommand(Command::new("list-runtimes").about("List runtimes"))
         .subcommand(Command::new("kernels").about("Print kernels for the current plaform"))
-        .subcommand(Command::new("hwbench").about("Print current hardware key metrics"))
+        .subcommand(
+            Command::new("hwbench")
+                .about("Print current hardware key metrics")
+                .arg(arg!([M] "Matmul M dim; with K and N, benches just this shape"))
+                .arg(arg!([K] "Matmul K dim"))
+                .arg(arg!([N] "Matmul N dim")),
+        )
         .subcommand(
             Command::new("list-knobs").about("List runtime configuration knobs and their values"),
         );
@@ -825,7 +831,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
             }
             return Ok(());
         }
-        Some(("hwbench", _)) => return hwbench::handle(),
+        Some(("hwbench", m)) => return hwbench::handle(m),
         #[cfg(feature = "bench-suite")]
         Some(("bench-suite", m)) => return bench_suite::handle(m),
         #[cfg(feature = "bench-suite")]
