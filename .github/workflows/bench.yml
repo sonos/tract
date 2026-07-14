@@ -281,7 +281,15 @@ jobs:
         run: |
           chmod +x tract-cli/tract
           mkdir -p result
-          if CARGO_PKG_NAME=tract cargo-dinghy -d "$DINGHY_TARGET" runner \
+          # dinghy otherwise copies the whole checkout to the board (source + every committed
+          # test model), which overflows the small armv7 boards and fails the rsync deploy.
+          # Scope the copy to just the bench manifest with a gitignore-style allowlist; the exe
+          # is copied separately. Written into the ephemeral work folder, never committed: a
+          # repo .dinghyignore would strip fixtures from everyone else's `cargo dinghy test`.
+          printf '%s\n' '/*' '!/.travis/' '/.travis/*' '!/.travis/benches.toml' > .dinghyignore
+          # --cleanup also tears the deploy down afterwards. It must precede -d: after -d
+          # consumes its value cargo-dinghy misparses a later -c and bails with -Zscript.
+          if CARGO_PKG_NAME=tract cargo-dinghy --cleanup -d "$DINGHY_TARGET" runner \
                ./tract-cli/tract -- bench-suite \
                --manifest .travis/benches.toml --skip-runtimes --no-cache --output - $SAMPLES \
                --base-url '${TRACT_BENCH_BASE_URL}' --cpu-governor '${TRACT_BENCH_CPU_GOVERNOR}' \
