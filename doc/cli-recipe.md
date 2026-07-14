@@ -160,18 +160,25 @@ between-graph comparisons.
 matmul micro-kernels tract dispatches on it — use `hwbench`:
 
 ```
-tract hwbench            # cores, cache/memory bandwidth, matmul kernel table
-tract hwbench 512 512 120  # same, but the matmul table at an explicit M K N
+tract hwbench                       # cores, cache/memory bandwidth, default matmul battery
+tract hwbench 512,512,120           # one shape, both f32 and f16
+tract hwbench 512,512,120,f16 64,27,22201,f32   # several shapes, explicit dtype
+tract --no-cache --no-memory --json 512,512,120,f16   # matmul only, machine-readable
 ```
 
-With no dimensions it benches a default 512×512×512 (and a mat·vec); pass all
-three of `M K N` to probe a specific shape. For each shape it lists every
-candidate kernel with its measured flop/s, sorted fastest-first, and marks the
-one the dispatcher actually picks with `<--`. If the `<--` is not near the top,
-the picker is mis-selecting for that shape. Because the kernel pool and the
-picked kernel both depend on the shape, an explicit `M K N` is the way to
-reproduce a suspicious pick from a real model (read the shape off `dump
---audit-json`, e.g. an `OptMatMul`'s `m:… k:… n:…`).
+A shape is `M,K,N` (benches both f32 and f16) or `M,K,N,dt` (`dt` = `f32`|`f16`);
+pass as many as you like. With none it runs a default battery. For each shape it
+lists every candidate kernel with its measured flop/s, sorted fastest-first, and
+marks the one the dispatcher actually picks with `<--`. If the `<--` is not near
+the top, the picker is mis-selecting for that shape — reproduce a suspicious pick
+from a real model by reading its shape off `dump --audit-json` (an `OptMatMul`'s
+`m:… k:… n:…`).
+
+`--json` emits the whole report (cache, memory, matmul) for scripting.
+`--assert` exits nonzero if any picked kernel is more than `--tolerance` percent
+(default 5) slower than the fastest measured kernel — the hook for a CI that
+guards kernel selection. `--no-cache` / `--no-memory` / `--no-matmul` skip
+sections; the cores/cpuinfo header always prints (except under `--json`).
 
 Note the default `N=512` is a power of two, which divides evenly only into
 power-of-two `nr` kernels; for a fair cross-kernel throughput comparison pick an
