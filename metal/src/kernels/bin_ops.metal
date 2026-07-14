@@ -309,6 +309,9 @@ INSTANTIATE_INTEGER(bitor, BitOr)
 INSTANTIATE_INTEGER(bitxor, BitXor)
 INSTANTIATE_BIN_OP(and, And, bool, bool, bool)
 INSTANTIATE_BIN_OP(or, Or, bool, bool, bool)
+INSTANTIATE_BIN_OP(bitand, BitAnd, bool, bool, bool)
+INSTANTIATE_BIN_OP(bitor, BitOr, bool, bool, bool)
+INSTANTIATE_BIN_OP(bitxor, BitXor, bool, bool, bool)
 
 INSTANTIATE_1ROW_BIN_OP()
 
