@@ -568,6 +568,13 @@ impl TypedOp for OptMatMul {
                 let other_fact = patch.outlet_fact(other_input)?;
 
                 if other_fact.shape == self.c_fact.shape {
+                    // A native block-quant AddMatMul chained with a fused AddUnicast in the
+                    // same kernel call miscomputes on some kernels (that pairing has no direct
+                    // test coverage). Leave the add as its own node; it is always correct
+                    // unfused, and this pairing only arises for a sliced quant GEMV.
+                    if self.consumes_native_block_quant() {
+                        return Ok(None);
+                    }
                     let other_storage = unsafe { self.mmm[0].c_view(self.c_m_axis, self.c_n_axis) };
                     let mapping =
                         MapOutputAxisToInput((0..other_fact.rank()).map(|x| (x, x)).collect());
@@ -596,6 +603,21 @@ impl TypedOp for OptMatMul {
 }
 
 impl OptMatMul {
+    /// Whether any of the matmul kernels consumes a block-quant weight natively
+    /// (i.e. straight from its packed form, with no panel extractor to a plain type).
+    fn consumes_native_block_quant(&self) -> bool {
+        self.micro_ops.iter().any(|op| {
+            let ProtoFusedSpec::AddMatMul { packings, .. } = op else { return false };
+            packings.iter().zip(self.mmm.iter()).any(|((packing, extractor), mmm)| {
+                extractor.is_none()
+                    && matches!(
+                        mmm.packings()[*packing].0.precursor(),
+                        tract_linalg::WeightType::BlockQuant(_)
+                    )
+            })
+        })
+    }
+
     pub fn new(
         mmm: Vec<Box<dyn MatMatMul>>,
         mode_picker: ModePicker,
