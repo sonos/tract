@@ -36,7 +36,7 @@ grace_hopper.jpg: JPEG image data, JFIF standard 1.02, resolution (DPI), density
 
 ## Try it
 
-`cargo run` should print a lot of things, and ultimately: `result: Some((11.4773035, 654))`.
+`cargo run --bin example-onnx-mobilenet-v2` should print a lot of things, and ultimately: `result: Some((11.4773035, 654))`.
 
 This is actually good. It is the rank (654) and a confidence indicator (11.4773035)
 of the inferred label.
@@ -152,19 +152,19 @@ You can also compile the example into webassembly and run it on wasm runtime lik
 You need to [install wasmtime](https://docs.wasmtime.dev/cli-install.html) and add wasm as a target with rustup.
 
 ```sh
-rustup target add wasm32-wasi
+rustup target add wasm32-wasip1
 ```
 
-Build the example with the `wasm32-wasi` target.
+Build the example with the `wasm32-wasip1` target.
 
 ```sh
-cargo build --target wasm32-wasi
+cargo build --target wasm32-wasip1
 ```
 
 Then run the example with wasmtime, use `--dir=.` to specify the directory path used in the example.
 
 ```sh
-wasmtime --dir . ../../target/wasm32-wasi/debug/example-onnx-mobilenet-v2.wasm
+wasmtime --dir . ../../target/wasm32-wasip1/debug/example-onnx-mobilenet-v2.wasm
 ```
 
 You should see the same result as the native one.
