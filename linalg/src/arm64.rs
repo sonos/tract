@@ -2,16 +2,13 @@
 #[cfg(any(target_os = "macos", all(target_os = "ios", feature = "apple-amx-ios")))]
 mod apple_amx;
 mod arm64simd;
-pub mod cortex_a53;
 mod cortex_a53_linear;
-mod cortex_a55;
+mod cortex_a55_linear;
 // `tract_sme` is set by build.rs only when the assembler can assemble SME
 // (gates out e.g. the old Debian stretch aarch64 toolchain).
 #[cfg(all(any(target_os = "macos", target_os = "linux"), tract_sme))]
 mod sme;
 mod sve;
-//mod cortex_a72;
-//mod cortex_a73;
 pub use arm64simd::*;
 
 #[cfg(not(feature = "no_fp16"))]
@@ -412,7 +409,7 @@ pub fn plug(ops: &mut Ops) {
             Box::new(move |m, k, n| model.pick(&impls, m, k, n))
         }
         Kind::CortexA55 => {
-            let model = cortex_a55::model();
+            let model = cortex_a55_linear::linear_model();
             Box::new(move |m, k, n| model.pick(&impls, m, k, n))
         }
         _ => Box::new(move |_, _, n| {
