@@ -6,6 +6,41 @@ use crate::x86_64_fma::softmax::x86_64_fma_softmax2_fastcompact_f32_32n;
 
 pub mod mmm;
 
+mod amd_avx512_linear;
+mod amd_fma_linear;
+mod intel_avx512_linear;
+mod intel_fma_linear;
+
+/// CPU vendor, the axis (with the AVX-512-vs-FMA tier, decided by which plug runs)
+/// that selects a per-target `LinearCostModel`. `TRACT_X86_KIND=intel|amd|other`
+/// overrides the CPUID probe (for forcing a cohort under emulation or in CI).
+#[derive(PartialEq, Clone, Copy)]
+pub(crate) enum Vendor {
+    Intel,
+    Amd,
+    Other,
+}
+
+pub(crate) fn vendor() -> Vendor {
+    if let Ok(k) = std::env::var("TRACT_X86_KIND") {
+        return match k.as_str() {
+            "intel" => Vendor::Intel,
+            "amd" => Vendor::Amd,
+            _ => Vendor::Other,
+        };
+    }
+    let id = unsafe { std::arch::x86_64::__cpuid(0) };
+    let mut s = [0u8; 12];
+    s[0..4].copy_from_slice(&id.ebx.to_le_bytes());
+    s[4..8].copy_from_slice(&id.edx.to_le_bytes());
+    s[8..12].copy_from_slice(&id.ecx.to_le_bytes());
+    match &s {
+        b"GenuineIntel" => Vendor::Intel,
+        b"AuthenticAMD" => Vendor::Amd,
+        _ => Vendor::Other,
+    }
+}
+
 pub mod act;
 pub mod act_f16;
 pub mod act_f16_fp16;

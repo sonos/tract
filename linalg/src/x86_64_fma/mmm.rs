@@ -394,9 +394,13 @@ pub fn plug_fma(ops: &mut Ops) {
 
     ops.mmv_f32 = Box::new(|_, _| fma_mmm_f32_64x1.mmm());
 
-    // Hand-tuned for low N; calibration came from past measurements.
-    // For other N, fall back to a generic (M, N)-aware tile-utilisation
-    // picker over the same kernel pool.
+    if is_x86_feature_detected!("f16c") {
+        ops.mmm_impls.push(mmm::fma_mmm_f32_32x1.mmm()); // q40f32 requires f16c; also part of the pool
+        log::info!("found f16c, added fake-f16 and q40-able kernels");
+    }
+
+    // Fallback for non-Intel/AMD x86: hand-tuned low-N choices, then a generic
+    // (M, N)-aware tile-utilisation picker over the same pool.
     const FMA_CHOICES: &[KernelChoice] = &[
         KernelChoice { mr: 8, nr: 8, scale: 44.0 / 60.0, ctor: || fma_mmm_f32_8x8.mmm() },
         KernelChoice { mr: 16, nr: 6, scale: 54.0 / 60.0, ctor: || fma_mmm_f32_16x6.mmm() },
@@ -406,23 +410,29 @@ pub fn plug_fma(ops: &mut Ops) {
         KernelChoice { mr: 40, nr: 2, scale: 54.0 / 60.0, ctor: || fma_mmm_f32_40x2.mmm() },
     ];
 
-    ops.mmm_f32 = Box::new(|m, _, n| match n {
-        None => fma_mmm_f32_16x6.mmm(),
-        Some(1) => unreachable!("should've been mmv"),
-        Some(2) => fma_mmm_f32_40x2.mmm(),
-        Some(3) => fma_mmm_f32_32x3.mmm(),
-        Some(4) => fma_mmm_f32_24x4.mmm(),
-        Some(5) => fma_mmm_f32_16x5.mmm(),
-        Some(6) => fma_mmm_f32_16x6.mmm(),
-        Some(8) => fma_mmm_f32_8x8.mmm(),
-        Some(_) => pick_mmm(FMA_CHOICES, m, n),
-    });
+    let impls = ops.mmm_impls.clone();
+    ops.mmm_f32 = match super::vendor() {
+        super::Vendor::Intel => {
+            let mdl = super::intel_fma_linear::linear_model();
+            Box::new(move |m, k, n| mdl.pick(&impls, m, k, n))
+        }
+        super::Vendor::Amd => {
+            let mdl = super::amd_fma_linear::linear_model();
+            Box::new(move |m, k, n| mdl.pick(&impls, m, k, n))
+        }
+        super::Vendor::Other => Box::new(|m, _, n| match n {
+            None => fma_mmm_f32_16x6.mmm(),
+            Some(1) => unreachable!("should've been mmv"),
+            Some(2) => fma_mmm_f32_40x2.mmm(),
+            Some(3) => fma_mmm_f32_32x3.mmm(),
+            Some(4) => fma_mmm_f32_24x4.mmm(),
+            Some(5) => fma_mmm_f32_16x5.mmm(),
+            Some(6) => fma_mmm_f32_16x6.mmm(),
+            Some(8) => fma_mmm_f32_8x8.mmm(),
+            Some(_) => pick_mmm(FMA_CHOICES, m, n),
+        }),
+    };
     log::info!("mmm_f32, mmv_f32: x86_64/fma activated");
-
-    if is_x86_feature_detected!("f16c") {
-        ops.mmm_impls.push(mmm::fma_mmm_f32_32x1.mmm()); // q40f32 requires f16c
-        log::info!("found f16c, added fake-f16 and q40-able kernels");
-    }
 }
 
 pub fn plug_avx512f(ops: &mut Ops) {
@@ -462,12 +472,23 @@ pub fn plug_avx512f(ops: &mut Ops) {
         KernelChoice { mr: 128, nr: 1, scale: 0.378, ctor: || avx512_mmm_f32_128x1.mmm() },
     ];
 
-    ops.mmm_f32 = Box::new(|m, _, n| {
-        if let Some(1) = n {
-            unreachable!("should've been mmv");
+    let impls = ops.mmm_impls.clone();
+    ops.mmm_f32 = match super::vendor() {
+        super::Vendor::Intel => {
+            let mdl = super::intel_avx512_linear::linear_model();
+            Box::new(move |m, k, n| mdl.pick(&impls, m, k, n))
         }
-        pick_mmm(X86_F32_CHOICES, m, n)
-    });
+        super::Vendor::Amd => {
+            let mdl = super::amd_avx512_linear::linear_model();
+            Box::new(move |m, k, n| mdl.pick(&impls, m, k, n))
+        }
+        super::Vendor::Other => Box::new(|m, _, n| {
+            if let Some(1) = n {
+                unreachable!("should've been mmv");
+            }
+            pick_mmm(X86_F32_CHOICES, m, n)
+        }),
+    };
     log::info!("mmm_f32, mmv_f32: x86_64/avx512f activated");
 }
 
