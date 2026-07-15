@@ -140,9 +140,38 @@ fn n_tiles(m: usize, n: usize, mr: usize, nr: usize) -> f64 {
     (m.div_ceil(mr) * n.div_ceil(nr)) as f64
 }
 
-/// Least squares for `y = b0*x0 + b1*x1 + b2` via 3x3 normal equations.
-#[allow(clippy::needless_range_loop)] // indexed Gaussian elimination reads a[col] while writing a[r]
-fn fit3(rows: &[([f64; 3], f64)]) -> [f64; 3] {
+/// Solve a small symmetric system `a·x = b` (n <= 3) by Gaussian elimination.
+#[allow(clippy::needless_range_loop)] // indexed elimination reads a[col] while writing a[r]
+fn solve(mut a: Vec<Vec<f64>>, mut b: Vec<f64>) -> Option<Vec<f64>> {
+    let n = b.len();
+    for col in 0..n {
+        let piv =
+            (col..n).max_by(|&r, &s| a[r][col].abs().partial_cmp(&a[s][col].abs()).unwrap())?;
+        a.swap(col, piv);
+        b.swap(col, piv);
+        if a[col][col].abs() < 1e-40 {
+            return None;
+        }
+        for r in 0..n {
+            if r != col {
+                let f = a[r][col] / a[col][col];
+                for c in col..n {
+                    a[r][c] -= f * a[col][c];
+                }
+                b[r] -= f * b[col];
+            }
+        }
+    }
+    Some((0..n).map(|i| b[i] / a[i][i]).collect())
+}
+
+/// Non-negative least squares for `time = c0·padded_work + c1·n_tiles + c2`. Times are
+/// sums of non-negative costs, so the coefficients must be >= 0; unconstrained LS on noisy
+/// data can produce a negative coefficient that predicts a near-zero time for some shape and
+/// picks a slow kernel. Exact for 3 features: the optimum lies on a face of the non-negative
+/// orthant, so fit each of the 8 active-subsets unconstrained and keep the feasible (all >=0)
+/// one with the smallest residual.
+fn fit_nnls(rows: &[([f64; 3], f64)]) -> [f64; 3] {
     let mut ata = [[0.0f64; 3]; 3];
     let mut atb = [0.0f64; 3];
     for (x, y) in rows {
@@ -153,30 +182,31 @@ fn fit3(rows: &[([f64; 3], f64)]) -> [f64; 3] {
             atb[i] += x[i] * y;
         }
     }
-    let mut a = [[0.0; 4]; 3];
-    for i in 0..3 {
-        a[i][..3].copy_from_slice(&ata[i]);
-        a[i][3] = atb[i];
-    }
-    for col in 0..3 {
-        let piv = (col..3)
-            .max_by(|&r, &s| a[r][col].abs().partial_cmp(&a[s][col].abs()).unwrap())
-            .unwrap();
-        a.swap(col, piv);
-        let d = a[col][col];
-        for j in col..4 {
-            a[col][j] /= d;
+    let mut best = ([0.0f64; 3], f64::MAX);
+    for mask in 1u8..8 {
+        let idx: Vec<usize> = (0..3).filter(|i| mask & (1 << i) != 0).collect();
+        let sub_a: Vec<Vec<f64>> =
+            idx.iter().map(|&i| idx.iter().map(|&j| ata[i][j]).collect()).collect();
+        let sub_b: Vec<f64> = idx.iter().map(|&i| atb[i]).collect();
+        let Some(sol) = solve(sub_a, sub_b) else { continue };
+        if sol.iter().any(|&v| v < 0.0) {
+            continue;
         }
-        for r in 0..3 {
-            if r != col {
-                let f = a[r][col];
-                for j in col..4 {
-                    a[r][j] -= f * a[col][j];
-                }
+        let mut c = [0.0f64; 3];
+        for (k, &i) in idx.iter().enumerate() {
+            c[i] = sol[k];
+        }
+        let mut resid = -2.0 * (0..3).map(|i| c[i] * atb[i]).sum::<f64>();
+        for i in 0..3 {
+            for j in 0..3 {
+                resid += c[i] * ata[i][j] * c[j];
             }
         }
+        if resid < best.1 {
+            best = (c, resid);
+        }
     }
-    [a[0][3], a[1][3], a[2][3]]
+    best.0
 }
 
 fn fit(f: Fit) -> TractResult<()> {
@@ -226,7 +256,7 @@ fn fit(f: Fit) -> TractResult<()> {
     for kern in &kernels {
         let per: Vec<([f64; 3], f64)> =
             rows.iter().filter(|r| &r.0 == kern).map(|r| (r.1, r.2)).collect();
-        let c = fit3(&per);
+        let c = fit_nnls(&per);
         src.push_str(&format!(
             "            [{:e}, {:e}, {:e}],\n",
             c[0] as f32, c[1] as f32, c[2] as f32
