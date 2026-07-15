@@ -13,12 +13,117 @@ pub fn ruin_cache() {
     let _a = (0..1_000_000).collect::<Vec<i32>>();
 }
 
-fn order_f<F: tract_num_traits::Float>(&a: &F, &b: &F) -> std::cmp::Ordering {
-    if a < b {
-        std::cmp::Ordering::Less
-    } else {
-        std::cmp::Ordering::Greater
+fn geom(name: &str) -> (usize, usize) {
+    name.split('_')
+        .find_map(|p| {
+            let (a, b) = p.split_once('x')?;
+            Some((a.parse().ok()?, b.parse().ok()?))
+        })
+        .unwrap_or_else(|| panic!("no NxM tile geometry in kernel name {name}"))
+}
+
+fn padded_work(m: usize, k: usize, n: usize, mr: usize, nr: usize) -> f64 {
+    (m.div_ceil(mr) * mr * n.div_ceil(nr) * nr * k) as f64
+}
+
+fn n_tiles(m: usize, n: usize, mr: usize, nr: usize) -> f64 {
+    (m.div_ceil(mr) * n.div_ceil(nr)) as f64
+}
+
+/// Least squares for `y = b0*x0 + b1*x1 + b2` via 3x3 normal equations
+/// with partial-pivot Gaussian elimination.
+fn fit3(rows: &[([f64; 3], f64)]) -> [f64; 3] {
+    let mut ata = [[0.0f64; 3]; 3];
+    let mut atb = [0.0f64; 3];
+    for (x, y) in rows {
+        for i in 0..3 {
+            for j in 0..3 {
+                ata[i][j] += x[i] * x[j];
+            }
+            atb[i] += x[i] * y;
+        }
     }
+    let mut a = [[0.0; 4]; 3];
+    for i in 0..3 {
+        a[i][..3].copy_from_slice(&ata[i]);
+        a[i][3] = atb[i];
+    }
+    for col in 0..3 {
+        let piv = (col..3)
+            .max_by(|&r, &s| a[r][col].abs().partial_cmp(&a[s][col].abs()).unwrap())
+            .unwrap();
+        a.swap(col, piv);
+        let d = a[col][col];
+        for j in col..4 {
+            a[col][j] /= d;
+        }
+        for r in 0..3 {
+            if r != col {
+                let f = a[r][col];
+                for j in col..4 {
+                    a[r][j] -= f * a[col][j];
+                }
+            }
+        }
+    }
+    [a[0][3], a[1][3], a[2][3]]
+}
+
+/// Read a `kernel m k n duration` dataset and emit a `LinearCostModel` source file.
+fn fit_linear(dataset: &str, out: &str) {
+    let txt = std::fs::read_to_string(dataset).unwrap();
+    let mut rows: Vec<(String, [f64; 3], f64)> = vec![];
+    for line in txt.lines() {
+        let f: Vec<&str> = line.split_whitespace().collect();
+        if f.len() != 5 {
+            continue;
+        }
+        let (m, k, n): (usize, usize, usize) =
+            (f[1].parse().unwrap(), f[2].parse().unwrap(), f[3].parse().unwrap());
+        let (mr, nr) = geom(f[0]);
+        let dur: f64 = f[4].parse().unwrap();
+        rows.push((
+            f[0].to_string(),
+            [padded_work(m, k, n, mr, nr), n_tiles(m, n, mr, nr), 1.0],
+            dur,
+        ));
+    }
+    let kernels: Vec<String> = rows.iter().map(|r| r.0.clone()).unique().sorted().collect();
+    let default_kernel = kernels
+        .iter()
+        .max_by_key(|name| {
+            let (mr, nr) = geom(name);
+            mr * nr
+        })
+        .unwrap()
+        .clone();
+
+    let mut src = String::new();
+    src.push_str("use crate::frame::mmm::LinearCostModel;\n\n");
+    src.push_str("pub fn linear_model() -> LinearCostModel<'static> {\n");
+    src.push_str("    LinearCostModel {\n");
+    src.push_str(&format!("        default_kernel: {default_kernel:?},\n"));
+    src.push_str("        kernels: &[\n");
+    for kern in &kernels {
+        src.push_str(&format!("            {kern:?},\n"));
+    }
+    src.push_str("        ],\n");
+    src.push_str("        coeffs: &[\n");
+    for kern in &kernels {
+        let fit = fit3(&rows.iter().filter(|r| &r.0 == kern).map(|r| (r.1, r.2)).collect_vec());
+        src.push_str(&format!(
+            "            [{:e}, {:e}, {:e}],\n",
+            fit[0] as f32, fit[1] as f32, fit[2] as f32
+        ));
+    }
+    src.push_str("        ],\n");
+    src.push_str("    }\n}\n");
+    std::fs::write(out, src).unwrap();
+    eprintln!("wrote {out} ({} kernels, default {default_kernel})", kernels.len());
+}
+
+fn order_f<F: tract_num_traits::Float>(&a: &F, &b: &F) -> std::cmp::Ordering {
+    if a < b { std::cmp::Ordering::Less } else { std::cmp::Ordering::Greater }
 }
 
 pub struct Bencher {
@@ -368,6 +473,14 @@ fn main() {
         )
         .subcommand(App::new("list-models"))
         .subcommand(
+            App::new("fit")
+                .about(
+                    "Fit a linear cost model from a dataset and emit a LinearCostModel source file",
+                )
+                .arg(Arg::new("dataset").required(true))
+                .arg(Arg::new("out").required(true)),
+        )
+        .subcommand(
             App::new("time")
                 .arg(Arg::new("mm").long("mm").help("Filter kernels").takes_value(true))
                 .arg(Arg::new("m"))
@@ -445,6 +558,9 @@ fn main() {
             for mmm in mmms {
                 println!("{}", mmm.name());
             }
+        }
+        Some(("fit", sub)) => {
+            fit_linear(sub.value_of("dataset").unwrap(), sub.value_of("out").unwrap());
         }
         Some(("ds", sub)) => {
             let mut mmms = mmms.clone();
