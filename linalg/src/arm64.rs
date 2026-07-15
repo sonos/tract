@@ -3,6 +3,7 @@
 mod apple_amx;
 mod arm64simd;
 pub mod cortex_a53;
+mod cortex_a53_linear;
 mod cortex_a55;
 // `tract_sme` is set by build.rs only when the assembler can assemble SME
 // (gates out e.g. the old Debian stretch aarch64 toolchain).
@@ -404,13 +405,17 @@ pub fn plug(ops: &mut Ops) {
         Kind::CortexA55 => Box::new(|_, _| arm64simd_mmm_f32_64x1_a55.mmm()),
         _ => Box::new(|_, _| arm64simd_mmm_f32_64x1_gen.mmm()),
     };
+    let linear = std::env::var("TRACT_MMM_PICKER").as_deref() == Ok("linear");
     let model = match *KIND {
         Kind::CortexA53 => Some(cortex_a53::model()),
         Kind::CortexA55 => Some(cortex_a55::model()),
         _ => None,
     };
     let impls = ops.mmm_impls.clone();
-    ops.mmm_f32 = if let Some(model) = model {
+    ops.mmm_f32 = if linear && matches!(*KIND, Kind::CortexA53) {
+        let model = cortex_a53_linear::linear_model();
+        Box::new(move |m, k, n| model.pick(&impls, m, k, n))
+    } else if let Some(model) = model {
         Box::new(move |m, k, n| model.pick(&impls, m, k, n))
     } else {
         Box::new(move |_, _, n| {
