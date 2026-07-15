@@ -36,6 +36,7 @@ mod bench_report;
 mod bench_suite;
 mod compare;
 mod cost;
+mod cost_model;
 mod dump;
 mod hwbench;
 #[cfg(feature = "transformers")]
@@ -188,6 +189,7 @@ fn main() -> TractResult<()> {
         .subcommand(Command::new("list-runtimes").about("List runtimes"))
         .subcommand(Command::new("kernels").about("Print kernels for the current plaform"))
         .subcommand(hwbench::command())
+        .subcommand(cost_model::command())
         .subcommand(
             Command::new("list-knobs").about("List runtime configuration knobs and their values"),
         );
@@ -826,6 +828,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
             return Ok(());
         }
         Some(("hwbench", m)) => return hwbench::handle(m),
+        Some(("cost-model", m)) => return cost_model::handle(m),
         #[cfg(feature = "bench-suite")]
         Some(("bench-suite", m)) => return bench_suite::handle(m),
         #[cfg(feature = "bench-suite")]
