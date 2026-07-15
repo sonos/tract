@@ -22,6 +22,10 @@ fn geom(name: &str) -> (usize, usize) {
         .unwrap_or_else(|| panic!("no NxM tile geometry in kernel name {name}"))
 }
 
+fn p(s: &str) -> usize {
+    s.parse().unwrap()
+}
+
 fn padded_work(m: usize, k: usize, n: usize, mr: usize, nr: usize) -> f64 {
     (m.div_ceil(mr) * mr * n.div_ceil(nr) * nr * k) as f64
 }
@@ -75,13 +79,15 @@ fn fit_linear(dataset: &str, out: &str) {
     let mut rows: Vec<(String, [f64; 3], f64)> = vec![];
     for line in txt.lines() {
         let f: Vec<&str> = line.split_whitespace().collect();
-        if f.len() != 5 {
-            continue;
-        }
-        let (m, k, n): (usize, usize, usize) =
-            (f[1].parse().unwrap(), f[2].parse().unwrap(), f[3].parse().unwrap());
-        let (mr, nr) = geom(f[0]);
-        let dur: f64 = f[4].parse().unwrap();
+        // two dataset layouts: `kernel m k n dur` (5) and `kernel mr nr m k n dur` (7)
+        let (mr, nr, m, k, n, dur) = match f.len() {
+            5 => {
+                let (mr, nr) = geom(f[0]);
+                (mr, nr, p(f[1]), p(f[2]), p(f[3]), f[4].parse().unwrap())
+            }
+            7 => (p(f[1]), p(f[2]), p(f[3]), p(f[4]), p(f[5]), f[6].parse().unwrap()),
+            _ => continue,
+        };
         rows.push((
             f[0].to_string(),
             [padded_work(m, k, n, mr, nr), n_tiles(m, n, mr, nr), 1.0],
@@ -387,7 +393,7 @@ impl Dataset {
         //        let ruin_cache_time = bencher.run_bench(|| ruin_cache());
         let mut rng = thread_rng();
         inputs.shuffle(&mut rng);
-        let mut progress_bar = ProgressBar::new(inputs.len() as _);
+        let mut progress_bar = ProgressBar::on(std::io::stderr(), inputs.len() as _);
         let mut samples = vec![];
         for s in inputs {
             let mm = mmm.iter().find(|mm| mm.name() == s.kernel).unwrap();
