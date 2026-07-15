@@ -361,6 +361,54 @@ mod tests {
         Ok(())
     }
 
+    // A f16 matmul asking for f32 accumulation: the products leave f16 range even
+    // though the inputs (and the f32 result) are ordinary. The metal GEMMs compute in
+    // their input dtype, so the f16 operands must be cast up or the dot saturates to
+    // inf -- which is how an Sdpa scores matmul turns a whole attention head to NaN.
+    #[test]
+    fn f16_matmul_honors_f32_operating_dt() -> TractResult<()> {
+        let (m, k, n) = (8usize, 128usize, 8usize);
+        let fact = |rows: usize| {
+            f16::fact(tvec![TDim::from(1i64), TDim::from(rows as i64), TDim::from(k as i64)])
+        };
+        let mut model = TypedModel::default();
+        let a = model.add_source("a", fact(m))?;
+        let b = model.add_source("b", fact(n))?;
+        let out = model.wire_node(
+            "matmul",
+            PrefixMatMul {
+                transpose_a: false,
+                transpose_b: true,
+                transpose_c: false,
+                quantize_output: None,
+                operating_dt: Some(DatumType::F32),
+            },
+            &[a, b],
+        )?;
+        model.select_output_outlets(&out)?;
+
+        // 60 * 400 * 128 = 3_072_000, well past f16's 65504 ceiling.
+        let mk = |rows: usize, v: f32| -> TractResult<TValue> {
+            let data: Vec<f16> = (0..rows * k).map(|_| f16::from_f32(v)).collect();
+            Ok(Tensor::from_shape(&[1, rows, k], &data)?.into_tvalue())
+        };
+        let (at, bt) = (mk(m, 60.0)?, mk(n, 400.0)?);
+
+        let cpu_out = model.clone().into_runnable()?.run(tvec![at.clone(), bt.clone()])?;
+        let metal = MetalTransform::default().transform_into(model)?;
+        let metal_out = metal.into_runnable()?.run(tvec![at, bt])?;
+
+        let metal_t = metal_out[0].clone().into_tensor();
+        let seen = metal_t.cast_to::<f32>()?;
+        let view = seen.view();
+        assert!(
+            view.as_slice::<f32>()?.iter().all(|x| x.is_finite()),
+            "metal f16 matmul saturated to inf: {seen:?}"
+        );
+        cpu_out[0].clone().into_tensor().close_enough(&metal_t, Approximation::Approximate)?;
+        Ok(())
+    }
+
     // Model-level A/B through the metal transform: a fused Sdpa (3 inputs ->
     // MetalMfaSdpa) vs the explode path (4-input Sdpa w/ neutral zero mask ->
     // gemm+softmax+gemm). The zero mask is neutral so both compute the same attn.

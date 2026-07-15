@@ -360,7 +360,27 @@ fn convert_matmul_to_metal(
     op: &PrefixMatMul,
     gemm_impl: Option<MetalGemmImplKind>,
 ) -> TractResult<TVec<OutletId>> {
-    let mut input_facts = model.node_input_facts(node.id)?;
+    let mut owned_facts: TVec<TypedFact> =
+        model.node_input_facts(node.id)?.iter().map(|f| (*f).clone()).collect();
+
+    // The metal GEMMs accumulate in their input dtype, so a matmul asking for a wider
+    // `operating_dt` than its inputs must have them cast up: an SDPA scores matmul is
+    // wired f32 precisely because its f16 products can leave f16 range, and a f16 GEMM
+    // would saturate them to inf.
+    if let Some(acc) = op.operating_dt {
+        for i in 0..2 {
+            let dt = owned_facts[i].datum_type;
+            if dt.is_float() && acc.is_float() && dt.size_of() < acc.size_of() {
+                inputs[i] = target.wire_node(
+                    format!("{}.cast_acc_{i}", node.name),
+                    metal_cast_new(acc).with_context(|| format!("No metal cast to {acc:?}"))?,
+                    &[inputs[i]],
+                )?[0];
+                owned_facts[i].datum_type = acc;
+            }
+        }
+    }
+    let mut input_facts: TVec<&TypedFact> = owned_facts.iter().collect();
 
     let resolved_gemm_impl = resolve_gemm_impl(gemm_impl, input_facts.clone())?;
     if matches!(resolved_gemm_impl, MetalGemmImplKind::Mlx | MetalGemmImplKind::Mfa)
