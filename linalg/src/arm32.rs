@@ -2,7 +2,9 @@ use std::fs;
 pub mod armv7neon;
 mod armvfpv2;
 mod cortex_a7;
+mod cortex_a7_linear;
 mod cortex_a9;
+mod cortex_a9_linear;
 use armv7neon::*;
 
 use crate::frame::element_wise::ElementWiseKer;
@@ -61,7 +63,16 @@ pub fn plug(ops: &mut Ops) {
             _ => Box::new(|_, _| armv7neon::armv7neon_mmm_f32_32x1_generic.mmm()),
         };
 
+        let linear = std::env::var("TRACT_MMM_PICKER").as_deref() == Ok("linear");
         ops.mmm_f32 = match cpu {
+            0xc07 if linear => {
+                let model = cortex_a7_linear::linear_model();
+                Box::new(move |m, k, n| model.pick(&cost_managed_impls, m, k, n))
+            }
+            0xc09 if linear => {
+                let model = cortex_a9_linear::linear_model();
+                Box::new(move |m, k, n| model.pick(&cost_managed_impls, m, k, n))
+            }
             0xc07 => {
                 let model = cortex_a7::model();
                 Box::new(move |m, k, n| model.pick(&cost_managed_impls, m, k, n))
