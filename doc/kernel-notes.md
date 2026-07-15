@@ -32,6 +32,10 @@ dispatch decision and calibrating one. Add `--json` to parse the results, or
 `--assert` (with `--tolerance <pct>`, default 5) to fail when a pick lags the
 fastest kernel — the basis for a CI that guards kernel selection.
 
+On arm the pick comes from a per-CPU analytic `LinearCostModel` fit from on-device
+timings; regenerating it after a kernel change is scripted via `tract cost-model
+gather|fit` — see `doc/cost-model.md`.
+
 The x86 picker (`plug_avx512f` / `plug_fma` in `linalg/src/x86_64_fma/mmm.rs`)
 scores kernels by `scale * m_util * n_util`, where `scale` is each kernel's
 relative throughput once tile-fill is equal. When those `scale`s are all left at
