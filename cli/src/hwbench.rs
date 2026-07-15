@@ -343,6 +343,22 @@ fn print_shape(shape: &ShapeResult) {
     println!();
 }
 
+/// Measured throughput (flop/s) of every candidate kernel at one shape, for the
+/// cost-model dataset gatherer. Reuses the same timing path as the pick-gate so a
+/// fitted model and `hwbench --assert` agree.
+pub(crate) fn kernel_times(
+    dt: DatumType,
+    m: usize,
+    k: usize,
+    n: usize,
+) -> TractResult<Vec<(String, f64)>> {
+    Ok(bench_shape(dt, m, k, n, false)?
+        .kernels
+        .into_iter()
+        .map(|k| (k.kernel, k.flop_per_s))
+        .collect())
+}
+
 fn bench_shape(
     dt: DatumType,
     m: usize,
