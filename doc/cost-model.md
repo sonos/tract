@@ -43,41 +43,74 @@ step and no Python.
 
 ## Regenerating a CPU's model
 
-Everything goes through the main `tract` CLI (`cost-model` subcommand). Two steps:
-`gather` runs **on the target CPU**, `fit` runs anywhere.
+There are two ways in, with the same output — a `<platform>_linear.rs` + `.txt` fit from
+on-device timings:
 
-1. **Build the CLI for the target** (cross-compile as usual; a static-musl build runs on
-   any Linux kernel regardless of the target's libc). Example for aarch64:
+- **`cost-model regen`** — one command, for a target you can build *and* run tract on
+  directly (x86 desktop/server, Apple, any aarch64/arm dev box). Preferred.
+- **manual `gather` + `fit`** — for cross-compiled boards (cortex-a7/a9/a53/a55) that can't
+  run the tract source tree: gather on the board, fit on the host.
+
+Both time every f32 kernel with a **fitting-grade fast timing** — coarser than `hwbench
+--assert` (~0.1 s warmup + ~0.25 s sampling vs ~1 s + ~1 s), ~3× quicker. The fit averages
+over many shapes, so sub-second per-kernel timing is enough to rank kernels; the relative
+order (which is what `pick` needs) is robust to the coarser budget. Both exclude `n = 1` —
+that is the matrix-vector (`mmv`) path, dispatched separately and not cost-modeled.
+
+### The one-liner: `cost-model regen`
+
+Run from the tract source tree, on the target machine:
+
+```
+tract cost-model regen
+```
+
+It (1) **detects the platform** and resolves the target `_linear.rs`/`.txt` path + device
+class; (2) **gathers** a class-appropriate dataset — the committed seed shapes for the class
+(`linalg/cost-model-seeds/<class>.txt`) unioned with a log-uniform random sweep that samples
+small `m/k/n` densely, where kernel choice matters most; (3) **fits** with NNLS; (4)
+**validates against the currently-installed picker** — for each gathered shape it compares
+the new model's pick, the live `ops().mmm(m,k,n)` pick, and the measured oracle, and prints
+both regrets; (5) **writes** the result to a side file (provenance header: user, host, date,
+CPU, tract version+commit, validation summary) and prints a ready-to-use `mv`.
+
+**It never overwrites in place.** Read the printed `current → new` regret, then run the `mv`
+to install. Flags: `--platform <id>` forces the target (else auto), `--size` the random-sweep
+count, `--seed` the PRNG seed, `--out-dir` the side-file directory.
+
+**Seed shapes are the "model findings"** — they anchor the fit on shapes that actually occur,
+so it never has to extrapolate. A uniform random sweep alone can miss, e.g., the large-`m/k`,
+tiny-`n` matmuls a transformer emits and mispick badly there. Extract a model's shapes with
+`tract <model> <args> -O dump --mm` and append them under a heading in the class seed file;
+that model is then covered on the next regen.
+
+### Manual: gather on the board, fit on the host (small devices)
+
+`regen` runs the whole loop in one process, so it needs a target you can build and run tract
+on. Cross-compiled boards can't do that — split it:
+
+1. **Build the CLI for the target.** A static-musl build runs on any Linux kernel regardless
+   of the board's libc:
 
    ```
    cargo build --release -p tract-cli --target aarch64-unknown-linux-musl
    ```
 
-2. **Gather a dataset on the target CPU.** Run it on real hardware — natively if you can
-   log in, or through a runner such as `cargo-dinghy` for a remote board. `gather` times
-   every f32 kernel over a sampled shape sweep and writes `kernel mr nr m k n dur` rows.
-   The sweep is deterministic in `--seed`, so a dataset is reproducible.
+2. **Gather on the board** — natively, or through a runner such as `cargo-dinghy`. Keep `n`
+   at 2+ (n=1 is the mmv path); `-` streams the dataset to stdout so you can capture a remote
+   run. The sweep is deterministic in `--seed`.
 
    ```
-   tract cost-model gather --m 1-256 --k 1-256 --n 1-256 --mkn 4000000 --size 150 out.txt
+   tract cost-model gather --m 2-192 --k 2-192 --n 2-192 --mkn 4000000 --size 150 -
    ```
 
-   `--size` is the number of shapes (each times the whole kernel pool). `--mkn` caps
-   problem size so the sweep stays quick; `--m/--k/--n` take a range `lo-hi` or a list
-   `a,b,c`. Pass `-` as the output to stream the dataset to stdout (handy when the run
-   is remote and you capture its stdout). ~150 shapes is comfortably past the point where
-   pick quality plateaus; a run takes a few minutes to ~half an hour depending on the CPU.
-
-   `gather` reuses the exact timing path of `tract hwbench`, so a fitted model and the
-   `hwbench --assert` pick-gate agree.
-
-3. **Fit and drop the file in:**
+3. **Fit on the host and drop the file in:**
 
    ```
-   tract cost-model fit out.txt linalg/src/arm64/cortex_a53_linear.rs
+   tract cost-model fit cortex_a53.txt linalg/src/arm64/cortex_a53_linear.rs
    ```
 
-   Commit both `out.txt` (as `cortex_<cpu>.txt`) and the generated `_linear.rs`.
+   Commit both `cortex_<cpu>.txt` and the generated `_linear.rs`.
 
 ## Wiring a new target
 
