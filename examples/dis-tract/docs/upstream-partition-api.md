@@ -107,7 +107,7 @@ evolve without an API commitment.
 - **Guard tests**: cutting a `Scan`/KV output → `StatefulBoundary`; omitting a needed boundary
   input → `UndeclaredBoundaryInput` naming the outlet.
 - **Real-model integration**: the openelm 2-stage split already validates prefill + greedy-decode
-  parity end-to-end (in `tract-distributed/tests/llm_pipeline.rs`); lift as the acceptance case.
+  parity end-to-end (in `examples/dis-tract/tests/llm_pipeline.rs`); lift as the acceptance case.
 
 ## Guard, refined after implementation
 Only **one** guard is actually needed in core, and it subsumes the others:

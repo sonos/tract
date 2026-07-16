@@ -21,7 +21,6 @@ members = [
     "extra",
     "transformers",
     "cuda",
-    "tract-distributed",
 
     "api",
     "api/rs",
@@ -43,6 +42,7 @@ members = [
     "examples/pytorch-albert-v2",
     "examples/pytorch-resnet",
     "examples/causal_llm",
+    "examples/dis-tract",
     "examples/stable-diffusion",
     "examples/stable-diffusion-3",
     "examples/stable-diffusion-xl",
@@ -85,7 +85,6 @@ default-members = [
     "cli",
     "extra",
     "transformers",
-    "tract-distributed",
 
     "api",
     "api/rs",
