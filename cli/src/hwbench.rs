@@ -6,7 +6,7 @@ use tract_core::internal::*;
 use tract_core::tract_data::itertools::Itertools;
 use tract_libcli::terminal::si_prefix;
 use tract_linalg::hwbench::bandwidth::{l1_bandwidth_seq, main_memory_bandwith_seq};
-use tract_linalg::hwbench::runner::run_bench;
+use tract_linalg::hwbench::runner::{run_bench, run_bench_fitting};
 use tract_linalg::mmm::{AsInputValue, FusedSpec, ImplementationQuality};
 
 #[derive(serde::Serialize)]
@@ -198,7 +198,7 @@ pub(crate) fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
             params.shapes.iter().map(|s| parse_shape(s)).flatten_ok().collect::<TractResult<_>>()?
         };
         for (dt, m, k, n, gated) in requests {
-            let shape = bench_shape(dt, m, k, n, gated)?;
+            let shape = bench_shape(dt, m, k, n, gated, false)?;
             if !params.json {
                 print_shape(&shape);
             }
@@ -352,7 +352,7 @@ pub(crate) fn kernel_times(
     k: usize,
     n: usize,
 ) -> TractResult<Vec<(String, f64)>> {
-    Ok(bench_shape(dt, m, k, n, false)?
+    Ok(bench_shape(dt, m, k, n, false, true)?
         .kernels
         .into_iter()
         .map(|k| (k.kernel, k.flop_per_s))
@@ -365,6 +365,7 @@ fn bench_shape(
     k: usize,
     n: usize,
     gated: bool,
+    fast: bool,
 ) -> TractResult<ShapeResult> {
     let a = Tensor::zero_dt(dt, &[m, k])?;
     let b = Tensor::zero_dt(dt, &[k, n])?;
@@ -397,7 +398,7 @@ fn bench_shape(
                 let a = pa.prepare_one(&a, 1, 0).unwrap();
                 let b = pb.prepare_one(&b, 0, 1).unwrap();
                 let pc = mmm.c_view(Some(0), Some(1)).wrap(&c.view_mut());
-                let time = run_bench(|loops| {
+                let bench = |loops| {
                     let mut scratch = mmm.allocate_scratch_space();
                     for _ in 0..loops {
                         mmm.run_with_scratch_space(
@@ -415,7 +416,8 @@ fn bench_shape(
                         )
                         .unwrap();
                     }
-                });
+                };
+                let time = if fast { run_bench_fitting(bench) } else { run_bench(bench) };
                 if std::io::stderr().is_terminal() {
                     eprint!("\x1B[2K\r"); // clear current line + CR
                 }
