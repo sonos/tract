@@ -133,8 +133,27 @@ against a 28 s shard build that dwarfs it either way.
   model to compute the layer weight profile. Until that profile is read from the AST, the
   coordinator needs a node that fits the model, which is the case we most want to serve.
 
-## Unverified
+## Measured: zenoh's payload ceiling
 
-Zenoh's practical payload ceiling and throughput for a 333.8 MB tensor. Everything above
-assumes chunk-per-tensor is viable; the embedding alone may force range-splitting or a
-streaming reply. **Measure before building.**
+`distract-wiretest` serves N MB of non-uniform bytes from a queryable and pulls them back
+through a router on its own port, checking length and a byte sum so a truncated or
+zero-filled reply cannot pass. Loopback, Apple silicon:
+
+| size | time | throughput | intact |
+|---|---|---|---|
+| 1 MB | 0.00 s | 293 MB/s | yes |
+| 64 MB | 0.07 s | 880 MB/s | yes |
+| **334 MB** (embedding) | 0.34 s | 993 MB/s | yes |
+| 512 MB | 0.49 s | 1054 MB/s | yes |
+| 768 MB | 0.66 s | 1170 MB/s | yes |
+| 960 MB | 1.64 s | 585 MB/s | yes |
+| 1024 MB | — | — | **no reply** |
+
+**Chunk-per-tensor is viable**: the largest tensor in the model crosses in one payload,
+intact. **A whole shard in one reply is not**: there is a hard wall just under 1 GiB, and
+throughput already halves above 768 MB because the payload is buffered whole at both ends —
+so small chunks also bound coordinator memory, not just risk.
+
+These are loopback figures — ~1 GB/s is memcpy-bound. A 1 GbE LAN caps near 110 MB/s, so a
+1.82 GB first fetch is ~18 s there whatever zenoh can do locally. What this settles is the
+ceiling and integrity, which is what the design turned on.
