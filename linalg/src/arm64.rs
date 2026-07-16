@@ -1,6 +1,8 @@
 #![allow(clippy::excessive_precision)]
 #[cfg(any(target_os = "macos", all(target_os = "ios", feature = "apple-amx-ios")))]
 mod apple_amx;
+#[cfg(target_os = "macos")]
+mod apple_m4_linear;
 mod arm64simd;
 mod cortex_a53_linear;
 mod cortex_a55_linear;
@@ -128,6 +130,17 @@ fn apple_get_syscall(key: &str) -> String {
 
         apple_string_from_c_bytes(&buf)
     }
+}
+
+/// The Apple silicon generation, from the CPU brand string, for per-chip cost-model
+/// selection. Returns `None` for chips without a fitted model (they keep the default
+/// dispatch). Distinct chips need distinct models: e.g. M1 has AMX, M4 has SME.
+#[cfg(target_os = "macos")]
+fn apple_chip() -> Option<&'static str> {
+    let brand = apple_get_syscall("machdep.cpu.brand_string");
+    [("M1", "m1"), ("M2", "m2"), ("M3", "m3"), ("M4", "m4")]
+        .into_iter()
+        .find_map(|(needle, id)| brand.contains(needle).then_some(id))
 }
 
 #[cfg(all(test, any(target_os = "macos", target_os = "ios")))]
@@ -485,4 +498,20 @@ pub fn plug(ops: &mut Ops) {
         sme::plug(ops);
     }
     sve::plug(ops);
+
+    // Per-chip Apple f32 matmul cost model, installed last so it takes precedence
+    // over the apple_amx heuristic and the always-SME default. Only chips with a
+    // fitted model override; others keep the dispatch set above.
+    #[cfg(target_os = "macos")]
+    {
+        let model = match apple_chip() {
+            Some("m4") => Some(apple_m4_linear::linear_model()),
+            _ => None,
+        };
+        if let Some(model) = model {
+            log::info!("Apple per-chip matmul LinearCostModel activated");
+            let impls = ops.mmm_impls.clone();
+            ops.mmm_f32 = Box::new(move |m, k, n| model.pick(&impls, m, k, n));
+        }
+    }
 }
