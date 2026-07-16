@@ -7,18 +7,16 @@
 
 use anyhow::Result;
 use tract_core::prelude::*;
-use tract_distributed::llm::{StageState, full_io_roles, partition_stages};
-use tract_distributed::{codec, runner};
+use tract_distributed::llm::{StageState, full_io_roles, load_model, partition_stages};
+use tract_distributed::runner;
 
 const SPLIT_LAYER: usize = 8;
 
-fn load_full() -> Result<TypedModel> {
+/// The model plus its regular (non-cache) output count, loaded through the same
+/// path the binaries use so node naming and KV I/O match.
+fn load_full() -> Result<(TypedModel, usize)> {
     let path = std::env::var("DISTRACT_MODEL").expect("set DISTRACT_MODEL");
-    let mut m = codec::nnef().model_for_path(&path)?;
-    if let Some(tr) = tract_core::transform::get_transform("transformers_detect_all")? {
-        tr.transform(&mut m)?;
-    }
-    Ok(m)
+    load_model(&path)
 }
 
 fn ids(tokens: &[i64]) -> Tensor {
@@ -35,13 +33,13 @@ fn argmax(logits: &Tensor) -> usize {
 #[test]
 #[ignore]
 fn llm_prefill_parity() -> Result<()> {
-    let full = load_full()?;
-    let (fin, fout) = full_io_roles(&full)?;
+    let (full, n_regular) = load_full()?;
+    let (fin, fout) = full_io_roles(&full, n_regular)?;
     let mut reference = StageState::new(full.clone(), "cpu", fin, fout)?;
     let prompt = ids(&[9, 3, 128, 42]);
     let ref_logits = reference.step(tvec!(prompt.clone()))?[0].clone();
 
-    let stages = partition_stages(&full, &[SPLIT_LAYER])?;
+    let stages = partition_stages(&full, &[SPLIT_LAYER], n_regular)?;
     assert_eq!(stages.len(), 2);
     let [s0, s1]: [_; 2] = stages.try_into().ok().unwrap();
     let mut stage0 = StageState::new(s0.model, "cpu", s0.inputs, s0.outputs)?;
@@ -63,11 +61,11 @@ fn llm_prefill_parity() -> Result<()> {
 #[test]
 #[ignore]
 fn llm_greedy_decode_parity() -> Result<()> {
-    let full = load_full()?;
-    let (fin, fout) = full_io_roles(&full)?;
+    let (full, n_regular) = load_full()?;
+    let (fin, fout) = full_io_roles(&full, n_regular)?;
     let mut reference = StageState::new(full.clone(), "cpu", fin, fout)?;
 
-    let stages = partition_stages(&full, &[SPLIT_LAYER])?;
+    let stages = partition_stages(&full, &[SPLIT_LAYER], n_regular)?;
     let [s0, s1]: [_; 2] = stages.try_into().ok().unwrap();
     let mut stage0 = StageState::new(s0.model, "cpu", s0.inputs, s0.outputs)?;
     let mut stage1 = StageState::new(s1.model, "cpu", s1.inputs, s1.outputs)?;
