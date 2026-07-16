@@ -82,6 +82,8 @@ silent CPU fallback), `distract-probe` / `distract-shard-run` (per-shard parity)
 
 ## More
 
+- [docs/Events_Sequence.md](docs/Events_Sequence.md) — what each component does from
+  startup to serving, what happens per token, and what happens when a node dies.
 - [docs/FAQ.md](docs/FAQ.md) — why the cluster's tok/s is half a node's, why a shard can be
   slow on GPU but not CPU, why the KV never crosses the wire, and what is *not* tested.
 - [docs/upstream-partition-api.md](docs/upstream-partition-api.md) — the partition primitive.
