@@ -100,3 +100,7 @@ path = "src/bin/cmpconst.rs"
 [[bin]]
 name = "distract-metalaudit"
 path = "src/bin/metalaudit.rs"
+
+[[bin]]
+name = "distract-wiretest"
+path = "src/bin/wiretest.rs"
