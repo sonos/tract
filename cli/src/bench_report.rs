@@ -6,7 +6,8 @@
 //! table. Port of `.travis/bench-report.py`; the markdown layout lives in the
 //! `bench-comment.md.j2` / `bench-report.md.j2` templates so it can be tuned without
 //! a rebuild. Single-shot vs the reference; |Δ| must reach the adaptive threshold
-//! (`bench_common::red_threshold`) to count as a mover. Direction-aware.
+//! (`bench_common::red_threshold`) to count as a mover. Throughput (tok/s) is inverted
+//! to time-per-token so every metric is lower-is-better; worse is always Δ>0.
 
 use crate::bench_common::{
     Thresholds, higher_better, is_speed, latest_value, read_metrics, red_threshold, series_noise,
@@ -166,7 +167,9 @@ fn fmt_val(v: f64, unit: &str) -> String {
         "mem" if v >= 1e9 => format!("{} GB", fmt_g(v / 1e9, 3)),
         "mem" if v >= 1e6 => format!("{} MB", fmt_g(v / 1e6, 3)),
         "mem" => format!("{} kB", fmt_g(v / 1e3, 3)),
-        "tok" => format!("{} tok/s", fmt_g(v, 4)),
+        // Stored as ms/tok (see `handle`'s inversion) so it reads lower-is-better like
+        // every other metric; the native tok/s follows as a small second line.
+        "tok" => format!("{} ms/tok<br><sub>{} tok/s</sub>", fmt_g(v, 3), fmt_g(1000.0 / v, 4)),
         _ => fmt_g(v, 4),
     }
 }
@@ -473,11 +476,15 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
         for (metric, prv) in &pr {
             let (metric, prv) = (metric, *prv);
             let Some(&rv) = refv.get(metric) else { continue };
-            if rv == 0.0 {
+            if rv == 0.0 || (higher_better(metric) && prv == 0.0) {
                 continue;
             }
+            // Throughput (tok/s) is higher-is-better; invert to time-per-token so every
+            // metric moves the same direction — lower is always better, worse is always Δ>0.
+            let (rv, prv) =
+                if higher_better(metric) { (1000.0 / rv, 1000.0 / prv) } else { (rv, prv) };
             let delta = (prv - rv) / rv * 100.0;
-            let worse = if higher_better(metric) { delta < 0.0 } else { delta > 0.0 };
+            let worse = delta > 0.0;
             let thr = red_threshold(metric, &cfg, noise.get(metric).copied().flatten(), Some(rv));
             let mover = thr.is_some_and(|t| delta.abs() >= t);
             rows.push(Row {
