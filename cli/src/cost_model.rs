@@ -370,7 +370,9 @@ fn auto_platform() -> Option<Platform> {
         Some("amd") => "amd",
         Some(_) => return None,
         None => {
-            let id = std::arch::x86_64::__cpuid(0);
+            // `unsafe` is required on the MSRV (1.91); newer rustc deems it redundant.
+            #[allow(unused_unsafe)]
+            let id = unsafe { std::arch::x86_64::__cpuid(0) };
             let mut s = [0u8; 12];
             s[0..4].copy_from_slice(&id.ebx.to_le_bytes());
             s[4..8].copy_from_slice(&id.edx.to_le_bytes());
