@@ -207,7 +207,7 @@ async fn api_chat(State(st): State<AppState>, Json(body): Json<ChatReq>) -> Json
         Err(e) => return chat_err(format!("bad reply: {e}")),
     };
     let text = st.tok.decode_reply(&gr.tokens).unwrap_or_default();
-    Json(ChatResp { reply: text, ttft_ms: gr.ttft_ms, tok_s: gr.decode_tok_s, error: None })
+    Json(ChatResp { reply: text, ttft_ms: gr.ttft_ms, tok_s: gr.decode_tok_s, error: gr.error })
 }
 
 #[derive(Deserialize)]

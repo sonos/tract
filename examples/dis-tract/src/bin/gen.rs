@@ -36,5 +36,8 @@ async fn main() -> Result<()> {
     let r: GenerateReply = serde_json::from_slice(&sample.payload().to_bytes())?;
     println!("TOKENS={}", r.tokens.iter().map(|t| t.to_string()).collect::<Vec<_>>().join(","));
     eprintln!("ttft={:.0}ms decode={:.1}tok/s", r.ttft_ms, r.decode_tok_s);
+    if let Some(err) = r.error {
+        anyhow::bail!("generation aborted: {err}");
+    }
     Ok(())
 }

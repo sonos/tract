@@ -114,7 +114,7 @@ looking at the next. Concurrent callers queue.
    - coordinator publishes `RunStats` on `distract/run` (dashboard) and the partial token list
      on `distract/stream/{stream_id}` (live chat)
 4. On a stop token, or at `max_tokens`, it publishes a final `StreamMsg { done: true }` and
-   replies to the query with `GenerateReply { tokens, ttft_ms, decode_tok_s }`.
+   replies to the query with `GenerateReply { tokens, ttft_ms, decode_tok_s, error }`.
 
 Every token traverses **every** stage in sequence, so the stages compose serially: step times
 add, rates do not. Two balanced stages give roughly half of one node's tok/s. Only the
@@ -131,16 +131,23 @@ A restarted worker with the same `--name` (or the persisted `~/.dis-tract/node_i
 `distract/assign/{node_id}`, gets **its own stage back**, rebuilds its shard (~28 s warm) and
 resubscribes. KV state self-heals, because every prompt resets all caches anyway.
 
-**What does not:** the **coordinator wedges permanently**. It declares no liveliness
-subscriber, so it never learns a worker died; and its per-token wait
-(`result_sub.recv_async()`) has **no timeout**. The in-flight token was published to a
-subscriber that no longer exists — zenoh pub/sub is fire-and-forget, so it is simply gone —
-and the coordinator blocks forever on a result that will never arrive. Because the generate
-loop is serial, it never accepts another request either. Measured after the worker had fully
-rejoined: a new request got no reply in 45 s, coordinator at 0.0% CPU, the rejoined worker
-idle. **A healthy cluster, deadlocked.** Only restarting the coordinator clears it.
+**What the coordinator does:** it subscribes to `distract/live/*`, so zenoh retracting the
+dead worker's token ends the in-flight generation at once — no timeout to wait out. The
+sequence is unrecoverable (the token in flight was published to a subscriber that no longer
+exists, and zenoh pub/sub is fire-and-forget), so it abandons that request, replies with the
+partial tokens and an `error`, and goes back to serving. The per-token wait is also bounded
+(`STEP_TIMEOUT`, 30 s) to cover a stage that is merely wedged rather than gone.
 
-The fix is small and the pattern already exists a few lines above: bound the wait with a
-`tokio::select!` deadline, as the reset-ack does, and subscribe to `znet::LIVE_WILDCARD` so a
-`Delete` for a participating node aborts the current generation. Mid-generation the sequence
-is unrecoverable regardless; the honest behaviour is to fail that request and accept the next.
+Verified by killing a worker mid-generation:
+
+```
+ERROR generation aborted at turn 65: node node-metal-2 left the cluster
+WARN  abandoned after 65 tokens: node node-metal-2 left the cluster
+client: Error: generation aborted: node node-metal-2 left the cluster
+```
+
+then restarting it: `assigned stage 1 on metal`, and the next prompt answered normally
+(`generated 11 tokens, 20.6 tok/s`) with no coordinator restart. The stages' KV is out of
+step after an abort, but the reset at the top of the next prompt clears every stage, so the
+cluster stays usable.
+
