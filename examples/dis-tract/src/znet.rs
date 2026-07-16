@@ -67,15 +67,11 @@ pub fn live_key(node_id: &str) -> String {
 }
 pub const LIVE_WILDCARD: &str = "distract/live/*";
 
-/// Per-node assignment queryable the coordinator serves after planning:
-/// `frame(LoadMeta) + frame(model_nnef)`. The worker pulls it by its own id.
+/// Per-node assignment queryable the coordinator serves after planning: a JSON
+/// [`crate::protocol::AssignSpec`]. The worker pulls it by its own id and builds
+/// its shard locally, so no model bytes cross the wire.
 pub fn assign_key(node_id: &str) -> String {
     format!("distract/assign/{node_id}")
-}
-
-/// Queryable the coordinator serves with `frame(LoadMeta) + frame(model_nnef)`.
-pub fn config_key(stage: usize) -> String {
-    format!("distract/config/{stage}")
 }
 
 /// Where a stage receives its input activations (`frame(StepMeta) + tensors`).
