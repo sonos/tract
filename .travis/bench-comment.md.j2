@@ -17,7 +17,7 @@
 <!-- bench-vs-main -->
 {{ head }}
 
-Reference: main nightly, latest **{{ ref_day }}** ({{ age }}d old) · PR `{{ pr_sha9 }}` · ran on {{ devs }} · {{ n_metrics }} metrics compared
+_Reference: {{ ref_day }} morning nightly run ({{ age }}d old) · full report → [run]({{ run_url }})_
 
 **Speed** — evaltime · prefill · decode
 
@@ -39,4 +39,3 @@ _no inference-speed regressions_
 </details>
 
 {% endif %}
-_Reference: {{ ref_day }} morning nightly run ({{ age }}d old) · full report → [run]({{ run_url }})_

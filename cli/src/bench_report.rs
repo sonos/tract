@@ -554,7 +554,6 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
     let mut uniq = devices.clone();
     uniq.sort();
     uniq.dedup();
-    let devs = uniq.iter().map(|d| format!("`{d}`")).collect::<Vec<_>>().join(", ");
 
     let mut env = Environment::new();
     env.set_trim_blocks(true);
@@ -562,8 +561,7 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
     let comment = std::fs::read_to_string(format!("{templates}/bench-comment.md.j2"))?;
     env.add_template("comment", &comment)?;
     let rendered = env.get_template("comment")?.render(context! {
-        head, ref_day, age, pr_sha9 => &pr_sha[..pr_sha.len().min(9)], devs,
-        n_metrics => rows.len(),
+        head, ref_day, age,
         speed_regr_shown, speed_regr_more, speed_impr_shown, speed_impr_more,
         other_regr => other_regr_cells, run_url,
     })?;
