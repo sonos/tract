@@ -37,24 +37,6 @@ impl IoSpec {
     }
 }
 
-/// Control message: coordinator → worker, once, over `POST /load`. The NNEF
-/// model bytes travel in a separate frame after the JSON header.
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct LoadMeta {
-    pub stage_index: usize,
-    /// Runtime name: `"cpu"`, `"metal"`, or `"cuda"`.
-    pub backend: String,
-    /// Next stage's base URL, or `None` for the tail stage.
-    pub next_hop: Option<String>,
-    /// Per-input-outlet roles, in stage `input_outlets()` order.
-    pub inputs: Vec<IoSpec>,
-    /// Per-output-outlet roles, in stage `output_outlets()` order.
-    pub outputs: Vec<IoSpec>,
-    /// Weight bytes of this shard, as the coordinator's plan counted them — so
-    /// the dashboard's per-node figure matches the aggregated total exactly.
-    pub weights_bytes: u64,
-}
-
 /// Assignment the coordinator sends a worker. The worker builds its shard
 /// locally (load `model_path`, transform, `partition_stages`), so no serialized
 /// sub-model crosses the wire — `cut_layers` + `stage_index` pin which shard,

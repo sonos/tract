@@ -80,6 +80,12 @@ Diagnostics: `distract-shardbench <model> [backend]` (whole vs shard vs split, t
 above), `distract-metalaudit <model> <n_layers>` (device-vs-host op placement, catches
 silent CPU fallback), `distract-probe` / `distract-shard-run` (per-shard parity).
 
+## More
+
+- [docs/FAQ.md](docs/FAQ.md) — why the cluster's tok/s is half a node's, why a shard can be
+  slow on GPU but not CPU, why the KV never crosses the wire, and what is *not* tested.
+- [docs/upstream-partition-api.md](docs/upstream-partition-api.md) — the partition primitive.
+
 ## Where this stands
 
 Honest limits, worst first:
@@ -103,7 +109,7 @@ Honest limits, worst first:
   `into_typed_model` (`#[doc(hidden)]`) because a `Model` cannot otherwise be split or
   measured. Shape it however you prefer — it is the smallest thing that unblocks this.
 - **CPU needs #2477** (block-quant `AddUnicast` fusion guard) or Qwen decodes NaN. Metal
-  is fine on current main (#2476, #2472 merged).
+  is fine on current main (#2476, #2472, #2428 merged).
 - Greedy decode only, one prompt at a time, KV reset per prompt (no multi-turn memory).
 - CUDA compiles and self-reports via `Runtime::check()`, but is unexercised on Apple HW.
 
