@@ -7,6 +7,7 @@ pub mod kv_quant;
 pub mod scaled_masked_softmax;
 pub mod sdpa;
 pub mod streamed_sdpa;
+pub mod w4a8;
 pub mod window_kv_cache;
 
 // Re-export ops that moved to core
