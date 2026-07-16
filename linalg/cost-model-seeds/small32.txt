@@ -1,0 +1,4 @@
+# Representative (m k n) matmul shapes for the "small32" device class.
+# None curated yet — regen falls back to the random sweep alone for this class.
+# To seed: run `tract <model> <args> -O dump --mm` on this class's target models
+# and append the distinct shapes under a per-model heading (see big64.txt).
