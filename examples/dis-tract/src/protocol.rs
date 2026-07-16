@@ -126,11 +126,17 @@ pub struct StreamMsg {
 }
 
 /// The coordinator's reply: the generated token ids and the end-to-end timing.
+///
+/// A generation that lost a stage mid-flight still replies, with whatever tokens it
+/// had and `error` set: the sequence is unrecoverable, but the caller must not be
+/// left waiting on it.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct GenerateReply {
     pub tokens: Vec<i64>,
     pub ttft_ms: f64,
     pub decode_tok_s: f64,
+    #[serde(default)]
+    pub error: Option<String>,
 }
 
 /// Periodic per-node telemetry for the dashboard.

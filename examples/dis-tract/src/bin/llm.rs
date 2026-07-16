@@ -17,6 +17,12 @@ use tract_distributed::protocol::{
 };
 use tract_distributed::{codec, znet};
 use zenoh::Wait;
+use zenoh::sample::SampleKind;
+
+/// How long one stage-chain traversal may take before the generation is abandoned.
+/// A step is tens of ms and a long prefill a few seconds, so this only fires when a
+/// stage is gone or wedged — the case that used to block the coordinator forever.
+const STEP_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Parser, Debug)]
 #[command(about = "Dis-tract LLM coordinator (zenoh, memory-weighted planning)")]
@@ -145,6 +151,11 @@ async fn main() -> Result<()> {
     let result_sub = session.declare_subscriber(znet::RESULT_KEY).await.map_err(znet::zerr)?;
     let reset_ack_sub =
         session.declare_subscriber(znet::RESET_ACK_WILDCARD).await.map_err(znet::zerr)?;
+    // A stage that dies mid-token takes its `distract/result` publication with it, so
+    // the wait below must end on something other than a reply: zenoh retracts the dead
+    // worker's liveliness token, and the deadline covers a stage that is merely stuck.
+    let live_sub =
+        session.liveliness().declare_subscriber(znet::LIVE_WILDCARD).await.map_err(znet::zerr)?;
     let in0 = znet::in_key(0);
     let ids = |toks: &[i64]| Tensor::from_shape(&[1, toks.len()], toks).unwrap();
 
@@ -201,6 +212,7 @@ async fn main() -> Result<()> {
         };
         let mut out_toks = Vec::with_capacity(req.max_tokens);
         let mut dist_tok = 0i64;
+        let mut aborted: Option<String> = None;
         let (mut ttft_ms, mut dec_sum_ms, mut dec_cnt) = (0.0f64, 0.0f64, 0u64);
         for turn in 0..req.max_tokens as u64 {
             let (phase, tok) = if turn == 0 {
@@ -213,7 +225,37 @@ async fn main() -> Result<()> {
             codec::write_frame(&mut body, &serde_json::to_vec(&StepMeta { turn, phase })?)?;
             codec::write_tensors(&mut body, &[tok])?;
             session.put(&in0, body).await.map_err(znet::zerr)?;
-            let sample = result_sub.recv_async().await.map_err(znet::zerr)?;
+            let outcome = {
+                let deadline = tokio::time::sleep(STEP_TIMEOUT);
+                tokio::pin!(deadline);
+                loop {
+                    tokio::select! {
+                        r = result_sub.recv_async() => break r.map_err(|e| format!("{e:?}")),
+                        l = live_sub.recv_async() => {
+                            // Liveliness replays the live tokens as Puts on declare; only a
+                            // Delete for a stage of *this* run ends the wait.
+                            if let Ok(s) = l
+                                && s.kind() == SampleKind::Delete
+                                && let Some(id) = s.key_expr().as_str().rsplit('/').next()
+                                && node_ids.iter().any(|n| n == id)
+                            {
+                                break Err(format!("node {id} left the cluster"));
+                            }
+                        }
+                        _ = &mut deadline => {
+                            break Err(format!("no stage reply in {}s", STEP_TIMEOUT.as_secs()));
+                        }
+                    }
+                }
+            };
+            let sample = match outcome {
+                Ok(s) => s,
+                Err(why) => {
+                    log::error!("generation aborted at turn {turn}: {why}");
+                    aborted = Some(why);
+                    break;
+                }
+            };
             let elapsed = t0.elapsed().as_secs_f64() * 1000.0;
             let mut rc = Cursor::new(sample.payload().to_bytes().to_vec());
             let _ = codec::read_frame(&mut rc)?;
@@ -256,13 +298,18 @@ async fn main() -> Result<()> {
             .put(&skey, serde_json::to_vec(&StreamMsg { tokens: out_toks.clone(), done: true })?)
             .await;
         let decode_tok_s = if dec_cnt > 0 { 1000.0 * dec_cnt as f64 / dec_sum_ms } else { 0.0 };
-        log::info!(
-            "generated {} tokens (ttft {:.0}ms, {:.1} tok/s)",
-            out_toks.len(),
-            ttft_ms,
-            decode_tok_s
-        );
-        let reply = GenerateReply { tokens: out_toks, ttft_ms, decode_tok_s };
+        match &aborted {
+            None => log::info!(
+                "generated {} tokens (ttft {:.0}ms, {:.1} tok/s)",
+                out_toks.len(),
+                ttft_ms,
+                decode_tok_s
+            ),
+            // The stages' KV is now out of step with the sequence, but the reset at the
+            // top of the next prompt clears every stage, so the cluster stays usable.
+            Some(why) => log::warn!("abandoned after {} tokens: {why}", out_toks.len()),
+        }
+        let reply = GenerateReply { tokens: out_toks, ttft_ms, decode_tok_s, error: aborted };
         let _ = query.reply(znet::GENERATE_KEY, serde_json::to_vec(&reply)?).await;
     }
     Ok(())
