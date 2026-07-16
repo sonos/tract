@@ -2,6 +2,8 @@
 #[cfg(any(target_os = "macos", all(target_os = "ios", feature = "apple-amx-ios")))]
 mod apple_amx;
 #[cfg(target_os = "macos")]
+mod apple_m1_linear;
+#[cfg(target_os = "macos")]
 mod apple_m4_linear;
 mod arm64simd;
 mod cortex_a53_linear;
@@ -505,6 +507,7 @@ pub fn plug(ops: &mut Ops) {
     #[cfg(target_os = "macos")]
     {
         let model = match apple_chip() {
+            Some("m1") => Some(apple_m1_linear::linear_model()),
             Some("m4") => Some(apple_m4_linear::linear_model()),
             _ => None,
         };
