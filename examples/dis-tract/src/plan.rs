@@ -33,15 +33,53 @@ pub fn layer_weight_profile(model: &TypedModel, n_layers: usize) -> Vec<u64> {
     per_layer
 }
 
+const MIB: u64 = 1024 * 1024;
+
+/// Weight bytes each stage owns, given the cut layers. Stage `s` owns every layer
+/// `l` with `cuts.iter().filter(|c| **c <= l).count() == s`.
+pub fn stage_weights(profile: &[u64], cuts: &[usize]) -> Vec<u64> {
+    let owner = |l: usize| cuts.iter().filter(|&&c| c <= l).count();
+    let mut w = vec![0u64; cuts.len() + 1];
+    for (l, bytes) in profile.iter().enumerate() {
+        w[owner(l)] += bytes;
+    }
+    w
+}
+
+/// Reject a split that hands a node more weight than it said it could hold.
+///
+/// Weights are a **lower bound** on what a stage costs: its KV cache, activations
+/// and runtime are on top, and measured 1.2-1.6x of weights on an 8B model. So this
+/// catches a node that cannot possibly fit its shard, not one that merely might not.
+fn check_fit(profile: &[u64], cuts: &[usize], budgets: &[u64]) -> Result<()> {
+    for (s, (need, budget)) in stage_weights(profile, cuts).iter().zip(budgets).enumerate() {
+        if need > budget {
+            bail!(
+                "stage {s} would hold {} MiB of weights but its node advertised {} MiB \
+                 (weights alone, before KV and runtime): raise its --mem-mb if the node \
+                 really has the memory, add nodes, or use a smaller model",
+                need / MIB,
+                budget / MIB
+            );
+        }
+    }
+    Ok(())
+}
+
 /// Choose `budgets.len() - 1` cut layers (each = the first layer of the next
 /// stage) so cumulative weight per stage tracks the cumulative budget fraction,
 /// in the given node order. Cuts are strictly increasing within `1..n_layers`.
+///
+/// The split is proportional, so a node's share can exceed its budget when the
+/// cluster as a whole is short of memory; [`check_fit`] turns that into a planning
+/// error rather than a load-time failure on one unlucky worker.
 pub fn memory_weighted_cuts(profile: &[u64], budgets: &[u64]) -> Result<Vec<usize>> {
     let n_stages = budgets.len();
+    let n_layers = profile.len();
     if n_stages < 2 {
+        check_fit(profile, &[], budgets)?;
         return Ok(vec![]);
     }
-    let n_layers = profile.len();
     if n_layers < n_stages {
         bail!("{n_layers} layers cannot be split across {n_stages} stages");
     }
@@ -68,5 +106,51 @@ pub fn memory_weighted_cuts(profile: &[u64], budgets: &[u64]) -> Result<Vec<usiz
         cuts.push(layer.clamp(lo, hi));
         layer = *cuts.last().unwrap();
     }
+    check_fit(profile, &cuts, budgets)?;
     Ok(cuts)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const GB: u64 = 1024 * MIB;
+
+    #[test]
+    fn weights_follow_the_cuts() {
+        // 4 layers of 1 GB, cut at 2 -> two stages of 2 GB.
+        assert_eq!(stage_weights(&[GB, GB, GB, GB], &[2]), vec![2 * GB, 2 * GB]);
+        // No cuts: one stage owns everything.
+        assert_eq!(stage_weights(&[GB, GB], &[]), vec![2 * GB]);
+    }
+
+    #[test]
+    fn equal_budgets_split_evenly() {
+        let cuts = memory_weighted_cuts(&[GB, GB, GB, GB], &[4 * GB, 4 * GB]).unwrap();
+        assert_eq!(stage_weights(&[GB, GB, GB, GB], &cuts), vec![2 * GB, 2 * GB]);
+    }
+
+    #[test]
+    fn a_bigger_budget_takes_more_layers() {
+        let profile = [GB, GB, GB, GB];
+        let cuts = memory_weighted_cuts(&profile, &[3 * GB, GB]).unwrap();
+        let w = stage_weights(&profile, &cuts);
+        assert!(w[0] > w[1], "stage 0 advertised 3x the budget but got {w:?}");
+    }
+
+    #[test]
+    fn a_shard_over_its_node_budget_fails_at_plan_time() {
+        // 8 GB of weights across two 1 GB nodes: proportional, and neither fits.
+        let err = memory_weighted_cuts(&[4 * GB, 4 * GB], &[GB, GB]).unwrap_err().to_string();
+        assert!(err.contains("advertised"), "unhelpful error: {err}");
+        assert!(err.contains("4096 MiB"), "should name what it needs: {err}");
+    }
+
+    #[test]
+    fn a_single_node_is_checked_too() {
+        // The one-stage path returns before any split, but must still refuse a model
+        // that cannot fit the only node.
+        assert!(memory_weighted_cuts(&[4 * GB], &[GB]).is_err());
+        assert!(memory_weighted_cuts(&[GB], &[4 * GB]).is_ok());
+    }
 }

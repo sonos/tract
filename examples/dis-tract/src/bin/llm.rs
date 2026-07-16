@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 use anyhow::{Result, ensure};
 use clap::Parser;
 use tract_core::prelude::*;
-use tract_distributed::plan::{layer_weight_profile, memory_weighted_cuts};
+use tract_distributed::plan::{layer_weight_profile, memory_weighted_cuts, stage_weights};
 use tract_distributed::protocol::{
     AssignSpec, GenerateReply, GenerateRequest, NodeCaps, Phase, RunStats, StepMeta, StreamMsg,
 };
@@ -92,10 +92,7 @@ async fn main() -> Result<()> {
     let cut_layers = memory_weighted_cuts(&profile, &budgets)?;
     let n = cut_layers.len() + 1;
     ensure!(n == nodes.len(), "planned {n} stages for {} nodes", nodes.len());
-    let owner = |l: usize| cut_layers.iter().filter(|&&c| c <= l).count();
-    let stage_weight = |s: usize| -> u64 {
-        (0..n_layers).filter(|&l| owner(l) == s).filter_map(|l| profile.get(l)).sum()
-    };
+    let weights = stage_weights(&profile, &cut_layers);
 
     println!("plan ({n_layers} layers, cuts at {cut_layers:?}):");
     for (i, node) in nodes.iter().enumerate() {
@@ -103,7 +100,7 @@ async fn main() -> Result<()> {
             "  stage {i} -> {} on {} : {} MiB weights ({} MiB budget)",
             node.node_id,
             node.backend,
-            stage_weight(i) / (1024 * 1024),
+            weights[i] / (1024 * 1024),
             node.mem_budget / (1024 * 1024)
         );
     }
