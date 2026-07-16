@@ -21,13 +21,16 @@ whole model to compute its layer weight profile before dropping it, so it needs 
 fits the model — precisely what the too-big case does not have. That profile should come
 from the graph AST, as the shard loader already does.
 
-### Why greedy decode, one prompt at a time, no memory of the last turn?
+### Why greedy decode, and no memory of the last turn?
 
-Deliberate scope. The coordinator is a single-stream reference: it clears every worker's KV
-before each prompt, so there is no multi-turn context by design. Sampling is argmax, so runs
-are reproducible and can be checked token-for-token against a single-machine reference —
-which is the property the whole thing is validated on. None of this is load-bearing for the
-split; it is what a PoC leaves out.
+Deliberate scope. Sampling is argmax, so a run is reproducible and can be checked
+token-for-token against a single-machine reference — that parity is the property the whole
+thing is validated on, and a sampler would destroy it. The KV is cleared before each prompt,
+so there is no multi-turn context by design.
+
+Neither is load-bearing for the split; both are what a PoC leaves out. See also *Can it
+serve more than one request at a time?* — the single-stream limit is the one with real
+consequences.
 
 ### Which models work?
 
@@ -70,6 +73,43 @@ the other half. Step times add; rates do not.
 The cluster banner also averages over the whole run while the node cards show the latest
 step, and steps slow as the KV cache grows — so the average sits above the current rate and
 drifts down. The banner shows both (`avg` and `now`).
+
+### Can it serve more than one request at a time?
+
+No. **Single stream, strictly serial.** The coordinator is one loop over its
+`distract/generate` queryable: it takes a request, clears every worker's KV, decodes that
+prompt to completion, replies, and only then looks at the next. Concurrent requests do not
+error — they queue, and a caller just waits. There is no batching, and each prompt starts
+from an empty cache, so there is no multi-turn context.
+
+This is worth being pointed about, because a pipeline is exactly where it costs you. With a
+single stream, only one stage is busy at a time: while stage 0 computes token *n*, stage 1
+sits idle, and vice versa. In a 2-stage split each node is therefore ~50% idle, and that
+does not improve with more nodes — an N-stage pipeline leaves each node ~1/N busy. The
+standard answer is **micro-batching** (keep several sequences in flight so every stage
+always has work), which is what makes pipeline parallelism pay for throughput. It is not
+implemented. Single-stream *latency* is unaffected by this — the split costs ~1% — but the
+hardware is mostly idle, and that is the obvious next win for a serving workload.
+
+### Could this run over the internet, not just a LAN?
+
+Mechanically, zenoh would not stop you: it speaks TCP and QUIC and routers can be remote. In
+practice, no — as it stands it is a LAN design, for two reasons.
+
+**Latency, not bandwidth, is the problem.** The payload is tiny: the residual is one
+`[1, 1, hidden]` f16 tensor, ~8 KB per token for a 4096-wide model. Bandwidth is a
+non-issue. But it is *per token, per stage boundary, serially* — the next token cannot start
+until the previous one finishes the whole chain. At ~43 ms/step, a 30 ms round-trip roughly
+doubles per-token latency; a 100 ms link triples or worse. Loopback hides this entirely,
+which is why the measured "splitting costs ~1%" carries no wire cost at all.
+
+**Nothing here is safe to expose.** The endpoint is plain `tcp/`, with no TLS, no
+authentication, and no authorisation on the key space: any peer that can reach the router
+can publish activations onto a stage's input key or answer an assignment query. zenoh
+supports TLS/QUIC and access control; none of it is configured.
+
+If you wanted this over a WAN, the honest shape is different — batch aggressively to amortise
+the round-trip, or cut in fewer places, and turn on zenoh's transport security first.
 
 ### What do the dashboard's memory figures mean?
 
@@ -149,6 +189,37 @@ that separated a layer from its cache would put the cache on the wire. (The core
 own guard is more general: `extract_subgraph` refuses a cut whose output cone reaches a
 Source you did not declare as a boundary input.)
 
+### How are shards assigned to nodes — by memory, by speed, or both?
+
+**Memory only.** Nothing about performance is modelled, and there is no fit check.
+
+The flow: each worker advertises a `mem_budget` on join (`--mem-mb N`, or `--mem-frac` of
+its available RAM). The coordinator builds a per-layer weight profile of the model, then
+`plan::memory_weighted_cuts` walks the layers placing cuts so that **cumulative weight is
+proportional to cumulative budget** — a node advertising twice the budget gets roughly twice
+the weight. Weights are counted as stored, so q40 blocks count packed, not at f32 size.
+
+What that means in practice:
+
+- **A fast node and a slow node with equal budgets get equal layers.** Backend, core count,
+  and memory bandwidth are not inputs, so a Metal node and a CPU node with `--mem-mb 4096`
+  each get half the model — and since every token traverses both, the pipeline runs at the
+  slower node's pace. If you want to bias work toward a faster node today, you do it by
+  hand, by lying about budgets.
+- **Link bandwidth and latency are not inputs either**, so the planner cannot prefer a cut
+  that minimises what crosses a slow hop.
+- **There is no fit check.** The split is proportional, full stop: if a node's share exceeds
+  the budget it advertised, it is still assigned it and fails (or swaps) at load time
+  instead of at plan time. Proportional-and-silent was survivable while the weight figures
+  were themselves wrong by ~8x; now that they are accurate, a real check is cheap and
+  worth adding.
+- **Stage order is not a decision.** Nodes are sorted CPU-first, then by node id, so a CPU
+  node takes stage 0 (and with it the embedding gather). That is a stable-ordering
+  convenience, not a placement strategy.
+
+A profile-guided planner — measure each node, weight by throughput and link cost, verify the
+fit — is the obvious next step and is not implemented.
+
 ### Why isn't the split a registered `ModelTransform`?
 
 This is the open design question, and the conflict looks real rather than a matter of
@@ -164,10 +235,33 @@ graph subset plus only its tensors. With that, Dis-tract becomes an ordinary
 
 ### Why zenoh?
 
-It is EXO's own transport, it is on crates.io under Apache-2.0, and it covers all three
-needs with one dependency: scouting for discovery, pub/sub for the per-token activation hot
-path, and a queryable for one-time shard assignment. The alternative was hand-rolling
-discovery plus a framed TCP protocol.
+Because a cluster needs three different things and zenoh is one dependency that does all
+three, rather than three hand-rolled ones:
+
+- **discovery** — scouting: a worker finds the coordinator with no addresses configured
+- **the hot path** — pub/sub, for the per-token residual
+- **assignment** — a queryable the coordinator serves, which each worker pulls by its own id
+
+It is also EXO's own transport, which matters here: EXO solved this exact problem
+(heterogeneous boxes on a home LAN), so borrowing its transport means borrowing decisions
+already validated at that scale. It is on crates.io under Apache-2.0, so it is a normal
+dependency rather than a vendored fork.
+
+The codec is transport-agnostic (frames over any `Read`/`Write`), so this is a swappable
+choice, not a foundation. An earlier revision ran the same protocol over HTTP; moving to
+zenoh touched only the two binaries. Raw framed TCP would be lighter if discovery were not
+needed.
+
+Three things worth knowing if you touch it:
+
+- zenoh needs a **multi-threaded** tokio runtime — `#[tokio::main]` on `current_thread`
+  panics.
+- **Peer mode floods** worker-to-worker connection attempts across every interface address
+  on a multi-homed host, up to fd exhaustion. Hence the star: the coordinator is the
+  **router**, workers are **clients** that route through it.
+- macOS **loopback multicast is unreliable**, so localhost cannot scout and bootstraps from
+  a fixed endpoint instead. Everything so far has run on one machine, so the scouting path —
+  zenoh's main draw — is the least tested part of this.
 
 ### Is tensor parallelism supported?
 
