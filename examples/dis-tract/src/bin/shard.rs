@@ -1,6 +1,6 @@
 //! Validate the per-shard graph pruner on a real NNEF graph.
 //!
-//!   distract-shard <graph.nnef> <n_layers> <start> <end>
+//!   `distract-shard <graph.nnef> <n_layers> <start> <end>`
 
 use std::collections::BTreeSet;
 use tract_distributed::shard_graph::{label_layer, plan_shard};

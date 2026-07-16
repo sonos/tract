@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use tract_core::prelude::*;
 use tract_core::runtime::Runnable;
 
-/// A prepared sub-model. Each [`run`] spawns a fresh execution state, matching
+/// A prepared sub-model. Each [`StageRunner::run`] spawns a fresh execution state, matching
 /// the reference `causal_llm` loop: the KV cache is external model I/O looped by
 /// [`crate::llm::StageState`], so the model itself is stateless and a persistent
 /// state must NOT be reused — a reused state carries stale (device) buffers when

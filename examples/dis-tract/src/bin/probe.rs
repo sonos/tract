@@ -1,7 +1,7 @@
 //! Verify the per-block modular split: chain one module per transformer block
 //! and check token-for-token parity against the whole model.
 //!
-//!   distract-probe <model.nnef.tgz> [backend]
+//!   `distract-probe <model.nnef.tgz> [backend]`
 
 use tract_core::prelude::*;
 use tract_distributed::llm::{StageState, full_io_roles, load_model, split_blocks};

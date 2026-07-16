@@ -4,7 +4,7 @@
 //! runs one prefill, and reports the first node (in eval order) whose output is
 //! not finite — i.e. exactly where inf/NaN is born.
 //!
-//!   distract-trace <model.nnef.tgz> <backend> <comma,separated,prompt,ids>
+//!   `distract-trace <model.nnef.tgz> <backend> <comma,separated,prompt,ids>`
 
 use tract_core::model::extract_subgraph;
 use tract_core::prelude::*;
