@@ -8,8 +8,13 @@ use anyhow::{Context, Result, anyhow};
 use tokenizers::Tokenizer;
 
 /// A ChatML tokenizer over a `tokenizer.json`.
+///
+/// The tokenizer is configured so that control tokens appearing in a message are
+/// encoded as ordinary text; the turn structure is assembled from ids here. A
+/// message can therefore never close its own turn or forge another role's.
 pub struct ChatTokenizer {
     tok: Tokenizer,
+    im_start: u32,
     im_end: u32,
     eos: Option<u32>,
     think_open: Option<u32>,
@@ -18,24 +23,40 @@ pub struct ChatTokenizer {
 
 impl ChatTokenizer {
     pub fn from_file(path: &str) -> Result<Self> {
-        let tok = Tokenizer::from_file(path).map_err(|e| anyhow!("{e}"))?;
+        let mut tok = Tokenizer::from_file(path).map_err(|e| anyhow!("{e}"))?;
         let id = |t: &str| tok.token_to_id(t);
+        let im_start =
+            id("<|im_start|>").context("tokenizer has no <|im_start|>: not a ChatML model")?;
         let im_end = id("<|im_end|>").context("tokenizer has no <|im_end|>: not a ChatML model")?;
-        Ok(ChatTokenizer {
-            eos: id("<|endoftext|>"),
-            think_open: id("<think>"),
-            think_close: id("</think>"),
-            im_end,
-            tok,
-        })
+        let (eos, think_open, think_close) = (id("<|endoftext|>"), id("<think>"), id("</think>"));
+        tok.set_encode_special_tokens(true);
+        Ok(ChatTokenizer { tok, im_start, im_end, eos, think_open, think_close })
+    }
+
+    fn text(&self, s: &str) -> Result<Vec<u32>> {
+        Ok(self.tok.encode(s, false).map_err(|e| anyhow!("{e}"))?.get_ids().to_vec())
     }
 
     /// A single user turn, with thinking suppressed so the answer comes back directly.
+    ///
+    /// Suppression prefills an empty thinking block on the assistant turn rather than
+    /// appending a `/no_think` switch to the text: the switch is part of the user's
+    /// message, so the model reads it as content and a short prompt is dominated by it.
     pub fn encode_prompt(&self, text: &str) -> Result<Vec<i64>> {
-        let prompt =
-            format!("<|im_start|>user\n{text} /no_think<|im_end|>\n<|im_start|>assistant\n");
-        let enc = self.tok.encode(prompt, false).map_err(|e| anyhow!("{e}"))?;
-        Ok(enc.get_ids().iter().map(|&i| i as i64).collect())
+        let mut ids = vec![self.im_start];
+        ids.extend(self.text("user\n")?);
+        ids.extend(self.text(text)?);
+        ids.push(self.im_end);
+        ids.extend(self.text("\n")?);
+        ids.push(self.im_start);
+        ids.extend(self.text("assistant\n")?);
+        if let (Some(open), Some(close)) = (self.think_open, self.think_close) {
+            ids.push(open);
+            ids.extend(self.text("\n\n")?);
+            ids.push(close);
+            ids.extend(self.text("\n\n")?);
+        }
+        Ok(ids.into_iter().map(|i| i as i64).collect())
     }
 
     /// Ids that end an assistant turn. The coordinator stops decoding on these
