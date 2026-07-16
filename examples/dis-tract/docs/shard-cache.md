@@ -60,10 +60,61 @@ no cheaper.
 
 Cost matters because verification runs on **every** restart, not just on fetch.
 
+## Sources: a shared path and the wire, not one or the other
+
+A single-source design is wrong for both ends of the range this has to serve:
+
+- **One LAN with a NAS.** The operator already has the model on shared storage. Shipping
+  1.8 GB per worker over zenoh when the bytes are one mount away is pure waste, and it makes
+  the coordinator's uplink the bottleneck for no reason.
+- **Nodes across sites.** No shared mount exists, and there is nothing to point a path at.
+
+Once every tensor carries a SHA-256, **the source stops mattering**: anything that yields
+bytes matching the manifest is valid. So sources become a resolution order, not a mode, and
+the same verification covers all of them — including a stale or half-written file on the NAS,
+which a bare path today would load silently.
+
+Per tensor, the worker resolves:
+
+1. **local cache** — `{cache}/{model_id}/{label}.dat`, verified;
+2. **shared path**, if `model_path` is set and resolves on this node;
+3. **the wire** — `distract/weights/{model_id}/{label}` from the coordinator.
+
+Each is hash-checked, so a miss, a corrupt NAS copy, and an absent mount all degrade the
+same way: fall through to the next source. A node with the mount never touches the wire; a
+remote node never needs one; a mixed cluster needs no special configuration, because each
+worker resolves for itself.
+
+```rust
+/// Where a worker may find its tensors, in order of preference. Both are optional:
+/// a path-only cluster never serves bytes, a serve-only cluster needs nothing on
+/// the worker's disk, and a mixed one lets each node use whatever it has.
+pub struct ShardSource {
+    /// Resolvable on the worker: an NNEF **directory** (per-file reads, so a mount
+    /// serves only what each shard needs) or a `.tgz` (streamed whole — see below).
+    pub model_path: Option<String>,
+    /// Whether the coordinator will serve tensors for anything not found locally.
+    pub serve: bool,
+}
+```
+
+**On a NAS, explode the archive.** A `.tgz` is a gzip stream: a worker must pull all 4.29 GB
+across NFS to reach the 1.8 GB it owns — the worst case of every option here, and worse than
+fetching over zenoh. An NNEF **directory** on the NAS lets each worker read only its own
+`.dat` files, which is the whole point of a shared mount. tract loads a directory natively
+(`Nnef::proto_model_for_path` walks it when the path is not a file), so this is a supported
+layout, and it is the same unpacking the coordinator needs in order to serve.
+
+Whether a worker caches what it read from a path is policy: on a fast NAS the mount *is* the
+cache and copying wastes disk; on a slow or contended one, caching makes restarts local.
+Default to caching, with `--no-cache-from-path` to opt out.
+
 ## Protocol
 
 `ModelId` = SHA-256 of `graph.nnef`. It identifies the export, and therefore the tensor label
-namespace, so a cache is scoped by it and cannot mix models.
+namespace, so a cache is scoped by it and cannot mix models. It also lets a worker check that
+the path it was handed holds the model the coordinator planned against, rather than trusting
+that a mount is what it claims to be.
 
 New keys, all served by the coordinator:
 
@@ -95,33 +146,48 @@ pub struct ShardManifest {
 
 ## Worker flow
 
-1. Pull `AssignSpec` (as today) -> layer range.
+1. Pull `AssignSpec` (as today) -> layer range and `ShardSource`.
 2. Pull `manifest/{node_id}`.
 3. Cache dir: `~/.dis-tract/cache/{model_id}/`.
-4. For `graph.nnef` and each entry:
-   - present, `len` matches, and SHA-256 matches -> **hit**, use it;
-   - otherwise -> pull the key, verify the bytes **before** writing, write to `{label}.dat.tmp`,
-     `rename` into place.
-5. Build the ProtoModel from the cached graph + tensors, exactly as `load_shard` does now.
+4. For `graph.nnef` and each entry, take the first source that yields bytes hashing to the
+   manifest's value:
+   - **cache** — `{label}.dat` present, `len` matches, SHA-256 matches;
+   - **path** — `model_path` set and resolves: read that tensor's file (directory layout) or
+     stream the archive once for all of them (`.tgz`);
+   - **wire** — pull `weights/{model_id}/{label}`.
+   Bytes from path or wire are verified **before** being written to `{label}.dat.tmp` and
+   `rename`d into place.
+5. Build the ProtoModel from the resolved graph + tensors, exactly as `load_shard` does now.
 
 `rename` is atomic, so a worker killed mid-write leaves no half file. The hash makes that
-belt-and-braces rather than load-bearing: a torn file fails verification and is re-fetched.
+belt-and-braces rather than load-bearing: a torn file fails verification and falls through to
+the next source.
 
-A restart therefore costs **~0.9 s of hashing** instead of a 1.82 GB transfer — and a node
-that has never seen the model pays the transfer once (~18 s on 1 GbE, ~2 s on 10 GbE),
-against a 28 s shard build that dwarfs it either way.
+A restart therefore costs **~0.9 s of hashing** instead of any transfer at all. A node that
+has never seen the model pays once — free from a mount, ~18 s over 1 GbE, ~2 s over 10 GbE —
+against a 28 s shard build that dwarfs it either way. Which is the point: **the first load is
+not the cost worth optimising; the repeated one is.**
+
+Failure to resolve a tensor from *any* source is a hard error naming the label and the
+sources tried. Today a missing `.dat` surfaces as `loaded N of M shard weights`, which does
+not say where it looked.
 
 ## Consequences worth accepting deliberately
 
-- **The coordinator must explode the archive to a directory.** A `.tgz` is a gzip stream: no
-  random access. Serving 198 tensors by re-decompressing from byte zero each time is absurd,
-  and holding 4.29 GB in RAM is exactly the thing we are trying to stop doing. So the
-  coordinator unpacks once to `{cache}/{model_id}/` and serves files. tract's NNEF already
+- **The coordinator must explode the archive to a directory** *if it serves*. A `.tgz` is a
+  gzip stream: no random access. Serving 198 tensors by re-decompressing from byte zero each
+  time is absurd, and holding 4.29 GB in RAM is exactly the thing we are trying to stop
+  doing. So it unpacks once to `{cache}/{model_id}/` and serves files. tract's NNEF already
   loads a directory (`Nnef::proto_model_for_path` walks it when the path is not a file), so
-  this is a supported layout, not a private format.
-- **The coordinator becomes the single source.** EXO pulls from HF, so its workers do not
-  depend on one box's disk or uplink; ours would. A shared store or an HTTP/S3 origin is the
-  obvious escape, and the manifest is agnostic about who serves the bytes.
+  this is a supported layout, not a private format. A path-only cluster skips this entirely —
+  the coordinator never opens the weights.
+- **`serve` centralises on the coordinator; a path does not.** EXO pulls from HF, so its
+  workers never depend on one box's disk or uplink. With `serve`, ours would — which is
+  precisely why the path source is not a legacy option to be removed. On a LAN with shared
+  storage, `model_path` pointed at a NAS directory is strictly better than serving: no
+  uplink bottleneck, no coordinator disk, workers fetch only their own files. `serve` earns
+  its keep exactly where a mount cannot reach — across sites — and the two coexist because
+  the manifest, not the source, is what defines correctness.
 - **The cache is unbounded.** Nothing evicts. `{model_id}` scoping means a new export lands
   beside the old one rather than replacing it. Needs a size cap or an LRU before it is a
   real feature.
