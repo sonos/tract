@@ -1,10 +1,14 @@
-//! Dis-tract: pipeline / layer-split distributed inference for tract.
+//! Dis-tract: pipeline / layer-split inference for tract, aimed at running a model
+//! too big for one machine.
 //!
-//! A full [`TypedModel`](tract_core::prelude::TypedModel) is split at chosen
-//! activation edges into N standalone sub-models ([`partition`]). Each sub-model
-//! is shipped to a worker as backend-neutral NNEF ([`codec`]), loaded, and
-//! `prepare`d for that worker's own backend (CPU / Metal / CUDA). Boundary
-//! activations flow stage→stage as plain host tensors over HTTP ([`protocol`]).
+//! A worker is assigned a contiguous layer range and builds that shard itself: the
+//! NNEF graph is pruned to those layers and only their weights are read
+//! ([`shard_graph`]), so the full model is never materialised. It is then
+//! `prepare`d for that worker's own backend (CPU / Metal / CUDA). Each shard keeps
+//! its layers' KV cache resident and loops it step→step ([`llm::StageState`]); only
+//! the residual activation crosses the wire, as plain host tensors over zenoh
+//! ([`znet`], [`protocol`]). [`partition`] splits an in-memory model instead, for
+//! the single-process reference and tests.
 //!
 //! This crate composes existing tract primitives; it adds no new ops.
 

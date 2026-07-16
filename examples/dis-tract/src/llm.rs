@@ -94,7 +94,7 @@ fn layer_index(name: &str) -> Option<usize> {
     name.rsplit('_').next().and_then(|s| s.parse::<usize>().ok())
 }
 
-/// Classify a whole model's I/O the same way [`partition_two`] does — token/
+/// Classify a whole model's I/O the same way [`partition_stages`] does — token/
 /// logits slots are `Wire`, `in_/out_cache_*` slots are `Cache`. Lets the full
 /// (unpartitioned) model run through [`StageState`] for a like-for-like
 /// reference, with caches seeded empty.

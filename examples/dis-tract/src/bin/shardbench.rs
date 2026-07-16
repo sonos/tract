@@ -2,7 +2,7 @@
 //! model, a full-range shard, and a 2-shard chain — all in one process on one
 //! backend, so the only variable is how the model was built.
 //!
-//!   distract-shardbench <model.nnef.tgz> [backend] [turns]
+//!   distract-shardbench `<model.nnef.tgz> [backend] [turns]`
 
 use std::time::Instant;
 

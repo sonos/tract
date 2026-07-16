@@ -1,30 +1,38 @@
 # tract-distributed (Dis-tract)
 
-Pipeline / layer-split distributed inference for [tract](https://github.com/sonos/tract):
-run a model **too big for one machine** by splitting it across workers, each holding a
-contiguous slice of layers plus that slice's weights and KV cache. Only the residual
-activation crosses the wire — never the KV cache. Each worker may run a **different
-backend** (CPU / Metal / CUDA): a shard is backend-neutral until the worker `prepare()`s
-it for its own `Runtime`.
+Pipeline / layer-split inference for [tract](https://github.com/sonos/tract): split a model
+across workers, each holding a contiguous slice of layers plus that slice's weights and KV
+cache. Only the residual activation crosses the wire — never the KV cache. Each worker may
+run a **different backend** (CPU / Metal / CUDA): a shard is backend-neutral until the
+worker `prepare()`s it for its own `Runtime`.
 
-Detection and transport use **[Eclipse Zenoh](https://zenoh.io)** — the stack EXO uses:
-scouting for discovery, pub/sub for the activation hot path, a queryable for assignment.
+Transport is **[Eclipse Zenoh](https://zenoh.io)** — the stack EXO uses: scouting for
+discovery, pub/sub for the activation hot path, a queryable for assignment.
 
-**Status: proof of concept, not proposed for merge.** See *Where this stands* below.
+**Status: proof of concept, not proposed for merge.**
 
-## The measured result
+The goal is to run a model too big for one machine. That is **not yet demonstrated**: every
+run so far is two worker processes on a *single* machine over loopback, on a model
+(Qwen3-8B-q40ef16, 4.29 GB) that fits that machine on its own. What is exercised is the
+mechanism — per-shard weight loading, resident KV, the wire protocol, and token parity
+against a single-machine reference. The numbers below carry no real network cost, and
+zenoh's scouting is bypassed for a fixed loopback endpoint. See *Where this stands*.
+
+## The measured result (single machine, loopback)
 
 A 2-stage split runs at **whole-model speed**. Qwen3-8B-q40ef16, M-series, Metal,
 `distract-shardbench` (one process, so the only variable is how the model was built):
 
-| config | ms/step | tok/s |
+| config | ms/step (min of 14) | tok/s |
 |---|---|---|
-| whole model (`load_model`) | 43.1 | 23.2 |
+| whole model (`load_model`) | 42.5 | 23.5 |
 | full-range shard, **unsplit** | 42.4 | 23.6 |
-| **2-shard chain** | 43.2 | 23.2 |
+| **2-shard chain** | 43.0 | 23.3 |
 
-Splitting costs ~1.4%, token-identical. Live 2-worker cluster over zenoh: **21.4 tok/s**,
-TTFT 181 ms, each node holding 2.2 GB of a 4.29 GB model.
+Token-identical; splitting costs ~1% **in-process, with no wire between the stages**. Min
+rather than mean: the means carry scheduler outliers on a laptop. A live 2-worker cluster —
+both workers on the same machine, zenoh over loopback — does **21-22 tok/s**, TTFT ~190 ms,
+each worker holding 2.2 GB of a 4.29 GB model.
 
 ## Run it
 
@@ -76,13 +84,19 @@ silent CPU fallback), `distract-probe` / `distract-shard-run` (per-shard parity)
 
 Honest limits, worst first:
 
-- **Not on the public API.** The crate reaches into `tract_core`/`tract_nnef` (~38 sites)
-  rather than `api/rs`, so it does not yet meet the bar `causal_llm` sets. The blocker is
-  real, not laziness — see the design question below.
+- **Never run on more than one machine.** Two processes on one box over loopback, on a
+  model that fits it. So the real network cost per token is unmeasured, both stages share
+  one GPU, and zenoh scouting is bypassed for a fixed loopback endpoint. Two 16 GB machines
+  and a model needing both (Qwen3-32B, ~17.6 GB) is the experiment that would earn the
+  distributed claim.
+- **Not on the public API.** The crate reaches into `tract_core`/`tract_nnef`/
+  `tract_transformers` at 35 import sites rather than `api/rs`, against `causal_llm`'s
+  single `use tract::`. The blocker is real, not laziness — see the design question below.
 - **The coordinator still materialises the full model** to compute the layer weight
-  profile, then drops it. So "too big for one node" is true of the *workers* but not yet
-  of the cluster: the coordinator needs a box that fits the model. The profile could be
-  read from the graph AST instead, as the shard loader already does.
+  profile, then drops it. So even on two boxes the coordinator needs one that fits the
+  whole model — for the interesting case (a model too big for any single node) that is a
+  hard blocker, not a wart. The profile could be read from the graph AST instead, as the
+  shard loader already does.
 - **`shard_graph.rs` hardcodes torch2nnef naming** (`model_model__{N}_inputLayernorm_…`).
   It works for the published q40ef16 Qwen/Llama exports; it is not a general mechanism.
 - **`api/rs` needs an escape hatch.** This branch adds `Model::typed_ref` /

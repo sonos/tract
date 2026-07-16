@@ -2,7 +2,7 @@
 //! and a 2-shard chain for N turns (KV looping) and compare the token sequences.
 //! Also reports the weight bytes each shard loaded — the memory-split proof.
 //!
-//!   distract-shard-run <model.nnef.tgz> <n_layers> <cut> <comma,ids> [turns]
+//!   distract-shard-run `<model.nnef.tgz> <n_layers> <cut> <comma,ids> [turns]`
 
 use std::collections::HashMap;
 use tract_core::prelude::*;

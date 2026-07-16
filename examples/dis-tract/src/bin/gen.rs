@@ -1,7 +1,7 @@
 //! Minimal generation client: send a tokenized prompt to a running Dis-tract
 //! coordinator and print the generated token ids.
 //!
-//!   distract-gen <comma,separated,prompt,ids> [max_tokens]
+//!   distract-gen `<comma,separated,prompt,ids> [max_tokens]`
 
 use anyhow::{Result, anyhow};
 use std::time::Duration;
