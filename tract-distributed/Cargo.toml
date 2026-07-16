@@ -1,0 +1,102 @@
+[package]
+name = "tract-distributed"
+version = "0.1.0"
+edition = "2024"
+rust-version.workspace = true
+publish = false
+description = "Dis-tract: pipeline/layer-split distributed inference across machines and backends."
+
+[dependencies]
+tract-core.workspace = true
+tract-nnef.workspace = true
+tar.workspace = true
+flate2.workspace = true
+tract-transformers.workspace = true
+# The same tokenizer the causal_llm example uses, in place of a Python subprocess.
+tokenizers.workspace = true
+tract.workspace = true
+anyhow.workspace = true
+byteorder.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+clap.workspace = true
+log.workspace = true
+env_logger.workspace = true
+tokio = { version = "1.47.1", features = ["full"] }
+async-stream = "0.3"
+# Detection (scouting) + communication (pub/sub) — the same stack EXO uses.
+zenoh = "1.5"
+# Host/memory stats for capability reporting + the dashboard heartbeat.
+sysinfo = "0.32"
+# Minimal web dashboard (control-plane observability only, not the data path).
+axum = "0.8.4"
+
+# Backend runtimes self-register via `inventory`; each worker binary links only
+# the backend(s) valid for its target (Metal on Apple, CUDA on Linux/Windows).
+[target.'cfg(target_vendor = "apple")'.dependencies]
+tract-metal.workspace = true
+# macOS RSS (sysinfo's Process::memory = pti_resident_size) omits compressed and
+# GPU-driver pages, reading ~11MB for a 2.4GB shard; phys_footprint is the real
+# figure (what Activity Monitor shows) and only proc_pid_rusage exposes it.
+libproc = "0.14"
+
+[target.'cfg(any(target_os = "linux", target_os = "windows"))'.dependencies]
+tract-cuda = { workspace = true, default-features = false }
+
+[features]
+default = []
+# On Linux/Windows a CUDA worker must select exactly one driver-API version.
+cuda-12000 = ["tract-cuda/cuda-12000"]
+cuda-13000 = ["tract-cuda/cuda-13000"]
+
+[[bin]]
+name = "distract-worker"
+path = "src/bin/worker.rs"
+
+[[bin]]
+name = "distract-llm"
+path = "src/bin/llm.rs"
+
+[[bin]]
+name = "distract-dashboard"
+path = "src/bin/dashboard.rs"
+
+[[bin]]
+name = "distract-probe"
+path = "src/bin/probe.rs"
+
+[[bin]]
+name = "distract-trace"
+path = "src/bin/trace.rs"
+
+[[bin]]
+name = "distract-dump"
+path = "src/bin/dump.rs"
+
+[[bin]]
+name = "distract-eval"
+path = "src/bin/eval.rs"
+
+[[bin]]
+name = "distract-gen"
+path = "src/bin/gen.rs"
+
+[[bin]]
+name = "distract-shard"
+path = "src/bin/shard.rs"
+
+[[bin]]
+name = "distract-shard-run"
+path = "src/bin/shard_run.rs"
+
+[[bin]]
+name = "distract-shardbench"
+path = "src/bin/shardbench.rs"
+
+[[bin]]
+name = "distract-cmpconst"
+path = "src/bin/cmpconst.rs"
+
+[[bin]]
+name = "distract-metalaudit"
+path = "src/bin/metalaudit.rs"
