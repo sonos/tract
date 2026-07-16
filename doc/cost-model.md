@@ -82,7 +82,10 @@ count, `--seed` the PRNG seed, `--out-dir` the side-file directory.
 so it never has to extrapolate. A uniform random sweep alone can miss, e.g., the large-`m/k`,
 tiny-`n` matmuls a transformer emits and mispick badly there. Extract a model's shapes with
 `tract <model> <args> -O dump --mm` and append them under a heading in the class seed file;
-that model is then covered on the next regen.
+that model is then covered on the next regen. The classes are `small32` (armv7),
+`small64` (embedded aarch64), and `big64` (x86 / Apple / Neoverse); each seed is both read
+from disk (editable in a checkout) and baked into the binary via `include_str!`, so a
+standalone build regenerates with the seed even outside the source tree.
 
 ### Manual: gather on the board, fit on the host (small devices)
 
@@ -117,6 +120,10 @@ on. Cross-compiled boards can't do that — split it:
 Add `mod <name>_linear;` and install its `pick` in the `mmm_f32` dispatch, keeping a
 fallback for unrecognized targets:
 - **arm**: a new `Kind::CortexXX` arm in the `arm32.rs` / `arm64.rs` match.
+- **Apple**: per-chip, keyed on the CPU brand string (`apple_chip()`), installed *after*
+  `apple_amx::plug` / `sme::plug` in `arm64.rs` so it takes precedence over the AMX heuristic
+  and the always-SME default; unrecognized Apple chips keep that fallback. Chips differ enough
+  to need their own model (M1 has AMX, M4 has SME).
 - **x86**: a new cohort is only needed if a vendor/tier wants materially different picks
   (e.g. an Intel-server-AVX-512 model distinct from the client one) — then key it on CPUID
   family/model in `x86_64_fma.rs::vendor` and select it in `plug_fma` / `plug_avx512f`.

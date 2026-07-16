@@ -29,6 +29,8 @@ pub(crate) fn vendor() -> Vendor {
             _ => Vendor::Other,
         };
     }
+    // `unsafe` is required on the MSRV (1.91); newer rustc deems it redundant.
+    #[allow(unused_unsafe)]
     let id = unsafe { std::arch::x86_64::__cpuid(0) };
     let mut s = [0u8; 12];
     s[0..4].copy_from_slice(&id.ebx.to_le_bytes());
