@@ -1,4 +1,122 @@
-# Representative (m k n) matmul shapes for the "small32" device class.
-# None curated yet — regen falls back to the random sweep alone for this class.
-# To seed: run `tract <model> <args> -O dump --mm` on this class's target models
-# and append the distinct shapes under a per-model heading (see big64.txt).
+# Representative (m k n) matmul shapes for the "small32" device class
+# (armv7 cortex-a7/a9). Extracted from the a7/a9 CPU bench models via
+# `tract <model> <args> -O dump --mm` (n>=2; n=1 is the mmv path).
+# regen unions these with a random sweep. To add a model: dump --mm, append here.
+
+# arm_ml_kws
+48 2560 64
+64 40 280
+
+# speaker_id p8
+56 96 8
+96 120 8
+96 168 8
+
+# hey_snips_v4 p8
+16 60 8
+16 64 8
+32 32 8
+32 64 8
+64 48 8
+8 32 2
+
+# hey_snips_v4 2sec
+102 64 16
+106 64 16
+108 64 16
+124 64 16
+132 64 16
+136 64 16
+138 64 16
+154 64 16
+16 60 198
+162 64 16
+166 64 16
+168 64 16
+18 32 2
+184 64 16
+192 64 16
+196 64 16
+32 32 18
+32 64 18
+34 64 16
+42 64 16
+46 64 16
+48 64 16
+64 48 102
+64 48 106
+64 48 108
+64 48 124
+64 48 132
+64 48 136
+64 48 138
+64 48 154
+64 48 162
+64 48 166
+64 48 168
+64 48 18
+64 48 184
+64 48 192
+64 48 196
+64 48 34
+64 48 42
+64 48 46
+64 48 48
+64 48 64
+64 48 72
+64 48 76
+64 48 78
+64 48 94
+64 64 16
+72 64 16
+76 64 16
+78 64 16
+94 64 16
+
+# hey_snips_v1
+128 128 40
+128 1640 40
+40 128 3
+
+# hey_snips_v31
+128 128 6
+128 200 36
+128 256 18
+128 256 27
+128 256 33
+128 256 6
+6 128 5
+
+# en_tdnn_8M p120
+1712 512 4
+200 200 12
+512 1536 12
+512 1536 4
+512 200 12
+512 512 4
+
+# en_tdnn_15M p120
+2000 768 4
+768 200 12
+768 2304 12
+768 2304 4
+768 768 4
+
+# voicecom_float
+128 128 5
+128 56 128
+56 8064 128
+60 40 1337
+72 2400 728
+
+# mobilenet_v1
+1024 1024 49
+1024 512 49
+12544 32 64
+3136 128 128
+3136 64 128
+32 27 12544
+512 256 196
+512 512 196
+784 128 256
+784 256 256
