@@ -314,7 +314,7 @@ impl Class {
     fn sweep(self) -> (usize, usize, usize, usize, usize) {
         match self {
             Class::Small32 => (192, 192, 192, 4_000_000, 160),
-            Class::Small64 => (256, 256, 256, 8_000_000, 180),
+            Class::Small64 => (768, 768, 256, 64_000_000, 160),
             Class::Big64 => (4096, 4096, 512, 268_435_456, 160),
         }
     }
@@ -534,7 +534,7 @@ fn regen(r: Regen) -> TractResult<()> {
     let seeds = load_seed_shapes(class);
     eprintln!("{} seed shape(s) from linalg/cost-model-seeds/{}.txt", seeds.len(), class.tag());
     let mut shapes: Vec<(usize, usize, usize)> =
-        seeds.into_iter().filter(|&(_, _, n)| n >= 2).collect();
+        seeds.into_iter().filter(|&(m, k, n)| n >= 2 && m * k * n <= mkn_cap).collect();
     let mut rng = Lcg::new(r.seed);
     let (mut got, mut tries) = (0usize, 0usize);
     while got < size && tries < size * 1000 + 1000 {
