@@ -4,6 +4,7 @@
 //! after a kernel change is: gather on the board, fit, drop the file in, wire it.
 
 use clap::{Args, FromArgMatches, Subcommand};
+use std::collections::HashMap;
 use std::io::Write;
 use tract_core::internal::*;
 
@@ -14,6 +15,11 @@ enum Cmd {
     Gather(Gather),
     /// Fit a LinearCostModel from a gathered dataset and emit a Rust source file.
     Fit(Fit),
+    /// One-shot on the target CPU (run from the tract source tree): detect the
+    /// platform, gather a class-appropriate dataset (seed shapes + random sweep),
+    /// fit, validate against the currently-installed picker, and write the new
+    /// model to a side file with a ready-to-use `mv` — never overwrites in place.
+    Regen(Regen),
 }
 
 #[derive(Args)]
@@ -60,7 +66,24 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
     match Cmd::from_arg_matches(matches)? {
         Cmd::Gather(g) => gather(g),
         Cmd::Fit(f) => fit(f),
+        Cmd::Regen(r) => regen(r),
     }
+}
+
+#[derive(Args)]
+struct Regen {
+    /// PRNG seed for the random sweep (deterministic in the seed)
+    #[arg(long, default_value_t = 0)]
+    seed: u64,
+    /// Override the random-sweep sample count for the detected class
+    #[arg(long)]
+    size: Option<usize>,
+    /// Force a platform id instead of auto-detecting (e.g. intel_avx512, cortex_a7, apple_m4)
+    #[arg(long)]
+    platform: Option<String>,
+    /// Directory for the generated side files (default: system temp dir)
+    #[arg(long)]
+    out_dir: Option<String>,
 }
 
 // --- shape sampling: deterministic so a dataset is reproducible from (args, seed) ---
@@ -265,5 +288,352 @@ fn fit(f: Fit) -> TractResult<()> {
     src.push_str("        ],\n    }\n}\n");
     std::fs::write(&f.out, src)?;
     eprintln!("wrote {} ({} kernels, default {default_kernel})", f.out, kernels.len());
+    Ok(())
+}
+
+// --- regen: detect the running platform, gather a class-appropriate dataset, fit,
+//     validate against the installed picker, and emit a side file + `mv` (no in-place write) ---
+
+/// Device class: sets the shape regime a platform's models must cover.
+#[derive(Clone, Copy, PartialEq)]
+enum Class {
+    Small32,
+    Small64,
+    Big64,
+}
+
+impl Class {
+    fn tag(self) -> &'static str {
+        match self {
+            Class::Small32 => "small32",
+            Class::Small64 => "small64",
+            Class::Big64 => "big64",
+        }
+    }
+    /// (m_hi, k_hi, n_hi, mkn_cap, default random-sweep size)
+    fn sweep(self) -> (usize, usize, usize, usize, usize) {
+        match self {
+            Class::Small32 => (192, 192, 192, 4_000_000, 160),
+            Class::Small64 => (256, 256, 256, 8_000_000, 180),
+            Class::Big64 => (4096, 4096, 512, 268_435_456, 160),
+        }
+    }
+}
+
+struct Platform {
+    id: String,
+    cpu: String,
+    class: Class,
+    rs_rel: String,
+    txt_rel: String,
+}
+
+fn platform_from_id(id: &str, cpu: String) -> TractResult<Platform> {
+    let (dir, class) = if id.starts_with("cortex_a7") || id.starts_with("cortex_a9") {
+        ("linalg/src/arm32", Class::Small32)
+    } else if id.starts_with("cortex_a") || id.starts_with("neoverse") {
+        ("linalg/src/arm64", Class::Small64)
+    } else if id.starts_with("apple_") {
+        ("linalg/src/arm64", Class::Big64)
+    } else if id.starts_with("intel_") || id.starts_with("amd_") {
+        ("linalg/src/x86_64_fma", Class::Big64)
+    } else {
+        bail!("unknown platform id '{id}'");
+    };
+    Ok(Platform {
+        rs_rel: format!("{dir}/{id}_linear.rs"),
+        txt_rel: format!("{dir}/{id}.txt"),
+        id: id.to_string(),
+        cpu,
+        class,
+    })
+}
+
+fn cpuinfo_field(name: &str) -> Option<String> {
+    std::fs::read_to_string("/proc/cpuinfo").ok().and_then(|s| {
+        s.lines()
+            .find(|l| l.starts_with(name))
+            .and_then(|l| l.split_once(':'))
+            .map(|(_, v)| v.trim().to_string())
+    })
+}
+
+fn shell(cmd: &str, args: &[&str]) -> Option<String> {
+    let out = std::process::Command::new(cmd).args(args).output().ok()?;
+    out.status.success().then(|| String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
+#[cfg(target_arch = "x86_64")]
+fn auto_platform() -> Option<Platform> {
+    let vendor = match std::env::var("TRACT_X86_KIND").ok().as_deref() {
+        Some("intel") => "intel",
+        Some("amd") => "amd",
+        Some(_) => return None,
+        None => {
+            let id = std::arch::x86_64::__cpuid(0);
+            let mut s = [0u8; 12];
+            s[0..4].copy_from_slice(&id.ebx.to_le_bytes());
+            s[4..8].copy_from_slice(&id.edx.to_le_bytes());
+            s[8..12].copy_from_slice(&id.ecx.to_le_bytes());
+            match &s {
+                b"GenuineIntel" => "intel",
+                b"AuthenticAMD" => "amd",
+                _ => return None,
+            }
+        }
+    };
+    let tier = if is_x86_feature_detected!("avx512f") { "avx512" } else { "fma" };
+    let cpu = cpuinfo_field("model name").unwrap_or_else(|| "unknown x86_64".to_string());
+    platform_from_id(&format!("{vendor}_{tier}"), cpu).ok()
+}
+
+#[cfg(target_arch = "aarch64")]
+fn auto_platform() -> Option<Platform> {
+    if cfg!(target_os = "macos") {
+        let brand = shell("sysctl", &["-n", "machdep.cpu.brand_string"]).unwrap_or_default();
+        let id = if brand.contains("M1") {
+            "apple_m1"
+        } else if brand.contains("M2") {
+            "apple_m2"
+        } else if brand.contains("M3") {
+            "apple_m3"
+        } else if brand.contains("M4") {
+            "apple_m4"
+        } else {
+            return None;
+        };
+        return platform_from_id(id, brand).ok();
+    }
+    let part = cpuinfo_field("CPU part")?;
+    let id = match part.as_str() {
+        "0xd03" => "cortex_a53",
+        "0xd05" => "cortex_a55",
+        _ => return None,
+    };
+    let cpu = cpuinfo_field("model name").unwrap_or_else(|| part.clone());
+    platform_from_id(id, cpu).ok()
+}
+
+#[cfg(target_arch = "arm")]
+fn auto_platform() -> Option<Platform> {
+    let part = cpuinfo_field("CPU part")?;
+    let id = match part.as_str() {
+        "0xc07" => "cortex_a7",
+        "0xc09" => "cortex_a9",
+        _ => return None,
+    };
+    let cpu = cpuinfo_field("model name").unwrap_or_else(|| part.clone());
+    platform_from_id(id, cpu).ok()
+}
+
+#[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64", target_arch = "arm")))]
+fn auto_platform() -> Option<Platform> {
+    None
+}
+
+fn load_seed_shapes(class: Class) -> Vec<(usize, usize, usize)> {
+    let path = format!("linalg/cost-model-seeds/{}.txt", class.tag());
+    let Ok(s) = std::fs::read_to_string(&path) else { return vec![] };
+    s.lines()
+        .filter(|l| !l.trim_start().starts_with('#') && !l.trim().is_empty())
+        .filter_map(|l| {
+            let mut it = l.split_whitespace();
+            Some((it.next()?.parse().ok()?, it.next()?.parse().ok()?, it.next()?.parse().ok()?))
+        })
+        .collect()
+}
+
+/// Log-uniform draw in `[lo, hi]` — densely samples small values, where kernel
+/// selection is hardest and real workloads concentrate.
+fn log_uniform(rng: &mut Lcg, lo: usize, hi: usize) -> usize {
+    if hi <= lo {
+        return lo.max(1);
+    }
+    let u = (rng.next() as f64) / ((1u64 << 31) as f64);
+    let (l, h) = ((lo.max(1) as f64).ln(), (hi as f64).ln());
+    ((l + u * (h - l)).exp().round() as usize).clamp(lo.max(1), hi)
+}
+
+fn render_rs(
+    default_kernel: &str,
+    kernels: &[String],
+    coeffs: &[[f64; 3]],
+    header: &str,
+) -> String {
+    let mut src = String::new();
+    src.push_str(header);
+    src.push_str("use crate::frame::mmm::LinearCostModel;\n\n");
+    src.push_str("pub fn linear_model() -> LinearCostModel<'static> {\n");
+    src.push_str("    LinearCostModel {\n");
+    src.push_str(&format!("        default_kernel: {default_kernel:?},\n"));
+    src.push_str("        kernels: &[\n");
+    for kn in kernels {
+        src.push_str(&format!("            {kn:?},\n"));
+    }
+    src.push_str("        ],\n        coeffs: &[\n");
+    for c in coeffs {
+        src.push_str(&format!(
+            "            [{:e}, {:e}, {:e}],\n",
+            c[0] as f32, c[1] as f32, c[2] as f32
+        ));
+    }
+    src.push_str("        ],\n    }\n}\n");
+    src
+}
+
+fn provenance(plat: &Platform, cur: f64, new: f64, n: usize) -> String {
+    let user = std::env::var("USER")
+        .ok()
+        .or_else(|| std::env::var("USERNAME").ok())
+        .or_else(|| shell("id", &["-un"]))
+        .unwrap_or_else(|| "unknown".into());
+    let host = shell("hostname", &[]).unwrap_or_else(|| "unknown".into());
+    let date = shell("date", &["-u", "+%Y-%m-%dT%H:%M:%SZ"]).unwrap_or_else(|| "unknown".into());
+    let git = shell("git", &["rev-parse", "--short", "HEAD"])
+        .map(|h| format!(" (git {h})"))
+        .unwrap_or_default();
+    format!(
+        "// Generated by `tract cost-model regen` — do not hand-edit.\n\
+         // platform: {}   cpu: {}\n\
+         // user: {user}   host: {host}   date: {date}\n\
+         // tract: {}{git}\n\
+         // validation over {n} shapes: current picker regret {cur:.4}x -> linear {new:.4}x\n",
+        plat.id,
+        plat.cpu,
+        env!("CARGO_PKG_VERSION"),
+    )
+}
+
+fn regen(r: Regen) -> TractResult<()> {
+    let plat = match &r.platform {
+        Some(id) => platform_from_id(id, "(forced)".to_string())?,
+        None => auto_platform().ok_or_else(|| {
+            format_err!("could not detect a cost-model platform for this CPU; pass --platform")
+        })?,
+    };
+    let class = plat.class;
+    let (m_hi, k_hi, n_hi, mkn_cap, def_size) = class.sweep();
+    let size = r.size.unwrap_or(def_size);
+    eprintln!("platform {} (class {}), cpu: {}", plat.id, class.tag(), plat.cpu);
+
+    // shape set = seed shapes (model findings) + deterministic random sweep, n >= 2 (n=1 is mmv)
+    let seeds = load_seed_shapes(class);
+    eprintln!("{} seed shape(s) from linalg/cost-model-seeds/{}.txt", seeds.len(), class.tag());
+    let mut shapes: Vec<(usize, usize, usize)> =
+        seeds.into_iter().filter(|&(_, _, n)| n >= 2).collect();
+    let mut rng = Lcg::new(r.seed);
+    let (mut got, mut tries) = (0usize, 0usize);
+    while got < size && tries < size * 1000 + 1000 {
+        tries += 1;
+        let (m, k, n) = (
+            log_uniform(&mut rng, 1, m_hi),
+            log_uniform(&mut rng, 1, k_hi),
+            log_uniform(&mut rng, 2, n_hi),
+        );
+        if n < 2 || m * k * n > mkn_cap {
+            continue;
+        }
+        shapes.push((m, k, n));
+        got += 1;
+    }
+
+    // gather: time every f32 mmm kernel at each shape
+    let dt = f32::datum_type();
+    let mut rows: Vec<(String, usize, usize, usize, usize, usize, f64)> = vec![];
+    for (i, &(m, k, n)) in shapes.iter().enumerate() {
+        for (kernel, flop_per_s) in crate::hwbench::kernel_times(dt, m, k, n)? {
+            let (mr, nr) = geom(&kernel);
+            rows.push((kernel, mr, nr, m, k, n, (m * k * n) as f64 / flop_per_s));
+        }
+        eprintln!("  {}/{}  {m}x{k}x{n}", i + 1, shapes.len());
+    }
+    ensure!(!rows.is_empty(), "no timing rows gathered");
+
+    // fit: per-kernel NNLS on [padded_work, n_tiles, 1]
+    let mut kernels: Vec<String> = rows.iter().map(|r| r.0.clone()).collect();
+    kernels.sort();
+    kernels.dedup();
+    let coeffs: Vec<[f64; 3]> = kernels
+        .iter()
+        .map(|kn| {
+            let per: Vec<([f64; 3], f64)> = rows
+                .iter()
+                .filter(|r| &r.0 == kn)
+                .map(|r| {
+                    ([padded_work(r.3, r.4, r.5, r.1, r.2), n_tiles(r.3, r.5, r.1, r.2), 1.0], r.6)
+                })
+                .collect();
+            fit_nnls(&per)
+        })
+        .collect();
+    let default_kernel = kernels.iter().max_by_key(|n| geom(n).0 * geom(n).1).unwrap().clone();
+
+    // validate: new linear vs the installed picker, over the gathered shapes
+    let idx: HashMap<&str, usize> =
+        kernels.iter().enumerate().map(|(i, k)| (k.as_str(), i)).collect();
+    let mut by_shape: HashMap<(usize, usize, usize), HashMap<String, f64>> = HashMap::new();
+    for (kn, _, _, m, k, n, dur) in &rows {
+        by_shape.entry((*m, *k, *n)).or_default().insert(kn.clone(), *dur);
+    }
+    let predict = |kn: &str, m: usize, k: usize, n: usize| -> f64 {
+        let (mr, nr) = geom(kn);
+        let c = &coeffs[idx[kn]];
+        c[0] * padded_work(m, k, n, mr, nr) + c[1] * n_tiles(m, n, mr, nr) + c[2]
+    };
+    let (mut new_sum, mut new_orc, mut cur_sum, mut cur_orc) = (0.0, 0.0, 0.0, 0.0);
+    let (mut cur_skip, mut n_shapes, mut worst_new, mut worst_cur) =
+        (0usize, 0usize, 1.0f64, 1.0f64);
+    for (&(m, k, n), km) in &by_shape {
+        let oracle = km.values().cloned().fold(f64::MAX, f64::min);
+        if oracle == f64::MAX {
+            continue;
+        }
+        n_shapes += 1;
+        let newk = km
+            .keys()
+            .min_by(|a, b| predict(a, m, k, n).partial_cmp(&predict(b, m, k, n)).unwrap())
+            .unwrap();
+        new_sum += km[newk];
+        new_orc += oracle;
+        worst_new = worst_new.max(km[newk] / oracle);
+        match tract_linalg::ops().mmm(dt, Some(m), Some(k), Some(n)) {
+            Some(cur) if km.contains_key(cur.name()) => {
+                let cd = km[cur.name()];
+                cur_sum += cd;
+                cur_orc += oracle;
+                worst_cur = worst_cur.max(cd / oracle);
+            }
+            _ => cur_skip += 1,
+        }
+    }
+    let cur_regret = if cur_orc > 0.0 { cur_sum / cur_orc } else { f64::NAN };
+    let new_regret = if new_orc > 0.0 { new_sum / new_orc } else { f64::NAN };
+    eprintln!("\nvalidation over {n_shapes} shapes ({} kernels):", kernels.len());
+    eprintln!(
+        "  current picker : regret {cur_regret:.4}x  worst {worst_cur:.2}x{}",
+        if cur_skip > 0 {
+            format!("  ({cur_skip} shape(s) skipped: picked an untimed kernel)")
+        } else {
+            String::new()
+        }
+    );
+    eprintln!("  new linear     : regret {new_regret:.4}x  worst {worst_new:.2}x");
+
+    // emit side files + ready-to-use mv (never overwrite in place)
+    let header = provenance(&plat, cur_regret, new_regret, n_shapes);
+    let src = render_rs(&default_kernel, &kernels, &coeffs, &header);
+    let mut ds = String::new();
+    for (kn, mr, nr, m, k, n, dur) in &rows {
+        ds.push_str(&format!("{kn} {mr} {nr} {m} {k} {n} {dur}\n"));
+    }
+    let out_dir = r.out_dir.map(std::path::PathBuf::from).unwrap_or_else(std::env::temp_dir);
+    std::fs::create_dir_all(&out_dir)?;
+    let rs_out = out_dir.join(format!("{}_linear.rs", plat.id));
+    let txt_out = out_dir.join(format!("{}.txt", plat.id));
+    std::fs::write(&rs_out, src)?;
+    std::fs::write(&txt_out, ds)?;
+    println!("\n# regenerated {} model. review, then install with:", plat.id);
+    println!("mv {} {}", rs_out.display(), plat.rs_rel);
+    println!("mv {} {}", txt_out.display(), plat.txt_rel);
     Ok(())
 }

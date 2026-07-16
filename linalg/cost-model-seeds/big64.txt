@@ -1,0 +1,12 @@
+# Representative (m k n) matmul shapes for the "big-64" device class
+# (x86 desktop/server, Apple M, Neoverse). Extracted from real models via
+# `tract <model> <args> -O dump --mm`. Append new models' shapes here.
+#
+# parakeet-tdt-0.6b-v3 encoder (transformer projections, streaming n)
+1024 1024 13
+1024 4096 13
+4096 1024 13
+25 128 13
+256 256 208
+800 256 256
+256 9 3200
