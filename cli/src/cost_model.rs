@@ -313,7 +313,7 @@ impl Class {
     /// (m_hi, k_hi, n_hi, mkn_cap, default random-sweep size)
     fn sweep(self) -> (usize, usize, usize, usize, usize) {
         match self {
-            Class::Small32 => (192, 192, 192, 4_000_000, 160),
+            Class::Small32 => (256, 256, 192, 24_000_000, 140),
             Class::Small64 => (768, 768, 256, 64_000_000, 160),
             Class::Big64 => (4096, 4096, 512, 268_435_456, 160),
         }
