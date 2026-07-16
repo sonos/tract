@@ -502,26 +502,38 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
     let movers: Vec<&Row> = rows.iter().filter(|r| r.mover).collect();
     let by_delta = |a: &&Row, b: &&Row| b.delta.abs().total_cmp(&a.delta.abs());
 
-    let mut regr: Vec<&Row> = movers.iter().copied().filter(|r| r.worse).collect();
-    regr.sort_by(by_delta);
-    let mut impr: Vec<&Row> = movers.iter().copied().filter(|r| !r.worse).collect();
-    impr.sort_by(|a, b| is_speed(&b.metric).cmp(&is_speed(&a.metric)).then_with(|| by_delta(a, b)));
+    // Only the speed signal gets the 🔴/🟢 lamp treatment in the PR comment; a non-speed
+    // (load/memory) regression is a secondary concern and gets a plain ⚠️ instead.
+    let mut speed_regr: Vec<&Row> =
+        movers.iter().copied().filter(|r| r.worse && is_speed(&r.metric)).collect();
+    speed_regr.sort_by(by_delta);
+    let mut speed_impr: Vec<&Row> =
+        movers.iter().copied().filter(|r| !r.worse && is_speed(&r.metric)).collect();
+    speed_impr.sort_by(by_delta);
+    let mut other_regr: Vec<&Row> =
+        movers.iter().copied().filter(|r| r.worse && !is_speed(&r.metric)).collect();
+    other_regr.sort_by(by_delta);
 
-    let speed_regr: Vec<Cell> =
-        regr.iter().filter(|r| is_speed(&r.metric)).map(|r| to_cell(r)).collect();
-    let other_regr: Vec<Cell> =
-        regr.iter().filter(|r| !is_speed(&r.metric)).map(|r| to_cell(r)).collect();
-    let impr_cells: Vec<Cell> = impr.iter().map(|r| to_cell(r)).collect();
+    // Lead with the worst/best 5 speed movers; anything past that folds under a <details>.
+    const SHOWN: usize = 5;
+    let split = |rs: &[&Row]| -> (Vec<Cell>, Vec<Cell>) {
+        let mut cells: Vec<Cell> = rs.iter().map(|r| to_cell(r)).collect();
+        let more = if cells.len() > SHOWN { cells.split_off(SHOWN) } else { vec![] };
+        (cells, more)
+    };
+    let (speed_regr_shown, speed_regr_more) = split(&speed_regr);
+    let (speed_impr_shown, speed_impr_more) = split(&speed_impr);
+    let other_regr_cells: Vec<Cell> = other_regr.iter().map(|r| to_cell(r)).collect();
 
     let head = if !speed_regr.is_empty() {
         let mut h = format!("🔴 **Bench vs main — {} speed regression(s)**", speed_regr.len());
         if !other_regr.is_empty() {
-            h += &format!(" · {} load/memory", other_regr.len());
+            h += &format!(" · ⚠️ {} secondary", other_regr.len());
         }
         h
     } else if !other_regr.is_empty() {
         format!(
-            "🟡 **Bench vs main — no speed regressions** · {} load/memory mover(s)",
+            "⚠️ **Bench vs main — no speed regressions** · {} secondary regression(s)",
             other_regr.len()
         )
     } else {
@@ -543,7 +555,9 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
     env.add_template("comment", &comment)?;
     let rendered = env.get_template("comment")?.render(context! {
         head, ref_day, age, pr_sha9 => &pr_sha[..pr_sha.len().min(9)], devs,
-        n_metrics => rows.len(), speed_regr, other_regr, impr => impr_cells, run_url,
+        n_metrics => rows.len(),
+        speed_regr_shown, speed_regr_more, speed_impr_shown, speed_impr_more,
+        other_regr => other_regr_cells, run_url,
     })?;
     std::fs::write(out, tidy(&rendered))?;
 
@@ -564,7 +578,9 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
             .write_all(rendered.as_bytes())?;
     }
 
-    println!("regressions={} improvements={} metrics={}", regr.len(), impr.len(), rows.len());
+    let regr_total = speed_regr.len() + other_regr.len();
+    let impr_total = movers.iter().filter(|r| !r.worse).count();
+    println!("regressions={regr_total} improvements={impr_total} metrics={}", rows.len());
     Ok(())
 }
 

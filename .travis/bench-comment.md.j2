@@ -1,9 +1,18 @@
-{% macro table(rows) %}
+{% macro table(rows, icon="") %}
 | Δ | metric | device | main → PR |
 |---|---|---|---|
 {% for r in rows %}
-| {{ r.icon }} **{{ r.delta }}** | {{ r.cell }} | `{{ r.device }}` | {{ r.ref_fmt }} → {{ r.pr_fmt }} |
+| {{ icon or r.icon }} **{{ r.delta }}** | {{ r.cell }} | `{{ r.device }}` | {{ r.ref_fmt }} → {{ r.pr_fmt }} |
 {% endfor %}
+{% endmacro %}
+{% macro capped(shown, more, label) %}
+{{ table(shown) }}
+{% if more %}
+<details><summary>+{{ more | length }} more {{ label }}</summary>
+
+{{ table(more) }}
+</details>
+{% endif %}
 {% endmacro %}
 <!-- bench-vs-main -->
 {{ head }}
@@ -12,22 +21,22 @@ Reference: main nightly, latest **{{ ref_day }}** ({{ age }}d old) · PR `{{ pr_
 
 **Speed** — evaltime · prefill · decode
 
-{% if speed_regr %}
-{{ table(speed_regr) }}
+{% if speed_regr_shown %}
+{{ capped(speed_regr_shown, speed_regr_more, "regression(s)") }}
 {% else %}
 _no inference-speed regressions_
 {% endif %}
 
-{% if other_regr %}
-**Load & memory** (worst first)
+{% if speed_impr_shown %}
+**Improvements**
 
-{{ table(other_regr) }}
-
+{{ capped(speed_impr_shown, speed_impr_more, "improvement(s)") }}
 {% endif %}
-{% if impr %}
-<details><summary>🟢 {{ impr | length }} improvement(s)</summary>
+{% if other_regr %}
+<details><summary>⚠️ {{ other_regr | length }} secondary regression(s)</summary>
 
-{{ table(impr) }}</details>
+{{ table(other_regr, "⚠️") }}
+</details>
 
 {% endif %}
 _lower is better except prefill/decode (tok/s) · adaptive thresholds (max(floor, k×noise) vs the series' own history) · single-shot vs nightly reference · full report → [run]({{ run_url }})_
