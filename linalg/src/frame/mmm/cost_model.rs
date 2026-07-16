@@ -5,23 +5,31 @@ fn order_f(a: f32, b: f32) -> std::cmp::Ordering {
 }
 
 /// Analytic matmul-kernel cost model. Models each kernel's runtime as
-/// `a * padded_work + b * n_tiles + c`, where `padded_work` is the MAC count after
-/// rounding M and N up to the tile size, `n_tiles = ceil(m/mr) * ceil(n/nr)`, and the
-/// per-kernel coefficients are fit by least squares from a `tract cost-model gather`
-/// dataset. `a` is the inverse steady-state throughput, `b` the per-tile setup, `c` the
-/// fixed call overhead. `pick` returns the argmin over the candidate impls.
+/// `a * padded_work + b * n_tiles + c + restream * a_restream`, where `padded_work` is the
+/// MAC count after rounding M and N up to the tile size, `n_tiles = ceil(m/mr) * ceil(n/nr)`,
+/// and `a_restream = ceil(m/mr)*mr * ceil(n/nr) * k` is the packed-A re-stream volume (the
+/// weight is read once per n-pass). `a` is the inverse steady-state throughput, `b` the
+/// per-tile setup, `c` the fixed call overhead; these are fit per-kernel by least squares from
+/// a `tract cost-model gather` dataset. `restream` is a single per-model coefficient (0 when
+/// un-calibrated) for the cost the per-kernel terms cannot express: a kernel is fit in
+/// isolation with its weight cache-resident, but in a real model the weight is evicted between
+/// layers, so a small-`n` kernel that re-streams a large `A` fewer times (wider `nr`) wins
+/// even when its isolated time ties a narrower one. `pick` returns the argmin over the impls.
 #[derive(Debug)]
 pub struct LinearCostModel<'a> {
     pub default_kernel: &'a str,
     pub kernels: &'a [&'a str],
     pub coeffs: &'a [[f32; 3]],
+    pub restream: f32,
 }
 
 impl LinearCostModel<'_> {
-    fn predicted(coeffs: &[f32; 3], m: usize, k: usize, n: usize, mr: usize, nr: usize) -> f32 {
+    fn predicted(&self, ix: usize, m: usize, k: usize, n: usize, mr: usize, nr: usize) -> f32 {
+        let coeffs = &self.coeffs[ix];
         let padded_work = (m.div_ceil(mr) * mr * n.div_ceil(nr) * nr * k) as f32;
         let n_tiles = (m.div_ceil(mr) * n.div_ceil(nr)) as f32;
-        coeffs[0] * padded_work + coeffs[1] * n_tiles + coeffs[2]
+        let a_restream = (m.div_ceil(mr) * mr * n.div_ceil(nr) * k) as f32;
+        coeffs[0] * padded_work + coeffs[1] * n_tiles + coeffs[2] + self.restream * a_restream
     }
 
     pub fn pick(
@@ -41,7 +49,7 @@ impl LinearCostModel<'_> {
                         return None;
                     }
                     let ix = self.kernels.iter().position(|name| *name == imp.name())?;
-                    let t = Self::predicted(&self.coeffs[ix], m, k, n, imp.mr(), imp.nr());
+                    let t = self.predicted(ix, m, k, n, imp.mr(), imp.nr());
                     Some((t, imp))
                 })
                 .min_by(|a, b| order_f(a.0, b.0))

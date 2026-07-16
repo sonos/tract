@@ -50,5 +50,6 @@ pub fn linear_model() -> LinearCostModel<'static> {
             [2.5814097e-11, 2.3762501e-8, 0e0],
             [2.0034327e-11, 2.4686237e-8, 0e0],
         ],
+        restream: 0e0,
     }
 }

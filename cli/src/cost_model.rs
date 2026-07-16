@@ -84,6 +84,18 @@ struct Regen {
     /// Directory for the generated side files (default: system temp dir)
     #[arg(long)]
     out_dir: Option<String>,
+    /// Re-fit an existing dataset (from a prior gather) instead of timing on this CPU.
+    /// Skips the gather; everything downstream (fit, validate, emit) is unchanged.
+    #[arg(long)]
+    dataset: Option<String>,
+    /// Calibrate the `restream` coefficient from a cold-cache probe: after fitting the
+    /// per-kernel terms, time a few big-A small-n shapes with the weight evicted between
+    /// calls, then set `restream` to the re-stream cost the hot fit fails to predict.
+    #[arg(long)]
+    cold_probe: bool,
+    /// Derive `restream` from an existing cold-cache dataset instead of probing this CPU.
+    #[arg(long)]
+    cold_dataset: Option<String>,
 }
 
 // --- shape sampling: deterministic so a dataset is reproducible from (args, seed) ---
@@ -135,7 +147,7 @@ fn gather(g: Gather) -> TractResult<()> {
         if m == 0 || k == 0 || n == 0 || m * k * n > g.mkn {
             continue;
         }
-        for (kernel, flop_per_s) in crate::hwbench::kernel_times(dt, m, k, n)? {
+        for (kernel, flop_per_s) in crate::hwbench::kernel_times(dt, m, k, n, false)? {
             let (mr, nr) = geom(&kernel);
             let dur = (m * k * n) as f64 / flop_per_s;
             writeln!(w, "{kernel} {mr} {nr} {m} {k} {n} {dur}")?;
@@ -194,15 +206,15 @@ fn solve(mut a: Vec<Vec<f64>>, mut b: Vec<f64>) -> Option<Vec<f64>> {
 /// picks a slow kernel. Exact for 3 features: the optimum lies on a face of the non-negative
 /// orthant, so fit each of the 8 active-subsets unconstrained and keep the feasible (all >=0)
 /// one with the smallest residual.
-fn fit_nnls(rows: &[([f64; 3], f64)]) -> [f64; 3] {
+fn fit_nnls(rows: &[([f64; 3], f64, f64)]) -> [f64; 3] {
     let mut ata = [[0.0f64; 3]; 3];
     let mut atb = [0.0f64; 3];
-    for (x, y) in rows {
+    for (x, y, w) in rows {
         for i in 0..3 {
             for j in 0..3 {
-                ata[i][j] += x[i] * x[j];
+                ata[i][j] += w * x[i] * x[j];
             }
-            atb[i] += x[i] * y;
+            atb[i] += w * x[i] * y;
         }
     }
     let mut best = ([0.0f64; 3], f64::MAX);
@@ -277,15 +289,16 @@ fn fit(f: Fit) -> TractResult<()> {
     }
     src.push_str("        ],\n        coeffs: &[\n");
     for kern in &kernels {
-        let per: Vec<([f64; 3], f64)> =
-            rows.iter().filter(|r| &r.0 == kern).map(|r| (r.1, r.2)).collect();
+        let per: Vec<([f64; 3], f64, f64)> =
+            rows.iter().filter(|r| &r.0 == kern).map(|r| (r.1, r.2, 1.0)).collect();
         let c = fit_nnls(&per);
         src.push_str(&format!(
             "            [{:e}, {:e}, {:e}],\n",
             c[0] as f32, c[1] as f32, c[2] as f32
         ));
     }
-    src.push_str("        ],\n    }\n}\n");
+    // `fit` does not calibrate the re-stream term (that needs a cold gather); use `regen`.
+    src.push_str("        ],\n        restream: 0e0,\n    }\n}\n");
     std::fs::write(&f.out, src)?;
     eprintln!("wrote {} ({} kernels, default {default_kernel})", f.out, kernels.len());
     Ok(())
@@ -472,6 +485,7 @@ fn render_rs(
     default_kernel: &str,
     kernels: &[String],
     coeffs: &[[f64; 3]],
+    restream: f64,
     header: &str,
 ) -> String {
     let mut src = String::new();
@@ -491,7 +505,7 @@ fn render_rs(
             c[0] as f32, c[1] as f32, c[2] as f32
         ));
     }
-    src.push_str("        ],\n    }\n}\n");
+    src.push_str(&format!("        ],\n        restream: {:e},\n    }}\n}}\n", restream as f32));
     src
 }
 
@@ -517,6 +531,52 @@ fn provenance(plat: &Platform, cur: f64, new: f64, n: usize) -> String {
     )
 }
 
+type Rows = Vec<(String, usize, usize, usize, usize, usize, f64)>;
+
+/// Cold-cache timings for the re-stream calibration: an existing dataset (`--cold-dataset`),
+/// else a fresh probe over big-A small-n shapes (`--cold-probe`), else nothing (restream=0).
+fn cold_rows(r: &Regen, class: Class, dt: DatumType) -> TractResult<Option<Rows>> {
+    if let Some(ds) = &r.cold_dataset {
+        let p = |s: &str| -> usize { s.parse().unwrap() };
+        let mut rows: Rows = vec![];
+        for line in std::fs::read_to_string(ds)?.lines() {
+            let c: Vec<&str> = line.split_whitespace().collect();
+            if c.len() == 7 {
+                rows.push((
+                    c[0].into(),
+                    p(c[1]),
+                    p(c[2]),
+                    p(c[3]),
+                    p(c[4]),
+                    p(c[5]),
+                    c[6].parse()?,
+                ));
+            }
+        }
+        eprintln!("loaded {} cold row(s) from {ds}", rows.len());
+        return Ok(Some(rows));
+    }
+    if !r.cold_probe {
+        return Ok(None);
+    }
+    let (m_hi, k_hi, _, mkn_cap, _) = class.sweep();
+    let shapes: Vec<(usize, usize, usize)> = [m_hi / 8, m_hi / 4, m_hi / 2]
+        .into_iter()
+        .flat_map(|m| [k_hi / 8, k_hi / 4, k_hi / 2].map(move |k| (m, k)))
+        .flat_map(|(m, k)| [2usize, 4, 8, 13, 16, 32].map(move |n| (m, k, n)))
+        .filter(|&(m, k, n)| m >= 64 && k >= 64 && m * k * n <= mkn_cap)
+        .collect();
+    let mut rows: Rows = vec![];
+    for (i, &(m, k, n)) in shapes.iter().enumerate() {
+        for (kernel, flop_per_s) in crate::hwbench::kernel_times(dt, m, k, n, true)? {
+            let (mr, nr) = geom(&kernel);
+            rows.push((kernel, mr, nr, m, k, n, (m * k * n) as f64 / flop_per_s));
+        }
+        eprintln!("  cold probe {}/{}  {m}x{k}x{n}", i + 1, shapes.len());
+    }
+    Ok(Some(rows))
+}
+
 fn regen(r: Regen) -> TractResult<()> {
     let plat = match &r.platform {
         Some(id) => platform_from_id(id, "(forced)".to_string())?,
@@ -529,36 +589,56 @@ fn regen(r: Regen) -> TractResult<()> {
     let size = r.size.unwrap_or(def_size);
     eprintln!("platform {} (class {}), cpu: {}", plat.id, class.tag(), plat.cpu);
 
-    // shape set = seed shapes (model findings) + deterministic random sweep, n >= 2 (n=1 is mmv)
-    let seeds = load_seed_shapes(class);
-    eprintln!("{} seed shape(s) from linalg/cost-model-seeds/{}.txt", seeds.len(), class.tag());
-    let mut shapes: Vec<(usize, usize, usize)> =
-        seeds.into_iter().filter(|&(m, k, n)| n >= 2 && m * k * n <= mkn_cap).collect();
-    let mut rng = Lcg::new(r.seed);
-    let (mut got, mut tries) = (0usize, 0usize);
-    while got < size && tries < size * 1000 + 1000 {
-        tries += 1;
-        let (m, k, n) = (
-            log_uniform(&mut rng, 1, m_hi),
-            log_uniform(&mut rng, 1, k_hi),
-            log_uniform(&mut rng, 2, n_hi),
-        );
-        if n < 2 || m * k * n > mkn_cap {
-            continue;
-        }
-        shapes.push((m, k, n));
-        got += 1;
-    }
-
-    // gather: time every f32 mmm kernel at each shape
     let dt = f32::datum_type();
     let mut rows: Vec<(String, usize, usize, usize, usize, usize, f64)> = vec![];
-    for (i, &(m, k, n)) in shapes.iter().enumerate() {
-        for (kernel, flop_per_s) in crate::hwbench::kernel_times(dt, m, k, n)? {
-            let (mr, nr) = geom(&kernel);
-            rows.push((kernel, mr, nr, m, k, n, (m * k * n) as f64 / flop_per_s));
+    if let Some(ds) = &r.dataset {
+        // re-fit an existing gather: parse `kernel mr nr m k n dur` rows
+        let p = |s: &str| -> usize { s.parse().unwrap() };
+        for line in std::fs::read_to_string(ds)?.lines() {
+            let c: Vec<&str> = line.split_whitespace().collect();
+            if c.len() == 7 {
+                rows.push((
+                    c[0].into(),
+                    p(c[1]),
+                    p(c[2]),
+                    p(c[3]),
+                    p(c[4]),
+                    p(c[5]),
+                    c[6].parse()?,
+                ));
+            }
         }
-        eprintln!("  {}/{}  {m}x{k}x{n}", i + 1, shapes.len());
+        eprintln!("loaded {} rows from {ds}", rows.len());
+    } else {
+        // shape set = seed shapes (model findings) + deterministic random sweep, n >= 2 (n=1 is mmv)
+        let seeds = load_seed_shapes(class);
+        eprintln!("{} seed shape(s) from linalg/cost-model-seeds/{}.txt", seeds.len(), class.tag());
+        let mut shapes: Vec<(usize, usize, usize)> =
+            seeds.into_iter().filter(|&(m, k, n)| n >= 2 && m * k * n <= mkn_cap).collect();
+        let mut rng = Lcg::new(r.seed);
+        let (mut got, mut tries) = (0usize, 0usize);
+        while got < size && tries < size * 1000 + 1000 {
+            tries += 1;
+            let (m, k, n) = (
+                log_uniform(&mut rng, 1, m_hi),
+                log_uniform(&mut rng, 1, k_hi),
+                log_uniform(&mut rng, 2, n_hi),
+            );
+            if n < 2 || m * k * n > mkn_cap {
+                continue;
+            }
+            shapes.push((m, k, n));
+            got += 1;
+        }
+
+        // gather: time every f32 mmm kernel at each shape
+        for (i, &(m, k, n)) in shapes.iter().enumerate() {
+            for (kernel, flop_per_s) in crate::hwbench::kernel_times(dt, m, k, n, false)? {
+                let (mr, nr) = geom(&kernel);
+                rows.push((kernel, mr, nr, m, k, n, (m * k * n) as f64 / flop_per_s));
+            }
+            eprintln!("  {}/{}  {m}x{k}x{n}", i + 1, shapes.len());
+        }
     }
     ensure!(!rows.is_empty(), "no timing rows gathered");
 
@@ -569,29 +649,61 @@ fn regen(r: Regen) -> TractResult<()> {
     let coeffs: Vec<[f64; 3]> = kernels
         .iter()
         .map(|kn| {
-            let per: Vec<([f64; 3], f64)> = rows
+            let per: Vec<([f64; 3], f64, f64)> = rows
                 .iter()
                 .filter(|r| &r.0 == kn)
                 .map(|r| {
-                    ([padded_work(r.3, r.4, r.5, r.1, r.2), n_tiles(r.3, r.5, r.1, r.2), 1.0], r.6)
+                    (
+                        [padded_work(r.3, r.4, r.5, r.1, r.2), n_tiles(r.3, r.5, r.1, r.2), 1.0],
+                        r.6,
+                        1.0,
+                    )
                 })
                 .collect();
             fit_nnls(&per)
         })
         .collect();
     let default_kernel = kernels.iter().max_by_key(|n| geom(n).0 * geom(n).1).unwrap().clone();
+    let idx0: HashMap<&str, usize> =
+        kernels.iter().enumerate().map(|(i, k)| (k.as_str(), i)).collect();
+
+    // restream: the packed-A re-stream cost the per-kernel terms cannot express (see
+    // LinearCostModel). Fit in isolation, a weight sits in cache; in a model it is evicted, so
+    // wide-nr kernels that re-stream a big A fewer times win. It is invisible in a warm gather,
+    // so measure it cold and set `restream` to the slope of (cold_time - hot_prediction) on the
+    // re-stream volume — the excess per re-streamed element the hot fit leaves unexplained.
+    let restream = match cold_rows(&r, class, dt)? {
+        Some(cold) => {
+            let (mut num, mut den) = (0.0f64, 0.0f64);
+            for (kn, mr, nr, m, k, n, dur) in &cold {
+                let Some(&i) = idx0.get(kn.as_str()) else { continue };
+                let c = &coeffs[i];
+                let pred = c[0] * padded_work(*m, *k, *n, *mr, *nr)
+                    + c[1] * n_tiles(*m, *n, *mr, *nr)
+                    + c[2];
+                let vol = (m.div_ceil(*mr) * mr * n.div_ceil(*nr) * k) as f64;
+                num += (dur - pred) * vol;
+                den += vol * vol;
+            }
+            if den > 0.0 { (num / den).max(0.0) } else { 0.0 }
+        }
+        None => 0.0,
+    };
+    eprintln!("restream coefficient: {restream:e}");
 
     // validate: new linear vs the installed picker, over the gathered shapes
-    let idx: HashMap<&str, usize> =
-        kernels.iter().enumerate().map(|(i, k)| (k.as_str(), i)).collect();
     let mut by_shape: HashMap<(usize, usize, usize), HashMap<String, f64>> = HashMap::new();
     for (kn, _, _, m, k, n, dur) in &rows {
         by_shape.entry((*m, *k, *n)).or_default().insert(kn.clone(), *dur);
     }
+    // Mirror LinearCostModel::pick: the re-stream term, and nr==1 (mmv) kernels excluded.
     let predict = |kn: &str, m: usize, k: usize, n: usize| -> f64 {
         let (mr, nr) = geom(kn);
-        let c = &coeffs[idx[kn]];
-        c[0] * padded_work(m, k, n, mr, nr) + c[1] * n_tiles(m, n, mr, nr) + c[2]
+        let c = &coeffs[idx0[kn]];
+        c[0] * padded_work(m, k, n, mr, nr)
+            + c[1] * n_tiles(m, n, mr, nr)
+            + c[2]
+            + restream * (m.div_ceil(mr) * mr * n.div_ceil(nr) * k) as f64
     };
     let (mut new_sum, mut new_orc, mut cur_sum, mut cur_orc) = (0.0, 0.0, 0.0, 0.0);
     let (mut cur_skip, mut n_shapes, mut worst_new, mut worst_cur) =
@@ -604,6 +716,7 @@ fn regen(r: Regen) -> TractResult<()> {
         n_shapes += 1;
         let newk = km
             .keys()
+            .filter(|kn| geom(kn).1 != 1)
             .min_by(|a, b| predict(a, m, k, n).partial_cmp(&predict(b, m, k, n)).unwrap())
             .unwrap();
         new_sum += km[newk];
@@ -634,7 +747,7 @@ fn regen(r: Regen) -> TractResult<()> {
 
     // emit side files + ready-to-use mv (never overwrite in place)
     let header = provenance(&plat, cur_regret, new_regret, n_shapes);
-    let src = render_rs(&default_kernel, &kernels, &coeffs, &header);
+    let src = render_rs(&default_kernel, &kernels, &coeffs, restream, &header);
     let mut ds = String::new();
     for (kn, mr, nr, m, k, n, dur) in &rows {
         ds.push_str(&format!("{kn} {mr} {nr} {m} {k} {n} {dur}\n"));
