@@ -433,10 +433,22 @@ fn auto_platform() -> Option<Platform> {
     None
 }
 
+/// Seed shapes baked in at build time, so a standalone binary still carries the
+/// model-derived shapes when run outside a checkout.
+fn baked_seed(class: Class) -> &'static str {
+    match class {
+        Class::Small32 => include_str!("../../linalg/cost-model-seeds/small32.txt"),
+        Class::Small64 => include_str!("../../linalg/cost-model-seeds/small64.txt"),
+        Class::Big64 => include_str!("../../linalg/cost-model-seeds/big64.txt"),
+    }
+}
+
+/// The class's seed shapes: the on-disk file if run from a checkout (so seeds can
+/// be edited without a rebuild), else the copy baked into the binary.
 fn load_seed_shapes(class: Class) -> Vec<(usize, usize, usize)> {
     let path = format!("linalg/cost-model-seeds/{}.txt", class.tag());
-    let Ok(s) = std::fs::read_to_string(&path) else { return vec![] };
-    s.lines()
+    let text = std::fs::read_to_string(&path).unwrap_or_else(|_| baked_seed(class).to_string());
+    text.lines()
         .filter(|l| !l.trim_start().starts_with('#') && !l.trim().is_empty())
         .filter_map(|l| {
             let mut it = l.split_whitespace();
