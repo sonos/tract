@@ -11,15 +11,25 @@ analytic **`LinearCostModel`**, fit per CPU from on-device measurements.
 kernel's runtime at a shape `(m, k, n)` as:
 
 ```
-time ≈ a · padded_work + b · n_tiles + c
+time ≈ a · padded_work + b · n_tiles + c + restream · a_restream
 padded_work = ceil(m/mr)·mr · ceil(n/nr)·nr · k     (MACs after tile padding)
 n_tiles     = ceil(m/mr) · ceil(n/nr)
+a_restream  = ceil(m/mr)·mr · ceil(n/nr) · k        (weight bytes streamed, once per n-pass)
 ```
 
 with three coefficients per kernel: `a` (inverse steady-state throughput), `b`
-(per-tile setup), `c` (fixed call overhead). `pick` returns the argmin over the
-impls actually present on the target. `mr`/`nr` are read from each impl, so the model
-only needs the coefficient table.
+(per-tile setup), `c` (fixed call overhead), plus one per-model coefficient `restream`.
+`pick` returns the argmin over the impls actually present on the target. `mr`/`nr` are read
+from each impl, so the model only needs the coefficient table.
+
+`restream` captures a cost the per-kernel terms structurally cannot: the weight `A` is
+re-streamed once per n-pass (`ceil(n/nr)` times), so at a fixed shape a wide-`nr` kernel
+re-streams a big `A` fewer times than a narrow one. This is invisible when a kernel is timed
+in isolation (the weight stays cache-resident across the warm loop) but real in a model (the
+weight is evicted between layers), and a per-kernel feature can't express it — `a_restream` is
+collinear with `padded_work` for a fixed `nr`, so the cross-kernel penalty must be one shared
+coefficient. It is left `0` until calibrated from a cold-cache probe (see below); the plain
+warm gather cannot see it.
 
 The per-target tables are generated Rust files with the dataset each was fit from committed
 next to them:
@@ -76,7 +86,16 @@ CPU, tract version+commit, validation summary) and prints a ready-to-use `mv`.
 
 **It never overwrites in place.** Read the printed `current → new` regret, then run the `mv`
 to install. Flags: `--platform <id>` forces the target (else auto), `--size` the random-sweep
-count, `--seed` the PRNG seed, `--out-dir` the side-file directory.
+count, `--seed` the PRNG seed, `--out-dir` the side-file directory, `--dataset <txt>` re-fits
+an existing gather instead of timing (host-side, no target needed).
+
+**Calibrating `restream`** (the cross-kernel n-pass term) needs a *cold* measurement, so it is
+opt-in: `--cold-probe` times a few big-`A` small-`n` shapes with the weight evicted between
+calls (an A-pool sized to twice the LLC), then sets `restream` to the slope of
+`(cold_time − hot_prediction)` on `a_restream` — the excess the warm fit leaves unexplained.
+`--cold-dataset <txt>` derives it from a prior cold gather instead. Without either, `restream`
+stays `0` and the model behaves exactly as the three-term version. It is per-cohort: RAM/LLC
+bandwidth is machine-specific.
 
 **Seed shapes are the "model findings"** — they anchor the fit on shapes that actually occur,
 so it never has to extrapolate. A uniform random sweep alone can miss, e.g., the large-`m/k`,

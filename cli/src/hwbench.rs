@@ -198,7 +198,7 @@ pub(crate) fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
             params.shapes.iter().map(|s| parse_shape(s)).flatten_ok().collect::<TractResult<_>>()?
         };
         for (dt, m, k, n, gated) in requests {
-            let shape = bench_shape(dt, m, k, n, gated, false)?;
+            let shape = bench_shape(dt, m, k, n, gated, false, false)?;
             if !params.json {
                 print_shape(&shape);
             }
@@ -351,12 +351,31 @@ pub(crate) fn kernel_times(
     m: usize,
     k: usize,
     n: usize,
+    cold: bool,
 ) -> TractResult<Vec<(String, f64)>> {
-    Ok(bench_shape(dt, m, k, n, false, true)?
+    Ok(bench_shape(dt, m, k, n, false, true, cold)?
         .kernels
         .into_iter()
         .map(|k| (k.kernel, k.flop_per_s))
         .collect())
+}
+
+/// Last-level cache size in bytes (largest `cache/index*/size` on cpu0), for sizing the
+/// cold-gather A-pool. Falls back to 32 MiB when it can't be read.
+fn llc_bytes() -> usize {
+    let base = "/sys/devices/system/cpu/cpu0/cache";
+    let max = (0..8)
+        .filter_map(|i| std::fs::read_to_string(format!("{base}/index{i}/size")).ok())
+        .filter_map(|s| {
+            let s = s.trim();
+            let (num, mul) = match s.strip_suffix('K') {
+                Some(n) => (n, 1024),
+                None => (s.strip_suffix('M').unwrap_or(s), 1024 * 1024),
+            };
+            num.parse::<usize>().ok().map(|v| v * mul)
+        })
+        .max();
+    max.unwrap_or(32 * 1024 * 1024)
 }
 
 fn bench_shape(
@@ -366,6 +385,7 @@ fn bench_shape(
     n: usize,
     gated: bool,
     fast: bool,
+    cold: bool,
 ) -> TractResult<ShapeResult> {
     let a = Tensor::zero_dt(dt, &[m, k])?;
     let b = Tensor::zero_dt(dt, &[k, n])?;
@@ -395,19 +415,26 @@ fn bench_shape(
                 if std::io::stderr().is_terminal() {
                     eprint!("Benching {} ({pix}) at {m}x{k}x{n}x{dt:?}", mmm.name());
                 }
-                let a = pa.prepare_one(&a, 1, 0).unwrap();
+                // Cold-cache mode: a pool of packed-A copies totalling twice the LLC, cycled
+                // per call, so every call re-reads A from RAM as it would in a real model (where
+                // intervening layers evict the weight) rather than from the L3 copy a warm loop
+                // keeps resident. Capped at 64 copies: a small A stays cache-resident anyway.
+                let a_bytes = (m * k * dt.size_of()).max(1);
+                let copies =
+                    if cold { (2 * llc_bytes() / a_bytes).clamp(2, 64) } else { 1 };
+                let a_pool: Vec<_> = (0..copies).map(|_| pa.prepare_one(&a, 1, 0).unwrap()).collect();
                 let b = pb.prepare_one(&b, 0, 1).unwrap();
                 let pc = mmm.c_view(Some(0), Some(1)).wrap(&c.view_mut());
                 let bench = |loops| {
                     let mut scratch = mmm.allocate_scratch_space();
-                    for _ in 0..loops {
+                    for i in 0..loops {
                         mmm.run_with_scratch_space(
                             m,
                             n,
                             scratch.as_mut(),
                             &[
                                 FusedSpec::AddMatMul {
-                                    a: AsInputValue::Borrowed(&*a),
+                                    a: AsInputValue::Borrowed(&*a_pool[i % copies]),
                                     b: AsInputValue::Borrowed(&*b),
                                     packing: pix,
                                 },
