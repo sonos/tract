@@ -42,6 +42,10 @@ struct Gather {
     /// PRNG seed (the sweep is deterministic in the seed, so datasets are reproducible)
     #[arg(long, default_value_t = 0)]
     seed: u64,
+    /// Time with the weight evicted between calls (cold-cache), for `restream` calibration.
+    /// Feed the resulting dataset to `regen --cold-dataset`.
+    #[arg(long)]
+    cold: bool,
     /// Dataset output path ('-' for stdout)
     out: String,
 }
@@ -147,7 +151,7 @@ fn gather(g: Gather) -> TractResult<()> {
         if m == 0 || k == 0 || n == 0 || m * k * n > g.mkn {
             continue;
         }
-        for (kernel, flop_per_s) in crate::hwbench::kernel_times(dt, m, k, n, false)? {
+        for (kernel, flop_per_s) in crate::hwbench::kernel_times(dt, m, k, n, g.cold)? {
             let (mr, nr) = geom(&kernel);
             let dur = (m * k * n) as f64 / flop_per_s;
             writeln!(w, "{kernel} {mr} {nr} {m} {k} {n} {dur}")?;
@@ -590,8 +594,16 @@ fn regen(r: Regen) -> TractResult<()> {
     eprintln!("platform {} (class {}), cpu: {}", plat.id, class.tag(), plat.cpu);
 
     let dt = f32::datum_type();
+    // When calibrating `restream` on an already-shipped model, keep its a,b,c by re-fitting the
+    // committed dataset instead of gathering fresh (avoids disturbing validated picks). So a bare
+    // `regen --cold-probe` recalibrates in place; pass --dataset to override, or drop the cold
+    // flags for a full fresh gather.
+    let hot_dataset = r.dataset.clone().or_else(|| {
+        ((r.cold_probe || r.cold_dataset.is_some()) && std::path::Path::new(&plat.txt_rel).exists())
+            .then(|| plat.txt_rel.clone())
+    });
     let mut rows: Vec<(String, usize, usize, usize, usize, usize, f64)> = vec![];
-    if let Some(ds) = &r.dataset {
+    if let Some(ds) = &hot_dataset {
         // re-fit an existing gather: parse `kernel mr nr m k n dur` rows
         let p = |s: &str| -> usize { s.parse().unwrap() };
         for line in std::fs::read_to_string(ds)?.lines() {
