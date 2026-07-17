@@ -10,11 +10,15 @@ fn order_f(a: f32, b: f32) -> std::cmp::Ordering {
 /// and `a_restream = ceil(m/mr)*mr * ceil(n/nr) * k` is the packed-A re-stream volume (the
 /// weight is read once per n-pass). `a` is the inverse steady-state throughput, `b` the
 /// per-tile setup, `c` the fixed call overhead; these are fit per-kernel by least squares from
-/// a `tract cost-model gather` dataset. `restream` is a single per-model coefficient (0 when
-/// un-calibrated) for the cost the per-kernel terms cannot express: a kernel is fit in
-/// isolation with its weight cache-resident, but in a real model the weight is evicted between
-/// layers, so a small-`n` kernel that re-streams a large `A` fewer times (wider `nr`) wins
-/// even when its isolated time ties a narrower one. `pick` returns the argmin over the impls.
+/// a `tract cost-model gather` dataset. `restream` is a single per-model coefficient for the
+/// cost the per-kernel terms cannot express: a kernel is fit in isolation with its weight
+/// cache-resident, but in a real model the weight is evicted between layers, so a small-`n`
+/// kernel that re-streams a large `A` fewer times (wider `nr`) wins even when its isolated time
+/// ties a narrower one. It is 0 both when un-calibrated and on cores whose last-level cache
+/// cannot keep a packed `A` resident even in a warm loop: there `A` streams from memory in
+/// isolation too, so no gap remains to correct and a cold calibration yields 0 — this is the
+/// case for the small-cache LITTLE aarch64/arm32 cohorts, so their `0e0` is a measured no-op,
+/// not a missing calibration. `pick` returns the argmin over the impls.
 #[derive(Debug)]
 pub struct LinearCostModel<'a> {
     pub default_kernel: &'a str,
