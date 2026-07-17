@@ -283,7 +283,7 @@ impl DatumType {
     pub fn with_qparams(&self, qparams: QParams) -> DatumType {
         match self {
             DatumType::QI8(_) => DatumType::QI8(qparams),
-            DatumType::QU8(_) => DatumType::QI8(qparams),
+            DatumType::QU8(_) => DatumType::QU8(qparams),
             DatumType::QI32(_) => DatumType::QI32(qparams),
             _ => *self,
         }
