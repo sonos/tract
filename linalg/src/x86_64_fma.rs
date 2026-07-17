@@ -9,6 +9,7 @@ pub mod mmm;
 mod amd_avx512_linear;
 mod amd_fma_linear;
 mod intel_avx512_linear;
+mod intel_avx512_mmv_linear;
 mod intel_fma_linear;
 
 /// CPU vendor, the axis (with the AVX-512-vs-FMA tier, decided by which plug runs)

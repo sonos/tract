@@ -47,9 +47,10 @@ impl LinearCostModel<'_> {
             let best = impls
                 .iter()
                 .filter_map(|imp| {
-                    // Matrix-vector kernels (nr==1) are the mmv path; never a mmm candidate.
-                    // Without this a degenerate shape can be handed a nr==1 kernel.
-                    if imp.nr() == 1 {
+                    // nr==1 (matrix-vector) kernels are candidates only for the mmv path
+                    // (n==1). For n>=2 they are excluded, else a degenerate shape can be
+                    // handed a nr==1 kernel that pads N catastrophically.
+                    if imp.nr() == 1 && n != 1 {
                         return None;
                     }
                     let ix = self.kernels.iter().position(|name| *name == imp.name())?;

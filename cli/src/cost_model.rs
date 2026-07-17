@@ -100,6 +100,11 @@ struct Regen {
     /// Derive `restream` from an existing cold-cache dataset instead of probing this CPU.
     #[arg(long)]
     cold_dataset: Option<String>,
+    /// Calibrate a dedicated matrix-vector (n==1) model instead of the mmm model: gather a
+    /// dense m×k grid at n==1 (the only regime matvec kernels run in), include nr==1 kernels,
+    /// and emit `<platform>_mmv_linear.rs`. `restream` is not used (there is a single n-pass).
+    #[arg(long)]
+    mmv: bool,
 }
 
 // --- shape sampling: deterministic so a dataset is reproducible from (args, seed) ---
@@ -616,6 +621,26 @@ fn regen(r: Regen) -> TractResult<()> {
             }
         }
         eprintln!("loaded {} rows from {ds}", rows.len());
+    } else if r.mmv {
+        // matvec model: a dense m×k grid at n==1, the only regime nr==1 kernels run in.
+        // m spans the tile-padding-sensitive range (small m pays mr-padding); k spans light
+        // to heavy. Deterministic (no random sweep) so the dataset is reproducible.
+        let ms = [1usize, 2, 4, 8, 16, 24, 32, 48, 64, 96, 128, 256, 512, 1024, 2048, 4096];
+        let ks = [8usize, 32, 128, 512, 2048];
+        let mut shapes: Vec<(usize, usize, usize)> = vec![];
+        for &m in ms.iter().filter(|&&m| m <= m_hi) {
+            for &k in ks.iter().filter(|&&k| k <= k_hi) {
+                shapes.push((m, k, 1));
+            }
+        }
+        eprintln!("mmv gather: {} n=1 shape(s)", shapes.len());
+        for (i, &(m, k, n)) in shapes.iter().enumerate() {
+            for (kernel, flop_per_s) in crate::hwbench::kernel_times(dt, m, k, n, false)? {
+                let (mr, nr) = geom(&kernel);
+                rows.push((kernel, mr, nr, m, k, n, (m * k * n) as f64 / flop_per_s));
+            }
+            eprintln!("  {}/{}  {m}x{k}x{n}", i + 1, shapes.len());
+        }
     } else {
         // shape set = seed shapes (model findings) + deterministic random sweep, n >= 2 (n=1 is mmv)
         let seeds = load_seed_shapes(class);
@@ -679,22 +704,26 @@ fn regen(r: Regen) -> TractResult<()> {
     // wide-nr kernels that re-stream a big A fewer times win. It is invisible in a warm gather,
     // so measure it cold and set `restream` to the slope of (cold_time - hot_prediction) on the
     // re-stream volume — the excess per re-streamed element the hot fit leaves unexplained.
-    let restream = match cold_rows(&r, class, dt)? {
-        Some(cold) => {
-            let (mut num, mut den) = (0.0f64, 0.0f64);
-            for (kn, mr, nr, m, k, n, dur) in &cold {
-                let Some(&i) = idx0.get(kn.as_str()) else { continue };
-                let c = &coeffs[i];
-                let pred = c[0] * padded_work(*m, *k, *n, *mr, *nr)
-                    + c[1] * n_tiles(*m, *n, *mr, *nr)
-                    + c[2];
-                let vol = (m.div_ceil(*mr) * mr * n.div_ceil(*nr) * k) as f64;
-                num += (dur - pred) * vol;
-                den += vol * vol;
+    let restream = if r.mmv {
+        0.0
+    } else {
+        match cold_rows(&r, class, dt)? {
+            Some(cold) => {
+                let (mut num, mut den) = (0.0f64, 0.0f64);
+                for (kn, mr, nr, m, k, n, dur) in &cold {
+                    let Some(&i) = idx0.get(kn.as_str()) else { continue };
+                    let c = &coeffs[i];
+                    let pred = c[0] * padded_work(*m, *k, *n, *mr, *nr)
+                        + c[1] * n_tiles(*m, *n, *mr, *nr)
+                        + c[2];
+                    let vol = (m.div_ceil(*mr) * mr * n.div_ceil(*nr) * k) as f64;
+                    num += (dur - pred) * vol;
+                    den += vol * vol;
+                }
+                if den > 0.0 { (num / den).max(0.0) } else { 0.0 }
             }
-            if den > 0.0 { (num / den).max(0.0) } else { 0.0 }
+            None => 0.0,
         }
-        None => 0.0,
     };
     eprintln!("restream coefficient: {restream:e}");
 
@@ -723,7 +752,7 @@ fn regen(r: Regen) -> TractResult<()> {
         n_shapes += 1;
         let newk = km
             .keys()
-            .filter(|kn| geom(kn).1 != 1)
+            .filter(|kn| r.mmv || geom(kn).1 != 1)
             .min_by(|a, b| predict(a, m, k, n).partial_cmp(&predict(b, m, k, n)).unwrap())
             .unwrap();
         new_sum += km[newk];
@@ -761,12 +790,19 @@ fn regen(r: Regen) -> TractResult<()> {
     }
     let out_dir = r.out_dir.map(std::path::PathBuf::from).unwrap_or_else(std::env::temp_dir);
     std::fs::create_dir_all(&out_dir)?;
-    let rs_out = out_dir.join(format!("{}_linear.rs", plat.id));
-    let txt_out = out_dir.join(format!("{}.txt", plat.id));
+    let sfx = if r.mmv { "_mmv" } else { "" };
+    let rs_out = out_dir.join(format!("{}{sfx}_linear.rs", plat.id));
+    let txt_out = out_dir.join(format!("{}{sfx}.txt", plat.id));
     std::fs::write(&rs_out, src)?;
     std::fs::write(&txt_out, ds)?;
-    println!("\n# regenerated {} model. review, then install with:", plat.id);
-    println!("mv {} {}", rs_out.display(), plat.rs_rel);
-    println!("mv {} {}", txt_out.display(), plat.txt_rel);
+    let rs_rel = plat.rs_rel.replace("_linear.rs", &format!("{sfx}_linear.rs"));
+    let txt_rel = plat.txt_rel.replace(".txt", &format!("{sfx}.txt"));
+    println!(
+        "\n# regenerated {} {} model. review, then install with:",
+        plat.id,
+        if r.mmv { "mmv" } else { "mmm" }
+    );
+    println!("mv {} {}", rs_out.display(), rs_rel);
+    println!("mv {} {}", txt_out.display(), txt_rel);
     Ok(())
 }
