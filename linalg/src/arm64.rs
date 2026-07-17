@@ -7,7 +7,9 @@ mod apple_m1_linear;
 mod apple_m4_linear;
 mod arm64simd;
 mod cortex_a53_linear;
+mod cortex_a53_mmv_linear;
 mod cortex_a55_linear;
+mod cortex_a55_mmv_linear;
 // `tract_sme` is set by build.rs only when the assembler can assemble SME
 // (gates out e.g. the old Debian stretch aarch64 toolchain).
 #[cfg(all(any(target_os = "macos", target_os = "linux"), tract_sme))]
@@ -412,12 +414,20 @@ pub fn plug(ops: &mut Ops) {
         ops.qmmm_i32 = Box::new(|_, _, _| arm64simd_mmm_i32_8x8.mmm());
     }
     ops.qmmv_i32 = Box::new(|_, _| arm64simd_mmm_i32_64x1.mmm());
+    let impls = ops.mmm_impls.clone();
     ops.mmv_f32 = match *KIND {
-        Kind::CortexA53 => Box::new(|_, _| arm64simd_mmm_f32_64x1_a53.mmm()),
-        Kind::CortexA55 => Box::new(|_, _| arm64simd_mmm_f32_64x1_a55.mmm()),
+        Kind::CortexA53 => {
+            let model = cortex_a53_mmv_linear::linear_model();
+            let impls = impls.clone();
+            Box::new(move |m, k| model.pick(&impls, m, k, Some(1)))
+        }
+        Kind::CortexA55 => {
+            let model = cortex_a55_mmv_linear::linear_model();
+            let impls = impls.clone();
+            Box::new(move |m, k| model.pick(&impls, m, k, Some(1)))
+        }
         _ => Box::new(|_, _| arm64simd_mmm_f32_64x1_gen.mmm()),
     };
-    let impls = ops.mmm_impls.clone();
     ops.mmm_f32 = match *KIND {
         Kind::CortexA53 => {
             let model = cortex_a53_linear::linear_model();

@@ -392,8 +392,6 @@ pub fn plug_fma(ops: &mut Ops) {
         fma_mmm_f32_64x1.mmm(),
     ]);
 
-    ops.mmv_f32 = Box::new(|_, _| fma_mmm_f32_64x1.mmm());
-
     if is_x86_feature_detected!("f16c") {
         ops.mmm_impls.push(mmm::fma_mmm_f32_32x1.mmm()); // q40f32 requires f16c; also part of the pool
         log::info!("found f16c, added fake-f16 and q40-able kernels");
@@ -409,6 +407,11 @@ pub fn plug_fma(ops: &mut Ops) {
         KernelChoice { mr: 32, nr: 3, scale: 54.0 / 60.0, ctor: || fma_mmm_f32_32x3.mmm() },
         KernelChoice { mr: 40, nr: 2, scale: 54.0 / 60.0, ctor: || fma_mmm_f32_40x2.mmm() },
     ];
+
+    // mmv (n==1) has no dedicated n=1-calibrated model on the fma-only path yet; keep the
+    // fixed matvec kernel. Routing n==1 through the n>=2-fit mmm model mispicks (matvec
+    // kernels are only ever run at n==1, so their mmm coeffs are unrepresentative).
+    ops.mmv_f32 = Box::new(|_, _| fma_mmm_f32_64x1.mmm());
 
     let impls = ops.mmm_impls.clone();
     ops.mmm_f32 = match super::vendor() {
@@ -444,11 +447,7 @@ pub fn plug_avx512f(ops: &mut Ops) {
     ops.mmm_impls.push(avx512_mmm_f32_32x5.mmm());
     ops.mmm_impls.push(avx512_mmm_f32_16x12.mmm());
     ops.mmm_impls.push(avx512_mmm_f32_16x8.mmm());
-    ops.mmv_f32 = Box::new(|m, _k| match m {
-        Some(m) if m < 31 => avx512_mmm_f32_16x1.mmm(),
-        _ => avx512_mmm_f32_128x1.mmm(),
-    });
-
+    ops.mmm_impls.push(avx512_mmm_f32_16x1.mmm()); // mmv candidate (nr==1; excluded from n>=2 picks)
     // Pool spans both instruction sets: on avx512 hardware the 256-bit FMA
     // kernels reach comparable f32 throughput and win the small-N tiles the
     // avx512 kernels have no matching `nr` for (e.g. n=2 -> 40x2, n=4 -> 24x4).
@@ -473,6 +472,18 @@ pub fn plug_avx512f(ops: &mut Ops) {
     ];
 
     let impls = ops.mmm_impls.clone();
+    ops.mmv_f32 = match super::vendor() {
+        super::Vendor::Intel => {
+            let mdl = super::intel_avx512_mmv_linear::linear_model();
+            let impls = impls.clone();
+            Box::new(move |m, k| mdl.pick(&impls, m, k, Some(1)))
+        }
+        // amd has no n=1-calibrated mmv model yet; keep the fixed matvec dispatch.
+        _ => Box::new(|m, _k| match m {
+            Some(m) if m < 31 => avx512_mmm_f32_16x1.mmm(),
+            _ => avx512_mmm_f32_128x1.mmm(),
+        }),
+    };
     ops.mmm_f32 = match super::vendor() {
         super::Vendor::Intel => {
             let mdl = super::intel_avx512_linear::linear_model();
