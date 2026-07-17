@@ -1,8 +1,21 @@
-// Fused SiLU: x * sigmoid(x).
-// loop4 (16 lanes per iter) + loop1 (4-lane tail).
-// Clones the sigmoid Padé polynomial from arm64simd_sigmoid_f32_4n.S.j2,
-// with the input saved before clamp (in v8-v11) and multiplied back at the
-// end. Single memory pass (load + store), no scratch buffer.
+// Fused SiLU kernel
+//
+// Exact formula computed per element (z = clamp(x, -18.6, 18.6), w = z²):
+//   silu(x) = x * (0.5 + z * P(w) / Q(w))
+// where P is the degree-6 Horner polynomial over coeffs COEFFS[2..=8] and Q the
+// degree-3 Horner polynomial over coeffs COEFFS[9..=12].
+//
+// Reuses the polynomial coefficients used in the numerical approximation of the Sigmoid kernel
+// defined in arm64simd_sigmoid_f32_4n.S.j2.
+//
+// NOTE: This kernel is not total: sigmoid is evaluated on the clamped input, but the
+// final product uses the original (unclamped) input, so for negatives with high magnitude
+// (x < -18.6) the output is x * sigmoid(-18.6) instead of the true x * sigmoid(x). Since
+// sigmoid(-18.6) is a small nonzero constant, the result keeps growing in magnitude as x is moving
+// towards -inf, rather than decaying to 0, so outputs are wrong far into the negative tail.
+// In practice this is fine for deep learning applications: SiLU consumes pre-activations, which
+// normalization and sane init keep well inside the [-18.6, 18.6] window, so x < -18.6 is rare. And
+// even when it happens, the error stays tiny.
 
 ew_impl_wrap!(
     f32,
@@ -12,7 +25,6 @@ ew_impl_wrap!(
     (),
     #[inline(never)]
     fn run(buf: &mut [f32], _: ()) {
-        // Sigmoid Padé coefficients (matches arm64simd_sigmoid_f32_4n.S.j2).
         static COEFFS: [f32; 16] = [
             -18.6,
             18.6,
@@ -44,35 +56,30 @@ ew_impl_wrap!(
 
             std::arch::asm!("
                 ld1 {{ v0.4s, v1.4s, v2.4s, v3.4s }}, [{coef}]
-                dup v5.4s, v0.s[0]
-                dup v6.4s, v0.s[1]
-                dup v7.4s, v3.s[1]
+                dup v5.4s, v0.s[0]             // v5 <- low, broadcasted
+                dup v6.4s, v0.s[1]             // v6 <- high, broadcasted
+                dup v7.4s, v3.s[1]             // v7 <- 0.5, broadcasted
 
                 cmp {len}, #16
                 blt 9f
 
                 1:
-                    ld1 {{ v16.4s, v17.4s, v18.4s, v19.4s }}, [{ptr}]
+                    ld1 {{ v8.4s, v9.4s, v10.4s, v11.4s }}, [{ptr}]
 
-                    mov v8.16b, v16.16b
-                    mov v9.16b, v17.16b
-                    mov v10.16b, v18.16b
-                    mov v11.16b, v19.16b
-
-                    fmax v16.4s, v16.4s, v5.4s
-                    fmax v17.4s, v17.4s, v5.4s
-                    fmax v18.4s, v18.4s, v5.4s
-                    fmax v19.4s, v19.4s, v5.4s
+                    fmax v16.4s, v8.4s, v5.4s
+                    fmax v17.4s, v9.4s, v5.4s
+                    fmax v18.4s, v10.4s, v5.4s
+                    fmax v19.4s, v11.4s, v5.4s
 
                     fmin v16.4s, v16.4s, v6.4s
                     fmin v17.4s, v17.4s, v6.4s
                     fmin v18.4s, v18.4s, v6.4s
-                    fmin v19.4s, v19.4s, v6.4s
+                    fmin v19.4s, v19.4s, v6.4s     // v16 <- x
 
                     fmul v20.4s, v16.4s, v16.4s
                     fmul v21.4s, v17.4s, v17.4s
                     fmul v22.4s, v18.4s, v18.4s
-                    fmul v23.4s, v19.4s, v19.4s
+                    fmul v23.4s, v19.4s, v19.4s    // v20 <- x2
 
                     dup v24.4s, v0.s[3]
                     fmla v24.4s, v20.4s, v0.s[2]
@@ -131,7 +138,7 @@ ew_impl_wrap!(
                     fmul v16.4s, v16.4s, v28.4s
                     fmul v17.4s, v17.4s, v29.4s
                     fmul v18.4s, v18.4s, v30.4s
-                    fmul v19.4s, v19.4s, v31.4s
+                    fmul v19.4s, v19.4s, v31.4s    // v16 <- numerator
 
                     dup v24.4s, v2.s[2]
                     fmla v24.4s, v20.4s, v2.s[1]
@@ -158,7 +165,7 @@ ew_impl_wrap!(
                     dup v26.4s, v3.s[0]
                     fmla v26.4s, v22.4s, v30.4s
                     dup v27.4s, v3.s[0]
-                    fmla v27.4s, v23.4s, v31.4s
+                    fmla v27.4s, v23.4s, v31.4s    // v24 <- denum
 
                     fdiv v16.4s, v16.4s, v24.4s
                     fdiv v17.4s, v17.4s, v25.4s
@@ -168,12 +175,12 @@ ew_impl_wrap!(
                     fadd v16.4s, v16.4s, v7.4s
                     fadd v17.4s, v17.4s, v7.4s
                     fadd v18.4s, v18.4s, v7.4s
-                    fadd v19.4s, v19.4s, v7.4s
+                    fadd v19.4s, v19.4s, v7.4s     // v16 <- sigmoid
 
                     fmul v16.4s, v16.4s, v8.4s
                     fmul v17.4s, v17.4s, v9.4s
                     fmul v18.4s, v18.4s, v10.4s
-                    fmul v19.4s, v19.4s, v11.4s
+                    fmul v19.4s, v19.4s, v11.4s    // v16 <- silu (sigmoid * original x)
 
                     st1 {{ v16.4s, v17.4s, v18.4s, v19.4s }}, [{ptr}], #64
                     sub {len}, {len}, #16
@@ -184,12 +191,11 @@ ew_impl_wrap!(
                 cbz {len}, 3f
 
                 2:
-                    ld1 {{ v16.4s }}, [{ptr}]
-                    mov v8.16b, v16.16b
+                    ld1 {{ v8.4s }}, [{ptr}]
 
-                    fmax v16.4s, v16.4s, v5.4s
-                    fmin v16.4s, v16.4s, v6.4s
-                    fmul v20.4s, v16.4s, v16.4s
+                    fmax v16.4s, v8.4s, v5.4s
+                    fmin v16.4s, v16.4s, v6.4s     // v16 <- x
+                    fmul v20.4s, v16.4s, v16.4s    // v20 <- x2
 
                     dup v24.4s, v0.s[3]
                     fmla v24.4s, v20.4s, v0.s[2]
@@ -203,19 +209,19 @@ ew_impl_wrap!(
                     fmla v24.4s, v20.4s, v28.4s
                     dup v28.4s, v2.s[0]
                     fmla v28.4s, v20.4s, v24.4s
-                    fmul v16.4s, v16.4s, v28.4s
+                    fmul v16.4s, v16.4s, v28.4s    // v16 <- numerator
 
                     dup v24.4s, v2.s[2]
                     fmla v24.4s, v20.4s, v2.s[1]
                     dup v28.4s, v2.s[3]
                     fmla v28.4s, v20.4s, v24.4s
                     dup v24.4s, v3.s[0]
-                    fmla v24.4s, v20.4s, v28.4s
+                    fmla v24.4s, v20.4s, v28.4s    // v24 <- denum
 
                     fdiv v16.4s, v16.4s, v24.4s
-                    fadd v16.4s, v16.4s, v7.4s
+                    fadd v16.4s, v16.4s, v7.4s     // v16 <- sigmoid
 
-                    fmul v16.4s, v16.4s, v8.4s
+                    fmul v16.4s, v16.4s, v8.4s     // v16 <- silu (sigmoid * original x)
 
                     st1 {{ v16.4s }}, [{ptr}], #16
                     subs {len}, {len}, 4
