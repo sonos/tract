@@ -1,21 +1,20 @@
 // Fused SiLU kernel
 //
 // Exact formula computed per element (z = clamp(x, -18.6, 18.6), w = z²):
-//   silu(x) = x * (0.5 + z * P(w) / Q(w))
-// where P is the degree-6 Horner polynomial over coeffs COEFFS[2..=8] and Q the
-// degree-3 Horner polynomial over coeffs COEFFS[9..=12].
+//   SiLU(x) = f * (0.5 + z * P(w) / Q(w))
+// where P is the degree-6 Horner polynomial over coeffs COEFFS[2..=8], Q the
+// degree-3 Horner polynomial over coeffs COEFFS[9..=12], and f = max(x, -18.6)
+// the factor the sigmoid multiplies.
 //
 // Reuses the polynomial coefficients used in the numerical approximation of the Sigmoid kernel
 // defined in arm64simd_sigmoid_f32_4n.S.j2.
 //
-// NOTE: This kernel is not total: sigmoid is evaluated on the clamped input, but the
-// final product uses the original (unclamped) input, so for negatives with high magnitude
-// (x < -18.6) the output is x * sigmoid(-18.6) instead of the true x * sigmoid(x). Since
-// sigmoid(-18.6) is a small nonzero constant, the result keeps growing in magnitude as x is moving
-// towards -inf, rather than decaying to 0, so outputs are wrong far into the negative tail.
-// In practice this is fine for deep learning applications: SiLU consumes pre-activations, which
-// normalization and sane init keep well inside the [-18.6, 18.6] window, so x < -18.6 is rare. And
-// even when it happens, the error stays tiny.
+// The sigmoid factor f is clamped below at -18.6 but left unclamped above: the upper clamp is
+// only needed to keep the sigmoid polynomial in range (z), whereas SiLU(x) ~ x as x -> +inf, so
+// the factor must stay unbounded above. The lower clamp keeps the kernel total: without it, the
+// negative tail would return x * sigmoid(-18.6), whose magnitude grows toward -inf instead of
+// decaying to 0. With it, x < -18.6 saturates at the constant -18.6 * sigmoid(-18.6) ~= -1.55e-7,
+// which the true SiLU approaches from below as x -> -inf, so the error is bounded and tiny.
 
 ew_impl_wrap!(
     f32,
@@ -66,15 +65,15 @@ ew_impl_wrap!(
                 1:
                     ld1 {{ v8.4s, v9.4s, v10.4s, v11.4s }}, [{ptr}]
 
-                    fmax v16.4s, v8.4s, v5.4s
-                    fmax v17.4s, v9.4s, v5.4s
-                    fmax v18.4s, v10.4s, v5.4s
-                    fmax v19.4s, v11.4s, v5.4s
+                    fmax v8.4s, v8.4s, v5.4s
+                    fmax v9.4s, v9.4s, v5.4s
+                    fmax v10.4s, v10.4s, v5.4s
+                    fmax v11.4s, v11.4s, v5.4s     // v8 <- max(x, -18.6): SiLU factor
 
-                    fmin v16.4s, v16.4s, v6.4s
-                    fmin v17.4s, v17.4s, v6.4s
-                    fmin v18.4s, v18.4s, v6.4s
-                    fmin v19.4s, v19.4s, v6.4s     // v16 <- x
+                    fmin v16.4s, v8.4s, v6.4s
+                    fmin v17.4s, v9.4s, v6.4s
+                    fmin v18.4s, v10.4s, v6.4s
+                    fmin v19.4s, v11.4s, v6.4s     // v16 <- z (clamped for sigmoid)
 
                     fmul v20.4s, v16.4s, v16.4s
                     fmul v21.4s, v17.4s, v17.4s
@@ -180,7 +179,7 @@ ew_impl_wrap!(
                     fmul v16.4s, v16.4s, v8.4s
                     fmul v17.4s, v17.4s, v9.4s
                     fmul v18.4s, v18.4s, v10.4s
-                    fmul v19.4s, v19.4s, v11.4s    // v16 <- silu (sigmoid * original x)
+                    fmul v19.4s, v19.4s, v11.4s    // v16 <- SiLU (sigmoid * clamped-below x)
 
                     st1 {{ v16.4s, v17.4s, v18.4s, v19.4s }}, [{ptr}], #64
                     sub {len}, {len}, #16
@@ -193,8 +192,8 @@ ew_impl_wrap!(
                 2:
                     ld1 {{ v8.4s }}, [{ptr}]
 
-                    fmax v16.4s, v8.4s, v5.4s
-                    fmin v16.4s, v16.4s, v6.4s     // v16 <- x
+                    fmax v8.4s, v8.4s, v5.4s       // v8 <- max(x, -18.6): SiLU factor
+                    fmin v16.4s, v8.4s, v6.4s      // v16 <- z (clamped for sigmoid)
                     fmul v20.4s, v16.4s, v16.4s    // v20 <- x2
 
                     dup v24.4s, v0.s[3]
@@ -221,7 +220,7 @@ ew_impl_wrap!(
                     fdiv v16.4s, v16.4s, v24.4s
                     fadd v16.4s, v16.4s, v7.4s     // v16 <- sigmoid
 
-                    fmul v16.4s, v16.4s, v8.4s     // v16 <- silu (sigmoid * original x)
+                    fmul v16.4s, v16.4s, v8.4s     // v16 <- SiLU (sigmoid * clamped-below x)
 
                     st1 {{ v16.4s }}, [{ptr}], #16
                     subs {len}, {len}, 4
