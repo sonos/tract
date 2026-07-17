@@ -181,3 +181,26 @@ Kind::CortexXX => {
 the target and fails if the dispatcher's pick lags the fastest available kernel by more
 than the tolerance. Run it after regenerating to confirm the new model picks well. See
 `doc/kernel-notes.md` for the hwbench battery and tuning knobs.
+
+### End-to-end A/B between two commits (`bench-compare.sh`)
+
+`hwbench --assert` gates *isolated* kernel timings; to see the *whole-model* effect of a
+cost-model change — on a machine CI does not bench (one of your own PCs/Macs) — compare two
+commits end to end. This is the local equivalent of the CI bench comment:
+
+```
+.travis/bench-compare.sh <ref-a> <ref-b> [bench-suite args...]
+.travis/bench-compare.sh main task/my-branch --filter en_tdnn
+```
+
+It builds `tract-cli --features bench-suite` at each ref, runs the model battery from
+`benches.toml`, and prints B's per-metric evaltime delta vs A, worst-regression-first and
+flagged past a threshold. Extra args forward to `bench-suite` (e.g. `--filter <substr>` to
+scope + speed up the battery). It checks each ref out in place, so the working tree must be
+clean; ref B must carry the `bench-diff` subcommand that renders the table, so pass the newer
+commit as B.
+
+The rendering half is a standalone subcommand: `tract bench-diff --a <metrics> --b <metrics>`
+diffs two `bench-suite --output` files directly (`--metric load|rss`, `--threshold <pct>` for
+other views). Unlike the CI `bench-report`, it needs no bench-data history — a plain two-file
+diff, for cohorts CI does not have a reference for.
