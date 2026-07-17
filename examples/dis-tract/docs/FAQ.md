@@ -191,13 +191,15 @@ Source you did not declare as a boundary input.)
 
 ### How are shards assigned to nodes — by memory, by speed, or both?
 
-**Memory only.** Nothing about performance is modelled, and there is no fit check.
+**Memory only.** Nothing about performance is modelled.
 
 The flow: each worker advertises a `mem_budget` on join (`--mem-mb N`, or `--mem-frac` of
 its available RAM). The coordinator builds a per-layer weight profile of the model, then
 `plan::memory_weighted_cuts` walks the layers placing cuts so that **cumulative weight is
 proportional to cumulative budget** — a node advertising twice the budget gets roughly twice
-the weight. Weights are counted as stored, so q40 blocks count packed, not at f32 size.
+the weight. Weights are counted as stored, so q40 blocks count packed, not at f32 size. The
+split is then checked against the budgets, and a stage that would not fit its node fails the
+plan rather than that one worker at load time.
 
 What that means in practice:
 
@@ -208,11 +210,22 @@ What that means in practice:
   hand, by lying about budgets.
 - **Link bandwidth and latency are not inputs either**, so the planner cannot prefer a cut
   that minimises what crosses a slow hop.
-- **There is no fit check.** The split is proportional, full stop: if a node's share exceeds
-  the budget it advertised, it is still assigned it and fails (or swaps) at load time
-  instead of at plan time. Proportional-and-silent was survivable while the weight figures
-  were themselves wrong by ~8x; now that they are accurate, a real check is cheap and
-  worth adding.
+- **The fit check only catches what cannot possibly fit.** It compares a stage's *weights*
+  against the budget, and weights are a lower bound: KV, activations and runtime land on top,
+  measured 1.2-1.6x of weights on an 8B model. A node given 3.9 GB of weights against a 4 GB
+  budget passes the plan and then runs out. Sizing a real headroom factor would need the KV
+  size for the context, which nothing models yet.
+- **A budget is a claim, not a reservation.** It is `available_memory()` sampled at join,
+  ~40 s before the shard loads, and nothing holds it. Worse, **co-located workers double-count
+  the same RAM**: each reads the host's free memory and claims `--mem-frac` of it, so two
+  workers on one box with the default 0.8 advertise ~1.6x what exists. `NodeCaps` carries the
+  hostname, so the coordinator could divide a host's memory between its nodes; it does not.
+  Passing `--mem-mb` explicitly side-steps this, which is why the launch script always does.
+- **A GPU node's budget measures the wrong pool.** `mem_budget` is system RAM, whatever the
+  backend. On Apple silicon that is roughly right because memory is unified, so a Metal
+  buffer really does come out of the same pool. On a discrete GPU it is simply wrong: a box
+  with 128 GB of RAM and a 16 GB card advertises ~100 GB, the plan fits it, and the shard
+  then has to land in 16 GB of VRAM. CUDA is unexercised here, so this has never bitten.
 - **Stage order is not a decision.** Nodes are sorted CPU-first, then by node id, so a CPU
   node takes stage 0 (and with it the embedding gather). That is a stable-ordering
   convenience, not a placement strategy.

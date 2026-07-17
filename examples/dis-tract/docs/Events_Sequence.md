@@ -45,8 +45,9 @@ router to exist.
    CPU-first, then by id**. That is why a CPU node lands on stage 0 (taking the embedding
    gather with it): stable ordering, not a placement strategy.
 8. Builds a per-layer weight profile and calls `memory_weighted_cuts(profile, budgets)` ->
-   cuts at `[18]`. Proportional to advertised memory only: no speed, no bandwidth, **and no
-   check that a shard fits its node's budget**.
+   cuts at `[18]`. Proportional to advertised memory only: no speed, no bandwidth. The split
+   is checked against the budgets, so a stage that cannot fit its node fails **here**, before
+   any worker spends ~40 s building a shard it cannot hold.
 9. Declares **one queryable per node** at `distract/assign/{node_id}`, holding that node's
    `AssignSpec { stage_index, cut_layers, backend, next_hop, model_path, n_layers }` — a
    spec, **not model bytes**.
