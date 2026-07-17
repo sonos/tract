@@ -125,9 +125,7 @@ impl EvalOp for DequantizeLinearF32 {
 
 impl TypedOp for DequantizeLinearF32 {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        let mut fact = inputs[0].clone();
-        fact.datum_type = f32::datum_type();
-        Ok(tvec!(fact))
+        Ok(tvec!(f32::datum_type().fact(inputs[0].shape.clone())))
     }
 
     fn axes_mapping(
