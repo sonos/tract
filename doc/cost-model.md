@@ -81,8 +81,8 @@ class; (2) **gathers** a class-appropriate dataset — the committed seed shapes
 small `m/k/n` densely, where kernel choice matters most; (3) **fits** with NNLS; (4)
 **validates against the currently-installed picker** — for each gathered shape it compares
 the new model's pick, the live `ops().mmm(m,k,n)` pick, and the measured oracle, and prints
-both regrets; (5) **writes** the result to a side file (provenance header: user, host, date,
-CPU, tract version+commit, validation summary) and prints a ready-to-use `mv`.
+both regrets; (5) **writes** the result to a side file (provenance header: date, CPU, tract
+version+commit, validation summary) and prints a ready-to-use `mv`.
 
 **It never overwrites in place.** Read the printed `current → new` regret, then run the `mv`
 to install. Flags: `--platform <id>` forces the target (else auto), `--size` the random-sweep
@@ -96,6 +96,11 @@ calls (an A-pool sized to twice the LLC), then sets `restream` to the slope of
 `--cold-dataset <txt>` derives it from a prior cold gather instead. Without either, `restream`
 stays `0` and the model behaves exactly as the three-term version. It is per-cohort: RAM/LLC
 bandwidth is machine-specific.
+
+Given a cold flag and no explicit `--dataset`, regen re-fits the detected platform's committed
+`.txt` for `a,b,c` instead of gathering fresh — so a bare `regen --cold-probe` **recalibrates
+`restream` in place**, leaving the shipped picks byte-identical and touching only the one
+coefficient. Only run the `_linear.rs` `mv` in that case; the emitted `.txt` is unchanged.
 
 **Seed shapes are the "model findings"** — they anchor the fit on shapes that actually occur,
 so it never has to extrapolate. A uniform random sweep alone can miss, e.g., the large-`m/k`,
@@ -133,6 +138,21 @@ on. Cross-compiled boards can't do that — split it:
    ```
 
    Commit both `cortex_<cpu>.txt` and the generated `_linear.rs`.
+
+4. **Calibrate `restream` (optional).** A board can't run the in-process cold probe (it has no
+   checkout), so gather a cold dataset with `gather --cold` over big-`A` small-`n` shapes, pull
+   it, and derive on the host — reusing the committed `.txt` for `a,b,c` so only `restream`
+   moves:
+
+   ```
+   # on the board:
+   tract cost-model gather --cold --m 256,512,768 --k 256,512,768 --n 2,4,8,13,16 --mkn 64000000 --size 45 -
+   # on the host (a,b,c from the committed dataset, restream from the cold gather):
+   tract cost-model regen --platform cortex_a53 --dataset linalg/src/arm64/cortex_a53.txt \
+       --cold-dataset cold_a53.txt --out-dir /tmp
+   ```
+
+   Install only the emitted `_linear.rs`; its `.txt` is a byte-identical re-serialization.
 
 ## Wiring a new target
 
