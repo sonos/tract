@@ -918,6 +918,7 @@ null,
 null,
 null,
 null,
+null,
 null
 ],
 "binary_size.example_tensorflow_mobilenet_v2": [
@@ -1807,6 +1808,7 @@ null,
 16160000,
 16160000,
 16160000,
+null,
 null,
 null,
 null,
@@ -2756,7 +2758,8 @@ null,
 null,
 null,
 1323,
-1319
+1319,
+1318
 ],
 "net.arm_ml_kws_cnn_m.active_at_before_optimize.pass": [
 781900,
@@ -3674,6 +3677,7 @@ null,
 null,
 null,
 null,
+828500,
 828500,
 828500
 ],
@@ -4594,6 +4598,7 @@ null,
 null,
 null,
 1567000,
+1567000,
 1567000
 ],
 "net.arm_ml_kws_cnn_m.evaltime.pass": [
@@ -5513,7 +5518,8 @@ null,
 null,
 null,
 0.003913,
-0.003777
+0.003777,
+0.00376
 ],
 "net.arm_ml_kws_cnn_m.rsz_at_before_optimize.pass": [
 18310000,
@@ -6432,7 +6438,8 @@ null,
 null,
 null,
 20760000,
-20710000
+20710000,
+19870000
 ],
 "net.arm_ml_kws_cnn_m.rsz_at_model_ready.pass": [
 23200000,
@@ -7351,7 +7358,8 @@ null,
 null,
 null,
 24480000,
-24360000
+24360000,
+23240000
 ],
 "net.arm_ml_kws_cnn_m.time_to_before_optimize.pass": [
 0.141,
@@ -8270,7 +8278,8 @@ null,
 null,
 null,
 0.108,
-0.107
+0.107,
+0.108
 ],
 "net.arm_ml_kws_cnn_m.time_to_model_ready.pass": [
 0.166,
@@ -9188,6 +9197,7 @@ null,
 null,
 null,
 null,
+0.133,
 0.133,
 0.133
 ],
@@ -10108,6 +10118,7 @@ null,
 null,
 null,
 51690000,
+51690000,
 51690000
 ],
 "net.dummy_conmer_12M.active_at_model_ready.pulse_120ms": [
@@ -11026,6 +11037,7 @@ null,
 null,
 null,
 null,
+52000000,
 52000000,
 52000000
 ],
@@ -11946,7 +11958,8 @@ null,
 null,
 null,
 0.05182,
-0.05177
+0.05177,
+0.05196
 ],
 "net.dummy_conmer_12M.rsz_at_before_optimize.pulse_120ms": [
 null,
@@ -12865,7 +12878,8 @@ null,
 null,
 null,
 80810000,
-80900000
+80900000,
+79880000
 ],
 "net.dummy_conmer_12M.rsz_at_model_ready.pulse_120ms": [
 null,
@@ -13784,7 +13798,8 @@ null,
 null,
 null,
 93330000,
-94230000
+94230000,
+92710000
 ],
 "net.dummy_conmer_12M.time_to_before_optimize.pulse_120ms": [
 null,
@@ -14703,7 +14718,8 @@ null,
 null,
 null,
 10.19,
-10.32
+10.32,
+10.15
 ],
 "net.dummy_conmer_12M.time_to_model_ready.pulse_120ms": [
 null,
@@ -15622,7 +15638,8 @@ null,
 null,
 null,
 11.26,
-11.38
+11.38,
+11.2
 ],
 "net.en_tdnn_15M.active_at_before_optimize.2600ms": [
 68740000,
@@ -16540,6 +16557,7 @@ null,
 null,
 null,
 null,
+71130000,
 71130000,
 71130000
 ],
@@ -17460,6 +17478,7 @@ null,
 null,
 null,
 71140000,
+71140000,
 71140000
 ],
 "net.en_tdnn_15M.active_at_before_optimize.pulse_240ms": [
@@ -18378,6 +18397,7 @@ null,
 null,
 null,
 null,
+71140000,
 71140000,
 71140000
 ],
@@ -19298,7 +19318,8 @@ null,
 null,
 null,
 71440000,
-71440000
+71440000,
+71400000
 ],
 "net.en_tdnn_15M.active_at_model_ready.pulse_120ms": [
 68940000,
@@ -20216,6 +20237,7 @@ null,
 null,
 null,
 null,
+71460000,
 71460000,
 71460000
 ],
@@ -21136,6 +21158,7 @@ null,
 null,
 null,
 71420000,
+71420000,
 71420000
 ],
 "net.en_tdnn_15M.evaltime.2600ms": [
@@ -22055,7 +22078,8 @@ null,
 null,
 null,
 0.9703,
-0.9706
+0.9706,
+0.93
 ],
 "net.en_tdnn_15M.evaltime.pulse_120ms": [
 0.05209,
@@ -22974,7 +22998,8 @@ null,
 null,
 null,
 0.05093,
-0.05082
+0.05082,
+0.05086
 ],
 "net.en_tdnn_15M.evaltime.pulse_240ms": [
 0.0861,
@@ -23893,7 +23918,8 @@ null,
 null,
 null,
 0.08895,
-0.08891
+0.08891,
+0.08905
 ],
 "net.en_tdnn_15M.rsz_at_before_optimize.2600ms": [
 151700000,
@@ -24812,7 +24838,8 @@ null,
 null,
 null,
 96520000,
-96420000
+96420000,
+95580000
 ],
 "net.en_tdnn_15M.rsz_at_before_optimize.pulse_120ms": [
 152100000,
@@ -25731,7 +25758,8 @@ null,
 null,
 null,
 96540000,
-96730000
+96730000,
+95880000
 ],
 "net.en_tdnn_15M.rsz_at_before_optimize.pulse_240ms": [
 151800000,
@@ -26650,7 +26678,8 @@ null,
 null,
 null,
 96890000,
-96290000
+96290000,
+95560000
 ],
 "net.en_tdnn_15M.rsz_at_model_ready.2600ms": [
 208400000,
@@ -27569,7 +27598,8 @@ null,
 null,
 null,
 112000000,
-112300000
+112300000,
+111100000
 ],
 "net.en_tdnn_15M.rsz_at_model_ready.pulse_120ms": [
 209000000,
@@ -28488,7 +28518,8 @@ null,
 null,
 null,
 113000000,
-119000000
+119000000,
+118900000
 ],
 "net.en_tdnn_15M.rsz_at_model_ready.pulse_240ms": [
 208800000,
@@ -29407,7 +29438,8 @@ null,
 null,
 null,
 114000000,
-113900000
+113900000,
+119500000
 ],
 "net.en_tdnn_15M.time_to_before_optimize.2600ms": [
 8.806,
@@ -30326,7 +30358,8 @@ null,
 null,
 null,
 7.028,
-7.018
+7.018,
+7.472
 ],
 "net.en_tdnn_15M.time_to_before_optimize.pulse_120ms": [
 8.98,
@@ -31245,7 +31278,8 @@ null,
 null,
 null,
 7.262,
-7.272
+7.272,
+7.264
 ],
 "net.en_tdnn_15M.time_to_before_optimize.pulse_240ms": [
 8.969,
@@ -32164,7 +32198,8 @@ null,
 null,
 null,
 7.299,
-7.27
+7.27,
+7.292
 ],
 "net.en_tdnn_15M.time_to_model_ready.2600ms": [
 9.137,
@@ -33083,7 +33118,8 @@ null,
 null,
 null,
 7.374,
-7.355
+7.355,
+7.789
 ],
 "net.en_tdnn_15M.time_to_model_ready.pulse_120ms": [
 9.329,
@@ -34002,7 +34038,8 @@ null,
 null,
 null,
 7.613,
-7.63
+7.63,
+7.616
 ],
 "net.en_tdnn_15M.time_to_model_ready.pulse_240ms": [
 9.29,
@@ -34921,7 +34958,8 @@ null,
 null,
 null,
 7.621,
-7.595
+7.595,
+7.615
 ],
 "net.en_tdnn_15M_nnef.active_at_before_optimize.pulse_240ms": [
 71080000,
@@ -35839,6 +35877,7 @@ null,
 null,
 null,
 null,
+71120000,
 71120000,
 71120000
 ],
@@ -36759,6 +36798,7 @@ null,
 null,
 null,
 71390000,
+71390000,
 71390000
 ],
 "net.en_tdnn_15M_nnef.evaltime.pulse_240ms": [
@@ -37678,7 +37718,8 @@ null,
 null,
 null,
 0.08786,
-0.08776
+0.08776,
+0.0878
 ],
 "net.en_tdnn_15M_nnef.rsz_at_before_optimize.pulse_240ms": [
 86760000,
@@ -38597,7 +38638,8 @@ null,
 null,
 null,
 91010000,
-90990000
+90990000,
+90460000
 ],
 "net.en_tdnn_15M_nnef.rsz_at_model_ready.pulse_240ms": [
 88850000,
@@ -39516,7 +39558,8 @@ null,
 null,
 null,
 92690000,
-92640000
+92640000,
+91680000
 ],
 "net.en_tdnn_15M_nnef.time_to_before_optimize.pulse_240ms": [
 6.324,
@@ -40435,7 +40478,8 @@ null,
 null,
 null,
 6.409,
-6.334
+6.334,
+6.42
 ],
 "net.en_tdnn_15M_nnef.time_to_model_ready.pulse_240ms": [
 6.727,
@@ -41354,7 +41398,8 @@ null,
 null,
 null,
 6.736,
-6.661
+6.661,
+6.747
 ],
 "net.en_tdnn_8M.active_at_before_optimize.2600ms": [
 31790000,
@@ -42272,6 +42317,7 @@ null,
 null,
 null,
 null,
+32870000,
 32870000,
 32870000
 ],
@@ -43192,6 +43238,7 @@ null,
 null,
 null,
 32880000,
+32880000,
 32880000
 ],
 "net.en_tdnn_8M.active_at_before_optimize.pulse_180ms": [
@@ -44110,6 +44157,7 @@ null,
 null,
 null,
 null,
+32880000,
 32880000,
 32880000
 ],
@@ -45030,6 +45078,7 @@ null,
 null,
 null,
 32880000,
+32880000,
 32880000
 ],
 "net.en_tdnn_8M.active_at_model_ready.2600ms": [
@@ -45948,6 +45997,7 @@ null,
 null,
 null,
 null,
+33290000,
 33290000,
 33290000
 ],
@@ -46868,6 +46918,7 @@ null,
 null,
 null,
 33890000,
+33890000,
 33890000
 ],
 "net.en_tdnn_8M.active_at_model_ready.pulse_180ms": [
@@ -47786,6 +47837,7 @@ null,
 null,
 null,
 null,
+33310000,
 33310000,
 33310000
 ],
@@ -48706,6 +48758,7 @@ null,
 null,
 null,
 33310000,
+33310000,
 33310000
 ],
 "net.en_tdnn_8M.evaltime.2600ms": [
@@ -49625,7 +49678,8 @@ null,
 null,
 null,
 0.4673,
-0.4664
+0.4664,
+0.4662
 ],
 "net.en_tdnn_8M.evaltime.pulse_120ms": [
 0.02714,
@@ -50544,7 +50598,8 @@ null,
 null,
 null,
 0.02703,
-0.02696
+0.02696,
+0.02695
 ],
 "net.en_tdnn_8M.evaltime.pulse_180ms": [
 0.03917,
@@ -51463,7 +51518,8 @@ null,
 null,
 null,
 0.04062,
-0.04054
+0.04054,
+0.04038
 ],
 "net.en_tdnn_8M.evaltime.pulse_240ms": [
 0.04437,
@@ -52382,7 +52438,8 @@ null,
 null,
 null,
 0.04591,
-0.04579
+0.04579,
+0.04562
 ],
 "net.en_tdnn_8M.rsz_at_before_optimize.2600ms": [
 82330000,
@@ -53301,7 +53358,8 @@ null,
 null,
 null,
 56210000,
-55890000
+55890000,
+55440000
 ],
 "net.en_tdnn_8M.rsz_at_before_optimize.pulse_120ms": [
 82390000,
@@ -54220,7 +54278,8 @@ null,
 null,
 null,
 56080000,
-56030000
+56030000,
+55530000
 ],
 "net.en_tdnn_8M.rsz_at_before_optimize.pulse_180ms": [
 83700000,
@@ -55139,7 +55198,8 @@ null,
 null,
 null,
 55890000,
-56020000
+56020000,
+55480000
 ],
 "net.en_tdnn_8M.rsz_at_before_optimize.pulse_240ms": [
 82520000,
@@ -56058,7 +56118,8 @@ null,
 null,
 null,
 56040000,
-56340000
+56340000,
+55600000
 ],
 "net.en_tdnn_8M.rsz_at_model_ready.2600ms": [
 107900000,
@@ -56977,7 +57038,8 @@ null,
 null,
 null,
 64910000,
-64500000
+64500000,
+63910000
 ],
 "net.en_tdnn_8M.rsz_at_model_ready.pulse_120ms": [
 108100000,
@@ -57896,7 +57958,8 @@ null,
 null,
 null,
 66280000,
-66080000
+66080000,
+65290000
 ],
 "net.en_tdnn_8M.rsz_at_model_ready.pulse_180ms": [
 107100000,
@@ -58815,7 +58878,8 @@ null,
 null,
 null,
 66050000,
-66260000
+66260000,
+65160000
 ],
 "net.en_tdnn_8M.rsz_at_model_ready.pulse_240ms": [
 106900000,
@@ -59734,7 +59798,8 @@ null,
 null,
 null,
 68600000,
-65980000
+65980000,
+64830000
 ],
 "net.en_tdnn_8M.time_to_before_optimize.2600ms": [
 4.565,
@@ -60653,7 +60718,8 @@ null,
 null,
 null,
 3.658,
-3.657
+3.657,
+3.664
 ],
 "net.en_tdnn_8M.time_to_before_optimize.pulse_120ms": [
 4.756,
@@ -61572,7 +61638,8 @@ null,
 null,
 null,
 4.157,
-3.907
+3.907,
+3.954
 ],
 "net.en_tdnn_8M.time_to_before_optimize.pulse_180ms": [
 4.767,
@@ -62491,7 +62558,8 @@ null,
 null,
 null,
 4.186,
-3.908
+3.908,
+3.919
 ],
 "net.en_tdnn_8M.time_to_before_optimize.pulse_240ms": [
 4.766,
@@ -63410,7 +63478,8 @@ null,
 null,
 null,
 4.001,
-3.909
+3.909,
+3.916
 ],
 "net.en_tdnn_8M.time_to_model_ready.2600ms": [
 4.756,
@@ -64329,7 +64398,8 @@ null,
 null,
 null,
 3.858,
-3.855
+3.855,
+3.861
 ],
 "net.en_tdnn_8M.time_to_model_ready.pulse_120ms": [
 4.953,
@@ -65248,7 +65318,8 @@ null,
 null,
 null,
 4.365,
-4.118
+4.118,
+4.163
 ],
 "net.en_tdnn_8M.time_to_model_ready.pulse_180ms": [
 4.955,
@@ -66167,7 +66238,8 @@ null,
 null,
 null,
 4.387,
-4.108
+4.108,
+4.118
 ],
 "net.en_tdnn_8M.time_to_model_ready.pulse_240ms": [
 4.954,
@@ -67086,7 +67158,8 @@ null,
 null,
 null,
 4.202,
-4.109
+4.109,
+4.116
 ],
 "net.en_tdnn_8M_nnef.active_at_before_optimize.pulse_240ms": [
 32820000,
@@ -68004,6 +68077,7 @@ null,
 null,
 null,
 null,
+32870000,
 32870000,
 32870000
 ],
@@ -68924,6 +68998,7 @@ null,
 null,
 null,
 33280000,
+33280000,
 33280000
 ],
 "net.en_tdnn_8M_nnef.evaltime.pulse_240ms": [
@@ -69843,7 +69918,8 @@ null,
 null,
 null,
 0.04511,
-0.04506
+0.04506,
+0.04497
 ],
 "net.en_tdnn_8M_nnef.rsz_at_before_optimize.pulse_240ms": [
 48700000,
@@ -70762,7 +70838,8 @@ null,
 null,
 null,
 52700000,
-52920000
+52920000,
+52220000
 ],
 "net.en_tdnn_8M_nnef.rsz_at_model_ready.pulse_240ms": [
 50880000,
@@ -71681,7 +71758,8 @@ null,
 null,
 null,
 56520000,
-56770000
+56770000,
+55550000
 ],
 "net.en_tdnn_8M_nnef.time_to_before_optimize.pulse_240ms": [
 3.074,
@@ -72600,7 +72678,8 @@ null,
 null,
 null,
 3.1,
-3.083
+3.083,
+3.276
 ],
 "net.en_tdnn_8M_nnef.time_to_model_ready.pulse_240ms": [
 3.294,
@@ -73519,7 +73598,8 @@ null,
 null,
 null,
 3.283,
-3.262
+3.262,
+3.453
 ],
 "net.en_tdnn_lstm_bn_q7.active_at_before_optimize.2600ms": [
 3071000,
@@ -74408,6 +74488,7 @@ null,
 3051000,
 3051000,
 3051000,
+null,
 null,
 null,
 null,
@@ -75357,6 +75438,7 @@ null,
 null,
 null,
 null,
+null,
 null
 ],
 "net.en_tdnn_lstm_bn_q7.active_at_model_ready.2600ms": [
@@ -76246,6 +76328,7 @@ null,
 3139000,
 3139000,
 3139000,
+null,
 null,
 null,
 null,
@@ -77195,6 +77278,7 @@ null,
 null,
 null,
 null,
+null,
 null
 ],
 "net.en_tdnn_lstm_bn_q7.evaltime.2600ms": [
@@ -78084,6 +78168,7 @@ null,
 0.1544,
 0.1533,
 0.1554,
+null,
 null,
 null,
 null,
@@ -79033,6 +79118,7 @@ null,
 null,
 null,
 null,
+null,
 null
 ],
 "net.en_tdnn_lstm_bn_q7.rsz_at_before_optimize.2600ms": [
@@ -79922,6 +80008,7 @@ null,
 26690000,
 26680000,
 26760000,
+null,
 null,
 null,
 null,
@@ -80871,6 +80958,7 @@ null,
 null,
 null,
 null,
+null,
 null
 ],
 "net.en_tdnn_lstm_bn_q7.rsz_at_model_ready.2600ms": [
@@ -81760,6 +81848,7 @@ null,
 28940000,
 28840000,
 28910000,
+null,
 null,
 null,
 null,
@@ -82709,6 +82798,7 @@ null,
 null,
 null,
 null,
+null,
 null
 ],
 "net.en_tdnn_lstm_bn_q7.time_to_before_optimize.2600ms": [
@@ -83598,6 +83688,7 @@ null,
 1.035,
 1.401,
 1.039,
+null,
 null,
 null,
 null,
@@ -84547,6 +84638,7 @@ null,
 null,
 null,
 null,
+null,
 null
 ],
 "net.en_tdnn_lstm_bn_q7.time_to_model_ready.2600ms": [
@@ -85436,6 +85528,7 @@ null,
 1.244,
 1.607,
 1.245,
+null,
 null,
 null,
 null,
@@ -86385,6 +86478,7 @@ null,
 null,
 null,
 null,
+null,
 null
 ],
 "net.en_tdnn_pyt_15M.active_at_before_optimize.pulse_120ms": [
@@ -87303,6 +87397,7 @@ null,
 null,
 null,
 null,
+45160000,
 45160000,
 45160000
 ],
@@ -88223,6 +88318,7 @@ null,
 null,
 null,
 45430000,
+45430000,
 45430000
 ],
 "net.en_tdnn_pyt_15M.evaltime.pulse_120ms": [
@@ -89142,6 +89238,7 @@ null,
 null,
 null,
 0.1023,
+0.1022,
 0.1022
 ],
 "net.en_tdnn_pyt_15M.rsz_at_before_optimize.pulse_120ms": [
@@ -90061,7 +90158,8 @@ null,
 null,
 null,
 74420000,
-74380000
+74380000,
+74080000
 ],
 "net.en_tdnn_pyt_15M.rsz_at_model_ready.pulse_120ms": [
 138900000,
@@ -90980,7 +91078,8 @@ null,
 null,
 null,
 79730000,
-79800000
+79800000,
+78770000
 ],
 "net.en_tdnn_pyt_15M.time_to_before_optimize.pulse_120ms": [
 5.197,
@@ -91899,7 +91998,8 @@ null,
 null,
 null,
 4.941,
-4.937
+4.937,
+4.939
 ],
 "net.en_tdnn_pyt_15M.time_to_model_ready.pulse_120ms": [
 5.541,
@@ -92818,7 +92918,8 @@ null,
 null,
 null,
 5.227,
-5.223
+5.223,
+5.221
 ],
 "net.hey_snips_v1.active_at_before_optimize.400ms": [
 1038000,
@@ -93736,6 +93837,7 @@ null,
 null,
 null,
 null,
+1073000,
 1073000,
 1073000
 ],
@@ -94656,6 +94758,7 @@ null,
 null,
 null,
 1175000,
+1175000,
 1175000
 ],
 "net.hey_snips_v1.evaltime.400ms": [
@@ -95575,7 +95678,8 @@ null,
 null,
 null,
 0.003528,
-0.003505
+0.003505,
+0.003523
 ],
 "net.hey_snips_v1.rsz_at_before_optimize.400ms": [
 16330000,
@@ -96494,7 +96598,8 @@ null,
 null,
 null,
 20610000,
-20810000
+20810000,
+20570000
 ],
 "net.hey_snips_v1.rsz_at_model_ready.400ms": [
 23550000,
@@ -97413,7 +97518,8 @@ null,
 null,
 null,
 23040000,
-23000000
+23000000,
+21250000
 ],
 "net.hey_snips_v1.time_to_before_optimize.400ms": [
 0.156,
@@ -98332,7 +98438,8 @@ null,
 null,
 null,
 0.126,
-0.126
+0.126,
+0.127
 ],
 "net.hey_snips_v1.time_to_model_ready.400ms": [
 0.179,
@@ -99251,7 +99358,8 @@ null,
 null,
 null,
 0.151,
-0.151
+0.151,
+0.153
 ],
 "net.hey_snips_v31.active_at_before_optimize.400ms": [
 874900,
@@ -100170,7 +100278,8 @@ null,
 null,
 null,
 892800,
-892800
+892800,
+892900
 ],
 "net.hey_snips_v31.active_at_model_ready.400ms": [
 922400,
@@ -101088,6 +101197,7 @@ null,
 null,
 null,
 null,
+1012000,
 1012000,
 1012000
 ],
@@ -102008,7 +102118,8 @@ null,
 null,
 null,
 0.002126,
-0.002102
+0.002102,
+0.002084
 ],
 "net.hey_snips_v31.rsz_at_before_optimize.400ms": [
 19890000,
@@ -102927,7 +103038,8 @@ null,
 null,
 null,
 21680000,
-18700000
+18700000,
+18620000
 ],
 "net.hey_snips_v31.rsz_at_model_ready.400ms": [
 22770000,
@@ -103846,7 +103958,8 @@ null,
 null,
 null,
 21770000,
-22110000
+22110000,
+18770000
 ],
 "net.hey_snips_v31.time_to_before_optimize.400ms": [
 0.295,
@@ -104765,7 +104878,8 @@ null,
 null,
 null,
 0.279,
-0.281
+0.281,
+0.283
 ],
 "net.hey_snips_v31.time_to_model_ready.400ms": [
 0.322,
@@ -105684,7 +105798,8 @@ null,
 null,
 null,
 0.308,
-0.31
+0.31,
+0.311
 ],
 "net.hey_snips_v4_model17.active_at_before_optimize.2sec": [
 1756000,
@@ -106602,6 +106717,7 @@ null,
 null,
 null,
 null,
+1716000,
 1716000,
 1716000
 ],
@@ -107522,6 +107638,7 @@ null,
 null,
 null,
 1682000,
+1682000,
 1682000
 ],
 "net.hey_snips_v4_model17.active_at_model_ready.2sec": [
@@ -108441,7 +108558,8 @@ null,
 null,
 null,
 2189000,
-2189000
+2189000,
+2192000
 ],
 "net.hey_snips_v4_model17.active_at_model_ready.pulse8": [
 1856000,
@@ -109360,7 +109478,8 @@ null,
 null,
 null,
 2138000,
-2138000
+2138000,
+2115000
 ],
 "net.hey_snips_v4_model17.evaltime.2sec": [
 0.01559,
@@ -110279,7 +110398,8 @@ null,
 null,
 null,
 0.01634,
-0.01635
+0.01635,
+0.01626
 ],
 "net.hey_snips_v4_model17.evaltime.pulse8": [
 0.002625,
@@ -111198,7 +111318,8 @@ null,
 null,
 null,
 0.00313,
-0.003159
+0.003159,
+0.003072
 ],
 "net.hey_snips_v4_model17.rsz_at_before_optimize.2sec": [
 31440000,
@@ -112117,7 +112238,8 @@ null,
 null,
 null,
 32310000,
-32460000
+32460000,
+31370000
 ],
 "net.hey_snips_v4_model17.rsz_at_before_optimize.pulse8": [
 31160000,
@@ -113036,7 +113158,8 @@ null,
 null,
 null,
 32390000,
-32460000
+32460000,
+31910000
 ],
 "net.hey_snips_v4_model17.rsz_at_model_ready.2sec": [
 31440000,
@@ -113955,7 +114078,8 @@ null,
 null,
 null,
 32550000,
-32460000
+32460000,
+31370000
 ],
 "net.hey_snips_v4_model17.rsz_at_model_ready.pulse8": [
 31160000,
@@ -114874,7 +114998,8 @@ null,
 null,
 null,
 32490000,
-32460000
+32460000,
+31910000
 ],
 "net.hey_snips_v4_model17.time_to_before_optimize.2sec": [
 2.946,
@@ -115793,7 +115918,8 @@ null,
 null,
 null,
 3.028,
-3.029
+3.029,
+3.057
 ],
 "net.hey_snips_v4_model17.time_to_before_optimize.pulse8": [
 3.402,
@@ -116712,7 +116838,8 @@ null,
 null,
 null,
 4.284,
-4.298
+4.298,
+4.278
 ],
 "net.hey_snips_v4_model17.time_to_model_ready.2sec": [
 3.281,
@@ -117631,7 +117758,8 @@ null,
 null,
 null,
 3.623,
-3.613
+3.613,
+3.63
 ],
 "net.hey_snips_v4_model17.time_to_model_ready.pulse8": [
 3.737,
@@ -118550,7 +118678,8 @@ null,
 null,
 null,
 4.89,
-4.895
+4.895,
+4.865
 ],
 "net.hey_snips_v4_model17_nnef.active_at_before_optimize.pulse8": [
 1751000,
@@ -119468,6 +119597,7 @@ null,
 null,
 null,
 null,
+1685000,
 1685000,
 1685000
 ],
@@ -120388,7 +120518,8 @@ null,
 null,
 null,
 2144000,
-2144000
+2144000,
+2120000
 ],
 "net.hey_snips_v4_model17_nnef.evaltime.pulse8": [
 0.002596,
@@ -121307,7 +121438,8 @@ null,
 null,
 null,
 0.003126,
-0.003131
+0.003131,
+0.003074
 ],
 "net.hey_snips_v4_model17_nnef.rsz_at_before_optimize.pulse8": [
 18100000,
@@ -122226,7 +122358,8 @@ null,
 null,
 null,
 23030000,
-23020000
+23020000,
+22380000
 ],
 "net.hey_snips_v4_model17_nnef.rsz_at_model_ready.pulse8": [
 23330000,
@@ -123145,7 +123278,8 @@ null,
 null,
 null,
 25720000,
-25660000
+25660000,
+24580000
 ],
 "net.hey_snips_v4_model17_nnef.time_to_before_optimize.pulse8": [
 0.576,
@@ -124064,7 +124198,8 @@ null,
 null,
 null,
 0.555,
-0.554
+0.554,
+0.556
 ],
 "net.hey_snips_v4_model17_nnef.time_to_model_ready.pulse8": [
 0.902,
@@ -124983,7 +125118,8 @@ null,
 null,
 null,
 1.092,
-1.087
+1.087,
+1.078
 ],
 "net.inceptionv1q.active_at_before_optimize.pass": [
 8503000,
@@ -125901,6 +126037,7 @@ null,
 null,
 null,
 null,
+7793000,
 7793000,
 7793000
 ],
@@ -126821,6 +126958,7 @@ null,
 null,
 null,
 9812000,
+9812000,
 9812000
 ],
 "net.inceptionv1q.evaltime.pass": [
@@ -127740,7 +127878,8 @@ null,
 null,
 null,
 0.9807,
-0.9803
+0.9803,
+0.9751
 ],
 "net.inceptionv1q.rsz_at_before_optimize.pass": [
 34280000,
@@ -128659,7 +128798,8 @@ null,
 null,
 null,
 29150000,
-29170000
+29170000,
+28330000
 ],
 "net.inceptionv1q.rsz_at_model_ready.pass": [
 73530000,
@@ -129578,7 +129718,8 @@ null,
 null,
 null,
 38970000,
-39100000
+39100000,
+37910000
 ],
 "net.inceptionv1q.time_to_before_optimize.pass": [
 0.882,
@@ -130497,7 +130638,8 @@ null,
 null,
 null,
 1.222,
-1.217
+1.217,
+1.221
 ],
 "net.inceptionv1q.time_to_model_ready.pass": [
 2.451,
@@ -131416,7 +131558,8 @@ null,
 null,
 null,
 8.22,
-8.217
+8.217,
+8.234
 ],
 "net.inceptionv3.active_at_before_optimize.pass": [
 97510000,
@@ -132334,6 +132477,7 @@ null,
 null,
 null,
 null,
+97490000,
 97490000,
 97490000
 ],
@@ -133254,7 +133398,8 @@ null,
 null,
 null,
 101400000,
-101400000
+101400000,
+101500000
 ],
 "net.inceptionv3.evaltime.pass": [
 2.446,
@@ -134173,7 +134318,8 @@ null,
 null,
 null,
 2.691,
-2.69
+2.69,
+2.682
 ],
 "net.inceptionv3.rsz_at_before_optimize.pass": [
 448500000,
@@ -135092,7 +135238,8 @@ null,
 null,
 null,
 145200000,
-145400000
+145400000,
+144300000
 ],
 "net.inceptionv3.rsz_at_model_ready.pass": [
 572600000,
@@ -136011,7 +136158,8 @@ null,
 null,
 null,
 169600000,
-170800000
+170800000,
+166700000
 ],
 "net.inceptionv3.time_to_before_optimize.pass": [
 15.62,
@@ -136930,7 +137078,8 @@ null,
 null,
 null,
 15.35,
-15.35
+15.35,
+15.39
 ],
 "net.inceptionv3.time_to_model_ready.pass": [
 17.93,
@@ -137849,7 +137998,8 @@ null,
 null,
 null,
 19.46,
-19.45
+19.45,
+19.48
 ],
 "net.mdl_en_2019_Q3_librispeech_onnx.active_at_before_optimize.2600ms": [
 9338000,
@@ -138767,6 +138917,7 @@ null,
 null,
 null,
 null,
+9629000,
 9629000,
 9629000
 ],
@@ -139687,6 +139838,7 @@ null,
 null,
 null,
 9639000,
+9639000,
 9639000
 ],
 "net.mdl_en_2019_Q3_librispeech_onnx.active_at_model_ready.2600ms": [
@@ -140605,6 +140757,7 @@ null,
 null,
 null,
 null,
+10020000,
 10020000,
 10020000
 ],
@@ -141525,6 +141678,7 @@ null,
 null,
 null,
 10030000,
+10030000,
 10030000
 ],
 "net.mdl_en_2019_Q3_librispeech_onnx.evaltime.2600ms": [
@@ -142444,7 +142598,8 @@ null,
 null,
 null,
 0.1556,
-0.1554
+0.1554,
+0.1542
 ],
 "net.mdl_en_2019_Q3_librispeech_onnx.evaltime.pulse_240ms": [
 0.01593,
@@ -143363,7 +143518,8 @@ null,
 null,
 null,
 0.01639,
-0.01639
+0.01639,
+0.0163
 ],
 "net.mdl_en_2019_Q3_librispeech_onnx.rsz_at_before_optimize.2600ms": [
 38760000,
@@ -144282,7 +144438,8 @@ null,
 null,
 null,
 33960000,
-33920000
+33920000,
+33300000
 ],
 "net.mdl_en_2019_Q3_librispeech_onnx.rsz_at_before_optimize.pulse_240ms": [
 39250000,
@@ -145201,7 +145358,8 @@ null,
 null,
 null,
 34070000,
-34100000
+34100000,
+33550000
 ],
 "net.mdl_en_2019_Q3_librispeech_onnx.rsz_at_model_ready.2600ms": [
 43910000,
@@ -146120,7 +146278,8 @@ null,
 null,
 null,
 36890000,
-36720000
+36720000,
+35540000
 ],
 "net.mdl_en_2019_Q3_librispeech_onnx.rsz_at_model_ready.pulse_240ms": [
 44980000,
@@ -147039,7 +147198,8 @@ null,
 null,
 null,
 37780000,
-37490000
+37490000,
+36230000
 ],
 "net.mdl_en_2019_Q3_librispeech_onnx.time_to_before_optimize.2600ms": [
 2.092,
@@ -147958,7 +148118,8 @@ null,
 null,
 null,
 1.607,
-1.609
+1.609,
+1.608
 ],
 "net.mdl_en_2019_Q3_librispeech_onnx.time_to_before_optimize.pulse_240ms": [
 2.288,
@@ -148877,7 +149038,8 @@ null,
 null,
 null,
 1.856,
-1.852
+1.852,
+1.896
 ],
 "net.mdl_en_2019_Q3_librispeech_onnx.time_to_model_ready.2600ms": [
 2.193,
@@ -149796,7 +149958,8 @@ null,
 null,
 null,
 1.726,
-1.729
+1.729,
+1.723
 ],
 "net.mdl_en_2019_Q3_librispeech_onnx.time_to_model_ready.pulse_240ms": [
 2.391,
@@ -150715,7 +150878,8 @@ null,
 null,
 null,
 1.974,
-1.97
+1.97,
+2.012
 ],
 "net.mobilenet_v1_1.active_at_before_optimize.pass": [
 17720000,
@@ -151633,6 +151797,7 @@ null,
 null,
 null,
 null,
+17480000,
 17480000,
 17480000
 ],
@@ -152553,6 +152718,7 @@ null,
 null,
 null,
 18080000,
+18080000,
 18080000
 ],
 "net.mobilenet_v1_1.evaltime.pass": [
@@ -153472,7 +153638,8 @@ null,
 null,
 null,
 0.4748,
-0.4777
+0.4777,
+0.4725
 ],
 "net.mobilenet_v1_1.rsz_at_before_optimize.pass": [
 152900000,
@@ -154391,7 +154558,8 @@ null,
 null,
 null,
 48990000,
-49060000
+49060000,
+48500000
 ],
 "net.mobilenet_v1_1.rsz_at_model_ready.pass": [
 78140000,
@@ -155310,7 +155478,8 @@ null,
 null,
 null,
 48990000,
-49060000
+49060000,
+48500000
 ],
 "net.mobilenet_v1_1.time_to_before_optimize.pass": [
 2.962,
@@ -156229,7 +156398,8 @@ null,
 null,
 null,
 2.34,
-2.35
+2.35,
+2.338
 ],
 "net.mobilenet_v1_1.time_to_model_ready.pass": [
 3.122,
@@ -157148,7 +157318,8 @@ null,
 null,
 null,
 2.504,
-2.51
+2.51,
+2.495
 ],
 "net.mobilenet_v2_1.active_at_before_optimize.pass": [
 25230000,
@@ -158066,6 +158237,7 @@ null,
 null,
 null,
 null,
+25190000,
 25190000,
 25190000
 ],
@@ -158986,7 +159158,8 @@ null,
 null,
 null,
 26170000,
-26170000
+26170000,
+26160000
 ],
 "net.mobilenet_v2_1.evaltime.pass": [
 0.7446,
@@ -159905,7 +160078,8 @@ null,
 null,
 null,
 0.7049,
-0.706
+0.706,
+0.7001
 ],
 "net.mobilenet_v2_1.rsz_at_before_optimize.pass": [
 210800000,
@@ -160824,7 +160998,8 @@ null,
 null,
 null,
 68640000,
-71310000
+71310000,
+68210000
 ],
 "net.mobilenet_v2_1.rsz_at_model_ready.pass": [
 76920000,
@@ -161743,7 +161918,8 @@ null,
 null,
 null,
 53660000,
-58180000
+58180000,
+53150000
 ],
 "net.mobilenet_v2_1.time_to_before_optimize.pass": [
 3.791,
@@ -162662,7 +162838,8 @@ null,
 null,
 null,
 3.332,
-3.331
+3.331,
+3.333
 ],
 "net.mobilenet_v2_1.time_to_model_ready.pass": [
 4.099,
@@ -163581,7 +163758,8 @@ null,
 null,
 null,
 3.708,
-3.695
+3.695,
+3.692
 ],
 "net.speaker_id.active_at_before_optimize.pulse8": [
 942900,
@@ -164499,6 +164677,7 @@ null,
 null,
 null,
 null,
+976100,
 976100,
 976100
 ],
@@ -165419,6 +165598,7 @@ null,
 null,
 null,
 1139000,
+1139000,
 1139000
 ],
 "net.speaker_id.evaltime.pulse8": [
@@ -166338,7 +166518,8 @@ null,
 null,
 null,
 0.001366,
-0.001348
+0.001348,
+0.001371
 ],
 "net.speaker_id.rsz_at_before_optimize.pulse8": [
 17600000,
@@ -167257,7 +167438,8 @@ null,
 null,
 null,
 21600000,
-21610000
+21610000,
+21530000
 ],
 "net.speaker_id.rsz_at_model_ready.pulse8": [
 21050000,
@@ -168176,7 +168358,8 @@ null,
 null,
 null,
 24530000,
-24580000
+24580000,
+21550000
 ],
 "net.speaker_id.time_to_before_optimize.pulse8": [
 0.29,
@@ -169094,6 +169277,7 @@ null,
 null,
 null,
 null,
+0.247,
 0.247,
 0.247
 ],
@@ -170014,7 +170198,8 @@ null,
 null,
 null,
 0.291,
-0.291
+0.291,
+0.288
 ],
 "net.trunet.active_at_before_optimize.pulse1_f16": [
 2244000,
@@ -170932,6 +171117,7 @@ null,
 null,
 null,
 null,
+2725000,
 2725000,
 2725000
 ],
@@ -171852,6 +172038,7 @@ null,
 null,
 null,
 3914000,
+3914000,
 3914000
 ],
 "net.trunet.active_at_model_ready.pulse1_f16": [
@@ -172770,6 +172957,7 @@ null,
 null,
 null,
 null,
+2489000,
 2489000,
 2489000
 ],
@@ -173690,7 +173878,8 @@ null,
 null,
 null,
 4141000,
-4141000
+4141000,
+4115000
 ],
 "net.trunet.evaltime.pulse1_f16": [
 0.1792,
@@ -174609,7 +174798,8 @@ null,
 null,
 null,
 0.01084,
-0.01084
+0.01084,
+0.0108
 ],
 "net.trunet.evaltime.pulse1_f32": [
 0.003827,
@@ -175528,7 +175718,8 @@ null,
 null,
 null,
 0.003957,
-0.003944
+0.003944,
+0.003976
 ],
 "net.trunet.rsz_at_before_optimize.pulse1_f16": [
 22520000,
@@ -176447,7 +176638,8 @@ null,
 null,
 null,
 26640000,
-26870000
+26870000,
+25650000
 ],
 "net.trunet.rsz_at_before_optimize.pulse1_f32": [
 21860000,
@@ -177366,7 +177558,8 @@ null,
 null,
 null,
 26150000,
-26700000
+26700000,
+25030000
 ],
 "net.trunet.rsz_at_model_ready.pulse1_f16": [
 22520000,
@@ -178285,7 +178478,8 @@ null,
 null,
 null,
 27560000,
-26750000
+26750000,
+25750000
 ],
 "net.trunet.rsz_at_model_ready.pulse1_f32": [
 25790000,
@@ -179204,7 +179398,8 @@ null,
 null,
 null,
 28780000,
-28880000
+28880000,
+27420000
 ],
 "net.trunet.time_to_before_optimize.pulse1_f16": [
 1.649,
@@ -180123,7 +180318,8 @@ null,
 null,
 null,
 1.863,
-1.865
+1.865,
+1.857
 ],
 "net.trunet.time_to_before_optimize.pulse1_f32": [
 1.621,
@@ -181042,7 +181238,8 @@ null,
 null,
 null,
 1.772,
-1.893
+1.893,
+1.767
 ],
 "net.trunet.time_to_model_ready.pulse1_f16": [
 1.763,
@@ -181961,7 +182158,8 @@ null,
 null,
 null,
 2.049,
-2.044
+2.044,
+2.039
 ],
 "net.trunet.time_to_model_ready.pulse1_f32": [
 1.749,
@@ -182880,7 +183078,8 @@ null,
 null,
 null,
 1.94,
-2.059
+2.059,
+1.928
 ],
 "net.voicecom_fake_quant.active_at_before_optimize.2sec": [
 2822000,
@@ -183798,6 +183997,7 @@ null,
 null,
 null,
 null,
+2822000,
 2822000,
 2822000
 ],
@@ -184718,6 +184918,7 @@ null,
 null,
 null,
 3180000,
+3180000,
 3180000
 ],
 "net.voicecom_fake_quant.evaltime.2sec": [
@@ -185637,7 +185838,8 @@ null,
 null,
 null,
 0.07481,
-0.07536
+0.07536,
+0.0742
 ],
 "net.voicecom_fake_quant.rsz_at_before_optimize.2sec": [
 29260000,
@@ -186556,7 +186758,8 @@ null,
 null,
 null,
 23800000,
-23640000
+23640000,
+23130000
 ],
 "net.voicecom_fake_quant.rsz_at_model_ready.2sec": [
 40870000,
@@ -187475,7 +187678,8 @@ null,
 null,
 null,
 33600000,
-33630000
+33630000,
+32970000
 ],
 "net.voicecom_fake_quant.time_to_before_optimize.2sec": [
 0.482,
@@ -188394,7 +188598,8 @@ null,
 null,
 null,
 0.378,
-0.379
+0.379,
+0.381
 ],
 "net.voicecom_fake_quant.time_to_model_ready.2sec": [
 0.568,
@@ -189313,7 +189518,8 @@ null,
 null,
 null,
 0.461,
-0.461
+0.461,
+0.462
 ],
 "net.voicecom_float.active_at_before_optimize.2sec": [
 2604000,
@@ -190231,6 +190437,7 @@ null,
 null,
 null,
 null,
+2642000,
 2642000,
 2642000
 ],
@@ -191151,7 +191358,8 @@ null,
 null,
 null,
 3004000,
-3004000
+3004000,
+3003000
 ],
 "net.voicecom_float.evaltime.2sec": [
 0.06919,
@@ -192070,7 +192278,8 @@ null,
 null,
 null,
 0.07007,
-0.07102
+0.07102,
+0.07106
 ],
 "net.voicecom_float.rsz_at_before_optimize.2sec": [
 27100000,
@@ -192989,7 +193198,8 @@ null,
 null,
 null,
 24610000,
-24550000
+24550000,
+24140000
 ],
 "net.voicecom_float.rsz_at_model_ready.2sec": [
 39390000,
@@ -193908,7 +194118,8 @@ null,
 null,
 null,
 32350000,
-31930000
+31930000,
+31400000
 ],
 "net.voicecom_float.time_to_before_optimize.2sec": [
 0.403,
@@ -194827,6 +195038,7 @@ null,
 null,
 null,
 0.313,
+0.314,
 0.314
 ],
 "net.voicecom_float.time_to_model_ready.2sec": [
@@ -195746,7 +195958,8 @@ null,
 null,
 null,
 0.382,
-0.382
+0.382,
+0.381
 ]
 }
 }
