@@ -7,6 +7,7 @@
 //! bundle (model fetch, governor pinning, scraping) with one cross-built binary.
 
 use crate::bench_common::higher_better;
+use clap::{Args, FromArgMatches};
 use serde::Deserialize;
 use std::collections::{BTreeMap, HashMap};
 use std::io::Write;
@@ -538,6 +539,79 @@ fn write_metrics(path: &str, metrics: &[(String, f64)]) -> TractResult<()> {
     for (k, v) in metrics {
         writeln!(file, "{k} {v}")?;
     }
+    Ok(())
+}
+
+fn read_metrics(path: &str) -> TractResult<HashMap<String, f64>> {
+    let mut m = HashMap::new();
+    for line in std::fs::read_to_string(path)?.lines() {
+        let mut it = line.split_whitespace();
+        if let (Some(k), Some(Ok(v))) = (it.next(), it.next().map(str::parse::<f64>)) {
+            m.insert(k.to_string(), v);
+        }
+    }
+    ensure!(!m.is_empty(), "no `key value` metrics in {path}");
+    Ok(m)
+}
+
+/// Compare two `bench-suite --output` metrics files, printing B's per-metric delta vs A.
+#[derive(clap::Args)]
+struct DiffArgs {
+    /// Baseline metrics file (from `bench-suite --output`)
+    #[arg(long)]
+    a: String,
+    /// Candidate metrics file
+    #[arg(long)]
+    b: String,
+    /// Only compare metrics whose name contains this substring
+    #[arg(long, default_value = "evaltime")]
+    metric: String,
+    /// Flag moves beyond this percent
+    #[arg(long, default_value_t = 2.0)]
+    threshold: f64,
+}
+
+pub fn diff_command() -> clap::Command {
+    DiffArgs::augment_args(clap::Command::new("bench-diff").long_about(
+        "Compare two bench-suite metrics files and print the per-metric delta of B vs A.",
+    ))
+}
+
+/// Print B's per-metric delta vs A, worst-regression-first, filtered to names containing
+/// `--metric` (default `evaltime`) and flagging moves beyond `--threshold` percent. A pure
+/// two-file diff — no bench-data history, for local A/B on a machine CI does not bench.
+pub fn diff(matches: &clap::ArgMatches) -> TractResult<()> {
+    let args = DiffArgs::from_arg_matches(matches)?;
+    let a = read_metrics(&args.a)?;
+    let b = read_metrics(&args.b)?;
+    let (needle, threshold) = (&args.metric, args.threshold);
+
+    let mut rows: Vec<(f64, &str, f64, f64)> = a
+        .iter()
+        .filter(|(k, _)| k.contains(needle))
+        .filter_map(|(k, &va)| {
+            let vb = *b.get(k)?;
+            let d = if va != 0.0 { (vb - va) / va * 100.0 } else { 0.0 };
+            Some((d, k.as_str(), va, vb))
+        })
+        .collect();
+    rows.sort_by(|x, y| y.0.total_cmp(&x.0));
+
+    println!("# {needle}  A -> B   (+ = B slower)");
+    let (mut reds, mut greens) = (0, 0);
+    for (d, k, va, vb) in &rows {
+        let mark = if *d > threshold {
+            reds += 1;
+            "🔴"
+        } else if *d < -threshold {
+            greens += 1;
+            "🟢"
+        } else {
+            "  "
+        };
+        println!("{mark} {d:+7.1}%  {k:<55} {va:>11.4} -> {vb:.4}");
+    }
+    println!("\n{reds} regression(s) >{threshold}%, {greens} improvement(s) >{threshold}%");
     Ok(())
 }
 

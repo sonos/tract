@@ -297,6 +297,7 @@ fn main() -> TractResult<()> {
                 .arg(arg!(--device <DEVICE> "Device key"))
                 .arg(arg!(--day [DATE] "Run day YYYY-MM-DD (default: today)")),
         );
+        app = app.subcommand(bench_suite::diff_command());
         app = app.subcommand(
             clap::Command::new("bench-report")
                 .long_about("Render the PR-vs-main bench comparison comment + job summary.")
@@ -835,6 +836,8 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
         Some(("bench-append", m)) => return bench_append::handle(m),
         #[cfg(feature = "bench-suite")]
         Some(("bench-expectations", m)) => return bench_expectations::handle(m),
+        #[cfg(feature = "bench-suite")]
+        Some(("bench-diff", m)) => return bench_suite::diff(m),
         #[cfg(feature = "bench-suite")]
         Some(("bench-report", m)) => return bench_report::handle(m),
         Some(("kernels", _)) => {
