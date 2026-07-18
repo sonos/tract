@@ -10,6 +10,11 @@ on:
   schedule:
     - cron: '0 4 * * *'   # after large-models (3am) so they don't fight for the self-hosted boxes
   workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "Optional PR number to bench (from fork ok). Leave empty to run on selected branch."
+        required: false
+        type: number
   pull_request:
     paths-ignore:
       - '**/*.md'
@@ -20,8 +25,8 @@ permissions:
 
 concurrency:
   # cancel superseded PR pushes (escape hatch); nightly keys on run_id so it never cancels
-  group: bench-${{ github.event.pull_request.number || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: bench-${{ github.event.pull_request.number || github.event.inputs.pr_number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event.inputs.pr_number != '' }}
 
 jobs:
   prepare:
@@ -30,19 +35,55 @@ jobs:
       enabled: ${{ steps.gate.outputs.enabled }}
       ref: ${{ steps.gate.outputs.ref }}
       day: ${{ steps.gate.outputs.day }}
+      pr_number: ${{ steps.gate.outputs.pr_number }}
+      is_pr: ${{ steps.gate.outputs.is_pr }}
+      same_repo: ${{ steps.gate.outputs.same_repo }}
     steps:
+      # Resolves this run's target ref and whether it should behave like a PR run
+      # (compare + comment) or a reference run (append to bench-data): a manual
+      # `/ci bench` dispatch on a PR must be treated as a PR run even though its
+      # event_name is workflow_dispatch, or its numbers would get pushed to
+      # bench-data as if it were a nightly/main reference point.
       - id: gate
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           BENCH_ENABLED: ${{ vars.BENCH_ENABLED }}
-        run: |
-          if [ "$BENCH_ENABLED" = "false" ]; then
-            echo "::notice::bench disabled via BENCH_ENABLED repo variable"
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "enabled=true" >> "$GITHUB_OUTPUT"
-          fi
-          echo "ref=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
-          echo "day=$(date -u +%F)" >> "$GITHUB_OUTPUT"
+        with:
+          script: |
+            if (process.env.BENCH_ENABLED === 'false') {
+              core.notice('bench disabled via BENCH_ENABLED repo variable');
+              core.setOutput('enabled', 'false');
+            } else {
+              core.setOutput('enabled', 'true');
+            }
+            core.setOutput('day', new Date().toISOString().slice(0, 10));
+
+            const baseRepo = `${context.repo.owner}/${context.repo.repo}`;
+            if (context.eventName === 'pull_request') {
+              const pr = context.payload.pull_request;
+              core.setOutput('is_pr', 'true');
+              core.setOutput('pr_number', String(pr.number));
+              core.setOutput('same_repo', String(pr.head.repo.full_name === baseRepo));
+              core.setOutput('ref', pr.head.sha);
+              return;
+            }
+            const prInput = context.payload.inputs?.pr_number;
+            if (!prInput) {
+              core.setOutput('is_pr', 'false');
+              core.setOutput('pr_number', '');
+              core.setOutput('same_repo', 'true');
+              core.setOutput('ref', process.env.GITHUB_SHA);
+              return;
+            }
+            const pr = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: Number(prInput),
+            });
+            core.setOutput('is_pr', 'true');
+            core.setOutput('pr_number', String(prInput));
+            core.setOutput('same_repo', String(pr.data.head.repo.full_name === baseRepo));
+            core.setOutput('ref', pr.data.head.sha);
 
   build:
     needs: prepare
@@ -143,12 +184,12 @@ jobs:
             --bench-data bench-ref \
             --thresholds .travis/bench-thresholds.toml \
             --triple "$TRIPLE" --device "$DEVICE" \
-            ${{ github.event_name != 'pull_request' && '--samples 5' || '' }} \
+            ${{ needs.prepare.outputs.is_pr != 'true' && '--samples 5' || '' }} \
             ${{ matrix.bench_args }}        # produces ./metrics
 
       # --- nightly / dispatch: append the row to bench-data ---
       - name: Checkout bench-data
-        if: github.event_name != 'pull_request'
+        if: needs.prepare.outputs.is_pr != 'true'
         # zizmor: ignore[artipacked] credentials are needed to push the row back to
         # bench-data; this checkout is never uploaded as an artifact.
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -157,7 +198,7 @@ jobs:
           path: bench-data
           fetch-depth: 1
       - name: Append and push
-        if: github.event_name != 'pull_request'
+        if: needs.prepare.outputs.is_pr != 'true'
         env:
           DEVICE: ${{ matrix.target }}
           TRIPLE: ${{ matrix.triple }}
@@ -180,7 +221,7 @@ jobs:
 
       # --- PR: emit this device's result for the fan-in report job ---
       - name: Stage PR result
-        if: github.event_name == 'pull_request'
+        if: needs.prepare.outputs.is_pr == 'true'
         env:
           DEVICE: ${{ matrix.target }}
           TRIPLE: ${{ matrix.triple }}
@@ -189,7 +230,7 @@ jobs:
           cp metrics result/metrics
           printf '{"device":"%s","triple":"%s"}\n' "$DEVICE" "$TRIPLE" > result/meta.json
       - name: Upload PR result
-        if: github.event_name == 'pull_request'
+        if: needs.prepare.outputs.is_pr == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: bench-result-${{ matrix.target }}
@@ -277,7 +318,7 @@ jobs:
           DINGHY_TARGET: ${{ matrix.dinghy_target }}
           DEVICE: ${{ matrix.device }}
           TRIPLE: ${{ matrix.triple }}
-          SAMPLES: ${{ github.event_name != 'pull_request' && '--samples 5' || '' }}
+          SAMPLES: ${{ needs.prepare.outputs.is_pr != 'true' && '--samples 5' || '' }}
         run: |
           chmod +x tract-cli/tract
           mkdir -p result
@@ -314,7 +355,7 @@ jobs:
     # always() (like the report job) so a cancelled/failed device leg (e.g. one board that
     # timed out) still lets the boards that did finish append; each leg no-ops when its own
     # result artifact is absent.
-    if: ${{ always() && github.event_name != 'pull_request' && needs.prepare.outputs.enabled == 'true' && vars.BENCH_DINGHY_ENABLED == 'true' }}
+    if: ${{ always() && needs.prepare.outputs.is_pr != 'true' && needs.prepare.outputs.enabled == 'true' && vars.BENCH_DINGHY_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -377,7 +418,7 @@ jobs:
     needs: [ prepare, build, bench, bench-dinghy ]
     # always() (not !cancelled()) so a cancelled/failed device leg still reports from the rest;
     # bench-report writes no file with nothing to compare, so a fully-cancelled run posts nothing.
-    if: ${{ always() && github.event_name == 'pull_request' && needs.prepare.outputs.enabled == 'true' }}
+    if: ${{ always() && needs.prepare.outputs.is_pr == 'true' && needs.prepare.outputs.enabled == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -409,14 +450,16 @@ jobs:
           chmod +x tract-cli/tract
           tract-cli/tract bench-report --results results --bench-data bench-data \
             --thresholds .travis/bench-thresholds.toml --pr-sha "$PR_SHA" --out pr-comment.md
-      # Same-repo PRs have a write token: post directly here. A fresh comment per run (like the
-      # fork trampoline) so the PR thread keeps the full history in chronological order instead
-      # of overwriting the previous result.
-      - name: Comment on PR (same-repo)
-        if: ${{ hashFiles('pr-comment.md') != '' && github.event.pull_request.head.repo.full_name == github.repository }}
+      # Only an automatic `pull_request` event on a fork gets a read-only token; every other
+      # trigger (same-repo pull_request, or any workflow_dispatch — including /ci bench,
+      # which always runs with a write token regardless of the target PR's fork status) can
+      # post directly. A fresh comment per run (like the fork trampoline) so the PR thread
+      # keeps the full history in chronological order instead of overwriting the previous result.
+      - name: Comment on PR (direct)
+        if: ${{ hashFiles('pr-comment.md') != '' && (github.event_name != 'pull_request' || needs.prepare.outputs.same_repo == 'true') }}
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_NUMBER: ${{ needs.prepare.outputs.pr_number }}
         with:
           script: |
             const fs = require('fs');
@@ -425,12 +468,13 @@ jobs:
             await github.rest.issues.createComment({
               owner: context.repo.owner, repo: context.repo.repo, issue_number, body,
             });
-      # Fork PRs get a read-only token and can't comment, so hand the rendered comment + target PR
-      # to the bench-comment trampoline (workflow_run, base context, write token) to post instead.
+      # Fork PRs on the automatic pull_request event get a read-only token and can't comment,
+      # so hand the rendered comment + target PR to the bench-comment trampoline (workflow_run,
+      # base context, write token) to post instead.
       - name: Stage comment for the trampoline (fork PRs)
-        if: ${{ hashFiles('pr-comment.md') != '' && github.event.pull_request.head.repo.full_name != github.repository }}
+        if: ${{ hashFiles('pr-comment.md') != '' && github.event_name == 'pull_request' && needs.prepare.outputs.same_repo != 'true' }}
         env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_NUMBER: ${{ needs.prepare.outputs.pr_number }}
         run: |
           mkdir -p bench-comment
           mv pr-comment.md bench-comment/

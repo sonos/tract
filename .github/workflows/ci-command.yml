@@ -8,6 +8,10 @@ name: CI slash command
 #   /ci wheels         -> Python wheels            (wheels.yml)
 #   /ci python         -> alias of wheels
 #   /ci py             -> alias of wheels
+#   /ci examples       -> Examples                 (examples.yml)
+#   /ci ex             -> alias of examples
+#   /ci bench          -> Bench                    (bench.yml)
+#   /ci benches        -> alias of bench
 # Only commenters with write access can trigger (enforced by slash-command-dispatch).
 
 on:
@@ -54,13 +58,17 @@ jobs:
               'wheels': 'wheels.yml',
               'python': 'wheels.yml',
               'py': 'wheels.yml',
+              'examples': 'examples.yml',
+              'ex': 'examples.yml',
+              'bench': 'bench.yml',
+              'benches': 'bench.yml',
             };
             const workflow = map[target];
             if (!workflow) {
               const usage = [
                 `Unknown \`/ci\` target: \`${target || '(none)'}\`.`,
                 '',
-                'Usage: `/ci full`, `/ci large-models` (aliases: `large`, `llm`), or `/ci wheels` (aliases: `python`, `py`).',
+                'Usage: `/ci full`, `/ci large-models` (aliases: `large`, `llm`), `/ci wheels` (aliases: `python`, `py`), `/ci examples` (alias: `ex`), or `/ci bench` (alias: `benches`).',
               ].join('\n');
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
