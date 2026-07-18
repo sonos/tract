@@ -473,10 +473,15 @@ pub fn plug_avx512f(ops: &mut Ops) {
 
     let impls = ops.mmm_impls.clone();
     ops.mmv_f32 = match super::vendor() {
+        // n==1: below the widest matvec kernel's mr (128) the cost model picks a better-fitting
+        // kernel (16x1/32x1); at or above it the 128x1 is already optimal, so keep it.
         super::Vendor::Intel => {
             let mdl = super::intel_avx512_mmv_linear::linear_model();
             let impls = impls.clone();
-            Box::new(move |m, k| mdl.pick(&impls, m, k, Some(1)))
+            Box::new(move |m, k| match m {
+                Some(m) if m < 128 => mdl.pick(&impls, Some(m), k, Some(1)),
+                _ => avx512_mmm_f32_128x1.mmm(),
+            })
         }
         // amd has no n=1-calibrated mmv model yet; keep the fixed matvec dispatch.
         _ => Box::new(|m, _k| match m {

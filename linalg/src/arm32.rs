@@ -55,22 +55,27 @@ pub fn plug(ops: &mut Ops) {
             armv7neon_mmm_f32_8x6_cortexa9.mmm(),
             armv7neon_mmm_f32_8x4_generic.mmm(),
             armv7neon_mmm_f32_8x6_generic.mmm(),
-            armv7neon_mmm_f32_32x1_cortexa7.mmm(),
-            armv7neon_mmm_f32_32x1_cortexa9.mmm(),
-            armv7neon_mmm_f32_32x1_generic.mmm(),
-            armv7neon_mmm_f32_8x1_generic.mmm(),
             crate::generic::mmm::generic_f32_4x4.mmm(),
         ];
+        // The mmv model picks over the full pool (it needs the nr==1 matvec kernels, which the
+        // mmm cost_managed pool omits); consulted only for small m (see arm64 for the rationale).
+        let mmv_impls = ops.mmm_impls.clone();
         ops.mmv_f32 = match cpu {
             0xc07 => {
                 let model = cortex_a7_mmv_linear::linear_model();
-                let impls = cost_managed_impls.clone();
-                Box::new(move |m, k| model.pick(&impls, m, k, Some(1)))
+                let impls = mmv_impls.clone();
+                Box::new(move |m, k| match m {
+                    Some(m) if m < 32 => model.pick(&impls, Some(m), k, Some(1)),
+                    _ => armv7neon::armv7neon_mmm_f32_32x1_cortexa7.mmm(),
+                })
             }
             0xc09 => {
                 let model = cortex_a9_mmv_linear::linear_model();
-                let impls = cost_managed_impls.clone();
-                Box::new(move |m, k| model.pick(&impls, m, k, Some(1)))
+                let impls = mmv_impls.clone();
+                Box::new(move |m, k| match m {
+                    Some(m) if m < 32 => model.pick(&impls, Some(m), k, Some(1)),
+                    _ => armv7neon::armv7neon_mmm_f32_32x1_cortexa9.mmm(),
+                })
             }
             _ => Box::new(|_, _| armv7neon::armv7neon_mmm_f32_32x1_generic.mmm()),
         };
