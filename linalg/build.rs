@@ -141,6 +141,37 @@ fn compiler_supports_sve() -> bool {
         .is_ok()
 }
 
+// Probe which `-march` spelling this C compiler accepts for the SVE f16 kernels.
+// Native FP16 arithmetic is spelled `+fp16` by GCC's aarch64 backend but
+// `+fullfp16` by LLVM/clang — and therefore by `zig cc`, which cargo-zigbuild
+// drives to cross-compile the *-musl targets. Hardcoding `+fp16` makes the whole
+// crate fail to build under zig cc with "unknown CPU feature: 'fp16'". Trying the
+// spellings in turn keeps the f16 kernels building under either toolchain with
+// identical codegen; if neither is accepted we return None and the caller skips
+// the f16 kernels (and the `tract_sve_fp16` cfg), leaving the +sve-only f32/i32
+// kernels intact. The `-march` string is rejected during the compiler's target
+// parse, before codegen, so the base-SVE probe source is enough to discriminate
+// an accepted spelling from a rejected one.
+fn compiler_sve_fp16_flag() -> Option<String> {
+    let out_dir = path::PathBuf::from(var("OUT_DIR"));
+    let probe = out_dir.join("sve_fp16_probe.c");
+    fs::write(&probe, "#include <arm_sve.h>\nint p(void){ return (int)svcnth(); }\n").unwrap();
+    ["-march=armv8.2-a+sve+fp16", "-march=armv8.2-a+sve+fullfp16"]
+        .into_iter()
+        .enumerate()
+        .find(|(i, march)| {
+            cc::Build::new()
+                .file(&probe)
+                .flag(march)
+                .cargo_metadata(false)
+                .cargo_warnings(false)
+                .warnings(false)
+                .try_compile(&format!("tract_sve_fp16_probe_{i}"))
+                .is_ok()
+        })
+        .map(|(_, march)| march.to_string())
+}
+
 fn jump_table() -> Vec<String> {
     println!("cargo:rerun-if-changed=src/frame/mmm/fuse.rs");
     std::fs::read_to_string("src/frame/mmm/fuse.rs")
@@ -210,6 +241,9 @@ fn main() {
     println!("cargo:rustc-check-cfg=cfg(tract_sme)");
     // Set below only when include_sve() and the SVE compiler probe both pass.
     println!("cargo:rustc-check-cfg=cfg(tract_sve)");
+    // Set below only when, in addition, the SVE f16 kernels find an accepted
+    // -march spelling for native FP16 (see compiler_sve_fp16_flag).
+    println!("cargo:rustc-check-cfg=cfg(tract_sve_fp16)");
     // Set below only when the aarch64 assembler probe for `sdot` passes.
     println!("cargo:rustc-check-cfg=cfg(tract_arm64_dotprod)");
     // Set below only when the x86_64 assembler probe for vpdpbusd ymm passes.
@@ -436,15 +470,24 @@ fn main() {
                     .file("arm64/sve/sve_rms_norm.c")
                     .flag("-march=armv8.2-a+sve")
                     .compile("tract_sve_kernels");
-                // f16 kernels need native FP16 arithmetic (+fp16); compiled
-                // separately so the +sve-only kernels above never gain fp16
-                // codegen. Runtime-gated on has_fp16() as well as SVE2.
-                cc::Build::new()
-                    .file("arm64/sve/sve_mmm_f16.c")
-                    .file("arm64/sve/sve_mmv_f16_64x1.c")
-                    .flag("-march=armv8.2-a+sve+fp16")
-                    .compile("tract_sve_f16_kernels");
                 println!("cargo:rustc-cfg=tract_sve");
+                // f16 kernels need native FP16 arithmetic; the -march spelling
+                // for it differs by toolchain (+fp16 on GCC, +fullfp16 on
+                // LLVM/zig cc), so probe for an accepted flag rather than
+                // hardcoding one — otherwise the crate fails to build under
+                // cargo-zigbuild for *-musl. Compiled separately so the
+                // +sve-only kernels above never gain fp16 codegen. When no
+                // spelling is accepted the f16 kernels (and tract_sve_fp16) are
+                // skipped and the f32/i32 SVE kernels still stand.
+                // Runtime-gated on has_fp16() as well as SVE2.
+                if let Some(fp16_march) = compiler_sve_fp16_flag() {
+                    cc::Build::new()
+                        .file("arm64/sve/sve_mmm_f16.c")
+                        .file("arm64/sve/sve_mmv_f16_64x1.c")
+                        .flag(&fp16_march)
+                        .compile("tract_sve_f16_kernels");
+                    println!("cargo:rustc-cfg=tract_sve_fp16");
+                }
             }
             if std::env::var("CARGO_FEATURE_NO_FP16").is_err() {
                 let config =
