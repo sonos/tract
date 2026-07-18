@@ -11,7 +11,7 @@ use crate::mmm::*;
 use crate::pack::PackedFormat;
 // Explicit import so `f16` is tract's half::f16 (LADatum), not rustc's builtin
 // primitive f16 — a glob import would not shadow the primitive.
-#[cfg(tract_sve)]
+#[cfg(tract_sve_fp16)]
 use tract_data::prelude::f16;
 
 // f32 SVE kernel can't do LeakyRelu or the i32 quantization ops (matches the
@@ -38,7 +38,7 @@ const CAN_FUSE_I32: fn(&FusedSpec) -> bool = |f| !matches!(f, FusedSpec::LeakyRe
 const SVE2: fn() -> bool = has_sve2;
 
 // The f16 kernels need FEAT_SVE2 AND FEAT_FP16 (native f16 arithmetic).
-#[cfg(tract_sve)]
+#[cfg(tract_sve_fp16)]
 const SVE2_FP16: fn() -> bool = || has_sve2() && crate::arm64::has_fp16();
 
 // The VLA SVE f32 GEMM kernel, implemented in C (arm64/sve/sve_mmm_f32.c) since
@@ -47,13 +47,16 @@ const SVE2_FP16: fn() -> bool = || has_sve2() && crate::arm64::has_fp16();
 #[cfg(tract_sve)]
 mod sve_sys {
     use crate::frame::mmm::FusedKerSpec;
+    #[cfg(tract_sve_fp16)]
     use tract_data::prelude::f16;
     unsafe extern "C" {
         pub fn sve_mmm_f32_kernel(ops: *const FusedKerSpec<f32>) -> isize;
         pub fn sve_mmv_f32_64x1_kernel(ops: *const FusedKerSpec<f32>) -> isize;
         pub fn sve_mmm_i32_kernel(ops: *const FusedKerSpec<i32>) -> isize;
         pub fn sve_mmm_i32_64x1_kernel(ops: *const FusedKerSpec<i32>) -> isize;
+        #[cfg(tract_sve_fp16)]
         pub fn sve_mmm_f16_kernel(ops: *const FusedKerSpec<f16>) -> isize;
+        #[cfg(tract_sve_fp16)]
         pub fn sve_mmv_f16_64x1_kernel(ops: *const FusedKerSpec<f16>) -> isize;
         // VLA SVE2 fused row-wise RmsNorm (arm64/sve/sve_rms_norm.c). Plugged
         // into Ops::rms_norm_f32 when FEAT_SVE2 is present, overriding the
@@ -121,7 +124,7 @@ MMMRustKernel!(sve_sys::sve_mmm_i32_64x1_kernel => sve_mmm_i32_64x1<i32>(64, 1)
 
 // The VLA SVE f16 GEMM kernel (arm64/sve/sve_mmm_f16.c), native f16 FMA, gated on
 // SVE2 + FP16. Wired to ops.mmm_f16 when has_fp16().
-#[cfg(tract_sve)]
+#[cfg(tract_sve_fp16)]
 MMMRustKernel!(sve_sys::sve_mmm_f16_kernel => sve_mmm_f16_8x8<f16>(8, 8)
     where(SVE2_FP16)
     can_fuse(CAN_FUSE)
@@ -130,7 +133,7 @@ MMMRustKernel!(sve_sys::sve_mmm_f16_kernel => sve_mmm_f16_8x8<f16>(8, 8)
 
 // The VLA SVE f16 GEMV kernel (arm64/sve/sve_mmv_f16_64x1.c), MR=64 NR=1,
 // dispatched when N == 1. Wired to ops.mmv_f16 when has_fp16().
-#[cfg(tract_sve)]
+#[cfg(tract_sve_fp16)]
 MMMRustKernel!(sve_sys::sve_mmv_f16_64x1_kernel => sve_mmv_f16_64x1<f16>(64, 1)
     where(SVE2_FP16)
     can_fuse(CAN_FUSE)
@@ -232,7 +235,10 @@ pub fn plug(ops: &mut Ops) {
                 sve_mmm_i32_8x8.mmm(),
                 sve_mmm_i32_64x1.mmm(),
             ]);
-            // f16 kernels additionally require FEAT_FP16.
+            // f16 kernels additionally require FEAT_FP16 — and are only compiled
+            // when build.rs found an accepted +fp16/+fullfp16 -march spelling
+            // (tract_sve_fp16), so gate the dispatch on that too.
+            #[cfg(tract_sve_fp16)]
             if crate::arm64::has_fp16() {
                 ops.mmm_f16 = Box::new(|_, _, _| sve_mmm_f16_8x8.mmm());
                 ops.mmv_f16 = Box::new(|_, _| sve_mmv_f16_64x1.mmm());
