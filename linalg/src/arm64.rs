@@ -415,16 +415,25 @@ pub fn plug(ops: &mut Ops) {
     }
     ops.qmmv_i32 = Box::new(|_, _| arm64simd_mmm_i32_64x1.mmm());
     let impls = ops.mmm_impls.clone();
+    // n==1: below the fixed kernel's mr, a narrower/better-fitting kernel wins (the 64x1 pays
+    // full mr-padding), so consult the cost model; at or above mr the fixed 64x1 is already
+    // optimal and the model only second-guesses it into knife-edge mispicks, so keep it.
     ops.mmv_f32 = match *KIND {
         Kind::CortexA53 => {
             let model = cortex_a53_mmv_linear::linear_model();
             let impls = impls.clone();
-            Box::new(move |m, k| model.pick(&impls, m, k, Some(1)))
+            Box::new(move |m, k| match m {
+                Some(m) if m < 64 => model.pick(&impls, Some(m), k, Some(1)),
+                _ => arm64simd_mmm_f32_64x1_a53.mmm(),
+            })
         }
         Kind::CortexA55 => {
             let model = cortex_a55_mmv_linear::linear_model();
             let impls = impls.clone();
-            Box::new(move |m, k| model.pick(&impls, m, k, Some(1)))
+            Box::new(move |m, k| match m {
+                Some(m) if m < 64 => model.pick(&impls, Some(m), k, Some(1)),
+                _ => arm64simd_mmm_f32_64x1_a55.mmm(),
+            })
         }
         _ => Box::new(|_, _| arm64simd_mmm_f32_64x1_gen.mmm()),
     };
