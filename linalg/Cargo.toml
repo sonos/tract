@@ -104,6 +104,10 @@ name = "sigmoid"
 harness = false
 
 [[bench]]
+name = "sigmoid_f16_arm64"
+harness = false
+
+[[bench]]
 name = "softmax"
 harness = false
 
