@@ -312,6 +312,10 @@ Windows ABI:
 {{L}}add_unicast:
     mov     r10,    [rdi + 8]           // c ptr
     mov     rsi,    [rdi + 16]          // row stride
+    mov     r11,    [rdi + 32]          // item size
+
+    cmp     r11, 2
+    je      {{L}}add_unicast_f16
 
 	cmp rsi, 4
 	jne {{L}}add_unicast_generic
@@ -321,7 +325,25 @@ Windows ABI:
     {% endfor %}
     jmp    {{L}}non_linear_loop
 
+{{L}}add_unicast_f16:
+    cmp     rsi, 2
+    jne     {{L}}add_unicast_generic_f16
 
+    {% for row in range(0, 4) %}
+        vcvtph2ps   ymm12, [ r10 + {{ row * 16 }} ]
+        vaddps      ymm{{row}}, ymm{{row}}, ymm12
+    {% endfor %}
+    jmp    {{L}}non_linear_loop
+
+{{L}}add_unicast_generic_f16:
+    {% for vec in range(0, 4) %}
+    {% for lane in range(0, 8) %}
+        vpinsrw     xmm12, xmm12, word ptr [ r10 ], {{lane}}
+        add         r10, rsi
+    {% endfor %}
+        vcvtph2ps   ymm12, xmm12
+        vaddps      ymm{{vec}}, ymm{{vec}}, ymm12
+    {% endfor %}
     jmp    {{L}}non_linear_loop
 
 {{L}}add_unicast_generic:

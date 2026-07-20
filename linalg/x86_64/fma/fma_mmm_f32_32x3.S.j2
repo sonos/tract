@@ -200,6 +200,10 @@ Windows ABI:
     mov     r8,    [rdi + 8]           // c ptr
     mov     rsi,    [rdi + 16]          // row stride
     mov     rbx,    [rdi + 24]          // col stride
+    mov     rax,    [rdi + 32]          // item size
+
+    cmp     rax, 2
+    je      {{L}}add_unicast_f16
 
     cmp     rsi, 4
     jne     {{L}}unicast_generic
@@ -213,6 +217,40 @@ Windows ABI:
         vmovups     ymm12, [ r{{ col + 8 }} ]
         add         r{{ col + 8 }}, 32
         vaddps      ymm{{ col * 4 + row }}, ymm{{ col * 4 + row }}, ymm12
+    {% endfor %}
+{% endfor %}
+
+    jmp    {{L}}non_linear_loop
+
+{{L}}add_unicast_f16:
+    cmp     rsi, 2
+    jne     {{L}}unicast_generic_f16
+
+    lea             r9,  [ r8 + rbx ]
+    lea             r10, [ r9 + rbx ]
+
+{% for col in range(0, 3) %}
+    {% for row in range(0, 4) %}
+        vcvtph2ps   ymm12, [ r{{ col + 8 }} ]
+        add         r{{ col + 8 }}, 16
+        vaddps      ymm{{ col * 4 + row }}, ymm{{ col * 4 + row }}, ymm12
+    {% endfor %}
+{% endfor %}
+
+    jmp    {{L}}non_linear_loop
+
+{{L}}unicast_generic_f16:
+    lea             r9,  [ r8 + rbx ]
+    lea             r10, [ r9 + rbx ]
+
+{% for col in range(0, 3) %}
+    {% for vec in range(0, 4) %}
+    {% for lane in range(0, 8) %}
+        vpinsrw     xmm12, xmm12, word ptr [ r{{ col + 8 }} ], {{lane}}
+        add         r{{ col + 8 }}, rsi
+    {% endfor %}
+        vcvtph2ps   ymm12, xmm12
+        vaddps      ymm{{ col * 4 + vec }}, ymm{{ col * 4 + vec }}, ymm12
     {% endfor %}
 {% endfor %}
 
