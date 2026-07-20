@@ -32,6 +32,10 @@ macro_rules! mmm_store_test {
                 #[test] fn store_arbitrary() {
                     $crate::frame::mmm::tests::store::store_pattern::<_,$tc,_>($ker, StoreLayout::Arbitrary);
                 }
+
+                #[test] fn add_unicast_dt() {
+                    $crate::frame::mmm::tests::fuse::return_c_plus_d::<_, _, $tc>($ker);
+                }
             }
         }
     };
