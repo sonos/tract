@@ -3,7 +3,7 @@ use crate::frame::mmm::fuse::FusedKerSpec;
 use crate::frame::mmm::storage::*;
 use crate::frame::mmm::tests::display_error;
 use crate::frame::mmm::*;
-use num_traits::Bounded;
+use num_traits::{AsPrimitive, Bounded};
 use tract_data::internal::*;
 use tract_itertools::Itertools;
 use tract_ndarray::Axis;
@@ -35,6 +35,18 @@ macro_rules! mmm_store_test {
 
                 #[test] fn add_unicast_dt() {
                     $crate::frame::mmm::tests::fuse::return_c_plus_d::<_, _, $tc>($ker);
+                }
+
+                #[test] fn add_unicast_col_major() {
+                    $crate::frame::mmm::tests::store::add_unicast_pattern::<_,$tc,_>($ker, StoreLayout::ColMajor);
+                }
+
+                #[test] fn add_unicast_row_major() {
+                    $crate::frame::mmm::tests::store::add_unicast_pattern::<_,$tc,_>($ker, StoreLayout::RowMajor);
+                }
+
+                #[test] fn add_unicast_arbitrary() {
+                    $crate::frame::mmm::tests::store::add_unicast_pattern::<_,$tc,_>($ker, StoreLayout::Arbitrary);
                 }
             }
         }
@@ -135,5 +147,64 @@ where
     let expected = expected.try_as_plain().unwrap().as_slice::<TC>().unwrap();
     let result = result.try_as_plain().unwrap().as_slice::<TC>().unwrap();
     display_error(result, expected, ker.mr(), ker.nr());
+    assert_eq!(result, expected);
+}
+
+/// `Clear` + `AddUnicast(operand of dtype TC)` + `Store(Acc)` and check the
+/// operand reached the accumulator unchanged. The unicast operand carries the
+/// kernel's declared output dtype `TC` (e.g. f16 for a kernel that stores f16
+/// while accumulating in f32), across the three `StoreLayout`s so both the
+/// contiguous and strided load paths are exercised. `add_unicast_dt` only
+/// covers one layout per kernel; without a dtype-aware load an f16 operand
+/// read as f32 saturates, so this catches `add_unicast` ignoring `item_size`.
+pub fn add_unicast_pattern<K, TC, TI>(ker: &K, layout: StoreLayout)
+where
+    K: MatMatMulKer<Acc = TI>,
+    TC: LADatum + AsPrimitive<TI>,
+    TI: LADatum + Bounded + PartialEq,
+    usize: AsPrimitive<TC>,
+{
+    if !ker.is_supported_here() {
+        return;
+    }
+    let (mr, nr) = (ker.mr(), ker.nr());
+    let size_of_tc = std::mem::size_of::<TC>();
+    let (row_stride, col_stride, operand_size) = match layout {
+        StoreLayout::RowMajor => (nr, 1, mr * nr),
+        StoreLayout::ColMajor => (1, mr, mr * nr),
+        // like row major, but reading every other third column
+        StoreLayout::Arbitrary => (nr * 3, 3, mr * nr * 3),
+    };
+    // Distinct value per (r, c) cell in the operand's dtype, with sentinel
+    // garbage in the unread cells of the strided layouts. Values round-trip
+    // through TC (so small integer output dtypes like i8 don't overflow).
+    let cell: Vec<TC> = (0..mr * nr).map(|i| (1 + i).as_()).collect();
+    let mut operand = vec![TC::max_value(); operand_size];
+    for r in 0..mr {
+        for c in 0..nr {
+            operand[r * row_stride + c * col_stride] = cell[r * nr + c];
+        }
+    }
+    let mut result = vec![TI::min_value(); mr * nr];
+    let non_linear = tvec![
+        FusedKerSpec::Clear,
+        FusedKerSpec::AddUnicast(OutputStoreKer {
+            ptr: operand.as_ptr() as _,
+            row_byte_stride: (size_of_tc * row_stride) as isize,
+            col_byte_stride: (size_of_tc * col_stride) as isize,
+            item_size: size_of_tc,
+        }),
+        FusedKerSpec::Store(OutputStoreKer {
+            ptr: result.as_mut_ptr() as _,
+            row_byte_stride: (std::mem::size_of::<TI>() * nr) as isize,
+            col_byte_stride: std::mem::size_of::<TI>() as isize,
+            item_size: std::mem::size_of::<TI>(),
+        }),
+        FusedKerSpec::Done,
+    ];
+    let err = ker.kernel(&non_linear);
+    assert_eq!(err, 0);
+    let expected: Vec<TI> = cell.iter().map(|&v| v.as_()).collect();
+    display_error(&result, &expected, mr, nr);
     assert_eq!(result, expected);
 }
