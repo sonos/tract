@@ -330,7 +330,7 @@ Windows ABI:
     jne     {{L}}add_unicast_generic_f16
 
     {% for row in range(0, 4) %}
-        vcvtph2ps   ymm12, [ r10 + {{ row * 16 }} ]
+        vcvtph2ps   ymm12, xmmword ptr [ r10 + {{ row * 16 }} ]
         vaddps      ymm{{row}}, ymm{{row}}, ymm12
     {% endfor %}
     jmp    {{L}}non_linear_loop
