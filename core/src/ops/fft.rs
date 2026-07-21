@@ -181,16 +181,11 @@ impl Stft {
                     (c..=c).into()
                 }
             });
+            let signal: Vec<Complex<T>> =
+                islice.iter().tuples().map(|(re, im)| Complex::new(*re, *im)).collect();
             for f in 0..frames {
                 v.clear();
-                v.extend(
-                    islice
-                        .iter()
-                        .tuples()
-                        .skip(self.stride * f)
-                        .take(self.frame)
-                        .map(|(re, im)| Complex::new(*re, *im)),
-                );
+                v.extend_from_slice(&signal[self.stride * f..self.stride * f + self.frame]);
                 if let Some(win) = &self.window {
                     let win = win.try_as_plain()?.as_slice::<T>()?;
                     // symmetric padding in case window is smaller than frames (aka n fft)
