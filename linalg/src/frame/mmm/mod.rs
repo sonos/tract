@@ -384,10 +384,36 @@ fn block_edge_for(
     (budget / per_blk).clamp(1, cap)
 }
 
-/// Inner (L2) panel-block edge. Budget is **cache-size derived** (not a
-/// hard-coded constant), so it is correct across hardware.
+/// Whether inner (L2) blocking captures reuse the naive stream cannot, given the
+/// operand the walk re-streams — A (the m side, `panels·r = m_panels·mr`) for a
+/// column-outer order, B (the n side) for a row-outer one. If that streamed
+/// operand already fits L2 it is re-read from cache, not DRAM, so reordering
+/// tiles buys no reuse and only disturbs the prefetchers; only when it spills L2
+/// does the block save re-fetches. Mirrors [`outer_tier_pays`] for the inner
+/// tier, keyed on the streamed operand rather than the whole working set.
+fn inner_tier_pays(panels: usize, r: usize, k: usize, elem_bytes: usize, l2_bytes: usize) -> bool {
+    let streamed = panels.saturating_mul(r).saturating_mul(k).saturating_mul(elem_bytes);
+    l2_bytes > 0 && streamed > l2_bytes
+}
+
+/// Inner (L2) panel-block edge, or `usize::MAX` (single block, i.e. the naive
+/// stream) when the streamed operand already fits L2 (see [`inner_tier_pays`]).
+/// The budget is **cache-size derived** (not a hard-coded constant), so it is
+/// correct across hardware.
 #[inline]
-fn st_block_edge(mr: usize, nr: usize, k: usize, elem_bytes: usize) -> usize {
+fn st_block_edge(
+    mr: usize,
+    nr: usize,
+    k: usize,
+    elem_bytes: usize,
+    m_panels: usize,
+    n_panels: usize,
+    col_outer: bool,
+) -> usize {
+    let (panels, r) = if col_outer { (m_panels, mr) } else { (n_panels, nr) };
+    if !inner_tier_pays(panels, r, k, elem_bytes, crate::cache::cache_info().l2) {
+        return usize::MAX;
+    }
     block_edge_for(l2_block_budget_bytes(), mr, nr, k, elem_bytes, ST_BLK_MAX)
 }
 
@@ -509,7 +535,7 @@ unsafe fn run_single_thread_blocked<K: MatMatMulKer>(
 ) -> TractResult<()> {
     unsafe {
         let elem = K::Acc::datum_type().size_of();
-        let blk = st_block_edge(ker.mr(), ker.nr(), k, elem);
+        let blk = st_block_edge(ker.mr(), ker.nr(), k, elem, m_panels, n_panels, col_outer);
         let blk_outer = st_outer_block_edge(ker.mr(), ker.nr(), k, elem, blk, m_panels, n_panels);
         scratch.run_in_tls_scope(|scratch, tls| {
             for_each_blocked_tile(m_panels, n_panels, blk, blk_outer, col_outer, |ia, ib| {
@@ -818,5 +844,24 @@ mod blocked_walk_tests {
         assert!(!outer_tier_pays(4096, 4096, 8, 8, 4096, 4, 0));
         // k = 0 (empty reduction) has no working set ⇒ never engages.
         assert!(!outer_tier_pays(4096, 4096, 8, 8, 0, 4, llc));
+    }
+
+    /// Inner blocking engages only when the operand the walk re-streams — A for a
+    /// column-outer order, B for a row-outer one — spills L2. A streamed operand
+    /// that fits is re-read from cache, so blocking only hurts prefetch.
+    #[test]
+    fn inner_tier_gated_on_streamed_operand_spilling_l2() {
+        let l2 = 1024 * 1024; // 1 MiB, f32 (elem = 4)
+        // inception Conv2d_4a_3x3 grid (16×12 kernel), k=720.
+        // col_outer streams A (m side, panels=12 r=16): 12·16·720·4 ≈ 540 KiB ⇒ fits.
+        assert!(!inner_tier_pays(12, 16, 720, 4, l2));
+        // row_outer streams B (n side, panels=421 r=12): 421·12·720·4 ≈ 14.5 MiB ⇒ spills.
+        assert!(inner_tier_pays(421, 12, 720, 4, l2));
+        // A large square (m side, panels=256 r=16, k=512): 256·16·512·4 ≈ 8 MiB ⇒ spills.
+        assert!(inner_tier_pays(256, 16, 512, 4, l2));
+        // Undetectable L2 (0) never engages — degrades to the naive loop.
+        assert!(!inner_tier_pays(4096, 16, 4096, 4, 0));
+        // k = 0 (empty reduction) has no working set.
+        assert!(!inner_tier_pays(4096, 16, 0, 4, l2));
     }
 }
