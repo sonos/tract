@@ -35,7 +35,7 @@ fn sigmoid_f16(c: &mut Criterion) {
         let mut tf = aligned_input(n);
         let sf = unsafe { tf.as_slice_mut_unchecked::<f16>() };
         group.bench_with_input(BenchmarkId::new("neon-f32-roundtrip", n), &(), |b, _| {
-            b.iter(|| tract_linalg::arm64::arm64simd_sigmoid_f16_32n::run(sf, ()))
+            b.iter(|| tract_linalg::arm64::arm64simd_sigmoid_f16_4n::run(sf, ()))
         });
 
         if tract_linalg::arm64::has_fp16() {
