@@ -4,6 +4,8 @@ pub mod dyn_kv_cache;
 pub mod flash_sdpa;
 pub mod inplace_kv_cache;
 pub mod kv_quant;
+pub mod moe_ffn;
+mod routed_matmul;
 pub mod scaled_masked_softmax;
 pub mod sdpa;
 pub mod streamed_sdpa;

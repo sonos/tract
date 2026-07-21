@@ -23,3 +23,6 @@ tract-nnef.workspace = true
 # the op stays single-threaded.
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 rayon.workspace = true
+
+[dev-dependencies]
+ndarray-npy.workspace = true
