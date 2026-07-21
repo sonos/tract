@@ -1,0 +1,25 @@
+[package]
+name = "tract-qwen35-recurrent"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Iterative Qwen3.5 recurrent decoder runner for Tract CUDA"
+repository = "https://github.com/Reza2kn/tract"
+readme = "README.md"
+keywords = ["tract", "qwen", "cuda", "ocr", "inference"]
+categories = ["science", "command-line-utilities"]
+
+[[bin]]
+name = "tract-qwen35-decode"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+ndarray-npy = "0.10"
+tract-core = { version = "0.23.5-pre", path = "../../core" }
+tract-cuda = { version = "0.23.5-pre", path = "../../cuda" }
+tract-gpu = { version = "0.23.5-pre", path = "../../gpu" }
+tract-libcli = { version = "0.23.5-pre", path = "../../libcli" }
+tract-nnef = { version = "0.23.5-pre", path = "../../nnef" }
+
+[workspace]
