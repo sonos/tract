@@ -26,16 +26,18 @@ impl CudaCausalConv1dUpdate {
         Ok((channels, kernel_width))
     }
 
-    pub fn eval(
+    pub fn dispatch_eval(
         &self,
         stream: &TractCudaStream,
         input: &DeviceTensor,
         weight: &DeviceTensor,
         state: &DeviceTensor,
-    ) -> TractResult<(DeviceTensor, DeviceTensor)> {
+        output: &DeviceTensor,
+        final_state: &DeviceTensor,
+    ) -> TractResult<()> {
         let (channels, kernel_width) = self.validate(input, weight, state)?;
-        let output = unsafe { DeviceTensor::uninitialized_dt(DatumType::F16, input.shape())? };
-        let final_state = unsafe { DeviceTensor::uninitialized_dt(DatumType::F16, state.shape())? };
+        ensure!(output.shape() == input.shape() && output.datum_type() == DatumType::F16);
+        ensure!(final_state.shape() == state.shape() && final_state.datum_type() == DatumType::F16);
         let function = cuda_context().load_pipeline(
             LibraryName::GdnRecurrent,
             "tract_causal_conv1d_update_f16".to_string(),
@@ -43,8 +45,8 @@ impl CudaCausalConv1dUpdate {
         let i = get_cuda_view(input);
         let w = get_cuda_view(weight);
         let s = get_cuda_view(state);
-        let o = get_cuda_view(&output);
-        let ns = get_cuda_view(&final_state);
+        let o = get_cuda_view(output);
+        let ns = get_cuda_view(final_state);
         let mut args = TractLaunchArgs::new(stream, &function);
         args.push_view(&i);
         args.push_view(&w);
@@ -54,10 +56,45 @@ impl CudaCausalConv1dUpdate {
         args.push_i32(channels);
         args.push_i32(kernel_width);
         args.launch(LaunchConfig::for_num_elems(channels as u32))?;
+        Ok(())
+    }
+
+    pub fn eval(
+        &self,
+        stream: &TractCudaStream,
+        input: &DeviceTensor,
+        weight: &DeviceTensor,
+        state: &DeviceTensor,
+    ) -> TractResult<(DeviceTensor, DeviceTensor)> {
+        let output = DeviceTensor::uninitialized_dt(DatumType::F16, input.shape())?;
+        let final_state = DeviceTensor::uninitialized_dt(DatumType::F16, state.shape())?;
+        self.dispatch_eval(stream, input, weight, state, &output, &final_state)?;
         stream.synchronize()?;
         Ok((output, final_state))
     }
 }
+
+pub fn cuda_causal_conv1d_update_launch(
+    input: &DeviceTensor,
+    weight: &DeviceTensor,
+    state: &DeviceTensor,
+    output: &DeviceTensor,
+    final_state: &DeviceTensor,
+) -> TractResult<()> {
+    crate::with_cuda_stream(|stream| {
+        CudaCausalConv1dUpdate.dispatch_eval(stream, input, weight, state, output, final_state)
+    })
+}
+
+crate::register_cuda_op!(
+    tract_transformers::ops::causal_conv1d_update::CausalConv1dUpdate,
+    |_source, _node, _op| {
+        Ok(Some(Box::new(tract_gpu::ops::causal_conv1d_update::GpuCausalConv1dUpdate {
+            backend_name: "Cuda",
+            dispatch: cuda_causal_conv1d_update_launch,
+        })))
+    }
+);
 
 #[cfg(test)]
 mod tests {

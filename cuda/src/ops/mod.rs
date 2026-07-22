@@ -1,16 +1,12 @@
-mod causal_conv1d_update;
 mod conv;
 mod flash_attn;
 mod fused_axis_op;
-mod gdn_recurrent;
 mod gemm;
 mod iff;
 mod quant_q81;
-pub use causal_conv1d_update::CudaCausalConv1dUpdateOp;
 pub use conv::{CudaConv, wire_cuda_conv};
 pub use flash_attn::CudaFlashAttention;
 pub use fused_axis_op::CudaFusedAxisOp;
-pub use gdn_recurrent::CudaGatedDeltaNetRecurrent;
 pub use gemm::CudaGgmlGemm;
 pub use iff::CudaIff;
 pub use quant_q81::{CudaGgmlQuantQ81, GgmlQuantQ81Fact};
