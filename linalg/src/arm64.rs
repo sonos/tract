@@ -508,8 +508,9 @@ pub fn plug(ops: &mut Ops) {
         ops.sum_f16 = Box::new(|| arm64fp16_sum_f16_32n::red());
         ops.mul_by_scalar_f16 = Box::new(|| arm64fp16_mul_by_scalar_f16_32n::ew());
     } else {
-        log::info!("No native fp16 support; f32-roundtrip NEON sigmoid_f16 activated");
+        log::info!("No native fp16 support; f32-roundtrip NEON sigmoid_f16 and silu_f16 activated");
         ops.sigmoid_f16 = Box::new(|| arm64simd_sigmoid_f16_4n::ew());
+        ops.silu_f16 = Box::new(|| arm64simd_silu_f16_4n::ew());
     }
     #[cfg(any(target_os = "macos", all(target_os = "ios", feature = "apple-amx-ios")))]
     {
