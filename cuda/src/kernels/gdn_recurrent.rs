@@ -121,6 +121,42 @@ impl CudaGdnRecurrent {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+pub fn cuda_gdn_recurrent_launch(
+    query: &DeviceTensor,
+    key: &DeviceTensor,
+    value: &DeviceTensor,
+    log_decay: &DeviceTensor,
+    beta: &DeviceTensor,
+    initial_state: &DeviceTensor,
+    output: &DeviceTensor,
+    final_state: &DeviceTensor,
+) -> TractResult<()> {
+    crate::with_cuda_stream(|stream| {
+        CudaGdnRecurrent.dispatch_eval(
+            stream,
+            query,
+            key,
+            value,
+            log_decay,
+            beta,
+            initial_state,
+            output,
+            final_state,
+        )
+    })
+}
+
+crate::register_cuda_op!(
+    tract_transformers::ops::gdn_recurrent::GatedDeltaNetRecurrent,
+    |_source, _node, _op| {
+        Ok(Some(Box::new(tract_gpu::ops::gdn_recurrent::GpuGatedDeltaNetRecurrent {
+            backend_name: "Cuda",
+            dispatch: cuda_gdn_recurrent_launch,
+        })))
+    }
+);
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1,8 +1,9 @@
 # tract-qwen35-recurrent
 
 An in-process iterative decoder for Qwen3.5 hybrid recurrent/attention models
-exported as Tract NNEF. It feeds convolution, Gated DeltaNet recurrent, and KV
-caches between token steps without reloading the graph.
+exported as Tract NNEF. It uses only the public `tract` API and feeds convolution,
+Gated DeltaNet recurrent, and KV caches between token steps without reloading the
+graph. Runtime selection prefers CUDA, then Metal, then the CPU default.
 
 The runner provides:
 
@@ -31,5 +32,9 @@ before using this runner. Exact transcript parity should be checked against the
 source model; FP16, FP32, and Q4 can make different greedy decisions near tied
 logits. The reference Qwen3.5 OCR work found that lossless BF16 parity requires
 native BF16 arithmetic rather than output-only rounding.
+
+`./ci.sh` creates a deterministic miniature recurrent NNEF model and fixture,
+runs it through this public-API executable, then runs the CUDA or Metal kernel
+parity tests for the current platform.
 
 Licensed under MIT or Apache-2.0.
