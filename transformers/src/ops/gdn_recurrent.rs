@@ -1,25 +1,31 @@
 use tract_nnef::internal::*;
 
 pub fn register(registry: &mut Registry) {
-    registry.register_primitive(
-        "tract_transformers_gdn_recurrent",
-        &[
-            TypeName::Scalar.tensor().named("query"),
-            TypeName::Scalar.tensor().named("key"),
-            TypeName::Scalar.tensor().named("value"),
-            TypeName::Scalar.tensor().named("log_decay"),
-            TypeName::Scalar.tensor().named("beta"),
-            TypeName::Scalar.tensor().named("initial_state"),
-        ],
-        &[("output", TypeName::Scalar.tensor()), ("final_state", TypeName::Scalar.tensor())],
-        |builder, invocation| {
-            let inputs = ["query", "key", "value", "log_decay", "beta", "initial_state"]
-                .map(|name| invocation.named_arg_as(builder, name))
-                .into_iter()
-                .collect::<TractResult<TVec<_>>>()?;
-            builder.wire(GatedDeltaNetRecurrent, &inputs)
-        },
-    );
+    fn deserialize(
+        builder: &mut ModelBuilder,
+        invocation: &ResolvedInvocation,
+    ) -> TractResult<Value> {
+        let inputs = ["query", "key", "value", "log_decay", "beta", "initial_state"]
+            .map(|name| invocation.named_arg_as(builder, name))
+            .into_iter()
+            .collect::<TractResult<TVec<_>>>()?;
+        builder.wire(GatedDeltaNetRecurrent, &inputs)
+    }
+    for name in ["tract_transformers_gdn_recurrent", "tract_qwen35_gdn_recurrent"] {
+        registry.register_primitive(
+            name,
+            &[
+                TypeName::Scalar.tensor().named("query"),
+                TypeName::Scalar.tensor().named("key"),
+                TypeName::Scalar.tensor().named("value"),
+                TypeName::Scalar.tensor().named("log_decay"),
+                TypeName::Scalar.tensor().named("beta"),
+                TypeName::Scalar.tensor().named("initial_state"),
+            ],
+            &[("output", TypeName::Scalar.tensor()), ("final_state", TypeName::Scalar.tensor())],
+            deserialize,
+        );
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]

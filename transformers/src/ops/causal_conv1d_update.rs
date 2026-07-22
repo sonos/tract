@@ -1,22 +1,28 @@
 use tract_nnef::internal::*;
 
 pub fn register(registry: &mut Registry) {
-    registry.register_primitive(
-        "tract_transformers_causal_conv1d_update",
-        &[
-            TypeName::Scalar.tensor().named("input"),
-            TypeName::Scalar.tensor().named("weight"),
-            TypeName::Scalar.tensor().named("initial_state"),
-        ],
-        &[("output", TypeName::Scalar.tensor()), ("final_state", TypeName::Scalar.tensor())],
-        |builder, invocation| {
-            let inputs = ["input", "weight", "initial_state"]
-                .map(|name| invocation.named_arg_as(builder, name))
-                .into_iter()
-                .collect::<TractResult<TVec<_>>>()?;
-            builder.wire(CausalConv1dUpdate, &inputs)
-        },
-    );
+    fn deserialize(
+        builder: &mut ModelBuilder,
+        invocation: &ResolvedInvocation,
+    ) -> TractResult<Value> {
+        let inputs = ["input", "weight", "initial_state"]
+            .map(|name| invocation.named_arg_as(builder, name))
+            .into_iter()
+            .collect::<TractResult<TVec<_>>>()?;
+        builder.wire(CausalConv1dUpdate, &inputs)
+    }
+    for name in ["tract_transformers_causal_conv1d_update", "tract_qwen35_causal_conv1d_update"] {
+        registry.register_primitive(
+            name,
+            &[
+                TypeName::Scalar.tensor().named("input"),
+                TypeName::Scalar.tensor().named("weight"),
+                TypeName::Scalar.tensor().named("initial_state"),
+            ],
+            &[("output", TypeName::Scalar.tensor()), ("final_state", TypeName::Scalar.tensor())],
+            deserialize,
+        );
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
