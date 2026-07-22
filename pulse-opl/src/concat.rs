@@ -76,8 +76,8 @@ impl OpState for PulsedSameAxisConcatState {
         let pre_length = pre.shape()[op.axis];
         let pre_offset = op.input_delay - pre_length;
         overwrite_part_of_pulse(op.axis, &mut data, current_pos, &pre, pre_offset)?;
-        if let Ok(l) = op.input_len.eval(&session.resolved_symbols).to_usize() {
-            let post_offset = op.input_delay + l;
+        if let Some(l) = op.input_len.maybe_eval_to_i64(&session.resolved_symbols) {
+            let post_offset = op.input_delay + l as usize;
             overwrite_part_of_pulse(op.axis, &mut data, current_pos, &post, post_offset)?;
         }
 
