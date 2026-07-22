@@ -5115,6 +5115,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "tract-qwen35-recurrent"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "ndarray",
+ "ndarray-npy",
+ "tract",
+]
+
+[[package]]
 name = "tract-tensorflow"
 version = "0.23.5-pre"
 dependencies = [

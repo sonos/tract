@@ -1,7 +1,9 @@
 pub mod apply_rope;
+pub mod causal_conv1d_update;
 pub mod diag_gather;
 pub mod dyn_kv_cache;
 pub mod flash_sdpa;
+pub mod gdn_recurrent;
 pub mod inplace_kv_cache;
 pub mod kv_quant;
 pub mod scaled_masked_softmax;

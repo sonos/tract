@@ -21,12 +21,14 @@ register_simple_model_transform!(
 register_simple_model_transform!("transformers_detect_all", TransformersTransform);
 
 pub fn register(registry: &mut Registry) {
+    ops::causal_conv1d_update::register(registry);
     ops::apply_rope::register(registry);
     ops::scaled_masked_softmax::register(registry);
     ops::sdpa::register(registry);
     ops::dyn_kv_cache::register(registry);
     ops::window_kv_cache::register(registry);
     ops::kv_quant::register(registry);
+    ops::gdn_recurrent::register(registry);
 }
 
 pub trait WithTractTransformers {

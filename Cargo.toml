@@ -42,6 +42,7 @@ members = [
     "examples/pytorch-albert-v2",
     "examples/pytorch-resnet",
     "examples/causal_llm",
+    "examples/qwen35_recurrent",
     "examples/stable-diffusion",
     "examples/stable-diffusion-3",
     "examples/stable-diffusion-xl",
