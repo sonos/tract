@@ -214,8 +214,8 @@ pub mod test_x86_64_avx512_tanh_f16_16n {
     tanh_frame_tests!(is_x86_feature_detected!("avx512f"), f16, x86_64_avx512_tanh_f16_16n);
 }
 
-// silu_f16: x * sigmoid(x).  Mirror the f32 silu pattern: save the input
-// (in f32), run sigmoid in place on the scratch, then multiply back.
+// silu_f16: f * sigmoid(z), with z = clamp(x, -18.0, 18.0) and f = max(x, -18.0). The
+// factor floor matches the AVX-512 sigmoid's own clamp (see act.rs silu_f32).
 ew_impl_wrap!(
     f16,
     x86_64_avx512_silu_f16_16n,
@@ -240,7 +240,7 @@ ew_impl_wrap!(
             v[..n].copy_from_slice(&w[..n]);
             super::avx512_sigmoid_f32::run(&mut w[..n], ());
             for j in 0..n {
-                w[j] *= v[j];
+                w[j] *= v[j].max(-18.0);
             }
             unsafe { cvt_f32_to_f16(&w[..n], &mut buf[i..i + n]) };
             i += n;
