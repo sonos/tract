@@ -39,6 +39,8 @@ pub fn plug(ops: &mut Ops) {
         armv7neon_mmm_f32_32x1_cortexa7.mmm(),
         armv7neon_mmm_f32_32x1_cortexa9.mmm(),
         armv7neon_mmm_f32_32x1_generic.mmm(),
+        armv7neon_mmm_i32_8x4.mmm(),
+        armv7neon_mmm_i32_32x1.mmm(),
     ]);
 }
 
