@@ -15,6 +15,7 @@ mod sum;
 mod unicast;
 
 pub use act_f16::arm64simd_sigmoid_f16_4n;
+pub use act_f16::arm64simd_silu_f16_4n;
 pub use by_scalar::*;
 pub use gelu::arm64simd_gelu_f32_4n;
 pub use gelu_fused::arm64simd_gelu_f32_4n_fused;
