@@ -38,6 +38,15 @@ pub mod test {
                         .unwrap();
                 }
             }
+            #[test]
+            fn tails() {
+                if $cond {
+                    $crate::frame::silu::test::test_silu::<$ker, $t>(&[
+                        -100.0, -30.0, -18.6, -15.0, 15.0, 18.6, 30.0, 100.0,
+                    ])
+                    .unwrap();
+                }
+            }
         };
     }
 
