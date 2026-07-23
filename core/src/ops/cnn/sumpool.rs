@@ -343,6 +343,7 @@ impl OptSumPool {
                             *htmp.get_unchecked_mut(dst + ox as usize) = acc;
                         }
                     }
+                    #[allow(clippy::needless_range_loop)]
                     for ox in 0..wo {
                         let mut acc = T::zero();
                         for ky in 0..kh {
@@ -460,6 +461,7 @@ impl OptSumPool {
                         htmp[dst..dst + c].copy_from_slice(&acc);
                     }
                 }
+                #[allow(clippy::needless_range_loop)]
                 for ox in 0..wo {
                     acc.iter_mut().for_each(|a| *a = T::zero());
                     for ky in 0..kh {
