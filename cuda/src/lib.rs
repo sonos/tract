@@ -1,3 +1,5 @@
+mod batch;
+pub use batch::batch_stats;
 mod context;
 pub mod kernels;
 pub mod ops;
