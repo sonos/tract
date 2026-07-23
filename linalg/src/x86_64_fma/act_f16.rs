@@ -214,8 +214,7 @@ pub mod test_x86_64_avx512_tanh_f16_16n {
     tanh_frame_tests!(is_x86_feature_detected!("avx512f"), f16, x86_64_avx512_tanh_f16_16n);
 }
 
-// silu_f16: f * sigmoid(z), with z = clamp(x, -18.0, 18.0) and f = max(x, -18.0). The
-// factor floor matches the AVX-512 sigmoid's own clamp (see act.rs silu_f32).
+// silu_f16: chunk f16 -> f32 scratch, run the fused f32 SiLU kernel, convert back.
 ew_impl_wrap!(
     f16,
     x86_64_avx512_silu_f16_16n,
@@ -229,20 +228,14 @@ ew_impl_wrap!(
         if buf.is_empty() {
             return;
         }
-        let mut work = AlignedScratch::new();
-        let mut save = AlignedScratch::new();
-        let w = &mut work.0;
-        let v = &mut save.0;
+        let mut scratch = AlignedScratch::new();
+        let s = &mut scratch.0;
         let mut i = 0;
         while i < buf.len() {
             let n = (CHUNK).min(buf.len() - i);
-            unsafe { cvt_f16_to_f32(&buf[i..i + n], &mut w[..n]) };
-            v[..n].copy_from_slice(&w[..n]);
-            super::avx512_sigmoid_f32::run(&mut w[..n], ());
-            for j in 0..n {
-                w[j] *= v[j].max(-18.0);
-            }
-            unsafe { cvt_f32_to_f16(&w[..n], &mut buf[i..i + n]) };
+            unsafe { cvt_f16_to_f32(&buf[i..i + n], &mut s[..n]) };
+            super::act::x86_64_avx512_silu_f32_16n::run(&mut s[..n], ());
+            unsafe { cvt_f32_to_f16(&s[..n], &mut buf[i..i + n]) };
             i += n;
         }
     }
@@ -254,8 +247,7 @@ pub mod test_x86_64_avx512_silu_f16_16n {
     silu_frame_tests!(is_x86_feature_detected!("avx512f"), f16, x86_64_avx512_silu_f16_16n);
 }
 
-// Tanh-form GELU (matches tract's GeluApproximate, pow=3, see act.rs gelu_f32):
-//   gelu(x) = 0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)))
+// gelu_f16: chunk f16 -> f32 scratch, run the fused f32 GELU kernel, convert back.
 ew_impl_wrap!(
     f16,
     x86_64_avx512_gelu_f16_16n,
@@ -269,25 +261,14 @@ ew_impl_wrap!(
         if buf.is_empty() {
             return;
         }
-        const SQRT_2_OVER_PI: f32 = 0.7978845608028654;
-        const COEF: f32 = 0.044715;
-        let mut work = AlignedScratch::new();
-        let mut save = AlignedScratch::new();
-        let w = &mut work.0;
-        let v = &mut save.0;
+        let mut scratch = AlignedScratch::new();
+        let s = &mut scratch.0;
         let mut i = 0;
         while i < buf.len() {
             let n = (CHUNK).min(buf.len() - i);
-            unsafe { cvt_f16_to_f32(&buf[i..i + n], &mut v[..n]) };
-            for j in 0..n {
-                let x = v[j];
-                w[j] = SQRT_2_OVER_PI * (x + COEF * x * x * x);
-            }
-            super::avx512_tanh_f32::run(&mut w[..n], ());
-            for j in 0..n {
-                w[j] = 0.5 * v[j] * (1.0 + w[j]);
-            }
-            unsafe { cvt_f32_to_f16(&w[..n], &mut buf[i..i + n]) };
+            unsafe { cvt_f16_to_f32(&buf[i..i + n], &mut s[..n]) };
+            super::act::x86_64_avx512_gelu_f32_16n::run(&mut s[..n], ());
+            unsafe { cvt_f32_to_f16(&s[..n], &mut buf[i..i + n]) };
             i += n;
         }
     }
