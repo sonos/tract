@@ -32,6 +32,7 @@ tires.
 |---------|---------------|
 | [`pytorch-albert-v2`](pytorch-albert-v2) | ALBERT masked-LM token completion; demonstrates `tract`'s tokenizer integration and tuple-argument `run(...)`. |
 | [`causal_llm`](causal_llm) | Reusable crate + CLI + OpenAI-compatible HTTP server for NNEF-packaged causal LLMs (Llama-style). Exercises KV-cache unfolding, prompt chunking, repeat-penalty sampling, state freeze/truncate. |
+| [`qwen35_recurrent`](qwen35_recurrent) | Public-API iterative decoder for Qwen3.5 hybrid recurrent/attention models, with CUDA and Metal Gated DeltaNet state updates. |
 
 ## Speech recognition
 

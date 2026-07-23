@@ -1,0 +1,20 @@
+[package]
+name = "tract-qwen35-recurrent"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Iterative Qwen3.5 recurrent decoder runner for Tract GPU runtimes"
+repository = "https://github.com/sonos/tract"
+readme = "README.md"
+keywords = ["tract", "qwen", "gpu", "ocr", "inference"]
+categories = ["science", "command-line-utilities"]
+
+[[bin]]
+name = "tract-qwen35-decode"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+ndarray.workspace = true
+ndarray-npy.workspace = true
+tract.workspace = true
