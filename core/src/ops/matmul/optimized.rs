@@ -251,6 +251,24 @@ impl ProtoFusedSpec {
         }
     }
 
+    /// Collect the C axes this op reads through an output→input mapping — i.e.
+    /// the matmul batch axes. `rm_c_axis` only shifts indices past a removed
+    /// axis; it assumes none of these is the one being removed, so a fusion that
+    /// folds a C axis away must first check it is absent here.
+    fn push_mapped_c_axes(&self, out: &mut TVec<usize>) {
+        use ProtoFusedSpec::*;
+        match self {
+            AddMatMul { geo, .. } => {
+                out.extend(geo.c_to_a_axis_mapping.0.iter().map(|(c, _)| *c));
+                out.extend(geo.c_to_b_axis_mapping.0.iter().map(|(c, _)| *c));
+            }
+            BinPerRow(_, _, map) | BinPerCol(_, _, map) | AddUnicast(_, _, map) => {
+                out.extend(map.0.iter().map(|(c, _)| *c));
+            }
+            BinScalar(..) | Scaler(..) | AddRowColProducts(_, _) | LeakyRelu(_) | Store(..) => {}
+        }
+    }
+
     fn rm_c_axis(&mut self, axis: usize) {
         use ProtoFusedSpec::*;
         match self {
@@ -709,8 +727,17 @@ impl OptMatMul {
         if into.strides != Tensor::natural_strides(&into.dims) {
             return None;
         }
-        let removed = pure_squeeze_removed(self.c_fact.shape.as_concrete()?, &into.dims)?;
+        let old = self.c_fact.shape.as_concrete()?;
+        let removed = pure_squeeze_removed(old, &into.dims)?;
         if removed.iter().any(|ax| Some(*ax) == self.c_m_axis || Some(*ax) == self.c_n_axis) {
+            return None;
+        }
+        // A non-unit matmul batch axis (e.g. grouped conv) makes the packed
+        // inputs per-batch; folding any axis then desyncs that batch indexing.
+        // Only fuse when every batch axis is trivial (size 1).
+        let mut batch_axes: TVec<usize> = tvec!();
+        self.micro_ops.iter().for_each(|uop| uop.push_mapped_c_axes(&mut batch_axes));
+        if batch_axes.iter().any(|ax| old.get(*ax).copied().unwrap_or(1) > 1) {
             return None;
         }
         let mut new_op = self.clone();
