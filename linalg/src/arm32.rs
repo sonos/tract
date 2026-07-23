@@ -100,6 +100,7 @@ pub fn plug(ops: &mut Ops) {
         ops.qmmm_i32 = Box::new(|_, _, _| armv7neon::armv7neon_mmm_i32_8x4.mmm());
         ops.qmmv_i32 = Box::new(|_, _| armv7neon::armv7neon_mmm_i32_32x1.mmm());
         ops.sigmoid_f32 = Box::new(|| armv7neon_sigmoid_f32_4n::ew());
+        ops.silu_f32 = Box::new(|| armv7neon_silu_f32_4n::ew());
         ops.tanh_f32 = Box::new(|| armv7neon_tanh_f32_4n::ew());
     } else {
         armvfpv2::plug(ops);
