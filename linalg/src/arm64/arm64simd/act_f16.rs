@@ -6,27 +6,13 @@
 //! by converting into an f32 scratch, running the existing f32 kernel, and
 //! converting back — rather than dropping to the generic scalar path.
 
-use std::mem::MaybeUninit;
-
 use tract_data::internal::f16;
 
 /// f32 scratch length for the f16 round-trip, in elements. Kept small so the
 /// scratch stays cache-hot across the three passes over each chunk (convert in,
 /// run the f32 kernel in place, convert out) instead of being sized to fill a
-/// cache level. Must stay a multiple of 4: we call the f32 kernels' `run`
-/// directly rather than through `ew()`/`run_with_params`, so nothing trims a
-/// tail — the kernel steps 4 lanes at a time down to a zero count, and a
-/// non-multiple length would run off the scratch. The conversions handle any
-/// length, so nothing else constrains it.
+/// cache level. The conversions handle any length, so nothing else constrains it.
 const CHUNK: usize = 256;
-
-const _: () = assert!(
-    CHUNK % 4 == 0,
-    "f32 kernels step 4 lanes with no tail; CHUNK must stay a multiple of 4"
-);
-
-#[repr(C, align(16))]
-struct AlignedScratch([f32; CHUNK]);
 
 /// Convert `src` (f16) into `dst` (f32) via FCVTL/FCVTL2 for any length: a
 /// 32-lane unrolled main loop, an 8-lane fallback loop, then a scalar-step
@@ -153,32 +139,15 @@ unsafe fn cvt_f32_to_f16(src: &[f32], dst: &mut [f16]) {
     }
 }
 
-ew_impl_wrap!(
-    f16,
+ew_impl_f16_via_f32!(
     arm64simd_sigmoid_f16_4n,
     4,
     4,
-    (),
-    #[inline(never)]
-    fn run(buf: &mut [f16], _: ()) {
-        debug_assert!(buf.len() % Self::nr() == 0);
-        if buf.is_empty() {
-            return;
-        }
-        let mut scratch = MaybeUninit::<AlignedScratch>::uninit();
-        // SAFETY: f32 has no invalid bit patterns, and every `s[..n]` element is
-        // written by `cvt_f16_to_f32` before the kernel or `cvt_f32_to_f16` reads
-        // it, so the scratch never needs zero-initialising.
-        let s = unsafe { &mut (*scratch.as_mut_ptr()).0 };
-        let mut i = 0;
-        while i < buf.len() {
-            let n = CHUNK.min(buf.len() - i);
-            unsafe { cvt_f16_to_f32(&buf[i..i + n], &mut s[..n]) };
-            super::arm64simd_sigmoid_f32_4n::run(&mut s[..n], ());
-            unsafe { cvt_f32_to_f16(&s[..n], &mut buf[i..i + n]) };
-            i += n;
-        }
-    }
+    CHUNK,
+    16,
+    cvt_f16_to_f32,
+    cvt_f32_to_f16,
+    super::arm64simd_sigmoid_f32_4n
 );
 
 #[cfg(test)]
@@ -188,32 +157,15 @@ pub mod test_arm64simd_sigmoid_f16_4n {
 }
 
 // f32-roundtrip f16 SiLU for arm64 cores without FEAT_FP16.
-ew_impl_wrap!(
-    f16,
+ew_impl_f16_via_f32!(
     arm64simd_silu_f16_4n,
     4,
     4,
-    (),
-    #[inline(never)]
-    fn run(buf: &mut [f16], _: ()) {
-        debug_assert!(buf.len() % Self::nr() == 0);
-        if buf.is_empty() {
-            return;
-        }
-        let mut scratch = MaybeUninit::<AlignedScratch>::uninit();
-        // SAFETY: f32 has no invalid bit patterns, and every `s[..n]` element is
-        // written by `cvt_f16_to_f32` before the kernel or `cvt_f32_to_f16` reads
-        // it, so the scratch never needs zero-initialising.
-        let s = unsafe { &mut (*scratch.as_mut_ptr()).0 };
-        let mut i = 0;
-        while i < buf.len() {
-            let n = CHUNK.min(buf.len() - i);
-            unsafe { cvt_f16_to_f32(&buf[i..i + n], &mut s[..n]) };
-            super::arm64simd_silu_f32_4n_fused::run(&mut s[..n], ());
-            unsafe { cvt_f32_to_f16(&s[..n], &mut buf[i..i + n]) };
-            i += n;
-        }
-    }
+    CHUNK,
+    16,
+    cvt_f16_to_f32,
+    cvt_f32_to_f16,
+    super::arm64simd_silu_f32_4n_fused
 );
 
 #[cfg(test)]
