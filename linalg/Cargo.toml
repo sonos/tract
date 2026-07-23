@@ -104,6 +104,7 @@ name = "sigmoid"
 harness = false
 
 [[bench]]
+bench = false
 name = "sigmoid_f16_arm64"
 harness = false
 
