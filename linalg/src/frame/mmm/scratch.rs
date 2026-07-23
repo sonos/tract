@@ -158,6 +158,12 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                     FusedKerSpec::Done
                 }
                 FS::Store(store) => {
+                    if ker.stores_row_major_tile() {
+                        // 128-align the row-major store tile so the kernel can hit
+                        // its aligned bulk-store path (e.g. Apple AMX stz-direct).
+                        align = align.lcm(&128);
+                        offset = Integer::next_multiple_of(&offset, &128);
+                    }
                     self.loc_dependant.push(ld(ix, self.ker_specs.len(), offset));
                     offset += store.item_size * ker.mr() * ker.nr();
                     FusedKerSpec::Done
@@ -481,11 +487,16 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                         })
                     }
                     FS::Store(c_store) => {
+                        let (row_byte_stride, col_byte_stride) = if ker.stores_row_major_tile() {
+                            ((c_store.item_size * ker.nr()) as isize, c_store.item_size as isize)
+                        } else {
+                            (c_store.item_size as isize, (c_store.item_size * ker.mr()) as isize)
+                        };
                         let tmpc = OutputStoreKer {
                             ptr: loc as _,
                             item_size: c_store.item_size,
-                            row_byte_stride: c_store.item_size as isize,
-                            col_byte_stride: (c_store.item_size * ker.mr()) as isize,
+                            row_byte_stride,
+                            col_byte_stride,
                         };
                         FKS::Store(tmpc)
                     }
