@@ -231,6 +231,17 @@ impl InferenceModelInterface for InferenceModel {
 #[derive(Debug, Clone)]
 pub struct Model(TypedModel);
 
+impl Model {
+    #[doc(hidden)]
+    pub fn typed_ref(&self) -> &TypedModel {
+        &self.0
+    }
+    #[doc(hidden)]
+    pub fn into_typed_model(self) -> TypedModel {
+        self.0
+    }
+}
+
 impl ModelInterface for Model {
     type Fact = Fact;
     type Runnable = Runnable;

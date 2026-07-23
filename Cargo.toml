@@ -42,6 +42,7 @@ members = [
     "examples/pytorch-albert-v2",
     "examples/pytorch-resnet",
     "examples/causal_llm",
+    "examples/dis-tract",
     "examples/stable-diffusion",
     "examples/stable-diffusion-3",
     "examples/stable-diffusion-xl",
@@ -127,7 +128,7 @@ anstyle-query = "1.0.0"
 anyhow = "1.0.43"
 anymap3 = "1.0"
 approx = "0.5"
-bit-set = "0.11.0"
+bit-set = "0.10.0"
 boow = "0.1.3"
 box_drawing = "0.1.2"
 byteorder = "1.4.3"
