@@ -16,16 +16,12 @@
 // macros at SuperApproximate tolerance, which covers the precision delta
 // between scalar f16 arithmetic and f32-internal computation.
 
+use std::mem::MaybeUninit;
+
 use tract_data::internal::f16;
 
 #[repr(C, align(64))]
 struct AlignedScratch([f32; 256]);
-
-impl AlignedScratch {
-    fn new() -> Self {
-        Self([0f32; 256])
-    }
-}
 
 const CHUNK: usize = 256;
 
@@ -86,8 +82,11 @@ ew_impl_wrap!(
         if buf.is_empty() {
             return;
         }
-        let mut scratch = AlignedScratch::new();
-        let s = &mut scratch.0;
+        let mut scratch = MaybeUninit::<AlignedScratch>::uninit();
+        // SAFETY: f32 has no invalid bit patterns, and every `s[..n]` element is
+        // written by `cvt_f16_to_f32` before the f32 kernel or `cvt_f32_to_f16`
+        // reads it, so the scratch never needs zero-initialising.
+        let s = unsafe { &mut (*scratch.as_mut_ptr()).0 };
         let mut i = 0;
         while i < buf.len() {
             let n = (CHUNK).min(buf.len() - i);
@@ -124,8 +123,11 @@ ew_impl_wrap!(
             return;
         }
         let alpha_f32 = alpha.to_f32();
-        let mut scratch = AlignedScratch::new();
-        let s = &mut scratch.0;
+        let mut scratch = MaybeUninit::<AlignedScratch>::uninit();
+        // SAFETY: f32 has no invalid bit patterns, and every `s[..n]` element is
+        // written by `cvt_f16_to_f32` before the f32 kernel or `cvt_f32_to_f16`
+        // reads it, so the scratch never needs zero-initialising.
+        let s = unsafe { &mut (*scratch.as_mut_ptr()).0 };
         let mut i = 0;
         while i < buf.len() {
             let n = (CHUNK).min(buf.len() - i);
@@ -162,8 +164,11 @@ ew_impl_wrap!(
         if buf.is_empty() {
             return;
         }
-        let mut scratch = AlignedScratch::new();
-        let s = &mut scratch.0;
+        let mut scratch = MaybeUninit::<AlignedScratch>::uninit();
+        // SAFETY: f32 has no invalid bit patterns, and every `s[..n]` element is
+        // written by `cvt_f16_to_f32` before the f32 kernel or `cvt_f32_to_f16`
+        // reads it, so the scratch never needs zero-initialising.
+        let s = unsafe { &mut (*scratch.as_mut_ptr()).0 };
         let mut i = 0;
         while i < buf.len() {
             let n = (CHUNK).min(buf.len() - i);
@@ -195,8 +200,11 @@ ew_impl_wrap!(
         if buf.is_empty() {
             return;
         }
-        let mut scratch = AlignedScratch::new();
-        let s = &mut scratch.0;
+        let mut scratch = MaybeUninit::<AlignedScratch>::uninit();
+        // SAFETY: f32 has no invalid bit patterns, and every `s[..n]` element is
+        // written by `cvt_f16_to_f32` before the f32 kernel or `cvt_f32_to_f16`
+        // reads it, so the scratch never needs zero-initialising.
+        let s = unsafe { &mut (*scratch.as_mut_ptr()).0 };
         let mut i = 0;
         while i < buf.len() {
             let n = (CHUNK).min(buf.len() - i);
@@ -228,8 +236,11 @@ ew_impl_wrap!(
         if buf.is_empty() {
             return;
         }
-        let mut scratch = AlignedScratch::new();
-        let s = &mut scratch.0;
+        let mut scratch = MaybeUninit::<AlignedScratch>::uninit();
+        // SAFETY: f32 has no invalid bit patterns, and every `s[..n]` element is
+        // written by `cvt_f16_to_f32` before the f32 kernel or `cvt_f32_to_f16`
+        // reads it, so the scratch never needs zero-initialising.
+        let s = unsafe { &mut (*scratch.as_mut_ptr()).0 };
         let mut i = 0;
         while i < buf.len() {
             let n = (CHUNK).min(buf.len() - i);
@@ -261,8 +272,11 @@ ew_impl_wrap!(
         if buf.is_empty() {
             return;
         }
-        let mut scratch = AlignedScratch::new();
-        let s = &mut scratch.0;
+        let mut scratch = MaybeUninit::<AlignedScratch>::uninit();
+        // SAFETY: f32 has no invalid bit patterns, and every `s[..n]` element is
+        // written by `cvt_f16_to_f32` before the f32 kernel or `cvt_f32_to_f16`
+        // reads it, so the scratch never needs zero-initialising.
+        let s = unsafe { &mut (*scratch.as_mut_ptr()).0 };
         let mut i = 0;
         while i < buf.len() {
             let n = (CHUNK).min(buf.len() - i);
