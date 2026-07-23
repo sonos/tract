@@ -1,6 +1,7 @@
 use crate::internal::*;
 use crate::ops::cast::{Cast, cast};
 use crate::ops::change_axes::wire_with_rank_broadcast;
+use crate::ops::element_wise::ElementWiseOp;
 use crate::ops::nn::LeakyRelu;
 use ndarray::*;
 use tract_itertools::Itertools;
@@ -14,6 +15,24 @@ use tract_linalg::{BinOp, Scaler};
 use tract_smallvec::ToSmallVec;
 
 use super::ModePicker;
+
+/// If `new` is `old` with only size-1 axes dropped (non-unit axes untouched, in
+/// order, nothing added or merged), return the removed axis indices; otherwise
+/// `None`. Such a reshape is a pure metadata squeeze the matmul store can absorb.
+fn pure_squeeze_removed(old: &[usize], new: &[usize]) -> Option<TVec<usize>> {
+    let mut removed: TVec<usize> = tvec!();
+    let mut j = 0;
+    for (i, &d) in old.iter().enumerate() {
+        if j < new.len() && d == new[j] {
+            j += 1;
+        } else if d == 1 {
+            removed.push(i);
+        } else {
+            return None;
+        }
+    }
+    (j == new.len() && !removed.is_empty()).then_some(removed)
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ProtoFusedSpec {
@@ -524,6 +543,38 @@ impl TypedOp for OptMatMul {
             patch.dont_apply_twice = Some(format!("Fuse {succ} into {node}"));
             return Ok(Some(patch));
         }
+        if let Some(into) = succ.op_as::<IntoShape>()
+            && let Some(new_op) = self.absorb_squeeze(into)
+        {
+            let mut patch = TypedModelPatch::fuse_with_next(model, node, new_op)?;
+            patch.dont_apply_twice = Some(format!("Fuse {succ} into {node}"));
+            return Ok(Some(patch));
+        }
+        // Reach over a shape-agnostic elementwise (Tanh/Sigmoid/Cast/…) to absorb
+        // a squeeze reshape into the store: matmul → ew → squeeze becomes
+        // matmul(squeezed) → ew, unchanged since the op is per-element. With the
+        // direct arm above, squeeze reshapes fuse whether before or after the ew.
+        if (succ.op_is::<ElementWiseOp>() || succ.op_is::<Cast>())
+            && succ.outputs.len() == 1
+            && let &[next] = &*succ.outputs[0].successors
+        {
+            let into_node = model.node(next.node);
+            if let Some(into) = into_node.op_as::<IntoShape>()
+                && let Some(new_op) = self.absorb_squeeze(into)
+            {
+                let mut patch = TypedModelPatch::default();
+                let inputs = node
+                    .inputs
+                    .iter()
+                    .map(|i| patch.tap_model(model, *i))
+                    .collect::<TractResult<TVec<_>>>()?;
+                let mm = patch.wire_node(&node.name, new_op, &inputs)?[0];
+                let ew = patch.wire_node(&succ.name, succ.op.clone(), &[mm])?[0];
+                patch.shunt_outside(model, into_node.id.into(), ew)?;
+                patch.dont_apply_twice = Some(format!("Reach {into_node} into {node}"));
+                return Ok(Some(patch));
+            }
+        }
         if (succ.op_is::<AxisOp>() || succ.op_is::<IntoShape>())
             && let &[next] = &*succ.outputs[0].successors
         {
@@ -649,6 +700,33 @@ impl OptMatMul {
 
     fn update_trivial_path(&mut self) {
         self.trivial_path = self.can_use_trivial_path();
+    }
+
+    /// If `into` is a pure unit-axis squeeze of this op's (concrete) output that
+    /// leaves the m/n axes intact, return a clone whose store produces the
+    /// squeezed shape directly. `None` when the reshape can't be absorbed.
+    fn absorb_squeeze(&self, into: &IntoShape) -> Option<Self> {
+        if into.strides != Tensor::natural_strides(&into.dims) {
+            return None;
+        }
+        let removed = pure_squeeze_removed(self.c_fact.shape.as_concrete()?, &into.dims)?;
+        if removed.iter().any(|ax| Some(*ax) == self.c_m_axis || Some(*ax) == self.c_n_axis) {
+            return None;
+        }
+        let mut new_op = self.clone();
+        for axis in removed.iter().rev() {
+            new_op.c_fact.shape.remove_axis(*axis).ok()?;
+            if let Some(c_m_axis) = &mut new_op.c_m_axis {
+                *c_m_axis -= (*c_m_axis > *axis) as usize;
+            }
+            if let Some(c_n_axis) = &mut new_op.c_n_axis {
+                *c_n_axis -= (*c_n_axis > *axis) as usize;
+            }
+            for uop in &mut new_op.micro_ops {
+                uop.rm_c_axis(*axis);
+            }
+        }
+        Some(new_op)
     }
 
     fn can_use_trivial_path(&self) -> bool {
