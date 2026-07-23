@@ -33,6 +33,70 @@ macro_rules! ew_impl_wrap {
     };
 }
 
+/// Define an f16 element-wise kernel for cores without native f16 arithmetic by
+/// round-tripping through an existing f32 kernel: convert each `CHUNK`-sized f16
+/// slice into an aligned f32 scratch, run the f32 kernel in place, convert back.
+///
+/// Callers supply the `unsafe` f16<->f32 conversion fns (their target-feature
+/// gating, if any, lives on those fns — this macro is architecture-agnostic), the
+/// f32 kernel to reuse, the f32-scratch `CHUNK`, and the scratch alignment (must
+/// satisfy the f32 kernel's input-alignment contract, since `run` is called
+/// directly, bypassing `map_slice_with_alignment`). The remaining arguments match
+/// `ew_impl_wrap!`.
+///
+/// `CHUNK` must be a multiple of `nr`: the f32 kernel steps `nr` lanes with no
+/// tail, and each chunk length passed to it is a multiple of `nr` only because
+/// both `CHUNK` and every buffer length are.
+///
+/// The param arm converts the f16-side param into the f32 kernel's param via
+/// `$pname => $pconv` (e.g. `f16, alpha => alpha.to_f32()`), computed once per call.
+macro_rules! ew_impl_f16_via_f32 {
+    ($func:ident, $nr:expr, $alignment_items:expr, $chunk:expr, $scratch_align:literal,
+     $cvt_in:path, $cvt_out:path, $f32_kernel:ty) => {
+        ew_impl_f16_via_f32!(@build $func, $nr, $alignment_items, $chunk, $scratch_align,
+            $cvt_in, $cvt_out, $f32_kernel, (), _params, ());
+    };
+    ($func:ident, $nr:expr, $alignment_items:expr, $chunk:expr, $scratch_align:literal,
+     $cvt_in:path, $cvt_out:path, $f32_kernel:ty, $params:ty, $pname:ident => $pconv:expr) => {
+        ew_impl_f16_via_f32!(@build $func, $nr, $alignment_items, $chunk, $scratch_align,
+            $cvt_in, $cvt_out, $f32_kernel, $params, $pname, $pconv);
+    };
+    (@build $func:ident, $nr:expr, $alignment_items:expr, $chunk:expr, $scratch_align:literal,
+     $cvt_in:path, $cvt_out:path, $f32_kernel:ty, $params:ty, $pname:ident, $pconv:expr) => {
+        ew_impl_wrap!(
+            f16, $func, $nr, $alignment_items, $params,
+            #[inline(never)]
+            fn run(buf: &mut [f16], $pname: $params) {
+                const _: () = assert!(
+                    $chunk % $nr == 0,
+                    "CHUNK must be a multiple of nr; the f32 kernel steps nr lanes with no tail"
+                );
+                #[repr(C, align($scratch_align))]
+                struct AlignedScratch([f32; $chunk]);
+                debug_assert!(buf.len() % Self::nr() == 0);
+                debug_assert!(buf.as_ptr() as usize % Self::alignment_bytes() == 0);
+                if buf.is_empty() {
+                    return;
+                }
+                let f32_params = $pconv;
+                let mut scratch = std::mem::MaybeUninit::<AlignedScratch>::uninit();
+                // SAFETY: f32 has no invalid bit patterns, and every `s[..n]` element is
+                // written by `$cvt_in` before the f32 kernel or `$cvt_out` reads it, so the
+                // scratch never needs zero-initialising.
+                let s = unsafe { &mut (*scratch.as_mut_ptr()).0 };
+                let mut i = 0;
+                while i < buf.len() {
+                    let n = ($chunk).min(buf.len() - i);
+                    unsafe { $cvt_in(&buf[i..i + n], &mut s[..n]) };
+                    <$f32_kernel>::run(&mut s[..n], f32_params);
+                    unsafe { $cvt_out(&s[..n], &mut buf[i..i + n]) };
+                    i += n;
+                }
+            }
+        );
+    };
+}
+
 macro_rules! ew_impl {
     ($ti: ident, $func: ident, $nr: expr, $alignment_items: expr) => {
         paste! {
