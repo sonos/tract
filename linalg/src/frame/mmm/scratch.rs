@@ -158,14 +158,18 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                     FusedKerSpec::Done
                 }
                 FS::Store(store) => {
-                    if ker.stores_row_major_tile() {
-                        // 128-align the row-major store tile so the kernel can hit
-                        // its aligned bulk-store path (e.g. Apple AMX stz-direct).
+                    let tile_bytes = if ker.stores_row_major_tile() {
+                        // 128-align the row-major store tile, with rows padded to
+                        // 128 bytes, so the kernel can hit its aligned bulk-store
+                        // path (e.g. Apple AMX stz-direct).
                         align = align.lcm(&128);
                         offset = Integer::next_multiple_of(&offset, &128);
-                    }
+                        Integer::next_multiple_of(&(store.item_size * ker.nr()), &128) * ker.mr()
+                    } else {
+                        store.item_size * ker.mr() * ker.nr()
+                    };
                     self.loc_dependant.push(ld(ix, self.ker_specs.len(), offset));
-                    offset += store.item_size * ker.mr() * ker.nr();
+                    offset += tile_bytes;
                     FusedKerSpec::Done
                 }
                 FS::LeakyRelu(t) => FKS::LeakyRelu(*t.try_as_plain()?.to_scalar()?),
@@ -488,7 +492,11 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                     }
                     FS::Store(c_store) => {
                         let (row_byte_stride, col_byte_stride) = if ker.stores_row_major_tile() {
-                            ((c_store.item_size * ker.nr()) as isize, c_store.item_size as isize)
+                            // Pad the row stride to 128 bytes so it stays aligned
+                            // for the kernel's bulk-store path.
+                            let row =
+                                Integer::next_multiple_of(&(c_store.item_size * ker.nr()), &128);
+                            (row as isize, c_store.item_size as isize)
                         } else {
                             (c_store.item_size as isize, (c_store.item_size * ker.mr()) as isize)
                         };
