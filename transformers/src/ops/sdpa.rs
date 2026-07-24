@@ -380,7 +380,9 @@ impl TypedOp for Sdpa {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        if self.acc_datum_type.is::<f32>() {
+        // FlashSdpaOp accumulates in f32 whatever the input floats are, so an f16
+        // accumulator request is satisfied (with extra precision) as well.
+        if self.acc_datum_type.is::<f32>() || self.acc_datum_type.is::<f16>() {
             // FlashSdpaOp requires Q and V to share the same head dim (last axis).
             // When they differ (MLA / diff-head-sizes attention), fall back to the
             // generic SDPA expansion instead.
@@ -449,8 +451,12 @@ pub fn match_broadcast_kv_cache_pattern(
         n.op_is::<DynKeyValueCache>() && n.inputs.len() == 1 && n.outputs.len() == 1
     }
 
-    // Find concat or dyn kvcache node
-    rule_if_some!(node = model.previous_node(unsqueeze_node));
+    // Find concat or dyn kvcache node, looking through layout-preserving ops
+    // (dtype casts, rope applied at cache-read time) on the unrepeated branch.
+    let mut node = model.node(unsqueeze_node.inputs[0].node);
+    while node.op_is::<Cast>() || node.op_is::<crate::ops::apply_rope::ApplyRope>() {
+        node = model.node(node.inputs[0].node);
+    }
     rule_if!(is_concat(model, node) || is_dynkv(node));
 
     let kv_outlet = unsqueeze_node.inputs[0];
@@ -558,4 +564,102 @@ pub fn wire_attention_mask(
         &[mask],
     )?[0];
     Ok(reshaped_mask)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ops::apply_rope::ApplyRope;
+    use tract_core::ops::array::MultiBroadcastTo;
+    use tract_core::ops::nn::Reduce;
+
+    fn seq_tensor(shape: &[usize], seed: f32) -> Tensor {
+        let n: usize = shape.iter().product();
+        let v: Vec<f32> = (0..n).map(|i| ((i as f32 * 0.37 + seed).sin() * 0.5) as f32).collect();
+        Tensor::from_shape(shape, &v).unwrap()
+    }
+
+    /// The torch-exported GQA idiom: the repeat-interleave chain sits on top of
+    /// cache-read Cast/ApplyRope ops. The fusion must look through them and hand
+    /// the unrepeated K/V to the (GQA-aware) Sdpa.
+    #[test]
+    fn fuse_kv_broadcast_through_cast_and_rope() -> TractResult<()> {
+        let (b, hq, hkv, s, d) = (1usize, 4usize, 2usize, 6usize, 8usize);
+        let g = hq / hkv;
+        let mut model = TypedModel::default();
+        let dim = |x: usize| x.to_dim();
+        let q = model.add_source("q", f32::fact([b, hq, s, d]))?;
+        let knew = model.add_source("k", f32::fact([b, hkv, s, d]))?;
+        let vnew = model.add_source("v", f32::fact([b, hkv, s, d]))?;
+        let p_sym = model.sym("P");
+        let mkcache = |nm: &str| DynKeyValueCache {
+            name: nm.to_string(),
+            axis: 2,
+            past_sequence_fact: f32::fact([dim(b), dim(hkv), p_sym.clone().into(), dim(d)]),
+            input_sequence_fact: f32::fact([b, hkv, s, d]),
+        };
+        let kc = model.wire_node("kc", mkcache("kc"), &[knew])?[0];
+        let vc = model.wire_node("vc", mkcache("vc"), &[vnew])?[0];
+        let cos = model
+            .add_const("cos", seq_tensor(&[1, 1, s, d], 1.5).cast_to::<f16>()?.into_owned())?;
+        let sin = model
+            .add_const("sin", seq_tensor(&[1, 1, s, d], 2.5).cast_to::<f16>()?.into_owned())?;
+        let k16 = model.wire_node("k.cast16", Cast::new(f16::datum_type()), &[kc])?[0];
+        let kroped = model.wire_node("k.rope", ApplyRope, &[k16, cos, sin])?;
+        let k32 = model.wire_node("k.cast32", Cast::new(f32::datum_type()), &kroped)?[0];
+
+        let mut repeat = |name: &str, outlet: OutletId| -> TractResult<OutletId> {
+            let unsq =
+                model.wire_node(format!("{name}.unsq"), change_axes::AxisOp::Add(2), &[outlet])?[0];
+            let bc = model.wire_node(
+                format!("{name}.bc"),
+                MultiBroadcastTo::new(tvec![dim(b), dim(hkv), dim(g), dim(s), dim(d)].into()),
+                &[unsq],
+            )?[0];
+            Ok(model.wire_node(
+                format!("{name}.reshape"),
+                change_axes::AxisOp::Reshape(1, tvec![dim(hkv), dim(g)], tvec![dim(hkv * g)]),
+                &[bc],
+            )?[0])
+        };
+        let krep = repeat("k", k32)?;
+        let vrep = repeat("v", vc)?;
+
+        let sdpa = Sdpa {
+            scale: None,
+            datum_type: f32::datum_type(),
+            acc_datum_type: f32::datum_type(),
+            is_causal: false,
+        };
+        let out = model.wire_node("sdpa", sdpa, &[q, krep, vrep])?;
+        // keep a single output to compare
+        let red = model.wire_node(
+            "sum",
+            Reduce::new(tvec![0, 1, 2, 3], tract_core::ops::nn::Reducer::Sum),
+            &out,
+        )?;
+        model.select_output_outlets(&red)?;
+
+        let reference = model.clone().into_runnable()?;
+        let mut fused_model = model.clone();
+        Rewriter::default()
+            .with_rule_for("detect-sdpa-kv-cache-broadcast", fuse_kv_cache_broadcast_rule)
+            .rewrite(&(), &mut fused_model)?;
+        ensure!(
+            fused_model.nodes().iter().filter(|n| n.op_is::<MultiBroadcastTo>()).count() == 0,
+            "broadcasts should be fused away"
+        );
+        let fused = fused_model.into_runnable()?;
+
+        let qv = seq_tensor(&[b, hq, s, d], 0.1);
+        let kv = seq_tensor(&[b, hkv, s, d], 0.2);
+        let vv = seq_tensor(&[b, hkv, s, d], 0.3);
+        let r = reference
+            .spawn()?
+            .run(tvec![qv.clone().into(), kv.clone().into(), vv.clone().into()])?
+            .remove(0);
+        let f = fused.spawn()?.run(tvec![qv.into(), kv.into(), vv.into()])?.remove(0);
+        r.close_enough(&f, Approximation::Approximate)?;
+        Ok(())
+    }
 }
