@@ -918,9 +918,16 @@ macro_rules! bin_to_super_type {
                                 let c_slice = c_plain.as_slice_mut::<$typ>()?;
                                 debug_assert_eq!(c_slice.len(), a_slice.len());
                                 debug_assert_eq!(c_slice.len(), b_slice.len());
-                                for ((cv, av), bv) in c_slice.iter_mut().zip(a_slice.iter()).zip(b_slice.iter()) {
-                                    cab(cv, av, bv);
-                                }
+                                let len = c_slice.len();
+                                tract_linalg::multithread::par_chunks_mut(c_slice, 1, len, |first_row, c_chunk| {
+                                    let n = c_chunk.len();
+                                    let a_chunk = &a_slice[first_row..first_row + n];
+                                    let b_chunk = &b_slice[first_row..first_row + n];
+                                    for ((cv, av), bv) in c_chunk.iter_mut().zip(a_chunk.iter()).zip(b_chunk.iter()) {
+                                        cab(cv, av, bv);
+                                    }
+                                    Ok(())
+                                })?;
                                 return Ok(())
                             })*
                         )*
@@ -994,9 +1001,15 @@ macro_rules! bin_to_super_type {
                             let mut a_plain = a.try_as_plain_mut()?;
                             let a_slice = a_plain.as_slice_mut::<$typ>()?;
                             debug_assert_eq!(a_slice.len(), b_slice.len());
-                            for (av, bv) in a_slice.iter_mut().zip(b_slice.iter()) {
-                                cab(av, &av.clone(), bv);
-                            }
+                            let len = a_slice.len();
+                            tract_linalg::multithread::par_chunks_mut(a_slice, 1, len, |first_row, a_chunk| {
+                                let n = a_chunk.len();
+                                let b_chunk = &b_slice[first_row..first_row + n];
+                                for (av, bv) in a_chunk.iter_mut().zip(b_chunk.iter()) {
+                                    cab(av, &av.clone(), bv);
+                                }
+                                Ok(())
+                            })?;
                             return Ok(())
                         })*
                     )*

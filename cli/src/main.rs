@@ -176,6 +176,7 @@ fn main() -> TractResult<()> {
 
 
         .arg(arg!(--"threads" [THREADS] "Setup a thread pool for computing. 0 will guess the number of physical cores"))
+        .arg(arg!(--"threading-threshold" [ELEMENTS] "Element-count below which row-parallel ops (softmax, norm, elementwise) run inline. 0 always threads"))
 
         .arg(arg!(-O --optimize "Optimize before running"))
         .arg(arg!(--"assert-maximal-mm-quality-cost" [MAX] "Maximum value for quality category (0=assembly, 4=dreadful rust code)"))
@@ -934,6 +935,10 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
     #[cfg(not(feature = "multithread-mm"))]
     if matches.get_one::<String>("threads").is_some() {
         bail!("tract is compiled without multithread support")
+    }
+    #[cfg(feature = "multithread-mm")]
+    if let Some(threshold) = matches.get_one::<String>("threading-threshold") {
+        multithread::set_threading_element_threshold(threshold.parse()?);
     }
 
     match matches.subcommand() {
