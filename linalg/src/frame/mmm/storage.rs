@@ -153,7 +153,6 @@ pub struct OutputStore {
     pub(crate) panel_col_byte_stride: isize,
     pub(crate) item_size: usize,
     pub(crate) item_count: usize,
-    pub(crate) mr: usize,
 }
 
 unsafe impl Send for OutputStore {}
@@ -170,7 +169,6 @@ impl OutputStoreSpec {
             panel_row_byte_stride: row_byte_stride * mr as isize,
             panel_col_byte_stride: col_byte_stride * nr as isize,
             item_size: tensor.datum_type().size_of(),
-            mr,
             item_count: tensor.len(),
         }
     }
