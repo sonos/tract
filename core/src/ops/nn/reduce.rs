@@ -217,7 +217,13 @@ impl Reducer {
                     // Whole input is C-contiguous and `axis` is the last axis, so
                     // it lays out as [outer, reduced_dim] row-major: sum each run in
                     // a single pass, instead of re-slicing a view per output element.
-                    let out: Vec<T> = if T::datum_type() == f16::datum_type() {
+                    let out: Vec<T> = if reduced_dim < 4 {
+                        // Too short to amortize a kernel dispatch per chunk; a
+                        // plain sum matches the kernel's remainder path bit-for-bit.
+                        full.chunks_exact(reduced_dim)
+                            .map(|c| c.iter().cloned().sum::<T>())
+                            .collect()
+                    } else if T::datum_type() == f16::datum_type() {
                         let full: &[f16] = unsafe { std::mem::transmute(full) };
                         full.chunks_exact(reduced_dim)
                             .map(|c| sum_f16.run_with_params(c, ()).unwrap().as_())
