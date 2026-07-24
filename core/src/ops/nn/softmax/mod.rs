@@ -151,7 +151,55 @@ impl Softmax {
     where
         T: Float + Datum + std::iter::Sum,
     {
-        let mut iterating_shape: TVec<usize> = input.shape().into();
+        let mut output = input.into_tensor();
+
+        // Fast path: when the softmax axes are the trailing axes of a
+        // C-contiguous tensor, the buffer is [n_rows, row_len] row-major
+        // (row_len = product of the softmax dims), so every softmax region is
+        // one contiguous row. Rows split across threads while each row's
+        // reduction stays serial, keeping the result bit-identical.
+        let rank = output.rank();
+        let mut sm_axes: TVec<usize> = self.axes.clone();
+        sm_axes.sort_unstable();
+        let trailing = !sm_axes.is_empty()
+            && sm_axes.len() <= rank
+            && sm_axes.iter().enumerate().all(|(i, &a)| a == rank - sm_axes.len() + i);
+        if trailing
+            && matches!(T::datum_type(), DatumType::F32 | DatumType::F16)
+            && output.strides() == &*Tensor::natural_strides(output.shape())
+        {
+            let row_len: usize = sm_axes.iter().map(|&a| output.shape()[a]).product();
+            if row_len > 0 {
+                let kind = self.kind;
+                let mut output_plain = output.try_as_plain_mut()?;
+                // Dtype-concrete `as_slice_mut` (checked, no transmute) since T is
+                // f32/f16 here; keeps this core path free of new `unsafe`.
+                if T::datum_type() == f32::datum_type() {
+                    let data = output_plain.as_slice_mut::<f32>()?;
+                    let total = data.len();
+                    tract_linalg::multithread::par_chunks_mut(data, row_len, total, |_, chunk| {
+                        for row in chunk.chunks_mut(row_len) {
+                            self.softmax_inner_slice_f32(row, kind)?;
+                        }
+                        Ok(())
+                    })?;
+                } else {
+                    let data = output_plain.as_slice_mut::<f16>()?;
+                    let total = data.len();
+                    tract_linalg::multithread::par_chunks_mut(data, row_len, total, |_, chunk| {
+                        for row in chunk.chunks_mut(row_len) {
+                            self.softmax_inner_slice_f16(row, kind)?;
+                        }
+                        Ok(())
+                    })?;
+                }
+                return Ok(tvec!(output.into_tvalue()));
+            }
+        }
+
+        // Slow path: strided or non-trailing axes, iterated with ndarray view
+        // collapsing (the contiguous-row fast path above did not apply).
+        let mut iterating_shape: TVec<usize> = output.shape().into();
 
         for i in 0..iterating_shape.len() {
             if self.axes.contains(&i) {
@@ -159,7 +207,6 @@ impl Softmax {
             }
         }
 
-        let mut output = input.into_tensor();
         let mut output_plain = output.try_as_plain_mut()?;
         let mut view = output_plain.to_array_view_mut::<T>()?;
 

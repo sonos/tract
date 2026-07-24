@@ -208,36 +208,46 @@ impl Reducer {
                     .map(|(idx, dim)| if idx != axis { *dim } else { 1 })
                     .collect_vec();
 
-                // Build the reduction kernel once, not once per output element:
-                // from_shape_fn calls this closure for every output, and each
-                // `(ops().sum_fXX)()` allocates a fresh boxed kernel.
-                let sum_f16 = (tract_linalg::ops().sum_f16)();
-                let sum_f32 = (tract_linalg::ops().sum_f32)();
                 output = Some(if let Some(full) = input_view.as_slice() {
-                    // Whole input is C-contiguous and `axis` is the last axis, so
-                    // it lays out as [outer, reduced_dim] row-major: sum each run in
-                    // a single pass, instead of re-slicing a view per output element.
-                    let out: Vec<T> = if reduced_dim < 4 {
-                        // Too short to amortize a kernel dispatch per chunk; a
-                        // plain sum matches the kernel's remainder path bit-for-bit.
-                        full.chunks_exact(reduced_dim)
-                            .map(|c| c.iter().cloned().sum::<T>())
-                            .collect()
-                    } else if T::datum_type() == f16::datum_type() {
-                        let full: &[f16] = unsafe { std::mem::transmute(full) };
-                        full.chunks_exact(reduced_dim)
-                            .map(|c| sum_f16.run_with_params(c, ()).unwrap().as_())
-                            .collect()
-                    } else if T::datum_type() == f32::datum_type() {
-                        let full: &[f32] = unsafe { std::mem::transmute(full) };
-                        full.chunks_exact(reduced_dim)
-                            .map(|c| sum_f32.run_with_params(c, ()).unwrap().as_())
-                            .collect()
-                    } else {
-                        full.chunks_exact(reduced_dim)
-                            .map(|c| c.iter().cloned().sum::<T>())
-                            .collect()
-                    };
+                    // Whole input is C-contiguous and `axis` is the last axis,
+                    // so it lays out as [n_rows, reduced_dim] row-major: sum
+                    // each row in one pass. Rows split across threads while
+                    // each row's reduction stays serial and bit-identical.
+                    let n_rows = full.len() / reduced_dim;
+                    let mut out = vec![T::zero(); n_rows];
+                    let total = full.len();
+                    // Reduce kernels are Send + Sync; build once and share by ref.
+                    let sum_f16 = (tract_linalg::ops().sum_f16)();
+                    let sum_f32 = (tract_linalg::ops().sum_f32)();
+                    tract_linalg::multithread::par_chunks_mut(
+                        &mut out,
+                        1,
+                        total,
+                        |first_row, o| {
+                            let rows = full[first_row * reduced_dim..][..o.len() * reduced_dim]
+                                .chunks_exact(reduced_dim);
+                            if reduced_dim >= 4 && T::datum_type() == f16::datum_type() {
+                                for (x, c) in o.iter_mut().zip(rows) {
+                                    let c: &[f16] = unsafe { std::mem::transmute(c) };
+                                    *x = sum_f16.run_with_params(c, ())?.as_();
+                                }
+                            } else if reduced_dim >= 4 && T::datum_type() == f32::datum_type() {
+                                for (x, c) in o.iter_mut().zip(rows) {
+                                    let c: &[f32] = unsafe { std::mem::transmute(c) };
+                                    *x = sum_f32.run_with_params(c, ())?.as_();
+                                }
+                            } else {
+                                // reduced_dim < 4 (kernel dispatch not worth it) or a
+                                // non-f16/f32 type: a plain sum matches the kernel's
+                                // remainder path bit-for-bit.
+                                for (x, c) in o.iter_mut().zip(rows) {
+                                    *x = c.iter().cloned().sum::<T>();
+                                }
+                            }
+                            Ok(())
+                        },
+                    )
+                    .unwrap();
                     ArrayD::from_shape_vec(output_shape.clone(), out).unwrap()
                 } else {
                     ArrayD::from_shape_fn(output_shape.clone(), |coords| {

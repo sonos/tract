@@ -7,6 +7,8 @@ use std::sync::{Arc, Mutex};
 #[cfg(feature = "multithread-mm")]
 use rayon::{ThreadPool, ThreadPoolBuilder};
 
+use tract_data::internal::TractResult;
+
 #[derive(Debug, Clone, Default)]
 pub enum Executor {
     #[default]
@@ -90,4 +92,84 @@ pub fn current_threading_panel_threshold() -> usize {
 #[cfg(feature = "multithread-mm")]
 pub fn set_threading_panel_threshold(panels: usize) {
     THREADING_PANEL_THRESHOLD.store(panels, Ordering::Relaxed);
+}
+
+/// Threshold (in tensor elements) below which [`par_chunks_mut`] skips
+/// parallelism and runs its body inline single-threaded. Below this much work,
+/// per-dispatch overhead exceeds the parallel speedup. Distinct from
+/// `THREADING_PANEL_THRESHOLD`: this counts elements of work, not MMM panels.
+///
+/// Default `32768`. `0` disables the gate entirely (always thread).
+#[cfg(feature = "multithread-mm")]
+static THREADING_ELEMENT_THRESHOLD: AtomicUsize = AtomicUsize::new(32768);
+
+/// Read the current element-count threshold for the row-parallel path.
+#[cfg(feature = "multithread-mm")]
+pub fn current_threading_element_threshold() -> usize {
+    THREADING_ELEMENT_THRESHOLD.load(Ordering::Relaxed)
+}
+
+/// Set the element-count threshold for the row-parallel path. Default is
+/// `32768`. Pass `0` to thread regardless of size.
+#[cfg(feature = "multithread-mm")]
+pub fn set_threading_element_threshold(elements: usize) {
+    THREADING_ELEMENT_THRESHOLD.store(elements, Ordering::Relaxed);
+}
+
+/// Process `out` in parallel over its outer (row) axis, dispatching across the
+/// executor installed by [`multithread_tract_scope`]. Falls back to a single
+/// inline `f(0, out)` when the executor is single-threaded (including a
+/// one-thread pool), when there are fewer than two rows, or when `total_elems`
+/// is below [`current_threading_element_threshold`].
+///
+/// `out` is viewed as `out.len() / row_len` contiguous rows of `row_len`
+/// elements (`row_len` must divide `out.len()`). Work is split only on row
+/// boundaries, never inside a row, so any per-row reduction the closure runs
+/// keeps its accumulation order and the output is bit-identical to the inline
+/// path regardless of thread count.
+///
+/// The closure receives `(first_row, chunk)`: `chunk` is a contiguous block of
+/// whole rows and `first_row` is the index of its first row within `out`, used
+/// to index sibling buffers captured from the caller (e.g. an out-of-place
+/// reduce whose input row is `reduced_dim` wide while `out` rows are width 1).
+/// For such callers `total_elems` is the size of the data actually read, which
+/// can exceed `out.len()`.
+///
+/// The signature is identical with or without the `multithread-mm` feature so
+/// callers compile unchanged; without the feature the body is just `f(0, out)`.
+pub fn par_chunks_mut<T: Send>(
+    out: &mut [T],
+    row_len: usize,
+    total_elems: usize,
+    f: impl Fn(usize, &mut [T]) -> TractResult<()> + Sync + Send,
+) -> TractResult<()> {
+    #[cfg(feature = "multithread-mm")]
+    {
+        use rayon::prelude::*;
+        debug_assert!(row_len >= 1 && out.len() % row_len == 0);
+        let n_rows = out.len() / row_len;
+        if n_rows < 2 || total_elems < current_threading_element_threshold() {
+            return f(0, out);
+        }
+        let run = |out: &mut [T]| -> TractResult<()> {
+            let n_chunks = (4 * rayon::current_num_threads()).min(n_rows);
+            let chunk_rows = n_rows.div_ceil(n_chunks);
+            out.par_chunks_mut(chunk_rows * row_len)
+                .enumerate()
+                .try_for_each(|(i, chunk)| f(i * chunk_rows, chunk))
+        };
+        match current_tract_executor() {
+            Executor::MultiThread(pool) if pool.current_num_threads() > 1 => {
+                pool.install(|| run(out))
+            }
+            Executor::RayonGlobal => run(out),
+            // SingleThread, or a one-thread MultiThread pool, runs inline serially.
+            _ => f(0, out),
+        }
+    }
+    #[cfg(not(feature = "multithread-mm"))]
+    {
+        let _ = (row_len, total_elems);
+        f(0, out)
+    }
 }

@@ -44,13 +44,15 @@ impl EvalOp for RmsNorm {
             let mut buf = input.cast_to::<f32>()?.into_owned();
             let row_len = buf.shape()[self.axis];
             if row_len > 0 {
-                let n_rows: usize = buf.shape().iter().take(self.axis).product();
                 let data = unsafe { buf.as_slice_mut_unchecked::<f32>() };
                 let rms_norm = &tract_linalg::ops().rms_norm_f32;
-                for r in 0..n_rows {
-                    let start = r * row_len;
-                    rms_norm(&mut data[start..start + row_len], eps_f32);
-                }
+                let total = data.len();
+                tract_linalg::multithread::par_chunks_mut(data, row_len, total, |_, chunk| {
+                    for row in chunk.chunks_mut(row_len) {
+                        rms_norm(row, eps_f32);
+                    }
+                    Ok(())
+                })?;
             }
             return Ok(tvec![buf.cast_to_dt(in_dt)?.into_owned().into()]);
         }

@@ -1,0 +1,17 @@
+version 1.0;
+
+# Exercises the element_wise (tanh), last-axis softmax, last-axis sum reduce,
+# and binary row-parallel paths from Part 1 on a tensor large enough
+# (1*512*768 = 393216 elements) to cross the element threshold. RmsNorm has its
+# own fusion pattern and is covered by the unit suite. runme.sh asserts the
+# threaded output is bit-identical to the same-platform single-threaded run.
+graph parallel_ops(input) -> (output)
+{
+    input = external<scalar>(shape = [1, 512, 768]);
+    a = tanh(input);
+    b = softmax(input, axes = [2]);
+    c = mul(a, b);
+    s = sum_reduce(c, axes = [2]);
+    d = add(c, s);
+    output = mul(d, b);
+}
