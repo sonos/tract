@@ -105,7 +105,7 @@ impl EvalOp for LazyIm2Col {
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let tensor = args_1!(inputs);
         let dt = tensor.datum_type();
-        let mut values: Vec<Box<dyn MMMInputValue>> = Vec::with_capacity(self.group);
+        let mut values: TVec<Box<dyn MMMInputValue>> = TVec::with_capacity(self.group);
         for g in 0..self.group {
             let group_offset_bytes = g as isize * self.group_stride_bytes;
             values.push(Box::new(LazyIm2colInput {
