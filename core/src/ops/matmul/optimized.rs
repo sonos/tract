@@ -400,7 +400,7 @@ impl EvalOp for OptMatMul {
             }
             let scratch = cell.get_or_insert_with(|| mmm.allocate_scratch_space());
             if self.trivial_path {
-                let uops: Vec<FusedSpec> = self
+                let uops: TVec<FusedSpec> = self
                     .micro_ops
                     .iter()
                     .map(|o| o.resolve_trivial(&inputs, &mut c, mmm, mode))
@@ -408,7 +408,8 @@ impl EvalOp for OptMatMul {
                 mmm.run_with_scratch_space(m, n, scratch.as_mut(), &uops)?;
                 Ok(tvec!(c.into_tvalue()))
             } else {
-                let mut uops = vec![FusedSpec::ShiftLeft(0); self.micro_ops.len()];
+                let mut uops: TVec<FusedSpec> =
+                    tvec![FusedSpec::ShiftLeft(0); self.micro_ops.len()];
                 let mut looping_shape: TVec<usize> = c_shape.to_smallvec();
                 if let Some(ax) = self.c_m_axis {
                     looping_shape[ax] = 1;
