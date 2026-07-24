@@ -107,6 +107,13 @@ impl TractCudaContext {
     }
 
     pub fn compile_cubins(&self) -> TractResult<()> {
+        for lib in LibraryName::EAGER {
+            self.compile_cubin(lib)?;
+        }
+        Ok(())
+    }
+
+    fn compile_cubin(&self, lib: LibraryName) -> TractResult<()> {
         let cubin_dir = cubin_dir();
         if !cubin_dir.exists() {
             log::info!("Creating cache folder for CUDA cubins at {}", cubin_dir.display());
@@ -114,57 +121,53 @@ impl TractCudaContext {
                 .with_context(|| format!("Failed to create {}", cubin_dir.display()))?;
         }
 
-        let nvrtc_opts = self.build_nvrtc_opts()?;
-
-        for lib in LibraryName::ALL {
-            let out_path = lib.cubin_path();
-            if out_path.exists() {
-                continue;
-            }
-
-            log::info!("Compiling {:?} to {}…", lib, out_path.display());
-
-            let mut input = lib.content().to_string();
-            if input.contains("// liquid:true") {
-                let env = minijinja::Environment::new();
-                let tmpl = env.template_from_str(lib.content())?;
-                input = tmpl.render(())?;
-            }
-
-            let c_src = CString::new(input).context("Failed to make CString from CUDA source")?;
-            let prog = unsafe {
-                let mut prog = MaybeUninit::uninit();
-                nvrtcCreateProgram(
-                    prog.as_mut_ptr(),
-                    c_src.as_ptr(),
-                    std::ptr::null(),
-                    1,
-                    &CString::new(COMMON_H)
-                        .context("Failed to make CString from CUDA header")?
-                        .as_ptr(),
-                    &CString::new("common.cuh")
-                        .context("Failed to make CString from CUDA header name")?
-                        .as_ptr(),
-                )
-                .result()?;
-                prog.assume_init()
-            };
-
-            if let Err(_e) = unsafe { compile_program::<String>(prog, &nvrtc_opts) } {
-                let log = self.read_nvrtc_log(prog).unwrap_or_else(|_| "<no log>".into());
-                let _ = unsafe { destroy_program(prog) };
-                return Err(anyhow!("NVRTC compilation failed for {:?}:\n{}", lib, log));
-            }
-
-            let cubin = unsafe { self.get_cubin_bytes(prog) }
-                .with_context(|| format!("Failed to extract CUBIN for {:?}", lib))?;
-
-            unsafe { destroy_program(prog) }.context("nvrtcDestroyProgram failed")?;
-
-            std::fs::write(&out_path, &cubin)
-                .with_context(|| format!("Failed to write {:?}", out_path))?;
+        let out_path = lib.cubin_path();
+        if out_path.exists() {
+            return Ok(());
         }
 
+        log::info!("Compiling {:?} to {}…", lib, out_path.display());
+
+        let mut input = lib.content().to_string();
+        if input.contains("// liquid:true") {
+            let env = minijinja::Environment::new();
+            let tmpl = env.template_from_str(lib.content())?;
+            input = tmpl.render(())?;
+        }
+
+        let c_src = CString::new(input).context("Failed to make CString from CUDA source")?;
+        let prog = unsafe {
+            let mut prog = MaybeUninit::uninit();
+            nvrtcCreateProgram(
+                prog.as_mut_ptr(),
+                c_src.as_ptr(),
+                std::ptr::null(),
+                1,
+                &CString::new(COMMON_H)
+                    .context("Failed to make CString from CUDA header")?
+                    .as_ptr(),
+                &CString::new("common.cuh")
+                    .context("Failed to make CString from CUDA header name")?
+                    .as_ptr(),
+            )
+            .result()?;
+            prog.assume_init()
+        };
+
+        let nvrtc_opts = self.build_nvrtc_opts()?;
+        if let Err(_e) = unsafe { compile_program::<String>(prog, &nvrtc_opts) } {
+            let log = self.read_nvrtc_log(prog).unwrap_or_else(|_| "<no log>".into());
+            let _ = unsafe { destroy_program(prog) };
+            return Err(anyhow!("NVRTC compilation failed for {:?}:\n{}", lib, log));
+        }
+
+        let cubin = unsafe { self.get_cubin_bytes(prog) }
+            .with_context(|| format!("Failed to extract CUBIN for {:?}", lib))?;
+
+        unsafe { destroy_program(prog) }.context("nvrtcDestroyProgram failed")?;
+
+        std::fs::write(&out_path, &cubin)
+            .with_context(|| format!("Failed to write {:?}", out_path))?;
         Ok(())
     }
 
@@ -265,9 +268,12 @@ impl TractCudaContext {
             }
         }
 
-        let module = self.inner.load_module(Ptx::from_file(name.cubin_path()))?;
-
         let mut cache = self.cached_modules.write().map_err(|e| anyhow!("{:?}", e))?;
+        if let Some(module) = cache.get(name) {
+            return Ok(module.clone());
+        }
+        self.compile_cubin(*name)?;
+        let module = self.inner.load_module(Ptx::from_file(name.cubin_path()))?;
         cache.insert(*name, module.clone());
 
         Ok(module)

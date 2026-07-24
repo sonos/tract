@@ -25,6 +25,12 @@ cargo test -p tract-metal qwen35_recurrent_step_matches_cpu -- --nocapture
 cargo test -p tract-metal qwen35_conv_update_matches_cpu -- --nocapture
 ```
 
+The portable operator fixtures live in
+`harness/nnef-test-cases/qwen35-recurrent`. Each operation is a standalone NNEF
+model with inlined facts and an `io.npz` fixture, and is exercised through the
+regular tract CLI test suite. The CUDA GDN library is compiled lazily on first
+dispatch so models that do not use these operations do not pay its NVRTC cost.
+
 The initial implementation deliberately keeps shape constraints explicit:
 GDN head width 128 and causal-convolution width 4. Generalizing these should be
 a separate change with corresponding kernel coverage.
