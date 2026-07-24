@@ -29,6 +29,13 @@ pub trait MatMatMulKer: Clone + Debug + Send + Sync + 'static {
     fn is_supported_here(&self) -> bool {
         true
     }
+
+    /// Whether the border-tile store scratch should be laid out row-major
+    /// (n contiguous) instead of the default column-major (mr contiguous).
+    /// Set by kernels whose store has an aligned row-major bulk path.
+    fn stores_row_major_tile(&self) -> bool {
+        false
+    }
 }
 
 type Kernel<Acc> = unsafe fn(&[FusedKerSpec<Acc>]) -> isize;
@@ -43,6 +50,7 @@ pub struct DynKernel<const MR: usize, const NR: usize, Acc: LADatum> {
     pub supported_predicate: fn() -> bool,
     pub boost: fn() -> isize,
     pub can_fuse: fn(&FusedSpec) -> bool,
+    pub row_major_store: bool,
 }
 
 impl<const MR: usize, const NR: usize, Acc: LADatum> DynKernel<MR, NR, Acc> {
@@ -62,6 +70,7 @@ impl<const MR: usize, const NR: usize, Acc: LADatum> DynKernel<MR, NR, Acc> {
             supported_predicate: || true,
             boost: || 0,
             can_fuse: |_| true,
+            row_major_store: false,
         };
         kernel.with_packing(packing_a, packing_b)
     }
@@ -155,5 +164,9 @@ impl<const MR: usize, const NR: usize, Acc: LADatum> MatMatMulKer for DynKernel<
 
     fn dynamic_boost(&self) -> isize {
         (self.boost)()
+    }
+
+    fn stores_row_major_tile(&self) -> bool {
+        self.row_major_store
     }
 }
