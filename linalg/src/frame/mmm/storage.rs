@@ -195,6 +195,15 @@ impl OutputStoreSpec {
 }
 
 impl OutputStore {
+    /// Retarget this store at `tensor`'s buffer, reusing the cached strides and
+    /// layout. Valid only when `tensor` has the same shape and datum type as the
+    /// one the store was built from (via [`OutputStoreSpec::wrap`]); the caller
+    /// must uphold that. Skips the stride/size recomputation `wrap` performs.
+    #[inline]
+    pub unsafe fn with_tensor(&self, tensor: &TensorView) -> OutputStore {
+        OutputStore { ptr: unsafe { tensor.as_ptr_unchecked::<u8>() } as _, ..*self }
+    }
+
     #[inline]
     pub(super) unsafe fn tile_c(&self, down: usize, right: usize) -> OutputStoreKer {
         unsafe {

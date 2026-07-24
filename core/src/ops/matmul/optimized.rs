@@ -3,12 +3,13 @@ use crate::ops::cast::{Cast, cast};
 use crate::ops::change_axes::wire_with_rank_broadcast;
 use crate::ops::element_wise::ElementWiseOp;
 use crate::ops::nn::LeakyRelu;
+use crate::ops::{FrozenOpState, OpStateFreeze};
 use ndarray::*;
 use tract_itertools::Itertools;
 
 use tract_linalg::mmm::{
-    AsInputValue, EagerPackedInput, FusedSpec, MatMatMul, OutputStoreSpec, PackedMatrixStorage,
-    PanelExtractInput, PanelExtractor,
+    AsInputValue, EagerPackedInput, FusedSpec, MMMInputValue, MatMatMul, OutputStore,
+    OutputStoreSpec, PackedMatrixStorage, PanelExtractInput, PanelExtractor,
 };
 use tract_linalg::pack::PackedFormat;
 use tract_linalg::{BinOp, Scaler};
@@ -34,12 +35,38 @@ fn pure_squeeze_removed(old: &[usize], new: &[usize]) -> Option<TVec<usize>> {
     (j == new.len() && !removed.is_empty()).then_some(removed)
 }
 
+/// A matmul operand: either an index into the runtime inputs, or a constant
+/// packed value baked in at `fuse()` time (its source outlet was `konst`), so
+/// it is never re-resolved per call. Only non-batched operands are baked.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum MatMulOperand {
+    Input(usize),
+    Const(Box<dyn MMMInputValue>),
+}
+
+impl MatMulOperand {
+    /// Base packed value for the trivial (non-batched) path.
+    #[inline]
+    unsafe fn trivial_value<'t>(&'t self, inputs: &'t [TValue]) -> &'t dyn MMMInputValue {
+        match self {
+            MatMulOperand::Input(i) => unsafe {
+                inputs
+                    .get_unchecked(*i)
+                    .try_storage_as::<PackedMatrixStorage>()
+                    .unwrap_unchecked()
+                    .value()
+            },
+            MatMulOperand::Const(v) => &**v,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ProtoFusedSpec {
     AddMatMul {
         geo: AddMatMulGeometry,
-        a: usize,
-        b: usize,
+        a: MatMulOperand,
+        b: MatMulOperand,
         packings: Vec<(usize, Option<PanelExtractor>)>,
     },
     BinScalar(usize, BinOp),
@@ -82,17 +109,18 @@ impl ProtoFusedSpec {
         #[allow(clippy::let_and_return)]
         let fs = match self {
             ProtoFusedSpec::AddMatMul { geo, a, b, packings } => {
-                let a_tensor = &inputs[*a];
-                let a_storage = a_tensor.try_storage_as::<PackedMatrixStorage>().unwrap();
-                let a_idx =
-                    geo.c_to_a_axis_mapping.flat_index(output_coords, a_storage.batch_strides());
-                let a = a_storage.value_at_flat(a_idx);
-
-                let b_tensor = &inputs[*b];
-                let b_storage = b_tensor.try_storage_as::<PackedMatrixStorage>().unwrap();
-                let b_idx =
-                    geo.c_to_b_axis_mapping.flat_index(output_coords, b_storage.batch_strides());
-                let b = b_storage.value_at_flat(b_idx);
+                let resolve =
+                    |operand: &'t MatMulOperand, mapping: &MapOutputAxisToInput| match operand {
+                        MatMulOperand::Input(i) => {
+                            let storage =
+                                inputs[*i].try_storage_as::<PackedMatrixStorage>().unwrap();
+                            let idx = mapping.flat_index(output_coords, storage.batch_strides());
+                            storage.value_at_flat(idx)
+                        }
+                        MatMulOperand::Const(v) => &**v,
+                    };
+                let a = resolve(a, &geo.c_to_a_axis_mapping);
+                let b = resolve(b, &geo.c_to_b_axis_mapping);
 
                 let (_a_packing, b_packing) = &mmm.packings()[packings[mode].0];
                 let pa = if let Some(extractor) = &packings[mode].1 {
@@ -162,18 +190,8 @@ impl ProtoFusedSpec {
         #[allow(clippy::let_and_return)]
         let fs = match self {
             ProtoFusedSpec::AddMatMul { a, b, packings, .. } => unsafe {
-                debug_assert!(inputs.get(*a).is_some());
-                debug_assert!(inputs.get(*b).is_some());
-                let a = inputs.get_unchecked(*a);
-                let b = inputs.get_unchecked(*b);
-                debug_assert!(a.is_exotic());
-                debug_assert!(a.len() == 1);
-                debug_assert!(b.is_exotic());
-                debug_assert!(b.len() == 1);
-                let a_storage = a.try_storage_as::<PackedMatrixStorage>().unwrap_unchecked();
-                let b_storage = b.try_storage_as::<PackedMatrixStorage>().unwrap_unchecked();
-                let a = a_storage.value();
-                let b = b_storage.value();
+                let a = a.trivial_value(inputs);
+                let b = b.trivial_value(inputs);
                 debug_assert!(packings.len() == 1);
                 debug_assert!(packings[0].1.is_none()); // no panel extraction
                 #[cfg(debug_assertions)]
@@ -219,12 +237,38 @@ impl ProtoFusedSpec {
         fs
     }
 
+    /// Like [`resolve_trivial`], but a `Store` reuses a cached [`OutputStore`]
+    /// whose strides/layout are fixed for the output shape, refreshing only its
+    /// base pointer from `output`. Everything else defers to [`resolve_trivial`]
+    /// (constant operands are already baked into the op, so no per-call work).
+    fn resolve_trivial_cached<'t>(
+        &'t self,
+        inputs: &'t [TValue],
+        output: &mut Tensor,
+        mmm: &dyn MatMatMul,
+        mode: usize,
+        store: Option<OutputStore>,
+    ) -> FusedSpec<'t> {
+        match self {
+            ProtoFusedSpec::Store(oss) => unsafe {
+                FusedSpec::Store(match store {
+                    Some(cached) => cached.with_tensor(&output.view()),
+                    None => oss[mode].wrap(&output.view_mut()),
+                })
+            },
+            _ => self.resolve_trivial(inputs, output, mmm, mode),
+        }
+    }
+
     fn check_inputs(&self, inputs: &[&TypedFact]) -> TractResult<()> {
         use ProtoFusedSpec::*;
         match self {
             AddMatMul { a, b, .. } => {
-                ensure!(inputs[*a].is_exotic());
-                ensure!(inputs[*b].is_exotic());
+                for operand in [a, b] {
+                    if let MatMulOperand::Input(ix) = operand {
+                        ensure!(inputs[*ix].is_exotic());
+                    }
+                }
             }
             BinScalar(v, _)
             | LeakyRelu(v)
@@ -376,16 +420,63 @@ impl Op for OptMatMul {
     op_as_typed_op!();
 }
 
+/// Per-execution state for [`OptMatMul`]: on the trivial path it caches each
+/// micro-op's `Store` [`OutputStore`] layout (strides fixed for the output
+/// shape), so only the base pointer is refreshed per call. Constant operands
+/// are baked into the op at `fuse()`, so they need no per-call state here. Pure
+/// memoization: dropped on freeze and rebuilt lazily on next eval.
+#[derive(Clone, Debug, Default)]
+pub struct OptMatMulState {
+    trivial_stores: Option<TVec<Option<OutputStore>>>,
+}
+
 impl EvalOp for OptMatMul {
     fn is_stateless(&self) -> bool {
-        true
+        false
     }
 
-    fn eval_with_session(
+    fn state(
         &self,
+        _session: &TurnState,
         _node_id: usize,
+    ) -> TractResult<Option<Box<dyn OpState>>> {
+        Ok(Some(Box::<OptMatMulState>::default()))
+    }
+}
+
+impl OpState for OptMatMulState {
+    fn eval(
+        &mut self,
+        session: &mut TurnState,
+        op: &dyn Op,
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
+        let op = op.downcast_ref::<OptMatMul>().context("OptMatMulState on non-OptMatMul op")?;
+        op.eval_with_state(session, inputs, self)
+    }
+}
+
+#[derive(Clone, Debug)]
+struct FrozenOptMatMulState;
+
+impl FrozenOpState for FrozenOptMatMulState {
+    fn unfreeze(&self) -> Box<dyn OpState> {
+        Box::<OptMatMulState>::default()
+    }
+}
+
+impl OpStateFreeze for OptMatMulState {
+    fn freeze(&self) -> Box<dyn FrozenOpState> {
+        Box::new(FrozenOptMatMulState)
+    }
+}
+
+impl OptMatMul {
+    fn eval_with_state(
+        &self,
         session: &TurnState,
         inputs: TVec<TValue>,
+        state: &mut OptMatMulState,
     ) -> TractResult<TVec<TValue>> {
         unsafe {
             let c_shape = self.c_fact.shape.eval_to_usize(&session.resolved_symbols)?;
@@ -400,16 +491,25 @@ impl EvalOp for OptMatMul {
             }
             let scratch = cell.get_or_insert_with(|| mmm.allocate_scratch_space());
             if self.trivial_path {
+                let stores = state.trivial_stores.get_or_insert_with(|| {
+                    self.micro_ops
+                        .iter()
+                        .map(|o| match o {
+                            ProtoFusedSpec::Store(oss) => Some(oss[mode].wrap(&c.view())),
+                            _ => None,
+                        })
+                        .collect()
+                });
                 let uops: TVec<FusedSpec> = self
                     .micro_ops
                     .iter()
-                    .map(|o| o.resolve_trivial(&inputs, &mut c, mmm, mode))
+                    .zip(stores.iter())
+                    .map(|(o, store)| o.resolve_trivial_cached(&inputs, &mut c, mmm, mode, *store))
                     .collect();
                 mmm.run_with_scratch_space(m, n, scratch.as_mut(), &uops)?;
                 Ok(tvec!(c.into_tvalue()))
             } else {
-                let mut uops: TVec<FusedSpec> =
-                    tvec![FusedSpec::ShiftLeft(0); self.micro_ops.len()];
+                let mut uops = vec![FusedSpec::ShiftLeft(0); self.micro_ops.len()];
                 let mut looping_shape: TVec<usize> = c_shape.to_smallvec();
                 if let Some(ax) = self.c_m_axis {
                     looping_shape[ax] = 1;
@@ -476,6 +576,9 @@ impl TypedOp for OptMatMul {
 
     fn fuse(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
         use crate::ops;
+        if let Some(patch) = self.bake_const_operands(model, node)? {
+            return Ok(Some(patch));
+        }
         rule_if!(node.outputs.len() == 1);
         rule_if!(node.outputs[0].successors.len() == 1);
         rule_if!(!model.output_outlets()?.contains(&node.id.into()));
@@ -764,6 +867,107 @@ impl OptMatMul {
             })
             && self.trivial_packing
             && self.micro_ops.iter().all(|o| o.is_trivial())
+    }
+
+    /// Bake matmul operands that are fed by a constant, non-batched input into
+    /// the op as [`MatMulOperand::Const`], dropping the corresponding graph
+    /// input. Runs once the packing has const-folded so the operand's outlet
+    /// carries a packed `konst`. Returns a patch that rewires the node with the
+    /// remaining inputs, or `None` if nothing is bakeable.
+    fn bake_const_operands(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        let bakeable = |operand: &MatMulOperand, mapping: &MapOutputAxisToInput| -> bool {
+            if let MatMulOperand::Input(i) = operand {
+                mapping.0.is_empty()
+                    && model.outlet_fact(node.inputs[*i]).is_ok_and(|f| {
+                        f.konst
+                            .as_ref()
+                            .and_then(|k| k.try_storage_as::<PackedMatrixStorage>().ok())
+                            .is_some()
+                    })
+            } else {
+                false
+            }
+        };
+        let mut baked: TVec<usize> = tvec!();
+        for op in &self.micro_ops {
+            if let ProtoFusedSpec::AddMatMul { geo, a, b, .. } = op {
+                if bakeable(a, &geo.c_to_a_axis_mapping) {
+                    let MatMulOperand::Input(i) = a else { unreachable!() };
+                    baked.push(*i);
+                }
+                if bakeable(b, &geo.c_to_b_axis_mapping) {
+                    let MatMulOperand::Input(i) = b else { unreachable!() };
+                    baked.push(*i);
+                }
+            }
+        }
+        if baked.is_empty() {
+            return Ok(None);
+        }
+        baked.sort();
+        baked.dedup();
+        let remap: Vec<Option<usize>> = {
+            let mut ni = 0;
+            (0..node.inputs.len())
+                .map(|i| {
+                    (!baked.contains(&i)).then(|| {
+                        let cur = ni;
+                        ni += 1;
+                        cur
+                    })
+                })
+                .collect()
+        };
+        let const_value = |i: usize| -> TractResult<Box<dyn MMMInputValue>> {
+            let konst = model.outlet_fact(node.inputs[i])?.konst.clone().unwrap();
+            Ok(dyn_clone::clone_box(konst.try_storage_as::<PackedMatrixStorage>()?.value()))
+        };
+        let map_operand = |operand: &MatMulOperand| -> TractResult<MatMulOperand> {
+            Ok(match operand {
+                MatMulOperand::Input(i) if baked.contains(i) => {
+                    MatMulOperand::Const(const_value(*i)?)
+                }
+                MatMulOperand::Input(i) => MatMulOperand::Input(remap[*i].unwrap()),
+                MatMulOperand::Const(v) => MatMulOperand::Const(v.clone()),
+            })
+        };
+        let micro_ops = self
+            .micro_ops
+            .iter()
+            .map(|op| -> TractResult<ProtoFusedSpec> {
+                use ProtoFusedSpec::*;
+                Ok(match op {
+                    AddMatMul { geo, a, b, packings } => AddMatMul {
+                        geo: geo.clone(),
+                        a: map_operand(a)?,
+                        b: map_operand(b)?,
+                        packings: packings.clone(),
+                    },
+                    BinScalar(v, op) => BinScalar(remap[*v].unwrap(), *op),
+                    LeakyRelu(v) => LeakyRelu(remap[*v].unwrap()),
+                    BinPerRow(v, op, m) => BinPerRow(remap[*v].unwrap(), *op, m.clone()),
+                    BinPerCol(v, op, m) => BinPerCol(remap[*v].unwrap(), *op, m.clone()),
+                    AddRowColProducts(r, c) => {
+                        AddRowColProducts(remap[*r].unwrap(), remap[*c].unwrap())
+                    }
+                    AddUnicast(s, v, m) => AddUnicast(*s, remap[*v].unwrap(), m.clone()),
+                    Scaler(s) => Scaler(*s),
+                    Store(o) => Store(o.clone()),
+                })
+            })
+            .collect::<TractResult<Vec<_>>>()?;
+        let new_op = OptMatMul { micro_ops, ..self.clone() };
+        let kept: TVec<OutletId> =
+            (0..node.inputs.len()).filter(|i| !baked.contains(i)).map(|i| node.inputs[i]).collect();
+        let mut patch = TypedModelPatch::new(format!("bake const operands into {}", node.name));
+        let taps = patch.taps(model, &kept)?;
+        let output = patch.wire_node(&node.name, new_op, &taps)?;
+        patch.shunt_outside(model, node.id.into(), output[0])?;
+        Ok(Some(patch))
     }
 
     fn fuse_op(

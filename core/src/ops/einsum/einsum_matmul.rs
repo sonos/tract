@@ -9,7 +9,7 @@ use crate::ops::cast::cast;
 use crate::ops::math::add;
 use crate::ops::matmul::ModePicker;
 use crate::ops::matmul::optimized::{
-    AddMatMulGeometry, MapOutputAxisToInput, OptMatMul, ProtoFusedSpec,
+    AddMatMulGeometry, MapOutputAxisToInput, MatMulOperand, OptMatMul, ProtoFusedSpec,
 };
 use crate::ops::matmul::pack::{OptMatMulPack, OptSimpleMatMulPack};
 use crate::ops::matmul::quant::{
@@ -1013,8 +1013,8 @@ fn optimized_mat_mul(
         vec![
             ProtoFusedSpec::AddMatMul {
                 geo,
-                a: 0,
-                b: 1,
+                a: MatMulOperand::Input(0),
+                b: MatMulOperand::Input(1),
                 packings: izip!(packings, extractor).collect_vec(),
             },
             ProtoFusedSpec::Store(outputs),
