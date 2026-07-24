@@ -90,9 +90,10 @@ fn fnv1a64(text: &str) -> u64 {
 }
 
 impl LibraryName {
-    pub const ALL: [LibraryName; 11] = [
+    // Libraries compiled when a CUDA context is created. Gated DeltaNet is
+    // intentionally omitted: it is model-specific and compiled on first use.
+    pub const EAGER: [LibraryName; 10] = [
         Self::FlashAttn,
-        Self::GdnRecurrent,
         Self::ElementWise,
         Self::Binary,
         Self::Array,

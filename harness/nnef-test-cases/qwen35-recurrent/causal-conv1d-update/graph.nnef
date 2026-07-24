@@ -1,0 +1,14 @@
+version 1.0;
+
+extension tract_registry tract_transformers;
+extension tract_registry tract_core;
+
+graph qwen35_causal_conv1d_update(input, weight, initial_state)
+    -> (output, final_state)
+{
+    input = tract_core_external(shape = [1, 1, 4], datum_type = 'f16');
+    weight = tract_core_external(shape = [4, 4], datum_type = 'f16');
+    initial_state = tract_core_external(shape = [4, 4], datum_type = 'f16');
+    (output, final_state) = tract_transformers_causal_conv1d_update(
+        input, weight, initial_state);
+}
