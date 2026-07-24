@@ -208,39 +208,41 @@ impl Reducer {
                     .map(|(idx, dim)| if idx != axis { *dim } else { 1 })
                     .collect_vec();
 
-                output = Some(ArrayD::from_shape_fn(output_shape.clone(), |coords| {
-                    let mut view = input_view.view();
-                    for ix in 0..output_shape.len() {
-                        if ix != axis {
-                            view.collapse_axis(Axis(ix), coords[ix]);
-                        }
-                    }
-
-                    if let Some(slice) = view.as_slice() {
-                        if T::datum_type() == f16::datum_type() {
-                            let slice: &[f16] = unsafe { std::mem::transmute(slice) };
-                            (tract_linalg::ops().sum_f16)()
-                                .run_with_params(slice, ())
-                                .unwrap()
-                                .as_()
-                        } else if T::datum_type() == f32::datum_type() {
-                            let slice: &[f32] = unsafe { std::mem::transmute(slice) };
-                            (tract_linalg::ops().sum_f32)()
-                                .run_with_params(slice, ())
-                                .unwrap()
-                                .as_()
-                        } else {
-                            slice.iter().cloned().sum::<T>()
-                        }
+                // Build the reduction kernel once, not once per output element:
+                // from_shape_fn calls this closure for every output, and each
+                // `(ops().sum_fXX)()` allocates a fresh boxed kernel.
+                let sum_f16 = (tract_linalg::ops().sum_f16)();
+                let sum_f32 = (tract_linalg::ops().sum_f32)();
+                output = Some(if let Some(full) = input_view.as_slice() {
+                    // Whole input is C-contiguous and `axis` is the last axis, so
+                    // it lays out as [outer, reduced_dim] row-major: sum each run in
+                    // a single pass, instead of re-slicing a view per output element.
+                    let out: Vec<T> = if T::datum_type() == f16::datum_type() {
+                        let full: &[f16] = unsafe { std::mem::transmute(full) };
+                        full.chunks_exact(reduced_dim)
+                            .map(|c| sum_f16.run_with_params(c, ()).unwrap().as_())
+                            .collect()
+                    } else if T::datum_type() == f32::datum_type() {
+                        let full: &[f32] = unsafe { std::mem::transmute(full) };
+                        full.chunks_exact(reduced_dim)
+                            .map(|c| sum_f32.run_with_params(c, ()).unwrap().as_())
+                            .collect()
                     } else {
+                        full.chunks_exact(reduced_dim)
+                            .map(|c| c.iter().cloned().sum::<T>())
+                            .collect()
+                    };
+                    ArrayD::from_shape_vec(output_shape.clone(), out).unwrap()
+                } else {
+                    ArrayD::from_shape_fn(output_shape.clone(), |coords| {
                         let first: *const T = &input_view[coords];
                         let mut sum = T::zero();
                         for i in 0..reduced_dim {
                             sum = sum + unsafe { *(first.add(i * input_stride)) };
                         }
                         sum
-                    }
-                }));
+                    })
+                });
             }
             output.unwrap().into_tensor()
         }
