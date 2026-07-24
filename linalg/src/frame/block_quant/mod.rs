@@ -266,7 +266,7 @@ impl MMMInputFormat for PackedBlockQuantFormat {
                 let packed = self.pack(slice, k)?;
                 Ok(Box::new(packed) as Box<dyn MMMInputValue>)
             })
-            .collect::<TractResult<Vec<_>>>()?;
+            .collect::<TractResult<TVec<_>>>()?;
         let leading_shape = &t.shape()[..t.rank().saturating_sub(2)];
         Ok(crate::mmm::PackedMatrixStorage::new_batched(leading_shape, values)
             .into_tensor(t.datum_type()))

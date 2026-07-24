@@ -10,7 +10,7 @@ use super::MMMInputValue;
 /// shape, replacing the previous `Tensor` + double-downcast pattern.
 #[derive(Clone, PartialEq, Eq)]
 pub struct PackedMatrixStorage {
-    values: Vec<Box<dyn MMMInputValue>>,
+    values: TVec<Box<dyn MMMInputValue>>,
     batch_shape: TVec<usize>,
     batch_strides: TVec<isize>,
 }
@@ -18,11 +18,11 @@ pub struct PackedMatrixStorage {
 impl PackedMatrixStorage {
     /// Scalar storage (one value, empty shape).
     pub fn new(value: Box<dyn MMMInputValue>) -> Self {
-        PackedMatrixStorage { values: vec![value], batch_shape: tvec![], batch_strides: tvec![] }
+        PackedMatrixStorage { values: tvec![value], batch_shape: tvec![], batch_strides: tvec![] }
     }
 
     /// Batched storage (shape like `[batch, group]`).
-    pub fn new_batched(shape: &[usize], values: Vec<Box<dyn MMMInputValue>>) -> Self {
+    pub fn new_batched(shape: &[usize], values: TVec<Box<dyn MMMInputValue>>) -> Self {
         let expected: usize = shape.iter().product();
         assert_eq!(values.len(), expected, "values length must match shape product");
         let strides = Self::compute_strides(shape);
