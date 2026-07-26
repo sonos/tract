@@ -94,6 +94,11 @@ fn layer_index(name: &str) -> Option<usize> {
     name.rsplit('_').next().and_then(|s| s.parse::<usize>().ok())
 }
 
+/// Prefer the outlet label (stable across declutter) over the node name.
+fn outlet_name(full: &TypedModel, o: OutletId) -> String {
+    full.outlet_labels.get(&o).cloned().unwrap_or_else(|| full.node(o.node).name.clone())
+}
+
 /// Classify a whole model's I/O the same way [`partition_stages`] does — token/
 /// logits slots are `Wire`, `in_/out_cache_*` slots are `Cache`. Lets the full
 /// (unpartitioned) model run through [`StageState`] for a like-for-like
@@ -101,7 +106,7 @@ fn layer_index(name: &str) -> Option<usize> {
 pub fn full_io_roles(model: &TypedModel, n_regular: usize) -> Result<(Vec<IoSpec>, Vec<IoSpec>)> {
     let mut ins = vec![];
     for o in model.input_outlets()? {
-        let nm = model.node(o.node).name.clone();
+        let nm = outlet_name(model, *o);
         if nm.contains("cache") {
             let fact = model.outlet_fact(*o)?;
             ins.push(IoSpec {
@@ -136,8 +141,9 @@ pub fn cache_depths(full: &TypedModel) -> Result<Vec<Option<usize>>> {
     for &n in full.eval_order()?.iter() {
         let node = full.node(n);
         if node.inputs.is_empty() {
-            if node.name.contains("cache") {
-                depth[n] = layer_index(&node.name);
+            let nm = outlet_name(full, OutletId::new(n, 0));
+            if nm.contains("cache") {
+                depth[n] = layer_index(&nm);
             }
             continue;
         }
@@ -176,7 +182,7 @@ pub fn partition_stages(
     let mut token_in = vec![];
     let mut cache_in: Vec<(OutletId, usize, IoSpec)> = vec![];
     for o in full.input_outlets()? {
-        let nm = full.node(o.node).name.clone();
+        let nm = outlet_name(full, *o);
         if nm.contains("cache") {
             let layer = layer_index(&nm).context("cache input without layer suffix")?;
             let fact = full.outlet_fact(*o)?;
@@ -215,7 +221,8 @@ pub fn partition_stages(
     // A tensor crossing several stages appears in each frontier it spans, so
     // intermediate stages pass it through. Constants are duplicated into each
     // shard by extract_subgraph, and symbolic dims are recomputed, so neither
-    // crosses. This replaces name-based cut points, which declutter breaks.
+    // crosses. Cut points are derived from cache depth (edge labels), not node
+    // names, so declutter renaming doesn't break partitioning.
     let mut frontier: Vec<Vec<OutletId>> = vec![vec![]; n_stages.saturating_sub(1)];
     let mut seen: Vec<std::collections::HashSet<OutletId>> =
         vec![Default::default(); n_stages.saturating_sub(1)];

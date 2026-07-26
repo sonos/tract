@@ -495,7 +495,8 @@ pub fn shard_io_roles(model: &TypedModel) -> Result<(Vec<IoSpec>, Vec<IoSpec>)> 
     use crate::protocol::Role;
     let mut ins = vec![];
     for o in model.input_outlets()? {
-        let nm = model.node(o.node).name.clone();
+        let nm =
+            model.outlet_labels.get(o).cloned().unwrap_or_else(|| model.node(o.node).name.clone());
         if nm.contains("cache") {
             let fact = model.outlet_fact(*o)?;
             let shape: Vec<i64> = fact
