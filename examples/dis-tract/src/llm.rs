@@ -3,8 +3,15 @@
 //! the wire, each stage keeps its layers' caches resident and loops them
 //! step→step ([`StageState`]); only the residual activation (and token ids /
 //! logits at the ends) crosses between machines.
+//!
+//! [`StageState`] holds **per-sequence** KV caches (keyed by `u64` seq id), so
+//! multiple sequences can be in flight at once — the coordinator pipelines
+//! tokens from different sequences through the stage chain without resetting
+//! one another's caches.
 
 use anyhow::{Context, Result, bail, ensure};
+use std::collections::HashMap;
+use std::time::{Duration, Instant};
 use tract_core::model::extract_subgraph;
 use tract_core::prelude::*;
 
@@ -315,13 +322,27 @@ fn seed_caches(inputs: &[IoSpec]) -> Result<Vec<Tensor>> {
     Ok(caches)
 }
 
+/// How long a sequence's KV may sit untouched before the stage reclaims it. A live
+/// sequence touches its cache every decode step, so only an abandoned one goes idle
+/// — the case where the coordinator died or dropped the sequence without freeing it.
+const SEQ_IDLE_TIMEOUT: Duration = Duration::from_secs(300);
+
 /// resident caches, runs, and stores the updated caches — returning only the
 /// wire outputs. One instance per worker; reused across decode steps.
+///
+/// Caches are keyed by sequence id so multiple sequences can be in flight
+/// simultaneously (micro-batching): each `step` uses the seq's own KV state,
+/// and a new seq id implicitly seeds an empty cache on first use.
+///
+/// A sequence's KV is the largest thing a stage holds after its weights, and the
+/// sequence ids come from a remote peer, so the map is bounded from both ends:
+/// [`StageState::free`] drops a finished sequence, and any cache left untouched for
+/// [`SEQ_IDLE_TIMEOUT`] is reclaimed on the next step.
 pub struct StageState {
     runner: StageRunner,
     inputs: Vec<IoSpec>,
     outputs: Vec<IoSpec>,
-    caches: Vec<Tensor>,
+    caches: HashMap<u64, (Instant, Vec<Tensor>)>,
 }
 
 impl StageState {
@@ -331,27 +352,56 @@ impl StageState {
         inputs: Vec<IoSpec>,
         outputs: Vec<IoSpec>,
     ) -> Result<Self> {
-        let caches = seed_caches(&inputs)?;
-        Ok(StageState { runner: StageRunner::load(model, backend)?, inputs, outputs, caches })
+        Ok(StageState {
+            runner: StageRunner::load(model, backend)?,
+            inputs,
+            outputs,
+            caches: HashMap::new(),
+        })
     }
 
-    /// Clear the resident KV back to empty (P=0), starting a fresh sequence
-    /// without reloading weights. Used between prompts on a persistent server.
-    pub fn reset(&mut self) -> Result<()> {
-        self.caches = seed_caches(&self.inputs)?;
+    /// Clear one sequence's resident KV back to empty (P=0), starting a fresh
+    /// sequence without reloading weights. No-op if the seq was never seen.
+    pub fn reset(&mut self, seq_id: u64) -> Result<()> {
+        self.caches.insert(seq_id, (Instant::now(), seed_caches(&self.inputs)?));
         Ok(())
     }
 
-    /// Run one step. `wire_in` are the Wire-role inputs in slot order.
-    pub fn step(&mut self, wire_in: TVec<Tensor>) -> Result<TVec<Tensor>> {
-        let mut wire = wire_in.into_iter();
+    /// Drop a finished sequence's KV. No-op if the seq was never seen.
+    pub fn free(&mut self, seq_id: u64) {
+        self.caches.remove(&seq_id);
+    }
+
+    /// Sequences currently holding KV on this stage.
+    pub fn resident_seqs(&self) -> usize {
+        self.caches.len()
+    }
+
+    /// Run one step for `seq_id`. `wire_in` are the Wire-role inputs in slot
+    /// order. If `seq_id` is new, an empty KV cache is seeded automatically.
+    pub fn step(&mut self, seq_id: u64, wire_in: TVec<Tensor>) -> Result<TVec<Tensor>> {
+        let now = Instant::now();
+        self.caches.retain(|&id, (touched, _)| {
+            id == seq_id || now.duration_since(*touched) < SEQ_IDLE_TIMEOUT
+        });
+        let caches = match self.caches.entry(seq_id) {
+            std::collections::hash_map::Entry::Occupied(e) => {
+                let slot = e.into_mut();
+                slot.0 = now;
+                &mut slot.1
+            }
+            std::collections::hash_map::Entry::Vacant(e) => {
+                &mut e.insert((now, seed_caches(&self.inputs)?)).1
+            }
+        };
         let mut ci = 0;
         let mut full: TVec<TValue> = tvec!();
+        let mut wire = wire_in.into_iter();
         for s in &self.inputs {
             match s.role {
                 Role::Wire => full.push(wire.next().context("missing wire input")?.into_tvalue()),
                 Role::Cache => {
-                    full.push(self.caches[ci].clone().into_tvalue());
+                    full.push(caches[ci].clone().into_tvalue());
                     ci += 1;
                 }
             }
@@ -383,7 +433,7 @@ impl StageState {
             match s.role {
                 Role::Wire => wire_out.push(t),
                 Role::Cache => {
-                    self.caches[co] = t;
+                    caches[co] = t;
                     co += 1;
                 }
             }

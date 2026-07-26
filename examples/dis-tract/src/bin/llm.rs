@@ -165,6 +165,9 @@ async fn main() -> Result<()> {
 
     // Persistent generation server: greedily decode one prompt at a time on the
     // warm cluster, resetting every stage's KV before each. Never exits.
+    // One prompt at a time means one sequence slot: every prompt reuses it, so the
+    // reset before it reclaims the previous prompt's KV instead of stranding it.
+    let reset_key = znet::reset_key(znet::SINGLE_SEQ);
     let gen_q = session.declare_queryable(znet::GENERATE_KEY).await.map_err(znet::zerr)?;
     log::info!("generation server ready on {} — awaiting prompts", znet::GENERATE_KEY);
     while let Ok(query) = gen_q.recv_async().await {
@@ -175,9 +178,9 @@ async fn main() -> Result<()> {
             continue;
         };
 
-        // Fresh context: clear every worker's KV and wait for each stage to ack,
-        // so prefill can't race ahead of a reset (bounded fallback if an ack drops).
-        session.put(znet::RESET_KEY, vec![]).await.map_err(znet::zerr)?;
+        // Fresh context: clear this sequence's KV on every stage and wait for each
+        // to ack, so prefill can't race ahead of a reset (bounded if an ack drops).
+        session.put(&reset_key, vec![]).await.map_err(znet::zerr)?;
         {
             let mut acked = std::collections::HashSet::new();
             let deadline = tokio::time::sleep(Duration::from_millis(500));
@@ -186,8 +189,10 @@ async fn main() -> Result<()> {
                 tokio::select! {
                     s = reset_ack_sub.recv_async() => match s {
                         Ok(s) => {
-                            if let Some(&idx) = s.payload().to_bytes().first() {
-                                acked.insert(idx as usize);
+                            if let Some((idx, seq)) = znet::parse_reset_ack(&s.payload().to_bytes())
+                                && seq == znet::SINGLE_SEQ
+                            {
+                                acked.insert(idx);
                             }
                         }
                         Err(_) => break,
@@ -217,7 +222,8 @@ async fn main() -> Result<()> {
             };
             let t0 = Instant::now();
             let mut body = Vec::new();
-            codec::write_frame(&mut body, &serde_json::to_vec(&StepMeta { turn, phase })?)?;
+            let meta = StepMeta { turn, phase, seq_ids: vec![znet::SINGLE_SEQ] };
+            codec::write_frame(&mut body, &serde_json::to_vec(&meta)?)?;
             codec::write_tensors(&mut body, &[tok])?;
             session.put(&in0, body).await.map_err(znet::zerr)?;
             let outcome = {
@@ -292,6 +298,9 @@ async fn main() -> Result<()> {
         let _ = session
             .put(&skey, serde_json::to_vec(&StreamMsg { tokens: out_toks.clone(), done: true })?)
             .await;
+        // Done either way: the stages should not park this sequence's KV until the
+        // next prompt happens to reset it.
+        let _ = session.put(znet::free_key(znet::SINGLE_SEQ), vec![]).await;
         let decode_tok_s = if dec_cnt > 0 { 1000.0 * dec_cnt as f64 / dec_sum_ms } else { 0.0 };
         match &aborted {
             None => log::info!(

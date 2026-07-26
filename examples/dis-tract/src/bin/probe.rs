@@ -81,7 +81,7 @@ fn main() -> anyhow::Result<()> {
     let (mut matches, mut total) = (0usize, 0usize);
     for turn in 0..turns {
         let ref_in = if turn == 0 { ids(&prompt) } else { ids(&[ref_tok]) };
-        let (rt, rnan) = argmax(&reference.step(tvec!(ref_in))?[0]);
+        let (rt, rnan) = argmax(&reference.step(0, tvec!(ref_in))?[0]);
         ref_tok = rt;
 
         if ref_only {
@@ -92,7 +92,7 @@ fn main() -> anyhow::Result<()> {
         let mut wire: TVec<Tensor> =
             tvec!(if turn == 0 { ids(&prompt) } else { ids(&[chain_tok]) });
         for (bi, st) in chain.iter_mut().enumerate() {
-            wire = st.step(wire)?;
+            wire = st.step(0, wire)?;
             if std::env::var("DISTRACT_TRACE").is_ok() {
                 // residual is wire[0]; watch its magnitude vs the f16 ceiling (65504)
                 let f = wire[0].cast_to::<f32>()?;

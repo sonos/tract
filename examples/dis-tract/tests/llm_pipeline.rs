@@ -12,6 +12,9 @@ use tract_distributed::runner;
 
 const SPLIT_LAYER: usize = 8;
 
+/// In-process reference: a single sequence, so one cache slot.
+const SEQ: u64 = 0;
+
 /// The model plus its regular (non-cache) output count, loaded through the same
 /// path the binaries use so node naming and KV I/O match.
 fn load_full() -> Result<(TypedModel, usize)> {
@@ -37,7 +40,7 @@ fn llm_prefill_parity() -> Result<()> {
     let (fin, fout) = full_io_roles(&full, n_regular)?;
     let mut reference = StageState::new(full.clone(), "cpu", fin, fout)?;
     let prompt = ids(&[9, 3, 128, 42]);
-    let ref_logits = reference.step(tvec!(prompt.clone()))?[0].clone();
+    let ref_logits = reference.step(SEQ, tvec!(prompt.clone()))?[0].clone();
 
     let stages = partition_stages(&full, &[SPLIT_LAYER], n_regular)?;
     assert_eq!(stages.len(), 2);
@@ -45,8 +48,8 @@ fn llm_prefill_parity() -> Result<()> {
     let mut stage0 = StageState::new(s0.model, "cpu", s0.inputs, s0.outputs)?;
     let mut stage1 = StageState::new(s1.model, "cpu", s1.inputs, s1.outputs)?;
 
-    let residual = stage0.step(tvec!(prompt))?;
-    let got_logits = stage1.step(residual)?[0].clone();
+    let residual = stage0.step(SEQ, tvec!(prompt))?;
+    let got_logits = stage1.step(SEQ, residual)?[0].clone();
 
     let gf = got_logits.cast_to::<f32>()?;
     let rf = ref_logits.cast_to::<f32>()?;
@@ -72,13 +75,14 @@ fn llm_greedy_decode_parity() -> Result<()> {
 
     // Prompt, then 8 greedy decode steps; assert token sequences agree.
     let prompt = vec![9i64, 3, 128, 42];
-    let mut ref_next = argmax(&reference.step(tvec!(ids(&prompt)))?[0].clone()) as i64;
-    let mut dist_next = argmax(&stage1.step(stage0.step(tvec!(ids(&prompt)))?)?[0].clone()) as i64;
+    let mut ref_next = argmax(&reference.step(SEQ, tvec!(ids(&prompt)))?[0].clone()) as i64;
+    let mut dist_next =
+        argmax(&stage1.step(SEQ, stage0.step(SEQ, tvec!(ids(&prompt)))?)?[0].clone()) as i64;
     assert_eq!(ref_next, dist_next, "prompt-step token mismatch");
 
     for step in 0..8 {
-        ref_next = argmax(&reference.step(tvec!(ids(&[ref_next])))?[0].clone()) as i64;
-        let d = stage1.step(stage0.step(tvec!(ids(&[dist_next])))?)?[0].clone();
+        ref_next = argmax(&reference.step(SEQ, tvec!(ids(&[ref_next])))?[0].clone()) as i64;
+        let d = stage1.step(SEQ, stage0.step(SEQ, tvec!(ids(&[dist_next])))?)?[0].clone();
         dist_next = argmax(&d) as i64;
         println!("decode {step}: ref={ref_next} dist={dist_next}");
         assert_eq!(ref_next, dist_next, "decode token mismatch at step {step}");

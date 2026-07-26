@@ -58,10 +58,15 @@ pub enum Phase {
 }
 
 /// Data message header sent ahead of the activation tensors each step.
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct StepMeta {
     pub turn: u64,
     pub phase: Phase,
+    /// Sequence IDs in this batch, in tensor-row order. Empty means a
+    /// single-sequence batch (backward-compatible with the original
+    /// one-prompt-at-a-time protocol).
+    #[serde(default)]
+    pub seq_ids: Vec<u64>,
 }
 
 /// What a worker advertises on join, so the coordinator can plan a

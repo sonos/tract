@@ -89,17 +89,58 @@ pub const READY_WILDCARD: &str = "distract/stage/*/ready";
 /// Tail stage publishes final logits here; the coordinator subscribes.
 pub const RESULT_KEY: &str = "distract/result";
 
-/// The coordinator publishes here before each prompt; every worker resets its
-/// resident KV cache so the new sequence starts from empty context.
-pub const RESET_KEY: &str = "distract/reset";
+/// The coordinator publishes here to clear one sequence's KV, so the sequence
+/// starts from empty context without disturbing others in flight. The key must
+/// carry the sequence id: `RESET_SEQ_WILDCARD` matches exactly one chunk after
+/// the prefix, so a bare `distract/reset` reaches no worker.
+pub const RESET_SEQ_PREFIX: &str = "distract/reset/";
+pub const RESET_SEQ_WILDCARD: &str = "distract/reset/*";
 
-/// A worker publishes here (payload = stage index) once its KV reset has landed.
-/// The coordinator waits for one ack per stage before decoding, so no fixed sleep
-/// is needed and the reset is guaranteed to precede the prefill step.
+pub fn reset_key(seq_id: u64) -> String {
+    format!("{RESET_SEQ_PREFIX}{seq_id}")
+}
+
+/// The sequence slot the one-prompt-at-a-time coordinator uses, and the slot a
+/// [`crate::protocol::StepMeta`] naming no sequence falls back to.
+pub const SINGLE_SEQ: u64 = 0;
+
+/// Sequence id carried by a `RESET_SEQ_WILDCARD` / `FREE_SEQ_WILDCARD` sample.
+pub fn seq_of_key(key: &str, prefix: &str) -> Option<u64> {
+    key.strip_prefix(prefix)?.parse().ok()
+}
+
+/// The coordinator publishes here when a sequence ends, so the worker drops its
+/// KV instead of holding it for a sequence that will never step again. A worker
+/// also expires caches left idle by a coordinator that died mid-sequence.
+pub const FREE_SEQ_PREFIX: &str = "distract/free/";
+pub const FREE_SEQ_WILDCARD: &str = "distract/free/*";
+
+pub fn free_key(seq_id: u64) -> String {
+    format!("{FREE_SEQ_PREFIX}{seq_id}")
+}
+
+/// A worker publishes here once a sequence's KV reset has landed. The coordinator
+/// waits for one ack per stage before decoding, so no fixed sleep is needed and the
+/// reset is guaranteed to precede the prefill step.
 pub fn reset_ack_key(stage: usize) -> String {
     format!("distract/resetack/{stage}")
 }
 pub const RESET_ACK_WILDCARD: &str = "distract/resetack/*";
+
+/// Reset-ack payload: which stage acked, and for which sequence. Both sides go
+/// through this pair so the layout cannot drift between them — a coordinator that
+/// ignored the sequence id would count another sequence's ack as its own.
+pub fn reset_ack(stage: usize, seq_id: u64) -> Vec<u8> {
+    let mut b = vec![stage as u8];
+    b.extend_from_slice(&seq_id.to_le_bytes());
+    b
+}
+
+pub fn parse_reset_ack(payload: &[u8]) -> Option<(usize, u64)> {
+    let stage = *payload.first()? as usize;
+    let seq = u64::from_le_bytes(payload.get(1..9)?.try_into().ok()?);
+    Some((stage, seq))
+}
 
 /// Queryable the coordinator serves as a persistent generation server: the
 /// payload is a JSON `GenerateRequest`, the reply a JSON `GenerateReply`.
@@ -112,4 +153,46 @@ pub const STREAM_KEY: &str = "distract/stream";
 /// Per-request stream key: isolates one generation's live partials from another's.
 pub fn stream_key(id: u64) -> String {
     format!("{STREAM_KEY}/{id}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use zenoh::key_expr::KeyExpr;
+
+    /// What a publisher sends must be what a subscriber's wildcard selects. A `*`
+    /// matches exactly one chunk, so a per-sequence subscriber never sees a
+    /// sequence-less publication — the two sides drift silently, with no error
+    /// anywhere, and the stages simply stop resetting.
+    fn matches(wildcard: &str, key: &str) -> bool {
+        KeyExpr::new(wildcard).unwrap().intersects(&KeyExpr::new(key).unwrap())
+    }
+
+    #[test]
+    fn sequence_wildcards_select_the_keys_that_are_published() {
+        for seq in [SINGLE_SEQ, 1, u64::MAX] {
+            assert!(matches(RESET_SEQ_WILDCARD, &reset_key(seq)), "reset {seq}");
+            assert!(matches(FREE_SEQ_WILDCARD, &free_key(seq)), "free {seq}");
+            assert_eq!(seq_of_key(&reset_key(seq), RESET_SEQ_PREFIX), Some(seq));
+            assert_eq!(seq_of_key(&free_key(seq), FREE_SEQ_PREFIX), Some(seq));
+        }
+        assert!(!matches(RESET_SEQ_WILDCARD, "distract/reset"));
+        assert!(!matches(RESET_SEQ_WILDCARD, &free_key(0)));
+    }
+
+    #[test]
+    fn stage_wildcards_select_their_own_keys_only() {
+        assert!(matches(READY_WILDCARD, &ready_key(3)));
+        assert!(matches(RESET_ACK_WILDCARD, &reset_ack_key(3)));
+        assert!(!matches(RESET_ACK_WILDCARD, &ready_key(3)));
+    }
+
+    #[test]
+    fn reset_ack_round_trips() {
+        assert_eq!(parse_reset_ack(&reset_ack(2, 7)), Some((2, 7)));
+        assert_eq!(parse_reset_ack(&reset_ack(0, u64::MAX)), Some((0, u64::MAX)));
+        // The pre-sequence ack was a lone stage byte; it must not read as sequence 0.
+        assert_eq!(parse_reset_ack(&[2]), None);
+        assert_eq!(parse_reset_ack(&[]), None);
+    }
 }

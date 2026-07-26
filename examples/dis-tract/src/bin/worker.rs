@@ -10,9 +10,9 @@ use clap::Parser;
 use tract_distributed::caps::HostSampler;
 use tract_distributed::llm::{StageSpec, full_io_roles, load_model};
 use tract_distributed::partition::const_bytes;
-use tract_distributed::protocol::AssignSpec;
+use tract_distributed::protocol::{AssignSpec, StepMeta};
 use tract_distributed::shard_graph::{load_shard, shard_io_roles, shard_range};
-use tract_distributed::stage::{load_stage, reset, step};
+use tract_distributed::stage::{free, load_stage, reset, step};
 use tract_distributed::{codec, znet};
 
 #[derive(Parser, Debug)]
@@ -140,16 +140,38 @@ async fn main() -> Result<()> {
         });
     }
 
-    // KV reset: clear this stage's cache whenever the coordinator starts a prompt.
+    // Per-sequence KV reset: the coordinator publishes to
+    // `distract/reset/{seq_id}` when a sequence starts; the worker resets
+    // only that sequence's cache (other in-flight sequences are untouched).
     {
         let reset_tx = tx.clone();
         let ack_session = session.clone();
         let ack_key = znet::reset_ack_key(stage);
-        let reset_sub = session.declare_subscriber(znet::RESET_KEY).await.map_err(znet::zerr)?;
+        let reset_sub =
+            session.declare_subscriber(znet::RESET_SEQ_WILDCARD).await.map_err(znet::zerr)?;
         tokio::spawn(async move {
-            while reset_sub.recv_async().await.is_ok() {
-                let _ = reset(&reset_tx).await;
-                let _ = ack_session.put(&ack_key, vec![stage as u8]).await;
+            while let Ok(s) = reset_sub.recv_async().await {
+                let Some(seq_id) = znet::seq_of_key(s.key_expr().as_str(), znet::RESET_SEQ_PREFIX)
+                else {
+                    continue;
+                };
+                let _ = reset(&reset_tx, seq_id).await;
+                let _ = ack_session.put(&ack_key, znet::reset_ack(stage, seq_id)).await;
+            }
+        });
+    }
+
+    // A finished sequence's KV is dead weight; the coordinator says when.
+    {
+        let free_tx = tx.clone();
+        let free_sub =
+            session.declare_subscriber(znet::FREE_SEQ_WILDCARD).await.map_err(znet::zerr)?;
+        tokio::spawn(async move {
+            while let Ok(s) = free_sub.recv_async().await {
+                if let Some(seq_id) = znet::seq_of_key(s.key_expr().as_str(), znet::FREE_SEQ_PREFIX)
+                {
+                    free(&free_tx, seq_id);
+                }
             }
         });
     }
@@ -158,13 +180,33 @@ async fn main() -> Result<()> {
         let t0 = Instant::now();
         let bytes = sample.payload().to_bytes().to_vec();
         let mut r = std::io::Cursor::new(bytes.as_slice());
-        let step_meta = codec::read_frame(&mut r)?;
+        let step_meta_bytes = codec::read_frame(&mut r)?;
         let inputs = codec::read_tensors(&mut r)?;
 
-        let outputs = step(&tx, inputs).await?;
+        // A step whose sequence cannot be read is dropped rather than guessed at:
+        // defaulting it would fold this step into another sequence's KV, which
+        // corrupts that sequence's output instead of failing this one.
+        let step_meta: StepMeta = match serde_json::from_slice(&step_meta_bytes) {
+            Ok(m) => m,
+            Err(e) => {
+                log::error!("node {node_id}: undecodable step meta, dropping step: {e}");
+                continue;
+            }
+        };
+        // No sequence named means the one-prompt-at-a-time protocol, which owns the
+        // single slot; only an unreadable frame is ambiguous.
+        let seq_id = step_meta.seq_ids.first().copied().unwrap_or(znet::SINGLE_SEQ);
+
+        let outputs = match step(&tx, seq_id, inputs).await {
+            Ok(o) => o,
+            Err(e) => {
+                log::error!("node {node_id}: step error: {e:?}");
+                continue;
+            }
+        };
 
         let mut body = Vec::new();
-        codec::write_frame(&mut body, &step_meta)?;
+        codec::write_frame(&mut body, &step_meta_bytes)?;
         codec::write_tensors(&mut body, &outputs)?;
         session.put(&next_key, body).await.map_err(znet::zerr)?;
 

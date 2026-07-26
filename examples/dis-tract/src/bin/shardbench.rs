@@ -40,7 +40,7 @@ fn time_chain(label: &str, chain: &mut [StageState], turns: usize) -> Result<Vec
         let t0 = Instant::now();
         let mut wire: TVec<Tensor> = tvec!(if turn == 0 { ids(&prompt) } else { ids(&[tok]) });
         for st in chain.iter_mut() {
-            wire = st.step(wire)?;
+            wire = st.step(0, wire)?;
         }
         tok = argmax(&wire[0])?;
         toks.push(tok);
