@@ -11,9 +11,12 @@ use std::time::{Duration, Instant};
 use anyhow::{Result, ensure};
 use clap::Parser;
 use tract_core::prelude::*;
-use tract_distributed::plan::{layer_weight_profile, memory_weighted_cuts, stage_weights};
+use tract_distributed::plan::{memory_weighted_cuts, stage_weights};
 use tract_distributed::protocol::{
     AssignSpec, GenerateReply, GenerateRequest, NodeCaps, Phase, RunStats, StepMeta, StreamMsg,
+};
+use tract_distributed::shard_graph::{
+    ast_layer_weight_profile, count_layers, read_graph_and_sizes,
 };
 use tract_distributed::{codec, znet};
 use zenoh::Wait;
@@ -59,12 +62,9 @@ async fn main() -> Result<()> {
     let args = Args::parse();
     let session = zenoh::open(znet::coordinator_config()?).await.map_err(znet::zerr)?;
 
-    let (full, _n_regular) = tract_distributed::llm::load_model(&args.model)?;
-    let n_layers = full
-        .input_outlets()?
-        .iter()
-        .filter(|o| full.node(o.node).name.contains("cache_key"))
-        .count();
+    let (graph_text, dat_sizes) = read_graph_and_sizes(&args.model)?;
+    let doc = tract_nnef::ast::parse::parse_document(&graph_text)?;
+    let n_layers = count_layers(&doc);
 
     // Discover workers via their advertised caps.
     let caps_sub = session.declare_subscriber(znet::CAPS_WILDCARD).await.map_err(znet::zerr)?;
@@ -88,7 +88,7 @@ async fn main() -> Result<()> {
     let mut nodes: Vec<NodeCaps> = caps.into_values().collect();
     nodes.sort_by_key(|c| (c.backend != "cpu", c.node_id.clone()));
     let budgets: Vec<u64> = nodes.iter().map(|c| c.mem_budget).collect();
-    let profile = layer_weight_profile(&full, n_layers);
+    let profile = ast_layer_weight_profile(&doc, &dat_sizes, n_layers)?;
     let cut_layers = memory_weighted_cuts(&profile, &budgets)?;
     let n = cut_layers.len() + 1;
     ensure!(n == nodes.len(), "planned {n} stages for {} nodes", nodes.len());
@@ -130,8 +130,6 @@ async fn main() -> Result<()> {
             .map_err(znet::zerr)?;
         queryables.push(q);
     }
-
-    drop(full); // planning is done; workers hold the shards from here on.
 
     // Wait for all workers to load.
     let ready_sub = session.declare_subscriber(znet::READY_WILDCARD).await.map_err(znet::zerr)?;
