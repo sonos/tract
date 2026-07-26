@@ -1,10 +1,10 @@
 use crate::internal::*;
-use crate::ndarray::Dimension;
 use downcast_rs::Downcast;
 use dyn_eq::DynEq;
 use std::fmt::{self, Debug};
 use tract_data::itertools::izip;
 use tract_itertools::Itertools;
+use tract_linalg::multithread::BShare;
 use tract_linalg::{BinOp, LinalgFn};
 
 use super::math::{Add, Max, Min, Mul, Sub};
@@ -679,9 +679,7 @@ impl EvalOp for OptBinByScalar {
             return Ok(tvec!(self.binop.eval(a, b, c_dt)?.into_tvalue()));
         }
 
-        // Not a requirement as TensorView doesn't require a owned tensor but in reality
-        // "a "should be mutable (it's omitted here as Rust compiler advise to remove it)
-        let a = a.into_tensor();
+        let mut a = a.into_tensor();
         let b_shape = b.shape();
 
         let first_unary_axis = b_shape
@@ -693,20 +691,12 @@ impl EvalOp for OptBinByScalar {
             .last()
             .context("Cannot use by_scalar when no trailing dimensions are unary")?;
 
-        let iterating_shape = &a.shape()[..first_unary_axis];
-        if !iterating_shape.is_empty() {
-            for it_coords in tract_ndarray::indices(iterating_shape) {
-                let mut view = TensorView::at_prefix(&a, it_coords.slice())?;
-                let b_view = TensorView::at_prefix(&b, it_coords.slice())?;
-                debug_assert_eq!(b_view.shape().iter().product::<usize>(), 1);
-                (self.eval_fn)(&mut view, &b_view)?;
-            }
-        } else {
-            let mut view = a.view();
-            let b_view = b.view();
-            debug_assert_eq!(b_view.shape().iter().product::<usize>(), 1);
-            (self.eval_fn)(&mut view, &b_view)?;
-        }
+        // b carries one scalar per block of a, the blocks being a's axes before
+        // first_unary_axis; check_input_shapes makes b's match a's there.
+        let n_blocks: usize = a.shape()[..first_unary_axis].iter().product();
+        // A zero-sized dim zeroes n_blocks, and par_bin no-ops on an empty a.
+        let period = a.len().checked_div(n_blocks).unwrap_or(0);
+        tract_linalg::multithread::par_bin(&*self.eval_fn, &mut a, &b, period, BShare::PerBlock)?;
         Ok(tvec!(a.into_tvalue()))
     }
 }
@@ -828,27 +818,18 @@ impl EvalOp for OptBinUnicast {
             return Ok(tvec!(self.binop.eval(a, b, c_dt)?.into_tvalue()));
         }
 
-        // Not a requirement as TensorView doesn't require a owned tensor but in reality
-        // "a "should be mutable (it's omitted here as Rust compiler advise to remove it)
-        let a = a.into_tensor();
-        let b_shape = b.shape();
-        let b_view = b.view();
-        let first_non_unary_axis =
-            b_shape.iter().enumerate().take_while(|&(_, &dim)| dim == 1).map(|(i, _)| i + 1).last();
-
-        if let Some(first_non_unary_axis) = first_non_unary_axis {
-            // Iterate on outter dimensions and evaluate with unicast subviews
-            let iterating_shape = a.shape()[..first_non_unary_axis].to_vec();
-            for it_coords in tract_ndarray::indices(iterating_shape) {
-                let mut view = TensorView::at_prefix(&a, it_coords.slice())?;
-                debug_assert_eq!(view.shape(), &b_view.shape()[it_coords.slice().len()..]);
-                (self.eval_fn)(&mut view, &b_view)?;
-            }
-        } else {
-            let mut view = a.view();
-            debug_assert_eq!(view.shape(), b_view.shape());
-            (self.eval_fn)(&mut view, &b_view)?;
-        }
+        let mut a = a.into_tensor();
+        // b's leading unary axes are the ones a repeats over; past them b matches
+        // a exactly (check_input_shapes), so one kernel call covers b.len()
+        // elements of a and b is consumed in lockstep within each.
+        debug_assert!(
+            b.shape().iter().zip(a.shape()).skip_while(|(b, _)| **b == 1).all(|(b, a)| b == a),
+            "unicast b {:?} does not line up with a {:?}",
+            b.shape(),
+            a.shape()
+        );
+        let period = b.len();
+        tract_linalg::multithread::par_bin(&*self.eval_fn, &mut a, &b, period, BShare::Lockstep)?;
 
         Ok(tvec!(a.into_tvalue()))
     }
@@ -1281,5 +1262,29 @@ mod tests {
         for (i, v) in out_slice.iter().enumerate() {
             assert_eq!(*v, i as f32 + 1.0, "mismatch at {i}");
         }
+    }
+
+    /// A zero-sized outer dim (a symbolic batch or sequence resolving to 0) has
+    /// no elements to write, so both fast paths must no-op. The kernels cannot
+    /// be handed the empty tensor: `as_slice_mut` builds a slice from the null
+    /// data pointer, and the by-scalar kernel reads `b[0]` off a zero-length
+    /// slice.
+    #[test]
+    fn zero_sized_outer_dim_is_a_noop() {
+        let a = Tensor::zero::<f32>(&[0, 4, 8]).unwrap();
+        let b = Tensor::zero::<f32>(&[0, 4, 1]).unwrap();
+        let linalg_fn = tract_linalg::bin_by_scalar(f32::datum_type(), BinOp::Add)
+            .expect("f32 by_scalar Add kernel available");
+        let op = OptBinByScalar { binop: Box::new(Add), eval_fn: Arc::from(linalg_fn) };
+        let out = op.eval(tvec!(a.into_tvalue(), b.into_tvalue())).unwrap();
+        assert_eq!(out[0].shape(), &[0, 4, 8]);
+
+        let a = Tensor::zero::<f32>(&[0, 4, 16]).unwrap();
+        let b = Tensor::zero::<f32>(&[1, 4, 16]).unwrap();
+        let linalg_fn = tract_linalg::bin_unicast(f32::datum_type(), BinOp::Add)
+            .expect("f32 unicast Add kernel available");
+        let op = OptBinUnicast { binop: Box::new(Add), eval_fn: Arc::from(linalg_fn) };
+        let out = op.eval(tvec!(a.into_tvalue(), b.into_tvalue())).unwrap();
+        assert_eq!(out[0].shape(), &[0, 4, 16]);
     }
 }
