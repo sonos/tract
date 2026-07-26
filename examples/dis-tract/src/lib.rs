@@ -29,6 +29,7 @@ pub mod partition;
 pub mod plan;
 pub mod protocol;
 pub mod runner;
+pub mod schedule;
 pub mod shard_graph;
 pub mod stage;
 pub mod znet;

@@ -1,7 +1,12 @@
 //! Dis-tract coordinator (zenoh): discovers workers by their advertised caps,
 //! plans a memory-weighted layer split, assigns + serves each worker its shard,
-//! then runs as a persistent generation server — each `distract/generate` query
-//! resets the stages' KV and greedily decodes the prompt over the warm pipeline.
+//! then runs as a persistent generation server.
+//!
+//! Each `distract/generate` query becomes a [`Sequence`] with its own KV slot on every
+//! stage. Up to one sequence per stage is admitted and their steps are interleaved, so a
+//! stage that has handed its step on works on another sequence instead of idling until
+//! the token comes back. Results carry their sequence id, so they are matched rather
+//! than assumed to arrive in order.
 
 use std::collections::HashMap;
 use std::io::Cursor;
@@ -13,13 +18,15 @@ use clap::Parser;
 use tract_core::prelude::*;
 use tract_distributed::plan::{memory_weighted_cuts, stage_weights};
 use tract_distributed::protocol::{
-    AssignSpec, GenerateReply, GenerateRequest, NodeCaps, Phase, RunStats, StepMeta, StreamMsg,
+    AssignSpec, GenerateReply, GenerateRequest, NodeCaps, RunStats, StepMeta, StreamMsg,
 };
+use tract_distributed::schedule::{Progress, Scheduler, Sequence, Step};
 use tract_distributed::shard_graph::{
     ast_layer_weight_profile, count_layers, read_graph_and_sizes,
 };
 use tract_distributed::{codec, znet};
 use zenoh::Wait;
+use zenoh::query::Query;
 use zenoh::sample::SampleKind;
 
 /// How long one stage-chain traversal may take before the generation is abandoned.
@@ -35,6 +42,47 @@ struct Args {
     /// Number of workers to wait for before planning.
     #[arg(long, default_value = "2")]
     workers: usize,
+    /// Sequences allowed to hold a KV slot at once. Defaults to the number of
+    /// stages, which is what it takes to keep every stage busy. Higher lets more
+    /// clients progress together at the cost of KV on every worker.
+    #[arg(long)]
+    max_sequences: Option<usize>,
+    /// Prompt tokens per prefill step; 0 feeds the whole prompt in one step. Chunking
+    /// stops a long prompt from holding a stage for its entire prefill.
+    #[arg(long, default_value = "0")]
+    prefill_chunk: usize,
+}
+
+/// Close a sequence out: final stream message, release its KV on every stage, reply.
+async fn finish(session: &zenoh::Session, s: Sequence<Query>, error: Option<String>) -> Result<()> {
+    let done = StreamMsg { tokens: s.out_toks.clone(), done: true };
+    let _ = session.put(&s.stream_key, serde_json::to_vec(&done)?).await;
+    let _ = session.put(znet::free_key(s.id), vec![]).await;
+    let reply = GenerateReply {
+        decode_tok_s: s.decode_tok_s(),
+        tokens: s.out_toks,
+        ttft_ms: s.ttft_ms,
+        error,
+    };
+    let _ = s.reply.reply(znet::GENERATE_KEY, serde_json::to_vec(&reply)?).await;
+    Ok(())
+}
+
+/// Give up on every sequence riding a pipeline that has stopped answering, replying to
+/// each with what it managed to generate. Their stages' KV is out of step with them, so
+/// each is freed; the next sequence resets its own slot anyway.
+async fn abandon(
+    session: &zenoh::Session,
+    sched: &mut Scheduler<Query>,
+    why: String,
+) -> Result<()> {
+    let lost = sched.drain();
+    log::error!("pipeline stalled, abandoning {} sequence(s): {why}", lost.len());
+    for s in lost {
+        log::warn!("seq {} abandoned after {} tokens", s.id, s.out_toks.len());
+        finish(session, s, Some(why.clone())).await?;
+    }
+    Ok(())
 }
 
 fn argmax(t: &Tensor) -> Result<i64> {
@@ -163,158 +211,188 @@ async fn main() -> Result<()> {
     let total_weight_bytes: u64 = profile.iter().sum();
     let node_ids: Vec<String> = nodes.iter().map(|c| c.node_id.clone()).collect();
 
-    // Persistent generation server: greedily decode one prompt at a time on the
-    // warm cluster, resetting every stage's KV before each. Never exits.
-    // One prompt at a time means one sequence slot: every prompt reuses it, so the
-    // reset before it reclaims the previous prompt's KV instead of stranding it.
-    let reset_key = znet::reset_key(znet::SINGLE_SEQ);
+    // Persistent generation server. Never exits.
     let gen_q = session.declare_queryable(znet::GENERATE_KEY).await.map_err(znet::zerr)?;
-    log::info!("generation server ready on {} — awaiting prompts", znet::GENERATE_KEY);
-    while let Ok(query) = gen_q.recv_async().await {
-        let Some(req) = query
-            .payload()
-            .and_then(|p| serde_json::from_slice::<GenerateRequest>(&p.to_bytes()).ok())
-        else {
-            continue;
-        };
+    log::info!("generation server ready on {} — up to {n} sequences in flight", znet::GENERATE_KEY);
 
-        // Fresh context: clear this sequence's KV on every stage and wait for each
-        // to ack, so prefill can't race ahead of a reset (bounded if an ack drops).
-        session.put(&reset_key, vec![]).await.map_err(znet::zerr)?;
-        {
-            let mut acked = std::collections::HashSet::new();
-            let deadline = tokio::time::sleep(Duration::from_millis(500));
-            tokio::pin!(deadline);
-            while acked.len() < n {
-                tokio::select! {
-                    s = reset_ack_sub.recv_async() => match s {
-                        Ok(s) => {
-                            if let Some((idx, seq)) = znet::parse_reset_ack(&s.payload().to_bytes())
-                                && seq == znet::SINGLE_SEQ
-                            {
-                                acked.insert(idx);
-                            }
-                        }
-                        Err(_) => break,
-                    },
-                    _ = &mut deadline => {
-                        log::warn!("reset ack timeout: {}/{n} stages", acked.len());
-                        break;
-                    }
-                }
-            }
-        }
-
-        let skey = if req.stream_id != 0 {
-            znet::stream_key(req.stream_id)
-        } else {
-            znet::STREAM_KEY.to_string()
-        };
-        let mut out_toks = Vec::with_capacity(req.max_tokens);
-        let mut dist_tok = 0i64;
-        let mut aborted: Option<String> = None;
-        let (mut ttft_ms, mut dec_sum_ms, mut dec_cnt) = (0.0f64, 0.0f64, 0u64);
-        for turn in 0..req.max_tokens as u64 {
-            let (phase, tok) = if turn == 0 {
-                (Phase::Prefill, ids(&req.prompt))
-            } else {
-                (Phase::Decode, ids(&[dist_tok]))
-            };
-            let t0 = Instant::now();
+    let mut sched: Scheduler<Query> =
+        Scheduler::new(n, args.max_sequences.unwrap_or(n), args.prefill_chunk);
+    // When each step went out, so a result can be timed. Kept here rather than in the
+    // scheduler, which stays a pure function of the results it is told about.
+    let mut sent: HashMap<u64, Instant> = HashMap::new();
+    // Decode steps the cluster has completed across all sequences in the current busy
+    // period, and the rate that gives. This is the number interleaving moves: a single
+    // sequence decodes no faster, the cluster gets through more of them at once.
+    let mut busy: Option<(Instant, u64)> = None;
+    let mut cluster_tok_s;
+    loop {
+        for Step { seq_id, meta, ids: step_ids } in sched.dispatch() {
             let mut body = Vec::new();
-            let meta = StepMeta { turn, phase, seq_ids: vec![znet::SINGLE_SEQ] };
             codec::write_frame(&mut body, &serde_json::to_vec(&meta)?)?;
-            codec::write_tensors(&mut body, &[tok])?;
+            codec::write_tensors(&mut body, &[ids(&step_ids)])?;
+            sent.insert(seq_id, Instant::now());
             session.put(&in0, body).await.map_err(znet::zerr)?;
-            let outcome = {
-                let deadline = tokio::time::sleep(STEP_TIMEOUT);
-                tokio::pin!(deadline);
-                loop {
-                    tokio::select! {
-                        r = result_sub.recv_async() => break r.map_err(|e| format!("{e:?}")),
-                        l = live_sub.recv_async() => {
-                            // Liveliness replays the live tokens as Puts on declare; only a
-                            // Delete for a stage of *this* run ends the wait.
-                            if let Ok(s) = l
-                                && s.kind() == SampleKind::Delete
-                                && let Some(id) = s.key_expr().as_str().rsplit('/').next()
-                                && node_ids.iter().any(|n| n == id)
-                            {
-                                break Err(format!("node {id} left the cluster"));
+        }
+        if sched.active() == 0 {
+            busy = None;
+        }
+
+        let waiting = sched.waiting();
+        tokio::select! {
+            // Results first: draining the pipeline matters more than admitting work.
+            biased;
+
+            r = result_sub.recv_async() => {
+                let Ok(sample) = r else { continue };
+                let mut rc = Cursor::new(sample.payload().to_bytes().to_vec());
+                let meta: StepMeta = match codec::read_frame(&mut rc)
+                    .map_err(|e| e.to_string())
+                    .and_then(|b| serde_json::from_slice(&b).map_err(|e| e.to_string()))
+                {
+                    Ok(m) => m,
+                    Err(e) => {
+                        log::error!("undecodable result meta, dropping: {e}");
+                        continue;
+                    }
+                };
+                // Results carry the sequence they belong to, so they need not come back
+                // in the order the steps went out.
+                let Some(seq_id) = meta.seq_ids.first().copied() else {
+                    log::warn!("result names no sequence, dropping");
+                    continue;
+                };
+                let tok = argmax(&codec::read_tensors(&mut rc)?[0])?;
+                let elapsed = sent
+                    .remove(&seq_id)
+                    .map(|t| t.elapsed().as_secs_f64() * 1000.0)
+                    .unwrap_or(0.0);
+
+                match sched.on_result(seq_id, tok, elapsed) {
+                    None => log::warn!("result for a sequence no longer active: {seq_id}"),
+                    Some(Progress::Prefilling) => {}
+                    Some(progress) => {
+                        let (since, steps) = busy.get_or_insert((Instant::now(), 0));
+                        *steps += 1;
+                        let secs = since.elapsed().as_secs_f64();
+                        cluster_tok_s = if secs > 0.0 { *steps as f64 / secs } else { 0.0 };
+
+                        let (toks, ttft, prompt_tokens, skey) = match &progress {
+                            Progress::Done(s) => (
+                                s.out_toks.clone(),
+                                s.ttft_ms,
+                                s.prompt_tokens,
+                                s.stream_key.clone(),
+                            ),
+                            _ => {
+                                let s = sched.sequence(seq_id).expect("stepped sequence");
+                                (
+                                    s.out_toks.clone(),
+                                    s.ttft_ms,
+                                    s.prompt_tokens,
+                                    s.stream_key.clone(),
+                                )
                             }
-                        }
-                        _ = &mut deadline => {
-                            break Err(format!("no stage reply in {}s", STEP_TIMEOUT.as_secs()));
+                        };
+                        let partial = StreamMsg { tokens: toks.clone(), done: false };
+                        let _ = session.put(&skey, serde_json::to_vec(&partial)?).await;
+                        let run = RunStats {
+                            model: model_name.clone(),
+                            n_stages: n,
+                            n_layers,
+                            total_weight_bytes,
+                            ttft_ms: ttft,
+                            decode_tok_s: cluster_tok_s,
+                            tokens: toks.len() as u64,
+                            prompt_tokens,
+                            node_ids: node_ids.clone(),
+                        };
+                        let _ = session.put(znet::RUN_KEY, serde_json::to_vec(&run)?).await;
+
+                        if let Progress::Done(s) = progress {
+                            log::info!(
+                                "seq {} done: {} tokens (ttft {:.0}ms, {:.1} tok/s), \
+                                 {} still in flight",
+                                s.id,
+                                s.out_toks.len(),
+                                s.ttft_ms,
+                                s.decode_tok_s(),
+                                sched.active()
+                            );
+                            finish(&session, *s, None).await?;
                         }
                     }
                 }
-            };
-            let sample = match outcome {
-                Ok(s) => s,
-                Err(why) => {
-                    log::error!("generation aborted at turn {turn}: {why}");
-                    aborted = Some(why);
-                    break;
+            }
+
+            l = live_sub.recv_async() => {
+                // Liveliness replays the live tokens as Puts on declare; only a Delete
+                // for a stage of *this* run ends the wait.
+                if let Ok(sample) = l
+                    && sample.kind() == SampleKind::Delete
+                    && let Some(id) = sample.key_expr().as_str().rsplit('/').next()
+                    && node_ids.iter().any(|nid| nid == id)
+                {
+                    abandon(&session, &mut sched, format!("node {id} left the cluster")).await?;
                 }
-            };
-            let elapsed = t0.elapsed().as_secs_f64() * 1000.0;
-            let mut rc = Cursor::new(sample.payload().to_bytes().to_vec());
-            let _ = codec::read_frame(&mut rc)?;
-            dist_tok = argmax(&codec::read_tensors(&mut rc)?[0].clone())?;
-            let stop_hit = req.stop.contains(&dist_tok);
-            if !stop_hit {
-                out_toks.push(dist_tok);
             }
 
-            if turn == 0 {
-                ttft_ms = elapsed;
-            } else {
-                dec_sum_ms += elapsed;
-                dec_cnt += 1;
-            }
-            let decode_tok_s = if dec_cnt > 0 { 1000.0 * dec_cnt as f64 / dec_sum_ms } else { 0.0 };
-            let run = RunStats {
-                model: model_name.clone(),
-                n_stages: n,
-                n_layers,
-                total_weight_bytes,
-                ttft_ms,
-                decode_tok_s,
-                tokens: out_toks.len() as u64,
-                prompt_tokens: req.prompt.len(),
-                node_ids: node_ids.clone(),
-            };
-            let _ = session.put(znet::RUN_KEY, serde_json::to_vec(&run)?).await;
-            // Live partial for the dashboard's streaming chat, on this request's key.
-            let stream = StreamMsg { tokens: out_toks.clone(), done: false };
-            let _ = session.put(&skey, serde_json::to_vec(&stream)?).await;
+            q = gen_q.recv_async(), if sched.has_room() => {
+                let Ok(query) = q else { continue };
+                let Some(req) = query
+                    .payload()
+                    .and_then(|p| serde_json::from_slice::<GenerateRequest>(&p.to_bytes()).ok())
+                else {
+                    log::warn!("undecodable generate request");
+                    continue;
+                };
+                let skey = if req.stream_id != 0 {
+                    znet::stream_key(req.stream_id)
+                } else {
+                    znet::STREAM_KEY.to_string()
+                };
+                let prompt_tokens = req.prompt.len();
+                let id = sched.admit(req, skey, query);
 
-            if stop_hit {
-                log::info!("stop token {dist_tok} after {} tokens", out_toks.len());
-                break;
+                // Fresh context: clear this sequence's KV on every stage and wait for
+                // each to ack, so its prefill cannot race ahead of its own reset. Other
+                // sequences keep their caches, and their results queue up meanwhile.
+                session.put(znet::reset_key(id), vec![]).await.map_err(znet::zerr)?;
+                let mut acked = std::collections::HashSet::new();
+                let deadline = tokio::time::sleep(Duration::from_millis(500));
+                tokio::pin!(deadline);
+                while acked.len() < n {
+                    tokio::select! {
+                        a = reset_ack_sub.recv_async() => match a {
+                            Ok(a) => {
+                                if let Some((stage, seq)) =
+                                    znet::parse_reset_ack(&a.payload().to_bytes())
+                                    && seq == id
+                                {
+                                    acked.insert(stage);
+                                }
+                            }
+                            Err(_) => break,
+                        },
+                        _ = &mut deadline => {
+                            log::warn!("seq {id}: reset ack timeout, {}/{n} stages", acked.len());
+                            break;
+                        }
+                    }
+                }
+                log::info!("seq {id} admitted ({prompt_tokens} prompt tokens)");
+            }
+
+            _ = tokio::time::sleep(STEP_TIMEOUT), if waiting => {
+                // The stages are shared, so a wedged one takes down every sequence
+                // riding the pipeline, not just the one whose step was outstanding.
+                sent.clear();
+                abandon(
+                    &session,
+                    &mut sched,
+                    format!("no stage reply in {}s", STEP_TIMEOUT.as_secs()),
+                )
+                .await?;
             }
         }
-
-        let _ = session
-            .put(&skey, serde_json::to_vec(&StreamMsg { tokens: out_toks.clone(), done: true })?)
-            .await;
-        // Done either way: the stages should not park this sequence's KV until the
-        // next prompt happens to reset it.
-        let _ = session.put(znet::free_key(znet::SINGLE_SEQ), vec![]).await;
-        let decode_tok_s = if dec_cnt > 0 { 1000.0 * dec_cnt as f64 / dec_sum_ms } else { 0.0 };
-        match &aborted {
-            None => log::info!(
-                "generated {} tokens (ttft {:.0}ms, {:.1} tok/s)",
-                out_toks.len(),
-                ttft_ms,
-                decode_tok_s
-            ),
-            // The stages' KV is now out of step with the sequence, but the reset at the
-            // top of the next prompt clears every stage, so the cluster stays usable.
-            Some(why) => log::warn!("abandoned after {} tokens: {why}", out_toks.len()),
-        }
-        let reply = GenerateReply { tokens: out_toks, ttft_ms, decode_tok_s, error: aborted };
-        let _ = query.reply(znet::GENERATE_KEY, serde_json::to_vec(&reply)?).await;
     }
-    Ok(())
 }
