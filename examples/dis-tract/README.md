@@ -100,19 +100,23 @@ Honest limits, worst first:
 - **Not on the public API.** The crate reaches into `tract_core`/`tract_nnef`/
   `tract_transformers` at 35 import sites rather than `api/rs`, against `causal_llm`'s
   single `use tract::`. The blocker is real, not laziness — see the design question below.
-- **The coordinator still materialises the full model** to compute the layer weight
-  profile, then drops it. So even on two boxes the coordinator needs one that fits the
-  whole model — for the interesting case (a model too big for any single node) that is a
-  hard blocker, not a wart. The profile could be read from the graph AST instead, as the
-  shard loader already does.
+- **Coordinator profile from the AST.** The coordinator reads the NNEF graph text and
+  `.dat` file sizes from the archive, parses the AST, and computes the per-layer weight
+  profile without ever loading the full `TypedModel` — so it no longer needs a box that
+  fits the whole model. (The single-process reference path still loads the full model.)
 - **`shard_graph.rs` hardcodes torch2nnef naming** (`model_model__{N}_inputLayernorm_…`).
   It works for the published q40ef16 Qwen/Llama exports; it is not a general mechanism.
 - **`api/rs` needs an escape hatch.** This branch adds `Model::typed_ref` /
   `into_typed_model` (`#[doc(hidden)]`) because a `Model` cannot otherwise be split or
   measured. Shape it however you prefer — it is the smallest thing that unblocks this.
-- **CPU needs #2477** (block-quant `AddUnicast` fusion guard) or Qwen decodes NaN. Metal
-  is fine on current main (#2476, #2472, #2428 merged).
-- Greedy decode only, one prompt at a time, KV reset per prompt (no multi-turn memory).
+- **The planner balances bytes, not time.** `memory_weighted_cuts` sizes each stage to its
+  node's memory, which is what makes a model *fit* and the wrong objective for throughput
+  when the stages sit on backends of different speed: an equal split across a fast and a
+  slow node leaves the fast one idle. Measured on a CPU+Metal pair, moving the cut by
+  advertised budgets alone nearly halved wall time. Balancing time would need nodes to
+  advertise throughput as well as memory.
+- Greedy decode only, and no multi-turn memory — a sequence's KV is freed when it ends.
+  Several sequences do run at once (`--max-sequences`), each with its own KV slot.
 - CUDA compiles and self-reports via `Runtime::check()`, but is unexercised on Apple HW.
 
 ## The design question

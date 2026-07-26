@@ -16,10 +16,10 @@ worker; the coordinator's plan splits 36 layers into 2210 MiB + 2183 MiB shards;
 generated tokens match a single-machine reference exactly.
 
 The experiment that would earn the claim is two 16 GB machines and a model needing both
-(Qwen3-32B, ~17.6 GB). One thing blocks it beyond hardware: the coordinator still loads the
-whole model to compute its layer weight profile before dropping it, so it needs a box that
-fits the model — precisely what the too-big case does not have. That profile should come
-from the graph AST, as the shard loader already does.
+(Qwen3-32B, ~17.6 GB). The coordinator now computes its layer weight profile from the NNEF
+graph AST — reading the `.dat` file sizes and the variable→layer attribution directly from
+the archive, without loading the full `TypedModel` — so it no longer needs a box that fits
+the model.
 
 ### Why greedy decode, and no memory of the last turn?
 
@@ -76,20 +76,36 @@ drifts down. The banner shows both (`avg` and `now`).
 
 ### Can it serve more than one request at a time?
 
-No. **Single stream, strictly serial.** The coordinator is one loop over its
-`distract/generate` queryable: it takes a request, clears every worker's KV, decodes that
-prompt to completion, replies, and only then looks at the next. Concurrent requests do not
-error — they queue, and a caller just waits. There is no batching, and each prompt starts
-from an empty cache, so there is no multi-turn context.
+Yes. Each request becomes a **sequence** with its own KV slot on every stage, and their steps
+interleave down the one pipeline: while sequence A's step is in stage 1, stage 0 starts B
+instead of idling. Admission is bounded by `--max-sequences` (default: one per stage), since
+every admitted sequence costs KV on every worker; past that, callers queue.
 
-This is worth being pointed about, because a pipeline is exactly where it costs you. With a
-single stream, only one stage is busy at a time: while stage 0 computes token *n*, stage 1
-sits idle, and vice versa. In a 2-stage split each node is therefore ~50% idle, and that
-does not improve with more nodes — an N-stage pipeline leaves each node ~1/N busy. The
-standard answer is **micro-batching** (keep several sequences in flight so every stage
-always has work), which is what makes pipeline parallelism pay for throughput. It is not
-implemented. Single-stream *latency* is unaffected by this — the split costs ~1% — but the
-hardware is mostly idle, and that is the obvious next win for a serving workload.
+Each step is still **batch = 1** — one token of one sequence — and simply names its sequence,
+so a stage picks the matching KV with no padding and no batched execution. Results carry the
+sequence id back, so they are matched rather than assumed to arrive in order.
+
+**What this buys, and what it does not.** A sequence's steps are strictly ordered — token
+*t+1* is the argmax of step *t* — so one sequence never occupies more than one stage, and
+per-sequence latency does not improve at all; it gets slightly worse under contention. What
+improves is throughput. The ceiling is `(Σ tᵢ)/max(tᵢ)` over the stage step times: the slowest
+stage can never be more than fully busy. Measured on Qwen2.5-7B-q40ef16 over a CPU stage and a
+Metal stage, two concurrent sequences versus the same two back-to-back:
+
+| cut | stage 0 (cpu) | stage 1 (metal) | ceiling | measured |
+|-----|---------------|-----------------|---------|----------|
+| 14  | 514.2 ms      | 44.6 ms         | 1.09x   | 1.12x    |
+| 5   | 261.7 ms      | 65.2 ms         | 1.25x   | 1.26x    |
+
+Both sit at the ceiling, which says the remaining idle time is **not** the scheduler's to
+recover — it is the split. See *the planner balances bytes, not time* in the README. On
+balanced stages the same mechanism would approach the stage count.
+
+Correctness check worth repeating if you touch this: greedy decode is deterministic, so
+running the same prompts concurrently and serially must give byte-identical replies. If they
+differ, sequences are sharing cache somewhere and any speedup is meaningless.
+
+There is still no multi-turn context — a sequence's KV is freed when it ends.
 
 ### Could this run over the internet, not just a LAN?
 
@@ -124,9 +140,10 @@ the round-trip, or cut in fewer places, and turn on zenoh's transport security f
 
 ### Do I need any unmerged PRs?
 
-For CPU workers, yes: without sonos/tract#2477 (block-quant `AddUnicast` fusion guard) Qwen
-decodes NaN. Metal is fine on current main. Check whether #2477 has merged before believing
-this line.
+No, on current main. Qwen used to decode NaN on arm64 CPU; the cause was the 32x1/32x3
+`add_unicast` fast path not honouring an f16 unicast operand, fixed in sonos/tract#2495. A
+tree predating it still NaNs — `git merge-base --is-ancestor e1df29636 HEAD` says whether
+yours has it, and is worth checking before blaming a model or the split.
 
 ## Performance
 

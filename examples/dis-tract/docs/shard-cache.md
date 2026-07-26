@@ -195,9 +195,9 @@ not say where it looked.
   correct; the waste is duplicate transfer. A per-label lock file would fix it if it matters.
 - **Verification is not free.** ~0.9 s per restart, and it should probably be skippable
   (`--trust-cache`) for a developer loop, with the default staying safe.
-- **This does not fix the coordinator materialising the model.** It still loads the whole
-  model to compute the layer weight profile. Until that profile is read from the AST, the
-  coordinator needs a node that fits the model, which is the case we most want to serve.
+- **This is orthogonal to the coordinator's own footprint.** The coordinator reads its layer
+  weight profile from the graph AST and never builds a `TypedModel`, so it does not need a
+  node that fits the model; a cache would only change how workers *get* their shards.
 
 ## Measured: zenoh's payload ceiling
 
