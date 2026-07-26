@@ -7,7 +7,11 @@ use std::sync::{Arc, Mutex};
 #[cfg(feature = "multithread-mm")]
 use rayon::{ThreadPool, ThreadPoolBuilder};
 
-use tract_data::internal::TractResult;
+#[cfg(feature = "multithread-mm")]
+use tract_data::internal::vector_size;
+use tract_data::internal::{Tensor, TensorView, TractResult, ensure};
+
+use crate::LinalgFn;
 
 #[derive(Debug, Clone, Default)]
 pub enum Executor {
@@ -172,4 +176,135 @@ pub fn par_chunks_mut<T: Send>(
         let _ = (row_len, total_elems);
         f(0, out)
     }
+}
+
+/// How `b` maps onto the blocks [`par_bin`] splits `a` into.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BShare {
+    /// `b` is one `period`-element row that every block of `a` consumes in
+    /// lockstep, as the unicast kernels do. Requires `b.len() == period`.
+    Lockstep,
+    /// `b` holds one scalar per block of `a`, as the by-scalar kernels do:
+    /// block `i` reads `b[i]`. Requires `b.len() == a.len() / period`.
+    PerBlock,
+}
+
+/// Apply the linalg binary kernel `eval_fn` to `a` in place, splitting the work
+/// across the executor installed by [`multithread_tract_scope`].
+///
+/// `a` is `a.len() / period` blocks of `period` elements, `period` being how many
+/// `a` elements one kernel call covers; `share` says how `b` lines up with those
+/// blocks. A block is the coarsest unit a single call may span, because the
+/// unicast kernels walk `b` in lockstep and index past its end once `a` runs
+/// beyond one period. Inside a block the split lands on `vector_size()`-element
+/// boundaries, which keeps `a`'s and `b`'s offsets congruent modulo the kernel
+/// alignment — `unicast_with_alignment` hard-asserts that congruence.
+/// `OptBinUnicast::check_b_alignement` is what guarantees `period` itself is such
+/// a multiple whenever there is more than one block.
+///
+/// An empty `a` is a no-op: the kernels cannot take one, as `as_slice_mut` would
+/// build a slice from the null data pointer.
+///
+/// Both tensors must have natural C-order strides, which the callers' stride
+/// guards establish, and plain storage, which holds because no linalg binary
+/// kernel is registered for a datum type that lacks it. The byte offsets computed
+/// here are only correct under both.
+///
+/// These kernels are pure elementwise, so no chunk boundary can change a result:
+/// the output is bit-identical to the serial path at any thread count.
+pub fn par_bin(
+    eval_fn: &LinalgFn,
+    a: &mut Tensor,
+    b: &Tensor,
+    period: usize,
+    share: BShare,
+) -> TractResult<()> {
+    if a.len() == 0 {
+        return Ok(());
+    }
+    ensure!(
+        a.len().is_multiple_of(period),
+        "par_bin: period {period} does not divide a.len() {}",
+        a.len()
+    );
+    let n_blocks = a.len() / period;
+    match share {
+        BShare::Lockstep => ensure!(
+            b.len() == period,
+            "par_bin: Lockstep wants b.len() {} == period {period}",
+            b.len()
+        ),
+        BShare::PerBlock => ensure!(
+            b.len() == n_blocks,
+            "par_bin: PerBlock wants b.len() {} == {n_blocks} blocks",
+            b.len()
+        ),
+    }
+
+    let a_item = a.datum_type().size_of() as isize;
+    let b_item = b.datum_type().size_of() as isize;
+    let a = &*a;
+    // `len` elements of block `block`, starting `offset` elements into it. Both
+    // tensors are naturally strided, so a's flat element index is
+    // `block * period + offset` and b's is `offset` (Lockstep) or `block`
+    // (PerBlock).
+    let call = |block: usize, offset: usize, len: usize| -> TractResult<()> {
+        static STRIDES: [isize; 1] = [1];
+        let a_shape = [len];
+        let (b_offset, b_shape) = match share {
+            BShare::Lockstep => (offset as isize * b_item, [len]),
+            BShare::PerBlock => (block as isize * b_item, [1]),
+        };
+        let a_offset = (block * period + offset) as isize * a_item;
+        // `offset + len <= period` and blocks are disjoint, so the byte range
+        // `[a_offset, a_offset + len * a_item)` is disjoint across every
+        // (block, offset) the dispatch below enumerates. That is what makes the
+        // concurrent writes through these views non-aliasing; keep it true if the
+        // chunk arithmetic changes.
+        unsafe {
+            let mut a_chunk = TensorView::from_bytes(a, a_offset, &a_shape, &STRIDES);
+            let b_chunk = TensorView::from_bytes(b, b_offset, &b_shape, &STRIDES);
+            eval_fn(&mut a_chunk, &b_chunk)
+        }
+    };
+
+    #[cfg(feature = "multithread-mm")]
+    {
+        use rayon::prelude::*;
+        // Threshold first: reading the executor takes a global lock, and a graph
+        // has hundreds of these nodes sitting below the threshold.
+        if a.len() >= current_threading_element_threshold() {
+            let executor = current_tract_executor();
+            let nth = match &executor {
+                Executor::MultiThread(pool) => pool.current_num_threads(),
+                Executor::RayonGlobal => rayon::current_num_threads(),
+                Executor::SingleThread => 1,
+            };
+            if nth > 1 {
+                let per_block = (4 * nth).div_ceil(n_blocks).max(1);
+                let chunk = period.div_ceil(per_block).next_multiple_of(vector_size()).min(period);
+                let per_block = period.div_ceil(chunk);
+                if n_blocks * per_block > 1 {
+                    let run = || {
+                        (0..n_blocks * per_block).into_par_iter().try_for_each(|i| {
+                            let offset = (i % per_block) * chunk;
+                            call(i / per_block, offset, chunk.min(period - offset))
+                        })
+                    };
+                    return match executor {
+                        Executor::MultiThread(pool) => pool.install(run),
+                        _ => run(),
+                    };
+                }
+            }
+        }
+    }
+
+    // A single block is the whole tensor, so hand the kernel the natural view
+    // rather than a rank-1 one: fewer shapes for a future kernel to have to
+    // tolerate on the overwhelmingly common path.
+    if n_blocks == 1 {
+        return eval_fn(&mut a.view(), &b.view());
+    }
+    (0..n_blocks).try_for_each(|block| call(block, 0, period))
 }
