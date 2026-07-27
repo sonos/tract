@@ -16,33 +16,37 @@ pub fn register(registry: &mut Registry) {
 /// `[input_rank, count]`, column `i` holding the coordinates of the i-th non-zero
 /// element in row-major order.
 ///
-/// Accepts any number or boolean input. `count` depends on the input values rather
-/// than on its shape, so it is carried as a free symbol which the plan binds from the
-/// actual output at eval time. Every node needs its own symbol: two NonZero outputs
+/// Accepts a non-quantized number or boolean input. `count` depends on the input values
+/// rather than on its shape, so it is carried as a free symbol which the plan binds from
+/// the actual output at eval time. Every node needs its own symbol: two NonZero outputs
 /// have unrelated lengths. The symbol name is carried by the NNEF `count_symbol`
 /// attribute, and a fresh one is minted when it is absent.
+///
+/// The binding happens once per turn, so a NonZero inside a Scan body keeps the count of
+/// the first iteration for all of them: only a count that is constant across iterations
+/// is representable there.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct NonZero {
     pub count: Symbol,
 }
 
 impl NonZero {
-    unsafe fn eval_t<T: Datum + Zero>(input: &Tensor) -> TractResult<Tensor> {
-        unsafe {
-            let count = input.as_slice_unchecked::<T>().iter().filter(|d| !d.is_zero()).count();
-            let view = input.to_array_view_unchecked::<T>();
-            let mut output = Tensor::uninitialized::<i64>(&[input.rank(), count])?;
-            let mut view_mut: tract_ndarray::ArrayViewMut2<i64> =
-                output.to_array_view_mut_unchecked::<i64>().into_dimensionality().unwrap();
-            for (i, (coords, _)) in
-                view.indexed_iter().filter(|(_, value)| !value.is_zero()).enumerate()
-            {
-                view_mut
-                    .index_axis_mut(tract_ndarray::Axis(1), i)
-                    .assign(&coords.as_array_view().map(|d| *d as i64));
-            }
-            Ok(output)
+    fn collect<T: Datum>(input: &Tensor, is_set: impl Fn(&T) -> bool) -> TractResult<Tensor> {
+        let view = input.to_plain_array_view::<T>()?;
+        let count = view.iter().filter(|v| is_set(v)).count();
+        let mut output = Tensor::zero::<i64>(&[input.rank(), count])?;
+        let mut view_mut: tract_ndarray::ArrayViewMut2<i64> =
+            output.to_plain_array_view_mut::<i64>()?.into_dimensionality()?;
+        for (i, (coords, _)) in view.indexed_iter().filter(|(_, v)| is_set(v)).enumerate() {
+            view_mut
+                .index_axis_mut(tract_ndarray::Axis(1), i)
+                .assign(&coords.as_array_view().map(|d| *d as i64));
         }
+        Ok(output)
+    }
+
+    fn eval_t<T: Datum + Zero>(input: &Tensor) -> TractResult<Tensor> {
+        Self::collect(input, |v: &T| !v.is_zero())
     }
 }
 
@@ -60,20 +64,23 @@ impl EvalOp for NonZero {
     }
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        unsafe {
-            let input = args_1!(inputs);
-            let output = if input.datum_type() == bool::datum_type() {
-                Self::eval_t::<u8>(&input)?
-            } else {
-                dispatch_numbers!(Self::eval_t(input.datum_type())(&input))?
-            };
-            Ok(tvec!(output.into_tvalue()))
-        }
+        let input = args_1!(inputs);
+        let output = if input.datum_type() == bool::datum_type() {
+            Self::collect(&input, |v: &bool| *v)?
+        } else {
+            dispatch_numbers!(Self::eval_t(input.datum_type())(&input))?
+        };
+        Ok(tvec!(output.into_tvalue()))
     }
 }
 
 impl TypedOp for NonZero {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        let dt = inputs[0].datum_type;
+        ensure!(
+            dt == bool::datum_type() || (dt.is_number() && !dt.is_quantized()),
+            "NonZero expects a plain number or boolean input, got {dt:?}"
+        );
         Ok(tvec!(i64::fact([inputs[0].rank().to_dim(), self.count.to_dim()])))
     }
 
@@ -95,9 +102,9 @@ fn dump(ast: &mut IntoAst, node: &TypedNode, op: &NonZero) -> TractResult<Option
 
 fn load(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
     let input = invocation.named_arg_as(builder, "input")?;
-    let count = match invocation.named_arg_as::<String>(builder, "count_symbol") {
-        Ok(name) => builder.model.symbols.sym(&name),
-        Err(_) => builder.model.symbols.new_with_prefix("x"),
+    let count = match invocation.get_named_arg_as::<String>(builder, "count_symbol")? {
+        Some(name) => builder.model.symbols.sym(&name),
+        None => builder.model.symbols.new_with_prefix("x"),
     };
     builder.wire(NonZero { count }, &[input])
 }
