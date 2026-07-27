@@ -1,0 +1,16 @@
+version 1.0;
+
+extension tract_registry tract_core;
+extension tract_registry tract_onnx;
+extension tract_symbol a;
+extension tract_symbol b;
+
+graph network(input_0) -> (output_0, output_1)
+{
+    input_0 = tract_core_external(shape = [2, 3], datum_type = 'i64');
+    mask = input_0 > 1;
+    nz_a = tract_onnx_non_zero(input_0, count_symbol = 'a');
+    nz_b = tract_onnx_non_zero(mask, count_symbol = 'b');
+    output_0 = tract_core_cast(nz_a, to = 'i32');
+    output_1 = tract_core_cast(nz_b, to = 'i32');
+}

@@ -56,6 +56,11 @@ fragment tract_onnx_non_max_suppression(
     center_point_box: integer = 0
 ) -> (output: tensor<integer>);
 
+fragment tract_onnx_non_zero(
+    input: tensor<?>,
+    count_symbol: string
+) -> (output: tensor<integer>);
+
 fragment tract_onnx_random(
     datum_type: string,
     shape: integer[],

@@ -70,7 +70,6 @@ test_mod_uint64
 test_mod_uint8
 test_matmulinteger
 test_nllloss_NCd1d2d3_none_no_weight_negative_ii_expanded
-test_nonzero_example
 test_quantizelinear
 test_qlinearmatmul_2D
 test_qlinearmatmul_3D
