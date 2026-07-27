@@ -174,6 +174,53 @@ pub fn split_blocks(
     partition_stages(full, &cuts, n_regular)
 }
 
+/// The block each node belongs to, taking the residual entering a block as that block's
+/// starting point: node `n` is in the highest-numbered block whose incoming residual can
+/// reach it. Nodes off the residual stream entirely — weights, the embedding, the shared
+/// RoPE and mask tables — get `None` and are placed by their consumers.
+///
+/// Returns `None` for a model whose blocks are not recognisable, leaving the caller on
+/// cache depth. Recognition is by the torch2nnef input-layernorm naming, the same
+/// convention [`crate::shard_graph`] relies on.
+fn residual_segments(full: &TypedModel) -> Option<Vec<Option<usize>>> {
+    let mut boundaries: Vec<(usize, OutletId)> = vec![];
+    for node in full.nodes() {
+        if let Some(rest) = node.name.strip_prefix("model_model__")
+            && let Some((num, tail)) = rest.split_once('_')
+            && tail == "inputLayernorm_hiddenStatesTo0"
+            && let Ok(layer) = num.parse::<usize>()
+            && let Some(residual) = node.inputs.first()
+        {
+            boundaries.push((layer, *residual));
+        }
+    }
+    if boundaries.is_empty() {
+        return None;
+    }
+    boundaries.sort_unstable();
+
+    let mut segment: Vec<Option<usize>> = vec![None; full.nodes().len()];
+    // Highest block first: a node reachable from several residuals belongs to the last
+    // of them, and claiming it here also stops the earlier sweeps walking through it.
+    for (layer, residual) in boundaries.iter().rev() {
+        let mut stack: Vec<usize> = full.node(residual.node).outputs[residual.slot]
+            .successors
+            .iter()
+            .map(|s| s.node)
+            .collect();
+        while let Some(n) = stack.pop() {
+            if segment[n].is_some() {
+                continue;
+            }
+            segment[n] = Some(*layer);
+            stack.extend(
+                full.node(n).outputs.iter().flat_map(|o| o.successors.iter()).map(|s| s.node),
+            );
+        }
+    }
+    Some(segment)
+}
+
 pub fn partition_stages(
     full: &TypedModel,
     cut_layers: &[usize],
@@ -182,9 +229,35 @@ pub fn partition_stages(
     let n_stages = cut_layers.len() + 1;
     let owner = |l: usize| cut_layers.iter().filter(|&&c| c <= l).count();
     let depth = cache_depths(full)?;
-    // Where a node is computed: inside block L => stage owner(L); nodes reaching
-    // no cache at all (embedding, RoPE tables, masks) are computed in stage 0.
-    let node_stage = |n: usize| depth[n].map(&owner).unwrap_or(0);
+    // Which block a node is computed in. Cache depth alone answers this badly at a
+    // boundary: it flows along the residual, so block L's projections — reached from the
+    // residual block L-1 produced — take depth L-1 and end up in the previous stage, to
+    // be sent back across the wire. Segment by the residual instead, and fall back to
+    // depth for a model whose blocks cannot be recognised.
+    let segment = residual_segments(full);
+    let mut placed: Vec<usize> = vec![usize::MAX; full.nodes().len()];
+    for n in 0..full.nodes().len() {
+        placed[n] = match segment.as_ref().and_then(|s| s[n]) {
+            Some(layer) => owner(layer),
+            None => depth[n].map(&owner).unwrap_or(usize::MAX),
+        };
+    }
+    // Everything else — weights and their preparation, the embedding, shared tables —
+    // is placed with the earliest stage that consumes it, walked backwards so a chain
+    // of them follows its consumers rather than pooling in stage 0.
+    for n in full.eval_order()?.iter().rev() {
+        if placed[*n] != usize::MAX {
+            continue;
+        }
+        let consumer = full
+            .node(*n)
+            .outputs
+            .iter()
+            .flat_map(|o| o.successors.iter())
+            .try_fold(usize::MAX, |acc, s| -> Result<usize> { Ok(acc.min(placed[s.node])) })?;
+        placed[*n] = consumer;
+    }
+    let node_stage = |n: usize| if placed[n] == usize::MAX { 0 } else { placed[n] };
 
     let mut token_in = vec![];
     let mut cache_in: Vec<(OutletId, usize, IoSpec)> = vec![];
