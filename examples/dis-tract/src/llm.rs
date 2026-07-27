@@ -174,6 +174,22 @@ pub fn split_blocks(
     partition_stages(full, &cuts, n_regular)
 }
 
+/// Which nodes any stage can rebuild for itself: those whose whole cone is constants and
+/// arithmetic, reaching no `Source`. Their value depends only on the symbolic dimensions,
+/// which every stage shares, so sending one across the wire buys nothing.
+fn recomputable_from_constants(full: &TypedModel) -> Result<Vec<bool>> {
+    let mut recomputable = vec![false; full.nodes().len()];
+    for &n in full.eval_order()?.iter() {
+        let node = full.node(n);
+        recomputable[n] = if node.inputs.is_empty() {
+            node.op_is::<tract_core::ops::konst::Const>()
+        } else {
+            node.inputs.iter().all(|i| recomputable[i.node])
+        };
+    }
+    Ok(recomputable)
+}
+
 /// The block each node belongs to, taking the residual entering a block as that block's
 /// starting point: node `n` is in the highest-numbered block whose incoming residual can
 /// reach it. Nodes off the residual stream entirely — weights, the embedding, the shared
@@ -296,13 +312,17 @@ pub fn partition_stages(
         ));
     }
 
-    // Frontier: every activation produced at or before stage s and consumed after
-    // it — the residual stream plus any shared tensor (RoPE, mask, positions).
-    // A tensor crossing several stages appears in each frontier it spans, so
-    // intermediate stages pass it through. Constants are duplicated into each
-    // shard by extract_subgraph, and symbolic dims are recomputed, so neither
-    // crosses. Cut points are derived from cache depth (edge labels), not node
-    // names, so declutter renaming doesn't break partitioning.
+    // Frontier: every activation produced at or before stage s and consumed after it.
+    // A tensor crossing several stages appears in each frontier it spans, so intermediate
+    // stages pass it through. Constants are duplicated into each shard by
+    // extract_subgraph, and symbolic dims are recomputed, so neither crosses.
+    //
+    // Neither do the shared tables — RoPE angles, the causal mask — which depend on no
+    // Source at all: they are constants and arithmetic over the sequence dimensions, so a
+    // stage that needs one rebuilds it rather than being sent it. The mask is the reason
+    // to care: it is `S+P` wide, so forwarding it costs more every token as the context
+    // grows, while rebuilding costs a few dozen ops.
+    let recomputable = recomputable_from_constants(full)?;
     let mut frontier: Vec<Vec<OutletId>> = vec![vec![]; n_stages.saturating_sub(1)];
     let mut seen: Vec<std::collections::HashSet<OutletId>> =
         vec![Default::default(); n_stages.saturating_sub(1)];
@@ -315,6 +335,9 @@ pub fn partition_stages(
             }
             let prod = full.node(inp.node);
             if prod.inputs.is_empty() && prod.name.contains("cache") {
+                continue;
+            }
+            if recomputable[inp.node] {
                 continue;
             }
             let fact = full.outlet_fact(*inp)?;

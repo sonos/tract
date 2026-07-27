@@ -193,11 +193,20 @@ growing.
 
 ## Design
 
-### Why doesn't the KV cache cross the wire?
+### What crosses the wire, and why so little?
 
-Each worker keeps its own layers' KV resident and loops it step→step; only the residual
-activation crosses a stage boundary. The cache grows with context and would dominate the
-wire; the residual is a single `[1, S, hidden]` tensor.
+One tensor per step: the residual, a single `[1, S, hidden]`. Two other things could
+plausibly cross and deliberately do not.
+
+The **KV cache** stays resident in the worker that owns those layers and loops step→step.
+It grows with context and would dominate the wire.
+
+The **shared tables** — RoPE angles and the causal mask — are rebuilt by each stage rather
+than forwarded. Their cones reach no `Source` at all: constants and arithmetic over the
+sequence dimensions, which every stage has. That matters most for the mask, which is
+`S+P` wide, so forwarding it would cost more every token as the context grows while
+rebuilding stays a few dozen ops. Sending it would make the wire scale with the
+conversation instead of staying flat.
 
 The mechanism is a role per I/O slot (`protocol::Role`): `Wire` slots (residual, token ids,
 logits) cross; `Cache` slots are seeded empty, fed back from the worker's own state each

@@ -2,7 +2,10 @@
 
 Pipeline / layer-split inference for [tract](https://github.com/sonos/tract): split a model
 across workers, each holding a contiguous slice of layers plus that slice's weights and KV
-cache. Only the residual activation crosses the wire — never the KV cache. Each worker may
+cache. Exactly one tensor crosses the wire per step — the residual activation. The KV cache
+never does, and neither do the shared tables (RoPE angles, the causal mask): they depend
+only on the sequence dimensions, so each stage rebuilds them rather than being sent them,
+which keeps the per-token wire flat instead of growing with the context. Each worker may
 run a **different backend** (CPU / Metal / CUDA): a shard is backend-neutral until the
 worker `prepare()`s it for its own `Runtime`.
 

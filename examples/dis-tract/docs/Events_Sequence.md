@@ -147,7 +147,10 @@ chunk — worth it when serving mixed prompt lengths, a straight loss when servi
 A sequence's steps are strictly ordered — token `t+1` is the argmax of step `t` — so one
 sequence never occupies more than one stage, and **per-sequence latency does not improve**.
 What improves is cluster throughput: while sequence A's step is in stage 1, stage 0 takes B
-instead of idling. Only the residual crosses the wire; the KV never does.
+instead of idling. One tensor crosses the wire per step — the residual. The KV never
+does, and neither do the shared tables: they depend only on the sequence dimensions, so
+each stage rebuilds them rather than being sent them, which keeps the per-token wire
+flat rather than growing with the context.
 
 The ceiling is set by the stages, not the scheduler. With step times `t0..tn`, interleaving
 can reach `(Σti)/max(ti)` and no more — the slowest stage is always busy. Measured on
