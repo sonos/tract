@@ -319,7 +319,7 @@ test_nonmaxsuppression_suppress_by_IOU_and_scores onnx-ignore-output-shape
 test_nonmaxsuppression_suppress_by_IOU onnx-ignore-output-shape
 test_nonmaxsuppression_two_batches onnx-ignore-output-shape
 test_nonmaxsuppression_two_classes onnx-ignore-output-shape
-test_nonzero_example not-nnef
+test_nonzero_example
 test_not_2d
 test_not_3d
 test_not_4d
