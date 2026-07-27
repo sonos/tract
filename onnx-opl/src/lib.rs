@@ -7,6 +7,7 @@ pub mod lrn;
 pub mod ml;
 pub mod multinomial;
 pub mod non_max_suppression;
+pub mod non_zero;
 pub mod random;
 pub mod resize;
 
@@ -35,6 +36,7 @@ pub fn onnx_opl_registry() -> Registry {
     grid_sample::register(&mut registry);
     ml::register(&mut registry);
     non_max_suppression::register(&mut registry);
+    non_zero::register(&mut registry);
     multinomial::register(&mut registry);
     random::register(&mut registry);
     resize::register(&mut registry);
