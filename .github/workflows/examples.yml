@@ -67,7 +67,7 @@ jobs:
       examples: ${{steps.set-matrix.outputs.examples}}
 
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.prepare.outputs.test_ref }}
           persist-credentials: false
@@ -88,7 +88,7 @@ jobs:
         ex: ${{fromJSON(needs.examples.outputs.examples)}}
 
     steps:
-    - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         ref: ${{ needs.prepare.outputs.test_ref }}
         persist-credentials: false
@@ -118,7 +118,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: prepare
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.prepare.outputs.test_ref }}
           persist-credentials: false
@@ -135,7 +135,7 @@ jobs:
     runs-on: macOS
     needs: prepare
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.prepare.outputs.test_ref }}
           persist-credentials: false
@@ -152,7 +152,7 @@ jobs:
       examples: ${{steps.set-matrix.outputs.examples}}
 
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.prepare.outputs.test_ref }}
           persist-credentials: false
@@ -170,7 +170,7 @@ jobs:
         ex: ${{fromJSON(needs.gpu-examples.outputs.examples)}}
 
     steps:
-    - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         ref: ${{ needs.prepare.outputs.test_ref }}
         persist-credentials: false
@@ -200,7 +200,7 @@ jobs:
         ex: ${{fromJSON(needs.gpu-examples.outputs.examples)}}
 
     steps:
-    - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         ref: ${{ needs.prepare.outputs.test_ref }}
         persist-credentials: false

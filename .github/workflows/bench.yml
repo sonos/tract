@@ -109,7 +109,7 @@ jobs:
             build: CARGO_TARGET_DIR=.cross-cache/target PLATFORM=aarch64-unknown-linux-gnu-stretch ./.travis/cross.sh
             bin: .cross-cache/target/aarch64-unknown-linux-gnu/release/tract
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.prepare.outputs.ref }}
           persist-credentials: false
@@ -157,7 +157,7 @@ jobs:
             # suite, so skip CPU runs and bench only the Orin GPU (cuda).
             bench_args: --skip-cpu
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.prepare.outputs.ref }}
           persist-credentials: false
@@ -167,7 +167,7 @@ jobs:
           path: tract-cli
       # Read-only bench-data checkout: the orchestrator builds this device's retry
       # expectations from it inline (no separate job, no Python on the runner).
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: bench-data
           path: bench-ref
@@ -192,7 +192,7 @@ jobs:
         if: needs.prepare.outputs.is_pr != 'true'
         # zizmor: ignore[artipacked] credentials are needed to push the row back to
         # bench-data; this checkout is never uploaded as an artifact.
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: bench-data
           path: bench-data
@@ -253,7 +253,7 @@ jobs:
           - triple: armv7-unknown-linux-gnueabihf-stretch
             rustc_triple: armv7-unknown-linux-gnueabihf
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.prepare.outputs.ref }}
           persist-credentials: false
@@ -305,7 +305,7 @@ jobs:
             runner: dinghy-sidekick-a9
             dinghy_target: dinghy-a9
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.prepare.outputs.ref }}
           persist-credentials: false
@@ -383,7 +383,7 @@ jobs:
         with:
           name: bench-result-${{ matrix.device }}
           path: result
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         # zizmor: ignore[artipacked] credentials are needed to push the row back to bench-data;
         # this checkout is never uploaded as an artifact.
         if: ${{ hashFiles('result/metrics') != '' }}
@@ -424,7 +424,7 @@ jobs:
       contents: read
       pull-requests: write   # post the comment directly on same-repo PRs
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.prepare.outputs.ref }}
           persist-credentials: false
@@ -436,7 +436,7 @@ jobs:
         with:
           name: tract-cli-x86_64-unknown-linux-gnu
           path: tract-cli
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: bench-data
           path: bench-data
@@ -548,7 +548,7 @@ jobs:
             # LLM on it would be pointlessly slow, so smoke only the Orin GPU.
             smoke_args: --skip-cpu
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.prepare.outputs.ref }}
           persist-credentials: false
@@ -590,7 +590,7 @@ jobs:
             runner: dinghy-sidekick-a9
             dinghy_target: dinghy-a9
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.prepare.outputs.ref }}
           persist-credentials: false
