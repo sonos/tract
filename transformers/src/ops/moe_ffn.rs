@@ -1611,11 +1611,21 @@ impl TypedOp for MoeFfn {
             let expert_tensors_are_plain = w1_tensor.is_plain()
                 && w2_tensor.is_plain()
                 && w3_tensor.as_ref().is_none_or(|t| t.is_plain());
-            let expert_tensors_are_linear_block_quant = self.expert_layout == ExpertLayout::Linear
-                && w1_tensor.storage_as::<BlockQuantStorage>().is_some()
-                && w2_tensor.storage_as::<BlockQuantStorage>().is_some()
-                && w3_tensor.as_ref().is_none_or(|t| t.storage_as::<BlockQuantStorage>().is_some());
-            if !expert_tensors_are_plain && !expert_tensors_are_linear_block_quant {
+            // Block-quantness is tracked per projection. Exports can mix
+            // precisions across the three (gpt-oss ships Q40 gate/up with a
+            // float down projection), and such a model must still reach the
+            // subplan path: falling back to the reference evaluator costs
+            // about two orders of magnitude in decode throughput.
+            let w1_bq = w1_tensor.storage_as::<BlockQuantStorage>().is_some();
+            let w2_bq = w2_tensor.storage_as::<BlockQuantStorage>().is_some();
+            let w3_bq =
+                w3_tensor.as_ref().is_none_or(|t| t.storage_as::<BlockQuantStorage>().is_some());
+            let is_linear = self.expert_layout == ExpertLayout::Linear;
+            // The direct routed Q40 plan packs all three projections, so it
+            // needs all three block-quantized.
+            let expert_tensors_are_linear_block_quant = is_linear && w1_bq && w2_bq && w3_bq;
+            let expert_tensors_are_linear_mixed_quant = is_linear && (w1_bq || w2_bq || w3_bq);
+            if !expert_tensors_are_plain && !expert_tensors_are_linear_mixed_quant {
                 return Ok(None);
             }
 
@@ -1657,7 +1667,7 @@ impl TypedOp for MoeFfn {
             // a 24-layer 32-expert model, ~62s). Spread them over rayon's
             // global pool, as FlashSdpa already does for its heads.
             let build_one = |eid: usize| -> TractResult<Arc<TypedSimplePlan>> {
-                    let w1_e = if expert_tensors_are_linear_block_quant {
+                    let w1_e = if w1_bq {
                         block_quant_group_tensor(&w1_tensor, eid)?
                     } else {
                         match self.expert_layout {
@@ -1669,7 +1679,7 @@ impl TypedOp for MoeFfn {
                                 .into_shape(&[d_hidden, d_model])?,
                         }
                     };
-                    let w2_e = if expert_tensors_are_linear_block_quant {
+                    let w2_e = if w2_bq {
                         block_quant_group_tensor(&w2_tensor, eid)?
                     } else {
                         match self.expert_layout {
@@ -1682,7 +1692,7 @@ impl TypedOp for MoeFfn {
                         }
                     };
                     let w3_e = if let Some(ref w3) = w3_tensor {
-                        Some(if expert_tensors_are_linear_block_quant {
+                        Some(if w3_bq {
                             block_quant_group_tensor(w3, eid)?
                         } else {
                             match self.expert_layout {
@@ -1704,7 +1714,7 @@ impl TypedOp for MoeFfn {
                         w3_e.as_ref(),
                         &self.activation,
                         self.expert_layout,
-                        expert_tensors_are_linear_block_quant,
+                        expert_tensors_are_linear_mixed_quant,
                         &model.symbols,
                     )
                     .with_context(|| format!("Building expert plan for expert {eid}"))
