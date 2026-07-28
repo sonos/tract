@@ -171,6 +171,7 @@ fn ignore_unit(t: &[String], case: &dyn Test) -> bool {
         "conv_f16",
         "deconv",
         "elmwise",
+        "gather_elements",
         "gelu_approximate",
         "q_flavours",
         "q_binary",
