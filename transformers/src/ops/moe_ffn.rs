@@ -1987,7 +1987,12 @@ fn build_expert_plan(
     let n_sym = symbols.sym("moe_n");
     let dt = f32::datum_type();
     let expert_const = |t: &Tensor| -> TractResult<Tensor> {
-        if preserve_block_quant && t.storage_as::<BlockQuantStorage>().is_some() {
+        // Keep weights in their exported storage. Upcasting the float
+        // projection to f32 doubles its bytes, and for a mixed-precision
+        // export that projection is the bulk of the model (gpt-oss keeps w2
+        // in f16, ~12.7GB of a 22GB export), so the copy costs both prepare
+        // time and decode bandwidth. The matmul still accumulates in f32.
+        if t.storage_as::<BlockQuantStorage>().is_some() || t.datum_type() == f16::datum_type() {
             Ok(t.clone())
         } else {
             Ok(t.cast_to::<f32>()?.into_owned())
