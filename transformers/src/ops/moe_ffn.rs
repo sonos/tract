@@ -3130,6 +3130,85 @@ mod tests {
         Ok(())
     }
 
+    /// Square experts (`d_model == d_hidden`) with mixed precision, the exact
+    /// gpt-oss-20b shape: 2880 x 2880 experts, Q40 gate/up, f16 down.
+    ///
+    /// Every other MoE test uses non-square experts, so a layout mix-up shows
+    /// up as a shape error. When the two dims are equal nothing catches it,
+    /// and the wrong orientation silently produces plausible-looking garbage.
+    /// This runs a long enough sequence that every expert is exercised, and
+    /// compares the optimized path against the reference evaluator.
+    #[test]
+    fn test_opt_moe_ffn_square_mixed_precision_long_sequence() -> TractResult<()> {
+        const DIM: usize = 64; // square: d_model == d_hidden
+        const EXPERTS: usize = 8;
+        const TOKENS: usize = 96; // >> experts, so every expert gets routed
+
+        let mut rng_state: u64 = 20260728;
+        let mut next_f32 = || -> f32 {
+            rng_state = rng_state.wrapping_mul(6364136223846793005).wrapping_add(1);
+            ((rng_state >> 33) as f32 / (1u64 << 31) as f32) - 1.0
+        };
+        let make_tensor = |shape: &[usize], rng: &mut dyn FnMut() -> f32| -> Tensor {
+            let n: usize = shape.iter().product();
+            let data: Vec<f32> = (0..n).map(|_| rng()).collect();
+            tract_ndarray::ArrayD::from_shape_vec(shape, data).unwrap().into_tensor()
+        };
+
+        // Linear layout: w1/w3 [E, H, D], w2 [E, D, H]. With DIM square these
+        // are indistinguishable by shape, which is the whole point.
+        let wg_data = make_tensor(&[EXPERTS, DIM], &mut next_f32);
+        let w1_data = make_tensor(&[EXPERTS, DIM, DIM], &mut next_f32);
+        let w2_data = make_tensor(&[EXPERTS, DIM, DIM], &mut next_f32);
+        let w3_data = make_tensor(&[EXPERTS, DIM, DIM], &mut next_f32);
+        let x_data = make_tensor(&[TOKENS, DIM], &mut next_f32);
+
+        // Optimized model: Q40 w1/w3, plain f16 w2 (the mixed export shape).
+        let mut model = TypedModel::default();
+        let x = model.add_source("x", f32::datum_type().fact([TOKENS, DIM]))?;
+        let wg = model.add_const("wg", wg_data.clone())?;
+        let w1 = add_q40_const(&mut model, "w1", w1_data.clone())?;
+        let w2 = model.add_const("w2", w2_data.clone().cast_to::<f16>()?.into_owned())?;
+        let w3 = add_q40_const(&mut model, "w3", w3_data.clone())?;
+        let op =
+            MoeFfn::basic_with_layout(2, "silu", GateMode::SoftmaxTopk, true, ExpertLayout::Linear);
+        let outputs = model.wire_node("moe", op, &[x, wg, w1, w2, w3])?;
+        model.select_output_outlets(&outputs)?;
+
+        // Reference: same values, dequantized, on the un-optimized evaluator.
+        let mut ref_model = TypedModel::default();
+        let ref_x = ref_model.add_source("x", f32::datum_type().fact([TOKENS, DIM]))?;
+        let ref_wg = ref_model.add_const("wg", wg_data)?;
+        let ref_w1 = ref_model.add_const("w1", q40_roundtrip(&w1_data)?)?;
+        let ref_w2 =
+            ref_model.add_const("w2", w2_data.cast_to::<f16>()?.cast_to::<f32>()?.into_owned())?;
+        let ref_w3 = ref_model.add_const("w3", q40_roundtrip(&w3_data)?)?;
+        let ref_op =
+            MoeFfn::basic_with_layout(2, "silu", GateMode::SoftmaxTopk, true, ExpertLayout::Linear);
+        let ref_outputs =
+            ref_model.wire_node("moe", ref_op, &[ref_x, ref_wg, ref_w1, ref_w2, ref_w3])?;
+        ref_model.select_output_outlets(&ref_outputs)?;
+
+        let opt_model = model.into_optimized()?;
+        let has_opt = opt_model.nodes().iter().any(|n| n.op_is::<OptMoeFfn>());
+        assert!(has_opt, "mixed-precision square experts should reach OptMoeFfn");
+        // Mixed precision cannot use the all-Q40 routed plan; it must lower to
+        // per-expert subplans instead of silently dropping to the reference op.
+        let uses_direct_q40 = opt_model
+            .nodes()
+            .iter()
+            .filter_map(|n| n.op_as::<OptMoeFfn>())
+            .any(|op| op.q40_linear_plan.is_some());
+        assert!(!uses_direct_q40, "a float w2 rules out the direct Q40 plan");
+
+        let result =
+            SimplePlan::new(opt_model)?.spawn()?.run(tvec![x_data.clone().into_tvalue()])?;
+        let ref_result = SimplePlan::new(ref_model)?.spawn()?.run(tvec![x_data.into_tvalue()])?;
+        result[0].close_enough(&ref_result[0], Approximation::Approximate)?;
+
+        Ok(())
+    }
+
     #[test]
     fn test_opt_moe_ffn_matches_reference() -> TractResult<()> {
         // Test with SwiGLU (has_w3=true)
