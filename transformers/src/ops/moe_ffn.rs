@@ -8,7 +8,7 @@ use tract_nnef::internal::*;
 use tract_nnef::tract_core::ops::array::Slice;
 use tract_nnef::tract_core::ops::einsum::EinSum;
 use tract_nnef::tract_core::ops::konst::Const;
-use tract_nnef::tract_core::ops::math::mul;
+use tract_nnef::tract_core::ops::math::{add, mul};
 use tract_nnef::tract_core::ops::{FrozenOpState, OpState, OpStateFreeze};
 use tract_nnef::tract_core::tract_linalg::block_quant::{
     BlockQuantFact, BlockQuantStorage, block_quant_slice,
@@ -1583,14 +1583,14 @@ impl TypedOp for MoeFfn {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        // The routed primitive lowering only models the bias-free, plain
-        // activation case. gpt-oss (biases + clamped SwiGLU) stays on the
-        // reference eval path, which is correct if slower.
-        if self.has_any_bias() || self.is_clamped_act() {
-            return Ok(None);
-        }
-        let Some(act_op) = activation_op(&self.activation, self.has_w3) else {
-            return Ok(None);
+        // Biased / clamped-activation MoE (gpt-oss) is expressed inside the
+        // per-expert subplans, so only the plain case needs an activation_op
+        // here; the routed primitive lowering below stays restricted to it.
+        let biased_or_clamped = self.has_any_bias() || self.is_clamped_act();
+        let act_op = match activation_op(&self.activation, self.has_w3) {
+            Some(op) => Some(op),
+            None if biased_or_clamped => None,
+            None => return Ok(None),
         };
 
         let wg_const = model.node(node.inputs[1].node).op_as::<Const>();
@@ -1607,6 +1607,25 @@ impl TypedOp for MoeFfn {
             let w1_tensor = w1_const.unwrap().val().clone();
             let w2_tensor = w2_const.unwrap().val().clone();
             let w3_tensor = w3_const.map(|c| c.val().clone());
+
+            // Biases must be constants too, otherwise the subplans cannot bake
+            // them in and the node has to stay on the reference evaluator.
+            let idx = self.input_idx();
+            let bias_tensor = |slot: Option<usize>| -> Option<Arc<Tensor>> {
+                slot.and_then(|i| model.node(node.inputs[i].node).op_as::<Const>())
+                    .map(|c| c.val().clone())
+            };
+            let wg_bias_tensor = bias_tensor(idx.wg_bias);
+            let w1_bias_tensor = bias_tensor(idx.w1_bias);
+            let w3_bias_tensor = bias_tensor(idx.w3_bias);
+            let w2_bias_tensor = bias_tensor(idx.w2_bias);
+            if (self.has_wg_bias && wg_bias_tensor.is_none())
+                || (self.has_w1_bias && w1_bias_tensor.is_none())
+                || (self.has_w3_bias && w3_bias_tensor.is_none())
+                || (self.has_w2_bias && w2_bias_tensor.is_none())
+            {
+                return Ok(None);
+            }
 
             let expert_tensors_are_plain = w1_tensor.is_plain()
                 && w2_tensor.is_plain()
@@ -1643,6 +1662,7 @@ impl TypedOp for MoeFfn {
                 build_router_plan(&wg_tensor, &model.symbols).context("Building router plan")?;
 
             let q40_linear_plan = if expert_tensors_are_linear_block_quant
+                && !biased_or_clamped
                 && q40_direct_activation_supported(&self.activation, self.has_w3)
             {
                 Some(
@@ -1708,11 +1728,25 @@ impl TypedOp for MoeFfn {
                         None
                     };
 
+                    let bias_e = |t: &Option<Arc<Tensor>>, dim: usize| {
+                        t.as_ref()
+                            .map(|b| b.slice(0, eid, eid + 1)?.into_shape(&[dim]))
+                            .transpose()
+                    };
+                    let w1_bias_e = bias_e(&w1_bias_tensor, d_hidden)?;
+                    let w3_bias_e = bias_e(&w3_bias_tensor, d_hidden)?;
+                    let w2_bias_e = bias_e(&w2_bias_tensor, d_model)?;
+
                     build_expert_plan(
                         &w1_e,
                         &w2_e,
                         w3_e.as_ref(),
+                        w1_bias_e.as_ref(),
+                        w3_bias_e.as_ref(),
+                        w2_bias_e.as_ref(),
                         &self.activation,
+                        self.act_alpha_bits.map(f32::from_bits),
+                        self.act_limit_bits.map(f32::from_bits),
                         self.expert_layout,
                         expert_tensors_are_linear_mixed_quant,
                         &model.symbols,
@@ -1744,6 +1778,9 @@ impl TypedOp for MoeFfn {
                 d_model,
                 d_hidden,
                 router_plan,
+                wg_bias: wg_bias_tensor
+                    .map(|b| b.cast_to::<f32>().map(|b| b.into_owned()))
+                    .transpose()?,
                 expert_plans,
                 q40_linear_plan,
             };
@@ -1797,6 +1834,9 @@ impl TypedOp for MoeFfn {
             RoutedMatMul { input_mode: RoutedInputMode::TokenRows, cache_weights: cache_w1 },
             &[x, w1, route_token_ids, route_expert_ids],
         )?[0];
+        // The routed lowering is gated on the plain, bias-free case above, so
+        // an activation op is always resolved here.
+        let act_op = act_op.context("routed MoE lowering requires a plain activation")?;
         let activated = patch.wire_node(format!("{}.activation", node.name), act_op, &[h1])?[0];
 
         let hidden = if self.has_w3 {
@@ -1832,6 +1872,69 @@ impl TypedOp for MoeFfn {
 // Activation helper
 // ---------------------------------------------------------------------------
 
+/// gpt-oss clamped SwiGLU, as an op so the expert subplans can express it:
+///   gate = min(gate, limit); up = clamp(up, -limit, limit)
+///   out  = (up + 1) * gate * sigmoid(alpha * gate)
+#[derive(Clone, Debug, PartialEq)]
+struct ClampedSwiGlu {
+    alpha: f32,
+    limit: f32,
+}
+
+impl Eq for ClampedSwiGlu {}
+
+impl Op for ClampedSwiGlu {
+    fn name(&self) -> StaticName {
+        "ClampedSwiGlu".into()
+    }
+
+    op_as_typed_op!();
+}
+
+impl EvalOp for ClampedSwiGlu {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+        ensure!(inputs.len() == 2, "ClampedSwiGlu expects gate and up inputs");
+        let gate = inputs[0].cast_to::<f32>()?.into_owned();
+        let up = inputs[1].cast_to::<f32>()?.into_owned();
+        ensure!(
+            gate.shape() == up.shape(),
+            "ClampedSwiGlu gate/up shape mismatch: {:?} vs {:?}",
+            gate.shape(),
+            up.shape()
+        );
+        let mut output = Tensor::zero_dt(f32::datum_type(), gate.shape())?;
+        let gate = unsafe { gate.as_slice_unchecked::<f32>() };
+        let up = unsafe { up.as_slice_unchecked::<f32>() };
+        let output_slice = unsafe { output.as_slice_mut_unchecked::<f32>() };
+        for ((out, &gate), &up) in output_slice.iter_mut().zip(gate).zip(up) {
+            let gate = gate.min(self.limit);
+            let up = up.clamp(-self.limit, self.limit);
+            let glu = gate / (1.0 + (-self.alpha * gate).exp());
+            *out = (up + 1.0) * glu;
+        }
+        Ok(tvec![output.into_tvalue()])
+    }
+}
+
+impl TypedOp for ClampedSwiGlu {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        ensure!(inputs.len() == 2, "ClampedSwiGlu expects gate and up inputs");
+        ensure!(
+            inputs[0].shape == inputs[1].shape,
+            "ClampedSwiGlu gate/up shape mismatch: {:?} vs {:?}",
+            inputs[0].shape,
+            inputs[1].shape
+        );
+        Ok(tvec!(f32::datum_type().fact(inputs[0].shape.clone())))
+    }
+
+    as_op!();
+}
+
 fn activation_op(name: &str, has_w3: bool) -> Option<Box<dyn TypedOp>> {
     match name {
         "silu" => Some(Box::new(silu())),
@@ -1865,11 +1968,17 @@ fn build_router_plan(wg: &Arc<Tensor>, symbols: &SymbolScope) -> TractResult<Arc
     SimplePlan::new(model.into_optimized()?)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_expert_plan(
     w1: &Tensor,
     w2: &Tensor,
     w3: Option<&Tensor>,
+    w1_bias: Option<&Tensor>,
+    w3_bias: Option<&Tensor>,
+    w2_bias: Option<&Tensor>,
     activation: &str,
+    act_alpha: Option<f32>,
+    act_limit: Option<f32>,
     expert_layout: ExpertLayout,
     preserve_block_quant: bool,
     symbols: &SymbolScope,
@@ -1897,6 +2006,67 @@ fn build_expert_plan(
         ExpertLayout::Canonical => axes_canonical.clone(),
         ExpertLayout::Linear => axes_linear.clone(),
     };
+
+    let add_bias = |model: &mut TypedModel,
+                    name: &str,
+                    wire: OutletId,
+                    bias: &Tensor|
+     -> TractResult<OutletId> {
+        let bias = model.add_const(format!("{name}_const"), bias.cast_to::<f32>()?.into_owned())?;
+        let bias = model.wire_node(format!("{name}_add_axis"), AxisOp::Add(0), &[bias])?[0];
+        Ok(model.wire_node(name, add(), &[wire, bias])?[0])
+    };
+
+    // gpt-oss: biased projections and a clamped SwiGLU. Handled before the
+    // fused block-quant shortcut, which only models the bias-free case.
+    if act_limit.is_some() || w1_bias.is_some() || w3_bias.is_some() || w2_bias.is_some() {
+        let w1_const = model.add_const("w1", expert_const(w1)?)?;
+        let mut h =
+            model.wire_node("w1_matmul", EinSum::new(axes_in.clone(), dt), &[x, w1_const])?[0];
+        if let Some(b) = w1_bias {
+            h = add_bias(&mut model, "w1_bias_add", h, b)?;
+        }
+        let h = if let Some(limit) = act_limit {
+            let w3 = w3.context("clamped activation requires w3 (up branch)")?;
+            let w3_const = model.add_const("w3", expert_const(w3)?)?;
+            let mut up =
+                model.wire_node("w3_matmul", EinSum::new(axes_in.clone(), dt), &[x, w3_const])?[0];
+            if let Some(b) = w3_bias {
+                up = add_bias(&mut model, "w3_bias_add", up, b)?;
+            }
+            model.wire_node(
+                "clamped_swiglu",
+                ClampedSwiGlu { alpha: act_alpha.unwrap_or(1.0), limit },
+                &[h, up],
+            )?[0]
+        } else {
+            let act_op = activation_op(activation, w3.is_some())
+                .ok_or_else(|| format_err!("Unsupported activation: {activation}"))?;
+            let h = model.wire_node("activation", act_op, &[h])?[0];
+            if let Some(w3) = w3 {
+                let w3_const = model.add_const("w3", expert_const(w3)?)?;
+                let mut gate = model
+                    .wire_node("w3_matmul", EinSum::new(axes_in.clone(), dt), &[x, w3_const])?[0];
+                if let Some(b) = w3_bias {
+                    gate = add_bias(&mut model, "w3_bias_add", gate, b)?;
+                }
+                model.wire_node("swiglu_mul", mul(), &[h, gate])?[0]
+            } else {
+                h
+            }
+        };
+        let w2_const = model.add_const("w2", expert_const(w2)?)?;
+        let axes_out = match expert_layout {
+            ExpertLayout::Canonical => axes_canonical,
+            ExpertLayout::Linear => axes_linear,
+        };
+        let mut y = model.wire_node("w2_matmul", EinSum::new(axes_out, dt), &[h, w2_const])?[0];
+        if let Some(b) = w2_bias {
+            y = add_bias(&mut model, "w2_bias_add", y, b)?;
+        }
+        model.select_output_outlets(&[y])?;
+        return SimplePlan::new(model.into_optimized()?);
+    }
 
     let act_op = activation_op(activation, w3.is_some())
         .ok_or_else(|| format_err!("Unsupported activation: {activation}"))?;
@@ -2103,6 +2273,9 @@ pub struct OptMoeFfn {
     pub d_model: usize,
     pub d_hidden: usize,
     pub router_plan: Arc<TypedSimplePlan>,
+    /// Router bias, added to the logits after `router_plan` (which only holds
+    /// the `x @ wg.T` matmul). gpt-oss routers carry one.
+    pub wg_bias: Option<Tensor>,
     pub expert_plans: Vec<Arc<TypedSimplePlan>>,
     q40_linear_plan: Option<Arc<Q40LinearExpertPlan>>,
 }
@@ -2506,8 +2679,17 @@ impl OpState for OptMoeFfnState {
         let router_result = self.router_state.run(tvec![x_2d_tensor.into_tvalue()])?;
         let router_elapsed = profile_elapsed(router_start);
         let router_logits_f32 = router_result[0].cast_to::<f32>()?;
+        let mut router_logits_t = router_logits_f32.into_owned();
+        if let Some(bias) = self.op.wg_bias.clone() {
+            let num_experts = self.op.num_experts;
+            let bias = unsafe { bias.as_slice_unchecked::<f32>().to_vec() };
+            let logits = unsafe { router_logits_t.as_slice_mut_unchecked::<f32>() };
+            for row in logits.chunks_mut(num_experts) {
+                row.iter_mut().zip(&bias).for_each(|(v, &b)| *v += b);
+            }
+        }
         let router_logits: ArrayView2<f32> =
-            router_logits_f32.to_plain_array_view::<f32>()?.into_dimensionality()?;
+            router_logits_t.to_plain_array_view::<f32>()?.into_dimensionality()?;
 
         if let Some(plan) = self.op.q40_linear_plan.clone() {
             let q40_state = self
