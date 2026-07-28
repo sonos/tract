@@ -1649,10 +1649,14 @@ impl TypedOp for MoeFfn {
                 None
             };
 
-            let mut expert_plans =
-                Vec::with_capacity(if q40_linear_plan.is_some() { 0 } else { num_experts });
-            if q40_linear_plan.is_none() {
-                for eid in 0..num_experts {
+            // Fallback path only: each plan slices its own expert out of the
+            // shared weight tensors and optimizes an independent sub-model,
+            // which includes prepacking that expert's weights. Those builds do
+            // not depend on each other, but run serially they serialize
+            // layers x experts optimizations into model load (768 of them for
+            // a 24-layer 32-expert model, ~62s). Spread them over rayon's
+            // global pool, as FlashSdpa already does for its heads.
+            let build_one = |eid: usize| -> TractResult<Arc<TypedSimplePlan>> {
                     let w1_e = if expert_tensors_are_linear_block_quant {
                         block_quant_group_tensor(&w1_tensor, eid)?
                     } else {
@@ -1694,7 +1698,7 @@ impl TypedOp for MoeFfn {
                         None
                     };
 
-                    let plan = build_expert_plan(
+                    build_expert_plan(
                         &w1_e,
                         &w2_e,
                         w3_e.as_ref(),
@@ -1703,10 +1707,25 @@ impl TypedOp for MoeFfn {
                         expert_tensors_are_linear_block_quant,
                         &model.symbols,
                     )
-                    .with_context(|| format!("Building expert plan for expert {eid}"))?;
-                    expert_plans.push(plan);
+                    .with_context(|| format!("Building expert plan for expert {eid}"))
+            };
+
+            let expert_plans = if q40_linear_plan.is_some() {
+                Vec::new()
+            } else {
+                #[cfg(not(target_family = "wasm"))]
+                {
+                    use rayon::prelude::*;
+                    (0..num_experts)
+                        .into_par_iter()
+                        .map(build_one)
+                        .collect::<TractResult<Vec<_>>>()?
                 }
-            }
+                #[cfg(target_family = "wasm")]
+                {
+                    (0..num_experts).map(build_one).collect::<TractResult<Vec<_>>>()?
+                }
+            };
 
             let opt_op = OptMoeFfn {
                 k: self.k,
@@ -2120,18 +2139,8 @@ impl EvalOp for OptMoeFfn {
         _node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
         let router_state = self.router_plan.spawn()?;
-        let expert_states = if self.q40_linear_plan.is_some() {
-            Vec::new()
-        } else {
-            self.expert_plans.iter().map(|p| p.spawn()).collect::<TractResult<Vec<_>>>()?
-        };
         let q40_state = self.q40_linear_plan.as_ref().map(|_| Q40LinearExpertState::default());
-        Ok(Some(Box::new(OptMoeFfnState {
-            op: self.clone(),
-            router_state,
-            expert_states,
-            q40_state,
-        })))
+        Ok(Some(Box::new(OptMoeFfnState { op: self.clone(), router_state, q40_state })))
     }
 }
 
@@ -2411,10 +2420,12 @@ impl Q40LinearExpertState {
 }
 
 #[derive(Clone)]
+/// Only the router keeps a long-lived state. Expert plans are spawned per eval
+/// so they can run on the rayon pool (`OpState` is not `Send`); they are
+/// stateless matmuls, so there is nothing to carry between calls anyway.
 struct OptMoeFfnState {
     op: OptMoeFfn,
     router_state: TypedSimpleState,
-    expert_states: Vec<TypedSimpleState>,
     q40_state: Option<Q40LinearExpertState>,
 }
 
@@ -2423,7 +2434,6 @@ impl fmt::Debug for OptMoeFfnState {
         f.debug_struct("OptMoeFfnState")
             .field("op", &self.op)
             .field("router_state", &self.router_state)
-            .field("expert_states", &self.expert_states.len())
             .field("q40_state", &self.q40_state)
             .finish()
     }
@@ -2433,7 +2443,6 @@ impl fmt::Debug for OptMoeFfnState {
 struct FrozenOptMoeFfnState {
     op: OptMoeFfn,
     router_state: TypedFrozenSimpleState,
-    expert_states: Vec<TypedFrozenSimpleState>,
 }
 
 impl OpStateFreeze for OptMoeFfnState {
@@ -2441,7 +2450,6 @@ impl OpStateFreeze for OptMoeFfnState {
         Box::new(FrozenOptMoeFfnState {
             op: self.op.clone(),
             router_state: self.router_state.freeze(),
-            expert_states: self.expert_states.iter().map(|s| s.freeze()).collect(),
         })
     }
 }
@@ -2451,7 +2459,6 @@ impl FrozenOpState for FrozenOptMoeFfnState {
         Box::new(OptMoeFfnState {
             op: self.op.clone(),
             router_state: self.router_state.unfreeze(),
-            expert_states: self.expert_states.iter().map(|s| s.unfreeze()).collect(),
             q40_state: self.op.q40_linear_plan.as_ref().map(|_| Q40LinearExpertState::default()),
         })
     }
@@ -2534,10 +2541,20 @@ impl OpState for OptMoeFfnState {
             }
         }
 
-        let mut output = Array2::<f32>::zeros((t_tokens, d_model));
-        for (eid, tokens) in expert_tokens.iter().enumerate() {
+        // Each active expert gathers its own token rows and runs its own plan,
+        // so the experts run concurrently. This matters most during prefill:
+        // with T tokens and top-k routing a prompt pass lights up nearly every
+        // expert in every layer, and each expert's matmuls are too narrow (a
+        // handful of token rows) to fill the machine on their own.
+        //
+        // Plans are spawned per call rather than reusing `expert_states`:
+        // `OpState` is deliberately not `Send`, and expert sub-models are
+        // stateless matmuls so nothing is carried between calls anyway.
+        let run_expert = |plan: &Arc<TypedSimplePlan>,
+                          tokens: &[(usize, f32)]|
+         -> TractResult<Option<Tensor>> {
             if tokens.is_empty() {
-                continue;
+                return Ok(None);
             }
             let n = tokens.len();
             let mut x_batch = Tensor::zero_dt(f32::datum_type(), &[n, d_model])?;
@@ -2550,10 +2567,37 @@ impl OpState for OptMoeFfnState {
                         .copy_from_slice(src.as_slice().unwrap());
                 }
             }
+            let y_expert = plan.run(tvec![x_batch.into_tvalue()])?;
+            Ok(Some(y_expert[0].clone().into_tensor()))
+        };
 
-            let y_expert = self.expert_states[eid].run(tvec![x_batch.into_tvalue()])?;
+        #[cfg(not(target_family = "wasm"))]
+        let expert_outputs = {
+            use rayon::prelude::*;
+            self.op
+                .expert_plans
+                .par_iter()
+                .zip(expert_tokens.par_iter())
+                .map(|(plan, tokens)| run_expert(plan, tokens))
+                .collect::<TractResult<Vec<_>>>()?
+        };
+        #[cfg(target_family = "wasm")]
+        let expert_outputs = self
+            .op
+            .expert_plans
+            .iter()
+            .zip(expert_tokens.iter())
+            .map(|(plan, tokens)| run_expert(plan, tokens))
+            .collect::<TractResult<Vec<_>>>()?;
+
+        // Scatter serially and in fixed expert order: a token routed to k
+        // experts has k contributions landing on the same output row, so the
+        // reduction order must stay deterministic.
+        let mut output = Array2::<f32>::zeros((t_tokens, d_model));
+        for (y_expert, tokens) in expert_outputs.iter().zip(expert_tokens.iter()) {
+            let Some(y_expert) = y_expert else { continue };
             let y_view: ArrayView2<f32> =
-                y_expert[0].to_plain_array_view::<f32>()?.into_dimensionality()?;
+                y_expert.to_plain_array_view::<f32>()?.into_dimensionality()?;
             scatter_add_weighted(&mut output, &y_view, tokens);
         }
 
