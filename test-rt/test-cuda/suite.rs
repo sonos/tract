@@ -54,12 +54,6 @@ fn ignore_unit(t: &[String], case: &dyn Test) -> bool {
     if let Some(sdpab) = case.downcast_ref::<SdpaProblem<half::f16>>() {
         return !compatible_sdpa::<half::f16>(sdpab);
     }
-    // A zero-volume const reaches CudaTensor::from_tensor with an empty byte
-    // slice, which the host-to-device copy does not guard the way Metal does
-    // (metal/src/context.rs substitutes a 1-byte buffer).
-    if t[0] == "gather_elements" && (t[1] == "empty_rows" || t[1] == "empty_last_axis") {
-        return true;
-    }
 
     t[0] == "sdpa" && t[1] == "proptest_f32"
 }
