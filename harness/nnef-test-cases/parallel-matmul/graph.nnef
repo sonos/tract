@@ -1,0 +1,30 @@
+version 1.0;
+
+# Exercises the multithreaded MMM chunked dispatch at shapes that make it pick
+# different chunk grids: a skewed grid (n much longer than m, so the chunks band
+# along n), a square one (a genuinely 2D grid), a tall-thin one, and a batched
+# matmul (one dispatch per prefix coordinate). Every shape stays above the default
+# 64-panel threading threshold even on a 32x32-tile kernel (the widest tile any
+# f32 mmm kernel here uses, e.g. Apple AMX and SME), so all four reach the
+# parallel path without tuning the threshold: 96, 256, 128 and 96 panels
+# respectively.
+#
+# runme.sh asserts the threaded output is bit-identical to the same-platform
+# single-threaded run: chunking and the in-chunk cache-blocked walk only reorder
+# independent tiles, and each output tile still accumulates the whole k in one
+# kernel call.
+graph parallel_matmul(skew_a, skew_b, sq_a, sq_b, thin_a, thin_b, batch_a, batch_b) -> (skew, sq, thin, batch)
+{
+    skew_a = external<scalar>(shape = [128, 768]);
+    skew_b = external<scalar>(shape = [768, 768]);
+    sq_a = external<scalar>(shape = [512, 512]);
+    sq_b = external<scalar>(shape = [512, 512]);
+    thin_a = external<scalar>(shape = [1024, 256]);
+    thin_b = external<scalar>(shape = [256, 128]);
+    batch_a = external<scalar>(shape = [4, 256, 256]);
+    batch_b = external<scalar>(shape = [4, 256, 384]);
+    skew = matmul(skew_a, skew_b);
+    sq = matmul(sq_a, sq_b);
+    thin = matmul(thin_a, thin_b);
+    batch = matmul(batch_a, batch_b);
+}

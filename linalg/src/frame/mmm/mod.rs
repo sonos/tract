@@ -19,6 +19,7 @@ use crate::multithread::Executor;
 use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::fmt::Debug;
+use std::ops::Range;
 use tract_data::internal::*;
 
 pub use cost_model::*;
@@ -256,8 +257,8 @@ impl<K: MatMatMulKer> MatMatMul for K {
                         prefer_row = (!col) as usize;
                     }
                 }
-                // k drives the single-thread cache-block size; read it from the
-                // first AddMatMul's packed input (0 if none → max block).
+                // k drives the cache-block size; read it from the first
+                // AddMatMul's packed input (0 if none → max block).
                 let k = non_linear
                     .iter()
                     .find_map(|f| match f {
@@ -265,11 +266,15 @@ impl<K: MatMatMulKer> MatMatMul for K {
                         _ => None,
                     })
                     .unwrap_or(0);
-                if prefer_col > prefer_row {
-                    run_with_scratch_space_col_outer(self, m, n, k, scratch, non_linear)
-                } else {
-                    run_with_scratch_space_row_outer(self, m, n, k, scratch, non_linear)
-                }
+                run_with_scratch_space_2d(
+                    self,
+                    m,
+                    n,
+                    k,
+                    prefer_col > prefer_row,
+                    scratch,
+                    non_linear,
+                )
             }
         }
     }
@@ -294,7 +299,9 @@ unsafe fn run_with_scratch_space_vec<K: MatMatMulKer>(
                 Some(&pool),
                 m.divceil(ker.mr()),
                 1,
-                |ia_start, ia_end, _, _| {
+                ker.mr(),
+                ker.nr(),
+                |ia_start, ia_end, _, _, _| {
                     scratch.run_in_tls_scope(|scratch, tls| {
                         for ia in ia_start..ia_end {
                             scratch.run_one_tile(ker, non_linear, tls, ia, 0)?;
@@ -304,27 +311,31 @@ unsafe fn run_with_scratch_space_vec<K: MatMatMulKer>(
                 },
             ),
             #[cfg(feature = "multithread-mm")]
-            Executor::RayonGlobal => {
-                chunked_dispatch_rayon(None, m.divceil(ker.mr()), 1, |ia_start, ia_end, _, _| {
+            Executor::RayonGlobal => chunked_dispatch_rayon(
+                None,
+                m.divceil(ker.mr()),
+                1,
+                ker.mr(),
+                ker.nr(),
+                |ia_start, ia_end, _, _, _| {
                     scratch.run_in_tls_scope(|scratch, tls| {
                         for ia in ia_start..ia_end {
                             scratch.run_one_tile(ker, non_linear, tls, ia, 0)?;
                         }
                         TractResult::Ok(())
                     })
-                })
-            }
+                },
+            ),
         }
     }
 }
 
-/// Upper bound on the inner (L2-resident) panel-block edge (matches the
-/// multithread `chunk_grid` default).
-const ST_BLK_MAX: usize = 16;
+/// Upper bound on the inner (L2-resident) panel-block edge.
+const BLK_MAX: usize = 16;
 
 /// Upper bound on the outer (L3-resident) super-block edge. 4× the inner cap so
 /// an L3 several times larger than L2 can hold a meaningfully bigger super-block.
-const ST_BLK_L3_MAX: usize = 64;
+const BLK_L3_MAX: usize = 64;
 
 /// Panel-block working-set budget (bytes) from a detected cache size: a fraction
 /// `num/den` of the cache (leaving room for the C accumulator tile + packing
@@ -345,11 +356,12 @@ fn l2_block_budget_bytes() -> usize {
 }
 
 /// Outer tier: `(llc_bytes, budget_bytes)` — the raw last-level-cache size and the
-/// fraction of it a single thread may budget for the outer super-block — but only
-/// when an L3/LLC larger than L2 is detected (otherwise an outer tier just
-/// duplicates the inner one). `None` ⇒ no outer tier; the walk stays single-level
-/// (identical to before). The raw size is returned alongside the budget so the
-/// caller can check whether the working set even spills the cache before blocking.
+/// fraction of it the outer super-block may budget — but only when an L3/LLC larger
+/// than L2 is detected (otherwise an outer tier just duplicates the inner one).
+/// `None` ⇒ no outer tier; the walk stays single-level. The raw size is returned
+/// alongside the budget so the caller can check whether the working set even
+/// spills the cache before blocking. Both numbers are for the *whole* cache;
+/// concurrent walkers each get a share (see [`outer_block_edge`]).
 fn l3_block_budget_bytes() -> Option<(usize, usize)> {
     use crate::cache::LlcKind;
     let (bytes, kind) = crate::cache::last_level_cache()?;
@@ -400,8 +412,14 @@ fn inner_tier_pays(panels: usize, r: usize, k: usize, elem_bytes: usize, l2_byte
 /// stream) when the streamed operand already fits L2 (see [`inner_tier_pays`]).
 /// The budget is **cache-size derived** (not a hard-coded constant), so it is
 /// correct across hardware.
+///
+/// Unlike [`outer_block_edge`], this does not divide the budget among concurrent
+/// walkers: it assumes an L2 private to the core running the rectangle. Where L2
+/// is instead shared across a cluster — [`crate::cache::CacheInfo::l2`] reports
+/// either and cannot tell them apart — sibling rectangles each budget the same
+/// bytes and can evict one another.
 #[inline]
-fn st_block_edge(
+fn inner_block_edge(
     mr: usize,
     nr: usize,
     k: usize,
@@ -414,7 +432,7 @@ fn st_block_edge(
     if !inner_tier_pays(panels, r, k, elem_bytes, crate::cache::cache_info().l2) {
         return usize::MAX;
     }
-    block_edge_for(l2_block_budget_bytes(), mr, nr, k, elem_bytes, ST_BLK_MAX)
+    block_edge_for(l2_block_budget_bytes(), mr, nr, k, elem_bytes, BLK_MAX)
 }
 
 /// Whether an L3 outer super-block can capture reuse the inner (L2) tier cannot.
@@ -443,11 +461,18 @@ fn outer_tier_pays(
     llc_bytes > 0 && working_set > llc_bytes
 }
 
-/// Outer (L3) super-block edge, or `usize::MAX` (one block over the whole grid,
-/// i.e. no outer tier) when no usable L3 is detected or the working set already
-/// fits it (see [`outer_tier_pays`]). Never smaller than the inner edge `inner`.
+/// Outer (L3) super-block edge, or `usize::MAX` (one block over the whole
+/// rectangle, i.e. no outer tier) when no usable L3 is detected or the working set
+/// already fits it (see [`outer_tier_pays`]). Never smaller than the inner edge
+/// `inner`.
+///
+/// `llc_share` is how many rectangles are walked concurrently: the LLC is shared,
+/// so each walker may only assume its slice of it. Sizing every chunk of a
+/// multi-threaded dispatch against the whole LLC would have them evict each
+/// other's super-blocks.
 #[inline]
-fn st_outer_block_edge(
+#[allow(clippy::too_many_arguments)]
+fn outer_block_edge(
     mr: usize,
     nr: usize,
     k: usize,
@@ -455,25 +480,27 @@ fn st_outer_block_edge(
     inner: usize,
     m_panels: usize,
     n_panels: usize,
+    llc_share: usize,
 ) -> usize {
     let Some((llc, budget)) = l3_block_budget_bytes() else { return usize::MAX };
-    if !outer_tier_pays(m_panels, n_panels, mr, nr, k, elem_bytes, llc) {
+    let share = llc_share.max(1);
+    if !outer_tier_pays(m_panels, n_panels, mr, nr, k, elem_bytes, llc / share) {
         return usize::MAX;
     }
-    block_edge_for(budget, mr, nr, k, elem_bytes, ST_BLK_L3_MAX).max(inner)
+    block_edge_for(budget / share, mr, nr, k, elem_bytes, BLK_L3_MAX).max(inner)
 }
 
-/// Visit every `(ia, ib)` tile of the `m_panels × n_panels` grid exactly once,
+/// Visit every `(ia, ib)` tile of the `m × n` panel rectangle exactly once,
 /// blocked two levels deep: an outer `blk_outer` super-block (L3-resident) holds
 /// inner `blk` blocks (L2-resident). `col_outer` selects the within-block inner
-/// order (B-reuse vs A-reuse). When `blk_outer >= max(m,n)` the outer loop runs
-/// once and this is exactly the single-level inner walk. Pure tile reordering ⇒
-/// no result changes; extracted so the nesting can be unit-tested independently
-/// of the kernel.
+/// order (B-reuse vs A-reuse). When `blk_outer` spans the whole rectangle the
+/// outer loop runs once and this is exactly the single-level inner walk. Pure
+/// tile reordering ⇒ no result changes; extracted so the nesting can be
+/// unit-tested independently of the kernel.
 #[inline]
 fn for_each_blocked_tile(
-    m_panels: usize,
-    n_panels: usize,
+    m: Range<usize>,
+    n: Range<usize>,
     blk: usize,
     blk_outer: usize,
     col_outer: bool,
@@ -481,18 +508,18 @@ fn for_each_blocked_tile(
 ) -> TractResult<()> {
     let blk = blk.max(1);
     let blk_outer = blk_outer.max(blk);
-    let mut jb3 = 0;
-    while jb3 < n_panels {
-        let jb3_end = jb3.saturating_add(blk_outer).min(n_panels);
-        let mut ja3 = 0;
-        while ja3 < m_panels {
-            let ja3_end = ja3.saturating_add(blk_outer).min(m_panels);
+    let mut jb3 = n.start;
+    while jb3 < n.end {
+        let jb3_end = jb3.saturating_add(blk_outer).min(n.end);
+        let mut ja3 = m.start;
+        while ja3 < m.end {
+            let ja3_end = ja3.saturating_add(blk_outer).min(m.end);
             let mut jb = jb3;
             while jb < jb3_end {
-                let jb_end = (jb + blk).min(jb3_end);
+                let jb_end = jb.saturating_add(blk).min(jb3_end);
                 let mut ja = ja3;
                 while ja < ja3_end {
-                    let ja_end = (ja + blk).min(ja3_end);
+                    let ja_end = ja.saturating_add(blk).min(ja3_end);
                     if col_outer {
                         for ib in jb..jb_end {
                             for ia in ja..ja_end {
@@ -517,183 +544,142 @@ fn for_each_blocked_tile(
     Ok(())
 }
 
-/// Single-thread tile walk over the `m_panels × n_panels` grid, blocked into
-/// cache-sized panel blocks for locality (the naive nested loop re-streams the
-/// whole inner operand per outer panel at large k; the multithread path already
-/// blocks this way via `chunk_grid`). Two tiers: an inner L2-resident block and,
-/// where an L3 is detected, an outer L3-resident super-block. Reordering
-/// independent tiles changes no result — bit-exact with the naive loop.
+/// Tile walk over one panel rectangle — the whole grid on the single-thread
+/// path, one dispatch chunk on the rayon path — blocked into cache-sized panel
+/// blocks for locality (the naive nested loop re-streams the whole inner operand
+/// per outer panel at large k). Two tiers: an inner L2-resident block and, where
+/// an L3 is detected, an outer L3-resident super-block sized for one of
+/// `llc_share` concurrent walkers. Both tiers are gated on the rectangle's own
+/// extents, so a rectangle whose streamed operand already fits cache walks
+/// exactly the naive order. Reordering independent tiles changes no result —
+/// bit-exact with the naive loop at any chunking.
 #[inline]
-unsafe fn run_single_thread_blocked<K: MatMatMulKer>(
+#[allow(clippy::too_many_arguments)]
+unsafe fn run_blocked<K: MatMatMulKer>(
     ker: &K,
-    m_panels: usize,
-    n_panels: usize,
+    m: Range<usize>,
+    n: Range<usize>,
     k: usize,
     col_outer: bool,
-    scratch: &mut ScratchSpaceImpl<K::Acc>,
+    llc_share: usize,
+    scratch: &ScratchSpaceImpl<K::Acc>,
     non_linear: &[FusedSpec],
 ) -> TractResult<()> {
     unsafe {
         let elem = K::Acc::datum_type().size_of();
-        let blk = st_block_edge(ker.mr(), ker.nr(), k, elem, m_panels, n_panels, col_outer);
-        let blk_outer = st_outer_block_edge(ker.mr(), ker.nr(), k, elem, blk, m_panels, n_panels);
+        let (mr, nr) = (ker.mr(), ker.nr());
+        let (m_panels, n_panels) = (m.len(), n.len());
+        let blk = inner_block_edge(mr, nr, k, elem, m_panels, n_panels, col_outer);
+        let blk_outer = outer_block_edge(mr, nr, k, elem, blk, m_panels, n_panels, llc_share);
         scratch.run_in_tls_scope(|scratch, tls| {
-            for_each_blocked_tile(m_panels, n_panels, blk, blk_outer, col_outer, |ia, ib| {
+            for_each_blocked_tile(m, n, blk, blk_outer, col_outer, |ia, ib| {
                 scratch.run_one_tile(ker, non_linear, tls, ia, ib)
             })
         })
     }
 }
 
-unsafe fn run_with_scratch_space_col_outer<K: MatMatMulKer>(
+/// Run the whole `m × n` output over the executor currently installed: as one
+/// rectangle when single-threaded, else split into the chunk grid
+/// [`chunk_grid`] picks. `col_outer` selects the tile order inside a rectangle
+/// (B-reuse vs A-reuse), from the fused ops' preference. `k` is only used to size
+/// the cache blocking.
+unsafe fn run_with_scratch_space_2d<K: MatMatMulKer>(
     ker: &K,
     m: usize,
     n: usize,
     k: usize,
-    scratch: &mut ScratchSpaceImpl<K::Acc>,
+    col_outer: bool,
+    scratch: &ScratchSpaceImpl<K::Acc>,
     non_linear: &[FusedSpec],
 ) -> TractResult<()> {
     unsafe {
-        match crate::multithread::current_tract_executor() {
-            Executor::SingleThread => run_single_thread_blocked(
+        let (m_panels, n_panels) = (m.divceil(ker.mr()), n.divceil(ker.nr()));
+        #[cfg(feature = "multithread-mm")]
+        let chunk = |ia_start, ia_end, ib_start, ib_end, concurrency| {
+            run_blocked(
                 ker,
-                m.divceil(ker.mr()),
-                n.divceil(ker.nr()),
+                ia_start..ia_end,
+                ib_start..ib_end,
                 k,
-                true,
+                col_outer,
+                concurrency,
                 scratch,
                 non_linear,
-            ),
+            )
+        };
+        match crate::multithread::current_tract_executor() {
+            Executor::SingleThread => {
+                run_blocked(ker, 0..m_panels, 0..n_panels, k, col_outer, 1, scratch, non_linear)
+            }
             #[cfg(feature = "multithread-mm")]
-            Executor::MultiThread(pool) => chunked_dispatch_rayon(
-                Some(&pool),
-                m.divceil(ker.mr()),
-                n.divceil(ker.nr()),
-                |ia_start, ia_end, ib_start, ib_end| {
-                    scratch.run_in_tls_scope(|scratch, tls| {
-                        for ib in ib_start..ib_end {
-                            for ia in ia_start..ia_end {
-                                scratch.run_one_tile(ker, non_linear, tls, ia, ib)?;
-                            }
-                        }
-                        TractResult::Ok(())
-                    })
-                },
-            ),
+            Executor::MultiThread(pool) => {
+                chunked_dispatch_rayon(Some(&pool), m_panels, n_panels, ker.mr(), ker.nr(), chunk)
+            }
             #[cfg(feature = "multithread-mm")]
-            Executor::RayonGlobal => chunked_dispatch_rayon(
-                None,
-                m.divceil(ker.mr()),
-                n.divceil(ker.nr()),
-                |ia_start, ia_end, ib_start, ib_end| {
-                    scratch.run_in_tls_scope(|scratch, tls| {
-                        for ib in ib_start..ib_end {
-                            for ia in ia_start..ia_end {
-                                scratch.run_one_tile(ker, non_linear, tls, ia, ib)?;
-                            }
-                        }
-                        TractResult::Ok(())
-                    })
-                },
-            ),
+            Executor::RayonGlobal => {
+                chunked_dispatch_rayon(None, m_panels, n_panels, ker.mr(), ker.nr(), chunk)
+            }
         }
     }
 }
 
-unsafe fn run_with_scratch_space_row_outer<K: MatMatMulKer>(
-    ker: &K,
-    m: usize,
-    n: usize,
-    k: usize,
-    scratch: &mut ScratchSpaceImpl<K::Acc>,
-    non_linear: &[FusedSpec],
-) -> TractResult<()> {
-    unsafe {
-        match crate::multithread::current_tract_executor() {
-            Executor::SingleThread => run_single_thread_blocked(
-                ker,
-                m.divceil(ker.mr()),
-                n.divceil(ker.nr()),
-                k,
-                false,
-                scratch,
-                non_linear,
-            ),
-            #[cfg(feature = "multithread-mm")]
-            Executor::MultiThread(pool) => chunked_dispatch_rayon(
-                Some(&pool),
-                m.divceil(ker.mr()),
-                n.divceil(ker.nr()),
-                |ia_start, ia_end, ib_start, ib_end| {
-                    scratch.run_in_tls_scope(|scratch, tls| {
-                        for ia in ia_start..ia_end {
-                            for ib in ib_start..ib_end {
-                                scratch.run_one_tile(ker, non_linear, tls, ia, ib)?;
-                            }
-                        }
-                        TractResult::Ok(())
-                    })
-                },
-            ),
-            #[cfg(feature = "multithread-mm")]
-            Executor::RayonGlobal => chunked_dispatch_rayon(
-                None,
-                m.divceil(ker.mr()),
-                n.divceil(ker.nr()),
-                |ia_start, ia_end, ib_start, ib_end| {
-                    scratch.run_in_tls_scope(|scratch, tls| {
-                        for ia in ia_start..ia_end {
-                            for ib in ib_start..ib_end {
-                                scratch.run_one_tile(ker, non_linear, tls, ia, ib)?;
-                            }
-                        }
-                        TractResult::Ok(())
-                    })
-                },
-            ),
-        }
-    }
-}
-
-/// Chunk grid for the 2D dispatch.
-///
-/// Mirrors ggml's `mul_mat` heuristic (`ggml/src/ggml-cpu/ggml-cpu.c:1378-1398`):
-///  * 16-tile panel chunks by default;
-///  * 64-tile chunks when one dimension is 1 (vec / vec-mat);
-///  * fallback to "block-per-thread along the longer axis" when the natural
-///    grid would have fewer than `4·nth` chunks.
-///
-/// Returns `(nchunks_m, nchunks_n, dr_m, dr_n)`.
+/// Chunks per thread the 2D dispatch aims for. Above one, rayon can steal work
+/// when threads progress unevenly — a contended core, an E-core on a big.LITTLE
+/// part, a chunk carrying more border tiles — so a straggler costs at most its
+/// share rather than the whole grid's tail. Each extra chunk also re-reads a band
+/// of the packed operands, and that cost grows as `sqrt(chunks)` against a linear
+/// gain in slack, which is what keeps this small.
 #[cfg(feature = "multithread-mm")]
-fn chunk_grid(n_panels_m: usize, n_panels_n: usize, nth: usize) -> (usize, usize, usize, usize) {
-    let chunk_size = if n_panels_m == 1 || n_panels_n == 1 { 64 } else { 16 };
-    let mut nchunks_m = n_panels_m.div_ceil(chunk_size);
-    let mut nchunks_n = n_panels_n.div_ceil(chunk_size);
-    if nchunks_m * nchunks_n < 4 * nth {
-        if n_panels_m > n_panels_n {
-            nchunks_m = nth;
-            nchunks_n = 1;
-        } else {
-            nchunks_m = 1;
-            nchunks_n = nth;
-        }
-    }
-    let dr_m = n_panels_m.div_ceil(nchunks_m).max(1);
-    let dr_n = n_panels_n.div_ceil(nchunks_n).max(1);
-    (nchunks_m, nchunks_n, dr_m, dr_n)
+const CHUNKS_PER_THREAD: usize = 4;
+
+/// Chunk grid for the 2D dispatch: `(nchunks_m, nchunks_n, dr_m, dr_n)`.
+///
+/// Aims for [`CHUNKS_PER_THREAD`]`· nth` chunks and shapes them to minimise how
+/// often the packed operands are re-read: a chunk covering `dr_m × dr_n` panels
+/// reads `dr_m·mr·k` of A and `dr_n·nr·k` of B, so over the whole grid A is read
+/// `nchunks_n` times and B `nchunks_m` times. Minimising
+/// `nchunks_n·m + nchunks_m·n` at a fixed chunk count puts
+/// `nchunks_m = sqrt(chunks · m / n)` — chunks as square as the operands'
+/// extents, rather than a band across one axis.
+///
+/// Cache locality *inside* a chunk is [`run_blocked`]'s job, not this function's;
+/// chunk count therefore tracks the thread count and not a cache size.
+///
+/// Both panel counts must be non-zero; the dispatcher returns early on an empty
+/// grid.
+#[cfg(feature = "multithread-mm")]
+fn chunk_grid(
+    n_panels_m: usize,
+    n_panels_n: usize,
+    mr: usize,
+    nr: usize,
+    nth: usize,
+) -> (usize, usize, usize, usize) {
+    let chunks = (CHUNKS_PER_THREAD * nth).max(1);
+    let (m, n) = (n_panels_m * mr, (n_panels_n * nr).max(1));
+    let nchunks_m = (chunks.saturating_mul(m) / n).isqrt().clamp(1, n_panels_m);
+    let nchunks_n = (chunks / nchunks_m).clamp(1, n_panels_n);
+    let nchunks_m = (chunks / nchunks_n).clamp(1, n_panels_m);
+    let dr_m = n_panels_m.div_ceil(nchunks_m);
+    let dr_n = n_panels_n.div_ceil(nchunks_n);
+    // Recount from the edges: `div_ceil` can make the last chunk of an axis land
+    // entirely outside the grid, and an empty work item is a wasted dispatch.
+    (n_panels_m.div_ceil(dr_m), n_panels_n.div_ceil(dr_n), dr_m, dr_n)
 }
 
-/// 2D chunked dispatcher across the (m_panels × n_panels) grid for the
-/// rayon path. Replaces a 1D `into_par_iter` over a single panel axis.
-/// Better-utilises threads on small/skewed shapes where one dimension has
-/// fewer panels than there are workers.
+/// Dispatch the `m_panels × n_panels` panel grid across the rayon path, split into
+/// the 2D chunk grid [`chunk_grid`] picks. Grids below
+/// [`crate::multithread::current_threading_panel_threshold`] run whole on the
+/// calling thread instead.
 ///
-/// The closure receives **chunk bounds** (`ia_start, ia_end, ib_start, ib_end`),
-/// not per-tile indices. This lets the caller amortise per-worker setup
-/// (e.g. `ScratchSpaceImpl::run_in_tls_scope`) across all tiles in the
-/// chunk, mirroring #2206 for the multi-threaded path. The closure is
-/// invoked exactly once per rayon work item (and once total when the
-/// small-graph fallback path is taken).
+/// The closure receives **chunk bounds** (`ia_start, ia_end, ib_start, ib_end`)
+/// plus the number of chunks running concurrently, not per-tile indices. Chunk
+/// bounds let it amortise per-worker setup (e.g.
+/// `ScratchSpaceImpl::run_in_tls_scope`) over all the tiles in the chunk; the
+/// concurrency lets it size shared-cache blocking against the share it actually
+/// gets. The closure is invoked exactly once per rayon work item, and once in
+/// total with a concurrency of 1 on the below-threshold path.
 ///
 /// `pool`:
 ///   * `Some(p)` with `p.current_num_threads() > 1` → scoped via `p.install`
@@ -707,10 +693,12 @@ unsafe fn chunked_dispatch_rayon<F>(
     pool: Option<&rayon::ThreadPool>,
     n_panels_m: usize,
     n_panels_n: usize,
+    mr: usize,
+    nr: usize,
     run_chunk: F,
 ) -> TractResult<()>
 where
-    F: Fn(usize, usize, usize, usize) -> TractResult<()> + Sync,
+    F: Fn(usize, usize, usize, usize, usize) -> TractResult<()> + Sync,
 {
     use rayon::prelude::*;
     if n_panels_m == 0 || n_panels_n == 0 {
@@ -719,13 +707,14 @@ where
     if n_panels_m * n_panels_n < crate::multithread::current_threading_panel_threshold() {
         // Below the threading threshold: run the whole grid as a single chunk
         // on the calling thread. Closure handles its own TLS scope.
-        return run_chunk(0, n_panels_m, 0, n_panels_n);
+        return run_chunk(0, n_panels_m, 0, n_panels_n, 1);
     }
     let use_global = pool.is_none_or(|p| p.current_num_threads() <= 1);
     let body = || {
         let nth = rayon::current_num_threads();
-        let (nchunks_m, nchunks_n, dr_m, dr_n) = chunk_grid(n_panels_m, n_panels_n, nth);
+        let (nchunks_m, nchunks_n, dr_m, dr_n) = chunk_grid(n_panels_m, n_panels_n, mr, nr, nth);
         let total = nchunks_m * nchunks_n;
+        let concurrency = nth.min(total);
         (0..total).into_par_iter().try_for_each(|idx| {
             let im = idx % nchunks_m;
             let in_ = idx / nchunks_m;
@@ -733,7 +722,7 @@ where
             let ia_end = (ia_start + dr_m).min(n_panels_m);
             let ib_start = in_ * dr_n;
             let ib_end = (ib_start + dr_n).min(n_panels_n);
-            run_chunk(ia_start, ia_end, ib_start, ib_end)
+            run_chunk(ia_start, ia_end, ib_start, ib_end, concurrency)
         })
     };
     if use_global { body() } else { pool.unwrap().install(body) }
@@ -745,8 +734,8 @@ mod blocked_walk_tests {
     use std::collections::HashSet;
 
     fn collect(
-        m: usize,
-        n: usize,
+        m: Range<usize>,
+        n: Range<usize>,
         blk: usize,
         blk_outer: usize,
         col_outer: bool,
@@ -760,27 +749,35 @@ mod blocked_walk_tests {
         v
     }
 
-    /// Every grid tile is visited exactly once, for both inner orders and a
-    /// range of (blk, blk_outer) — single-tier (outer = MAX), two-tier, and
+    /// Every tile of the rectangle is visited exactly once, for both inner orders
+    /// and a range of (blk, blk_outer) — single-tier (outer = MAX), two-tier, and
     /// degenerate edges. Coverage being a permutation is what makes the walk
-    /// bit-exact with the naive loop.
+    /// bit-exact with the naive loop. Offset rectangles are the dispatch chunks.
     #[test]
     fn covers_every_tile_once() {
         for &(m, n) in &[(1, 1), (3, 5), (16, 16), (40, 7), (7, 40), (80, 80)] {
-            for &blk in &[1, 3, 16] {
-                for &blk_outer in &[blk, blk + 1, 64, usize::MAX] {
-                    for &col_outer in &[false, true] {
-                        let tiles = collect(m, n, blk, blk_outer, col_outer);
-                        assert_eq!(tiles.len(), m * n, "m={m} n={n} blk={blk} outer={blk_outer}");
-                        let set: HashSet<_> = tiles.iter().copied().collect();
-                        assert_eq!(
-                            set.len(),
-                            m * n,
-                            "duplicate tiles m={m} n={n} blk={blk} outer={blk_outer}"
-                        );
-                        for ia in 0..m {
-                            for ib in 0..n {
-                                assert!(set.contains(&(ia, ib)), "missing ({ia},{ib})");
+            for &(m0, n0) in &[(0, 0), (3, 11)] {
+                // usize::MAX is how both tiers say "do not block"; on an offset
+                // rectangle the edge arithmetic must not overflow past the end.
+                for &blk in &[1, 3, 16, usize::MAX] {
+                    for &blk_outer in &[blk, blk.saturating_add(1), 64, usize::MAX] {
+                        for &col_outer in &[false, true] {
+                            let tiles = collect(m0..m0 + m, n0..n0 + n, blk, blk_outer, col_outer);
+                            assert_eq!(
+                                tiles.len(),
+                                m * n,
+                                "m={m} n={n} blk={blk} outer={blk_outer}"
+                            );
+                            let set: HashSet<_> = tiles.iter().copied().collect();
+                            assert_eq!(
+                                set.len(),
+                                m * n,
+                                "duplicate tiles m={m} n={n} blk={blk} outer={blk_outer}"
+                            );
+                            for ia in m0..m0 + m {
+                                for ib in n0..n0 + n {
+                                    assert!(set.contains(&(ia, ib)), "missing ({ia},{ib})");
+                                }
                             }
                         }
                     }
@@ -797,7 +794,7 @@ mod blocked_walk_tests {
         for &(m, n) in &[(40, 7), (80, 80), (13, 29)] {
             for &blk in &[1, 4, 16] {
                 for &col_outer in &[false, true] {
-                    let two_tier = collect(m, n, blk, usize::MAX, col_outer);
+                    let two_tier = collect(0..m, 0..n, blk, usize::MAX, col_outer);
                     let mut single = Vec::new();
                     let mut jb = 0;
                     while jb < n {
@@ -863,5 +860,112 @@ mod blocked_walk_tests {
         assert!(!inner_tier_pays(4096, 16, 4096, 4, 0));
         // k = 0 (empty reduction) has no working set.
         assert!(!inner_tier_pays(4096, 16, 0, 4, l2));
+    }
+
+    /// Grids, kernel aspect ratios and thread counts worth checking the chunk
+    /// grid against: skewed both ways, square, prime-ish, and the degenerate
+    /// single-panel cases.
+    #[cfg(feature = "multithread-mm")]
+    const GRIDS: &[(usize, usize)] = &[
+        (1, 1),
+        (1, 5),
+        (5, 1),
+        (2, 3),
+        (3, 3),
+        (16, 96),
+        (96, 16),
+        (17, 17),
+        (64, 64),
+        (32, 384),
+        (128, 128),
+        (1, 4096),
+        (4096, 1),
+        (9, 1000),
+    ];
+
+    #[cfg(feature = "multithread-mm")]
+    const RATIOS: &[(usize, usize)] = &[(8, 8), (16, 4), (32, 32), (64, 1)];
+
+    /// The four numbers `chunk_grid` returns must tile the panel grid exactly:
+    /// `chunked_dispatch_rayon` turns them into work items, so an empty chunk is
+    /// a wasted dispatch, an overlap would double-compute a tile, and a gap would
+    /// leave part of C uninitialised.
+    #[cfg(feature = "multithread-mm")]
+    #[test]
+    fn chunk_grid_tiles_the_panel_grid() {
+        for &(m, n) in GRIDS {
+            for &(mr, nr) in RATIOS {
+                for nth in [1usize, 2, 3, 4, 6, 8, 16, 64] {
+                    let (cm, cn, dr_m, dr_n) = chunk_grid(m, n, mr, nr, nth);
+                    let ctx = format!("{m}x{n} panels, {mr}x{nr} kernel, {nth} threads");
+                    let mut seen = vec![false; m * n];
+                    for idx in 0..cm * cn {
+                        let (im, in_) = (idx % cm, idx / cm);
+                        let (a0, a1) = (im * dr_m, (im * dr_m + dr_m).min(m));
+                        let (b0, b1) = (in_ * dr_n, (in_ * dr_n + dr_n).min(n));
+                        assert!(a0 < a1 && b0 < b1, "empty chunk {idx} in {ctx}");
+                        for ia in a0..a1 {
+                            for ib in b0..b1 {
+                                assert!(!seen[ia * n + ib], "tile ({ia},{ib}) twice in {ctx}");
+                                seen[ia * n + ib] = true;
+                            }
+                        }
+                    }
+                    assert!(seen.iter().all(|s| *s), "tile left out in {ctx}");
+                }
+            }
+        }
+    }
+
+    /// Enough chunks to keep every thread fed, whenever the grid has that many
+    /// panels to go round. Recounting the chunks from the edges is what makes this
+    /// hold: naming more chunks than the edges cover would idle the difference.
+    #[cfg(feature = "multithread-mm")]
+    #[test]
+    fn chunk_grid_feeds_every_thread() {
+        for &(m, n) in GRIDS {
+            for &(mr, nr) in RATIOS {
+                for nth in [1usize, 2, 3, 4, 6, 8, 16, 64] {
+                    let (cm, cn, ..) = chunk_grid(m, n, mr, nr, nth);
+                    assert!(
+                        cm * cn >= nth.min(m * n),
+                        "{cm}x{cn} chunks for {nth} threads on {m}x{n} panels"
+                    );
+                }
+            }
+        }
+    }
+
+    /// The grid is shaped to minimise packed-operand re-reads: A is read once per
+    /// column of chunks and B once per row, so `nchunks_n·m + nchunks_m·n` is what
+    /// the shape trades off. It must never cost more than a band across either
+    /// axis at the same chunk count, which on a square grid costs 1.5x.
+    #[cfg(feature = "multithread-mm")]
+    #[test]
+    fn chunk_grid_shape_beats_a_band_on_operand_traffic() {
+        let traffic = |cm: usize, cn: usize, m: usize, n: usize| cn * m + cm * n;
+        for &(m, n) in GRIDS {
+            for &(mr, nr) in RATIOS {
+                for nth in [2usize, 4, 8, 16] {
+                    let (cm, cn, ..) = chunk_grid(m, n, mr, nr, nth);
+                    let chunks = cm * cn;
+                    // Only a band that fits along the axis is a real alternative:
+                    // one clamped shorter would be a different chunk count, and a
+                    // smaller chunk count trivially re-reads less.
+                    if chunks > m || chunks > n {
+                        continue;
+                    }
+                    let (m_ext, n_ext) = (m * mr, n * nr);
+                    let ours = traffic(cm, cn, m_ext, n_ext);
+                    let band_m = traffic(chunks, 1, m_ext, n_ext);
+                    let band_n = traffic(1, chunks, m_ext, n_ext);
+                    assert!(
+                        ours <= band_m.min(band_n),
+                        "{cm}x{cn} costs {ours}, bands cost {band_m}/{band_n} \
+                         on {m}x{n} panels, {mr}x{nr} kernel, {nth} threads"
+                    );
+                }
+            }
+        }
     }
 }
