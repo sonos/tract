@@ -1,4 +1,4 @@
-use std::ops::Div;
+use std::ops::{Div, RangeInclusive};
 
 use infra::{Test, TestResult, TestSuite};
 use proptest::collection::vec;
@@ -36,9 +36,10 @@ pub enum ElWiseOps {
     Atanh,
     // Erf, Erf is unstable in rust
     Ln,
+    Sign,
 }
 
-pub const ALL_OPS: [ElWiseOps; 25] = [
+pub const ALL_OPS: [ElWiseOps; 26] = [
     ElWiseOps::Neg,
     ElWiseOps::Abs,
     ElWiseOps::Sqr,
@@ -65,6 +66,7 @@ pub const ALL_OPS: [ElWiseOps; 25] = [
     ElWiseOps::Atanh,
     //ElWiseOps::Erf,
     ElWiseOps::Ln,
+    ElWiseOps::Sign,
 ];
 
 pub trait SupportedElement:
@@ -106,6 +108,19 @@ where
     pub input: ArrayD<T>,
 }
 
+/// Range the input values are drawn from, before the halving that the strategy applies.
+/// Only Abs and Sign get zero and, when `T` can hold them, negatives: the other ops
+/// in the suite need strictly positive inputs (Ln, Sqrt, Acosh, ...).
+fn input_range<T: SupportedElement>(op: ElWiseOps) -> RangeInclusive<i8> {
+    if !matches!(op, ElWiseOps::Abs | ElWiseOps::Sign) {
+        2..=10
+    } else if T::from_i8(-1).is_some() {
+        -10..=10
+    } else {
+        0..=10
+    }
+}
+
 impl<T> Arbitrary for ElWiseOpProblem<T>
 where
     T: SupportedElement,
@@ -116,34 +131,41 @@ where
     fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
         let shape_strategy = prop::collection::vec(1usize..=5, 0..=4);
 
-        shape_strategy
-            .prop_flat_map(|shape| {
+        let mut ops = ALL_OPS.to_vec();
+
+        if std::any::TypeId::of::<T>() == std::any::TypeId::of::<u8>()
+            || std::any::TypeId::of::<T>() == std::any::TypeId::of::<u16>()
+            || std::any::TypeId::of::<T>() == std::any::TypeId::of::<u32>()
+            || std::any::TypeId::of::<T>() == std::any::TypeId::of::<u64>()
+            || std::any::TypeId::of::<T>() == std::any::TypeId::of::<i8>()
+            || std::any::TypeId::of::<T>() == std::any::TypeId::of::<i16>()
+            || std::any::TypeId::of::<T>() == std::any::TypeId::of::<i32>()
+            || std::any::TypeId::of::<T>() == std::any::TypeId::of::<i64>()
+        {
+            ops.retain(|op| {
+                matches!(
+                    op,
+                    ElWiseOps::Ceil
+                        | ElWiseOps::Floor
+                        | ElWiseOps::Round
+                        | ElWiseOps::Abs
+                        | ElWiseOps::Sign
+                )
+            });
+        }
+
+        (shape_strategy, prop::sample::select(ops))
+            .prop_flat_map(|(shape, op)| {
                 let len = shape.iter().product::<usize>();
                 let input = vec(
-                    (2u8..=10u8).prop_map(|i| T::from_u8(i).unwrap() / T::from_u8(2).unwrap()),
+                    input_range::<T>(op)
+                        .prop_map(|i| T::from_i8(i).unwrap() / T::from_i8(2).unwrap()),
                     len..=len,
                 )
                 .prop_map(move |vec| ArrayD::from_shape_vec(shape.to_vec(), vec).unwrap())
                 .boxed();
 
-                let mut ops = ALL_OPS.to_vec();
-
-                if std::any::TypeId::of::<T>() == std::any::TypeId::of::<u8>()
-                    || std::any::TypeId::of::<T>() == std::any::TypeId::of::<u16>()
-                    || std::any::TypeId::of::<T>() == std::any::TypeId::of::<u32>()
-                    || std::any::TypeId::of::<T>() == std::any::TypeId::of::<u64>()
-                    || std::any::TypeId::of::<T>() == std::any::TypeId::of::<i8>()
-                    || std::any::TypeId::of::<T>() == std::any::TypeId::of::<i16>()
-                    || std::any::TypeId::of::<T>() == std::any::TypeId::of::<i32>()
-                    || std::any::TypeId::of::<T>() == std::any::TypeId::of::<i64>()
-                {
-                    ops.retain(|op| {
-                        matches!(op, ElWiseOps::Ceil | ElWiseOps::Floor | ElWiseOps::Round)
-                    });
-                }
-
-                let op_strategy = prop::sample::select(ops);
-                (input, op_strategy)
+                (input, Just(op))
             })
             .prop_map(|(input, op)| ElWiseOpProblem { input, op })
             .boxed()
@@ -178,6 +200,7 @@ pub fn to_tract_op(op: &ElWiseOps) -> Box<dyn TypedOp> {
         ElWiseOps::Atanh => Box::new(tract_core::ops::math::Atanh {}),
         //ElWiseOps::Erf => Box::new(tract_core::ops::math::Erf {}),
         ElWiseOps::Ln => Box::new(tract_core::ops::math::Ln {}),
+        ElWiseOps::Sign => Box::new(tract_core::ops::math::Sign {}),
     };
     Box::new(ElementWiseOp(el_mini_op, None))
 }
@@ -244,6 +267,9 @@ where
             ElWiseOps::Atan => eval_reference(&inp, |c, a| *c = Self::f32_elmwise(a, f32::atan))?,
             ElWiseOps::Atanh => eval_reference(&inp, |c, a| *c = Self::f32_elmwise(a, f32::atanh))?,
             ElWiseOps::Ln => eval_reference(&inp, |c, a| *c = Self::f32_elmwise(a, f32::ln))?,
+            ElWiseOps::Sign => eval_reference(&inp, |c, a| {
+                *c = Self::f32_elmwise(a, |x| if x == 0. { 0. } else { x.signum() })
+            })?,
         };
         Ok(res)
     }
@@ -285,6 +311,22 @@ where
 
 pub fn suite() -> TractResult<TestSuite> {
     let mut suite = TestSuite::default();
+
+    suite.add(
+        "sign_i64_case",
+        ElWiseOpProblem {
+            op: ElWiseOps::Sign,
+            input: tract_core::ndarray::arr1(&[-42i64, -1, 0, 1, 42]).into_dyn(),
+        },
+    );
+
+    suite.add(
+        "abs_f64_case",
+        ElWiseOpProblem {
+            op: ElWiseOps::Abs,
+            input: tract_core::ndarray::arr1(&[-2.5f64, -0., 0., 1.5]).into_dyn(),
+        },
+    );
 
     suite.add_arbitrary::<ElWiseOpProblem<f32>>("proptest_f32", ());
     suite.add_arbitrary::<ElWiseOpProblem<f16>>("proptest_f16", ());
