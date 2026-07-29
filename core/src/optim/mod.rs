@@ -29,7 +29,7 @@ use op_optim::OpOptim;
 /// load time, and one over it is left in the graph rather than risk turning a
 /// large weight into several copies. Shape and index arithmetic sits far below
 /// it, decoded weight tensors far above.
-pub const CONST_FOLD_MEM_BUDGET: u64 = 8 << 20;
+pub const CONST_FOLD_MEM_BUDGET: u64 = 4 << 20;
 
 pub trait TypedPass: Debug + Send + Sync + dyn_clone::DynClone {
     fn reset(&mut self) -> TractResult<()>;
