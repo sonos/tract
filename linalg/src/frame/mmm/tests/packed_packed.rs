@@ -378,9 +378,9 @@ impl<K: MatMatMulKer> PackedPackedProblem<K> {
     }
 }
 
-// Large-shape frame tests that exercise the single-thread 2D-blocked tile walk
-// (`run_single_thread_blocked`): the existing `arbitrary_problem` frame proptests
-// only reach 3 panels per dim (m,n < 3·mr), below the ST_BLK=16 blocking
+// Large-shape frame tests that exercise the 2D-blocked tile walk (`run_blocked`):
+// the existing `arbitrary_problem` frame proptests only reach 3 panels per dim
+// (m,n < 3·mr), below the BLK_MAX=16 blocking
 // threshold, so the blocked path was otherwise uncovered. generic_f32_4x4 has
 // mr=nr=4, so m,n=80 → 20×20 panels → multiple blocks. Compares the frame
 // output against the naive reference (must be bit/approx-exact).
@@ -398,7 +398,7 @@ mod single_thread_blocking {
 
     #[test]
     fn blocked_80x80() -> TractResult<()> {
-        check_large(80, 80, 24) // 20×20 panels, multiple ST_BLK blocks
+        check_large(80, 80, 24) // 20×20 panels, multiple BLK_MAX blocks
     }
     #[test]
     fn blocked_skew_200x40() -> TractResult<()> {
