@@ -22,6 +22,15 @@ use self::slice::PushSliceUp;
 use self::uniform_mask::FoldUniformMask;
 use op_optim::OpOptim;
 
+/// Memory a single constant fold may materialize.
+///
+/// Bounds every eager evaluation of a constant subgraph, both during inference
+/// and in `prop_const`: a fold under the budget is cheap enough to pay for at
+/// load time, and one over it is left in the graph rather than risk turning a
+/// large weight into several copies. Shape and index arithmetic sits far below
+/// it, decoded weight tensors far above.
+pub const CONST_FOLD_MEM_BUDGET: u64 = 8 << 20;
+
 pub trait TypedPass: Debug + Send + Sync + dyn_clone::DynClone {
     fn reset(&mut self) -> TractResult<()>;
     fn next(

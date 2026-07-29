@@ -5,8 +5,12 @@ use crate::ops::array::Slice;
 use crate::ops::dummy::Dummy;
 use crate::ops::konst::Const;
 use crate::ops::source::TypedSource;
-use crate::optim::OptimizerSession;
+use crate::optim::{CONST_FOLD_MEM_BUDGET, OptimizerSession};
 
+/// Replaces stateless nodes whose inputs are all constant with the constant they
+/// evaluate to, walking forward through single-successor chains so one patch can
+/// collapse a whole run. Folds are bounded by [`CONST_FOLD_MEM_BUDGET`] so a large
+/// weight is not duplicated once per consumer.
 #[derive(Clone, Debug, Default)]
 pub struct PropConst(usize);
 
@@ -39,7 +43,10 @@ impl super::TypedPass for PropConst {
                         && (model.node(outlet.node).outputs[outlet.slot].successors.len() == 1
                             || node.op_is::<Slice>()
                             || (fact.datum_type.is_number()
-                                && fact.shape.volume().as_i64().is_some_and(|d| d <= 1024)))
+                                && fact
+                                    .mem_size()
+                                    .as_i64()
+                                    .is_some_and(|m| m as u64 <= CONST_FOLD_MEM_BUDGET)))
                 })
             {
                 let inputs =
@@ -56,7 +63,7 @@ impl super::TypedPass for PropConst {
                             .iter()
                             .map(|t| (t.datum_type().size_of() * t.volume()) as u64)
                             .sum();
-                        if output_mem > input_mem.max(1 << 20) {
+                        if output_mem > input_mem.max(CONST_FOLD_MEM_BUDGET) {
                             continue;
                         }
                         let mut node = node;
@@ -78,7 +85,7 @@ impl super::TypedPass for PropConst {
                                 .iter()
                                 .map(|t| (t.datum_type().size_of() * t.volume()) as u64)
                                 .sum();
-                            if succ_mem > input_mem.max(1 << 20) {
+                            if succ_mem > input_mem.max(CONST_FOLD_MEM_BUDGET) {
                                 break;
                             }
                             res = succ_res;
@@ -118,5 +125,72 @@ impl super::TypedPass for PropConst {
             }
         }
         Ok(None)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ops::math;
+
+    fn const_i64(model: &mut TypedModel, name: &str, shape: [usize; 2]) -> TractResult<OutletId> {
+        let len = shape[0] * shape[1];
+        let t = Tensor::from_shape(&shape, &(0..len as i64).collect::<Vec<_>>())?;
+        model.add_const(name, t)
+    }
+
+    /// Sides are derived from the budget rather than fixed, so changing
+    /// [`CONST_FOLD_MEM_BUDGET`] cannot silently move a case to the other side of
+    /// the guard.
+    fn side_for(bytes: u64) -> usize {
+        (bytes / std::mem::size_of::<i64>() as u64).isqrt() as usize
+    }
+
+    /// Two consumers of one constant, both foldable. The constant is well over the
+    /// element count the guard used to allow but inside the memory budget, so the
+    /// graph must collapse entirely: once both consumers are constant the shared
+    /// input is dead and nothing has been duplicated.
+    #[test]
+    fn fold_through_shared_const_inside_mem_budget() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let side = side_for(CONST_FOLD_MEM_BUDGET / 16);
+        let shared = const_i64(&mut model, "shared", [side, side])?;
+        let one = model.add_const("one", tensor2(&[[1i64]]))?;
+        let two = model.add_const("two", tensor2(&[[2i64]]))?;
+        let a = model.wire_node("a", math::mul(), &[shared, two])?[0];
+        let b = model.wire_node("b", math::add(), &[shared, one])?[0];
+        let sum = model.wire_node("sum", math::add(), &[a, b])?[0];
+        model.select_output_outlets(&[sum])?;
+
+        let decluttered = model.into_decluttered()?;
+        let live: Vec<&str> = decluttered
+            .nodes
+            .iter()
+            .filter(|n| !n.op_is::<Const>() && !n.op_is::<Dummy>())
+            .map(|n| n.name.as_str())
+            .collect();
+        assert!(live.is_empty(), "expected a fully folded graph, got {live:?}");
+        Ok(())
+    }
+
+    /// The same shape of graph with a constant over the budget keeps its consumers,
+    /// so a large weight is not turned into one copy per consumer.
+    #[test]
+    fn keep_shared_const_over_mem_budget() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let side = side_for(CONST_FOLD_MEM_BUDGET * 2);
+        let shared = const_i64(&mut model, "shared", [side, side])?;
+        let one = model.add_const("one", tensor2(&[[1i64]]))?;
+        let two = model.add_const("two", tensor2(&[[2i64]]))?;
+        let a = model.wire_node("a", math::mul(), &[shared, two])?[0];
+        let b = model.wire_node("b", math::add(), &[shared, one])?[0];
+        model.select_output_outlets(&[a, b])?;
+
+        let decluttered = model.into_decluttered()?;
+        assert!(
+            decluttered.nodes.iter().any(|n| !n.op_is::<Const>() && !n.op_is::<Dummy>()),
+            "a shared constant over the memory budget must not be folded per consumer"
+        );
+        Ok(())
     }
 }
