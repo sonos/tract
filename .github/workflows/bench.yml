@@ -236,13 +236,14 @@ jobs:
           name: bench-result-${{ matrix.target }}
           path: result
 
-  # --- dinghy target fleet (opt-in via BENCH_DINGHY_ENABLED). ---
+  # --- dinghy target fleet (kill switch: BENCH_DINGHY_ENABLED=false). ---
   # A sidekick runner cross-runs the CLI on each target over dinghy's ssh transport; per-target
-  # config lives in the sidekick's .dinghy.toml. Off by default so an absent runner can't wedge PRs.
+  # config lives in the sidekick's .dinghy.toml. On by default; opt-out only, so fork PRs (which
+  # don't inherit the repo variable) still run the ARM boards.
 
   build-dinghy:
     needs: prepare
-    if: ${{ needs.prepare.outputs.enabled == 'true' && vars.BENCH_DINGHY_ENABLED == 'true' }}
+    if: ${{ needs.prepare.outputs.enabled == 'true' && vars.BENCH_DINGHY_ENABLED != 'false' }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -276,7 +277,7 @@ jobs:
 
   bench-dinghy:
     needs: [ prepare, build-dinghy ]
-    if: ${{ needs.prepare.outputs.enabled == 'true' && vars.BENCH_DINGHY_ENABLED == 'true' }}
+    if: ${{ needs.prepare.outputs.enabled == 'true' && vars.BENCH_DINGHY_ENABLED != 'false' }}
     # One sidekick runner per target (label per board), so boards bench in parallel.
     runs-on: ${{ matrix.runner }}
     # Bound the run so an offline/stuck target can't hang the PR report (which fans this in).
@@ -355,7 +356,7 @@ jobs:
     # always() (like the report job) so a cancelled/failed device leg (e.g. one board that
     # timed out) still lets the boards that did finish append; each leg no-ops when its own
     # result artifact is absent.
-    if: ${{ always() && needs.prepare.outputs.is_pr != 'true' && needs.prepare.outputs.enabled == 'true' && vars.BENCH_DINGHY_ENABLED == 'true' }}
+    if: ${{ always() && needs.prepare.outputs.is_pr != 'true' && needs.prepare.outputs.enabled == 'true' && vars.BENCH_DINGHY_ENABLED != 'false' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -563,7 +564,7 @@ jobs:
 
   hwbench-dinghy:
     needs: [ prepare, build-dinghy ]
-    if: ${{ needs.prepare.outputs.enabled == 'true' && vars.BENCH_DINGHY_ENABLED == 'true' && github.event_name == 'schedule' }}
+    if: ${{ needs.prepare.outputs.enabled == 'true' && vars.BENCH_DINGHY_ENABLED != 'false' && github.event_name == 'schedule' }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     concurrency:
