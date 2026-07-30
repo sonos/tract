@@ -326,14 +326,19 @@ impl PackedFormat {
                 }
             }
         } else if k_stride == 1 {
-            let mut packer = self.write_with_k_inner(pb, k_range.len(), mn);
-            let mn_valid_end = mn_range.end.min(mn);
-            for x in mn_range.start..mn_valid_end {
-                for k in k_range.clone() {
-                    packer.write(*b.offset(x as isize * mn_stride + k as isize))
-                }
-            }
             // just ignore invalid mn_range
+            let mn_valid_end = mn_range.end.min(mn);
+            if mn_valid_end > mn_range.start {
+                pack_k_major(
+                    b.offset(mn_range.start as isize * mn_stride + k_range.start as isize),
+                    pb,
+                    self.single_panel_len(k_range.len()),
+                    self.r,
+                    mn_stride,
+                    k_range.len(),
+                    mn_valid_end - mn_range.start,
+                )
+            }
         } else {
             let mut packer = self.write_with_k_outer(pb, k_range.len(), mn);
             let mn_valid_end = mn_range.end.min(mn);
@@ -689,6 +694,141 @@ unsafe fn pack_mn_major<Chunk: Copy>(
                 p_row.copy_from_nonoverlapping(b_row, partial_pane);
             }
         }
+    }
+}
+
+/// Pack a k-contiguous source block: transpose it into the k-inner packed
+/// layout, where source element `(mn, k)` of the block lands at
+/// `(mn / r) * panel_len + k * r + mn % r`. `b` points at element `(0, 0)`, and
+/// `mn_len` counts valid mn columns only: nothing outside the block is read.
+///
+/// The result must stay byte-identical to feeding [`KInWriter`] mn-outer /
+/// k-inner. Stores are strided by `r`, so the block moves as 4x4 tiles, k-outer
+/// so that each panel is filled front to back; the tails go element by element.
+#[inline(never)]
+unsafe fn pack_k_major<T: Copy>(
+    b: *const T,
+    packed: *mut T,
+    panel_len: usize,
+    r: usize,
+    mn_stride: isize,
+    k_len: usize,
+    mn_len: usize,
+) {
+    unsafe {
+        for panel in 0..mn_len.divceil(r) {
+            let panel_mn = panel * r;
+            let panel_width = r.min(mn_len - panel_mn);
+            let src = b.offset(panel_mn as isize * mn_stride);
+            let dst = packed.add(panel * panel_len);
+            let tiled_mn = panel_width / 4 * 4;
+            let tiled_k = k_len / 4 * 4;
+            for k in (0..tiled_k).step_by(4) {
+                for x in (0..tiled_mn).step_by(4) {
+                    transpose_4x4(
+                        src.offset(x as isize * mn_stride + k as isize),
+                        mn_stride,
+                        dst.add(k * r + x),
+                        r,
+                    );
+                }
+            }
+            for k in tiled_k..k_len {
+                for x in 0..tiled_mn {
+                    *dst.add(k * r + x) = *src.offset(x as isize * mn_stride + k as isize);
+                }
+            }
+            for x in tiled_mn..panel_width {
+                let row = src.offset(x as isize * mn_stride);
+                for k in 0..k_len {
+                    *dst.add(k * r + x) = *row.add(k);
+                }
+            }
+        }
+    }
+}
+
+/// Transpose a 4x4 tile: `src` rows are `src_stride` apart with contiguous
+/// elements, `dst` rows are `dst_stride` apart with contiguous elements. Both
+/// strides count elements and may leave the tiles unaligned. Specialised by
+/// element width where a vector transpose exists, portable everywhere else.
+#[inline(always)]
+unsafe fn transpose_4x4<T: Copy>(src: *const T, src_stride: isize, dst: *mut T, dst_stride: usize) {
+    unsafe {
+        // Alignment is part of the test: a 4-byte T of alignment 2 (Complex<i16>)
+        // must not be moved through a lane type it cannot be aligned for.
+        #[cfg(target_arch = "aarch64")]
+        if std::mem::size_of::<T>() == 4 && std::mem::align_of::<T>() == 4 {
+            transpose_4x4_neon_32(src as _, src_stride, dst as _, dst_stride);
+            return;
+        }
+        #[cfg(target_arch = "aarch64")]
+        if std::mem::size_of::<T>() == 2 && std::mem::align_of::<T>() == 2 {
+            transpose_4x4_neon_16(src as _, src_stride, dst as _, dst_stride);
+            return;
+        }
+        let tile: [[T; 4]; 4] = std::array::from_fn(|i| {
+            let row = src.offset(i as isize * src_stride);
+            std::array::from_fn(|j| *row.add(j))
+        });
+        for j in 0..4 {
+            let out = dst.add(j * dst_stride);
+            for (i, row) in tile.iter().enumerate() {
+                *out.add(i) = row[j];
+            }
+        }
+    }
+}
+
+/// 4x4 transpose of 32-bit lanes: four `ld1`, eight `trn`, four `st1`.
+#[cfg(target_arch = "aarch64")]
+#[target_feature(enable = "neon")]
+unsafe fn transpose_4x4_neon_32(
+    src: *const u32,
+    src_stride: isize,
+    dst: *mut u32,
+    dst_stride: usize,
+) {
+    use std::arch::aarch64::*;
+    unsafe {
+        let a = vld1q_u32(src);
+        let b = vld1q_u32(src.offset(src_stride));
+        let c = vld1q_u32(src.offset(2 * src_stride));
+        let d = vld1q_u32(src.offset(3 * src_stride));
+        let ab_even = vreinterpretq_u64_u32(vtrn1q_u32(a, b));
+        let ab_odd = vreinterpretq_u64_u32(vtrn2q_u32(a, b));
+        let cd_even = vreinterpretq_u64_u32(vtrn1q_u32(c, d));
+        let cd_odd = vreinterpretq_u64_u32(vtrn2q_u32(c, d));
+        vst1q_u32(dst, vreinterpretq_u32_u64(vtrn1q_u64(ab_even, cd_even)));
+        vst1q_u32(dst.add(dst_stride), vreinterpretq_u32_u64(vtrn1q_u64(ab_odd, cd_odd)));
+        vst1q_u32(dst.add(2 * dst_stride), vreinterpretq_u32_u64(vtrn2q_u64(ab_even, cd_even)));
+        vst1q_u32(dst.add(3 * dst_stride), vreinterpretq_u32_u64(vtrn2q_u64(ab_odd, cd_odd)));
+    }
+}
+
+/// 4x4 transpose of 16-bit lanes, on 64-bit halves of the vector registers.
+#[cfg(target_arch = "aarch64")]
+#[target_feature(enable = "neon")]
+unsafe fn transpose_4x4_neon_16(
+    src: *const u16,
+    src_stride: isize,
+    dst: *mut u16,
+    dst_stride: usize,
+) {
+    use std::arch::aarch64::*;
+    unsafe {
+        let a = vld1_u16(src);
+        let b = vld1_u16(src.offset(src_stride));
+        let c = vld1_u16(src.offset(2 * src_stride));
+        let d = vld1_u16(src.offset(3 * src_stride));
+        let ab_even = vreinterpret_u32_u16(vtrn1_u16(a, b));
+        let ab_odd = vreinterpret_u32_u16(vtrn2_u16(a, b));
+        let cd_even = vreinterpret_u32_u16(vtrn1_u16(c, d));
+        let cd_odd = vreinterpret_u32_u16(vtrn2_u16(c, d));
+        vst1_u16(dst, vreinterpret_u16_u32(vtrn1_u32(ab_even, cd_even)));
+        vst1_u16(dst.add(dst_stride), vreinterpret_u16_u32(vtrn1_u32(ab_odd, cd_odd)));
+        vst1_u16(dst.add(2 * dst_stride), vreinterpret_u16_u32(vtrn2_u32(ab_even, cd_even)));
+        vst1_u16(dst.add(3 * dst_stride), vreinterpret_u16_u32(vtrn2_u32(ab_odd, cd_odd)));
     }
 }
 
@@ -1067,6 +1207,143 @@ mod test {
         }
 
     }
+
+    // ---- k-contiguous packing -----------------------------------------------
+    //
+    // A source whose k axis is contiguous (the shape an activation arrives in)
+    // is packed with a blocked transpose, and the tiles are SIMD on some
+    // targets. The result must stay byte-identical to feeding `KInWriter`
+    // element by element, for every element width and for every panel width —
+    // including the ones a 4x4 tile does not divide.
+    #[derive(Debug, Clone)]
+    struct PackKMajorProblem {
+        k: usize,
+        mn: usize,
+        r: usize,
+        align_panel: usize,
+        k_range: Range<usize>,
+        mn_range: Range<usize>,
+    }
+
+    impl PackKMajorProblem {
+        fn check<T: Datum + Copy + num_traits::Zero>(&self, value: impl Fn(usize, usize) -> T) {
+            let input =
+                Array2::from_shape_fn((self.mn, self.k), |(x, k)| value(x, k)).into_tensor();
+            let packer = super::PackedFormat::new(T::datum_type(), self.r, self.align_panel);
+            let len = packer.len(self.k_range.len(), self.mn_range.len());
+
+            let mut packed = Tensor::zero::<T>(&[len]).unwrap();
+            unsafe {
+                // [mn, k]: k_axis 1, mn_axis 0, so k_stride is 1.
+                packer.pack_segment(
+                    packed.view_mut(),
+                    input.view(),
+                    1,
+                    0,
+                    self.k_range.clone(),
+                    self.mn_range.clone(),
+                )
+            };
+
+            let mut reference = Tensor::zero::<T>(&[len]).unwrap();
+            let input = input.to_plain_array_view::<T>().unwrap();
+            unsafe {
+                let mut writer = packer.write_with_k_inner(
+                    reference.as_ptr_mut_unchecked::<T>(),
+                    self.k_range.len(),
+                    self.mn,
+                );
+                for x in self.mn_range.start..self.mn_range.end.min(self.mn) {
+                    for k in self.k_range.clone() {
+                        super::PackingWriter::write(&mut writer, input[[x, k]]);
+                    }
+                }
+            }
+
+            assert_eq!(packed, reference, "{self:?} for {:?}", T::datum_type());
+        }
+
+        fn check_all_widths(&self) {
+            self.check(|x, k| (x * 41 + k * 7) as u32);
+            self.check(|x, k| f16::from_f32((x * 41 + k * 7) as f32));
+            self.check(|x, k| (x * 41 + k * 7) as u8);
+        }
+    }
+
+    impl Arbitrary for PackKMajorProblem {
+        type Parameters = ();
+        type Strategy = BoxedStrategy<PackKMajorProblem>;
+        fn arbitrary_with(_: ()) -> Self::Strategy {
+            // r covers the panel widths of the real f32/f16 kernels plus the
+            // ones smaller than a tile.
+            (
+                prop::sample::select(vec![1usize, 2, 3, 4, 5, 8, 12, 16, 24, 32]),
+                1usize..40,
+                1usize..40,
+            )
+                .prop_flat_map(|(r, k, mn)| {
+                    (Just((r, k, mn)), 1usize..5, sub_range_strat(0..k), sub_range_strat(0..mn))
+                })
+                .prop_map(|((r, k, mn), align_panel, k_range, mn_range)| PackKMajorProblem {
+                    k,
+                    mn,
+                    r,
+                    align_panel,
+                    k_range,
+                    mn_range,
+                })
+                .boxed()
+        }
+    }
+
+    proptest::proptest! {
+        #[test]
+        fn pack_k_major_prop(pb in any::<PackKMajorProblem>()) {
+            pb.check_all_widths();
+        }
+    }
+
+    fn k_major(k: usize, mn: usize, r: usize) -> PackKMajorProblem {
+        PackKMajorProblem { k, mn, r, align_panel: 1, k_range: 0..k, mn_range: 0..mn }
+    }
+
+    #[test]
+    fn k_major_exact_tiles() {
+        k_major(4, 4, 4).check_all_widths();
+        k_major(768, 256, 8).check_all_widths();
+        k_major(16, 32, 16).check_all_widths();
+    }
+
+    #[test]
+    fn k_major_tails() {
+        // k % 4, panel width % 4, and both at once.
+        for k in [1, 2, 3, 5, 7] {
+            k_major(k, 8, 8).check_all_widths();
+            k_major(k, 7, 8).check_all_widths();
+        }
+        k_major(9, 6, 12).check_all_widths();
+        k_major(9, 30, 12).check_all_widths();
+    }
+
+    #[test]
+    fn k_major_narrower_than_a_tile() {
+        for r in [1, 2, 3] {
+            k_major(9, 7, r).check_all_widths();
+        }
+    }
+
+    #[test]
+    fn k_major_segments() {
+        // A cropped k_range must still land at panel offset 0.
+        PackKMajorProblem { k: 20, mn: 20, r: 8, align_panel: 1, k_range: 3..17, mn_range: 0..20 }
+            .check_all_widths();
+        PackKMajorProblem { k: 20, mn: 20, r: 8, align_panel: 1, k_range: 0..20, mn_range: 4..12 }
+            .check_all_widths();
+        // mn_range reaching past mn: the invalid columns are left untouched.
+        PackKMajorProblem { k: 20, mn: 20, r: 8, align_panel: 1, k_range: 0..20, mn_range: 16..24 }
+            .check_all_widths();
+    }
+
     // ---- PackedI8K4 (K=4-inner SMOPA/SDOT layout) dedicated tests ----------
     //
     // PackedI8K4 has two independent producers that MUST agree byte-for-byte:
