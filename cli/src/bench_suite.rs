@@ -101,12 +101,24 @@ impl RuntimeKind {
         }
     }
 
-    /// `(global flags, subcommand flags)` for this runtime.
-    fn flags(&self) -> (&'static [&'static str], &'static [&'static str]) {
-        match self {
-            RuntimeKind::Cpu => (&["--timeout", "180"], &[]),
-            RuntimeKind::Metal => (&["--metal", "--timeout", "60"], &["--warmup-loops", "1"]),
-            RuntimeKind::Cuda => (&["--cuda", "--timeout", "60"], &["--warmup-loops", "1"]),
+    /// `(global flags, subcommand flags)` for this runtime. `streamed` (no local
+    /// cache, so the child fetches the model itself) folds a multi-GB download into
+    /// the run, so the GPU watchdog gets a far larger budget than a cached load-and-run.
+    fn flags(&self, streamed: bool) -> (&'static [&'static str], &'static [&'static str]) {
+        match (self, streamed) {
+            (RuntimeKind::Cpu, _) => (&["--timeout", "180"], &[]),
+            (RuntimeKind::Metal, false) => {
+                (&["--metal", "--timeout", "60"], &["--warmup-loops", "1"])
+            }
+            (RuntimeKind::Metal, true) => {
+                (&["--metal", "--timeout", "600"], &["--warmup-loops", "1"])
+            }
+            (RuntimeKind::Cuda, false) => {
+                (&["--cuda", "--timeout", "60"], &["--warmup-loops", "1"])
+            }
+            (RuntimeKind::Cuda, true) => {
+                (&["--cuda", "--timeout", "600"], &["--warmup-loops", "1"])
+            }
         }
     }
 }
@@ -408,7 +420,8 @@ fn run_one(
     variant: &str,
     smoke: bool,
 ) -> TractResult<Vec<(String, f64)>> {
-    let (global_flags, sub_flags) = runtime.map(|b| b.flags()).unwrap_or((&[], &[]));
+    let (global_flags, sub_flags) =
+        runtime.map(|b| b.flags(matches!(source, ModelSource::Url(_)))).unwrap_or((&[], &[]));
 
     // Smoke: a single load-optimize-run, success measured by exit status only.
     // Nets go through `run` (one shot); LLMs keep `llm-bench` (it concretises the
