@@ -1,5 +1,8 @@
 [workspace]
 resolver = "2"
+exclude = [
+    "tools/asset-mirror",
+]
 members = [
     "data",
     "linalg",

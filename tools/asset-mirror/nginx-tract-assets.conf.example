@@ -1,0 +1,30 @@
+# nginx front for tract-asset-mirror. Replaces a static-file server block
+# (`root ...; autoindex on;`) with a pass-through proxy to the local mirror,
+# which caches on miss from the R2 origin. nginx does NOT cache here -- the
+# mirror owns the cache -- so there is no proxy_cache directive on purpose.
+#
+# Install: put in /etc/nginx/sites-available/, symlink into sites-enabled/,
+# then `sudo nginx -t && sudo systemctl reload nginx`.
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name _;                     # or the mirror host's name
+
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+
+        # Model blobs are large (up to ~15 GB) and a cold miss makes the mirror
+        # pull the whole file from R2 before it responds: stream straight through
+        # and give it room, or nginx 504s on the default 60s read timeout.
+        proxy_buffering off;
+        proxy_request_buffering off;
+        proxy_connect_timeout 10s;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+    }
+}
