@@ -721,7 +721,14 @@ unsafe fn pack_k_major<T: Copy>(
             let panel_width = r.min(mn_len - panel_mn);
             let src = b.offset(panel_mn as isize * mn_stride);
             let dst = packed.add(panel * panel_len);
-            let tiled_mn = panel_width / 4 * 4;
+            // 32-bit arm has no vector transpose to lower a tile to, and 16 live
+            // 32-bit values overflow its register file, so a tile there is a round
+            // trip through the stack. One store per element is cheaper.
+            let tiled_mn = if cfg!(target_arch = "arm") && std::mem::size_of::<T>() == 4 {
+                0
+            } else {
+                panel_width / 4 * 4
+            };
             let tiled_k = k_len / 4 * 4;
             for k in (0..tiled_k).step_by(4) {
                 for x in (0..tiled_mn).step_by(4) {
