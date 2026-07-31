@@ -1,8 +1,9 @@
 //! LAN caching reverse-proxy for tract's CI/bench model assets.
 //!
 //! Serves plain HTTP (fine on a trusted LAN). On `GET /<key>` it serves the file
-//! from the local cache dir if present, otherwise fetches it once from the R2
-//! origin (`https://tract-test-assets.tract.rs/<key>`), stores it, and serves it.
+//! from the local cache dir if present, otherwise streams it from the R2 origin
+//! (`https://tract-test-assets.tract.rs/<key>`) to the client while teeing it into
+//! the cache, so the first byte is immediate even on a cold miss.
 //! Keys are immutable (generation-tagged), so a cached file is never revalidated.
 //! `HEAD` is proxied to the origin so a size probe does not pull the body.
 //!
@@ -13,7 +14,7 @@
 
 use std::collections::HashMap;
 use std::fs;
-use std::io;
+use std::io::{self, Read, Write};
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -107,8 +108,8 @@ fn get(
     if cache_path.is_file() {
         return serve_file(req, cache_path, "HIT");
     }
-    match fetch(agent, &cfg.origin, key, cache_path) {
-        Ok(()) => serve_file(req, cache_path, "MISS"),
+    match origin_get(agent, &cfg.origin, key) {
+        Ok(resp) => stream_and_cache(req, resp, cache_path, key),
         Err((code, msg)) => {
             eprintln!("{code} {key} (upstream: {msg})");
             reply(req, code, &msg);
@@ -146,22 +147,28 @@ fn head(req: Request, cfg: &Config, agent: &ureq::Agent, key: &str, cache_path: 
     }
 }
 
-/// Fetch `key` from the origin into `cache_path` via a temp file + atomic rename,
-/// so an interrupted download never leaves a partial file that looks complete.
-fn fetch(
+/// Open the origin GET for `key`; the body is not read yet.
+fn origin_get(
     agent: &ureq::Agent,
     origin: &str,
     key: &str,
-    cache_path: &Path,
-) -> Result<(), (u16, String)> {
-    let url = join(origin, key);
-    let resp = match agent.get(&url).call() {
-        Ok(r) => r,
-        Err(ureq::Error::Status(code, _)) => return Err((code, format!("upstream {code}"))),
-        Err(e) => return Err((502, format!("upstream error: {e}"))),
-    };
+) -> Result<ureq::Response, (u16, String)> {
+    match agent.get(&join(origin, key)).call() {
+        Ok(r) => Ok(r),
+        Err(ureq::Error::Status(code, _)) => Err((code, format!("upstream {code}"))),
+        Err(e) => Err((502, format!("upstream error: {e}"))),
+    }
+}
+
+/// Stream the origin response to the client while teeing it into the cache. The
+/// first byte reaches the client immediately (no fetch-then-serve stall), and the
+/// cache file is only published (temp + atomic rename) once the full body has
+/// been written, so an interrupted transfer never leaves a partial file. If the
+/// cache write fails (e.g. mirror disk full) it degrades to plain pass-through.
+fn stream_and_cache(req: Request, resp: ureq::Response, cache_path: &Path, key: &str) {
+    let expected = content_length(&resp).map(|l| l as u64);
     if let Some(parent) = cache_path.parent() {
-        fs::create_dir_all(parent).map_err(io_err)?;
+        let _ = fs::create_dir_all(parent);
     }
     let tmp = cache_path.with_file_name(format!(
         ".{}.tmp.{}.{}",
@@ -169,17 +176,70 @@ fn fetch(
         std::process::id(),
         TMP_SEQ.fetch_add(1, Ordering::Relaxed),
     ));
-    let mut reader = resp.into_reader();
-    {
-        let mut f = fs::File::create(&tmp).map_err(io_err)?;
-        io::copy(&mut reader, &mut f).map_err(|e| {
-            let _ = fs::remove_file(&tmp);
-            io_err(e)
-        })?;
+    let tee = TeeReader {
+        src: Box::new(resp.into_reader()),
+        tmp: fs::File::create(&tmp).ok(),
+        tmp_path: tmp,
+        final_path: cache_path.to_path_buf(),
+        expected,
+        written: 0,
+        done: false,
+    };
+    eprintln!("GET 200 {key} (streaming)");
+    let ct = Header::from_bytes(&b"Content-Type"[..], &b"application/octet-stream"[..]).unwrap();
+    let resp = Response::new(StatusCode(200), vec![ct], tee, expected.map(|l| l as usize), None)
+        .with_chunked_threshold(usize::MAX);
+    let _ = req.respond(resp);
+}
+
+/// Reader that copies everything it yields into a cache temp file, renaming it
+/// into place once the whole body is seen. See [`stream_and_cache`].
+struct TeeReader {
+    src: Box<dyn Read + Send>,
+    tmp: Option<fs::File>,
+    tmp_path: PathBuf,
+    final_path: PathBuf,
+    expected: Option<u64>,
+    written: u64,
+    done: bool,
+}
+
+impl Read for TeeReader {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let n = self.src.read(buf)?;
+        if n > 0 {
+            if let Some(f) = self.tmp.as_mut() {
+                if f.write_all(&buf[..n]).is_err() {
+                    self.tmp = None; // mirror disk trouble: stop caching, keep serving
+                    let _ = fs::remove_file(&self.tmp_path);
+                } else {
+                    self.written += n as u64;
+                }
+            }
+        }
+        let complete =
+            self.tmp.is_some() && (n == 0 || self.expected.is_some_and(|e| self.written >= e));
+        if complete && !self.done {
+            if let Some(mut f) = self.tmp.take() {
+                let ok = f.flush().is_ok() && f.sync_all().is_ok();
+                drop(f);
+                if ok && fs::rename(&self.tmp_path, &self.final_path).is_ok() {
+                    self.done = true;
+                } else {
+                    let _ = fs::remove_file(&self.tmp_path);
+                }
+            }
+        }
+        Ok(n)
     }
-    fs::rename(&tmp, cache_path).map_err(io_err)?;
-    eprintln!("GET 200 {key} (fetched)");
-    Ok(())
+}
+
+impl Drop for TeeReader {
+    fn drop(&mut self) {
+        if !self.done {
+            let _ = fs::remove_file(&self.tmp_path);
+        }
+    }
 }
 
 fn serve_file(req: Request, path: &Path, tag: &str) {
@@ -233,10 +293,6 @@ fn key_lock(locks: &KeyLocks, key: &str) -> Arc<Mutex<()>> {
 
 fn join(origin: &str, key: &str) -> String {
     format!("{}/{}", origin.trim_end_matches('/'), key)
-}
-
-fn io_err(e: io::Error) -> (u16, String) {
-    (500, format!("cache io: {e}"))
 }
 
 fn parse_config() -> Config {
