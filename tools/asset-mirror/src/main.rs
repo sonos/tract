@@ -128,7 +128,7 @@ fn get(
             let fill = Arc::new(Fill {
                 written: AtomicU64::new(0),
                 state: AtomicU8::new(FILL_RUNNING),
-                len: content_length(&resp).map(|l| l as u64),
+                len: content_length(&resp),
             });
             if let Some(parent) = cache_path.parent() {
                 let _ = fs::create_dir_all(parent);
@@ -213,12 +213,19 @@ fn serve_tail(req: Request, part: &Path, cache_path: &Path, fill: Arc<Fill>) {
         Err(_) if cache_path.is_file() => return serve_file(req, cache_path, "HIT"),
         Err(e) => return reply(req, 502, &format!("fill unavailable: {e}")),
     };
-    let ct = Header::from_bytes(&b"Content-Type"[..], &b"application/octet-stream"[..]).unwrap();
-    let len = fill.len.map(|l| l as usize);
+    let len = fill.len;
     let reader = TailReader { file, fill, pos: 0 };
-    let resp = Response::new(StatusCode(200), vec![ct], reader, len, None)
-        .with_chunked_threshold(usize::MAX);
-    let _ = req.respond(resp);
+    match len {
+        Some(len) => respond_body(req, len, reader),
+        // Origin sent no Content-Length: fall back to tiny_http's chunked encoding.
+        None => {
+            let ct =
+                Header::from_bytes(&b"Content-Type"[..], &b"application/octet-stream"[..]).unwrap();
+            let resp = Response::new(StatusCode(200), vec![ct], reader, None, None)
+                .with_chunked_threshold(usize::MAX);
+            let _ = req.respond(resp);
+        }
+    }
 }
 
 /// Reads a `.part` as a background download fills it: yields flushed bytes, waits
@@ -257,27 +264,23 @@ fn head(req: Request, cfg: &Config, agent: &ureq::Agent, key: &str, cache_path: 
     if let Ok(meta) = fs::metadata(cache_path) {
         if meta.is_file() {
             eprintln!("HEAD 200 {key} (cached, {} bytes)", meta.len());
-            let resp = Response::new(
-                StatusCode(200),
-                vec![],
-                io::empty(),
-                Some(meta.len() as usize),
-                None,
-            )
-            .with_chunked_threshold(usize::MAX);
-            let _ = req.respond(resp);
-            return;
+            return respond_head(req, meta.len());
         }
     }
     let url = join(&cfg.origin, key);
     match agent.head(&url).call() {
-        Ok(r) => {
-            let len: Option<usize> = content_length(&r);
-            eprintln!("HEAD {} {key} (origin)", r.status());
-            let resp = Response::new(StatusCode(r.status()), vec![], io::empty(), len, None)
-                .with_chunked_threshold(usize::MAX);
-            let _ = req.respond(resp);
-        }
+        Ok(r) => match content_length(&r) {
+            Some(len) if (200..300).contains(&r.status()) => {
+                eprintln!("HEAD {} {key} (origin, {len} bytes)", r.status());
+                respond_head(req, len);
+            }
+            _ => {
+                eprintln!("HEAD {} {key} (origin)", r.status());
+                let resp =
+                    Response::new(StatusCode(r.status()), vec![], io::empty(), Some(0), None);
+                let _ = req.respond(resp);
+            }
+        },
         Err(ureq::Error::Status(code, _)) => reply(req, code, "upstream status"),
         Err(e) => reply(req, 502, &format!("upstream error: {e}")),
     }
@@ -296,16 +299,45 @@ fn origin_get(
 }
 
 fn serve_file(req: Request, path: &Path, tag: &str) {
-    match fs::File::open(path) {
-        Ok(f) => {
-            eprintln!("GET 200 {} ({tag})", path.display());
-            let ct =
-                Header::from_bytes(&b"Content-Type"[..], &b"application/octet-stream"[..]).unwrap();
-            let resp = Response::from_file(f).with_header(ct).with_chunked_threshold(usize::MAX);
-            let _ = req.respond(resp);
-        }
-        Err(e) => reply(req, 500, &format!("open cache: {e}")),
+    let f = match fs::File::open(path) {
+        Ok(f) => f,
+        Err(e) => return reply(req, 500, &format!("open cache: {e}")),
+    };
+    let len = match f.metadata() {
+        Ok(m) => m.len(),
+        Err(e) => return reply(req, 500, &format!("stat cache: {e}")),
+    };
+    eprintln!("GET 200 {} ({tag}, {len} bytes)", path.display());
+    respond_body(req, len, f);
+}
+
+/// The status line + headers for a 200 with a real `u64` content length. Written
+/// straight to the socket via `Request::into_writer`, bypassing tiny_http's `usize`
+/// `Content-Length` (which wraps any length >= 4 GiB on the 32-bit Pi). `Connection:
+/// close` keeps the raw-write framing simple.
+fn head_200(len: u64) -> String {
+    format!(
+        "HTTP/1.1 200 OK\r\n\
+         Content-Type: application/octet-stream\r\n\
+         Content-Length: {len}\r\n\
+         Connection: close\r\n\r\n"
+    )
+}
+
+/// Stream `body` as a 200 with a `u64` content length (for GET).
+fn respond_body(req: Request, len: u64, mut body: impl Read) {
+    let mut w = req.into_writer();
+    if w.write_all(head_200(len).as_bytes()).is_ok() {
+        let _ = io::copy(&mut body, &mut w);
     }
+    let _ = w.flush();
+}
+
+/// Send the headers of a 200 with a `u64` content length and no body (for HEAD).
+fn respond_head(req: Request, len: u64) {
+    let mut w = req.into_writer();
+    let _ = w.write_all(head_200(len).as_bytes());
+    let _ = w.flush();
 }
 
 fn reply(req: Request, code: u16, msg: &str) {
@@ -336,7 +368,9 @@ fn safe_rel(key: &str) -> Option<PathBuf> {
 }
 
 /// Case-insensitive: ureq lowercases header names and its `.header()` is exact-match.
-fn content_length(r: &ureq::Response) -> Option<usize> {
+/// Parsed as `u64` (not `usize`): the Pi is 32-bit, and a `usize` would wrap any
+/// length >= 4 GiB.
+fn content_length(r: &ureq::Response) -> Option<u64> {
     r.headers_names()
         .iter()
         .find(|n| n.eq_ignore_ascii_case("content-length"))
