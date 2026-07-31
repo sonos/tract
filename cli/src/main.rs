@@ -1,3 +1,4 @@
+// ci probe: force a tract-cli relink to observe the jetson cuda artifact (revert me)
 #![allow(clippy::len_zero)]
 #![allow(clippy::redundant_closure_call)]
 #![allow(clippy::collapsible_if)]
