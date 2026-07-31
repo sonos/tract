@@ -504,10 +504,12 @@ fn bench_run(
 ) -> TractResult<Vec<(String, f64)>> {
     let mut best: BTreeMap<String, f64> = run()?.into_iter().collect();
     if !expectations.is_empty() {
-        let mut tries = 0;
-        while tries < retry_max && out_of_threshold(&best, expectations) {
-            tries += 1;
-            eprintln!("    retry {tries} (off expectation)");
+        for tries in 1..=retry_max {
+            let off = offenders(&best, expectations);
+            if off.is_empty() {
+                break;
+            }
+            eprintln!("    retry {tries} (off expectation: {})", off.join(", "));
             match run() {
                 Ok(cand) => merge_best(&mut best, cand),
                 Err(e) => eprintln!("    retry {tries} failed: {e:#}"),
@@ -612,16 +614,29 @@ fn out_of_threshold(
     metrics: &BTreeMap<String, f64>,
     expectations: &HashMap<String, (f64, f64)>,
 ) -> bool {
-    metrics.iter().any(|(name, &v)| {
-        expectations.get(name).is_some_and(|&(expected, thr)| {
+    !offenders(metrics, expectations).is_empty()
+}
+
+/// Metrics worse than their expectation, each formatted `name +NN%` (signed change
+/// from expected), worst first — for reporting which metric tripped a retry.
+fn offenders(
+    metrics: &BTreeMap<String, f64>,
+    expectations: &HashMap<String, (f64, f64)>,
+) -> Vec<String> {
+    let mut hits: Vec<(f64, String)> = metrics
+        .iter()
+        .filter_map(|(name, &v)| {
+            let &(expected, thr) = expectations.get(name)?;
             if expected <= 0.0 {
-                return false;
+                return None;
             }
             let pct = (v - expected) / expected * 100.0;
             let worse = if higher_better(name) { -pct } else { pct };
-            worse >= thr
+            (worse >= thr).then(|| (worse, format!("{name} {pct:+.0}%")))
         })
-    })
+        .collect();
+    hits.sort_by(|a, b| b.0.total_cmp(&a.0));
+    hits.into_iter().map(|(_, s)| s).collect()
 }
 
 /// Fold `cand` into `best`, keeping the better value per metric (max for throughput,
