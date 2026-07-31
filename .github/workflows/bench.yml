@@ -156,10 +156,11 @@ jobs:
             runner: orin-nx-16g
             triple: aarch64-unknown-linux-gnu-stretch
             # GPU-only box: its arm64 CPU is redundant with apple-m1-max for the net
-            # suite, so skip CPU runs and bench only the Orin GPU (cuda).
-            # --no-cache: the Orin's disk is too small to hold the multi-GB LLM weights, so
-            # stream each model from the proxy straight into tract instead of caching it locally.
-            bench_args: --skip-cpu --no-cache
+            # suite, so skip CPU runs and bench only the Orin GPU (cuda). It caches models
+            # locally (38 GB free): load stays a local read rather than a LAN stream folded
+            # into the load metric, and the Pi mirror serves each model to it only once, so
+            # it is not saturated streaming multi-GB to the Orin while the small boards fetch.
+            bench_args: --skip-cpu
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
