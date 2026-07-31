@@ -1,20 +1,11 @@
-//! LAN caching reverse-proxy for tract's CI/bench model assets.
-//!
-//! Serves plain HTTP (fine on a trusted LAN). On `GET /<key>` it serves the file
-//! from the local cache dir if present, otherwise starts a background download of
-//! it from the R2 origin (`https://tract-test-assets.tract.rs/<key>`) into a
-//! `.part` file and streams that to the client as it grows. The download runs on
-//! its own thread and always runs to completion, so a client that disconnects
-//! (e.g. a bench watchdog kill) still leaves the model fully cached for next time
-//! -- the mirror is self-warming. The `.part` is published (atomic rename) only
-//! once the whole Content-Length has landed, so a truncated fetch is never cached.
-//! Keys are immutable (generation-tagged), so a cached file is never revalidated.
-//! `HEAD` is proxied to the origin so a size probe does not pull the body.
+//! LAN caching reverse-proxy for tract's CI/bench model assets. `GET /<key>`
+//! serves the cached file, or streams it from the R2 origin while a background
+//! thread fills the cache to completion (so a client that disconnects still warms
+//! it). `HEAD` is proxied to the origin. Plain HTTP; keys are immutable.
 //!
 //!   tract-asset-mirror [--listen 0.0.0.0:8080] [--cache-dir ./asset-cache]
 //!                      [--origin https://tract-test-assets.tract.rs] [--threads 16]
-//!
-//! Each flag also reads an env fallback: LISTEN, CACHE_DIR, ORIGIN, THREADS.
+//! Flags also read env: LISTEN, CACHE_DIR, ORIGIN, THREADS.
 
 use std::collections::HashMap;
 use std::fs;
@@ -38,16 +29,14 @@ const FILL_RUNNING: u8 = 0;
 const FILL_DONE: u8 = 1;
 const FILL_FAILED: u8 = 2;
 
-/// Progress of one background download, shared with every client tailing its
-/// `.part`. `written` is bytes flushed so far; `state` moves RUNNING -> DONE/FAILED.
+/// Progress of one background download, shared with the clients tailing its `.part`.
 struct Fill {
     written: AtomicU64,
     state: AtomicU8,
     len: Option<u64>,
 }
 
-/// Downloads in flight, so concurrent requests for the same key share one download
-/// (and its `.part`) instead of racing.
+/// In-flight downloads, so concurrent requests for a key share one download.
 type Inflight = Mutex<HashMap<String, Arc<Fill>>>;
 
 fn main() {
@@ -119,7 +108,6 @@ fn get(
         return serve_file(req, cache_path, "HIT");
     }
     let part = part_path(cache_path);
-    // Join an in-flight download for this key, or become the one that starts it.
     let fill = {
         let mut map = inflight.lock().unwrap();
         if cache_path.is_file() {
@@ -165,9 +153,9 @@ fn get(
     serve_tail(req, &part, cache_path, fill);
 }
 
-/// Background thread: pull the whole body into `part`, publish on completion. Runs
-/// to the end regardless of whether any client is still reading, so the cache warms
-/// even when the requesting client (a bench) is killed mid-stream.
+/// Pull the whole body into `part` and publish it (atomic rename) on completion,
+/// regardless of whether any client is still reading — this is what warms the cache
+/// even when the requesting client is killed mid-stream.
 fn spawn_downloader(
     resp: ureq::Response,
     cache_path: PathBuf,
@@ -190,7 +178,6 @@ fn spawn_downloader(
     });
 }
 
-/// Copy the origin body into `part`, bumping `fill.written` as bytes are flushed.
 /// Returns whether the full Content-Length landed (always true when length unknown).
 fn download(resp: ureq::Response, part: &Path, fill: &Fill) -> bool {
     let mut reader = resp.into_reader();
@@ -219,11 +206,10 @@ fn download(resp: ureq::Response, part: &Path, fill: &Fill) -> bool {
     }
 }
 
-/// Serve a client by tailing the `.part` as the background download fills it.
 fn serve_tail(req: Request, part: &Path, cache_path: &Path, fill: Arc<Fill>) {
     let file = match fs::File::open(part) {
         Ok(f) => f,
-        // The download finished and renamed `part` away between join and open.
+        // Race: the fill completed and renamed `part` away between join and open.
         Err(_) if cache_path.is_file() => return serve_file(req, cache_path, "HIT"),
         Err(e) => return reply(req, 502, &format!("fill unavailable: {e}")),
     };
@@ -235,9 +221,8 @@ fn serve_tail(req: Request, part: &Path, cache_path: &Path, fill: Arc<Fill>) {
     let _ = req.respond(resp);
 }
 
-/// `Read` over a `.part` being written by a background download: yields whatever
-/// has been flushed, waits for more, ends at EOF when the fill completes, and
-/// errors if the fill failed (so a truncated download is never served as complete).
+/// Reads a `.part` as a background download fills it: yields flushed bytes, waits
+/// for more, EOF on completion, error if the fill failed (never a silent truncation).
 struct TailReader {
     file: fs::File,
     fill: Arc<Fill>,
@@ -298,7 +283,6 @@ fn head(req: Request, cfg: &Config, agent: &ureq::Agent, key: &str, cache_path: 
     }
 }
 
-/// Open the origin GET for `key`; the body is not read yet.
 fn origin_get(
     agent: &ureq::Agent,
     origin: &str,
@@ -329,16 +313,13 @@ fn reply(req: Request, code: u16, msg: &str) {
         req.respond(Response::from_string(format!("{msg}\n")).with_status_code(StatusCode(code)));
 }
 
-/// Sibling `.part` path for a cache entry (deterministic per key so concurrent
-/// tailers open the same one).
 fn part_path(cache_path: &Path) -> PathBuf {
     let mut s = cache_path.as_os_str().to_owned();
     s.push(".part");
     PathBuf::from(s)
 }
 
-/// Reject anything that would escape the cache dir (`..`, absolute paths); keep
-/// only normal path components.
+/// Keep only normal path components, rejecting `..` / absolute paths.
 fn safe_rel(key: &str) -> Option<PathBuf> {
     let mut out = PathBuf::new();
     for comp in Path::new(key).components() {
@@ -354,8 +335,7 @@ fn safe_rel(key: &str) -> Option<PathBuf> {
     }
 }
 
-/// Case-insensitive Content-Length lookup (ureq lowercases header names, and
-/// origins vary in casing).
+/// Case-insensitive: ureq lowercases header names and its `.header()` is exact-match.
 fn content_length(r: &ureq::Response) -> Option<usize> {
     r.headers_names()
         .iter()

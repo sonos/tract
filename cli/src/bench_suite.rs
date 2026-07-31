@@ -101,9 +101,8 @@ impl RuntimeKind {
         }
     }
 
-    /// `(global flags, subcommand flags)` for this runtime. `streamed` (no local
-    /// cache, so the child fetches the model itself) folds a multi-GB download into
-    /// the run, so the GPU watchdog gets a far larger budget than a cached load-and-run.
+    /// `(global, subcommand)` flags. `streamed` widens the GPU watchdog: the child
+    /// then also fetches the model.
     fn flags(&self, streamed: bool) -> (&'static [&'static str], &'static [&'static str]) {
         match (self, streamed) {
             (RuntimeKind::Cpu, _) => (&["--timeout", "180"], &[]),
@@ -274,10 +273,8 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
     let filter = params.filter.as_deref();
 
     let mut expectations = expectations(&params)?;
-    // An http-loaded asset folds the network transfer into the load wall-clocks
-    // (`time_to_*`), so they are not comparable to a file-loaded reference and would
-    // retry-storm against it. Drop them from the gate when the model is a URL; they
-    // are still recorded, just not gated or retried on. evaltime/memory are unaffected.
+    // http-loaded assets fold the fetch into the load wall-clocks (`time_to_*`), which
+    // would retry-storm against a file-loaded reference; drop those from the gate.
     if matches!(model_source, ModelSource::Url(_)) {
         let before = expectations.len();
         expectations.retain(|name, _| !name.contains("time_to_"));
@@ -617,8 +614,7 @@ fn out_of_threshold(
     !offenders(metrics, expectations).is_empty()
 }
 
-/// Metrics worse than their expectation, each formatted `name +NN%` (signed change
-/// from expected), worst first — for reporting which metric tripped a retry.
+/// Metrics worse than expectation, `name +NN%` (signed), worst first — for retry logs.
 fn offenders(
     metrics: &BTreeMap<String, f64>,
     expectations: &HashMap<String, (f64, f64)>,
