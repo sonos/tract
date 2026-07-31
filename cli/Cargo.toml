@@ -101,7 +101,7 @@ tf = ["tract-tensorflow", "tract-libcli/hir"]
 tflite = ["tract-tflite"]
 transformers = ["tract-transformers", "tract-libcli/transformers"]
 multithread-mm = ["tract-linalg/multithread-mm"]
-bench-suite = ["dep:toml", "dep:tar", "dep:minijinja", "dep:time"]
+bench-suite = ["dep:toml", "dep:tar", "dep:minijinja", "dep:time", "multithread-mm"]
 
 # Marker feature implicitly enabled by every cuda-XXXXX selector below.
 # Use to gate cudarc-specific code paths in tract-cli. Not meant to be
