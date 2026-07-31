@@ -2,9 +2,11 @@
 
 set -e
 
+: ${TRACT_MODELS_URL:=https://tract-test-assets.tract.rs}
+
 if [ -z "$CACHEDIR" ]
 then
-    CACHEDIR=`dirname $0`/../.cached
+    CACHEDIR=$HOME/.cache/tract-test-assets
 fi
 
 mkdir -p $CACHEDIR
@@ -14,8 +16,7 @@ do
     mkdir -p $(dirname $file)
     if [ ! -e $file ]
     then
-        wget --no-verbose https://s3.amazonaws.com/tract-ci-builds/tests/$file -O $file.tmp \
-        || aws s3 cp s3://tract-ci-builds/tests/$file $file.tmp
+        wget --no-verbose "$TRACT_MODELS_URL/$file" -O $file.tmp
         mv $file.tmp $file
     fi
 done

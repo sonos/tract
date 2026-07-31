@@ -3,8 +3,8 @@
 set -ex
 
 # download pre-exported onnx model
-wget -Nq "https://tract-ci-builds.s3.amazonaws.com/model/yolov8n-face.onnx"
-wget -Nq "https://tract-ci-builds.s3.amazonaws.com/model/arcfaceresnet100-8.onnx"
+wget -Nq "https://tract-test-assets.tract.rs/yolov8n-face.onnx"
+wget -Nq "https://tract-test-assets.tract.rs/arcfaceresnet100-8.onnx"
 
 # on win/linux 
 cargo run --release -- --face1 grace_hopper.jpeg --face2 grace_hopper2.jpeg 

@@ -152,7 +152,7 @@ pub(crate) struct BenchSuiteParams {
     /// Bench manifest (default: benches.toml)
     #[arg(long)]
     manifest: Option<String>,
-    /// Model cache dir (default: $CACHEDIR or ~/.cache/tract-ci-minion-models)
+    /// Model cache dir (default: $CACHEDIR or ~/.cache/tract-test-assets)
     #[arg(long)]
     cache_dir: Option<String>,
     /// Metrics output file (default: metrics); '-' emits JSONL on stdout
@@ -227,7 +227,7 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
     let no_cache = params.no_cache;
     let cache_dir = PathBuf::from(
         params.cache_dir.clone().or_else(|| std::env::var("CACHEDIR").ok()).unwrap_or_else(|| {
-            format!("{}/.cache/tract-ci-minion-models", std::env::var("HOME").unwrap_or_default())
+            format!("{}/.cache/tract-test-assets", std::env::var("HOME").unwrap_or_default())
         }),
     );
     if !no_cache {
