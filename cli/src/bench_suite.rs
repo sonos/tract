@@ -273,7 +273,21 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
     let smoke = params.smoke;
     let filter = params.filter.as_deref();
 
-    let expectations = expectations(&params)?;
+    let mut expectations = expectations(&params)?;
+    // An http-loaded asset folds the network transfer into the load wall-clocks
+    // (`time_to_*`), so they are not comparable to a file-loaded reference and would
+    // retry-storm against it. Drop them from the gate when the model is a URL; they
+    // are still recorded, just not gated or retried on. evaltime/memory are unaffected.
+    if matches!(model_source, ModelSource::Url(_)) {
+        let before = expectations.len();
+        expectations.retain(|name, _| !name.contains("time_to_"));
+        let dropped = before - expectations.len();
+        if dropped > 0 {
+            eprintln!(
+                "http asset: dropped {dropped} time_to_* expectations (load includes the fetch)"
+            );
+        }
+    }
     let retry_max = params.retry_max;
     let second_pass_max = params.second_pass_max;
     let samples = params.samples;
