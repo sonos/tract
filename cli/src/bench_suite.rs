@@ -773,13 +773,16 @@ pub fn diff(matches: &clap::ArgMatches) -> TractResult<()> {
     Ok(())
 }
 
-/// Fetch `bench`'s model into the cache dir if missing, unpacking the archive
-/// first when the model ships inside one.
+/// Fetch `bench`'s model into the cache dir if missing, unpacking the archive first
+/// when the model ships inside one. A plain (non-archive) model already in cache is
+/// kept only if its size matches the origin's `Content-Length`; a truncated or stale
+/// copy is re-fetched. An origin that can't be reached leaves the cache trusted, so an
+/// offline `--no-fetch`-adjacent run still works.
 fn fetch(base_url: &str, cache_dir: &Path, bench: &Bench) -> TractResult<()> {
-    if cache_dir.join(&bench.model).exists() {
-        return Ok(());
-    }
     if let Some(archive) = &bench.archive {
+        if cache_dir.join(&bench.model).exists() {
+            return Ok(());
+        }
         let archive_path = cache_dir.join(archive);
         download(base_url, archive, &archive_path)?;
         let file = std::fs::File::open(&archive_path)?;
@@ -787,9 +790,32 @@ fn fetch(base_url: &str, cache_dir: &Path, bench: &Bench) -> TractResult<()> {
             .unpack(cache_dir)
             .with_context(|| format!("unpacking {}", archive_path.display()))?;
     } else {
-        download(base_url, &bench.model, &cache_dir.join(&bench.model))?;
+        let dest = cache_dir.join(&bench.model);
+        if dest.exists() {
+            let local = dest.metadata()?.len();
+            match remote_len(base_url, &bench.model) {
+                Some(expected) if local != expected => eprintln!(
+                    "  cached {} is {local} bytes, origin has {expected}; re-fetching",
+                    bench.model
+                ),
+                _ => return Ok(()),
+            }
+        }
+        download(base_url, &bench.model, &dest)?;
     }
     Ok(())
+}
+
+/// The origin's `Content-Length` for `name` (a HEAD), or `None` when it can't be
+/// determined (offline, no such header) — the caller then trusts whatever is cached.
+fn remote_len(base_url: &str, name: &str) -> Option<u64> {
+    let url = format!("{}/{}", base_url.trim_end_matches('/'), name);
+    let resp = crate::params::http_client().ok()?.head(&url).send().ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
+    // `content_length()` reports the (empty) HEAD body, not the header; read the header.
+    resp.headers().get(reqwest::header::CONTENT_LENGTH)?.to_str().ok()?.parse().ok()
 }
 
 fn download(base_url: &str, name: &str, dest: &Path) -> TractResult<()> {
@@ -798,13 +824,23 @@ fn download(base_url: &str, name: &str, dest: &Path) -> TractResult<()> {
     eprintln!("  fetching {name}");
     let mut resp = crate::params::http_client()?.get(&url).send()?;
     ensure!(resp.status().is_success(), "GET {url} -> {}", resp.status());
+    let expected = resp.content_length();
     if let Some(parent) = dest.parent() {
         std::fs::create_dir_all(parent)?;
     }
     let tmp = dest.with_extension("part");
     let mut file = std::fs::File::create(&tmp)?;
-    std::io::copy(&mut resp, &mut file)?;
+    let written = std::io::copy(&mut resp, &mut file)?;
     file.sync_all()?;
+    // A short body that arrives as a clean EOF must not be renamed into place as good,
+    // or the cache-hit check above would trust the truncated file forever.
+    if let Some(expected) = expected {
+        ensure!(
+            written == expected,
+            "short download of {name}: {written} of {expected} bytes (kept {})",
+            tmp.display()
+        );
+    }
     std::fs::rename(&tmp, dest)?;
     Ok(())
 }
