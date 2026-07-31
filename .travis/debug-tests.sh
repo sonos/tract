@@ -4,7 +4,7 @@ set -ex
 
 if [ -z "$CACHEDIR" ]
 then
-    CACHEDIR=`dirname $0`/../.cached
+    export CACHEDIR=$HOME/.cache/tract-test-assets
 fi
 
 # useful as debug_asserts will come into play

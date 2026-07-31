@@ -593,8 +593,10 @@ mod tests {
     }
 
     fn qwen_paths() -> Option<(std::path::PathBuf, std::path::PathBuf)> {
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../.cached/llm/541/Qwen--Qwen3-1.7B-q40ef16");
+        let dir = std::path::PathBuf::from(std::env::var("CACHEDIR").unwrap_or_else(|_| {
+            format!("{}/.cache/tract-test-assets", std::env::var("HOME").unwrap_or_default())
+        }))
+        .join("llm/541/Qwen--Qwen3-1.7B-q40ef16");
         let model = dir.join("model.nnef.tgz");
         let tok = dir.join("tokenizer.json");
         (model.exists() && tok.exists()).then_some((tok, model))
@@ -711,8 +713,10 @@ mod tests {
 
     #[test]
     fn truncate_prefix_cache_hit() -> anyhow::Result<()> {
-        let model_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../.cached/llm/541/meta-llama--Llama-3.2-1B-Instruct-q40ef16");
+        let model_dir = std::path::PathBuf::from(std::env::var("CACHEDIR").unwrap_or_else(|_| {
+            format!("{}/.cache/tract-test-assets", std::env::var("HOME").unwrap_or_default())
+        }))
+        .join("llm/541/meta-llama--Llama-3.2-1B-Instruct-q40ef16");
         if !model_dir.exists() {
             eprintln!("Skipping: model not found at {model_dir:?}");
             return Ok(());

@@ -44,21 +44,22 @@ then
     touch /tmp/ci-setup-done
 fi
 
-S3=https://s3.amazonaws.com/tract-ci-builds/tests
+export TRACT_MODELS_URL=${TRACT_MODELS_URL:-https://tract-test-assets.tract.rs}
 
 if  [ -n "$LARGE_MODELS" ]
 then
     export CACHE_FILE=$ROOT/.travis/cache_file.sh
-    export MODELS=$HOME/.cache/models
+    export MODELS=$HOME/.cache/tract-test-assets
     export CACHEDIR=$MODELS
     mkdir -p $MODELS
 elif [ -n "$CI" ]
 then
-    MODELS=$S3
+    MODELS=$TRACT_MODELS_URL
     CACHE_FILE=true
-else 
+else
     CACHE_FILE=$ROOT/.travis/cache_file.sh
-    MODELS=${MODELS:-$ROOT/.cached}
+    MODELS=${MODELS:-$HOME/.cache/tract-test-assets}
+    export CACHEDIR=${CACHEDIR:-$MODELS}
     mkdir -p $MODELS
 fi
 

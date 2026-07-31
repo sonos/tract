@@ -18,7 +18,12 @@ fn do_download() -> TractResult<()> {
 }
 
 fn cachedir() -> path::PathBuf {
-    std::env::var("CACHEDIR").ok().unwrap_or_else(|| "../../.cached".to_string()).into()
+    std::env::var("CACHEDIR")
+        .ok()
+        .unwrap_or_else(|| {
+            format!("{}/.cache/tract-test-assets", std::env::var("HOME").unwrap_or_default())
+        })
+        .into()
 }
 
 pub fn load_labels() -> Vec<String> {
