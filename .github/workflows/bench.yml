@@ -120,8 +120,7 @@ jobs:
           # (CARGO_TARGET_DIR); cache that verbatim so the container's aarch64 artifacts survive —
           # rust-cache's own target/ cleanup is host-target-only and would drop them. The container
           # also bind-mounts the host cargo registry (see cross.sh) so crate downloads persist.
-          # -gpu keeps this build's cache off the bare-triple key that the no-cuda dinghy and
-          # cross-platform stretch builds share, which would otherwise clobber the cuda artifacts.
+          # -gpu: keep the cuda build's cache off the bare-triple key the no-cuda builds share.
           key: ${{ matrix.triple }}-gpu
           cache-directories: .cross-cache/target
           save-if: ${{ github.ref == 'refs/heads/main' }}
@@ -155,11 +154,7 @@ jobs:
           - target: jetson-orin-nx
             runner: orin-nx-16g
             triple: aarch64-unknown-linux-gnu-stretch
-            # GPU-only box: its arm64 CPU is redundant with apple-m1-max for the net
-            # suite, so skip CPU runs and bench only the Orin GPU (cuda). It caches models
-            # locally (38 GB free): load stays a local read rather than a LAN stream folded
-            # into the load metric, and the Pi mirror serves each model to it only once, so
-            # it is not saturated streaming multi-GB to the Orin while the small boards fetch.
+            # GPU-only box; skip the CPU net suite (redundant with apple-m1-max).
             bench_args: --skip-cpu
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
