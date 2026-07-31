@@ -217,8 +217,14 @@ impl Read for TeeReader {
                 }
             }
         }
-        let complete =
-            self.tmp.is_some() && (n == 0 || self.expected.is_some_and(|e| self.written >= e));
+        // Only publish once the whole body is in. On a short read (upstream EOF
+        // before Content-Length) leave it unpublished, so a truncated download is
+        // never renamed into the cache and served as if complete.
+        let complete = self.tmp.is_some()
+            && match self.expected {
+                Some(e) => self.written >= e,
+                None => n == 0,
+            };
         if complete && !self.done {
             if let Some(mut f) = self.tmp.take() {
                 let ok = f.flush().is_ok() && f.sync_all().is_ok();
