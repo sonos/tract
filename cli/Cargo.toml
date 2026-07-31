@@ -81,6 +81,9 @@ tract-metal.workspace = true
 cudarc = { workspace = true, optional = true }
 tract-cuda = { workspace = true, optional = true }
 
+[target.'cfg(target_os = "linux")'.dependencies]
+rustix = { version = "1", features = ["fs"] }
+
 [features]
 default = [
   "onnx",

@@ -101,23 +101,13 @@ impl RuntimeKind {
         }
     }
 
-    /// `(global, subcommand)` flags. `streamed` widens the GPU watchdog: the child
-    /// then also fetches the model.
-    fn flags(&self, streamed: bool) -> (&'static [&'static str], &'static [&'static str]) {
-        match (self, streamed) {
-            (RuntimeKind::Cpu, _) => (&["--timeout", "180"], &[]),
-            (RuntimeKind::Metal, false) => {
-                (&["--metal", "--timeout", "60"], &["--warmup-loops", "1"])
-            }
-            (RuntimeKind::Metal, true) => {
-                (&["--metal", "--timeout", "600"], &["--warmup-loops", "1"])
-            }
-            (RuntimeKind::Cuda, false) => {
-                (&["--cuda", "--timeout", "60"], &["--warmup-loops", "1"])
-            }
-            (RuntimeKind::Cuda, true) => {
-                (&["--cuda", "--timeout", "600"], &["--warmup-loops", "1"])
-            }
+    /// `(global, subcommand)` flags. `--timeout` is a whole-process watchdog
+    /// (load+optimize+run); the GPU arms keep it wide to clear a large-model load.
+    fn flags(&self) -> (&'static [&'static str], &'static [&'static str]) {
+        match self {
+            RuntimeKind::Cpu => (&["--timeout", "180"], &[]),
+            RuntimeKind::Metal => (&["--metal", "--timeout", "600"], &["--warmup-loops", "1"]),
+            RuntimeKind::Cuda => (&["--cuda", "--timeout", "600"], &["--warmup-loops", "1"]),
         }
     }
 }
@@ -272,19 +262,7 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
     let smoke = params.smoke;
     let filter = params.filter.as_deref();
 
-    let mut expectations = expectations(&params)?;
-    // http-loaded assets fold the fetch into the load wall-clocks (`time_to_*`), which
-    // would retry-storm against a file-loaded reference; drop those from the gate.
-    if matches!(model_source, ModelSource::Url(_)) {
-        let before = expectations.len();
-        expectations.retain(|name, _| !name.contains("time_to_"));
-        let dropped = before - expectations.len();
-        if dropped > 0 {
-            eprintln!(
-                "http asset: dropped {dropped} time_to_* expectations (load includes the fetch)"
-            );
-        }
-    }
+    let expectations = expectations(&params)?;
     let retry_max = params.retry_max;
     let second_pass_max = params.second_pass_max;
     let samples = params.samples;
@@ -352,9 +330,17 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
             }
         }
 
+        let staged = match stage(&model_source, bench) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("  !! {}: staging failed: {e:#}", bench.name);
+                continue;
+            }
+        };
+
         for (runtime, variant) in runs {
             eprintln!("  {} {}", bench.name, variant);
-            let run = || run_one(&exe, &model_source, bench, runtime, &variant, smoke);
+            let run = || run_one(&exe, &staged.arg, staged.format, bench, runtime, &variant, smoke);
             let outcome = if smoke {
                 run()
             } else if samples > 1 {
@@ -403,19 +389,79 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
     Ok(())
 }
 
-/// Where a child gets its model: a file under the local cache dir, or a URL under
-/// `base_url` streamed straight into tract (no disk), for read-only targets.
+/// Origin of a model's bytes: a file under the local cache dir, or a URL under
+/// `base_url`, for read-only targets that keep no disk cache.
 enum ModelSource {
     Cache(PathBuf),
     Url(String),
 }
 
-impl ModelSource {
-    fn model_arg(&self, model: &str) -> String {
-        match self {
-            ModelSource::Cache(dir) => dir.join(model).to_string_lossy().into_owned(),
-            ModelSource::Url(base) => format!("{}/{}", base.trim_end_matches('/'), model),
-        }
+/// A model staged for the child to load. On Linux `arg` is `/proc/self/fd/N` for an
+/// anonymous memfd holding the bytes (kept resident by `_hold`); elsewhere it is the
+/// plain path/URL. `format` is the `-f` hint, since an fd path has no extension to
+/// guess from.
+struct Staged {
+    _hold: Option<std::fs::File>,
+    arg: String,
+    format: Option<&'static str>,
+}
+
+/// Land the model bytes in RAM and return what the child loads. On Linux the fetch —
+/// file read or http GET — happens here, into a memfd the child inherits, so it is
+/// untimed and the child's load reads from RAM whatever the origin: the fix that keeps
+/// `time_to_*` a fetch-free, file-vs-http-independent signal. Non-Linux: pass through.
+fn stage(source: &ModelSource, bench: &Bench) -> TractResult<Staged> {
+    let format = format_hint(&bench.model);
+    #[cfg(target_os = "linux")]
+    {
+        let (hold, arg) = match source {
+            ModelSource::Cache(dir) => {
+                memfd_load(&bench.name, std::fs::File::open(dir.join(&bench.model))?)?
+            }
+            ModelSource::Url(base) => {
+                let url = format!("{}/{}", base.trim_end_matches('/'), bench.model);
+                let resp = crate::params::http_client()?.get(&url).send()?;
+                ensure!(resp.status().is_success(), "GET {url} -> {}", resp.status());
+                memfd_load(&bench.name, resp)?
+            }
+        };
+        Ok(Staged { _hold: Some(hold), arg, format })
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let arg = match source {
+            ModelSource::Cache(dir) => dir.join(&bench.model).to_string_lossy().into_owned(),
+            ModelSource::Url(base) => format!("{}/{}", base.trim_end_matches('/'), bench.model),
+        };
+        Ok(Staged { _hold: None, arg, format })
+    }
+}
+
+/// Copy `reader` into a fresh anonymous memfd; return the open file (keep it alive to
+/// hold the RAM) and its `/proc/self/fd/N` path. `MemfdFlags::empty()` leaves the fd
+/// inheritable (no CLOEXEC), so the spawned child can reopen it by that path.
+#[cfg(target_os = "linux")]
+fn memfd_load(name: &str, mut reader: impl std::io::Read) -> TractResult<(std::fs::File, String)> {
+    use std::os::fd::AsRawFd;
+    let fd = rustix::fs::memfd_create(name, rustix::fs::MemfdFlags::empty())?;
+    let mut file = std::fs::File::from(fd);
+    std::io::copy(&mut reader, &mut file)?;
+    let arg = format!("/proc/self/fd/{}", file.as_raw_fd());
+    Ok((file, arg))
+}
+
+/// The `-f` format hint for a model the child loads by fd path (no filename to guess
+/// from). `None` lets the child fall back to its `tf` default (the `.pb` nets).
+fn format_hint(model: &str) -> Option<&'static str> {
+    let m = model.to_ascii_lowercase();
+    if m.ends_with(".onnx") {
+        Some("onnx")
+    } else if m.ends_with(".tflite") {
+        Some("tflite")
+    } else if m.ends_with(".tgz") || m.ends_with(".tar") || m.ends_with(".tar.gz") {
+        Some("nnef")
+    } else {
+        None
     }
 }
 
@@ -425,14 +471,14 @@ impl ModelSource {
 /// error for this run (the caller logs it and moves on).
 fn run_one(
     exe: &Path,
-    source: &ModelSource,
+    model_arg: &str,
+    format: Option<&str>,
     bench: &Bench,
     runtime: Option<RuntimeKind>,
     variant: &str,
     smoke: bool,
 ) -> TractResult<Vec<(String, f64)>> {
-    let (global_flags, sub_flags) =
-        runtime.map(|b| b.flags(matches!(source, ModelSource::Url(_)))).unwrap_or((&[], &[]));
+    let (global_flags, sub_flags) = runtime.map(|b| b.flags()).unwrap_or((&[], &[]));
 
     // Smoke: a single load-optimize-run, success measured by exit status only.
     // Nets go through `run` (one shot); LLMs keep `llm-bench` (it concretises the
@@ -441,7 +487,10 @@ fn run_one(
     // (e.g. an 8B LLM on CPU) is not killed; the CI job bounds the wall time instead.
     if smoke {
         let mut cmd = Command::new(exe);
-        cmd.arg(source.model_arg(&bench.model));
+        cmd.arg(model_arg);
+        if let Some(f) = format {
+            cmd.args(["-f", f]);
+        }
         cmd.args(&bench.args);
         match runtime {
             Some(RuntimeKind::Cuda) => _ = cmd.arg("--cuda"),
@@ -461,7 +510,10 @@ fn run_one(
     }
 
     let mut cmd = Command::new(exe);
-    cmd.arg(source.model_arg(&bench.model));
+    cmd.arg(model_arg);
+    if let Some(f) = format {
+        cmd.args(["-f", f]);
+    }
     cmd.args(&bench.args);
     cmd.args(global_flags);
     cmd.args(["--readings", "--readings-heartbeat", "1000", "--emit-jsonl"]);
@@ -558,7 +610,14 @@ fn second_pass(
             (results[i].bench_idx, results[i].runtime, results[i].variant.clone());
         let bench = &manifest.benches[bench_idx];
         eprintln!("  second pass: {} {}", bench.name, variant);
-        let run = || run_one(exe, source, bench, runtime, &variant, false);
+        let staged = match stage(source, bench) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("  !! second pass {} {} staging failed: {e:#}", bench.name, variant);
+                continue;
+            }
+        };
+        let run = || run_one(exe, &staged.arg, staged.format, bench, runtime, &variant, false);
         match bench_run(run, expectations, retry_max) {
             Ok(cand) => {
                 let mut best: BTreeMap<String, f64> =

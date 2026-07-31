@@ -4743,6 +4743,7 @@ dependencies = [
  "regex",
  "reqwest",
  "ron",
+ "rustix 1.1.4",
  "rustls",
  "scan_fmt",
  "serde",
