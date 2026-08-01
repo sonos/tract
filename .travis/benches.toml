@@ -1,6 +1,9 @@
 # Bench manifest for `tract bench-suite`. Each [[bench]] becomes one fresh child
 # process per run; runtime-less benches run once on CPU labelled by `variant`,
 # benches with `runtimes` run once per available runtime labelled by the runtime.
+# `threads = [n, ...]` adds cpu-only runs with `--threads n` (0 = physical cores),
+# labelled `<variant>_t{n}` (or `_mt` for 0); the base single-thread series is
+# always kept. Threaded runs need a `multithread-mm` build (else skipped).
 
 base_url = "https://tract-test-assets.tract.rs"
 
@@ -61,6 +64,7 @@ name = "mobilenet_v2_1"
 variant = "pass"
 model = "mobilenet_v2_1.4_224_frozen.pb"
 args = "-i 1,224,224,3,f32"
+threads = [0]
 
 [[bench]]
 kind = "net"
@@ -75,6 +79,7 @@ name = "inceptionv3"
 variant = "pass"
 model = "inception_v3_2016_08_28_frozen.pb"
 args = "-i 1,299,299,3,f32"
+threads = [0]
 
 [[bench]]
 kind = "net"
@@ -233,6 +238,7 @@ kind = "llm"
 name = "llama-3_2-1B-instruct-q40ef16-541"
 model = "llm/541/meta-llama--Llama-3.2-1B-Instruct-q40ef16/meta-llama--Llama-3.2-1B-Instruct-q40ef16.nnef.tgz"
 runtimes = ["cpu", "metal", "cuda"]
+threads = [0]
 
 [[bench]]
 kind = "llm"
@@ -253,6 +259,7 @@ name = "parakeet-tdt-600m-v3-f32f32-encoder_1s"
 model = "asr/608/nvidia--parakeet-tdt-0.6b-v3-f32f32/nvidia--parakeet-tdt-0.6b-v3-f32f32.encoder.p1.nnef.tgz"
 args = "-t transformers_detect_all --nnef-tract-transformers --set B=1 --set S=100"
 runtimes = ["cpu", "metal", "cuda"]
+threads = [0]
 
 [[bench]]
 kind = "net"
