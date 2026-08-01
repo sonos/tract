@@ -252,11 +252,12 @@ mod tests {
     }
 
     // Slice C e2e: a real `Sdpa` op routes to MetalMfaSdpa via the metal transform
-    // and matches the CPU explode path.
+    // and matches the CPU explode path. D=32 is outside the MLX port's head-dim
+    // sets, so the chooser falls through to the MFA metallib (D%8, equal heads).
     #[test]
     fn sdpa_routes_to_mfa_and_matches_cpu() -> TractResult<()> {
         use crate::kernels::matmul::mfa::MetalMfaSdpa;
-        let (h, s, d) = (4usize, 32usize, 64usize); // B=1, D%8 -> fusable
+        let (h, s, d) = (4usize, 32usize, 32usize); // B=1, D%8, not an MLX dim -> MFA
         let fact = f32::fact(tvec![
             TDim::from(1i64),
             TDim::from(h as i64),
@@ -305,11 +306,11 @@ mod tests {
         Ok(())
     }
 
-    // GQA (H_kv < H_q) predates the MFA kernel: the translator must decline and
-    // the explode fallback must still match the CPU reference.
+    // GQA at an MLX-supported head dim routes to the MLX port (native
+    // gqa_factor) and matches the CPU reference.
     #[test]
-    fn gqa_sdpa_declines_mfa_and_matches_cpu() -> TractResult<()> {
-        use crate::kernels::matmul::mfa::MetalMfaSdpa;
+    fn gqa_sdpa_routes_to_mlx_and_matches_cpu() -> TractResult<()> {
+        use crate::kernels::matmul::mlx_sdpa::MetalMlxSdpa;
         let (hq, hkv, s, d) = (4usize, 2usize, 32usize, 64usize);
         let fact = |h: usize| {
             f32::fact(tvec![
@@ -349,8 +350,65 @@ mod tests {
 
         let metal = MetalTransform::default().transform_into(model)?;
         assert!(
-            !metal.nodes().iter().any(|n| n.op_is::<MetalMfaSdpa>()),
-            "GQA Sdpa must not route to MetalMfaSdpa"
+            metal.nodes().iter().any(|n| n.op_is::<MetalMlxSdpa>()),
+            "GQA Sdpa at D=64 should route to MetalMlxSdpa"
+        );
+
+        let metal_out = metal.into_runnable()?.run(tvec![qt, kt, vt])?;
+        cpu_out[0]
+            .clone()
+            .into_tensor()
+            .close_enough(&metal_out[0].clone().into_tensor(), Approximation::Approximate)?;
+        Ok(())
+    }
+
+    // GQA at a head dim neither fused kernel supports (48: not an MLX dim, and
+    // the MFA kernel predates GQA) must explode and still match CPU.
+    #[test]
+    fn gqa_sdpa_declines_fusion_and_matches_cpu() -> TractResult<()> {
+        use crate::kernels::matmul::mfa::MetalMfaSdpa;
+        use crate::kernels::matmul::mlx_sdpa::MetalMlxSdpa;
+        let (hq, hkv, s, d) = (4usize, 2usize, 32usize, 48usize);
+        let fact = |h: usize| {
+            f32::fact(tvec![
+                TDim::from(1i64),
+                TDim::from(h as i64),
+                TDim::from(s as i64),
+                TDim::from(d as i64)
+            ])
+        };
+        let mut model = TypedModel::default();
+        let q = model.add_source("q", fact(hq))?;
+        let k = model.add_source("k", fact(hkv))?;
+        let v = model.add_source("v", fact(hkv))?;
+        let out = model.wire_node(
+            "sdpa",
+            tract_transformers::ops::sdpa::Sdpa {
+                scale: None,
+                datum_type: f32::datum_type(),
+                acc_datum_type: f32::datum_type(),
+                is_causal: false,
+            },
+            &[q, k, v],
+        )?;
+        model.select_output_outlets(&out)?;
+
+        let mk = |h: usize, seed: i64| -> TractResult<TValue> {
+            let n = h * s * d;
+            let data: Vec<f32> = (0..n)
+                .map(|i| (((i as i64 * 2654435761 + seed).rem_euclid(1000)) as f32 / 1000.0) - 0.5)
+                .collect();
+            Ok(Tensor::from_shape(&[1, h, s, d], &data)?.into_tvalue())
+        };
+        let (qt, kt, vt) = (mk(hq, 1)?, mk(hkv, 2)?, mk(hkv, 3)?);
+
+        let cpu = model.clone().into_runnable()?;
+        let cpu_out = cpu.run(tvec![qt.clone(), kt.clone(), vt.clone()])?;
+
+        let metal = MetalTransform::default().transform_into(model)?;
+        assert!(
+            !metal.nodes().iter().any(|n| n.op_is::<MetalMfaSdpa>() || n.op_is::<MetalMlxSdpa>()),
+            "GQA Sdpa at D=48 must not fuse"
         );
 
         let metal_out = metal.into_runnable()?.run(tvec![qt, kt, vt])?;
@@ -445,14 +503,14 @@ mod tests {
         };
         let fused_m = mk(false)?;
         let explode_m = mk(true)?;
-        assert!(
-            fused_m.nodes().iter().any(|n| n.op_is::<MetalMfaSdpa>()),
-            "3-input Sdpa should fuse to MetalMfaSdpa"
-        );
-        assert!(
-            !explode_m.nodes().iter().any(|n| n.op_is::<MetalMfaSdpa>()),
-            "4-input Sdpa should take the explode path"
-        );
+        let is_fused = |m: &TypedModel| {
+            m.nodes().iter().any(|n| {
+                n.op_is::<MetalMfaSdpa>()
+                    || n.op_is::<crate::kernels::matmul::mlx_sdpa::MetalMlxSdpa>()
+            })
+        };
+        assert!(is_fused(&fused_m), "3-input Sdpa should fuse");
+        assert!(!is_fused(&explode_m), "4-input Sdpa should take the explode path");
         let fused = fused_m.into_runnable()?;
         let explode = explode_m.into_runnable()?;
         let z =
@@ -533,9 +591,12 @@ mod tests {
         };
         let fused_m = mk(false)?;
         let explode_m = mk(true)?;
-        let n_fused = fused_m.nodes().iter().filter(|x| x.op_is::<MetalMfaSdpa>()).count();
+        let is_fused = |x: &&TypedNode| {
+            x.op_is::<MetalMfaSdpa>() || x.op_is::<crate::kernels::matmul::mlx_sdpa::MetalMlxSdpa>()
+        };
+        let n_fused = fused_m.nodes().iter().filter(is_fused).count();
         assert_eq!(n_fused, n, "all {n} layers should fuse");
-        assert_eq!(explode_m.nodes().iter().filter(|x| x.op_is::<MetalMfaSdpa>()).count(), 0);
+        assert_eq!(explode_m.nodes().iter().filter(is_fused).count(), 0);
         let fused = fused_m.into_runnable()?;
         let explode = explode_m.into_runnable()?;
         let z =
@@ -569,6 +630,207 @@ mod tests {
         println!("  fused  : {:.3} ms/run  ({:.3} ms/layer)", ft * 1e3, ft * 1e3 / n as f64);
         println!("  explode: {:.3} ms/run  ({:.3} ms/layer)", et * 1e3, et * 1e3 / n as f64);
         println!("  attention-portion GAIN explode/fused = {:.2}x", et / ft);
+        Ok(())
+    }
+
+    // Same stack, but the two fused kernels are compared in one process: the MLX
+    // nodes are swapped for MFA ones after the transform, so both paths see the
+    // same graph, allocator and sync pattern.
+    //   cargo test -p tract-metal bench_sdpa_multilayer_mlx_vs_mfa -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn bench_sdpa_multilayer_mlx_vs_mfa() -> TractResult<()> {
+        use crate::kernels::matmul::mfa::MetalMfaSdpa;
+        use crate::kernels::matmul::mlx_sdpa::MetalMlxSdpa;
+        use std::time::Instant;
+        let (n, h, s, d) = (8usize, 8usize, 512usize, 64usize);
+        let dim = |x: usize| TDim::from(x as i64);
+        let qf = f32::fact(tvec![dim(1), dim(h), dim(s), dim(d)]);
+        let mut m = TypedModel::default();
+        let mut cur = m.add_source("q", qf.clone())?;
+        let k = m.add_source("k", qf.clone())?;
+        let v = m.add_source("v", qf.clone())?;
+        for i in 0..n {
+            cur = m.wire_node(
+                format!("sdpa{i}"),
+                tract_transformers::ops::sdpa::Sdpa {
+                    scale: None,
+                    datum_type: f32::datum_type(),
+                    acc_datum_type: f32::datum_type(),
+                    is_causal: false,
+                },
+                &[cur, k, v],
+            )?[0];
+        }
+        m.select_output_outlets(&[cur])?;
+        let mlx_m = MetalTransform::default().transform_into(m)?;
+        assert_eq!(mlx_m.nodes().iter().filter(|x| x.op_is::<MetalMlxSdpa>()).count(), n);
+
+        let mut mfa_m = mlx_m.clone();
+        for node in mfa_m.nodes_mut() {
+            if let Some(op) = node.op_as::<MetalMlxSdpa>() {
+                let (scale, is_causal) = (op.scale, op.is_causal);
+                node.op = Box::new(MetalMfaSdpa { scale, is_causal });
+            }
+        }
+        assert_eq!(mfa_m.nodes().iter().filter(|x| x.op_is::<MetalMfaSdpa>()).count(), n);
+
+        let mlx = mlx_m.into_runnable()?;
+        let mfa = mfa_m.into_runnable()?;
+        let q = Tensor::zero::<f32>(&[1, h, s, d])?.into_tvalue();
+        let qkv: TVec<TValue> = tvec![q.clone(), q.clone(), q];
+        mlx.run(qkv.clone())?[0].clone().into_tensor().close_enough(
+            &mfa.run(qkv.clone())?[0].clone().into_tensor(),
+            Approximation::Approximate,
+        )?;
+        let bench = |f: &dyn Fn() -> TractResult<()>| -> TractResult<f64> {
+            for _ in 0..3 {
+                f()?;
+            }
+            let mut best = f64::MAX;
+            for _ in 0..5 {
+                let t = Instant::now();
+                for _ in 0..10 {
+                    f()?;
+                }
+                best = best.min(t.elapsed().as_secs_f64() / 10.0);
+            }
+            Ok(best)
+        };
+        let mlx_t = bench(&|| {
+            mlx.run(qkv.clone())?;
+            Ok(())
+        })?;
+        let mfa_t = bench(&|| {
+            mfa.run(qkv.clone())?;
+            Ok(())
+        })?;
+        println!("\n  {n}-layer Sdpa stack, f32, B=1 H={h} S={s} D={d}:");
+        println!("  MLX port: {:.3} ms/run  ({:.3} ms/layer)", mlx_t * 1e3, mlx_t * 1e3 / n as f64);
+        println!("  MFA lib : {:.3} ms/run  ({:.3} ms/layer)", mfa_t * 1e3, mfa_t * 1e3 / n as f64);
+        println!("  GAIN MFA/MLX = {:.2}x", mfa_t / mlx_t);
+        Ok(())
+    }
+
+    // Decode shape (qL=1 against a long cache), which is where an LLM spends
+    // most of its time. MHA, so the MFA kernel accepts the same graph.
+    //   cargo test -p tract-metal bench_sdpa_decode -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn bench_sdpa_decode() -> TractResult<()> {
+        use crate::kernels::matmul::mfa::MetalMfaSdpa;
+        use crate::kernels::matmul::mlx_sdpa::MetalMlxSdpa;
+        use std::time::Instant;
+        let (n, h, d) = (8usize, 8usize, 64usize);
+        let dim = |x: usize| TDim::from(x as i64);
+        for (dt, kl) in
+            [(f32::datum_type(), 512usize), (f32::datum_type(), 4096), (f16::datum_type(), 4096)]
+        {
+            let qf = dt.fact(tvec![dim(1), dim(h), dim(1), dim(d)]);
+            let ramp = |sh: &[usize]| -> TractResult<Tensor> {
+                let len: usize = sh.iter().product();
+                let v: Vec<f32> = (0..len).map(|i| ((i % 37) as f32 - 18.0) / 32.0).collect();
+                Ok(Tensor::from_shape(sh, &v)?.cast_to_dt(dt)?.into_owned())
+            };
+            // K/V live in the graph: a decode step reads a cache that is already
+            // on the device, so a host->device transfer per run would dominate.
+            let kv_t = ramp(&[1, h, kl, d])?;
+            let mk = |with_mask: bool| -> TractResult<TypedModel> {
+                let mut m = TypedModel::default();
+                let mut cur = m.add_source("q", qf.clone())?;
+                let k = m.add_const("k", kv_t.clone())?;
+                let v = m.add_const("v", kv_t.clone())?;
+                let mask = with_mask
+                    .then(|| m.add_const("mask", Tensor::zero_dt(dt, &[1, 1, 1, kl])?))
+                    .transpose()?;
+                for i in 0..n {
+                    let mut ins = vec![cur, k, v];
+                    if let Some(msk) = mask {
+                        ins.push(msk);
+                    }
+                    cur = m.wire_node(
+                        format!("sdpa{i}"),
+                        tract_transformers::ops::sdpa::Sdpa {
+                            scale: None,
+                            datum_type: dt,
+                            acc_datum_type: f32::datum_type(),
+                            is_causal: false,
+                        },
+                        &ins,
+                    )?[0];
+                }
+                m.select_output_outlets(&[cur])?;
+                MetalTransform::default().transform_into(m)
+            };
+            let mlx_m = mk(false)?;
+            assert_eq!(mlx_m.nodes().iter().filter(|x| x.op_is::<MetalMlxSdpa>()).count(), n);
+            let mut mfa_m = mlx_m.clone();
+            for node in mfa_m.nodes_mut() {
+                if let Some(op) = node.op_as::<MetalMlxSdpa>() {
+                    let (scale, is_causal) = (op.scale, op.is_causal);
+                    node.op = Box::new(MetalMfaSdpa { scale, is_causal });
+                }
+            }
+            let mlx = mlx_m.into_runnable()?;
+            let mfa = mfa_m.into_runnable()?;
+            let explode = mk(true)?.into_runnable()?;
+
+            let qkv: TVec<TValue> = tvec![ramp(&[1, h, 1, d])?.into_tvalue()];
+            let qkvm = qkv.clone();
+            let mlx_o = mlx.run(qkv.clone())?[0].clone().into_tensor();
+            mlx_o.close_enough(
+                &mfa.run(qkv.clone())?[0].clone().into_tensor(),
+                Approximation::Approximate,
+            )?;
+            mlx_o.close_enough(
+                &explode.run(qkvm.clone())?[0].clone().into_tensor(),
+                Approximation::Approximate,
+            )?;
+
+            let bench = |f: &dyn Fn() -> TractResult<()>| -> TractResult<f64> {
+                for _ in 0..3 {
+                    f()?;
+                }
+                let mut best = f64::MAX;
+                for _ in 0..5 {
+                    let t = Instant::now();
+                    for _ in 0..20 {
+                        f()?;
+                    }
+                    best = best.min(t.elapsed().as_secs_f64() / 20.0);
+                }
+                Ok(best)
+            };
+            let mlx_t = bench(&|| {
+                mlx.run(qkv.clone())?;
+                Ok(())
+            })?;
+            let mfa_t = bench(&|| {
+                mfa.run(qkv.clone())?;
+                Ok(())
+            })?;
+            let exp_t = bench(&|| {
+                explode.run(qkvm.clone())?;
+                Ok(())
+            })?;
+            println!("\n  {n}-layer decode stack, {dt:?}, B=1 H={h} qL=1 kvL={kl} D={d}:");
+            println!(
+                "  MLX port: {:.3} ms/run  ({:.3} ms/layer)",
+                mlx_t * 1e3,
+                mlx_t * 1e3 / n as f64
+            );
+            println!(
+                "  MFA lib : {:.3} ms/run  ({:.3} ms/layer)",
+                mfa_t * 1e3,
+                mfa_t * 1e3 / n as f64
+            );
+            println!(
+                "  explode : {:.3} ms/run  ({:.3} ms/layer)",
+                exp_t * 1e3,
+                exp_t * 1e3 / n as f64
+            );
+            println!("  GAIN explode/MLX = {:.2}x, MFA/MLX = {:.2}x", exp_t / mlx_t, mfa_t / mlx_t);
+        }
         Ok(())
     }
 

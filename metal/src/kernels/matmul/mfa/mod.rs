@@ -584,18 +584,9 @@ pub fn mfa_sdpa_supported(
     }
 }
 
-crate::register_metal_op!(tract_transformers::ops::sdpa::Sdpa, |source, node, op| {
-    let in_facts = source.node_input_facts(node.id)?;
-    if !mfa_sdpa_supported(op, &in_facts) {
-        return Ok(None);
-    }
-    let head_dim = in_facts[0].shape[in_facts[0].rank() - 1].to_usize()?;
-    let scale = match &op.scale {
-        Some(t) => t.cast_to_scalar::<f32>()?,
-        None => (head_dim as f32).recip().sqrt(),
-    };
-    Ok(Some(Box::new(MetalMfaSdpa { scale, is_causal: op.is_causal }) as Box<dyn TypedOp>))
-});
+// NOTE: the Sdpa translator lives in `super::mlx_sdpa` — a single chooser that
+// prefers the MLX port and falls back to `MetalMfaSdpa` (translator inventory
+// order is link-order, so two registrations for one op type would race).
 
 #[cfg(test)]
 mod tests {

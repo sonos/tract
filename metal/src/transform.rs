@@ -55,9 +55,11 @@ macro_rules! register_metal_op {
     };
 }
 
-/// Metal-local SDPA flattening: explode only the `Sdpa` nodes the MFA kernel
-/// can't fuse, leaving fusable ones for the `MetalMfaSdpa` translator. (The
-/// shared `tract_gpu` `rewire_sdpa` explodes all of them; cuda still uses it.)
+/// Metal-local SDPA flattening: explode only the `Sdpa` nodes neither fused
+/// kernel can take (MLX port first, vendored MFA metallib second), leaving
+/// fusable ones for the chooser translator in `kernels::matmul::mlx_sdpa`.
+/// (The shared `tract_gpu` `rewire_sdpa` explodes all of them; cuda still
+/// uses it.)
 fn flatten_unfused_sdpa(
     _ctx: &(),
     model: &TypedModel,
@@ -66,15 +68,48 @@ fn flatten_unfused_sdpa(
     op: &tract_transformers::ops::sdpa::Sdpa,
 ) -> TractResult<Option<TypedModelPatch>> {
     let in_facts = model.node_input_facts(node.id)?;
-    if crate::kernels::matmul::mfa::mfa_sdpa_supported(op, &in_facts) {
-        Ok(None) // leave intact for the MetalMfaSdpa translator
+    if crate::kernels::matmul::mlx_sdpa::mlx_sdpa_supported(op, &in_facts)
+        || crate::kernels::matmul::mfa::mfa_sdpa_supported(op, &in_facts)
+    {
+        Ok(None) // leave intact for the fused-Sdpa translator
     } else {
         op.patch_sdpa(model, node) // explode (same as the shared rewire_sdpa)
     }
 }
 
+/// An exported causal LLM feeds `Sdpa` an f32 mask next to f16 activations, but
+/// the fused kernels template the mask on the activation type. Cast it to the
+/// query dtype so the constant folds and the node stays fusable.
+fn cast_sdpa_mask_to_query_dt(
+    _ctx: &(),
+    model: &TypedModel,
+    node: &TypedNode,
+    name: &str,
+    _op: &tract_transformers::ops::sdpa::Sdpa,
+) -> TractResult<Option<TypedModelPatch>> {
+    let in_facts = model.node_input_facts(node.id)?;
+    if in_facts.len() != 4 {
+        return Ok(None);
+    }
+    let (q_dt, mask_dt) = (in_facts[0].datum_type, in_facts[3].datum_type);
+    if mask_dt == q_dt || !q_dt.is_float() || !mask_dt.is_float() {
+        return Ok(None);
+    }
+    let mut patch = TypedModelPatch::default();
+    let mut inputs = patch.taps(model, &node.inputs)?;
+    inputs[3] = patch.wire_node(
+        format!("{name}.mask_cast"),
+        tract_core::ops::cast::cast(q_dt),
+        &[inputs[3]],
+    )?[0];
+    let out = patch.wire_node(&node.name, node.op.clone(), &inputs)?;
+    patch.shunt_outside(model, node.id.into(), out[0])?;
+    Ok(Some(patch))
+}
+
 fn rewire_sdpa_metal(model: &mut TypedModel) -> TractResult<()> {
     Rewriter::default()
+        .with_rule_for("cast-sdpa-mask-to-query-dt", cast_sdpa_mask_to_query_dt)
         .with_rule_for("flatten-unfused-sdpa", flatten_unfused_sdpa)
         .rewrite(&(), model)
 }
