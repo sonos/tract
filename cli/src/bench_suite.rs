@@ -46,6 +46,13 @@ struct Bench {
     /// one run per available runtime, each labelled by the runtime name.
     #[serde(default)]
     runtimes: Vec<RuntimeKind>,
+    /// CPU thread counts to additionally sweep, on the runtime-less / cpu path
+    /// only. Additive: the base single-thread series is always kept so its
+    /// history continues; each entry adds an independent series. `0` means "guess
+    /// physical cores" and is labelled `_mt`; any other `n` is labelled `_t{n}`.
+    /// Requires a `multithread-mm` build; skipped with a warning otherwise.
+    #[serde(default)]
+    threads: Vec<usize>,
 }
 
 #[derive(Deserialize, Clone, Copy, PartialEq)]
@@ -138,6 +145,7 @@ struct RunResult {
     bench_idx: usize,
     runtime: Option<RuntimeKind>,
     variant: String,
+    threads: Option<usize>,
     metrics: Vec<(String, f64)>,
 }
 
@@ -207,6 +215,13 @@ pub(crate) struct BenchSuiteParams {
     /// Device key (with --bench-data)
     #[arg(long)]
     device: Option<String>,
+    /// Override every thread-tagged bench's `threads` list with this ladder (comma
+    /// list, 0 = physical cores), for the daily/on-demand scaling sweep. Benches
+    /// without a `threads` entry stay single-thread. `1` is dropped: `--threads 1`
+    /// routes to the global rayon pool, not a serial run — the no-threads base
+    /// series already covers serial.
+    #[arg(long, value_delimiter = ',')]
+    threads_ladder: Option<Vec<usize>>,
 }
 
 pub(crate) fn command() -> clap::Command {
@@ -261,6 +276,7 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
     let skip_runtimes = params.skip_runtimes;
     let smoke = params.smoke;
     let filter = params.filter.as_deref();
+    let threads_ladder = params.threads_ladder.as_deref();
 
     let expectations = expectations(&params)?;
     let retry_max = params.retry_max;
@@ -286,7 +302,7 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
         // Smoke runs every bench on all available runtimes (the per-bench sweep
         // is a benchmarking economy, not a coverage statement): a CPU-only net
         // bench must still be exercised on an accelerator to catch backend bugs.
-        let runs: Vec<(Option<RuntimeKind>, String)> = if smoke {
+        let base_runs: Vec<(Option<RuntimeKind>, String)> = if smoke {
             [RuntimeKind::Cpu, RuntimeKind::Metal, RuntimeKind::Cuda]
                 .into_iter()
                 .filter(|b| b.available())
@@ -319,6 +335,35 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
                 .map(|b| (Some(*b), b.label().to_string()))
                 .collect()
         };
+
+        // Augment cpu-eligible runs with the requested thread sweep. The base run
+        // (no `--threads`, `None`) is always kept; threaded runs are extra series.
+        let runs: Vec<(Option<RuntimeKind>, String, Option<usize>)> = base_runs
+            .into_iter()
+            .flat_map(|(rt, variant)| {
+                let mut out = vec![(rt, variant.clone(), None)];
+                let eligible = !smoke
+                    && !bench.threads.is_empty()
+                    && matches!(rt, None | Some(RuntimeKind::Cpu));
+                if eligible {
+                    if cfg!(feature = "multithread-mm") {
+                        // The ladder (daily/on-demand sweep) overrides the manifest's
+                        // per-bench guard point; `1` is dropped as a global-pool trap.
+                        let sweep = threads_ladder.unwrap_or(&bench.threads);
+                        for &n in sweep.iter().filter(|&&n| n != 1) {
+                            let suffix = if n == 0 { "mt".into() } else { format!("t{n}") };
+                            out.push((rt, format!("{variant}_{suffix}"), Some(n)));
+                        }
+                    } else {
+                        eprintln!(
+                            "  .. {} threaded variants skipped (built without multithread-mm)",
+                            bench.name
+                        );
+                    }
+                }
+                out
+            })
+            .collect();
         if runs.is_empty() {
             continue;
         }
@@ -338,9 +383,11 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
             }
         };
 
-        for (runtime, variant) in runs {
+        for (runtime, variant, threads) in runs {
             eprintln!("  {} {}", bench.name, variant);
-            let run = || run_one(&exe, &staged.arg, staged.format, bench, runtime, &variant, smoke);
+            let run = || {
+                run_one(&exe, &staged.arg, staged.format, bench, runtime, &variant, threads, smoke)
+            };
             let outcome = if smoke {
                 run()
             } else if samples > 1 {
@@ -349,7 +396,9 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
                 bench_run(run, &expectations, retry_max)
             };
             match outcome {
-                Ok(m) => results.push(RunResult { bench_idx, runtime, variant, metrics: m }),
+                Ok(m) => {
+                    results.push(RunResult { bench_idx, runtime, variant, threads, metrics: m })
+                }
                 Err(e) => {
                     eprintln!("  !! {} {} failed: {e:#}", bench.name, variant);
                     smoke_failures.push(format!("{} [{variant}]", bench.name));
@@ -469,6 +518,7 @@ fn format_hint(model: &str) -> Option<&'static str> {
 /// The child runs in `--emit-jsonl` mode, so its stdout must be pure JSONL; any
 /// line that is not a metric object, a non-zero exit, or an empty result is an
 /// error for this run (the caller logs it and moves on).
+#[allow(clippy::too_many_arguments)]
 fn run_one(
     exe: &Path,
     model_arg: &str,
@@ -476,6 +526,7 @@ fn run_one(
     bench: &Bench,
     runtime: Option<RuntimeKind>,
     variant: &str,
+    threads: Option<usize>,
     smoke: bool,
 ) -> TractResult<Vec<(String, f64)>> {
     let (global_flags, sub_flags) = runtime.map(|b| b.flags()).unwrap_or((&[], &[]));
@@ -516,6 +567,9 @@ fn run_one(
     }
     cmd.args(&bench.args);
     cmd.args(global_flags);
+    if let Some(n) = threads {
+        cmd.args(["--threads", &n.to_string()]);
+    }
     cmd.args(["--readings", "--readings-heartbeat", "1000", "--emit-jsonl"]);
     if bench.kind == Kind::Llm {
         cmd.arg("--llm");
@@ -606,8 +660,12 @@ fn second_pass(
         return;
     }
     for i in red {
-        let (bench_idx, runtime, variant) =
-            (results[i].bench_idx, results[i].runtime, results[i].variant.clone());
+        let (bench_idx, runtime, variant, threads) = (
+            results[i].bench_idx,
+            results[i].runtime,
+            results[i].variant.clone(),
+            results[i].threads,
+        );
         let bench = &manifest.benches[bench_idx];
         eprintln!("  second pass: {} {}", bench.name, variant);
         let staged = match stage(source, bench) {
@@ -617,7 +675,8 @@ fn second_pass(
                 continue;
             }
         };
-        let run = || run_one(exe, &staged.arg, staged.format, bench, runtime, &variant, false);
+        let run =
+            || run_one(exe, &staged.arg, staged.format, bench, runtime, &variant, threads, false);
         match bench_run(run, expectations, retry_max) {
             Ok(cand) => {
                 let mut best: BTreeMap<String, f64> =
