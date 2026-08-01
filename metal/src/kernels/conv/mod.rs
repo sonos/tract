@@ -768,4 +768,74 @@ mod mlx_conv_tests {
         }
         Ok(())
     }
+
+    // mlx's preferred implicit-GEMM kernel against the general fallback.
+    //   cargo test -p tract-metal bench_conv_specialized -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn bench_conv_specialized() -> TractResult<()> {
+        use std::time::Instant;
+        println!("\n  shape (H,W,C -> O, kxk s)        general ms   special ms    gain");
+        for &(ih, iw, c, o, k, st) in &[
+            (299usize, 299usize, 3usize, 32usize, 3usize, 2usize),
+            (147, 147, 32, 64, 3, 1),
+            (73, 73, 80, 192, 3, 1),
+            (35, 35, 48, 64, 5, 5),
+            (35, 35, 64, 96, 3, 1),
+            (17, 17, 128, 192, 7, 1),
+            (8, 8, 384, 384, 3, 1),
+            (112, 112, 32, 64, 3, 1),
+        ] {
+            for dt in [DatumType::F32, DatumType::F16] {
+                let (kh, kw) =
+                    if k == 5 && st == 5 { (5, 5) } else { (k, if k == 7 { 1 } else { k }) };
+                let stride = if st == 5 { 1 } else { st };
+                let pool_spec = PoolSpec::new(
+                    DataFormat::NHWC,
+                    tvec![kh, kw],
+                    PaddingSpec::SameUpper,
+                    Some(tvec![1, 1]),
+                    Some(tvec![stride, stride]),
+                    c,
+                    o,
+                );
+                let op =
+                    Conv { pool_spec, kernel_fmt: KernelFormat::OHWI, group: 1, q_params: None };
+                let input = ramp(dt, &[1, ih, iw, c], 1)?;
+                let w = ramp(dt, &[o, kh, kw, c], 2)?;
+                let (oh, ow) = ((ih + stride - 1) / stride, (iw + stride - 1) / stride);
+                let (g, sp) = with_borrowed_metal_stream(|stream| {
+                    let i = input.clone().into_device()?;
+                    let wt = w.clone().into_device()?;
+                    let out = unsafe { DeviceTensor::uninitialized_dt(dt, &[1, oh, ow, o])? };
+                    let time = |f: &dyn Fn() -> TractResult<()>| -> TractResult<f64> {
+                        f()?;
+                        stream.wait_until_completed()?;
+                        let t = Instant::now();
+                        for _ in 0..10 {
+                            f()?;
+                        }
+                        stream.wait_until_completed()?;
+                        Ok(t.elapsed().as_secs_f64() / 10.0)
+                    };
+                    let g = time(&|| {
+                        super::mlx_conv::dispatch_mlx_conv_2d_general(stream, &op, &i, &wt, &out)
+                    })?;
+                    let sp = time(&|| {
+                        super::mlx_conv::dispatch_mlx_conv_2d_specialized(
+                            stream, &op, &i, &wt, &out,
+                        )
+                    })?;
+                    Ok((g, sp))
+                })?;
+                println!(
+                    "  {dt:?} {ih}x{iw}x{c} -> {o}, {kh}x{kw} s{stride}   {:9.4} {:11.4} {:7.2}x",
+                    g * 1e3,
+                    sp * 1e3,
+                    g / sp
+                );
+            }
+        }
+        Ok(())
+    }
 }
