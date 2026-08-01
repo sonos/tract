@@ -84,6 +84,11 @@ name = "mm_for_asr_am"
 harness = false
 
 [[bench]]
+name = "mm_threads"
+harness = false
+required-features = ["multithread-mm"]
+
+[[bench]]
 name = "qmmm_i8"
 harness = false
 
