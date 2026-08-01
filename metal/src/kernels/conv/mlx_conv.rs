@@ -273,3 +273,138 @@ pub fn mlx_conv_dispatchable(op: &Conv, input: &DeviceTensor, weights: &DeviceTe
     };
     natural(input) && natural(weights)
 }
+
+/// Whether the ported depthwise kernel can take this convolution: one channel
+/// per group in and out, kernel up to 7×7, stride up to 2, channels a multiple
+/// of 16 — mlx's own gate, plus NHWC and a contiguous `OHWI` kernel.
+pub fn mlx_depthwise_eligible(op: &Conv, in_facts: &[&TypedFact]) -> bool {
+    if op.q_params.is_some() || op.group < 2 {
+        return false;
+    }
+    let (c, o) = (op.pool_spec.input_channels, op.pool_spec.output_channels);
+    if c != o || op.group != c || !c.is_multiple_of(16) {
+        return false;
+    }
+    if !matches!(in_facts[0].datum_type, DatumType::F16 | DatumType::F32)
+        || in_facts[0].datum_type != in_facts[1].datum_type
+    {
+        return false;
+    }
+    if !op.pool_spec.data_format.c_is_last() || in_facts[0].rank() != 4 {
+        return false;
+    }
+    let k = op.pool_spec.kernel_shape.as_slice();
+    if k.len() != 2 || k.iter().any(|&x| x > 7) {
+        return false;
+    }
+    if op.pool_spec.dilations().iter().any(|&d| d != 1) {
+        return false;
+    }
+    if op.pool_spec.strides().iter().any(|&s| s > 2) {
+        return false;
+    }
+    in_facts.iter().all(|f| f.shape.as_concrete().is_some())
+}
+
+/// Runtime counterpart of `mlx_depthwise_eligible`.
+pub fn mlx_depthwise_dispatchable(op: &Conv, input: &DeviceTensor, weights: &DeviceTensor) -> bool {
+    let c = op.pool_spec.input_channels;
+    op.q_params.is_none()
+        && op.group == c
+        && op.pool_spec.output_channels == c
+        && c.is_multiple_of(16)
+        && op.kernel_fmt == KernelFormat::OIHW
+        && matches!(input.datum_type(), DatumType::F16 | DatumType::F32)
+        && input.datum_type() == weights.datum_type()
+        && op.pool_spec.data_format.c_is_last()
+        && input.rank() == 4
+        && weights.rank() == 4
+        && op.pool_spec.kernel_shape.iter().all(|&k| k <= 7)
+        && op.pool_spec.dilations().iter().all(|&d| d == 1)
+        && op.pool_spec.strides().iter().all(|&s| s <= 2)
+}
+
+/// Depthwise `out[N, oH, oW, C] = conv(in[N, iH, iW, C], wt[C, kH, kW, 1])`,
+/// mirroring mlx `depthwise_conv_2D_gpu`.
+pub fn dispatch_mlx_depthwise_conv_2d(
+    stream: &MetalStream,
+    op: &Conv,
+    input: &DeviceTensor,
+    weights: &DeviceTensor,
+    output: &DeviceTensor,
+) -> TractResult<()> {
+    let dt = input.datum_type();
+    let tname = match dt {
+        DatumType::F32 => "float32",
+        DatumType::F16 => "float16",
+        _ => bail!("MLX depthwise conv: F32/F16 only, got {dt:?}"),
+    };
+    let in_shape = op.pool_spec.data_format.shape(input.shape())?;
+    let out_shape = op.pool_spec.data_format.shape(output.shape())?;
+    let n = *in_shape.n().unwrap_or(&1) as i32;
+    let c = *in_shape.c() as i32;
+    let i_s = [in_shape.hw_dims()[0] as i32, in_shape.hw_dims()[1] as i32];
+    let o_s = [out_shape.hw_dims()[0] as i32, out_shape.hw_dims()[1] as i32];
+    // tract hands depthwise kernels over as OIHW [C, 1, kH, kW], which is the
+    // same bytes as the [C, kH, kW, 1] the kernel indexes.
+    let w_s = [weights.shape()[2] as i32, weights.shape()[3] as i32];
+    let strides = op.pool_spec.strides();
+    let str = [strides[0] as i32, strides[1] as i32];
+    let padding = op.pool_spec.computed_padding(in_shape.hw_dims());
+    let pad = [padding[0].pad_before as i32, padding[1].pad_before as i32];
+
+    let to4 = |s: &[isize]| -> [i64; 4] { [s[0] as i64, s[1] as i64, s[2] as i64, s[3] as i64] };
+    let wt_strides = [(w_s[0] * w_s[1]) as i64, w_s[1] as i64, 1, 1];
+    let conv_params = MlxConvParams2D {
+        n,
+        c,
+        o: c,
+        i_s,
+        w_s,
+        o_s,
+        str,
+        pad,
+        kdil: [1, 1],
+        idil: [1, 1],
+        in_strides: to4(input.strides()),
+        wt_strides,
+        out_strides: to4(output.strides()),
+        groups: c,
+        flip: false,
+    };
+
+    let (tc, tw, th) = (8i32, 8i32, 4i32);
+    let constants = Some(ConstantValues::new(vec![
+        (0, Value::I32(w_s[0])),   // ker_h
+        (1, Value::I32(w_s[1])),   // ker_w
+        (10, Value::I32(str[0])),  // str_h
+        (11, Value::I32(str[1])),  // str_w
+        (100, Value::I32(th)),     // tgp_h
+        (101, Value::I32(tw)),     // tgp_w
+        (200, Value::Bool(false)), // do_flip
+    ]));
+    let name = format!("depthwise_conv_2d_{tname}");
+    let pipeline = stream.load_pipeline_with_constants(LibraryName::MlxConvDw, &name, constants)?;
+
+    stream.retain_tensor(input);
+    stream.retain_tensor(weights);
+    stream.retain_tensor(output);
+
+    let command_buffer = stream.command_buffer();
+    command_buffer.encode(|encoder| {
+        encoder.set_compute_pipeline_state(&pipeline);
+        encoder.set_metal_tensor(0, input, metal::MTLResourceUsage::Read);
+        encoder.set_metal_tensor(1, weights, metal::MTLResourceUsage::Read);
+        encoder.set_metal_tensor(2, output, metal::MTLResourceUsage::Write);
+        encoder.set_slice(3, std::slice::from_ref(&conv_params));
+        let ceil_div = |a: i32, b: i32| (a + b - 1) / b;
+        let grid = MTLSize {
+            width: (c / tc) as _,
+            height: ceil_div(o_s[1], tw) as _,
+            depth: (ceil_div(o_s[0], th) * n) as _,
+        };
+        let group = MTLSize { width: tc as _, height: tw as _, depth: th as _ };
+        encoder.dispatch_thread_groups(grid, group);
+    });
+    Ok(())
+}

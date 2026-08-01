@@ -87,6 +87,8 @@ fn rewrite_conv_kernel_metal(
     conv: &Conv,
 ) -> TractResult<Option<TypedModelPatch>> {
     let in_facts = model.node_input_facts(node.id)?;
+    // A depthwise kernel is already laid out the way the ported kernel wants it
+    // once the shared rule has put it in OIHW, so only regular convs are moved.
     if crate::kernels::conv::mlx_conv::mlx_conv_eligible(conv, &in_facts) {
         if conv.kernel_fmt == KernelFormat::OHWI {
             return Ok(None);

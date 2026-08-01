@@ -31,6 +31,7 @@ const BIN_OPS: &str = include_str!("bin_ops.metal");
 const NN_OPS: &str = include_str!("nn/nn_ops.metal");
 const CONV_OPS: &str = include_str!("conv/direct_conv.metal");
 const MLX_CONV: &str = include_str!("conv/mlx_conv.metal");
+const MLX_CONV_DW: &str = include_str!("conv/mlx_conv_dw.metal");
 const ELEMENT_WISE_OPS: &str = include_str!("element_wise.metal");
 const FFT_OPS: &str = include_str!("fft.metal");
 
@@ -50,6 +51,7 @@ pub enum LibraryName {
     ArrayOps,
     ConvOps,
     MlxConv,
+    MlxConvDw,
     NNOps,
     ElementWiseOps,
     Ggml,
@@ -65,6 +67,7 @@ impl LibraryName {
             Self::BinOps => LibraryContent::Source(BIN_OPS),
             Self::ConvOps => LibraryContent::Source(CONV_OPS),
             Self::MlxConv => LibraryContent::Source(MLX_CONV),
+            Self::MlxConvDw => LibraryContent::Source(MLX_CONV_DW),
             Self::NNOps => LibraryContent::Source(NN_OPS),
             Self::ElementWiseOps => LibraryContent::Source(ELEMENT_WISE_OPS),
             Self::MlxGemm => LibraryContent::Source(MLX_GEMM),

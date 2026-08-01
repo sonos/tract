@@ -33,8 +33,13 @@ pub fn metal_conv_dispatch(
 ) -> TractResult<()> {
     // The MLX kernel takes bias separately (it is added by a following op), so
     // it only handles the bias-free dispatch here.
-    if bias.is_none() && mlx_conv::mlx_conv_dispatchable(op, input, weights) {
-        return mlx_conv::dispatch_mlx_conv_2d(stream, op, input, weights, output);
+    if bias.is_none() {
+        if mlx_conv::mlx_depthwise_dispatchable(op, input, weights) {
+            return mlx_conv::dispatch_mlx_depthwise_conv_2d(stream, op, input, weights, output);
+        }
+        if mlx_conv::mlx_conv_dispatchable(op, input, weights) {
+            return mlx_conv::dispatch_mlx_conv_2d(stream, op, input, weights, output);
+        }
     }
     metal_conv_dispatch_inner(stream, op, input, weights, bias, output)
 }
@@ -591,6 +596,175 @@ mod mlx_conv_tests {
                 .into_tensor()
                 .close_enough(&got[0].clone().into_tensor(), Approximation::Approximate)
                 .with_context(|| format!("kernel format {fmt:?}"))?;
+        }
+        Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn check_depthwise(
+        dt: DatumType,
+        n: usize,
+        ih: usize,
+        iw: usize,
+        c: usize,
+        kh: usize,
+        kw: usize,
+        stride: usize,
+        padding: PaddingSpec,
+    ) -> TractResult<()> {
+        let pool_spec = PoolSpec::new(
+            DataFormat::NHWC,
+            tvec![kh, kw],
+            padding,
+            Some(tvec![1, 1]),
+            Some(tvec![stride, stride]),
+            c,
+            c,
+        );
+        let op = Conv { pool_spec, kernel_fmt: KernelFormat::OIHW, group: c, q_params: None };
+        let input = ramp(dt, &[n, ih, iw, c], 1)?;
+        let weights = ramp(dt, &[c, 1, kh, kw], 2)?;
+        let bias = Tensor::zero_dt(dt, &[c])?;
+        let expected = op
+            .eval(tvec![
+                input.clone().into_tvalue(),
+                weights.clone().into_tvalue(),
+                bias.into_tvalue()
+            ])?
+            .remove(0)
+            .into_tensor();
+        let got = with_borrowed_metal_stream(|stream| {
+            let i = input.clone().into_device()?;
+            let w = weights.clone().into_device()?;
+            let out = unsafe { DeviceTensor::uninitialized_dt(dt, expected.shape())? };
+            super::mlx_conv::dispatch_mlx_depthwise_conv_2d(stream, &op, &i, &w, &out)?;
+            stream.wait_until_completed()?;
+            Ok(out.to_host()?.into_tensor())
+        })?;
+        expected.close_enough(&got, Approximation::Approximate).with_context(|| {
+            format!("depthwise dt={dt:?} {n}x{ih}x{iw}x{c} k={kh}x{kw} s={stride}")
+        })
+    }
+
+    #[test]
+    fn depthwise_3x3_same() -> TractResult<()> {
+        check_depthwise(DatumType::F32, 1, 14, 14, 32, 3, 3, 1, PaddingSpec::SameUpper)
+    }
+
+    #[test]
+    fn depthwise_3x3_stride2() -> TractResult<()> {
+        check_depthwise(DatumType::F32, 1, 16, 16, 64, 3, 3, 2, PaddingSpec::SameUpper)
+    }
+
+    #[test]
+    fn depthwise_5x5_valid() -> TractResult<()> {
+        check_depthwise(DatumType::F32, 2, 12, 12, 16, 5, 5, 1, PaddingSpec::Valid)
+    }
+
+    #[test]
+    fn depthwise_f16() -> TractResult<()> {
+        check_depthwise(DatumType::F16, 1, 14, 14, 144, 3, 3, 1, PaddingSpec::SameUpper)
+    }
+
+    #[test]
+    fn depthwise_non_square() -> TractResult<()> {
+        check_depthwise(DatumType::F32, 1, 15, 11, 48, 3, 3, 1, PaddingSpec::SameUpper)
+    }
+
+    // A depthwise conv coming in as OIHW (the shared layout) must reach the
+    // depthwise kernel and match CPU.
+    #[test]
+    fn depthwise_routes_through_metal_transform() -> TractResult<()> {
+        use crate::MetalTransform;
+        use tract_core::transform::ModelTransform;
+        let dt = DatumType::F32;
+        let (n, ih, iw, c, k) = (1usize, 14usize, 14usize, 32usize, 3usize);
+        let pool_spec = PoolSpec::new(
+            DataFormat::NHWC,
+            tvec![k, k],
+            PaddingSpec::SameUpper,
+            Some(tvec![1, 1]),
+            Some(tvec![1, 1]),
+            c,
+            c,
+        );
+        let op = Conv { pool_spec, kernel_fmt: KernelFormat::OIHW, group: c, q_params: None };
+        let input = ramp(dt, &[n, ih, iw, c], 1)?;
+        let weights = ramp(dt, &[c, 1, k, k], 2)?;
+        let bias = Tensor::zero_dt(dt, &[c])?;
+        let mut model = TypedModel::default();
+        let i = model.add_source("i", dt.fact(&[n, ih, iw, c]))?;
+        let w = model.add_const("w", weights)?;
+        let b = model.add_const("b", bias)?;
+        let out = model.wire_node("conv", op, &[i, w, b])?;
+        model.select_output_outlets(&out)?;
+        let cpu = model.clone().into_runnable()?.run(tvec![input.clone().into_tvalue()])?;
+        let metal = MetalTransform::default().transform_into(model)?;
+        let got = metal.into_runnable()?.run(tvec![input.into_tvalue()])?;
+        cpu[0]
+            .clone()
+            .into_tensor()
+            .close_enough(&got[0].clone().into_tensor(), Approximation::Approximate)?;
+        Ok(())
+    }
+
+    // MobileNet-class depthwise shapes against the direct kernel.
+    //   cargo test -p tract-metal bench_depthwise -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn bench_depthwise() -> TractResult<()> {
+        use std::time::Instant;
+        println!("\n  shape (N,H,W,C, kxk, s)        direct ms     mlx ms    gain");
+        for &(ih, iw, c, k, st) in &[
+            (112usize, 112usize, 32usize, 3usize, 1usize),
+            (112, 112, 144, 3, 2),
+            (56, 56, 192, 3, 1),
+            (28, 28, 384, 3, 1),
+            (14, 14, 576, 3, 1),
+            (7, 7, 960, 3, 1),
+        ] {
+            for dt in [DatumType::F32, DatumType::F16] {
+                let pool_spec = PoolSpec::new(
+                    DataFormat::NHWC,
+                    tvec![k, k],
+                    PaddingSpec::SameUpper,
+                    Some(tvec![1, 1]),
+                    Some(tvec![st, st]),
+                    c,
+                    c,
+                );
+                let op =
+                    Conv { pool_spec, kernel_fmt: KernelFormat::OIHW, group: c, q_params: None };
+                let input = ramp(dt, &[1, ih, iw, c], 1)?;
+                let weights = ramp(dt, &[c, 1, k, k], 2)?;
+                let (oh, ow) = ((ih + st - 1) / st, (iw + st - 1) / st);
+                let (d, m) = with_borrowed_metal_stream(|stream| {
+                    let i = input.clone().into_device()?;
+                    let w = weights.clone().into_device()?;
+                    let out = unsafe { DeviceTensor::uninitialized_dt(dt, &[1, oh, ow, c])? };
+                    let time = |f: &dyn Fn() -> TractResult<()>| -> TractResult<f64> {
+                        f()?;
+                        stream.wait_until_completed()?;
+                        let t = Instant::now();
+                        for _ in 0..10 {
+                            f()?;
+                        }
+                        stream.wait_until_completed()?;
+                        Ok(t.elapsed().as_secs_f64() / 10.0)
+                    };
+                    let d = time(&|| super::metal_conv_direct(stream, &op, &i, &w, None, &out))?;
+                    let m = time(&|| {
+                        super::mlx_conv::dispatch_mlx_depthwise_conv_2d(stream, &op, &i, &w, &out)
+                    })?;
+                    Ok((d, m))
+                })?;
+                println!(
+                    "  {dt:?} {ih}x{iw}x{c}, {k}x{k}, s{st}    {:9.4} {:9.4}  {:6.2}x",
+                    d * 1e3,
+                    m * 1e3,
+                    d / m
+                );
+            }
         }
         Ok(())
     }
