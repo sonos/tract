@@ -458,6 +458,94 @@ mod tests {
         })
     }
 
+    // Skinny-M bake-off: which GEMM kernel wins for the shapes a decode step
+    // produces (M small, N large). The winner is device-dependent, so this
+    // prints a table rather than asserting.
+    //   cargo test -p tract-metal bench_skinny_gemm -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn bench_skinny_gemm() -> TractResult<()> {
+        use std::time::Instant;
+        with_borrowed_metal_stream(|stream| {
+            let device = metal::Device::system_default().unwrap();
+            let arch: String = unsafe {
+                use metal::foreign_types::ForeignTypeRef;
+                use objc::runtime::Object;
+                use objc::{msg_send, sel, sel_impl};
+                let dev: *mut Object = device.as_ref().as_ptr() as *mut Object;
+                let a: *mut Object = msg_send![dev, architecture];
+                let n: *mut Object = msg_send![a, name];
+                let c: *const std::os::raw::c_char = msg_send![n, UTF8String];
+                std::ffi::CStr::from_ptr(c).to_string_lossy().into_owned()
+            };
+            println!("  device: {} arch: {arch}", device.name());
+            for dt in [DatumType::F16, DatumType::F32] {
+                for (k, n) in [(2048usize, 2048usize), (2048, 32000)] {
+                    println!("\n  {dt:?} K={k} N={n} (x @ w.T)");
+                    println!("    M  |    Mlx ms |   Ggml ms | Ggml/Mlx | gemv_wide ms");
+                    for m in [1usize, 2, 4, 8, 16] {
+                        let a = Tensor::zero_dt(dt, &[1, m, k])?.into_device()?;
+                        // transposed weights: [n, k], the layout a Linear keeps
+                        let b = Tensor::zero_dt(dt, &[1, n, k])?.into_device()?;
+                        let c = unsafe { DeviceTensor::uninitialized_dt(dt, &[1, m, n])? };
+                        let time = |run: &dyn Fn() -> TractResult<()>| -> TractResult<f64> {
+                            for _ in 0..3 {
+                                run()?;
+                                stream.wait_until_completed()?;
+                            }
+                            let mut best = f64::MAX;
+                            for _ in 0..5 {
+                                let t = Instant::now();
+                                for _ in 0..20 {
+                                    run()?;
+                                }
+                                stream.wait_until_completed()?;
+                                best = best.min(t.elapsed().as_secs_f64() / 20.0);
+                            }
+                            Ok(best)
+                        };
+                        let mlx = time(&|| {
+                            GemmImpl::<MlxGemm>::new(false, true).dispatch_eval(stream, &a, &b, &c)
+                        })?;
+                        let ggml = time(&|| {
+                            GemmImpl::<GgmlGemm>::new(false, true).dispatch_eval(stream, &a, &b, &c)
+                        })?;
+                        // forced past mlx's own arch gate, to get a number here
+                        let wide = mlx_gemm::gemv_wide_config(m, n, k, Some(15))
+                            .map(|cfg| {
+                                time(&|| {
+                                    mlx_gemm::dispatch_metal_mlx_gemv_wide(
+                                        stream,
+                                        dt,
+                                        (m, n, k),
+                                        &cfg,
+                                        &get_metal_buffer(&a),
+                                        a.buffer_offset(),
+                                        &get_metal_buffer(&b),
+                                        b.buffer_offset(),
+                                        &get_metal_buffer(&c),
+                                        c.buffer_offset(),
+                                    )
+                                })
+                            })
+                            .transpose()?;
+                        println!(
+                            "    {m:<2} | {:9.4} | {:9.4} | {:8.2}x | {}",
+                            mlx * 1e3,
+                            ggml * 1e3,
+                            ggml / mlx,
+                            match wide {
+                                Some(w) => format!("{:9.4} ({:.2}x vs Mlx)", w * 1e3, mlx / w),
+                                None => "        - ".to_string(),
+                            }
+                        );
+                    }
+                }
+            }
+            Ok(())
+        })
+    }
+
     #[test]
     fn test_gemm_dispatches_params() -> TractResult<()> {
         let dt = DatumType::F32;
