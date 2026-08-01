@@ -100,9 +100,27 @@ pub fn mlx_conv_eligible(op: &Conv, in_facts: &[&TypedFact]) -> bool {
     in_facts.iter().all(|f| f.shape.as_concrete().is_some())
 }
 
-/// `out[N, oH, oW, O] = conv(in[N, iH, iW, C], wt[O, kH, kW, C])`, mirroring
-/// mlx `implicit_gemm_conv_2D_general_gpu`.
+/// `out[N, oH, oW, O] = conv(in[N, iH, iW, C], wt[O, kH, kW, C])`. mlx keeps two
+/// implicit-GEMM kernels and prefers the specialised one whenever the channel
+/// counts are aligned, falling back to the general one otherwise.
 pub fn dispatch_mlx_conv_2d(
+    stream: &MetalStream,
+    op: &Conv,
+    input: &DeviceTensor,
+    weights: &DeviceTensor,
+    output: &DeviceTensor,
+) -> TractResult<()> {
+    let c = op.pool_spec.input_channels;
+    let o = op.pool_spec.output_channels;
+    if (c <= 4 || c.is_multiple_of(16)) && (o <= 16 || o.is_multiple_of(16)) {
+        dispatch_mlx_conv_2d_specialized(stream, op, input, weights, output)
+    } else {
+        dispatch_mlx_conv_2d_general(stream, op, input, weights, output)
+    }
+}
+
+/// Mirrors mlx `implicit_gemm_conv_2D_general_gpu`.
+pub fn dispatch_mlx_conv_2d_general(
     stream: &MetalStream,
     op: &Conv,
     input: &DeviceTensor,
@@ -405,6 +423,121 @@ pub fn dispatch_mlx_depthwise_conv_2d(
         };
         let group = MTLSize { width: tc as _, height: tw as _, depth: th as _ };
         encoder.dispatch_thread_groups(grid, group);
+    });
+    Ok(())
+}
+
+/// Mirrors mlx `implicit_gemm_conv_2D_gpu`: no per-output-position jump tables,
+/// and the kernel is specialised on small channel counts and short filters.
+pub fn dispatch_mlx_conv_2d_specialized(
+    stream: &MetalStream,
+    op: &Conv,
+    input: &DeviceTensor,
+    weights: &DeviceTensor,
+    output: &DeviceTensor,
+) -> TractResult<()> {
+    let dt = input.datum_type();
+    let tname = match dt {
+        DatumType::F32 => "float32",
+        DatumType::F16 => "float16",
+        _ => bail!("MLX conv: F32/F16 only, got {dt:?}"),
+    };
+    let in_shape = op.pool_spec.data_format.shape(input.shape())?;
+    let out_shape = op.pool_spec.data_format.shape(output.shape())?;
+    let n = *in_shape.n().unwrap_or(&1) as i32;
+    let c = *in_shape.c() as i32;
+    let o = *out_shape.c() as i32;
+    let i_s = [in_shape.hw_dims()[0] as i32, in_shape.hw_dims()[1] as i32];
+    let w_s = [weights.shape()[1] as i32, weights.shape()[2] as i32];
+    let o_s = [out_shape.hw_dims()[0] as i32, out_shape.hw_dims()[1] as i32];
+    let strides = op.pool_spec.strides();
+    let dilations = op.pool_spec.dilations();
+    let str = [strides[0] as i32, strides[1] as i32];
+    let kdil = [dilations[0] as i32, dilations[1] as i32];
+    let padding = op.pool_spec.computed_padding(in_shape.hw_dims());
+    let pad = [padding[0].pad_before as i32, padding[1].pad_before as i32];
+    let ceil_div = |a: i32, b: i32| (a + b - 1) / b;
+    let to4 = |s: &[isize]| -> [i64; 4] { [s[0] as i64, s[1] as i64, s[2] as i64, s[3] as i64] };
+
+    let conv_params = MlxConvParams2D {
+        n,
+        c,
+        o,
+        i_s,
+        w_s,
+        o_s,
+        str,
+        pad,
+        kdil,
+        idil: [1, 1],
+        in_strides: to4(input.strides()),
+        wt_strides: to4(weights.strides()),
+        out_strides: to4(output.strides()),
+        groups: 1,
+        flip: false,
+    };
+
+    let implicit_m = n * o_s[0] * o_s[1];
+    let implicit_n = o;
+    let implicit_k = w_s[0] * w_s[1] * c;
+    let (mut wm, mut wn) = (2i32, 2i32);
+    let bm = if implicit_m >= 8192 && c >= 64 { 64 } else { 32 };
+    let mut bn = if bm == 64 || implicit_n >= 64 { 64 } else { 32 };
+    let bk = 16i32;
+    if implicit_n <= 16 {
+        bn = 8;
+        wm = 4;
+        wn = 1;
+    }
+
+    let channel_k_iters = ceil_div(c, bk);
+    let (gemm_k_iterations, channel_spec) = if c <= 2 {
+        (ceil_div(implicit_k, bk), c)
+    } else if c <= 4 {
+        (ceil_div(w_s[0] * w_s[1] * 4, bk), c)
+    } else {
+        (w_s[0] * w_s[1] * channel_k_iters, 0)
+    };
+    let small_filter = channel_spec == 0 && w_s[0] <= 16 && w_s[1] <= 16;
+
+    let ijw = conv_params.in_strides[2] as i32 * kdil[1];
+    let ijh = conv_params.in_strides[1] as i32 * kdil[0];
+    let gemm_params = ImplicitGemmConv2DParams {
+        m: implicit_m,
+        n: implicit_n,
+        k: implicit_k,
+        gemm_k_iterations,
+        inp_jump_w: ijw,
+        inp_jump_h: ijh - (w_s[1] - 1) * ijw,
+        inp_jump_c: bk - (w_s[0] - 1) * ijh - (w_s[1] - 1) * ijw,
+        tiles_n: ceil_div(implicit_n, bn),
+        tiles_m: ceil_div(implicit_m, bm),
+        swizzle_log: 0,
+    };
+
+    let channel = if channel_spec == 0 { "l".to_string() } else { channel_spec.to_string() };
+    let filter = if small_filter { 's' } else { 'l' };
+    let name = format!(
+        "implicit_gemm_conv_2d_{tname}_bm{bm}_bn{bn}_bk{bk}_wm{wm}_wn{wn}_channel_{channel}_filter_{filter}"
+    );
+    let pipeline = stream.load_pipeline(LibraryName::MlxConvSpec, &name)?;
+
+    stream.retain_tensor(input);
+    stream.retain_tensor(weights);
+    stream.retain_tensor(output);
+
+    let command_buffer = stream.command_buffer();
+    command_buffer.encode(|encoder| {
+        encoder.set_compute_pipeline_state(&pipeline);
+        encoder.set_metal_tensor(0, input, metal::MTLResourceUsage::Read);
+        encoder.set_metal_tensor(1, weights, metal::MTLResourceUsage::Read);
+        encoder.set_metal_tensor(2, output, metal::MTLResourceUsage::Write);
+        encoder.set_slice(3, std::slice::from_ref(&conv_params));
+        encoder.set_slice(4, std::slice::from_ref(&gemm_params));
+        encoder.dispatch_thread_groups(
+            MTLSize { width: gemm_params.tiles_n as _, height: gemm_params.tiles_m as _, depth: 1 },
+            MTLSize { width: 32, height: wn as _, depth: wm as _ },
+        );
     });
     Ok(())
 }
