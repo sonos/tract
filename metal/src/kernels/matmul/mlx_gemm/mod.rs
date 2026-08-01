@@ -503,3 +503,187 @@ mod tests {
         Ok(())
     }
 }
+
+/// Launch parameters for `gemv_wide`, mirroring mlx `gemv_wide_config`.
+pub(crate) struct GemvWideConfig {
+    vecs_per_tg: usize,
+    k_lanes: usize,
+    grid_x: usize,
+}
+
+/// mlx routes `x[M, K] @ w[N, K]^T` here for M in 2..=15: a padded GEMM tile
+/// wastes most of its rows, while this streams the weight block once per
+/// register tile of vectors. mlx keeps it off below architecture generation 15
+/// (M3), where load issue rate rather than bandwidth is the limit.
+pub(crate) fn gemv_wide_config(
+    m: usize,
+    n: usize,
+    k: usize,
+    arch_gen: Option<u32>,
+) -> Option<GemvWideConfig> {
+    if arch_gen.is_none_or(|g| g < 15) {
+        return None;
+    }
+    if !(2..=15).contains(&m) || n <= 1 || !k.is_multiple_of(4) {
+        return None;
+    }
+    let passes = m.div_ceil(5);
+    if passes > 3 {
+        return None;
+    }
+    let full_simd = passes == 1 || n <= 64;
+    Some(GemvWideConfig {
+        vecs_per_tg: m.div_ceil(passes),
+        k_lanes: if full_simd { 32 } else { 16 },
+        grid_x: if n >= 65536 { 1 } else { passes },
+    })
+}
+
+/// `c[m, n] = a[m, k] @ b[n, k]^T` for a small number of rows. Contiguous,
+/// single-batch, f16/f32 only.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn dispatch_metal_mlx_gemv_wide(
+    stream: &MetalStream,
+    dt: DatumType,
+    (m, n, k): (usize, usize, usize),
+    config: &GemvWideConfig,
+    a_buffer: &Buffer,
+    a_offset: usize,
+    b_buffer: &Buffer,
+    b_offset: usize,
+    output: &Buffer,
+    output_offset: usize,
+) -> TractResult<()> {
+    let tname = DeviceTensor::tname(dt)?;
+    let name = format!("gemv_wide_{tname}_nv{}_kl{}", config.vecs_per_tg, config.k_lanes);
+    let constants = Some(ConstantValues::new(vec![
+        (0, Value::Bool(false)), // gemv_wide_has_batch
+        (1, Value::Bool(false)), // gemv_wide_do_axpby
+    ]));
+    let pipeline = stream.load_pipeline_with_constants(LibraryName::MlxGemv, &name, constants)?;
+
+    let command_buffer = stream.command_buffer();
+    command_buffer.encode(|encoder| {
+        encoder.set_compute_pipeline_state(&pipeline);
+        encoder.set_buffer(0, Some(b_buffer), b_offset as _);
+        encoder.set_buffer(1, Some(a_buffer), a_offset as _);
+        encoder.set_buffer(3, Some(output), output_offset as _);
+        let i32_at = |encoder: &metal::ComputeCommandEncoderRef, ix: u64, v: i32| {
+            encoder.set_bytes(
+                ix,
+                std::mem::size_of::<i32>() as u64,
+                &v as *const i32 as *const c_void,
+            )
+        };
+        i32_at(encoder, 4, k as i32); // in_vec_size
+        i32_at(encoder, 5, n as i32); // out_vec_size
+        i32_at(encoder, 6, m as i32); // M
+        i32_at(encoder, 7, k as i32); // matrix_ld
+        i32_at(encoder, 8, k as i32); // vector_ld
+        i32_at(encoder, 11, 1); // batch_ndim
+        i32_at(encoder, 12, 1); // batch_shape
+        let zero = 0_i64;
+        encoder.set_bytes(13, 8, &zero as *const i64 as *const c_void);
+        encoder.set_bytes(14, 8, &zero as *const i64 as *const c_void);
+        let group = MTLSize { width: 32, height: (config.k_lanes / 8) as _, depth: 1 };
+        let grid = MTLSize { width: config.grid_x as _, height: n.div_ceil(4) as _, depth: 1 };
+        encoder.dispatch_thread_groups(grid, group);
+    });
+    Ok(())
+}
+
+#[cfg(test)]
+mod gemv_wide_tests {
+    use super::*;
+    use crate::utils::{get_metal_buffer, with_borrowed_metal_stream};
+    use tract_gpu::tensor::IntoDevice;
+
+    fn ramp(dt: DatumType, shape: &[usize], seed: usize) -> TractResult<Tensor> {
+        let len: usize = shape.iter().product();
+        let v: Vec<f32> =
+            (0..len).map(|i| (((i * 7 + seed * 13) % 29) as f32 - 14.0) / 64.0).collect();
+        Ok(Tensor::from_shape(shape, &v)?.cast_to_dt(dt)?.into_owned())
+    }
+
+    // The mlx gate keeps gemv_wide off below architecture generation 15, so the
+    // config is built by hand here to exercise the kernel on any device.
+    fn check(dt: DatumType, m: usize, n: usize, k: usize) -> TractResult<()> {
+        let a = ramp(dt, &[m, k], 1)?;
+        let b = ramp(dt, &[n, k], 2)?;
+        let expected = {
+            let a32 = a.cast_to::<f32>()?.into_owned();
+            let b32 = b.cast_to::<f32>()?.into_owned();
+            let (av, bv) = unsafe {
+                (a32.as_slice_unchecked::<f32>().to_vec(), b32.as_slice_unchecked::<f32>().to_vec())
+            };
+            let mut out = vec![0f32; m * n];
+            for i in 0..m {
+                for j in 0..n {
+                    out[i * n + j] = (0..k).map(|x| av[i * k + x] * bv[j * k + x]).sum::<f32>();
+                }
+            }
+            Tensor::from_shape(&[m, n], &out)?.cast_to_dt(dt)?.into_owned()
+        };
+        let config = gemv_wide_config(m, n, k, Some(15))
+            .with_context(|| format!("no config for m={m} n={n} k={k}"))?;
+        let got = with_borrowed_metal_stream(|stream| {
+            let ad = a.clone().into_device()?;
+            let bd = b.clone().into_device()?;
+            let cd = unsafe { DeviceTensor::uninitialized_dt(dt, &[m, n])? };
+            dispatch_metal_mlx_gemv_wide(
+                stream,
+                dt,
+                (m, n, k),
+                &config,
+                &get_metal_buffer(&ad),
+                ad.buffer_offset(),
+                &get_metal_buffer(&bd),
+                bd.buffer_offset(),
+                &get_metal_buffer(&cd),
+                cd.buffer_offset(),
+            )?;
+            stream.wait_until_completed()?;
+            Ok(cd.to_host()?.into_tensor())
+        })?;
+        expected.close_enough(&got, Approximation::Approximate).with_context(|| {
+            format!("dt={dt:?} m={m} n={n} k={k} nv={} kl={}", config.vecs_per_tg, config.k_lanes)
+        })
+    }
+
+    #[test]
+    fn gemv_wide_f16() -> TractResult<()> {
+        for m in 2..=15 {
+            check(DatumType::F16, m, 128, 256)?;
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn gemv_wide_f32() -> TractResult<()> {
+        for m in [2usize, 5, 8, 15] {
+            check(DatumType::F32, m, 128, 256)?;
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn gemv_wide_tail_rows() -> TractResult<()> {
+        check(DatumType::F16, 3, 130, 260)?;
+        check(DatumType::F16, 7, 63, 2048)?;
+        check(DatumType::F32, 4, 2, 512)
+    }
+
+    #[test]
+    fn gemv_wide_config_matches_mlx_gate() {
+        assert!(gemv_wide_config(2, 128, 256, Some(13)).is_none()); // pre-M3
+        assert!(gemv_wide_config(1, 128, 256, Some(16)).is_none()); // M == 1 -> gemv
+        assert!(gemv_wide_config(16, 128, 256, Some(16)).is_none()); // 4 passes
+        assert!(gemv_wide_config(2, 128, 254, Some(16)).is_none()); // K % 4
+        let c = gemv_wide_config(8, 128, 256, Some(16)).unwrap();
+        assert_eq!((c.vecs_per_tg, c.k_lanes, c.grid_x), (4, 16, 2));
+        let c = gemv_wide_config(4, 128, 256, Some(16)).unwrap();
+        assert_eq!((c.vecs_per_tg, c.k_lanes, c.grid_x), (4, 32, 1));
+        let c = gemv_wide_config(4, 131072, 256, Some(16)).unwrap();
+        assert_eq!(c.grid_x, 1);
+    }
+}
