@@ -77,7 +77,23 @@ impl GemmKernel for MlxGemm {
             dts[2]
         );
 
-        if m == 1 || n == 1 {
+        let wide = (dts[0] == DatumType::F16 && !transpose_a && transpose_b && a_batch == 1)
+            .then(|| gemv_wide_config(m, n, k, device_arch_gen::get()))
+            .flatten();
+        if let Some(config) = wide {
+            dispatch_metal_mlx_gemv_wide(
+                stream,
+                dts[0],
+                (m, n, k),
+                &config,
+                a_buffer,
+                a_offset,
+                b_buffer,
+                b_offset,
+                c_buffer,
+                c_offset,
+            )?;
+        } else if m == 1 || n == 1 {
             dispatch_metal_mlx_gemv(
                 stream,
                 dts[0],
@@ -505,6 +521,50 @@ mod tests {
     }
 }
 
+/// Apple GPU architecture generation from `-[MTLDevice architecture].name`
+/// ("applegpu_g16g" -> 16). mlx gates several kernels on it: M1=13, M3=15,
+/// M4=16.
+// The objc msg_send!/sel! macros expand to a cargo-clippy cfg check that older
+// toolchains report at the call site; the module-level allow covers it.
+#[allow(unexpected_cfgs)]
+mod device_arch_gen {
+    use metal::foreign_types::ForeignTypeRef;
+    use objc::runtime::Object;
+    use objc::{msg_send, sel, sel_impl};
+
+    pub fn get() -> Option<u32> {
+        static GEN: std::sync::OnceLock<Option<u32>> = std::sync::OnceLock::new();
+        *GEN.get_or_init(|| unsafe {
+            let device = metal::Device::system_default()?;
+            let dev: *mut Object = device.as_ref().as_ptr() as *mut Object;
+            let responds: bool = msg_send![dev, respondsToSelector: sel!(architecture)];
+            if !responds {
+                return None;
+            }
+            let arch: *mut Object = msg_send![dev, architecture];
+            if arch.is_null() {
+                return None;
+            }
+            let name_obj: *mut Object = msg_send![arch, name];
+            if name_obj.is_null() {
+                return None;
+            }
+            let cstr: *const std::os::raw::c_char = msg_send![name_obj, UTF8String];
+            if cstr.is_null() {
+                return None;
+            }
+            std::ffi::CStr::from_ptr(cstr)
+                .to_string_lossy()
+                .chars()
+                .skip_while(|c| !c.is_ascii_digit())
+                .take_while(char::is_ascii_digit)
+                .collect::<String>()
+                .parse()
+                .ok()
+        })
+    }
+}
+
 /// Launch parameters for `gemv_wide`, mirroring mlx `gemv_wide_config`.
 pub(crate) struct GemvWideConfig {
     vecs_per_tg: usize,
@@ -672,6 +732,22 @@ mod gemv_wide_tests {
         check(DatumType::F16, 3, 130, 260)?;
         check(DatumType::F16, 7, 63, 2048)?;
         check(DatumType::F32, 4, 2, 512)
+    }
+
+    // Skinny f16 through the real MlxGemm dispatch: on an M3-or-later GPU this
+    // is the gemv_wide path, elsewhere the pre-existing one.
+    #[test]
+    fn mlx_gemm_skinny_f16_matches_reference() -> TractResult<()> {
+        for m in 2..=15 {
+            crate::kernels::matmul::tests::run_mmm_test_case::<MlxGemm>(
+                (1, m, 256, 128),
+                false,
+                true,
+                DatumType::F16,
+                DatumType::F16,
+            )?;
+        }
+        Ok(())
     }
 
     #[test]
