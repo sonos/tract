@@ -2,6 +2,7 @@ mod basic;
 mod ggml_gemm;
 pub mod mfa;
 mod mlx_gemm;
+pub mod mlx_sdpa;
 
 pub use basic::BasicMatMul;
 pub use ggml_gemm::GgmlGemm;
