@@ -32,7 +32,8 @@ const BASIC_MAT_MUL: &str = include_str!("matmul/basic/basic_mat_mul.metal");
 const ARRAY_OPS: &str = include_str!("array/array_ops.metal");
 const BIN_OPS: &str = include_str!("bin_ops.metal");
 const NN_OPS: &str = concat!(include_str!("nn/nn_ops.metal"), include_str!("nn/pool.metal"));
-const CONV_OPS: &str = include_str!("conv.metal");
+const CONV_OPS: &str = include_str!("conv/direct_conv.metal");
+const MLX_CONV: &str = include_str!("conv/mlx_conv.metal");
 const ELEMENT_WISE_OPS: &str = include_str!("element_wise.metal");
 const FFT_OPS: &str = include_str!("fft.metal");
 const GDN_RECURRENT: &str = include_str!("gdn_recurrent.metal");
@@ -53,6 +54,7 @@ pub enum LibraryName {
     BinOps,
     ArrayOps,
     ConvOps,
+    MlxConv,
     NNOps,
     ElementWiseOps,
     Ggml,
@@ -68,6 +70,7 @@ impl LibraryName {
             Self::ArrayOps => LibraryContent::Source(ARRAY_OPS),
             Self::BinOps => LibraryContent::Source(BIN_OPS),
             Self::ConvOps => LibraryContent::Source(CONV_OPS),
+            Self::MlxConv => LibraryContent::Source(MLX_CONV),
             Self::NNOps => LibraryContent::Source(NN_OPS),
             Self::ElementWiseOps => LibraryContent::Source(ELEMENT_WISE_OPS),
             Self::MlxGemm => LibraryContent::Source(MLX_GEMM),
