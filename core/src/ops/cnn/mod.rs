@@ -11,12 +11,12 @@ mod sumpool;
 
 pub use self::conv::{Conv, KernelFormat};
 pub use self::deconv::Deconv;
-pub use self::maxpool::MaxPool;
+pub use self::maxpool::{MaxPool, OptMaxPool};
 pub use self::padding::PaddingSpec;
 pub use self::patch_axis::PatchAxis;
 pub use self::patches::{Patch, PatchSpec};
 pub use self::pools::PoolSpec;
-pub use self::sumpool::SumPool;
+pub use self::sumpool::{OptSumPool, SumPool};
 
 use super::array::MultiBroadcastTo;
 
