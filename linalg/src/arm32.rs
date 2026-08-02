@@ -30,11 +30,12 @@ fn cpu_part() -> Option<usize> {
     })
 }
 
-fn has_neon() -> bool {
+pub(crate) fn has_neon() -> bool {
     if let Some(forced) = crate::knobs::TRACT_CPU_ARM32_NEON.get() {
         return forced;
     }
-    has_neon_cpuinfo().unwrap_or(false)
+    static NEON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *NEON.get_or_init(|| has_neon_cpuinfo().unwrap_or(false))
 }
 
 pub fn plug(ops: &mut Ops) {
