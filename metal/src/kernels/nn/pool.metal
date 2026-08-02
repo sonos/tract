@@ -114,6 +114,44 @@ template <typename T>
     output[out_idx] = T(acc);
 }
 
+// Channels-first variant: the contiguous axis is now width, so one thread owns
+// one (n, c, oh, ow) and consecutive threads walk the row.
+template <typename T>
+[[kernel]] void max_pool_2d_nchw(
+    const device T* input [[buffer(0)]],
+    device T* output [[buffer(1)]],
+    const constant PoolParams& p [[buffer(2)]],
+    uint3 gid [[thread_position_in_grid]]) {
+    const int ow = int(gid.x);
+    const int oh = int(gid.y);
+    const int rest = int(gid.z);
+    const int c = rest % p.c;
+    const int n = rest / p.c;
+    if (ow >= p.ow || oh >= p.oh || n >= p.n) {
+        return;
+    }
+
+    const int h_start = oh * p.stride_h - p.pad_h;
+    const int w_start = ow * p.stride_w - p.pad_w;
+    const int64_t plane = (int64_t(n) * p.c + c);
+
+    T best = T(-INFINITY);
+    for (int kh = 0; kh < p.kh; ++kh) {
+        const int ih = h_start + kh * p.dil_h;
+        if (ih < 0 || ih >= p.ih) {
+            continue;
+        }
+        for (int kw = 0; kw < p.kw; ++kw) {
+            const int iw = w_start + kw * p.dil_w;
+            if (iw < 0 || iw >= p.iw) {
+                continue;
+            }
+            best = max(best, input[(plane * p.ih + ih) * p.iw + iw]);
+        }
+    }
+    output[(plane * p.oh + oh) * p.ow + ow] = best;
+}
+
 #define instantiate_pool(name, tname, itype)                                  \
     template [[host_name(#name "_" #tname)]] [[kernel]] void name<itype>(     \
         const device itype* input [[buffer(0)]],                              \
@@ -125,3 +163,5 @@ instantiate_pool(max_pool_2d, f32, float)
 instantiate_pool(max_pool_2d, f16, half)
 instantiate_pool(sum_pool_2d, f32, float)
 instantiate_pool(sum_pool_2d, f16, half)
+instantiate_pool(max_pool_2d_nchw, f32, float)
+instantiate_pool(max_pool_2d_nchw, f16, half)

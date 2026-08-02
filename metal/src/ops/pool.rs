@@ -86,7 +86,9 @@ impl TypedOp for MetalPool {
 crate::register_metal_op!(OptMaxPool, |source, node, op| {
     let facts = source.node_input_facts(node.id)?;
     // an index output would need a second buffer the kernel does not write
-    if op.with_index_outputs.is_some() || !metal_pool_supported(&op.pool_spec, facts[0]) {
+    if op.with_index_outputs.is_some()
+        || !metal_pool_supported(&op.pool_spec, PoolKind::Max, facts[0])
+    {
         return Ok(None);
     }
     Ok(Some(Box::new(MetalPool { pool_spec: op.pool_spec.clone(), kind: PoolKindOp::Max })
@@ -95,7 +97,8 @@ crate::register_metal_op!(OptMaxPool, |source, node, op| {
 
 crate::register_metal_op!(OptSumPool, |source, node, op| {
     let facts = source.node_input_facts(node.id)?;
-    if !metal_pool_supported(&op.pool_spec, facts[0]) {
+    let kind = PoolKind::Sum { count_include_pad: op.count_include_pad, normalize: op.normalize };
+    if !metal_pool_supported(&op.pool_spec, kind, facts[0]) {
         return Ok(None);
     }
     Ok(Some(Box::new(MetalPool {
@@ -109,7 +112,9 @@ crate::register_metal_op!(OptSumPool, |source, node, op| {
 // optimize first.
 crate::register_metal_op!(MaxPool, |source, node, op| {
     let facts = source.node_input_facts(node.id)?;
-    if op.with_index_outputs.is_some() || !metal_pool_supported(&op.pool_spec, facts[0]) {
+    if op.with_index_outputs.is_some()
+        || !metal_pool_supported(&op.pool_spec, PoolKind::Max, facts[0])
+    {
         return Ok(None);
     }
     Ok(Some(Box::new(MetalPool { pool_spec: op.pool_spec.clone(), kind: PoolKindOp::Max })
@@ -118,7 +123,8 @@ crate::register_metal_op!(MaxPool, |source, node, op| {
 
 crate::register_metal_op!(SumPool, |source, node, op| {
     let facts = source.node_input_facts(node.id)?;
-    if !metal_pool_supported(&op.pool_spec, facts[0]) {
+    let kind = PoolKind::Sum { count_include_pad: op.count_include_pad, normalize: op.normalize };
+    if !metal_pool_supported(&op.pool_spec, kind, facts[0]) {
         return Ok(None);
     }
     Ok(Some(Box::new(MetalPool {
