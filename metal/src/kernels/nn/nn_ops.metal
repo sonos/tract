@@ -1,3 +1,4 @@
+#include <metal_limits>
 #include <metal_math>
 #include <metal_stdlib>
 
@@ -785,3 +786,71 @@ template [[host_name("nn_ops::apply_rope_nd3_f16")]] [[kernel]] apply_rope_nd3_t
     apply_rope_nd3<half>;
 template [[host_name("nn_ops::apply_rope_nd4_f16")]] [[kernel]] apply_rope_nd4_t
     apply_rope_nd4<half>;
+
+// Max pooling over two spatial axes. Strides are passed for every axis, so
+// NCHW and NHWC share this kernel; positions falling in the padding are skipped
+// rather than compared, matching the CPU op's `min_value()` seed for a window
+// that is entirely padding. Each thread owns one output element.
+//
+// params layout: [n, c, in_h, in_w, out_h, out_w, k_h, k_w, s_h, s_w,
+//                 d_h, d_w, pad_h, pad_w,
+//                 in_n, in_c, in_hs, in_ws, out_n, out_c, out_hs, out_ws]
+template <typename T>
+[[kernel]] void max_pool_2d(device const void *input_b [[buffer(0)]],
+                            device void *output_b [[buffer(1)]],
+                            constant const int32_t *params [[buffer(2)]],
+                            uint3 tpig [[thread_position_in_grid]]) {
+    const int32_t c = params[1];
+    const int32_t in_h = params[2];
+    const int32_t in_w = params[3];
+    const int32_t out_h = params[4];
+    const int32_t out_w = params[5];
+    const int32_t k_h = params[6];
+    const int32_t k_w = params[7];
+    const int32_t s_h = params[8];
+    const int32_t s_w = params[9];
+    const int32_t d_h = params[10];
+    const int32_t d_w = params[11];
+    const int32_t pad_h = params[12];
+    const int32_t pad_w = params[13];
+
+    const int32_t ow = (int32_t)tpig.x;
+    const int32_t oh = (int32_t)tpig.y;
+    const int32_t nc = (int32_t)tpig.z;
+
+    if (ow >= out_w || oh >= out_h)
+        return;
+
+    const int32_t n_idx = nc / c;
+    const int32_t c_idx = nc % c;
+
+    device const T *input = (device const T *)input_b;
+    device T *output = (device T *)output_b;
+
+    const int32_t in_base = n_idx * params[14] + c_idx * params[15];
+    T best = numeric_limits<T>::lowest();
+    for (int32_t kh = 0; kh < k_h; ++kh) {
+        const int32_t ih = oh * s_h - pad_h + kh * d_h;
+        if (ih < 0 || ih >= in_h)
+            continue;
+        for (int32_t kw = 0; kw < k_w; ++kw) {
+            const int32_t iw = ow * s_w - pad_w + kw * d_w;
+            if (iw < 0 || iw >= in_w)
+                continue;
+            const T v = input[in_base + ih * params[16] + iw * params[17]];
+            if (v > best)
+                best = v;
+        }
+    }
+    output[n_idx * params[18] + c_idx * params[19] + oh * params[20] + ow * params[21]] = best;
+}
+
+typedef decltype(max_pool_2d<float>) max_pool_2d_t;
+
+#define INSTANTIATE_MAX_POOL_2D(tname, type)                                   \
+    template [[host_name(                                                      \
+        "nn_ops::max_pool_2d_" #tname)]] [[kernel]] max_pool_2d_t              \
+        max_pool_2d<type>;
+
+INSTANTIATE_MAX_POOL_2D(f32, float)
+INSTANTIATE_MAX_POOL_2D(f16, half)

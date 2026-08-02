@@ -1,6 +1,7 @@
 pub mod apply_rope;
 pub mod gelu_approximate;
 pub mod leaky_relu;
+pub mod max_pool;
 pub mod reduce;
 pub mod rms_norm;
 pub mod scaled_masked_softmax;
@@ -12,6 +13,8 @@ pub use gelu_approximate::GeluApproximate;
 pub use gelu_approximate::metal_gelu_approximate_dispatch;
 pub use leaky_relu::LeakyRelu;
 pub use leaky_relu::metal_leaky_relu_dispatch;
+pub use max_pool::MaxPool2d;
+pub use max_pool::metal_max_pool_dispatch;
 pub use reduce::{Reducer, metal_reduce_launch};
 pub use rms_norm::RmsNorm;
 pub use rms_norm::metal_rms_norm_dispatch;
@@ -38,6 +41,12 @@ pub fn all_functions() -> Vec<String> {
         tract_gpu::tensor::DeviceTensor::SUPPORTED_DT
             .into_iter()
             .flat_map(|dt| Softmax.kernel_name(dt).into_iter()),
+    );
+
+    functions.extend(
+        tract_gpu::tensor::DeviceTensor::SUPPORTED_DT
+            .into_iter()
+            .flat_map(|dt| MaxPool2d.kernel_name(dt).into_iter()),
     );
 
     functions.extend(tract_gpu::tensor::DeviceTensor::SUPPORTED_DT.into_iter().flat_map(|dt| {

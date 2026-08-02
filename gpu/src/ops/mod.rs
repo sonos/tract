@@ -12,6 +12,7 @@ pub mod gather;
 pub mod gelu_approximate;
 pub mod iff;
 pub mod leaky_relu;
+pub mod max_pool;
 pub mod pad;
 pub mod pulse;
 pub mod reduce;
