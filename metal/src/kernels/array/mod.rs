@@ -3,6 +3,7 @@ mod copy;
 mod diag_gather;
 mod dispatch;
 mod gather;
+mod resize;
 mod rotate_half;
 
 pub use cast::Cast;
@@ -13,6 +14,9 @@ pub use diag_gather::metal_diag_gather_dispatch;
 pub use dispatch::metal_copy_nd_dispatch;
 pub use gather::Gather;
 pub use gather::metal_gather_dispatch;
+pub use resize::ResizeAxis;
+pub use resize::metal_resize;
+pub use resize::metal_resize_axis_dispatch;
 pub use rotate_half::RotateHalf;
 pub use rotate_half::metal_rotate_half_dispatch;
 
@@ -48,6 +52,12 @@ pub fn all_functions() -> Vec<String> {
         tract_gpu::tensor::DeviceTensor::SUPPORTED_DT
             .into_iter()
             .flat_map(|dt| Gather.kernel_name(dt).into_iter()),
+    );
+
+    functions.extend(
+        tract_gpu::tensor::DeviceTensor::SUPPORTED_DT
+            .into_iter()
+            .flat_map(|dt| ResizeAxis.kernel_name(dt).into_iter()),
     );
 
     functions.into_iter().collect()
