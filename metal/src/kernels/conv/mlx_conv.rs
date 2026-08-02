@@ -82,8 +82,24 @@ fn lcm(a: i32, b: i32) -> i32 {
 /// Whether the ported kernel can take this convolution: NHWC f16/f32, one
 /// group, rank-2 spatial, `OHWI` weights, no output padding tricks.
 pub fn mlx_conv_eligible(op: &Conv, in_facts: &[&TypedFact]) -> bool {
-    if op.group != 1 || op.q_params.is_some() {
+    if op.q_params.is_some() {
         return false;
+    }
+    if op.group != 1 {
+        // Grouped convolutions only go to the specialised kernel, and only when
+        // each group's channel counts are shaped the way it wants. Depthwise is
+        // handled by its own kernel.
+        let (c, o) = (op.pool_spec.input_channels, op.pool_spec.output_channels);
+        if op.group == 0 || !c.is_multiple_of(op.group) || !o.is_multiple_of(op.group) {
+            return false;
+        }
+        let (cg, og) = (c / op.group, o / op.group);
+        if cg == 1 && og == 1 {
+            return false;
+        }
+        if !(cg <= 4 || cg.is_multiple_of(16)) || !(og <= 16 || og.is_multiple_of(16)) {
+            return false;
+        }
     }
     if !matches!(in_facts[0].datum_type, DatumType::F16 | DatumType::F32) {
         return false;
@@ -110,9 +126,9 @@ pub fn dispatch_mlx_conv_2d(
     weights: &DeviceTensor,
     output: &DeviceTensor,
 ) -> TractResult<()> {
-    let c = op.pool_spec.input_channels;
-    let o = op.pool_spec.output_channels;
-    if (c <= 4 || c.is_multiple_of(16)) && (o <= 16 || o.is_multiple_of(16)) {
+    let c = op.pool_spec.input_channels / op.group;
+    let o = op.pool_spec.output_channels / op.group;
+    if op.group > 1 || ((c <= 4 || c.is_multiple_of(16)) && (o <= 16 || o.is_multiple_of(16))) {
         dispatch_mlx_conv_2d_specialized(stream, op, input, weights, output)
     } else {
         dispatch_mlx_conv_2d_general(stream, op, input, weights, output)
@@ -270,8 +286,21 @@ pub fn dispatch_mlx_conv_2d_general(
 /// Runtime counterpart of `mlx_conv_supported`, checked against the device
 /// tensors actually being dispatched.
 pub fn mlx_conv_dispatchable(op: &Conv, input: &DeviceTensor, weights: &DeviceTensor) -> bool {
-    if op.group != 1 || op.q_params.is_some() || op.kernel_fmt != KernelFormat::OHWI {
+    if op.q_params.is_some() || op.kernel_fmt != KernelFormat::OHWI {
         return false;
+    }
+    let (c, o) = (op.pool_spec.input_channels, op.pool_spec.output_channels);
+    if op.group != 1 {
+        if op.group == 0 || !c.is_multiple_of(op.group) || !o.is_multiple_of(op.group) {
+            return false;
+        }
+        let (cg, og) = (c / op.group, o / op.group);
+        if (cg == 1 && og == 1)
+            || !(cg <= 4 || cg.is_multiple_of(16))
+            || !(og <= 16 || og.is_multiple_of(16))
+        {
+            return false;
+        }
     }
     if !matches!(input.datum_type(), DatumType::F16 | DatumType::F32)
         || input.datum_type() != weights.datum_type()
@@ -473,15 +502,18 @@ pub fn dispatch_mlx_conv_2d_specialized(
         in_strides: to4(input.strides()),
         wt_strides: to4(weights.strides()),
         out_strides: to4(output.strides()),
-        groups: 1,
+        groups: op.group as i32,
         flip: false,
     };
 
+    let groups = op.group as i32;
+    let c_per_group = c / groups;
+    let o_per_group = o / groups;
     let implicit_m = n * o_s[0] * o_s[1];
-    let implicit_n = o;
-    let implicit_k = w_s[0] * w_s[1] * c;
+    let implicit_n = o_per_group;
+    let implicit_k = w_s[0] * w_s[1] * c_per_group;
     let (mut wm, mut wn) = (2i32, 2i32);
-    let bm = if implicit_m >= 8192 && c >= 64 { 64 } else { 32 };
+    let bm = if implicit_m >= 8192 && c_per_group >= 64 { 64 } else { 32 };
     let mut bn = if bm == 64 || implicit_n >= 64 { 64 } else { 32 };
     let bk = 16i32;
     if implicit_n <= 16 {
@@ -490,11 +522,11 @@ pub fn dispatch_mlx_conv_2d_specialized(
         wn = 1;
     }
 
-    let channel_k_iters = ceil_div(c, bk);
-    let (gemm_k_iterations, channel_spec) = if c <= 2 {
-        (ceil_div(implicit_k, bk), c)
-    } else if c <= 4 {
-        (ceil_div(w_s[0] * w_s[1] * 4, bk), c)
+    let channel_k_iters = ceil_div(c_per_group, bk);
+    let (gemm_k_iterations, channel_spec) = if c_per_group <= 2 {
+        (ceil_div(implicit_k, bk), c_per_group)
+    } else if c_per_group <= 4 {
+        (ceil_div(w_s[0] * w_s[1] * 4, bk), c_per_group)
     } else {
         (w_s[0] * w_s[1] * channel_k_iters, 0)
     };
@@ -535,7 +567,11 @@ pub fn dispatch_mlx_conv_2d_specialized(
         encoder.set_slice(3, std::slice::from_ref(&conv_params));
         encoder.set_slice(4, std::slice::from_ref(&gemm_params));
         encoder.dispatch_thread_groups(
-            MTLSize { width: gemm_params.tiles_n as _, height: gemm_params.tiles_m as _, depth: 1 },
+            MTLSize {
+                width: gemm_params.tiles_n as _,
+                height: gemm_params.tiles_m as _,
+                depth: groups as _,
+            },
             MTLSize { width: 32, height: wn as _, depth: wm as _ },
         );
     });
