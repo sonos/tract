@@ -1,7 +1,7 @@
 use crate::internal::*;
 use crate::ops::array::Tile;
 
-/// Maps an output coordinate back to the input axis. The four ONNX coordinate
+/// Maps an output coordinate back to the input axis. The ONNX coordinate
 /// transformation modes that have a well-defined inverse without an input ROI.
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum CoordTransformer {
@@ -9,6 +9,7 @@ pub enum CoordTransformer {
     AlignCorners,
     Asymmetric,
     PytorchHalfPixel,
+    HalfPixelSymmetric,
 }
 
 impl CoordTransformer {
@@ -28,8 +29,13 @@ impl CoordTransformer {
                 if len_out > 1 {
                     (x_out as f32 + 0.5) / scale - 0.5
                 } else {
-                    0.0
+                    -0.5
                 }
+            }
+            CoordTransformer::HalfPixelSymmetric => {
+                let adjustment = len_out as f32 / (scale * len_in as f32);
+                let offset = len_in as f32 / 2.0 * (1.0 - adjustment);
+                offset + (x_out as f32 + 0.5) / scale - 0.5
             }
         }
     }
@@ -40,6 +46,7 @@ impl CoordTransformer {
             CoordTransformer::AlignCorners => "align_corners",
             CoordTransformer::Asymmetric => "asymmetric",
             CoordTransformer::PytorchHalfPixel => "pytorch_half_pixel",
+            CoordTransformer::HalfPixelSymmetric => "half_pixel_symmetric",
         }
     }
 
@@ -49,6 +56,7 @@ impl CoordTransformer {
             "align_corners" => CoordTransformer::AlignCorners,
             "asymmetric" => CoordTransformer::Asymmetric,
             "pytorch_half_pixel" => CoordTransformer::PytorchHalfPixel,
+            "half_pixel_symmetric" => CoordTransformer::HalfPixelSymmetric,
             s => bail!("coordinate_transformation_mode: {s}"),
         })
     }
@@ -79,6 +87,47 @@ impl Interpolator {
             "cubic" => Interpolator::Cubic,
             s => bail!("mode: {s}"),
         })
+    }
+}
+
+/// Number of input taps feeding one output element. Antialiasing widens the
+/// footprint of `Linear` and `Cubic` by `1/scale` when downscaling, which is
+/// what turns the interpolation into a low-pass filter.
+pub fn window_size(interpolator: &Interpolator, antialias: bool, scale: f32) -> usize {
+    let support = match interpolator {
+        Interpolator::Nearest | Interpolator::Linear => 1.0f32,
+        Interpolator::Cubic => 2.0,
+    };
+    if !antialias || scale >= 1.0 || matches!(interpolator, Interpolator::Nearest) {
+        return 2 * support as usize;
+    }
+    let first = (-support / scale).floor() as isize + 1;
+    (2 - 2 * first) as usize
+}
+
+/// Triangular kernel, low-passed by `scale` when antialiasing.
+pub fn linear_weights(r: f32, scale: f32, antialias: bool, weights: &mut [f32]) {
+    let scale = if antialias { scale.min(1.0) } else { 1.0 };
+    fill_weights(r, scale, weights, |x| (1.0 - x.abs()).clamp(0.0, 1.0));
+}
+
+/// Cubic convolution kernel of coefficient `a`, low-passed by `scale` when
+/// antialiasing.
+pub fn cubic_weights(r: f32, scale: f32, a: f32, antialias: bool, weights: &mut [f32]) {
+    let scale = if antialias { scale.min(1.0) } else { 1.0 };
+    fill_weights(r, scale, weights, |x| cubic_kernel(x, a));
+}
+
+/// Evaluates `kernel` at the offset of each tap in the window from the source
+/// coordinate, then renormalizes when the kernel was stretched by `scale`.
+fn fill_weights(r: f32, scale: f32, weights: &mut [f32], kernel: impl Fn(f32) -> f32) {
+    let first = 1.0 - (weights.len() / 2) as f32;
+    for (k, w) in weights.iter_mut().enumerate() {
+        *w = kernel((first + k as f32 - r) * scale);
+    }
+    if scale != 1.0 {
+        let sum: f32 = weights.iter().sum();
+        weights.iter_mut().for_each(|w| *w /= sum);
     }
 }
 
@@ -125,6 +174,122 @@ impl Nearest {
             "round_prefer_ceil" => Nearest::RoundPreferCeil,
             s => bail!("nearest_mode: {s}"),
         })
+    }
+}
+
+/// Resampling plan for one axis: for each output index, the `window` input taps
+/// it reads (already clamped into the axis) and their weights. `extrapolated`
+/// flags output indices that map outside the input, which are filled with a
+/// constant instead of being interpolated.
+#[derive(Clone, Debug)]
+pub struct AxisPlan {
+    pub window: usize,
+    pub indices: Vec<usize>,
+    pub weights: Vec<f32>,
+    pub extrapolated: Vec<bool>,
+}
+
+/// Builds the resampling plan for one axis. `coord` maps an output index to a
+/// source coordinate, or `None` when it falls outside the input. `weights`
+/// fills a window for a fractional offset in `(0, 1]`, the tap at index `k`
+/// sitting `k + 1 - window / 2` cells right of the source cell. With
+/// `exclude_outside` the taps falling off the axis are dropped and the
+/// remaining weights renormalized; otherwise they read the edge value.
+pub fn plan_axis(
+    len_in: usize,
+    len_out: usize,
+    window: usize,
+    exclude_outside: bool,
+    coord: impl Fn(usize) -> Option<f32>,
+    weights: impl Fn(f32, &mut [f32]),
+) -> AxisPlan {
+    let mut plan = AxisPlan {
+        window,
+        indices: vec![0; window * len_out],
+        weights: vec![0.0; window * len_out],
+        extrapolated: vec![false; len_out],
+    };
+    for x in 0..len_out {
+        let Some(x_in) = coord(x) else {
+            plan.extrapolated[x] = true;
+            continue;
+        };
+        let cell = x_in.ceil() - 1.0;
+        let taps = &mut plan.weights[x * window..][..window];
+        weights(x_in - cell, taps);
+        let first = cell as isize + 1 - (window / 2) as isize;
+        for (k, tap) in taps.iter_mut().enumerate() {
+            let raw = first + k as isize;
+            if exclude_outside && (raw < 0 || raw >= len_in as isize) {
+                *tap = 0.0;
+            }
+            plan.indices[x * window + k] = raw.clamp(0, len_in as isize - 1) as usize;
+        }
+        if exclude_outside {
+            let sum: f32 = taps.iter().sum();
+            if sum != 0.0 {
+                taps.iter_mut().for_each(|w| *w /= sum);
+            }
+        }
+    }
+    plan
+}
+
+/// Whether `plan` is exactly pixel replication — every output reading the
+/// single input `x / scale` — which is the pattern
+/// [`lower_nearest_integer_upsample`] produces. Only some coordinate transform
+/// and tie-break pairs round that way, so the plan itself is the arbiter.
+pub fn is_pixel_replication(plan: &AxisPlan, scale: usize) -> bool {
+    !plan.extrapolated.contains(&true)
+        && plan
+            .indices
+            .chunks_exact(plan.window)
+            .zip(plan.weights.chunks_exact(plan.window))
+            .enumerate()
+            .all(|(x, (indices, weights))| {
+                let mut taps = indices.iter().zip(weights).filter(|(_, w)| **w != 0.0);
+                taps.next().is_some_and(|(i, w)| *w == 1.0 && *i == x / scale)
+                    && taps.next().is_none()
+            })
+}
+
+/// Resamples `axis` of a row-major `input` of shape `shape` into `output`,
+/// which must be sized for the same shape with `axis` set to the plan length.
+pub fn resample_axis(
+    input: &[f32],
+    shape: &[usize],
+    axis: usize,
+    plan: &AxisPlan,
+    extrapolation_value: f32,
+    output: &mut [f32],
+) {
+    let len_in = shape[axis];
+    let len_out = plan.extrapolated.len();
+    let inner: usize = shape[axis + 1..].iter().product();
+    let window = plan.window;
+    if len_in * inner == 0 || len_out * inner == 0 {
+        return;
+    }
+    for (src, dst) in
+        input.chunks_exact(len_in * inner).zip(output.chunks_exact_mut(len_out * inner))
+    {
+        for (x, dst) in dst.chunks_exact_mut(inner).enumerate() {
+            if plan.extrapolated[x] {
+                dst.fill(extrapolation_value);
+                continue;
+            }
+            dst.fill(0.0);
+            let indices = &plan.indices[x * window..][..window];
+            let weights = &plan.weights[x * window..][..window];
+            for (&i, &w) in indices.iter().zip(weights) {
+                if w == 0.0 {
+                    continue;
+                }
+                for (d, s) in dst.iter_mut().zip(&src[i * inner..][..inner]) {
+                    *d += w * s;
+                }
+            }
+        }
     }
 }
 
@@ -186,6 +351,24 @@ impl Resize {
             input_sizes,
         );
     }
+
+    fn plan_axis(&self, scale: f32, len_in: usize, len_out: usize) -> AxisPlan {
+        let window = window_size(&self.interpolator, false, scale);
+        let coord = |x| Some(self.coord_transformer.transform(x, scale, len_in, len_out));
+        match self.interpolator {
+            Interpolator::Linear => plan_axis(len_in, len_out, window, false, coord, |r, w| {
+                linear_weights(r, scale, false, w)
+            }),
+            Interpolator::Cubic => plan_axis(len_in, len_out, window, false, coord, |r, w| {
+                cubic_weights(r, scale, -0.75, false, w)
+            }),
+            Interpolator::Nearest => plan_axis(len_in, len_out, window, false, coord, |r, w| {
+                let right = r == 1.0 || self.nearest.prefers_right(r);
+                w[0] = !right as u8 as f32;
+                w[1] = right as u8 as f32;
+            }),
+        }
+    }
 }
 
 impl Op for Resize {
@@ -217,67 +400,21 @@ impl EvalOp for Resize {
             output_shape.iter().zip(inputs[0].shape()).map(|(o, i)| *o as f32 / *i as f32).collect()
         };
         let input = inputs.remove(0).into_tensor();
-        let mut data = if input.datum_type() == f32::datum_type() {
-            input.into_plain_array::<f32>()?
-        } else {
-            input.cast_to::<f32>()?.into_owned().into_plain_array::<f32>()?
-        };
-        for (axis, scale) in scales.into_iter().enumerate().filter(|(_, s)| *s != 1.0) {
-            let mut new_shape: TVec<usize> = data.shape().into();
-            new_shape[axis] = output_shape[axis];
-            let input_len = data.shape()[axis];
-            data = match self.interpolator {
-                Interpolator::Cubic => {
-                    let a = -0.75f32;
-                    tract_ndarray::ArrayD::from_shape_fn(&*new_shape, |co_o| -> f32 {
-                        let x_out = co_o[axis];
-                        let x_in = self.coord_transformer.transform(
-                            x_out,
-                            scale,
-                            input_len,
-                            new_shape[axis],
-                        );
-                        let x_floor = x_in.floor() as isize;
-                        let t = x_in - x_floor as f32;
-                        let mut co_i = co_o;
-                        let mut acc = 0.0f32;
-                        for j in -1..=2isize {
-                            let w = cubic_kernel(t - j as f32, a);
-                            let idx = (x_floor + j).clamp(0, input_len as isize - 1) as usize;
-                            co_i[axis] = idx;
-                            acc += w * data[&co_i];
-                        }
-                        acc
-                    })
-                }
-                _ => tract_ndarray::ArrayD::from_shape_fn(&*new_shape, |co_o| -> f32 {
-                    let x_out = co_o[axis];
-                    let x_in =
-                        self.coord_transformer.transform(x_out, scale, input_len, new_shape[axis]);
-                    let mut co_i = co_o;
-                    let x_floor = x_in.floor() as isize;
-                    let x_left = x_floor.clamp(0, input_len as isize - 1) as usize;
-                    co_i[axis] = x_left;
-                    let y_left = data[&co_i];
-                    let x_right = (x_floor + 1).clamp(0, input_len as isize - 1) as usize;
-                    co_i[axis] = x_right;
-                    let y_right = data[&co_i];
-                    let x_frac = x_in - x_floor as f32;
-                    match self.interpolator {
-                        Interpolator::Linear => y_left * (1.0 - x_frac) + y_right * x_frac,
-                        Interpolator::Nearest => {
-                            if self.nearest.prefers_right(x_frac) {
-                                y_right
-                            } else {
-                                y_left
-                            }
-                        }
-                        Interpolator::Cubic => unreachable!(),
-                    }
-                }),
+        let input = input.cast_to::<f32>()?;
+        let mut shape: TVec<usize> = input.shape().into();
+        let mut data: Vec<f32> = input.try_as_plain()?.as_slice::<f32>()?.to_vec();
+        for (axis, scale) in scales.into_iter().enumerate() {
+            let (len_in, len_out) = (shape[axis], output_shape[axis]);
+            if len_in == len_out && scale == 1.0 {
+                continue;
             }
+            let plan = self.plan_axis(scale, len_in, len_out);
+            let mut resampled = vec![0f32; data.len() / len_in * len_out];
+            resample_axis(&data, &shape, axis, &plan, 0.0, &mut resampled);
+            data = resampled;
+            shape[axis] = len_out;
         }
-        let out = data.into_tensor();
+        let out = tract_ndarray::ArrayD::from_shape_vec(&*shape, data)?.into_tensor();
         let out =
             if out.datum_type() == input_dt { out } else { out.cast_to_dt(input_dt)?.into_owned() };
         Ok(tvec!(out.into_tvalue()))
@@ -319,38 +456,19 @@ impl TypedOp for Resize {
             let Some(len_in) = probe_length(&self.coord_transformer, &input_shape[axis]) else {
                 return Ok(None);
             };
-            rule_if!(is_pixel_replication(&self.coord_transformer, len_in, scale, |frac| self
-                .nearest
-                .prefers_right(frac)));
+            rule_if!(is_pixel_replication(
+                &self.plan_axis(scale as f32, len_in, len_in * scale),
+                scale
+            ));
         }
 
         lower_nearest_integer_upsample(model, node, &int_scales)
     }
 }
 
-/// Whether nearest-neighbour resampling by `scale` reads input `x / scale` for
-/// every output `x`, which is the pattern [`lower_nearest_integer_upsample`]
-/// produces. Only some coordinate transform and tie-break pairs round that way,
-/// so both Resize declutters must check before lowering.
-pub fn is_pixel_replication(
-    coord_transformer: &CoordTransformer,
-    len_in: usize,
-    scale: usize,
-    prefers_right: impl Fn(f32) -> bool,
-) -> bool {
-    let len_out = len_in * scale;
-    (0..len_out).all(|x| {
-        let x_in = coord_transformer.transform(x, scale as f32, len_in, len_out);
-        let x_floor = x_in.floor() as isize;
-        let picked =
-            (x_floor + prefers_right(x_in - x_floor as f32) as isize).clamp(0, len_in as isize - 1);
-        picked == (x / scale) as isize
-    })
-}
-
-/// An axis length to probe [`is_pixel_replication`] on. `HalfPixel` and
-/// `Asymmetric` map coordinates without consulting the axis lengths, so a
-/// symbolic axis can still be probed on a stand-in; the others cannot.
+/// An axis length to build a probe plan on. `HalfPixel` and `Asymmetric` map
+/// coordinates without consulting the axis lengths, so a symbolic axis can
+/// still be probed on a stand-in; the others cannot.
 pub fn probe_length(coord_transformer: &CoordTransformer, len: &TDim) -> Option<usize> {
     len.to_usize().ok().or(match coord_transformer {
         CoordTransformer::HalfPixel | CoordTransformer::Asymmetric => Some(4),
@@ -487,7 +605,14 @@ mod tests {
     }
 
     fn replicates(coord_transformer: CoordTransformer, nearest: Nearest, scale: usize) -> bool {
-        is_pixel_replication(&coord_transformer, 4, scale, |frac| nearest.prefers_right(frac))
+        let op = Resize {
+            coord_transformer,
+            interpolator: Interpolator::Nearest,
+            nearest,
+            optional_scales_input: Some(1),
+            optional_sizes_input: None,
+        };
+        is_pixel_replication(&op.plan_axis(scale as f32, 4, 4 * scale), scale)
     }
 
     #[test]
