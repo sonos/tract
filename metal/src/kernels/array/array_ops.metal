@@ -336,6 +336,51 @@ typedef decltype(gather<float>) gather_t;
     template [[host_name(                                                      \
         "array_ops::gather_" #tname)]] [[kernel]] gather_t gather<type>;
 
+// Resample one axis against a host-built plan: every output index owns a window
+// of `window` input indices (already clamped) and their weights, so nearest,
+// linear, cubic and their antialiased variants all run through this kernel.
+// The axes around the resampled one are flattened into `outer` and `inner`.
+//
+// params layout: [outer, len_in, len_out, inner, window]
+template <typename T>
+[[kernel]] void resize_axis(device const void *input_b [[buffer(0)]],
+                            device void *output_b [[buffer(1)]],
+                            device const int32_t *indices [[buffer(2)]],
+                            device const float *weights [[buffer(3)]],
+                            constant const int32_t *params [[buffer(4)]],
+                            uint3 tpig [[thread_position_in_grid]]) {
+    const int32_t len_in = params[1];
+    const int32_t len_out = params[2];
+    const int32_t inner = params[3];
+    const int32_t window = params[4];
+
+    const int32_t i = (int32_t)tpig.x;
+    const int32_t x = (int32_t)tpig.y;
+    const int32_t o = (int32_t)tpig.z;
+
+    if (i >= inner || x >= len_out)
+        return;
+
+    device const T *input = (device const T *)input_b;
+    device T *output = (device T *)output_b;
+
+    const int32_t in_base = o * len_in * inner + i;
+    float acc = 0.0f;
+    for (int32_t k = 0; k < window; ++k) {
+        const float w = weights[x * window + k];
+        if (w != 0.0f)
+            acc += w * (float)input[in_base + indices[x * window + k] * inner];
+    }
+    output[o * len_out * inner + x * inner + i] = (T)acc;
+}
+
+typedef decltype(resize_axis<float>) resize_axis_t;
+
+#define INSTANTIATE_RESIZE_AXIS(tname, type)                                   \
+    template [[host_name(                                                      \
+        "array_ops::resize_axis_" #tname)]] [[kernel]] resize_axis_t           \
+        resize_axis<type>;
+
 // Copy kernels: only u8/u16/u32/u64 (copy is type-size based)
 INSTANTIATE_COPY(u8, uint8_t)
 INSTANTIATE_COPY(u16, uint16_t)
@@ -379,3 +424,7 @@ INSTANTIATE_DIAG_GATHER(f16, half)
 // Axis Gather: f32 and f16 only (indices are int64).
 INSTANTIATE_GATHER(f32, float)
 INSTANTIATE_GATHER(f16, half)
+
+// Axis resample: f32 and f16 only (plan indices are int32, weights f32).
+INSTANTIATE_RESIZE_AXIS(f32, float)
+INSTANTIATE_RESIZE_AXIS(f16, half)
