@@ -838,4 +838,12 @@ mod mlx_conv_tests {
         }
         Ok(())
     }
+
+    // A large activation: implicit_m and the tile counts get big, and mlx has
+    // been fixing 32-bit shape arithmetic in this area upstream.
+    #[test]
+    #[ignore]
+    fn conv_large_activation_matches_cpu() -> TractResult<()> {
+        check_conv(DatumType::F32, 1, 1024, 1024, 32, 64, 3, 3, 1, 1, PaddingSpec::SameUpper)
+    }
 }
