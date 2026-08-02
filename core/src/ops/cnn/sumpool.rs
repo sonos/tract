@@ -221,10 +221,8 @@ impl OptSumPool {
                             .map(|v| *input_ptr.offset(v + input_offset as isize))
                             .sum::<T>();
 
-                        if let Some(div) = div {
-                            *values_ptr.offset(output_offset as isize + visitor.output_offset) =
-                                sum * div;
-                        }
+                        *values_ptr.offset(output_offset as isize + visitor.output_offset) =
+                            if let Some(div) = div { sum * div } else { sum };
                     }
                 }
             });
@@ -535,6 +533,33 @@ mod tests {
         .into_tensor()
         .into_tvalue();
         (model, tvec!(input))
+    }
+
+    // NNEF's `box` fragment defaults normalize to false, so this path is
+    // reachable from a model file: the sum has to actually be written.
+    #[test]
+    fn sum_pool_without_normalize_writes_the_sum() {
+        let mut model = TypedModel::default();
+        let source = model.add_source("input", f32::fact([1, 1, 4, 4])).unwrap();
+        let pool_spec = PoolSpec::new(
+            DataFormat::NCHW,
+            tvec![2, 2],
+            PaddingSpec::Valid,
+            None,
+            Some(tvec![2, 2]),
+            1,
+            1,
+        );
+        let op = SumPool { pool_spec, count_include_pad: false, normalize: false };
+        let out = model.wire_node("pool", op, &[source]).unwrap();
+        model.select_output_outlets(&out).unwrap();
+        let input = ndarray::Array4::from_shape_fn((1, 1, 4, 4), |(_, _, y, x)| (y * 4 + x) as f32)
+            .into_tensor()
+            .into_tvalue();
+        let out = model.into_runnable().unwrap().run(tvec!(input)).unwrap();
+        // windows are [0,1,4,5], [2,3,6,7], [8,9,12,13], [10,11,14,15]
+        let expected = tensor4(&[[[[10.0f32, 18.0], [42.0, 50.0]]]]);
+        out[0].close_enough(&expected, Approximation::Exact).unwrap();
     }
 
     #[test]
