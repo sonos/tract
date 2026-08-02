@@ -314,9 +314,48 @@ impl TypedOp for Resize {
             scales.iter().zip(&int_scales).all(|(&s, &i)| (s - i as f32).abs() <= 1e-5 && i != 0)
         );
         rule_if!(int_scales.iter().any(|&s| s != 1));
+        let input_shape = &model.outlet_fact(node.inputs[0])?.shape;
+        for (axis, &scale) in int_scales.iter().enumerate().filter(|&(_, &s)| s > 1) {
+            let Some(len_in) = probe_length(&self.coord_transformer, &input_shape[axis]) else {
+                return Ok(None);
+            };
+            rule_if!(is_pixel_replication(&self.coord_transformer, len_in, scale, |frac| self
+                .nearest
+                .prefers_right(frac)));
+        }
 
         lower_nearest_integer_upsample(model, node, &int_scales)
     }
+}
+
+/// Whether nearest-neighbour resampling by `scale` reads input `x / scale` for
+/// every output `x`, which is the pattern [`lower_nearest_integer_upsample`]
+/// produces. Only some coordinate transform and tie-break pairs round that way,
+/// so both Resize declutters must check before lowering.
+pub fn is_pixel_replication(
+    coord_transformer: &CoordTransformer,
+    len_in: usize,
+    scale: usize,
+    prefers_right: impl Fn(f32) -> bool,
+) -> bool {
+    let len_out = len_in * scale;
+    (0..len_out).all(|x| {
+        let x_in = coord_transformer.transform(x, scale as f32, len_in, len_out);
+        let x_floor = x_in.floor() as isize;
+        let picked =
+            (x_floor + prefers_right(x_in - x_floor as f32) as isize).clamp(0, len_in as isize - 1);
+        picked == (x / scale) as isize
+    })
+}
+
+/// An axis length to probe [`is_pixel_replication`] on. `HalfPixel` and
+/// `Asymmetric` map coordinates without consulting the axis lengths, so a
+/// symbolic axis can still be probed on a stand-in; the others cannot.
+pub fn probe_length(coord_transformer: &CoordTransformer, len: &TDim) -> Option<usize> {
+    len.to_usize().ok().or(match coord_transformer {
+        CoordTransformer::HalfPixel | CoordTransformer::Asymmetric => Some(4),
+        _ => None,
+    })
 }
 
 /// Lowers a nearest-neighbour integer upsample to Reshape → Tile → Reshape: each
@@ -445,5 +484,18 @@ mod tests {
             &[2.0, 2.0],
         );
         assert_eq!(out.shape(), &[4, 4]);
+    }
+
+    fn replicates(coord_transformer: CoordTransformer, nearest: Nearest, scale: usize) -> bool {
+        is_pixel_replication(&coord_transformer, 4, scale, |frac| nearest.prefers_right(frac))
+    }
+
+    #[test]
+    fn only_some_nearest_modes_replicate_pixels() {
+        assert!(replicates(CoordTransformer::Asymmetric, Nearest::Floor, 2));
+        assert!(replicates(CoordTransformer::HalfPixel, Nearest::RoundPreferCeil, 2));
+        assert!(replicates(CoordTransformer::HalfPixel, Nearest::RoundPreferCeil, 3));
+        assert!(!replicates(CoordTransformer::HalfPixel, Nearest::Floor, 2));
+        assert!(!replicates(CoordTransformer::Asymmetric, Nearest::RoundPreferCeil, 2));
     }
 }

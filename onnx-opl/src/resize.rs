@@ -1,6 +1,7 @@
 use tract_nnef::internal::*;
 use tract_nnef::tract_core::ops::nn::resize::{
-    self, CoordTransformer, Interpolator, cubic_kernel, lower_nearest_integer_upsample,
+    self, CoordTransformer, Interpolator, cubic_kernel, is_pixel_replication,
+    lower_nearest_integer_upsample, probe_length,
 };
 
 /// Nearest-neighbour tie-breaking, the full ONNX set. `Floor` and
@@ -309,6 +310,15 @@ impl TypedOp for Resize {
             scales.iter().zip(&int_scales).all(|(&s, &i)| (s - i as f32).abs() <= 1e-5 && i != 0)
         );
         rule_if!(int_scales.iter().any(|&s| s != 1));
+        let input_shape = &model.outlet_fact(node.inputs[0])?.shape;
+        for (axis, &scale) in int_scales.iter().enumerate().filter(|&(_, &s)| s > 1) {
+            let Some(len_in) = probe_length(&self.coord_transformer, &input_shape[axis]) else {
+                return Ok(None);
+            };
+            rule_if!(is_pixel_replication(&self.coord_transformer, len_in, scale, |frac| self
+                .nearest
+                .prefers_right(frac)));
+        }
 
         lower_nearest_integer_upsample(model, node, &int_scales)
     }

@@ -500,6 +500,7 @@ test_resize_upsample_scales_cubic_asymmetric                                    
 test_resize_upsample_scales_cubic_A_n0p5_exclude_outside                            input:X
 test_resize_upsample_scales_linear_align_corners                                    input:X not-nnef
 test_resize_upsample_sizes_cubic                                                    input:X
+test_resize_upsample_sizes_nearest_ceil_half_pixel                                  input:X
 test_rnn_seq_length
 test_round
 test_scan9_sum
