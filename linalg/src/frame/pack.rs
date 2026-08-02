@@ -697,6 +697,20 @@ unsafe fn pack_mn_major<Chunk: Copy>(
     }
 }
 
+/// Whether the 32-bit arm NEON transpose leaves may run: their mnemonics are
+/// only valid, and `pack_k_major` only routes to them, when the CPU has NEON.
+#[cfg(target_arch = "arm")]
+#[inline]
+fn armv7_has_neon() -> bool {
+    crate::arm32::has_neon()
+}
+
+#[cfg(not(target_arch = "arm"))]
+#[inline]
+fn armv7_has_neon() -> bool {
+    false
+}
+
 /// Pack a k-contiguous source block: transpose it into the k-inner packed
 /// layout, where source element `(mn, k)` of the block lands at
 /// `(mn / r) * panel_len + k * r + mn % r`. `b` points at element `(0, 0)`, and
@@ -716,19 +730,21 @@ unsafe fn pack_k_major<T: Copy>(
     mn_len: usize,
 ) {
     unsafe {
+        // The tile is vectorised on aarch64 (always) and on 32-bit arm only for
+        // the 2- and 4-byte NEON leaves, and there only when NEON is present.
+        // Any other arm case would spill 16 live tile values through the stack,
+        // so it takes the byte-identical scalar tail instead.
+        let tile = if cfg!(target_arch = "arm") {
+            armv7_has_neon() && matches!(std::mem::size_of::<T>(), 2 | 4)
+        } else {
+            true
+        };
         for panel in 0..mn_len.divceil(r) {
             let panel_mn = panel * r;
             let panel_width = r.min(mn_len - panel_mn);
             let src = b.offset(panel_mn as isize * mn_stride);
             let dst = packed.add(panel * panel_len);
-            // 32-bit arm has no vector transpose to lower a tile to, and 16 live
-            // 32-bit values overflow its register file, so a tile there is a round
-            // trip through the stack. One store per element is cheaper.
-            let tiled_mn = if cfg!(target_arch = "arm") && std::mem::size_of::<T>() == 4 {
-                0
-            } else {
-                panel_width / 4 * 4
-            };
+            let tiled_mn = if tile { panel_width / 4 * 4 } else { 0 };
             let tiled_k = k_len / 4 * 4;
             for k in (0..tiled_k).step_by(4) {
                 for x in (0..tiled_mn).step_by(4) {
@@ -772,6 +788,20 @@ unsafe fn transpose_4x4<T: Copy>(src: *const T, src_stride: isize, dst: *mut T, 
         #[cfg(target_arch = "aarch64")]
         if std::mem::size_of::<T>() == 2 && std::mem::align_of::<T>() == 2 {
             transpose_4x4_neon_16(src as _, src_stride, dst as _, dst_stride);
+            return;
+        }
+        // 32-bit arm: NEON via asm, since both the intrinsics and
+        // `#[target_feature(enable = "neon")]` are unstable on this target.
+        // Reached only through pack_k_major's tiled path, which on arm runs
+        // solely when has_neon() is true, so the NEON these emit is present.
+        #[cfg(target_arch = "arm")]
+        if std::mem::size_of::<T>() == 4 && std::mem::align_of::<T>() == 4 {
+            transpose_4x4_neon_armv7_32(src as _, src_stride, dst as _, dst_stride);
+            return;
+        }
+        #[cfg(target_arch = "arm")]
+        if std::mem::size_of::<T>() == 2 && std::mem::align_of::<T>() == 2 {
+            transpose_4x4_neon_armv7_16(src as _, src_stride, dst as _, dst_stride);
             return;
         }
         let tile: [[T; 4]; 4] = std::array::from_fn(|i| {
@@ -836,6 +866,108 @@ unsafe fn transpose_4x4_neon_16(
         vst1_u16(dst.add(dst_stride), vreinterpret_u16_u32(vtrn1_u32(ab_odd, cd_odd)));
         vst1_u16(dst.add(2 * dst_stride), vreinterpret_u16_u32(vtrn2_u32(ab_even, cd_even)));
         vst1_u16(dst.add(3 * dst_stride), vreinterpret_u16_u32(vtrn2_u32(ab_odd, cd_odd)));
+    }
+}
+
+/// 4x4 transpose of 32-bit lanes on 32-bit arm: four `vld1.32`, two `vtrn.32`,
+/// two `vswp`, four `vst1.32`, all in q0-q3. Strides count elements. NEON is
+/// enabled locally with `.fpu neon` because it cannot be turned on through
+/// `-C target-feature` on this target's stable channel.
+///
+/// # Safety
+/// The CPU must have NEON: there is no `#[target_feature(enable = "neon")]` on
+/// this target to assert it (unstable), so the caller guarantees it, which
+/// `pack_k_major` does by only tiling under `arm32::has_neon()`.
+#[cfg(target_arch = "arm")]
+#[inline(always)]
+unsafe fn transpose_4x4_neon_armv7_32(
+    src: *const u32,
+    src_stride: isize,
+    dst: *mut u32,
+    dst_stride: usize,
+) {
+    use std::arch::asm;
+    let ss = src_stride * 4;
+    let ds = (dst_stride * 4) as isize;
+    let src = src as *const u8;
+    let dst = dst as *mut u8;
+    unsafe {
+        asm!(
+            ".fpu neon",
+            "vld1.32 {{d0, d1}}, [{s0}]",
+            "vld1.32 {{d2, d3}}, [{s1}]",
+            "vld1.32 {{d4, d5}}, [{s2}]",
+            "vld1.32 {{d6, d7}}, [{s3}]",
+            "vtrn.32 q0, q1",
+            "vtrn.32 q2, q3",
+            "vswp d1, d4",
+            "vswp d3, d6",
+            "vst1.32 {{d0, d1}}, [{o0}]",
+            "vst1.32 {{d2, d3}}, [{o1}]",
+            "vst1.32 {{d4, d5}}, [{o2}]",
+            "vst1.32 {{d6, d7}}, [{o3}]",
+            s0 = in(reg) src,
+            s1 = in(reg) src.offset(ss),
+            s2 = in(reg) src.offset(2 * ss),
+            s3 = in(reg) src.offset(3 * ss),
+            o0 = in(reg) dst,
+            o1 = in(reg) dst.offset(ds),
+            o2 = in(reg) dst.offset(2 * ds),
+            o3 = in(reg) dst.offset(3 * ds),
+            out("q0") _,
+            out("q1") _,
+            out("q2") _,
+            out("q3") _,
+            options(nostack),
+        );
+    }
+}
+
+/// 4x4 transpose of 16-bit lanes on 32-bit arm, on 64-bit d registers: four
+/// `vld1.16`, two `vtrn.16`, two `vtrn.32`, four `vst1.16`. Same NEON and
+/// safety contract as [`transpose_4x4_neon_armv7_32`].
+#[cfg(target_arch = "arm")]
+#[inline(always)]
+unsafe fn transpose_4x4_neon_armv7_16(
+    src: *const u16,
+    src_stride: isize,
+    dst: *mut u16,
+    dst_stride: usize,
+) {
+    use std::arch::asm;
+    let ss = src_stride * 2;
+    let ds = (dst_stride * 2) as isize;
+    let src = src as *const u8;
+    let dst = dst as *mut u8;
+    unsafe {
+        asm!(
+            ".fpu neon",
+            "vld1.16 {{d0}}, [{s0}]",
+            "vld1.16 {{d1}}, [{s1}]",
+            "vld1.16 {{d2}}, [{s2}]",
+            "vld1.16 {{d3}}, [{s3}]",
+            "vtrn.16 d0, d1",
+            "vtrn.16 d2, d3",
+            "vtrn.32 d0, d2",
+            "vtrn.32 d1, d3",
+            "vst1.16 {{d0}}, [{o0}]",
+            "vst1.16 {{d1}}, [{o1}]",
+            "vst1.16 {{d2}}, [{o2}]",
+            "vst1.16 {{d3}}, [{o3}]",
+            s0 = in(reg) src,
+            s1 = in(reg) src.offset(ss),
+            s2 = in(reg) src.offset(2 * ss),
+            s3 = in(reg) src.offset(3 * ss),
+            o0 = in(reg) dst,
+            o1 = in(reg) dst.offset(ds),
+            o2 = in(reg) dst.offset(2 * ds),
+            o3 = in(reg) dst.offset(3 * ds),
+            out("d0") _,
+            out("d1") _,
+            out("d2") _,
+            out("d3") _,
+            options(nostack),
+        );
     }
 }
 
