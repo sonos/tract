@@ -697,6 +697,13 @@ unsafe fn pack_mn_major<Chunk: Copy>(
     }
 }
 
+/// Smallest k-contiguous block (in elements) worth transposing with the armv7
+/// NEON tile rather than the scalar tail. Below it the tile's setup does not
+/// amortise on armv7's narrow in-order NEON; the crossover sits in the gap
+/// between the small activation packs (≤3072) and the large ones (≥5120) that
+/// the wake-word models produce, and holds on both cortex-a7 and cortex-a9.
+const ARMV7_TILE_MIN_ELEMS: usize = 4096;
+
 /// Whether the 32-bit arm NEON transpose leaves may run: their mnemonics are
 /// only valid, and `pack_k_major` only routes to them, when the CPU has NEON.
 #[cfg(target_arch = "arm")]
@@ -733,9 +740,13 @@ unsafe fn pack_k_major<T: Copy>(
         // The tile is vectorised on aarch64 (always) and on 32-bit arm only for
         // the 2- and 4-byte NEON leaves, and there only when NEON is present.
         // Any other arm case would spill 16 live tile values through the stack,
-        // so it takes the byte-identical scalar tail instead.
+        // so it takes the byte-identical scalar tail instead. armv7's weak NEON
+        // also loses to the scalar store on small blocks, where the tile setup
+        // does not amortise; below ARMV7_TILE_MIN_ELEMS it takes the tail too.
         let tile = if cfg!(target_arch = "arm") {
-            armv7_has_neon() && matches!(std::mem::size_of::<T>(), 2 | 4)
+            armv7_has_neon()
+                && matches!(std::mem::size_of::<T>(), 2 | 4)
+                && k_len * mn_len >= ARMV7_TILE_MIN_ELEMS
         } else {
             true
         };
@@ -1462,6 +1473,17 @@ mod test {
         }
         k_major(9, 6, 12).check_all_widths();
         k_major(9, 30, 12).check_all_widths();
+    }
+
+    #[test]
+    fn k_major_tile_over_threshold() {
+        // Blocks past the armv7 size gate, so the NEON tile runs (not just the
+        // scalar tail the proptest's small blocks take there) while still
+        // hitting the k, panel-width, and narrow-last-panel tails.
+        k_major(129, 41, 8).check_all_widths();
+        k_major(160, 26, 16).check_all_widths();
+        k_major(130, 44, 12).check_all_widths();
+        k_major(140, 30, 8).check_all_widths();
     }
 
     #[test]
