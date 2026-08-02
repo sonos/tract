@@ -19,7 +19,9 @@ use tract_core::transform::ModelTransform;
 use tract_gpu::fact::{DeviceFact, DeviceTypedFactExt};
 use tract_gpu::rewrite_rules::rewire_syncs::rewire_syncs;
 use tract_gpu::rewrite_rules::rms_norm::remove_rms_norm_cast;
-use tract_gpu::sync::{DeviceSyncKind, sync_inputs_if_required, sync_model_outputs_if_required};
+use tract_gpu::sync::{
+    DeviceSync, DeviceSyncKind, sync_inputs_if_required, sync_model_outputs_if_required,
+};
 use tract_gpu::tensor::{DeviceTensor, IntoDevice};
 use tract_gpu::utils::as_quant_fact;
 
@@ -242,6 +244,20 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
                 sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
             let outlet_ids =
                 ops::conv::wire_metal_conv(source, node, target, &device_inputs, conv)?;
+            return sync_model_outputs_if_required(source, node, target, outlet_ids);
+        }
+        // Resize bakes its plan, so it keeps only the data input: the scales /
+        // sizes input it drops is a TDim const with no device equivalent.
+        if let Some(gpu_op) = crate::kernels::array::metal_resize(source, node)? {
+            let mut input = mapping[&node.inputs[0]];
+            if target.outlet_fact(input)?.as_device_fact().is_none() {
+                input = target.wire_node(
+                    format!("{}.to-device-0", node.name),
+                    DeviceSync::new(DeviceSyncKind::ToDevice),
+                    &[input],
+                )?[0];
+            }
+            let outlet_ids = target.wire_node(node.name.clone(), gpu_op, &[input])?;
             return sync_model_outputs_if_required(source, node, target, outlet_ids);
         }
         // Const: inline conversion, not a GPU op

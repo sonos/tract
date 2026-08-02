@@ -15,6 +15,7 @@ pub mod leaky_relu;
 pub mod pad;
 pub mod pulse;
 pub mod reduce;
+pub mod resize;
 pub mod rms_norm;
 pub mod rotate_half;
 pub mod scaled_masked_softmax;

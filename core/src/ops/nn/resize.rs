@@ -352,7 +352,8 @@ impl Resize {
         );
     }
 
-    fn plan_axis(&self, scale: f32, len_in: usize, len_out: usize) -> AxisPlan {
+    /// The resampling plan for one axis under this op's interpolator.
+    pub fn plan_axis(&self, scale: f32, len_in: usize, len_out: usize) -> AxisPlan {
         let window = window_size(&self.interpolator, false, scale);
         let coord = |x| Some(self.coord_transformer.transform(x, scale, len_in, len_out));
         match self.interpolator {
