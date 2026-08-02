@@ -44,11 +44,14 @@ pub enum PoolKind {
     },
 }
 
-/// Whether the kernel covers this pooling: rank-4 channels-last f16/f32, with
-/// static geometry and no index output.
-pub fn metal_pool_supported(pool_spec: &PoolSpec, fact: &TypedFact) -> bool {
+/// Whether the kernel covers this pooling: rank-4 f16/f32 with static geometry
+/// and no index output. Max pooling has a channels-first variant too; sum
+/// pooling stays channels-last.
+pub fn metal_pool_supported(pool_spec: &PoolSpec, kind: PoolKind, fact: &TypedFact) -> bool {
+    let layout_ok = pool_spec.data_format.c_is_last()
+        || (kind == PoolKind::Max && pool_spec.data_format.has_n());
     matches!(fact.datum_type, DatumType::F16 | DatumType::F32)
-        && pool_spec.data_format.c_is_last()
+        && layout_ok
         && fact.rank() == 4
         && pool_spec.kernel_shape.len() == 2
         && fact.shape.as_concrete().is_some()
@@ -97,10 +100,13 @@ pub fn dispatch_metal_pool(
         normalize: normalize as i32,
     };
 
+    let channels_last = pool_spec.data_format.c_is_last();
     let base = match kind {
-        PoolKind::Max => "max_pool_2d",
+        PoolKind::Max if channels_last => "max_pool_2d",
+        PoolKind::Max => "max_pool_2d_nchw",
         PoolKind::Sum { .. } => "sum_pool_2d",
     };
+    ensure!(channels_last || kind == PoolKind::Max, "Metal sum pool is channels-last only");
     let pipeline = stream.load_pipeline(LibraryName::NNOps, &format!("{base}_{tname}"))?;
 
     stream.retain_tensor(input);
@@ -112,13 +118,14 @@ pub fn dispatch_metal_pool(
         encoder.set_metal_tensor(0, input, metal::MTLResourceUsage::Read);
         encoder.set_metal_tensor(1, output, metal::MTLResourceUsage::Write);
         encoder.set_slice(2, std::slice::from_ref(&params));
-        let group_w = 32u64.min(params.c as u64).max(1);
+        let (fastest, height, depth) = if channels_last {
+            (params.c, params.ow, params.oh * params.n)
+        } else {
+            (params.ow, params.oh, params.c * params.n)
+        };
+        let group_w = 32u64.min(fastest as u64).max(1);
         encoder.dispatch_threads(
-            MTLSize {
-                width: params.c as _,
-                height: params.ow as _,
-                depth: (params.oh * params.n) as _,
-            },
+            MTLSize { width: fastest as _, height: height as _, depth: depth as _ },
             MTLSize { width: group_w, height: 1, depth: 1 },
         );
     });
@@ -142,15 +149,17 @@ mod tests {
     }
 
     fn spec(k: usize, stride: usize, padding: PaddingSpec, c: usize) -> PoolSpec {
-        PoolSpec::new(
-            DataFormat::NHWC,
-            tvec![k, k],
-            padding,
-            None,
-            Some(tvec![stride, stride]),
-            c,
-            c,
-        )
+        spec_fmt(DataFormat::NHWC, k, stride, padding, c)
+    }
+
+    fn spec_fmt(
+        data_format: DataFormat,
+        k: usize,
+        stride: usize,
+        padding: PaddingSpec,
+        c: usize,
+    ) -> PoolSpec {
+        PoolSpec::new(data_format, tvec![k, k], padding, None, Some(tvec![stride, stride]), c, c)
     }
 
     /// Run the CPU op and the Metal kernel over the same input.
@@ -192,6 +201,30 @@ mod tests {
         check(
             DatumType::F32,
             &[1, 16, 16, 32],
+            s.clone(),
+            PoolKind::Max,
+            Box::new(MaxPool::new(s, None)),
+        )
+    }
+
+    #[test]
+    fn max_pool_nchw() -> TractResult<()> {
+        let s = spec_fmt(DataFormat::NCHW, 2, 2, PaddingSpec::Valid, 24);
+        check(
+            DatumType::F32,
+            &[1, 24, 16, 16],
+            s.clone(),
+            PoolKind::Max,
+            Box::new(MaxPool::new(s, None)),
+        )
+    }
+
+    #[test]
+    fn max_pool_nchw_same_padding() -> TractResult<()> {
+        let s = spec_fmt(DataFormat::NCHW, 3, 2, PaddingSpec::SameUpper, 12);
+        check(
+            DatumType::F16,
+            &[2, 12, 11, 13],
             s.clone(),
             PoolKind::Max,
             Box::new(MaxPool::new(s, None)),
