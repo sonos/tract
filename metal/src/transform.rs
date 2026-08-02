@@ -146,6 +146,11 @@ impl ModelTransform for MetalTransform {
     }
 
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
+        // The pool translators live in `ops::pool`, which nothing else calls
+        // into; without a reference the linker drops the module and with it the
+        // inventory registrations.
+        crate::ops::pool::link_translators();
+
         self.transform_up_to_phase(model, usize::MAX)
     }
 }
