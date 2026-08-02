@@ -846,4 +846,171 @@ mod mlx_conv_tests {
     fn conv_large_activation_matches_cpu() -> TractResult<()> {
         check_conv(DatumType::F32, 1, 1024, 1024, 32, 64, 3, 3, 1, 1, PaddingSpec::SameUpper)
     }
+
+    // Grouped convolutions arrive as OIHW and the metal rule reorders them, so
+    // this drives the whole transform rather than hand-building a layout.
+    #[allow(clippy::too_many_arguments)]
+    fn check_grouped(
+        dt: DatumType,
+        n: usize,
+        ih: usize,
+        iw: usize,
+        c: usize,
+        o: usize,
+        group: usize,
+        k: usize,
+        stride: usize,
+        padding: PaddingSpec,
+    ) -> TractResult<()> {
+        use crate::MetalTransform;
+        use tract_core::transform::ModelTransform;
+        let pool_spec = PoolSpec::new(
+            DataFormat::NHWC,
+            tvec![k, k],
+            padding,
+            Some(tvec![1, 1]),
+            Some(tvec![stride, stride]),
+            c,
+            o,
+        );
+        let op = Conv { pool_spec, kernel_fmt: KernelFormat::OIHW, group, q_params: None };
+        let input = ramp(dt, &[n, ih, iw, c], 1)?;
+        let weights = ramp(dt, &[o, c / group, k, k], 2)?;
+        let bias = Tensor::zero_dt(dt, &[o])?;
+        let mut model = TypedModel::default();
+        let i = model.add_source("i", dt.fact(&[n, ih, iw, c]))?;
+        let w = model.add_const("w", weights)?;
+        let b = model.add_const("b", bias)?;
+        let out = model.wire_node("conv", op, &[i, w, b])?;
+        model.select_output_outlets(&out)?;
+        let cpu = model.clone().into_runnable()?.run(tvec![input.clone().into_tvalue()])?;
+        let metal = MetalTransform::default().transform_into(model)?;
+        let got = metal.into_runnable()?.run(tvec![input.into_tvalue()])?;
+        cpu[0]
+            .clone()
+            .into_tensor()
+            .close_enough(&got[0].clone().into_tensor(), Approximation::Approximate)
+            .with_context(|| {
+                format!("grouped dt={dt:?} {n}x{ih}x{iw}x{c}->{o} g={group} k={k} s={stride}")
+            })
+    }
+
+    #[test]
+    fn grouped_conv_2_groups() -> TractResult<()> {
+        check_grouped(DatumType::F32, 1, 14, 14, 64, 128, 2, 3, 1, PaddingSpec::SameUpper)
+    }
+
+    #[test]
+    fn grouped_conv_4_groups() -> TractResult<()> {
+        check_grouped(DatumType::F32, 1, 16, 16, 64, 64, 4, 3, 1, PaddingSpec::Valid)
+    }
+
+    #[test]
+    fn grouped_conv_stride2_f16() -> TractResult<()> {
+        check_grouped(DatumType::F16, 1, 16, 16, 128, 256, 8, 3, 2, PaddingSpec::SameUpper)
+    }
+
+    #[test]
+    fn grouped_conv_1x1() -> TractResult<()> {
+        check_grouped(DatumType::F32, 2, 8, 8, 32, 32, 2, 1, 1, PaddingSpec::Valid)
+    }
+
+    // Grouped shapes mlx would not send here must be declined, not mis-dispatched.
+    #[test]
+    fn grouped_conv_gate_matches_mlx() {
+        let mk = |c: usize, o: usize, group: usize| {
+            let pool_spec = PoolSpec::new(
+                DataFormat::NHWC,
+                tvec![3, 3],
+                PaddingSpec::SameUpper,
+                Some(tvec![1, 1]),
+                Some(tvec![1, 1]),
+                c,
+                o,
+            );
+            Conv { pool_spec, kernel_fmt: KernelFormat::OHWI, group, q_params: None }
+        };
+        let facts = |c: usize, o: usize| {
+            (
+                DatumType::F32.fact(&[1usize, 8, 8, c]),
+                DatumType::F32.fact(&[o, 3usize, 3, c]),
+                DatumType::F32.fact(&[o]),
+            )
+        };
+        // C/group = 8: neither <= 4 nor a multiple of 16
+        let (a, b, bi) = facts(32, 64);
+        assert!(!super::mlx_conv::mlx_conv_eligible(&mk(32, 64, 4), &[&a, &b, &bi]));
+        // depthwise belongs to the depthwise kernel
+        let (a, b, bi) = facts(32, 32);
+        assert!(!super::mlx_conv::mlx_conv_eligible(&mk(32, 32, 32), &[&a, &b, &bi]));
+        // C/group = 16, O/group = 32: accepted
+        let (a, b, bi) = facts(64, 128);
+        assert!(super::mlx_conv::mlx_conv_eligible(&mk(64, 128, 4), &[&a, &b, &bi]));
+    }
+
+    // Grouped (non-depthwise) shapes, ResNeXt-style, against the direct kernel.
+    //   cargo test -p tract-metal bench_grouped_conv -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn bench_grouped_conv() -> TractResult<()> {
+        use std::time::Instant;
+        let dt = DatumType::F32;
+        println!("\n  shape (H,W,C -> O, g, 3x3)        direct ms      mlx ms    gain");
+        for &(ih, iw, c, o, g) in &[
+            (56usize, 56usize, 128usize, 128usize, 4usize),
+            (56, 56, 256, 256, 16),
+            (28, 28, 256, 256, 8),
+            (28, 28, 512, 512, 32),
+            (14, 14, 512, 512, 16),
+        ] {
+            let pool_spec = PoolSpec::new(
+                DataFormat::NHWC,
+                tvec![3, 3],
+                PaddingSpec::SameUpper,
+                Some(tvec![1, 1]),
+                Some(tvec![1, 1]),
+                c,
+                o,
+            );
+            let op_dir = Conv {
+                pool_spec: pool_spec.clone(),
+                kernel_fmt: KernelFormat::OIHW,
+                group: g,
+                q_params: None,
+            };
+            let op_mlx =
+                Conv { pool_spec, kernel_fmt: KernelFormat::OHWI, group: g, q_params: None };
+            let input = ramp(dt, &[1, ih, iw, c], 1)?;
+            let w_oihw = ramp(dt, &[o, c / g, 3, 3], 2)?;
+            let w_mlx = w_oihw.clone().move_axis(1, 3)?;
+            let (d, m) = with_borrowed_metal_stream(|stream| {
+                let i = input.clone().into_device()?;
+                let wd = w_oihw.clone().into_device()?;
+                let wm = w_mlx.clone().into_device()?;
+                let out = unsafe { DeviceTensor::uninitialized_dt(dt, &[1, ih, iw, o])? };
+                let time = |f: &dyn Fn() -> TractResult<()>| -> TractResult<f64> {
+                    f()?;
+                    stream.wait_until_completed()?;
+                    let t = Instant::now();
+                    for _ in 0..10 {
+                        f()?;
+                    }
+                    stream.wait_until_completed()?;
+                    Ok(t.elapsed().as_secs_f64() / 10.0)
+                };
+                let d = time(&|| super::metal_conv_direct(stream, &op_dir, &i, &wd, None, &out))?;
+                let m = time(&|| {
+                    super::mlx_conv::dispatch_mlx_conv_2d(stream, &op_mlx, &i, &wm, &out)
+                })?;
+                Ok((d, m))
+            })?;
+            println!(
+                "  {ih}x{iw}x{c} -> {o}, g{g}      {:9.4} {:11.4} {:7.2}x",
+                d * 1e3,
+                m * 1e3,
+                d / m
+            );
+        }
+        Ok(())
+    }
 }
