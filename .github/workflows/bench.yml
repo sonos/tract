@@ -147,9 +147,9 @@ jobs:
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: write     # push to bench-data (nightly only)
-    concurrency:
-      group: bench-runner-${{ matrix.runner }}   # one bench per box at a time; never fight a running bench
-      cancel-in-progress: false
+    # No concurrency group: each box is a single self-hosted agent, so the agent
+    # serialises bench/hwbench/smoke itself (queues, never cancels). A shared
+    # group would instead cancel one PR's queued bench when another PR's lands.
     strategy:
       fail-fast: false
       matrix:
@@ -293,9 +293,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     # Bound the run so an offline/stuck target can't hang the PR report (which fans this in).
     timeout-minutes: 120
-    concurrency:
-      group: bench-dinghy-${{ matrix.device }}
-      cancel-in-progress: false
+    # No concurrency group: one sidekick agent per device serialises its own work.
     strategy:
       fail-fast: false
       matrix:
@@ -514,9 +512,6 @@ jobs:
     needs: [ prepare, build ]
     if: ${{ needs.prepare.outputs.enabled == 'true' && github.event_name == 'schedule' }}
     runs-on: ${{ matrix.runner }}
-    concurrency:
-      group: bench-runner-${{ matrix.runner }}
-      cancel-in-progress: false
     strategy:
       fail-fast: false
       matrix:
@@ -549,9 +544,6 @@ jobs:
     if: ${{ needs.prepare.outputs.enabled == 'true' && github.event_name == 'schedule' }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
-    concurrency:
-      group: bench-runner-${{ matrix.runner }}
-      cancel-in-progress: false
     strategy:
       fail-fast: false
       matrix:
@@ -587,9 +579,6 @@ jobs:
     if: ${{ needs.prepare.outputs.enabled == 'true' && vars.BENCH_DINGHY_ENABLED != 'false' && github.event_name == 'schedule' }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
-    concurrency:
-      group: bench-dinghy-${{ matrix.device }}
-      cancel-in-progress: false
     strategy:
       fail-fast: false
       matrix:
