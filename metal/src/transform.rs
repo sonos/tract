@@ -10,6 +10,7 @@ use crate::{kernels, ops};
 use tract_core::dyn_clone::clone_box;
 use tract_core::internal::translator::Translate;
 use tract_core::internal::*;
+use tract_core::ops::cnn::KernelFormat;
 use tract_core::ops::cnn::conv::rewrite_kernel_conv_in_oihw;
 use tract_core::ops::cnn::{Conv, rewrite_conv_with_n_axis};
 use tract_core::ops::einsum::prefix_matmul::{PrefixMatMul, rewrite_einsum_to_prefix_matmul};
@@ -71,6 +72,48 @@ fn flatten_unfused_sdpa(
     } else {
         op.patch_sdpa(model, node) // explode (same as the shared rewire_sdpa)
     }
+}
+
+/// Metal-local kernel reordering: the shared rule puts every conv kernel in
+/// `OIHW`, which the direct kernel indexes, but the ported MLX kernel wants
+/// `OHWI`. Eligible convs are moved to `OHWI` instead; everything else falls
+/// through to the shared rule. The kernel is normally a constant, so the
+/// reorder folds.
+fn rewrite_conv_kernel_metal(
+    ctx: &(),
+    model: &TypedModel,
+    node: &TypedNode,
+    name: &str,
+    conv: &Conv,
+) -> TractResult<Option<TypedModelPatch>> {
+    let in_facts = model.node_input_facts(node.id)?;
+    // A depthwise kernel is already laid out the way the ported kernel wants it
+    // once the shared rule has put it in OIHW, so only regular convs are moved.
+    if crate::kernels::conv::mlx_conv::mlx_conv_eligible(conv, &in_facts) {
+        if conv.kernel_fmt == KernelFormat::OHWI {
+            return Ok(None);
+        }
+        // Reorder the constant here rather than wiring an axis move: the metal
+        // transform does not declutter afterwards, so a wired move would stay
+        // in the graph and run on every inference.
+        if let Some(kernel) = in_facts[1].konst.as_ref() {
+            let ohwi = match conv.kernel_fmt {
+                // [O,I,H,W] -> [O,H,W,I]
+                KernelFormat::OIHW => kernel.clone().into_tensor().move_axis(1, 3)?,
+                // [H,W,I,O] -> [O,H,W,I]
+                KernelFormat::HWIO => kernel.clone().into_tensor().move_axis(3, 0)?,
+                KernelFormat::OHWI => kernel.clone().into_tensor(),
+            };
+            let mut patch = TypedModelPatch::default();
+            let mut wire = patch.taps(model, &node.inputs)?;
+            wire[1] = patch.add_const(format!("{name}.kernel_ohwi"), ohwi)?;
+            let new = Conv { kernel_fmt: KernelFormat::OHWI, ..conv.clone() };
+            let wire = patch.wire_node(name, new, &wire)?;
+            patch.shunt_outside(model, node.id.into(), wire[0])?;
+            return Ok(Some(patch));
+        }
+    }
+    rewrite_kernel_conv_in_oihw(ctx, model, node, name, conv)
 }
 
 fn rewire_sdpa_metal(model: &mut TypedModel) -> TractResult<()> {
@@ -147,7 +190,7 @@ impl MetalTransform {
             .rewrite(self, model)?;
 
         Rewriter::default()
-            .with_rule_for("rewrite_kernel_conv_in_oihw", rewrite_kernel_conv_in_oihw)
+            .with_rule_for("rewrite_conv_kernel_metal", rewrite_conv_kernel_metal)
             .with_rule_for("rewrite_conv_with_n_axis", rewrite_conv_with_n_axis)
             .with_rule_for("remove_rms_norm_cast", remove_rms_norm_cast)
             .rewrite(&(), model)?;
