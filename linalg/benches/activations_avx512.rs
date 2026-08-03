@@ -4,8 +4,9 @@
 //   sigmoid, tanh              : predecessor = FMA (256-bit, 8-wide) kernel
 //   hardswish, leaky_relu, gelu: predecessor = generic scalar kernel
 //                                (no FMA kernel exists on x86)
-//   silu                       : predecessor = generic scalar kernel
-//                                (the FMA kernel is benched in silu.rs)
+//
+// silu is absent: the fused FMA kernel wins on AVX-512 hosts too, so it is the
+// plugged choice at every x86 tier and is benched against generic in silu.rs.
 //
 // All buffers are 64-byte aligned (AVX-512 alignment_bytes) and a multiple of
 // 64 elements so every kernel's nr() divides the length. Criterion reports the
@@ -90,13 +91,6 @@ fn benches(c: &mut Criterion) {
             tract_linalg::generic::SLeakyRelu4,
             x86_64_avx512_leaky_relu_f32_64n,
             0.1f32
-        );
-        bench_pair!(
-            c,
-            "silu_f32",
-            "generic",
-            tract_linalg::generic::SSiLU4,
-            x86_64_avx512_silu_f32_16n
         );
         bench_pair!(
             c,
