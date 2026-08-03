@@ -1,0 +1,305 @@
+{#
+// vim: set syntax=asm :
+
+Fused SiLU kernel.
+
+Per element (z = clamp(x, -18.6, 18.6), w = z^2):
+    SiLU(x) = f * (0.5 + z * P(w) / Q(w))
+where P is the degree-6 Horner polynomial over the numerator coeffs, Q the
+degree-3 Horner polynomial over the denominator coeffs, and f = max(x, -18.6)
+the factor the sigmoid multiplies. Reuses the coefficients and the rational
+approximation of fma_sigmoid_f32.S.j2.
+
+f is clamped below at -18.6 but left unclamped above: the upper clamp only
+keeps the sigmoid polynomial argument z in range, whereas SiLU(x) ~ x as
+x -> +inf so the factor must stay unbounded above. The lower clamp keeps the
+negative tail bounded: x < -18.6 saturates at -18.6 * sigmoid(-18.6), which
+the true SiLU approaches from below as x -> -inf.
+
+x86-64 has only 16 ymm registers and the sigmoid kernel already fills them with
+a 4-group loop, so holding f costs half the unrolling: the main loop here runs
+2 groups (16 elements), with ymm0-3 the rotating coefficients, ymm4-5 z, ymm6-7
+w, ymm8-9 the Horner accumulators and ymm10-11 f.
+
+System V ABI:
+    args: rdi, rsi, rdx, rcx, r8, r9
+    preserve: rbx, rsp, rbp, r12, r13, r14, r15
+    scratch: rax, rdi, rsi, rdx, rcx, r8, r9, r10, r11
+    return: rax (+rdx)
+
+Windows ABI:
+    args: RCX, RDX, R8, R9
+    preserve: RBX, RBP, RDI, RSI, RSP, R12, R13, R14, R15, and XMM6-15
+    scratch: RAX, RCX, RDX, R8, R9, R10, R11, XMM0-5, and the upper portions of YMM0-15 and ZMM0-15
+    return: rax (+rdx)
+
+#}
+
+{% if msvc %}
+
+_text segment
+fma_silu_f32_{{suffix}} proc
+
+{% else %}
+
+.intel_syntax noprefix
+.text
+.p2align 5
+.globl {{G}}fma_silu_f32_{{suffix}}
+{{G}}fma_silu_f32_{{suffix}}:
+.cfi_startproc
+{% endif %}
+
+    push        rbp
+    mov         rbp, rsp
+
+
+{% if family == "windows" %}
+// https://www.agner.org/optimize/calling_conventions.pdf xmm6-15 are not scratch
+// https://stackoverflow.com/questions/43358429/save-value-of-xmm-registers
+    and rsp,-16
+    lea rsp,[rsp-160]
+    vmovaps [rsp], xmm6
+    vmovaps [rsp+16*1],xmm7
+    vmovaps [rsp+16*2],xmm8
+    vmovaps [rsp+16*3],xmm9
+    vmovaps [rsp+16*4],xmm10
+    vmovaps [rsp+16*5],xmm11
+    vmovaps [rsp+16*6],xmm12
+    vmovaps [rsp+16*7],xmm13
+    vmovaps [rsp+16*8],xmm14
+    vmovaps [rsp+16*9],xmm15
+
+    // move around arguments to mimick SysV rdi,rsi passing
+    push        rdi
+    push        rsi
+    mov         rdi, rcx
+    mov         rsi, rdx
+
+{% endif %}
+
+    push        rbx
+    push        r12
+    push        r13
+    push        r14
+    push        r15
+
+    sub         rsp, 8
+
+{% if family == "unix" %}
+// FIXME
+// .cfi_def_cfa_offset 64
+{% endif %}
+
+    stmxcsr     [rsp + 4]
+{% if msvc %}
+    mov         rax, 1FC0h
+{% else %}
+    mov         rax, 0x1FC0
+{% endif %}
+    mov         [rsp], eax
+    ldmxcsr     [rsp]
+// ----------------------------------------------------------------------
+
+    cmp     rsi, 0
+    je      {{L}}done
+
+    cmp     rsi, 16
+    jl      {{L}}loop_1
+
+{{L}}loop_2:
+
+    vmovaps         ymm4, [rdi]
+    vmovaps         ymm5, [rdi + 32]
+
+    vbroadcastss    ymm0, dword ptr [{{offset}} {{L}}coeffs_num_low]
+    vbroadcastss    ymm1, dword ptr [{{offset}} {{L}}coeffs_num_high]
+    vbroadcastss    ymm2, dword ptr [{{offset}} {{L}}coeffs_num_alpha_13]
+    vbroadcastss    ymm3, dword ptr [{{offset}} {{L}}coeffs_num_alpha_11]
+
+    vmaxps          ymm10, ymm4, ymm0
+    vmaxps          ymm11, ymm5, ymm0       // ymm10..11 <- f
+    vbroadcastss    ymm0, dword ptr [{{offset}} {{L}}coeffs_num_alpha_9]
+
+    vminps          ymm4, ymm10, ymm1
+    vminps          ymm5, ymm11, ymm1       // ymm4..5 <- z
+    vbroadcastss    ymm1, dword ptr [{{offset}} {{L}}coeffs_num_alpha_7]
+
+    vmulps          ymm6, ymm4, ymm4
+    vmulps          ymm7, ymm5, ymm5        // ymm6..7 <- w
+
+    vmovaps         ymm8, ymm2
+    vmovaps         ymm9, ymm2
+    vbroadcastss    ymm2, dword ptr [{{offset}} {{L}}coeffs_num_alpha_5]
+    vfmadd132ps     ymm8, ymm3, ymm6
+    vfmadd132ps     ymm9, ymm3, ymm7
+    vbroadcastss    ymm3, dword ptr [{{offset}} {{L}}coeffs_num_alpha_3]
+    vfmadd132ps     ymm8, ymm0, ymm6
+    vfmadd132ps     ymm9, ymm0, ymm7
+    vbroadcastss    ymm0, dword ptr [{{offset}} {{L}}coeffs_num_alpha_1]
+    vfmadd132ps     ymm8, ymm1, ymm6
+    vfmadd132ps     ymm9, ymm1, ymm7
+    vbroadcastss    ymm1, dword ptr [{{offset}} {{L}}coeffs_num_beta_6]
+    vfmadd132ps     ymm8, ymm2, ymm6
+    vfmadd132ps     ymm9, ymm2, ymm7
+    vbroadcastss    ymm2, dword ptr [{{offset}} {{L}}coeffs_num_beta_4]
+    vfmadd132ps     ymm8, ymm3, ymm6
+    vfmadd132ps     ymm9, ymm3, ymm7
+    vbroadcastss    ymm3, dword ptr [{{offset}} {{L}}coeffs_num_beta_2]
+    vfmadd132ps     ymm8, ymm0, ymm6
+    vfmadd132ps     ymm9, ymm0, ymm7
+    vbroadcastss    ymm0, dword ptr [{{offset}} {{L}}coeffs_num_beta_0]
+    vmulps          ymm4, ymm4, ymm8
+    vmulps          ymm5, ymm5, ymm9        // ymm4..5 <- num
+
+    vmovaps         ymm8, ymm1
+    vmovaps         ymm9, ymm1
+    vbroadcastss    ymm1, dword ptr [{{offset}} {{L}}coeffs_num_half]
+    vfmadd132ps     ymm8, ymm2, ymm6
+    vfmadd132ps     ymm9, ymm2, ymm7
+    vfmadd132ps     ymm8, ymm3, ymm6
+    vfmadd132ps     ymm9, ymm3, ymm7
+    vfmadd132ps     ymm8, ymm0, ymm6
+    vfmadd132ps     ymm9, ymm0, ymm7        // ymm8..9 <- denum
+
+    vdivps          ymm4, ymm4, ymm8
+    vdivps          ymm5, ymm5, ymm9
+    vaddps          ymm4, ymm4, ymm1
+    vaddps          ymm5, ymm5, ymm1        // ymm4..5 <- sigmoid
+
+    vmulps          ymm4, ymm4, ymm10
+    vmulps          ymm5, ymm5, ymm11       // ymm4..5 <- SiLU
+
+    vmovaps [rdi], ymm4
+    vmovaps [rdi + 32], ymm5
+
+    add     rdi, 64
+    sub     rsi, 16
+    cmp     rsi, 16
+    jge     {{L}}loop_2
+
+    cmp     rsi, 0
+    je      {{L}}done
+
+{{L}}loop_1:
+    vmovaps         ymm4, [rdi]
+
+    vbroadcastss    ymm0, dword ptr [{{offset}} {{L}}coeffs_num_low]
+    vbroadcastss    ymm1, dword ptr [{{offset}} {{L}}coeffs_num_high]
+    vbroadcastss    ymm2, dword ptr [{{offset}} {{L}}coeffs_num_alpha_13]
+    vbroadcastss    ymm3, dword ptr [{{offset}} {{L}}coeffs_num_alpha_11]
+
+    vmaxps          ymm10, ymm4, ymm0       // ymm10 <- f
+    vbroadcastss    ymm0, dword ptr [{{offset}} {{L}}coeffs_num_alpha_9]
+
+    vminps          ymm4, ymm10, ymm1       // ymm4 <- z
+    vbroadcastss    ymm1, dword ptr [{{offset}} {{L}}coeffs_num_alpha_7]
+
+    vmulps          ymm6, ymm4, ymm4        // ymm6 <- w
+
+    vmovaps         ymm8, ymm2
+    vbroadcastss    ymm2, dword ptr [{{offset}} {{L}}coeffs_num_alpha_5]
+    vfmadd132ps     ymm8, ymm3, ymm6
+    vbroadcastss    ymm3, dword ptr [{{offset}} {{L}}coeffs_num_alpha_3]
+    vfmadd132ps     ymm8, ymm0, ymm6
+    vbroadcastss    ymm0, dword ptr [{{offset}} {{L}}coeffs_num_alpha_1]
+    vfmadd132ps     ymm8, ymm1, ymm6
+    vbroadcastss    ymm1, dword ptr [{{offset}} {{L}}coeffs_num_beta_6]
+    vfmadd132ps     ymm8, ymm2, ymm6
+    vbroadcastss    ymm2, dword ptr [{{offset}} {{L}}coeffs_num_beta_4]
+    vfmadd132ps     ymm8, ymm3, ymm6
+    vbroadcastss    ymm3, dword ptr [{{offset}} {{L}}coeffs_num_beta_2]
+    vfmadd132ps     ymm8, ymm0, ymm6
+    vbroadcastss    ymm0, dword ptr [{{offset}} {{L}}coeffs_num_beta_0]
+    vmulps          ymm4, ymm4, ymm8        // ymm4 <- num
+
+    vmovaps         ymm8, ymm1
+    vbroadcastss    ymm1, dword ptr [{{offset}} {{L}}coeffs_num_half]
+    vfmadd132ps     ymm8, ymm2, ymm6
+    vfmadd132ps     ymm8, ymm3, ymm6
+    vfmadd132ps     ymm8, ymm0, ymm6        // ymm8 <- denum
+
+    vdivps          ymm4, ymm4, ymm8
+    vaddps          ymm4, ymm4, ymm1        // ymm4 <- sigmoid
+
+    vmulps          ymm4, ymm4, ymm10       // ymm4 <- SiLU
+
+    vmovaps [rdi], ymm4
+    add     rdi, 32
+    sub     rsi, 8
+    jnz     {{L}}loop_1
+{{L}}done:
+
+// ----------------------------------------------------------------------
+
+    ldmxcsr     [rsp + 4]
+
+    add         rsp, 8
+
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop rbx
+
+{% if family == "windows" %}
+    pop rsi
+    pop rdi
+
+    vmovaps xmm15, [rsp+16*9]
+    vmovaps xmm14, [rsp+16*8]
+    vmovaps xmm13, [rsp+16*7]
+    vmovaps xmm12, [rsp+16*6]
+    vmovaps xmm11, [rsp+16*5]
+    vmovaps xmm10, [rsp+16*4]
+    vmovaps xmm9, [rsp+16*3]
+    vmovaps xmm8, [rsp+16*2]
+    vmovaps xmm7, [rsp+16*1]
+    vmovaps xmm6, [rsp]
+{% endif %}
+
+    mov rsp, rbp
+    pop rbp
+    ret
+
+{% set float %}{% if msvc %} real4 {%else%} .float {%endif%}{% endset %}
+
+{{L}}coeffs_num_low:
+    {{float}} -18.6                   // low
+{{L}}coeffs_num_high:
+    {{float}} 18.6                     // high
+
+{{L}}coeffs_num_alpha_13:
+    {{float}} -4.433153405e-18
+{{L}}coeffs_num_alpha_11:
+    {{float}} 1.169974371e-14
+{{L}}coeffs_num_alpha_9:
+    {{float}} -1.875289645e-11
+{{L}}coeffs_num_alpha_7:
+    {{float}} 4.257889523e-8
+{{L}}coeffs_num_alpha_5:
+    {{float}} 0.00004811817576
+{{L}}coeffs_num_alpha_3:
+    {{float}} 0.008163842030
+{{L}}coeffs_num_alpha_1:
+    {{float}} 0.2499999971
+
+{{L}}coeffs_num_beta_6:
+    {{float}} 3.922935744e-6
+{{L}}coeffs_num_beta_4:
+    {{float}} 0.001524872358
+{{L}}coeffs_num_beta_2:
+    {{float}} 0.1159886749
+{{L}}coeffs_num_beta_0:
+    {{float}} 1.0;
+
+{{L}}coeffs_num_half:
+    {{float}} 0.5
+
+{% if msvc %}
+fma_silu_f32_{{suffix}} endp
+_text ends
+end
+{% else %}
+.cfi_endproc
+{% endif %}
