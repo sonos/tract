@@ -1,8 +1,8 @@
 # tract-linalg on `wasm32` — relaxed-simd FMA
 
-The WASM MMM kernels (`wasm_f32_4x4`, `4x1`, `8x1`, `16x1`, `32x1`, `8x8`)
-and the WASM sigmoid/tanh activations all flip between two emit modes at
-compile time, gated on `cfg(target_feature = "relaxed-simd")`:
+`wasm_f32_32x1`, `wasm_f32_8x8` and the WASM sigmoid/tanh activations flip
+between two emit modes at compile time, gated on
+`cfg(target_feature = "relaxed-simd")`:
 
 - **Without** `+relaxed-simd`: pure `f32x4_add(_, f32x4_mul(_, _))` (mul+add).
   Runs on any WASM runtime that supports `simd128`.
@@ -11,11 +11,25 @@ compile time, gated on `cfg(target_feature = "relaxed-simd")`:
   Universal browser/runtime support since 2023 (Chrome 114+, Firefox 120+,
   Safari 17+, wasmtime 16+).
 
-The speedup of the relaxed path over the baseline is typically **1.40–1.55× at
-the kernel level** and **1.08–1.46× end-to-end** across vision CNNs,
-transformer attention and RNN audio models. Bit-pattern drift versus the
-mul+add path is bounded at one ulp (FMA single-rounding); within
-`Approximation::Close` (1e-4).
+`wasm_f32_4x4`, `4x1`, `8x1` and `16x1` stay on mul+add in both modes. They
+carry at most four accumulators, few enough that the destructive `fmla`
+writeback serialises the accumulator chain rather than filling the pipe, so
+the fused form is slower there. `madd_f32x4_nofma!` is what holds them to it,
+and `AddRowColProducts` has to make the same choice as `AddMatMul` within a
+kernel — `dispatch_tests::add_row_col_products_and_add_mat_mul_agree_on_fusion`
+asserts that it does.
+
+For the two kernels that do fuse, the speedup of the relaxed path over the
+baseline is typically **1.40–1.55× at the kernel level** and **1.08–1.46×
+end-to-end** across vision CNNs, transformer attention and RNN audio models.
+Bit-pattern drift versus the mul+add path is bounded at one ulp (FMA
+single-rounding); within `Approximation::Close` (1e-4).
+
+The int8 kernel `wasm_i32_4x4` also switches on `+relaxed-simd`, but on
+instruction rather than rounding: it takes
+`i32x4_relaxed_dot_i8x16_i7x16_add` with a K-inner packing instead of a
+widening outer product with K-major packing. Kernel and packer are chosen by
+the same `cfg`, so they cannot disagree.
 
 ## Build flags
 
