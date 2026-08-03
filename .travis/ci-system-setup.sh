@@ -24,15 +24,7 @@ then
             fi
             $SUDO apt-get update
             # $SUDO apt-get upgrade -y
-            $SUDO apt-get install -y llvm python3 python3-numpy jshon wget curl build-essential sudo jshon clang 
-            if ! which aws
-            then
-                curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o awscliv2.zip
-                $SUDO apt-get install -y unzip
-                unzip -q awscliv2.zip
-                $SUDO ./aws/install
-                aws --version
-            fi
+            $SUDO apt-get install -y llvm python3 python3-numpy jshon wget curl build-essential sudo jshon clang
         fi
     fi
 
