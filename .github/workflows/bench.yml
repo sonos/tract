@@ -15,6 +15,11 @@ on:
         description: "Optional PR number to bench (from fork ok). Leave empty to run on selected branch."
         required: false
         type: number
+      mt_ladder:
+        description: "Thread-count ladder (comma list, 0=physical cores) for a scaling run; empty = normal vs-main bench."
+        required: false
+        type: string
+        default: ''
   pull_request:
     paths-ignore:
       - '**/*.md'
@@ -38,6 +43,7 @@ jobs:
       pr_number: ${{ steps.gate.outputs.pr_number }}
       is_pr: ${{ steps.gate.outputs.is_pr }}
       same_repo: ${{ steps.gate.outputs.same_repo }}
+      mt_ladder: ${{ steps.gate.outputs.mt_ladder }}
     steps:
       # Resolves this run's target ref and whether it should behave like a PR run
       # (compare + comment) or a reference run (append to bench-data): a manual
@@ -57,6 +63,9 @@ jobs:
               core.setOutput('enabled', 'true');
             }
             core.setOutput('day', new Date().toISOString().slice(0, 10));
+            // Set on any event; a pull_request trigger has no inputs, so it stays empty
+            // (normal vs-main bench). Only a workflow_dispatch can request a scaling run.
+            core.setOutput('mt_ladder', context.payload.inputs?.mt_ladder || '');
 
             const baseRepo = `${context.repo.owner}/${context.repo.repo}`;
             if (context.eventName === 'pull_request') {
@@ -177,6 +186,7 @@ jobs:
         env:
           TRIPLE: ${{ matrix.triple }}
           DEVICE: ${{ matrix.target }}
+          MT_LADDER: ${{ needs.prepare.outputs.mt_ladder }}
         run: |
           chmod +x tract-cli/tract
           tract-cli/tract bench-suite \
@@ -184,6 +194,7 @@ jobs:
             --bench-data bench-ref \
             --thresholds .travis/bench-thresholds.toml \
             --triple "$TRIPLE" --device "$DEVICE" \
+            ${MT_LADDER:+--threads-ladder "$MT_LADDER"} \
             ${{ needs.prepare.outputs.is_pr != 'true' && '--samples 5' || '' }} \
             ${{ matrix.bench_args }}        # produces ./metrics
 
@@ -320,6 +331,7 @@ jobs:
           DEVICE: ${{ matrix.device }}
           TRIPLE: ${{ matrix.triple }}
           SAMPLES: ${{ needs.prepare.outputs.is_pr != 'true' && '--samples 5' || '' }}
+          MT_LADDER: ${{ needs.prepare.outputs.mt_ladder }}
         run: |
           chmod +x tract-cli/tract
           mkdir -p result
@@ -334,6 +346,7 @@ jobs:
           if CARGO_PKG_NAME=tract cargo-dinghy --cleanup -d "$DINGHY_TARGET" runner \
                ./tract-cli/tract -- bench-suite \
                --manifest .travis/benches.toml --skip-runtimes --no-cache --output - $SAMPLES \
+               ${MT_LADDER:+--threads-ladder "$MT_LADDER"} \
                --base-url '${TRACT_BENCH_BASE_URL}' --cpu-governor '${TRACT_BENCH_CPU_GOVERNOR}' \
                >captured.out 2>captured.err
           then
@@ -443,14 +456,21 @@ jobs:
           path: bench-data
           fetch-depth: 1
           persist-credentials: false
+      # An mt-ladder run renders a self-contained thread-scaling table (speed + speedup
+      # vs serial, no bench-data reference); a normal run renders the vs-main comparison.
       - name: Render comparison
         env:
           PR_SHA: ${{ needs.prepare.outputs.ref }}
+          MT_LADDER: ${{ needs.prepare.outputs.mt_ladder }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           chmod +x tract-cli/tract
-          tract-cli/tract bench-report --results results --bench-data bench-data \
-            --thresholds .travis/bench-thresholds.toml --pr-sha "$PR_SHA" --out pr-comment.md
+          if [ -n "$MT_LADDER" ]; then
+            tract-cli/tract bench-mt-report --results results --pr-sha "$PR_SHA" --out pr-comment.md
+          else
+            tract-cli/tract bench-report --results results --bench-data bench-data \
+              --thresholds .travis/bench-thresholds.toml --pr-sha "$PR_SHA" --out pr-comment.md
+          fi
       # Only an automatic `pull_request` event on a fork gets a read-only token; every other
       # trigger (same-repo pull_request, or any workflow_dispatch — including /ci bench,
       # which always runs with a write token regardless of the target PR's fork status) can

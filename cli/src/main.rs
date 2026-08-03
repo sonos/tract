@@ -289,6 +289,13 @@ fn main() -> TractResult<()> {
                 .arg(arg!(--templates [DIR] "Template dir (default: .travis)"))
                 .arg(arg!(--today [DATE] "Override today's date YYYY-MM-DD (for reproducible output)")),
         );
+        app = app.subcommand(
+            clap::Command::new("bench-mt-report")
+                .long_about("Render the thread-scaling (mt-ladder) table; no bench-data reference.")
+                .arg(arg!(--results <DIR> "Dir of per-device result subdirs (meta.json + metrics)"))
+                .arg(arg!(--"pr-sha" <SHA> "PR commit sha"))
+                .arg(arg!(--out <PATH> "PR comment markdown output path")),
+        );
     }
 
     app = app.subcommand(dump_subcommand());
@@ -820,6 +827,8 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
         Some(("bench-diff", m)) => return bench_suite::diff(m),
         #[cfg(feature = "bench-suite")]
         Some(("bench-report", m)) => return bench_report::handle(m),
+        #[cfg(feature = "bench-suite")]
+        Some(("bench-mt-report", m)) => return bench_report::handle_mt(m),
         Some(("kernels", _)) => {
             println!();
             fn colored_name(m: &dyn MatMatMul) -> String {
