@@ -10,7 +10,6 @@ use num_traits::bounds::Bounded;
 use num_traits::int::PrimInt;
 use num_traits::{Float, One, Zero};
 use tract_data::internal::ClampCast;
-use tract_data::itertools::Itertools;
 pub use tract_data::prelude::round_ties_to_even;
 use tract_linalg::{ScaleShiftAndRound, Scaler};
 use tract_num_traits::AsPrimitive;
@@ -713,12 +712,29 @@ element_wise!(tanh, Tanh,
  cost: |dt| {tvec!((Cost::FMA(dt), 11), (Cost::Div(dt), 1))}
 );
 
+/// Every f16 bit pattern mapped through the registered f32 erf kernel and rounded
+/// back, so f16 `Erf` is one load per element. Built from that kernel rather than
+/// from a formula, so the table matches whatever kernel this host dispatches to.
+/// 128 KiB, built on first use.
+fn erf_f16_lut() -> &'static [u16; 1 << 16] {
+    static LUT: std::sync::OnceLock<Box<[u16; 1 << 16]>> = std::sync::OnceLock::new();
+    LUT.get_or_init(|| {
+        let mut values: Vec<f32> =
+            (0..=u16::MAX).map(|bits| f16::from_bits(bits).to_f32()).collect();
+        (tract_linalg::ops().erf_f32)()
+            .run(&mut values)
+            .expect("erf kernel failed on the lookup table domain");
+        let mut lut = Box::new([0u16; 1 << 16]);
+        lut.iter_mut().zip(values).for_each(|(slot, v)| *slot = f16::from_f32(v).to_bits());
+        lut
+    })
+}
+
 element_wise!(erf, Erf,
  [f32] => |_, xs| { (tract_linalg::ops().erf_f32)().run(xs) },
  [f16] => |_, xs| {
-     let mut f32s = xs.iter().map(|x| x.to_f32()).collect_vec();
-     (tract_linalg::ops().erf_f32)().run(&mut f32s)?;
-     xs.iter_mut().zip(f32s.into_iter()).for_each(|(x, f)| *x = f16::from_f32(f));
+     let lut = erf_f16_lut();
+     xs.iter_mut().for_each(|x| *x = f16::from_bits(lut[x.to_bits() as usize]));
      Ok(())
 };
  cost: |dt| {tvec!((Cost::FMA(dt), 11), (Cost::Div(dt), 1))};
@@ -794,6 +810,22 @@ mod tests {
         let a = arr2(&[[1., 2.], [3., 4.]]);
         let b = arr2(&[[1., 0.], [0., 0.]]);
         assert_eq!(a * b, arr2(&[[1., 0.], [0., 0.]]));
+    }
+
+    #[test]
+    fn erf_f16_lut_matches_the_f32_kernel_on_every_f16() {
+        let all: Vec<f16> = (0..=u16::MAX).map(f16::from_bits).collect();
+
+        let mut reference: Vec<f32> = all.iter().map(|x| x.to_f32()).collect();
+        (tract_linalg::ops().erf_f32)().run(&mut reference).unwrap();
+        let reference: Vec<f16> = reference.into_iter().map(f16::from_f32).collect();
+
+        let mut lut = Tensor::from_shape(&[all.len()], &all).unwrap();
+        erf().0.eval_in_place(&mut lut, None).unwrap();
+
+        let lut = lut.to_plain_array_view::<f16>().unwrap();
+        let mismatch = lut.iter().zip(&reference).position(|(a, b)| a.to_bits() != b.to_bits());
+        assert_eq!(mismatch, None);
     }
 
     #[test]
