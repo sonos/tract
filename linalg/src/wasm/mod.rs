@@ -11,6 +11,8 @@ use crate::DatumType;
 
 #[macro_use]
 mod madd;
+#[macro_use]
+mod fuse;
 
 mod act;
 #[cfg(all(test, target_arch = "wasm32", target_feature = "simd128"))]

@@ -24,91 +24,35 @@ unsafe fn kernel_f32_4x1(mut pnl: *const FusedKerSpec<f32>) -> isize {
         while !pnl.is_null() {
             match *pnl {
                 FusedKerSpec::Done => break,
-                FusedKerSpec::Clear => {
-                    ab = f32x4_splat(0.0);
-                }
-                FusedKerSpec::LoadTile(_cols, rows) => {
-                    // Tile is 4 rows × 1 col = 4 contiguous f32s = 1 v128
-                    ab = v128_load(rows as *const v128);
-                }
-                FusedKerSpec::ScalarMin(a) => {
-                    ab = f32x4_min(f32x4_splat(a), ab);
-                }
-                FusedKerSpec::ScalarMax(a) => {
-                    ab = f32x4_max(f32x4_splat(a), ab);
-                }
-                FusedKerSpec::ScalarAdd(a) => {
-                    ab = f32x4_add(f32x4_splat(a), ab);
-                }
-                FusedKerSpec::ScalarMul(a) => {
-                    ab = f32x4_mul(f32x4_splat(a), ab);
-                }
-                FusedKerSpec::ScalarSub(a) => {
-                    ab = f32x4_sub(f32x4_splat(a), ab);
-                }
-                FusedKerSpec::ScalarSubF(a) => {
-                    ab = f32x4_sub(ab, f32x4_splat(a));
-                }
-                FusedKerSpec::LeakyRelu(a) => {
-                    let zero = f32x4_splat(0.0);
-                    let mask = f32x4_gt(ab, zero);
-                    ab = v128_bitselect(ab, f32x4_mul(f32x4_splat(a), ab), mask);
-                }
-                FusedKerSpec::PerRowMin(row) => {
-                    // 4 row values, applied to ab's 4 lanes in order
-                    let r = v128_load(row as *const v128);
-                    ab = f32x4_min(r, ab);
-                }
-                FusedKerSpec::PerRowMax(row) => {
-                    let r = v128_load(row as *const v128);
-                    ab = f32x4_max(r, ab);
-                }
-                FusedKerSpec::PerRowAdd(row) => {
-                    let r = v128_load(row as *const v128);
-                    ab = f32x4_add(r, ab);
-                }
-                FusedKerSpec::PerRowMul(row) => {
-                    let r = v128_load(row as *const v128);
-                    ab = f32x4_mul(r, ab);
-                }
-                FusedKerSpec::PerRowSub(row) => {
-                    let r = v128_load(row as *const v128);
-                    ab = f32x4_sub(r, ab);
-                }
-                FusedKerSpec::PerRowSubF(row) => {
-                    let r = v128_load(row as *const v128);
-                    ab = f32x4_sub(ab, r);
-                }
-                FusedKerSpec::PerColMin(cols) => {
-                    // Single col value broadcast to all 4 rows
-                    ab = f32x4_min(f32x4_splat(*cols), ab);
-                }
-                FusedKerSpec::PerColMax(cols) => {
-                    ab = f32x4_max(f32x4_splat(*cols), ab);
-                }
-                FusedKerSpec::PerColAdd(cols) => {
-                    ab = f32x4_add(f32x4_splat(*cols), ab);
-                }
-                FusedKerSpec::PerColMul(cols) => {
-                    ab = f32x4_mul(f32x4_splat(*cols), ab);
-                }
-                FusedKerSpec::PerColSub(cols) => {
-                    ab = f32x4_sub(f32x4_splat(*cols), ab);
-                }
-                FusedKerSpec::PerColSubF(cols) => {
-                    ab = f32x4_sub(ab, f32x4_splat(*cols));
-                }
+                FusedKerSpec::Clear => wasm_set!(f32x4_splat(0.0); ab),
+                FusedKerSpec::LoadTile(_cols, rows) => ab = v128_load(rows as *const v128),
+                FusedKerSpec::ScalarMin(a) => wasm_bin_sv!(f32x4_min, f32x4_splat(a); ab),
+                FusedKerSpec::ScalarMax(a) => wasm_bin_sv!(f32x4_max, f32x4_splat(a); ab),
+                FusedKerSpec::ScalarAdd(a) => wasm_bin_sv!(f32x4_add, f32x4_splat(a); ab),
+                FusedKerSpec::ScalarMul(a) => wasm_bin_sv!(f32x4_mul, f32x4_splat(a); ab),
+                FusedKerSpec::ScalarSub(a) => wasm_bin_sv!(f32x4_sub, f32x4_splat(a); ab),
+                FusedKerSpec::ScalarSubF(a) => wasm_bin_vs!(f32x4_sub, f32x4_splat(a); ab),
+                FusedKerSpec::LeakyRelu(a) => wasm_leaky_relu!(a; ab),
+                FusedKerSpec::PerRowMin(row) => wasm_bin_load_indexed!(f32x4_min, row; ab),
+                FusedKerSpec::PerRowMax(row) => wasm_bin_load_indexed!(f32x4_max, row; ab),
+                FusedKerSpec::PerRowAdd(row) => wasm_bin_load_indexed!(f32x4_add, row; ab),
+                FusedKerSpec::PerRowMul(row) => wasm_bin_load_indexed!(f32x4_mul, row; ab),
+                FusedKerSpec::PerRowSub(row) => wasm_bin_load_indexed!(f32x4_sub, row; ab),
+                FusedKerSpec::PerRowSubF(row) => wasm_bin_load_indexed_vs!(f32x4_sub, row; ab),
+                FusedKerSpec::PerColMin(cols) => wasm_bin_sv!(f32x4_min, f32x4_splat(*cols); ab),
+                FusedKerSpec::PerColMax(cols) => wasm_bin_sv!(f32x4_max, f32x4_splat(*cols); ab),
+                FusedKerSpec::PerColAdd(cols) => wasm_bin_sv!(f32x4_add, f32x4_splat(*cols); ab),
+                FusedKerSpec::PerColMul(cols) => wasm_bin_sv!(f32x4_mul, f32x4_splat(*cols); ab),
+                FusedKerSpec::PerColSub(cols) => wasm_bin_sv!(f32x4_sub, f32x4_splat(*cols); ab),
+                FusedKerSpec::PerColSubF(cols) => wasm_bin_vs!(f32x4_sub, f32x4_splat(*cols); ab),
                 FusedKerSpec::QScale(shift, rp, mult) => {
-                    let scaler = Scaler::from_fuse_params(shift, rp, mult);
-                    ab = f32x4_mul(f32x4_splat(scaler.scale), ab);
+                    wasm_bin_sv!(f32x4_mul, f32x4_splat(Scaler::from_fuse_params(shift, rp, mult).scale); ab)
                 }
                 FusedKerSpec::RoundingShiftRight(shift, _rp) => {
-                    let s = f32x4_splat(2f32.powi(-(shift as i32)));
-                    ab = f32x4_mul(s, ab);
+                    wasm_bin_sv!(f32x4_mul, f32x4_splat(2f32.powi(-(shift as i32))); ab)
                 }
                 FusedKerSpec::ShiftLeft(shift) => {
-                    let s = f32x4_splat(2f32.powi(shift as i32));
-                    ab = f32x4_mul(s, ab);
+                    wasm_bin_sv!(f32x4_mul, f32x4_splat(2f32.powi(shift as i32)); ab)
                 }
                 FusedKerSpec::AddUnicast(tile) => {
                     // 4 rows × 1 col, with row_byte_stride between rows (col_stride irrelevant for N=1)
@@ -193,141 +137,71 @@ unsafe fn kernel_f32_8x1(mut pnl: *const FusedKerSpec<f32>) -> isize {
         while !pnl.is_null() {
             match *pnl {
                 FusedKerSpec::Done => break,
-                FusedKerSpec::Clear => {
-                    ab_top = f32x4_splat(0.0);
-                    ab_bot = f32x4_splat(0.0);
-                }
-                FusedKerSpec::LoadTile(_cols, rows) => {
-                    // 8 rows × 1 col = 8 contiguous f32 = 2 v128
-                    let p = rows as *const v128;
-                    ab_top = *p;
-                    ab_bot = *p.add(1);
-                }
+                FusedKerSpec::Clear => wasm_set!(f32x4_splat(0.0); ab_top, ab_bot),
+                FusedKerSpec::LoadTile(_cols, rows) => wasm_load_indexed!(rows; ab_top, ab_bot),
                 FusedKerSpec::ScalarMin(a) => {
-                    let s = f32x4_splat(a);
-                    ab_top = f32x4_min(s, ab_top);
-                    ab_bot = f32x4_min(s, ab_bot);
+                    wasm_bin_sv!(f32x4_min, f32x4_splat(a); ab_top, ab_bot)
                 }
                 FusedKerSpec::ScalarMax(a) => {
-                    let s = f32x4_splat(a);
-                    ab_top = f32x4_max(s, ab_top);
-                    ab_bot = f32x4_max(s, ab_bot);
+                    wasm_bin_sv!(f32x4_max, f32x4_splat(a); ab_top, ab_bot)
                 }
                 FusedKerSpec::ScalarAdd(a) => {
-                    let s = f32x4_splat(a);
-                    ab_top = f32x4_add(s, ab_top);
-                    ab_bot = f32x4_add(s, ab_bot);
+                    wasm_bin_sv!(f32x4_add, f32x4_splat(a); ab_top, ab_bot)
                 }
                 FusedKerSpec::ScalarMul(a) => {
-                    let s = f32x4_splat(a);
-                    ab_top = f32x4_mul(s, ab_top);
-                    ab_bot = f32x4_mul(s, ab_bot);
+                    wasm_bin_sv!(f32x4_mul, f32x4_splat(a); ab_top, ab_bot)
                 }
                 FusedKerSpec::ScalarSub(a) => {
-                    let s = f32x4_splat(a);
-                    ab_top = f32x4_sub(s, ab_top);
-                    ab_bot = f32x4_sub(s, ab_bot);
+                    wasm_bin_sv!(f32x4_sub, f32x4_splat(a); ab_top, ab_bot)
                 }
                 FusedKerSpec::ScalarSubF(a) => {
-                    let s = f32x4_splat(a);
-                    ab_top = f32x4_sub(ab_top, s);
-                    ab_bot = f32x4_sub(ab_bot, s);
+                    wasm_bin_vs!(f32x4_sub, f32x4_splat(a); ab_top, ab_bot)
                 }
-                FusedKerSpec::LeakyRelu(a) => {
-                    let s = f32x4_splat(a);
-                    let zero = f32x4_splat(0.0);
-                    let mask_t = f32x4_gt(ab_top, zero);
-                    let mask_b = f32x4_gt(ab_bot, zero);
-                    ab_top = v128_bitselect(ab_top, f32x4_mul(s, ab_top), mask_t);
-                    ab_bot = v128_bitselect(ab_bot, f32x4_mul(s, ab_bot), mask_b);
-                }
+                FusedKerSpec::LeakyRelu(a) => wasm_leaky_relu!(a; ab_top, ab_bot),
                 FusedKerSpec::PerRowMin(row) => {
-                    let p = row as *const v128;
-                    let r_t = v128_load(p);
-                    let r_b = v128_load(p.add(1));
-                    ab_top = f32x4_min(r_t, ab_top);
-                    ab_bot = f32x4_min(r_b, ab_bot);
+                    wasm_bin_load_indexed!(f32x4_min, row; ab_top, ab_bot)
                 }
                 FusedKerSpec::PerRowMax(row) => {
-                    let p = row as *const v128;
-                    let r_t = v128_load(p);
-                    let r_b = v128_load(p.add(1));
-                    ab_top = f32x4_max(r_t, ab_top);
-                    ab_bot = f32x4_max(r_b, ab_bot);
+                    wasm_bin_load_indexed!(f32x4_max, row; ab_top, ab_bot)
                 }
                 FusedKerSpec::PerRowAdd(row) => {
-                    let p = row as *const v128;
-                    let r_t = v128_load(p);
-                    let r_b = v128_load(p.add(1));
-                    ab_top = f32x4_add(r_t, ab_top);
-                    ab_bot = f32x4_add(r_b, ab_bot);
+                    wasm_bin_load_indexed!(f32x4_add, row; ab_top, ab_bot)
                 }
                 FusedKerSpec::PerRowMul(row) => {
-                    let p = row as *const v128;
-                    let r_t = v128_load(p);
-                    let r_b = v128_load(p.add(1));
-                    ab_top = f32x4_mul(r_t, ab_top);
-                    ab_bot = f32x4_mul(r_b, ab_bot);
+                    wasm_bin_load_indexed!(f32x4_mul, row; ab_top, ab_bot)
                 }
                 FusedKerSpec::PerRowSub(row) => {
-                    let p = row as *const v128;
-                    let r_t = v128_load(p);
-                    let r_b = v128_load(p.add(1));
-                    ab_top = f32x4_sub(r_t, ab_top);
-                    ab_bot = f32x4_sub(r_b, ab_bot);
+                    wasm_bin_load_indexed!(f32x4_sub, row; ab_top, ab_bot)
                 }
                 FusedKerSpec::PerRowSubF(row) => {
-                    let p = row as *const v128;
-                    let r_t = v128_load(p);
-                    let r_b = v128_load(p.add(1));
-                    ab_top = f32x4_sub(ab_top, r_t);
-                    ab_bot = f32x4_sub(ab_bot, r_b);
+                    wasm_bin_load_indexed_vs!(f32x4_sub, row; ab_top, ab_bot)
                 }
                 FusedKerSpec::PerColMin(cols) => {
-                    let c = f32x4_splat(*cols);
-                    ab_top = f32x4_min(c, ab_top);
-                    ab_bot = f32x4_min(c, ab_bot);
+                    wasm_bin_sv!(f32x4_min, f32x4_splat(*cols); ab_top, ab_bot)
                 }
                 FusedKerSpec::PerColMax(cols) => {
-                    let c = f32x4_splat(*cols);
-                    ab_top = f32x4_max(c, ab_top);
-                    ab_bot = f32x4_max(c, ab_bot);
+                    wasm_bin_sv!(f32x4_max, f32x4_splat(*cols); ab_top, ab_bot)
                 }
                 FusedKerSpec::PerColAdd(cols) => {
-                    let c = f32x4_splat(*cols);
-                    ab_top = f32x4_add(c, ab_top);
-                    ab_bot = f32x4_add(c, ab_bot);
+                    wasm_bin_sv!(f32x4_add, f32x4_splat(*cols); ab_top, ab_bot)
                 }
                 FusedKerSpec::PerColMul(cols) => {
-                    let c = f32x4_splat(*cols);
-                    ab_top = f32x4_mul(c, ab_top);
-                    ab_bot = f32x4_mul(c, ab_bot);
+                    wasm_bin_sv!(f32x4_mul, f32x4_splat(*cols); ab_top, ab_bot)
                 }
                 FusedKerSpec::PerColSub(cols) => {
-                    let c = f32x4_splat(*cols);
-                    ab_top = f32x4_sub(c, ab_top);
-                    ab_bot = f32x4_sub(c, ab_bot);
+                    wasm_bin_sv!(f32x4_sub, f32x4_splat(*cols); ab_top, ab_bot)
                 }
                 FusedKerSpec::PerColSubF(cols) => {
-                    let c = f32x4_splat(*cols);
-                    ab_top = f32x4_sub(ab_top, c);
-                    ab_bot = f32x4_sub(ab_bot, c);
+                    wasm_bin_vs!(f32x4_sub, f32x4_splat(*cols); ab_top, ab_bot)
                 }
                 FusedKerSpec::QScale(shift, rp, mult) => {
-                    let scaler = Scaler::from_fuse_params(shift, rp, mult);
-                    let s = f32x4_splat(scaler.scale);
-                    ab_top = f32x4_mul(s, ab_top);
-                    ab_bot = f32x4_mul(s, ab_bot);
+                    wasm_bin_sv!(f32x4_mul, f32x4_splat(Scaler::from_fuse_params(shift, rp, mult).scale); ab_top, ab_bot)
                 }
                 FusedKerSpec::RoundingShiftRight(shift, _rp) => {
-                    let s = f32x4_splat(2f32.powi(-(shift as i32)));
-                    ab_top = f32x4_mul(s, ab_top);
-                    ab_bot = f32x4_mul(s, ab_bot);
+                    wasm_bin_sv!(f32x4_mul, f32x4_splat(2f32.powi(-(shift as i32))); ab_top, ab_bot)
                 }
                 FusedKerSpec::ShiftLeft(shift) => {
-                    let s = f32x4_splat(2f32.powi(shift as i32));
-                    ab_top = f32x4_mul(s, ab_top);
-                    ab_bot = f32x4_mul(s, ab_bot);
+                    wasm_bin_sv!(f32x4_mul, f32x4_splat(2f32.powi(shift as i32)); ab_top, ab_bot)
                 }
                 FusedKerSpec::AddUnicast(tile) => {
                     // 8 rows × 1 col, stride is row_byte_stride between rows
@@ -424,179 +298,73 @@ unsafe fn kernel_f32_16x1(mut pnl: *const FusedKerSpec<f32>) -> isize {
         while !pnl.is_null() {
             match *pnl {
                 FusedKerSpec::Done => break,
-                FusedKerSpec::Clear => {
-                    let z = f32x4_splat(0.0);
-                    ab_q0 = z;
-                    ab_q1 = z;
-                    ab_q2 = z;
-                    ab_q3 = z;
-                }
+                FusedKerSpec::Clear => wasm_set!(f32x4_splat(0.0); ab_q0, ab_q1, ab_q2, ab_q3),
                 FusedKerSpec::LoadTile(_cols, rows) => {
-                    let p = rows as *const v128;
-                    ab_q0 = *p;
-                    ab_q1 = *p.add(1);
-                    ab_q2 = *p.add(2);
-                    ab_q3 = *p.add(3);
+                    wasm_load_indexed!(rows; ab_q0, ab_q1, ab_q2, ab_q3)
                 }
                 FusedKerSpec::ScalarMin(a) => {
-                    let s = f32x4_splat(a);
-                    ab_q0 = f32x4_min(s, ab_q0);
-                    ab_q1 = f32x4_min(s, ab_q1);
-                    ab_q2 = f32x4_min(s, ab_q2);
-                    ab_q3 = f32x4_min(s, ab_q3);
+                    wasm_bin_sv!(f32x4_min, f32x4_splat(a); ab_q0, ab_q1, ab_q2, ab_q3)
                 }
                 FusedKerSpec::ScalarMax(a) => {
-                    let s = f32x4_splat(a);
-                    ab_q0 = f32x4_max(s, ab_q0);
-                    ab_q1 = f32x4_max(s, ab_q1);
-                    ab_q2 = f32x4_max(s, ab_q2);
-                    ab_q3 = f32x4_max(s, ab_q3);
+                    wasm_bin_sv!(f32x4_max, f32x4_splat(a); ab_q0, ab_q1, ab_q2, ab_q3)
                 }
                 FusedKerSpec::ScalarAdd(a) => {
-                    let s = f32x4_splat(a);
-                    ab_q0 = f32x4_add(s, ab_q0);
-                    ab_q1 = f32x4_add(s, ab_q1);
-                    ab_q2 = f32x4_add(s, ab_q2);
-                    ab_q3 = f32x4_add(s, ab_q3);
+                    wasm_bin_sv!(f32x4_add, f32x4_splat(a); ab_q0, ab_q1, ab_q2, ab_q3)
                 }
                 FusedKerSpec::ScalarMul(a) => {
-                    let s = f32x4_splat(a);
-                    ab_q0 = f32x4_mul(s, ab_q0);
-                    ab_q1 = f32x4_mul(s, ab_q1);
-                    ab_q2 = f32x4_mul(s, ab_q2);
-                    ab_q3 = f32x4_mul(s, ab_q3);
+                    wasm_bin_sv!(f32x4_mul, f32x4_splat(a); ab_q0, ab_q1, ab_q2, ab_q3)
                 }
                 FusedKerSpec::ScalarSub(a) => {
-                    let s = f32x4_splat(a);
-                    ab_q0 = f32x4_sub(s, ab_q0);
-                    ab_q1 = f32x4_sub(s, ab_q1);
-                    ab_q2 = f32x4_sub(s, ab_q2);
-                    ab_q3 = f32x4_sub(s, ab_q3);
+                    wasm_bin_sv!(f32x4_sub, f32x4_splat(a); ab_q0, ab_q1, ab_q2, ab_q3)
                 }
                 FusedKerSpec::ScalarSubF(a) => {
-                    let s = f32x4_splat(a);
-                    ab_q0 = f32x4_sub(ab_q0, s);
-                    ab_q1 = f32x4_sub(ab_q1, s);
-                    ab_q2 = f32x4_sub(ab_q2, s);
-                    ab_q3 = f32x4_sub(ab_q3, s);
+                    wasm_bin_vs!(f32x4_sub, f32x4_splat(a); ab_q0, ab_q1, ab_q2, ab_q3)
                 }
-                FusedKerSpec::LeakyRelu(a) => {
-                    let s = f32x4_splat(a);
-                    let zero = f32x4_splat(0.0);
-                    let m0 = f32x4_gt(ab_q0, zero);
-                    ab_q0 = v128_bitselect(ab_q0, f32x4_mul(s, ab_q0), m0);
-                    let m1 = f32x4_gt(ab_q1, zero);
-                    ab_q1 = v128_bitselect(ab_q1, f32x4_mul(s, ab_q1), m1);
-                    let m2 = f32x4_gt(ab_q2, zero);
-                    ab_q2 = v128_bitselect(ab_q2, f32x4_mul(s, ab_q2), m2);
-                    let m3 = f32x4_gt(ab_q3, zero);
-                    ab_q3 = v128_bitselect(ab_q3, f32x4_mul(s, ab_q3), m3);
-                }
+                FusedKerSpec::LeakyRelu(a) => wasm_leaky_relu!(a; ab_q0, ab_q1, ab_q2, ab_q3),
                 FusedKerSpec::PerRowMin(row) => {
-                    let p = row as *const v128;
-                    ab_q0 = f32x4_min(v128_load(p), ab_q0);
-                    ab_q1 = f32x4_min(v128_load(p.add(1)), ab_q1);
-                    ab_q2 = f32x4_min(v128_load(p.add(2)), ab_q2);
-                    ab_q3 = f32x4_min(v128_load(p.add(3)), ab_q3);
+                    wasm_bin_load_indexed!(f32x4_min, row; ab_q0, ab_q1, ab_q2, ab_q3)
                 }
                 FusedKerSpec::PerRowMax(row) => {
-                    let p = row as *const v128;
-                    ab_q0 = f32x4_max(v128_load(p), ab_q0);
-                    ab_q1 = f32x4_max(v128_load(p.add(1)), ab_q1);
-                    ab_q2 = f32x4_max(v128_load(p.add(2)), ab_q2);
-                    ab_q3 = f32x4_max(v128_load(p.add(3)), ab_q3);
+                    wasm_bin_load_indexed!(f32x4_max, row; ab_q0, ab_q1, ab_q2, ab_q3)
                 }
                 FusedKerSpec::PerRowAdd(row) => {
-                    let p = row as *const v128;
-                    ab_q0 = f32x4_add(v128_load(p), ab_q0);
-                    ab_q1 = f32x4_add(v128_load(p.add(1)), ab_q1);
-                    ab_q2 = f32x4_add(v128_load(p.add(2)), ab_q2);
-                    ab_q3 = f32x4_add(v128_load(p.add(3)), ab_q3);
+                    wasm_bin_load_indexed!(f32x4_add, row; ab_q0, ab_q1, ab_q2, ab_q3)
                 }
                 FusedKerSpec::PerRowMul(row) => {
-                    let p = row as *const v128;
-                    ab_q0 = f32x4_mul(v128_load(p), ab_q0);
-                    ab_q1 = f32x4_mul(v128_load(p.add(1)), ab_q1);
-                    ab_q2 = f32x4_mul(v128_load(p.add(2)), ab_q2);
-                    ab_q3 = f32x4_mul(v128_load(p.add(3)), ab_q3);
+                    wasm_bin_load_indexed!(f32x4_mul, row; ab_q0, ab_q1, ab_q2, ab_q3)
                 }
                 FusedKerSpec::PerRowSub(row) => {
-                    let p = row as *const v128;
-                    ab_q0 = f32x4_sub(v128_load(p), ab_q0);
-                    ab_q1 = f32x4_sub(v128_load(p.add(1)), ab_q1);
-                    ab_q2 = f32x4_sub(v128_load(p.add(2)), ab_q2);
-                    ab_q3 = f32x4_sub(v128_load(p.add(3)), ab_q3);
+                    wasm_bin_load_indexed!(f32x4_sub, row; ab_q0, ab_q1, ab_q2, ab_q3)
                 }
                 FusedKerSpec::PerRowSubF(row) => {
-                    let p = row as *const v128;
-                    ab_q0 = f32x4_sub(ab_q0, v128_load(p));
-                    ab_q1 = f32x4_sub(ab_q1, v128_load(p.add(1)));
-                    ab_q2 = f32x4_sub(ab_q2, v128_load(p.add(2)));
-                    ab_q3 = f32x4_sub(ab_q3, v128_load(p.add(3)));
+                    wasm_bin_load_indexed_vs!(f32x4_sub, row; ab_q0, ab_q1, ab_q2, ab_q3)
                 }
                 FusedKerSpec::PerColMin(cols) => {
-                    let c = f32x4_splat(*cols);
-                    ab_q0 = f32x4_min(c, ab_q0);
-                    ab_q1 = f32x4_min(c, ab_q1);
-                    ab_q2 = f32x4_min(c, ab_q2);
-                    ab_q3 = f32x4_min(c, ab_q3);
+                    wasm_bin_sv!(f32x4_min, f32x4_splat(*cols); ab_q0, ab_q1, ab_q2, ab_q3)
                 }
                 FusedKerSpec::PerColMax(cols) => {
-                    let c = f32x4_splat(*cols);
-                    ab_q0 = f32x4_max(c, ab_q0);
-                    ab_q1 = f32x4_max(c, ab_q1);
-                    ab_q2 = f32x4_max(c, ab_q2);
-                    ab_q3 = f32x4_max(c, ab_q3);
+                    wasm_bin_sv!(f32x4_max, f32x4_splat(*cols); ab_q0, ab_q1, ab_q2, ab_q3)
                 }
                 FusedKerSpec::PerColAdd(cols) => {
-                    let c = f32x4_splat(*cols);
-                    ab_q0 = f32x4_add(c, ab_q0);
-                    ab_q1 = f32x4_add(c, ab_q1);
-                    ab_q2 = f32x4_add(c, ab_q2);
-                    ab_q3 = f32x4_add(c, ab_q3);
+                    wasm_bin_sv!(f32x4_add, f32x4_splat(*cols); ab_q0, ab_q1, ab_q2, ab_q3)
                 }
                 FusedKerSpec::PerColMul(cols) => {
-                    let c = f32x4_splat(*cols);
-                    ab_q0 = f32x4_mul(c, ab_q0);
-                    ab_q1 = f32x4_mul(c, ab_q1);
-                    ab_q2 = f32x4_mul(c, ab_q2);
-                    ab_q3 = f32x4_mul(c, ab_q3);
+                    wasm_bin_sv!(f32x4_mul, f32x4_splat(*cols); ab_q0, ab_q1, ab_q2, ab_q3)
                 }
                 FusedKerSpec::PerColSub(cols) => {
-                    let c = f32x4_splat(*cols);
-                    ab_q0 = f32x4_sub(c, ab_q0);
-                    ab_q1 = f32x4_sub(c, ab_q1);
-                    ab_q2 = f32x4_sub(c, ab_q2);
-                    ab_q3 = f32x4_sub(c, ab_q3);
+                    wasm_bin_sv!(f32x4_sub, f32x4_splat(*cols); ab_q0, ab_q1, ab_q2, ab_q3)
                 }
                 FusedKerSpec::PerColSubF(cols) => {
-                    let c = f32x4_splat(*cols);
-                    ab_q0 = f32x4_sub(ab_q0, c);
-                    ab_q1 = f32x4_sub(ab_q1, c);
-                    ab_q2 = f32x4_sub(ab_q2, c);
-                    ab_q3 = f32x4_sub(ab_q3, c);
+                    wasm_bin_vs!(f32x4_sub, f32x4_splat(*cols); ab_q0, ab_q1, ab_q2, ab_q3)
                 }
                 FusedKerSpec::QScale(shift, rp, mult) => {
-                    let scaler = Scaler::from_fuse_params(shift, rp, mult);
-                    let s = f32x4_splat(scaler.scale);
-                    ab_q0 = f32x4_mul(s, ab_q0);
-                    ab_q1 = f32x4_mul(s, ab_q1);
-                    ab_q2 = f32x4_mul(s, ab_q2);
-                    ab_q3 = f32x4_mul(s, ab_q3);
+                    wasm_bin_sv!(f32x4_mul, f32x4_splat(Scaler::from_fuse_params(shift, rp, mult).scale); ab_q0, ab_q1, ab_q2, ab_q3)
                 }
                 FusedKerSpec::RoundingShiftRight(shift, _rp) => {
-                    let s = f32x4_splat(2f32.powi(-(shift as i32)));
-                    ab_q0 = f32x4_mul(s, ab_q0);
-                    ab_q1 = f32x4_mul(s, ab_q1);
-                    ab_q2 = f32x4_mul(s, ab_q2);
-                    ab_q3 = f32x4_mul(s, ab_q3);
+                    wasm_bin_sv!(f32x4_mul, f32x4_splat(2f32.powi(-(shift as i32))); ab_q0, ab_q1, ab_q2, ab_q3)
                 }
                 FusedKerSpec::ShiftLeft(shift) => {
-                    let s = f32x4_splat(2f32.powi(shift as i32));
-                    ab_q0 = f32x4_mul(s, ab_q0);
-                    ab_q1 = f32x4_mul(s, ab_q1);
-                    ab_q2 = f32x4_mul(s, ab_q2);
-                    ab_q3 = f32x4_mul(s, ab_q3);
+                    wasm_bin_sv!(f32x4_mul, f32x4_splat(2f32.powi(shift as i32)); ab_q0, ab_q1, ab_q2, ab_q3)
                 }
                 FusedKerSpec::AddUnicast(tile) => {
                     // 16 rows × 1 col, with row_byte_stride between rows
@@ -695,278 +463,76 @@ unsafe fn kernel_f32_32x1(mut pnl: *const FusedKerSpec<f32>) -> isize {
             match *pnl {
                 FusedKerSpec::Done => break,
                 FusedKerSpec::Clear => {
-                    let z = f32x4_splat(0.0);
-                    ab_q0 = z;
-                    ab_q1 = z;
-                    ab_q2 = z;
-                    ab_q3 = z;
-                    ab_q4 = z;
-                    ab_q5 = z;
-                    ab_q6 = z;
-                    ab_q7 = z;
+                    wasm_set!(f32x4_splat(0.0); ab_q0, ab_q1, ab_q2, ab_q3, ab_q4, ab_q5, ab_q6, ab_q7)
                 }
                 FusedKerSpec::LoadTile(_cols, rows) => {
-                    let p = rows as *const v128;
-                    ab_q0 = *p;
-                    ab_q1 = *p.add(1);
-                    ab_q2 = *p.add(2);
-                    ab_q3 = *p.add(3);
-                    ab_q4 = *p.add(4);
-                    ab_q5 = *p.add(5);
-                    ab_q6 = *p.add(6);
-                    ab_q7 = *p.add(7);
+                    wasm_load_indexed!(rows; ab_q0, ab_q1, ab_q2, ab_q3, ab_q4, ab_q5, ab_q6, ab_q7)
                 }
                 FusedKerSpec::ScalarMin(a) => {
-                    let s = f32x4_splat(a);
-                    ab_q0 = f32x4_min(s, ab_q0);
-                    ab_q1 = f32x4_min(s, ab_q1);
-                    ab_q2 = f32x4_min(s, ab_q2);
-                    ab_q3 = f32x4_min(s, ab_q3);
-                    ab_q4 = f32x4_min(s, ab_q4);
-                    ab_q5 = f32x4_min(s, ab_q5);
-                    ab_q6 = f32x4_min(s, ab_q6);
-                    ab_q7 = f32x4_min(s, ab_q7);
+                    wasm_bin_sv!(f32x4_min, f32x4_splat(a); ab_q0, ab_q1, ab_q2, ab_q3, ab_q4, ab_q5, ab_q6, ab_q7)
                 }
                 FusedKerSpec::ScalarMax(a) => {
-                    let s = f32x4_splat(a);
-                    ab_q0 = f32x4_max(s, ab_q0);
-                    ab_q1 = f32x4_max(s, ab_q1);
-                    ab_q2 = f32x4_max(s, ab_q2);
-                    ab_q3 = f32x4_max(s, ab_q3);
-                    ab_q4 = f32x4_max(s, ab_q4);
-                    ab_q5 = f32x4_max(s, ab_q5);
-                    ab_q6 = f32x4_max(s, ab_q6);
-                    ab_q7 = f32x4_max(s, ab_q7);
+                    wasm_bin_sv!(f32x4_max, f32x4_splat(a); ab_q0, ab_q1, ab_q2, ab_q3, ab_q4, ab_q5, ab_q6, ab_q7)
                 }
                 FusedKerSpec::ScalarAdd(a) => {
-                    let s = f32x4_splat(a);
-                    ab_q0 = f32x4_add(s, ab_q0);
-                    ab_q1 = f32x4_add(s, ab_q1);
-                    ab_q2 = f32x4_add(s, ab_q2);
-                    ab_q3 = f32x4_add(s, ab_q3);
-                    ab_q4 = f32x4_add(s, ab_q4);
-                    ab_q5 = f32x4_add(s, ab_q5);
-                    ab_q6 = f32x4_add(s, ab_q6);
-                    ab_q7 = f32x4_add(s, ab_q7);
+                    wasm_bin_sv!(f32x4_add, f32x4_splat(a); ab_q0, ab_q1, ab_q2, ab_q3, ab_q4, ab_q5, ab_q6, ab_q7)
                 }
                 FusedKerSpec::ScalarMul(a) => {
-                    let s = f32x4_splat(a);
-                    ab_q0 = f32x4_mul(s, ab_q0);
-                    ab_q1 = f32x4_mul(s, ab_q1);
-                    ab_q2 = f32x4_mul(s, ab_q2);
-                    ab_q3 = f32x4_mul(s, ab_q3);
-                    ab_q4 = f32x4_mul(s, ab_q4);
-                    ab_q5 = f32x4_mul(s, ab_q5);
-                    ab_q6 = f32x4_mul(s, ab_q6);
-                    ab_q7 = f32x4_mul(s, ab_q7);
+                    wasm_bin_sv!(f32x4_mul, f32x4_splat(a); ab_q0, ab_q1, ab_q2, ab_q3, ab_q4, ab_q5, ab_q6, ab_q7)
                 }
                 FusedKerSpec::ScalarSub(a) => {
-                    let s = f32x4_splat(a);
-                    ab_q0 = f32x4_sub(s, ab_q0);
-                    ab_q1 = f32x4_sub(s, ab_q1);
-                    ab_q2 = f32x4_sub(s, ab_q2);
-                    ab_q3 = f32x4_sub(s, ab_q3);
-                    ab_q4 = f32x4_sub(s, ab_q4);
-                    ab_q5 = f32x4_sub(s, ab_q5);
-                    ab_q6 = f32x4_sub(s, ab_q6);
-                    ab_q7 = f32x4_sub(s, ab_q7);
+                    wasm_bin_sv!(f32x4_sub, f32x4_splat(a); ab_q0, ab_q1, ab_q2, ab_q3, ab_q4, ab_q5, ab_q6, ab_q7)
                 }
                 FusedKerSpec::ScalarSubF(a) => {
-                    let s = f32x4_splat(a);
-                    ab_q0 = f32x4_sub(ab_q0, s);
-                    ab_q1 = f32x4_sub(ab_q1, s);
-                    ab_q2 = f32x4_sub(ab_q2, s);
-                    ab_q3 = f32x4_sub(ab_q3, s);
-                    ab_q4 = f32x4_sub(ab_q4, s);
-                    ab_q5 = f32x4_sub(ab_q5, s);
-                    ab_q6 = f32x4_sub(ab_q6, s);
-                    ab_q7 = f32x4_sub(ab_q7, s);
+                    wasm_bin_vs!(f32x4_sub, f32x4_splat(a); ab_q0, ab_q1, ab_q2, ab_q3, ab_q4, ab_q5, ab_q6, ab_q7)
                 }
                 FusedKerSpec::LeakyRelu(a) => {
-                    let s = f32x4_splat(a);
-                    let zero = f32x4_splat(0.0);
-                    let m0 = f32x4_gt(ab_q0, zero);
-                    ab_q0 = v128_bitselect(ab_q0, f32x4_mul(s, ab_q0), m0);
-                    let m1 = f32x4_gt(ab_q1, zero);
-                    ab_q1 = v128_bitselect(ab_q1, f32x4_mul(s, ab_q1), m1);
-                    let m2 = f32x4_gt(ab_q2, zero);
-                    ab_q2 = v128_bitselect(ab_q2, f32x4_mul(s, ab_q2), m2);
-                    let m3 = f32x4_gt(ab_q3, zero);
-                    ab_q3 = v128_bitselect(ab_q3, f32x4_mul(s, ab_q3), m3);
-                    let m4 = f32x4_gt(ab_q4, zero);
-                    ab_q4 = v128_bitselect(ab_q4, f32x4_mul(s, ab_q4), m4);
-                    let m5 = f32x4_gt(ab_q5, zero);
-                    ab_q5 = v128_bitselect(ab_q5, f32x4_mul(s, ab_q5), m5);
-                    let m6 = f32x4_gt(ab_q6, zero);
-                    ab_q6 = v128_bitselect(ab_q6, f32x4_mul(s, ab_q6), m6);
-                    let m7 = f32x4_gt(ab_q7, zero);
-                    ab_q7 = v128_bitselect(ab_q7, f32x4_mul(s, ab_q7), m7);
+                    wasm_leaky_relu!(a; ab_q0, ab_q1, ab_q2, ab_q3, ab_q4, ab_q5, ab_q6, ab_q7)
                 }
                 FusedKerSpec::PerRowMin(row) => {
-                    let p = row as *const v128;
-                    ab_q0 = f32x4_min(v128_load(p), ab_q0);
-                    ab_q1 = f32x4_min(v128_load(p.add(1)), ab_q1);
-                    ab_q2 = f32x4_min(v128_load(p.add(2)), ab_q2);
-                    ab_q3 = f32x4_min(v128_load(p.add(3)), ab_q3);
-                    ab_q4 = f32x4_min(v128_load(p.add(4)), ab_q4);
-                    ab_q5 = f32x4_min(v128_load(p.add(5)), ab_q5);
-                    ab_q6 = f32x4_min(v128_load(p.add(6)), ab_q6);
-                    ab_q7 = f32x4_min(v128_load(p.add(7)), ab_q7);
+                    wasm_bin_load_indexed!(f32x4_min, row; ab_q0, ab_q1, ab_q2, ab_q3, ab_q4, ab_q5, ab_q6, ab_q7)
                 }
                 FusedKerSpec::PerRowMax(row) => {
-                    let p = row as *const v128;
-                    ab_q0 = f32x4_max(v128_load(p), ab_q0);
-                    ab_q1 = f32x4_max(v128_load(p.add(1)), ab_q1);
-                    ab_q2 = f32x4_max(v128_load(p.add(2)), ab_q2);
-                    ab_q3 = f32x4_max(v128_load(p.add(3)), ab_q3);
-                    ab_q4 = f32x4_max(v128_load(p.add(4)), ab_q4);
-                    ab_q5 = f32x4_max(v128_load(p.add(5)), ab_q5);
-                    ab_q6 = f32x4_max(v128_load(p.add(6)), ab_q6);
-                    ab_q7 = f32x4_max(v128_load(p.add(7)), ab_q7);
+                    wasm_bin_load_indexed!(f32x4_max, row; ab_q0, ab_q1, ab_q2, ab_q3, ab_q4, ab_q5, ab_q6, ab_q7)
                 }
                 FusedKerSpec::PerRowAdd(row) => {
-                    let p = row as *const v128;
-                    ab_q0 = f32x4_add(v128_load(p), ab_q0);
-                    ab_q1 = f32x4_add(v128_load(p.add(1)), ab_q1);
-                    ab_q2 = f32x4_add(v128_load(p.add(2)), ab_q2);
-                    ab_q3 = f32x4_add(v128_load(p.add(3)), ab_q3);
-                    ab_q4 = f32x4_add(v128_load(p.add(4)), ab_q4);
-                    ab_q5 = f32x4_add(v128_load(p.add(5)), ab_q5);
-                    ab_q6 = f32x4_add(v128_load(p.add(6)), ab_q6);
-                    ab_q7 = f32x4_add(v128_load(p.add(7)), ab_q7);
+                    wasm_bin_load_indexed!(f32x4_add, row; ab_q0, ab_q1, ab_q2, ab_q3, ab_q4, ab_q5, ab_q6, ab_q7)
                 }
                 FusedKerSpec::PerRowMul(row) => {
-                    let p = row as *const v128;
-                    ab_q0 = f32x4_mul(v128_load(p), ab_q0);
-                    ab_q1 = f32x4_mul(v128_load(p.add(1)), ab_q1);
-                    ab_q2 = f32x4_mul(v128_load(p.add(2)), ab_q2);
-                    ab_q3 = f32x4_mul(v128_load(p.add(3)), ab_q3);
-                    ab_q4 = f32x4_mul(v128_load(p.add(4)), ab_q4);
-                    ab_q5 = f32x4_mul(v128_load(p.add(5)), ab_q5);
-                    ab_q6 = f32x4_mul(v128_load(p.add(6)), ab_q6);
-                    ab_q7 = f32x4_mul(v128_load(p.add(7)), ab_q7);
+                    wasm_bin_load_indexed!(f32x4_mul, row; ab_q0, ab_q1, ab_q2, ab_q3, ab_q4, ab_q5, ab_q6, ab_q7)
                 }
                 FusedKerSpec::PerRowSub(row) => {
-                    let p = row as *const v128;
-                    ab_q0 = f32x4_sub(v128_load(p), ab_q0);
-                    ab_q1 = f32x4_sub(v128_load(p.add(1)), ab_q1);
-                    ab_q2 = f32x4_sub(v128_load(p.add(2)), ab_q2);
-                    ab_q3 = f32x4_sub(v128_load(p.add(3)), ab_q3);
-                    ab_q4 = f32x4_sub(v128_load(p.add(4)), ab_q4);
-                    ab_q5 = f32x4_sub(v128_load(p.add(5)), ab_q5);
-                    ab_q6 = f32x4_sub(v128_load(p.add(6)), ab_q6);
-                    ab_q7 = f32x4_sub(v128_load(p.add(7)), ab_q7);
+                    wasm_bin_load_indexed!(f32x4_sub, row; ab_q0, ab_q1, ab_q2, ab_q3, ab_q4, ab_q5, ab_q6, ab_q7)
                 }
                 FusedKerSpec::PerRowSubF(row) => {
-                    let p = row as *const v128;
-                    ab_q0 = f32x4_sub(ab_q0, v128_load(p));
-                    ab_q1 = f32x4_sub(ab_q1, v128_load(p.add(1)));
-                    ab_q2 = f32x4_sub(ab_q2, v128_load(p.add(2)));
-                    ab_q3 = f32x4_sub(ab_q3, v128_load(p.add(3)));
-                    ab_q4 = f32x4_sub(ab_q4, v128_load(p.add(4)));
-                    ab_q5 = f32x4_sub(ab_q5, v128_load(p.add(5)));
-                    ab_q6 = f32x4_sub(ab_q6, v128_load(p.add(6)));
-                    ab_q7 = f32x4_sub(ab_q7, v128_load(p.add(7)));
+                    wasm_bin_load_indexed_vs!(f32x4_sub, row; ab_q0, ab_q1, ab_q2, ab_q3, ab_q4, ab_q5, ab_q6, ab_q7)
                 }
                 FusedKerSpec::PerColMin(cols) => {
-                    let c = f32x4_splat(*cols);
-                    ab_q0 = f32x4_min(c, ab_q0);
-                    ab_q1 = f32x4_min(c, ab_q1);
-                    ab_q2 = f32x4_min(c, ab_q2);
-                    ab_q3 = f32x4_min(c, ab_q3);
-                    ab_q4 = f32x4_min(c, ab_q4);
-                    ab_q5 = f32x4_min(c, ab_q5);
-                    ab_q6 = f32x4_min(c, ab_q6);
-                    ab_q7 = f32x4_min(c, ab_q7);
+                    wasm_bin_sv!(f32x4_min, f32x4_splat(*cols); ab_q0, ab_q1, ab_q2, ab_q3, ab_q4, ab_q5, ab_q6, ab_q7)
                 }
                 FusedKerSpec::PerColMax(cols) => {
-                    let c = f32x4_splat(*cols);
-                    ab_q0 = f32x4_max(c, ab_q0);
-                    ab_q1 = f32x4_max(c, ab_q1);
-                    ab_q2 = f32x4_max(c, ab_q2);
-                    ab_q3 = f32x4_max(c, ab_q3);
-                    ab_q4 = f32x4_max(c, ab_q4);
-                    ab_q5 = f32x4_max(c, ab_q5);
-                    ab_q6 = f32x4_max(c, ab_q6);
-                    ab_q7 = f32x4_max(c, ab_q7);
+                    wasm_bin_sv!(f32x4_max, f32x4_splat(*cols); ab_q0, ab_q1, ab_q2, ab_q3, ab_q4, ab_q5, ab_q6, ab_q7)
                 }
                 FusedKerSpec::PerColAdd(cols) => {
-                    let c = f32x4_splat(*cols);
-                    ab_q0 = f32x4_add(c, ab_q0);
-                    ab_q1 = f32x4_add(c, ab_q1);
-                    ab_q2 = f32x4_add(c, ab_q2);
-                    ab_q3 = f32x4_add(c, ab_q3);
-                    ab_q4 = f32x4_add(c, ab_q4);
-                    ab_q5 = f32x4_add(c, ab_q5);
-                    ab_q6 = f32x4_add(c, ab_q6);
-                    ab_q7 = f32x4_add(c, ab_q7);
+                    wasm_bin_sv!(f32x4_add, f32x4_splat(*cols); ab_q0, ab_q1, ab_q2, ab_q3, ab_q4, ab_q5, ab_q6, ab_q7)
                 }
                 FusedKerSpec::PerColMul(cols) => {
-                    let c = f32x4_splat(*cols);
-                    ab_q0 = f32x4_mul(c, ab_q0);
-                    ab_q1 = f32x4_mul(c, ab_q1);
-                    ab_q2 = f32x4_mul(c, ab_q2);
-                    ab_q3 = f32x4_mul(c, ab_q3);
-                    ab_q4 = f32x4_mul(c, ab_q4);
-                    ab_q5 = f32x4_mul(c, ab_q5);
-                    ab_q6 = f32x4_mul(c, ab_q6);
-                    ab_q7 = f32x4_mul(c, ab_q7);
+                    wasm_bin_sv!(f32x4_mul, f32x4_splat(*cols); ab_q0, ab_q1, ab_q2, ab_q3, ab_q4, ab_q5, ab_q6, ab_q7)
                 }
                 FusedKerSpec::PerColSub(cols) => {
-                    let c = f32x4_splat(*cols);
-                    ab_q0 = f32x4_sub(c, ab_q0);
-                    ab_q1 = f32x4_sub(c, ab_q1);
-                    ab_q2 = f32x4_sub(c, ab_q2);
-                    ab_q3 = f32x4_sub(c, ab_q3);
-                    ab_q4 = f32x4_sub(c, ab_q4);
-                    ab_q5 = f32x4_sub(c, ab_q5);
-                    ab_q6 = f32x4_sub(c, ab_q6);
-                    ab_q7 = f32x4_sub(c, ab_q7);
+                    wasm_bin_sv!(f32x4_sub, f32x4_splat(*cols); ab_q0, ab_q1, ab_q2, ab_q3, ab_q4, ab_q5, ab_q6, ab_q7)
                 }
                 FusedKerSpec::PerColSubF(cols) => {
-                    let c = f32x4_splat(*cols);
-                    ab_q0 = f32x4_sub(ab_q0, c);
-                    ab_q1 = f32x4_sub(ab_q1, c);
-                    ab_q2 = f32x4_sub(ab_q2, c);
-                    ab_q3 = f32x4_sub(ab_q3, c);
-                    ab_q4 = f32x4_sub(ab_q4, c);
-                    ab_q5 = f32x4_sub(ab_q5, c);
-                    ab_q6 = f32x4_sub(ab_q6, c);
-                    ab_q7 = f32x4_sub(ab_q7, c);
+                    wasm_bin_vs!(f32x4_sub, f32x4_splat(*cols); ab_q0, ab_q1, ab_q2, ab_q3, ab_q4, ab_q5, ab_q6, ab_q7)
                 }
                 FusedKerSpec::QScale(shift, rp, mult) => {
-                    let scaler = Scaler::from_fuse_params(shift, rp, mult);
-                    let s = f32x4_splat(scaler.scale);
-                    ab_q0 = f32x4_mul(s, ab_q0);
-                    ab_q1 = f32x4_mul(s, ab_q1);
-                    ab_q2 = f32x4_mul(s, ab_q2);
-                    ab_q3 = f32x4_mul(s, ab_q3);
-                    ab_q4 = f32x4_mul(s, ab_q4);
-                    ab_q5 = f32x4_mul(s, ab_q5);
-                    ab_q6 = f32x4_mul(s, ab_q6);
-                    ab_q7 = f32x4_mul(s, ab_q7);
+                    wasm_bin_sv!(f32x4_mul, f32x4_splat(Scaler::from_fuse_params(shift, rp, mult).scale); ab_q0, ab_q1, ab_q2, ab_q3, ab_q4, ab_q5, ab_q6, ab_q7)
                 }
                 FusedKerSpec::RoundingShiftRight(shift, _rp) => {
-                    let s = f32x4_splat(2f32.powi(-(shift as i32)));
-                    ab_q0 = f32x4_mul(s, ab_q0);
-                    ab_q1 = f32x4_mul(s, ab_q1);
-                    ab_q2 = f32x4_mul(s, ab_q2);
-                    ab_q3 = f32x4_mul(s, ab_q3);
-                    ab_q4 = f32x4_mul(s, ab_q4);
-                    ab_q5 = f32x4_mul(s, ab_q5);
-                    ab_q6 = f32x4_mul(s, ab_q6);
-                    ab_q7 = f32x4_mul(s, ab_q7);
+                    wasm_bin_sv!(f32x4_mul, f32x4_splat(2f32.powi(-(shift as i32))); ab_q0, ab_q1, ab_q2, ab_q3, ab_q4, ab_q5, ab_q6, ab_q7)
                 }
                 FusedKerSpec::ShiftLeft(shift) => {
-                    let s = f32x4_splat(2f32.powi(shift as i32));
-                    ab_q0 = f32x4_mul(s, ab_q0);
-                    ab_q1 = f32x4_mul(s, ab_q1);
-                    ab_q2 = f32x4_mul(s, ab_q2);
-                    ab_q3 = f32x4_mul(s, ab_q3);
-                    ab_q4 = f32x4_mul(s, ab_q4);
-                    ab_q5 = f32x4_mul(s, ab_q5);
-                    ab_q6 = f32x4_mul(s, ab_q6);
-                    ab_q7 = f32x4_mul(s, ab_q7);
+                    wasm_bin_sv!(f32x4_mul, f32x4_splat(2f32.powi(shift as i32)); ab_q0, ab_q1, ab_q2, ab_q3, ab_q4, ab_q5, ab_q6, ab_q7)
                 }
                 FusedKerSpec::AddUnicast(tile) => {
                     // 32 rows × 1 col, with row_byte_stride between rows
