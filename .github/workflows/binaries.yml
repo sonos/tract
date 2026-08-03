@@ -94,7 +94,7 @@ jobs:
           if [ -n "$MUSL" ]
           then
             MUSL_TRIPLE="$MUSL"
-            curl -s https://s3.amazonaws.com/tract-ci-builds/toolchains/${MUSL_TRIPLE}-cross.tgz | tar zx
+            curl -s https://tract-test-assets.tract.rs/toolchains/${MUSL_TRIPLE}-cross.tgz | tar zx
 
             MUSL_BIN=`pwd`/${MUSL_TRIPLE}-cross/bin
             export PATH=$MUSL_BIN:$PATH
