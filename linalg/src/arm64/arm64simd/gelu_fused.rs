@@ -55,6 +55,7 @@ ew_impl_wrap!(
             //   v6:    tanh clamp high (8.9, dup v0.s[1])
             //   v7:    0.5 (broadcast of v3.s[1])
             //   v8-v11: 0.5 * original x (saved after load)
+            //   v12-v15: low-clamp masks, then the corrected tanh
             //   v16-v19: working (load -> pre_tanh -> clamped -> numerator)
             //   v20-v23: x² for tanh polynomial
             //   v24-v27: polynomial intermediates (denominator at end)
@@ -110,6 +111,13 @@ ew_impl_wrap!(
                     fmin v17.4s, v17.4s, v6.4s
                     fmin v18.4s, v18.4s, v6.4s
                     fmin v19.4s, v19.4s, v6.4s
+
+                    // Lanes pinned to the low clamp: tanh is -1 there to f32
+                    // precision, and the polynomial lands one ulp short.
+                    fcmeq v12.4s, v16.4s, v5.4s
+                    fcmeq v13.4s, v17.4s, v5.4s
+                    fcmeq v14.4s, v18.4s, v5.4s
+                    fcmeq v15.4s, v19.4s, v5.4s
 
                     // Tanh Padé polynomial (cloned from arm64simd_tanh_f32_4n.S.j2)
                     fmul v20.4s, v16.4s, v16.4s
@@ -209,11 +217,17 @@ ew_impl_wrap!(
                     fdiv v18.4s, v18.4s, v26.4s
                     fdiv v19.4s, v19.4s, v27.4s
 
+                    fmov v20.4s, #-1.0
+                    bsl v12.16b, v20.16b, v16.16b
+                    bsl v13.16b, v20.16b, v17.16b
+                    bsl v14.16b, v20.16b, v18.16b
+                    bsl v15.16b, v20.16b, v19.16b
+
                     // result = 0.5*x * (1 + tanh) = (0.5*x) + (0.5*x) * tanh
-                    fmla v8.4s, v8.4s, v16.4s
-                    fmla v9.4s, v9.4s, v17.4s
-                    fmla v10.4s, v10.4s, v18.4s
-                    fmla v11.4s, v11.4s, v19.4s
+                    fmla v8.4s, v8.4s, v12.4s
+                    fmla v9.4s, v9.4s, v13.4s
+                    fmla v10.4s, v10.4s, v14.4s
+                    fmla v11.4s, v11.4s, v15.4s
 
                     st1 {{ v8.4s, v9.4s, v10.4s, v11.4s }}, [{ptr}], #64
                     sub {len}, {len}, #16
@@ -235,6 +249,7 @@ ew_impl_wrap!(
 
                     fmax v16.4s, v16.4s, v5.4s
                     fmin v16.4s, v16.4s, v6.4s
+                    fcmeq v12.4s, v16.4s, v5.4s
 
                     fmul v20.4s, v16.4s, v16.4s
 
@@ -261,7 +276,10 @@ ew_impl_wrap!(
 
                     fdiv v16.4s, v16.4s, v24.4s
 
-                    fmla v8.4s, v8.4s, v16.4s
+                    fmov v20.4s, #-1.0
+                    bsl v12.16b, v20.16b, v16.16b
+
+                    fmla v8.4s, v8.4s, v12.4s
 
                     st1 {{ v8.4s }}, [{ptr}], #16
                     subs {len}, {len}, 4
@@ -275,6 +293,7 @@ ew_impl_wrap!(
             out("v0") _, out("v1") _, out("v2") _, out("v3") _,
             out("v4") _, out("v5") _, out("v6") _, out("v7") _,
             out("v8") _, out("v9") _, out("v10") _, out("v11") _,
+            out("v12") _, out("v13") _, out("v14") _, out("v15") _,
             out("v16") _, out("v17") _, out("v18") _, out("v19") _,
             out("v20") _, out("v21") _, out("v22") _, out("v23") _,
             out("v24") _, out("v25") _, out("v26") _, out("v27") _,
@@ -289,4 +308,20 @@ ew_impl_wrap!(
 pub mod test_arm64simd_gelu_f32_4n_fused {
     use super::*;
     gelu_frame_tests!(true, f32, arm64simd_gelu_f32_4n_fused);
+
+    use crate::frame::element_wise::ElementWiseKer;
+
+    #[test]
+    fn decays_to_zero_on_large_negatives() {
+        // 16 exercises the unrolled body, 4 the tail.
+        for len in [4usize, 16, 20] {
+            for x in [-6.0f32, -9.0, -10.0, -100.0, -1000.0, -65504.0] {
+                let mut got = vec![x; len];
+                arm64simd_gelu_f32_4n_fused::ew().run(&mut got).unwrap();
+                for (i, g) in got.iter().enumerate() {
+                    assert_eq!(*g, 0.0, "len {len} lane {i} x={x}: got {g:e}");
+                }
+            }
+        }
+    }
 }
