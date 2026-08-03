@@ -94,9 +94,9 @@ fn pick(name: &str) -> Box<dyn crate::mmm::MatMatMul> {
 /// Numerical-equivalence sanity check between 16x1 and 32x1 kernels on a
 /// real-shape matmul with non-trivial inputs.
 ///
-/// Under `+simd128` (no relaxed-simd): both kernels emit
-/// `f32x4_add(f32x4_mul(...))` via `madd_f32x4!`, so the K-loop order is
-/// identical and outputs are bit-identical.
+/// Under `+simd128` (no relaxed-simd): `madd_f32x4!` and `madd_f32x4_nofma!`
+/// expand the same way, so both kernels emit `f32x4_add(f32x4_mul(...))`, the
+/// K-loop order is identical and outputs are bit-identical.
 ///
 /// Under `+simd128,+relaxed-simd`: 32x1 uses `f32x4.relaxed_madd` (fused
 /// FMA) via `madd_f32x4!`, while 16x1 uses separate `mul+add` via
