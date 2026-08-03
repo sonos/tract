@@ -88,3 +88,88 @@ macro_rules! wasm_leaky_relu {
         )+
     }};
 }
+
+/// `acc_i = op(splat(p[i]), acc_i)`, used where a per-row operand runs across
+/// the accumulators rather than along the lanes inside one.
+macro_rules! wasm_bin_splat_indexed {
+    (@step $op:path, $p:ident, $i:expr;) => {};
+    (@step $op:path, $p:ident, $i:expr; $acc:ident $(, $rest:ident)*) => {
+        $acc = $op(f32x4_splat(*$p.add($i)), $acc);
+        wasm_bin_splat_indexed!(@step $op, $p, $i + 1; $($rest),*);
+    };
+    ($op:path, $ptr:expr; $($acc:ident),+ $(,)?) => {{
+        let p = $ptr;
+        wasm_bin_splat_indexed!(@step $op, p, 0usize; $($acc),+);
+    }};
+}
+
+/// `acc_i = op(acc_i, splat(p[i]))` — the flipped counterpart.
+macro_rules! wasm_bin_splat_indexed_vs {
+    (@step $op:path, $p:ident, $i:expr;) => {};
+    (@step $op:path, $p:ident, $i:expr; $acc:ident $(, $rest:ident)*) => {
+        $acc = $op($acc, f32x4_splat(*$p.add($i)));
+        wasm_bin_splat_indexed_vs!(@step $op, $p, $i + 1; $($rest),*);
+    };
+    ($op:path, $ptr:expr; $($acc:ident),+ $(,)?) => {{
+        let p = $ptr;
+        wasm_bin_splat_indexed_vs!(@step $op, p, 0usize; $($acc),+);
+    }};
+}
+
+/// Per-row operand against accumulators held as one `(low, high)` pair per row:
+/// row `i` is splatted once and applied to both halves.
+macro_rules! wasm_bin_row_pairs {
+    (@step $op:path, $p:ident, $i:expr;) => {};
+    (@step $op:path, $p:ident, $i:expr; ($lo:ident, $hi:ident) $(, $rest:tt)*) => {
+        let s = f32x4_splat(*$p.add($i));
+        $lo = $op(s, $lo);
+        $hi = $op(s, $hi);
+        wasm_bin_row_pairs!(@step $op, $p, $i + 1; $($rest),*);
+    };
+    ($op:path, $ptr:expr; $(($lo:ident, $hi:ident)),+ $(,)?) => {{
+        let p = $ptr;
+        wasm_bin_row_pairs!(@step $op, p, 0usize; $(($lo, $hi)),+);
+    }};
+}
+
+/// `wasm_bin_row_pairs!` with the operands flipped.
+macro_rules! wasm_bin_row_pairs_vs {
+    (@step $op:path, $p:ident, $i:expr;) => {};
+    (@step $op:path, $p:ident, $i:expr; ($lo:ident, $hi:ident) $(, $rest:tt)*) => {
+        let s = f32x4_splat(*$p.add($i));
+        $lo = $op($lo, s);
+        $hi = $op($hi, s);
+        wasm_bin_row_pairs_vs!(@step $op, $p, $i + 1; $($rest),*);
+    };
+    ($op:path, $ptr:expr; $(($lo:ident, $hi:ident)),+ $(,)?) => {{
+        let p = $ptr;
+        wasm_bin_row_pairs_vs!(@step $op, p, 0usize; $(($lo, $hi)),+);
+    }};
+}
+
+/// Per-column operand against `(low, high)` accumulator pairs: the first vector
+/// of columns hits every low half, the second every high half.
+macro_rules! wasm_bin_col_pairs {
+    ($op:path, $ptr:expr; $(($lo:ident, $hi:ident)),+ $(,)?) => {{
+        let p = $ptr as *const v128;
+        let clo = v128_load(p);
+        let chi = v128_load(p.add(1));
+        $(
+            $lo = $op(clo, $lo);
+            $hi = $op(chi, $hi);
+        )+
+    }};
+}
+
+/// `wasm_bin_col_pairs!` with the operands flipped.
+macro_rules! wasm_bin_col_pairs_vs {
+    ($op:path, $ptr:expr; $(($lo:ident, $hi:ident)),+ $(,)?) => {{
+        let p = $ptr as *const v128;
+        let clo = v128_load(p);
+        let chi = v128_load(p.add(1));
+        $(
+            $lo = $op($lo, clo);
+            $hi = $op($hi, chi);
+        )+
+    }};
+}
