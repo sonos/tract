@@ -189,3 +189,7 @@ harness = false
 [[bench]]
 name = "avxvnni_i32"
 harness = false
+
+[[bench]]
+name = "tanh_f16_arm64"
+harness = false
