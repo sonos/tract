@@ -40,6 +40,10 @@ fn main() {
         eprintln!();
         eprintln!("=== int8 relaxed-dot prototype: relaxed_dot vs widening (4x4 tile) ===");
         bench_relaxed_dot::run();
+
+        eprintln!();
+        eprintln!("=== sigmoid/tanh: wasm relaxed-SIMD vs generic scalar ===");
+        bench_activations::run();
     }
     #[cfg(not(target_feature = "relaxed-simd"))]
     eprintln!("\n(int8 relaxed-dot prototype skipped — rebuild with +relaxed-simd)");
@@ -110,19 +114,8 @@ mod bench_8x8 {
         elapsed.as_secs_f64() / iters as f64 * 1e9
     }
 
-    fn pick(name: &str) -> Box<dyn tract_linalg::mmm::MatMatMul> {
-        let mut ops = tract_linalg::generic();
-        tract_linalg::wasm::plug(&mut ops);
-        for impl_ in ops.mmm_impls() {
-            if impl_.name() == name {
-                return impl_.clone();
-            }
-        }
-        panic!("kernel {name} not registered")
-    }
-
     fn bench_shape(label: &str, m: usize, k: usize, n: usize, iters: usize) {
-        let k88 = pick("wasm_f32_8x8");
+        let k88 = crate::util::pick("wasm_f32_8x8");
         let ns = run_one(&*k88, m, k, n, iters);
         let m_tiles = m.div_ceil(8);
         let n_tiles = n.div_ceil(8);
@@ -212,19 +205,8 @@ mod bench_32x1 {
         elapsed.as_secs_f64() / iters as f64 * 1e9
     }
 
-    fn pick(name: &str) -> Box<dyn tract_linalg::mmm::MatMatMul> {
-        let mut ops = tract_linalg::generic();
-        tract_linalg::wasm::plug(&mut ops);
-        for impl_ in ops.mmm_impls() {
-            if impl_.name() == name {
-                return impl_.clone();
-            }
-        }
-        panic!("kernel {name} not registered")
-    }
-
     fn bench_min_of_n(label: &str, m: usize, k: usize, iters: usize, repetitions: usize) {
-        let kernel = pick("wasm_f32_32x1");
+        let kernel = crate::util::pick("wasm_f32_32x1");
         let mut samples: Vec<f64> = Vec::with_capacity(repetitions);
         for _ in 0..repetitions {
             samples.push(run_one(&*kernel, m, k, iters));
@@ -314,19 +296,8 @@ mod bench_16x1 {
         elapsed.as_secs_f64() / iters as f64 * 1e9
     }
 
-    fn pick(name: &str) -> Box<dyn tract_linalg::mmm::MatMatMul> {
-        let mut ops = tract_linalg::generic();
-        tract_linalg::wasm::plug(&mut ops);
-        for impl_ in ops.mmm_impls() {
-            if impl_.name() == name {
-                return impl_.clone();
-            }
-        }
-        panic!("kernel {name} not registered")
-    }
-
     fn bench_min_of_n(label: &str, m: usize, k: usize, iters: usize, repetitions: usize) {
-        let kernel = pick("wasm_f32_16x1");
+        let kernel = crate::util::pick("wasm_f32_16x1");
         let mut samples: Vec<f64> = Vec::with_capacity(repetitions);
         for _ in 0..repetitions {
             samples.push(run_one(&*kernel, m, k, iters));
@@ -420,17 +391,6 @@ mod bench_i8_4x4 {
         elapsed.as_secs_f64() / iters as f64 * 1e9
     }
 
-    fn pick(name: &str) -> Box<dyn MatMatMul> {
-        let mut ops = tract_linalg::generic();
-        tract_linalg::wasm::plug(&mut ops);
-        for impl_ in ops.mmm_impls() {
-            if impl_.name() == name {
-                return impl_.clone();
-            }
-        }
-        panic!("kernel {name} not registered")
-    }
-
     fn min_of_n(
         kernel: &dyn MatMatMul,
         m: usize,
@@ -445,8 +405,8 @@ mod bench_i8_4x4 {
     }
 
     fn bench(label: &str, m: usize, k: usize, n: usize, iters: usize, reps: usize) {
-        let wasm = pick("wasm_i32_4x4");
-        let generic = pick("generic_i32_4x4");
+        let wasm = crate::util::pick("wasm_i32_4x4");
+        let generic = crate::util::pick("generic_i32_4x4");
         let w = min_of_n(&*wasm, m, k, n, iters, reps);
         let g = min_of_n(&*generic, m, k, n, iters, reps);
         let tiles = m.div_ceil(4) * n.div_ceil(4);
@@ -680,5 +640,73 @@ mod bench_relaxed_dot {
         bench(256, 50_000, 8);
         bench(1024, 10_000, 8);
         bench(1536, 8_000, 8);
+    }
+}
+
+#[cfg(all(target_arch = "wasm32", target_feature = "relaxed-simd"))]
+mod bench_activations {
+    //! Microbench: WASM SIMD sigmoid/tanh vs the generic scalar fallback.
+    //! Sizes mirror typical RNN/transformer hidden dims (256, 512, 1024).
+    //! Requires `+relaxed-simd`; without it the slots hold the scalar
+    //! polynomial and the comparison is vacuous.
+
+    use std::time::Instant;
+    use tract_linalg::element_wise::ElementWiseKer;
+
+    fn ns_per_call<K: ElementWiseKer<f32>>(buf: &mut [f32], iters: usize) -> f64 {
+        // Warmup
+        for _ in 0..50 {
+            K::run(buf, ());
+        }
+        let t0 = Instant::now();
+        for _ in 0..iters {
+            K::run(buf, ());
+        }
+        let elapsed = t0.elapsed();
+        elapsed.as_secs_f64() / iters as f64 * 1e9
+    }
+
+    fn bench(label: &str, n: usize, iters: usize) {
+        // Same input for both kernels — rebuild between to avoid post-clamp
+        // saturation mucking up the measurement.
+        let make = || (0..n).map(|i| ((i % 37) as f32 - 18.0) * 0.5).collect::<Vec<f32>>();
+
+        let mut buf = make();
+        let scalar_sig = ns_per_call::<tract_linalg::generic::sigmoid::SSigmoid4>(&mut buf, iters);
+        let mut buf = make();
+        let simd_sig = ns_per_call::<tract_linalg::wasm::WasmSigmoid4Relaxed>(&mut buf, iters);
+        let mut buf = make();
+        let scalar_tanh = ns_per_call::<tract_linalg::generic::tanh::STanh4>(&mut buf, iters);
+        let mut buf = make();
+        let simd_tanh = ns_per_call::<tract_linalg::wasm::WasmTanh4Relaxed>(&mut buf, iters);
+
+        eprintln!(
+            "{label} n={n} iters={iters}: \
+             sigmoid scalar={scalar_sig:.0} ns simd={simd_sig:.0} ns ({:.2}x); \
+             tanh scalar={scalar_tanh:.0} ns simd={simd_tanh:.0} ns ({:.2}x)",
+            scalar_sig / simd_sig,
+            scalar_tanh / simd_tanh,
+        );
+    }
+    pub fn run() {
+        bench("hidden=256", 256, 5_000);
+        bench("hidden=512", 512, 3_000);
+        bench("hidden=1024", 1024, 2_000);
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+mod util {
+    use tract_linalg::mmm::MatMatMul;
+
+    pub fn pick(name: &str) -> Box<dyn MatMatMul> {
+        let mut ops = tract_linalg::generic();
+        tract_linalg::wasm::plug(&mut ops);
+        for impl_ in ops.mmm_impls() {
+            if impl_.name() == name {
+                return impl_.clone();
+            }
+        }
+        panic!("kernel {name} not registered")
     }
 }

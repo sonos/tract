@@ -284,6 +284,11 @@ unsafe fn kernel_f32_4x4(mut pnl: *const FusedKerSpec<f32>) -> isize {
     }
 }
 
+// Reachable only by name, never through dispatch: it is the one kernel left at
+// TargetOptimized, and strategize's retain() keeps only the top quality tier.
+// Kept because it is the only f32 kernel besides 8x8 whose C tile is
+// two-dimensional, so the generated store and packing tests cover that layout
+// on a second shape. `dispatch_never_returns_wasm_f32_4x4` holds this in place.
 MMMRustKernel!(kernel_f32_4x4 => wasm_f32_4x4<f32>(4,4)@(4,4) quality(ImplementationQuality::TargetOptimized));
 
 /// WASM SIMD f32 8x8 kernel — wide MM tile (8 rows × 8 cols, 16 v128 accumulators).
