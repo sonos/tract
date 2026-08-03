@@ -413,12 +413,14 @@ fn inner_tier_pays(panels: usize, r: usize, k: usize, elem_bytes: usize, l2_byte
 /// The budget is **cache-size derived** (not a hard-coded constant), so it is
 /// correct across hardware.
 ///
-/// Unlike [`outer_block_edge`], this does not divide the budget among concurrent
-/// walkers: it assumes an L2 private to the core running the rectangle. Where L2
-/// is instead shared across a cluster — [`crate::cache::CacheInfo::l2`] reports
-/// either and cannot tell them apart — sibling rectangles each budget the same
-/// bytes and can evict one another.
+/// `l2_share` is how many rectangles concurrently share this L2, so each walker
+/// may only assume its slice of it — like [`outer_block_edge`]'s `llc_share`, but
+/// bounded by the L2's physical sharing degree rather than the thread count. On a
+/// core-private L2 (`l2_share == 1`) this is the whole cache, unchanged; on a
+/// cluster-shared L2 (Cortex-A9/A53) it prevents sibling rectangles from evicting
+/// one another's blocks.
 #[inline]
+#[allow(clippy::too_many_arguments)]
 fn inner_block_edge(
     mr: usize,
     nr: usize,
@@ -427,12 +429,14 @@ fn inner_block_edge(
     m_panels: usize,
     n_panels: usize,
     col_outer: bool,
+    l2_share: usize,
 ) -> usize {
     let (panels, r) = if col_outer { (m_panels, mr) } else { (n_panels, nr) };
-    if !inner_tier_pays(panels, r, k, elem_bytes, crate::cache::cache_info().l2) {
+    let share = l2_share.max(1);
+    if !inner_tier_pays(panels, r, k, elem_bytes, crate::cache::cache_info().l2 / share) {
         return usize::MAX;
     }
-    block_edge_for(l2_block_budget_bytes(), mr, nr, k, elem_bytes, BLK_MAX)
+    block_edge_for(l2_block_budget_bytes() / share, mr, nr, k, elem_bytes, BLK_MAX)
 }
 
 /// Whether an L3 outer super-block can capture reuse the inner (L2) tier cannot.
@@ -569,7 +573,8 @@ unsafe fn run_blocked<K: MatMatMulKer>(
         let elem = K::Acc::datum_type().size_of();
         let (mr, nr) = (ker.mr(), ker.nr());
         let (m_panels, n_panels) = (m.len(), n.len());
-        let blk = inner_block_edge(mr, nr, k, elem, m_panels, n_panels, col_outer);
+        let l2_share = llc_share.min(crate::cache::cache_info().l2_sharers_or_one());
+        let blk = inner_block_edge(mr, nr, k, elem, m_panels, n_panels, col_outer, l2_share);
         let blk_outer = outer_block_edge(mr, nr, k, elem, blk, m_panels, n_panels, llc_share);
         scratch.run_in_tls_scope(|scratch, tls| {
             for_each_blocked_tile(m, n, blk, blk_outer, col_outer, |ia, ib| {
