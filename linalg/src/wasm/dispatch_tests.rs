@@ -196,3 +196,116 @@ fn numerical_consistency_16x1_vs_32x1() {
         );
     }
 }
+
+/// `AddRowColProducts` and `AddMatMul` with `k = 1` both compute
+/// `c[i][j] += a[i] * b[j]`, so a kernel has to use the same multiply-add form
+/// for both arms. Under `+relaxed-simd` the fused form keeps the full product
+/// before adding while the separate form rounds it first, so a kernel that
+/// fuses one arm and not the other returns two different answers for the same
+/// arithmetic.
+///
+/// The operands make that difference observable: with `a = b = 1 + 2^-12` the
+/// product `1 + 2^-11 + 2^-24` needs 25 significand bits and rounds to
+/// `1 + 2^-11`, so against `c = -1` the fused form yields `2^-11 + 2^-24` and
+/// the separate form `2^-11`. Without `+relaxed-simd` both arms are `mul` then
+/// `add` and the two agree trivially.
+#[cfg(test)]
+fn check_madd_pairing<K: crate::mmm::MatMatMulKer<Acc = f32>>(ker: &K) {
+    use crate::mmm::{FusedKerSpec, OutputStoreKer};
+
+    if !ker.is_supported_here() {
+        return;
+    }
+    let (mr, nr) = (ker.mr(), ker.nr());
+    let v = 1f32 + 2f32.powi(-12);
+
+    let (pack_a, pack_b) = &ker.packings()[0];
+    let k = pack_a.k_alignment().max(pack_b.k_alignment());
+    let mut a_data = vec![0f32; mr * k];
+    let mut b_data = vec![0f32; k * nr];
+    for i in 0..mr {
+        a_data[i * k] = v;
+    }
+    b_data[..nr].copy_from_slice(&vec![v; nr]);
+    let a = Tensor::from_shape(&[mr, k], &a_data).unwrap();
+    let b = Tensor::from_shape(&[k, nr], &b_data).unwrap();
+    let pa = pack_a.prepare_one(&a, 1, 0).unwrap();
+    let pb = pack_b.prepare_one(&b, 0, 1).unwrap();
+
+    let rows = vec![v; mr];
+    let cols = vec![v; nr];
+
+    let run = |op: FusedKerSpec<f32>| -> Vec<f32> {
+        let out = vec![0f32; mr * nr];
+        let item = std::mem::size_of::<f32>();
+        let store = OutputStoreKer {
+            ptr: out.as_ptr() as *mut u8,
+            row_byte_stride: (item * nr) as isize,
+            col_byte_stride: item as isize,
+            item_size: item,
+        };
+        let ops = [
+            FusedKerSpec::Clear,
+            FusedKerSpec::ScalarAdd(-1.0),
+            op,
+            FusedKerSpec::Store(store),
+            FusedKerSpec::Done,
+        ];
+        assert_eq!(ker.kernel(&ops), 0);
+        out
+    };
+
+    let from_row_col = run(FusedKerSpec::AddRowColProducts(rows.as_ptr(), cols.as_ptr()));
+    let from_mat_mul = run(FusedKerSpec::AddMatMul {
+        k,
+        pa: pa.panel_bytes(0, None).unwrap(),
+        pb: pb.panel_bytes(0, None).unwrap(),
+        packing: 0,
+    });
+
+    for (i, (rc, mm)) in from_row_col.iter().zip(from_mat_mul.iter()).enumerate() {
+        assert_eq!(
+            rc.to_bits(),
+            mm.to_bits(),
+            "{}: cell {i} is {rc:e} from AddRowColProducts but {mm:e} from AddMatMul — \
+             the two arms disagree on whether the multiply-add is fused",
+            ker.name()
+        );
+    }
+}
+
+#[test]
+fn add_row_col_products_and_add_mat_mul_agree_on_fusion() {
+    check_madd_pairing(&*crate::wasm::wasm_f32_4x4);
+    check_madd_pairing(&*crate::wasm::wasm_f32_4x1);
+    check_madd_pairing(&*crate::wasm::wasm_f32_8x1);
+    check_madd_pairing(&*crate::wasm::wasm_f32_16x1);
+    check_madd_pairing(&*crate::wasm::wasm_f32_32x1);
+    check_madd_pairing(&*crate::wasm::wasm_f32_8x8);
+}
+
+/// `wasm_f32_4x4` is registered at `TargetOptimized` while every other kernel
+/// is `ManuallyOptimized`, so `strategize`'s `retain()` drops it before
+/// selection and neither `mmm_f32` nor `mmv_f32` ever names it. Promoting it
+/// without also giving it a dispatch band would silently put a 4-wide tile in
+/// front of shapes the 8x8 and the GEMV kernels currently own.
+#[test]
+fn dispatch_never_returns_wasm_f32_4x4() {
+    let mut ops = crate::generic();
+    crate::wasm::plug(&mut ops);
+    for m in [1usize, 3, 4, 5, 8, 9, 16, 17, 32, 64, 256, 1024] {
+        for n in [1usize, 2, 4, 8, 10, 64, 256] {
+            for k in [1usize, 64, 576] {
+                let mmm = ops
+                    .mmm(tract_data::prelude::DatumType::F32, Some(m), Some(k), Some(n))
+                    .unwrap();
+                assert_ne!(
+                    mmm.name(),
+                    "wasm_f32_4x4",
+                    "m={m} k={k} n={n} dispatched to wasm_f32_4x4, which is registered \
+                     TargetOptimized and has no dispatch band"
+                );
+            }
+        }
+    }
+}
