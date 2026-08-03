@@ -239,3 +239,21 @@ mod silu_f16_agreement {
         assert_eq!(mismatch, None);
     }
 }
+
+// f32-roundtrip f16 tanh for arm64 cores without FEAT_FP16.
+ew_impl_f16_via_f32!(
+    arm64simd_tanh_f16_4n,
+    4,
+    4,
+    CHUNK,
+    16,
+    cvt_f16_to_f32,
+    cvt_f32_to_f16,
+    super::arm64simd_tanh_f32_4n
+);
+
+#[cfg(test)]
+pub mod test_arm64simd_tanh_f16_4n {
+    use super::*;
+    tanh_frame_tests!(true, f16, arm64simd_tanh_f16_4n);
+}
