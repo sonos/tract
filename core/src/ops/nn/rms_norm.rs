@@ -58,7 +58,9 @@ impl EvalOp for RmsNorm {
         }
 
         // Slow path: original 4-call composition (kept for non-contiguous axes).
-        let input_f32 = input.cast_to::<f32>()?.into_owned();
+        let already_f32 = in_dt == DatumType::F32;
+        let input_f32 =
+            if already_f32 { input.into_tensor() } else { input.cast_to::<f32>()?.into_owned() };
         // eps inherits the input dtype from the declutter pattern (F16 when the
         // surrounding LayerNorm chain is F16). The MeanOfSquares + Add + Rsqrt
         // + Mul chain below all runs at F32, so eps must be cast to match —
@@ -70,6 +72,9 @@ impl EvalOp for RmsNorm {
         let mut a2 = Add.eval(a1.into_tvalue(), eps.into_tvalue(), DatumType::F32)?;
         Rsqrt {}.eval_in_place(&mut a2, None)?;
         let a3 = Mul.eval(a2.into_tvalue(), input_f32.into_tvalue(), DatumType::F32)?;
+        if already_f32 {
+            return Ok(tvec![a3.into_tvalue()]);
+        }
         Ok(tvec![a3.cast_to_dt(in_dt)?.into_owned().into()])
     }
 }
