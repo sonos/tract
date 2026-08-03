@@ -92,7 +92,7 @@ jobs:
         persist-credentials: false
 
     - name: Cargo test
-      run: cargo test -p tract-cuda -p test-cuda
+      run: cargo test -p tract-gpu -p tract-cuda -p test-cuda
 
   cuda-minimum-deploy:
     # Validates the BOM documented in cuda/src/context.rs. Builds tract-cli
@@ -125,7 +125,7 @@ jobs:
         persist-credentials: false
 
     - name: Cargo test
-      run: cargo test -p tract-metal -p test-metal
+      run: cargo test -p tract-gpu -p tract-metal -p test-metal
    
   pedantic:
     name: fmt, clippy, etc (${{matrix.os}} / ${{matrix.rust}})
