@@ -115,6 +115,7 @@ pub struct Ops {
     /// Replaces a 4-call composition (MeanOfSquares + Add + Rsqrt + Mul) with
     /// a single 2-pass kernel. Called once per row by `core::ops::nn::RmsNorm`
     /// when the input is f32 and the axis is the last (contiguous) one.
+    pub rms_norm_f16: Box<dyn Fn(&mut [f16], f32) + Send + Sync>,
     pub rms_norm_f32: Box<dyn Fn(&mut [f32], f32) + Send + Sync>,
 }
 
@@ -253,6 +254,7 @@ pub fn generic() -> Ops {
         */
         softmax2_fastcompact_f16: Box::new(|| generic::reduce::softmax_l2::HSoftMaxL2::red()),
         softmax2_fastcompact_f32: Box::new(|| generic::reduce::softmax_l2::SSoftMaxL2::red()),
+        rms_norm_f16: Box::new(generic::rms_norm::rms_norm_f16),
         rms_norm_f32: Box::new(generic::rms_norm::rms_norm_f32),
     };
     crate::generic::mmm::plug(&mut ops);

@@ -41,28 +41,32 @@ impl EvalOp for RmsNorm {
             && self.axis == input.rank() - 1
         {
             let eps_f32: f32 = self.eps.cast_to_scalar::<f32>()?;
-            let already_f32 = in_dt == DatumType::F32;
-            let mut buf = if already_f32 {
-                input.into_tensor()
-            } else {
-                input.cast_to::<f32>()?.into_owned()
-            };
-            let row_len = buf.shape()[self.axis];
+            let row_len = input.shape()[self.axis];
+            let mut buf = input.into_tensor();
             if row_len > 0 {
-                let data = unsafe { buf.as_slice_mut_unchecked::<f32>() };
                 let rms_norm = &tract_linalg::ops().rms_norm_f32;
-                let total = data.len();
-                tract_linalg::multithread::par_chunks_mut(data, row_len, total, |_, chunk| {
-                    for row in chunk.chunks_mut(row_len) {
-                        rms_norm(row, eps_f32);
-                    }
-                    Ok(())
-                })?;
+                if in_dt == DatumType::F32 {
+                    let data = unsafe { buf.as_slice_mut_unchecked::<f32>() };
+                    let total = data.len();
+                    tract_linalg::multithread::par_chunks_mut(data, row_len, total, |_, chunk| {
+                        for row in chunk.chunks_mut(row_len) {
+                            rms_norm(row, eps_f32);
+                        }
+                        Ok(())
+                    })?;
+                } else {
+                    let rms_norm = &tract_linalg::ops().rms_norm_f16;
+                    let data = unsafe { buf.as_slice_mut_unchecked::<f16>() };
+                    let total = data.len();
+                    tract_linalg::multithread::par_chunks_mut(data, row_len, total, |_, chunk| {
+                        for row in chunk.chunks_mut(row_len) {
+                            rms_norm(row, eps_f32);
+                        }
+                        Ok(())
+                    })?;
+                }
             }
-            if already_f32 {
-                return Ok(tvec![buf.into_tvalue()]);
-            }
-            return Ok(tvec![buf.cast_to_dt(in_dt)?.into_owned().into()]);
+            return Ok(tvec![buf.into_tvalue()]);
         }
 
         // Slow path: original 4-call composition (kept for non-contiguous axes).
