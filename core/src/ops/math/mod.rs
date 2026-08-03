@@ -702,8 +702,13 @@ element_wise!(erf, Erf,
      xs.iter_mut().zip(f32s.into_iter()).for_each(|(x, f)| *x = f16::from_f32(f));
      Ok(())
 };
- cost: |dt| {tvec!((Cost::FMA(dt), 11), (Cost::Div(dt), 1))}
+ cost: |dt| {tvec!((Cost::FMA(dt), 11), (Cost::Div(dt), 1))};
+ declutter: declutter_erf
 );
+
+fn declutter_erf(model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
+    crate::ops::nn::gelu_exact::detect_gelu_exact(model, node)
+}
 
 element_wise!(acosh, Acosh, [f16, f32, f64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.acosh());
