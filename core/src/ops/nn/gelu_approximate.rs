@@ -12,11 +12,15 @@ fn gelu_approx_f32(x: f32, pow: i32) -> f32 {
 
 element_wise!(gelu_approximate, GeluApproximate { fast_impl: bool },
     [f16] => |op, xs| {
-        let pow = if op.fast_impl { 2 } else { 3 };
-        xs.iter_mut().for_each(|x| {
-            *x = f16::from_f32(gelu_approx_f32(x.to_f32(), pow));
-        });
-        Ok(())
+        if op.fast_impl {
+            // pow=2 fast path: no linalg kernel yet, scalar fallback.
+            xs.iter_mut().for_each(|x| {
+                *x = f16::from_f32(gelu_approx_f32(x.to_f32(), 2));
+            });
+            Ok(())
+        } else {
+            (tract_linalg::ops().gelu_f16)().run(xs)
+        }
     },
     [f32] => |op, xs| {
         if op.fast_impl {
