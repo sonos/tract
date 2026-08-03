@@ -69,6 +69,7 @@ const AVX512VNNI: fn() -> bool = || is_x86_feature_detected!("avx512vnni");
 
 tanh_impl!(f32, fma_tanh_f32, 8, 8, is_x86_feature_detected!("fma"));
 sigmoid_impl!(f32, fma_sigmoid_f32, 8, 8, is_x86_feature_detected!("fma"));
+silu_impl!(f32, fma_silu_f32, 8, 8, is_x86_feature_detected!("fma"));
 
 // AVX-512 (zmm, 16-wide) variants. The assembly lives in x86_64/avx512/; the
 // main loop handles 64 lanes (4 zmm) per iteration with a 16-lane tail, so
@@ -83,13 +84,14 @@ fn plug_fma(ops: &mut Ops) {
 
     ops.sigmoid_f32 = Box::new(|| fma_sigmoid_f32::ew());
     ops.tanh_f32 = Box::new(|| fma_tanh_f32::ew());
+    ops.silu_f32 = Box::new(|| fma_silu_f32::ew());
 
     ops.mul_by_scalar_f32 = Box::new(|| by_scalar::x86_64_avx_f32_mul_by_scalar_32n::ew());
     ops.max_f32 = Box::new(|| max::x86_64_fma_max_f32_32n::red());
     ops.min_f32 = Box::new(|| min::x86_64_fma_min_f32_32n::red());
     ops.softmax2_fastcompact_f32 = Box::new(|| x86_64_fma_softmax2_fastcompact_f32_32n::red());
 
-    log::info!("sigmoid_f32, tanh_f32: x86_64/fma activated");
+    log::info!("sigmoid_f32, tanh_f32, silu_f32: x86_64/fma activated");
 }
 
 /// On hosts that also support AVX-512_FP16 (Sapphire Rapids / Granite Rapids /
