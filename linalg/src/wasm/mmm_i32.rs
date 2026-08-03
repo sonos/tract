@@ -2,14 +2,14 @@ use crate::Scaler;
 use crate::mmm::FusedKerSpec;
 use crate::mmm::ImplementationQuality;
 
-// Wasm SIMD int8 -> i32 matmul kernel (4x4). WASM's only integer dot
-// (i32x4.relaxed_dot_i8x16_i7x16) is non-deterministic for full i8 (its 2nd
-// operand is i7), so for a bit-exact kernel the AddMatMul K-loop uses widening
-// i8->i32 + i32x4 mul/add (an extmul/SMLAL-style outer product). The quant
-// epilogue + fuse ops reuse the bit-exact scalar path (q_scale/q_shr/q_shl),
-// which is O(MR*NR) and negligible vs the O(MR*NR*K) inner loop. Bit-identical
-// to generic_i32_4x4; selected for i8 matmul via its ManuallyOptimized quality
-// (WASM had no int8 matmul kernel — int8 fell back to the generic scalar one).
+// Wasm SIMD int8 -> i32 matmul kernel (4x4). Without `+relaxed-simd` the
+// AddMatMul K-loop is a widening i8->i32 extmul outer product and the kernel is
+// bit-identical to generic_i32_4x4. With it the loop takes
+// `i32x4_relaxed_dot_i8x16_i7x16_add`, whose second operand is i7: results then
+// match only where B fits in 7 bits, and the runtime is free to differ
+// elsewhere. The quant epilogue and fuse ops stay on the scalar
+// q_scale/q_shr/q_shl path in both modes — O(MR*NR) against the loop's
+// O(MR*NR*K).
 #[inline(never)]
 unsafe fn kernel_i32_4x4(mut pnl: *const FusedKerSpec<i32>) -> isize {
     use crate::ScaleShiftAndRound;
