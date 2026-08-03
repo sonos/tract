@@ -294,6 +294,11 @@ case "$PLATFORM" in
         cargo check --target $PLATFORM --features getrandom-js -p tract-onnx -p tract-tensorflow
         RUSTFLAGS='-C target-feature=+simd128' CARGO_TARGET_WASM32_WASIP1_RUNNER=wasmtime \
             cargo test --target=$PLATFORM -p tract-linalg -p tract-core -p test-unit-core
+        # The wasm backend picks its multiply-add form, its int8 packing and its
+        # sigmoid/tanh kernels at compile time on +relaxed-simd, so the run above
+        # leaves that half of it untested.
+        RUSTFLAGS='-C target-feature=+simd128,+relaxed-simd' CARGO_TARGET_WASM32_WASIP1_RUNNER=wasmtime \
+            cargo test --target=$PLATFORM -p tract-linalg -p tract-core -p test-unit-core
         ;;
     wasm32-*)
         rustup target add $PLATFORM
