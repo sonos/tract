@@ -4,7 +4,7 @@ name: Bench
 # machines, and either (nightly) append one row per run to the bench-data branch, or
 # (PR) compare against that reference and post a single fan-in comment.
 # The Jetson (aarch64 + CUDA 12) can't be built on a hosted runner natively, so it
-# reuses cross.sh's debian-stretch cross-build (no AWS creds, so the S3-push tail stays off).
+# reuses cross.sh's debian-stretch cross-build.
 
 on:
   schedule:

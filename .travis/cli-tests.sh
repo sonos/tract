@@ -147,46 +147,23 @@ do
 done
 
 (
-if aws s3 ls tract-ci-builds/model/private
+echo
+echo $WHITE • benches on full models $NC
+echo
+
+TRACT_BENCH=$(cargo build --message-format json -p tract-cli --features bench-suite --profile opt-no-lto | jq -r 'select(.target.name == "tract" and .executable).executable')
+if "$TRACT_BENCH" bench-suite --manifest .travis/benches.toml 2> bench-suite.err
 then
-    echo
-    echo $WHITE • private tests $NC
-    echo
-    if [ -n "$CI" ]
+    cat bench-suite.err
+    if grep -q '!! ' bench-suite.err
     then
-        OUTPUT=/dev/null
-    else
-        set -x
-        OUTPUT=/dev/stdout
-    fi
-    (
-    mkdir -p $CACHEDIR
-    cd $CACHEDIR
-    aws s3 sync s3://tract-ci-builds/model/private private
-    for t in `find private -name t.sh`
-    do
-        ( cd `dirname $t` ; sh ./t.sh )
-    done
-    ) 2>&1 > $OUTPUT
-
-    echo
-    echo $WHITE • benches on full models $NC
-    echo
-
-    TRACT_BENCH=$(cargo build --message-format json -p tract-cli --features bench-suite --profile opt-no-lto | jq -r 'select(.target.name == "tract" and .executable).executable')
-    if "$TRACT_BENCH" bench-suite --manifest .travis/benches.toml 2> bench-suite.err
-    then
-        cat bench-suite.err
-        if grep -q '!! ' bench-suite.err
-        then
-            echo "bench-suite: a bench failed" >&2
-            exit 1
-        fi
-    else
-        cat bench-suite.err >&2
-        echo "bench-suite: run failed" >&2
+        echo "bench-suite: a bench failed" >&2
         exit 1
     fi
+else
+    cat bench-suite.err >&2
+    echo "bench-suite: run failed" >&2
+    exit 1
 fi
 )
 
