@@ -352,8 +352,7 @@ impl RunnableInterface for Runnable {
     }
 
     fn spawn_state(&self) -> Result<State> {
-        let state = self.0.spawn()?;
-        Ok(State(Some(state.freeze_into())))
+        Ok(State(Some(StateInner::Live(self.0.spawn()?))))
     }
 
     fn input_count(&self) -> Result<usize> {
@@ -424,7 +423,12 @@ impl RunnableInterface for Runnable {
 }
 
 // STATE
-pub struct State(Option<Box<dyn tract_nnef::internal::FrozenState>>);
+enum StateInner {
+    Live(Box<dyn tract_nnef::internal::State>),
+    Frozen(Box<dyn tract_nnef::internal::FrozenState>),
+}
+
+pub struct State(Option<StateInner>);
 
 impl Debug for State {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -434,11 +438,20 @@ impl Debug for State {
 
 impl Clone for State {
     fn clone(&self) -> Self {
-        State(self.0.as_ref().map(|s| tract_nnef::tract_core::dyn_clone::clone_box(&**s)))
+        State(self.0.as_ref().map(|inner| match inner {
+            StateInner::Live(s) => StateInner::Frozen(s.freeze()),
+            StateInner::Frozen(f) => {
+                StateInner::Frozen(tract_nnef::tract_core::dyn_clone::clone_box(&**f))
+            }
+        }))
     }
 }
 
-// Safety: FrozenState is Send
+// Safety: a live core State at rest between runs holds only Send-movable data:
+// op states (whose frozen form holds the same resources, and FrozenOpState: Send)
+// and the mmm scratch space (ScratchSpace: Send). The only per-run non-Send entry,
+// the GPU DeviceMemoryPool, is removed in after_plan_eval; a failed run leaves the
+// State invalidated, so a live state at rest has always completed that teardown.
 unsafe impl Send for State {}
 
 impl StateInterface for State {
@@ -446,20 +459,30 @@ impl StateInterface for State {
     type Tensor = Tensor;
 
     fn input_count(&self) -> Result<usize> {
-        Ok(self.0.as_ref().context("State has been invalidated")?.input_count())
+        let inner = self.0.as_ref().context("State has been invalidated")?;
+        Ok(match inner {
+            StateInner::Live(s) => s.input_count(),
+            StateInner::Frozen(f) => f.input_count(),
+        })
     }
 
     fn output_count(&self) -> Result<usize> {
-        Ok(self.0.as_ref().context("State has been invalidated")?.output_count())
+        let inner = self.0.as_ref().context("State has been invalidated")?;
+        Ok(match inner {
+            StateInner::Live(s) => s.output_count(),
+            StateInner::Frozen(f) => f.output_count(),
+        })
     }
 
     fn run(&mut self, inputs: impl IntoInputs<Tensor>) -> Result<Vec<Tensor>> {
         let inputs: TVec<TValue> =
             inputs.into_inputs()?.into_iter().map(|v| v.0.into_tvalue()).collect();
-        let frozen = self.0.take().context("State has been invalidated")?;
-        let mut state = frozen.unfreeze();
+        let mut state = match self.0.take().context("State has been invalidated")? {
+            StateInner::Live(s) => s,
+            StateInner::Frozen(f) => f.unfreeze(),
+        };
         let outputs = state.run(inputs)?;
-        self.0 = Some(state.freeze_into());
+        self.0 = Some(StateInner::Live(state));
         Ok(outputs.into_iter().map(|t| Tensor(t.into_arc_tensor())).collect())
     }
 }
