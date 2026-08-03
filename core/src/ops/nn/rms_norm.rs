@@ -154,6 +154,14 @@ impl TypedOp for RmsNorm {
         patch.wire_node(&node.name, self.clone(), inputs).map(Some)
     }
 
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        crate::ops::nn::detect_add_rms_norm(self, model, node)
+    }
+
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
         let dt = inputs[0].datum_type;
         let count: TDim = inputs[0].shape.iter().product();

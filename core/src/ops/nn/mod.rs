@@ -1,3 +1,4 @@
+mod add_rms_norm;
 mod data_formats;
 pub mod gelu_approximate;
 pub mod grid_sample;
@@ -7,6 +8,7 @@ pub mod rms_norm;
 pub mod silu;
 mod softmax;
 
+pub use self::add_rms_norm::{AddRmsNorm, detect_add_rms_norm};
 pub use self::data_formats::{BaseDataShape, DataFormat, DataShape, SymDataShape};
 pub use self::gelu_approximate::GeluApproximate;
 pub use self::grid_sample::{GridSample, InterpolationMode, PaddingMode};
