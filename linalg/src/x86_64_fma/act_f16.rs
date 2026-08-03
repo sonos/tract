@@ -1,9 +1,11 @@
 //! AVX-512 f16 element-wise activations for cores without native f16 arithmetic.
 //!
-//! Each kernel round-trips through the matching f32 AVX-512 kernel via
-//! `ew_impl_f16_via_f32!`: convert an f16 chunk into a 64-byte-aligned f32 scratch
-//! (the f32 kernels assume 64-byte-aligned input), run the f32 kernel, convert
-//! back. Conversion is driven through `std::arch` intrinsics directly (see the
+//! Each kernel round-trips through an f32 kernel via `ew_impl_f16_via_f32!`: convert
+//! an f16 chunk into a 64-byte-aligned f32 scratch (the widest input-alignment
+//! contract among the f32 kernels reused here), run the f32 kernel, convert back.
+//! SiLU reuses the fused `fma_silu_f32` rather than a zmm composition over
+//! `avx512_sigmoid_f32`, which would pay a scratch copy and a second traversal.
+//! Conversion is driven through `std::arch` intrinsics directly (see the
 //! helpers below) because rustc + LLVM do not autovectorize the scalar
 //! `f16::to_f32` / `f16::from_f32` loops.
 
@@ -141,7 +143,7 @@ ew_impl_f16_via_f32!(
     64,
     cvt_f16_to_f32,
     cvt_f32_to_f16,
-    super::act::x86_64_avx512_silu_f32_16n
+    super::fma_silu_f32
 );
 
 #[cfg(test)]
