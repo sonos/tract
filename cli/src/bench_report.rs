@@ -146,6 +146,35 @@ fn describe(metric: &str) -> (String, String, String, &'static str) {
     }
 }
 
+/// Split a bench variant into its base config and thread-rung code: `_mt` → 0
+/// (physical cores), `_t{n}` → n, no suffix → 1 (the always-kept serial base).
+fn split_rung(variant: &str) -> (String, usize) {
+    if let Some(base) = variant.strip_suffix("_mt") {
+        (base.to_string(), 0)
+    } else if let Some(pos) = variant.rfind("_t") {
+        if let Ok(n) = variant[pos + 2..].parse::<usize>() {
+            return (variant[..pos].to_string(), n);
+        }
+        (variant.to_string(), 1)
+    } else {
+        (variant.to_string(), 1)
+    }
+}
+
+/// Column sort key: serial (1) and `t{n}` in ascending thread count, `_mt` (0 =
+/// all physical cores) always last.
+fn col_order(code: usize) -> usize {
+    if code == 0 { usize::MAX } else { code }
+}
+
+fn col_header(code: usize) -> String {
+    match code {
+        0 => "all cores".to_string(),
+        1 => "serial".to_string(),
+        n => format!("t{n}"),
+    }
+}
+
 /// Format like C `printf %g` with `p` significant figures (trailing zeros stripped).
 fn fmt_g(x: f64, p: usize) -> String {
     if x == 0.0 {
@@ -589,9 +618,109 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
     Ok(())
 }
 
+/// `tract bench-mt-report`: render the thread-scaling table for an mt-ladder run.
+/// Self-contained (no bench-data reference): for each device and each thread-tagged
+/// bench, list evaltime and speedup vs the serial base across the ladder's thread
+/// counts. Writes nothing when no rungs ran, so an empty run posts no vacuous comment.
+pub fn handle_mt(matches: &clap::ArgMatches) -> TractResult<()> {
+    let get = |k| matches.get_one::<String>(k).map(String::as_str);
+    let results = get("results").context("--results is required")?;
+    let out = get("out").context("--out is required")?;
+    let pr_sha = get("pr-sha").context("--pr-sha is required")?;
+    let run_url = std::env::var("RUN_URL").unwrap_or_else(|_| "#".to_string());
+
+    let mut result_dirs: Vec<std::path::PathBuf> = std::fs::read_dir(results)?
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| p.join("meta.json").exists())
+        .collect();
+    result_dirs.sort();
+
+    let mut sections = String::new();
+    for dir in &result_dirs {
+        let meta: Meta = serde_json::from_str(&std::fs::read_to_string(dir.join("meta.json"))?)?;
+        let pr = read_metrics(dir.join("metrics").to_str().unwrap_or_default());
+        // bench label -> (thread-rung code -> evaltime seconds)
+        let mut groups: BTreeMap<String, BTreeMap<usize, f64>> = BTreeMap::new();
+        for (metric, val) in &pr {
+            let p: Vec<&str> = metric.split('.').collect();
+            if p.first() != Some(&"net") || p.get(2) != Some(&"evaltime") {
+                continue;
+            }
+            let (model, _, variant, _) = describe(metric);
+            let (base, code) = split_rung(&variant);
+            groups.entry(format!("{model} · {base}")).or_default().insert(code, *val);
+        }
+        // A bench with no rung (not thread-tagged) has only the serial base; drop it.
+        groups.retain(|_, m| m.keys().any(|&c| c != 1));
+        if groups.is_empty() {
+            continue;
+        }
+        let mut cols: Vec<usize> = groups.values().flat_map(|m| m.keys().copied()).collect();
+        cols.sort_by_key(|&c| col_order(c));
+        cols.dedup();
+
+        sections.push_str(&format!("### `{}`\n\n| bench |", meta.device));
+        for &c in &cols {
+            sections.push_str(&format!(" {} |", col_header(c)));
+        }
+        sections.push_str("\n|---|");
+        for _ in &cols {
+            sections.push_str("---|");
+        }
+        sections.push('\n');
+        for (label, times) in &groups {
+            sections.push_str(&format!("| {label} |"));
+            let base = times.get(&1).copied();
+            for &c in &cols {
+                let cell = match times.get(&c) {
+                    None => "–".to_string(),
+                    Some(&t) if c == 1 => fmt_val(t, "s"),
+                    Some(&t) => match base {
+                        Some(b) if b > 0.0 && t > 0.0 => {
+                            format!("{}<br><sub>{:.2}×</sub>", fmt_val(t, "s"), b / t)
+                        }
+                        _ => fmt_val(t, "s"),
+                    },
+                };
+                sections.push_str(&format!(" {cell} |"));
+            }
+            sections.push('\n');
+        }
+        sections.push('\n');
+    }
+
+    if sections.is_empty() {
+        println!("no thread-scaling metrics; not writing a comment");
+        return Ok(());
+    }
+
+    let sha = &pr_sha[..pr_sha.len().min(9)];
+    let body = format!(
+        "<!-- bench-mt-ladder -->\n🧵 **Thread scaling — mt-ladder** · PR `{sha}`\n\n\
+         _evaltime per thread count; speedup vs serial · [run]({run_url})_\n\n{sections}"
+    );
+    std::fs::write(out, tidy(&body))?;
+    println!("wrote mt-ladder scaling table");
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rung_split_and_column_order() {
+        assert_eq!(split_rung("400ms"), ("400ms".to_string(), 1));
+        assert_eq!(split_rung("400ms_t2"), ("400ms".to_string(), 2));
+        assert_eq!(split_rung("2sec_mt"), ("2sec".to_string(), 0));
+        // serial first, threads ascending, all-cores (0) last.
+        let mut cols = vec![0usize, 4, 1, 2];
+        cols.sort_by_key(|&c| col_order(c));
+        assert_eq!(cols, vec![1, 2, 4, 0]);
+        assert_eq!(col_header(1), "serial");
+        assert_eq!(col_header(4), "t4");
+        assert_eq!(col_header(0), "all cores");
+    }
 
     fn row(device: &str, metric: &str, refv: f64, prv: f64, worse: bool, mover: bool) -> Row {
         Row {
