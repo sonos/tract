@@ -1,3 +1,5 @@
+use tract_data::internal::f16;
+
 /// Generic scalar reference implementation of fused row-wise RmsNorm.
 ///   out_i = x_i * rsqrt(mean(x_i²) + eps)
 ///
@@ -15,6 +17,28 @@ pub fn rms_norm_f32(buf: &mut [f32], eps: f32) {
     for x in buf.iter_mut() {
         *x *= inv_std;
     }
+}
+
+/// f16 counterpart of [`rms_norm_f32`], for hosts with no native f16 kernel.
+///
+/// Widens one row at a time into a reused thread-local buffer and defers to
+/// whichever f32 kernel this host registered, so an arch that has a fast f32
+/// kernel but no f16 one keeps its arithmetic and its speed. f16 -> f32 is
+/// exact, so the result matches widening the row in the caller.
+pub fn rms_norm_f16(buf: &mut [f16], eps: f32) {
+    if buf.is_empty() {
+        return;
+    }
+    thread_local! {
+        static WIDE: std::cell::RefCell<Vec<f32>> = const { std::cell::RefCell::new(Vec::new()) };
+    }
+    WIDE.with(|wide| {
+        let mut wide = wide.borrow_mut();
+        wide.clear();
+        wide.extend(buf.iter().map(|x| x.to_f32()));
+        (crate::ops().rms_norm_f32)(&mut wide, eps);
+        buf.iter_mut().zip(wide.iter()).for_each(|(h, f)| *h = f16::from_f32(*f));
+    })
 }
 
 #[cfg(test)]
