@@ -36,5 +36,31 @@ fn linalg(input: &mut [f32]) {
     (tract_linalg::ops().silu_f32)().run(input).unwrap();
 }
 
+#[cfg(target_arch = "aarch64")]
+fn silu_f16(c: &mut Criterion) {
+    for n in [1024usize, 65536, 1 << 20] {
+        let mut group = c.benchmark_group(format!("silu_f16/{n}"));
+        group.throughput(Throughput::Elements(n as u64));
+        let mut input = unsafe { Tensor::uninitialized_aligned::<f16>(&[n], 16).unwrap() };
+        let input = unsafe { input.as_slice_mut_unchecked::<f16>() };
+        for (i, x) in input.iter_mut().enumerate() {
+            *x = f16::from_f32((i as f32 / 10.0).sin() * 5.0);
+        }
+        group.bench_function("generic", |b| {
+            b.iter(|| tract_linalg::generic::HSiLU8::run(input, ()))
+        });
+        group.bench_function("f32-roundtrip", |b| {
+            b.iter(|| tract_linalg::arm64::arm64simd_silu_f16_4n::run(input, ()))
+        });
+        group.bench_function("lut", |b| {
+            b.iter(|| tract_linalg::arm64::arm64simd_silu_f16_lut_8n::run(input, ()))
+        });
+        group.finish();
+    }
+}
+
+#[cfg(target_arch = "aarch64")]
+criterion_group!(benches, silu_f32, silu_f16);
+#[cfg(not(target_arch = "aarch64"))]
 criterion_group!(benches, silu_f32);
 criterion_main!(benches);
