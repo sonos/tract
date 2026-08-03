@@ -510,9 +510,12 @@ pub fn plug(ops: &mut Ops) {
         // TODO: Change this SiLU kernel once we have a native-FP16 one
         ops.silu_f16 = Box::new(|| arm64simd_silu_f16_4n::ew());
     } else {
-        log::info!("No native fp16 support; f32-roundtrip NEON sigmoid_f16 and silu_f16 activated");
+        log::info!(
+            "No native fp16 support; f32-roundtrip NEON sigmoid_f16, silu_f16 and tanh_f16 activated"
+        );
         ops.sigmoid_f16 = Box::new(|| arm64simd_sigmoid_f16_4n::ew());
         ops.silu_f16 = Box::new(|| arm64simd_silu_f16_4n::ew());
+        ops.tanh_f16 = Box::new(|| arm64simd_tanh_f16_4n::ew());
     }
     #[cfg(any(target_os = "macos", all(target_os = "ios", feature = "apple-amx-ios")))]
     {
