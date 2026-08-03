@@ -208,39 +208,57 @@ impl Reducer {
                     .map(|(idx, dim)| if idx != axis { *dim } else { 1 })
                     .collect_vec();
 
-                output = Some(ArrayD::from_shape_fn(output_shape.clone(), |coords| {
-                    let mut view = input_view.view();
-                    for ix in 0..output_shape.len() {
-                        if ix != axis {
-                            view.collapse_axis(Axis(ix), coords[ix]);
-                        }
-                    }
-
-                    if let Some(slice) = view.as_slice() {
-                        if T::datum_type() == f16::datum_type() {
-                            let slice: &[f16] = unsafe { std::mem::transmute(slice) };
-                            (tract_linalg::ops().sum_f16)()
-                                .run_with_params(slice, ())
-                                .unwrap()
-                                .as_()
-                        } else if T::datum_type() == f32::datum_type() {
-                            let slice: &[f32] = unsafe { std::mem::transmute(slice) };
-                            (tract_linalg::ops().sum_f32)()
-                                .run_with_params(slice, ())
-                                .unwrap()
-                                .as_()
-                        } else {
-                            slice.iter().cloned().sum::<T>()
-                        }
-                    } else {
+                output = Some(if let Some(full) = input_view.as_slice() {
+                    // Whole input is C-contiguous and `axis` is the last axis,
+                    // so it lays out as [n_rows, reduced_dim] row-major: sum
+                    // each row in one pass. Rows split across threads while
+                    // each row's reduction stays serial and bit-identical.
+                    let n_rows = full.len() / reduced_dim;
+                    let mut out = vec![T::zero(); n_rows];
+                    let total = full.len();
+                    // Reduce kernels are Send + Sync; build once and share by ref.
+                    let sum_f16 = (tract_linalg::ops().sum_f16)();
+                    let sum_f32 = (tract_linalg::ops().sum_f32)();
+                    tract_linalg::multithread::par_chunks_mut(
+                        &mut out,
+                        1,
+                        total,
+                        |first_row, o| {
+                            let rows = full[first_row * reduced_dim..][..o.len() * reduced_dim]
+                                .chunks_exact(reduced_dim);
+                            if reduced_dim >= 4 && T::datum_type() == f16::datum_type() {
+                                for (x, c) in o.iter_mut().zip(rows) {
+                                    let c: &[f16] = unsafe { std::mem::transmute(c) };
+                                    *x = sum_f16.run_with_params(c, ())?.as_();
+                                }
+                            } else if reduced_dim >= 4 && T::datum_type() == f32::datum_type() {
+                                for (x, c) in o.iter_mut().zip(rows) {
+                                    let c: &[f32] = unsafe { std::mem::transmute(c) };
+                                    *x = sum_f32.run_with_params(c, ())?.as_();
+                                }
+                            } else {
+                                // reduced_dim < 4 (kernel dispatch not worth it) or a
+                                // non-f16/f32 type: a plain sum matches the kernel's
+                                // remainder path bit-for-bit.
+                                for (x, c) in o.iter_mut().zip(rows) {
+                                    *x = c.iter().cloned().sum::<T>();
+                                }
+                            }
+                            Ok(())
+                        },
+                    )
+                    .unwrap();
+                    ArrayD::from_shape_vec(output_shape.clone(), out).unwrap()
+                } else {
+                    ArrayD::from_shape_fn(output_shape.clone(), |coords| {
                         let first: *const T = &input_view[coords];
                         let mut sum = T::zero();
                         for i in 0..reduced_dim {
                             sum = sum + unsafe { *(first.add(i * input_stride)) };
                         }
                         sum
-                    }
-                }));
+                    })
+                });
             }
             output.unwrap().into_tensor()
         }

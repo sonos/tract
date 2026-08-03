@@ -153,7 +153,7 @@ impl PaddingSpec {
         stride: usize,
     ) -> ComputedPaddedDim<D> {
         let kernel_field = (kernel - 1) * dilation + 1;
-        let output = if let Ok(int) = input.to_usize() {
+        let output = if let Some(int) = input.as_usize() {
             D::from((int + 1).saturating_sub(kernel_field).divceil(stride))
         } else {
             (input.clone() + 1 - kernel_field).divceil(stride)
@@ -181,7 +181,7 @@ impl PaddingSpec {
         bef: usize,
         aft: usize,
     ) -> ComputedPaddedDim<D> {
-        if let Ok(i) = input.to_dim().to_usize() {
+        if let Some(i) = input.as_usize() {
             let ints = Self::explicit_usize(i, kernel, dilation, stride, bef, aft);
             ComputedPaddedDim::new(
                 input.clone(),
@@ -220,7 +220,7 @@ impl PaddingSpec {
         aft: usize,
         ceil_mode: bool,
     ) -> ComputedPaddedDim<D> {
-        if let Ok(i) = input.to_dim().to_usize() {
+        if let Some(i) = input.as_usize() {
             let ints =
                 Self::explicit_onnx_pool_usize(i, kernel, dilation, stride, bef, aft, ceil_mode);
             ComputedPaddedDim::new(
@@ -286,7 +286,7 @@ impl PaddingSpec {
     ) -> ComputedPaddedDim<D> {
         let output = input.divceil(stride);
         let kernel_field = (kernel - 1) * dilation + 1;
-        let pad = if let Ok(input) = input.to_usize() {
+        let pad = if let Some(input) = input.as_usize() {
             let pad = (((output.clone() - 1) * stride + kernel_field).to_usize().unwrap())
                 .saturating_sub(input);
             pad.into()

@@ -1,9 +1,10 @@
 name: Bench comment
 
-# Trampoline for the Bench report. The Bench workflow runs on `pull_request`, which gets
-# a read-only token on fork PRs and so cannot comment. It instead uploads the rendered
-# comparison as the `bench-comment` artifact; this workflow runs on `workflow_run` (base
-# context, write token) and posts it — working for fork and same-repo PRs alike.
+# Trampoline for the Bench report. The Bench workflow's automatic `pull_request` trigger
+# gets a read-only token on fork PRs and so cannot comment (a `/ci bench` workflow_dispatch
+# run, by contrast, always has a write token and comments directly, fork or not). It instead
+# uploads the rendered comparison as the `bench-comment` artifact; this workflow runs on
+# `workflow_run` (base context, write token) and posts it.
 #
 # Security: the target PR is resolved from the triggering run's head SHA, never from
 # artifact contents, so a fork cannot redirect the comment at another issue. The artifact

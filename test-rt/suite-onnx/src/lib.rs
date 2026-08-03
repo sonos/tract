@@ -148,7 +148,9 @@ fn versions() -> Vec<(&'static str, usize)> {
 }
 
 pub fn dir() -> PathBuf {
-    let cache = ::std::env::var("CACHEDIR").unwrap_or_else(|_| "../../.cached".to_string());
+    let cache = ::std::env::var("CACHEDIR").unwrap_or_else(|_| {
+        format!("{}/.cache/tract-test-assets", std::env::var("HOME").unwrap_or_default())
+    });
     std::fs::create_dir_all(&cache).unwrap();
     PathBuf::from(cache).join("onnx")
 }

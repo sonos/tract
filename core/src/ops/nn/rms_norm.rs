@@ -41,22 +41,34 @@ impl EvalOp for RmsNorm {
             && self.axis == input.rank() - 1
         {
             let eps_f32: f32 = self.eps.cast_to_scalar::<f32>()?;
-            let mut buf = input.cast_to::<f32>()?.into_owned();
+            let already_f32 = in_dt == DatumType::F32;
+            let mut buf = if already_f32 {
+                input.into_tensor()
+            } else {
+                input.cast_to::<f32>()?.into_owned()
+            };
             let row_len = buf.shape()[self.axis];
             if row_len > 0 {
-                let n_rows: usize = buf.shape().iter().take(self.axis).product();
                 let data = unsafe { buf.as_slice_mut_unchecked::<f32>() };
                 let rms_norm = &tract_linalg::ops().rms_norm_f32;
-                for r in 0..n_rows {
-                    let start = r * row_len;
-                    rms_norm(&mut data[start..start + row_len], eps_f32);
-                }
+                let total = data.len();
+                tract_linalg::multithread::par_chunks_mut(data, row_len, total, |_, chunk| {
+                    for row in chunk.chunks_mut(row_len) {
+                        rms_norm(row, eps_f32);
+                    }
+                    Ok(())
+                })?;
+            }
+            if already_f32 {
+                return Ok(tvec![buf.into_tvalue()]);
             }
             return Ok(tvec![buf.cast_to_dt(in_dt)?.into_owned().into()]);
         }
 
         // Slow path: original 4-call composition (kept for non-contiguous axes).
-        let input_f32 = input.cast_to::<f32>()?.into_owned();
+        let already_f32 = in_dt == DatumType::F32;
+        let input_f32 =
+            if already_f32 { input.into_tensor() } else { input.cast_to::<f32>()?.into_owned() };
         // eps inherits the input dtype from the declutter pattern (F16 when the
         // surrounding LayerNorm chain is F16). The MeanOfSquares + Add + Rsqrt
         // + Mul chain below all runs at F32, so eps must be cast to match —
@@ -68,6 +80,9 @@ impl EvalOp for RmsNorm {
         let mut a2 = Add.eval(a1.into_tvalue(), eps.into_tvalue(), DatumType::F32)?;
         Rsqrt {}.eval_in_place(&mut a2, None)?;
         let a3 = Mul.eval(a2.into_tvalue(), input_f32.into_tvalue(), DatumType::F32)?;
+        if already_f32 {
+            return Ok(tvec![a3.into_tvalue()]);
+        }
         Ok(tvec![a3.cast_to_dt(in_dt)?.into_owned().into()])
     }
 }

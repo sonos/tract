@@ -6,7 +6,7 @@ set -e
 export RUSTUP_TOOLCHAIN
 PATH=$PATH:$HOME/.cargo/bin
 
-if [ -n "$CI" -a ! -e /tmp/ci-setup-done ]
+if [ -n "$CI" -a ! -e /tmp/ci-setup-done -a -z "$TRACT_PREBUILT_CI" ]
 then
     if [ `uname` = "Darwin" ]
     then
@@ -24,15 +24,7 @@ then
             fi
             $SUDO apt-get update
             # $SUDO apt-get upgrade -y
-            $SUDO apt-get install -y llvm python3 python3-numpy jshon wget curl build-essential sudo jshon clang 
-            if ! which aws
-            then
-                curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o awscliv2.zip
-                $SUDO apt-get install -y unzip
-                unzip -q awscliv2.zip
-                $SUDO ./aws/install
-                aws --version
-            fi
+            $SUDO apt-get install -y llvm python3 python3-numpy jshon wget curl build-essential sudo jshon clang
         fi
     fi
 
@@ -44,21 +36,22 @@ then
     touch /tmp/ci-setup-done
 fi
 
-S3=https://s3.amazonaws.com/tract-ci-builds/tests
+export TRACT_MODELS_URL=${TRACT_MODELS_URL:-https://tract-test-assets.tract.rs}
 
 if  [ -n "$LARGE_MODELS" ]
 then
     export CACHE_FILE=$ROOT/.travis/cache_file.sh
-    export MODELS=$HOME/.cache/models
+    export MODELS=$HOME/.cache/tract-test-assets
     export CACHEDIR=$MODELS
     mkdir -p $MODELS
 elif [ -n "$CI" ]
 then
-    MODELS=$S3
+    MODELS=$TRACT_MODELS_URL
     CACHE_FILE=true
-else 
+else
     CACHE_FILE=$ROOT/.travis/cache_file.sh
-    MODELS=${MODELS:-$ROOT/.cached}
+    MODELS=${MODELS:-$HOME/.cache/tract-test-assets}
+    export CACHEDIR=${CACHEDIR:-$MODELS}
     mkdir -p $MODELS
 fi
 

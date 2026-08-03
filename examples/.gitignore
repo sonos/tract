@@ -1,3 +1,5 @@
 *.onnx
 *.nnef.tgz
 *.tar.gz
+assets/
+reference/

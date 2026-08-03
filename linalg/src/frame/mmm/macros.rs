@@ -8,6 +8,7 @@ macro_rules! MMMExternKernel {
             $(quality($quality:expr))?
             $(boost($boost:expr))?
             $(store($($store:ty),*))?
+            $(row_major_store($rms:expr))?
      ) => {
         paste! {
             mod [<sys_ $func>] {
@@ -31,6 +32,7 @@ macro_rules! MMMExternKernel {
                 $(quality($quality))?
                 $(boost($boost))?
                 $(store($($store),*))?
+                $(row_major_store($rms))?
             );
         }
     };
@@ -44,6 +46,7 @@ macro_rules! MMMRustKernel {
             $(packing[$pnum:literal] = $pid:ident => $packing:expr;)*
             $(quality($quality:expr))?
             $(store($($store:ty),*))?
+            $(row_major_store($rms:expr))?
      ) => {
         paste! {
             mod [<sys_ $id>] {
@@ -63,6 +66,7 @@ macro_rules! MMMRustKernel {
                 $(packing[$pnum] = $pid => $packing;)*
                 $(quality($quality))?
                 $(store($($store),*))?
+                $(row_major_store($rms))?
             );
         }
     }
@@ -80,6 +84,7 @@ macro_rules! MMMKernel {
             $(quality($quality:expr))?
             $(boost($boost:expr))?
             $(store($($store:ty),*))?
+            $(row_major_store($rms:expr))?
      ) => {
         paste! {
             lazy_static::lazy_static! {
@@ -108,6 +113,7 @@ macro_rules! MMMKernel {
                     $(k.can_fuse = $can_fuse;)?
                     $(k.quality = $quality;)?
                     $(k = k.with_boost($boost);)?
+                    $(k.row_major_store = $rms;)?
                     k
                 };
             }

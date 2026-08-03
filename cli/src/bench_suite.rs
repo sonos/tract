@@ -7,6 +7,7 @@
 //! bundle (model fetch, governor pinning, scraping) with one cross-built binary.
 
 use crate::bench_common::higher_better;
+use clap::{Args, FromArgMatches};
 use serde::Deserialize;
 use std::collections::{BTreeMap, HashMap};
 use std::io::Write;
@@ -27,7 +28,7 @@ struct Manifest {
 struct Bench {
     kind: Kind,
     name: String,
-    /// Series label when `backends` is empty (a single plain CPU run).
+    /// Series label when `runtimes` is empty (a single plain CPU run).
     #[serde(default)]
     variant: Option<String>,
     /// Model path relative to the cache dir (and to `base_url` when fetched).
@@ -41,10 +42,17 @@ struct Bench {
     /// (`"-i 264,40 --pulse 24"`), so a working argument line can be pasted as-is.
     #[serde(default, deserialize_with = "de_args")]
     args: Vec<String>,
-    /// Backends to sweep. Empty: one plain CPU run labelled `variant`. Non-empty:
-    /// one run per available backend, each labelled by the backend name.
+    /// Runtimes to sweep. Empty: one plain CPU run labelled `variant`. Non-empty:
+    /// one run per available runtime, each labelled by the runtime name.
     #[serde(default)]
-    backends: Vec<Backend>,
+    runtimes: Vec<RuntimeKind>,
+    /// CPU thread counts to additionally sweep, on the runtime-less / cpu path
+    /// only. Additive: the base single-thread series is always kept so its
+    /// history continues; each entry adds an independent series. `0` means "guess
+    /// physical cores" and is labelled `_mt`; any other `n` is labelled `_t{n}`.
+    /// Requires a `multithread-mm` build; skipped with a warning otherwise.
+    #[serde(default)]
+    threads: Vec<usize>,
 }
 
 #[derive(Deserialize, Clone, Copy, PartialEq)]
@@ -71,26 +79,26 @@ impl Kind {
 
 #[derive(Deserialize, Clone, Copy, PartialEq)]
 #[serde(rename_all = "lowercase")]
-enum Backend {
+enum RuntimeKind {
     Cpu,
     Metal,
     Cuda,
 }
 
-impl Backend {
+impl RuntimeKind {
     fn label(&self) -> &'static str {
         match self {
-            Backend::Cpu => "cpu",
-            Backend::Metal => "metal",
-            Backend::Cuda => "cuda",
+            RuntimeKind::Cpu => "cpu",
+            RuntimeKind::Metal => "metal",
+            RuntimeKind::Cuda => "cuda",
         }
     }
 
     fn available(&self) -> bool {
         match self {
-            Backend::Cpu => true,
-            Backend::Metal => cfg!(target_os = "macos"),
-            Backend::Cuda => Command::new("nvidia-smi")
+            RuntimeKind::Cpu => true,
+            RuntimeKind::Metal => cfg!(target_os = "macos"),
+            RuntimeKind::Cuda => Command::new("nvidia-smi")
                 .arg("-L")
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
@@ -100,12 +108,13 @@ impl Backend {
         }
     }
 
-    /// `(global flags, subcommand flags)` for this backend.
+    /// `(global, subcommand)` flags. `--timeout` is a whole-process watchdog
+    /// (load+optimize+run); the GPU arms keep it wide to clear a large-model load.
     fn flags(&self) -> (&'static [&'static str], &'static [&'static str]) {
         match self {
-            Backend::Cpu => (&["--timeout", "180"], &[]),
-            Backend::Metal => (&["--metal", "--timeout", "60"], &["--warmup-loops", "1"]),
-            Backend::Cuda => (&["--cuda", "--timeout", "60"], &["--warmup-loops", "1"]),
+            RuntimeKind::Cpu => (&["--timeout", "180"], &[]),
+            RuntimeKind::Metal => (&["--metal", "--timeout", "600"], &["--warmup-loops", "1"]),
+            RuntimeKind::Cuda => (&["--cuda", "--timeout", "600"], &["--warmup-loops", "1"]),
         }
     }
 }
@@ -130,114 +139,290 @@ fn de_args<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<String>, D::Err
     })
 }
 
-/// One (bench, backend/variant) run kept whole — its prefixed metrics plus the
+/// One (bench, runtime/variant) run kept whole — its prefixed metrics plus the
 /// coordinates needed to re-run it in the second pass.
 struct RunResult {
     bench_idx: usize,
-    backend: Option<Backend>,
+    runtime: Option<RuntimeKind>,
     variant: String,
+    threads: Option<usize>,
     metrics: Vec<(String, f64)>,
 }
 
+tract_core::declare_knob!(
+    TRACT_BENCH_BASE_URL,
+    Option<String>,
+    None,
+    "Override the manifest's model base URL (e.g. a private mirror), resolved out of band."
+);
+
+#[derive(Args, Debug)]
+pub(crate) struct BenchSuiteParams {
+    /// Bench manifest (default: benches.toml)
+    #[arg(long)]
+    manifest: Option<String>,
+    /// Model cache dir (default: $CACHEDIR or ~/.cache/tract-test-assets)
+    #[arg(long)]
+    cache_dir: Option<String>,
+    /// Metrics output file (default: metrics); '-' emits JSONL on stdout
+    #[arg(long)]
+    output: Option<String>,
+    /// Only run benches whose name contains SUBSTR
+    #[arg(long)]
+    filter: Option<String>,
+    /// Do not fetch models; use the cache as-is
+    #[arg(long)]
+    no_fetch: bool,
+    /// Stream each model straight from base-url into tract (no on-disk cache); for read-only targets that pull from a model server.
+    #[arg(long)]
+    no_cache: bool,
+    /// Skip CPU runs: drop the runtime-less (net) benches and the cpu runtime of the rest. For GPU-only devices whose CPU is redundant with another arm64/x86 box.
+    #[arg(long)]
+    skip_cpu: bool,
+    /// Run only the plain-CPU (runtime-less) net benches, dropping every bench that declares a runtime sweep (the LLM + accelerator/large-model suite). For small embedded CPU targets.
+    #[arg(long)]
+    skip_runtimes: bool,
+    /// Load-and-run every bench once on all available runtimes (CPU + accelerators), ignoring per-bench runtime sweeps and timing. Collects failures without stopping and exits non-zero if any run fails. A correctness gate, not a benchmark.
+    #[arg(long)]
+    smoke: bool,
+    /// Model base URL (sets the TRACT_BENCH_BASE_URL knob); overrides the manifest. Pass '${VAR}' to have a remote runner expand it from its own config, out of band.
+    #[arg(long)]
+    base_url: Option<String>,
+    /// CPU scaling governor to pin before benching (sets the TRACT_BENCH_CPU_GOVERNOR knob), e.g. performance.
+    #[arg(long)]
+    cpu_governor: Option<String>,
+    /// Pre-computed expectations file; re-run benches that would show a PR red
+    #[arg(long)]
+    expectations: Option<String>,
+    /// Max re-runs of an out-of-threshold bench
+    #[arg(long, default_value_t = 2)]
+    retry_max: usize,
+    /// Re-run survivors after the whole suite only when at most N remain red
+    #[arg(long, default_value_t = 2)]
+    second_pass_max: usize,
+    /// Reference mode: run each bench N times and record the per-metric median, instead of the PR retry-until-good-enough. Used for the nightly reference.
+    #[arg(long, default_value_t = 0)]
+    samples: usize,
+    /// Compute expectations inline from this bench-data checkout (alternative to --expectations)
+    #[arg(long)]
+    bench_data: Option<String>,
+    /// Threshold config TOML (with --bench-data)
+    #[arg(long)]
+    thresholds: Option<String>,
+    /// Target triple (with --bench-data)
+    #[arg(long)]
+    triple: Option<String>,
+    /// Device key (with --bench-data)
+    #[arg(long)]
+    device: Option<String>,
+    /// Override every thread-tagged bench's `threads` list with this ladder (comma
+    /// list, 0 = physical cores), for the daily/on-demand scaling sweep. Benches
+    /// without a `threads` entry stay single-thread. `1` is dropped: `--threads 1`
+    /// routes to the global rayon pool, not a serial run — the no-threads base
+    /// series already covers serial.
+    #[arg(long, value_delimiter = ',')]
+    threads_ladder: Option<Vec<usize>>,
+}
+
+pub(crate) fn command() -> clap::Command {
+    BenchSuiteParams::augment_args(
+        clap::Command::new("bench-suite")
+            .long_about("Run a TOML manifest of benches, one fresh child process each."),
+    )
+}
+
 pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
-    let manifest_path =
-        matches.get_one::<String>("manifest").map(String::as_str).unwrap_or("benches.toml");
+    let params = BenchSuiteParams::from_arg_matches(matches)?;
+    let manifest_path = params.manifest.as_deref().unwrap_or("benches.toml");
     let manifest: Manifest = toml::from_str(
         &std::fs::read_to_string(manifest_path)
             .with_context(|| format!("reading manifest {manifest_path}"))?,
     )
     .with_context(|| format!("parsing manifest {manifest_path}"))?;
 
+    let no_cache = params.no_cache;
     let cache_dir = PathBuf::from(
-        matches
-            .get_one::<String>("cache-dir")
-            .cloned()
-            .or_else(|| std::env::var("CACHEDIR").ok())
-            .unwrap_or_else(|| {
-                format!(
-                    "{}/.cache/tract-ci-minion-models",
-                    std::env::var("HOME").unwrap_or_default()
-                )
-            }),
+        params.cache_dir.clone().or_else(|| std::env::var("CACHEDIR").ok()).unwrap_or_else(|| {
+            format!("{}/.cache/tract-test-assets", std::env::var("HOME").unwrap_or_default())
+        }),
     );
-    std::fs::create_dir_all(&cache_dir)?;
+    if !no_cache {
+        std::fs::create_dir_all(&cache_dir)?;
+    }
 
-    let output = matches.get_one::<String>("output").map(String::as_str).unwrap_or("metrics");
-    let no_fetch = matches.get_flag("no-fetch");
-    let skip_cpu = matches.get_flag("skip-cpu");
-    let filter = matches.get_one::<String>("filter").map(String::as_str);
+    let output = params.output.as_deref().unwrap_or("metrics");
+    // A --base-url / --cpu-governor flag sets its knob's override (highest priority). The flag is how
+    // a remote (dinghy) run feeds these in: passed as `${VAR}`, expanded from the device config on the
+    // dispatching host, so a private mirror URL never reaches the command line or the run log.
+    for (flag, knob) in [
+        (&params.base_url, &TRACT_BENCH_BASE_URL),
+        (&params.cpu_governor, &TRACT_BENCH_CPU_GOVERNOR),
+    ] {
+        if let Some(v) = flag.as_deref().filter(|s| !s.is_empty()) {
+            knob.set(Some(v.to_string()));
+        }
+    }
+    let base_url = TRACT_BENCH_BASE_URL
+        .get()
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| manifest.base_url.clone());
+    let model_source = if no_cache {
+        ModelSource::Url(base_url.clone())
+    } else {
+        ModelSource::Cache(cache_dir.clone())
+    };
+    let no_fetch = params.no_fetch;
+    let skip_cpu = params.skip_cpu;
+    let skip_runtimes = params.skip_runtimes;
+    let smoke = params.smoke;
+    let filter = params.filter.as_deref();
+    let threads_ladder = params.threads_ladder.as_deref();
 
-    let expectations = expectations(matches)?;
-    let retry_max: usize =
-        matches.get_one::<String>("retry-max").map(|s| s.parse()).transpose()?.unwrap_or(2);
-    let second_pass_max: usize =
-        matches.get_one::<String>("second-pass-max").map(|s| s.parse()).transpose()?.unwrap_or(2);
-    let samples: usize =
-        matches.get_one::<String>("samples").map(|s| s.parse()).transpose()?.unwrap_or(0);
+    let expectations = expectations(&params)?;
+    let retry_max = params.retry_max;
+    let second_pass_max = params.second_pass_max;
+    let samples = params.samples;
 
     let exe = std::env::current_exe()?;
-    set_governor_max();
+    set_governor();
     let _gpu_clock = GpuClock::pin(); // reset on drop, when the suite finishes
 
     let start = Instant::now();
     let mut results: Vec<RunResult> = vec![];
+    let mut smoke_failures: Vec<String> = vec![];
 
     for (bench_idx, bench) in manifest.benches.iter().enumerate() {
         if filter.is_some_and(|f| !bench.name.contains(f)) {
             continue;
         }
+        if skip_runtimes && !bench.runtimes.is_empty() {
+            continue;
+        }
 
-        let runs: Vec<(Option<Backend>, String)> = if bench.backends.is_empty() {
-            // Backend-less benches are a plain CPU run; --skip-cpu drops them entirely.
+        // Smoke runs every bench on all available runtimes (the per-bench sweep
+        // is a benchmarking economy, not a coverage statement): a CPU-only net
+        // bench must still be exercised on an accelerator to catch backend bugs.
+        let base_runs: Vec<(Option<RuntimeKind>, String)> = if smoke {
+            [RuntimeKind::Cpu, RuntimeKind::Metal, RuntimeKind::Cuda]
+                .into_iter()
+                .filter(|b| b.available())
+                .filter(|b| !(skip_cpu && matches!(b, RuntimeKind::Cpu)))
+                .map(|b| {
+                    let label = match &bench.variant {
+                        Some(v) => format!("{v}/{}", b.label()),
+                        None => b.label().to_string(),
+                    };
+                    (Some(b), label)
+                })
+                .collect()
+        } else if bench.runtimes.is_empty() {
+            // Runtime-less benches are a plain CPU run; --skip-cpu drops them entirely.
             if skip_cpu {
                 vec![]
             } else {
                 let variant = bench
                     .variant
                     .clone()
-                    .with_context(|| format!("{}: no variant and no backends", bench.name))?;
+                    .with_context(|| format!("{}: no variant and no runtimes", bench.name))?;
                 vec![(None, variant)]
             }
         } else {
             bench
-                .backends
+                .runtimes
                 .iter()
                 .filter(|b| b.available())
-                .filter(|b| !(skip_cpu && matches!(**b, Backend::Cpu)))
+                .filter(|b| !(skip_cpu && matches!(**b, RuntimeKind::Cpu)))
                 .map(|b| (Some(*b), b.label().to_string()))
                 .collect()
         };
+
+        // Augment cpu-eligible runs with the requested thread sweep. The base run
+        // (no `--threads`, `None`) is always kept; threaded runs are extra series.
+        let runs: Vec<(Option<RuntimeKind>, String, Option<usize>)> = base_runs
+            .into_iter()
+            .flat_map(|(rt, variant)| {
+                let mut out = vec![(rt, variant.clone(), None)];
+                let eligible = !smoke
+                    && !bench.threads.is_empty()
+                    && matches!(rt, None | Some(RuntimeKind::Cpu));
+                if eligible {
+                    if cfg!(feature = "multithread-mm") {
+                        // The ladder (daily/on-demand sweep) overrides the manifest's
+                        // per-bench guard point; `1` is dropped as a global-pool trap.
+                        let sweep = threads_ladder.unwrap_or(&bench.threads);
+                        for &n in sweep.iter().filter(|&&n| n != 1) {
+                            let suffix = if n == 0 { "mt".into() } else { format!("t{n}") };
+                            out.push((rt, format!("{variant}_{suffix}"), Some(n)));
+                        }
+                    } else {
+                        eprintln!(
+                            "  .. {} threaded variants skipped (built without multithread-mm)",
+                            bench.name
+                        );
+                    }
+                }
+                out
+            })
+            .collect();
         if runs.is_empty() {
             continue;
         }
 
-        if !no_fetch {
-            if let Err(e) = fetch(&manifest.base_url, &cache_dir, bench) {
+        if !no_cache && !no_fetch {
+            if let Err(e) = fetch(&base_url, &cache_dir, bench) {
                 eprintln!("  !! {}: fetch failed: {e:#}", bench.name);
                 continue;
             }
         }
 
-        for (backend, variant) in runs {
-            println!("  {} {}", bench.name, variant);
-            let run = || run_one(&exe, &cache_dir, bench, backend, &variant);
-            let outcome = if samples > 1 {
+        let staged = match stage(&model_source, bench) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("  !! {}: staging failed: {e:#}", bench.name);
+                continue;
+            }
+        };
+
+        for (runtime, variant, threads) in runs {
+            eprintln!("  {} {}", bench.name, variant);
+            let run = || {
+                run_one(&exe, &staged.arg, staged.format, bench, runtime, &variant, threads, smoke)
+            };
+            let outcome = if smoke {
+                run()
+            } else if samples > 1 {
                 bench_median(run, samples)
             } else {
                 bench_run(run, &expectations, retry_max)
             };
             match outcome {
-                Ok(m) => results.push(RunResult { bench_idx, backend, variant, metrics: m }),
-                Err(e) => eprintln!("  !! {} {} failed: {e:#}", bench.name, variant),
+                Ok(m) => {
+                    results.push(RunResult { bench_idx, runtime, variant, threads, metrics: m })
+                }
+                Err(e) => {
+                    eprintln!("  !! {} {} failed: {e:#}", bench.name, variant);
+                    smoke_failures.push(format!("{} [{variant}]", bench.name));
+                }
             }
         }
+    }
+
+    if smoke {
+        eprintln!("smoke: {} run(s) ok, {} failed", results.len(), smoke_failures.len());
+        ensure!(
+            smoke_failures.is_empty(),
+            "smoke: {} run(s) failed to load/run:\n  {}",
+            smoke_failures.len(),
+            smoke_failures.join("\n  ")
+        );
+        return Ok(());
     }
 
     // Reference mode (median) is not a PR comparison, so it has no reds to chase.
     if samples <= 1 {
         second_pass(
             &exe,
-            &cache_dir,
+            &model_source,
             &manifest,
             &expectations,
             retry_max,
@@ -249,27 +434,142 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
     let mut metrics: Vec<(String, f64)> = results.into_iter().flat_map(|r| r.metrics).collect();
     metrics.push(("bundle.bench_runtime".to_string(), start.elapsed().as_secs() as f64));
     write_metrics(output, &metrics)?;
-    println!("wrote {} metrics to {output}", metrics.len());
+    eprintln!("wrote {} metrics to {output}", metrics.len());
     Ok(())
 }
 
-/// Spawn one child `tract` for a single (bench, backend) and collect its metrics.
+/// Origin of a model's bytes: a file under the local cache dir, or a URL under
+/// `base_url`, for read-only targets that keep no disk cache.
+enum ModelSource {
+    Cache(PathBuf),
+    Url(String),
+}
+
+/// A model staged for the child to load. On Linux `arg` is `/proc/self/fd/N` for an
+/// anonymous memfd holding the bytes (kept resident by `_hold`); elsewhere it is the
+/// plain path/URL. `format` is the `-f` hint, since an fd path has no extension to
+/// guess from.
+struct Staged {
+    _hold: Option<std::fs::File>,
+    arg: String,
+    format: Option<&'static str>,
+}
+
+/// Land the model bytes in RAM and return what the child loads. On Linux the fetch —
+/// file read or http GET — happens here, into a memfd the child inherits, so it is
+/// untimed and the child's load reads from RAM whatever the origin: the fix that keeps
+/// `time_to_*` a fetch-free, file-vs-http-independent signal. Non-Linux: pass through.
+fn stage(source: &ModelSource, bench: &Bench) -> TractResult<Staged> {
+    let format = format_hint(&bench.model);
+    #[cfg(target_os = "linux")]
+    {
+        let (hold, arg) = match source {
+            ModelSource::Cache(dir) => {
+                memfd_load(&bench.name, std::fs::File::open(dir.join(&bench.model))?)?
+            }
+            ModelSource::Url(base) => {
+                let url = format!("{}/{}", base.trim_end_matches('/'), bench.model);
+                let resp = crate::params::http_client()?.get(&url).send()?;
+                ensure!(resp.status().is_success(), "GET {url} -> {}", resp.status());
+                memfd_load(&bench.name, resp)?
+            }
+        };
+        Ok(Staged { _hold: Some(hold), arg, format })
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let arg = match source {
+            ModelSource::Cache(dir) => dir.join(&bench.model).to_string_lossy().into_owned(),
+            ModelSource::Url(base) => format!("{}/{}", base.trim_end_matches('/'), bench.model),
+        };
+        Ok(Staged { _hold: None, arg, format })
+    }
+}
+
+/// Copy `reader` into a fresh anonymous memfd; return the open file (keep it alive to
+/// hold the RAM) and its `/proc/self/fd/N` path. `MemfdFlags::empty()` leaves the fd
+/// inheritable (no CLOEXEC), so the spawned child can reopen it by that path.
+#[cfg(target_os = "linux")]
+fn memfd_load(name: &str, mut reader: impl std::io::Read) -> TractResult<(std::fs::File, String)> {
+    use std::os::fd::AsRawFd;
+    let fd = rustix::fs::memfd_create(name, rustix::fs::MemfdFlags::empty())?;
+    let mut file = std::fs::File::from(fd);
+    std::io::copy(&mut reader, &mut file)?;
+    let arg = format!("/proc/self/fd/{}", file.as_raw_fd());
+    Ok((file, arg))
+}
+
+/// The `-f` format hint for a model the child loads by fd path (no filename to guess
+/// from). `None` lets the child fall back to its `tf` default (the `.pb` nets).
+fn format_hint(model: &str) -> Option<&'static str> {
+    let m = model.to_ascii_lowercase();
+    if m.ends_with(".onnx") {
+        Some("onnx")
+    } else if m.ends_with(".tflite") {
+        Some("tflite")
+    } else if m.ends_with(".tgz") || m.ends_with(".tar") || m.ends_with(".tar.gz") {
+        Some("nnef")
+    } else {
+        None
+    }
+}
+
+/// Spawn one child `tract` for a single (bench, runtime) and collect its metrics.
 /// The child runs in `--emit-jsonl` mode, so its stdout must be pure JSONL; any
 /// line that is not a metric object, a non-zero exit, or an empty result is an
 /// error for this run (the caller logs it and moves on).
+#[allow(clippy::too_many_arguments)]
 fn run_one(
     exe: &Path,
-    cache_dir: &Path,
+    model_arg: &str,
+    format: Option<&str>,
     bench: &Bench,
-    backend: Option<Backend>,
+    runtime: Option<RuntimeKind>,
     variant: &str,
+    threads: Option<usize>,
+    smoke: bool,
 ) -> TractResult<Vec<(String, f64)>> {
-    let (global_flags, sub_flags) = backend.map(|b| b.flags()).unwrap_or((&[], &[]));
+    let (global_flags, sub_flags) = runtime.map(|b| b.flags()).unwrap_or((&[], &[]));
+
+    // Smoke: a single load-optimize-run, success measured by exit status only.
+    // Nets go through `run` (one shot); LLMs keep `llm-bench` (it concretises the
+    // symbolic sequence dims the plain runner would choke on). Only the backend is
+    // selected — the bench watchdog `--timeout` is dropped so a slow-but-healthy run
+    // (e.g. an 8B LLM on CPU) is not killed; the CI job bounds the wall time instead.
+    if smoke {
+        let mut cmd = Command::new(exe);
+        cmd.arg(model_arg);
+        if let Some(f) = format {
+            cmd.args(["-f", f]);
+        }
+        cmd.args(&bench.args);
+        match runtime {
+            Some(RuntimeKind::Cuda) => _ = cmd.arg("--cuda"),
+            Some(RuntimeKind::Metal) => _ = cmd.arg("--metal"),
+            _ => {}
+        }
+        if bench.kind == Kind::Llm {
+            cmd.arg("--llm");
+            cmd.args(["-O", "llm-bench"]);
+        } else {
+            cmd.args(["-O", "run", "--allow-random-input"]);
+        }
+        cmd.stdout(Stdio::null()).stderr(Stdio::inherit());
+        let status = cmd.status().context("spawning child tract")?;
+        ensure!(status.success(), "child exited with {status}");
+        return Ok(vec![]);
+    }
 
     let mut cmd = Command::new(exe);
-    cmd.arg(cache_dir.join(&bench.model));
+    cmd.arg(model_arg);
+    if let Some(f) = format {
+        cmd.args(["-f", f]);
+    }
     cmd.args(&bench.args);
     cmd.args(global_flags);
+    if let Some(n) = threads {
+        cmd.args(["--threads", &n.to_string()]);
+    }
     cmd.args(["--readings", "--readings-heartbeat", "1000", "--emit-jsonl"]);
     if bench.kind == Kind::Llm {
         cmd.arg("--llm");
@@ -307,10 +607,12 @@ fn bench_run(
 ) -> TractResult<Vec<(String, f64)>> {
     let mut best: BTreeMap<String, f64> = run()?.into_iter().collect();
     if !expectations.is_empty() {
-        let mut tries = 0;
-        while tries < retry_max && out_of_threshold(&best, expectations) {
-            tries += 1;
-            println!("    retry {tries} (off expectation)");
+        for tries in 1..=retry_max {
+            let off = offenders(&best, expectations);
+            if off.is_empty() {
+                break;
+            }
+            eprintln!("    retry {tries} (off expectation: {})", off.join(", "));
             match run() {
                 Ok(cand) => merge_best(&mut best, cand),
                 Err(e) => eprintln!("    retry {tries} failed: {e:#}"),
@@ -328,7 +630,7 @@ fn bench_run(
 /// so they are left standing. No-op without expectations.
 fn second_pass(
     exe: &Path,
-    cache_dir: &Path,
+    source: &ModelSource,
     manifest: &Manifest,
     expectations: &HashMap<String, (f64, f64)>,
     retry_max: usize,
@@ -351,18 +653,30 @@ fn second_pass(
         return;
     }
     if red.len() > second_pass_max {
-        println!(
+        eprintln!(
             "second pass skipped: {} reds (> {second_pass_max}) is not a transient disruption",
             red.len()
         );
         return;
     }
     for i in red {
-        let (bench_idx, backend, variant) =
-            (results[i].bench_idx, results[i].backend, results[i].variant.clone());
+        let (bench_idx, runtime, variant, threads) = (
+            results[i].bench_idx,
+            results[i].runtime,
+            results[i].variant.clone(),
+            results[i].threads,
+        );
         let bench = &manifest.benches[bench_idx];
-        println!("  second pass: {} {}", bench.name, variant);
-        let run = || run_one(exe, cache_dir, bench, backend, &variant);
+        eprintln!("  second pass: {} {}", bench.name, variant);
+        let staged = match stage(source, bench) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("  !! second pass {} {} staging failed: {e:#}", bench.name, variant);
+                continue;
+            }
+        };
+        let run =
+            || run_one(exe, &staged.arg, staged.format, bench, runtime, &variant, threads, false);
         match bench_run(run, expectations, retry_max) {
             Ok(cand) => {
                 let mut best: BTreeMap<String, f64> =
@@ -415,16 +729,28 @@ fn out_of_threshold(
     metrics: &BTreeMap<String, f64>,
     expectations: &HashMap<String, (f64, f64)>,
 ) -> bool {
-    metrics.iter().any(|(name, &v)| {
-        expectations.get(name).is_some_and(|&(expected, thr)| {
+    !offenders(metrics, expectations).is_empty()
+}
+
+/// Metrics worse than expectation, `name +NN%` (signed), worst first — for retry logs.
+fn offenders(
+    metrics: &BTreeMap<String, f64>,
+    expectations: &HashMap<String, (f64, f64)>,
+) -> Vec<String> {
+    let mut hits: Vec<(f64, String)> = metrics
+        .iter()
+        .filter_map(|(name, &v)| {
+            let &(expected, thr) = expectations.get(name)?;
             if expected <= 0.0 {
-                return false;
+                return None;
             }
             let pct = (v - expected) / expected * 100.0;
             let worse = if higher_better(name) { -pct } else { pct };
-            worse >= thr
+            (worse >= thr).then(|| (worse, format!("{name} {pct:+.0}%")))
         })
-    })
+        .collect();
+    hits.sort_by(|a, b| b.0.total_cmp(&a.0));
+    hits.into_iter().map(|(_, s)| s).collect()
 }
 
 /// Fold `cand` into `best`, keeping the better value per metric (max for throughput,
@@ -444,17 +770,17 @@ fn merge_best(best: &mut BTreeMap<String, f64>, cand: Vec<(String, f64)>) {
 /// Resolve the expectations that drive retry: an explicit `--expectations` file, or
 /// computed inline from bench-data history on the bench host (`--bench-data` plus
 /// `--thresholds`/`--triple`/`--device`). Neither given: empty (single shot).
-fn expectations(matches: &clap::ArgMatches) -> TractResult<HashMap<String, (f64, f64)>> {
-    let get = |k| matches.get_one::<String>(k).map(String::as_str);
-    if let Some(path) = get("expectations") {
+fn expectations(params: &BenchSuiteParams) -> TractResult<HashMap<String, (f64, f64)>> {
+    if let Some(path) = params.expectations.as_deref() {
         return load_expectations(path);
     }
-    let Some(bench_data) = get("bench-data") else { return Ok(HashMap::new()) };
-    let thresholds = get("thresholds").context("--thresholds is required with --bench-data")?;
-    let triple = get("triple").context("--triple is required with --bench-data")?;
-    let device = get("device").context("--device is required with --bench-data")?;
+    let Some(bench_data) = params.bench_data.as_deref() else { return Ok(HashMap::new()) };
+    let thresholds =
+        params.thresholds.as_deref().context("--thresholds is required with --bench-data")?;
+    let triple = params.triple.as_deref().context("--triple is required with --bench-data")?;
+    let device = params.device.as_deref().context("--device is required with --bench-data")?;
     let rows = crate::bench_expectations::compute(bench_data, thresholds, triple, device)?;
-    println!("expectations: {} gated metrics from {bench_data}/{triple}/{device}", rows.len());
+    eprintln!("expectations: {} gated metrics from {bench_data}/{triple}/{device}", rows.len());
     Ok(rows.into_iter().map(|(m, e, t)| (m, (e, t))).collect())
 }
 
@@ -474,7 +800,17 @@ fn load_expectations(path: &str) -> TractResult<HashMap<String, (f64, f64)>> {
     Ok(out)
 }
 
+/// Write metrics as `key value` lines to `path`, or as one JSON object per line to stdout
+/// when `path` is `-`. The stdout form lets a run on a remote target return its metrics over
+/// the captured stdout stream (stderr carries all progress), with no file to pull back.
 fn write_metrics(path: &str, metrics: &[(String, f64)]) -> TractResult<()> {
+    if path == "-" {
+        let mut out = std::io::stdout().lock();
+        for (k, v) in metrics {
+            writeln!(out, "{}", serde_json::json!({ "metric": k, "value": v }))?;
+        }
+        return Ok(out.flush()?);
+    }
     let mut file = std::fs::File::create(path)?;
     for (k, v) in metrics {
         writeln!(file, "{k} {v}")?;
@@ -482,13 +818,89 @@ fn write_metrics(path: &str, metrics: &[(String, f64)]) -> TractResult<()> {
     Ok(())
 }
 
-/// Fetch `bench`'s model into the cache dir if missing, unpacking the archive
-/// first when the model ships inside one.
-fn fetch(base_url: &str, cache_dir: &Path, bench: &Bench) -> TractResult<()> {
-    if cache_dir.join(&bench.model).exists() {
-        return Ok(());
+fn read_metrics(path: &str) -> TractResult<HashMap<String, f64>> {
+    let mut m = HashMap::new();
+    for line in std::fs::read_to_string(path)?.lines() {
+        let mut it = line.split_whitespace();
+        if let (Some(k), Some(Ok(v))) = (it.next(), it.next().map(str::parse::<f64>)) {
+            m.insert(k.to_string(), v);
+        }
     }
+    ensure!(!m.is_empty(), "no `key value` metrics in {path}");
+    Ok(m)
+}
+
+/// Compare two `bench-suite --output` metrics files, printing B's per-metric delta vs A.
+#[derive(clap::Args)]
+struct DiffArgs {
+    /// Baseline metrics file (from `bench-suite --output`)
+    #[arg(long)]
+    a: String,
+    /// Candidate metrics file
+    #[arg(long)]
+    b: String,
+    /// Only compare metrics whose name contains this substring
+    #[arg(long, default_value = "evaltime")]
+    metric: String,
+    /// Flag moves beyond this percent
+    #[arg(long, default_value_t = 2.0)]
+    threshold: f64,
+}
+
+pub fn diff_command() -> clap::Command {
+    DiffArgs::augment_args(clap::Command::new("bench-diff").long_about(
+        "Compare two bench-suite metrics files and print the per-metric delta of B vs A.",
+    ))
+}
+
+/// Print B's per-metric delta vs A, worst-regression-first, filtered to names containing
+/// `--metric` (default `evaltime`) and flagging moves beyond `--threshold` percent. A pure
+/// two-file diff — no bench-data history, for local A/B on a machine CI does not bench.
+pub fn diff(matches: &clap::ArgMatches) -> TractResult<()> {
+    let args = DiffArgs::from_arg_matches(matches)?;
+    let a = read_metrics(&args.a)?;
+    let b = read_metrics(&args.b)?;
+    let (needle, threshold) = (&args.metric, args.threshold);
+
+    let mut rows: Vec<(f64, &str, f64, f64)> = a
+        .iter()
+        .filter(|(k, _)| k.contains(needle))
+        .filter_map(|(k, &va)| {
+            let vb = *b.get(k)?;
+            let d = if va != 0.0 { (vb - va) / va * 100.0 } else { 0.0 };
+            Some((d, k.as_str(), va, vb))
+        })
+        .collect();
+    rows.sort_by(|x, y| y.0.total_cmp(&x.0));
+
+    println!("# {needle}  A -> B   (+ = B slower)");
+    let (mut reds, mut greens) = (0, 0);
+    for (d, k, va, vb) in &rows {
+        let mark = if *d > threshold {
+            reds += 1;
+            "🔴"
+        } else if *d < -threshold {
+            greens += 1;
+            "🟢"
+        } else {
+            "  "
+        };
+        println!("{mark} {d:+7.1}%  {k:<55} {va:>11.4} -> {vb:.4}");
+    }
+    println!("\n{reds} regression(s) >{threshold}%, {greens} improvement(s) >{threshold}%");
+    Ok(())
+}
+
+/// Fetch `bench`'s model into the cache dir if missing, unpacking the archive first
+/// when the model ships inside one. A plain (non-archive) model already in cache is
+/// kept only if its size matches the origin's `Content-Length`; a truncated or stale
+/// copy is re-fetched. An origin that can't be reached leaves the cache trusted, so an
+/// offline `--no-fetch`-adjacent run still works.
+fn fetch(base_url: &str, cache_dir: &Path, bench: &Bench) -> TractResult<()> {
     if let Some(archive) = &bench.archive {
+        if cache_dir.join(&bench.model).exists() {
+            return Ok(());
+        }
         let archive_path = cache_dir.join(archive);
         download(base_url, archive, &archive_path)?;
         let file = std::fs::File::open(&archive_path)?;
@@ -496,31 +908,72 @@ fn fetch(base_url: &str, cache_dir: &Path, bench: &Bench) -> TractResult<()> {
             .unpack(cache_dir)
             .with_context(|| format!("unpacking {}", archive_path.display()))?;
     } else {
-        download(base_url, &bench.model, &cache_dir.join(&bench.model))?;
+        let dest = cache_dir.join(&bench.model);
+        if dest.exists() {
+            let local = dest.metadata()?.len();
+            match remote_len(base_url, &bench.model) {
+                Some(expected) if local != expected => eprintln!(
+                    "  cached {} is {local} bytes, origin has {expected}; re-fetching",
+                    bench.model
+                ),
+                _ => return Ok(()),
+            }
+        }
+        download(base_url, &bench.model, &dest)?;
     }
     Ok(())
 }
 
+/// The origin's `Content-Length` for `name` (a HEAD), or `None` when it can't be
+/// determined (offline, no such header) — the caller then trusts whatever is cached.
+fn remote_len(base_url: &str, name: &str) -> Option<u64> {
+    let url = format!("{}/{}", base_url.trim_end_matches('/'), name);
+    let resp = crate::params::http_client().ok()?.head(&url).send().ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
+    // `content_length()` reports the (empty) HEAD body, not the header; read the header.
+    resp.headers().get(reqwest::header::CONTENT_LENGTH)?.to_str().ok()?.parse().ok()
+}
+
 fn download(base_url: &str, name: &str, dest: &Path) -> TractResult<()> {
     let url = format!("{}/{}", base_url.trim_end_matches('/'), name);
-    println!("  fetching {url}");
+    // Log the relative name only: the base URL may be a private mirror we keep out of logs.
+    eprintln!("  fetching {name}");
     let mut resp = crate::params::http_client()?.get(&url).send()?;
     ensure!(resp.status().is_success(), "GET {url} -> {}", resp.status());
+    let expected = resp.content_length();
     if let Some(parent) = dest.parent() {
         std::fs::create_dir_all(parent)?;
     }
     let tmp = dest.with_extension("part");
     let mut file = std::fs::File::create(&tmp)?;
-    std::io::copy(&mut resp, &mut file)?;
+    let written = std::io::copy(&mut resp, &mut file)?;
     file.sync_all()?;
+    // A short body that arrives as a clean EOF must not be renamed into place as good,
+    // or the cache-hit check above would trust the truncated file forever.
+    if let Some(expected) = expected {
+        ensure!(
+            written == expected,
+            "short download of {name}: {written} of {expected} bytes (kept {})",
+            tmp.display()
+        );
+    }
     std::fs::rename(&tmp, dest)?;
     Ok(())
 }
 
+tract_core::declare_knob!(
+    TRACT_BENCH_GPU_CLOCK,
+    Option<String>,
+    None,
+    "GPU graphics clock (MHz) to lock before benching; unset locks the top supported clock."
+);
+
 /// Pins the GPU graphics clock for the run and resets it on drop. The cuda runner
 /// free-boosts from idle, adding session-to-session variance to evaltime that the
 /// in-run retry can't damp. Best-effort: needs privilege, no-op without nvidia-smi.
-/// `BENCH_GPU_CLOCK` (MHz) overrides the default (the top supported clock).
+/// `TRACT_BENCH_GPU_CLOCK` (MHz) overrides the default (the top supported clock).
 struct GpuClock {
     locked: bool,
 }
@@ -536,7 +989,7 @@ impl GpuClock {
                 String::from_utf8_lossy(&out.stdout).lines().next().map(|l| l.trim().to_string())
             })?
         };
-        let clock = std::env::var("BENCH_GPU_CLOCK").ok().filter(|c| !c.is_empty()).or_else(query);
+        let clock = TRACT_BENCH_GPU_CLOCK.get().filter(|c| !c.is_empty()).or_else(query);
         let Some(clock) = clock.filter(|c| !c.is_empty()) else {
             return GpuClock { locked: false };
         };
@@ -569,20 +1022,39 @@ impl Drop for GpuClock {
     }
 }
 
-/// On Linux with a `userspace` governor, pin cpu0 to its top available frequency
-/// (best effort; needs privilege). Mirrors the shell bundle's determinism step.
-fn set_governor_max() {
+tract_core::declare_knob!(
+    TRACT_BENCH_CPU_GOVERNOR,
+    Option<String>,
+    None,
+    "CPU scaling governor to pin on every CPU before benching (e.g. `performance`); unset leaves the host untouched."
+);
+
+/// Opt-in CPU determinism pin, the governor twin of [`GpuClock`]. When `TRACT_BENCH_CPU_GOVERNOR`
+/// names a governor (e.g. `performance`), set it on every CPU (best effort; needs privilege); for
+/// `userspace`, also pin each CPU to its top available frequency. Unset/empty or non-Linux: no
+/// change, so a runner that does not request it (the hosted boxes) is left untouched. A bench
+/// target requests it out of band — via the dinghy device's `remote_shell_vars` — never in repo.
+fn set_governor() {
     if !cfg!(target_os = "linux") {
         return;
     }
-    let base = "/sys/devices/system/cpu/cpu0/cpufreq";
-    let governor = std::fs::read_to_string(format!("{base}/scaling_governor"));
-    if governor.map(|g| g.trim() == "userspace").unwrap_or(false) {
-        if let Ok(freqs) = std::fs::read_to_string(format!("{base}/scaling_available_frequencies"))
-        {
-            if let Some(max) = freqs.split_whitespace().filter_map(|f| f.parse::<u64>().ok()).max()
-            {
-                let _ = std::fs::write(format!("{base}/scaling_setspeed"), max.to_string());
+    let Some(governor) = TRACT_BENCH_CPU_GOVERNOR.get().filter(|g| !g.is_empty()) else {
+        return;
+    };
+    let Ok(cpus) = std::fs::read_dir("/sys/devices/system/cpu") else { return };
+    for cpu in cpus.flatten() {
+        let base = cpu.path().join("cpufreq");
+        if !base.join("scaling_governor").exists() {
+            continue;
+        }
+        let _ = std::fs::write(base.join("scaling_governor"), &governor);
+        if governor == "userspace" {
+            if let Ok(freqs) = std::fs::read_to_string(base.join("scaling_available_frequencies")) {
+                if let Some(max) =
+                    freqs.split_whitespace().filter_map(|f| f.parse::<u64>().ok()).max()
+                {
+                    let _ = std::fs::write(base.join("scaling_setspeed"), max.to_string());
+                }
             }
         }
     }

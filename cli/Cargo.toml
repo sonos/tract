@@ -1,6 +1,6 @@
 [package]
 name = "tract-cli"
-version = "0.23.4-pre"
+version = "0.23.5-pre"
 authors = [
   "Romain Liautaud <romain.liautaud@snips.ai>",
   "Mathieu Poumeyrol <kali@zoy.org>",
@@ -12,6 +12,7 @@ keywords = ["TensorFlow", "NeuralNetworks"]
 categories = ["science"]
 autobenches = false
 edition = "2024"
+default-run = "tract"
 include = ["Cargo.toml", "src/**/*.rs", "LICENSE*"]
 
 [[bin]]
@@ -80,6 +81,9 @@ tract-metal.workspace = true
 cudarc = { workspace = true, optional = true }
 tract-cuda = { workspace = true, optional = true }
 
+[target.'cfg(target_os = "linux")'.dependencies]
+rustix = { version = "1", features = ["fs"] }
+
 [features]
 default = [
   "onnx",
@@ -100,7 +104,7 @@ tf = ["tract-tensorflow", "tract-libcli/hir"]
 tflite = ["tract-tflite"]
 transformers = ["tract-transformers", "tract-libcli/transformers"]
 multithread-mm = ["tract-linalg/multithread-mm"]
-bench-suite = ["dep:toml", "dep:tar", "dep:minijinja", "dep:time"]
+bench-suite = ["dep:toml", "dep:tar", "dep:minijinja", "dep:time", "multithread-mm"]
 
 # Marker feature implicitly enabled by every cuda-XXXXX selector below.
 # Use to gate cudarc-specific code paths in tract-cli. Not meant to be

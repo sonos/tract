@@ -14,9 +14,22 @@ register_simple_model_transform!(
     SdpaFuseKvCacheBroadcastTransform
 );
 register_simple_model_transform!("unfold_kv_cache", UnfoldKeyValueCacheTransform);
+register_simple_model_transform!(
+    "fuse_inplace_kv_sdpa",
+    ops::inplace_kv_cache::InPlaceKvSdpaTransform
+);
 register_simple_model_transform!("transformers_detect_all", TransformersTransform);
+register_simple_model_transform!(
+    "quantize_kv_storage",
+    ops::quant_dyn_kv_cache::QuantizeKvStorageTransform { bits: 8 }
+);
+register_simple_model_transform!(
+    "quantize_kv_storage_int4",
+    ops::quant_dyn_kv_cache::QuantizeKvStorageTransform { bits: 4 }
+);
 
 pub fn register(registry: &mut Registry) {
+    ops::causal_conv1d_update::register(registry);
     ops::apply_rope::register(registry);
     ops::scaled_masked_softmax::register(registry);
     ops::sdpa::register(registry);
@@ -24,6 +37,8 @@ pub fn register(registry: &mut Registry) {
     ops::window_kv_cache::register(registry);
     ops::kv_quant::register(registry);
     ops::moe_ffn::register(registry);
+    ops::quant_dyn_kv_cache::register(registry);
+    ops::gdn_recurrent::register(registry);
 }
 
 pub trait WithTractTransformers {

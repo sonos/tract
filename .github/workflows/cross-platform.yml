@@ -83,20 +83,14 @@ jobs:
     permissions:
       id-token: write
       contents: read
+      packages: read      # pull the prebuilt cross-build image (ghcr, private)
 
     steps:
-    - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         ref: ${{ needs.prepare.outputs.test_ref }}
         fetch-depth: 0
         persist-credentials: false
-
-    - name: Configure AWS Credentials
-      continue-on-error: true
-      uses: aws-actions/configure-aws-credentials@e7f100cf4c008499ea8adda475de1042d6975c7b # v6.2.0
-      with:
-        role-to-assume: arn:aws:iam::567805100031:role/github-runner-tract-ci
-        aws-region: us-east-2
 
     - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
       with:
@@ -111,7 +105,7 @@ jobs:
     - name: Cross script
       env:
         PLATFORM: ${{matrix.platform}}
-        AWS_EC2_METADATA_DISABLED: true
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # ghcr login for the cross-build image
         NEEDS_PREPARE_OUTPUTS_TRACT_BENCH_BRANCH_NAME: ${{ needs.prepare.outputs.tract_bench_branch_name }}
         NEEDS_PREPARE_OUTPUTS_TEST_REF: ${{ needs.prepare.outputs.test_ref }}
       run: |
@@ -134,18 +128,11 @@ jobs:
       contents: read
 
     steps:
-    - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         ref: ${{ needs.prepare.outputs.test_ref }}
         fetch-depth: 0
         persist-credentials: false
-
-    - name: Configure AWS Credentials
-      continue-on-error: true
-      uses: aws-actions/configure-aws-credentials@e7f100cf4c008499ea8adda475de1042d6975c7b # v6.2.0
-      with:
-        role-to-assume: arn:aws:iam::567805100031:role/github-runner-tract-ci
-        aws-region: us-east-2
 
     - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
       with:

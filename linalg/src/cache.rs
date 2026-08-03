@@ -25,6 +25,12 @@ pub struct CacheInfo {
     pub l2: usize,
     /// L3 / last-level cache, bytes. `0` if unknown.
     pub l3: usize,
+    /// How many physical cores share one L2 (1 == private per core, as on most
+    /// server/mobile Arm and x86). Greater than 1 on cluster-shared-L2 parts
+    /// (Cortex-A9/A53). `0` if the topology could not be read — callers treat
+    /// that as private. SMT siblings do not count: they already share the core's
+    /// L2, so a 2-thread core with a private L2 reports 1, not 2.
+    pub l2_sharers: usize,
 }
 
 impl CacheInfo {
@@ -43,6 +49,12 @@ impl CacheInfo {
     /// L2 cache, or a conservative 256 KiB guess when undetected.
     pub fn l2_or_default(&self) -> usize {
         if self.l2 > 0 { self.l2 } else { 256 * 1024 }
+    }
+
+    /// Physical cores sharing one L2, at least 1 — unknown topology (`0`) reads
+    /// as private, the regression-safe assumption (no shared-cache division).
+    pub fn l2_sharers_or_one(&self) -> usize {
+        self.l2_sharers.max(1)
     }
 }
 
@@ -239,27 +251,54 @@ fn detect() -> CacheInfo {
         l3: sysctl_usize("hw.perflevel0.l3cachesize")
             .or_else(|| sysctl_usize("hw.l3cachesize"))
             .unwrap_or(0),
+        // Apple L2 is per-cluster (shared across a perflevel's cores), but sysctl
+        // does not expose the sharing degree; report unknown (treated as private).
+        l2_sharers: 0,
     }
+}
+
+/// Count the CPUs named by a Linux cpu-list string (`"0-3"`, `"0,8"`,
+/// `"0-3,8-11"`). Malformed fields are skipped, so a garbled file counts 0.
+#[cfg_attr(not(any(target_os = "linux", target_os = "android")), allow(dead_code))]
+fn count_cpu_list(s: &str) -> usize {
+    s.split(',')
+        .filter_map(|part| {
+            let part = part.trim();
+            if part.is_empty() {
+                return None;
+            }
+            match part.split_once('-') {
+                Some((a, b)) => {
+                    let a: usize = a.trim().parse().ok()?;
+                    let b: usize = b.trim().parse().ok()?;
+                    (b >= a).then_some(b - a + 1)
+                }
+                None => part.parse::<usize>().ok().map(|_| 1),
+            }
+        })
+        .sum()
 }
 
 #[cfg(any(target_os = "linux", target_os = "android"))]
 fn detect() -> CacheInfo {
     // Walk /sys/.../cache/indexN, keying off the reported level+type rather than
     // assuming a fixed index layout (it varies: SMT, unified vs split L2, …).
+    let read = |p: String| std::fs::read_to_string(p).ok();
     let mut ci = CacheInfo::default();
+    // SMT siblings share the core's L2 already; only cores beyond that set count
+    // as L2-sharing. Absent topology ⇒ assume no SMT (1).
+    let smt = read("/sys/devices/system/cpu/cpu0/topology/thread_siblings_list".to_string())
+        .map(|s| count_cpu_list(&s))
+        .filter(|&n| n > 0)
+        .unwrap_or(1);
     for idx in 0..16 {
         let base = format!("/sys/devices/system/cpu/cpu0/cache/index{idx}/");
-        let Ok(level) = std::fs::read_to_string(format!("{base}level")) else {
+        let Some(level) = read(format!("{base}level")) else {
             continue;
         };
         let level: usize = level.trim().parse().unwrap_or(0);
-        let ctype = std::fs::read_to_string(format!("{base}type"))
-            .unwrap_or_default()
-            .trim()
-            .to_ascii_lowercase();
-        let size = std::fs::read_to_string(format!("{base}size"))
-            .map(|s| parse_cache_size(&s))
-            .unwrap_or(0);
+        let ctype = read(format!("{base}type")).unwrap_or_default().trim().to_ascii_lowercase();
+        let size = read(format!("{base}size")).map(|s| parse_cache_size(&s)).unwrap_or(0);
         if size == 0 {
             continue;
         }
@@ -269,7 +308,12 @@ fn detect() -> CacheInfo {
                     ci.l1_data = size;
                 }
             }
-            2 if ci.l2 == 0 => ci.l2 = size,
+            2 if ci.l2 == 0 => {
+                ci.l2 = size;
+                let cpus =
+                    read(format!("{base}shared_cpu_list")).map(|s| count_cpu_list(&s)).unwrap_or(0);
+                ci.l2_sharers = (cpus / smt).max(1);
+            }
             3 if ci.l3 == 0 => ci.l3 = size,
             _ => {}
         }
@@ -364,6 +408,16 @@ mod tests {
         assert_eq!(parse_cache_size("8M"), 8 * 1024 * 1024);
         assert_eq!(parse_cache_size(" 1024k "), 1024 * 1024);
         assert_eq!(parse_cache_size("garbage"), 0);
+    }
+
+    #[test]
+    fn cpu_list_counts() {
+        assert_eq!(count_cpu_list("0"), 1);
+        assert_eq!(count_cpu_list("0-15"), 16);
+        assert_eq!(count_cpu_list("0,8"), 2);
+        assert_eq!(count_cpu_list("0-3,8-11"), 8);
+        assert_eq!(count_cpu_list(""), 0);
+        assert_eq!(count_cpu_list("garbage"), 0);
     }
 
     #[test]

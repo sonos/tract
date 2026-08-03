@@ -1,31 +1,13 @@
-// AVX-512 f16 element-wise activations. Each kernel chunks f16 -> 64-byte-aligned
-// f32 scratch via vcvtph2ps (cvt_f16_to_f32 below), runs the matching f32
-// AVX-512 kernel (or the avx512_sigmoid_f32 / avx512_tanh_f32 wrappers from
-// x86_64_fma.rs), and converts back to f16 via vcvtps2ph (cvt_f32_to_f16).
-// Conversion is driven through std::arch intrinsics directly because the
-// scalar f16::to_f32 / f16::from_f32 loops are not autovectorized by
-// rustc + LLVM (branches / call overhead in the half crate's methods),
-// which leaves a naive port stuck around 7 Melem/s.
-//
-// The f32 AVX-512 activation kernels assume 64-byte aligned input (alignment
-// bytes = nr * 4 for nr >= 16). The local scratch is wrapped in
-// #[repr(C, align(64))] so the contained [f32; 256] sits at a 64-byte boundary.
-//
-// Validated against the generic f16 reference (HHardSwish8 / HLeakyRelu8 /
-// HSigmoid8 / HTanh8 / HSiLU8 / HGelu8) via the existing *_frame_tests!
-// macros at SuperApproximate tolerance, which covers the precision delta
-// between scalar f16 arithmetic and f32-internal computation.
+//! AVX-512 f16 element-wise activations for cores without native f16 arithmetic.
+//!
+//! Each kernel round-trips through the matching f32 AVX-512 kernel via
+//! `ew_impl_f16_via_f32!`: convert an f16 chunk into a 64-byte-aligned f32 scratch
+//! (the f32 kernels assume 64-byte-aligned input), run the f32 kernel, convert
+//! back. Conversion is driven through `std::arch` intrinsics directly (see the
+//! helpers below) because rustc + LLVM do not autovectorize the scalar
+//! `f16::to_f32` / `f16::from_f32` loops.
 
 use tract_data::internal::f16;
-
-#[repr(C, align(64))]
-struct AlignedScratch([f32; 256]);
-
-impl AlignedScratch {
-    fn new() -> Self {
-        Self([0f32; 256])
-    }
-}
 
 const CHUNK: usize = 256;
 
@@ -73,30 +55,15 @@ unsafe fn cvt_f32_to_f16(src: &[f32], dst: &mut [f16]) {
 }
 
 // hardswish_f16
-ew_impl_wrap!(
-    f16,
+ew_impl_f16_via_f32!(
     x86_64_avx512_hardswish_f16_64n,
     64,
     32,
-    (),
-    #[inline(never)]
-    fn run(buf: &mut [f16], _: ()) {
-        debug_assert!(buf.len() % Self::nr() == 0);
-        debug_assert!(buf.as_ptr() as usize % Self::alignment_bytes() == 0);
-        if buf.is_empty() {
-            return;
-        }
-        let mut scratch = AlignedScratch::new();
-        let s = &mut scratch.0;
-        let mut i = 0;
-        while i < buf.len() {
-            let n = (CHUNK).min(buf.len() - i);
-            unsafe { cvt_f16_to_f32(&buf[i..i + n], &mut s[..n]) };
-            super::act::x86_64_avx512_hardswish_f32_64n::run(&mut s[..n], ());
-            unsafe { cvt_f32_to_f16(&s[..n], &mut buf[i..i + n]) };
-            i += n;
-        }
-    }
+    CHUNK,
+    64,
+    cvt_f16_to_f32,
+    cvt_f32_to_f16,
+    super::act::x86_64_avx512_hardswish_f32_64n
 );
 
 #[cfg(test)]
@@ -109,32 +76,17 @@ pub mod test_x86_64_avx512_hardswish_f16_64n {
     );
 }
 
-// leaky_relu_f16  (parameter: alpha as f16)
-ew_impl_wrap!(
-    f16,
+ew_impl_f16_via_f32!(
     x86_64_avx512_leaky_relu_f16_64n,
     64,
     32,
+    CHUNK,
+    64,
+    cvt_f16_to_f32,
+    cvt_f32_to_f16,
+    super::act::x86_64_avx512_leaky_relu_f32_64n,
     f16,
-    #[inline(never)]
-    fn run(buf: &mut [f16], alpha: f16) {
-        debug_assert!(buf.len() % Self::nr() == 0);
-        debug_assert!(buf.as_ptr() as usize % Self::alignment_bytes() == 0);
-        if buf.is_empty() {
-            return;
-        }
-        let alpha_f32 = alpha.to_f32();
-        let mut scratch = AlignedScratch::new();
-        let s = &mut scratch.0;
-        let mut i = 0;
-        while i < buf.len() {
-            let n = (CHUNK).min(buf.len() - i);
-            unsafe { cvt_f16_to_f32(&buf[i..i + n], &mut s[..n]) };
-            super::act::x86_64_avx512_leaky_relu_f32_64n::run(&mut s[..n], alpha_f32);
-            unsafe { cvt_f32_to_f16(&s[..n], &mut buf[i..i + n]) };
-            i += n;
-        }
-    }
+    alpha => alpha.to_f32()
 );
 
 #[cfg(test)]
@@ -147,32 +99,15 @@ pub mod test_x86_64_avx512_leaky_relu_f16_64n {
     );
 }
 
-// sigmoid_f16  (calls the avx512_sigmoid_f32 wrapper from x86_64_fma.rs;
-// its nr() is 16 so CHUNK=256 is always a clean multiple)
-ew_impl_wrap!(
-    f16,
+ew_impl_f16_via_f32!(
     x86_64_avx512_sigmoid_f16_16n,
     16,
     16,
-    (),
-    #[inline(never)]
-    fn run(buf: &mut [f16], _: ()) {
-        debug_assert!(buf.len() % Self::nr() == 0);
-        debug_assert!(buf.as_ptr() as usize % Self::alignment_bytes() == 0);
-        if buf.is_empty() {
-            return;
-        }
-        let mut scratch = AlignedScratch::new();
-        let s = &mut scratch.0;
-        let mut i = 0;
-        while i < buf.len() {
-            let n = (CHUNK).min(buf.len() - i);
-            unsafe { cvt_f16_to_f32(&buf[i..i + n], &mut s[..n]) };
-            super::avx512_sigmoid_f32::run(&mut s[..n], ());
-            unsafe { cvt_f32_to_f16(&s[..n], &mut buf[i..i + n]) };
-            i += n;
-        }
-    }
+    CHUNK,
+    64,
+    cvt_f16_to_f32,
+    cvt_f32_to_f16,
+    super::avx512_sigmoid_f32
 );
 
 #[cfg(test)]
@@ -181,31 +116,15 @@ pub mod test_x86_64_avx512_sigmoid_f16_16n {
     sigmoid_frame_tests!(is_x86_feature_detected!("avx512f"), f16, x86_64_avx512_sigmoid_f16_16n);
 }
 
-// tanh_f16
-ew_impl_wrap!(
-    f16,
+ew_impl_f16_via_f32!(
     x86_64_avx512_tanh_f16_16n,
     16,
     16,
-    (),
-    #[inline(never)]
-    fn run(buf: &mut [f16], _: ()) {
-        debug_assert!(buf.len() % Self::nr() == 0);
-        debug_assert!(buf.as_ptr() as usize % Self::alignment_bytes() == 0);
-        if buf.is_empty() {
-            return;
-        }
-        let mut scratch = AlignedScratch::new();
-        let s = &mut scratch.0;
-        let mut i = 0;
-        while i < buf.len() {
-            let n = (CHUNK).min(buf.len() - i);
-            unsafe { cvt_f16_to_f32(&buf[i..i + n], &mut s[..n]) };
-            super::avx512_tanh_f32::run(&mut s[..n], ());
-            unsafe { cvt_f32_to_f16(&s[..n], &mut buf[i..i + n]) };
-            i += n;
-        }
-    }
+    CHUNK,
+    64,
+    cvt_f16_to_f32,
+    cvt_f32_to_f16,
+    super::avx512_tanh_f32
 );
 
 #[cfg(test)]
@@ -214,38 +133,15 @@ pub mod test_x86_64_avx512_tanh_f16_16n {
     tanh_frame_tests!(is_x86_feature_detected!("avx512f"), f16, x86_64_avx512_tanh_f16_16n);
 }
 
-// silu_f16: x * sigmoid(x).  Mirror the f32 silu pattern: save the input
-// (in f32), run sigmoid in place on the scratch, then multiply back.
-ew_impl_wrap!(
-    f16,
+ew_impl_f16_via_f32!(
     x86_64_avx512_silu_f16_16n,
     16,
     16,
-    (),
-    #[inline(never)]
-    fn run(buf: &mut [f16], _: ()) {
-        debug_assert!(buf.len() % Self::nr() == 0);
-        debug_assert!(buf.as_ptr() as usize % Self::alignment_bytes() == 0);
-        if buf.is_empty() {
-            return;
-        }
-        let mut work = AlignedScratch::new();
-        let mut save = AlignedScratch::new();
-        let w = &mut work.0;
-        let v = &mut save.0;
-        let mut i = 0;
-        while i < buf.len() {
-            let n = (CHUNK).min(buf.len() - i);
-            unsafe { cvt_f16_to_f32(&buf[i..i + n], &mut w[..n]) };
-            v[..n].copy_from_slice(&w[..n]);
-            super::avx512_sigmoid_f32::run(&mut w[..n], ());
-            for j in 0..n {
-                w[j] *= v[j];
-            }
-            unsafe { cvt_f32_to_f16(&w[..n], &mut buf[i..i + n]) };
-            i += n;
-        }
-    }
+    CHUNK,
+    64,
+    cvt_f16_to_f32,
+    cvt_f32_to_f16,
+    super::act::x86_64_avx512_silu_f32_16n
 );
 
 #[cfg(test)]
@@ -254,43 +150,15 @@ pub mod test_x86_64_avx512_silu_f16_16n {
     silu_frame_tests!(is_x86_feature_detected!("avx512f"), f16, x86_64_avx512_silu_f16_16n);
 }
 
-// Tanh-form GELU (matches tract's GeluApproximate, pow=3, see act.rs gelu_f32):
-//   gelu(x) = 0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)))
-ew_impl_wrap!(
-    f16,
+ew_impl_f16_via_f32!(
     x86_64_avx512_gelu_f16_16n,
     16,
     16,
-    (),
-    #[inline(never)]
-    fn run(buf: &mut [f16], _: ()) {
-        debug_assert!(buf.len() % Self::nr() == 0);
-        debug_assert!(buf.as_ptr() as usize % Self::alignment_bytes() == 0);
-        if buf.is_empty() {
-            return;
-        }
-        const SQRT_2_OVER_PI: f32 = 0.7978845608028654;
-        const COEF: f32 = 0.044715;
-        let mut work = AlignedScratch::new();
-        let mut save = AlignedScratch::new();
-        let w = &mut work.0;
-        let v = &mut save.0;
-        let mut i = 0;
-        while i < buf.len() {
-            let n = (CHUNK).min(buf.len() - i);
-            unsafe { cvt_f16_to_f32(&buf[i..i + n], &mut v[..n]) };
-            for j in 0..n {
-                let x = v[j];
-                w[j] = SQRT_2_OVER_PI * (x + COEF * x * x * x);
-            }
-            super::avx512_tanh_f32::run(&mut w[..n], ());
-            for j in 0..n {
-                w[j] = 0.5 * v[j] * (1.0 + w[j]);
-            }
-            unsafe { cvt_f32_to_f16(&w[..n], &mut buf[i..i + n]) };
-            i += n;
-        }
-    }
+    CHUNK,
+    64,
+    cvt_f16_to_f32,
+    cvt_f32_to_f16,
+    super::act::x86_64_avx512_gelu_f32_16n
 );
 
 #[cfg(test)]

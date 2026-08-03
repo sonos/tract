@@ -5,6 +5,14 @@ name: CI slash command
 #   /ci large-models   -> Large models             (large_models.yml)
 #   /ci large          -> alias of large-models
 #   /ci llm            -> alias of large-models
+#   /ci wheels         -> Python wheels            (wheels.yml)
+#   /ci python         -> alias of wheels
+#   /ci py             -> alias of wheels
+#   /ci examples       -> Examples                 (examples.yml)
+#   /ci ex             -> alias of examples
+#   /ci bench          -> Bench                    (bench.yml)
+#   /ci benches        -> alias of bench
+#   /ci bench-mt-ladder [ladder] -> thread-scaling run (bench.yml); ladder defaults to 2,4,0
 # Only commenters with write access can trigger (enforced by slash-command-dispatch).
 
 on:
@@ -48,13 +56,21 @@ jobs:
               'large-models': 'large_models.yml',
               'large': 'large_models.yml',
               'llm': 'large_models.yml',
+              'wheels': 'wheels.yml',
+              'python': 'wheels.yml',
+              'py': 'wheels.yml',
+              'examples': 'examples.yml',
+              'ex': 'examples.yml',
+              'bench': 'bench.yml',
+              'benches': 'bench.yml',
+              'bench-mt-ladder': 'bench.yml',
             };
             const workflow = map[target];
             if (!workflow) {
               const usage = [
                 `Unknown \`/ci\` target: \`${target || '(none)'}\`.`,
                 '',
-                'Usage: `/ci full` or `/ci large-models` (aliases: `large`, `llm`).',
+                'Usage: `/ci full`, `/ci large-models` (aliases: `large`, `llm`), `/ci wheels` (aliases: `python`, `py`), `/ci examples` (alias: `ex`), `/ci bench` (alias: `benches`), or `/ci bench-mt-ladder [ladder]` (default ladder `2,4,0`).',
               ].join('\n');
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
@@ -65,11 +81,17 @@ jobs:
               core.setFailed(usage);
               return;
             }
+            const inputs = { pr_number: String(pr) };
+            // `/ci bench-mt-ladder [ladder]`: pass the optional ladder (default 2,4,0) so
+            // bench.yml runs the thread scaling sweep + scaling report instead of vs-main.
+            if (target === 'bench-mt-ladder') {
+              inputs.mt_ladder = cp.slash_command.args.unnamed.arg2 || '2,4,0';
+            }
             await github.rest.actions.createWorkflowDispatch({
               owner: context.repo.owner,
               repo: context.repo.repo,
               workflow_id: workflow,
               ref: context.payload.repository.default_branch,
-              inputs: { pr_number: String(pr) },
+              inputs,
             });
             core.info(`Dispatched ${workflow} for PR #${pr}`);

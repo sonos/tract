@@ -1,8 +1,10 @@
 use std::fs;
 pub mod armv7neon;
 mod armvfpv2;
-mod cortex_a7;
-mod cortex_a9;
+mod cortex_a7_linear;
+mod cortex_a7_mmv_linear;
+mod cortex_a9_linear;
+mod cortex_a9_mmv_linear;
 use armv7neon::*;
 
 use crate::frame::element_wise::ElementWiseKer;
@@ -28,11 +30,12 @@ fn cpu_part() -> Option<usize> {
     })
 }
 
-fn has_neon() -> bool {
+pub(crate) fn has_neon() -> bool {
     if let Some(forced) = crate::knobs::TRACT_CPU_ARM32_NEON.get() {
         return forced;
     }
-    has_neon_cpuinfo().unwrap_or(false)
+    static NEON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *NEON.get_or_init(|| has_neon_cpuinfo().unwrap_or(false))
 }
 
 pub fn plug(ops: &mut Ops) {
@@ -55,19 +58,36 @@ pub fn plug(ops: &mut Ops) {
             armv7neon_mmm_f32_8x6_generic.mmm(),
             crate::generic::mmm::generic_f32_4x4.mmm(),
         ];
+        // The mmv model picks over the full pool (it needs the nr==1 matvec kernels, which the
+        // mmm cost_managed pool omits); consulted only for small m (see arm64 for the rationale).
+        let mmv_impls = ops.mmm_impls.clone();
         ops.mmv_f32 = match cpu {
-            0xc07 => Box::new(|_, _| armv7neon::armv7neon_mmm_f32_32x1_cortexa7.mmm()),
-            0xc09 => Box::new(|_, _| armv7neon::armv7neon_mmm_f32_32x1_cortexa9.mmm()),
+            0xc07 => {
+                let model = cortex_a7_mmv_linear::linear_model();
+                let impls = mmv_impls.clone();
+                Box::new(move |m, k| match m {
+                    Some(m) if m < 32 => model.pick(&impls, Some(m), k, Some(1)),
+                    _ => armv7neon::armv7neon_mmm_f32_32x1_cortexa7.mmm(),
+                })
+            }
+            0xc09 => {
+                let model = cortex_a9_mmv_linear::linear_model();
+                let impls = mmv_impls.clone();
+                Box::new(move |m, k| match m {
+                    Some(m) if m < 32 => model.pick(&impls, Some(m), k, Some(1)),
+                    _ => armv7neon::armv7neon_mmm_f32_32x1_cortexa9.mmm(),
+                })
+            }
             _ => Box::new(|_, _| armv7neon::armv7neon_mmm_f32_32x1_generic.mmm()),
         };
 
         ops.mmm_f32 = match cpu {
             0xc07 => {
-                let model = cortex_a7::model();
+                let model = cortex_a7_linear::linear_model();
                 Box::new(move |m, k, n| model.pick(&cost_managed_impls, m, k, n))
             }
             0xc09 => {
-                let model = cortex_a9::model();
+                let model = cortex_a9_linear::linear_model();
                 Box::new(move |m, k, n| model.pick(&cost_managed_impls, m, k, n))
             }
             _ => Box::new(|m, k, n| {
@@ -81,6 +101,7 @@ pub fn plug(ops: &mut Ops) {
         ops.qmmm_i32 = Box::new(|_, _, _| armv7neon::armv7neon_mmm_i32_8x4.mmm());
         ops.qmmv_i32 = Box::new(|_, _| armv7neon::armv7neon_mmm_i32_32x1.mmm());
         ops.sigmoid_f32 = Box::new(|| armv7neon_sigmoid_f32_4n::ew());
+        ops.silu_f32 = Box::new(|| armv7neon_silu_f32_4n::ew());
         ops.tanh_f32 = Box::new(|| armv7neon_tanh_f32_4n::ew());
     } else {
         armvfpv2::plug(ops);

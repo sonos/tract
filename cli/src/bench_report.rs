@@ -6,7 +6,8 @@
 //! table. Port of `.travis/bench-report.py`; the markdown layout lives in the
 //! `bench-comment.md.j2` / `bench-report.md.j2` templates so it can be tuned without
 //! a rebuild. Single-shot vs the reference; |Δ| must reach the adaptive threshold
-//! (`bench_common::red_threshold`) to count as a mover. Direction-aware.
+//! (`bench_common::red_threshold`) to count as a mover. Throughput (tok/s) is inverted
+//! to time-per-token so every metric is lower-is-better; worse is always Δ>0.
 
 use crate::bench_common::{
     Thresholds, higher_better, is_speed, latest_value, read_metrics, red_threshold, series_noise,
@@ -121,7 +122,6 @@ const TYPE_INFO: &[(&str, &str, &str)] = &[
     ("pp512", "prefill", "tok"),
     ("tg128", "decode", "tok"),
     ("bench_runtime", "bench wall", "s"),
-    ("binary_size", "binary size", "mem"),
 ];
 
 /// (model, label, variant, unit) for a metric key `kind.model.type.variant`.
@@ -146,6 +146,35 @@ fn describe(metric: &str) -> (String, String, String, &'static str) {
     }
 }
 
+/// Split a bench variant into its base config and thread-rung code: `_mt` → 0
+/// (physical cores), `_t{n}` → n, no suffix → 1 (the always-kept serial base).
+fn split_rung(variant: &str) -> (String, usize) {
+    if let Some(base) = variant.strip_suffix("_mt") {
+        (base.to_string(), 0)
+    } else if let Some(pos) = variant.rfind("_t") {
+        if let Ok(n) = variant[pos + 2..].parse::<usize>() {
+            return (variant[..pos].to_string(), n);
+        }
+        (variant.to_string(), 1)
+    } else {
+        (variant.to_string(), 1)
+    }
+}
+
+/// Column sort key: serial (1) and `t{n}` in ascending thread count, `_mt` (0 =
+/// all physical cores) always last.
+fn col_order(code: usize) -> usize {
+    if code == 0 { usize::MAX } else { code }
+}
+
+fn col_header(code: usize) -> String {
+    match code {
+        0 => "all cores".to_string(),
+        1 => "serial".to_string(),
+        n => format!("t{n}"),
+    }
+}
+
 /// Format like C `printf %g` with `p` significant figures (trailing zeros stripped).
 fn fmt_g(x: f64, p: usize) -> String {
     if x == 0.0 {
@@ -167,7 +196,9 @@ fn fmt_val(v: f64, unit: &str) -> String {
         "mem" if v >= 1e9 => format!("{} GB", fmt_g(v / 1e9, 3)),
         "mem" if v >= 1e6 => format!("{} MB", fmt_g(v / 1e6, 3)),
         "mem" => format!("{} kB", fmt_g(v / 1e3, 3)),
-        "tok" => format!("{} tok/s", fmt_g(v, 4)),
+        // Stored as ms/tok (see `handle`'s inversion) so it reads lower-is-better like
+        // every other metric; the native tok/s follows as a small second line.
+        "tok" => format!("{} ms/tok<br><sub>{} tok/s</sub>", fmt_g(v, 3), fmt_g(1000.0 / v, 4)),
         _ => fmt_g(v, 4),
     }
 }
@@ -474,11 +505,15 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
         for (metric, prv) in &pr {
             let (metric, prv) = (metric, *prv);
             let Some(&rv) = refv.get(metric) else { continue };
-            if rv == 0.0 {
+            if rv == 0.0 || (higher_better(metric) && prv == 0.0) {
                 continue;
             }
+            // Throughput (tok/s) is higher-is-better; invert to time-per-token so every
+            // metric moves the same direction — lower is always better, worse is always Δ>0.
+            let (rv, prv) =
+                if higher_better(metric) { (1000.0 / rv, 1000.0 / prv) } else { (rv, prv) };
             let delta = (prv - rv) / rv * 100.0;
-            let worse = if higher_better(metric) { delta < 0.0 } else { delta > 0.0 };
+            let worse = delta > 0.0;
             let thr = red_threshold(metric, &cfg, noise.get(metric).copied().flatten(), Some(rv));
             let mover = thr.is_some_and(|t| delta.abs() >= t);
             rows.push(Row {
@@ -503,26 +538,38 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
     let movers: Vec<&Row> = rows.iter().filter(|r| r.mover).collect();
     let by_delta = |a: &&Row, b: &&Row| b.delta.abs().total_cmp(&a.delta.abs());
 
-    let mut regr: Vec<&Row> = movers.iter().copied().filter(|r| r.worse).collect();
-    regr.sort_by(by_delta);
-    let mut impr: Vec<&Row> = movers.iter().copied().filter(|r| !r.worse).collect();
-    impr.sort_by(|a, b| is_speed(&b.metric).cmp(&is_speed(&a.metric)).then_with(|| by_delta(a, b)));
+    // Only the speed signal gets the 🔴/🟢 lamp treatment in the PR comment; a non-speed
+    // (load/memory) regression is a secondary concern and gets a plain ⚠️ instead.
+    let mut speed_regr: Vec<&Row> =
+        movers.iter().copied().filter(|r| r.worse && is_speed(&r.metric)).collect();
+    speed_regr.sort_by(by_delta);
+    let mut speed_impr: Vec<&Row> =
+        movers.iter().copied().filter(|r| !r.worse && is_speed(&r.metric)).collect();
+    speed_impr.sort_by(by_delta);
+    let mut other_regr: Vec<&Row> =
+        movers.iter().copied().filter(|r| r.worse && !is_speed(&r.metric)).collect();
+    other_regr.sort_by(by_delta);
 
-    let speed_regr: Vec<Cell> =
-        regr.iter().filter(|r| is_speed(&r.metric)).map(|r| to_cell(r)).collect();
-    let other_regr: Vec<Cell> =
-        regr.iter().filter(|r| !is_speed(&r.metric)).map(|r| to_cell(r)).collect();
-    let impr_cells: Vec<Cell> = impr.iter().map(|r| to_cell(r)).collect();
+    // Lead with the worst/best 5 speed movers; anything past that folds under a <details>.
+    const SHOWN: usize = 5;
+    let split = |rs: &[&Row]| -> (Vec<Cell>, Vec<Cell>) {
+        let mut cells: Vec<Cell> = rs.iter().map(|r| to_cell(r)).collect();
+        let more = if cells.len() > SHOWN { cells.split_off(SHOWN) } else { vec![] };
+        (cells, more)
+    };
+    let (speed_regr_shown, speed_regr_more) = split(&speed_regr);
+    let (speed_impr_shown, speed_impr_more) = split(&speed_impr);
+    let other_regr_cells: Vec<Cell> = other_regr.iter().map(|r| to_cell(r)).collect();
 
     let head = if !speed_regr.is_empty() {
         let mut h = format!("🔴 **Bench vs main — {} speed regression(s)**", speed_regr.len());
         if !other_regr.is_empty() {
-            h += &format!(" · {} load/memory", other_regr.len());
+            h += &format!(" · ⚠️ {} secondary", other_regr.len());
         }
         h
     } else if !other_regr.is_empty() {
         format!(
-            "🟡 **Bench vs main — no speed regressions** · {} load/memory mover(s)",
+            "⚠️ **Bench vs main — no speed regressions** · {} secondary regression(s)",
             other_regr.len()
         )
     } else {
@@ -535,7 +582,6 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
     let mut uniq = devices.clone();
     uniq.sort();
     uniq.dedup();
-    let devs = uniq.iter().map(|d| format!("`{d}`")).collect::<Vec<_>>().join(", ");
 
     let mut env = Environment::new();
     env.set_trim_blocks(true);
@@ -543,8 +589,9 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
     let comment = std::fs::read_to_string(format!("{templates}/bench-comment.md.j2"))?;
     env.add_template("comment", &comment)?;
     let rendered = env.get_template("comment")?.render(context! {
-        head, ref_day, age, pr_sha9 => &pr_sha[..pr_sha.len().min(9)], devs,
-        n_metrics => rows.len(), speed_regr, other_regr, impr => impr_cells, run_url,
+        head, ref_day, age,
+        speed_regr_shown, speed_regr_more, speed_impr_shown, speed_impr_more,
+        other_regr => other_regr_cells, run_url,
     })?;
     std::fs::write(out, tidy(&rendered))?;
 
@@ -565,13 +612,115 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
             .write_all(rendered.as_bytes())?;
     }
 
-    println!("regressions={} improvements={} metrics={}", regr.len(), impr.len(), rows.len());
+    let regr_total = speed_regr.len() + other_regr.len();
+    let impr_total = movers.iter().filter(|r| !r.worse).count();
+    println!("regressions={regr_total} improvements={impr_total} metrics={}", rows.len());
+    Ok(())
+}
+
+/// `tract bench-mt-report`: render the thread-scaling table for an mt-ladder run.
+/// Self-contained (no bench-data reference): for each device and each thread-tagged
+/// bench, list evaltime and speedup vs the serial base across the ladder's thread
+/// counts. Writes nothing when no rungs ran, so an empty run posts no vacuous comment.
+pub fn handle_mt(matches: &clap::ArgMatches) -> TractResult<()> {
+    let get = |k| matches.get_one::<String>(k).map(String::as_str);
+    let results = get("results").context("--results is required")?;
+    let out = get("out").context("--out is required")?;
+    let pr_sha = get("pr-sha").context("--pr-sha is required")?;
+    let run_url = std::env::var("RUN_URL").unwrap_or_else(|_| "#".to_string());
+
+    let mut result_dirs: Vec<std::path::PathBuf> = std::fs::read_dir(results)?
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| p.join("meta.json").exists())
+        .collect();
+    result_dirs.sort();
+
+    let mut sections = String::new();
+    for dir in &result_dirs {
+        let meta: Meta = serde_json::from_str(&std::fs::read_to_string(dir.join("meta.json"))?)?;
+        let pr = read_metrics(dir.join("metrics").to_str().unwrap_or_default());
+        // bench label -> (thread-rung code -> evaltime seconds)
+        let mut groups: BTreeMap<String, BTreeMap<usize, f64>> = BTreeMap::new();
+        for (metric, val) in &pr {
+            let p: Vec<&str> = metric.split('.').collect();
+            if p.first() != Some(&"net") || p.get(2) != Some(&"evaltime") {
+                continue;
+            }
+            let (model, _, variant, _) = describe(metric);
+            let (base, code) = split_rung(&variant);
+            groups.entry(format!("{model} · {base}")).or_default().insert(code, *val);
+        }
+        // A bench with no rung (not thread-tagged) has only the serial base; drop it.
+        groups.retain(|_, m| m.keys().any(|&c| c != 1));
+        if groups.is_empty() {
+            continue;
+        }
+        let mut cols: Vec<usize> = groups.values().flat_map(|m| m.keys().copied()).collect();
+        cols.sort_by_key(|&c| col_order(c));
+        cols.dedup();
+
+        sections.push_str(&format!("### `{}`\n\n| bench |", meta.device));
+        for &c in &cols {
+            sections.push_str(&format!(" {} |", col_header(c)));
+        }
+        sections.push_str("\n|---|");
+        for _ in &cols {
+            sections.push_str("---|");
+        }
+        sections.push('\n');
+        for (label, times) in &groups {
+            sections.push_str(&format!("| {label} |"));
+            let base = times.get(&1).copied();
+            for &c in &cols {
+                let cell = match times.get(&c) {
+                    None => "–".to_string(),
+                    Some(&t) if c == 1 => fmt_val(t, "s"),
+                    Some(&t) => match base {
+                        Some(b) if b > 0.0 && t > 0.0 => {
+                            format!("{}<br><sub>{:.2}×</sub>", fmt_val(t, "s"), b / t)
+                        }
+                        _ => fmt_val(t, "s"),
+                    },
+                };
+                sections.push_str(&format!(" {cell} |"));
+            }
+            sections.push('\n');
+        }
+        sections.push('\n');
+    }
+
+    if sections.is_empty() {
+        println!("no thread-scaling metrics; not writing a comment");
+        return Ok(());
+    }
+
+    let sha = &pr_sha[..pr_sha.len().min(9)];
+    let body = format!(
+        "<!-- bench-mt-ladder -->\n🧵 **Thread scaling — mt-ladder** · PR `{sha}`\n\n\
+         _evaltime per thread count; speedup vs serial · [run]({run_url})_\n\n{sections}"
+    );
+    std::fs::write(out, tidy(&body))?;
+    println!("wrote mt-ladder scaling table");
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rung_split_and_column_order() {
+        assert_eq!(split_rung("400ms"), ("400ms".to_string(), 1));
+        assert_eq!(split_rung("400ms_t2"), ("400ms".to_string(), 2));
+        assert_eq!(split_rung("2sec_mt"), ("2sec".to_string(), 0));
+        // serial first, threads ascending, all-cores (0) last.
+        let mut cols = vec![0usize, 4, 1, 2];
+        cols.sort_by_key(|&c| col_order(c));
+        assert_eq!(cols, vec![1, 2, 4, 0]);
+        assert_eq!(col_header(1), "serial");
+        assert_eq!(col_header(4), "t4");
+        assert_eq!(col_header(0), "all cores");
+    }
 
     fn row(device: &str, metric: &str, refv: f64, prv: f64, worse: bool, mover: bool) -> Row {
         Row {

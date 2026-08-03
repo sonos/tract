@@ -115,15 +115,15 @@ impl OptMatMulPack {
             let output_shape: TVec<usize> = self.output_shape(input.shape());
             let stores = if output_shape.iter().all(|d| *d == 1) {
                 let packed = pack_view_with(&**packer, &input.view(), self.k_axis, self.mn_axis)?;
-                PackedMatrixStorage::new_batched(&output_shape, vec![packed])
+                PackedMatrixStorage::new_batched(&output_shape, tvec![packed])
                     .into_tensor(input.datum_type())
             } else {
                 let mut bc_shape: TVec<usize> = input.shape().into();
                 bc_shape[self.k_axis] = 1;
                 bc_shape[self.mn_axis] = 1;
 
-                let mut values: Vec<Box<dyn MMMInputValue>> =
-                    Vec::with_capacity(output_shape.iter().product());
+                let mut values: TVec<Box<dyn MMMInputValue>> =
+                    TVec::with_capacity(output_shape.iter().product());
                 for coord in indices(&*bc_shape) {
                     let offset = coord
                         .as_array_view()
@@ -212,7 +212,7 @@ impl EvalOp for OptSimpleMatMulPack {
                 let iv: Box<dyn MMMInputValue> = Box::new(self.packed_format.pack(slice, k)?);
                 Ok(iv)
             })
-            .collect::<TractResult<Vec<_>>>()?;
+            .collect::<TractResult<TVec<_>>>()?;
         let leading_shape = &input.shape()[..input.rank().saturating_sub(2)];
         let output =
             PackedMatrixStorage::new_batched(leading_shape, values).into_tensor(input.datum_type());

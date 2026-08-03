@@ -1,5 +1,4 @@
 use crate::WeightType;
-use crate::block_quant::PackedBlockQuantFormat;
 use crate::mmm::tests::display_error;
 use crate::mmm::{AsInputValue, FusedKerSpec, FusedSpec, MatMatMul, MatMatMulKer, OutputStoreKer};
 use proptest::collection::vec;
@@ -283,11 +282,10 @@ impl<K: MatMatMulKer> PackedPackedProblem<K> {
     pub fn reference(&self) -> TractResult<Tensor> {
         let (m, k, n) = self.mkn();
         let (pack_a, pack_b) = &self.ker.packings()[self.packing];
-        let (mut a, b) = self.padded_inputs()?;
+        let (mut a, mut b) = self.padded_inputs()?;
         let k_aligned = k.next_multiple_of(pack_a.k_alignment().max(pack_b.k_alignment()));
-        if let Some(pbqf) = pack_a.downcast_ref::<PackedBlockQuantFormat>() {
-            a = pbqf.simulate_precision_loss(a, 1)?;
-        };
+        a = pack_a.simulate_precision_loss(a)?;
+        b = pack_b.simulate_precision_loss(b)?;
         let mut c = Tensor::zero::<K::Acc>(&[m, n])?;
 
         let a = a.cast_to::<K::Acc>()?;
@@ -380,9 +378,9 @@ impl<K: MatMatMulKer> PackedPackedProblem<K> {
     }
 }
 
-// Large-shape frame tests that exercise the single-thread 2D-blocked tile walk
-// (`run_single_thread_blocked`): the existing `arbitrary_problem` frame proptests
-// only reach 3 panels per dim (m,n < 3·mr), below the ST_BLK=16 blocking
+// Large-shape frame tests that exercise the 2D-blocked tile walk (`run_blocked`):
+// the existing `arbitrary_problem` frame proptests only reach 3 panels per dim
+// (m,n < 3·mr), below the BLK_MAX=16 blocking
 // threshold, so the blocked path was otherwise uncovered. generic_f32_4x4 has
 // mr=nr=4, so m,n=80 → 20×20 panels → multiple blocks. Compares the frame
 // output against the naive reference (must be bit/approx-exact).
@@ -400,7 +398,7 @@ mod single_thread_blocking {
 
     #[test]
     fn blocked_80x80() -> TractResult<()> {
-        check_large(80, 80, 24) // 20×20 panels, multiple ST_BLK blocks
+        check_large(80, 80, 24) // 20×20 panels, multiple BLK_MAX blocks
     }
     #[test]
     fn blocked_skew_200x40() -> TractResult<()> {

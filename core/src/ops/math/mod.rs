@@ -8,7 +8,7 @@ use crate::internal::*;
 use crate::ops::quant::scale_by;
 use num_traits::bounds::Bounded;
 use num_traits::int::PrimInt;
-use num_traits::{Float, Zero};
+use num_traits::{Float, One, Zero};
 use tract_data::internal::ClampCast;
 use tract_data::itertools::Itertools;
 pub use tract_data::prelude::round_ties_to_even;
@@ -507,10 +507,10 @@ fn declutter_pow(
     crate::ops::nn::gelu_approximate::detect_gelu_approx(_op, model, node)
 }
 
-element_wise!(abs, Abs, [i8, i16, i32, i64, f16, f32, i32] => |_, xs| {
+element_wise!(abs, Abs, [i8, i16, i32, i64, f16, f32, f64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.abs());
     Ok(())
-};
+}, [u8, u16, u32, u64] => |_, _| Ok(());
 q: [i8, u8, i32, i32] => f32::abs;
 operating_datum_type: |dt| if dt == TDim::datum_type() { i64::datum_type() } else { dt }
 );
@@ -727,8 +727,11 @@ element_wise!(neg, Neg, [i8, i16, i32, i64, f16, f32, f64, TDim] => |_, xs| {
 };
 q: [i8, u8, i32] => |x: f32| -x);
 
-element_wise!(sign, Sign, [f16, f32, f64] => |_, xs| {
+element_wise!(sign, Sign, [i8, i16, i32, i64, f16, f32, f64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = if x.is_zero() { *x } else { x.signum() });
+    Ok(())
+}, [u8, u16, u32, u64] => |_, xs| {
+    xs.iter_mut().for_each(|x| *x = if x.is_zero() { *x } else { One::one() });
     Ok(())
 };
 q: [i8, u8, i32] => f32::signum);

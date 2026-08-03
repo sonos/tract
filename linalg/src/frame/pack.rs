@@ -326,14 +326,19 @@ impl PackedFormat {
                 }
             }
         } else if k_stride == 1 {
-            let mut packer = self.write_with_k_inner(pb, k_range.len(), mn);
-            let mn_valid_end = mn_range.end.min(mn);
-            for x in mn_range.start..mn_valid_end {
-                for k in k_range.clone() {
-                    packer.write(*b.offset(x as isize * mn_stride + k as isize))
-                }
-            }
             // just ignore invalid mn_range
+            let mn_valid_end = mn_range.end.min(mn);
+            if mn_valid_end > mn_range.start {
+                pack_k_major(
+                    b.offset(mn_range.start as isize * mn_stride + k_range.start as isize),
+                    pb,
+                    self.single_panel_len(k_range.len()),
+                    self.r,
+                    mn_stride,
+                    k_range.len(),
+                    mn_valid_end - mn_range.start,
+                )
+            }
         } else {
             let mut packer = self.write_with_k_outer(pb, k_range.len(), mn);
             let mn_valid_end = mn_range.end.min(mn);
@@ -689,6 +694,291 @@ unsafe fn pack_mn_major<Chunk: Copy>(
                 p_row.copy_from_nonoverlapping(b_row, partial_pane);
             }
         }
+    }
+}
+
+/// Smallest k-contiguous block (in elements) worth transposing with the armv7
+/// NEON tile rather than the scalar tail. Below it the tile's setup does not
+/// amortise on armv7's narrow in-order NEON; the crossover sits in the gap
+/// between the small activation packs (≤3072) and the large ones (≥5120) that
+/// the wake-word models produce, and holds on both cortex-a7 and cortex-a9.
+const ARMV7_TILE_MIN_ELEMS: usize = 4096;
+
+/// Whether the 32-bit arm NEON transpose leaves may run: their mnemonics are
+/// only valid, and `pack_k_major` only routes to them, when the CPU has NEON.
+#[cfg(target_arch = "arm")]
+#[inline]
+fn armv7_has_neon() -> bool {
+    crate::arm32::has_neon()
+}
+
+#[cfg(not(target_arch = "arm"))]
+#[inline]
+fn armv7_has_neon() -> bool {
+    false
+}
+
+/// Pack a k-contiguous source block: transpose it into the k-inner packed
+/// layout, where source element `(mn, k)` of the block lands at
+/// `(mn / r) * panel_len + k * r + mn % r`. `b` points at element `(0, 0)`, and
+/// `mn_len` counts valid mn columns only: nothing outside the block is read.
+///
+/// The result must stay byte-identical to feeding [`KInWriter`] mn-outer /
+/// k-inner. Stores are strided by `r`, so the block moves as 4x4 tiles, k-outer
+/// so that each panel is filled front to back; the tails go element by element.
+#[inline(never)]
+unsafe fn pack_k_major<T: Copy>(
+    b: *const T,
+    packed: *mut T,
+    panel_len: usize,
+    r: usize,
+    mn_stride: isize,
+    k_len: usize,
+    mn_len: usize,
+) {
+    unsafe {
+        // The tile is vectorised on aarch64 (always) and on 32-bit arm only for
+        // the 2- and 4-byte NEON leaves, and there only when NEON is present.
+        // Any other arm case would spill 16 live tile values through the stack,
+        // so it takes the byte-identical scalar tail instead. armv7's weak NEON
+        // also loses to the scalar store on small blocks, where the tile setup
+        // does not amortise; below ARMV7_TILE_MIN_ELEMS it takes the tail too.
+        let tile = if cfg!(target_arch = "arm") {
+            armv7_has_neon()
+                && matches!(std::mem::size_of::<T>(), 2 | 4)
+                && k_len * mn_len >= ARMV7_TILE_MIN_ELEMS
+        } else {
+            true
+        };
+        for panel in 0..mn_len.divceil(r) {
+            let panel_mn = panel * r;
+            let panel_width = r.min(mn_len - panel_mn);
+            let src = b.offset(panel_mn as isize * mn_stride);
+            let dst = packed.add(panel * panel_len);
+            let tiled_mn = if tile { panel_width / 4 * 4 } else { 0 };
+            let tiled_k = k_len / 4 * 4;
+            for k in (0..tiled_k).step_by(4) {
+                for x in (0..tiled_mn).step_by(4) {
+                    transpose_4x4(
+                        src.offset(x as isize * mn_stride + k as isize),
+                        mn_stride,
+                        dst.add(k * r + x),
+                        r,
+                    );
+                }
+            }
+            for k in tiled_k..k_len {
+                for x in 0..tiled_mn {
+                    *dst.add(k * r + x) = *src.offset(x as isize * mn_stride + k as isize);
+                }
+            }
+            for x in tiled_mn..panel_width {
+                let row = src.offset(x as isize * mn_stride);
+                for k in 0..k_len {
+                    *dst.add(k * r + x) = *row.add(k);
+                }
+            }
+        }
+    }
+}
+
+/// Transpose a 4x4 tile: `src` rows are `src_stride` apart with contiguous
+/// elements, `dst` rows are `dst_stride` apart with contiguous elements. Both
+/// strides count elements and may leave the tiles unaligned. Specialised by
+/// element width where a vector transpose exists, portable everywhere else.
+#[inline(always)]
+unsafe fn transpose_4x4<T: Copy>(src: *const T, src_stride: isize, dst: *mut T, dst_stride: usize) {
+    unsafe {
+        // Alignment is part of the test: a 4-byte T of alignment 2 (Complex<i16>)
+        // must not be moved through a lane type it cannot be aligned for.
+        #[cfg(target_arch = "aarch64")]
+        if std::mem::size_of::<T>() == 4 && std::mem::align_of::<T>() == 4 {
+            transpose_4x4_neon_32(src as _, src_stride, dst as _, dst_stride);
+            return;
+        }
+        #[cfg(target_arch = "aarch64")]
+        if std::mem::size_of::<T>() == 2 && std::mem::align_of::<T>() == 2 {
+            transpose_4x4_neon_16(src as _, src_stride, dst as _, dst_stride);
+            return;
+        }
+        // 32-bit arm: NEON via asm, since both the intrinsics and
+        // `#[target_feature(enable = "neon")]` are unstable on this target.
+        // Reached only through pack_k_major's tiled path, which on arm runs
+        // solely when has_neon() is true, so the NEON these emit is present.
+        #[cfg(target_arch = "arm")]
+        if std::mem::size_of::<T>() == 4 && std::mem::align_of::<T>() == 4 {
+            transpose_4x4_neon_armv7_32(src as _, src_stride, dst as _, dst_stride);
+            return;
+        }
+        #[cfg(target_arch = "arm")]
+        if std::mem::size_of::<T>() == 2 && std::mem::align_of::<T>() == 2 {
+            transpose_4x4_neon_armv7_16(src as _, src_stride, dst as _, dst_stride);
+            return;
+        }
+        let tile: [[T; 4]; 4] = std::array::from_fn(|i| {
+            let row = src.offset(i as isize * src_stride);
+            std::array::from_fn(|j| *row.add(j))
+        });
+        for j in 0..4 {
+            let out = dst.add(j * dst_stride);
+            for (i, row) in tile.iter().enumerate() {
+                *out.add(i) = row[j];
+            }
+        }
+    }
+}
+
+/// 4x4 transpose of 32-bit lanes: four `ld1`, eight `trn`, four `st1`.
+#[cfg(target_arch = "aarch64")]
+#[target_feature(enable = "neon")]
+unsafe fn transpose_4x4_neon_32(
+    src: *const u32,
+    src_stride: isize,
+    dst: *mut u32,
+    dst_stride: usize,
+) {
+    use std::arch::aarch64::*;
+    unsafe {
+        let a = vld1q_u32(src);
+        let b = vld1q_u32(src.offset(src_stride));
+        let c = vld1q_u32(src.offset(2 * src_stride));
+        let d = vld1q_u32(src.offset(3 * src_stride));
+        let ab_even = vreinterpretq_u64_u32(vtrn1q_u32(a, b));
+        let ab_odd = vreinterpretq_u64_u32(vtrn2q_u32(a, b));
+        let cd_even = vreinterpretq_u64_u32(vtrn1q_u32(c, d));
+        let cd_odd = vreinterpretq_u64_u32(vtrn2q_u32(c, d));
+        vst1q_u32(dst, vreinterpretq_u32_u64(vtrn1q_u64(ab_even, cd_even)));
+        vst1q_u32(dst.add(dst_stride), vreinterpretq_u32_u64(vtrn1q_u64(ab_odd, cd_odd)));
+        vst1q_u32(dst.add(2 * dst_stride), vreinterpretq_u32_u64(vtrn2q_u64(ab_even, cd_even)));
+        vst1q_u32(dst.add(3 * dst_stride), vreinterpretq_u32_u64(vtrn2q_u64(ab_odd, cd_odd)));
+    }
+}
+
+/// 4x4 transpose of 16-bit lanes, on 64-bit halves of the vector registers.
+#[cfg(target_arch = "aarch64")]
+#[target_feature(enable = "neon")]
+unsafe fn transpose_4x4_neon_16(
+    src: *const u16,
+    src_stride: isize,
+    dst: *mut u16,
+    dst_stride: usize,
+) {
+    use std::arch::aarch64::*;
+    unsafe {
+        let a = vld1_u16(src);
+        let b = vld1_u16(src.offset(src_stride));
+        let c = vld1_u16(src.offset(2 * src_stride));
+        let d = vld1_u16(src.offset(3 * src_stride));
+        let ab_even = vreinterpret_u32_u16(vtrn1_u16(a, b));
+        let ab_odd = vreinterpret_u32_u16(vtrn2_u16(a, b));
+        let cd_even = vreinterpret_u32_u16(vtrn1_u16(c, d));
+        let cd_odd = vreinterpret_u32_u16(vtrn2_u16(c, d));
+        vst1_u16(dst, vreinterpret_u16_u32(vtrn1_u32(ab_even, cd_even)));
+        vst1_u16(dst.add(dst_stride), vreinterpret_u16_u32(vtrn1_u32(ab_odd, cd_odd)));
+        vst1_u16(dst.add(2 * dst_stride), vreinterpret_u16_u32(vtrn2_u32(ab_even, cd_even)));
+        vst1_u16(dst.add(3 * dst_stride), vreinterpret_u16_u32(vtrn2_u32(ab_odd, cd_odd)));
+    }
+}
+
+/// 4x4 transpose of 32-bit lanes on 32-bit arm: four `vld1.32`, two `vtrn.32`,
+/// two `vswp`, four `vst1.32`, all in q0-q3. Strides count elements. NEON is
+/// enabled locally with `.fpu neon` because it cannot be turned on through
+/// `-C target-feature` on this target's stable channel.
+///
+/// # Safety
+/// The CPU must have NEON: there is no `#[target_feature(enable = "neon")]` on
+/// this target to assert it (unstable), so the caller guarantees it, which
+/// `pack_k_major` does by only tiling under `arm32::has_neon()`.
+#[cfg(target_arch = "arm")]
+#[inline(always)]
+unsafe fn transpose_4x4_neon_armv7_32(
+    src: *const u32,
+    src_stride: isize,
+    dst: *mut u32,
+    dst_stride: usize,
+) {
+    use std::arch::asm;
+    let ss = src_stride * 4;
+    let ds = (dst_stride * 4) as isize;
+    let src = src as *const u8;
+    let dst = dst as *mut u8;
+    unsafe {
+        asm!(
+            ".fpu neon",
+            "vld1.32 {{d0, d1}}, [{s0}]",
+            "vld1.32 {{d2, d3}}, [{s1}]",
+            "vld1.32 {{d4, d5}}, [{s2}]",
+            "vld1.32 {{d6, d7}}, [{s3}]",
+            "vtrn.32 q0, q1",
+            "vtrn.32 q2, q3",
+            "vswp d1, d4",
+            "vswp d3, d6",
+            "vst1.32 {{d0, d1}}, [{o0}]",
+            "vst1.32 {{d2, d3}}, [{o1}]",
+            "vst1.32 {{d4, d5}}, [{o2}]",
+            "vst1.32 {{d6, d7}}, [{o3}]",
+            s0 = in(reg) src,
+            s1 = in(reg) src.offset(ss),
+            s2 = in(reg) src.offset(2 * ss),
+            s3 = in(reg) src.offset(3 * ss),
+            o0 = in(reg) dst,
+            o1 = in(reg) dst.offset(ds),
+            o2 = in(reg) dst.offset(2 * ds),
+            o3 = in(reg) dst.offset(3 * ds),
+            out("q0") _,
+            out("q1") _,
+            out("q2") _,
+            out("q3") _,
+            options(nostack),
+        );
+    }
+}
+
+/// 4x4 transpose of 16-bit lanes on 32-bit arm, on 64-bit d registers: four
+/// `vld1.16`, two `vtrn.16`, two `vtrn.32`, four `vst1.16`. Same NEON and
+/// safety contract as [`transpose_4x4_neon_armv7_32`].
+#[cfg(target_arch = "arm")]
+#[inline(always)]
+unsafe fn transpose_4x4_neon_armv7_16(
+    src: *const u16,
+    src_stride: isize,
+    dst: *mut u16,
+    dst_stride: usize,
+) {
+    use std::arch::asm;
+    let ss = src_stride * 2;
+    let ds = (dst_stride * 2) as isize;
+    let src = src as *const u8;
+    let dst = dst as *mut u8;
+    unsafe {
+        asm!(
+            ".fpu neon",
+            "vld1.16 {{d0}}, [{s0}]",
+            "vld1.16 {{d1}}, [{s1}]",
+            "vld1.16 {{d2}}, [{s2}]",
+            "vld1.16 {{d3}}, [{s3}]",
+            "vtrn.16 d0, d1",
+            "vtrn.16 d2, d3",
+            "vtrn.32 d0, d2",
+            "vtrn.32 d1, d3",
+            "vst1.16 {{d0}}, [{o0}]",
+            "vst1.16 {{d1}}, [{o1}]",
+            "vst1.16 {{d2}}, [{o2}]",
+            "vst1.16 {{d3}}, [{o3}]",
+            s0 = in(reg) src,
+            s1 = in(reg) src.offset(ss),
+            s2 = in(reg) src.offset(2 * ss),
+            s3 = in(reg) src.offset(3 * ss),
+            o0 = in(reg) dst,
+            o1 = in(reg) dst.offset(ds),
+            o2 = in(reg) dst.offset(2 * ds),
+            o3 = in(reg) dst.offset(3 * ds),
+            out("d0") _,
+            out("d1") _,
+            out("d2") _,
+            out("d3") _,
+            options(nostack),
+        );
     }
 }
 
@@ -1067,6 +1357,154 @@ mod test {
         }
 
     }
+
+    // ---- k-contiguous packing -----------------------------------------------
+    //
+    // A source whose k axis is contiguous (the shape an activation arrives in)
+    // is packed with a blocked transpose, and the tiles are SIMD on some
+    // targets. The result must stay byte-identical to feeding `KInWriter`
+    // element by element, for every element width and for every panel width —
+    // including the ones a 4x4 tile does not divide.
+    #[derive(Debug, Clone)]
+    struct PackKMajorProblem {
+        k: usize,
+        mn: usize,
+        r: usize,
+        align_panel: usize,
+        k_range: Range<usize>,
+        mn_range: Range<usize>,
+    }
+
+    impl PackKMajorProblem {
+        fn check<T: Datum + Copy + num_traits::Zero>(&self, value: impl Fn(usize, usize) -> T) {
+            let input =
+                Array2::from_shape_fn((self.mn, self.k), |(x, k)| value(x, k)).into_tensor();
+            let packer = super::PackedFormat::new(T::datum_type(), self.r, self.align_panel);
+            let len = packer.len(self.k_range.len(), self.mn_range.len());
+
+            let mut packed = Tensor::zero::<T>(&[len]).unwrap();
+            unsafe {
+                // [mn, k]: k_axis 1, mn_axis 0, so k_stride is 1.
+                packer.pack_segment(
+                    packed.view_mut(),
+                    input.view(),
+                    1,
+                    0,
+                    self.k_range.clone(),
+                    self.mn_range.clone(),
+                )
+            };
+
+            let mut reference = Tensor::zero::<T>(&[len]).unwrap();
+            let input = input.to_plain_array_view::<T>().unwrap();
+            unsafe {
+                let mut writer = packer.write_with_k_inner(
+                    reference.as_ptr_mut_unchecked::<T>(),
+                    self.k_range.len(),
+                    self.mn,
+                );
+                for x in self.mn_range.start..self.mn_range.end.min(self.mn) {
+                    for k in self.k_range.clone() {
+                        super::PackingWriter::write(&mut writer, input[[x, k]]);
+                    }
+                }
+            }
+
+            assert_eq!(packed, reference, "{self:?} for {:?}", T::datum_type());
+        }
+
+        fn check_all_widths(&self) {
+            self.check(|x, k| (x * 41 + k * 7) as u32);
+            self.check(|x, k| f16::from_f32((x * 41 + k * 7) as f32));
+            self.check(|x, k| (x * 41 + k * 7) as u8);
+        }
+    }
+
+    impl Arbitrary for PackKMajorProblem {
+        type Parameters = ();
+        type Strategy = BoxedStrategy<PackKMajorProblem>;
+        fn arbitrary_with(_: ()) -> Self::Strategy {
+            // r covers the panel widths of the real f32/f16 kernels plus the
+            // ones smaller than a tile.
+            (
+                prop::sample::select(vec![1usize, 2, 3, 4, 5, 8, 12, 16, 24, 32]),
+                1usize..40,
+                1usize..40,
+            )
+                .prop_flat_map(|(r, k, mn)| {
+                    (Just((r, k, mn)), 1usize..5, sub_range_strat(0..k), sub_range_strat(0..mn))
+                })
+                .prop_map(|((r, k, mn), align_panel, k_range, mn_range)| PackKMajorProblem {
+                    k,
+                    mn,
+                    r,
+                    align_panel,
+                    k_range,
+                    mn_range,
+                })
+                .boxed()
+        }
+    }
+
+    proptest::proptest! {
+        #[test]
+        fn pack_k_major_prop(pb in any::<PackKMajorProblem>()) {
+            pb.check_all_widths();
+        }
+    }
+
+    fn k_major(k: usize, mn: usize, r: usize) -> PackKMajorProblem {
+        PackKMajorProblem { k, mn, r, align_panel: 1, k_range: 0..k, mn_range: 0..mn }
+    }
+
+    #[test]
+    fn k_major_exact_tiles() {
+        k_major(4, 4, 4).check_all_widths();
+        k_major(768, 256, 8).check_all_widths();
+        k_major(16, 32, 16).check_all_widths();
+    }
+
+    #[test]
+    fn k_major_tails() {
+        // k % 4, panel width % 4, and both at once.
+        for k in [1, 2, 3, 5, 7] {
+            k_major(k, 8, 8).check_all_widths();
+            k_major(k, 7, 8).check_all_widths();
+        }
+        k_major(9, 6, 12).check_all_widths();
+        k_major(9, 30, 12).check_all_widths();
+    }
+
+    #[test]
+    fn k_major_tile_over_threshold() {
+        // Blocks past the armv7 size gate, so the NEON tile runs (not just the
+        // scalar tail the proptest's small blocks take there) while still
+        // hitting the k, panel-width, and narrow-last-panel tails.
+        k_major(129, 41, 8).check_all_widths();
+        k_major(160, 26, 16).check_all_widths();
+        k_major(130, 44, 12).check_all_widths();
+        k_major(140, 30, 8).check_all_widths();
+    }
+
+    #[test]
+    fn k_major_narrower_than_a_tile() {
+        for r in [1, 2, 3] {
+            k_major(9, 7, r).check_all_widths();
+        }
+    }
+
+    #[test]
+    fn k_major_segments() {
+        // A cropped k_range must still land at panel offset 0.
+        PackKMajorProblem { k: 20, mn: 20, r: 8, align_panel: 1, k_range: 3..17, mn_range: 0..20 }
+            .check_all_widths();
+        PackKMajorProblem { k: 20, mn: 20, r: 8, align_panel: 1, k_range: 0..20, mn_range: 4..12 }
+            .check_all_widths();
+        // mn_range reaching past mn: the invalid columns are left untouched.
+        PackKMajorProblem { k: 20, mn: 20, r: 8, align_panel: 1, k_range: 0..20, mn_range: 16..24 }
+            .check_all_widths();
+    }
+
     // ---- PackedI8K4 (K=4-inner SMOPA/SDOT layout) dedicated tests ----------
     //
     // PackedI8K4 has two independent producers that MUST agree byte-for-byte:

@@ -9,11 +9,18 @@ TARGET=$(rustc -vV | sed -n 's|host: ||p')
 rustup toolchain add nightly
 rustup component add rust-src --toolchain nightly-$TARGET
 
-export RUSTFLAGS=-Zsanitizer=address 
-export RUSTDOCFLAGS=$RUSTFLAGS
+export RUSTFLAGS=-Zsanitizer=address
 export RUSTUP_TOOLCHAIN=nightly
 export RUST_VERSION=nightly
 export CARGO_EXTRA="--target $TARGET"
+
+# macos ld-prime rejects inventory's asan static initializers with
+# "initializer pointer has no target"; the classic linker links them fine.
+if [ $(uname) == "Darwin" ]
+then
+    RUSTFLAGS="$RUSTFLAGS -Clink-arg=-Wl,-ld_classic"
+fi
+export RUSTDOCFLAGS=$RUSTFLAGS
 
 cargo -q test -q -p tract-linalg $CARGO_EXTRA
 

@@ -49,11 +49,11 @@ impl Op for ScatterNd {
 
 impl ScatterNd {
     unsafe fn eval_t<T: Datum>(
-        data: TValue,
+        data: &mut Tensor,
         indices: &ArrayViewD<i64>,
-        updates: TValue,
-    ) -> TractResult<TValue> {
-        let mut data = unsafe { data.into_tensor().into_array_unchecked::<T>() };
+        updates: &TValue,
+    ) -> TractResult<()> {
+        let mut data = unsafe { data.to_array_view_mut_unchecked::<T>() };
         let updates_plain = updates.try_as_plain()?;
         let updates_view = unsafe { updates_plain.to_array_view_unchecked::<T>() };
         for coords in tract_ndarray::indices(&indices.shape()[..indices.ndim() - 1]) {
@@ -69,18 +69,16 @@ impl ScatterNd {
             }
             data.assign(&updates)
         }
-        let mut tensor = data.into_tensor();
-        unsafe { tensor.set_datum_type(updates.datum_type()) };
-        Ok(tensor.into_tvalue())
+        Ok(())
     }
 
     unsafe fn eval_t_reduce<T: Datum + PartialOrd + std::ops::AddAssign + std::ops::MulAssign>(
-        data: TValue,
+        data: &mut Tensor,
         indices: &ArrayViewD<i64>,
-        updates: TValue,
+        updates: &TValue,
         reduction: ScatterReduction,
-    ) -> TractResult<TValue> {
-        let mut data = unsafe { data.into_tensor().into_array_unchecked::<T>() };
+    ) -> TractResult<()> {
+        let mut data = unsafe { data.to_array_view_mut_unchecked::<T>() };
         let updates_plain = updates.try_as_plain()?;
         let updates_view = unsafe { updates_plain.to_array_view_unchecked::<T>() };
         for coords in tract_ndarray::indices(&indices.shape()[..indices.ndim() - 1]) {
@@ -110,9 +108,7 @@ impl ScatterNd {
                 ScatterReduction::None => unreachable!(),
             });
         }
-        let mut tensor = data.into_tensor();
-        unsafe { tensor.set_datum_type(updates.datum_type()) };
-        Ok(tensor.into_tvalue())
+        Ok(())
     }
 }
 
@@ -140,17 +136,17 @@ impl EvalOp for ScatterNd {
                 updates.datum_type()
             );
         }
+        let mut data = data.into_tensor();
         unsafe {
             match self.reduction {
-                ScatterReduction::None => {
-                    Ok(tvec!(dispatch_datum_by_size!(Self::eval_t(data.datum_type())(
-                        data, &indices, updates
-                    ))?))
-                }
-                reduction => Ok(tvec!(dispatch_numbers!(Self::eval_t_reduce(data.datum_type())(
-                    data, &indices, updates, reduction
-                ))?)),
+                ScatterReduction::None => dispatch_datum_by_size!(
+                    Self::eval_t(data.datum_type())(&mut data, &indices, &updates)
+                )?,
+                reduction => dispatch_numbers!(Self::eval_t_reduce(data.datum_type())(
+                    &mut data, &indices, &updates, reduction
+                ))?,
             }
         }
+        Ok(tvec!(data.into_tvalue()))
     }
 }

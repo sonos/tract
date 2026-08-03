@@ -975,7 +975,7 @@ fn wire_initiator_diag_gather(
     // T-XL convention `centre = (R-1)/2` for models where the op was built
     // with a row-count-based symbolic offset (e.g. `T - 1`) that hasn't
     // simplified post-substitution.
-    let centre = op.offset.to_i64().ok().unwrap_or((r - 1) / 2);
+    let centre = op.offset.as_i64().unwrap_or((r - 1) / 2);
     let l = mask.upper - mask.lower;
     let w = (l + 1) * k;
     let window_start = window_start_for(mask, contracted_axis);
@@ -1983,7 +1983,7 @@ fn wire_merge_reshape(
 fn affine_chunk_offset(dim: &TDim, chunk_sym: &Symbol, k: i64) -> Option<i64> {
     let target = chunk_sym.to_dim() * k;
     let diff = dim.clone() - target;
-    let c = diff.to_i64().ok()?;
+    let c = diff.as_i64()?;
     (c >= 0).then_some(c)
 }
 

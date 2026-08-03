@@ -40,6 +40,9 @@ skip = [
     { name = "rand", version="<0.10" },
     { name = "rand_core", version="<0.10" },
     { name = "rand_distr", version="<0.6" },
+    { name = "itertools", version="<0.15" },
+    { name = "windows-sys", version="<0.61" },
+    { name = "syn", version="<3" },
 ]
 
 [sources]

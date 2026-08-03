@@ -15,6 +15,7 @@ impl Expansion for Reshape {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
+        check_input_arity(inputs, 2)?;
         s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
         s.given_2(&inputs[0].shape, &inputs[1].value, move |s, ishape, shape| {
             let shape = shape.cast_to::<TDim>()?;

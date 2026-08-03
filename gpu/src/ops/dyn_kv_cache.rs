@@ -43,6 +43,10 @@ impl OpState for GpuDynKVCacheState {
         Some((self.name.clone(), self.past_sequence_fact.clone()))
     }
 
+    fn has_init_tensor_fact(&self) -> bool {
+        true
+    }
+
     fn resolve_symbols(&mut self, state: &mut TurnState) -> TractResult<()> {
         let shape = self
             .kv_cache

@@ -21,6 +21,7 @@ use crate::ops::math::{add, div, mul, sub};
 use crate::ops::matmul::ModePicker;
 use crate::ops::matmul::optimized::AddMatMulGeometry;
 use crate::ops::matmul::optimized::MapOutputAxisToInput;
+use crate::ops::matmul::optimized::MatMulOperand;
 use crate::ops::matmul::pack::{OptMatMulPack, OptSimpleMatMulPack};
 use crate::ops::matmul::quant::wire_ensure_q8_flavour;
 use crate::ops::nn::Reduce;
@@ -570,7 +571,7 @@ impl Conv {
                 .context("Not matmu found")
         } else {
             let mmm = tract_linalg::ops()
-                .mmm(acc, Some(m), Some(k), n.to_usize().ok())
+                .mmm(acc, Some(m), Some(k), n.as_usize())
                 .context("No matmul found")?;
             let packing = mmm
                 .packings()
@@ -616,8 +617,12 @@ impl Conv {
             c_to_a_axis_mapping: MapOutputAxisToInput(c_to_a_axis_mapping),
             c_to_b_axis_mapping: MapOutputAxisToInput(c_to_b_axis_mapping),
         };
-        let mut ops: Vec<ProtoFusedSpec> =
-            vec![ProtoFusedSpec::AddMatMul { geo, a: 1, b: 0, packings: vec![(packing, None)] }];
+        let mut ops: Vec<ProtoFusedSpec> = vec![ProtoFusedSpec::AddMatMul {
+            geo,
+            a: MatMulOperand::Input(1),
+            b: MatMulOperand::Input(0),
+            packings: vec![(packing, None)],
+        }];
         let mut wires: TVec<OutletId> = tvec!(input, packed_ker);
         let bias_fact = model.outlet_fact(bias)?;
         if bias_fact.konst.is_none() || !bias_fact.konst.as_ref().unwrap().is_all_zero()? {

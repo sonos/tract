@@ -13,14 +13,16 @@ use std::hash::Hash;
 use std::sync::Arc;
 
 mod helpers;
+mod q20t;
 mod q4_0;
 mod q8_1;
 mod storage;
 mod value;
 
-pub use helpers::{NibbleReader, NibbleWriter};
+pub use helpers::{CrumbReader, CrumbWriter, NibbleReader, NibbleWriter};
 pub use q4_0::Q4_0;
 pub use q8_1::Q8_1;
+pub use q20t::{BaseQ2_0_T, Q2_0_T};
 pub use storage::{BlockQuantStorage, block_quant_slice};
 pub use value::{BlockQuantFact, PackedBlockQuantFact};
 
@@ -247,6 +249,11 @@ impl PackedBlockQuantFormat {
 }
 
 impl MMMInputFormat for PackedBlockQuantFormat {
+    fn simulate_precision_loss(&self, tensor: Tensor) -> TractResult<Tensor> {
+        let axis = tensor.rank() - 1;
+        self.bq.simulate_precision_loss(tensor, axis)
+    }
+
     fn prepare_tensor(&self, t: &Tensor, _k_axis: usize, _mn_axis: usize) -> TractResult<Tensor> {
         let bqs = t.try_storage_as::<BlockQuantStorage>()?;
         let num_groups: usize =
@@ -259,7 +266,7 @@ impl MMMInputFormat for PackedBlockQuantFormat {
                 let packed = self.pack(slice, k)?;
                 Ok(Box::new(packed) as Box<dyn MMMInputValue>)
             })
-            .collect::<TractResult<Vec<_>>>()?;
+            .collect::<TractResult<TVec<_>>>()?;
         let leading_shape = &t.shape()[..t.rank().saturating_sub(2)];
         Ok(crate::mmm::PackedMatrixStorage::new_batched(leading_shape, values)
             .into_tensor(t.datum_type()))

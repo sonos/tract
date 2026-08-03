@@ -34,6 +34,9 @@ impl Expansion for Gemm {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
+        if inputs.len() < 2 {
+            bail!("Wrong input number. Rules expect at least 2, node has {}.", inputs.len());
+        }
         if inputs.len() == 3 {
             s.equals(&inputs[2].datum_type, &outputs[0].datum_type)?;
         }

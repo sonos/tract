@@ -284,7 +284,7 @@ where
             .op_states
             .iter_mut()
             .filter_map(Option::as_mut)
-            .filter(|s| s.init_tensor_fact().is_some())
+            .filter(|s| s.has_init_tensor_fact())
         {
             state.resolve_symbols(&mut self.turn_state)?;
         }

@@ -499,6 +499,15 @@ impl Tensor {
         align: usize,
     ) -> TractResult<Tensor> {
         let mut tensor = unsafe { Tensor::uninitialized_aligned_dt(dt, shape, align) }?;
+        let expected = tensor.as_bytes().len();
+        ensure!(
+            content.len() == expected,
+            "Raw tensor data length ({}) does not match shape {:?} of {:?} ({} bytes)",
+            content.len(),
+            shape,
+            dt,
+            expected
+        );
         tensor.as_bytes_mut().copy_from_slice(content);
         Ok(tensor)
     }
@@ -1848,6 +1857,20 @@ mod tests {
     use litteral::tensor0;
     use proptest::collection::vec;
     use proptest::prelude::*;
+
+    // Regression for sonos/tract#2390: from_raw must reject a content length that
+    // does not match the declared shape rather than panicking in copy_from_slice.
+    #[test]
+    fn from_raw_rejects_length_mismatch() {
+        // shape [2, 3] of f32 needs 24 bytes; supply 12.
+        let err = unsafe { Tensor::from_raw_dt(f32::datum_type(), &[2, 3], &[0u8; 12]) }
+            .expect_err("from_raw must reject a short content buffer, not panic");
+        assert!(err.to_string().contains("does not match shape"), "unexpected error: {err}");
+        // Too-long content is rejected as well.
+        assert!(unsafe { Tensor::from_raw_dt(f32::datum_type(), &[2, 3], &[0u8; 32]) }.is_err());
+        // Exact match still succeeds.
+        assert!(unsafe { Tensor::from_raw_dt(f32::datum_type(), &[2, 3], &[0u8; 24]) }.is_ok());
+    }
 
     #[derive(Debug)]
     struct PermuteAxisProblem {

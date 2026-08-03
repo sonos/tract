@@ -1,0 +1,18 @@
+version 1.0;
+
+extension tract_registry tract_transformers;
+extension tract_registry tract_core;
+
+graph qwen35_gdn_recurrent(query, key, value, log_decay, beta, initial_state)
+    -> (output, final_state)
+{
+    query = tract_core_external(shape = [1, 1, 1, 128], datum_type = 'f16');
+    key = tract_core_external(shape = [1, 1, 1, 128], datum_type = 'f16');
+    value = tract_core_external(shape = [1, 1, 1, 128], datum_type = 'f16');
+    log_decay = tract_core_external(shape = [1, 1, 1], datum_type = 'f32');
+    beta = tract_core_external(shape = [1, 1, 1], datum_type = 'f16');
+    initial_state =
+        tract_core_external(shape = [1, 1, 128, 128], datum_type = 'f32');
+    (output, final_state) = tract_transformers_gdn_recurrent(
+        query, key, value, log_decay, beta, initial_state);
+}

@@ -134,7 +134,7 @@ impl EvalOp for TypedRandomUniform {
     }
 
     fn eval(&self, _inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        let shape = self.shape.iter().map(|d| d.to_usize()).collect::<TractResult<TVec<_>>>()?;
+        let shape = self.shape.iter().map(|d| d.to_usize()).collect::<Result<TVec<_>, _>>()?;
         match self.t {
             DatumType::F32 => Ok(tvec!(make_f32(&shape, self.seed1, self.seed2)?)),
             dt => bail!("RandomUniform not implemented for {:?}", dt),

@@ -146,6 +146,10 @@ impl OpState for DynKeyValueCacheState {
         Some((self.name.clone(), self.past_sequence_fact.clone()))
     }
 
+    fn has_init_tensor_fact(&self) -> bool {
+        true
+    }
+
     fn resolve_symbols(&mut self, state: &mut TurnState) -> TractResult<()> {
         let shape = self.kv_cache.as_ref().map(|kv_cache| kv_cache.shape());
         Self::resolve_symbols(state, self.past_sequence_fact.clone(), shape)
@@ -497,6 +501,28 @@ mod tests {
         run_test_case::<f32>(&[vec![2, 2]], 0)?;
         run_test_case::<f32>(&[vec![2, 2], vec![4, 2]], 0)?;
         run_test_case::<f32>(&[vec![2, 2], vec![2, 1], vec![2, 3]], 1)?;
+        Ok(())
+    }
+
+    // Guards against `has_init_tensor_fact` (the allocation-free predicate used
+    // on the per-run symbol-resolution hot path) drifting out of sync with
+    // `init_tensor_fact`. If they disagree, `resolve_symbols` would silently stop
+    // running for this op.
+    #[test]
+    fn has_init_tensor_fact_matches_init_tensor_fact() -> TractResult<()> {
+        let model = TypedModel::default();
+        let past: TVec<TDim> = tvec![1.to_dim(), model.sym("P").into(), 64.to_dim()];
+        let input: TVec<TDim> = tvec![1.to_dim(), model.sym("S").into(), 64.to_dim()];
+        let op = DynKeyValueCache {
+            name: "kv_cache_0".to_string(),
+            axis: 1,
+            past_sequence_fact: f32::fact(&past),
+            input_sequence_fact: f32::fact(&input),
+        };
+        let session = TurnState::default();
+        let state = op.state(&session, 0)?.unwrap();
+        assert!(state.has_init_tensor_fact());
+        assert_eq!(state.has_init_tensor_fact(), state.init_tensor_fact().is_some());
         Ok(())
     }
 

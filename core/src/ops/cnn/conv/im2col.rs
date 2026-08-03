@@ -171,7 +171,8 @@ impl EvalOp for Im2Col {
 
             let n_batches = *geometry.input_shape_with_n.n().unwrap_or(&1);
             let n_groups = self.group;
-            let mut values: Vec<Box<dyn MMMInputValue>> = Vec::with_capacity(n_batches * n_groups);
+            let mut values: TVec<Box<dyn MMMInputValue>> =
+                TVec::with_capacity(n_batches * n_groups);
 
             for i in 0..n_batches {
                 let input = input.view_at_prefix(&[i])?;

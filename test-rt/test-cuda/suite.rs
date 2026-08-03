@@ -54,6 +54,7 @@ fn ignore_unit(t: &[String], case: &dyn Test) -> bool {
     if let Some(sdpab) = case.downcast_ref::<SdpaProblem<half::f16>>() {
         return !compatible_sdpa::<half::f16>(sdpab);
     }
+
     t[0] == "sdpa" && t[1] == "proptest_f32"
 }
 

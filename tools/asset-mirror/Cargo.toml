@@ -1,0 +1,16 @@
+[package]
+name = "tract-asset-mirror"
+version = "0.1.0"
+edition = "2021"
+description = "LAN caching reverse-proxy for tract CI/bench model assets, backed by the R2 origin."
+
+[[bin]]
+name = "tract-asset-mirror"
+path = "src/main.rs"
+
+[dependencies]
+tiny_http = "0.12"
+ureq = "2"
+
+[profile.release]
+opt-level = 2

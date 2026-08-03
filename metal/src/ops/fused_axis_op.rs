@@ -74,6 +74,10 @@ impl OpState for MetalFusedAxisOpState {
         self.op_state.init_tensor_fact()
     }
 
+    fn has_init_tensor_fact(&self) -> bool {
+        self.op_state.has_init_tensor_fact()
+    }
+
     fn load_from(
         &mut self,
         session: &mut TurnState,

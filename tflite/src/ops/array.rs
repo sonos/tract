@@ -244,7 +244,7 @@ fn ser_axisop(
                 .shape
                 .iter()
                 .map(|x| x.to_i32())
-                .collect::<TractResult<Vec<i32>>>()?;
+                .collect::<Result<Vec<i32>, _>>()?;
             let new_shape = builder.fb().create_vector(&new_shape);
             let options = ReshapeOptions::create(
                 builder.fb(),
@@ -269,7 +269,7 @@ fn ser_broadcast_to(
     let mut inputs = tvec!(builder.outlets_to_tensors[&node.inputs[0]]);
     let output = builder.outlets_to_tensors[&node.id.into()];
     let shape =
-        node.outputs[0].fact.shape.iter().map(|x| x.to_i32()).collect::<TractResult<Vec<i32>>>()?;
+        node.outputs[0].fact.shape.iter().map(|x| x.to_i32()).collect::<Result<Vec<i32>, _>>()?;
     let shape = builder
         .write_fact(format!("{}.shape", node.name), TypedFact::try_from(tensor1(&shape))?)?;
     inputs.push(shape);

@@ -177,6 +177,9 @@
     ldp         x5, x6, [x0, #8]
     ldp         x7, x8, [x0, #24]
 
+    cmp         x8, #2
+    beq         .add_unicast_f16
+
     {% for col in range(0, 3) %}
         mov x4, x5
         {% for reg in range(0, 8) %}
@@ -184,6 +187,43 @@
                 ld1 {v0.s}[{{lane}}], [ x4 ], x6
             {% endfor %}
             fadd v{{ col * 8 + 8 + reg }}.4s, v{{ col * 8 + 8 + reg }}.4s, v0.4s
+        {% endfor %}
+        add x5, x5, x7
+    {% endfor %}
+
+    b           .non_linear_loop
+
+.add_unicast_f16:
+    cmp         x6, #2
+    bne         .add_unicast_f16_strided
+
+    {% for col in range(0, 3) %}
+        mov x4, x5
+        ld1 { v0.8h, v1.8h, v2.8h, v3.8h }, [ x4 ], #64
+        {% for reg in range(0, 4) %}
+            fcvtl  v4.4s, v{{reg}}.4h
+            fcvtl2 v5.4s, v{{reg}}.8h
+            fadd v{{ (col * 4 + reg) * 2 + 8 }}.4s, v{{ (col * 4 + reg) * 2 + 8 }}.4s, v4.4s
+            fadd v{{ (col * 4 + reg) * 2 + 9 }}.4s, v{{ (col * 4 + reg) * 2 + 9 }}.4s, v5.4s
+        {% endfor %}
+        add x5, x5, x7
+    {% endfor %}
+
+    b           .non_linear_loop
+
+.add_unicast_f16_strided:
+    {% for col in range(0, 3) %}
+        mov x4, x5
+        {% for reg in range(0, 4) %}
+            {% for lane in range(0, 8) %}
+                ld1 { v{{reg}}.h }[{{lane}}], [ x4 ], x6
+            {% endfor %}
+        {% endfor %}
+        {% for reg in range(0, 4) %}
+            fcvtl  v4.4s, v{{reg}}.4h
+            fcvtl2 v5.4s, v{{reg}}.8h
+            fadd v{{ (col * 4 + reg) * 2 + 8 }}.4s, v{{ (col * 4 + reg) * 2 + 8 }}.4s, v4.4s
+            fadd v{{ (col * 4 + reg) * 2 + 9 }}.4s, v{{ (col * 4 + reg) * 2 + 9 }}.4s, v5.4s
         {% endfor %}
         add x5, x5, x7
     {% endfor %}

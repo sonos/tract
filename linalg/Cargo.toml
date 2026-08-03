@@ -1,6 +1,6 @@
 [package]
 name = "tract-linalg"
-version = "0.23.4-pre"
+version = "0.23.5-pre"
 license = "MIT OR Apache-2.0"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
@@ -84,6 +84,11 @@ name = "mm_for_asr_am"
 harness = false
 
 [[bench]]
+name = "mm_threads"
+harness = false
+required-features = ["multithread-mm"]
+
+[[bench]]
 name = "qmmm_i8"
 harness = false
 
@@ -101,6 +106,11 @@ harness = false
 
 [[bench]]
 name = "sigmoid"
+harness = false
+
+[[bench]]
+bench = false
+name = "sigmoid_f16_arm64"
 harness = false
 
 [[bench]]

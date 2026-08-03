@@ -1,0 +1,19 @@
+version 1.0;
+
+extension tract_registry tract_core;
+
+# Sign and Abs on i64, in the two configurations a DeBERTa-family relative-position
+# bucketing puts them in. `*_live` runs on the input, so both ops are evaluated on
+# every inference. `*_folded` sits on a constant, so declutter const-evaluates it and
+# leaves no node behind, which is what happens once the sequence length is known and
+# the whole bucketing becomes constant.
+graph sign_abs_integers(input) -> (sign_live, abs_live, sign_folded, abs_folded)
+{
+    input = tract_core_external(shape = [6], datum_type = 'i64');
+    sign_live = sign(input);
+    abs_live = abs(input);
+
+    offsets = tract_core_cast([-128.0, -3.0, 0.0, 5.0, 127.0, 1000.0], to = 'i64');
+    sign_folded = sign(offsets);
+    abs_folded = abs(offsets);
+}

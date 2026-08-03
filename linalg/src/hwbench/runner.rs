@@ -70,7 +70,23 @@ fn black_box<T>(dummy: T) -> T {
     }
 }
 
+/// Accurate timing (≈1 s warmup + 1 s IQR-trimmed sampling), for `hwbench --assert`.
 pub fn run_bench<T, F: FnMut(usize) -> T + Copy>(f: F) -> f64 {
+    run_bench_inner(1.0, 1.0, 25, f)
+}
+
+/// Coarser, ≈5× faster timing for cost-model dataset gathering: the NNLS fit
+/// averages over many shapes, so a short warmup + sub-second sampling is enough.
+pub fn run_bench_fitting<T, F: FnMut(usize) -> T + Copy>(f: F) -> f64 {
+    run_bench_inner(0.1, 0.25, 20, f)
+}
+
+fn run_bench_inner<T, F: FnMut(usize) -> T + Copy>(
+    warmup_s: f64,
+    bench_s: f64,
+    min_samples: usize,
+    f: F,
+) -> f64 {
     let start = Instant::now();
     let mut f = black_box(f);
     black_box(f(1));
@@ -82,21 +98,18 @@ pub fn run_bench<T, F: FnMut(usize) -> T + Copy>(f: F) -> f64 {
     } else {
         once.as_secs_f64()
     };
-    // raw evaluation is over a second. stop right there
-    if evaled > 1.0 {
+    // a single raw evaluation already exceeds the sampling budget. stop right there
+    if evaled > bench_s {
         return evaled;
     }
 
     // we want each individual sample to run for no less than
     let minimum_sampling_time_s = 0.01;
-    let minimum_samples = 25;
-    let desired_bench_time = 1.0;
 
     let inner_loops = (minimum_sampling_time_s / evaled).max(1.0) as usize;
 
-    let samples =
-        ((desired_bench_time / (inner_loops as f64 * evaled)) as usize).max(minimum_samples);
-    let warmup = (1.0 / evaled) as usize;
+    let samples = ((bench_s / (inner_loops as f64 * evaled)) as usize).max(min_samples);
+    let warmup = (warmup_s / evaled) as usize;
 
     // println!(
     //     "evaled: {:?} samples:{samples} inner_loops:{inner_loops} time:{}",

@@ -156,6 +156,11 @@ impl TypedOp for MultiBroadcastTo {
         for succ in &*node.outputs[0].successors {
             let succ = model.node(succ.node);
             let Some(op) = succ.op_as::<AxisOp>() else { continue };
+            // The AxisOp's indices refer to the broadcast output; they are only
+            // meaningful on the input if the broadcast did not add leading axes.
+            if input_fact.rank() != self.shape.rank() {
+                continue;
+            }
             let mut shape = self.shape.clone();
             if izip!(0.., &*input_fact.shape, &*self.shape)
                 .filter(|(_, l, r)| l != r)
@@ -280,6 +285,33 @@ mod tests {
         assert!(
             (a == &expected_a && b == &expected_b) || (a == &expected_b && b == &expected_a),
             "AND should receive [1, T] and [T, 1]; got {a:?} and {b:?}"
+        );
+        Ok(())
+    }
+
+    /// `Broadcast → AxisOp` where the broadcast adds a leading axis (input
+    /// rank < output rank).  The AxisOp's indices refer to the output shape
+    /// and are meaningless on the input; the swap must not fire.  Pre-fix,
+    /// the guard izip truncated to the shorter rank and wiring the AxisOp
+    /// onto the input panicked in AxisOp::change_shape.
+    #[test]
+    fn broadcast_adding_leading_axis_does_not_swap_with_axis_op() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let src = model.add_source("src", f32::fact([512, 1]))?;
+        let bcast = model.wire_node(
+            "bcast",
+            MultiBroadcastTo {
+                shape: ShapeFact::from_dims([1.to_dim(), 512.to_dim(), 16.to_dim()]),
+            },
+            &[src],
+        )?[0];
+        let unsq = model.wire_node("unsq", AxisOp::Add(3), &[bcast])?[0];
+        model.select_output_outlets(&[unsq])?;
+
+        let model = model.into_decluttered()?;
+        assert_eq!(
+            model.output_fact(0)?.shape.to_tvec(),
+            tvec![1.to_dim(), 512.to_dim(), 16.to_dim(), 1.to_dim()]
         );
         Ok(())
     }

@@ -9,6 +9,7 @@ pub mod utils;
 pub use context::with_cuda_stream;
 use tract_core::internal::*;
 use tract_core::transform::ModelTransform;
+use tract_gpu::device::DeviceContext;
 pub use transform::CudaTransform;
 
 use crate::utils::ensure_cuda_runtime_dependencies;
@@ -41,6 +42,11 @@ impl Runtime for CudaRuntime {
                     .context("While sizing memory arena. Missing hint ?")?;
             runnable = runnable.with_session_handler(session_handler);
         }
+
+        // Constants are uploaded to the device here on the preparing thread's stream via async
+        // copies. Event tracking is disabled, so nothing else orders those uploads before the
+        // per-thread streams that later read the constants; drain them now to establish that order.
+        context::cuda_context().synchronize()?;
 
         Ok(Box::new(Arc::new(runnable)))
     }

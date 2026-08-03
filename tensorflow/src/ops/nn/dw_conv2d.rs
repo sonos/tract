@@ -45,7 +45,7 @@ impl Expansion for DepthwiseConv2d {
             let img = self.data_format.shape(img)?;
             s.equals(&inputs[1].shape[2], &inputs[0].shape[img.c_axis()])?;
             s.equals(&outputs[0].shape[img.n_axis().unwrap()], img.n_dim().unwrap())?;
-            if let Ok(ker) = ker.iter().map(|d| d.to_usize()).collect::<TractResult<TVec<_>>>() {
+            if let Ok(ker) = ker.iter().map(|d| d.to_usize()).collect::<Result<TVec<_>, _>>() {
                 let output_shape = self.padding.compute(
                     img.hw_dims(),
                     &ker[0..2],

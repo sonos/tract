@@ -4,12 +4,22 @@ name: Bench
 # machines, and either (nightly) append one row per run to the bench-data branch, or
 # (PR) compare against that reference and post a single fan-in comment.
 # The Jetson (aarch64 + CUDA 12) can't be built on a hosted runner natively, so it
-# reuses cross.sh's debian-stretch cross-build (no AWS creds, so the S3-push tail stays off).
+# reuses cross.sh's debian-stretch cross-build.
 
 on:
   schedule:
     - cron: '0 4 * * *'   # after large-models (3am) so they don't fight for the self-hosted boxes
   workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "Optional PR number to bench (from fork ok). Leave empty to run on selected branch."
+        required: false
+        type: number
+      mt_ladder:
+        description: "Thread-count ladder (comma list, 0=physical cores) for a scaling run; empty = normal vs-main bench."
+        required: false
+        type: string
+        default: ''
   pull_request:
     paths-ignore:
       - '**/*.md'
@@ -20,8 +30,8 @@ permissions:
 
 concurrency:
   # cancel superseded PR pushes (escape hatch); nightly keys on run_id so it never cancels
-  group: bench-${{ github.event.pull_request.number || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: bench-${{ github.event.pull_request.number || github.event.inputs.pr_number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event.inputs.pr_number != '' }}
 
 jobs:
   prepare:
@@ -30,24 +40,67 @@ jobs:
       enabled: ${{ steps.gate.outputs.enabled }}
       ref: ${{ steps.gate.outputs.ref }}
       day: ${{ steps.gate.outputs.day }}
+      pr_number: ${{ steps.gate.outputs.pr_number }}
+      is_pr: ${{ steps.gate.outputs.is_pr }}
+      same_repo: ${{ steps.gate.outputs.same_repo }}
+      mt_ladder: ${{ steps.gate.outputs.mt_ladder }}
     steps:
+      # Resolves this run's target ref and whether it should behave like a PR run
+      # (compare + comment) or a reference run (append to bench-data): a manual
+      # `/ci bench` dispatch on a PR must be treated as a PR run even though its
+      # event_name is workflow_dispatch, or its numbers would get pushed to
+      # bench-data as if it were a nightly/main reference point.
       - id: gate
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           BENCH_ENABLED: ${{ vars.BENCH_ENABLED }}
-        run: |
-          if [ "$BENCH_ENABLED" = "false" ]; then
-            echo "::notice::bench disabled via BENCH_ENABLED repo variable"
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "enabled=true" >> "$GITHUB_OUTPUT"
-          fi
-          echo "ref=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
-          echo "day=$(date -u +%F)" >> "$GITHUB_OUTPUT"
+        with:
+          script: |
+            if (process.env.BENCH_ENABLED === 'false') {
+              core.notice('bench disabled via BENCH_ENABLED repo variable');
+              core.setOutput('enabled', 'false');
+            } else {
+              core.setOutput('enabled', 'true');
+            }
+            core.setOutput('day', new Date().toISOString().slice(0, 10));
+            // Set on any event; a pull_request trigger has no inputs, so it stays empty
+            // (normal vs-main bench). Only a workflow_dispatch can request a scaling run.
+            core.setOutput('mt_ladder', context.payload.inputs?.mt_ladder || '');
+
+            const baseRepo = `${context.repo.owner}/${context.repo.repo}`;
+            if (context.eventName === 'pull_request') {
+              const pr = context.payload.pull_request;
+              core.setOutput('is_pr', 'true');
+              core.setOutput('pr_number', String(pr.number));
+              core.setOutput('same_repo', String(pr.head.repo.full_name === baseRepo));
+              core.setOutput('ref', pr.head.sha);
+              return;
+            }
+            const prInput = context.payload.inputs?.pr_number;
+            if (!prInput) {
+              core.setOutput('is_pr', 'false');
+              core.setOutput('pr_number', '');
+              core.setOutput('same_repo', 'true');
+              core.setOutput('ref', process.env.GITHUB_SHA);
+              return;
+            }
+            const pr = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: Number(prInput),
+            });
+            core.setOutput('is_pr', 'true');
+            core.setOutput('pr_number', String(prInput));
+            core.setOutput('same_repo', String(pr.data.head.repo.full_name === baseRepo));
+            core.setOutput('ref', pr.data.head.sha);
 
   build:
     needs: prepare
     if: needs.prepare.outputs.enabled == 'true'
     runs-on: ${{ matrix.host }}
+    permissions:
+      contents: read
+      packages: read      # pull the prebuilt cross-build image (ghcr, private)
     strategy:
       fail-fast: false
       matrix:
@@ -62,21 +115,27 @@ jobs:
             bin: target/release/tract
           - triple: aarch64-unknown-linux-gnu-stretch
             host: ubuntu-latest
-            build: PLATFORM=aarch64-unknown-linux-gnu-stretch ./.travis/cross.sh
-            bin: target/aarch64-unknown-linux-gnu/release/tract
+            build: CARGO_TARGET_DIR=.cross-cache/target PLATFORM=aarch64-unknown-linux-gnu-stretch ./.travis/cross.sh
+            bin: .cross-cache/target/aarch64-unknown-linux-gnu/release/tract
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.prepare.outputs.ref }}
           persist-credentials: false
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           # per-PR build on the developer feedback path; PR runs restore but only main saves.
-          # The stretch leg builds in a docker container: target/ is host-mounted (cached),
-          # its in-container cargo registry is not, and the key tracks host rustc not the container.
-          key: ${{ matrix.triple }}
+          # The stretch leg cross-builds in a debian-stretch container into .cross-cache/target
+          # (CARGO_TARGET_DIR); cache that verbatim so the container's aarch64 artifacts survive —
+          # rust-cache's own target/ cleanup is host-target-only and would drop them. The container
+          # also bind-mounts the host cargo registry (see cross.sh) so crate downloads persist.
+          # -gpu: keep the cuda build's cache off the bare-triple key the no-cuda builds share.
+          key: ${{ matrix.triple }}-gpu
+          cache-directories: .cross-cache/target
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: ${{ matrix.build }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # ghcr login for the cross-build image
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: tract-cli-${{ matrix.triple }}
@@ -88,9 +147,9 @@ jobs:
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: write     # push to bench-data (nightly only)
-    concurrency:
-      group: bench-runner-${{ matrix.runner }}   # one bench per box at a time; never fight a running bench
-      cancel-in-progress: false
+    # No concurrency group: each box is a single self-hosted agent, so the agent
+    # serialises bench/hwbench/smoke itself (queues, never cancels). A shared
+    # group would instead cancel one PR's queued bench when another PR's lands.
     strategy:
       fail-fast: false
       matrix:
@@ -104,11 +163,10 @@ jobs:
           - target: jetson-orin-nx
             runner: orin-nx-16g
             triple: aarch64-unknown-linux-gnu-stretch
-            # GPU-only box: its arm64 CPU is redundant with apple-m1-max for the net
-            # suite, so skip CPU runs and bench only the Orin GPU (cuda).
+            # GPU-only box; skip the CPU net suite (redundant with apple-m1-max).
             bench_args: --skip-cpu
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.prepare.outputs.ref }}
           persist-credentials: false
@@ -118,7 +176,7 @@ jobs:
           path: tract-cli
       # Read-only bench-data checkout: the orchestrator builds this device's retry
       # expectations from it inline (no separate job, no Python on the runner).
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: bench-data
           path: bench-ref
@@ -128,33 +186,30 @@ jobs:
         env:
           TRIPLE: ${{ matrix.triple }}
           DEVICE: ${{ matrix.target }}
+          MT_LADDER: ${{ needs.prepare.outputs.mt_ladder }}
         run: |
           chmod +x tract-cli/tract
-          # no --cache-dir: honor each runner's CACHEDIR env (its curated model cache),
-          # falling back to ~/.cache/tract-ci-minion-models, like the old bundle did.
-          # ${{ matrix.bench_args }} is empty except on jetson (--skip-cpu).
-          # Reference (nightly/dispatch) records the per-metric median of N samples so a
-          # lone clock glitch can't poison it; PR runs omit --samples and retry-until-good.
           tract-cli/tract bench-suite \
             --manifest .travis/benches.toml \
             --bench-data bench-ref \
             --thresholds .travis/bench-thresholds.toml \
             --triple "$TRIPLE" --device "$DEVICE" \
-            ${{ github.event_name != 'pull_request' && '--samples 5' || '' }} \
+            ${MT_LADDER:+--threads-ladder "$MT_LADDER"} \
+            ${{ needs.prepare.outputs.is_pr != 'true' && '--samples 5' || '' }} \
             ${{ matrix.bench_args }}        # produces ./metrics
 
       # --- nightly / dispatch: append the row to bench-data ---
       - name: Checkout bench-data
-        if: github.event_name != 'pull_request'
+        if: needs.prepare.outputs.is_pr != 'true'
         # zizmor: ignore[artipacked] credentials are needed to push the row back to
         # bench-data; this checkout is never uploaded as an artifact.
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: bench-data
           path: bench-data
           fetch-depth: 1
       - name: Append and push
-        if: github.event_name != 'pull_request'
+        if: needs.prepare.outputs.is_pr != 'true'
         env:
           DEVICE: ${{ matrix.target }}
           TRIPLE: ${{ matrix.triple }}
@@ -177,7 +232,7 @@ jobs:
 
       # --- PR: emit this device's result for the fan-in report job ---
       - name: Stage PR result
-        if: github.event_name == 'pull_request'
+        if: needs.prepare.outputs.is_pr == 'true'
         env:
           DEVICE: ${{ matrix.target }}
           TRIPLE: ${{ matrix.triple }}
@@ -186,23 +241,202 @@ jobs:
           cp metrics result/metrics
           printf '{"device":"%s","triple":"%s"}\n' "$DEVICE" "$TRIPLE" > result/meta.json
       - name: Upload PR result
-        if: github.event_name == 'pull_request'
+        if: needs.prepare.outputs.is_pr == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: bench-result-${{ matrix.target }}
           path: result
 
+  # --- dinghy target fleet (kill switch: BENCH_DINGHY_ENABLED=false). ---
+  # A sidekick runner cross-runs the CLI on each target over dinghy's ssh transport; per-target
+  # config lives in the sidekick's .dinghy.toml. On by default; opt-out only, so fork PRs (which
+  # don't inherit the repo variable) still run the ARM boards.
+
+  build-dinghy:
+    needs: prepare
+    if: ${{ needs.prepare.outputs.enabled == 'true' && vars.BENCH_DINGHY_ENABLED != 'false' }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - triple: aarch64-unknown-linux-gnu-stretch
+            rustc_triple: aarch64-unknown-linux-gnu
+          - triple: armv7-unknown-linux-gnueabihf-stretch
+            rustc_triple: armv7-unknown-linux-gnueabihf
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.ref }}
+          persist-credentials: false
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          key: ${{ matrix.triple }}
+          cache-directories: .cross-cache/target
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      # glibc-stretch CLI for the board (matches the production devices), cross-built in the
+      # debian-stretch container: bench-suite on, cuda/tflite off; SKIP_QEMU_TEST builds only.
+      # TRACT_CLI_FEATURES suppresses the stretch leg's default cuda forcing (see cross.sh).
+      - run: >-
+          SKIP_QEMU_TEST=skip SUDO=sudo CARGO_TARGET_DIR=.cross-cache/target
+          TRACT_CLI_FEATURES=onnx,tf,pulse,pulse-opl,transformers,extra,bench-suite
+          PLATFORM=${{ matrix.triple }} ./.travis/cross.sh
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: tract-cli-${{ matrix.triple }}-dinghy
+          path: .cross-cache/target/${{ matrix.rustc_triple }}/release/tract
+
+  bench-dinghy:
+    needs: [ prepare, build-dinghy ]
+    if: ${{ needs.prepare.outputs.enabled == 'true' && vars.BENCH_DINGHY_ENABLED != 'false' }}
+    # One sidekick runner per target (label per board), so boards bench in parallel.
+    runs-on: ${{ matrix.runner }}
+    # Bound the run so an offline/stuck target can't hang the PR report (which fans this in).
+    timeout-minutes: 120
+    # No concurrency group: one sidekick agent per device serialises its own work.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - device: cortex-a55
+            triple: aarch64-unknown-linux-gnu-stretch
+            runner: dinghy-sidekick-a55
+            dinghy_target: dinghy-a55
+          - device: cortex-a53
+            triple: aarch64-unknown-linux-gnu-stretch
+            runner: dinghy-sidekick-a53
+            dinghy_target: dinghy-a53
+          - device: cortex-a7
+            triple: armv7-unknown-linux-gnueabihf-stretch
+            runner: dinghy-sidekick-a7
+            dinghy_target: dinghy-a7
+          - device: cortex-a9
+            triple: armv7-unknown-linux-gnueabihf-stretch
+            runner: dinghy-sidekick-a9
+            dinghy_target: dinghy-a9
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.ref }}
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: tract-cli-${{ matrix.triple }}-dinghy
+          path: tract-cli
+      - name: Bench on the dinghy target
+        env:
+          DINGHY_TARGET: ${{ matrix.dinghy_target }}
+          DEVICE: ${{ matrix.device }}
+          TRIPLE: ${{ matrix.triple }}
+          SAMPLES: ${{ needs.prepare.outputs.is_pr != 'true' && '--samples 5' || '' }}
+          MT_LADDER: ${{ needs.prepare.outputs.mt_ladder }}
+        run: |
+          chmod +x tract-cli/tract
+          mkdir -p result
+          # dinghy otherwise copies the whole checkout to the board (source + every committed
+          # test model), which overflows the small armv7 boards and fails the rsync deploy.
+          # Scope the copy to just the bench manifest with a gitignore-style allowlist; the exe
+          # is copied separately. Written into the ephemeral work folder, never committed: a
+          # repo .dinghyignore would strip fixtures from everyone else's `cargo dinghy test`.
+          printf '%s\n' '/*' '!/.travis/' '/.travis/*' '!/.travis/benches.toml' > .dinghyignore
+          # --cleanup also tears the deploy down afterwards. It must precede -d: after -d
+          # consumes its value cargo-dinghy misparses a later -c and bails with -Zscript.
+          if CARGO_PKG_NAME=tract cargo-dinghy --cleanup -d "$DINGHY_TARGET" runner \
+               ./tract-cli/tract -- bench-suite \
+               --manifest .travis/benches.toml --skip-runtimes --no-cache --output - $SAMPLES \
+               ${MT_LADDER:+--threads-ladder "$MT_LADDER"} \
+               --base-url '${TRACT_BENCH_BASE_URL}' --cpu-governor '${TRACT_BENCH_CPU_GOVERNOR}' \
+               >captured.out 2>captured.err
+          then
+            grep '"metric"' captured.out > result/metrics || true
+          else
+            echo "::error::bench-dinghy: run failed"
+            exit 1
+          fi
+          test -s result/metrics || { echo "::error::bench-dinghy: no metrics captured"; exit 1; }
+          printf '{"device":"%s","triple":"%s"}\n' "$DEVICE" "$TRIPLE" > result/meta.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: bench-result-${{ matrix.device }}
+          path: result
+
+  # Nightly only: append the dinghy target's row to bench-data. The board can't run the append tool,
+  # so a hosted job does it with the x86 CLI (bench-append is arch-agnostic JSON) reading the JSONL result.
+  append-dinghy:
+    needs: [ prepare, build, bench-dinghy ]
+    # always() (like the report job) so a cancelled/failed device leg (e.g. one board that
+    # timed out) still lets the boards that did finish append; each leg no-ops when its own
+    # result artifact is absent.
+    if: ${{ always() && needs.prepare.outputs.is_pr != 'true' && needs.prepare.outputs.enabled == 'true' && vars.BENCH_DINGHY_ENABLED != 'false' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - device: cortex-a55
+            triple: aarch64-unknown-linux-gnu-stretch
+          - device: cortex-a53
+            triple: aarch64-unknown-linux-gnu-stretch
+          - device: cortex-a7
+            triple: armv7-unknown-linux-gnueabihf-stretch
+          - device: cortex-a9
+            triple: armv7-unknown-linux-gnueabihf-stretch
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: tract-cli-x86_64-unknown-linux-gnu
+          path: tract-cli
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        # A leg whose bench never produced a result (timed out / failed) has no artifact;
+        # tolerate that here and skip the append below rather than failing the whole job.
+        continue-on-error: true
+        with:
+          name: bench-result-${{ matrix.device }}
+          path: result
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        # zizmor: ignore[artipacked] credentials are needed to push the row back to bench-data;
+        # this checkout is never uploaded as an artifact.
+        if: ${{ hashFiles('result/metrics') != '' }}
+        with:
+          ref: bench-data
+          path: bench-data
+          fetch-depth: 1
+      - name: Append and push
+        if: ${{ hashFiles('result/metrics') != '' }}
+        env:
+          DEVICE: ${{ matrix.device }}
+          TRIPLE: ${{ matrix.triple }}
+          REF: ${{ needs.prepare.outputs.ref }}
+          DAY: ${{ needs.prepare.outputs.day }}
+        run: |
+          chmod +x tract-cli/tract
+          tract-cli/tract bench-append --metrics result/metrics --out bench-data \
+            --triple "$TRIPLE" --device "$DEVICE" --day "$DAY"
+          cd bench-data
+          git config user.name "tract-ci"
+          git config user.email "tract-ci@users.noreply.github.com"
+          git add -A
+          git commit -m "bench: $DEVICE $DAY ${REF:0:9}"
+          for i in 1 2 3 4 5; do
+            git push origin HEAD:bench-data && exit 0
+            git fetch origin bench-data
+            git rebase origin/bench-data || git rebase --abort
+          done
+          echo "push failed after retries" >&2; exit 1
+
   report:
-    needs: [ prepare, build, bench ]
-    # !cancelled() (not always()) so a superseded/cancelled bench doesn't produce a vacuous
-    # "no regressions" comment; bench-report writes no file when there's nothing to compare.
-    if: ${{ !cancelled() && github.event_name == 'pull_request' && needs.prepare.outputs.enabled == 'true' }}
+    needs: [ prepare, build, bench, bench-dinghy ]
+    # always() (not !cancelled()) so a cancelled/failed device leg still reports from the rest;
+    # bench-report writes no file with nothing to compare, so a fully-cancelled run posts nothing.
+    if: ${{ always() && needs.prepare.outputs.is_pr == 'true' && needs.prepare.outputs.enabled == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
       pull-requests: write   # post the comment directly on same-repo PRs
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.prepare.outputs.ref }}
           persist-credentials: false
@@ -214,48 +448,52 @@ jobs:
         with:
           name: tract-cli-x86_64-unknown-linux-gnu
           path: tract-cli
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: bench-data
           path: bench-data
           fetch-depth: 1
           persist-credentials: false
+      # An mt-ladder run renders a self-contained thread-scaling table (speed + speedup
+      # vs serial, no bench-data reference); a normal run renders the vs-main comparison.
       - name: Render comparison
         env:
           PR_SHA: ${{ needs.prepare.outputs.ref }}
+          MT_LADDER: ${{ needs.prepare.outputs.mt_ladder }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           chmod +x tract-cli/tract
-          tract-cli/tract bench-report --results results --bench-data bench-data \
-            --thresholds .travis/bench-thresholds.toml --pr-sha "$PR_SHA" --out pr-comment.md
-      # Same-repo PRs have a write token: post directly here so the comment refreshes on every
-      # run, including manual re-runs (a re-run does not re-fire the workflow_run trampoline).
-      - name: Comment on PR (same-repo)
-        if: ${{ hashFiles('pr-comment.md') != '' && github.event.pull_request.head.repo.full_name == github.repository }}
+          if [ -n "$MT_LADDER" ]; then
+            tract-cli/tract bench-mt-report --results results --pr-sha "$PR_SHA" --out pr-comment.md
+          else
+            tract-cli/tract bench-report --results results --bench-data bench-data \
+              --thresholds .travis/bench-thresholds.toml --pr-sha "$PR_SHA" --out pr-comment.md
+          fi
+      # Only an automatic `pull_request` event on a fork gets a read-only token; every other
+      # trigger (same-repo pull_request, or any workflow_dispatch — including /ci bench,
+      # which always runs with a write token regardless of the target PR's fork status) can
+      # post directly. A fresh comment per run (like the fork trampoline) so the PR thread
+      # keeps the full history in chronological order instead of overwriting the previous result.
+      - name: Comment on PR (direct)
+        if: ${{ hashFiles('pr-comment.md') != '' && (github.event_name != 'pull_request' || needs.prepare.outputs.same_repo == 'true') }}
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_NUMBER: ${{ needs.prepare.outputs.pr_number }}
         with:
           script: |
             const fs = require('fs');
             const body = fs.readFileSync('pr-comment.md', 'utf8');
             const issue_number = parseInt(process.env.PR_NUMBER, 10);
-            const marker = '<!-- bench-vs-main -->';
-            const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner, repo: context.repo.repo, issue_number, per_page: 100,
+            await github.rest.issues.createComment({
+              owner: context.repo.owner, repo: context.repo.repo, issue_number, body,
             });
-            const prev = comments.find(c => c.body?.includes(marker));
-            if (prev) {
-              await github.rest.issues.updateComment({ owner: context.repo.owner, repo: context.repo.repo, comment_id: prev.id, body });
-            } else {
-              await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number, body });
-            }
-      # Fork PRs get a read-only token and can't comment, so hand the rendered comment + target PR
-      # to the bench-comment trampoline (workflow_run, base context, write token) to post instead.
+      # Fork PRs on the automatic pull_request event get a read-only token and can't comment,
+      # so hand the rendered comment + target PR to the bench-comment trampoline (workflow_run,
+      # base context, write token) to post instead.
       - name: Stage comment for the trampoline (fork PRs)
-        if: ${{ hashFiles('pr-comment.md') != '' && github.event.pull_request.head.repo.full_name != github.repository }}
+        if: ${{ hashFiles('pr-comment.md') != '' && github.event_name == 'pull_request' && needs.prepare.outputs.same_repo != 'true' }}
         env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_NUMBER: ${{ needs.prepare.outputs.pr_number }}
         run: |
           mkdir -p bench-comment
           mv pr-comment.md bench-comment/
@@ -265,3 +503,115 @@ jobs:
         with:
           name: bench-comment
           path: bench-comment
+
+  # --- daily kernel-pick gate: fail if the dispatcher's matmul pick lags the fastest
+  # available kernel for a shape by more than the tolerance. Reuses the bench binaries;
+  # self-referential (picked vs best-in-pool), so no golden numbers to maintain. Nightly
+  # only for now. Shares the per-box concurrency group so it never fights a running bench.
+  hwbench:
+    needs: [ prepare, build ]
+    if: ${{ needs.prepare.outputs.enabled == 'true' && github.event_name == 'schedule' }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: apple-m1-max
+            runner: macOS
+            triple: aarch64-apple-darwin
+          - target: i9-11900kb_rtx-4060
+            runner: cuda-lovelace
+            triple: x86_64-unknown-linux-gnu
+          - target: jetson-orin-nx
+            runner: orin-nx-16g
+            triple: aarch64-unknown-linux-gnu-stretch
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: tract-cli-${{ matrix.triple }}
+          path: tract-cli
+      - name: Assert kernel picks
+        run: |
+          chmod +x tract-cli/tract
+          tract-cli/tract hwbench --no-cache --no-memory --assert --tolerance 20
+
+  # --- daily load-and-run gate: every model in the bench manifest must load,
+  # optimize and run once on each runtime the box offers (CPU + accelerator).
+  # Reuses the bench binaries; no golden numbers, just exit status. Nightly only,
+  # sharing the per-box concurrency group so it never fights a running bench.
+  smoke:
+    needs: [ prepare, build ]
+    if: ${{ needs.prepare.outputs.enabled == 'true' && github.event_name == 'schedule' }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: apple-m1-max
+            runner: macOS
+            triple: aarch64-apple-darwin
+          - target: i9-11900kb_rtx-4060
+            runner: cuda-lovelace
+            triple: x86_64-unknown-linux-gnu
+          - target: jetson-orin-nx
+            runner: orin-nx-16g
+            triple: aarch64-unknown-linux-gnu-stretch
+            # GPU-only box: its arm64 CPU is redundant with apple-m1-max, and an 8B
+            # LLM on it would be pointlessly slow, so smoke only the Orin GPU.
+            smoke_args: --skip-cpu
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.ref }}
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: tract-cli-${{ matrix.triple }}
+          path: tract-cli
+      - name: Load-and-run every bench model
+        run: |
+          chmod +x tract-cli/tract
+          tract-cli/tract bench-suite --smoke --manifest .travis/benches.toml ${{ matrix.smoke_args }}
+
+  hwbench-dinghy:
+    needs: [ prepare, build-dinghy ]
+    if: ${{ needs.prepare.outputs.enabled == 'true' && vars.BENCH_DINGHY_ENABLED != 'false' && github.event_name == 'schedule' }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - device: cortex-a55
+            triple: aarch64-unknown-linux-gnu-stretch
+            runner: dinghy-sidekick-a55
+            dinghy_target: dinghy-a55
+          - device: cortex-a53
+            triple: aarch64-unknown-linux-gnu-stretch
+            runner: dinghy-sidekick-a53
+            dinghy_target: dinghy-a53
+          - device: cortex-a7
+            triple: armv7-unknown-linux-gnueabihf-stretch
+            runner: dinghy-sidekick-a7
+            dinghy_target: dinghy-a7
+          - device: cortex-a9
+            triple: armv7-unknown-linux-gnueabihf-stretch
+            runner: dinghy-sidekick-a9
+            dinghy_target: dinghy-a9
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.ref }}
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: tract-cli-${{ matrix.triple }}-dinghy
+          path: tract-cli
+      - name: Assert kernel picks on the dinghy target
+        env:
+          DINGHY_TARGET: ${{ matrix.dinghy_target }}
+        run: |
+          chmod +x tract-cli/tract
+          CARGO_PKG_NAME=tract cargo-dinghy -d "$DINGHY_TARGET" runner \
+            ./tract-cli/tract -- hwbench --no-cache --no-memory --assert --tolerance 20 </dev/null

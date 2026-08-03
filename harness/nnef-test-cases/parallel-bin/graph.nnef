@@ -1,0 +1,33 @@
+version 1.0;
+
+# Exercises every shape par_bin splits, at two block/period ratios so the
+# intra-block offset is covered for both BShare variants.
+#
+# On [1, 256, 768] there are 256 blocks of 768, so each block is one chunk:
+#   add(input, row)  OptAddByScalar, one b scalar per block
+#   mul(a, col)      OptMulUnicast, b is one 768-element row per block
+#   mul(b, same)     OptMulUnicast over a single block, so the split has to
+#                    happen inside the block
+# On [1, 8, 24576] there are only 8 blocks, so each splits into several chunks
+# and both shares run at a nonzero offset within their block.
+#
+# Both operands of every binary derive from the input, so none const-folds away.
+# runme.sh asserts the threaded output is bit-identical to the same-platform
+# single-threaded run.
+graph parallel_bin(input) -> (output)
+{
+    input = external<scalar>(shape = [1, 256, 768]);
+    row = sum_reduce(input, axes = [2]);
+    col = sum_reduce(input, axes = [1]);
+    same = tanh(input);
+    a = add(input, row);
+    b = mul(a, col);
+    c = mul(b, same);
+
+    wide = reshape(c, shape = [1, 8, 24576]);
+    wrow = sum_reduce(wide, axes = [2]);
+    wcol = sum_reduce(wide, axes = [1]);
+    d = add(wide, wrow);
+    e = mul(d, wcol);
+    output = reshape(e, shape = [1, 256, 768]);
+}

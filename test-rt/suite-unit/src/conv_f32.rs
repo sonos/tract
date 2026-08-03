@@ -352,6 +352,26 @@ pub fn suite() -> TractResult<TestSuite> {
 
     suite.add_arbitrary::<ConvProblem>("proptest", ConvProblemParams::default());
 
+    // Grouped conv (group>1, ci_per_group>1) with a unit spatial axis: the
+    // im2col matmul is batched over the group, and reshape_group carries a unit
+    // axis entangled with that batch. Absorbing the reshape into the matmul
+    // store must not fold a batch axis, else per-group packed inputs desync
+    // (OOB in storage.rs).
+    suite.add(
+        "group_reshape_absorb",
+        ConvProblem {
+            shape_in: DataFormat::CHW.from_n_c_hw(1, 4, [1, 2])?,
+            kernel_format: KernelFormat::OIHW,
+            group: 2,
+            data: ArrayD::zeros(vec![4, 1, 2]),
+            kernel: ArrayD::zeros(vec![2, 2, 1, 2]),
+            bias: None,
+            pad: PaddingSpec::Valid,
+            strides: tvec!(1, 1),
+            dilations: tvec!(1, 1),
+        },
+    );
+
     suite.add(
         "trivial_0",
         ConvProblem {

@@ -60,18 +60,33 @@ pub trait DimLike:
         (self.clone() + other - 1) / other
     }
 
-    /// Convert to regular integer.
-    fn to_i64(&self) -> TractResult<i64>;
+    /// Convert to regular integer, or a lightweight `TooEarly` for a symbolic
+    /// dim. The error carries no anyhow conversion or backtrace, so discarding
+    /// it to probe concreteness is cheap; `?` in a `TractResult` context still
+    /// promotes it to a full error.
+    fn to_i64(&self) -> Result<i64, TooEarly>;
 
-    fn to_usize(&self) -> TractResult<usize> {
+    /// Non-erroring counterpart of `to_i64`: `Some` iff the dim is a plain
+    /// constant, `None` for a symbolic or undetermined dim.
+    fn as_i64(&self) -> Option<i64>;
+
+    fn to_usize(&self) -> Result<usize, TooEarly> {
         self.to_i64().map(|d| d as usize)
     }
 
-    fn to_isize(&self) -> TractResult<isize> {
+    fn as_usize(&self) -> Option<usize> {
+        self.as_i64().map(|d| d as usize)
+    }
+
+    fn to_isize(&self) -> Result<isize, TooEarly> {
         self.to_i64().map(|d| d as isize)
     }
 
-    fn to_i32(&self) -> TractResult<i32> {
+    fn as_isize(&self) -> Option<isize> {
+        self.as_i64().map(|d| d as isize)
+    }
+
+    fn to_i32(&self) -> Result<i32, TooEarly> {
         self.to_i64().map(|d| d as i32)
     }
 
@@ -158,8 +173,12 @@ impl DimLike for TDim {
         Ok(((TDim::Mul(num) * num_int).reduce(), denum_int as u64))
     }
 
-    fn to_i64(&self) -> TractResult<i64> {
+    fn to_i64(&self) -> Result<i64, TooEarly> {
         TDim::to_i64(self)
+    }
+
+    fn as_i64(&self) -> Option<i64> {
+        TDim::as_i64(self)
     }
 
     fn eval(&self, values: &SymbolValues) -> Self {
@@ -215,8 +234,12 @@ impl DimLike for usize {
         Ok((self / gcd, (other / gcd) as u64))
     }
 
-    fn to_i64(&self) -> TractResult<i64> {
+    fn to_i64(&self) -> Result<i64, TooEarly> {
         Ok(*self as i64)
+    }
+
+    fn as_i64(&self) -> Option<i64> {
+        Some(*self as i64)
     }
 
     fn eval(&self, _values: &SymbolValues) -> Self {
@@ -261,7 +284,7 @@ impl DimLike for usize {
 impl<'a> std::convert::TryFrom<&'a TDim> for usize {
     type Error = TractError;
     fn try_from(d: &'a TDim) -> TractResult<usize> {
-        d.to_usize()
+        Ok(d.to_usize()?)
     }
 }
 

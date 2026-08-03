@@ -61,7 +61,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -94,7 +94,7 @@ jobs:
           if [ -n "$MUSL" ]
           then
             MUSL_TRIPLE="$MUSL"
-            curl -s https://s3.amazonaws.com/tract-ci-builds/toolchains/${MUSL_TRIPLE}-cross.tgz | tar zx
+            curl -s https://tract-test-assets.tract.rs/toolchains/${MUSL_TRIPLE}-cross.tgz | tar zx
 
             MUSL_BIN=`pwd`/${MUSL_TRIPLE}-cross/bin
             export PATH=$MUSL_BIN:$PATH
@@ -136,7 +136,7 @@ jobs:
           upload-release-assets: false
 
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
         with:
           subject-path: tract-${{ matrix.target }}-${{ steps.version.outputs.value }}.tgz
 

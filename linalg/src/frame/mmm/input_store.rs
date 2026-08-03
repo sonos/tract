@@ -21,6 +21,12 @@ pub trait MMMInputFormat:
         mn_axis: usize,
     ) -> TractResult<Box<dyn MMMInputValue>>;
     fn precursor(&self) -> WeightType;
+    /// Round `tensor` through the numeric precision this format stores its data
+    /// in, so a reference matmul can reproduce the kernel's pack-time precision
+    /// loss. Default: identity, for formats that store inputs losslessly.
+    fn simulate_precision_loss(&self, tensor: Tensor) -> TractResult<Tensor> {
+        Ok(tensor)
+    }
     fn r(&self) -> usize;
     fn k_alignment(&self) -> usize;
     fn merge_with<'o, 'a: 'o, 'b: 'o>(

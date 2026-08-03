@@ -6,13 +6,7 @@ use crate::ops::nn::Sigmoid;
 use tract_data::half::f16;
 
 element_wise!(silu, Silu,
-    [f16] => |_, xs| {
-        xs.iter_mut().for_each(|x| {
-            let xf = x.to_f32();
-            *x = f16::from_f32(xf / (1.0 + (-xf).exp()));
-        });
-        Ok(())
-    },
+    [f16] => |_, xs| { (tract_linalg::ops().silu_f16)().run(xs) },
     [f32] => |_, xs| { (tract_linalg::ops().silu_f32)().run(xs) };
     cost: |dt| {tvec!((Cost::FMA(dt), 12), (Cost::Div(dt), 1))};
     declutter: detect_silu

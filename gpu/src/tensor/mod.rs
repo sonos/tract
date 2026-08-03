@@ -272,15 +272,3 @@ impl DeviceTensorExt for Tensor {
         self.storage_as::<DeviceTensor>()
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_device_tensor() -> TractResult<()> {
-        let a = DeviceTensor::from_shape(&[1], &[0f32])?;
-        assert_eq!(a.to_host()?.try_as_plain()?.as_slice::<f32>()?, &[0.0]);
-        Ok(())
-    }
-}

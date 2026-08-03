@@ -57,6 +57,20 @@ pub fn read_metrics(path: &str) -> Vec<(String, f64)> {
     let mut out = vec![];
     let Ok(content) = std::fs::read_to_string(path) else { return out };
     for line in content.lines() {
+        let line = line.trim();
+        // A run on a remote target returns metrics as JSONL on captured stdout
+        // (`{"metric":..,"value":..}`); a local run writes `name value` lines.
+        if line.starts_with('{') {
+            if let Ok(m) = serde_json::from_str::<serde_json::Value>(line) {
+                if let (Some(name), Some(v)) = (
+                    m.get("metric").and_then(|x| x.as_str()),
+                    m.get("value").and_then(|x| x.as_f64()),
+                ) {
+                    out.push((name.replace('-', "_"), v));
+                }
+            }
+            continue;
+        }
         let p: Vec<&str> = line.split_whitespace().collect();
         if p.len() >= 2 {
             if let Ok(v) = p[1].parse::<f64>() {
@@ -166,6 +180,28 @@ tg = 3
         assert_eq!(latest_value(&[Some(1.0), Some(2.0), None]), Some(2.0));
         assert_eq!(latest_value(&[Some(1.0), None, Some(100.0)]), Some(100.0));
         assert_eq!(latest_value(&[None, None]), None);
+    }
+
+    #[test]
+    fn read_metrics_accepts_jsonl_and_key_value() {
+        let dir = std::env::temp_dir().join("tract_read_metrics_test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let jsonl = dir.join("m.jsonl");
+        std::fs::write(
+            &jsonl,
+            "{\"metric\":\"net.foo.evaltime.pass\",\"value\":0.5}\n{\"metric\":\"net.bar-baz.x.v\",\"value\":2}\n",
+        )
+        .unwrap();
+        assert_eq!(
+            read_metrics(jsonl.to_str().unwrap()),
+            vec![("net.foo.evaltime.pass".to_string(), 0.5), ("net.bar_baz.x.v".to_string(), 2.0)]
+        );
+        let kv = dir.join("m.txt");
+        std::fs::write(&kv, "net.foo.evaltime.pass 0.5\nnet.bar-baz.x.v 2\n").unwrap();
+        assert_eq!(
+            read_metrics(kv.to_str().unwrap()),
+            vec![("net.foo.evaltime.pass".to_string(), 0.5), ("net.bar_baz.x.v".to_string(), 2.0)]
+        );
     }
 
     #[test]

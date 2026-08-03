@@ -175,11 +175,23 @@ pub mod test_x86_64_avx512_leaky_relu_f32_64n {
     );
 }
 
-// SiLU(x) = x * sigmoid(x). Composed at the kernel level (mirrors arm64): save
-// the input chunk, run the AVX-512 sigmoid kernel in place, then multiply back
-// by the saved original. nr() and CHUNK (256) are multiples of 16 so the
-// sigmoid kernel always receives a 64-byte-aligned slice whose length is a
-// multiple of 16.
+// SiLU(x) = f * sigmoid(z), with z = clamp(x, -18.0, 18.0) and f = max(x, -18.0).
+// The kernel-level composition mirrors the arm64 fused SiLU clamping strategy, not its
+// exact bounds: save the input chunk, run the AVX-512 sigmoid kernel in place (it clamps
+// its argument to z internally), then multiply back by the factor f. The factor floor
+// must equal the sigmoid kernel's own clamp, which here is -18.0 (the AVX-512 sigmoid's
+// range).
+//
+// The factor f is clamped below at -18.0 but left unbounded above: SiLU(x) ~ x as
+// x -> +inf, so the factor must grow, whereas the upper clamp on z is only there to
+// keep the sigmoid polynomial in range. Clamping f below keeps the negative tail
+// bounded: since sigmoid is floored at sigmoid(-18.0), an unclamped factor would let
+// x * sigmoid(-18.0) diverge toward -inf, while the clamped factor saturates at the
+// constant -18.0 * sigmoid(-18.0) ~= -2.74e-7, which the true SiLU approaches from
+// below as x -> -inf.
+//
+// nr() and CHUNK (256) are multiples of 16 so the sigmoid kernel always receives a
+// 64-byte-aligned slice whose length is a multiple of 16.
 ew_impl_wrap!(
     f32,
     x86_64_avx512_silu_f32_16n,
@@ -200,7 +212,7 @@ ew_impl_wrap!(
             scratch[..n].copy_from_slice(chunk);
             super::avx512_sigmoid_f32::run(chunk, ());
             for i in 0..n {
-                chunk[i] *= scratch[i];
+                chunk[i] *= scratch[i].max(-18.0);
             }
             start = end;
         }

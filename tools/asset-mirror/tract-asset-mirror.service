@@ -1,0 +1,36 @@
+[Unit]
+Description=tract asset mirror (LAN caching reverse-proxy for CI/bench model assets)
+Documentation=https://github.com/sonos/tract
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# --- adjust these to your box ---------------------------------------------
+User=pi
+# Point --cache-dir at the seeded models folder. It must be writable by User
+# above and listed in ReadWritePaths below.
+ExecStart=/usr/local/bin/tract-asset-mirror \
+    --listen 0.0.0.0:8080 \
+    --cache-dir /srv/tract-assets \
+    --origin https://tract-test-assets.tract.rs
+ReadWritePaths=/srv/tract-assets
+# --------------------------------------------------------------------------
+
+Restart=on-failure
+RestartSec=5
+
+# Hardening. If systemd is ancient (Raspbian jessie / v< 232) and refuses to
+# start, drop the Protect*/Restrict*/Lock* lines below.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ProtectControlGroups=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+
+[Install]
+WantedBy=multi-user.target

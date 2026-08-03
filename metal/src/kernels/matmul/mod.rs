@@ -222,6 +222,14 @@ pub trait GemmKernel:
         Ok(a_dt)
     }
 
+    /// Datum type the kernel accumulates in for the given operand dtype. The
+    /// default (f32) keeps the proptest reference accurate; a kernel that
+    /// accumulates in operand precision must override, else the reference is
+    /// unfairly more accurate than the kernel and flags spurious mismatches.
+    fn accumulator_dt(_operand: DatumType) -> DatumType {
+        DatumType::F32
+    }
+
     fn dispatch_eval(
         &self,
         stream: &MetalStream,
@@ -877,7 +885,11 @@ mod tests {
                 transpose_b: self.transpose_rhs,
                 transpose_c: false,
                 quantize_output: None,
-                operating_dt: Some(F::datum_type()),
+                // Accumulate the golden in each kernel's own accumulation precision. GGML/MLX
+                // accumulate in f32, so a f16 reference accumulator would be noisier than the
+                // kernel it checks and flag spurious mismatches at large k; MFA's GEMM instead
+                // accumulates in the operand dtype.
+                operating_dt: Some(K::accumulator_dt(F::datum_type())),
             };
 
             let lhs_tensor = if self.transpose_lhs {

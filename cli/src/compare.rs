@@ -340,7 +340,7 @@ pub fn handle_stream(
     let plan = Arc::new(model.as_ref().clone().into_runnable()?);
     let mut state = SimpleState::new(&plan)?;
     let input_shape: TVec<usize> =
-        model_input_fact.shape.iter().map(|d| d.to_usize()).collect::<TractResult<TVec<_>>>()?;
+        model_input_fact.shape.iter().map(|d| d.to_usize()).collect::<Result<TVec<_>, _>>()?;
 
     let mut node_slices: HashMap<String, Vec<Tensor>> = HashMap::new();
     let mut node_axes: HashMap<String, usize> = HashMap::new();

@@ -36,6 +36,7 @@ mod bench_report;
 mod bench_suite;
 mod compare;
 mod cost;
+mod cost_model;
 mod dump;
 mod hwbench;
 #[cfg(feature = "transformers")]
@@ -175,6 +176,7 @@ fn main() -> TractResult<()> {
 
 
         .arg(arg!(--"threads" [THREADS] "Setup a thread pool for computing. 0 will guess the number of physical cores"))
+        .arg(arg!(--"threading-threshold" [ELEMENTS] "Element-count below which row-parallel ops (softmax, norm, elementwise) run inline. 0 always threads"))
 
         .arg(arg!(-O --optimize "Optimize before running"))
         .arg(arg!(--"assert-maximal-mm-quality-cost" [MAX] "Maximum value for quality category (0=assembly, 4=dreadful rust code)"))
@@ -187,7 +189,8 @@ fn main() -> TractResult<()> {
         .subcommand(Command::new("list-ops").about("List ops in TF/ONNX frameworks"))
         .subcommand(Command::new("list-runtimes").about("List runtimes"))
         .subcommand(Command::new("kernels").about("Print kernels for the current plaform"))
-        .subcommand(Command::new("hwbench").about("Print current hardware key metrics"))
+        .subcommand(hwbench::command())
+        .subcommand(cost_model::command())
         .subcommand(
             Command::new("list-knobs").about("List runtime configuration knobs and their values"),
         );
@@ -255,24 +258,7 @@ fn main() -> TractResult<()> {
 
     #[cfg(feature = "bench-suite")]
     {
-        app = app.subcommand(
-            clap::Command::new("bench-suite")
-                .long_about("Run a TOML manifest of benches, one fresh child process each.")
-                .arg(arg!(--manifest [PATH] "Bench manifest (default: benches.toml)"))
-                .arg(arg!(--"cache-dir" [PATH] "Model cache dir (default: $CACHEDIR or ~/.cache/tract-ci-minion-models)"))
-                .arg(arg!(--output [PATH] "Metrics output file (default: metrics)"))
-                .arg(arg!(--filter [SUBSTR] "Only run benches whose name contains SUBSTR"))
-                .arg(arg!(--"no-fetch" "Do not fetch models; use the cache as-is"))
-                .arg(arg!(--"skip-cpu" "Skip CPU runs: drop backend-less (net) benches and the cpu backend of the rest. For GPU-only devices whose CPU is redundant with another arm64/x86 box."))
-                .arg(arg!(--expectations [PATH] "Pre-computed expectations file; re-run benches that would show a PR red"))
-                .arg(arg!(--"retry-max" [N] "Max re-runs of an out-of-threshold bench (default: 2)"))
-                .arg(arg!(--"second-pass-max" [N] "Re-run survivors after the whole suite only when at most N remain red (default: 2)"))
-                .arg(arg!(--"samples" [N] "Reference mode: run each bench N times and record the per-metric median, instead of the PR retry-until-good-enough. Used for the nightly reference."))
-                .arg(arg!(--"bench-data" [DIR] "Compute expectations inline from this bench-data checkout (alternative to --expectations)"))
-                .arg(arg!(--thresholds [PATH] "Threshold config TOML (with --bench-data)"))
-                .arg(arg!(--triple [TRIPLE] "Target triple (with --bench-data)"))
-                .arg(arg!(--device [DEVICE] "Device key (with --bench-data)")),
-        );
+        app = app.subcommand(bench_suite::command());
         app = app.subcommand(
             clap::Command::new("bench-expectations")
                 .long_about("Emit per-metric expectations for one (triple, device) from bench-data history.")
@@ -291,6 +277,7 @@ fn main() -> TractResult<()> {
                 .arg(arg!(--device <DEVICE> "Device key"))
                 .arg(arg!(--day [DATE] "Run day YYYY-MM-DD (default: today)")),
         );
+        app = app.subcommand(bench_suite::diff_command());
         app = app.subcommand(
             clap::Command::new("bench-report")
                 .long_about("Render the PR-vs-main bench comparison comment + job summary.")
@@ -301,6 +288,13 @@ fn main() -> TractResult<()> {
                 .arg(arg!(--out <PATH> "PR comment markdown output path"))
                 .arg(arg!(--templates [DIR] "Template dir (default: .travis)"))
                 .arg(arg!(--today [DATE] "Override today's date YYYY-MM-DD (for reproducible output)")),
+        );
+        app = app.subcommand(
+            clap::Command::new("bench-mt-report")
+                .long_about("Render the thread-scaling (mt-ladder) table; no bench-data reference.")
+                .arg(arg!(--results <DIR> "Dir of per-device result subdirs (meta.json + metrics)"))
+                .arg(arg!(--"pr-sha" <SHA> "PR commit sha"))
+                .arg(arg!(--out <PATH> "PR comment markdown output path")),
         );
     }
 
@@ -821,7 +815,8 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
             }
             return Ok(());
         }
-        Some(("hwbench", _)) => return hwbench::handle(),
+        Some(("hwbench", m)) => return hwbench::handle(m),
+        Some(("cost-model", m)) => return cost_model::handle(m),
         #[cfg(feature = "bench-suite")]
         Some(("bench-suite", m)) => return bench_suite::handle(m),
         #[cfg(feature = "bench-suite")]
@@ -829,7 +824,11 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
         #[cfg(feature = "bench-suite")]
         Some(("bench-expectations", m)) => return bench_expectations::handle(m),
         #[cfg(feature = "bench-suite")]
+        Some(("bench-diff", m)) => return bench_suite::diff(m),
+        #[cfg(feature = "bench-suite")]
         Some(("bench-report", m)) => return bench_report::handle(m),
+        #[cfg(feature = "bench-suite")]
+        Some(("bench-mt-report", m)) => return bench_report::handle_mt(m),
         Some(("kernels", _)) => {
             println!();
             fn colored_name(m: &dyn MatMatMul) -> String {
@@ -945,6 +944,10 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
     #[cfg(not(feature = "multithread-mm"))]
     if matches.get_one::<String>("threads").is_some() {
         bail!("tract is compiled without multithread support")
+    }
+    #[cfg(feature = "multithread-mm")]
+    if let Some(threshold) = matches.get_one::<String>("threading-threshold") {
+        multithread::set_threading_element_threshold(threshold.parse()?);
     }
 
     match matches.subcommand() {

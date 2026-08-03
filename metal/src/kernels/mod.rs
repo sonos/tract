@@ -2,9 +2,11 @@
 
 pub mod array;
 pub mod bin_ops;
+pub mod causal_conv1d_update;
 pub mod conv;
 pub mod element_wise;
 pub mod fft;
+pub mod gdn_recurrent;
 pub mod matmul;
 pub mod moe;
 pub mod nn;
@@ -34,6 +36,7 @@ const CONV_OPS: &str = include_str!("conv.metal");
 const ELEMENT_WISE_OPS: &str = include_str!("element_wise.metal");
 const FFT_OPS: &str = include_str!("fft.metal");
 const MOE_OPS: &str = include_str!("moe.metal");
+const GDN_RECURRENT: &str = include_str!("gdn_recurrent.metal");
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum LibraryContent<'a> {
@@ -55,6 +58,7 @@ pub enum LibraryName {
     MoeOps,
     Ggml,
     Fft,
+    GdnRecurrent,
 }
 
 impl LibraryName {
@@ -72,6 +76,7 @@ impl LibraryName {
             Self::MlxGemv => LibraryContent::Source(MLX_GEMV),
             Self::Ggml => LibraryContent::Source(GGML),
             Self::Fft => LibraryContent::Source(FFT_OPS),
+            Self::GdnRecurrent => LibraryContent::Source(GDN_RECURRENT),
         }
     }
 }

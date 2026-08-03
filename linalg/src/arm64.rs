@@ -1,16 +1,20 @@
 #![allow(clippy::excessive_precision)]
 #[cfg(any(target_os = "macos", all(target_os = "ios", feature = "apple-amx-ios")))]
 mod apple_amx;
+#[cfg(target_os = "macos")]
+mod apple_m1_linear;
+#[cfg(target_os = "macos")]
+mod apple_m4_linear;
 mod arm64simd;
-pub mod cortex_a53;
-mod cortex_a55;
+mod cortex_a53_linear;
+mod cortex_a53_mmv_linear;
+mod cortex_a55_linear;
+mod cortex_a55_mmv_linear;
 // `tract_sme` is set by build.rs only when the assembler can assemble SME
 // (gates out e.g. the old Debian stretch aarch64 toolchain).
 #[cfg(all(any(target_os = "macos", target_os = "linux"), tract_sme))]
 mod sme;
 mod sve;
-//mod cortex_a72;
-//mod cortex_a73;
 pub use arm64simd::*;
 
 #[cfg(not(feature = "no_fp16"))]
@@ -130,6 +134,17 @@ fn apple_get_syscall(key: &str) -> String {
 
         apple_string_from_c_bytes(&buf)
     }
+}
+
+/// The Apple silicon generation, from the CPU brand string, for per-chip cost-model
+/// selection. Returns `None` for chips without a fitted model (they keep the default
+/// dispatch). Distinct chips need distinct models: e.g. M1 has AMX, M4 has SME.
+#[cfg(target_os = "macos")]
+fn apple_chip() -> Option<&'static str> {
+    let brand = apple_get_syscall("machdep.cpu.brand_string");
+    [("M1", "m1"), ("M2", "m2"), ("M3", "m3"), ("M4", "m4")]
+        .into_iter()
+        .find_map(|(needle, id)| brand.contains(needle).then_some(id))
 }
 
 #[cfg(all(test, any(target_os = "macos", target_os = "ios")))]
@@ -399,27 +414,45 @@ pub fn plug(ops: &mut Ops) {
         ops.qmmm_i32 = Box::new(|_, _, _| arm64simd_mmm_i32_8x8.mmm());
     }
     ops.qmmv_i32 = Box::new(|_, _| arm64simd_mmm_i32_64x1.mmm());
+    let impls = ops.mmm_impls.clone();
+    // n==1: below the fixed kernel's mr, a narrower/better-fitting kernel wins (the 64x1 pays
+    // full mr-padding), so consult the cost model; at or above mr the fixed 64x1 is already
+    // optimal and the model only second-guesses it into knife-edge mispicks, so keep it.
     ops.mmv_f32 = match *KIND {
-        Kind::CortexA53 => Box::new(|_, _| arm64simd_mmm_f32_64x1_a53.mmm()),
-        Kind::CortexA55 => Box::new(|_, _| arm64simd_mmm_f32_64x1_a55.mmm()),
+        Kind::CortexA53 => {
+            let model = cortex_a53_mmv_linear::linear_model();
+            let impls = impls.clone();
+            Box::new(move |m, k| match m {
+                Some(m) if m < 64 => model.pick(&impls, Some(m), k, Some(1)),
+                _ => arm64simd_mmm_f32_64x1_a53.mmm(),
+            })
+        }
+        Kind::CortexA55 => {
+            let model = cortex_a55_mmv_linear::linear_model();
+            let impls = impls.clone();
+            Box::new(move |m, k| match m {
+                Some(m) if m < 64 => model.pick(&impls, Some(m), k, Some(1)),
+                _ => arm64simd_mmm_f32_64x1_a55.mmm(),
+            })
+        }
         _ => Box::new(|_, _| arm64simd_mmm_f32_64x1_gen.mmm()),
     };
-    let model = match *KIND {
-        Kind::CortexA53 => Some(cortex_a53::model()),
-        Kind::CortexA55 => Some(cortex_a55::model()),
-        _ => None,
-    };
-    let impls = ops.mmm_impls.clone();
-    ops.mmm_f32 = if let Some(model) = model {
-        Box::new(move |m, k, n| model.pick(&impls, m, k, n))
-    } else {
-        Box::new(move |_, _, n| {
+    ops.mmm_f32 = match *KIND {
+        Kind::CortexA53 => {
+            let model = cortex_a53_linear::linear_model();
+            Box::new(move |m, k, n| model.pick(&impls, m, k, n))
+        }
+        Kind::CortexA55 => {
+            let model = cortex_a55_linear::linear_model();
+            Box::new(move |m, k, n| model.pick(&impls, m, k, n))
+        }
+        _ => Box::new(move |_, _, n| {
             if n.unwrap_or(8) < 8 {
                 arm64simd_mmm_f32_16x4_gen.mmm()
             } else {
                 arm64simd_mmm_f32_8x8_gen.mmm()
             }
-        })
+        }),
     };
     #[cfg(feature = "no_fp16")]
     if has_fp16() {
@@ -474,8 +507,12 @@ pub fn plug(ops: &mut Ops) {
         ops.max_f16 = Box::new(|| arm64fp16_max_f16_32n::red());
         ops.sum_f16 = Box::new(|| arm64fp16_sum_f16_32n::red());
         ops.mul_by_scalar_f16 = Box::new(|| arm64fp16_mul_by_scalar_f16_32n::ew());
+        // TODO: Change this SiLU kernel once we have a native-FP16 one
+        ops.silu_f16 = Box::new(|| arm64simd_silu_f16_4n::ew());
     } else {
-        log::info!("No native fp16 support");
+        log::info!("No native fp16 support; f32-roundtrip NEON sigmoid_f16 and silu_f16 activated");
+        ops.sigmoid_f16 = Box::new(|| arm64simd_sigmoid_f16_4n::ew());
+        ops.silu_f16 = Box::new(|| arm64simd_silu_f16_4n::ew());
     }
     #[cfg(any(target_os = "macos", all(target_os = "ios", feature = "apple-amx-ios")))]
     {
@@ -486,4 +523,21 @@ pub fn plug(ops: &mut Ops) {
         sme::plug(ops);
     }
     sve::plug(ops);
+
+    // Per-chip Apple f32 matmul cost model, installed last so it takes precedence
+    // over the apple_amx heuristic and the always-SME default. Only chips with a
+    // fitted model override; others keep the dispatch set above.
+    #[cfg(target_os = "macos")]
+    {
+        let model = match apple_chip() {
+            Some("m1") => Some(apple_m1_linear::linear_model()),
+            Some("m4") => Some(apple_m4_linear::linear_model()),
+            _ => None,
+        };
+        if let Some(model) = model {
+            log::info!("Apple per-chip matmul LinearCostModel activated");
+            let impls = ops.mmm_impls.clone();
+            ops.mmm_f32 = Box::new(move |m, k, n| model.pick(&impls, m, k, n));
+        }
+    }
 }

@@ -20,6 +20,12 @@ impl GemmKernel for MfaGemm {
         "mfa"
     }
 
+    /// MFA's GEMM accumulates in the operand precision (its hgemm has no
+    /// f32-accumulator variant), so f16 inputs accumulate in f16.
+    fn accumulator_dt(operand: DatumType) -> DatumType {
+        operand
+    }
+
     fn dispatch_eval(
         &self,
         stream: &MetalStream,

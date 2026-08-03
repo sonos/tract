@@ -14,6 +14,7 @@ use tract_core::ops::cnn::conv::rewrite_kernel_conv_in_oihw;
 use tract_core::ops::cnn::{Conv, rewrite_conv_with_n_axis};
 use tract_core::ops::einsum::prefix_matmul::{PrefixMatMul, rewrite_einsum_to_prefix_matmul};
 use tract_core::ops::konst::Const;
+use tract_core::ops::nn::Reduce;
 use tract_core::tract_linalg::block_quant::Q4_0;
 use tract_core::transform::ModelTransform;
 use tract_gpu::fact::{DeviceFact, DeviceTypedFactExt};
@@ -153,6 +154,7 @@ impl MetalTransform {
             .with_rule_for("rewrite_kernel_conv_in_oihw", rewrite_kernel_conv_in_oihw)
             .with_rule_for("rewrite_conv_with_n_axis", rewrite_conv_with_n_axis)
             .with_rule_for("remove_rms_norm_cast", remove_rms_norm_cast)
+            .with_rule_for("split_multi_axis_reduce", split_multi_axis_reduce)
             .rewrite(&(), model)?;
 
         if stop_at_phase == 1 {
@@ -845,7 +847,27 @@ fn convert_matmul_to_metal(
     op: &PrefixMatMul,
     gemm_impl: Option<MetalGemmImplKind>,
 ) -> TractResult<TVec<OutletId>> {
-    let mut input_facts = model.node_input_facts(node.id)?;
+    let mut owned_facts: TVec<TypedFact> =
+        model.node_input_facts(node.id)?.iter().map(|f| (*f).clone()).collect();
+
+    // The metal GEMMs accumulate in their input dtype, so a matmul asking for a wider
+    // `operating_dt` than its inputs must have them cast up: an SDPA scores matmul is
+    // wired f32 precisely because its f16 products can leave f16 range, and a f16 GEMM
+    // would saturate them to inf.
+    if let Some(acc) = op.operating_dt {
+        for i in 0..2 {
+            let dt = owned_facts[i].datum_type;
+            if dt.is_float() && acc.is_float() && dt.size_of() < acc.size_of() {
+                inputs[i] = target.wire_node(
+                    format!("{}.cast_acc_{i}", node.name),
+                    metal_cast_new(acc).with_context(|| format!("No metal cast to {acc:?}"))?,
+                    &[inputs[i]],
+                )?[0];
+                owned_facts[i].datum_type = acc;
+            }
+        }
+    }
+    let mut input_facts: TVec<&TypedFact> = owned_facts.iter().collect();
 
     let expected_dt = model.node_output_facts(node.id)?[0].datum_type;
     let mut resolved_gemm_impl = resolve_gemm_impl(gemm_impl, input_facts.clone())?;
@@ -974,4 +996,29 @@ fn convert_const(op: &Const) -> TractResult<Const> {
 
     let metal_const = op.val().clone().into_device()?.into_tensor().into_arc_tensor();
     Const::new_with_exotic_fact(metal_const, Box::new(metal_fact))
+}
+
+/// Rewrites a `Reduce` over several axes into a chain of single-axis reduces, which is
+/// what `GpuReduce` accepts. Only reducers that compose associatively per axis qualify:
+/// `MeanOfSquares` over a chain is not the multi-axis result.
+fn split_multi_axis_reduce(
+    _ctx: &(),
+    model: &TypedModel,
+    node: &TypedNode,
+    node_name: &str,
+    op: &Reduce,
+) -> TractResult<Option<TypedModelPatch>> {
+    rule_if!(op.axes.len() > 1);
+    use tract_core::ops::nn::Reducer::*;
+    rule_if!(matches!(op.reducer, Sum | Prod | Min | Max | Any | All));
+    let mut patch = TypedModelPatch::default();
+    let mut wire = patch.tap_model(model, node.inputs[0])?;
+    let mut axes = op.axes.clone();
+    axes.sort();
+    for (i, &axis) in axes.iter().rev().enumerate() {
+        let single = Reduce { axes: tvec![axis], reducer: op.reducer };
+        wire = patch.wire_node(format!("{node_name}.axis_{i}"), single, &[wire])?[0];
+    }
+    patch.shunt_outside(model, node.id.into(), wire)?;
+    Ok(Some(patch))
 }

@@ -75,6 +75,9 @@ MMMExternKernel!(fma_mmm_f32_64x1<f32>(64,1)@(256,4) where(FMA) quality(Manually
 pub fn pq40_r32() -> PackedBlockQuantFormat {
     PackedBlockQuantFormat::new(&Q4_0, 32, 16, false)
 }
+pub fn pq20t_r32() -> PackedBlockQuantFormat {
+    PackedBlockQuantFormat::new(&Q2_0_T, 32, 0, false)
+}
 MMMExternKernel! {fma_mmm_f32_32x1<f32>(32,1)@(256,4) where(FMA)
     packing[1] = q40f32 => |k| k.with_packing_a(pq40_r32());
     packing[2] = q40f16 => |k| k.with_packing(pq40_r32(), f16::packing(1));
@@ -389,11 +392,13 @@ pub fn plug_fma(ops: &mut Ops) {
         fma_mmm_f32_64x1.mmm(),
     ]);
 
-    ops.mmv_f32 = Box::new(|_, _| fma_mmm_f32_64x1.mmm());
+    if is_x86_feature_detected!("f16c") {
+        ops.mmm_impls.push(mmm::fma_mmm_f32_32x1.mmm()); // q40f32 requires f16c; also part of the pool
+        log::info!("found f16c, added fake-f16 and q40-able kernels");
+    }
 
-    // Hand-tuned for low N; calibration came from past measurements.
-    // For other N, fall back to a generic (M, N)-aware tile-utilisation
-    // picker over the same kernel pool.
+    // Fallback for non-Intel/AMD x86: hand-tuned low-N choices, then a generic
+    // (M, N)-aware tile-utilisation picker over the same pool.
     const FMA_CHOICES: &[KernelChoice] = &[
         KernelChoice { mr: 8, nr: 8, scale: 44.0 / 60.0, ctor: || fma_mmm_f32_8x8.mmm() },
         KernelChoice { mr: 16, nr: 6, scale: 54.0 / 60.0, ctor: || fma_mmm_f32_16x6.mmm() },
@@ -403,23 +408,34 @@ pub fn plug_fma(ops: &mut Ops) {
         KernelChoice { mr: 40, nr: 2, scale: 54.0 / 60.0, ctor: || fma_mmm_f32_40x2.mmm() },
     ];
 
-    ops.mmm_f32 = Box::new(|m, _, n| match n {
-        None => fma_mmm_f32_16x6.mmm(),
-        Some(1) => unreachable!("should've been mmv"),
-        Some(2) => fma_mmm_f32_40x2.mmm(),
-        Some(3) => fma_mmm_f32_32x3.mmm(),
-        Some(4) => fma_mmm_f32_24x4.mmm(),
-        Some(5) => fma_mmm_f32_16x5.mmm(),
-        Some(6) => fma_mmm_f32_16x6.mmm(),
-        Some(8) => fma_mmm_f32_8x8.mmm(),
-        Some(_) => pick_mmm(FMA_CHOICES, m, n),
-    });
-    log::info!("mmm_f32, mmv_f32: x86_64/fma activated");
+    // mmv (n==1) has no dedicated n=1-calibrated model on the fma-only path yet; keep the
+    // fixed matvec kernel. Routing n==1 through the n>=2-fit mmm model mispicks (matvec
+    // kernels are only ever run at n==1, so their mmm coeffs are unrepresentative).
+    ops.mmv_f32 = Box::new(|_, _| fma_mmm_f32_64x1.mmm());
 
-    if is_x86_feature_detected!("f16c") {
-        ops.mmm_impls.push(mmm::fma_mmm_f32_32x1.mmm()); // q40f32 requires f16c
-        log::info!("found f16c, added fake-f16 and q40-able kernels");
-    }
+    let impls = ops.mmm_impls.clone();
+    ops.mmm_f32 = match super::vendor() {
+        super::Vendor::Intel => {
+            let mdl = super::intel_fma_linear::linear_model();
+            Box::new(move |m, k, n| mdl.pick(&impls, m, k, n))
+        }
+        super::Vendor::Amd => {
+            let mdl = super::amd_fma_linear::linear_model();
+            Box::new(move |m, k, n| mdl.pick(&impls, m, k, n))
+        }
+        super::Vendor::Other => Box::new(|m, _, n| match n {
+            None => fma_mmm_f32_16x6.mmm(),
+            Some(1) => unreachable!("should've been mmv"),
+            Some(2) => fma_mmm_f32_40x2.mmm(),
+            Some(3) => fma_mmm_f32_32x3.mmm(),
+            Some(4) => fma_mmm_f32_24x4.mmm(),
+            Some(5) => fma_mmm_f32_16x5.mmm(),
+            Some(6) => fma_mmm_f32_16x6.mmm(),
+            Some(8) => fma_mmm_f32_8x8.mmm(),
+            Some(_) => pick_mmm(FMA_CHOICES, m, n),
+        }),
+    };
+    log::info!("mmm_f32, mmv_f32: x86_64/fma activated");
 }
 
 pub fn plug_avx512f(ops: &mut Ops) {
@@ -431,30 +447,64 @@ pub fn plug_avx512f(ops: &mut Ops) {
     ops.mmm_impls.push(avx512_mmm_f32_32x5.mmm());
     ops.mmm_impls.push(avx512_mmm_f32_16x12.mmm());
     ops.mmm_impls.push(avx512_mmm_f32_16x8.mmm());
-    ops.mmv_f32 = Box::new(|m, _k| match m {
-        Some(m) if m < 31 => avx512_mmm_f32_16x1.mmm(),
-        _ => avx512_mmm_f32_128x1.mmm(),
-    });
-
-    // No measured per-kernel scaling on AVX-512 yet; all kernels start
-    // at 1.0 and the picker decides on (M, N) tile waste alone.
-    const AVX512_CHOICES: &[KernelChoice] = &[
-        KernelChoice { mr: 16, nr: 8, scale: 1.0, ctor: || avx512_mmm_f32_16x8.mmm() },
-        KernelChoice { mr: 16, nr: 12, scale: 1.0, ctor: || avx512_mmm_f32_16x12.mmm() },
-        KernelChoice { mr: 32, nr: 5, scale: 1.0, ctor: || avx512_mmm_f32_32x5.mmm() },
-        KernelChoice { mr: 32, nr: 6, scale: 1.0, ctor: || avx512_mmm_f32_32x6.mmm() },
-        KernelChoice { mr: 48, nr: 4, scale: 1.0, ctor: || avx512_mmm_f32_48x4.mmm() },
-        KernelChoice { mr: 64, nr: 3, scale: 1.0, ctor: || avx512_mmm_f32_64x3.mmm() },
-        KernelChoice { mr: 80, nr: 2, scale: 1.0, ctor: || avx512_mmm_f32_80x2.mmm() },
-        KernelChoice { mr: 128, nr: 1, scale: 1.0, ctor: || avx512_mmm_f32_128x1.mmm() },
+    ops.mmm_impls.push(avx512_mmm_f32_16x1.mmm()); // mmv candidate (nr==1; excluded from n>=2 picks)
+    // Pool spans both instruction sets: on avx512 hardware the 256-bit FMA
+    // kernels reach comparable f32 throughput and win the small-N tiles the
+    // avx512 kernels have no matching `nr` for (e.g. n=2 -> 40x2, n=4 -> 24x4).
+    // `scale` is relative throughput at full tile fill, measured together with
+    // `tract hwbench 3840,256,120,f32` (M,N divide every mr/nr) and normalised
+    // to the fastest kernel.
+    const X86_F32_CHOICES: &[KernelChoice] = &[
+        KernelChoice { mr: 16, nr: 12, scale: 1.000, ctor: || avx512_mmm_f32_16x12.mmm() },
+        KernelChoice { mr: 16, nr: 8, scale: 0.995, ctor: || avx512_mmm_f32_16x8.mmm() },
+        KernelChoice { mr: 32, nr: 5, scale: 0.992, ctor: || avx512_mmm_f32_32x5.mmm() },
+        KernelChoice { mr: 32, nr: 6, scale: 0.990, ctor: || avx512_mmm_f32_32x6.mmm() },
+        KernelChoice { mr: 48, nr: 4, scale: 0.978, ctor: || avx512_mmm_f32_48x4.mmm() },
+        KernelChoice { mr: 16, nr: 6, scale: 0.964, ctor: || fma_mmm_f32_16x6.mmm() },
+        KernelChoice { mr: 24, nr: 4, scale: 0.948, ctor: || fma_mmm_f32_24x4.mmm() },
+        KernelChoice { mr: 16, nr: 5, scale: 0.935, ctor: || fma_mmm_f32_16x5.mmm() },
+        KernelChoice { mr: 32, nr: 3, scale: 0.919, ctor: || fma_mmm_f32_32x3.mmm() },
+        KernelChoice { mr: 64, nr: 3, scale: 0.895, ctor: || avx512_mmm_f32_64x3.mmm() },
+        KernelChoice { mr: 40, nr: 2, scale: 0.842, ctor: || fma_mmm_f32_40x2.mmm() },
+        KernelChoice { mr: 8, nr: 8, scale: 0.788, ctor: || fma_mmm_f32_8x8.mmm() },
+        KernelChoice { mr: 80, nr: 2, scale: 0.766, ctor: || avx512_mmm_f32_80x2.mmm() },
+        KernelChoice { mr: 128, nr: 1, scale: 0.378, ctor: || avx512_mmm_f32_128x1.mmm() },
     ];
 
-    ops.mmm_f32 = Box::new(|m, _, n| {
-        if let Some(1) = n {
-            unreachable!("should've been mmv");
+    let impls = ops.mmm_impls.clone();
+    ops.mmv_f32 = match super::vendor() {
+        // n==1: below the widest matvec kernel's mr (128) the cost model picks a better-fitting
+        // kernel (16x1/32x1); at or above it the 128x1 is already optimal, so keep it.
+        super::Vendor::Intel => {
+            let mdl = super::intel_avx512_mmv_linear::linear_model();
+            let impls = impls.clone();
+            Box::new(move |m, k| match m {
+                Some(m) if m < 128 => mdl.pick(&impls, Some(m), k, Some(1)),
+                _ => avx512_mmm_f32_128x1.mmm(),
+            })
         }
-        pick_mmm(AVX512_CHOICES, m, n)
-    });
+        // amd has no n=1-calibrated mmv model yet; keep the fixed matvec dispatch.
+        _ => Box::new(|m, _k| match m {
+            Some(m) if m < 31 => avx512_mmm_f32_16x1.mmm(),
+            _ => avx512_mmm_f32_128x1.mmm(),
+        }),
+    };
+    ops.mmm_f32 = match super::vendor() {
+        super::Vendor::Intel => {
+            let mdl = super::intel_avx512_linear::linear_model();
+            Box::new(move |m, k, n| mdl.pick(&impls, m, k, n))
+        }
+        super::Vendor::Amd => {
+            let mdl = super::amd_avx512_linear::linear_model();
+            Box::new(move |m, k, n| mdl.pick(&impls, m, k, n))
+        }
+        super::Vendor::Other => Box::new(|m, _, n| {
+            if let Some(1) = n {
+                unreachable!("should've been mmv");
+            }
+            pick_mmm(X86_F32_CHOICES, m, n)
+        }),
+    };
     log::info!("mmm_f32, mmv_f32: x86_64/avx512f activated");
 }
 

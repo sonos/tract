@@ -220,7 +220,7 @@ impl OpState for State {
                 let scanning_dim = output
                     .full_dim_hint
                     .as_ref()
-                    .and_then(|d| d.to_usize().ok())
+                    .and_then(|d| d.as_usize())
                     .unwrap_or(shape[info.axis] * iters);
                 shape[info.axis] = scanning_dim;
                 let t = unsafe { Tensor::uninitialized_dt(fact.datum_type, &shape)? };

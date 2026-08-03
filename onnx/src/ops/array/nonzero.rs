@@ -1,38 +1,25 @@
 use tract_hir::internal::*;
-use tract_ndarray::Dimension;
 
 use crate::model::ParsingContext;
 use crate::pb::NodeProto;
-
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
-pub struct NonZero(Symbol);
 
 pub fn non_zero(
     ctx: &ParsingContext,
     _node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     // symbol table is shared between all templates and models
-    let x = ctx.template.symbols.new_with_prefix("x");
-    Ok((Box::new(NonZero(x)) as _, vec![]))
+    let count = ctx.template.symbols.new_with_prefix("x");
+    Ok((Box::new(NonZero { count }) as _, vec![]))
+}
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct NonZero {
+    count: Symbol,
 }
 
 impl NonZero {
-    unsafe fn eval_t<T: Datum + tract_num_traits::Zero>(input: &Tensor) -> TractResult<Tensor> {
-        unsafe {
-            let count = input.as_slice_unchecked::<T>().iter().filter(|d| !d.is_zero()).count();
-            let view = input.to_array_view_unchecked::<T>();
-            let mut output = Tensor::uninitialized::<i64>(&[input.rank(), count])?;
-            let mut view_mut: tract_ndarray::ArrayViewMut2<i64> =
-                output.to_array_view_mut_unchecked::<i64>().into_dimensionality().unwrap();
-            for (i, (coords, _)) in
-                view.indexed_iter().filter(|(_, value)| !value.is_zero()).enumerate()
-            {
-                view_mut
-                    .index_axis_mut(tract_ndarray::Axis(1), i)
-                    .assign(&coords.as_array_view().map(|d| *d as i64));
-            }
-            Ok(output)
-        }
+    fn typed(&self) -> tract_onnx_opl::non_zero::NonZero {
+        tract_onnx_opl::non_zero::NonZero { count: self.count.clone() }
     }
 }
 
@@ -41,7 +28,7 @@ impl Op for NonZero {
         "NonZero".into()
     }
 
-    op_as_typed_op!();
+    not_a_typed_op!();
 }
 
 impl EvalOp for NonZero {
@@ -50,15 +37,7 @@ impl EvalOp for NonZero {
     }
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        unsafe {
-            let input = args_1!(inputs);
-            let output = if input.datum_type() == bool::datum_type() {
-                Self::eval_t::<u8>(&input)?
-            } else {
-                dispatch_numbers!(Self::eval_t(input.datum_type())(&input))?
-            };
-            Ok(tvec!(output.into_tvalue()))
-        }
+        self.typed().eval(inputs)
     }
 }
 
@@ -77,13 +56,15 @@ impl InferenceRulesOp for NonZero {
         Ok(())
     }
 
-    as_op!();
-    to_typed!();
-}
-
-impl TypedOp for NonZero {
-    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(i64::fact(dims![inputs[0].rank(), self.0])))
+    fn to_typed(
+        &self,
+        _source: &InferenceModel,
+        node: &InferenceNode,
+        target: &mut TypedModel,
+        mapping: &std::collections::HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        let inputs = node.inputs.iter().map(|o| mapping[o]).collect::<TVec<_>>();
+        target.wire_node(&node.name, self.typed(), &inputs)
     }
 
     as_op!();

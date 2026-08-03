@@ -14,7 +14,7 @@ pub fn build_zero_inputs(model: &Runnable) -> Result<TVec<TValue>> {
     for &outlet in typed.input_outlets()?.iter() {
         let fact = typed.outlet_fact(outlet)?;
         let shape: Vec<usize> =
-            fact.shape.iter().map(|d| d.to_usize()).collect::<TractResult<Vec<_>>>()?;
+            fact.shape.iter().map(|d| d.to_usize()).collect::<Result<Vec<_>, _>>()?;
         let dt = fact.datum_type;
         let tensor = Tensor::zero_dt(dt, &shape)?;
         inputs.push(tensor.into_tvalue());

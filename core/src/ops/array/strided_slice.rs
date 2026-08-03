@@ -21,7 +21,7 @@ pub struct Dim {
 
 impl Dim {
     pub fn soft_len(&self) -> TractResult<TDim> {
-        if let Ok(len) = (self.end.clone() - &self.begin).to_isize() {
+        if let Some(len) = (self.end.clone() - &self.begin).as_i64() {
             Ok((((self.stride.abs() - 1) + len.abs() as i32) / self.stride.abs()).to_dim())
         } else if self.stride == 1 {
             Ok(self.end.clone() - &self.begin)
@@ -119,14 +119,14 @@ impl StridedSlice {
 
         let mut begin =
             begin.unwrap_or_else(|| if stride > 0 { 0.to_dim() } else { dim.clone() - 1 });
-        if begin.to_isize().map(|b| b < 0).unwrap_or(false) {
+        if begin.as_i64().map(|b| b < 0).unwrap_or(false) {
             if stride < 0 {
                 return Ok(Dim { begin: 0.to_dim(), end: 0.to_dim(), stride, shrink: false });
             } else {
                 begin = 0.to_dim();
             }
         }
-        if let (Ok(b), Ok(d)) = (begin.to_isize(), dim.to_isize())
+        if let (Some(b), Some(d)) = (begin.as_i64(), dim.as_i64())
             && b > d - 1
         {
             if stride > 0 {
@@ -137,14 +137,14 @@ impl StridedSlice {
         }
 
         let mut end = end.unwrap_or_else(|| if stride > 0 { dim.clone() } else { (-1).to_dim() });
-        if end.to_isize().map(|e| e < 0).unwrap_or(false) {
+        if end.as_i64().map(|e| e < 0).unwrap_or(false) {
             if stride > 0 {
                 return Ok(Dim { begin: 0.to_dim(), end: 0.to_dim(), stride, shrink: false });
             } else {
                 end = (-1).to_dim();
             }
         }
-        if let (Ok(e), Ok(d)) = (end.to_isize(), dim.to_isize())
+        if let (Some(e), Some(d)) = (end.as_i64(), dim.as_i64())
             && e > d - 1
         {
             if stride > 0 {
@@ -277,11 +277,10 @@ impl EvalOp for StridedSlice {
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let mut model = TypedModel::default();
         let scope = inputs.iter().find_map(|i| {
-            i.try_as_plain().ok().and_then(|d| {
-                d.as_slice::<TDim>()
-                    .ok()
-                    .and_then(|slice| slice.iter().find_map(|dim| dim.find_scope()))
-            })
+            if i.datum_type() != TDim::datum_type() {
+                return None;
+            }
+            i.try_as_plain().ok()?.as_slice::<TDim>().ok()?.iter().find_map(|dim| dim.find_scope())
         });
         model.symbols = scope.unwrap_or_default();
         let mut source = tvec!();

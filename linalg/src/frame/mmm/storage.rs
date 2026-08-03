@@ -10,7 +10,7 @@ use super::MMMInputValue;
 /// shape, replacing the previous `Tensor` + double-downcast pattern.
 #[derive(Clone, PartialEq, Eq)]
 pub struct PackedMatrixStorage {
-    values: Vec<Box<dyn MMMInputValue>>,
+    values: TVec<Box<dyn MMMInputValue>>,
     batch_shape: TVec<usize>,
     batch_strides: TVec<isize>,
 }
@@ -18,11 +18,11 @@ pub struct PackedMatrixStorage {
 impl PackedMatrixStorage {
     /// Scalar storage (one value, empty shape).
     pub fn new(value: Box<dyn MMMInputValue>) -> Self {
-        PackedMatrixStorage { values: vec![value], batch_shape: tvec![], batch_strides: tvec![] }
+        PackedMatrixStorage { values: tvec![value], batch_shape: tvec![], batch_strides: tvec![] }
     }
 
     /// Batched storage (shape like `[batch, group]`).
-    pub fn new_batched(shape: &[usize], values: Vec<Box<dyn MMMInputValue>>) -> Self {
+    pub fn new_batched(shape: &[usize], values: TVec<Box<dyn MMMInputValue>>) -> Self {
         let expected: usize = shape.iter().product();
         assert_eq!(values.len(), expected, "values length must match shape product");
         let strides = Self::compute_strides(shape);
@@ -153,7 +153,6 @@ pub struct OutputStore {
     pub(crate) panel_col_byte_stride: isize,
     pub(crate) item_size: usize,
     pub(crate) item_count: usize,
-    pub(crate) mr: usize,
 }
 
 unsafe impl Send for OutputStore {}
@@ -170,7 +169,6 @@ impl OutputStoreSpec {
             panel_row_byte_stride: row_byte_stride * mr as isize,
             panel_col_byte_stride: col_byte_stride * nr as isize,
             item_size: tensor.datum_type().size_of(),
-            mr,
             item_count: tensor.len(),
         }
     }
@@ -197,6 +195,15 @@ impl OutputStoreSpec {
 }
 
 impl OutputStore {
+    /// Retarget this store at `tensor`'s buffer, reusing the cached strides and
+    /// layout. Valid only when `tensor` has the same shape and datum type as the
+    /// one the store was built from (via [`OutputStoreSpec::wrap`]); the caller
+    /// must uphold that. Skips the stride/size recomputation `wrap` performs.
+    #[inline]
+    pub unsafe fn with_tensor(&self, tensor: &TensorView) -> OutputStore {
+        OutputStore { ptr: unsafe { tensor.as_ptr_unchecked::<u8>() } as _, ..*self }
+    }
+
     #[inline]
     pub(super) unsafe fn tile_c(&self, down: usize, right: usize) -> OutputStoreKer {
         unsafe {
@@ -250,14 +257,16 @@ impl OutputStore {
         tile: &OutputStoreKer,
     ) {
         unsafe {
-            let tile = tile.ptr as *mut T;
+            let src = tile.ptr as *const u8;
+            let src_rs = tile.row_byte_stride;
+            let src_cs = tile.col_byte_stride;
             let dst = self.ptr.add(
                 self.panel_row_byte_stride as usize * down
                     + self.panel_col_byte_stride as usize * right,
             );
             for y in 0..height as isize {
                 for x in 0..width as isize {
-                    let value = tile.offset(y + x * self.mr as isize);
+                    let value = src.offset(y * src_rs + x * src_cs) as *const T;
                     let dst = dst.offset(y * self.row_byte_stride + x * self.col_byte_stride);
                     *(dst as *mut T) = *value;
                 }

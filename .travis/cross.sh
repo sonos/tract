@@ -36,7 +36,7 @@ case "$PLATFORM" in
         export RUSTC_TRIPLE=arm-unknown-linux-gnueabihf
         rustup target add $RUSTC_TRIPLE
         echo "[platforms.$PLATFORM]\nrustc_triple='$RUSTC_TRIPLE'\ntoolchain='$TOOLCHAIN'" > .dinghy.toml
-        cargo dinghy --platform $PLATFORM build --release -p tract-cli -p example-tensorflow-mobilenet-v2 -p tract-ffi
+        cargo dinghy --platform $PLATFORM build --release -p tract-cli -p tract-ffi
         ;;
 
     "aarch64-linux-android"|"armv7-linux-androideabi"|"i686-linux-android"|"x86_64-linux-android")
@@ -89,21 +89,40 @@ case "$PLATFORM" in
         # aarch64 stretch bench targets Jetson-class boxes that ship with CUDA 12;
         # the default CUDA 13 cudarc binding wouldn't run there (cudart symbol
         # rename across the 12/13 boundary).  Force cuda-12000 for that build only.
+        # The Jetson leg wants cuda-12000; the dinghy boards reuse the same aarch64 stretch
+        # platform but pass an explicit TRACT_CLI_FEATURES (no cuda), so only force cuda when
+        # the caller has not chosen its own feature set.
         CUDA_FEATURE_ENV=""
-        if [ "$PLATFORM" = "aarch64-unknown-linux-gnu-stretch" ]
+        if [ "$PLATFORM" = "aarch64-unknown-linux-gnu-stretch" ] && [ -z "$TRACT_CLI_FEATURES" ]
         then
             CUDA_FEATURE_ENV="-e TRACT_CUDA_FEATURE=cuda-12000"
         fi
-        (cd .travis/docker-debian-stretch; docker build --tag debian-stretch .)
+        # Prefer the prebuilt toolchain image (private ghcr package); log in when a token is
+        # present (CI), otherwise build the bare image locally. A failed pull also falls back
+        # to a local build, so forks and offline runs still work.
+        STRETCH_IMAGE="${TRACT_CROSS_IMAGE:-ghcr.io/sonos/tract/cross-debian-stretch:latest}"
+        [ -n "$GITHUB_TOKEN" ] && echo "$GITHUB_TOKEN" | docker login ghcr.io -u "${GITHUB_ACTOR:-x}" --password-stdin
+        if docker pull "$STRETCH_IMAGE"
+        then
+            STRETCH_TAG="$STRETCH_IMAGE"
+        else
+            (cd .travis/docker-debian-stretch; docker build --tag debian-stretch .)
+            STRETCH_TAG=debian-stretch
+        fi
+        mkdir -p "$HOME/.cargo/registry" "$HOME/.cargo/git"
         docker run -v `pwd`:/tract -w /tract \
+            -v "$HOME/.cargo/registry":/root/.cargo/registry \
+            -v "$HOME/.cargo/git":/root/.cargo/git \
             -e CI=true \
             -e SKIP_QEMU_TEST=skip \
             -e CARGO_NET_RETRY \
             -e CARGO_HTTP_MULTIPLEXING \
             -e CARGO_REGISTRIES_CRATES_IO_PROTOCOL \
-            -e PLATFORM=$INNER_PLATFORM $CUDA_FEATURE_ENV debian-stretch \
+            -e TRACT_CLI_FEATURES \
+            ${CARGO_TARGET_DIR:+-e CARGO_TARGET_DIR=$CARGO_TARGET_DIR} \
+            -e PLATFORM=$INNER_PLATFORM $CUDA_FEATURE_ENV "$STRETCH_TAG" \
             ./.travis/cross.sh
-        sudo chown -R `whoami` .
+        sudo chown -R `whoami` "$HOME/.cargo" .
         export RUSTC_TRIPLE=$INNER_PLATFORM
         ;;
 
@@ -146,7 +165,7 @@ case "$PLATFORM" in
                 export DEBIAN_TRIPLE=$ARCH-linux-gnu
                 export TRACT_CPU_AARCH64_KIND=a55
                 export CUSTOM_TC=`pwd`/aarch64-linux-musl-cross
-                [ -d "$CUSTOM_TC" ] || curl -s https://s3.amazonaws.com/tract-ci-builds/toolchains/aarch64-linux-musl-cross.tgz | tar zx
+                [ -d "$CUSTOM_TC" ] || curl -s https://tract-test-assets.tract.rs/toolchains/aarch64-linux-musl-cross.tgz | tar zx
                 ;;
             "cortexa53-unknown-linux-musl")
                 export ARCH=aarch64
@@ -157,7 +176,7 @@ case "$PLATFORM" in
                 export TRACT_CPU_AARCH64_KIND=a53
                 export QEMU_OPTS="-cpu cortex-a53"
                 export CUSTOM_TC=`pwd`/aarch64-linux-musl-cross
-                [ -d "$CUSTOM_TC" ] || curl -s https://s3.amazonaws.com/tract-ci-builds/toolchains/aarch64-linux-musl-cross.tgz | tar zx
+                [ -d "$CUSTOM_TC" ] || curl -s https://tract-test-assets.tract.rs/toolchains/aarch64-linux-musl-cross.tgz | tar zx
                 ;;
             "armv7-unknown-linux-musl")
                 export ARCH=armv7
@@ -168,7 +187,7 @@ case "$PLATFORM" in
                 export CUSTOM_TC=`pwd`/armv7l-linux-musleabihf-cross
                 export TRACT_CPU_ARM32_NEON=true
                 export DINGHY_TEST_ARGS="--env TRACT_CPU_ARM32_NEON=true"
-                [ -d "$CUSTOM_TC" ] || curl -s https://s3.amazonaws.com/tract-ci-builds/toolchains/armv7l-linux-musleabihf-cross.tgz | tar zx
+                [ -d "$CUSTOM_TC" ] || curl -s https://tract-test-assets.tract.rs/toolchains/armv7l-linux-musleabihf-cross.tgz | tar zx
                 export TARGET_CFLAGS="-mfpu=neon"
                 ;;
             *)
@@ -196,7 +215,11 @@ case "$PLATFORM" in
 
         DINGHY_TEST_ARGS="$DINGHY_TEST_ARGS --env PROPTEST_MAX_SHRINK_ITERS=100000000"
 
-        $SUDO apt-get -y install --no-install-recommends qemu-system-arm qemu-user libssl-dev pkg-config $PACKAGES
+        # The prebuilt image (TRACT_PREBUILT_CI) already carries qemu + the cross toolchains.
+        if [ -z "$TRACT_PREBUILT_CI" ]
+        then
+            $SUDO apt-get -y install --no-install-recommends qemu-system-arm qemu-user libssl-dev pkg-config $PACKAGES
+        fi
         rustup target add $RUSTC_TRIPLE
         if [ -z "$SKIP_QEMU_TEST" ]
         then
@@ -213,9 +236,13 @@ case "$PLATFORM" in
                 --no-default-features \
                 --features "onnx,tf,pulse,pulse-opl,tflite,transformers,extra,bench-suite,$TRACT_CUDA_FEATURE" \
                 -p tract-cli
-            cargo dinghy --platform $PLATFORM build --release -p example-tensorflow-mobilenet-v2
+        elif [ -n "$TRACT_CLI_FEATURES" ]
+        then
+            cargo dinghy --platform $PLATFORM build --release \
+                --no-default-features --features "$TRACT_CLI_FEATURES" \
+                -p tract-cli
         else
-            cargo dinghy --platform $PLATFORM build --release -p tract-cli -p example-tensorflow-mobilenet-v2
+            cargo dinghy --platform $PLATFORM build --release -p tract-cli
         fi
         ;;
 
@@ -237,14 +264,3 @@ case "$PLATFORM" in
         exit 2
         ;;
 esac
-
-if [ -e "target/$RUSTC_TRIPLE/release/tract" ]
-then
-    export RUSTC_TRIPLE
-    TASK_NAME=`.travis/make_bundle.sh`
-    echo bench task: $TASK_NAME 
-    if [ -n "$AWS_ACCESS_KEY_ID" ]
-    then
-        aws s3 cp $TASK_NAME.tgz s3://tract-ci-builds/tasks/$PLATFORM/$TASK_NAME.tgz
-    fi
-fi
