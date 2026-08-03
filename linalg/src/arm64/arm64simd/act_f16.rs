@@ -173,3 +173,69 @@ pub mod test_arm64simd_silu_f16_4n {
     use super::*;
     silu_frame_tests!(true, f16, arm64simd_silu_f16_4n);
 }
+
+/// Every f16 bit pattern mapped through the NEON f32 SiLU kernel and rounded
+/// back, so the activation is one load per element.
+///
+/// The table is filled by the same kernel the f32-roundtrip path runs, over an
+/// aligned whole number of `nr`-blocks — which is the case the element-wise
+/// frame hands to that kernel directly — so the two agree bit for bit. Calling
+/// the kernel raw rather than through the frame also keeps this off the frame's
+/// thread-local scratch, which is already borrowed whenever a kernel runs.
+/// 128 KiB, built on first use.
+fn silu_lut() -> &'static [u16; 1 << 16] {
+    use crate::frame::element_wise::ElementWiseKer;
+    use tract_data::prelude::Tensor;
+    static LUT: std::sync::OnceLock<Box<[u16; 1 << 16]>> = std::sync::OnceLock::new();
+    LUT.get_or_init(|| {
+        let mut values = unsafe {
+            Tensor::uninitialized_aligned::<f32>(&[1 << 16], 16)
+                .expect("silu lookup table allocation")
+        };
+        let widened = unsafe { values.as_slice_mut_unchecked::<f32>() };
+        widened
+            .iter_mut()
+            .enumerate()
+            .for_each(|(bits, v)| *v = f16::from_bits(bits as u16).to_f32());
+        super::arm64simd_silu_f32_4n_fused::run(widened, ());
+        let mut lut = Box::new([0u16; 1 << 16]);
+        lut.iter_mut()
+            .zip(widened.iter())
+            .for_each(|(slot, v)| *slot = f16::from_f32(*v).to_bits());
+        lut
+    })
+}
+
+ew_impl_wrap!(
+    f16,
+    arm64simd_silu_f16_lut_8n,
+    8,
+    4,
+    (),
+    #[inline(never)]
+    fn run(buf: &mut [f16], _params: ()) {
+        let lut = silu_lut();
+        buf.iter_mut().for_each(|x| *x = f16::from_bits(lut[x.to_bits() as usize]));
+    }
+);
+
+#[cfg(test)]
+mod silu_f16_agreement {
+    use super::*;
+    use crate::frame::element_wise::ElementWiseKer;
+
+    #[test]
+    fn lut_matches_the_f32_roundtrip_on_every_f16() {
+        let all: Vec<f16> = (0..=u16::MAX).map(f16::from_bits).collect();
+        let mut roundtrip = all.clone();
+        let mut lut = all;
+        arm64simd_silu_f16_4n::ew().run(&mut roundtrip).unwrap();
+        arm64simd_silu_f16_lut_8n::ew().run(&mut lut).unwrap();
+        let mismatch = roundtrip
+            .iter()
+            .zip(&lut)
+            .position(|(a, b)| a.to_bits() != b.to_bits())
+            .map(|i| (f16::from_bits(i as u16), roundtrip[i], lut[i]));
+        assert_eq!(mismatch, None);
+    }
+}
