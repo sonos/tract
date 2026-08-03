@@ -14,6 +14,8 @@ use crate::frame::element_wise::ElementWiseKer;
 
 #[macro_use]
 mod madd;
+#[macro_use]
+mod fuse;
 
 #[cfg(target_feature = "relaxed-simd")]
 mod act;
