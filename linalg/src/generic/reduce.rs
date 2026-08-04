@@ -110,7 +110,10 @@ pub mod sum {
         fn run(x: &[f16], _: ()) -> f16 {
             debug_assert!(x.len() % Self::nr() == 0);
             debug_assert!(x.as_ptr() as usize % Self::alignment_bytes() == 0);
-            x.iter().sum::<f16>()
+            // f32 accumulator: a row long enough for the running sum to outgrow
+            // its own terms stalls in f16. The vector kernels are shielded by
+            // holding one partial per lane; this one is not.
+            f16::from_f32(x.iter().map(|v| v.to_f32()).sum::<f32>())
         },
         fn reduce_two(a: f16, b: f16) -> f16 {
             a + b
@@ -218,14 +221,24 @@ pub mod softmax_l2 {
 }
 
 #[cfg(test)]
-mod softmax_l2_f16_accumulator {
+mod f16_accumulators {
     use super::*;
-    use crate::frame::reduce::MapReduceKer;
+    use crate::frame::reduce::{MapReduceKer, ReduceKer};
     use tract_data::internal::f16;
 
     /// The returned row sum must stay close to the same sum taken in f32. A row
     /// long enough for the running total to outgrow its own terms is the case an
     /// f16 accumulator silently drops.
+    #[test]
+    fn plain_sum_keeps_long_rows() {
+        for len in [1024usize, 4096, 8192] {
+            let row: Vec<f16> = vec![f16::from_f32(1.0); len];
+            let got = sum::HSum8::red().run(&row).unwrap().to_f32();
+            let err = (got - len as f32).abs() / len as f32;
+            assert!(err < 0.01, "len {len}: summed to {got}, rel {err}");
+        }
+    }
+
     #[test]
     fn long_rows_keep_their_sum() {
         for len in [1024usize, 4096, 8192] {
