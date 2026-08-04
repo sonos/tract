@@ -1,7 +1,7 @@
 #![allow(clippy::unnecessary_cast)]
 
 use crate::internal::*;
-use crate::ops::element_wise::ElementWiseOp;
+use crate::ops::element_wise::{ElementWiseMiniOp, ElementWiseOp};
 use crate::ops::math::QScale;
 use num_traits::AsPrimitive;
 use tract_linalg::Scaler;
@@ -11,267 +11,52 @@ use tract_linalg::mmm::RoundingPolicy;
 use super::binary::TypedBinOp;
 use super::math::round_ties_to_even;
 
-pub fn quantize_linear_f32_u8(x: f32, scale: f32, zero_point: i32) -> u8 {
-    (((x * scale).round() as i32) + zero_point).clamp(u8::MIN as i32, u8::MAX as i32) as u8
+/// Byte-wise lookup table over an 8-bit tensor.
+///
+/// It rewrites each element through `table`, so it accepts any single-byte type
+/// (`i8`/`u8` and their quantized forms) and preserves the input type by
+/// default. Wrapped in an `ElementWiseOp` carrying an output-type override, a
+/// requantization can fuse into it and change the result's quantization
+/// parameters (see `Cast::codegen`).
+#[derive(Debug, Clone)]
+pub struct LookupTable {
+    pub table: Box<dyn Lut>,
 }
 
-pub fn quantize_linear_f32_i8(x: f32, scale: f32, zero_point: i32) -> i8 {
-    (((x * scale).round() as i32) + zero_point).clamp(i8::MIN as i32, i8::MAX as i32) as i8
-}
-
-element_wise_oop!(quantize_linear_u8,
- QuantizeLinearU8 {
-     scale: f32,
-     zero_point: u8
- },
- [f16] => u8 |op, xs, ys| {
-     xs.iter().zip(ys.iter_mut()).for_each(|(x,y)|
-                                           *y = quantize_linear_f32_u8(x.to_f32(), op.scale, op.zero_point as i32)
-                                          );
-     Ok(())
- },
- [f32,i32] => u8 |op, xs, ys| {
-     xs.iter().zip(ys.iter_mut()).for_each(|(x,y)|
-                                           *y = quantize_linear_f32_u8(*x as f32, op.scale, op.zero_point as i32)
-                                          );
-     Ok(())
- };
- info: info_quantize_linear_u8
-);
-
-fn info_quantize_linear_u8(q: &QuantizeLinearU8) -> TractResult<Vec<String>> {
-    Ok(vec![format!(
-        "scale: {} zero_point: {} 1/scale: {}",
-        q.scale,
-        q.zero_point,
-        q.scale.recip()
-    )])
-}
-
-element_wise_oop!(quantize_linear_i8,
- QuantizeLinearI8 {
-     scale: f32,
-     zero_point: i8
- },
- [f32,i32] => i8 |op, xs, ys| {
-     xs.iter().zip(ys.iter_mut()).for_each(|(x,y)|
-                                           *y = quantize_linear_f32_i8(*x as f32, op.scale, op.zero_point as i32)
-                                          );
-     Ok(())
- };
- info: info_quantize_linear_i8
-);
-
-fn info_quantize_linear_i8(q: &QuantizeLinearI8) -> TractResult<Vec<String>> {
-    Ok(vec![format!(
-        "scale: {} zero_point: {} 1/scale: {}",
-        q.scale,
-        q.zero_point,
-        q.scale.recip()
-    )])
-}
-
-#[derive(Clone, Debug, new, PartialEq)]
-pub struct DequantizeLinearF32 {
-    pub scale: f32,
-    pub zero_point: i32,
-}
-
-impl Eq for DequantizeLinearF32 {}
-
-impl DequantizeLinearF32 {
-    fn eval_t<T: Datum + AsPrimitive<i32>>(&self, input: &Tensor) -> TractResult<Tensor> {
-        let mut output = unsafe { Tensor::uninitialized::<f32>(input.shape())? };
-        input
-            .try_as_plain()?
-            .as_slice::<T>()?
-            .iter()
-            .zip(output.try_as_plain_mut()?.as_slice_mut::<f32>()?.iter_mut())
-            .for_each(|(x, y)| *y = (x.as_() - self.zero_point) as f32 * self.scale);
-        Ok(output)
+impl PartialEq for LookupTable {
+    fn eq(&self, other: &Self) -> bool {
+        *self.table == *other.table
     }
 }
 
-impl Op for DequantizeLinearF32 {
-    fn name(&self) -> StaticName {
-        "DequantizeLinearF32".into()
+impl Eq for LookupTable {}
+
+impl ElementWiseMiniOp for LookupTable {
+    fn name(&self) -> String {
+        format!("{}LookupTable", self.prefix())
     }
 
-    fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec![format!("scale: {} zero_point: {}", self.scale, self.zero_point)])
+    fn output_type(&self, input_type: DatumType) -> Option<DatumType> {
+        (input_type.size_of() == 1).then_some(input_type)
     }
 
-    fn validation(&self) -> Validation {
-        Validation::Accurate
-    }
-
-    op_as_typed_op!();
-}
-
-impl EvalOp for DequantizeLinearF32 {
-    fn is_stateless(&self) -> bool {
-        true
-    }
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        let output = match inputs[0].datum_type() {
-            DatumType::I8 => self.eval_t::<i8>(&inputs[0])?,
-            DatumType::I32 => self.eval_t::<i32>(&inputs[0])?,
-            DatumType::U8 => self.eval_t::<u8>(&inputs[0])?,
-            dt => bail!("Unsupported type {:?}", dt),
-        };
-        Ok(tvec!(output.into_tvalue()))
+    fn eval_out_of_place(&self, t: &Tensor, out_dt: Option<DatumType>) -> TractResult<Tensor> {
+        ensure!(
+            t.datum_type().size_of() == 1,
+            "LookupTable expects a byte tensor, got {:?}",
+            t.datum_type()
+        );
+        let mut dst =
+            unsafe { Tensor::uninitialized_dt(out_dt.unwrap_or(t.datum_type()), t.shape())? };
+        dst.as_bytes_mut().copy_from_slice(t.as_bytes());
+        self.table.run(dst.as_bytes_mut());
+        Ok(dst)
     }
 }
 
-impl TypedOp for DequantizeLinearF32 {
-    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(f32::datum_type().fact(inputs[0].shape.clone())))
-    }
-
-    fn axes_mapping(
-        &self,
-        inputs: &[&TypedFact],
-        outputs: &[&TypedFact],
-    ) -> TractResult<AxesMapping> {
-        AxesMapping::natural(inputs, outputs)
-    }
-
-    fn change_axes(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-        _io: InOut,
-        change: &AxisOp,
-    ) -> TractResult<Option<AxisChangeConsequence>> {
-        Ok(Some(AxisChangeConsequence::new(model, node, None, change)))
-    }
-
-    fn declutter(
-        &self,
-        model: &TypedModel,
-        dequant: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        let mut current = dequant;
-        let incoming_dt = model.node_input_facts(dequant.id)?[0].datum_type;
-        while let Some(quant) = model.single_succ(current.id)? {
-            let q_params = if let Some(op) = quant.op_as::<ElementWiseOp>() {
-                if let Some(mop) = op.0.downcast_ref::<QuantizeLinearU8>() {
-                    Some((mop.scale, mop.zero_point as i32, u8::datum_type()))
-                } else {
-                    op.0.downcast_ref::<QuantizeLinearI8>()
-                        .map(|mop| (mop.scale, mop.zero_point as i32, i8::datum_type()))
-                }
-            } else {
-                None
-            };
-            if let Some((scale, zero_point, dt)) = q_params {
-                // first, try Op::quantize() on all ops in the chain
-                let mut patch = TypedModelPatch::default();
-                let mut wire: OutletId = patch.tap_model(model, dequant.inputs[0])?;
-                let mut next = model.single_succ(dequant.id)?.unwrap();
-                loop {
-                    if let Some(op) = next
-                        .op
-                        .quantize(model, dequant, dt, scale, zero_point)
-                        .with_context(|| format!("Quantizing {next}"))?
-                    {
-                        wire = patch.wire_node(&*next.name, op, [wire].as_ref())?[0];
-                    } else {
-                        break;
-                    }
-                    if next.id == current.id {
-                        patch.shunt_outside(model, OutletId::new(quant.id, 0), wire)?;
-                        return Ok(Some(patch));
-                    } else {
-                        next = model.single_succ(next.id)?.unwrap();
-                    }
-                }
-                // or else make a lookup table
-                if incoming_dt == DatumType::I8 || incoming_dt == DatumType::U8 {
-                    let mut adhoc_model = TypedModel::default();
-                    let mut wire = adhoc_model.add_source("ad-hoc", dt.fact([256]))?;
-                    let mut next = model.single_succ(dequant.id)?.unwrap();
-                    let mut name = None;
-                    // plug in dequant
-                    wire = adhoc_model.wire_node(
-                        &*dequant.name,
-                        dequant.op.clone(),
-                        [wire].as_ref(),
-                    )?[0];
-                    while next.id != quant.id {
-                        name.get_or_insert(&*next.name);
-                        wire =
-                            adhoc_model.wire_node(&*next.name, next.op.clone(), [wire].as_ref())?
-                                [0];
-                        next = model.single_succ(next.id)?.unwrap();
-                    }
-                    // plug in quant
-                    wire =
-                        adhoc_model.wire_node(&*quant.name, quant.op.clone(), [wire].as_ref())?[0];
-                    adhoc_model.select_output_outlets(&[wire])?;
-                    let input = (0u8..=255).collect::<Vec<u8>>();
-                    let input = match dt {
-                        DatumType::I8 => unsafe {
-                            tensor1(std::mem::transmute::<&[u8], &[i8]>(&*input))
-                        },
-                        DatumType::U8 => tensor1(&input),
-                        _ => unreachable!(),
-                    };
-                    let output =
-                        SimplePlan::new(adhoc_model)?.run(tvec!(input.into_tvalue()))?.remove(0);
-                    let table: &[u8] = match dt {
-                        DatumType::I8 => unsafe {
-                            std::mem::transmute::<&[i8], &[u8]>(
-                                output.try_as_plain()?.as_slice::<i8>()?,
-                            )
-                        },
-                        DatumType::U8 => output.try_as_plain()?.as_slice::<u8>()?,
-                        _ => unreachable!(),
-                    };
-                    let op = lookup_table((tract_linalg::ops().lut_u8)(table));
-                    let mut patch = TypedModelPatch::default();
-                    let mut wire: OutletId = patch.tap_model(model, dequant.inputs[0])?;
-
-                    wire = patch.wire_node(name.unwrap_or(&*dequant.name), op, [wire].as_ref())?[0];
-                    patch.shunt_outside(model, OutletId::new(quant.id, 0), wire)?;
-                    return Ok(Some(patch));
-                }
-            }
-            let (input_facts, output_facts) = model.node_facts(quant.id)?;
-            let invariants = quant
-                .op
-                .axes_mapping(&input_facts, &output_facts)
-                .with_context(|| format!("Querying invariants for {quant}"))?;
-            if invariants.is_element_wise_unary() {
-                current = quant;
-            } else {
-                break;
-            }
-        }
-        Ok(None)
-    }
-
-    as_op!();
+pub fn lookup_table(table: Box<dyn Lut>) -> ElementWiseOp {
+    ElementWiseOp(Box::new(LookupTable { table }), None)
 }
-
-element_wise_oop!(lookup_table,
- LookupTable {
-     table: Box<dyn Lut>
- },
- [i8] => i8 |op, xs, ys| {
-     ys.copy_from_slice(xs);
-     unsafe {
-         let casted = std::slice::from_raw_parts_mut(ys.as_mut_ptr() as *mut u8, ys.len());
-         op.table.run(casted);
-     }
-     Ok(())
- },
- [u8] => u8 |op, xs, ys| {
-     ys.copy_from_slice(xs);
-     op.table.run(ys);
-     Ok(())
- }
-);
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Scale;

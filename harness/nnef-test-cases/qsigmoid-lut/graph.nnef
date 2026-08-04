@@ -1,0 +1,11 @@
+version 1.0;
+
+extension tract_registry tract_core;
+
+graph main(input) -> (output)
+{
+    input = external<scalar>(shape = [1, 8]);
+    dequant = tract_core_cast(input, to = 'f32');
+    activated = sigmoid(dequant);
+    output = tract_core_cast(activated);
+}

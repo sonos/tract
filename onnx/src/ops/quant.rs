@@ -1,7 +1,7 @@
 use crate::model::{OnnxOpRegister, ParsingContext};
 use crate::pb::NodeProto;
+use tract_core::ops::cast::cast;
 use tract_hir::internal::*;
-use tract_hir::ops::quant::*;
 use tract_ndarray::ArrayViewD;
 
 pub fn register_all_ops(reg: &mut OnnxOpRegister) {
@@ -70,15 +70,13 @@ impl Expansion for QuantizeLinear {
         target: &mut TypedModel,
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        use tract_hir::ops::quant::*;
         let scale = target
             .outlet_fact(inputs[1])?
             .konst
             .as_ref()
             .context("y_scale must be a const")?
             .try_as_plain()?
-            .as_slice::<f32>()?[0]
-            .recip();
+            .as_slice::<f32>()?[0];
         let zero_point = if self.optional_zero_point_input.is_some() {
             target
                 .outlet_fact(inputs[2])?
@@ -89,12 +87,13 @@ impl Expansion for QuantizeLinear {
         } else {
             rctensor0(0u8)
         };
-        let op: Box<dyn TypedOp> = if zero_point.datum_type() == u8::datum_type() {
-            Box::new(quantize_linear_u8(scale, zero_point.try_as_plain()?.as_slice::<u8>()?[0]))
-        } else {
-            Box::new(quantize_linear_i8(scale, zero_point.try_as_plain()?.as_slice::<i8>()?[0]))
-        };
-        target.wire_node(prefix, op, &[inputs[0]])
+        let dst = zero_point
+            .datum_type()
+            .unquantized()
+            .with_zp_scale(zero_point.cast_to_scalar::<i32>()?, scale);
+        let q = target.wire_node(format!("{prefix}.q"), cast(dst), &[inputs[0]])?;
+        // ONNX QuantizeLinear yields an unquantized integer tensor.
+        target.wire_node(prefix, cast(dst.unquantized()), &q)
     }
 }
 
@@ -150,23 +149,10 @@ impl Expansion for DequantizeLinear {
         } else {
             rctensor0(0u8)
         };
-        let op: Box<dyn TypedOp> = if zero_point.datum_type() == u8::datum_type() {
-            Box::new(DequantizeLinearF32::new(
-                scale,
-                zero_point.try_as_plain()?.as_slice::<u8>()?[0] as i32,
-            ))
-        } else if zero_point.datum_type() == i8::datum_type() {
-            Box::new(DequantizeLinearF32::new(
-                scale,
-                zero_point.try_as_plain()?.as_slice::<i8>()?[0] as i32,
-            ))
-        } else {
-            Box::new(DequantizeLinearF32::new(
-                scale,
-                zero_point.try_as_plain()?.as_slice::<i32>()?[0],
-            ))
-        };
-        target.wire_node(prefix, op, &[inputs[0]])
+        let src_dt = target.outlet_fact(inputs[0])?.datum_type;
+        let q = src_dt.unquantized().with_zp_scale(zero_point.cast_to_scalar::<i32>()?, scale);
+        let reinterpreted = target.wire_node(format!("{prefix}.q"), cast(q), &[inputs[0]])?;
+        target.wire_node(prefix, cast(f32::datum_type()), &reinterpreted)
     }
 }
 
@@ -282,8 +268,6 @@ impl EvalOp for DynamicQuantizeLinearU8 {
         let (scale, zero_point) = scale_and_zero_point(a_input);
 
         let mut dst = unsafe { Tensor::uninitialized_dt(u8::datum_type(), input.shape())? };
-        // We cannot use quantize_linear_u8 here because it does `x * scale.recip()`
-        // instead of `x / scale`. This change some number enough to be rounded to another integer.
         dynamic_quantize_linear_u8(
             scale,
             zero_point,
