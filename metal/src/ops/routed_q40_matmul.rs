@@ -9,6 +9,16 @@ use tract_transformers::ops::moe_ffn::{RoutedInputMode, RoutedQ40MatMul};
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct MetalRoutedQ40MatMul {
     pub input_mode: RoutedInputMode,
+    /// Commit the command buffer and wait after the dispatch.
+    ///
+    /// Workaround for a still-unrooted synchronization defect in the streamed
+    /// multi-layer Metal execution: past ~1024 tokens of context, GPT-OSS
+    /// degenerates to constant `<|endofprompt|>` unless the command buffer is
+    /// split somewhere in the MoE region. The routed matmul is the narrowest
+    /// place that measurably heals it (~16% decode cost at short context).
+    /// The kernels themselves are correct in isolation (see the op-level and
+    /// full-lowering tests). Remove once the real ordering bug is fixed.
+    pub sync_after_dispatch: bool,
 }
 
 impl MetalRoutedQ40MatMul {
@@ -86,7 +96,11 @@ impl EvalOp for MetalRoutedQ40MatMul {
                 route_expert_ids,
                 self.kernel_input_mode(),
                 &output,
-            )
+            )?;
+            if self.sync_after_dispatch {
+                stream.wait_until_completed()?;
+            }
+            Ok(())
         })?;
 
         Ok(tvec![output.into_tensor().into_tvalue()])
@@ -108,7 +122,10 @@ crate::register_metal_op!(RoutedQ40MatMul, |source, node, op| {
     rule_if!(facts[2].datum_type == i64::datum_type());
     rule_if!(facts[3].datum_type == i64::datum_type());
     rule_if!(as_quant_fact(&facts[1], &Q4_0).is_some());
-    Ok(Some(Box::new(MetalRoutedQ40MatMul { input_mode: op.input_mode })))
+    Ok(Some(Box::new(MetalRoutedQ40MatMul {
+        input_mode: op.input_mode,
+        sync_after_dispatch: crate::transform::moe_sync_after_dispatch(),
+    })))
 });
 
 #[cfg(test)]

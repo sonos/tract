@@ -127,11 +127,14 @@ mod tests {
     use crate::{MetalRuntime, MetalTransform};
     use tract_core::transform::ModelTransform;
 
-    fn make_model(gate: GateMode, rank3: bool) -> TractResult<(TypedModel, Tensor)> {
-        let tokens = 4;
-        let d_model = 32;
-        let experts = 7;
-        let k = 3;
+    fn make_model_sized(
+        gate: GateMode,
+        rank3: bool,
+        tokens: usize,
+        d_model: usize,
+        experts: usize,
+        k: usize,
+    ) -> TractResult<(TypedModel, Tensor)> {
         let x_shape: TVec<usize> =
             if rank3 { tvec!(1, tokens, d_model) } else { tvec!(tokens, d_model) };
         let x_data = (0..tokens * d_model)
@@ -149,8 +152,28 @@ mod tests {
         Ok((model, Tensor::from_shape(&x_shape, &x_data)?))
     }
 
+    fn make_model(gate: GateMode, rank3: bool) -> TractResult<(TypedModel, Tensor)> {
+        make_model_sized(gate, rank3, 4, 32, 7, 3)
+    }
+
+    fn check_graph_sized(
+        gate: GateMode,
+        rank3: bool,
+        tokens: usize,
+        d_model: usize,
+        experts: usize,
+        k: usize,
+    ) -> TractResult<()> {
+        let (model, input) = make_model_sized(gate, rank3, tokens, d_model, experts, k)?;
+        check_model(model, input)
+    }
+
     fn check_graph(gate: GateMode, rank3: bool) -> TractResult<()> {
         let (model, input) = make_model(gate, rank3)?;
+        check_model(model, input)
+    }
+
+    fn check_model(model: TypedModel, input: Tensor) -> TractResult<()> {
 
         let mut transformed = model.clone();
         MetalTransform::default().transform(&mut transformed)?;
@@ -172,6 +195,24 @@ mod tests {
             .clone()
             .into_tensor()
             .close_enough(&expected[2].clone().into_tensor(), Approximation::Approximate)
+    }
+
+    // GPT-OSS-20B routing shape at increasing sequence lengths. The in-app
+    // <|endofprompt|> collapse on long MCP prompts reproduced only at >=1024
+    // tokens, which the tokens=4 tests above cannot see.
+    #[test]
+    fn graph_route_topk_gpt_oss_shape_512_tokens() -> TractResult<()> {
+        check_graph_sized(GateMode::SoftmaxTopk, true, 512, 2880, 32, 4)
+    }
+
+    #[test]
+    fn graph_route_topk_gpt_oss_shape_1024_tokens() -> TractResult<()> {
+        check_graph_sized(GateMode::SoftmaxTopk, true, 1024, 2880, 32, 4)
+    }
+
+    #[test]
+    fn graph_route_topk_gpt_oss_shape_2800_tokens() -> TractResult<()> {
+        check_graph_sized(GateMode::SoftmaxTopk, true, 2800, 2880, 32, 4)
     }
 
     #[test]

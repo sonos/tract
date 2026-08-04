@@ -343,6 +343,15 @@ fn sync_outlet_if_required(
     }
 }
 
+/// Sync after each MoE routed-matmul dispatch (see
+/// `MetalRoutedQ40MatMul::sync_after_dispatch`). Defaults to on: without it,
+/// GPT-OSS on Metal degenerates to constant <|endofprompt|> past ~1024 tokens
+/// of context. `TRACT_METAL_MOE_UNSAFE_NOSYNC=1` disables it, for measuring
+/// the eventual real fix against the fast broken baseline.
+pub(crate) fn moe_sync_after_dispatch() -> bool {
+    !env_flag("TRACT_METAL_MOE_UNSAFE_NOSYNC")
+}
+
 fn q40_moe_activation_supported(op: &MoeFfn) -> bool {
     matches!(op.activation.as_str(), "silu")
         || (op.has_w3 && matches!(op.activation.as_str(), "swiglu"))
@@ -690,7 +699,7 @@ fn convert_q40_moe_ffn_to_metal(
 
     let mut h1 = target.wire_node(
         format!("{}.w1", node.name),
-        ops::MetalRoutedQ40MatMul { input_mode: RoutedInputMode::TokenRows },
+        ops::MetalRoutedQ40MatMul { input_mode: RoutedInputMode::TokenRows, sync_after_dispatch: moe_sync_after_dispatch() },
         &[x_expert_input, w1_device, route_token_ids, route_expert_ids],
     )?[0];
     if let Some(w1_bias_device) = w1_bias_device {
@@ -712,7 +721,7 @@ fn convert_q40_moe_ffn_to_metal(
         )?;
         let mut up = target.wire_node(
             format!("{}.w3", node.name),
-            ops::MetalRoutedQ40MatMul { input_mode: RoutedInputMode::TokenRows },
+            ops::MetalRoutedQ40MatMul { input_mode: RoutedInputMode::TokenRows, sync_after_dispatch: moe_sync_after_dispatch() },
             &[x_expert_input, w3_device, route_token_ids, route_expert_ids],
         )?[0];
         if let Some(w3_bias_device) = w3_bias_device {
@@ -755,7 +764,7 @@ fn convert_q40_moe_ffn_to_metal(
 
     let mut route_values = target.wire_node(
         format!("{}.w2", node.name),
-        ops::MetalRoutedQ40MatMul { input_mode: RoutedInputMode::RouteRows },
+        ops::MetalRoutedQ40MatMul { input_mode: RoutedInputMode::RouteRows, sync_after_dispatch: moe_sync_after_dispatch() },
         &[hidden, w2_device, route_token_ids, route_expert_ids],
     )?[0];
     if let Some(w2_bias_device) = w2_bias_device {
@@ -1021,4 +1030,134 @@ fn split_multi_axis_reduce(
     }
     patch.shunt_outside(model, node.id.into(), wire)?;
     Ok(Some(patch))
+}
+
+#[cfg(test)]
+mod q40_moe_lowering_tests {
+    use super::*;
+    use crate::MetalRuntime;
+    use tract_core::transform::ModelTransform;
+    use tract_linalg::block_quant::{BlockQuant, BlockQuantFact, BlockQuantStorage, Q4_0};
+    use tract_transformers::ops::moe_ffn::{ExpertLayout, GateMode, MoeFfn};
+
+    fn add_q40_const(model: &mut TypedModel, name: &str, tensor: Tensor) -> TractResult<OutletId> {
+        let shape = tensor.shape().to_vec();
+        let k = *shape.last().context("Q40 tensor has no last axis")?;
+        ensure!(k % Q4_0.block_len() == 0);
+        let m: usize = shape[..shape.len() - 1].iter().product();
+        let quant = Q4_0.quant_f32(tensor.try_as_plain()?.as_slice::<f32>()?)?;
+        let storage = BlockQuantStorage::new(Box::new(Q4_0), m, k, Arc::new(quant))?;
+        let packed = Arc::new(storage.into_tensor_with_shape(f32::datum_type(), &shape));
+        let fact = BlockQuantFact::new(Box::new(Q4_0), shape.iter().copied().collect());
+        Ok(model
+            .wire_node(name, tract_core::ops::konst::Const::new_with_exotic_fact(packed, Box::new(fact))?, &[])?[0])
+    }
+
+    /// GPT-OSS-shaped MoeFfn: f16 rank-3 input, linear-layout Q40 experts,
+    /// router + expert biases, clamped SwiGLU. This is the exact configuration
+    /// `convert_q40_moe_ffn_to_metal` lowers for the real model; the in-app
+    /// <|endofprompt|> collapse only shows at >=1024 tokens, which no other
+    /// test reaches.
+    fn check_gpt_oss_moe(tokens: usize) -> TractResult<()> {
+        check_gpt_oss_moe_sized(tokens, 64, 64, 8, 2)
+    }
+
+    fn check_gpt_oss_moe_sized(
+        tokens: usize,
+        d_model: usize,
+        d_hidden: usize,
+        experts: usize,
+        k: usize,
+    ) -> TractResult<()> {
+
+        let mut rng_state: u64 = 4242;
+        let mut next_f32 = || -> f32 {
+            rng_state = rng_state.wrapping_mul(6364136223846793005).wrapping_add(1);
+            ((rng_state >> 33) as f32 / (1u64 << 31) as f32) - 1.0
+        };
+        let mut make = |shape: &[usize]| -> Tensor {
+            let n: usize = shape.iter().product();
+            let data: Vec<f32> = (0..n).map(|_| next_f32() * 0.5).collect();
+            tract_ndarray::ArrayD::from_shape_vec(shape.to_vec(), data).unwrap().into_tensor()
+        };
+
+        let wg_data = make(&[experts, d_model]);
+        // Linear layout: w1/w3 [E,H,D], w2 [E,D,H]
+        let w1_data = make(&[experts, d_hidden, d_model]);
+        let w2_data = make(&[experts, d_model, d_hidden]);
+        let w3_data = make(&[experts, d_hidden, d_model]);
+        let wg_bias_data = make(&[experts]);
+        let w1_bias_data = make(&[experts, d_hidden]);
+        let w3_bias_data = make(&[experts, d_hidden]);
+        let w2_bias_data = make(&[experts, d_model]);
+        let x_data = make(&[1, tokens, d_model]).cast_to::<f16>()?.into_owned();
+
+        let mut model = TypedModel::default();
+        let x = model.add_source("x", f16::datum_type().fact([1, tokens, d_model]))?;
+        let wg = model.add_const("wg", wg_data)?;
+        let w1 = add_q40_const(&mut model, "w1", w1_data)?;
+        let w2 = add_q40_const(&mut model, "w2", w2_data)?;
+        let w3 = add_q40_const(&mut model, "w3", w3_data)?;
+        let wg_bias = model.add_const("wg_bias", wg_bias_data)?;
+        let w1_bias = model.add_const("w1_bias", w1_bias_data)?;
+        let w3_bias = model.add_const("w3_bias", w3_bias_data)?;
+        let w2_bias = model.add_const("w2_bias", w2_bias_data)?;
+
+        let op = MoeFfn {
+            k,
+            activation: "swiglu".to_string(),
+            gate: GateMode::SoftmaxTopk,
+            has_w3: true,
+            has_wg_bias: true,
+            has_w1_bias: true,
+            has_w3_bias: true,
+            has_w2_bias: true,
+            act_alpha_bits: Some(1.702f32.to_bits()),
+            act_limit_bits: Some(7.0f32.to_bits()),
+            expert_layout: ExpertLayout::Linear,
+        };
+        let outputs = model.wire_node(
+            "moe",
+            op,
+            &[x, wg, w1, w2, w3, wg_bias, w1_bias, w3_bias, w2_bias],
+        )?;
+        model.select_output_outlets(&outputs)?;
+
+        let mut transformed = model.clone();
+        MetalTransform::default().transform(&mut transformed)?;
+        ensure!(
+            transformed.nodes().iter().any(|n| n.op_is::<crate::ops::MetalRouteTopK>()),
+            "Metal transform did not lower the MoE block (no MetalRouteTopK)"
+        );
+
+        let expected =
+            DefaultRuntime.prepare(model.clone())?.run(tvec![x_data.clone().into_tvalue()])?;
+        let actual = MetalRuntime.prepare(model)?.run(tvec![x_data.into_tvalue()])?;
+        let actual_f32 = actual[0].clone().into_tensor().cast_to::<f32>()?.into_owned();
+        let expected_f32 = expected[0].clone().into_tensor().cast_to::<f32>()?.into_owned();
+        actual_f32.close_enough(&expected_f32, Approximation::VeryApproximate)
+    }
+
+    #[test]
+    fn gpt_oss_moe_lowering_64_tokens() -> TractResult<()> {
+        check_gpt_oss_moe(64)
+    }
+
+    #[test]
+    fn gpt_oss_moe_lowering_1024_tokens() -> TractResult<()> {
+        check_gpt_oss_moe(1024)
+    }
+
+    #[test]
+    fn gpt_oss_moe_lowering_2800_tokens() -> TractResult<()> {
+        check_gpt_oss_moe(2800)
+    }
+
+    // Full production dimensions of gpt-oss-20b. Slow (CPU reference dequants
+    // every expert), but this is the only test at the size where the in-app
+    // collapse reproduces.
+    #[test]
+    fn gpt_oss_moe_lowering_real_dims_1024_tokens() -> TractResult<()> {
+        check_gpt_oss_moe_sized(1024, 2880, 2880, 32, 4)
+    }
 }
