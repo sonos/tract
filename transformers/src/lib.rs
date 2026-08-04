@@ -18,6 +18,10 @@ register_simple_model_transform!(
     "fuse_inplace_kv_sdpa",
     ops::inplace_kv_cache::InPlaceKvSdpaTransform
 );
+register_simple_model_transform!(
+    "fuse_gpt_oss_sdpa",
+    ops::gpt_oss_sdpa::GptOssInPlaceSdpaTransform
+);
 register_simple_model_transform!("transformers_detect_all", TransformersTransform);
 register_simple_model_transform!(
     "quantize_kv_storage",

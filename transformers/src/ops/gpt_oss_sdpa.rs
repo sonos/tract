@@ -77,7 +77,7 @@ impl TypedOp for GptOssSdpa {
         let (q, k_new, _v_new, k_cache, v_cache, _mask, sinks) =
             (inputs[0], inputs[1], inputs[2], inputs[3], inputs[4], inputs[5], inputs[6]);
         ensure!(q.rank() == 4 && k_new.rank() == 4 && k_cache.rank() == 4);
-        ensure!(sinks.rank() == 1, "sinks must be rank 1 [num_q_heads]");
+        let _ = sinks;
         // Attention output has Q's shape/dtype; caches grow to P+S along seq.
         let total = k_cache.shape[SEQ_AXIS].clone() + k_new.shape[SEQ_AXIS].clone();
         let mut k_out = k_cache.without_value();
@@ -125,8 +125,21 @@ impl OpState for GptOssSdpaState {
         let q = to_f32(q_in)?;
         let q = q.to_plain_array_view::<f32>()?.into_dimensionality::<Ix4>()?;
         let mask_t = to_f32(mask)?;
-        let mask = mask_t.to_plain_array_view::<f32>()?.into_dimensionality::<Ix4>()?;
-        let sinks_t = to_f32(sinks)?;
+        let mask_rank = mask_t.rank();
+        ensure!(mask_rank >= 2);
+        ensure!(
+            mask_t.shape()[..mask_rank - 2].iter().all(|&d| d == 1),
+            "mask leading dims must be broadcast (1), got {:?}",
+            mask_t.shape()
+        );
+        let mask_2d: TVec<usize> = mask_t.shape()[mask_rank - 2..].into();
+        let mask_t = mask_t.into_shape(&mask_2d)?;
+        let mask = mask_t
+            .to_plain_array_view::<f32>()?
+            .into_dimensionality::<tract_nnef::tract_ndarray::Ix2>()?;
+        let mut sinks_t = to_f32(sinks)?;
+        let sinks_len = sinks_t.len();
+        sinks_t = sinks_t.into_shape(&[sinks_len])?;
         let sinks = sinks_t.to_plain_array_view::<f32>()?.into_dimensionality::<Ix1>()?;
         let k = self.k.valid_view::<f32>()?.into_dimensionality::<Ix4>()?;
         let v = self.v.valid_view::<f32>()?.into_dimensionality::<Ix4>()?;
@@ -137,7 +150,7 @@ impl OpState for GptOssSdpaState {
         let group = hq / hkv;
         let kv_len = k.dim().2;
         ensure!(kv_len == past + k_new.shape()[SEQ_AXIS]);
-        ensure!(mask.dim().3 == kv_len, "mask keys {} != cache len {kv_len}", mask.dim().3);
+        ensure!(mask.dim().1 == kv_len, "mask keys {} != cache len {kv_len}", mask.dim().1);
         ensure!(sinks.len() == hq);
 
         let mut out = Tensor::zero::<f32>(&[b_sz, hq, s_len, d])?;
@@ -149,7 +162,7 @@ impl OpState for GptOssSdpaState {
                         q.slice(s!(b, h, .., ..)),
                         k.slice(s!(b, h / group, .., ..)),
                         v.slice(s!(b, h / group, .., ..)),
-                        mask.slice(s!(0, 0, .., ..)),
+                        mask,
                         sinks[h],
                         self.scale,
                     );
@@ -463,4 +476,234 @@ mod tests {
         outputs[1].clone().into_tensor().close_enough(&k_ref, Approximation::Exact)?;
         Ok(())
     }
+}
+
+// ===================================================================================
+// Detection: fuse the exported GPT-OSS attention subgraph on the decluttered
+// graph. Anchor = the sinks concat `Concat([qk+mask, broadcast(sinks)], last)`.
+// ===================================================================================
+
+use tract_nnef::tract_core::ops::array::{MultiBroadcastTo, TypedConcat};
+use tract_nnef::tract_core::ops::binary::TypedBinOp;
+use tract_nnef::tract_core::ops::cast::Cast;
+use tract_nnef::tract_core::ops::einsum::EinSum;
+use tract_nnef::tract_core::ops::konst::Const;
+use tract_nnef::tract_core::ops::nn::{Reduce, Reducer, Softmax};
+use tract_nnef::tract_core::ops::source::TypedSource;
+use tract_nnef::tract_core::transform::ModelTransform;
+
+#[derive(Debug)]
+pub struct GptOssInPlaceSdpaTransform;
+
+impl ModelTransform for GptOssInPlaceSdpaTransform {
+    fn name(&self) -> StaticName {
+        "fuse_gpt_oss_sdpa".into()
+    }
+    fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
+        Rewriter::default()
+            .with_rule_for("fuse-gpt-oss-sdpa", fuse_gpt_oss_sdpa_rule)
+            .rewrite(&(), model)?;
+        model.compact()
+    }
+}
+
+fn prev<'m>(model: &'m TypedModel, node: &TypedNode, slot: usize) -> &'m TypedNode {
+    model.node(node.inputs[slot].node)
+}
+
+fn is_bin(node: &TypedNode, name: &str) -> bool {
+    node.op_as::<TypedBinOp>().is_some_and(|b| b.0.name() == name)
+}
+
+fn single_consumer<'m>(model: &'m TypedModel, node: &TypedNode) -> Option<&'m TypedNode> {
+    let succ = &model.outlet_successors(node.id.into());
+    if succ.len() == 1 { Some(model.node(succ[0].node)) } else { None }
+}
+
+/// Walk one QK einsum branch back to (q_half outlet, K concat node, slice start).
+fn qk_branch(
+    model: &TypedModel,
+    reshape_out: &TypedNode,
+) -> Option<(OutletId, usize, i64)> {
+    // Reshape(folded_output) <- EinSum <- [Reshape(q_half), Slice(bcast(AddAxis(KConcat)))]
+    if !reshape_out.op_is::<AxisOp>() {
+        return None;
+    }
+    let einsum = prev(model, reshape_out, 0);
+    einsum.op_as::<EinSum>()?;
+    let q_reshape = prev(model, einsum, 0);
+    if !q_reshape.op_is::<AxisOp>() {
+        return None;
+    }
+    let q_half = q_reshape.inputs[0];
+    let k_slice = prev(model, einsum, 1);
+    let slice = k_slice.op_as::<tract_nnef::tract_core::ops::array::Slice>()?;
+    let start = slice.start.to_i64().ok()?;
+    let bcast = prev(model, k_slice, 0);
+    bcast.op_as::<MultiBroadcastTo>()?;
+    let addaxis = prev(model, bcast, 0);
+    if !addaxis.op_is::<AxisOp>() {
+        return None;
+    }
+    let kconcat = prev(model, addaxis, 0);
+    kconcat.op_as::<TypedConcat>()?;
+    Some((q_half, kconcat.id, start))
+}
+
+pub fn fuse_gpt_oss_sdpa_rule(
+    _ctx: &(),
+    model: &TypedModel,
+    node: &TypedNode,
+    node_name: &str,
+    concat: &TypedConcat,
+) -> TractResult<Option<TypedModelPatch>> {
+    // ---- anchor: Concat([logits, sinks_broadcast], axis = last) ----
+    if node.inputs.len() != 2 {
+        return Ok(None);
+    }
+    let rank = node.outputs[0].fact.rank();
+    if concat.axis != rank - 1 {
+        return Ok(None);
+    }
+    let sinks_bcast = prev(model, node, 1);
+    if sinks_bcast.op_as::<MultiBroadcastTo>().is_none() {
+        return Ok(None);
+    }
+    let sinks_const = prev(model, sinks_bcast, 0);
+    let Some(sinks_k) = sinks_const.op_as::<Const>() else { return Ok(None) };
+    let sinks_tensor = sinks_k.val().clone();
+
+    let mask_add = prev(model, node, 0);
+    if !is_bin(mask_add, "Add") {
+        return Ok(None);
+    }
+    let mask_outlet = mask_add.inputs[1];
+    let cast_f32 = prev(model, mask_add, 0);
+    if cast_f32.op_as::<Cast>().is_none() {
+        return Ok(None);
+    }
+    let scale_mul = prev(model, cast_f32, 0);
+    if !is_bin(scale_mul, "Mul") {
+        return Ok(None);
+    }
+    let Some(scale_k) = prev(model, scale_mul, 1).op_as::<Const>() else { return Ok(None) };
+    let scale = scale_k.val().cast_to::<f32>()?.try_as_plain()?.as_slice::<f32>()?[0];
+
+    let qk_add = prev(model, scale_mul, 0);
+    if !is_bin(qk_add, "Add") {
+        return Ok(None);
+    }
+    let Some((q_a, kc_a, start_a)) = qk_branch(model, prev(model, qk_add, 0)) else {
+        return Ok(None);
+    };
+    let Some((q_b, kc_b, _)) = qk_branch(model, prev(model, qk_add, 1)) else {
+        return Ok(None);
+    };
+    if kc_a != kc_b {
+        return Ok(None);
+    }
+    let (q_first, q_second) = if start_a == 0 { (q_a, q_b) } else { (q_b, q_a) };
+    let kconcat = model.node(kc_a);
+    if prev(model, kconcat, 0).op_as::<TypedSource>().is_none() {
+        return Ok(None);
+    }
+    let k_cache = kconcat.inputs[0];
+    let k_new = kconcat.inputs[1];
+
+    // ---- downstream: max/sub/softmax/slice/cast/reshape/AV-einsum ----
+    // node (concat) has two consumers: Reduce<Max> and Sub.
+    let succ = model.outlet_successors(node.id.into());
+    if succ.len() != 2 {
+        return Ok(None);
+    }
+    let (mx, sub) = {
+        let a = model.node(succ[0].node);
+        let b = model.node(succ[1].node);
+        if a.op_as::<Reduce>().is_some_and(|r| r.reducer == Reducer::Max) {
+            (a, b)
+        } else {
+            (b, a)
+        }
+    };
+    if mx.op_as::<Reduce>().is_none() || !is_bin(sub, "Sub") {
+        return Ok(None);
+    }
+    let Some(softmax) = single_consumer(model, sub) else { return Ok(None) };
+    if softmax.op_as::<Softmax>().is_none() {
+        return Ok(None);
+    }
+    let Some(drop_sink) = single_consumer(model, softmax) else { return Ok(None) };
+    if drop_sink.op_as::<tract_nnef::tract_core::ops::array::Slice>().is_none() {
+        return Ok(None);
+    }
+    let Some(cast_f16) = single_consumer(model, drop_sink) else { return Ok(None) };
+    if cast_f16.op_as::<Cast>().is_none() {
+        return Ok(None);
+    }
+    let Some(probs_reshape) = single_consumer(model, cast_f16) else { return Ok(None) };
+    if !probs_reshape.op_is::<AxisOp>() {
+        return Ok(None);
+    }
+    let Some(av) = single_consumer(model, probs_reshape) else { return Ok(None) };
+    if av.op_as::<EinSum>().is_none() {
+        return Ok(None);
+    }
+    let vconcat = prev(model, av, 1);
+    if vconcat.op_as::<TypedConcat>().is_none()
+        || prev(model, vconcat, 0).op_as::<TypedSource>().is_none()
+    {
+        return Ok(None);
+    }
+    let v_cache = vconcat.inputs[0];
+    let v_new = vconcat.inputs[1];
+
+    // Cache concats must be model outputs (their slots get the op's views).
+    let k_out_outlet = OutletId::new(kconcat.id, 0);
+    let v_out_outlet = OutletId::new(vconcat.id, 0);
+    if !model.outputs.contains(&k_out_outlet) || !model.outputs.contains(&v_out_outlet) {
+        return Ok(None);
+    }
+
+    // ---- build the patch ----
+    let mut patch = TypedModelPatch::new(format!("fuse-gpt-oss-sdpa @ {node_name}"));
+    let q1 = patch.tap_model(model, q_first)?;
+    let q2 = patch.tap_model(model, q_second)?;
+    let k_new_t = patch.tap_model(model, k_new)?;
+    let v_new_t = patch.tap_model(model, v_new)?;
+    let k_cache_t = patch.tap_model(model, k_cache)?;
+    let v_cache_t = patch.tap_model(model, v_cache)?;
+    let mask_t = patch.tap_model(model, mask_outlet)?;
+    let sinks_t = patch.add_const(format!("{node_name}.sinks"), sinks_tensor)?;
+
+    let q_rank = model.outlet_fact(q_first)?.rank();
+    let q = patch.wire_node(
+        format!("{node_name}.q"),
+        TypedConcat { axis: q_rank - 1 },
+        &[q1, q2],
+    )?[0];
+
+    let fused = patch.wire_node(
+        format!("{node_name}.gpt_oss_sdpa"),
+        GptOssSdpa { scale_bits: scale.to_bits() },
+        &[q, k_new_t, v_new_t, k_cache_t, v_cache_t, mask_t, sinks_t],
+    )?;
+
+    // Attention out [1, Hq, S, D] -> the AV einsum's [G, Hkv, S, D] shape.
+    let av_fact = model.outlet_fact(OutletId::new(av.id, 0))?;
+    let g = av_fact.shape[0].to_usize()?;
+    let hkv = av_fact.shape[1].to_usize()?;
+    let attn = patch.wire_node(
+        format!("{node_name}.attn_reshape"),
+        AxisOp::Reshape(
+            0,
+            tvec![1.to_dim(), (g * hkv).to_dim()],
+            tvec![g.to_dim(), hkv.to_dim()],
+        ),
+        &[fused[0]],
+    )?[0];
+
+    patch.shunt_outside(model, OutletId::new(av.id, 0), attn)?;
+    patch.shunt_outside(model, k_out_outlet, fused[1])?;
+    patch.shunt_outside(model, v_out_outlet, fused[2])?;
+    Ok(Some(patch))
 }
