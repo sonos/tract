@@ -343,6 +343,29 @@ impl MetalStream {
             .to_owned()
     }
 
+    /// Commit the current command buffer without blocking the CPU on its
+    /// completion. The next `command_buffer()` call opens a fresh one; the
+    /// queue guarantees the committed buffer executes before it. Retained
+    /// tensors are NOT cleared here: they must outlive the committed buffer's
+    /// execution, and are released by the next blocking
+    /// `wait_until_completed`.
+    pub fn commit_current(&self) -> TractResult<()> {
+        let Some(command_buffer) = self.command_buffer.borrow_mut().take() else {
+            return Ok(());
+        };
+        match command_buffer.status() {
+            metal::MTLCommandBufferStatus::Committed
+            | metal::MTLCommandBufferStatus::Scheduled
+            | metal::MTLCommandBufferStatus::Completed => {
+                anyhow::bail!("Current Metal command buffer is already committed.")
+            }
+            _ => {}
+        }
+        command_buffer.encoder().end_encoding();
+        command_buffer.commit();
+        Ok(())
+    }
+
     pub fn wait_until_completed(&self) -> TractResult<()> {
         let Some(command_buffer) = self.command_buffer.borrow().to_owned() else { return Ok(()) };
 

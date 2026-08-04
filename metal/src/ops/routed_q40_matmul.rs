@@ -98,7 +98,9 @@ impl EvalOp for MetalRoutedQ40MatMul {
                 &output,
             )?;
             if self.sync_after_dispatch {
-                stream.wait_until_completed()?;
+                // A command-buffer boundary is enough to restore correctness;
+                // committing without blocking keeps the CPU ahead of the GPU.
+                stream.commit_current()?;
             }
             Ok(())
         })?;
