@@ -25,4 +25,5 @@ tract-nnef.workspace = true
 rayon.workspace = true
 
 [dev-dependencies]
+tract-metal = { path = "../metal", version = "=0.23.5-pre" }
 ndarray-npy.workspace = true

@@ -219,6 +219,11 @@ impl OpState for MetalGptOssSdpaState {
         let group = hq / hkv;
         let past = k_cache.shape()[SEQ_AXIS];
 
+        // Boundary between upstream producers (rope, q-concat, mask build)
+        // and this op's reads (appends, q_scratch copy): same intra-buffer
+        // write->read visibility defect as everywhere else on this runtime.
+        crate::with_metal_stream(|stream| stream.commit_current())?;
+
         // Continuation vs rebuild (fresh session / truncation / retry).
         if past != self.k.len {
             self.k.reset();
@@ -298,6 +303,12 @@ impl OpState for MetalGptOssSdpaState {
         let av = GemmImpl { transpose_a: false, transpose_b: false, matmul: BasicMatMul };
 
         crate::with_metal_stream(|stream| {
+            // Command-buffer boundary between the cache appends (copy_nd
+            // above) and the QK gemms reading the same buffer: the Metal
+            // runtime's intra-buffer write->read visibility defect corrupts
+            // this exact pattern past ~1024 tokens (same medicine as the MoE
+            // routed-matmul splits).
+            stream.commit_current()?;
             for h in 0..hkv {
                 let q_h = subview(&q_scratch, group * s_len, d, h)?;
                 let k_h = self.k.head_view(h)?;
@@ -325,6 +336,30 @@ impl OpState for MetalGptOssSdpaState {
             Ok(())
         })?;
 
+        if std::env::var_os("TRACT_DEBUG_GPT_OSS_SDPA").is_some() {
+            crate::with_metal_stream(|stream| stream.wait_until_completed())?;
+            let stats = |t: &DeviceTensor, tag: &str| -> TractResult<()> {
+                let host = t.to_host()?.into_tensor().cast_to::<f32>()?.into_owned();
+                let v = host.try_as_plain()?.as_slice::<f32>()?;
+                let nan = v.iter().filter(|x| x.is_nan()).count();
+                let inf = v.iter().filter(|x| x.is_infinite()).count();
+                let mx = v.iter().cloned().fold(f32::MIN, f32::max);
+                let mn = v.iter().cloned().fold(f32::MAX, f32::min);
+                let sum: f32 = v.iter().sum();
+                eprintln!(
+                    "gptoss-dbg {tag}: shape={:?} min={mn:.4} max={mx:.4} mean={:.5} nan={nan} inf={inf}",
+                    t.shape(),
+                    sum / v.len() as f32
+                );
+                Ok(())
+            };
+            stats(&subview_all(&q_scratch, hkv * group * s_len, d)?, "q_scratch")?;
+            stats(&self.k.valid_view()?, "k_cache")?;
+            stats(&subview_all(&scores, hkv * group * s_len, t_len)?, "scores")?;
+            stats(&subview_all(&probs, hkv * group * s_len, t_len)?, "probs")?;
+            stats(&subview_all(&out, hkv * group * s_len, d)?, "out")?;
+            stats(&mask_2d, "mask")?;
+        }
         let out_t = DeviceTensor::ArenaView(DeviceArenaView::from_owned(
             out,
             f16::datum_type(),
@@ -409,9 +444,17 @@ mod tests {
     }
 
     #[test]
+    fn metal_matches_cpu_real_geometry_prefill() -> TractResult<()> {
+        run_metal_vs_cpu(64, 8, 64, &[256, 1, 1])
+    }
+
+    #[test]
     fn metal_matches_cpu_over_prefill_and_decode() -> TractResult<()> {
+        run_metal_vs_cpu(4, 2, 64, &[5, 1, 1, 1500, 1])
+    }
+
+    fn run_metal_vs_cpu(hq: usize, hkv: usize, d: usize, steps: &[usize]) -> TractResult<()> {
         crate::context::metal_context(); // initialize the GPU context
-        let (hq, hkv, d) = (4usize, 2usize, 64usize);
         let scale = (d as f32).sqrt().recip();
         let op = MetalGptOssSdpa { scale_bits: scale.to_bits() };
         let cpu_op = CpuOp { scale_bits: scale.to_bits() };
@@ -424,7 +467,7 @@ mod tests {
         let mut k_all = Tensor::zero::<f16>(&[1, hkv, 0, d])?;
         let mut v_all = Tensor::zero::<f16>(&[1, hkv, 0, d])?;
 
-        for step_len in [5usize, 1, 1, 300, 1] {
+        for &step_len in steps {
             let past = k_all.shape()[2];
             let q = rng_tensor(&[1, hq, step_len, d], &mut seed).cast_to::<f16>()?.into_owned();
             let k_new =

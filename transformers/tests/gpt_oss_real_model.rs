@@ -8,6 +8,8 @@ use std::collections::HashMap;
 
 use tract_nnef::internal::*;
 use tract_transformers::WithTractTransformers;
+#[allow(unused_imports)]
+use tract_metal as _; // link the metal runtime into the registry
 
 fn model_path() -> Option<String> {
     let default = "/Users/julien.balian/SONOS/data/llm/ohana-registry/\
@@ -206,5 +208,113 @@ fn fused_matches_original_on_real_model() -> TractResult<()> {
     };
     check(&ref1, &fus1, "step1")?;
     check(&ref2, &fus2, "step2")?;
+    Ok(())
+}
+
+/// Replicate causal_llm's exact transform sequence and audit the result.
+#[test]
+#[ignore]
+fn causal_llm_sequence_audit() -> TractResult<()> {
+    use tract_nnef::tract_core::transform::ModelTransform;
+    let mut model = load_decluttered()?;
+    tract_transformers::ops::gpt_oss_sdpa::GptOssInPlaceSdpaTransform.transform(&mut model)?;
+    model.declutter()?;
+    tract_nnef::tract_core::transform::get_transform("transformers_detect_all")?
+        .unwrap()
+        .transform(&mut model)?;
+    model.declutter()?;
+    let mut counts = std::collections::BTreeMap::new();
+    for node in model.nodes() {
+        *counts.entry(node.op.name().to_string()).or_insert(0usize) += 1;
+    }
+    for (op, n) in &counts {
+        if ["GptOssSdpa", "Softmax", "Reduce<Max>", "Concat", "ApplyRope", "DynKeyValueCache", "Sdpa", "FlashSDPA", "MoeFfn"]
+            .iter()
+            .any(|k| op.contains(k))
+        {
+            println!("{op}: {n}");
+        }
+    }
+    let fused = counts.get("GptOssSdpa").copied().unwrap_or(0);
+    ensure!(fused == 24, "expected 24 fused ops after full sequence, got {fused}");
+    Ok(())
+}
+
+/// Print the exact input facts of the fused ops' q-concat and op inputs.
+#[test]
+#[ignore]
+fn audit_fused_input_facts() -> TractResult<()> {
+    use tract_nnef::tract_core::transform::ModelTransform;
+    let mut model = load_decluttered()?;
+    tract_transformers::ops::gpt_oss_sdpa::GptOssInPlaceSdpaTransform.transform(&mut model)?;
+    for node in model.nodes() {
+        if node.op_is::<tract_transformers::ops::gpt_oss_sdpa::GptOssSdpa>()
+            && node.name.contains("__0_")
+        {
+            for (i, inp) in node.inputs.iter().enumerate() {
+                let f = model.outlet_fact(*inp)?;
+                let pname = &model.node(inp.node).name;
+                println!("in[{i}] <- {pname}: {f:?}");
+            }
+        }
+        if node.name.ends_with(".q") && node.name.contains("__0_") {
+            for (i, inp) in node.inputs.iter().enumerate() {
+                let f = model.outlet_fact(*inp)?;
+                let pname = &model.node(inp.node).name;
+                println!("qcat in[{i}] <- {pname}: {f:?}");
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Fused graph: Metal runtime vs CPU runtime on identical inputs. Names the
+/// first diverging output (logits or a specific layer cache).
+#[test]
+#[ignore]
+fn fused_metal_matches_fused_cpu() -> TractResult<()> {
+    use tract_nnef::tract_core::transform::ModelTransform;
+    let mut model = load_decluttered()?;
+    tract_transformers::ops::gpt_oss_sdpa::GptOssInPlaceSdpaTransform.transform(&mut model)?;
+
+    let ids: Vec<i64> = (0..256).map(|i| (1000 + i * 37 % 5000) as i64).collect();
+    let make_inputs = |model: &TypedModel| -> TractResult<TVec<TValue>> {
+        let mut inputs = TVec::new();
+        for outlet in model.inputs.iter() {
+            let fact = model.outlet_fact(*outlet)?;
+            if fact.datum_type == i64::datum_type() && fact.rank() == 2 {
+                inputs.push(Tensor::from_shape(&[1, ids.len()], &ids)?.into_tvalue());
+            } else if fact.rank() == 0 {
+                inputs.push(tensor0(1i64).into_tvalue());
+            } else {
+                inputs.push(Tensor::zero_dt(fact.datum_type, &[1, 8, 0, 64])?.into_tvalue());
+            }
+        }
+        Ok(inputs)
+    };
+
+    let cpu_outs = {
+        let plan = model.clone().into_runnable()?;
+        let mut state = SimpleState::new(&plan)?;
+        state.run(make_inputs(&model)?)?
+    };
+    let metal_outs = {
+        let rt = tract_nnef::tract_core::runtime::runtime_for_name("metal")?
+            .context("metal runtime not registered")?;
+        let runnable = rt.prepare(model.clone())?;
+        runnable.run(make_inputs(&model)?)?
+    };
+
+    for (i, (c, m)) in cpu_outs.iter().zip(metal_outs.iter()).enumerate() {
+        let c = c.clone().into_tensor().cast_to::<f32>()?.into_owned();
+        let m = m.clone().into_tensor().cast_to::<f32>()?.into_owned();
+        let cv = c.try_as_plain()?.as_slice::<f32>()?;
+        let mv = m.try_as_plain()?.as_slice::<f32>()?;
+        let dot: f32 = cv.iter().zip(mv).map(|(a, b)| a * b).sum();
+        let nc: f32 = cv.iter().map(|a| a * a).sum::<f32>().sqrt();
+        let nm: f32 = mv.iter().map(|a| a * a).sum::<f32>().sqrt();
+        let cos = dot / (nc * nm).max(f32::MIN_POSITIVE);
+        println!("output {i}: cosine {cos:.6} (cpu norm {nc:.2}, metal norm {nm:.2})");
+    }
     Ok(())
 }
