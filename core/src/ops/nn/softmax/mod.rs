@@ -275,28 +275,32 @@ impl Softmax {
         let max = (tract_linalg::ops().max_f16)().run(slice)?;
         match kind {
             SoftmaxKind::Softmax(exp_impl) => {
-                let sum = match exp_impl {
+                // Accumulated in f32: a row long enough for the running sum to
+                // outgrow its own terms stalls in f16, which costs double digits
+                // of relative error by a few thousand elements.
+                let sum: f32 = match exp_impl {
                     SoftmaxExp::Libc => {
-                        let mut s = f16::zero();
+                        let mut s = 0f32;
                         slice.iter_mut().for_each(|x| {
                             *x = (*x - max).exp();
-                            s += *x;
+                            s += x.to_f32();
                         });
                         s
                     }
                     SoftmaxExp::FastCompact => (tract_linalg::ops().softmax2_fastcompact_f16)()
-                        .run_with_params(slice, max)?,
+                        .run_with_params(slice, max)?
+                        .to_f32(),
                 };
-                let rsum = sum.recip();
+                let rsum = f16::from_f32(sum.recip());
                 (tract_linalg::ops().mul_by_scalar_f16)().run_with_params(slice, rsum)?;
             }
             SoftmaxKind::LogSoftmax => {
-                let mut exp_sum = f16::zero();
+                let mut exp_sum = 0f32;
                 slice.iter_mut().for_each(|x| {
                     *x -= max;
-                    exp_sum += x.exp();
+                    exp_sum += x.exp().to_f32();
                 });
-                let log_sum = exp_sum.ln();
+                let log_sum = f16::from_f32(exp_sum.ln());
                 slice.iter_mut().for_each(|x| *x -= log_sum);
             }
         }
@@ -784,6 +788,38 @@ mod test {
 
         let prob = InnerSoftmaxProblem { in_qp, out_qp, data };
         prob.check()?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod f16_accumulator {
+    use super::*;
+
+    /// The f16 row must stay close to the same softmax evaluated in f32. A row
+    /// long enough for the running sum to outgrow its own terms is the case an
+    /// f16 accumulator silently drops.
+    #[test]
+    fn long_rows_keep_their_normalisation() -> TractResult<()> {
+        for len in [1024usize, 4096, 8192] {
+            let logits: Vec<f32> = (0..len).map(|i| ((i as f32) * 0.7).sin() * 0.5).collect();
+
+            let mut half: Vec<f16> = logits.iter().map(|v| f16::from_f32(*v)).collect();
+            Softmax::new(tvec![0], None, SoftmaxKind::Softmax(SoftmaxExp::Libc))
+                .softmax_inner_slice_f16(&mut half, SoftmaxKind::Softmax(SoftmaxExp::Libc))?;
+
+            let max = logits.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+            let exps: Vec<f32> = logits.iter().map(|v| (v - max).exp()).collect();
+            let total: f32 = exps.iter().sum();
+
+            let got: f32 = half.iter().map(|v| v.to_f32()).sum();
+            assert!((got - 1.0).abs() < 0.02, "len {len}: row sums to {got}, expected 1.0");
+            for (i, (h, e)) in half.iter().zip(&exps).enumerate() {
+                let want = e / total;
+                let err = (h.to_f32() - want).abs() / want.max(f32::MIN_POSITIVE);
+                assert!(err < 0.05, "len {len} lane {i}: got {h}, want {want}, rel {err}");
+            }
+        }
         Ok(())
     }
 }
