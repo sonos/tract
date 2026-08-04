@@ -97,9 +97,15 @@ impl EvalOp for MetalRoutedQ40MatMul {
                 self.kernel_input_mode(),
                 &output,
             )?;
-            if self.sync_after_dispatch {
-                // A command-buffer boundary is enough to restore correctness;
-                // committing without blocking keeps the CPU ahead of the GPU.
+            // A command-buffer boundary is enough to restore correctness;
+            // committing without blocking keeps the CPU ahead of the GPU.
+            //
+            // Only prefill-sized batches need it: the corruption appears
+            // during long prefill forwards, and decode steps (route_count =
+            // top_k) end with the runtime's own blocking logits sync anyway.
+            // Splitting at decode costs ~75% of the decode wall time in
+            // waitUntilCompleted for no correctness benefit.
+            if self.sync_after_dispatch && route_token_ids.shape()[0] > 64 {
                 stream.commit_current()?;
             }
             Ok(())
