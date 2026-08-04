@@ -105,7 +105,11 @@ impl EvalOp for MetalRoutedQ40MatMul {
             // top_k) end with the runtime's own blocking logits sync anyway.
             // Splitting at decode costs ~75% of the decode wall time in
             // waitUntilCompleted for no correctness benefit.
-            if self.sync_after_dispatch && route_token_ids.shape()[0] > 64 {
+            let min_routes = std::env::var("TRACT_METAL_MOE_COMMIT_MIN_ROUTES")
+                .ok()
+                .and_then(|v| v.parse::<usize>().ok())
+                .unwrap_or(64);
+            if self.sync_after_dispatch && route_token_ids.shape()[0] > min_routes {
                 stream.commit_current()?;
             }
             Ok(())

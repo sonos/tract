@@ -349,6 +349,17 @@ impl MetalStream {
             .to_owned()
     }
 
+    fn log_gpu_time(buffer: &TCommandBuffer, tag: &str) {
+        if std::env::var_os("TRACT_METAL_LOG_GPU_TIME").is_some() {
+            // metal-rs does not wrap GPUStartTime/GPUEndTime; go through objc.
+            use objc::{msg_send, sel, sel_impl};
+            let raw: &metal::CommandBufferRef = buffer;
+            let start: f64 = unsafe { msg_send![raw, GPUStartTime] };
+            let end: f64 = unsafe { msg_send![raw, GPUEndTime] };
+            eprintln!("gpu-time {tag}: {:.3} ms", (end - start) * 1e3);
+        }
+    }
+
     /// How many committed-but-unawaited buffers `commit_current` keeps in
     /// flight. Depth 2 overlaps CPU encoding with GPU execution; the wait on
     /// the oldest buffer is the backpressure that bounds transient memory
@@ -381,6 +392,7 @@ impl MetalStream {
         while committed.len() > Self::MAX_COMMITTED_IN_FLIGHT {
             let (oldest, tensors) = committed.pop_front().unwrap();
             oldest.wait_until_completed();
+            Self::log_gpu_time(&oldest, "segment");
             drop(tensors);
         }
         Ok(())
@@ -394,6 +406,9 @@ impl MetalStream {
             let drained: Vec<_> = self.committed_command_buffers.borrow_mut().drain(..).collect();
             if let Some((newest, _)) = drained.last() {
                 newest.wait_until_completed();
+            }
+            for (buffer, _) in &drained {
+                Self::log_gpu_time(buffer, "segment-tail");
             }
             drop(drained);
             self.retained_tensors.borrow_mut().clear();
@@ -414,6 +429,7 @@ impl MetalStream {
         command_buffer.commit();
         log::trace!("Command buffer {:?} commit", command_buffer_id);
         command_buffer.wait_until_completed();
+        Self::log_gpu_time(&command_buffer, "final");
         log::trace!("Command buffer {:?} has completed (Blocking call)", command_buffer_id);
 
         // The queue is FIFO: the buffer above completing implies every buffer
