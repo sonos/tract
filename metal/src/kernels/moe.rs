@@ -209,3 +209,108 @@ pub fn dispatch_routed_combine_f32(
     });
     Ok(())
 }
+
+pub fn dispatch_gpt_oss_sinks_softmax_f16(
+    stream: &MetalStream,
+    scores: &DeviceTensor,
+    mask: &DeviceTensor,
+    sinks: &DeviceTensor,
+    probs: &DeviceTensor,
+    s_len: usize,
+    scale: f32,
+) -> TractResult<()> {
+    stream.retain_tensor(scores);
+    stream.retain_tensor(mask);
+    stream.retain_tensor(sinks);
+    stream.retain_tensor(probs);
+
+    ensure!(scores.datum_type() == f16::datum_type());
+    ensure!(probs.datum_type() == f16::datum_type());
+    ensure!(mask.datum_type() == f32::datum_type());
+    ensure!(sinks.datum_type() == f32::datum_type());
+    let t_len = *scores.shape().last().context("scores rank 0")?;
+    let rows = scores.len() / t_len;
+    ensure!(probs.len() == scores.len());
+    ensure!(rows % s_len == 0, "rows {rows} not a multiple of s_len {s_len}");
+    ensure!(mask.len() >= s_len * t_len, "mask too small");
+
+    let pipeline = stream.load_pipeline(LibraryName::MoeOps, "gpt_oss_sinks_softmax_f16")?;
+    let group_width = (pipeline.max_total_threads_per_threadgroup() as u64).min(256);
+    let command_buffer = stream.command_buffer();
+    command_buffer.encode(|encoder| {
+        encoder.set_compute_pipeline_state(&pipeline);
+        encoder.set_metal_tensor(0, scores, metal::MTLResourceUsage::Read);
+        encoder.set_metal_tensor(1, mask, metal::MTLResourceUsage::Read);
+        encoder.set_metal_tensor(2, sinks, metal::MTLResourceUsage::Read);
+        encoder.set_metal_tensor(3, probs, metal::MTLResourceUsage::Write);
+        encoder.set_slice(4, &[rows as u32]);
+        encoder.set_slice(5, &[t_len as u32]);
+        encoder.set_slice(6, &[s_len as u32]);
+        encoder.set_slice(7, &[scale]);
+        let grid = MTLSize { width: rows as NSUInteger, height: 1, depth: 1 };
+        let group = MTLSize { width: group_width, height: 1, depth: 1 };
+        encoder.dispatch_thread_groups(grid, group);
+    });
+    Ok(())
+}
+
+#[cfg(test)]
+mod sinks_softmax_tests {
+    use super::*;
+    use tract_gpu::tensor::IntoDevice;
+
+    #[test]
+    fn sinks_softmax_matches_cpu() -> TractResult<()> {
+        crate::utils::with_borrowed_metal_stream(|stream| {
+            let (hq, s_len, t_len) = (4usize, 3usize, 37usize);
+            let rows = hq * s_len;
+            let mut seed = 11u64;
+            let mut next = || {
+                seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
+                ((seed >> 33) as f32 / (1u64 << 31) as f32) - 1.0
+            };
+            let scores: Vec<f32> = (0..rows * t_len).map(|_| next() * 3.0).collect();
+            let mask: Vec<f32> =
+                (0..s_len * t_len).map(|i| if i % 7 == 0 { -1e30 } else { 0.0 }).collect();
+            let sinks: Vec<f32> = (0..hq).map(|_| next()).collect();
+            let scale = 0.37f32;
+
+            let scores_f16 =
+                Tensor::from_shape(&[rows, t_len], &scores)?.cast_to::<f16>()?.into_owned();
+            let scores_dev = scores_f16.clone().into_device()?;
+            let mask_dev = Tensor::from_shape(&[s_len, t_len], &mask)?.into_device()?;
+            let sinks_dev = Tensor::from_shape(&[hq], &sinks)?.into_device()?;
+            let probs_dev = DeviceTensor::uninitialized_dt(f16::datum_type(), &[rows, t_len])?;
+
+            dispatch_gpt_oss_sinks_softmax_f16(
+                stream, &scores_dev, &mask_dev, &sinks_dev, &probs_dev, s_len, scale,
+            )?;
+            stream.wait_until_completed()?;
+            let got = probs_dev.to_host()?.into_tensor().cast_to::<f32>()?.into_owned();
+            let got = got.try_as_plain()?.as_slice::<f32>()?;
+
+            // CPU reference from the f16-rounded scores.
+            let s16 = scores_f16.cast_to::<f32>()?.into_owned();
+            let s16 = s16.try_as_plain()?.as_slice::<f32>()?;
+            for r in 0..rows {
+                let head = r / s_len;
+                let mrow = r % s_len;
+                let logits: Vec<f32> = (0..t_len)
+                    .map(|j| s16[r * t_len + j] * scale + mask[mrow * t_len + j])
+                    .collect();
+                let m = logits.iter().copied().fold(sinks[head], f32::max);
+                let den: f32 =
+                    logits.iter().map(|l| (l - m).exp()).sum::<f32>() + (sinks[head] - m).exp();
+                for j in 0..t_len {
+                    let want = (logits[j] - m).exp() / den;
+                    let g = got[r * t_len + j];
+                    ensure!(
+                        (want - g).abs() <= 1e-3 + want.abs() * 2e-2,
+                        "row {r} col {j}: want {want} got {g}"
+                    );
+                }
+            }
+            Ok(())
+        })
+    }
+}

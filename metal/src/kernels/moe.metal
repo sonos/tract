@@ -160,3 +160,73 @@ enum RouteGateMode : uint {
     const float glu = gate / (1.0f + exp(-alpha * gate));
     output[gid] = (up + 1.0f) * glu;
 }
+
+// Row softmax for GPT-OSS attention: probs = softmax over T keys of
+// (score*scale + mask[row % s_len]) with a per-head SINK logit participating
+// in the denominator only. Rows are [num_q_heads, s_len] flattened; one
+// threadgroup per row.
+[[kernel]] void gpt_oss_sinks_softmax_f16(
+    device const half *scores [[buffer(0)]],
+    device const float *mask [[buffer(1)]],
+    device const float *sinks [[buffer(2)]],
+    device half *probs [[buffer(3)]],
+    constant uint &rows [[buffer(4)]],
+    constant uint &t_len [[buffer(5)]],
+    constant uint &s_len [[buffer(6)]],
+    constant float &scale [[buffer(7)]],
+    uint row [[threadgroup_position_in_grid]],
+    uint lane [[thread_index_in_threadgroup]],
+    uint tptg [[threads_per_threadgroup]])
+{
+    threadgroup float partials[32];
+    if (row >= rows) {
+        return;
+    }
+    const uint head = row / s_len;
+    const uint mrow = row % s_len;
+    device const half *srow = scores + (uint64_t)row * t_len;
+    device const float *mrow_p = mask + (uint64_t)mrow * t_len;
+    device half *prow = probs + (uint64_t)row * t_len;
+    const float sink = sinks[head];
+    const uint simd_lane = lane % 32;
+    const uint simd_ix = lane / 32;
+    const uint n_simd = max(tptg / 32, 1u);
+
+    // Pass 1: max of logits (sink included).
+    float m = sink;
+    for (uint j = lane; j < t_len; j += tptg) {
+        m = max(m, (float)srow[j] * scale + mrow_p[j]);
+    }
+    m = simd_max(m);
+    if (simd_lane == 0) partials[simd_ix] = m;
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    if (simd_ix == 0) {
+        float v = simd_lane < n_simd ? partials[simd_lane] : -INFINITY;
+        v = simd_max(v);
+        if (simd_lane == 0) partials[0] = v;
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    m = partials[0];
+
+    // Pass 2: denominator (sink seeds it).
+    float den = 0.0f;
+    for (uint j = lane; j < t_len; j += tptg) {
+        den += exp((float)srow[j] * scale + mrow_p[j] - m);
+    }
+    den = simd_sum(den);
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    if (simd_lane == 0) partials[simd_ix] = den;
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    if (simd_ix == 0) {
+        float v = simd_lane < n_simd ? partials[simd_lane] : 0.0f;
+        v = simd_sum(v);
+        if (simd_lane == 0) partials[0] = v;
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    den = partials[0] + exp(sink - m);
+
+    // Pass 3: write normalized probabilities (sink column dropped).
+    for (uint j = lane; j < t_len; j += tptg) {
+        prow[j] = (half)(exp((float)srow[j] * scale + mrow_p[j] - m) / den);
+    }
+}

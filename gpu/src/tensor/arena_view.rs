@@ -21,6 +21,22 @@ pub struct DeviceArenaView {
 }
 
 impl DeviceArenaView {
+    /// Build a view over any owned device tensor. `shape`/`strides` are in
+    /// elements of `dt`; `offset_bytes` from the buffer start. The backing
+    /// tensor stays alive as long as any view of it does.
+    pub fn from_owned(
+        arena: Arc<Box<dyn OwnedDeviceTensor>>,
+        dt: DatumType,
+        shape: TVec<usize>,
+        strides: TVec<isize>,
+        offset_bytes: usize,
+    ) -> TractResult<Self> {
+        check_strides_validity(shape.clone(), strides.clone())?;
+        let len = shape.iter().product();
+        Ok(DeviceArenaView { arena, dt, len, shape, strides, offset_bytes, exotic_fact: None })
+    }
+
+
     #[inline]
     pub fn shape(&self) -> &[usize] {
         self.shape.as_slice()
