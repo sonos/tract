@@ -23,6 +23,7 @@ use metal::{
     FunctionConstantValues, Library, MTLResourceOptions,
 };
 use std::collections::HashMap;
+use std::collections::VecDeque;
 use tract_core::internal::*;
 
 thread_local! {
@@ -286,6 +287,10 @@ pub struct MetalStream {
     context: MetalContext,
     command_queue: CommandQueue,
     command_buffer: RefCell<Option<TCommandBuffer>>,
+    /// Buffers committed by `commit_current` and not yet awaited, oldest
+    /// first, each with the tensors that must stay alive until it completes.
+    /// The queue is FIFO, so waiting on the newest implies all have completed.
+    committed_command_buffers: RefCell<VecDeque<(TCommandBuffer, Vec<DeviceTensor>)>>,
     command_buffer_id: AtomicUsize,
     retained_tensors: RefCell<Vec<DeviceTensor>>,
 }
@@ -304,6 +309,7 @@ impl MetalStream {
             context,
             command_queue,
             command_buffer: RefCell::new(None),
+            committed_command_buffers: RefCell::new(VecDeque::new()),
             command_buffer_id: AtomicUsize::new(0),
             retained_tensors: RefCell::new(vec![]),
         }
@@ -343,12 +349,18 @@ impl MetalStream {
             .to_owned()
     }
 
+    /// How many committed-but-unawaited buffers `commit_current` keeps in
+    /// flight. Depth 2 overlaps CPU encoding with GPU execution; the wait on
+    /// the oldest buffer is the backpressure that bounds transient memory
+    /// (without it, a long-context forward retains every layer's transients
+    /// at once and thrashes).
+    const MAX_COMMITTED_IN_FLIGHT: usize = 2;
+
     /// Commit the current command buffer without blocking the CPU on its
     /// completion. The next `command_buffer()` call opens a fresh one; the
-    /// queue guarantees the committed buffer executes before it. Retained
-    /// tensors are NOT cleared here: they must outlive the committed buffer's
-    /// execution, and are released by the next blocking
-    /// `wait_until_completed`.
+    /// queue guarantees the committed buffer executes before it. Tensors
+    /// retained so far move into the in-flight entry and are released once
+    /// that buffer completes.
     pub fn commit_current(&self) -> TractResult<()> {
         let Some(command_buffer) = self.command_buffer.borrow_mut().take() else {
             return Ok(());
@@ -363,11 +375,30 @@ impl MetalStream {
         }
         command_buffer.encoder().end_encoding();
         command_buffer.commit();
+        let retained = std::mem::take(&mut *self.retained_tensors.borrow_mut());
+        let mut committed = self.committed_command_buffers.borrow_mut();
+        committed.push_back((command_buffer, retained));
+        while committed.len() > Self::MAX_COMMITTED_IN_FLIGHT {
+            let (oldest, tensors) = committed.pop_front().unwrap();
+            oldest.wait_until_completed();
+            drop(tensors);
+        }
         Ok(())
     }
 
     pub fn wait_until_completed(&self) -> TractResult<()> {
-        let Some(command_buffer) = self.command_buffer.borrow().to_owned() else { return Ok(()) };
+        let Some(command_buffer) = self.command_buffer.borrow().to_owned() else {
+            // No open buffer, but commit_current buffers may still be in
+            // flight: the host must not read results before they land. FIFO:
+            // waiting on the newest is enough.
+            let drained: Vec<_> = self.committed_command_buffers.borrow_mut().drain(..).collect();
+            if let Some((newest, _)) = drained.last() {
+                newest.wait_until_completed();
+            }
+            drop(drained);
+            self.retained_tensors.borrow_mut().clear();
+            return Ok(());
+        };
 
         command_buffer.encoder().end_encoding();
 
@@ -384,6 +415,10 @@ impl MetalStream {
         log::trace!("Command buffer {:?} commit", command_buffer_id);
         command_buffer.wait_until_completed();
         log::trace!("Command buffer {:?} has completed (Blocking call)", command_buffer_id);
+
+        // The queue is FIFO: the buffer above completing implies every buffer
+        // committed earlier by commit_current has completed too.
+        self.committed_command_buffers.borrow_mut().clear();
 
         // Clear local retained values used by the command buffer
         self.retained_tensors.borrow_mut().clear();
@@ -419,6 +454,11 @@ impl MetalStream {
 
 impl Drop for MetalStream {
     fn drop(&mut self) {
+        let drained: Vec<_> = self.committed_command_buffers.borrow_mut().drain(..).collect();
+        if let Some((newest, _)) = drained.last() {
+            newest.wait_until_completed();
+        }
+        drop(drained);
         let Some(command_buffer) = self.command_buffer.borrow_mut().to_owned() else { return };
 
         match command_buffer.status() {
