@@ -83,11 +83,10 @@ pub fn dispatch_route_topk_f32(
 
     let pipeline = stream.load_pipeline(LibraryName::MoeOps, "route_topk_f32")?;
     let max_group_width = pipeline.max_total_threads_per_threadgroup() as u32;
-    ensure!(
-        num_experts <= max_group_width,
-        "Metal RouteTopK requires at least one thread per expert: experts={num_experts}, max_threads={max_group_width}"
-    );
-    let group_width = num_experts.next_power_of_two().min(max_group_width).max(1);
+    // One simdgroup (32 lanes) per expert, capped by the device threadgroup
+    // limit; the kernel strides experts when there are more experts than
+    // simdgroups.
+    let group_width = (num_experts * 32).min(max_group_width).max(32);
 
     let command_buffer = stream.command_buffer();
     command_buffer.encode(|encoder| {

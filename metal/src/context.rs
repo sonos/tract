@@ -290,7 +290,10 @@ pub struct MetalStream {
     /// Buffers committed by `commit_current` and not yet awaited, oldest
     /// first, each with the tensors that must stay alive until it completes.
     /// The queue is FIFO, so waiting on the newest implies all have completed.
-    committed_command_buffers: RefCell<VecDeque<(TCommandBuffer, Vec<DeviceTensor>)>>,
+    committed_command_buffers: RefCell<VecDeque<(TCommandBuffer, Vec<DeviceTensor>, Vec<String>)>>,
+    /// Kernel names dispatched into the current (open) command buffer, only
+    /// populated under TRACT_METAL_PROFILE_KERNELS.
+    pending_kernel_names: RefCell<Vec<String>>,
     command_buffer_id: AtomicUsize,
     retained_tensors: RefCell<Vec<DeviceTensor>>,
 }
@@ -310,6 +313,7 @@ impl MetalStream {
             command_queue,
             command_buffer: RefCell::new(None),
             committed_command_buffers: RefCell::new(VecDeque::new()),
+            pending_kernel_names: RefCell::new(Vec::new()),
             command_buffer_id: AtomicUsize::new(0),
             retained_tensors: RefCell::new(vec![]),
         }
@@ -324,6 +328,12 @@ impl MetalStream {
         library_name: LibraryName,
         func_name: &str,
     ) -> TractResult<ComputePipelineState> {
+        if std::env::var_os("TRACT_METAL_PROFILE_KERNELS").is_some() {
+            // One command buffer per dispatch: per-buffer GPU clocks become
+            // per-kernel GPU times, logged with the name recorded here.
+            self.commit_current()?;
+            self.pending_kernel_names.borrow_mut().push(func_name.to_string());
+        }
         self.context.load_pipeline(library_name, func_name)
     }
 
@@ -350,13 +360,20 @@ impl MetalStream {
     }
 
     fn log_gpu_time(buffer: &TCommandBuffer, tag: &str) {
-        if std::env::var_os("TRACT_METAL_LOG_GPU_TIME").is_some() {
+        Self::log_gpu_time_named(buffer, tag, &[]);
+    }
+
+    fn log_gpu_time_named(buffer: &TCommandBuffer, tag: &str, names: &[String]) {
+        if std::env::var_os("TRACT_METAL_LOG_GPU_TIME").is_some()
+            || std::env::var_os("TRACT_METAL_PROFILE_KERNELS").is_some()
+        {
             // metal-rs does not wrap GPUStartTime/GPUEndTime; go through objc.
             use objc::{msg_send, sel, sel_impl};
             let raw: &metal::CommandBufferRef = buffer;
             let start: f64 = unsafe { msg_send![raw, GPUStartTime] };
             let end: f64 = unsafe { msg_send![raw, GPUEndTime] };
-            eprintln!("gpu-time {tag}: {:.3} ms", (end - start) * 1e3);
+            let label = if names.is_empty() { String::new() } else { format!(" [{}]", names.join("+")) };
+            eprintln!("gpu-time {tag}{label}: {:.3} ms", (end - start) * 1e3);
         }
     }
 
@@ -387,12 +404,13 @@ impl MetalStream {
         command_buffer.encoder().end_encoding();
         command_buffer.commit();
         let retained = std::mem::take(&mut *self.retained_tensors.borrow_mut());
+        let names = std::mem::take(&mut *self.pending_kernel_names.borrow_mut());
         let mut committed = self.committed_command_buffers.borrow_mut();
-        committed.push_back((command_buffer, retained));
+        committed.push_back((command_buffer, retained, names));
         while committed.len() > Self::MAX_COMMITTED_IN_FLIGHT {
-            let (oldest, tensors) = committed.pop_front().unwrap();
+            let (oldest, tensors, names) = committed.pop_front().unwrap();
             oldest.wait_until_completed();
-            Self::log_gpu_time(&oldest, "segment");
+            Self::log_gpu_time_named(&oldest, "segment", &names);
             drop(tensors);
         }
         Ok(())
@@ -404,11 +422,11 @@ impl MetalStream {
             // flight: the host must not read results before they land. FIFO:
             // waiting on the newest is enough.
             let drained: Vec<_> = self.committed_command_buffers.borrow_mut().drain(..).collect();
-            if let Some((newest, _)) = drained.last() {
+            if let Some((newest, _, _)) = drained.last() {
                 newest.wait_until_completed();
             }
-            for (buffer, _) in &drained {
-                Self::log_gpu_time(buffer, "segment-tail");
+            for (buffer, _, names) in &drained {
+                Self::log_gpu_time_named(buffer, "segment-tail", names);
             }
             drop(drained);
             self.retained_tensors.borrow_mut().clear();
@@ -471,7 +489,7 @@ impl MetalStream {
 impl Drop for MetalStream {
     fn drop(&mut self) {
         let drained: Vec<_> = self.committed_command_buffers.borrow_mut().drain(..).collect();
-        if let Some((newest, _)) = drained.last() {
+        if let Some((newest, _, _)) = drained.last() {
             newest.wait_until_completed();
         }
         drop(drained);

@@ -22,7 +22,8 @@ enum RouteGateMode : uint {
     device const float *wg_bias [[buffer(10)]],
     constant uint &has_wg_bias [[buffer(11)]],
     uint token [[threadgroup_position_in_grid]],
-    uint lane [[thread_index_in_threadgroup]])
+    uint lane [[thread_index_in_threadgroup]],
+    uint tptg [[threads_per_threadgroup]])
 {
     constexpr uint MAX_TOPK = 16;
     constexpr uint MAX_EXPERTS = 256;
@@ -32,15 +33,25 @@ enum RouteGateMode : uint {
         return;
     }
 
-    if (lane < num_experts) {
-        float score = 0.0f;
-        for (uint d = 0; d < d_model; d++) {
-            score += x[token * d_model + d] * wg[lane * d_model + d];
+    // One simdgroup per expert, lanes striding the d_model dot. The previous
+    // one-thread-per-expert layout ran a 2880-element scalar dot per lane and
+    // left the GPU >95% idle (~0.28 ms per call at decode).
+    const uint simd_lane = lane % 32;
+    const uint num_sg = max(tptg / 32, 1u);
+    device const float * xrow = x + token * d_model;
+    for (uint e = lane / 32; e < num_experts; e += num_sg) {
+        float partial = 0.0f;
+        device const float * wrow = wg + e * d_model;
+        for (uint d = simd_lane; d < d_model; d += 32) {
+            partial += xrow[d] * wrow[d];
         }
-        if (has_wg_bias != 0) {
-            score += wg_bias[lane];
+        float score = simd_sum(partial);
+        if (simd_lane == 0) {
+            if (has_wg_bias != 0) {
+                score += wg_bias[e];
+            }
+            scores[e] = score;
         }
-        scores[lane] = score;
     }
     threadgroup_barrier(mem_flags::mem_threadgroup);
 
