@@ -317,6 +317,9 @@ impl OpState for MetalGptOssSdpaState {
 
         // Continuation vs rebuild (fresh session / truncation / retry).
         if past != self.k.len {
+            if std::env::var_os("TRACT_DEBUG_GPT_OSS_REBUILD").is_some() {
+                eprintln!("gptoss-rebuild: past={past} k.len={} s_len={s_len}", self.k.len);
+            }
             self.k.reset();
             self.v.reset();
             if past > 0 {
