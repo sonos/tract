@@ -299,7 +299,23 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
         {
             let device_inputs =
                 sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
+            let is_inplace_kv = gpu_op.is::<ops::gpt_oss_sdpa::MetalGptOssSdpa>();
             let outlet_ids = target.wire_node(node.name.clone(), gpu_op, &device_inputs)?;
+            if is_inplace_kv {
+                // The fused in-place KV op's cache outputs (slots 1, 2) must
+                // stay device-resident: they are zero-copy views that the
+                // caller only ever feeds back as next-step inputs. A ToHost
+                // sync here would re-materialize the whole cache per step.
+                let mut synced = sync_model_outputs_if_required(
+                    source,
+                    node,
+                    target,
+                    tvec!(outlet_ids[0]),
+                )?;
+                synced.push(outlet_ids[1]);
+                synced.push(outlet_ids[2]);
+                return Ok(synced);
+            }
             sync_model_outputs_if_required(source, node, target, outlet_ids)
         } else {
             let cpu_inputs =
