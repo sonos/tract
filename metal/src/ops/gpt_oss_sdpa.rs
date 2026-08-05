@@ -21,10 +21,12 @@ use tract_gpu::tensor::{DeviceArenaView, DeviceTensor, DeviceTensorExt, OwnedDev
 use tract_gpu::utils::facts_to_device_facts;
 use tract_transformers::ops::gpt_oss_sdpa::GptOssSdpa;
 
-use crate::kernels::matmul::{GemmDispatchParams, GemmKernel, GgmlGemm, dispatch_mul_mv_q8_0};
+use crate::kernels::matmul::{
+    GemmDispatchParams, GemmKernel, GgmlGemm, dispatch_mul_mv_f16_split_k, dispatch_mul_mv_q8_0,
+};
 use crate::kernels::moe::{
     GptOssFlashAttnDims, dispatch_gpt_oss_flash_attn_f16, dispatch_gpt_oss_kv_quantize_q8_0,
-    dispatch_gpt_oss_sinks_softmax_f16, flash_attn_scratch_len,
+    dispatch_gpt_oss_sinks_softmax_f16, dispatch_gpt_oss_sum_chunks_f16, flash_attn_scratch_len,
 };
 use crate::utils::get_metal_buffer;
 
@@ -68,6 +70,13 @@ thread_local! {
 
 const Q8_BLOCK: usize = 32;
 const Q8_BLOCK_BYTES: usize = 34;
+/// Context length where the decode AV gemv switches to split-k (partial
+/// sums over key chunks + a small reduce). Measured crossover vs the plain
+/// batched gemv on gpt-oss-20b/M-series: plain wins to ~5.6k (52.6 vs 47.5
+/// @2800), split-k wins beyond (39.2 vs 37.6 @11k).
+const SPLIT_K_MIN_T: usize = 8192;
+/// Target keys per split-k chunk.
+const SPLIT_K_CHUNK: usize = 2048;
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct MetalGptOssSdpa {
@@ -238,7 +247,11 @@ impl DeviceKvBuffer {
     fn alloc(&self, hkv: usize, d: usize, cap: usize) -> TractResult<Arc<Box<dyn OwnedDeviceTensor>>> {
         let shape: [usize; 4] =
             if self.transposed { [1, hkv, d, cap] } else { [1, hkv, cap, d] };
-        Ok(Arc::new(get_context()?.uninitialized_device_tensor(&shape, f16::datum_type())?))
+        // Zero-filled (not pooled/uninitialized): the split-k attention reads
+        // the capacity tail beyond `len` against zero probabilities, and
+        // NaN garbage times zero would poison the sum.
+        let zeroed = Tensor::zero::<f16>(&shape)?;
+        get_context()?.tensor_to_device(zeroed.into()).map(Arc::new)
     }
 
     /// Append `chunk` ([1, Hkv, new, D] f16 device tensor) past `len`.
@@ -620,36 +633,57 @@ impl OpState for MetalGptOssSdpaState {
                     self.scale,
                 );
             }
+            let m = group * s_len;
+            // Split-k AV at long context: one gemv per (head, dim-row) walks
+            // all T keys serially and turns latency-bound; chunking T across
+            // extra batch entries plus a small reduce restores parallelism.
+            // Scores/probs rows padded to the chunk grid; softmax zeroes the
+            // pad and the cache tail is allocated zeroed, so padded reads
+            // contribute exact zeros.
+            let split_k = if s_len <= FLASH_MAX_S
+                && t_len >= SPLIT_K_MIN_T
+                && std::env::var_os("TRACT_METAL_DISABLE_GPT_OSS_SPLIT_K").is_none()
+            {
+                let chunks = t_len.div_ceil(SPLIT_K_CHUNK).clamp(2, 16);
+                let k_chunk = t_len.div_ceil(chunks).next_multiple_of(Q8_BLOCK);
+                let t_ck = chunks * k_chunk;
+                (t_ck <= self.k.cap).then_some((chunks, k_chunk, t_ck))
+            } else {
+                None
+            };
+            let t_row = split_k.map_or(t_len, |(_, _, t_ck)| t_ck);
             let scores = Arc::new(get_context()?.uninitialized_device_tensor(
-                &[hkv, group * s_len, t_len],
+                &[hkv, m, t_row],
                 f16::datum_type(),
             )?);
             let probs = Arc::new(get_context()?.uninitialized_device_tensor(
-                &[hkv, group * s_len, t_len],
+                &[hkv, m, t_row],
                 f16::datum_type(),
             )?);
-            let scores_all = subview_all(&scores, hkv * group * s_len, t_len)?;
-            let probs_all = subview_all(&probs, hkv * group * s_len, t_len)?;
+            let scores_all = subview_all(&scores, hkv * m, t_row)?;
+            let probs_all = subview_all(&probs, hkv * m, t_row)?;
             stream.retain_tensor(&scores_all);
             stream.retain_tensor(&probs_all);
             // One batched gemm across all kv heads: A [Hkv, group*S, D] x
-            // K^T [Hkv, T, D] -> scores [Hkv, group*S, T].
+            // K^T [Hkv, T, D] -> scores [Hkv, group*S, T(row-padded)]. In
+            // split-k mode the pad columns compute garbage from the zeroed
+            // cache tail; the softmax overwrites them with zeros.
             gemm.dispatch_eval(
                 stream,
                 GemmDispatchParams {
                     dts: [f16dt, f16dt, f16dt],
                     a_batch: hkv,
                     b_batch: hkv,
-                    m: group * s_len,
+                    m,
                     k: d,
-                    n: t_len,
+                    n: t_row,
                     transpose_a: false,
                     a_offset: q_a_offset,
                     transpose_b: true,
                     b_offset: k_b.buffer_offset(),
                     q40_b: false,
                     c_offset: 0,
-                    a_strides: tvec![(group * s_len * d) as isize, d as isize, 1],
+                    a_strides: tvec![(m * d) as isize, d as isize, 1],
                     b_strides: tvec![(self.k.cap * d) as isize, d as isize, 1],
                 },
                 get_metal_buffer(&q_a),
@@ -667,6 +701,40 @@ impl OpState for MetalGptOssSdpaState {
                 self.scale,
                 t_len,
             )?;
+            if let Some((chunks, k_chunk, t_ck)) = split_k {
+                let partial = Arc::new(get_context()?.uninitialized_device_tensor(
+                    &[hkv * chunks, m, d],
+                    f16::datum_type(),
+                )?);
+                let partial_all = subview_all(&partial, hkv * chunks * m, d)?;
+                stream.retain_tensor(&partial_all);
+                dispatch_mul_mv_f16_split_k(
+                    stream,
+                    &v_b,
+                    v_b.buffer_offset(),
+                    self.v.cap * 2,
+                    self.v.d * self.v.cap * 2,
+                    d,
+                    t_ck,
+                    k_chunk,
+                    hkv,
+                    &probs_all,
+                    0,
+                    t_ck * 2,
+                    m * t_ck * 2,
+                    m,
+                    &partial_all,
+                )?;
+                dispatch_gpt_oss_sum_chunks_f16(
+                    stream,
+                    &partial_all,
+                    &out_all,
+                    hkv,
+                    chunks,
+                    m * d,
+                )?;
+                return Ok(());
+            }
             // One batched gemm: probs [Hkv, group*S, T] x V^T [Hkv, D, T]^T
             // -> out [Hkv, group*S, D]. V is stored transposed so its k axis
             // (the sequence) is contiguous, as the GGML kernels require.
@@ -676,7 +744,7 @@ impl OpState for MetalGptOssSdpaState {
                     dts: [f16dt, f16dt, f16dt],
                     a_batch: hkv,
                     b_batch: hkv,
-                    m: group * s_len,
+                    m,
                     k: t_len,
                     n: d,
                     transpose_a: false,
@@ -685,7 +753,7 @@ impl OpState for MetalGptOssSdpaState {
                     b_offset: v_b.buffer_offset(),
                     q40_b: false,
                     c_offset: 0,
-                    a_strides: tvec![(group * s_len * t_len) as isize, t_len as isize, 1],
+                    a_strides: tvec![(m * t_len) as isize, t_len as isize, 1],
                     b_strides: tvec![(self.v.d * self.v.cap) as isize, self.v.cap as isize, 1],
                 },
                 get_metal_buffer(&probs_all),

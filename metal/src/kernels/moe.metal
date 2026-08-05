@@ -208,6 +208,29 @@ typedef struct {
     brow->qs[lane] = (int8_t)rint(v * id);
 }
 
+// Sum split-k gemv partials over the chunk axis:
+// out[head][i] = sum_c partial[(head*chunks + c)][i], i over m*n.
+[[kernel]] void gpt_oss_sum_chunks_f16(
+    device const half *partials [[buffer(0)]],
+    device half *out [[buffer(1)]],
+    constant uint &heads [[buffer(2)]],
+    constant uint &chunks [[buffer(3)]],
+    constant uint &plane [[buffer(4)]],
+    uint gid [[thread_position_in_grid]])
+{
+    const uint total = heads * plane;
+    if (gid >= total) {
+        return;
+    }
+    const uint head = gid / plane;
+    const uint i = gid - head * plane;
+    float acc = 0.0f;
+    for (uint c = 0; c < chunks; c++) {
+        acc += (float)partials[(uint64_t)(head * chunks + c) * plane + i];
+    }
+    out[gid] = (half)acc;
+}
+
 // Fused flash-attention decode for GPT-OSS, two phases sharing K/V reads
 // across the GQA group (each key is streamed once per KV head, serving all
 // `group` q heads at once).

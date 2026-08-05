@@ -433,6 +433,83 @@ pub fn dispatch_mul_mv_q8_0(
     Ok(())
 }
 
+/// Split-K f16 GEMV: C_partial[head, chunk, m, n] = A[head, m, k_chunk(c)] x
+/// B_chunk^T, expressed through the kernel's existing two-level batch dims
+/// (i12 = chunk via nb02/nb12, i13 = head via nb03/nb13). The caller reduces
+/// the chunk axis afterwards. Strides in bytes; B rows must be k-contiguous.
+#[allow(clippy::too_many_arguments)]
+pub fn dispatch_mul_mv_f16_split_k(
+    stream: &MetalStream,
+    b: &DeviceTensor,
+    b_offset: usize,
+    b_row_stride: usize,
+    b_head_stride: usize,
+    n: usize,
+    k_total: usize,
+    k_chunk: usize,
+    heads: usize,
+    a: &DeviceTensor,
+    a_offset: usize,
+    a_row_stride: usize,
+    a_head_stride: usize,
+    m: usize,
+    partial: &DeviceTensor,
+) -> TractResult<()> {
+    let chunks = k_total.div_ceil(k_chunk);
+    ensure!(k_chunk % 32 == 0, "split-k chunk must be a multiple of 32");
+    // The last chunk may be short: the kernel reads exactly ne00 elements, so
+    // callers must guarantee k_total % k_chunk == 0 (pad upstream) or accept
+    // that we require it here.
+    ensure!(k_total % k_chunk == 0, "split-k needs k_total % k_chunk == 0");
+    stream.retain_tensor(a);
+    stream.retain_tensor(b);
+    stream.retain_tensor(partial);
+
+    let params = GgmlGemvParams {
+        ne00: k_chunk as i32,
+        ne01: n as i32,
+        ne02: (heads * chunks) as i32,
+        nb00: 2,
+        nb01: b_row_stride as u64,
+        nb02: (k_chunk * 2) as u64,       // chunk step inside a B row region
+        nb03: b_head_stride as u64,       // head step
+        ne10: k_chunk as i32,
+        ne11: m as i32,
+        ne12: chunks as i32,
+        nb10: 2,
+        nb11: a_row_stride as u64,
+        nb12: (k_chunk * 2) as u64,       // chunk step inside an A row region
+        nb13: a_head_stride as u64,       // head step
+        ne0: n as i32,
+        ne1: m as i32,
+        r2: 1,
+        r3: 1,
+        out_f16: 1,
+    };
+    let pipeline = stream.load_pipeline(LibraryName::Ggml, "kernel_mul_mv_f16_f16")?;
+    let command_buffer = stream.command_buffer();
+    command_buffer.encode(|encoder| {
+        encoder.set_compute_pipeline_state(&pipeline);
+        encoder.set_bytes(
+            0,
+            std::mem::size_of::<GgmlGemvParams>() as u64,
+            &params as *const _ as *const _,
+        );
+        encoder.set_buffer(1, Some(get_metal_buffer(b)), b_offset as NSUInteger);
+        encoder.set_buffer(2, Some(get_metal_buffer(a)), a_offset as NSUInteger);
+        encoder.set_buffer(3, Some(get_metal_buffer(partial)), 0);
+        // f16_f16 gemv: (nth0, nth1, nrows) = (32, 1, 4).
+        let grid = MTLSize {
+            width: n as u64,
+            height: (m as u64).div_ceil(4),
+            depth: (heads * chunks) as u64,
+        };
+        let group = MTLSize { width: 32, height: 1, depth: 1 };
+        encoder.dispatch_thread_groups(grid, group);
+    });
+    Ok(())
+}
+
 pub fn eval_routed_q40_f32(
     stream: &MetalStream,
     input: &DeviceTensor,

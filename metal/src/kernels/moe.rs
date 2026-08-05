@@ -258,6 +258,39 @@ pub fn dispatch_gpt_oss_kv_quantize_q8_0(
     Ok(())
 }
 
+/// Sum split-k gemv partials over the chunk axis into the final output.
+pub fn dispatch_gpt_oss_sum_chunks_f16(
+    stream: &MetalStream,
+    partials: &DeviceTensor,
+    out: &DeviceTensor,
+    heads: usize,
+    chunks: usize,
+    plane: usize,
+) -> TractResult<()> {
+    stream.retain_tensor(partials);
+    stream.retain_tensor(out);
+    let pipeline = stream.load_pipeline(LibraryName::MoeOps, "gpt_oss_sum_chunks_f16")?;
+    let total = heads * plane;
+    let command_buffer = stream.command_buffer();
+    command_buffer.encode(|encoder| {
+        encoder.set_compute_pipeline_state(&pipeline);
+        encoder.set_metal_tensor(0, partials, metal::MTLResourceUsage::Read);
+        encoder.set_metal_tensor(1, out, metal::MTLResourceUsage::Write);
+        encoder.set_slice(2, &[heads as u32]);
+        encoder.set_slice(3, &[chunks as u32]);
+        encoder.set_slice(4, &[plane as u32]);
+        let group_width = (total as u64).min(256).max(1);
+        let grid = MTLSize {
+            width: (total as u64).div_ceil(group_width),
+            height: 1,
+            depth: 1,
+        };
+        let group = MTLSize { width: group_width, height: 1, depth: 1 };
+        encoder.dispatch_thread_groups(grid, group);
+    });
+    Ok(())
+}
+
 /// Fused flash-attention decode step: out = softmax(q.K^T*scale + mask).V
 /// with the per-head sink logit in the denominator. Two dispatches: a
 /// partial pass with one threadgroup per (kv head, key chunk, query pos)

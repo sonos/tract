@@ -4,7 +4,7 @@ pub mod mfa;
 mod mlx_gemm;
 
 pub use basic::BasicMatMul;
-pub use ggml_gemm::{GgmlGemm, dispatch_mul_mv_q8_0, RoutedQ40InputMode, dispatch_routed_q40_f32, eval_routed_q40_f32};
+pub use ggml_gemm::{GgmlGemm, dispatch_mul_mv_f16_split_k, dispatch_mul_mv_q8_0, RoutedQ40InputMode, dispatch_routed_q40_f32, eval_routed_q40_f32};
 pub use mfa::MfaGemm;
 pub use mlx_gemm::MlxGemm;
 use tract_core::tract_linalg::block_quant::{BlockQuant, Q4_0};
