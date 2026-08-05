@@ -122,11 +122,13 @@ impl DeviceArenaView {
         if self.is_dense() {
             return self.arena.get_bytes_slice(self.offset_bytes, len);
         }
-        // Non-dense view: gather row by row (last axis assumed contiguous).
+        // Non-dense view: gather row by row (contiguous rows in one slice,
+        // element-wise when the last axis is strided too, e.g. transposed
+        // KV-cache layouts).
         let esize = self.dt.size_of();
         let rank = self.shape.len();
         let row = self.shape[rank - 1];
-        let row_bytes = row * esize;
+        let last_stride = self.strides[rank - 1] as usize;
         let outer: usize = self.shape[..rank - 1].iter().product();
         let mut out = Vec::with_capacity(len);
         for r in 0..outer {
@@ -137,7 +139,15 @@ impl DeviceArenaView {
                 rem /= self.shape[ax];
                 offset += ix * self.strides[ax] as usize * esize;
             }
-            out.extend_from_slice(&self.arena.get_bytes_slice(offset, row_bytes));
+            if last_stride == 1 {
+                out.extend_from_slice(&self.arena.get_bytes_slice(offset, row * esize));
+            } else {
+                for i in 0..row {
+                    out.extend_from_slice(
+                        &self.arena.get_bytes_slice(offset + i * last_stride * esize, esize),
+                    );
+                }
+            }
         }
         out
     }

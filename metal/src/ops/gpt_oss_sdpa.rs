@@ -21,8 +21,9 @@ use tract_gpu::tensor::{DeviceArenaView, DeviceTensor, DeviceTensorExt, OwnedDev
 use tract_gpu::utils::facts_to_device_facts;
 use tract_transformers::ops::gpt_oss_sdpa::GptOssSdpa;
 
-use crate::kernels::matmul::{BasicMatMul, GemmImpl, GgmlGemm};
+use crate::kernels::matmul::{GemmDispatchParams, GemmKernel, GgmlGemm};
 use crate::kernels::moe::dispatch_gpt_oss_sinks_softmax_f16;
+use crate::utils::get_metal_buffer;
 
 const SEQ_AXIS: usize = 2;
 
@@ -66,12 +67,19 @@ impl EvalOp for MetalGptOssSdpa {
         Ok(Some(Box::new(MetalGptOssSdpaState {
             scale: f32::from_bits(self.scale_bits),
             k: DeviceKvBuffer::default(),
-            v: DeviceKvBuffer::default(),
+            // V is stored transposed so the AV gemm's k axis (sequence) is
+            // contiguous, as the GGML kernels require of B.
+            v: DeviceKvBuffer::transposed(),
         })))
     }
 }
 
-/// One device-side capacity buffer, [1, Hkv, cap, D] f16.
+/// One device-side capacity buffer holding a logical [1, Hkv, len, D] cache.
+///
+/// Physical layout is either seq-major ([1, Hkv, cap, D], K) or transposed
+/// ([1, Hkv, D, cap], V): the GGML gemm kernels want B as [n, k] with k
+/// contiguous, and for AV that k is the sequence axis. All views present the
+/// logical [1, Hkv, len, D] shape; only strides differ.
 #[derive(Clone, Default)]
 struct DeviceKvBuffer {
     buf: Option<Arc<Box<dyn OwnedDeviceTensor>>>,
@@ -79,54 +87,96 @@ struct DeviceKvBuffer {
     d: usize,
     cap: usize,
     len: usize,
+    transposed: bool,
 }
 
 impl std::fmt::Debug for DeviceKvBuffer {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "DeviceKvBuffer(len={}, cap={})", self.len, self.cap)
+        write!(
+            f,
+            "DeviceKvBuffer(len={}, cap={}, transposed={})",
+            self.len, self.cap, self.transposed
+        )
     }
 }
 
 impl DeviceKvBuffer {
+    fn transposed() -> Self {
+        Self { transposed: true, ..Self::default() }
+    }
+
+    /// Strides presenting the physical buffer (capacity `cap`) as the logical
+    /// [1, Hkv, seq, D] axis order.
+    fn logical_strides(&self, cap: usize) -> TVec<isize> {
+        if self.transposed {
+            tvec![
+                (self.hkv * self.d * cap) as isize,
+                (self.d * cap) as isize,
+                1,
+                cap as isize
+            ]
+        } else {
+            natural_strides(&[1, self.hkv, cap, self.d])
+        }
+    }
+
+    /// Element stride between consecutive sequence positions.
+    fn seq_elem_stride(&self) -> usize {
+        if self.transposed { 1 } else { self.d }
+    }
+
     fn full_view(&self) -> TractResult<DeviceTensor> {
         let buf = self.buf.as_ref().context("empty kv buffer")?;
         Ok(DeviceTensor::ArenaView(DeviceArenaView::from_owned(
             buf.clone(),
             f16::datum_type(),
             tvec![1, self.hkv, self.cap, self.d],
-            natural_strides(&[1, self.hkv, self.cap, self.d]),
+            self.logical_strides(self.cap),
             0,
         )?))
     }
 
-    /// Valid region as a strided view [1, Hkv, len, D] (per-head stride cap*D).
+    /// Valid region as a strided view [1, Hkv, len, D].
     fn valid_view(&self) -> TractResult<DeviceTensor> {
         let buf = self.buf.as_ref().context("empty kv buffer")?;
         Ok(DeviceTensor::ArenaView(DeviceArenaView::from_owned(
             buf.clone(),
             f16::datum_type(),
             tvec![1, self.hkv, self.len, self.d],
-            natural_strides(&[1, self.hkv, self.cap, self.d]),
+            self.logical_strides(self.cap),
             0,
         )?))
     }
 
-    /// Contiguous [T, D] view of one head's valid region.
-    fn head_view(&self, h: usize) -> TractResult<DeviceTensor> {
+    /// The valid region as the B operand of a batched GGML gemm
+    /// (transpose_b, B = [batch, n, k] with k contiguous): [Hkv, len, D] for
+    /// the seq-major layout, [Hkv, D, len] for the transposed one.
+    fn gemm_b_view(&self) -> TractResult<DeviceTensor> {
         let buf = self.buf.as_ref().context("empty kv buffer")?;
+        let (shape, strides): (TVec<usize>, TVec<isize>) = if self.transposed {
+            (
+                tvec![self.hkv, self.d, self.len],
+                tvec![(self.d * self.cap) as isize, self.cap as isize, 1],
+            )
+        } else {
+            (
+                tvec![self.hkv, self.len, self.d],
+                tvec![(self.cap * self.d) as isize, self.d as isize, 1],
+            )
+        };
         Ok(DeviceTensor::ArenaView(DeviceArenaView::from_owned(
             buf.clone(),
             f16::datum_type(),
-            tvec![1, self.len, self.d],
-            natural_strides(&[1, self.len, self.d]),
-            h * self.cap * self.d * f16::datum_type().size_of(),
+            shape,
+            strides,
+            0,
         )?))
     }
 
-    fn alloc(hkv: usize, d: usize, cap: usize) -> TractResult<Arc<Box<dyn OwnedDeviceTensor>>> {
-        Ok(Arc::new(
-            get_context()?.uninitialized_device_tensor(&[1, hkv, cap, d], f16::datum_type())?,
-        ))
+    fn alloc(&self, hkv: usize, d: usize, cap: usize) -> TractResult<Arc<Box<dyn OwnedDeviceTensor>>> {
+        let shape: [usize; 4] =
+            if self.transposed { [1, hkv, d, cap] } else { [1, hkv, cap, d] };
+        Ok(Arc::new(get_context()?.uninitialized_device_tensor(&shape, f16::datum_type())?))
     }
 
     /// Append `chunk` ([1, Hkv, new, D] f16 device tensor) past `len`.
@@ -137,54 +187,56 @@ impl DeviceKvBuffer {
         let ctx = get_context()?;
         if self.buf.is_none() {
             let cap = (new * 2).max(256);
-            self.buf = Some(Self::alloc(hkv, d, cap)?);
             self.hkv = hkv;
             self.d = d;
+            self.buf = Some(self.alloc(hkv, d, cap)?);
             self.cap = cap;
             self.len = 0;
         }
         ensure!(hkv == self.hkv && d == self.d, "kv geometry changed");
+        // The copy_nd kernels require the output innermost axis contiguous,
+        // so copies into the transposed layout are expressed in its physical
+        // axis order [1, Hkv, D, seq] (the input side is fully strided).
+        let permuted = |s: &[isize]| -> TVec<isize> { tvec![s[0], s[1], s[3], s[2]] };
         if self.len + new > self.cap {
             let new_cap = (self.cap * 2).max(self.len + new);
-            let grown = Self::alloc(hkv, d, new_cap)?;
+            let grown = self.alloc(hkv, d, new_cap)?;
             let old_valid = self.valid_view()?;
+            let grown_strides = self.logical_strides(new_cap);
             let grown_view = DeviceTensor::ArenaView(DeviceArenaView::from_owned(
                 grown.clone(),
                 f16::datum_type(),
                 tvec![1, hkv, self.len, d],
-                natural_strides(&[1, hkv, new_cap, d]),
+                grown_strides.clone(),
                 0,
             )?);
-            ctx.copy_nd(
-                &old_valid,
-                0,
-                old_valid.strides(),
-                &grown_view,
-                0,
-                &tvec![1, hkv, self.len, d],
-                grown_view.strides(),
-            )?;
+            let (shape, src_strides, dst_strides) = if self.transposed {
+                (
+                    tvec![1, hkv, d, self.len],
+                    permuted(old_valid.strides()),
+                    permuted(&grown_strides),
+                )
+            } else {
+                (tvec![1, hkv, self.len, d], old_valid.strides().into(), grown_strides)
+            };
+            ctx.copy_nd(&old_valid, 0, &src_strides, &grown_view, 0, &shape, &dst_strides)?;
             self.buf = Some(grown);
             self.cap = new_cap;
         }
         let dst = self.full_view()?;
-        let dst_offset =
-            self.len * self.d * f16::datum_type().size_of();
-        ctx.copy_nd(
-            chunk,
-            0,
-            chunk.strides(),
-            &dst,
-            dst_offset,
-            &tvec![1, hkv, new, d],
-            dst.strides(),
-        )?;
+        let dst_offset = self.len * self.seq_elem_stride() * f16::datum_type().size_of();
+        let (shape, src_strides, dst_strides) = if self.transposed {
+            (tvec![1, hkv, d, new], permuted(chunk.strides()), permuted(dst.strides()))
+        } else {
+            (tvec![1, hkv, new, d], chunk.strides().into(), dst.strides().into())
+        };
+        ctx.copy_nd(chunk, 0, &src_strides, &dst, dst_offset, &shape, &dst_strides)?;
         self.len += new;
         Ok(())
     }
 
     fn reset(&mut self) {
-        *self = Self::default();
+        *self = if self.transposed { Self::transposed() } else { Self::default() };
     }
 }
 
@@ -263,45 +315,35 @@ impl OpState for MetalGptOssSdpaState {
             f16::datum_type(),
         )?);
 
-        let subview = |arc: &Arc<Box<dyn OwnedDeviceTensor>>,
-                       rows: usize,
-                       cols: usize,
-                       head: usize|
-         -> TractResult<DeviceTensor> {
-            Ok(DeviceTensor::ArenaView(DeviceArenaView::from_owned(
-                arc.clone(),
-                f16::datum_type(),
-                tvec![1, rows, cols],
-                natural_strides(&[1, rows, cols]),
-                head * rows * cols * f16::datum_type().size_of(),
-            )?))
+        // A operand for QK: q's dense [1, Hq, S, D] layout is exactly the
+        // batched [Hkv, group*S, D] the gemm wants, so it is used in place; a
+        // non-dense q (never seen in practice) is copied to scratch first.
+        let q_dense = match q {
+            DeviceTensor::Owned(_) => true,
+            DeviceTensor::ArenaView(view) => view.is_dense(),
         };
-
-        // q is copied once into op-owned scratch so per-head offset views can
-        // Arc-share it (a few KB per decode step).
-        let q_scratch = Arc::new(get_context()?.uninitialized_device_tensor(
-            &[hkv, group * s_len, d],
-            f16::datum_type(),
-        )?);
-        {
-            let ctx = get_context()?;
-            let dst = subview_all(&q_scratch, hkv * group * s_len, d)?;
-            let q_flat = q.reshaped(tvec![hkv * group * s_len, d])?;
-            ctx.copy_nd(
-                &q_flat,
+        let (q_a, q_a_offset) = if q_dense {
+            (q.clone(), q.buffer_offset::<usize>())
+        } else {
+            let scratch = Arc::new(get_context()?.uninitialized_device_tensor(
+                &[hkv, group * s_len, d],
+                f16::datum_type(),
+            )?);
+            let dst = subview_all(&scratch, hkv * group * s_len, d)?;
+            get_context()?.copy_nd(
+                q,
                 0,
-                q_flat.strides(),
+                q.strides(),
                 &dst,
                 0,
-                &tvec![hkv * group * s_len, d],
-                dst.strides(),
+                &tvec![1, hq, s_len, d],
+                &natural_strides(&[1, hq, s_len, d]),
             )?;
-        }
-        let qk = GemmImpl { transpose_a: false, transpose_b: true, matmul: GgmlGemm };
-        // ggml kernels require B as [n,k] (transpose_b); AV multiplies by V in
-        // [k,n] layout, so it runs on the general BasicMatMul kernel instead.
-        let av = GemmImpl { transpose_a: false, transpose_b: false, matmul: BasicMatMul };
+            (dst, 0)
+        };
 
+        let f16dt = f16::datum_type();
+        let gemm = GgmlGemm;
         crate::with_metal_stream(|stream| {
             // Command-buffer boundary between the cache appends (copy_nd
             // above) and the QK gemms reading the same buffer: the Metal
@@ -309,15 +351,39 @@ impl OpState for MetalGptOssSdpaState {
             // this exact pattern past ~1024 tokens (same medicine as the MoE
             // routed-matmul splits).
             stream.commit_current()?;
-            for h in 0..hkv {
-                let q_h = subview(&q_scratch, group * s_len, d, h)?;
-                let k_h = self.k.head_view(h)?;
-                let s_h = subview(&scores, group * s_len, t_len, h)?;
-                qk.dispatch_eval(stream, &q_h, &k_h, &s_h)?;
-            }
-            // Fused scale+mask+sinks softmax over all rows at once.
+            let k_b = self.k.gemm_b_view()?;
+            let v_b = self.v.gemm_b_view()?;
             let scores_all = subview_all(&scores, hkv * group * s_len, t_len)?;
             let probs_all = subview_all(&probs, hkv * group * s_len, t_len)?;
+            let out_all = subview_all(&out, hkv * group * s_len, d)?;
+            for t in [&q_a, &k_b, &v_b, &scores_all, &probs_all, &out_all] {
+                stream.retain_tensor(t);
+            }
+            // One batched gemm across all kv heads: A [Hkv, group*S, D] x
+            // K^T [Hkv, T, D] -> scores [Hkv, group*S, T].
+            gemm.dispatch_eval(
+                stream,
+                GemmDispatchParams {
+                    dts: [f16dt, f16dt, f16dt],
+                    a_batch: hkv,
+                    b_batch: hkv,
+                    m: group * s_len,
+                    k: d,
+                    n: t_len,
+                    transpose_a: false,
+                    a_offset: q_a_offset,
+                    transpose_b: true,
+                    b_offset: k_b.buffer_offset(),
+                    q40_b: false,
+                    c_offset: 0,
+                    a_strides: tvec![(group * s_len * d) as isize, d as isize, 1],
+                    b_strides: tvec![(self.k.cap * d) as isize, d as isize, 1],
+                },
+                get_metal_buffer(&q_a),
+                get_metal_buffer(&k_b),
+                get_metal_buffer(&scores_all),
+            )?;
+            // Fused scale+mask+sinks softmax over all rows at once.
             dispatch_gpt_oss_sinks_softmax_f16(
                 stream,
                 &scores_all,
@@ -327,12 +393,31 @@ impl OpState for MetalGptOssSdpaState {
                 s_len,
                 self.scale,
             )?;
-            for h in 0..hkv {
-                let p_h = subview(&probs, group * s_len, t_len, h)?;
-                let v_h = self.v.head_view(h)?;
-                let o_h = subview(&out, group * s_len, d, h)?;
-                av.dispatch_eval(stream, &p_h, &v_h, &o_h)?;
-            }
+            // One batched gemm: probs [Hkv, group*S, T] x V^T [Hkv, D, T]^T
+            // -> out [Hkv, group*S, D]. V is stored transposed so its k axis
+            // (the sequence) is contiguous, as the GGML kernels require.
+            gemm.dispatch_eval(
+                stream,
+                GemmDispatchParams {
+                    dts: [f16dt, f16dt, f16dt],
+                    a_batch: hkv,
+                    b_batch: hkv,
+                    m: group * s_len,
+                    k: t_len,
+                    n: d,
+                    transpose_a: false,
+                    a_offset: 0,
+                    transpose_b: true,
+                    b_offset: v_b.buffer_offset(),
+                    q40_b: false,
+                    c_offset: 0,
+                    a_strides: tvec![(group * s_len * t_len) as isize, t_len as isize, 1],
+                    b_strides: tvec![(self.v.d * self.v.cap) as isize, self.v.cap as isize, 1],
+                },
+                get_metal_buffer(&probs_all),
+                get_metal_buffer(&v_b),
+                get_metal_buffer(&out_all),
+            )?;
             Ok(())
         })?;
 
@@ -421,8 +506,8 @@ impl OpState for MetalGptOssSdpaState {
             };
             in_stats(q, "q_in")?;
             in_stats(k_new, "k_new_in")?;
-            stats(&subview_all(&q_scratch, hkv * group * s_len, d)?, "q_scratch")?;
             stats(&self.k.valid_view()?, "k_cache")?;
+            stats(&self.v.valid_view()?, "v_cache")?;
             stats(&subview_all(&scores, hkv * group * s_len, t_len)?, "scores")?;
             stats(&subview_all(&probs, hkv * group * s_len, t_len)?, "probs")?;
             stats(&subview_all(&out, hkv * group * s_len, d)?, "out")?;
@@ -543,6 +628,27 @@ mod tests {
     #[test]
     fn metal_matches_cpu_over_prefill_and_decode() -> TractResult<()> {
         run_metal_vs_cpu(4, 2, 64, &[5, 1, 1, 1500, 1], usize::MAX)
+    }
+
+    /// Transposed capacity buffer: append twice, read back through the
+    /// logical view, expect the concatenation.
+    #[test]
+    fn transposed_kv_buffer_roundtrip() -> TractResult<()> {
+        crate::context::metal_context();
+        let (hkv, d) = (2usize, 4usize);
+        let mut buf = DeviceKvBuffer::transposed();
+        let mut seed = 7u64;
+        let c1 = rng_tensor(&[1, hkv, 3, d], &mut seed).cast_to::<f16>()?.into_owned();
+        let c2 = rng_tensor(&[1, hkv, 2, d], &mut seed).cast_to::<f16>()?.into_owned();
+        crate::with_metal_stream(|stream| {
+            buf.append(&c1.clone().into_device()?)?;
+            buf.append(&c2.clone().into_device()?)?;
+            stream.wait_until_completed()
+        })?;
+        let got = buf.valid_view()?.to_host()?.into_tensor();
+        let want = Tensor::stack_tensors(2, &[&c1, &c2])?;
+        got.close_enough(&want, Approximation::Exact)?;
+        Ok(())
     }
 
     /// Prefix-cache truncation: feed back the op's own device cache views
