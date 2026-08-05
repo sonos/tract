@@ -13,6 +13,7 @@ use std::alloc::Layout;
 use std::cell::RefCell;
 use std::ffi::c_void;
 use std::ops::{Deref, DerefMut};
+use std::sync::Mutex;
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, OnceLock, RwLock};
@@ -62,9 +63,52 @@ pub struct MetalContext {
     #[allow(clippy::type_complexity)]
     cache_pipelines:
         Arc<RwLock<HashMap<(LibraryName, String, Option<ConstantValues>), ComputePipelineState>>>,
+    /// Recycled (host allocation, MTLBuffer) pairs keyed by exact
+    /// (dtype, shape). Creating and destroying Metal buffers goes through an
+    /// IOGPU kernel trap each way (~17% of decode CPU time before pooling);
+    /// transformer decode reallocates the same transient shapes every token,
+    /// so an exact-shape pool absorbs nearly all of it.
+    #[allow(clippy::type_complexity)]
+    buffer_pool: Arc<Mutex<HashMap<(DatumType, TVec<usize>), Vec<(Arc<Tensor>, Buffer)>>>>,
+    pooled_bytes: Arc<std::sync::atomic::AtomicUsize>,
 }
 
 impl MetalContext {
+    /// Hard cap on recycled bytes; beyond it, drops release for real.
+    const MAX_POOLED_BYTES: usize = 512 * 1024 * 1024;
+    const MAX_POOLED_PER_KEY: usize = 16;
+
+    fn pool_take(&self, dt: DatumType, shape: &[usize]) -> Option<(Arc<Tensor>, Buffer)> {
+        let mut pool = self.buffer_pool.lock().ok()?;
+        let entry = pool.get_mut(&(dt, TVec::from_slice(shape)))?;
+        let hit = entry.pop()?;
+        self.pooled_bytes.fetch_sub(
+            hit.0.len() * dt.size_of(),
+            std::sync::atomic::Ordering::Relaxed,
+        );
+        Some(hit)
+    }
+
+    fn pool_put(&self, host: Arc<Tensor>, buffer: Buffer) {
+        let dt = host.datum_type();
+        if !DeviceTensor::is_supported_dt(dt) {
+            return;
+        }
+        let bytes = host.len() * dt.size_of();
+        if self.pooled_bytes.load(std::sync::atomic::Ordering::Relaxed) + bytes
+            > Self::MAX_POOLED_BYTES
+        {
+            return;
+        }
+        let Ok(mut pool) = self.buffer_pool.lock() else { return };
+        let entry = pool.entry((dt, TVec::from_slice(host.shape()))).or_default();
+        if entry.len() >= Self::MAX_POOLED_PER_KEY {
+            return;
+        }
+        self.pooled_bytes.fetch_add(bytes, std::sync::atomic::Ordering::Relaxed);
+        entry.push((host, buffer));
+    }
+
     pub fn new() -> TractResult<Self> {
         let device = Device::system_default()
             .with_context(|| "Could not find system default Metal device")?;
@@ -73,6 +117,8 @@ impl MetalContext {
             device,
             cache_libraries: Arc::new(RwLock::new(HashMap::new())),
             cache_pipelines: Arc::new(RwLock::new(HashMap::new())),
+            buffer_pool: Arc::new(Mutex::new(HashMap::new())),
+            pooled_bytes: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         };
         ctxt.preload_pipelines()?;
         Ok(ctxt)
@@ -210,17 +256,24 @@ impl DeviceContext for MetalContext {
         let data = if data_bytes.is_empty() { &ZERO } else { data_bytes };
 
         let size = core::mem::size_of_val(data) as NSUInteger;
+        let buffer = self.device.new_buffer_with_bytes_no_copy(
+            data.as_ptr() as *const core::ffi::c_void,
+            size,
+            MTLResourceOptions::StorageModeShared,
+            None,
+        );
+        let host = tensor.into_arc_tensor();
         let device_buffer = MetalBuffer {
-            inner: self.device.new_buffer_with_bytes_no_copy(
-                data.as_ptr() as *const core::ffi::c_void,
-                size,
-                MTLResourceOptions::StorageModeShared,
-                None,
-            ),
+            inner: buffer.clone(),
+            pool: if bqf.is_none() {
+                Some(Arc::new(BufferPoolGuard { host: host.clone(), buffer }))
+            } else {
+                None
+            },
         };
 
         Ok(Box::new(MetalTensor {
-            inner: MValue::Natural(tensor.into_arc_tensor()),
+            inner: MValue::Natural(host),
             device_buffer,
             exotic_fact: bqf,
         }))
@@ -231,6 +284,17 @@ impl DeviceContext for MetalContext {
         shape: &[usize],
         dt: DatumType,
     ) -> TractResult<Box<dyn OwnedDeviceTensor>> {
+        if let Some((host, buffer)) = self.pool_take(dt, shape) {
+            let device_buffer = MetalBuffer {
+                inner: buffer.clone(),
+                pool: Some(Arc::new(BufferPoolGuard { host: host.clone(), buffer })),
+            };
+            return Ok(Box::new(MetalTensor {
+                inner: MValue::Natural(host),
+                device_buffer,
+                exotic_fact: None,
+            }));
+        }
         let tensor = unsafe {
             Tensor::uninitialized_dt(dt, shape).with_context(|| {
                 format!("Error while allocating a {dt:?} tensor of shape {shape:?}")
@@ -510,9 +574,29 @@ impl Drop for MetalStream {
     }
 }
 
+/// Returns its (host allocation, MTLBuffer) pair to the context pool when
+/// the last owner drops it, provided nothing else still references the host
+/// tensor (`to_host` on unified memory hands out the same allocation, so an
+/// escaped `Arc<Tensor>` blocks recycling and the pair is simply released).
+#[derive(Debug)]
+pub(crate) struct BufferPoolGuard {
+    pub(crate) host: Arc<Tensor>,
+    pub(crate) buffer: Buffer,
+}
+
+impl Drop for BufferPoolGuard {
+    fn drop(&mut self) {
+        if Arc::strong_count(&self.host) == 1 {
+            metal_context().pool_put(self.host.clone(), self.buffer.clone());
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct MetalBuffer {
     pub inner: Buffer,
+    /// Shared across clones of the owning tensor; the last drop recycles.
+    pub(crate) pool: Option<Arc<BufferPoolGuard>>,
 }
 
 impl PartialEq for MetalBuffer {
