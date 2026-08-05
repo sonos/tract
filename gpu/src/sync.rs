@@ -48,6 +48,12 @@ impl EvalOp for DeviceSync {
                 Ok(tvec![tensor.into_tvalue()])
             }
             DeviceSyncKind::ToDevice => {
+                // Already-device tensors (e.g. cache views fed back by the
+                // caller) pass through untouched: uploading them would read
+                // opaque storage as host bytes and panic.
+                if input.to_device_tensor().is_ok() {
+                    return Ok(tvec![input]);
+                }
                 let device_input = if let Some(t) = input.as_arc_tensor() {
                     Arc::clone(t).into_device()?
                 } else {

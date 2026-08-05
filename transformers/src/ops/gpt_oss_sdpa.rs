@@ -122,6 +122,24 @@ impl OpState for GptOssSdpaState {
         self.k.push(&to_f32(k_new)?)?;
         self.v.push(&to_f32(v_new)?)?;
 
+        if std::env::var_os("TRACT_DEBUG_GPT_OSS_SDPA").is_some() {
+            let stats = |t: &TValue, tag: &str| -> TractResult<()> {
+                let h = t.cast_to::<f32>()?.into_owned();
+                let v = h.try_as_plain()?.as_slice::<f32>()?;
+                let mx = v.iter().cloned().fold(f32::MIN, f32::max);
+                let mn = v.iter().cloned().fold(f32::MAX, f32::min);
+                let sum: f32 = v.iter().sum();
+                eprintln!(
+                    "gptoss-cpu-dbg {tag}: shape={:?} min={mn:.4} max={mx:.4} mean={:.6}",
+                    t.shape(),
+                    sum / v.len() as f32
+                );
+                Ok(())
+            };
+            stats(q_in, "q")?;
+            stats(k_new, "k_new")?;
+            stats(mask, "mask")?;
+        }
         let q = to_f32(q_in)?;
         let q = q.to_plain_array_view::<f32>()?.into_dimensionality::<Ix4>()?;
         let mask_t = to_f32(mask)?;

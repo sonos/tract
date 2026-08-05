@@ -90,6 +90,9 @@ pub fn fuse_axis_op(
     axis_node_name: &str,
     axis_op: &GpuAxisOp,
 ) -> TractResult<Option<TypedModelPatch>> {
+    if std::env::var_os("TRACT_METAL_DISABLE_FUSE_AXIS_OP").is_some() {
+        return Ok(None);
+    }
     // Only support certain axis ops (or a Move, which is handled specially below)
     rule_ensure!(is_supported_axis_op(axis_op) || matches!(axis_op.inner, AxisOp::Move(..)));
 

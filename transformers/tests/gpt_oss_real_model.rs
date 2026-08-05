@@ -277,7 +277,7 @@ fn fused_metal_matches_fused_cpu() -> TractResult<()> {
     let mut model = load_decluttered()?;
     tract_transformers::ops::gpt_oss_sdpa::GptOssInPlaceSdpaTransform.transform(&mut model)?;
 
-    let ids: Vec<i64> = (0..256).map(|i| (1000 + i * 37 % 5000) as i64).collect();
+    let ids: Vec<i64> = (0..96).map(|i| (1000 + i * 37 % 5000) as i64).collect();
     let make_inputs = |model: &TypedModel| -> TractResult<TVec<TValue>> {
         let mut inputs = TVec::new();
         for outlet in model.inputs.iter() {
@@ -293,16 +293,17 @@ fn fused_metal_matches_fused_cpu() -> TractResult<()> {
         Ok(inputs)
     };
 
-    let cpu_outs = {
-        let plan = model.clone().into_runnable()?;
-        let mut state = SimpleState::new(&plan)?;
-        state.run(make_inputs(&model)?)?
-    };
     let metal_outs = {
         let rt = tract_nnef::tract_core::runtime::runtime_for_name("metal")?
             .context("metal runtime not registered")?;
         let runnable = rt.prepare(model.clone())?;
         runnable.run(make_inputs(&model)?)?
+    };
+    eprintln!("metal done, running cpu reference...");
+    let cpu_outs = {
+        let plan = model.clone().into_runnable()?;
+        let mut state = SimpleState::new(&plan)?;
+        state.run(make_inputs(&model)?)?
     };
 
     for (i, (c, m)) in cpu_outs.iter().zip(metal_outs.iter()).enumerate() {

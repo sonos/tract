@@ -336,6 +336,59 @@ impl OpState for MetalGptOssSdpaState {
             Ok(())
         })?;
 
+        if std::env::var_os("TRACT_DEBUG_GPT_OSS_SELFCHECK").is_some() {
+            crate::with_metal_stream(|stream| stream.wait_until_completed())?;
+            // Rerun this step's attention on the CPU op from the SAME inputs
+            // and compare: separates wrong-inputs from wrong-compute.
+            use tract_transformers::ops::gpt_oss_sdpa::GptOssSdpa as CpuOp;
+            let cpu_op = CpuOp { scale_bits: self.scale.to_bits() };
+            let mut cpu_state = tract_core::ops::EvalOp::state(&cpu_op, _state, 0)?.unwrap();
+            let host = |t: &DeviceTensor| -> TractResult<TValue> {
+                Ok(t.to_host()?.into_tensor().into_tvalue())
+            };
+            let cpu_out = cpu_state.eval(
+                _state,
+                &cpu_op,
+                tvec!(
+                    host(q)?,
+                    host(k_new)?,
+                    host(v_new)?,
+                    host(k_cache)?,
+                    host(v_cache)?,
+                    host(mask)?,
+                    host(sinks)?,
+                ),
+            )?;
+            let metal_out = DeviceTensor::ArenaView(DeviceArenaView::from_owned(
+                out.clone(),
+                f16::datum_type(),
+                tvec![1, hq, s_len, d],
+                natural_strides(&[1, hq, s_len, d]),
+                0,
+            )?)
+            .to_host()?
+            .into_tensor()
+            .cast_to::<f32>()?
+            .into_owned();
+            let want = cpu_out[0].clone().into_tensor().cast_to::<f32>()?.into_owned();
+            let mv = metal_out.try_as_plain()?.as_slice::<f32>()?;
+            let wv = want.try_as_plain()?.as_slice::<f32>()?;
+            let dot: f32 = mv.iter().zip(wv).map(|(a, b)| a * b).sum();
+            let nm: f32 = mv.iter().map(|a| a * a).sum::<f32>().sqrt();
+            let nw: f32 = wv.iter().map(|a| a * a).sum::<f32>().sqrt();
+            let max_abs = mv
+                .iter()
+                .zip(wv)
+                .map(|(a, b)| (a - b).abs())
+                .fold(0f32, f32::max);
+            eprintln!(
+                "gptoss-selfcheck: cosine {:.6} max_abs {:.4} (norms {:.2}/{:.2})",
+                dot / (nm * nw).max(f32::MIN_POSITIVE),
+                max_abs,
+                nm,
+                nw
+            );
+        }
         if std::env::var_os("TRACT_DEBUG_GPT_OSS_SDPA").is_some() {
             crate::with_metal_stream(|stream| stream.wait_until_completed())?;
             let stats = |t: &DeviceTensor, tag: &str| -> TractResult<()> {
@@ -353,12 +406,33 @@ impl OpState for MetalGptOssSdpaState {
                 );
                 Ok(())
             };
+            let in_stats = |t: &DeviceTensor, tag: &str| -> TractResult<()> {
+                let h = t.to_host()?.into_tensor().cast_to::<f32>()?.into_owned();
+                let v = h.try_as_plain()?.as_slice::<f32>()?;
+                let mx = v.iter().cloned().fold(f32::MIN, f32::max);
+                let mn = v.iter().cloned().fold(f32::MAX, f32::min);
+                let sum: f32 = v.iter().sum();
+                eprintln!(
+                    "gptoss-dbg {tag}: shape={:?} min={mn:.4} max={mx:.4} mean={:.6}",
+                    t.shape(),
+                    sum / v.len() as f32
+                );
+                Ok(())
+            };
+            in_stats(q, "q_in")?;
+            in_stats(k_new, "k_new_in")?;
             stats(&subview_all(&q_scratch, hkv * group * s_len, d)?, "q_scratch")?;
             stats(&self.k.valid_view()?, "k_cache")?;
             stats(&subview_all(&scores, hkv * group * s_len, t_len)?, "scores")?;
             stats(&subview_all(&probs, hkv * group * s_len, t_len)?, "probs")?;
             stats(&subview_all(&out, hkv * group * s_len, d)?, "out")?;
             stats(&mask_2d, "mask")?;
+            let sv = sinks_flat.to_host()?.into_tensor();
+            let sv = sv.cast_to::<f32>()?.into_owned();
+            eprintln!(
+                "gptoss-dbg sinks[0..6]: {:?}",
+                &sv.try_as_plain()?.as_slice::<f32>()?[..6.min(hq)]
+            );
         }
         let out_t = DeviceTensor::ArenaView(DeviceArenaView::from_owned(
             out,
@@ -407,6 +481,9 @@ impl FrozenOpState for FrozenMetalGptOssSdpaState {
 }
 
 crate::register_metal_op!(GptOssSdpa, |_source, _node, op| {
+    if std::env::var_os("TRACT_METAL_DISABLE_GPT_OSS_SDPA").is_some() {
+        return Ok(None);
+    }
     Ok(Some(Box::new(MetalGptOssSdpa { scale_bits: op.scale_bits })))
 });
 
@@ -428,14 +505,21 @@ mod tests {
     }
 
     fn causal_mask(s_len: usize, kv_len: usize) -> Tensor {
+        window_mask(s_len, kv_len, usize::MAX)
+    }
+
+    /// Causal mask with a sliding window: key j visible to query (past+i)
+    /// iff j <= past+i and past+i - j < window.
+    fn window_mask(s_len: usize, kv_len: usize, window: usize) -> Tensor {
         let past = kv_len - s_len;
         let mut m = Tensor::zero::<f32>(&[1, 1, s_len, kv_len]).unwrap();
         {
             let mut v = m.to_plain_array_view_mut::<f32>().unwrap();
             for i in 0..s_len {
                 for j in 0..kv_len {
-                    if j > past + i {
-                        v[[0, 0, i, j]] = -1e30;
+                    let q = past + i;
+                    if j > q || (window != usize::MAX && q - j >= window) {
+                        v[[0, 0, i, j]] = -9.2e18;
                     }
                 }
             }
@@ -445,15 +529,29 @@ mod tests {
 
     #[test]
     fn metal_matches_cpu_real_geometry_prefill() -> TractResult<()> {
-        run_metal_vs_cpu(64, 8, 64, &[256, 1, 1])
+        run_metal_vs_cpu(64, 8, 64, &[256, 1, 1], usize::MAX)
+    }
+
+    /// 12 of 24 GPT-OSS layers run a 128-key sliding-window mask, which only
+    /// differs from causal past ~128 tokens of context: exactly where the
+    /// in-graph Metal corruption starts.
+    #[test]
+    fn metal_matches_cpu_sliding_window() -> TractResult<()> {
+        run_metal_vs_cpu(64, 8, 64, &[256, 1, 1, 40], 128)
     }
 
     #[test]
     fn metal_matches_cpu_over_prefill_and_decode() -> TractResult<()> {
-        run_metal_vs_cpu(4, 2, 64, &[5, 1, 1, 1500, 1])
+        run_metal_vs_cpu(4, 2, 64, &[5, 1, 1, 1500, 1], usize::MAX)
     }
 
-    fn run_metal_vs_cpu(hq: usize, hkv: usize, d: usize, steps: &[usize]) -> TractResult<()> {
+    fn run_metal_vs_cpu(
+        hq: usize,
+        hkv: usize,
+        d: usize,
+        steps: &[usize],
+        window: usize,
+    ) -> TractResult<()> {
         crate::context::metal_context(); // initialize the GPU context
         let scale = (d as f32).sqrt().recip();
         let op = MetalGptOssSdpa { scale_bits: scale.to_bits() };
@@ -474,7 +572,7 @@ mod tests {
                 rng_tensor(&[1, hkv, step_len, d], &mut seed).cast_to::<f16>()?.into_owned();
             let v_new =
                 rng_tensor(&[1, hkv, step_len, d], &mut seed).cast_to::<f16>()?.into_owned();
-            let mask = causal_mask(step_len, past + step_len);
+            let mask = window_mask(step_len, past + step_len, window);
 
             let cpu_out = cpu_state.eval(
                 &mut session,
