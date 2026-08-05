@@ -12,6 +12,12 @@ typedef struct {
     uint8_t qs[QK4_0 / 2]; // nibbles / quants
 } block_q4_0;
 
+#define QK8_0 32
+typedef struct {
+    half d;             // delta
+    int8_t qs[QK8_0];   // quants
+} block_q8_0;
+
 typedef struct {
     int32_t  ne00;
     int32_t  ne02;
@@ -397,6 +403,94 @@ kernel void kernel_mul_mv_q4_0(
         ushort tiisg[[thread_index_in_simdgroup]],
         ushort sgitg[[simdgroup_index_in_threadgroup]]) {
     mul_vec_q_n_f32_impl<block_q4_0, N_DST, N_SIMDGROUP, N_SIMDWIDTH, constant ggml_metal_kargs_mul_mv &>(args, src0, src1, dst, nullptr, tgpig, tiisg, sgitg);
+}
+
+// q8_0 GEMV, same shape contract as kernel_mul_mv_q4_0: each simdgroup owns
+// N_DST rows of src0 (q8_0 blocks along k), each thread covers 8 consecutive
+// elements of a block (4 threads per block, blocks strided by 8).
+template<int nr, typename T_y>
+inline void mul_vec_q8_accumulate(
+        thread device const block_q8_0 * const * ax,
+        device const T_y * yb,
+        int nb,
+        short ix,
+        short il,
+        thread float * sumf) {
+    for (int ib = ix; ib < nb; ib += N_SIMDWIDTH/4) {
+        float yl[8];
+#pragma unroll
+        for (int i = 0; i < 8; i++) {
+            yl[i] = (float) yb[i];
+        }
+#pragma unroll
+        for (int row = 0; row < nr; row++) {
+            device const block_q8_0 * qb = ax[row] + ib;
+            device const int8_t * qs = qb->qs + il;
+            float acc = 0.0f;
+#pragma unroll
+            for (int i = 0; i < 8; i++) {
+                acc += yl[i] * (float) qs[i];
+            }
+            sumf[row] += (float) qb->d * acc;
+        }
+        yb += QK8_0 * (N_SIMDWIDTH/4);
+    }
+}
+
+kernel void kernel_mul_mv_q8_0(
+        constant ggml_metal_kargs_mul_mv & args,
+        device const char * src0,
+        device const char * src1,
+        device       char * dst,
+        uint3  tgpig[[threadgroup_position_in_grid]],
+        ushort tiisg[[thread_index_in_simdgroup]],
+        ushort sgitg[[simdgroup_index_in_threadgroup]]) {
+    const int nb = args.ne00/QK8_0;
+
+    const int r0 = tgpig.x;
+    const int r1 = tgpig.y;
+    const int im = tgpig.z;
+
+    const int first_row = (r0 * N_SIMDGROUP + sgitg) * N_DST;
+
+    const uint i12 = im%args.ne12;
+    const uint i13 = im/args.ne12;
+
+    const uint64_t offset1 = r1*args.nb11 + (i12)*args.nb12 + (i13)*args.nb13;
+
+    const bool out_f16 = args.out_f16 != 0;
+
+    device const block_q8_0 * ax[N_DST];
+    for (int row = 0; row < N_DST; ++row) {
+        const uint64_t offset0 =
+            (first_row + row)*args.nb01 + (i12/args.r2)*args.nb02 + (i13/args.r3)*args.nb03;
+        ax[row] = (device const block_q8_0 *) ((device char *) src0 + offset0);
+    }
+
+    float sumf[N_DST] = {0.f};
+
+    const short ix = tiisg/4;
+    const short il = (tiisg%4)*8;
+
+    if (out_f16) {
+        device const half  * yb = (device const half  *) (src1 + offset1) + ix*QK8_0 + il;
+        mul_vec_q8_accumulate<N_DST>(ax, yb, nb, ix, il, sumf);
+    } else {
+        device const float * yb = (device const float *) (src1 + offset1) + ix*QK8_0 + il;
+        mul_vec_q8_accumulate<N_DST>(ax, yb, nb, ix, il, sumf);
+    }
+
+    device char * dst_o = dst
+        + (im*args.ne0*args.ne1 + r1*args.ne0) * (out_f16 ? sizeof(half) : sizeof(float));
+
+    for (int row = 0; row < N_DST; ++row) {
+        const float tot = simd_sum(sumf[row]);
+
+        if (tiisg == 0 && first_row + row < args.ne01) {
+            if (out_f16) ((device half  *) dst_o)[first_row + row] = (half) tot;
+            else         ((device float *) dst_o)[first_row + row] = tot;
+        }
+    }
 }
 
 kernel void kernel_routed_q4_0_f32(

@@ -360,6 +360,79 @@ fn dispatch_metal_ggml_gemm(
     Ok(())
 }
 
+/// Raw q8_0 GEMV against an externally managed block buffer (the GPT-OSS
+/// KV-cache q8 shadow): C[batch, m, n] (f16, row stride `c_row_stride`
+/// elements) = A[batch, m, k] (f16) x B^T, where B is `n` rows of `k/32`
+/// q8_0 blocks. `k` must be a multiple of 32 (callers zero-pad).
+#[allow(clippy::too_many_arguments)]
+pub fn dispatch_mul_mv_q8_0(
+    stream: &MetalStream,
+    b: &DeviceTensor,
+    b_offset: usize,
+    b_row_stride_bytes: usize,
+    b_batch_stride_bytes: usize,
+    n: usize,
+    k: usize,
+    batch: usize,
+    a: &DeviceTensor,
+    a_offset: usize,
+    a_row_stride_bytes: usize,
+    a_batch_stride_bytes: usize,
+    m: usize,
+    c: &DeviceTensor,
+    c_offset: usize,
+    c_row_stride: usize,
+) -> TractResult<()> {
+    ensure!(k % 32 == 0, "q8_0 gemv needs k % 32 == 0, got {k}");
+    stream.retain_tensor(a);
+    stream.retain_tensor(b);
+    stream.retain_tensor(c);
+
+    let params = GgmlGemvParams {
+        ne00: k as i32,
+        ne01: n as i32,
+        ne02: batch as i32,
+        nb00: 0,
+        nb01: b_row_stride_bytes as u64,
+        nb02: b_batch_stride_bytes as u64,
+        nb03: (b_batch_stride_bytes * batch) as u64,
+        ne10: k as i32,
+        ne11: m as i32,
+        ne12: batch as i32,
+        nb10: 2,
+        nb11: a_row_stride_bytes as u64,
+        nb12: a_batch_stride_bytes as u64,
+        nb13: (a_batch_stride_bytes * batch) as u64,
+        ne0: c_row_stride as i32,
+        ne1: m as i32,
+        r2: 1,
+        r3: 1,
+        out_f16: 1,
+    };
+    let pipeline = stream.load_pipeline(LibraryName::Ggml, "kernel_mul_mv_q8_0")?;
+    let command_buffer = stream.command_buffer();
+    command_buffer.encode(|encoder| {
+        encoder.set_compute_pipeline_state(&pipeline);
+        encoder.set_bytes(
+            0,
+            std::mem::size_of::<GgmlGemvParams>() as u64,
+            &params as *const _ as *const _,
+        );
+        encoder.set_buffer(1, Some(get_metal_buffer(b)), b_offset as NSUInteger);
+        encoder.set_buffer(2, Some(get_metal_buffer(a)), a_offset as NSUInteger);
+        encoder.set_buffer(3, Some(get_metal_buffer(c)), c_offset as NSUInteger);
+        // N_DST(4) x N_SIMDGROUP(2) rows per threadgroup, one r1 per grid.y.
+        let grid = MTLSize {
+            width: (n as u64).div_ceil(8),
+            height: m as u64,
+            depth: batch as u64,
+        };
+        let group = MTLSize { width: 8, height: 8, depth: 1 };
+        encoder.dispatch_thread_groups(grid, group);
+    });
+    Ok(())
+}
+
 pub fn eval_routed_q40_f32(
     stream: &MetalStream,
     input: &DeviceTensor,

@@ -21,10 +21,10 @@ use tract_gpu::tensor::{DeviceArenaView, DeviceTensor, DeviceTensorExt, OwnedDev
 use tract_gpu::utils::facts_to_device_facts;
 use tract_transformers::ops::gpt_oss_sdpa::GptOssSdpa;
 
-use crate::kernels::matmul::{GemmDispatchParams, GemmKernel, GgmlGemm};
+use crate::kernels::matmul::{GemmDispatchParams, GemmKernel, GgmlGemm, dispatch_mul_mv_q8_0};
 use crate::kernels::moe::{
-    GptOssFlashAttnDims, dispatch_gpt_oss_flash_attn_f16, dispatch_gpt_oss_sinks_softmax_f16,
-    flash_attn_scratch_len,
+    GptOssFlashAttnDims, dispatch_gpt_oss_flash_attn_f16, dispatch_gpt_oss_kv_quantize_q8_0,
+    dispatch_gpt_oss_sinks_softmax_f16, flash_attn_scratch_len,
 };
 use crate::utils::get_metal_buffer;
 
@@ -46,6 +46,28 @@ fn flash_min_t() -> usize {
         .and_then(|v| v.parse().ok())
         .unwrap_or(FLASH_MIN_T)
 }
+
+/// q8_0 KV shadow for decode attention (KIVI-style bandwidth cut): the f16
+/// cache stays the source of truth for all I/O; appends additionally
+/// maintain a q8_0 copy that only the decode QK/AV gemvs read. Opt-in while
+/// quality gates accumulate.
+fn kv_q8_enabled() -> bool {
+    #[cfg(test)]
+    if KV_Q8_TEST_OVERRIDE.with(|c| c.get()) {
+        return true;
+    }
+    std::env::var("TRACT_METAL_GPT_OSS_KV_Q8").is_ok_and(|v| v == "1")
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Per-thread q8 opt-in so tests can force the path without racing other
+    /// tests through the process environment.
+    static KV_Q8_TEST_OVERRIDE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+const Q8_BLOCK: usize = 32;
+const Q8_BLOCK_BYTES: usize = 34;
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct MetalGptOssSdpa {
@@ -110,6 +132,11 @@ struct DeviceKvBuffer {
     cap: usize,
     len: usize,
     transposed: bool,
+    /// q8_0 shadow of the valid region, derived from the f16 buffer on every
+    /// append (last partial seq block requantized from exact f16, so there is
+    /// no drift). [hkv, cap, d/32] blocks seq-major, [hkv, d, cap/32]
+    /// transposed. Only decode gemvs read it; None when q8 is disabled.
+    q8: Option<Arc<Box<dyn OwnedDeviceTensor>>>,
 }
 
 impl std::fmt::Debug for DeviceKvBuffer {
@@ -221,7 +248,8 @@ impl DeviceKvBuffer {
         let (hkv, new, d) = (shape[1], shape[2], shape[3]);
         let ctx = get_context()?;
         if self.buf.is_none() {
-            let cap = (new * 2).max(256);
+            // Multiple of 32 so the q8 shadow's block grid tiles exactly.
+            let cap = (new * 2).max(256).next_multiple_of(32);
             self.hkv = hkv;
             self.d = d;
             self.buf = Some(self.alloc(hkv, d, cap)?);
@@ -234,7 +262,7 @@ impl DeviceKvBuffer {
         // axis order [1, Hkv, D, seq] (the input side is fully strided).
         let permuted = |s: &[isize]| -> TVec<isize> { tvec![s[0], s[1], s[3], s[2]] };
         if self.len + new > self.cap {
-            let new_cap = (self.cap * 2).max(self.len + new);
+            let new_cap = (self.cap * 2).max(self.len + new).next_multiple_of(32);
             let grown = self.alloc(hkv, d, new_cap)?;
             let old_valid = self.valid_view()?;
             let grown_strides = self.logical_strides(new_cap);
@@ -272,6 +300,87 @@ impl DeviceKvBuffer {
 
     fn reset(&mut self) {
         *self = if self.transposed { Self::transposed() } else { Self::default() };
+    }
+
+    /// q8 blocks per logical row of the shadow.
+    fn q8_row_blocks(&self) -> usize {
+        if self.transposed { self.cap / Q8_BLOCK } else { self.d / Q8_BLOCK }
+    }
+
+    /// Byte view over the whole q8 shadow (u8 tensor).
+    fn q8_view(&self) -> TractResult<DeviceTensor> {
+        let q8 = self.q8.as_ref().context("no q8 shadow")?;
+        let bytes = q8.len();
+        Ok(DeviceTensor::ArenaView(DeviceArenaView::from_owned(
+            q8.clone(),
+            u8::datum_type(),
+            tvec![bytes],
+            tvec![1],
+            0,
+        )?))
+    }
+
+    /// (Re)quantize rows [from..len) of the f16 buffer into the shadow,
+    /// (re)allocating it when missing or when `cap` changed underneath it.
+    fn q8_update(&mut self, from: usize) -> TractResult<()> {
+        ensure!(self.d % Q8_BLOCK == 0 && self.cap % Q8_BLOCK == 0);
+        let blocks = self.hkv * self.cap * self.d / Q8_BLOCK;
+        let needed_bytes = blocks * Q8_BLOCK_BYTES;
+        let mut from = from;
+        if self.q8.as_ref().is_none_or(|t| t.len() != needed_bytes) {
+            self.q8 = Some(Arc::new(
+                get_context()?
+                    .uninitialized_device_tensor(&[needed_bytes], u8::datum_type())?,
+            ));
+            from = 0; // fresh or regrown shadow: requantize everything
+        }
+        if self.len == from {
+            return Ok(());
+        }
+        let src = self.full_view()?;
+        let dst = self.q8_view()?;
+        let row_blocks = self.q8_row_blocks();
+        crate::with_metal_stream(|stream| {
+            if self.transposed {
+                // rows = dims, blocks along seq covering [from..len)
+                let b0 = from / Q8_BLOCK;
+                let b1 = self.len.div_ceil(Q8_BLOCK);
+                dispatch_gpt_oss_kv_quantize_q8_0(
+                    stream,
+                    &src,
+                    &dst,
+                    self.hkv,
+                    self.d,
+                    self.d * self.cap,
+                    self.cap,
+                    self.d * row_blocks,
+                    row_blocks,
+                    0,
+                    0,
+                    b0,
+                    b1 - b0,
+                    self.len,
+                )
+            } else {
+                // rows = tokens [from..len), full d per row
+                dispatch_gpt_oss_kv_quantize_q8_0(
+                    stream,
+                    &src,
+                    &dst,
+                    self.hkv,
+                    self.len - from,
+                    self.cap * self.d,
+                    self.d,
+                    self.cap * row_blocks,
+                    row_blocks,
+                    from,
+                    from,
+                    0,
+                    row_blocks,
+                    self.d,
+                )
+            }
+        })
     }
 }
 
@@ -316,6 +425,7 @@ impl OpState for MetalGptOssSdpaState {
         crate::with_metal_stream(|stream| stream.commit_current())?;
 
         // Continuation vs rebuild (fresh session / truncation / retry).
+        let prev_len = if past != self.k.len { 0 } else { self.k.len };
         if past != self.k.len {
             if std::env::var_os("TRACT_DEBUG_GPT_OSS_REBUILD").is_some() {
                 eprintln!("gptoss-rebuild: past={past} k.len={} s_len={s_len}", self.k.len);
@@ -385,6 +495,8 @@ impl OpState for MetalGptOssSdpaState {
             && d <= 64
             && group <= 8
             && std::env::var_os("TRACT_METAL_DISABLE_GPT_OSS_FLASH").is_none();
+        let use_q8 = kv_q8_enabled() && d % Q8_BLOCK == 0;
+        let use_q8_decode = use_q8 && !use_flash && s_len <= FLASH_MAX_S;
         let f16dt = f16::datum_type();
         let gemm = GgmlGemm;
         crate::with_metal_stream(|stream| {
@@ -394,11 +506,87 @@ impl OpState for MetalGptOssSdpaState {
             // this exact pattern past ~1024 tokens (same medicine as the MoE
             // routed-matmul splits).
             stream.commit_current()?;
+            if use_q8 {
+                // Maintain the q8 shadow from the (now visible) f16 appends.
+                self.k.q8_update(prev_len)?;
+                self.v.q8_update(prev_len)?;
+            }
             let k_b = self.k.gemm_b_view()?;
             let v_b = self.v.gemm_b_view()?;
             let out_all = subview_all(&out, hkv * group * s_len, d)?;
             for t in [&q_a, &k_b, &v_b, &out_all] {
                 stream.retain_tensor(t);
+            }
+            if use_q8_decode {
+                // Boundary: the gemvs read the shadow the quantize kernels
+                // just wrote (same intra-buffer write->read defect medicine).
+                stream.commit_current()?;
+                let t_pad = t_len.next_multiple_of(Q8_BLOCK);
+                let m = group * s_len;
+                let scores = Arc::new(get_context()?.uninitialized_device_tensor(
+                    &[hkv, m, t_pad],
+                    f16::datum_type(),
+                )?);
+                let probs = Arc::new(get_context()?.uninitialized_device_tensor(
+                    &[hkv, m, t_pad],
+                    f16::datum_type(),
+                )?);
+                let scores_all = subview_all(&scores, hkv * m, t_pad)?;
+                let probs_all = subview_all(&probs, hkv * m, t_pad)?;
+                let k_q8 = self.k.q8_view()?;
+                let v_q8 = self.v.q8_view()?;
+                for t in [&scores_all, &probs_all, &k_q8, &v_q8] {
+                    stream.retain_tensor(t);
+                }
+                // QK: B = q8 K rows (tokens of d), scores [hkv, m, t_pad].
+                dispatch_mul_mv_q8_0(
+                    stream,
+                    &k_q8,
+                    0,
+                    self.k.q8_row_blocks() * Q8_BLOCK_BYTES,
+                    self.k.cap * self.k.q8_row_blocks() * Q8_BLOCK_BYTES,
+                    t_len,
+                    d,
+                    hkv,
+                    &q_a,
+                    q_a_offset,
+                    d * 2,
+                    m * d * 2,
+                    m,
+                    &scores_all,
+                    0,
+                    t_pad,
+                )?;
+                dispatch_gpt_oss_sinks_softmax_f16(
+                    stream,
+                    &scores_all,
+                    &mask_2d,
+                    &sinks_flat,
+                    &probs_all,
+                    s_len,
+                    self.scale,
+                    t_len,
+                )?;
+                // AV: B = q8 V^T rows (dims of t_pad), out [hkv, m, d].
+                dispatch_mul_mv_q8_0(
+                    stream,
+                    &v_q8,
+                    0,
+                    self.v.q8_row_blocks() * Q8_BLOCK_BYTES,
+                    self.v.d * self.v.q8_row_blocks() * Q8_BLOCK_BYTES,
+                    d,
+                    t_pad,
+                    hkv,
+                    &probs_all,
+                    0,
+                    t_pad * 2,
+                    m * t_pad * 2,
+                    m,
+                    &out_all,
+                    0,
+                    d,
+                )?;
+                return Ok(());
             }
             if use_flash {
                 let need = flash_attn_scratch_len(hq, s_len, t_len, d);
@@ -477,6 +665,7 @@ impl OpState for MetalGptOssSdpaState {
                 &probs_all,
                 s_len,
                 self.scale,
+                t_len,
             )?;
             // One batched gemm: probs [Hkv, group*S, T] x V^T [Hkv, D, T]^T
             // -> out [Hkv, group*S, D]. V is stored transposed so its k axis
@@ -748,6 +937,19 @@ mod tests {
         let want = Tensor::stack_tensors(2, &[&c1, &c2])?;
         got.close_enough(&want, Approximation::Exact)?;
         Ok(())
+    }
+
+    /// The q8 KV shadow path against the same CPU reference: caches stay
+    /// f16-exact (the shadow never crosses the op boundary); only the
+    /// attention output carries the ~0.5% q8 quantization error, absorbed by
+    /// the SuperApproximate gate.
+    #[test]
+    fn metal_kv_q8_matches_cpu() -> TractResult<()> {
+        KV_Q8_TEST_OVERRIDE.with(|c| c.set(true));
+        let r = run_metal_vs_cpu(4, 2, 64, &[5, 1, 1, 1500, 1], usize::MAX)
+            .and_then(|_| run_metal_vs_cpu(64, 8, 64, &[256, 1, 1, 40], 128));
+        KV_Q8_TEST_OVERRIDE.with(|c| c.set(false));
+        r
     }
 
     /// Prefix-cache truncation: feed back the op's own device cache views

@@ -161,6 +161,53 @@ enum RouteGateMode : uint {
     output[gid] = (up + 1.0f) * glu;
 }
 
+// q8_0 block layout (must match ggml_mm_mv.metal).
+typedef struct {
+    half d;
+    int8_t qs[32];
+} moe_block_q8_0;
+
+// Quantize rows of an f16 buffer into q8_0 blocks: KV-cache shadow
+// maintenance for the GPT-OSS fused attention. Grid (heads, rows, blocks
+// from b0); one simdgroup per block; elements past `valid` (from row start)
+// quantize to zero so gemvs over padded lengths read exact zeros.
+[[kernel]] void gpt_oss_kv_quantize_q8_0(
+    device const half *src [[buffer(0)]],
+    device char *dst [[buffer(1)]],
+    constant uint &src_head_stride [[buffer(2)]],
+    constant uint &src_row_stride [[buffer(3)]],
+    constant uint &dst_head_stride_blocks [[buffer(4)]],
+    constant uint &dst_row_stride_blocks [[buffer(5)]],
+    constant uint &src_row_offset [[buffer(6)]],
+    constant uint &dst_row_offset [[buffer(7)]],
+    constant uint &b0 [[buffer(8)]],
+    constant uint &valid [[buffer(9)]],
+    uint3 tgpig [[threadgroup_position_in_grid]],
+    uint lane [[thread_index_in_threadgroup]])
+{
+    const uint head = tgpig.x;
+    const uint row = tgpig.y;
+    const uint block = b0 + tgpig.z;
+
+    device const half *srow =
+        src + (uint64_t)head * src_head_stride
+            + (uint64_t)(row + src_row_offset) * src_row_stride;
+    device moe_block_q8_0 *brow = (device moe_block_q8_0 *)dst
+        + (uint64_t)head * dst_head_stride_blocks
+        + (uint64_t)(row + dst_row_offset) * dst_row_stride_blocks
+        + block;
+
+    const uint ix = block * 32 + lane;
+    const float v = ix < valid ? (float)srow[ix] : 0.0f;
+    const float amax = simd_max(fabs(v));
+    const float d = amax / 127.0f;
+    const float id = d != 0.0f ? 1.0f / d : 0.0f;
+    if (lane == 0) {
+        brow->d = (half)d;
+    }
+    brow->qs[lane] = (int8_t)rint(v * id);
+}
+
 // Fused flash-attention decode for GPT-OSS, two phases sharing K/V reads
 // across the GQA group (each key is streamed once per KV head, serving all
 // `group` q heads at once).
@@ -410,6 +457,7 @@ constant bool FC_FUSE_MERGE [[function_constant(2)]];
     constant uint &t_len [[buffer(5)]],
     constant uint &s_len [[buffer(6)]],
     constant float &scale [[buffer(7)]],
+    constant uint &row_stride [[buffer(8)]],
     uint row [[threadgroup_position_in_grid]],
     uint lane [[thread_index_in_threadgroup]],
     uint tptg [[threads_per_threadgroup]])
@@ -420,9 +468,9 @@ constant bool FC_FUSE_MERGE [[function_constant(2)]];
     }
     const uint head = row / s_len;
     const uint mrow = row % s_len;
-    device const half *srow = scores + (uint64_t)row * t_len;
+    device const half *srow = scores + (uint64_t)row * row_stride;
     device const float *mrow_p = mask + (uint64_t)mrow * t_len;
-    device half *prow = probs + (uint64_t)row * t_len;
+    device half *prow = probs + (uint64_t)row * row_stride;
     const float sink = sinks[head];
     const uint simd_lane = lane % 32;
     const uint simd_ix = lane / 32;
@@ -461,8 +509,13 @@ constant bool FC_FUSE_MERGE [[function_constant(2)]];
     threadgroup_barrier(mem_flags::mem_threadgroup);
     den = partials[0] + exp(sink - m);
 
-    // Pass 3: write normalized probabilities (sink column dropped).
+    // Pass 3: write normalized probabilities (sink column dropped). The
+    // padding columns (row_stride > t_len, q8 block alignment) are zeroed so
+    // padded-length consumers read exact zeros.
     for (uint j = lane; j < t_len; j += tptg) {
         prow[j] = (half)(exp((float)srow[j] * scale + mrow_p[j] - m) / den);
+    }
+    for (uint j = t_len + lane; j < row_stride; j += tptg) {
+        prow[j] = (half)0.0f;
     }
 }

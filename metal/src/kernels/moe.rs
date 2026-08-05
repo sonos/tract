@@ -210,6 +210,54 @@ pub fn dispatch_routed_combine_f32(
     Ok(())
 }
 
+/// Quantize rows of an f16 device buffer into q8_0 blocks (KV-cache shadow
+/// maintenance). Strides in elements / blocks; `valid` elements from row
+/// start, blocks beyond it quantize to zero.
+#[allow(clippy::too_many_arguments)]
+pub fn dispatch_gpt_oss_kv_quantize_q8_0(
+    stream: &MetalStream,
+    src: &DeviceTensor,
+    dst: &DeviceTensor,
+    heads: usize,
+    rows: usize,
+    src_head_stride: usize,
+    src_row_stride: usize,
+    dst_head_stride_blocks: usize,
+    dst_row_stride_blocks: usize,
+    src_row_offset: usize,
+    dst_row_offset: usize,
+    b0: usize,
+    n_blocks: usize,
+    valid: usize,
+) -> TractResult<()> {
+    stream.retain_tensor(src);
+    stream.retain_tensor(dst);
+    ensure!(src.datum_type() == f16::datum_type());
+    let pipeline = stream.load_pipeline(LibraryName::MoeOps, "gpt_oss_kv_quantize_q8_0")?;
+    let command_buffer = stream.command_buffer();
+    command_buffer.encode(|encoder| {
+        encoder.set_compute_pipeline_state(&pipeline);
+        encoder.set_metal_tensor(0, src, metal::MTLResourceUsage::Read);
+        encoder.set_metal_tensor(1, dst, metal::MTLResourceUsage::Write);
+        encoder.set_slice(2, &[src_head_stride as u32]);
+        encoder.set_slice(3, &[src_row_stride as u32]);
+        encoder.set_slice(4, &[dst_head_stride_blocks as u32]);
+        encoder.set_slice(5, &[dst_row_stride_blocks as u32]);
+        encoder.set_slice(6, &[src_row_offset as u32]);
+        encoder.set_slice(7, &[dst_row_offset as u32]);
+        encoder.set_slice(8, &[b0 as u32]);
+        encoder.set_slice(9, &[valid as u32]);
+        let grid = MTLSize {
+            width: heads as NSUInteger,
+            height: rows as NSUInteger,
+            depth: n_blocks as NSUInteger,
+        };
+        let group = MTLSize { width: 32, height: 1, depth: 1 };
+        encoder.dispatch_thread_groups(grid, group);
+    });
+    Ok(())
+}
+
 /// Fused flash-attention decode step: out = softmax(q.K^T*scale + mask).V
 /// with the per-head sink logit in the denominator. Two dispatches: a
 /// partial pass with one threadgroup per (kv head, key chunk, query pos)
@@ -368,6 +416,7 @@ pub fn dispatch_gpt_oss_sinks_softmax_f16(
     probs: &DeviceTensor,
     s_len: usize,
     scale: f32,
+    t_len: usize,
 ) -> TractResult<()> {
     stream.retain_tensor(scores);
     stream.retain_tensor(mask);
@@ -378,8 +427,11 @@ pub fn dispatch_gpt_oss_sinks_softmax_f16(
     ensure!(probs.datum_type() == f16::datum_type());
     ensure!(mask.datum_type() == f32::datum_type());
     ensure!(sinks.datum_type() == f32::datum_type());
-    let t_len = *scores.shape().last().context("scores rank 0")?;
-    let rows = scores.len() / t_len;
+    // The physical row stride may exceed t_len (q8 block padding); the pad
+    // columns of probs are zeroed by the kernel.
+    let row_stride = *scores.shape().last().context("scores rank 0")?;
+    ensure!(row_stride >= t_len);
+    let rows = scores.len() / row_stride;
     ensure!(probs.len() == scores.len());
     ensure!(rows % s_len == 0, "rows {rows} not a multiple of s_len {s_len}");
     ensure!(mask.len() >= s_len * t_len, "mask too small");
@@ -397,6 +449,7 @@ pub fn dispatch_gpt_oss_sinks_softmax_f16(
         encoder.set_slice(5, &[t_len as u32]);
         encoder.set_slice(6, &[s_len as u32]);
         encoder.set_slice(7, &[scale]);
+        encoder.set_slice(8, &[row_stride as u32]);
         let grid = MTLSize { width: rows as NSUInteger, height: 1, depth: 1 };
         let group = MTLSize { width: group_width, height: 1, depth: 1 };
         encoder.dispatch_thread_groups(grid, group);
@@ -433,7 +486,7 @@ mod sinks_softmax_tests {
             let probs_dev = DeviceTensor::uninitialized_dt(f16::datum_type(), &[rows, t_len])?;
 
             dispatch_gpt_oss_sinks_softmax_f16(
-                stream, &scores_dev, &mask_dev, &sinks_dev, &probs_dev, s_len, scale,
+                stream, &scores_dev, &mask_dev, &sinks_dev, &probs_dev, s_len, scale, t_len,
             )?;
             stream.wait_until_completed()?;
             let got = probs_dev.to_host()?.into_tensor().cast_to::<f32>()?.into_owned();
