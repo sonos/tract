@@ -210,6 +210,156 @@ pub fn dispatch_routed_combine_f32(
     Ok(())
 }
 
+/// Fused flash-attention decode step: out = softmax(q.K^T*scale + mask).V
+/// with the per-head sink logit in the denominator. Two dispatches: a
+/// partial pass with one threadgroup per (kv head, key chunk, query pos)
+/// sharing each K/V read across the whole GQA group, then a small merge.
+/// `k`/`v` are seq-major capacity-buffer views (head strides passed
+/// explicitly); `q`/`out` dense [1, Hq, S, D].
+#[allow(clippy::too_many_arguments)]
+/// Chunking rule shared with callers sizing the scratch buffer: enough
+/// chunks to occupy the GPU (hkv * n_chunks * s_len threadgroups) without
+/// shrinking chunks into pure per-dispatch overhead.
+pub fn flash_attn_chunking(t_len: usize) -> (usize, usize) {
+    let n_chunks = t_len.div_ceil(512).clamp(1, 16);
+    // Chunk boundaries stay 32-aligned: the kernel's half4 loads require it,
+    // and each simdgroup block covers 32 keys.
+    let chunk = t_len.div_ceil(n_chunks).next_multiple_of(32);
+    (t_len.div_ceil(chunk), chunk)
+}
+
+/// f32 elements of scratch the flash kernels need for a given geometry.
+pub fn flash_attn_scratch_len(hq: usize, s_len: usize, t_len: usize, d: usize) -> usize {
+    let (n_chunks, _) = flash_attn_chunking(t_len);
+    hq * s_len * n_chunks * FLASH_SG * (2 + d)
+}
+
+const FLASH_SG: usize = 8;
+
+pub fn dispatch_gpt_oss_flash_attn_f16(
+    stream: &MetalStream,
+    q: &DeviceTensor,
+    k: &DeviceTensor,
+    v: &DeviceTensor,
+    mask: &DeviceTensor,
+    sinks: &DeviceTensor,
+    out: &DeviceTensor,
+    scratch: &DeviceTensor,
+    dims: GptOssFlashAttnDims,
+    scale: f32,
+) -> TractResult<()> {
+    let GptOssFlashAttnDims {
+        hq,
+        s_len,
+        t_len,
+        d,
+        group,
+        k_head_stride,
+        v_head_stride,
+        v_seq_stride,
+    } = dims;
+    let hkv = hq / group;
+    for t in [q, k, v, mask, sinks] {
+        stream.retain_tensor(t);
+    }
+    stream.retain_tensor(out);
+
+    ensure!(q.datum_type() == f16::datum_type());
+    ensure!(k.datum_type() == f16::datum_type() && v.datum_type() == f16::datum_type());
+    ensure!(mask.datum_type() == f32::datum_type());
+    ensure!(sinks.datum_type() == f32::datum_type());
+    ensure!(d <= 64, "flash attention kernel supports head dim <= 64, got {d}");
+    ensure!(group <= 8, "flash attention kernel supports GQA group <= 8, got {group}");
+    ensure!(mask.len() >= s_len * t_len, "mask too small");
+    ensure!(sinks.len() == hq);
+
+    let (n_chunks, chunk) = flash_attn_chunking(t_len);
+    let rows = hq * s_len;
+    let n_parts = n_chunks * FLASH_SG;
+    ensure!(
+        scratch.datum_type() == f32::datum_type() && scratch.len() >= rows * n_parts * (2 + d),
+        "flash scratch too small: {} < {}",
+        scratch.len(),
+        rows * n_parts * (2 + d)
+    );
+    stream.retain_tensor(scratch);
+
+    // group/dpl are function constants: compile-time loop bounds keep the
+    // per-head register arrays out of stack memory.
+    let fuse_merge = n_chunks == 1;
+    let constants = crate::func_constants::ConstantValues::new(vec![
+        (0, crate::func_constants::Value::USize(group)),
+        (1, crate::func_constants::Value::USize(d.div_ceil(32))),
+        (2, crate::func_constants::Value::Bool(fuse_merge)),
+    ]);
+    let part = stream.load_pipeline_with_constants(
+        LibraryName::MoeOps,
+        "gpt_oss_flash_attn_part_f16",
+        Some(constants),
+    )?;
+    let command_buffer = stream.command_buffer();
+    command_buffer.encode(|encoder| {
+        encoder.set_compute_pipeline_state(&part);
+        encoder.set_metal_tensor(0, q, metal::MTLResourceUsage::Read);
+        encoder.set_metal_tensor(1, k, metal::MTLResourceUsage::Read);
+        encoder.set_metal_tensor(2, v, metal::MTLResourceUsage::Read);
+        encoder.set_metal_tensor(3, mask, metal::MTLResourceUsage::Read);
+        encoder.set_metal_tensor(4, scratch, metal::MTLResourceUsage::Write);
+        encoder.set_slice(5, &[s_len as u32]);
+        encoder.set_slice(6, &[t_len as u32]);
+        encoder.set_slice(7, &[d as u32]);
+        encoder.set_slice(8, &[k_head_stride as u32]);
+        encoder.set_slice(9, &[v_head_stride as u32]);
+        encoder.set_slice(10, &[v_seq_stride as u32]);
+        encoder.set_slice(11, &[chunk as u32]);
+        encoder.set_slice(12, &[n_chunks as u32]);
+        encoder.set_slice(13, &[scale]);
+        encoder.set_metal_tensor(14, sinks, metal::MTLResourceUsage::Read);
+        encoder.set_metal_tensor(15, out, metal::MTLResourceUsage::Write);
+        let grid = MTLSize {
+            width: hkv as NSUInteger,
+            height: n_chunks as NSUInteger,
+            depth: s_len as NSUInteger,
+        };
+        let group_size = MTLSize { width: (FLASH_SG * 32) as NSUInteger, height: 1, depth: 1 };
+        encoder.dispatch_thread_groups(grid, group_size);
+    });
+    if fuse_merge {
+        return Ok(());
+    }
+    let merge = stream.load_pipeline(LibraryName::MoeOps, "gpt_oss_flash_attn_merge_f16")?;
+    let command_buffer = stream.command_buffer();
+    command_buffer.encode(|encoder| {
+        encoder.set_compute_pipeline_state(&merge);
+        encoder.set_metal_tensor(0, scratch, metal::MTLResourceUsage::Read);
+        encoder.set_metal_tensor(1, sinks, metal::MTLResourceUsage::Read);
+        encoder.set_metal_tensor(2, out, metal::MTLResourceUsage::Write);
+        encoder.set_slice(3, &[s_len as u32]);
+        encoder.set_slice(4, &[d as u32]);
+        encoder.set_slice(5, &[n_parts as u32]);
+        encoder.set_slice(6, &[scale]);
+        let grid = MTLSize { width: rows as NSUInteger, height: 1, depth: 1 };
+        let group_size = MTLSize { width: 32, height: 1, depth: 1 };
+        encoder.dispatch_thread_groups(grid, group_size);
+    });
+    Ok(())
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct GptOssFlashAttnDims {
+    pub hq: usize,
+    pub s_len: usize,
+    pub t_len: usize,
+    pub d: usize,
+    pub group: usize,
+    /// K is seq-major: elements between consecutive heads.
+    pub k_head_stride: usize,
+    /// V is transposed ([Hkv, D, cap]): elements between consecutive heads.
+    pub v_head_stride: usize,
+    /// V transposed: elements between consecutive dims of one head (= cap).
+    pub v_seq_stride: usize,
+}
+
 pub fn dispatch_gpt_oss_sinks_softmax_f16(
     stream: &MetalStream,
     scores: &DeviceTensor,
@@ -309,6 +459,64 @@ mod sinks_softmax_tests {
                         "row {r} col {j}: want {want} got {g}"
                     );
                 }
+            }
+            Ok(())
+        })
+    }
+}
+
+#[cfg(test)]
+mod flash_attn_bench {
+    use super::*;
+    use tract_gpu::tensor::IntoDevice;
+
+    #[test]
+    #[ignore]
+    fn bench_flash_attn_gpt_oss_geometry() -> TractResult<()> {
+        crate::utils::with_borrowed_metal_stream(|stream| {
+            for t in [256usize, 1024, 2800, 8192] {
+            let (hq, hkv, d) = (64usize, 8usize, 64usize);
+            let group = hq / hkv;
+            let cap = 8192;
+            let q = Tensor::zero::<f16>(&[1, hq, 1, d])?.into_device()?;
+            let k = Tensor::zero::<f16>(&[1, hkv, cap, d])?.into_device()?;
+            let v = Tensor::zero::<f16>(&[1, hkv, d, cap])?.into_device()?;
+            let mask = Tensor::zero::<f32>(&[1, t])?.into_device()?;
+            let sinks = Tensor::zero::<f32>(&[hq])?.into_device()?;
+            let out = Tensor::zero::<f16>(&[1, hq, 1, d])?.into_device()?;
+            let scratch = unsafe {
+                DeviceTensor::uninitialized_dt(
+                    f32::datum_type(),
+                    &[flash_attn_scratch_len(hq, 1, t, d)],
+                )?
+            };
+            let dims = GptOssFlashAttnDims {
+                hq,
+                s_len: 1,
+                t_len: t,
+                d,
+                group,
+                k_head_stride: cap * d,
+                v_head_stride: cap * d,
+                v_seq_stride: cap,
+            };
+            // warmup
+            for _ in 0..10 {
+                dispatch_gpt_oss_flash_attn_f16(
+                    stream, &q, &k, &v, &mask, &sinks, &out, &scratch, dims, 0.125,
+                )?;
+            }
+            stream.wait_until_completed()?;
+            let start = std::time::Instant::now();
+            const N: usize = 200;
+            for _ in 0..N {
+                dispatch_gpt_oss_flash_attn_f16(
+                    stream, &q, &k, &v, &mask, &sinks, &out, &scratch, dims, 0.125,
+                )?;
+            }
+            stream.wait_until_completed()?;
+            let per = start.elapsed().as_secs_f64() / N as f64;
+            eprintln!("flash attn t={t}: {:.1} us/layer, {:.2} ms/token(24 layers)", per * 1e6, per * 24.0 * 1e3);
             }
             Ok(())
         })

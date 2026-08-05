@@ -161,6 +161,242 @@ enum RouteGateMode : uint {
     output[gid] = (up + 1.0f) * glu;
 }
 
+// Fused flash-attention decode for GPT-OSS, two phases sharing K/V reads
+// across the GQA group (each key is streamed once per KV head, serving all
+// `group` q heads at once).
+//
+// Phase 1 (part): grid [Hkv, n_chunks, S]; each threadgroup runs an online
+// f32 softmax over its chunk of keys for all q heads of its kv head, one
+// simdgroup per key slice, and writes per-simdgroup partials (m, l, acc[D])
+// to scratch. Phase 2 (merge): one threadgroup per output row combines the
+// partials, folds the per-head SINK logit into the denominator, and writes
+// the f16 output row. K/V are seq-major capacity buffers; q/out dense
+// [Hq, S, D]. Requires D <= 64 and group <= 8.
+constant constexpr uint FLASH_MAX_GROUP = 8;
+constant constexpr uint FLASH_MAX_DPL = 2; // D <= 64
+constant constexpr uint FLASH_SG = 8;      // simdgroups per threadgroup
+
+// GQA group size and D-elements-per-lane specialized at PSO build time so
+// every register array indexes with compile-time constants (a runtime bound
+// would spill the accumulators to stack memory).
+constant uint FC_GROUP [[function_constant(0)]];
+constant uint FC_DPL [[function_constant(1)]];
+// Single-chunk mode: merge the simdgroup partials in threadgroup memory and
+// write the output row directly, skipping the merge dispatch entirely.
+constant bool FC_FUSE_MERGE [[function_constant(2)]];
+
+[[kernel]] void gpt_oss_flash_attn_part_f16(
+    device const half *q [[buffer(0)]],
+    device const half *k [[buffer(1)]],
+    device const half *v [[buffer(2)]],
+    device const float *mask [[buffer(3)]],
+    device float *partials [[buffer(4)]],
+    constant uint &s_len [[buffer(5)]],
+    constant uint &t_len [[buffer(6)]],
+    constant uint &d [[buffer(7)]],
+    constant uint &k_head_stride [[buffer(8)]],
+    constant uint &v_head_stride [[buffer(9)]],
+    constant uint &v_seq_stride [[buffer(10)]],
+    constant uint &chunk [[buffer(11)]],
+    constant uint &n_chunks [[buffer(12)]],
+    constant float &scale [[buffer(13)]],
+    device const float *sinks [[buffer(14)]],
+    device half *out [[buffer(15)]],
+    uint3 tgpig [[threadgroup_position_in_grid]],
+    uint lane [[thread_index_in_threadgroup]])
+{
+    // Lane-per-key: each lane owns one key of a 32-key block, so scores,
+    // exps and mask adds all run 32-wide with a single simd_max/simd_sum
+    // per block instead of one reduction per key. K rows are seq-major
+    // (each lane streams its own row); V is transposed so the AV phase
+    // reads each dim's row contiguously along the block.
+    const uint kv_head = tgpig.x;
+    const uint chunk_ix = tgpig.y;
+    const uint qpos = tgpig.z;
+    const uint simd_lane = lane % 32;
+    const uint simd_ix = lane / 32;
+
+    const uint j_lo = chunk_ix * chunk;
+    const uint j_hi = min(t_len, j_lo + chunk);
+
+    device const half *kh = k + (uint64_t)kv_head * k_head_stride;
+    device const half *vh = v + (uint64_t)kv_head * v_head_stride;
+    device const float *mrow = mask + (uint64_t)qpos * t_len;
+
+    // q for the whole GQA group staged in threadgroup memory: the score
+    // loop reads it dim by dim as a broadcast.
+    threadgroup float q_tg[FLASH_MAX_GROUP * 64];
+    for (uint i = lane; i < FC_GROUP * d; i += FLASH_SG * 32) {
+        const uint g = i / d;
+        const uint dim = i % d;
+        q_tg[g * 64 + dim] =
+            (float)q[(uint64_t)((kv_head * FC_GROUP + g) * s_len + qpos) * d + dim];
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+
+    threadgroup float p_tg[FLASH_SG * 32];
+
+    float m[FLASH_MAX_GROUP];
+    float l[FLASH_MAX_GROUP];
+    float acc[FLASH_MAX_GROUP][FLASH_MAX_DPL];
+    for (uint g = 0; g < FC_GROUP; g++) {
+        m[g] = -INFINITY;
+        l[g] = 0.0f;
+        for (uint c = 0; c < FC_DPL; c++) acc[g][c] = 0.0f;
+    }
+
+    for (uint j0 = j_lo + simd_ix * 32; j0 < j_hi; j0 += FLASH_SG * 32) {
+        const uint blk = min(32u, j_hi - j0);
+        const uint j = j0 + simd_lane;
+        const bool live = simd_lane < blk;
+        device const half4 *krow4 = (device const half4 *)(kh + (uint64_t)j * d);
+        const float mj = live ? mrow[j] : -INFINITY;
+        const uint d4 = d / 4;
+        for (uint g = 0; g < FC_GROUP; g++) {
+            // Scores: each lane dots its own K row against the shared q,
+            // vectorized 4-wide to keep the load count down.
+            float sc = 0.0f;
+            if (live) {
+                threadgroup const float4 *q4 =
+                    (threadgroup const float4 *)(q_tg + g * 64);
+                for (uint dim4 = 0; dim4 < d4; dim4++) {
+                    sc += dot(float4(krow4[dim4]), q4[dim4]);
+                }
+            }
+            sc = live ? sc * scale + mj : -INFINITY;
+            const float m_new = max(m[g], simd_max(sc));
+            const float corr = exp(m[g] - m_new);
+            const float p = live ? exp(sc - m_new) : 0.0f;
+            l[g] = l[g] * corr + simd_sum(p);
+            m[g] = m_new;
+            p_tg[simd_ix * 32 + simd_lane] = p;
+            simdgroup_barrier(mem_flags::mem_threadgroup);
+            // AV: lanes switch to dims; each streams its dim's transposed V
+            // row contiguously across the block.
+            for (uint c = 0; c < FC_DPL; c++) {
+                const uint dim = simd_lane + 32 * c;
+                float a = 0.0f;
+                if (dim < d) {
+                    device const half4 *vrow4 = (device const half4 *)(
+                        vh + (uint64_t)dim * v_seq_stride + j0);
+                    threadgroup const float4 *p4 =
+                        (threadgroup const float4 *)(p_tg + simd_ix * 32);
+                    const uint b4n = blk / 4;
+                    for (uint b4 = 0; b4 < b4n; b4++) {
+                        a += dot(float4(vrow4[b4]), p4[b4]);
+                    }
+                    for (uint b = b4n * 4; b < blk; b++) {
+                        a += p_tg[simd_ix * 32 + b] * (float)(
+                            (device const half *)vrow4)[b];
+                    }
+                }
+                acc[g][c] = acc[g][c] * corr + a;
+            }
+            simdgroup_barrier(mem_flags::mem_threadgroup);
+        }
+    }
+
+    if (FC_FUSE_MERGE) {
+        // Merge the simdgroup partials here and write the output rows: one
+        // dispatch per layer, no scratch round trip.
+        threadgroup float tg_m[FLASH_SG * FLASH_MAX_GROUP];
+        threadgroup float tg_l[FLASH_SG * FLASH_MAX_GROUP];
+        threadgroup float tg_acc[FLASH_SG * 64];
+        if (simd_lane == 0) {
+            for (uint g = 0; g < FC_GROUP; g++) {
+                tg_m[simd_ix * FLASH_MAX_GROUP + g] = m[g];
+                tg_l[simd_ix * FLASH_MAX_GROUP + g] = l[g];
+            }
+        }
+        for (uint g = 0; g < FC_GROUP; g++) {
+            threadgroup_barrier(mem_flags::mem_threadgroup);
+            for (uint c = 0; c < FC_DPL; c++) {
+                const uint ix = simd_lane + 32 * c;
+                if (ix < d) tg_acc[simd_ix * 64 + ix] = acc[g][c];
+            }
+            threadgroup_barrier(mem_flags::mem_threadgroup);
+            if (simd_ix == 0) {
+                float m_all = -INFINITY;
+                for (uint sg = 0; sg < FLASH_SG; sg++) {
+                    m_all = max(m_all, tg_m[sg * FLASH_MAX_GROUP + g]);
+                }
+                const float sink = sinks[kv_head * FC_GROUP + g];
+                const float m_fin = max(m_all, sink);
+                float l_fin = exp(sink - m_fin);
+                float w[FLASH_SG];
+                for (uint sg = 0; sg < FLASH_SG; sg++) {
+                    const float mp = tg_m[sg * FLASH_MAX_GROUP + g];
+                    w[sg] = mp == -INFINITY ? 0.0f : exp(mp - m_fin);
+                    l_fin += tg_l[sg * FLASH_MAX_GROUP + g] * w[sg];
+                }
+                const uint row = (kv_head * FC_GROUP + g) * s_len + qpos;
+                device half *orow = out + (uint64_t)row * d;
+                for (uint ix = simd_lane; ix < d; ix += 32) {
+                    float o = 0.0f;
+                    for (uint sg = 0; sg < FLASH_SG; sg++) {
+                        o += tg_acc[sg * 64 + ix] * w[sg];
+                    }
+                    orow[ix] = (half)(o / l_fin);
+                }
+            }
+        }
+        return;
+    }
+
+    // Per-simdgroup partial: [m, l, acc[d]] per (row, chunk, simdgroup).
+    const uint stride = 2 + d;
+    for (uint g = 0; g < FC_GROUP; g++) {
+        const uint row = (kv_head * FC_GROUP + g) * s_len + qpos;
+        device float *part = partials
+            + (uint64_t)((row * n_chunks + chunk_ix) * FLASH_SG + simd_ix) * stride;
+        if (simd_lane == 0) {
+            part[0] = m[g];
+            part[1] = l[g];
+        }
+        for (uint c = 0; c < FC_DPL; c++) {
+            const uint ix = simd_lane + 32 * c;
+            if (ix < d) part[2 + ix] = acc[g][c];
+        }
+    }
+}
+
+// Phase 2: one threadgroup (single simdgroup) per output row.
+[[kernel]] void gpt_oss_flash_attn_merge_f16(
+    device const float *partials [[buffer(0)]],
+    device const float *sinks [[buffer(1)]],
+    device half *out [[buffer(2)]],
+    constant uint &s_len [[buffer(3)]],
+    constant uint &d [[buffer(4)]],
+    constant uint &n_parts [[buffer(5)]],
+    constant float &scale_unused [[buffer(6)]],
+    uint row [[threadgroup_position_in_grid]],
+    uint lane [[thread_index_in_threadgroup]])
+{
+    const uint stride = 2 + d;
+    device const float *parts = partials + (uint64_t)row * n_parts * stride;
+
+    float m_all = -INFINITY;
+    for (uint p = 0; p < n_parts; p++) {
+        m_all = max(m_all, parts[p * stride]);
+    }
+    const float sink = sinks[row / s_len];
+    const float m_fin = max(m_all, sink);
+    float l_fin = exp(sink - m_fin);
+    for (uint p = 0; p < n_parts; p++) {
+        const float mp = parts[p * stride];
+        l_fin += mp == -INFINITY ? 0.0f : parts[p * stride + 1] * exp(mp - m_fin);
+    }
+    device half *orow = out + (uint64_t)row * d;
+    for (uint ix = lane; ix < d; ix += 32) {
+        float o = 0.0f;
+        for (uint p = 0; p < n_parts; p++) {
+            const float mp = parts[p * stride];
+            o += mp == -INFINITY ? 0.0f : parts[p * stride + 2 + ix] * exp(mp - m_fin);
+        }
+        orow[ix] = (half)(o / l_fin);
+    }
+}
+
 // Row softmax for GPT-OSS attention: probs = softmax over T keys of
 // (score*scale + mask[row % s_len]) with a per-head SINK logit participating
 // in the denominator only. Rows are [num_q_heads, s_len] flattened; one

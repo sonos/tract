@@ -22,10 +22,30 @@ use tract_gpu::utils::facts_to_device_facts;
 use tract_transformers::ops::gpt_oss_sdpa::GptOssSdpa;
 
 use crate::kernels::matmul::{GemmDispatchParams, GemmKernel, GgmlGemm};
-use crate::kernels::moe::dispatch_gpt_oss_sinks_softmax_f16;
+use crate::kernels::moe::{
+    GptOssFlashAttnDims, dispatch_gpt_oss_flash_attn_f16, dispatch_gpt_oss_sinks_softmax_f16,
+    flash_attn_scratch_len,
+};
 use crate::utils::get_metal_buffer;
 
 const SEQ_AXIS: usize = 2;
+/// Step sizes up to this may run the fused flash-attention kernel; larger
+/// (prefill-sized) steps always use the batched-gemm pipeline.
+const FLASH_MAX_S: usize = 8;
+/// Context length where flash decode takes over from the batched gemms.
+/// Benchmarked 2026-08-05 on gpt-oss-20b (M-series): the batched
+/// GGML mm/gemv pipeline beat the flash kernel at every length tried (74,
+/// 2800, 5.6k, 11k ctx: e.g. 24.3 vs 21.1 tok/s at 11k), so flash is
+/// disabled by default and kept for future tuning. Enable with
+/// TRACT_METAL_GPT_OSS_FLASH_MIN_T=<t>.
+const FLASH_MIN_T: usize = usize::MAX;
+
+fn flash_min_t() -> usize {
+    std::env::var("TRACT_METAL_GPT_OSS_FLASH_MIN_T")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(FLASH_MIN_T)
+}
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct MetalGptOssSdpa {
@@ -67,9 +87,11 @@ impl EvalOp for MetalGptOssSdpa {
         Ok(Some(Box::new(MetalGptOssSdpaState {
             scale: f32::from_bits(self.scale_bits),
             k: DeviceKvBuffer::default(),
-            // V is stored transposed so the AV gemm's k axis (sequence) is
-            // contiguous, as the GGML kernels require of B.
+            // V is stored transposed: the batched GGML AV gemm needs its k
+            // axis (the sequence) contiguous, and the flash decode kernel
+            // reads V^T rows contiguously along each key block.
             v: DeviceKvBuffer::transposed(),
+            flash_scratch: None,
         })))
     }
 }
@@ -173,6 +195,19 @@ impl DeviceKvBuffer {
         )?))
     }
 
+    /// Contiguous [T, D] view of one head's valid region (seq-major only).
+    fn head_view(&self, h: usize) -> TractResult<DeviceTensor> {
+        ensure!(!self.transposed, "head_view is seq-major only");
+        let buf = self.buf.as_ref().context("empty kv buffer")?;
+        Ok(DeviceTensor::ArenaView(DeviceArenaView::from_owned(
+            buf.clone(),
+            f16::datum_type(),
+            tvec![1, self.len, self.d],
+            natural_strides(&[1, self.len, self.d]),
+            h * self.cap * self.d * f16::datum_type().size_of(),
+        )?))
+    }
+
     fn alloc(&self, hkv: usize, d: usize, cap: usize) -> TractResult<Arc<Box<dyn OwnedDeviceTensor>>> {
         let shape: [usize; 4] =
             if self.transposed { [1, hkv, d, cap] } else { [1, hkv, cap, d] };
@@ -245,6 +280,10 @@ pub struct MetalGptOssSdpaState {
     scale: f32,
     k: DeviceKvBuffer,
     v: DeviceKvBuffer,
+    /// Reused f32 scratch for the flash-attention partials: allocating it
+    /// per step (24 layers x ~1.5 MB per token) thrashes the Metal
+    /// allocator. Grown geometrically, never shrunk.
+    flash_scratch: Option<DeviceTensor>,
 }
 
 impl OpState for MetalGptOssSdpaState {
@@ -301,15 +340,7 @@ impl OpState for MetalGptOssSdpaState {
         ensure!(sinks.len() == hq);
         let sinks_flat = sinks.reshaped(tvec![hq])?;
 
-        // Scores/probs/output scratch.
-        let scores = Arc::new(get_context()?.uninitialized_device_tensor(
-            &[hkv, group * s_len, t_len],
-            f16::datum_type(),
-        )?);
-        let probs = Arc::new(get_context()?.uninitialized_device_tensor(
-            &[hkv, group * s_len, t_len],
-            f16::datum_type(),
-        )?);
+        // Output scratch (scores/probs exist only on the gemm path).
         let out = Arc::new(get_context()?.uninitialized_device_tensor(
             &[hkv, group * s_len, d],
             f16::datum_type(),
@@ -342,23 +373,74 @@ impl OpState for MetalGptOssSdpaState {
             (dst, 0)
         };
 
+        // Decode steps run the fused flash-attention kernel (one dispatch,
+        // online f32 softmax, no materialized scores); prefill-sized steps
+        // keep the batched-gemm pipeline, whose tiled mm kernels win when S
+        // is large.
+        let use_flash = s_len <= FLASH_MAX_S
+            && t_len >= flash_min_t()
+            && d <= 64
+            && group <= 8
+            && std::env::var_os("TRACT_METAL_DISABLE_GPT_OSS_FLASH").is_none();
         let f16dt = f16::datum_type();
         let gemm = GgmlGemm;
         crate::with_metal_stream(|stream| {
             // Command-buffer boundary between the cache appends (copy_nd
-            // above) and the QK gemms reading the same buffer: the Metal
+            // above) and the attention reads of the same buffer: the Metal
             // runtime's intra-buffer write->read visibility defect corrupts
             // this exact pattern past ~1024 tokens (same medicine as the MoE
             // routed-matmul splits).
             stream.commit_current()?;
             let k_b = self.k.gemm_b_view()?;
             let v_b = self.v.gemm_b_view()?;
-            let scores_all = subview_all(&scores, hkv * group * s_len, t_len)?;
-            let probs_all = subview_all(&probs, hkv * group * s_len, t_len)?;
             let out_all = subview_all(&out, hkv * group * s_len, d)?;
-            for t in [&q_a, &k_b, &v_b, &scores_all, &probs_all, &out_all] {
+            for t in [&q_a, &k_b, &v_b, &out_all] {
                 stream.retain_tensor(t);
             }
+            if use_flash {
+                let need = flash_attn_scratch_len(hq, s_len, t_len, d);
+                if self.flash_scratch.as_ref().is_none_or(|t| t.len() < need) {
+                    self.flash_scratch = Some(unsafe {
+                        DeviceTensor::uninitialized_dt(
+                            f32::datum_type(),
+                            &[(need * 2).next_power_of_two()],
+                        )?
+                    });
+                }
+                return dispatch_gpt_oss_flash_attn_f16(
+                    stream,
+                    &q_a,
+                    &k_b,
+                    &v_b,
+                    &mask_2d,
+                    &sinks_flat,
+                    &out_all,
+                    self.flash_scratch.as_ref().unwrap(),
+                    GptOssFlashAttnDims {
+                        hq,
+                        s_len,
+                        t_len,
+                        d,
+                        group,
+                        k_head_stride: self.k.cap * d,
+                        v_head_stride: self.v.cap * d,
+                        v_seq_stride: self.v.cap,
+                    },
+                    self.scale,
+                );
+            }
+            let scores = Arc::new(get_context()?.uninitialized_device_tensor(
+                &[hkv, group * s_len, t_len],
+                f16::datum_type(),
+            )?);
+            let probs = Arc::new(get_context()?.uninitialized_device_tensor(
+                &[hkv, group * s_len, t_len],
+                f16::datum_type(),
+            )?);
+            let scores_all = subview_all(&scores, hkv * group * s_len, t_len)?;
+            let probs_all = subview_all(&probs, hkv * group * s_len, t_len)?;
+            stream.retain_tensor(&scores_all);
+            stream.retain_tensor(&probs_all);
             // One batched gemm across all kv heads: A [Hkv, group*S, D] x
             // K^T [Hkv, T, D] -> scores [Hkv, group*S, T].
             gemm.dispatch_eval(
@@ -508,8 +590,6 @@ impl OpState for MetalGptOssSdpaState {
             in_stats(k_new, "k_new_in")?;
             stats(&self.k.valid_view()?, "k_cache")?;
             stats(&self.v.valid_view()?, "v_cache")?;
-            stats(&subview_all(&scores, hkv * group * s_len, t_len)?, "scores")?;
-            stats(&subview_all(&probs, hkv * group * s_len, t_len)?, "probs")?;
             stats(&subview_all(&out, hkv * group * s_len, d)?, "out")?;
             stats(&mask_2d, "mask")?;
             let sv = sinks_flat.to_host()?.into_tensor();
@@ -545,6 +625,22 @@ fn subview_all(
         tvec![rows, cols],
         natural_strides(&[rows, cols]),
         0,
+    )?))
+}
+
+/// [1, rows, cols] view of head `h` in a dense [Hkv, rows, cols] tensor.
+fn subview_head(
+    arc: &Arc<Box<dyn OwnedDeviceTensor>>,
+    rows: usize,
+    cols: usize,
+    h: usize,
+) -> TractResult<DeviceTensor> {
+    Ok(DeviceTensor::ArenaView(DeviceArenaView::from_owned(
+        arc.clone(),
+        f16::datum_type(),
+        tvec![1, rows, cols],
+        natural_strides(&[1, rows, cols]),
+        h * rows * cols * f16::datum_type().size_of(),
     )?))
 }
 
@@ -659,6 +755,7 @@ mod tests {
     #[test]
     fn metal_truncation_matches_cpu() -> TractResult<()> {
         use tract_gpu::tensor::DeviceTensor;
+        force_flash_for_tests();
         crate::context::metal_context();
         let (hq, hkv, d) = (4usize, 2usize, 64usize);
         let scale = (d as f32).sqrt().recip();
@@ -758,6 +855,15 @@ mod tests {
         Ok(())
     }
 
+    /// Force decode steps onto the flash path regardless of context length,
+    /// so the CPU-comparison tests exercise it at test-sized T. All tests
+    /// setting this use the same value, so parallel execution is safe; the
+    /// gemm decode path is covered by the TRACT_METAL_DISABLE_GPT_OSS_FLASH
+    /// suite run.
+    fn force_flash_for_tests() {
+        unsafe { std::env::set_var("TRACT_METAL_GPT_OSS_FLASH_MIN_T", "0") };
+    }
+
     fn run_metal_vs_cpu(
         hq: usize,
         hkv: usize,
@@ -765,6 +871,7 @@ mod tests {
         steps: &[usize],
         window: usize,
     ) -> TractResult<()> {
+        force_flash_for_tests();
         crate::context::metal_context(); // initialize the GPU context
         let scale = (d as f32).sqrt().recip();
         let op = MetalGptOssSdpa { scale_bits: scale.to_bits() };
