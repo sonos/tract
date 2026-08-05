@@ -75,10 +75,19 @@ pub struct MetalContext {
 
 impl MetalContext {
     /// Hard cap on recycled bytes; beyond it, drops release for real.
-    const MAX_POOLED_BYTES: usize = 512 * 1024 * 1024;
+    const MAX_POOLED_BYTES: usize = 64 * 1024 * 1024;
     const MAX_POOLED_PER_KEY: usize = 16;
+    /// Only small buffers are worth recycling: the alloc/dealloc IOGPU trap
+    /// cost is per-call, not per-byte, and decode's transients are small and
+    /// fixed-shape. Pooling big context-dependent tensors (attention scores
+    /// at growing T) just pins dead wired memory, which measurably slows the
+    /// weight-streaming kernels (MoE routed matmul: 0.7 -> 6 ms/token).
+    const MAX_POOLED_BUFFER_BYTES: usize = 1024 * 1024;
 
     fn pool_take(&self, dt: DatumType, shape: &[usize]) -> Option<(Arc<Tensor>, Buffer)> {
+        if std::env::var_os("TRACT_METAL_DISABLE_BUFFER_POOL").is_some() {
+            return None;
+        }
         let mut pool = self.buffer_pool.lock().ok()?;
         let entry = pool.get_mut(&(dt, TVec::from_slice(shape)))?;
         let hit = entry.pop()?;
@@ -90,13 +99,17 @@ impl MetalContext {
     }
 
     fn pool_put(&self, host: Arc<Tensor>, buffer: Buffer) {
+        if std::env::var_os("TRACT_METAL_DISABLE_BUFFER_POOL").is_some() {
+            return;
+        }
         let dt = host.datum_type();
         if !DeviceTensor::is_supported_dt(dt) {
             return;
         }
         let bytes = host.len() * dt.size_of();
-        if self.pooled_bytes.load(std::sync::atomic::Ordering::Relaxed) + bytes
-            > Self::MAX_POOLED_BYTES
+        if bytes > Self::MAX_POOLED_BUFFER_BYTES
+            || self.pooled_bytes.load(std::sync::atomic::Ordering::Relaxed) + bytes
+                > Self::MAX_POOLED_BYTES
         {
             return;
         }
