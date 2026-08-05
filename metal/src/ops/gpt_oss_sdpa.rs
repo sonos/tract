@@ -545,6 +545,113 @@ mod tests {
         run_metal_vs_cpu(4, 2, 64, &[5, 1, 1, 1500, 1], usize::MAX)
     }
 
+    /// Prefix-cache truncation: feed back the op's own device cache views
+    /// sliced (metadata-only) to a shorter length, as causal_llm's truncate
+    /// does on a session restore. The op must rebuild into a fresh buffer,
+    /// keep matching the CPU reference, and leave the longer snapshot's
+    /// bytes untouched (other sessions may still hold views of it).
+    #[test]
+    fn metal_truncation_matches_cpu() -> TractResult<()> {
+        use tract_gpu::tensor::DeviceTensor;
+        crate::context::metal_context();
+        let (hq, hkv, d) = (4usize, 2usize, 64usize);
+        let scale = (d as f32).sqrt().recip();
+        let op = MetalGptOssSdpa { scale_bits: scale.to_bits() };
+        let cpu_op = CpuOp { scale_bits: scale.to_bits() };
+        let mut session = TurnState::default();
+        let mut metal_state = op.state(&session, 0)?.unwrap();
+        let mut cpu_state = EvalOp::state(&cpu_op, &session, 0)?.unwrap();
+
+        let mut seed = 43u64;
+        let sinks = rng_tensor(&[hq], &mut seed);
+        let mut k_all = Tensor::zero::<f16>(&[1, hkv, 0, d])?;
+        let mut v_all = Tensor::zero::<f16>(&[1, hkv, 0, d])?;
+        let mut metal_k = Tensor::zero::<f16>(&[1, hkv, 0, d])?.into_device()?.into_tensor().into_tvalue();
+        let mut metal_v = Tensor::zero::<f16>(&[1, hkv, 0, d])?.into_device()?.into_tensor().into_tvalue();
+
+        // (step_len, truncate-to-before-step)
+        let plan: &[(usize, Option<usize>)] =
+            &[(8, None), (1, None), (1, None), (1, Some(6)), (1, None)];
+        let mut snapshot: Option<(TValue, Tensor)> = None;
+        for &(step_len, trunc) in plan {
+            if let Some(cols) = trunc {
+                // Keep the long snapshot to check it survives the overwrite.
+                snapshot = Some((metal_k.clone(), k_all.clone()));
+                let slice_dev = |t: &TValue| -> TractResult<TValue> {
+                    let DeviceTensor::ArenaView(view) = t.to_device_tensor()? else {
+                        bail!("expected an arena view cache output")
+                    };
+                    Ok(DeviceTensor::ArenaView(view.sliced(2, 0, cols)?)
+                        .into_tensor()
+                        .into_tvalue())
+                };
+                metal_k = slice_dev(&metal_k)?;
+                metal_v = slice_dev(&metal_v)?;
+                k_all = k_all.slice(2, 0, cols)?;
+                v_all = v_all.slice(2, 0, cols)?;
+            }
+            let past = k_all.shape()[2];
+            let q = rng_tensor(&[1, hq, step_len, d], &mut seed).cast_to::<f16>()?.into_owned();
+            let k_new =
+                rng_tensor(&[1, hkv, step_len, d], &mut seed).cast_to::<f16>()?.into_owned();
+            let v_new =
+                rng_tensor(&[1, hkv, step_len, d], &mut seed).cast_to::<f16>()?.into_owned();
+            let mask = window_mask(step_len, past + step_len, usize::MAX);
+
+            let cpu_out = cpu_state.eval(
+                &mut session,
+                &cpu_op,
+                tvec!(
+                    q.clone().into_tvalue(),
+                    k_new.clone().into_tvalue(),
+                    v_new.clone().into_tvalue(),
+                    k_all.clone().into_tvalue(),
+                    v_all.clone().into_tvalue(),
+                    mask.clone().into_tvalue(),
+                    sinks.clone().into_tvalue(),
+                ),
+            )?;
+            let metal_out = metal_state.eval(
+                &mut session,
+                &op,
+                tvec!(
+                    q.clone().into_device()?.into_tensor().into_tvalue(),
+                    k_new.clone().into_device()?.into_tensor().into_tvalue(),
+                    v_new.clone().into_device()?.into_tensor().into_tvalue(),
+                    metal_k.clone(),
+                    metal_v.clone(),
+                    mask.clone().into_device()?.into_tensor().into_tvalue(),
+                    sinks.clone().into_device()?.into_tensor().into_tvalue(),
+                ),
+            )?;
+            crate::with_metal_stream(|stream| stream.wait_until_completed())?;
+
+            let got = metal_out[0].to_device_tensor()?.to_host()?.into_tensor();
+            let want = cpu_out[0].clone().into_tensor();
+            got.cast_to::<f32>()?
+                .into_owned()
+                .close_enough(&want.cast_to::<f32>()?.into_owned(), Approximation::SuperApproximate)
+                .with_context(|| format!("truncation test output at past={past}"))?;
+            for i in [1usize, 2] {
+                let got = metal_out[i].to_device_tensor()?.to_host()?.into_tensor();
+                let want = cpu_out[i].clone().into_tensor();
+                got.close_enough(&want, Approximation::Exact)
+                    .with_context(|| format!("truncation test cache {i} at past={past}"))?;
+            }
+            k_all = cpu_out[1].clone().into_tensor();
+            v_all = cpu_out[2].clone().into_tensor();
+            metal_k = metal_out[1].clone();
+            metal_v = metal_out[2].clone();
+        }
+        // The pre-truncation snapshot view must still read its original bytes.
+        let (snap_dev, snap_host) = snapshot.unwrap();
+        let snap_read = snap_dev.to_device_tensor()?.to_host()?.into_tensor();
+        snap_read
+            .close_enough(&snap_host, Approximation::Exact)
+            .context("pre-truncation cache snapshot was corrupted by later appends")?;
+        Ok(())
+    }
+
     fn run_metal_vs_cpu(
         hq: usize,
         hkv: usize,

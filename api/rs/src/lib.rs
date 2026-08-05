@@ -496,6 +496,31 @@ impl TensorInterface for Tensor {
     }
 }
 
+impl Tensor {
+    /// Slice `[start, end)` along `axis`. Plain host tensors are sliced by
+    /// copy; tensors backed by device storage (e.g. in-place KV-cache views)
+    /// are sliced as metadata only when possible, without synchronizing or
+    /// copying, keeping the backing device buffer alive.
+    pub fn sliced(&self, axis: usize, start: usize, end: usize) -> Result<Tensor> {
+        use tract_gpu::tensor::{DeviceTensor, DeviceTensorExt};
+        if let Some(dev) = self.0.as_device_tensor() {
+            let sliced = match dev {
+                DeviceTensor::ArenaView(view) => {
+                    DeviceTensor::ArenaView(view.sliced(axis, start, end)?)
+                }
+                DeviceTensor::Owned(_) => {
+                    // Rare: owned device tensors have no shareable arena, so
+                    // go through the host. Correct, but synchronizes.
+                    let host = dev.to_host()?;
+                    return Ok(Tensor(host.slice(axis, start, end)?.into_arc_tensor()));
+                }
+            };
+            return Ok(Tensor(sliced.into_tensor().into_arc_tensor()));
+        }
+        Ok(Tensor(self.0.slice(axis, start, end)?.into_arc_tensor()))
+    }
+}
+
 impl PartialEq for Tensor {
     fn eq(&self, other: &Self) -> bool {
         let Ok((me_dt, me_shape, me_data)) = self.as_bytes() else { return false };

@@ -50,6 +50,24 @@ impl DeviceArenaView {
         Ok(DeviceArenaView { arena, dt, len, shape, strides, offset_bytes, exotic_fact: None })
     }
 
+    /// Metadata-only slice keeping `[start, end)` along `axis`: same arena,
+    /// same strides, adjusted shape and byte offset. No bytes move, and the
+    /// backing buffer stays alive through the new view's Arc, so other views
+    /// of the arena (e.g. longer KV-cache snapshots) remain valid.
+    pub fn sliced(&self, axis: usize, start: usize, end: usize) -> TractResult<Self> {
+        ensure!(self.exotic_fact.is_none(), "cannot slice a view with an exotic fact");
+        ensure!(axis < self.shape.len(), "axis {axis} out of rank {}", self.shape.len());
+        ensure!(
+            start <= end && end <= self.shape[axis],
+            "invalid slice [{start}, {end}) on axis {axis} of len {}",
+            self.shape[axis]
+        );
+        let mut shape = self.shape.clone();
+        shape[axis] = end - start;
+        let offset_bytes =
+            self.offset_bytes + start * self.strides[axis] as usize * self.dt.size_of();
+        Self::from_owned(self.arena.clone(), self.dt, shape, self.strides.clone(), offset_bytes)
+    }
 
     #[inline]
     pub fn shape(&self) -> &[usize] {
