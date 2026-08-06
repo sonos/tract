@@ -1,0 +1,40 @@
+	// Tile size: 8x1, AVX without FMA (vmulps+vaddps)
+	// Accumulators: ymm0-7
+	// Col reg: ymm15
+	// Row regs double as mul scratch: ymm8-14 (+ ymm8 reuse)
+
+	vbroadcastss    ymm15,  dword ptr [rcx]
+
+	vmovaps         ymm8,  [rax + 0]
+	vmovaps         ymm9,  [rax + 32]
+	vmovaps         ymm10, [rax + 64]
+	vmovaps         ymm11, [rax + 96]
+
+	vmulps          ymm8,  ymm8,  ymm15
+	vaddps          ymm0,  ymm0,  ymm8
+	vmulps          ymm9,  ymm9,  ymm15
+	vaddps          ymm1,  ymm1,  ymm9
+
+	vmovaps         ymm12, [rax + 128]
+	vmovaps         ymm13, [rax + 160]
+
+	vmulps          ymm10, ymm10, ymm15
+	vaddps          ymm2,  ymm2,  ymm10
+	vmulps          ymm11, ymm11, ymm15
+	vaddps          ymm3,  ymm3,  ymm11
+
+	vmovaps         ymm14, [rax + 192]
+	vmovaps         ymm8,  [rax + 224]
+
+	vmulps          ymm12, ymm12, ymm15
+	vaddps          ymm4,  ymm4,  ymm12
+	vmulps          ymm13, ymm13, ymm15
+	vaddps          ymm5,  ymm5,  ymm13
+
+	vmulps          ymm14, ymm14, ymm15
+	vaddps          ymm6,  ymm6,  ymm14
+	vmulps          ymm8,  ymm8,  ymm15
+	vaddps          ymm7,  ymm7,  ymm8
+
+	add rcx, 4
+	add rax, 256

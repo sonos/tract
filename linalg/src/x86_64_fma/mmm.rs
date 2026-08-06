@@ -65,6 +65,13 @@ fn pick_mmm(candidates: &[KernelChoice], m: Option<usize>, n: Option<usize>) -> 
     (best.ctor)()
 }
 
+// AVX-without-FMA f32 tier for pre-Haswell CPUs (Sandy Bridge / Ivy Bridge):
+// same tile geometries as their fma_ siblings but the inner loops use
+// vmulps+vaddps, and add_unicast avoids the avx2-only vgatherdps.
+MMMExternKernel!(avx_mmm_f32_8x8 <f32>(8, 8)@(256,4) where(AVX) quality(ManuallyOptimized));
+MMMExternKernel!(avx_mmm_f32_16x6<f32>(16,6)@(256,4) where(AVX) quality(ManuallyOptimized));
+MMMExternKernel!(avx_mmm_f32_64x1<f32>(64,1)@(256,4) where(AVX) quality(ManuallyOptimized));
+
 MMMExternKernel!(fma_mmm_f32_8x8 <f32>(8, 8)@(256,4) where(FMA) quality(ManuallyOptimized));
 MMMExternKernel!(fma_mmm_f32_16x6<f32>(16,6)@(256,4) where(FMA) quality(ManuallyOptimized));
 MMMExternKernel!(fma_mmm_f32_16x5<f32>(16,5)@(256,4) where(FMA) quality(ManuallyOptimized));
@@ -222,6 +229,14 @@ MMMExternKernel! { avx512amx_mmm_f32_16x16<f32>(16,16)@(64,4) where(AVX512AMX_BF
 }
 
 pub fn plug(ops: &mut Ops) {
+    // The fma f32 tier below needs avx2 (vgatherdps) on top of fma; whenever it
+    // can't plug, cover every avx-capable CPU (Sandy/Ivy Bridge without fma,
+    // AMD Bulldozer-family with fma but no avx2) with the mul+add tier.
+    if is_x86_feature_detected!("avx")
+        && !(is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma"))
+    {
+        plug_avx(ops);
+    }
     if is_x86_feature_detected!("avx2") {
         plug_avx2(ops);
         // AVX-VNNI runs on AVX2-only Atom-class cores (Alder Lake-E, Sierra
@@ -379,6 +394,28 @@ pub fn plug_avx2(ops: &mut Ops) {
     ops.mmm_impls.push(mmm::avx2_mmm_i32_8x8.mmm());
     ops.qmmm_i32 = Box::new(|_, _, _| mmm::avx2_mmm_i32_8x8.mmm());
     log::info!("qmmm_i32: x86_64/avx2 activated");
+}
+
+/// f32 kernels for AVX-capable CPUs that can't run the fma tier (Sandy/Ivy
+/// Bridge without fma; AMD Bulldozer-family with fma but no avx2). Never
+/// active alongside plug_fma: these kernels replace the generic fallback,
+/// not the fma_ ones.
+pub fn plug_avx(ops: &mut Ops) {
+    ops.mmm_impls.extend([
+        avx_mmm_f32_8x8.mmm(),
+        avx_mmm_f32_16x6.mmm(),
+        avx_mmm_f32_64x1.mmm(), // mmv candidate (nr==1; excluded from n>=2 picks)
+    ]);
+
+    ops.mmv_f32 = Box::new(|_, _| avx_mmm_f32_64x1.mmm());
+
+    const AVX_CHOICES: &[KernelChoice] = &[
+        KernelChoice { mr: 16, nr: 6, scale: 1.0, ctor: || avx_mmm_f32_16x6.mmm() },
+        KernelChoice { mr: 8, nr: 8, scale: 44.0 / 54.0, ctor: || avx_mmm_f32_8x8.mmm() },
+    ];
+    ops.mmm_f32 = Box::new(|m, _, n| pick_mmm(AVX_CHOICES, m, n));
+
+    log::info!("mmm_f32, mmv_f32: x86_64/avx (no fma) activated");
 }
 
 pub fn plug_fma(ops: &mut Ops) {

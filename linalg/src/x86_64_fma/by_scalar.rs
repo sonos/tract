@@ -17,7 +17,9 @@ unsafe fn x86_64_avx_f32_mul_by_scalar_32n_run(buf: &mut [f32], scalar: f32) {
         let len = buf.len();
         let ptr = buf.as_ptr();
         std::arch::asm!("
-            vbroadcastss ymm0, xmm0
+            // reg-source vbroadcastss needs avx2; this kernel must stay avx-safe
+            vpermilps xmm0, xmm0, 0
+            vinsertf128 ymm0, ymm0, xmm0, 1
             2:
                 vmovaps ymm4, [{ptr}]
                 vmovaps ymm5, [{ptr} + 32]
@@ -48,7 +50,7 @@ unsafe fn x86_64_avx_f32_mul_by_scalar_32n_run(buf: &mut [f32], scalar: f32) {
 pub mod test_x86_64_avx_f32_mul_by_scalar_32n {
     use super::*;
     by_scalar_frame_tests!(
-        is_x86_feature_detected!("avx2"),
+        is_x86_feature_detected!("avx"),
         f32,
         x86_64_avx_f32_mul_by_scalar_32n,
         |a, b| a * b

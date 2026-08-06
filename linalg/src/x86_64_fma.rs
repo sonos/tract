@@ -61,6 +61,7 @@ pub mod panel_extract;
 pub mod rms_norm;
 pub mod softmax;
 
+const AVX: fn() -> bool = || is_x86_feature_detected!("avx");
 const AVX2: fn() -> bool = || is_x86_feature_detected!("avx2");
 const FMA: fn() -> bool = || is_x86_feature_detected!("fma");
 const AVX512F: fn() -> bool = || is_x86_feature_detected!("avx512f");
@@ -77,6 +78,17 @@ tanh_impl!(f32, avx512_tanh_f32, 16, 16, is_x86_feature_detected!("avx512f"));
 sigmoid_impl!(f32, avx512_sigmoid_f32, 16, 16, is_x86_feature_detected!("avx512f"));
 
 fn plug_avx2(_ops: &mut Ops) {}
+
+/// Element-wise kernels for AVX-capable CPUs outside the fma tier: the
+/// mul_by_scalar / max / min asm is plain AVX. sigmoid, tanh and softmax use
+/// fma asm and keep their generic fallback on this tier.
+fn plug_avx(ops: &mut Ops) {
+    ops.mul_by_scalar_f32 = Box::new(|| by_scalar::x86_64_avx_f32_mul_by_scalar_32n::ew());
+    ops.max_f32 = Box::new(|| max::x86_64_fma_max_f32_32n::red());
+    ops.min_f32 = Box::new(|| min::x86_64_fma_min_f32_32n::red());
+
+    log::info!("mul_by_scalar_f32, max_f32, min_f32: x86_64/avx activated");
+}
 
 fn plug_fma(ops: &mut Ops) {
     panel_extract::plug(ops);
@@ -146,6 +158,11 @@ fn plug_avx512f(ops: &mut Ops) {
 
 pub fn plug(ops: &mut Ops) {
     mmm::plug(ops);
+    if is_x86_feature_detected!("avx")
+        && !(is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma"))
+    {
+        plug_avx(ops);
+    }
     if is_x86_feature_detected!("avx2") {
         plug_avx2(ops);
         if is_x86_feature_detected!("fma") {
