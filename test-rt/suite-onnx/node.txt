@@ -488,6 +488,10 @@ test_reshape_reordered_dims                                                     
 test_reshape_reordered_last_dims input:data
 test_reshape_zero_and_negative_dim input:data
 test_reshape_zero_dim input:data
+test_resize_upsample_nearest                                                        input:X since:11
+test_resize_upsample_sizes_nearest_ceil_half_pixel                                  input:X since:12
+test_resize_upsample_sizes_nearest_floor_align_corners                              input:X since:12
+test_resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric                     input:X since:12
 test_resize.*                                                                       input:X
 test_rnn_seq_length
 test_round

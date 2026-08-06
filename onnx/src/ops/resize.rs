@@ -1,7 +1,7 @@
 use crate::model::ParsingContext;
 use crate::pb::*;
 use tract_hir::internal::*;
-use tract_nnef::tract_core::ops::nn::resize::Interpolator;
+use tract_nnef::tract_core::ops::nn::resize::{CoordTransformer, Interpolator};
 use tract_nnef::tract_num_traits::Zero as _;
 use tract_onnx_opl::resize::{AspectRatio, CoordTransform, Nearest, Resize};
 
@@ -21,6 +21,7 @@ pub fn resize(
 
 fn resize_10(node: &NodeProto) -> TractResult<Resize> {
     Ok(Resize {
+        coord_transformer: CoordTransform::Plain(CoordTransformer::Asymmetric),
         optional_roi_input: None,
         optional_scales_input: Some(1),
         optional_sizes_input: None,
