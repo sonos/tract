@@ -124,6 +124,7 @@ enum RouteGateMode : uint {
     constant uint &route_count [[buffer(4)]],
     constant uint &token_count [[buffer(5)]],
     constant uint &d_model [[buffer(6)]],
+    constant uint &routes_per_token [[buffer(7)]],
     uint gid [[thread_position_in_grid]])
 {
     const uint total = token_count * d_model;
@@ -134,9 +135,20 @@ enum RouteGateMode : uint {
     const uint token = gid / d_model;
     const uint dim = gid - token * d_model;
     float acc = 0.0f;
-    for (uint route = 0; route < route_count; route++) {
-        if ((uint)route_token_ids[route] == token) {
+    if (routes_per_token != 0) {
+        // Token-major routes (route_topk layout: token*k + slot): each output
+        // element only touches its own k routes instead of scanning all of
+        // them (512x fewer reads at a 512-token prefill chunk with k=4).
+        const uint base = token * routes_per_token;
+        for (uint slot = 0; slot < routes_per_token; slot++) {
+            const uint route = base + slot;
             acc += route_weights[route] * route_values[route * d_model + dim];
+        }
+    } else {
+        for (uint route = 0; route < route_count; route++) {
+            if ((uint)route_token_ids[route] == token) {
+                acc += route_weights[route] * route_values[route * d_model + dim];
+            }
         }
     }
     output[gid] = acc;

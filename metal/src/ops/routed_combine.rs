@@ -5,7 +5,12 @@ use tract_gpu::utils::facts_to_device_facts;
 use tract_transformers::ops::moe_ffn::RoutedCombine;
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
-pub struct MetalRoutedCombine;
+pub struct MetalRoutedCombine {
+    /// Routes per token when the route list is token-major (route_topk
+    /// layout `token*k + slot`): lets the kernel touch only its own k routes
+    /// instead of scanning all of them. 0 = unknown layout, generic scan.
+    pub routes_per_token: u32,
+}
 
 impl MetalRoutedCombine {
     fn output_facts_inner(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
@@ -72,6 +77,7 @@ impl EvalOp for MetalRoutedCombine {
                 route_token_ids,
                 route_weights,
                 &output,
+                self.routes_per_token as usize,
             )
         })?;
 
@@ -94,7 +100,7 @@ crate::register_metal_op!(RoutedCombine, |source, node, _op| {
     rule_if!(facts[1].datum_type == f32::datum_type());
     rule_if!(facts[2].datum_type == i64::datum_type());
     rule_if!(facts[3].datum_type == f32::datum_type());
-    Ok(Some(Box::new(MetalRoutedCombine)))
+    Ok(Some(Box::new(MetalRoutedCombine { routes_per_token: 0 })))
 });
 
 #[cfg(test)]

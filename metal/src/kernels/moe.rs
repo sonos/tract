@@ -157,6 +157,7 @@ pub fn dispatch_routed_combine_f32(
     route_token_ids: &DeviceTensor,
     route_weights: &DeviceTensor,
     output: &DeviceTensor,
+    routes_per_token: usize,
 ) -> TractResult<()> {
     stream.retain_tensor(route_values);
     stream.retain_tensor(route_token_ids);
@@ -184,6 +185,12 @@ pub fn dispatch_routed_combine_f32(
         route_values.shape()[1]
     );
 
+    // Only trust the token-major fast path when the counts line up.
+    let rpt = if routes_per_token > 0 && token_count * routes_per_token == route_count as usize {
+        routes_per_token as u32
+    } else {
+        0
+    };
     let route_count = route_count as u32;
     let token_count = token_count as u32;
     let d_model = d_model as u32;
@@ -202,6 +209,7 @@ pub fn dispatch_routed_combine_f32(
         encoder.set_slice(4, &[route_count]);
         encoder.set_slice(5, &[token_count]);
         encoder.set_slice(6, &[d_model]);
+        encoder.set_slice(7, &[rpt]);
 
         let grid_size = MTLSize { width: grid_width as NSUInteger, height: 1, depth: 1 };
         let group_size = MTLSize { width: group_width as NSUInteger, height: 1, depth: 1 };

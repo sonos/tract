@@ -794,7 +794,7 @@ fn convert_q40_moe_ffn_to_metal(
     }
     let output = target.wire_node(
         format!("{}.combine", node.name),
-        ops::MetalRoutedCombine,
+        ops::MetalRoutedCombine { routes_per_token: op.k as u32 },
         &[x_shape_like, route_values, route_token_ids, route_weights],
     )?[0];
     let output = if facts[0].datum_type != f32::datum_type() {

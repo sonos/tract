@@ -493,6 +493,157 @@ kernel void kernel_mul_mv_q8_0(
     }
 }
 
+// ---- Expert-grouped routed Q4_0 matmul (prefill path) ----
+//
+// The per-route kernel above re-reads an expert's full weight slice for
+// every route hitting it (a 512-token prefill chunk with top-4 routing reads
+// each expert ~64x: ~9.5 GB of weight traffic per matmul). The grouped pair
+// below first bins routes by expert (single-threadgroup counting sort), then
+// processes GROUPED_ROUTES routes per threadgroup so each weight block is
+// read once per 32 routes, with the x tile staged in threadgroup memory.
+
+#define GROUPED_ROUTES 32
+#define GROUPED_COLS 256
+#define GROUPED_MAX_EXPERTS 256
+
+// Also emits a compact work-chunk list (chunks of GROUPED_ROUTES routes,
+// one expert each) so the grouped matmul launches exactly the threadgroups
+// that have work: `chunks` rows of [expert, base, len], sentinel-terminated.
+kernel void route_sort_by_expert(
+        device const long * route_expert_ids,
+        device uint * expert_offsets,   // [num_experts + 1]
+        device uint * sorted_routes,    // [route_count], expert-grouped
+        device uint * chunks,           // [3 * max_chunks]
+        constant uint & route_count,
+        constant uint & num_experts,
+        constant uint & max_chunks,
+        uint lane [[thread_position_in_threadgroup]],
+        uint tptg [[threads_per_threadgroup]])
+{
+    threadgroup atomic_uint hist[GROUPED_MAX_EXPERTS];
+    for (uint e = lane; e < num_experts; e += tptg) {
+        atomic_store_explicit(&hist[e], 0u, memory_order_relaxed);
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    for (uint r = lane; r < route_count; r += tptg) {
+        atomic_fetch_add_explicit(&hist[(uint)route_expert_ids[r]], 1u, memory_order_relaxed);
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    if (lane == 0) {
+        uint run = 0;
+        uint chunk = 0;
+        for (uint e = 0; e < num_experts; e++) {
+            const uint c = atomic_load_explicit(&hist[e], memory_order_relaxed);
+            expert_offsets[e] = run;
+            atomic_store_explicit(&hist[e], run, memory_order_relaxed);
+            for (uint b = 0; b < c && chunk < max_chunks; b += GROUPED_ROUTES, chunk++) {
+                chunks[3 * chunk + 0] = e;
+                chunks[3 * chunk + 1] = run + b;
+                chunks[3 * chunk + 2] = min((uint)GROUPED_ROUTES, c - b);
+            }
+            run += c;
+        }
+        expert_offsets[num_experts] = run;
+        for (; chunk < max_chunks; chunk++) {
+            chunks[3 * chunk + 0] = 0xffffffffu;
+        }
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    for (uint r = lane; r < route_count; r += tptg) {
+        const uint slot =
+            atomic_fetch_add_explicit(&hist[(uint)route_expert_ids[r]], 1u, memory_order_relaxed);
+        sorted_routes[slot] = r;
+    }
+}
+
+kernel void kernel_routed_q4_0_grouped_f32(
+        constant routed_q40_f32_args & args,
+        device const char * weights,
+        device const float * input,
+        device const long * route_token_ids,
+        device const uint * chunks,
+        device const uint * sorted_routes,
+        device float * dst,
+        uint3 tgpig [[threadgroup_position_in_grid]],   // (colgroup64, chunk, 1)
+        ushort tiisg [[thread_index_in_simdgroup]],
+        ushort sgitg [[simdgroup_index_in_threadgroup]])
+{
+    // Lane = route, simdgroup = 8-column slice: each lane keeps its route's
+    // 32 x values for the current k-block in registers and reuses them for
+    // 8 output columns, so the hot loop runs ~8 FMAs per x load. Weight
+    // blocks are read at the same address by all lanes (broadcast) and are
+    // shared across the whole 32-route chunk.
+    const uint e = chunks[3 * tgpig.y + 0];
+    if (e == 0xffffffffu) {
+        return;
+    }
+    const uint base = chunks[3 * tgpig.y + 1];
+    const uint nr = chunks[3 * tgpig.y + 2];
+
+    const uint route_slot = tiisg;              // 0..31
+    const bool live = route_slot < nr;
+    long xrow = 0;
+    uint orig = 0;
+    if (live) {
+        orig = sorted_routes[base + route_slot];
+        xrow = args.input_mode == 0 ? route_token_ids[orig] : (long)orig;
+    }
+    device const float * y = (device const float *)(
+        (device const char *)input + (uint64_t)xrow * args.input_row_stride);
+
+    const uint col0 = tgpig.x * 64 + sgitg * 8; // 8 sgs x 8 cols = 64 cols/tg
+    device const block_q4_0 * w[8];
+    bool colv[8];
+#pragma unroll
+    for (uint c = 0; c < 8; c++) {
+        const uint col = col0 + c;
+        colv[c] = col < (uint)args.n;
+        w[c] = (device const block_q4_0 *)(
+            weights + (uint64_t)e * args.weight_expert_stride
+                    + (uint64_t)(colv[c] ? col : 0) * args.weight_row_stride);
+    }
+
+    float acc[8] = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
+    const int nb = args.k / QK4_0;
+    for (int ib = 0; ib < nb; ib++) {
+        // This route's 32 x values for the block, in registers.
+        float xr[QK4_0];
+        device const float4 * y4 = (device const float4 *)(y + ib * QK4_0);
+#pragma unroll
+        for (int i = 0; i < QK4_0 / 4; i++) {
+            const float4 v = live ? y4[i] : float4(0.f);
+            xr[4 * i + 0] = v.x;
+            xr[4 * i + 1] = v.y;
+            xr[4 * i + 2] = v.z;
+            xr[4 * i + 3] = v.w;
+        }
+#pragma unroll
+        for (uint c = 0; c < 8; c++) {
+            const block_q4_0 blk = w[c][ib];
+            const float d = (float)blk.d;
+            float sum = 0.f;
+#pragma unroll
+            for (int j = 0; j < 16; j++) {
+                const uint q = blk.qs[j];
+                sum = fma((float)(q & 0xF) - 8.0f, xr[j],
+                      fma((float)(q >> 4) - 8.0f, xr[j + 16], sum));
+            }
+            acc[c] = fma(d, sum, acc[c]);
+        }
+    }
+
+    if (live) {
+        device float * out = (device float *)(
+            (device char *)dst + (uint64_t)orig * args.output_route_stride);
+#pragma unroll
+        for (uint c = 0; c < 8; c++) {
+            if (colv[c]) {
+                out[col0 + c] = acc[c];
+            }
+        }
+    }
+}
+
 kernel void kernel_routed_q4_0_f32(
         constant routed_q40_f32_args & args,
         device const char * weights,

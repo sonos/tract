@@ -1,4 +1,5 @@
 use crate::kernels::matmul::{GemmDispatchParams, GemmKernel};
+use crate::encoder::EncoderExt;
 use crate::utils::get_metal_buffer;
 use crate::{LibraryName, MetalStream};
 use DatumType::{F16, F32};
@@ -607,6 +608,77 @@ pub fn dispatch_routed_q40_f32(
         output_route_stride: output_route_stride as u64,
     };
 
+    // Prefill-sized route lists go through the expert-grouped path: bin the
+    // routes by expert (single-threadgroup counting sort), then let each
+    // threadgroup amortize every weight read across 32 routes of one expert.
+    // The per-route kernel re-reads an expert's weights once per route, which
+    // multiplies weight traffic by routes-per-expert (~64x on a 512-token
+    // top-4 prefill chunk).
+    const GROUPED_MIN_ROUTES: usize = 64;
+    let n_experts = weights.shape()[0];
+    // Opt-in for now: at parity with the per-route kernel at wall time. Both
+    // are ALU-bound (~1.7 TFLOPS) on scalar q40 dot products; the real
+    // prefill fix is per-expert tiled simdgroup-matrix mm on gathered rows.
+    if route_count >= GROUPED_MIN_ROUTES
+        && n_experts <= 256
+        && k % 32 == 0
+        && std::env::var_os("TRACT_METAL_GROUPED_MOE").is_some()
+    {
+        // Worst case every expert has a ragged tail chunk.
+        let max_chunks = route_count.div_ceil(32) + n_experts;
+        let offsets = unsafe {
+            DeviceTensor::uninitialized_dt(u32::datum_type(), &[n_experts + 1])?
+        };
+        let sorted = unsafe { DeviceTensor::uninitialized_dt(u32::datum_type(), &[route_count])? };
+        let chunks =
+            unsafe { DeviceTensor::uninitialized_dt(u32::datum_type(), &[3 * max_chunks])? };
+        stream.retain_tensor(&offsets);
+        stream.retain_tensor(&sorted);
+        stream.retain_tensor(&chunks);
+        let sort = stream.load_pipeline(LibraryName::Ggml, "route_sort_by_expert")?;
+        let grouped = stream.load_pipeline(LibraryName::Ggml, "kernel_routed_q4_0_grouped_f32")?;
+        let command_buffer = stream.command_buffer();
+        command_buffer.encode(|encoder| {
+            encoder.set_compute_pipeline_state(&sort);
+            encoder.set_metal_tensor(0, route_expert_ids, metal::MTLResourceUsage::Read);
+            encoder.set_metal_tensor(1, &offsets, metal::MTLResourceUsage::Write);
+            encoder.set_metal_tensor(2, &sorted, metal::MTLResourceUsage::Write);
+            encoder.set_metal_tensor(3, &chunks, metal::MTLResourceUsage::Write);
+            encoder.set_slice(4, &[route_count as u32]);
+            encoder.set_slice(5, &[n_experts as u32]);
+            encoder.set_slice(6, &[max_chunks as u32]);
+            let grid = MTLSize { width: 1, height: 1, depth: 1 };
+            let group = MTLSize { width: 256, height: 1, depth: 1 };
+            encoder.dispatch_thread_groups(grid, group);
+        });
+        command_buffer.encode(|encoder| {
+            encoder.set_compute_pipeline_state(&grouped);
+            encoder.set_bytes(
+                0,
+                std::mem::size_of::<RoutedQ40F32Params>() as u64,
+                &params as *const _ as *const _,
+            );
+            encoder.set_buffer(1, Some(get_metal_buffer(weights)), weights.buffer_offset::<u64>());
+            encoder.set_buffer(2, Some(get_metal_buffer(input)), input.buffer_offset::<u64>());
+            encoder.set_buffer(
+                3,
+                Some(get_metal_buffer(route_token_ids)),
+                route_token_ids.buffer_offset::<u64>(),
+            );
+            encoder.set_metal_tensor(4, &chunks, metal::MTLResourceUsage::Read);
+            encoder.set_metal_tensor(5, &sorted, metal::MTLResourceUsage::Read);
+            encoder.set_buffer(6, Some(get_metal_buffer(output)), output.buffer_offset::<u64>());
+            let grid = MTLSize {
+                width: (n as u64).div_ceil(64),
+                height: max_chunks as u64,
+                depth: 1,
+            };
+            let group = MTLSize { width: 256, height: 1, depth: 1 };
+            encoder.dispatch_thread_groups(grid, group);
+        });
+        return Ok(());
+    }
+
     let pipeline = stream.load_pipeline(LibraryName::Ggml, "kernel_routed_q4_0_f32")?;
     let command_buffer = stream.command_buffer();
     command_buffer.encode(|encoder| {
@@ -894,6 +966,72 @@ mod tests {
     #[test]
     fn test_routed_q40_token_rows() -> TractResult<()> {
         run_routed_q40_case(RoutedQ40InputMode::TokenRows)
+    }
+
+    /// Route counts above GROUPED_MIN_ROUTES take the expert-grouped path
+    /// (counting sort + 32-routes-per-threadgroup matmul).
+    fn run_routed_q40_grouped_case(input_mode: RoutedQ40InputMode) -> TractResult<()> {
+        unsafe { std::env::set_var("TRACT_METAL_GROUPED_MOE", "1") };
+        with_borrowed_metal_stream(|stream| {
+            let experts = 8;
+            let tokens = 40;
+            let per_token = 4;
+            let routes = tokens * per_token;
+            let n = 48;
+            let k = 64;
+            let input_rows = match input_mode {
+                RoutedQ40InputMode::TokenRows => tokens,
+                RoutedQ40InputMode::RouteRows => routes,
+            };
+            let input_data = (0..input_rows * k)
+                .map(|i| ((i * 13 % 97) as f32 - 48.0) / 64.0)
+                .collect::<Vec<_>>();
+            let weight_data = (0..experts * n * k)
+                .map(|i| ((i * 17 % 101) as f32 - 50.0) / 80.0)
+                .collect::<Vec<_>>();
+            let route_token_ids: Vec<i64> = match input_mode {
+                RoutedQ40InputMode::TokenRows => {
+                    (0..routes as i64).map(|r| r / per_token as i64).collect()
+                }
+                RoutedQ40InputMode::RouteRows => (0..routes as i64).collect(),
+            };
+            let route_expert_ids: Vec<i64> =
+                (0..routes as i64).map(|r| (r * 5 + r / 7) % experts as i64).collect();
+
+            let input = Tensor::from_shape(&[input_rows, k], &input_data)?;
+            let weights_plain = Tensor::from_shape(&[experts, n, k], &weight_data)?;
+            let weights_dequant = Q4_0.simulate_precision_loss(weights_plain, 2)?;
+            let weights = q40_weights_tensor(&[experts, n, k], &weight_data)?;
+            let token_ids = Tensor::from_shape(&[routes], &route_token_ids)?;
+            let expert_ids = Tensor::from_shape(&[routes], &route_expert_ids)?;
+
+            let expected = routed_q40_reference(
+                &input,
+                &weights_dequant,
+                &route_token_ids,
+                &route_expert_ids,
+                input_mode,
+            )?;
+            let actual = eval_routed_q40_f32(
+                stream,
+                &input.into_device()?,
+                &weights.into_device()?,
+                &token_ids.into_device()?,
+                &expert_ids.into_device()?,
+                input_mode,
+            )?;
+            actual.to_host()?.close_enough(&expected, Approximation::Approximate)
+        })
+    }
+
+    #[test]
+    fn test_routed_q40_grouped_token_rows() -> TractResult<()> {
+        run_routed_q40_grouped_case(RoutedQ40InputMode::TokenRows)
+    }
+
+    #[test]
+    fn test_routed_q40_grouped_route_rows() -> TractResult<()> {
+        run_routed_q40_grouped_case(RoutedQ40InputMode::RouteRows)
     }
 
     #[test]
