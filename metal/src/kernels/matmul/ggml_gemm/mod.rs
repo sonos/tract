@@ -616,13 +616,14 @@ pub fn dispatch_routed_q40_f32(
     // top-4 prefill chunk).
     const GROUPED_MIN_ROUTES: usize = 64;
     let n_experts = weights.shape()[0];
-    // Opt-in for now: at parity with the per-route kernel at wall time. Both
-    // are ALU-bound (~1.7 TFLOPS) on scalar q40 dot products; the real
-    // prefill fix is per-expert tiled simdgroup-matrix mm on gathered rows.
+    // Default on: halves 2800-token prefill vs the per-route gemv (11.5 ->
+    // 5.9 s on gpt-oss-20b) by running the ALU-bound expert matmuls through
+    // the simdgroup-matrix pipeline. Weights pass through f16 in that
+    // pipeline, same precision as every dense q40 matmul in the model.
     if route_count >= GROUPED_MIN_ROUTES
         && n_experts <= 256
         && k % 32 == 0
-        && std::env::var_os("TRACT_METAL_GROUPED_MOE").is_some()
+        && std::env::var_os("TRACT_METAL_DISABLE_GROUPED_MOE").is_none()
     {
         // Worst case every expert has a ragged tail chunk.
         let max_chunks = route_count.div_ceil(32) + n_experts;
@@ -636,7 +637,6 @@ pub fn dispatch_routed_q40_f32(
         stream.retain_tensor(&sorted);
         stream.retain_tensor(&chunks);
         let sort = stream.load_pipeline(LibraryName::Ggml, "route_sort_by_expert")?;
-        let grouped = stream.load_pipeline(LibraryName::Ggml, "kernel_routed_q4_0_grouped_f32")?;
         let command_buffer = stream.command_buffer();
         command_buffer.encode(|encoder| {
             encoder.set_compute_pipeline_state(&sort);
@@ -651,28 +651,69 @@ pub fn dispatch_routed_q40_f32(
             let group = MTLSize { width: 256, height: 1, depth: 1 };
             encoder.dispatch_thread_groups(grid, group);
         });
-        command_buffer.encode(|encoder| {
-            encoder.set_compute_pipeline_state(&grouped);
+        // Gather activations into expert-sorted order, run the
+        // simdgroup-matrix tiled mm per 32-route chunk, scatter results back
+        // to route order. Two f32 staging buffers, trivial next to the
+        // matmul itself.
+        let a_sorted = unsafe {
+            DeviceTensor::uninitialized_dt(f32::datum_type(), &[route_count, k])?
+        };
+        let c_sorted = unsafe {
+            DeviceTensor::uninitialized_dt(f32::datum_type(), &[route_count, n])?
+        };
+        stream.retain_tensor(&a_sorted);
+        stream.retain_tensor(&c_sorted);
+        let gather = stream.load_pipeline(LibraryName::Ggml, "routed_gather_rows_f32")?;
+        let scatter = stream.load_pipeline(LibraryName::Ggml, "routed_scatter_rows_f32")?;
+        let mm = stream.load_pipeline(LibraryName::Ggml, "kernel_mul_mm_q4_0_routed_f32")?;
+        let set_args = |encoder: &metal::ComputeCommandEncoderRef| {
             encoder.set_bytes(
                 0,
                 std::mem::size_of::<RoutedQ40F32Params>() as u64,
                 &params as *const _ as *const _,
             );
-            encoder.set_buffer(1, Some(get_metal_buffer(weights)), weights.buffer_offset::<u64>());
-            encoder.set_buffer(2, Some(get_metal_buffer(input)), input.buffer_offset::<u64>());
+        };
+        let command_buffer = stream.command_buffer();
+        command_buffer.encode(|encoder| {
+            set_args(encoder);
+            encoder.set_compute_pipeline_state(&gather);
+            encoder.set_buffer(1, Some(get_metal_buffer(input)), input.buffer_offset::<u64>());
+            encoder.set_metal_tensor(2, &a_sorted, metal::MTLResourceUsage::Write);
+            encoder.set_metal_tensor(3, &sorted, metal::MTLResourceUsage::Read);
             encoder.set_buffer(
-                3,
+                4,
                 Some(get_metal_buffer(route_token_ids)),
                 route_token_ids.buffer_offset::<u64>(),
             );
-            encoder.set_metal_tensor(4, &chunks, metal::MTLResourceUsage::Read);
-            encoder.set_metal_tensor(5, &sorted, metal::MTLResourceUsage::Read);
-            encoder.set_buffer(6, Some(get_metal_buffer(output)), output.buffer_offset::<u64>());
+            let total = (route_count * k) as u64;
+            let grid = MTLSize { width: total.div_ceil(256), height: 1, depth: 1 };
+            let group = MTLSize { width: 256, height: 1, depth: 1 };
+            encoder.dispatch_thread_groups(grid, group);
+        });
+        command_buffer.encode(|encoder| {
+            set_args(encoder);
+            encoder.set_compute_pipeline_state(&mm);
+            encoder.set_buffer(1, Some(get_metal_buffer(weights)), weights.buffer_offset::<u64>());
+            encoder.set_metal_tensor(2, &a_sorted, metal::MTLResourceUsage::Read);
+            encoder.set_metal_tensor(3, &chunks, metal::MTLResourceUsage::Read);
+            encoder.set_metal_tensor(4, &c_sorted, metal::MTLResourceUsage::Write);
+            encoder.set_threadgroup_memory_length(0, 8192);
             let grid = MTLSize {
-                width: (n as u64).div_ceil(64),
-                height: max_chunks as u64,
+                width: max_chunks as u64,
+                height: (n as u64).div_ceil(64),
                 depth: 1,
             };
+            let group = MTLSize { width: 128, height: 1, depth: 1 };
+            encoder.dispatch_thread_groups(grid, group);
+        });
+        command_buffer.encode(|encoder| {
+            set_args(encoder);
+            encoder.set_compute_pipeline_state(&scatter);
+            encoder.set_metal_tensor(1, &c_sorted, metal::MTLResourceUsage::Read);
+            encoder.set_buffer(2, Some(get_metal_buffer(output)), output.buffer_offset::<u64>());
+            encoder.set_metal_tensor(3, &sorted, metal::MTLResourceUsage::Read);
+            let total = (route_count * n) as u64;
+            let grid = MTLSize { width: total.div_ceil(256), height: 1, depth: 1 };
             let group = MTLSize { width: 256, height: 1, depth: 1 };
             encoder.dispatch_thread_groups(grid, group);
         });
@@ -971,7 +1012,6 @@ mod tests {
     /// Route counts above GROUPED_MIN_ROUTES take the expert-grouped path
     /// (counting sort + 32-routes-per-threadgroup matmul).
     fn run_routed_q40_grouped_case(input_mode: RoutedQ40InputMode) -> TractResult<()> {
-        unsafe { std::env::set_var("TRACT_METAL_GROUPED_MOE", "1") };
         with_borrowed_metal_stream(|stream| {
             let experts = 8;
             let tokens = 40;
@@ -1020,7 +1060,10 @@ mod tests {
                 &expert_ids.into_device()?,
                 input_mode,
             )?;
-            actual.to_host()?.close_enough(&expected, Approximation::Approximate)
+            // The grouped path dequantizes q4_0 through f16 inside the
+            // simdgroup-matrix pipeline, exactly like the dense q40 matmuls;
+            // the reference dequantizes in f32, hence the looser gate.
+            actual.to_host()?.close_enough(&expected, Approximation::VeryApproximate)
         })
     }
 
