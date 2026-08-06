@@ -71,6 +71,11 @@ const AVX512VNNI: fn() -> bool = || is_x86_feature_detected!("avx512vnni");
 tanh_impl!(f32, fma_tanh_f32, 8, 8, is_x86_feature_detected!("fma"));
 sigmoid_impl!(f32, fma_sigmoid_f32, 8, 8, is_x86_feature_detected!("fma"));
 
+// AVX-without-FMA ports of the fma kernels above (each vfmadd132ps expanded
+// to an in-place vmulps+vaddps pair) for CPUs outside the fma tier.
+tanh_impl!(f32, avx_tanh_f32, 8, 8, is_x86_feature_detected!("avx"));
+sigmoid_impl!(f32, avx_sigmoid_f32, 8, 8, is_x86_feature_detected!("avx"));
+
 // AVX-512 (zmm, 16-wide) variants. The assembly lives in x86_64/avx512/; the
 // main loop handles 64 lanes (4 zmm) per iteration with a 16-lane tail, so
 // nr()=16 (any multiple of 16 is safe).
@@ -80,14 +85,18 @@ sigmoid_impl!(f32, avx512_sigmoid_f32, 16, 16, is_x86_feature_detected!("avx512f
 fn plug_avx2(_ops: &mut Ops) {}
 
 /// Element-wise kernels for AVX-capable CPUs outside the fma tier: the
-/// mul_by_scalar / max / min asm is plain AVX. sigmoid, tanh and softmax use
-/// fma asm and keep their generic fallback on this tier.
+/// mul_by_scalar / max / min asm is plain AVX, and sigmoid / tanh have
+/// dedicated mul+add ports. softmax uses fma asm and keeps its generic
+/// fallback on this tier.
 fn plug_avx(ops: &mut Ops) {
+    ops.sigmoid_f32 = Box::new(|| avx_sigmoid_f32::ew());
+    ops.tanh_f32 = Box::new(|| avx_tanh_f32::ew());
+
     ops.mul_by_scalar_f32 = Box::new(|| by_scalar::x86_64_avx_f32_mul_by_scalar_32n::ew());
     ops.max_f32 = Box::new(|| max::x86_64_fma_max_f32_32n::red());
     ops.min_f32 = Box::new(|| min::x86_64_fma_min_f32_32n::red());
 
-    log::info!("mul_by_scalar_f32, max_f32, min_f32: x86_64/avx activated");
+    log::info!("sigmoid_f32, tanh_f32, mul_by_scalar_f32, max_f32, min_f32: x86_64/avx activated");
 }
 
 fn plug_fma(ops: &mut Ops) {
