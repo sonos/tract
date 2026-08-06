@@ -381,11 +381,12 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                                         .get_unchecked(..m_remnant),
                                 );
                             }
-                            if cfg!(debug_assertions) {
-                                buf.get_unchecked_mut(m_remnant..)
-                                    .iter_mut()
-                                    .for_each(|x| *x = TI::zero());
-                            }
+                            // The kernel computes on the tail lanes before their
+                            // results are discarded; garbage there decodes to
+                            // denormals and stalls the fp pipeline. Zero them.
+                            buf.get_unchecked_mut(m_remnant..)
+                                .iter_mut()
+                                .for_each(|x| *x = TI::zero());
                             buf.as_ptr()
                         } else {
                             v.as_ptr_unchecked::<TI>().add(down * ker.mr())
@@ -409,11 +410,9 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                                         .get_unchecked(..n_remnant),
                                 );
                             }
-                            if cfg!(debug_assertions) {
-                                buf.get_unchecked_mut(n_remnant..)
-                                    .iter_mut()
-                                    .for_each(|x| *x = TI::zero());
-                            }
+                            buf.get_unchecked_mut(n_remnant..)
+                                .iter_mut()
+                                .for_each(|x| *x = TI::zero());
                             buf.as_ptr()
                         } else {
                             v.as_ptr_unchecked::<TI>().add(right * ker.nr())
@@ -435,11 +434,9 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                                     .get_unchecked(down * ker.mr()..)
                                     .get_unchecked(..m_remnant),
                             );
-                            if cfg!(debug_assertions) {
-                                r.get_unchecked_mut(m_remnant..)
-                                    .iter_mut()
-                                    .for_each(|x| *x = TI::zero());
-                            }
+                            r.get_unchecked_mut(m_remnant..)
+                                .iter_mut()
+                                .for_each(|x| *x = TI::zero());
                             r.as_ptr()
                         } else {
                             rows.as_ptr_unchecked::<TI>().add(down * ker.mr())
@@ -454,11 +451,9 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                                     .get_unchecked(right * ker.nr()..)
                                     .get_unchecked(..n_remnant),
                             );
-                            if cfg!(debug_assertions) {
-                                r.get_unchecked_mut(n_remnant..)
-                                    .iter_mut()
-                                    .for_each(|x| *x = TI::zero());
-                            }
+                            c.get_unchecked_mut(n_remnant..)
+                                .iter_mut()
+                                .for_each(|x| *x = TI::zero());
                             c.as_ptr()
                         } else {
                             cols.as_ptr_unchecked::<TI>().add(right * ker.nr())
@@ -473,9 +468,7 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                         let tile_ptr = store.ptr.offset(tile_offset);
                         let tmp_d_tile =
                             std::slice::from_raw_parts_mut(loc as *mut TI, ker.mr() * ker.nr());
-                        if cfg!(debug_assertions) {
-                            tmp_d_tile.iter_mut().for_each(|t| *t = TI::zero());
-                        }
+                        tmp_d_tile.iter_mut().for_each(|t| *t = TI::zero());
                         for r in 0..m_remnant as isize {
                             for c in 0..n_remnant as isize {
                                 let inner_offset = c * col_byte_stride + r * row_byte_stride;
