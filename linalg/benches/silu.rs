@@ -6,7 +6,10 @@ use tract_linalg::element_wise::ElementWiseKer;
 fn silu_f32(c: &mut Criterion) {
     let mut group = c.benchmark_group("silu_f32");
     group.throughput(Throughput::Elements(1024));
-    let mut input = unsafe { Tensor::uninitialized_aligned::<f32>(&[1024], 16).unwrap() };
+    // The per-arch entries call the kernels through ElementWiseKer::run, which skips
+    // map_slice_with_alignment: the buffer must meet every kernel's alignment_bytes
+    // itself (32 for the FMA ymm kernel, 64 for the AVX-512 zmm one) or they fault.
+    let mut input = unsafe { Tensor::uninitialized_aligned::<f32>(&[1024], 64).unwrap() };
     let input = unsafe { input.as_slice_mut_unchecked::<f32>() };
     for (i, x) in input.iter_mut().enumerate() {
         *x = (i as f32 / 10.0).sin() * 5.0;
@@ -21,6 +24,12 @@ fn silu_f32(c: &mut Criterion) {
     group.bench_function("linalg-asm-fused", |b| {
         b.iter(|| tract_linalg::arm64::arm64simd_silu_f32_4n_fused::run(input, ()))
     });
+    #[cfg(target_arch = "x86_64")]
+    if is_x86_feature_detected!("fma") {
+        group.bench_function("linalg-asm-fused", |b| {
+            b.iter(|| tract_linalg::x86_64_fma::fma_silu_f32::run(input, ()))
+        });
+    }
 }
 
 #[inline(never)]

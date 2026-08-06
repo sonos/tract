@@ -175,56 +175,6 @@ pub mod test_x86_64_avx512_leaky_relu_f32_64n {
     );
 }
 
-// SiLU(x) = f * sigmoid(z), with z = clamp(x, -18.0, 18.0) and f = max(x, -18.0).
-// The kernel-level composition mirrors the arm64 fused SiLU clamping strategy, not its
-// exact bounds: save the input chunk, run the AVX-512 sigmoid kernel in place (it clamps
-// its argument to z internally), then multiply back by the factor f. The factor floor
-// must equal the sigmoid kernel's own clamp, which here is -18.0 (the AVX-512 sigmoid's
-// range).
-//
-// The factor f is clamped below at -18.0 but left unbounded above: SiLU(x) ~ x as
-// x -> +inf, so the factor must grow, whereas the upper clamp on z is only there to
-// keep the sigmoid polynomial in range. Clamping f below keeps the negative tail
-// bounded: since sigmoid is floored at sigmoid(-18.0), an unclamped factor would let
-// x * sigmoid(-18.0) diverge toward -inf, while the clamped factor saturates at the
-// constant -18.0 * sigmoid(-18.0) ~= -2.74e-7, which the true SiLU approaches from
-// below as x -> -inf.
-//
-// nr() and CHUNK (256) are multiples of 16 so the sigmoid kernel always receives a
-// 64-byte-aligned slice whose length is a multiple of 16.
-ew_impl_wrap!(
-    f32,
-    x86_64_avx512_silu_f32_16n,
-    16,
-    16,
-    (),
-    #[inline(never)]
-    fn run(buf: &mut [f32], _: ()) {
-        debug_assert!(buf.len() % Self::nr() == 0);
-        debug_assert!(buf.as_ptr() as usize % Self::alignment_bytes() == 0);
-        const CHUNK: usize = 256;
-        let mut scratch = [0f32; CHUNK];
-        let mut start = 0;
-        while start < buf.len() {
-            let end = (start + CHUNK).min(buf.len());
-            let chunk = &mut buf[start..end];
-            let n = chunk.len();
-            scratch[..n].copy_from_slice(chunk);
-            super::avx512_sigmoid_f32::run(chunk, ());
-            for i in 0..n {
-                chunk[i] *= scratch[i].max(-18.0);
-            }
-            start = end;
-        }
-    }
-);
-
-#[cfg(test)]
-pub mod test_x86_64_avx512_silu_f32_16n {
-    use super::*;
-    silu_frame_tests!(is_x86_feature_detected!("avx512f"), f32, x86_64_avx512_silu_f32_16n);
-}
-
 // Tanh-form GELU (pow=3) matching tract's GeluApproximate:
 //   gelu(x) = 0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)))
 // Composed at the kernel level (mirrors arm64): save the original x, compute

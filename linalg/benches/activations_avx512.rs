@@ -1,9 +1,8 @@
 // Microbenchmark: AVX-512 (zmm, 16-wide) element-wise activation kernels vs
 // their x86 predecessor.
 //
-//   sigmoid, tanh              : predecessor = FMA (256-bit, 8-wide) kernel
-//   hardswish, leaky_relu,
-//   silu, gelu                 : predecessor = generic scalar kernel
+//   sigmoid, tanh, silu        : predecessor = FMA (256-bit, 8-wide) kernel
+//   hardswish, leaky_relu, gelu: predecessor = generic scalar kernel
 //                                (no FMA kernel exists on x86)
 //
 // All buffers are 64-byte aligned (AVX-512 alignment_bytes) and a multiple of
@@ -68,11 +67,13 @@ fn benches(c: &mut Criterion) {
     enable_ftz_daz();
     use tract_linalg::x86_64_fma::act::*;
     use tract_linalg::x86_64_fma::{
-        avx512_sigmoid_f32, avx512_tanh_f32, fma_sigmoid_f32, fma_tanh_f32,
+        avx512_sigmoid_f32, avx512_silu_f32, avx512_tanh_f32, fma_sigmoid_f32, fma_silu_f32,
+        fma_tanh_f32,
     };
 
     bench_pair!(c, "sigmoid_f32", "fma", fma_sigmoid_f32, avx512_sigmoid_f32);
     bench_pair!(c, "tanh_f32", "fma", fma_tanh_f32, avx512_tanh_f32);
+    bench_pair!(c, "silu_f32", "fma", fma_silu_f32, avx512_silu_f32);
     bench_pair!(
         c,
         "hardswish_f32",
@@ -87,13 +88,6 @@ fn benches(c: &mut Criterion) {
         tract_linalg::generic::SLeakyRelu4,
         x86_64_avx512_leaky_relu_f32_64n,
         0.1f32
-    );
-    bench_pair!(
-        c,
-        "silu_f32",
-        "generic",
-        tract_linalg::generic::SSiLU4,
-        x86_64_avx512_silu_f32_16n
     );
     bench_pair!(
         c,
