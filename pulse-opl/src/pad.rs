@@ -94,6 +94,48 @@ unsafe fn fill_slice_with_frame<T: Datum + Copy>(
 struct PulsePadOpState {
     current_pos: usize,
     last_valid_frame: Option<Tensor>,
+    limits: Option<PadLimits>,
+}
+
+/// `end_input` and `after` resolved to concrete values, plus the symbol
+/// bindings the resolution depended on. Re-evaluating the TDim expressions
+/// every pulse costs microseconds; the bindings can only change when the
+/// runner binds the stream-length symbol, so the cache revalidates by
+/// re-reading just those bindings.
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+struct PadLimits {
+    deps: Vec<(Symbol, Option<i64>)>,
+    end_input: usize,
+    after: usize,
+}
+
+impl PadLimits {
+    fn resolve(
+        cache: &mut Option<PadLimits>,
+        session: &TurnState,
+        op: &PulsePad,
+    ) -> (usize, usize) {
+        if let Some(l) = cache.as_ref() {
+            if l.deps.iter().all(|(s, v)| session.resolved_symbols.get(s) == *v) {
+                return (l.end_input, l.after);
+            }
+        }
+        let end_input =
+            op.end_input.eval(&session.resolved_symbols).to_usize().unwrap_or(usize::MAX);
+        let after = op.after.eval(&session.resolved_symbols).to_usize().unwrap_or(usize::MAX);
+        let deps = op
+            .end_input
+            .symbols()
+            .into_iter()
+            .chain(op.after.symbols())
+            .map(|s| {
+                let v = session.resolved_symbols.get(&s);
+                (s, v)
+            })
+            .collect();
+        *cache = Some(PadLimits { deps, end_input, after });
+        (end_input, after)
+    }
 }
 
 impl OpState for PulsePadOpState {
@@ -103,10 +145,9 @@ impl OpState for PulsePadOpState {
         op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        let input = args_1!(inputs).into_tensor();
+        let input = args_1!(inputs);
         let op = op.downcast_ref::<PulsePad>().ok_or_else(|| format_err!("Wrong Op type"))?;
-        let tensor = self.pad(session, op, input)?;
-        Ok(tvec!(tensor.into_tvalue()))
+        self.pad(session, op, input).map(|t| tvec!(t))
     }
 }
 
@@ -117,19 +158,12 @@ impl PulsePadOpState {
             Some(data.index_axis(Axis(op.axis), frame).to_owned().into_tensor());
     }
 
-    fn pad(
-        &mut self,
-        session: &TurnState,
-        op: &PulsePad,
-        mut input: Tensor,
-    ) -> TractResult<Tensor> {
+    fn pad(&mut self, session: &TurnState, op: &PulsePad, input: TValue) -> TractResult<TValue> {
         let pulse = input.shape()[op.axis];
         let pulse_begin = self.current_pos;
         let pulse_end = self.current_pos + pulse;
         self.current_pos += pulse - op.overlap;
-        let end_input =
-            op.end_input.eval(&session.resolved_symbols).to_usize().unwrap_or(usize::MAX);
-        let after = op.after.eval(&session.resolved_symbols).to_usize().unwrap_or(usize::MAX);
+        let (end_input, after) = PadLimits::resolve(&mut self.limits, session, op);
 
         if let PadMode::Edge = op.mode {
             if after != 0 && pulse_begin < end_input {
@@ -145,7 +179,8 @@ impl PulsePadOpState {
             }
         }
 
-        // pulse is entirely in valid input, just forward
+        // pulse is entirely in valid input, just forward: keep the value shared,
+        // materializing an owned tensor here would copy the whole pulse.
         if pulse_begin >= op.begin_input && pulse_end <= end_input {
             return Ok(input);
         }
@@ -155,6 +190,7 @@ impl PulsePadOpState {
             return Ok(input);
         }
 
+        let mut input = input.into_tensor();
         if pulse_begin < op.begin_input {
             let fill_up_to = (op.begin_input - pulse_begin).min(pulse);
             match &op.mode {
@@ -206,7 +242,7 @@ impl PulsePadOpState {
             }
         }
 
-        Ok(input)
+        Ok(input.into_tvalue())
     }
 }
 
@@ -262,6 +298,7 @@ impl TypedOp for PulsePad {
 struct FrozenPulsePadOpState {
     current_pos: usize,
     last_valid_frame: Option<Arc<Tensor>>,
+    limits: Option<PadLimits>,
 }
 
 impl OpStateFreeze for PulsePadOpState {
@@ -269,6 +306,7 @@ impl OpStateFreeze for PulsePadOpState {
         Box::new(FrozenPulsePadOpState {
             current_pos: self.current_pos,
             last_valid_frame: self.last_valid_frame.as_ref().map(|t| t.clone().into_arc_tensor()),
+            limits: self.limits.clone(),
         })
     }
 
@@ -276,6 +314,7 @@ impl OpStateFreeze for PulsePadOpState {
         Box::new(FrozenPulsePadOpState {
             current_pos: self.current_pos,
             last_valid_frame: self.last_valid_frame.map(|t| t.into_arc_tensor()),
+            limits: self.limits.clone(),
         })
     }
 }
@@ -285,6 +324,7 @@ impl FrozenOpState for FrozenPulsePadOpState {
         Box::new(PulsePadOpState {
             current_pos: self.current_pos,
             last_valid_frame: self.last_valid_frame.as_ref().map(|t| t.clone().into_tensor()),
+            limits: self.limits.clone(),
         })
     }
 }
