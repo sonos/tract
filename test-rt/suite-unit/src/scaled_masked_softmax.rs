@@ -1,5 +1,3 @@
-use core::f32;
-
 use infra::Test;
 use infra::TestResult;
 use infra::TestSuite;
