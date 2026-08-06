@@ -1,0 +1,45 @@
+	// Tile size: 5x2, AVX without FMA (vmulps+vaddps)
+	// Accumulators: ymm0-9
+	// Row regs: ymm10-14
+	// Col broadcast doubles as mul scratch: ymm15 (re-broadcast per row)
+
+	vmovaps			ymm10,	[rax]
+	vmovaps			ymm11,	[rax + 32]
+	vmovaps			ymm12,	[rax + 64]
+	vmovaps			ymm13,	[rax + 96]
+	vmovaps			ymm14,	[rax + 128]
+
+	vbroadcastss	ymm15,	dword ptr [rcx + 0]
+	vmulps			ymm15,	ymm15,	ymm10
+	vaddps			ymm0,	ymm0,	ymm15
+	vbroadcastss	ymm15,	dword ptr [rcx + 0]
+	vmulps			ymm15,	ymm15,	ymm11
+	vaddps			ymm1,	ymm1,	ymm15
+	vbroadcastss	ymm15,	dword ptr [rcx + 0]
+	vmulps			ymm15,	ymm15,	ymm12
+	vaddps			ymm2,	ymm2,	ymm15
+	vbroadcastss	ymm15,	dword ptr [rcx + 0]
+	vmulps			ymm15,	ymm15,	ymm13
+	vaddps			ymm3,	ymm3,	ymm15
+	vbroadcastss	ymm15,	dword ptr [rcx + 0]
+	vmulps			ymm15,	ymm15,	ymm14
+	vaddps			ymm4,	ymm4,	ymm15
+
+	vbroadcastss	ymm15,	dword ptr [rcx + 4]
+	vmulps			ymm15,	ymm15,	ymm10
+	vaddps			ymm5,	ymm5,	ymm15
+	vbroadcastss	ymm15,	dword ptr [rcx + 4]
+	vmulps			ymm15,	ymm15,	ymm11
+	vaddps			ymm6,	ymm6,	ymm15
+	vbroadcastss	ymm15,	dword ptr [rcx + 4]
+	vmulps			ymm15,	ymm15,	ymm12
+	vaddps			ymm7,	ymm7,	ymm15
+	vbroadcastss	ymm15,	dword ptr [rcx + 4]
+	vmulps			ymm15,	ymm15,	ymm13
+	vaddps			ymm8,	ymm8,	ymm15
+	vbroadcastss	ymm15,	dword ptr [rcx + 4]
+	vmulps			ymm15,	ymm15,	ymm14
+	vaddps			ymm9,	ymm9,	ymm15
+
+	add rax, 160
+	add rcx, 8
