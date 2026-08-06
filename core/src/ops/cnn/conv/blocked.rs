@@ -24,6 +24,20 @@ use crate::internal::*;
 /// Width of the inner SIMD-vectorised block over the contiguous W axis.
 const WB: usize = 16;
 
+#[cfg(all(target_feature = "simd128", not(target_feature = "relaxed-simd")))]
+macro_rules! blocked_madd {
+    ($acc:expr, $a:expr, $b:expr) => {
+        f32x4_add($acc, f32x4_mul($a, $b))
+    };
+}
+
+#[cfg(target_feature = "relaxed-simd")]
+macro_rules! blocked_madd {
+    ($acc:expr, $a:expr, $b:expr) => {
+        f32x4_relaxed_madd($a, $b, $acc)
+    };
+}
+
 /// Direct blocked conv. Inputs: X [N, C, H, W] (NCHW, f32), kernel
 /// [OC, ICG·KH] (group-major: row `oc` holds its group's `icg·KH` weights,
 /// i-major/h-minor), bias [OC]. Output [N, OC, H_out, W].
@@ -106,14 +120,14 @@ impl EvalOp for BlockedConv {
 
         let ocg = self.ocg();
         match ocg {
-            1 => self.run::<1>(x, kernel, bias, out),
-            2 => self.run::<2>(x, kernel, bias, out),
-            3 => self.run::<3>(x, kernel, bias, out),
-            4 => self.run::<4>(x, kernel, bias, out),
-            5 => self.run::<5>(x, kernel, bias, out),
-            6 => self.run::<6>(x, kernel, bias, out),
-            8 => self.run::<8>(x, kernel, bias, out),
-            _ => self.run_generic(x, kernel, bias, out),
+            1 => self.run_simd::<1>(x, kernel, bias, out),
+            2 => self.run_simd::<2>(x, kernel, bias, out),
+            3 => self.run_simd::<3>(x, kernel, bias, out),
+            4 => self.run_simd::<4>(x, kernel, bias, out),
+            5 => self.run_simd::<5>(x, kernel, bias, out),
+            6 => self.run_simd::<6>(x, kernel, bias, out),
+            8 => self.run_simd::<8>(x, kernel, bias, out),
+            _ => self.run_simd_generic(x, kernel, bias, out),
         }
 
         Ok(tvec!(output.into_tvalue()))
@@ -134,6 +148,7 @@ impl BlockedConv {
     // Index loops are deliberate here: const offsets into `acc` are what let SROA
     // keep the accumulators register-resident; iterator forms regressed codegen.
     #[allow(clippy::needless_range_loop)]
+    #[allow(dead_code)]
     fn run<const OCG: usize>(&self, x: &[f32], kernel: &[f32], bias: &[f32], out: &mut [f32]) {
         let (icg, w, h_in, h_out, kh) = (self.icg(), self.w, self.h_in, self.h_out, self.kh);
         let (sh, dh, pb) =
@@ -222,6 +237,7 @@ impl BlockedConv {
     /// Generic fallback for `ocg` outside the const-dispatched set. Correct but
     /// not register-blocked (heap accumulators). Rarely hit for the eligible class.
     #[allow(clippy::needless_range_loop)]
+    #[allow(dead_code)]
     fn run_generic(&self, x: &[f32], kernel: &[f32], bias: &[f32], out: &mut [f32]) {
         let (icg, ocg, w, h_in, h_out, kh) =
             (self.icg(), self.ocg(), self.w, self.h_in, self.h_out, self.kh);
@@ -267,6 +283,199 @@ impl BlockedConv {
                 }
             }
         }
+    }
+
+    /// SIMD-vectorised version of `run` for targets with `+simd128`.
+    ///
+    /// Each output channel holds 4 `v128` accumulators (16 f32 lanes = WB).
+    /// The inner reduction over `(kh, icg)` uses 4-wide `f32x4` load/madd/store
+    /// per output channel instead of 16 scalar multiplies. When `+relaxed-simd`
+    /// is active, `blocked_madd!` emits `f32x4_relaxed_madd` (FMA); otherwise
+    /// plain `f32x4_mul` + `f32x4_add`.
+    #[cfg(target_feature = "simd128")]
+    #[allow(clippy::needless_range_loop)]
+    fn run_simd<const OCG: usize>(&self, x: &[f32], kernel: &[f32], bias: &[f32], out: &mut [f32]) {
+        use std::arch::wasm32::*;
+
+        let (icg, w, h_in, h_out, kh) = (self.icg(), self.w, self.h_in, self.h_out, self.kh);
+        let (sh, dh, pb) =
+            (self.stride_h as isize, self.dil_h as isize, self.pad_before_h as isize);
+        let kstride_oc = icg * kh;
+        let n_full = w / WB;
+        for ni in 0..self.n {
+            let x_n = &x[ni * self.c_in * h_in * w..];
+            let out_n = &mut out[ni * self.oc * h_out * w..];
+            for g in 0..self.group {
+                let oc0 = g * OCG;
+                let ic0 = g * icg;
+                for oh in 0..h_out {
+                    for blk in 0..n_full {
+                        let wb = blk * WB;
+                        let mut acc: [[v128; 4]; OCG] = {
+                            let z = f32x4_splat(0.0);
+                            [[z; 4]; OCG]
+                        };
+                        for ocl in 0..OCG {
+                            let b = f32x4_splat(bias[oc0 + ocl]);
+                            acc[ocl][0] = b;
+                            acc[ocl][1] = b;
+                            acc[ocl][2] = b;
+                            acc[ocl][3] = b;
+                        }
+                        for kh_i in 0..kh {
+                            let ih = oh as isize * sh + kh_i as isize * dh - pb;
+                            if ih < 0 || ih >= h_in as isize {
+                                continue;
+                            }
+                            let row0 = ((ic0 * h_in + ih as usize) * w + wb) as usize;
+                            for icl in 0..icg {
+                                let row_base = row0 + (icl * h_in * w);
+                                let x_slice = &x_n[row_base..row_base + WB];
+                                for ocl in 0..OCG {
+                                    let wv = f32x4_splat(
+                                        kernel[(oc0 + ocl) * kstride_oc + icl * kh + kh_i],
+                                    );
+                                    unsafe {
+                                        let xp = x_slice.as_ptr() as *const v128;
+                                        let ap = acc[ocl].as_mut_ptr();
+                                        let a0 = v128_load(ap.add(0));
+                                        let a1 = v128_load(ap.add(1));
+                                        let a2 = v128_load(ap.add(2));
+                                        let a3 = v128_load(ap.add(3));
+                                        let x0 = v128_load(xp.add(0));
+                                        let x1 = v128_load(xp.add(1));
+                                        let x2 = v128_load(xp.add(2));
+                                        let x3 = v128_load(xp.add(3));
+                                        v128_store(ap.add(0), blocked_madd!(a0, x0, wv));
+                                        v128_store(ap.add(1), blocked_madd!(a1, x1, wv));
+                                        v128_store(ap.add(2), blocked_madd!(a2, x2, wv));
+                                        v128_store(ap.add(3), blocked_madd!(a3, x3, wv));
+                                    }
+                                }
+                            }
+                        }
+                        for ocl in 0..OCG {
+                            let ob = ((oc0 + ocl) * h_out + oh) * w + wb;
+                            let out_slice = &mut out_n[ob..ob + WB];
+                            unsafe {
+                                let op = out_slice.as_mut_ptr() as *mut v128;
+                                v128_store(op.add(0), acc[ocl][0]);
+                                v128_store(op.add(1), acc[ocl][1]);
+                                v128_store(op.add(2), acc[ocl][2]);
+                                v128_store(op.add(3), acc[ocl][3]);
+                            }
+                        }
+                    }
+                    let wb = n_full * WB;
+                    if wb < w {
+                        let rem = w - wb;
+                        for ocl in 0..OCG {
+                            let b = bias[oc0 + ocl];
+                            let ob = ((oc0 + ocl) * h_out + oh) * w + wb;
+                            for j in 0..rem {
+                                out_n[ob + j] = b;
+                            }
+                        }
+                        for kh_i in 0..kh {
+                            let ih = oh as isize * sh + kh_i as isize * dh - pb;
+                            if ih < 0 || ih >= h_in as isize {
+                                continue;
+                            }
+                            let ih = ih as usize;
+                            for icl in 0..icg {
+                                let row_base = ((ic0 + icl) * h_in + ih) * w + wb;
+                                for ocl in 0..OCG {
+                                    let wv = kernel[(oc0 + ocl) * kstride_oc + icl * kh + kh_i];
+                                    let ob = ((oc0 + ocl) * h_out + oh) * w + wb;
+                                    for j in 0..rem {
+                                        out_n[ob + j] += x_n[row_base + j] * wv;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Fallback when `+simd128` is not active: delegates to the scalar `run`.
+    #[cfg(not(target_feature = "simd128"))]
+    #[inline(always)]
+    fn run_simd<const OCG: usize>(&self, x: &[f32], kernel: &[f32], bias: &[f32], out: &mut [f32]) {
+        self.run::<OCG>(x, kernel, bias, out);
+    }
+
+    /// SIMD-vectorised version of `run_generic`.
+    #[cfg(target_feature = "simd128")]
+    #[allow(clippy::needless_range_loop)]
+    fn run_simd_generic(&self, x: &[f32], kernel: &[f32], bias: &[f32], out: &mut [f32]) {
+        use std::arch::wasm32::*;
+
+        let (icg, ocg, w, h_in, h_out, kh) =
+            (self.icg(), self.ocg(), self.w, self.h_in, self.h_out, self.kh);
+        let (sh, dh, pb) =
+            (self.stride_h as isize, self.dil_h as isize, self.pad_before_h as isize);
+        let kstride_oc = icg * kh;
+        let mut acc = vec![0f32; ocg * w];
+        for ni in 0..self.n {
+            let x_n = &x[ni * self.c_in * h_in * w..];
+            let out_n = &mut out[ni * self.oc * h_out * w..];
+            for g in 0..self.group {
+                let oc0 = g * ocg;
+                let ic0 = g * icg;
+                for oh in 0..h_out {
+                    for ocl in 0..ocg {
+                        let b = bias[oc0 + ocl];
+                        let a = &mut acc[ocl * w..ocl * w + w];
+                        for j in 0..w {
+                            a[j] = b;
+                        }
+                    }
+                    for kh_i in 0..kh {
+                        let ih = oh as isize * sh + kh_i as isize * dh - pb;
+                        if ih < 0 || ih >= h_in as isize {
+                            continue;
+                        }
+                        let ih = ih as usize;
+                        for icl in 0..icg {
+                            let ic = ic0 + icl;
+                            let row = &x_n[(ic * h_in + ih) * w..(ic * h_in + ih) * w + w];
+                            for ocl in 0..ocg {
+                                let wv_scalar = kernel[(oc0 + ocl) * kstride_oc + icl * kh + kh_i];
+                                let a = &mut acc[ocl * w..ocl * w + w];
+                                let n4 = w & !3;
+                                if n4 > 0 {
+                                    unsafe {
+                                        let wv = f32x4_splat(wv_scalar);
+                                        let xp = row.as_ptr() as *const v128;
+                                        let ap = a.as_mut_ptr() as *mut v128;
+                                        for j in 0..n4 / 4 {
+                                            let av = v128_load(ap.add(j));
+                                            let xv = v128_load(xp.add(j));
+                                            v128_store(ap.add(j), blocked_madd!(av, xv, wv));
+                                        }
+                                    }
+                                }
+                                for j in n4..w {
+                                    a[j] += row[j] * wv_scalar;
+                                }
+                            }
+                        }
+                    }
+                    for ocl in 0..ocg {
+                        let ob = ((oc0 + ocl) * h_out + oh) * w;
+                        out_n[ob..ob + w].copy_from_slice(&acc[ocl * w..ocl * w + w]);
+                    }
+                }
+            }
+        }
+    }
+
+    #[cfg(not(target_feature = "simd128"))]
+    #[inline(always)]
+    fn run_simd_generic(&self, x: &[f32], kernel: &[f32], bias: &[f32], out: &mut [f32]) {
+        self.run_generic(x, kernel, bias, out);
     }
 }
 
@@ -377,5 +586,7 @@ mod tests {
         run_case(6, 3, 1, 3, 8, 33, 0);
         // ocg=1 edge.
         run_case(4, 2, 2, 2, 6, 17, 1);
+        // ocg=7: outside the const-dispatched set, exercises the generic path.
+        run_case(14, 14, 2, 3, 6, 20, 1);
     }
 }
