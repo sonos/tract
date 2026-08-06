@@ -9,7 +9,6 @@
 /// ```
 use crate::Ops;
 
-#[cfg(target_feature = "relaxed-simd")]
 use crate::frame::element_wise::ElementWiseKer;
 
 #[macro_use]
@@ -17,6 +16,7 @@ mod madd;
 
 #[cfg(target_feature = "relaxed-simd")]
 mod act;
+mod act_f32;
 #[cfg(test)]
 mod dispatch_tests;
 mod mmm_f32_gemm;
@@ -25,6 +25,7 @@ mod mmm_i32;
 
 #[cfg(target_feature = "relaxed-simd")]
 pub use act::*;
+pub use act_f32::*;
 pub use mmm_f32_gemm::*;
 pub use mmm_f32_gemv::*;
 pub use mmm_i32::*;
@@ -67,9 +68,12 @@ pub fn plug(ops: &mut Ops) {
         9..=16 => wasm_f32_16x1.mmm(),
         _ => wasm_f32_32x1.mmm(),
     });
-    // Relaxed-SIMD activation kernels (FMA path). Only installed when the
-    // build has `+relaxed-simd`; otherwise the slots stay at the generic
-    // scalar polynomial.
+    ops.erf_f32 = Box::new(|| WasmErf4::ew());
+    ops.silu_f32 = Box::new(|| WasmSilu4::ew());
+    ops.gelu_f32 = Box::new(|| WasmGelu4::ew());
+    // Sigmoid and tanh stay on the generic polynomial kernels, which LLVM
+    // auto-vectorizes under +simd128; only the relaxed-simd FMA variants
+    // beat them.
     #[cfg(target_feature = "relaxed-simd")]
     {
         ops.sigmoid_f32 = Box::new(|| WasmSigmoid4Relaxed::ew());
