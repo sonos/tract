@@ -36,6 +36,12 @@ const SEQ_AXIS: usize = 2;
 pub struct GptOssSdpa {
     /// Softmax scale as f32 bits (f32 lacks Eq/Hash).
     pub scale_bits: u32,
+    /// Sliding-attention window in keys (0 = full attention). Extracted by
+    /// the fuse rule from the mask-building subgraph; runtimes may clamp
+    /// their attention reads to the last `window + S - 1` keys, since the
+    /// mask sends everything older to -inf anyway. The mask input remains
+    /// the semantic source of truth, so 0 is always safe.
+    pub window: u32,
 }
 
 impl GptOssSdpa {
@@ -274,6 +280,7 @@ fn parameters() -> Vec<Parameter> {
         TypeName::Scalar.tensor().named("mask"),
         TypeName::Scalar.tensor().named("sinks"),
         TypeName::Scalar.named("scale"),
+        TypeName::Integer.named("window").default(0),
     ]
 }
 
@@ -283,7 +290,7 @@ fn dump(ast: &mut IntoAst, node: &TypedNode, op: &GptOssSdpa) -> TractResult<Opt
     Ok(Some(invocation(
         "tract_transformers_gpt_oss_sdpa",
         &inputs,
-        &[("scale", numeric(op.scale()))],
+        &[("scale", numeric(op.scale())), ("window", numeric(op.window))],
     )))
 }
 
@@ -299,8 +306,9 @@ fn load(
     let mask = invocation.named_arg_as(builder, "mask")?;
     let sinks = invocation.named_arg_as(builder, "sinks")?;
     let scale: f32 = invocation.named_arg_as(builder, "scale")?;
+    let window: i64 = invocation.named_arg_as(builder, "window")?;
     builder.wire(
-        GptOssSdpa { scale_bits: scale.to_bits() },
+        GptOssSdpa { scale_bits: scale.to_bits(), window: window as u32 },
         &[q, k_new, v_new, k_cache, v_cache, mask, sinks],
     )
 }
@@ -414,7 +422,7 @@ mod tests {
     fn matches_reference_over_prefill_and_decode() -> TractResult<()> {
         let (hq, hkv, d) = (4, 2, 8);
         let scale = (d as f32).sqrt().recip();
-        let op = GptOssSdpa { scale_bits: scale.to_bits() };
+        let op = GptOssSdpa { scale_bits: scale.to_bits(), window: 0 };
         let mut state = GptOssSdpaState {
             scale,
             k: InPlaceKvCache::new(SEQ_AXIS),
@@ -458,7 +466,7 @@ mod tests {
     fn rebuilds_state_on_cache_mismatch() -> TractResult<()> {
         let (hq, hkv, d) = (2, 1, 4);
         let scale = 0.5f32;
-        let op = GptOssSdpa { scale_bits: scale.to_bits() };
+        let op = GptOssSdpa { scale_bits: scale.to_bits(), window: 0 };
         let mut state = GptOssSdpaState {
             scale,
             k: InPlaceKvCache::new(SEQ_AXIS),
@@ -566,6 +574,63 @@ fn qk_branch(
     let kconcat = prev(model, addaxis, 0);
     kconcat.op_as::<TypedConcat>()?;
     Some((q_half, kconcat.id, start))
+}
+
+/// Walk the mask-building subgraph upstream of `mask_outlet` looking for the
+/// sliding-window size. The exported causal mask is built from ranges and
+/// 0/1/huge-negative constants only; the sliding variant additionally embeds
+/// the window as a small integer constant in its band comparison. Returns 0
+/// (full attention) when no such constant exists, which is always safe: the
+/// mask stays the semantic source of truth.
+fn extract_sliding_window(model: &TypedModel, mask_outlet: OutletId) -> u32 {
+    let debug = std::env::var_os("TRACT_DEBUG_GPT_OSS_WINDOW").is_some();
+    let mut seen = std::collections::HashSet::new();
+    let mut stack = vec![mask_outlet.node];
+    let mut candidates: Vec<u32> = vec![];
+    while let Some(id) = stack.pop() {
+        if !seen.insert(id) || seen.len() > 256 {
+            continue;
+        }
+        let n = model.node(id);
+        if debug {
+            let k = n
+                .op_as::<Const>()
+                .map(|k| format!(" = {:?}", k.val()))
+                .unwrap_or_default();
+            eprintln!("mask-subgraph[{}]: {} {}{k}", mask_outlet.node, n.name, n.op.name());
+        }
+        if let Some(k) = n.op_as::<Const>() {
+            let v = k.val();
+            if v.len() == 1
+                && (v.datum_type().is_integer() || v.datum_type() == DatumType::TDim)
+            {
+                if let Ok(x) = v.cast_to::<i64>() {
+                    if let Ok(x) = x.try_as_plain() {
+                        if let Ok(x) = x.as_slice::<i64>() {
+                            let w = x[0].unsigned_abs();
+                            if (2..=1_000_000).contains(&w) {
+                                candidates.push(w as u32);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        for input in &n.inputs {
+            stack.push(input.node);
+        }
+    }
+    match candidates.as_slice() {
+        [w] => *w,
+        [] => 0,
+        many => {
+            // Ambiguous: refuse to clamp rather than risk wrong semantics.
+            eprintln!(
+                "gpt-oss fuse: mask subgraph has several window-like constants {many:?}; not clamping"
+            );
+            0
+        }
+    }
 }
 
 pub fn fuse_gpt_oss_sdpa_rule(
@@ -691,6 +756,7 @@ pub fn fuse_gpt_oss_sdpa_rule(
     let k_cache_t = patch.tap_model(model, k_cache)?;
     let v_cache_t = patch.tap_model(model, v_cache)?;
     let mask_t = patch.tap_model(model, mask_outlet)?;
+    let window = extract_sliding_window(model, mask_outlet);
     let sinks_t = patch.add_const(format!("{node_name}.sinks"), sinks_tensor)?;
 
     let q_rank = model.outlet_fact(q_first)?.rank();
@@ -702,7 +768,7 @@ pub fn fuse_gpt_oss_sdpa_rule(
 
     let fused = patch.wire_node(
         format!("{node_name}.gpt_oss_sdpa"),
-        GptOssSdpa { scale_bits: scale.to_bits() },
+        GptOssSdpa { scale_bits: scale.to_bits(), window },
         &[q, k_new_t, v_new_t, k_cache_t, v_cache_t, mask_t, sinks_t],
     )?;
 

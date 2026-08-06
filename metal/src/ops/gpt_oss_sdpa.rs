@@ -81,6 +81,10 @@ const SPLIT_K_CHUNK: usize = 2048;
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct MetalGptOssSdpa {
     pub scale_bits: u32,
+    /// Sliding-attention window (0 = full): keys older than the window are
+    /// -inf in the mask, so attention reads clamp to the last
+    /// `window + S - 1` keys. The cache itself keeps full history.
+    pub window: u32,
 }
 
 impl Op for MetalGptOssSdpa {
@@ -117,6 +121,7 @@ impl EvalOp for MetalGptOssSdpa {
     ) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::new(MetalGptOssSdpaState {
             scale: f32::from_bits(self.scale_bits),
+            window: self.window,
             k: DeviceKvBuffer::default(),
             // V is stored transposed: the batched GGML AV gemm needs its k
             // axis (the sequence) contiguous, and the flash decode kernel
@@ -210,16 +215,27 @@ impl DeviceKvBuffer {
     /// (transpose_b, B = [batch, n, k] with k contiguous): [Hkv, len, D] for
     /// the seq-major layout, [Hkv, D, len] for the transposed one.
     fn gemm_b_view(&self) -> TractResult<DeviceTensor> {
+        self.gemm_b_view_from(0)
+    }
+
+    /// Like [`Self::gemm_b_view`] but starting at sequence position `j0`
+    /// (sliding-window clamp: older keys are masked to -inf anyway).
+    fn gemm_b_view_from(&self, j0: usize) -> TractResult<DeviceTensor> {
+        ensure!(j0 <= self.len);
         let buf = self.buf.as_ref().context("empty kv buffer")?;
-        let (shape, strides): (TVec<usize>, TVec<isize>) = if self.transposed {
+        let eff = self.len - j0;
+        let esize = f16::datum_type().size_of();
+        let (shape, strides, offset): (TVec<usize>, TVec<isize>, usize) = if self.transposed {
             (
-                tvec![self.hkv, self.d, self.len],
+                tvec![self.hkv, self.d, eff],
                 tvec![(self.d * self.cap) as isize, self.cap as isize, 1],
+                j0 * esize,
             )
         } else {
             (
-                tvec![self.hkv, self.len, self.d],
+                tvec![self.hkv, eff, self.d],
                 tvec![(self.cap * self.d) as isize, self.d as isize, 1],
+                j0 * self.d * esize,
             )
         };
         Ok(DeviceTensor::ArenaView(DeviceArenaView::from_owned(
@@ -227,7 +243,7 @@ impl DeviceKvBuffer {
             f16::datum_type(),
             shape,
             strides,
-            0,
+            offset,
         )?))
     }
 
@@ -400,6 +416,7 @@ impl DeviceKvBuffer {
 #[derive(Clone, Debug)]
 pub struct MetalGptOssSdpaState {
     scale: f32,
+    window: u32,
     k: DeviceKvBuffer,
     v: DeviceKvBuffer,
     /// Reused f32 scratch for the flash-attention partials: allocating it
@@ -524,8 +541,19 @@ impl OpState for MetalGptOssSdpaState {
                 self.k.q8_update(prev_len)?;
                 self.v.q8_update(prev_len)?;
             }
-            let k_b = self.k.gemm_b_view()?;
-            let v_b = self.v.gemm_b_view()?;
+            // Sliding-window clamp: keys older than the window are -inf in
+            // the mask, so the gemm path reads only the last window+S-1 keys
+            // (j0 rounded down to 32 for alignment; the extra keys stay
+            // masked). Flash/q8 paths keep full length for now.
+            let j0 = if self.window > 0 && !use_flash && !use_q8_decode {
+                let need = self.window as usize + s_len - 1;
+                t_len.saturating_sub(need) / 32 * 32
+            } else {
+                0
+            };
+            let t_eff = t_len - j0;
+            let k_b = self.k.gemm_b_view_from(j0)?;
+            let v_b = self.v.gemm_b_view_from(j0)?;
             let out_all = subview_all(&out, hkv * group * s_len, d)?;
             for t in [&q_a, &k_b, &v_b, &out_all] {
                 stream.retain_tensor(t);
@@ -578,6 +606,8 @@ impl OpState for MetalGptOssSdpaState {
                     &probs_all,
                     s_len,
                     self.scale,
+                    t_len,
+                    0,
                     t_len,
                 )?;
                 // AV: B = q8 V^T rows (dims of t_pad), out [hkv, m, d].
@@ -641,17 +671,17 @@ impl OpState for MetalGptOssSdpaState {
             // pad and the cache tail is allocated zeroed, so padded reads
             // contribute exact zeros.
             let split_k = if s_len <= FLASH_MAX_S
-                && t_len >= SPLIT_K_MIN_T
+                && t_eff >= SPLIT_K_MIN_T
                 && std::env::var_os("TRACT_METAL_DISABLE_GPT_OSS_SPLIT_K").is_none()
             {
-                let chunks = t_len.div_ceil(SPLIT_K_CHUNK).clamp(2, 16);
-                let k_chunk = t_len.div_ceil(chunks).next_multiple_of(Q8_BLOCK);
+                let chunks = t_eff.div_ceil(SPLIT_K_CHUNK).clamp(2, 16);
+                let k_chunk = t_eff.div_ceil(chunks).next_multiple_of(Q8_BLOCK);
                 let t_ck = chunks * k_chunk;
-                (t_ck <= self.k.cap).then_some((chunks, k_chunk, t_ck))
+                (j0 + t_ck <= self.k.cap).then_some((chunks, k_chunk, t_ck))
             } else {
                 None
             };
-            let t_row = split_k.map_or(t_len, |(_, _, t_ck)| t_ck);
+            let t_row = split_k.map_or(t_eff, |(_, _, t_ck)| t_ck);
             let scores = Arc::new(get_context()?.uninitialized_device_tensor(
                 &[hkv, m, t_row],
                 f16::datum_type(),
@@ -699,6 +729,8 @@ impl OpState for MetalGptOssSdpaState {
                 &probs_all,
                 s_len,
                 self.scale,
+                t_eff,
+                j0,
                 t_len,
             )?;
             if let Some((chunks, k_chunk, t_ck)) = split_k {
@@ -745,7 +777,7 @@ impl OpState for MetalGptOssSdpaState {
                     a_batch: hkv,
                     b_batch: hkv,
                     m,
-                    k: t_len,
+                    k: t_eff,
                     n: d,
                     transpose_a: false,
                     a_offset: 0,
@@ -753,7 +785,7 @@ impl OpState for MetalGptOssSdpaState {
                     b_offset: v_b.buffer_offset(),
                     q40_b: false,
                     c_offset: 0,
-                    a_strides: tvec![(m * t_len) as isize, t_len as isize, 1],
+                    a_strides: tvec![(m * t_eff) as isize, t_eff as isize, 1],
                     b_strides: tvec![(self.v.d * self.v.cap) as isize, self.v.cap as isize, 1],
                 },
                 get_metal_buffer(&probs_all),
@@ -768,7 +800,7 @@ impl OpState for MetalGptOssSdpaState {
             // Rerun this step's attention on the CPU op from the SAME inputs
             // and compare: separates wrong-inputs from wrong-compute.
             use tract_transformers::ops::gpt_oss_sdpa::GptOssSdpa as CpuOp;
-            let cpu_op = CpuOp { scale_bits: self.scale.to_bits() };
+            let cpu_op = CpuOp { scale_bits: self.scale.to_bits(), window: self.window };
             let mut cpu_state = tract_core::ops::EvalOp::state(&cpu_op, _state, 0)?.unwrap();
             let host = |t: &DeviceTensor| -> TractResult<TValue> {
                 Ok(t.to_host()?.into_tensor().into_tvalue())
@@ -925,7 +957,7 @@ crate::register_metal_op!(GptOssSdpa, |_source, _node, op| {
     if std::env::var_os("TRACT_METAL_DISABLE_GPT_OSS_SDPA").is_some() {
         return Ok(None);
     }
-    Ok(Some(Box::new(MetalGptOssSdpa { scale_bits: op.scale_bits })))
+    Ok(Some(Box::new(MetalGptOssSdpa { scale_bits: op.scale_bits, window: op.window })))
 });
 
 #[cfg(test)]
@@ -1032,8 +1064,8 @@ mod tests {
         crate::context::metal_context();
         let (hq, hkv, d) = (4usize, 2usize, 64usize);
         let scale = (d as f32).sqrt().recip();
-        let op = MetalGptOssSdpa { scale_bits: scale.to_bits() };
-        let cpu_op = CpuOp { scale_bits: scale.to_bits() };
+        let op = MetalGptOssSdpa { scale_bits: scale.to_bits(), window: 0 };
+        let cpu_op = CpuOp { scale_bits: scale.to_bits(), window: 0 };
         let mut session = TurnState::default();
         let mut metal_state = op.state(&session, 0)?.unwrap();
         let mut cpu_state = EvalOp::state(&cpu_op, &session, 0)?.unwrap();
@@ -1147,8 +1179,11 @@ mod tests {
         force_flash_for_tests();
         crate::context::metal_context(); // initialize the GPU context
         let scale = (d as f32).sqrt().recip();
-        let op = MetalGptOssSdpa { scale_bits: scale.to_bits() };
-        let cpu_op = CpuOp { scale_bits: scale.to_bits() };
+        // The Metal op clamps its reads using `window`; the CPU reference
+        // keeps full-width math, so the comparison validates the clamp.
+        let op_window = if window == usize::MAX { 0 } else { window as u32 };
+        let op = MetalGptOssSdpa { scale_bits: scale.to_bits(), window: op_window };
+        let cpu_op = CpuOp { scale_bits: scale.to_bits(), window: 0 };
         let mut session = TurnState::default();
         let mut metal_state = op.state(&session, 0)?.unwrap();
         let mut cpu_state = EvalOp::state(&cpu_op, &session, 0)?.unwrap();

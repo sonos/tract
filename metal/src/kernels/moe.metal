@@ -481,6 +481,8 @@ constant bool FC_FUSE_MERGE [[function_constant(2)]];
     constant uint &s_len [[buffer(6)]],
     constant float &scale [[buffer(7)]],
     constant uint &row_stride [[buffer(8)]],
+    constant uint &mask_off [[buffer(9)]],
+    constant uint &mask_stride [[buffer(10)]],
     uint row [[threadgroup_position_in_grid]],
     uint lane [[thread_index_in_threadgroup]],
     uint tptg [[threads_per_threadgroup]])
@@ -492,7 +494,7 @@ constant bool FC_FUSE_MERGE [[function_constant(2)]];
     const uint head = row / s_len;
     const uint mrow = row % s_len;
     device const half *srow = scores + (uint64_t)row * row_stride;
-    device const float *mrow_p = mask + (uint64_t)mrow * t_len;
+    device const float *mrow_p = mask + (uint64_t)mrow * mask_stride + mask_off;
     device half *prow = probs + (uint64_t)row * row_stride;
     const float sink = sinks[head];
     const uint simd_lane = lane % 32;

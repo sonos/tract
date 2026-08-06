@@ -450,6 +450,8 @@ pub fn dispatch_gpt_oss_sinks_softmax_f16(
     s_len: usize,
     scale: f32,
     t_len: usize,
+    mask_off: usize,
+    mask_stride: usize,
 ) -> TractResult<()> {
     stream.retain_tensor(scores);
     stream.retain_tensor(mask);
@@ -464,6 +466,8 @@ pub fn dispatch_gpt_oss_sinks_softmax_f16(
     // columns of probs are zeroed by the kernel.
     let row_stride = *scores.shape().last().context("scores rank 0")?;
     ensure!(row_stride >= t_len);
+    ensure!(mask.len() >= s_len * mask_stride);
+    ensure!(mask_off + t_len <= mask_stride || s_len == 1 && mask_off + t_len <= mask.len());
     let rows = scores.len() / row_stride;
     ensure!(probs.len() == scores.len());
     ensure!(rows % s_len == 0, "rows {rows} not a multiple of s_len {s_len}");
@@ -483,6 +487,8 @@ pub fn dispatch_gpt_oss_sinks_softmax_f16(
         encoder.set_slice(6, &[s_len as u32]);
         encoder.set_slice(7, &[scale]);
         encoder.set_slice(8, &[row_stride as u32]);
+        encoder.set_slice(9, &[mask_off as u32]);
+        encoder.set_slice(10, &[mask_stride as u32]);
         let grid = MTLSize { width: rows as NSUInteger, height: 1, depth: 1 };
         let group = MTLSize { width: group_width, height: 1, depth: 1 };
         encoder.dispatch_thread_groups(grid, group);
@@ -519,7 +525,8 @@ mod sinks_softmax_tests {
             let probs_dev = DeviceTensor::uninitialized_dt(f16::datum_type(), &[rows, t_len])?;
 
             dispatch_gpt_oss_sinks_softmax_f16(
-                stream, &scores_dev, &mask_dev, &sinks_dev, &probs_dev, s_len, scale, t_len,
+                stream, &scores_dev, &mask_dev, &sinks_dev, &probs_dev, s_len, scale, t_len, 0,
+                t_len,
             )?;
             stream.wait_until_completed()?;
             let got = probs_dev.to_host()?.into_tensor().cast_to::<f32>()?.into_owned();

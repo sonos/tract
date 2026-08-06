@@ -78,6 +78,21 @@ fn fuses_all_24_layers_on_real_model() -> TractResult<()> {
         .filter(|n| n.op_is::<tract_transformers::ops::gpt_oss_sdpa::GptOssSdpa>())
         .count();
     assert_eq!(fused, 24, "all attention layers fused");
+    // gpt-oss-20b alternates sliding_attention(128) / full_attention: the
+    // fuse rule must extract exactly 12 windowed and 12 full layers.
+    let windows: Vec<u32> = model
+        .nodes()
+        .iter()
+        .filter_map(|n| n.op_as::<tract_transformers::ops::gpt_oss_sdpa::GptOssSdpa>())
+        .map(|op| op.window)
+        .collect();
+    let sliding = windows.iter().filter(|&&w| w == 128).count();
+    let full = windows.iter().filter(|&&w| w == 0).count();
+    assert_eq!(
+        (sliding, full),
+        (12, 12),
+        "expected 12 sliding(128) + 12 full layers, got windows {windows:?}"
+    );
     assert_eq!(model.inputs.len(), n_inputs, "input signature preserved");
     assert_eq!(model.outputs.len(), n_outputs, "output signature preserved");
     let concats_to_cache: usize = model
