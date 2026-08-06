@@ -2,13 +2,14 @@ use crate::Scaler;
 use crate::mmm::FusedKerSpec;
 use crate::mmm::ImplementationQuality;
 
-// Wasm SIMD int8 -> i32 matmul kernel (4x4). WASM's only integer dot
-// (i32x4.relaxed_dot_i8x16_i7x16) is non-deterministic for full i8 (its 2nd
-// operand is i7), so for a bit-exact kernel the AddMatMul K-loop uses widening
-// i8->i32 + i32x4 mul/add (an extmul/SMLAL-style outer product). The quant
-// epilogue + fuse ops reuse the bit-exact scalar path (q_scale/q_shr/q_shl),
-// which is O(MR*NR) and negligible vs the O(MR*NR*K) inner loop. Bit-identical
-// to generic_i32_4x4; selected for i8 matmul via its ManuallyOptimized quality
+// Wasm SIMD int8 -> i32 matmul kernel (4x4). Under +relaxed-simd the AddMatMul
+// K-loop uses i32x4.relaxed_dot_i8x16_i7x16_add with B sign-split so both dot
+// operands stay in the i7 range where the instruction is deterministic (see the
+// kernel body); without relaxed-simd it uses widening i8->i32 + i32x4 mul/add
+// (an extmul/SMLAL-style outer product). The quant epilogue + fuse ops reuse
+// the bit-exact scalar path (q_scale/q_shr/q_shl), which is O(MR*NR) and
+// negligible vs the O(MR*NR*K) inner loop. Both paths are bit-identical to
+// generic_i32_4x4; selected for i8 matmul via its ManuallyOptimized quality
 // (WASM had no int8 matmul kernel — int8 fell back to the generic scalar one).
 #[inline(never)]
 unsafe fn kernel_i32_4x4(mut pnl: *const FusedKerSpec<i32>) -> isize {
@@ -233,18 +234,36 @@ unsafe fn kernel_i32_4x4(mut pnl: *const FusedKerSpec<i32>) -> isize {
                         ];
                         // PackedI8K4 (K=4-inner): per 4-K block, one B v128 load is
                         // shared across the 4 rows; each row broadcasts its 4 K bytes
-                        // (a[kb*16 + m*4 ..]) and issues one relaxed_dot (16 MACs).
-                        // b[kb*16 + n*4 + kr]. Tail K (k%4) is zero-padded by the packer.
+                        // (a[kb*16 + m*4 ..]) against b[kb*16 + n*4 + kr]. Tail K (k%4)
+                        // is zero-padded by the packer.
+                        //
+                        // relaxed_dot's 2nd operand is i7: lanes outside [0, 127] are
+                        // read as signed by some engines (ARM SDOT) and unsigned by
+                        // others (x86 pmaddubsw/vpdpbusd). B is full i8, so it is
+                        // sign-split as b = (b & 0x7f) - ((b >> 7) << 7); both parts
+                        // are i7-safe (which also keeps every pmaddubsw i16 pair-sum
+                        // below saturation), each feeds its own dot, and the sign
+                        // planes fold back after the K-loop as acc -= acc_hi << 7.
+                        // Bit-exact on every engine.
                         #[cfg(target_feature = "relaxed-simd")]
-                        for kb in 0..k.div_ceil(4) {
-                            let b_all = v128_load(b.add(kb * 16) as *const v128);
-                            for (m, acc_m) in acc.iter_mut().enumerate() {
-                                let a4 = (a.add(kb * 16 + m * 4) as *const i32).read_unaligned();
-                                *acc_m = i32x4_relaxed_dot_i8x16_i7x16_add(
-                                    i32x4_splat(a4),
-                                    b_all,
-                                    *acc_m,
-                                );
+                        {
+                            let mut acc_hi = [i32x4_splat(0); 4];
+                            for kb in 0..k.div_ceil(4) {
+                                let b_all = v128_load(b.add(kb * 16) as *const v128);
+                                let b_lo = v128_and(b_all, u8x16_splat(0x7f));
+                                let b_hi = u8x16_shr(b_all, 7);
+                                for (m, (acc_m, hi_m)) in
+                                    acc.iter_mut().zip(acc_hi.iter_mut()).enumerate()
+                                {
+                                    let a4 =
+                                        (a.add(kb * 16 + m * 4) as *const i32).read_unaligned();
+                                    let a4 = i32x4_splat(a4);
+                                    *acc_m = i32x4_relaxed_dot_i8x16_i7x16_add(a4, b_lo, *acc_m);
+                                    *hi_m = i32x4_relaxed_dot_i8x16_i7x16_add(a4, b_hi, *hi_m);
+                                }
+                            }
+                            for (acc_m, hi_m) in acc.iter_mut().zip(acc_hi) {
+                                *acc_m = i32x4_sub(*acc_m, i32x4_shl(hi_m, 7));
                             }
                         }
                         // Deterministic fallback (no relaxed-simd): standard PackedFormat
