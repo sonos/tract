@@ -29,7 +29,7 @@
     ret
 
 {% if msvc %}
-fma_mmm_{{type}}_{{size}}_{{suffix}} endp
+{{ prefix | default("fma") }}_mmm_{{type}}_{{size}}_{{suffix}} endp
 _text ends
 end
 
