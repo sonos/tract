@@ -69,7 +69,11 @@ fn pick_mmm(candidates: &[KernelChoice], m: Option<usize>, n: Option<usize>) -> 
 // same tile geometries as their fma_ siblings but the inner loops use
 // vmulps+vaddps, and add_unicast avoids the avx2-only vgatherdps.
 MMMExternKernel!(avx_mmm_f32_8x8 <f32>(8, 8)@(256,4) where(AVX) quality(ManuallyOptimized));
+MMMExternKernel!(avx_mmm_f32_16x5<f32>(16,5)@(256,4) where(AVX) quality(ManuallyOptimized));
 MMMExternKernel!(avx_mmm_f32_16x6<f32>(16,6)@(256,4) where(AVX) quality(ManuallyOptimized));
+MMMExternKernel!(avx_mmm_f32_24x4<f32>(24,4)@(256,4) where(AVX) quality(ManuallyOptimized));
+MMMExternKernel!(avx_mmm_f32_32x3<f32>(32,3)@(256,4) where(AVX) quality(ManuallyOptimized));
+MMMExternKernel!(avx_mmm_f32_40x2<f32>(40,2)@(256,4) where(AVX) quality(ManuallyOptimized));
 MMMExternKernel!(avx_mmm_f32_64x1<f32>(64,1)@(256,4) where(AVX) quality(ManuallyOptimized));
 
 MMMExternKernel!(fma_mmm_f32_8x8 <f32>(8, 8)@(256,4) where(FMA) quality(ManuallyOptimized));
@@ -403,7 +407,11 @@ pub fn plug_avx2(ops: &mut Ops) {
 pub fn plug_avx(ops: &mut Ops) {
     ops.mmm_impls.extend([
         avx_mmm_f32_8x8.mmm(),
+        avx_mmm_f32_16x5.mmm(),
         avx_mmm_f32_16x6.mmm(),
+        avx_mmm_f32_24x4.mmm(),
+        avx_mmm_f32_32x3.mmm(),
+        avx_mmm_f32_40x2.mmm(),
         avx_mmm_f32_64x1.mmm(), // mmv candidate (nr==1; excluded from n>=2 picks)
     ]);
 
@@ -411,9 +419,23 @@ pub fn plug_avx(ops: &mut Ops) {
 
     const AVX_CHOICES: &[KernelChoice] = &[
         KernelChoice { mr: 16, nr: 6, scale: 1.0, ctor: || avx_mmm_f32_16x6.mmm() },
-        KernelChoice { mr: 8, nr: 8, scale: 44.0 / 54.0, ctor: || avx_mmm_f32_8x8.mmm() },
+        KernelChoice { mr: 16, nr: 5, scale: 0.98, ctor: || avx_mmm_f32_16x5.mmm() },
+        KernelChoice { mr: 24, nr: 4, scale: 0.95, ctor: || avx_mmm_f32_24x4.mmm() },
+        KernelChoice { mr: 32, nr: 3, scale: 0.93, ctor: || avx_mmm_f32_32x3.mmm() },
+        KernelChoice { mr: 40, nr: 2, scale: 0.90, ctor: || avx_mmm_f32_40x2.mmm() },
+        KernelChoice { mr: 8, nr: 8, scale: 0.80, ctor: || avx_mmm_f32_8x8.mmm() },
     ];
-    ops.mmm_f32 = Box::new(|m, _, n| pick_mmm(AVX_CHOICES, m, n));
+    ops.mmm_f32 = Box::new(|m, _, n| match n {
+        None => avx_mmm_f32_16x6.mmm(),
+        Some(1) => avx_mmm_f32_64x1.mmm(),
+        Some(2) => avx_mmm_f32_40x2.mmm(),
+        Some(3) => avx_mmm_f32_32x3.mmm(),
+        Some(4) => avx_mmm_f32_24x4.mmm(),
+        Some(5) => avx_mmm_f32_16x5.mmm(),
+        Some(6) => avx_mmm_f32_16x6.mmm(),
+        Some(8) => avx_mmm_f32_8x8.mmm(),
+        Some(_) => pick_mmm(AVX_CHOICES, m, n),
+    });
 
     log::info!("mmm_f32, mmv_f32: x86_64/avx (no fma) activated");
 }
