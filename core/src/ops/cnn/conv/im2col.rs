@@ -157,8 +157,10 @@ impl EvalOp for Im2Col {
             let r = geometry.out_format.r();
             // Buffer geometry. zero_init for PackedI8K4: the K=4-inner writer skips
             // the K-padding lanes (k..k_aligned), which SMOPA accumulates — they must
-            // be 0. PackedFormat has no K padding; its mn-padding maps to discarded
-            // output rows, so uninitialized is fine (matches prior behaviour).
+            // be 0. PackedFormat has no K padding; its mn-padding lanes are computed
+            // on (then discarded) by the kernel, so the partial last panel still
+            // needs zeroing — garbage there decodes to denormals that stall the fp
+            // pipeline. Done after allocation below.
             let (single_panel_len, buf_align, zero_init) =
                 if let Some(pf) = geometry.out_format.downcast_ref::<PackedFormat>() {
                     (pf.single_panel_len(geometry.k), pf.alignment(), false)
@@ -186,6 +188,8 @@ impl EvalOp for Im2Col {
                     )?;
                     if zero_init {
                         data.as_bytes_mut().fill(0);
+                    } else if n % r != 0 {
+                        data.as_bytes_mut()[(n / r) * panel_bytes..].fill(0);
                     }
                     if n > 0 {
                         dispatch_copy_by_size!(Patcher::patch(dt)(
