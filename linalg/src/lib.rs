@@ -310,12 +310,16 @@ fn register_all_unicast(registry: &mut LinalgRegistry) {
     generic::register_all_unicast(registry);
     #[cfg(target_arch = "aarch64")]
     arm64::register_all_unicast(registry);
+    #[cfg(target_arch = "riscv64")]
+    riscv64::register_all_unicast(registry);
 }
 
 fn register_all_by_scalar(registry: &mut LinalgRegistry) {
     generic::register_all_by_scalar(registry);
     #[cfg(target_arch = "aarch64")]
     arm64::register_all_by_scalar(registry);
+    #[cfg(target_arch = "riscv64")]
+    riscv64::register_all_by_scalar(registry);
 }
 
 pub type LinalgFn = dyn Fn(&mut TensorView, &TensorView) -> TractResult<()> + Send + Sync;

@@ -1,25 +1,38 @@
 //! RISC-V (rv64) backend for the ratified Vector extension, RVV 1.0.
 //!
-//! Kernels are assembly rendered from jinja, as on x86_64 and arm64, because
-//! Rust exposes no stable RVV intrinsics and `-C target-feature=+v` is itself
-//! unstable.
+//! Everything here is assembly, because Rust exposes no stable RVV intrinsics
+//! and `-C target-feature=+v` is itself unstable.
 //!
-//! RVV is vector-length agnostic -- `VLEN` is a runtime property of the hart --
-//! while `MR` and `NR` must be const generics, since they select the packing
-//! format. Kernels reconcile the two by fixing `(MR, NR, LMUL)` and pinning
-//! `vl` to `MR`. `vsetvli` clamps to `VLMAX`, so such a kernel is correct
-//! wherever `VLMAX >= MR`, merely leaves lanes idle when `VLMAX > MR`, and
-//! computes a short tile when `VLMAX < MR`. Every kernel is therefore gated on
-//! [`vlmax_f32`] or [`vlmax_f16`] reaching its `MR`.
+//! The element-wise and reduction kernels strip-mine on `vsetvli`, so they are
+//! vector-length agnostic and run on any hart with V. The matmul kernels
+//! cannot be: `MR` and `NR` are const generics because they select the packing
+//! format, while `VLEN` is only known at run time. Those kernels fix
+//! `(MR, NR, LMUL)` and pin `vl` to `MR`, which `vsetvli` clamps to `VLMAX` --
+//! correct wherever `VLMAX >= MR`, idle lanes above it, and a short tile below
+//! it. Each is therefore gated on [`vlmax_f32`] or [`vlmax_f16`] reaching its
+//! `MR`.
 
-use crate::Ops;
+use crate::frame::by_scalar::ByScalarKer;
+use crate::frame::element_wise::ElementWiseKer;
+use crate::frame::reduce::ReduceKer;
+use crate::frame::unicast::UnicastKer;
+use crate::{BinOp, DatumType, LinalgRegistry, Ops};
 
-// `tract_rvv` is set by build.rs only when the assembler could encode RVV 1.0;
-// without it the kernel symbols do not exist and dispatch stays generic.
+// The element-wise and reduction kernels are Rust `asm!` blocks, so they need
+// only rustc's own assembler and are always compiled. The matmul kernels are
+// `.S` files, and exist only when build.rs found an external assembler able to
+// encode RVV 1.0 -- which is what `tract_rvv` records.
+mod by_scalar;
+mod reduce;
 #[cfg(tract_rvv)]
 mod rvv;
+mod unicast;
+
+pub use by_scalar::*;
+pub use reduce::*;
 #[cfg(tract_rvv)]
 pub use rvv::*;
+pub use unicast::*;
 
 /// `AT_HWCAP` -- see `getauxval(3)`.
 const AT_HWCAP: libc::c_ulong = 16;
@@ -112,11 +125,40 @@ pub fn vlmax_f16(lmul: usize) -> usize {
     vlenb() * lmul / std::mem::size_of::<crate::f16>()
 }
 
-pub fn plug(_ops: &mut Ops) {
-    if has_rvv() {
-        #[cfg(tract_rvv)]
-        rvv::plug(_ops);
+pub fn plug(ops: &mut Ops) {
+    if !has_rvv() {
+        return;
     }
+    ops.mul_by_scalar_f32 = Box::new(|| rvv_mul_by_scalar_f32::ew());
+    ops.max_f32 = Box::new(|| rvv_max_f32::red());
+    ops.min_f32 = Box::new(|| rvv_min_f32::red());
+    ops.sum_f32 = Box::new(|| rvv_sum_f32::red());
+    #[cfg(tract_rvv)]
+    rvv::plug(ops);
+}
+
+pub(crate) fn register_all_by_scalar(registry: &mut LinalgRegistry) {
+    if !has_rvv() {
+        return;
+    }
+    registry.insert((BinOp::Mul, DatumType::F32), Box::new(|| rvv_mul_by_scalar_f32::bin()));
+    registry.insert((BinOp::Add, DatumType::F32), Box::new(|| rvv_add_by_scalar_f32::bin()));
+    registry.insert((BinOp::Sub, DatumType::F32), Box::new(|| rvv_sub_by_scalar_f32::bin()));
+    registry.insert((BinOp::SubF, DatumType::F32), Box::new(|| rvv_subf_by_scalar_f32::bin()));
+    registry.insert((BinOp::Min, DatumType::F32), Box::new(|| rvv_min_by_scalar_f32::bin()));
+    registry.insert((BinOp::Max, DatumType::F32), Box::new(|| rvv_max_by_scalar_f32::bin()));
+}
+
+pub(crate) fn register_all_unicast(registry: &mut LinalgRegistry) {
+    if !has_rvv() {
+        return;
+    }
+    registry.insert((BinOp::Mul, DatumType::F32), Box::new(|| rvv_unicast_mul_f32::bin()));
+    registry.insert((BinOp::Add, DatumType::F32), Box::new(|| rvv_unicast_add_f32::bin()));
+    registry.insert((BinOp::Sub, DatumType::F32), Box::new(|| rvv_unicast_sub_f32::bin()));
+    registry.insert((BinOp::SubF, DatumType::F32), Box::new(|| rvv_unicast_subf_f32::bin()));
+    registry.insert((BinOp::Min, DatumType::F32), Box::new(|| rvv_unicast_min_f32::bin()));
+    registry.insert((BinOp::Max, DatumType::F32), Box::new(|| rvv_unicast_max_f32::bin()));
 }
 
 #[cfg(test)]
