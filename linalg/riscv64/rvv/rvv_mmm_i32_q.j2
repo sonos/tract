@@ -1,0 +1,145 @@
+// vim: ft=asm
+{#
+   Quantised fused ops for the i32 tier, shared by every geometry.
+
+   All three follow the reference in generic/rounding.rs, which rounds in
+   sign-magnitude rather than by arithmetic shift:
+
+       half = 1 << (shift - 1)
+       r    = (|v| + half + nudge) >> shift
+       out  = signum(v) * r
+
+   with nudge selecting the tie behaviour. signum needs no special case at
+   v == 0: half + nudge never exceeds 1 << (shift - 1), which shifts to zero
+   for every shift >= 1, so all six policies already yield 0 there.
+
+   MinusInf and PlusInf nudge on the sign of the *original* value, which is
+   gone once |v| overwrites it -- but the negative mask in v0 was taken before
+   that, and PlusInf's v <= 0 differs from v < 0 only at v == 0, where the
+   result is 0 whatever the nudge. So v0 alone serves both.
+
+   Callers set t1 = MR, t2 = shift, t3 = half, and leave vtype at the width
+   the arithmetic runs in.
+#}
+
+{% macro nudge(policy, acc, q) %}
+{% if policy == "zero" %}
+    vadd.vi     v{{acc}}, v{{acc}}, -1
+{% elif policy == "away" %}
+{% elif policy == "minus_inf" %}
+    vmv.v.i     v{{q}}, -1
+    vmerge.vxm  v{{q}}, v{{q}}, x0, v0
+    vadd.vv     v{{acc}}, v{{acc}}, v{{q}}
+{% elif policy == "plus_inf" %}
+    li          t4, -1
+    vmv.v.i     v{{q}}, 0
+    vmerge.vxm  v{{q}}, v{{q}}, t4, v0
+    vadd.vv     v{{acc}}, v{{acc}}, v{{q}}
+{% elif policy == "even" %}
+    vsra.vx     v{{q}}, v{{acc}}, t2
+    vand.vi     v{{q}}, v{{q}}, 1
+    vadd.vi     v{{q}}, v{{q}}, -1
+    vadd.vv     v{{acc}}, v{{acc}}, v{{q}}
+{% elif policy == "odd" %}
+    vsra.vx     v{{q}}, v{{acc}}, t2
+    vand.vi     v{{q}}, v{{q}}, 1
+    vsub.vv     v{{acc}}, v{{acc}}, v{{q}}
+{% endif %}
+{% endmacro %}
+
+{# Rounds one register group in place at the current vtype width, using a
+   single scratch group. The mask is taken before |v| overwrites the sign. #}
+{% macro round_in_place(acc, policy, q) %}
+    vmslt.vx    v0, v{{acc}}, x0
+    vneg.v      v{{q}}, v{{acc}}
+    vmerge.vvm  v{{acc}}, v{{acc}}, v{{q}}, v0
+    {{ nudge(policy, acc, q) }}
+    vadd.vx     v{{acc}}, v{{acc}}, t3
+    vsra.vx     v{{acc}}, v{{acc}}, t2
+    vneg.v      v{{q}}, v{{acc}}
+    vmerge.vvm  v{{acc}}, v{{acc}}, v{{q}}, v0
+{% endmacro %}
+
+{# RoundingPolicy has Native=0 first, and Native is the one value no kernel
+   implements, so it falls through to .unsupported. #}
+{% macro dispatch(prefix) %}
+    li          t4, 1
+    beq         t5, t4, .{{prefix}}_zero
+    li          t4, 2
+    beq         t5, t4, .{{prefix}}_away
+    li          t4, 3
+    beq         t5, t4, .{{prefix}}_minus_inf
+    li          t4, 4
+    beq         t5, t4, .{{prefix}}_plus_inf
+    li          t4, 5
+    beq         t5, t4, .{{prefix}}_even
+    li          t4, 6
+    beq         t5, t4, .{{prefix}}_odd
+    j           .unsupported
+{% endmacro %}
+
+// RoundingShiftRight(shift: +8, policy: +16). i32 throughout, so the
+// accumulators are rounded where they sit.
+.q_shr:
+    ld          t2, 8(a0)
+    ld          t5, 16(a0)
+    addi        t4, t2, -1
+    li          t3, 1
+    sll         t3, t3, t4
+    {{ dispatch("q_shr") }}
+
+{% for policy in ["zero", "away", "minus_inf", "plus_inf", "even", "odd"] %}
+.q_shr_{{policy}}:
+{% for j in range(nr) %}
+    {{ round_in_place(16 + j * al, policy, q1) }}
+{% endfor %}
+    j           .non_linear_loop
+{% endfor %}
+
+.q_shl:
+    ld          t2, 8(a0)
+{% for j in range(nr) %}
+    vsll.vx     v{{ 16 + j * al }}, v{{ 16 + j * al }}, t2
+{% endfor %}
+    j           .non_linear_loop
+
+// QScale(shift: +8, policy: +16, mult: +24). The product is i64, so this
+// widens to e64, rounds by shift + 31 there and truncates back, matching the
+// reference which computes in i64 and casts. A non-positive effective shift
+// means a plain left shift instead.
+.q_scale:
+    li          t1, {{mr}}
+    ld          t2, 8(a0)
+    ld          t5, 16(a0)
+    lw          t6, 24(a0)
+    addi        t2, t2, 31
+    blez        t2, .q_scale_shl
+    addi        t4, t2, -1
+    li          t3, 1
+    sll         t3, t3, t4
+    {{ dispatch("q_scale") }}
+
+{% for policy in ["zero", "away", "minus_inf", "plus_inf", "even", "odd"] %}
+.q_scale_{{policy}}:
+{% for j in range(nr) %}
+    vsetvli     t0, t1, e64, m{{ al * 2 }}, ta, ma
+    vsext.vf2   v{{q0}}, v{{ 16 + j * al }}
+    vmul.vx     v{{q0}}, v{{q0}}, t6
+    {{ round_in_place(q0, policy, q1) }}
+    vsetvli     t0, t1, e32, m{{al}}, ta, ma
+    vnsra.wi    v{{ 16 + j * al }}, v{{q0}}, 0
+{% endfor %}
+    j           .non_linear_loop
+{% endfor %}
+
+.q_scale_shl:
+    neg         t2, t2
+{% for j in range(nr) %}
+    vsetvli     t0, t1, e64, m{{ al * 2 }}, ta, ma
+    vsext.vf2   v{{q0}}, v{{ 16 + j * al }}
+    vmul.vx     v{{q0}}, v{{q0}}, t6
+    vsll.vx     v{{q0}}, v{{q0}}, t2
+    vsetvli     t0, t1, e32, m{{al}}, ta, ma
+    vnsra.wi    v{{ 16 + j * al }}, v{{q0}}, 0
+{% endfor %}
+    j           .non_linear_loop
