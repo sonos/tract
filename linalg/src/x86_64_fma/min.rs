@@ -24,7 +24,9 @@ unsafe fn x86_64_fma_min_f32_32n_run(buf: &[f32]) -> f32 {
         let ptr = buf.as_ptr();
         let mut acc = f32::MAX;
         std::arch::asm!("
-            vbroadcastss ymm0, xmm0
+            // reg-source vbroadcastss needs avx2; this kernel must stay avx-safe
+            vpermilps xmm0, xmm0, 0
+            vinsertf128 ymm0, ymm0, xmm0, 1
             vmovaps ymm1, ymm0
             vmovaps ymm2, ymm0
             vmovaps ymm3, ymm0
@@ -63,5 +65,5 @@ unsafe fn x86_64_fma_min_f32_32n_run(buf: &[f32]) -> f32 {
 #[cfg(test)]
 mod test_x86_64_fma_min_f32_32n {
     use super::*;
-    crate::min_frame_tests!(is_x86_feature_detected!("avx2"), f32, x86_64_fma_min_f32_32n);
+    crate::min_frame_tests!(is_x86_feature_detected!("avx"), f32, x86_64_fma_min_f32_32n);
 }

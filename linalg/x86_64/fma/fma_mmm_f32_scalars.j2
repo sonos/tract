@@ -19,8 +19,8 @@
         vbroadcastss    ymm15, xmm15
     {% endif %}
 
-    // ymm14 <- all zero
-    vpxor           ymm14, ymm14, ymm14
+    // ymm14 <- all zero (vxorps: 256-bit vpxor needs avx2, this must stay avx-safe)
+    vxorps          ymm14, ymm14, ymm14
 
     {% for reg in range(from, to + 1) %}
         // ymm12 <- alpha * x
