@@ -49,6 +49,9 @@ pub fn has_fp16() -> bool {
 #[cfg(any(target_arch = "arm", target_arch = "armv7", target_arch = "arm"))]
 pub mod arm32;
 
+#[cfg(target_arch = "riscv64")]
+pub mod riscv64;
+
 #[cfg(all(target_family = "wasm", target_feature = "simd128"))]
 pub mod wasm;
 
@@ -268,6 +271,8 @@ pub fn best() -> Ops {
     arm32::plug(&mut ops);
     #[cfg(target_arch = "aarch64")]
     arm64::plug(&mut ops);
+    #[cfg(target_arch = "riscv64")]
+    riscv64::plug(&mut ops);
     #[cfg(all(target_family = "wasm", target_feature = "simd128"))]
     wasm::plug(&mut ops);
 

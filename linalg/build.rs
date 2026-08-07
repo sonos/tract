@@ -53,6 +53,35 @@ fn assembler_supports_dotprod() -> bool {
         .is_ok()
 }
 
+// Probe whether the target assembler can encode ratified RVV 1.0. `.option
+// arch` arrived in binutils 2.36 and the 1.0 encodings in 2.38; anything older
+// either rejects the directive outright or knows only the incompatible 0.7.1
+// draft. When the probe fails we skip the RVV kernels and the `tract_rvv` cfg,
+// and dispatch falls back to the generic Rust kernels.
+fn assembler_supports_rvv() -> bool {
+    cc::Build::new()
+        .file("riscv64/rvv/dummy_rvv.S")
+        .cargo_metadata(false)
+        .cargo_warnings(false)
+        .warnings(false)
+        .try_compile("tract_rvv_probe")
+        .is_ok()
+}
+
+// Probe whether the target assembler can encode Zvfh (f16 vector arithmetic).
+// Zvfh reached binutils later than base RVV 1.0, so a toolchain can assemble
+// the f32 kernels and still reject these. When the probe fails we skip the f16
+// kernels and the `tract_rvv_zvfh` cfg, and f16 matmul stays generic.
+fn assembler_supports_zvfh() -> bool {
+    cc::Build::new()
+        .file("riscv64/rvv/dummy_rvv_zvfh.S")
+        .cargo_metadata(false)
+        .cargo_warnings(false)
+        .warnings(false)
+        .try_compile("tract_rvv_zvfh_probe")
+        .is_ok()
+}
+
 // Probe whether the target assembler can encode `vpdpbusd ymm` (AVX-512 VNNI
 // with AVX-512 VL, i.e. the 256-bit form). binutils gained this in ~2.30
 // (2018); the Debian stretch toolchain ships 2.28 and rejects the mnemonic.
@@ -256,6 +285,10 @@ fn main() {
     // Set below only when the assembler accepts the `{vex}` prefix on
     // VPDPBUSD (binutils >= 2.36) -- needed for the AVX-VNNI ymm kernel.
     println!("cargo:rustc-check-cfg=cfg(tract_avxvnni)");
+    // Set below only when the riscv64 assembler probe for RVV 1.0 passes.
+    println!("cargo:rustc-check-cfg=cfg(tract_rvv)");
+    // Set below only when the riscv64 assembler probe for Zvfh also passes.
+    println!("cargo:rustc-check-cfg=cfg(tract_rvv_zvfh)");
 
     match arch.as_ref() {
         "x86_64" => {
@@ -501,8 +534,104 @@ fn main() {
                 config.cc().files(files).compile("arm64fp16")
             }
         }
+        "riscv64" if assembler_supports_rvv() => {
+            const F32: &str = "riscv64/rvv/rvv_mmm.S.j2";
+            let mut files = render_rvv_kernels(F32, "f32", "4", "+v", RVV_F32_KERNELS, &suffix);
+            files.extend(render_rvv_kernels(
+                "riscv64/rvv/rvv_mmm_i32.S.j2",
+                "i32",
+                "4",
+                "+v",
+                RVV_I32_KERNELS,
+                &suffix,
+            ));
+            println!("cargo:rustc-cfg=tract_rvv");
+            if assembler_supports_zvfh() {
+                files.extend(render_rvv_kernels(
+                    F32,
+                    "f16",
+                    "2",
+                    "+v, +zvfh, +zfhmin",
+                    RVV_F16_KERNELS,
+                    &suffix,
+                ));
+                println!("cargo:rustc-cfg=tract_rvv_zvfh");
+            }
+            cc::Build::new().files(files).compile("rvv");
+        }
         _ => {}
     }
+}
+
+/// `(geometry, MR, NR, LMUL)`. The geometry string ends up in the exported
+/// symbol, and the Rust side derives each kernel's dispatch predicate from the
+/// same MR and LMUL, so a hart with `VLMAX < MR` never sees it.
+///
+/// LMUL is the smallest that both reaches MR on the narrowest hart the kernel
+/// targets and leaves room for NR accumulator groups plus one for A.
+///
+///   8x8  m2   VLEN >= 128   universal GEMM tile
+///   16x8 m2   VLEN >= 256   SpacemiT K1 / X100, twice the tile for free
+///   32x1 m8   VLEN >= 128   universal GEMV
+///   64x1 m8   VLEN >= 256   wider GEMV where the registers allow it
+const RVV_F32_KERNELS: &[(&str, &str, &str, &str)] = &[
+    ("8x8", "8", "8", "2"),
+    ("16x8", "16", "8", "2"),
+    ("32x1", "32", "1", "8"),
+    ("64x1", "64", "1", "8"),
+];
+
+/// As [`RVV_F32_KERNELS`]; SEW=16 doubles VLMAX, so every tile is twice as
+/// tall for the same LMUL and VLEN.
+/// As [`RVV_F32_KERNELS`], for the i32 accumulator tier. LMUL here is the one
+/// the i8 inner loop runs at; the accumulators, and therefore the dispatch
+/// predicate, sit at twice it.
+///
+///   8x8  m1   VLEN >= 128
+///   16x8 m1   VLEN >= 256
+///   16x1 m2   VLEN >= 128
+///   32x1 m2   VLEN >= 256
+const RVV_I32_KERNELS: &[(&str, &str, &str, &str)] = &[
+    ("8x8", "8", "8", "1"),
+    ("16x8", "16", "8", "1"),
+    ("16x1", "16", "1", "2"),
+    ("32x1", "32", "1", "2"),
+];
+
+const RVV_F16_KERNELS: &[(&str, &str, &str, &str)] = &[
+    ("16x8", "16", "8", "2"),
+    ("32x8", "32", "8", "2"),
+    ("64x1", "64", "1", "8"),
+    ("128x1", "128", "1", "8"),
+];
+
+fn render_rvv_kernels(
+    tmpl: &str,
+    dt: &'static str,
+    esize: &'static str,
+    arch: &'static str,
+    kernels: &[(&'static str, &'static str, &'static str, &'static str)],
+    suffix: &str,
+) -> Vec<path::PathBuf> {
+    let out_dir = path::PathBuf::from(var("OUT_DIR"));
+    kernels
+        .iter()
+        .map(|(geo, mr, nr, lmul)| {
+            let tmpl = path::Path::new(tmpl);
+            let out = out_dir.join(format!("rvv_mmm_{dt}_{geo}_{suffix}.S"));
+            let globals = [
+                ("dt", dt),
+                ("esize", esize),
+                ("arch", arch),
+                ("geo", *geo),
+                ("mr", *mr),
+                ("nr", *nr),
+                ("lmul", *lmul),
+            ];
+            preprocess_file(tmpl, &out, &globals, suffix, false);
+            out
+        })
+        .collect()
 }
 
 type Variant = (&'static str, Vec<&'static str>);
