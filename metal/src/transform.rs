@@ -442,15 +442,10 @@ fn add_routed_bias(
     route_expert_ids: OutletId,
 ) -> TractResult<OutletId> {
     let name = name.into();
-    let gathered = target.wire_node(
-        format!("{name}.bias-gather"),
-        tract_gpu::ops::gather::GpuGather::new(0, "Metal", kernels::array::metal_gather_dispatch),
-        &[bias, route_expert_ids],
-    )?[0];
     Ok(target.wire_node(
         format!("{name}.bias-add"),
-        kernels::bin_ops::metal_bin_op(Box::new(tract_core::ops::math::Add)),
-        &[value, gathered],
+        ops::MetalRoutedBiasAdd,
+        &[value, bias, route_expert_ids],
     )?[0])
 }
 
