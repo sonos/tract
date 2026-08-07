@@ -142,7 +142,8 @@ case "$PLATFORM" in
 
     "aarch64-unknown-linux-gnu" | "armv6vfp-unknown-linux-gnueabihf" | "armv7-unknown-linux-gnueabihf" | \
         "aarch64-unknown-linux-musl" | "armv7-unknown-linux-musl" | "cortexa53-unknown-linux-musl" | \
-        "riscv64gc-unknown-linux-musl" )
+        "riscv64gc-unknown-linux-musl" | \
+        "riscv64gc-unknown-linux-gnu" | "rvv128-unknown-linux-gnu" )
 
         ensure_cargo_dinghy
         case "$PLATFORM" in
@@ -217,6 +218,31 @@ case "$PLATFORM" in
                 # targets here); force a static binary so it runs on the glibc boards, which
                 # have no musl loader.
                 export CARGO_TARGET_RISCV64GC_UNKNOWN_LINUX_MUSL_RUSTFLAGS="-C target-feature=+crt-static"
+                ;;
+            # RVV is vector-length agnostic and the mmm kernels are gated on the
+            # hart's VLEN, so the two entries below differ only in vlen: 256 is
+            # the SpacemiT K1/X100 shape, 128 the Sophgo SG2044 one, and they
+            # select disjoint halves of the kernel set.
+            #
+            # -cpu max rather than a profile model: rva23u64 would describe real
+            # silicon more closely but predates neither the CI image's qemu nor
+            # its glibc safely, and the generic rv64 model cannot run Debian's
+            # riscv64 glibc at all (it SIGILLs on a trivial static binary).
+            "riscv64gc-unknown-linux-gnu")
+                export ARCH=riscv64
+                export QEMU_ARCH=riscv64
+                export LIBC_ARCH=riscv64
+                export QEMU_OPTS="-cpu max,vlen=256"
+                export RUSTC_TRIPLE=riscv64gc-unknown-linux-gnu
+                export DEBIAN_TRIPLE=riscv64-linux-gnu
+                ;;
+            "rvv128-unknown-linux-gnu")
+                export ARCH=riscv64
+                export QEMU_ARCH=riscv64
+                export LIBC_ARCH=riscv64
+                export QEMU_OPTS="-cpu max,vlen=128"
+                export RUSTC_TRIPLE=riscv64gc-unknown-linux-gnu
+                export DEBIAN_TRIPLE=riscv64-linux-gnu
                 ;;
             *)
                 echo "unsupported platform $PLATFORM"
