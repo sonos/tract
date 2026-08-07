@@ -20,7 +20,7 @@ fn dispatch_eval(
     ensure!(key.datum_type() == DatumType::F16 && value.datum_type() == DatumType::F16);
     ensure!(log_decay.datum_type() == DatumType::F32);
     ensure!(beta.datum_type() == DatumType::F16);
-    ensure!(initial_state.datum_type() == DatumType::F32);
+    ensure!(matches!(initial_state.datum_type(), DatumType::F16 | DatumType::F32));
     ensure!(query.shape() == key.shape() && query.shape() == value.shape());
     // Layout matches the CPU op: q/k/v [b, S, h, w], gates [b, S, h],
     // state [b, h, w, w].
@@ -39,7 +39,12 @@ fn dispatch_eval(
     for tensor in [query, key, value, log_decay, beta, initial_state, output, final_state] {
         stream.retain_tensor(tensor);
     }
-    let pipeline = stream.load_pipeline(LibraryName::GdnRecurrent, "gdn_recurrent_f16")?;
+    let kernel_name = if initial_state.datum_type() == DatumType::F16 {
+        "gdn_recurrent_f16_state_f16"
+    } else {
+        "gdn_recurrent_f16"
+    };
+    let pipeline = stream.load_pipeline(LibraryName::GdnRecurrent, kernel_name)?;
     let command_buffer = stream.command_buffer();
     command_buffer.encode(|encoder| {
         encoder.set_compute_pipeline_state(&pipeline);
@@ -97,15 +102,15 @@ crate::register_metal_op!(
         // other dtype mixes (e.g. an all-f32 test export) stay on the CPU op.
         let facts = source.node_input_facts(node.id)?;
         let dts: Vec<DatumType> = facts.iter().map(|f| f.datum_type).collect();
-        if dts
-            != [
-                DatumType::F16,
-                DatumType::F16,
-                DatumType::F16,
-                DatumType::F32,
-                DatumType::F16,
-                DatumType::F32,
-            ]
+        // q/k/v/beta f16, log_decay f32; the recurrent state may be f16
+        // (graph exported with -idt f16) or f32, each has its kernel.
+        if dts[..5] != [
+            DatumType::F16,
+            DatumType::F16,
+            DatumType::F16,
+            DatumType::F32,
+            DatumType::F16,
+        ] || !matches!(dts[5], DatumType::F16 | DatumType::F32)
         {
             return Ok(None);
         }

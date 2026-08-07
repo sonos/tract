@@ -62,6 +62,65 @@ kernel void gdn_recurrent_f16(
   }
 }
 
+// Variant with an f16 recurrent state (graph exported with -idt f16):
+// identical math, f32 accumulation, state roundtrips through half like
+// the CPU op does for an f16-state graph.
+kernel void gdn_recurrent_f16_state_f16(
+    device const half *query [[buffer(0)]],
+    device const half *key [[buffer(1)]],
+    device const half *value [[buffer(2)]],
+    device const float *log_decay [[buffer(3)]],
+    device const half *beta [[buffer(4)]],
+    device const half *initial_state [[buffer(5)]],
+    device half *output [[buffer(6)]],
+    device half *final_state [[buffer(7)]],
+    constant int &heads [[buffer(8)]],
+    constant int &width [[buffer(9)]],
+    constant int &s_len [[buffer(10)]],
+    constant int &batch [[buffer(11)]],
+    uint gid [[thread_position_in_grid]]) {
+  const int column = gid % width;
+  const int head = (gid / width) % heads;
+  const int b = gid / (width * heads);
+  if (b >= batch) return;
+  const int matrix_base = (b * heads + head) * width * width;
+  const float out_scale = rsqrt(float(width));
+  for (int s = 0; s < s_len; ++s) {
+    const int vector_base = ((b * s_len + s) * heads + head) * width;
+    const int gate_ix = (b * s_len + s) * heads + head;
+    float q_norm = 0.0f;
+    float k_norm = 0.0f;
+    for (int row = 0; row < width; ++row) {
+      const float q = float(query[vector_base + row]);
+      const float k = float(key[vector_base + row]);
+      q_norm += q * q;
+      k_norm += k * k;
+    }
+    const float q_inv = rsqrt(q_norm + 1.0e-6f);
+    const float k_inv = rsqrt(k_norm + 1.0e-6f);
+    const float decay = exp(log_decay[gate_ix]);
+    device const half *state_in = (s == 0) ? initial_state : final_state;
+    float predicted = 0.0f;
+    for (int row = 0; row < width; ++row) {
+      predicted += float(key[vector_base + row]) * k_inv
+          * float(state_in[matrix_base + row * width + column]) * decay;
+    }
+    const float residual =
+        (float(value[vector_base + column]) - predicted)
+        * float(beta[gate_ix]);
+    float result = 0.0f;
+    for (int row = 0; row < width; ++row) {
+      const int offset = matrix_base + row * width + column;
+      const float next = float(state_in[offset]) * decay
+          + float(key[vector_base + row]) * k_inv * residual;
+      final_state[offset] = half(next);
+      result += float(query[vector_base + row]) * q_inv * next;
+    }
+    output[vector_base + column] = half(result * out_scale);
+  }
+}
+
+
 // Stateful causal depthwise conv1d + SiLU over the whole sequence.
 // Layout matches the CPU op: input/output [b, C, S], weight [C, k],
 // state [b, C, k]. One thread per (batch, channel): the sequential S
