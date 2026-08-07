@@ -91,6 +91,8 @@ jobs:
           - aarch64-unknown-linux-musl
           - cortexa53-unknown-linux-musl
           - armv7-unknown-linux-musl
+          - riscv64gc-unknown-linux-gnu
+          - rvv128-unknown-linux-gnu
           - aarch64-linux-android
           - armv7-linux-androideabi
           - i686-linux-android
