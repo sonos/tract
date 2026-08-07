@@ -12,15 +12,52 @@
 //! declare the same pair of widths for tiles twice as tall. They need Zvfh on
 //! top, and the assembler needs to know it: `tract_rvv_zvfh` is the build-time
 //! half of that, and without it f16 stays on the generic kernels.
+//!
+//! The i32 set runs its i8 inner loop at half the accumulator `LMUL`, so the
+//! `(MR, LMUL)` in its build.rs table is not the pair its width follows from --
+//! the accumulators are, and they sit one `LMUL` step above. That lands the four
+//! tiles on the same two widths again.
 
 use crate::DatumType;
 use crate::isa::{Isa, IsaSet};
 use crate::mmm::{Query, Suitable};
+use crate::pack::PackedFormat;
 
 MMMExternKernel!(riscv64; rvv_mmm_f32_8x8  <f32>( 8, 8)@(16, 16) isa(RiscV64V));
 MMMExternKernel!(riscv64; rvv_mmm_f32_16x8 <f32>(16, 8)@(16, 16) isa(RiscV64Vlen256));
 MMMExternKernel!(riscv64; rvv_mmm_f32_32x1 <f32>(32, 1)@(16, 16) isa(RiscV64V));
 MMMExternKernel!(riscv64; rvv_mmm_f32_64x1 <f32>(64, 1)@(16, 16) isa(RiscV64Vlen256));
+
+MMMExternKernel!(riscv64; rvv_mmm_i32_8x8 <i32>( 8, 8)@(16, 16) isa(RiscV64V)
+    packing[1] = i8i8 => |k| k.with_packing(PackedFormat::new(DatumType::I8, 8, 16), PackedFormat::new(DatumType::I8, 8, 16));
+    store(i8)
+);
+MMMExternKernel!(riscv64; rvv_mmm_i32_16x8<i32>(16, 8)@(16, 16) isa(RiscV64Vlen256)
+    packing[1] = i8i8 => |k| k.with_packing(PackedFormat::new(DatumType::I8, 16, 16), PackedFormat::new(DatumType::I8, 8, 16));
+    store(i8)
+);
+/// The wide step's matvec is `32x1`, a packing group away from its `16x8`, so on a wide hart
+/// this kernel is the only GEMV sharing the `MR = 16` packing and dropping it leaves that group
+/// usable for one role out of two. There it is a peer of the step above. On a narrower hart it
+/// already sits beside `8x8` on its own rung, and lifting it there would drop that matrix kernel
+/// instead — the same hole, at the other end of the ladder.
+const I32_16X1_PEER: fn() -> isize = || {
+    if crate::isa::native().has(Isa::RiscV64Vlen256) {
+        crate::isa::peer_of(Isa::RiscV64V, Isa::RiscV64Vlen256)
+    } else {
+        0
+    }
+};
+
+MMMExternKernel!(riscv64; rvv_mmm_i32_16x1<i32>(16, 1)@(16, 1) isa(RiscV64V)
+    packing[1] = i8i8 => |k| k.with_packing(PackedFormat::new(DatumType::I8, 16, 16), PackedFormat::new(DatumType::I8, 1, 1));
+    boost(I32_16X1_PEER)
+    store(i8)
+);
+MMMExternKernel!(riscv64; rvv_mmm_i32_32x1<i32>(32, 1)@(16, 1) isa(RiscV64Vlen256)
+    packing[1] = i8i8 => |k| k.with_packing(PackedFormat::new(DatumType::I8, 32, 16), PackedFormat::new(DatumType::I8, 1, 1));
+    store(i8)
+);
 
 #[cfg(tract_rvv_zvfh)]
 mod zvfh {
@@ -62,6 +99,12 @@ fn preferred(
             (false, true) => zvfh::rvv_mmm_f16_32x8.name.as_str(),
             (false, false) => zvfh::rvv_mmm_f16_16x8.name.as_str(),
         }),
+        DatumType::I32 => Some(match (gemv, wide) {
+            (true, true) => rvv_mmm_i32_32x1.name.as_str(),
+            (true, false) => rvv_mmm_i32_16x1.name.as_str(),
+            (false, true) => rvv_mmm_i32_16x8.name.as_str(),
+            (false, false) => rvv_mmm_i32_8x8.name.as_str(),
+        }),
         _ => None,
     }
 }
@@ -81,12 +124,18 @@ mod test {
     use super::*;
     use crate::frame::mmm::{FusedKerSpec, MatMatMulKer};
 
-    /// `(name, MR, LMUL, SEW in bytes)` mirroring the build.rs kernel tables.
+    /// `(name, MR, LMUL, SEW in bytes)` mirroring the build.rs kernel tables. The
+    /// i32 entries carry the accumulator `LMUL`, twice the one their table lists,
+    /// since that is the state whose `VLMAX` has to reach `MR`.
     const GEOMETRIES: &[(&str, usize, usize, usize)] = &[
         ("f32 8x8", 8, 2, 4),
         ("f32 16x8", 16, 2, 4),
         ("f32 32x1", 32, 8, 4),
         ("f32 64x1", 64, 8, 4),
+        ("i32 8x8", 8, 2, 4),
+        ("i32 16x8", 16, 2, 4),
+        ("i32 16x1", 16, 4, 4),
+        ("i32 32x1", 32, 4, 4),
         #[cfg(tract_rvv_zvfh)]
         ("f16 16x8", 16, 2, 2),
         #[cfg(tract_rvv_zvfh)]
@@ -104,6 +153,10 @@ mod test {
             rvv_mmm_f32_16x8.runnable(),
             rvv_mmm_f32_32x1.runnable(),
             rvv_mmm_f32_64x1.runnable(),
+            rvv_mmm_i32_8x8.runnable(),
+            rvv_mmm_i32_16x8.runnable(),
+            rvv_mmm_i32_16x1.runnable(),
+            rvv_mmm_i32_32x1.runnable(),
         ];
         #[cfg(tract_rvv_zvfh)]
         runnable.extend([
@@ -151,6 +204,10 @@ mod test {
             Box::new(|| rvv_mmm_f32_16x8.kernel(&[FusedKerSpec::Done])),
             Box::new(|| rvv_mmm_f32_32x1.kernel(&[FusedKerSpec::Done])),
             Box::new(|| rvv_mmm_f32_64x1.kernel(&[FusedKerSpec::Done])),
+            Box::new(|| rvv_mmm_i32_8x8.kernel(&[FusedKerSpec::Done])),
+            Box::new(|| rvv_mmm_i32_16x8.kernel(&[FusedKerSpec::Done])),
+            Box::new(|| rvv_mmm_i32_16x1.kernel(&[FusedKerSpec::Done])),
+            Box::new(|| rvv_mmm_i32_32x1.kernel(&[FusedKerSpec::Done])),
         ];
         #[cfg(tract_rvv_zvfh)]
         runners.extend::<Vec<Box<dyn Fn() -> isize>>>(vec![
