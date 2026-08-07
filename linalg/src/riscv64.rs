@@ -12,6 +12,9 @@
 //! computes a short tile when `VLMAX < MR`. Each kernel therefore declares the
 //! narrowest vector unit that reaches its `MR`: [`Isa::RiscV64V`] for the
 //! `VLEN >= 128` every RVV 1.0 hart mandates, [`Isa::RiscV64Vlen256`] above it.
+//! The element-wise and reduction kernels have no such constraint -- they
+//! strip-mine on `vsetvli` and take whatever `vl` the hart grants -- so they
+//! declare the vector unit and nothing more.
 //! `SEW` is the other half of `VLMAX`, so the f16 tiles are twice as tall as
 //! the f32 ones at the same `LMUL` and reuse those same two widths, with
 //! [`Isa::RiscV64Zvfh`] on top for the arithmetic itself.
@@ -22,10 +25,15 @@
 
 use crate::isa::{Arch, Isa, IsaSet};
 
-// `tract_rvv` is set by build.rs only when the assembler could encode RVV 1.0;
-// without it the kernel symbols do not exist and dispatch stays generic.
+// The element-wise and reduction kernels are Rust `asm!` blocks, so rustc's own
+// assembler is the only one they need. The matmul kernels are `.S` files and exist only where
+// build.rs found an external assembler that could encode RVV 1.0 -- which is what `tract_rvv`
+// records, and why they alone are gated on it.
+mod by_scalar;
+mod reduce;
 #[cfg(tract_rvv)]
 mod rvv;
+mod unicast;
 #[cfg(tract_rvv)]
 pub use rvv::*;
 
