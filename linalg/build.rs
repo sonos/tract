@@ -536,10 +536,20 @@ fn main() {
             }
         }
         "riscv64" if assembler_supports_rvv() => {
-            let mut files = render_rvv_kernels("f32", "4", "+v", RVV_F32_KERNELS, &suffix);
+            const F32: &str = "riscv64/rvv/rvv_mmm.S.j2";
+            let mut files = render_rvv_kernels(F32, "f32", "4", "+v", RVV_F32_KERNELS, &suffix);
+            files.extend(render_rvv_kernels(
+                "riscv64/rvv/rvv_mmm_i32.S.j2",
+                "i32",
+                "4",
+                "+v",
+                RVV_I32_KERNELS,
+                &suffix,
+            ));
             println!("cargo:rustc-cfg=tract_rvv");
             if assembler_supports_zvfh() {
                 files.extend(render_rvv_kernels(
+                    F32,
                     "f16",
                     "2",
                     "+v, +zvfh, +zfhmin",
@@ -574,6 +584,21 @@ const RVV_F32_KERNELS: &[(&str, &str, &str, &str)] = &[
 
 /// As [`RVV_F32_KERNELS`]; SEW=16 doubles VLMAX, so every tile is twice as
 /// tall for the same LMUL and VLEN.
+/// As [`RVV_F32_KERNELS`], for the i32 accumulator tier. LMUL here is the one
+/// the i8 inner loop runs at; the accumulators, and therefore the dispatch
+/// predicate, sit at twice it.
+///
+///   8x8  m1   VLEN >= 128
+///   16x8 m1   VLEN >= 256
+///   16x1 m2   VLEN >= 128
+///   32x1 m2   VLEN >= 256
+const RVV_I32_KERNELS: &[(&str, &str, &str, &str)] = &[
+    ("8x8", "8", "8", "1"),
+    ("16x8", "16", "8", "1"),
+    ("16x1", "16", "1", "2"),
+    ("32x1", "32", "1", "2"),
+];
+
 const RVV_F16_KERNELS: &[(&str, &str, &str, &str)] = &[
     ("16x8", "16", "8", "2"),
     ("32x8", "32", "8", "2"),
@@ -582,6 +607,7 @@ const RVV_F16_KERNELS: &[(&str, &str, &str, &str)] = &[
 ];
 
 fn render_rvv_kernels(
+    tmpl: &str,
     dt: &'static str,
     esize: &'static str,
     arch: &'static str,
@@ -592,7 +618,7 @@ fn render_rvv_kernels(
     kernels
         .iter()
         .map(|(geo, mr, nr, lmul)| {
-            let tmpl = path::Path::new("riscv64/rvv/rvv_mmm.S.j2");
+            let tmpl = path::Path::new(tmpl);
             let out = out_dir.join(format!("rvv_mmm_{dt}_{geo}_{suffix}.S"));
             let globals = [
                 ("dt", dt),
