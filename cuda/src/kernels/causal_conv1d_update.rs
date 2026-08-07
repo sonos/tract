@@ -88,7 +88,19 @@ pub fn cuda_causal_conv1d_update_launch(
 
 crate::register_cuda_op!(
     tract_transformers::ops::causal_conv1d_update::CausalConv1dUpdate,
-    |_source, _node, _op| {
+    |source, node, _op| {
+        // The cuda kernel is single-step (S == 1) and f16-only; the op's
+        // layout is [b, C, S]. Anything else stays on the CPU op until the
+        // kernel grows an S loop (the Metal one already has it).
+        let facts = source.node_input_facts(node.id)?;
+        let s_is_one = facts[0]
+            .shape
+            .as_concrete()
+            .map(|s| s.len() == 3 && s[2] == 1)
+            .unwrap_or(false);
+        if !s_is_one || facts.iter().any(|f| f.datum_type != DatumType::F16) {
+            return Ok(None);
+        }
         Ok(Some(Box::new(tract_gpu::ops::causal_conv1d_update::GpuCausalConv1dUpdate {
             backend_name: "Cuda",
             dispatch: cuda_causal_conv1d_update_launch,

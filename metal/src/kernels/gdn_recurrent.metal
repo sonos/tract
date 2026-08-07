@@ -62,6 +62,10 @@ kernel void gdn_recurrent_f16(
   }
 }
 
+// Stateful causal depthwise conv1d + SiLU over the whole sequence.
+// Layout matches the CPU op: input/output [b, C, S], weight [C, k],
+// state [b, C, k]. One thread per (batch, channel): the sequential S
+// loop reads the thread's own sliding window.
 kernel void causal_conv1d_update_f16(
     device const half *input [[buffer(0)]],
     device const half *weight [[buffer(1)]],
@@ -70,17 +74,36 @@ kernel void causal_conv1d_update_f16(
     device half *final_state [[buffer(4)]],
     constant int &channels [[buffer(5)]],
     constant int &kernel_width [[buffer(6)]],
-    uint channel [[thread_position_in_grid]]) {
-  if (channel >= uint(channels)) return;
-  const int base = channel * kernel_width;
-  float sum = 0.0f;
-  for (int tap = 0; tap < kernel_width - 1; ++tap) {
-    const half sample = initial_state[base + tap + 1];
-    final_state[base + tap] = sample;
-    sum += float(sample) * float(weight[base + tap]);
+    constant int &s_len [[buffer(7)]],
+    constant int &batch [[buffer(8)]],
+    uint gid [[thread_position_in_grid]]) {
+  const int channel = gid % channels;
+  const int b = gid / channels;
+  if (b >= batch) return;
+  const int state_base = (b * channels + channel) * kernel_width;
+  const int input_base = (b * channels + channel) * s_len;
+  const int weight_base = channel * kernel_width;
+  // Sliding window over concat(state, input); kernel_width is small
+  // (4 for Qwen3.5), keep the window in registers.
+  const int MAX_K = 8;
+  float window[MAX_K];
+  if (kernel_width > MAX_K) return;
+  for (int tap = 0; tap < kernel_width; ++tap) {
+    window[tap] = float(initial_state[state_base + tap]);
   }
-  const half newest = input[channel];
-  final_state[base + kernel_width - 1] = newest;
-  sum += float(newest) * float(weight[base + kernel_width - 1]);
-  output[channel] = half(sum / (1.0f + exp(-sum)));
+  for (int t = 0; t < s_len; ++t) {
+    // shift left, append the new sample: window becomes full[t+1 .. t+k]
+    for (int tap = 0; tap < kernel_width - 1; ++tap) {
+      window[tap] = window[tap + 1];
+    }
+    window[kernel_width - 1] = float(input[input_base + t]);
+    float sum = 0.0f;
+    for (int tap = 0; tap < kernel_width; ++tap) {
+      sum += window[tap] * float(weight[weight_base + tap]);
+    }
+    output[input_base + t] = half(sum / (1.0f + exp(-sum)));
+  }
+  for (int tap = 0; tap < kernel_width; ++tap) {
+    final_state[state_base + tap] = half(window[tap]);
+  }
 }
