@@ -1,0 +1,206 @@
+// vim: ft=asm
+{% set mr = mr | int %}{% set nr = nr | int %}{% set lmul = lmul | int %}{% set esize = esize | int %}
+{% set ew = esize * 8 %}
+{% set fl = "flw" if esize == 4 else "flh" %}
+{% set fzero = "fmv.w.x" if esize == 4 else "fmv.h.x" %}
+{% set va = 8 %}
+{% set vs = 24 if lmul == 8 else 4 %}
+
+// {{mr}}x{{nr}} {{dt}} matmul tile, RVV 1.0, SEW={{ew}}, LMUL={{lmul}}.
+//
+//   v{{va}}   packed A column, {{mr}} {{dt}}
+//   v{{vs}}   scratch: per-row operand, unicast, leaky relu
+//   v0    leaky relu mask
+{% for j in range(nr) %}
+//   v{{ 16 + j * lmul }}  accumulator, C tile column {{j}}
+{% endfor %}
+//
+// Accumulators start at v16 so the LMUL=8 case stays 8-aligned. Only
+// caller-saved registers are touched, so there is no frame.
+//
+// `vl` is pinned to {{mr}} for the whole call, which is what makes this kernel
+// VLEN-specific: vsetvli grants min(AVL, VLMAX), so a hart with VLMAX < {{mr}}
+// would compute a short tile rather than fail. Dispatch is gated on the vector
+// width that reaches vlmax_{{dt}}({{lmul}}) >= {{mr}}; the check below is the
+// backstop for the two disagreeing, and cannot fire on a hart with no vector
+// unit at all -- there the guard instruction is itself illegal.
+
+.option arch, {{arch}}
+.text
+.align 2
+
+.global {{G}}rvv_mmm_{{dt}}_{{geo}}_{{suffix}}
+{{G}}rvv_mmm_{{dt}}_{{geo}}_{{suffix}}:
+
+    li          t0, {{mr}}
+    vsetvli     t1, t0, e{{ew}}, m{{lmul}}, ta, ma
+    bne         t1, t0, .unsupported
+
+{% include "dispatcher.j2" %}
+
+// Packed A is column-major panels of {{mr}}, so a K step reads one contiguous
+// column; packed B is row-major panels of {{nr}}, so it reads {{nr}} scalars.
+// vfmacc.vf sources its scalar straight from an f register, so no broadcast is
+// needed.
+.add_mat_mul:
+    ld          t1, 8(a0)               // k
+    ld          a1, 16(a0)              // pa
+    ld          a2, 24(a0)              // pb
+
+    beqz        t1, .non_linear_loop
+
+.packed_packed_loop_1:
+    vle{{ew}}.v     v{{va}}, (a1)
+    addi        a1, a1, {{ mr * esize }}
+{% for j in range(nr) %}
+    {{fl}}         ft{{j}}, {{ j * esize }}(a2)
+{% endfor %}
+    addi        a2, a2, {{ nr * esize }}
+{% for j in range(nr) %}
+    vfmacc.vf   v{{ 16 + j * lmul }}, ft{{j}}, v{{va}}
+{% endfor %}
+    addi        t1, t1, -1
+    bnez        t1, .packed_packed_loop_1
+
+    j           .non_linear_loop
+
+.clear:
+{% for j in range(nr) %}
+    vmv.v.i     v{{ 16 + j * lmul }}, 0
+{% endfor %}
+    j           .non_linear_loop
+
+.load_tile:
+    ld          t1, 8(a0)
+{% for j in range(nr) %}
+    vle{{ew}}.v     v{{ 16 + j * lmul }}, (t1)
+{% if not loop.last %}
+    addi        t1, t1, {{ mr * esize }}
+{% endif %}
+{% endfor %}
+    j           .non_linear_loop
+
+{# ScalarSub is `scalar - acc` and ScalarSubF is `acc - scalar`, so the plain
+   form maps to the reversed vector op. #}
+{% for label, op in [
+    ("scalar_min", "vfmin.vf"),
+    ("scalar_max", "vfmax.vf"),
+    ("scalar_mul", "vfmul.vf"),
+    ("scalar_add", "vfadd.vf"),
+    ("scalar_sub", "vfrsub.vf"),
+    ("scalar_sub_flipped", "vfsub.vf"),
+] %}
+.{{label}}:
+    {{fl}}         ft0, 8(a0)
+{% for j in range(nr) %}
+    {{op}}   v{{ 16 + j * lmul }}, v{{ 16 + j * lmul }}, ft0
+{% endfor %}
+    j           .non_linear_loop
+{% endfor %}
+
+.leaky_relu:
+    {{fl}}         ft0, 8(a0)
+    {{fzero}}     ft1, zero
+{% for j in range(nr) %}
+    vfmul.vf    v{{vs}}, v{{ 16 + j * lmul }}, ft0
+    vmfgt.vf    v0, v{{ 16 + j * lmul }}, ft1
+    vmerge.vvm  v{{ 16 + j * lmul }}, v{{vs}}, v{{ 16 + j * lmul }}, v0
+{% endfor %}
+    j           .non_linear_loop
+
+{# Per-row operand at +8: {{mr}} values, one per row, so one lane each and a
+   single unit-stride load serves every accumulator. #}
+{% for label, op, flipped in [
+    ("per_row_min", "vfmin.vv", false),
+    ("per_row_max", "vfmax.vv", false),
+    ("per_row_mul", "vfmul.vv", false),
+    ("per_row_add", "vfadd.vv", false),
+    ("per_row_sub", "vfsub.vv", false),
+    ("per_row_sub_flipped", "vfsub.vv", true),
+] %}
+.{{label}}:
+    ld          t1, 8(a0)
+    vle{{ew}}.v     v{{vs}}, (t1)
+{% for j in range(nr) %}
+{% if flipped %}
+    {{op}}   v{{ 16 + j * lmul }}, v{{ 16 + j * lmul }}, v{{vs}}
+{% else %}
+    {{op}}   v{{ 16 + j * lmul }}, v{{vs}}, v{{ 16 + j * lmul }}
+{% endif %}
+{% endfor %}
+    j           .non_linear_loop
+{% endfor %}
+
+{# Per-col operand at +8: {{nr}} values, one per accumulator. #}
+{% for label, op in [
+    ("per_col_min", "vfmin.vf"),
+    ("per_col_max", "vfmax.vf"),
+    ("per_col_mul", "vfmul.vf"),
+    ("per_col_add", "vfadd.vf"),
+    ("per_col_sub", "vfrsub.vf"),
+    ("per_col_sub_flipped", "vfsub.vf"),
+] %}
+.{{label}}:
+    ld          t1, 8(a0)
+{% for j in range(nr) %}
+    {{fl}}         ft0, {{ j * esize }}(t1)
+    {{op}}   v{{ 16 + j * lmul }}, v{{ 16 + j * lmul }}, ft0
+{% endfor %}
+    j           .non_linear_loop
+{% endfor %}
+
+.add_row_col_products:
+    ld          t1, 8(a0)               // rows, {{mr}} values
+    ld          t2, 16(a0)              // cols, {{nr}} values
+    vle{{ew}}.v     v{{vs}}, (t1)
+{% for j in range(nr) %}
+    {{fl}}         ft0, {{ j * esize }}(t2)
+    vfmacc.vf   v{{ 16 + j * lmul }}, ft0, v{{vs}}
+{% endfor %}
+    j           .non_linear_loop
+
+{# OutputStoreKer at +8: ptr, row_byte_stride, col_byte_stride, item_size.
+   C[i][j] lives at ptr + i*row + j*col, and accumulator j holds column j one
+   row per lane, so a column is exactly one strided access -- no lane-by-lane
+   peeling for the non-contiguous case, unlike the NEON and AVX ports. #}
+.add_unicast:
+    ld          t1, 8(a0)
+    ld          t2, 16(a0)
+    ld          t3, 24(a0)
+{% for j in range(nr) %}
+    vlse{{ew}}.v    v{{vs}}, (t1), t2
+    vfadd.vv    v{{ 16 + j * lmul }}, v{{ 16 + j * lmul }}, v{{vs}}
+{% if not loop.last %}
+    add         t1, t1, t3
+{% endif %}
+{% endfor %}
+    j           .non_linear_loop
+
+.store:
+    ld          t1, 8(a0)
+    ld          t2, 16(a0)
+    ld          t3, 24(a0)
+
+    li          t4, {{esize}}
+    bne         t2, t4, .store_strided
+{% for j in range(nr) %}
+    vse{{ew}}.v     v{{ 16 + j * lmul }}, (t1)
+{% if not loop.last %}
+    add         t1, t1, t3
+{% endif %}
+{% endfor %}
+    j           .non_linear_loop
+
+.store_strided:
+{% for j in range(nr) %}
+    vsse{{ew}}.v    v{{ 16 + j * lmul }}, (t1), t2
+{% if not loop.last %}
+    add         t1, t1, t3
+{% endif %}
+{% endfor %}
+    j           .non_linear_loop
+
+.q_scale:
+.q_shl:
+.q_shr:
+    j           .unsupported

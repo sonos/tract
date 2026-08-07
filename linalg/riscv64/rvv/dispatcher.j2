@@ -1,0 +1,42 @@
+// vim: ft=asm
+
+// Walks the FusedKerSpec array in a0 and vectors to the handler for each
+// entry's discriminant. Layout is #[repr(C, usize)]: an 8-byte discriminant at
+// +0 then the payload at +8/+16/+24/+32, 40 bytes per entry.
+//
+// The table is `j` instructions rather than addresses so it stays PC-relative
+// (the kernels are linked into PIE binaries, and a table of absolute addresses
+// in .text would need runtime relocations). `.option norvc` keeps the assembler
+// from compressing any of them to 2 bytes, which would break the fixed stride
+// the index arithmetic below assumes.
+
+.non_linear:
+    addi        a0, a0, -40
+
+.non_linear_loop:
+    addi        a0, a0, 40
+    ld          t0, 0(a0)
+
+    li          t1, {{ jump_table | length }}
+    bgeu        t0, t1, .unsupported
+
+    lla         t1, .jmp_table
+    slli        t0, t0, 2
+    add         t1, t1, t0
+    jr          t1
+
+.option push
+.option norvc
+.jmp_table:
+{% for j in jump_table %}
+    j           .{{j}}
+{% endfor %}
+.option pop
+
+.unsupported:
+    li          a0, 1
+    ret
+
+.done:
+    li          a0, 0
+    ret
