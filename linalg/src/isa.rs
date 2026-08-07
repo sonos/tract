@@ -13,9 +13,9 @@ use std::sync::OnceLock;
 /// kernel tree and a dispatch tier are keyed on; [`Isa::of_arch`] is the same thing as a set
 /// member, and [`IsaSet::arch`] reads it back out of a machine's features.
 ///
-/// Naming one is not having kernels for it: [`RiscV64`](Arch::RiscV64) has no tree yet, so a
-/// riscv64 build is generic-only even though it knows what it is running on, and an
-/// architecture tract does not name at all has no variant here. Only the wasm tree hinges on a
+/// Naming one is not having kernels for it: an architecture tract does not name at all has no
+/// variant here, and a build whose assembler cannot encode a tree's instructions is
+/// generic-only even though it knows what it is running on. Only the wasm tree hinges on a
 /// build feature — hence the variant naming that feature; the others exist on their arch and
 /// gate individual kernels on runtime probes instead.
 #[allow(non_camel_case_types)]
@@ -87,12 +87,17 @@ pub enum Isa {
     X86_64AvxVnni,
     X86_64AmxInt8,
     X86_64AmxBf16,
+    /// The ratified Vector extension, RVV 1.0, which mandates `VLEN >= 128`.
+    RiscV64V,
+    /// A vector unit at least 256 bits wide, which is what the wide RVV tiles need. Not an
+    /// instruction set feature, but the hart property that decides which tile heights exist.
+    RiscV64Vlen256,
     Wasm32Simd128,
     Wasm32RelaxedSimd,
 }
 
 impl Isa {
-    pub const ALL: [Isa; 24] = [
+    pub const ALL: [Isa; 26] = [
         Isa::Arm,
         Isa::Aarch64,
         Isa::X86_64,
@@ -115,6 +120,8 @@ impl Isa {
         Isa::X86_64AvxVnni,
         Isa::X86_64AmxInt8,
         Isa::X86_64AmxBf16,
+        Isa::RiscV64V,
+        Isa::RiscV64Vlen256,
         Isa::Wasm32Simd128,
         Isa::Wasm32RelaxedSimd,
     ];
@@ -144,6 +151,8 @@ impl Isa {
             Isa::X86_64AvxVnni => "avxvnni",
             Isa::X86_64AmxInt8 => "amx-int8",
             Isa::X86_64AmxBf16 => "amx-bf16",
+            Isa::RiscV64V => "rvv",
+            Isa::RiscV64Vlen256 => "vlen256",
             Isa::Wasm32Simd128 => "simd128",
             Isa::Wasm32RelaxedSimd => "relaxed-simd",
         }
@@ -179,6 +188,9 @@ impl Isa {
             // so this sits a step above the set it extends.
             Isa::X86_64Avx512Fp16 => 4,
             Isa::X86_64AmxInt8 | Isa::X86_64AmxBf16 => 5,
+            // riscv: the vector unit, then the width the wide tiles need on top of it.
+            Isa::RiscV64V => 1,
+            Isa::RiscV64Vlen256 => 2,
             // arm: NEON is the armv7 step above bare VFP, and baseline on aarch64 where the
             // ladder continues through the matrix extensions.
             Isa::ArmNeon => 1,
@@ -222,7 +234,7 @@ impl Isa {
             | Isa::X86_64AvxVnni
             | Isa::X86_64AmxInt8
             | Isa::X86_64AmxBf16 => Arch::X86_64,
-            Isa::RiscV64 => Arch::RiscV64,
+            Isa::RiscV64 | Isa::RiscV64V | Isa::RiscV64Vlen256 => Arch::RiscV64,
             Isa::Wasm32 | Isa::Wasm32Simd128 | Isa::Wasm32RelaxedSimd => Arch::Wasm32Simd128,
         }
     }
@@ -315,7 +327,9 @@ impl IsaSet {
             (Arch::X86_64, 3) => "avx512",
             (Arch::X86_64, 4) => "fp16",
             (Arch::X86_64, _) => "amx",
-            (Arch::RiscV64, _) => "rv64",
+            (Arch::RiscV64, 0) => "rv64",
+            (Arch::RiscV64, 1) => "rvv",
+            (Arch::RiscV64, _) => "vlen256",
             (Arch::Wasm32Simd128, 0) => "simd",
             (Arch::Wasm32Simd128, _) => "relaxed",
         }
@@ -440,6 +454,8 @@ fn probe() -> IsaSet {
     return crate::arm64::isa_set();
     #[cfg(target_arch = "x86_64")]
     return crate::x86_64::isa_set();
+    #[cfg(target_arch = "riscv64")]
+    return crate::riscv64::isa_set();
     #[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
     return crate::wasm::isa_set();
     // An architecture with no kernel tree, or wasm without simd128: nothing to declare, and no
@@ -448,6 +464,7 @@ fn probe() -> IsaSet {
         target_arch = "arm",
         target_arch = "aarch64",
         target_arch = "x86_64",
+        target_arch = "riscv64",
         all(target_arch = "wasm32", target_feature = "simd128")
     )))]
     IsaSet::empty()

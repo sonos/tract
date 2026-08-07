@@ -29,6 +29,10 @@ rayon = { workspace = true, optional = true }
 scan_fmt.workspace = true
 tract-data.workspace = true
 
+# RVV detection reads the V bit out of AT_HWCAP via getauxval(3).
+[target.'cfg(target_arch = "riscv64")'.dependencies]
+libc.workspace = true
+
 [build-dependencies]
 cc.workspace = true
 half.workspace = true

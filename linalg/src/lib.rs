@@ -82,6 +82,9 @@ pub fn has_fp16() -> bool {
 #[cfg(any(target_arch = "arm", feature = "foreign-inventory"))]
 pub mod arm32;
 
+#[cfg(any(target_arch = "riscv64", feature = "foreign-inventory"))]
+pub mod riscv64;
+
 #[cfg(any(all(target_arch = "wasm32", target_feature = "simd128"), feature = "foreign-inventory"))]
 pub mod wasm;
 
