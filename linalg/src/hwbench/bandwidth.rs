@@ -102,6 +102,27 @@ fn load_a_slice(slice: &[u8], loops: usize) {
     }
 }
 
+/// Portable fallback for targets with no hand-written streaming load.
+///
+/// One volatile read per 64-byte line is enough to pull every line from
+/// memory, so the traffic measured is the same; without the wide loads of the
+/// specialised versions there are fewer misses in flight, so an out-of-order
+/// core may not saturate and the figure reads low rather than wrong.
+#[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64", target_arch = "arm")))]
+#[inline(never)]
+fn load_a_slice(slice: &[u8], loops: usize) {
+    for _ in 0..loops {
+        let mut offset = 0;
+        while offset < slice.len() {
+            // SAFETY: `offset` is below `slice.len()`, so the read is in bounds
+            // and `u64`-sized reads stay within the line they start in because
+            // the buffer is 1024-byte aligned.
+            unsafe { std::ptr::read_volatile(slice.as_ptr().add(offset) as *const u64) };
+            offset += 64;
+        }
+    }
+}
+
 fn bandwidth_seq(slice_len: usize, threads: usize) -> f64 {
     #[cfg(target_arch = "x86_64")]
     unsafe {
