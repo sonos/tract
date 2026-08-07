@@ -1,0 +1,255 @@
+// vim: ft=asm
+{% set mr = mr | int %}{% set nr = nr | int %}{% set lmul = lmul | int %}
+{% set al = lmul * 2 %}
+{% set vs = 4 %}
+{% set va = 8 %}
+{% set q0 = 8 %}
+{% set q1 = 12 if al == 2 else 24 %}
+
+// {{mr}}x{{nr}} i32 matmul tile, RVV 1.0.
+//
+//   v{{vs}}   scratch: A for the i32 packing, per-row operand, unicast
+//   v{{va}}   packed A column widened to i16, i8 packing only
+//   v{{q0}}/v{{q1}}  i64 scratch for the quantised ops
+//   v0    mask
+{% for j in range(nr) %}
+//   v{{ 16 + j * al }}  accumulator, C tile column {{j}}
+{% endfor %}
+//
+// vtype is e32/m{{al}} everywhere except inside the i8 inner loop and the
+// quantised ops, which set and restore it themselves. The i8 loop runs at
+// e16/m{{lmul}} so that `vle8.v` picks up EEW=8 from the instruction and
+// `vwmacc.vx` widens straight into the e32 accumulators; that also makes
+// VLMAX identical to the e32 one, so a single `vl` of {{mr}} serves both.
+//
+// The tile is correct only where VLMAX >= {{mr}}, which is vlmax_f32({{al}});
+// the check below backstops a disagreement with the dispatch predicate.
+
+.option arch, +v
+.text
+.align 2
+
+.global {{G}}rvv_mmm_i32_{{geo}}_{{suffix}}
+{{G}}rvv_mmm_i32_{{geo}}_{{suffix}}:
+
+    li          t0, {{mr}}
+    vsetvli     t1, t0, e32, m{{al}}, ta, ma
+    bne         t1, t0, .unsupported
+
+{% include "dispatcher.j2" %}
+
+// AddMatMul { k: +8, pa: +16, pb: +24, packing: +32 }. Packing 0 is i32 x i32,
+// packing 1 is i8 x i8 accumulating into i32.
+.add_mat_mul:
+    ld          t1, 8(a0)
+    ld          a1, 16(a0)
+    ld          a2, 24(a0)
+    ld          t2, 32(a0)
+
+    beqz        t1, .non_linear_loop
+
+    li          t3, 1
+    beq         t2, t3, .packed_packed_loop_1_i8i8
+
+.packed_packed_loop_1:
+    vle32.v     v{{vs}}, (a1)
+    addi        a1, a1, {{ mr * 4 }}
+{% for j in range(nr) %}
+    lw          t3, {{ j * 4 }}(a2)
+    vmacc.vx    v{{ 16 + j * al }}, t3, v{{vs}}
+{% endfor %}
+    addi        a2, a2, {{ nr * 4 }}
+    addi        t1, t1, -1
+    bnez        t1, .packed_packed_loop_1
+
+    j           .non_linear_loop
+
+.packed_packed_loop_1_i8i8:
+    li          t0, {{mr}}
+    vsetvli     t0, t0, e16, m{{lmul}}, ta, ma
+
+.packed_packed_loop_1_i8i8_inner:
+    vle8.v      v{{vs}}, (a1)
+    addi        a1, a1, {{mr}}
+    vsext.vf2   v{{va}}, v{{vs}}
+{% for j in range(nr) %}
+    lb          t3, {{j}}(a2)
+    vwmacc.vx   v{{ 16 + j * al }}, t3, v{{va}}
+{% endfor %}
+    addi        a2, a2, {{nr}}
+    addi        t1, t1, -1
+    bnez        t1, .packed_packed_loop_1_i8i8_inner
+
+    li          t0, {{mr}}
+    vsetvli     t0, t0, e32, m{{al}}, ta, ma
+    j           .non_linear_loop
+
+.clear:
+{% for j in range(nr) %}
+    vmv.v.i     v{{ 16 + j * al }}, 0
+{% endfor %}
+    j           .non_linear_loop
+
+.load_tile:
+    ld          t1, 8(a0)
+{% for j in range(nr) %}
+    vle32.v     v{{ 16 + j * al }}, (t1)
+{% if not loop.last %}
+    addi        t1, t1, {{ mr * 4 }}
+{% endif %}
+{% endfor %}
+    j           .non_linear_loop
+
+{# ScalarSub is `scalar - acc` and ScalarSubF is `acc - scalar`, so the plain
+   form maps to the reversed vector op. #}
+{% for label, op in [
+    ("scalar_min", "vmin.vx"),
+    ("scalar_max", "vmax.vx"),
+    ("scalar_mul", "vmul.vx"),
+    ("scalar_add", "vadd.vx"),
+    ("scalar_sub", "vrsub.vx"),
+    ("scalar_sub_flipped", "vsub.vx"),
+] %}
+.{{label}}:
+    lw          t1, 8(a0)
+{% for j in range(nr) %}
+    {{op}}    v{{ 16 + j * al }}, v{{ 16 + j * al }}, t1
+{% endfor %}
+    j           .non_linear_loop
+{% endfor %}
+
+.leaky_relu:
+    lw          t1, 8(a0)
+{% for j in range(nr) %}
+    vmul.vx     v{{vs}}, v{{ 16 + j * al }}, t1
+    vmsgt.vx    v0, v{{ 16 + j * al }}, x0
+    vmerge.vvm  v{{ 16 + j * al }}, v{{vs}}, v{{ 16 + j * al }}, v0
+{% endfor %}
+    j           .non_linear_loop
+
+{# Per-row operand at +8: {{mr}} values, one per row, so one lane each. #}
+{% for label, op, flipped in [
+    ("per_row_min", "vmin.vv", false),
+    ("per_row_max", "vmax.vv", false),
+    ("per_row_mul", "vmul.vv", false),
+    ("per_row_add", "vadd.vv", false),
+    ("per_row_sub", "vsub.vv", false),
+    ("per_row_sub_flipped", "vsub.vv", true),
+] %}
+.{{label}}:
+    ld          t1, 8(a0)
+    vle32.v     v{{vs}}, (t1)
+{% for j in range(nr) %}
+{% if flipped %}
+    {{op}}    v{{ 16 + j * al }}, v{{ 16 + j * al }}, v{{vs}}
+{% else %}
+    {{op}}    v{{ 16 + j * al }}, v{{vs}}, v{{ 16 + j * al }}
+{% endif %}
+{% endfor %}
+    j           .non_linear_loop
+{% endfor %}
+
+{# Per-col operand at +8: {{nr}} values, one per accumulator. #}
+{% for label, op in [
+    ("per_col_min", "vmin.vx"),
+    ("per_col_max", "vmax.vx"),
+    ("per_col_mul", "vmul.vx"),
+    ("per_col_add", "vadd.vx"),
+    ("per_col_sub", "vrsub.vx"),
+    ("per_col_sub_flipped", "vsub.vx"),
+] %}
+.{{label}}:
+    ld          t1, 8(a0)
+{% for j in range(nr) %}
+    lw          t2, {{ j * 4 }}(t1)
+    {{op}}    v{{ 16 + j * al }}, v{{ 16 + j * al }}, t2
+{% endfor %}
+    j           .non_linear_loop
+{% endfor %}
+
+.add_row_col_products:
+    ld          t1, 8(a0)
+    ld          t2, 16(a0)
+    vle32.v     v{{vs}}, (t1)
+{% for j in range(nr) %}
+    lw          t3, {{ j * 4 }}(t2)
+    vmacc.vx    v{{ 16 + j * al }}, t3, v{{vs}}
+{% endfor %}
+    j           .non_linear_loop
+
+{# OutputStoreKer at +8: ptr, row_byte_stride, col_byte_stride, item_size.
+   Accumulator j holds column j one row per lane, so a column is exactly one
+   strided access whatever the strides. The i8 store narrows twice, e32 to e16
+   to e8, since RVV narrows by one power of two at a time. #}
+.add_unicast:
+    ld          t1, 8(a0)
+    ld          t2, 16(a0)
+    ld          t3, 24(a0)
+    ld          t5, 32(a0)
+
+    li          t4, 4
+    bne         t5, t4, .add_unicast_i8
+{% for j in range(nr) %}
+    vlse32.v    v{{vs}}, (t1), t2
+    vadd.vv     v{{ 16 + j * al }}, v{{ 16 + j * al }}, v{{vs}}
+{% if not loop.last %}
+    add         t1, t1, t3
+{% endif %}
+{% endfor %}
+    j           .non_linear_loop
+
+.add_unicast_i8:
+{% for j in range(nr) %}
+    vlse8.v     v{{vs}}, (t1), t2
+    vsext.vf4   v{{va}}, v{{vs}}
+    vadd.vv     v{{ 16 + j * al }}, v{{ 16 + j * al }}, v{{va}}
+{% if not loop.last %}
+    add         t1, t1, t3
+{% endif %}
+{% endfor %}
+    j           .non_linear_loop
+
+.store:
+    ld          t1, 8(a0)
+    ld          t2, 16(a0)
+    ld          t3, 24(a0)
+    ld          t5, 32(a0)
+
+    li          t4, 4
+    bne         t5, t4, .store_i8
+
+    bne         t2, t4, .store_strided
+{% for j in range(nr) %}
+    vse32.v     v{{ 16 + j * al }}, (t1)
+{% if not loop.last %}
+    add         t1, t1, t3
+{% endif %}
+{% endfor %}
+    j           .non_linear_loop
+
+.store_strided:
+{% for j in range(nr) %}
+    vsse32.v    v{{ 16 + j * al }}, (t1), t2
+{% if not loop.last %}
+    add         t1, t1, t3
+{% endif %}
+{% endfor %}
+    j           .non_linear_loop
+
+.store_i8:
+    li          t0, {{mr}}
+{% for j in range(nr) %}
+    vsetvli     t4, t0, e16, m{{lmul}}, ta, ma
+    vnsra.wi    v{{vs}}, v{{ 16 + j * al }}, 0
+    vsetvli     t4, t0, e8, {{ "mf2" if lmul == 1 else "m1" }}, ta, ma
+    vnsra.wi    v{{va}}, v{{vs}}, 0
+    vsse8.v     v{{va}}, (t1), t2
+{% if not loop.last %}
+    add         t1, t1, t3
+{% endif %}
+{% endfor %}
+    li          t0, {{mr}}
+    vsetvli     t4, t0, e32, m{{al}}, ta, ma
+    j           .non_linear_loop
+
+{% include "rvv_mmm_i32_q.j2" %}
