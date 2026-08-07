@@ -10,7 +10,7 @@
 //! `vl` to `MR`. `vsetvli` clamps to `VLMAX`, so such a kernel is correct
 //! wherever `VLMAX >= MR`, merely leaves lanes idle when `VLMAX > MR`, and
 //! computes a short tile when `VLMAX < MR`. Every kernel is therefore gated on
-//! [`vlmax_f32`] reaching its `MR`.
+//! [`vlmax_f32`] or [`vlmax_f16`] reaching its `MR`.
 
 use crate::Ops;
 
@@ -54,16 +54,45 @@ fn read_vlenb() -> usize {
     vlenb
 }
 
+/// Splits the kernel-canonicalised `isa` line of /proc/cpuinfo, e.g.
+/// `rv64imafdcv_zicsr_zvfh_zvl256b`, into lowercase extension tokens.
+///
+/// This is the only source for multi-letter extensions; `AT_HWCAP` carries
+/// bits for the single-letter ones alone.
+fn isa_extensions() -> Vec<String> {
+    #[cfg(test)]
+    crate::setup_test_logger();
+    let Ok(cpu_info) = std::fs::read_to_string("/proc/cpuinfo") else {
+        log::warn!("Could not read /proc/cpuinfo. CPU feature detection may be impaired.");
+        return vec![];
+    };
+    let Some(line) = cpu_info.lines().find(|line| line.trim_start().starts_with("isa")) else {
+        log::warn!("No \"isa :\" line in /proc/cpuinfo. CPU feature detection may be impaired.");
+        return vec![];
+    };
+    let Some((_, isa)) = line.split_once(':') else { return vec![] };
+    isa.trim().split('_').map(|s| s.to_lowercase()).collect()
+}
+
 lazy_static::lazy_static! {
     static ref HAS_RVV: bool = hwcap() & HWCAP_ISA_V != 0;
 
     static ref VLENB: usize = if *HAS_RVV { read_vlenb() } else { 0 };
 
+    /// Zvfh, not Zvfhmin: the latter offers only f16<->f32 conversion and so
+    /// cannot carry an f16 accumulator. RVA23 mandates Zvfhmin and leaves Zvfh
+    /// optional, so the profile is not enough to infer it.
+    static ref HAS_ZVFH: bool = *HAS_RVV && isa_extensions().iter().any(|e| e == "zvfh");
 }
 
 /// Whether the hart implements the ratified RVV 1.0 vector extension.
 pub fn has_rvv() -> bool {
     *HAS_RVV
+}
+
+/// Whether the hart implements Zvfh (native f16 vector arithmetic).
+pub fn has_zvfh() -> bool {
+    *HAS_ZVFH
 }
 
 /// Vector register width in bytes (`VLEN / 8`); 0 without RVV.
@@ -76,6 +105,11 @@ pub fn vlenb() -> usize {
 /// reaches `MR`.
 pub fn vlmax_f32(lmul: usize) -> usize {
     vlenb() * lmul / std::mem::size_of::<f32>()
+}
+
+/// As [`vlmax_f32`], for 16-bit elements.
+pub fn vlmax_f16(lmul: usize) -> usize {
+    vlenb() * lmul / std::mem::size_of::<crate::f16>()
 }
 
 pub fn plug(_ops: &mut Ops) {
@@ -95,9 +129,10 @@ mod test {
     #[test]
     fn detection_is_coherent() {
         eprintln!(
-            "rvv={} VLEN={} vlmax_f32(lmul=1,2,4)={:?}",
+            "rvv={} VLEN={} zvfh={} vlmax_f32(lmul=1,2,4)={:?}",
             has_rvv(),
             vlenb() * 8,
+            has_zvfh(),
             [vlmax_f32(1), vlmax_f32(2), vlmax_f32(4)],
         );
         if has_rvv() {
@@ -108,6 +143,7 @@ mod test {
             assert_eq!(vlmax_f32(4), vlenb);
         } else {
             assert_eq!(vlenb(), 0);
+            assert!(!has_zvfh(), "Zvfh cannot be present without V");
         }
     }
 }
