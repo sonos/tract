@@ -68,6 +68,20 @@ fn assembler_supports_rvv() -> bool {
         .is_ok()
 }
 
+// Probe whether the target assembler can encode Zvfh (f16 vector arithmetic).
+// Zvfh reached binutils later than base RVV 1.0, so a toolchain can assemble
+// the f32 kernels and still reject these. When the probe fails we skip the f16
+// kernels and the `tract_rvv_zvfh` cfg, and f16 matmul stays generic.
+fn assembler_supports_zvfh() -> bool {
+    cc::Build::new()
+        .file("riscv64/rvv/dummy_rvv_zvfh.S")
+        .cargo_metadata(false)
+        .cargo_warnings(false)
+        .warnings(false)
+        .try_compile("tract_rvv_zvfh_probe")
+        .is_ok()
+}
+
 // Probe whether the target assembler can encode `vpdpbusd ymm` (AVX-512 VNNI
 // with AVX-512 VL, i.e. the 256-bit form). binutils gained this in ~2.30
 // (2018); the Debian stretch toolchain ships 2.28 and rejects the mnemonic.
@@ -273,6 +287,8 @@ fn main() {
     println!("cargo:rustc-check-cfg=cfg(tract_avxvnni)");
     // Set below only when the riscv64 assembler probe for RVV 1.0 passes.
     println!("cargo:rustc-check-cfg=cfg(tract_rvv)");
+    // Set below only when the riscv64 assembler probe for Zvfh also passes.
+    println!("cargo:rustc-check-cfg=cfg(tract_rvv_zvfh)");
 
     match arch.as_ref() {
         "x86_64" => {
@@ -519,8 +535,18 @@ fn main() {
             }
         }
         "riscv64" if assembler_supports_rvv() => {
-            let files = render_rvv_kernels("f32", "4", "+v", RVV_F32_KERNELS, &suffix);
+            let mut files = render_rvv_kernels("f32", "4", "+v", RVV_F32_KERNELS, &suffix);
             println!("cargo:rustc-cfg=tract_rvv");
+            if assembler_supports_zvfh() {
+                files.extend(render_rvv_kernels(
+                    "f16",
+                    "2",
+                    "+v, +zvfh, +zfhmin",
+                    RVV_F16_KERNELS,
+                    &suffix,
+                ));
+                println!("cargo:rustc-cfg=tract_rvv_zvfh");
+            }
             cc::Build::new().files(files).compile("rvv");
         }
         _ => {}
@@ -543,6 +569,15 @@ const RVV_F32_KERNELS: &[(&str, &str, &str, &str)] = &[
     ("16x8", "16", "8", "2"),
     ("32x1", "32", "1", "8"),
     ("64x1", "64", "1", "8"),
+];
+
+/// As [`RVV_F32_KERNELS`]; SEW=16 doubles VLMAX, so every tile is twice as
+/// tall for the same LMUL and VLEN.
+const RVV_F16_KERNELS: &[(&str, &str, &str, &str)] = &[
+    ("16x8", "16", "8", "2"),
+    ("32x8", "32", "8", "2"),
+    ("64x1", "64", "1", "8"),
+    ("128x1", "128", "1", "8"),
 ];
 
 fn render_rvv_kernels(
