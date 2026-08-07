@@ -6,6 +6,12 @@
 //! RVV 1.0 hart can reach and tiles needing `VLEN >= 256`, and each kernel
 //! re-checks the granted `vl` on entry, so a predicate the hart disagrees with
 //! is a clean refusal rather than a short tile.
+//!
+//! The f16 set is the same four shapes at `SEW=16`, where `VLMAX` doubles and
+//! so does every tile height for a given `LMUL` -- which is why the two tables
+//! declare the same pair of widths for tiles twice as tall. They need Zvfh on
+//! top, and the assembler needs to know it: `tract_rvv_zvfh` is the build-time
+//! half of that, and without it f16 stays on the generic kernels.
 
 use crate::DatumType;
 use crate::isa::{Isa, IsaSet};
@@ -16,26 +22,48 @@ MMMExternKernel!(riscv64; rvv_mmm_f32_16x8 <f32>(16, 8)@(16, 16) isa(RiscV64Vlen
 MMMExternKernel!(riscv64; rvv_mmm_f32_32x1 <f32>(32, 1)@(16, 16) isa(RiscV64V));
 MMMExternKernel!(riscv64; rvv_mmm_f32_64x1 <f32>(64, 1)@(16, 16) isa(RiscV64Vlen256));
 
+#[cfg(tract_rvv_zvfh)]
+mod zvfh {
+    use crate::f16;
+
+    MMMExternKernel!(riscv64; rvv_mmm_f16_16x8 <f16>( 16, 8)@(16, 16) isa(RiscV64V, RiscV64Zvfh));
+    MMMExternKernel!(riscv64; rvv_mmm_f16_32x8 <f16>( 32, 8)@(16, 16) isa(RiscV64Vlen256, RiscV64Zvfh));
+    MMMExternKernel!(riscv64; rvv_mmm_f16_64x1 <f16>( 64, 1)@(16, 16) isa(RiscV64V, RiscV64Zvfh));
+    MMMExternKernel!(riscv64; rvv_mmm_f16_128x1<f16>(128, 1)@(16, 16) isa(RiscV64Vlen256, RiscV64Zvfh));
+}
+
 /// The widest tile the hart can reach, for each of the two shapes. A vector
 /// unit is the only thing these kernels are ranked on -- there is one RVV
 /// kernel set, not a per-chip family -- so the choice is `n == 1` or not, and
 /// then the width.
+///
+/// f16 without Zvfh is left to the tier below, which reaches the f32 kernels
+/// through a round trip: an f16 accumulator needs arithmetic Zvfhmin does not
+/// have.
 fn preferred(
     isa: &IsaSet,
     dt: DatumType,
     query: &Query,
     _suitable: &[Suitable],
 ) -> Option<&'static str> {
-    if dt != DatumType::F32 {
-        return None;
-    }
     let wide = isa.has(Isa::RiscV64Vlen256);
-    Some(match query.n {
-        Some(1) if wide => rvv_mmm_f32_64x1.name.as_str(),
-        Some(1) => rvv_mmm_f32_32x1.name.as_str(),
-        _ if wide => rvv_mmm_f32_16x8.name.as_str(),
-        _ => rvv_mmm_f32_8x8.name.as_str(),
-    })
+    let gemv = query.n == Some(1);
+    match dt {
+        DatumType::F32 => Some(match (gemv, wide) {
+            (true, true) => rvv_mmm_f32_64x1.name.as_str(),
+            (true, false) => rvv_mmm_f32_32x1.name.as_str(),
+            (false, true) => rvv_mmm_f32_16x8.name.as_str(),
+            (false, false) => rvv_mmm_f32_8x8.name.as_str(),
+        }),
+        #[cfg(tract_rvv_zvfh)]
+        DatumType::F16 if isa.has(Isa::RiscV64Zvfh) => Some(match (gemv, wide) {
+            (true, true) => zvfh::rvv_mmm_f16_128x1.name.as_str(),
+            (true, false) => zvfh::rvv_mmm_f16_64x1.name.as_str(),
+            (false, true) => zvfh::rvv_mmm_f16_32x8.name.as_str(),
+            (false, false) => zvfh::rvv_mmm_f16_16x8.name.as_str(),
+        }),
+        _ => None,
+    }
 }
 
 inventory::submit! {
@@ -53,17 +81,38 @@ mod test {
     use super::*;
     use crate::frame::mmm::{FusedKerSpec, MatMatMulKer};
 
-    /// `(name, MR, LMUL)` mirroring the build.rs kernel table.
-    const GEOMETRIES: &[(&str, usize, usize)] =
-        &[("8x8", 8, 2), ("16x8", 16, 2), ("32x1", 32, 8), ("64x1", 64, 8)];
+    /// `(name, MR, LMUL, SEW in bytes)` mirroring the build.rs kernel tables.
+    const GEOMETRIES: &[(&str, usize, usize, usize)] = &[
+        ("f32 8x8", 8, 2, 4),
+        ("f32 16x8", 16, 2, 4),
+        ("f32 32x1", 32, 8, 4),
+        ("f32 64x1", 64, 8, 4),
+        #[cfg(tract_rvv_zvfh)]
+        ("f16 16x8", 16, 2, 2),
+        #[cfg(tract_rvv_zvfh)]
+        ("f16 32x8", 32, 2, 2),
+        #[cfg(tract_rvv_zvfh)]
+        ("f16 64x1", 64, 8, 2),
+        #[cfg(tract_rvv_zvfh)]
+        ("f16 128x1", 128, 8, 2),
+    ];
 
-    fn runnable() -> [bool; 4] {
-        [
+    fn runnable() -> Vec<bool> {
+        #[allow(unused_mut)]
+        let mut runnable = vec![
             rvv_mmm_f32_8x8.runnable(),
             rvv_mmm_f32_16x8.runnable(),
             rvv_mmm_f32_32x1.runnable(),
             rvv_mmm_f32_64x1.runnable(),
-        ]
+        ];
+        #[cfg(tract_rvv_zvfh)]
+        runnable.extend([
+            zvfh::rvv_mmm_f16_16x8.runnable(),
+            zvfh::rvv_mmm_f16_32x8.runnable(),
+            zvfh::rvv_mmm_f16_64x1.runnable(),
+            zvfh::rvv_mmm_f16_128x1.runnable(),
+        ]);
+        runnable
     }
 
     /// The generated kernel suites early-return on an unrunnable kernel and
@@ -75,10 +124,11 @@ mod test {
     #[test]
     fn dispatch_matches_vlen() {
         let vlenb = super::super::vlenb();
-        for ((name, mr, lmul), got) in GEOMETRIES.iter().zip(runnable()) {
-            let want = vlenb * lmul / std::mem::size_of::<f32>() >= *mr;
-            eprintln!("VLEN={} {name}: {got} (want {want})", vlenb * 8);
-            assert_eq!(got, want, "{name} dispatch disagrees with VLEN={}", vlenb * 8);
+        let zvfh = super::super::has_zvfh();
+        for ((name, mr, lmul, sew), got) in GEOMETRIES.iter().zip(runnable()) {
+            let want = vlenb * lmul / sew >= *mr && (*sew == 4 || zvfh);
+            eprintln!("VLEN={} zvfh={zvfh} {name}: {got} (want {want})", vlenb * 8);
+            assert_eq!(got, want, "{name} dispatch disagrees with this hart");
         }
     }
 
@@ -86,21 +136,33 @@ mod test {
     /// Vacuous on a hart wide enough for all of them, hence no assertion on
     /// finding a candidate.
     ///
-    /// Meaningful only where V is present: the guard is itself a vector
-    /// instruction, so it covers "unit too narrow for this tile" but not "no
-    /// unit", where calling at all is a SIGILL rather than a return code.
+    /// Meaningful only where V is present, and for the f16 tiles only where
+    /// Zvfh is: the guard is itself an instruction of the extension it stands
+    /// for, so it covers "unit too narrow for this tile" but not "no unit",
+    /// where calling at all is a SIGILL rather than a return code.
     #[test]
     fn oversized_tile_refuses_to_run() {
         if !super::super::has_rvv() {
             return;
         }
-        let runners: [&dyn Fn() -> isize; 4] = [
-            &|| rvv_mmm_f32_8x8.kernel(&[FusedKerSpec::Done]),
-            &|| rvv_mmm_f32_16x8.kernel(&[FusedKerSpec::Done]),
-            &|| rvv_mmm_f32_32x1.kernel(&[FusedKerSpec::Done]),
-            &|| rvv_mmm_f32_64x1.kernel(&[FusedKerSpec::Done]),
+        #[allow(unused_mut)]
+        let mut runners: Vec<Box<dyn Fn() -> isize>> = vec![
+            Box::new(|| rvv_mmm_f32_8x8.kernel(&[FusedKerSpec::Done])),
+            Box::new(|| rvv_mmm_f32_16x8.kernel(&[FusedKerSpec::Done])),
+            Box::new(|| rvv_mmm_f32_32x1.kernel(&[FusedKerSpec::Done])),
+            Box::new(|| rvv_mmm_f32_64x1.kernel(&[FusedKerSpec::Done])),
         ];
-        for (((name, ..), ok), run) in GEOMETRIES.iter().zip(runnable()).zip(runners) {
+        #[cfg(tract_rvv_zvfh)]
+        runners.extend::<Vec<Box<dyn Fn() -> isize>>>(vec![
+            Box::new(|| zvfh::rvv_mmm_f16_16x8.kernel(&[FusedKerSpec::Done])),
+            Box::new(|| zvfh::rvv_mmm_f16_32x8.kernel(&[FusedKerSpec::Done])),
+            Box::new(|| zvfh::rvv_mmm_f16_64x1.kernel(&[FusedKerSpec::Done])),
+            Box::new(|| zvfh::rvv_mmm_f16_128x1.kernel(&[FusedKerSpec::Done])),
+        ]);
+        for (((name, .., sew), ok), run) in GEOMETRIES.iter().zip(runnable()).zip(runners) {
+            if *sew == 2 && !super::super::has_zvfh() {
+                continue;
+            }
             if !ok {
                 assert_eq!(run(), 1, "{name} ran on a hart whose VLMAX is below its MR");
                 eprintln!("{name}: correctly refused");
