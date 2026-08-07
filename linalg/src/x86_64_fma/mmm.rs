@@ -116,6 +116,15 @@ MMMExternKernel!(avx512_mmm_f32_48x4 <f32>( 48, 4)@(512,4) where (AVX512F) quali
 MMMExternKernel!(avx512_mmm_f32_64x3 <f32>( 64, 3)@(512,4) where (AVX512F) quality(ManuallyOptimized));
 MMMExternKernel!(avx512_mmm_f32_80x2 <f32>( 80, 2)@(512,4) where (AVX512F) quality(ManuallyOptimized));
 
+// 128-bit VEX i32 sibling of avx2_mmm_i32_8x8 for the avx-without-avx2 tier:
+// same i8i8 widening scheme (i8 products computed in i16 lanes) and the same
+// quantization epilogue semantics, on 8x4 xmm column pairs.
+MMMExternKernel! { avx_mmm_i32_8x4<i32>(8,4)@(256,4) where(AVX)
+    packing[1] = i8i8 => |k| k.with_packing(PackedFormat::new(DatumType::I8, 8, 256), PackedFormat::new(DatumType::I8, 4, 4));
+    quality(ManuallyOptimized)
+    store(i8)
+}
+
 MMMExternKernel! { avx2_mmm_i32_8x8<i32>(8,8)@(256,4) where(AVX2)
     packing[1] = i8i8 => |k| k.with_packing(PackedFormat::new(DatumType::I8, 8, 256), PackedFormat::new(DatumType::I8, 8, 4));
     quality(ManuallyOptimized)
@@ -400,11 +409,15 @@ pub fn plug_avx2(ops: &mut Ops) {
     log::info!("qmmm_i32: x86_64/avx2 activated");
 }
 
-/// f32 kernels for AVX-capable CPUs that can't run the fma tier (Sandy/Ivy
-/// Bridge without fma; AMD Bulldozer-family with fma but no avx2). Never
-/// active alongside plug_fma: these kernels replace the generic fallback,
-/// not the fma_ ones.
+/// f32 and i32 kernels for AVX-capable CPUs that can't run the fma tier
+/// (Sandy/Ivy Bridge without fma; AMD Bulldozer-family with fma but no avx2).
+/// Never active alongside plug_fma: these kernels replace the generic
+/// fallback, not the fma_ ones. On avx2-without-fma CPUs plug_avx2 still runs
+/// afterwards and upgrades qmmm_i32 to the wider avx2 kernel.
 pub fn plug_avx(ops: &mut Ops) {
+    ops.mmm_impls.push(avx_mmm_i32_8x4.mmm());
+    ops.qmmm_i32 = Box::new(|_, _, _| avx_mmm_i32_8x4.mmm());
+
     ops.mmm_impls.extend([
         avx_mmm_f32_8x8.mmm(),
         avx_mmm_f32_16x5.mmm(),
@@ -437,7 +450,7 @@ pub fn plug_avx(ops: &mut Ops) {
         Some(_) => pick_mmm(AVX_CHOICES, m, n),
     });
 
-    log::info!("mmm_f32, mmv_f32: x86_64/avx (no fma) activated");
+    log::info!("mmm_f32, mmv_f32, qmmm_i32: x86_64/avx (no fma) activated");
 }
 
 pub fn plug_fma(ops: &mut Ops) {
