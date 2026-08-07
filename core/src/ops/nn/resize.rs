@@ -10,6 +10,7 @@ pub enum CoordTransformer {
     Asymmetric,
     PytorchHalfPixel,
     HalfPixelSymmetric,
+    TfHalfPixelForNn,
 }
 
 impl CoordTransformer {
@@ -37,6 +38,7 @@ impl CoordTransformer {
                 let offset = len_in as f32 / 2.0 * (1.0 - adjustment);
                 offset + (x_out as f32 + 0.5) / scale - 0.5
             }
+            CoordTransformer::TfHalfPixelForNn => (x_out as f32 + 0.5) / scale,
         }
     }
 
@@ -47,6 +49,7 @@ impl CoordTransformer {
             CoordTransformer::Asymmetric => "asymmetric",
             CoordTransformer::PytorchHalfPixel => "pytorch_half_pixel",
             CoordTransformer::HalfPixelSymmetric => "half_pixel_symmetric",
+            CoordTransformer::TfHalfPixelForNn => "tf_half_pixel_for_nn",
         }
     }
 
@@ -57,6 +60,7 @@ impl CoordTransformer {
             "asymmetric" => CoordTransformer::Asymmetric,
             "pytorch_half_pixel" => CoordTransformer::PytorchHalfPixel,
             "half_pixel_symmetric" => CoordTransformer::HalfPixelSymmetric,
+            "tf_half_pixel_for_nn" => CoordTransformer::TfHalfPixelForNn,
             s => bail!("coordinate_transformation_mode: {s}"),
         })
     }
@@ -466,12 +470,14 @@ impl TypedOp for Resize {
     }
 }
 
-/// An axis length to build a probe plan on. `HalfPixel` and `Asymmetric` map
-/// coordinates without consulting the axis lengths, so a symbolic axis can
-/// still be probed on a stand-in; the others cannot.
+/// An axis length to build a probe plan on. `HalfPixel`, `Asymmetric` and
+/// `TfHalfPixelForNn` map coordinates without consulting the axis lengths, so a
+/// symbolic axis can still be probed on a stand-in; the others cannot.
 pub fn probe_length(coord_transformer: &CoordTransformer, len: &TDim) -> Option<usize> {
     len.to_usize().ok().or(match coord_transformer {
-        CoordTransformer::HalfPixel | CoordTransformer::Asymmetric => Some(4),
+        CoordTransformer::HalfPixel
+        | CoordTransformer::Asymmetric
+        | CoordTransformer::TfHalfPixelForNn => Some(4),
         _ => None,
     })
 }

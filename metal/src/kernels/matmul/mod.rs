@@ -2,6 +2,7 @@ mod basic;
 mod ggml_gemm;
 pub mod mfa;
 mod mlx_gemm;
+pub mod mlx_sdpa;
 
 pub use basic::BasicMatMul;
 pub use ggml_gemm::{GgmlGemm, dispatch_mul_mv_f16_split_k, dispatch_mul_mv_q8_0, RoutedQ40InputMode, dispatch_routed_q40_f32, eval_routed_q40_f32};

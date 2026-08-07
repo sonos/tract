@@ -8,6 +8,7 @@ pub enum Value {
     Bool(bool),
     F32(f32),
     U16(u16),
+    I32(i32),
 }
 
 impl std::hash::Hash for Value {
@@ -17,6 +18,7 @@ impl std::hash::Hash for Value {
             Value::USize(v) => v.hash(state),
             Value::U16(v) => v.hash(state),
             Value::Bool(v) => v.hash(state),
+            Value::I32(v) => v.hash(state),
         }
     }
 }
@@ -28,6 +30,7 @@ impl Value {
             Value::F32(_) => MTLDataType::Float,
             Value::U16(_) => MTLDataType::UShort,
             Value::Bool(_) => MTLDataType::Bool,
+            Value::I32(_) => MTLDataType::Int,
         }
     }
 }
@@ -73,6 +76,13 @@ impl ConstantValues {
                 Value::Bool(v) => {
                     f.set_constant_value_at_index(
                         v as *const bool as *const c_void,
+                        ty,
+                        *index as u64,
+                    );
+                }
+                Value::I32(v) => {
+                    f.set_constant_value_at_index(
+                        v as *const i32 as *const c_void,
                         ty,
                         *index as u64,
                     );
