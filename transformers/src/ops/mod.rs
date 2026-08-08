@@ -4,7 +4,7 @@ pub mod diag_gather;
 pub mod dyn_kv_cache;
 pub mod flash_sdpa;
 pub mod gdn_recurrent;
-pub mod gpt_oss_sdpa;
+pub mod fused_sdpa;
 pub mod inplace_kv_cache;
 pub mod kv_quant;
 pub mod moe_ffn;

@@ -2,7 +2,7 @@ pub mod clamped_swiglu;
 pub mod conv;
 pub mod fused_axis_op;
 pub mod gemm;
-pub mod gpt_oss_sdpa;
+pub mod fused_sdpa;
 pub mod route_topk;
 pub mod routed_bias_add;
 mod routed_combine;

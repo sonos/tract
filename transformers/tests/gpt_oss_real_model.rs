@@ -71,11 +71,11 @@ fn fuses_all_24_layers_on_real_model() -> TractResult<()> {
     let mut model = load_decluttered()?;
     let n_inputs = model.inputs.len();
     let n_outputs = model.outputs.len();
-    tract_transformers::ops::gpt_oss_sdpa::GptOssInPlaceSdpaTransform.transform(&mut model)?;
+    tract_transformers::ops::fused_sdpa::FusedSdpaTransform.transform(&mut model)?;
     let fused = model
         .nodes()
         .iter()
-        .filter(|n| n.op_is::<tract_transformers::ops::gpt_oss_sdpa::GptOssSdpa>())
+        .filter(|n| n.op_is::<tract_transformers::ops::fused_sdpa::FusedSdpa>())
         .count();
     assert_eq!(fused, 24, "all attention layers fused");
     // gpt-oss-20b alternates sliding_attention(128) / full_attention: the
@@ -83,7 +83,7 @@ fn fuses_all_24_layers_on_real_model() -> TractResult<()> {
     let windows: Vec<u32> = model
         .nodes()
         .iter()
-        .filter_map(|n| n.op_as::<tract_transformers::ops::gpt_oss_sdpa::GptOssSdpa>())
+        .filter_map(|n| n.op_as::<tract_transformers::ops::fused_sdpa::FusedSdpa>())
         .map(|op| op.window)
         .collect();
     let sliding = windows.iter().filter(|&&w| w == 128).count();
@@ -114,7 +114,7 @@ fn fused_matches_original_on_real_model() -> TractResult<()> {
 
     let reference = load_decluttered()?;
     let mut fused = load_decluttered()?;
-    tract_transformers::ops::gpt_oss_sdpa::GptOssInPlaceSdpaTransform.transform(&mut fused)?;
+    tract_transformers::ops::fused_sdpa::FusedSdpaTransform.transform(&mut fused)?;
 
     let ids_step1: Vec<i64> = vec![200006, 17360, 200008, 3575, 553, 17554, 162016, 11];
     let ids_step2: Vec<i64> = vec![261];
@@ -232,7 +232,7 @@ fn fused_matches_original_on_real_model() -> TractResult<()> {
 fn causal_llm_sequence_audit() -> TractResult<()> {
     use tract_nnef::tract_core::transform::ModelTransform;
     let mut model = load_decluttered()?;
-    tract_transformers::ops::gpt_oss_sdpa::GptOssInPlaceSdpaTransform.transform(&mut model)?;
+    tract_transformers::ops::fused_sdpa::FusedSdpaTransform.transform(&mut model)?;
     model.declutter()?;
     tract_nnef::tract_core::transform::get_transform("transformers_detect_all")?
         .unwrap()
@@ -243,14 +243,14 @@ fn causal_llm_sequence_audit() -> TractResult<()> {
         *counts.entry(node.op.name().to_string()).or_insert(0usize) += 1;
     }
     for (op, n) in &counts {
-        if ["GptOssSdpa", "Softmax", "Reduce<Max>", "Concat", "ApplyRope", "DynKeyValueCache", "Sdpa", "FlashSDPA", "MoeFfn"]
+        if ["FusedSdpa", "Softmax", "Reduce<Max>", "Concat", "ApplyRope", "DynKeyValueCache", "Sdpa", "FlashSDPA", "MoeFfn"]
             .iter()
             .any(|k| op.contains(k))
         {
             println!("{op}: {n}");
         }
     }
-    let fused = counts.get("GptOssSdpa").copied().unwrap_or(0);
+    let fused = counts.get("FusedSdpa").copied().unwrap_or(0);
     ensure!(fused == 24, "expected 24 fused ops after full sequence, got {fused}");
     Ok(())
 }
@@ -261,9 +261,9 @@ fn causal_llm_sequence_audit() -> TractResult<()> {
 fn audit_fused_input_facts() -> TractResult<()> {
     use tract_nnef::tract_core::transform::ModelTransform;
     let mut model = load_decluttered()?;
-    tract_transformers::ops::gpt_oss_sdpa::GptOssInPlaceSdpaTransform.transform(&mut model)?;
+    tract_transformers::ops::fused_sdpa::FusedSdpaTransform.transform(&mut model)?;
     for node in model.nodes() {
-        if node.op_is::<tract_transformers::ops::gpt_oss_sdpa::GptOssSdpa>()
+        if node.op_is::<tract_transformers::ops::fused_sdpa::FusedSdpa>()
             && node.name.contains("__0_")
         {
             for (i, inp) in node.inputs.iter().enumerate() {
@@ -290,7 +290,7 @@ fn audit_fused_input_facts() -> TractResult<()> {
 fn fused_metal_matches_fused_cpu() -> TractResult<()> {
     use tract_nnef::tract_core::transform::ModelTransform;
     let mut model = load_decluttered()?;
-    tract_transformers::ops::gpt_oss_sdpa::GptOssInPlaceSdpaTransform.transform(&mut model)?;
+    tract_transformers::ops::fused_sdpa::FusedSdpaTransform.transform(&mut model)?;
 
     let ids: Vec<i64> = (0..96).map(|i| (1000 + i * 37 % 5000) as i64).collect();
     let make_inputs = |model: &TypedModel| -> TractResult<TVec<TValue>> {

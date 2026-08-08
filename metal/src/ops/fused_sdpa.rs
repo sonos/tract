@@ -1,4 +1,5 @@
-//! Metal lowering of the fused GPT-OSS attention (`GptOssSdpa`).
+//! Metal lowering of the generic fused attention (`FusedSdpa`): parametric
+//! head_dim and GQA ratio, optional sinks, optional sliding window.
 //!
 //! The op-state owns device-resident K/V capacity buffers ([1, Hkv, cap, D]
 //! f16, geometric growth). Each step appends only the new rows (49 KB/token
@@ -6,6 +7,11 @@
 //! zero-copy strided views of the capacity buffer: appends only ever write
 //! past `len`, so views held by the caller stay valid; growth reallocates and
 //! the old buffer stays alive through the views' Arc.
+//!
+//! Sinks-less models (e.g. Qwen3.5 full-attention layers) reuse the sinks
+//! softmax/flash kernels with a per-head sink of -inf: `exp(-inf - m) = 0`
+//! contributes nothing to the denominator, which is exactly the plain masked
+//! softmax.
 //!
 //! Attention runs per kv-head on contiguous sub-views (each head's region of
 //! the capacity buffer is contiguous), so the standard GGML gemm kernels
@@ -17,9 +23,11 @@ use std::sync::Arc;
 use anyhow::ensure;
 use tract_core::internal::*;
 use tract_gpu::device::get_context;
-use tract_gpu::tensor::{DeviceArenaView, DeviceTensor, DeviceTensorExt, OwnedDeviceTensor};
+use tract_gpu::tensor::{
+    DeviceArenaView, DeviceTensor, DeviceTensorExt, IntoDevice, OwnedDeviceTensor,
+};
 use tract_gpu::utils::facts_to_device_facts;
-use tract_transformers::ops::gpt_oss_sdpa::GptOssSdpa;
+use tract_transformers::ops::fused_sdpa::FusedSdpa;
 
 use crate::kernels::matmul::{
     GemmDispatchParams, GemmKernel, GgmlGemm, dispatch_mul_mv_f16_split_k, dispatch_mul_mv_q8_0,
@@ -79,22 +87,25 @@ const SPLIT_K_MIN_T: usize = 8192;
 const SPLIT_K_CHUNK: usize = 2048;
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
-pub struct MetalGptOssSdpa {
+pub struct MetalFusedSdpa {
     pub scale_bits: u32,
     /// Sliding-attention window (0 = full): keys older than the window are
     /// -inf in the mask, so attention reads clamp to the last
     /// `window + S - 1` keys. The cache itself keeps full history.
     pub window: u32,
+    /// GPT-OSS attention sinks: trailing `sinks` input, one extra logit per
+    /// q head in the softmax denominator.
+    pub has_sinks: bool,
 }
 
-impl Op for MetalGptOssSdpa {
+impl Op for MetalFusedSdpa {
     fn name(&self) -> StaticName {
-        "MetalGptOssSdpa".into()
+        "MetalFusedSdpa".into()
     }
     op_as_typed_op!();
 }
 
-impl TypedOp for MetalGptOssSdpa {
+impl TypedOp for MetalFusedSdpa {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         facts_to_device_facts(inputs, |facts| {
             let (q, k_new, _v_new, k_cache, v_cache) =
@@ -110,7 +121,7 @@ impl TypedOp for MetalGptOssSdpa {
     as_op!();
 }
 
-impl EvalOp for MetalGptOssSdpa {
+impl EvalOp for MetalFusedSdpa {
     fn is_stateless(&self) -> bool {
         false
     }
@@ -119,15 +130,17 @@ impl EvalOp for MetalGptOssSdpa {
         _session: &TurnState,
         _node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
-        Ok(Some(Box::new(MetalGptOssSdpaState {
+        Ok(Some(Box::new(MetalFusedSdpaState {
             scale: f32::from_bits(self.scale_bits),
             window: self.window,
+            has_sinks: self.has_sinks,
             k: DeviceKvBuffer::default(),
             // V is stored transposed: the batched GGML AV gemm needs its k
             // axis (the sequence) contiguous, and the flash decode kernel
             // reads V^T rows contiguously along each key block.
             v: DeviceKvBuffer::transposed(),
             flash_scratch: None,
+            neg_inf_sinks: None,
         })))
     }
 }
@@ -414,32 +427,35 @@ impl DeviceKvBuffer {
 }
 
 #[derive(Clone, Debug)]
-pub struct MetalGptOssSdpaState {
+pub struct MetalFusedSdpaState {
     scale: f32,
     window: u32,
+    has_sinks: bool,
     k: DeviceKvBuffer,
     v: DeviceKvBuffer,
     /// Reused f32 scratch for the flash-attention partials: allocating it
     /// per step (24 layers x ~1.5 MB per token) thrashes the Metal
     /// allocator. Grown geometrically, never shrunk.
     flash_scratch: Option<DeviceTensor>,
+    /// Sinks-less models: cached [Hq] f32 buffer of -inf fed to the sinks
+    /// kernels (exp(-inf - m) = 0, exactly the plain masked softmax).
+    neg_inf_sinks: Option<DeviceTensor>,
 }
 
-impl OpState for MetalGptOssSdpaState {
+impl OpState for MetalFusedSdpaState {
     fn eval(
         &mut self,
         _state: &mut TurnState,
         _op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        ensure!(inputs.len() == 7);
+        ensure!(inputs.len() == 6 + self.has_sinks as usize);
         let q = inputs[0].to_device_tensor()?;
         let k_new = inputs[1].to_device_tensor()?;
         let v_new = inputs[2].to_device_tensor()?;
         let k_cache = inputs[3].to_device_tensor()?;
         let v_cache = inputs[4].to_device_tensor()?;
         let mask = inputs[5].to_device_tensor()?;
-        let sinks = inputs[6].to_device_tensor()?;
 
         ensure!(q.datum_type() == f16::datum_type(), "q must be f16");
         let (b, hq, s_len, d) =
@@ -479,9 +495,18 @@ impl OpState for MetalGptOssSdpaState {
         ensure!(mask_shape[..mrank - 2].iter().all(|&x| x == 1), "mask leading dims must be 1");
         let mask_2d = mask.reshaped(tvec![mask_shape[mrank - 2], t_len])?;
 
-        // Sinks -> [Hq] f32.
-        ensure!(sinks.len() == hq);
-        let sinks_flat = sinks.reshaped(tvec![hq])?;
+        // Sinks -> [Hq] f32 (a cached -inf buffer when the model has none).
+        let sinks_flat = if self.has_sinks {
+            let sinks = inputs[6].to_device_tensor()?;
+            ensure!(sinks.len() == hq);
+            sinks.reshaped(tvec![hq])?
+        } else {
+            if self.neg_inf_sinks.as_ref().is_none_or(|t| t.len() != hq) {
+                let host = Tensor::from_shape(&[hq], &vec![f32::NEG_INFINITY; hq])?;
+                self.neg_inf_sinks = Some(host.into_device()?);
+            }
+            self.neg_inf_sinks.as_ref().unwrap().clone()
+        };
 
         // Output scratch (scores/probs exist only on the gemm path).
         let out = Arc::new(get_context()?.uninitialized_device_tensor(
@@ -799,25 +824,28 @@ impl OpState for MetalGptOssSdpaState {
             crate::with_metal_stream(|stream| stream.wait_until_completed())?;
             // Rerun this step's attention on the CPU op from the SAME inputs
             // and compare: separates wrong-inputs from wrong-compute.
-            use tract_transformers::ops::gpt_oss_sdpa::GptOssSdpa as CpuOp;
-            let cpu_op = CpuOp { scale_bits: self.scale.to_bits(), window: self.window };
+            use tract_transformers::ops::fused_sdpa::FusedSdpa as CpuOp;
+            let cpu_op = CpuOp {
+                scale_bits: self.scale.to_bits(),
+                window: self.window,
+                has_sinks: self.has_sinks,
+            };
             let mut cpu_state = tract_core::ops::EvalOp::state(&cpu_op, _state, 0)?.unwrap();
             let host = |t: &DeviceTensor| -> TractResult<TValue> {
                 Ok(t.to_host()?.into_tensor().into_tvalue())
             };
-            let cpu_out = cpu_state.eval(
-                _state,
-                &cpu_op,
-                tvec!(
-                    host(q)?,
-                    host(k_new)?,
-                    host(v_new)?,
-                    host(k_cache)?,
-                    host(v_cache)?,
-                    host(mask)?,
-                    host(sinks)?,
-                ),
-            )?;
+            let mut cpu_inputs = tvec!(
+                host(q)?,
+                host(k_new)?,
+                host(v_new)?,
+                host(k_cache)?,
+                host(v_cache)?,
+                host(mask)?,
+            );
+            if self.has_sinks {
+                cpu_inputs.push(host(inputs[6].to_device_tensor()?)?);
+            }
+            let cpu_out = cpu_state.eval(_state, &cpu_op, cpu_inputs)?;
             let metal_out = DeviceTensor::ArenaView(DeviceArenaView::from_owned(
                 out.clone(),
                 f16::datum_type(),
@@ -939,32 +967,35 @@ fn subview_head(
 use tract_core::ops::{FrozenOpState, OpStateFreeze};
 
 #[derive(Clone, Debug)]
-pub struct FrozenMetalGptOssSdpaState(MetalGptOssSdpaState);
+pub struct FrozenMetalFusedSdpaState(MetalFusedSdpaState);
 
-impl OpStateFreeze for MetalGptOssSdpaState {
+impl OpStateFreeze for MetalFusedSdpaState {
     fn freeze(&self) -> Box<dyn FrozenOpState> {
-        Box::new(FrozenMetalGptOssSdpaState(self.clone()))
+        Box::new(FrozenMetalFusedSdpaState(self.clone()))
     }
 }
 
-impl FrozenOpState for FrozenMetalGptOssSdpaState {
+impl FrozenOpState for FrozenMetalFusedSdpaState {
     fn unfreeze(&self) -> Box<dyn OpState> {
         Box::new(self.0.clone())
     }
 }
 
-crate::register_metal_op!(GptOssSdpa, |_source, _node, op| {
+crate::register_metal_op!(FusedSdpa, |_source, _node, op| {
     if std::env::var_os("TRACT_METAL_DISABLE_GPT_OSS_SDPA").is_some() {
         return Ok(None);
     }
-    Ok(Some(Box::new(MetalGptOssSdpa { scale_bits: op.scale_bits, window: op.window })))
+    Ok(Some(Box::new(MetalFusedSdpa {
+        scale_bits: op.scale_bits,
+        window: op.window,
+        has_sinks: op.has_sinks,
+    })))
 });
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tract_gpu::tensor::IntoDevice;
-    use tract_transformers::ops::gpt_oss_sdpa::GptOssSdpa as CpuOp;
+    use tract_transformers::ops::fused_sdpa::FusedSdpa as CpuOp;
 
     fn rng_tensor(shape: &[usize], seed: &mut u64) -> Tensor {
         let n: usize = shape.iter().product();
@@ -1002,7 +1033,7 @@ mod tests {
 
     #[test]
     fn metal_matches_cpu_real_geometry_prefill() -> TractResult<()> {
-        run_metal_vs_cpu(64, 8, 64, &[256, 1, 1], usize::MAX)
+        run_metal_vs_cpu(64, 8, 64, &[256, 1, 1], usize::MAX, true)
     }
 
     /// 12 of 24 GPT-OSS layers run a 128-key sliding-window mask, which only
@@ -1010,12 +1041,39 @@ mod tests {
     /// in-graph Metal corruption starts.
     #[test]
     fn metal_matches_cpu_sliding_window() -> TractResult<()> {
-        run_metal_vs_cpu(64, 8, 64, &[256, 1, 1, 40], 128)
+        run_metal_vs_cpu(64, 8, 64, &[256, 1, 1, 40], 128, true)
     }
 
     #[test]
     fn metal_matches_cpu_over_prefill_and_decode() -> TractResult<()> {
-        run_metal_vs_cpu(4, 2, 64, &[5, 1, 1, 1500, 1], usize::MAX)
+        run_metal_vs_cpu(4, 2, 64, &[5, 1, 1, 1500, 1], usize::MAX, true)
+    }
+
+    /// Qwen3.5-35B full-attention geometry: head_dim 256, GQA 16q/2kv, no
+    /// sinks, no window. Prefill-sized first step exercises the tiled mm.
+    #[test]
+    fn metal_matches_cpu_qwen35_geometry_prefill() -> TractResult<()> {
+        run_metal_vs_cpu(16, 2, 256, &[256, 1, 1], usize::MAX, false)
+    }
+
+    /// Same geometry over a long decode (gemv/split-k side).
+    #[test]
+    fn metal_matches_cpu_qwen35_geometry_decode() -> TractResult<()> {
+        run_metal_vs_cpu(16, 2, 256, &[5, 1, 1, 1500, 1], usize::MAX, false)
+    }
+
+    /// No-sinks path on the gpt-oss-like small geometry (dummy -inf sinks).
+    #[test]
+    fn metal_matches_cpu_no_sinks_small() -> TractResult<()> {
+        run_metal_vs_cpu(4, 2, 64, &[5, 1, 1, 40, 1], usize::MAX, false)
+    }
+
+    /// head_dim 256 decode past the split-k threshold (SPLIT_K_MIN_T = 8192):
+    /// the split-k AV gemv + sum-chunks path had only ever run at d = 64.
+    /// Reduced head count keeps the CPU reference affordable.
+    #[test]
+    fn metal_matches_cpu_d256_split_k_decode() -> TractResult<()> {
+        run_metal_vs_cpu(2, 1, 256, &[2100, 2100, 2100, 2100, 1, 1], usize::MAX, false)
     }
 
     /// Transposed capacity buffer: append twice, read back through the
@@ -1046,8 +1104,8 @@ mod tests {
     #[test]
     fn metal_kv_q8_matches_cpu() -> TractResult<()> {
         KV_Q8_TEST_OVERRIDE.with(|c| c.set(true));
-        let r = run_metal_vs_cpu(4, 2, 64, &[5, 1, 1, 1500, 1], usize::MAX)
-            .and_then(|_| run_metal_vs_cpu(64, 8, 64, &[256, 1, 1, 40], 128));
+        let r = run_metal_vs_cpu(4, 2, 64, &[5, 1, 1, 1500, 1], usize::MAX, true)
+            .and_then(|_| run_metal_vs_cpu(64, 8, 64, &[256, 1, 1, 40], 128, true));
         KV_Q8_TEST_OVERRIDE.with(|c| c.set(false));
         r
     }
@@ -1064,8 +1122,8 @@ mod tests {
         crate::context::metal_context();
         let (hq, hkv, d) = (4usize, 2usize, 64usize);
         let scale = (d as f32).sqrt().recip();
-        let op = MetalGptOssSdpa { scale_bits: scale.to_bits(), window: 0 };
-        let cpu_op = CpuOp { scale_bits: scale.to_bits(), window: 0 };
+        let op = MetalFusedSdpa { scale_bits: scale.to_bits(), window: 0, has_sinks: true };
+        let cpu_op = CpuOp { scale_bits: scale.to_bits(), window: 0, has_sinks: true };
         let mut session = TurnState::default();
         let mut metal_state = op.state(&session, 0)?.unwrap();
         let mut cpu_state = EvalOp::state(&cpu_op, &session, 0)?.unwrap();
@@ -1175,6 +1233,7 @@ mod tests {
         d: usize,
         steps: &[usize],
         window: usize,
+        with_sinks: bool,
     ) -> TractResult<()> {
         force_flash_for_tests();
         crate::context::metal_context(); // initialize the GPU context
@@ -1182,14 +1241,18 @@ mod tests {
         // The Metal op clamps its reads using `window`; the CPU reference
         // keeps full-width math, so the comparison validates the clamp.
         let op_window = if window == usize::MAX { 0 } else { window as u32 };
-        let op = MetalGptOssSdpa { scale_bits: scale.to_bits(), window: op_window };
-        let cpu_op = CpuOp { scale_bits: scale.to_bits(), window: 0 };
+        let op = MetalFusedSdpa {
+            scale_bits: scale.to_bits(),
+            window: op_window,
+            has_sinks: with_sinks,
+        };
+        let cpu_op = CpuOp { scale_bits: scale.to_bits(), window: 0, has_sinks: with_sinks };
         let mut session = TurnState::default();
         let mut metal_state = op.state(&session, 0)?.unwrap();
         let mut cpu_state = EvalOp::state(&cpu_op, &session, 0)?.unwrap();
 
         let mut seed = 42u64;
-        let sinks = rng_tensor(&[hq], &mut seed);
+        let sinks = with_sinks.then(|| rng_tensor(&[hq], &mut seed));
         let mut k_all = Tensor::zero::<f16>(&[1, hkv, 0, d])?;
         let mut v_all = Tensor::zero::<f16>(&[1, hkv, 0, d])?;
 
@@ -1202,33 +1265,28 @@ mod tests {
                 rng_tensor(&[1, hkv, step_len, d], &mut seed).cast_to::<f16>()?.into_owned();
             let mask = window_mask(step_len, past + step_len, window);
 
-            let cpu_out = cpu_state.eval(
-                &mut session,
-                &cpu_op,
-                tvec!(
-                    q.clone().into_tvalue(),
-                    k_new.clone().into_tvalue(),
-                    v_new.clone().into_tvalue(),
-                    k_all.clone().into_tvalue(),
-                    v_all.clone().into_tvalue(),
-                    mask.clone().into_tvalue(),
-                    sinks.clone().into_tvalue(),
-                ),
-            )?;
-
-            let metal_out = metal_state.eval(
-                &mut session,
-                &op,
-                tvec!(
-                    q.clone().into_device()?.into_tensor().into_tvalue(),
-                    k_new.clone().into_device()?.into_tensor().into_tvalue(),
-                    v_new.clone().into_device()?.into_tensor().into_tvalue(),
-                    k_all.clone().into_device()?.into_tensor().into_tvalue(),
-                    v_all.clone().into_device()?.into_tensor().into_tvalue(),
-                    mask.clone().into_device()?.into_tensor().into_tvalue(),
-                    sinks.clone().into_device()?.into_tensor().into_tvalue(),
-                ),
-            )?;
+            let mut cpu_inputs = tvec!(
+                q.clone().into_tvalue(),
+                k_new.clone().into_tvalue(),
+                v_new.clone().into_tvalue(),
+                k_all.clone().into_tvalue(),
+                v_all.clone().into_tvalue(),
+                mask.clone().into_tvalue(),
+            );
+            let mut metal_inputs = tvec!(
+                q.clone().into_device()?.into_tensor().into_tvalue(),
+                k_new.clone().into_device()?.into_tensor().into_tvalue(),
+                v_new.clone().into_device()?.into_tensor().into_tvalue(),
+                k_all.clone().into_device()?.into_tensor().into_tvalue(),
+                v_all.clone().into_device()?.into_tensor().into_tvalue(),
+                mask.clone().into_device()?.into_tensor().into_tvalue(),
+            );
+            if let Some(sinks) = &sinks {
+                cpu_inputs.push(sinks.clone().into_tvalue());
+                metal_inputs.push(sinks.clone().into_device()?.into_tensor().into_tvalue());
+            }
+            let cpu_out = cpu_state.eval(&mut session, &cpu_op, cpu_inputs)?;
+            let metal_out = metal_state.eval(&mut session, &op, metal_inputs)?;
             crate::with_metal_stream(|stream| stream.wait_until_completed())?;
 
             for (i, tol) in [(0usize, Approximation::SuperApproximate)].into_iter() {

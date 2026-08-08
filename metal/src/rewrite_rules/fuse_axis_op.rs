@@ -109,7 +109,7 @@ pub fn fuse_axis_op(
     rule_ensure!(!is_axis_like || is_allowed_move);
 
     // The wrapper shunts a single output; fusing into a multi-output op
-    // (e.g. MetalGptOssSdpa with its cache outputs) would orphan the rest.
+    // (e.g. MetalFusedSdpa with its cache outputs) would orphan the rest.
     rule_ensure!(node.outputs.len() == 1);
 
     let node_name = &node.name;

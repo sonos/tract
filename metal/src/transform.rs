@@ -334,7 +334,7 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
         {
             let device_inputs =
                 sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
-            let is_inplace_kv = gpu_op.is::<ops::gpt_oss_sdpa::MetalGptOssSdpa>();
+            let is_inplace_kv = gpu_op.is::<ops::fused_sdpa::MetalFusedSdpa>();
             let outlet_ids = target.wire_node(node.name.clone(), gpu_op, &device_inputs)?;
             if is_inplace_kv {
                 // The fused in-place KV op's cache outputs (slots 1, 2) must
