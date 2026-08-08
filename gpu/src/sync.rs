@@ -153,6 +153,46 @@ pub fn sync_inputs_if_required(
     Ok(mapped_inputs)
 }
 
+/// Model outputs the caller keeps device-resident: they are fed back verbatim
+/// as next-step inputs (recurrent/conv states, unfolded KV caches) and never
+/// read on host, so the ToHost sync (a full GPU pipeline stall each) is pure
+/// waste. `TRACT_GPU_DEVICE_RESIDENT_OUTPUTS` lists model-output indexes as
+/// comma-separated entries, `a-b` inclusive ranges allowed (e.g. `1-80,82`).
+/// The matching outputs then yield opaque device tensors; the ToDevice sync
+/// on the paired input passes device tensors through untouched, closing the
+/// loop without any host round trip. Empty/unset keeps every output on host.
+fn device_resident_output_indexes() -> Vec<(usize, usize)> {
+    let Ok(spec) = std::env::var("TRACT_GPU_DEVICE_RESIDENT_OUTPUTS") else {
+        return vec![];
+    };
+    spec.split(',')
+        .filter_map(|entry| {
+            let entry = entry.trim();
+            if entry.is_empty() {
+                return None;
+            }
+            if let Some((a, b)) = entry.split_once('-') {
+                Some((a.trim().parse().ok()?, b.trim().parse().ok()?))
+            } else {
+                let ix = entry.parse().ok()?;
+                Some((ix, ix))
+            }
+        })
+        .collect()
+}
+
+/// True when the caller declared this src-model output device-resident.
+pub fn is_device_resident_output(src: &TypedModel, outlet: OutletId) -> bool {
+    let ranges = device_resident_output_indexes();
+    if ranges.is_empty() {
+        return false;
+    }
+    src.outputs
+        .iter()
+        .position(|o| *o == outlet)
+        .is_some_and(|ix| ranges.iter().any(|(a, b)| (*a..=*b).contains(&ix)))
+}
+
 /// For model outputs that are on device, insert DeviceSync nodes to move them back to host.
 pub fn sync_model_outputs_if_required(
     src: &TypedModel,
@@ -162,8 +202,12 @@ pub fn sync_model_outputs_if_required(
 ) -> TractResult<TVec<OutletId>> {
     let mut outputs = tvec![];
     for (o_idx, o) in target_node_outlet_ids.into_iter().enumerate() {
-        let is_src_output = src.outputs.contains(&OutletId::new(node.id, o_idx));
-        if target.outlet_fact(o)?.as_device_fact().is_some() && is_src_output {
+        let src_outlet = OutletId::new(node.id, o_idx);
+        let is_src_output = src.outputs.contains(&src_outlet);
+        if target.outlet_fact(o)?.as_device_fact().is_some()
+            && is_src_output
+            && !is_device_resident_output(src, src_outlet)
+        {
             let sync_output = target.wire_node(
                 format!("{}.to-host-{o_idx}-out", node.name),
                 DeviceSync::new(DeviceSyncKind::ToHost),
